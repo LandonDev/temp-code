@@ -31,10 +31,10 @@ export const ApprovalCard = memo(function ApprovalCard({
   }
 
   return (
-    <div className="max-w-[95%] rounded-lg border border-amber-500/40 bg-card">
+    <div className="max-w-[95%] rounded-lg border border-warning/50 bg-card">
       <div className="flex items-center gap-2 px-3 py-2.5">
-        <ShieldQuestion className="size-4 shrink-0 text-amber-500" />
-        <span className="text-sm">{block.title ?? `Claude wants to use ${block.toolName}`}</span>
+        <ShieldQuestion className="size-4 shrink-0 text-warning" />
+        <span className="text-[13px]">{block.title ?? `Claude wants to use ${block.toolName}`}</span>
       </div>
       {block.input !== undefined && (
         <pre className="max-h-40 overflow-auto border-t px-3 py-2 text-xs text-muted-foreground">

@@ -8,14 +8,11 @@ import { SessionRegistry } from './sessions'
 import { runDoctor } from './drivers/binaries'
 import { setOrchestrationRegistry } from './orchestration'
 import { fileDiff, workingTreeChanges } from './git'
-import { PLANS_DIR } from './threads'
 
-/** file.read is fenced to plan documents and project working trees. */
+/** file.read is fenced to project working trees (plan docs live there). */
 function readAllowedFile(registry: SessionRegistry, path: string): string | null {
   const abs = resolve(path)
-  const allowed =
-    abs.startsWith(PLANS_DIR) ||
-    registry.listProjects().some((p) => abs.startsWith(resolve(p.cwd)))
+  const allowed = registry.listProjects().some((p) => abs.startsWith(resolve(p.cwd)))
   if (!allowed) throw new Error('path outside app-managed directories')
   try {
     return readFileSync(abs, 'utf8')
@@ -87,7 +84,11 @@ export async function startServer(dbPath: string): Promise<RunningServer> {
             sendFrame({ id: req.id, ok: true, result: await runDoctor() })
             break
           case 'workspace.create':
-            sendFrame({ id: req.id, ok: true, result: await registry.createWorkspace(req.params.path, req.params.name) })
+            sendFrame({
+              id: req.id,
+              ok: true,
+              result: await registry.createWorkspace(req.params.path, req.params.name)
+            })
             break
           case 'workspace.list':
             sendFrame({ id: req.id, ok: true, result: registry.listWorkspaces() })
@@ -100,7 +101,11 @@ export async function startServer(dbPath: string): Promise<RunningServer> {
             sendFrame({
               id: req.id,
               ok: true,
-              result: await registry.createProject(req.params.workspaceId, req.params.name, req.params.mode)
+              result: await registry.createProject(
+                req.params.workspaceId,
+                req.params.name,
+                req.params.mode
+              )
             })
             break
           case 'project.list':
@@ -112,12 +117,20 @@ export async function startServer(dbPath: string): Promise<RunningServer> {
             break
           case 'project.changes': {
             const project = registry.getProject(req.params.projectId)
-            sendFrame({ id: req.id, ok: true, result: project ? await workingTreeChanges(project.cwd) : [] })
+            sendFrame({
+              id: req.id,
+              ok: true,
+              result: project ? await workingTreeChanges(project.cwd) : []
+            })
             break
           }
           case 'project.diff': {
             const project = registry.getProject(req.params.projectId)
-            sendFrame({ id: req.id, ok: true, result: project ? await fileDiff(project.cwd, req.params.path) : '' })
+            sendFrame({
+              id: req.id,
+              ok: true,
+              result: project ? await fileDiff(project.cwd, req.params.path) : ''
+            })
             break
           }
           case 'file.read': {
@@ -140,7 +153,10 @@ export async function startServer(dbPath: string): Promise<RunningServer> {
             })
             break
           case 'session.send':
-            await registry.send(req.params.sessionId, req.params.text)
+            await registry.send(req.params.sessionId, req.params.text, {
+              model: req.params.model,
+              reasoning: req.params.reasoning
+            })
             sendFrame({ id: req.id, ok: true, result: null })
             break
           case 'session.interrupt':

@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { CATALOG } from '@shared/catalog'
+import type { CATALOG, Reasoning } from '@shared/catalog'
 import type { EventRow, SessionMeta } from '@shared/events'
 import type { FileChange, ProjectMeta, ProjectMode, ThreadType, WorkspaceMeta } from '@shared/domain'
 import type { CreateSessionInput } from '@shared/contract'
@@ -42,7 +42,11 @@ interface AppState {
   /** subscribe + backfill a session WITHOUT selecting it (agent drill-in) */
   loadSession: (sessionId: string) => Promise<void>
   createThread: (params: CreateSessionInput & { threadType: ThreadType }) => Promise<SessionMeta>
-  send: (sessionId: string, text: string) => Promise<void>
+  send: (
+    sessionId: string,
+    text: string,
+    opts?: { model?: string; reasoning?: Reasoning }
+  ) => Promise<void>
   interrupt: (sessionId: string) => Promise<void>
   approve: (sessionId: string, requestId: string, allow: boolean) => Promise<void>
   setArchived: (sessionId: string, archived: boolean) => Promise<void>
@@ -219,8 +223,8 @@ export const useApp = create<AppState>((set, get) => ({
     return session
   },
 
-  send: async (sessionId, text) => {
-    await client.request('session.send', { sessionId, text })
+  send: async (sessionId, text, opts) => {
+    await client.request('session.send', { sessionId, text, ...opts })
   },
 
   interrupt: async (sessionId) => {

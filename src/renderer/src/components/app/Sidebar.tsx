@@ -111,13 +111,17 @@ function WorkspaceGroup({
           <button
             onClick={onNewProject}
             title="New project"
+            aria-label="New project"
             className="flex size-5 items-center justify-center rounded text-muted-foreground hover:text-foreground active:scale-95"
           >
             <Plus className="size-3.5" />
           </button>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <button className="flex size-5 items-center justify-center rounded text-muted-foreground hover:text-foreground">
+              <button
+                aria-label="Workspace options"
+                className="flex size-5 items-center justify-center rounded text-muted-foreground hover:text-foreground"
+              >
                 <MoreHorizontal className="size-3.5" />
               </button>
             </DropdownMenuTrigger>
@@ -214,7 +218,10 @@ function ProjectRow({
       <div className="absolute right-1 top-1/2 -translate-y-1/2 opacity-0 transition-opacity group-hover/row:opacity-100">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <button className="flex size-5 items-center justify-center rounded text-muted-foreground hover:text-foreground">
+            <button
+              aria-label="Project options"
+              className="flex size-5 items-center justify-center rounded text-muted-foreground hover:text-foreground"
+            >
               <MoreHorizontal className="size-3.5" />
             </button>
           </DropdownMenuTrigger>
@@ -243,7 +250,7 @@ function UnsortedGroup({ sessions }: { sessions: SessionMeta[] }): React.JSX.Ele
         className="flex w-full items-center gap-1.5 px-2 py-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground/50 hover:text-muted-foreground"
       >
         <ChevronRight className={cn('size-3 transition-transform', open && 'rotate-90')} />
-        Unsorted ({sessions.length})
+        Unsorted · {sessions.length}
       </button>
       {open &&
         sessions.map((s) => (

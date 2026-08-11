@@ -6,7 +6,7 @@ import type { ProjectMeta, ProjectMode, WorkspaceMeta } from '@shared/domain'
 import { BUILT_IN_DRIVERS } from './drivers'
 import type { DriverHandle } from './drivers/types'
 import type { Store } from './db'
-import { addProjectWorktree, currentBranch, isGitRepo } from './git'
+import { addProjectWorktree, currentBranch, ensureLocalExclude, isGitRepo } from './git'
 import { planPathFor, planSeed, threadPreamble } from './threads'
 
 const THREAD_TITLES = {
@@ -101,8 +101,17 @@ export class SessionRegistry {
     } else {
       branch = await currentBranch(ws.path)
     }
-    const meta: ProjectMeta = { id: nanoid(12), workspaceId, name, mode, branch, cwd, createdAt: Date.now() }
+    const meta: ProjectMeta = {
+      id: nanoid(12),
+      workspaceId,
+      name,
+      mode,
+      branch,
+      cwd,
+      createdAt: Date.now()
+    }
     this.store.insertProject(meta)
+    void ensureLocalExclude(cwd) // plan docs (.temp-code/) stay out of git
     return meta
   }
 
@@ -142,8 +151,7 @@ export class SessionRegistry {
       projectId: params.projectId,
       threadType: params.threadType,
       // Planning threads own a plan file; seeded threads point at their source.
-      planPath:
-        params.threadType === 'planning' ? planPathFor(id) : (params.planPath ?? null),
+      planPath: params.threadType === 'planning' ? planPathFor(cwd, id) : (params.planPath ?? null),
       provider: params.provider,
       model: params.model,
       reasoning: params.reasoning,
@@ -151,7 +159,9 @@ export class SessionRegistry {
       agentType: params.threadType === 'orchestration' ? 'orchestrator' : params.agentType,
       title:
         params.title ??
-        (params.threadType ? THREAD_TITLES[params.threadType] : `${params.provider} · ${params.agentType}`),
+        (params.threadType
+          ? THREAD_TITLES[params.threadType]
+          : `${params.provider} · ${params.agentType}`),
       cwd,
       // The harness boots lazily on first send; a new session is simply
       // ready for input.
@@ -172,9 +182,26 @@ export class SessionRegistry {
     return meta
   }
 
-  async send(sessionId: string, text: string): Promise<void> {
-    const meta = this.store.getSession(sessionId)
+  async send(
+    sessionId: string,
+    text: string,
+    opts?: { model?: string; reasoning?: SessionMeta['reasoning'] }
+  ): Promise<void> {
+    let meta = this.store.getSession(sessionId)
     if (!meta) throw new Error(`unknown session: ${sessionId}`)
+    // Per-message model/reasoning: persist the change and drop the live
+    // handle — the next handleFor() boots the harness fresh (resume keeps
+    // the conversation) with the new settings.
+    const model = opts?.model ?? meta.model
+    const reasoning = opts?.reasoning ?? meta.reasoning
+    if (model !== meta.model || reasoning !== meta.reasoning) {
+      await this.dropHandle(sessionId)
+      const next = this.store.updateSession(sessionId, { model, reasoning })
+      if (next) {
+        meta = next
+        this.notifyMeta(next)
+      }
+    }
     const handle = await this.handleFor(sessionId)
     this.lastActivity.set(sessionId, Date.now())
     // The visible transcript carries only what the user typed; thread-type

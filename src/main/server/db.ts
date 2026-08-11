@@ -146,16 +146,27 @@ export class Store {
 
   updateSession(
     id: string,
-    patch: Partial<Pick<SessionMeta, 'status' | 'title' | 'nativeId' | 'archived'>>
+    patch: Partial<
+      Pick<SessionMeta, 'status' | 'title' | 'nativeId' | 'archived' | 'model' | 'reasoning'>
+    >
   ): SessionMeta | null {
     const cur = this.getSession(id)
     if (!cur) return null
     const next = { ...cur, ...patch, updatedAt: Date.now() }
     this.db
       .prepare(
-        `UPDATE sessions SET status = ?, title = ?, native_id = ?, archived = ?, updated_at = ? WHERE id = ?`
+        `UPDATE sessions SET status = ?, title = ?, native_id = ?, archived = ?, model = ?, reasoning = ?, updated_at = ? WHERE id = ?`
       )
-      .run(next.status, next.title, next.nativeId, next.archived ? 1 : 0, next.updatedAt, id)
+      .run(
+        next.status,
+        next.title,
+        next.nativeId,
+        next.archived ? 1 : 0,
+        next.model,
+        next.reasoning,
+        next.updatedAt,
+        id
+      )
     return next
   }
 
@@ -181,8 +192,7 @@ export class Store {
 
   getSession(id: string): SessionMeta | null {
     const r = this.db.prepare(`SELECT * FROM sessions WHERE id = ?`).get(id) as
-      | SessionRowRaw
-      | undefined
+      SessionRowRaw | undefined
     return r ? toMeta(r) : null
   }
 
@@ -216,13 +226,27 @@ export class Store {
   listWorkspaces(): WorkspaceMeta[] {
     const rows = this.db
       .prepare(`SELECT * FROM workspaces ORDER BY created_at`)
-      .all() as unknown as { id: string; name: string; path: string; git: number; created_at: number }[]
-    return rows.map((r) => ({ id: r.id, name: r.name, path: r.path, git: !!r.git, createdAt: r.created_at }))
+      .all() as unknown as {
+      id: string
+      name: string
+      path: string
+      git: number
+      created_at: number
+    }[]
+    return rows.map((r) => ({
+      id: r.id,
+      name: r.name,
+      path: r.path,
+      git: !!r.git,
+      createdAt: r.created_at
+    }))
   }
 
   deleteWorkspace(id: string): string[] {
     const projectIds = (
-      this.db.prepare(`SELECT id FROM projects WHERE workspace_id = ?`).all(id) as unknown as { id: string }[]
+      this.db.prepare(`SELECT id FROM projects WHERE workspace_id = ?`).all(id) as unknown as {
+        id: string
+      }[]
     ).map((p) => p.id)
     this.db.prepare(`DELETE FROM projects WHERE workspace_id = ?`).run(id)
     this.db.prepare(`DELETE FROM workspaces WHERE id = ?`).run(id)
@@ -276,7 +300,9 @@ export class Store {
   /** Has this session ever received a user message? (drives first-send preambles) */
   hasUserText(sessionId: string): boolean {
     const r = this.db
-      .prepare(`SELECT 1 AS x FROM events WHERE session_id = ? AND payload LIKE '%"user-text"%' LIMIT 1`)
+      .prepare(
+        `SELECT 1 AS x FROM events WHERE session_id = ? AND payload LIKE '%"user-text"%' LIMIT 1`
+      )
       .get(sessionId)
     return !!r
   }

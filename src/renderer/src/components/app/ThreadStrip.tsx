@@ -31,21 +31,21 @@ export function ThreadStrip(): React.JSX.Element | null {
   if (!projectId) return null
 
   return (
-    <div className="flex shrink-0 items-center gap-1 border-b border-border/60 px-4">
+    <div className="flex h-10 shrink-0 items-center gap-1 border-b border-border/60 px-4">
       <Tabs
         value={selectedId ?? ''}
         onValueChange={(id) => void select(id)}
         variant="underline"
-        className="min-w-0 overflow-x-auto [scrollbar-width:none]"
+        className="min-w-0 self-stretch overflow-x-auto [scrollbar-width:none]"
       >
-        <TabsList className="border-b-0">
+        <TabsList className="h-full border-b-0">
           {threads.map((t) => {
             const Glyph = t.threadType ? THREAD_GLYPHS[t.threadType] : THREAD_GLYPHS.chat
             return (
               <TabsTrigger
                 key={t.id}
                 value={t.id}
-                className="min-h-0 gap-1.5 px-2.5 pb-2 pt-2 text-[13px] font-normal"
+                className="h-full min-h-0 gap-1.5 px-2.5 py-0 text-[13px] font-normal"
               >
                 <Glyph className="size-[13px] opacity-60" />
                 <span className="max-w-44 truncate">{t.title}</span>
@@ -60,31 +60,37 @@ export function ThreadStrip(): React.JSX.Element | null {
   )
 }
 
-function NewThreadButton({ projectId, empty }: { projectId: string; empty: boolean }): React.JSX.Element {
+function NewThreadButton({
+  projectId,
+  empty
+}: {
+  projectId: string
+  empty: boolean
+}): React.JSX.Element {
   const catalog = useApp((s) => s.catalog)
   const project = useApp((s) => s.projects.find((p) => p.id === projectId))
   const createThread = useApp((s) => s.createThread)
   const [open, setOpen] = useState(false)
   const [type, setType] = useState<ThreadType>('chat')
   const [provider, setProvider] = useState<ProviderId>('claude')
-  const [model, setModel] = useState<string>('')
   const [busy, setBusy] = useState(false)
 
   if (!catalog) return <span />
   // Orchestration runs on the claude harness (the MCP toolset lives there).
   const effProvider: ProviderId = type === 'orchestration' ? 'claude' : provider
   const info = catalog[effProvider]
-  const effModel = info.models.some((m) => m.id === model) ? model : info.defaultModel
 
   const create = async (): Promise<void> => {
     if (busy) return
     setBusy(true)
     try {
+      // Model/reasoning are per message (picked in the prompt bar); the
+      // thread starts on the provider default.
       await createThread({
         projectId,
         threadType: type,
         provider: effProvider,
-        model: effModel,
+        model: info.defaultModel,
         agentType: type === 'orchestration' ? 'orchestrator' : 'implementer',
         // Worktree implementation runs unattended safely.
         permission: type === 'implementation' && project?.mode === 'worktree' ? 'auto' : 'edits'
@@ -99,6 +105,7 @@ function NewThreadButton({ projectId, empty }: { projectId: string; empty: boole
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <button
+          aria-label="New thread"
           className={cn(
             'flex shrink-0 items-center gap-1.5 rounded-md px-2 py-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground active:scale-95',
             empty && 'text-foreground'
@@ -138,7 +145,7 @@ function NewThreadButton({ projectId, empty }: { projectId: string; empty: boole
             onValueChange={(v) => setProvider(v as ProviderId)}
             disabled={type === 'orchestration'}
           >
-            <SelectTrigger className="h-7 flex-1 text-xs">
+            <SelectTrigger aria-label="Provider" className="h-7 flex-1 text-xs">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -149,19 +156,12 @@ function NewThreadButton({ projectId, empty }: { projectId: string; empty: boole
               ))}
             </SelectContent>
           </Select>
-          <Select value={effModel} onValueChange={setModel}>
-            <SelectTrigger className="h-7 flex-1 text-xs">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {info.models.map((m) => (
-                <SelectItem key={m.id} value={m.id} className="text-xs">
-                  {m.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Button size="sm" className="h-7 px-3 text-xs" disabled={busy} onClick={() => void create()}>
+          <Button
+            size="sm"
+            className="h-7 px-3 text-xs"
+            disabled={busy}
+            onClick={() => void create()}
+          >
             Create
           </Button>
         </div>

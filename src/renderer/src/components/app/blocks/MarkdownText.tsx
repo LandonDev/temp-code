@@ -12,7 +12,7 @@ export const MarkdownText = memo(function MarkdownText({
   streaming?: boolean
 }): React.JSX.Element {
   return (
-    <div className="prose prose-sm prose-invert max-w-none prose-p:leading-relaxed prose-pre:bg-transparent prose-pre:p-0 prose-headings:font-medium">
+    <div className="prose prose-sm max-w-none prose-p:leading-relaxed prose-pre:bg-transparent prose-pre:p-0 prose-headings:font-medium">
       <Markdown
         remarkPlugins={[remarkGfm]}
         components={{

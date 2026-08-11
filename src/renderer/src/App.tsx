@@ -1,5 +1,7 @@
 import { useEffect } from 'react'
+import { motion } from 'motion/react'
 import { FolderPlus } from 'lucide-react'
+import { EASE_OUT } from './lib/ease'
 import { useApp } from './state/store'
 import { Sidebar } from './components/app/Sidebar'
 import { Titlebar } from './components/app/Titlebar'
@@ -29,7 +31,17 @@ export default function App(): React.JSX.Element {
         <Titlebar />
         <ThreadStrip />
         {session ? (
-          <ThreadView key={session.id} sessionId={session.id} />
+          // Keyed remount per thread; the brief fade bridges the swap without
+          // ever delaying it (no exit animation).
+          <motion.div
+            key={session.id}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 0.12, ease: EASE_OUT }}
+            className="flex min-h-0 flex-1 flex-col"
+          >
+            <ThreadView sessionId={session.id} />
+          </motion.div>
         ) : (
           <div className="flex flex-1 items-center justify-center">
             {!connected ? (
