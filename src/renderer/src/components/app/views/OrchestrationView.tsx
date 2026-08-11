@@ -77,13 +77,18 @@ export function OrchestrationView({ session }: { session: SessionMeta }): React.
               onClick={() => setShowFeed(!showFeed)}
               className="flex items-center gap-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground/60 transition-colors hover:text-muted-foreground"
             >
-              <ChevronRight className={cn('size-3 transition-transform', showFeed && 'rotate-90')} />
+              <ChevronRight
+                className={cn('size-3 transition-transform', showFeed && 'rotate-90')}
+              />
               Orchestrator feed
             </button>
           </div>
         </div>
         {showFeed && (
-          <Transcript sessionId={session.id} className="h-80 overflow-y-auto border-t border-border/60 select-text" />
+          <Transcript
+            sessionId={session.id}
+            className="h-80 overflow-y-auto border-t border-border/60 select-text"
+          />
         )}
       </div>
       <PromptBar compact />
@@ -102,9 +107,13 @@ function activityLine(blocks: Block[] | undefined): string | null {
     const b = blocks[i]
     if (b.kind === 'tool') {
       const input = (b.input ?? {}) as Record<string, unknown>
-      const detail = [input.command, input.file_path, input.pattern, input.description, input.query].find(
-        (v) => typeof v === 'string'
-      ) as string | undefined
+      const detail = [
+        input.command,
+        input.file_path,
+        input.pattern,
+        input.description,
+        input.query
+      ].find((v) => typeof v === 'string') as string | undefined
       return detail ? `${b.name} · ${detail}` : b.name
     }
     if (b.kind === 'assistant' && b.text.trim()) return b.text.trim().split('\n')[0]
@@ -122,6 +131,12 @@ const STATUS_LABEL: Record<string, string> = {
   done: 'done'
 }
 
+/** "claude-sonnet-5" → "Sonnet 5" (falls back to the raw id). */
+function useModelLabel(agent: SessionMeta): string {
+  const catalog = useApp((s) => s.catalog)
+  return catalog?.[agent.provider]?.models.find((m) => m.id === agent.model)?.label ?? agent.model
+}
+
 function AgentCapsule({
   agent,
   hidden,
@@ -133,24 +148,35 @@ function AgentCapsule({
 }): React.JSX.Element {
   const activity = useApp((s) => activityLine(s.blocks[agent.id]))
   const cost = useApp((s) => s.costs[agent.id])
+  const model = useModelLabel(agent)
 
   return (
     <motion.button
       layoutId={`agent-${agent.id}`}
       transition={SPRING_PANEL}
       onClick={onOpen}
-      style={{ opacity: hidden ? 0 : 1 }}
+      initial={{ opacity: 0, scale: 0.97 }}
+      animate={{ opacity: hidden ? 0 : 1, scale: 1 }}
       className="flex flex-col gap-1.5 rounded-xl border bg-card p-3 text-left transition-colors hover:bg-accent/40 active:scale-[0.99]"
     >
       <div className="flex w-full items-center gap-2">
         <ProviderMark provider={agent.provider} />
         <span className="min-w-0 flex-1 truncate text-[13px] font-medium">
-          {agent.agentType} · {agent.model}
+          {agent.agentType} · {model}
         </span>
         <StatusDot status={agent.status} />
       </div>
-      <p className={cn('min-h-8 w-full text-[11px] leading-4 text-muted-foreground', !activity && 'italic text-muted-foreground/50')}>
-        {activity ? (activity.length > 90 ? `${activity.slice(0, 90)}…` : activity) : 'no output yet'}
+      <p
+        className={cn(
+          'min-h-8 w-full text-[11px] leading-4 text-muted-foreground',
+          !activity && 'italic text-muted-foreground/50'
+        )}
+      >
+        {activity
+          ? activity.length > 90
+            ? `${activity.slice(0, 90)}…`
+            : activity
+          : 'no output yet'}
       </p>
       <div className="flex w-full items-center gap-2 text-[11px] tabular-nums text-muted-foreground/60">
         <span>{STATUS_LABEL[agent.status] ?? agent.status}</span>
@@ -161,9 +187,16 @@ function AgentCapsule({
   )
 }
 
-function AgentDetail({ agent, onClose }: { agent: SessionMeta; onClose: () => void }): React.JSX.Element {
+function AgentDetail({
+  agent,
+  onClose
+}: {
+  agent: SessionMeta
+  onClose: () => void
+}): React.JSX.Element {
   const send = useApp((s) => s.send)
   const cost = useApp((s) => s.costs[agent.id])
+  const model = useModelLabel(agent)
   const [text, setText] = useState('')
   const reduce = useReducedMotion()
 
@@ -191,16 +224,21 @@ function AgentDetail({ agent, onClose }: { agent: SessionMeta; onClose: () => vo
         <div className="flex shrink-0 items-center gap-2 border-b border-border/60 px-4 py-2.5">
           <ProviderMark provider={agent.provider} />
           <span className="text-[13px] font-medium">
-            {agent.agentType} · {agent.model}
+            {agent.agentType} · {model}
           </span>
           <StatusDot status={agent.status} />
-          <span className="text-[11px] text-muted-foreground">{STATUS_LABEL[agent.status] ?? agent.status}</span>
+          <span className="text-[11px] text-muted-foreground">
+            {STATUS_LABEL[agent.status] ?? agent.status}
+          </span>
           <div className="ml-auto flex items-center gap-3">
             {cost !== undefined && (
-              <span className="text-[11px] tabular-nums text-muted-foreground">${cost.toFixed(2)}</span>
+              <span className="text-[11px] tabular-nums text-muted-foreground">
+                ${cost.toFixed(2)}
+              </span>
             )}
             <button
               onClick={onClose}
+              aria-label="Close agent detail"
               className="flex size-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground active:scale-90"
             >
               <X className="size-3.5" />
@@ -208,7 +246,10 @@ function AgentDetail({ agent, onClose }: { agent: SessionMeta; onClose: () => vo
           </div>
         </div>
 
-        <Transcript sessionId={agent.id} className="min-h-0 flex-1 overflow-y-auto bg-background select-text" />
+        <Transcript
+          sessionId={agent.id}
+          className="min-h-0 flex-1 overflow-y-auto bg-background select-text"
+        />
 
         <div className="flex shrink-0 items-center gap-2 border-t border-border/60 px-3 py-2">
           <input
@@ -221,9 +262,12 @@ function AgentDetail({ agent, onClose }: { agent: SessionMeta; onClose: () => vo
           <button
             onClick={submit}
             disabled={!text.trim()}
+            aria-label="Send"
             className={cn(
               'flex size-6 items-center justify-center rounded-full transition-colors active:scale-90',
-              text.trim() ? 'bg-primary text-primary-foreground' : 'bg-secondary text-muted-foreground'
+              text.trim()
+                ? 'bg-primary text-primary-foreground'
+                : 'bg-secondary text-muted-foreground'
             )}
           >
             <ArrowUp className="size-3.5" />

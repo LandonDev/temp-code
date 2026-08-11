@@ -4,7 +4,7 @@ import { ChevronRight, GitFork, ListChecks, Play } from 'lucide-react'
 import type { SessionMeta } from '@shared/events'
 import { useApp } from '../../../state/store'
 import { cn } from '../../../lib/utils'
-import { SPRING_LAYOUT } from '../../../lib/ease'
+import { EASE_OUT, SPRING_LAYOUT } from '../../../lib/ease'
 import { MarkdownText } from '../blocks/MarkdownText'
 import { Popover, PopoverContent, PopoverTrigger } from '../../ui/popover'
 import { Transcript } from '../Transcript'
@@ -48,27 +48,38 @@ export function PlanView({ session }: { session: SessionMeta }): React.JSX.Eleme
       <div className="flex min-h-0 flex-1 flex-col">
         <div className={cn('min-h-0', hasDoc ? 'flex-1 overflow-y-auto select-text' : 'shrink-0')}>
           {hasDoc ? (
-            <div className="mx-auto w-full max-w-3xl px-8 py-6">
+            <motion.div
+              initial={reduce ? false : { opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.2, ease: EASE_OUT }}
+              className="mx-auto w-full max-w-3xl px-6 py-6 text-[13px]"
+            >
               <MarkdownText text={doc} streaming={running} />
-            </div>
+            </motion.div>
           ) : (
-            <div className="flex items-center gap-2 px-8 pt-6 text-[13px] text-muted-foreground">
-              {running && (
-                <span className="size-1.5 animate-pulse rounded-full bg-success" />
-              )}
-              {running ? 'Drafting — the plan document appears here as it is written.' : 'Describe what to plan below.'}
+            <div className="mx-auto flex w-full max-w-3xl items-center gap-2 px-6 pt-6 text-[13px] text-muted-foreground">
+              {running && <span className="size-1.5 animate-pulse rounded-full bg-success" />}
+              {running ? 'Drafting the plan…' : 'Describe what to plan below.'}
             </div>
           )}
         </div>
 
         {/* conversation side-channel */}
-        <div className={cn('flex min-h-0 flex-col', hasDoc ? 'shrink-0' : 'flex-1', showChat && hasDoc && 'flex-1')}>
+        <div
+          className={cn(
+            'flex min-h-0 flex-col',
+            hasDoc ? 'shrink-0' : 'flex-1',
+            showChat && hasDoc && 'flex-1'
+          )}
+        >
           <div className="mx-auto w-full max-w-3xl shrink-0 px-6">
             <button
               onClick={() => setShowChat(!showChat)}
               className="flex items-center gap-1 py-1.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground/60 transition-colors hover:text-muted-foreground"
             >
-              <ChevronRight className={cn('size-3 transition-transform', showChat && 'rotate-90')} />
+              <ChevronRight
+                className={cn('size-3 transition-transform', showChat && 'rotate-90')}
+              />
               Conversation
             </button>
           </div>
@@ -89,7 +100,9 @@ export function PlanView({ session }: { session: SessionMeta }): React.JSX.Eleme
       </div>
 
       <div className="relative">
-        {hasDoc && !running && <StartHandoff session={session} />}
+        <AnimatePresence>
+          {hasDoc && !running && <StartHandoff session={session} />}
+        </AnimatePresence>
         <PromptBar compact />
       </div>
     </>
@@ -100,6 +113,7 @@ function StartHandoff({ session }: { session: SessionMeta }): React.JSX.Element 
   const createThread = useApp((s) => s.createThread)
   const send = useApp((s) => s.send)
   const [busy, setBusy] = useState(false)
+  const reduce = useReducedMotion()
 
   const start = async (type: 'implementation' | 'orchestration'): Promise<void> => {
     if (busy || !session.projectId) return
@@ -126,7 +140,14 @@ function StartHandoff({ session }: { session: SessionMeta }): React.JSX.Element 
   }
 
   return (
-    <div className="pointer-events-none absolute inset-x-0 -top-10 flex justify-center">
+    <motion.div
+      initial={reduce ? false : { opacity: 0, y: 8, scale: 0.9 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      exit={reduce ? undefined : { opacity: 0, y: 8, scale: 0.9 }}
+      // The plan settling is a rare, earned moment — a touch of overshoot.
+      transition={{ type: 'spring', stiffness: 420, damping: 28, mass: 0.6 }}
+      className="pointer-events-none absolute inset-x-0 -top-10 flex justify-center"
+    >
       <Popover>
         <PopoverTrigger asChild>
           <button className="pointer-events-auto flex items-center gap-1.5 rounded-full bg-primary px-3.5 py-1.5 text-[13px] font-medium text-primary-foreground shadow-[0_2px_12px_rgb(0_0_0/0.15)] transition-transform hover:scale-[1.02] active:scale-95">
@@ -143,7 +164,9 @@ function StartHandoff({ session }: { session: SessionMeta }): React.JSX.Element 
             <ListChecks className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
             <span>
               <span className="block text-[13px] font-medium">Implement</span>
-              <span className="block text-[11px] text-muted-foreground">One agent works the plan's tasks</span>
+              <span className="block text-[11px] text-muted-foreground">
+                One agent works the plan's tasks
+              </span>
             </span>
           </button>
           <button
@@ -154,11 +177,13 @@ function StartHandoff({ session }: { session: SessionMeta }): React.JSX.Element 
             <GitFork className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
             <span>
               <span className="block text-[13px] font-medium">Orchestrate</span>
-              <span className="block text-[11px] text-muted-foreground">Split across subagents in parallel</span>
+              <span className="block text-[11px] text-muted-foreground">
+                Split across subagents in parallel
+              </span>
             </span>
           </button>
         </PopoverContent>
       </Popover>
-    </div>
+    </motion.div>
   )
 }

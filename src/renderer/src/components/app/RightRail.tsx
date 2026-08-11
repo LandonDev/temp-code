@@ -88,11 +88,11 @@ function ChangesPanel({ projectId }: { projectId: string }): React.JSX.Element {
                 title={c.path}
               >
                 {c.path.split('/').pop()}
-                <span className="ml-1.5 text-[10px] text-muted-foreground/50">
+                <span className="ml-1.5 text-[11px] text-muted-foreground/50">
                   {c.path.includes('/') ? c.path.slice(0, c.path.lastIndexOf('/')) : ''}
                 </span>
               </span>
-              <span className="shrink-0 text-[10px] tabular-nums">
+              <span className="shrink-0 text-[11px] tabular-nums">
                 {c.status === 'untracked' ? (
                   <span className="text-success">new</span>
                 ) : (
@@ -137,6 +137,7 @@ function DiffView({
       <div className="titlebar-drag flex h-11 shrink-0 items-center gap-1.5 px-2">
         <button
           onClick={onBack}
+          aria-label="Back to changes"
           className="flex size-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground active:scale-90"
         >
           <ArrowLeft className="size-3.5" />

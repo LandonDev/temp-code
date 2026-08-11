@@ -15,7 +15,7 @@ export const ThinkingBlock = memo(function ThinkingBlock({
     <div>
       <button
         onClick={() => setOpen((v) => !v)}
-        className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+        className="flex items-center gap-1 text-xs text-muted-foreground transition-colors hover:text-foreground"
       >
         <ChevronRight className={cn('size-3 transition-transform', open && 'rotate-90')} />
         {streaming ? (
@@ -25,7 +25,7 @@ export const ThinkingBlock = memo(function ThinkingBlock({
         )}
       </button>
       {open && (
-        <div className="mt-1.5 pl-4 text-sm whitespace-pre-wrap text-muted-foreground">
+        <div className="mt-1.5 whitespace-pre-wrap pl-4 text-[13px] leading-relaxed text-muted-foreground">
           {text}
         </div>
       )}

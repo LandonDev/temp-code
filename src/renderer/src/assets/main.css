@@ -6,6 +6,19 @@
   background: transparent !important;
   margin: 0;
 }
+/* Dual-theme shiki: spans carry both palettes, .dark flips to the dark one. */
+.dark .shiki,
+.dark .shiki span {
+  color: var(--shiki-dark) !important;
+}
+
+/* The newest transcript block settles in; old rows never replay this. */
+@keyframes block-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
 /*
  ---break---
  */
@@ -125,9 +138,36 @@
   --color-success: var(--success);
 }
 
+/* Chat markdown renders on the app tokens, not the plugin's fixed grays —
+ * one mapping covers both themes. Font size inherits the 13px body. */
+.prose {
+  --tw-prose-body: var(--foreground);
+  --tw-prose-headings: var(--foreground);
+  --tw-prose-lead: var(--muted-foreground);
+  --tw-prose-links: var(--info);
+  --tw-prose-bold: var(--foreground);
+  --tw-prose-counters: var(--muted-foreground);
+  --tw-prose-bullets: var(--muted-foreground);
+  --tw-prose-hr: var(--border);
+  --tw-prose-quotes: var(--foreground);
+  --tw-prose-quote-borders: var(--border);
+  --tw-prose-captions: var(--muted-foreground);
+  --tw-prose-kbd: var(--foreground);
+  --tw-prose-code: var(--foreground);
+  --tw-prose-pre-code: var(--foreground);
+  --tw-prose-pre-bg: transparent;
+  --tw-prose-th-borders: var(--border);
+  --tw-prose-td-borders: var(--border);
+  font-size: inherit;
+}
+
 @layer base {
   * {
     @apply border-border;
+  }
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 1px;
   }
   body {
     @apply bg-background text-foreground antialiased;

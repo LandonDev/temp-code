@@ -94,7 +94,14 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
   z.object({
     id: z.string(),
     method: z.literal('session.send'),
-    params: z.object({ sessionId: z.string(), text: z.string() })
+    // Model/reasoning ride along per message; a change restarts the harness
+    // with resume, so a thread has no fixed model.
+    params: z.object({
+      sessionId: z.string(),
+      text: z.string(),
+      model: z.string().optional(),
+      reasoning: reasoningEnum.optional()
+    })
   }),
   z.object({
     id: z.string(),

@@ -71,7 +71,7 @@ export const ToolChip = memo(function ToolChip({ block }: { block: ToolBlock }):
       <button
         onClick={() => setOpen((v) => !v)}
         className={cn(
-          'flex w-full items-center gap-2 rounded-md border bg-card px-2.5 py-1.5 text-left text-sm hover:bg-accent/50',
+          'flex w-full items-center gap-2 rounded-md border bg-card px-2.5 py-1.5 text-left transition-colors hover:bg-accent/50',
           block.isError && 'border-destructive/40'
         )}
       >
@@ -85,16 +85,16 @@ export const ToolChip = memo(function ToolChip({ block }: { block: ToolBlock }):
         )}
         <span className="ml-auto flex shrink-0 items-center gap-2">
           {block.subCount > 0 && (
-            <span className="text-xs text-muted-foreground">{block.subCount} steps</span>
+            <span className="text-[11px] text-muted-foreground">{block.subCount} steps</span>
           )}
-          {block.isError && <span className="text-xs text-destructive">failed</span>}
+          {block.isError && <span className="text-[11px] text-destructive">failed</span>}
           {running && <Spinner className="size-3" />}
         </span>
       </button>
       {open && (
         <div className="mt-1 space-y-2 rounded-md border bg-card px-3 py-2">
           {block.input !== undefined && (
-            <pre className="overflow-x-auto text-xs text-muted-foreground">
+            <pre className="max-h-40 overflow-auto text-xs text-muted-foreground">
               {JSON.stringify(block.input, null, 2)}
             </pre>
           )}

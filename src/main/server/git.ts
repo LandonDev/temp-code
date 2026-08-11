@@ -58,6 +58,26 @@ export async function addProjectWorktree(
   throw new Error('could not allocate a worktree name')
 }
 
+/** App-managed files (plan docs) — never user-facing "changes". */
+const isAppPath = (path: string): boolean => path.startsWith('.temp-code/')
+
+/** Ignore `.temp-code/` locally (info/exclude — never touches the tracked
+ *  .gitignore). Worktrees share the common git dir, so one write covers all. */
+export async function ensureLocalExclude(dir: string): Promise<void> {
+  try {
+    const { stdout } = await execFileP('git', ['-C', dir, 'rev-parse', '--git-common-dir'])
+    const excludePath = join(stdout.trim().startsWith('/') ? stdout.trim() : join(dir, stdout.trim()), 'info', 'exclude')
+    const { readFile, writeFile, mkdir } = await import('node:fs/promises')
+    await mkdir(join(excludePath, '..'), { recursive: true })
+    const current = await readFile(excludePath, 'utf8').catch(() => '')
+    if (!current.includes('.temp-code/')) {
+      await writeFile(excludePath, `${current}${current.endsWith('\n') || !current ? '' : '\n'}.temp-code/\n`)
+    }
+  } catch {
+    // not a repo — nothing to exclude
+  }
+}
+
 /** Changed files vs HEAD, plus untracked — what the Changes rail shows. */
 export async function workingTreeChanges(dir: string): Promise<FileChange[]> {
   if (!(await isGitRepo(dir))) return []
@@ -92,7 +112,7 @@ export async function workingTreeChanges(dir: string): Promise<FileChange[]> {
       changes.set(target, cur ? { ...cur, status: 'renamed' } : { path: target, adds: 0, dels: 0, status: 'renamed' })
     }
   }
-  return [...changes.values()].sort((a, b) => a.path.localeCompare(b.path))
+  return [...changes.values()].filter((c) => !isAppPath(c.path)).sort((a, b) => a.path.localeCompare(b.path))
 }
 
 export async function fileDiff(dir: string, path: string): Promise<string> {

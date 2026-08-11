@@ -1,5 +1,6 @@
 import { memo, useEffect, useLayoutEffect, useRef } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
+import { cn } from '../../lib/utils'
 import { useApp } from '../../state/store'
 import type { Block } from '../../state/blocks'
 import { ApprovalCard } from './blocks/ApprovalCard'
@@ -53,6 +54,8 @@ export function Transcript({
   const blocks = useApp((s) => s.blocks[sessionId]) ?? []
   const scrollRef = useRef<HTMLDivElement>(null)
   const atBottomRef = useRef(true)
+  // Blocks present at mount are history — only later arrivals animate in.
+  const initialCount = useRef(blocks.length)
 
   const virtualizer = useVirtualizer({
     count: blocks.length,
@@ -87,24 +90,38 @@ export function Transcript({
   }, [sessionId])
 
   return (
-    <div ref={scrollRef} className={className ?? 'flex-1 overflow-y-auto select-text'}>
+    <div
+      ref={scrollRef}
+      className={cn('[overflow-anchor:none]', className ?? 'flex-1 overflow-y-auto select-text')}
+    >
       <div
         className="relative mx-auto w-full max-w-3xl px-6"
         style={{ height: virtualizer.getTotalSize() }}
       >
-        {virtualizer.getVirtualItems().map((item) => (
-          <div
-            key={item.key}
-            data-index={item.index}
-            ref={virtualizer.measureElement}
-            className="absolute right-6 left-6"
-            style={{ transform: `translateY(${item.start}px)` }}
-          >
-            <div className="py-2">
-              <BlockRow block={blocks[item.index]} />
+        {virtualizer.getVirtualItems().map((item) => {
+          const block = blocks[item.index]
+          // Chrome rows (tools, thinking) cluster; prose and messages breathe.
+          const dense = block.kind === 'tool' || block.kind === 'thinking'
+          const fresh = item.index === blocks.length - 1 && blocks.length > initialCount.current
+          return (
+            <div
+              key={item.key}
+              data-index={item.index}
+              ref={virtualizer.measureElement}
+              className="absolute right-6 left-6"
+              style={{ transform: `translateY(${item.start}px)` }}
+            >
+              <div
+                className={cn(
+                  dense ? 'py-1' : 'py-2.5',
+                  fresh && 'animate-[block-in_180ms_cubic-bezier(0.16,1,0.3,1)]'
+                )}
+              >
+                <BlockRow block={block} />
+              </div>
             </div>
-          </div>
-        ))}
+          )
+        })}
       </div>
     </div>
   )

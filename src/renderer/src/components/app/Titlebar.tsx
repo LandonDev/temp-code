@@ -41,6 +41,7 @@ export function Titlebar(): React.JSX.Element {
               railOpen ? 'bg-accent text-foreground' : 'text-muted-foreground hover:text-foreground'
             )}
             title="Changes"
+            aria-label="Toggle changes panel"
           >
             <PanelRight className="size-[15px]" />
           </button>

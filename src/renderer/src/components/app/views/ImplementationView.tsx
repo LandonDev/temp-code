@@ -76,7 +76,9 @@ export function ImplementationView({ session }: { session: SessionMeta }): React
             </div>
           )}
 
-          {todos.length === 0 ? (
+          {blocks.length === 0 && !running ? (
+            <p className="pt-1 text-[13px] text-muted-foreground">Describe the task below.</p>
+          ) : todos.length === 0 ? (
             <div className="flex flex-col gap-2">
               {blocks
                 .filter((b) => b.kind !== 'user')
@@ -120,13 +122,15 @@ function SetupRow({ blocks }: { blocks: Block[] }): React.JSX.Element | null {
     <div className="mb-1">
       <button
         onClick={() => setOpen(!open)}
-        className="flex items-center gap-1.5 py-1 text-[11px] text-muted-foreground/60 transition-colors hover:text-muted-foreground"
+        className="flex items-center gap-2.5 px-2 py-1 text-[11px] text-muted-foreground/60 transition-colors hover:text-muted-foreground"
       >
-        <ChevronRight className={cn('size-3 transition-transform', open && 'rotate-90')} />
+        <span className="flex size-4 shrink-0 items-center justify-center">
+          <ChevronRight className={cn('size-3 transition-transform', open && 'rotate-90')} />
+        </span>
         Setup · {content.length} steps
       </button>
       {open && (
-        <div className="ml-[5px] flex flex-col gap-1.5 border-l border-border/60 py-1 pl-4">
+        <div className="mb-1.5 ml-[13px] flex flex-col gap-1.5 border-l border-border/60 py-1 pl-4">
           {content.map((b) => (
             <BlockRow key={b.id} block={b} />
           ))}
@@ -161,18 +165,33 @@ function TodoRow({
         disabled={blocks.length === 0 && !running}
         className={cn(
           'flex w-full items-center gap-2.5 rounded-md px-2 py-[7px] text-left transition-colors',
-          running ? 'text-foreground' : status === 'completed' ? 'text-muted-foreground' : 'text-muted-foreground/60',
+          running
+            ? 'text-foreground'
+            : status === 'completed'
+              ? 'text-muted-foreground'
+              : 'text-muted-foreground/60',
           blocks.length > 0 && 'hover:bg-accent/40 active:scale-[0.997]'
         )}
       >
         <span className="flex size-4 shrink-0 items-center justify-center">
-          {running ? (
-            <Spinner className="size-3.5" />
-          ) : status === 'completed' ? (
-            <Check className="size-3.5 text-success" />
-          ) : (
-            <Circle className="size-3 text-muted-foreground/40" />
-          )}
+          <AnimatePresence mode="wait" initial={false}>
+            <motion.span
+              key={running ? 'run' : status}
+              initial={reduce ? false : { scale: 0.25, opacity: 0, filter: 'blur(4px)' }}
+              animate={{ scale: 1, opacity: 1, filter: 'blur(0px)' }}
+              exit={reduce ? undefined : { scale: 0.5, opacity: 0, transition: { duration: 0.1 } }}
+              transition={{ type: 'spring', duration: 0.3, bounce: 0 }}
+              className="flex items-center justify-center"
+            >
+              {running ? (
+                <Spinner className="size-3.5" />
+              ) : status === 'completed' ? (
+                <Check className="size-3.5 text-success" />
+              ) : (
+                <Circle className="size-3 text-muted-foreground/40" />
+              )}
+            </motion.span>
+          </AnimatePresence>
         </span>
         <span
           className={cn(
@@ -190,7 +209,10 @@ function TodoRow({
         )}
         {blocks.length > 0 && (
           <ChevronRight
-            className={cn('size-3 shrink-0 text-muted-foreground/40 transition-transform', expanded && 'rotate-90')}
+            className={cn(
+              'size-3 shrink-0 text-muted-foreground/40 transition-transform',
+              expanded && 'rotate-90'
+            )}
           />
         )}
       </button>
@@ -208,7 +230,10 @@ function TodoRow({
             <div className="mb-1.5 ml-[13px] flex flex-col gap-1.5 border-l border-border/60 py-1.5 pl-4">
               {blocks.map((b) =>
                 b.kind === 'user' ? null : (
-                  <div key={b.id} className={b.kind === 'assistant' ? 'text-muted-foreground' : undefined}>
+                  <div
+                    key={b.id}
+                    className={b.kind === 'assistant' ? 'text-muted-foreground' : undefined}
+                  >
                     <BlockRow block={b} />
                   </div>
                 )

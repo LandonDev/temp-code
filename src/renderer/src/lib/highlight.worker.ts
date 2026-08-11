@@ -27,7 +27,7 @@ const LANGS = [
 
 let highlighterP: Promise<Highlighter> | null = null
 function getHighlighter(): Promise<Highlighter> {
-  highlighterP ??= createHighlighter({ themes: ['one-dark-pro'], langs: LANGS })
+  highlighterP ??= createHighlighter({ themes: ['github-light', 'one-dark-pro'], langs: LANGS })
   return highlighterP
 }
 
@@ -36,7 +36,12 @@ self.onmessage = async (e: MessageEvent<{ id: number; code: string; lang: string
   try {
     const h = await getHighlighter()
     const language = h.getLoadedLanguages().includes(lang) ? lang : 'text'
-    const html = h.codeToHtml(code, { lang: language, theme: 'one-dark-pro' })
+    // Both palettes in one pass; main.css flips to --shiki-dark under .dark.
+    const html = h.codeToHtml(code, {
+      lang: language,
+      themes: { light: 'github-light', dark: 'one-dark-pro' },
+      defaultColor: 'light'
+    })
     self.postMessage({ id, html })
   } catch {
     self.postMessage({ id, html: null })
