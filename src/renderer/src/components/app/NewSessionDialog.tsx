@@ -1,9 +1,16 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { X } from 'lucide-react'
 import type { ProviderId, Reasoning } from '@shared/catalog'
 import { AGENT_TYPES, type AgentType } from '@shared/catalog'
 import type { PermissionPolicy } from '@shared/events'
+import { client } from '../../lib/client'
 import { useApp } from '../../state/store'
+
+interface DoctorReport {
+  found: boolean
+  version?: string
+  error?: string
+}
 
 const PERMISSION_LABELS: Record<PermissionPolicy, string> = {
   safe: 'Ask before tools',
@@ -21,9 +28,15 @@ export function NewSessionDialog({ onClose }: { onClose: () => void }): React.JS
   const [permission, setPermission] = useState<PermissionPolicy>('edits')
   const [cwd, setCwd] = useState('')
   const [busy, setBusy] = useState(false)
+  const [doctor, setDoctor] = useState<Record<ProviderId, DoctorReport> | null>(null)
+
+  useEffect(() => {
+    void client.request<Record<ProviderId, DoctorReport>>('doctor.get').then(setDoctor).catch(() => {})
+  }, [])
 
   if (!catalog) return null
   const info = catalog[provider]
+  const health = doctor?.[provider]
   const effectiveModel = model ?? info.defaultModel
 
   const create = async (): Promise<void> => {
@@ -80,6 +93,13 @@ export function NewSessionDialog({ onClose }: { onClose: () => void }): React.JS
                 </button>
               ))}
             </div>
+            {health && (
+              <p className="mt-1 text-xs text-muted-foreground">
+                {health.found && !health.error
+                  ? health.version
+                  : (health.error ?? 'not available')}
+              </p>
+            )}
           </div>
 
           <div>

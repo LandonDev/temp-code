@@ -1,69 +1,103 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { createInterface } from 'node:readline'
+import type { PermissionPolicy, SessionStatus } from '@shared/events'
+import type { Reasoning } from '@shared/catalog'
 import type { DriverCtx, DriverHandle, HarnessDriver } from './types'
+import { harnessEnv, resolveBinary } from './binaries'
 
 /**
- * Codex driver — drives `codex app-server`: bidirectional JSON-RPC 2.0 over
- * stdio, newline-delimited. Runs under the user's ChatGPT login
- * (`codex login`); we never touch credentials.
+ * Codex driver — `codex app-server`, protocol v2 (verified live against
+ * codex-cli 0.146.1; see scripts/probe-codex.ts and the CLI's own
+ * `generate-json-schema`):
  *
- * EXPERIMENTAL: transport is solid; method/event names follow the codex-rs
- * app-server protocol and must be verified against the installed CLI
- * (`codex app-server` docs) — see docs/PLAN.md Milestone 5.
+ *   initialize {clientInfo} → thread/start|thread/resume → turn/start
+ *   {threadId, input:[{type:'text',text}], effort}
+ *
+ * Streaming arrives as notifications:
+ *   item/started + item/completed (item.type: agentMessage | reasoning |
+ *   commandExecution | fileChange | mcpToolCall | webSearch | ...),
+ *   item/agentMessage/delta, item/reasoning/textDelta|summaryTextDelta,
+ *   thread/tokenUsage/updated, turn/started, turn/completed.
+ *
+ * Approvals come as server→client JSON-RPC REQUESTS
+ * (item/commandExecution/requestApproval, item/fileChange/requestApproval)
+ * answered with {decision: 'accept'|'decline'}.
  */
 
-interface RpcPending {
-  resolve: (v: unknown) => void
-  reject: (e: Error) => void
+const APPROVAL_POLICY: Record<PermissionPolicy, string> = {
+  safe: 'untrusted',
+  edits: 'on-request',
+  auto: 'never'
+}
+
+const EFFORT: Record<Reasoning, string> = {
+  low: 'low',
+  medium: 'medium',
+  high: 'high',
+  max: 'xhigh'
+}
+
+interface RpcFrame {
+  id?: number | string
+  method?: string
+  params?: Record<string, unknown>
+  result?: unknown
+  error?: { message?: string }
 }
 
 class AppServerConn {
   private proc: ChildProcessWithoutNullStreams
   private nextId = 1
-  private pending = new Map<number, RpcPending>()
-  onNotification: (method: string, params: Record<string, unknown>) => void = () => {}
+  private pending = new Map<number | string, { resolve: (v: unknown) => void; reject: (e: Error) => void }>()
 
-  constructor(cwd: string, onExit: (code: number | null) => void) {
-    // Resolve the real binary, not the shell wrapper (Aliax lesson: shell
-    // functions shadow `codex`; GUI apps also need a login-shell PATH).
-    this.proc = spawn('codex', ['app-server'], {
-      cwd,
-      stdio: ['pipe', 'pipe', 'pipe'],
-      env: { ...process.env }
+  constructor(
+    binPath: string,
+    env: NodeJS.ProcessEnv,
+    cwd: string,
+    private onNotify: (method: string, params: Record<string, unknown>) => void,
+    private onRequest: (id: number | string, method: string, params: Record<string, unknown>) => void,
+    onExit: (code: number | null) => void
+  ) {
+    this.proc = spawn(binPath, ['app-server'], { cwd, env, stdio: ['pipe', 'pipe', 'pipe'] })
+    createInterface({ input: this.proc.stdout }).on('line', (line) => {
+      let msg: RpcFrame
+      try {
+        msg = JSON.parse(line)
+      } catch {
+        return
+      }
+      if (msg.id !== undefined && msg.method) {
+        // server→client request (approvals)
+        this.onRequest(msg.id, msg.method, msg.params ?? {})
+      } else if (msg.id !== undefined) {
+        const p = this.pending.get(msg.id)
+        if (p) {
+          this.pending.delete(msg.id)
+          if (msg.error) p.reject(new Error(msg.error.message ?? 'app-server error'))
+          else p.resolve(msg.result)
+        }
+      } else if (msg.method) {
+        this.onNotify(msg.method, msg.params ?? {})
+      }
     })
     this.proc.on('exit', (code) => {
       for (const p of this.pending.values()) p.reject(new Error(`codex app-server exited (${code})`))
       this.pending.clear()
       onExit(code)
     })
-    createInterface({ input: this.proc.stdout }).on('line', (line) => {
-      if (!line.trim()) return
-      let msg: Record<string, unknown>
-      try {
-        msg = JSON.parse(line)
-      } catch {
-        return
-      }
-      if (typeof msg.id === 'number' && ('result' in msg || 'error' in msg)) {
-        const p = this.pending.get(msg.id)
-        if (p) {
-          this.pending.delete(msg.id)
-          if (msg.error) p.reject(new Error(JSON.stringify(msg.error)))
-          else p.resolve(msg.result)
-        }
-      } else if (typeof msg.method === 'string') {
-        this.onNotification(msg.method, (msg.params ?? {}) as Record<string, unknown>)
-      }
+    this.proc.on('error', () => onExit(-1))
+  }
+
+  request(method: string, params?: unknown): Promise<unknown> {
+    const id = this.nextId++
+    return new Promise((resolve, reject) => {
+      this.pending.set(id, { resolve, reject })
+      this.proc.stdin.write(JSON.stringify({ jsonrpc: '2.0', id, method, params }) + '\n')
     })
   }
 
-  request(method: string, params: Record<string, unknown>): Promise<unknown> {
-    const id = this.nextId++
-    const frame = JSON.stringify({ jsonrpc: '2.0', id, method, params })
-    return new Promise((resolve, reject) => {
-      this.pending.set(id, { resolve, reject })
-      this.proc.stdin.write(frame + '\n')
-    })
+  respond(id: number | string, result: unknown): void {
+    this.proc.stdin.write(JSON.stringify({ jsonrpc: '2.0', id, result }) + '\n')
   }
 
   kill(): void {
@@ -71,96 +105,239 @@ class AppServerConn {
   }
 }
 
+type Item = Record<string, unknown> & { type?: string; id?: string }
+
 export const codexDriver: HarnessDriver = {
   id: 'codex',
 
   async start(ctx: DriverCtx): Promise<DriverHandle> {
     const { session, emit } = ctx
-    let conversationId: string | null = session.nativeId
 
-    const conn = new AppServerConn(session.cwd, (code) => {
-      if (code !== 0) emit({ type: 'error', message: `codex app-server exited with code ${code}` })
-      emit({ type: 'status', status: code === 0 ? 'done' : 'error' })
-    })
+    const binPath = await resolveBinary('codex')
+    if (!binPath) throw new Error('codex CLI not found — install it and log in (`codex login`)')
+    const env = await harnessEnv()
 
-    conn.onNotification = (method, params) => {
-      // codex/event carries an EventMsg payload in params.msg.
-      if (method !== 'codex/event') return
-      const m = (params.msg ?? params) as { type?: string; [k: string]: unknown }
-      switch (m.type) {
-        case 'agent_message_delta':
-          emit({ type: 'assistant-text', text: String(m.delta ?? ''), delta: true })
-          break
-        case 'agent_message':
-          emit({ type: 'assistant-text', text: String(m.message ?? ''), delta: false })
-          break
-        case 'agent_reasoning_delta':
-          emit({ type: 'thinking', text: String(m.delta ?? ''), delta: true })
-          break
-        case 'exec_command_begin':
+    let currentTurnId: string | null = null
+    let lastUsage: { inputTokens?: number; outputTokens?: number } = {}
+    let disposed = false
+    const setStatus = (status: SessionStatus): void => emit({ type: 'status', status })
+
+    const itemStarted = (item: Item): void => {
+      switch (item.type) {
+        case 'commandExecution':
           emit({
             type: 'tool-call',
-            callId: String(m.call_id ?? ''),
+            callId: String(item.id),
             name: 'shell',
-            input: m.command
+            input: { command: item.command, cwd: item.cwd }
           })
           break
-        case 'exec_command_end':
+        case 'fileChange':
+          emit({ type: 'tool-call', callId: String(item.id), name: 'apply_patch', input: item.changes })
+          break
+        case 'mcpToolCall':
           emit({
-            type: 'tool-result',
-            callId: String(m.call_id ?? ''),
-            output: String(m.aggregated_output ?? m.stdout ?? ''),
-            isError: m.exit_code !== 0
+            type: 'tool-call',
+            callId: String(item.id),
+            name: `${item.server}.${item.tool}`,
+            input: item.arguments
           })
           break
-        case 'task_complete':
-          emit({ type: 'turn-complete' })
-          emit({ type: 'status', status: 'idle' })
-          break
-        case 'error':
-          emit({ type: 'error', message: String(m.message ?? 'unknown codex error') })
+        case 'webSearch':
+          emit({ type: 'tool-call', callId: String(item.id), name: 'web_search', input: { query: item.query } })
           break
       }
     }
 
+    const itemCompleted = (item: Item): void => {
+      switch (item.type) {
+        case 'agentMessage':
+          emit({
+            type: 'assistant-text',
+            text: String(item.text ?? ''),
+            delta: false,
+            msgId: String(item.id),
+            blockIndex: 0
+          })
+          break
+        case 'reasoning': {
+          const text =
+            typeof item.text === 'string'
+              ? item.text
+              : Array.isArray(item.summary)
+                ? item.summary.join('\n')
+                : undefined
+          if (text !== undefined) {
+            emit({ type: 'thinking', text, delta: false, msgId: String(item.id), blockIndex: 0 })
+          }
+          break
+        }
+        case 'commandExecution':
+          emit({
+            type: 'tool-result',
+            callId: String(item.id),
+            output: String(item.aggregatedOutput ?? ''),
+            isError: item.exitCode !== 0 && item.exitCode !== null && item.exitCode !== undefined
+          })
+          break
+        case 'fileChange':
+          emit({
+            type: 'tool-result',
+            callId: String(item.id),
+            output: JSON.stringify(item.changes ?? item.status, null, 2),
+            isError: item.status === 'failed'
+          })
+          break
+        case 'mcpToolCall':
+          emit({
+            type: 'tool-result',
+            callId: String(item.id),
+            output: JSON.stringify(item.result ?? null, null, 2),
+            isError: item.status === 'failed'
+          })
+          break
+        case 'webSearch':
+          emit({
+            type: 'tool-result',
+            callId: String(item.id),
+            output: JSON.stringify(item.results ?? [], null, 2),
+            isError: false
+          })
+          break
+      }
+    }
+
+    const onNotify = (method: string, params: Record<string, unknown>): void => {
+      switch (method) {
+        case 'turn/started':
+          currentTurnId = String((params.turn as Item)?.id ?? '')
+          break
+        case 'item/started':
+          itemStarted((params.item ?? {}) as Item)
+          break
+        case 'item/completed':
+          itemCompleted((params.item ?? {}) as Item)
+          break
+        case 'item/agentMessage/delta':
+          emit({
+            type: 'assistant-text',
+            text: String(params.delta ?? ''),
+            delta: true,
+            msgId: String(params.itemId),
+            blockIndex: 0
+          })
+          break
+        case 'item/reasoning/textDelta':
+        case 'item/reasoning/summaryTextDelta':
+          emit({
+            type: 'thinking',
+            text: String(params.delta ?? ''),
+            delta: true,
+            msgId: String(params.itemId),
+            blockIndex: 0
+          })
+          break
+        case 'thread/tokenUsage/updated': {
+          const total = (params.tokenUsage as { total?: Record<string, number> })?.total
+          if (total) lastUsage = { inputTokens: total.inputTokens, outputTokens: total.outputTokens }
+          break
+        }
+        case 'turn/completed': {
+          currentTurnId = null
+          const turn = params.turn as { status?: string; error?: { message?: string } | null }
+          if (turn?.error?.message) emit({ type: 'error', message: turn.error.message })
+          emit({ type: 'turn-complete', ...lastUsage })
+          setStatus('idle')
+          break
+        }
+        case 'error':
+          emit({ type: 'error', message: String(params.message ?? 'codex error') })
+          break
+      }
+    }
+
+    const pendingApprovals = new Map<string, (allow: boolean) => void>()
+
+    const onRequest = (id: number | string, method: string, params: Record<string, unknown>): void => {
+      const legacy = method === 'execCommandApproval' || method === 'applyPatchApproval'
+      const isApproval = legacy || method.endsWith('/requestApproval')
+      if (!isApproval) {
+        // Fail-closed on anything we don't understand.
+        conn.respond(id, { decision: legacy ? 'denied' : 'decline' })
+        return
+      }
+      const requestId = `codex-${id}`
+      const toolName = method.includes('ommandExec') ? 'shell' : method.includes('ileChange') || method === 'applyPatchApproval' ? 'apply_patch' : method
+      emit({ type: 'approval-request', requestId, toolName, input: params, callId: params.itemId ? String(params.itemId) : undefined })
+      emit({ type: 'status', status: 'waiting' })
+      pendingApprovals.set(requestId, (allow) => {
+        pendingApprovals.delete(requestId)
+        emit({ type: 'approval-resolved', requestId, allow })
+        emit({ type: 'status', status: 'running' })
+        conn.respond(id, {
+          decision: legacy ? (allow ? 'approved' : 'denied') : allow ? 'accept' : 'decline'
+        })
+      })
+    }
+
+    const conn = new AppServerConn(binPath, env, session.cwd, onNotify, onRequest, (code) => {
+      if (disposed) return
+      emit({ type: 'error', message: `codex app-server exited unexpectedly (${code})` })
+      setStatus('error')
+    })
+
+    let threadId = session.nativeId
     try {
       await conn.request('initialize', {
-        clientInfo: { name: 'temp-code', title: 'temp-code', version: '0.0.1' }
+        clientInfo: { name: 'temp-code', title: 'temp-code', version: '0.1.0' }
       })
-      if (!conversationId) {
-        const res = (await conn.request('newConversation', {
-          model: session.model,
-          cwd: session.cwd,
-          approvalPolicy: 'never',
-          sandbox: 'workspace-write',
-          config: { model_reasoning_effort: session.reasoning }
-        })) as { conversationId?: string }
-        conversationId = res.conversationId ?? null
-        if (conversationId) ctx.setNativeId(conversationId)
+      const threadParams = {
+        cwd: session.cwd,
+        model: session.model,
+        approvalPolicy: APPROVAL_POLICY[session.permission],
+        sandbox: 'workspace-write'
       }
-      await conn.request('addConversationListener', { conversationId })
-      emit({ type: 'status', status: 'idle' })
+      if (threadId) {
+        await conn.request('thread/resume', { threadId, ...threadParams })
+      } else {
+        const res = (await conn.request('thread/start', threadParams)) as { thread?: { id?: string } }
+        if (res.thread?.id) {
+          threadId = res.thread.id
+          ctx.setNativeId(threadId)
+        }
+      }
     } catch (err) {
-      emit({
-        type: 'error',
-        message: `codex handshake failed (is codex installed + logged in?): ${err instanceof Error ? err.message : err}`
-      })
-      emit({ type: 'status', status: 'error' })
+      conn.kill()
+      throw new Error(
+        `codex app-server handshake failed: ${err instanceof Error ? err.message : String(err)}`
+      )
     }
 
     return {
       async send(text: string): Promise<void> {
         emit({ type: 'user-text', text })
-        emit({ type: 'status', status: 'running' })
-        await conn.request('sendUserMessage', {
-          conversationId,
-          items: [{ type: 'text', data: { text } }]
-        })
+        setStatus('running')
+        conn
+          .request('turn/start', {
+            threadId,
+            input: [{ type: 'text', text }],
+            effort: EFFORT[session.reasoning]
+          })
+          .catch((err) => {
+            emit({ type: 'error', message: err instanceof Error ? err.message : String(err) })
+            setStatus('idle')
+          })
       },
       interrupt(): void {
-        void conn.request('interruptConversation', { conversationId })
+        if (currentTurnId) {
+          void conn.request('turn/interrupt', { threadId, turnId: currentTurnId }).catch(() => {})
+        }
+      },
+      approve(requestId: string, allow: boolean): void {
+        pendingApprovals.get(requestId)?.(allow)
       },
       async dispose(): Promise<void> {
+        disposed = true
         conn.kill()
       }
     }

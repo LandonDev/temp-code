@@ -3,6 +3,7 @@ import { CATALOG } from '@shared/catalog'
 import { ClientRequestSchema, type ServerFrame } from '@shared/contract'
 import { openDb, Store } from './db'
 import { SessionRegistry } from './sessions'
+import { runDoctor } from './drivers/binaries'
 
 /**
  * The server. Runs inside Electron's main process (T3 runs it as a separate
@@ -23,6 +24,7 @@ export async function startServer(dbPath: string): Promise<RunningServer> {
   const store = new Store(openDb(dbPath))
   const registry = new SessionRegistry(store)
   registry.startIdleSweep()
+  void runDoctor() // warm the cache so the new-session modal opens ready
 
   const wss = new WebSocketServer({ host: '127.0.0.1', port: 0 })
 
@@ -60,6 +62,9 @@ export async function startServer(dbPath: string): Promise<RunningServer> {
         switch (req.method) {
           case 'catalog.get':
             sendFrame({ id: req.id, ok: true, result: CATALOG })
+            break
+          case 'doctor.get':
+            sendFrame({ id: req.id, ok: true, result: await runDoctor() })
             break
           case 'session.create': {
             const session = await registry.create(req.params)

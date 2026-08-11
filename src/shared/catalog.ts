@@ -45,12 +45,12 @@ export const CATALOG: Record<ProviderId, ProviderInfo> = {
     id: 'codex',
     label: 'Codex',
     models: [
+      { id: 'gpt-5.6-sol', label: 'GPT-5.6 Sol' },
       { id: 'gpt-5.5', label: 'GPT-5.5' },
       { id: 'gpt-5.5-codex', label: 'GPT-5.5 Codex' }
     ],
-    defaultModel: 'gpt-5.5',
-    reasoning: ['low', 'medium', 'high', 'max'],
-    experimental: true
+    defaultModel: 'gpt-5.6-sol',
+    reasoning: ['low', 'medium', 'high', 'max']
   },
   cursor: {
     id: 'cursor',
@@ -60,7 +60,6 @@ export const CATALOG: Record<ProviderId, ProviderInfo> = {
       { id: 'sonnet-4.5', label: 'Sonnet 4.5' }
     ],
     defaultModel: 'composer-1',
-    reasoning: ['medium'],
-    experimental: true
+    reasoning: ['medium']
   }
 }
