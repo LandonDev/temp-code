@@ -15,43 +15,85 @@
  * Design tokens — the single source of truth for the whole app.
  * ReUI is the base design system; every copied BeUI / Beautiful UI
  * component gets its hardcoded values swapped for these variables.
- * Dark-first (dark is the only theme for now).
+ *
+ * Two themes, Cursor-like: `:root` is light (white content, warm paper-gray
+ * chrome), `.dark` is dark. main.tsx toggles `.dark` from the OS setting.
+ * `--sidebar` exists because app chrome (sidebar, rails) sits a step away
+ * from the content background in both themes.
  */
 
 :root {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.185 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.985 0 0);
-  --primary-foreground: oklch(0.145 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.235 0 0);
-  --muted-foreground: oklch(0.68 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
+  color-scheme: light;
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.24 0.004 100);
+  --sidebar: oklch(0.972 0.003 100);
+  --sidebar-foreground: oklch(0.24 0.004 100);
+  --card: oklch(0.985 0.002 100);
+  --card-foreground: oklch(0.24 0.004 100);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.24 0.004 100);
+  --primary: oklch(0.24 0.004 100);
+  --primary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.955 0.003 100);
+  --secondary-foreground: oklch(0.24 0.004 100);
+  --muted: oklch(0.955 0.003 100);
+  --muted-foreground: oklch(0.55 0.005 100);
+  --accent: oklch(0.945 0.004 100);
+  --accent-foreground: oklch(0.24 0.004 100);
   --destructive: oklch(0.577 0.245 27.325);
   --destructive-foreground: oklch(0.985 0 0);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 12%);
-  --ring: oklch(0.556 0 0);
+  --border: oklch(0 0 0 / 8%);
+  --input: oklch(0 0 0 / 10%);
+  --ring: oklch(0.65 0.01 100);
   --radius: 0.5rem;
-  --success: var(--color-emerald-500);
-  --success-foreground: var(--color-emerald-900);
-  --info: var(--color-violet-500);
-  --info-foreground: var(--color-violet-900);
+  --success: var(--color-emerald-600);
+  --success-foreground: var(--color-emerald-50);
+  --info: var(--color-blue-600);
+  --info-foreground: var(--color-blue-50);
   --warning: var(--color-yellow-500);
-  --warning-foreground: var(--color-yellow-900);
+  --warning-foreground: var(--color-yellow-950);
   --invert: var(--color-zinc-900);
   --invert-foreground: var(--color-zinc-50);
+}
+
+.dark {
+  color-scheme: dark;
+  --background: oklch(0.185 0 0);
+  --foreground: oklch(0.93 0 0);
+  --sidebar: oklch(0.155 0 0);
+  --sidebar-foreground: oklch(0.93 0 0);
+  --card: oklch(0.215 0 0);
+  --card-foreground: oklch(0.93 0 0);
+  --popover: oklch(0.225 0 0);
+  --popover-foreground: oklch(0.93 0 0);
+  --primary: oklch(0.93 0 0);
+  --primary-foreground: oklch(0.185 0 0);
+  --secondary: oklch(0.269 0 0);
+  --secondary-foreground: oklch(0.93 0 0);
+  --muted: oklch(0.255 0 0);
+  --muted-foreground: oklch(0.66 0 0);
+  --accent: oklch(0.269 0 0);
+  --accent-foreground: oklch(0.93 0 0);
+  --destructive: oklch(0.577 0.245 27.325);
+  --destructive-foreground: oklch(0.985 0 0);
+  --border: oklch(1 0 0 / 9%);
+  --input: oklch(1 0 0 / 12%);
+  --ring: oklch(0.556 0 0);
+  --success: var(--color-emerald-500);
+  --success-foreground: var(--color-emerald-950);
+  --info: var(--color-blue-400);
+  --info-foreground: var(--color-blue-950);
+  --warning: var(--color-yellow-500);
+  --warning-foreground: var(--color-yellow-950);
+  --invert: var(--color-zinc-100);
+  --invert-foreground: var(--color-zinc-900);
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
   --color-card: var(--card);
   --color-card-foreground: var(--card-foreground);
   --color-popover: var(--popover);
@@ -107,17 +149,14 @@
     -webkit-app-region: no-drag;
   }
 }
-/*
- ---break---
- */
-.dark {
-  --destructive-foreground: var(--color-red-600);
-  --success: var(--color-emerald-500);
-  --success-foreground: var(--color-emerald-600);
-  --info: var(--color-violet-500);
-  --info-foreground: var(--color-violet-600);
-  --warning: var(--color-yellow-500);
-  --warning-foreground: var(--color-yellow-600);
-  --invert: var(--color-zinc-700);
-  --invert-foreground: var(--color-zinc-50);
+
+/* Reduced motion: near-instant CSS transitions. Motion components handle
+ * their own path via useReducedMotion (cross-fade instead of slide/spring). */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
 }

@@ -1,8 +1,12 @@
-# Beautiful UI 5 — agent-native primitives
+# Beautiful UI — agent-native primitives
 
-Components copied from https://beautiful-ui-five.vercel.app/ live here. There is
-no registry — copy from the site, paste as a `.tsx` file in this folder, then
-adapt it before first use.
+Components copied from https://www.beautifului.dev/ (formerly
+beautiful-ui-five.vercel.app) live here. There is no registry — copy from the
+site, paste as a `.tsx` file in this folder, then adapt it before first use.
+The site ships 19 primitives; the table below lists the ones we plan to use
+(also available: Loading State, Chat, Recommendation Card, Context Cards,
+Records/Filter Table, Sidebar Nav, Search, Insight Cards, Fine-tune Card,
+Selection Actions).
 
 ## Adaptation checklist (every copied component)
 
