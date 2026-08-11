@@ -2,6 +2,7 @@ import { memo, useEffect, useLayoutEffect, useRef } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { useApp } from '../../state/store'
 import type { Block } from '../../state/blocks'
+import { ApprovalCard } from './blocks/ApprovalCard'
 import { MarkdownText } from './blocks/MarkdownText'
 import { ThinkingBlock } from './blocks/ThinkingBlock'
 import { ToolChip } from './blocks/ToolChip'
@@ -30,6 +31,8 @@ const BlockRow = memo(function BlockRow({ block }: { block: Block }): React.JSX.
       return <ThinkingBlock text={block.text} streaming={block.streaming} />
     case 'tool':
       return <ToolChip block={block} />
+    case 'approval':
+      return <ApprovalCard block={block} />
     case 'error':
       return (
         <div className="rounded-md border border-destructive/40 px-3 py-2 text-sm text-destructive">

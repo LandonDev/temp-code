@@ -24,6 +24,7 @@ const statusColor: Record<SessionMeta['status'], string> = {
   starting: 'bg-yellow-500',
   idle: 'bg-emerald-500',
   running: 'bg-blue-500 animate-pulse',
+  waiting: 'bg-amber-500 animate-pulse',
   error: 'bg-red-500',
   done: 'bg-neutral-500'
 }

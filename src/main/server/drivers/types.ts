@@ -24,6 +24,8 @@ export interface DriverCtx {
 export interface DriverHandle {
   send: (text: string) => Promise<void>
   interrupt: () => void
+  /** Answer a pending approval-request (drivers that support approvals). */
+  approve?: (requestId: string, allow: boolean) => void
   dispose: () => Promise<void>
 }
 

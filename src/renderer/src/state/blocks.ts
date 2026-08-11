@@ -30,6 +30,17 @@ export type Block =
       subCount: number
     }
   | { id: string; kind: 'error'; text: string }
+  | {
+      id: string
+      kind: 'approval'
+      requestId: string
+      toolName: string
+      input: unknown
+      title?: string
+      resolved: boolean
+      allow?: boolean
+      auto?: boolean
+    }
 
 export interface FoldState {
   blocks: Block[]
@@ -37,13 +48,15 @@ export interface FoldState {
   byKey: Map<string, number>
   /** callId → index into blocks */
   byCall: Map<string, number>
+  /** approval requestId → index into blocks */
+  byRequest: Map<string, number>
   nextId: number
   /** cumulative session cost, from the latest turn-complete */
   costUsd?: number
 }
 
 export function emptyFold(): FoldState {
-  return { blocks: [], byKey: new Map(), byCall: new Map(), nextId: 1 }
+  return { blocks: [], byKey: new Map(), byCall: new Map(), byRequest: new Map(), nextId: 1 }
 }
 
 type DistributiveOmit<T, K extends PropertyKey> = T extends unknown ? Omit<T, K> : never
@@ -123,6 +136,27 @@ export function foldEvent(s: FoldState, e: AgentEvent): void {
       if (idx !== undefined) {
         const b = s.blocks[idx] as Extract<Block, { kind: 'tool' }>
         s.blocks[idx] = { ...b, output: e.output, isError: e.isError }
+      }
+      break
+    }
+    case 'approval-request':
+      s.byRequest.set(
+        e.requestId,
+        push(s, {
+          kind: 'approval',
+          requestId: e.requestId,
+          toolName: e.toolName,
+          input: e.input,
+          title: e.title,
+          resolved: false
+        })
+      )
+      break
+    case 'approval-resolved': {
+      const idx = s.byRequest.get(e.requestId)
+      if (idx !== undefined) {
+        const b = s.blocks[idx] as Extract<Block, { kind: 'approval' }>
+        s.blocks[idx] = { ...b, resolved: true, allow: e.allow, auto: e.auto }
       }
       break
     }

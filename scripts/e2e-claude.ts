@@ -63,6 +63,7 @@ async function main(): Promise<void> {
     model: 'claude-sonnet-5',
     reasoning: 'low',
     agentType: 'implementer',
+    permission: 'edits',
     cwd: cwdA,
     title: 'e2e-a',
     parentId: null
@@ -75,6 +76,7 @@ async function main(): Promise<void> {
     model: 'claude-sonnet-5',
     reasoning: 'low',
     agentType: 'implementer',
+    permission: 'edits',
     cwd: cwdB,
     title: 'e2e-b',
     parentId: null
@@ -176,6 +178,7 @@ async function main(): Promise<void> {
     model: 'claude-bogus-model',
     reasoning: 'low',
     agentType: 'implementer',
+    permission: 'edits',
     cwd: cwdB,
     title: 'e2e-bad',
     parentId: null

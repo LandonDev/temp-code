@@ -2,7 +2,14 @@ import { useState } from 'react'
 import { X } from 'lucide-react'
 import type { ProviderId, Reasoning } from '@shared/catalog'
 import { AGENT_TYPES, type AgentType } from '@shared/catalog'
+import type { PermissionPolicy } from '@shared/events'
 import { useApp } from '../../state/store'
+
+const PERMISSION_LABELS: Record<PermissionPolicy, string> = {
+  safe: 'Ask before tools',
+  edits: 'Auto-accept edits',
+  auto: 'Full auto'
+}
 
 export function NewSessionDialog({ onClose }: { onClose: () => void }): React.JSX.Element | null {
   const catalog = useApp((s) => s.catalog)
@@ -11,6 +18,7 @@ export function NewSessionDialog({ onClose }: { onClose: () => void }): React.JS
   const [model, setModel] = useState<string | null>(null)
   const [reasoning, setReasoning] = useState<Reasoning>('medium')
   const [agentType, setAgentType] = useState<AgentType>('implementer')
+  const [permission, setPermission] = useState<PermissionPolicy>('edits')
   const [cwd, setCwd] = useState('')
   const [busy, setBusy] = useState(false)
 
@@ -27,6 +35,7 @@ export function NewSessionDialog({ onClose }: { onClose: () => void }): React.JS
         model: effectiveModel,
         reasoning: info.reasoning.includes(reasoning) ? reasoning : 'medium',
         agentType,
+        permission,
         cwd: cwd.trim(),
         parentId: null
       })
@@ -113,6 +122,21 @@ export function NewSessionDialog({ onClose }: { onClose: () => void }): React.JS
                 ))}
               </select>
             </div>
+          </div>
+
+          <div>
+            <span className={label}>Permissions</span>
+            <select
+              value={permission}
+              onChange={(e) => setPermission(e.target.value as PermissionPolicy)}
+              className={field}
+            >
+              {(Object.keys(PERMISSION_LABELS) as PermissionPolicy[]).map((p) => (
+                <option key={p} value={p}>
+                  {PERMISSION_LABELS[p]}
+                </option>
+              ))}
+            </select>
           </div>
 
           <div>

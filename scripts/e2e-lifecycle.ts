@@ -19,6 +19,7 @@ const base = {
   model: 'claude-sonnet-5',
   reasoning: 'low' as const,
   agentType: 'implementer' as const,
+  permission: 'edits' as const,
   cwd: '/tmp',
   parentId: null
 }

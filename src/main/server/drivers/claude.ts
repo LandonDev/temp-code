@@ -1,4 +1,12 @@
-import { query, type Options, type SDKMessage, type SDKUserMessage } from '@anthropic-ai/claude-agent-sdk'
+import {
+  query,
+  type CanUseTool,
+  type Options,
+  type PermissionMode,
+  type SDKMessage,
+  type SDKUserMessage
+} from '@anthropic-ai/claude-agent-sdk'
+import type { PermissionPolicy } from '@shared/events'
 import type { DriverCtx, DriverHandle, HarnessDriver } from './types'
 
 /**
@@ -153,6 +161,15 @@ function handleMessage(ctx: DriverCtx, state: StreamState, msg: SDKMessage): voi
   }
 }
 
+const PERMISSION_MODE: Record<PermissionPolicy, PermissionMode> = {
+  safe: 'default',
+  edits: 'acceptEdits',
+  auto: 'bypassPermissions'
+}
+
+/** Unanswered approvals deny themselves after this long. */
+const APPROVAL_TIMEOUT_MS = 5 * 60 * 1000
+
 export const claudeDriver: HarnessDriver = {
   id: 'claude',
 
@@ -160,16 +177,43 @@ export const claudeDriver: HarnessDriver = {
     const { session, emit } = ctx
     const input = new InputQueue()
     const state: StreamState = { currentMsgId: new Map() }
+    const pendingApprovals = new Map<string, (allow: boolean, auto?: boolean) => void>()
+
+    // Approval flow (docs/PLAN.md M4): the harness asks, we emit an
+    // approval-request event, the user answers through session.approve.
+    const canUseTool: CanUseTool = (toolName, toolInput, opts) => {
+      const { requestId } = opts
+      emit({
+        type: 'approval-request',
+        requestId,
+        toolName,
+        input: toolInput,
+        title: opts.title,
+        callId: opts.toolUseID
+      })
+      emit({ type: 'status', status: 'waiting', detail: 'awaiting approval' })
+      return new Promise((resolve) => {
+        const finish = (allow: boolean, auto = false): void => {
+          if (!pendingApprovals.delete(requestId)) return
+          clearTimeout(timer)
+          emit({ type: 'approval-resolved', requestId, allow, auto })
+          emit({ type: 'status', status: 'running' })
+          resolve(allow ? { behavior: 'allow' } : { behavior: 'deny', message: 'Denied in temp-code' })
+        }
+        const timer = setTimeout(() => finish(false, true), APPROVAL_TIMEOUT_MS)
+        pendingApprovals.set(requestId, finish)
+        opts.signal.addEventListener('abort', () => finish(false, true), { once: true })
+      })
+    }
 
     const options: Options = {
       model: session.model,
       cwd: session.cwd,
       effort: session.reasoning,
       includePartialMessages: true,
-      // Bare-basics stance: edits auto-accepted, everything else falls back
-      // to permission rules. The real approval flow (canUseTool → UI approval
-      // card) is Milestone 4 in docs/PLAN.md.
-      permissionMode: 'acceptEdits',
+      permissionMode: PERMISSION_MODE[session.permission],
+      ...(session.permission === 'auto' ? { allowDangerouslySkipPermissions: true } : {}),
+      canUseTool,
       ...(session.nativeId ? { resume: session.nativeId } : {})
     }
 
@@ -194,7 +238,11 @@ export const claudeDriver: HarnessDriver = {
       interrupt(): void {
         void q.interrupt()
       },
+      approve(requestId: string, allow: boolean): void {
+        pendingApprovals.get(requestId)?.(allow)
+      },
       async dispose(): Promise<void> {
+        for (const finish of [...pendingApprovals.values()]) finish(false, true)
         input.close()
       }
     }

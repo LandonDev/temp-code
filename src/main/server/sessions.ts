@@ -70,6 +70,7 @@ export class SessionRegistry {
       // ready for input.
       status: 'idle',
       archived: false,
+      permission: params.permission,
       nativeId: null,
       createdAt: now,
       updatedAt: now
@@ -92,6 +93,10 @@ export class SessionRegistry {
 
   async interrupt(sessionId: string): Promise<void> {
     this.handles.get(sessionId)?.interrupt()
+  }
+
+  async approve(sessionId: string, requestId: string, allow: boolean): Promise<void> {
+    this.handles.get(sessionId)?.approve?.(requestId, allow)
   }
 
   async setArchived(sessionId: string, archived: boolean): Promise<void> {

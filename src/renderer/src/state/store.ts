@@ -25,6 +25,7 @@ interface AppState {
   createSession: (params: CreateSessionParams) => Promise<SessionMeta>
   send: (sessionId: string, text: string) => Promise<void>
   interrupt: (sessionId: string) => Promise<void>
+  approve: (sessionId: string, requestId: string, allow: boolean) => Promise<void>
   setArchived: (sessionId: string, archived: boolean) => Promise<void>
   deleteSession: (sessionId: string) => Promise<void>
   restartSession: (sessionId: string) => Promise<void>
@@ -132,6 +133,10 @@ export const useApp = create<AppState>((set, get) => ({
 
   interrupt: async (sessionId) => {
     await client.request('session.interrupt', { sessionId })
+  },
+
+  approve: async (sessionId, requestId, allow) => {
+    await client.request('session.approve', { sessionId, requestId, allow })
   },
 
   setArchived: async (sessionId, archived) => {

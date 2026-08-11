@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { AGENT_TYPES } from './catalog'
+import { PermissionPolicySchema } from './events'
 import type { EventRow, SessionMeta } from './events'
 
 /**
@@ -23,7 +24,8 @@ export const CreateSessionParams = z.object({
   agentType: z.enum(AGENT_TYPES).default('implementer'),
   cwd: z.string(),
   title: z.string().optional(),
-  parentId: z.string().nullable().default(null)
+  parentId: z.string().nullable().default(null),
+  permission: PermissionPolicySchema.default('edits')
 })
 export type CreateSessionParams = z.infer<typeof CreateSessionParams>
 
@@ -72,6 +74,11 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
     id: z.string(),
     method: z.literal('session.restart'),
     params: z.object({ sessionId: z.string() })
+  }),
+  z.object({
+    id: z.string(),
+    method: z.literal('session.approve'),
+    params: z.object({ sessionId: z.string(), requestId: z.string(), allow: z.boolean() })
   })
 ])
 export type ClientRequest = z.infer<typeof ClientRequestSchema>
