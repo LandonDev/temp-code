@@ -8,6 +8,7 @@ import {
 } from '@anthropic-ai/claude-agent-sdk'
 import type { PermissionPolicy } from '@shared/events'
 import type { DriverCtx, DriverHandle, HarnessDriver } from './types'
+import { ORCHESTRATOR_PROMPT, ORCHESTRATOR_TOOLS, orchestratorMcp } from '../orchestration'
 
 /**
  * Claude driver — the Claude Code harness as a library. The SDK spawns the
@@ -214,7 +215,17 @@ export const claudeDriver: HarnessDriver = {
       permissionMode: PERMISSION_MODE[session.permission],
       ...(session.permission === 'auto' ? { allowDangerouslySkipPermissions: true } : {}),
       canUseTool,
-      ...(session.nativeId ? { resume: session.nativeId } : {})
+      ...(session.nativeId ? { resume: session.nativeId } : {}),
+      // Any claude session typed 'orchestrator' can spawn cross-provider
+      // subagents (docs/PLAN.md M6). The orchestrator is not special —
+      // just this toolset plus a router rubric.
+      ...(session.agentType === 'orchestrator'
+        ? {
+            mcpServers: { orchestrator: orchestratorMcp(session) },
+            allowedTools: ORCHESTRATOR_TOOLS,
+            systemPrompt: { type: 'preset' as const, preset: 'claude_code' as const, append: ORCHESTRATOR_PROMPT }
+          }
+        : {})
     }
 
     const q = query({ prompt: input, options })

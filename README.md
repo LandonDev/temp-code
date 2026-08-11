@@ -33,5 +33,15 @@ bun install
 bun run dev        # from a Claude Code shell: env -u ELECTRON_RUN_AS_NODE bun run dev
 ```
 
+Live end-to-end tests (real harnesses, run outside Electron):
+
+```bash
+bun run script:e2e-claude          # driver mapping, tools, interrupt, resume
+bun run script:e2e-lifecycle       # archive/restart/delete (no LLM calls)
+bun run script:e2e-approval        # canUseTool → allow + deny paths
+bun run script:e2e-providers       # claude + codex + cursor side by side
+bun run script:e2e-orchestration   # orchestrator spawns a codex subagent
+```
+
 `REUI_LICENSE_KEY` in `.env.local` (git-ignored) unlocks ReUI Pro installs:
 `bunx --bun shadcn@latest add @reui/<name> --yes`. BeUI: `@beui/<name>`.

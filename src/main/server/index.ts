@@ -4,6 +4,7 @@ import { ClientRequestSchema, type ServerFrame } from '@shared/contract'
 import { openDb, Store } from './db'
 import { SessionRegistry } from './sessions'
 import { runDoctor } from './drivers/binaries'
+import { setOrchestrationRegistry } from './orchestration'
 
 /**
  * The server. Runs inside Electron's main process (T3 runs it as a separate
@@ -24,6 +25,7 @@ export async function startServer(dbPath: string): Promise<RunningServer> {
   const store = new Store(openDb(dbPath))
   const registry = new SessionRegistry(store)
   registry.startIdleSweep()
+  setOrchestrationRegistry(registry)
   void runDoctor() // warm the cache so the new-session modal opens ready
 
   const wss = new WebSocketServer({ host: '127.0.0.1', port: 0 })
