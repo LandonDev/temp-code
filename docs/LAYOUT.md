@@ -8,9 +8,15 @@ component builds each surface, and how**. Nothing here is built yet.
 - **Workspace** — a folder/repo the user added. Sidebar top level.
 - **Project** — a named line of work inside a workspace, bound to either an
   auto-created worktree or a local branch.
-- **Thread** — a session inside a project. Three types: **chat**,
-  **implementation** (task-first, not chat-shaped), **orchestration**
-  (subagent-first). Threads sit in a strip at the top of the main view.
+- **Thread** — a session inside a project. Four types: **chat**,
+  **planning** (produces a plan document file), **implementation**
+  (todo-first, not chat-shaped), **orchestration** (subagent-first). Threads
+  sit in a strip at the top of the main view. Planning threads hand off: an
+  implementation or orchestration thread can be started *from* a plan file,
+  which seeds its task list.
+- **Later (design for it now, build later):** the app grows into an ADE
+  proper — integrated terminals, a file browser, and a real editor. Nothing
+  below may assume the main view only ever shows threads.
 
 ## Shell anatomy
 
@@ -60,8 +66,8 @@ ambient chrome; it earns its place because agents run in background threads
 ### Thread strip
 
 BeUI *Tabs*, underline variant, `SPRING_LAYOUT` indicator. Each tab: type
-glyph (chat `message-square`, implementation `list-checks`, orchestration
-`git-fork`, 14px) + title + status dot when running. Orchestration tabs may
+glyph (chat `message-square`, planning `map`, implementation `list-checks`,
+orchestration `git-fork`, 14px) + title + status dot when running. Orchestration tabs may
 stack provider glyphs via ReUI *icon-stack*. `+` button opens a popover
 (ReUI) anchored to it: thread type picker (three rows with descriptions) +
 provider/model — replaces the current NewSessionDialog for threads. Overflow
@@ -89,29 +95,50 @@ State* (shimmer + elapsed while waiting). User messages render as
 Cursor-style bordered rounded fields, not colored bubbles. Column
 max-w-3xl centered.
 
-### Implementation — task in focus, never chat-shaped
+### Planning — a document, not a conversation
+
+The main view IS the plan file. The agent writes a real markdown plan
+(`.temp-code/plans/<thread>.md` in the project) and the view renders it
+document-first: typographic markdown (prose styles from `DESIGN.md`), full
+width up to max-w-3xl, streaming in as it's written (BUI *Streaming Text*
+mechanics on the document body). The agent's questions/back-and-forth appear
+as a slim collapsible side-channel below the document — the plan stays the
+hero. Header row: plan title + status (drafting / ready) + one primary
+action: **Start →** opens an anchored popover choosing Implementation or
+Orchestration; the new thread is created seeded from the plan file, and its
+todo list is parsed from the plan's task section. Since the plan is a file
+on disk, it survives threads and is editable later (see ADE ambitions).
+
+### Implementation — the todos ARE the view
 
 ```
-┌ task hero ────────────────────────────────┐
-│ task statement (15px medium)              │
-│ live todo checklist (BUI Task Rows, list) │
-├ activity feed ────────────────────────────┤
-│ ▸ tool chips, one-liners, newest pinned   │
-│   assistant text = quiet inline notes     │
+┌ goal line (from plan file when seeded) ───┐
+│ ✓ 1. Wire schema            12s           │
+│ ◉ 2. Build driver           ▾ running     │
+│ │   ▸ Read src/drivers/…       0.4s       │
+│ │   ▸ Edit codex.ts            1.2s       │
+│ │   $ bun test drivers         running…   │
+│ │   "The handshake needs…" (quiet note)   │
+│ ○ 3. Verify e2e                           │
+│ ○ 4. Commit                               │
 ├───────────────────────────────────────────┤
 │ prompt bar (compact)                      │
 └───────────────────────────────────────────┘        right rail: Changes
 ```
 
-- **Task hero**: sticky top. The main task + BUI *Task Rows* (list view) as
-  the live todo checklist — status per row (pending muted / running spinner /
-  done check / failed red), progress shown only as `n/m` count. This region
-  is the visual anchor; everything else is dimmer.
-- **Activity feed**: BUI *Tool Chips* as a single timeline column (ReUI
-  *timeline* is the structural reference): icon + verb + target + duration,
-  12–13px, expandable payloads. Assistant prose renders as muted inline
-  notes between chips — no bubbles, no markdown hero treatment. Thinking
-  collapses to one-liners.
+The whole view is the todo list — no separate feed. BUI *Task Rows* (list
+view) gives the rows; each row is an **expandable trace** using BUI
+*Thinking*'s Steps variant as the interior pattern: while a todo runs it
+auto-expands and its tool calls stream inside it as step lines (icon + verb +
+target + duration — Tool Chips, one-line form), with assistant prose as
+quiet muted notes between steps. Completed todos collapse to
+`✓ title · duration` (spring height, `SPRING_LAYOUT`); click any row to
+re-expand its trace. Exactly one row is open by accident of work, and the
+running row is the bright thing on screen — hierarchy by dimming everything
+settled. Events map to todos by the harness's todo state: whatever todo is
+`in_progress` when an event arrives owns it (pre-first-todo events go to an
+implicit "setup" row).
+
 - **Changes**: right rail panel. File rows appear as edits land (spring in,
   `SPRING_PANEL`): filename, `+n −m` in tabular nums (success/destructive
   colors). Click → BUI *Diff Table* view. Rail tab shows a count that ticks
@@ -148,17 +175,36 @@ max-w-3xl centered.
 - Orchestrator's own narration is a quiet feed below the board, styled like
   the implementation activity feed.
 
+## ADE ambitions (later — but the frame reserves room now)
+
+Terminals, file browsing, and a real editor come later; the shell must not
+paint them into a corner:
+
+- **Main view is a surface host, not a thread host.** The thread strip is
+  one kind of tab; editor tabs (files) and terminal tabs join the same strip
+  later. Thread views, editors, and terminals are all "surfaces" behind the
+  strip — same selection model, same `SPRING_LAYOUT` indicator.
+- **Right rail is a panel registry**: Changes and Files now; Terminal later.
+  The Expandable Tabs switcher just gains entries.
+- **Files panel**: ReUI *tree* over the project cwd; clicking a file opens an
+  editor surface (CodeMirror 6 — lighter than Monaco, themes from our
+  tokens) in the strip.
+- **Terminal**: xterm.js + node-pty in the main process, one PTY per
+  terminal surface, spawned in the project's worktree cwd.
+- The plan file from planning threads is the first editor customer: "edit
+  plan" opens it as an editor surface.
+
 ## Full inventory — every component, verdict
 
 ### Beautiful UI (19) — agent semantics
 
 | Component | Verdict | Use |
 | --- | --- | --- |
-| Thinking | **use** | collapsed reasoning traces, all thread types |
-| Streaming Text | **use** | assistant deltas in chat; muted notes in impl |
-| Tool Chips | **use** | tool call/result everywhere; activity feeds |
+| Thinking | **use** | collapsed reasoning traces everywhere; its *Steps* variant is the expanded-todo interior in implementation threads |
+| Streaming Text | **use** | assistant deltas in chat; plan document body; muted notes in impl |
+| Tool Chips | **use** | tool call/result everywhere; step lines inside todos |
 | Approval Card | **use** | permission prompts (restyle existing) |
-| Task Rows | **use** | impl todos (list) + orchestration capsules |
+| Task Rows | **use** | impl todo rows + orchestration capsules |
 | Prompt Bar | **use** | the composer, rounded style |
 | Code Block | **use** | frame/chrome; shiki keeps painting |
 | Diff Table | **use** | Changes panel diff view |
