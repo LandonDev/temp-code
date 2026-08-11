@@ -1,4 +1,11 @@
 @import 'tailwindcss';
+@plugin '@tailwindcss/typography';
+
+/* shiki paints its own theme colors; the container owns the frame. */
+.code-block pre {
+  background: transparent !important;
+  margin: 0;
+}
 /*
  ---break---
  */

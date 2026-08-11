@@ -1,7 +1,14 @@
 import { useState } from 'react'
 import { ArrowUp, Square } from 'lucide-react'
 import { useApp } from '../../state/store'
+import { StatefulButton } from '../motion/button/stateful'
 
+/**
+ * The send button morphs into Stop while a turn runs (BeUI stateful button,
+ * one motion vocabulary — docs/PLAN.md M3). Typing stays enabled while
+ * running: the harness queues messages natively, and the user-text event
+ * lands in the transcript immediately.
+ */
 export function PromptBar(): React.JSX.Element | null {
   const selectedId = useApp((s) => s.selectedId)
   const session = useApp((s) => (s.selectedId ? s.sessions[s.selectedId] : undefined))
@@ -35,24 +42,17 @@ export function PromptBar(): React.JSX.Element | null {
           placeholder={`Message ${session.model}…`}
           className="flex-1 resize-none bg-transparent text-sm outline-none placeholder:text-muted-foreground"
         />
-        {running ? (
-          <button
-            onClick={() => void interrupt(selectedId)}
-            className="rounded-md bg-secondary p-1.5 hover:bg-accent"
-            title="Interrupt"
-          >
-            <Square className="size-3.5" />
-          </button>
-        ) : (
-          <button
-            onClick={submit}
-            disabled={!text.trim()}
-            className="rounded-md bg-primary p-1.5 text-primary-foreground disabled:opacity-40"
-            title="Send"
-          >
-            <ArrowUp className="size-3.5" />
-          </button>
-        )}
+        <StatefulButton
+          size="sm"
+          icon={running ? <Square className="size-3" /> : <ArrowUp className="size-3.5" />}
+          disabled={!running && !text.trim()}
+          onClick={() => {
+            if (running) void interrupt(selectedId)
+            else submit()
+          }}
+        >
+          {running ? 'Stop' : 'Send'}
+        </StatefulButton>
       </div>
     </div>
   )
