@@ -159,7 +159,6 @@ export const cursorDriver: HarnessDriver = {
     return {
       async send(text: string): Promise<void> {
         if (proc) throw new Error('cursor session is still running a turn')
-        emit({ type: 'user-text', text })
         emit({ type: 'status', status: 'running' })
         runTurn(text)
       },

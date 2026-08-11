@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { AGENT_TYPES } from './catalog'
 import { PermissionPolicySchema } from './events'
+import { ProjectModeSchema, ThreadTypeSchema } from './domain'
 import type { EventRow, SessionMeta } from './events'
 
 /**
@@ -22,17 +23,67 @@ export const CreateSessionParams = z.object({
   model: z.string(),
   reasoning: reasoningEnum.default('medium'),
   agentType: z.enum(AGENT_TYPES).default('implementer'),
-  cwd: z.string(),
+  /** required unless projectId is set (then derived from the project) */
+  cwd: z.string().optional(),
   title: z.string().optional(),
   parentId: z.string().nullable().default(null),
+  projectId: z.string().nullable().default(null),
+  threadType: ThreadTypeSchema.nullable().default(null),
+  /** planning handoff: seed an implementation/orchestration thread from this plan file */
+  planPath: z.string().optional(),
   permission: PermissionPolicySchema.default('edits')
 })
 export type CreateSessionParams = z.infer<typeof CreateSessionParams>
+/** Pre-parse shape (defaults still optional) — what callers construct. */
+export type CreateSessionInput = z.input<typeof CreateSessionParams>
 
 export const ClientRequestSchema = z.discriminatedUnion('method', [
   z.object({ id: z.string(), method: z.literal('catalog.get') }),
   // Per-provider health: binary found on the login-shell PATH, version.
   z.object({ id: z.string(), method: z.literal('doctor.get') }),
+  z.object({
+    id: z.string(),
+    method: z.literal('workspace.create'),
+    params: z.object({ path: z.string(), name: z.string().optional() })
+  }),
+  z.object({ id: z.string(), method: z.literal('workspace.list') }),
+  z.object({
+    id: z.string(),
+    method: z.literal('workspace.delete'),
+    params: z.object({ workspaceId: z.string() })
+  }),
+  z.object({
+    id: z.string(),
+    method: z.literal('project.create'),
+    params: z.object({
+      workspaceId: z.string(),
+      name: z.string(),
+      mode: ProjectModeSchema
+    })
+  }),
+  z.object({ id: z.string(), method: z.literal('project.list') }),
+  z.object({
+    id: z.string(),
+    method: z.literal('project.delete'),
+    params: z.object({ projectId: z.string() })
+  }),
+  // Changed files in the project's working tree (git-derived).
+  z.object({
+    id: z.string(),
+    method: z.literal('project.changes'),
+    params: z.object({ projectId: z.string() })
+  }),
+  z.object({
+    id: z.string(),
+    method: z.literal('project.diff'),
+    params: z.object({ projectId: z.string(), path: z.string() })
+  }),
+  // Read a file the app owns or a project contains (plan documents).
+  z.object({
+    id: z.string(),
+    method: z.literal('file.read'),
+    params: z.object({ path: z.string() })
+  }),
   z.object({ id: z.string(), method: z.literal('session.create'), params: CreateSessionParams }),
   z.object({ id: z.string(), method: z.literal('session.list') }),
   z.object({

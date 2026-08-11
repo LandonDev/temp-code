@@ -327,7 +327,6 @@ export const codexDriver: HarnessDriver = {
 
     return {
       async send(text: string): Promise<void> {
-        emit({ type: 'user-text', text })
         setStatus('running')
         conn
           .request('turn/start', {

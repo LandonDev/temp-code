@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import type { AgentType, ProviderId, Reasoning } from './catalog'
+import type { ThreadType } from './domain'
 
 /**
  * The normalized event schema. Every driver (Claude Agent SDK, Codex
@@ -107,6 +108,12 @@ export interface EventRow {
 export interface SessionMeta {
   id: string
   parentId: string | null
+  /** project this thread belongs to (null: legacy or orphan) */
+  projectId: string | null
+  /** null for subagent children — they render on the parent's board, not the strip */
+  threadType: ThreadType | null
+  /** planning threads: where the plan document lives; seeded threads: the source plan */
+  planPath: string | null
   provider: ProviderId
   model: string
   reasoning: Reasoning

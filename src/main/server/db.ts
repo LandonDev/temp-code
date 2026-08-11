@@ -2,6 +2,7 @@ import { DatabaseSync } from 'node:sqlite'
 import { mkdirSync } from 'node:fs'
 import { dirname } from 'node:path'
 import type { AgentEvent, EventRow, SessionMeta, SessionStatus } from '@shared/events'
+import type { ProjectMeta, WorkspaceMeta } from '@shared/domain'
 
 /**
  * node:sqlite, zero native deps (no electron-rebuild pain).
@@ -37,11 +38,30 @@ export function openDb(path: string): DatabaseSync {
       payload    TEXT NOT NULL,
       PRIMARY KEY (session_id, seq)
     );
+    CREATE TABLE IF NOT EXISTS workspaces (
+      id         TEXT PRIMARY KEY,
+      name       TEXT NOT NULL,
+      path       TEXT NOT NULL,
+      git        INTEGER NOT NULL DEFAULT 0,
+      created_at INTEGER NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS projects (
+      id           TEXT PRIMARY KEY,
+      workspace_id TEXT NOT NULL,
+      name         TEXT NOT NULL,
+      mode         TEXT NOT NULL,
+      branch       TEXT,
+      cwd          TEXT NOT NULL,
+      created_at   INTEGER NOT NULL
+    );
   `)
   // Migrations for databases created before these columns existed.
   for (const stmt of [
     `ALTER TABLE sessions ADD COLUMN archived INTEGER NOT NULL DEFAULT 0`,
-    `ALTER TABLE sessions ADD COLUMN permission TEXT NOT NULL DEFAULT 'edits'`
+    `ALTER TABLE sessions ADD COLUMN permission TEXT NOT NULL DEFAULT 'edits'`,
+    `ALTER TABLE sessions ADD COLUMN project_id TEXT`,
+    `ALTER TABLE sessions ADD COLUMN thread_type TEXT`,
+    `ALTER TABLE sessions ADD COLUMN plan_path TEXT`
   ]) {
     try {
       db.exec(stmt)
@@ -55,6 +75,9 @@ export function openDb(path: string): DatabaseSync {
 interface SessionRowRaw {
   id: string
   parent_id: string | null
+  project_id: string | null
+  thread_type: string | null
+  plan_path: string | null
   provider: string
   model: string
   reasoning: string
@@ -73,6 +96,9 @@ function toMeta(r: SessionRowRaw): SessionMeta {
   return {
     id: r.id,
     parentId: r.parent_id,
+    projectId: r.project_id,
+    threadType: r.thread_type as SessionMeta['threadType'],
+    planPath: r.plan_path,
     provider: r.provider as SessionMeta['provider'],
     model: r.model,
     reasoning: r.reasoning as SessionMeta['reasoning'],
@@ -94,12 +120,15 @@ export class Store {
   insertSession(meta: SessionMeta): void {
     this.db
       .prepare(
-        `INSERT INTO sessions (id, parent_id, provider, model, reasoning, agent_type, title, cwd, status, archived, permission, native_id, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        `INSERT INTO sessions (id, parent_id, project_id, thread_type, plan_path, provider, model, reasoning, agent_type, title, cwd, status, archived, permission, native_id, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         meta.id,
         meta.parentId,
+        meta.projectId,
+        meta.threadType,
+        meta.planPath,
         meta.provider,
         meta.model,
         meta.reasoning,
@@ -174,6 +203,82 @@ export class Store {
       .prepare(`INSERT INTO events (session_id, seq, ts, payload) VALUES (?, ?, ?, ?)`)
       .run(sessionId, seq, ts, JSON.stringify(event))
     return { sessionId, seq, ts, event }
+  }
+
+  // ── workspaces & projects ──────────────────────────────────────────
+
+  insertWorkspace(w: WorkspaceMeta): void {
+    this.db
+      .prepare(`INSERT INTO workspaces (id, name, path, git, created_at) VALUES (?, ?, ?, ?, ?)`)
+      .run(w.id, w.name, w.path, w.git ? 1 : 0, w.createdAt)
+  }
+
+  listWorkspaces(): WorkspaceMeta[] {
+    const rows = this.db
+      .prepare(`SELECT * FROM workspaces ORDER BY created_at`)
+      .all() as unknown as { id: string; name: string; path: string; git: number; created_at: number }[]
+    return rows.map((r) => ({ id: r.id, name: r.name, path: r.path, git: !!r.git, createdAt: r.created_at }))
+  }
+
+  deleteWorkspace(id: string): string[] {
+    const projectIds = (
+      this.db.prepare(`SELECT id FROM projects WHERE workspace_id = ?`).all(id) as unknown as { id: string }[]
+    ).map((p) => p.id)
+    this.db.prepare(`DELETE FROM projects WHERE workspace_id = ?`).run(id)
+    this.db.prepare(`DELETE FROM workspaces WHERE id = ?`).run(id)
+    return projectIds
+  }
+
+  insertProject(p: ProjectMeta): void {
+    this.db
+      .prepare(
+        `INSERT INTO projects (id, workspace_id, name, mode, branch, cwd, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`
+      )
+      .run(p.id, p.workspaceId, p.name, p.mode, p.branch, p.cwd, p.createdAt)
+  }
+
+  listProjects(): ProjectMeta[] {
+    const rows = this.db.prepare(`SELECT * FROM projects ORDER BY created_at`).all() as unknown as {
+      id: string
+      workspace_id: string
+      name: string
+      mode: string
+      branch: string | null
+      cwd: string
+      created_at: number
+    }[]
+    return rows.map((r) => ({
+      id: r.id,
+      workspaceId: r.workspace_id,
+      name: r.name,
+      mode: r.mode as ProjectMeta['mode'],
+      branch: r.branch,
+      cwd: r.cwd,
+      createdAt: r.created_at
+    }))
+  }
+
+  getProject(id: string): ProjectMeta | null {
+    return this.listProjects().find((p) => p.id === id) ?? null
+  }
+
+  deleteProject(id: string): void {
+    this.db.prepare(`DELETE FROM projects WHERE id = ?`).run(id)
+  }
+
+  sessionsOfProject(projectId: string): SessionMeta[] {
+    const rows = this.db
+      .prepare(`SELECT * FROM sessions WHERE project_id = ?`)
+      .all(projectId) as unknown as SessionRowRaw[]
+    return rows.map(toMeta)
+  }
+
+  /** Has this session ever received a user message? (drives first-send preambles) */
+  hasUserText(sessionId: string): boolean {
+    const r = this.db
+      .prepare(`SELECT 1 AS x FROM events WHERE session_id = ? AND payload LIKE '%"user-text"%' LIMIT 1`)
+      .get(sessionId)
+    return !!r
   }
 
   eventsAfter(sessionId: string, afterSeq: number): EventRow[] {
