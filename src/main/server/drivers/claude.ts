@@ -242,7 +242,6 @@ export const claudeDriver: HarnessDriver = {
 
     return {
       async send(text: string): Promise<void> {
-        emit({ type: 'user-text', text })
         emit({ type: 'status', status: 'running' })
         input.push(text)
       },

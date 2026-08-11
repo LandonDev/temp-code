@@ -100,6 +100,7 @@ export function orchestratorMcp(parent: SessionMeta): McpSdkServerConfigWithInst
           const writer = args.agentType === 'implementer'
           const cwd = (writer && args.useWorktree ? await worktreeFor(parent.cwd, `${parent.id}-${Date.now() % 100000}`) : null) ?? parent.cwd
           const child = await registry.create({
+            projectId: parent.projectId,
             provider: args.provider,
             model: args.model ?? CATALOG[args.provider].defaultModel,
             reasoning: args.reasoning,

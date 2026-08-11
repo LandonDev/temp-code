@@ -1,9 +1,20 @@
 import { nanoid } from 'nanoid'
-import type { CreateSessionParams } from '@shared/contract'
+import { basename } from 'node:path'
+import { CreateSessionParams, type CreateSessionInput } from '@shared/contract'
 import type { AgentEvent, EventRow, SessionMeta } from '@shared/events'
+import type { ProjectMeta, ProjectMode, WorkspaceMeta } from '@shared/domain'
 import { BUILT_IN_DRIVERS } from './drivers'
 import type { DriverHandle } from './drivers/types'
 import type { Store } from './db'
+import { addProjectWorktree, currentBranch, isGitRepo } from './git'
+import { planPathFor, planSeed, threadPreamble } from './threads'
+
+const THREAD_TITLES = {
+  chat: 'New chat',
+  planning: 'New plan',
+  implementation: 'New task',
+  orchestration: 'New orchestration'
+} as const
 
 type SessionListener = (row: EventRow) => void
 type MetaListener = (session: SessionMeta) => void
@@ -51,21 +62,97 @@ export class SessionRegistry {
     return this.store.listSessions()
   }
 
+  // ── workspaces & projects ──────────────────────────────────────────
+
+  async createWorkspace(path: string, name?: string): Promise<WorkspaceMeta> {
+    const existing = this.store.listWorkspaces().find((w) => w.path === path)
+    if (existing) return existing
+    const meta: WorkspaceMeta = {
+      id: nanoid(12),
+      name: name ?? basename(path),
+      path,
+      git: await isGitRepo(path),
+      createdAt: Date.now()
+    }
+    this.store.insertWorkspace(meta)
+    return meta
+  }
+
+  listWorkspaces(): WorkspaceMeta[] {
+    return this.store.listWorkspaces()
+  }
+
+  /** Removes the workspace, its projects, and their threads (worktrees stay on disk). */
+  async deleteWorkspace(workspaceId: string): Promise<void> {
+    const projectIds = this.store.deleteWorkspace(workspaceId)
+    for (const pid of projectIds) await this.deleteProjectSessions(pid)
+  }
+
+  async createProject(workspaceId: string, name: string, mode: ProjectMode): Promise<ProjectMeta> {
+    const ws = this.store.listWorkspaces().find((w) => w.id === workspaceId)
+    if (!ws) throw new Error(`unknown workspace: ${workspaceId}`)
+    let cwd = ws.path
+    let branch: string | null = null
+    if (mode === 'worktree') {
+      if (!ws.git) throw new Error('worktree projects need a git workspace')
+      const wt = await addProjectWorktree(ws.path, name)
+      cwd = wt.cwd
+      branch = wt.branch
+    } else {
+      branch = await currentBranch(ws.path)
+    }
+    const meta: ProjectMeta = { id: nanoid(12), workspaceId, name, mode, branch, cwd, createdAt: Date.now() }
+    this.store.insertProject(meta)
+    return meta
+  }
+
+  listProjects(): ProjectMeta[] {
+    return this.store.listProjects()
+  }
+
+  getProject(projectId: string): ProjectMeta | null {
+    return this.store.getProject(projectId)
+  }
+
+  async deleteProject(projectId: string): Promise<void> {
+    await this.deleteProjectSessions(projectId)
+    this.store.deleteProject(projectId)
+  }
+
+  private async deleteProjectSessions(projectId: string): Promise<void> {
+    for (const s of this.store.sessionsOfProject(projectId)) {
+      if (!s.parentId) await this.delete(s.id) // roots cascade to children
+    }
+  }
+
   eventsAfter(sessionId: string, afterSeq: number): EventRow[] {
     return this.store.eventsAfter(sessionId, afterSeq)
   }
 
-  async create(params: CreateSessionParams): Promise<SessionMeta> {
+  async create(raw: CreateSessionInput): Promise<SessionMeta> {
+    const params = CreateSessionParams.parse(raw)
     const now = Date.now()
+    const id = nanoid(12)
+    const project = params.projectId ? this.store.getProject(params.projectId) : null
+    const cwd = project?.cwd ?? params.cwd
+    if (!cwd) throw new Error('session needs a cwd or a projectId')
     const meta: SessionMeta = {
-      id: nanoid(12),
+      id,
       parentId: params.parentId,
+      projectId: params.projectId,
+      threadType: params.threadType,
+      // Planning threads own a plan file; seeded threads point at their source.
+      planPath:
+        params.threadType === 'planning' ? planPathFor(id) : (params.planPath ?? null),
       provider: params.provider,
       model: params.model,
       reasoning: params.reasoning,
-      agentType: params.agentType,
-      title: params.title ?? `${params.provider} · ${params.agentType}`,
-      cwd: params.cwd,
+      // Orchestration threads ARE orchestrator sessions (MCP toolset attaches).
+      agentType: params.threadType === 'orchestration' ? 'orchestrator' : params.agentType,
+      title:
+        params.title ??
+        (params.threadType ? THREAD_TITLES[params.threadType] : `${params.provider} · ${params.agentType}`),
+      cwd,
       // The harness boots lazily on first send; a new session is simply
       // ready for input.
       status: 'idle',
@@ -86,9 +173,30 @@ export class SessionRegistry {
   }
 
   async send(sessionId: string, text: string): Promise<void> {
+    const meta = this.store.getSession(sessionId)
+    if (!meta) throw new Error(`unknown session: ${sessionId}`)
     const handle = await this.handleFor(sessionId)
     this.lastActivity.set(sessionId, Date.now())
-    await handle.send(text)
+    // The visible transcript carries only what the user typed; thread-type
+    // preambles ride along on the first message, provider-agnostic.
+    const first = !this.store.hasUserText(sessionId)
+    this.append(sessionId, { type: 'user-text', text })
+    // Cursor-style: an untitled thread takes its name from the first message.
+    if (first && (Object.values(THREAD_TITLES) as string[]).includes(meta.title)) {
+      const title = text.trim().split('\n')[0].slice(0, 60)
+      if (title) {
+        const next = this.store.updateSession(sessionId, { title })
+        if (next) this.notifyMeta(next)
+      }
+    }
+    let out = text
+    if (first) {
+      const parts = [threadPreamble(meta)]
+      if (meta.threadType !== 'planning' && meta.planPath) parts.push(planSeed(meta.planPath))
+      const preamble = parts.filter(Boolean).join('\n\n')
+      if (preamble) out = `<thread-instructions>\n${preamble}\n</thread-instructions>\n\n${text}`
+    }
+    await handle.send(out)
   }
 
   async interrupt(sessionId: string): Promise<void> {

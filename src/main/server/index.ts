@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { WebSocketServer, type WebSocket } from 'ws'
 import { CATALOG } from '@shared/catalog'
 import { ClientRequestSchema, type ServerFrame } from '@shared/contract'
@@ -5,6 +7,22 @@ import { openDb, Store } from './db'
 import { SessionRegistry } from './sessions'
 import { runDoctor } from './drivers/binaries'
 import { setOrchestrationRegistry } from './orchestration'
+import { fileDiff, workingTreeChanges } from './git'
+import { PLANS_DIR } from './threads'
+
+/** file.read is fenced to plan documents and project working trees. */
+function readAllowedFile(registry: SessionRegistry, path: string): string | null {
+  const abs = resolve(path)
+  const allowed =
+    abs.startsWith(PLANS_DIR) ||
+    registry.listProjects().some((p) => abs.startsWith(resolve(p.cwd)))
+  if (!allowed) throw new Error('path outside app-managed directories')
+  try {
+    return readFileSync(abs, 'utf8')
+  } catch {
+    return null // not written yet — the plan view polls until it exists
+  }
+}
 
 /**
  * The server. Runs inside Electron's main process (T3 runs it as a separate
@@ -68,6 +86,44 @@ export async function startServer(dbPath: string): Promise<RunningServer> {
           case 'doctor.get':
             sendFrame({ id: req.id, ok: true, result: await runDoctor() })
             break
+          case 'workspace.create':
+            sendFrame({ id: req.id, ok: true, result: await registry.createWorkspace(req.params.path, req.params.name) })
+            break
+          case 'workspace.list':
+            sendFrame({ id: req.id, ok: true, result: registry.listWorkspaces() })
+            break
+          case 'workspace.delete':
+            await registry.deleteWorkspace(req.params.workspaceId)
+            sendFrame({ id: req.id, ok: true, result: null })
+            break
+          case 'project.create':
+            sendFrame({
+              id: req.id,
+              ok: true,
+              result: await registry.createProject(req.params.workspaceId, req.params.name, req.params.mode)
+            })
+            break
+          case 'project.list':
+            sendFrame({ id: req.id, ok: true, result: registry.listProjects() })
+            break
+          case 'project.delete':
+            await registry.deleteProject(req.params.projectId)
+            sendFrame({ id: req.id, ok: true, result: null })
+            break
+          case 'project.changes': {
+            const project = registry.getProject(req.params.projectId)
+            sendFrame({ id: req.id, ok: true, result: project ? await workingTreeChanges(project.cwd) : [] })
+            break
+          }
+          case 'project.diff': {
+            const project = registry.getProject(req.params.projectId)
+            sendFrame({ id: req.id, ok: true, result: project ? await fileDiff(project.cwd, req.params.path) : '' })
+            break
+          }
+          case 'file.read': {
+            sendFrame({ id: req.id, ok: true, result: readAllowedFile(registry, req.params.path) })
+            break
+          }
           case 'session.create': {
             const session = await registry.create(req.params)
             sendFrame({ id: req.id, ok: true, result: session })
