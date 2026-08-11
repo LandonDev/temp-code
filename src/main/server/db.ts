@@ -25,6 +25,7 @@ export function openDb(path: string): DatabaseSync {
       cwd        TEXT NOT NULL,
       status     TEXT NOT NULL,
       archived   INTEGER NOT NULL DEFAULT 0,
+      permission TEXT NOT NULL DEFAULT 'edits',
       native_id  TEXT,
       created_at INTEGER NOT NULL,
       updated_at INTEGER NOT NULL
@@ -37,11 +38,16 @@ export function openDb(path: string): DatabaseSync {
       PRIMARY KEY (session_id, seq)
     );
   `)
-  // Migration for databases created before the archived column existed.
-  try {
-    db.exec(`ALTER TABLE sessions ADD COLUMN archived INTEGER NOT NULL DEFAULT 0`)
-  } catch {
-    // column already exists
+  // Migrations for databases created before these columns existed.
+  for (const stmt of [
+    `ALTER TABLE sessions ADD COLUMN archived INTEGER NOT NULL DEFAULT 0`,
+    `ALTER TABLE sessions ADD COLUMN permission TEXT NOT NULL DEFAULT 'edits'`
+  ]) {
+    try {
+      db.exec(stmt)
+    } catch {
+      // column already exists
+    }
   }
   return db
 }
@@ -57,6 +63,7 @@ interface SessionRowRaw {
   cwd: string
   status: string
   archived: number
+  permission: string
   native_id: string | null
   created_at: number
   updated_at: number
@@ -74,6 +81,7 @@ function toMeta(r: SessionRowRaw): SessionMeta {
     cwd: r.cwd,
     status: r.status as SessionStatus,
     archived: !!r.archived,
+    permission: r.permission as SessionMeta['permission'],
     nativeId: r.native_id,
     createdAt: r.created_at,
     updatedAt: r.updated_at
@@ -86,8 +94,8 @@ export class Store {
   insertSession(meta: SessionMeta): void {
     this.db
       .prepare(
-        `INSERT INTO sessions (id, parent_id, provider, model, reasoning, agent_type, title, cwd, status, archived, native_id, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        `INSERT INTO sessions (id, parent_id, provider, model, reasoning, agent_type, title, cwd, status, archived, permission, native_id, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         meta.id,
@@ -100,6 +108,7 @@ export class Store {
         meta.cwd,
         meta.status,
         meta.archived ? 1 : 0,
+        meta.permission,
         meta.nativeId,
         meta.createdAt,
         meta.updatedAt

@@ -8,8 +8,16 @@ import type { AgentType, ProviderId, Reasoning } from './catalog'
  * provider-native payload.
  */
 
-export const SessionStatusSchema = z.enum(['starting', 'idle', 'running', 'error', 'done'])
+export const SessionStatusSchema = z.enum(['starting', 'idle', 'running', 'waiting', 'error', 'done'])
 export type SessionStatus = z.infer<typeof SessionStatusSchema>
+
+/**
+ * Per-session approval policy: safe → the harness asks for everything
+ * dangerous, edits → file edits auto-accepted (default), auto → no
+ * prompts at all (trusted/worktree sessions).
+ */
+export const PermissionPolicySchema = z.enum(['safe', 'edits', 'auto'])
+export type PermissionPolicy = z.infer<typeof PermissionPolicySchema>
 
 /**
  * Block identity: a turn can span several provider messages (text → tool →
@@ -63,6 +71,24 @@ export const AgentEventSchema = z.discriminatedUnion('type', [
     outputTokens: z.number().optional()
   }),
 
+  // The harness asked permission for a tool call; the user answers in the
+  // UI (session.approve). callId ties the card to its tool chip.
+  z.object({
+    type: z.literal('approval-request'),
+    requestId: z.string(),
+    toolName: z.string(),
+    input: z.unknown(),
+    title: z.string().optional(),
+    callId: z.string().optional()
+  }),
+  // auto=true → resolved by policy (timeout/interrupt), not the user.
+  z.object({
+    type: z.literal('approval-resolved'),
+    requestId: z.string(),
+    allow: z.boolean(),
+    auto: z.boolean().optional()
+  }),
+
   // Orchestration: this session spawned a child session.
   z.object({ type: z.literal('agent-spawned'), childSessionId: z.string() }),
 
@@ -89,6 +115,7 @@ export interface SessionMeta {
   cwd: string
   status: SessionStatus
   archived: boolean
+  permission: PermissionPolicy
   /** Provider-native session/thread id, once known (for resume). */
   nativeId: string | null
   createdAt: number

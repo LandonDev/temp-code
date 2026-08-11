@@ -20,7 +20,9 @@
     "build:mac": "electron-vite build && electron-builder --mac",
     "build:linux": "electron-vite build && electron-builder --linux",
     "script:sdk-dump": "esbuild scripts/sdk-dump.ts --bundle --platform=node --format=esm --packages=external --alias:@shared=./src/shared --outfile=scripts/.out/sdk-dump.mjs && node scripts/.out/sdk-dump.mjs",
-    "script:e2e-claude": "esbuild scripts/e2e-claude.ts --bundle --platform=node --format=esm --packages=external --alias:@shared=./src/shared --outfile=scripts/.out/e2e-claude.mjs && node scripts/.out/e2e-claude.mjs"
+    "script:e2e-claude": "esbuild scripts/e2e-claude.ts --bundle --platform=node --format=esm --packages=external --alias:@shared=./src/shared --outfile=scripts/.out/e2e-claude.mjs && node scripts/.out/e2e-claude.mjs",
+    "script:e2e-lifecycle": "esbuild scripts/e2e-lifecycle.ts --bundle --platform=node --format=esm --packages=external --alias:@shared=./src/shared --outfile=scripts/.out/e2e-lifecycle.mjs && node scripts/.out/e2e-lifecycle.mjs",
+    "script:e2e-approval": "esbuild scripts/e2e-approval.ts --bundle --platform=node --format=esm --packages=external --alias:@shared=./src/shared --outfile=scripts/.out/e2e-approval.mjs && node scripts/.out/e2e-approval.mjs"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.3.227",
