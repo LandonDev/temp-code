@@ -3,14 +3,21 @@ import type { CATALOG } from '@shared/catalog'
 import type { EventRow, SessionMeta } from '@shared/events'
 import type { CreateSessionParams } from '@shared/contract'
 import { client } from '../lib/client'
+import { foldAll, foldEvent, type Block, type FoldState } from './blocks'
 
 type Catalog = typeof CATALOG
+
+/** Per-session fold state lives outside zustand; the store publishes
+ *  immutable snapshots (blocks arrays) for React. */
+const folds = new Map<string, FoldState>()
 
 interface AppState {
   connected: boolean
   catalog: Catalog | null
   sessions: Record<string, SessionMeta>
   events: Record<string, EventRow[]>
+  blocks: Record<string, Block[]>
+  costs: Record<string, number | undefined>
   selectedId: string | null
 
   init: () => Promise<void>
@@ -28,6 +35,8 @@ export const useApp = create<AppState>((set, get) => ({
   catalog: null,
   sessions: {},
   events: {},
+  blocks: {},
+  costs: {},
   selectedId: null,
 
   init: async () => {
@@ -36,19 +45,32 @@ export const useApp = create<AppState>((set, get) => ({
         set((s) => ({ sessions: { ...s.sessions, [push.session.id]: push.session } }))
       } else if (push.push === 'event') {
         const { sessionId } = push.row
+        let fold = folds.get(sessionId)
+        if (!fold) {
+          fold = foldAll(get().events[sessionId] ?? [])
+          folds.set(sessionId, fold)
+        }
+        foldEvent(fold, push.row.event)
         set((s) => ({
-          events: { ...s.events, [sessionId]: [...(s.events[sessionId] ?? []), push.row] }
+          events: { ...s.events, [sessionId]: [...(s.events[sessionId] ?? []), push.row] },
+          blocks: { ...s.blocks, [sessionId]: fold.blocks.slice() },
+          costs: { ...s.costs, [sessionId]: fold.costUsd }
         }))
       } else if (push.push === 'session-removed') {
         set((s) => {
           const sessions = { ...s.sessions }
           const events = { ...s.events }
+          const blocks = { ...s.blocks }
+          const costs = { ...s.costs }
           for (const id of push.sessionIds) {
             delete sessions[id]
             delete events[id]
+            delete blocks[id]
+            delete costs[id]
+            folds.delete(id)
           }
           const selectedId = push.sessionIds.includes(s.selectedId ?? '') ? null : s.selectedId
-          return { sessions, events, selectedId }
+          return { sessions, events, blocks, costs, selectedId }
         })
       }
     })
@@ -85,7 +107,14 @@ export const useApp = create<AppState>((set, get) => ({
         const seen = new Set((s.events[sessionId] ?? []).map((r) => r.seq))
         const merged = [...(s.events[sessionId] ?? []), ...rows.filter((r) => !seen.has(r.seq))]
         merged.sort((a, b) => a.seq - b.seq)
-        return { events: { ...s.events, [sessionId]: merged } }
+        // History arrived out of band — refold from scratch.
+        const fold = foldAll(merged)
+        folds.set(sessionId, fold)
+        return {
+          events: { ...s.events, [sessionId]: merged },
+          blocks: { ...s.blocks, [sessionId]: fold.blocks.slice() },
+          costs: { ...s.costs, [sessionId]: fold.costUsd }
+        }
       })
     }
   },

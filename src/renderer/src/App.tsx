@@ -9,6 +9,7 @@ export default function App(): React.JSX.Element {
   const init = useApp((s) => s.init)
   const connected = useApp((s) => s.connected)
   const session = useApp((s) => (s.selectedId ? s.sessions[s.selectedId] : undefined))
+  const cost = useApp((s) => (s.selectedId ? s.costs[s.selectedId] : undefined))
   const [showNew, setShowNew] = useState(false)
 
   useEffect(() => {
@@ -29,6 +30,9 @@ export default function App(): React.JSX.Element {
               <span className="ml-auto truncate font-mono text-xs text-muted-foreground">
                 {session.cwd}
               </span>
+              {cost !== undefined && (
+                <span className="shrink-0 text-xs text-muted-foreground">${cost.toFixed(2)}</span>
+              )}
             </>
           ) : (
             <span className="text-sm text-muted-foreground">

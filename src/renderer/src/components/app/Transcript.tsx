@@ -1,91 +1,81 @@
-import { useEffect, useMemo, useRef } from 'react'
-import { ChevronRight, Wrench } from 'lucide-react'
-import type { AgentEvent } from '@shared/events'
+import { memo, useEffect, useLayoutEffect, useRef } from 'react'
+import { useVirtualizer } from '@tanstack/react-virtual'
 import { useApp } from '../../state/store'
+import type { Block } from '../../state/blocks'
+import { MarkdownText } from './blocks/MarkdownText'
+import { ThinkingBlock } from './blocks/ThinkingBlock'
+import { ToolChip } from './blocks/ToolChip'
 
 /**
- * Renders the normalized event log. Deltas are folded into blocks here in
- * the renderer; the persisted log stays raw. Virtualization comes with the
- * Beautiful UI transcript pass (docs/PLAN.md Milestone 3).
+ * Virtualized transcript over the store's incrementally-folded blocks
+ * (docs/PLAN.md M3). Rows are memoized; a streaming delta re-renders only
+ * the one block whose object identity changed.
  */
 
-type Block =
-  | { kind: 'user'; text: string }
-  | { kind: 'assistant'; text: string }
-  | { kind: 'thinking'; text: string }
-  | { kind: 'tool'; name: string; input: unknown; output?: string; isError?: boolean }
-  | { kind: 'error'; text: string }
-
-function fold(events: AgentEvent[]): Block[] {
-  const blocks: Block[] = []
-  const toolIdx = new Map<string, number>()
-  for (const e of events) {
-    const last = blocks.at(-1)
-    switch (e.type) {
-      case 'user-text':
-        blocks.push({ kind: 'user', text: e.text })
-        break
-      case 'assistant-text':
-        if (e.delta && last?.kind === 'assistant') last.text += e.text
-        else if (!e.delta && last?.kind === 'assistant') last.text = e.text
-        else blocks.push({ kind: 'assistant', text: e.text })
-        break
-      case 'thinking':
-        if (e.delta && last?.kind === 'thinking') last.text += e.text
-        else if (!e.delta && last?.kind === 'thinking') last.text = e.text
-        else blocks.push({ kind: 'thinking', text: e.text })
-        break
-      case 'tool-call':
-        toolIdx.set(e.callId, blocks.length)
-        blocks.push({ kind: 'tool', name: e.name, input: e.input })
-        break
-      case 'tool-result': {
-        const idx = toolIdx.get(e.callId)
-        if (idx !== undefined) {
-          const b = blocks[idx] as Extract<Block, { kind: 'tool' }>
-          b.output = e.output
-          b.isError = e.isError
-        }
-        break
-      }
-      case 'error':
-        blocks.push({ kind: 'error', text: e.message })
-        break
-    }
+const BlockRow = memo(function BlockRow({ block }: { block: Block }): React.JSX.Element {
+  switch (block.kind) {
+    case 'user':
+      return (
+        <div className="ml-auto max-w-[80%] rounded-lg bg-secondary px-3 py-2 text-sm whitespace-pre-wrap">
+          {block.text}
+        </div>
+      )
+    case 'assistant':
+      return (
+        <div className="max-w-[95%] text-sm leading-relaxed">
+          <MarkdownText text={block.text} streaming={block.streaming} />
+        </div>
+      )
+    case 'thinking':
+      return <ThinkingBlock text={block.text} streaming={block.streaming} />
+    case 'tool':
+      return <ToolChip block={block} />
+    case 'error':
+      return (
+        <div className="rounded-md border border-destructive/40 px-3 py-2 text-sm text-destructive">
+          {block.text}
+        </div>
+      )
   }
-  return blocks
-}
-
-function ToolBlock({ block }: { block: Extract<Block, { kind: 'tool' }> }): React.JSX.Element {
-  return (
-    <details className="group rounded-md border bg-card text-sm">
-      <summary className="flex cursor-pointer items-center gap-2 px-3 py-2 select-none">
-        <ChevronRight className="size-3.5 text-muted-foreground transition-transform group-open:rotate-90" />
-        <Wrench className="size-3.5 text-muted-foreground" />
-        <span className="font-mono text-xs">{block.name}</span>
-        {block.isError && <span className="text-xs text-destructive">failed</span>}
-      </summary>
-      <div className="space-y-2 border-t px-3 py-2">
-        <pre className="overflow-x-auto text-xs text-muted-foreground">
-          {JSON.stringify(block.input, null, 2)}
-        </pre>
-        {block.output !== undefined && (
-          <pre className="max-h-64 overflow-auto text-xs">{block.output}</pre>
-        )}
-      </div>
-    </details>
-  )
-}
+})
 
 export function Transcript(): React.JSX.Element {
   const selectedId = useApp((s) => s.selectedId)
-  const rows = useApp((s) => (selectedId ? s.events[selectedId] : undefined))
-  const blocks = useMemo(() => fold((rows ?? []).map((r) => r.event)), [rows])
-  const bottomRef = useRef<HTMLDivElement>(null)
+  const blocks = useApp((s) => (s.selectedId ? s.blocks[s.selectedId] : undefined)) ?? []
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const atBottomRef = useRef(true)
 
+  const virtualizer = useVirtualizer({
+    count: blocks.length,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: () => 64,
+    overscan: 10,
+    getItemKey: (i) => blocks[i].id
+  })
+
+  // Track whether the user is pinned to the bottom; only then follow output.
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'instant' })
-  }, [blocks.length, blocks.at(-1)?.kind === 'assistant' ? blocks.at(-1) : null])
+    const el = scrollRef.current
+    if (!el) return
+    const onScroll = (): void => {
+      atBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80
+    }
+    el.addEventListener('scroll', onScroll, { passive: true })
+    return () => el.removeEventListener('scroll', onScroll)
+  }, [selectedId])
+
+  const last = blocks.at(-1)
+  useLayoutEffect(() => {
+    const el = scrollRef.current
+    if (el && atBottomRef.current) el.scrollTop = el.scrollHeight
+  }, [last, blocks.length])
+
+  // New session selected: jump to the end.
+  useLayoutEffect(() => {
+    atBottomRef.current = true
+    const el = scrollRef.current
+    if (el) el.scrollTop = el.scrollHeight
+  }, [selectedId])
 
   if (!selectedId) {
     return (
@@ -96,38 +86,22 @@ export function Transcript(): React.JSX.Element {
   }
 
   return (
-    <div className="flex-1 space-y-4 overflow-y-auto px-6 py-4 select-text">
-      {blocks.map((b, i) => {
-        switch (b.kind) {
-          case 'user':
-            return (
-              <div key={i} className="ml-auto max-w-[80%] rounded-lg bg-secondary px-3 py-2 text-sm whitespace-pre-wrap">
-                {b.text}
-              </div>
-            )
-          case 'assistant':
-            return (
-              <div key={i} className="max-w-[95%] text-sm leading-relaxed whitespace-pre-wrap">
-                {b.text}
-              </div>
-            )
-          case 'thinking':
-            return (
-              <div key={i} className="max-w-[95%] text-sm whitespace-pre-wrap text-muted-foreground italic">
-                {b.text}
-              </div>
-            )
-          case 'tool':
-            return <ToolBlock key={i} block={b} />
-          case 'error':
-            return (
-              <div key={i} className="rounded-md border border-destructive/40 px-3 py-2 text-sm text-destructive">
-                {b.text}
-              </div>
-            )
-        }
-      })}
-      <div ref={bottomRef} />
+    <div ref={scrollRef} className="flex-1 overflow-y-auto select-text">
+      <div className="relative mx-auto w-full px-6" style={{ height: virtualizer.getTotalSize() }}>
+        {virtualizer.getVirtualItems().map((item) => (
+          <div
+            key={item.key}
+            data-index={item.index}
+            ref={virtualizer.measureElement}
+            className="absolute right-6 left-6"
+            style={{ transform: `translateY(${item.start}px)` }}
+          >
+            <div className="py-2">
+              <BlockRow block={blocks[item.index]} />
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   )
 }
