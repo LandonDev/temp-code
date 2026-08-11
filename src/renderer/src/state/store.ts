@@ -18,6 +18,9 @@ interface AppState {
   createSession: (params: CreateSessionParams) => Promise<SessionMeta>
   send: (sessionId: string, text: string) => Promise<void>
   interrupt: (sessionId: string) => Promise<void>
+  setArchived: (sessionId: string, archived: boolean) => Promise<void>
+  deleteSession: (sessionId: string) => Promise<void>
+  restartSession: (sessionId: string) => Promise<void>
 }
 
 export const useApp = create<AppState>((set, get) => ({
@@ -36,8 +39,20 @@ export const useApp = create<AppState>((set, get) => ({
         set((s) => ({
           events: { ...s.events, [sessionId]: [...(s.events[sessionId] ?? []), push.row] }
         }))
+      } else if (push.push === 'session-removed') {
+        set((s) => {
+          const sessions = { ...s.sessions }
+          const events = { ...s.events }
+          for (const id of push.sessionIds) {
+            delete sessions[id]
+            delete events[id]
+          }
+          const selectedId = push.sessionIds.includes(s.selectedId ?? '') ? null : s.selectedId
+          return { sessions, events, selectedId }
+        })
       }
     })
+    client.onClose(() => set({ connected: false }))
     client.onOpen(() => {
       // After (re)connect: refresh state and resubscribe the open session.
       void (async () => {
@@ -88,5 +103,17 @@ export const useApp = create<AppState>((set, get) => ({
 
   interrupt: async (sessionId) => {
     await client.request('session.interrupt', { sessionId })
+  },
+
+  setArchived: async (sessionId, archived) => {
+    await client.request('session.archive', { sessionId, archived })
+  },
+
+  deleteSession: async (sessionId) => {
+    await client.request('session.delete', { sessionId })
+  },
+
+  restartSession: async (sessionId) => {
+    await client.request('session.restart', { sessionId })
   }
 }))

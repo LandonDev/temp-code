@@ -11,6 +11,7 @@ export class WsClient {
   private pending = new Map<string, { resolve: (v: unknown) => void; reject: (e: Error) => void }>()
   private pushListeners = new Set<(push: ServerPush) => void>()
   private openListeners = new Set<() => void>()
+  private closeListeners = new Set<() => void>()
 
   async connect(): Promise<void> {
     const port = await window.api.getServerPort()
@@ -30,6 +31,7 @@ export class WsClient {
       ws.onclose = (): void => {
         for (const p of this.pending.values()) p.reject(new Error('connection closed'))
         this.pending.clear()
+        for (const l of this.closeListeners) l()
         setTimeout(() => void this.open(port).catch(() => {}), 1000)
       }
       ws.onmessage = (e): void => {
@@ -67,6 +69,11 @@ export class WsClient {
   onOpen(listener: () => void): () => void {
     this.openListeners.add(listener)
     return () => this.openListeners.delete(listener)
+  }
+
+  onClose(listener: () => void): () => void {
+    this.closeListeners.add(listener)
+    return () => this.closeListeners.delete(listener)
   }
 }
 

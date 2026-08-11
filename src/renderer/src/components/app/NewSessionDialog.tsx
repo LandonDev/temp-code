@@ -117,12 +117,24 @@ export function NewSessionDialog({ onClose }: { onClose: () => void }): React.JS
 
           <div>
             <span className={label}>Working directory</span>
-            <input
-              value={cwd}
-              onChange={(e) => setCwd(e.target.value)}
-              placeholder="/Users/landon/IdeaProjects/…"
-              className={`${field} font-mono text-xs`}
-            />
+            <div className="flex gap-1.5">
+              <input
+                value={cwd}
+                onChange={(e) => setCwd(e.target.value)}
+                placeholder="/Users/landon/IdeaProjects/…"
+                className={`${field} font-mono text-xs`}
+              />
+              <button
+                onClick={() => {
+                  void window.api.pickDirectory(cwd || undefined).then((dir) => {
+                    if (dir) setCwd(dir)
+                  })
+                }}
+                className="shrink-0 rounded-md border px-2.5 text-sm hover:bg-accent/50"
+              >
+                Browse
+              </button>
+            </div>
           </div>
         </div>
 

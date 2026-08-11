@@ -2,7 +2,9 @@ import { contextBridge, ipcRenderer } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
 
 const api = {
-  getServerPort: (): Promise<number | null> => ipcRenderer.invoke('server-port')
+  getServerPort: (): Promise<number | null> => ipcRenderer.invoke('server-port'),
+  pickDirectory: (defaultPath?: string): Promise<string | null> =>
+    ipcRenderer.invoke('pick-directory', defaultPath)
 }
 
 export type TempCodeApi = typeof api

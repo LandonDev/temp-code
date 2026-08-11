@@ -88,6 +88,7 @@ export interface SessionMeta {
   title: string
   cwd: string
   status: SessionStatus
+  archived: boolean
   /** Provider-native session/thread id, once known (for resume). */
   nativeId: string | null
   createdAt: number
