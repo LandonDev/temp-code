@@ -1,94 +1,174 @@
-import { spawn } from 'node:child_process'
+import { spawn, type ChildProcess } from 'node:child_process'
 import { createInterface } from 'node:readline'
 import type { DriverCtx, DriverHandle, HarnessDriver } from './types'
+import { harnessEnv, resolveBinary } from './binaries'
 
 /**
- * Cursor driver — wraps `cursor-agent -p --output-format stream-json`.
- * One process per turn; continuity via `--resume <chatId>`. Runs under the
- * user's own `cursor-agent login`.
+ * Cursor driver — `cursor-agent -p --trust --output-format stream-json`,
+ * process-per-turn, resumed with `--resume <session_id>` (verified live
+ * against cursor-agent 2026.07.23):
  *
- * EXPERIMENTAL: stream-json event names verified only against public docs,
- * not a live run — see docs/PLAN.md Milestone 5.
+ *   system/init {session_id, model} · thinking {subtype delta|completed}
+ *   assistant {message.content[].text, model_call_id} — one full message
+ *   per model call · tool_call {subtype started|completed, call_id,
+ *   tool_call: {<kind>ToolCall: {args, result}}} · result {is_error,
+ *   usage {inputTokens, outputTokens}}
  */
+
+/** readToolCall → Read, shellToolCall → Shell, ... */
+function toolName(toolCall: Record<string, unknown>): { key: string; name: string } {
+  const key = Object.keys(toolCall).find((k) => k.endsWith('ToolCall')) ?? 'unknownToolCall'
+  const base = key.slice(0, -'ToolCall'.length)
+  return { key, name: base.charAt(0).toUpperCase() + base.slice(1) }
+}
 
 export const cursorDriver: HarnessDriver = {
   id: 'cursor',
 
   async start(ctx: DriverCtx): Promise<DriverHandle> {
     const { session, emit } = ctx
-    let chatId: string | null = session.nativeId
-    let current: ReturnType<typeof spawn> | null = null
 
-    emit({ type: 'status', status: 'idle' })
+    const binPath = await resolveBinary('cursor-agent')
+    if (!binPath) throw new Error('cursor-agent not found — install it and log in (`cursor-agent login`)')
+    const env = await harnessEnv()
+
+    let proc: ChildProcess | null = null
+    let turnSeq = 0
+    let disposed = false
+
+    const runTurn = (text: string): void => {
+      const turn = ++turnSeq
+      // Per-turn accumulation so streaming blocks get an authoritative
+      // final when the turn ends.
+      const thinkingAcc = new Map<string, string>()
+      const textAcc = new Map<string, string>()
+      const thinkKey = (): string => `think-${turn}`
+
+      const args = [
+        '-p',
+        '--trust',
+        '--output-format',
+        'stream-json',
+        ...(session.model ? ['--model', session.model] : []),
+        ...(session.nativeId ? ['--resume', session.nativeId] : []),
+        text
+      ]
+      const p = spawn(binPath, args, { cwd: session.cwd, env, stdio: ['ignore', 'pipe', 'pipe'] })
+      proc = p
+
+      let sawResult = false
+      createInterface({ input: p.stdout! }).on('line', (line) => {
+        let msg: Record<string, unknown>
+        try {
+          msg = JSON.parse(line)
+        } catch {
+          return
+        }
+        switch (msg.type) {
+          case 'system':
+            if (msg.subtype === 'init' && typeof msg.session_id === 'string' && !session.nativeId) {
+              ctx.setNativeId(msg.session_id)
+              session.nativeId = msg.session_id
+            }
+            break
+          case 'thinking':
+            if (msg.subtype === 'delta' && typeof msg.text === 'string') {
+              const key = thinkKey()
+              thinkingAcc.set(key, (thinkingAcc.get(key) ?? '') + msg.text)
+              emit({ type: 'thinking', text: msg.text, delta: true, msgId: key, blockIndex: 0 })
+            } else if (msg.subtype === 'completed') {
+              const key = thinkKey()
+              const full = thinkingAcc.get(key)
+              if (full !== undefined) {
+                emit({ type: 'thinking', text: full, delta: false, msgId: key, blockIndex: 0 })
+              }
+            }
+            break
+          case 'assistant': {
+            const message = msg.message as { content?: { type?: string; text?: string }[] } | undefined
+            const msgId = String(msg.model_call_id ?? `turn-${turn}`)
+            for (const block of message?.content ?? []) {
+              if (block.type === 'text' && block.text) {
+                textAcc.set(msgId, (textAcc.get(msgId) ?? '') + block.text)
+                emit({ type: 'assistant-text', text: block.text, delta: true, msgId, blockIndex: 0 })
+              }
+            }
+            break
+          }
+          case 'tool_call': {
+            const callId = String(msg.call_id ?? '')
+            const tc = (msg.tool_call ?? {}) as Record<string, unknown>
+            const { key, name } = toolName(tc)
+            const inner = (tc[key] ?? {}) as { args?: unknown; result?: Record<string, unknown> }
+            if (msg.subtype === 'started') {
+              emit({ type: 'tool-call', callId, name, input: inner.args })
+            } else if (msg.subtype === 'completed') {
+              const result = inner.result ?? {}
+              const isError = !('success' in result)
+              const payload = ('success' in result ? result.success : result) ?? result
+              emit({
+                type: 'tool-result',
+                callId,
+                output: typeof payload === 'string' ? payload : JSON.stringify(payload, null, 2),
+                isError
+              })
+            }
+            break
+          }
+          case 'result': {
+            sawResult = true
+            // Finalize streamed blocks with their accumulated text.
+            for (const [key, full] of textAcc) {
+              emit({ type: 'assistant-text', text: full, delta: false, msgId: key, blockIndex: 0 })
+            }
+            if (msg.is_error) {
+              emit({ type: 'error', message: String(msg.result ?? 'cursor-agent error') })
+            }
+            const usage = msg.usage as { inputTokens?: number; outputTokens?: number } | undefined
+            emit({
+              type: 'turn-complete',
+              inputTokens: usage?.inputTokens,
+              outputTokens: usage?.outputTokens
+            })
+            break
+          }
+        }
+      })
+
+      let stderrTail = ''
+      p.stderr!.on('data', (d) => {
+        stderrTail = (stderrTail + String(d)).slice(-500)
+      })
+
+      p.on('exit', (code) => {
+        if (proc === p) proc = null
+        if (disposed) return
+        if (code !== 0 && !sawResult) {
+          emit({ type: 'error', message: `cursor-agent exited (${code}): ${stderrTail.trim()}` })
+          emit({ type: 'status', status: 'error' })
+        } else {
+          emit({ type: 'status', status: 'idle' })
+        }
+      })
+      p.on('error', (err) => {
+        emit({ type: 'error', message: err.message })
+        emit({ type: 'status', status: 'error' })
+      })
+    }
 
     return {
       async send(text: string): Promise<void> {
+        if (proc) throw new Error('cursor session is still running a turn')
         emit({ type: 'user-text', text })
         emit({ type: 'status', status: 'running' })
-
-        const args = ['-p', text, '--output-format', 'stream-json', '--model', session.model]
-        if (chatId) args.push('--resume', chatId)
-
-        const proc = spawn('cursor-agent', args, { cwd: session.cwd, env: { ...process.env } })
-        current = proc
-
-        createInterface({ input: proc.stdout! }).on('line', (line) => {
-          if (!line.trim()) return
-          let m: { type?: string; [k: string]: unknown }
-          try {
-            m = JSON.parse(line)
-          } catch {
-            return
-          }
-          switch (m.type) {
-            case 'system': {
-              const id = (m as { chatId?: string; session_id?: string }).chatId ?? m.session_id
-              if (typeof id === 'string' && !chatId) {
-                chatId = id
-                ctx.setNativeId(id)
-              }
-              break
-            }
-            case 'assistant': {
-              const content = (m.message as { content?: { type: string; text?: string }[] })
-                ?.content
-              for (const block of content ?? []) {
-                if (block.type === 'text' && block.text) {
-                  emit({ type: 'assistant-text', text: block.text, delta: true })
-                }
-              }
-              break
-            }
-            case 'tool_call':
-              emit({
-                type: 'tool-call',
-                callId: String(m.call_id ?? m.id ?? ''),
-                name: String(m.name ?? m.subtype ?? 'tool'),
-                input: m.args ?? m.input
-              })
-              break
-            case 'result':
-              emit({ type: 'turn-complete' })
-              break
-          }
-        })
-
-        proc.stderr &&
-          createInterface({ input: proc.stderr }).on('line', (line) => {
-            if (line.trim()) console.warn(`[cursor:${session.id}]`, line)
-          })
-
-        proc.on('exit', (code) => {
-          current = null
-          if (code !== 0) emit({ type: 'error', message: `cursor-agent exited with code ${code}` })
-          emit({ type: 'status', status: code === 0 ? 'idle' : 'error' })
-        })
+        runTurn(text)
       },
       interrupt(): void {
-        current?.kill('SIGINT')
+        proc?.kill('SIGINT')
       },
       async dispose(): Promise<void> {
-        current?.kill()
+        disposed = true
+        proc?.kill()
       }
     }
   }
