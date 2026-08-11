@@ -1,16 +1,22 @@
-import { useEffect, useState } from 'react'
+import { useEffect } from 'react'
+import { FolderPlus } from 'lucide-react'
 import { useApp } from './state/store'
-import { SessionSidebar } from './components/app/SessionSidebar'
-import { Transcript } from './components/app/Transcript'
-import { PromptBar } from './components/app/PromptBar'
-import { NewSessionDialog } from './components/app/NewSessionDialog'
+import { Sidebar } from './components/app/Sidebar'
+import { Titlebar } from './components/app/Titlebar'
+import { ThreadStrip } from './components/app/ThreadStrip'
+import { RightRail } from './components/app/RightRail'
+import { ChatView } from './components/app/views/ChatView'
+import { PlanView } from './components/app/views/PlanView'
+import { ImplementationView } from './components/app/views/ImplementationView'
+import { OrchestrationView } from './components/app/views/OrchestrationView'
 
 export default function App(): React.JSX.Element {
   const init = useApp((s) => s.init)
   const connected = useApp((s) => s.connected)
+  const workspaces = useApp((s) => s.workspaces)
+  const projectId = useApp((s) => s.selectedProjectId)
   const session = useApp((s) => (s.selectedId ? s.sessions[s.selectedId] : undefined))
-  const cost = useApp((s) => (s.selectedId ? s.costs[s.selectedId] : undefined))
-  const [showNew, setShowNew] = useState(false)
+  const addWorkspace = useApp((s) => s.addWorkspace)
 
   useEffect(() => {
     void init()
@@ -18,32 +24,51 @@ export default function App(): React.JSX.Element {
 
   return (
     <div className="flex h-screen">
-      <SessionSidebar onNew={() => setShowNew(true)} />
-      <main className="flex min-w-0 flex-1 flex-col">
-        <header className="titlebar-drag flex h-12 shrink-0 items-center gap-3 border-b px-6">
-          {session ? (
-            <>
-              <span className="truncate text-sm font-medium">{session.title}</span>
-              <span className="text-xs text-muted-foreground">
-                {session.model} · {session.reasoning}
+      <Sidebar />
+      <main className="relative flex min-w-0 flex-1 flex-col border-l border-border/60 bg-background">
+        <Titlebar />
+        <ThreadStrip />
+        {session ? (
+          <ThreadView key={session.id} sessionId={session.id} />
+        ) : (
+          <div className="flex flex-1 items-center justify-center">
+            {!connected ? (
+              <span className="text-[13px] text-muted-foreground">Connecting…</span>
+            ) : workspaces.length === 0 ? (
+              <button
+                onClick={() =>
+                  void window.api.pickDirectory().then((p) => {
+                    if (p) void addWorkspace(p)
+                  })
+                }
+                className="flex flex-col items-center gap-2 rounded-xl px-8 py-6 text-muted-foreground transition-colors hover:text-foreground"
+              >
+                <FolderPlus className="size-6" strokeWidth={1.5} />
+                <span className="text-[13px]">Add a workspace to get started</span>
+              </button>
+            ) : (
+              <span className="text-[13px] text-muted-foreground/70">
+                {projectId ? 'Start a thread above' : 'Pick or create a project'}
               </span>
-              <span className="ml-auto truncate font-mono text-xs text-muted-foreground">
-                {session.cwd}
-              </span>
-              {cost !== undefined && (
-                <span className="shrink-0 text-xs text-muted-foreground">${cost.toFixed(2)}</span>
-              )}
-            </>
-          ) : (
-            <span className="text-sm text-muted-foreground">
-              {connected ? 'temp-code' : 'Connecting…'}
-            </span>
-          )}
-        </header>
-        <Transcript />
-        <PromptBar />
+            )}
+          </div>
+        )}
       </main>
-      {showNew && <NewSessionDialog onClose={() => setShowNew(false)} />}
+      <RightRail />
     </div>
   )
+}
+
+function ThreadView({ sessionId }: { sessionId: string }): React.JSX.Element {
+  const session = useApp((s) => s.sessions[sessionId])
+  switch (session?.threadType) {
+    case 'planning':
+      return <PlanView session={session} />
+    case 'implementation':
+      return <ImplementationView session={session} />
+    case 'orchestration':
+      return <OrchestrationView session={session} />
+    default:
+      return <ChatView sessionId={sessionId} />
+  }
 }

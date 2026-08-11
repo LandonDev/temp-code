@@ -8,22 +8,23 @@ import { ThinkingBlock } from './blocks/ThinkingBlock'
 import { ToolChip } from './blocks/ToolChip'
 
 /**
- * Virtualized transcript over the store's incrementally-folded blocks
- * (docs/PLAN.md M3). Rows are memoized; a streaming delta re-renders only
- * the one block whose object identity changed.
+ * Virtualized transcript over the store's incrementally-folded blocks.
+ * Rows are memoized; a streaming delta re-renders only the one block whose
+ * object identity changed. User messages render as bordered fields
+ * (Cursor-style), not colored bubbles.
  */
 
-const BlockRow = memo(function BlockRow({ block }: { block: Block }): React.JSX.Element {
+export const BlockRow = memo(function BlockRow({ block }: { block: Block }): React.JSX.Element {
   switch (block.kind) {
     case 'user':
       return (
-        <div className="ml-auto max-w-[80%] rounded-lg bg-secondary px-3 py-2 text-sm whitespace-pre-wrap">
+        <div className="whitespace-pre-wrap rounded-xl border bg-card px-3.5 py-2.5 text-[13px] leading-5">
           {block.text}
         </div>
       )
     case 'assistant':
       return (
-        <div className="max-w-[95%] text-sm leading-relaxed">
+        <div className="text-[13px] leading-relaxed">
           <MarkdownText text={block.text} streaming={block.streaming} />
         </div>
       )
@@ -35,16 +36,21 @@ const BlockRow = memo(function BlockRow({ block }: { block: Block }): React.JSX.
       return <ApprovalCard block={block} />
     case 'error':
       return (
-        <div className="rounded-md border border-destructive/40 px-3 py-2 text-sm text-destructive">
+        <div className="rounded-md border border-destructive/40 px-3 py-2 text-[13px] text-destructive">
           {block.text}
         </div>
       )
   }
 })
 
-export function Transcript(): React.JSX.Element {
-  const selectedId = useApp((s) => s.selectedId)
-  const blocks = useApp((s) => (s.selectedId ? s.blocks[s.selectedId] : undefined)) ?? []
+export function Transcript({
+  sessionId,
+  className
+}: {
+  sessionId: string
+  className?: string
+}): React.JSX.Element {
+  const blocks = useApp((s) => s.blocks[sessionId]) ?? []
   const scrollRef = useRef<HTMLDivElement>(null)
   const atBottomRef = useRef(true)
 
@@ -65,7 +71,7 @@ export function Transcript(): React.JSX.Element {
     }
     el.addEventListener('scroll', onScroll, { passive: true })
     return () => el.removeEventListener('scroll', onScroll)
-  }, [selectedId])
+  }, [sessionId])
 
   const last = blocks.at(-1)
   useLayoutEffect(() => {
@@ -78,19 +84,14 @@ export function Transcript(): React.JSX.Element {
     atBottomRef.current = true
     const el = scrollRef.current
     if (el) el.scrollTop = el.scrollHeight
-  }, [selectedId])
-
-  if (!selectedId) {
-    return (
-      <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">
-        Select or create a session
-      </div>
-    )
-  }
+  }, [sessionId])
 
   return (
-    <div ref={scrollRef} className="flex-1 overflow-y-auto select-text">
-      <div className="relative mx-auto w-full px-6" style={{ height: virtualizer.getTotalSize() }}>
+    <div ref={scrollRef} className={className ?? 'flex-1 overflow-y-auto select-text'}>
+      <div
+        className="relative mx-auto w-full max-w-3xl px-6"
+        style={{ height: virtualizer.getTotalSize() }}
+      >
         {virtualizer.getVirtualItems().map((item) => (
           <div
             key={item.key}
