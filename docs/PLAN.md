@@ -1,5 +1,19 @@
 # temp-code — harness management: implementation plan
 
+> **Status (2026-08-11): all six milestones implemented and live-verified.**
+> Each milestone has an exit test under `scripts/` (`bun run script:e2e-*`):
+> claude driver (concurrent turns, tools, interrupt, resume, bad model),
+> lifecycle, approvals (allow + deny), all three providers side by side,
+> and orchestrator → codex subagent. Notes that changed the plan while
+> verifying: the SDK boots its CLI lazily on first send (nativeId arrives
+> mid-first-turn); the harness auto-approves safe commands itself so only
+> dangerous calls reach the approval card; codex app-server speaks the v2
+> thread/turn/item protocol (the v1 names this plan listed are gone);
+> cursor-agent needs `--trust`. Remaining known gaps: codex/cursor
+> approval requests are wired but not yet exercised by a live test, and
+> in-harness Task subagent output is counted on its tool chip rather than
+> rendered.
+
 Goal for this phase: manage the harnesses themselves from the UI — create
 sessions, send messages, show what comes back, and keep every session visible
 and controllable. Orchestration (Claude spawning Codex/Cursor subagents) sits
