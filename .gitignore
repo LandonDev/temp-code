@@ -6,3 +6,4 @@ out
 *.log*
 .env.local
 .env
+scripts/.out/

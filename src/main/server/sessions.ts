@@ -40,7 +40,9 @@ export class SessionRegistry {
       agentType: params.agentType,
       title: params.title ?? `${params.provider} · ${params.agentType}`,
       cwd: params.cwd,
-      status: 'starting',
+      // The harness boots lazily on first send; a new session is simply
+      // ready for input.
+      status: 'idle',
       nativeId: null,
       createdAt: now,
       updatedAt: now

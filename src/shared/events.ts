@@ -11,29 +11,45 @@ import type { AgentType, ProviderId, Reasoning } from './catalog'
 export const SessionStatusSchema = z.enum(['starting', 'idle', 'running', 'error', 'done'])
 export type SessionStatus = z.infer<typeof SessionStatusSchema>
 
+/**
+ * Block identity: a turn can span several provider messages (text → tool →
+ * text). Deltas and their authoritative finals carry (msgId, blockIndex) so
+ * folding replaces the right block instead of "the last one of that kind".
+ * parentCallId marks output that belongs to an in-harness subagent (e.g. the
+ * Task tool) — the UI nests it under that tool call instead of the main flow.
+ */
+const blockIdentity = {
+  msgId: z.string().optional(),
+  blockIndex: z.number().optional(),
+  parentCallId: z.string().optional()
+}
+
 export const AgentEventSchema = z.discriminatedUnion('type', [
   // A message the user (or the orchestrator, for subagents) sent in.
   z.object({ type: z.literal('user-text'), text: z.string() }),
 
   // Assistant output. delta=true → streaming chunk to append;
   // delta=false → authoritative full block (replaces accumulated deltas).
-  z.object({ type: z.literal('assistant-text'), text: z.string(), delta: z.boolean() }),
+  z.object({ type: z.literal('assistant-text'), text: z.string(), delta: z.boolean(), ...blockIdentity }),
 
   // Reasoning/thinking stream, same delta semantics.
-  z.object({ type: z.literal('thinking'), text: z.string(), delta: z.boolean() }),
+  z.object({ type: z.literal('thinking'), text: z.string(), delta: z.boolean(), ...blockIdentity }),
 
-  // Tool lifecycle. callId ties call to result.
+  // Tool lifecycle. callId ties call to result. An event with the same
+  // callId replaces the earlier one (early "tool started" → full input).
   z.object({
     type: z.literal('tool-call'),
     callId: z.string(),
     name: z.string(),
-    input: z.unknown()
+    input: z.unknown(),
+    parentCallId: z.string().optional()
   }),
   z.object({
     type: z.literal('tool-result'),
     callId: z.string(),
     output: z.string(),
-    isError: z.boolean()
+    isError: z.boolean(),
+    parentCallId: z.string().optional()
   }),
 
   // Session lifecycle.
