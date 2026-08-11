@@ -1,4 +1,5 @@
-import { app, shell, BrowserWindow, ipcMain } from 'electron'
+import { app, shell, dialog, BrowserWindow, ipcMain } from 'electron'
+import { homedir } from 'os'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
@@ -47,6 +48,13 @@ app.whenReady().then(async () => {
 
   server = await startServer(join(app.getPath('userData'), 'temp-code.db'))
   ipcMain.handle('server-port', () => server?.port ?? null)
+  ipcMain.handle('pick-directory', async (_e, defaultPath?: string) => {
+    const res = await dialog.showOpenDialog({
+      properties: ['openDirectory', 'createDirectory'],
+      defaultPath: defaultPath || homedir()
+    })
+    return res.canceled ? null : (res.filePaths[0] ?? null)
+  })
 
   createWindow()
 

@@ -22,6 +22,7 @@ export interface RunningServer {
 export async function startServer(dbPath: string): Promise<RunningServer> {
   const store = new Store(openDb(dbPath))
   const registry = new SessionRegistry(store)
+  registry.startIdleSweep()
 
   const wss = new WebSocketServer({ host: '127.0.0.1', port: 0 })
 
@@ -33,6 +34,13 @@ export async function startServer(dbPath: string): Promise<RunningServer> {
 
     // Every client gets session-meta updates (cheap, drives the sidebar).
     const offMeta = registry.onMeta((session) => sendFrame({ push: 'session', session }))
+    const offRemoved = registry.onRemoved((sessionIds) => {
+      for (const id of sessionIds) {
+        unsubs.get(id)?.()
+        unsubs.delete(id)
+      }
+      sendFrame({ push: 'session-removed', sessionIds })
+    })
 
     ws.on('message', async (data) => {
       let raw: unknown
@@ -92,6 +100,18 @@ export async function startServer(dbPath: string): Promise<RunningServer> {
             unsubs.delete(req.params.sessionId)
             sendFrame({ id: req.id, ok: true, result: null })
             break
+          case 'session.archive':
+            await registry.setArchived(req.params.sessionId, req.params.archived)
+            sendFrame({ id: req.id, ok: true, result: null })
+            break
+          case 'session.delete':
+            await registry.delete(req.params.sessionId)
+            sendFrame({ id: req.id, ok: true, result: null })
+            break
+          case 'session.restart':
+            await registry.restart(req.params.sessionId)
+            sendFrame({ id: req.id, ok: true, result: null })
+            break
         }
       } catch (err) {
         sendFrame({
@@ -104,6 +124,7 @@ export async function startServer(dbPath: string): Promise<RunningServer> {
 
     ws.on('close', () => {
       offMeta()
+      offRemoved()
       for (const off of unsubs.values()) off()
       unsubs.clear()
     })

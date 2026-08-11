@@ -55,6 +55,23 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
     id: z.string(),
     method: z.literal('session.unsubscribe'),
     params: z.object({ sessionId: z.string() })
+  }),
+  z.object({
+    id: z.string(),
+    method: z.literal('session.archive'),
+    params: z.object({ sessionId: z.string(), archived: z.boolean() })
+  }),
+  z.object({
+    id: z.string(),
+    method: z.literal('session.delete'),
+    params: z.object({ sessionId: z.string() })
+  }),
+  // Drop the live handle (if any) and reset an errored session to idle;
+  // the next send lazily starts a fresh harness that resumes via nativeId.
+  z.object({
+    id: z.string(),
+    method: z.literal('session.restart'),
+    params: z.object({ sessionId: z.string() })
   })
 ])
 export type ClientRequest = z.infer<typeof ClientRequestSchema>
@@ -66,5 +83,6 @@ export type ServerResponse =
 export type ServerPush =
   | { push: 'event'; row: EventRow }
   | { push: 'session'; session: SessionMeta }
+  | { push: 'session-removed'; sessionIds: string[] }
 
 export type ServerFrame = ServerResponse | ServerPush

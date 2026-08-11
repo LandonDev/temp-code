@@ -7,6 +7,10 @@ import type { Store } from './db'
 
 type SessionListener = (row: EventRow) => void
 type MetaListener = (session: SessionMeta) => void
+type RemovedListener = (sessionIds: string[]) => void
+
+/** Dispose idle harness handles after this long; resume restores them. */
+const IDLE_DISPOSE_MS = 10 * 60 * 1000
 
 /**
  * The session registry: owns the session tree, the append-only event log,
@@ -18,8 +22,30 @@ export class SessionRegistry {
   private starting = new Map<string, Promise<DriverHandle>>()
   private subscribers = new Map<string, Set<SessionListener>>()
   private metaListeners = new Set<MetaListener>()
+  private removedListeners = new Set<RemovedListener>()
+  private lastActivity = new Map<string, number>()
+  private sweepTimer: ReturnType<typeof setInterval> | null = null
 
   constructor(private store: Store) {}
+
+  /**
+   * Idle disposal — what keeps dozens of sessions cheap. A handle whose
+   * session has sat idle past the threshold is dropped; the session stays
+   * listed and the next send lazily restarts the harness via resume.
+   */
+  startIdleSweep(idleMs = IDLE_DISPOSE_MS): void {
+    this.sweepTimer = setInterval(() => {
+      const now = Date.now()
+      for (const [id, handle] of this.handles) {
+        const meta = this.store.getSession(id)
+        const last = this.lastActivity.get(id) ?? 0
+        if (meta?.status === 'idle' && now - last > idleMs) {
+          this.handles.delete(id)
+          void handle.dispose().catch(() => {})
+        }
+      }
+    }, 60_000)
+  }
 
   list(): SessionMeta[] {
     return this.store.listSessions()
@@ -43,6 +69,7 @@ export class SessionRegistry {
       // The harness boots lazily on first send; a new session is simply
       // ready for input.
       status: 'idle',
+      archived: false,
       nativeId: null,
       createdAt: now,
       updatedAt: now
@@ -59,11 +86,43 @@ export class SessionRegistry {
 
   async send(sessionId: string, text: string): Promise<void> {
     const handle = await this.handleFor(sessionId)
+    this.lastActivity.set(sessionId, Date.now())
     await handle.send(text)
   }
 
   async interrupt(sessionId: string): Promise<void> {
     this.handles.get(sessionId)?.interrupt()
+  }
+
+  async setArchived(sessionId: string, archived: boolean): Promise<void> {
+    if (archived) await this.dropHandle(sessionId)
+    const next = this.store.updateSession(sessionId, { archived })
+    if (next) this.notifyMeta(next)
+  }
+
+  async delete(sessionId: string): Promise<void> {
+    const ids = this.store.deleteSessionTree(sessionId)
+    for (const id of ids) {
+      await this.dropHandle(id)
+      this.subscribers.delete(id)
+      this.lastActivity.delete(id)
+    }
+    for (const l of this.removedListeners) l(ids)
+  }
+
+  async restart(sessionId: string): Promise<void> {
+    await this.dropHandle(sessionId)
+    const next = this.store.updateSession(sessionId, { status: 'idle' })
+    if (next) this.notifyMeta(next)
+  }
+
+  private async dropHandle(sessionId: string): Promise<void> {
+    const inflight = this.starting.get(sessionId)
+    if (inflight) await inflight.catch(() => {})
+    const handle = this.handles.get(sessionId)
+    this.handles.delete(sessionId)
+    this.starting.delete(sessionId)
+    if (handle) await handle.dispose().catch(() => {})
   }
 
   private async handleFor(sessionId: string): Promise<DriverHandle> {
@@ -105,6 +164,7 @@ export class SessionRegistry {
 
   append(sessionId: string, event: AgentEvent): void {
     const row = this.store.appendEvent(sessionId, event)
+    this.lastActivity.set(sessionId, row.ts)
     // Status events also update the session row (drives the sidebar).
     if (event.type === 'status') {
       const next = this.store.updateSession(sessionId, { status: event.status })
@@ -128,11 +188,17 @@ export class SessionRegistry {
     return () => this.metaListeners.delete(listener)
   }
 
+  onRemoved(listener: RemovedListener): () => void {
+    this.removedListeners.add(listener)
+    return () => this.removedListeners.delete(listener)
+  }
+
   private notifyMeta(session: SessionMeta): void {
     for (const l of this.metaListeners) l(session)
   }
 
   async disposeAll(): Promise<void> {
+    if (this.sweepTimer) clearInterval(this.sweepTimer)
     await Promise.allSettled([...this.handles.values()].map((h) => h.dispose()))
     this.handles.clear()
   }

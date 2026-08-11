@@ -24,6 +24,7 @@ export function openDb(path: string): DatabaseSync {
       title      TEXT NOT NULL,
       cwd        TEXT NOT NULL,
       status     TEXT NOT NULL,
+      archived   INTEGER NOT NULL DEFAULT 0,
       native_id  TEXT,
       created_at INTEGER NOT NULL,
       updated_at INTEGER NOT NULL
@@ -36,6 +37,12 @@ export function openDb(path: string): DatabaseSync {
       PRIMARY KEY (session_id, seq)
     );
   `)
+  // Migration for databases created before the archived column existed.
+  try {
+    db.exec(`ALTER TABLE sessions ADD COLUMN archived INTEGER NOT NULL DEFAULT 0`)
+  } catch {
+    // column already exists
+  }
   return db
 }
 
@@ -49,6 +56,7 @@ interface SessionRowRaw {
   title: string
   cwd: string
   status: string
+  archived: number
   native_id: string | null
   created_at: number
   updated_at: number
@@ -65,6 +73,7 @@ function toMeta(r: SessionRowRaw): SessionMeta {
     title: r.title,
     cwd: r.cwd,
     status: r.status as SessionStatus,
+    archived: !!r.archived,
     nativeId: r.native_id,
     createdAt: r.created_at,
     updatedAt: r.updated_at
@@ -77,8 +86,8 @@ export class Store {
   insertSession(meta: SessionMeta): void {
     this.db
       .prepare(
-        `INSERT INTO sessions (id, parent_id, provider, model, reasoning, agent_type, title, cwd, status, native_id, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        `INSERT INTO sessions (id, parent_id, provider, model, reasoning, agent_type, title, cwd, status, archived, native_id, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         meta.id,
@@ -90,20 +99,46 @@ export class Store {
         meta.title,
         meta.cwd,
         meta.status,
+        meta.archived ? 1 : 0,
         meta.nativeId,
         meta.createdAt,
         meta.updatedAt
       )
   }
 
-  updateSession(id: string, patch: Partial<Pick<SessionMeta, 'status' | 'title' | 'nativeId'>>): SessionMeta | null {
+  updateSession(
+    id: string,
+    patch: Partial<Pick<SessionMeta, 'status' | 'title' | 'nativeId' | 'archived'>>
+  ): SessionMeta | null {
     const cur = this.getSession(id)
     if (!cur) return null
     const next = { ...cur, ...patch, updatedAt: Date.now() }
     this.db
-      .prepare(`UPDATE sessions SET status = ?, title = ?, native_id = ?, updated_at = ? WHERE id = ?`)
-      .run(next.status, next.title, next.nativeId, next.updatedAt, id)
+      .prepare(
+        `UPDATE sessions SET status = ?, title = ?, native_id = ?, archived = ?, updated_at = ? WHERE id = ?`
+      )
+      .run(next.status, next.title, next.nativeId, next.archived ? 1 : 0, next.updatedAt, id)
     return next
+  }
+
+  /** Delete a session and all of its descendants (log included). */
+  deleteSessionTree(id: string): string[] {
+    const ids: string[] = []
+    const collect = (cur: string): void => {
+      ids.push(cur)
+      const kids = this.db
+        .prepare(`SELECT id FROM sessions WHERE parent_id = ?`)
+        .all(cur) as unknown as { id: string }[]
+      for (const k of kids) collect(k.id)
+    }
+    collect(id)
+    const del = this.db.prepare(`DELETE FROM sessions WHERE id = ?`)
+    const delEvents = this.db.prepare(`DELETE FROM events WHERE session_id = ?`)
+    for (const sid of ids) {
+      delEvents.run(sid)
+      del.run(sid)
+    }
+    return ids
   }
 
   getSession(id: string): SessionMeta | null {
