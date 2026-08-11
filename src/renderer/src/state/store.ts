@@ -11,6 +11,9 @@ type Catalog = typeof CATALOG
  *  immutable snapshots (blocks arrays) for React. */
 const folds = new Map<string, FoldState>()
 
+/** StrictMode mounts effects twice in dev — init must run once. */
+let initStarted = false
+
 interface AppState {
   connected: boolean
   catalog: Catalog | null
@@ -41,11 +44,16 @@ export const useApp = create<AppState>((set, get) => ({
   selectedId: null,
 
   init: async () => {
+    if (initStarted) return
+    initStarted = true
     client.onPush((push) => {
       if (push.push === 'session') {
         set((s) => ({ sessions: { ...s.sessions, [push.session.id]: push.session } }))
       } else if (push.push === 'event') {
         const { sessionId } = push.row
+        // Seq guard: a duplicate push (double subscription, refetch race)
+        // must never be applied twice.
+        if (push.row.seq <= (get().events[sessionId]?.at(-1)?.seq ?? 0)) return
         let fold = folds.get(sessionId)
         if (!fold) {
           fold = foldAll(get().events[sessionId] ?? [])

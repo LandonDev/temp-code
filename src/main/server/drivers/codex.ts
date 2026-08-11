@@ -297,16 +297,28 @@ export const codexDriver: HarnessDriver = {
         approvalPolicy: APPROVAL_POLICY[session.permission],
         sandbox: 'workspace-write'
       }
-      if (threadId) {
-        await conn.request('thread/resume', { threadId, ...threadParams })
-      } else {
+      const startFresh = async (): Promise<void> => {
         const res = (await conn.request('thread/start', threadParams)) as { thread?: { id?: string } }
         if (res.thread?.id) {
           threadId = res.thread.id
           ctx.setNativeId(threadId)
         }
       }
+      if (threadId) {
+        try {
+          await conn.request('thread/resume', { threadId, ...threadParams })
+        } catch (err) {
+          // A thread that never ran a turn has no rollout file on disk, so
+          // it can't be resumed by a new app-server process. Nothing is
+          // lost — start fresh.
+          if (String(err).includes('no rollout')) await startFresh()
+          else throw err
+        }
+      } else {
+        await startFresh()
+      }
     } catch (err) {
+      disposed = true // expected exit, don't also report it as a crash
       conn.kill()
       throw new Error(
         `codex app-server handshake failed: ${err instanceof Error ? err.message : String(err)}`
