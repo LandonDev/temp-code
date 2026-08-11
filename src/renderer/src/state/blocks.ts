@@ -14,12 +14,11 @@ import type { AgentEvent, EventRow } from '@shared/events'
  * as activity on the owning tool block instead of appearing inline.
  */
 
-export type Block =
-  | { id: string; kind: 'user'; text: string }
-  | { id: string; kind: 'assistant'; text: string; streaming: boolean }
-  | { id: string; kind: 'thinking'; text: string; streaming: boolean }
+type BlockKind =
+  | { kind: 'user'; text: string }
+  | { kind: 'assistant'; text: string; streaming: boolean }
+  | { kind: 'thinking'; text: string; streaming: boolean }
   | {
-      id: string
       kind: 'tool'
       callId: string
       name: string
@@ -29,9 +28,8 @@ export type Block =
       /** activity events from a subagent running under this call */
       subCount: number
     }
-  | { id: string; kind: 'error'; text: string }
+  | { kind: 'error'; text: string }
   | {
-      id: string
       kind: 'approval'
       requestId: string
       toolName: string
@@ -41,6 +39,15 @@ export type Block =
       allow?: boolean
       auto?: boolean
     }
+
+/** `todo` = index of the todo that was in_progress when the block was born
+ *  (-1 before the first todo list) — how the implementation view groups. */
+export type Block = BlockKind & { id: string; todo: number }
+
+export interface TodoItem {
+  content: string
+  status: 'pending' | 'in_progress' | 'completed'
+}
 
 export interface FoldState {
   blocks: Block[]
@@ -53,18 +60,42 @@ export interface FoldState {
   nextId: number
   /** cumulative session cost, from the latest turn-complete */
   costUsd?: number
+  /** latest todo list (TodoWrite / update_plan), for implementation threads */
+  todos: TodoItem[]
+  activeTodo: number
 }
 
 export function emptyFold(): FoldState {
-  return { blocks: [], byKey: new Map(), byCall: new Map(), byRequest: new Map(), nextId: 1 }
+  return {
+    blocks: [],
+    byKey: new Map(),
+    byCall: new Map(),
+    byRequest: new Map(),
+    nextId: 1,
+    todos: [],
+    activeTodo: -1
+  }
 }
 
-type DistributiveOmit<T, K extends PropertyKey> = T extends unknown ? Omit<T, K> : never
-
-function push(s: FoldState, block: DistributiveOmit<Block, 'id'>): number {
+function push(s: FoldState, block: BlockKind): number {
   const id = String(s.nextId++)
-  s.blocks.push({ ...block, id } as Block)
+  s.blocks.push({ ...block, id, todo: s.activeTodo })
   return s.blocks.length - 1
+}
+
+/** Normalize the two harness plan tools into one shape. */
+function todosFrom(name: string, input: unknown): TodoItem[] | null {
+  const obj = input as { todos?: unknown; plan?: unknown } | null
+  const raw = name === 'TodoWrite' ? obj?.todos : name === 'update_plan' ? obj?.plan : null
+  if (!Array.isArray(raw)) return null
+  return raw.flatMap((t) => {
+    const item = t as { content?: string; step?: string; status?: string }
+    const content = item.content ?? item.step
+    if (!content) return []
+    const status =
+      item.status === 'in_progress' || item.status === 'completed' ? item.status : 'pending'
+    return [{ content, status }]
+  })
 }
 
 function foldText(
@@ -121,6 +152,14 @@ export function foldEvent(s: FoldState, e: AgentEvent): void {
       foldText(s, 'thinking', e)
       break
     case 'tool-call': {
+      // Plan-tool calls update the todo model; blocks born after this
+      // belong to the newly in_progress todo.
+      const todos = todosFrom(e.name, e.input)
+      if (todos) {
+        s.todos = todos
+        const active = todos.findIndex((t) => t.status === 'in_progress')
+        s.activeTodo = active !== -1 ? active : s.activeTodo
+      }
       const existing = s.byCall.get(e.callId)
       if (existing !== undefined) {
         // Early "tool started" chip being replaced with the full input.
