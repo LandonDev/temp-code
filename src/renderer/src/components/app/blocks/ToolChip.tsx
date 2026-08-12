@@ -14,6 +14,7 @@ import {
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { cn } from '../../../lib/utils'
+import { summarizeCommand } from '../../../lib/command-summary'
 import { Spinner } from '../../ui/spinner'
 import { Collapse } from '../../motion/collapse'
 import type { Block } from '../../../state/blocks'
@@ -54,8 +55,11 @@ function present(b: ToolBlock): Presentation {
   switch (b.name) {
     case 'Bash':
     case 'shell':
-    case 'Shell':
-      return { icon: SquareTerminal, doing: 'Running', done: 'Ran', detail: str(i.command) }
+    case 'Shell': {
+      // Nobody should have to read `zsh -lc "…"` to know what happened.
+      const s = summarizeCommand(str(i.command))
+      return { icon: SquareTerminal, doing: s.doing, done: s.done, detail: s.command }
+    }
     case 'Read':
       return { icon: FileText, doing: 'Reading', done: 'Read', detail: file.split('/').pop() ?? '' }
     case 'Grep':
@@ -185,7 +189,13 @@ function Body({ block }: { block: ToolBlock }): React.JSX.Element {
     case 'Bash':
     case 'shell':
     case 'Shell':
-      return <CommandBody command={str(i.command)} output={block.output} isError={block.isError} />
+      return (
+        <CommandBody
+          command={summarizeCommand(str(i.command)).command}
+          output={block.output}
+          isError={block.isError}
+        />
+      )
     case 'TodoWrite':
     case 'update_plan': {
       const raw = (i.todos ?? i.plan) as
@@ -267,21 +277,25 @@ export const ToolChip = memo(function ToolChip({ block }: { block: ToolBlock }):
       <button
         onClick={() => setOpen((v) => !v)}
         className={cn(
-          'group flex w-full items-center gap-2 rounded-md px-2 py-1 text-left transition-colors hover:bg-accent/50',
+          '-mx-1.5 flex w-[calc(100%+12px)] items-center gap-2 rounded-md px-1.5 py-1 text-left transition-colors hover:bg-accent/50',
           block.isError && 'text-destructive'
         )}
       >
+        <p.icon className="size-3.5 shrink-0 text-muted-foreground/70" />
+        <span className="shrink-0 text-xs leading-5 text-muted-foreground">
+          {running ? p.doing : p.done}
+        </span>
+        {p.detail && (
+          <span className="truncate font-mono text-xs leading-5 text-muted-foreground/50">
+            {p.detail}
+          </span>
+        )}
         <ChevronRight
           className={cn(
-            'size-3 shrink-0 text-muted-foreground/60 transition-transform',
+            'size-3 shrink-0 text-muted-foreground/40 transition-transform duration-200',
             open && 'rotate-90'
           )}
         />
-        <p.icon className="size-3.5 shrink-0 text-muted-foreground/70" />
-        <span className="shrink-0 text-xs text-muted-foreground">{running ? p.doing : p.done}</span>
-        {p.detail && (
-          <span className="truncate font-mono text-xs text-muted-foreground/60">{p.detail}</span>
-        )}
         <span className="ml-auto flex shrink-0 items-center gap-2">
           {block.subCount > 0 && (
             <span className="text-[11px] text-muted-foreground">{block.subCount} steps</span>

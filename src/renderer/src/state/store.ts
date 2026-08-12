@@ -11,7 +11,14 @@ import type {
 } from '@shared/domain'
 import type { CreateSessionInput } from '@shared/contract'
 import { client } from '../lib/client'
-import { foldAll, foldEvent, type Block, type FoldState, type TodoItem } from './blocks'
+import {
+  foldAll,
+  foldEvent,
+  foldOptimisticUser,
+  type Block,
+  type FoldState,
+  type TodoItem
+} from './blocks'
 
 type Catalog = typeof CATALOG
 
@@ -253,7 +260,31 @@ export const useApp = create<AppState>((set, get) => ({
   },
 
   send: async (sessionId, text, opts) => {
-    await client.request('session.send', { sessionId, text, ...opts })
+    // Optimistic: the message and the working state appear this frame; the
+    // server's echo claims the block instead of duplicating it.
+    let fold = folds.get(sessionId)
+    if (!fold) {
+      fold = foldAll(get().events[sessionId] ?? [])
+      folds.set(sessionId, fold)
+    }
+    foldOptimisticUser(fold, text, opts?.attachments)
+    publishFold(set, sessionId, fold)
+    const before = get().sessions[sessionId]
+    if (before && before.status !== 'running') {
+      set((s) => ({
+        sessions: { ...s.sessions, [sessionId]: { ...before, status: 'starting' } }
+      }))
+    }
+    try {
+      await client.request('session.send', { sessionId, text, ...opts })
+    } catch (err) {
+      // Roll back: refold from the authoritative log, restore status.
+      const clean = foldAll(get().events[sessionId] ?? [])
+      folds.set(sessionId, clean)
+      publishFold(set, sessionId, clean)
+      if (before) set((s) => ({ sessions: { ...s.sessions, [sessionId]: before } }))
+      throw err
+    }
   },
 
   interrupt: async (sessionId) => {
