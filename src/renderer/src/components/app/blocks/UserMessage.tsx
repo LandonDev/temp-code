@@ -37,16 +37,18 @@ function ImageThumb({ a }: { a: Attachment }): React.JSX.Element {
 }
 
 /** Message text with `/command` and `@path` tokens surfaced as what they
- *  are — a command chip and clickable file references. */
+ *  are — skill chips (anywhere, any number) and clickable file references.
+ *  A `/token` only chips as a standalone word, so `/etc/hosts` stays text. */
+const TOKEN = /(@[^\s@]{2,}|(?<=^|\s)\/[\w:-]+(?=$|\s))/g
+
 function TokenizedText({ text }: { text: string }): React.JSX.Element {
   const openFileRef = useApp((s) => s.openFileRef)
-  const parts = text.split(/(@[^\s@]{2,})/g)
-  const lead = text.match(/^\/[\w:-]+/)?.[0]
+  const parts = text.split(TOKEN)
 
   return (
     <>
       {parts.map((part, n) => {
-        if (n % 2 === 1) {
+        if (n % 2 === 1 && part.startsWith('@')) {
           const path = part.slice(1)
           return (
             <button
@@ -58,11 +60,10 @@ function TokenizedText({ text }: { text: string }): React.JSX.Element {
             </button>
           )
         }
-        if (n === 0 && lead && part.startsWith(lead)) {
+        if (n % 2 === 1 && part.startsWith('/')) {
           return (
-            <span key={n}>
-              <span className="rounded-sm bg-accent px-1 font-medium">{lead}</span>
-              {part.slice(lead.length)}
+            <span key={n} className="rounded-sm bg-accent px-1 font-medium">
+              {part}
             </span>
           )
         }

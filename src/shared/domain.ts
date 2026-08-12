@@ -41,6 +41,8 @@ export interface SlashCommand {
   description: string
   source: 'skill' | 'command' | 'prompt'
   scope: 'user' | 'project'
+  /** absolute path of the defining file (server-side use: expansion) */
+  path?: string
 }
 
 /** One changed file in a project's working tree (git-derived). */

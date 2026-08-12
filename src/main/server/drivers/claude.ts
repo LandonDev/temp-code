@@ -10,6 +10,7 @@ import { readFileSync } from 'node:fs'
 import type { Attachment, PermissionPolicy } from '@shared/events'
 import type { DriverCtx, DriverHandle, HarnessDriver } from './types'
 import { ORCHESTRATOR_PROMPT, ORCHESTRATOR_TOOLS, orchestratorMcp } from '../orchestration'
+import { expandSlashRefs } from '../slash'
 
 /**
  * Claude driver — the Claude Code harness as a library. The SDK spawns the
@@ -311,7 +312,9 @@ export const claudeDriver: HarnessDriver = {
     return {
       async send(text: string, attachments?: Attachment[]): Promise<void> {
         emit({ type: 'status', status: 'running' })
-        input.push(text, attachments)
+        // The harness only runs a LEADING /command natively; mid-message
+        // and additional skill references get expanded server-side.
+        input.push(await expandSlashRefs('claude', session.cwd, text), attachments)
       },
       interrupt(): void {
         void q.interrupt()
