@@ -4,7 +4,8 @@ import { ArrowLeft, FileDiff } from 'lucide-react'
 import { threadsOfProject, useApp } from '../../state/store'
 import { client } from '../../lib/client'
 import { cn } from '../../lib/utils'
-import { EASE_DRAWER } from '../../lib/ease'
+import { EASE_DRAWER, EASE_OUT } from '../../lib/ease'
+import { Spinner } from '../ui/spinner'
 
 /**
  * The right rail: Changes for now, a panel registry later (Files, Terminal
@@ -38,6 +39,13 @@ function ChangesPanel({ projectId }: { projectId: string }): React.JSX.Element {
   const fetchChanges = useApp((s) => s.fetchChanges)
   const sessions = useApp((s) => s.sessions)
   const [diffPath, setDiffPath] = useState<string | null>(null)
+  // The list's return slide only plays coming back from a diff — never on
+  // the rail simply opening.
+  const [returning, setReturning] = useState(false)
+  const closeDiff = (): void => {
+    setReturning(true)
+    setDiffPath(null)
+  }
 
   const anyRunning = useMemo(
     () => threadsOfProject(sessions, projectId).some((t) => t.status === 'running'),
@@ -52,13 +60,31 @@ function ChangesPanel({ projectId }: { projectId: string }): React.JSX.Element {
   }, [projectId, anyRunning, fetchChanges])
 
   useEffect(() => setDiffPath(null), [projectId])
+  const reduce = useReducedMotion()
 
+  // Drill-in: the diff slides in from the right, the list returns from the
+  // left. Entering panel only — leaving never delays the swap.
   if (diffPath) {
-    return <DiffView projectId={projectId} path={diffPath} onBack={() => setDiffPath(null)} />
+    return (
+      <motion.div
+        key={diffPath}
+        initial={reduce ? false : { opacity: 0, x: 10 }}
+        animate={{ opacity: 1, x: 0 }}
+        transition={{ duration: 0.16, ease: EASE_OUT }}
+        className="h-full"
+      >
+        <DiffView projectId={projectId} path={diffPath} onBack={closeDiff} />
+      </motion.div>
+    )
   }
 
   return (
-    <div className="flex h-full w-72 flex-col">
+    <motion.div
+      initial={reduce || !returning ? false : { opacity: 0, x: -10 }}
+      animate={{ opacity: 1, x: 0 }}
+      transition={{ duration: 0.16, ease: EASE_OUT }}
+      className="flex h-full w-72 flex-col"
+    >
       <div className="titlebar-drag flex h-11 shrink-0 items-center px-4">
         <span className="text-xs font-medium text-muted-foreground">
           Changes{changes.length > 0 && ` · ${changes.length}`}
@@ -106,7 +132,7 @@ function ChangesPanel({ projectId }: { projectId: string }): React.JSX.Element {
           ))
         )}
       </div>
-    </div>
+    </motion.div>
   )
 }
 
@@ -138,14 +164,18 @@ function DiffView({
         <button
           onClick={onBack}
           aria-label="Back to changes"
-          className="flex size-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground active:scale-90"
+          className="flex size-6 items-center justify-center rounded-md text-muted-foreground transition hover:bg-accent hover:text-foreground active:scale-95"
         >
           <ArrowLeft className="size-3.5" />
         </button>
         <span className="truncate text-xs font-medium text-muted-foreground">{path.split('/').pop()}</span>
       </div>
       <div className="flex-1 overflow-auto select-text">
-        {diff === null ? null : diff === '' ? (
+        {diff === null ? (
+          <div className="flex justify-center py-6">
+            <Spinner className="size-3.5 text-muted-foreground" />
+          </div>
+        ) : diff === '' ? (
           <p className="px-4 py-6 text-center text-[11px] text-muted-foreground/60">No diff available</p>
         ) : (
           <pre className="px-2 pb-4 font-mono text-[11px] leading-[1.5]">

@@ -169,6 +169,17 @@
     outline: 2px solid var(--ring);
     outline-offset: 1px;
   }
+  /* Tailwind's preflight resets buttons to cursor: default; everything
+   * clickable in this app shows a pointer. */
+  button:not(:disabled),
+  [role='button']:not([aria-disabled='true']),
+  [role='tab'],
+  [role='menuitem']:not([data-disabled]),
+  [role='option']:not([data-disabled]),
+  label[for],
+  summary {
+    cursor: pointer;
+  }
   body {
     @apply bg-background text-foreground antialiased;
     font-family:
