@@ -19,6 +19,65 @@
     transform: translateY(4px);
   }
 }
+
+/* Beautiful UI motion vocabulary (beautifului.dev), on our tokens.
+ * text-shimmer: highlight sweeping through a label (thinking/working).
+ * pixel-on: one cell of the pixel-grid loader lighting as the wave passes.
+ * fade-up / fade-in: trace rows and settled labels arriving.
+ * stream-in: streamed words resolving out of blur. */
+@keyframes text-shimmer {
+  from {
+    background-position: 150% center;
+  }
+  to {
+    background-position: -50% center;
+  }
+}
+@keyframes pixel-on {
+  0%,
+  100% {
+    opacity: 0.15;
+  }
+  18%,
+  42% {
+    opacity: 1;
+  }
+  62% {
+    opacity: 0.15;
+  }
+}
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes stream-in {
+  from {
+    opacity: 0;
+    filter: blur(4px);
+  }
+}
+
+/* Streaming assistant prose gets Beautiful UI's caret at the write head. */
+.streaming-prose > p:last-child::after,
+.streaming-prose > ul:last-child li:last-child::after,
+.streaming-prose > ol:last-child li:last-child::after {
+  content: '';
+  display: inline-block;
+  width: 2px;
+  height: 0.8em;
+  margin-left: 3px;
+  border-radius: 1px;
+  background: var(--foreground);
+  transform: translateY(0.1em);
+  animation: fade-in 150ms ease-out both;
+}
 /*
  ---break---
  */

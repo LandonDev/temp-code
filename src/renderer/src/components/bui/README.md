@@ -21,17 +21,21 @@ Selection Actions).
 
 ## Which primitives we want, and what they render
 
-| Beautiful UI component | Renders                                        |
-| ---------------------- | ---------------------------------------------- |
-| Thinking               | `thinking` events (collapsed reasoning trace)  |
-| Streaming Text         | `assistant-text` deltas                        |
-| Tool Chips             | `tool-call` / `tool-result` pairs              |
-| Approval Card          | permission prompts (plan Milestone 4)          |
-| Task Rows              | subagent sessions with live status             |
-| Prompt Bar             | the composer + model picker                    |
-| Code Block             | code in assistant output (shiki)               |
-| Diff Table             | checkpoint diffs (later)                       |
+| Beautiful UI component | Renders                                       | Status                                                             |
+| ---------------------- | --------------------------------------------- | ------------------------------------------------------------------ |
+| Loading State          | turn running, nothing streaming yet           | ✅ `loading-state.tsx` (Drive variant), used by Transcript          |
+| Thinking               | `thinking` events (collapsed reasoning trace) | ✅ adapted into `app/blocks/ThinkingBlock.tsx` (header + trace)     |
+| Streaming Text         | `assistant-text` deltas                       | ✅ caret + keyframes in main.css (`.streaming-prose`, `stream-in`)  |
+| Tool Chips             | `tool-call` / `tool-result` pairs             | pattern followed in `app/blocks/ToolChip.tsx`                       |
+| Approval Card          | permission prompts (plan Milestone 4)         | pattern followed in `app/blocks/ApprovalCard.tsx`                   |
+| Task Rows              | subagent sessions with live status            | later                                                               |
+| Prompt Bar             | the composer + model picker                   | ours predates it; @/slash autocomplete follows the same shape       |
+| Code Block             | code in assistant output (shiki)              | later                                                               |
+| Diff Table             | checkpoint diffs (later)                      | later                                                               |
 
-`Transcript.tsx` currently renders these surfaces with plain Tailwind —
-replace surface by surface as primitives get copied in (docs/PLAN.md
-Milestone 3).
+The site has no registry or static code — the copy buttons write to the
+clipboard from JS. To re-extract: headless browser, override
+`navigator.clipboard.writeText` in an init script, click each section's
+copy control (2026-08-11: done via `codex exec`, payloads SHA-verified).
+Their motion vocabulary (text-shimmer, pixel-on, fade-up, fade-in,
+stream-in keyframes) lives in `assets/main.css` on our tokens.

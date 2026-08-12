@@ -7,7 +7,9 @@ import { openDb, Store } from './db'
 import { SessionRegistry } from './sessions'
 import { runDoctor } from './drivers/binaries'
 import { setOrchestrationRegistry } from './orchestration'
-import { fileDiff, workingTreeChanges } from './git'
+import { fileDiff, listFiles, workingTreeChanges } from './git'
+import { listCommands } from './commands'
+import { readAttachment, saveAttachment } from './attachments'
 
 /** file.read is fenced to project working trees (plan docs live there). */
 function readAllowedFile(registry: SessionRegistry, path: string): string | null {
@@ -133,10 +135,39 @@ export async function startServer(dbPath: string): Promise<RunningServer> {
             })
             break
           }
+          case 'project.files': {
+            const project = registry.getProject(req.params.projectId)
+            sendFrame({ id: req.id, ok: true, result: project ? await listFiles(project.cwd) : [] })
+            break
+          }
           case 'file.read': {
             sendFrame({ id: req.id, ok: true, result: readAllowedFile(registry, req.params.path) })
             break
           }
+          case 'commands.list':
+            sendFrame({
+              id: req.id,
+              ok: true,
+              result: await listCommands(req.params.provider, req.params.cwd)
+            })
+            break
+          case 'attachment.save':
+            sendFrame({
+              id: req.id,
+              ok: true,
+              result: await saveAttachment(req.params.name, req.params.dataBase64)
+            })
+            break
+          case 'attachment.read':
+            sendFrame({
+              id: req.id,
+              ok: true,
+              result: await readAttachment(
+                req.params.path,
+                registry.listProjects().map((p) => p.cwd)
+              )
+            })
+            break
           case 'session.create': {
             const session = await registry.create(req.params)
             sendFrame({ id: req.id, ok: true, result: session })
@@ -155,7 +186,8 @@ export async function startServer(dbPath: string): Promise<RunningServer> {
           case 'session.send':
             await registry.send(req.params.sessionId, req.params.text, {
               model: req.params.model,
-              reasoning: req.params.reasoning
+              reasoning: req.params.reasoning,
+              attachments: req.params.attachments
             })
             sendFrame({ id: req.id, ok: true, result: null })
             break
@@ -193,6 +225,10 @@ export async function startServer(dbPath: string): Promise<RunningServer> {
             break
           case 'session.approve':
             await registry.approve(req.params.sessionId, req.params.requestId, req.params.allow)
+            sendFrame({ id: req.id, ok: true, result: null })
+            break
+          case 'session.permission':
+            await registry.setPermission(req.params.sessionId, req.params.permission)
             sendFrame({ id: req.id, ok: true, result: null })
             break
         }

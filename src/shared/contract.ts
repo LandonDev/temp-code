@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import { AGENT_TYPES } from './catalog'
-import { PermissionPolicySchema } from './events'
+import { AttachmentSchema, PermissionPolicySchema } from './events'
 import { ProjectModeSchema, ThreadTypeSchema } from './domain'
 import type { EventRow, SessionMeta } from './events'
 
@@ -78,10 +78,35 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
     method: z.literal('project.diff'),
     params: z.object({ projectId: z.string(), path: z.string() })
   }),
+  // All file paths in a project's working tree (@-mention autocomplete).
+  z.object({
+    id: z.string(),
+    method: z.literal('project.files'),
+    params: z.object({ projectId: z.string() })
+  }),
   // Read a file the app owns or a project contains (plan documents).
   z.object({
     id: z.string(),
     method: z.literal('file.read'),
+    params: z.object({ path: z.string() })
+  }),
+  // Slash commands the provider's harness understands in this cwd
+  // (Claude skills/commands, codex prompts, cursor commands).
+  z.object({
+    id: z.string(),
+    method: z.literal('commands.list'),
+    params: z.object({ provider: providerEnum, cwd: z.string() })
+  }),
+  // Persist pasted bytes (screenshots) so they have a path like any file.
+  z.object({
+    id: z.string(),
+    method: z.literal('attachment.save'),
+    params: z.object({ name: z.string(), dataBase64: z.string() })
+  }),
+  // Data URL for an attachment/image (transcript thumbnails).
+  z.object({
+    id: z.string(),
+    method: z.literal('attachment.read'),
     params: z.object({ path: z.string() })
   }),
   z.object({ id: z.string(), method: z.literal('session.create'), params: CreateSessionParams }),
@@ -100,7 +125,8 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
       sessionId: z.string(),
       text: z.string(),
       model: z.string().optional(),
-      reasoning: reasoningEnum.optional()
+      reasoning: reasoningEnum.optional(),
+      attachments: z.array(AttachmentSchema).optional()
     })
   }),
   z.object({
@@ -139,13 +165,19 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
     id: z.string(),
     method: z.literal('session.approve'),
     params: z.object({ sessionId: z.string(), requestId: z.string(), allow: z.boolean() })
+  }),
+  // Change the approval policy mid-thread; the harness restarts with resume
+  // on the next send, same as a model change.
+  z.object({
+    id: z.string(),
+    method: z.literal('session.permission'),
+    params: z.object({ sessionId: z.string(), permission: PermissionPolicySchema })
   })
 ])
 export type ClientRequest = z.infer<typeof ClientRequestSchema>
 
 export type ServerResponse =
-  | { id: string; ok: true; result: unknown }
-  | { id: string; ok: false; error: string }
+  { id: string; ok: true; result: unknown } | { id: string; ok: false; error: string }
 
 export type ServerPush =
   | { push: 'event'; row: EventRow }

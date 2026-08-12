@@ -147,7 +147,10 @@ export class Store {
   updateSession(
     id: string,
     patch: Partial<
-      Pick<SessionMeta, 'status' | 'title' | 'nativeId' | 'archived' | 'model' | 'reasoning'>
+      Pick<
+        SessionMeta,
+        'status' | 'title' | 'nativeId' | 'archived' | 'model' | 'reasoning' | 'permission'
+      >
     >
   ): SessionMeta | null {
     const cur = this.getSession(id)
@@ -155,7 +158,7 @@ export class Store {
     const next = { ...cur, ...patch, updatedAt: Date.now() }
     this.db
       .prepare(
-        `UPDATE sessions SET status = ?, title = ?, native_id = ?, archived = ?, model = ?, reasoning = ?, updated_at = ? WHERE id = ?`
+        `UPDATE sessions SET status = ?, title = ?, native_id = ?, archived = ?, model = ?, reasoning = ?, permission = ?, updated_at = ? WHERE id = ?`
       )
       .run(
         next.status,
@@ -164,6 +167,7 @@ export class Store {
         next.archived ? 1 : 0,
         next.model,
         next.reasoning,
+        next.permission,
         next.updatedAt,
         id
       )

@@ -1,5 +1,6 @@
 import { spawn, type ChildProcess } from 'node:child_process'
 import { createInterface } from 'node:readline'
+import type { Attachment } from '@shared/events'
 import type { DriverCtx, DriverHandle, HarnessDriver } from './types'
 import { harnessEnv, resolveBinary } from './binaries'
 
@@ -29,7 +30,8 @@ export const cursorDriver: HarnessDriver = {
     const { session, emit } = ctx
 
     const binPath = await resolveBinary('cursor-agent')
-    if (!binPath) throw new Error('cursor-agent not found — install it and log in (`cursor-agent login`)')
+    if (!binPath)
+      throw new Error('cursor-agent not found — install it and log in (`cursor-agent login`)')
     const env = await harnessEnv()
 
     let proc: ChildProcess | null = null
@@ -85,12 +87,19 @@ export const cursorDriver: HarnessDriver = {
             }
             break
           case 'assistant': {
-            const message = msg.message as { content?: { type?: string; text?: string }[] } | undefined
+            const message = msg.message as
+              { content?: { type?: string; text?: string }[] } | undefined
             const msgId = String(msg.model_call_id ?? `turn-${turn}`)
             for (const block of message?.content ?? []) {
               if (block.type === 'text' && block.text) {
                 textAcc.set(msgId, (textAcc.get(msgId) ?? '') + block.text)
-                emit({ type: 'assistant-text', text: block.text, delta: true, msgId, blockIndex: 0 })
+                emit({
+                  type: 'assistant-text',
+                  text: block.text,
+                  delta: true,
+                  msgId,
+                  blockIndex: 0
+                })
               }
             }
             break
@@ -157,10 +166,15 @@ export const cursorDriver: HarnessDriver = {
     }
 
     return {
-      async send(text: string): Promise<void> {
+      async send(text: string, attachments: Attachment[] = []): Promise<void> {
         if (proc) throw new Error('cursor session is still running a turn')
         emit({ type: 'status', status: 'running' })
-        runTurn(text)
+        // cursor-agent has no native attachment input — everything rides as
+        // path references it can read itself.
+        const refs = attachments.map((a) => a.path)
+        runTurn(
+          refs.length ? `${text}\n\n${refs.map((p) => `Attached file: ${p}`).join('\n')}` : text
+        )
       },
       interrupt(): void {
         proc?.kill('SIGINT')

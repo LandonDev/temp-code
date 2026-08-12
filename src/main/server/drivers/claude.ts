@@ -6,7 +6,8 @@ import {
   type SDKMessage,
   type SDKUserMessage
 } from '@anthropic-ai/claude-agent-sdk'
-import type { PermissionPolicy } from '@shared/events'
+import { readFileSync } from 'node:fs'
+import type { Attachment, PermissionPolicy } from '@shared/events'
 import type { DriverCtx, DriverHandle, HarnessDriver } from './types'
 import { ORCHESTRATOR_PROMPT, ORCHESTRATOR_TOOLS, orchestratorMcp } from '../orchestration'
 
@@ -35,10 +36,37 @@ class InputQueue implements AsyncIterable<SDKUserMessage> {
   private waiters: ((v: IteratorResult<SDKUserMessage>) => void)[] = []
   private closed = false
 
-  push(text: string): void {
+  push(text: string, attachments: Attachment[] = []): void {
+    // Images become native content blocks; other files ride along as path
+    // references the harness reads itself.
+    type Content = SDKUserMessage['message']['content']
+    const content: Exclude<Content, string> = []
+    const refs: string[] = []
+    for (const a of attachments) {
+      if (a.kind === 'image' && a.mime) {
+        try {
+          content.push({
+            type: 'image',
+            source: {
+              type: 'base64',
+              media_type: a.mime as 'image/png',
+              data: readFileSync(a.path).toString('base64')
+            }
+          })
+        } catch {
+          refs.push(a.path)
+        }
+      } else {
+        refs.push(a.path)
+      }
+    }
+    const full = refs.length
+      ? `${text}\n\n${refs.map((p) => `Attached file: ${p}`).join('\n')}`
+      : text
+    content.push({ type: 'text', text: full })
     const msg: SDKUserMessage = {
       type: 'user',
-      message: { role: 'user', content: [{ type: 'text', text }] },
+      message: { role: 'user', content },
       parent_tool_use_id: null,
       session_id: ''
     }
@@ -99,9 +127,23 @@ function handleMessage(ctx: DriverCtx, state: StreamState, msg: SDKMessage): voi
         const msgId = state.currentMsgId.get(lane)
         const blockIndex = ev.index
         if (ev.delta.type === 'text_delta') {
-          emit({ type: 'assistant-text', text: ev.delta.text, delta: true, msgId, blockIndex, parentCallId })
+          emit({
+            type: 'assistant-text',
+            text: ev.delta.text,
+            delta: true,
+            msgId,
+            blockIndex,
+            parentCallId
+          })
         } else if (ev.delta.type === 'thinking_delta') {
-          emit({ type: 'thinking', text: ev.delta.thinking, delta: true, msgId, blockIndex, parentCallId })
+          emit({
+            type: 'thinking',
+            text: ev.delta.thinking,
+            delta: true,
+            msgId,
+            blockIndex,
+            parentCallId
+          })
         }
       }
       break
@@ -111,11 +153,31 @@ function handleMessage(ctx: DriverCtx, state: StreamState, msg: SDKMessage): voi
       const msgId = msg.message.id
       msg.message.content.forEach((block, blockIndex) => {
         if (block.type === 'text') {
-          emit({ type: 'assistant-text', text: block.text, delta: false, msgId, blockIndex, parentCallId })
+          emit({
+            type: 'assistant-text',
+            text: block.text,
+            delta: false,
+            msgId,
+            blockIndex,
+            parentCallId
+          })
         } else if (block.type === 'thinking') {
-          emit({ type: 'thinking', text: block.thinking, delta: false, msgId, blockIndex, parentCallId })
+          emit({
+            type: 'thinking',
+            text: block.thinking,
+            delta: false,
+            msgId,
+            blockIndex,
+            parentCallId
+          })
         } else if (block.type === 'tool_use') {
-          emit({ type: 'tool-call', callId: block.id, name: block.name, input: block.input, parentCallId })
+          emit({
+            type: 'tool-call',
+            callId: block.id,
+            name: block.name,
+            input: block.input,
+            parentCallId
+          })
         }
       })
       break
@@ -199,7 +261,9 @@ export const claudeDriver: HarnessDriver = {
           clearTimeout(timer)
           emit({ type: 'approval-resolved', requestId, allow, auto })
           emit({ type: 'status', status: 'running' })
-          resolve(allow ? { behavior: 'allow' } : { behavior: 'deny', message: 'Denied in temp-code' })
+          resolve(
+            allow ? { behavior: 'allow' } : { behavior: 'deny', message: 'Denied in temp-code' }
+          )
         }
         const timer = setTimeout(() => finish(false, true), APPROVAL_TIMEOUT_MS)
         pendingApprovals.set(requestId, finish)
@@ -223,7 +287,11 @@ export const claudeDriver: HarnessDriver = {
         ? {
             mcpServers: { orchestrator: orchestratorMcp(session) },
             allowedTools: ORCHESTRATOR_TOOLS,
-            systemPrompt: { type: 'preset' as const, preset: 'claude_code' as const, append: ORCHESTRATOR_PROMPT }
+            systemPrompt: {
+              type: 'preset' as const,
+              preset: 'claude_code' as const,
+              append: ORCHESTRATOR_PROMPT
+            }
           }
         : {})
     }
@@ -241,9 +309,9 @@ export const claudeDriver: HarnessDriver = {
     })()
 
     return {
-      async send(text: string): Promise<void> {
+      async send(text: string, attachments?: Attachment[]): Promise<void> {
         emit({ type: 'status', status: 'running' })
-        input.push(text)
+        input.push(text, attachments)
       },
       interrupt(): void {
         void q.interrupt()

@@ -1,6 +1,6 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { createInterface } from 'node:readline'
-import type { PermissionPolicy, SessionStatus } from '@shared/events'
+import type { Attachment, PermissionPolicy, SessionStatus } from '@shared/events'
 import type { Reasoning } from '@shared/catalog'
 import type { DriverCtx, DriverHandle, HarnessDriver } from './types'
 import { harnessEnv, resolveBinary } from './binaries'
@@ -48,14 +48,21 @@ interface RpcFrame {
 class AppServerConn {
   private proc: ChildProcessWithoutNullStreams
   private nextId = 1
-  private pending = new Map<number | string, { resolve: (v: unknown) => void; reject: (e: Error) => void }>()
+  private pending = new Map<
+    number | string,
+    { resolve: (v: unknown) => void; reject: (e: Error) => void }
+  >()
 
   constructor(
     binPath: string,
     env: NodeJS.ProcessEnv,
     cwd: string,
     private onNotify: (method: string, params: Record<string, unknown>) => void,
-    private onRequest: (id: number | string, method: string, params: Record<string, unknown>) => void,
+    private onRequest: (
+      id: number | string,
+      method: string,
+      params: Record<string, unknown>
+    ) => void,
     onExit: (code: number | null) => void
   ) {
     this.proc = spawn(binPath, ['app-server'], { cwd, env, stdio: ['pipe', 'pipe', 'pipe'] })
@@ -81,7 +88,8 @@ class AppServerConn {
       }
     })
     this.proc.on('exit', (code) => {
-      for (const p of this.pending.values()) p.reject(new Error(`codex app-server exited (${code})`))
+      for (const p of this.pending.values())
+        p.reject(new Error(`codex app-server exited (${code})`))
       this.pending.clear()
       onExit(code)
     })
@@ -133,7 +141,12 @@ export const codexDriver: HarnessDriver = {
           })
           break
         case 'fileChange':
-          emit({ type: 'tool-call', callId: String(item.id), name: 'apply_patch', input: item.changes })
+          emit({
+            type: 'tool-call',
+            callId: String(item.id),
+            name: 'apply_patch',
+            input: item.changes
+          })
           break
         case 'mcpToolCall':
           emit({
@@ -144,7 +157,12 @@ export const codexDriver: HarnessDriver = {
           })
           break
         case 'webSearch':
-          emit({ type: 'tool-call', callId: String(item.id), name: 'web_search', input: { query: item.query } })
+          emit({
+            type: 'tool-call',
+            callId: String(item.id),
+            name: 'web_search',
+            input: { query: item.query }
+          })
           break
       }
     }
@@ -239,7 +257,8 @@ export const codexDriver: HarnessDriver = {
           break
         case 'thread/tokenUsage/updated': {
           const total = (params.tokenUsage as { total?: Record<string, number> })?.total
-          if (total) lastUsage = { inputTokens: total.inputTokens, outputTokens: total.outputTokens }
+          if (total)
+            lastUsage = { inputTokens: total.inputTokens, outputTokens: total.outputTokens }
           break
         }
         case 'turn/completed': {
@@ -258,7 +277,11 @@ export const codexDriver: HarnessDriver = {
 
     const pendingApprovals = new Map<string, (allow: boolean) => void>()
 
-    const onRequest = (id: number | string, method: string, params: Record<string, unknown>): void => {
+    const onRequest = (
+      id: number | string,
+      method: string,
+      params: Record<string, unknown>
+    ): void => {
       const legacy = method === 'execCommandApproval' || method === 'applyPatchApproval'
       const isApproval = legacy || method.endsWith('/requestApproval')
       if (!isApproval) {
@@ -267,8 +290,18 @@ export const codexDriver: HarnessDriver = {
         return
       }
       const requestId = `codex-${id}`
-      const toolName = method.includes('ommandExec') ? 'shell' : method.includes('ileChange') || method === 'applyPatchApproval' ? 'apply_patch' : method
-      emit({ type: 'approval-request', requestId, toolName, input: params, callId: params.itemId ? String(params.itemId) : undefined })
+      const toolName = method.includes('ommandExec')
+        ? 'shell'
+        : method.includes('ileChange') || method === 'applyPatchApproval'
+          ? 'apply_patch'
+          : method
+      emit({
+        type: 'approval-request',
+        requestId,
+        toolName,
+        input: params,
+        callId: params.itemId ? String(params.itemId) : undefined
+      })
       emit({ type: 'status', status: 'waiting' })
       pendingApprovals.set(requestId, (allow) => {
         pendingApprovals.delete(requestId)
@@ -298,7 +331,9 @@ export const codexDriver: HarnessDriver = {
         sandbox: 'workspace-write'
       }
       const startFresh = async (): Promise<void> => {
-        const res = (await conn.request('thread/start', threadParams)) as { thread?: { id?: string } }
+        const res = (await conn.request('thread/start', threadParams)) as {
+          thread?: { id?: string }
+        }
         if (res.thread?.id) {
           threadId = res.thread.id
           ctx.setNativeId(threadId)
@@ -326,12 +361,22 @@ export const codexDriver: HarnessDriver = {
     }
 
     return {
-      async send(text: string): Promise<void> {
+      async send(text: string, attachments: Attachment[] = []): Promise<void> {
         setStatus('running')
+        // Images are native input items (localImage); other files ride as
+        // path references in the text.
+        const refs = attachments.filter((a) => a.kind !== 'image').map((a) => a.path)
+        const full = refs.length
+          ? `${text}\n\n${refs.map((p) => `Attached file: ${p}`).join('\n')}`
+          : text
+        const input: Record<string, unknown>[] = [{ type: 'text', text: full }]
+        for (const a of attachments) {
+          if (a.kind === 'image') input.push({ type: 'localImage', path: a.path })
+        }
         conn
           .request('turn/start', {
             threadId,
-            input: [{ type: 'text', text }],
+            input,
             effort: EFFORT[session.reasoning]
           })
           .catch((err) => {

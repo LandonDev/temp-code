@@ -9,7 +9,14 @@ import type { ThreadType } from './domain'
  * provider-native payload.
  */
 
-export const SessionStatusSchema = z.enum(['starting', 'idle', 'running', 'waiting', 'error', 'done'])
+export const SessionStatusSchema = z.enum([
+  'starting',
+  'idle',
+  'running',
+  'waiting',
+  'error',
+  'done'
+])
 export type SessionStatus = z.infer<typeof SessionStatusSchema>
 
 /**
@@ -33,13 +40,32 @@ const blockIdentity = {
   parentCallId: z.string().optional()
 }
 
+/** A file the user attached to a message. Images go to the model as
+ *  content; other files ride along as path references the harness reads. */
+export const AttachmentSchema = z.object({
+  path: z.string(),
+  name: z.string(),
+  mime: z.string().optional(),
+  kind: z.enum(['image', 'file'])
+})
+export type Attachment = z.infer<typeof AttachmentSchema>
+
 export const AgentEventSchema = z.discriminatedUnion('type', [
   // A message the user (or the orchestrator, for subagents) sent in.
-  z.object({ type: z.literal('user-text'), text: z.string() }),
+  z.object({
+    type: z.literal('user-text'),
+    text: z.string(),
+    attachments: z.array(AttachmentSchema).optional()
+  }),
 
   // Assistant output. delta=true → streaming chunk to append;
   // delta=false → authoritative full block (replaces accumulated deltas).
-  z.object({ type: z.literal('assistant-text'), text: z.string(), delta: z.boolean(), ...blockIdentity }),
+  z.object({
+    type: z.literal('assistant-text'),
+    text: z.string(),
+    delta: z.boolean(),
+    ...blockIdentity
+  }),
 
   // Reasoning/thinking stream, same delta semantics.
   z.object({ type: z.literal('thinking'), text: z.string(), delta: z.boolean(), ...blockIdentity }),
@@ -62,7 +88,11 @@ export const AgentEventSchema = z.discriminatedUnion('type', [
   }),
 
   // Session lifecycle.
-  z.object({ type: z.literal('status'), status: SessionStatusSchema, detail: z.string().optional() }),
+  z.object({
+    type: z.literal('status'),
+    status: SessionStatusSchema,
+    detail: z.string().optional()
+  }),
 
   // End of a turn, with whatever accounting the provider reports.
   z.object({

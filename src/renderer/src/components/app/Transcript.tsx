@@ -3,10 +3,13 @@ import { useVirtualizer } from '@tanstack/react-virtual'
 import { cn } from '../../lib/utils'
 import { useApp } from '../../state/store'
 import type { Block } from '../../state/blocks'
+import { LoadingState } from '../bui/loading-state'
 import { ApprovalCard } from './blocks/ApprovalCard'
+import { EDIT_TOOLS, EditCard } from './blocks/EditCard'
 import { MarkdownText } from './blocks/MarkdownText'
 import { ThinkingBlock } from './blocks/ThinkingBlock'
 import { ToolChip } from './blocks/ToolChip'
+import { UserMessage } from './blocks/UserMessage'
 
 /**
  * Virtualized transcript over the store's incrementally-folded blocks.
@@ -18,11 +21,7 @@ import { ToolChip } from './blocks/ToolChip'
 export const BlockRow = memo(function BlockRow({ block }: { block: Block }): React.JSX.Element {
   switch (block.kind) {
     case 'user':
-      return (
-        <div className="whitespace-pre-wrap rounded-xl border bg-card px-3.5 py-2.5 text-[13px] leading-5">
-          {block.text}
-        </div>
-      )
+      return <UserMessage block={block} />
     case 'assistant':
       return (
         <div className="text-[13px] leading-relaxed">
@@ -30,9 +29,11 @@ export const BlockRow = memo(function BlockRow({ block }: { block: Block }): Rea
         </div>
       )
     case 'thinking':
-      return <ThinkingBlock text={block.text} streaming={block.streaming} />
+      return (
+        <ThinkingBlock text={block.text} streaming={block.streaming} thoughtMs={block.thoughtMs} />
+      )
     case 'tool':
-      return <ToolChip block={block} />
+      return EDIT_TOOLS.has(block.name) ? <EditCard block={block} /> : <ToolChip block={block} />
     case 'approval':
       return <ApprovalCard block={block} />
     case 'error':
@@ -44,6 +45,16 @@ export const BlockRow = memo(function BlockRow({ block }: { block: Block }): Rea
   }
 })
 
+/** True while the last block is already visibly in motion — no extra
+ *  indicator needed on top of it. */
+function lastBlockActive(block: Block | undefined): boolean {
+  if (!block) return false
+  if ((block.kind === 'assistant' || block.kind === 'thinking') && block.streaming) return true
+  if (block.kind === 'tool' && block.output === undefined) return true
+  if (block.kind === 'approval' && !block.resolved) return true
+  return false
+}
+
 export function Transcript({
   sessionId,
   className
@@ -52,6 +63,7 @@ export function Transcript({
   className?: string
 }): React.JSX.Element {
   const blocks = useApp((s) => s.blocks[sessionId]) ?? []
+  const status = useApp((s) => s.sessions[sessionId]?.status)
   const scrollRef = useRef<HTMLDivElement>(null)
   const atBottomRef = useRef(true)
   // Blocks present at mount are history — only later arrivals animate in.
@@ -77,10 +89,13 @@ export function Transcript({
   }, [sessionId])
 
   const last = blocks.at(-1)
+  // The turn is underway but nothing on screen shows it yet (model hasn't
+  // started streaming, or a tool just finished) — hold a live indicator.
+  const working = (status === 'running' || status === 'starting') && !lastBlockActive(last)
   useLayoutEffect(() => {
     const el = scrollRef.current
     if (el && atBottomRef.current) el.scrollTop = el.scrollHeight
-  }, [last, blocks.length])
+  }, [last, blocks.length, working])
 
   // New session selected: jump to the end.
   useLayoutEffect(() => {
@@ -123,6 +138,11 @@ export function Transcript({
           )
         })}
       </div>
+      {working && (
+        <div className="mx-auto w-full max-w-3xl px-6 pb-3 animate-[block-in_180ms_cubic-bezier(0.16,1,0.3,1)]">
+          <LoadingState />
+        </div>
+      )}
     </div>
   )
 }

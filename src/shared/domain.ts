@@ -34,6 +34,15 @@ export interface ProjectMeta {
   createdAt: number
 }
 
+/** A slash command the provider's harness understands (skill, custom
+ *  command, or prompt), discovered from its own directories. */
+export interface SlashCommand {
+  name: string
+  description: string
+  source: 'skill' | 'command' | 'prompt'
+  scope: 'user' | 'project'
+}
+
 /** One changed file in a project's working tree (git-derived). */
 export interface FileChange {
   path: string
