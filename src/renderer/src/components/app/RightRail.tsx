@@ -38,7 +38,10 @@ function ChangesPanel({ projectId }: { projectId: string }): React.JSX.Element {
   const changes = useApp((s) => s.changes[projectId]) ?? []
   const fetchChanges = useApp((s) => s.fetchChanges)
   const sessions = useApp((s) => s.sessions)
-  const [diffPath, setDiffPath] = useState<string | null>(null)
+  // Which diff is open lives in the store so transcript file references
+  // (edit cards, `path` links) can drive this panel too.
+  const diffPath = useApp((s) => s.railDiff)
+  const setDiffPath = useApp((s) => s.setRailDiff)
   // The list's return slide only plays coming back from a diff — never on
   // the rail simply opening.
   const [returning, setReturning] = useState(false)
@@ -59,7 +62,6 @@ function ChangesPanel({ projectId }: { projectId: string }): React.JSX.Element {
     return () => clearInterval(t)
   }, [projectId, anyRunning, fetchChanges])
 
-  useEffect(() => setDiffPath(null), [projectId])
   const reduce = useReducedMotion()
 
   // Drill-in: the diff slides in from the right, the list returns from the
@@ -146,17 +148,31 @@ function DiffView({
   onBack: () => void
 }): React.JSX.Element {
   const [diff, setDiff] = useState<string | null>(null)
+  const [content, setContent] = useState<string | null>(null)
+  const project = useApp((s) => s.projects.find((p) => p.id === projectId))
 
+  // No reset-on-path here: the parent keys this component by path, so a
+  // different file mounts fresh (spinner state included).
   useEffect(() => {
     let alive = true
     void client
       .request<string>('project.diff', { projectId, path })
-      .then((d) => alive && setDiff(d))
+      .then(async (d) => {
+        if (!alive) return
+        setDiff(d)
+        // An unchanged file has no diff — show the file itself instead.
+        if (!d && project) {
+          const text = await client
+            .request<string | null>('file.read', { path: `${project.cwd}/${path}` })
+            .catch(() => null)
+          if (alive) setContent(text)
+        }
+      })
       .catch(() => alive && setDiff(''))
     return () => {
       alive = false
     }
-  }, [projectId, path])
+  }, [projectId, path, project])
 
   return (
     <div className="flex h-full w-72 flex-col">
@@ -168,7 +184,9 @@ function DiffView({
         >
           <ArrowLeft className="size-3.5" />
         </button>
-        <span className="truncate text-xs font-medium text-muted-foreground">{path.split('/').pop()}</span>
+        <span className="truncate text-xs font-medium text-muted-foreground">
+          {path.split('/').pop()}
+        </span>
       </div>
       <div className="flex-1 overflow-auto select-text">
         {diff === null ? (
@@ -176,7 +194,13 @@ function DiffView({
             <Spinner className="size-3.5 text-muted-foreground" />
           </div>
         ) : diff === '' ? (
-          <p className="px-4 py-6 text-center text-[11px] text-muted-foreground/60">No diff available</p>
+          content ? (
+            <pre className="px-4 pb-4 font-mono text-[11px] leading-[1.5]">{content}</pre>
+          ) : (
+            <p className="px-4 py-6 text-center text-[11px] text-muted-foreground/60">
+              No changes in this file
+            </p>
+          )
         ) : (
           <pre className="px-2 pb-4 font-mono text-[11px] leading-[1.5]">
             {diff.split('\n').map((line, i) => (
@@ -185,8 +209,12 @@ function DiffView({
                 className={cn(
                   'px-2',
                   line.startsWith('+') && !line.startsWith('+++') && 'bg-success/10 text-success',
-                  line.startsWith('-') && !line.startsWith('---') && 'bg-destructive/10 text-destructive',
-                  (line.startsWith('@@') || line.startsWith('diff ') || line.startsWith('index ')) &&
+                  line.startsWith('-') &&
+                    !line.startsWith('---') &&
+                    'bg-destructive/10 text-destructive',
+                  (line.startsWith('@@') ||
+                    line.startsWith('diff ') ||
+                    line.startsWith('index ')) &&
                     'text-muted-foreground/60'
                 )}
               >

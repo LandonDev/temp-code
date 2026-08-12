@@ -1,7 +1,7 @@
 import { nanoid } from 'nanoid'
 import { basename } from 'node:path'
 import { CreateSessionParams, type CreateSessionInput } from '@shared/contract'
-import type { AgentEvent, EventRow, SessionMeta } from '@shared/events'
+import type { AgentEvent, Attachment, EventRow, SessionMeta } from '@shared/events'
 import type { ProjectMeta, ProjectMode, WorkspaceMeta } from '@shared/domain'
 import { BUILT_IN_DRIVERS } from './drivers'
 import type { DriverHandle } from './drivers/types'
@@ -185,7 +185,11 @@ export class SessionRegistry {
   async send(
     sessionId: string,
     text: string,
-    opts?: { model?: string; reasoning?: SessionMeta['reasoning'] }
+    opts?: {
+      model?: string
+      reasoning?: SessionMeta['reasoning']
+      attachments?: Attachment[]
+    }
   ): Promise<void> {
     let meta = this.store.getSession(sessionId)
     if (!meta) throw new Error(`unknown session: ${sessionId}`)
@@ -207,7 +211,8 @@ export class SessionRegistry {
     // The visible transcript carries only what the user typed; thread-type
     // preambles ride along on the first message, provider-agnostic.
     const first = !this.store.hasUserText(sessionId)
-    this.append(sessionId, { type: 'user-text', text })
+    const attachments = opts?.attachments?.length ? opts.attachments : undefined
+    this.append(sessionId, { type: 'user-text', text, attachments })
     // Cursor-style: an untitled thread takes its name from the first message.
     if (first && (Object.values(THREAD_TITLES) as string[]).includes(meta.title)) {
       const title = text.trim().split('\n')[0].slice(0, 60)
@@ -223,7 +228,7 @@ export class SessionRegistry {
       const preamble = parts.filter(Boolean).join('\n\n')
       if (preamble) out = `<thread-instructions>\n${preamble}\n</thread-instructions>\n\n${text}`
     }
-    await handle.send(out)
+    await handle.send(out, attachments)
   }
 
   async interrupt(sessionId: string): Promise<void> {
@@ -248,6 +253,13 @@ export class SessionRegistry {
       this.lastActivity.delete(id)
     }
     for (const l of this.removedListeners) l(ids)
+  }
+
+  /** Change approval policy; the harness restarts (with resume) on next send. */
+  async setPermission(sessionId: string, permission: SessionMeta['permission']): Promise<void> {
+    await this.dropHandle(sessionId)
+    const next = this.store.updateSession(sessionId, { permission })
+    if (next) this.notifyMeta(next)
   }
 
   async restart(sessionId: string): Promise<void> {

@@ -70,7 +70,6 @@ function NewThreadButton({
   empty: boolean
 }): React.JSX.Element {
   const catalog = useApp((s) => s.catalog)
-  const project = useApp((s) => s.projects.find((p) => p.id === projectId))
   const createThread = useApp((s) => s.createThread)
   const [open, setOpen] = useState(false)
   const [type, setType] = useState<ThreadType>('chat')
@@ -95,8 +94,9 @@ function NewThreadButton({
         provider: effProvider,
         model: info.defaultModel,
         agentType: type === 'orchestration' ? 'orchestrator' : 'implementer',
-        // Worktree implementation runs unattended safely.
-        permission: type === 'implementation' && project?.mode === 'worktree' ? 'auto' : 'edits'
+        // Every thread starts at 'edits'; escalation is a per-thread choice
+        // in the prompt bar, never a silent default.
+        permission: 'edits'
       })
       setOpen(false)
     } finally {

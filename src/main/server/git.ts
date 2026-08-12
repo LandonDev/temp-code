@@ -66,12 +66,19 @@ const isAppPath = (path: string): boolean => path.startsWith('.temp-code/')
 export async function ensureLocalExclude(dir: string): Promise<void> {
   try {
     const { stdout } = await execFileP('git', ['-C', dir, 'rev-parse', '--git-common-dir'])
-    const excludePath = join(stdout.trim().startsWith('/') ? stdout.trim() : join(dir, stdout.trim()), 'info', 'exclude')
+    const excludePath = join(
+      stdout.trim().startsWith('/') ? stdout.trim() : join(dir, stdout.trim()),
+      'info',
+      'exclude'
+    )
     const { readFile, writeFile, mkdir } = await import('node:fs/promises')
     await mkdir(join(excludePath, '..'), { recursive: true })
     const current = await readFile(excludePath, 'utf8').catch(() => '')
     if (!current.includes('.temp-code/')) {
-      await writeFile(excludePath, `${current}${current.endsWith('\n') || !current ? '' : '\n'}.temp-code/\n`)
+      await writeFile(
+        excludePath,
+        `${current}${current.endsWith('\n') || !current ? '' : '\n'}.temp-code/\n`
+      )
     }
   } catch {
     // not a repo — nothing to exclude
@@ -109,20 +116,41 @@ export async function workingTreeChanges(dir: string): Promise<FileChange[]> {
     } else if (code.startsWith('R')) {
       const target = path.split(' -> ').pop() ?? path
       const cur = changes.get(target)
-      changes.set(target, cur ? { ...cur, status: 'renamed' } : { path: target, adds: 0, dels: 0, status: 'renamed' })
+      changes.set(
+        target,
+        cur ? { ...cur, status: 'renamed' } : { path: target, adds: 0, dels: 0, status: 'renamed' }
+      )
     }
   }
-  return [...changes.values()].filter((c) => !isAppPath(c.path)).sort((a, b) => a.path.localeCompare(b.path))
+  return [...changes.values()]
+    .filter((c) => !isAppPath(c.path))
+    .sort((a, b) => a.path.localeCompare(b.path))
+}
+
+/** Every tracked + untracked-but-not-ignored path (@-mention autocomplete). */
+export async function listFiles(dir: string, cap = 5000): Promise<string[]> {
+  if (!(await isGitRepo(dir))) return []
+  try {
+    const { stdout } = await execFileP(
+      'git',
+      ['-C', dir, 'ls-files', '--cached', '--others', '--exclude-standard'],
+      { maxBuffer: 8 * 1024 * 1024 }
+    )
+    return stdout
+      .split('\n')
+      .filter((p) => p && !isAppPath(p))
+      .slice(0, cap)
+  } catch {
+    return []
+  }
 }
 
 export async function fileDiff(dir: string, path: string): Promise<string> {
   if (!(await isGitRepo(dir))) return ''
   try {
-    const { stdout } = await execFileP(
-      'git',
-      ['-C', dir, 'diff', 'HEAD', '--', path],
-      { maxBuffer: 4 * 1024 * 1024 }
-    )
+    const { stdout } = await execFileP('git', ['-C', dir, 'diff', 'HEAD', '--', path], {
+      maxBuffer: 4 * 1024 * 1024
+    })
     if (stdout.trim()) return stdout
     // Untracked file: synthesize an all-adds diff.
     const { stdout: untracked } = await execFileP(

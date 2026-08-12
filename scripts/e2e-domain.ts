@@ -101,6 +101,17 @@ check('transcript user-text is exactly what was typed', userTexts.length === 1 &
 check('thread auto-titled from first message', store.getSession(plan.id)?.title.startsWith('Plan the smallest') === true)
 const planExists = !!plan.planPath && existsSync(plan.planPath)
 check('plan document written to planPath', planExists)
+if (!planExists) {
+  // A silent live-harness failure is undebuggable — dump what the turn did.
+  for (const r of rows) {
+    const e = r.event
+    if (e.type === 'tool-call')
+      console.log('  tool:', e.name, String(JSON.stringify(e.input) ?? '').slice(0, 160))
+    if (e.type === 'error') console.log('  error:', e.message)
+    if (e.type === 'assistant-text' && !e.delta) console.log('  text:', e.text.slice(0, 200))
+    if (e.type === 'status') console.log('  status:', e.status)
+  }
+}
 if (planExists) {
   const doc = readFileSync(plan.planPath!, 'utf8')
   check('plan has a Tasks section', /##\s*Tasks/i.test(doc), doc.slice(0, 200))

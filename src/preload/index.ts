@@ -1,10 +1,12 @@
-import { contextBridge, ipcRenderer } from 'electron'
+import { contextBridge, ipcRenderer, webUtils } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
 
 const api = {
   getServerPort: (): Promise<number | null> => ipcRenderer.invoke('server-port'),
   pickDirectory: (defaultPath?: string): Promise<string | null> =>
-    ipcRenderer.invoke('pick-directory', defaultPath)
+    ipcRenderer.invoke('pick-directory', defaultPath),
+  /** Real disk path of a dropped File (File.path is gone in Electron ≥32). */
+  getPathForFile: (file: File): string => webUtils.getPathForFile(file)
 }
 
 export type TempCodeApi = typeof api

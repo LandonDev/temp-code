@@ -1,7 +1,14 @@
 import { create } from 'zustand'
 import type { CATALOG, Reasoning } from '@shared/catalog'
-import type { EventRow, SessionMeta } from '@shared/events'
-import type { FileChange, ProjectMeta, ProjectMode, ThreadType, WorkspaceMeta } from '@shared/domain'
+import type { Attachment, EventRow, PermissionPolicy, SessionMeta } from '@shared/events'
+import type {
+  FileChange,
+  ProjectMeta,
+  ProjectMode,
+  SlashCommand,
+  ThreadType,
+  WorkspaceMeta
+} from '@shared/domain'
 import type { CreateSessionInput } from '@shared/contract'
 import { client } from '../lib/client'
 import { foldAll, foldEvent, type Block, type FoldState, type TodoItem } from './blocks'
@@ -26,10 +33,16 @@ interface AppState {
   costs: Record<string, number | undefined>
   todos: Record<string, TodoItem[]>
   changes: Record<string, FileChange[]>
+  /** slash commands per `${provider}:${cwd}` (skills/commands/prompts) */
+  commands: Record<string, SlashCommand[]>
+  /** project working-tree paths, for @-mention autocomplete */
+  files: Record<string, string[]>
   selectedProjectId: string | null
   /** the open thread (or unsorted legacy session) */
   selectedId: string | null
   railOpen: boolean
+  /** project-relative path the right rail's diff view is showing */
+  railDiff: string | null
 
   init: () => Promise<void>
   refreshTree: () => Promise<void>
@@ -45,16 +58,24 @@ interface AppState {
   send: (
     sessionId: string,
     text: string,
-    opts?: { model?: string; reasoning?: Reasoning }
+    opts?: { model?: string; reasoning?: Reasoning; attachments?: Attachment[] }
   ) => Promise<void>
   interrupt: (sessionId: string) => Promise<void>
   approve: (sessionId: string, requestId: string, allow: boolean) => Promise<void>
+  setPermission: (sessionId: string, permission: PermissionPolicy) => Promise<void>
   setArchived: (sessionId: string, archived: boolean) => Promise<void>
   deleteSession: (sessionId: string) => Promise<void>
   restartSession: (sessionId: string) => Promise<void>
   fetchChanges: (projectId: string) => Promise<void>
+  fetchCommands: (provider: string, cwd: string) => Promise<void>
+  fetchFiles: (projectId: string) => Promise<void>
+  saveAttachment: (name: string, dataBase64: string) => Promise<Attachment>
   readFile: (path: string) => Promise<string | null>
   setRailOpen: (open: boolean) => void
+  setRailDiff: (path: string | null) => void
+  /** Open the right rail on a file's diff. Accepts absolute or
+   *  project-relative paths; absolute paths outside the project no-op. */
+  openFileRef: (path: string) => void
 }
 
 function publishFold(
@@ -80,9 +101,12 @@ export const useApp = create<AppState>((set, get) => ({
   costs: {},
   todos: {},
   changes: {},
+  commands: {},
+  files: {},
   selectedProjectId: null,
   selectedId: null,
   railOpen: false,
+  railDiff: null,
 
   init: async () => {
     if (initStarted) return
@@ -100,8 +124,10 @@ export const useApp = create<AppState>((set, get) => ({
           fold = foldAll(get().events[sessionId] ?? [])
           folds.set(sessionId, fold)
         }
-        foldEvent(fold, push.row.event)
-        set((s) => ({ events: { ...s.events, [sessionId]: [...(s.events[sessionId] ?? []), push.row] } }))
+        foldEvent(fold, push.row.event, push.row.ts)
+        set((s) => ({
+          events: { ...s.events, [sessionId]: [...(s.events[sessionId] ?? []), push.row] }
+        }))
         publishFold(set, sessionId, fold)
       } else if (push.push === 'session-removed') {
         set((s) => {
@@ -179,7 +205,7 @@ export const useApp = create<AppState>((set, get) => ({
 
   selectProject: (projectId) => {
     if (projectId === get().selectedProjectId) return
-    set({ selectedProjectId: projectId })
+    set({ selectedProjectId: projectId, railDiff: null })
     // Open the project's most recent thread, if it has one.
     const threads = Object.values(get().sessions)
       .filter((s) => s.projectId === projectId && !s.parentId && !s.archived)
@@ -201,7 +227,10 @@ export const useApp = create<AppState>((set, get) => ({
   loadSession: async (sessionId) => {
     await client.request('session.subscribe', { sessionId })
     const lastSeq = get().events[sessionId]?.at(-1)?.seq ?? 0
-    const rows = await client.request<EventRow[]>('session.events', { sessionId, afterSeq: lastSeq })
+    const rows = await client.request<EventRow[]>('session.events', {
+      sessionId,
+      afterSeq: lastSeq
+    })
     if (rows.length) {
       set((s) => {
         const seen = new Set((s.events[sessionId] ?? []).map((r) => r.seq))
@@ -235,6 +264,10 @@ export const useApp = create<AppState>((set, get) => ({
     await client.request('session.approve', { sessionId, requestId, allow })
   },
 
+  setPermission: async (sessionId, permission) => {
+    await client.request('session.permission', { sessionId, permission })
+  },
+
   setArchived: async (sessionId, archived) => {
     await client.request('session.archive', { sessionId, archived })
   },
@@ -248,15 +281,48 @@ export const useApp = create<AppState>((set, get) => ({
   },
 
   fetchChanges: async (projectId) => {
-    const list = await client.request<FileChange[]>('project.changes', { projectId }).catch(() => [])
+    const list = await client
+      .request<FileChange[]>('project.changes', { projectId })
+      .catch(() => [])
     set((s) => ({ changes: { ...s.changes, [projectId]: list } }))
+  },
+
+  fetchCommands: async (provider, cwd) => {
+    const key = `${provider}:${cwd}`
+    const list = await client
+      .request<SlashCommand[]>('commands.list', { provider, cwd })
+      .catch(() => [])
+    set((s) => ({ commands: { ...s.commands, [key]: list } }))
+  },
+
+  fetchFiles: async (projectId) => {
+    const list = await client.request<string[]>('project.files', { projectId }).catch(() => [])
+    set((s) => ({ files: { ...s.files, [projectId]: list } }))
+  },
+
+  saveAttachment: async (name, dataBase64) => {
+    return client.request<Attachment>('attachment.save', { name, dataBase64 })
   },
 
   readFile: async (path) => {
     return client.request<string | null>('file.read', { path }).catch(() => null)
   },
 
-  setRailOpen: (open) => set({ railOpen: open })
+  setRailOpen: (open) => set({ railOpen: open, ...(open ? {} : { railDiff: null }) }),
+  setRailDiff: (path) => set({ railDiff: path }),
+
+  openFileRef: (path) => {
+    const { selectedProjectId, projects } = get()
+    const project = projects.find((p) => p.id === selectedProjectId)
+    if (!project) return
+    let rel = path.replace(/:\d+(?::\d+)?$/, '') // strip :line(:col)
+    if (rel.startsWith('/')) {
+      const root = project.cwd.endsWith('/') ? project.cwd : `${project.cwd}/`
+      if (!rel.startsWith(root)) return
+      rel = rel.slice(root.length)
+    }
+    set({ railOpen: true, railDiff: rel })
+  }
 }))
 
 /** Root threads of a project, newest last (strip order = creation order). */

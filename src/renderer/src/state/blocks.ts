@@ -1,4 +1,4 @@
-import type { AgentEvent, EventRow } from '@shared/events'
+import type { AgentEvent, Attachment, EventRow } from '@shared/events'
 
 /**
  * Incremental transcript folding — the store folds each event into blocks
@@ -15,9 +15,16 @@ import type { AgentEvent, EventRow } from '@shared/events'
  */
 
 type BlockKind =
-  | { kind: 'user'; text: string }
+  | { kind: 'user'; text: string; attachments?: Attachment[] }
   | { kind: 'assistant'; text: string; streaming: boolean }
-  | { kind: 'thinking'; text: string; streaming: boolean }
+  | {
+      kind: 'thinking'
+      text: string
+      streaming: boolean
+      /** wall-clock ms the model spent thinking ("Thought for 12s") */
+      startedAt?: number
+      thoughtMs?: number
+    }
   | {
       kind: 'tool'
       callId: string
@@ -101,9 +108,11 @@ function todosFrom(name: string, input: unknown): TodoItem[] | null {
 function foldText(
   s: FoldState,
   kind: 'assistant' | 'thinking',
-  e: { text: string; delta: boolean; msgId?: string; blockIndex?: number }
+  e: { text: string; delta: boolean; msgId?: string; blockIndex?: number },
+  ts?: number
 ): void {
-  const key = e.msgId !== undefined && e.blockIndex !== undefined ? `${e.msgId}:${e.blockIndex}` : null
+  const key =
+    e.msgId !== undefined && e.blockIndex !== undefined ? `${e.msgId}:${e.blockIndex}` : null
   let idx: number | undefined
   if (key) {
     idx = s.byKey.get(key)
@@ -115,19 +124,28 @@ function foldText(
   }
 
   if (idx === undefined) {
-    const newIdx = push(s, { kind, text: e.text, streaming: e.delta })
+    const newIdx = push(s, {
+      kind,
+      text: e.text,
+      streaming: e.delta,
+      ...(kind === 'thinking' ? { startedAt: ts } : {})
+    })
     if (key) s.byKey.set(key, newIdx)
     return
   }
   const cur = s.blocks[idx] as Extract<Block, { kind: 'assistant' | 'thinking' }>
+  const thoughtMs =
+    !e.delta && cur.kind === 'thinking' && cur.startedAt !== undefined && ts !== undefined
+      ? Math.max(0, ts - cur.startedAt)
+      : undefined
   s.blocks[idx] = e.delta
     ? { ...cur, text: cur.text + e.text }
-    : { ...cur, text: e.text, streaming: false }
+    : { ...cur, text: e.text, streaming: false, ...(thoughtMs !== undefined ? { thoughtMs } : {}) }
 }
 
 /** Fold one event into the state. Mutates the state; changed block objects
  *  are replaced (never mutated) so memoized rows re-render correctly. */
-export function foldEvent(s: FoldState, e: AgentEvent): void {
+export function foldEvent(s: FoldState, e: AgentEvent, ts?: number): void {
   // Subagent activity: count it on the owning tool block, don't inline it.
   if ('parentCallId' in e && e.parentCallId) {
     const idx = s.byCall.get(e.parentCallId)
@@ -143,13 +161,13 @@ export function foldEvent(s: FoldState, e: AgentEvent): void {
 
   switch (e.type) {
     case 'user-text':
-      push(s, { kind: 'user', text: e.text })
+      push(s, { kind: 'user', text: e.text, attachments: e.attachments })
       break
     case 'assistant-text':
-      foldText(s, 'assistant', e)
+      foldText(s, 'assistant', e, ts)
       break
     case 'thinking':
-      foldText(s, 'thinking', e)
+      foldText(s, 'thinking', e, ts)
       break
     case 'tool-call': {
       // Plan-tool calls update the todo model; blocks born after this
@@ -166,7 +184,10 @@ export function foldEvent(s: FoldState, e: AgentEvent): void {
         const b = s.blocks[existing] as Extract<Block, { kind: 'tool' }>
         s.blocks[existing] = { ...b, name: e.name, input: e.input ?? b.input }
       } else {
-        s.byCall.set(e.callId, push(s, { kind: 'tool', callId: e.callId, name: e.name, input: e.input, subCount: 0 }))
+        s.byCall.set(
+          e.callId,
+          push(s, { kind: 'tool', callId: e.callId, name: e.name, input: e.input, subCount: 0 })
+        )
       }
       break
     }
@@ -211,6 +232,6 @@ export function foldEvent(s: FoldState, e: AgentEvent): void {
 
 export function foldAll(rows: EventRow[]): FoldState {
   const s = emptyFold()
-  for (const r of rows) foldEvent(s, r.event)
+  for (const r of rows) foldEvent(s, r.event, r.ts)
   return s
 }

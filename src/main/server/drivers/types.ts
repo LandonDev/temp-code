@@ -1,5 +1,5 @@
 import type { ProviderId } from '@shared/catalog'
-import type { AgentEvent, SessionMeta } from '@shared/events'
+import type { AgentEvent, Attachment, SessionMeta } from '@shared/events'
 
 /**
  * The per-harness contract. A driver owns exactly one running harness
@@ -22,7 +22,9 @@ export interface DriverCtx {
 }
 
 export interface DriverHandle {
-  send: (text: string) => Promise<void>
+  /** Images should reach the model as native content where the harness
+   *  supports it; other attachments ride along as path references. */
+  send: (text: string, attachments?: Attachment[]) => Promise<void>
   interrupt: () => void
   /** Answer a pending approval-request (drivers that support approvals). */
   approve?: (requestId: string, allow: boolean) => void
