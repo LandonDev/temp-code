@@ -1,9 +1,11 @@
 import { useMemo, useState } from 'react'
+import { motion, useReducedMotion } from 'motion/react'
 import { Plus } from 'lucide-react'
 import type { ThreadType } from '@shared/domain'
 import type { ProviderId } from '@shared/catalog'
 import { threadsOfProject, useApp } from '../../state/store'
 import { cn } from '../../lib/utils'
+import { SPRING_LAYOUT } from '../../lib/ease'
 import { Tabs, TabsList, TabsTrigger } from '../motion/tabs'
 import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select'
@@ -74,6 +76,7 @@ function NewThreadButton({
   const [type, setType] = useState<ThreadType>('chat')
   const [provider, setProvider] = useState<ProviderId>('claude')
   const [busy, setBusy] = useState(false)
+  const reduce = useReducedMotion()
 
   if (!catalog) return <span />
   // Orchestration runs on the claude harness (the MCP toolset lives there).
@@ -107,7 +110,7 @@ function NewThreadButton({
         <button
           aria-label="New thread"
           className={cn(
-            'flex shrink-0 items-center gap-1.5 rounded-md px-2 py-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground active:scale-95',
+            'flex shrink-0 items-center gap-1.5 rounded-md px-2 py-1 text-muted-foreground transition hover:bg-accent hover:text-foreground active:scale-95',
             empty && 'text-foreground'
           )}
         >
@@ -115,7 +118,7 @@ function NewThreadButton({
           {empty && <span className="text-[13px]">New thread</span>}
         </button>
       </PopoverTrigger>
-      <PopoverContent align="start" className="w-72 p-2">
+      <PopoverContent align="start" className="w-72 rounded-xl p-2">
         <div className="flex flex-col gap-0.5">
           {(Object.keys(THREAD_LABELS) as ThreadType[]).map((t) => {
             const Glyph = THREAD_GLYPHS[t]
@@ -124,12 +127,19 @@ function NewThreadButton({
                 key={t}
                 onClick={() => setType(t)}
                 className={cn(
-                  'flex items-start gap-2.5 rounded-md px-2.5 py-2 text-left transition-colors active:scale-[0.99]',
-                  type === t ? 'bg-accent' : 'hover:bg-accent/50'
+                  'relative flex items-start gap-2.5 rounded-md px-2.5 py-2 text-left active:scale-[0.99]',
+                  type !== t && 'hover:bg-accent/50'
                 )}
               >
-                <Glyph className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
-                <span className="min-w-0">
+                {type === t && (
+                  <motion.span
+                    layoutId="new-thread-type"
+                    transition={reduce ? { duration: 0 } : SPRING_LAYOUT}
+                    className="absolute inset-0 rounded-md bg-accent"
+                  />
+                )}
+                <Glyph className="relative mt-0.5 size-4 shrink-0 text-muted-foreground" />
+                <span className="relative min-w-0">
                   <span className="block text-[13px] font-medium">{THREAD_LABELS[t]}</span>
                   <span className="block text-[11px] leading-snug text-muted-foreground">
                     {TYPE_HINTS[t]}

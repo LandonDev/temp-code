@@ -155,11 +155,11 @@ function StartHandoff({ session }: { session: SessionMeta }): React.JSX.Element 
             Start
           </button>
         </PopoverTrigger>
-        <PopoverContent align="center" side="top" className="w-64 p-1.5">
+        <PopoverContent align="center" side="top" className="w-64 rounded-xl p-1.5">
           <button
             disabled={busy}
             onClick={() => void start('implementation')}
-            className="flex w-full items-start gap-2.5 rounded-md px-2.5 py-2 text-left hover:bg-accent active:scale-[0.99]"
+            className="flex w-full items-start gap-2.5 rounded-md px-2.5 py-2 text-left transition-colors hover:bg-accent active:scale-[0.99]"
           >
             <ListChecks className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
             <span>
@@ -172,7 +172,7 @@ function StartHandoff({ session }: { session: SessionMeta }): React.JSX.Element 
           <button
             disabled={busy}
             onClick={() => void start('orchestration')}
-            className="flex w-full items-start gap-2.5 rounded-md px-2.5 py-2 text-left hover:bg-accent active:scale-[0.99]"
+            className="flex w-full items-start gap-2.5 rounded-md px-2.5 py-2 text-left transition-colors hover:bg-accent active:scale-[0.99]"
           >
             <GitFork className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
             <span>

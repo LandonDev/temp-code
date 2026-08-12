@@ -78,7 +78,7 @@ export function PromptBar({ compact }: { compact?: boolean }): React.JSX.Element
             disabled={!running && !text.trim()}
             aria-label={running ? 'Stop' : 'Send'}
             className={cn(
-              'relative flex size-7 shrink-0 items-center justify-center overflow-hidden rounded-full transition-colors active:scale-90',
+              'relative flex size-7 shrink-0 items-center justify-center overflow-hidden rounded-full transition active:scale-95',
               running
                 ? 'bg-foreground text-background'
                 : text.trim()

@@ -214,7 +214,7 @@ function AgentDetail({
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
         onClick={onClose}
-        className="absolute inset-0 bg-background/50"
+        className="absolute inset-0 bg-black/10 supports-backdrop-filter:backdrop-blur-xs"
       />
       <motion.div
         layoutId={`agent-${agent.id}`}
@@ -239,7 +239,7 @@ function AgentDetail({
             <button
               onClick={onClose}
               aria-label="Close agent detail"
-              className="flex size-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground active:scale-90"
+              className="flex size-6 items-center justify-center rounded-md text-muted-foreground transition hover:bg-accent hover:text-foreground active:scale-95"
             >
               <X className="size-3.5" />
             </button>
@@ -264,7 +264,7 @@ function AgentDetail({
             disabled={!text.trim()}
             aria-label="Send"
             className={cn(
-              'flex size-6 items-center justify-center rounded-full transition-colors active:scale-90',
+              'flex size-6 items-center justify-center rounded-full transition active:scale-95',
               text.trim()
                 ? 'bg-primary text-primary-foreground'
                 : 'bg-secondary text-muted-foreground'

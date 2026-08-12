@@ -56,7 +56,7 @@ export function NewProjectDialog({
     <Dialog open onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="max-w-sm">
         <DialogHeader>
-          <DialogTitle className="text-[15px]">New project in {workspace.name}</DialogTitle>
+          <DialogTitle>New project in {workspace.name}</DialogTitle>
         </DialogHeader>
         <div className="flex flex-col gap-3">
           <Input

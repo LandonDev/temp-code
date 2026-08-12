@@ -37,7 +37,7 @@ export function Titlebar(): React.JSX.Element {
           <button
             onClick={() => setRailOpen(!railOpen)}
             className={cn(
-              'flex size-6 items-center justify-center rounded-md transition-colors active:scale-95',
+              'flex size-6 items-center justify-center rounded-md transition active:scale-95',
               railOpen ? 'bg-accent text-foreground' : 'text-muted-foreground hover:text-foreground'
             )}
             title="Changes"

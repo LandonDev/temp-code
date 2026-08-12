@@ -112,7 +112,7 @@ function WorkspaceGroup({
             onClick={onNewProject}
             title="New project"
             aria-label="New project"
-            className="flex size-5 items-center justify-center rounded text-muted-foreground hover:text-foreground active:scale-95"
+            className="flex size-5 items-center justify-center rounded text-muted-foreground transition hover:text-foreground active:scale-95"
           >
             <Plus className="size-3.5" />
           </button>
@@ -120,7 +120,7 @@ function WorkspaceGroup({
             <DropdownMenuTrigger asChild>
               <button
                 aria-label="Workspace options"
-                className="flex size-5 items-center justify-center rounded text-muted-foreground hover:text-foreground"
+                className="flex size-5 items-center justify-center rounded text-muted-foreground transition hover:text-foreground active:scale-95"
               >
                 <MoreHorizontal className="size-3.5" />
               </button>
@@ -150,7 +150,7 @@ function WorkspaceGroup({
             {projects.length === 0 ? (
               <button
                 onClick={onNewProject}
-                className="ml-5 flex items-center gap-1.5 rounded-md px-2 py-1 text-xs text-muted-foreground/60 hover:text-muted-foreground"
+                className="ml-5 flex items-center gap-1.5 rounded-md px-2 py-1 text-xs text-muted-foreground/60 transition-colors hover:text-muted-foreground"
               >
                 <Plus className="size-3" /> New project
               </button>
@@ -220,7 +220,7 @@ function ProjectRow({
           <DropdownMenuTrigger asChild>
             <button
               aria-label="Project options"
-              className="flex size-5 items-center justify-center rounded text-muted-foreground hover:text-foreground"
+              className="flex size-5 items-center justify-center rounded text-muted-foreground transition hover:text-foreground active:scale-95"
             >
               <MoreHorizontal className="size-3.5" />
             </button>
@@ -242,33 +242,47 @@ function UnsortedGroup({ sessions }: { sessions: SessionMeta[] }): React.JSX.Ele
   const select = useApp((s) => s.select)
   const selectProject = useApp((s) => s.selectProject)
   const selectedId = useApp((s) => s.selectedId)
+  const reduce = useReducedMotion()
 
   return (
     <div className="mt-3">
       <button
         onClick={() => setOpen(!open)}
-        className="flex w-full items-center gap-1.5 px-2 py-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground/50 hover:text-muted-foreground"
+        className="flex w-full items-center gap-1.5 px-2 py-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground/50 transition-colors hover:text-muted-foreground"
       >
         <ChevronRight className={cn('size-3 transition-transform', open && 'rotate-90')} />
         Unsorted · {sessions.length}
       </button>
-      {open &&
-        sessions.map((s) => (
-          <button
-            key={s.id}
-            onPointerDown={() => {
-              selectProject(null)
-              void select(s.id)
-            }}
-            className={cn(
-              'ml-3 flex w-[calc(100%-0.75rem)] items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs',
-              selectedId === s.id ? 'bg-accent text-foreground' : 'text-muted-foreground hover:bg-accent/50'
-            )}
+      <AnimatePresence initial={false}>
+        {open && (
+          <motion.div
+            initial={reduce ? false : { height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={reduce ? undefined : { height: 0, opacity: 0 }}
+            transition={reduce ? { duration: 0 } : SPRING_LAYOUT}
+            className="overflow-hidden"
           >
-            <StatusDot status={s.status} />
-            <span className="truncate">{s.title}</span>
-          </button>
-        ))}
+            {sessions.map((s) => (
+              <button
+                key={s.id}
+                onPointerDown={() => {
+                  selectProject(null)
+                  void select(s.id)
+                }}
+                className={cn(
+                  'ml-3 flex w-[calc(100%-0.75rem)] items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs',
+                  selectedId === s.id
+                    ? 'bg-accent text-foreground'
+                    : 'text-muted-foreground hover:bg-accent/50'
+                )}
+              >
+                <StatusDot status={s.status} />
+                <span className="truncate">{s.title}</span>
+              </button>
+            ))}
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   )
 }
