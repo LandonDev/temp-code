@@ -36,9 +36,14 @@ async function skillsIn(dir: string, scope: SlashCommand['scope']): Promise<Slas
   const entries = await readdir(dir, { withFileTypes: true }).catch(() => [])
   const out: SlashCommand[] = []
   for (const e of entries) {
-    if (!e.isDirectory()) continue
-    const md = await readFile(join(dir, e.name, 'SKILL.md'), 'utf8').catch(() => null)
-    if (md !== null) out.push({ name: e.name, description: describe(md), source: 'skill', scope })
+    // Skill dirs are often symlinks (e.g. ~/.codex/skills → ~/.agents) —
+    // don't gate on dirent type, just try the read.
+    if (e.isFile()) continue
+    const path = join(dir, e.name, 'SKILL.md')
+    const md = await readFile(path, 'utf8').catch(() => null)
+    if (md !== null) {
+      out.push({ name: e.name, description: describe(md), source: 'skill', scope, path })
+    }
   }
   return out
 }
@@ -52,9 +57,10 @@ async function mdFilesIn(
   const out: SlashCommand[] = []
   for (const f of entries) {
     if (!f.endsWith('.md')) continue
-    const md = await readFile(join(dir, f), 'utf8').catch(() => null)
+    const path = join(dir, f)
+    const md = await readFile(path, 'utf8').catch(() => null)
     if (md !== null) {
-      out.push({ name: basename(f, '.md'), description: describe(md), source, scope })
+      out.push({ name: basename(f, '.md'), description: describe(md), source, scope, path })
     }
   }
   return out

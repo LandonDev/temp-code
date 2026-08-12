@@ -3,6 +3,7 @@ import { createInterface } from 'node:readline'
 import type { Attachment } from '@shared/events'
 import type { DriverCtx, DriverHandle, HarnessDriver } from './types'
 import { harnessEnv, resolveBinary } from './binaries'
+import { expandSlashRefs } from '../slash'
 
 /**
  * Cursor driver — `cursor-agent -p --trust --output-format stream-json`,
@@ -172,8 +173,11 @@ export const cursorDriver: HarnessDriver = {
         // cursor-agent has no native attachment input — everything rides as
         // path references it can read itself.
         const refs = attachments.map((a) => a.path)
+        const expanded = await expandSlashRefs('cursor', session.cwd, text)
         runTurn(
-          refs.length ? `${text}\n\n${refs.map((p) => `Attached file: ${p}`).join('\n')}` : text
+          refs.length
+            ? `${expanded}\n\n${refs.map((p) => `Attached file: ${p}`).join('\n')}`
+            : expanded
         )
       },
       interrupt(): void {
