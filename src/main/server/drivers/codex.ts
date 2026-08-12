@@ -1,4 +1,7 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
+import { readFileSync } from 'node:fs'
+import { homedir } from 'node:os'
+import { join } from 'node:path'
 import { createInterface } from 'node:readline'
 import type { Attachment, PermissionPolicy, SessionStatus } from '@shared/events'
 import type { Reasoning } from '@shared/catalog'
@@ -35,6 +38,40 @@ const EFFORT: Record<Reasoning, string> = {
   medium: 'medium',
   high: 'high',
   max: 'xhigh'
+}
+
+/**
+ * app-server takes raw input items and never parses `/name` the way the
+ * codex TUI does — expand skill/prompt invocations ourselves. The transcript
+ * still shows the `/name` the user typed (sessions.ts logs the original).
+ */
+function expandSlash(text: string): string {
+  const m = text.match(/^\/([\w-]+)(?:\s+([\s\S]*))?$/)
+  if (!m) return text
+  const [, name, args = ''] = m
+  const home = homedir()
+
+  const skillDir = join(home, '.codex', 'skills', name)
+  try {
+    const body = readFileSync(join(skillDir, 'SKILL.md'), 'utf8')
+    return [
+      `Follow this skill. Its base directory is ${skillDir} — resolve relative paths against it.`,
+      '',
+      body,
+      '',
+      args.trim() ? `User request: ${args.trim()}` : 'Proceed.'
+    ].join('\n')
+  } catch {
+    /* not a skill — try prompts */
+  }
+
+  try {
+    const body = readFileSync(join(home, '.codex', 'prompts', `${name}.md`), 'utf8')
+    if (body.includes('$ARGUMENTS')) return body.replaceAll('$ARGUMENTS', args.trim())
+    return args.trim() ? `${body}\n\n${args.trim()}` : body
+  } catch {
+    return text
+  }
 }
 
 interface RpcFrame {
@@ -366,9 +403,10 @@ export const codexDriver: HarnessDriver = {
         // Images are native input items (localImage); other files ride as
         // path references in the text.
         const refs = attachments.filter((a) => a.kind !== 'image').map((a) => a.path)
+        const expanded = expandSlash(text)
         const full = refs.length
-          ? `${text}\n\n${refs.map((p) => `Attached file: ${p}`).join('\n')}`
-          : text
+          ? `${expanded}\n\n${refs.map((p) => `Attached file: ${p}`).join('\n')}`
+          : expanded
         const input: Record<string, unknown>[] = [{ type: 'text', text: full }]
         for (const a of attachments) {
           if (a.kind === 'image') input.push({ type: 'localImage', path: a.path })

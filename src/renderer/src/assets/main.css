@@ -1,10 +1,13 @@
 @import 'tailwindcss';
 @plugin '@tailwindcss/typography';
 
-/* shiki paints its own theme colors; the container owns the frame. */
+/* shiki paints its own theme colors; the container owns the frame.
+ * Lines wrap — a transcript never scrolls sideways. */
 .code-block pre {
   background: transparent !important;
   margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 /* Dual-theme shiki: spans carry both palettes, .dark flips to the dark one. */
 .dark .shiki,

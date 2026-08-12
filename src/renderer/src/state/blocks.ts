@@ -70,6 +70,8 @@ export interface FoldState {
   /** latest todo list (TodoWrite / update_plan), for implementation threads */
   todos: TodoItem[]
   activeTodo: number
+  /** indexes of optimistic user blocks awaiting their server echo */
+  pendingUsers: number[]
 }
 
 export function emptyFold(): FoldState {
@@ -80,8 +82,16 @@ export function emptyFold(): FoldState {
     byRequest: new Map(),
     nextId: 1,
     todos: [],
-    activeTodo: -1
+    activeTodo: -1,
+    pendingUsers: []
   }
+}
+
+/** Show the user's message the instant they hit send — the server echoes
+ *  the authoritative user-text event a round-trip later; foldEvent then
+ *  claims this block instead of appending a duplicate. */
+export function foldOptimisticUser(s: FoldState, text: string, attachments?: Attachment[]): void {
+  s.pendingUsers.push(push(s, { kind: 'user', text, attachments }))
 }
 
 function push(s: FoldState, block: BlockKind): number {
@@ -160,9 +170,16 @@ export function foldEvent(s: FoldState, e: AgentEvent, ts?: number): void {
   }
 
   switch (e.type) {
-    case 'user-text':
-      push(s, { kind: 'user', text: e.text, attachments: e.attachments })
+    case 'user-text': {
+      const pending = s.pendingUsers.shift()
+      if (pending !== undefined && s.blocks[pending]?.kind === 'user') {
+        const b = s.blocks[pending] as Extract<Block, { kind: 'user' }>
+        s.blocks[pending] = { ...b, text: e.text, attachments: e.attachments }
+      } else {
+        push(s, { kind: 'user', text: e.text, attachments: e.attachments })
+      }
       break
+    }
     case 'assistant-text':
       foldText(s, 'assistant', e, ts)
       break

@@ -11,7 +11,7 @@ import type { SlashCommand } from '@shared/domain'
  *
  *   claude: ~/.claude/skills/<name>/SKILL.md + <cwd>/.claude/skills,
  *           ~/.claude/commands/*.md + <cwd>/.claude/commands
- *   codex:  ~/.codex/prompts/*.md
+ *   codex:  ~/.codex/skills/<name>/SKILL.md, ~/.codex/prompts/*.md
  *   cursor: ~/.cursor/commands/*.md + <cwd>/.cursor/commands
  */
 
@@ -78,7 +78,10 @@ export async function listCommands(provider: ProviderId, cwd: string): Promise<S
           mdFilesIn(join(cwd, '.claude', 'commands'), 'command', 'project')
         ]
       : provider === 'codex'
-        ? [mdFilesIn(join(home, '.codex', 'prompts'), 'prompt', 'user')]
+        ? [
+            skillsIn(join(home, '.codex', 'skills'), 'user'),
+            mdFilesIn(join(home, '.codex', 'prompts'), 'prompt', 'user')
+          ]
         : [
             mdFilesIn(join(home, '.cursor', 'commands'), 'command', 'user'),
             mdFilesIn(join(cwd, '.cursor', 'commands'), 'command', 'project')

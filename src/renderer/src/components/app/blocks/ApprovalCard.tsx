@@ -2,6 +2,7 @@ import { memo } from 'react'
 import { Check, ShieldQuestion, X } from 'lucide-react'
 
 import { useApp } from '../../../state/store'
+import { summarizeCommand } from '../../../lib/command-summary'
 import { Button } from '../../ui/button'
 import type { Block } from '../../../state/blocks'
 
@@ -21,10 +22,14 @@ function ApprovalDetail({
   const i = input as Record<string, unknown>
 
   if (toolName === 'Bash' || toolName === 'shell' || toolName === 'Shell') {
+    const s = summarizeCommand(str(i.command))
     return (
-      <div className="flex gap-1.5 border-t px-3 py-2 font-mono text-xs leading-5">
-        <span className="select-none text-muted-foreground/50">$</span>
-        <span className="whitespace-pre-wrap break-all">{str(i.command)}</span>
+      <div className="border-t px-3 py-2">
+        <div className="text-xs text-muted-foreground">{s.doing}</div>
+        <div className="mt-1 flex gap-1.5 font-mono text-xs leading-5">
+          <span className="select-none text-muted-foreground/50">$</span>
+          <span className="whitespace-pre-wrap break-all">{s.command}</span>
+        </div>
       </div>
     )
   }

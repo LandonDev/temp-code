@@ -65,7 +65,13 @@ export function Transcript({
   const blocks = useApp((s) => s.blocks[sessionId]) ?? []
   const status = useApp((s) => s.sessions[sessionId]?.status)
   const scrollRef = useRef<HTMLDivElement>(null)
-  const atBottomRef = useRef(true)
+  // Follow intent: only a scroll the USER made may break away from the
+  // bottom. Programmatic pins and virtualizer re-measures (row estimates are
+  // far smaller than real rows) also fire scroll events — those must not
+  // flip follow off, or the transcript silently stops tracking output.
+  const followRef = useRef(true)
+  const programmatic = useRef(false)
+  const prevLen = useRef(0)
   // Blocks present at mount are history — only later arrivals animate in.
   const initialCount = useRef(blocks.length)
 
@@ -77,12 +83,25 @@ export function Transcript({
     getItemKey: (i) => blocks[i].id
   })
 
-  // Track whether the user is pinned to the bottom; only then follow output.
+  const scrollToBottom = (): void => {
+    const el = scrollRef.current
+    if (!el) return
+    const target = el.scrollHeight - el.clientHeight
+    if (Math.abs(el.scrollTop - target) > 1) {
+      programmatic.current = true
+      el.scrollTop = target
+    }
+  }
+
   useEffect(() => {
     const el = scrollRef.current
     if (!el) return
     const onScroll = (): void => {
-      atBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80
+      if (programmatic.current) {
+        programmatic.current = false
+        return
+      }
+      followRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80
     }
     el.addEventListener('scroll', onScroll, { passive: true })
     return () => el.removeEventListener('scroll', onScroll)
@@ -92,16 +111,21 @@ export function Transcript({
   // The turn is underway but nothing on screen shows it yet (model hasn't
   // started streaming, or a tool just finished) — hold a live indicator.
   const working = (status === 'running' || status === 'starting') && !lastBlockActive(last)
+  // totalSize in the deps re-pins as rows measure in — the initial jump
+  // otherwise lands on estimated heights and strands the view mid-thread.
+  const totalSize = virtualizer.getTotalSize()
   useLayoutEffect(() => {
-    const el = scrollRef.current
-    if (el && atBottomRef.current) el.scrollTop = el.scrollHeight
-  }, [last, blocks.length, working])
+    // Sending a message always re-pins: you want to watch the reply.
+    if (blocks.length > prevLen.current && last?.kind === 'user') followRef.current = true
+    prevLen.current = blocks.length
+    if (followRef.current) scrollToBottom()
+  }, [last, blocks.length, working, totalSize])
 
   // New session selected: jump to the end.
   useLayoutEffect(() => {
-    atBottomRef.current = true
-    const el = scrollRef.current
-    if (el) el.scrollTop = el.scrollHeight
+    followRef.current = true
+    prevLen.current = 0
+    scrollToBottom()
   }, [sessionId])
 
   return (
@@ -109,10 +133,7 @@ export function Transcript({
       ref={scrollRef}
       className={cn('[overflow-anchor:none]', className ?? 'flex-1 overflow-y-auto select-text')}
     >
-      <div
-        className="relative mx-auto w-full max-w-3xl px-6"
-        style={{ height: virtualizer.getTotalSize() }}
-      >
+      <div className="relative mx-auto w-full max-w-3xl px-6" style={{ height: totalSize }}>
         {virtualizer.getVirtualItems().map((item) => {
           const block = blocks[item.index]
           // Chrome rows (tools, thinking) cluster; prose and messages breathe.
@@ -128,7 +149,9 @@ export function Transcript({
             >
               <div
                 className={cn(
-                  dense ? 'py-1' : 'py-2.5',
+                  // Narrow gap range (12–16px) so a working turn's mix of
+                  // chrome rows and prose reads as one even column.
+                  dense ? 'py-1.5' : 'py-2',
                   fresh && 'animate-[block-in_180ms_cubic-bezier(0.16,1,0.3,1)]'
                 )}
               >

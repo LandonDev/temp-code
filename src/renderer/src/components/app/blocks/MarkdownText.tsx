@@ -85,7 +85,7 @@ export const MarkdownText = memo(function MarkdownText({
             }
             return (
               <code
-                className="rounded bg-secondary px-1 py-0.5 font-mono text-[0.85em] before:content-none after:content-none"
+                className="rounded bg-secondary px-1 py-0.5 font-mono text-[0.85em] break-words [overflow-wrap:anywhere] before:content-none after:content-none"
                 {...props}
               >
                 {children}
