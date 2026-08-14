@@ -185,22 +185,24 @@ function usePersistedOpen(key: string): [boolean, (v: boolean) => void] {
 }
 
 /** Tween a displayed count toward its target — the diffstat counts up as
- *  the change lands instead of teleporting. 550ms ease-out cubic. */
+ *  the change lands instead of teleporting. 550ms ease-out cubic. The tween
+ *  restarts from the value on screen, so a target that keeps moving (input
+ *  still streaming) reads as one continuous count. */
 function useCountUp(target: number, animate: boolean): number {
   const [v, setV] = useState(0)
-  const from = useRef(0)
+  const cur = useRef(0)
   const raf = useRef(0)
   useEffect(() => {
-    if (!animate) return
-    const start = from.current
-    if (start === target) return
+    if (!animate || cur.current === target) return
+    const start = cur.current
     const t0 = performance.now()
     const tick = (now: number): void => {
-      const p = Math.min(1, (now - t0) / 550)
+      // rAF timestamps are frame-start times and can predate t0 — clamp low.
+      const p = Math.min(1, Math.max(0, (now - t0) / 550))
       const eased = 1 - Math.pow(1 - p, 3)
-      setV(Math.round(start + (target - start) * eased))
+      cur.current = Math.round(start + (target - start) * eased)
+      setV(cur.current)
       if (p < 1) raf.current = requestAnimationFrame(tick)
-      else from.current = target
     }
     raf.current = requestAnimationFrame(tick)
     return () => cancelAnimationFrame(raf.current)
@@ -405,8 +407,9 @@ const Chip = memo(function Chip({ b }: { b: ToolBlock }): React.JSX.Element {
   const detail = detailOf(b, projectCwd)
   const running = b.output === undefined
   // The driver announces a call before its input finishes streaming — until
-  // the input lands the chip is a spinner, never a half-filled row.
-  const loading = b.input === undefined
+  // the complete input lands the chip is a spinner, never a half-filled row
+  // (edit cards use the partial input; small chips would just flicker).
+  const loading = b.input === undefined || b.partialInput === true
   const [wasLoading] = useState(loading)
   const isDiff = (k === 'edit' || k === 'write') && !b.isError
 
@@ -600,9 +603,13 @@ export const ZEditCard = memo(function ZEditCard({ b }: { b: ToolBlock }): React
   const projectCwd = useApp((s) => s.projects.find((p) => p.id === s.selectedProjectId)?.cwd)
   const m = editModel(b)
   const running = b.output === undefined
-  // Input still streaming from the driver: spinner + verb, no half-card.
-  const loading = b.input === undefined
-  const [wasLoading] = useState(loading)
+  // Input still streaming from the driver: spinner + verb, with the file
+  // name joining as soon as its value is complete and the diffstat counting
+  // the changes streamed so far.
+  const streamingIn = b.input === undefined || b.partialInput === true
+  const [wasStreaming] = useState(streamingIn)
+  // file_path streams first — a second key means its value finished.
+  const pathReady = m.path !== '' && (!b.partialInput || Object.keys(input(b)).length > 1)
   // Count the diffstat up only when we watched the change land live.
   const [liveAtMount] = useState(running)
   const adds = useCountUp(m.adds, liveAtMount)
@@ -629,19 +636,26 @@ export const ZEditCard = memo(function ZEditCard({ b }: { b: ToolBlock }): React
           className="flex min-w-0 flex-1 items-center gap-2.5 text-left"
         >
           <span className="flex size-5 shrink-0 items-center justify-center rounded-[6px] bg-(--tile-strong) text-foreground/80">
-            {loading ? (
+            {streamingIn ? (
               <MatrixSpinner cell={2.5} />
             ) : (
               <ZIcon name={m.create ? 'document-add' : 'pen'} size={13} />
             )}
           </span>
-          {loading ? (
-            <span className="min-w-0 truncate text-[13px] text-muted-foreground">{verb}</span>
+          {streamingIn ? (
+            <span className="min-w-0 truncate text-[13px] text-muted-foreground">
+              {verb}
+              {pathReady && (
+                <span className="ml-1.5 font-medium text-foreground animate-[z-fade-quick_150ms_ease-out]">
+                  {name}
+                </span>
+              )}
+            </span>
           ) : (
             <span
               className={cn(
                 'min-w-0 truncate text-[13px]',
-                wasLoading && 'animate-[z-fade-quick_150ms_ease-out]'
+                wasStreaming && 'animate-[z-fade-quick_150ms_ease-out]'
               )}
             >
               <span className="font-medium">{name || b.name}</span>
@@ -665,7 +679,7 @@ export const ZEditCard = memo(function ZEditCard({ b }: { b: ToolBlock }): React
                 </span>
               )
             )}
-            {running && !loading && (
+            {running && !streamingIn && (
               <span className="size-1.5 animate-pulse rounded-full bg-busy" />
             )}
             <ChevronTile open={open} />

@@ -72,11 +72,14 @@ export const AgentEventSchema = z.discriminatedUnion('type', [
 
   // Tool lifecycle. callId ties call to result. An event with the same
   // callId replaces the earlier one (early "tool started" → full input).
+  // partial=true → a streaming preview of the input while it's still being
+  // generated; a later event without the flag carries the complete input.
   z.object({
     type: z.literal('tool-call'),
     callId: z.string(),
     name: z.string(),
     input: z.unknown(),
+    partial: z.boolean().optional(),
     parentCallId: z.string().optional()
   }),
   z.object({
@@ -133,6 +136,8 @@ export interface EventRow {
   seq: number
   ts: number
   event: AgentEvent
+  /** broadcast-only row (streaming preview) — never in the log, seq -1 */
+  ephemeral?: boolean
 }
 
 export interface SessionMeta {

@@ -123,6 +123,17 @@ export const useApp = create<AppState>((set, get) => ({
         set((s) => ({ sessions: { ...s.sessions, [push.session.id]: push.session } }))
       } else if (push.push === 'event') {
         const { sessionId } = push.row
+        // Ephemeral rows (streaming tool-input previews) fold into the live
+        // view but never join the stored event list — the final event with
+        // the same callId replaces them.
+        if (push.row.ephemeral) {
+          const fold = folds.get(sessionId)
+          if (fold) {
+            foldEvent(fold, push.row.event, push.row.ts)
+            publishFold(set, sessionId, fold)
+          }
+          return
+        }
         // Seq guard: a duplicate push (double subscription, refetch race)
         // must never be applied twice.
         if (push.row.seq <= (get().events[sessionId]?.at(-1)?.seq ?? 0)) return
