@@ -6,7 +6,7 @@ import type { Block } from '../../state/blocks'
 import { ApprovalCard } from './blocks/ApprovalCard'
 import { MarkdownText } from './blocks/MarkdownText'
 import { ThinkingBlock } from './blocks/ThinkingBlock'
-import { ErrorChip, ToolGroup } from './blocks/ToolGroup'
+import { EDIT_TOOLS, ErrorChip, ToolGroup, ZEditCard } from './blocks/ToolGroup'
 import { UserMessage } from './blocks/UserMessage'
 import { ZIcon } from './zicon'
 
@@ -23,6 +23,7 @@ type ToolBlock = Extract<Block, { kind: 'tool' }>
 type Row =
   | { type: 'block'; id: string; block: Block; turn: number }
   | { type: 'group'; id: string; tools: ToolBlock[]; turn: number }
+  | { type: 'edit'; id: string; block: ToolBlock; turn: number }
 
 const TOP_INSET = 48 // OWN_SEND_TOP_INSET: titlebar 38 + 10
 const BASE_PAD = 32 // bottom pad past the fade band
@@ -39,6 +40,12 @@ function rowsFor(blocks: Block[]): Row[] {
   for (const b of blocks) {
     if (b.kind === 'user') turn++
     if (b.kind === 'tool') {
+      // File changes stand alone and loud; everything else folds into the
+      // running group (which resumes after the edit).
+      if (EDIT_TOOLS.has(b.name)) {
+        rows.push({ type: 'edit', id: b.id, block: b, turn })
+        continue
+      }
       const last = rows.at(-1)
       if (last?.type === 'group') {
         last.tools.push(b)
@@ -67,6 +74,7 @@ const easeInOut = (t: number): number => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow
 /** Single-block renderer for the non-chat views (implementation traces). */
 export const BlockRow = memo(function BlockRow({ block }: { block: Block }): React.JSX.Element {
   if (block.kind === 'tool') {
+    if (EDIT_TOOLS.has(block.name)) return <ZEditCard b={block} />
     return <ToolGroup tools={[block]} autoOpen={false} />
   }
   return <RowContent row={{ type: 'block', id: block.id, block, turn: 0 }} autoOpen={false} />
@@ -80,6 +88,7 @@ const RowContent = memo(function RowContent({
   autoOpen: boolean
 }): React.JSX.Element {
   if (row.type === 'group') return <ToolGroup tools={row.tools} autoOpen={autoOpen} />
+  if (row.type === 'edit') return <ZEditCard b={row.block} />
   const block = row.block
   switch (block.kind) {
     case 'user':
@@ -343,7 +352,7 @@ export function Transcript({
                 ? !running
                 : row.block.kind === 'assistant' && !row.block.streaming
             const lastOfTurn = isUser || (endsTurn && settled)
-            const ts = row.type === 'block' ? row.block.ts : row.tools.at(-1)?.ts
+            const ts = row.type === 'group' ? row.tools.at(-1)?.ts : row.block.ts
             return (
               <div
                 key={item.key}

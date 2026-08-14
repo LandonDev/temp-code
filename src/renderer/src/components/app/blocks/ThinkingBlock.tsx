@@ -33,7 +33,7 @@ export const ThinkingBlock = memo(function ThinkingBlock({
         onClick={() => setOpen((v) => !v)}
         className="flex h-[26px] w-full items-center gap-2 px-1 text-left text-xs text-muted-foreground transition-colors duration-150 hover:text-foreground"
       >
-        <span className="flex size-[18px] shrink-0 items-center justify-center rounded-[5px] bg-[oklch(1_0_0/6%)] text-muted-foreground/70">
+        <span className="flex size-[18px] shrink-0 items-center justify-center rounded-[5px] bg-(--tile) text-muted-foreground/70">
           <ZIcon
             name="alt-arrow-right"
             size={10}
@@ -53,7 +53,7 @@ export const ThinkingBlock = memo(function ThinkingBlock({
       >
         <div className="overflow-hidden">
           <div className="relative">
-            <div className="absolute top-0 bottom-0 left-3 w-px bg-[oklch(1_0_0/8%)]" />
+            <div className="absolute top-0 bottom-0 left-3 w-px bg-(--rail)" />
             <p className="ml-6 py-1 text-xs leading-[18px] whitespace-pre-wrap text-muted-foreground">
               {text}
             </p>

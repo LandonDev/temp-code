@@ -173,7 +173,7 @@ export function groupSummary(tools: ToolBlock[]): string {
 /** 18px chevron tile — rounded 5, white/6% plate, ▸ → ▾ via a 200ms rotate. */
 function ChevronTile({ open }: { open: boolean }): React.JSX.Element {
   return (
-    <span className="flex size-[18px] shrink-0 items-center justify-center rounded-[5px] bg-[oklch(1_0_0/6%)] text-muted-foreground/70">
+    <span className="flex size-[18px] shrink-0 items-center justify-center rounded-[5px] bg-(--tile) text-muted-foreground/70">
       <ZIcon
         name="alt-arrow-right"
         size={10}
@@ -280,7 +280,7 @@ function DiffBlock({ b }: { b: ToolBlock }): React.JSX.Element {
   return (
     <div className="py-1.5 font-mono text-[11.5px] leading-[18px]">
       {capped.map((h, n) => (
-        <div key={n} className={cn(n > 0 && 'mt-1.5 border-t border-[oklch(1_0_0/6%)] pt-1.5')}>
+        <div key={n} className={cn(n > 0 && 'mt-1.5 border-t border-(--hairline) pt-1.5')}>
           {h.old.map((l, j) => (
             <div
               key={`o${j}`}
@@ -370,7 +370,7 @@ const Chip = memo(function Chip({ b }: { b: ToolBlock }): React.JSX.Element {
 
   return (
     <div className="pt-0.5">
-      <div className="rounded-[9px] border border-[oklch(1_0_0/7%)] bg-[oklch(1_0_0/3%)]">
+      <div className="rounded-[9px] border border-(--chip-border) bg-(--chip-bg)">
         <button
           onClick={() => {
             setUserToggled(true)
@@ -378,7 +378,7 @@ const Chip = memo(function Chip({ b }: { b: ToolBlock }): React.JSX.Element {
           }}
           className="flex h-[30px] w-full items-center gap-2 px-2 text-left text-xs"
         >
-          <span className="flex size-[18px] shrink-0 items-center justify-center rounded-[5px] bg-[oklch(1_0_0/8%)] text-muted-foreground">
+          <span className="flex size-[18px] shrink-0 items-center justify-center rounded-[5px] bg-(--tile-strong) text-muted-foreground">
             <ZIcon name={chip.icon} size={12} />
           </span>
           <span
@@ -401,17 +401,17 @@ const Chip = memo(function Chip({ b }: { b: ToolBlock }): React.JSX.Element {
           <ChevronTile open={open} />
         </button>
         <TweenHeight open={open} animate={userToggled}>
-          <div className="border-t border-[oklch(1_0_0/6%)]">
+          <div className="border-t border-(--hairline)">
             {k === 'todo' ? <TodoBlock b={b} /> : <InvocationBlock b={b} />}
           </div>
           {isDiff ? (
-            <div className="border-t border-[oklch(1_0_0/6%)]">
+            <div className="border-t border-(--hairline)">
               <DiffBlock b={b} />
             </div>
           ) : (
             b.output !== undefined &&
             k !== 'todo' && (
-              <div className="border-t border-[oklch(1_0_0/6%)]">
+              <div className="border-t border-(--hairline)">
                 <OutputBlock text={b.output} error={b.isError} />
               </div>
             )
@@ -451,12 +451,164 @@ export const ToolGroup = memo(function ToolGroup({
       <TweenHeight open={open} animate={userToggled}>
         <div className="relative">
           {/* guide rail — 1px hairline centered under the chevron tile */}
-          <div className="absolute top-0 bottom-0 left-3 w-px bg-[oklch(1_0_0/8%)]" />
+          <div className="absolute top-0 bottom-0 left-3 w-px bg-(--rail)" />
           <div className="ml-6">
             {tools.map((t) => (
               <Chip key={t.id} b={t} />
             ))}
           </div>
+        </div>
+      </TweenHeight>
+    </div>
+  )
+})
+
+/** Tool names that mean "the agent touched a file". These break OUT of the
+ *  folded groups: file changes carry the visual weight in a transcript. */
+export const EDIT_TOOLS = new Set(['Edit', 'MultiEdit', 'Write', 'NotebookEdit', 'apply_patch'])
+
+interface EditModel {
+  path: string
+  adds: number
+  dels: number
+  create: boolean
+  hunks: { old: string[]; new: string[] }[]
+  extraPaths: string[]
+}
+
+function editModel(b: ToolBlock): EditModel {
+  const i = input(b)
+  const lines = (s: string): string[] => (s === '' ? [] : s.split('\n'))
+  const empty: EditModel = { path: '', adds: 0, dels: 0, create: false, hunks: [], extraPaths: [] }
+  switch (b.name) {
+    case 'Edit': {
+      const o = lines(str(i.old_string))
+      const nw = lines(str(i.new_string))
+      return { ...empty, path: str(i.file_path), adds: nw.length, dels: o.length, hunks: [{ old: o, new: nw }] }
+    }
+    case 'MultiEdit': {
+      const edits = Array.isArray(i.edits) ? (i.edits as Record<string, unknown>[]) : []
+      const hunks = edits.map((e) => ({ old: lines(str(e.old_string)), new: lines(str(e.new_string)) }))
+      return {
+        ...empty,
+        path: str(i.file_path),
+        adds: hunks.reduce((n, h) => n + h.new.length, 0),
+        dels: hunks.reduce((n, h) => n + h.old.length, 0),
+        hunks
+      }
+    }
+    case 'Write': {
+      const content = lines(str(i.content))
+      return { ...empty, path: str(i.file_path), adds: content.length, create: true, hunks: [{ old: [], new: content }] }
+    }
+    case 'NotebookEdit': {
+      const src = lines(str(i.new_source))
+      return { ...empty, path: str(i.notebook_path), adds: src.length, hunks: [{ old: [], new: src }] }
+    }
+    case 'apply_patch': {
+      const paths = Array.isArray(b.input)
+        ? (b.input as Record<string, unknown>[]).map((c) => str(c.path)).filter(Boolean)
+        : Object.keys(i)
+      return { ...empty, path: paths[0] ?? '', extraPaths: paths.slice(1) }
+    }
+    default:
+      return empty
+  }
+}
+
+/**
+ * A file change stands ALONE and loud — never folded into a group. Bordered
+ * card, the file name leading, an unmissable +N / −N diffstat, expanding in
+ * place to the diff. Click the diffstat side to open the working-tree diff.
+ */
+export const ZEditCard = memo(function ZEditCard({ b }: { b: ToolBlock }): React.JSX.Element {
+  const [open, setOpen] = useState(false)
+  const [userToggled, setUserToggled] = useState(false)
+  const openFileRef = useApp((s) => s.openFileRef)
+  const projectCwd = useApp((s) => s.projects.find((p) => p.id === s.selectedProjectId)?.cwd)
+  const m = editModel(b)
+  const running = b.output === undefined
+  const name = m.path.split('/').pop() ?? m.path
+  const rawDir = m.path.includes('/') ? m.path.slice(0, m.path.lastIndexOf('/')) : ''
+  const shownDir = rawDir ? displayPath(rawDir, projectCwd) : ''
+  const dir = shownDir === '.' ? '' : shownDir
+
+  return (
+    <div
+      className={cn(
+        'group/edit rounded-[10px] border bg-card',
+        b.isError ? 'border-destructive/30' : 'border-border-strong'
+      )}
+    >
+      <div className="flex h-9 items-center gap-2.5 pr-2 pl-2">
+        <button
+          onClick={() => {
+            setUserToggled(true)
+            setOpen((v) => !v)
+          }}
+          className="flex min-w-0 flex-1 items-center gap-2.5 text-left"
+        >
+          <span className="flex size-5 shrink-0 items-center justify-center rounded-[6px] bg-(--tile-strong) text-foreground/80">
+            <ZIcon name={m.create ? 'document-add' : 'pen'} size={13} />
+          </span>
+          <span className="min-w-0 truncate text-[13px]">
+            <span className="font-medium">{name || b.name}</span>
+            {dir && <span className="ml-1.5 text-xs text-muted-foreground">{dir}</span>}
+            {m.extraPaths.length > 0 && (
+              <span className="ml-1.5 text-xs text-muted-foreground">
+                +{m.extraPaths.length} more
+              </span>
+            )}
+          </span>
+          <span className="ml-auto flex shrink-0 items-center gap-2 pl-2">
+            {b.isError ? (
+              <span className="text-xs font-medium text-destructive">failed</span>
+            ) : (
+              (m.adds > 0 || m.dels > 0) && (
+                <span className="text-xs font-semibold tracking-tight tabular-nums">
+                  {m.adds > 0 && <span className="text-success">+{m.adds}</span>}
+                  {m.adds > 0 && m.dels > 0 && ' '}
+                  {m.dels > 0 && <span className="text-destructive">−{m.dels}</span>}
+                </span>
+              )
+            )}
+            {running && <span className="size-1.5 animate-pulse rounded-full bg-busy" />}
+            <ChevronTile open={open} />
+          </span>
+        </button>
+        {m.path && (
+          <button
+            onClick={() => openFileRef(m.path)}
+            aria-label="Open diff in Changes"
+            title="Open diff in Changes"
+            className="flex size-6 shrink-0 items-center justify-center rounded-[6px] text-muted-foreground opacity-0 transition-all duration-150 group-hover/edit:opacity-100 hover:bg-accent hover:text-foreground"
+          >
+            <ZIcon name="expand-arrows" size={12} />
+          </button>
+        )}
+      </div>
+      <TweenHeight open={open} animate={userToggled}>
+        <div className="border-t border-(--hairline)">
+          {m.hunks.length > 0 ? (
+            <DiffBlock b={b} />
+          ) : (
+            <div className="space-y-1 px-3 py-2">
+              {[m.path, ...m.extraPaths].filter(Boolean).map((p) => (
+                <button
+                  key={p}
+                  onClick={() => openFileRef(p)}
+                  className="block w-full truncate text-left font-mono text-[11.5px] text-muted-foreground hover:text-foreground"
+                >
+                  {displayPath(p, projectCwd)}
+                </button>
+              ))}
+              {b.isError && b.output !== undefined && (
+                <pre className="font-mono text-[11.5px] whitespace-pre-wrap text-destructive">
+                  {b.output}
+                </pre>
+              )}
+            </div>
+          )}
         </div>
       </TweenHeight>
     </div>
