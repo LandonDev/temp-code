@@ -315,6 +315,15 @@ export class SessionRegistry {
   }
 
   append(sessionId: string, event: AgentEvent): void {
+    // Streaming previews (partial tool input) are broadcast-only: each one
+    // carries the whole input so far, so persisting them would write the
+    // same growing payload into the log over and over. The final tool-call
+    // event has everything replay needs.
+    if (event.type === 'tool-call' && event.partial) {
+      const row: EventRow = { sessionId, seq: -1, ts: Date.now(), event, ephemeral: true }
+      for (const listener of this.subscribers.get(sessionId) ?? []) listener(row)
+      return
+    }
     const row = this.store.appendEvent(sessionId, event)
     this.lastActivity.set(sessionId, row.ts)
     // Status events also update the session row (drives the sidebar).

@@ -9,6 +9,7 @@ import {
 import { readFileSync } from 'node:fs'
 import type { Attachment, PermissionPolicy } from '@shared/events'
 import type { DriverCtx, DriverHandle, HarnessDriver } from './types'
+import { parsePartialJson } from './partial-json'
 import { ORCHESTRATOR_PROMPT, ORCHESTRATOR_TOOLS, orchestratorMcp } from '../orchestration'
 import { expandSlashRefs } from '../slash'
 
@@ -97,7 +98,12 @@ class InputQueue implements AsyncIterable<SDKUserMessage> {
 interface StreamState {
   /** key: parent_tool_use_id ?? '' → current API message id in that lane */
   currentMsgId: Map<string, string>
+  /** key: `${lane}:${blockIndex}` → tool input JSON accumulating from deltas */
+  toolInput: Map<string, { callId: string; name: string; json: string; lastEmit: number }>
 }
+
+/** How often a growing tool input is re-parsed and forwarded to the UI. */
+const PARTIAL_INPUT_EVERY_MS = 100
 
 function handleMessage(ctx: DriverCtx, state: StreamState, msg: SDKMessage): void {
   const { emit } = ctx
@@ -123,6 +129,32 @@ function handleMessage(ctx: DriverCtx, state: StreamState, msg: SDKMessage): voi
             input: undefined,
             parentCallId
           })
+          state.toolInput.set(`${lane}:${ev.index}`, {
+            callId: ev.content_block.id,
+            name: ev.content_block.name,
+            json: '',
+            lastEmit: 0
+          })
+        }
+      } else if (ev.type === 'content_block_stop') {
+        // The input is complete here — forward it without waiting for the
+        // assistant message (that only lands when the whole turn's message
+        // finishes, which can be long after this tool's input is done).
+        const key = `${lane}:${ev.index}`
+        const t = state.toolInput.get(key)
+        if (t) {
+          state.toolInput.delete(key)
+          try {
+            emit({
+              type: 'tool-call',
+              callId: t.callId,
+              name: t.name,
+              input: JSON.parse(t.json.trim() || '{}'),
+              parentCallId
+            })
+          } catch {
+            // Unparseable — the final assistant message will deliver it.
+          }
         }
       } else if (ev.type === 'content_block_delta') {
         const msgId = state.currentMsgId.get(lane)
@@ -145,6 +177,33 @@ function handleMessage(ctx: DriverCtx, state: StreamState, msg: SDKMessage): voi
             blockIndex,
             parentCallId
           })
+        } else if (ev.delta.type === 'input_json_delta') {
+          // Live tool input: re-parse the partial JSON as it grows so the
+          // UI can show the file being edited and count changes in flight.
+          // NOTE: in streaming-input mode the CLI delivers most of these in
+          // a burst just before the block completes (verified 2.1.232; the
+          // one-shot -p mode streams them live) — so today this mostly buys
+          // an early file name + a running count just ahead of completion,
+          // and it springs fully live if the CLI ever stops buffering.
+          const t = state.toolInput.get(`${lane}:${blockIndex}`)
+          if (t) {
+            t.json += ev.delta.partial_json
+            const now = Date.now()
+            if (now - t.lastEmit >= PARTIAL_INPUT_EVERY_MS) {
+              const parsed = parsePartialJson(t.json)
+              if (parsed !== undefined) {
+                t.lastEmit = now
+                emit({
+                  type: 'tool-call',
+                  callId: t.callId,
+                  name: t.name,
+                  input: parsed,
+                  partial: true,
+                  parentCallId
+                })
+              }
+            }
+          }
         }
       }
       break
@@ -208,6 +267,7 @@ function handleMessage(ctx: DriverCtx, state: StreamState, msg: SDKMessage): voi
       break
     }
     case 'result':
+      state.toolInput.clear()
       if (msg.subtype === 'success') {
         emit({
           type: 'turn-complete',
@@ -240,7 +300,7 @@ export const claudeDriver: HarnessDriver = {
   async start(ctx: DriverCtx): Promise<DriverHandle> {
     const { session, emit } = ctx
     const input = new InputQueue()
-    const state: StreamState = { currentMsgId: new Map() }
+    const state: StreamState = { currentMsgId: new Map(), toolInput: new Map() }
     const pendingApprovals = new Map<string, (allow: boolean, auto?: boolean) => void>()
 
     // Approval flow (docs/PLAN.md M4): the harness asks, we emit an

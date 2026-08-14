@@ -36,6 +36,8 @@ type BlockKind =
       callId: string
       name: string
       input: unknown
+      /** input is a streaming preview, still growing */
+      partialInput?: boolean
       output?: string
       isError?: boolean
       /** activity events from a subagent running under this call */
@@ -171,8 +173,8 @@ export function foldEvent(s: FoldState, e: AgentEvent, ts?: number): void {
     const idx = s.byCall.get(e.parentCallId)
     if (idx !== undefined) {
       const b = s.blocks[idx] as Extract<Block, { kind: 'tool' }>
-      // Only count "step" events, not every delta.
-      if (e.type === 'tool-call' || (e.type === 'assistant-text' && !e.delta)) {
+      // Only count "step" events, not every delta or input preview.
+      if ((e.type === 'tool-call' && !e.partial) || (e.type === 'assistant-text' && !e.delta)) {
         s.blocks[idx] = { ...b, subCount: b.subCount + 1 }
       }
     }
@@ -204,8 +206,9 @@ export function foldEvent(s: FoldState, e: AgentEvent, ts?: number): void {
       break
     case 'tool-call': {
       // Plan-tool calls update the todo model; blocks born after this
-      // belong to the newly in_progress todo.
-      const todos = todosFrom(e.name, e.input)
+      // belong to the newly in_progress todo. Previews wait — a half-built
+      // todo list shouldn't flash through the implementation view.
+      const todos = e.partial ? null : todosFrom(e.name, e.input)
       if (todos) {
         s.todos = todos
         const active = todos.findIndex((t) => t.status === 'in_progress')
@@ -213,14 +216,20 @@ export function foldEvent(s: FoldState, e: AgentEvent, ts?: number): void {
       }
       const existing = s.byCall.get(e.callId)
       if (existing !== undefined) {
-        // Early "tool started" chip being replaced with the full input.
+        // Streaming preview or the final input replacing the early chip.
         const b = s.blocks[existing] as Extract<Block, { kind: 'tool' }>
-        s.blocks[existing] = { ...b, name: e.name, input: e.input ?? b.input }
+        const next = { ...b, name: e.name, input: e.input ?? b.input }
+        if (e.partial) next.partialInput = true
+        else delete next.partialInput
+        s.blocks[existing] = next
       } else {
-        s.byCall.set(
-          e.callId,
-          push(s, { kind: 'tool', callId: e.callId, name: e.name, input: e.input, subCount: 0 }, ts)
+        const idx = push(
+          s,
+          { kind: 'tool', callId: e.callId, name: e.name, input: e.input, subCount: 0 },
+          ts
         )
+        if (e.partial) (s.blocks[idx] as Extract<Block, { kind: 'tool' }>).partialInput = true
+        s.byCall.set(e.callId, idx)
       }
       break
     }
