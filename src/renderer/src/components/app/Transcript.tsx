@@ -137,6 +137,10 @@ export function Transcript({
   const raf = useRef(0)
   const prevLen = useRef(0)
   const initialCount = useRef(blocks.length)
+  // A freshly opened session stays glued to the end (instant, no spring)
+  // while the virtualizer's estimates settle into measured heights; the
+  // first real user scroll or own send unpins it.
+  const pinBottom = useRef(true)
 
   const virtualizer = useVirtualizer({
     count: rows.length,
@@ -160,17 +164,51 @@ export function Transcript({
 
   // Runway spacer: after an own send, reserve viewport − inset − pad below
   // the sent prompt so it can park at the top while the reply streams in.
-  const [spacer, setSpacer] = useState(0)
+  const [spacer, setSpacerState] = useState(0)
+  const spacerRef = useRef(0)
+  const spacerAnim = useRef(0)
+  const setSpacer = (v: number): void => {
+    spacerRef.current = v
+    setSpacerState(v)
+  }
+  /** Retire the runway: instantly when the blank pad sits below the
+   *  viewport (nothing visible changes), otherwise a 220ms ease-out tween —
+   *  the browser clamps scrollTop each frame, so the view glides, never
+   *  snaps, even after a short reply left most of the runway empty. */
+  const collapseSpacer = (): void => {
+    cancelAnimationFrame(spacerAnim.current)
+    const from = spacerRef.current
+    if (from === 0) return
+    const el = scrollRef.current
+    if (el && el.scrollHeight - el.clientHeight - el.scrollTop > from) {
+      setSpacer(0)
+      return
+    }
+    const t0 = performance.now()
+    const tick = (now: number): void => {
+      const p = Math.min(1, (now - t0) / 220)
+      setSpacer(Math.round(from * Math.pow(1 - p, 3)))
+      if (p < 1) spacerAnim.current = requestAnimationFrame(tick)
+    }
+    spacerAnim.current = requestAnimationFrame(tick)
+  }
   const totalSize = virtualizer.getTotalSize()
 
   const running = status === 'running' || status === 'starting'
+  const runningRef = useRef(false)
+  useEffect(() => {
+    runningRef.current = running
+    // Turn settled: stop pinning the parked prompt so later reading and
+    // section toggles never make the engine jump the view. The runway
+    // spacer stays (nothing moves at settle); the next real user scroll
+    // clears it.
+    if (!running && mode.current === 'parked') mode.current = 'free'
+  }, [running])
 
   useLayoutEffect(() => {
     const el = scrollRef.current
-    if (!el || parkedRow.current === null) {
-      if (spacer !== 0 && parkedRow.current === null) setSpacer(0)
-      return
-    }
+    if (el && pinBottom.current) el.scrollTop = el.scrollHeight - el.clientHeight
+    if (!el || parkedRow.current === null) return
     const idx = parkedRow.current
     if (idx >= rows.length) return
     const inset = idx === 0 ? 0 : TOP_INSET
@@ -220,7 +258,10 @@ export function Transcript({
         if (Math.abs(el.scrollTop - want) > 1) setScrollTop(want)
         return
       }
-      if (mode.current === 'follow') {
+      // The stick-to-bottom spring only chases while a reply is streaming —
+      // when the transcript is idle, height changes (opening or closing a
+      // section) must never scroll the view.
+      if (mode.current === 'follow' && runningRef.current) {
         const dist = max - el.scrollTop
         if (dist > AT_BOTTOM) {
           // Per-frame spring toward the bottom (damping 0.7, stiffness 0.05,
@@ -245,14 +286,20 @@ export function Transcript({
     const el = scrollRef.current
     if (!el) return
     let draggingBar = false
-    const release = (): void => {
+    /** dir < 0 = the user is heading up: always break to free — never let
+     *  the spring fight an upward scroll. dir >= 0 = heading down: rejoin
+     *  follow within the stick threshold. Any release ends the parked hold
+     *  and collapses the runway spacer. */
+    const release = (dir: number): void => {
       glide.current = null
       velocity.current = 0
-      if (mode.current === 'parked') parkedRow.current = null
+      parkedRow.current = null
+      pinBottom.current = false
+      collapseSpacer()
       const fromBottom = el.scrollHeight - el.clientHeight - el.scrollTop
-      mode.current = fromBottom < STICK_THRESHOLD ? 'follow' : 'free'
+      mode.current = dir < 0 ? 'free' : fromBottom < STICK_THRESHOLD ? 'follow' : 'free'
     }
-    const onWheel = (): void => release()
+    const onWheel = (e: WheelEvent): void => release(e.deltaY)
     const onPointerDown = (e: PointerEvent): void => {
       // A press on the scrollbar gutter starts a drag.
       draggingBar = e.offsetX >= el.clientWidth
@@ -261,9 +308,8 @@ export function Transcript({
       draggingBar = false
     }
     const onKey = (e: KeyboardEvent): void => {
-      if (['PageUp', 'PageDown', 'Home', 'End', 'ArrowUp', 'ArrowDown'].includes(e.key)) {
-        release()
-      }
+      if (['PageUp', 'Home', 'ArrowUp'].includes(e.key)) release(-1)
+      else if (['PageDown', 'End', 'ArrowDown'].includes(e.key)) release(1)
     }
     const onScroll = (): void => {
       const fromBottom = el.scrollHeight - el.clientHeight - el.scrollTop
@@ -279,7 +325,7 @@ export function Transcript({
         programmatic.current--
         return
       }
-      if (draggingBar) release()
+      if (draggingBar) release(1)
     }
     el.addEventListener('wheel', onWheel, { passive: true })
     el.addEventListener('pointerdown', onPointerDown)
@@ -305,6 +351,8 @@ export function Transcript({
     const rowIdx = rows.length - 1
     parkedRow.current = rowIdx
     mode.current = 'parked'
+    pinBottom.current = false
+    cancelAnimationFrame(spacerAnim.current)
     velocity.current = 0
     const el = scrollRef.current
     if (el) {
@@ -318,9 +366,11 @@ export function Transcript({
     mode.current = 'follow'
     parkedRow.current = null
     glide.current = null
+    pinBottom.current = true
     velocity.current = 0
     prevLen.current = blocks.length
     initialCount.current = blocks.length
+    cancelAnimationFrame(spacerAnim.current)
     setSpacer(0)
     const el = scrollRef.current
     if (el) setScrollTop(el.scrollHeight - el.clientHeight)
@@ -403,6 +453,7 @@ export function Transcript({
           onClick={() => {
             mode.current = 'follow'
             parkedRow.current = null
+            collapseSpacer()
             const el = scrollRef.current
             if (el) startGlide(() => el.scrollHeight - el.clientHeight)
           }}
@@ -423,6 +474,8 @@ export function Transcript({
               onClick={() => {
                 mode.current = 'free'
                 parkedRow.current = null
+                pinBottom.current = false
+                collapseSpacer()
                 startGlide(() => Math.max(0, offsetOf(i) - TOP_INSET))
               }}
               className={cn(

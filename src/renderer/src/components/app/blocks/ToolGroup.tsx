@@ -171,6 +171,19 @@ export function groupSummary(tools: ToolBlock[]): string {
   return joined.charAt(0).toUpperCase() + joined.slice(1)
 }
 
+/** Expansion state survives virtualization — rows scrolled out of the
+ *  overscan window unmount, and a section the user opened must still be
+ *  open when they scroll back. Keyed by callId (harness-unique). */
+const openState = new Map<string, boolean>()
+function usePersistedOpen(key: string): [boolean, (v: boolean) => void] {
+  const [open, setOpen] = useState(openState.get(key) ?? false)
+  const set = (v: boolean): void => {
+    openState.set(key, v)
+    setOpen(v)
+  }
+  return [open, set]
+}
+
 /** Tween a displayed count toward its target — the diffstat counts up as
  *  the change lands instead of teleporting. 550ms ease-out cubic. */
 function useCountUp(target: number, animate: boolean): number {
@@ -384,7 +397,7 @@ function TodoBlock({ b }: { b: ToolBlock }): React.JSX.Element {
 /** One chip: a 30px card that grows in place when expanded — invocation
  *  first, then output/diff, stacked under white/6% hairlines. */
 const Chip = memo(function Chip({ b }: { b: ToolBlock }): React.JSX.Element {
-  const [open, setOpen] = useState(false)
+  const [open, setOpen] = usePersistedOpen(b.callId)
   const [userToggled, setUserToggled] = useState(false)
   const projectCwd = useApp((s) => s.projects.find((p) => p.id === s.selectedProjectId)?.cwd)
   const k = kindOf(b)
@@ -403,7 +416,7 @@ const Chip = memo(function Chip({ b }: { b: ToolBlock }): React.JSX.Element {
         <button
           onClick={() => {
             setUserToggled(true)
-            setOpen((v) => !v)
+            setOpen(!open)
           }}
           className="flex h-[30px] w-full items-center gap-2 px-2 text-left text-xs"
         >
@@ -463,7 +476,14 @@ export const ToolGroup = memo(function ToolGroup({
   tools: ToolBlock[]
   autoOpen: boolean
 }): React.JSX.Element {
-  const [override, setOverride] = useState<boolean | null>(null)
+  const gkey = `g:${tools[0].callId}`
+  const [override, setOverrideRaw] = useState<boolean | null>(
+    openState.has(gkey) ? (openState.get(gkey) as boolean) : null
+  )
+  const setOverride = (v: boolean): void => {
+    openState.set(gkey, v)
+    setOverrideRaw(v)
+  }
   const [userToggled, setUserToggled] = useState(false)
   const open = override ?? autoOpen
 
@@ -574,7 +594,7 @@ function editModel(b: ToolBlock): EditModel {
  * place to the diff. Click the diffstat side to open the working-tree diff.
  */
 export const ZEditCard = memo(function ZEditCard({ b }: { b: ToolBlock }): React.JSX.Element {
-  const [open, setOpen] = useState(false)
+  const [open, setOpen] = usePersistedOpen(`e:${b.callId}`)
   const [userToggled, setUserToggled] = useState(false)
   const openFileRef = useApp((s) => s.openFileRef)
   const projectCwd = useApp((s) => s.projects.find((p) => p.id === s.selectedProjectId)?.cwd)
@@ -604,7 +624,7 @@ export const ZEditCard = memo(function ZEditCard({ b }: { b: ToolBlock }): React
         <button
           onClick={() => {
             setUserToggled(true)
-            setOpen((v) => !v)
+            setOpen(!open)
           }}
           className="flex min-w-0 flex-1 items-center gap-2.5 text-left"
         >
