@@ -1,0 +1,74 @@
+import { memo } from 'react'
+import { cn } from '../../lib/utils'
+import command from '../../assets/zicons/command.svg?raw'
+import document from '../../assets/zicons/document.svg?raw'
+import documentAdd from '../../assets/zicons/document-add.svg?raw'
+import pen from '../../assets/zicons/pen.svg?raw'
+import magnifer from '../../assets/zicons/magnifer.svg?raw'
+import folderWithFiles from '../../assets/zicons/folder-with-files.svg?raw'
+import global from '../../assets/zicons/global.svg?raw'
+import checklist from '../../assets/zicons/checklist.svg?raw'
+import widget from '../../assets/zicons/widget.svg?raw'
+import dangerTriangle from '../../assets/zicons/danger-triangle.svg?raw'
+import chatRoundLine from '../../assets/zicons/chat-round-line.svg?raw'
+import paperclip from '../../assets/zicons/paperclip.svg?raw'
+import arrowUp from '../../assets/zicons/arrow-up.svg?raw'
+import arrowDown from '../../assets/zicons/arrow-down.svg?raw'
+import stop from '../../assets/zicons/stop.svg?raw'
+import altArrowDown from '../../assets/zicons/alt-arrow-down.svg?raw'
+import altArrowRight from '../../assets/zicons/alt-arrow-right.svg?raw'
+import check from '../../assets/zicons/check.svg?raw'
+import close from '../../assets/zicons/close.svg?raw'
+import gitBranch from '../../assets/zicons/git-branch.svg?raw'
+import folder from '../../assets/zicons/folder.svg?raw'
+import terminal from '../../assets/zicons/terminal.svg?raw'
+import documentText from '../../assets/zicons/document.svg?raw'
+
+/** Solar line icons, the exact SVGs Zeron ships. They draw with
+ *  stroke: currentColor at 1em — size via fontSize, color via text-*. */
+const ICONS = {
+  command,
+  document,
+  'document-add': documentAdd,
+  pen,
+  magnifer,
+  'folder-with-files': folderWithFiles,
+  global,
+  checklist,
+  widget,
+  'danger-triangle': dangerTriangle,
+  'chat-round-line': chatRoundLine,
+  paperclip,
+  'arrow-up': arrowUp,
+  'arrow-down': arrowDown,
+  stop,
+  'alt-arrow-down': altArrowDown,
+  'alt-arrow-right': altArrowRight,
+  check,
+  close,
+  'git-branch': gitBranch,
+  folder,
+  terminal,
+  'document-text': documentText
+} as const
+
+export type ZIconName = keyof typeof ICONS
+
+export const ZIcon = memo(function ZIcon({
+  name,
+  size = 12,
+  className
+}: {
+  name: ZIconName
+  size?: number
+  className?: string
+}): React.JSX.Element {
+  return (
+    <span
+      aria-hidden
+      className={cn('inline-flex shrink-0 leading-none [&>svg]:block', className)}
+      style={{ fontSize: size }}
+      dangerouslySetInnerHTML={{ __html: ICONS[name] }}
+    />
+  )
+})

@@ -1,9 +1,10 @@
-import { memo, useMemo } from 'react'
+import { memo, useMemo, useRef } from 'react'
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { useApp } from '../../../state/store'
 import { cn } from '../../../lib/utils'
 import { CodeBlock } from './CodeBlock'
+import { useStreamVeil } from './veil'
 
 /** `src/foo/bar.ts`, `./x.css:12`, `/abs/path.rs` — things worth linking.
  *  Requires a directory and an extension so prose in backticks stays prose. */
@@ -23,6 +24,10 @@ export const MarkdownText = memo(function MarkdownText({
 }): React.JSX.Element {
   const openFileRef = useApp((s) => s.openFileRef)
   const files = useApp((s) => (s.selectedProjectId ? s.files[s.selectedProjectId] : undefined))
+  // Zeron streaming veil: new glyphs commit to layout instantly and
+  // dissolve in under a paint-only fade (mugen FadePainter).
+  const veilRef = useRef<HTMLDivElement>(null)
+  useStreamVeil(veilRef, text, streaming)
   const byBasename = useMemo(() => {
     const m = new Map<string, string>()
     for (const p of files ?? []) {
@@ -39,9 +44,11 @@ export const MarkdownText = memo(function MarkdownText({
   }
   return (
     <div
+      ref={veilRef}
       className={cn(
-        'prose prose-sm max-w-none prose-p:leading-relaxed prose-pre:bg-transparent prose-pre:p-0 prose-headings:font-medium',
-        streaming && 'streaming-prose'
+        // Zeron body: 14px / 22px line height on the bare panel. Relative:
+        // the veil paints absolutely-positioned covers over new glyphs.
+        'prose relative max-w-none text-[14px] leading-[22px] prose-p:my-2 prose-p:leading-[22px] prose-li:leading-[22px] prose-pre:bg-transparent prose-pre:p-0 prose-headings:font-medium'
       )}
     >
       <Markdown
@@ -77,7 +84,7 @@ export const MarkdownText = memo(function MarkdownText({
                 <button
                   onClick={() => openFileRef(target)}
                   title="Open in Changes"
-                  className="rounded bg-secondary px-1 py-0.5 font-mono text-[0.85em] transition-colors hover:bg-accent hover:underline"
+                  className="rounded bg-(--code-wash) px-1 py-0.5 font-mono text-[0.85em] text-(--code-text) transition-colors hover:underline"
                 >
                   {raw}
                 </button>
@@ -85,7 +92,8 @@ export const MarkdownText = memo(function MarkdownText({
             }
             return (
               <code
-                className="rounded bg-secondary px-1 py-0.5 font-mono text-[0.85em] break-words [overflow-wrap:anywhere] before:content-none after:content-none"
+                // Zeron inline code: violet-300 on a violet-400/12 wash.
+                className="rounded bg-(--code-wash) px-1 py-0.5 font-mono text-[0.85em] text-(--code-text) break-words [overflow-wrap:anywhere] before:content-none after:content-none"
                 {...props}
               >
                 {children}

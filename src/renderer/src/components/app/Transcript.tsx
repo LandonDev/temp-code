@@ -1,59 +1,103 @@
-import { memo, useEffect, useLayoutEffect, useRef } from 'react'
+import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { cn } from '../../lib/utils'
 import { useApp } from '../../state/store'
 import type { Block } from '../../state/blocks'
-import { LoadingState } from '../bui/loading-state'
 import { ApprovalCard } from './blocks/ApprovalCard'
-import { EDIT_TOOLS, EditCard } from './blocks/EditCard'
 import { MarkdownText } from './blocks/MarkdownText'
 import { ThinkingBlock } from './blocks/ThinkingBlock'
-import { ToolChip } from './blocks/ToolChip'
+import { ErrorChip, ToolGroup } from './blocks/ToolGroup'
 import { UserMessage } from './blocks/UserMessage'
+import { ZIcon } from './zicon'
 
 /**
- * Virtualized transcript over the store's incrementally-folded blocks.
- * Rows are memoized; a streaming delta re-renders only the one block whose
- * object identity changed. User messages render as bordered fields
- * (Cursor-style), not colored bubbles.
+ * Zeron transcript (transcript.rs, values verbatim): 736px column,
+ * translucent user bubbles, bare assistant markdown, consecutive tools
+ * folded into group rows. Own sends glide the prompt to rest 10px under
+ * the titlebar and the reply streams into a reserved runway below; the
+ * hold releases only on a real user wheel/drag.
  */
 
+type ToolBlock = Extract<Block, { kind: 'tool' }>
+
+type Row =
+  | { type: 'block'; id: string; block: Block; turn: number }
+  | { type: 'group'; id: string; tools: ToolBlock[]; turn: number }
+
+const TOP_INSET = 48 // OWN_SEND_TOP_INSET: titlebar 38 + 10
+const BASE_PAD = 32 // bottom pad past the fade band
+const STICK_THRESHOLD = 70 // re-engage follow within this of the bottom
+const AT_BOTTOM = 2
+const PILL_AT = 320 // "scroll to bottom" appears past this
+const GLIDE_MS = 500 // SCROLL_GLIDE
+const MAX_GLIDE_VIEWPORTS = 2.5
+
+/** Consecutive tool blocks fold into one group row (id = first tool's). */
+function rowsFor(blocks: Block[]): Row[] {
+  const rows: Row[] = []
+  let turn = -1
+  for (const b of blocks) {
+    if (b.kind === 'user') turn++
+    if (b.kind === 'tool') {
+      const last = rows.at(-1)
+      if (last?.type === 'group') {
+        last.tools.push(b)
+        continue
+      }
+      rows.push({ type: 'group', id: `g${b.id}`, tools: [b], turn })
+      continue
+    }
+    rows.push({ type: 'block', id: b.id, block: b, turn })
+  }
+  return rows
+}
+
+/** "Jul 1, 3:45 PM" — short month, no leading zero. */
+function fmtTs(ts: number): string {
+  const d = new Date(ts)
+  const month = d.toLocaleString('en-US', { month: 'short' })
+  let h = d.getHours()
+  const ampm = h >= 12 ? 'PM' : 'AM'
+  h = h % 12 || 12
+  return `${month} ${d.getDate()}, ${h}:${String(d.getMinutes()).padStart(2, '0')} ${ampm}`
+}
+
+const easeInOut = (t: number): number => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2)
+
+/** Single-block renderer for the non-chat views (implementation traces). */
 export const BlockRow = memo(function BlockRow({ block }: { block: Block }): React.JSX.Element {
+  if (block.kind === 'tool') {
+    return <ToolGroup tools={[block]} autoOpen={false} />
+  }
+  return <RowContent row={{ type: 'block', id: block.id, block, turn: 0 }} autoOpen={false} />
+})
+
+const RowContent = memo(function RowContent({
+  row,
+  autoOpen
+}: {
+  row: Row
+  autoOpen: boolean
+}): React.JSX.Element {
+  if (row.type === 'group') return <ToolGroup tools={row.tools} autoOpen={autoOpen} />
+  const block = row.block
   switch (block.kind) {
     case 'user':
       return <UserMessage block={block} />
     case 'assistant':
-      return (
-        <div className="text-[13px] leading-relaxed">
-          <MarkdownText text={block.text} streaming={block.streaming} />
-        </div>
-      )
+      return <MarkdownText text={block.text} streaming={block.streaming} />
     case 'thinking':
       return (
         <ThinkingBlock text={block.text} streaming={block.streaming} thoughtMs={block.thoughtMs} />
       )
-    case 'tool':
-      return EDIT_TOOLS.has(block.name) ? <EditCard block={block} /> : <ToolChip block={block} />
     case 'approval':
       return <ApprovalCard block={block} />
     case 'error':
-      return (
-        <div className="rounded-md border border-destructive/40 px-3 py-2 text-[13px] text-destructive">
-          {block.text}
-        </div>
-      )
+      return <ErrorChip text={block.text} />
+    default:
+      return <></>
   }
 })
-
-/** True while the last block is already visibly in motion — no extra
- *  indicator needed on top of it. */
-function lastBlockActive(block: Block | undefined): boolean {
-  if (!block) return false
-  if ((block.kind === 'assistant' || block.kind === 'thinking') && block.streaming) return true
-  if (block.kind === 'tool' && block.output === undefined) return true
-  if (block.kind === 'approval' && !block.resolved) return true
-  return false
-}
 
 export function Transcript({
   sessionId,
@@ -64,106 +108,320 @@ export function Transcript({
 }): React.JSX.Element {
   const blocks = useApp((s) => s.blocks[sessionId]) ?? []
   const status = useApp((s) => s.sessions[sessionId]?.status)
+  const rows = useMemo(() => rowsFor(blocks), [blocks])
   const scrollRef = useRef<HTMLDivElement>(null)
-  // Follow intent: only a scroll the USER made may break away from the
-  // bottom. Programmatic pins and virtualizer re-measures (row estimates are
-  // far smaller than real rows) also fire scroll events — those must not
-  // flip follow off, or the transcript silently stops tracking output.
-  const followRef = useRef(true)
-  const programmatic = useRef(false)
+  const [hoveredTurn, setHoveredTurn] = useState<number | null>(null)
+  const [pill, setPill] = useState(false)
+  const [activeTick, setActiveTick] = useState(0)
+  const rowCount = useRef(rows.length)
+  rowCount.current = rows.length
+
+  // Scroll engine state (refs — per-frame, never re-renders).
+  const mode = useRef<'follow' | 'parked' | 'free'>('follow')
+  const parkedRow = useRef<number | null>(null)
+  const glide = useRef<{ from: number; target: () => number; start: number } | null>(null)
+  const velocity = useRef(0)
+  // Counter, not a boolean: several engine writes can land before their
+  // scroll events drain, and each event must consume exactly one credit or
+  // the surplus reads as user intent and releases the parked hold.
+  const programmatic = useRef(0)
+  const raf = useRef(0)
   const prevLen = useRef(0)
-  // Blocks present at mount are history — only later arrivals animate in.
   const initialCount = useRef(blocks.length)
 
   const virtualizer = useVirtualizer({
-    count: blocks.length,
+    count: rows.length,
     getScrollElement: () => scrollRef.current,
-    estimateSize: () => 64,
+    estimateSize: () => 48,
     overscan: 10,
-    getItemKey: (i) => blocks[i].id
+    getItemKey: (i) => rows[i].id
   })
 
-  const scrollToBottom = (): void => {
-    const el = scrollRef.current
-    if (!el) return
-    const target = el.scrollHeight - el.clientHeight
-    if (Math.abs(el.scrollTop - target) > 1) {
-      programmatic.current = true
-      el.scrollTop = target
-    }
+  // Raw item start — NOT getOffsetForIndex, which clamps to the current
+  // max scroll and lies while the runway spacer is still being reserved.
+  const offsetOf = (index: number): number => {
+    const cache = (
+      virtualizer as unknown as { measurementsCache?: { index: number; start: number }[] }
+    ).measurementsCache
+    const m = cache?.[index]
+    if (m && m.index === index) return m.start
+    const item = virtualizer.getVirtualItems().find((i) => i.index === index)
+    return item?.start ?? 0
   }
 
+  // Runway spacer: after an own send, reserve viewport − inset − pad below
+  // the sent prompt so it can park at the top while the reply streams in.
+  const [spacer, setSpacer] = useState(0)
+  const totalSize = virtualizer.getTotalSize()
+
+  const running = status === 'running' || status === 'starting'
+
+  useLayoutEffect(() => {
+    const el = scrollRef.current
+    if (!el || parkedRow.current === null) {
+      if (spacer !== 0 && parkedRow.current === null) setSpacer(0)
+      return
+    }
+    const idx = parkedRow.current
+    if (idx >= rows.length) return
+    const inset = idx === 0 ? 0 : TOP_INSET
+    const runway = el.clientHeight - inset - BASE_PAD
+    const below = totalSize - offsetOf(idx)
+    const next = Math.max(0, runway - below)
+    if (Math.abs(next - spacer) > 1) setSpacer(next)
+  }, [totalSize, rows.length, spacer])
+
+  const setScrollTop = (v: number): void => {
+    const el = scrollRef.current
+    if (!el) return
+    if (Math.abs(el.scrollTop - v) < 0.5) return
+    programmatic.current++
+    el.scrollTop = v
+  }
+
+  /** 500ms ease-in-out glide to a (live) target, capped at 2.5 viewports. */
+  const startGlide = (target: () => number): void => {
+    const el = scrollRef.current
+    if (!el) return
+    let from = el.scrollTop
+    const cap = el.clientHeight * MAX_GLIDE_VIEWPORTS
+    const t0 = target()
+    if (Math.abs(t0 - from) > cap) from = t0 - Math.sign(t0 - from) * cap
+    glide.current = { from, target, start: performance.now() }
+  }
+
+  // The per-frame engine: glides, parked hold, stick-to-bottom spring
+  // (damping 0.7, stiffness 0.05, mass 1.25 — Zeron's exact tuning).
+  useEffect(() => {
+    const tick = (): void => {
+      raf.current = requestAnimationFrame(tick)
+      const el = scrollRef.current
+      if (!el) return
+      const max = el.scrollHeight - el.clientHeight
+      if (glide.current) {
+        const g = glide.current
+        const p = Math.min(1, (performance.now() - g.start) / GLIDE_MS)
+        setScrollTop(g.from + (Math.min(max, g.target()) - g.from) * easeInOut(p))
+        if (p >= 1) glide.current = null
+        return
+      }
+      if (mode.current === 'parked' && parkedRow.current !== null) {
+        const inset = parkedRow.current === 0 ? 0 : TOP_INSET
+        const want = Math.min(max, Math.max(0, offsetOf(parkedRow.current) - inset))
+        if (Math.abs(el.scrollTop - want) > 1) setScrollTop(want)
+        return
+      }
+      if (mode.current === 'follow') {
+        const dist = max - el.scrollTop
+        if (dist > AT_BOTTOM) {
+          // Per-frame spring toward the bottom (damping 0.7, stiffness 0.05,
+          // mass 1.25), chase lead capped at 32px.
+          velocity.current = (velocity.current + (dist * 0.05) / 1.25) * 0.7
+          let next = el.scrollTop + velocity.current
+          next = Math.max(next, max - 32)
+          setScrollTop(Math.min(next, max))
+        } else {
+          velocity.current = 0
+        }
+      }
+    }
+    raf.current = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(raf.current)
+  }, [sessionId])
+
+  // User intent: ONLY a real wheel/drag (or scroll keys) releases the
+  // parked hold — bare scroll events also come from the engine and from
+  // the virtualizer's own measurement adjustments, so they never release.
   useEffect(() => {
     const el = scrollRef.current
     if (!el) return
+    let draggingBar = false
+    const release = (): void => {
+      glide.current = null
+      velocity.current = 0
+      if (mode.current === 'parked') parkedRow.current = null
+      const fromBottom = el.scrollHeight - el.clientHeight - el.scrollTop
+      mode.current = fromBottom < STICK_THRESHOLD ? 'follow' : 'free'
+    }
+    const onWheel = (): void => release()
+    const onPointerDown = (e: PointerEvent): void => {
+      // A press on the scrollbar gutter starts a drag.
+      draggingBar = e.offsetX >= el.clientWidth
+    }
+    const onPointerUp = (): void => {
+      draggingBar = false
+    }
+    const onKey = (e: KeyboardEvent): void => {
+      if (['PageUp', 'PageDown', 'Home', 'End', 'ArrowUp', 'ArrowDown'].includes(e.key)) {
+        release()
+      }
+    }
     const onScroll = (): void => {
-      if (programmatic.current) {
-        programmatic.current = false
+      const fromBottom = el.scrollHeight - el.clientHeight - el.scrollTop
+      setPill(fromBottom > PILL_AT)
+      // Minimap: the last block whose top has passed the reading inset.
+      let tick = 0
+      for (let i = 0; i < Math.min(rowCount.current, 32); i++) {
+        if (offsetOf(i) <= el.scrollTop + TOP_INSET + 1) tick = i
+        else break
+      }
+      setActiveTick(tick)
+      if (programmatic.current > 0) {
+        programmatic.current--
         return
       }
-      followRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80
+      if (draggingBar) release()
     }
+    el.addEventListener('wheel', onWheel, { passive: true })
+    el.addEventListener('pointerdown', onPointerDown)
+    window.addEventListener('pointerup', onPointerUp)
+    el.addEventListener('keydown', onKey)
     el.addEventListener('scroll', onScroll, { passive: true })
-    return () => el.removeEventListener('scroll', onScroll)
+    return () => {
+      el.removeEventListener('wheel', onWheel)
+      el.removeEventListener('pointerdown', onPointerDown)
+      window.removeEventListener('pointerup', onPointerUp)
+      el.removeEventListener('keydown', onKey)
+      el.removeEventListener('scroll', onScroll)
+    }
   }, [sessionId])
 
-  const last = blocks.at(-1)
-  // The turn is underway but nothing on screen shows it yet (model hasn't
-  // started streaming, or a tool just finished) — hold a live indicator.
-  const working = (status === 'running' || status === 'starting') && !lastBlockActive(last)
-  // totalSize in the deps re-pins as rows measure in — the initial jump
-  // otherwise lands on estimated heights and strands the view mid-thread.
-  const totalSize = virtualizer.getTotalSize()
+  // Own send: park the prompt 10px under the titlebar (48px inset; none for
+  // the very first message) and reserve the runway beneath it.
   useLayoutEffect(() => {
-    // Sending a message always re-pins: you want to watch the reply.
-    if (blocks.length > prevLen.current && last?.kind === 'user') followRef.current = true
+    const appended = blocks.length > prevLen.current
     prevLen.current = blocks.length
-    if (followRef.current) scrollToBottom()
-  }, [last, blocks.length, working, totalSize])
+    const last = blocks.at(-1)
+    if (!appended || last?.kind !== 'user') return
+    const rowIdx = rows.length - 1
+    parkedRow.current = rowIdx
+    mode.current = 'parked'
+    velocity.current = 0
+    const el = scrollRef.current
+    if (el) {
+      const inset = rowIdx === 0 ? 0 : TOP_INSET
+      startGlide(() => Math.max(0, offsetOf(rowIdx) - inset))
+    }
+  }, [blocks.length, rows.length])
 
-  // New session selected: jump to the end.
+  // New session: jump straight to the end, no animation.
   useLayoutEffect(() => {
-    followRef.current = true
-    prevLen.current = 0
-    scrollToBottom()
+    mode.current = 'follow'
+    parkedRow.current = null
+    glide.current = null
+    velocity.current = 0
+    prevLen.current = blocks.length
+    initialCount.current = blocks.length
+    setSpacer(0)
+    const el = scrollRef.current
+    if (el) setScrollTop(el.scrollHeight - el.clientHeight)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- session switch only
   }, [sessionId])
 
   return (
-    <div
-      ref={scrollRef}
-      className={cn('[overflow-anchor:none]', className ?? 'flex-1 overflow-y-auto select-text')}
-    >
-      <div className="relative mx-auto w-full max-w-3xl px-6" style={{ height: totalSize }}>
-        {virtualizer.getVirtualItems().map((item) => {
-          const block = blocks[item.index]
-          // Chrome rows (tools, thinking) cluster; prose and messages breathe.
-          const dense = block.kind === 'tool' || block.kind === 'thinking'
-          const fresh = item.index === blocks.length - 1 && blocks.length > initialCount.current
-          return (
-            <div
-              key={item.key}
-              data-index={item.index}
-              ref={virtualizer.measureElement}
-              className="absolute right-6 left-6"
-              style={{ transform: `translateY(${item.start}px)` }}
-            >
+    <div className={cn('relative min-h-0 flex-1', className)}>
+      <div
+        ref={scrollRef}
+        className="h-full overflow-y-auto select-text [overflow-anchor:none]"
+        onMouseLeave={() => setHoveredTurn(null)}
+      >
+        <div
+          className="relative mx-auto w-full max-w-[736px] px-6"
+          style={{ height: totalSize + spacer + BASE_PAD }}
+        >
+          {virtualizer.getVirtualItems().map((item) => {
+            const row = rows[item.index]
+            const isUser = row.type === 'block' && row.block.kind === 'user'
+            const fresh = item.index === rows.length - 1 && blocks.length > initialCount.current
+            const autoOpen = row.type === 'group' && item.index === rows.length - 1 && running
+            // Timestamp strip: under a user bubble, or under the last row of
+            // a settled assistant turn, revealed by hovering the turn.
+            const nextRow = rows[item.index + 1]
+            const endsTurn = !nextRow || nextRow.turn !== row.turn
+            const settled =
+              row.type === 'group'
+                ? !running
+                : row.block.kind === 'assistant' && !row.block.streaming
+            const lastOfTurn = isUser || (endsTurn && settled)
+            const ts = row.type === 'block' ? row.block.ts : row.tools.at(-1)?.ts
+            return (
               <div
-                className={cn(
-                  // Narrow gap range (12–16px) so a working turn's mix of
-                  // chrome rows and prose reads as one even column.
-                  dense ? 'py-1.5' : 'py-2',
-                  fresh && 'animate-[block-in_180ms_cubic-bezier(0.16,1,0.3,1)]'
-                )}
+                key={item.key}
+                data-index={item.index}
+                ref={virtualizer.measureElement}
+                className="absolute right-6 left-6"
+                style={{ transform: `translateY(${item.start}px)` }}
+                onMouseEnter={() => setHoveredTurn(row.turn)}
               >
-                <BlockRow block={block} />
+                <div
+                  className={cn(
+                    // Block gap 8, turn gap 14 (user rows carry the extra).
+                    isUser ? 'py-2.5' : 'py-1',
+                    fresh && 'animate-[z-fade-in_500ms_cubic-bezier(0.16,1,0.3,1)]'
+                  )}
+                >
+                  <RowContent row={row} autoOpen={autoOpen} />
+                  {/* hover-revealed 16px timestamp strip */}
+                  {lastOfTurn && ts !== undefined && (
+                    <div
+                      className={cn(
+                        'flex h-4 items-end text-[11px] leading-none text-faint transition-opacity duration-150',
+                        isUser && 'justify-end',
+                        hoveredTurn === row.turn ? 'opacity-100' : 'opacity-0'
+                      )}
+                    >
+                      {fmtTs(ts)}
+                    </div>
+                  )}
+                </div>
               </div>
-            </div>
-          )
-        })}
+            )
+          })}
+        </div>
       </div>
-      {working && (
-        <div className="mx-auto w-full max-w-3xl px-6 pb-3 animate-[block-in_180ms_cubic-bezier(0.16,1,0.3,1)]">
-          <LoadingState />
+
+      {/* bottom fade: the transcript melts into the panel over 24px */}
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 h-6 bg-gradient-to-t from-background to-transparent" />
+
+      {/* scroll-to-bottom pill — raised opaque plate, appears past 320px */}
+      <div
+        className={cn(
+          'absolute bottom-3 left-1/2 -translate-x-1/2 transition-all duration-150',
+          pill ? 'opacity-100' : 'pointer-events-none translate-y-1 opacity-0'
+        )}
+      >
+        <button
+          onClick={() => {
+            mode.current = 'follow'
+            parkedRow.current = null
+            const el = scrollRef.current
+            if (el) startGlide(() => el.scrollHeight - el.clientHeight)
+          }}
+          className="flex h-7 items-center gap-1.5 rounded-full bg-secondary px-3 text-xs text-secondary-foreground transition-colors duration-150 hover:bg-secondary-hover"
+        >
+          <ZIcon name="arrow-down" size={11} />
+          Scroll to bottom
+        </button>
+      </div>
+
+      {/* left rail: block-tick minimap, current block highlighted */}
+      {rows.length > 1 && (
+        <div className="absolute top-1/2 left-4 flex -translate-y-1/2 flex-col gap-[5px]">
+          {rows.slice(0, 32).map((r, i) => (
+            <button
+              key={r.id}
+              aria-label={`Jump to block ${i + 1}`}
+              onClick={() => {
+                mode.current = 'free'
+                parkedRow.current = null
+                startGlide(() => Math.max(0, offsetOf(i) - TOP_INSET))
+              }}
+              className={cn(
+                'h-[2px] w-3 rounded-full transition-colors duration-150',
+                i === activeTick ? 'bg-foreground/60' : 'bg-foreground/15 hover:bg-foreground/40'
+              )}
+            />
+          ))}
         </div>
       )}
     </div>

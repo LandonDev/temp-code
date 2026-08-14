@@ -1,6 +1,40 @@
 @import 'tailwindcss';
 @plugin '@tailwindcss/typography';
 
+/* ---------------------------------------------------------------------------
+ * Zeron look — fonts. Geist / Geist Mono, bundled (same files Zeron ships).
+ * ------------------------------------------------------------------------- */
+@font-face {
+  font-family: 'Geist';
+  src: url('./fonts/Geist.ttf') format('truetype');
+  font-weight: 400;
+  font-display: block;
+}
+@font-face {
+  font-family: 'Geist';
+  src: url('./fonts/Geist-Medium.ttf') format('truetype');
+  font-weight: 500;
+  font-display: block;
+}
+@font-face {
+  font-family: 'Geist';
+  src: url('./fonts/Geist-SemiBold.ttf') format('truetype');
+  font-weight: 600;
+  font-display: block;
+}
+@font-face {
+  font-family: 'Geist';
+  src: url('./fonts/Geist-Bold.ttf') format('truetype');
+  font-weight: 700;
+  font-display: block;
+}
+@font-face {
+  font-family: 'Geist Mono';
+  src: url('./fonts/GeistMono.ttf') format('truetype');
+  font-weight: 400 700;
+  font-display: block;
+}
+
 /* shiki paints its own theme colors; the container owns the frame.
  * Lines wrap — a transcript never scrolls sideways. */
 .code-block pre {
@@ -15,19 +49,67 @@
   color: var(--shiki-dark) !important;
 }
 
-/* The newest transcript block settles in; old rows never replay this. */
+/* ---------------------------------------------------------------------------
+ * Zeron motion catalog (crates/ui/src/motion.rs, values verbatim).
+ * ------------------------------------------------------------------------- */
+
+/* FADE_IN — entrances: 500ms cubic-bezier(0.16,1,0.3,1), opacity 0→1 + 4px lift */
+@keyframes z-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+/* FADE_QUICK — small swaps */
+@keyframes z-fade-quick {
+  from {
+    opacity: 0;
+  }
+}
+/* MENU_IN — popovers: 140ms, scale .96 + translateY -2, origin at anchor */
+@keyframes z-menu-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(-2px);
+  }
+}
+/* DIALOG_IN — modals: 180ms, scale .96 */
+@keyframes z-dialog-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+}
+/* ZERON_PULSE — boot/loader cells: 2.4s staggered, opacity .08→1, scale .9→1 */
+@keyframes z-pulse {
+  0%,
+  100% {
+    opacity: 0.08;
+    transform: scale(0.9);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+/* Working matrix spinner — 750ms diagonal gradient wave (GRADIENT_SPIN) */
+@keyframes z-matrix {
+  0%,
+  100% {
+    opacity: 0.15;
+  }
+  40% {
+    opacity: 1;
+  }
+}
+
+/* Legacy keyframes kept for non-chat surfaces */
 @keyframes block-in {
   from {
     opacity: 0;
     transform: translateY(4px);
   }
 }
-
-/* Beautiful UI motion vocabulary (beautifului.dev), on our tokens.
- * text-shimmer: highlight sweeping through a label (thinking/working).
- * pixel-on: one cell of the pixel-grid loader lighting as the wave passes.
- * fade-up / fade-in: trace rows and settled labels arriving.
- * stream-in: streamed words resolving out of blur. */
 @keyframes text-shimmer {
   from {
     background-position: 150% center;
@@ -67,99 +149,113 @@
   }
 }
 
-/* Streaming assistant prose gets Beautiful UI's caret at the write head. */
-.streaming-prose > p:last-child::after,
-.streaming-prose > ul:last-child li:last-child::after,
-.streaming-prose > ol:last-child li:last-child::after {
-  content: '';
-  display: inline-block;
-  width: 2px;
-  height: 0.8em;
-  margin-left: 3px;
-  border-radius: 1px;
-  background: var(--foreground);
-  transform: translateY(0.1em);
-  animation: fade-in 150ms ease-out both;
-}
 /*
  ---break---
  */
 @custom-variant dark (&:is(.dark *));
 
 /*
- * Design tokens — the single source of truth for the whole app.
- * ReUI is the base design system; every copied BeUI / Beautiful UI
- * component gets its hardcoded values swapped for these variables.
- *
- * Two themes, Cursor-like: `:root` is light (white content, warm paper-gray
- * chrome), `.dark` is dark. main.tsx toggles `.dark` from the OS setting.
- * `--sidebar` exists because app chrome (sidebar, rails) sits a step away
- * from the content background in both themes.
+ * Design tokens — the Zeron pair (crates/ui/src/theme.rs, values verbatim).
+ * `:root` is their designed light theme (white content plane, real-grey
+ * chrome, 600-step accents); `.dark` is their primary near-black theme.
+ * main.tsx toggles `.dark` from the OS setting.
  */
 
 :root {
   color-scheme: light;
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.24 0.004 100);
-  --sidebar: oklch(0.972 0.003 100);
-  --sidebar-foreground: oklch(0.24 0.004 100);
-  --card: oklch(0.985 0.002 100);
-  --card-foreground: oklch(0.24 0.004 100);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.24 0.004 100);
-  --primary: oklch(0.24 0.004 100);
+  --background: oklch(1 0 0); /* bg — clean white content plane */
+  --foreground: oklch(0.25 0 0); /* text ~neutral-850, ~16:1 */
+  --sidebar: oklch(0.968 0 0); /* surface — shell/sidebar */
+  --sidebar-foreground: oklch(0.25 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.25 0 0);
+  --popover: oklch(1 0 0); /* light popovers stay white; border+shadow separate */
+  --popover-foreground: oklch(0.25 0 0);
+  --dialog: oklch(1 0 0);
+  --primary: oklch(0.205 0 0); /* solid — near-black plate */
   --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.955 0.003 100);
-  --secondary-foreground: oklch(0.24 0.004 100);
-  --muted: oklch(0.955 0.003 100);
-  --muted-foreground: oklch(0.55 0.005 100);
-  --accent: oklch(0.945 0.004 100);
-  --accent-foreground: oklch(0.24 0.004 100);
-  --destructive: oklch(0.577 0.245 27.325);
+  --secondary: oklch(0.94 0 0); /* surface_raised — opaque grey plate */
+  --secondary-hover: oklch(0.9 0 0); /* opaque pills darken on hover in light */
+  --secondary-foreground: oklch(0.25 0 0);
+  --muted: oklch(0.94 0 0);
+  --muted-foreground: oklch(0.439 0 0); /* text_muted ~neutral-600 */
+  --faint: oklch(0.535 0 0); /* text_faint */
+  --dim: oklch(0.5 0 0); /* text_dim — file paths */
+  --accent: hsl(0 0% 10% / 6%); /* element_hover wash */
+  --active: hsl(0 0% 10% / 10%); /* element_active wash */
+  --accent-foreground: oklch(0.25 0 0);
+  --brand: oklch(0.511 0.262 276.966); /* accent — indigo-600 */
+  --brand-strong: oklch(0.511 0.262 276.966);
+  --busy: oklch(0.592 0.249 0.584); /* pink-600 — streaming */
+  --destructive: oklch(0.577 0.245 27.325); /* red-600 */
+  --destructive-muted: oklch(0.505 0.213 27.518); /* red-700 */
   --destructive-foreground: oklch(0.985 0 0);
-  --border: oklch(0 0 0 / 8%);
-  --input: oklch(0 0 0 / 10%);
-  --ring: oklch(0.65 0.01 100);
-  --radius: 0.5rem;
-  --success: var(--color-emerald-600);
-  --success-foreground: var(--color-emerald-50);
-  --info: var(--color-blue-600);
-  --info-foreground: var(--color-blue-50);
-  --warning: var(--color-yellow-500);
-  --warning-foreground: var(--color-yellow-950);
+  --warning: oklch(0.555 0.163 48.998); /* amber-700 */
+  --warning-foreground: oklch(0.985 0 0);
+  --success: oklch(0.596 0.145 163.225); /* emerald-600 */
+  --success-foreground: oklch(0.985 0 0);
+  --border: oklch(0 0 0 / 10%);
+  --border-strong: oklch(0 0 0 / 17%);
+  --input: oklch(1 0 0); /* input_bg — composer pill fill */
+  --ring: oklch(0.511 0.262 276.966);
+  --radius: 10px; /* panel; sm=6 control, xl=14 */
+  --bubble: oklch(0.94 0 0); /* user bubble — opaque plate on white */
+  --code-text: oklch(0.491 0.27 292.581); /* violet-700 */
+  --code-wash: oklch(0.541 0.281 293.009 / 10%); /* violet-600/10 */
+  --band: oklch(0 0 0 / 4%); /* recessed picker strips */
+  --info: var(--brand);
+  --info-foreground: oklch(0.985 0 0);
   --invert: var(--color-zinc-900);
   --invert-foreground: var(--color-zinc-50);
 }
 
 .dark {
   color-scheme: dark;
-  --background: oklch(0.185 0 0);
-  --foreground: oklch(0.93 0 0);
-  --sidebar: oklch(0.155 0 0);
-  --sidebar-foreground: oklch(0.93 0 0);
-  --card: oklch(0.215 0 0);
-  --card-foreground: oklch(0.93 0 0);
-  --popover: oklch(0.225 0 0);
-  --popover-foreground: oklch(0.93 0 0);
-  --primary: oklch(0.93 0 0);
-  --primary-foreground: oklch(0.185 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.93 0 0);
-  --muted: oklch(0.255 0 0);
-  --muted-foreground: oklch(0.66 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.93 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
+  --background: #060606; /* bg — main panel, deepest plane */
+  --foreground: oklch(0.922 0 0); /* text ~neutral-200 */
+  /* surface — shell/sidebar. On macOS this is a #080808/80% tint over real
+   * window vibrancy (body goes transparent below); elsewhere it composites
+   * over the #060606 window fill to the same tone. */
+  --sidebar: rgb(8 8 8 / 0.8);
+  --sidebar-foreground: oklch(0.922 0 0);
+  --card: #0e0e0e; /* surface_card */
+  --card-foreground: oklch(0.922 0 0);
+  --popover: #161616; /* surface_overlay (glass recipe overrides below) */
+  --popover-foreground: oklch(0.922 0 0);
+  --dialog: #101010; /* surface_dialog */
+  --primary: oklch(0.922 0 0); /* solid — near-white plate */
+  --primary-foreground: #0e0e0e; /* on_solid */
+  --secondary: oklch(0.235 0 0); /* surface_raised — opaque pills */
+  --secondary-hover: oklch(0.29 0 0); /* brighten the plate, never wash */
+  --secondary-foreground: oklch(0.922 0 0);
+  --muted: oklch(1 0 0 / 5%);
+  --muted-foreground: oklch(0.708 0 0); /* text_muted ~neutral-400 */
+  --faint: oklch(0.556 0 0); /* text_faint ~neutral-500 */
+  --dim: #989898; /* text_dim */
+  --accent: hsl(0 0% 92% / 11%); /* element_hover — soft-white wash */
+  --active: hsl(0 0% 92% / 16%); /* element_active */
+  --accent-foreground: oklch(0.922 0 0);
+  --brand: oklch(0.673 0.182 276.935); /* accent — indigo-400 */
+  --brand-strong: oklch(0.585 0.233 277.117); /* indigo-500 */
+  --busy: oklch(0.718 0.202 349.761); /* pink-400 — streaming */
+  --destructive: oklch(0.704 0.191 22.216); /* red-400 */
+  --destructive-muted: oklch(0.808 0.114 19.571); /* red-300 */
   --destructive-foreground: oklch(0.985 0 0);
-  --border: oklch(1 0 0 / 9%);
-  --input: oklch(1 0 0 / 12%);
-  --ring: oklch(0.556 0 0);
-  --success: var(--color-emerald-500);
-  --success-foreground: var(--color-emerald-950);
-  --info: var(--color-blue-400);
-  --info-foreground: var(--color-blue-950);
-  --warning: var(--color-yellow-500);
-  --warning-foreground: var(--color-yellow-950);
+  --warning: oklch(0.828 0.189 84.429); /* amber-400 */
+  --warning-foreground: oklch(0.985 0 0);
+  --success: oklch(0.765 0.177 163.223); /* emerald-400 */
+  --success-foreground: oklch(0.985 0 0);
+  --border: oklch(1 0 0 / 8%);
+  --border-strong: oklch(1 0 0 / 14%);
+  --input: oklch(1 0 0 / 3%); /* input_bg — composer pill fill */
+  --ring: oklch(0.673 0.182 276.935);
+  --radius: 10px;
+  --bubble: hsl(0 0% 92% / 8%); /* user bubble — translucent wash */
+  --code-text: oklch(0.811 0.111 293.571); /* violet-300 */
+  --code-wash: oklch(0.702 0.183 293.541 / 12%); /* violet-400/12 */
+  --band: oklch(0 0 0 / 16%);
+  --info: var(--brand);
+  --info-foreground: oklch(0.985 0 0);
   --invert: var(--color-zinc-100);
   --invert-foreground: var(--color-zinc-900);
 }
@@ -173,19 +269,30 @@
   --color-card-foreground: var(--card-foreground);
   --color-popover: var(--popover);
   --color-popover-foreground: var(--popover-foreground);
+  --color-dialog: var(--dialog);
   --color-primary: var(--primary);
   --color-primary-foreground: var(--primary-foreground);
   --color-secondary: var(--secondary);
+  --color-secondary-hover: var(--secondary-hover);
   --color-secondary-foreground: var(--secondary-foreground);
   --color-muted: var(--muted);
   --color-muted-foreground: var(--muted-foreground);
+  --color-faint: var(--faint);
+  --color-dim: var(--dim);
   --color-accent: var(--accent);
+  --color-active: var(--active);
   --color-accent-foreground: var(--accent-foreground);
+  --color-brand: var(--brand);
+  --color-brand-strong: var(--brand-strong);
+  --color-busy: var(--busy);
   --color-destructive: var(--destructive);
+  --color-destructive-muted: var(--destructive-muted);
   --color-destructive-foreground: var(--destructive-foreground);
   --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
   --color-input: var(--input);
   --color-ring: var(--ring);
+  --color-bubble: var(--bubble);
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
@@ -198,15 +305,20 @@
   --color-info: var(--info);
   --color-success-foreground: var(--success-foreground);
   --color-success: var(--success);
+  --ease-fade: cubic-bezier(0.16, 1, 0.3, 1); /* FADE_IN */
+  --ease-hover: cubic-bezier(0.4, 0, 0.2, 1); /* HOVER_FADE */
+  --ease-resort: cubic-bezier(0.22, 1, 0.36, 1); /* list resort */
+  --font-sans: 'Geist', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-mono: 'Geist Mono', 'SF Mono', ui-monospace, Menlo, monospace;
 }
 
-/* Chat markdown renders on the app tokens, not the plugin's fixed grays —
- * one mapping covers both themes. Font size inherits the 13px body. */
+/* Chat markdown renders on the app tokens — one mapping, both themes.
+ * Body 14px / 22px line height (Zeron MD_LINE_HEIGHT). */
 .prose {
   --tw-prose-body: var(--foreground);
   --tw-prose-headings: var(--foreground);
   --tw-prose-lead: var(--muted-foreground);
-  --tw-prose-links: var(--info);
+  --tw-prose-links: var(--brand);
   --tw-prose-bold: var(--foreground);
   --tw-prose-counters: var(--muted-foreground);
   --tw-prose-bullets: var(--muted-foreground);
@@ -215,7 +327,7 @@
   --tw-prose-quote-borders: var(--border);
   --tw-prose-captions: var(--muted-foreground);
   --tw-prose-kbd: var(--foreground);
-  --tw-prose-code: var(--foreground);
+  --tw-prose-code: var(--code-text);
   --tw-prose-pre-code: var(--foreground);
   --tw-prose-pre-bg: transparent;
   --tw-prose-th-borders: var(--border);
@@ -231,8 +343,6 @@
     outline: 2px solid var(--ring);
     outline-offset: 1px;
   }
-  /* Tailwind's preflight resets buttons to cursor: default; everything
-   * clickable in this app shows a pointer. */
   button:not(:disabled),
   [role='button']:not([aria-disabled='true']),
   [role='tab'],
@@ -242,18 +352,29 @@
   summary {
     cursor: pointer;
   }
+  /* Zeron hover-fade discipline: every interactive wash fades over 150ms
+   * (Tailwind transition-colors curve), never snaps. */
+  button,
+  [role='button'],
+  [role='tab'],
+  [role='menuitem'],
+  [role='option'] {
+    transition-property: color, background-color, border-color;
+    transition-duration: 150ms;
+    transition-timing-function: var(--ease-hover);
+  }
   body {
     @apply bg-background text-foreground antialiased;
-    font-family:
-      -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Roboto, sans-serif;
+    font-family: var(--font-sans);
+    font-size: 14px;
+    line-height: 22px;
     user-select: none;
   }
   code,
   pre,
   .font-mono {
-    font-family: 'SF Mono', ui-monospace, 'Cascadia Code', Menlo, monospace;
+    font-family: var(--font-mono);
   }
-  /* macOS hiddenInset title bar: this strip is the drag handle. */
   .titlebar-drag {
     -webkit-app-region: drag;
   }
@@ -261,6 +382,53 @@
   .titlebar-drag input {
     -webkit-app-region: no-drag;
   }
+}
+
+/* macOS vibrancy: the dark shell shows the window blur through the sidebar
+ * tint; the content panel stays opaque #060606. */
+.dark body {
+  background: transparent;
+}
+
+/* Scrollbars melt into the panel: thin inset thumb, no track. */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: oklch(0 0 0 / 25%);
+  border: 3px solid transparent;
+  border-radius: 5px;
+  background-clip: padding-box;
+}
+.dark ::-webkit-scrollbar-thumb {
+  background: oklch(1 0 0 / 14%);
+  border: 3px solid transparent;
+  border-radius: 5px;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+/* The composer textarea never shows a bar — it grows instead. */
+textarea::-webkit-scrollbar {
+  display: none;
+}
+
+/* Zeron glass: popovers/menus are a mid-grey translucent tint over backdrop
+ * blur, never an opaque slab. Original web recipe:
+ * blur(44px) saturate(1.8) brightness(1.18) under oklch(0.33 0 0)/34%. */
+.dark [data-slot='dropdown-menu-content'],
+.dark [data-slot='select-content'],
+.dark [data-slot='popover-content'],
+.dark [data-slot='context-menu-content'],
+.dark [data-slot='menubar-content'] {
+  background: oklch(0.33 0 0 / 34%);
+  backdrop-filter: blur(44px) saturate(1.8) brightness(1.18);
+  -webkit-backdrop-filter: blur(44px) saturate(1.8) brightness(1.18);
 }
 
 /* Reduced motion: near-instant CSS transitions. Motion components handle

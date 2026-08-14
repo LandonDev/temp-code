@@ -15,7 +15,13 @@ import type { AgentEvent, Attachment, EventRow } from '@shared/events'
  */
 
 type BlockKind =
-  | { kind: 'user'; text: string; attachments?: Attachment[] }
+  | {
+      kind: 'user'
+      text: string
+      attachments?: Attachment[]
+      /** optimistic echo not yet confirmed by the server — renders at 65% */
+      pending?: boolean
+    }
   | { kind: 'assistant'; text: string; streaming: boolean }
   | {
       kind: 'thinking'
@@ -49,7 +55,7 @@ type BlockKind =
 
 /** `todo` = index of the todo that was in_progress when the block was born
  *  (-1 before the first todo list) — how the implementation view groups. */
-export type Block = BlockKind & { id: string; todo: number }
+export type Block = BlockKind & { id: string; todo: number; ts?: number }
 
 export interface TodoItem {
   content: string
@@ -91,12 +97,12 @@ export function emptyFold(): FoldState {
  *  the authoritative user-text event a round-trip later; foldEvent then
  *  claims this block instead of appending a duplicate. */
 export function foldOptimisticUser(s: FoldState, text: string, attachments?: Attachment[]): void {
-  s.pendingUsers.push(push(s, { kind: 'user', text, attachments }))
+  s.pendingUsers.push(push(s, { kind: 'user', text, attachments, pending: true }, Date.now()))
 }
 
-function push(s: FoldState, block: BlockKind): number {
+function push(s: FoldState, block: BlockKind, ts?: number): number {
   const id = String(s.nextId++)
-  s.blocks.push({ ...block, id, todo: s.activeTodo })
+  s.blocks.push({ ...block, id, todo: s.activeTodo, ts })
   return s.blocks.length - 1
 }
 
@@ -134,12 +140,16 @@ function foldText(
   }
 
   if (idx === undefined) {
-    const newIdx = push(s, {
-      kind,
-      text: e.text,
-      streaming: e.delta,
-      ...(kind === 'thinking' ? { startedAt: ts } : {})
-    })
+    const newIdx = push(
+      s,
+      {
+        kind,
+        text: e.text,
+        streaming: e.delta,
+        ...(kind === 'thinking' ? { startedAt: ts } : {})
+      },
+      ts
+    )
     if (key) s.byKey.set(key, newIdx)
     return
   }
@@ -174,9 +184,15 @@ export function foldEvent(s: FoldState, e: AgentEvent, ts?: number): void {
       const pending = s.pendingUsers.shift()
       if (pending !== undefined && s.blocks[pending]?.kind === 'user') {
         const b = s.blocks[pending] as Extract<Block, { kind: 'user' }>
-        s.blocks[pending] = { ...b, text: e.text, attachments: e.attachments }
+        s.blocks[pending] = {
+          ...b,
+          text: e.text,
+          attachments: e.attachments,
+          pending: undefined,
+          ts: ts ?? b.ts
+        }
       } else {
-        push(s, { kind: 'user', text: e.text, attachments: e.attachments })
+        push(s, { kind: 'user', text: e.text, attachments: e.attachments }, ts)
       }
       break
     }
@@ -203,7 +219,7 @@ export function foldEvent(s: FoldState, e: AgentEvent, ts?: number): void {
       } else {
         s.byCall.set(
           e.callId,
-          push(s, { kind: 'tool', callId: e.callId, name: e.name, input: e.input, subCount: 0 })
+          push(s, { kind: 'tool', callId: e.callId, name: e.name, input: e.input, subCount: 0 }, ts)
         )
       }
       break
