@@ -21,6 +21,7 @@ import check from '../../assets/zicons/check.svg?raw'
 import close from '../../assets/zicons/close.svg?raw'
 import gitBranch from '../../assets/zicons/git-branch.svg?raw'
 import folder from '../../assets/zicons/folder.svg?raw'
+import expandArrows from '../../assets/zicons/expand-arrows.svg?raw'
 import terminal from '../../assets/zicons/terminal.svg?raw'
 import documentText from '../../assets/zicons/document.svg?raw'
 
@@ -48,6 +49,7 @@ const ICONS = {
   close,
   'git-branch': gitBranch,
   folder,
+  'expand-arrows': expandArrows,
   terminal,
   'document-text': documentText
 } as const

@@ -109,7 +109,7 @@ export const UserMessage = memo(function UserMessage({
             <span
               key={a.path}
               title={a.path}
-              className="flex items-center gap-1.5 rounded-md border border-border bg-[oklch(1_0_0/3%)] px-2 py-1 text-xs text-muted-foreground"
+              className="flex items-center gap-1.5 rounded-md border border-border bg-(--chip-bg) px-2 py-1 text-xs text-muted-foreground"
             >
               <ZIcon name="document" size={12} />
               {a.name}
