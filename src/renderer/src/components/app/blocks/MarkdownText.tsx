@@ -5,6 +5,7 @@ import { useApp } from '../../../state/store'
 import { cn } from '../../../lib/utils'
 import { CodeBlock } from './CodeBlock'
 import { useStreamVeil } from './veil'
+import { useSmoothText } from './smooth'
 
 /** `src/foo/bar.ts`, `./x.css:12`, `/abs/path.rs` — things worth linking.
  *  Requires a directory and an extension so prose in backticks stays prose. */
@@ -24,10 +25,11 @@ export const MarkdownText = memo(function MarkdownText({
 }): React.JSX.Element {
   const openFileRef = useApp((s) => s.openFileRef)
   const files = useApp((s) => (s.selectedProjectId ? s.files[s.selectedProjectId] : undefined))
-  // Zeron streaming veil: new glyphs commit to layout instantly and
-  // dissolve in under a paint-only fade (mugen FadePainter).
+  // Coarse chunks glide out through a reveal buffer, and each small step
+  // dissolves in under the paint-only veil (mugen FadePainter).
+  const shown = useSmoothText(text, streaming)
   const veilRef = useRef<HTMLDivElement>(null)
-  useStreamVeil(veilRef, text, streaming)
+  useStreamVeil(veilRef, shown, streaming)
   const byBasename = useMemo(() => {
     const m = new Map<string, string>()
     for (const p of files ?? []) {
@@ -106,7 +108,7 @@ export const MarkdownText = memo(function MarkdownText({
           }
         }}
       >
-        {text}
+        {shown}
       </Markdown>
     </div>
   )

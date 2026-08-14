@@ -1,7 +1,8 @@
-import { memo, useLayoutEffect, useRef, useState } from 'react'
+import { memo, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { cn, displayPath } from '../../../lib/utils'
 import { useApp } from '../../../state/store'
 import { ZIcon, type ZIconName } from '../zicon'
+import { MatrixSpinner } from '../WorkingStrip'
 import type { Block } from '../../../state/blocks'
 
 type ToolBlock = Extract<Block, { kind: 'tool' }>
@@ -168,6 +169,30 @@ export function groupSummary(tools: ToolBlock[]): string {
   if (failed) segments.push(`${failed} failed`)
   const joined = segments.length ? segments.join(' · ') : `${tools.length} tools`
   return joined.charAt(0).toUpperCase() + joined.slice(1)
+}
+
+/** Tween a displayed count toward its target — the diffstat counts up as
+ *  the change lands instead of teleporting. 550ms ease-out cubic. */
+function useCountUp(target: number, animate: boolean): number {
+  const [v, setV] = useState(0)
+  const from = useRef(0)
+  const raf = useRef(0)
+  useEffect(() => {
+    if (!animate) return
+    const start = from.current
+    if (start === target) return
+    const t0 = performance.now()
+    const tick = (now: number): void => {
+      const p = Math.min(1, (now - t0) / 550)
+      const eased = 1 - Math.pow(1 - p, 3)
+      setV(Math.round(start + (target - start) * eased))
+      if (p < 1) raf.current = requestAnimationFrame(tick)
+      else from.current = target
+    }
+    raf.current = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(raf.current)
+  }, [target, animate])
+  return animate ? v : target
 }
 
 /** 18px chevron tile — rounded 5, white/6% plate, ▸ → ▾ via a 200ms rotate. */
@@ -366,6 +391,10 @@ const Chip = memo(function Chip({ b }: { b: ToolBlock }): React.JSX.Element {
   const chip = CHIP[k]
   const detail = detailOf(b, projectCwd)
   const running = b.output === undefined
+  // The driver announces a call before its input finishes streaming — until
+  // the input lands the chip is a spinner, never a half-filled row.
+  const loading = b.input === undefined
+  const [wasLoading] = useState(loading)
   const isDiff = (k === 'edit' || k === 'write') && !b.isError
 
   return (
@@ -379,12 +408,12 @@ const Chip = memo(function Chip({ b }: { b: ToolBlock }): React.JSX.Element {
           className="flex h-[30px] w-full items-center gap-2 px-2 text-left text-xs"
         >
           <span className="flex size-[18px] shrink-0 items-center justify-center rounded-[5px] bg-(--tile-strong) text-muted-foreground">
-            <ZIcon name={chip.icon} size={12} />
+            {loading ? <MatrixSpinner cell={2} /> : <ZIcon name={chip.icon} size={12} />}
           </span>
           <span
             className={cn(
               'shrink-0 font-medium',
-              b.isError ? 'text-destructive' : 'text-foreground'
+              b.isError ? 'text-destructive' : loading ? 'text-muted-foreground' : 'text-foreground'
             )}
           >
             {chip.label}
@@ -392,12 +421,15 @@ const Chip = memo(function Chip({ b }: { b: ToolBlock }): React.JSX.Element {
           <span
             className={cn(
               'min-w-0 flex-1 truncate',
-              b.isError ? 'text-destructive' : 'text-foreground/85'
+              b.isError ? 'text-destructive' : 'text-foreground/85',
+              wasLoading && !loading && 'animate-[z-fade-quick_150ms_ease-out]'
             )}
           >
-            {detail}
+            {loading ? '' : detail}
           </span>
-          {running && <span className="size-1.5 shrink-0 animate-pulse rounded-full bg-busy" />}
+          {running && !loading && (
+            <span className="size-1.5 shrink-0 animate-pulse rounded-full bg-busy" />
+          )}
           <ChevronTile open={open} />
         </button>
         <TweenHeight open={open} animate={userToggled}>
@@ -484,11 +516,20 @@ function editModel(b: ToolBlock): EditModel {
     case 'Edit': {
       const o = lines(str(i.old_string))
       const nw = lines(str(i.new_string))
-      return { ...empty, path: str(i.file_path), adds: nw.length, dels: o.length, hunks: [{ old: o, new: nw }] }
+      return {
+        ...empty,
+        path: str(i.file_path),
+        adds: nw.length,
+        dels: o.length,
+        hunks: [{ old: o, new: nw }]
+      }
     }
     case 'MultiEdit': {
       const edits = Array.isArray(i.edits) ? (i.edits as Record<string, unknown>[]) : []
-      const hunks = edits.map((e) => ({ old: lines(str(e.old_string)), new: lines(str(e.new_string)) }))
+      const hunks = edits.map((e) => ({
+        old: lines(str(e.old_string)),
+        new: lines(str(e.new_string))
+      }))
       return {
         ...empty,
         path: str(i.file_path),
@@ -499,11 +540,22 @@ function editModel(b: ToolBlock): EditModel {
     }
     case 'Write': {
       const content = lines(str(i.content))
-      return { ...empty, path: str(i.file_path), adds: content.length, create: true, hunks: [{ old: [], new: content }] }
+      return {
+        ...empty,
+        path: str(i.file_path),
+        adds: content.length,
+        create: true,
+        hunks: [{ old: [], new: content }]
+      }
     }
     case 'NotebookEdit': {
       const src = lines(str(i.new_source))
-      return { ...empty, path: str(i.notebook_path), adds: src.length, hunks: [{ old: [], new: src }] }
+      return {
+        ...empty,
+        path: str(i.notebook_path),
+        adds: src.length,
+        hunks: [{ old: [], new: src }]
+      }
     }
     case 'apply_patch': {
       const paths = Array.isArray(b.input)
@@ -528,10 +580,18 @@ export const ZEditCard = memo(function ZEditCard({ b }: { b: ToolBlock }): React
   const projectCwd = useApp((s) => s.projects.find((p) => p.id === s.selectedProjectId)?.cwd)
   const m = editModel(b)
   const running = b.output === undefined
+  // Input still streaming from the driver: spinner + verb, no half-card.
+  const loading = b.input === undefined
+  const [wasLoading] = useState(loading)
+  // Count the diffstat up only when we watched the change land live.
+  const [liveAtMount] = useState(running)
+  const adds = useCountUp(m.adds, liveAtMount)
+  const dels = useCountUp(m.dels, liveAtMount)
   const name = m.path.split('/').pop() ?? m.path
   const rawDir = m.path.includes('/') ? m.path.slice(0, m.path.lastIndexOf('/')) : ''
   const shownDir = rawDir ? displayPath(rawDir, projectCwd) : ''
   const dir = shownDir === '.' ? '' : shownDir
+  const verb = b.name === 'Write' ? 'Writing…' : b.name === 'apply_patch' ? 'Patching…' : 'Editing…'
 
   return (
     <div
@@ -549,30 +609,45 @@ export const ZEditCard = memo(function ZEditCard({ b }: { b: ToolBlock }): React
           className="flex min-w-0 flex-1 items-center gap-2.5 text-left"
         >
           <span className="flex size-5 shrink-0 items-center justify-center rounded-[6px] bg-(--tile-strong) text-foreground/80">
-            <ZIcon name={m.create ? 'document-add' : 'pen'} size={13} />
-          </span>
-          <span className="min-w-0 truncate text-[13px]">
-            <span className="font-medium">{name || b.name}</span>
-            {dir && <span className="ml-1.5 text-xs text-muted-foreground">{dir}</span>}
-            {m.extraPaths.length > 0 && (
-              <span className="ml-1.5 text-xs text-muted-foreground">
-                +{m.extraPaths.length} more
-              </span>
+            {loading ? (
+              <MatrixSpinner cell={2.5} />
+            ) : (
+              <ZIcon name={m.create ? 'document-add' : 'pen'} size={13} />
             )}
           </span>
+          {loading ? (
+            <span className="min-w-0 truncate text-[13px] text-muted-foreground">{verb}</span>
+          ) : (
+            <span
+              className={cn(
+                'min-w-0 truncate text-[13px]',
+                wasLoading && 'animate-[z-fade-quick_150ms_ease-out]'
+              )}
+            >
+              <span className="font-medium">{name || b.name}</span>
+              {dir && <span className="ml-1.5 text-xs text-muted-foreground">{dir}</span>}
+              {m.extraPaths.length > 0 && (
+                <span className="ml-1.5 text-xs text-muted-foreground">
+                  +{m.extraPaths.length} more
+                </span>
+              )}
+            </span>
+          )}
           <span className="ml-auto flex shrink-0 items-center gap-2 pl-2">
             {b.isError ? (
               <span className="text-xs font-medium text-destructive">failed</span>
             ) : (
               (m.adds > 0 || m.dels > 0) && (
                 <span className="text-xs font-semibold tracking-tight tabular-nums">
-                  {m.adds > 0 && <span className="text-success">+{m.adds}</span>}
+                  {m.adds > 0 && <span className="text-success">+{adds}</span>}
                   {m.adds > 0 && m.dels > 0 && ' '}
-                  {m.dels > 0 && <span className="text-destructive">−{m.dels}</span>}
+                  {m.dels > 0 && <span className="text-destructive">−{dels}</span>}
                 </span>
               )
             )}
-            {running && <span className="size-1.5 animate-pulse rounded-full bg-busy" />}
+            {running && !loading && (
+              <span className="size-1.5 animate-pulse rounded-full bg-busy" />
+            )}
             <ChevronTile open={open} />
           </span>
         </button>

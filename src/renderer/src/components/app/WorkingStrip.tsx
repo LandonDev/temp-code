@@ -44,17 +44,20 @@ function formatElapsed(ms: number): string {
   return s < 60 ? `${s}s` : `${Math.floor(s / 60)}m ${s % 60}s`
 }
 
-/** 750ms diagonal gradient wave over a 3×3 matrix of cells. */
-function MatrixSpinner(): React.JSX.Element {
+/** 750ms diagonal gradient wave over a 3×3 matrix of cells — the app's one
+ *  busy motif. Also runs at 2px in tool chips while a call's input loads. */
+export function MatrixSpinner({ cell = 2.5 }: { cell?: number }): React.JSX.Element {
   return (
-    <span className="grid shrink-0 grid-cols-3 gap-[1.5px]">
+    <span className="grid shrink-0 grid-cols-3" style={{ gap: cell * 0.6 }}>
       {Array.from({ length: 9 }, (_, n) => {
         const diag = (n % 3) + Math.floor(n / 3) // 0..4 down the diagonal
         return (
           <span
             key={n}
-            className="size-[2.5px] rounded-[0.5px] bg-busy"
+            className="rounded-[0.5px] bg-busy"
             style={{
+              width: cell,
+              height: cell,
               animation: 'z-matrix 750ms linear infinite',
               animationDelay: `${diag * -150}ms`
             }}

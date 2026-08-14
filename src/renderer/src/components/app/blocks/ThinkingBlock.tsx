@@ -2,6 +2,7 @@ import { memo, useState } from 'react'
 import { cn } from '../../../lib/utils'
 import { TextShimmer } from '../../motion/text-shimmer'
 import { ZIcon } from '../zicon'
+import { useSmoothText } from './smooth'
 
 function durationLabel(ms?: number): string {
   if (ms === undefined) return 'Thought for a moment'
@@ -24,7 +25,8 @@ export const ThinkingBlock = memo(function ThinkingBlock({
   thoughtMs?: number
 }): React.JSX.Element {
   const [open, setOpen] = useState(false)
-  const tail = streaming && !open ? text.trimEnd().split('\n').at(-1)?.trim() : undefined
+  const shown = useSmoothText(text, streaming)
+  const tail = streaming && !open ? shown.trimEnd().split('\n').at(-1)?.trim() : undefined
 
   return (
     <div>
@@ -55,7 +57,7 @@ export const ThinkingBlock = memo(function ThinkingBlock({
           <div className="relative">
             <div className="absolute top-0 bottom-0 left-3 w-px bg-(--rail)" />
             <p className="ml-6 py-1 text-xs leading-[18px] whitespace-pre-wrap text-muted-foreground">
-              {text}
+              {shown}
             </p>
           </div>
         </div>
