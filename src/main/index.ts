@@ -7,6 +7,15 @@ import { startServer, type RunningServer } from './server'
 
 let server: RunningServer | null = null
 
+// Parallel dev instances (worktrees) get their own userData + database so
+// they never contend with the primary checkout's running app.
+if (process.env.TEMP_CODE_USER_DATA) {
+  app.setPath('userData', process.env.TEMP_CODE_USER_DATA)
+}
+if (process.env.TEMP_CODE_DEBUG_PORT) {
+  app.commandLine.appendSwitch('remote-debugging-port', process.env.TEMP_CODE_DEBUG_PORT)
+}
+
 function createWindow(): void {
   const mainWindow = new BrowserWindow({
     width: 1280,
@@ -16,6 +25,12 @@ function createWindow(): void {
     show: false,
     autoHideMenuBar: true,
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
+    // Zeron glass: real window vibrancy under the shell; the renderer tints
+    // it #080808/80% and keeps the content panel opaque.
+    ...(process.platform === 'darwin'
+      ? { vibrancy: 'under-window' as const, visualEffectState: 'active' as const }
+      : {}),
+    backgroundColor: process.platform === 'darwin' ? '#00000000' : '#060606',
     ...(process.platform === 'linux' ? { icon } : {}),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),

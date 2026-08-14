@@ -1,0 +1,477 @@
+import { memo, useLayoutEffect, useRef, useState } from 'react'
+import { cn, displayPath } from '../../../lib/utils'
+import { useApp } from '../../../state/store'
+import { ZIcon, type ZIconName } from '../zicon'
+import type { Block } from '../../../state/blocks'
+
+type ToolBlock = Extract<Block, { kind: 'tool' }>
+
+/**
+ * Zeron tool rendering (transcript.rs + proto/view.rs, values verbatim):
+ * consecutive tool parts fold into ONE group row — a collapsed summary
+ * sentence that expands to chip cards along a guide rail. Auto-open while
+ * the turn streams; collapses when it settles; a user toggle overrides.
+ */
+
+const str = (v: unknown): string => (typeof v === 'string' ? v : '')
+const input = (b: ToolBlock): Record<string, unknown> =>
+  b.input && typeof b.input === 'object' ? (b.input as Record<string, unknown>) : {}
+
+// eslint-disable-next-line no-control-regex -- ESC is the point: strip ANSI color codes
+const stripAnsi = (s: string): string => s.replace(/\u001b\[[0-9;]*m/g, '')
+
+/** Zeron chip categories (proto/view.rs ToolKind). */
+type Kind =
+  | 'run'
+  | 'read'
+  | 'write'
+  | 'edit'
+  | 'patch'
+  | 'search'
+  | 'glob'
+  | 'fetch'
+  | 'web'
+  | 'todo'
+  | 'mcp'
+  | 'tool'
+
+function kindOf(b: ToolBlock): Kind {
+  switch (b.name) {
+    case 'Bash':
+    case 'shell':
+    case 'Shell':
+      return 'run'
+    case 'Read':
+      return 'read'
+    case 'Write':
+      return 'write'
+    case 'Edit':
+    case 'MultiEdit':
+    case 'NotebookEdit':
+      return 'edit'
+    case 'apply_patch':
+      return 'patch'
+    case 'Grep':
+      return 'search'
+    case 'Glob':
+      return 'glob'
+    case 'WebFetch':
+      return 'fetch'
+    case 'WebSearch':
+    case 'web_search':
+      return 'web'
+    case 'TodoWrite':
+    case 'update_plan':
+      return 'todo'
+    default:
+      return b.name.includes('.') ? 'mcp' : 'tool'
+  }
+}
+
+/** Verb label + Solar icon per kind (proto/view.rs chip labels). */
+const CHIP: Record<Kind, { label: string; icon: ZIconName }> = {
+  run: { label: 'Run', icon: 'command' },
+  read: { label: 'Read', icon: 'document' },
+  write: { label: 'Write', icon: 'document-add' },
+  edit: { label: 'Edit', icon: 'pen' },
+  patch: { label: 'Patch', icon: 'document' },
+  search: { label: 'Search', icon: 'magnifer' },
+  glob: { label: 'Glob', icon: 'folder-with-files' },
+  fetch: { label: 'Fetch', icon: 'global' },
+  web: { label: 'Web', icon: 'global' },
+  todo: { label: 'Todo', icon: 'checklist' },
+  mcp: { label: 'MCP', icon: 'widget' },
+  tool: { label: 'Tool', icon: 'widget' }
+}
+
+function pathOf(b: ToolBlock): string {
+  const i = input(b)
+  return str(i.file_path) || str(i.path) || str(i.notebook_path)
+}
+
+/** One-line detail: the command, the path, `pattern in path`, the URL,
+ *  `2/5 done`, `server · tool`. Newlines collapse to spaces. */
+function detailOf(b: ToolBlock, cwd?: string): string {
+  const i = input(b)
+  const p = (s: string): string => (s ? displayPath(s, cwd) : '')
+  switch (kindOf(b)) {
+    case 'run':
+      return str(i.command).replace(/\s*\n\s*/g, ' ')
+    case 'read':
+    case 'write':
+    case 'edit':
+      return p(pathOf(b))
+    case 'patch': {
+      const paths = Array.isArray(b.input)
+        ? (b.input as Record<string, unknown>[]).map((c) => str(c.path)).filter(Boolean)
+        : Object.keys(i)
+      return paths.map((x) => p(x)).join(', ')
+    }
+    case 'search': {
+      const where = p(str(i.path))
+      return where ? `${str(i.pattern)} in ${where}` : str(i.pattern)
+    }
+    case 'glob':
+      return str(i.pattern)
+    case 'fetch':
+      return str(i.url)
+    case 'web':
+      return str(i.query)
+    case 'todo': {
+      const raw = (i.todos ?? i.plan) as { status?: string }[] | undefined
+      if (Array.isArray(raw)) {
+        const done = raw.filter((t) => t.status === 'completed').length
+        return `${done}/${raw.length} done`
+      }
+      return ''
+    }
+    case 'mcp': {
+      const [server, tool] = b.name.split(/\.(.+)/)
+      return `${server} · ${tool}`
+    }
+    default: {
+      const firstString = Object.values(i).find((v) => typeof v === 'string')
+      return str(firstString)
+    }
+  }
+}
+
+/** The group summary sentence (proto/view.rs tool_group_summary, verbatim
+ *  phrasing): count segments joined by " · ", first letter capitalized.
+ *  Deliberately neutral when children failed — errors live on the chips
+ *  and in the trailing "· N failed" only. */
+export function groupSummary(tools: ToolBlock[]): string {
+  const counts = new Map<Kind, number>()
+  const editPaths = new Set<string>()
+  let failed = 0
+  for (const t of tools) {
+    const k = kindOf(t)
+    if (k === 'write' || k === 'edit' || k === 'patch') {
+      editPaths.add(pathOf(t) || t.callId)
+    }
+    counts.set(k, (counts.get(k) ?? 0) + 1)
+    if (t.isError) failed++
+  }
+  const n = (k: Kind): number => counts.get(k) ?? 0
+  const plural = (count: number, word: string): string =>
+    `${count} ${word}${count === 1 ? '' : 's'}`
+  const segments: string[] = []
+  if (n('run')) segments.push(`ran ${plural(n('run'), 'command')}`)
+  if (editPaths.size) segments.push(`edited ${plural(editPaths.size, 'file')}`)
+  if (n('read')) segments.push(`read ${plural(n('read'), 'file')}`)
+  const searches = n('search') + n('glob') + n('web')
+  if (searches) segments.push(`searched ${plural(searches, 'time')}`)
+  if (n('fetch')) segments.push(`fetched ${plural(n('fetch'), 'page')}`)
+  if (n('todo')) segments.push('updated todos')
+  const called = n('mcp') + n('tool')
+  if (called) segments.push(`called ${plural(called, 'tool')}`)
+  if (failed) segments.push(`${failed} failed`)
+  const joined = segments.length ? segments.join(' · ') : `${tools.length} tools`
+  return joined.charAt(0).toUpperCase() + joined.slice(1)
+}
+
+/** 18px chevron tile — rounded 5, white/6% plate, ▸ → ▾ via a 200ms rotate. */
+function ChevronTile({ open }: { open: boolean }): React.JSX.Element {
+  return (
+    <span className="flex size-[18px] shrink-0 items-center justify-center rounded-[5px] bg-[oklch(1_0_0/6%)] text-muted-foreground/70">
+      <ZIcon
+        name="alt-arrow-right"
+        size={10}
+        className={cn('transition-transform duration-200', open && 'rotate-90')}
+      />
+    </span>
+  )
+}
+
+/** Height tween wrapper: 200ms ease-out on user toggles ONLY — auto-open,
+ *  streaming growth and remounts render at final size with no animation. */
+function TweenHeight({
+  open,
+  animate,
+  children
+}: {
+  open: boolean
+  animate: boolean
+  children: React.ReactNode
+}): React.JSX.Element {
+  const ref = useRef<HTMLDivElement>(null)
+  const first = useRef(true)
+  useLayoutEffect(() => {
+    const el = ref.current
+    if (!el) return
+    if (first.current || !animate) {
+      first.current = false
+      el.style.transition = 'none'
+      el.style.height = open ? 'auto' : '0px'
+      return
+    }
+    const target = open ? el.scrollHeight : 0
+    const from = open ? 0 : el.scrollHeight
+    el.style.transition = 'none'
+    el.style.height = `${from}px`
+    // Force the start frame, then tween to the target (RESIZE: 200ms ease-out).
+    void el.offsetHeight
+    el.style.transition = 'height 200ms ease-out'
+    el.style.height = `${target}px`
+    const done = (): void => {
+      el.style.transition = 'none'
+      if (open) el.style.height = 'auto'
+      el.removeEventListener('transitionend', done)
+    }
+    el.addEventListener('transitionend', done)
+    return () => el.removeEventListener('transitionend', done)
+  }, [open, animate])
+  return (
+    <div ref={ref} className="overflow-hidden" style={{ height: open ? 'auto' : 0 }}>
+      {children}
+    </div>
+  )
+}
+
+const OUTPUT_LINE_CAP = 24
+const DIFF_LINE_CAP = 600
+
+/** Output block: mono 11.5px / 18px lines, py 6 px 12, verbatim
+ *  indentation, capped at 24 lines with a faint "… N more lines" tail. */
+function OutputBlock({ text, error }: { text: string; error?: boolean }): React.JSX.Element {
+  const all = stripAnsi(text).replace(/\n+$/, '').split('\n')
+  const shown = all.slice(0, OUTPUT_LINE_CAP)
+  const more = all.length - shown.length
+  return (
+    <div className="px-3 py-1.5">
+      <pre
+        className={cn(
+          'font-mono text-[11.5px] leading-[18px] whitespace-pre-wrap [overflow-wrap:anywhere]',
+          error ? 'text-destructive' : 'text-foreground/85'
+        )}
+      >
+        {shown.join('\n') || '(no output)'}
+      </pre>
+      {more > 0 && (
+        <div className="text-[10.5px] leading-[18px] text-faint">… {more} more lines</div>
+      )}
+    </div>
+  )
+}
+
+/** Diff hunks — emerald adds / red deletes, capped at 600 lines. */
+function DiffBlock({ b }: { b: ToolBlock }): React.JSX.Element {
+  const i = input(b)
+  const lines = (s: string): string[] => (s === '' ? [] : s.split('\n'))
+  const hunks: { old: string[]; new: string[] }[] =
+    b.name === 'MultiEdit' && Array.isArray(i.edits)
+      ? (i.edits as Record<string, unknown>[]).map((e) => ({
+          old: lines(str(e.old_string)),
+          new: lines(str(e.new_string))
+        }))
+      : b.name === 'Write' || b.name === 'NotebookEdit'
+        ? [{ old: [], new: lines(str(i.content) || str(i.new_source)) }]
+        : [{ old: lines(str(i.old_string)), new: lines(str(i.new_string)) }]
+  const capped: { old: string[]; new: string[] }[] = []
+  let budget = DIFF_LINE_CAP
+  for (const h of hunks) {
+    if (budget <= 0) break
+    const oldShown = h.old.slice(0, budget)
+    budget -= oldShown.length
+    const newShown = h.new.slice(0, Math.max(0, budget))
+    budget -= newShown.length
+    capped.push({ old: oldShown, new: newShown })
+  }
+  return (
+    <div className="py-1.5 font-mono text-[11.5px] leading-[18px]">
+      {capped.map((h, n) => (
+        <div key={n} className={cn(n > 0 && 'mt-1.5 border-t border-[oklch(1_0_0/6%)] pt-1.5')}>
+          {h.old.map((l, j) => (
+            <div
+              key={`o${j}`}
+              className="bg-destructive/10 px-3 whitespace-pre-wrap [overflow-wrap:anywhere] text-destructive"
+            >
+              − {l || ' '}
+            </div>
+          ))}
+          {h.new.map((l, j) => (
+            <div
+              key={`n${j}`}
+              className="bg-success/10 px-3 whitespace-pre-wrap [overflow-wrap:anywhere] text-success"
+            >
+              + {l || ' '}
+            </div>
+          ))}
+        </div>
+      ))}
+      {budget <= 0 && <div className="px-3 text-[10.5px] text-faint">… diff truncated</div>}
+    </div>
+  )
+}
+
+/** The invocation block — "what was asked": the complete command, pattern,
+ *  URL or input JSON, soft-wrapped. */
+function InvocationBlock({ b }: { b: ToolBlock }): React.JSX.Element {
+  const i = input(b)
+  const k = kindOf(b)
+  const body =
+    k === 'run'
+      ? str(i.command)
+      : k === 'search'
+        ? [str(i.pattern), str(i.path) && `in ${str(i.path)}`].filter(Boolean).join(' ')
+        : k === 'glob'
+          ? str(i.pattern)
+          : k === 'fetch'
+            ? str(i.url)
+            : k === 'web'
+              ? str(i.query)
+              : k === 'read' || k === 'write' || k === 'edit'
+                ? pathOf(b)
+                : JSON.stringify(b.input ?? {}, null, 2)
+  return (
+    <div className="px-3 py-1.5">
+      <pre className="font-mono text-[11.5px] leading-[18px] whitespace-pre-wrap [overflow-wrap:anywhere] text-muted-foreground">
+        {body}
+      </pre>
+    </div>
+  )
+}
+
+function TodoBlock({ b }: { b: ToolBlock }): React.JSX.Element {
+  const i = input(b)
+  const raw = (i.todos ?? i.plan) as { content?: string; step?: string; status?: string }[]
+  const items = Array.isArray(raw) ? raw : []
+  return (
+    <div className="space-y-0.5 px-3 py-1.5">
+      {items.map((t, n) => (
+        <div
+          key={n}
+          className={cn(
+            'flex items-start gap-2 text-[11.5px] leading-[18px]',
+            t.status === 'completed' ? 'text-muted-foreground' : 'text-foreground/85'
+          )}
+        >
+          <span className="w-3 shrink-0 text-center text-faint">
+            {t.status === 'completed' ? '✓' : t.status === 'in_progress' ? '›' : '·'}
+          </span>
+          {t.content ?? t.step ?? ''}
+        </div>
+      ))}
+    </div>
+  )
+}
+
+/** One chip: a 30px card that grows in place when expanded — invocation
+ *  first, then output/diff, stacked under white/6% hairlines. */
+const Chip = memo(function Chip({ b }: { b: ToolBlock }): React.JSX.Element {
+  const [open, setOpen] = useState(false)
+  const [userToggled, setUserToggled] = useState(false)
+  const projectCwd = useApp((s) => s.projects.find((p) => p.id === s.selectedProjectId)?.cwd)
+  const k = kindOf(b)
+  const chip = CHIP[k]
+  const detail = detailOf(b, projectCwd)
+  const running = b.output === undefined
+  const isDiff = (k === 'edit' || k === 'write') && !b.isError
+
+  return (
+    <div className="pt-0.5">
+      <div className="rounded-[9px] border border-[oklch(1_0_0/7%)] bg-[oklch(1_0_0/3%)]">
+        <button
+          onClick={() => {
+            setUserToggled(true)
+            setOpen((v) => !v)
+          }}
+          className="flex h-[30px] w-full items-center gap-2 px-2 text-left text-xs"
+        >
+          <span className="flex size-[18px] shrink-0 items-center justify-center rounded-[5px] bg-[oklch(1_0_0/8%)] text-muted-foreground">
+            <ZIcon name={chip.icon} size={12} />
+          </span>
+          <span
+            className={cn(
+              'shrink-0 font-medium',
+              b.isError ? 'text-destructive' : 'text-foreground'
+            )}
+          >
+            {chip.label}
+          </span>
+          <span
+            className={cn(
+              'min-w-0 flex-1 truncate',
+              b.isError ? 'text-destructive' : 'text-foreground/85'
+            )}
+          >
+            {detail}
+          </span>
+          {running && <span className="size-1.5 shrink-0 animate-pulse rounded-full bg-busy" />}
+          <ChevronTile open={open} />
+        </button>
+        <TweenHeight open={open} animate={userToggled}>
+          <div className="border-t border-[oklch(1_0_0/6%)]">
+            {k === 'todo' ? <TodoBlock b={b} /> : <InvocationBlock b={b} />}
+          </div>
+          {isDiff ? (
+            <div className="border-t border-[oklch(1_0_0/6%)]">
+              <DiffBlock b={b} />
+            </div>
+          ) : (
+            b.output !== undefined &&
+            k !== 'todo' && (
+              <div className="border-t border-[oklch(1_0_0/6%)]">
+                <OutputBlock text={b.output} error={b.isError} />
+              </div>
+            )
+          )}
+        </TweenHeight>
+      </div>
+    </div>
+  )
+})
+
+/** The folded group row. `autoOpen` while the reply is streaming and this
+ *  group is the last part; the user's toggle overrides either way. */
+export const ToolGroup = memo(function ToolGroup({
+  tools,
+  autoOpen
+}: {
+  tools: ToolBlock[]
+  autoOpen: boolean
+}): React.JSX.Element {
+  const [override, setOverride] = useState<boolean | null>(null)
+  const [userToggled, setUserToggled] = useState(false)
+  const open = override ?? autoOpen
+
+  return (
+    <div>
+      <button
+        onClick={() => {
+          setUserToggled(true)
+          setOverride(!open)
+        }}
+        className="group/hdr flex h-[26px] w-full items-center gap-2 px-1 text-left text-xs text-muted-foreground transition-colors duration-150 hover:text-foreground"
+        title={groupSummary(tools)}
+      >
+        <ChevronTile open={open} />
+        <span className="min-w-0 truncate">{groupSummary(tools)}</span>
+      </button>
+      <TweenHeight open={open} animate={userToggled}>
+        <div className="relative">
+          {/* guide rail — 1px hairline centered under the chevron tile */}
+          <div className="absolute top-0 bottom-0 left-3 w-px bg-[oklch(1_0_0/8%)]" />
+          <div className="ml-6">
+            {tools.map((t) => (
+              <Chip key={t.id} b={t} />
+            ))}
+          </div>
+        </div>
+      </TweenHeight>
+    </div>
+  )
+})
+
+/** Harness error — its own 34px chip, red family (transcript.rs error_chip). */
+export function ErrorChip({ text }: { text: string }): React.JSX.Element {
+  return (
+    <div className="flex h-[34px] items-center gap-2 rounded-[10px] border border-destructive/16 bg-destructive/5 px-2">
+      <span className="flex size-5 shrink-0 items-center justify-center rounded-[5px] bg-destructive/12 text-destructive-muted/80">
+        <ZIcon name="danger-triangle" size={12} />
+      </span>
+      <span className="shrink-0 text-xs font-medium text-destructive-muted/80">Error</span>
+      <span className="min-w-0 truncate text-xs text-foreground/80">{text}</span>
+    </div>
+  )
+}

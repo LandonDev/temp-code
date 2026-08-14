@@ -1,8 +1,9 @@
 import { memo, useEffect, useState } from 'react'
-import { FileText } from 'lucide-react'
 import type { Attachment } from '@shared/events'
+import { cn } from '../../../lib/utils'
 import { client } from '../../../lib/client'
 import { useApp } from '../../../state/store'
+import { ZIcon } from '../zicon'
 import type { Block } from '../../../state/blocks'
 
 type UserBlock = Extract<Block, { kind: 'user' }>
@@ -18,6 +19,7 @@ function thumbFor(path: string): Promise<string> {
   return p
 }
 
+/** Attachment thumbs ride above the bubble, right-aligned — 112×80. */
 function ImageThumb({ a }: { a: Attachment }): React.JSX.Element {
   const [src, setSrc] = useState<string | null>(null)
   useEffect(() => {
@@ -30,15 +32,14 @@ function ImageThumb({ a }: { a: Attachment }): React.JSX.Element {
     }
   }, [a.path])
   return (
-    <div className="h-16 w-16 shrink-0 overflow-hidden rounded-lg border bg-secondary">
+    <div className="h-20 w-28 shrink-0 overflow-hidden rounded-[10px] border border-border bg-secondary">
       {src && <img src={src} alt={a.name} className="h-full w-full object-cover" />}
     </div>
   )
 }
 
 /** Message text with `/command` and `@path` tokens surfaced as what they
- *  are — skill chips (anywhere, any number) and clickable file references.
- *  A `/token` only chips as a standalone word, so `/etc/hosts` stays text. */
+ *  are — skill chips (anywhere, any number) and clickable file references. */
 const TOKEN = /(@[^\s@]{2,}|(?<=^|\s)\/[\w:-]+(?=$|\s))/g
 
 function TokenizedText({ text }: { text: string }): React.JSX.Element {
@@ -73,6 +74,12 @@ function TokenizedText({ text }: { text: string }): React.JSX.Element {
   )
 }
 
+/**
+ * Zeron user message: a right-aligned translucent wash bubble — radius 16,
+ * px 16 / py 10, 14/22 text, max 80% of the 736px column. The optimistic
+ * echo renders at 65% opacity and snaps to full when the server confirms
+ * (same row, so nothing reflows). An image-only send shows no bubble.
+ */
 export const UserMessage = memo(function UserMessage({
   block
 }: {
@@ -80,28 +87,41 @@ export const UserMessage = memo(function UserMessage({
 }): React.JSX.Element {
   const images = block.attachments?.filter((a) => a.kind === 'image') ?? []
   const files = block.attachments?.filter((a) => a.kind !== 'image') ?? []
+  const text = block.text === '(see attachments)' && images.length > 0 ? '' : block.text
+
   return (
-    <div className="rounded-xl border bg-card px-3.5 py-2.5 text-[13px] leading-5">
-      {(images.length > 0 || files.length > 0) && (
-        <div className="mb-2 flex flex-wrap items-center gap-1.5">
+    <div
+      className={cn(
+        'flex flex-col items-end transition-opacity duration-150',
+        block.pending && 'opacity-65'
+      )}
+    >
+      {images.length > 0 && (
+        <div className="mb-2 flex flex-wrap justify-end gap-1.5">
           {images.map((a) => (
             <ImageThumb key={a.path} a={a} />
           ))}
+        </div>
+      )}
+      {files.length > 0 && (
+        <div className="mb-2 flex flex-wrap justify-end gap-1.5">
           {files.map((a) => (
             <span
               key={a.path}
               title={a.path}
-              className="flex items-center gap-1.5 rounded-md border bg-secondary/50 px-2 py-1 text-xs text-muted-foreground"
+              className="flex items-center gap-1.5 rounded-md border border-border bg-[oklch(1_0_0/3%)] px-2 py-1 text-xs text-muted-foreground"
             >
-              <FileText className="size-3" />
+              <ZIcon name="document" size={12} />
               {a.name}
             </span>
           ))}
         </div>
       )}
-      <div className="whitespace-pre-wrap">
-        <TokenizedText text={block.text} />
-      </div>
+      {text && (
+        <div className="max-w-[80%] rounded-[16px] bg-bubble px-4 py-2.5 text-[14px] leading-[22px] whitespace-pre-wrap">
+          <TokenizedText text={text} />
+        </div>
+      )}
     </div>
   )
 })

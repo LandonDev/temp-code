@@ -17,7 +17,8 @@ export function Titlebar(): React.JSX.Element {
   const setRailOpen = useApp((s) => s.setRailOpen)
 
   return (
-    <header className="titlebar-drag flex h-11 shrink-0 items-center gap-1.5 px-4">
+    // Zeron titlebar: 38px, content sitting 2px lower.
+    <header className="titlebar-drag flex h-[38px] shrink-0 items-center gap-1.5 px-4 pt-0.5">
       {workspace && (
         <>
           <span className="text-[13px] text-muted-foreground">{workspace.name}</span>

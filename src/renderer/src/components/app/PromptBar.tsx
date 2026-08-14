@@ -1,20 +1,13 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
-import {
-  ArrowUp,
-  FileText,
-  Image as ImageIcon,
-  Paperclip,
-  SlashSquare,
-  Square,
-  X
-} from 'lucide-react'
+import { FileText, Image as ImageIcon, SlashSquare, X } from 'lucide-react'
 import type { Reasoning } from '@shared/catalog'
 import type { Attachment, PermissionPolicy } from '@shared/events'
 import type { SlashCommand } from '@shared/domain'
 import { useApp } from '../../state/store'
-import { cn } from '../../lib/utils'
+import { cn, displayPath } from '../../lib/utils'
 import { EASE_OUT, SPRING_PANEL, SPRING_SWAP } from '../../lib/ease'
+import { ZIcon } from './zicon'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select'
 
 const REASONING_LABELS: Record<Reasoning, string> = {
@@ -150,6 +143,22 @@ export function PromptBar({ compact }: { compact?: boolean }): React.JSX.Element
     listRef.current?.querySelector('[data-active=true]')?.scrollIntoView({ block: 'nearest' })
   }, [active])
 
+  // Composer morph (Zeron FlipMorph): the textarea auto-grows one line →
+  // 260px and every height change tweens 180ms ease-out. The pill sits at
+  // the bottom of the column, so growth is bottom-anchored.
+  useLayoutEffect(() => {
+    const a = areaRef.current
+    if (!a) return
+    const prev = a.style.height
+    a.style.transition = 'none'
+    a.style.height = 'auto'
+    const target = Math.min(260, a.scrollHeight)
+    a.style.height = prev || `${target}px`
+    void a.offsetHeight
+    a.style.transition = 'height 180ms ease-out'
+    a.style.height = `${target}px`
+  }, [text])
+
   const attachImage = useCallback(
     async (file: File): Promise<void> => {
       const attachment = await saveAttachment(file.name || 'image.png', await toBase64(file))
@@ -226,6 +235,11 @@ export function PromptBar({ compact }: { compact?: boolean }): React.JSX.Element
 
   if (!selectedId || !session) return null
   const running = session.status === 'running' || session.status === 'starting'
+  const canSend = !!text.trim() || images.length > 0
+  // FlipMorph: a short single-line prompt keeps the 49px compact pill with
+  // the whole cluster inline; anything more expands (180ms, bottom-anchored).
+  const expanded =
+    images.length > 0 || fileRefs.length > 0 || text.includes('\n') || text.length > 40
 
   const accept = (index: number): void => {
     if (!trigger) return
@@ -267,8 +281,8 @@ export function PromptBar({ compact }: { compact?: boolean }): React.JSX.Element
   }
 
   return (
-    <div className={cn('shrink-0 px-6 pb-3', compact ? 'pt-1' : 'pt-2')}>
-      <div className="relative mx-auto w-full max-w-3xl">
+    <div className={cn('shrink-0 px-6 pb-3', compact ? 'pt-0.5' : 'pt-1')}>
+      <div className="relative mx-auto w-full max-w-[688px]">
         <AnimatePresence>
           {open && (
             <motion.div
@@ -345,14 +359,12 @@ export function PromptBar({ compact }: { compact?: boolean }): React.JSX.Element
           )}
         </AnimatePresence>
 
-        <div
-          className={cn(
-            'rounded-xl border bg-popover shadow-[0_1px_2px_rgb(0_0_0/0.04),0_4px_16px_rgb(0_0_0/0.06)] transition-shadow focus-within:shadow-[0_1px_2px_rgb(0_0_0/0.05),0_6px_24px_rgb(0_0_0/0.09)]',
-            compact ? 'px-3 py-1.5' : 'px-3.5 py-2.5'
-          )}
-        >
+        {/* Zeron composer pill: white/3% fill, hairline border, radius 16.
+            Bottom-anchored in the layout, so height morphs grow upward.
+            Light mode separates with a soft shadow instead. */}
+        <div className="relative rounded-[16px] border border-border bg-input shadow-[0_1px_2px_rgb(0_0_0/0.04),0_4px_16px_rgb(0_0_0/0.06)] transition-colors duration-150 focus-within:border-border-strong dark:shadow-none">
           {(images.length > 0 || fileRefs.length > 0) && (
-            <div className="flex flex-wrap items-center gap-1.5 pb-2">
+            <div className="flex flex-wrap items-center gap-1.5 px-3.5 pt-3">
               <AnimatePresence initial={false}>
                 {images.map((img) => (
                   <motion.div
@@ -405,175 +417,194 @@ export function PromptBar({ compact }: { compact?: boolean }): React.JSX.Element
               </AnimatePresence>
             </div>
           )}
-          <div className="flex items-end gap-2">
-            <textarea
-              ref={areaRef}
-              value={text}
-              onChange={(e) => {
-                setText(e.target.value)
-                setCaret(e.target.selectionStart ?? e.target.value.length)
-                setDismissed(null)
-              }}
-              onSelect={(e) => setCaret(e.currentTarget.selectionStart ?? 0)}
-              onPaste={(e) => {
-                const files = [...e.clipboardData.files].filter((f) => f.type.startsWith('image/'))
-                if (files.length) {
-                  e.preventDefault()
-                  for (const f of files) void attachImage(f)
-                }
-              }}
-              onKeyDown={(e) => {
-                if (open) {
-                  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-                    e.preventDefault()
-                    setActive(
-                      (active + (e.key === 'ArrowDown' ? 1 : -1) + matches.length) % matches.length
-                    )
-                    return
-                  }
-                  if (e.key === 'Enter' || e.key === 'Tab') {
-                    e.preventDefault()
-                    accept(active)
-                    return
-                  }
-                  if (e.key === 'Escape') {
-                    e.preventDefault()
-                    if (trigger) setDismissed(`${trigger.mode}:${trigger.start}`)
-                    return
-                  }
-                }
-                if (e.key === 'Enter' && !e.shiftKey) {
-                  e.preventDefault()
-                  submit()
-                }
-              }}
-              rows={Math.min(8, Math.max(1, text.split('\n').length))}
-              placeholder={
-                session.threadType === 'chat' || !session.threadType
-                  ? 'Message…'
-                  : 'Steer or follow up…'
+          <textarea
+            ref={areaRef}
+            value={text}
+            onChange={(e) => {
+              setText(e.target.value)
+              setCaret(e.target.selectionStart ?? e.target.value.length)
+              setDismissed(null)
+            }}
+            onSelect={(e) => setCaret(e.currentTarget.selectionStart ?? 0)}
+            onPaste={(e) => {
+              const files = [...e.clipboardData.files].filter((f) => f.type.startsWith('image/'))
+              if (files.length) {
+                e.preventDefault()
+                for (const f of files) void attachImage(f)
               }
-              aria-label="Message"
-              className="flex-1 resize-none self-center bg-transparent text-[13px] leading-5 outline-none placeholder:text-muted-foreground/70"
-            />
-            <input
-              ref={pickerRef}
-              type="file"
-              multiple
-              hidden
-              onChange={(e) => {
-                for (const file of e.target.files ?? []) {
-                  if (file.type.startsWith('image/')) {
-                    void attachImage(file)
-                  } else {
-                    const path = window.api.getPathForFile(file)
-                    if (path) addFileRef(path)
-                  }
+            }}
+            onKeyDown={(e) => {
+              if (open) {
+                if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+                  e.preventDefault()
+                  setActive(
+                    (active + (e.key === 'ArrowDown' ? 1 : -1) + matches.length) % matches.length
+                  )
+                  return
                 }
-                e.target.value = ''
-              }}
-            />
-            <button
-              onClick={() => pickerRef.current?.click()}
-              aria-label="Attach files"
-              className="flex size-7 shrink-0 items-center justify-center rounded-full text-muted-foreground/70 transition hover:bg-accent hover:text-foreground active:scale-95"
-            >
-              <Paperclip className="size-3.5" />
-            </button>
-            <button
-              onClick={() => (running ? void interrupt(selectedId) : submit())}
-              disabled={!running && !text.trim() && images.length === 0}
-              aria-label={running ? 'Stop' : 'Send'}
-              className={cn(
-                'relative flex size-7 shrink-0 items-center justify-center overflow-hidden rounded-full transition active:scale-95',
-                running
-                  ? 'bg-foreground text-background'
-                  : text.trim() || images.length
-                    ? 'bg-primary text-primary-foreground'
-                    : 'bg-secondary text-muted-foreground'
-              )}
-            >
-              <AnimatePresence mode="wait" initial={false}>
-                <motion.span
-                  key={running ? 'stop' : 'send'}
-                  initial={reduce ? false : { opacity: 0, scale: 0.5, filter: 'blur(4px)' }}
-                  animate={{ opacity: 1, scale: 1, filter: 'blur(0px)', transition: SPRING_SWAP }}
-                  exit={
-                    reduce
-                      ? undefined
-                      : {
-                          opacity: 0,
-                          scale: 0.5,
-                          filter: 'blur(4px)',
-                          transition: { duration: 0.12, ease: EASE_OUT }
-                        }
-                  }
-                  className="flex items-center justify-center"
-                >
-                  {running ? (
-                    <Square className="size-3 fill-current" />
-                  ) : (
-                    <ArrowUp className="size-4" />
-                  )}
-                </motion.span>
-              </AnimatePresence>
-            </button>
-          </div>
-        </div>
-        <div className="flex h-7 items-center pt-1">
-          {provider && (
-            <>
-              <Select value={model} onValueChange={setModel}>
-                <SelectTrigger
-                  aria-label="Model"
-                  className="h-6 gap-1 rounded-md border-0 bg-transparent py-0 pr-1 pl-1.5 text-[11px] text-muted-foreground shadow-none transition-colors hover:text-foreground focus-visible:ring-0 dark:bg-transparent dark:hover:bg-accent/50 [&_svg]:size-3"
-                >
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {provider.models.map((m) => (
-                    <SelectItem key={m.id} value={m.id} className="text-xs">
-                      {m.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {provider.reasoning.length > 1 && (
-                <Select value={reasoning} onValueChange={(v) => setReasoning(v as Reasoning)}>
+                if (e.key === 'Enter' || e.key === 'Tab') {
+                  e.preventDefault()
+                  accept(active)
+                  return
+                }
+                if (e.key === 'Escape') {
+                  e.preventDefault()
+                  if (trigger) setDismissed(`${trigger.mode}:${trigger.start}`)
+                  return
+                }
+              }
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault()
+                submit()
+              }
+            }}
+            rows={1}
+            placeholder="Do anything…"
+            aria-label="Message"
+            className={cn(
+              'block w-full resize-none bg-transparent pl-4 text-[14px] leading-[22.75px] outline-none placeholder:text-faint',
+              expanded ? 'pt-3.5 pr-4' : 'py-[13px] pr-[300px]'
+            )}
+          />
+          <input
+            ref={pickerRef}
+            type="file"
+            multiple
+            hidden
+            onChange={(e) => {
+              for (const file of e.target.files ?? []) {
+                if (file.type.startsWith('image/')) {
+                  void attachImage(file)
+                } else {
+                  const path = window.api.getPathForFile(file)
+                  if (path) addFileRef(path)
+                }
+              }
+              e.target.value = ''
+            }}
+          />
+          {/* expanded mode reserves a 46px actions strip; compact collapses
+              it so the cluster shares the single 49px row */}
+          <div
+            className="transition-[height] duration-[180ms] ease-out"
+            style={{ height: expanded ? 46 : 0 }}
+          />
+          {/* the cluster rides the pill's bottom-right through the morph */}
+          <div className="absolute right-2.5 bottom-[9px] flex items-center gap-0.5">
+            {provider && (
+              <>
+                <Select value={model} onValueChange={setModel}>
                   <SelectTrigger
-                    aria-label="Reasoning effort"
-                    className="h-6 gap-1 rounded-md border-0 bg-transparent py-0 pr-1 pl-1.5 text-[11px] text-muted-foreground shadow-none transition-colors hover:text-foreground focus-visible:ring-0 dark:bg-transparent dark:hover:bg-accent/50 [&_svg]:size-3"
+                    aria-label="Model"
+                    className="h-6 gap-1 rounded-sm border-0 bg-transparent py-0 pr-1 pl-1.5 text-xs text-muted-foreground shadow-none transition-colors duration-150 hover:bg-accent hover:text-foreground focus-visible:ring-0 dark:bg-transparent [&_svg]:size-3"
                   >
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {provider.reasoning.map((r) => (
-                      <SelectItem key={r} value={r} className="text-xs">
-                        {REASONING_LABELS[r]}
+                    {provider.models.map((m) => (
+                      <SelectItem key={m.id} value={m.id} className="text-xs">
+                        {m.label}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
-              )}
-              <Select
-                value={session.permission}
-                onValueChange={(v) => void setPermission(selectedId, v as PermissionPolicy)}
-              >
-                <SelectTrigger
-                  aria-label="Permission level"
-                  className="ml-auto h-6 gap-1 rounded-md border-0 bg-transparent py-0 pr-1 pl-1.5 text-[11px] text-muted-foreground shadow-none transition-colors hover:text-foreground focus-visible:ring-0 dark:bg-transparent dark:hover:bg-accent/50 [&_svg]:size-3"
+                {provider.reasoning.length > 1 && (
+                  <Select value={reasoning} onValueChange={(v) => setReasoning(v as Reasoning)}>
+                    <SelectTrigger
+                      aria-label="Reasoning effort"
+                      className="h-6 gap-1 rounded-sm border-0 bg-transparent py-0 pr-1 pl-1.5 text-xs text-muted-foreground shadow-none transition-colors duration-150 hover:bg-accent hover:text-foreground focus-visible:ring-0 dark:bg-transparent [&_svg]:size-3"
+                    >
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {provider.reasoning.map((r) => (
+                        <SelectItem key={r} value={r} className="text-xs">
+                          {REASONING_LABELS[r]}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+                <Select
+                  value={session.permission}
+                  onValueChange={(v) => void setPermission(selectedId, v as PermissionPolicy)}
                 >
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {(Object.keys(PERMISSION_LABELS) as PermissionPolicy[]).map((p) => (
-                    <SelectItem key={p} value={p} className="text-xs">
-                      {PERMISSION_LABELS[p]}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </>
+                  <SelectTrigger
+                    aria-label="Permission level"
+                    className="h-6 gap-1 rounded-sm border-0 bg-transparent py-0 pr-1 pl-1.5 text-xs text-muted-foreground shadow-none transition-colors duration-150 hover:bg-accent hover:text-foreground focus-visible:ring-0 dark:bg-transparent [&_svg]:size-3"
+                  >
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(Object.keys(PERMISSION_LABELS) as PermissionPolicy[]).map((p) => (
+                      <SelectItem key={p} value={p} className="text-xs">
+                        {PERMISSION_LABELS[p]}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </>
+            )}
+            <div className="flex items-center gap-1.5 pl-1">
+              <button
+                onClick={() => pickerRef.current?.click()}
+                aria-label="Attach files"
+                className="flex size-7 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors duration-150 hover:bg-accent hover:text-foreground active:scale-95"
+              >
+                <ZIcon name="paperclip" size={14} />
+              </button>
+              {/* Send / Steer / Stop: no run → send; run + text → steer the
+                  running turn; run + empty → stop (red square). */}
+              <button
+                onClick={() => (running && !canSend ? void interrupt(selectedId) : submit())}
+                disabled={!running && !canSend}
+                aria-label={running ? (canSend ? 'Steer' : 'Stop') : 'Send'}
+                // The send circle is always the near-white solid plate
+                // (Zeron keeps it lit even while the input is empty).
+                className="relative flex size-7 shrink-0 items-center justify-center overflow-hidden rounded-full bg-primary text-primary-foreground transition active:scale-95"
+              >
+                <AnimatePresence mode="wait" initial={false}>
+                  <motion.span
+                    key={running && !canSend ? 'stop' : 'send'}
+                    initial={reduce ? false : { opacity: 0, scale: 0.5, filter: 'blur(4px)' }}
+                    animate={{ opacity: 1, scale: 1, filter: 'blur(0px)', transition: SPRING_SWAP }}
+                    exit={
+                      reduce
+                        ? undefined
+                        : {
+                            opacity: 0,
+                            scale: 0.5,
+                            filter: 'blur(4px)',
+                            transition: { duration: 0.12, ease: EASE_OUT }
+                          }
+                    }
+                    className="flex items-center justify-center"
+                  >
+                    {running && !canSend ? (
+                      <span className="block size-2.5 rounded-[2px] bg-destructive" />
+                    ) : (
+                      <ZIcon name="arrow-up" size={15} />
+                    )}
+                  </motion.span>
+                </AnimatePresence>
+              </button>
+            </div>
+          </div>
+        </div>
+        {/* quiet meta row below the pill: checkout · branch */}
+        <div className="flex h-7 items-center justify-between px-1.5 text-[11px] text-faint">
+          <span
+            className="flex items-center gap-1.5"
+            title={session.cwd ? displayPath(session.cwd) : undefined}
+          >
+            <ZIcon name="folder" size={12} />
+            {project?.mode === 'worktree' ? 'Worktree' : 'Local checkout'}
+          </span>
+          {project?.branch && (
+            <span className="flex items-center gap-1.5">
+              <ZIcon name="git-branch" size={12} />
+              {project.branch}
+            </span>
           )}
         </div>
 

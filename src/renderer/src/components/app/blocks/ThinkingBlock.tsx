@@ -1,7 +1,7 @@
 import { memo, useState } from 'react'
-import { ChevronDown, Sparkle } from 'lucide-react'
 import { cn } from '../../../lib/utils'
 import { TextShimmer } from '../../motion/text-shimmer'
+import { ZIcon } from '../zicon'
 
 function durationLabel(ms?: number): string {
   if (ms === undefined) return 'Thought for a moment'
@@ -11,10 +11,8 @@ function durationLabel(ms?: number): string {
 }
 
 /**
- * Beautiful UI "Thinking" (beautifului.dev #thinking-state) on real
- * reasoning events: sparkle + shimmering label while the model thinks (the
- * freshest line ghosted underneath), a settled duration afterwards, and the
- * full trace expanding on a grid-rows transition behind a guide line.
+ * Thinking renders in the same quiet idiom as tool groups: a 26px header —
+ * 18px chevron tile, 12px muted label — expanding along a guide rail.
  */
 export const ThinkingBlock = memo(function ThinkingBlock({
   text,
@@ -33,44 +31,30 @@ export const ThinkingBlock = memo(function ThinkingBlock({
       <button
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
-        className="-mx-1.5 flex w-fit items-center gap-2 rounded-md px-1.5 py-1 transition-colors duration-100 hover:bg-accent/50"
+        className="flex h-[26px] w-full items-center gap-2 px-1 text-left text-xs text-muted-foreground transition-colors duration-150 hover:text-foreground"
       >
-        <Sparkle
-          className={cn(
-            'size-3.5 shrink-0',
-            streaming
-              ? 'fill-muted-foreground text-muted-foreground'
-              : 'fill-muted-foreground/50 text-muted-foreground/50'
-          )}
-        />
+        <span className="flex size-[18px] shrink-0 items-center justify-center rounded-[5px] bg-[oklch(1_0_0/6%)] text-muted-foreground/70">
+          <ZIcon
+            name="alt-arrow-right"
+            size={10}
+            className={cn('transition-transform duration-200', open && 'rotate-90')}
+          />
+        </span>
         {streaming ? (
-          <TextShimmer className="text-[13px] font-medium whitespace-nowrap">Thinking</TextShimmer>
+          <TextShimmer className="text-xs whitespace-nowrap">Thinking</TextShimmer>
         ) : (
-          <span className="animate-[fade-in_350ms_ease-out_both] text-[13px] font-medium whitespace-nowrap text-muted-foreground">
-            {durationLabel(thoughtMs)}
-          </span>
+          <span className="truncate">{durationLabel(thoughtMs)}</span>
         )}
-        <ChevronDown
-          className="size-3.5 shrink-0 text-muted-foreground/60 transition-transform duration-300"
-          style={{ transform: open ? 'rotate(180deg)' : 'rotate(0)' }}
-        />
       </button>
-      {tail && (
-        <p className="mt-0.5 truncate pl-6 text-[11px] leading-4 text-muted-foreground/50">
-          {tail}
-        </p>
-      )}
+      {tail && <p className="truncate pl-[26px] text-[11px] leading-4 text-faint">{tail}</p>}
       <div
-        className="grid transition-[grid-template-rows,opacity] duration-400"
-        style={{
-          gridTemplateRows: open ? '1fr' : '0fr',
-          opacity: open ? 1 : 0,
-          transitionTimingFunction: 'cubic-bezier(0.23, 1, 0.32, 1)'
-        }}
+        className="grid transition-[grid-template-rows,opacity] duration-200 ease-out"
+        style={{ gridTemplateRows: open ? '1fr' : '0fr', opacity: open ? 1 : 0 }}
       >
         <div className="overflow-hidden">
-          <div className="mt-1 ml-[5px] border-l border-border/60 py-1 pl-4">
-            <p className="animate-[fade-up_320ms_cubic-bezier(0.23,1,0.32,1)_both] whitespace-pre-wrap text-[13px] leading-relaxed text-muted-foreground">
+          <div className="relative">
+            <div className="absolute top-0 bottom-0 left-3 w-px bg-[oklch(1_0_0/8%)]" />
+            <p className="ml-6 py-1 text-xs leading-[18px] whitespace-pre-wrap text-muted-foreground">
               {text}
             </p>
           </div>
