@@ -16,7 +16,7 @@ import type { EventRow, SessionMeta } from './events'
  */
 
 const providerEnum = z.enum(['claude', 'codex', 'cursor'])
-const reasoningEnum = z.enum(['low', 'medium', 'high', 'max'])
+const reasoningEnum = z.enum(['low', 'medium', 'high', 'xhigh', 'max', 'ultra'])
 
 export const CreateSessionParams = z.object({
   provider: providerEnum,

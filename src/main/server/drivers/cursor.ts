@@ -1,9 +1,28 @@
 import { spawn, type ChildProcess } from 'node:child_process'
 import { createInterface } from 'node:readline'
+import { modelInfo, type Reasoning } from '@shared/catalog'
 import type { Attachment } from '@shared/events'
 import type { DriverCtx, DriverHandle, HarnessDriver } from './types'
 import { harnessEnv, resolveBinary } from './binaries'
 import { expandSlashRefs } from '../slash'
+
+/**
+ * Resolve a catalog family + effort to the concrete cursor model id.
+ * `cursor-agent models` lists one id per (family, effort) permutation —
+ * `cursor-grok-4.6-low`, `claude-opus-5-thinking-max`, … — so the ladder
+ * joins as a suffix. One irregular: the bare `gpt-5.3-codex` IS its medium
+ * tier (no `-medium` id exists). Families without an effort ladder (auto,
+ * composer-2.5) and unknown ids pass through untouched.
+ */
+export function cursorModelArg(model: string, reasoning: Reasoning): string {
+  const info = modelInfo('cursor', model)
+  if (!info || info.reasoning.length === 0) return model
+  const effort = info.reasoning.includes(reasoning)
+    ? reasoning
+    : (info.defaultReasoning ?? info.reasoning[0])
+  if (model === 'gpt-5.3-codex' && effort === 'medium') return model
+  return `${model}-${effort}`
+}
 
 /**
  * Cursor driver — `cursor-agent -p --trust --output-format stream-json`,
@@ -52,7 +71,7 @@ export const cursorDriver: HarnessDriver = {
         '--trust',
         '--output-format',
         'stream-json',
-        ...(session.model ? ['--model', session.model] : []),
+        ...(session.model ? ['--model', cursorModelArg(session.model, session.reasoning)] : []),
         ...(session.nativeId ? ['--resume', session.nativeId] : []),
         text
       ]

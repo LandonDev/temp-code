@@ -87,7 +87,7 @@ export function orchestratorMcp(parent: SessionMeta): McpSdkServerConfigWithInst
         {
           provider: z.enum(providerIds).describe('Which harness runs the agent'),
           model: z.string().optional().describe(`Model id. Defaults per provider: ${providerIds.map((p) => `${p}=${CATALOG[p].defaultModel}`).join(', ')}`),
-          reasoning: z.enum(['low', 'medium', 'high', 'max']).default('medium'),
+          reasoning: z.enum(['low', 'medium', 'high', 'xhigh', 'max']).default('medium'),
           agentType: z.enum(AGENT_TYPES).default('implementer'),
           task: z.string().describe('The complete, self-contained task prompt'),
           useWorktree: z

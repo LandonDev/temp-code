@@ -335,7 +335,9 @@ export const claudeDriver: HarnessDriver = {
     const options: Options = {
       model: session.model,
       cwd: session.cwd,
-      effort: session.reasoning,
+      // The SDK ladder tops out at max; 'ultra' is codex-only (a session
+      // switched off sol mid-ultra clamps rather than erroring).
+      effort: session.reasoning === 'ultra' ? 'max' : session.reasoning,
       includePartialMessages: true,
       permissionMode: PERMISSION_MODE[session.permission],
       ...(session.permission === 'auto' ? { allowDangerouslySkipPermissions: true } : {}),
