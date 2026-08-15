@@ -15,6 +15,7 @@ import {
 import { StatusDot, timeAgo } from './bits'
 import { ZIcon } from './zicon'
 import { NewProjectDialog } from './NewProjectDialog'
+import { OrchestrationRulesDialog } from './OrchestrationRulesDialog'
 
 /**
  * Workspaces → projects. One left-edge rhythm: workspace names start at
@@ -31,6 +32,7 @@ export function Sidebar(): React.JSX.Element {
   const setSettingsOpen = useApp((s) => s.setSettingsOpen)
   const addWorkspace = useApp((s) => s.addWorkspace)
   const [newProjectWs, setNewProjectWs] = useState<WorkspaceMeta | null>(null)
+  const [rulesWs, setRulesWs] = useState<WorkspaceMeta | null>(null)
 
   const unsorted = useMemo(() => unsortedSessions(sessions), [sessions])
 
@@ -53,6 +55,7 @@ export function Sidebar(): React.JSX.Element {
               projects={projects.filter((p) => p.workspaceId === ws.id)}
               sessions={sessions}
               onNewProject={() => setNewProjectWs(ws)}
+              onRules={() => setRulesWs(ws)}
             />
           ))}
 
@@ -90,6 +93,7 @@ export function Sidebar(): React.JSX.Element {
       {newProjectWs && (
         <NewProjectDialog workspace={newProjectWs} onClose={() => setNewProjectWs(null)} />
       )}
+      {rulesWs && <OrchestrationRulesDialog workspace={rulesWs} onClose={() => setRulesWs(null)} />}
     </aside>
   )
 }
@@ -98,12 +102,14 @@ function WorkspaceGroup({
   workspace,
   projects,
   sessions,
-  onNewProject
+  onNewProject,
+  onRules
 }: {
   workspace: WorkspaceMeta
   projects: ProjectMeta[]
   sessions: Record<string, SessionMeta>
   onNewProject: () => void
+  onRules: () => void
 }): React.JSX.Element {
   const [open, setOpen] = useState(true)
   const reduce = useReducedMotion()
@@ -147,6 +153,7 @@ function WorkspaceGroup({
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start" className="min-w-40">
               <DropdownMenuItem onClick={onNewProject}>New project</DropdownMenuItem>
+              <DropdownMenuItem onClick={onRules}>Orchestration rules</DropdownMenuItem>
               <DropdownMenuItem
                 variant="destructive"
                 onClick={() => void removeWorkspace(workspace.id)}

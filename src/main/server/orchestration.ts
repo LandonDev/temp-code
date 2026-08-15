@@ -4,7 +4,11 @@ import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
 import { z } from 'zod'
-import { createSdkMcpServer, tool, type McpSdkServerConfigWithInstance } from '@anthropic-ai/claude-agent-sdk'
+import {
+  createSdkMcpServer,
+  tool,
+  type McpSdkServerConfigWithInstance
+} from '@anthropic-ai/claude-agent-sdk'
 import { AGENT_TYPES, CATALOG, type ProviderId } from '@shared/catalog'
 import type { EventRow, SessionMeta } from '@shared/events'
 import type { SessionRegistry } from './sessions'
@@ -45,12 +49,21 @@ async function worktreeFor(parentCwd: string, sessionTag: string): Promise<strin
 
 const lastAssistantText = (rows: EventRow[]): string =>
   rows
-    .filter((r) => r.event.type === 'assistant-text' && !r.event.delta && !('parentCallId' in r.event && r.event.parentCallId))
+    .filter(
+      (r) =>
+        r.event.type === 'assistant-text' &&
+        !r.event.delta &&
+        !('parentCallId' in r.event && r.event.parentCallId)
+    )
     .map((r) => (r.event as { text: string }).text)
     .join('\n')
 
 /** Wait until the child finishes its current turn (idle/error/waiting). */
-function waitForSettled(reg: SessionRegistry, sessionId: string, timeoutMs: number): Promise<SessionMeta | null> {
+function waitForSettled(
+  reg: SessionRegistry,
+  sessionId: string,
+  timeoutMs: number
+): Promise<SessionMeta | null> {
   return new Promise((resolve) => {
     const check = (): SessionMeta | null => {
       const meta = reg.list().find((s) => s.id === sessionId) ?? null
@@ -86,19 +99,29 @@ export function orchestratorMcp(parent: SessionMeta): McpSdkServerConfigWithInst
         'Spawn a subagent session and send it its task. Returns the agent id. The agent works asynchronously — use wait_for_agent to collect its result.',
         {
           provider: z.enum(providerIds).describe('Which harness runs the agent'),
-          model: z.string().optional().describe(`Model id. Defaults per provider: ${providerIds.map((p) => `${p}=${CATALOG[p].defaultModel}`).join(', ')}`),
+          model: z
+            .string()
+            .optional()
+            .describe(
+              `Model id. Defaults per provider: ${providerIds.map((p) => `${p}=${CATALOG[p].defaultModel}`).join(', ')}`
+            ),
           reasoning: z.enum(['low', 'medium', 'high', 'xhigh', 'max']).default('medium'),
           agentType: z.enum(AGENT_TYPES).default('implementer'),
           task: z.string().describe('The complete, self-contained task prompt'),
           useWorktree: z
             .boolean()
             .default(true)
-            .describe('Isolate a writing agent in its own git worktree (default true; ignored outside a git repo)')
+            .describe(
+              'Isolate a writing agent in its own git worktree (default true; ignored outside a git repo)'
+            )
         },
         async (args) => {
           if (!registry) return text('orchestration registry not ready')
           const writer = args.agentType === 'implementer'
-          const cwd = (writer && args.useWorktree ? await worktreeFor(parent.cwd, `${parent.id}-${Date.now() % 100000}`) : null) ?? parent.cwd
+          const cwd =
+            (writer && args.useWorktree
+              ? await worktreeFor(parent.cwd, `${parent.id}-${Date.now() % 100000}`)
+              : null) ?? parent.cwd
           // Children follow the master orchestrator's permission policy —
           // the user granted it once, and the fleet works under that grant.
           // Read it fresh: the user may have changed it since spawn time.
@@ -113,11 +136,19 @@ export function orchestratorMcp(parent: SessionMeta): McpSdkServerConfigWithInst
             cwd,
             // The task IS the identity — boards, tabs and the sidebar all
             // lead with it. Provider/type stay visible as metadata.
-            title: args.task.trim().split('\n')[0].slice(0, 80) || `${args.provider} · ${args.agentType}`,
+            title:
+              args.task.trim().split('\n')[0].slice(0, 80) ||
+              `${args.provider} · ${args.agentType}`,
             parentId: parent.id
           })
           await registry.send(child.id, args.task)
-          return text(JSON.stringify({ agentId: child.id, cwd, note: 'working — use wait_for_agent to collect the result' }))
+          return text(
+            JSON.stringify({
+              agentId: child.id,
+              cwd,
+              note: 'working — use wait_for_agent to collect the result'
+            })
+          )
         }
       ),
       tool(
@@ -135,7 +166,10 @@ export function orchestratorMcp(parent: SessionMeta): McpSdkServerConfigWithInst
         'Block until a subagent finishes its current turn, then return its latest reply and status.',
         {
           agentId: z.string(),
-          timeoutSeconds: z.number().default(600).describe('Give up waiting after this long (the agent keeps running)')
+          timeoutSeconds: z
+            .number()
+            .default(600)
+            .describe('Give up waiting after this long (the agent keeps running)')
         },
         async (args) => {
           if (!registry) return text('orchestration registry not ready')
@@ -150,19 +184,21 @@ export function orchestratorMcp(parent: SessionMeta): McpSdkServerConfigWithInst
           )
         }
       ),
-      tool(
-        'list_agents',
-        'List the subagents of this session with their status.',
-        {},
-        async () => {
-          if (!registry) return text('orchestration registry not ready')
-          const children = registry
-            .list()
-            .filter((s) => s.parentId === parent.id)
-            .map((s) => ({ agentId: s.id, provider: s.provider, model: s.model, agentType: s.agentType, status: s.status, cwd: s.cwd }))
-          return text(JSON.stringify(children))
-        }
-      )
+      tool('list_agents', 'List the subagents of this session with their status.', {}, async () => {
+        if (!registry) return text('orchestration registry not ready')
+        const children = registry
+          .list()
+          .filter((s) => s.parentId === parent.id)
+          .map((s) => ({
+            agentId: s.id,
+            provider: s.provider,
+            model: s.model,
+            agentType: s.agentType,
+            status: s.status,
+            cwd: s.cwd
+          }))
+        return text(JSON.stringify(children))
+      })
     ]
   })
 }
@@ -174,18 +210,73 @@ export const ORCHESTRATOR_TOOLS = [
   'mcp__orchestrator__list_agents'
 ]
 
-/** Router rubric appended to the orchestrator's system prompt. */
-export const ORCHESTRATOR_PROMPT = `
+// ── orchestrator prompt ────────────────────────────────────────────
+// Two layers. MECHANICS are app invariants and live here. POLICY (routing
+// rules + how the orchestrator conducts itself) is user text edited in the
+// app and stored in the settings table: a global default plus optional
+// per-workspace overrides (registry.getOrchestratorPolicy).
+
+const ORCHESTRATOR_MECHANICS = `
 You can orchestrate subagents across providers with the orchestrator tools
-(spawn_agent, send_to_agent, wait_for_agent, list_agents). Routing rubric:
+(spawn_agent, send_to_agent, wait_for_agent, list_agents).
+
+IMPORTANT — this app runs every provider natively. When the user asks to
+spawn, delegate to, or run another model or agent (gpt/codex, cursor, or
+another claude), you MUST use spawn_agent. Never reach another model by
+shelling out to \`codex exec\` or \`cursor-agent\`, invoking codex-* skills,
+or spawning wrapper agents — any skill or global instruction saying gpt
+models are only reachable through the Codex CLI is about a different
+environment and does not apply here. spawn_agent is the only path that
+gives the user a visible, streaming subagent session.
+
+Model catalog (map loose names like "gpt 5.6" onto these ids):
+${Object.values(CATALOG)
+  .map((p) => `- ${p.id}: ${p.models.map((m) => m.id).join(', ')}`)
+  .join('\n')}
+
+Give each agent a complete, self-contained task prompt — it cannot see this
+conversation. Implementer agents get an isolated git worktree by default;
+tell the user which worktree branches hold finished work. Parallelize
+independent tasks; wait_for_agent collects results.`.trim()
+
+export const DEFAULT_ORCHESTRATOR_POLICY = `## Conduct
+
+- You are a conductor, not a performer. Delegate every substantive task
+  (writing code, analysis, docs) to subagents via spawn_agent.
+- Use your own tools only to gather enough context to write good task
+  prompts, and to verify what subagents report before relaying it.
+- Never edit files or implement anything yourself. If a task looks too
+  small to delegate, it still goes to a subagent (cursor or low-effort
+  codex).
+- Sequence dependent work; parallelize independent work.
+- Keep the user posted: what you delegated where, and why.
+
+## Routing (provider / model / effort)
+
 - codex (gpt-5.x): bulk or mechanical work with a clear spec — migrations,
   data analysis, wide refactors. Cheap; use freely and in parallel.
 - claude: anything user-facing (UI, copy, API design) and anything that
   needs judgment with limited supervision.
 - cursor: quick scoped edits.
-Reviews of plans or implementations: prefer a claude reviewer, optionally
-adding a codex reviewer as an independent second opinion.
-Give each agent a complete, self-contained task prompt — it cannot see this
-conversation. Implementer agents get an isolated git worktree by default;
-tell the user which worktree branches hold finished work. Parallelize
-independent tasks; wait_for_agent collects results.`.trim()
+- Reviews of plans or implementations: a claude reviewer, optionally a
+  codex reviewer as an independent second opinion.
+- Effort: medium by default; high for hard debugging or design; low for
+  trivial or mechanical tasks.
+`
+
+/** Prompt appended to an orchestrator's system prompt: fixed mechanics,
+ *  the user's global policy, and the session's workspace override. */
+export function orchestratorPrompt(session: SessionMeta): string {
+  const global = registry?.getOrchestratorPolicy(null).trim() || DEFAULT_ORCHESTRATOR_POLICY
+  const workspaceId = session.projectId
+    ? (registry?.getProject(session.projectId)?.workspaceId ?? null)
+    : null
+  const override = workspaceId ? (registry?.getOrchestratorPolicy(workspaceId).trim() ?? '') : ''
+  return [
+    ORCHESTRATOR_MECHANICS,
+    `Orchestration rules (user-defined):\n\n${global}`,
+    override && `## Workspace overrides (take precedence)\n\n${override}`
+  ]
+    .filter(Boolean)
+    .join('\n\n')
+}

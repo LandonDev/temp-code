@@ -54,6 +54,10 @@ export function openDb(path: string): DatabaseSync {
       cwd          TEXT NOT NULL,
       created_at   INTEGER NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS settings (
+      key   TEXT PRIMARY KEY,
+      value TEXT NOT NULL
+    );
   `)
   // Migrations for databases created before these columns existed.
   for (const stmt of [
@@ -307,6 +311,25 @@ export class Store {
       .prepare(`SELECT * FROM sessions WHERE project_id = ?`)
       .all(projectId) as unknown as SessionRowRaw[]
     return rows.map(toMeta)
+  }
+
+  // ── settings (key/value, e.g. orchestrator policy) ─────────────────
+
+  getSetting(key: string): string | null {
+    const r = this.db.prepare(`SELECT value FROM settings WHERE key = ?`).get(key) as
+      { value: string } | undefined
+    return r?.value ?? null
+  }
+
+  setSetting(key: string, value: string | null): void {
+    if (value === null) this.db.prepare(`DELETE FROM settings WHERE key = ?`).run(key)
+    else
+      this.db
+        .prepare(
+          `INSERT INTO settings (key, value) VALUES (?, ?)
+           ON CONFLICT(key) DO UPDATE SET value = excluded.value`
+        )
+        .run(key, value)
   }
 
   /** Has this session ever received a user message? (drives first-send preambles) */

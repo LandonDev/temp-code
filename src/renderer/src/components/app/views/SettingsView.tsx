@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { motion, useReducedMotion } from 'motion/react'
 import type { ProviderId } from '@shared/catalog'
 import { useApp, type ThemePref } from '../../../state/store'
@@ -7,6 +7,7 @@ import { SPRING_LAYOUT } from '../../../lib/ease'
 import { ProviderMark, THREAD_GLYPHS, THREAD_TINTS, timeAgo } from '../bits'
 import { ZIcon } from '../zicon'
 import { Spinner } from '../../ui/spinner'
+import { OrchestrationRulesDialog } from '../OrchestrationRulesDialog'
 
 const THEME_OPTIONS: { value: ThemePref; label: string }[] = [
   { value: 'system', label: 'System' },
@@ -37,6 +38,13 @@ export function SettingsView(): React.JSX.Element {
 
         <Section title="Providers" hint="CLIs found on your PATH. Each runs under its own login.">
           <ProviderHealthList />
+        </Section>
+
+        <Section
+          title="Orchestration rules"
+          hint="Conduct and routing policy fed into every orchestrator. Workspaces can override from their sidebar menu."
+        >
+          <RulesButton />
         </Section>
 
         <Section
@@ -95,6 +103,21 @@ function ThemeSwitch(): React.JSX.Element {
         </button>
       ))}
     </div>
+  )
+}
+
+function RulesButton(): React.JSX.Element {
+  const [open, setOpen] = useState(false)
+  return (
+    <>
+      <button
+        onClick={() => setOpen(true)}
+        className="rounded-lg border border-border/60 px-3 py-1.5 text-[13px] transition-colors hover:bg-accent/40 active:scale-[0.99]"
+      >
+        Edit rules
+      </button>
+      {open && <OrchestrationRulesDialog workspace={null} onClose={() => setOpen(false)} />}
+    </>
   )
 }
 
