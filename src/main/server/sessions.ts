@@ -193,6 +193,14 @@ export class SessionRegistry {
   ): Promise<void> {
     let meta = this.store.getSession(sessionId)
     if (!meta) throw new Error(`unknown session: ${sessionId}`)
+    // Zeron unarchive-on-send: a message into an archived thread revives it.
+    if (meta.archived) {
+      const next = this.store.updateSession(sessionId, { archived: false })
+      if (next) {
+        meta = next
+        this.notifyMeta(next)
+      }
+    }
     // Per-message model/reasoning: persist the change and drop the live
     // handle — the next handleFor() boots the harness fresh (resume keeps
     // the conversation) with the new settings.

@@ -494,15 +494,12 @@ export function PromptBar({ compact }: { compact?: boolean }): React.JSX.Element
             {provider && (
               <>
                 <Select value={model} onValueChange={setModel}>
-                  <SelectTrigger
-                    aria-label="Model"
-                    className="h-6 gap-1 rounded-sm border-0 bg-transparent py-0 pr-1 pl-1.5 text-xs text-muted-foreground shadow-none transition-colors duration-150 hover:bg-accent hover:text-foreground focus-visible:ring-0 dark:bg-transparent [&_svg]:size-3"
-                  >
+                  <SelectTrigger size="sm" aria-label="Model" className="gap-1 px-1.5">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
                     {provider.models.map((m) => (
-                      <SelectItem key={m.id} value={m.id} className="text-xs">
+                      <SelectItem key={m.id} value={m.id}>
                         {m.label}
                       </SelectItem>
                     ))}
@@ -510,15 +507,12 @@ export function PromptBar({ compact }: { compact?: boolean }): React.JSX.Element
                 </Select>
                 {provider.reasoning.length > 1 && (
                   <Select value={reasoning} onValueChange={(v) => setReasoning(v as Reasoning)}>
-                    <SelectTrigger
-                      aria-label="Reasoning effort"
-                      className="h-6 gap-1 rounded-sm border-0 bg-transparent py-0 pr-1 pl-1.5 text-xs text-muted-foreground shadow-none transition-colors duration-150 hover:bg-accent hover:text-foreground focus-visible:ring-0 dark:bg-transparent [&_svg]:size-3"
-                    >
+                    <SelectTrigger size="sm" aria-label="Reasoning effort" className="gap-1 px-1.5">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
                       {provider.reasoning.map((r) => (
-                        <SelectItem key={r} value={r} className="text-xs">
+                        <SelectItem key={r} value={r}>
                           {REASONING_LABELS[r]}
                         </SelectItem>
                       ))}
@@ -529,15 +523,12 @@ export function PromptBar({ compact }: { compact?: boolean }): React.JSX.Element
                   value={session.permission}
                   onValueChange={(v) => void setPermission(selectedId, v as PermissionPolicy)}
                 >
-                  <SelectTrigger
-                    aria-label="Permission level"
-                    className="h-6 gap-1 rounded-sm border-0 bg-transparent py-0 pr-1 pl-1.5 text-xs text-muted-foreground shadow-none transition-colors duration-150 hover:bg-accent hover:text-foreground focus-visible:ring-0 dark:bg-transparent [&_svg]:size-3"
-                  >
+                  <SelectTrigger size="sm" aria-label="Permission level" className="gap-1 px-1.5">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
                     {(Object.keys(PERMISSION_LABELS) as PermissionPolicy[]).map((p) => (
-                      <SelectItem key={p} value={p} className="text-xs">
+                      <SelectItem key={p} value={p}>
                         {PERMISSION_LABELS[p]}
                       </SelectItem>
                     ))}
