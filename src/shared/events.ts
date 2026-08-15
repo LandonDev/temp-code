@@ -137,9 +137,7 @@ export const AgentEventSchema = z.discriminatedUnion('type', [
         multiSelect: z.boolean().optional(),
         /** a typed free-text answer is accepted ("Other") */
         allowFreeform: z.boolean().optional(),
-        options: z.array(
-          z.object({ label: z.string(), description: z.string().optional() })
-        )
+        options: z.array(z.object({ label: z.string(), description: z.string().optional() }))
       })
     ),
     callId: z.string().optional()

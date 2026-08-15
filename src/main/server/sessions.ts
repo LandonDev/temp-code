@@ -9,6 +9,7 @@ import type { DriverHandle } from './drivers/types'
 import type { Store } from './db'
 import { addProjectWorktree, currentBranch, ensureLocalExclude, isGitRepo } from './git'
 import { parseRules, type OrchestrationRules } from '@shared/rules'
+import { DEFAULT_THREAD_DEFAULTS, parseDefaults, type ThreadDefaults } from '@shared/defaults'
 import { planPathFor, planSeed, threadPreamble } from './threads'
 
 const THREAD_TITLES = {
@@ -168,10 +169,8 @@ export class SessionRegistry {
     return this.store.eventsAfter(sessionId, afterSeq)
   }
 
-  // ── orchestrator policy (global defaults + workspace overrides) ────
+  // ── orchestration rules & thread defaults (global + workspace) ─────
 
-  /** null scope = global (falls back to the built-in defaults);
-   *  a workspaceId = that workspace's override ('' when none). */
   /** Structured orchestration rules for a scope; null = not set there
    *  (global falls back to defaults at the call site, a workspace to
    *  the global rules). */
@@ -188,6 +187,26 @@ export class SessionRegistry {
     this.store.setSetting(key, rules ? JSON.stringify(rules) : null)
   }
 
+  /** Thread defaults for a scope; null = not set there. */
+  getThreadDefaults(workspaceId: string | null): ThreadDefaults | null {
+    const key = workspaceId ? `thread-defaults:${workspaceId}` : 'thread-defaults'
+    return parseDefaults(this.store.getSetting(key))
+  }
+
+  setThreadDefaults(workspaceId: string | null, defaults: ThreadDefaults | null): void {
+    const key = workspaceId ? `thread-defaults:${workspaceId}` : 'thread-defaults'
+    this.store.setSetting(key, defaults ? JSON.stringify(defaults) : null)
+  }
+
+  /** What a new thread starts with here: workspace override → global → built-in. */
+  resolveThreadDefaults(workspaceId: string | null): ThreadDefaults {
+    return (
+      (workspaceId ? this.getThreadDefaults(workspaceId) : null) ??
+      this.getThreadDefaults(null) ??
+      DEFAULT_THREAD_DEFAULTS
+    )
+  }
+
   async create(raw: CreateSessionInput): Promise<SessionMeta> {
     const params = CreateSessionParams.parse(raw)
     const now = Date.now()
@@ -195,6 +214,11 @@ export class SessionRegistry {
     const project = params.projectId ? this.store.getProject(params.projectId) : null
     const cwd = project?.cwd ?? params.cwd
     if (!cwd) throw new Error('session needs a cwd or a projectId')
+    // Fields the caller left open come from the thread defaults
+    // (workspace override → global → built-in).
+    const d = this.resolveThreadDefaults(project?.workspaceId ?? null)
+    const provider = params.provider ?? d.provider
+    const model = params.model ?? (d.model || CATALOG[provider].defaultModel)
     const meta: SessionMeta = {
       id,
       parentId: params.parentId,
@@ -202,22 +226,22 @@ export class SessionRegistry {
       threadType: params.threadType,
       // Planning threads own a plan file; seeded threads point at their source.
       planPath: params.threadType === 'planning' ? planPathFor(cwd, id) : (params.planPath ?? null),
-      provider: params.provider,
-      model: params.model,
-      reasoning: params.reasoning,
+      provider,
+      model,
+      reasoning: params.reasoning ?? d.reasoning,
       // Orchestration threads ARE orchestrator sessions (MCP toolset attaches).
       agentType: params.threadType === 'orchestration' ? 'orchestrator' : params.agentType,
       title:
         params.title ??
         (params.threadType
           ? THREAD_TITLES[params.threadType]
-          : `${params.provider} · ${params.agentType}`),
+          : `${provider} · ${params.agentType}`),
       cwd,
       // The harness boots lazily on first send; a new session is simply
       // ready for input.
       status: 'idle',
       archived: false,
-      permission: params.permission,
+      permission: params.permission ?? d.permission,
       nativeId: null,
       createdAt: now,
       updatedAt: now

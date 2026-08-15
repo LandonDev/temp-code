@@ -292,17 +292,12 @@ function NewThreadButton({
     if (busy) return
     setBusy(true)
     try {
-      // Threads aren't provider-bound: every send carries the model choice
-      // and can switch harnesses. New threads just start on the default.
+      // Provider/model/reasoning/security come from the thread defaults
+      // (workspace override → global), resolved server-side.
       await createThread({
         projectId,
         threadType: type,
-        provider: 'claude',
-        model: catalog.claude.defaultModel,
-        agentType: type === 'orchestration' ? 'orchestrator' : 'implementer',
-        // Every thread starts at 'edits'; escalation is a per-thread choice
-        // in the prompt bar, never a silent default.
-        permission: 'edits'
+        agentType: type === 'orchestration' ? 'orchestrator' : 'implementer'
       })
       setOpen(false)
     } finally {
