@@ -15,7 +15,9 @@ const REASONING_LABELS: Record<Reasoning, string> = {
   low: 'Low',
   medium: 'Medium',
   high: 'High',
-  max: 'Max'
+  xhigh: 'Extra high',
+  max: 'Max',
+  ultra: 'Ultra'
 }
 
 const PERMISSION_LABELS: Record<PermissionPolicy, string> = {
@@ -123,6 +125,9 @@ export function PromptBar({ compact }: { compact?: boolean }): React.JSX.Element
   const provider = session ? catalog?.[choice.provider] : undefined
   const providerId = session ? choice.provider : undefined
   const cwd = session?.cwd
+  // Reasoning is per model — the ladder (and whether the select shows at
+  // all) comes from the picked model's catalog entry.
+  const ladder = provider?.models.find((m) => m.id === choice.model)?.reasoning ?? []
 
   useEffect(() => {
     if (providerId && cwd) void fetchCommands(providerId, cwd)
@@ -505,18 +510,22 @@ export function PromptBar({ compact }: { compact?: boolean }): React.JSX.Element
                   model={choice.model}
                   onPick={(p, m) => {
                     setChoice({ provider: p, model: m })
-                    // Clamp reasoning to what the new provider offers.
-                    const ladder = catalog?.[p].reasoning ?? []
-                    if (!ladder.includes(reasoning)) setReasoning(ladder[0] ?? 'medium')
+                    // Clamp to the picked MODEL's ladder; land on its
+                    // default effort when the current level isn't offered.
+                    const next = catalog?.[p].models.find((x) => x.id === m)
+                    const steps = next?.reasoning ?? []
+                    if (!steps.includes(reasoning)) {
+                      setReasoning(next?.defaultReasoning ?? steps[0] ?? 'medium')
+                    }
                   }}
                 />
-                {provider.reasoning.length > 1 && (
+                {ladder.length > 1 && (
                   <Select value={reasoning} onValueChange={(v) => setReasoning(v as Reasoning)}>
                     <SelectTrigger size="sm" aria-label="Reasoning effort" className="gap-1 px-1.5">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      {provider.reasoning.map((r) => (
+                      {ladder.map((r) => (
                         <SelectItem key={r} value={r}>
                           {REASONING_LABELS[r]}
                         </SelectItem>

@@ -31,11 +31,15 @@ const APPROVAL_POLICY: Record<PermissionPolicy, string> = {
   auto: 'never'
 }
 
+// Our reasoning enum matches codex's effort ladder 1:1 (model/list,
+// codex-cli 0.147.0) — sol/terra go all the way to ultra.
 const EFFORT: Record<Reasoning, string> = {
   low: 'low',
   medium: 'medium',
   high: 'high',
-  max: 'xhigh'
+  xhigh: 'xhigh',
+  max: 'max',
+  ultra: 'ultra'
 }
 
 interface RpcFrame {
