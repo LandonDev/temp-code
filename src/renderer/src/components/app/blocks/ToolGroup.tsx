@@ -2,6 +2,7 @@ import { memo, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { cn, displayPath } from '../../../lib/utils'
 import { useApp } from '../../../state/store'
 import { ZIcon, type ZIconName } from '../zicon'
+import { duration } from '../bits'
 import { MatrixSpinner } from '../WorkingStrip'
 import type { Block } from '../../../state/blocks'
 
@@ -65,8 +66,22 @@ function kindOf(b: ToolBlock): Kind {
     case 'update_plan':
       return 'todo'
     default:
-      return b.name.includes('.') ? 'mcp' : 'tool'
+      return b.name.includes('.') || b.name.startsWith('mcp__') ? 'mcp' : 'tool'
   }
+}
+
+/** "mcp__orchestrator__spawn_agent" → "spawn_agent"; other names verbatim. */
+function shortName(name: string): string {
+  if (name.startsWith('mcp__')) return name.split('__').at(-1) ?? name
+  if (name.includes('.')) return name.split('.').at(-1) ?? name
+  return name
+}
+
+/** Tool wall clock, call → result; undefined until it lands or if < 1s. */
+function toolMs(b: ToolBlock): number | undefined {
+  if (b.ts === undefined || b.doneTs === undefined) return undefined
+  const ms = b.doneTs - b.ts
+  return ms >= 1000 ? ms : undefined
 }
 
 /** Verb label + Solar icon per kind (proto/view.rs chip labels). */
@@ -126,13 +141,11 @@ function detailOf(b: ToolBlock, cwd?: string): string {
       }
       return ''
     }
-    case 'mcp': {
-      const [server, tool] = b.name.split(/\.(.+)/)
-      return `${server} · ${tool}`
-    }
+    // mcp + unknown tools: the first string input is usually the payload
+    // (a task, a message, an id) — far more telling than the server name.
     default: {
       const firstString = Object.values(i).find((v) => typeof v === 'string')
-      return str(firstString)
+      return str(firstString).replace(/\s*\n\s*/g, ' ')
     }
   }
 }
@@ -164,19 +177,31 @@ export function groupSummary(tools: ToolBlock[]): string {
   if (searches) segments.push(`searched ${plural(searches, 'time')}`)
   if (n('fetch')) segments.push(`fetched ${plural(n('fetch'), 'page')}`)
   if (n('todo')) segments.push('updated todos')
-  const called = n('mcp') + n('tool')
-  if (called) segments.push(`called ${plural(called, 'tool')}`)
+  // Name mcp/unknown tools instead of the opaque "called N tools".
+  const called = tools.filter((t) => {
+    const k = kindOf(t)
+    return k === 'mcp' || k === 'tool'
+  })
+  let namedFirst = false
+  if (called.length) {
+    const names = [...new Set(called.map((t) => shortName(t.name)))]
+    const shown =
+      names.length > 2 ? `${names.slice(0, 2).join(' · ')} +${names.length - 2}` : names.join(' · ')
+    namedFirst = segments.length === 0
+    segments.push(names.length === 1 && called.length > 1 ? `${shown} ×${called.length}` : shown)
+  }
   if (failed) segments.push(`${failed} failed`)
   const joined = segments.length ? segments.join(' · ') : `${tools.length} tools`
-  return joined.charAt(0).toUpperCase() + joined.slice(1)
+  // Tool names keep their own casing; prose summaries get sentence case.
+  return namedFirst ? joined : joined.charAt(0).toUpperCase() + joined.slice(1)
 }
 
 /** Expansion state survives virtualization — rows scrolled out of the
  *  overscan window unmount, and a section the user opened must still be
  *  open when they scroll back. Keyed by callId (harness-unique). */
 const openState = new Map<string, boolean>()
-function usePersistedOpen(key: string): [boolean, (v: boolean) => void] {
-  const [open, setOpen] = useState(openState.get(key) ?? false)
+function usePersistedOpen(key: string, def = false): [boolean, (v: boolean) => void] {
+  const [open, setOpen] = useState(openState.get(key) ?? def)
   const set = (v: boolean): void => {
     openState.set(key, v)
     setOpen(v)
@@ -432,7 +457,7 @@ const Chip = memo(function Chip({ b }: { b: ToolBlock }): React.JSX.Element {
               b.isError ? 'text-destructive' : loading ? 'text-muted-foreground' : 'text-foreground'
             )}
           >
-            {chip.label}
+            {k === 'mcp' || k === 'tool' ? shortName(b.name) : chip.label}
           </span>
           <span
             className={cn(
@@ -443,6 +468,11 @@ const Chip = memo(function Chip({ b }: { b: ToolBlock }): React.JSX.Element {
           >
             {loading ? '' : detail}
           </span>
+          {toolMs(b) !== undefined && (
+            <span className="shrink-0 text-[10.5px] tabular-nums text-muted-foreground/60">
+              {duration(toolMs(b)!)}
+            </span>
+          )}
           {running && !loading && (
             <span className="size-1.5 shrink-0 animate-pulse rounded-full bg-busy" />
           )}
@@ -471,7 +501,11 @@ const Chip = memo(function Chip({ b }: { b: ToolBlock }): React.JSX.Element {
 })
 
 /** The folded group row. `autoOpen` while the reply is streaming and this
- *  group is the last part; the user's toggle overrides either way. */
+ *  group is the last part; the user's toggle overrides either way.
+ *
+ *  A single tool skips the generic summary ("Called 1 tool") entirely: the
+ *  header IS the verb + target, and one click opens the invocation/output
+ *  directly — never a second nested expansion. */
 export const ToolGroup = memo(function ToolGroup({
   tools,
   autoOpen
@@ -483,12 +517,23 @@ export const ToolGroup = memo(function ToolGroup({
   const [override, setOverrideRaw] = useState<boolean | null>(
     openState.has(gkey) ? (openState.get(gkey) as boolean) : null
   )
+  const projectCwd = useApp((s) => s.projects.find((p) => p.id === s.selectedProjectId)?.cwd)
   const setOverride = (v: boolean): void => {
     openState.set(gkey, v)
     setOverrideRaw(v)
   }
   const [userToggled, setUserToggled] = useState(false)
   const open = override ?? autoOpen
+
+  const single = tools.length === 1 ? tools[0] : null
+  const k = single ? kindOf(single) : null
+  const label = single
+    ? k === 'mcp' || k === 'tool'
+      ? shortName(single.name)
+      : CHIP[k ?? 'tool'].label
+    : null
+  const detail = single ? detailOf(single, projectCwd) : null
+  const running = single ? single.output === undefined && single.input !== undefined : false
 
   return (
     <div>
@@ -498,19 +543,48 @@ export const ToolGroup = memo(function ToolGroup({
           setOverride(!open)
         }}
         className="group/hdr flex h-[26px] w-full items-center gap-2 px-1 text-left text-xs text-muted-foreground transition-colors duration-150 hover:text-foreground"
-        title={groupSummary(tools)}
+        title={single ? `${label} ${detail}` : groupSummary(tools)}
       >
         <ChevronTile open={open} />
-        <span className="min-w-0 truncate">{groupSummary(tools)}</span>
+        {single ? (
+          <>
+            <span
+              className={cn(
+                'shrink-0 font-medium',
+                single.isError ? 'text-destructive' : 'text-foreground/80'
+              )}
+            >
+              {label}
+            </span>
+            <span className="min-w-0 flex-1 truncate">{detail}</span>
+            {single && toolMs(single) !== undefined && (
+              <span className="shrink-0 text-[10.5px] tabular-nums text-muted-foreground/50">
+                {duration(toolMs(single)!)}
+              </span>
+            )}
+            {running && <span className="size-1.5 shrink-0 animate-pulse rounded-full bg-busy" />}
+          </>
+        ) : (
+          <span className="min-w-0 truncate">{groupSummary(tools)}</span>
+        )}
       </button>
       <TweenHeight open={open} animate={userToggled}>
         <div className="relative">
           {/* guide rail — 1px hairline centered under the chevron tile */}
           <div className="absolute top-0 bottom-0 left-3 w-px bg-(--rail)" />
           <div className="ml-6">
-            {tools.map((t) => (
-              <Chip key={t.id} b={t} />
-            ))}
+            {single ? (
+              <div className="mt-0.5 rounded-[9px] border border-(--chip-border) bg-(--chip-bg)">
+                {k === 'todo' ? <TodoBlock b={single} /> : <InvocationBlock b={single} />}
+                {single.output !== undefined && k !== 'todo' && (
+                  <div className="border-t border-(--hairline)">
+                    <OutputBlock text={single.output} error={single.isError} />
+                  </div>
+                )}
+              </div>
+            ) : (
+              tools.map((t) => <Chip key={t.id} b={t} />)
+            )}
           </div>
         </div>
       </TweenHeight>
@@ -596,8 +670,14 @@ function editModel(b: ToolBlock): EditModel {
  * card, the file name leading, an unmissable +N / −N diffstat, expanding in
  * place to the diff. Click the diffstat side to open the working-tree diff.
  */
-export const ZEditCard = memo(function ZEditCard({ b }: { b: ToolBlock }): React.JSX.Element {
-  const [open, setOpen] = usePersistedOpen(`e:${b.callId}`)
+export const ZEditCard = memo(function ZEditCard({
+  b,
+  defaultOpen = false
+}: {
+  b: ToolBlock
+  defaultOpen?: boolean
+}): React.JSX.Element {
+  const [open, setOpen] = usePersistedOpen(`e:${b.callId}`, defaultOpen)
   const [userToggled, setUserToggled] = useState(false)
   const openFileRef = useApp((s) => s.openFileRef)
   const projectCwd = useApp((s) => s.projects.find((p) => p.id === s.selectedProjectId)?.cwd)
@@ -668,6 +748,11 @@ export const ZEditCard = memo(function ZEditCard({ b }: { b: ToolBlock }): React
             </span>
           )}
           <span className="ml-auto flex shrink-0 items-center gap-2 pl-2">
+            {toolMs(b) !== undefined && (
+              <span className="text-[10.5px] tabular-nums text-muted-foreground/50">
+                {duration(toolMs(b)!)}
+              </span>
+            )}
             {b.isError ? (
               <span className="text-xs font-medium text-destructive">failed</span>
             ) : (

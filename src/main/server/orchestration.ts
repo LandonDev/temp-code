@@ -99,17 +99,21 @@ export function orchestratorMcp(parent: SessionMeta): McpSdkServerConfigWithInst
           if (!registry) return text('orchestration registry not ready')
           const writer = args.agentType === 'implementer'
           const cwd = (writer && args.useWorktree ? await worktreeFor(parent.cwd, `${parent.id}-${Date.now() % 100000}`) : null) ?? parent.cwd
+          // Children follow the master orchestrator's permission policy —
+          // the user granted it once, and the fleet works under that grant.
+          // Read it fresh: the user may have changed it since spawn time.
+          const parentNow = registry.list().find((s) => s.id === parent.id) ?? parent
           const child = await registry.create({
             projectId: parent.projectId,
             provider: args.provider,
             model: args.model ?? CATALOG[args.provider].defaultModel,
             reasoning: args.reasoning,
             agentType: args.agentType,
-            // Children run unattended; edits-auto outside a worktree,
-            // full-auto inside one.
-            permission: cwd === parent.cwd ? 'edits' : 'auto',
+            permission: parentNow.permission,
             cwd,
-            title: `${args.provider} · ${args.agentType}`,
+            // The task IS the identity — boards, tabs and the sidebar all
+            // lead with it. Provider/type stay visible as metadata.
+            title: args.task.trim().split('\n')[0].slice(0, 80) || `${args.provider} · ${args.agentType}`,
             parentId: parent.id
           })
           await registry.send(child.id, args.task)
