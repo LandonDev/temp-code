@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { CATALOG, Reasoning } from '@shared/catalog'
+import type { CATALOG, ProviderId, Reasoning } from '@shared/catalog'
 import type { Attachment, EventRow, PermissionPolicy, SessionMeta } from '@shared/events'
 import type {
   FileChange,
@@ -21,6 +21,32 @@ import {
 } from './blocks'
 
 type Catalog = typeof CATALOG
+
+/** Per-provider CLI health (mirror of the server's DoctorReport). */
+export interface ProviderHealth {
+  found: boolean
+  path?: string
+  version?: string
+  error?: string
+}
+
+export type ThemePref = 'system' | 'light' | 'dark'
+
+const FAVORITES_KEY = 'model-favorites'
+const THEME_KEY = 'theme'
+
+const osDark = window.matchMedia('(prefers-color-scheme: dark)')
+
+/** Apply a theme preference to <html>; 'system' follows the OS. */
+export function applyTheme(pref: ThemePref): void {
+  const dark = pref === 'system' ? osDark.matches : pref === 'dark'
+  document.documentElement.classList.toggle('dark', dark)
+}
+
+export function storedTheme(): ThemePref {
+  const raw = localStorage.getItem(THEME_KEY)
+  return raw === 'light' || raw === 'dark' ? raw : 'system'
+}
 
 /** Per-session fold state lives outside zustand; the store publishes
  *  immutable snapshots (blocks arrays) for React. */
@@ -47,9 +73,16 @@ interface AppState {
   selectedProjectId: string | null
   /** the open thread (or unsorted legacy session) */
   selectedId: string | null
+  /** sessions whose event backlog has arrived (Transcript loader gate) */
+  loaded: Record<string, boolean>
   railOpen: boolean
   /** project-relative path the right rail's diff view is showing */
   railDiff: string | null
+  settingsOpen: boolean
+  theme: ThemePref
+  doctor: Record<ProviderId, ProviderHealth> | null
+  /** starred models, `${provider}:${modelId}` (persisted) */
+  favoriteModels: string[]
 
   init: () => Promise<void>
   refreshTree: () => Promise<void>
@@ -65,7 +98,12 @@ interface AppState {
   send: (
     sessionId: string,
     text: string,
-    opts?: { model?: string; reasoning?: Reasoning; attachments?: Attachment[] }
+    opts?: {
+      provider?: ProviderId
+      model?: string
+      reasoning?: Reasoning
+      attachments?: Attachment[]
+    }
   ) => Promise<void>
   interrupt: (sessionId: string) => Promise<void>
   approve: (sessionId: string, requestId: string, allow: boolean) => Promise<void>
@@ -80,6 +118,10 @@ interface AppState {
   readFile: (path: string) => Promise<string | null>
   setRailOpen: (open: boolean) => void
   setRailDiff: (path: string | null) => void
+  setSettingsOpen: (open: boolean) => void
+  setTheme: (theme: ThemePref) => void
+  fetchDoctor: () => Promise<void>
+  toggleFavoriteModel: (provider: ProviderId, modelId: string) => void
   /** Open the right rail on a file's diff. Accepts absolute or
    *  project-relative paths; absolute paths outside the project no-op. */
   openFileRef: (path: string) => void
@@ -112,8 +154,13 @@ export const useApp = create<AppState>((set, get) => ({
   files: {},
   selectedProjectId: null,
   selectedId: null,
+  loaded: {},
   railOpen: false,
   railDiff: null,
+  settingsOpen: false,
+  theme: storedTheme(),
+  doctor: null,
+  favoriteModels: JSON.parse(localStorage.getItem(FAVORITES_KEY) ?? '[]') as string[],
 
   init: async () => {
     if (initStarted) return
@@ -261,6 +308,7 @@ export const useApp = create<AppState>((set, get) => ({
       folds.set(sessionId, fold)
       publishFold(set, sessionId, fold)
     }
+    set((s) => ({ loaded: { ...s.loaded, [sessionId]: true } }))
   },
 
   createThread: async (params) => {
@@ -352,6 +400,28 @@ export const useApp = create<AppState>((set, get) => ({
 
   setRailOpen: (open) => set({ railOpen: open, ...(open ? {} : { railDiff: null }) }),
   setRailDiff: (path) => set({ railDiff: path }),
+
+  setSettingsOpen: (open) => set({ settingsOpen: open }),
+
+  setTheme: (theme) => {
+    localStorage.setItem(THEME_KEY, theme)
+    applyTheme(theme)
+    set({ theme })
+  },
+
+  fetchDoctor: async () => {
+    const doctor = await client.request<Record<ProviderId, ProviderHealth>>('doctor.get')
+    set({ doctor })
+  },
+
+  toggleFavoriteModel: (provider, modelId) => {
+    const key = `${provider}:${modelId}`
+    const next = get().favoriteModels.includes(key)
+      ? get().favoriteModels.filter((k) => k !== key)
+      : [...get().favoriteModels, key]
+    localStorage.setItem(FAVORITES_KEY, JSON.stringify(next))
+    set({ favoriteModels: next })
+  },
 
   openFileRef: (path) => {
     const { selectedProjectId, projects } = get()

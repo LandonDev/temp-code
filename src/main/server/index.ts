@@ -185,6 +185,7 @@ export async function startServer(dbPath: string): Promise<RunningServer> {
             break
           case 'session.send':
             await registry.send(req.params.sessionId, req.params.text, {
+              provider: req.params.provider,
               model: req.params.model,
               reasoning: req.params.reasoning,
               attachments: req.params.attachments

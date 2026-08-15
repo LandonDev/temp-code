@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { FileText, Image as ImageIcon, SlashSquare, X } from 'lucide-react'
-import type { Reasoning } from '@shared/catalog'
+import type { ProviderId, Reasoning } from '@shared/catalog'
 import type { Attachment, PermissionPolicy } from '@shared/events'
 import type { SlashCommand } from '@shared/domain'
 import { useApp } from '../../state/store'
 import { cn, displayPath } from '../../lib/utils'
 import { EASE_OUT, SPRING_PANEL, SPRING_SWAP } from '../../lib/ease'
 import { ZIcon } from './zicon'
+import { ModelPicker } from './ModelPicker'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select'
 
 const REASONING_LABELS: Record<Reasoning, string> = {
@@ -106,16 +107,21 @@ export function PromptBar({ compact }: { compact?: boolean }): React.JSX.Element
   const [fileRefs, setFileRefs] = useState<Attachment[]>([])
   const [dragging, setDragging] = useState(false)
   // Seeded from the session's last-used values; the component remounts per
-  // thread (ThreadView is keyed), so this state is per thread.
-  const [model, setModel] = useState(session?.model ?? '')
+  // thread (ThreadView is keyed), so this state is per thread. The choice
+  // spans providers — picking a model from another harness switches the
+  // thread to it on the next send.
+  const [choice, setChoice] = useState<{ provider: ProviderId; model: string }>({
+    provider: session?.provider ?? 'claude',
+    model: session?.model ?? ''
+  })
   const [reasoning, setReasoning] = useState<Reasoning>(session?.reasoning ?? 'medium')
   const reduce = useReducedMotion()
   const areaRef = useRef<HTMLTextAreaElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
   const pickerRef = useRef<HTMLInputElement>(null)
 
-  const provider = session ? catalog?.[session.provider] : undefined
-  const providerId = session?.provider
+  const provider = session ? catalog?.[choice.provider] : undefined
+  const providerId = session ? choice.provider : undefined
   const cwd = session?.cwd
 
   useEffect(() => {
@@ -266,7 +272,8 @@ export function PromptBar({ compact }: { compact?: boolean }): React.JSX.Element
     setImages([])
     setFileRefs([])
     void send(selectedId, t || '(see attachments)', {
-      model: model || undefined,
+      provider: session && choice.provider !== session.provider ? choice.provider : undefined,
+      model: choice.model || undefined,
       reasoning,
       attachments: attachments.length ? attachments : undefined
     })
@@ -493,18 +500,16 @@ export function PromptBar({ compact }: { compact?: boolean }): React.JSX.Element
           <div className="absolute right-2.5 bottom-[9px] flex items-center gap-0.5">
             {provider && (
               <>
-                <Select value={model} onValueChange={setModel}>
-                  <SelectTrigger size="sm" aria-label="Model" className="gap-1 px-1.5">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {provider.models.map((m) => (
-                      <SelectItem key={m.id} value={m.id}>
-                        {m.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <ModelPicker
+                  provider={choice.provider}
+                  model={choice.model}
+                  onPick={(p, m) => {
+                    setChoice({ provider: p, model: m })
+                    // Clamp reasoning to what the new provider offers.
+                    const ladder = catalog?.[p].reasoning ?? []
+                    if (!ladder.includes(reasoning)) setReasoning(ladder[0] ?? 'medium')
+                  }}
+                />
                 {provider.reasoning.length > 1 && (
                   <Select value={reasoning} onValueChange={(v) => setReasoning(v as Reasoning)}>
                     <SelectTrigger size="sm" aria-label="Reasoning effort" className="gap-1 px-1.5">

@@ -24,6 +24,14 @@ import folder from '../../assets/zicons/folder.svg?raw'
 import expandArrows from '../../assets/zicons/expand-arrows.svg?raw'
 import terminal from '../../assets/zicons/terminal.svg?raw'
 import documentText from '../../assets/zicons/document.svg?raw'
+import claudeMark from '../../assets/zicons/claude-mark.svg?raw'
+import openaiMark from '../../assets/zicons/openai-mark.svg?raw'
+import cursorMark from '../../assets/zicons/cursor-mark.svg?raw'
+import star from '../../assets/zicons/star.svg?raw'
+import starBold from '../../assets/zicons/star-bold.svg?raw'
+import settingsMinimalistic from '../../assets/zicons/settings-minimalistic.svg?raw'
+import archiveMinimalistic from '../../assets/zicons/archive-minimalistic.svg?raw'
+import archiveUpMinimalistic from '../../assets/zicons/archive-up-minimalistic.svg?raw'
 
 /** Solar line icons, the exact SVGs Zeron ships. They draw with
  *  stroke: currentColor at 1em — size via fontSize, color via text-*. */
@@ -51,7 +59,15 @@ const ICONS = {
   folder,
   'expand-arrows': expandArrows,
   terminal,
-  'document-text': documentText
+  'document-text': documentText,
+  'claude-mark': claudeMark,
+  'openai-mark': openaiMark,
+  'cursor-mark': cursorMark,
+  star,
+  'star-bold': starBold,
+  'settings-minimalistic': settingsMinimalistic,
+  'archive-minimalistic': archiveMinimalistic,
+  'archive-up-minimalistic': archiveUpMinimalistic
 } as const
 
 export type ZIconName = keyof typeof ICONS
@@ -68,7 +84,12 @@ export const ZIcon = memo(function ZIcon({
   return (
     <span
       aria-hidden
-      className={cn('inline-flex shrink-0 leading-none [&>svg]:block', className)}
+      // size-[1em]: the brand marks ship viewBox-only (no 1em width/height
+      // like the Solar set) — force every svg onto the fontSize box.
+      className={cn(
+        'inline-flex shrink-0 leading-none [&>svg]:block [&>svg]:size-[1em]',
+        className
+      )}
       style={{ fontSize: size }}
       dangerouslySetInnerHTML={{ __html: ICONS[name] }}
     />

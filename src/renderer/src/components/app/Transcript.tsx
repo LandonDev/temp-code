@@ -9,6 +9,7 @@ import { ThinkingBlock } from './blocks/ThinkingBlock'
 import { EDIT_TOOLS, ErrorChip, ToolGroup, ZEditCard } from './blocks/ToolGroup'
 import { UserMessage } from './blocks/UserMessage'
 import { ZIcon } from './zicon'
+import { Spinner } from '../ui/spinner'
 
 /**
  * Zeron transcript (transcript.rs, values verbatim): 736px column,
@@ -117,6 +118,7 @@ export function Transcript({
 }): React.JSX.Element {
   const blocks = useApp((s) => s.blocks[sessionId]) ?? []
   const status = useApp((s) => s.sessions[sessionId]?.status)
+  const loaded = useApp((s) => !!s.loaded[sessionId])
   const rows = useMemo(() => rowsFor(blocks), [blocks])
   const scrollRef = useRef<HTMLDivElement>(null)
   const [hoveredTurn, setHoveredTurn] = useState<number | null>(null)
@@ -376,6 +378,16 @@ export function Transcript({
     if (el) setScrollTop(el.scrollHeight - el.clientHeight)
     // eslint-disable-next-line react-hooks/exhaustive-deps -- session switch only
   }, [sessionId])
+
+  // Tab switches select instantly; a big backlog still fetching shows a
+  // quiet centered spinner instead of a blank plane that pops full.
+  if (!loaded && rows.length === 0) {
+    return (
+      <div className={cn('relative flex min-h-0 flex-1 items-center justify-center', className)}>
+        <Spinner className="size-4 text-muted-foreground/60 animate-[z-fade-quick_300ms_ease-out]" />
+      </div>
+    )
+  }
 
   return (
     <div className={cn('relative min-h-0 flex-1', className)}>

@@ -149,7 +149,14 @@ export class Store {
     patch: Partial<
       Pick<
         SessionMeta,
-        'status' | 'title' | 'nativeId' | 'archived' | 'model' | 'reasoning' | 'permission'
+        | 'status'
+        | 'title'
+        | 'nativeId'
+        | 'archived'
+        | 'provider'
+        | 'model'
+        | 'reasoning'
+        | 'permission'
       >
     >
   ): SessionMeta | null {
@@ -158,13 +165,14 @@ export class Store {
     const next = { ...cur, ...patch, updatedAt: Date.now() }
     this.db
       .prepare(
-        `UPDATE sessions SET status = ?, title = ?, native_id = ?, archived = ?, model = ?, reasoning = ?, permission = ?, updated_at = ? WHERE id = ?`
+        `UPDATE sessions SET status = ?, title = ?, native_id = ?, archived = ?, provider = ?, model = ?, reasoning = ?, permission = ?, updated_at = ? WHERE id = ?`
       )
       .run(
         next.status,
         next.title,
         next.nativeId,
         next.archived ? 1 : 0,
+        next.provider,
         next.model,
         next.reasoning,
         next.permission,

@@ -9,12 +9,23 @@ import { cn } from '../../lib/utils'
  */
 export function Titlebar(): React.JSX.Element {
   const workspace = useApp((s) =>
-    s.workspaces.find((w) => w.id === s.projects.find((p) => p.id === s.selectedProjectId)?.workspaceId)
+    s.workspaces.find(
+      (w) => w.id === s.projects.find((p) => p.id === s.selectedProjectId)?.workspaceId
+    )
   )
   const project = useApp((s) => s.projects.find((p) => p.id === s.selectedProjectId))
   const cost = useApp((s) => (s.selectedId ? s.costs[s.selectedId] : undefined))
   const railOpen = useApp((s) => s.railOpen)
   const setRailOpen = useApp((s) => s.setRailOpen)
+  const settingsOpen = useApp((s) => s.settingsOpen)
+
+  if (settingsOpen) {
+    return (
+      <header className="titlebar-drag flex h-[38px] shrink-0 items-center px-4 pt-0.5">
+        <span className="text-[13px] font-medium">Settings</span>
+      </header>
+    )
+  }
 
   return (
     // Zeron titlebar: 38px, content sitting 2px lower.

@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
-import { ChevronRight, FolderGit2, FolderPlus, GitBranch, MoreHorizontal, Plus } from 'lucide-react'
+import { ChevronRight, FolderPlus, GitBranch, MoreHorizontal, Plus } from 'lucide-react'
 import type { ProjectMeta, WorkspaceMeta } from '@shared/domain'
 import type { SessionMeta } from '@shared/events'
 import { threadsOfProject, unsortedSessions, useApp } from '../../state/store'
@@ -13,17 +13,22 @@ import {
   DropdownMenuTrigger
 } from '../ui/dropdown-menu'
 import { StatusDot, timeAgo } from './bits'
+import { ZIcon } from './zicon'
 import { NewProjectDialog } from './NewProjectDialog'
 
 /**
- * Workspaces → projects. The active project gets a shared-layout pill that
- * glides between rows (SPRING_LAYOUT); rows respond on pointer-down.
+ * Workspaces → projects. One left-edge rhythm: workspace names start at
+ * x=24 (6px pad + 12px chevron + 6px gap) and project rows indent to the
+ * same 24 so titles align down the bar. The active project gets a
+ * shared-layout pill; rows respond on pointer-down.
  */
 export function Sidebar(): React.JSX.Element {
   const workspaces = useApp((s) => s.workspaces)
   const projects = useApp((s) => s.projects)
   const sessions = useApp((s) => s.sessions)
   const connected = useApp((s) => s.connected)
+  const settingsOpen = useApp((s) => s.settingsOpen)
+  const setSettingsOpen = useApp((s) => s.setSettingsOpen)
   const addWorkspace = useApp((s) => s.addWorkspace)
   const [newProjectWs, setNewProjectWs] = useState<WorkspaceMeta | null>(null)
 
@@ -39,33 +44,47 @@ export function Sidebar(): React.JSX.Element {
       {/* traffic-light strip */}
       <div className="titlebar-drag h-11 shrink-0" />
 
-      <div className="flex-1 overflow-y-auto px-2 pb-2">
-        {workspaces.map((ws) => (
-          <WorkspaceGroup
-            key={ws.id}
-            workspace={ws}
-            projects={projects.filter((p) => p.workspaceId === ws.id)}
-            sessions={sessions}
-            onNewProject={() => setNewProjectWs(ws)}
-          />
-        ))}
+      <div className="flex-1 space-y-3 overflow-y-auto px-2 pb-2">
+        <div>
+          {workspaces.map((ws) => (
+            <WorkspaceGroup
+              key={ws.id}
+              workspace={ws}
+              projects={projects.filter((p) => p.workspaceId === ws.id)}
+              sessions={sessions}
+              onNewProject={() => setNewProjectWs(ws)}
+            />
+          ))}
 
-        <button
-          onClick={() => void pickWorkspace()}
-          className="mt-1 flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-[13px] text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground active:scale-[0.99]"
-        >
-          <FolderPlus className="size-[15px]" />
-          Add workspace
-        </button>
+          <button
+            onClick={() => void pickWorkspace()}
+            className="mt-1 flex h-7 w-full items-center gap-1.5 rounded-md px-1.5 text-[13px] text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground active:scale-[0.99]"
+          >
+            <FolderPlus className="size-3.5 shrink-0 opacity-80" />
+            Add workspace
+          </button>
+        </div>
 
         {unsorted.length > 0 && <UnsortedGroup sessions={unsorted} />}
       </div>
 
-      <div className="flex h-8 shrink-0 items-center gap-2 border-t border-border/60 px-3">
-        <span className={cn('size-1.5 rounded-full', connected ? 'bg-success' : 'bg-warning animate-pulse')} />
-        <span className="text-[11px] text-muted-foreground">
-          {connected ? 'Connected' : 'Reconnecting…'}
-        </span>
+      <div className="flex h-10 shrink-0 items-center gap-2 border-t border-border/60 px-2">
+        <button
+          onClick={() => setSettingsOpen(!settingsOpen)}
+          className={cn(
+            'flex h-7 min-w-0 flex-1 items-center gap-2 rounded-md px-1.5 text-[13px] text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground active:scale-[0.99]',
+            settingsOpen && 'bg-accent text-foreground'
+          )}
+        >
+          <ZIcon name="settings-minimalistic" size={15} className="shrink-0 opacity-80" />
+          Settings
+        </button>
+        {!connected && (
+          <span
+            title="Reconnecting…"
+            className="mr-1 size-1.5 shrink-0 animate-pulse rounded-full bg-warning"
+          />
+        )}
       </div>
 
       {newProjectWs && (
@@ -91,23 +110,24 @@ function WorkspaceGroup({
   const removeWorkspace = useApp((s) => s.removeWorkspace)
 
   return (
-    <div className="group/ws mt-1">
-      <div className="flex items-center rounded-md px-1 py-1 hover:bg-accent/40">
+    <div className="group/ws mt-1 first:mt-0">
+      <div className="flex h-7 items-center rounded-md pr-1 pl-1.5 hover:bg-accent/40">
         <button
           onClick={() => setOpen(!open)}
-          className="flex min-w-0 flex-1 items-center gap-1.5 text-left"
+          className="flex h-full min-w-0 flex-1 items-center gap-1.5 text-left"
         >
           <motion.span
             animate={{ rotate: open ? 90 : 0 }}
             transition={reduce ? { duration: 0 } : SPRING_LAYOUT}
-            className="text-muted-foreground/70"
+            className="flex size-3 shrink-0 items-center justify-center text-muted-foreground/70"
           >
             <ChevronRight className="size-3" />
           </motion.span>
-          <FolderGit2 className="size-[13px] shrink-0 text-muted-foreground/70" />
-          <span className="truncate text-xs font-medium text-muted-foreground">{workspace.name}</span>
+          <span className="truncate text-xs font-medium text-muted-foreground">
+            {workspace.name}
+          </span>
         </button>
-        <div className="flex items-center opacity-0 transition-opacity group-hover/ws:opacity-100">
+        <div className="flex items-center gap-0.5 opacity-0 transition-opacity group-hover/ws:opacity-100">
           <button
             onClick={onNewProject}
             title="New project"
@@ -147,16 +167,18 @@ function WorkspaceGroup({
             transition={reduce ? { duration: 0 } : SPRING_LAYOUT}
             className="overflow-hidden"
           >
-            {projects.length === 0 ? (
-              <button
-                onClick={onNewProject}
-                className="ml-5 flex items-center gap-1.5 rounded-md px-2 py-1 text-xs text-muted-foreground/60 transition-colors hover:text-muted-foreground"
-              >
-                <Plus className="size-3" /> New project
-              </button>
-            ) : (
-              projects.map((p) => <ProjectRow key={p.id} project={p} sessions={sessions} />)
-            )}
+            <div className="mt-0.5 space-y-px">
+              {projects.length === 0 ? (
+                <button
+                  onClick={onNewProject}
+                  className="ml-4 flex h-7 items-center gap-1.5 rounded-md px-2 text-xs text-muted-foreground/60 transition-colors hover:text-muted-foreground"
+                >
+                  <Plus className="size-3" /> New project
+                </button>
+              ) : (
+                projects.map((p) => <ProjectRow key={p.id} project={p} sessions={sessions} />)
+              )}
+            </div>
           </motion.div>
         )}
       </AnimatePresence>
@@ -176,11 +198,13 @@ function ProjectRow({
   const removeProject = useApp((s) => s.removeProject)
 
   const threads = threadsOfProject(sessions, project.id)
-  const busy = threads.find((t) => t.status === 'running' || t.status === 'waiting' || t.status === 'error')
+  const busy = threads.find(
+    (t) => t.status === 'running' || t.status === 'waiting' || t.status === 'error'
+  )
   const latest = threads.at(-1)
 
   return (
-    <div className="group/row relative ml-3">
+    <div className="group/row relative ml-4">
       {selected && (
         <motion.div
           layoutId="sidebar-active"
@@ -191,19 +215,24 @@ function ProjectRow({
       <button
         onPointerDown={() => selectProject(project.id)}
         className={cn(
-          'relative flex w-full items-center gap-2 rounded-md px-2 py-[7px] text-left transition-transform active:scale-[0.99]',
+          'relative flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left transition-transform active:scale-[0.99]',
           !selected && 'hover:bg-accent/50'
         )}
       >
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1.5">
-            <span className={cn('truncate text-[13px]', selected ? 'text-foreground' : 'text-foreground/80')}>
+            <span
+              className={cn(
+                'truncate text-[13px] leading-5',
+                selected ? 'text-foreground' : 'text-foreground/80'
+              )}
+            >
               {project.name}
             </span>
             {busy && <StatusDot status={busy.status} />}
           </div>
           {project.branch && (
-            <div className="mt-px flex items-center gap-1 text-[11px] text-muted-foreground/70">
+            <div className="mt-px flex items-center gap-1 text-[11px] leading-4 text-muted-foreground/70">
               <GitBranch className="size-2.5 shrink-0" />
               <span className="truncate">{project.branch}</span>
             </div>
@@ -215,7 +244,7 @@ function ProjectRow({
           </span>
         )}
       </button>
-      <div className="absolute right-1 top-1/2 -translate-y-1/2 opacity-0 transition-opacity group-hover/row:opacity-100">
+      <div className="absolute top-1/2 right-1 -translate-y-1/2 opacity-0 transition-opacity group-hover/row:opacity-100">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button
@@ -245,10 +274,10 @@ function UnsortedGroup({ sessions }: { sessions: SessionMeta[] }): React.JSX.Ele
   const reduce = useReducedMotion()
 
   return (
-    <div className="mt-3">
+    <div>
       <button
         onClick={() => setOpen(!open)}
-        className="flex w-full items-center gap-1.5 px-2 py-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground/50 transition-colors hover:text-muted-foreground"
+        className="flex h-7 w-full items-center gap-1.5 px-1.5 text-[11px] font-medium tracking-wide text-muted-foreground/50 uppercase transition-colors hover:text-muted-foreground"
       >
         <ChevronRight className={cn('size-3 transition-transform', open && 'rotate-90')} />
         Unsorted · {sessions.length}
@@ -270,7 +299,7 @@ function UnsortedGroup({ sessions }: { sessions: SessionMeta[] }): React.JSX.Ele
                   void select(s.id)
                 }}
                 className={cn(
-                  'ml-3 flex w-[calc(100%-0.75rem)] items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs',
+                  'ml-4 flex h-7 w-[calc(100%-1rem)] items-center gap-2 rounded-md px-2 text-left text-xs',
                   selectedId === s.id
                     ? 'bg-accent text-foreground'
                     : 'text-muted-foreground hover:bg-accent/50'
