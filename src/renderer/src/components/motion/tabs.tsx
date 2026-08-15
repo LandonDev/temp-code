@@ -14,7 +14,7 @@ import {
 import { EASE_OUT } from "@renderer/lib/ease";
 import { cn } from "@renderer/lib/utils";
 
-type Variant = "pill" | "underline" | "segment";
+type Variant = "pill" | "underline" | "segment" | "soft";
 
 type Ctx = {
   value: string;
@@ -90,6 +90,7 @@ const listClasses: Record<Variant, string> = {
   pill: "inline-flex items-center gap-1 rounded-full bg-card p-1",
   underline: "inline-flex items-center gap-1 border-b border-border",
   segment: "inline-flex items-center gap-0 rounded-lg bg-card p-0.5",
+  soft: "inline-flex items-center gap-0.5",
 };
 
 export function TabsList({ children, className }: { children: ReactNode; className?: string }) {
@@ -139,6 +140,41 @@ export function TabsTrigger({
         />
         ) : null}
       </button>
+    );
+  }
+
+  if (variant === "soft") {
+    // Quiet chip tabs: the active one carries a soft accent wash that
+    // glides between chips; inactive chips wash on hover only.
+    return (
+      <div className="relative">
+        {active ? (
+          <motion.span
+            layoutId={layoutId}
+            style={{ borderRadius: 6 }}
+            className={cn("absolute inset-0 bg-accent", indicatorClassName)}
+          />
+        ) : null}
+        <button
+          type="button"
+          role="tab"
+          aria-selected={active}
+          onPointerDown={() => setValue(value)}
+          // keyboard activation only — pointer taps already committed on down
+          onClick={() => {
+            if (current !== value) setValue(value);
+          }}
+          className={cn(
+            "relative z-10 inline-flex items-center justify-center whitespace-nowrap rounded-md bg-transparent px-2.5 py-1 text-[13px] outline-none transition-[color,transform] duration-150 active:scale-[0.98]",
+            active
+              ? "text-foreground"
+              : "text-muted-foreground hover:bg-accent/50 hover:text-foreground",
+            className,
+          )}
+        >
+          {children}
+        </button>
+      </div>
     );
   }
 

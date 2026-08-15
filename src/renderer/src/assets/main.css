@@ -73,6 +73,27 @@
     transform: scale(0.96) translateY(-2px);
   }
 }
+/* MENU_IN for menus opening upward — the drop reverses (+2px rise). */
+@keyframes z-menu-in-up {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(2px);
+  }
+}
+/* MENU_OUT — 100ms, the reverse of MENU_IN (radix holds the node mounted
+ * while this plays, then unmounts). */
+@keyframes z-menu-out {
+  to {
+    opacity: 0;
+    transform: scale(0.98) translateY(-2px);
+  }
+}
+@keyframes z-menu-out-up {
+  to {
+    opacity: 0;
+    transform: scale(0.98) translateY(2px);
+  }
+}
 /* DIALOG_IN — modals: 180ms, scale .96 */
 @keyframes z-dialog-in {
   from {
@@ -307,6 +328,7 @@
   --color-input: var(--input);
   --color-ring: var(--ring);
   --color-bubble: var(--bubble);
+  --color-hairline: var(--hairline);
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
