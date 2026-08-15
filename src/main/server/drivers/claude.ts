@@ -1,6 +1,7 @@
 import {
   query,
   type CanUseTool,
+  type HookJSONOutput,
   type Options,
   type PermissionMode,
   type SDKMessage,
@@ -302,10 +303,90 @@ export const claudeDriver: HarnessDriver = {
     const input = new InputQueue()
     const state: StreamState = { currentMsgId: new Map(), toolInput: new Map() }
     const pendingApprovals = new Map<string, (allow: boolean, auto?: boolean) => void>()
+    const pendingQuestions = new Map<string, (answers: string[][] | null) => void>()
+
+    // AskUserQuestion is a question, not a permission — it must reach the
+    // user in EVERY permission mode. canUseTool is skipped entirely under
+    // bypassPermissions, so this rides a PreToolUse hook instead (hooks
+    // always fire) and hands the answers back via updatedInput.answers
+    // (question text → chosen label; multi-select comma-joined), the shape
+    // the harness's own permission component uses.
+    const askUserQuestionHook = async (
+      hookInput: unknown,
+      toolUseID: string | undefined,
+      { signal }: { signal: AbortSignal }
+    ): Promise<HookJSONOutput> => {
+      const toolInput = (hookInput as { tool_input?: unknown }).tool_input as {
+        questions?: {
+          question?: string
+          header?: string
+          multiSelect?: boolean
+          options?: { label?: string; description?: string }[]
+        }[]
+      } | null
+      const questions = (toolInput?.questions ?? []).flatMap((q) =>
+        q.question
+          ? [
+              {
+                question: q.question,
+                header: q.header,
+                multiSelect: q.multiSelect === true,
+                allowFreeform: true,
+                options: (q.options ?? []).flatMap((o) =>
+                  o.label ? [{ label: o.label, description: o.description }] : []
+                )
+              }
+            ]
+          : []
+      )
+      if (questions.length === 0) return { continue: true }
+
+      const requestId = `q-${toolUseID ?? Math.random().toString(36).slice(2)}`
+      emit({ type: 'question-request', requestId, questions, callId: toolUseID })
+      emit({ type: 'status', status: 'waiting', detail: 'awaiting answer' })
+      const answers = await new Promise<string[][] | null>((resolve) => {
+        const finish = (a: string[][] | null): void => {
+          if (pendingQuestions.delete(requestId)) resolve(a)
+        }
+        pendingQuestions.set(requestId, finish)
+        signal.addEventListener('abort', () => finish(null), { once: true })
+      })
+      emit({ type: 'question-resolved', requestId, answers })
+      emit({ type: 'status', status: 'running' })
+
+      if (!answers) {
+        return {
+          continue: true,
+          hookSpecificOutput: {
+            hookEventName: 'PreToolUse',
+            permissionDecision: 'deny',
+            permissionDecisionReason:
+              'The user dismissed the question — continue with your best judgment.'
+          }
+        }
+      }
+      const answersMap: Record<string, string> = {}
+      questions.forEach((q, i) => {
+        const chosen = answers[i] ?? []
+        if (chosen.length) answersMap[q.question] = chosen.join(', ')
+      })
+      return {
+        continue: true,
+        hookSpecificOutput: {
+          hookEventName: 'PreToolUse',
+          permissionDecision: 'allow',
+          updatedInput: { ...(toolInput ?? {}), answers: answersMap }
+        }
+      }
+    }
 
     // Approval flow (docs/PLAN.md M4): the harness asks, we emit an
     // approval-request event, the user answers through session.approve.
     const canUseTool: CanUseTool = (toolName, toolInput, opts) => {
+      // Questions are handled by the PreToolUse hook above; if the
+      // permission system still asks, wave it through — never render a
+      // question as an Allow/Deny card.
+      if (toolName === 'AskUserQuestion') return Promise.resolve({ behavior: 'allow' })
       const { requestId } = opts
       emit({
         type: 'approval-request',
@@ -342,6 +423,7 @@ export const claudeDriver: HarnessDriver = {
       permissionMode: PERMISSION_MODE[session.permission],
       ...(session.permission === 'auto' ? { allowDangerouslySkipPermissions: true } : {}),
       canUseTool,
+      hooks: { PreToolUse: [{ matcher: 'AskUserQuestion', hooks: [askUserQuestionHook] }] },
       ...(session.nativeId ? { resume: session.nativeId } : {}),
       // Any claude session typed 'orchestrator' can spawn cross-provider
       // subagents (docs/PLAN.md M6). The orchestrator is not special —
@@ -384,8 +466,12 @@ export const claudeDriver: HarnessDriver = {
       approve(requestId: string, allow: boolean): void {
         pendingApprovals.get(requestId)?.(allow)
       },
+      answer(requestId: string, answers: string[][] | null): void {
+        pendingQuestions.get(requestId)?.(answers)
+      },
       async dispose(): Promise<void> {
         for (const finish of [...pendingApprovals.values()]) finish(false, true)
+        for (const finish of [...pendingQuestions.values()]) finish(null)
         input.close()
       }
     }

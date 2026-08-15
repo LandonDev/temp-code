@@ -184,6 +184,10 @@ function useAgentLine(agent: SessionMeta): { text: string | null; tone: string }
     const blocks = s.blocks[agent.id]
     switch (agent.status) {
       case 'waiting': {
+        const question = blocks?.findLast((b) => b.kind === 'question' && !b.resolved)
+        if (question?.kind === 'question') {
+          return `has a question — ${question.questions[0]?.question ?? ''}`
+        }
         const approval = blocks?.findLast((b) => b.kind === 'approval' && !b.resolved)
         return approval?.kind === 'approval'
           ? `waiting for approval — ${approval.title ?? approval.toolName}`

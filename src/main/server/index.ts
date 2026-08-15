@@ -228,6 +228,10 @@ export async function startServer(dbPath: string): Promise<RunningServer> {
             await registry.approve(req.params.sessionId, req.params.requestId, req.params.allow)
             sendFrame({ id: req.id, ok: true, result: null })
             break
+          case 'session.answer':
+            await registry.answer(req.params.sessionId, req.params.requestId, req.params.answers)
+            sendFrame({ id: req.id, ok: true, result: null })
+            break
           case 'session.permission':
             await registry.setPermission(req.params.sessionId, req.params.permission)
             sendFrame({ id: req.id, ok: true, result: null })

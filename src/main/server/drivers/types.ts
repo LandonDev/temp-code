@@ -28,6 +28,8 @@ export interface DriverHandle {
   interrupt: () => void
   /** Answer a pending approval-request (drivers that support approvals). */
   approve?: (requestId: string, allow: boolean) => void
+  /** Answer a pending question-request; null = dismissed without answering. */
+  answer?: (requestId: string, answers: string[][] | null) => void
   dispose: () => Promise<void>
 }
 

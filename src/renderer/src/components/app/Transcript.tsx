@@ -4,6 +4,7 @@ import { cn } from '../../lib/utils'
 import { useApp } from '../../state/store'
 import type { Block } from '../../state/blocks'
 import { ApprovalCard } from './blocks/ApprovalCard'
+import { QuestionCard } from './blocks/QuestionCard'
 import { MarkdownText } from './blocks/MarkdownText'
 import { ThinkingBlock } from './blocks/ThinkingBlock'
 import { EDIT_TOOLS, ErrorChip, ToolGroup, ZEditCard } from './blocks/ToolGroup'
@@ -117,6 +118,8 @@ const RowContent = memo(function RowContent({
       )
     case 'approval':
       return <ApprovalCard block={block} sessionId={sessionId} />
+    case 'question':
+      return <QuestionCard block={block} sessionId={sessionId} />
     case 'error':
       return <ErrorChip text={block.text} />
     default:

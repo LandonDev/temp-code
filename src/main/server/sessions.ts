@@ -297,6 +297,10 @@ export class SessionRegistry {
     this.handles.get(sessionId)?.approve?.(requestId, allow)
   }
 
+  async answer(sessionId: string, requestId: string, answers: string[][] | null): Promise<void> {
+    this.handles.get(sessionId)?.answer?.(requestId, answers)
+  }
+
   async setArchived(sessionId: string, archived: boolean): Promise<void> {
     if (archived) await this.dropHandle(sessionId)
     const next = this.store.updateSession(sessionId, { archived })
