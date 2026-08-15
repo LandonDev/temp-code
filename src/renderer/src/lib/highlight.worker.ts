@@ -1,4 +1,5 @@
 import { createHighlighter, type Highlighter } from 'shiki'
+import { createJavaScriptRegexEngine } from 'shiki/engine/javascript'
 
 /**
  * Shiki off the main thread (docs/PLAN.md M3): the renderer posts
@@ -27,7 +28,13 @@ const LANGS = [
 
 let highlighterP: Promise<Highlighter> | null = null
 function getHighlighter(): Promise<Highlighter> {
-  highlighterP ??= createHighlighter({ themes: ['github-light', 'one-dark-pro'], langs: LANGS })
+  // JS regex engine: workers inherit the document CSP, which has no
+  // wasm-unsafe-eval — oniguruma's WASM never instantiates here.
+  highlighterP ??= createHighlighter({
+    themes: ['github-light', 'one-dark-pro'],
+    langs: LANGS,
+    engine: createJavaScriptRegexEngine({ forgiving: true })
+  })
   return highlighterP
 }
 

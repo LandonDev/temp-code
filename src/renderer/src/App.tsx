@@ -1,17 +1,24 @@
-import { useEffect } from 'react'
+import { lazy, Suspense, useEffect } from 'react'
 import { motion } from 'motion/react'
 import { FolderPlus } from 'lucide-react'
 import { EASE_OUT } from './lib/ease'
+import { flushAllBuffers } from './lib/file-events'
 import { useApp } from './state/store'
 import { Sidebar } from './components/app/Sidebar'
 import { Titlebar } from './components/app/Titlebar'
 import { ThreadStrip } from './components/app/ThreadStrip'
 import { RightRail } from './components/app/RightRail'
+import { QuickOpen } from './components/app/QuickOpen'
 import { ChatView } from './components/app/views/ChatView'
 import { PlanView } from './components/app/views/PlanView'
 import { ImplementationView } from './components/app/views/ImplementationView'
 import { OrchestrationView } from './components/app/views/OrchestrationView'
 import { SettingsView } from './components/app/views/SettingsView'
+import { Spinner } from './components/ui/spinner'
+
+// Monaco and everything that touches it stays behind this boundary — the
+// chunk loads the first time a file/diff surface goes active.
+const EditorHost = lazy(() => import('./components/editor/EditorHost'))
 
 export default function App(): React.JSX.Element {
   const init = useApp((s) => s.init)
@@ -19,12 +26,36 @@ export default function App(): React.JSX.Element {
   const workspaces = useApp((s) => s.workspaces)
   const projectId = useApp((s) => s.selectedProjectId)
   const session = useApp((s) => (s.selectedId ? s.sessions[s.selectedId] : undefined))
+  const activeSurface = useApp((s) =>
+    s.selectedProjectId ? (s.activeSurface[s.selectedProjectId] ?? null) : null
+  )
   const settingsOpen = useApp((s) => s.settingsOpen)
   const addWorkspace = useApp((s) => s.addWorkspace)
 
   useEffect(() => {
     void init()
   }, [init])
+
+  // ⌘P files, ⌘T symbols, ⌘S flush — global; Monaco surfaces re-bind
+  // their own ⌘S/⌘P so focus inside the buffer behaves the same.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      if (!(e.metaKey || e.ctrlKey)) return
+      const { selectedProjectId, setQuickOpen } = useApp.getState()
+      if (e.key === 'p' && selectedProjectId) {
+        e.preventDefault()
+        setQuickOpen('files')
+      } else if (e.key === 't' && selectedProjectId) {
+        e.preventDefault()
+        setQuickOpen('symbols')
+      } else if (e.key === 's') {
+        e.preventDefault()
+        void flushAllBuffers()
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
 
   return (
     <div className="flex h-screen">
@@ -44,7 +75,17 @@ export default function App(): React.JSX.Element {
         ) : (
           <>
             <ThreadStrip />
-            {session ? (
+            {activeSurface ? (
+              <Suspense
+                fallback={
+                  <div className="flex flex-1 items-center justify-center">
+                    <Spinner className="size-3.5 text-muted-foreground" />
+                  </div>
+                }
+              >
+                <EditorHost />
+              </Suspense>
+            ) : session ? (
               // Keyed remount per thread; the brief fade bridges the swap without
               // ever delaying it (no exit animation).
               <motion.div
@@ -83,6 +124,7 @@ export default function App(): React.JSX.Element {
         )}
       </main>
       <RightRail />
+      <QuickOpen />
     </div>
   )
 }

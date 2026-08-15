@@ -62,7 +62,11 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
     params: z.object({
       workspaceId: z.string(),
       name: z.string(),
-      mode: ProjectModeSchema
+      mode: ProjectModeSchema,
+      /** worktree fork point (a ref like origin/main); default: workspace HEAD */
+      baseRef: z.string().optional(),
+      /** adopt an existing branch instead of creating tc/<slug> */
+      existingBranch: z.string().optional()
     })
   }),
   z.object({ id: z.string(), method: z.literal('project.list') }),
@@ -93,6 +97,95 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
     id: z.string(),
     method: z.literal('file.read'),
     params: z.object({ path: z.string() })
+  }),
+  // ── file service (docs/PLAN-3.md M11) — project-scoped, cwd-jailed ──
+  z.object({
+    id: z.string(),
+    method: z.literal('fs.list'),
+    params: z.object({ projectId: z.string(), dir: z.string().default('') })
+  }),
+  z.object({
+    id: z.string(),
+    method: z.literal('fs.read'),
+    params: z.object({ projectId: z.string(), path: z.string() })
+  }),
+  z.object({
+    id: z.string(),
+    method: z.literal('fs.write'),
+    params: z.object({ projectId: z.string(), path: z.string(), content: z.string() })
+  }),
+  z.object({
+    id: z.string(),
+    method: z.literal('fs.create'),
+    params: z.object({ projectId: z.string(), path: z.string(), kind: z.enum(['file', 'dir']) })
+  }),
+  z.object({
+    id: z.string(),
+    method: z.literal('fs.rename'),
+    params: z.object({ projectId: z.string(), path: z.string(), to: z.string() })
+  }),
+  z.object({
+    id: z.string(),
+    method: z.literal('fs.delete'),
+    params: z.object({ projectId: z.string(), path: z.string() })
+  }),
+  // Per-connection watcher subscription; events arrive as file-event pushes.
+  z.object({
+    id: z.string(),
+    method: z.literal('fs.watch'),
+    params: z.object({ projectId: z.string(), subscribe: z.boolean() })
+  }),
+  // ── git flow (docs/PLAN-3.md M12) — always `git -C <project cwd>` ───
+  z.object({
+    id: z.string(),
+    method: z.literal('project.commit'),
+    params: z.object({
+      projectId: z.string(),
+      message: z.string().min(1),
+      /** commit only these paths; omitted = everything changed */
+      paths: z.array(z.string()).optional()
+    })
+  }),
+  z.object({
+    id: z.string(),
+    method: z.literal('project.push'),
+    params: z.object({ projectId: z.string(), targetBranch: z.string().optional() })
+  }),
+  z.object({
+    id: z.string(),
+    method: z.literal('project.log'),
+    params: z.object({ projectId: z.string(), limit: z.number().default(20) })
+  }),
+  z.object({
+    id: z.string(),
+    method: z.literal('project.branches'),
+    params: z.object({ workspaceId: z.string() })
+  }),
+  // `git show HEAD:<path>` — the diff surface's left (original) side.
+  z.object({
+    id: z.string(),
+    method: z.literal('project.show'),
+    params: z.object({ projectId: z.string(), path: z.string() })
+  }),
+  // ── language servers (docs/PLAN-3.md M13) — lifecycle only; the LSP
+  // protocol itself rides a dedicated /lsp/<serverId> WS path.
+  z.object({
+    id: z.string(),
+    method: z.literal('lsp.ensure'),
+    params: z.object({ projectId: z.string(), lang: z.enum(['java', 'web']) })
+  }),
+  z.object({ id: z.string(), method: z.literal('lsp.status') }),
+  // ── AI ghost text (docs/PLAN-3.md M14) — fill-in-the-middle over the
+  // user's existing Claude auth; the app holds no credentials.
+  z.object({
+    id: z.string(),
+    method: z.literal('fim.complete'),
+    params: z.object({
+      projectId: z.string(),
+      path: z.string(),
+      prefix: z.string(),
+      suffix: z.string()
+    })
   }),
   // Orchestration rules: structured conduct bounds + routing table. Global
   // (workspaceId null) with whole-object per-workspace overrides.
@@ -226,6 +319,35 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
     id: z.string(),
     method: z.literal('session.permission'),
     params: z.object({ sessionId: z.string(), permission: PermissionPolicySchema })
+  }),
+  // App tools over WS (docs/PLAN-2.md M10): what the in-process claude
+  // toolset does, reachable by the codex stdio bridge. sessionId is the
+  // calling thread — validated against the registry like any other method.
+  z.object({
+    id: z.string(),
+    method: z.literal('app.listThreads'),
+    params: z.object({ sessionId: z.string(), allProjects: z.boolean().default(false) })
+  }),
+  z.object({
+    id: z.string(),
+    method: z.literal('app.readThread'),
+    params: z.object({ sessionId: z.string(), threadId: z.string() })
+  }),
+  z.object({
+    id: z.string(),
+    method: z.literal('app.startThread'),
+    params: z.object({
+      sessionId: z.string(),
+      threadType: ThreadTypeSchema,
+      provider: providerEnum,
+      model: z.string().optional(),
+      reasoning: reasoningEnum.optional(),
+      projectId: z.string().optional(),
+      planPath: z.string().optional(),
+      seedThreadIds: z.array(z.string()).optional(),
+      firstMessage: z.string(),
+      title: z.string().optional()
+    })
   })
 ])
 export type ClientRequest = z.infer<typeof ClientRequestSchema>
@@ -237,5 +359,7 @@ export type ServerPush =
   | { push: 'event'; row: EventRow }
   | { push: 'session'; session: SessionMeta }
   | { push: 'session-removed'; sessionIds: string[] }
+  // Watcher spine (M11): project-relative path, debounced ~100 ms.
+  | { push: 'file-event'; projectId: string; path: string; kind: 'changed' | 'created' | 'deleted' }
 
 export type ServerFrame = ServerResponse | ServerPush

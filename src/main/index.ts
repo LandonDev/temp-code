@@ -70,6 +70,9 @@ app.whenReady().then(async () => {
     })
     return res.canceled ? null : (res.filePaths[0] ?? null)
   })
+  ipcMain.handle('reveal-in-finder', (_e, path: string) => {
+    shell.showItemInFolder(path)
+  })
 
   createWindow()
 

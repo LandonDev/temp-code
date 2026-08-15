@@ -10,7 +10,16 @@ import type { Store } from './db'
 import { addProjectWorktree, currentBranch, ensureLocalExclude, isGitRepo } from './git'
 import { parseRules, type OrchestrationRules } from '@shared/rules'
 import { DEFAULT_THREAD_DEFAULTS, parseDefaults, type ThreadDefaults } from '@shared/defaults'
-import { planPathFor, planSeed, threadPreamble } from './threads'
+import { planPathFor, planSeed, projectContext, threadPreamble } from './threads'
+import {
+  appendJournal,
+  INLINE_DIGEST_MAX_CHARS,
+  removeMirror,
+  scheduleMirror,
+  seedJournal,
+  threadDigest,
+  writeThreadDigest
+} from './mirror'
 
 const THREAD_TITLES = {
   chat: 'New chat',
@@ -89,8 +98,26 @@ export class SessionRegistry {
     }, 60_000)
   }
 
+  /** At boot no harness handles exist, so a session persisted as running,
+   *  waiting, or starting is stale from a previous process — reset it, or
+   *  the sidebar and working strip show work that isn't happening (and
+   *  can't be stopped). */
+  resetStaleStatuses(): void {
+    for (const s of this.store.listSessions()) {
+      if (s.status === 'running' || s.status === 'waiting' || s.status === 'starting') {
+        this.store.updateSession(s.id, { status: 'idle' })
+      }
+    }
+  }
+
   list(): SessionMeta[] {
     return this.store.listSessions()
+  }
+
+  /** When the session last produced or received anything (drives
+   *  idleForSeconds in the orchestrator's supervision tools). */
+  lastActivityAt(sessionId: string): number {
+    return this.lastActivity.get(sessionId) ?? this.store.getSession(sessionId)?.updatedAt ?? 0
   }
 
   // ── workspaces & projects ──────────────────────────────────────────
@@ -119,14 +146,19 @@ export class SessionRegistry {
     for (const pid of projectIds) await this.deleteProjectSessions(pid)
   }
 
-  async createProject(workspaceId: string, name: string, mode: ProjectMode): Promise<ProjectMeta> {
+  async createProject(
+    workspaceId: string,
+    name: string,
+    mode: ProjectMode,
+    opts: { baseRef?: string; existingBranch?: string } = {}
+  ): Promise<ProjectMeta> {
     const ws = this.store.listWorkspaces().find((w) => w.id === workspaceId)
     if (!ws) throw new Error(`unknown workspace: ${workspaceId}`)
     let cwd = ws.path
     let branch: string | null = null
     if (mode === 'worktree') {
       if (!ws.git) throw new Error('worktree projects need a git workspace')
-      const wt = await addProjectWorktree(ws.path, name)
+      const wt = await addProjectWorktree(ws.path, name, opts)
       cwd = wt.cwd
       branch = wt.branch
     } else {
@@ -143,6 +175,7 @@ export class SessionRegistry {
     }
     this.store.insertProject(meta)
     void ensureLocalExclude(cwd) // plan docs (.temp-code/) stay out of git
+    seedJournal(meta) // PROJECT.md — the shared journal threads append to
     return meta
   }
 
@@ -329,13 +362,66 @@ export class SessionRegistry {
       if (meta.threadType !== 'planning' && meta.planPath) parts.push(planSeed(meta.planPath))
       const preamble = parts.filter(Boolean).join('\n\n')
       if (preamble) out = `<thread-instructions>\n${preamble}\n</thread-instructions>\n\n${text}`
+      // Shared context (M8): root project threads open knowing the project —
+      // the journal, the sibling transcripts, the journal-append contract.
+      if (!meta.parentId && meta.projectId) {
+        const project = this.store.getProject(meta.projectId)
+        if (project) {
+          const ws = this.store.listWorkspaces().find((w) => w.id === project.workspaceId)
+          const ctx = projectContext(
+            meta,
+            project,
+            ws?.name ?? null,
+            this.store.sessionsOfProject(meta.projectId)
+          )
+          out = `${ctx}\n\n${out}`
+        }
+      }
     }
     if (handoff) out = `${handoff}\n\n${out}`
-    await handle.send(out, attachments)
+    // Thread references (M9): each referenced thread becomes a fresh local
+    // digest file; the @thread:<id> token is rewritten to its path (every
+    // harness follows @path). Projectless sessions get the digest inline.
+    for (const ref of attachments?.filter((a) => a.kind === 'thread' && a.sessionId) ?? []) {
+      const refMeta = this.store.getSession(ref.sessionId!)
+      if (!refMeta) continue
+      const refProject = refMeta.projectId ? this.store.getProject(refMeta.projectId) : null
+      const token = `@thread:${refMeta.id}`
+      const here = meta.projectId ? this.store.getProject(meta.projectId) : null
+      if (here) {
+        const rel = writeThreadDigest(this, refMeta, here.cwd)
+        const mention = `@${rel} (thread "${refMeta.title}"${refProject ? ` from project "${refProject.name}"` : ''})`
+        out = out.includes(token) ? out.replaceAll(token, mention) : `${out}\n\n${mention}`
+      } else {
+        let digest = threadDigest(this, refMeta)
+        if (digest.length > INLINE_DIGEST_MAX_CHARS) {
+          digest = `_[earlier turns trimmed]_\n\n…${digest.slice(-INLINE_DIGEST_MAX_CHARS)}`
+        }
+        const mention = `thread "${refMeta.title}" (referenced below)`
+        if (out.includes(token)) out = out.replaceAll(token, mention)
+        out = `${out}\n\n<thread-reference title=${JSON.stringify(refMeta.title)}>\n${digest}\n</thread-reference>`
+      }
+    }
+    // Thread references are resolved above — the harness gets only real files.
+    await handle.send(
+      out,
+      attachments?.filter((a) => a.kind !== 'thread')
+    )
   }
 
   async interrupt(sessionId: string): Promise<void> {
-    this.handles.get(sessionId)?.interrupt()
+    const handle = this.handles.get(sessionId)
+    if (handle) {
+      handle.interrupt()
+      return
+    }
+    // No live harness (crashed, disposed, or the app restarted) — nothing is
+    // actually running, whatever the persisted status says. Stop must still
+    // work: clear the stale status so the UI settles.
+    const meta = this.store.getSession(sessionId)
+    if (meta && meta.status !== 'idle' && meta.status !== 'error') {
+      this.append(sessionId, { type: 'status', status: 'idle' })
+    }
   }
 
   async approve(sessionId: string, requestId: string, allow: boolean): Promise<void> {
@@ -360,11 +446,20 @@ export class SessionRegistry {
   }
 
   async delete(sessionId: string): Promise<void> {
+    const all = this.store.listSessions()
+    const root = all.find((s) => s.id === sessionId)
     const ids = this.store.deleteSessionTree(sessionId)
     for (const id of ids) {
       await this.dropHandle(id)
       this.subscribers.delete(id)
       this.lastActivity.delete(id)
+      const meta = all.find((s) => s.id === id)
+      if (meta) removeMirror(this, meta) // mirrors die with the thread
+    }
+    // The journal never dangles into a missing plan file.
+    if (root?.threadType === 'planning' && root.projectId) {
+      const cwd = this.store.getProject(root.projectId)?.cwd
+      if (cwd) await appendJournal(cwd, `plan "${root.title}" thread deleted`)
     }
     for (const l of this.removedListeners) l(ids)
   }
@@ -444,6 +539,10 @@ export class SessionRegistry {
     if (event.type === 'status') {
       const next = this.store.updateSession(sessionId, { status: event.status })
       if (next) this.notifyMeta(next)
+    }
+    // Shared context (M8): a finished turn refreshes the thread's mirror.
+    if (event.type === 'turn-complete' && this.store.getSession(sessionId)?.projectId) {
+      scheduleMirror(this, sessionId)
     }
     for (const listener of this.subscribers.get(sessionId) ?? []) listener(row)
   }
