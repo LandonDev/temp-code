@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { CATALOG, Reasoning } from '@shared/catalog'
+import type { CATALOG, ProviderId, Reasoning } from '@shared/catalog'
 import type { Attachment, EventRow, PermissionPolicy, SessionMeta } from '@shared/events'
 import type {
   FileChange,
@@ -65,7 +65,7 @@ interface AppState {
   send: (
     sessionId: string,
     text: string,
-    opts?: { model?: string; reasoning?: Reasoning; attachments?: Attachment[] }
+    opts?: { provider?: ProviderId; model?: string; reasoning?: Reasoning; attachments?: Attachment[] }
   ) => Promise<void>
   interrupt: (sessionId: string) => Promise<void>
   approve: (sessionId: string, requestId: string, allow: boolean) => Promise<void>

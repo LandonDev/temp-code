@@ -90,6 +90,18 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
     method: z.literal('file.read'),
     params: z.object({ path: z.string() })
   }),
+  // Orchestrator policy: how orchestrators route and behave. Global
+  // (workspaceId null) with per-workspace overrides, edited in the app.
+  z.object({
+    id: z.string(),
+    method: z.literal('policy.get'),
+    params: z.object({ workspaceId: z.string().nullable().default(null) })
+  }),
+  z.object({
+    id: z.string(),
+    method: z.literal('policy.set'),
+    params: z.object({ workspaceId: z.string().nullable().default(null), text: z.string() })
+  }),
   // Slash commands the provider's harness understands in this cwd
   // (Claude skills/commands, codex prompts, cursor commands).
   z.object({
@@ -120,10 +132,13 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
     id: z.string(),
     method: z.literal('session.send'),
     // Model/reasoning ride along per message; a change restarts the harness
-    // with resume, so a thread has no fixed model.
+    // with resume, so a thread has no fixed model. A provider change goes
+    // further: native resume can't cross harnesses, so the registry starts a
+    // fresh native session seeded with a transcript handoff.
     params: z.object({
       sessionId: z.string(),
       text: z.string(),
+      provider: providerEnum.optional(),
       model: z.string().optional(),
       reasoning: reasoningEnum.optional(),
       attachments: z.array(AttachmentSchema).optional()

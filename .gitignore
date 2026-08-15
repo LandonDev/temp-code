@@ -7,3 +7,5 @@ out
 .env.local
 .env
 scripts/.out/
+
+.claude/settings.local.json

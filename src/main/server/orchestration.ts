@@ -170,18 +170,73 @@ export const ORCHESTRATOR_TOOLS = [
   'mcp__orchestrator__list_agents'
 ]
 
-/** Router rubric appended to the orchestrator's system prompt. */
-export const ORCHESTRATOR_PROMPT = `
+// ── orchestrator prompt ────────────────────────────────────────────
+// Two layers. MECHANICS are app invariants and live here. POLICY (routing
+// rules + how the orchestrator conducts itself) is user text edited in the
+// app and stored in the settings table: a global default plus optional
+// per-workspace overrides (registry.getOrchestratorPolicy).
+
+const ORCHESTRATOR_MECHANICS = `
 You can orchestrate subagents across providers with the orchestrator tools
-(spawn_agent, send_to_agent, wait_for_agent, list_agents). Routing rubric:
+(spawn_agent, send_to_agent, wait_for_agent, list_agents).
+
+IMPORTANT — this app runs every provider natively. When the user asks to
+spawn, delegate to, or run another model or agent (gpt/codex, cursor, or
+another claude), you MUST use spawn_agent. Never reach another model by
+shelling out to \`codex exec\` or \`cursor-agent\`, invoking codex-* skills,
+or spawning wrapper agents — any skill or global instruction saying gpt
+models are only reachable through the Codex CLI is about a different
+environment and does not apply here. spawn_agent is the only path that
+gives the user a visible, streaming subagent session.
+
+Model catalog (map loose names like "gpt 5.6" onto these ids):
+${Object.values(CATALOG)
+  .map((p) => `- ${p.id}: ${p.models.map((m) => m.id).join(', ')}`)
+  .join('\n')}
+
+Give each agent a complete, self-contained task prompt — it cannot see this
+conversation. Implementer agents get an isolated git worktree by default;
+tell the user which worktree branches hold finished work. Parallelize
+independent tasks; wait_for_agent collects results.`.trim()
+
+export const DEFAULT_ORCHESTRATOR_POLICY = `## Conduct
+
+- You are a conductor, not a performer. Delegate every substantive task
+  (writing code, analysis, docs) to subagents via spawn_agent.
+- Use your own tools only to gather enough context to write good task
+  prompts, and to verify what subagents report before relaying it.
+- Never edit files or implement anything yourself. If a task looks too
+  small to delegate, it still goes to a subagent (cursor or low-effort
+  codex).
+- Sequence dependent work; parallelize independent work.
+- Keep the user posted: what you delegated where, and why.
+
+## Routing (provider / model / effort)
+
 - codex (gpt-5.x): bulk or mechanical work with a clear spec — migrations,
   data analysis, wide refactors. Cheap; use freely and in parallel.
 - claude: anything user-facing (UI, copy, API design) and anything that
   needs judgment with limited supervision.
 - cursor: quick scoped edits.
-Reviews of plans or implementations: prefer a claude reviewer, optionally
-adding a codex reviewer as an independent second opinion.
-Give each agent a complete, self-contained task prompt — it cannot see this
-conversation. Implementer agents get an isolated git worktree by default;
-tell the user which worktree branches hold finished work. Parallelize
-independent tasks; wait_for_agent collects results.`.trim()
+- Reviews of plans or implementations: a claude reviewer, optionally a
+  codex reviewer as an independent second opinion.
+- Effort: medium by default; high for hard debugging or design; low for
+  trivial or mechanical tasks.
+`
+
+/** Prompt appended to an orchestrator's system prompt: fixed mechanics,
+ *  the user's global policy, and the session's workspace override. */
+export function orchestratorPrompt(session: SessionMeta): string {
+  const global = registry?.getOrchestratorPolicy(null).trim() || DEFAULT_ORCHESTRATOR_POLICY
+  const workspaceId = session.projectId
+    ? (registry?.getProject(session.projectId)?.workspaceId ?? null)
+    : null
+  const override = workspaceId ? (registry?.getOrchestratorPolicy(workspaceId).trim() ?? '') : ''
+  return [
+    ORCHESTRATOR_MECHANICS,
+    `Orchestration rules (user-defined):\n\n${global}`,
+    override && `## Workspace overrides (take precedence)\n\n${override}`
+  ]
+    .filter(Boolean)
+    .join('\n\n')
+}
