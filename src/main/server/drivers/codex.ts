@@ -5,6 +5,7 @@ import type { Reasoning } from '@shared/catalog'
 import type { DriverCtx, DriverHandle, HarnessDriver } from './types'
 import { harnessEnv, resolveBinary } from './binaries'
 import { expandSlashRefs } from '../slash'
+import { bridgeMcpConfig } from '../apptools'
 
 /**
  * Codex driver — `codex app-server`, protocol v2 (verified live against
@@ -137,6 +138,12 @@ export const codexDriver: HarnessDriver = {
 
     const itemStarted = (item: Item): void => {
       switch (item.type) {
+        // GPT reasoning often has no visible summary; announcing the item
+        // with an empty streaming delta shows a live "Thinking" shimmer that
+        // the renderer drops once the item completes still empty.
+        case 'reasoning':
+          emit({ type: 'thinking', text: '', delta: true, msgId: String(item.id), blockIndex: 0 })
+          break
         case 'commandExecution':
           emit({
             type: 'tool-call',
@@ -184,15 +191,15 @@ export const codexDriver: HarnessDriver = {
           })
           break
         case 'reasoning': {
+          // Always emit the final — an empty one settles the streaming block
+          // started above so the renderer can retire it.
           const text =
             typeof item.text === 'string'
               ? item.text
               : Array.isArray(item.summary)
                 ? item.summary.join('\n')
-                : undefined
-          if (text !== undefined) {
-            emit({ type: 'thinking', text, delta: false, msgId: String(item.id), blockIndex: 0 })
-          }
+                : ''
+          emit({ type: 'thinking', text, delta: false, msgId: String(item.id), blockIndex: 0 })
           break
         }
         case 'commandExecution':
@@ -334,11 +341,40 @@ export const codexDriver: HarnessDriver = {
         })
         return
       }
+      // MCP-server trust prompt (fires on first tool use per server; params
+      // carry only serverName/threadId). Our own app bridge is pre-trusted —
+      // it IS the app's toolset, and its one write (app_start_thread) is
+      // instruction-gated, visible, and permission-inherited. Other servers
+      // follow the session policy: auto accepts, safe/edits ask the user.
+      if (method === 'mcpServer/elicitation/request') {
+        const serverName = String(params.serverName ?? '')
+        if (serverName === 'app' || session.permission === 'auto') {
+          conn.respond(id, { action: 'accept' })
+          return
+        }
+        const requestId = `codex-${id}`
+        emit({
+          type: 'approval-request',
+          requestId,
+          toolName: `MCP server "${serverName}"`,
+          input: params
+        })
+        emit({ type: 'status', status: 'waiting' })
+        pendingApprovals.set(requestId, (allow) => {
+          pendingApprovals.delete(requestId)
+          emit({ type: 'approval-resolved', requestId, allow })
+          emit({ type: 'status', status: 'running' })
+          conn.respond(id, { action: allow ? 'accept' : 'decline' })
+        })
+        return
+      }
       const legacy = method === 'execCommandApproval' || method === 'applyPatchApproval'
       const isApproval = legacy || method.endsWith('/requestApproval')
       if (!isApproval) {
-        // Fail-closed on anything we don't understand.
-        conn.respond(id, { decision: legacy ? 'denied' : 'decline' })
+        // Fail-closed on anything we don't understand — visibly, so an
+        // unknown request never masquerades as a user decision.
+        emit({ type: 'error', message: `declined unhandled harness request: ${method}` })
+        conn.respond(id, { decision: 'decline' })
         return
       }
       const requestId = `codex-${id}`
@@ -376,11 +412,16 @@ export const codexDriver: HarnessDriver = {
       await conn.request('initialize', {
         clientInfo: { name: 'temp-code', title: 'temp-code', version: '0.1.0' }
       })
+      // App tools (docs/PLAN-2.md M10): the stdio bridge forwards
+      // app_list_threads / app_read_thread / app_start_thread back to the
+      // app's WS server, so codex threads can operate the app like claude.
+      const bridgeEntry = bridgeMcpConfig(session.id)
       const threadParams = {
         cwd: session.cwd,
         model: session.model,
         approvalPolicy: APPROVAL_POLICY[session.permission],
-        sandbox: 'workspace-write'
+        sandbox: 'workspace-write',
+        ...(bridgeEntry ? { config: { mcp_servers: { app: bridgeEntry } } } : {})
       }
       const startFresh = async (): Promise<void> => {
         const res = (await conn.request('thread/start', threadParams)) as {
@@ -439,7 +480,15 @@ export const codexDriver: HarnessDriver = {
       },
       interrupt(): void {
         if (currentTurnId) {
-          void conn.request('turn/interrupt', { threadId, turnId: currentTurnId }).catch(() => {})
+          // A dead app-server rejects instantly — stop still settles the
+          // session instead of silently doing nothing.
+          void conn
+            .request('turn/interrupt', { threadId, turnId: currentTurnId })
+            .catch(() => setStatus('idle'))
+        } else {
+          // No turn in flight to interrupt — the status is stale (a crashed
+          // turn, a lost turn/completed). Stop still settles the session.
+          setStatus('idle')
         }
       },
       approve(requestId: string, allow: boolean): void {

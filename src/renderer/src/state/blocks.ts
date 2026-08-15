@@ -347,6 +347,15 @@ export function foldEvent(s: FoldState, e: AgentEvent, ts?: number): void {
     }
     case 'turn-complete':
       if (e.costUsd !== undefined) s.costUsd = e.costUsd
+      // The turn ending settles every streaming block — an interrupt can
+      // beat the per-item finals, and a "Thinking" shimmer must never
+      // outlive the turn it belongs to.
+      for (let i = 0; i < s.blocks.length; i++) {
+        const b = s.blocks[i]
+        if ((b.kind === 'assistant' || b.kind === 'thinking') && b.streaming) {
+          s.blocks[i] = { ...b, streaming: false }
+        }
+      }
       break
     case 'error':
       push(s, { kind: 'error', text: e.message })

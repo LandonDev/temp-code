@@ -52,3 +52,45 @@ export interface FileChange {
   dels: number
   status: 'modified' | 'added' | 'deleted' | 'untracked' | 'renamed'
 }
+
+/** One directory entry from fs.list (a single level; trees fetch lazily). */
+export interface FsEntry {
+  name: string
+  kind: 'file' | 'dir'
+  size: number
+}
+
+/** fs.read result. tooLarge (>2 MB or binary) ships no content — the
+ *  viewer shows a stub instead of the buffer. */
+export interface FsReadResult {
+  content: string
+  mtimeMs: number
+  tooLarge?: boolean
+}
+
+/** One commit in project.log — the Changes rail's history list. */
+export interface CommitInfo {
+  sha: string
+  subject: string
+  authoredAt: number
+}
+
+/** project.branches result: pickers for baseRef / existingBranch. */
+export interface BranchList {
+  locals: string[]
+  remotes: string[]
+  current: string | null
+}
+
+/** One running language server in lsp.status (Settings visibility). */
+export interface LspStatusRow {
+  serverId: string
+  projectId: string
+  lang: 'java' | 'web'
+  state: 'starting' | 'downloading' | 'running' | 'error'
+  /** RSS of the child process, bytes (best effort) */
+  memoryBytes: number | null
+  /** ms since the last open surface used it */
+  idleMs: number
+  error?: string
+}

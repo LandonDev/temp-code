@@ -32,20 +32,51 @@ const slugify = (name: string): string =>
     .replace(/(^-|-$)/g, '')
     .slice(0, 40) || 'project'
 
-/** Create a project worktree off the workspace repo. Returns {cwd, branch}. */
+/**
+ * Create a project worktree off the workspace repo. Returns {cwd, branch}.
+ * baseRef picks the new branch's fork point (default: repo HEAD);
+ * existingBranch adopts a branch instead of creating tc/<slug> — "open my
+ * PR branch as a project".
+ */
 export async function addProjectWorktree(
   repoPath: string,
-  name: string
+  name: string,
+  opts: { baseRef?: string; existingBranch?: string } = {}
 ): Promise<{ cwd: string; branch: string }> {
   const base = join(homedir(), '.temp-code', 'worktrees')
   mkdirSync(base, { recursive: true })
   let slug = slugify(name)
   let dir = join(base, slug)
+  if (opts.existingBranch) {
+    // A remote pick (origin/foo) checks out a local tracking branch `foo`.
+    const local = opts.existingBranch.replace(/^origin\//, '')
+    for (let n = 2; n < 20; n++) {
+      try {
+        await execFileP('git', ['-C', repoPath, 'worktree', 'add', dir, local])
+        return { cwd: dir, branch: local }
+      } catch (err) {
+        const msg = String(err)
+        if (!msg.includes('already exists')) throw err
+        slug = `${slugify(name)}-${n}`
+        dir = join(base, slug)
+      }
+    }
+    throw new Error('could not allocate a worktree directory')
+  }
   let branch = `tc/${slug}`
   // Dodge collisions with an existing worktree/branch of the same name.
   for (let n = 2; n < 20; n++) {
     try {
-      await execFileP('git', ['-C', repoPath, 'worktree', 'add', dir, '-b', branch])
+      await execFileP('git', [
+        '-C',
+        repoPath,
+        'worktree',
+        'add',
+        dir,
+        '-b',
+        branch,
+        ...(opts.baseRef ? [opts.baseRef] : [])
+      ])
       return { cwd: dir, branch }
     } catch (err) {
       const msg = String(err)
@@ -142,6 +173,133 @@ export async function listFiles(dir: string, cap = 5000): Promise<string[]> {
       .slice(0, cap)
   } catch {
     return []
+  }
+}
+
+// ── commit & push (docs/PLAN-3.md M12) ───────────────────────────────
+// Always `git -C <project cwd>`: a worktree project is a checkout of its
+// own branch, so nothing here can touch the user's other checkouts.
+// Identity, hooks, and signing come from the user's normal git config;
+// errors surface verbatim — no retry magic.
+
+/** Stage the given paths (or everything) and commit. */
+export async function commit(
+  dir: string,
+  message: string,
+  paths?: string[]
+): Promise<{ sha: string; summary: string }> {
+  if (paths && paths.length) {
+    // -A limited to pathspecs stages edits, adds, AND deletions of just
+    // those paths — the checkbox list is the commit.
+    await execFileP('git', ['-C', dir, 'add', '-A', '--', ...paths])
+    await execFileP('git', ['-C', dir, 'commit', '-m', message, '--', ...paths])
+  } else {
+    await execFileP('git', ['-C', dir, 'add', '-A'])
+    await execFileP('git', ['-C', dir, 'commit', '-m', message])
+  }
+  const { stdout } = await execFileP('git', ['-C', dir, 'log', '-1', '--format=%H%x00%s'])
+  const [sha, summary] = stdout.trim().split('\0')
+  return { sha, summary }
+}
+
+/** Push the project branch, or the same work onto a different remote branch. */
+export async function push(
+  dir: string,
+  targetBranch?: string
+): Promise<{ remote: string; branch: string }> {
+  const branch = await currentBranch(dir)
+  if (!branch || branch === 'HEAD') throw new Error('no branch checked out')
+  const refspec = targetBranch ? `HEAD:${targetBranch}` : branch
+  const args = targetBranch
+    ? ['-C', dir, 'push', 'origin', refspec]
+    : ['-C', dir, 'push', '-u', 'origin', refspec]
+  try {
+    await execFileP('git', args, { maxBuffer: 4 * 1024 * 1024 })
+  } catch (err) {
+    // git writes rejection detail to stderr — surface it, not "exit 1".
+    const e = err as { stderr?: string; message?: string }
+    throw new Error((e.stderr || e.message || String(err)).trim())
+  }
+  return { remote: 'origin', branch: targetBranch ?? branch }
+}
+
+/** Recent commits on the checked-out branch — the rail's history list. */
+export async function log(
+  dir: string,
+  limit: number
+): Promise<{ sha: string; subject: string; authoredAt: number }[]> {
+  if (!(await isGitRepo(dir))) return []
+  try {
+    const { stdout } = await execFileP('git', [
+      '-C',
+      dir,
+      'log',
+      `-${Math.max(1, Math.min(limit, 100))}`,
+      '--format=%H%x00%s%x00%at'
+    ])
+    return stdout
+      .split('\n')
+      .filter(Boolean)
+      .map((line) => {
+        const [sha, subject, at] = line.split('\0')
+        return { sha, subject, authoredAt: Number(at) * 1000 }
+      })
+  } catch {
+    return [] // fresh repo with no commits yet
+  }
+}
+
+/** Local + remote branch names (pickers), current checkout marked. */
+export async function branches(
+  dir: string
+): Promise<{ locals: string[]; remotes: string[]; current: string | null }> {
+  const { stdout: loc } = await execFileP('git', [
+    '-C',
+    dir,
+    'for-each-ref',
+    '--format=%(refname:short)',
+    'refs/heads'
+  ])
+  const { stdout: rem } = await execFileP('git', [
+    '-C',
+    dir,
+    'for-each-ref',
+    '--format=%(refname:short)',
+    'refs/remotes'
+  ])
+  return {
+    locals: loc.split('\n').filter(Boolean),
+    remotes: rem.split('\n').filter((b) => b && !b.endsWith('/HEAD')),
+    current: await currentBranch(dir)
+  }
+}
+
+/** Commits ahead of the upstream (the `↑n` next to the branch name). */
+export async function aheadCount(dir: string): Promise<number | null> {
+  try {
+    const { stdout } = await execFileP('git', [
+      '-C',
+      dir,
+      'rev-list',
+      '--count',
+      '@{upstream}..HEAD'
+    ])
+    return Number(stdout.trim())
+  } catch {
+    return null // no upstream yet — the whole branch is unpushed
+  }
+}
+
+/** `git show HEAD:<path>` — the diff surface's left side. Null when the
+ *  path is new (untracked/added): the diff renders against empty. */
+export async function showHead(dir: string, path: string): Promise<string | null> {
+  try {
+    const { stdout } = await execFileP('git', ['-C', dir, 'show', `HEAD:${path}`], {
+      maxBuffer: 8 * 1024 * 1024
+    })
+    return stdout
+  } catch {
+    return null
   }
 }
 

@@ -41,12 +41,17 @@ const blockIdentity = {
 }
 
 /** A file the user attached to a message. Images go to the model as
- *  content; other files ride along as path references the harness reads. */
+ *  content; other files ride along as path references the harness reads.
+ *  kind 'thread' references another thread (M9): the server writes a local
+ *  digest file and rewrites the message's @thread:<id> token to its path —
+ *  thread attachments never reach the harness as files. */
 export const AttachmentSchema = z.object({
   path: z.string(),
   name: z.string(),
   mime: z.string().optional(),
-  kind: z.enum(['image', 'file'])
+  kind: z.enum(['image', 'file', 'thread']),
+  /** kind 'thread': the referenced thread's session id */
+  sessionId: z.string().optional()
 })
 export type Attachment = z.infer<typeof AttachmentSchema>
 
