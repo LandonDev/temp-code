@@ -1,5 +1,5 @@
-import { useEffect } from 'react'
-import { motion, useReducedMotion } from 'motion/react'
+import { useEffect, useState } from 'react'
+import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import type { ProviderId } from '@shared/catalog'
 import { useApp, type ThemePref } from '../../../state/store'
 import { cn } from '../../../lib/utils'
@@ -8,6 +8,8 @@ import { ProviderMark, THREAD_GLYPHS, THREAD_TINTS, timeAgo } from '../bits'
 import { ZIcon } from '../zicon'
 import { Spinner } from '../../ui/spinner'
 import { OrchestrationRulesEditor } from '../OrchestrationRules'
+import { ThreadDefaultsEditor } from '../ThreadDefaults'
+import { EASE_OUT } from '../../../lib/ease'
 
 const THEME_OPTIONS: { value: ThemePref; label: string }[] = [
   { value: 'system', label: 'System' },
@@ -15,9 +17,23 @@ const THEME_OPTIONS: { value: ThemePref; label: string }[] = [
   { value: 'dark', label: 'Dark' }
 ]
 
-/** Settings: appearance, provider health, archived threads. */
+type SettingsPage = 'general' | 'defaults' | 'orchestration' | 'providers' | 'archived'
+
+const PAGES: { id: SettingsPage; label: string }[] = [
+  { id: 'general', label: 'General' },
+  { id: 'defaults', label: 'Defaults' },
+  { id: 'orchestration', label: 'Orchestration' },
+  { id: 'providers', label: 'Providers' },
+  { id: 'archived', label: 'Archived' }
+]
+
+/** Settings, paged: a quiet nav column on the left, one page at a time on
+ *  the right. Defaults and orchestration have per-workspace overrides,
+ *  reached from each workspace's sidebar menu. */
 export function SettingsView(): React.JSX.Element {
   const setSettingsOpen = useApp((s) => s.setSettingsOpen)
+  const [page, setPage] = useState<SettingsPage>('general')
+  const reduce = useReducedMotion()
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
@@ -30,31 +46,78 @@ export function SettingsView(): React.JSX.Element {
   }, [setSettingsOpen])
 
   return (
-    <div className="min-h-0 flex-1 overflow-y-auto">
-      <div className="mx-auto w-full max-w-[560px] px-8 pt-8 pb-16">
-        <h1 className="text-[17px] font-semibold tracking-[-0.01em]">Settings</h1>
+    <div className="flex min-h-0 flex-1 justify-center overflow-hidden">
+      <nav className="w-44 shrink-0 px-4 pt-8">
+        <div className="flex flex-col gap-px">
+          {PAGES.map((p) => (
+            <button
+              key={p.id}
+              onClick={() => setPage(p.id)}
+              className={cn(
+                'relative flex h-7 items-center rounded-md px-2.5 text-left text-[13px] transition-colors',
+                page === p.id ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'
+              )}
+            >
+              {page === p.id && (
+                <motion.span
+                  layoutId="settings-page"
+                  transition={reduce ? { duration: 0 } : SPRING_LAYOUT}
+                  className="absolute inset-0 rounded-md bg-accent"
+                />
+              )}
+              <span className="relative">{p.label}</span>
+            </button>
+          ))}
+        </div>
+      </nav>
 
-        <Section title="Appearance" hint="How the app decides between light and dark.">
-          <ThemeSwitch />
-        </Section>
-
-        <Section title="Providers" hint="CLIs found on your PATH. Each runs under its own login.">
-          <ProviderHealthList />
-        </Section>
-
-        <Section
-          title="Orchestration"
-          hint="How much the orchestrator may do itself, and which model handles which work. Workspaces can override from their sidebar menu."
-        >
-          <OrchestrationRulesEditor workspaceId={null} />
-        </Section>
-
-        <Section
-          title="Archived threads"
-          hint="Hidden from the strip, never deleted. Sending into one revives it."
-        >
-          <ArchivedList />
-        </Section>
+      <div className="min-h-0 w-full max-w-[560px] overflow-y-auto px-8 pb-16">
+        <AnimatePresence mode="wait" initial={false}>
+          <motion.div
+            key={page}
+            initial={reduce ? false : { opacity: 0, y: 4 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.15, ease: EASE_OUT }}
+          >
+            {page === 'general' && (
+              <Section title="Appearance" hint="How the app decides between light and dark.">
+                <ThemeSwitch />
+              </Section>
+            )}
+            {page === 'defaults' && (
+              <Section
+                title="Thread defaults"
+                hint="What a new thread starts with. Workspaces can override from their sidebar menu."
+              >
+                <ThreadDefaultsEditor workspaceId={null} />
+              </Section>
+            )}
+            {page === 'orchestration' && (
+              <Section
+                title="Orchestration"
+                hint="How much the orchestrator may do itself, and which model handles which work. Workspaces can override from their sidebar menu."
+              >
+                <OrchestrationRulesEditor workspaceId={null} />
+              </Section>
+            )}
+            {page === 'providers' && (
+              <Section
+                title="Providers"
+                hint="CLIs found on your PATH. Each runs under its own login."
+              >
+                <ProviderHealthList />
+              </Section>
+            )}
+            {page === 'archived' && (
+              <Section
+                title="Archived threads"
+                hint="Hidden from the strip, never deleted. Sending into one revives it."
+              >
+                <ArchivedList />
+              </Section>
+            )}
+          </motion.div>
+        </AnimatePresence>
       </div>
     </div>
   )
@@ -70,7 +133,7 @@ function Section({
   children: React.ReactNode
 }): React.JSX.Element {
   return (
-    <section className="mt-8">
+    <section className="pt-8">
       <h2 className="text-[13px] font-medium">{title}</h2>
       <p className="mt-0.5 text-xs text-muted-foreground">{hint}</p>
       <div className="mt-3">{children}</div>

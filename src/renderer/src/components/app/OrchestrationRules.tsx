@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
 import { ArrowUp, Plus } from 'lucide-react'
-import type { WorkspaceMeta } from '@shared/domain'
 import type { OrchestrationRules, RoutingRule } from '@shared/rules'
 import type { ProviderId, Reasoning } from '@shared/catalog'
 import { client } from '../../lib/client'
@@ -462,26 +461,6 @@ function RuleDialog({
             </Button>
           </div>
         </div>
-      </DialogContent>
-    </Dialog>
-  )
-}
-
-/** Workspace-scope wrapper — reached from the workspace's sidebar menu. */
-export function WorkspaceRulesDialog({
-  workspace,
-  onClose
-}: {
-  workspace: WorkspaceMeta
-  onClose: () => void
-}): React.JSX.Element {
-  return (
-    <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-h-[80vh] max-w-xl overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>Orchestration rules · {workspace.name}</DialogTitle>
-        </DialogHeader>
-        <OrchestrationRulesEditor workspaceId={workspace.id} />
       </DialogContent>
     </Dialog>
   )

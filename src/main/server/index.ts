@@ -8,6 +8,7 @@ import { SessionRegistry } from './sessions'
 import { runDoctor } from './drivers/binaries'
 import { setOrchestrationRegistry } from './orchestration'
 import { DEFAULT_RULES } from '@shared/rules'
+import { DEFAULT_THREAD_DEFAULTS } from '@shared/defaults'
 import { fileDiff, listFiles, workingTreeChanges } from './git'
 import { listCommands } from './commands'
 import { readAttachment, saveAttachment } from './attachments'
@@ -164,6 +165,25 @@ export async function startServer(dbPath: string): Promise<RunningServer> {
           }
           case 'rules.set':
             registry.setOrchestrationRules(req.params.workspaceId, req.params.rules)
+            sendFrame({ id: req.id, ok: true, result: null })
+            break
+          case 'defaults.get': {
+            const scoped = registry.getThreadDefaults(req.params.workspaceId)
+            sendFrame({
+              id: req.id,
+              ok: true,
+              result: {
+                defaults:
+                  scoped ??
+                  (req.params.workspaceId ? registry.getThreadDefaults(null) : null) ??
+                  DEFAULT_THREAD_DEFAULTS,
+                overridden: scoped !== null
+              }
+            })
+            break
+          }
+          case 'defaults.set':
+            registry.setThreadDefaults(req.params.workspaceId, req.params.defaults)
             sendFrame({ id: req.id, ok: true, result: null })
             break
           case 'commands.list':

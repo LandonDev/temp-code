@@ -3,6 +3,7 @@ import { AGENT_TYPES } from './catalog'
 import { AttachmentSchema, PermissionPolicySchema } from './events'
 import { ProjectModeSchema, ThreadTypeSchema } from './domain'
 import { OrchestrationRulesSchema } from './rules'
+import { ThreadDefaultsSchema } from './defaults'
 import type { EventRow, SessionMeta } from './events'
 
 /**
@@ -20,9 +21,11 @@ const providerEnum = z.enum(['claude', 'codex', 'cursor'])
 const reasoningEnum = z.enum(['low', 'medium', 'high', 'xhigh', 'max', 'ultra'])
 
 export const CreateSessionParams = z.object({
-  provider: providerEnum,
-  model: z.string(),
-  reasoning: reasoningEnum.default('medium'),
+  // provider/model/reasoning/permission omitted → the server fills them
+  // from the thread defaults (workspace override, else global).
+  provider: providerEnum.optional(),
+  model: z.string().optional(),
+  reasoning: reasoningEnum.optional(),
   agentType: z.enum(AGENT_TYPES).default('implementer'),
   /** required unless projectId is set (then derived from the project) */
   cwd: z.string().optional(),
@@ -32,7 +35,7 @@ export const CreateSessionParams = z.object({
   threadType: ThreadTypeSchema.nullable().default(null),
   /** planning handoff: seed an implementation/orchestration thread from this plan file */
   planPath: z.string().optional(),
-  permission: PermissionPolicySchema.default('edits')
+  permission: PermissionPolicySchema.optional()
 })
 export type CreateSessionParams = z.infer<typeof CreateSessionParams>
 /** Pre-parse shape (defaults still optional) — what callers construct. */
@@ -97,6 +100,21 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
     id: z.string(),
     method: z.literal('rules.get'),
     params: z.object({ workspaceId: z.string().nullable().default(null) })
+  }),
+  // Thread defaults (provider/model/reasoning/security for new threads):
+  // global with whole-object per-workspace overrides, same as rules.*.
+  z.object({
+    id: z.string(),
+    method: z.literal('defaults.get'),
+    params: z.object({ workspaceId: z.string().nullable().default(null) })
+  }),
+  z.object({
+    id: z.string(),
+    method: z.literal('defaults.set'),
+    params: z.object({
+      workspaceId: z.string().nullable().default(null),
+      defaults: ThreadDefaultsSchema.nullable()
+    })
   }),
   z.object({
     id: z.string(),
