@@ -4,6 +4,7 @@ import type { ThreadType } from '@shared/domain'
 import type { ProviderId } from '@shared/catalog'
 import type { SessionStatus } from '@shared/events'
 import { cn } from '../../lib/utils'
+import { ZIcon, type ZIconName } from './zicon'
 
 /** The one place status → color lives. Dots carry meaning; nothing else is colored. */
 export function StatusDot({
@@ -38,24 +39,34 @@ export const THREAD_LABELS: Record<ThreadType, string> = {
   orchestration: 'Orchestrate'
 }
 
-/** Quiet monogram — provider identity without brand noise. */
+/** Identity tint per thread type — the glyph carries it, nothing else. */
+export const THREAD_TINTS: Record<ThreadType, string> = {
+  chat: 'text-info',
+  planning: 'text-violet',
+  implementation: 'text-success',
+  orchestration: 'text-warning'
+}
+
+/** Brand mark + tint per provider (Zeron harness_brand_icon: the Claude
+ * mark keeps its copper even on the monochrome surface; OpenAI and Cursor
+ * marks stay monochrome and inherit the surface tone). */
+const PROVIDER_MARKS: Record<ProviderId, { icon: ZIconName; tint?: string }> = {
+  claude: { icon: 'claude-mark', tint: 'text-[#D97757]' },
+  codex: { icon: 'openai-mark' },
+  cursor: { icon: 'cursor-mark' }
+}
+
 export function ProviderMark({
   provider,
+  size = 14,
   className
 }: {
   provider: ProviderId
+  size?: number
   className?: string
 }): React.JSX.Element {
-  return (
-    <span
-      className={cn(
-        'flex size-4 shrink-0 items-center justify-center rounded-[5px] bg-secondary text-[9px] font-semibold uppercase text-muted-foreground',
-        className
-      )}
-    >
-      {provider[0]}
-    </span>
-  )
+  const mark = PROVIDER_MARKS[provider]
+  return <ZIcon name={mark.icon} size={size} className={cn(mark.tint, className)} />
 }
 
 export function timeAgo(ts: number): string {

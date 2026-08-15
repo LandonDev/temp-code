@@ -3,7 +3,6 @@ import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { Archive, ArchiveRestore, Plus } from 'lucide-react'
 import type { ThreadType } from '@shared/domain'
 import type { SessionMeta } from '@shared/events'
-import type { ProviderId } from '@shared/catalog'
 import { threadsOfProject, useApp } from '../../state/store'
 import { cn } from '../../lib/utils'
 import { SPRING_LAYOUT } from '../../lib/ease'
@@ -15,9 +14,8 @@ import {
   ContextMenuTrigger
 } from '../ui/context-menu'
 import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select'
 import { Button } from '../ui/button'
-import { StatusDot, THREAD_GLYPHS, THREAD_LABELS, timeAgo } from './bits'
+import { StatusDot, THREAD_GLYPHS, THREAD_LABELS, THREAD_TINTS, timeAgo } from './bits'
 
 const TYPE_HINTS: Record<ThreadType, string> = {
   chat: 'Ask questions, explore the code',
@@ -88,7 +86,12 @@ export function ThreadStrip(): React.JSX.Element | null {
                           value={t.id}
                           className="h-[26px] min-h-0 gap-1.5 px-2.5 py-0 font-normal"
                         >
-                          <Glyph className="size-[13px] opacity-60" />
+                          <Glyph
+                            className={cn(
+                              'size-[13px] opacity-80',
+                              THREAD_TINTS[t.threadType ?? 'chat']
+                            )}
+                          />
                           <span className="max-w-44 truncate">{t.title}</span>
                           <StatusDot status={t.status} />
                         </TabsTrigger>
@@ -160,7 +163,9 @@ function ArchivedShelf({ archived }: { archived: SessionMeta[] }): React.JSX.Ele
                 className="group/arch flex w-full items-center gap-2.5 overflow-hidden rounded-lg px-2 py-1.5 text-left transition-colors duration-150 hover:bg-accent"
               >
                 <span className="flex size-7 shrink-0 items-center justify-center rounded-md border border-border">
-                  <Glyph className="size-3.5 text-muted-foreground/70" />
+                  <Glyph
+                    className={cn('size-3.5 opacity-80', THREAD_TINTS[t.threadType ?? 'chat'])}
+                  />
                 </span>
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-[13px]">{t.title}</span>
@@ -193,26 +198,22 @@ function NewThreadButton({
   const createThread = useApp((s) => s.createThread)
   const [open, setOpen] = useState(false)
   const [type, setType] = useState<ThreadType>('chat')
-  const [provider, setProvider] = useState<ProviderId>('claude')
   const [busy, setBusy] = useState(false)
   const reduce = useReducedMotion()
 
   if (!catalog) return <span />
-  // Orchestration runs on the claude harness (the MCP toolset lives there).
-  const effProvider: ProviderId = type === 'orchestration' ? 'claude' : provider
-  const info = catalog[effProvider]
 
   const create = async (): Promise<void> => {
     if (busy) return
     setBusy(true)
     try {
-      // Model/reasoning are per message (picked in the prompt bar); the
-      // thread starts on the provider default.
+      // Threads aren't provider-bound: every send carries the model choice
+      // and can switch harnesses. New threads just start on the default.
       await createThread({
         projectId,
         threadType: type,
-        provider: effProvider,
-        model: info.defaultModel,
+        provider: 'claude',
+        model: catalog.claude.defaultModel,
         agentType: type === 'orchestration' ? 'orchestrator' : 'implementer',
         // Every thread starts at 'edits'; escalation is a per-thread choice
         // in the prompt bar, never a silent default.
@@ -258,7 +259,7 @@ function NewThreadButton({
                     className="absolute inset-0 rounded-md bg-accent"
                   />
                 )}
-                <Glyph className="relative mt-0.5 size-4 shrink-0 text-muted-foreground" />
+                <Glyph className={cn('relative mt-0.5 size-4 shrink-0', THREAD_TINTS[t])} />
                 <span className="relative min-w-0">
                   <span className="block text-[13px] font-medium">{THREAD_LABELS[t]}</span>
                   <span className="block text-[11px] leading-snug text-muted-foreground">
@@ -269,26 +270,10 @@ function NewThreadButton({
             )
           })}
         </div>
-        <div className="mt-2 flex items-center gap-1.5 border-t border-border/60 pt-2">
-          <Select
-            value={effProvider}
-            onValueChange={(v) => setProvider(v as ProviderId)}
-            disabled={type === 'orchestration'}
-          >
-            <SelectTrigger aria-label="Provider" className="h-7 flex-1">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {Object.values(catalog).map((p) => (
-                <SelectItem key={p.id} value={p.id}>
-                  {p.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+        <div className="mt-2 border-t border-border/60 pt-2">
           <Button
             size="sm"
-            className="h-7 px-3 text-xs"
+            className="h-7 w-full text-xs"
             disabled={busy}
             onClick={() => void create()}
           >

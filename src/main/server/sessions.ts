@@ -1,6 +1,7 @@
 import { nanoid } from 'nanoid'
 import { basename } from 'node:path'
 import { CreateSessionParams, type CreateSessionInput } from '@shared/contract'
+import { CATALOG, type ProviderId } from '@shared/catalog'
 import type { AgentEvent, Attachment, EventRow, SessionMeta } from '@shared/events'
 import type { ProjectMeta, ProjectMode, WorkspaceMeta } from '@shared/domain'
 import { BUILT_IN_DRIVERS } from './drivers'
@@ -18,6 +19,34 @@ const THREAD_TITLES = {
 
 type SessionListener = (row: EventRow) => void
 type MetaListener = (session: SessionMeta) => void
+
+/** Cap for the transcript handoff sent to a new harness on provider switch. */
+const HANDOFF_MAX_CHARS = 24_000
+
+/**
+ * Serialize the dialogue for a cross-provider switch: the new harness has no
+ * native session to resume, so the conversation replays as context. Text
+ * only — thinking and tool internals stay with the old harness.
+ */
+function transcriptHandoff(rows: EventRow[]): string {
+  const turns: { role: 'User' | 'Assistant'; text: string }[] = []
+  for (const { event } of rows) {
+    let role: 'User' | 'Assistant'
+    if (event.type === 'user-text') role = 'User'
+    else if (event.type === 'assistant-text' && !event.delta && !event.parentCallId) {
+      role = 'Assistant'
+    } else continue
+    const last = turns.at(-1)
+    if (last?.role === role) last.text += `\n${event.text}`
+    else turns.push({ role, text: event.text })
+  }
+  if (turns.length === 0) return ''
+  let body = turns.map((t) => `${t.role}: ${t.text}`).join('\n\n')
+  if (body.length > HANDOFF_MAX_CHARS) {
+    body = `[earlier conversation trimmed]\n\n…${body.slice(-HANDOFF_MAX_CHARS)}`
+  }
+  return `<conversation-handoff>\nYou are taking over an ongoing conversation from another assistant. The transcript so far:\n\n${body}\n\nContinue seamlessly — do not re-introduce yourself or revisit settled questions.\n</conversation-handoff>`
+}
 type RemovedListener = (sessionIds: string[]) => void
 
 /** Dispose idle harness handles after this long; resume restores them. */
@@ -186,6 +215,7 @@ export class SessionRegistry {
     sessionId: string,
     text: string,
     opts?: {
+      provider?: ProviderId
       model?: string
       reasoning?: SessionMeta['reasoning']
       attachments?: Attachment[]
@@ -201,17 +231,36 @@ export class SessionRegistry {
         this.notifyMeta(next)
       }
     }
-    // Per-message model/reasoning: persist the change and drop the live
-    // handle — the next handleFor() boots the harness fresh (resume keeps
-    // the conversation) with the new settings.
-    const model = opts?.model ?? meta.model
+    const provider = opts?.provider ?? meta.provider
     const reasoning = opts?.reasoning ?? meta.reasoning
-    if (model !== meta.model || reasoning !== meta.reasoning) {
+    let handoff = ''
+    if (provider !== meta.provider) {
+      // Cross-harness switch: native resume can't follow, so the next
+      // harness starts a fresh native session seeded with the transcript.
+      handoff = transcriptHandoff(this.store.eventsAfter(sessionId, 0))
       await this.dropHandle(sessionId)
-      const next = this.store.updateSession(sessionId, { model, reasoning })
+      const next = this.store.updateSession(sessionId, {
+        provider,
+        model: opts?.model ?? CATALOG[provider].defaultModel,
+        reasoning,
+        nativeId: null
+      })
       if (next) {
         meta = next
         this.notifyMeta(next)
+      }
+    } else {
+      // Per-message model/reasoning: persist the change and drop the live
+      // handle — the next handleFor() boots the harness fresh (resume keeps
+      // the conversation) with the new settings.
+      const model = opts?.model ?? meta.model
+      if (model !== meta.model || reasoning !== meta.reasoning) {
+        await this.dropHandle(sessionId)
+        const next = this.store.updateSession(sessionId, { model, reasoning })
+        if (next) {
+          meta = next
+          this.notifyMeta(next)
+        }
       }
     }
     const handle = await this.handleFor(sessionId)
@@ -236,6 +285,7 @@ export class SessionRegistry {
       const preamble = parts.filter(Boolean).join('\n\n')
       if (preamble) out = `<thread-instructions>\n${preamble}\n</thread-instructions>\n\n${text}`
     }
+    if (handoff) out = `${handoff}\n\n${out}`
     await handle.send(out, attachments)
   }
 

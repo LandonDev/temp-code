@@ -120,10 +120,13 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
     id: z.string(),
     method: z.literal('session.send'),
     // Model/reasoning ride along per message; a change restarts the harness
-    // with resume, so a thread has no fixed model.
+    // with resume, so a thread has no fixed model. A provider change goes
+    // further: native resume can't cross harnesses, so the registry starts a
+    // fresh native session seeded with a transcript handoff.
     params: z.object({
       sessionId: z.string(),
       text: z.string(),
+      provider: providerEnum.optional(),
       model: z.string().optional(),
       reasoning: reasoningEnum.optional(),
       attachments: z.array(AttachmentSchema).optional()

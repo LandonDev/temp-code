@@ -3,14 +3,13 @@ import './assets/main.css'
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import App from './App'
+import { applyTheme, storedTheme, useApp } from './state/store'
 
-// Follow the OS appearance (Cursor-style): `.dark` on <html> drives all tokens.
-const mq = window.matchMedia('(prefers-color-scheme: dark)')
-const applyTheme = (): void => {
-  document.documentElement.classList.toggle('dark', mq.matches)
-}
-applyTheme()
-mq.addEventListener('change', applyTheme)
+// Appearance: the stored preference wins; 'system' follows the OS live.
+applyTheme(storedTheme())
+window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+  applyTheme(useApp.getState().theme)
+})
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
