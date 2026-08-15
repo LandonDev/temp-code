@@ -2,6 +2,7 @@ import { z } from 'zod'
 import { AGENT_TYPES } from './catalog'
 import { AttachmentSchema, PermissionPolicySchema } from './events'
 import { ProjectModeSchema, ThreadTypeSchema } from './domain'
+import { OrchestrationRulesSchema } from './rules'
 import type { EventRow, SessionMeta } from './events'
 
 /**
@@ -90,17 +91,21 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
     method: z.literal('file.read'),
     params: z.object({ path: z.string() })
   }),
-  // Orchestrator policy: how orchestrators route and behave. Global
-  // (workspaceId null) with per-workspace overrides, edited in the app.
+  // Orchestration rules: structured conduct bounds + routing table. Global
+  // (workspaceId null) with whole-object per-workspace overrides.
   z.object({
     id: z.string(),
-    method: z.literal('policy.get'),
+    method: z.literal('rules.get'),
     params: z.object({ workspaceId: z.string().nullable().default(null) })
   }),
   z.object({
     id: z.string(),
-    method: z.literal('policy.set'),
-    params: z.object({ workspaceId: z.string().nullable().default(null), text: z.string() })
+    method: z.literal('rules.set'),
+    // rules null clears the scope (global → defaults, override → gone).
+    params: z.object({
+      workspaceId: z.string().nullable().default(null),
+      rules: OrchestrationRulesSchema.nullable()
+    })
   }),
   // Slash commands the provider's harness understands in this cwd
   // (Claude skills/commands, codex prompts, cursor commands).

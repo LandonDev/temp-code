@@ -6,7 +6,8 @@ import { ClientRequestSchema, type ServerFrame } from '@shared/contract'
 import { openDb, Store } from './db'
 import { SessionRegistry } from './sessions'
 import { runDoctor } from './drivers/binaries'
-import { DEFAULT_ORCHESTRATOR_POLICY, setOrchestrationRegistry } from './orchestration'
+import { setOrchestrationRegistry } from './orchestration'
+import { DEFAULT_RULES } from '@shared/rules'
 import { fileDiff, listFiles, workingTreeChanges } from './git'
 import { listCommands } from './commands'
 import { readAttachment, saveAttachment } from './attachments'
@@ -144,18 +145,25 @@ export async function startServer(dbPath: string): Promise<RunningServer> {
             sendFrame({ id: req.id, ok: true, result: readAllowedFile(registry, req.params.path) })
             break
           }
-          case 'policy.get':
+          case 'rules.get': {
+            const scoped = registry.getOrchestrationRules(req.params.workspaceId)
             sendFrame({
               id: req.id,
               ok: true,
+              // rules: what applies here (override → global → defaults);
+              // overridden: whether THIS scope has its own copy.
               result: {
-                text: registry.getOrchestratorPolicy(req.params.workspaceId),
-                defaultText: DEFAULT_ORCHESTRATOR_POLICY
+                rules:
+                  scoped ??
+                  (req.params.workspaceId ? registry.getOrchestrationRules(null) : null) ??
+                  DEFAULT_RULES,
+                overridden: scoped !== null
               }
             })
             break
-          case 'policy.set':
-            registry.setOrchestratorPolicy(req.params.workspaceId, req.params.text)
+          }
+          case 'rules.set':
+            registry.setOrchestrationRules(req.params.workspaceId, req.params.rules)
             sendFrame({ id: req.id, ok: true, result: null })
             break
           case 'commands.list':

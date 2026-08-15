@@ -11,7 +11,7 @@ import { readFileSync } from 'node:fs'
 import type { Attachment, PermissionPolicy } from '@shared/events'
 import type { DriverCtx, DriverHandle, HarnessDriver } from './types'
 import { parsePartialJson } from './partial-json'
-import { ORCHESTRATOR_TOOLS, orchestratorMcp, orchestratorPrompt } from '../orchestration'
+import { ORCHESTRATOR_TOOLS, orchestratorMcp, orchestratorPrompt, rulesFor } from '../orchestration'
 import { expandSlashRefs } from '../slash'
 
 /**
@@ -429,15 +429,26 @@ export const claudeDriver: HarnessDriver = {
       // subagents (docs/PLAN.md M6). The orchestrator is not special —
       // just this toolset plus a router rubric.
       ...(session.agentType === 'orchestrator'
-        ? {
-            mcpServers: { orchestrator: orchestratorMcp(session) },
-            allowedTools: ORCHESTRATOR_TOOLS,
-            systemPrompt: {
-              type: 'preset' as const,
-              preset: 'claude_code' as const,
-              append: orchestratorPrompt(session)
+        ? (() => {
+            // The user's conduct rules are enforced, not suggested: an
+            // orchestrator that may not edit or shell simply loses those
+            // tools. (Prompt text explains the denial to the model.)
+            const conduct = rulesFor(session).conduct
+            const denied = [
+              ...(conduct.selfEdit ? [] : ['Edit', 'MultiEdit', 'Write', 'NotebookEdit']),
+              ...(conduct.selfShell ? [] : ['Bash'])
+            ]
+            return {
+              mcpServers: { orchestrator: orchestratorMcp(session) },
+              allowedTools: ORCHESTRATOR_TOOLS,
+              ...(denied.length ? { disallowedTools: denied } : {}),
+              systemPrompt: {
+                type: 'preset' as const,
+                preset: 'claude_code' as const,
+                append: orchestratorPrompt(session)
+              }
             }
-          }
+          })()
         : {})
     }
 
