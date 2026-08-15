@@ -27,7 +27,9 @@ export function Switch({
     >
       <span
         className={cn(
-          'absolute top-[2px] left-[2px] size-[14px] rounded-full bg-white shadow-[0_1px_2px_rgb(0_0_0/0.25)] transition-transform duration-150 ease-out',
+          // bg-background keeps the knob readable on both track states in
+          // both themes (dark knob on the light dark-mode primary track).
+          'absolute top-[2px] left-[2px] size-[14px] rounded-full bg-background shadow-[0_1px_2px_rgb(0_0_0/0.25)] transition-transform duration-150 ease-out',
           checked && 'translate-x-3'
         )}
       />

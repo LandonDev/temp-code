@@ -12,6 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Switch } from '../ui/switch'
 import { Spinner } from '../ui/spinner'
 import { ProviderMark } from './bits'
+import { SettingsGroup, SettingsPanel, SettingsRow } from './SettingsPanel'
 
 /**
  * Structured orchestration rules (shared/rules.ts): conduct bounds with
@@ -38,7 +39,7 @@ const DELEGATION_OPTIONS: { value: OrchestrationRules['conduct']['delegation']; 
   ]
 
 const DELEGATION_HINTS: Record<OrchestrationRules['conduct']['delegation'], string> = {
-  strict: 'Delegates everything — the orchestrator never does the work itself.',
+  strict: 'Delegates everything; the orchestrator never does the work itself.',
   balanced: 'Delegates substantive work; handles trivial glue itself.',
   free: 'May work directly whenever that is faster.'
 }
@@ -112,92 +113,122 @@ export function OrchestrationRulesEditor({
   }
 
   return (
-    <div className="flex flex-col gap-5">
-      {workspaceId && (
-        <p className="text-xs text-muted-foreground">
-          {overridden
-            ? 'This workspace overrides the global rules.'
-            : 'Using the global rules — any change creates a workspace override.'}
-        </p>
-      )}
-
-      {/* conduct: how much the orchestrator itself is allowed */}
-      <div className="flex flex-col gap-3">
-        <div>
-          <div className="inline-flex items-center gap-0.5 rounded-lg bg-secondary/60 p-0.5">
-            {DELEGATION_OPTIONS.map((o) => (
-              <button
-                key={o.value}
-                onClick={() => patchConduct({ delegation: o.value })}
-                className={cn(
-                  'rounded-md px-3 py-1 text-xs transition-colors',
-                  rules.conduct.delegation === o.value
-                    ? 'bg-background text-foreground shadow-[0_1px_3px_rgb(0_0_0/0.12)] dark:bg-accent'
-                    : 'text-muted-foreground hover:text-foreground'
-                )}
-              >
-                {o.label}
-              </button>
-            ))}
-          </div>
-          <p className="mt-1.5 text-[11px] text-muted-foreground">
-            {DELEGATION_HINTS[rules.conduct.delegation]}
-          </p>
-        </div>
-
-        <ToggleRow
-          label="Edit files itself"
-          hint="Off removes the orchestrator's edit tools entirely."
-          checked={rules.conduct.selfEdit}
-          onChange={(v) => patchConduct({ selfEdit: v })}
-        />
-        <ToggleRow
-          label="Run shell commands itself"
-          hint="Off removes its shell — context gathering goes through agents."
-          checked={rules.conduct.selfShell}
-          onChange={(v) => patchConduct({ selfShell: v })}
-        />
-        <ToggleRow
-          label="Verify agent reports"
-          hint="Check results before relaying them as done."
-          checked={rules.conduct.verifyResults}
-          onChange={(v) => patchConduct({ verifyResults: v })}
-        />
-        <ToggleRow
-          label="Escalate on weak output"
-          hint="Rerun with a smarter model when the result misses the bar, without asking."
-          checked={rules.conduct.escalate}
-          onChange={(v) => patchConduct({ escalate: v })}
-        />
-        <ToggleRow
-          label="Worktree isolation"
-          hint="Writing agents get their own git worktree."
-          checked={rules.conduct.useWorktrees}
-          onChange={(v) => patchConduct({ useWorktrees: v })}
-        />
-
-        <div className="flex items-center gap-6">
-          <CapSelect
+    <div className="flex flex-col gap-7">
+      <SettingsGroup
+        title="Conduct"
+        hint={
+          workspaceId
+            ? overridden
+              ? 'This workspace overrides the global rules.'
+              : 'Using the global rules; any change creates a workspace override.'
+            : 'How much the orchestrator may do itself. Denied abilities are enforced, not suggested.'
+        }
+        action={
+          <button
+            onClick={clearScope}
+            className={cn(
+              'shrink-0 text-[11px] text-muted-foreground transition-colors hover:text-foreground',
+              !overridden && !!workspaceId && 'invisible'
+            )}
+          >
+            {workspaceId ? 'Remove override' : 'Reset'}
+          </button>
+        }
+      >
+        <SettingsPanel>
+          <SettingsRow label="Delegation" description={DELEGATION_HINTS[rules.conduct.delegation]}>
+            <div className="inline-flex items-center gap-0.5 rounded-lg bg-secondary/60 p-0.5">
+              {DELEGATION_OPTIONS.map((o) => (
+                <button
+                  key={o.value}
+                  onClick={() => patchConduct({ delegation: o.value })}
+                  className={cn(
+                    'rounded-md px-2.5 py-1 text-xs transition-colors',
+                    rules.conduct.delegation === o.value
+                      ? 'bg-background text-foreground shadow-[0_1px_3px_rgb(0_0_0/0.12)] dark:bg-accent'
+                      : 'text-muted-foreground hover:text-foreground'
+                  )}
+                >
+                  {o.label}
+                </button>
+              ))}
+            </div>
+          </SettingsRow>
+          <SettingsRow
+            label="Edit files itself"
+            description="Off removes the orchestrator's edit tools entirely."
+          >
+            <Switch
+              checked={rules.conduct.selfEdit}
+              onChange={(v) => patchConduct({ selfEdit: v })}
+              aria-label="Edit files itself"
+            />
+          </SettingsRow>
+          <SettingsRow
+            label="Run shell commands itself"
+            description="Off removes its shell; context gathering goes through agents."
+          >
+            <Switch
+              checked={rules.conduct.selfShell}
+              onChange={(v) => patchConduct({ selfShell: v })}
+              aria-label="Run shell commands itself"
+            />
+          </SettingsRow>
+          <SettingsRow
+            label="Verify agent reports"
+            description="Check results before relaying them as done."
+          >
+            <Switch
+              checked={rules.conduct.verifyResults}
+              onChange={(v) => patchConduct({ verifyResults: v })}
+              aria-label="Verify agent reports"
+            />
+          </SettingsRow>
+          <SettingsRow
+            label="Escalate on weak output"
+            description="Rerun with a smarter model when the result misses the bar."
+          >
+            <Switch
+              checked={rules.conduct.escalate}
+              onChange={(v) => patchConduct({ escalate: v })}
+              aria-label="Escalate on weak output"
+            />
+          </SettingsRow>
+          <SettingsRow
+            label="Worktree isolation"
+            description="Writing agents get their own git worktree."
+          >
+            <Switch
+              checked={rules.conduct.useWorktrees}
+              onChange={(v) => patchConduct({ useWorktrees: v })}
+              aria-label="Worktree isolation"
+            />
+          </SettingsRow>
+          <SettingsRow
             label="Parallel agents"
-            value={rules.conduct.maxParallel}
-            options={[0, 2, 4, 8, 16]}
-            onChange={(v) => patchConduct({ maxParallel: v })}
-          />
-          <CapSelect
-            label="Total per thread"
-            value={rules.conduct.maxAgents}
-            options={[0, 10, 20, 50]}
-            onChange={(v) => patchConduct({ maxAgents: v })}
-          />
-        </div>
-      </div>
+            description="Running at once; refusals are enforced."
+          >
+            <CapSelect
+              value={rules.conduct.maxParallel}
+              options={[0, 2, 4, 8, 16]}
+              onChange={(v) => patchConduct({ maxParallel: v })}
+            />
+          </SettingsRow>
+          <SettingsRow label="Total per thread" description="Lifetime cap for one orchestration.">
+            <CapSelect
+              value={rules.conduct.maxAgents}
+              options={[0, 10, 20, 50]}
+              onChange={(v) => patchConduct({ maxAgents: v })}
+            />
+          </SettingsRow>
+        </SettingsPanel>
+      </SettingsGroup>
 
-      {/* routing: ordered table, first match wins */}
-      <div>
-        <p className="text-[11px] font-medium tracking-[0.06em] text-muted-foreground/70 uppercase">
-          Routing — first match wins
-        </p>
-        <div className="mt-2 overflow-hidden rounded-lg border border-border/60">
+      <SettingsGroup
+        title="Routing"
+        hint="The first matching rule decides provider, model, and effort. Click a rule to edit it."
+      >
+        <SettingsPanel>
           {rules.routing.map((r, ix) => (
             <RuleRow
               key={r.id}
@@ -215,23 +246,12 @@ export function OrchestrationRulesEditor({
           ))}
           <button
             onClick={() => setEditing('new')}
-            className="flex h-9 w-full items-center gap-1.5 px-3 text-[13px] text-muted-foreground transition-colors hover:bg-accent/40 hover:text-foreground"
+            className="flex h-10 w-full items-center gap-1.5 px-4 text-[13px] text-muted-foreground transition-colors hover:bg-accent/40 hover:text-foreground"
           >
             <Plus className="size-3.5" /> Add rule
           </button>
-        </div>
-      </div>
-
-      <div>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={clearScope}
-          disabled={!overridden && !!workspaceId}
-        >
-          {workspaceId ? 'Remove override' : 'Reset to defaults'}
-        </Button>
-      </div>
+        </SettingsPanel>
+      </SettingsGroup>
 
       {editing && (
         <RuleDialog
@@ -245,55 +265,28 @@ export function OrchestrationRulesEditor({
   )
 }
 
-function ToggleRow({
-  label,
-  hint,
-  checked,
-  onChange
-}: {
-  label: string
-  hint: string
-  checked: boolean
-  onChange: (v: boolean) => void
-}): React.JSX.Element {
-  return (
-    <div className="flex items-center gap-3">
-      <span className="min-w-0 flex-1">
-        <span className="block text-[13px]">{label}</span>
-        <span className="block text-[11px] text-muted-foreground">{hint}</span>
-      </span>
-      <Switch checked={checked} onChange={onChange} aria-label={label} />
-    </div>
-  )
-}
-
 function CapSelect({
-  label,
   value,
   options,
   onChange
 }: {
-  label: string
   value: number
   options: number[]
   onChange: (v: number) => void
 }): React.JSX.Element {
   return (
-    <label className="flex items-center gap-2 text-[13px]">
-      {label}
-      <Select value={String(value)} onValueChange={(v) => onChange(Number(v))}>
-        <SelectTrigger size="sm">
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          {options.map((o) => (
-            <SelectItem key={o} value={String(o)}>
-              {o === 0 ? 'Unlimited' : String(o)}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-    </label>
+    <Select value={String(value)} onValueChange={(v) => onChange(Number(v))}>
+      <SelectTrigger size="sm" className="w-28">
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        {options.map((o) => (
+          <SelectItem key={o} value={String(o)}>
+            {o === 0 ? 'Unlimited' : String(o)}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
   )
 }
 
@@ -316,7 +309,7 @@ function RuleRow({
   return (
     <div
       className={cn(
-        'group/rule flex items-center gap-3 border-b border-border/60 px-3 py-2',
+        'group/rule flex items-center gap-3 px-4 py-2.5 transition-opacity',
         !rule.enabled && 'opacity-50'
       )}
     >
