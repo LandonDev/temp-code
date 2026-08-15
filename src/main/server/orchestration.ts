@@ -294,6 +294,8 @@ function renderRules(rules: OrchestrationRules): string {
       : 'Do not run shell commands yourself. (Shell is disabled for you.)',
     c.verifyResults &&
       'Verify what subagents report (read the diff, run a check via an agent) before relaying it as done.',
+    c.escalate &&
+      "Standing permission to escalate: when a cheaper model's output misses the bar, rerun the task on a smarter model without asking. Judge the output, not the price — escalating costs less than shipping mediocre work.",
     c.useWorktrees
       ? 'Writing subagents are isolated in git worktrees — tell the user which branches hold finished work.'
       : 'Subagents work in the shared checkout — never run writers in parallel on the same files.',

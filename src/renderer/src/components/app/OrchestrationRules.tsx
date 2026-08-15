@@ -165,6 +165,12 @@ export function OrchestrationRulesEditor({
           onChange={(v) => patchConduct({ verifyResults: v })}
         />
         <ToggleRow
+          label="Escalate on weak output"
+          hint="Rerun with a smarter model when the result misses the bar, without asking."
+          checked={rules.conduct.escalate}
+          onChange={(v) => patchConduct({ escalate: v })}
+        />
+        <ToggleRow
           label="Worktree isolation"
           hint="Writing agents get their own git worktree."
           checked={rules.conduct.useWorktrees}
