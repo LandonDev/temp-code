@@ -1,6 +1,14 @@
 import { useMemo, useState } from 'react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
-import { ChevronRight, FolderGit2, FolderPlus, GitBranch, MoreHorizontal, Plus } from 'lucide-react'
+import {
+  ChevronRight,
+  FolderGit2,
+  FolderPlus,
+  GitBranch,
+  MoreHorizontal,
+  Plus,
+  SlidersHorizontal
+} from 'lucide-react'
 import type { ProjectMeta, WorkspaceMeta } from '@shared/domain'
 import type { SessionMeta } from '@shared/events'
 import { threadsOfProject, unsortedSessions, useApp } from '../../state/store'
@@ -14,6 +22,7 @@ import {
 } from '../ui/dropdown-menu'
 import { StatusDot, timeAgo } from './bits'
 import { NewProjectDialog } from './NewProjectDialog'
+import { OrchestrationRulesDialog } from './OrchestrationRulesDialog'
 
 /**
  * Workspaces → projects. The active project gets a shared-layout pill that
@@ -26,6 +35,7 @@ export function Sidebar(): React.JSX.Element {
   const connected = useApp((s) => s.connected)
   const addWorkspace = useApp((s) => s.addWorkspace)
   const [newProjectWs, setNewProjectWs] = useState<WorkspaceMeta | null>(null)
+  const [rules, setRules] = useState<{ workspace: WorkspaceMeta | null } | null>(null)
 
   const unsorted = useMemo(() => unsortedSessions(sessions), [sessions])
 
@@ -47,6 +57,7 @@ export function Sidebar(): React.JSX.Element {
             projects={projects.filter((p) => p.workspaceId === ws.id)}
             sessions={sessions}
             onNewProject={() => setNewProjectWs(ws)}
+            onRules={() => setRules({ workspace: ws })}
           />
         ))}
 
@@ -66,10 +77,21 @@ export function Sidebar(): React.JSX.Element {
         <span className="text-[11px] text-muted-foreground">
           {connected ? 'Connected' : 'Reconnecting…'}
         </span>
+        <button
+          onClick={() => setRules({ workspace: null })}
+          title="Orchestration rules"
+          aria-label="Orchestration rules"
+          className="ml-auto flex size-5 items-center justify-center rounded text-muted-foreground/70 transition hover:text-foreground active:scale-95"
+        >
+          <SlidersHorizontal className="size-3.5" />
+        </button>
       </div>
 
       {newProjectWs && (
         <NewProjectDialog workspace={newProjectWs} onClose={() => setNewProjectWs(null)} />
+      )}
+      {rules && (
+        <OrchestrationRulesDialog workspace={rules.workspace} onClose={() => setRules(null)} />
       )}
     </aside>
   )
@@ -79,12 +101,14 @@ function WorkspaceGroup({
   workspace,
   projects,
   sessions,
-  onNewProject
+  onNewProject,
+  onRules
 }: {
   workspace: WorkspaceMeta
   projects: ProjectMeta[]
   sessions: Record<string, SessionMeta>
   onNewProject: () => void
+  onRules: () => void
 }): React.JSX.Element {
   const [open, setOpen] = useState(true)
   const reduce = useReducedMotion()
@@ -127,6 +151,7 @@ function WorkspaceGroup({
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start" className="min-w-40">
               <DropdownMenuItem onClick={onNewProject}>New project</DropdownMenuItem>
+              <DropdownMenuItem onClick={onRules}>Orchestration rules</DropdownMenuItem>
               <DropdownMenuItem
                 variant="destructive"
                 onClick={() => void removeWorkspace(workspace.id)}

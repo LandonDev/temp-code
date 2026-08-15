@@ -57,8 +57,9 @@ function present(b: ToolBlock): Presentation {
     case 'shell':
     case 'Shell': {
       // Nobody should have to read `zsh -lc "…"` to know what happened.
+      // The raw command lives in the expansion only.
       const s = summarizeCommand(str(i.command))
-      return { icon: SquareTerminal, doing: s.doing, done: s.done, detail: s.command }
+      return { icon: SquareTerminal, doing: s.doing, done: s.done, detail: '' }
     }
     case 'Read':
       return { icon: FileText, doing: 'Reading', done: 'Read', detail: file.split('/').pop() ?? '' }
@@ -71,7 +72,7 @@ function present(b: ToolBlock): Presentation {
         icon: Globe,
         doing: 'Fetching',
         done: 'Fetched',
-        detail: str(i.url).replace(/^https?:\/\//, '')
+        detail: str(i.url).replace(/^https?:\/\//, '').split('/')[0]
       }
     case 'WebSearch':
     case 'web_search':

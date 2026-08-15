@@ -1,12 +1,14 @@
 import { nanoid } from 'nanoid'
 import { basename } from 'node:path'
 import { CreateSessionParams, type CreateSessionInput } from '@shared/contract'
+import { CATALOG, type ProviderId } from '@shared/catalog'
 import type { AgentEvent, Attachment, EventRow, SessionMeta } from '@shared/events'
 import type { ProjectMeta, ProjectMode, WorkspaceMeta } from '@shared/domain'
 import { BUILT_IN_DRIVERS } from './drivers'
 import type { DriverHandle } from './drivers/types'
 import type { Store } from './db'
 import { addProjectWorktree, currentBranch, ensureLocalExclude, isGitRepo } from './git'
+import { DEFAULT_ORCHESTRATOR_POLICY } from './orchestration'
 import { planPathFor, planSeed, threadPreamble } from './threads'
 
 const THREAD_TITLES = {
@@ -22,6 +24,34 @@ type RemovedListener = (sessionIds: string[]) => void
 
 /** Dispose idle harness handles after this long; resume restores them. */
 const IDLE_DISPOSE_MS = 10 * 60 * 1000
+
+/** Cap for the transcript handoff sent to a new harness on provider switch. */
+const HANDOFF_MAX_CHARS = 24_000
+
+/**
+ * Serialize the conversation for a cross-provider switch. The new harness
+ * has no native session to resume, so the dialogue is replayed as context.
+ * Text only — thinking and tool internals stay with the old harness.
+ */
+function transcriptHandoff(rows: EventRow[]): string {
+  const turns: { role: 'User' | 'Assistant'; text: string }[] = []
+  for (const { event } of rows) {
+    let role: 'User' | 'Assistant'
+    if (event.type === 'user-text') role = 'User'
+    else if (event.type === 'assistant-text' && !event.delta && !event.parentCallId)
+      role = 'Assistant'
+    else continue
+    const last = turns[turns.length - 1]
+    if (last?.role === role) last.text += `\n${event.text}`
+    else turns.push({ role, text: event.text })
+  }
+  if (turns.length === 0) return ''
+  let body = turns.map((t) => `${t.role}: ${t.text}`).join('\n\n')
+  if (body.length > HANDOFF_MAX_CHARS) {
+    body = `[earlier conversation trimmed]\n\n…${body.slice(-HANDOFF_MAX_CHARS)}`
+  }
+  return `<conversation-handoff>\nYou are taking over an ongoing conversation from another assistant. The transcript so far:\n\n${body}\n\nContinue seamlessly — do not re-introduce yourself or revisit settled questions.\n</conversation-handoff>`
+}
 
 /**
  * The session registry: owns the session tree, the append-only event log,
@@ -138,6 +168,23 @@ export class SessionRegistry {
     return this.store.eventsAfter(sessionId, afterSeq)
   }
 
+  // ── orchestrator policy (global defaults + workspace overrides) ────
+
+  /** null scope = global (falls back to the built-in defaults);
+   *  a workspaceId = that workspace's override ('' when none). */
+  getOrchestratorPolicy(workspaceId: string | null): string {
+    const key = workspaceId ? `orchestrator-policy:${workspaceId}` : 'orchestrator-policy'
+    return this.store.getSetting(key) ?? (workspaceId ? '' : DEFAULT_ORCHESTRATOR_POLICY)
+  }
+
+  /** Empty text clears: global reverts to defaults, an override goes away.
+   *  Applies to orchestrators started after the change (resume keeps
+   *  running ones on the old prompt until they idle out). */
+  setOrchestratorPolicy(workspaceId: string | null, text: string): void {
+    const key = workspaceId ? `orchestrator-policy:${workspaceId}` : 'orchestrator-policy'
+    this.store.setSetting(key, text.trim() ? text : null)
+  }
+
   async create(raw: CreateSessionInput): Promise<SessionMeta> {
     const params = CreateSessionParams.parse(raw)
     const now = Date.now()
@@ -186,6 +233,7 @@ export class SessionRegistry {
     sessionId: string,
     text: string,
     opts?: {
+      provider?: ProviderId
       model?: string
       reasoning?: SessionMeta['reasoning']
       attachments?: Attachment[]
@@ -193,17 +241,36 @@ export class SessionRegistry {
   ): Promise<void> {
     let meta = this.store.getSession(sessionId)
     if (!meta) throw new Error(`unknown session: ${sessionId}`)
-    // Per-message model/reasoning: persist the change and drop the live
-    // handle — the next handleFor() boots the harness fresh (resume keeps
-    // the conversation) with the new settings.
-    const model = opts?.model ?? meta.model
+    const provider = opts?.provider ?? meta.provider
     const reasoning = opts?.reasoning ?? meta.reasoning
-    if (model !== meta.model || reasoning !== meta.reasoning) {
+    let handoff = ''
+    if (provider !== meta.provider) {
+      // Cross-harness switch: native resume can't follow, so the next
+      // harness starts a fresh native session seeded with the transcript.
+      handoff = transcriptHandoff(this.store.eventsAfter(sessionId, 0))
       await this.dropHandle(sessionId)
-      const next = this.store.updateSession(sessionId, { model, reasoning })
+      const next = this.store.updateSession(sessionId, {
+        provider,
+        model: opts?.model ?? CATALOG[provider].defaultModel,
+        reasoning,
+        nativeId: null
+      })
       if (next) {
         meta = next
         this.notifyMeta(next)
+      }
+    } else {
+      // Per-message model/reasoning: persist the change and drop the live
+      // handle — the next handleFor() boots the harness fresh (resume keeps
+      // the conversation) with the new settings.
+      const model = opts?.model ?? meta.model
+      if (model !== meta.model || reasoning !== meta.reasoning) {
+        await this.dropHandle(sessionId)
+        const next = this.store.updateSession(sessionId, { model, reasoning })
+        if (next) {
+          meta = next
+          this.notifyMeta(next)
+        }
       }
     }
     const handle = await this.handleFor(sessionId)
@@ -228,6 +295,7 @@ export class SessionRegistry {
       const preamble = parts.filter(Boolean).join('\n\n')
       if (preamble) out = `<thread-instructions>\n${preamble}\n</thread-instructions>\n\n${text}`
     }
+    if (handoff) out = `${handoff}\n\n${out}`
     await handle.send(out, attachments)
   }
 

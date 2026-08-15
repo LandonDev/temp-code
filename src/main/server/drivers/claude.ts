@@ -9,7 +9,7 @@ import {
 import { readFileSync } from 'node:fs'
 import type { Attachment, PermissionPolicy } from '@shared/events'
 import type { DriverCtx, DriverHandle, HarnessDriver } from './types'
-import { ORCHESTRATOR_PROMPT, ORCHESTRATOR_TOOLS, orchestratorMcp } from '../orchestration'
+import { ORCHESTRATOR_TOOLS, orchestratorMcp, orchestratorPrompt } from '../orchestration'
 import { expandSlashRefs } from '../slash'
 
 /**
@@ -291,7 +291,7 @@ export const claudeDriver: HarnessDriver = {
             systemPrompt: {
               type: 'preset' as const,
               preset: 'claude_code' as const,
-              append: ORCHESTRATOR_PROMPT
+              append: orchestratorPrompt(session)
             }
           }
         : {})

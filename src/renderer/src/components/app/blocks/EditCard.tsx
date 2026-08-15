@@ -1,6 +1,6 @@
 import { memo, useState } from 'react'
 import { ChevronRight, FileDiff, FilePen, FilePlus2 } from 'lucide-react'
-import { cn, displayPath } from '../../../lib/utils'
+import { cn } from '../../../lib/utils'
 import { Spinner } from '../../ui/spinner'
 import { Collapse } from '../../motion/collapse'
 import { useApp } from '../../../state/store'
@@ -119,17 +119,14 @@ function DiffPreview({ hunks }: { hunks: EditModel['hunks'] }): React.JSX.Elemen
  * A file edit gets more visual weight than other tool calls: the file name
  * leads, the diffstat sits on the right, the row expands to the edit itself
  * and the trailing button opens the full working-tree diff in the rail.
+ * Collapsed rows stay human — the file name only; paths live in the expansion.
  */
 export const EditCard = memo(function EditCard({ block }: { block: ToolBlock }): React.JSX.Element {
   const [open, setOpen] = useState(false)
   const openFileRef = useApp((s) => s.openFileRef)
-  const projectCwd = useApp((s) => s.projects.find((p) => p.id === s.selectedProjectId)?.cwd)
   const running = block.output === undefined
   const m = modelFor(block)
   const name = m.path.split('/').pop() ?? m.path
-  const rawDir = m.path.includes('/') ? m.path.slice(0, m.path.lastIndexOf('/')) : ''
-  const shown = rawDir ? displayPath(rawDir, projectCwd) : ''
-  const dir = shown === '.' ? '' : shown
   const allPaths = [m.path, ...m.extraPaths].filter(Boolean)
 
   return (
@@ -159,7 +156,6 @@ export const EditCard = memo(function EditCard({ block }: { block: ToolBlock }):
           </span>
           <span className="min-w-0 truncate text-[13px]">
             <span className="font-medium">{name || block.name}</span>
-            {dir && <span className="ml-1.5 text-xs text-muted-foreground/60">{dir}</span>}
             {m.extraPaths.length > 0 && (
               <span className="ml-1.5 text-xs text-muted-foreground/60">
                 +{m.extraPaths.length} more
@@ -193,26 +189,23 @@ export const EditCard = memo(function EditCard({ block }: { block: ToolBlock }):
       </div>
       <Collapse open={open}>
         <div className="mt-1 rounded-md border bg-card py-1.5">
-          {m.hunks.length > 0 ? (
-            <DiffPreview hunks={m.hunks} />
-          ) : (
-            <div className="space-y-1 px-3 py-1">
-              {allPaths.map((p) => (
-                <button
-                  key={p}
-                  onClick={() => openFileRef(p)}
-                  className="block w-full truncate text-left font-mono text-[11px] text-muted-foreground hover:text-foreground"
-                >
-                  {p}
-                </button>
-              ))}
-              {block.output !== undefined && block.isError && (
-                <pre className="whitespace-pre-wrap break-all font-mono text-[11px] text-destructive">
-                  {block.output}
-                </pre>
-              )}
-            </div>
-          )}
+          <div className="space-y-1 px-3 py-1">
+            {allPaths.map((p) => (
+              <button
+                key={p}
+                onClick={() => openFileRef(p)}
+                className="block w-full truncate text-left font-mono text-[11px] text-muted-foreground hover:text-foreground"
+              >
+                {p}
+              </button>
+            ))}
+            {block.output !== undefined && block.isError && (
+              <pre className="whitespace-pre-wrap break-all font-mono text-[11px] text-destructive">
+                {block.output}
+              </pre>
+            )}
+          </div>
+          {m.hunks.length > 0 && <DiffPreview hunks={m.hunks} />}
         </div>
       </Collapse>
     </div>

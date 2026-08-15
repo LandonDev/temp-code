@@ -9,13 +9,21 @@ import {
   Square,
   X
 } from 'lucide-react'
-import type { Reasoning } from '@shared/catalog'
+import type { ProviderId, Reasoning } from '@shared/catalog'
 import type { Attachment, PermissionPolicy } from '@shared/events'
 import type { SlashCommand } from '@shared/domain'
 import { useApp } from '../../state/store'
 import { cn } from '../../lib/utils'
 import { EASE_OUT, SPRING_PANEL, SPRING_SWAP } from '../../lib/ease'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select'
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectTrigger,
+  SelectValue
+} from '../ui/select'
 
 const REASONING_LABELS: Record<Reasoning, string> = {
   low: 'Low',
@@ -54,8 +62,11 @@ function triggerAt(
   const before = text.slice(0, caret)
   const start = Math.max(before.lastIndexOf(' '), before.lastIndexOf('\n')) + 1
   const token = before.slice(start)
-  // Slash commands only mean something at the start of the message.
-  if (start === 0 && token.startsWith('/')) return { mode: 'command', query: token.slice(1), start }
+  // Skills complete anywhere a word starts with `/` — the drivers expand
+  // every reference, so mid-message and repeated skills all execute.
+  if (token.startsWith('/') && !token.includes('/', 1)) {
+    return { mode: 'command', query: token.slice(1), start }
+  }
   if (token.startsWith('@') && !token.includes('@', 1)) {
     return { mode: 'file', query: token.slice(1), start }
   }
@@ -113,15 +124,20 @@ export function PromptBar({ compact }: { compact?: boolean }): React.JSX.Element
   const [fileRefs, setFileRefs] = useState<Attachment[]>([])
   const [dragging, setDragging] = useState(false)
   // Seeded from the session's last-used values; the component remounts per
-  // thread (ThreadView is keyed), so this state is per thread.
-  const [model, setModel] = useState(session?.model ?? '')
+  // thread (ThreadView is keyed), so this state is per thread. The choice
+  // spans providers — picking a model from another harness switches the
+  // thread's provider on the next send.
+  const [choice, setChoice] = useState<{ provider: ProviderId; model: string }>({
+    provider: session?.provider ?? 'claude',
+    model: session?.model ?? ''
+  })
   const [reasoning, setReasoning] = useState<Reasoning>(session?.reasoning ?? 'medium')
   const reduce = useReducedMotion()
   const areaRef = useRef<HTMLTextAreaElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
   const pickerRef = useRef<HTMLInputElement>(null)
 
-  const provider = session ? catalog?.[session.provider] : undefined
+  const chosen = catalog?.[choice.provider]
   const providerId = session?.provider
   const cwd = session?.cwd
 
@@ -252,7 +268,8 @@ export function PromptBar({ compact }: { compact?: boolean }): React.JSX.Element
     setImages([])
     setFileRefs([])
     void send(selectedId, t || '(see attachments)', {
-      model: model || undefined,
+      provider: choice.provider !== session.provider ? choice.provider : undefined,
+      model: choice.model || undefined,
       reasoning,
       attachments: attachments.length ? attachments : undefined
     })
@@ -521,9 +538,20 @@ export function PromptBar({ compact }: { compact?: boolean }): React.JSX.Element
           </div>
         </div>
         <div className="flex h-7 items-center pt-1">
-          {provider && (
+          {catalog && chosen && (
             <>
-              <Select value={model} onValueChange={setModel}>
+              <Select
+                value={`${choice.provider}::${choice.model}`}
+                onValueChange={(v) => {
+                  const [p, m] = v.split('::') as [ProviderId, string]
+                  setChoice({ provider: p, model: m })
+                  // Reasoning options differ per harness; keep the pick valid.
+                  const opts = catalog[p]?.reasoning ?? []
+                  if (opts.length > 0 && !opts.includes(reasoning)) {
+                    setReasoning(opts.includes('medium') ? 'medium' : opts[0])
+                  }
+                }}
+              >
                 <SelectTrigger
                   aria-label="Model"
                   className="h-6 gap-1 rounded-md border-0 bg-transparent py-0 pr-1 pl-1.5 text-[11px] text-muted-foreground shadow-none transition-colors hover:text-foreground focus-visible:ring-0 dark:bg-transparent dark:hover:bg-accent/50 [&_svg]:size-3"
@@ -531,14 +559,21 @@ export function PromptBar({ compact }: { compact?: boolean }): React.JSX.Element
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {provider.models.map((m) => (
-                    <SelectItem key={m.id} value={m.id} className="text-xs">
-                      {m.label}
-                    </SelectItem>
+                  {Object.values(catalog).map((p) => (
+                    <SelectGroup key={p.id}>
+                      <SelectLabel className="text-[11px] text-muted-foreground/70">
+                        {p.label}
+                      </SelectLabel>
+                      {p.models.map((m) => (
+                        <SelectItem key={`${p.id}::${m.id}`} value={`${p.id}::${m.id}`} className="text-xs">
+                          {m.label}
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
                   ))}
                 </SelectContent>
               </Select>
-              {provider.reasoning.length > 1 && (
+              {chosen.reasoning.length > 1 && (
                 <Select value={reasoning} onValueChange={(v) => setReasoning(v as Reasoning)}>
                   <SelectTrigger
                     aria-label="Reasoning effort"
@@ -547,7 +582,7 @@ export function PromptBar({ compact }: { compact?: boolean }): React.JSX.Element
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {provider.reasoning.map((r) => (
+                    {chosen.reasoning.map((r) => (
                       <SelectItem key={r} value={r} className="text-xs">
                         {REASONING_LABELS[r]}
                       </SelectItem>
