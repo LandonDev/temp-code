@@ -7,7 +7,7 @@ import { ApprovalCard } from './blocks/ApprovalCard'
 import { QuestionCard } from './blocks/QuestionCard'
 import { MarkdownText } from './blocks/MarkdownText'
 import { ThinkingBlock } from './blocks/ThinkingBlock'
-import { EDIT_TOOLS, ErrorChip, ToolGroup, ZEditCard } from './blocks/ToolGroup'
+import { EDIT_TOOLS, ErrorChip, groupSummary, ToolGroup, ZEditCard } from './blocks/ToolGroup'
 import { UserMessage } from './blocks/UserMessage'
 import { ZIcon } from './zicon'
 import { Spinner } from '../ui/spinner'
@@ -59,6 +59,46 @@ function rowsFor(blocks: Block[]): Row[] {
     rows.push({ type: 'block', id: b.id, block: b, turn })
   }
   return rows
+}
+
+type GlanceKind = 'user' | 'reply' | 'edit' | 'tool' | 'alert'
+
+/** What a row IS, at minimap distance: who spoke / what happened + a
+ *  one-line snippet for the hover preview. */
+function rowGlance(row: Row): { kind: GlanceKind; who: string; text: string } {
+  if (row.type === 'group') return { kind: 'tool', who: 'Tools', text: groupSummary(row.tools) }
+  if (row.type === 'edit') {
+    const input = (row.block.input ?? {}) as { file_path?: string; notebook_path?: string }
+    const path = input.file_path ?? input.notebook_path ?? ''
+    return { kind: 'edit', who: 'Edit', text: path.split('/').pop() ?? row.block.name }
+  }
+  const b = row.block
+  switch (b.kind) {
+    case 'user':
+      return { kind: 'user', who: 'You', text: b.text.trim().split('\n')[0] }
+    case 'assistant':
+      return { kind: 'reply', who: 'Reply', text: b.text.trim().split('\n')[0] }
+    case 'thinking':
+      return { kind: 'tool', who: 'Thinking', text: b.text.trim().split('\n')[0] }
+    case 'approval':
+      return { kind: 'alert', who: 'Approval', text: b.title ?? b.toolName }
+    case 'question':
+      return { kind: 'alert', who: 'Question', text: b.questions[0]?.question ?? '' }
+    case 'error':
+      return { kind: 'alert', who: 'Error', text: b.text }
+    default:
+      return { kind: 'tool', who: '', text: '' }
+  }
+}
+
+/** Tick geometry + tone per glance kind — your messages read strongest,
+ *  finalized replies next, mechanics stay faint. */
+const TICK: Record<GlanceKind, { w: number; cls: string }> = {
+  user: { w: 14, cls: 'bg-info' },
+  reply: { w: 12, cls: 'bg-foreground/50' },
+  edit: { w: 12, cls: 'bg-success/60' },
+  tool: { w: 7, cls: 'bg-foreground/18' },
+  alert: { w: 12, cls: 'bg-warning' }
 }
 
 /** "Jul 1, 3:45 PM" — short month, no leading zero. */
@@ -141,9 +181,23 @@ export function Transcript({
   const scrollRef = useRef<HTMLDivElement>(null)
   const [hoveredTurn, setHoveredTurn] = useState<number | null>(null)
   const [pill, setPill] = useState(false)
-  const [activeTick, setActiveTick] = useState(0)
-  const rowCount = useRef(rows.length)
-  rowCount.current = rows.length
+  const railRef = useRef<HTMLDivElement>(null)
+  const railWindowRef = useRef<HTMLDivElement>(null)
+
+  /** The viewport window on the minimap — driven by direct DOM writes so
+   *  scrolling never re-renders React. */
+  const positionRailWindow = (): void => {
+    const el = scrollRef.current
+    const rail = railRef.current
+    const win = railWindowRef.current
+    if (!el || !rail || !win) return
+    const total = Math.max(1, el.scrollHeight)
+    const h = rail.clientHeight
+    const top = (el.scrollTop / total) * h
+    const height = Math.max(10, (el.clientHeight / total) * h)
+    win.style.transform = `translateY(${Math.min(top, h - height)}px)`
+    win.style.height = `${height}px`
+  }
 
   // Scroll engine state (refs — per-frame, never re-renders).
   const mode = useRef<'follow' | 'parked' | 'free'>('follow')
@@ -334,13 +388,7 @@ export function Transcript({
     const onScroll = (): void => {
       const fromBottom = el.scrollHeight - el.clientHeight - el.scrollTop
       setPill(fromBottom > PILL_AT)
-      // Minimap: the last block whose top has passed the reading inset.
-      let tick = 0
-      for (let i = 0; i < Math.min(rowCount.current, 32); i++) {
-        if (offsetOf(i) <= el.scrollTop + TOP_INSET + 1) tick = i
-        else break
-      }
-      setActiveTick(tick)
+      positionRailWindow()
       if (programmatic.current > 0) {
         programmatic.current--
         return
@@ -494,28 +542,131 @@ export function Transcript({
         </button>
       </div>
 
-      {/* left rail: block-tick minimap, current block highlighted */}
+      {/* left rail: the thread at a glance — every row a tick (yours in
+          blue, finalized replies solid, mechanics faint), the viewport as
+          a sliding window, hover for an instant who-said-what preview. */}
       {rows.length > 1 && (
-        <div className="absolute top-1/2 left-4 flex -translate-y-1/2 flex-col gap-[5px]">
-          {rows.slice(0, 32).map((r, i) => (
-            <button
-              key={r.id}
-              aria-label={`Jump to block ${i + 1}`}
-              onClick={() => {
-                mode.current = 'free'
-                parkedRow.current = null
-                pinBottom.current = false
-                collapseSpacer()
-                startGlide(() => Math.max(0, offsetOf(i) - TOP_INSET))
-              }}
-              className={cn(
-                'h-[2px] w-3 rounded-full transition-colors duration-150',
-                i === activeTick ? 'bg-foreground/60' : 'bg-foreground/15 hover:bg-foreground/40'
-              )}
-            />
-          ))}
-        </div>
+        <Minimap
+          rows={rows}
+          totalSize={totalSize}
+          railRef={railRef}
+          windowRef={railWindowRef}
+          onLayout={positionRailWindow}
+          offsetOf={offsetOf}
+          onJump={(i) => {
+            mode.current = 'free'
+            parkedRow.current = null
+            pinBottom.current = false
+            collapseSpacer()
+            startGlide(() => Math.max(0, offsetOf(i) - TOP_INSET))
+          }}
+        />
       )}
     </div>
   )
+}
+
+/** The transcript minimap. Ticks sit at their row's true document
+ *  position; the window div is written directly from the scroll handler.
+ *  Hover state lives HERE so previews never re-render the transcript. */
+function Minimap({
+  rows,
+  totalSize,
+  railRef,
+  windowRef,
+  onLayout,
+  offsetOf,
+  onJump
+}: {
+  rows: Row[]
+  totalSize: number
+  railRef: React.RefObject<HTMLDivElement | null>
+  windowRef: React.RefObject<HTMLDivElement | null>
+  onLayout: () => void
+  offsetOf: (index: number) => number
+  onJump: (index: number) => void
+}): React.JSX.Element {
+  const [hover, setHover] = useState<number | null>(null)
+  // Compact stack for short threads, fixed proportional map for long ones.
+  const railH = Math.min(Math.max(rows.length * 9, 48), 320)
+  const total = Math.max(1, totalSize)
+
+  useLayoutEffect(onLayout, [railH, totalSize, onLayout])
+
+  const glance = hover !== null && rows[hover] ? rowGlance(rows[hover]) : null
+  const hoverTop = hover !== null ? (offsetOf(hover) / total) * railH : 0
+
+  return (
+    <div
+      className="absolute top-1/2 left-3 z-10 -translate-y-1/2"
+      onMouseLeave={() => setHover(null)}
+    >
+      <div ref={railRef} className="relative w-5" style={{ height: railH }}>
+        {/* viewport window */}
+        <div
+          ref={windowRef}
+          className="pointer-events-none absolute -left-1 w-7 rounded-[4px] bg-foreground/[0.07] ring-1 ring-foreground/10"
+        />
+        {rows.map((r, i) => {
+          const g = rowGlance(r)
+          const t = TICK[g.kind]
+          const top = (offsetOf(i) / total) * railH
+          return (
+            <button
+              key={r.id}
+              aria-label={`Jump to ${g.who}: ${g.text.slice(0, 40)}`}
+              onMouseEnter={() => setHover(i)}
+              onClick={() => onJump(i)}
+              className="absolute left-0 flex h-[9px] w-6 items-center"
+              style={{ top: Math.min(top, railH - 9) }}
+            >
+              <span
+                className={cn(
+                  'h-[2px] rounded-full transition-[width,opacity] duration-100',
+                  t.cls,
+                  hover === i && 'opacity-100'
+                )}
+                style={{ width: hover === i ? t.w + 4 : t.w }}
+              />
+            </button>
+          )
+        })}
+
+        {/* instant hover preview */}
+        {glance && (
+          <div
+            className="pointer-events-none absolute left-8 z-20 -translate-y-1/2 animate-[z-fade-quick_80ms_ease-out]"
+            style={{ top: Math.max(10, Math.min(hoverTop + 4, railH - 10)) }}
+          >
+            <div className="flex max-w-64 items-baseline gap-1.5 rounded-lg bg-popover px-2.5 py-1.5 whitespace-nowrap shadow-[0_4px_16px_rgb(0_0_0/0.14)] ring-1 ring-foreground/10">
+              <span
+                className={cn(
+                  'shrink-0 text-[10px] font-semibold tracking-wide uppercase',
+                  g_who_cls(glance.kind)
+                )}
+              >
+                {glance.who}
+              </span>
+              <span className="min-w-0 truncate text-[11.5px] text-foreground/85">
+                {glance.text || '\u2026'}
+              </span>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function g_who_cls(kind: GlanceKind): string {
+  switch (kind) {
+    case 'user':
+      return 'text-info'
+    case 'edit':
+      return 'text-success'
+    case 'alert':
+      return 'text-warning'
+    default:
+      return 'text-muted-foreground'
+  }
 }
