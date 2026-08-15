@@ -160,7 +160,6 @@ function ArchivedList(): React.JSX.Element {
   const select = useApp((s) => s.select)
   const selectProject = useApp((s) => s.selectProject)
   const setArchived = useApp((s) => s.setArchived)
-  const setSettingsOpen = useApp((s) => s.setSettingsOpen)
 
   const archived = Object.values(sessions)
     .filter((s) => s.archived && !s.parentId)
@@ -177,11 +176,11 @@ function ArchivedList(): React.JSX.Element {
     )
   }
 
+  // select() closes the settings page itself.
   const restore = async (id: string, projectId: string | null): Promise<void> => {
     await setArchived(id, false)
     if (projectId) selectProject(projectId)
     await select(id)
-    setSettingsOpen(false)
   }
 
   return (
