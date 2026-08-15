@@ -5,6 +5,7 @@ const api = {
   getServerPort: (): Promise<number | null> => ipcRenderer.invoke('server-port'),
   pickDirectory: (defaultPath?: string): Promise<string | null> =>
     ipcRenderer.invoke('pick-directory', defaultPath),
+  revealInFinder: (path: string): Promise<void> => ipcRenderer.invoke('reveal-in-finder', path),
   /** Real disk path of a dropped File (File.path is gone in Electron ≥32). */
   getPathForFile: (file: File): string => webUtils.getPathForFile(file)
 }

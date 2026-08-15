@@ -12,6 +12,7 @@ import type { Attachment, PermissionPolicy } from '@shared/events'
 import type { DriverCtx, DriverHandle, HarnessDriver } from './types'
 import { parsePartialJson } from './partial-json'
 import { ORCHESTRATOR_TOOLS, orchestratorMcp, orchestratorPrompt, rulesFor } from '../orchestration'
+import { APP_TOOLS, appToolsMcp } from '../apptools'
 import { expandSlashRefs } from '../slash'
 
 /**
@@ -425,9 +426,9 @@ export const claudeDriver: HarnessDriver = {
       canUseTool,
       hooks: { PreToolUse: [{ matcher: 'AskUserQuestion', hooks: [askUserQuestionHook] }] },
       ...(session.nativeId ? { resume: session.nativeId } : {}),
-      // Any claude session typed 'orchestrator' can spawn cross-provider
-      // subagents (docs/PLAN.md M6). The orchestrator is not special —
-      // just this toolset plus a router rubric.
+      // App tools (docs/PLAN-2.md M10): every claude session can list/read
+      // sibling threads and start new ones. Orchestrators additionally get
+      // the spawn/supervise toolset (docs/PLAN.md M6) + router rubric.
       ...(session.agentType === 'orchestrator'
         ? (() => {
             // The user's conduct rules are enforced, not suggested: an
@@ -439,8 +440,11 @@ export const claudeDriver: HarnessDriver = {
               ...(conduct.selfShell ? [] : ['Bash'])
             ]
             return {
-              mcpServers: { orchestrator: orchestratorMcp(session) },
-              allowedTools: ORCHESTRATOR_TOOLS,
+              mcpServers: {
+                orchestrator: orchestratorMcp(session),
+                app: appToolsMcp(session)
+              },
+              allowedTools: [...ORCHESTRATOR_TOOLS, ...APP_TOOLS],
               ...(denied.length ? { disallowedTools: denied } : {}),
               systemPrompt: {
                 type: 'preset' as const,
@@ -449,7 +453,10 @@ export const claudeDriver: HarnessDriver = {
               }
             }
           })()
-        : {})
+        : {
+            mcpServers: { app: appToolsMcp(session) },
+            allowedTools: APP_TOOLS
+          })
     }
 
     const q = query({ prompt: input, options })

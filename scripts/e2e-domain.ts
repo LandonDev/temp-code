@@ -25,7 +25,17 @@ const repo = mkdtempSync(join(tmpdir(), 'tc-repo-'))
 execFileSync('git', ['-C', repo, 'init', '-q'])
 writeFileSync(join(repo, 'hello.txt'), 'hello\n')
 execFileSync('git', ['-C', repo, 'add', '.'])
-execFileSync('git', ['-C', repo, '-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-qm', 'init'])
+execFileSync('git', [
+  '-C',
+  repo,
+  '-c',
+  'user.email=t@t',
+  '-c',
+  'user.name=t',
+  'commit',
+  '-qm',
+  'init'
+])
 
 // ── workspaces & projects ────────────────────────────────────────────
 const ws = await registry.createWorkspace(repo)
@@ -35,10 +45,15 @@ check('workspace create is idempotent by path', dupe.id === ws.id)
 
 const wt = await registry.createProject(ws.id, 'Add Feature X', 'worktree')
 // A stale worktree from an earlier run may force the -N suffix — both fine.
-check('worktree project branch', /^tc\/add-feature-x(-\d+)?$/.test(wt.branch ?? ''), String(wt.branch))
+check(
+  'worktree project branch',
+  /^tc\/add-feature-x(-\d+)?$/.test(wt.branch ?? ''),
+  String(wt.branch)
+)
 check(
   'worktree project cwd isolated',
-  wt.cwd.startsWith(join(homedir(), '.temp-code', 'worktrees')) && existsSync(join(wt.cwd, 'hello.txt'))
+  wt.cwd.startsWith(join(homedir(), '.temp-code', 'worktrees')) &&
+    existsSync(join(wt.cwd, 'hello.txt'))
 )
 const local = await registry.createProject(ws.id, 'Quick Fix', 'local')
 check('local project uses workspace path + branch', local.cwd === repo && local.branch !== null)
@@ -50,7 +65,10 @@ const orch = await registry.create({
   provider: 'claude',
   model: 'claude-sonnet-5'
 })
-check('orchestration thread → orchestrator agent, project cwd', orch.agentType === 'orchestrator' && orch.cwd === wt.cwd)
+check(
+  'orchestration thread → orchestrator agent, project cwd',
+  orch.agentType === 'orchestrator' && orch.cwd === wt.cwd
+)
 check('thread default title', orch.title === 'New orchestration')
 
 const impl = await registry.create({
@@ -85,20 +103,30 @@ check('planning thread gets a planPath', !!plan.planPath && plan.planPath.includ
 
 const settled = new Promise<void>((resolve) => {
   const off = registry.subscribe(plan.id, (row) => {
-    if (row.event.type === 'status' && (row.event.status === 'idle' || row.event.status === 'error')) {
+    if (
+      row.event.type === 'status' &&
+      (row.event.status === 'idle' || row.event.status === 'error')
+    ) {
       off()
       resolve()
     }
   })
 })
-const typed = 'Plan the smallest possible change: add a LICENSE file. One task only. No questions — write the plan immediately.'
+const typed =
+  'Plan the smallest possible change: add a LICENSE file. One task only. No questions — write the plan immediately.'
 await registry.send(plan.id, typed)
 await Promise.race([settled, new Promise((r) => setTimeout(r, 180_000))])
 
 const rows = registry.eventsAfter(plan.id, 0)
 const userTexts = rows.filter((r) => r.event.type === 'user-text') as { event: { text: string } }[]
-check('transcript user-text is exactly what was typed', userTexts.length === 1 && userTexts[0].event.text === typed)
-check('thread auto-titled from first message', store.getSession(plan.id)?.title.startsWith('Plan the smallest') === true)
+check(
+  'transcript user-text is exactly what was typed',
+  userTexts.length === 1 && userTexts[0].event.text === typed
+)
+check(
+  'thread auto-titled from first message',
+  store.getSession(plan.id)?.title.startsWith('Plan the smallest') === true
+)
 const planExists = !!plan.planPath && existsSync(plan.planPath)
 check('plan document written to planPath', planExists)
 if (!planExists) {
@@ -115,6 +143,13 @@ if (!planExists) {
 if (planExists) {
   const doc = readFileSync(plan.planPath!, 'utf8')
   check('plan has a Tasks section', /##\s*Tasks/i.test(doc), doc.slice(0, 200))
+}
+
+// Leave nothing in ~/.temp-code/worktrees — repeat runs start clean.
+try {
+  execFileSync('git', ['-C', repo, 'worktree', 'remove', '--force', wt.cwd])
+} catch {
+  // best effort — the dir points at a throwaway tmp repo either way
 }
 
 await registry.disposeAll()

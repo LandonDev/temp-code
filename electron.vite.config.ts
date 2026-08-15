@@ -22,6 +22,9 @@ export default defineConfig({
         '@shared': resolve('src/shared')
       }
     },
+    // The editor chunk (Monaco + shiki + LSP client) loads lazily, which
+    // makes this a code-splitting build — workers must be ES modules.
+    worker: { format: 'es' },
     plugins: [react(), tailwindcss()]
   }
 })
