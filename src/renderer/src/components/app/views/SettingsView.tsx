@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect } from 'react'
 import { motion, useReducedMotion } from 'motion/react'
 import type { ProviderId } from '@shared/catalog'
 import { useApp, type ThemePref } from '../../../state/store'
@@ -7,7 +7,7 @@ import { SPRING_LAYOUT } from '../../../lib/ease'
 import { ProviderMark, THREAD_GLYPHS, THREAD_TINTS, timeAgo } from '../bits'
 import { ZIcon } from '../zicon'
 import { Spinner } from '../../ui/spinner'
-import { OrchestrationRulesDialog } from '../OrchestrationRulesDialog'
+import { OrchestrationRulesEditor } from '../OrchestrationRules'
 
 const THEME_OPTIONS: { value: ThemePref; label: string }[] = [
   { value: 'system', label: 'System' },
@@ -21,7 +21,9 @@ export function SettingsView(): React.JSX.Element {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') setSettingsOpen(false)
+      // A dialog or open menu owns Escape — only a bare Esc leaves settings.
+      const overlayOpen = document.querySelector('[role="dialog"], [role="listbox"], [role="menu"]')
+      if (e.key === 'Escape' && !overlayOpen) setSettingsOpen(false)
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
@@ -41,10 +43,10 @@ export function SettingsView(): React.JSX.Element {
         </Section>
 
         <Section
-          title="Orchestration rules"
-          hint="Conduct and routing policy fed into every orchestrator. Workspaces can override from their sidebar menu."
+          title="Orchestration"
+          hint="How much the orchestrator may do itself, and which model handles which work. Workspaces can override from their sidebar menu."
         >
-          <RulesButton />
+          <OrchestrationRulesEditor workspaceId={null} />
         </Section>
 
         <Section
@@ -103,21 +105,6 @@ function ThemeSwitch(): React.JSX.Element {
         </button>
       ))}
     </div>
-  )
-}
-
-function RulesButton(): React.JSX.Element {
-  const [open, setOpen] = useState(false)
-  return (
-    <>
-      <button
-        onClick={() => setOpen(true)}
-        className="rounded-lg border border-border/60 px-3 py-1.5 text-[13px] transition-colors hover:bg-accent/40 active:scale-[0.99]"
-      >
-        Edit rules
-      </button>
-      {open && <OrchestrationRulesDialog workspace={null} onClose={() => setOpen(false)} />}
-    </>
   )
 }
 

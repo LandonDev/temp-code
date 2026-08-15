@@ -15,7 +15,7 @@ import {
 import { StatusDot, timeAgo } from './bits'
 import { ZIcon } from './zicon'
 import { NewProjectDialog } from './NewProjectDialog'
-import { OrchestrationRulesDialog } from './OrchestrationRulesDialog'
+import { WorkspaceRulesDialog } from './OrchestrationRules'
 
 /**
  * Workspaces → projects. One left-edge rhythm: workspace names start at
@@ -93,7 +93,7 @@ export function Sidebar(): React.JSX.Element {
       {newProjectWs && (
         <NewProjectDialog workspace={newProjectWs} onClose={() => setNewProjectWs(null)} />
       )}
-      {rulesWs && <OrchestrationRulesDialog workspace={rulesWs} onClose={() => setRulesWs(null)} />}
+      {rulesWs && <WorkspaceRulesDialog workspace={rulesWs} onClose={() => setRulesWs(null)} />}
     </aside>
   )
 }

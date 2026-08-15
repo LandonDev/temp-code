@@ -8,7 +8,7 @@ import { BUILT_IN_DRIVERS } from './drivers'
 import type { DriverHandle } from './drivers/types'
 import type { Store } from './db'
 import { addProjectWorktree, currentBranch, ensureLocalExclude, isGitRepo } from './git'
-import { DEFAULT_ORCHESTRATOR_POLICY } from './orchestration'
+import { parseRules, type OrchestrationRules } from '@shared/rules'
 import { planPathFor, planSeed, threadPreamble } from './threads'
 
 const THREAD_TITLES = {
@@ -172,17 +172,20 @@ export class SessionRegistry {
 
   /** null scope = global (falls back to the built-in defaults);
    *  a workspaceId = that workspace's override ('' when none). */
-  getOrchestratorPolicy(workspaceId: string | null): string {
-    const key = workspaceId ? `orchestrator-policy:${workspaceId}` : 'orchestrator-policy'
-    return this.store.getSetting(key) ?? (workspaceId ? '' : DEFAULT_ORCHESTRATOR_POLICY)
+  /** Structured orchestration rules for a scope; null = not set there
+   *  (global falls back to defaults at the call site, a workspace to
+   *  the global rules). */
+  getOrchestrationRules(workspaceId: string | null): OrchestrationRules | null {
+    const key = workspaceId ? `orchestration-rules:${workspaceId}` : 'orchestration-rules'
+    return parseRules(this.store.getSetting(key))
   }
 
-  /** Empty text clears: global reverts to defaults, an override goes away.
+  /** null clears: global reverts to defaults, an override goes away.
    *  Applies to orchestrators started after the change (resume keeps
    *  running ones on the old prompt until they idle out). */
-  setOrchestratorPolicy(workspaceId: string | null, text: string): void {
-    const key = workspaceId ? `orchestrator-policy:${workspaceId}` : 'orchestrator-policy'
-    this.store.setSetting(key, text.trim() ? text : null)
+  setOrchestrationRules(workspaceId: string | null, rules: OrchestrationRules | null): void {
+    const key = workspaceId ? `orchestration-rules:${workspaceId}` : 'orchestration-rules'
+    this.store.setSetting(key, rules ? JSON.stringify(rules) : null)
   }
 
   async create(raw: CreateSessionInput): Promise<SessionMeta> {

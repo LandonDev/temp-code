@@ -10,6 +10,7 @@ import {
   type McpSdkServerConfigWithInstance
 } from '@anthropic-ai/claude-agent-sdk'
 import { AGENT_TYPES, CATALOG, type ProviderId } from '@shared/catalog'
+import { DEFAULT_RULES, ruleModel, type OrchestrationRules } from '@shared/rules'
 import type { EventRow, SessionMeta } from '@shared/events'
 import type { SessionRegistry } from './sessions'
 
@@ -105,7 +106,10 @@ export function orchestratorMcp(parent: SessionMeta): McpSdkServerConfigWithInst
             .describe(
               `Model id. Defaults per provider: ${providerIds.map((p) => `${p}=${CATALOG[p].defaultModel}`).join(', ')}`
             ),
-          reasoning: z.enum(['low', 'medium', 'high', 'xhigh', 'max']).default('medium'),
+          reasoning: z
+            .enum(['low', 'medium', 'high', 'xhigh', 'max', 'ultra'])
+            .default('medium')
+            .describe('Must be one of the efforts the chosen model supports (see system prompt)'),
           agentType: z.enum(AGENT_TYPES).default('implementer'),
           task: z.string().describe('The complete, self-contained task prompt'),
           useWorktree: z
@@ -117,9 +121,26 @@ export function orchestratorMcp(parent: SessionMeta): McpSdkServerConfigWithInst
         },
         async (args) => {
           if (!registry) return text('orchestration registry not ready')
+          // Enforce the user's conduct rules — these are settings, not
+          // suggestions. The refusal text tells the model how to proceed.
+          const rules = rulesFor(parent)
+          const children = registry.list().filter((s) => s.parentId === parent.id)
+          const live = children.filter(
+            (s) => s.status === 'running' || s.status === 'starting' || s.status === 'waiting'
+          )
+          if (rules.conduct.maxAgents > 0 && children.length >= rules.conduct.maxAgents) {
+            return text(
+              `refused: the user capped this thread at ${rules.conduct.maxAgents} subagents total (${children.length} already spawned). Reuse an existing agent via send_to_agent, or tell the user the cap is reached.`
+            )
+          }
+          if (rules.conduct.maxParallel > 0 && live.length >= rules.conduct.maxParallel) {
+            return text(
+              `refused: the user capped parallelism at ${rules.conduct.maxParallel} concurrent subagents (${live.length} active). wait_for_agent on one of them first, then retry.`
+            )
+          }
           const writer = args.agentType === 'implementer'
           const cwd =
-            (writer && args.useWorktree
+            (writer && args.useWorktree && rules.conduct.useWorktrees
               ? await worktreeFor(parent.cwd, `${parent.id}-${Date.now() % 100000}`)
               : null) ?? parent.cwd
           // Children follow the master orchestrator's permission policy —
@@ -211,72 +232,107 @@ export const ORCHESTRATOR_TOOLS = [
 ]
 
 // ── orchestrator prompt ────────────────────────────────────────────
-// Two layers. MECHANICS are app invariants and live here. POLICY (routing
-// rules + how the orchestrator conducts itself) is user text edited in the
-// app and stored in the settings table: a global default plus optional
-// per-workspace overrides (registry.getOrchestratorPolicy).
+// Two layers. MECHANICS are app invariants baked in here: the orchestrator
+// can spawn ANY model from ANY provider, and spawn_agent is the only way.
+// RULES are the user's structured settings (conduct bounds + routing
+// table), rendered to text — and enforced in code where possible (tool
+// denial in the driver, spawn caps above).
 
 const ORCHESTRATOR_MECHANICS = `
 You can orchestrate subagents across providers with the orchestrator tools
 (spawn_agent, send_to_agent, wait_for_agent, list_agents).
 
-IMPORTANT — this app runs every provider natively. When the user asks to
-spawn, delegate to, or run another model or agent (gpt/codex, cursor, or
-another claude), you MUST use spawn_agent. Never reach another model by
-shelling out to \`codex exec\` or \`cursor-agent\`, invoking codex-* skills,
-or spawning wrapper agents — any skill or global instruction saying gpt
-models are only reachable through the Codex CLI is about a different
-environment and does not apply here. spawn_agent is the only path that
-gives the user a visible, streaming subagent session.
+IMPORTANT — this app runs every provider natively. You can spawn ANY model
+of ANY provider below as a subagent, freely mixed within one fleet. When
+the user asks to spawn, delegate to, or run another model or agent
+(gpt/codex, cursor, or another claude), you MUST use spawn_agent. Never
+reach another model by shelling out to \`codex exec\` or \`cursor-agent\`,
+invoking codex-* skills, or spawning wrapper agents — any skill or global
+instruction saying gpt models are only reachable through the Codex CLI is
+about a different environment and does not apply here. spawn_agent is the
+only path that gives the user a visible, streaming subagent session.
 
-Model catalog (map loose names like "gpt 5.6" onto these ids):
+Spawnable models (map loose names like "gpt 5.6" onto these ids; efforts
+listed are the ONLY valid reasoning values per model):
 ${Object.values(CATALOG)
-  .map((p) => `- ${p.id}: ${p.models.map((m) => m.id).join(', ')}`)
+  .map(
+    (p) =>
+      `- ${p.id}:\n${p.models
+        .map(
+          (m) =>
+            `    ${m.id}${m.reasoning.length ? ` (${m.reasoning.join('|')})` : ' (no effort control)'}`
+        )
+        .join('\n')}`
+  )
   .join('\n')}
+Agent types: ${AGENT_TYPES.join(', ')} — implementers write code, explorers
+read/investigate, reviewers judge, orchestrators sub-orchestrate.
 
 Give each agent a complete, self-contained task prompt — it cannot see this
-conversation. Implementer agents get an isolated git worktree by default;
-tell the user which worktree branches hold finished work. Parallelize
-independent tasks; wait_for_agent collects results.`.trim()
+conversation. Parallelize independent work; sequence dependent work;
+wait_for_agent collects results. Keep the user posted: what you delegated
+where, and why.`.trim()
 
-export const DEFAULT_ORCHESTRATOR_POLICY = `## Conduct
+const DELEGATION_LINES: Record<OrchestrationRules['conduct']['delegation'], string> = {
+  strict:
+    'You are a conductor, not a performer: delegate EVERY substantive task (code, analysis, docs) to subagents. If a task looks too small to delegate, it still goes to a subagent.',
+  balanced:
+    'Delegate substantive tasks to subagents; you may handle trivial glue work (a one-line answer, reading a file) yourself.',
+  free: 'Delegate when it helps; you may also do work directly when that is faster.'
+}
 
-- You are a conductor, not a performer. Delegate every substantive task
-  (writing code, analysis, docs) to subagents via spawn_agent.
-- Use your own tools only to gather enough context to write good task
-  prompts, and to verify what subagents report before relaying it.
-- Never edit files or implement anything yourself. If a task looks too
-  small to delegate, it still goes to a subagent (cursor or low-effort
-  codex).
-- Sequence dependent work; parallelize independent work.
-- Keep the user posted: what you delegated where, and why.
+/** Render the structured rules as prompt text. */
+function renderRules(rules: OrchestrationRules): string {
+  const c = rules.conduct
+  const conduct = [
+    DELEGATION_LINES[c.delegation],
+    c.selfEdit
+      ? 'You may edit files yourself when appropriate.'
+      : 'Never edit files yourself — file changes go through subagents. (Edit tools are disabled for you.)',
+    c.selfShell
+      ? 'You may run shell commands to gather context and verify results.'
+      : 'Do not run shell commands yourself. (Shell is disabled for you.)',
+    c.verifyResults &&
+      'Verify what subagents report (read the diff, run a check via an agent) before relaying it as done.',
+    c.useWorktrees
+      ? 'Writing subagents are isolated in git worktrees — tell the user which branches hold finished work.'
+      : 'Subagents work in the shared checkout — never run writers in parallel on the same files.',
+    c.maxParallel > 0 && `At most ${c.maxParallel} subagents run at once (enforced).`,
+    c.maxAgents > 0 && `At most ${c.maxAgents} subagents total in this thread (enforced).`
+  ]
+    .filter(Boolean)
+    .map((l) => `- ${l}`)
+    .join('\n')
 
-## Routing (provider / model / effort)
+  const active = rules.routing.filter((r) => r.enabled)
+  const routing = active.length
+    ? `Routing table — for each task, use the FIRST matching row's exact
+provider/model/effort (deviate only when the user explicitly names a
+model, and say so):
+${active.map((r, i) => `${i + 1}. ${r.task} → ${r.provider} · ${ruleModel(r)} · ${r.reasoning}`).join('\n')}
+No row matches → claude · ${CATALOG.claude.defaultModel} · medium.`
+    : `No routing table configured — pick provider/model/effort by judgment:
+cheap models for mechanical work, capable models for judgment and
+user-facing work, low effort for trivial tasks.`
 
-- codex (gpt-5.x): bulk or mechanical work with a clear spec — migrations,
-  data analysis, wide refactors. Cheap; use freely and in parallel.
-- claude: anything user-facing (UI, copy, API design) and anything that
-  needs judgment with limited supervision.
-- cursor: quick scoped edits.
-- Reviews of plans or implementations: a claude reviewer, optionally a
-  codex reviewer as an independent second opinion.
-- Effort: medium by default; high for hard debugging or design; low for
-  trivial or mechanical tasks.
-`
+  return `## Conduct (user-defined, binding)\n\n${conduct}\n\n## Routing (user-defined, binding)\n\n${routing}`
+}
 
-/** Prompt appended to an orchestrator's system prompt: fixed mechanics,
- *  the user's global policy, and the session's workspace override. */
+/** Prompt appended to an orchestrator's system prompt: fixed mechanics
+ *  plus the user's structured rules (workspace override or global). */
 export function orchestratorPrompt(session: SessionMeta): string {
-  const global = registry?.getOrchestratorPolicy(null).trim() || DEFAULT_ORCHESTRATOR_POLICY
+  const rules = rulesFor(session)
+  return `${ORCHESTRATOR_MECHANICS}\n\n${renderRules(rules)}`
+}
+
+/** The rules governing a session: its workspace's override, else global. */
+export function rulesFor(session: SessionMeta): OrchestrationRules {
   const workspaceId = session.projectId
     ? (registry?.getProject(session.projectId)?.workspaceId ?? null)
     : null
-  const override = workspaceId ? (registry?.getOrchestratorPolicy(workspaceId).trim() ?? '') : ''
-  return [
-    ORCHESTRATOR_MECHANICS,
-    `Orchestration rules (user-defined):\n\n${global}`,
-    override && `## Workspace overrides (take precedence)\n\n${override}`
-  ]
-    .filter(Boolean)
-    .join('\n\n')
+  return (
+    (workspaceId ? registry?.getOrchestrationRules(workspaceId) : null) ??
+    registry?.getOrchestrationRules(null) ??
+    DEFAULT_RULES
+  )
 }
