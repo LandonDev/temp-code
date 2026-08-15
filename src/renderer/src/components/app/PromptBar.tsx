@@ -1,15 +1,17 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
-import { FileText, Image as ImageIcon, SlashSquare, X } from 'lucide-react'
+import { FileText, Image as ImageIcon, MessageSquare, SlashSquare, X } from 'lucide-react'
 import type { ProviderId, Reasoning } from '@shared/catalog'
-import type { Attachment, PermissionPolicy } from '@shared/events'
+import type { Attachment, PermissionPolicy, SessionMeta } from '@shared/events'
 import type { SlashCommand } from '@shared/domain'
 import { useApp } from '../../state/store'
 import { cn, displayPath } from '../../lib/utils'
 import { EASE_OUT, SPRING_PANEL, SPRING_SWAP } from '../../lib/ease'
+import { StatusDot, timeAgo } from './bits'
 import { ZIcon } from './zicon'
 import { ModelPicker } from './ModelPicker'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select'
+import { rankFiles } from '../../lib/rank'
 
 const REASONING_LABELS: Record<Reasoning, string> = {
   low: 'Low',
@@ -58,21 +60,33 @@ function triggerAt(
   return null
 }
 
-function rankFiles(files: string[], query: string): string[] {
-  if (!query) return files.slice(0, 8)
+/** One entry in the @ menu: a project file or a referencable thread (M9). */
+type AtMatch = { kind: 'file'; path: string } | { kind: 'thread'; session: SessionMeta }
+
+/** Threads mentionable from this composer: every non-archived root thread
+ *  except the current one — current project's first, then the rest, most
+ *  recently active first. */
+function rankThreads(
+  sessions: Record<string, SessionMeta>,
+  query: string,
+  currentId: string,
+  currentProjectId: string | null
+): SessionMeta[] {
   const q = query.toLowerCase()
-  const scored: { p: string; s: number }[] = []
-  for (const p of files) {
-    const lower = p.toLowerCase()
-    const base = lower.slice(lower.lastIndexOf('/') + 1)
-    const s = base.startsWith(q) ? 0 : lower.startsWith(q) ? 1 : lower.includes(q) ? 2 : -1
-    if (s >= 0) scored.push({ p, s })
-    if (scored.length > 400) break
-  }
-  return scored
-    .sort((a, b) => a.s - b.s || a.p.length - b.p.length)
-    .slice(0, 8)
-    .map((x) => x.p)
+  return Object.values(sessions)
+    .filter(
+      (s) =>
+        !s.parentId &&
+        !s.archived &&
+        s.id !== currentId &&
+        (!q || s.title.toLowerCase().includes(q))
+    )
+    .sort(
+      (a, b) =>
+        Number(b.projectId === currentProjectId) - Number(a.projectId === currentProjectId) ||
+        b.updatedAt - a.updatedAt
+    )
+    .slice(0, query ? 5 : 3)
 }
 
 /**
@@ -92,6 +106,8 @@ export function PromptBar({ compact }: { compact?: boolean }): React.JSX.Element
     session ? s.commands[`${session.provider}:${session.cwd}`] : undefined
   )
   const projectFiles = useApp((s) => (project ? s.files[project.id] : undefined))
+  const sessions = useApp((s) => s.sessions)
+  const projects = useApp((s) => s.projects)
   const fetchCommands = useApp((s) => s.fetchCommands)
   const fetchFiles = useApp((s) => s.fetchFiles)
   const saveAttachment = useApp((s) => s.saveAttachment)
@@ -143,8 +159,17 @@ export function PromptBar({ compact }: { compact?: boolean }): React.JSX.Element
       const q = trigger.query.toLowerCase()
       return (commands ?? []).filter((c) => c.name.toLowerCase().includes(q)).slice(0, 8)
     }
-    return rankFiles(projectFiles ?? [], trigger.query)
-  }, [trigger, dismissed, commands, projectFiles])
+    // One flat list for the keyboard, grouped in render: files, then threads.
+    return [
+      ...rankFiles(projectFiles ?? [], trigger.query).map((path): AtMatch => ({
+        kind: 'file',
+        path
+      })),
+      ...rankThreads(sessions, trigger.query, selectedId ?? '', project?.id ?? null).map(
+        (session): AtMatch => ({ kind: 'thread', session })
+      )
+    ]
+  }, [trigger, dismissed, commands, projectFiles, sessions, selectedId, project])
   const open = matches.length > 0
   const selectionKey = trigger ? `${trigger.mode}:${trigger.query}` : ''
   const active = selection.key === selectionKey ? Math.min(selection.index, matches.length - 1) : 0
@@ -256,7 +281,20 @@ export function PromptBar({ compact }: { compact?: boolean }): React.JSX.Element
     if (!trigger) return
     const m = matches[index]
     if (m === undefined) return
-    const inserted = trigger.mode === 'command' ? `/${(m as SlashCommand).name}` : `@${m as string}`
+    let inserted: string
+    if (trigger.mode === 'command') {
+      inserted = `/${(m as SlashCommand).name}`
+    } else if ((m as AtMatch).kind === 'thread') {
+      const t = (m as Extract<AtMatch, { kind: 'thread' }>).session
+      inserted = `@thread:${t.id}`
+      setFileRefs((prev) =>
+        prev.some((a) => a.sessionId === t.id)
+          ? prev
+          : [...prev, { path: `thread:${t.id}`, name: t.title, kind: 'thread', sessionId: t.id }]
+      )
+    } else {
+      inserted = `@${(m as Extract<AtMatch, { kind: 'file' }>).path}`
+    }
     const next = `${text.slice(0, trigger.start)}${inserted} ${text.slice(caret)}`
     setText(next)
     setDismissed(null)
@@ -339,31 +377,83 @@ export function PromptBar({ compact }: { compact?: boolean }): React.JSX.Element
                         </span>
                       </button>
                     ))
-                  : (matches as string[]).map((p, n) => {
-                      const base = p.split('/').pop()
-                      const dir = p.includes('/') ? p.slice(0, p.lastIndexOf('/')) : ''
+                  : (matches as AtMatch[]).map((m, n) => {
+                      // Grouped render over one flat keyboard list: a quiet
+                      // label where the files end and the threads begin.
+                      const firstThread =
+                        m.kind === 'thread' && (matches as AtMatch[])[n - 1]?.kind !== 'thread'
+                      const mixed = (matches as AtMatch[]).some((x) => x.kind === 'file')
+                      const label =
+                        firstThread && mixed ? (
+                          <div className="px-2 pt-1.5 pb-0.5 text-[11px] font-medium text-muted-foreground/60">
+                            Threads
+                          </div>
+                        ) : null
+                      if (m.kind === 'file') {
+                        const p = m.path
+                        const base = p.split('/').pop()
+                        const dir = p.includes('/') ? p.slice(0, p.lastIndexOf('/')) : ''
+                        return (
+                          <button
+                            key={p}
+                            data-active={n === active}
+                            onMouseEnter={() => setActive(n)}
+                            onMouseDown={(e) => {
+                              e.preventDefault()
+                              accept(n)
+                            }}
+                            className={cn(
+                              'flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left',
+                              n === active && 'bg-accent'
+                            )}
+                          >
+                            <FileText className="size-3.5 shrink-0 text-muted-foreground" />
+                            <span className="shrink-0 text-[13px]">{base}</span>
+                            {dir && (
+                              <span className="min-w-0 truncate text-xs text-muted-foreground/60">
+                                {dir}
+                              </span>
+                            )}
+                          </button>
+                        )
+                      }
+                      const t = m.session
+                      const foreign = t.projectId !== (project?.id ?? null)
+                      const projectName = foreign
+                        ? projects.find((p) => p.id === t.projectId)?.name
+                        : undefined
                       return (
-                        <button
-                          key={p}
-                          data-active={n === active}
-                          onMouseEnter={() => setActive(n)}
-                          onMouseDown={(e) => {
-                            e.preventDefault()
-                            accept(n)
-                          }}
-                          className={cn(
-                            'flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left',
-                            n === active && 'bg-accent'
-                          )}
-                        >
-                          <FileText className="size-3.5 shrink-0 text-muted-foreground" />
-                          <span className="shrink-0 text-[13px]">{base}</span>
-                          {dir && (
-                            <span className="min-w-0 truncate text-xs text-muted-foreground/60">
-                              {dir}
+                        <div key={t.id}>
+                          {label}
+                          <button
+                            data-active={n === active}
+                            onMouseEnter={() => setActive(n)}
+                            onMouseDown={(e) => {
+                              e.preventDefault()
+                              accept(n)
+                            }}
+                            className={cn(
+                              'flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left',
+                              n === active && 'bg-accent'
+                            )}
+                          >
+                            <span className="flex size-3.5 shrink-0 items-center justify-center">
+                              <StatusDot status={t.status} className="size-2" />
+                              {!['running', 'waiting', 'error', 'starting'].includes(t.status) && (
+                                <MessageSquare className="size-3.5 text-muted-foreground" />
+                              )}
                             </span>
-                          )}
-                        </button>
+                            <span className="min-w-0 truncate text-[13px]">{t.title}</span>
+                            {projectName && (
+                              <span className="shrink-0 text-xs text-muted-foreground/60">
+                                {projectName}
+                              </span>
+                            )}
+                            <span className="ml-auto shrink-0 pl-2 text-[11px] text-muted-foreground/60">
+                              {timeAgo(t.updatedAt)}
+                            </span>
+                          </button>
+                        </div>
                       )
                     })}
               </div>
@@ -412,10 +502,14 @@ export function PromptBar({ compact }: { compact?: boolean }): React.JSX.Element
                     exit={
                       reduce ? undefined : { opacity: 0, scale: 0.9, transition: { duration: 0.1 } }
                     }
-                    title={f.path}
+                    title={f.kind === 'thread' ? f.name : f.path}
                     className="flex items-center gap-1.5 rounded-md border bg-secondary/50 py-1 pr-1 pl-2 text-xs text-muted-foreground"
                   >
-                    <FileText className="size-3" />
+                    {f.kind === 'thread' ? (
+                      <MessageSquare className="size-3" />
+                    ) : (
+                      <FileText className="size-3" />
+                    )}
                     {f.name}
                     <button
                       onClick={() => setFileRefs((prev) => prev.filter((a) => a.path !== f.path))}

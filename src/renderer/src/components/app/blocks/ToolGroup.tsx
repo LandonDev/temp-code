@@ -1,9 +1,11 @@
 import { memo, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { cn, displayPath } from '../../../lib/utils'
+import { humanizeCommand } from '../../../lib/humanize'
 import { useApp } from '../../../state/store'
 import { ZIcon, type ZIconName } from '../zicon'
 import { duration } from '../bits'
 import { MatrixSpinner } from '../WorkingStrip'
+import { TextShimmer } from '../../motion/text-shimmer'
 import type { Block } from '../../../state/blocks'
 
 type ToolBlock = Extract<Block, { kind: 'tool' }>
@@ -11,8 +13,9 @@ type ToolBlock = Extract<Block, { kind: 'tool' }>
 /**
  * Zeron tool rendering (transcript.rs + proto/view.rs, values verbatim):
  * consecutive tool parts fold into ONE group row — a collapsed summary
- * sentence that expands to chip cards along a guide rail. Auto-open while
- * the turn streams; collapses when it settles; a user toggle overrides.
+ * sentence that expands to chip cards along a guide rail. Rows stay
+ * collapsed while the turn streams (a label shimmer is the live signal);
+ * only the user's toggle expands them.
  */
 
 const str = (v: unknown): string => (typeof v === 'string' ? v : '')
@@ -111,8 +114,11 @@ function detailOf(b: ToolBlock, cwd?: string): string {
   const i = input(b)
   const p = (s: string): string => (s ? displayPath(s, cwd) : '')
   switch (kindOf(b)) {
+    // Run rows read as intent, not shell: the harness's own description when
+    // it sent one (claude's Bash does), a derived phrase otherwise. The raw
+    // command lives in the expansion and the hover title.
     case 'run':
-      return str(i.command).replace(/\s*\n\s*/g, ' ')
+      return str(i.description) || humanizeCommand(str(i.command))
     case 'read':
     case 'write':
     case 'edit':
@@ -466,7 +472,7 @@ const Chip = memo(function Chip({ b }: { b: ToolBlock }): React.JSX.Element {
               wasLoading && !loading && 'animate-[z-fade-quick_150ms_ease-out]'
             )}
           >
-            {loading ? '' : detail}
+            {loading ? '' : running ? <TextShimmer>{detail}</TextShimmer> : detail}
           </span>
           {toolMs(b) !== undefined && (
             <span className="shrink-0 text-[10.5px] tabular-nums text-muted-foreground/60">
@@ -500,18 +506,17 @@ const Chip = memo(function Chip({ b }: { b: ToolBlock }): React.JSX.Element {
   )
 })
 
-/** The folded group row. `autoOpen` while the reply is streaming and this
- *  group is the last part; the user's toggle overrides either way.
+/** The folded group row — collapsed while it works (a shimmer on the label
+ *  is the live signal, never an auto-opened dump); the user's toggle is the
+ *  only thing that expands it.
  *
  *  A single tool skips the generic summary ("Called 1 tool") entirely: the
  *  header IS the verb + target, and one click opens the invocation/output
  *  directly — never a second nested expansion. */
 export const ToolGroup = memo(function ToolGroup({
-  tools,
-  autoOpen
+  tools
 }: {
   tools: ToolBlock[]
-  autoOpen: boolean
 }): React.JSX.Element {
   const gkey = `g:${tools[0].callId}`
   const [override, setOverrideRaw] = useState<boolean | null>(
@@ -523,7 +528,7 @@ export const ToolGroup = memo(function ToolGroup({
     setOverrideRaw(v)
   }
   const [userToggled, setUserToggled] = useState(false)
-  const open = override ?? autoOpen
+  const open = override ?? false
 
   const single = tools.length === 1 ? tools[0] : null
   const k = single ? kindOf(single) : null
@@ -533,7 +538,11 @@ export const ToolGroup = memo(function ToolGroup({
       : CHIP[k ?? 'tool'].label
     : null
   const detail = single ? detailOf(single, projectCwd) : null
-  const running = single ? single.output === undefined && single.input !== undefined : false
+  const running = tools.some((t) => t.output === undefined && t.input !== undefined)
+  // The hover title always tells the literal truth — for a run row that's
+  // the command itself, since the label is a humanized paraphrase.
+  const rawTitle =
+    single && k === 'run' ? str(input(single).command) : single ? `${label} ${detail}` : null
 
   return (
     <div>
@@ -543,7 +552,7 @@ export const ToolGroup = memo(function ToolGroup({
           setOverride(!open)
         }}
         className="group/hdr flex h-[26px] w-full items-center gap-2 px-1 text-left text-xs text-muted-foreground transition-colors duration-150 hover:text-foreground"
-        title={single ? `${label} ${detail}` : groupSummary(tools)}
+        title={rawTitle ?? groupSummary(tools)}
       >
         <ChevronTile open={open} />
         {single ? (
@@ -556,8 +565,10 @@ export const ToolGroup = memo(function ToolGroup({
             >
               {label}
             </span>
-            <span className="min-w-0 flex-1 truncate">{detail}</span>
-            {single && toolMs(single) !== undefined && (
+            <span className="min-w-0 flex-1 truncate">
+              {running ? <TextShimmer>{detail}</TextShimmer> : detail}
+            </span>
+            {toolMs(single) !== undefined && (
               <span className="shrink-0 text-[10.5px] tabular-nums text-muted-foreground/50">
                 {duration(toolMs(single)!)}
               </span>
@@ -565,7 +576,9 @@ export const ToolGroup = memo(function ToolGroup({
             {running && <span className="size-1.5 shrink-0 animate-pulse rounded-full bg-busy" />}
           </>
         ) : (
-          <span className="min-w-0 truncate">{groupSummary(tools)}</span>
+          <span className="min-w-0 truncate">
+            {running ? <TextShimmer>{groupSummary(tools)}</TextShimmer> : groupSummary(tools)}
+          </span>
         )}
       </button>
       <TweenHeight open={open} animate={userToggled}>

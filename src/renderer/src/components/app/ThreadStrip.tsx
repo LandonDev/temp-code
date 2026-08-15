@@ -1,9 +1,9 @@
 import { useMemo, useState } from 'react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
-import { Archive, ArchiveRestore, Pencil, Plus } from 'lucide-react'
+import { Archive, ArchiveRestore, FileCode2, FileDiff, Pencil, Plus, X } from 'lucide-react'
 import type { ThreadType } from '@shared/domain'
 import type { SessionMeta, SessionStatus } from '@shared/events'
-import { threadsOfProject, useApp } from '../../state/store'
+import { surfaceKey, threadsOfProject, useApp, type SurfaceRef } from '../../state/store'
 import { cn } from '../../lib/utils'
 import { SPRING_LAYOUT } from '../../lib/ease'
 import { Tabs, TabsList, TabsTrigger } from '../motion/tabs'
@@ -77,6 +77,14 @@ export function ThreadStrip(): React.JSX.Element | null {
   const setArchived = useApp((s) => s.setArchived)
   const renameSession = useApp((s) => s.renameSession)
   const lastSeen = useApp((s) => s.lastSeen)
+  const surfaces = useApp((s) => (s.selectedProjectId ? s.surfaces[s.selectedProjectId] : null))
+  const activeSurface = useApp((s) =>
+    s.selectedProjectId ? (s.activeSurface[s.selectedProjectId] ?? null) : null
+  )
+  const setActiveSurface = useApp((s) => s.setActiveSurface)
+  const closeSurface = useApp((s) => s.closeSurface)
+  const fileStates = useApp((s) => s.fileStates)
+  const problems = useApp((s) => s.problems)
   const [renaming, setRenaming] = useState<string | null>(null)
   const reduce = useReducedMotion()
 
@@ -102,11 +110,25 @@ export function ThreadStrip(): React.JSX.Element | null {
     void setArchived(id, true)
   }
 
+  // The surface strip (docs/PLAN-3.md M11): threads and file/diff surfaces
+  // share the tabs component, the selection model, and the indicator. The
+  // active tab is the active surface when one is up, else the thread.
+  const value = activeSurface ?? selectedId ?? ''
+  const onValue = (id: string): void => {
+    if (!projectId) return
+    if (id.startsWith('file:') || id.startsWith('diff:')) {
+      setActiveSurface(projectId, id)
+    } else {
+      setActiveSurface(projectId, null)
+      void select(id)
+    }
+  }
+
   return (
     <div className="flex h-10 shrink-0 items-center gap-1 border-b border-border/60 px-4">
       <Tabs
-        value={selectedId ?? ''}
-        onValueChange={(id) => void select(id)}
+        value={value}
+        onValueChange={onValue}
         variant="soft"
         className="flex min-w-0 items-center self-stretch overflow-x-auto [scrollbar-width:none]"
       >
@@ -192,12 +214,79 @@ export function ThreadStrip(): React.JSX.Element | null {
                 </motion.div>
               )
             })}
+            {(surfaces ?? []).map((surface) => {
+              const key = surfaceKey(surface)
+              const stateKey = `${projectId}:${surface.path}`
+              return (
+                <motion.div
+                  key={key}
+                  layout
+                  initial={reduce ? false : { opacity: 0, scale: 0.9 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={reduce ? undefined : { opacity: 0, scale: 0.9 }}
+                  transition={SPRING_LAYOUT}
+                >
+                  <SurfaceTab
+                    surface={surface}
+                    pending={fileStates[stateKey]?.pending ?? false}
+                    problems={problems[stateKey] ?? 0}
+                    onClose={() => projectId && closeSurface(projectId, key)}
+                  />
+                </motion.div>
+              )
+            })}
           </AnimatePresence>
         </TabsList>
       </Tabs>
       <NewThreadButton projectId={projectId} empty={threads.length === 0} />
       <div className="flex-1" />
       <ArchivedShelf archived={archived} />
+    </div>
+  )
+}
+
+/** A file/diff surface tab: filename, pending-save dot, quiet problem
+ *  count, hover ×. Middle-click closes, like every tab strip ever. */
+function SurfaceTab({
+  surface,
+  pending,
+  problems,
+  onClose
+}: {
+  surface: SurfaceRef
+  pending: boolean
+  problems: number
+  onClose: () => void
+}): React.JSX.Element {
+  const name = surface.path.split('/').pop() ?? surface.path
+  const Glyph = surface.kind === 'diff' ? FileDiff : FileCode2
+  return (
+    <div className="group/surface" onAuxClick={(e) => e.button === 1 && onClose()}>
+      <TabsTrigger
+        value={surfaceKey(surface)}
+        className="h-[26px] min-h-0 gap-1.5 px-2.5 py-0 font-normal"
+      >
+        <Glyph className="size-[13px] opacity-80 text-muted-foreground" />
+        <span className="max-w-44 truncate" title={surface.path}>
+          {surface.kind === 'diff' ? `Δ ${name}` : name}
+        </span>
+        {problems > 0 && (
+          <span className="text-[10.5px] tabular-nums text-destructive">{problems}</span>
+        )}
+        {pending && <span className="size-1.5 shrink-0 rounded-full bg-muted-foreground/50" />}
+        <span
+          role="button"
+          tabIndex={-1}
+          aria-label={`Close ${name}`}
+          onClick={(e) => {
+            e.stopPropagation()
+            onClose()
+          }}
+          className="-mr-1 flex size-4 items-center justify-center rounded text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-foreground group-hover/surface:opacity-100"
+        >
+          <X className="size-3" />
+        </span>
+      </TabsTrigger>
     </div>
   )
 }

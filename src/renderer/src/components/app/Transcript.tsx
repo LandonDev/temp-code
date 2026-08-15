@@ -40,6 +40,10 @@ function rowsFor(blocks: Block[]): Row[] {
   const rows: Row[] = []
   let turn = -1
   for (const b of blocks) {
+    // Thinking with no visible text shows as a live "Thinking" shimmer while
+    // it streams and leaves no trace once it settles — some harnesses (gpt
+    // via codex) report reasoning steps whose summaries are empty.
+    if (b.kind === 'thinking' && !b.streaming && b.text.trim() === '') continue
     if (b.kind === 'user') turn++
     if (b.kind === 'tool') {
       // File changes stand alone and loud; everything else folds into the
@@ -84,27 +88,20 @@ export const BlockRow = memo(function BlockRow({
 }): React.JSX.Element {
   if (block.kind === 'tool') {
     if (EDIT_TOOLS.has(block.name)) return <ZEditCard b={block} />
-    return <ToolGroup tools={[block]} autoOpen={false} />
+    return <ToolGroup tools={[block]} />
   }
-  return (
-    <RowContent
-      row={{ type: 'block', id: block.id, block, turn: 0 }}
-      autoOpen={false}
-      sessionId={sessionId}
-    />
-  )
+  if (block.kind === 'thinking' && !block.streaming && block.text.trim() === '') return <></>
+  return <RowContent row={{ type: 'block', id: block.id, block, turn: 0 }} sessionId={sessionId} />
 })
 
 const RowContent = memo(function RowContent({
   row,
-  autoOpen,
   sessionId
 }: {
   row: Row
-  autoOpen: boolean
   sessionId: string
 }): React.JSX.Element {
-  if (row.type === 'group') return <ToolGroup tools={row.tools} autoOpen={autoOpen} />
+  if (row.type === 'group') return <ToolGroup tools={row.tools} />
   if (row.type === 'edit') return <ZEditCard b={row.block} />
   const block = row.block
   switch (block.kind) {
@@ -422,7 +419,6 @@ export function Transcript({
             const row = rows[item.index]
             const isUser = row.type === 'block' && row.block.kind === 'user'
             const fresh = item.index === rows.length - 1 && blocks.length > initialCount.current
-            const autoOpen = row.type === 'group' && item.index === rows.length - 1 && running
             // Timestamp strip: under a user bubble, or under the last row of
             // a settled assistant turn, revealed by hovering the turn.
             const nextRow = rows[item.index + 1]
@@ -449,7 +445,7 @@ export function Transcript({
                     fresh && 'animate-[z-fade-in_500ms_cubic-bezier(0.16,1,0.3,1)]'
                   )}
                 >
-                  <RowContent row={row} autoOpen={autoOpen} sessionId={sessionId} />
+                  <RowContent row={row} sessionId={sessionId} />
                   {/* hover-revealed 16px timestamp strip */}
                   {lastOfTurn && ts !== undefined && (
                     <div

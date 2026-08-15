@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { WebSocketServer, type WebSocket } from 'ws'
 import { CATALOG } from '@shared/catalog'
@@ -7,10 +7,39 @@ import { openDb, Store } from './db'
 import { SessionRegistry } from './sessions'
 import { runDoctor } from './drivers/binaries'
 import { setOrchestrationRegistry } from './orchestration'
+import {
+  appListThreads,
+  appReadThread,
+  appStartThread,
+  setAppBridge,
+  setAppToolsRegistry
+} from './apptools'
 import { DEFAULT_RULES } from '@shared/rules'
-import { fileDiff, listFiles, workingTreeChanges } from './git'
+import {
+  aheadCount,
+  branches,
+  commit,
+  fileDiff,
+  listFiles,
+  log,
+  push,
+  showHead,
+  workingTreeChanges
+} from './git'
 import { listCommands } from './commands'
 import { readAttachment, saveAttachment } from './attachments'
+import {
+  closeAllWatchers,
+  fsCreate,
+  fsDelete,
+  fsList,
+  fsRead,
+  fsRename,
+  fsWrite,
+  subscribeFileEvents
+} from './files'
+import { attachLspSocket, ensureLsp, javaDoctor, lspStatus, stopAllLsp } from './lsp'
+import { fimComplete } from './fim'
 
 /** file.read is fenced to project working trees (plan docs live there). */
 function readAllowedFile(registry: SessionRegistry, path: string): string | null {
@@ -42,16 +71,34 @@ export interface RunningServer {
 export async function startServer(dbPath: string): Promise<RunningServer> {
   const store = new Store(openDb(dbPath))
   const registry = new SessionRegistry(store)
+  registry.resetStaleStatuses()
   registry.startIdleSweep()
   setOrchestrationRegistry(registry)
+  setAppToolsRegistry(registry)
   void runDoctor() // warm the cache so the new-session modal opens ready
 
   const wss = new WebSocketServer({ host: '127.0.0.1', port: 0 })
 
-  wss.on('connection', (ws: WebSocket) => {
+  wss.on('connection', (ws: WebSocket, req) => {
+    // LSP tunnel (docs/PLAN-3.md M13): raw JSON-RPC, no contract schema in
+    // the hot path. Same localhost-only single-user trust as everything
+    // else; the serverId is validated against the pool.
+    const url = req.url ?? ''
+    if (url.startsWith('/lsp/')) {
+      attachLspSocket(url.slice('/lsp/'.length), ws)
+      return
+    }
     const unsubs = new Map<string, () => void>()
+    /** per-connection file watchers (fs.watch), keyed by projectId */
+    const fsWatches = new Map<string, () => void>()
     const sendFrame = (frame: ServerFrame): void => {
       if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(frame))
+    }
+    /** Project lookup that throws — fs/git methods are meaningless without one. */
+    const mustProject = (projectId: string): { id: string; cwd: string } => {
+      const project = registry.getProject(projectId)
+      if (!project) throw new Error(`unknown project: ${projectId}`)
+      return project
     }
 
     // Every client gets session-meta updates (cheap, drives the sidebar).
@@ -84,7 +131,11 @@ export async function startServer(dbPath: string): Promise<RunningServer> {
             sendFrame({ id: req.id, ok: true, result: CATALOG })
             break
           case 'doctor.get':
-            sendFrame({ id: req.id, ok: true, result: await runDoctor() })
+            sendFrame({
+              id: req.id,
+              ok: true,
+              result: { ...(await runDoctor()), java: await javaDoctor() }
+            })
             break
           case 'workspace.create':
             sendFrame({
@@ -107,7 +158,8 @@ export async function startServer(dbPath: string): Promise<RunningServer> {
               result: await registry.createProject(
                 req.params.workspaceId,
                 req.params.name,
-                req.params.mode
+                req.params.mode,
+                { baseRef: req.params.baseRef, existingBranch: req.params.existingBranch }
               )
             })
             break
@@ -143,6 +195,127 @@ export async function startServer(dbPath: string): Promise<RunningServer> {
           }
           case 'file.read': {
             sendFrame({ id: req.id, ok: true, result: readAllowedFile(registry, req.params.path) })
+            break
+          }
+          case 'fs.list':
+            sendFrame({
+              id: req.id,
+              ok: true,
+              result: fsList(mustProject(req.params.projectId).cwd, req.params.dir)
+            })
+            break
+          case 'fs.read':
+            sendFrame({
+              id: req.id,
+              ok: true,
+              result: fsRead(mustProject(req.params.projectId).cwd, req.params.path)
+            })
+            break
+          case 'fs.write':
+            sendFrame({
+              id: req.id,
+              ok: true,
+              result: fsWrite(mustProject(req.params.projectId).cwd, req.params.path, req.params.content)
+            })
+            break
+          case 'fs.create':
+            fsCreate(mustProject(req.params.projectId).cwd, req.params.path, req.params.kind)
+            sendFrame({ id: req.id, ok: true, result: null })
+            break
+          case 'fs.rename':
+            fsRename(mustProject(req.params.projectId).cwd, req.params.path, req.params.to)
+            sendFrame({ id: req.id, ok: true, result: null })
+            break
+          case 'fs.delete':
+            fsDelete(mustProject(req.params.projectId).cwd, req.params.path)
+            sendFrame({ id: req.id, ok: true, result: null })
+            break
+          case 'fs.watch': {
+            const { projectId, subscribe } = req.params
+            if (subscribe && !fsWatches.has(projectId)) {
+              const project = mustProject(projectId)
+              fsWatches.set(
+                projectId,
+                subscribeFileEvents(projectId, project.cwd, (e) =>
+                  sendFrame({ push: 'file-event', ...e })
+                )
+              )
+            } else if (!subscribe) {
+              fsWatches.get(projectId)?.()
+              fsWatches.delete(projectId)
+            }
+            sendFrame({ id: req.id, ok: true, result: null })
+            break
+          }
+          case 'project.commit': {
+            const project = mustProject(req.params.projectId)
+            sendFrame({
+              id: req.id,
+              ok: true,
+              result: await commit(project.cwd, req.params.message, req.params.paths)
+            })
+            break
+          }
+          case 'project.push': {
+            const project = mustProject(req.params.projectId)
+            sendFrame({
+              id: req.id,
+              ok: true,
+              result: await push(project.cwd, req.params.targetBranch)
+            })
+            break
+          }
+          case 'project.log': {
+            const project = mustProject(req.params.projectId)
+            sendFrame({
+              id: req.id,
+              ok: true,
+              result: {
+                commits: await log(project.cwd, req.params.limit),
+                ahead: await aheadCount(project.cwd)
+              }
+            })
+            break
+          }
+          case 'project.branches': {
+            const ws2 = registry.listWorkspaces().find((w) => w.id === req.params.workspaceId)
+            if (!ws2) throw new Error(`unknown workspace: ${req.params.workspaceId}`)
+            sendFrame({ id: req.id, ok: true, result: await branches(ws2.path) })
+            break
+          }
+          case 'project.show': {
+            const project = mustProject(req.params.projectId)
+            sendFrame({
+              id: req.id,
+              ok: true,
+              result: await showHead(project.cwd, req.params.path)
+            })
+            break
+          }
+          case 'lsp.ensure': {
+            const project = mustProject(req.params.projectId)
+            sendFrame({
+              id: req.id,
+              ok: true,
+              result: await ensureLsp(req.params.projectId, project.cwd, req.params.lang)
+            })
+            break
+          }
+          case 'lsp.status':
+            sendFrame({ id: req.id, ok: true, result: await lspStatus() })
+            break
+          case 'fim.complete': {
+            const project = mustProject(req.params.projectId)
+            sendFrame({
+              id: req.id,
+              ok: true,
+              result: await fimComplete(
+                project.cwd,
+                req.params.path,
+                req.params.prefix,
+                req.params.suffix
+              )
+            })
             break
           }
           case 'rules.get': {
@@ -262,6 +435,34 @@ export async function startServer(dbPath: string): Promise<RunningServer> {
             await registry.setPermission(req.params.sessionId, req.params.permission)
             sendFrame({ id: req.id, ok: true, result: null })
             break
+          // App tools over WS (M10): the codex bridge's path to the same
+          // registry operations the in-process claude toolset uses.
+          case 'app.listThreads': {
+            const caller = registry.list().find((s) => s.id === req.params.sessionId)
+            if (!caller) throw new Error(`unknown session: ${req.params.sessionId}`)
+            sendFrame({
+              id: req.id,
+              ok: true,
+              result: appListThreads(registry, caller, req.params.allProjects)
+            })
+            break
+          }
+          case 'app.readThread': {
+            const caller = registry.list().find((s) => s.id === req.params.sessionId)
+            if (!caller) throw new Error(`unknown session: ${req.params.sessionId}`)
+            sendFrame({ id: req.id, ok: true, result: appReadThread(registry, req.params.threadId) })
+            break
+          }
+          case 'app.startThread': {
+            const caller = registry.list().find((s) => s.id === req.params.sessionId)
+            if (!caller) throw new Error(`unknown session: ${req.params.sessionId}`)
+            sendFrame({
+              id: req.id,
+              ok: true,
+              result: await appStartThread(registry, caller, req.params)
+            })
+            break
+          }
         }
       } catch (err) {
         sendFrame({
@@ -277,6 +478,8 @@ export async function startServer(dbPath: string): Promise<RunningServer> {
       offRemoved()
       for (const off of unsubs.values()) off()
       unsubs.clear()
+      for (const off of fsWatches.values()) off()
+      fsWatches.clear()
     })
   })
 
@@ -284,11 +487,18 @@ export async function startServer(dbPath: string): Promise<RunningServer> {
   const address = wss.address()
   const port = typeof address === 'object' && address ? address.port : 0
 
+  // Codex reaches the app tools through the stdio bridge (M10). Dev and
+  // scripts run from the repo root; a missing script just disables it.
+  const bridgeScript = resolve(process.cwd(), 'scripts', 'app-mcp-bridge.mjs')
+  setAppBridge(existsSync(bridgeScript) ? { port, scriptPath: bridgeScript } : null)
+
   return {
     port,
     registry,
     close: async () => {
       await registry.disposeAll()
+      await closeAllWatchers()
+      stopAllLsp()
       wss.close()
     }
   }

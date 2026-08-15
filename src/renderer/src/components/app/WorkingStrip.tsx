@@ -78,17 +78,25 @@ export const WorkingStrip = memo(function WorkingStrip({
   const starting = status === 'starting'
   const active = running || starting
 
-  // Elapsed counts from the moment this strip saw the turn begin.
-  const [elapsed, setElapsed] = useState(0)
-  useEffect(() => {
-    if (!active) {
-      setElapsed(0)
-      return
+  // The turn began at the last user message — an anchor that survives
+  // leaving and re-entering the thread (a mount-time Date.now() would
+  // restart the clock on every visit).
+  const turnStart = useApp((s) => {
+    const blocks = s.blocks[sessionId]
+    if (!blocks) return undefined
+    for (let i = blocks.length - 1; i >= 0; i--) {
+      if (blocks[i].kind === 'user') return blocks[i].ts
     }
-    const t0 = Date.now()
-    const t = setInterval(() => setElapsed(Date.now() - t0), 1000)
+    return undefined
+  })
+
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    if (!active) return
+    const t = setInterval(() => setNow(Date.now()), 1000)
     return () => clearInterval(t)
   }, [active])
+  const elapsed = active ? Math.max(0, now - (turnStart ?? now)) : 0
 
   // Flavour word: seeded per chat, rotates every 7s.
   const seed = useMemo(() => seedOf(sessionId), [sessionId])

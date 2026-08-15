@@ -2,6 +2,8 @@ import { create } from 'zustand'
 import type { CATALOG, ProviderId, Reasoning } from '@shared/catalog'
 import type { Attachment, EventRow, PermissionPolicy, SessionMeta } from '@shared/events'
 import type {
+  BranchList,
+  CommitInfo,
   FileChange,
   ProjectMeta,
   ProjectMode,
@@ -11,6 +13,7 @@ import type {
 } from '@shared/domain'
 import type { CreateSessionInput } from '@shared/contract'
 import { client } from '../lib/client'
+import { dispatchFileEvent, flushAllBuffers } from '../lib/file-events'
 import {
   foldAll,
   foldEvent,
@@ -30,11 +33,30 @@ export interface ProviderHealth {
   error?: string
 }
 
+/** The doctor's Java row (docs/PLAN-3.md M13): JDK + jdtls download. */
+export interface JavaHealth extends ProviderHealth {
+  jdtls: boolean
+}
+
+export type DoctorReport = Record<ProviderId, ProviderHealth> & { java?: JavaHealth }
+
 export type ThemePref = 'system' | 'light' | 'dark'
+
+/** A non-thread tab in the surface strip (docs/PLAN-3.md M11/M14). */
+export interface SurfaceRef {
+  kind: 'file' | 'diff'
+  /** project-relative path */
+  path: string
+}
+
+export const surfaceKey = (s: SurfaceRef): string => `${s.kind}:${s.path}`
 
 const FAVORITES_KEY = 'model-favorites'
 const THEME_KEY = 'theme'
 const LAST_SEEN_KEY = 'thread-last-seen'
+const SURFACES_KEY = 'surfaces-v1'
+const FORMAT_KEY = 'format-on-save'
+const GHOST_KEY = 'ghost-text'
 
 const osDark = window.matchMedia('(prefers-color-scheme: dark)')
 
@@ -77,11 +99,28 @@ interface AppState {
   /** sessions whose event backlog has arrived (Transcript loader gate) */
   loaded: Record<string, boolean>
   railOpen: boolean
-  /** project-relative path the right rail's diff view is showing */
-  railDiff: string | null
+  /** which rail panel is up: Changes or Files */
+  railPanel: 'changes' | 'files'
+  /** open editor surfaces per project (persisted with the project) */
+  surfaces: Record<string, SurfaceRef[]>
+  /** active surface key per project; null = a thread is in the main view */
+  activeSurface: Record<string, string | null>
+  /** one-shot cursor reveal for the next surface mount, `${projectId}:${path}` */
+  reveal: { key: string; position: { lineNumber: number; column: number } } | null
+  /** autosave/conflict state per `${projectId}:${path}` (models.ts writes) */
+  fileStates: Record<string, { pending: boolean; conflict: 'external' | 'deleted' | null }>
+  /** error-marker counts per `${projectId}:${path}` (models.ts writes) */
+  problems: Record<string, number>
+  /** commit history + unpushed count per project (Changes rail) */
+  gitLog: Record<string, { commits: CommitInfo[]; ahead: number | null }>
+  /** branches of the workspace repo (project-create pickers) */
+  branchLists: Record<string, BranchList>
+  quickOpen: 'files' | 'symbols' | null
+  formatOnSave: { java: boolean; web: boolean }
+  ghostText: boolean
   settingsOpen: boolean
   theme: ThemePref
-  doctor: Record<ProviderId, ProviderHealth> | null
+  doctor: DoctorReport | null
   /** starred models, `${provider}:${modelId}` (persisted) */
   favoriteModels: string[]
   /** per-thread last-seen activity timestamp (persisted) — unread dots */
@@ -91,9 +130,33 @@ interface AppState {
   refreshTree: () => Promise<void>
   addWorkspace: (path: string) => Promise<WorkspaceMeta>
   removeWorkspace: (workspaceId: string) => Promise<void>
-  createProject: (workspaceId: string, name: string, mode: ProjectMode) => Promise<ProjectMeta>
+  createProject: (
+    workspaceId: string,
+    name: string,
+    mode: ProjectMode,
+    opts?: { baseRef?: string; existingBranch?: string }
+  ) => Promise<ProjectMeta>
   removeProject: (projectId: string) => Promise<void>
   selectProject: (projectId: string | null) => void
+  /** open (or focus) a file surface; reveal jumps the cursor after mount */
+  openFileSurface: (
+    projectId: string,
+    path: string,
+    revealAt?: { lineNumber: number; column: number } | null
+  ) => void
+  openDiffSurface: (projectId: string, path: string) => void
+  closeSurface: (projectId: string, key: string) => void
+  /** key of a file/diff surface, or null to show the selected thread */
+  setActiveSurface: (projectId: string, key: string | null) => void
+  clearReveal: () => void
+  commitProject: (projectId: string, message: string, paths?: string[]) => Promise<void>
+  pushProject: (projectId: string, targetBranch?: string) => Promise<void>
+  fetchGitLog: (projectId: string) => Promise<void>
+  fetchBranches: (workspaceId: string) => Promise<BranchList>
+  setQuickOpen: (mode: 'files' | 'symbols' | null) => void
+  setRailPanel: (panel: 'changes' | 'files') => void
+  setFormatOnSave: (lang: 'java' | 'web', on: boolean) => void
+  setGhostText: (on: boolean) => void
   select: (sessionId: string | null) => Promise<void>
   /** subscribe + backfill a session WITHOUT selecting it (agent drill-in) */
   loadSession: (sessionId: string) => Promise<void>
@@ -125,7 +188,6 @@ interface AppState {
   saveAttachment: (name: string, dataBase64: string) => Promise<Attachment>
   readFile: (path: string) => Promise<string | null>
   setRailOpen: (open: boolean) => void
-  setRailDiff: (path: string | null) => void
   setSettingsOpen: (open: boolean) => void
   setTheme: (theme: ThemePref) => void
   fetchDoctor: () => Promise<void>
@@ -133,6 +195,46 @@ interface AppState {
   /** Open the right rail on a file's diff. Accepts absolute or
    *  project-relative paths; absolute paths outside the project no-op. */
   openFileRef: (path: string) => void
+}
+
+/** One project watched at a time: the selected one, while it has open
+ *  surfaces or a visible rail (docs/PLAN-3.md M11 — watchers stop when
+ *  nobody is looking). */
+let watchedProjectId: string | null = null
+function syncWatch(s: {
+  selectedProjectId: string | null
+  surfaces: Record<string, SurfaceRef[]>
+  railOpen: boolean
+}): void {
+  const want =
+    s.selectedProjectId && (s.railOpen || (s.surfaces[s.selectedProjectId] ?? []).length > 0)
+      ? s.selectedProjectId
+      : null
+  if (want === watchedProjectId) return
+  if (watchedProjectId) {
+    void client
+      .request('fs.watch', { projectId: watchedProjectId, subscribe: false })
+      .catch(() => {})
+  }
+  watchedProjectId = want
+  if (want) void client.request('fs.watch', { projectId: want, subscribe: true }).catch(() => {})
+}
+
+/** Debounced Changes-rail refresh off file events (push-driven, M12). */
+const changeTimers = new Map<string, number>()
+function scheduleChangesRefresh(
+  projectId: string,
+  fetchChanges: (id: string) => Promise<void>
+): void {
+  const prior = changeTimers.get(projectId)
+  if (prior !== undefined) window.clearTimeout(prior)
+  changeTimers.set(
+    projectId,
+    window.setTimeout(() => {
+      changeTimers.delete(projectId)
+      void fetchChanges(projectId)
+    }, 300)
+  )
 }
 
 function publishFold(
@@ -164,7 +266,20 @@ export const useApp = create<AppState>((set, get) => ({
   selectedId: null,
   loaded: {},
   railOpen: false,
-  railDiff: null,
+  railPanel: 'changes',
+  surfaces: JSON.parse(localStorage.getItem(SURFACES_KEY) ?? '{}') as Record<string, SurfaceRef[]>,
+  activeSurface: {},
+  reveal: null,
+  fileStates: {},
+  problems: {},
+  gitLog: {},
+  branchLists: {},
+  quickOpen: null,
+  formatOnSave: JSON.parse(localStorage.getItem(FORMAT_KEY) ?? '{"java":false,"web":false}') as {
+    java: boolean
+    web: boolean
+  },
+  ghostText: localStorage.getItem(GHOST_KEY) === 'true',
   settingsOpen: false,
   theme: storedTheme(),
   doctor: null,
@@ -204,6 +319,9 @@ export const useApp = create<AppState>((set, get) => ({
           events: { ...s.events, [sessionId]: [...(s.events[sessionId] ?? []), push.row] }
         }))
         publishFold(set, sessionId, fold)
+      } else if (push.push === 'file-event') {
+        dispatchFileEvent(push)
+        scheduleChangesRefresh(push.projectId, get().fetchChanges)
       } else if (push.push === 'session-removed') {
         set((s) => {
           const sessions = { ...s.sessions }
@@ -226,12 +344,15 @@ export const useApp = create<AppState>((set, get) => ({
     })
     client.onClose(() => set({ connected: false }))
     client.onOpen(() => {
-      // After (re)connect: refresh state and resubscribe the open session.
+      // After (re)connect: refresh state and resubscribe the open session
+      // and the file watcher (the server side died with the socket).
       void (async () => {
         await get().refreshTree()
         set({ connected: true })
         const sel = get().selectedId
         if (sel) await get().select(sel)
+        watchedProjectId = null
+        syncWatch(get())
       })()
     })
     await client.connect()
@@ -278,8 +399,13 @@ export const useApp = create<AppState>((set, get) => ({
     await get().refreshTree()
   },
 
-  createProject: async (workspaceId, name, mode) => {
-    const project = await client.request<ProjectMeta>('project.create', { workspaceId, name, mode })
+  createProject: async (workspaceId, name, mode, opts) => {
+    const project = await client.request<ProjectMeta>('project.create', {
+      workspaceId,
+      name,
+      mode,
+      ...opts
+    })
     await get().refreshTree()
     return project
   },
@@ -295,13 +421,114 @@ export const useApp = create<AppState>((set, get) => ({
     // target project is already selected.
     set({ settingsOpen: false })
     if (projectId === get().selectedProjectId) return
-    set({ selectedProjectId: projectId, railDiff: null })
-    // Open the project's most recent thread, if it has one.
+    void flushAllBuffers() // never leave a dirty buffer behind a switch
+    set({ selectedProjectId: projectId })
+    // Open the project's most recent thread, if it has one. Surfaces and
+    // their active tab are per-project state — they restore by themselves.
     const threads = Object.values(get().sessions)
       .filter((s) => s.projectId === projectId && !s.parentId && !s.archived)
       .sort((a, b) => b.createdAt - a.createdAt)
     void get().select(threads[0]?.id ?? null)
     if (projectId) void get().fetchChanges(projectId)
+    syncWatch(get())
+  },
+
+  openFileSurface: (projectId, path, revealAt) => {
+    void flushAllBuffers()
+    const key = `file:${path}`
+    set((s) => {
+      const list = s.surfaces[projectId] ?? []
+      const surfaces = list.some((x) => surfaceKey(x) === key)
+        ? s.surfaces
+        : { ...s.surfaces, [projectId]: [...list, { kind: 'file' as const, path }] }
+      localStorage.setItem(SURFACES_KEY, JSON.stringify(surfaces))
+      return {
+        surfaces,
+        activeSurface: { ...s.activeSurface, [projectId]: key },
+        reveal: revealAt ? { key: `${projectId}:${path}`, position: revealAt } : s.reveal
+      }
+    })
+    syncWatch(get())
+  },
+
+  openDiffSurface: (projectId, path) => {
+    void flushAllBuffers()
+    const key = `diff:${path}`
+    set((s) => {
+      const list = s.surfaces[projectId] ?? []
+      const surfaces = list.some((x) => surfaceKey(x) === key)
+        ? s.surfaces
+        : { ...s.surfaces, [projectId]: [...list, { kind: 'diff' as const, path }] }
+      localStorage.setItem(SURFACES_KEY, JSON.stringify(surfaces))
+      return { surfaces, activeSurface: { ...s.activeSurface, [projectId]: key } }
+    })
+    syncWatch(get())
+  },
+
+  closeSurface: (projectId, key) => {
+    set((s) => {
+      const list = s.surfaces[projectId] ?? []
+      const at = list.findIndex((x) => surfaceKey(x) === key)
+      const next = list.filter((x) => surfaceKey(x) !== key)
+      const surfaces = { ...s.surfaces, [projectId]: next }
+      localStorage.setItem(SURFACES_KEY, JSON.stringify(surfaces))
+      // Closing the active tab hands focus to its neighbour, then threads.
+      let active = s.activeSurface[projectId] ?? null
+      if (active === key) {
+        const neighbour = next[Math.min(Math.max(at, 0), next.length - 1)]
+        active = neighbour ? surfaceKey(neighbour) : null
+      }
+      return { surfaces, activeSurface: { ...s.activeSurface, [projectId]: active } }
+    })
+    syncWatch(get())
+  },
+
+  setActiveSurface: (projectId, key) => {
+    void flushAllBuffers()
+    set((s) => ({ activeSurface: { ...s.activeSurface, [projectId]: key } }))
+  },
+
+  clearReveal: () => set({ reveal: null }),
+
+  commitProject: async (projectId, message, paths) => {
+    await client.request('project.commit', { projectId, message, paths })
+    await Promise.all([get().fetchChanges(projectId), get().fetchGitLog(projectId)])
+  },
+
+  pushProject: async (projectId, targetBranch) => {
+    await client.request('project.push', { projectId, targetBranch })
+    await get().fetchGitLog(projectId)
+  },
+
+  fetchGitLog: async (projectId) => {
+    const result = await client
+      .request<{ commits: CommitInfo[]; ahead: number | null }>('project.log', {
+        projectId,
+        limit: 20
+      })
+      .catch(() => ({ commits: [], ahead: null }))
+    set((s) => ({ gitLog: { ...s.gitLog, [projectId]: result } }))
+  },
+
+  fetchBranches: async (workspaceId) => {
+    const list = await client.request<BranchList>('project.branches', { workspaceId })
+    set((s) => ({ branchLists: { ...s.branchLists, [workspaceId]: list } }))
+    return list
+  },
+
+  setQuickOpen: (mode) => set({ quickOpen: mode }),
+
+  setRailPanel: (panel) => set({ railPanel: panel }),
+
+  setFormatOnSave: (lang, on) => {
+    const formatOnSave = { ...get().formatOnSave, [lang]: on }
+    localStorage.setItem(FORMAT_KEY, JSON.stringify(formatOnSave))
+    set({ formatOnSave })
+  },
+
+  setGhostText: (on) => {
+    localStorage.setItem(GHOST_KEY, String(on))
+    set({ ghostText: on })
   },
 
   select: async (sessionId) => {
@@ -309,6 +536,9 @@ export const useApp = create<AppState>((set, get) => ({
     if (prev && prev !== sessionId) {
       void client.request('session.unsubscribe', { sessionId: prev }).catch(() => {})
     }
+    // Note: selecting a thread does NOT clear the active surface — the
+    // strip does that on explicit tab clicks, so project switches restore
+    // whichever surface was up when the user left.
     set({ selectedId: sessionId, settingsOpen: false })
     if (!sessionId) return
     get().markSeen(sessionId)
@@ -448,9 +678,10 @@ export const useApp = create<AppState>((set, get) => ({
     return client.request<string | null>('file.read', { path }).catch(() => null)
   },
 
-  setRailOpen: (open) => set({ railOpen: open, ...(open ? {} : { railDiff: null }) }),
-  setRailDiff: (path) => set({ railDiff: path }),
-
+  setRailOpen: (open) => {
+    set({ railOpen: open })
+    syncWatch(get())
+  },
   setSettingsOpen: (open) => set({ settingsOpen: open }),
 
   setTheme: (theme) => {
@@ -460,7 +691,7 @@ export const useApp = create<AppState>((set, get) => ({
   },
 
   fetchDoctor: async () => {
-    const doctor = await client.request<Record<ProviderId, ProviderHealth>>('doctor.get')
+    const doctor = await client.request<DoctorReport>('doctor.get')
     set({ doctor })
   },
 
@@ -474,16 +705,27 @@ export const useApp = create<AppState>((set, get) => ({
   },
 
   openFileRef: (path) => {
-    const { selectedProjectId, projects } = get()
+    const { selectedProjectId, projects, changes } = get()
     const project = projects.find((p) => p.id === selectedProjectId)
     if (!project) return
+    const lineMatch = /:(\d+)(?::(\d+))?$/.exec(path)
     let rel = path.replace(/:\d+(?::\d+)?$/, '') // strip :line(:col)
     if (rel.startsWith('/')) {
       const root = project.cwd.endsWith('/') ? project.cwd : `${project.cwd}/`
       if (!rel.startsWith(root)) return
       rel = rel.slice(root.length)
     }
-    set({ railOpen: true, railDiff: rel })
+    // Changed files open as a diff surface (review loop); everything else
+    // as a plain file surface, at the referenced line when one was given.
+    if ((changes[project.id] ?? []).some((c) => c.path === rel)) {
+      get().openDiffSurface(project.id, rel)
+    } else {
+      get().openFileSurface(
+        project.id,
+        rel,
+        lineMatch ? { lineNumber: Number(lineMatch[1]), column: Number(lineMatch[2] ?? 1) } : null
+      )
+    }
   }
 }))
 

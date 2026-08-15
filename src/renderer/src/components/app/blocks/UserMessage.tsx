@@ -44,11 +44,27 @@ const TOKEN = /(@[^\s@]{2,}|(?<=^|\s)\/[\w:-]+(?=$|\s))/g
 
 function TokenizedText({ text }: { text: string }): React.JSX.Element {
   const openFileRef = useApp((s) => s.openFileRef)
+  const sessions = useApp((s) => s.sessions)
+  const select = useApp((s) => s.select)
   const parts = text.split(TOKEN)
 
   return (
     <>
       {parts.map((part, n) => {
+        // Thread mentions (M9) stay human: the title, never the id.
+        if (n % 2 === 1 && part.startsWith('@thread:')) {
+          const id = part.slice('@thread:'.length)
+          const thread = sessions[id]
+          return (
+            <button
+              key={n}
+              onClick={() => thread && void select(id)}
+              className="rounded-sm bg-accent px-1 text-[13px] text-foreground hover:underline"
+            >
+              @{thread?.title ?? 'thread'}
+            </button>
+          )
+        }
         if (n % 2 === 1 && part.startsWith('@')) {
           const path = part.slice(1)
           return (
