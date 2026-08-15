@@ -234,6 +234,10 @@ export async function startServer(dbPath: string): Promise<RunningServer> {
             unsubs.delete(req.params.sessionId)
             sendFrame({ id: req.id, ok: true, result: null })
             break
+          case 'session.rename':
+            await registry.rename(req.params.sessionId, req.params.title)
+            sendFrame({ id: req.id, ok: true, result: null })
+            break
           case 'session.archive':
             await registry.setArchived(req.params.sessionId, req.params.archived)
             sendFrame({ id: req.id, ok: true, result: null })

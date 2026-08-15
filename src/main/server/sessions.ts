@@ -322,6 +322,13 @@ export class SessionRegistry {
     this.handles.get(sessionId)?.answer?.(requestId, answers)
   }
 
+  async rename(sessionId: string, title: string): Promise<void> {
+    const t = title.trim().slice(0, 120)
+    if (!t) return
+    const next = this.store.updateSession(sessionId, { title: t })
+    if (next) this.notifyMeta(next)
+  }
+
   async setArchived(sessionId: string, archived: boolean): Promise<void> {
     if (archived) await this.dropHandle(sessionId)
     const next = this.store.updateSession(sessionId, { archived })

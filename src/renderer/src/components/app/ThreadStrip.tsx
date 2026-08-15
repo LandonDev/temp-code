@@ -1,8 +1,8 @@
 import { useMemo, useState } from 'react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
-import { Archive, ArchiveRestore, Plus } from 'lucide-react'
+import { Archive, ArchiveRestore, Pencil, Plus } from 'lucide-react'
 import type { ThreadType } from '@shared/domain'
-import type { SessionMeta } from '@shared/events'
+import type { SessionMeta, SessionStatus } from '@shared/events'
 import { threadsOfProject, useApp } from '../../state/store'
 import { cn } from '../../lib/utils'
 import { SPRING_LAYOUT } from '../../lib/ease'
@@ -15,7 +15,9 @@ import {
 } from '../ui/context-menu'
 import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover'
 import { Button } from '../ui/button'
-import { StatusDot, THREAD_GLYPHS, THREAD_LABELS, THREAD_TINTS, timeAgo } from './bits'
+import { Spinner } from '../ui/spinner'
+import { useNow } from '../../lib/useNow'
+import { duration, THREAD_GLYPHS, THREAD_LABELS, THREAD_TINTS, timeAgo } from './bits'
 
 const TYPE_HINTS: Record<ThreadType, string> = {
   chat: 'Ask questions, explore the code',
@@ -24,11 +26,48 @@ const TYPE_HINTS: Record<ThreadType, string> = {
   orchestration: 'Spawn and direct subagents'
 }
 
+/** Tab-edge status: what this thread is doing, or what it wants from you.
+ *  Working → spinner; needs you (approval/question) → amber; failed → red;
+ *  finished something while you were elsewhere → unread dot. */
+function TabIndicator({
+  status,
+  unread,
+  since,
+  now
+}: {
+  status: SessionStatus
+  unread: boolean
+  /** when the thread started working (status → running transition) */
+  since: number
+  now: number
+}): React.JSX.Element | null {
+  if (status === 'running' || status === 'starting') {
+    const ms = now - since
+    return (
+      <span className="flex shrink-0 items-center gap-1">
+        <Spinner className="size-3 text-muted-foreground" />
+        {ms >= 3000 && (
+          <span className="text-[10.5px] tabular-nums text-muted-foreground/60">
+            {duration(ms)}
+          </span>
+        )}
+      </span>
+    )
+  }
+  if (status === 'waiting')
+    return <span className="size-1.5 shrink-0 animate-pulse rounded-full bg-warning" />
+  if (status === 'error') return <span className="size-1.5 shrink-0 rounded-full bg-destructive" />
+  if (unread) return <span className="size-1.5 shrink-0 rounded-full bg-info" />
+  return null
+}
+
 /**
- * Threads of the selected project as soft chip tabs — the active chip's
- * accent wash glides between tabs, chips slide closed when archived.
- * Right-click a tab to archive it; the shelf at the strip's end recovers
- * archived threads (Zeron: hidden, never deleted).
+ * Threads of the selected project as soft chip tabs, freshest activity
+ * first — the active chip's accent wash glides between tabs, chips slide
+ * closed when archived and glide when the order changes. Each tab wears
+ * its thread's live status (TabIndicator); right-click renames or
+ * archives; the shelf at the strip's end recovers archived threads
+ * (Zeron: hidden, never deleted).
  */
 export function ThreadStrip(): React.JSX.Element | null {
   const projectId = useApp((s) => s.selectedProjectId)
@@ -36,9 +75,14 @@ export function ThreadStrip(): React.JSX.Element | null {
   const selectedId = useApp((s) => s.selectedId)
   const select = useApp((s) => s.select)
   const setArchived = useApp((s) => s.setArchived)
+  const renameSession = useApp((s) => s.renameSession)
+  const lastSeen = useApp((s) => s.lastSeen)
+  const [renaming, setRenaming] = useState<string | null>(null)
   const reduce = useReducedMotion()
 
   const threads = useMemo(() => threadsOfProject(sessions, projectId), [sessions, projectId])
+  const anyLive = threads.some((t) => t.status === 'running' || t.status === 'starting')
+  const now = useNow(anyLive)
   const archived = useMemo(
     () =>
       Object.values(sessions)
@@ -70,6 +114,7 @@ export function ThreadStrip(): React.JSX.Element | null {
           <AnimatePresence initial={false} mode="popLayout">
             {threads.map((t) => {
               const Glyph = t.threadType ? THREAD_GLYPHS[t.threadType] : THREAD_GLYPHS.chat
+              const unread = t.id !== selectedId && t.updatedAt > (lastSeen[t.id] ?? 0)
               return (
                 <motion.div
                   key={t.id}
@@ -79,31 +124,71 @@ export function ThreadStrip(): React.JSX.Element | null {
                   exit={reduce ? undefined : { opacity: 0, scale: 0.9 }}
                   transition={SPRING_LAYOUT}
                 >
-                  <ContextMenu>
-                    <ContextMenuTrigger asChild>
-                      <div>
-                        <TabsTrigger
-                          value={t.id}
-                          className="h-[26px] min-h-0 gap-1.5 px-2.5 py-0 font-normal"
-                        >
-                          <Glyph
-                            className={cn(
-                              'size-[13px] opacity-80',
-                              THREAD_TINTS[t.threadType ?? 'chat']
-                            )}
-                          />
-                          <span className="max-w-44 truncate">{t.title}</span>
-                          <StatusDot status={t.status} />
-                        </TabsTrigger>
-                      </div>
-                    </ContextMenuTrigger>
-                    <ContextMenuContent>
-                      <ContextMenuItem onClick={() => archive(t.id)}>
-                        <Archive className="size-3.5 text-muted-foreground" />
-                        Archive
-                      </ContextMenuItem>
-                    </ContextMenuContent>
-                  </ContextMenu>
+                  {renaming === t.id ? (
+                    // The tab itself becomes the editor — no dialog for a name.
+                    <div className="flex h-[26px] items-center gap-1.5 rounded-md bg-accent px-2.5">
+                      <Glyph
+                        className={cn(
+                          'size-[13px] shrink-0 opacity-80',
+                          THREAD_TINTS[t.threadType ?? 'chat']
+                        )}
+                      />
+                      <input
+                        autoFocus
+                        defaultValue={t.title}
+                        onFocus={(e) => e.target.select()}
+                        onKeyDown={(e) => {
+                          e.stopPropagation()
+                          if (e.key === 'Enter') e.currentTarget.blur()
+                          if (e.key === 'Escape') {
+                            e.currentTarget.value = t.title
+                            e.currentTarget.blur()
+                          }
+                        }}
+                        onBlur={(e) => {
+                          setRenaming(null)
+                          const v = e.target.value.trim()
+                          if (v && v !== t.title) void renameSession(t.id, v)
+                        }}
+                        className="w-40 bg-transparent text-[13px] outline-none"
+                      />
+                    </div>
+                  ) : (
+                    <ContextMenu>
+                      <ContextMenuTrigger asChild>
+                        <div onDoubleClick={() => setRenaming(t.id)}>
+                          <TabsTrigger
+                            value={t.id}
+                            className="h-[26px] min-h-0 gap-1.5 px-2.5 py-0 font-normal"
+                          >
+                            <Glyph
+                              className={cn(
+                                'size-[13px] opacity-80',
+                                THREAD_TINTS[t.threadType ?? 'chat']
+                              )}
+                            />
+                            <span className="max-w-44 truncate">{t.title}</span>
+                            <TabIndicator
+                              status={t.status}
+                              unread={unread}
+                              since={t.updatedAt}
+                              now={now}
+                            />
+                          </TabsTrigger>
+                        </div>
+                      </ContextMenuTrigger>
+                      <ContextMenuContent>
+                        <ContextMenuItem onClick={() => setRenaming(t.id)}>
+                          <Pencil className="size-3.5 text-muted-foreground" />
+                          Rename
+                        </ContextMenuItem>
+                        <ContextMenuItem onClick={() => archive(t.id)}>
+                          <Archive className="size-3.5 text-muted-foreground" />
+                          Archive
+                        </ContextMenuItem>
+                      </ContextMenuContent>
+                    </ContextMenu>
+                  )}
                 </motion.div>
               )
             })}
