@@ -5,8 +5,8 @@ import type { ProviderId, Reasoning } from '@shared/catalog'
 import { client } from '../../lib/client'
 import { useApp } from '../../state/store'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select'
-import { Button } from '../ui/button'
 import { Spinner } from '../ui/spinner'
+import { SettingsGroup, SettingsPanel, SettingsRow } from './SettingsPanel'
 
 /**
  * What a new thread starts with: provider, model, effort, and security.
@@ -100,119 +100,99 @@ export function ThreadDefaultsEditor({
   }
 
   return (
-    <div className="flex flex-col gap-4">
-      {workspaceId && (
-        <p className="text-xs text-muted-foreground">
-          {overridden
+    <SettingsGroup
+      title="New threads"
+      hint={
+        workspaceId
+          ? overridden
             ? 'This workspace overrides the global defaults.'
-            : 'Using the global defaults — any change creates a workspace override.'}
-        </p>
-      )}
-
-      <Row label="Model">
-        <Select
-          value={defaults.provider}
-          onValueChange={(v) => push({ ...defaults, provider: v as ProviderId, model: '' })}
-        >
-          <SelectTrigger size="sm" className="w-24">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {(Object.keys(catalog) as ProviderId[]).map((p) => (
-              <SelectItem key={p} value={p}>
-                {catalog[p].label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <Select
-          value={defaults.model || '@default'}
-          onValueChange={(v) => push({ ...defaults, model: v === '@default' ? '' : v })}
-        >
-          <SelectTrigger size="sm" className="min-w-36">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="@default">Provider default</SelectItem>
-            {models.map((m) => (
-              <SelectItem key={m.id} value={m.id}>
-                {m.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </Row>
-
-      {ladder.length > 1 && (
-        <Row label="Reasoning">
+            : 'Using the global defaults; any change creates a workspace override.'
+          : 'Applied wherever a workspace has no override of its own.'
+      }
+      action={
+        (overridden || !workspaceId) && (
+          <button
+            onClick={clearScope}
+            className="shrink-0 text-[11px] text-muted-foreground transition-colors hover:text-foreground"
+          >
+            {workspaceId ? 'Remove override' : 'Reset'}
+          </button>
+        )
+      }
+    >
+      <SettingsPanel>
+        <SettingsRow label="Model" description="The provider and model a thread opens on.">
           <Select
-            value={defaults.reasoning}
-            onValueChange={(v) => push({ ...defaults, reasoning: v as Reasoning })}
+            value={defaults.provider}
+            onValueChange={(v) => push({ ...defaults, provider: v as ProviderId, model: '' })}
+          >
+            <SelectTrigger size="sm" className="w-24">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {(Object.keys(catalog) as ProviderId[]).map((p) => (
+                <SelectItem key={p} value={p}>
+                  {catalog[p].label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select
+            value={defaults.model || '@default'}
+            onValueChange={(v) => push({ ...defaults, model: v === '@default' ? '' : v })}
+          >
+            <SelectTrigger size="sm" className="min-w-36">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="@default">Provider default</SelectItem>
+              {models.map((m) => (
+                <SelectItem key={m.id} value={m.id}>
+                  {m.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </SettingsRow>
+
+        {ladder.length > 1 && (
+          <SettingsRow label="Reasoning" description="Effort level, from this model's ladder.">
+            <Select
+              value={defaults.reasoning}
+              onValueChange={(v) => push({ ...defaults, reasoning: v as Reasoning })}
+            >
+              <SelectTrigger size="sm" className="w-32">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {ladder.map((r) => (
+                  <SelectItem key={r} value={r}>
+                    {EFFORT_LABELS[r]}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </SettingsRow>
+        )}
+
+        <SettingsRow label="Security" description={PERMISSION_HINTS[defaults.permission]}>
+          <Select
+            value={defaults.permission}
+            onValueChange={(v) => push({ ...defaults, permission: v as PermissionPolicy })}
           >
             <SelectTrigger size="sm" className="w-32">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {ladder.map((r) => (
-                <SelectItem key={r} value={r}>
-                  {EFFORT_LABELS[r]}
+              {(Object.keys(PERMISSION_LABELS) as PermissionPolicy[]).map((p) => (
+                <SelectItem key={p} value={p}>
+                  {PERMISSION_LABELS[p]}
                 </SelectItem>
               ))}
             </SelectContent>
           </Select>
-        </Row>
-      )}
-
-      <Row label="Security" hint={PERMISSION_HINTS[defaults.permission]}>
-        <Select
-          value={defaults.permission}
-          onValueChange={(v) => push({ ...defaults, permission: v as PermissionPolicy })}
-        >
-          <SelectTrigger size="sm" className="w-32">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {(Object.keys(PERMISSION_LABELS) as PermissionPolicy[]).map((p) => (
-              <SelectItem key={p} value={p}>
-                {PERMISSION_LABELS[p]}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </Row>
-
-      {(overridden || !workspaceId) && (
-        <div>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={clearScope}
-            disabled={!!workspaceId && !overridden}
-          >
-            {workspaceId ? 'Remove override' : 'Reset to defaults'}
-          </Button>
-        </div>
-      )}
-    </div>
-  )
-}
-
-function Row({
-  label,
-  hint,
-  children
-}: {
-  label: string
-  hint?: string
-  children: React.ReactNode
-}): React.JSX.Element {
-  return (
-    <div className="flex items-center gap-3">
-      <span className="w-20 shrink-0">
-        <span className="block text-[13px]">{label}</span>
-      </span>
-      <span className="flex min-w-0 items-center gap-2">{children}</span>
-      {hint && <span className="min-w-0 truncate text-[11px] text-muted-foreground">{hint}</span>}
-    </div>
+        </SettingsRow>
+      </SettingsPanel>
+    </SettingsGroup>
   )
 }
