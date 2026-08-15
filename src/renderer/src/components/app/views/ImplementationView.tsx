@@ -9,6 +9,7 @@ import { useNow } from '../../../lib/useNow'
 import { duration } from '../bits'
 import { Spinner } from '../../ui/spinner'
 import { ApprovalCard } from '../blocks/ApprovalCard'
+import { QuestionCard } from '../blocks/QuestionCard'
 import { ErrorChip, EDIT_TOOLS, ZEditCard } from '../blocks/ToolGroup'
 import { MarkdownText } from '../blocks/MarkdownText'
 import { SidePanel } from '../SidePanel'
@@ -45,7 +46,7 @@ export function ImplementationView({ session }: { session: SessionMeta }): React
       blocks.filter(
         (b) =>
           (b.kind === 'tool' && EDIT_TOOLS.has(b.name)) ||
-          (b.kind === 'approval' && !b.resolved) ||
+          ((b.kind === 'approval' || b.kind === 'question') && !b.resolved) ||
           b.kind === 'error'
       ),
     [blocks]
@@ -132,6 +133,8 @@ export function ImplementationView({ session }: { session: SessionMeta }): React
                 {work.map((b) =>
                   b.kind === 'approval' ? (
                     <ApprovalCard key={b.id} block={b} sessionId={session.id} />
+                  ) : b.kind === 'question' ? (
+                    <QuestionCard key={b.id} block={b} sessionId={session.id} />
                   ) : b.kind === 'error' ? (
                     <ErrorChip key={b.id} text={b.text} />
                   ) : (

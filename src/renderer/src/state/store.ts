@@ -107,6 +107,8 @@ interface AppState {
   ) => Promise<void>
   interrupt: (sessionId: string) => Promise<void>
   approve: (sessionId: string, requestId: string, allow: boolean) => Promise<void>
+  /** Answer a model question; null = dismiss without answering. */
+  answer: (sessionId: string, requestId: string, answers: string[][] | null) => Promise<void>
   setPermission: (sessionId: string, permission: PermissionPolicy) => Promise<void>
   setArchived: (sessionId: string, archived: boolean) => Promise<void>
   deleteSession: (sessionId: string) => Promise<void>
@@ -355,6 +357,10 @@ export const useApp = create<AppState>((set, get) => ({
 
   approve: async (sessionId, requestId, allow) => {
     await client.request('session.approve', { sessionId, requestId, allow })
+  },
+
+  answer: async (sessionId, requestId, answers) => {
+    await client.request('session.answer', { sessionId, requestId, answers })
   },
 
   setPermission: async (sessionId, permission) => {

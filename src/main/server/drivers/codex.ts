@@ -281,12 +281,59 @@ export const codexDriver: HarnessDriver = {
     }
 
     const pendingApprovals = new Map<string, (allow: boolean) => void>()
+    const pendingQuestions = new Map<string, (answers: string[][] | null) => void>()
 
     const onRequest = (
       id: number | string,
       method: string,
       params: Record<string, unknown>
     ): void => {
+      // The model stopped to ask questions (shape probed from codex-cli
+      // 0.147: ToolRequestUserInputQuestion {id?, header, question, isOther,
+      // options[{label, description}]}, answered per question with
+      // {answers: string[]}).
+      if (method === 'item/tool/requestUserInput') {
+        const raw = Array.isArray(params.questions)
+          ? (params.questions as Record<string, unknown>[])
+          : []
+        const questions = raw.flatMap((q) => {
+          const text = typeof q.question === 'string' ? q.question : ''
+          if (!text) return []
+          return [
+            {
+              question: text,
+              header: typeof q.header === 'string' ? q.header : undefined,
+              multiSelect: q.multiSelect === true,
+              allowFreeform: q.isOther !== false,
+              options: (Array.isArray(q.options) ? (q.options as Record<string, unknown>[]) : [])
+                .filter((o) => typeof o.label === 'string')
+                .map((o) => ({
+                  label: o.label as string,
+                  description: typeof o.description === 'string' ? o.description : undefined
+                }))
+            }
+          ]
+        })
+        const requestId = `codex-${id}`
+        emit({
+          type: 'question-request',
+          requestId,
+          questions,
+          callId: params.itemId ? String(params.itemId) : undefined
+        })
+        emit({ type: 'status', status: 'waiting', detail: 'awaiting answer' })
+        pendingQuestions.set(requestId, (answers) => {
+          pendingQuestions.delete(requestId)
+          emit({ type: 'question-resolved', requestId, answers })
+          emit({ type: 'status', status: 'running' })
+          conn.respond(id, {
+            answers: Object.fromEntries(
+              raw.map((q, i) => [String(q.id ?? i), { answers: answers?.[i] ?? [] }])
+            )
+          })
+        })
+        return
+      }
       const legacy = method === 'execCommandApproval' || method === 'applyPatchApproval'
       const isApproval = legacy || method.endsWith('/requestApproval')
       if (!isApproval) {
@@ -397,6 +444,9 @@ export const codexDriver: HarnessDriver = {
       },
       approve(requestId: string, allow: boolean): void {
         pendingApprovals.get(requestId)?.(allow)
+      },
+      answer(requestId: string, answers: string[][] | null): void {
+        pendingQuestions.get(requestId)?.(answers)
       },
       async dispose(): Promise<void> {
         disposed = true

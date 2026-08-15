@@ -1,5 +1,8 @@
 import type { AgentEvent, Attachment, EventRow } from '@shared/events'
 
+/** One structured question from a question-request event. */
+export type QuestionSpec = Extract<AgentEvent, { type: 'question-request' }>['questions'][number]
+
 /**
  * Incremental transcript folding — the store folds each event into blocks
  * as it arrives, so render never refolds the whole log (docs/PLAN.md M3).
@@ -55,6 +58,14 @@ type BlockKind =
       resolved: boolean
       allow?: boolean
       auto?: boolean
+    }
+  | {
+      kind: 'question'
+      requestId: string
+      questions: QuestionSpec[]
+      resolved: boolean
+      /** chosen labels per question; null once resolved = dismissed */
+      answers?: string[][] | null
     }
 
 /** `todo` = index of the todo that was in_progress when the block was born
@@ -306,6 +317,31 @@ export function foldEvent(s: FoldState, e: AgentEvent, ts?: number): void {
       if (idx !== undefined) {
         const b = s.blocks[idx] as Extract<Block, { kind: 'approval' }>
         s.blocks[idx] = { ...b, resolved: true, allow: e.allow, auto: e.auto }
+      }
+      break
+    }
+    case 'question-request':
+      if (!s.byRequest.has(e.requestId)) {
+        s.byRequest.set(
+          e.requestId,
+          push(
+            s,
+            {
+              kind: 'question',
+              requestId: e.requestId,
+              questions: e.questions,
+              resolved: false
+            },
+            ts
+          )
+        )
+      }
+      break
+    case 'question-resolved': {
+      const idx = s.byRequest.get(e.requestId)
+      if (idx !== undefined && s.blocks[idx]?.kind === 'question') {
+        const b = s.blocks[idx] as Extract<Block, { kind: 'question' }>
+        s.blocks[idx] = { ...b, resolved: true, answers: e.answers }
       }
       break
     }

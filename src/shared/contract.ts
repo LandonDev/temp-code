@@ -169,6 +169,17 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
     method: z.literal('session.approve'),
     params: z.object({ sessionId: z.string(), requestId: z.string(), allow: z.boolean() })
   }),
+  // Answer a pending question-request; answers[i] = chosen labels (or typed
+  // text) for questions[i], null = dismissed.
+  z.object({
+    id: z.string(),
+    method: z.literal('session.answer'),
+    params: z.object({
+      sessionId: z.string(),
+      requestId: z.string(),
+      answers: z.array(z.array(z.string())).nullable()
+    })
+  }),
   // Change the approval policy mid-thread; the harness restarts with resume
   // on the next send, same as a model change.
   z.object({

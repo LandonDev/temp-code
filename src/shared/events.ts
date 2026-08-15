@@ -123,6 +123,35 @@ export const AgentEventSchema = z.discriminatedUnion('type', [
     auto: z.boolean().optional()
   }),
 
+  // The model stopped to ask the user structured questions (claude's
+  // AskUserQuestion, codex's item/tool/requestUserInput). Answered in the
+  // UI via session.answer.
+  z.object({
+    type: z.literal('question-request'),
+    requestId: z.string(),
+    questions: z.array(
+      z.object({
+        question: z.string(),
+        /** short chip label, e.g. "Auth method" */
+        header: z.string().optional(),
+        multiSelect: z.boolean().optional(),
+        /** a typed free-text answer is accepted ("Other") */
+        allowFreeform: z.boolean().optional(),
+        options: z.array(
+          z.object({ label: z.string(), description: z.string().optional() })
+        )
+      })
+    ),
+    callId: z.string().optional()
+  }),
+  // answers[i] = chosen labels (or the typed text) for questions[i];
+  // null → dismissed without answering.
+  z.object({
+    type: z.literal('question-resolved'),
+    requestId: z.string(),
+    answers: z.array(z.array(z.string())).nullable()
+  }),
+
   // Orchestration: this session spawned a child session.
   z.object({ type: z.literal('agent-spawned'), childSessionId: z.string() }),
 
