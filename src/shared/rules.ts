@@ -32,6 +32,8 @@ export const OrchestrationRulesSchema = z.object({
     selfShell: z.boolean().default(true),
     /** verify subagent reports before relaying them */
     verifyResults: z.boolean().default(true),
+    /** rerun weak output on a smarter model without asking */
+    escalate: z.boolean().default(true),
     /** isolate writing subagents in git worktrees */
     useWorktrees: z.boolean().default(true),
     /** subagents running at once; 0 = unlimited (enforced in spawn_agent) */
@@ -43,30 +45,44 @@ export const OrchestrationRulesSchema = z.object({
 })
 export type OrchestrationRules = z.infer<typeof OrchestrationRulesSchema>
 
+// Defaults mirror the user's model policy (~/.claude/CLAUDE.md): gpt-5.5
+// for bulk work (effectively free), taste ≥ 7 for anything user-facing
+// with intelligence > taste > cost when axes conflict (→ fable-5),
+// reviews by fable-5/opus-4.8 with gpt-5.5 as an optional independent
+// second opinion. Never Haiku (not in the catalog anyway).
 export const DEFAULT_RULES: OrchestrationRules = {
   conduct: {
     delegation: 'strict',
     selfEdit: false,
     selfShell: true,
     verifyResults: true,
+    escalate: true,
     useWorktrees: true,
     maxParallel: 4,
     maxAgents: 0
   },
   routing: [
     {
-      id: 'bulk',
-      task: 'Bulk or mechanical work with a clear spec — migrations, wide refactors, data analysis',
+      id: 'trivial',
+      task: 'Trivial or small tasks — tiny fixes, renames, one-file changes',
       provider: 'codex',
-      model: 'gpt-5.6-sol',
+      model: 'gpt-5.5',
       reasoning: 'low',
+      enabled: true
+    },
+    {
+      id: 'bulk',
+      task: 'Bulk or mechanical work with a clear spec — implementation, migrations, data analysis',
+      provider: 'codex',
+      model: 'gpt-5.5',
+      reasoning: 'medium',
       enabled: true
     },
     {
       id: 'user-facing',
       task: 'User-facing work — UI, copy, API design',
       provider: 'claude',
-      model: 'claude-sonnet-5',
+      model: 'claude-fable-5',
       reasoning: 'medium',
       enabled: true
     },
@@ -74,23 +90,23 @@ export const DEFAULT_RULES: OrchestrationRules = {
       id: 'hard',
       task: 'Hard problems — debugging, architecture, novel design',
       provider: 'claude',
-      model: 'claude-opus-5',
+      model: 'claude-fable-5',
       reasoning: 'high',
-      enabled: true
-    },
-    {
-      id: 'quick-edit',
-      task: 'Quick scoped edits — small fixes, renames, config tweaks',
-      provider: 'cursor',
-      model: 'composer-2.5',
-      reasoning: 'medium',
       enabled: true
     },
     {
       id: 'review',
       task: 'Reviews of plans or implementations',
       provider: 'claude',
-      model: 'claude-sonnet-5',
+      model: 'claude-opus-4-8',
+      reasoning: 'high',
+      enabled: true
+    },
+    {
+      id: 'second-opinion',
+      task: 'Independent second review opinion, when one is wanted',
+      provider: 'codex',
+      model: 'gpt-5.5',
       reasoning: 'high',
       enabled: true
     }
