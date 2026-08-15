@@ -6,7 +6,7 @@ import { ClientRequestSchema, type ServerFrame } from '@shared/contract'
 import { openDb, Store } from './db'
 import { SessionRegistry } from './sessions'
 import { runDoctor } from './drivers/binaries'
-import { setOrchestrationRegistry } from './orchestration'
+import { DEFAULT_ORCHESTRATOR_POLICY, setOrchestrationRegistry } from './orchestration'
 import { fileDiff, listFiles, workingTreeChanges } from './git'
 import { listCommands } from './commands'
 import { readAttachment, saveAttachment } from './attachments'
@@ -144,6 +144,20 @@ export async function startServer(dbPath: string): Promise<RunningServer> {
             sendFrame({ id: req.id, ok: true, result: readAllowedFile(registry, req.params.path) })
             break
           }
+          case 'policy.get':
+            sendFrame({
+              id: req.id,
+              ok: true,
+              result: {
+                text: registry.getOrchestratorPolicy(req.params.workspaceId),
+                defaultText: DEFAULT_ORCHESTRATOR_POLICY
+              }
+            })
+            break
+          case 'policy.set':
+            registry.setOrchestratorPolicy(req.params.workspaceId, req.params.text)
+            sendFrame({ id: req.id, ok: true, result: null })
+            break
           case 'commands.list':
             sendFrame({
               id: req.id,
