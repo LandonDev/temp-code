@@ -166,6 +166,11 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
   }),
   z.object({
     id: z.string(),
+    method: z.literal('session.rename'),
+    params: z.object({ sessionId: z.string(), title: z.string().min(1).max(120) })
+  }),
+  z.object({
+    id: z.string(),
     method: z.literal('session.archive'),
     params: z.object({ sessionId: z.string(), archived: z.boolean() })
   }),

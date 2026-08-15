@@ -34,6 +34,7 @@ export type ThemePref = 'system' | 'light' | 'dark'
 
 const FAVORITES_KEY = 'model-favorites'
 const THEME_KEY = 'theme'
+const LAST_SEEN_KEY = 'thread-last-seen'
 
 const osDark = window.matchMedia('(prefers-color-scheme: dark)')
 
@@ -83,6 +84,8 @@ interface AppState {
   doctor: Record<ProviderId, ProviderHealth> | null
   /** starred models, `${provider}:${modelId}` (persisted) */
   favoriteModels: string[]
+  /** per-thread last-seen activity timestamp (persisted) — unread dots */
+  lastSeen: Record<string, number>
 
   init: () => Promise<void>
   refreshTree: () => Promise<void>
@@ -111,6 +114,9 @@ interface AppState {
   answer: (sessionId: string, requestId: string, answers: string[][] | null) => Promise<void>
   setPermission: (sessionId: string, permission: PermissionPolicy) => Promise<void>
   setArchived: (sessionId: string, archived: boolean) => Promise<void>
+  renameSession: (sessionId: string, title: string) => Promise<void>
+  /** Mark a thread's activity as seen (clears its unread dot). */
+  markSeen: (sessionId: string) => void
   deleteSession: (sessionId: string) => Promise<void>
   restartSession: (sessionId: string) => Promise<void>
   fetchChanges: (projectId: string) => Promise<void>
@@ -163,6 +169,7 @@ export const useApp = create<AppState>((set, get) => ({
   theme: storedTheme(),
   doctor: null,
   favoriteModels: JSON.parse(localStorage.getItem(FAVORITES_KEY) ?? '[]') as string[],
+  lastSeen: JSON.parse(localStorage.getItem(LAST_SEEN_KEY) ?? '{}') as Record<string, number>,
 
   init: async () => {
     if (initStarted) return
@@ -170,6 +177,7 @@ export const useApp = create<AppState>((set, get) => ({
     client.onPush((push) => {
       if (push.push === 'session') {
         set((s) => ({ sessions: { ...s.sessions, [push.session.id]: push.session } }))
+        if (push.session.id === get().selectedId) get().markSeen(push.session.id)
       } else if (push.push === 'event') {
         const { sessionId } = push.row
         // Ephemeral rows (streaming tool-input previews) fold into the live
@@ -240,7 +248,19 @@ export const useApp = create<AppState>((set, get) => ({
       client.request<ProjectMeta[]>('project.list'),
       client.request<SessionMeta[]>('session.list')
     ])
-    set({ workspaces, projects, sessions: Object.fromEntries(sessions.map((s) => [s.id, s])) })
+    set((st) => {
+      const lastSeen = { ...st.lastSeen }
+      for (const sess of sessions) {
+        if (lastSeen[sess.id] === undefined) lastSeen[sess.id] = sess.updatedAt
+      }
+      localStorage.setItem(LAST_SEEN_KEY, JSON.stringify(lastSeen))
+      return {
+        workspaces,
+        projects,
+        sessions: Object.fromEntries(sessions.map((s) => [s.id, s])),
+        lastSeen
+      }
+    })
   },
 
   addWorkspace: async (path) => {
@@ -291,6 +311,7 @@ export const useApp = create<AppState>((set, get) => ({
     }
     set({ selectedId: sessionId, settingsOpen: false })
     if (!sessionId) return
+    get().markSeen(sessionId)
     await get().loadSession(sessionId)
   },
 
@@ -361,6 +382,26 @@ export const useApp = create<AppState>((set, get) => ({
 
   answer: async (sessionId, requestId, answers) => {
     await client.request('session.answer', { sessionId, requestId, answers })
+  },
+
+  renameSession: async (sessionId, title) => {
+    const t = title.trim()
+    if (!t) return
+    // Optimistic: the meta push echoes the authoritative row.
+    set((s) => {
+      const cur = s.sessions[sessionId]
+      return cur ? { sessions: { ...s.sessions, [sessionId]: { ...cur, title: t } } } : {}
+    })
+    await client.request('session.rename', { sessionId, title: t })
+  },
+
+  markSeen: (sessionId) => {
+    const stamp = Math.max(Date.now(), get().sessions[sessionId]?.updatedAt ?? 0)
+    set((s) => {
+      const lastSeen = { ...s.lastSeen, [sessionId]: stamp }
+      localStorage.setItem(LAST_SEEN_KEY, JSON.stringify(lastSeen))
+      return { lastSeen }
+    })
   },
 
   setPermission: async (sessionId, permission) => {
@@ -453,7 +494,7 @@ export const threadsOfProject = (
 ): SessionMeta[] =>
   Object.values(sessions)
     .filter((s) => s.projectId === projectId && !s.parentId && !s.archived)
-    .sort((a, b) => a.createdAt - b.createdAt)
+    .sort((a, b) => b.updatedAt - a.updatedAt)
 
 /** Legacy/loose root sessions with no project. */
 export const unsortedSessions = (sessions: Record<string, SessionMeta>): SessionMeta[] =>
