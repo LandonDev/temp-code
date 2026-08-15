@@ -74,16 +74,19 @@ function ApprovalDetail({
   )
 }
 
-/** The harness asked; the user answers here (docs/PLAN.md M4). */
+/** The harness asked; the user answers here (docs/PLAN.md M4).
+ *  `sessionId` is the session that OWNS the request — inside an agent
+ *  drill-in that's the subagent, never the selected thread. */
 export const ApprovalCard = memo(function ApprovalCard({
-  block
+  block,
+  sessionId
 }: {
   block: ApprovalBlock
+  sessionId: string
 }): React.JSX.Element {
-  const selectedId = useApp((s) => s.selectedId)
   const approve = useApp((s) => s.approve)
   const answer = (allow: boolean): void => {
-    if (selectedId) void approve(selectedId, block.requestId, allow)
+    void approve(sessionId, block.requestId, allow)
   }
 
   if (block.resolved) {

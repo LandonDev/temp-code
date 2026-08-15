@@ -463,3 +463,8 @@ export const childrenOf = (
   Object.values(sessions)
     .filter((s) => s.parentId === parentId)
     .sort((a, b) => a.createdAt - b.createdAt)
+
+// Dev-only: expose the store for CDP-driven inspection in `bun run dev`.
+if (import.meta.env.DEV) {
+  ;(window as unknown as Record<string, unknown>).__app = useApp
+}

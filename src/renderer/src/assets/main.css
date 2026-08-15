@@ -66,6 +66,15 @@
     opacity: 0;
   }
 }
+/* PLAN_WASH — a revised plan section flashes violet, then settles */
+@keyframes z-plan-wash {
+  from {
+    background-color: color-mix(in oklch, var(--violet) 9%, transparent);
+  }
+  to {
+    background-color: transparent;
+  }
+}
 /* MENU_IN — popovers: 140ms, scale .96 + translateY -2, origin at anchor */
 @keyframes z-menu-in {
   from {

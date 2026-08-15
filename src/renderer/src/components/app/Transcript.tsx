@@ -72,21 +72,36 @@ function fmtTs(ts: number): string {
 
 const easeInOut = (t: number): number => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2)
 
-/** Single-block renderer for the non-chat views (implementation traces). */
-export const BlockRow = memo(function BlockRow({ block }: { block: Block }): React.JSX.Element {
+/** Single-block renderer for the non-chat views (implementation traces).
+ *  `sessionId` is the session the block belongs to (approvals answer it). */
+export const BlockRow = memo(function BlockRow({
+  block,
+  sessionId
+}: {
+  block: Block
+  sessionId: string
+}): React.JSX.Element {
   if (block.kind === 'tool') {
     if (EDIT_TOOLS.has(block.name)) return <ZEditCard b={block} />
     return <ToolGroup tools={[block]} autoOpen={false} />
   }
-  return <RowContent row={{ type: 'block', id: block.id, block, turn: 0 }} autoOpen={false} />
+  return (
+    <RowContent
+      row={{ type: 'block', id: block.id, block, turn: 0 }}
+      autoOpen={false}
+      sessionId={sessionId}
+    />
+  )
 })
 
 const RowContent = memo(function RowContent({
   row,
-  autoOpen
+  autoOpen,
+  sessionId
 }: {
   row: Row
   autoOpen: boolean
+  sessionId: string
 }): React.JSX.Element {
   if (row.type === 'group') return <ToolGroup tools={row.tools} autoOpen={autoOpen} />
   if (row.type === 'edit') return <ZEditCard b={row.block} />
@@ -101,7 +116,7 @@ const RowContent = memo(function RowContent({
         <ThinkingBlock text={block.text} streaming={block.streaming} thoughtMs={block.thoughtMs} />
       )
     case 'approval':
-      return <ApprovalCard block={block} />
+      return <ApprovalCard block={block} sessionId={sessionId} />
     case 'error':
       return <ErrorChip text={block.text} />
     default:
@@ -431,7 +446,7 @@ export function Transcript({
                     fresh && 'animate-[z-fade-in_500ms_cubic-bezier(0.16,1,0.3,1)]'
                   )}
                 >
-                  <RowContent row={row} autoOpen={autoOpen} />
+                  <RowContent row={row} autoOpen={autoOpen} sessionId={sessionId} />
                   {/* hover-revealed 16px timestamp strip */}
                   {lastOfTurn && ts !== undefined && (
                     <div

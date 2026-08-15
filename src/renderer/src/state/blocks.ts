@@ -40,6 +40,8 @@ type BlockKind =
       partialInput?: boolean
       output?: string
       isError?: boolean
+      /** wall clock when the result landed — with ts, the tool's duration */
+      doneTs?: number
       /** activity events from a subagent running under this call */
       subCount: number
     }
@@ -75,9 +77,15 @@ export interface FoldState {
   nextId: number
   /** cumulative session cost, from the latest turn-complete */
   costUsd?: number
-  /** latest todo list (TodoWrite / update_plan), for implementation threads */
+  /** latest todo list (TodoWrite / update_plan / TaskCreate+TaskUpdate) */
   todos: TodoItem[]
   activeTodo: number
+  /** SDK task tools are stateful: taskId → todo index… */
+  taskIds: Map<string, number>
+  /** …and a TaskCreate learns its id from its RESULT (callId → index). */
+  taskByCall: Map<string, number>
+  /** task calls already folded into the todo model (re-delivery guard) */
+  taskSeen: Set<string>
   /** indexes of optimistic user blocks awaiting their server echo */
   pendingUsers: number[]
 }
@@ -91,6 +99,9 @@ export function emptyFold(): FoldState {
     nextId: 1,
     todos: [],
     activeTodo: -1,
+    taskIds: new Map(),
+    taskByCall: new Map(),
+    taskSeen: new Set(),
     pendingUsers: []
   }
 }
@@ -214,6 +225,35 @@ export function foldEvent(s: FoldState, e: AgentEvent, ts?: number): void {
         const active = todos.findIndex((t) => t.status === 'in_progress')
         s.activeTodo = active !== -1 ? active : s.activeTodo
       }
+      // SDK task tools (claude's TodoWrite replacement). Guarded by its own
+      // seen-set: the streamed partial preview registers the callId in
+      // byCall long before the final input arrives, and re-delivered events
+      // must not duplicate todos either.
+      if (!e.partial && !s.taskSeen.has(e.callId)) {
+        // Mark seen only on consumption — the driver's early announcement
+        // for the same callId can arrive without input.
+        if (e.name === 'TaskCreate') {
+          const subject = (e.input as { subject?: string } | null)?.subject
+          if (subject) {
+            s.taskSeen.add(e.callId)
+            s.todos = [...s.todos, { content: subject, status: 'pending' }]
+            s.taskByCall.set(e.callId, s.todos.length - 1)
+          }
+        } else if (e.name === 'TaskUpdate') {
+          const i = e.input as { taskId?: unknown; status?: string } | null
+          const idx = s.taskIds.get(String(i?.taskId))
+          const status = i?.status
+          if (
+            idx !== undefined &&
+            idx < s.todos.length &&
+            (status === 'pending' || status === 'in_progress' || status === 'completed')
+          ) {
+            s.taskSeen.add(e.callId)
+            s.todos = s.todos.map((t, n) => (n === idx ? { ...t, status } : t))
+            if (status === 'in_progress') s.activeTodo = idx
+          }
+        }
+      }
       const existing = s.byCall.get(e.callId)
       if (existing !== undefined) {
         // Streaming preview or the final input replacing the early chip.
@@ -234,10 +274,17 @@ export function foldEvent(s: FoldState, e: AgentEvent, ts?: number): void {
       break
     }
     case 'tool-result': {
+      // A TaskCreate result names the task's id ("Task #3 created …").
+      const created = s.taskByCall.get(e.callId)
+      if (created !== undefined) {
+        s.taskByCall.delete(e.callId)
+        const m = /#(\d+)/.exec(e.output)
+        if (m) s.taskIds.set(m[1], created)
+      }
       const idx = s.byCall.get(e.callId)
       if (idx !== undefined) {
         const b = s.blocks[idx] as Extract<Block, { kind: 'tool' }>
-        s.blocks[idx] = { ...b, output: e.output, isError: e.isError }
+        s.blocks[idx] = { ...b, output: e.output, isError: e.isError, doneTs: ts }
       }
       break
     }
