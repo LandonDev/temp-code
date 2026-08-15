@@ -269,6 +269,9 @@ export const useApp = create<AppState>((set, get) => ({
   },
 
   selectProject: (projectId) => {
+    // Sidebar navigation always leaves the settings page, even when the
+    // target project is already selected.
+    set({ settingsOpen: false })
     if (projectId === get().selectedProjectId) return
     set({ selectedProjectId: projectId, railDiff: null })
     // Open the project's most recent thread, if it has one.
@@ -284,7 +287,7 @@ export const useApp = create<AppState>((set, get) => ({
     if (prev && prev !== sessionId) {
       void client.request('session.unsubscribe', { sessionId: prev }).catch(() => {})
     }
-    set({ selectedId: sessionId })
+    set({ selectedId: sessionId, settingsOpen: false })
     if (!sessionId) return
     await get().loadSession(sessionId)
   },
