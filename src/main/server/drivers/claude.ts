@@ -504,11 +504,15 @@ export const claudeDriver: HarnessDriver = {
       interrupt(): void {
         void q.interrupt()
       },
-      approve(requestId: string, allow: boolean): void {
-        pendingApprovals.get(requestId)?.(allow)
+      approve(requestId: string, allow: boolean): boolean {
+        const finish = pendingApprovals.get(requestId)
+        finish?.(allow)
+        return !!finish
       },
-      answer(requestId: string, answers: string[][] | null): void {
-        pendingQuestions.get(requestId)?.(answers)
+      answer(requestId: string, answers: string[][] | null): boolean {
+        const finish = pendingQuestions.get(requestId)
+        finish?.(answers)
+        return !!finish
       },
       async contextUsage(): Promise<unknown> {
         // The /context breakdown, straight from the harness.

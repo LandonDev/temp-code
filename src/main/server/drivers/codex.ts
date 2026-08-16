@@ -508,11 +508,15 @@ export const codexDriver: HarnessDriver = {
           setStatus('idle')
         }
       },
-      approve(requestId: string, allow: boolean): void {
-        pendingApprovals.get(requestId)?.(allow)
+      approve(requestId: string, allow: boolean): boolean {
+        const finish = pendingApprovals.get(requestId)
+        finish?.(allow)
+        return !!finish
       },
-      answer(requestId: string, answers: string[][] | null): void {
-        pendingQuestions.get(requestId)?.(answers)
+      answer(requestId: string, answers: string[][] | null): boolean {
+        const finish = pendingQuestions.get(requestId)
+        finish?.(answers)
+        return !!finish
       },
       async contextUsage(): Promise<unknown> {
         if (!contextTokens) return null

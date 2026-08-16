@@ -26,10 +26,13 @@ export interface DriverHandle {
    *  supports it; other attachments ride along as path references. */
   send: (text: string, attachments?: Attachment[]) => Promise<void>
   interrupt: () => void
-  /** Answer a pending approval-request (drivers that support approvals). */
-  approve?: (requestId: string, allow: boolean) => void
-  /** Answer a pending question-request; null = dismissed without answering. */
-  answer?: (requestId: string, answers: string[][] | null) => void
+  /** Answer a pending approval-request. Returns whether the request was
+   *  still pending here — false lets the registry handle a stale one
+   *  (asked by a previous process of this harness). */
+  approve?: (requestId: string, allow: boolean) => boolean
+  /** Answer a pending question-request; null = dismissed without
+   *  answering. Returns whether the request was still pending here. */
+  answer?: (requestId: string, answers: string[][] | null) => boolean
   /** Context-window usage breakdown (claude: /context data). */
   contextUsage?: () => Promise<unknown>
   dispose: () => Promise<void>
