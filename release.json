@@ -1,5 +1,5 @@
 {
-  "n": 19,
-  "notes": "Fix the white-freeze on launch: an Appshots selector looped the renderer. Plus live context meter, window switch in the effort menu.",
-  "ts": 1786916706585
+  "n": 20,
+  "notes": "Active window as a checkmark; context popover resolves instead of spinning on mid-turn threads.",
+  "ts": 1786917350298
 }
