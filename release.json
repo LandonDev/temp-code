@@ -1,5 +1,5 @@
 {
-  "n": 7,
-  "notes": "Codex threads run on an overlay CODEX_HOME so connectors reach the model",
-  "ts": 1786901562607
+  "n": 8,
+  "notes": "Codex threads route through Aliax again — the overlay home is gone",
+  "ts": 1786902969900
 }
