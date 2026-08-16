@@ -17,6 +17,7 @@ import { StatusDot, timeAgo } from './bits'
 import { ZIcon } from './zicon'
 import { NewProjectDialog } from './NewProjectDialog'
 import { ConfirmDialog } from './ConfirmDialog'
+import { updateReady, useUpdateStatus } from '../../lib/updates'
 
 /**
  * Workspaces → projects. One left-edge rhythm: workspace names start at
@@ -80,6 +81,7 @@ export function Sidebar(): React.JSX.Element {
         >
           <ZIcon name="settings-minimalistic" size={15} className="shrink-0 opacity-80" />
           Settings
+          <UpdateDot />
         </button>
         {!connected && (
           <span
@@ -325,6 +327,13 @@ function ProjectRow({
       />
     </div>
   )
+}
+
+/** A quiet signal on the Settings button while an update waits. */
+function UpdateDot(): React.JSX.Element | null {
+  const s = useUpdateStatus()
+  if (!updateReady(s)) return null
+  return <span title="Update ready" className="ml-auto size-1.5 shrink-0 rounded-full bg-info" />
 }
 
 /** Legacy sessions from before projects existed — kept reachable, out of the way. */

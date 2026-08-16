@@ -28,6 +28,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '
 import { OrchestrationRulesEditor } from '../OrchestrationRules'
 import { ThreadDefaultsEditor } from '../ThreadDefaults'
 import { SettingsPanel, SettingsRow } from '../SettingsPanel'
+import { updateReady, useUpdateStatus } from '../../../lib/updates'
 import { ConfirmDialog } from '../ConfirmDialog'
 import { Input } from '../../ui/input'
 import { EASE_OUT } from '../../../lib/ease'
@@ -189,6 +190,7 @@ export function SettingsView(): React.JSX.Element {
                   </SettingsRow>
                 </SettingsPanel>
               )}
+              {page === 'general' && <UpdatesPanel />}
               {page === 'defaults' && <ThreadDefaultsEditor workspaceId={null} />}
               {page === 'editor' && <EditorSettings />}
               {page === 'orchestration' && <OrchestrationRulesEditor workspaceId={null} />}
@@ -305,6 +307,63 @@ function SummaryModelSwitch(): React.JSX.Element {
         </button>
       ))}
     </div>
+  )
+}
+
+/** The app updating itself: release number, an automatic look for newer,
+ *  and — only when one exists — the button that builds it, closes, and
+ *  reopens. Dev instances just say what they are. */
+function UpdatesPanel(): React.JSX.Element {
+  const s = useUpdateStatus()
+  const ready = updateReady(s)
+  const busy = s?.phase === 'building' || s?.phase === 'restarting'
+  return (
+    <SettingsPanel>
+      <SettingsRow
+        label={s ? `Release ${s.current}` : 'Release'}
+        description={
+          !s || !s.canApply
+            ? 'Dev build — updates apply to the installed app.'
+            : busy
+              ? s.phase === 'building'
+                ? 'Building the update… the app restarts itself when it is ready.'
+                : 'Restarting…'
+              : s.phase === 'error'
+                ? (s.error ?? 'Update failed.')
+                : ready
+                  ? s.notes || `Release ${s.latest} is ready.`
+                  : 'Up to date.'
+        }
+      >
+        {s?.canApply &&
+          (ready || busy ? (
+            <Button
+              size="sm"
+              className="h-7 text-xs"
+              disabled={busy}
+              onClick={() => void window.api.updates.apply()}
+            >
+              {busy && <Spinner className="size-3" />}
+              {s.phase === 'building'
+                ? 'Building…'
+                : s.phase === 'restarting'
+                  ? 'Restarting…'
+                  : `Update to ${s.latest}`}
+            </Button>
+          ) : (
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 text-xs"
+              disabled={s.phase === 'checking'}
+              onClick={() => void window.api.updates.check()}
+            >
+              {s.phase === 'checking' && <Spinner className="size-3" />}
+              Check for updates
+            </Button>
+          ))}
+      </SettingsRow>
+    </SettingsPanel>
   )
 }
 

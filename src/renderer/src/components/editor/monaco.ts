@@ -166,15 +166,16 @@ function readPalette(dark: boolean): Record<string, string> {
     'editorWidget.background': cssToHex(v('--popover'))!,
     'editorWidget.foreground': cssToHex(v('--foreground'))!,
     'editorWidget.border': cssToHex(v('--border-strong'))!,
-    'editorSuggestWidget.background': cssToHex(v('--popover'))!,
-    'editorSuggestWidget.border': cssToHex(v('--border-strong'))!,
-    // IDEA's completion selection: a real blue bar, not a grey wash.
-    // Matched letters on it get IDEA's speed-search amber (dark).
-    'editorSuggestWidget.selectedBackground': dark ? '#4B6EAF' : '#D5E1FF',
+    // IDEA new-UI popup, exact surfaces (user screenshots 2026-08-16):
+    // panel #2B2D30, hairline border, muted #393B40 selection bar.
+    'editorSuggestWidget.background': dark ? '#2B2D30' : '#F7F8FA',
+    'editorSuggestWidget.border': dark ? '#1E1F22' : '#C9CCD6',
+    'editorSuggestWidget.foreground': dark ? '#BCBEC4' : '#000000',
+    'editorSuggestWidget.selectedBackground': dark ? '#393B40' : '#D5E1FF',
     'editorSuggestWidget.selectedForeground': dark ? '#FFFFFF' : '#080808',
     'editorSuggestWidget.selectedIconForeground': dark ? '#FFFFFF' : '#080808',
-    'editorSuggestWidget.focusHighlightForeground': dark ? '#FFE59E' : cssToHex(v('--brand'))!,
-    'editorSuggestWidget.highlightForeground': cssToHex(v('--brand'))!,
+    'editorSuggestWidget.focusHighlightForeground': dark ? '#FFFFFF' : '#000000',
+    'editorSuggestWidget.highlightForeground': dark ? '#FFFFFF' : '#000000',
     'editorHoverWidget.background': cssToHex(v('--popover'))!,
     'editorHoverWidget.border': cssToHex(v('--border-strong'))!,
     'input.background': cssToHex(v('--input'))!,
@@ -328,7 +329,8 @@ export const EDITOR_OPTIONS: monaco.editor.IStandaloneEditorConstructionOptions 
   // validation bug makes it true unless set explicitly).
   suggestSelection: 'recentlyUsed',
   wordBasedSuggestions: 'off',
-  suggest: { localityBonus: true, snippetsPreventQuickSuggestions: false },
+  suggest: { localityBonus: true, snippetsPreventQuickSuggestions: false, showStatusBar: true },
+  suggestLineHeight: 26,
   scrollbar: { verticalScrollbarSize: 10, horizontalScrollbarSize: 10, useShadows: false },
   lightbulb: { enabled: 'onCode' as never },
   fixedOverflowWidgets: true,
