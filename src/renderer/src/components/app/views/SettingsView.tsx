@@ -169,6 +169,12 @@ export function SettingsView(): React.JSX.Element {
                   >
                     <MidTurnSwitch />
                   </SettingsRow>
+                  <SettingsRow
+                    label="Tool summaries"
+                    description="A small fast model turns each finished tool section into one sentence, on the thread's own subscription."
+                  >
+                    <ToolSummariesSwitch />
+                  </SettingsRow>
                 </SettingsPanel>
               )}
               {page === 'defaults' && <ThreadDefaultsEditor workspaceId={null} />}
@@ -241,6 +247,12 @@ function NavRow({
       {children}
     </button>
   )
+}
+
+function ToolSummariesSwitch(): React.JSX.Element {
+  const value = useApp((s) => s.toolSummaries)
+  const setValue = useApp((s) => s.setToolSummaries)
+  return <Switch checked={value} onChange={setValue} />
 }
 
 function MidTurnSwitch(): React.JSX.Element {
