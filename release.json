@@ -1,5 +1,5 @@
 {
-  "n": 16,
-  "notes": "Appshots: attachment kind, send-time expansion, settings RPC",
-  "ts": 1786913756907
+  "n": 17,
+  "notes": "Appshots: main-process capture pipeline + preload API",
+  "ts": 1786913922047
 }
