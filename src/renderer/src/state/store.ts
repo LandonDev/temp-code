@@ -53,6 +53,14 @@ export interface SurfaceRef {
 
 export const surfaceKey = (s: SurfaceRef): string => `${s.kind}:${s.path}`
 
+/** One row in the hierarchy overlay (caller or super/subtype). */
+export interface HierarchyRow {
+  name: string
+  containerName: string
+  uri: string
+  range: { startLineNumber: number; startColumn: number }
+}
+
 const FAVORITES_KEY = 'model-favorites'
 const THEME_KEY = 'theme'
 const LAST_SEEN_KEY = 'thread-last-seen'
@@ -125,10 +133,14 @@ interface AppState {
   gitLog: Record<string, { commits: CommitInfo[]; ahead: number | null }>
   /** branches of the workspace repo (project-create pickers) */
   branchLists: Record<string, BranchList>
-  quickOpen: 'files' | 'symbols' | null
+  quickOpen: 'files' | 'symbols' | 'hierarchy' | null
+  /** rows for the hierarchy overlay (⌃H / ⌃⌥H, docs/PLAN-4.md M18) */
+  hierarchy: { title: string; rows: HierarchyRow[] } | null
   formatOnSave: { java: boolean; web: boolean }
   ghostText: boolean
   settingsOpen: boolean
+  /** one-shot page to land on when settings opens (e.g. `ws:<id>`) */
+  settingsJump: string | null
   theme: ThemePref
   doctor: DoctorReport | null
   /** starred models, `${provider}:${modelId}` (persisted) */
@@ -169,7 +181,8 @@ interface AppState {
   pushProject: (projectId: string, targetBranch?: string) => Promise<void>
   fetchGitLog: (projectId: string) => Promise<void>
   fetchBranches: (workspaceId: string) => Promise<BranchList>
-  setQuickOpen: (mode: 'files' | 'symbols' | null) => void
+  setQuickOpen: (mode: 'files' | 'symbols' | 'hierarchy' | null) => void
+  openHierarchy: (title: string, rows: HierarchyRow[]) => void
   setRailPanel: (panel: 'changes' | 'files') => void
   setFormatOnSave: (lang: 'java' | 'web', on: boolean) => void
   setGhostText: (on: boolean) => void
@@ -222,7 +235,9 @@ interface AppState {
   saveAttachment: (name: string, dataBase64: string) => Promise<Attachment>
   readFile: (path: string) => Promise<string | null>
   setRailOpen: (open: boolean) => void
-  setSettingsOpen: (open: boolean) => void
+  setSettingsOpen: (open: boolean, jump?: string) => void
+  clearSettingsJump: () => void
+  renameProject: (projectId: string, name: string) => Promise<void>
   setTheme: (theme: ThemePref) => void
   fetchDoctor: () => Promise<void>
   toggleFavoriteModel: (provider: ProviderId, modelId: string) => void
@@ -310,12 +325,14 @@ export const useApp = create<AppState>((set, get) => ({
   gitLog: {},
   branchLists: {},
   quickOpen: null,
+  hierarchy: null,
   formatOnSave: JSON.parse(localStorage.getItem(FORMAT_KEY) ?? '{"java":false,"web":false}') as {
     java: boolean
     web: boolean
   },
   ghostText: localStorage.getItem(GHOST_KEY) === 'true',
   settingsOpen: false,
+  settingsJump: null,
   theme: storedTheme(),
   doctor: null,
   favoriteModels: JSON.parse(localStorage.getItem(FAVORITES_KEY) ?? '[]') as string[],
@@ -503,6 +520,11 @@ export const useApp = create<AppState>((set, get) => ({
     return project
   },
 
+  renameProject: async (projectId, name) => {
+    await client.request('project.rename', { projectId, name })
+    await get().refreshTree()
+  },
+
   removeProject: async (projectId) => {
     await client.request('project.delete', { projectId })
     if (get().selectedProjectId === projectId) set({ selectedProjectId: null, selectedId: null })
@@ -609,7 +631,8 @@ export const useApp = create<AppState>((set, get) => ({
     return list
   },
 
-  setQuickOpen: (mode) => set({ quickOpen: mode }),
+  setQuickOpen: (mode) => set({ quickOpen: mode, ...(mode === null ? { hierarchy: null } : {}) }),
+  openHierarchy: (title, rows) => set({ hierarchy: { title, rows }, quickOpen: 'hierarchy' }),
 
   setRailPanel: (panel) => set({ railPanel: panel }),
 
@@ -845,7 +868,8 @@ export const useApp = create<AppState>((set, get) => ({
     set({ railOpen: open })
     syncWatch(get())
   },
-  setSettingsOpen: (open) => set({ settingsOpen: open }),
+  setSettingsOpen: (open, jump) => set({ settingsOpen: open, settingsJump: jump ?? null }),
+  clearSettingsJump: () => set({ settingsJump: null }),
 
   setTheme: (theme) => {
     localStorage.setItem(THEME_KEY, theme)

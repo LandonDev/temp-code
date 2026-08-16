@@ -135,6 +135,23 @@ export function EditorSurface({
       editor.addCommand(monaco.KeyMod.WinCtrl | monaco.KeyCode.KeyT, () => {
         editor?.trigger('keyboard', 'editor.action.refactor', null)
       })
+      // ⌃⌥H callers, ⌃H type hierarchy — IDEA's hierarchy views, served
+      // into the quick-open overlay (docs/PLAN-4.md M18).
+      const showHierarchy = (variant: 'callers' | 'types'): void => {
+        const position = editor?.getPosition()
+        const m = editor?.getModel()
+        if (!position || !m) return
+        void import('./lsp').then(async ({ callHierarchy, typeHierarchy }) => {
+          const res = await (variant === 'callers'
+            ? callHierarchy(m, position)
+            : typeHierarchy(m, position))
+          if (res) useApp.getState().openHierarchy(res.title, res.rows)
+        })
+      }
+      editor.addCommand(monaco.KeyMod.WinCtrl | monaco.KeyMod.Alt | monaco.KeyCode.KeyH, () =>
+        showHierarchy('callers')
+      )
+      editor.addCommand(monaco.KeyMod.WinCtrl | monaco.KeyCode.KeyH, () => showHierarchy('types'))
       if (!readOnly) ensureForModel(project, handle.model)
       setPhase('ready')
     })()
