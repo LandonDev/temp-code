@@ -101,7 +101,7 @@ async function lspConnect(wsPath: string, rootDir: string, settings: unknown): P
     capabilities: {
       textDocument: {
         synchronization: {},
-        completion: { completionItem: {} },
+        completion: { completionItem: { labelDetailsSupport: true } },
         rename: {},
         semanticTokens: {
           requests: { full: true },
@@ -298,7 +298,7 @@ public class App {
     })
     await ready.catch(() => check('jdtls reached ServiceReady', false, 'timeout'))
     interface Completion {
-      items?: { label: string }[]
+      items?: { label: string; labelDetails?: { detail?: string; description?: string } }[]
     }
     const completion = await jClient.request<Completion | { label: string }[] | null>(
       'textDocument/completion',
@@ -308,13 +308,19 @@ public class App {
       }
     )
     const items = Array.isArray(completion) ? completion : (completion?.items ?? [])
-    // jdtls pages its list (50 items, alphabetical) — any unmistakable
-    // String members prove the classpath resolved.
     check(
       'jdtls completion returns String members over the tunnel',
       items.some((i) => i.label.startsWith('charAt')) &&
         items.some((i) => i.label.startsWith('codePointAt')),
       `${items.length} items: ${items.slice(0, 5).map((i) => i.label).join(', ')}`
+    )
+    // Structured labels (IDEA columns): name | (params) | return type.
+    const charAt = items.find((i) => i.label === 'charAt')
+    check(
+      'jdtls sends labelDetails when advertised',
+      charAt?.labelDetails?.detail?.includes('(') === true &&
+        (charAt?.labelDetails?.description?.length ?? 0) > 0,
+      JSON.stringify(charAt?.labelDetails)
     )
 
     // Semantic tokens over the tunnel (fields purple etc. ride this).

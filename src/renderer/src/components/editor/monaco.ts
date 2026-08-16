@@ -168,7 +168,12 @@ function readPalette(dark: boolean): Record<string, string> {
     'editorWidget.border': cssToHex(v('--border-strong'))!,
     'editorSuggestWidget.background': cssToHex(v('--popover'))!,
     'editorSuggestWidget.border': cssToHex(v('--border-strong'))!,
-    'editorSuggestWidget.selectedBackground': cssToHex(v('--accent'))!,
+    // IDEA's completion selection: a real blue bar, not a grey wash.
+    // Matched letters on it get IDEA's speed-search amber (dark).
+    'editorSuggestWidget.selectedBackground': dark ? '#4B6EAF' : '#D5E1FF',
+    'editorSuggestWidget.selectedForeground': dark ? '#FFFFFF' : '#080808',
+    'editorSuggestWidget.selectedIconForeground': dark ? '#FFFFFF' : '#080808',
+    'editorSuggestWidget.focusHighlightForeground': dark ? '#FFE59E' : cssToHex(v('--brand'))!,
     'editorSuggestWidget.highlightForeground': cssToHex(v('--brand'))!,
     'editorHoverWidget.background': cssToHex(v('--popover'))!,
     'editorHoverWidget.border': cssToHex(v('--border-strong'))!,
@@ -317,6 +322,13 @@ export const EDITOR_OPTIONS: monaco.editor.IStandaloneEditorConstructionOptions 
   bracketPairColorization: { enabled: false },
   occurrencesHighlight: 'singleFile',
   selectionHighlight: true,
+  // IDEA completion feel: remember the last pick, prefer nearby symbols,
+  // no plain-word fallback entries, and keep completing inside snippet
+  // placeholders (the option's declared default is false but an upstream
+  // validation bug makes it true unless set explicitly).
+  suggestSelection: 'recentlyUsed',
+  wordBasedSuggestions: 'off',
+  suggest: { localityBonus: true, snippetsPreventQuickSuggestions: false },
   scrollbar: { verticalScrollbarSize: 10, horizontalScrollbarSize: 10, useShadows: false },
   lightbulb: { enabled: 'onCode' as never },
   fixedOverflowWidgets: true,
