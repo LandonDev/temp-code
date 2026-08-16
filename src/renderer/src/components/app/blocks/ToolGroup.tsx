@@ -889,7 +889,9 @@ export const ToolGroup = memo(function ToolGroup({
     openState.set(gkey, v)
     setOverrideRaw(v)
   }
-  const open = override ?? autoOpen
+  // Auto-open shows the CHIP LIST growing — a single tool has no list,
+  // its expansion is the invocation/output dump, so it stays folded.
+  const open = override ?? (autoOpen && tools.length > 1)
 
   const single = tools.length === 1 ? tools[0] : null
   const k = single ? kindOf(single) : null
