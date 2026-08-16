@@ -85,7 +85,9 @@ export const AgentEventSchema = z.discriminatedUnion('type', [
     name: z.string(),
     input: z.unknown(),
     partial: z.boolean().optional(),
-    parentCallId: z.string().optional()
+    parentCallId: z.string().optional(),
+    /** humanized face for addon calls (codex appContext): app + action */
+    display: z.object({ app: z.string().optional(), action: z.string().optional() }).optional()
   }),
   z.object({
     type: z.literal('tool-result'),

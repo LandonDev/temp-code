@@ -130,6 +130,22 @@ class AppServerConn {
 
 type Item = Record<string, unknown> & { type?: string; id?: string }
 
+/** The humanized face of an addon call — exactly what the Codex app
+ *  shows: appContext's appName + actionName when the plugin provides
+ *  them, else the plugin/server name and a de-snaked tool name. */
+function mcpDisplay(item: Item): { app?: string; action?: string } {
+  const ctx = (item.appContext ?? {}) as { appName?: string | null; actionName?: string | null }
+  const plugin = typeof item.pluginId === 'string' ? item.pluginId.split('@')[0] : undefined
+  const tool = String(item.tool ?? '')
+  // codex_apps tools arrive as "linear.save_document" — first segment is
+  // the app, the rest is the action.
+  const dotted = tool.includes('.') ? tool.split('.') : null
+  const app = ctx.appName ?? plugin ?? dotted?.[0] ?? String(item.server ?? '')
+  const rawAction = ctx.actionName ?? (dotted ? dotted.slice(1).join('.') : tool)
+  const action = rawAction.replace(/[_-]+/g, ' ').replace(/^\w/, (c) => c.toUpperCase())
+  return { app: app || undefined, action: action || undefined }
+}
+
 export const codexDriver: HarnessDriver = {
   id: 'codex',
 
@@ -177,7 +193,8 @@ export const codexDriver: HarnessDriver = {
             type: 'tool-call',
             callId: String(item.id),
             name: `${item.server}.${item.tool}`,
-            input: item.arguments
+            input: item.arguments,
+            display: mcpDisplay(item)
           })
           break
         case 'webSearch':
@@ -231,6 +248,15 @@ export const codexDriver: HarnessDriver = {
           })
           break
         case 'mcpToolCall':
+          // The final item carries the settled appContext — refresh the
+          // call's face before the result lands (same callId replaces).
+          emit({
+            type: 'tool-call',
+            callId: String(item.id),
+            name: `${item.server}.${item.tool}`,
+            input: item.arguments,
+            display: mcpDisplay(item)
+          })
           emit({
             type: 'tool-result',
             callId: String(item.id),

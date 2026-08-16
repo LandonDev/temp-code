@@ -7,6 +7,7 @@ import { useApp } from '../../../state/store'
 /** Monaco stays out of the startup path — loads on first in-place edit. */
 const InlineEditor = lazy(() => import('../../editor/InlineEditor'))
 import { ZIcon, type ZIconName } from '../zicon'
+import { AddonMark } from '../AddonMark'
 import { duration, ProviderMark } from '../bits'
 import type { ProviderId } from '@shared/catalog'
 import { MatrixSpinner } from '../WorkingStrip'
@@ -333,6 +334,10 @@ function appView(
 
 /** What one tool did, past tense, lowercase ("checked git status"). */
 function toolPhrases(t: ToolBlock, titles: ThreadTitles): string[] {
+  // Addon calls speak the Codex app's language: "Save document in Linear".
+  if (t.display?.action) {
+    return [t.display.app ? `${t.display.action} in ${t.display.app}` : t.display.action]
+  }
   const app = appView(t, titles)
   if (app) return [app.phrase]
   const i = input(t)
@@ -959,6 +964,8 @@ const Chip = memo(function Chip({
           <span className="flex size-[18px] shrink-0 items-center justify-center rounded-[5px] bg-(--tile-strong) text-muted-foreground">
             {loading ? (
               <MatrixSpinner cell={2} />
+            ) : b.display?.app ? (
+              <AddonMark command={{ name: b.display.app, source: 'plugin' }} size={12} />
             ) : agentProv ? (
               <ProviderMark provider={agentProv} size={12} />
             ) : (
@@ -971,7 +978,9 @@ const Chip = memo(function Chip({
               b.isError ? 'text-destructive' : loading ? 'text-muted-foreground' : 'text-foreground'
             )}
           >
-            {app?.label ?? (k === 'mcp' || k === 'tool' ? shortName(b.name) : chip.label)}
+            {b.display?.action ??
+              app?.label ??
+              (k === 'mcp' || k === 'tool' ? shortName(b.name) : chip.label)}
           </span>
           <span
             className={cn(
