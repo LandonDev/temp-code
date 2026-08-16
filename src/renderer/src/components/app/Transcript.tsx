@@ -8,6 +8,7 @@ import { QuestionCard } from './blocks/QuestionCard'
 import { CompactionCard } from './blocks/CompactionCard'
 import { MarkdownText } from './blocks/MarkdownText'
 import { ThinkingBlock } from './blocks/ThinkingBlock'
+import { TextShimmer } from '../motion/text-shimmer'
 import {
   EDIT_TOOLS,
   ErrorChip,
@@ -48,10 +49,10 @@ function rowsFor(blocks: Block[]): Row[] {
   const rows: Row[] = []
   let turn = -1
   for (const b of blocks) {
-    // Thinking with no visible text shows as a live "Thinking" shimmer while
-    // it streams and leaves no trace once it settles — some harnesses (gpt
-    // via codex) report reasoning steps whose summaries are empty.
-    if (b.kind === 'thinking' && !b.streaming && b.text.trim() === '') continue
+    // Thinking with no visible text never becomes a row — a row that
+    // appears and then vanishes when the step settles reads as jitter.
+    // The transcript's trailing "Thinking" status covers the live case.
+    if (b.kind === 'thinking' && b.text.trim() === '') continue
     if (b.kind === 'user') turn++
     if (b.kind === 'tool') {
       // File changes stand alone and loud — one card per file, never
@@ -154,7 +155,7 @@ export const BlockRow = memo(function BlockRow({
     }
     return <ToolGroup tools={[block]} />
   }
-  if (block.kind === 'thinking' && !block.streaming && block.text.trim() === '') return <></>
+  if (block.kind === 'thinking' && block.text.trim() === '') return <></>
   return <RowContent row={{ type: 'block', id: block.id, block, turn: 0 }} sessionId={sessionId} />
 })
 
@@ -201,6 +202,16 @@ export function Transcript({
   const status = useApp((s) => s.sessions[sessionId]?.status)
   const loaded = useApp((s) => !!s.loaded[sessionId])
   const rows = useMemo(() => rowsFor(blocks), [blocks])
+  // In-thread liveness: the model is working with nothing visible yet —
+  // hidden reasoning, or the beat right after a send. A trailing status
+  // row sits where the next content will land, so it's replaced by it,
+  // never yanked out from above.
+  const lastBlock = blocks.at(-1)
+  const thinkingTail =
+    (status === 'running' || status === 'starting') &&
+    (!lastBlock ||
+      lastBlock.kind === 'user' ||
+      (lastBlock.kind === 'thinking' && lastBlock.text.trim() === ''))
   const scrollRef = useRef<HTMLDivElement>(null)
   const [hoveredTurn, setHoveredTurn] = useState<number | null>(null)
   const [pill, setPill] = useState(false)
@@ -240,11 +251,11 @@ export function Transcript({
   const pinBottom = useRef(true)
 
   const virtualizer = useVirtualizer({
-    count: rows.length,
+    count: rows.length + (thinkingTail ? 1 : 0),
     getScrollElement: () => scrollRef.current,
     estimateSize: () => 48,
     overscan: 10,
-    getItemKey: (i) => rows[i].id
+    getItemKey: (i) => rows[i]?.id ?? 'thinking-tail'
   })
 
   // Raw item start — NOT getOffsetForIndex, which clamps to the current
@@ -499,6 +510,23 @@ export function Transcript({
         >
           {virtualizer.getVirtualItems().map((item) => {
             const row = rows[item.index]
+            if (!row) {
+              // The trailing "Thinking" status — quiet text, no tile, no
+              // chevron; the next real row takes this exact spot.
+              return (
+                <div
+                  key={item.key}
+                  data-index={item.index}
+                  ref={virtualizer.measureElement}
+                  className="absolute right-6 left-6"
+                  style={{ transform: `translateY(${item.start}px)` }}
+                >
+                  <div className="flex h-[26px] items-center px-1 py-1">
+                    <TextShimmer className="text-xs">Thinking</TextShimmer>
+                  </div>
+                </div>
+              )
+            }
             const isUser = row.type === 'block' && row.block.kind === 'user'
             const fresh = item.index === rows.length - 1 && blocks.length > initialCount.current
             // Timestamp strip: under a user bubble, or under the last row of
