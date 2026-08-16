@@ -1,13 +1,16 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import {
   Archive,
   Blocks,
   Coffee,
   Code,
+  FolderGit2,
   GitFork,
+  Search,
   Settings as SettingsIcon,
   SlidersHorizontal,
+  Trash2,
   type LucideIcon
 } from 'lucide-react'
 import type { ProviderId } from '@shared/catalog'
@@ -25,6 +28,8 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '
 import { OrchestrationRulesEditor } from '../OrchestrationRules'
 import { ThreadDefaultsEditor } from '../ThreadDefaults'
 import { SettingsPanel, SettingsRow } from '../SettingsPanel'
+import { ConfirmDialog } from '../ConfirmDialog'
+import { Input } from '../../ui/input'
 import { EASE_OUT } from '../../../lib/ease'
 
 const THEME_OPTIONS: { value: ThemePref; label: string }[] = [
@@ -33,7 +38,8 @@ const THEME_OPTIONS: { value: ThemePref; label: string }[] = [
   { value: 'dark', label: 'Dark' }
 ]
 
-type SettingsPage = 'general' | 'defaults' | 'editor' | 'orchestration' | 'providers' | 'archived'
+type SettingsPage =
+  'general' | 'defaults' | 'editor' | 'orchestration' | 'providers' | 'archived' | `ws:${string}`
 
 const PAGES: { id: SettingsPage; label: string; icon: LucideIcon; hint: string }[] = [
   { id: 'general', label: 'General', icon: SettingsIcon, hint: 'Appearance.' },
@@ -74,8 +80,22 @@ const PAGES: { id: SettingsPage; label: string; icon: LucideIcon; hint: string }
  *  reached from each workspace's sidebar menu. */
 export function SettingsView(): React.JSX.Element {
   const setSettingsOpen = useApp((s) => s.setSettingsOpen)
+  const settingsJump = useApp((s) => s.settingsJump)
+  const clearSettingsJump = useApp((s) => s.clearSettingsJump)
+  const workspaces = useApp((s) => s.workspaces)
   const [page, setPage] = useState<SettingsPage>('general')
   const reduce = useReducedMotion()
+
+  // The sidebar can open settings straight onto a workspace's page —
+  // consumed during render (prev-state pattern), cleared after.
+  const [prevJump, setPrevJump] = useState<string | null>(null)
+  if (settingsJump && settingsJump !== prevJump) {
+    setPrevJump(settingsJump)
+    setPage(settingsJump as SettingsPage)
+  }
+  useEffect(() => {
+    if (settingsJump) clearSettingsJump()
+  }, [settingsJump, clearSettingsJump])
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
@@ -94,27 +114,38 @@ export function SettingsView(): React.JSX.Element {
           {PAGES.map((p) => {
             const Icon = p.icon
             return (
-              <button
+              <NavRow
                 key={p.id}
+                active={page === p.id}
                 onClick={() => setPage(p.id)}
-                className={cn(
-                  'relative flex h-8 items-center gap-2.5 rounded-lg px-2.5 text-left text-[13px] transition-colors active:scale-[0.99]',
-                  page === p.id ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'
-                )}
+                reduce={!!reduce}
               >
-                {page === p.id && (
-                  <motion.span
-                    layoutId="settings-page"
-                    transition={reduce ? { duration: 0 } : SPRING_LAYOUT}
-                    className="absolute inset-0 rounded-lg bg-accent shadow-[inset_0_1px_0_rgb(255_255_255/0.06)]"
-                  />
-                )}
                 <Icon className="relative size-4 shrink-0 opacity-75" strokeWidth={1.75} />
-                <span className="relative">{p.label}</span>
-              </button>
+                <span className="relative truncate">{p.label}</span>
+              </NavRow>
             )
           })}
         </div>
+        {workspaces.length > 0 && (
+          <>
+            <p className="mt-5 mb-1 px-2.5 text-[10px] font-medium tracking-[0.08em] text-muted-foreground/50 uppercase">
+              Workspaces
+            </p>
+            <div className="flex flex-col gap-px">
+              {workspaces.map((w) => (
+                <NavRow
+                  key={w.id}
+                  active={page === `ws:${w.id}`}
+                  onClick={() => setPage(`ws:${w.id}`)}
+                  reduce={!!reduce}
+                >
+                  <FolderGit2 className="relative size-4 shrink-0 opacity-75" strokeWidth={1.75} />
+                  <span className="relative truncate">{w.name}</span>
+                </NavRow>
+              ))}
+            </div>
+          </>
+        )}
       </nav>
 
       <div className="min-h-0 w-full max-w-[560px] overflow-y-auto px-8 pb-16">
@@ -145,6 +176,12 @@ export function SettingsView(): React.JSX.Element {
               {page === 'orchestration' && <OrchestrationRulesEditor workspaceId={null} />}
               {page === 'providers' && <ProviderHealthList />}
               {page === 'archived' && <ArchivedList />}
+              {page.startsWith('ws:') && (
+                <>
+                  <ThreadDefaultsEditor workspaceId={page.slice(3)} />
+                  <OrchestrationRulesEditor workspaceId={page.slice(3)} />
+                </>
+              )}
             </div>
           </motion.div>
         </AnimatePresence>
@@ -154,12 +191,55 @@ export function SettingsView(): React.JSX.Element {
 }
 
 function PageHeader({ page }: { page: SettingsPage }): React.JSX.Element {
+  const workspaces = useApp((s) => s.workspaces)
+  if (page.startsWith('ws:')) {
+    const ws = workspaces.find((w) => w.id === page.slice(3))
+    return (
+      <header className="pt-8">
+        <h2 className="text-[15px] font-semibold tracking-[-0.01em]">{ws?.name ?? 'Workspace'}</h2>
+        <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
+          Overrides for this workspace. Anything untouched inherits the global settings.
+        </p>
+      </header>
+    )
+  }
   const meta = PAGES.find((p) => p.id === page) ?? PAGES[0]
   return (
     <header className="pt-8">
       <h2 className="text-[15px] font-semibold tracking-[-0.01em]">{meta.label}</h2>
       <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">{meta.hint}</p>
     </header>
+  )
+}
+
+function NavRow({
+  active,
+  onClick,
+  reduce,
+  children
+}: {
+  active: boolean
+  onClick: () => void
+  reduce: boolean
+  children: React.ReactNode
+}): React.JSX.Element {
+  return (
+    <button
+      onClick={onClick}
+      className={cn(
+        'relative flex h-8 items-center gap-2.5 rounded-lg px-2.5 text-left text-[13px] transition-colors active:scale-[0.99]',
+        active ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'
+      )}
+    >
+      {active && (
+        <motion.span
+          layoutId="settings-page"
+          transition={reduce ? { duration: 0 } : SPRING_LAYOUT}
+          className="absolute inset-0 rounded-lg bg-accent shadow-[inset_0_1px_0_rgb(255_255_255/0.06)]"
+        />
+      )}
+      {children}
+    </button>
   )
 }
 
@@ -487,23 +567,48 @@ function ToggleRow({
   )
 }
 
+/** Dialog titles stay one line — long thread names get elided. */
+function clampTitle(t: string | undefined): string | undefined {
+  if (!t) return t
+  return t.length > 32 ? `${t.slice(0, 32).trimEnd()}…` : t
+}
+
 function ArchivedList(): React.JSX.Element {
   const sessions = useApp((s) => s.sessions)
   const projects = useApp((s) => s.projects)
   const select = useApp((s) => s.select)
   const selectProject = useApp((s) => s.selectProject)
   const setArchived = useApp((s) => s.setArchived)
+  const deleteSession = useApp((s) => s.deleteSession)
+  const [query, setQuery] = useState('')
+  const [confirmId, setConfirmId] = useState<string | null>(null)
 
-  const archived = Object.values(sessions)
-    .filter((s) => s.archived && !s.parentId)
-    .sort((a, b) => b.updatedAt - a.updatedAt)
+  const archived = useMemo(
+    () =>
+      Object.values(sessions)
+        .filter((s) => s.archived && !s.parentId)
+        .sort((a, b) => b.updatedAt - a.updatedAt),
+    [sessions]
+  )
+
+  const q = query.trim().toLowerCase()
+  const shown = q
+    ? archived.filter((t) => {
+        const project = projects.find((p) => p.id === t.projectId)
+        return (
+          t.title.toLowerCase().includes(q) ||
+          (project?.name.toLowerCase().includes(q) ?? false) ||
+          t.provider.includes(q)
+        )
+      })
+    : archived
 
   if (archived.length === 0) {
     return (
-      <div className="flex flex-col items-center gap-2 rounded-lg border border-dashed border-border/60 py-8 text-center">
+      <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-border/60 py-10 text-center">
         <ZIcon name="archive-minimalistic" size={22} className="text-muted-foreground/30" />
         <span className="text-xs text-muted-foreground/60">
-          Nothing archived — right-click a tab to archive it.
+          Nothing archived. Right-click a tab to archive it.
         </span>
       </div>
     )
@@ -516,34 +621,82 @@ function ArchivedList(): React.JSX.Element {
     await select(id)
   }
 
+  const confirmTarget = confirmId ? sessions[confirmId] : null
+
   return (
-    <SettingsPanel>
-      {archived.map((t) => {
-        const Glyph = t.threadType ? THREAD_GLYPHS[t.threadType] : THREAD_GLYPHS.chat
-        const project = projects.find((p) => p.id === t.projectId)
-        return (
-          <button
-            key={t.id}
-            onClick={() => void restore(t.id, t.projectId)}
-            className="group/arch flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors duration-150 hover:bg-accent/40"
-          >
-            <span className="flex size-7 shrink-0 items-center justify-center rounded-md border border-border">
-              <Glyph className={cn('size-3.5 opacity-80', THREAD_TINTS[t.threadType ?? 'chat'])} />
-            </span>
-            <span className="min-w-0 flex-1">
-              <span className="block truncate text-[13px]">{t.title}</span>
-              <span className="block text-[11px] text-muted-foreground/60">
-                {project ? `${project.name} · ` : ''}
-                {timeAgo(t.updatedAt)}
-              </span>
-            </span>
-            <span className="flex shrink-0 items-center gap-1 text-[11px] text-muted-foreground opacity-0 transition-opacity duration-150 group-hover/arch:opacity-100">
-              <ZIcon name="archive-up-minimalistic" size={13} />
-              Restore
-            </span>
-          </button>
-        )
-      })}
-    </SettingsPanel>
+    <div className="flex flex-col gap-3">
+      <div className="relative">
+        <Search className="pointer-events-none absolute top-1/2 left-3 size-3.5 -translate-y-1/2 text-muted-foreground/50" />
+        <Input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder={`Search ${archived.length} archived…`}
+          className="h-8 pl-8.5 text-[13px]"
+        />
+      </div>
+
+      {shown.length === 0 ? (
+        <div className="rounded-xl border border-dashed border-border/60 py-8 text-center text-xs text-muted-foreground/60">
+          {`Nothing matches "${query.trim()}".`}
+        </div>
+      ) : (
+        <SettingsPanel>
+          {shown.map((t) => {
+            const Glyph = t.threadType ? THREAD_GLYPHS[t.threadType] : THREAD_GLYPHS.chat
+            const project = projects.find((p) => p.id === t.projectId)
+            return (
+              <div
+                key={t.id}
+                className="group/arch flex w-full items-center gap-3 px-4 py-2.5 transition-colors duration-150 hover:bg-accent/40"
+              >
+                <span className="flex size-7 shrink-0 items-center justify-center rounded-md border border-border bg-background/60">
+                  <Glyph
+                    className={cn('size-3.5 opacity-80', THREAD_TINTS[t.threadType ?? 'chat'])}
+                  />
+                </span>
+                <button
+                  onClick={() => void restore(t.id, t.projectId)}
+                  className="min-w-0 flex-1 text-left"
+                  title="Restore and open"
+                >
+                  <span className="block truncate text-[13px]">{t.title}</span>
+                  <span className="mt-px flex items-center gap-1.5 text-[11px] text-muted-foreground/60">
+                    <ProviderMark provider={t.provider} size={10} className="opacity-70" />
+                    {project ? `${project.name} · ` : ''}
+                    {timeAgo(t.updatedAt)}
+                  </span>
+                </button>
+                <span className="flex shrink-0 items-center gap-1 opacity-0 transition-opacity duration-150 group-hover/arch:opacity-100">
+                  <button
+                    onClick={() => void restore(t.id, t.projectId)}
+                    className="flex h-6 items-center gap-1.5 rounded-md px-2 text-[11px] text-muted-foreground transition hover:bg-accent hover:text-foreground active:scale-95"
+                  >
+                    <ZIcon name="archive-up-minimalistic" size={13} />
+                    Restore
+                  </button>
+                  <button
+                    onClick={() => setConfirmId(t.id)}
+                    aria-label="Delete thread"
+                    title="Delete forever"
+                    className="flex size-6 items-center justify-center rounded-md text-muted-foreground transition hover:bg-destructive/10 hover:text-destructive active:scale-95"
+                  >
+                    <Trash2 className="size-3.5" />
+                  </button>
+                </span>
+              </div>
+            )
+          })}
+        </SettingsPanel>
+      )}
+
+      <ConfirmDialog
+        open={confirmId !== null}
+        title={`Delete ${clampTitle(confirmTarget?.title) ?? 'thread'}?`}
+        body="The thread and its whole transcript are gone for good."
+        confirmLabel="Delete thread"
+        onConfirm={() => (confirmId ? deleteSession(confirmId) : undefined)}
+        onClose={() => setConfirmId(null)}
+      />
+    </div>
   )
 }

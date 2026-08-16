@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
-import { ChevronRight, FolderPlus, GitBranch, MoreHorizontal, Plus } from 'lucide-react'
+import { ChevronRight, FolderPlus, GitBranch, MoreHorizontal, Pencil, Plus } from 'lucide-react'
 import type { ProjectMeta, WorkspaceMeta } from '@shared/domain'
 import type { SessionMeta } from '@shared/events'
 import { threadsOfProject, unsortedSessions, useApp } from '../../state/store'
@@ -10,12 +10,13 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger
 } from '../ui/dropdown-menu'
 import { StatusDot, timeAgo } from './bits'
 import { ZIcon } from './zicon'
 import { NewProjectDialog } from './NewProjectDialog'
-import { WorkspaceSettingsDialog } from './WorkspaceSettings'
+import { ConfirmDialog } from './ConfirmDialog'
 
 /**
  * Workspaces → projects. One left-edge rhythm: workspace names start at
@@ -32,7 +33,6 @@ export function Sidebar(): React.JSX.Element {
   const setSettingsOpen = useApp((s) => s.setSettingsOpen)
   const addWorkspace = useApp((s) => s.addWorkspace)
   const [newProjectWs, setNewProjectWs] = useState<WorkspaceMeta | null>(null)
-  const [rulesWs, setRulesWs] = useState<WorkspaceMeta | null>(null)
 
   const unsorted = useMemo(() => unsortedSessions(sessions), [sessions])
 
@@ -55,7 +55,6 @@ export function Sidebar(): React.JSX.Element {
               projects={projects.filter((p) => p.workspaceId === ws.id)}
               sessions={sessions}
               onNewProject={() => setNewProjectWs(ws)}
-              onRules={() => setRulesWs(ws)}
             />
           ))}
 
@@ -93,7 +92,6 @@ export function Sidebar(): React.JSX.Element {
       {newProjectWs && (
         <NewProjectDialog workspace={newProjectWs} onClose={() => setNewProjectWs(null)} />
       )}
-      {rulesWs && <WorkspaceSettingsDialog workspace={rulesWs} onClose={() => setRulesWs(null)} />}
     </aside>
   )
 }
@@ -102,18 +100,18 @@ function WorkspaceGroup({
   workspace,
   projects,
   sessions,
-  onNewProject,
-  onRules
+  onNewProject
 }: {
   workspace: WorkspaceMeta
   projects: ProjectMeta[]
   sessions: Record<string, SessionMeta>
   onNewProject: () => void
-  onRules: () => void
 }): React.JSX.Element {
   const [open, setOpen] = useState(true)
+  const [confirmRemove, setConfirmRemove] = useState(false)
   const reduce = useReducedMotion()
   const removeWorkspace = useApp((s) => s.removeWorkspace)
+  const setSettingsOpen = useApp((s) => s.setSettingsOpen)
 
   return (
     <div className="group/ws mt-1 first:mt-0">
@@ -153,17 +151,26 @@ function WorkspaceGroup({
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start" className="min-w-40">
               <DropdownMenuItem onClick={onNewProject}>New project</DropdownMenuItem>
-              <DropdownMenuItem onClick={onRules}>Workspace settings</DropdownMenuItem>
-              <DropdownMenuItem
-                variant="destructive"
-                onClick={() => void removeWorkspace(workspace.id)}
-              >
-                Remove workspace
+              <DropdownMenuItem onClick={() => setSettingsOpen(true, `ws:${workspace.id}`)}>
+                Workspace settings
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem variant="destructive" onClick={() => setConfirmRemove(true)}>
+                Remove workspace…
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
       </div>
+
+      <ConfirmDialog
+        open={confirmRemove}
+        title={`Remove ${workspace.name}?`}
+        body="Its projects and threads leave the app. Files and worktrees on disk stay."
+        confirmLabel="Remove workspace"
+        onConfirm={() => removeWorkspace(workspace.id)}
+        onClose={() => setConfirmRemove(false)}
+      />
 
       <AnimatePresence initial={false}>
         {open && (
@@ -203,12 +210,42 @@ function ProjectRow({
   const selected = useApp((s) => s.selectedProjectId === project.id)
   const selectProject = useApp((s) => s.selectProject)
   const removeProject = useApp((s) => s.removeProject)
+  const renameProject = useApp((s) => s.renameProject)
+  const [renaming, setRenaming] = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState(false)
 
   const threads = threadsOfProject(sessions, project.id)
   const busy = threads.find(
     (t) => t.status === 'running' || t.status === 'waiting' || t.status === 'error'
   )
   const latest = threads.at(-1)
+
+  if (renaming) {
+    // The row itself becomes the editor — no dialog for a name.
+    return (
+      <div className="ml-4 flex items-center rounded-md bg-accent px-2 py-1.5">
+        <input
+          autoFocus
+          defaultValue={project.name}
+          onFocus={(e) => e.target.select()}
+          onKeyDown={(e) => {
+            e.stopPropagation()
+            if (e.key === 'Enter') e.currentTarget.blur()
+            if (e.key === 'Escape') {
+              e.currentTarget.value = project.name
+              e.currentTarget.blur()
+            }
+          }}
+          onBlur={(e) => {
+            setRenaming(false)
+            const v = e.target.value.trim()
+            if (v && v !== project.name) void renameProject(project.id, v)
+          }}
+          className="w-full bg-transparent text-[13px] leading-5 outline-none"
+        />
+      </div>
+    )
+  }
 
   return (
     <div className="group/row relative ml-4">
@@ -221,6 +258,7 @@ function ProjectRow({
       )}
       <button
         onPointerDown={() => selectProject(project.id)}
+        onDoubleClick={() => setRenaming(true)}
         className={cn(
           'relative flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left transition-transform active:scale-[0.99]',
           !selected && 'hover:bg-accent/50'
@@ -262,12 +300,29 @@ function ProjectRow({
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="min-w-40">
-            <DropdownMenuItem variant="destructive" onClick={() => void removeProject(project.id)}>
-              Delete project
+            <DropdownMenuItem onClick={() => setRenaming(true)}>
+              <Pencil className="size-3.5 text-muted-foreground" />
+              Rename
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem variant="destructive" onClick={() => setConfirmDelete(true)}>
+              Delete project…
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
+      <ConfirmDialog
+        open={confirmDelete}
+        title={`Delete ${project.name}?`}
+        body={
+          project.mode === 'worktree'
+            ? 'Its threads are deleted. The worktree and branch on disk stay.'
+            : 'Its threads are deleted. Files on disk stay.'
+        }
+        confirmLabel="Delete project"
+        onConfirm={() => removeProject(project.id)}
+        onClose={() => setConfirmDelete(false)}
+      />
     </div>
   )
 }

@@ -72,6 +72,11 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
   z.object({ id: z.string(), method: z.literal('project.list') }),
   z.object({
     id: z.string(),
+    method: z.literal('project.rename'),
+    params: z.object({ projectId: z.string(), name: z.string() })
+  }),
+  z.object({
+    id: z.string(),
     method: z.literal('project.delete'),
     params: z.object({ projectId: z.string() })
   }),

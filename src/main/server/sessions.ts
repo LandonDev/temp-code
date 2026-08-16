@@ -206,6 +206,11 @@ export class SessionRegistry {
     return this.store.getProject(projectId)
   }
 
+  renameProject(projectId: string, name: string): void {
+    const t = name.trim()
+    if (t) this.store.renameProject(projectId, t)
+  }
+
   async deleteProject(projectId: string): Promise<void> {
     await this.deleteProjectSessions(projectId)
     this.store.deleteProject(projectId)
