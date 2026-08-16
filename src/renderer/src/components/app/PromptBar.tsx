@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { FileText, Image as ImageIcon, MessageSquare, X } from 'lucide-react'
 import type { ProviderId, Reasoning } from '@shared/catalog'
@@ -15,7 +15,7 @@ import { ZIcon } from './zicon'
 import { ModelPicker } from './ModelPicker'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select'
 import { rankFiles } from '../../lib/rank'
-import { AddonMark, SourceLabel } from './AddonMark'
+import { AddonMark } from './AddonMark'
 
 const REASONING_LABELS: Record<Reasoning, string> = {
   low: 'Low',
@@ -24,6 +24,15 @@ const REASONING_LABELS: Record<Reasoning, string> = {
   xhigh: 'Extra high',
   max: 'Max',
   ultra: 'Ultra'
+}
+
+/** The / menu's sections — one heading per kind of reference. */
+const SECTION_LABELS: Record<SlashCommand['source'], string> = {
+  skill: 'Skills',
+  command: 'Commands',
+  prompt: 'Prompts',
+  plugin: 'Connectors',
+  mcp: 'MCP servers'
 }
 
 const PERMISSION_LABELS: Record<PermissionPolicy, string> = {
@@ -177,7 +186,13 @@ export function PromptBar({
     if (!trigger || `${trigger.mode}:${trigger.start}` === dismissed) return []
     if (trigger.mode === 'command') {
       const q = trigger.query.toLowerCase()
-      return (commands ?? []).filter((c) => c.name.toLowerCase().includes(q)).slice(0, 8)
+      const order: SlashCommand['source'][] = ['skill', 'command', 'prompt', 'plugin', 'mcp']
+      return (commands ?? [])
+        .filter((c) => c.name.toLowerCase().includes(q))
+        .sort(
+          (a, b) =>
+            order.indexOf(a.source) - order.indexOf(b.source) || a.name.localeCompare(b.name)
+        )
     }
     // One flat list for the keyboard, grouped in render: files, then threads.
     return [
@@ -382,30 +397,37 @@ export function PromptBar({
               >
                 {trigger?.mode === 'command'
                   ? (matches as SlashCommand[]).map((c, n) => (
-                      <button
-                        key={`${c.scope}:${c.name}`}
-                        data-active={n === active}
-                        onMouseEnter={() => setActive(n)}
-                        onMouseDown={(e) => {
-                          e.preventDefault()
-                          accept(n)
-                        }}
-                        className={cn(
-                          'flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left',
-                          n === active && 'bg-accent'
+                      <React.Fragment key={`${c.scope}:${c.name}`}>
+                        {SECTION_LABELS[c.source] !==
+                          SECTION_LABELS[(matches as SlashCommand[])[n - 1]?.source] && (
+                          <p className="px-2 pt-2 pb-1 text-[10px] font-medium tracking-[0.08em] text-muted-foreground/60 uppercase first:pt-1">
+                            {SECTION_LABELS[c.source]}
+                          </p>
                         )}
-                      >
-                        <AddonMark command={c} size={14} />
-                        <span className="shrink-0 text-[13px] font-medium">/{c.name}</span>
-                        {c.description && (
-                          <span className="min-w-0 truncate text-xs text-muted-foreground">
-                            {c.description}
+                        <button
+                          data-active={n === active}
+                          onMouseEnter={() => setActive(n)}
+                          onMouseDown={(e) => {
+                            e.preventDefault()
+                            accept(n)
+                          }}
+                          className={cn(
+                            'flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left',
+                            n === active && 'bg-accent'
+                          )}
+                        >
+                          <AddonMark command={c} size={14} />
+                          <span className="shrink-0 text-[13px] font-medium">/{c.name}</span>
+                          {c.description && (
+                            <span className="min-w-0 truncate text-xs text-muted-foreground">
+                              {c.description}
+                            </span>
+                          )}
+                          <span className="ml-auto shrink-0 pl-2 text-[11px] text-muted-foreground/60">
+                            {c.scope === 'project' ? 'project' : ''}
                           </span>
-                        )}
-                        <span className="ml-auto shrink-0 pl-2 text-[11px] text-muted-foreground/60">
-                          <SourceLabel source={c.source} />
-                        </span>
-                      </button>
+                        </button>
+                      </React.Fragment>
                     ))
                   : (matches as AtMatch[]).map((m, n) => {
                       // Grouped render over one flat keyboard list: a quiet

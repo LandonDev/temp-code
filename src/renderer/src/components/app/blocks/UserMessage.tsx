@@ -1,4 +1,5 @@
 import { memo, useEffect, useState } from 'react'
+import { FileText, MessageSquare } from 'lucide-react'
 import type { Attachment } from '@shared/events'
 import { cn } from '../../../lib/utils'
 import { client } from '../../../lib/client'
@@ -73,21 +74,31 @@ function TokenizedText({
             <button
               key={n}
               onClick={() => thread && void select(id)}
-              className="rounded-sm bg-accent px-1 text-[13px] text-foreground hover:underline"
+              title="Open thread"
+              className="inline-flex items-center gap-1 rounded-sm bg-accent px-1 align-baseline text-[13px] text-foreground hover:underline"
             >
-              @{thread?.title ?? 'thread'}
+              <MessageSquare className="size-3 shrink-0 opacity-60" />
+              {thread?.title ?? 'thread'}
             </button>
           )
         }
         if (n % 2 === 1 && part.startsWith('@')) {
           const path = part.slice(1)
+          // The reference stays a real path underneath; the chip shows the
+          // human name — basename, minus the attachment store's id prefix.
+          const base = path.split('/').pop() ?? path
+          const label = path.includes('/.temp-code/attachments/')
+            ? base.replace(/^[\w-]{8}-/, '')
+            : base
           return (
             <button
               key={n}
               onClick={() => openFileRef(path)}
-              className="rounded-sm bg-accent px-1 font-mono text-[12px] text-foreground hover:underline"
+              title={path}
+              className="inline-flex items-center gap-1 rounded-sm bg-accent px-1 align-baseline font-mono text-[12px] text-foreground hover:underline"
             >
-              {part}
+              <FileText className="size-3 shrink-0 opacity-60" />
+              {label}
             </button>
           )
         }
