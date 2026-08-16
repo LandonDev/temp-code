@@ -8,6 +8,7 @@ import { useApp } from '../../state/store'
 import { cn, displayPath } from '../../lib/utils'
 import { EASE_OUT, SPRING_PANEL, SPRING_SWAP } from '../../lib/ease'
 import { StatusDot, timeAgo } from './bits'
+import { MessageQueue } from './MessageQueue'
 import { ZIcon } from './zicon'
 import { ModelPicker } from './ModelPicker'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select'
@@ -112,6 +113,8 @@ export function PromptBar({ compact }: { compact?: boolean }): React.JSX.Element
   const fetchFiles = useApp((s) => s.fetchFiles)
   const saveAttachment = useApp((s) => s.saveAttachment)
   const send = useApp((s) => s.send)
+  const queueAdd = useApp((s) => s.queueAdd)
+  const midTurnDefault = useApp((s) => s.midTurnDefault)
   const interrupt = useApp((s) => s.interrupt)
   const setPermission = useApp((s) => s.setPermission)
 
@@ -306,7 +309,8 @@ export function PromptBar({ compact }: { compact?: boolean }): React.JSX.Element
     })
   }
 
-  const submit = (): void => {
+  /** invert=true = the ⌘Enter path: do the NON-default mid-turn action. */
+  const submit = (invert = false): void => {
     const t = text.trim()
     if (!t && images.length === 0) return
     const attachments = [...images.map((i) => i.attachment), ...fileRefs]
@@ -314,12 +318,20 @@ export function PromptBar({ compact }: { compact?: boolean }): React.JSX.Element
     for (const i of images) URL.revokeObjectURL(i.previewUrl)
     setImages([])
     setFileRefs([])
-    void send(selectedId, t || '(see attachments)', {
+    const opts = {
       provider: session && choice.provider !== session.provider ? choice.provider : undefined,
       model: choice.model || undefined,
       reasoning,
       attachments: attachments.length ? attachments : undefined
-    })
+    }
+    const body = t || '(see attachments)'
+    // Mid-turn: Enter does the default (settings), ⌘Enter the other.
+    const midTurnAction = (midTurnDefault === 'queue') !== invert ? 'queue' : 'steer'
+    if (running && midTurnAction === 'queue') {
+      void queueAdd(selectedId, body, opts)
+      return
+    }
+    void send(selectedId, body, opts)
   }
 
   const removeImage = (path: string): void => {
@@ -333,6 +345,7 @@ export function PromptBar({ compact }: { compact?: boolean }): React.JSX.Element
   return (
     <div className={cn('shrink-0 px-6 pb-3', compact ? 'pt-0.5' : 'pt-1')}>
       <div className="relative mx-auto w-full max-w-[688px]">
+        <MessageQueue sessionId={selectedId} />
         <AnimatePresence>
           {open && (
             <motion.div
@@ -561,7 +574,7 @@ export function PromptBar({ compact }: { compact?: boolean }): React.JSX.Element
               }
               if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault()
-                submit()
+                submit(e.metaKey)
               }
             }}
             rows={1}
@@ -652,19 +665,43 @@ export function PromptBar({ compact }: { compact?: boolean }): React.JSX.Element
               >
                 <ZIcon name="paperclip" size={14} />
               </button>
-              {/* Send / Steer / Stop: no run → send; run + text → steer the
-                  running turn; run + empty → stop (red square). */}
+              {/* Send / Queue / Steer / Stop: idle → send; running + text →
+                  the settings default (⌘Enter or ⌘click does the other);
+                  running + empty → stop (red square). */}
               <button
-                onClick={() => (running && !canSend ? void interrupt(selectedId) : submit())}
+                onClick={(e) =>
+                  running && !canSend ? void interrupt(selectedId) : submit(e.metaKey)
+                }
                 disabled={!running && !canSend}
-                aria-label={running ? (canSend ? 'Steer' : 'Stop') : 'Send'}
+                aria-label={
+                  running
+                    ? canSend
+                      ? midTurnDefault === 'queue'
+                        ? 'Queue'
+                        : 'Steer'
+                      : 'Stop'
+                    : 'Send'
+                }
+                title={
+                  running && canSend
+                    ? midTurnDefault === 'queue'
+                      ? 'Enter queues · ⌘Enter steers the running turn'
+                      : 'Enter steers the running turn · ⌘Enter queues'
+                    : undefined
+                }
                 // The send circle is always the near-white solid plate
                 // (Zeron keeps it lit even while the input is empty).
                 className="relative flex size-7 shrink-0 items-center justify-center overflow-hidden rounded-full bg-primary text-primary-foreground transition active:scale-95"
               >
                 <AnimatePresence mode="wait" initial={false}>
                   <motion.span
-                    key={running && !canSend ? 'stop' : 'send'}
+                    key={
+                      running && !canSend
+                        ? 'stop'
+                        : running && midTurnDefault === 'queue'
+                          ? 'queue'
+                          : 'send'
+                    }
                     initial={reduce ? false : { opacity: 0, scale: 0.5, filter: 'blur(4px)' }}
                     animate={{ opacity: 1, scale: 1, filter: 'blur(0px)', transition: SPRING_SWAP }}
                     exit={
@@ -681,6 +718,8 @@ export function PromptBar({ compact }: { compact?: boolean }): React.JSX.Element
                   >
                     {running && !canSend ? (
                       <span className="block size-2.5 rounded-[2px] bg-destructive" />
+                    ) : running && midTurnDefault === 'queue' ? (
+                      <ZIcon name="checklist" size={14} />
                     ) : (
                       <ZIcon name="arrow-up" size={15} />
                     )}

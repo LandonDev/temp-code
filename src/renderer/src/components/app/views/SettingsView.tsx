@@ -130,6 +130,12 @@ export function SettingsView(): React.JSX.Element {
                   <SettingsRow label="Theme" description="System follows your OS appearance.">
                     <ThemeSwitch />
                   </SettingsRow>
+                  <SettingsRow
+                    label="While a turn runs"
+                    description="Enter does this; ⌘Enter does the other."
+                  >
+                    <MidTurnSwitch />
+                  </SettingsRow>
                 </SettingsPanel>
               )}
               {page === 'defaults' && <ThreadDefaultsEditor workspaceId={null} />}
@@ -152,6 +158,35 @@ function PageHeader({ page }: { page: SettingsPage }): React.JSX.Element {
       <h2 className="text-[15px] font-semibold tracking-[-0.01em]">{meta.label}</h2>
       <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">{meta.hint}</p>
     </header>
+  )
+}
+
+function MidTurnSwitch(): React.JSX.Element {
+  const value = useApp((s) => s.midTurnDefault)
+  const setValue = useApp((s) => s.setMidTurnDefault)
+  const reduce = useReducedMotion()
+  return (
+    <div className="inline-flex items-center gap-0.5 rounded-lg bg-secondary/60 p-0.5">
+      {(['queue', 'steer'] as const).map((o) => (
+        <button
+          key={o}
+          onClick={() => setValue(o)}
+          className={cn(
+            'relative rounded-md px-3 py-1 text-xs capitalize transition-colors',
+            value === o ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'
+          )}
+        >
+          {value === o && (
+            <motion.span
+              layoutId="mid-turn-pill"
+              transition={reduce ? { duration: 0 } : SPRING_LAYOUT}
+              className="absolute inset-0 rounded-md bg-background shadow-[0_1px_3px_rgb(0_0_0/0.12)] dark:bg-accent"
+            />
+          )}
+          <span className="relative">{o === 'queue' ? 'Queue' : 'Steer'}</span>
+        </button>
+      ))}
+    </div>
   )
 }
 

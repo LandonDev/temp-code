@@ -11,7 +11,7 @@ import type {
   ThreadType,
   WorkspaceMeta
 } from '@shared/domain'
-import type { CreateSessionInput } from '@shared/contract'
+import type { CreateSessionInput, QueuedMessage } from '@shared/contract'
 import { client } from '../lib/client'
 import { dispatchFileEvent, flushAllBuffers } from '../lib/file-events'
 import {
@@ -54,6 +54,7 @@ export const surfaceKey = (s: SurfaceRef): string => `${s.kind}:${s.path}`
 const FAVORITES_KEY = 'model-favorites'
 const THEME_KEY = 'theme'
 const LAST_SEEN_KEY = 'thread-last-seen'
+const MID_TURN_KEY = 'mid-turn-default'
 const SURFACES_KEY = 'surfaces-v1'
 const FORMAT_KEY = 'format-on-save'
 const GHOST_KEY = 'ghost-text'
@@ -125,6 +126,10 @@ interface AppState {
   favoriteModels: string[]
   /** per-thread last-seen activity timestamp (persisted) — unread dots */
   lastSeen: Record<string, number>
+  /** messages waiting per session (server-owned; mirrored via push) */
+  queues: Record<string, QueuedMessage[]>
+  /** what Enter does while a turn runs; ⌘Enter does the other */
+  midTurnDefault: 'queue' | 'steer'
 
   init: () => Promise<void>
   refreshTree: () => Promise<void>
@@ -180,6 +185,21 @@ interface AppState {
   renameSession: (sessionId: string, title: string) => Promise<void>
   /** Mark a thread's activity as seen (clears its unread dot). */
   markSeen: (sessionId: string) => void
+  setMidTurnDefault: (v: 'queue' | 'steer') => void
+  queueAdd: (
+    sessionId: string,
+    text: string,
+    opts?: {
+      provider?: ProviderId
+      model?: string
+      reasoning?: Reasoning
+      attachments?: Attachment[]
+    }
+  ) => Promise<void>
+  queueRemove: (sessionId: string, messageId: string) => Promise<void>
+  queueUpdate: (sessionId: string, messageId: string, text: string) => Promise<void>
+  queueReorder: (sessionId: string, order: string[]) => Promise<void>
+  queueSteer: (sessionId: string, messageId: string) => Promise<void>
   deleteSession: (sessionId: string) => Promise<void>
   restartSession: (sessionId: string) => Promise<void>
   fetchChanges: (projectId: string) => Promise<void>
@@ -285,6 +305,8 @@ export const useApp = create<AppState>((set, get) => ({
   doctor: null,
   favoriteModels: JSON.parse(localStorage.getItem(FAVORITES_KEY) ?? '[]') as string[],
   lastSeen: JSON.parse(localStorage.getItem(LAST_SEEN_KEY) ?? '{}') as Record<string, number>,
+  queues: {},
+  midTurnDefault: localStorage.getItem(MID_TURN_KEY) === 'steer' ? 'steer' : 'queue',
 
   init: async () => {
     if (initStarted) return
@@ -293,6 +315,8 @@ export const useApp = create<AppState>((set, get) => ({
       if (push.push === 'session') {
         set((s) => ({ sessions: { ...s.sessions, [push.session.id]: push.session } }))
         if (push.session.id === get().selectedId) get().markSeen(push.session.id)
+      } else if (push.push === 'queue') {
+        set((s) => ({ queues: { ...s.queues, [push.sessionId]: push.items } }))
       } else if (push.push === 'event') {
         const { sessionId } = push.row
         // Ephemeral rows (streaming tool-input previews) fold into the live
@@ -632,6 +656,35 @@ export const useApp = create<AppState>((set, get) => ({
       localStorage.setItem(LAST_SEEN_KEY, JSON.stringify(lastSeen))
       return { lastSeen }
     })
+  },
+
+  setMidTurnDefault: (v) => {
+    localStorage.setItem(MID_TURN_KEY, v)
+    set({ midTurnDefault: v })
+  },
+
+  queueAdd: async (sessionId, text, opts) => {
+    await client.request('queue.add', { sessionId, text, ...opts })
+  },
+  queueRemove: async (sessionId, messageId) => {
+    await client.request('queue.remove', { sessionId, messageId })
+  },
+  queueUpdate: async (sessionId, messageId, text) => {
+    await client.request('queue.update', { sessionId, messageId, text })
+  },
+  queueReorder: async (sessionId, order) => {
+    // Optimistic: drag must not fight the server round-trip.
+    set((s) => {
+      const cur = s.queues[sessionId] ?? []
+      const byId = new Map(cur.map((m) => [m.id, m]))
+      const next = order.flatMap((id) => byId.get(id) ?? [])
+      for (const m of cur) if (!order.includes(m.id)) next.push(m)
+      return { queues: { ...s.queues, [sessionId]: next } }
+    })
+    await client.request('queue.reorder', { sessionId, order })
+  },
+  queueSteer: async (sessionId, messageId) => {
+    await client.request('queue.steer', { sessionId, messageId })
   },
 
   setPermission: async (sessionId, permission) => {
