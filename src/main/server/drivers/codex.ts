@@ -157,6 +157,19 @@ export const codexDriver: HarnessDriver = {
     const env = await harnessEnv()
 
     let currentTurnId: string | null = null
+    // MCP servers (plugins included) take seconds to mount their tools;
+    // a turn that starts first snapshots an empty registry. The first
+    // send waits for startup to settle (bounded), so /linear-style
+    // plugins are callable from message one.
+    const mcpStarting = new Set<string>()
+    let mcpSettled: (() => void) | null = null
+    let firstTurnGate: Promise<void> | null = new Promise((resolve) => {
+      const bail = setTimeout(() => resolve(), 20_000)
+      mcpSettled = () => {
+        clearTimeout(bail)
+        resolve()
+      }
+    })
     let planUpdateSeq = 0
     let lastUsage: { inputTokens?: number; outputTokens?: number } = {}
     let contextTokens = 0
@@ -277,6 +290,20 @@ export const codexDriver: HarnessDriver = {
 
     const onNotify = (method: string, params: Record<string, unknown>): void => {
       switch (method) {
+        case 'mcpServer/startupStatus/updated': {
+          const name = String(params.name ?? '')
+          if (params.status === 'starting') mcpStarting.add(name)
+          else mcpStarting.delete(name)
+          // Every server reached a terminal state — release the gate.
+          if (mcpStarting.size === 0 && mcpSettled) {
+            const release = mcpSettled
+            mcpSettled = null
+            // Grace beat: statuses arrive one by one at boot; releasing on
+            // the first terminal event would race servers not yet announced.
+            setTimeout(release, 500)
+          }
+          break
+        }
         case 'turn/started':
           currentTurnId = String((params.turn as Item)?.id ?? '')
           break
@@ -542,6 +569,10 @@ export const codexDriver: HarnessDriver = {
     return {
       async send(text: string, attachments: Attachment[] = []): Promise<void> {
         setStatus('running')
+        if (firstTurnGate) {
+          await firstTurnGate
+          firstTurnGate = null
+        }
         // Images are native input items (localImage); other files ride as
         // path references in the text.
         const refs = attachments.filter((a) => a.kind !== 'image').map((a) => a.path)
