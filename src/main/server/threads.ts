@@ -30,7 +30,7 @@ function questionToolNote(session: SessionMeta): string {
   if (!tool) {
     return `To ask the user a question, ask it in plain prose and end your turn — this harness has no structured question tool.`
   }
-  return `To ask the user anything with options, you MUST call ${tool} — the UI renders it as answerable cards. Ask ONE question at a time: one decision per call, wait for the answer, then ask the next — never a batch. NEVER print lettered/numbered option menus ("reply 1A, 2B…") as message text; a question that is not asked through ${tool} does not reach the user properly.`
+  return `To ask the user anything with options, you MUST call ${tool} — the UI walks the user through the questions one at a time, so batching related decisions into one call is fine. NEVER print lettered/numbered option menus ("reply 1A, 2B…") as message text; a question that is not asked through ${tool} does not reach the user properly.`
 }
 
 /** claude reaches the app tools in-process, codex via the stdio bridge,
