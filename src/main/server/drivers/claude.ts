@@ -11,7 +11,13 @@ import { readFileSync } from 'node:fs'
 import type { Attachment, PermissionPolicy } from '@shared/events'
 import type { DriverCtx, DriverHandle, HarnessDriver } from './types'
 import { parsePartialJson } from './partial-json'
-import { ORCHESTRATOR_TOOLS, orchestratorMcp, orchestratorPrompt, rulesFor } from '../orchestration'
+import {
+  implementerSpawnPrompt,
+  ORCHESTRATOR_TOOLS,
+  orchestratorMcp,
+  orchestratorPrompt,
+  rulesFor
+} from '../orchestration'
 import { APP_TOOLS, appToolsMcp } from '../apptools'
 import { expandSlashRefs } from '../slash'
 
@@ -476,10 +482,25 @@ export const claudeDriver: HarnessDriver = {
               }
             }
           })()
-        : {
-            mcpServers: { app: appToolsMcp(session) },
-            allowedTools: APP_TOOLS
-          })
+        : session.threadType === 'implementation'
+          ? {
+              // Implementation threads spawn subagents through the same
+              // toolset — never by shelling out to another model's CLI.
+              mcpServers: {
+                orchestrator: orchestratorMcp(session),
+                app: appToolsMcp(session)
+              },
+              allowedTools: [...ORCHESTRATOR_TOOLS, ...APP_TOOLS],
+              systemPrompt: {
+                type: 'preset' as const,
+                preset: 'claude_code' as const,
+                append: implementerSpawnPrompt()
+              }
+            }
+          : {
+              mcpServers: { app: appToolsMcp(session) },
+              allowedTools: APP_TOOLS
+            })
     }
 
     const q = query({ prompt: input, options })

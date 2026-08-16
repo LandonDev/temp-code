@@ -3,10 +3,20 @@ import { resolve } from 'node:path'
 import { WebSocketServer, type WebSocket } from 'ws'
 import { CATALOG } from '@shared/catalog'
 import { ClientRequestSchema, type ServerFrame } from '@shared/contract'
+import type { SessionMeta } from '@shared/events'
 import { openDb, Store } from './db'
 import { SessionRegistry } from './sessions'
 import { runDoctor } from './drivers/binaries'
-import { setOrchestrationRegistry } from './orchestration'
+import {
+  orchAnswerAgent,
+  orchCheckAgent,
+  orchInterruptAgent,
+  orchListAgents,
+  orchSendToAgent,
+  orchSpawnAgent,
+  orchWaitForAgent,
+  setOrchestrationRegistry
+} from './orchestration'
 import {
   appListThreads,
   appReadThread,
@@ -41,6 +51,13 @@ import {
 } from './files'
 import { attachLspSocket, ensureLsp, javaDoctor, lspStatus, stopAllLsp } from './lsp'
 import { fimComplete } from './fim'
+
+/** The session an app.* call claims to be from — must actually exist. */
+function callerOf(registry: SessionRegistry, sessionId: string): SessionMeta {
+  const caller = registry.list().find((s) => s.id === sessionId)
+  if (!caller) throw new Error(`unknown session: ${sessionId}`)
+  return caller
+}
 
 /** file.read is fenced to project working trees (plan docs live there). */
 function readAllowedFile(registry: SessionRegistry, path: string): string | null {
@@ -536,6 +553,64 @@ export async function startServer(dbPath: string): Promise<RunningServer> {
             })
             break
           }
+          // Orchestration over WS (the codex bridge's spawn path) — every
+          // op takes the caller session and guards agentIds to its children.
+          case 'app.spawnAgent':
+            sendFrame({
+              id: req.id,
+              ok: true,
+              result: await orchSpawnAgent(callerOf(registry, req.params.sessionId), req.params)
+            })
+            break
+          case 'app.sendToAgent':
+            sendFrame({
+              id: req.id,
+              ok: true,
+              result: await orchSendToAgent(
+                callerOf(registry, req.params.sessionId),
+                req.params.agentId,
+                req.params.message
+              )
+            })
+            break
+          case 'app.checkAgent':
+            sendFrame({
+              id: req.id,
+              ok: true,
+              result: orchCheckAgent(callerOf(registry, req.params.sessionId), req.params.agentId)
+            })
+            break
+          case 'app.waitForAgent':
+            sendFrame({
+              id: req.id,
+              ok: true,
+              result: await orchWaitForAgent(callerOf(registry, req.params.sessionId), req.params)
+            })
+            break
+          case 'app.answerAgent':
+            sendFrame({
+              id: req.id,
+              ok: true,
+              result: await orchAnswerAgent(callerOf(registry, req.params.sessionId), req.params)
+            })
+            break
+          case 'app.interruptAgent':
+            sendFrame({
+              id: req.id,
+              ok: true,
+              result: await orchInterruptAgent(
+                callerOf(registry, req.params.sessionId),
+                req.params.agentId
+              )
+            })
+            break
+          case 'app.listAgents':
+            sendFrame({
+              id: req.id,
+              ok: true,
+              result: orchListAgents(callerOf(registry, req.params.sessionId))
+            })
+            break
         }
       } catch (err) {
         sendFrame({
