@@ -1116,7 +1116,7 @@ export const ToolGroup = memo(function ToolGroup({
             {running && <span className="size-1.5 shrink-0 animate-pulse rounded-full bg-busy" />}
           </>
         ) : (
-          <span className="min-w-0 truncate">
+          <span className="min-w-0 flex-1 truncate">
             {running ? (
               <TextShimmer>{groupSummary(tools, sessions)}</TextShimmer>
             ) : (
@@ -1124,6 +1124,27 @@ export const ToolGroup = memo(function ToolGroup({
             )}
           </span>
         )}
+        {/* a connector inside wants reauth — the fix must not hide behind
+            the fold, so the collapsed header wears it too */}
+        {(() => {
+          const reauth = tools.find((t) => t.reauth)?.reauth
+          if (!reauth) return null
+          return (
+            <span
+              role="button"
+              tabIndex={0}
+              onClick={(e) => {
+                e.stopPropagation()
+                window.open(reauth.url)
+              }}
+              onKeyDown={(e) => e.key === 'Enter' && window.open(reauth.url)}
+              title={`Reconnect ${reauth.app} — opens ChatGPT's app page`}
+              className="flex shrink-0 cursor-pointer items-center gap-1 rounded-md bg-warning/10 px-1.5 py-0.5 text-[10.5px] font-medium text-warning transition hover:bg-warning/20 active:scale-95"
+            >
+              Reconnect {reauth.app}
+            </span>
+          )
+        })()}
       </button>
       {/* animate: true — auto-collapse (text arrived) tweens like a user
           toggle; first mount still renders at final size instantly. */}
