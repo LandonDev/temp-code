@@ -186,7 +186,8 @@ export function ContextMeter({ sessionId }: { sessionId: string }): React.JSX.El
             )}
 
             {/* context window control (claude's 1M beta) */}
-            {session?.provider === 'claude' && (
+            {session?.provider === 'claude' &&
+              !(usage.maxTokens >= 1_000_000 && !session.context1m) && (
               <div className="mt-3 flex items-center justify-between gap-3 border-t border-border/50 px-1 pt-2.5">
                 <span className="text-[11.5px] text-muted-foreground">Context window</span>
                 <div className="inline-flex items-center gap-0.5 rounded-lg bg-secondary/60 p-0.5">
