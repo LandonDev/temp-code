@@ -421,7 +421,13 @@ export const codexDriver: HarnessDriver = {
         model: session.model,
         approvalPolicy: APPROVAL_POLICY[session.permission],
         sandbox: 'workspace-write',
-        ...(bridgeEntry ? { config: { mcp_servers: { app: bridgeEntry } } } : {})
+        config: {
+          // The structured-question tool (request_user_input) is
+          // feature-gated off by default — without it the model dumps
+          // "reply 1A/2B" menus as plain text instead of asking in the UI.
+          features: { default_mode_request_user_input: true },
+          ...(bridgeEntry ? { mcp_servers: { app: bridgeEntry } } : {})
+        }
       }
       const startFresh = async (): Promise<void> => {
         const res = (await conn.request('thread/start', threadParams)) as {

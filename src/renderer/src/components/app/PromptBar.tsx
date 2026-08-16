@@ -100,7 +100,15 @@ function rankThreads(
  * project files. Images paste/drop in as attachments; other dropped files
  * become @path references. Model and reasoning ride along per message.
  */
-export function PromptBar({ compact }: { compact?: boolean }): React.JSX.Element | null {
+export function PromptBar({
+  compact,
+  narrow
+}: {
+  compact?: boolean
+  /** Rendered in a side pane: always use the expanded layout (the inline
+   *  cluster needs ~300px of pill it doesn't have) and tighter padding. */
+  narrow?: boolean
+}): React.JSX.Element | null {
   const selectedId = useApp((s) => s.selectedId)
   const session = useApp((s) => (s.selectedId ? s.sessions[s.selectedId] : undefined))
   const catalog = useApp((s) => s.catalog)
@@ -281,7 +289,7 @@ export function PromptBar({ compact }: { compact?: boolean }): React.JSX.Element
   // FlipMorph: a short single-line prompt keeps the 49px compact pill with
   // the whole cluster inline; anything more expands (180ms, bottom-anchored).
   const expanded =
-    images.length > 0 || fileRefs.length > 0 || text.includes('\n') || text.length > 40
+    !!narrow || images.length > 0 || fileRefs.length > 0 || text.includes('\n') || text.length > 40
 
   const accept = (index: number): void => {
     if (!trigger) return
@@ -346,7 +354,7 @@ export function PromptBar({ compact }: { compact?: boolean }): React.JSX.Element
   }
 
   return (
-    <div className={cn('shrink-0 px-6 pb-3', compact ? 'pt-0.5' : 'pt-1')}>
+    <div className={cn('shrink-0 pb-3', narrow ? 'px-3' : 'px-6', compact ? 'pt-0.5' : 'pt-1')}>
       <div className="relative mx-auto w-full max-w-[688px]">
         <MessageQueue sessionId={selectedId} />
         <AnimatePresence>

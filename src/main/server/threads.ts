@@ -17,6 +17,22 @@ import { hasAppBridge } from './apptools'
 export const planPathFor = (cwd: string, sessionId: string): string =>
   join(cwd, '.temp-code', `plan-${sessionId}.md`)
 
+/** The provider's structured-question tool — the ONLY sanctioned way to
+ *  put options to the user (the UI renders them as answerable cards).
+ *  cursor-agent has none, so cursor threads ask in plain prose instead. */
+function questionToolNote(session: SessionMeta): string {
+  const tool =
+    session.provider === 'claude'
+      ? 'the AskUserQuestion tool'
+      : session.provider === 'codex'
+        ? 'the request_user_input tool'
+        : null
+  if (!tool) {
+    return `To ask the user a question, ask it in plain prose and end your turn — this harness has no structured question tool.`
+  }
+  return `To ask the user anything with options, you MUST call ${tool} — the UI renders it as answerable cards. NEVER print lettered/numbered option menus ("reply 1A, 2B…") as message text; a question that is not asked through ${tool} does not reach the user properly.`
+}
+
 /** claude reaches the app tools in-process, codex via the stdio bridge,
  *  cursor not yet (cursor-agent has no per-run MCP config). */
 function appToolsNote(session: SessionMeta): string {
@@ -37,16 +53,19 @@ function appToolsNote(session: SessionMeta): string {
  */
 export function threadPreamble(session: SessionMeta): string | null {
   const app = appToolsNote(session)
+  const questions = questionToolNote(session)
   switch (session.threadType) {
     case 'chat':
-      return `You are running a CHAT thread — ideate and converse. Think out loud with the user, explore alternatives, challenge assumptions; nothing here is a deliverable. Ask questions liberally — use your structured question tool whenever a choice would sharpen the discussion; the UI renders the options natively.
+      return `You are running a CHAT thread — ideate and converse. Think out loud with the user, explore alternatives, challenge assumptions; nothing here is a deliverable. Ask questions liberally whenever a choice would sharpen the discussion.
+${questions}
 When the discussion turns into real work the user wants done, offer to start a planning thread; on their go-ahead, use app_start_thread (threadType 'planning') with seedThreadIds: ["${session.id}"] so the plan starts from this conversation.
 ${app}`
     case 'planning':
       return `You are running a PLANNING thread — gather context and force decisions. Your deliverable is a plan document, not code.
+Work in this order: read the codebase and the project context FIRST; then, BEFORE writing any draft, ask the user the decisions that shape the plan (scope, naming, structure, output — options with trade-offs, a recommended one marked); only then write the plan around their answers. Decisions discovered mid-draft get asked the same way, the moment they surface — never deferred to the end, and never left as open alternatives in the document. A plan built on unasked questions is a guess.
+${questions}
 Write the full plan to ${session.planPath} (create parent directories) as soon as you have a first draft, and keep that file updated with Edit as the discussion evolves — it is rendered live to the user.
 Structure the document: # <title>, ## Overview, ## Approach, ## Tasks (a markdown checklist, \`- [ ] task\` — each item becomes a todo when the plan is implemented), ## Risks.
-Leave no open decision in the plan: read the codebase and the project context, and put every real choice to the user as a structured question — options with trade-offs, not essays. Ask early and often; a plan built on unasked questions is a guess.
 You never implement in this thread. When the user approves the plan, start the build yourself: app_start_thread with threadType 'implementation' (or 'orchestration' when the plan fans out across agents), planPath pointing at this plan file, and whatever model/effort the user wants for the build — confirm that choice if they have not said.
 ${app}`
     case 'implementation':
@@ -56,7 +75,7 @@ Before touching code, create a todo list covering the whole task (TodoWrite or y
           ? `\nAs you complete tasks from the plan's ## Tasks checklist, tick them (\`- [x]\`) in the plan file with Edit — the plan view renders progress live.`
           : ''
       }
-Questions are the exception here, not the method — the planning thread already asked them. Reserve them for genuine blockers: a contradiction in the plan, a destructive step, missing access. If the work reveals the plan is wrong, say so and offer a planning thread rather than silently replanning inline.
+Questions are the exception here, not the method — the planning thread already asked them. Reserve them for genuine blockers: a contradiction in the plan, a destructive step, missing access. ${questions} If the work reveals the plan is wrong, say so and offer a planning thread rather than silently replanning inline.
 ${app}`
     default:
       return null
