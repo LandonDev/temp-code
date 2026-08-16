@@ -1,5 +1,5 @@
 {
-  "n": 5,
-  "notes": "Parameter Info, Code Vision, Show Usages, smart backspace — the IDEA set",
-  "ts": 1786866318286
+  "n": 6,
+  "notes": "Codex first turn waits for MCP startup; plugin refs name their prefix",
+  "ts": 1786899270059
 }
