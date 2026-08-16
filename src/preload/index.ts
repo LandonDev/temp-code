@@ -14,8 +14,38 @@ interface UpdateStatus {
   error?: string
 }
 
+interface AppshotAttachment {
+  path: string
+  name: string
+  mime?: string
+  kind: 'appshot'
+  textPath?: string
+}
+
+interface AppshotPermissions {
+  available: boolean
+  screen: boolean
+  ax: boolean
+}
+
 const api = {
   getServerPort: (): Promise<number | null> => ipcRenderer.invoke('server-port'),
+  appshots: {
+    /** Mounts the capture listener and flushes any queued captures. */
+    onCapture: (cb: (a: AppshotAttachment) => void): (() => void) => {
+      const listener = (_e: unknown, a: AppshotAttachment): void => cb(a)
+      ipcRenderer.on('appshot', listener)
+      ipcRenderer.send('appshot-ready')
+      return () => ipcRenderer.removeListener('appshot', listener)
+    },
+    onError: (cb: (e: { code: string }) => void): (() => void) => {
+      const listener = (_e: unknown, err: { code: string }): void => cb(err)
+      ipcRenderer.on('appshot-error', listener)
+      return () => ipcRenderer.removeListener('appshot-error', listener)
+    },
+    permissions: (prompt?: boolean): Promise<AppshotPermissions> =>
+      ipcRenderer.invoke('appshot-permissions', prompt)
+  },
   updates: {
     get: (): Promise<UpdateStatus> => ipcRenderer.invoke('update-get'),
     check: (): Promise<UpdateStatus> => ipcRenderer.invoke('update-check'),

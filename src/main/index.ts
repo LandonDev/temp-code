@@ -3,6 +3,7 @@ import { homedir } from 'os'
 import { join } from 'path'
 import { copyFileSync, existsSync, mkdirSync } from 'fs'
 import { registerUpdates } from './update'
+import { registerAppshots } from './appshots'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 import { startServer, type RunningServer } from './server'
@@ -79,6 +80,7 @@ app.whenReady().then(async () => {
   }
   server = await startServer(join(app.getPath('userData'), 'temp-code.db'))
   registerUpdates()
+  if (process.platform === 'darwin') registerAppshots(server, createWindow)
   ipcMain.handle('server-port', () => server?.port ?? null)
   ipcMain.handle('pick-directory', async (_e, defaultPath?: string) => {
     const res = await dialog.showOpenDialog({
