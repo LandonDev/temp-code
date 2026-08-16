@@ -172,6 +172,17 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
     method: z.literal('project.show'),
     params: z.object({ projectId: z.string(), path: z.string() })
   }),
+  // Code Vision (docs/PLAN-4.md follow-up): last editor of a method range.
+  z.object({
+    id: z.string(),
+    method: z.literal('project.blame'),
+    params: z.object({
+      projectId: z.string(),
+      path: z.string(),
+      startLine: z.number().int().positive(),
+      endLine: z.number().int().positive()
+    })
+  }),
   // ── language servers (docs/PLAN-3.md M13) — lifecycle only; the LSP
   // protocol itself rides a dedicated /lsp/<serverId> WS path.
   z.object({

@@ -321,3 +321,41 @@ export async function fileDiff(dir: string, path: string): Promise<string> {
     return ''
   }
 }
+
+/** Last editor of a line range + how many others touched it (Code Vision).
+ *  Uncommitted lines blame as "you". Untracked/error → null. */
+export async function blameRange(
+  dir: string,
+  path: string,
+  startLine: number,
+  endLine: number
+): Promise<{ author: string | null; others: number }> {
+  try {
+    const { stdout } = await execFileP('git', [
+      '-C',
+      dir,
+      'blame',
+      '-L',
+      `${startLine},${endLine}`,
+      '--line-porcelain',
+      '--',
+      path
+    ])
+    const authors = new Map<string, number>() // author → latest time
+    let author: string | null = null
+    for (const line of stdout.split('\n')) {
+      if (line.startsWith('author ')) author = line.slice(7).trim()
+      else if (line.startsWith('author-time ') && author) {
+        const t = Number(line.slice(12))
+        const name = author === 'Not Committed Yet' ? 'you' : author
+        authors.set(name, Math.max(authors.get(name) ?? 0, t))
+        author = null
+      }
+    }
+    if (authors.size === 0) return { author: null, others: 0 }
+    const latest = [...authors.entries()].sort((a, b) => b[1] - a[1])[0][0]
+    return { author: latest, others: authors.size - 1 }
+  } catch {
+    return { author: null, others: 0 }
+  }
+}
