@@ -275,6 +275,15 @@ export class SessionRegistry {
     this.store.setSetting('appshots', JSON.stringify(settings))
   }
 
+  /** Whether the one first-boot permission prompt has already fired (ever). */
+  getAppshotPrompted(): boolean {
+    return this.store.getSetting('appshots-prompted') !== null
+  }
+
+  markAppshotPrompted(): void {
+    this.store.setSetting('appshots-prompted', '1')
+  }
+
   /** What a new thread starts with here: workspace override → global → built-in. */
   resolveThreadDefaults(workspaceId: string | null): ThreadDefaults {
     return (
