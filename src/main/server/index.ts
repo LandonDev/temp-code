@@ -429,7 +429,9 @@ export async function startServer(dbPath: string): Promise<RunningServer> {
               result: await summarizeTools(
                 req.params.sessionId,
                 req.params.groupKey,
-                req.params.items
+                req.params.items,
+                req.params.model,
+                req.params.captions
               )
             })
             break
