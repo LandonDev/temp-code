@@ -10,6 +10,8 @@ export interface UpdateStatus {
   /** while building: which step, and the child's latest output line */
   step?: string
   detail?: string
+  stepStartedAt?: number
+  stepEtaMs?: number
   error?: string
 }
 

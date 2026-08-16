@@ -9,6 +9,8 @@ interface UpdateStatus {
   phase: 'idle' | 'checking' | 'building' | 'restarting' | 'error'
   step?: string
   detail?: string
+  stepStartedAt?: number
+  stepEtaMs?: number
   error?: string
 }
 

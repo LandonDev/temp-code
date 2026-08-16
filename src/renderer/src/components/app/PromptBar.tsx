@@ -55,8 +55,13 @@ function triggerAt(
   const before = text.slice(0, caret)
   const start = Math.max(before.lastIndexOf(' '), before.lastIndexOf('\n')) + 1
   const token = before.slice(start)
-  // Slash commands only mean something at the start of the message.
-  if (start === 0 && token.startsWith('/')) return { mode: 'command', query: token.slice(1), start }
+  // Skill references work anywhere in the message, any number of them —
+  // the server expands every /name token (slash.ts), so the menu opens
+  // wherever one is being typed. Paths like src/foo don't trigger: the
+  // token has to START with the slash.
+  if (token.startsWith('/') && !token.includes('/', 1)) {
+    return { mode: 'command', query: token.slice(1), start }
+  }
   if (token.startsWith('@') && !token.includes('@', 1)) {
     return { mode: 'file', query: token.slice(1), start }
   }
