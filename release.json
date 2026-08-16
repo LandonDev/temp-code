@@ -1,5 +1,5 @@
 {
-  "n": 1,
-  "notes": "TempCode installed app, self-update from Settings, timers, provider context meters, compaction UI, detail pass.",
-  "ts": 1786862813617
+  "n": 2,
+  "notes": "Releases cut themselves: post-commit auto-release on master",
+  "ts": 1786864191080
 }
