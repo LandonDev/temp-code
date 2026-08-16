@@ -10,3 +10,4 @@ scripts/.out/
 
 .claude/settings.local.json
 *.tsbuildinfo
+resources/native/appshot-helper
