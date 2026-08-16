@@ -61,8 +61,62 @@ const IDEA_ARTIFACTS: Partial<Record<string, { name: string; sha256: string }>> 
   }
 }
 const ideaRoot = (): string => join(homedir(), '.temp-code', 'intellij-server')
-const ideaDist = (): string => join(ideaRoot(), `dist-${IDEA_BUILD}`)
 const ideaEulaFile = (): string => join(ideaRoot(), 'eula-accepted.json')
+const ideaCurrentFile = (): string => join(ideaRoot(), 'current.json')
+
+/** Update channel (M21): current.json points at the active build; the
+ *  pinned constant is the floor for fresh installs. */
+interface IdeaCurrent {
+  build: string
+  url: string
+  sha256: string
+}
+function ideaCurrent(): IdeaCurrent {
+  try {
+    const cur = JSON.parse(readFileSync(ideaCurrentFile(), 'utf8')) as IdeaCurrent
+    if (cur.build && cur.sha256 && cur.url) return cur
+  } catch {
+    // fall through to the pinned floor
+  }
+  const artifact = IDEA_ARTIFACTS[`${process.platform}-${process.arch}`]
+  return {
+    build: IDEA_BUILD,
+    url: `https://download.jetbrains.com/language-server/intellij-server/${IDEA_BUILD}/${artifact?.name ?? ''}`,
+    sha256: artifact?.sha256 ?? ''
+  }
+}
+const ideaDist = (): string => join(ideaRoot(), `dist-${ideaCurrent().build}`)
+
+/** Ask Open VSX for the newest build (preview builds expire ~30 days).
+ *  Newer → download + sha-verify + extract + repoint current.json; the
+ *  EULA gate re-arms per build. */
+export async function ideaCheckUpdate(): Promise<{
+  current: string
+  latest: string
+  updated: boolean
+}> {
+  const platform = `${process.platform === 'darwin' ? 'darwin' : process.platform === 'win32' ? 'win32' : 'linux'}-${process.arch === 'arm64' ? 'arm64' : 'x64'}`
+  const current = ideaCurrent()
+  const meta = (await (
+    await fetch(`https://open-vsx.org/api/JetBrains/intellij-server/${platform}`)
+  ).json()) as { version?: string; files?: { download?: string } }
+  const vsixUrl = meta.files?.download
+  if (!vsixUrl) throw new Error('update check: no download in Open VSX metadata')
+  const vsix = Buffer.from(await (await fetch(vsixUrl)).arrayBuffer())
+  const vsixPath = join(tmpdir(), 'tc-ij-update.vsix')
+  writeFileSync(vsixPath, vsix)
+  const { stdout } = await execFileP('unzip', ['-p', vsixPath, 'extension/server-bundle.json'])
+  rmSync(vsixPath, { force: true })
+  const bundle = JSON.parse(stdout) as IdeaCurrent & { version: string }
+  if (bundle.version === current.build) {
+    return { current: current.build, latest: bundle.version, updated: false }
+  }
+  const next: IdeaCurrent = { build: bundle.version, url: bundle.url, sha256: bundle.sha256 }
+  await downloadIdeaDist(next)
+  mkdirSync(ideaRoot(), { recursive: true })
+  writeFileSync(ideaCurrentFile(), JSON.stringify(next))
+  return { current: current.build, latest: bundle.version, updated: true }
+}
 
 // ── stdio framing ────────────────────────────────────────────────────
 
@@ -176,7 +230,7 @@ export async function javaDoctor(): Promise<JavaDoctor> {
   const ideaServer = {
     dist: existsSync(join(ideaDist(), 'bin', 'intellij-server')),
     accepted: ideaEulaAccepted(),
-    build: IDEA_BUILD
+    build: ideaCurrent().build
   }
   const jdks = await discoverJdks()
   const best = jdks[0]
@@ -230,31 +284,35 @@ async function ensureJdtlsDist(): Promise<void> {
 
 let ideaDownloadP: Promise<void> | null = null
 
+async function downloadIdeaDist(target: IdeaCurrent): Promise<void> {
+  const dist = join(ideaRoot(), `dist-${target.build}`)
+  if (existsSync(join(dist, 'bin', 'intellij-server'))) return
+  if (!target.sha256) {
+    throw new Error(`intellij-server: no artifact pinned for ${process.platform}-${process.arch}`)
+  }
+  const res = await fetch(target.url)
+  if (!res.ok || !res.body) throw new Error(`intellij-server download failed: HTTP ${res.status}`)
+  const zipPath = join(tmpdir(), `intellij-server-${target.build}.zip`)
+  await pipeline(Readable.fromWeb(res.body as never), createWriteStream(zipPath))
+  const digest = createHash('sha256').update(readFileSync(zipPath)).digest('hex')
+  if (digest !== target.sha256) {
+    rmSync(zipPath, { force: true })
+    throw new Error('intellij-server download failed its sha256 check')
+  }
+  const staging = `${dist}.partial`
+  rmSync(staging, { recursive: true, force: true })
+  mkdirSync(staging, { recursive: true })
+  await execFileP('unzip', ['-q', '-o', zipPath, '-d', staging]) // .sit is a zip
+  rmSync(zipPath, { force: true })
+  // The archive wraps everything in intellij-server-<build>/.
+  const inner = join(staging, `intellij-server-${target.build}`)
+  renameSync(existsSync(join(inner, 'bin')) ? inner : staging, dist)
+  rmSync(staging, { recursive: true, force: true })
+}
+
 async function ensureIdeaDist(): Promise<void> {
   if (existsSync(join(ideaDist(), 'bin', 'intellij-server'))) return
-  const artifact = IDEA_ARTIFACTS[`${process.platform}-${process.arch}`]
-  if (!artifact) throw new Error(`intellij-server: no artifact pinned for ${process.platform}-${process.arch}`)
-  ideaDownloadP ??= (async () => {
-    const url = `https://download.jetbrains.com/language-server/intellij-server/${IDEA_BUILD}/${artifact.name}`
-    const res = await fetch(url)
-    if (!res.ok || !res.body) throw new Error(`intellij-server download failed: HTTP ${res.status}`)
-    const zipPath = join(tmpdir(), artifact.name)
-    await pipeline(Readable.fromWeb(res.body as never), createWriteStream(zipPath))
-    const digest = createHash('sha256').update(readFileSync(zipPath)).digest('hex')
-    if (digest !== artifact.sha256) {
-      rmSync(zipPath, { force: true })
-      throw new Error('intellij-server download failed its sha256 check')
-    }
-    const staging = `${ideaDist()}.partial`
-    rmSync(staging, { recursive: true, force: true })
-    mkdirSync(staging, { recursive: true })
-    await execFileP('unzip', ['-q', '-o', zipPath, '-d', staging]) // .sit is a zip
-    rmSync(zipPath, { force: true })
-    // The archive wraps everything in intellij-server-<build>/.
-    const inner = join(staging, `intellij-server-${IDEA_BUILD}`)
-    renameSync(existsSync(join(inner, 'bin')) ? inner : staging, ideaDist())
-    rmSync(staging, { recursive: true, force: true })
-  })().finally(() => {
+  ideaDownloadP ??= downloadIdeaDist(ideaCurrent()).finally(() => {
     ideaDownloadP = null
   })
   return ideaDownloadP
@@ -272,7 +330,7 @@ function ideaEulaHash(): string {
 function ideaEulaAccepted(): boolean {
   try {
     const rec = JSON.parse(readFileSync(ideaEulaFile(), 'utf8')) as { build?: string }
-    return rec.build === IDEA_BUILD
+    return rec.build === ideaCurrent().build
   } catch {
     return false
   }
@@ -282,7 +340,7 @@ function ideaEulaAccepted(): boolean {
 export async function ideaEula(): Promise<{ build: string; text: string; accepted: boolean }> {
   await ensureIdeaDist()
   return {
-    build: IDEA_BUILD,
+    build: ideaCurrent().build,
     text: readFileSync(join(ideaDist(), 'EULA.txt'), 'utf8'),
     accepted: ideaEulaAccepted()
   }
@@ -292,7 +350,7 @@ export function ideaAcceptEula(): { accepted: boolean } {
   mkdirSync(ideaRoot(), { recursive: true })
   writeFileSync(
     ideaEulaFile(),
-    JSON.stringify({ build: IDEA_BUILD, hash: ideaEulaHash(), acceptedAt: Date.now() })
+    JSON.stringify({ build: ideaCurrent().build, hash: ideaEulaHash(), acceptedAt: Date.now() })
   )
   return { accepted: true }
 }

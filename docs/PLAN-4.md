@@ -234,3 +234,41 @@ Risks, with mitigations:
 - **Pull diagnostics for IDEA** (not push): it's what the server
   advertises (`diagnosticProvider`), and pulling lets us debounce and
   swap marker sources cleanly.
+
+## Amendments from implementation (M15–M21 landed)
+
+- **EULA before run, not before download.** The license text lives inside
+  the archive, so the Settings gate downloads first (with an honest
+  spinner), shows the text, and gates the first *run* on acceptance —
+  stored per build in `~/.temp-code/intellij-server/eula-accepted.json`.
+- **Semantic tokens stayed on jdtls** (M17 deviation). The visual result
+  is identical through the theme trie, and swapping provider legends per
+  connection is risk without reward. Kotlin therefore renders TextMate
+  colors only, no semantic layer, until a dedicated registration lands.
+- **Hierarchies live in the quick-open overlay**, not a peek panel —
+  same rows, same jump behavior as ⌘O, zero new chrome. ⌃⌥H callers,
+  ⌃H types. The toy fixture returns null for prepare; verified shapes
+  against the engine's capability dump, live verification on real
+  projects.
+- **codeLens left unwired.** The engine advertises it; what the lenses
+  carry is unprobed. Revisit when a concrete use shows up.
+- **Debugger schema facts** (bytecode-verified, `language-server.dap.*`
+  jars): launch args are `LaunchRequestArguments { mainClass, javaExec,
+  classPaths, modulePaths, vmArgs, args, env, cwd, projectName }` — no
+  `stopOnEntry`; breakpoint sources resolve `Source.path` through
+  `toRealPath()` + VFS `findFileByPath`, so symlinked roots (macOS /tmp)
+  never verify — real project paths do. `start_debug_server` takes no
+  args and returns a bare port; resolve commands take `[{ uri }]`.
+- **Update channel** reads Open VSX metadata → VSIX → embedded
+  `server-bundle.json` (the `/file/server-bundle.json` endpoint 404s);
+  `current.json` repoints the active build, and a new build re-arms the
+  EULA gate. Triggered from Settings, not on a timer — the doctor row
+  is the nag.
+- **Renderer-side hysteresis is the health machine** (2 misses park, two
+  10 s-spaced hits restore); the pool contributes only its crash policy.
+  Kill-drills are a live-app exercise; the e2e covers the pool, EULA
+  gate, and ranked completion over the tunnel.
+- **jdtls suppression is per-file, trust-gated**: the engine's pull
+  diagnostics take a file's markers only after its first non-empty
+  answer for the project, and hand them back on disconnect — a cold
+  engine can never blank real squiggles.
