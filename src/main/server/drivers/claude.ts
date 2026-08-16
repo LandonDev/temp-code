@@ -536,8 +536,23 @@ export const claudeDriver: HarnessDriver = {
         return !!finish
       },
       async contextUsage(): Promise<unknown> {
-        // The /context breakdown, straight from the harness.
-        return q.getContextUsage()
+        // The /context breakdown, straight from the harness — except the
+        // window size. The SDK's model table still says 200k for models
+        // that serve 1M natively (every current Claude except Haiku), and
+        // real threads sail past 250k without compaction or errors, so the
+        // meter must not claim 125% of a window that isn't there.
+        const usage = (await q.getContextUsage()) as {
+          totalTokens: number
+          maxTokens: number
+          percentage: number
+          model: string
+        }
+        const native1m = /claude/.test(usage.model) && !/haiku/.test(usage.model)
+        if (native1m && usage.maxTokens < 1_000_000) {
+          usage.maxTokens = 1_000_000
+          usage.percentage = (usage.totalTokens / usage.maxTokens) * 100
+        }
+        return usage
       },
       async dispose(): Promise<void> {
         for (const finish of [...pendingApprovals.values()]) finish(false, true)
