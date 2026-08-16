@@ -104,6 +104,9 @@ export async function startServer(dbPath: string): Promise<RunningServer> {
 
     // Every client gets session-meta updates (cheap, drives the sidebar).
     const offMeta = registry.onMeta((session) => sendFrame({ push: 'session', session }))
+    const offQueue = registry.onQueue((sessionId, items) =>
+      sendFrame({ push: 'queue', sessionId, items })
+    )
     const offRemoved = registry.onRemoved((sessionIds) => {
       for (const id of sessionIds) {
         unsubs.get(id)?.()
@@ -216,7 +219,11 @@ export async function startServer(dbPath: string): Promise<RunningServer> {
             sendFrame({
               id: req.id,
               ok: true,
-              result: fsWrite(mustProject(req.params.projectId).cwd, req.params.path, req.params.content)
+              result: fsWrite(
+                mustProject(req.params.projectId).cwd,
+                req.params.path,
+                req.params.content
+              )
             })
             break
           case 'fs.create':
@@ -447,6 +454,34 @@ export async function startServer(dbPath: string): Promise<RunningServer> {
             await registry.approve(req.params.sessionId, req.params.requestId, req.params.allow)
             sendFrame({ id: req.id, ok: true, result: null })
             break
+          case 'queue.list':
+            sendFrame({ id: req.id, ok: true, result: registry.queueList(req.params.sessionId) })
+            break
+          case 'queue.add':
+            registry.queueAdd(req.params.sessionId, req.params.text, {
+              provider: req.params.provider,
+              model: req.params.model,
+              reasoning: req.params.reasoning,
+              attachments: req.params.attachments
+            })
+            sendFrame({ id: req.id, ok: true, result: null })
+            break
+          case 'queue.remove':
+            registry.queueRemove(req.params.sessionId, req.params.messageId)
+            sendFrame({ id: req.id, ok: true, result: null })
+            break
+          case 'queue.update':
+            registry.queueUpdate(req.params.sessionId, req.params.messageId, req.params.text)
+            sendFrame({ id: req.id, ok: true, result: null })
+            break
+          case 'queue.reorder':
+            registry.queueReorder(req.params.sessionId, req.params.order)
+            sendFrame({ id: req.id, ok: true, result: null })
+            break
+          case 'queue.steer':
+            await registry.queueSteer(req.params.sessionId, req.params.messageId)
+            sendFrame({ id: req.id, ok: true, result: null })
+            break
           case 'session.answer':
             await registry.answer(req.params.sessionId, req.params.requestId, req.params.answers)
             sendFrame({ id: req.id, ok: true, result: null })
@@ -470,7 +505,11 @@ export async function startServer(dbPath: string): Promise<RunningServer> {
           case 'app.readThread': {
             const caller = registry.list().find((s) => s.id === req.params.sessionId)
             if (!caller) throw new Error(`unknown session: ${req.params.sessionId}`)
-            sendFrame({ id: req.id, ok: true, result: appReadThread(registry, req.params.threadId) })
+            sendFrame({
+              id: req.id,
+              ok: true,
+              result: appReadThread(registry, req.params.threadId)
+            })
             break
           }
           case 'app.startThread': {
@@ -495,6 +534,7 @@ export async function startServer(dbPath: string): Promise<RunningServer> {
 
     ws.on('close', () => {
       offMeta()
+      offQueue()
       offRemoved()
       for (const off of unsubs.values()) off()
       unsubs.clear()

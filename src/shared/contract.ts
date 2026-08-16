@@ -302,6 +302,48 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
     method: z.literal('session.approve'),
     params: z.object({ sessionId: z.string(), requestId: z.string(), allow: z.boolean() })
   }),
+  // Message queue: messages composed while a turn runs wait in a
+  // per-session FIFO and auto-send as turns settle. Steer sends into the
+  // live turn instead (providers that can't steer front-queue).
+  z.object({
+    id: z.string(),
+    method: z.literal('queue.list'),
+    params: z.object({ sessionId: z.string() })
+  }),
+  z.object({
+    id: z.string(),
+    method: z.literal('queue.add'),
+    params: z.object({
+      sessionId: z.string(),
+      text: z.string().min(1),
+      provider: providerEnum.optional(),
+      model: z.string().optional(),
+      reasoning: reasoningEnum.optional(),
+      attachments: z.array(AttachmentSchema).optional()
+    })
+  }),
+  z.object({
+    id: z.string(),
+    method: z.literal('queue.remove'),
+    params: z.object({ sessionId: z.string(), messageId: z.string() })
+  }),
+  z.object({
+    id: z.string(),
+    method: z.literal('queue.update'),
+    params: z.object({ sessionId: z.string(), messageId: z.string(), text: z.string().min(1) })
+  }),
+  z.object({
+    id: z.string(),
+    method: z.literal('queue.reorder'),
+    params: z.object({ sessionId: z.string(), order: z.array(z.string()) })
+  }),
+  // Send a queued message NOW, into the running turn where the provider
+  // supports it; otherwise it jumps to the front of the queue.
+  z.object({
+    id: z.string(),
+    method: z.literal('queue.steer'),
+    params: z.object({ sessionId: z.string(), messageId: z.string() })
+  }),
   // Answer a pending question-request; answers[i] = chosen labels (or typed
   // text) for questions[i], null = dismissed.
   z.object({
@@ -355,9 +397,21 @@ export type ClientRequest = z.infer<typeof ClientRequestSchema>
 export type ServerResponse =
   { id: string; ok: true; result: unknown } | { id: string; ok: false; error: string }
 
+/** One waiting message in a session's queue. */
+export interface QueuedMessage {
+  id: string
+  text: string
+  ts: number
+  provider?: string
+  model?: string
+  reasoning?: string
+  attachments?: import('./events').Attachment[]
+}
+
 export type ServerPush =
   | { push: 'event'; row: EventRow }
   | { push: 'session'; session: SessionMeta }
+  | { push: 'queue'; sessionId: string; items: QueuedMessage[] }
   | { push: 'session-removed'; sessionIds: string[] }
   // Watcher spine (M11): project-relative path, debounced ~100 ms.
   | { push: 'file-event'; projectId: string; path: string; kind: 'changed' | 'created' | 'deleted' }

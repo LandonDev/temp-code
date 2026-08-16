@@ -59,6 +59,21 @@ function transcriptHandoff(rows: EventRow[]): string {
   return `<conversation-handoff>\nYou are taking over an ongoing conversation from another assistant. The transcript so far:\n\n${body}\n\nContinue seamlessly — do not re-introduce yourself or revisit settled questions.\n</conversation-handoff>`
 }
 type RemovedListener = (sessionIds: string[]) => void
+type QueueListener = (sessionId: string, items: QueuedMessage[]) => void
+
+/** Options a queued message carries to its eventual send. */
+interface QueuedSendOpts {
+  provider?: ProviderId
+  model?: string
+  reasoning?: SessionMeta['reasoning']
+  attachments?: Attachment[]
+}
+
+export interface QueuedMessage extends QueuedSendOpts {
+  id: string
+  text: string
+  ts: number
+}
 
 /** Dispose idle harness handles after this long; resume restores them. */
 const IDLE_DISPOSE_MS = 10 * 60 * 1000
@@ -74,6 +89,10 @@ export class SessionRegistry {
   private subscribers = new Map<string, Set<SessionListener>>()
   private metaListeners = new Set<MetaListener>()
   private removedListeners = new Set<RemovedListener>()
+  /** Per-session message queue: composed mid-turn, drained on idle. */
+  private queues = new Map<string, QueuedMessage[]>()
+  private queueListeners = new Set<QueueListener>()
+  private draining = new Set<string>()
   private lastActivity = new Map<string, number>()
   private sweepTimer: ReturnType<typeof setInterval> | null = null
 
@@ -403,10 +422,20 @@ export class SessionRegistry {
       }
     }
     // Thread references are resolved above — the harness gets only real files.
-    await handle.send(
-      out,
-      attachments?.filter((a) => a.kind !== 'thread')
-    )
+    try {
+      await handle.send(
+        out,
+        attachments?.filter((a) => a.kind !== 'thread')
+      )
+    } catch (err) {
+      // A steer at a provider that can't take mid-turn input (cursor's
+      // process-per-turn) front-queues instead of erroring the composer.
+      if (err instanceof Error && err.message.includes('still running')) {
+        this.queueAdd(sessionId, text, opts, true)
+        return
+      }
+      throw err
+    }
   }
 
   async interrupt(sessionId: string): Promise<void> {
@@ -446,6 +475,7 @@ export class SessionRegistry {
   }
 
   async delete(sessionId: string): Promise<void> {
+    this.queues.delete(sessionId)
     const all = this.store.listSessions()
     const root = all.find((s) => s.id === sessionId)
     const ids = this.store.deleteSessionTree(sessionId)
@@ -539,6 +569,8 @@ export class SessionRegistry {
     if (event.type === 'status') {
       const next = this.store.updateSession(sessionId, { status: event.status })
       if (next) this.notifyMeta(next)
+      // A settled turn releases the next queued message.
+      if (event.status === 'idle') this.drainQueue(sessionId)
     }
     // Shared context (M8): a finished turn refreshes the thread's mirror.
     if (event.type === 'turn-complete' && this.store.getSession(sessionId)?.projectId) {
@@ -565,6 +597,99 @@ export class SessionRegistry {
   onRemoved(listener: RemovedListener): () => void {
     this.removedListeners.add(listener)
     return () => this.removedListeners.delete(listener)
+  }
+
+  // ── message queue (queueing + steering) ────────────────────────────
+
+  onQueue(listener: QueueListener): () => void {
+    this.queueListeners.add(listener)
+    return () => this.queueListeners.delete(listener)
+  }
+
+  queueList(sessionId: string): QueuedMessage[] {
+    return this.queues.get(sessionId) ?? []
+  }
+
+  private notifyQueue(sessionId: string): void {
+    const items = this.queueList(sessionId)
+    for (const l of this.queueListeners) l(sessionId, items)
+  }
+
+  queueAdd(sessionId: string, text: string, opts?: QueuedSendOpts, front = false): QueuedMessage {
+    const item: QueuedMessage = { id: nanoid(10), text, ts: Date.now(), ...opts }
+    const q = this.queues.get(sessionId) ?? []
+    if (front) q.unshift(item)
+    else q.push(item)
+    this.queues.set(sessionId, q)
+    this.notifyQueue(sessionId)
+    // The turn may have settled while the user was typing.
+    if (this.store.getSession(sessionId)?.status === 'idle') this.drainQueue(sessionId)
+    return item
+  }
+
+  queueRemove(sessionId: string, messageId: string): void {
+    const q = this.queues.get(sessionId)
+    if (!q) return
+    this.queues.set(
+      sessionId,
+      q.filter((m) => m.id !== messageId)
+    )
+    this.notifyQueue(sessionId)
+  }
+
+  queueUpdate(sessionId: string, messageId: string, text: string): void {
+    const q = this.queues.get(sessionId)
+    if (!q) return
+    this.queues.set(
+      sessionId,
+      q.map((m) => (m.id === messageId ? { ...m, text } : m))
+    )
+    this.notifyQueue(sessionId)
+  }
+
+  queueReorder(sessionId: string, order: string[]): void {
+    const q = this.queues.get(sessionId)
+    if (!q) return
+    const byId = new Map(q.map((m) => [m.id, m]))
+    const next = order.flatMap((id) => byId.get(id) ?? [])
+    for (const m of q) if (!order.includes(m.id)) next.push(m)
+    this.queues.set(sessionId, next)
+    this.notifyQueue(sessionId)
+  }
+
+  /** Send a queued message NOW. Claude injects into the live turn; a
+   *  provider that can't steer throws mid-turn, and the message falls
+   *  back to the FRONT of the queue (sends next). */
+  async queueSteer(sessionId: string, messageId: string): Promise<void> {
+    const q = this.queues.get(sessionId) ?? []
+    const item = q.find((m) => m.id === messageId)
+    if (!item) return
+    this.queues.set(
+      sessionId,
+      q.filter((m) => m.id !== messageId)
+    )
+    this.notifyQueue(sessionId)
+    try {
+      await this.send(sessionId, item.text, item)
+    } catch {
+      this.queueAdd(sessionId, item.text, item, true)
+    }
+  }
+
+  /** On idle: send the next queued message, one per settle. */
+  private drainQueue(sessionId: string): void {
+    if (this.draining.has(sessionId)) return
+    const q = this.queues.get(sessionId)
+    if (!q?.length) return
+    const item = q.shift()!
+    this.notifyQueue(sessionId)
+    this.draining.add(sessionId)
+    void this.send(sessionId, item.text, item)
+      .catch(() => {
+        q.unshift(item)
+        this.notifyQueue(sessionId)
+      })
+      .finally(() => this.draining.delete(sessionId))
   }
 
   private notifyMeta(session: SessionMeta): void {
