@@ -206,6 +206,9 @@ export interface SessionMeta {
   fast: boolean
   /** Opt into the 1M-token context window beta (claude). */
   context1m: boolean
+  /** When the current working stretch began (first message of the run);
+   *  survives steers and queue drains, null while truly idle. */
+  busySince: number | null
   /** Provider-native session/thread id, once known (for resume). */
   nativeId: string | null
   createdAt: number

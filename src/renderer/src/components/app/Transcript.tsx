@@ -170,7 +170,7 @@ const RowContent = memo(function RowContent({
   const block = row.block
   switch (block.kind) {
     case 'user':
-      return <UserMessage block={block} />
+      return <UserMessage block={block} sessionId={sessionId} />
     case 'assistant':
       return <MarkdownText text={block.text} streaming={block.streaming} />
     case 'thinking':

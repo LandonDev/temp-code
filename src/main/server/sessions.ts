@@ -124,7 +124,7 @@ export class SessionRegistry {
   resetStaleStatuses(): void {
     for (const s of this.store.listSessions()) {
       if (s.status === 'running' || s.status === 'waiting' || s.status === 'starting') {
-        this.store.updateSession(s.id, { status: 'idle' })
+        this.store.updateSession(s.id, { status: 'idle', busySince: null })
       }
     }
   }
@@ -301,6 +301,7 @@ export class SessionRegistry {
       permission: params.permission ?? d.permission,
       fast: false,
       context1m: false,
+      busySince: null,
       nativeId: null,
       createdAt: now,
       updatedAt: now
@@ -583,7 +584,7 @@ export class SessionRegistry {
 
   async restart(sessionId: string): Promise<void> {
     await this.dropHandle(sessionId)
-    const next = this.store.updateSession(sessionId, { status: 'idle' })
+    const next = this.store.updateSession(sessionId, { status: 'idle', busySince: null })
     if (next) this.notifyMeta(next)
   }
 
@@ -646,8 +647,18 @@ export class SessionRegistry {
     const row = this.store.appendEvent(sessionId, event)
     this.lastActivity.set(sessionId, row.ts)
     // Status events also update the session row (drives the sidebar).
+    // busySince anchors the "working for" timers: it is set when a stretch
+    // of work begins and holds through steers and queue drains, so the
+    // clock counts from the first message, not the latest wake-up.
     if (event.type === 'status') {
-      const next = this.store.updateSession(sessionId, { status: event.status })
+      const cur = this.store.getSession(sessionId)
+      const busySince =
+        event.status === 'idle'
+          ? (this.queues.get(sessionId)?.length ?? 0) > 0
+            ? (cur?.busySince ?? null)
+            : null
+          : (cur?.busySince ?? row.ts)
+      const next = this.store.updateSession(sessionId, { status: event.status, busySince })
       if (next) this.notifyMeta(next)
       // A settled turn releases the next queued message.
       if (event.status === 'idle') this.drainQueue(sessionId)
