@@ -34,7 +34,7 @@ export async function expandSlashRefs(
       seen.add(c.name)
       blocks.push(
         c.source === 'plugin'
-          ? `Where the message says /${c.name}: use your "${c.name}" plugin (its tools are available to you) for that part of the request.`
+          ? `Where the message says /${c.name}: use your "${c.name}" plugin for that part of the request — its tools are in your registry under the "${c.name}." prefix (e.g. ${c.name}.search).`
           : `Where the message says /${c.name}: use the tools of your "${c.name}" MCP server for that part of the request.`
       )
       continue
