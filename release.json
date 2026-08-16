@@ -1,5 +1,5 @@
 {
-  "n": 25,
-  "notes": "Appshots: monitor exits itself when the app dies without will-quit",
-  "ts": 1786920648497
+  "n": 26,
+  "notes": "Board round 5: diff reveal on land, whole-file changes, real Java highlighting, gliding timelines, h/d timers, auto-fold chat",
+  "ts": 1786922184593
 }
