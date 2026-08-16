@@ -172,9 +172,12 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
   z.object({
     id: z.string(),
     method: z.literal('lsp.ensure'),
-    params: z.object({ projectId: z.string(), lang: z.enum(['java', 'web']) })
+    params: z.object({ projectId: z.string(), lang: z.enum(['java', 'web', 'idea']) })
   }),
   z.object({ id: z.string(), method: z.literal('lsp.status') }),
+  // ── IntelliJ engine (docs/PLAN-4.md M15): EULA gate for intellij-server.
+  z.object({ id: z.string(), method: z.literal('idea.eula') }),
+  z.object({ id: z.string(), method: z.literal('idea.acceptEula') }),
   // ── AI ghost text (docs/PLAN-3.md M14) — fill-in-the-middle over the
   // user's existing Claude auth; the app holds no credentials.
   z.object({

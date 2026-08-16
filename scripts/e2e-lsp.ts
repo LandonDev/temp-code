@@ -45,7 +45,11 @@ const request = <T>(method: string, params?: unknown): Promise<T> =>
 interface LspClient {
   request: <T>(method: string, params?: unknown) => Promise<T>
   notify: (method: string, params?: unknown) => void
-  waitForNotification: (method: string, pred: (p: never) => boolean, timeoutMs: number) => Promise<void>
+  waitForNotification: (
+    method: string,
+    pred: (p: never) => boolean,
+    timeoutMs: number
+  ) => Promise<void>
   close: () => void
 }
 
@@ -54,14 +58,16 @@ async function lspConnect(wsPath: string, rootDir: string, settings: unknown): P
   await new Promise((r) => sock.on('open', r))
   let id = 1
   const waiting = new Map<number, (v: { result?: unknown; error?: { message: string } }) => void>()
-  const notificationSubs: { method: string; pred: (p: never) => boolean; resolve: () => void }[] = []
+  const notificationSubs: { method: string; pred: (p: never) => boolean; resolve: () => void }[] =
+    []
   sock.on('message', (data) => {
     const msg = JSON.parse(String(data))
     if (msg.id !== undefined && msg.method) {
       // Server → client request: answer honestly enough to keep it moving.
-      const result = msg.method === 'workspace/configuration'
-        ? (msg.params.items as unknown[]).map(() => null)
-        : null
+      const result =
+        msg.method === 'workspace/configuration'
+          ? (msg.params.items as unknown[]).map(() => null)
+          : null
       sock.send(JSON.stringify({ jsonrpc: '2.0', id: msg.id, result }))
     } else if (msg.id !== undefined) {
       waiting.get(msg.id)?.(msg)
@@ -84,8 +90,7 @@ async function lspConnect(wsPath: string, rootDir: string, settings: unknown): P
         )
         sock.send(JSON.stringify({ jsonrpc: '2.0', id: reqId, method, params }))
       }),
-    notify: (method, params) =>
-      sock.send(JSON.stringify({ jsonrpc: '2.0', method, params })),
+    notify: (method, params) => sock.send(JSON.stringify({ jsonrpc: '2.0', method, params })),
     waitForNotification: (method, pred, timeoutMs) =>
       new Promise((resolve, reject) => {
         const t = setTimeout(() => reject(new Error(`timeout waiting for ${method}`)), timeoutMs)
@@ -123,15 +128,8 @@ async function lspConnect(wsPath: string, rootDir: string, settings: unknown): P
 
 // ── fixtures ─────────────────────────────────────────────────────────
 const wsDir = mkdtempSync(join(tmpdir(), 'tc-lsp-ws-'))
-const wsMeta = await request<{ id: string }>('workspace.create', { path: wsDir, name: 'lsp-ws' })
+await request<{ id: string }>('workspace.create', { path: wsDir, name: 'lsp-ws' })
 
-async function makeProject(name: string): Promise<{ id: string; cwd: string }> {
-  return request<{ id: string; cwd: string }>('project.create', {
-    workspaceId: wsMeta.id,
-    name,
-    mode: 'local'
-  })
-}
 // local-mode projects share cwd; give each its own dir via workspaces
 async function makeProjectAt(dir: string, name: string): Promise<{ id: string; cwd: string }> {
   mkdirSync(dir, { recursive: true })
@@ -145,9 +143,15 @@ async function makeProjectAt(dir: string, name: string): Promise<{ id: string; c
 
 // ── vtsls: ensure idempotent + cross-file rename ─────────────────────
 const tsDir = mkdtempSync(join(tmpdir(), 'tc-lsp-ts-'))
-writeFileSync(join(tsDir, 'a.ts'), 'export function greet(name: string): string {\n  return `hi ${name}`\n}\n')
+writeFileSync(
+  join(tsDir, 'a.ts'),
+  'export function greet(name: string): string {\n  return `hi ${name}`\n}\n'
+)
 writeFileSync(join(tsDir, 'b.ts'), "import { greet } from './a'\nconsole.log(greet('world'))\n")
-writeFileSync(join(tsDir, 'tsconfig.json'), '{"compilerOptions":{"module":"esnext","moduleResolution":"bundler"}}\n')
+writeFileSync(
+  join(tsDir, 'tsconfig.json'),
+  '{"compilerOptions":{"module":"esnext","moduleResolution":"bundler"}}\n'
+)
 const tsProject = await makeProjectAt(tsDir, 'ts-fixture')
 
 interface EnsureResult {
@@ -158,7 +162,11 @@ interface EnsureResult {
 }
 const ensure1 = await request<EnsureResult>('lsp.ensure', { projectId: tsProject.id, lang: 'web' })
 const ensure2 = await request<EnsureResult>('lsp.ensure', { projectId: tsProject.id, lang: 'web' })
-check('lsp.ensure is idempotent (one server)', ensure1.serverId === ensure2.serverId, ensure1.serverId)
+check(
+  'lsp.ensure is idempotent (one server)',
+  ensure1.serverId === ensure2.serverId,
+  ensure1.serverId
+)
 check('vtsls running', ensure1.status === 'running', `${ensure1.status} ${ensure1.error ?? ''}`)
 
 const tsClient = await lspConnect(ensure1.wsPath, tsProject.cwd, {})
@@ -204,7 +212,7 @@ const tsTokens = await tsClient.request<{ data?: number[] } | null>(
 )
 check(
   'vtsls semantic tokens stream',
-  (tsTokens?.data?.length ?? 0) > 0 && (tsTokens!.data!.length % 5) === 0,
+  (tsTokens?.data?.length ?? 0) > 0 && tsTokens!.data!.length % 5 === 0,
   `${tsTokens?.data?.length ?? 0} uints`
 )
 
@@ -282,7 +290,11 @@ public class App {
     projectId: javaProject.id,
     lang: 'java'
   })
-  check('jdtls running', javaEnsure.status === 'running', `${javaEnsure.status} ${javaEnsure.error ?? ''}`)
+  check(
+    'jdtls running',
+    javaEnsure.status === 'running',
+    `${javaEnsure.status} ${javaEnsure.error ?? ''}`
+  )
   if (javaEnsure.status === 'running') {
     const jClient = await lspConnect(javaEnsure.wsPath, javaProject.cwd, {
       settings: { java: {} }
@@ -312,7 +324,10 @@ public class App {
       'jdtls completion returns String members over the tunnel',
       items.some((i) => i.label.startsWith('charAt')) &&
         items.some((i) => i.label.startsWith('codePointAt')),
-      `${items.length} items: ${items.slice(0, 5).map((i) => i.label).join(', ')}`
+      `${items.length} items: ${items
+        .slice(0, 5)
+        .map((i) => i.label)
+        .join(', ')}`
     )
     // Structured labels (IDEA columns): name | (params) | return type.
     const charAt = items.find((i) => i.label === 'charAt')
@@ -330,7 +345,7 @@ public class App {
     )
     check(
       'jdtls semantic tokens stream',
-      (jTokens?.data?.length ?? 0) > 0 && (jTokens!.data!.length % 5) === 0,
+      (jTokens?.data?.length ?? 0) > 0 && jTokens!.data!.length % 5 === 0,
       `${jTokens?.data?.length ?? 0} uints`
     )
 
@@ -394,6 +409,118 @@ public class App {
       lang: 'java'
     })
     check('re-ensure reuses the running server', again.serverId === javaEnsure.serverId)
+  }
+}
+
+// ── IntelliJ engine (docs/PLAN-4.md M15): EULA gate + ranked completion ──
+// Only runs when the dist is already on disk (386 MB — never downloaded
+// by the test), which it is on the dev machine after the M0 spike.
+const ideaDistDir = join(homedir(), '.temp-code', 'intellij-server', 'dist-263.2689.0')
+if (!existsSync(join(ideaDistDir, 'bin', 'intellij-server'))) {
+  console.log('SKIP  intellij-server checks — dist not on disk')
+} else {
+  const ijDir = mkdtempSync(join(tmpdir(), 'tc-ij-'))
+  mkdirSync(join(ijDir, 'src', 'main', 'java', 'demo'), { recursive: true })
+  writeFileSync(
+    join(ijDir, 'pom.xml'),
+    `<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0">
+  <modelVersion>4.0.0</modelVersion>
+  <groupId>demo</groupId><artifactId>ij</artifactId><version>1.0</version>
+  <properties><maven.compiler.source>17</maven.compiler.source><maven.compiler.target>17</maven.compiler.target></properties>
+</project>
+`
+  )
+  const ijFile = join(ijDir, 'src', 'main', 'java', 'demo', 'App.java')
+  const ijText = `package demo;
+
+public class App {
+  public static void main(String[] args) {
+    String hello = "hi";
+    boolean b = hello.
+  }
+}
+`
+  writeFileSync(ijFile, ijText)
+  const ijProject = await makeProjectAt(ijDir, 'ij-fixture')
+
+  const eulaFile = join(homedir(), '.temp-code', 'intellij-server', 'eula-accepted.json')
+  const hadEula = existsSync(eulaFile)
+  if (!hadEula) {
+    const gated = await request<EnsureResult>('lsp.ensure', {
+      projectId: ijProject.id,
+      lang: 'idea'
+    })
+    check(
+      'idea ensure is EULA-gated before acceptance',
+      gated.status === 'needs-eula',
+      gated.status
+    )
+    const eula = await request<{ text: string }>('idea.eula')
+    check('idea.eula returns the license text', eula.text.length > 100)
+    await request('idea.acceptEula')
+  } else {
+    console.log('…    EULA already accepted on this machine — gate check skipped')
+  }
+  const ijEnsure = await request<EnsureResult & { eulaHash?: string; defaultSdk?: string }>(
+    'lsp.ensure',
+    { projectId: ijProject.id, lang: 'idea' }
+  )
+  check(
+    'intellij-server running',
+    ijEnsure.status === 'running',
+    `${ijEnsure.status} ${ijEnsure.error ?? ''}`
+  )
+  check('ensure carries eulaHash + defaultSdk', !!ijEnsure.eulaHash && !!ijEnsure.defaultSdk)
+  if (ijEnsure.status === 'running') {
+    const ij = await lspConnect(ijEnsure.wsPath, ijProject.cwd, {
+      eulaHash: ijEnsure.eulaHash,
+      defaultSdk: ijEnsure.defaultSdk
+    })
+    ij.notify('textDocument/didOpen', {
+      textDocument: { uri: `file://${ijFile}`, languageId: 'java', version: 1, text: ijText }
+    })
+    interface IjItem {
+      label: string
+      labelDetails?: { detail?: string; description?: string }
+      sortText?: string
+    }
+    let ijItems: IjItem[] = []
+    for (let i = 0; i < 60; i++) {
+      const r = await ij.request<{ items?: IjItem[] } | IjItem[] | null>(
+        'textDocument/completion',
+        {
+          textDocument: { uri: `file://${ijFile}` },
+          position: { line: 5, character: 22 },
+          context: { triggerKind: 1 }
+        }
+      )
+      ijItems = Array.isArray(r) ? r : (r?.items ?? [])
+      // Postfix templates arrive before the project import finishes —
+      // wait for real String members (the classpath proof).
+      if (ijItems.some((x) => x.label === 'length') && ijItems.some((x) => x.label === 'charAt'))
+        break
+      await new Promise((res) => setTimeout(res, 3000))
+    }
+    const ranked = [...ijItems].sort((a, b) => ((a.sortText ?? '') < (b.sortText ?? '') ? -1 : 1))
+    check(
+      'intellij-server completion is relevance-ranked (not alphabetical)',
+      ranked.length > 3 &&
+        ranked.findIndex((x) => x.label === 'length') <
+          ranked.findIndex((x) => x.label === 'charAt'),
+      ranked
+        .slice(0, 6)
+        .map((x) => x.label)
+        .join(', ')
+    )
+    const lengthItem = ranked.find((x) => x.label === 'length')
+    check(
+      'intellij-server items carry labelDetails columns',
+      lengthItem?.labelDetails?.detail === '()' &&
+        (lengthItem?.labelDetails?.description?.length ?? 0) > 0,
+      JSON.stringify(lengthItem?.labelDetails)
+    )
+    ij.close()
   }
 }
 

@@ -86,7 +86,7 @@ export interface BranchList {
 export interface LspStatusRow {
   serverId: string
   projectId: string
-  lang: 'java' | 'web'
+  lang: 'java' | 'web' | 'idea'
   state: 'starting' | 'downloading' | 'running' | 'error'
   /** RSS of the child process, bytes (best effort) */
   memoryBytes: number | null
