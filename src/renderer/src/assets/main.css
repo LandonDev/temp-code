@@ -124,11 +124,27 @@
     transform: scale(0.98) translateY(2px);
   }
 }
-/* DIALOG_IN — modals: 180ms, scale .96 */
+/* DIALOG_IN — modals: 180ms, rises 8px while scaling .96 → 1. The
+ * centering translate lives INSIDE the keyframes; a bare scale() here
+ * would override the -50%/-50% positioning classes mid-flight. */
 @keyframes z-dialog-in {
   from {
     opacity: 0;
-    transform: scale(0.96);
+    transform: translate(-50%, calc(-50% + 8px)) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+@keyframes z-dialog-out {
+  from {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translate(-50%, calc(-50% + 4px)) scale(0.98);
   }
 }
 /* ZERON_PULSE — boot/loader cells: 2.4s staggered, opacity .08→1, scale .9→1 */

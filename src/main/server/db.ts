@@ -324,6 +324,10 @@ export class Store {
     this.db.prepare(`DELETE FROM projects WHERE id = ?`).run(id)
   }
 
+  renameProject(id: string, name: string): void {
+    this.db.prepare(`UPDATE projects SET name = ? WHERE id = ?`).run(name, id)
+  }
+
   sessionsOfProject(projectId: string): SessionMeta[] {
     const rows = this.db
       .prepare(`SELECT * FROM sessions WHERE project_id = ?`)

@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
-import { ChevronRight, GitFork, ListChecks, MessageSquare, Play } from 'lucide-react'
+import { ChevronRight, GitFork, ListChecks, MessageSquare, Play, ShieldCheck } from 'lucide-react'
 import type { ProviderId, Reasoning } from '@shared/catalog'
-import type { SessionMeta } from '@shared/events'
+import type { PermissionPolicy, SessionMeta } from '@shared/events'
 import { useApp } from '../../../state/store'
 import { cn } from '../../../lib/utils'
 import { EASE_OUT } from '../../../lib/ease'
@@ -11,6 +11,7 @@ import { MarkdownText } from '../blocks/MarkdownText'
 import { Popover, PopoverContent, PopoverTrigger } from '../../ui/popover'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../ui/select'
 import { ModelPicker } from '../ModelPicker'
+import { Spinner } from '../../ui/spinner'
 import { Transcript } from '../Transcript'
 import { WorkingStrip } from '../WorkingStrip'
 import { PromptBar } from '../PromptBar'
@@ -365,6 +366,12 @@ function HandoffChip({ spawned }: { spawned: SessionMeta }): React.JSX.Element {
   )
 }
 
+const PERMISSION_LABELS: Record<PermissionPolicy, string> = {
+  safe: 'Ask first',
+  edits: 'Auto-edits',
+  auto: 'Full access'
+}
+
 const EFFORT_LABELS: Record<Reasoning, string> = {
   low: 'Low',
   medium: 'Medium',
@@ -392,13 +399,14 @@ function StartButton({
   const catalog = useApp((s) => s.catalog)
   const createThread = useApp((s) => s.createThread)
   const send = useApp((s) => s.send)
-  const [busy, setBusy] = useState(false)
-  // The build's model defaults to the planning thread's — change it here.
+  const [busy, setBusy] = useState<'implementation' | 'orchestration' | null>(null)
+  // The build's setup defaults to the planning thread's — change it here.
   const [choice, setChoice] = useState<{ provider: ProviderId; model: string }>({
     provider: session.provider,
     model: session.model
   })
   const [reasoning, setReasoning] = useState<Reasoning>(session.reasoning)
+  const [permission, setPermission] = useState<PermissionPolicy>(session.permission)
   const [workers, setWorkers] = useState(1)
   const reduce = useReducedMotion()
   const ladder =
@@ -406,7 +414,7 @@ function StartButton({
 
   const start = async (type: 'implementation' | 'orchestration'): Promise<void> => {
     if (busy || !session.projectId) return
-    setBusy(true)
+    setBusy(type)
     try {
       const base = session.title.replace(/^Plan:?\s*/i, '')
       const n = type === 'implementation' ? workers : 1
@@ -417,6 +425,7 @@ function StartButton({
           provider: choice.provider,
           model: choice.model,
           reasoning,
+          permission,
           agentType: type === 'orchestration' ? 'orchestrator' : 'implementer',
           planPath: session.planPath ?? undefined,
           title: n > 1 ? `${base} (${i + 1}/${n})` : base
@@ -429,12 +438,9 @@ function StartButton({
         )
       }
     } finally {
-      setBusy(false)
+      setBusy(null)
     }
   }
-
-  const withCount = (label: string): string =>
-    tasks.length ? `${label} · ${tasks.length} tasks` : label
 
   return (
     <motion.div
@@ -451,106 +457,148 @@ function StartButton({
             Start
           </button>
         </PopoverTrigger>
-        <PopoverContent align="end" side="bottom" className="w-80 rounded-xl p-1.5">
-          {/* Who builds it: model + effort for the new thread(s). */}
-          <div className="flex items-center gap-1 px-1 pt-0.5 pb-1.5">
-            <ModelPicker
-              provider={choice.provider}
-              model={choice.model}
-              onPick={(p, m) => {
-                setChoice({ provider: p, model: m })
-                const next = catalog?.[p].models.find((x) => x.id === m)
-                const steps = next?.reasoning ?? []
-                if (!steps.includes(reasoning)) {
-                  setReasoning(next?.defaultReasoning ?? steps[0] ?? 'medium')
-                }
-              }}
-            />
-            {ladder.length > 1 && (
-              <Select value={reasoning} onValueChange={(v) => setReasoning(v as Reasoning)}>
-                <SelectTrigger size="sm" aria-label="Reasoning effort" className="gap-1 px-1.5">
+        <PopoverContent align="end" side="bottom" className="w-[340px] gap-0 p-0">
+          {/* Who builds it, and under what rules — the same knobs a new
+              chat gets: model, effort, access. */}
+          <div className="border-b border-border/60 px-3 pt-2.5 pb-2">
+            <p className="text-[13px] font-medium">
+              Start building
+              {tasks.length > 0 && (
+                <span className="ml-1.5 font-normal text-muted-foreground">
+                  {tasks.length} tasks
+                </span>
+              )}
+            </p>
+            <div className="mt-1.5 -ml-1 flex flex-wrap items-center gap-0.5">
+              <ModelPicker
+                provider={choice.provider}
+                model={choice.model}
+                onPick={(p, m) => {
+                  setChoice({ provider: p, model: m })
+                  const next = catalog?.[p].models.find((x) => x.id === m)
+                  const steps = next?.reasoning ?? []
+                  if (!steps.includes(reasoning)) {
+                    setReasoning(next?.defaultReasoning ?? steps[0] ?? 'medium')
+                  }
+                }}
+              />
+              {ladder.length > 1 && (
+                <Select value={reasoning} onValueChange={(v) => setReasoning(v as Reasoning)}>
+                  <SelectTrigger size="sm" aria-label="Reasoning effort" className="gap-1 px-1.5">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {ladder.map((r) => (
+                      <SelectItem key={r} value={r}>
+                        {EFFORT_LABELS[r]}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+              <Select
+                value={permission}
+                onValueChange={(v) => setPermission(v as PermissionPolicy)}
+              >
+                <SelectTrigger size="sm" aria-label="Access" className="gap-1 px-1.5">
+                  <ShieldCheck className="size-3 text-muted-foreground" />
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {ladder.map((r) => (
-                    <SelectItem key={r} value={r}>
-                      {EFFORT_LABELS[r]}
+                  {(Object.keys(PERMISSION_LABELS) as PermissionPolicy[]).map((p) => (
+                    <SelectItem key={p} value={p}>
+                      {PERMISSION_LABELS[p]}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
-            )}
+            </div>
           </div>
-          <div className="-mx-1 mb-1 h-px bg-hairline" />
-          <div
-            role="button"
-            tabIndex={0}
-            onClick={() => !busy && void start('implementation')}
-            onKeyDown={(e) => e.key === 'Enter' && !busy && void start('implementation')}
-            className="flex w-full cursor-pointer items-start gap-2.5 rounded-md px-2.5 py-2 text-left transition-colors hover:bg-accent active:scale-[0.99]"
-          >
-            <ListChecks className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
-            <span className="min-w-0 flex-1">
-              <span className="block text-[13px] font-medium">
-                Implement{workers > 1 ? ` × ${workers}` : ''}
-              </span>
-              <span className="block text-[11px] text-muted-foreground">
-                {workers > 1
-                  ? withCount(`${workers} threads split the plan's tasks`)
-                  : withCount("One agent works the plan's tasks")}
-              </span>
-            </span>
-            {/* How many parallel implementation threads. */}
-            <span
-              onClick={(e) => e.stopPropagation()}
-              className="flex shrink-0 gap-0.5 rounded-md bg-secondary/60 p-0.5"
+
+          <div className="p-1">
+            <div
+              role="button"
+              tabIndex={0}
+              onClick={() => void start('implementation')}
+              onKeyDown={(e) => e.key === 'Enter' && void start('implementation')}
+              className={cn(
+                'group/act flex w-full cursor-pointer items-center gap-3 rounded-lg px-2 py-2 text-left transition-colors duration-150 hover:bg-accent active:scale-[0.99]',
+                busy && 'pointer-events-none opacity-60'
+              )}
             >
-              {[1, 2, 3].map((n) => (
-                <button
-                  key={n}
-                  onClick={() => setWorkers(n)}
-                  aria-label={`${n} thread${n > 1 ? 's' : ''}`}
-                  className={cn(
-                    'flex size-5 items-center justify-center rounded text-[11px] transition-colors',
-                    workers === n
-                      ? 'bg-background text-foreground shadow-sm'
-                      : 'text-muted-foreground hover:text-foreground'
-                  )}
-                >
-                  {n}
-                </button>
-              ))}
-            </span>
-          </div>
-          <button
-            disabled={busy}
-            onClick={() => void start('orchestration')}
-            className="flex w-full items-start gap-2.5 rounded-md px-2.5 py-2 text-left transition-colors hover:bg-accent active:scale-[0.99]"
-          >
-            <GitFork className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
-            <span>
-              <span className="block text-[13px] font-medium">Orchestrate</span>
-              <span className="block text-[11px] text-muted-foreground">
-                {withCount('Split across subagents in parallel')}
-              </span>
-            </span>
-          </button>
-          {tasks.length > 0 && (
-            <>
-              <div className="-mx-1 my-1 h-px bg-hairline" />
-              <div className="px-2.5 pt-1 pb-1.5">
-                {tasks.slice(0, 3).map((t, i) => (
-                  <p key={i} className="truncate text-[11px] leading-[18px] text-muted-foreground">
-                    {i + 1}. {t}
-                  </p>
-                ))}
-                {tasks.length > 3 && (
-                  <p className="text-[11px] leading-[18px] text-muted-foreground/60">
-                    +{tasks.length - 3} more
-                  </p>
+              <span className="flex size-8 shrink-0 items-center justify-center rounded-lg border border-border/70 bg-background/60 shadow-[inset_0_1px_0_rgb(255_255_255/0.05)] transition-transform duration-150 group-hover/act:scale-105">
+                {busy === 'implementation' ? (
+                  <Spinner className="size-3.5 text-muted-foreground" />
+                ) : (
+                  <ListChecks className="size-4 text-success/80" />
                 )}
-              </div>
-            </>
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-[13px] font-medium">
+                  Implement{workers > 1 ? ` × ${workers}` : ''}
+                </span>
+                <span className="block text-[11px] text-muted-foreground">
+                  {workers > 1
+                    ? `${workers} threads split the plan's tasks`
+                    : "One agent works the plan's tasks"}
+                </span>
+              </span>
+              {/* How many parallel implementation threads. */}
+              <span
+                onClick={(e) => e.stopPropagation()}
+                className="flex shrink-0 gap-0.5 rounded-md bg-secondary/60 p-0.5"
+              >
+                {[1, 2, 3].map((n) => (
+                  <button
+                    key={n}
+                    onClick={() => setWorkers(n)}
+                    aria-label={`${n} thread${n > 1 ? 's' : ''}`}
+                    className={cn(
+                      'flex size-5 items-center justify-center rounded text-[11px] transition-colors',
+                      workers === n
+                        ? 'bg-background text-foreground shadow-sm'
+                        : 'text-muted-foreground hover:text-foreground'
+                    )}
+                  >
+                    {n}
+                  </button>
+                ))}
+              </span>
+            </div>
+            <button
+              disabled={busy !== null}
+              onClick={() => void start('orchestration')}
+              className="group/act flex w-full items-center gap-3 rounded-lg px-2 py-2 text-left transition-colors duration-150 hover:bg-accent active:scale-[0.99] disabled:opacity-60"
+            >
+              <span className="flex size-8 shrink-0 items-center justify-center rounded-lg border border-border/70 bg-background/60 shadow-[inset_0_1px_0_rgb(255_255_255/0.05)] transition-transform duration-150 group-hover/act:scale-105">
+                {busy === 'orchestration' ? (
+                  <Spinner className="size-3.5 text-muted-foreground" />
+                ) : (
+                  <GitFork className="size-4 text-violet/80" />
+                )}
+              </span>
+              <span>
+                <span className="block text-[13px] font-medium">Orchestrate</span>
+                <span className="block text-[11px] text-muted-foreground">
+                  Split across subagents in parallel
+                </span>
+              </span>
+            </button>
+          </div>
+
+          {tasks.length > 0 && (
+            <div className="rounded-b-xl border-t border-border/60 bg-muted/40 px-3 pt-1.5 pb-2">
+              {tasks.slice(0, 3).map((t, i) => (
+                <p key={i} className="truncate text-[11px] leading-[18px] text-muted-foreground">
+                  {i + 1}. {t}
+                </p>
+              ))}
+              {tasks.length > 3 && (
+                <p className="text-[11px] leading-[18px] text-muted-foreground/60">
+                  +{tasks.length - 3} more
+                </p>
+              )}
+            </div>
           )}
         </PopoverContent>
       </Popover>

@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
-import { Archive, ArchiveRestore, Pencil, Plus } from 'lucide-react'
+import { Archive, ArchiveRestore, Pencil, Plus, Search, Trash2 } from 'lucide-react'
 import type { ThreadType } from '@shared/domain'
 import type { SessionMeta, SessionStatus } from '@shared/events'
 import { threadsOfProject, useApp } from '../../state/store'
@@ -11,13 +11,21 @@ import {
   ContextMenu,
   ContextMenuContent,
   ContextMenuItem,
+  ContextMenuSeparator,
   ContextMenuTrigger
 } from '../ui/context-menu'
 import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover'
-import { Button } from '../ui/button'
+import { Input } from '../ui/input'
 import { Spinner } from '../ui/spinner'
+import { ConfirmDialog } from './ConfirmDialog'
 import { useNow } from '../../lib/useNow'
 import { duration, THREAD_GLYPHS, THREAD_LABELS, THREAD_TINTS, timeAgo } from './bits'
+
+/** Dialog titles stay one line — long thread names get elided. */
+function clampTitle(t: string | undefined): string | undefined {
+  if (!t) return t
+  return t.length > 32 ? `${t.slice(0, 32).trimEnd()}…` : t
+}
 
 const TYPE_HINTS: Record<ThreadType, string> = {
   chat: 'Ask questions, explore the code',
@@ -82,6 +90,8 @@ export function ThreadStrip(): React.JSX.Element | null {
   )
   const setActiveSurface = useApp((s) => s.setActiveSurface)
   const [renaming, setRenaming] = useState<string | null>(null)
+  const [deleting, setDeleting] = useState<string | null>(null)
+  const deleteSession = useApp((s) => s.deleteSession)
   const reduce = useReducedMotion()
 
   const threads = useMemo(() => threadsOfProject(sessions, projectId), [sessions, projectId])
@@ -199,6 +209,11 @@ export function ThreadStrip(): React.JSX.Element | null {
                           <Archive className="size-3.5 text-muted-foreground" />
                           Archive
                         </ContextMenuItem>
+                        <ContextMenuSeparator />
+                        <ContextMenuItem variant="destructive" onClick={() => setDeleting(t.id)}>
+                          <Trash2 className="size-3.5" />
+                          Delete…
+                        </ContextMenuItem>
                       </ContextMenuContent>
                     </ContextMenu>
                   )}
@@ -211,15 +226,32 @@ export function ThreadStrip(): React.JSX.Element | null {
       <NewThreadButton projectId={projectId} empty={threads.length === 0} />
       <div className="flex-1" />
       <ArchivedShelf archived={archived} />
+      <ConfirmDialog
+        open={deleting !== null}
+        title={`Delete ${clampTitle(deleting ? sessions[deleting]?.title : undefined) ?? 'thread'}?`}
+        body="The thread and its whole transcript are gone for good. Archive keeps it instead."
+        confirmLabel="Delete thread"
+        onConfirm={async () => {
+          if (!deleting) return
+          if (selectedId === deleting) {
+            const rest = threads.filter((t) => t.id !== deleting)
+            void select(rest[0]?.id ?? null)
+          }
+          await deleteSession(deleting)
+        }}
+        onClose={() => setDeleting(null)}
+      />
     </div>
   )
 }
 
-/** Recover archived threads: restore puts the tab back and opens it. */
+/** Recover archived threads: restore puts the tab back and opens it.
+ *  Grows a search field once the shelf holds more than a screenful. */
 function ArchivedShelf({ archived }: { archived: SessionMeta[] }): React.JSX.Element | null {
   const select = useApp((s) => s.select)
   const setArchived = useApp((s) => s.setArchived)
   const [open, setOpen] = useState(false)
+  const [query, setQuery] = useState('')
   const reduce = useReducedMotion()
 
   if (archived.length === 0) return null
@@ -230,8 +262,17 @@ function ArchivedShelf({ archived }: { archived: SessionMeta[] }): React.JSX.Ele
     await select(id)
   }
 
+  const q = query.trim().toLowerCase()
+  const shown = q ? archived.filter((t) => t.title.toLowerCase().includes(q)) : archived
+
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover
+      open={open}
+      onOpenChange={(o) => {
+        setOpen(o)
+        if (!o) setQuery('')
+      }}
+    >
       <PopoverTrigger asChild>
         <button
           aria-label="Archived threads"
@@ -246,40 +287,59 @@ function ArchivedShelf({ archived }: { archived: SessionMeta[] }): React.JSX.Ele
       </PopoverTrigger>
       <PopoverContent align="end" className="w-72 gap-0 p-1">
         <div className="px-2 pt-1.5 pb-1 text-[10px] font-medium uppercase tracking-[0.1em] text-muted-foreground/60">
-          Archived
+          Archived · {archived.length}
         </div>
-        <AnimatePresence initial={false}>
-          {archived.map((t) => {
-            const Glyph = t.threadType ? THREAD_GLYPHS[t.threadType] : THREAD_GLYPHS.chat
-            return (
-              <motion.button
-                key={t.id}
-                layout
-                exit={reduce ? undefined : { opacity: 0, height: 0 }}
-                transition={SPRING_LAYOUT}
-                onClick={() => void restore(t.id)}
-                className="group/arch flex w-full items-center gap-2.5 overflow-hidden rounded-lg px-2 py-1.5 text-left transition-colors duration-150 hover:bg-accent"
-              >
-                <span className="flex size-7 shrink-0 items-center justify-center rounded-md border border-border">
-                  <Glyph
-                    className={cn('size-3.5 opacity-80', THREAD_TINTS[t.threadType ?? 'chat'])}
-                  />
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-[13px]">{t.title}</span>
-                  <span className="block text-[11px] text-muted-foreground/60">
-                    {timeAgo(t.updatedAt)}
+        {archived.length > 6 && (
+          <div className="relative px-1 pb-1">
+            <Search className="pointer-events-none absolute top-1/2 left-3.5 size-3 -translate-y-[calc(50%+2px)] text-muted-foreground/50" />
+            <Input
+              autoFocus
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search…"
+              className="h-7 pl-7.5 text-xs"
+            />
+          </div>
+        )}
+        <div className="max-h-80 overflow-y-auto">
+          {shown.length === 0 && (
+            <p className="px-2 py-3 text-center text-[11px] text-muted-foreground/60">
+              No matches.
+            </p>
+          )}
+          <AnimatePresence initial={false}>
+            {shown.map((t) => {
+              const Glyph = t.threadType ? THREAD_GLYPHS[t.threadType] : THREAD_GLYPHS.chat
+              return (
+                <motion.button
+                  key={t.id}
+                  layout
+                  exit={reduce ? undefined : { opacity: 0, height: 0 }}
+                  transition={SPRING_LAYOUT}
+                  onClick={() => void restore(t.id)}
+                  className="group/arch flex w-full items-center gap-2.5 overflow-hidden rounded-lg px-2 py-1.5 text-left transition-colors duration-150 hover:bg-accent"
+                >
+                  <span className="flex size-7 shrink-0 items-center justify-center rounded-md border border-border">
+                    <Glyph
+                      className={cn('size-3.5 opacity-80', THREAD_TINTS[t.threadType ?? 'chat'])}
+                    />
                   </span>
-                </span>
-                {/* settle-on-hover: the restore affordance appears with the row */}
-                <span className="flex shrink-0 items-center gap-1 text-[11px] text-muted-foreground opacity-0 transition-opacity duration-150 group-hover/arch:opacity-100">
-                  <ArchiveRestore className="size-3.5" />
-                  Restore
-                </span>
-              </motion.button>
-            )
-          })}
-        </AnimatePresence>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-[13px]">{t.title}</span>
+                    <span className="block text-[11px] text-muted-foreground/60">
+                      {timeAgo(t.updatedAt)}
+                    </span>
+                  </span>
+                  {/* settle-on-hover: the restore affordance appears with the row */}
+                  <span className="flex shrink-0 items-center gap-1 text-[11px] text-muted-foreground opacity-0 transition-opacity duration-150 group-hover/arch:opacity-100">
+                    <ArchiveRestore className="size-3.5" />
+                    Restore
+                  </span>
+                </motion.button>
+              )
+            })}
+          </AnimatePresence>
+        </div>
       </PopoverContent>
     </Popover>
   )
@@ -295,18 +355,16 @@ function NewThreadButton({
   const catalog = useApp((s) => s.catalog)
   const createThread = useApp((s) => s.createThread)
   const [open, setOpen] = useState(false)
-  const [type, setType] = useState<ThreadType>('chat')
-  const [busy, setBusy] = useState(false)
-  const reduce = useReducedMotion()
+  const [busy, setBusy] = useState<ThreadType | null>(null)
 
   if (!catalog) return <span />
 
-  const create = async (): Promise<void> => {
+  // One click per type — provider/model/reasoning/security come from the
+  // thread defaults (workspace override → global), resolved server-side.
+  const create = async (type: ThreadType): Promise<void> => {
     if (busy) return
-    setBusy(true)
+    setBusy(type)
     try {
-      // Provider/model/reasoning/security come from the thread defaults
-      // (workspace override → global), resolved server-side.
       await createThread({
         projectId,
         threadType: type,
@@ -314,7 +372,7 @@ function NewThreadButton({
       })
       setOpen(false)
     } finally {
-      setBusy(false)
+      setBusy(null)
     }
   }
 
@@ -325,54 +383,48 @@ function NewThreadButton({
           aria-label="New thread"
           className={cn(
             'flex shrink-0 items-center gap-1.5 rounded-md px-2 py-1 text-muted-foreground transition hover:bg-accent hover:text-foreground active:scale-95',
-            empty && 'text-foreground'
+            empty && 'text-foreground',
+            open && 'bg-accent text-foreground'
           )}
         >
           <Plus className="size-4" />
           {empty && <span className="text-[13px]">New thread</span>}
         </button>
       </PopoverTrigger>
-      <PopoverContent align="start" className="w-72 rounded-xl p-2">
-        <div className="flex flex-col gap-0.5">
-          {(Object.keys(THREAD_LABELS) as ThreadType[]).map((t) => {
-            const Glyph = THREAD_GLYPHS[t]
-            return (
-              <button
-                key={t}
-                onClick={() => setType(t)}
+      <PopoverContent align="start" className="w-72 gap-0 p-1">
+        {(Object.keys(THREAD_LABELS) as ThreadType[]).map((t) => {
+          const Glyph = THREAD_GLYPHS[t]
+          return (
+            <button
+              key={t}
+              disabled={busy !== null}
+              onClick={() => void create(t)}
+              className={cn(
+                'group/new flex w-full items-center gap-3 rounded-lg px-2 py-2 text-left transition-colors duration-150 active:scale-[0.99]',
+                'hover:bg-accent disabled:opacity-60'
+              )}
+            >
+              <span
                 className={cn(
-                  'relative flex items-start gap-2.5 rounded-md px-2.5 py-2 text-left active:scale-[0.99]',
-                  type !== t && 'hover:bg-accent/50'
+                  'flex size-8 shrink-0 items-center justify-center rounded-lg border border-border/70 bg-background/60',
+                  'shadow-[inset_0_1px_0_rgb(255_255_255/0.05)] transition-transform duration-150 group-hover/new:scale-105'
                 )}
               >
-                {type === t && (
-                  <motion.span
-                    layoutId="new-thread-type"
-                    transition={reduce ? { duration: 0 } : SPRING_LAYOUT}
-                    className="absolute inset-0 rounded-md bg-accent"
-                  />
+                {busy === t ? (
+                  <Spinner className="size-3.5 text-muted-foreground" />
+                ) : (
+                  <Glyph className={cn('size-4', THREAD_TINTS[t])} />
                 )}
-                <Glyph className={cn('relative mt-0.5 size-4 shrink-0', THREAD_TINTS[t])} />
-                <span className="relative min-w-0">
-                  <span className="block text-[13px] font-medium">{THREAD_LABELS[t]}</span>
-                  <span className="block text-[11px] leading-snug text-muted-foreground">
-                    {TYPE_HINTS[t]}
-                  </span>
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-[13px] font-medium">{THREAD_LABELS[t]}</span>
+                <span className="block text-[11px] leading-snug text-muted-foreground">
+                  {TYPE_HINTS[t]}
                 </span>
-              </button>
-            )
-          })}
-        </div>
-        <div className="mt-2 border-t border-border/60 pt-2">
-          <Button
-            size="sm"
-            className="h-7 w-full text-xs"
-            disabled={busy}
-            onClick={() => void create()}
-          >
-            Create
-          </Button>
-        </div>
+              </span>
+            </button>
+          )
+        })}
       </PopoverContent>
     </Popover>
   )
