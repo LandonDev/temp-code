@@ -1,0 +1,11 @@
+#!/bin/bash
+# Auto-release: every commit on master queues a release attempt. The
+# worker (auto-release.sh) runs detached under a lock; release commits
+# themselves are skipped so the loop terminates.
+[ "$(git rev-parse --abbrev-ref HEAD)" = "master" ] || exit 0
+case "$(git log -1 --format=%s)" in "release:"*) exit 0 ;; esac
+ROOT="$(git rev-parse --show-toplevel)"
+touch "$ROOT/.git/auto-release.pending"
+mkdir "$ROOT/.git/auto-release.lock" 2>/dev/null || exit 0
+nohup bash "$ROOT/.githooks/auto-release.sh" "$ROOT" >>/tmp/temp-code-auto-release.log 2>&1 &
+exit 0
