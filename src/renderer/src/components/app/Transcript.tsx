@@ -269,11 +269,17 @@ export function Transcript({
   const runningRef = useRef(false)
   useEffect(() => {
     runningRef.current = running
-    // Turn settled: stop pinning the parked prompt so later reading and
-    // section toggles never make the engine jump the view. The runway
-    // spacer stays (nothing moves at settle); the next real user scroll
-    // clears it.
-    if (!running && mode.current === 'parked') mode.current = 'free'
+    // Turn settled: release the parked hold COMPLETELY — the mode, the
+    // parked row, and the runway. Leaving parkedRow set kept the spacer
+    // effect regrowing the runway on any later height change (expanding a
+    // group), which read as phantom blank space below the transcript and a
+    // "scroll to bottom" pill while already at the bottom.
+    if (!running) {
+      if (mode.current === 'parked') mode.current = 'free'
+      parkedRow.current = null
+      collapseSpacer()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- refs + stable helpers
   }, [running])
 
   useLayoutEffect(() => {
@@ -384,7 +390,9 @@ export function Transcript({
     }
     const onScroll = (): void => {
       const fromBottom = el.scrollHeight - el.clientHeight - el.scrollTop
-      setPill(fromBottom > PILL_AT)
+      // The runway spacer is blank padding, not content — the pill only
+      // cares about real transcript below the fold.
+      setPill(fromBottom - spacerRef.current > PILL_AT)
       positionRailWindow()
       if (programmatic.current > 0) {
         programmatic.current--
