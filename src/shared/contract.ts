@@ -408,6 +408,63 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
       firstMessage: z.string(),
       title: z.string().optional()
     })
+  }),
+  // Orchestration over WS — the codex bridge's spawn/supervise path. Same
+  // ops the in-process claude toolset wraps; sessionId is the caller and
+  // every agentId is validated to be that caller's own child.
+  z.object({
+    id: z.string(),
+    method: z.literal('app.spawnAgent'),
+    params: z.object({
+      sessionId: z.string(),
+      provider: providerEnum,
+      model: z.string().optional(),
+      reasoning: reasoningEnum.optional(),
+      agentType: z.enum(AGENT_TYPES).optional(),
+      task: z.string(),
+      useWorktree: z.boolean().optional()
+    })
+  }),
+  z.object({
+    id: z.string(),
+    method: z.literal('app.sendToAgent'),
+    params: z.object({ sessionId: z.string(), agentId: z.string(), message: z.string() })
+  }),
+  z.object({
+    id: z.string(),
+    method: z.literal('app.checkAgent'),
+    params: z.object({ sessionId: z.string(), agentId: z.string() })
+  }),
+  z.object({
+    id: z.string(),
+    method: z.literal('app.waitForAgent'),
+    params: z.object({
+      sessionId: z.string(),
+      agentId: z.string().optional(),
+      agentIds: z.array(z.string()).optional(),
+      mode: z.enum(['any', 'all']).optional(),
+      timeoutSeconds: z.number().optional()
+    })
+  }),
+  z.object({
+    id: z.string(),
+    method: z.literal('app.answerAgent'),
+    params: z.object({
+      sessionId: z.string(),
+      agentId: z.string(),
+      requestId: z.string(),
+      answers: z.array(z.array(z.string()))
+    })
+  }),
+  z.object({
+    id: z.string(),
+    method: z.literal('app.interruptAgent'),
+    params: z.object({ sessionId: z.string(), agentId: z.string() })
+  }),
+  z.object({
+    id: z.string(),
+    method: z.literal('app.listAgents'),
+    params: z.object({ sessionId: z.string() })
   })
 ])
 export type ClientRequest = z.infer<typeof ClientRequestSchema>

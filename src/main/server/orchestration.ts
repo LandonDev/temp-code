@@ -209,28 +209,208 @@ const text = (t: string): { content: [{ type: 'text'; text: string }] } => ({
   content: [{ type: 'text', text: t }]
 })
 
-export function orchestratorMcp(parent: SessionMeta): McpSdkServerConfigWithInstance {
-  /** Every agentId-taking tool works only on this session's own children. */
-  const childOf = (agentId: string): SessionMeta | null =>
-    registry?.list().find((s) => s.id === agentId && s.parentId === parent.id) ?? null
-  const notChild = (agentId: string): { content: [{ type: 'text'; text: string }] } =>
-    text(
-      `refused: ${agentId} is not a subagent of this session. list_agents shows your agents and their ids.`
-    )
-  const idleSeconds = (id: string): number =>
-    Math.max(0, Math.round((Date.now() - (registry?.lastActivityAt(id) ?? Date.now())) / 1000))
-  /** The settled-agent report wait_for_agent returns. */
-  const settledReport = (id: string, meta: SessionMeta): Record<string, unknown> => {
-    const turn = latestTurnRows(registry!.eventsAfter(id, 0))
-    const pending = meta.status === 'waiting' ? pendingOf(turn) : null
-    return {
-      agentId: id,
-      status: meta.status,
-      reply: turnText(turn).slice(-8000) || '(no reply yet)',
-      ...(pending ? { pending } : {})
-    }
-  }
+// ── orchestration operations ─────────────────────────────────────────
+// Plain functions over the registry. The in-process MCP tools (claude)
+// and the app.* WS methods (which the stdio bridge exposes to codex) are
+// both thin wrappers, so every provider spawns and supervises subagents
+// the same way — never by shelling out to another CLI.
 
+/** Every agentId-taking op works only on the caller's own children. */
+const childOf = (parent: SessionMeta, agentId: string): SessionMeta | null =>
+  registry?.list().find((s) => s.id === agentId && s.parentId === parent.id) ?? null
+const notChild = (agentId: string): string =>
+  `refused: ${agentId} is not a subagent of this session. list_agents shows your agents and their ids.`
+const idleSeconds = (id: string): number =>
+  Math.max(0, Math.round((Date.now() - (registry?.lastActivityAt(id) ?? Date.now())) / 1000))
+/** The settled-agent report wait_for_agent returns. */
+const settledReport = (id: string, meta: SessionMeta): Record<string, unknown> => {
+  const turn = latestTurnRows(registry!.eventsAfter(id, 0))
+  const pending = meta.status === 'waiting' ? pendingOf(turn) : null
+  return {
+    agentId: id,
+    status: meta.status,
+    reply: turnText(turn).slice(-8000) || '(no reply yet)',
+    ...(pending ? { pending } : {})
+  }
+}
+
+export interface SpawnAgentArgs {
+  provider: ProviderId
+  model?: string
+  reasoning?: SessionMeta['reasoning']
+  agentType?: (typeof AGENT_TYPES)[number]
+  task: string
+  useWorktree?: boolean
+}
+
+export async function orchSpawnAgent(parent: SessionMeta, args: SpawnAgentArgs): Promise<string> {
+  if (!registry) return 'orchestration registry not ready'
+  // Enforce the user's conduct rules — these are settings, not
+  // suggestions. The refusal text tells the model how to proceed.
+  const rules = rulesFor(parent)
+  const agentType = args.agentType ?? 'implementer'
+  const children = registry.list().filter((s) => s.parentId === parent.id)
+  const live = children.filter(
+    (s) => s.status === 'running' || s.status === 'starting' || s.status === 'waiting'
+  )
+  if (rules.conduct.maxAgents > 0 && children.length >= rules.conduct.maxAgents) {
+    return `refused: the user capped this thread at ${rules.conduct.maxAgents} subagents total (${children.length} already spawned). Reuse an existing agent via send_to_agent, or tell the user the cap is reached.`
+  }
+  if (rules.conduct.maxParallel > 0 && live.length >= rules.conduct.maxParallel) {
+    return `refused: the user capped parallelism at ${rules.conduct.maxParallel} concurrent subagents (${live.length} active). wait_for_agent on one of them first, then retry.`
+  }
+  const writer = agentType === 'implementer'
+  const cwd =
+    (writer && (args.useWorktree ?? true) && rules.conduct.useWorktrees
+      ? await worktreeFor(parent.cwd, `${parent.id}-${Date.now() % 100000}`)
+      : null) ?? parent.cwd
+  // Children follow the parent's permission policy — the user granted it
+  // once, and the fleet works under that grant. Read it fresh: the user
+  // may have changed it since spawn time.
+  const parentNow = registry.list().find((s) => s.id === parent.id) ?? parent
+  const child = await registry.create({
+    projectId: parent.projectId,
+    provider: args.provider,
+    model: args.model ?? CATALOG[args.provider].defaultModel,
+    reasoning: args.reasoning ?? 'medium',
+    agentType,
+    permission: parentNow.permission,
+    cwd,
+    // The task IS the identity — boards, tabs and the sidebar all
+    // lead with it. Provider/type stay visible as metadata.
+    title: args.task.trim().split('\n')[0].slice(0, 80) || `${args.provider} · ${agentType}`,
+    parentId: parent.id
+  })
+  await registry.send(child.id, args.task)
+  return JSON.stringify({
+    agentId: child.id,
+    title: child.title,
+    cwd,
+    note: 'working — use wait_for_agent to collect the result'
+  })
+}
+
+export async function orchSendToAgent(
+  parent: SessionMeta,
+  agentId: string,
+  message: string
+): Promise<string> {
+  if (!registry) return 'orchestration registry not ready'
+  if (!childOf(parent, agentId)) return notChild(agentId)
+  await registry.send(agentId, message)
+  return 'sent'
+}
+
+export function orchCheckAgent(parent: SessionMeta, agentId: string): string {
+  if (!registry) return 'orchestration registry not ready'
+  const meta = childOf(parent, agentId)
+  if (!meta) return notChild(agentId)
+  const rows = registry.eventsAfter(agentId, 0)
+  const turn = latestTurnRows(rows)
+  // Mid-turn, streamed deltas are all there is — fold them per block
+  // so lastText shows what the agent is saying right now.
+  const finals = turnText(turn)
+  const deltas = turn
+    .filter(
+      (r) =>
+        r.event.type === 'assistant-text' &&
+        r.event.delta &&
+        !('parentCallId' in r.event && r.event.parentCallId)
+    )
+    .map((r) => (r.event as { text: string }).text)
+    .join('')
+  return JSON.stringify({
+    agentId,
+    title: meta.title,
+    status: meta.status,
+    idleForSeconds: idleSeconds(agentId),
+    currentTurn: {
+      toolCalls: toolLinesOf(turn),
+      lastText: (finals || deltas).slice(-2000)
+    },
+    pending: pendingOf(turn),
+    tokens: tokensOf(rows, meta.provider)
+  })
+}
+
+export interface WaitForAgentArgs {
+  agentId?: string
+  agentIds?: string[]
+  mode?: 'any' | 'all'
+  timeoutSeconds?: number
+}
+
+export async function orchWaitForAgent(
+  parent: SessionMeta,
+  args: WaitForAgentArgs
+): Promise<string> {
+  if (!registry) return 'orchestration registry not ready'
+  const ids = [...(args.agentIds ?? []), ...(args.agentId ? [args.agentId] : [])]
+  if (ids.length === 0) return 'refused: pass agentId or agentIds'
+  for (const id of ids) if (!childOf(parent, id)) return notChild(id)
+  const timeoutMs = (args.timeoutSeconds ?? 600) * 1000
+  if (args.mode === 'all' && ids.length > 1) {
+    const metas = await Promise.all(ids.map((id) => waitForSettled(registry!, id, timeoutMs)))
+    return JSON.stringify(
+      ids.map((id, i) => {
+        const meta = metas[i]
+        return meta
+          ? settledReport(id, meta)
+          : { agentId: id, status: 'timeout', note: 'still running' }
+      })
+    )
+  }
+  const settled = await waitForAnySettled(registry, ids, timeoutMs)
+  if (!settled) {
+    return JSON.stringify({ status: 'timeout', note: 'still running — check_agent shows progress' })
+  }
+  return JSON.stringify(settledReport(settled.id, settled.meta))
+}
+
+export async function orchAnswerAgent(
+  parent: SessionMeta,
+  args: { agentId: string; requestId: string; answers: string[][] }
+): Promise<string> {
+  if (!registry) return 'orchestration registry not ready'
+  if (!childOf(parent, args.agentId)) return notChild(args.agentId)
+  const pending = pendingOf(registry.eventsAfter(args.agentId, 0))
+  if (!pending || pending.requestId !== args.requestId) {
+    return `refused: ${args.requestId} is not this agent's pending request${pending ? ` (current: ${pending.requestId})` : ' (nothing pending)'}.`
+  }
+  if (pending.kind === 'approval') {
+    return 'refused: this agent is waiting on a permission approval, which only the user can grant. Tell the user and keep working on other agents.'
+  }
+  await registry.answer(args.agentId, args.requestId, args.answers)
+  return 'answered — the agent resumes; wait_for_agent to collect its result'
+}
+
+export async function orchInterruptAgent(parent: SessionMeta, agentId: string): Promise<string> {
+  if (!registry) return 'orchestration registry not ready'
+  if (!childOf(parent, agentId)) return notChild(agentId)
+  await registry.interrupt(agentId)
+  return 'interrupted — send_to_agent to redirect, or spawn a replacement'
+}
+
+export function orchListAgents(parent: SessionMeta): string {
+  if (!registry) return 'orchestration registry not ready'
+  return JSON.stringify(
+    registry
+      .list()
+      .filter((s) => s.parentId === parent.id)
+      .map((s) => ({
+        agentId: s.id,
+        title: s.title,
+        provider: s.provider,
+        model: s.model,
+        agentType: s.agentType,
+        status: s.status,
+        idleForSeconds: idleSeconds(s.id),
+        cwd: s.cwd
+      }))
+  )
+}
+
+export function orchestratorMcp(parent: SessionMeta): McpSdkServerConfigWithInstance {
   return createSdkMcpServer({
     name: 'orchestrator',
     version: '0.1.0',
@@ -259,108 +439,19 @@ export function orchestratorMcp(parent: SessionMeta): McpSdkServerConfigWithInst
               'Isolate a writing agent in its own git worktree (default true; ignored outside a git repo)'
             )
         },
-        async (args) => {
-          if (!registry) return text('orchestration registry not ready')
-          // Enforce the user's conduct rules — these are settings, not
-          // suggestions. The refusal text tells the model how to proceed.
-          const rules = rulesFor(parent)
-          const children = registry.list().filter((s) => s.parentId === parent.id)
-          const live = children.filter(
-            (s) => s.status === 'running' || s.status === 'starting' || s.status === 'waiting'
-          )
-          if (rules.conduct.maxAgents > 0 && children.length >= rules.conduct.maxAgents) {
-            return text(
-              `refused: the user capped this thread at ${rules.conduct.maxAgents} subagents total (${children.length} already spawned). Reuse an existing agent via send_to_agent, or tell the user the cap is reached.`
-            )
-          }
-          if (rules.conduct.maxParallel > 0 && live.length >= rules.conduct.maxParallel) {
-            return text(
-              `refused: the user capped parallelism at ${rules.conduct.maxParallel} concurrent subagents (${live.length} active). wait_for_agent on one of them first, then retry.`
-            )
-          }
-          const writer = args.agentType === 'implementer'
-          const cwd =
-            (writer && args.useWorktree && rules.conduct.useWorktrees
-              ? await worktreeFor(parent.cwd, `${parent.id}-${Date.now() % 100000}`)
-              : null) ?? parent.cwd
-          // Children follow the master orchestrator's permission policy —
-          // the user granted it once, and the fleet works under that grant.
-          // Read it fresh: the user may have changed it since spawn time.
-          const parentNow = registry.list().find((s) => s.id === parent.id) ?? parent
-          const child = await registry.create({
-            projectId: parent.projectId,
-            provider: args.provider,
-            model: args.model ?? CATALOG[args.provider].defaultModel,
-            reasoning: args.reasoning,
-            agentType: args.agentType,
-            permission: parentNow.permission,
-            cwd,
-            // The task IS the identity — boards, tabs and the sidebar all
-            // lead with it. Provider/type stay visible as metadata.
-            title:
-              args.task.trim().split('\n')[0].slice(0, 80) ||
-              `${args.provider} · ${args.agentType}`,
-            parentId: parent.id
-          })
-          await registry.send(child.id, args.task)
-          return text(
-            JSON.stringify({
-              agentId: child.id,
-              title: child.title,
-              cwd,
-              note: 'working — use wait_for_agent to collect the result'
-            })
-          )
-        }
+        async (args) => text(await orchSpawnAgent(parent, args))
       ),
       tool(
         'send_to_agent',
         'Send a follow-up message to a subagent you spawned.',
         { agentId: z.string(), message: z.string() },
-        async (args) => {
-          if (!registry) return text('orchestration registry not ready')
-          if (!childOf(args.agentId)) return notChild(args.agentId)
-          await registry.send(args.agentId, args.message)
-          return text('sent')
-        }
+        async (args) => text(await orchSendToAgent(parent, args.agentId, args.message))
       ),
       tool(
         'check_agent',
         'Non-blocking look at what a subagent is doing right now: status, recent tool activity, latest streamed text, anything it is stuck on, token usage. Use it to supervise long-running agents without waiting.',
         { agentId: z.string() },
-        async (args) => {
-          if (!registry) return text('orchestration registry not ready')
-          const meta = childOf(args.agentId)
-          if (!meta) return notChild(args.agentId)
-          const rows = registry.eventsAfter(args.agentId, 0)
-          const turn = latestTurnRows(rows)
-          // Mid-turn, streamed deltas are all there is — fold them per block
-          // so lastText shows what the agent is saying right now.
-          const finals = turnText(turn)
-          const deltas = turn
-            .filter(
-              (r) =>
-                r.event.type === 'assistant-text' &&
-                r.event.delta &&
-                !('parentCallId' in r.event && r.event.parentCallId)
-            )
-            .map((r) => (r.event as { text: string }).text)
-            .join('')
-          return text(
-            JSON.stringify({
-              agentId: args.agentId,
-              title: meta.title,
-              status: meta.status,
-              idleForSeconds: idleSeconds(args.agentId),
-              currentTurn: {
-                toolCalls: toolLinesOf(turn),
-                lastText: (finals || deltas).slice(-2000)
-              },
-              pending: pendingOf(turn),
-              tokens: tokensOf(rows, meta.provider)
-            })
-          )
-        }
+        async (args) => text(orchCheckAgent(parent, args.agentId))
       ),
       tool(
         'wait_for_agent',
@@ -380,38 +471,7 @@ export function orchestratorMcp(parent: SessionMeta): McpSdkServerConfigWithInst
             .default(600)
             .describe('Give up waiting after this long (the agents keep running)')
         },
-        async (args) => {
-          if (!registry) return text('orchestration registry not ready')
-          const ids = [...(args.agentIds ?? []), ...(args.agentId ? [args.agentId] : [])]
-          if (ids.length === 0) return text('refused: pass agentId or agentIds')
-          for (const id of ids) if (!childOf(id)) return notChild(id)
-          const timeoutMs = args.timeoutSeconds * 1000
-          if (args.mode === 'all' && ids.length > 1) {
-            const metas = await Promise.all(
-              ids.map((id) => waitForSettled(registry!, id, timeoutMs))
-            )
-            return text(
-              JSON.stringify(
-                ids.map((id, i) => {
-                  const meta = metas[i]
-                  return meta
-                    ? settledReport(id, meta)
-                    : { agentId: id, status: 'timeout', note: 'still running' }
-                })
-              )
-            )
-          }
-          const settled = await waitForAnySettled(registry, ids, timeoutMs)
-          if (!settled) {
-            return text(
-              JSON.stringify({
-                status: 'timeout',
-                note: 'still running — check_agent shows progress'
-              })
-            )
-          }
-          return text(JSON.stringify(settledReport(settled.id, settled.meta)))
-        }
+        async (args) => text(await orchWaitForAgent(parent, args))
       ),
       tool(
         'answer_agent',
@@ -421,52 +481,17 @@ export function orchestratorMcp(parent: SessionMeta): McpSdkServerConfigWithInst
           requestId: z.string().describe('pending.requestId from wait_for_agent/check_agent'),
           answers: z.array(z.array(z.string()))
         },
-        async (args) => {
-          if (!registry) return text('orchestration registry not ready')
-          if (!childOf(args.agentId)) return notChild(args.agentId)
-          const pending = pendingOf(registry.eventsAfter(args.agentId, 0))
-          if (!pending || pending.requestId !== args.requestId) {
-            return text(
-              `refused: ${args.requestId} is not this agent's pending request${pending ? ` (current: ${pending.requestId})` : ' (nothing pending)'}.`
-            )
-          }
-          if (pending.kind === 'approval') {
-            return text(
-              'refused: this agent is waiting on a permission approval, which only the user can grant. Tell the user and keep working on other agents.'
-            )
-          }
-          await registry.answer(args.agentId, args.requestId, args.answers)
-          return text('answered — the agent resumes; wait_for_agent to collect its result')
-        }
+        async (args) => text(await orchAnswerAgent(parent, args))
       ),
       tool(
         'interrupt_agent',
         "Stop a subagent's current turn (it stays alive and can be redirected with send_to_agent). For runaway or off-track agents.",
         { agentId: z.string() },
-        async (args) => {
-          if (!registry) return text('orchestration registry not ready')
-          if (!childOf(args.agentId)) return notChild(args.agentId)
-          await registry.interrupt(args.agentId)
-          return text('interrupted — send_to_agent to redirect, or spawn a replacement')
-        }
+        async (args) => text(await orchInterruptAgent(parent, args.agentId))
       ),
-      tool('list_agents', 'List the subagents of this session with their status.', {}, async () => {
-        if (!registry) return text('orchestration registry not ready')
-        const children = registry
-          .list()
-          .filter((s) => s.parentId === parent.id)
-          .map((s) => ({
-            agentId: s.id,
-            title: s.title,
-            provider: s.provider,
-            model: s.model,
-            agentType: s.agentType,
-            status: s.status,
-            idleForSeconds: idleSeconds(s.id),
-            cwd: s.cwd
-          }))
-        return text(JSON.stringify(children))
-      })
+      tool('list_agents', 'List the subagents of this session with their status.', {}, async () =>
+        text(orchListAgents(parent))
+      )
     ]
   })
 }
@@ -585,6 +610,17 @@ user-facing work, low effort for trivial tasks.`
 export function orchestratorPrompt(session: SessionMeta): string {
   const rules = rulesFor(session)
   return `${ORCHESTRATOR_MECHANICS}\n\n${renderRules(rules)}`
+}
+
+/** Mechanics for claude implementation threads: the same spawn toolset
+ *  without the conductor rules — the implementer works first, delegates
+ *  when it genuinely helps. */
+export function implementerSpawnPrompt(): string {
+  return `${ORCHESTRATOR_MECHANICS}
+
+You are the implementer, not a conductor: do the work yourself by default.
+Spawn subagents when it genuinely helps — parallel mechanical work, an
+independent review, a second opinion — and supervise what you spawn.`
 }
 
 /** The rules governing a session: its workspace's override, else global. */

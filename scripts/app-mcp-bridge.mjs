@@ -59,7 +59,7 @@ function connect() {
   return wsReady
 }
 
-async function appRequest(method, params) {
+async function appRequest(method, params, timeoutMs = 120_000) {
   const ws = await connect()
   const id = `bridge-${nextWsId++}`
   return new Promise((resolve, reject) => {
@@ -67,7 +67,7 @@ async function appRequest(method, params) {
     ws.send(JSON.stringify({ id, method, params: { sessionId: SESSION, ...params } }))
     setTimeout(() => {
       if (pending.delete(id)) reject(new Error('app server timeout'))
-    }, 120_000)
+    }, timeoutMs)
   })
 }
 
@@ -121,19 +121,123 @@ const TOOLS = [
       },
       required: ['threadType', 'provider', 'firstMessage']
     }
+  },
+  // ── subagents: the ONLY way to run another model on a subtask ──────
+  {
+    name: 'spawn_agent',
+    description:
+      'Spawn a subagent session (any provider/model, freely mixed) and send it its task — the ONLY way to run another model; NEVER shell out to `claude`/`codex exec`/`cursor-agent`. The agent works asynchronously as a visible session; use wait_for_agent to collect its result.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        provider: { type: 'string', enum: PROVIDERS, description: 'Which harness runs the agent' },
+        model: {
+          type: 'string',
+          description:
+            'Model id served by that provider (defaults: claude=claude-sonnet-5, codex=gpt-5.6-sol, cursor=composer-2.5); a model of another provider auto-routes to it'
+        },
+        reasoning: { type: 'string', enum: ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'] },
+        agentType: {
+          type: 'string',
+          enum: ['orchestrator', 'implementer', 'reviewer', 'explorer']
+        },
+        task: { type: 'string', description: 'The complete, self-contained task prompt' },
+        useWorktree: {
+          type: 'boolean',
+          description: 'Isolate a writing agent in its own git worktree (default true)'
+        }
+      },
+      required: ['provider', 'task']
+    }
+  },
+  {
+    name: 'send_to_agent',
+    description: 'Send a follow-up message to a subagent you spawned.',
+    inputSchema: {
+      type: 'object',
+      properties: { agentId: { type: 'string' }, message: { type: 'string' } },
+      required: ['agentId', 'message']
+    }
+  },
+  {
+    name: 'check_agent',
+    description:
+      'Non-blocking look at what a subagent is doing right now: status, recent tool activity, latest text, anything it is stuck on, token usage.',
+    inputSchema: {
+      type: 'object',
+      properties: { agentId: { type: 'string' } },
+      required: ['agentId']
+    }
+  },
+  {
+    name: 'wait_for_agent',
+    description:
+      'Block until a subagent (or the first of several) finishes its current turn, then return its latest reply and status. Timeouts are normal for long tasks — check_agent, then wait again.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        agentId: { type: 'string', description: 'One agent to wait for' },
+        agentIds: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Several agents — with mode "any", results arrive in completion order'
+        },
+        mode: { type: 'string', enum: ['any', 'all'] },
+        timeoutSeconds: { type: 'number', description: 'Default 600' }
+      }
+    }
+  },
+  {
+    name: 'answer_agent',
+    description:
+      'Answer a subagent\'s pending structured question (the "pending" payload from wait_for_agent/check_agent). answers[i] = chosen labels for questions[i]. Permission approvals cannot be answered this way — those belong to the user.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        agentId: { type: 'string' },
+        requestId: { type: 'string' },
+        answers: { type: 'array', items: { type: 'array', items: { type: 'string' } } }
+      },
+      required: ['agentId', 'requestId', 'answers']
+    }
+  },
+  {
+    name: 'interrupt_agent',
+    description:
+      "Stop a subagent's current turn (it stays alive and can be redirected with send_to_agent).",
+    inputSchema: {
+      type: 'object',
+      properties: { agentId: { type: 'string' } },
+      required: ['agentId']
+    }
+  },
+  {
+    name: 'list_agents',
+    description: 'List the subagents of this session with their status.',
+    inputSchema: { type: 'object', properties: {} }
   }
 ]
 
 const METHOD_FOR = {
   app_list_threads: 'app.listThreads',
   app_read_thread: 'app.readThread',
-  app_start_thread: 'app.startThread'
+  app_start_thread: 'app.startThread',
+  spawn_agent: 'app.spawnAgent',
+  send_to_agent: 'app.sendToAgent',
+  check_agent: 'app.checkAgent',
+  wait_for_agent: 'app.waitForAgent',
+  answer_agent: 'app.answerAgent',
+  interrupt_agent: 'app.interruptAgent',
+  list_agents: 'app.listAgents'
 }
 
 async function callTool(name, args) {
   const method = METHOD_FOR[name]
   if (!method) throw new Error(`unknown tool: ${name}`)
-  const result = await appRequest(method, args ?? {})
+  // wait_for_agent blocks up to its own timeout — give the WS call room.
+  const timeoutMs =
+    name === 'wait_for_agent' ? ((args?.timeoutSeconds ?? 600) + 30) * 1000 : 120_000
+  const result = await appRequest(method, args ?? {}, timeoutMs)
   if (name === 'app_read_thread' && result === null) {
     return 'refused: unknown thread id. app_list_threads shows valid ids.'
   }

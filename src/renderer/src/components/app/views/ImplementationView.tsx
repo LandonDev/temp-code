@@ -1,5 +1,5 @@
-import { useEffect, useLayoutEffect, useMemo, useRef } from 'react'
-import { motion } from 'motion/react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { AnimatePresence, motion } from 'motion/react'
 import { Check, Circle } from 'lucide-react'
 import type { SessionMeta } from '@shared/events'
 import { useApp } from '../../../state/store'
@@ -8,6 +8,7 @@ import { cn } from '../../../lib/utils'
 import { useNow } from '../../../lib/useNow'
 import { duration } from '../bits'
 import { Spinner } from '../../ui/spinner'
+import { AgentDetail, AgentRow, useAgents } from '../AgentFleet'
 import { ApprovalCard } from '../blocks/ApprovalCard'
 import { QuestionCard } from '../blocks/QuestionCard'
 import { ErrorChip, EDIT_TOOLS, splitEdit, ZEditCard } from '../blocks/ToolGroup'
@@ -29,6 +30,15 @@ export function ImplementationView({ session }: { session: SessionMeta }): React
   const blocksRaw = useApp((s) => s.blocks[session.id])
   const blocks = useMemo(() => blocksRaw ?? [], [blocksRaw])
   const running = session.status === 'running' || session.status === 'starting'
+
+  // Subagents this thread spawned — the fleet rows render under the plan,
+  // same surface orchestration uses, without displacing the change stream.
+  const sessions = useApp((s) => s.sessions)
+  const agents = useAgents(session.id)
+  const [openAgentId, setOpenAgentId] = useState<string | null>(null)
+  const anyAgentLive = agents.some((a) => a.status === 'running' || a.status === 'starting')
+  const agentNow = useNow(anyAgentLive)
+  const openAgent = openAgentId ? (sessions[openAgentId] ?? null) : null
 
   const allDone = todos.length > 0 && todos.every((t) => t.status === 'completed')
   // The agent's final report renders as the closing note under the work.
@@ -87,7 +97,7 @@ export function ImplementationView({ session }: { session: SessionMeta }): React
   const goal = blocks.find((b) => b.kind === 'user')
 
   return (
-    <div className="flex min-h-0 flex-1">
+    <div className="relative flex min-h-0 flex-1">
       <div className="flex min-w-0 flex-1 flex-col">
         <div ref={scrollRef} className="flex-1 overflow-y-auto select-text">
           <div className="mx-auto w-full max-w-3xl px-6 py-5">
@@ -126,6 +136,25 @@ export function ImplementationView({ session }: { session: SessionMeta }): React
                     />
                   )
                 })}
+              </div>
+            )}
+
+            {agents.length > 0 && (
+              <div className="mb-5">
+                <p className="mb-1 text-[11px] font-medium tracking-[0.06em] text-muted-foreground uppercase">
+                  Subagents
+                </p>
+                <div className="-mx-3 flex flex-col gap-0.5">
+                  {agents.map((agent) => (
+                    <AgentRow
+                      key={agent.id}
+                      agent={agent}
+                      now={agentNow}
+                      hidden={openAgentId === agent.id}
+                      onOpen={() => setOpenAgentId(agent.id)}
+                    />
+                  ))}
+                </div>
               </div>
             )}
 
@@ -168,6 +197,17 @@ export function ImplementationView({ session }: { session: SessionMeta }): React
       </div>
 
       <SidePanel sessionId={session.id} label="Chat" />
+
+      <AnimatePresence>
+        {openAgent && (
+          <AgentDetail
+            key={openAgent.id}
+            agent={openAgent}
+            parent={session}
+            onClose={() => setOpenAgentId(null)}
+          />
+        )}
+      </AnimatePresence>
     </div>
   )
 }

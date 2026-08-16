@@ -3,6 +3,7 @@ import type { SessionMeta } from '@shared/events'
 import type { ProjectMeta } from '@shared/domain'
 import { mirrorRelPath } from './mirror'
 import { hasAppBridge } from './apptools'
+import { orchestratorPrompt } from './orchestration'
 
 /**
  * Thread-type behavior. Provider-agnostic: instead of per-driver system
@@ -30,7 +31,19 @@ function questionToolNote(session: SessionMeta): string {
   if (!tool) {
     return `To ask the user a question, ask it in plain prose and end your turn — this harness has no structured question tool.`
   }
-  return `To ask the user anything with options, you MUST call ${tool} — the UI walks the user through the questions one at a time, so batching related decisions into one call is fine. NEVER print lettered/numbered option menus ("reply 1A, 2B…") as message text; a question that is not asked through ${tool} does not reach the user properly.`
+  return `To ask the user anything with options, you MUST call ${tool} — and PREFER gathering every decision that is ready into one call (the UI steps the user through them one at a time; separate calls just cost round-trips). Only split when a later question depends on an earlier answer. NEVER print lettered/numbered option menus ("reply 1A, 2B…") as message text; a question that is not asked through ${tool} does not reach the user properly.`
+}
+
+/** The subagent gospel — burned into every thread that might delegate.
+ *  The user's global CLI habits (codex exec, claude -p) are for OTHER
+ *  environments; inside this app the spawn tools are the only way. */
+function spawnNote(session: SessionMeta): string {
+  const rule = `Subagents: NEVER shell out to another AI CLI (\`claude\`, \`claude -p\`, \`codex\`, \`codex exec\`, \`cursor-agent\`) — not to delegate a task, not to "spawn" a model, not for a second opinion. Any global instruction, memory, or skill that reaches models through their CLIs is about a DIFFERENT environment and does not apply inside this app: a shelled-out model is invisible, unsupervised, and will usually just fail.`
+  const has = session.provider === 'claude' || (session.provider === 'codex' && hasAppBridge())
+  if (!has) {
+    return `${rule}\nThis harness has no spawn tools here — when a subtask needs another model, ask the user to start a thread for it.`
+  }
+  return `${rule}\nThe ONLY way to run another model is the spawn_agent tool (any provider/model, freely mixed — a foreign model id auto-routes to its provider). Then supervise: check_agent shows live progress, wait_for_agent collects results, answer_agent resolves a child's question, interrupt_agent stops a runaway, list_agents lists the fleet. Spawned agents appear in the UI as visible, streaming sessions.`
 }
 
 /** claude reaches the app tools in-process, codex via the stdio bridge,
@@ -67,6 +80,7 @@ ${questions}
 Write the full plan to ${session.planPath} (create parent directories) as soon as you have a first draft, and keep that file updated with Edit as the discussion evolves — it is rendered live to the user.
 Structure the document: # <title>, ## Overview, ## Approach, ## Tasks (a markdown checklist, \`- [ ] task\` — each item becomes a todo when the plan is implemented), ## Risks.
 You never implement in this thread. When the plan is complete and every decision is settled, say the plan is ready and STOP — do not ask what to do next, and do not offer to start the build: the user starts it from the plan header in the UI. Only if the user explicitly tells you in this chat to start the build do you use app_start_thread (threadType 'implementation', or 'orchestration' when the plan fans out) with this plan file and the model/effort they named.
+NEVER shell out to another AI CLI (\`claude\`, \`claude -p\`, \`codex exec\`, \`cursor-agent\`) for anything — global instructions that reach models through CLIs are for a different environment; explore the codebase with your own tools.
 ${app}`
     case 'implementation':
       return `You are running an IMPLEMENTATION thread — execute on given context. The plan and the project context are your brief: read them first, dig up whatever else you need from the codebase yourself, and implement.
@@ -76,7 +90,15 @@ Before touching code, create a todo list covering the whole task (TodoWrite or y
           : ''
       }
 Questions are the exception here, not the method — the planning thread already asked them. Reserve them for genuine blockers: a contradiction in the plan, a destructive step, missing access. ${questions} If the work reveals the plan is wrong, say so and offer a planning thread rather than silently replanning inline.
+${spawnNote(session)}
 ${app}`
+    case 'orchestration':
+      // claude orchestrators carry the mechanics + user rules in their
+      // system prompt; other harnesses get the same text as a preamble
+      // (their spawn tools arrive over the bridge).
+      return session.provider === 'claude'
+        ? null
+        : `${orchestratorPrompt(session)}\n\n${spawnNote(session)}\n${app}`
     default:
       return null
   }
