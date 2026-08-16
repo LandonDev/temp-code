@@ -437,6 +437,9 @@ export const codexDriver: HarnessDriver = {
           // feature-gated off by default — without it the model dumps
           // "reply 1A/2B" menus as plain text instead of asking in the UI.
           features: { default_mode_request_user_input: true },
+          // Fast = OpenAI's priority service tier. Only sent when on, so
+          // off keeps whatever the user's own codex config chooses.
+          ...(session.fast ? { service_tier: 'priority' } : {}),
           ...(bridgeEntry ? { mcp_servers: { app: bridgeEntry } } : {})
         }
       }
