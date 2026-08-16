@@ -155,6 +155,18 @@ export const AgentEventSchema = z.discriminatedUnion('type', [
     answers: z.array(z.array(z.string())).nullable()
   }),
 
+  // Context compaction lifecycle (claude): the harness squeezes the
+  // conversation. UI renders this distinctly from normal working.
+  z.object({
+    type: z.literal('compaction'),
+    phase: z.enum(['start', 'done', 'failed']),
+    trigger: z.enum(['auto', 'manual']).optional(),
+    preTokens: z.number().optional(),
+    postTokens: z.number().optional(),
+    durationMs: z.number().optional(),
+    error: z.string().optional()
+  }),
+
   // Orchestration: this session spawned a child session.
   z.object({ type: z.literal('agent-spawned'), childSessionId: z.string() }),
 

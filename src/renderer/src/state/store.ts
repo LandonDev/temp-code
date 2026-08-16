@@ -79,6 +79,11 @@ const folds = new Map<string, FoldState>()
 /** StrictMode mounts effects twice in dev — init must run once. */
 let initStarted = false
 
+/** After a compaction boundary, the provider keeps reporting the
+ *  pre-compact total until the next real turn. Fetches that still look
+ *  pre-compact are dropped in favor of the boundary's numbers. */
+const pendingCompact = new Map<string, { pre: number; post: number }>()
+
 interface AppState {
   connected: boolean
   catalog: Catalog | null
@@ -112,6 +117,8 @@ interface AppState {
   fileStates: Record<string, { pending: boolean; conflict: 'external' | 'deleted' | null }>
   /** error-marker counts per `${projectId}:${path}` (models.ts writes) */
   problems: Record<string, number>
+  /** language-server busy line per project (import/index progress; null = idle) */
+  lspBusy: Record<string, string | null>
   /** commit history + unpushed count per project (Changes rail) */
   gitLog: Record<string, { commits: CommitInfo[]; ahead: number | null }>
   /** branches of the workspace repo (project-create pickers) */
@@ -297,6 +304,7 @@ export const useApp = create<AppState>((set, get) => ({
   reveal: null,
   fileStates: {},
   problems: {},
+  lspBusy: {},
   gitLog: {},
   branchLists: {},
   quickOpen: null,
@@ -323,14 +331,21 @@ export const useApp = create<AppState>((set, get) => ({
         set((s) => ({ sessions: { ...s.sessions, [push.session.id]: push.session } }))
         if (push.session.id === get().selectedId) {
           get().markSeen(push.session.id)
-          // A settled turn is when the context accounting moved.
-          if (
-            push.session.provider === 'claude' &&
-            push.session.status === 'idle' &&
-            prev?.status !== 'idle'
-          ) {
-            void get().fetchContext(push.session.id)
-          }
+        }
+        // A provider switch hands the transcript to a fresh engine — the old
+        // accounting means nothing there, so the meter empties until the
+        // first reply. Model swaps within a provider keep the window.
+        if (prev && prev.provider !== push.session.provider) {
+          set((s) => {
+            const rest = { ...s.contexts }
+            delete rest[push.session.id]
+            return { contexts: rest }
+          })
+        }
+        // A settled turn is when the context accounting moved — capture it
+        // even for unselected threads so the meter is never empty on switch.
+        if (push.session.status === 'idle' && prev?.status !== 'idle') {
+          void get().fetchContext(push.session.id)
         }
       } else if (push.push === 'queue') {
         set((s) => ({ queues: { ...s.queues, [push.sessionId]: push.items } }))
@@ -360,6 +375,41 @@ export const useApp = create<AppState>((set, get) => ({
           events: { ...s.events, [sessionId]: [...(s.events[sessionId] ?? []), push.row] }
         }))
         publishFold(set, sessionId, fold)
+        // The provider's own usage report stays stale until the next turn,
+        // so a finished compaction patches the snapshot from its boundary.
+        const ev = push.row.event
+        if (ev.type === 'compaction' && ev.phase === 'done' && ev.postTokens !== undefined) {
+          const post = ev.postTokens
+          if (ev.preTokens !== undefined) pendingCompact.set(sessionId, { pre: ev.preTokens, post })
+          set((s) => {
+            const c = s.contexts[sessionId] as
+              | {
+                  categories: { name: string; tokens: number }[]
+                  totalTokens: number
+                  maxTokens: number
+                  percentage: number
+                }
+              | undefined
+            if (!c) return {}
+            const isMessages = (n: string): boolean => /message|conversation/i.test(n)
+            const others = c.categories
+              .filter((cat) => !isMessages(cat.name))
+              .reduce((a, cat) => a + cat.tokens, 0)
+            return {
+              contexts: {
+                ...s.contexts,
+                [sessionId]: {
+                  ...c,
+                  totalTokens: post,
+                  percentage: c.maxTokens > 0 ? (post / c.maxTokens) * 100 : 0,
+                  categories: c.categories.map((cat) =>
+                    isMessages(cat.name) ? { ...cat, tokens: Math.max(0, post - others) } : cat
+                  )
+                }
+              }
+            }
+          })
+        }
       } else if (push.push === 'file-event') {
         dispatchFileEvent(push)
         scheduleChangesRefresh(push.projectId, get().fetchChanges)
@@ -706,13 +756,43 @@ export const useApp = create<AppState>((set, get) => ({
 
   tune: async (sessionId, patch) => {
     await client.request('session.tune', { sessionId, ...patch })
+    // The window changes NOW even though the harness reloads on the next
+    // send — reflect the new ceiling immediately (context itself is kept:
+    // the harness resumes the same conversation).
+    if (patch.context1m !== undefined) {
+      set((s) => {
+        const cur = s.contexts[sessionId] as
+          { totalTokens: number; maxTokens: number; percentage: number } | null | undefined
+        if (!cur) return {}
+        const maxTokens = patch.context1m ? 1_000_000 : 200_000
+        return {
+          contexts: {
+            ...s.contexts,
+            [sessionId]: {
+              ...cur,
+              maxTokens,
+              percentage: (cur.totalTokens / maxTokens) * 100
+            }
+          }
+        }
+      })
+    }
   },
 
   fetchContext: async (sessionId) => {
-    const usage = await client.request<unknown>('session.context', { sessionId })
+    const usage = await client.request<{ totalTokens: number } | null>('session.context', {
+      sessionId
+    })
     // Context can't change while a session idles — a null (cold handle,
     // control-channel timeout) must not clobber the last good snapshot.
-    if (usage) set((s) => ({ contexts: { ...s.contexts, [sessionId]: usage } }))
+    if (!usage) return
+    const pending = pendingCompact.get(sessionId)
+    if (pending) {
+      // Halfway between post and pre splits stale from caught-up reports.
+      if (usage.totalTokens > (pending.pre + pending.post) / 2) return
+      pendingCompact.delete(sessionId)
+    }
+    set((s) => ({ contexts: { ...s.contexts, [sessionId]: usage } }))
   },
 
   setPermission: async (sessionId, permission) => {

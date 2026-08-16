@@ -133,6 +133,8 @@ export const codexDriver: HarnessDriver = {
 
     let currentTurnId: string | null = null
     let lastUsage: { inputTokens?: number; outputTokens?: number } = {}
+    let contextTokens = 0
+    let contextWindow = 0
     let disposed = false
     const setStatus = (status: SessionStatus): void => emit({ type: 'status', status })
 
@@ -268,9 +270,18 @@ export const codexDriver: HarnessDriver = {
           })
           break
         case 'thread/tokenUsage/updated': {
-          const total = (params.tokenUsage as { total?: Record<string, number> })?.total
-          if (total)
-            lastUsage = { inputTokens: total.inputTokens, outputTokens: total.outputTokens }
+          const tu = params.tokenUsage as
+            | {
+                total?: Record<string, number>
+                last?: Record<string, number>
+                modelContextWindow?: number
+              }
+            | undefined
+          if (tu?.total)
+            lastUsage = { inputTokens: tu.total.inputTokens, outputTokens: tu.total.outputTokens }
+          // The last turn's total ≈ what the context currently holds.
+          if (tu?.last?.totalTokens !== undefined) contextTokens = tu.last.totalTokens
+          if (tu?.modelContextWindow) contextWindow = tu.modelContextWindow
           break
         }
         case 'turn/completed': {
@@ -502,6 +513,16 @@ export const codexDriver: HarnessDriver = {
       },
       answer(requestId: string, answers: string[][] | null): void {
         pendingQuestions.get(requestId)?.(answers)
+      },
+      async contextUsage(): Promise<unknown> {
+        if (!contextTokens) return null
+        return {
+          categories: [{ name: 'Conversation', tokens: contextTokens, color: '#7c86ff' }],
+          totalTokens: contextTokens,
+          maxTokens: contextWindow,
+          percentage: contextWindow ? (contextTokens / contextWindow) * 100 : 0,
+          model: session.model
+        }
       },
       async dispose(): Promise<void> {
         disposed = true

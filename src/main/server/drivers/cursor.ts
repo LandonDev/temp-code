@@ -57,6 +57,7 @@ export const cursorDriver: HarnessDriver = {
     let proc: ChildProcess | null = null
     let turnSeq = 0
     let disposed = false
+    let contextTokens = 0
 
     const runTurn = (text: string): void => {
       const turn = ++turnSeq
@@ -154,6 +155,7 @@ export const cursorDriver: HarnessDriver = {
               emit({ type: 'error', message: String(msg.result ?? 'cursor-agent error') })
             }
             const usage = msg.usage as { inputTokens?: number; outputTokens?: number } | undefined
+            contextTokens = (usage?.inputTokens ?? 0) + (usage?.outputTokens ?? 0)
             emit({
               type: 'turn-complete',
               inputTokens: usage?.inputTokens,
@@ -201,6 +203,17 @@ export const cursorDriver: HarnessDriver = {
       },
       interrupt(): void {
         proc?.kill('SIGINT')
+      },
+      async contextUsage(): Promise<unknown> {
+        // cursor-agent reports no context window; used tokens only.
+        if (!contextTokens) return null
+        return {
+          categories: [{ name: 'Conversation', tokens: contextTokens, color: '#7c86ff' }],
+          totalTokens: contextTokens,
+          maxTokens: 0,
+          percentage: 0,
+          model: session.model
+        }
       },
       async dispose(): Promise<void> {
         disposed = true
