@@ -1,13 +1,16 @@
 import { spawn, execFile, type ChildProcess } from 'node:child_process'
 import { createRequire } from 'node:module'
+import { createHash } from 'node:crypto'
 import {
   createWriteStream,
   cpSync,
   existsSync,
   mkdirSync,
   readdirSync,
+  readFileSync,
   renameSync,
-  rmSync
+  rmSync,
+  writeFileSync
 } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -31,15 +34,35 @@ const execFileP = promisify(execFile)
  * (jdtls -data per project). Editing never depends on any of this.
  */
 
-export type LspLang = 'java' | 'web'
+export type LspLang = 'java' | 'web' | 'idea'
 
-const CAPS: Record<LspLang, number> = { java: 2, web: 3 }
-const IDLE_STOP_MS = 10 * 60_000
+const CAPS: Record<LspLang, number> = { java: 2, web: 3, idea: 1 }
+// intellij-server boots slowly and indexes expensively — keep it warm far
+// longer than the cheap-to-restart servers.
+const IDLE_STOP_MS: Record<LspLang, number> = {
+  java: 10 * 60_000,
+  web: 10 * 60_000,
+  idea: 60 * 60_000
+}
 const CRASH_WINDOW_MS = 30_000
 
 const JDTLS_VERSION = '1.60.0'
 const jdtlsRoot = (): string => join(homedir(), '.temp-code', 'jdtls')
 const jdtlsDist = (): string => join(jdtlsRoot(), 'dist', JDTLS_VERSION)
+
+// intellij-server (docs/PLAN-4.md): IDEA's engine as an LSP server.
+// Pinned preview build + per-platform artifact, sha256 from JetBrains'
+// Open VSX server-bundle.json (spike 2026-08-15).
+const IDEA_BUILD = '263.2689.0'
+const IDEA_ARTIFACTS: Partial<Record<string, { name: string; sha256: string }>> = {
+  'darwin-arm64': {
+    name: `intellij-server-${IDEA_BUILD}-aarch64.sit`,
+    sha256: 'bde4aeb8565a854408a16d4368774f4cc401b12100f75198b90ae407f9b2dc53'
+  }
+}
+const ideaRoot = (): string => join(homedir(), '.temp-code', 'intellij-server')
+const ideaDist = (): string => join(ideaRoot(), `dist-${IDEA_BUILD}`)
+const ideaEulaFile = (): string => join(ideaRoot(), 'eula-accepted.json')
 
 // ── stdio framing ────────────────────────────────────────────────────
 
@@ -142,25 +165,34 @@ export interface JavaDoctor {
   version?: string
   /** jdtls dist present on disk (downloaded on first Java surface) */
   jdtls: boolean
+  /** IntelliJ engine (docs/PLAN-4.md): dist + EULA state */
+  ideaServer?: { dist: boolean; accepted: boolean; build: string }
   error?: string
 }
 
 /** The doctor.get Java row: JDK found, version, jdtls downloaded. */
 export async function javaDoctor(): Promise<JavaDoctor> {
   const jdtls = existsSync(join(jdtlsDist(), 'plugins'))
+  const ideaServer = {
+    dist: existsSync(join(ideaDist(), 'bin', 'intellij-server')),
+    accepted: ideaEulaAccepted(),
+    build: IDEA_BUILD
+  }
   const jdks = await discoverJdks()
   const best = jdks[0]
-  if (!best) return { found: false, jdtls, error: 'no JDK found (JAVA_HOME, java_home, PATH)' }
+  if (!best)
+    return { found: false, jdtls, ideaServer, error: 'no JDK found (JAVA_HOME, java_home, PATH)' }
   if (best.version < 21) {
     return {
       found: true,
       path: best.path,
       version: String(best.version),
       jdtls,
+      ideaServer,
       error: `jdtls needs JDK 21+ to run (newest found: ${best.version})`
     }
   }
-  return { found: true, path: best.path, version: String(best.version), jdtls }
+  return { found: true, path: best.path, version: String(best.version), jdtls, ideaServer }
 }
 
 // ── jdtls download (pinned release, cached, honest failure) ──────────
@@ -192,6 +224,77 @@ async function ensureJdtlsDist(): Promise<void> {
     downloadP = null
   })
   return downloadP
+}
+
+// ── intellij-server download + EULA gate (docs/PLAN-4.md M15) ────────
+
+let ideaDownloadP: Promise<void> | null = null
+
+async function ensureIdeaDist(): Promise<void> {
+  if (existsSync(join(ideaDist(), 'bin', 'intellij-server'))) return
+  const artifact = IDEA_ARTIFACTS[`${process.platform}-${process.arch}`]
+  if (!artifact) throw new Error(`intellij-server: no artifact pinned for ${process.platform}-${process.arch}`)
+  ideaDownloadP ??= (async () => {
+    const url = `https://download.jetbrains.com/language-server/intellij-server/${IDEA_BUILD}/${artifact.name}`
+    const res = await fetch(url)
+    if (!res.ok || !res.body) throw new Error(`intellij-server download failed: HTTP ${res.status}`)
+    const zipPath = join(tmpdir(), artifact.name)
+    await pipeline(Readable.fromWeb(res.body as never), createWriteStream(zipPath))
+    const digest = createHash('sha256').update(readFileSync(zipPath)).digest('hex')
+    if (digest !== artifact.sha256) {
+      rmSync(zipPath, { force: true })
+      throw new Error('intellij-server download failed its sha256 check')
+    }
+    const staging = `${ideaDist()}.partial`
+    rmSync(staging, { recursive: true, force: true })
+    mkdirSync(staging, { recursive: true })
+    await execFileP('unzip', ['-q', '-o', zipPath, '-d', staging]) // .sit is a zip
+    rmSync(zipPath, { force: true })
+    // The archive wraps everything in intellij-server-<build>/.
+    const inner = join(staging, `intellij-server-${IDEA_BUILD}`)
+    renameSync(existsSync(join(inner, 'bin')) ? inner : staging, ideaDist())
+    rmSync(staging, { recursive: true, force: true })
+  })().finally(() => {
+    ideaDownloadP = null
+  })
+  return ideaDownloadP
+}
+
+/** First 16 hex chars of sha256(EULA.txt) — the acceptance handshake the
+ *  server checks in initializationOptions. */
+function ideaEulaHash(): string {
+  return createHash('sha256')
+    .update(readFileSync(join(ideaDist(), 'EULA.txt')))
+    .digest('hex')
+    .slice(0, 16)
+}
+
+function ideaEulaAccepted(): boolean {
+  try {
+    const rec = JSON.parse(readFileSync(ideaEulaFile(), 'utf8')) as { build?: string }
+    return rec.build === IDEA_BUILD
+  } catch {
+    return false
+  }
+}
+
+/** Settings gate: EULA text (downloads the dist to get it) + state. */
+export async function ideaEula(): Promise<{ build: string; text: string; accepted: boolean }> {
+  await ensureIdeaDist()
+  return {
+    build: IDEA_BUILD,
+    text: readFileSync(join(ideaDist(), 'EULA.txt'), 'utf8'),
+    accepted: ideaEulaAccepted()
+  }
+}
+
+export function ideaAcceptEula(): { accepted: boolean } {
+  mkdirSync(ideaRoot(), { recursive: true })
+  writeFileSync(
+    ideaEulaFile(),
+    JSON.stringify({ build: IDEA_BUILD, hash: ideaEulaHash(), acceptedAt: Date.now() })
+  )
+  return { accepted: true }
 }
 
 // ── the pool ─────────────────────────────────────────────────────────
@@ -315,6 +418,36 @@ async function spawnJava(server: PoolServer): Promise<void> {
   )
 }
 
+async function spawnIdea(server: PoolServer): Promise<void> {
+  if (!existsSync(join(ideaDist(), 'bin', 'intellij-server'))) {
+    server.state = 'downloading'
+    await ensureIdeaDist()
+  }
+  // Per-project state/lock dir; the heavy index cache is the server's own
+  // (~/Library/Caches/JetBrains/analyzer), keyed by project path.
+  const system = join(ideaRoot(), 'system', server.projectId)
+  mkdirSync(system, { recursive: true })
+  server.proc = spawn(
+    join(ideaDist(), 'bin', 'intellij-server'),
+    ['--stdio', '--system-path', system],
+    {
+      cwd: server.cwd,
+      env: {
+        ...(await harnessEnv()),
+        INTELLIJ_DATA_SHARING: 'none',
+        IJ_JAVA_OPTIONS: '-Xmx3g'
+      }
+    }
+  )
+}
+
+const spawnFor = (server: PoolServer): Promise<void> =>
+  server.lang === 'java'
+    ? spawnJava(server)
+    : server.lang === 'idea'
+      ? spawnIdea(server)
+      : spawnWeb(server)
+
 function wireProcess(server: PoolServer): void {
   const proc = server.proc
   if (!proc) return
@@ -345,7 +478,7 @@ function wireProcess(server: PoolServer): void {
     void (async () => {
       try {
         server.state = 'starting'
-        await (server.lang === 'java' ? spawnJava(server) : spawnWeb(server))
+        await spawnFor(server)
         wireProcess(server)
         server.state = 'running'
       } catch (err) {
@@ -364,12 +497,15 @@ function wireProcess(server: PoolServer): void {
 export interface EnsureResult {
   serverId: string
   wsPath: string
-  status: PoolServer['state']
+  status: PoolServer['state'] | 'needs-eula'
   error?: string
   /** web: the project's own TypeScript lib dir, when it has one */
   tsdkPath?: string
   /** java: every discovered JDK, for java.configuration.runtimes */
   javaRuntimes?: JavaRuntime[]
+  /** idea: the EULA acceptance handshake + default JDK for resolution */
+  eulaHash?: string
+  defaultSdk?: string
 }
 
 async function ensureExtras(server: PoolServer): Promise<Partial<EnsureResult>> {
@@ -378,6 +514,11 @@ async function ensureExtras(server: PoolServer): Promise<Partial<EnsureResult>> 
     return existsSync(join(tsdk, 'tsserverlibrary.js')) || existsSync(join(tsdk, 'typescript.js'))
       ? { tsdkPath: tsdk }
       : {}
+  }
+  if (server.lang === 'idea') {
+    const jdks = await discoverJdks()
+    const sdk = jdks.find((r) => r.version >= 21) ?? jdks[0]
+    return { eulaHash: ideaEulaHash(), ...(sdk ? { defaultSdk: sdk.path } : {}) }
   }
   return { javaRuntimes: await discoverJdks() }
 }
@@ -392,10 +533,15 @@ export async function ensureLsp(
     sweepTimer = setInterval(() => {
       const now = Date.now()
       for (const s of [...pool.values()]) {
-        if (s.sockets.size === 0 && now - s.lastUsed > IDLE_STOP_MS) stopServer(s)
+        if (s.sockets.size === 0 && now - s.lastUsed > IDLE_STOP_MS[s.lang]) stopServer(s)
       }
     }, 60_000)
     sweepTimer.unref()
+  }
+  // The IntelliJ engine never runs before its EULA is accepted (Settings
+  // shows the text; acceptance is stored per build).
+  if (lang === 'idea' && !ideaEulaAccepted()) {
+    return { serverId: '', wsPath: '', status: 'needs-eula' }
   }
   const key = `${projectId}:${lang}`
   const existing = pool.get(key)
@@ -423,7 +569,7 @@ export async function ensureLsp(
   }
   pool.set(key, server)
   try {
-    await (lang === 'java' ? spawnJava(server) : spawnWeb(server))
+    await spawnFor(server)
     wireProcess(server)
     server.state = 'running'
   } catch (err) {

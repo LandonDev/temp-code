@@ -49,7 +49,15 @@ import {
   fsWrite,
   subscribeFileEvents
 } from './files'
-import { attachLspSocket, ensureLsp, javaDoctor, lspStatus, stopAllLsp } from './lsp'
+import {
+  attachLspSocket,
+  ensureLsp,
+  ideaAcceptEula,
+  ideaEula,
+  javaDoctor,
+  lspStatus,
+  stopAllLsp
+} from './lsp'
 import { fimComplete } from './fim'
 
 /** The session an app.* call claims to be from — must actually exist. */
@@ -186,6 +194,10 @@ export async function startServer(dbPath: string): Promise<RunningServer> {
             break
           case 'project.list':
             sendFrame({ id: req.id, ok: true, result: registry.listProjects() })
+            break
+          case 'project.rename':
+            registry.renameProject(req.params.projectId, req.params.name)
+            sendFrame({ id: req.id, ok: true, result: null })
             break
           case 'project.delete':
             await registry.deleteProject(req.params.projectId)
@@ -328,6 +340,12 @@ export async function startServer(dbPath: string): Promise<RunningServer> {
           }
           case 'lsp.status':
             sendFrame({ id: req.id, ok: true, result: await lspStatus() })
+            break
+          case 'idea.eula':
+            sendFrame({ id: req.id, ok: true, result: await ideaEula() })
+            break
+          case 'idea.acceptEula':
+            sendFrame({ id: req.id, ok: true, result: ideaAcceptEula() })
             break
           case 'fim.complete': {
             const project = mustProject(req.params.projectId)

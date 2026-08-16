@@ -20,6 +20,8 @@ import { ProviderMark, THREAD_GLYPHS, THREAD_TINTS, timeAgo } from '../bits'
 import { ZIcon } from '../zicon'
 import { Spinner } from '../../ui/spinner'
 import { Switch } from '../../ui/switch'
+import { Button } from '../../ui/button'
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '../../ui/dialog'
 import { OrchestrationRulesEditor } from '../OrchestrationRules'
 import { ThreadDefaultsEditor } from '../ThreadDefaults'
 import { SettingsPanel, SettingsRow } from '../SettingsPanel'
@@ -340,7 +342,7 @@ function EditorSettings(): React.JSX.Element {
               className="flex items-center gap-2.5 border-t border-border/60 px-3 py-2"
             >
               <span className="min-w-0 flex-1 truncate text-[12px]">
-                {s.lang === 'java' ? 'jdtls' : 'vtsls'}
+                {s.lang === 'java' ? 'jdtls' : s.lang === 'idea' ? 'IntelliJ engine' : 'vtsls'}
                 <span className="ml-1.5 text-[11px] text-muted-foreground/60">
                   {project?.name ?? s.projectId}
                 </span>
@@ -354,6 +356,7 @@ function EditorSettings(): React.JSX.Element {
           )
         })}
       </div>
+      <IdeaEngineRow />
       <ToggleRow
         label="Format on save — Java"
         hint="jdtls (Eclipse formatter) runs on each autosave flush."
@@ -372,6 +375,92 @@ function EditorSettings(): React.JSX.Element {
         checked={ghostText}
         onChange={setGhostText}
       />
+    </div>
+  )
+}
+
+/** The IntelliJ engine gate (docs/PLAN-4.md M15): preview build, EULA
+ *  shown before first run, acceptance stored per build. */
+function IdeaEngineRow(): React.JSX.Element {
+  const doctor = useApp((s) => s.doctor)
+  const fetchDoctor = useApp((s) => s.fetchDoctor)
+  const [open, setOpen] = useState(false)
+  const [eula, setEula] = useState<{ build: string; text: string } | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const idea = doctor?.java?.ideaServer
+
+  const openGate = (): void => {
+    setOpen(true)
+    setError(null)
+    if (!eula) {
+      // First open downloads the dist to read its EULA — honest spinner.
+      void client
+        .request<{ build: string; text: string }>('idea.eula')
+        .then(setEula)
+        .catch((e) => setError(e instanceof Error ? e.message : String(e)))
+    }
+  }
+  const accept = (): void => {
+    void client
+      .request('idea.acceptEula')
+      .then(() => {
+        setOpen(false)
+        void fetchDoctor()
+      })
+      .catch((e) => setError(e instanceof Error ? e.message : String(e)))
+  }
+
+  return (
+    <div className="flex items-center gap-3 rounded-lg border border-border/60 px-3 py-2.5">
+      <span className="min-w-0 flex-1">
+        <span className="block text-[13px] font-medium">IntelliJ engine</span>
+        <span className="block text-[11px] leading-snug text-muted-foreground">
+          {idea?.accepted
+            ? `IDEA-quality Java completions. Preview build ${idea.build}.`
+            : 'JetBrains intellij-server: IDEA-quality completions. Preview; JetBrains EULA applies.'}
+        </span>
+      </span>
+      {idea?.accepted ? (
+        <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+          <span className="size-1.5 rounded-full bg-success" />
+          enabled
+        </span>
+      ) : (
+        <Button size="sm" variant="outline" className="h-7 text-xs" onClick={openGate}>
+          Enable…
+        </Button>
+      )}
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="max-w-xl">
+          <DialogHeader>
+            <DialogTitle className="text-sm">JetBrains EULA — intellij-server</DialogTitle>
+          </DialogHeader>
+          {error ? (
+            <p className="text-[12px] text-destructive">{error}</p>
+          ) : eula ? (
+            <pre className="max-h-72 overflow-y-auto whitespace-pre-wrap rounded-md border border-border/60 p-3 text-[11px] leading-relaxed text-muted-foreground">
+              {eula.text}
+            </pre>
+          ) : (
+            <p className="flex items-center gap-2 text-[12px] text-muted-foreground">
+              <Spinner className="size-3.5" /> Downloading the engine to read its license…
+            </p>
+          )}
+          <DialogFooter>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 text-xs"
+              onClick={() => setOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button size="sm" className="h-7 text-xs" disabled={!eula} onClick={accept}>
+              Accept and enable
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

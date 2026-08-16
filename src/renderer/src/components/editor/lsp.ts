@@ -94,6 +94,7 @@ interface LspInlayHint {
 interface LspCompletionItem {
   label: string | { label: string }
   labelDetails?: { detail?: string; description?: string }
+  command?: LspCommand
   kind?: number
   detail?: string
   documentation?: string | { value: string }
@@ -210,6 +211,41 @@ const SEVERITIES = [
 const docString = (d?: string | { value: string }): string =>
   typeof d === 'string' ? d : (d?.value ?? '')
 
+const toMarkers = (diagnostics: LspDiagnostic[]): monaco.editor.IMarkerData[] =>
+  diagnostics.map((d) => ({
+    ...toMonacoRange(d.range),
+    message: d.message,
+    severity: SEVERITIES[d.severity ?? 1],
+    source: d.source,
+    code: d.code === undefined ? undefined : String(d.code),
+    tags: (d.tags ?? []).map((t) =>
+      t === 1 ? monaco.MarkerTag.Unnecessary : monaco.MarkerTag.Deprecated
+    )
+  }))
+
+// M16: which files the IntelliJ engine currently owns squiggles for, and
+// which projects have proven the engine warm (first non-empty pull).
+const ideaDiagUris = new Set<string>()
+const ideaDiagTrusted = new Set<string>()
+
+/** The engine dropped: put jdtls's cached diagnostics back on screen. */
+function restoreJdtlsMarkers(projectId: string): void {
+  const std = settledStd.get(projectId)
+  for (const uri of [...ideaDiagUris]) {
+    const model = monaco.editor.getModel(monaco.Uri.parse(uri))
+    if (!model) {
+      ideaDiagUris.delete(uri)
+      continue
+    }
+    const entry = entryForUri(model.uri)
+    if (entry?.projectId !== projectId) continue
+    ideaDiagUris.delete(uri)
+    monaco.editor.setModelMarkers(model, `lsp-idea-${projectId}`, [])
+    const cached = std?.diagnostics.get(uri)
+    if (cached) monaco.editor.setModelMarkers(model, `lsp-java-${projectId}`, toMarkers(cached))
+  }
+}
+
 // ── the connection ───────────────────────────────────────────────────
 
 interface Pending {
@@ -237,16 +273,23 @@ export class LspConnection {
     readonly kind: LangKind,
     private serverId: string,
     private wsPath: string,
-    private settings: Record<string, unknown>
+    private settings: Record<string, unknown>,
+    /** 'idea' = the IntelliJ engine (docs/PLAN-4.md): same java models,
+     *  push diagnostics ignored (M16 pulls), no semantic registration yet. */
+    readonly engine: 'standard' | 'idea' = 'standard'
   ) {}
 
   get rootUri(): string {
     return monaco.Uri.file(this.project.cwd).toString()
   }
 
+  get alive(): boolean {
+    return !this.disposed && this.ws?.readyState === WebSocket.OPEN
+  }
+
   /** Stable across server restarts — a new generation clears the old one's markers. */
   private get markerOwner(): string {
-    return `lsp-${this.kind}-${this.project.id}`
+    return `lsp-${this.engine === 'idea' ? 'idea' : this.kind}-${this.project.id}`
   }
 
   async connect(): Promise<void> {
@@ -382,7 +425,7 @@ export class LspConnection {
     this.notify('initialized', {})
     const settings = (this.settings as { settings?: unknown }).settings
     if (settings) this.notify('workspace/didChangeConfiguration', { settings })
-    maybeRegisterSemanticTokens(this)
+    if (this.engine !== 'idea') maybeRegisterSemanticTokens(this)
     // Sync every already-open matching model.
     for (const model of monaco.editor.getModels()) this.maybeOpen(model)
   }
@@ -403,6 +446,9 @@ export class LspConnection {
     this.progress.clear()
     this.changedAt.clear()
     this.setBusy(null)
+    // The IntelliJ engine dropped: hand its files' squiggles back to jdtls
+    // from the standard connection's cache (docs/PLAN-4.md M16).
+    if (this.engine === 'idea') restoreJdtlsMarkers(this.project.id)
     if (this.disposed) return
     // The pool restarted (crash policy) or evicted us. One re-ensure — the
     // pool's own crash policy bounds retries; an error there ends here too.
@@ -410,7 +456,7 @@ export class LspConnection {
     try {
       const res = await client.request<{ serverId: string; wsPath: string; status: string }>(
         'lsp.ensure',
-        { projectId: this.project.id, lang: this.kind }
+        { projectId: this.project.id, lang: this.engine === 'idea' ? 'idea' : this.kind }
       )
       if (this.disposed || res.status === 'error') return
       this.serverId = res.serverId
@@ -524,6 +570,9 @@ export class LspConnection {
 
   private onNotification(method: string, params: unknown): void {
     if (method === 'textDocument/publishDiagnostics') {
+      // The IntelliJ engine's markers come from the pull loop (M16), never
+      // from push — jdtls owns the push path.
+      if (this.engine === 'idea') return
       const { uri, diagnostics } = params as { uri: string; diagnostics: LspDiagnostic[] }
       this.diagnostics.set(uri, diagnostics)
       const model = monaco.editor.getModel(monaco.Uri.parse(uri))
@@ -537,20 +586,10 @@ export class LspConnection {
           )
         }
       }
-      monaco.editor.setModelMarkers(
-        model,
-        this.markerOwner,
-        diagnostics.map((d) => ({
-          ...toMonacoRange(d.range),
-          message: d.message,
-          severity: SEVERITIES[d.severity ?? 1],
-          source: d.source,
-          code: d.code === undefined ? undefined : String(d.code),
-          tags: (d.tags ?? []).map((t) =>
-            t === 1 ? monaco.MarkerTag.Unnecessary : monaco.MarkerTag.Deprecated
-          )
-        }))
-      )
+      // While the IntelliJ engine owns a file's squiggles, jdtls only
+      // feeds the cache (restored from there if the engine drops).
+      if (this.kind === 'java' && ideaDiagUris.has(uri)) return
+      monaco.editor.setModelMarkers(model, this.markerOwner, toMarkers(diagnostics))
     } else if (method === '$/progress') {
       const { token, value } = params as {
         token: string | number
@@ -593,10 +632,12 @@ export class LspConnection {
         text: model.getValue()
       }
     })
+    this.schedulePull(uri)
     this.modelSubs.set(
       uri,
       model.onDidChangeContent((e) => {
         doc.version++
+        this.schedulePull(uri)
         if (LSP_DEBUG) this.changedAt.set(uri, performance.now())
         this.notify('textDocument/didChange', {
           textDocument: { uri, version: doc.version },
@@ -625,6 +666,41 @@ export class LspConnection {
   didSave(model: monaco.editor.ITextModel): void {
     if (!this.openDocs.has(model.uri.toString())) return
     this.notify('textDocument/didSave', { textDocument: { uri: model.uri.toString() } })
+  }
+
+  // ── pull diagnostics (docs/PLAN-4.md M16, IntelliJ engine only) ────
+  // IDEA's inspection results replace jdtls markers per file once the
+  // engine proves warm (first non-empty pull); empties from a cold engine
+  // never wipe jdtls's truth.
+
+  private pullTimers = new Map<string, ReturnType<typeof setTimeout>>()
+
+  schedulePull(uri: string): void {
+    if (this.engine !== 'idea') return
+    clearTimeout(this.pullTimers.get(uri))
+    this.pullTimers.set(
+      uri,
+      setTimeout(() => void this.pullDiagnostics(uri), 500)
+    )
+  }
+
+  private async pullDiagnostics(uri: string): Promise<void> {
+    if (!this.alive) return
+    const model = monaco.editor.getModel(monaco.Uri.parse(uri))
+    if (!model) return
+    const r = await this.request<{ kind?: string; items?: LspDiagnostic[] } | null>(
+      'textDocument/diagnostic',
+      { textDocument: { uri } }
+    ).catch(() => null)
+    if (!r || r.kind === 'unchanged') return
+    const items = r.items ?? []
+    if (items.length === 0 && !ideaDiagTrusted.has(this.project.id)) return
+    ideaDiagTrusted.add(this.project.id)
+    this.diagnostics.set(uri, items)
+    ideaDiagUris.add(uri)
+    // IDEA owns this file's squiggles now — retire jdtls's.
+    monaco.editor.setModelMarkers(model, `lsp-java-${this.project.id}`, [])
+    monaco.editor.setModelMarkers(model, this.markerOwner, toMarkers(items))
   }
 
   dispose(): void {
@@ -766,8 +842,22 @@ async function ensurePreviewModel(project: ProjectMeta, uri: monaco.Uri): Promis
 
 function settingsFor(
   kind: LangKind,
-  extras: { tsdkPath?: string; javaRuntimes?: { name: string; path: string }[] }
+  extras: {
+    tsdkPath?: string
+    javaRuntimes?: { name: string; path: string }[]
+    eulaHash?: string
+    defaultSdk?: string
+  },
+  engine: 'standard' | 'idea' = 'standard'
 ): Record<string, unknown> {
+  if (engine === 'idea') {
+    // The EULA-hash handshake + a JDK for resolution — that's the whole
+    // initializationOptions surface intellij-server wants.
+    return {
+      ...(extras.eulaHash ? { eulaHash: extras.eulaHash } : {}),
+      ...(extras.defaultSdk ? { defaultSdk: extras.defaultSdk } : {})
+    }
+  }
   if (kind === 'web') {
     return {
       settings: {
@@ -830,12 +920,14 @@ function settingsFor(
   }
 }
 
-/** Idempotent per (project, kind); null when the pool says error. */
+/** Idempotent per (project, kind[, engine]); null when the pool says error
+ *  (or, for the IntelliJ engine, when its EULA is still unaccepted). */
 export function ensureConnection(
   project: ProjectMeta,
-  kind: LangKind
+  kind: LangKind,
+  engine: 'standard' | 'idea' = 'standard'
 ): Promise<LspConnection | null> {
-  const key = `${project.id}:${kind}`
+  const key = engine === 'idea' ? `${project.id}:idea` : `${project.id}:${kind}`
   let p = conns.get(key)
   if (!p) {
     p = (async () => {
@@ -847,16 +939,21 @@ export function ensureConnection(
           error?: string
           tsdkPath?: string
           javaRuntimes?: { name: string; path: string }[]
-        }>('lsp.ensure', { projectId: project.id, lang: kind })
-        if (res.status === 'error') return null
+          eulaHash?: string
+          defaultSdk?: string
+        }>('lsp.ensure', { projectId: project.id, lang: engine === 'idea' ? 'idea' : kind })
+        if (res.status === 'error' || res.status === 'needs-eula') return null
         const conn = new LspConnection(
           project,
           kind,
           res.serverId,
           res.wsPath,
-          settingsFor(kind, res)
+          settingsFor(kind, res, engine),
+          engine
         )
         await conn.connect()
+        if (engine === 'idea') settledIdea.set(project.id, conn)
+        else if (kind === 'java') settledStd.set(project.id, conn)
         return conn
       } catch {
         return null
@@ -871,11 +968,49 @@ export function ensureConnection(
   return p
 }
 
+// ── the IntelliJ engine race (docs/PLAN-4.md M15) ────────────────────
+// jdtls is always in flight; IDEA is only ever a better answer that
+// arrives in time. Health: 2 consecutive timeouts/errors park the race
+// (zero per-keystroke overhead); a 10 s probe with 2 consecutive hits
+// restores it. Legit empty lists fall back but are not health strikes.
+
+const IDEA_BUDGET_MS = 300
+const settledIdea = new Map<string, LspConnection>()
+/** Resolved standard java connections (marker restore + routing). */
+const settledStd = new Map<string, LspConnection>()
+const ideaHealth = new Map<string, { misses: number; hits: number; lastProbe: number }>()
+
+function ideaEligible(projectId: string): boolean {
+  const h = ideaHealth.get(projectId)
+  if (!h || h.misses < 2) return true
+  return Date.now() - h.lastProbe > 10_000
+}
+
+function recordIdea(projectId: string, ok: boolean): void {
+  const h = ideaHealth.get(projectId) ?? { misses: 0, hits: 0, lastProbe: 0 }
+  h.lastProbe = Date.now()
+  if (ok) {
+    h.hits++
+    if (h.misses >= 2 && h.hits >= 2)
+      h.misses = 0 // recovered
+    else if (h.misses < 2) h.misses = 0
+  } else {
+    h.misses++
+    h.hits = 0
+  }
+  ideaHealth.set(projectId, h)
+}
+
 /** Called by EditorSurface when a file surface mounts. */
 export function ensureForModel(project: ProjectMeta, model: monaco.editor.ITextModel): void {
   const kind = kindForLanguage(model.getLanguageId())
   if (!kind) return
   void ensureConnection(project, kind).then((conn) => conn?.maybeOpen(model))
+  // Warm-ahead: the IntelliJ engine starts importing the moment a Java
+  // surface mounts, so the race has a warm opponent by the time you type.
+  if (kind === 'java') {
+    void ensureConnection(project, 'java', 'idea').then((conn) => conn?.maybeOpen(model))
+  }
 }
 
 /** Connection that owns a model, if one is up. */
@@ -981,9 +1116,10 @@ const isCommand = (a: LspCodeAction | LspCommand): a is LspCommand =>
  *  never monaco's bulk-edit service. */
 async function runCodeAction(
   model: monaco.editor.ITextModel,
-  raw: LspCodeAction | LspCommand
+  raw: LspCodeAction | LspCommand,
+  source?: LspConnection
 ): Promise<void> {
-  const conn = await connFor(model)
+  const conn = source?.alive ? source : await connFor(model)
   const entry = entryForUri(model.uri)
   const project = useApp.getState().projects.find((p) => p.id === entry?.projectId)
   if (!conn || !project) return
@@ -1024,20 +1160,58 @@ export function registerProviders(): void {
     async provideCompletionItems(model, position, context) {
       const conn = await connFor(model)
       if (!conn) return null
-      const result = await conn
-        .request<
-          { items: LspCompletionItem[]; isIncomplete?: boolean } | LspCompletionItem[] | null
-        >('textDocument/completion', {
-          textDocument: docId(model),
-          position: toLspPos(position),
-          context: {
-            triggerKind: context.triggerCharacter ? 2 : 1,
-            triggerCharacter: context.triggerCharacter
-          }
-        })
+      type CompletionResult =
+        { items: LspCompletionItem[]; isIncomplete?: boolean } | LspCompletionItem[] | null
+      const params = {
+        textDocument: docId(model),
+        position: toLspPos(position),
+        context: {
+          triggerKind: context.triggerCharacter ? 2 : 1,
+          triggerCharacter: context.triggerCharacter
+        }
+      }
+      // jdtls is always in flight; the IntelliJ engine wins if it answers
+      // inside the budget with items (docs/PLAN-4.md M15).
+      const jdtlsP = conn
+        .request<CompletionResult>('textDocument/completion', params)
         .catch(() => null)
+      let result: CompletionResult = null
+      let source = conn
+      const pid = conn.project.id
+      if (model.getLanguageId() === 'java' && conns.has(`${pid}:idea`) && ideaEligible(pid)) {
+        const ideaP = (async (): Promise<{ r: CompletionResult } | null> => {
+          const idea = await conns.get(`${pid}:idea`)
+          if (!idea) return null // engine absent — no race, no strike
+          idea.maybeOpen(model)
+          return { r: await idea.request<CompletionResult>('textDocument/completion', params) }
+        })().catch(() => ({ r: null }))
+        const winner = await Promise.race([
+          ideaP,
+          new Promise<'timeout'>((res) => setTimeout(() => res('timeout'), IDEA_BUDGET_MS))
+        ])
+        if (winner === 'timeout') recordIdea(pid, false)
+        else if (winner !== null) {
+          recordIdea(pid, winner.r !== null)
+          const arr = winner.r === null ? [] : Array.isArray(winner.r) ? winner.r : winner.r.items
+          if (arr.length > 0) {
+            result = winner.r
+            source = settledIdea.get(pid) ?? conn
+          }
+        }
+      }
+      if (!result) result = await jdtlsP
       if (!result) return null
-      const items = Array.isArray(result) ? result : result.items
+      const items = (Array.isArray(result) ? result : result.items).filter(
+        // VS-Code-era postfix leftovers: a jetbrains.*.completion.apply
+        // command with nothing to insert is unusable outside VS Code.
+        (i) =>
+          !(
+            i.command &&
+            /\.completion\.apply$/.test(i.command.command) &&
+            !i.textEdit &&
+            !i.insertText
+          )
+      )
       const word = model.getWordUntilPosition(position)
       const defaultRange: monaco.IRange = {
         startLineNumber: position.lineNumber,
@@ -1091,6 +1265,7 @@ export function registerProviders(): void {
             }))
           }
           suggestion.__lsp = item
+          ;(suggestion as { __conn?: LspConnection }).__conn = source
           return suggestion
         })
       }
@@ -1098,11 +1273,13 @@ export function registerProviders(): void {
     async resolveCompletionItem(item) {
       const lsp = (item as { __lsp?: LspCompletionItem }).__lsp
       if (!lsp) return item
-      // Resolve rides the connection that produced the list; find it by the
-      // active editor's model (resolve always follows a provide).
-      const model = monaco.editor.getModels().find((m) => m.id === lastCompletionModelId)
-      if (!model) return item
-      const conn = await connFor(model)
+      // Resolve rides the connection that produced the item (race-aware);
+      // the active-model lookup is the legacy fallback.
+      let conn = (item as { __conn?: LspConnection }).__conn ?? null
+      if (!conn) {
+        const model = monaco.editor.getModels().find((m) => m.id === lastCompletionModelId)
+        conn = model ? await connFor(model) : null
+      }
       if (!conn) return item
       const resolved = await conn
         .request<LspCompletionItem>('completionItem/resolve', lsp)
@@ -1321,9 +1498,12 @@ export function registerProviders(): void {
   const APPLY_ACTION = 'tc.lsp.applyCodeAction'
   monaco.editor.registerCommand(
     APPLY_ACTION,
-    (_accessor, payload: { uri: string; action: LspCodeAction | LspCommand }) => {
+    (
+      _accessor,
+      payload: { uri: string; action: LspCodeAction | LspCommand; source?: LspConnection }
+    ) => {
       const model = monaco.editor.getModel(monaco.Uri.parse(payload.uri))
-      if (model) void runCodeAction(model, payload.action)
+      if (model) void runCodeAction(model, payload.action, payload.source)
     }
   )
 
@@ -1331,14 +1511,14 @@ export function registerProviders(): void {
     async provideCodeActions(model, range, context) {
       const conn = await connFor(model)
       if (!conn?.capabilities.codeActionProvider) return null
-      // Context diagnostics come from the publish cache, LSP-shaped, so
-      // servers (jdtls especially) can match them to their quickfixes.
-      const cached = conn.diagnostics.get(model.uri.toString()) ?? []
-      const inRange = cached.filter((d) =>
-        monaco.Range.areIntersectingOrTouching(toMonacoRange(d.range) as monaco.Range, range)
-      )
-      const result = await conn
-        .request<(LspCodeAction | LspCommand)[] | null>('textDocument/codeAction', {
+      const ask = async (c: LspConnection): Promise<(LspCodeAction | LspCommand)[] | null> => {
+        // Context diagnostics come from the asking connection's own cache,
+        // LSP-shaped, so each server matches them to its own fixes.
+        const cached = c.diagnostics.get(model.uri.toString()) ?? []
+        const inRange = cached.filter((d) =>
+          monaco.Range.areIntersectingOrTouching(toMonacoRange(d.range) as monaco.Range, range)
+        )
+        return c.request<(LspCodeAction | LspCommand)[] | null>('textDocument/codeAction', {
           textDocument: docId(model),
           range: toLspRange(range),
           context: {
@@ -1347,7 +1527,23 @@ export function registerProviders(): void {
             triggerKind: context.trigger === 1 ? 1 : 2
           }
         })
-        .catch(() => null)
+      }
+      // IDEA intentions when the engine is up (docs/PLAN-4.md M16);
+      // jdtls quickfixes otherwise — never both (duplicate titles).
+      let source = conn
+      let result: (LspCodeAction | LspCommand)[] | null = null
+      const ij = model.getLanguageId() === 'java' ? settledIdea.get(conn.project.id) : undefined
+      if (ij?.alive && ideaEligible(conn.project.id)) {
+        const r = await Promise.race([
+          ask(ij).catch(() => null),
+          new Promise<'timeout'>((res) => setTimeout(() => res('timeout'), 800))
+        ])
+        if (r !== 'timeout' && r && r.length > 0) {
+          result = r
+          source = ij
+        }
+      }
+      if (!result) result = await ask(conn).catch(() => null)
       return {
         actions: (result ?? []).map((a) => ({
           title: a.title,
@@ -1357,7 +1553,7 @@ export function registerProviders(): void {
           command: {
             id: APPLY_ACTION,
             title: a.title,
-            arguments: [{ uri: model.uri.toString(), action: a }]
+            arguments: [{ uri: model.uri.toString(), action: a, source }]
           }
         })),
         dispose: () => {}

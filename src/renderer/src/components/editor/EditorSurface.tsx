@@ -131,6 +131,10 @@ export function EditorSurface({
       editor.addCommand(monaco.KeyMod.Alt | monaco.KeyCode.Enter, () => {
         editor?.trigger('keyboard', 'editor.action.quickFix', null)
       })
+      // ⌃T — IDEA's Refactor This menu (extract variable/method/…).
+      editor.addCommand(monaco.KeyMod.WinCtrl | monaco.KeyCode.KeyT, () => {
+        editor?.trigger('keyboard', 'editor.action.refactor', null)
+      })
       if (!readOnly) ensureForModel(project, handle.model)
       setPhase('ready')
     })()

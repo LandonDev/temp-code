@@ -36,6 +36,8 @@ export interface ProviderHealth {
 /** The doctor's Java row (docs/PLAN-3.md M13): JDK + jdtls download. */
 export interface JavaHealth extends ProviderHealth {
   jdtls: boolean
+  /** IntelliJ engine (docs/PLAN-4.md): dist + EULA state */
+  ideaServer?: { dist: boolean; accepted: boolean; build: string }
 }
 
 export type DoctorReport = Record<ProviderId, ProviderHealth> & { java?: JavaHealth }
