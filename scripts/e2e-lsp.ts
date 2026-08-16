@@ -99,7 +99,20 @@ async function lspConnect(wsPath: string, rootDir: string, settings: unknown): P
     rootUri,
     workspaceFolders: [{ uri: rootUri, name: 'fixture' }],
     capabilities: {
-      textDocument: { synchronization: {}, completion: { completionItem: {} }, rename: {} },
+      textDocument: {
+        synchronization: {},
+        completion: { completionItem: {} },
+        rename: {},
+        semanticTokens: {
+          requests: { full: true },
+          formats: ['relative'],
+          tokenTypes: [],
+          tokenModifiers: []
+        },
+        codeAction: {
+          codeActionLiteralSupport: { codeActionKind: { valueSet: ['quickfix', 'source'] } }
+        }
+      },
       workspace: { configuration: true, workspaceFolders: true }
     },
     initializationOptions: settings
@@ -184,6 +197,17 @@ check(
   JSON.stringify(touched)
 )
 
+// Semantic tokens (M-IntelliJ): the data stream is 5-uint groups.
+const tsTokens = await tsClient.request<{ data?: number[] } | null>(
+  'textDocument/semanticTokens/full',
+  { textDocument: { uri: aUri } }
+)
+check(
+  'vtsls semantic tokens stream',
+  (tsTokens?.data?.length ?? 0) > 0 && (tsTokens!.data!.length % 5) === 0,
+  `${tsTokens?.data?.length ?? 0} uints`
+)
+
 // ── LRU: cap of 3 web servers, oldest evicted ────────────────────────
 const extra: EnsureResult[] = []
 for (let i = 0; i < 3; i++) {
@@ -239,7 +263,10 @@ if (!jdkOk) {
 `
   )
   const javaFile = join(javaDir, 'src', 'main', 'java', 'demo', 'App.java')
+  // The unused import earns a warning diagnostic with a reliable quickfix.
   const javaText = `package demo;
+
+import java.util.List;
 
 public class App {
   public static void main(String[] args) {
@@ -277,7 +304,7 @@ public class App {
       'textDocument/completion',
       {
         textDocument: { uri: `file://${javaFile}` },
-        position: { line: 5, character: 10 } // right after `hello.`
+        position: { line: 7, character: 10 } // right after `hello.`
       }
     )
     const items = Array.isArray(completion) ? completion : (completion?.items ?? [])
@@ -289,6 +316,65 @@ public class App {
         items.some((i) => i.label.startsWith('codePointAt')),
       `${items.length} items: ${items.slice(0, 5).map((i) => i.label).join(', ')}`
     )
+
+    // Semantic tokens over the tunnel (fields purple etc. ride this).
+    const jTokens = await jClient.request<{ data?: number[] } | null>(
+      'textDocument/semanticTokens/full',
+      { textDocument: { uri: `file://${javaFile}` } }
+    )
+    check(
+      'jdtls semantic tokens stream',
+      (jTokens?.data?.length ?? 0) > 0 && (jTokens!.data!.length % 5) === 0,
+      `${jTokens?.data?.length ?? 0} uints`
+    )
+
+    // Repair the dangling `hello.` so the only finding left is the unused
+    // import (its warning has a reliable quickfix), then round-trip a
+    // codeAction over it — Alt+Enter's wire path.
+    interface Diag {
+      range: unknown
+      message: string
+    }
+    let importDiag: Diag | null = null
+    const gotImportDiag = jClient.waitForNotification(
+      'textDocument/publishDiagnostics',
+      (p: { uri?: string; diagnostics?: Diag[] }) => {
+        const hit = p.uri?.endsWith('App.java')
+          ? p.diagnostics?.find((d) => d.message.includes('never used'))
+          : undefined
+        if (hit) importDiag = hit
+        return !!hit
+      },
+      120_000
+    )
+    jClient.notify('textDocument/didChange', {
+      textDocument: { uri: `file://${javaFile}`, version: 2 },
+      contentChanges: [
+        {
+          range: { start: { line: 7, character: 0 }, end: { line: 7, character: 10 } },
+          text: '    hello.length();'
+        }
+      ]
+    })
+    await gotImportDiag.catch(() =>
+      check('jdtls published the unused-import diagnostic', false, 'timeout')
+    )
+    if (importDiag) {
+      const diag = importDiag as Diag
+      const actions = await jClient.request<{ title: string }[] | null>('textDocument/codeAction', {
+        textDocument: { uri: `file://${javaFile}` },
+        range: diag.range,
+        context: { diagnostics: [diag], triggerKind: 1 }
+      })
+      check(
+        'jdtls offers code actions for the diagnostic',
+        (actions?.length ?? 0) > 0,
+        (actions ?? [])
+          .map((a) => a.title)
+          .slice(0, 4)
+          .join(' | ')
+      )
+    }
     jClient.close()
 
     // Warm restart: the -data dir persists; a fresh ensure comes back

@@ -1,5 +1,6 @@
 import { createHighlighter, type Highlighter } from 'shiki'
 import { createJavaScriptRegexEngine } from 'shiki/engine/javascript'
+import { darcula, intellijLight } from '../components/editor/themes/intellij'
 
 /**
  * Shiki off the main thread (docs/PLAN.md M3): the renderer posts
@@ -30,8 +31,9 @@ let highlighterP: Promise<Highlighter> | null = null
 function getHighlighter(): Promise<Highlighter> {
   // JS regex engine: workers inherit the document CSP, which has no
   // wasm-unsafe-eval — oniguruma's WASM never instantiates here.
+  // Same IntelliJ palettes the editor uses — one look everywhere.
   highlighterP ??= createHighlighter({
-    themes: ['github-light', 'one-dark-pro'],
+    themes: [intellijLight, darcula],
     langs: LANGS,
     engine: createJavaScriptRegexEngine({ forgiving: true })
   })
@@ -46,7 +48,7 @@ self.onmessage = async (e: MessageEvent<{ id: number; code: string; lang: string
     // Both palettes in one pass; main.css flips to --shiki-dark under .dark.
     const html = h.codeToHtml(code, {
       lang: language,
-      themes: { light: 'github-light', dark: 'one-dark-pro' },
+      themes: { light: 'intellij-light', dark: 'darcula' },
       defaultColor: 'light'
     })
     self.postMessage({ id, html })

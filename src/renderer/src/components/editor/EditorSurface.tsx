@@ -75,6 +75,10 @@ export function EditorSurface({
       editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyP, () => {
         useApp.getState().setQuickOpen('files')
       })
+      // Alt+Enter — IntelliJ's quickfix reflex (⌘. still works too).
+      editor.addCommand(monaco.KeyMod.Alt | monaco.KeyCode.Enter, () => {
+        editor?.trigger('keyboard', 'editor.action.quickFix', null)
+      })
       if (!readOnly) ensureForModel(project, handle.model)
       setPhase('ready')
     })()

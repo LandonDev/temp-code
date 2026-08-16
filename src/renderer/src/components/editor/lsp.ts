@@ -20,6 +20,9 @@ import { entryForUri, onModelSaved, openFile, registerSaveHook, type OpenedFile 
 
 export type LangKind = 'java' | 'web'
 
+/** Dev-only didChange→publishDiagnostics latency log. */
+const LSP_DEBUG = import.meta.env.DEV
+
 /** monaco language id → pool kind (null = no server serves it). */
 export function kindForLanguage(languageId: string): LangKind | null {
   if (languageId === 'java') return 'java'
@@ -64,6 +67,29 @@ interface LspDiagnostic {
   severity?: number
   source?: string
   code?: string | number
+  tags?: number[]
+  data?: unknown
+}
+interface LspCommand {
+  title: string
+  command: string
+  arguments?: unknown[]
+}
+interface LspCodeAction {
+  title: string
+  kind?: string
+  isPreferred?: boolean
+  diagnostics?: LspDiagnostic[]
+  edit?: LspWorkspaceEdit
+  command?: LspCommand
+  data?: unknown
+}
+interface LspInlayHint {
+  position: LspPosition
+  label: string | { value: string }[]
+  kind?: number
+  paddingLeft?: boolean
+  paddingRight?: boolean
 }
 interface LspCompletionItem {
   label: string | { label: string }
@@ -107,6 +133,10 @@ const toMonacoRange = (r: LspRange): monaco.IRange => ({
   startColumn: r.start.character + 1,
   endLineNumber: r.end.line + 1,
   endColumn: r.end.character + 1
+})
+const toLspRange = (r: monaco.IRange): LspRange => ({
+  start: { line: r.startLineNumber - 1, character: r.startColumn - 1 },
+  end: { line: r.endLineNumber - 1, character: r.endColumn - 1 }
 })
 // LSP CompletionItemKind (1-based) → monaco CompletionItemKind
 const CIK = monaco.languages.CompletionItemKind
@@ -195,6 +225,11 @@ export class LspConnection {
   private disposed = false
   private initP: Promise<void> | null = null
   readonly capabilities: Record<string, unknown> = {}
+  /** Last published diagnostics per URI (LSP-shaped, feeds codeAction context). */
+  readonly diagnostics = new Map<string, LspDiagnostic[]>()
+  /** Active $/progress messages by token (latest wins the busy line). */
+  private progress = new Map<string | number, string>()
+  private changedAt = new Map<string, number>()
 
   constructor(
     readonly project: ProjectMeta,
@@ -206,6 +241,11 @@ export class LspConnection {
 
   get rootUri(): string {
     return monaco.Uri.file(this.project.cwd).toString()
+  }
+
+  /** Stable across server restarts — a new generation clears the old one's markers. */
+  private get markerOwner(): string {
+    return `lsp-${this.kind}-${this.project.id}`
   }
 
   async connect(): Promise<void> {
@@ -231,7 +271,7 @@ export class LspConnection {
       capabilities: {
         textDocument: {
           synchronization: { didSave: true },
-          publishDiagnostics: { relatedInformation: false },
+          publishDiagnostics: { relatedInformation: false, tagSupport: { valueSet: [1, 2] } },
           completion: {
             completionItem: {
               snippetSupport: true,
@@ -249,7 +289,74 @@ export class LspConnection {
           references: {},
           documentSymbol: { hierarchicalDocumentSymbolSupport: true },
           rename: {},
-          formatting: {}
+          formatting: {},
+          foldingRange: {},
+          documentHighlight: {},
+          inlayHint: {},
+          codeAction: {
+            codeActionLiteralSupport: {
+              codeActionKind: {
+                valueSet: [
+                  'quickfix',
+                  'refactor',
+                  'refactor.extract',
+                  'refactor.inline',
+                  'refactor.rewrite',
+                  'source',
+                  'source.organizeImports',
+                  'source.fixAll'
+                ]
+              }
+            },
+            isPreferredSupport: true,
+            dataSupport: true,
+            resolveSupport: { properties: ['edit'] }
+          },
+          // Servers use their own legend from the init result; this is the
+          // spec superset so both jdtls and vtsls register statically.
+          semanticTokens: {
+            requests: { full: true, range: true },
+            formats: ['relative'],
+            tokenTypes: [
+              'namespace',
+              'type',
+              'class',
+              'enum',
+              'interface',
+              'struct',
+              'typeParameter',
+              'parameter',
+              'variable',
+              'property',
+              'enumMember',
+              'event',
+              'function',
+              'method',
+              'macro',
+              'keyword',
+              'modifier',
+              'comment',
+              'string',
+              'number',
+              'regexp',
+              'operator',
+              'decorator'
+            ],
+            tokenModifiers: [
+              'declaration',
+              'definition',
+              'readonly',
+              'static',
+              'deprecated',
+              'abstract',
+              'async',
+              'modification',
+              'documentation',
+              'defaultLibrary'
+            ],
+            multilineTokenSupport: false,
+            overlappingTokenSupport: false
+          }
         },
         workspace: {
           applyEdit: true,
@@ -259,18 +366,27 @@ export class LspConnection {
           },
           configuration: true,
           symbol: {},
-          workspaceFolders: true
+          workspaceFolders: true,
+          executeCommand: {}
         },
         window: { workDoneProgress: true }
       },
       initializationOptions: this.settings
     })
     Object.assign(this.capabilities, init.capabilities)
+    monaco.editor.removeAllMarkers(this.markerOwner)
     this.notify('initialized', {})
     const settings = (this.settings as { settings?: unknown }).settings
     if (settings) this.notify('workspace/didChangeConfiguration', { settings })
+    maybeRegisterSemanticTokens(this)
     // Sync every already-open matching model.
     for (const model of monaco.editor.getModels()) this.maybeOpen(model)
+  }
+
+  private setBusy(text: string | null): void {
+    const { lspBusy } = useApp.getState()
+    if ((lspBusy[this.project.id] ?? null) === text) return
+    useApp.setState({ lspBusy: { ...lspBusy, [this.project.id]: text } })
   }
 
   private async onClose(): Promise<void> {
@@ -279,6 +395,10 @@ export class LspConnection {
     this.openDocs.clear()
     for (const sub of this.modelSubs.values()) sub.dispose()
     this.modelSubs.clear()
+    this.diagnostics.clear()
+    this.progress.clear()
+    this.changedAt.clear()
+    this.setBusy(null)
     if (this.disposed) return
     // The pool restarted (crash policy) or evicted us. One re-ensure — the
     // pool's own crash policy bounds retries; an error there ends here too.
@@ -364,9 +484,19 @@ export class LspConnection {
         this.respond(id, { applied: true })
         break
       }
+      case 'workspace/semanticTokens/refresh':
+        // jdtls asks for this once indexing lands — repaint or stay stale.
+        this.respond(id, null)
+        semanticRefresh.get(this.kind)?.fire()
+        break
+      case 'workspace/inlayHint/refresh':
+        this.respond(id, null)
+        inlayRefresh.fire()
+        break
       case 'window/workDoneProgress/create':
       case 'client/registerCapability':
       case 'client/unregisterCapability':
+      case 'workspace/codeLens/refresh':
         this.respond(id, null)
         break
       case 'window/showMessageRequest':
@@ -391,19 +521,50 @@ export class LspConnection {
   private onNotification(method: string, params: unknown): void {
     if (method === 'textDocument/publishDiagnostics') {
       const { uri, diagnostics } = params as { uri: string; diagnostics: LspDiagnostic[] }
+      this.diagnostics.set(uri, diagnostics)
       const model = monaco.editor.getModel(monaco.Uri.parse(uri))
       if (!model) return
+      if (LSP_DEBUG) {
+        const t = this.changedAt.get(uri)
+        if (t !== undefined) {
+          this.changedAt.delete(uri)
+          console.debug(
+            `[lsp] ${this.kind} diagnostics after ${Math.round(performance.now() - t)}ms`
+          )
+        }
+      }
       monaco.editor.setModelMarkers(
         model,
-        this.serverId,
+        this.markerOwner,
         diagnostics.map((d) => ({
           ...toMonacoRange(d.range),
           message: d.message,
           severity: SEVERITIES[d.severity ?? 1],
           source: d.source,
-          code: d.code === undefined ? undefined : String(d.code)
+          code: d.code === undefined ? undefined : String(d.code),
+          tags: (d.tags ?? []).map((t) =>
+            t === 1 ? monaco.MarkerTag.Unnecessary : monaco.MarkerTag.Deprecated
+          )
         }))
       )
+    } else if (method === '$/progress') {
+      const { token, value } = params as {
+        token: string | number
+        value: { kind: string; title?: string; message?: string; percentage?: number }
+      }
+      if (value.kind === 'end') this.progress.delete(token)
+      else {
+        const text = value.message ?? value.title ?? this.progress.get(token) ?? ''
+        const pct = value.percentage != null ? ` ${Math.round(value.percentage)}%` : ''
+        if (text) this.progress.set(token, `${text}${pct}`)
+      }
+      const latest = [...this.progress.values()].pop() ?? null
+      this.setBusy(latest)
+    } else if (method === 'language/status') {
+      // jdtls-specific import/index status ("47% Starting Java Language Server").
+      const { type, message } = params as { type: string; message?: string }
+      if (type === 'Started' || type === 'ServiceReady') this.setBusy(null)
+      else if (message && (type === 'Starting' || type === 'Error')) this.setBusy(message)
     }
   }
 
@@ -432,6 +593,7 @@ export class LspConnection {
       uri,
       model.onDidChangeContent((e) => {
         doc.version++
+        if (LSP_DEBUG) this.changedAt.set(uri, performance.now())
         this.notify('textDocument/didChange', {
           textDocument: { uri, version: doc.version },
           // monaco sorts an event's changes in reverse document order, so
@@ -607,8 +769,10 @@ function settingsFor(
       settings: {
         typescript: {
           ...(extras.tsdkPath ? { tsdk: extras.tsdkPath } : {}),
-          suggest: { completeFunctionCalls: true }
+          suggest: { completeFunctionCalls: true },
+          inlayHints: { parameterNames: { enabled: 'literals' } }
         },
+        javascript: { inlayHints: { parameterNames: { enabled: 'literals' } } },
         vtsls: { autoUseWorkspaceTsdk: true }
       },
       ...(extras.tsdkPath ? { typescript: { tsdk: extras.tsdkPath } } : {})
@@ -625,6 +789,10 @@ function settingsFor(
             default: i === 0
           }))
         },
+        autobuild: { enabled: true },
+        maxConcurrentBuilds: 1,
+        errors: { incompleteClasspath: { severity: 'warning' } },
+        inlayHints: { parameterNames: { enabled: 'literals' } },
         format: { enabled: true },
         signatureHelp: { enabled: true },
         completion: { enabled: true },
@@ -699,6 +867,122 @@ async function connFor(model: monaco.editor.ITextModel): Promise<LspConnection |
 const docId = (model: monaco.editor.ITextModel): { uri: string } => ({
   uri: model.uri.toString()
 })
+
+// ── semantic tokens (the IntelliJ look: fields purple, statics italic) ──
+// The legend is provider-level, so registration waits for the first
+// initialized connection of a kind and reuses its server's legend. A
+// reconnect with the same legend keeps the providers; a changed legend
+// (server upgrade) swaps them.
+
+interface SemanticLegend {
+  tokenTypes: string[]
+  tokenModifiers: string[]
+}
+
+const LANGS_FOR_KIND: Record<LangKind, string[]> = {
+  java: ['java'],
+  web: ['typescript', 'tsx', 'javascript', 'jsx']
+}
+
+const semanticRegs = new Map<LangKind, { legendJson: string; disposables: monaco.IDisposable[] }>()
+/** Fired on workspace/semanticTokens/refresh — monaco re-pulls tokens. */
+const semanticRefresh = new Map<LangKind, monaco.Emitter<void>>()
+/** Fired on workspace/inlayHint/refresh. */
+const inlayRefresh = new monaco.Emitter<void>()
+
+function maybeRegisterSemanticTokens(conn: LspConnection): void {
+  const cap = conn.capabilities.semanticTokensProvider as
+    { legend?: SemanticLegend; range?: boolean | object } | undefined
+  if (!cap?.legend) return
+  const legendJson = JSON.stringify(cap.legend)
+  const prev = semanticRegs.get(conn.kind)
+  if (prev?.legendJson === legendJson) return
+  if (prev && LSP_DEBUG)
+    console.debug(`[lsp] ${conn.kind} semantic legend changed — re-registering`)
+  prev?.disposables.forEach((d) => d.dispose())
+  const legend = cap.legend
+  const langs = LANGS_FOR_KIND[conn.kind]
+  let refresh = semanticRefresh.get(conn.kind)
+  if (!refresh) {
+    refresh = new monaco.Emitter<void>()
+    semanticRefresh.set(conn.kind, refresh)
+  }
+  const disposables: monaco.IDisposable[] = [
+    monaco.languages.registerDocumentSemanticTokensProvider(langs, {
+      onDidChange: refresh.event,
+      getLegend: () => legend,
+      async provideDocumentSemanticTokens(model) {
+        const c = await connFor(model)
+        if (!c) return null
+        const r = await c
+          .request<{
+            resultId?: string
+            data: number[]
+          } | null>('textDocument/semanticTokens/full', { textDocument: docId(model) })
+          .catch(() => null)
+        return r ? { data: new Uint32Array(r.data), resultId: r.resultId } : null
+      },
+      releaseDocumentSemanticTokens: (): void => undefined
+    })
+  ]
+  if (cap.range) {
+    disposables.push(
+      monaco.languages.registerDocumentRangeSemanticTokensProvider(langs, {
+        getLegend: () => legend,
+        async provideDocumentRangeSemanticTokens(model, range) {
+          const c = await connFor(model)
+          if (!c) return null
+          const r = await c
+            .request<{ data: number[] } | null>('textDocument/semanticTokens/range', {
+              textDocument: docId(model),
+              range: toLspRange(range)
+            })
+            .catch(() => null)
+          return r ? { data: new Uint32Array(r.data) } : null
+        }
+      })
+    )
+  }
+  semanticRegs.set(conn.kind, { legendJson, disposables })
+}
+
+// ── code actions (Alt+Enter) ─────────────────────────────────────────
+
+const isCommand = (a: LspCodeAction | LspCommand): a is LspCommand =>
+  typeof (a as LspCommand).command === 'string'
+
+/** Apply one code action through our own edit path (registry-consistent),
+ *  never monaco's bulk-edit service. */
+async function runCodeAction(
+  model: monaco.editor.ITextModel,
+  raw: LspCodeAction | LspCommand
+): Promise<void> {
+  const conn = await connFor(model)
+  const entry = entryForUri(model.uri)
+  const project = useApp.getState().projects.find((p) => p.id === entry?.projectId)
+  if (!conn || !project) return
+  let action: LspCodeAction = isCommand(raw) ? { title: raw.title, command: raw } : raw
+  const resolves = (conn.capabilities.codeActionProvider as { resolveProvider?: boolean })
+    ?.resolveProvider
+  if (!action.edit && !action.command && resolves) {
+    action =
+      (await conn.request<LspCodeAction>('codeAction/resolve', action).catch(() => null)) ?? action
+  }
+  if (action.edit) await applyWorkspaceEdit(project, action.edit)
+  const cmd = action.command
+  if (!cmd) return
+  if (cmd.command === 'java.apply.workspaceEdit') {
+    // jdtls ships many quickfixes as this client-side command.
+    for (const e of (cmd.arguments ?? []) as LspWorkspaceEdit[]) {
+      await applyWorkspaceEdit(project, e)
+    }
+  } else {
+    // The server executes and drives us via workspace/applyEdit.
+    await conn
+      .request('workspace/executeCommand', { command: cmd.command, arguments: cmd.arguments ?? [] })
+      .catch(() => null)
+  }
+}
 
 // ── providers (registered once, route by model) ──────────────────────
 
@@ -990,6 +1274,127 @@ export function registerProviders(): void {
     async provideDocumentFormattingEdits(model) {
       const edits = await formattingEdits(model)
       return edits?.map((e) => ({ range: toMonacoRange(e.range), text: e.newText })) ?? null
+    }
+  })
+
+  const APPLY_ACTION = 'tc.lsp.applyCodeAction'
+  monaco.editor.registerCommand(
+    APPLY_ACTION,
+    (_accessor, payload: { uri: string; action: LspCodeAction | LspCommand }) => {
+      const model = monaco.editor.getModel(monaco.Uri.parse(payload.uri))
+      if (model) void runCodeAction(model, payload.action)
+    }
+  )
+
+  monaco.languages.registerCodeActionProvider(ALL_LSP_LANGS, {
+    async provideCodeActions(model, range, context) {
+      const conn = await connFor(model)
+      if (!conn?.capabilities.codeActionProvider) return null
+      // Context diagnostics come from the publish cache, LSP-shaped, so
+      // servers (jdtls especially) can match them to their quickfixes.
+      const cached = conn.diagnostics.get(model.uri.toString()) ?? []
+      const inRange = cached.filter((d) =>
+        monaco.Range.areIntersectingOrTouching(toMonacoRange(d.range) as monaco.Range, range)
+      )
+      const result = await conn
+        .request<(LspCodeAction | LspCommand)[] | null>('textDocument/codeAction', {
+          textDocument: docId(model),
+          range: toLspRange(range),
+          context: {
+            diagnostics: inRange,
+            ...(context.only ? { only: [context.only] } : {}),
+            triggerKind: context.trigger === 1 ? 1 : 2
+          }
+        })
+        .catch(() => null)
+      return {
+        actions: (result ?? []).map((a) => ({
+          title: a.title,
+          kind: isCommand(a) ? 'quickfix' : (a.kind ?? 'quickfix'),
+          isPreferred: isCommand(a) ? undefined : a.isPreferred,
+          diagnostics: [],
+          command: {
+            id: APPLY_ACTION,
+            title: a.title,
+            arguments: [{ uri: model.uri.toString(), action: a }]
+          }
+        })),
+        dispose: () => {}
+      }
+    }
+  })
+
+  monaco.languages.registerInlayHintsProvider(ALL_LSP_LANGS, {
+    onDidChangeInlayHints: inlayRefresh.event,
+    async provideInlayHints(model, range) {
+      const conn = await connFor(model)
+      if (!conn?.capabilities.inlayHintProvider) return null
+      const hints = await conn
+        .request<LspInlayHint[] | null>('textDocument/inlayHint', {
+          textDocument: docId(model),
+          range: toLspRange(range)
+        })
+        .catch(() => null)
+      if (!hints) return null
+      return {
+        hints: hints.map((h) => ({
+          position: { lineNumber: h.position.line + 1, column: h.position.character + 1 },
+          label: typeof h.label === 'string' ? h.label : h.label.map((p) => p.value).join(''),
+          kind:
+            h.kind === 1
+              ? monaco.languages.InlayHintKind.Type
+              : monaco.languages.InlayHintKind.Parameter,
+          paddingLeft: h.paddingLeft,
+          paddingRight: h.paddingRight
+        })),
+        dispose: () => {}
+      }
+    }
+  })
+
+  monaco.languages.registerFoldingRangeProvider(ALL_LSP_LANGS, {
+    async provideFoldingRanges(model) {
+      const conn = await connFor(model)
+      if (!conn?.capabilities.foldingRangeProvider) return null
+      const ranges = await conn
+        .request<{ startLine: number; endLine: number; kind?: string }[] | null>(
+          'textDocument/foldingRange',
+          { textDocument: docId(model) }
+        )
+        .catch(() => null)
+      // null → monaco falls back to indentation folding.
+      return (
+        ranges?.map((r) => ({
+          start: r.startLine + 1,
+          end: r.endLine + 1,
+          kind:
+            r.kind === 'imports'
+              ? monaco.languages.FoldingRangeKind.Imports
+              : r.kind === 'comment'
+                ? monaco.languages.FoldingRangeKind.Comment
+                : undefined
+        })) ?? null
+      )
+    }
+  })
+
+  monaco.languages.registerDocumentHighlightProvider(ALL_LSP_LANGS, {
+    async provideDocumentHighlights(model, position) {
+      const conn = await connFor(model)
+      if (!conn?.capabilities.documentHighlightProvider) return null
+      const list = await conn
+        .request<{ range: LspRange; kind?: number }[] | null>('textDocument/documentHighlight', {
+          textDocument: docId(model),
+          position: toLspPos(position)
+        })
+        .catch(() => null)
+      if (!list) return null
+      const DHK = monaco.languages.DocumentHighlightKind
+      const KINDS = [DHK.Text, DHK.Text, DHK.Read, DHK.Write]
+      return list.map((h) => ({
+        range: toMonacoRange(h.range) as monaco.Range,
+        kind: KINDS[h.kind ?? 1]
+      }))
     }
   })
 
