@@ -27,6 +27,7 @@ import {
 import { DEFAULT_RULES } from '@shared/rules'
 import { DEFAULT_THREAD_DEFAULTS } from '@shared/defaults'
 import {
+  blameRange,
   aheadCount,
   branches,
   commit,
@@ -334,6 +335,20 @@ export async function startServer(dbPath: string): Promise<RunningServer> {
               id: req.id,
               ok: true,
               result: await showHead(project.cwd, req.params.path)
+            })
+            break
+          }
+          case 'project.blame': {
+            const project = mustProject(req.params.projectId)
+            sendFrame({
+              id: req.id,
+              ok: true,
+              result: await blameRange(
+                project.cwd,
+                req.params.path,
+                req.params.startLine,
+                req.params.endLine
+              )
             })
             break
           }

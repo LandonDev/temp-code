@@ -5,6 +5,7 @@ import { Spinner } from '../ui/spinner'
 import { EDITOR_OPTIONS, monaco } from './monaco'
 import { ensureForModel } from './lsp'
 import { debugFile, paintBreakpoints, toggleBreakpoint } from './debug'
+import { installSmartBackspace, showParamInfo } from './param-info'
 import { openFile, resolveConflict, type FileState, type OpenedFile } from './models'
 
 /**
@@ -128,11 +129,12 @@ export function EditorSurface({
       editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
         void handle?.flushNow().then(() => onSaveRef.current?.())
       })
-      // ⌘P — IDEA's Parameter Info (file search stays on ⇧⇧ and on ⌘P
-      // outside the buffer).
+      // ⌘P — IDEA's Parameter Info: every overload stacked, candidate
+      // parameter bolded (file search stays on ⇧⇧ / ⌘P outside the buffer).
       editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyP, () => {
-        editor?.trigger('keyboard', 'editor.action.triggerParameterHints', null)
+        if (editor) void showParamInfo(editor)
       })
+      installSmartBackspace(editor)
       // Alt+Enter — IntelliJ's quickfix reflex (⌘. still works too).
       editor.addCommand(monaco.KeyMod.Alt | monaco.KeyCode.Enter, () => {
         editor?.trigger('keyboard', 'editor.action.quickFix', null)

@@ -1737,6 +1737,105 @@ export function registerProviders(): void {
     }
   })
 
+  const LENS_USAGES = 'tc.lens.showUsages'
+  monaco.editor.registerCommand(
+    LENS_USAGES,
+    (_accessor, payload: { uri: string; position: monaco.IPosition; name: string }) => {
+      const target = monaco.editor
+        .getEditors()
+        .find((e) => e.getModel()?.uri.toString() === payload.uri)
+      if (!target) return
+      target.focus()
+      target.setPosition(payload.position)
+      void import('./usages').then(({ showUsages }) =>
+        showUsages(target, payload.name, payload.position)
+      )
+    }
+  )
+
+  monaco.languages.registerCodeLensProvider(['java', 'kotlin'], {
+    async provideCodeLenses(model) {
+      const uri = model.uri.toString()
+      const cached = lensCache.get(uri)
+      let symbols = cached?.version === model.getVersionId() ? cached.symbols : null
+      if (!symbols) {
+        const raw = await readSide<LspSymbol[]>(
+          model,
+          'documentSymbolProvider',
+          'textDocument/documentSymbol',
+          { textDocument: docId(model) }
+        )
+        if (!raw) return null
+        symbols = []
+        flattenLensSymbols(raw, symbols)
+        lensCache.set(uri, { version: model.getVersionId(), symbols })
+      }
+      return {
+        lenses: symbols.map((sym, i) => ({
+          range: new monaco.Range(sym.line, 1, sym.line, 1),
+          id: `${uri}:${i}`,
+          command: undefined
+        })),
+        dispose: () => {}
+      }
+    },
+    async resolveCodeLens(model, lens) {
+      const uri = model.uri.toString()
+      const cached = lensCache.get(uri)
+      const sym = cached?.symbols.find((x) => x.line === lens.range.startLineNumber)
+      if (!sym) return lens
+      const key = `${uri}:${model.getVersionId()}:${sym.line}:${sym.name}`
+      let resolved = lensResolved.get(key)
+      if (!resolved) {
+        const entry = entryForUri(model.uri)
+        const refsP = readSide<LspLocation[]>(
+          model,
+          'referencesProvider',
+          'textDocument/references',
+          {
+            textDocument: docId(model),
+            position: sym.selection,
+            context: { includeDeclaration: false }
+          },
+          4000
+        )
+        const blameP = entry
+          ? client
+              .request<{ author: string | null; others: number }>('project.blame', {
+                projectId: entry.projectId,
+                path: entry.relPath,
+                startLine: sym.line,
+                endLine: Math.max(sym.line, sym.endLine)
+              })
+              .catch(() => null)
+          : Promise.resolve(null)
+        const [refs, blame] = await Promise.all([refsP, blameP])
+        const n = refs?.length ?? 0
+        const usages = n === 0 ? 'no usages' : n === 1 ? '1 usage' : `${n} usages`
+        const who = blame?.author
+          ? `  ·  ${blame.author}${blame.others > 0 ? ` +${blame.others}` : ''}`
+          : ''
+        resolved = { title: `${usages}${who}` }
+        lensResolved.set(key, resolved)
+        if (lensResolved.size > 500) {
+          lensResolved.delete(lensResolved.keys().next().value as string)
+        }
+      }
+      lens.command = {
+        id: LENS_USAGES,
+        title: resolved.title,
+        arguments: [
+          {
+            uri,
+            position: { lineNumber: sym.selection.line + 1, column: sym.selection.character + 1 },
+            name: sym.name
+          }
+        ]
+      }
+      return lens
+    }
+  })
+
   // Cross-file navigation opens a file surface (registered opener wins
   // over monaco's default no-op for unknown resources).
   monaco.editor.registerEditorOpener({
@@ -1880,7 +1979,88 @@ export async function workspaceSymbols(
   return results.flat().slice(0, 100)
 }
 
-// ── hierarchies (docs/PLAN-4.md M18): callers and super/subtypes ─────
+// ── parameter info (⌘P, IDEA-style all-overloads popup) ─────────────
+
+export interface ParamInfoSignature {
+  label: string
+  parameters: { label: string | [number, number] }[]
+}
+
+export async function signatureHelpAt(
+  model: monaco.editor.ITextModel,
+  position: monaco.Position
+): Promise<{ signatures: ParamInfoSignature[]; activeParameter: number } | null> {
+  const help = await readSide<{
+    signatures: ParamInfoSignature[]
+    activeSignature?: number
+    activeParameter?: number
+  }>(model, 'signatureHelpProvider', 'textDocument/signatureHelp', {
+    textDocument: docId(model),
+    position: toLspPos(position)
+  })
+  if (!help?.signatures?.length) return null
+  return { signatures: help.signatures, activeParameter: help.activeParameter ?? 0 }
+}
+
+/** References for the usages popup (excerpt rows want raw locations). */
+export async function referencesAt(
+  model: monaco.editor.ITextModel,
+  position: monaco.IPosition
+): Promise<LspLocation[] | null> {
+  const refs = await readSide<LspLocation[]>(
+    model,
+    'referencesProvider',
+    'textDocument/references',
+    {
+      textDocument: docId(model),
+      position: { line: position.lineNumber - 1, character: position.column - 1 },
+      context: { includeDeclaration: false }
+    },
+    5000
+  )
+  if (!refs) return null
+  // preview models make cross-file excerpts readable
+  const entry = entryForUri(model.uri)
+  const project = useApp.getState().projects.find((p) => p.id === entry?.projectId)
+  if (project) {
+    for (const ref of refs.slice(0, 40)) {
+      await ensurePreviewModel(project, monaco.Uri.parse(ref.uri))
+    }
+  }
+  return refs
+}
+
+// ── Code Vision (usages + last editor, IDEA-style) ───────────────────
+// The engine's codeLens is empty in this build, so the lenses are ours:
+// symbols from documentSymbol, usage counts from references, authorship
+// from git blame over the symbol's range. Resolution is lazy (monaco
+// resolves visible lenses only) and cached per model version.
+
+interface LensSymbol {
+  name: string
+  line: number
+  selection: LspPosition
+  endLine: number
+}
+
+const lensCache = new Map<string, { version: number; symbols: LensSymbol[] }>()
+const lensResolved = new Map<string, { title: string }>()
+
+function flattenLensSymbols(symbols: LspSymbol[], out: LensSymbol[]): void {
+  for (const sym of symbols) {
+    // methods (6), constructors (9), classes (5), interfaces (11),
+    // enums (10), functions (12) — LSP SymbolKind numbering
+    if ([5, 6, 9, 10, 11, 12].includes(sym.kind) && sym.range && sym.selectionRange) {
+      out.push({
+        name: sym.name,
+        line: sym.selectionRange.start.line + 1,
+        selection: sym.selectionRange.start,
+        endLine: sym.range.end.line + 1
+      })
+    }
+    if (sym.children) flattenLensSymbols(sym.children, out)
+  }
+}
 
 interface HierarchyItem {
   name: string
