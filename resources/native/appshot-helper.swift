@@ -77,6 +77,11 @@ func runMonitor(debug: Bool = false) {
       stage = 0  // another modifier joined — not a bare tap
     }
   }
+  // The app's update relaunch exits without will-quit, so nobody kills us —
+  // notice the reparent to launchd and leave on our own.
+  Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { _ in
+    if getppid() == 1 { exit(0) }
+  }
   emit(["event": "ready", "ax": AXIsProcessTrusted()])
   app.run()
 }
