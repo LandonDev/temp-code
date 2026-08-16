@@ -36,16 +36,32 @@ export default function App(): React.JSX.Element {
     void init()
   }, [init])
 
-  // ⌘P files, ⌘T symbols, ⌘S flush — global; Monaco surfaces re-bind
-  // their own ⌘S/⌘P so focus inside the buffer behaves the same.
+  // Global keys. ⌘P files, ⌘T/⌘O symbols, ⌘S flush; double-tap Shift is
+  // IntelliJ's Search Everywhere → file search. Monaco surfaces re-bind
+  // their own ⌘S/⌘P so focus inside the buffer behaves the same; bare
+  // Shift bubbles out of Monaco untouched, so the double-tap works there
+  // too. Any other keystroke between the taps (⇧A while typing) resets.
   useEffect(() => {
+    let lastShiftAt = 0
     const onKey = (e: KeyboardEvent): void => {
+      const { selectedProjectId, setQuickOpen, quickOpen } = useApp.getState()
+      if (e.key === 'Shift' && !e.repeat && !e.metaKey && !e.ctrlKey && !e.altKey) {
+        const now = Date.now()
+        if (now - lastShiftAt < 400 && selectedProjectId && !quickOpen) {
+          setQuickOpen('files')
+          lastShiftAt = 0
+        } else {
+          lastShiftAt = now
+        }
+        return
+      }
+      lastShiftAt = 0
       if (!(e.metaKey || e.ctrlKey)) return
-      const { selectedProjectId, setQuickOpen } = useApp.getState()
       if (e.key === 'p' && selectedProjectId) {
         e.preventDefault()
         setQuickOpen('files')
-      } else if (e.key === 't' && selectedProjectId) {
+      } else if ((e.key === 't' || e.key === 'o') && selectedProjectId) {
+        // ⌘O: IntelliJ go-to-class muscle memory → workspace symbols.
         e.preventDefault()
         setQuickOpen('symbols')
       } else if (e.key === 's') {
