@@ -1,5 +1,5 @@
 {
-  "n": 3,
-  "notes": "Stop tracking tsbuildinfo caches",
-  "ts": 1786864595714
+  "n": 4,
+  "notes": "Typing ) skips the auto-inserted one; ⌘P is Parameter Info",
+  "ts": 1786864761557
 }
