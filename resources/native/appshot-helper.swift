@@ -42,18 +42,25 @@ func runPermissions(prompt: Bool) {
 
 // MARK: - monitor (bare double-⌘)
 
-func runMonitor() {
-  _ = NSApplication.shared
+func runMonitor(debug: Bool = false) {
+  // Global monitors only deliver inside a real NSApplication event loop —
+  // RunLoop.main.run() is not enough. Policy .prohibited: no Dock icon.
+  let app = NSApplication.shared
+  app.setActivationPolicy(.prohibited)
   let window = 0.4  // max seconds between the taps' edges
   // 0 idle · 1 first ⌘ down · 2 first tap done · 3 second ⌘ down
   var stage = 0
   var last: TimeInterval = 0
 
   // Any real keystroke means a chord (⌘C etc.) — never a trigger.
-  NSEvent.addGlobalMonitorForEvents(matching: [.keyDown]) { _ in stage = 0 }
+  NSEvent.addGlobalMonitorForEvents(matching: [.keyDown]) { ev in
+    if debug { emit(["debug": "keyDown", "code": ev.keyCode]) }
+    stage = 0
+  }
   NSEvent.addGlobalMonitorForEvents(matching: [.flagsChanged]) { ev in
     let flags = ev.modifierFlags.intersection(.deviceIndependentFlagsMask)
     let now = ProcessInfo.processInfo.systemUptime
+    if debug { emit(["debug": "flags", "raw": flags.rawValue, "stage": stage]) }
     if flags == .command {
       stage = (stage == 2 && now - last <= window) ? 3 : 1
       last = now
@@ -71,7 +78,7 @@ func runMonitor() {
     }
   }
   emit(["event": "ready", "ax": AXIsProcessTrusted()])
-  RunLoop.main.run()
+  app.run()
 }
 
 // MARK: - capture: window pick
@@ -273,7 +280,7 @@ func flagValue(_ name: String) -> String? {
 
 switch cmd {
 case "monitor":
-  runMonitor()
+  runMonitor(debug: args.contains("--debug"))
 case "permissions":
   runPermissions(prompt: args.contains("--prompt"))
 case "capture":
