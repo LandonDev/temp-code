@@ -302,7 +302,8 @@ export function PlanView({ session }: { session: SessionMeta }): React.JSX.Eleme
               </button>
             </div>
           )}
-          <Transcript sessionId={session.id} />
+          {/* No minimap in the side pane — it overlaps the text there. */}
+          <Transcript sessionId={session.id} minimap={!hasDoc} />
           <WorkingStrip sessionId={session.id} />
           <PromptBar compact={hasDoc} narrow={hasDoc} />
         </div>

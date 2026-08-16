@@ -323,7 +323,8 @@ export function ImplementationView({ session }: { session: SessionMeta }): React
               </button>
             </div>
           )}
-          <Transcript sessionId={session.id} />
+          {/* No minimap in the side pane — it overlaps the text there. */}
+          <Transcript sessionId={session.id} minimap={!hasBoard} />
           <WorkingStrip sessionId={session.id} />
           <PromptBar compact={hasBoard} narrow={hasBoard} />
         </div>
