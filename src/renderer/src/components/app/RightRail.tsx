@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, useRef } from 'react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { useApp } from '../../state/store'
 import { cn } from '../../lib/utils'
@@ -33,7 +33,7 @@ export function RightRail(): React.JSX.Element {
         >
           <div className="flex h-full w-72 flex-col">
             <div className="titlebar-drag flex h-11 shrink-0 items-center gap-4 px-4">
-              {(['changes', 'files'] as const).map((p) => (
+              {(['changes', 'files', 'debug'] as const).map((p) => (
                 <button
                   key={p}
                   onClick={() => setPanel(p)}
@@ -44,21 +44,191 @@ export function RightRail(): React.JSX.Element {
                 >
                   {p === 'changes' ? (
                     <>Changes{(changes?.length ?? 0) > 0 && ` · ${changes!.length}`}</>
-                  ) : (
+                  ) : p === 'files' ? (
                     'Files'
+                  ) : (
+                    'Debug'
                   )}
                 </button>
               ))}
             </div>
             {panel === 'changes' ? (
               <ChangesPanel key={projectId} projectId={projectId} />
-            ) : (
+            ) : panel === 'files' ? (
               <FilesPanel key={projectId} projectId={projectId} />
+            ) : (
+              <DebugPanel key={projectId} projectId={projectId} />
             )}
           </div>
         </motion.aside>
       )}
     </AnimatePresence>
+  )
+}
+
+/** The debugger rail (docs/PLAN-4.md M20): controls, stack, variables,
+ *  console. ⌃D in a Java/Kotlin buffer launches its main class. */
+function DebugPanel({ projectId }: { projectId: string }): React.JSX.Element {
+  const phase = useApp((s) => s.debugPhase)
+  const frames = useApp((s) => s.debugFrames)
+  const variables = useApp((s) => s.debugVariables)
+  const output = useApp((s) => s.debugOutput)
+  const error = useApp((s) => s.debugError)
+  const openFileSurface = useApp((s) => s.openFileSurface)
+  const [expr, setExpr] = useState('')
+  const outRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    outRef.current?.scrollTo({ top: outRef.current.scrollHeight })
+  }, [output])
+
+  // The editor chunk owns the controller; by the time a session exists the
+  // chunk is loaded, so this resolves from cache instantly.
+  const withCtl = (fn: (m: typeof import('../editor/debug')) => void): void => {
+    void import('../editor/debug').then(fn)
+  }
+
+  return (
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div className="flex items-center gap-1 border-b border-border/60 px-3 py-2">
+        {phase === 'idle' ? (
+          <span className="text-[11px] text-muted-foreground/70">
+            ⌃D in a Java file starts it here
+          </span>
+        ) : (
+          <>
+            <DebugButton
+              label="Continue"
+              glyph="▶"
+              enabled={phase === 'stopped'}
+              onClick={() => withCtl((m) => m.debugController()?.step('continue'))}
+            />
+            <DebugButton
+              label="Step over"
+              glyph="⤵"
+              enabled={phase === 'stopped'}
+              onClick={() => withCtl((m) => m.debugController()?.step('next'))}
+            />
+            <DebugButton
+              label="Step into"
+              glyph="↓"
+              enabled={phase === 'stopped'}
+              onClick={() => withCtl((m) => m.debugController()?.step('stepIn'))}
+            />
+            <DebugButton
+              label="Step out"
+              glyph="↑"
+              enabled={phase === 'stopped'}
+              onClick={() => withCtl((m) => m.debugController()?.step('stepOut'))}
+            />
+            <span className="flex-1" />
+            <span className="text-[10.5px] tabular-nums text-muted-foreground/70">{phase}</span>
+            <DebugButton
+              label="Stop"
+              glyph="■"
+              enabled
+              onClick={() => withCtl((m) => m.debugController()?.stop())}
+            />
+          </>
+        )}
+      </div>
+      {error && (
+        <p className="border-b border-border/60 px-3 py-2 text-[11px] text-destructive">{error}</p>
+      )}
+      {frames.length > 0 && (
+        <div className="max-h-40 shrink-0 overflow-y-auto border-b border-border/60 py-1">
+          {frames.map((f) => (
+            <button
+              key={f.id}
+              onClick={() => {
+                if (f.path) openFileSurface(projectId, f.path, { lineNumber: f.line, column: 1 })
+                withCtl((m) => void m.debugController()?.loadVariables(f.id))
+              }}
+              className="flex w-full items-baseline gap-2 px-3 py-0.5 text-left hover:bg-accent/60"
+            >
+              <span className={cn('truncate text-[11.5px]', !f.path && 'text-muted-foreground/60')}>
+                {f.name}
+              </span>
+              <span className="ml-auto shrink-0 text-[10.5px] tabular-nums text-muted-foreground/60">
+                {f.line}
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
+      {variables.length > 0 && (
+        <div className="max-h-48 shrink-0 overflow-y-auto border-b border-border/60 py-1 font-mono">
+          {variables.map((v, i) => (
+            <button
+              key={`${v.name}:${i}`}
+              onClick={() => {
+                if (v.ref)
+                  withCtl(
+                    (m) => void m.debugController()?.loadVariables(v.frameId, v.ref!, v.depth + 1)
+                  )
+              }}
+              className="flex w-full gap-1.5 px-3 py-0.5 text-left text-[11px] hover:bg-accent/60"
+              style={{ paddingLeft: `${12 + v.depth * 12}px` }}
+            >
+              <span className="shrink-0 text-info">{v.name}</span>
+              <span className="truncate text-muted-foreground">{v.value}</span>
+            </button>
+          ))}
+        </div>
+      )}
+      <div
+        ref={outRef}
+        className="min-h-0 flex-1 overflow-y-auto px-3 py-2 font-mono text-[11px] leading-relaxed text-muted-foreground"
+      >
+        {output.map((line, i) => (
+          <div key={i} className="whitespace-pre-wrap break-all">
+            {line}
+          </div>
+        ))}
+      </div>
+      <form
+        onSubmit={(e) => {
+          e.preventDefault()
+          const q = expr.trim()
+          if (!q) return
+          setExpr('')
+          withCtl((m) => void m.debugController()?.evaluate(q))
+        }}
+        className="border-t border-border/60"
+      >
+        <input
+          value={expr}
+          onChange={(e) => setExpr(e.target.value)}
+          placeholder={phase === 'stopped' ? 'Evaluate…' : ''}
+          disabled={phase !== 'stopped'}
+          className="w-full bg-transparent px-3 py-2 font-mono text-[11.5px] outline-none placeholder:text-muted-foreground/50 disabled:opacity-40"
+        />
+      </form>
+    </div>
+  )
+}
+
+function DebugButton({
+  label,
+  glyph,
+  enabled,
+  onClick
+}: {
+  label: string
+  glyph: string
+  enabled: boolean
+  onClick: () => void
+}): React.JSX.Element {
+  return (
+    <button
+      title={label}
+      aria-label={label}
+      disabled={!enabled}
+      onClick={onClick}
+      className="flex size-6 items-center justify-center rounded text-[12px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-30"
+    >
+      {glyph}
+    </button>
   )
 }
 
