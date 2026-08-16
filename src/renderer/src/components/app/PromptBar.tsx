@@ -750,13 +750,17 @@ export function PromptBar({
             {project?.mode === 'worktree' ? 'Worktree' : 'Local checkout'}
           </span>
           <span className="flex items-center gap-2">
-            {session.provider === 'claude' && (
+            {session.provider !== 'cursor' && (
               <button
                 onClick={() => void tune(selectedId, { fast: !session.fast })}
                 title={
                   session.fast
-                    ? 'Fast mode on — faster output on supported Claude models. Applies from the next message.'
-                    : 'Normal speed. Fast mode speeds up output on supported Claude models (Opus family).'
+                    ? session.provider === 'codex'
+                      ? 'Priority processing on. Applies from the next message.'
+                      : 'Fast mode on — faster output on supported Claude models. Applies from the next message.'
+                    : session.provider === 'codex'
+                      ? 'Standard processing. Fast switches codex to the priority service tier.'
+                      : 'Normal speed. Fast mode speeds up output on supported Claude models (Opus family).'
                 }
                 className={cn(
                   'flex items-center gap-1 rounded-full px-1.5 py-0.5 transition-colors',
