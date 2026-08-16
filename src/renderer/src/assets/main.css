@@ -538,3 +538,17 @@ textarea::-webkit-scrollbar {
 .monaco-editor .model-change-line {
   background-color: color-mix(in srgb, var(--success) 10%, transparent);
 }
+
+/* Debugger (docs/PLAN-4.md M20): breakpoint dot + paused-line wash. */
+.monaco-editor .tc-breakpoint::after {
+  content: '';
+  display: block;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--destructive);
+  margin: 5px auto 0;
+}
+.monaco-editor .tc-debug-line {
+  background: color-mix(in oklch, var(--warning) 14%, transparent);
+}

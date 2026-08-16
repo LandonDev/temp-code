@@ -4,6 +4,7 @@ import { useApp } from '../../state/store'
 import { Spinner } from '../ui/spinner'
 import { EDITOR_OPTIONS, monaco } from './monaco'
 import { ensureForModel } from './lsp'
+import { debugFile, paintBreakpoints, toggleBreakpoint } from './debug'
 import { openFile, resolveConflict, type FileState, type OpenedFile } from './models'
 
 /**
@@ -94,10 +95,13 @@ export function EditorSurface({
       setKey(handle.key)
       setFileState(handle.state)
       handle.onState(setFileState)
+      const debuggable = ['java', 'kotlin'].includes(handle.model.getLanguageId())
       editor = monaco.editor.create(hostRef.current!, {
         ...EDITOR_OPTIONS,
         model: handle.model,
-        readOnly
+        readOnly,
+        // The debugger's breakpoint gutter (docs/PLAN-4.md M20).
+        glyphMargin: debuggable
       })
       editorRef.current = editor
       const saved = viewStates.get(stateKey)
@@ -152,6 +156,23 @@ export function EditorSurface({
         showHierarchy('callers')
       )
       editor.addCommand(monaco.KeyMod.WinCtrl | monaco.KeyCode.KeyH, () => showHierarchy('types'))
+      if (debuggable && !readOnly) {
+        // Click the gutter to toggle a breakpoint; ⌃D debugs this file.
+        paintBreakpoints(editor, project.id, path)
+        editor.onMouseDown((e) => {
+          if (e.target.type === monaco.editor.MouseTargetType.GUTTER_GLYPH_MARGIN) {
+            toggleBreakpoint(project, path, e.target.position.lineNumber)
+            if (editor) paintBreakpoints(editor, project.id, path)
+          }
+        })
+        editor.addCommand(monaco.KeyMod.WinCtrl | monaco.KeyCode.KeyD, () => {
+          const m = editor?.getModel()
+          if (!m) return
+          useApp.getState().setRailPanel('debug')
+          useApp.setState({ railOpen: true })
+          void debugFile(project, path, m.getValue())
+        })
+      }
       if (!readOnly) ensureForModel(project, handle.model)
       setPhase('ready')
     })()

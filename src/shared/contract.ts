@@ -183,6 +183,12 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
   // ── IntelliJ engine (docs/PLAN-4.md M15): EULA gate for intellij-server.
   z.object({ id: z.string(), method: z.literal('idea.eula') }),
   z.object({ id: z.string(), method: z.literal('idea.acceptEula') }),
+  // ── debugger (docs/PLAN-4.md M20): bridge a DAP TCP port into a WS tunnel.
+  z.object({
+    id: z.string(),
+    method: z.literal('dap.connect'),
+    params: z.object({ port: z.number().int().positive() })
+  }),
   // ── AI ghost text (docs/PLAN-3.md M14) — fill-in-the-middle over the
   // user's existing Claude auth; the app holds no credentials.
   z.object({

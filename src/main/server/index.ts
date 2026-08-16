@@ -49,6 +49,7 @@ import {
   fsWrite,
   subscribeFileEvents
 } from './files'
+import { attachDapSocket, connectDap, stopAllDap } from './dap'
 import {
   attachLspSocket,
   ensureLsp,
@@ -112,6 +113,10 @@ export async function startServer(dbPath: string): Promise<RunningServer> {
     const url = req.url ?? ''
     if (url.startsWith('/lsp/')) {
       attachLspSocket(url.slice('/lsp/'.length), ws)
+      return
+    }
+    if (url.startsWith('/dap/')) {
+      attachDapSocket(url.slice('/dap/'.length), ws)
       return
     }
     const unsubs = new Map<string, () => void>()
@@ -346,6 +351,9 @@ export async function startServer(dbPath: string): Promise<RunningServer> {
             break
           case 'idea.acceptEula':
             sendFrame({ id: req.id, ok: true, result: ideaAcceptEula() })
+            break
+          case 'dap.connect':
+            sendFrame({ id: req.id, ok: true, result: await connectDap(req.params.port) })
             break
           case 'fim.complete': {
             const project = mustProject(req.params.projectId)
@@ -666,6 +674,7 @@ export async function startServer(dbPath: string): Promise<RunningServer> {
       await registry.disposeAll()
       await closeAllWatchers()
       stopAllLsp()
+      stopAllDap()
       wss.close()
     }
   }

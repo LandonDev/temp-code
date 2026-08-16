@@ -53,6 +53,23 @@ export interface SurfaceRef {
 
 export const surfaceKey = (s: SurfaceRef): string => `${s.kind}:${s.path}`
 
+/** Debugger mirror (docs/PLAN-4.md M20) — written by editor/debug.ts. */
+export interface DebugFrame {
+  id: number
+  name: string
+  line: number
+  /** project-relative, null when the frame is outside the project */
+  path: string | null
+}
+export interface DebugVariable {
+  name: string
+  value: string
+  /** expandable when set (variablesReference) */
+  ref: number | null
+  depth: number
+  frameId: number
+}
+
 /** One row in the hierarchy overlay (caller or super/subtype). */
 export interface HierarchyRow {
   name: string
@@ -116,7 +133,7 @@ interface AppState {
   loaded: Record<string, boolean>
   railOpen: boolean
   /** which rail panel is up: Changes or Files */
-  railPanel: 'changes' | 'files'
+  railPanel: 'changes' | 'files' | 'debug'
   /** open editor surfaces per project (persisted with the project) */
   surfaces: Record<string, SurfaceRef[]>
   /** active surface key per project; null = a thread is in the main view */
@@ -136,6 +153,15 @@ interface AppState {
   quickOpen: 'files' | 'symbols' | 'hierarchy' | null
   /** rows for the hierarchy overlay (⌃H / ⌃⌥H, docs/PLAN-4.md M18) */
   hierarchy: { title: string; rows: HierarchyRow[] } | null
+  /** debugger (docs/PLAN-4.md M20) */
+  debugPhase: 'idle' | 'launching' | 'running' | 'stopped'
+  debugOutput: string[]
+  debugFrames: DebugFrame[]
+  debugVariables: DebugVariable[]
+  debugCurrent: { path: string; line: number } | null
+  debugError: string | null
+  /** `${projectId}:${path}` → sorted breakpoint lines (mirror of debug.ts) */
+  debugBreakpoints: Record<string, number[]>
   formatOnSave: { java: boolean; web: boolean }
   ghostText: boolean
   settingsOpen: boolean
@@ -183,7 +209,7 @@ interface AppState {
   fetchBranches: (workspaceId: string) => Promise<BranchList>
   setQuickOpen: (mode: 'files' | 'symbols' | 'hierarchy' | null) => void
   openHierarchy: (title: string, rows: HierarchyRow[]) => void
-  setRailPanel: (panel: 'changes' | 'files') => void
+  setRailPanel: (panel: 'changes' | 'files' | 'debug') => void
   setFormatOnSave: (lang: 'java' | 'web', on: boolean) => void
   setGhostText: (on: boolean) => void
   select: (sessionId: string | null) => Promise<void>
@@ -326,6 +352,13 @@ export const useApp = create<AppState>((set, get) => ({
   branchLists: {},
   quickOpen: null,
   hierarchy: null,
+  debugPhase: 'idle',
+  debugOutput: [],
+  debugFrames: [],
+  debugVariables: [],
+  debugCurrent: null,
+  debugError: null,
+  debugBreakpoints: {},
   formatOnSave: JSON.parse(localStorage.getItem(FORMAT_KEY) ?? '{"java":false,"web":false}') as {
     java: boolean
     web: boolean
