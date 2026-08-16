@@ -2,9 +2,10 @@
 
 ## The user lives in the installed app — never touch it
 Prod is /Applications/TempCode.app with its data in
-`~/Library/Application Support/TempCode/`. Do not launch anything against
-that userData, do not send messages into the user's threads, and do not
-kill or restart the installed app. The user gets your work through the
+`~/Library/Application Support/temp-code/`. Do not launch anything
+against that userData (that means never `bun run dev` without
+TEMP_CODE_USER_DATA), do not send messages into the user's threads, and
+do not kill or restart the installed app. The user gets your work through the
 release flow below, on their own click.
 
 ## Testing: spawn an isolated dev instance
