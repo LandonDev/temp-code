@@ -38,6 +38,7 @@ import {
   workingTreeChanges
 } from './git'
 import { listCommands } from './commands'
+import { setSummarizeContext, summarizeTools } from './summarize'
 import { readAttachment, saveAttachment } from './attachments'
 import {
   closeAllWatchers,
@@ -103,6 +104,7 @@ export async function startServer(dbPath: string): Promise<RunningServer> {
   registry.startIdleSweep()
   setOrchestrationRegistry(registry)
   setAppToolsRegistry(registry)
+  setSummarizeContext(registry, store)
   void runDoctor() // warm the cache so the new-session modal opens ready
 
   const wss = new WebSocketServer({ host: '127.0.0.1', port: 0 })
@@ -418,6 +420,17 @@ export async function startServer(dbPath: string): Promise<RunningServer> {
               id: req.id,
               ok: true,
               result: await listCommands(req.params.provider, req.params.cwd)
+            })
+            break
+          case 'tools.summarize':
+            sendFrame({
+              id: req.id,
+              ok: true,
+              result: await summarizeTools(
+                req.params.sessionId,
+                req.params.groupKey,
+                req.params.items
+              )
             })
             break
           case 'attachment.save':

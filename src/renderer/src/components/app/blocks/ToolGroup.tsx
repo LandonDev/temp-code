@@ -330,6 +330,46 @@ export function groupSummary(tools: ToolBlock[], titles: ThreadTitles = {}): str
   return namedFirst ? joined : joined.charAt(0).toUpperCase() + joined.slice(1)
 }
 
+/** Model-written section summaries, keyed per settled group. `null` marks
+ *  in-flight or failed — the mechanical summary stays as the fallback.
+ *  Server-side they cache permanently, so this is one request per group
+ *  per app run at most. */
+const sentenceCache = new Map<string, string | null>()
+
+/** One plain sentence for a settled multi-tool section, written by a small
+ *  fast model on the thread's own subscription. Off via settings. */
+function useSentenceSummary(tools: ToolBlock[], sessionId?: string): string | null {
+  const enabled = useApp((s) => s.toolSummaries)
+  const projectCwd = useApp((s) => s.projects.find((p) => p.id === s.selectedProjectId)?.cwd)
+  const settled = tools.length > 1 && tools.every((t) => t.output !== undefined)
+  const key = settled ? `${tools[0].callId}:${tools.length}` : null
+  const [, bump] = useState(0)
+  useEffect(() => {
+    if (!enabled || !key || !sessionId || sentenceCache.has(key)) return
+    let alive = true
+    sentenceCache.set(key, null)
+    const items = tools.slice(0, 24).map((t) => ({
+      name: shortName(t.name),
+      detail: detailOf(t, projectCwd),
+      output: t.output ? t.output.slice(0, 220) : undefined
+    }))
+    void client
+      .request<string | null>('tools.summarize', { sessionId, groupKey: key, items })
+      .then((s) => {
+        if (s) {
+          sentenceCache.set(key, s)
+          if (alive) bump((n) => n + 1)
+        }
+      })
+      .catch(() => {})
+    return () => {
+      alive = false
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- one request per settled group
+  }, [enabled, key, sessionId])
+  return key ? (sentenceCache.get(key) ?? null) : null
+}
+
 /** Expansion state survives virtualization — rows scrolled out of the
  *  overscan window unmount, and a section the user opened must still be
  *  open when they scroll back. Keyed by callId (harness-unique). */
@@ -874,10 +914,12 @@ const Chip = memo(function Chip({ b }: { b: ToolBlock }): React.JSX.Element {
  *  directly — never a second nested expansion. */
 export const ToolGroup = memo(function ToolGroup({
   tools,
-  autoOpen = false
+  autoOpen = false,
+  sessionId
 }: {
   tools: ToolBlock[]
   autoOpen?: boolean
+  sessionId?: string
 }): React.JSX.Element {
   const gkey = `g:${tools[0].callId}`
   const [override, setOverrideRaw] = useState<boolean | null>(
@@ -892,6 +934,7 @@ export const ToolGroup = memo(function ToolGroup({
   // Auto-open shows the CHIP LIST growing — a single tool has no list,
   // its expansion is the invocation/output dump, so it stays folded.
   const open = override ?? (autoOpen && tools.length > 1)
+  const sentence = useSentenceSummary(tools, sessionId)
 
   const single = tools.length === 1 ? tools[0] : null
   const k = single ? kindOf(single) : null
@@ -940,7 +983,7 @@ export const ToolGroup = memo(function ToolGroup({
             {running ? (
               <TextShimmer>{groupSummary(tools, sessions)}</TextShimmer>
             ) : (
-              groupSummary(tools, sessions)
+              (sentence ?? groupSummary(tools, sessions))
             )}
           </span>
         )}

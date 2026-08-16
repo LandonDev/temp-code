@@ -82,6 +82,7 @@ const FAVORITES_KEY = 'model-favorites'
 const THEME_KEY = 'theme'
 const LAST_SEEN_KEY = 'thread-last-seen'
 const MID_TURN_KEY = 'mid-turn-default'
+const TOOL_SUMMARIES_KEY = 'tool-summaries'
 const SURFACES_KEY = 'surfaces-v1'
 const FORMAT_KEY = 'format-on-save'
 const GHOST_KEY = 'ghost-text'
@@ -179,6 +180,8 @@ interface AppState {
   contexts: Record<string, unknown>
   /** what Enter does while a turn runs; ⌘Enter does the other */
   midTurnDefault: 'queue' | 'steer'
+  /** settled tool sections get a one-sentence model-written summary */
+  toolSummaries: boolean
 
   init: () => Promise<void>
   refreshTree: () => Promise<void>
@@ -236,6 +239,7 @@ interface AppState {
   /** Mark a thread's activity as seen (clears its unread dot). */
   markSeen: (sessionId: string) => void
   setMidTurnDefault: (v: 'queue' | 'steer') => void
+  setToolSummaries: (v: boolean) => void
   /** Fast mode / 1M context; harness restarts with resume on next send. */
   tune: (sessionId: string, patch: { fast?: boolean; context1m?: boolean }) => Promise<void>
   fetchContext: (sessionId: string) => Promise<void>
@@ -373,6 +377,7 @@ export const useApp = create<AppState>((set, get) => ({
   queues: {},
   contexts: {},
   midTurnDefault: localStorage.getItem(MID_TURN_KEY) === 'steer' ? 'steer' : 'queue',
+  toolSummaries: localStorage.getItem(TOOL_SUMMARIES_KEY) !== 'off',
 
   init: async () => {
     if (initStarted) return
@@ -786,6 +791,11 @@ export const useApp = create<AppState>((set, get) => ({
   setMidTurnDefault: (v) => {
     localStorage.setItem(MID_TURN_KEY, v)
     set({ midTurnDefault: v })
+  },
+
+  setToolSummaries: (v) => {
+    localStorage.setItem(TOOL_SUMMARIES_KEY, v ? 'on' : 'off')
+    set({ toolSummaries: v })
   },
 
   queueAdd: async (sessionId, text, opts) => {

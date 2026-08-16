@@ -149,11 +149,11 @@ export const BlockRow = memo(function BlockRow({
           {edits.map((eb) => (
             <ZEditCard key={eb.id} b={eb} />
           ))}
-          {internal && <ToolGroup tools={[internal]} />}
+          {internal && <ToolGroup tools={[internal]} sessionId={sessionId} />}
         </>
       )
     }
-    return <ToolGroup tools={[block]} />
+    return <ToolGroup tools={[block]} sessionId={sessionId} />
   }
   if (block.kind === 'thinking' && block.text.trim() === '') return <></>
   return <RowContent row={{ type: 'block', id: block.id, block, turn: 0 }} sessionId={sessionId} />
@@ -168,7 +168,8 @@ const RowContent = memo(function RowContent({
   sessionId: string
   autoOpen?: boolean
 }): React.JSX.Element {
-  if (row.type === 'group') return <ToolGroup tools={row.tools} autoOpen={autoOpen} />
+  if (row.type === 'group')
+    return <ToolGroup tools={row.tools} autoOpen={autoOpen} sessionId={sessionId} />
   if (row.type === 'edit') return <ZEditCard b={row.block} />
   const block = row.block
   switch (block.kind) {
