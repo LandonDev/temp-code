@@ -1,6 +1,6 @@
 import { memo, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { cn, displayPath } from '../../../lib/utils'
-import { commandPhrases, humanizeCommand, pastPhrase } from '../../../lib/humanize'
+import { commandPhrases, humanizeCommand, pastPhrase, stripShell } from '../../../lib/humanize'
 import { useApp } from '../../../state/store'
 import { ZIcon, type ZIconName } from '../zicon'
 import { duration } from '../bits'
@@ -442,33 +442,157 @@ function DiffBlock({ b }: { b: ToolBlock }): React.JSX.Element {
   )
 }
 
-/** The invocation block — "what was asked": the complete command, pattern,
- *  URL or input JSON, soft-wrapped. */
-function InvocationBlock({ b }: { b: ToolBlock }): React.JSX.Element {
+/** The invocation, pretty: the command without its shell wrapper, the
+ *  pattern, the URL — never raw JSON (PrettyJson covers structured input). */
+function invocationBody(b: ToolBlock): string {
   const i = input(b)
-  const k = kindOf(b)
-  const body =
-    k === 'run'
-      ? str(i.command)
-      : k === 'search'
-        ? [str(i.pattern), str(i.path) && `in ${str(i.path)}`].filter(Boolean).join(' ')
-        : k === 'glob'
-          ? str(i.pattern)
-          : k === 'fetch'
-            ? str(i.url)
-            : k === 'web'
-              ? str(i.query)
-              : k === 'read' || k === 'write' || k === 'edit'
-                ? pathOf(b)
-                : JSON.stringify(b.input ?? {}, null, 2)
+  switch (kindOf(b)) {
+    case 'run':
+      return stripShell(str(i.command))
+    case 'search':
+      return [str(i.pattern), str(i.path) && `in ${str(i.path)}`].filter(Boolean).join(' ')
+    case 'glob':
+      return str(i.pattern)
+    case 'fetch':
+      return str(i.url)
+    case 'web':
+      return str(i.query)
+    default:
+      return pathOf(b)
+  }
+}
+
+/** JSON payload → structured view fodder; undefined when it isn't JSON. */
+function parseJson(text: string): unknown {
+  const t = text.trim()
+  if (!/^[[{]/.test(t)) return undefined
+  try {
+    return JSON.parse(t)
+  } catch {
+    return undefined
+  }
+}
+
+const scalar = (v: unknown): string =>
+  typeof v === 'string'
+    ? v
+    : v === null
+      ? '—'
+      : typeof v === 'object'
+        ? JSON.stringify(v)
+        : String(v)
+
+/** Key/value rows — the pretty face of any JSON object. Thread ids keep
+ *  resolving to titles here too. */
+function KVRows({
+  obj,
+  titles
+}: {
+  obj: Record<string, unknown>
+  titles: ThreadTitles
+}): React.JSX.Element {
   return (
-    <div className="px-3 py-1.5">
-      <pre className="font-mono text-[11.5px] leading-[18px] whitespace-pre-wrap [overflow-wrap:anywhere] text-muted-foreground">
-        {body}
-      </pre>
+    <div className="space-y-px">
+      {Object.entries(obj).map(([k, v]) => {
+        const title =
+          /threadid|sessionid/i.test(k) && typeof v === 'string' ? titles[v]?.title : undefined
+        return (
+          <div key={k} className="flex gap-2 text-[11.5px] leading-[18px]">
+            <span className="w-24 shrink-0 truncate text-faint">{k}</span>
+            <span className="min-w-0 flex-1 break-words whitespace-pre-wrap text-foreground/85">
+              {title ?? scalar(v)}
+            </span>
+          </div>
+        )
+      })}
     </div>
   )
 }
+
+const PRETTY_ROW_CAP = 12
+
+function PrettyJson({
+  value,
+  titles
+}: {
+  value: unknown
+  titles: ThreadTitles
+}): React.JSX.Element {
+  if (Array.isArray(value)) {
+    const shown = value.slice(0, PRETTY_ROW_CAP)
+    return (
+      <div>
+        {shown.map((v, n) => (
+          <div key={n} className={cn(n > 0 && 'mt-1 border-t border-(--hairline) pt-1')}>
+            {v && typeof v === 'object' ? (
+              <KVRows obj={v as Record<string, unknown>} titles={titles} />
+            ) : (
+              <div className="text-[11.5px] leading-[18px] text-foreground/85">{scalar(v)}</div>
+            )}
+          </div>
+        ))}
+        {value.length > shown.length && (
+          <div className="pt-1 text-[10.5px] text-faint">… {value.length - shown.length} more</div>
+        )}
+      </div>
+    )
+  }
+  if (value && typeof value === 'object') {
+    return <KVRows obj={value as Record<string, unknown>} titles={titles} />
+  }
+  return <div className="text-[11.5px] leading-[18px] text-foreground/85">{scalar(value)}</div>
+}
+
+/**
+ * The expansion body every tool row shares: what was asked, then what came
+ * back — pretty by default (wrapper-free command, key/value JSON), verbatim
+ * behind one small `raw` toggle in the corner.
+ */
+const ToolDetails = memo(function ToolDetails({ b }: { b: ToolBlock }): React.JSX.Element {
+  const [raw, setRaw] = usePersistedOpen(`raw:${b.callId}`)
+  const sessions = useApp((s) => s.sessions)
+  const k = kindOf(b)
+  if (k === 'todo') return <TodoBlock b={b} />
+
+  const structuredIn = k === 'mcp' || k === 'tool' || k === 'patch'
+  const parsedOut = !raw && b.output !== undefined && !b.isError ? parseJson(b.output) : undefined
+
+  return (
+    <div className="relative">
+      <button
+        onClick={() => setRaw(!raw)}
+        title={raw ? 'Formatted view' : 'Verbatim invocation and output'}
+        className="absolute top-1.5 right-2 z-10 text-[10px] font-medium text-faint transition-colors duration-150 hover:text-foreground"
+      >
+        {raw ? 'pretty' : 'raw'}
+      </button>
+      <div className="px-3 py-1.5 pr-12">
+        {raw ? (
+          <pre className="font-mono text-[11.5px] leading-[18px] whitespace-pre-wrap [overflow-wrap:anywhere] text-muted-foreground">
+            {k === 'run' ? str(input(b).command) : JSON.stringify(b.input ?? {}, null, 2)}
+          </pre>
+        ) : structuredIn ? (
+          <PrettyJson value={b.input ?? {}} titles={sessions} />
+        ) : (
+          <pre className="font-mono text-[11.5px] leading-[18px] whitespace-pre-wrap [overflow-wrap:anywhere] text-muted-foreground">
+            {invocationBody(b)}
+          </pre>
+        )}
+      </div>
+      {b.output !== undefined && (
+        <div className="border-t border-(--hairline)">
+          {parsedOut !== undefined ? (
+            <div className="px-3 py-1.5">
+              <PrettyJson value={parsedOut} titles={sessions} />
+            </div>
+          ) : (
+            <OutputBlock text={b.output} error={b.isError} />
+          )}
+        </div>
+      )}
+    </div>
+  )
+})
 
 function TodoBlock({ b }: { b: ToolBlock }): React.JSX.Element {
   const i = input(b)
@@ -511,7 +635,6 @@ const Chip = memo(function Chip({ b }: { b: ToolBlock }): React.JSX.Element {
   // (edit cards use the partial input; small chips would just flicker).
   const loading = b.input === undefined || b.partialInput === true
   const [wasLoading] = useState(loading)
-  const isDiff = (k === 'edit' || k === 'write') && !b.isError
 
   return (
     <div className="pt-0.5">
@@ -555,20 +678,8 @@ const Chip = memo(function Chip({ b }: { b: ToolBlock }): React.JSX.Element {
         </button>
         <TweenHeight open={open} animate={userToggled}>
           <div className="border-t border-(--hairline)">
-            {k === 'todo' ? <TodoBlock b={b} /> : <InvocationBlock b={b} />}
+            <ToolDetails b={b} />
           </div>
-          {isDiff ? (
-            <div className="border-t border-(--hairline)">
-              <DiffBlock b={b} />
-            </div>
-          ) : (
-            b.output !== undefined &&
-            k !== 'todo' && (
-              <div className="border-t border-(--hairline)">
-                <OutputBlock text={b.output} error={b.isError} />
-              </div>
-            )
-          )}
         </TweenHeight>
       </div>
     </div>
@@ -662,12 +773,7 @@ export const ToolGroup = memo(function ToolGroup({
           <div className="ml-6">
             {single ? (
               <div className="mt-0.5 rounded-[9px] border border-(--chip-border) bg-(--chip-bg)">
-                {k === 'todo' ? <TodoBlock b={single} /> : <InvocationBlock b={single} />}
-                {single.output !== undefined && k !== 'todo' && (
-                  <div className="border-t border-(--hairline)">
-                    <OutputBlock text={single.output} error={single.isError} />
-                  </div>
-                )}
+                <ToolDetails b={single} />
               </div>
             ) : (
               tools.map((t) => <Chip key={t.id} b={t} />)
