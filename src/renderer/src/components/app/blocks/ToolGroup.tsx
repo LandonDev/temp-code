@@ -1045,7 +1045,7 @@ function parsePatchDiff(
   }
 }
 
-function editModel(b: ToolBlock): EditModel {
+export function editModel(b: ToolBlock): EditModel {
   const i = input(b)
   const lines = (s: string): string[] => (s === '' ? [] : s.split('\n'))
   const empty: EditModel = { path: '', adds: 0, dels: 0, create: false, hunks: [], extraPaths: [] }

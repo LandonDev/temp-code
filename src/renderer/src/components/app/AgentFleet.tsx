@@ -8,6 +8,8 @@ import { activityLine, lastAssistantLine, taskTitle } from '../../lib/activity'
 import { SPRING_PANEL } from '../../lib/ease'
 import { duration, ProviderMark, StatusDot } from './bits'
 import { Spinner } from '../ui/spinner'
+import { EDIT_TOOLS, editModel, splitEdit } from './blocks/ToolGroup'
+import type { Block } from '../../state/blocks'
 import { Transcript } from './Transcript'
 
 /**
@@ -58,6 +60,116 @@ function useModelLabel(agent: SessionMeta): string {
   return catalog?.[agent.provider]?.models.find((m) => m.id === agent.model)?.label ?? agent.model
 }
 
+/** Compacting right now = the latest compaction block never settled. */
+const isCompacting = (blocks: Block[] | undefined): boolean =>
+  blocks?.findLast((b) => b.kind === 'compaction')?.phase === 'start'
+
+interface AgentStats {
+  adds: number
+  dels: number
+  tasksDone: number
+  tasksTotal: number
+  /** live context-window fill, 0–100; null until the harness reports one */
+  ctxPct: number | null
+  compacting: boolean
+}
+
+/** The agent's work at a glance: diffstat, task progress, context fill.
+ *  Everything derives from data the store already streams; the context
+ *  meter refreshes on an interval while the agent is live. */
+export function useAgentStats(agent: SessionMeta): AgentStats {
+  const blocks = useApp((s) => s.blocks[agent.id])
+  const todos = useApp((s) => s.todos[agent.id])
+  const ctx = useApp(
+    (s) => s.contexts[agent.id] as { percentage?: number; maxTokens?: number } | null | undefined
+  )
+  const fetchContext = useApp((s) => s.fetchContext)
+  const live = agent.status === 'running' || agent.status === 'starting'
+
+  useEffect(() => {
+    if (!live) return
+    void fetchContext(agent.id)
+    const t = setInterval(() => void fetchContext(agent.id), 20_000)
+    return () => clearInterval(t)
+  }, [live, agent.id, fetchContext])
+
+  const { adds, dels } = useMemo(() => {
+    let adds = 0
+    let dels = 0
+    for (const b of blocks ?? []) {
+      if (b.kind !== 'tool' || !EDIT_TOOLS.has(b.name)) continue
+      for (const e of splitEdit(b).edits) {
+        const m = editModel(e)
+        adds += m.adds
+        dels += m.dels
+      }
+    }
+    return { adds, dels }
+  }, [blocks])
+
+  return {
+    adds,
+    dels,
+    tasksDone: todos?.filter((t) => t.status === 'completed').length ?? 0,
+    tasksTotal: todos?.length ?? 0,
+    ctxPct: ctx && ctx.maxTokens ? Math.min(100, Math.round(ctx.percentage ?? 0)) : null,
+    compacting: isCompacting(blocks)
+  }
+}
+
+/** The stats, rendered one quiet line: "+120 −45 · 3/7 tasks · ctx 42%". */
+export function AgentStatsLine({
+  agent,
+  className
+}: {
+  agent: SessionMeta
+  className?: string
+}): React.JSX.Element | null {
+  const s = useAgentStats(agent)
+  const parts: React.JSX.Element[] = []
+  if (s.adds || s.dels) {
+    parts.push(
+      <span key="diff" className="tabular-nums">
+        <span className="text-success">+{s.adds}</span>{' '}
+        <span className="text-destructive">−{s.dels}</span>
+      </span>
+    )
+  }
+  if (s.tasksTotal > 0) {
+    parts.push(
+      <span key="tasks" className="tabular-nums">
+        {s.tasksDone}/{s.tasksTotal} tasks · {Math.round((s.tasksDone / s.tasksTotal) * 100)}%
+      </span>
+    )
+  }
+  if (s.compacting) {
+    parts.push(
+      <span key="compact" className="text-violet">
+        compacting…
+      </span>
+    )
+  } else if (s.ctxPct !== null) {
+    parts.push(
+      <span key="ctx" className={cn('tabular-nums', s.ctxPct >= 80 && 'text-warning')}>
+        ctx {s.ctxPct}%
+      </span>
+    )
+  }
+  if (parts.length === 0) return null
+  return (
+    <span
+      className={cn('flex items-center gap-1.5 text-[11px] text-muted-foreground/70', className)}
+    >
+      {parts.map((p, i) => (
+        <span key={i} className="flex items-center gap-1.5">
+          {i > 0 && <span className="text-muted-foreground/40">·</span>}
+          {p}
+        </span>
+      ))}
+    </span>
+  )
+}
+
 /** The status-dependent second line: what this agent needs or last did. */
 function useAgentLine(agent: SessionMeta): { text: string | null; tone: string } {
   const line = useApp((s) => {
@@ -79,6 +191,7 @@ function useAgentLine(agent: SessionMeta): { text: string | null; tone: string }
       }
       case 'running':
       case 'starting':
+        if (isCompacting(blocks)) return 'compacting the context…'
         return activityLine(blocks)
       default:
         return lastAssistantLine(blocks)
@@ -143,6 +256,7 @@ export function AgentRow({
         <span className={cn('block truncate text-[11px] leading-4', tone, !text && 'italic')}>
           {text ?? 'starting up'}
         </span>
+        <AgentStatsLine agent={agent} className="mt-px" />
       </span>
       <span className="flex shrink-0 flex-col items-end gap-px">
         <span className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
@@ -210,6 +324,7 @@ export function AgentDetail({
                   {branch}
                 </span>
               )}
+              <AgentStatsLine agent={agent} />
             </span>
           </span>
           {cost !== undefined && (
@@ -228,6 +343,7 @@ export function AgentDetail({
 
         <Transcript
           sessionId={agent.id}
+          minimap={false}
           className="min-h-0 flex-1 overflow-y-auto bg-background select-text"
         />
 

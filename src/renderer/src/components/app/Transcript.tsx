@@ -193,10 +193,13 @@ const RowContent = memo(function RowContent({
 
 export function Transcript({
   sessionId,
-  className
+  className,
+  minimap = true
 }: {
   sessionId: string
   className?: string
+  /** false: hide the left minimap rail (tight surfaces like agent detail). */
+  minimap?: boolean
 }): React.JSX.Element {
   const blocks = useApp((s) => s.blocks[sessionId]) ?? []
   const status = useApp((s) => s.sessions[sessionId]?.status)
@@ -603,7 +606,7 @@ export function Transcript({
       {/* left rail: the thread at a glance — every row a tick (yours in
           blue, finalized replies solid, mechanics faint), the viewport as
           a sliding window, hover for an instant who-said-what preview. */}
-      {rows.length > 1 && (
+      {minimap && rows.length > 1 && (
         <Minimap
           rows={rows}
           totalSize={totalSize}
