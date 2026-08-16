@@ -49,6 +49,8 @@ type BlockKind =
       doneTs?: number
       /** humanized face for addon calls (Codex appContext): app + action */
       display?: { app?: string; action?: string }
+      /** connector wants reauthentication — url opens the fix */
+      reauth?: { app: string; url: string }
       /** activity events from a subagent running under this call */
       subCount: number
     }
@@ -320,7 +322,7 @@ export function foldEvent(s: FoldState, e: AgentEvent, ts?: number): void {
       const idx = s.byCall.get(e.callId)
       if (idx !== undefined) {
         const b = s.blocks[idx] as Extract<Block, { kind: 'tool' }>
-        s.blocks[idx] = { ...b, output: e.output, isError: e.isError, doneTs: ts }
+        s.blocks[idx] = { ...b, output: e.output, isError: e.isError, doneTs: ts, reauth: e.reauth }
       }
       break
     }

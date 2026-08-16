@@ -991,6 +991,21 @@ const Chip = memo(function Chip({
           >
             {loading ? '' : running ? <TextShimmer>{detail}</TextShimmer> : detail}
           </span>
+          {b.reauth && (
+            <span
+              role="button"
+              tabIndex={0}
+              onClick={(e) => {
+                e.stopPropagation()
+                window.open(b.reauth!.url)
+              }}
+              onKeyDown={(e) => e.key === 'Enter' && window.open(b.reauth!.url)}
+              title={`Reconnect ${b.reauth.app} — opens ChatGPT's app page`}
+              className="flex shrink-0 cursor-pointer items-center gap-1 rounded-md bg-warning/10 px-1.5 py-0.5 text-[10.5px] font-medium text-warning transition hover:bg-warning/20 active:scale-95"
+            >
+              Reconnect {b.reauth.app}
+            </span>
+          )}
           {toolMs(b) !== undefined && (
             <span className="shrink-0 text-[10.5px] tabular-nums text-muted-foreground/60">
               {duration(toolMs(b)!)}

@@ -93,6 +93,8 @@ export const AgentEventSchema = z.discriminatedUnion('type', [
     type: z.literal('tool-result'),
     callId: z.string(),
     output: z.string(),
+    /** a connector answered "reauthenticate" — the link fixes it */
+    reauth: z.object({ app: z.string(), url: z.string() }).optional(),
     isError: z.boolean(),
     parentCallId: z.string().optional()
   }),
