@@ -1,7 +1,8 @@
-appId: com.electron.app
-productName: temp-code
+appId: dev.landon.tempcode
+productName: TempCode
 directories:
   buildResources: build
+  output: dist
 files:
   - '!**/.vscode/*'
   - '!src/*'
@@ -9,8 +10,9 @@ files:
   - '!{.eslintcache,eslint.config.mjs,.prettierignore,.prettierrc.yaml,dev-app-update.yml,CHANGELOG.md,README.md}'
   - '!{.env,.env.*,.npmrc,pnpm-lock.yaml}'
   - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}'
-asarUnpack:
-  - resources/**
+# The app spawns real child processes out of node_modules (claude cli.js,
+# vtsls); asar would hide them behind a virtual path. Size over surprises.
+asar: false
 win:
   executableName: temp-code
 nsis:

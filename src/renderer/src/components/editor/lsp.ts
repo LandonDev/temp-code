@@ -101,6 +101,7 @@ interface LspCompletionItem {
   labelDetails?: { detail?: string; description?: string }
   command?: LspCommand
   kind?: number
+  tags?: number[]
   detail?: string
   documentation?: string | { value: string }
   insertText?: string
@@ -1268,7 +1269,10 @@ export function registerProviders(): void {
         else if (winner !== null) {
           recordIdea(pid, winner.r !== null)
           const arr = winner.r === null ? [] : Array.isArray(winner.r) ? winner.r : winner.r.items
-          if (arr.length > 0) {
+          // A cold engine serves postfix templates before real members —
+          // a list with no substantive item must not beat jdtls's full one.
+          const substantive = arr.some((i) => i.kind !== undefined && i.kind !== 15 && i.kind !== 1)
+          if (arr.length > 0 && (substantive || !conn)) {
             result = winner.r
             source = settledIdea.get(pid) ?? source
           }
@@ -1317,6 +1321,10 @@ export function registerProviders(): void {
                 }
               : label,
             kind: COMPLETION_KINDS[(item.kind ?? 1) - 1] ?? CIK.Text,
+            // IDEA strikes deprecated members through — LSP tag 1.
+            tags: item.tags?.includes(1)
+              ? [monaco.languages.CompletionItemTag.Deprecated]
+              : undefined,
             insertText,
             command: callLike
               ? { id: 'editor.action.triggerParameterHints', title: '' }

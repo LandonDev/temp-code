@@ -552,3 +552,124 @@ textarea::-webkit-scrollbar {
 .monaco-editor .tc-debug-line {
   background: color-mix(in oklch, var(--warning) 14%, transparent);
 }
+
+/* ---------------------------------------------------------------------------
+ * IDEA new-UI completion popup — exact match to the user's screenshots
+ * (2026-08-16): #2B2D30 panel, rounded 10px, #393B40 selection, letter-badge
+ * icons, bold-white matched letters, gray signatures inline, gray types
+ * right-aligned, footer tip bar. Monaco injects styles at runtime, hence
+ * the !important levers.
+ * ------------------------------------------------------------------------- */
+.monaco-editor .suggest-widget {
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: 0 10px 28px rgb(0 0 0 / 0.4);
+}
+.monaco-editor .suggest-widget .monaco-list-row {
+  padding-left: 4px;
+}
+/* names: near-white medium; matched letters bold (color via theme var) */
+.monaco-editor .suggest-widget .monaco-list-row .monaco-icon-label {
+  font-weight: 500;
+}
+.monaco-editor .suggest-widget .monaco-highlighted-label .highlight {
+  font-weight: 700;
+}
+/* signature immediately after the name: solid gray, full size */
+.monaco-editor .suggest-widget .monaco-list-row > .contents > .main > .left > .signature-label {
+  opacity: 1 !important;
+  color: #7a7e85;
+}
+/* type/package column: right-aligned solid gray, full size */
+.monaco-editor .suggest-widget .monaco-list-row > .contents > .main > .right > .details-label {
+  font-size: 100% !important;
+  color: #7a7e85 !important;
+  margin-right: 6px;
+}
+html:not(.dark) .monaco-editor .suggest-widget .signature-label,
+html:not(.dark) .monaco-editor .suggest-widget .details-label {
+  color: #818594 !important;
+}
+/* kind-colored names, IDEA-style */
+.monaco-editor .suggest-widget .monaco-list-row:has(.codicon-symbol-class) .monaco-icon-label,
+.monaco-editor .suggest-widget .monaco-list-row:has(.codicon-symbol-interface) .monaco-icon-label,
+.monaco-editor .suggest-widget .monaco-list-row:has(.codicon-symbol-struct) .monaco-icon-label,
+.monaco-editor .suggest-widget .monaco-list-row:has(.codicon-symbol-enum) .monaco-icon-label {
+  color: #6c9edd;
+}
+.monaco-editor .suggest-widget .monaco-list-row:has(.codicon-symbol-constant) .monaco-icon-label,
+.monaco-editor .suggest-widget .monaco-list-row:has(.codicon-symbol-enum-member) .monaco-icon-label {
+  color: #c0a85c;
+  font-weight: 600;
+}
+.monaco-editor .suggest-widget .monaco-list-row:has(.codicon-symbol-keyword) .monaco-icon-label {
+  color: #cc7832;
+}
+html:not(.dark) .monaco-editor .suggest-widget .monaco-list-row:has(.codicon-symbol-class) .monaco-icon-label,
+html:not(.dark) .monaco-editor .suggest-widget .monaco-list-row:has(.codicon-symbol-interface) .monaco-icon-label,
+html:not(.dark) .monaco-editor .suggest-widget .monaco-list-row:has(.codicon-symbol-enum) .monaco-icon-label {
+  color: #2a5fb0;
+}
+/* IDEA letter-badge icons in place of codicons (any icon container shape) */
+.monaco-editor .suggest-widget .monaco-list-row .codicon[class*='codicon-symbol-'] {
+  width: 15px !important;
+  height: 15px !important;
+  margin-top: auto;
+  margin-bottom: auto;
+  margin-right: 7px;
+  border-radius: 50%;
+  font-family: 'JetBrains Mono', monospace !important;
+  font-size: 9px !important;
+  font-weight: 700;
+  line-height: 15px !important;
+  text-align: center;
+  color: #fff !important;
+  background: #6b6e76;
+  flex-shrink: 0;
+}
+.monaco-editor .suggest-widget .codicon[class*='codicon-symbol-']::before {
+  content: '?';
+  font-family: inherit;
+}
+.monaco-editor .suggest-widget .codicon-symbol-class { background: #4a7cf0 !important; }
+.monaco-editor .suggest-widget .codicon-symbol-class::before { content: 'C'; }
+.monaco-editor .suggest-widget .codicon-symbol-interface { background: #34a05a !important; }
+.monaco-editor .suggest-widget .codicon-symbol-interface::before { content: 'I'; }
+.monaco-editor .suggest-widget .codicon-symbol-enum { background: #b07203 !important; }
+.monaco-editor .suggest-widget .codicon-symbol-enum::before { content: 'E'; }
+.monaco-editor .suggest-widget .codicon-symbol-enum-member { background: #b07203 !important; }
+.monaco-editor .suggest-widget .codicon-symbol-enum-member::before { content: 'e'; }
+.monaco-editor .suggest-widget .codicon-symbol-method { background: #c75450 !important; }
+.monaco-editor .suggest-widget .codicon-symbol-method::before { content: 'm'; }
+.monaco-editor .suggest-widget .codicon-symbol-function { background: #c75450 !important; }
+.monaco-editor .suggest-widget .codicon-symbol-function::before { content: 'f'; }
+.monaco-editor .suggest-widget .codicon-symbol-constructor { background: #c75450 !important; }
+.monaco-editor .suggest-widget .codicon-symbol-constructor::before { content: 'c'; }
+.monaco-editor .suggest-widget .codicon-symbol-field { background: #c77dbb !important; }
+.monaco-editor .suggest-widget .codicon-symbol-field::before { content: 'f'; }
+.monaco-editor .suggest-widget .codicon-symbol-property { background: #c77dbb !important; }
+.monaco-editor .suggest-widget .codicon-symbol-property::before { content: 'p'; }
+.monaco-editor .suggest-widget .codicon-symbol-variable { background: #4a9aa6 !important; }
+.monaco-editor .suggest-widget .codicon-symbol-variable::before { content: 'v'; }
+.monaco-editor .suggest-widget .codicon-symbol-constant { background: #b07203 !important; }
+.monaco-editor .suggest-widget .codicon-symbol-constant::before { content: 'c'; }
+.monaco-editor .suggest-widget .codicon-symbol-keyword { background: #787878 !important; }
+.monaco-editor .suggest-widget .codicon-symbol-keyword::before { content: 'k'; }
+.monaco-editor .suggest-widget .codicon-symbol-snippet { background: #787878 !important; }
+.monaco-editor .suggest-widget .codicon-symbol-snippet::before { content: 't'; }
+.monaco-editor .suggest-widget .codicon-symbol-module { background: #6b6e76 !important; }
+.monaco-editor .suggest-widget .codicon-symbol-module::before { content: 'M'; }
+.monaco-editor .suggest-widget .codicon-symbol-text { background: #6b6e76 !important; }
+.monaco-editor .suggest-widget .codicon-symbol-text::before { content: 'a'; }
+/* footer tip bar */
+.monaco-editor .suggest-widget .suggest-status-bar {
+  border-top: 1px solid rgb(255 255 255 / 0.06);
+  background: #2b2d30;
+  font-size: 10.5px;
+  color: #7a7e85;
+  padding: 2px 10px;
+}
+html:not(.dark) .monaco-editor .suggest-widget .suggest-status-bar {
+  background: #f7f8fa;
+  border-top-color: rgb(0 0 0 / 0.08);
+}

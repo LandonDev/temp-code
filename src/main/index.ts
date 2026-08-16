@@ -1,6 +1,8 @@
 import { app, shell, dialog, BrowserWindow, ipcMain } from 'electron'
 import { homedir } from 'os'
 import { join } from 'path'
+import { copyFileSync, existsSync, mkdirSync } from 'fs'
+import { registerUpdates } from './update'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 import { startServer, type RunningServer } from './server'
@@ -61,7 +63,22 @@ app.whenReady().then(async () => {
     optimizer.watchWindowShortcuts(window)
   })
 
+  // The packaged app's userData follows its product name (TempCode); the
+  // years of dev-mode data live under the old package-name dir. First
+  // packaged boot copies the database over so nothing is lost.
+  if (app.isPackaged && !process.env.TEMP_CODE_USER_DATA) {
+    const dbPath = join(app.getPath('userData'), 'temp-code.db')
+    const oldDir = join(homedir(), 'Library', 'Application Support', 'temp-code')
+    if (!existsSync(dbPath) && existsSync(join(oldDir, 'temp-code.db'))) {
+      mkdirSync(app.getPath('userData'), { recursive: true })
+      for (const f of ['temp-code.db', 'temp-code.db-wal', 'temp-code.db-shm']) {
+        if (existsSync(join(oldDir, f)))
+          copyFileSync(join(oldDir, f), join(app.getPath('userData'), f))
+      }
+    }
+  }
   server = await startServer(join(app.getPath('userData'), 'temp-code.db'))
+  registerUpdates()
   ipcMain.handle('server-port', () => server?.port ?? null)
   ipcMain.handle('pick-directory', async (_e, defaultPath?: string) => {
     const res = await dialog.showOpenDialog({
