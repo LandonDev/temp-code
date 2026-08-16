@@ -82,12 +82,13 @@ export interface BranchList {
   current: string | null
 }
 
-/** One running language server in lsp.status (Settings visibility). */
+/** One running language server in lsp.status (Settings visibility).
+ *  'indexing' is a background warm-up job, not a servable engine. */
 export interface LspStatusRow {
   serverId: string
   projectId: string
   lang: 'java' | 'web' | 'idea'
-  state: 'starting' | 'downloading' | 'running' | 'error'
+  state: 'starting' | 'downloading' | 'running' | 'error' | 'indexing'
   /** RSS of the child process, bytes (best effort) */
   memoryBytes: number | null
   /** ms since the last open surface used it */

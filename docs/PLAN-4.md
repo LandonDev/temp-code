@@ -304,3 +304,29 @@ Risks, with mitigations:
   #2B2D30 panel (10px radius), #393B40 selection, letter-badge icons
   per kind, bold matched letters, solid-gray inline signatures and
   right-aligned types, footer tip bar, 26px rows.
+
+## Amendment — background index warming (post-M21)
+
+- **`intellij/ready-for-test` exists.** The engine notifies when import
+  + indexing finish (the dist's own `bin/warmup.py` waits for it). The
+  earlier "readiness is only observable through answers" note is wrong.
+- **Main runs a sequential warm queue**: on startup (+15 s), every
+  10 minutes, on project.create, and on EULA acceptance, each Java
+  project without a live engine gets an index-then-exit run — spawn at
+  background QoS (`taskpolicy -b`), initialize, wait for ready, shut
+  down. State in `~/.temp-code/intellij-server/warm/<projectId>.json`
+  (git HEAD + engine build); unchanged → skip. Measured: cold ~2.5 min,
+  incremental re-warm ~15 s. A live `ensureLsp` cancels the warm job
+  for its project (same `--system-path` lock); failures back off 1 h.
+- **Focus-boot**: selecting a project with JVM build files boots the
+  live engine immediately (renderer `warmProjectEngine`), so the first
+  keystroke races a warm connection — no file open needed.
+- **Eviction must not reconnect**: with two projects' engines alive, an
+  LRU eviction (WS close 4001) used to trigger the evicted renderer
+  connection's re-ensure, which evicted the evictor — a ping-pong of
+  3 GB JVM boots. Idea connections now stay down on 4001 and are
+  re-created fresh on next focus (connect() re-syncs open models).
+  `CAPS.idea` is 2: the two most recent projects switch instantly.
+- **The analyzer cache key is *not* `md5(projectPath)`** (tested: no
+  hash of path/URI variants matches). Cache-dir existence checks and
+  sweeps are off the table; the warm-state file is the only ledger.

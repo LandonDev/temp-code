@@ -60,7 +60,9 @@ import {
   ideaEula,
   javaDoctor,
   lspStatus,
-  stopAllLsp
+  stopAllLsp,
+  sweepIdeaWarmState,
+  warmIdeaIndexes
 } from './lsp'
 import { fimComplete } from './fim'
 
@@ -107,6 +109,19 @@ export async function startServer(dbPath: string): Promise<RunningServer> {
   setAppToolsRegistry(registry)
   setSummarizeContext(registry, store)
   void runDoctor() // warm the cache so the new-session modal opens ready
+
+  // Background IntelliJ index warming: shortly after startup, then every
+  // 10 minutes (catches HEAD moves from commits/branch switches). Both
+  // are no-ops for projects that are current.
+  const warmAll = (): void => {
+    const projects = registry.listProjects().map((p) => ({ id: p.id, cwd: p.cwd }))
+    sweepIdeaWarmState(projects.map((p) => p.id))
+    void warmIdeaIndexes(projects)
+  }
+  const warmKickoff = setTimeout(warmAll, 15_000)
+  warmKickoff.unref()
+  const warmTimer = setInterval(warmAll, 10 * 60_000)
+  warmTimer.unref()
 
   const wss = new WebSocketServer({ host: '127.0.0.1', port: 0 })
 
@@ -189,18 +204,17 @@ export async function startServer(dbPath: string): Promise<RunningServer> {
             await registry.deleteWorkspace(req.params.workspaceId)
             sendFrame({ id: req.id, ok: true, result: null })
             break
-          case 'project.create':
-            sendFrame({
-              id: req.id,
-              ok: true,
-              result: await registry.createProject(
-                req.params.workspaceId,
-                req.params.name,
-                req.params.mode,
-                { baseRef: req.params.baseRef, existingBranch: req.params.existingBranch }
-              )
-            })
+          case 'project.create': {
+            const created = await registry.createProject(
+              req.params.workspaceId,
+              req.params.name,
+              req.params.mode,
+              { baseRef: req.params.baseRef, existingBranch: req.params.existingBranch }
+            )
+            sendFrame({ id: req.id, ok: true, result: created })
+            void warmIdeaIndexes([{ id: created.id, cwd: created.cwd }])
             break
+          }
           case 'project.list':
             sendFrame({ id: req.id, ok: true, result: registry.listProjects() })
             break
@@ -369,6 +383,7 @@ export async function startServer(dbPath: string): Promise<RunningServer> {
             break
           case 'idea.acceptEula':
             sendFrame({ id: req.id, ok: true, result: ideaAcceptEula() })
+            warmAll() // acceptance unblocks the whole warm queue
             break
           case 'idea.checkUpdate':
             sendFrame({ id: req.id, ok: true, result: await ideaCheckUpdate() })
@@ -705,6 +720,8 @@ export async function startServer(dbPath: string): Promise<RunningServer> {
     port,
     registry,
     close: async () => {
+      clearTimeout(warmKickoff)
+      clearInterval(warmTimer)
       await registry.disposeAll()
       await closeAllWatchers()
       stopAllLsp()
