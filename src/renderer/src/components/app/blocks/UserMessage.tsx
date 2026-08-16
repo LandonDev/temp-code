@@ -5,6 +5,7 @@ import { client } from '../../../lib/client'
 import { useApp } from '../../../state/store'
 import { ZIcon } from '../zicon'
 import { duration } from '../bits'
+import { AddonMark } from '../AddonMark'
 import type { Block } from '../../../state/blocks'
 
 type UserBlock = Extract<Block, { kind: 'user' }>
@@ -43,10 +44,22 @@ function ImageThumb({ a }: { a: Attachment }): React.JSX.Element {
  *  are — skill chips (anywhere, any number) and clickable file references. */
 const TOKEN = /(@[^\s@]{2,}|(?<=^|\s)\/[\w:-]+(?=$|\s))/g
 
-function TokenizedText({ text }: { text: string }): React.JSX.Element {
+function TokenizedText({
+  text,
+  sessionId
+}: {
+  text: string
+  sessionId?: string
+}): React.JSX.Element {
   const openFileRef = useApp((s) => s.openFileRef)
   const sessions = useApp((s) => s.sessions)
   const select = useApp((s) => s.select)
+  // The session's own command list names each /ref's kind — a Linear
+  // mention wears the Linear mark, a skill wears the skill glyph.
+  const commands = useApp((s) => {
+    const meta = sessionId ? s.sessions[sessionId] : undefined
+    return meta ? s.commands[`${meta.provider}:${meta.cwd}`] : undefined
+  })
   const parts = text.split(TOKEN)
 
   return (
@@ -79,8 +92,13 @@ function TokenizedText({ text }: { text: string }): React.JSX.Element {
           )
         }
         if (n % 2 === 1 && part.startsWith('/')) {
+          const ref = commands?.find((c) => c.name === part.slice(1))
           return (
-            <span key={n} className="rounded-sm bg-accent px-1 font-medium">
+            <span
+              key={n}
+              className="inline-flex items-center gap-1 rounded-sm bg-accent px-1 align-baseline font-medium"
+            >
+              {ref && <AddonMark command={ref} size={11} className="translate-y-px" />}
               {part}
             </span>
           )
@@ -174,7 +192,7 @@ export const UserMessage = memo(function UserMessage({
       )}
       {text && (
         <div className="max-w-[80%] rounded-[16px] bg-bubble px-4 py-2.5 text-[14px] leading-[22px] whitespace-pre-wrap">
-          <TokenizedText text={text} />
+          <TokenizedText text={text} sessionId={sessionId} />
         </div>
       )}
       <SectionTimer block={block} sessionId={sessionId} />
