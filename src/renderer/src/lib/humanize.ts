@@ -255,17 +255,79 @@ function phrase(seg: string): string | null {
   }
 }
 
-/** The row label: up to three distinct phrases joined with " · ". */
-export function humanizeCommand(raw: string): string {
-  const cmd = unwrap(raw)
+/** All distinct phrases for a command, present tense ("check git status"). */
+export function commandPhrases(raw: string): string[] {
   const phrases: string[] = []
-  for (const seg of segments(cmd)) {
+  for (const seg of segments(unwrap(raw))) {
     const p = phrase(seg)
     if (p && !phrases.includes(p)) phrases.push(p)
   }
+  return phrases
+}
+
+/** The row label: up to three distinct phrases joined with " · ". */
+export function humanizeCommand(raw: string): string {
+  const phrases = commandPhrases(raw)
   const extra = phrases.length - 3
   const shown = phrases.slice(0, 3).join(' · ')
   const label = extra > 0 ? `${shown} +${extra} more` : shown
-  const text = label || short(cmd.replace(/\s*\n\s*/g, ' '), 80)
+  const text = label || short(unwrap(raw).replace(/\s*\n\s*/g, ' '), 80)
   return text.charAt(0).toUpperCase() + text.slice(1)
+}
+
+/** Past tense for every verb `phrase()` can lead with, plus the common
+ *  openers of model-written Bash descriptions; unknown verbs pass through. */
+const PAST: Record<string, string> = {
+  check: 'checked',
+  read: 'read',
+  view: 'viewed',
+  list: 'listed',
+  find: 'found',
+  search: 'searched',
+  count: 'counted',
+  run: 'ran',
+  validate: 'validated',
+  build: 'built',
+  make: 'made',
+  typecheck: 'typechecked',
+  install: 'installed',
+  fetch: 'fetched',
+  create: 'created',
+  delete: 'deleted',
+  remove: 'removed',
+  copy: 'copied',
+  move: 'moved',
+  rename: 'renamed',
+  change: 'changed',
+  write: 'wrote',
+  query: 'queried',
+  compare: 'compared',
+  work: 'worked',
+  stage: 'staged',
+  commit: 'committed',
+  push: 'pushed',
+  sync: 'synced',
+  switch: 'switched',
+  stash: 'stashed',
+  show: 'showed',
+  update: 'updated',
+  get: 'got',
+  set: 'set',
+  start: 'started',
+  stop: 'stopped',
+  kill: 'killed',
+  test: 'tested',
+  dump: 'dumped',
+  print: 'printed',
+  extract: 'extracted',
+  download: 'downloaded',
+  upload: 'uploaded'
+}
+
+/** "check git status" → "checked git status" — for settled group summaries. */
+export function pastPhrase(p: string): string {
+  const [first, ...rest] = p.split(' ')
+  if (first.toLowerCase() === 'git') return `ran ${p}`
+  const past = PAST[first.toLowerCase()]
+  return past ? [past, ...rest].join(' ') : p
 }

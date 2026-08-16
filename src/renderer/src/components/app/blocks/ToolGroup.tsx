@@ -1,6 +1,6 @@
 import { memo, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { cn, displayPath } from '../../../lib/utils'
-import { humanizeCommand } from '../../../lib/humanize'
+import { commandPhrases, humanizeCommand, pastPhrase } from '../../../lib/humanize'
 import { useApp } from '../../../state/store'
 import { ZIcon, type ZIconName } from '../zicon'
 import { duration } from '../bits'
@@ -156,49 +156,68 @@ function detailOf(b: ToolBlock, cwd?: string): string {
   }
 }
 
-/** The group summary sentence (proto/view.rs tool_group_summary, verbatim
- *  phrasing): count segments joined by " · ", first letter capitalized.
- *  Deliberately neutral when children failed — errors live on the chips
- *  and in the trailing "· N failed" only. */
-export function groupSummary(tools: ToolBlock[]): string {
-  const counts = new Map<Kind, number>()
-  const editPaths = new Set<string>()
-  let failed = 0
-  for (const t of tools) {
-    const k = kindOf(t)
-    if (k === 'write' || k === 'edit' || k === 'patch') {
-      editPaths.add(pathOf(t) || t.callId)
+const trim = (s: string, n = 32): string => (s.length > n ? `${s.slice(0, n - 1)}…` : s)
+
+/** What one tool did, past tense, lowercase ("checked git status"). */
+function toolPhrases(t: ToolBlock): string[] {
+  const i = input(t)
+  const file = (): string => pathOf(t).split('/').pop() ?? ''
+  switch (kindOf(t)) {
+    case 'run': {
+      const desc = str(i.description)
+      if (desc) return [pastPhrase(desc.charAt(0).toLowerCase() + desc.slice(1))]
+      return commandPhrases(str(i.command)).map(pastPhrase)
     }
-    counts.set(k, (counts.get(k) ?? 0) + 1)
-    if (t.isError) failed++
+    case 'read':
+      return [`read ${file()}`]
+    case 'write':
+    case 'edit':
+    case 'patch':
+      return [`edited ${file()}`]
+    case 'search':
+    case 'glob':
+      return [`searched for ${trim(str(i.pattern), 20)}`]
+    case 'fetch':
+      try {
+        return [`fetched ${new URL(str(i.url)).hostname}`]
+      } catch {
+        return ['fetched a page']
+      }
+    case 'web':
+      return [`searched the web for ${trim(str(i.query), 20)}`]
+    case 'todo':
+      return ['updated todos']
+    // mcp/unknown tool names keep their own casing.
+    default:
+      return [shortName(t.name)]
   }
-  const n = (k: Kind): number => counts.get(k) ?? 0
-  const plural = (count: number, word: string): string =>
-    `${count} ${word}${count === 1 ? '' : 's'}`
-  const segments: string[] = []
-  if (n('run')) segments.push(`ran ${plural(n('run'), 'command')}`)
-  if (editPaths.size) segments.push(`edited ${plural(editPaths.size, 'file')}`)
-  if (n('read')) segments.push(`read ${plural(n('read'), 'file')}`)
-  const searches = n('search') + n('glob') + n('web')
-  if (searches) segments.push(`searched ${plural(searches, 'time')}`)
-  if (n('fetch')) segments.push(`fetched ${plural(n('fetch'), 'page')}`)
-  if (n('todo')) segments.push('updated todos')
-  // Name mcp/unknown tools instead of the opaque "called N tools".
-  const called = tools.filter((t) => {
-    const k = kindOf(t)
-    return k === 'mcp' || k === 'tool'
-  })
+}
+
+/** The group summary: the first two distinct things that happened, then a
+ *  count — "Checked git status · read pom.xml +3 more · 1 failed". */
+export function groupSummary(tools: ToolBlock[]): string {
+  const phrases: string[] = []
+  let failed = 0
   let namedFirst = false
-  if (called.length) {
-    const names = [...new Set(called.map((t) => shortName(t.name)))]
-    const shown =
-      names.length > 2 ? `${names.slice(0, 2).join(' · ')} +${names.length - 2}` : names.join(' · ')
-    namedFirst = segments.length === 0
-    segments.push(names.length === 1 && called.length > 1 ? `${shown} ×${called.length}` : shown)
+  for (const t of tools) {
+    if (t.isError) failed++
+    const k = kindOf(t)
+    for (const p of toolPhrases(t)) {
+      if (p && !phrases.includes(p)) {
+        // A leading mcp/tool name keeps its own casing — never sentence-cased.
+        if (phrases.length === 0 && (k === 'mcp' || k === 'tool')) namedFirst = true
+        phrases.push(p)
+      }
+    }
   }
-  if (failed) segments.push(`${failed} failed`)
-  const joined = segments.length ? segments.join(' · ') : `${tools.length} tools`
-  // Tool names keep their own casing; prose summaries get sentence case.
+  const extra = phrases.length - 2
+  let joined =
+    phrases
+      .slice(0, 2)
+      .map((p) => trim(p))
+      .join(' · ') || `${tools.length} tools`
+  if (extra > 0) joined += ` +${extra} more`
+  if (failed) joined += ` · ${failed} failed`
   return namedFirst ? joined : joined.charAt(0).toUpperCase() + joined.slice(1)
 }
 
