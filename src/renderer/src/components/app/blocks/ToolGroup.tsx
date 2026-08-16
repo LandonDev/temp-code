@@ -511,8 +511,9 @@ function locateHunks(hunks: { old: string[]; new: string[] }[], content: string)
 }
 
 /** Rows for a card's diff: codex patches carry numbers and context in the
- *  diff itself; claude edits locate theirs by reading the landed file. */
-function useDiffRows(b: ToolBlock, m: EditModel): DiffRow[] {
+ *  diff itself; claude edits locate theirs by reading the landed file.
+ *  `refresh` re-locates after the user edited the file in place. */
+function useDiffRows(b: ToolBlock, m: EditModel, refresh = 0): DiffRow[] {
   const projectId = useApp((s) => s.selectedProjectId)
   const cwd = useApp((s) => s.projects.find((p) => p.id === s.selectedProjectId)?.cwd)
   const [located, setLocated] = useState<DiffRow[] | null>(null)
@@ -536,21 +537,32 @@ function useDiffRows(b: ToolBlock, m: EditModel): DiffRow[] {
       alive = false
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- refetch per block, not per render
-  }, [b.id, needsLocate, projectId])
+  }, [b.id, needsLocate, projectId, refresh])
   return m.rows ?? located ?? rowsFromHunks(m.hunks)
+}
+
+/** Contiguous numbered add-runs — what the model changed, for the inline
+ *  editor's line wash. */
+function addRanges(rows: DiffRow[]): { start: number; end: number }[] {
+  const out: { start: number; end: number }[] = []
+  for (const r of rows) {
+    if (r.type !== 'add' || r.newNo === undefined) continue
+    const last = out.at(-1)
+    if (last && r.newNo === last.end + 1) last.end = r.newNo
+    else out.push({ start: r.newNo, end: r.newNo })
+  }
+  return out
 }
 
 /** Unified diff — line numbers in the gutter, dim context, emerald adds,
  *  red deletes, capped at 600 lines. Click a numbered line to edit there. */
 function DiffBlock({
-  b,
+  rows,
   onEditAt
 }: {
-  b: ToolBlock
+  rows: DiffRow[]
   onEditAt?: (line: number) => void
 }): React.JSX.Element {
-  const m = editModel(b)
-  const rows = useDiffRows(b, m)
   const shown = rows.slice(0, DIFF_LINE_CAP)
   return (
     <div className="py-1.5 font-mono text-[11.5px] leading-[18px]">
@@ -1116,6 +1128,9 @@ export const ZEditCard = memo(function ZEditCard({
   // In-place editing: the dropdown swaps its diff for the real editor.
   const [editMode, setEditMode] = useState(false)
   const [editLine, setEditLine] = useState<number | undefined>()
+  // Bumped when an in-place edit saves, so the diff re-locates its lines.
+  const [refresh, setRefresh] = useState(0)
+  const rows = useDiffRows(b, m, refresh)
   /** Project-relative path, or null when the file is outside the project. */
   const rel = ((): string | null => {
     if (!m.path.startsWith('/')) return m.path || null
@@ -1264,7 +1279,16 @@ export const ZEditCard = memo(function ZEditCard({
                   </div>
                 }
               >
-                <InlineEditor project={project} path={rel} line={editLine ?? m.line} />
+                <InlineEditor
+                  project={project}
+                  path={rel}
+                  line={editLine ?? m.line}
+                  highlight={addRanges(rows)}
+                  onSave={() => {
+                    setEditMode(false)
+                    setRefresh((n) => n + 1)
+                  }}
+                />
               </Suspense>
             </>
           ) : m.hunks.length > 0 ? (
@@ -1278,7 +1302,10 @@ export const ZEditCard = memo(function ZEditCard({
                   edit
                 </button>
               )}
-              <DiffBlock b={b} onEditAt={project && rel ? (line) => editHere(line) : undefined} />
+              <DiffBlock
+                rows={rows}
+                onEditAt={project && rel ? (line) => editHere(line) : undefined}
+              />
             </>
           ) : (
             <div className="space-y-1 px-3 py-2">

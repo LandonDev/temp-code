@@ -15,11 +15,17 @@ import { EditorSurface } from './EditorSurface'
 export default function InlineEditor({
   project,
   path,
-  line
+  line,
+  highlight,
+  onSave
 }: {
   project: ProjectMeta
   path: string
   line?: number
+  /** the model's changed line ranges, washed in the buffer */
+  highlight?: { start: number; end: number }[]
+  /** ⌘S saved — the card folds back to its diff */
+  onSave?: () => void
 }): React.JSX.Element {
   const [ready, setReady] = useState(false)
   useEffect(() => {
@@ -43,7 +49,7 @@ export default function InlineEditor({
   }
   return (
     <div className="flex h-80 flex-col">
-      <EditorSurface project={project} path={path} />
+      <EditorSurface project={project} path={path} highlight={highlight} onSave={onSave} />
     </div>
   )
 }

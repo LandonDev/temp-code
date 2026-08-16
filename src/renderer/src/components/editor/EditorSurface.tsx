@@ -18,16 +18,30 @@ const viewStates = new Map<string, monaco.editor.ICodeEditorViewState>()
 export function EditorSurface({
   project,
   path,
-  readOnly = false
+  readOnly = false,
+  highlight,
+  onSave
 }: {
   project: ProjectMeta
   path: string
   readOnly?: boolean
+  /** line ranges to wash (the model's fresh changes, in card embeds) */
+  highlight?: { start: number; end: number }[]
+  /** called after a ⌘S flush lands — card embeds fold back to the diff */
+  onSave?: () => void
 }): React.JSX.Element {
   const hostRef = useRef<HTMLDivElement>(null)
   const [phase, setPhase] = useState<'loading' | 'ready' | 'tooLarge' | 'error'>('loading')
   const [fileState, setFileState] = useState<FileState>({ pending: false, conflict: null })
   const [key, setKey] = useState('')
+  // Refs so the mount effect never re-runs (and re-creates the editor)
+  // when the caller re-renders with fresh closures.
+  const highlightRef = useRef(highlight)
+  const onSaveRef = useRef(onSave)
+  useEffect(() => {
+    highlightRef.current = highlight
+    onSaveRef.current = onSave
+  })
 
   useEffect(() => {
     let disposed = false
@@ -67,10 +81,19 @@ export function EditorSurface({
         clearReveal()
       }
       editor.focus()
+      const hl = highlightRef.current
+      if (hl?.length) {
+        editor.createDecorationsCollection(
+          hl.map((h) => ({
+            range: new monaco.Range(h.start, 1, h.end, 1),
+            options: { isWholeLine: true, className: 'model-change-line' }
+          }))
+        )
+      }
       // ⌘S flushes early (muscle memory); ⌘P opens quick-open even from
       // inside the buffer.
       editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
-        void handle?.flushNow()
+        void handle?.flushNow().then(() => onSaveRef.current?.())
       })
       editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyP, () => {
         useApp.getState().setQuickOpen('files')
