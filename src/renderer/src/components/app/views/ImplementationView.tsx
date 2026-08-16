@@ -6,7 +6,7 @@ import { useApp, type LiveEditState } from '../../../state/store'
 import type { Block } from '../../../state/blocks'
 import { cn } from '../../../lib/utils'
 import { useNow } from '../../../lib/useNow'
-import { EASE_OUT } from '../../../lib/ease'
+import { EASE_OUT, SPRING_PANEL } from '../../../lib/ease'
 import { duration, StatusDot } from '../bits'
 import { Spinner } from '../../ui/spinner'
 import { AgentDetail, AgentRow, useAgents } from '../AgentFleet'
@@ -71,6 +71,9 @@ export function ImplementationView({ session }: { session: SessionMeta }): React
   // list — or when no list exists — group separately; indices past a
   // shrunken list clamp to the last task.
   const [openGroups, setOpenGroups] = useState<Set<number>>(new Set())
+  const [closedTasks, setClosedTasks] = useState<Set<number>>(new Set())
+  /** a grid row clicked open: its diff morphs open inside the task */
+  const [openChange, setOpenChange] = useState<{ task: number; path: string } | null>(null)
   const workByTodo = useMemo(() => {
     const m = new Map<number, Block[]>()
     for (const b of work) {
@@ -270,15 +273,23 @@ export function ImplementationView({ session }: { session: SessionMeta }): React
                         <div
                           key={i}
                           className={cn(
-                            'mb-3 overflow-hidden rounded-[10px] border border-border/60 border-l-2 bg-card/40',
-                            live
-                              ? 'border-l-violet'
-                              : todo.status === 'completed'
-                                ? 'border-l-success/70'
-                                : 'border-l-border'
+                            'mb-2 overflow-hidden rounded-[10px]',
+                            live ? 'bg-accent/60' : 'hover:bg-accent/30'
                           )}
                         >
-                          <div className={cn('px-2 pt-0.5', live && 'bg-violet/[0.03]')}>
+                          <div
+                            role="button"
+                            tabIndex={0}
+                            onClick={() =>
+                              setClosedTasks((prev) => {
+                                const next = new Set(prev)
+                                if (next.has(i)) next.delete(i)
+                                else next.add(i)
+                                return next
+                              })
+                            }
+                            className="cursor-pointer px-2 pt-0.5"
+                          >
                             <TodoRow
                               content={todo.content}
                               status={todo.status}
@@ -286,17 +297,20 @@ export function ImplementationView({ session }: { session: SessionMeta }): React
                               ms={ms !== null && ms > 1500 ? ms : null}
                             />
                           </div>
-                          {live && <TaskActivity blocks={taskBlocks} />}
-                          {items.length > 0 &&
+                          {!closedTasks.has(i) && live && <TaskActivity blocks={taskBlocks} />}
+                          {!closedTasks.has(i) &&
+                            items.length > 0 &&
                             (folded ? (
                               <TaskGrid
                                 blocks={taskBlocks}
-                                onOpen={() =>
-                                  setOpenGroups((s) => {
-                                    const next = new Set(s)
-                                    next.add(i)
-                                    return next
-                                  })
+                                sessionId={session.id}
+                                openPath={openChange?.task === i ? openChange.path : null}
+                                onPick={(path) =>
+                                  setOpenChange(
+                                    openChange?.task === i && openChange.path === path
+                                      ? null
+                                      : { task: i, path }
+                                  )
                                 }
                               />
                             ) : (
@@ -304,7 +318,9 @@ export function ImplementationView({ session }: { session: SessionMeta }): React
                                 <WorkItems blocks={items} sessionId={session.id} />
                               </div>
                             ))}
-                          {live && diskOnly.length > 0 && <DiskCards edits={diskOnly} />}
+                          {!closedTasks.has(i) && live && diskOnly.length > 0 && (
+                            <DiskCards edits={diskOnly} />
+                          )}
                           {(live || todo.status === 'completed') && (
                             <TaskMeta
                               index={i}
@@ -543,9 +559,8 @@ function TodoRow({
       </span>
       <span
         className={cn(
-          'min-w-0 flex-1 truncate text-[13px]',
-          live && 'font-medium',
-          status === 'completed' && 'line-through decoration-border'
+          'min-w-0 flex-1 truncate text-[14px] font-medium',
+          status === 'completed' && 'text-muted-foreground'
         )}
       >
         {content}
@@ -601,12 +616,22 @@ function TaskActivity({ blocks }: { blocks: Block[] }): React.JSX.Element | null
   )
 }
 
-/** A settled task's footprint: every touched file, +/-, time on file —
- *  full-width grid, click to expand the raw cards. */
-function TaskGrid({ blocks, onOpen }: { blocks: Block[]; onOpen: () => void }): React.JSX.Element {
+/** A settled task's footprint: every touched file as a quiet text row —
+ *  click one and its diff morphs open in place (AgentDetail-style). */
+function TaskGrid({
+  blocks,
+  sessionId,
+  openPath,
+  onPick
+}: {
+  blocks: Block[]
+  sessionId: string
+  openPath: string | null
+  onPick: (path: string) => void
+}): React.JSX.Element | null {
   const files = new Map<
     string,
-    { name: string; adds: number; dels: number; ms: number; create: boolean }
+    { name: string; adds: number; dels: number; ms: number; block: ToolBlock }
   >()
   for (const b of blocks) {
     if (b.kind !== 'tool' || !EDIT_TOOLS.has(b.name)) continue
@@ -618,49 +643,60 @@ function TaskGrid({ blocks, onOpen }: { blocks: Block[]; onOpen: () => void }): 
         adds: 0,
         dels: 0,
         ms: 0,
-        create: m.create
+        block: eb
       }
       cur.adds += m.adds
       cur.dels += m.dels
+      cur.block = eb // latest edit of the file carries the final diff
       if (eb.doneTs !== undefined && eb.ts !== undefined) cur.ms += eb.doneTs - eb.ts
       files.set(m.path, cur)
     }
   }
-  if (files.size === 0) {
-    return (
-      <button
-        onClick={onOpen}
-        className="px-4 pb-1.5 text-[11px] text-muted-foreground/70 hover:text-foreground"
-      >
-        show details
-      </button>
-    )
-  }
+  if (files.size === 0) return null
+  const open = openPath ? files.get(openPath) : null
   return (
-    <button
-      onClick={onOpen}
-      title="Show the full diffs"
-      className="grid w-full grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-1 px-3 pb-2 text-left"
-    >
-      {[...files.entries()].map(([path, f]) => (
-        <span
-          key={path}
-          title={path}
-          className="flex items-center gap-1.5 rounded-md border border-border/50 bg-background/40 px-2 py-1 text-[11px]"
-        >
-          <span className="min-w-0 flex-1 truncate font-medium">{f.name}</span>
-          <span className="shrink-0 tabular-nums">
-            {f.adds > 0 && <span className="text-success">+{f.adds}</span>}{' '}
-            {f.dels > 0 && <span className="text-destructive">−{f.dels}</span>}
-          </span>
-          {f.ms > 1500 && (
-            <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground/60">
-              ~{duration(f.ms)}
+    <div className="grid grid-cols-[repeat(auto-fill,minmax(190px,1fr))] gap-x-4 px-4 pb-2">
+      {[...files.entries()].map(([path, f]) =>
+        openPath === path ? null : (
+          <motion.button
+            key={path}
+            layoutId={`chg-${sessionId}-${path}`}
+            onClick={() => onPick(path)}
+            title={path}
+            className="flex items-center gap-2 py-0.5 text-left text-[12px] transition-colors hover:text-foreground"
+          >
+            <span className="min-w-0 flex-1 truncate text-muted-foreground">{f.name}</span>
+            <span className="shrink-0 tabular-nums">
+              {f.adds > 0 && <span className="text-success">+{f.adds}</span>}{' '}
+              {f.dels > 0 && <span className="text-destructive">−{f.dels}</span>}
             </span>
-          )}
-        </span>
-      ))}
-    </button>
+            {f.ms > 1500 && (
+              <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground/50">
+                ~{duration(f.ms)}
+              </span>
+            )}
+          </motion.button>
+        )
+      )}
+      <AnimatePresence>
+        {open && openPath && (
+          <motion.div
+            key={openPath}
+            layoutId={`chg-${sessionId}-${openPath}`}
+            transition={SPRING_PANEL}
+            className="col-span-full py-1"
+          >
+            <ZEditCard b={open.block} defaultOpen />
+            <button
+              onClick={() => onPick(openPath)}
+              className="mt-0.5 text-[11px] text-muted-foreground/70 hover:text-foreground"
+            >
+              collapse
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
   )
 }
 
@@ -693,7 +729,7 @@ function TaskMeta({
       ? blocks.flatMap((b) => {
           if (b.ts === undefined || b.kind !== 'tool') return []
           const k = actKind(b.name)
-          return [{ at: (b.ts - span!.first) / dur, k }]
+          return [{ at: (b.ts - span!.first) / dur, k, name: b.name, off: b.ts - span!.first }]
         })
       : []
   const compactTicks =
@@ -727,22 +763,47 @@ function TaskMeta({
         </p>
       )}
       {ticks.length > 1 && (
-        <div className="relative mt-1 h-[5px] overflow-hidden rounded-full bg-secondary/50">
-          {ticks.map((t, n) => (
-            <span
-              key={n}
-              className={cn('absolute top-0 h-full w-[3px] rounded-full', TICK_COLOR[t.k])}
-              style={{ left: `${Math.min(99, t.at * 100)}%` }}
-            />
-          ))}
-          {compactTicks.map((t, n) => (
-            <span
-              key={`c${n}`}
-              title="context compacted"
-              className="absolute top-0 h-full w-[2px] bg-violet"
-              style={{ left: `${Math.min(99, t.at * 100)}%` }}
-            />
-          ))}
+        <div className="group/tl">
+          <div className="relative mt-1 h-[5px] overflow-hidden rounded-full bg-secondary/50">
+            {ticks.map((t, n) => (
+              <span
+                key={n}
+                title={`${t.name} · ${duration(t.off)} in`}
+                className={cn('absolute top-0 h-full w-[3px] rounded-full', TICK_COLOR[t.k])}
+                style={{ left: `${Math.min(99, t.at * 100)}%` }}
+              />
+            ))}
+            {compactTicks.map((t, n) => (
+              <span
+                key={`c${n}`}
+                title="context compacted"
+                className="absolute top-0 h-full w-[2px] bg-violet"
+                style={{ left: `${Math.min(99, t.at * 100)}%` }}
+              />
+            ))}
+          </div>
+          <p className="mt-1 hidden gap-2.5 text-[10px] text-muted-foreground/70 group-hover/tl:flex">
+            <span className="flex items-center gap-1">
+              <span className="size-1.5 rounded-full bg-success/80" />
+              edits
+            </span>
+            <span className="flex items-center gap-1">
+              <span className="size-1.5 rounded-full bg-info/60" />
+              reads &amp; searches
+            </span>
+            <span className="flex items-center gap-1">
+              <span className="size-1.5 rounded-full bg-warning/60" />
+              commands
+            </span>
+            <span className="flex items-center gap-1">
+              <span className="size-1.5 rounded-full bg-violet/70" />
+              subagents
+            </span>
+            <span className="flex items-center gap-1">
+              <span className="size-1.5 rounded-full bg-violet" />
+              compaction
+            </span>
+          </p>
         </div>
       )}
     </div>
