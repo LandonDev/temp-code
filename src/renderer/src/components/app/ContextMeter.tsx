@@ -41,6 +41,42 @@ function tint(c: string, ix: number): string {
   return /^#|^rgb|^hsl|^oklch/.test(c) ? c : FALLBACK[ix % FALLBACK.length]
 }
 
+/** The usage ring alone — the composer meter and the fleet rows share it. */
+export function UsageRing({
+  pct,
+  className
+}: {
+  pct: number | null
+  className?: string
+}): React.JSX.Element {
+  const r = 4.5
+  const c = 2 * Math.PI * r
+  return (
+    <svg
+      width="12"
+      height="12"
+      viewBox="0 0 12 12"
+      className={cn('shrink-0 -rotate-90', className)}
+    >
+      <circle cx="6" cy="6" r={r} fill="none" strokeWidth="1.5" className="stroke-border" />
+      {pct !== null && (
+        <circle
+          cx="6"
+          cy="6"
+          r={r}
+          fill="none"
+          strokeWidth="1.5"
+          strokeLinecap="round"
+          strokeDasharray={`${(pct / 100) * c} ${c}`}
+          className={cn(
+            pct > 85 ? 'stroke-destructive' : pct > 65 ? 'stroke-warning' : 'stroke-success'
+          )}
+        />
+      )}
+    </svg>
+  )
+}
+
 export function ContextMeter({ sessionId }: { sessionId: string }): React.JSX.Element {
   const usage = useApp((s) => s.contexts[sessionId]) as ContextUsage | null | undefined
   const session = useApp((s) => s.sessions[sessionId])
@@ -55,8 +91,6 @@ export function ContextMeter({ sessionId }: { sessionId: string }): React.JSX.El
 
   const hasMax = !!usage && usage.maxTokens > 0
   const pct = usage && hasMax ? Math.min(100, Math.round(usage.percentage)) : null
-  const r = 4.5
-  const c = 2 * Math.PI * r
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -68,23 +102,7 @@ export function ContextMeter({ sessionId }: { sessionId: string }): React.JSX.El
             open && 'text-foreground'
           )}
         >
-          <svg width="12" height="12" viewBox="0 0 12 12" className="shrink-0 -rotate-90">
-            <circle cx="6" cy="6" r={r} fill="none" strokeWidth="1.5" className="stroke-border" />
-            {pct !== null && (
-              <circle
-                cx="6"
-                cy="6"
-                r={r}
-                fill="none"
-                strokeWidth="1.5"
-                strokeLinecap="round"
-                strokeDasharray={`${(pct / 100) * c} ${c}`}
-                className={cn(
-                  pct > 85 ? 'stroke-destructive' : pct > 65 ? 'stroke-warning' : 'stroke-success'
-                )}
-              />
-            )}
-          </svg>
+          <UsageRing pct={pct} />
           {pct !== null ? `${pct}%` : usage ? fmt(usage.totalTokens) : 'Context'}
         </button>
       </PopoverTrigger>

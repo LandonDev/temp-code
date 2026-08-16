@@ -9,6 +9,7 @@ import { SPRING_PANEL } from '../../lib/ease'
 import { duration, ProviderMark, StatusDot } from './bits'
 import { Spinner } from '../ui/spinner'
 import { EDIT_TOOLS, editModel, splitEdit } from './blocks/ToolGroup'
+import { UsageRing } from './ContextMeter'
 import type { Block } from '../../state/blocks'
 import { Transcript } from './Transcript'
 
@@ -150,8 +151,9 @@ export function AgentStatsLine({
     )
   } else if (s.ctxPct !== null) {
     parts.push(
-      <span key="ctx" className={cn('tabular-nums', s.ctxPct >= 80 && 'text-warning')}>
-        ctx {s.ctxPct}%
+      <span key="ctx" className="flex items-center gap-1 tabular-nums" title="Context usage">
+        <UsageRing pct={s.ctxPct} />
+        {s.ctxPct}%
       </span>
     )
   }

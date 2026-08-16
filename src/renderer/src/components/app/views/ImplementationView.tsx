@@ -1,19 +1,21 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { AnimatePresence, motion } from 'motion/react'
-import { Check, ChevronRight, Circle } from 'lucide-react'
+import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
+import { Check, ChevronRight, Circle, MessageSquare } from 'lucide-react'
 import type { SessionMeta } from '@shared/events'
 import { useApp } from '../../../state/store'
 import type { Block } from '../../../state/blocks'
 import { cn } from '../../../lib/utils'
 import { useNow } from '../../../lib/useNow'
-import { duration } from '../bits'
+import { EASE_OUT } from '../../../lib/ease'
+import { duration, StatusDot } from '../bits'
 import { Spinner } from '../../ui/spinner'
 import { AgentDetail, AgentRow, useAgents } from '../AgentFleet'
 import { ApprovalCard } from '../blocks/ApprovalCard'
 import { QuestionCard } from '../blocks/QuestionCard'
 import { editModel, ErrorChip, EDIT_TOOLS, splitEdit, ZEditCard } from '../blocks/ToolGroup'
 import { MarkdownText } from '../blocks/MarkdownText'
-import { SidePanel } from '../SidePanel'
+import { Transcript } from '../Transcript'
+import { WorkingStrip } from '../WorkingStrip'
 import { PromptBar } from '../PromptBar'
 
 type ToolBlock = Extract<Block, { kind: 'tool' }>
@@ -30,6 +32,7 @@ export function ImplementationView({ session }: { session: SessionMeta }): React
   const blocksRaw = useApp((s) => s.blocks[session.id])
   const blocks = useMemo(() => blocksRaw ?? [], [blocksRaw])
   const running = session.status === 'running' || session.status === 'starting'
+  const waiting = session.status === 'waiting'
 
   // Subagents this thread spawned — the fleet rows render under the plan,
   // same surface orchestration uses, without displacing the change stream.
@@ -114,132 +117,217 @@ export function ImplementationView({ session }: { session: SessionMeta }): React
 
   const goal = blocks.find((b) => b.kind === 'user')
 
+  // The view is phased like planning: a plain chat until there is a board
+  // to show (tasks or subagents), then a draggable split — board left,
+  // conversation right. The chat can fold to an edge bar; a thread stopped
+  // on a question forces it open (render-time adjust, not an effect).
+  const hasBoard = todos.length > 0 || agents.length > 0
+  const [chatOpen, setChatOpen] = useState(true)
+  const [sawWaiting, setSawWaiting] = useState(waiting)
+  if (waiting !== sawWaiting) {
+    setSawWaiting(waiting)
+    if (waiting) setChatOpen(true)
+  }
+  const collapsed = hasBoard && !chatOpen
+
+  // Board/chat split in %, draggable 30–70, double-click resets.
+  const containerRef = useRef<HTMLDivElement>(null)
+  const [split, setSplit] = useState(50)
+  const [dragging, setDragging] = useState(false)
+  const startDrag = (e: React.PointerEvent): void => {
+    e.preventDefault()
+    setDragging(true)
+    const el = containerRef.current
+    if (!el) return
+    const rect = el.getBoundingClientRect()
+    const move = (ev: PointerEvent): void => {
+      setSplit(Math.min(70, Math.max(30, ((ev.clientX - rect.left) / rect.width) * 100)))
+    }
+    const up = (): void => {
+      setDragging(false)
+      window.removeEventListener('pointermove', move)
+      window.removeEventListener('pointerup', up)
+    }
+    window.addEventListener('pointermove', move)
+    window.addEventListener('pointerup', up)
+  }
+  const reduce = useReducedMotion()
+
   return (
-    <div className="relative flex min-h-0 flex-1">
-      <div className="flex min-w-0 flex-1 flex-col">
-        <div ref={scrollRef} className="flex-1 overflow-y-auto select-text">
-          <div className="mx-auto w-full max-w-3xl px-6 py-5">
-            {goal ? (
-              <div className="mb-5">
-                <p className="text-[15px] leading-snug font-medium tracking-[-0.01em]">
-                  {goal.kind === 'user' && goal.text.split('\n')[0]}
-                </p>
-                {todos.length > 0 && <ProgressSegments todos={todos} />}
-                <ChangesLine session={session} />
-              </div>
-            ) : (
-              !running && (
-                <p className="pt-1 text-[13px] text-muted-foreground">Describe the task below.</p>
-              )
-            )}
+    <div ref={containerRef} className="relative flex min-h-0 flex-1">
+      <AnimatePresence initial={false}>
+        {hasBoard && (
+          <motion.div
+            key="board"
+            initial={reduce ? false : { flexBasis: '0%', opacity: 0 }}
+            animate={{ flexBasis: collapsed ? '100%' : `${split}%`, opacity: 1 }}
+            transition={dragging || reduce ? { duration: 0 } : { duration: 0.28, ease: EASE_OUT }}
+            style={{ flexGrow: 0, flexShrink: 1 }}
+            className="flex min-h-0 min-w-0 flex-col overflow-hidden"
+          >
+            <div ref={scrollRef} className="flex-1 overflow-y-auto select-text">
+              <div className="mx-auto w-full max-w-3xl px-6 py-5">
+                {goal && (
+                  <div className="mb-5">
+                    <p className="text-[15px] leading-snug font-medium tracking-[-0.01em]">
+                      {goal.kind === 'user' && goal.text.split('\n')[0]}
+                    </p>
+                    {todos.length > 0 && <ProgressSegments todos={todos} />}
+                    <ChangesLine session={session} />
+                  </div>
+                )}
 
-            {agents.length > 0 && (
-              <div className="mb-5">
-                <p className="mb-1 text-[11px] font-medium tracking-[0.06em] text-muted-foreground uppercase">
-                  Subagents
-                </p>
-                <div className="-mx-3 flex flex-col gap-0.5">
-                  {agents.map((agent) => (
-                    <AgentRow
-                      key={agent.id}
-                      agent={agent}
-                      now={agentNow}
-                      hidden={openAgentId === agent.id}
-                      onOpen={() => setOpenAgentId(agent.id)}
-                    />
-                  ))}
-                </div>
-              </div>
-            )}
+                {agents.length > 0 && (
+                  <div className="mb-5">
+                    <p className="mb-1 text-[11px] font-medium tracking-[0.06em] text-muted-foreground uppercase">
+                      Subagents
+                    </p>
+                    <div className="-mx-3 flex flex-col gap-0.5">
+                      {agents.map((agent) => (
+                        <AgentRow
+                          key={agent.id}
+                          agent={agent}
+                          now={agentNow}
+                          hidden={openAgentId === agent.id}
+                          onOpen={() => setOpenAgentId(agent.id)}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                )}
 
-            {/* The breakdown: every action files under the task that was in
+                {/* The breakdown: every action files under the task that was in
                 progress when it happened. Settled tasks fold their work to
                 a one-line summary; the live task streams open. */}
-            {preWork.length > 0 && (
-              <div className="mb-4">
-                {todos.length > 0 && (
-                  <p className="mb-1.5 text-[11px] font-medium tracking-[0.06em] text-muted-foreground/70 uppercase">
-                    Setup
-                  </p>
+                {preWork.length > 0 && (
+                  <div className="mb-4">
+                    {todos.length > 0 && (
+                      <p className="mb-1.5 text-[11px] font-medium tracking-[0.06em] text-muted-foreground/70 uppercase">
+                        Setup
+                      </p>
+                    )}
+                    <WorkItems blocks={preWork} sessionId={session.id} />
+                  </div>
                 )}
-                <WorkItems blocks={preWork} sessionId={session.id} />
-              </div>
-            )}
 
-            {todos.length > 0 && (
-              <div className="mb-5 flex flex-col">
-                {todos.map((todo, i) => {
-                  const span = spans.get(i)
-                  const live = running && todo.status === 'in_progress'
-                  const ms =
-                    todo.status === 'pending' || !span
-                      ? null
-                      : live
-                        ? now - span.first
-                        : span.last - span.first
-                  const items = workByTodo.get(i) ?? []
-                  const needsUser = items.some(
-                    (b) => (b.kind === 'approval' || b.kind === 'question') && !b.resolved
-                  )
-                  const folded = todo.status === 'completed' && !needsUser && !openGroups.has(i)
-                  return (
-                    <div key={i}>
-                      <TodoRow
-                        content={todo.content}
-                        status={todo.status}
-                        live={live}
-                        ms={ms !== null && ms > 1500 ? ms : null}
-                      />
-                      {items.length > 0 &&
-                        (folded ? (
-                          <FoldedWork
-                            blocks={items}
-                            onOpen={() =>
-                              setOpenGroups((s) => {
-                                const next = new Set(s)
-                                next.add(i)
-                                return next
-                              })
-                            }
+                {todos.length > 0 && (
+                  <div className="mb-5 flex flex-col">
+                    {todos.map((todo, i) => {
+                      const span = spans.get(i)
+                      const live = running && todo.status === 'in_progress'
+                      const ms =
+                        todo.status === 'pending' || !span
+                          ? null
+                          : live
+                            ? now - span.first
+                            : span.last - span.first
+                      const items = workByTodo.get(i) ?? []
+                      const needsUser = items.some(
+                        (b) => (b.kind === 'approval' || b.kind === 'question') && !b.resolved
+                      )
+                      const folded = todo.status === 'completed' && !needsUser && !openGroups.has(i)
+                      return (
+                        <div key={i}>
+                          <TodoRow
+                            content={todo.content}
+                            status={todo.status}
+                            live={live}
+                            ms={ms !== null && ms > 1500 ? ms : null}
                           />
-                        ) : (
-                          <div className="mt-1 mb-2 ml-[7px] border-l border-border/60 pt-0.5 pb-1 pl-4">
-                            <WorkItems blocks={items} sessionId={session.id} />
-                          </div>
-                        ))}
-                    </div>
-                  )
-                })}
+                          {items.length > 0 &&
+                            (folded ? (
+                              <FoldedWork
+                                blocks={items}
+                                onOpen={() =>
+                                  setOpenGroups((s) => {
+                                    const next = new Set(s)
+                                    next.add(i)
+                                    return next
+                                  })
+                                }
+                              />
+                            ) : (
+                              <div className="mt-1 mb-2 ml-[7px] border-l border-border/60 pt-0.5 pb-1 pl-4">
+                                <WorkItems blocks={items} sessionId={session.id} />
+                              </div>
+                            ))}
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+
+                {todos.length === 0 && postWork.length > 0 && (
+                  <WorkItems blocks={postWork} sessionId={session.id} />
+                )}
+
+                {running && work.length === 0 && (
+                  <div className="flex items-center gap-2 py-1 text-[13px] text-muted-foreground">
+                    <Spinner className="size-3.5" />
+                    {todos.length === 0 ? 'Breaking the task down…' : 'Working…'}
+                  </div>
+                )}
+
+                {closing && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 6 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.25 }}
+                    className="mt-6 border-t border-border/60 pt-4"
+                  >
+                    <MarkdownText text={closing.text} streaming={false} />
+                  </motion.div>
+                )}
               </div>
-            )}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
-            {todos.length === 0 && postWork.length > 0 && (
-              <WorkItems blocks={postWork} sessionId={session.id} />
-            )}
+      {hasBoard && !collapsed && (
+        <div
+          onPointerDown={startDrag}
+          onDoubleClick={() => setSplit(50)}
+          title="Drag to resize · double-click to reset"
+          className={cn(
+            'w-[3px] shrink-0 cursor-col-resize bg-hairline transition-colors hover:bg-border-strong',
+            dragging && 'bg-border-strong'
+          )}
+        />
+      )}
 
-            {running && work.length === 0 && (
-              <div className="flex items-center gap-2 py-1 text-[13px] text-muted-foreground">
-                <Spinner className="size-3.5" />
-                {todos.length === 0 ? 'Breaking the task down…' : 'Working…'}
-              </div>
-            )}
-
-            {closing && (
-              <motion.div
-                initial={{ opacity: 0, y: 6 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.25 }}
-                className="mt-6 border-t border-border/60 pt-4"
+      {collapsed ? (
+        <button
+          onClick={() => setChatOpen(true)}
+          title="Show conversation"
+          aria-label="Show conversation"
+          className="flex w-8 shrink-0 flex-col items-center gap-2 border-l border-hairline pt-4 text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground"
+        >
+          <MessageSquare className="size-3.5" />
+          <StatusDot status={session.status} />
+        </button>
+      ) : (
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+          {hasBoard && (
+            <div className="flex h-9 shrink-0 items-center justify-between border-b border-hairline pr-1.5 pl-4">
+              <span className="text-[11px] font-medium tracking-[0.06em] text-muted-foreground uppercase">
+                Conversation
+              </span>
+              <button
+                onClick={() => setChatOpen(false)}
+                title="Hide conversation"
+                aria-label="Hide conversation"
+                className="flex size-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
               >
-                <MarkdownText text={closing.text} streaming={false} />
-              </motion.div>
-            )}
-          </div>
+                <ChevronRight className="size-3.5" />
+              </button>
+            </div>
+          )}
+          <Transcript sessionId={session.id} />
+          <WorkingStrip sessionId={session.id} />
+          <PromptBar compact={hasBoard} narrow={hasBoard} />
         </div>
-        <PromptBar compact />
-      </div>
-
-      <SidePanel sessionId={session.id} label="Chat" />
+      )}
 
       <AnimatePresence>
         {openAgent && (

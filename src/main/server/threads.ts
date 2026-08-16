@@ -87,7 +87,7 @@ NEVER shell out to another AI CLI (\`claude\`, \`claude -p\`, \`codex exec\`, \`
 ${app}`
     case 'implementation':
       return `You are running an IMPLEMENTATION thread — execute on given context. The plan and the project context are your brief: read them first, dig up whatever else you need from the codebase yourself, and implement.
-Your FIRST action — before any exploration — is to create the todo list covering the whole job (TodoWrite or your plan tool); refine it as you learn. The UI files EVERYTHING you do under the task in progress, so task attribution is the structure the user reads: keep exactly one item in_progress, switch it BEFORE starting the work that belongs to it (never batch several tasks' work under one), and mark items completed the moment they are done.${
+Your FIRST TOOL CALL — after reading the plan, before any other exploration, before spawning ANY subagent, before reading any skill — is to create the todo list covering the whole job (TodoWrite or your plan tool); refine it as you learn. Nothing else is allowed to happen first: the UI is structured entirely around your tasks, and work done before the list exists renders as unstructured noise. Keep exactly one item in_progress, switch it BEFORE starting the work that belongs to it (never batch several tasks' work under one), and mark items completed the moment they are done.${
         session.planPath
           ? `\nAs you complete tasks from the plan's ## Tasks checklist, tick them (\`- [x]\`) in the plan file with Edit — the plan view renders progress live.`
           : ''
