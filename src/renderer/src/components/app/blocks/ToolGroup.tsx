@@ -1068,7 +1068,8 @@ export const ToolGroup = memo(function ToolGroup({
   const k = single ? kindOf(single) : null
   const app = single ? appView(single, sessions) : null
   const label = single
-    ? (app?.label ??
+    ? (single.display?.action ??
+      app?.label ??
       (k === 'mcp' || k === 'tool' ? shortName(single.name) : CHIP[k ?? 'tool'].label))
     : null
   const mechanicalDetail = single ? (app?.detail ?? detailOf(single, projectCwd)) : null
@@ -1094,9 +1095,15 @@ export const ToolGroup = memo(function ToolGroup({
         <ChevronTile open={open} />
         {single ? (
           <>
-            {singleAgentProv && (
+            {single.display?.app ? (
+              <AddonMark
+                command={{ name: single.display.app, source: 'plugin' }}
+                size={12}
+                className="shrink-0"
+              />
+            ) : singleAgentProv ? (
               <ProviderMark provider={singleAgentProv} size={12} className="shrink-0" />
-            )}
+            ) : null}
             <span
               className={cn(
                 'shrink-0 font-medium',
