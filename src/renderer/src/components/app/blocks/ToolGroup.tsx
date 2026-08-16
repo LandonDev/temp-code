@@ -158,8 +158,57 @@ function detailOf(b: ToolBlock, cwd?: string): string {
 
 const trim = (s: string, n = 32): string => (s.length > n ? `${s.slice(0, n - 1)}…` : s)
 
+/** Thread titles for resolving ids in app-tool rows; ids never render. */
+type ThreadTitles = Record<string, { title: string } | undefined>
+
+/** In-house app_* tools render as what they DO. The raw input stays one
+ *  click away in the expansion, like every other tool. */
+function appView(
+  b: ToolBlock,
+  titles: ThreadTitles
+): { label: string; detail: string; phrase: string } | null {
+  const i = input(b)
+  switch (shortName(b.name)) {
+    case 'app_list_threads':
+      return {
+        label: 'Threads',
+        detail: i.allProjects ? 'all projects' : 'this project',
+        phrase: 'listed the threads'
+      }
+    case 'app_read_thread': {
+      const title = titles[str(i.threadId)]?.title
+      return {
+        label: 'Read thread',
+        detail: title ?? '',
+        phrase: title ? `read thread “${trim(title, 24)}”` : 'read a thread'
+      }
+    }
+    case 'app_start_thread': {
+      // The created thread names itself in the result; the input may too.
+      let title = str(i.title)
+      if (!title && b.output) {
+        try {
+          title = str((JSON.parse(b.output) as { title?: string }).title)
+        } catch {
+          // non-JSON output = a refusal string; the type alone is the detail
+        }
+      }
+      const type = str(i.threadType)
+      return {
+        label: 'New thread',
+        detail: [title, type].filter(Boolean).join(' · '),
+        phrase: title ? `started “${trim(title, 24)}”` : `started a ${type || 'thread'}`
+      }
+    }
+    default:
+      return null
+  }
+}
+
 /** What one tool did, past tense, lowercase ("checked git status"). */
-function toolPhrases(t: ToolBlock): string[] {
+function toolPhrases(t: ToolBlock, titles: ThreadTitles): string[] {
+  const app = appView(t, titles)
+  if (app) return [app.phrase]
   const i = input(t)
   const file = (): string => pathOf(t).split('/').pop() ?? ''
   switch (kindOf(t)) {
@@ -195,17 +244,16 @@ function toolPhrases(t: ToolBlock): string[] {
 
 /** The group summary: the first two distinct things that happened, then a
  *  count — "Checked git status · read pom.xml +3 more · 1 failed". */
-export function groupSummary(tools: ToolBlock[]): string {
+export function groupSummary(tools: ToolBlock[], titles: ThreadTitles = {}): string {
   const phrases: string[] = []
   let failed = 0
   let namedFirst = false
   for (const t of tools) {
     if (t.isError) failed++
-    const k = kindOf(t)
-    for (const p of toolPhrases(t)) {
+    for (const p of toolPhrases(t, titles)) {
       if (p && !phrases.includes(p)) {
-        // A leading mcp/tool name keeps its own casing — never sentence-cased.
-        if (phrases.length === 0 && (k === 'mcp' || k === 'tool')) namedFirst = true
+        // A leading bare tool name keeps its own casing — never sentence-cased.
+        if (phrases.length === 0 && p === shortName(t.name)) namedFirst = true
         phrases.push(p)
       }
     }
@@ -452,9 +500,11 @@ const Chip = memo(function Chip({ b }: { b: ToolBlock }): React.JSX.Element {
   const [open, setOpen] = usePersistedOpen(b.callId)
   const [userToggled, setUserToggled] = useState(false)
   const projectCwd = useApp((s) => s.projects.find((p) => p.id === s.selectedProjectId)?.cwd)
+  const sessions = useApp((s) => s.sessions)
   const k = kindOf(b)
   const chip = CHIP[k]
-  const detail = detailOf(b, projectCwd)
+  const app = appView(b, sessions)
+  const detail = app?.detail ?? detailOf(b, projectCwd)
   const running = b.output === undefined
   // The driver announces a call before its input finishes streaming — until
   // the complete input lands the chip is a spinner, never a half-filled row
@@ -482,7 +532,7 @@ const Chip = memo(function Chip({ b }: { b: ToolBlock }): React.JSX.Element {
               b.isError ? 'text-destructive' : loading ? 'text-muted-foreground' : 'text-foreground'
             )}
           >
-            {k === 'mcp' || k === 'tool' ? shortName(b.name) : chip.label}
+            {app?.label ?? (k === 'mcp' || k === 'tool' ? shortName(b.name) : chip.label)}
           </span>
           <span
             className={cn(
@@ -542,6 +592,7 @@ export const ToolGroup = memo(function ToolGroup({
     openState.has(gkey) ? (openState.get(gkey) as boolean) : null
   )
   const projectCwd = useApp((s) => s.projects.find((p) => p.id === s.selectedProjectId)?.cwd)
+  const sessions = useApp((s) => s.sessions)
   const setOverride = (v: boolean): void => {
     openState.set(gkey, v)
     setOverrideRaw(v)
@@ -551,12 +602,12 @@ export const ToolGroup = memo(function ToolGroup({
 
   const single = tools.length === 1 ? tools[0] : null
   const k = single ? kindOf(single) : null
+  const app = single ? appView(single, sessions) : null
   const label = single
-    ? k === 'mcp' || k === 'tool'
-      ? shortName(single.name)
-      : CHIP[k ?? 'tool'].label
+    ? (app?.label ??
+      (k === 'mcp' || k === 'tool' ? shortName(single.name) : CHIP[k ?? 'tool'].label))
     : null
-  const detail = single ? detailOf(single, projectCwd) : null
+  const detail = single ? (app?.detail ?? detailOf(single, projectCwd)) : null
   const running = tools.some((t) => t.output === undefined && t.input !== undefined)
   // The hover title always tells the literal truth — for a run row that's
   // the command itself, since the label is a humanized paraphrase.
@@ -571,7 +622,7 @@ export const ToolGroup = memo(function ToolGroup({
           setOverride(!open)
         }}
         className="group/hdr flex h-[26px] w-full items-center gap-2 px-1 text-left text-xs text-muted-foreground transition-colors duration-150 hover:text-foreground"
-        title={rawTitle ?? groupSummary(tools)}
+        title={rawTitle ?? groupSummary(tools, sessions)}
       >
         <ChevronTile open={open} />
         {single ? (
@@ -596,7 +647,11 @@ export const ToolGroup = memo(function ToolGroup({
           </>
         ) : (
           <span className="min-w-0 truncate">
-            {running ? <TextShimmer>{groupSummary(tools)}</TextShimmer> : groupSummary(tools)}
+            {running ? (
+              <TextShimmer>{groupSummary(tools, sessions)}</TextShimmer>
+            ) : (
+              groupSummary(tools, sessions)
+            )}
           </span>
         )}
       </button>
