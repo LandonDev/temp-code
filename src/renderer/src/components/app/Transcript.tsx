@@ -161,12 +161,14 @@ export const BlockRow = memo(function BlockRow({
 
 const RowContent = memo(function RowContent({
   row,
-  sessionId
+  sessionId,
+  autoOpen = false
 }: {
   row: Row
   sessionId: string
+  autoOpen?: boolean
 }): React.JSX.Element {
-  if (row.type === 'group') return <ToolGroup tools={row.tools} />
+  if (row.type === 'group') return <ToolGroup tools={row.tools} autoOpen={autoOpen} />
   if (row.type === 'edit') return <ZEditCard b={row.block} />
   const block = row.block
   switch (block.kind) {
@@ -558,7 +560,14 @@ export function Transcript({
                     fresh && 'animate-[z-fade-in_500ms_cubic-bezier(0.16,1,0.3,1)]'
                   )}
                 >
-                  <RowContent row={row} sessionId={sessionId} />
+                  {/* The active group — tools still streaming into it,
+                      nothing after — rides open; the next text block
+                      bumps it off the end and it folds. */}
+                  <RowContent
+                    row={row}
+                    sessionId={sessionId}
+                    autoOpen={row.type === 'group' && item.index === rows.length - 1 && running}
+                  />
                   {/* hover-revealed 16px timestamp strip */}
                   {lastOfTurn && ts !== undefined && (
                     <div
