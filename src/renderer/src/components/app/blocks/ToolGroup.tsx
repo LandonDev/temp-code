@@ -158,6 +158,54 @@ function detailOf(b: ToolBlock, cwd?: string): string {
 
 const trim = (s: string, n = 32): string => (s.length > n ? `${s.slice(0, n - 1)}…` : s)
 
+/** App bookkeeping lives under .temp-code/ — journal, plans, mirrors. */
+export const isInternalPath = (p: string): boolean => /(^|\/)\.temp-code(\/|$)/.test(p)
+
+/** Every file an edit-tool call touches (apply_patch may carry several). */
+function editPaths(b: ToolBlock): string[] {
+  if (b.name === 'apply_patch') {
+    return Array.isArray(b.input)
+      ? (b.input as Record<string, unknown>[]).map((c) => str(c.path)).filter(Boolean)
+      : []
+  }
+  const p = pathOf(b)
+  return p ? [p] : []
+}
+
+/** What a .temp-code edit means in app terms. */
+function memoryLabel(paths: string[]): string {
+  if (paths.some((p) => p.endsWith('PROJECT.md'))) return 'project memory'
+  if (paths.some((p) => /plan-[\w-]+\.md$/.test(p))) return 'the plan'
+  if (paths.some((p) => p.includes('.temp-code/threads/'))) return 'thread notes'
+  return 'app files'
+}
+
+/**
+ * Split an edit-tool call for display: one standalone card per real file
+ * (never collapsed behind "+N more"), and the app-bookkeeping remainder as
+ * a quiet grouped block ("Updated project memory") — those aren't the
+ * user's files, so they don't get a file card.
+ */
+export function splitEdit(b: ToolBlock): { edits: ToolBlock[]; internal: ToolBlock | null } {
+  if (b.name === 'apply_patch' && Array.isArray(b.input) && b.input.length > 0) {
+    const changes = b.input as Record<string, unknown>[]
+    const real = changes.filter((c) => !isInternalPath(str(c.path)))
+    const internal = changes.filter((c) => isInternalPath(str(c.path)))
+    return {
+      edits: real.map((c, n) => ({
+        ...b,
+        id: `${b.id}e${n}`,
+        callId: `${b.callId}#${str(c.path)}`,
+        input: [c]
+      })),
+      internal: internal.length
+        ? { ...b, id: `${b.id}m`, callId: `${b.callId}#memory`, input: internal }
+        : null
+    }
+  }
+  return isInternalPath(pathOf(b)) ? { edits: [], internal: b } : { edits: [b], internal: null }
+}
+
 /** Thread titles for resolving ids in app-tool rows; ids never render. */
 type ThreadTitles = Record<string, { title: string } | undefined>
 
@@ -168,6 +216,17 @@ function appView(
   titles: ThreadTitles
 ): { label: string; detail: string; phrase: string } | null {
   const i = input(b)
+  // Edits that only touch app bookkeeping read as what they mean, not as
+  // file edits ("Updated project memory"). Real-file edits never come
+  // through here — splitEdit routes them to their own cards.
+  if (EDIT_TOOLS.has(b.name)) {
+    const paths = editPaths(b)
+    if (paths.length && paths.every(isInternalPath)) {
+      const what = memoryLabel(paths)
+      return { label: 'Updated', detail: what, phrase: `updated ${what}` }
+    }
+    return null
+  }
   switch (shortName(b.name)) {
     case 'app_list_threads':
       return {
@@ -219,10 +278,8 @@ function toolPhrases(t: ToolBlock, titles: ThreadTitles): string[] {
     }
     case 'read':
       return [`read ${file()}`]
-    case 'write':
-    case 'edit':
-    case 'patch':
-      return [`edited ${file()}`]
+    // write/edit/patch never reach groups — splitEdit gives them cards,
+    // and internal-only ones take the appView memory phrase above.
     case 'search':
     case 'glob':
       return [`searched for ${trim(str(i.pattern), 20)}`]
@@ -394,17 +451,7 @@ function OutputBlock({ text, error }: { text: string; error?: boolean }): React.
 
 /** Diff hunks — emerald adds / red deletes, capped at 600 lines. */
 function DiffBlock({ b }: { b: ToolBlock }): React.JSX.Element {
-  const i = input(b)
-  const lines = (s: string): string[] => (s === '' ? [] : s.split('\n'))
-  const hunks: { old: string[]; new: string[] }[] =
-    b.name === 'MultiEdit' && Array.isArray(i.edits)
-      ? (i.edits as Record<string, unknown>[]).map((e) => ({
-          old: lines(str(e.old_string)),
-          new: lines(str(e.new_string))
-        }))
-      : b.name === 'Write' || b.name === 'NotebookEdit'
-        ? [{ old: [], new: lines(str(i.content) || str(i.new_source)) }]
-        : [{ old: lines(str(i.old_string)), new: lines(str(i.new_string)) }]
+  const hunks = editModel(b).hunks
   const capped: { old: string[]; new: string[] }[] = []
   let budget = DIFF_LINE_CAP
   for (const h of hunks) {
@@ -796,6 +843,46 @@ interface EditModel {
   create: boolean
   hunks: { old: string[]; new: string[] }[]
   extraPaths: string[]
+  /** first changed line in the new file, when the diff names one */
+  line?: number
+}
+
+/** Codex fileChange diffs: unified hunks for updates, whole content for
+ *  adds. Context lines drop — the editor holds the full picture. */
+function parsePatchDiff(
+  diff: string,
+  isAdd: boolean
+): { hunks: { old: string[]; new: string[] }[]; adds: number; dels: number; line?: number } {
+  const all = diff === '' ? [] : diff.split('\n')
+  if (isAdd || !all.some((l) => /^[@+-]/.test(l))) {
+    return { hunks: all.length ? [{ old: [], new: all }] : [], adds: all.length, dels: 0, line: 1 }
+  }
+  const hunks: { old: string[]; new: string[] }[] = []
+  let cur: { old: string[]; new: string[] } | null = null
+  let line: number | undefined
+  for (const l of all) {
+    if (l.startsWith('@@')) {
+      const m = /\+(\d+)/.exec(l)
+      if (line === undefined && m) line = Number(m[1])
+      cur = { old: [], new: [] }
+      hunks.push(cur)
+      continue
+    }
+    if (l.startsWith('+++') || l.startsWith('---')) continue
+    if (!cur) {
+      cur = { old: [], new: [] }
+      hunks.push(cur)
+    }
+    if (l.startsWith('+')) cur.new.push(l.slice(1))
+    else if (l.startsWith('-')) cur.old.push(l.slice(1))
+  }
+  const kept = hunks.filter((h) => h.old.length || h.new.length)
+  return {
+    hunks: kept,
+    adds: kept.reduce((n, h) => n + h.new.length, 0),
+    dels: kept.reduce((n, h) => n + h.old.length, 0),
+    line
+  }
 }
 
 function editModel(b: ToolBlock): EditModel {
@@ -848,9 +935,23 @@ function editModel(b: ToolBlock): EditModel {
       }
     }
     case 'apply_patch': {
-      const paths = Array.isArray(b.input)
-        ? (b.input as Record<string, unknown>[]).map((c) => str(c.path)).filter(Boolean)
-        : Object.keys(i)
+      const changes = Array.isArray(b.input) ? (b.input as Record<string, unknown>[]) : []
+      // splitEdit hands each card exactly one change — render its real diff.
+      if (changes.length === 1) {
+        const c = changes[0]
+        const create = (c.kind as { type?: string } | undefined)?.type === 'add'
+        const d = parsePatchDiff(str(c.diff), create)
+        return {
+          path: str(c.path),
+          adds: d.adds,
+          dels: d.dels,
+          create,
+          hunks: d.hunks,
+          line: d.line,
+          extraPaths: []
+        }
+      }
+      const paths = changes.map((c) => str(c.path)).filter(Boolean)
       return { ...empty, path: paths[0] ?? '', extraPaths: paths.slice(1) }
     }
     default:
@@ -873,8 +974,21 @@ export const ZEditCard = memo(function ZEditCard({
   const [open, setOpen] = usePersistedOpen(`e:${b.callId}`, defaultOpen)
   const [userToggled, setUserToggled] = useState(false)
   const openFileRef = useApp((s) => s.openFileRef)
+  const projectId = useApp((s) => s.selectedProjectId)
   const projectCwd = useApp((s) => s.projects.find((p) => p.id === s.selectedProjectId)?.cwd)
+  const openFileSurface = useApp((s) => s.openFileSurface)
   const m = editModel(b)
+  /** The change spot, in the app's own editor — small fixes happen there. */
+  const openInEditor = (): void => {
+    if (!projectId) return
+    let rel = m.path
+    if (rel.startsWith('/') && projectCwd) {
+      const root = projectCwd.endsWith('/') ? projectCwd : `${projectCwd}/`
+      if (!rel.startsWith(root)) return
+      rel = rel.slice(root.length)
+    }
+    openFileSurface(projectId, rel, m.line !== undefined ? { lineNumber: m.line, column: 1 } : null)
+  }
   const running = b.output === undefined
   // Input still streaming from the driver: spinner + verb, with the file
   // name joining as soon as its value is complete and the diffstat counting
@@ -964,14 +1078,24 @@ export const ZEditCard = memo(function ZEditCard({
           </span>
         </button>
         {m.path && (
-          <button
-            onClick={() => openFileRef(m.path)}
-            aria-label="Open diff in Changes"
-            title="Open diff in Changes"
-            className="flex size-6 shrink-0 items-center justify-center rounded-[6px] text-muted-foreground opacity-0 transition-all duration-150 group-hover/edit:opacity-100 hover:bg-accent hover:text-foreground"
-          >
-            <ZIcon name="expand-arrows" size={12} />
-          </button>
+          <span className="flex shrink-0 items-center opacity-0 transition-opacity duration-150 group-hover/edit:opacity-100">
+            <button
+              onClick={openInEditor}
+              aria-label="Edit in editor at this change"
+              title="Edit in editor at this change"
+              className="flex size-6 items-center justify-center rounded-[6px] text-muted-foreground transition-colors duration-150 hover:bg-accent hover:text-foreground"
+            >
+              <ZIcon name="pen" size={12} />
+            </button>
+            <button
+              onClick={() => openFileRef(m.path)}
+              aria-label="Open diff in Changes"
+              title="Open diff in Changes"
+              className="flex size-6 items-center justify-center rounded-[6px] text-muted-foreground transition-colors duration-150 hover:bg-accent hover:text-foreground"
+            >
+              <ZIcon name="expand-arrows" size={12} />
+            </button>
+          </span>
         )}
       </div>
       <TweenHeight open={open} animate={userToggled}>

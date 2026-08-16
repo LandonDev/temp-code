@@ -8,7 +8,14 @@ import { QuestionCard } from './blocks/QuestionCard'
 import { CompactionCard } from './blocks/CompactionCard'
 import { MarkdownText } from './blocks/MarkdownText'
 import { ThinkingBlock } from './blocks/ThinkingBlock'
-import { EDIT_TOOLS, ErrorChip, groupSummary, ToolGroup, ZEditCard } from './blocks/ToolGroup'
+import {
+  EDIT_TOOLS,
+  ErrorChip,
+  groupSummary,
+  splitEdit,
+  ToolGroup,
+  ZEditCard
+} from './blocks/ToolGroup'
 import { UserMessage } from './blocks/UserMessage'
 import { ZIcon } from './zicon'
 import { Spinner } from '../ui/spinner'
@@ -47,18 +54,18 @@ function rowsFor(blocks: Block[]): Row[] {
     if (b.kind === 'thinking' && !b.streaming && b.text.trim() === '') continue
     if (b.kind === 'user') turn++
     if (b.kind === 'tool') {
-      // File changes stand alone and loud; everything else folds into the
-      // running group (which resumes after the edit).
-      if (EDIT_TOOLS.has(b.name)) {
-        rows.push({ type: 'edit', id: b.id, block: b, turn })
-        continue
+      // File changes stand alone and loud — one card per file, never
+      // collapsed. App-bookkeeping edits (.temp-code/) and every other
+      // tool fold into the running group (which resumes after the cards).
+      const isEdit = EDIT_TOOLS.has(b.name)
+      const { edits, internal } = isEdit ? splitEdit(b) : { edits: [], internal: null }
+      for (const eb of edits) rows.push({ type: 'edit', id: eb.id, block: eb, turn })
+      const grouped = isEdit ? internal : b
+      if (grouped) {
+        const last = rows.at(-1)
+        if (last?.type === 'group') last.tools.push(grouped)
+        else rows.push({ type: 'group', id: `g${grouped.id}`, tools: [grouped], turn })
       }
-      const last = rows.at(-1)
-      if (last?.type === 'group') {
-        last.tools.push(b)
-        continue
-      }
-      rows.push({ type: 'group', id: `g${b.id}`, tools: [b], turn })
       continue
     }
     rows.push({ type: 'block', id: b.id, block: b, turn })
@@ -134,7 +141,17 @@ export const BlockRow = memo(function BlockRow({
   sessionId: string
 }): React.JSX.Element {
   if (block.kind === 'tool') {
-    if (EDIT_TOOLS.has(block.name)) return <ZEditCard b={block} />
+    if (EDIT_TOOLS.has(block.name)) {
+      const { edits, internal } = splitEdit(block)
+      return (
+        <>
+          {edits.map((eb) => (
+            <ZEditCard key={eb.id} b={eb} />
+          ))}
+          {internal && <ToolGroup tools={[internal]} />}
+        </>
+      )
+    }
     return <ToolGroup tools={[block]} />
   }
   if (block.kind === 'thinking' && !block.streaming && block.text.trim() === '') return <></>
