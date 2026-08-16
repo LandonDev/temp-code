@@ -86,8 +86,16 @@ export function ContextMeter({ sessionId }: { sessionId: string }): React.JSX.El
   // Live accounting: refresh on open, and keep refreshing while a turn
   // runs — the ring and the open popover both move as messages land.
   const running = session?.status === 'running' || session?.status === 'starting'
+  const [answered, setAnswered] = useState(false)
+  // Reset per open/session during render (canonical prev-state pattern).
+  const [prevKey, setPrevKey] = useState('')
+  const key = `${open}:${sessionId}`
+  if (key !== prevKey) {
+    setPrevKey(key)
+    setAnswered(false)
+  }
   useEffect(() => {
-    if (open) void fetchContext(sessionId)
+    if (open) void fetchContext(sessionId).finally(() => setAnswered(true))
     if (!open && !running) return
     const t = setInterval(() => void fetchContext(sessionId), open ? 3000 : 6000)
     return () => clearInterval(t)
@@ -112,11 +120,16 @@ export function ContextMeter({ sessionId }: { sessionId: string }): React.JSX.El
       </PopoverTrigger>
       <PopoverContent align="end" side="top" className="w-80 rounded-xl p-0">
         {!usage ? (
-          <div className="flex h-24 items-center justify-center gap-2 text-xs text-muted-foreground">
-            {session?.status === 'idle' && !usage ? (
-              <>Context loads after the next reply.</>
-            ) : (
+          <div className="flex h-24 items-center justify-center gap-2 px-6 text-center text-xs text-muted-foreground">
+            {!answered ? (
               <Spinner className="size-3.5" />
+            ) : running ? (
+              // The harness can't answer the control request mid-stream on
+              // big threads — the poll keeps trying; say so instead of
+              // spinning forever.
+              <>Context updates when this turn settles.</>
+            ) : (
+              <>Context loads after the next reply.</>
             )}
           </div>
         ) : (
