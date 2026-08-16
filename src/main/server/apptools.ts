@@ -4,7 +4,7 @@ import {
   tool,
   type McpSdkServerConfigWithInstance
 } from '@anthropic-ai/claude-agent-sdk'
-import { CATALOG, modelInfo, type ProviderId } from '@shared/catalog'
+import { CATALOG, modelInfo, resolveModel, type ProviderId } from '@shared/catalog'
 import type { SessionMeta } from '@shared/events'
 import { INLINE_DIGEST_MAX_CHARS, mirrorRelPath, threadDigest } from './mirror'
 import type { SessionRegistry } from './sessions'
@@ -116,11 +116,14 @@ export async function appStartThread(
   caller: SessionMeta,
   args: StartThreadArgs
 ): Promise<{ threadId: string; title: string } | string> {
-  const model = args.model || CATALOG[args.provider].defaultModel
-  const info = modelInfo(args.provider, model)
-  if (!info) {
-    return `refused: unknown model "${model}" for ${args.provider}. Valid: ${CATALOG[args.provider].models.map((m) => m.id).join(', ')}`
+  // A model id names its harness: a gpt model requested under provider
+  // "claude" routes to codex. Only a model NO provider serves is refused.
+  const requested = args.model || CATALOG[args.provider].defaultModel
+  const { provider, model } = resolveModel(args.provider, requested)
+  if (model !== requested) {
+    return `refused: no provider serves model "${requested}". Valid: ${(Object.keys(CATALOG) as ProviderId[]).map((p) => `${p}: ${CATALOG[p].models.map((m) => m.id).join(', ')}`).join('; ')}`
   }
+  const info = modelInfo(provider, model)!
   const reasoning = (args.reasoning ??
     info.defaultReasoning ??
     'medium') as SessionMeta['reasoning']
@@ -147,7 +150,7 @@ export async function appStartThread(
   // inherits — it can never grant itself more than the user granted.
   const callerNow = reg.list().find((s) => s.id === caller.id) ?? caller
   const thread = await reg.create({
-    provider: args.provider,
+    provider,
     model,
     reasoning,
     permission: callerNow.permission,

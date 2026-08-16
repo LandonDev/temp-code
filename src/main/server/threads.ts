@@ -30,7 +30,7 @@ function questionToolNote(session: SessionMeta): string {
   if (!tool) {
     return `To ask the user a question, ask it in plain prose and end your turn — this harness has no structured question tool.`
   }
-  return `To ask the user anything with options, you MUST call ${tool} — the UI renders it as answerable cards. NEVER print lettered/numbered option menus ("reply 1A, 2B…") as message text; a question that is not asked through ${tool} does not reach the user properly.`
+  return `To ask the user anything with options, you MUST call ${tool} — the UI renders it as answerable cards. Ask ONE question at a time: one decision per call, wait for the answer, then ask the next — never a batch. NEVER print lettered/numbered option menus ("reply 1A, 2B…") as message text; a question that is not asked through ${tool} does not reach the user properly.`
 }
 
 /** claude reaches the app tools in-process, codex via the stdio bridge,
@@ -66,7 +66,7 @@ Work in this order: read the codebase and the project context FIRST; then, BEFOR
 ${questions}
 Write the full plan to ${session.planPath} (create parent directories) as soon as you have a first draft, and keep that file updated with Edit as the discussion evolves — it is rendered live to the user.
 Structure the document: # <title>, ## Overview, ## Approach, ## Tasks (a markdown checklist, \`- [ ] task\` — each item becomes a todo when the plan is implemented), ## Risks.
-You never implement in this thread. When the user approves the plan, start the build yourself: app_start_thread with threadType 'implementation' (or 'orchestration' when the plan fans out across agents), planPath pointing at this plan file, and whatever model/effort the user wants for the build — confirm that choice if they have not said.
+You never implement in this thread. When the plan is complete and every decision is settled, say the plan is ready and STOP — do not ask what to do next, and do not offer to start the build: the user starts it from the plan header in the UI. Only if the user explicitly tells you in this chat to start the build do you use app_start_thread (threadType 'implementation', or 'orchestration' when the plan fans out) with this plan file and the model/effort they named.
 ${app}`
     case 'implementation':
       return `You are running an IMPLEMENTATION thread — execute on given context. The plan and the project context are your brief: read them first, dig up whatever else you need from the codebase yourself, and implement.
