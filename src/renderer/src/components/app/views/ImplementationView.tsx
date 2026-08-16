@@ -273,8 +273,10 @@ export function ImplementationView({ session }: { session: SessionMeta }): React
                         <div
                           key={i}
                           className={cn(
-                            'mb-2 overflow-hidden rounded-[10px]',
-                            live ? 'bg-accent/60' : 'hover:bg-accent/30'
+                            'mb-2 overflow-hidden rounded-[10px] transition-colors duration-150',
+                            live
+                              ? 'bg-accent/70 hover:bg-accent'
+                              : 'bg-accent/35 hover:bg-accent/60'
                           )}
                         >
                           <div
@@ -685,14 +687,21 @@ function TaskGrid({
             layoutId={`chg-${sessionId}-${openPath}`}
             transition={SPRING_PANEL}
             className="col-span-full py-1"
+            // Closing the card IS the collapse: a click on the card's own
+            // header row morphs it back to its text row. Inner buttons
+            // (edit links, line clicks) keep their normal behavior.
+            onClickCapture={(e) => {
+              const el = e.target as HTMLElement
+              const btn = el.closest('button')
+              const card = e.currentTarget.querySelector('.group\\/edit')
+              if (btn && card && btn === card.querySelector('button')) {
+                e.preventDefault()
+                e.stopPropagation()
+                onPick(openPath)
+              }
+            }}
           >
             <ZEditCard b={open.block} defaultOpen />
-            <button
-              onClick={() => onPick(openPath)}
-              className="mt-0.5 text-[11px] text-muted-foreground/70 hover:text-foreground"
-            >
-              collapse
-            </button>
           </motion.div>
         )}
       </AnimatePresence>
@@ -763,7 +772,7 @@ function TaskMeta({
         </p>
       )}
       {ticks.length > 1 && (
-        <div className="group/tl">
+        <div className="group/tl relative">
           <div className="relative mt-1 h-[5px] overflow-hidden rounded-full bg-secondary/50">
             {ticks.map((t, n) => (
               <span
@@ -782,7 +791,8 @@ function TaskMeta({
               />
             ))}
           </div>
-          <p className="mt-1 hidden gap-2.5 text-[10px] text-muted-foreground/70 group-hover/tl:flex">
+          {/* Legend floats over the bar on hover — nothing reflows. */}
+          <p className="pointer-events-none absolute bottom-full left-0 z-20 mb-1.5 hidden gap-2.5 rounded-lg border border-border bg-popover px-2.5 py-1.5 text-[10px] whitespace-nowrap text-muted-foreground shadow-[0_4px_16px_rgb(0_0_0/0.12)] group-hover/tl:flex">
             <span className="flex items-center gap-1">
               <span className="size-1.5 rounded-full bg-success/80" />
               edits
