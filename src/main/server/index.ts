@@ -54,6 +54,7 @@ import {
   attachLspSocket,
   ensureLsp,
   ideaAcceptEula,
+  ideaCheckUpdate,
   ideaEula,
   javaDoctor,
   lspStatus,
@@ -351,6 +352,9 @@ export async function startServer(dbPath: string): Promise<RunningServer> {
             break
           case 'idea.acceptEula':
             sendFrame({ id: req.id, ok: true, result: ideaAcceptEula() })
+            break
+          case 'idea.checkUpdate':
+            sendFrame({ id: req.id, ok: true, result: await ideaCheckUpdate() })
             break
           case 'dap.connect':
             sendFrame({ id: req.id, ok: true, result: await connectDap(req.params.port) })

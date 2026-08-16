@@ -183,6 +183,7 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
   // ── IntelliJ engine (docs/PLAN-4.md M15): EULA gate for intellij-server.
   z.object({ id: z.string(), method: z.literal('idea.eula') }),
   z.object({ id: z.string(), method: z.literal('idea.acceptEula') }),
+  z.object({ id: z.string(), method: z.literal('idea.checkUpdate') }),
   // ── debugger (docs/PLAN-4.md M20): bridge a DAP TCP port into a WS tunnel.
   z.object({
     id: z.string(),

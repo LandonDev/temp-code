@@ -466,6 +466,7 @@ function IdeaEngineRow(): React.JSX.Element {
   const fetchDoctor = useApp((s) => s.fetchDoctor)
   const [open, setOpen] = useState(false)
   const [eula, setEula] = useState<{ build: string; text: string } | null>(null)
+  const [updateMsg, setUpdateMsg] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const idea = doctor?.java?.ideaServer
 
@@ -501,9 +502,26 @@ function IdeaEngineRow(): React.JSX.Element {
         </span>
       </span>
       {idea?.accepted ? (
-        <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+        <span className="flex items-center gap-2 text-xs text-muted-foreground">
           <span className="size-1.5 rounded-full bg-success" />
           enabled
+          <button
+            onClick={() => {
+              setUpdateMsg('checking…')
+              void client
+                .request<{ current: string; latest: string; updated: boolean }>('idea.checkUpdate')
+                .then((r) => {
+                  setUpdateMsg(
+                    r.updated ? `updated to ${r.latest} — re-accept the EULA` : 'up to date'
+                  )
+                  void fetchDoctor()
+                })
+                .catch(() => setUpdateMsg('update check failed'))
+            }}
+            className="text-[11px] text-muted-foreground/70 underline-offset-2 hover:underline"
+          >
+            {updateMsg ?? 'check for updates'}
+          </button>
         </span>
       ) : (
         <Button size="sm" variant="outline" className="h-7 text-xs" onClick={openGate}>
