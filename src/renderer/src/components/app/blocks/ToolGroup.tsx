@@ -536,7 +536,9 @@ export function TweenHeight({
       return
     }
     const target = open ? el.scrollHeight : 0
-    const from = open ? 0 : el.scrollHeight
+    // Start from wherever the element actually is — a toggle that lands
+    // mid-tween continues from the current height instead of jumping.
+    const from = el.offsetHeight
     el.style.transition = 'none'
     el.style.height = `${from}px`
     // Force the start frame, then tween to the target (RESIZE: 200ms ease-out).
@@ -1492,7 +1494,7 @@ export const ZEditCard = memo(function ZEditCard({
   })
   const liveParsed = useMemo(
     () => (liveRec?.diff ? parsePatchDiff(liveRec.diff, liveRec.kind === 'created') : null),
-    [liveRec?.diff, liveRec?.kind]
+    [liveRec]
   )
 
   // Count the diffstat up only when we watched the change land live.

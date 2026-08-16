@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { AnimatePresence, LayoutGroup, motion, useReducedMotion } from 'motion/react'
 import { Check, ChevronRight, Circle, MessageSquare } from 'lucide-react'
 import type { SessionMeta } from '@shared/events'
@@ -77,7 +77,6 @@ export function ImplementationView({ session }: { session: SessionMeta }): React
   // progress when it was born (block.todo). Items from before the first
   // list — or when no list exists — group separately; indices past a
   // shrunken list clamp to the last task.
-  const [openGroups, setOpenGroups] = useState<Set<number>>(new Set())
   const [closedTasks, setClosedTasks] = useState<Set<number>>(new Set())
   /** a grid row clicked open: its diff morphs open inside the task */
   const [openChange, setOpenChange] = useState<{ task: number; path: string } | null>(null)
@@ -281,7 +280,7 @@ export function ImplementationView({ session }: { session: SessionMeta }): React
                       const needsUser = items.some(
                         (b) => (b.kind === 'approval' || b.kind === 'question') && !b.resolved
                       )
-                      const folded = todo.status === 'completed' && !needsUser && !openGroups.has(i)
+                      const folded = todo.status === 'completed' && !needsUser
                       const taskBlocks = blocksByTodo.get(i) ?? []
                       return (
                         <div
@@ -320,7 +319,6 @@ export function ImplementationView({ session }: { session: SessionMeta }): React
                                 (folded ? (
                                   <TaskGrid
                                     blocks={taskBlocks}
-                                    sessionId={session.id}
                                     openPath={openChange?.task === i ? openChange.path : null}
                                     onPick={(path) =>
                                       setOpenChange(
@@ -637,15 +635,14 @@ function TaskActivity({ blocks }: { blocks: Block[] }): React.JSX.Element | null
  *  click one and its diff morphs open in place (AgentDetail-style). */
 function TaskGrid({
   blocks,
-  sessionId,
   openPath,
   onPick
 }: {
   blocks: Block[]
-  sessionId: string
   openPath: string | null
   onPick: (path: string) => void
 }): React.JSX.Element | null {
+  const gid = useId()
   const files = new Map<
     string,
     { name: string; adds: number; dels: number; ms: number; block: ToolBlock }
@@ -671,38 +668,52 @@ function TaskGrid({
   }
   if (files.size === 0) return null
   const open = openPath ? files.get(openPath) : null
+  // Locked layout: rows keep a stable layoutId (so the diff can morph
+  // from/to them) but layoutDependency pins them — motion only re-measures
+  // when openPath changes, so unrelated reflows (a task collapsing above)
+  // move them rigidly with the page instead of springing them around.
+  // The clicked row stays mounted (motion hides the follower itself), so
+  // sibling rows never reshuffle; the card's height tweens open below the
+  // grid so everything under it slides instead of jumping.
   return (
-    <LayoutGroup>
+    <LayoutGroup id={gid}>
       <div className="grid grid-cols-[repeat(auto-fill,minmax(190px,1fr))] gap-x-4 px-4 pb-2">
-        {[...files.entries()].map(([path, f]) =>
-          openPath === path ? null : (
-            <motion.button
-              key={path}
-              layout
-              layoutId={`chg-${sessionId}-${path}`}
-              transition={SPRING_PANEL}
-              onClick={() => onPick(path)}
-              title={path}
-              className="flex items-center gap-2 py-0.5 text-left text-[12px] transition-colors hover:text-foreground"
-            >
-              <span className="w-9 shrink-0 text-right text-[10px] tabular-nums text-muted-foreground/50">
-                {f.ms > 1500 ? `~${duration(f.ms)}` : ''}
-              </span>
-              <span className="min-w-0 flex-1 truncate text-muted-foreground">{f.name}</span>
-              <span className="shrink-0 tabular-nums">
-                {f.adds > 0 && <span className="text-success">+{f.adds}</span>}{' '}
-                {f.dels > 0 && <span className="text-destructive">−{f.dels}</span>}
-              </span>
-            </motion.button>
-          )
-        )}
-        <AnimatePresence>
-          {open && openPath && (
+        {[...files.entries()].map(([path, f]) => (
+          <motion.button
+            key={path}
+            layoutId={`chg-${path}`}
+            layoutDependency={openPath}
+            transition={SPRING_PANEL}
+            onClick={() => onPick(path)}
+            title={path}
+            className="flex items-center gap-2 py-0.5 text-left text-[12px] transition-colors hover:text-foreground"
+          >
+            <span className="w-9 shrink-0 text-right text-[10px] tabular-nums text-muted-foreground/50">
+              {f.ms > 1500 ? `~${duration(f.ms)}` : ''}
+            </span>
+            <span className="min-w-0 flex-1 truncate text-muted-foreground">{f.name}</span>
+            <span className="shrink-0 tabular-nums">
+              {f.adds > 0 && <span className="text-success">+{f.adds}</span>}{' '}
+              {f.dels > 0 && <span className="text-destructive">−{f.dels}</span>}
+            </span>
+          </motion.button>
+        ))}
+      </div>
+      <AnimatePresence initial={false}>
+        {open && openPath && (
+          <motion.div
+            key={openPath}
+            initial={{ height: 0 }}
+            animate={{ height: 'auto' }}
+            exit={{ height: 0 }}
+            transition={{ duration: 0.22, ease: EASE_OUT }}
+            className="px-3"
+          >
             <motion.div
-              key={openPath}
-              layoutId={`chg-${sessionId}-${openPath}`}
+              layoutId={`chg-${openPath}`}
+              layoutDependency={openPath}
               transition={SPRING_PANEL}
-              className="col-span-full py-1"
+              className="py-1"
               // Closing the card IS the collapse: a click on the card's own
               // header row morphs it back to its text row. Inner buttons
               // (edit links, line clicks) keep their normal behavior.
@@ -719,9 +730,9 @@ function TaskGrid({
             >
               <ZEditCard b={open.block} defaultOpen />
             </motion.div>
-          )}
-        </AnimatePresence>
-      </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </LayoutGroup>
   )
 }
