@@ -294,6 +294,8 @@ export class SessionRegistry {
       status: 'idle',
       archived: false,
       permission: params.permission ?? d.permission,
+      fast: false,
+      context1m: false,
       nativeId: null,
       createdAt: now,
       updatedAt: now
@@ -466,6 +468,25 @@ export class SessionRegistry {
     if (!t) return
     const next = this.store.updateSession(sessionId, { title: t })
     if (next) this.notifyMeta(next)
+  }
+
+  /** Fast mode / context window: persist and drop the handle — the next
+   *  send boots the harness fresh (resume keeps the conversation). */
+  async tune(sessionId: string, patch: { fast?: boolean; context1m?: boolean }): Promise<void> {
+    await this.dropHandle(sessionId)
+    const next = this.store.updateSession(sessionId, patch)
+    if (next) this.notifyMeta(next)
+  }
+
+  /** Live context usage from the session's harness, if it can report it. */
+  async contextUsage(sessionId: string): Promise<unknown> {
+    const handle = this.handles.get(sessionId)
+    if (!handle?.contextUsage) return null
+    try {
+      return await handle.contextUsage()
+    } catch {
+      return null
+    }
   }
 
   async setArchived(sessionId: string, archived: boolean): Promise<void> {

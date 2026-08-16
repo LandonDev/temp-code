@@ -30,6 +30,8 @@ export interface DriverHandle {
   approve?: (requestId: string, allow: boolean) => void
   /** Answer a pending question-request; null = dismissed without answering. */
   answer?: (requestId: string, answers: string[][] | null) => void
+  /** Context-window usage breakdown (claude: /context data). */
+  contextUsage?: () => Promise<unknown>
   dispose: () => Promise<void>
 }
 

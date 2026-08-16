@@ -128,6 +128,8 @@ interface AppState {
   lastSeen: Record<string, number>
   /** messages waiting per session (server-owned; mirrored via push) */
   queues: Record<string, QueuedMessage[]>
+  /** latest context-usage snapshot per session (claude /context data) */
+  contexts: Record<string, unknown>
   /** what Enter does while a turn runs; ⌘Enter does the other */
   midTurnDefault: 'queue' | 'steer'
 
@@ -186,6 +188,9 @@ interface AppState {
   /** Mark a thread's activity as seen (clears its unread dot). */
   markSeen: (sessionId: string) => void
   setMidTurnDefault: (v: 'queue' | 'steer') => void
+  /** Fast mode / 1M context; harness restarts with resume on next send. */
+  tune: (sessionId: string, patch: { fast?: boolean; context1m?: boolean }) => Promise<void>
+  fetchContext: (sessionId: string) => Promise<void>
   queueAdd: (
     sessionId: string,
     text: string,
@@ -306,6 +311,7 @@ export const useApp = create<AppState>((set, get) => ({
   favoriteModels: JSON.parse(localStorage.getItem(FAVORITES_KEY) ?? '[]') as string[],
   lastSeen: JSON.parse(localStorage.getItem(LAST_SEEN_KEY) ?? '{}') as Record<string, number>,
   queues: {},
+  contexts: {},
   midTurnDefault: localStorage.getItem(MID_TURN_KEY) === 'steer' ? 'steer' : 'queue',
 
   init: async () => {
@@ -313,8 +319,19 @@ export const useApp = create<AppState>((set, get) => ({
     initStarted = true
     client.onPush((push) => {
       if (push.push === 'session') {
+        const prev = get().sessions[push.session.id]
         set((s) => ({ sessions: { ...s.sessions, [push.session.id]: push.session } }))
-        if (push.session.id === get().selectedId) get().markSeen(push.session.id)
+        if (push.session.id === get().selectedId) {
+          get().markSeen(push.session.id)
+          // A settled turn is when the context accounting moved.
+          if (
+            push.session.provider === 'claude' &&
+            push.session.status === 'idle' &&
+            prev?.status !== 'idle'
+          ) {
+            void get().fetchContext(push.session.id)
+          }
+        }
       } else if (push.push === 'queue') {
         set((s) => ({ queues: { ...s.queues, [push.sessionId]: push.items } }))
       } else if (push.push === 'event') {
@@ -685,6 +702,17 @@ export const useApp = create<AppState>((set, get) => ({
   },
   queueSteer: async (sessionId, messageId) => {
     await client.request('queue.steer', { sessionId, messageId })
+  },
+
+  tune: async (sessionId, patch) => {
+    await client.request('session.tune', { sessionId, ...patch })
+  },
+
+  fetchContext: async (sessionId) => {
+    const usage = await client.request<unknown>('session.context', { sessionId })
+    // Context can't change while a session idles — a null (cold handle,
+    // control-channel timeout) must not clobber the last good snapshot.
+    if (usage) set((s) => ({ contexts: { ...s.contexts, [sessionId]: usage } }))
   },
 
   setPermission: async (sessionId, permission) => {

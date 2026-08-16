@@ -9,6 +9,8 @@ import { cn, displayPath } from '../../lib/utils'
 import { EASE_OUT, SPRING_PANEL, SPRING_SWAP } from '../../lib/ease'
 import { StatusDot, timeAgo } from './bits'
 import { MessageQueue } from './MessageQueue'
+import { ContextMeter } from './ContextMeter'
+import { Zap } from 'lucide-react'
 import { ZIcon } from './zicon'
 import { ModelPicker } from './ModelPicker'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select'
@@ -115,6 +117,7 @@ export function PromptBar({ compact }: { compact?: boolean }): React.JSX.Element
   const send = useApp((s) => s.send)
   const queueAdd = useApp((s) => s.queueAdd)
   const midTurnDefault = useApp((s) => s.midTurnDefault)
+  const tune = useApp((s) => s.tune)
   const interrupt = useApp((s) => s.interrupt)
   const setPermission = useApp((s) => s.setPermission)
 
@@ -729,7 +732,7 @@ export function PromptBar({ compact }: { compact?: boolean }): React.JSX.Element
             </div>
           </div>
         </div>
-        {/* quiet meta row below the pill: checkout · branch */}
+        {/* quiet meta row below the pill: checkout · speed · context · branch */}
         <div className="flex h-7 items-center justify-between px-1.5 text-[11px] text-faint">
           <span
             className="flex items-center gap-1.5"
@@ -738,12 +741,34 @@ export function PromptBar({ compact }: { compact?: boolean }): React.JSX.Element
             <ZIcon name="folder" size={12} />
             {project?.mode === 'worktree' ? 'Worktree' : 'Local checkout'}
           </span>
-          {project?.branch && (
-            <span className="flex items-center gap-1.5">
-              <ZIcon name="git-branch" size={12} />
-              {project.branch}
-            </span>
-          )}
+          <span className="flex items-center gap-2">
+            {session.provider === 'claude' && (
+              <>
+                <button
+                  onClick={() => void tune(selectedId, { fast: !session.fast })}
+                  title={
+                    session.fast
+                      ? 'Fast mode on — faster output on supported Claude models. Applies from the next message.'
+                      : 'Normal speed. Fast mode speeds up output on supported Claude models (Opus family).'
+                  }
+                  className={cn(
+                    'flex items-center gap-1 rounded-full px-1.5 py-0.5 transition-colors',
+                    session.fast ? 'text-warning' : 'hover:text-foreground'
+                  )}
+                >
+                  <Zap className={cn('size-3', session.fast && 'fill-current')} />
+                  {session.fast ? 'Fast' : 'Normal'}
+                </button>
+                <ContextMeter sessionId={selectedId} />
+              </>
+            )}
+            {project?.branch && (
+              <span className="flex items-center gap-1.5">
+                <ZIcon name="git-branch" size={12} />
+                {project.branch}
+              </span>
+            )}
+          </span>
         </div>
 
         <AnimatePresence>
