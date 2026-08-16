@@ -47,6 +47,8 @@ type BlockKind =
       isError?: boolean
       /** wall clock when the result landed — with ts, the tool's duration */
       doneTs?: number
+      /** humanized face for addon calls (Codex appContext): app + action */
+      display?: { app?: string; action?: string }
       /** activity events from a subagent running under this call */
       subCount: number
     }
@@ -280,14 +282,26 @@ export function foldEvent(s: FoldState, e: AgentEvent, ts?: number): void {
       if (existing !== undefined) {
         // Streaming preview or the final input replacing the early chip.
         const b = s.blocks[existing] as Extract<Block, { kind: 'tool' }>
-        const next = { ...b, name: e.name, input: e.input ?? b.input }
+        const next = {
+          ...b,
+          name: e.name,
+          input: e.input ?? b.input,
+          display: e.display ?? b.display
+        }
         if (e.partial) next.partialInput = true
         else delete next.partialInput
         s.blocks[existing] = next
       } else {
         const idx = push(
           s,
-          { kind: 'tool', callId: e.callId, name: e.name, input: e.input, subCount: 0 },
+          {
+            kind: 'tool',
+            callId: e.callId,
+            name: e.name,
+            input: e.input,
+            display: e.display,
+            subCount: 0
+          },
           ts
         )
         if (e.partial) (s.blocks[idx] as Extract<Block, { kind: 'tool' }>).partialInput = true
