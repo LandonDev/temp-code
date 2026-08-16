@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
-import { FileText, Image as ImageIcon, MessageSquare, X } from 'lucide-react'
+import { Check, FileText, Image as ImageIcon, MessageSquare, X } from 'lucide-react'
 import type { ProviderId, Reasoning } from '@shared/catalog'
 import type { Attachment, PermissionPolicy, SessionMeta } from '@shared/events'
 import type { SlashCommand } from '@shared/domain'
@@ -775,9 +775,17 @@ export function PromptBar({
                               ['ctx:1m', '1M', !!session.context1m]
                             ] as const
                           ).map(([v, label, on]) => (
-                            <SelectItem key={v} value={v}>
-                              <span className={cn(!on && 'text-muted-foreground')}>{label}</span>
-                              {on && <span className="ml-2 text-[10px] text-success">active</span>}
+                            <SelectItem
+                              key={v}
+                              value={v}
+                              className={cn(!on && 'text-muted-foreground')}
+                            >
+                              {label}
+                              {on && (
+                                <span className="pointer-events-none absolute top-1/2 right-2 flex size-3.5 -translate-y-1/2 items-center justify-center">
+                                  <Check className="size-3.5" />
+                                </span>
+                              )}
                             </SelectItem>
                           ))}
                         </>

@@ -265,7 +265,7 @@ interface AppState {
   setSummaryModel: (v: 'auto' | 'haiku' | 'spark') => void
   /** Fast mode / 1M context; harness restarts with resume on next send. */
   tune: (sessionId: string, patch: { fast?: boolean; context1m?: boolean }) => Promise<void>
-  fetchContext: (sessionId: string) => Promise<void>
+  fetchContext: (sessionId: string) => Promise<boolean>
   queueAdd: (
     sessionId: string,
     text: string,
@@ -1011,14 +1011,15 @@ export const useApp = create<AppState>((set, get) => ({
     })
     // Context can't change while a session idles — a null (cold handle,
     // control-channel timeout) must not clobber the last good snapshot.
-    if (!usage) return
+    if (!usage) return false
     const pending = pendingCompact.get(sessionId)
     if (pending) {
       // Halfway between post and pre splits stale from caught-up reports.
-      if (usage.totalTokens > (pending.pre + pending.post) / 2) return
+      if (usage.totalTokens > (pending.pre + pending.post) / 2) return false
       pendingCompact.delete(sessionId)
     }
     set((s) => ({ contexts: { ...s.contexts, [sessionId]: usage } }))
+    return true
   },
 
   setPermission: async (sessionId, permission) => {
