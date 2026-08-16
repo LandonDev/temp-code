@@ -863,17 +863,21 @@ const Chip = memo(function Chip({ b }: { b: ToolBlock }): React.JSX.Element {
   )
 })
 
-/** The folded group row — collapsed while it works (a shimmer on the label
- *  is the live signal, never an auto-opened dump); the user's toggle is the
- *  only thing that expands it.
+/** The folded group row. The ACTIVE group — the one tools are streaming
+ *  into, nothing after it yet — rides open (`autoOpen`), each new chip
+ *  landing in view; when the next text block arrives it stops being last
+ *  and folds shut (a 200ms tween, not a snap). The user's toggle
+ *  overrides either way. Chips themselves stay collapsed — no dumps.
  *
  *  A single tool skips the generic summary ("Called 1 tool") entirely: the
  *  header IS the verb + target, and one click opens the invocation/output
  *  directly — never a second nested expansion. */
 export const ToolGroup = memo(function ToolGroup({
-  tools
+  tools,
+  autoOpen = false
 }: {
   tools: ToolBlock[]
+  autoOpen?: boolean
 }): React.JSX.Element {
   const gkey = `g:${tools[0].callId}`
   const [override, setOverrideRaw] = useState<boolean | null>(
@@ -885,8 +889,7 @@ export const ToolGroup = memo(function ToolGroup({
     openState.set(gkey, v)
     setOverrideRaw(v)
   }
-  const [userToggled, setUserToggled] = useState(false)
-  const open = override ?? false
+  const open = override ?? autoOpen
 
   const single = tools.length === 1 ? tools[0] : null
   const k = single ? kindOf(single) : null
@@ -905,10 +908,7 @@ export const ToolGroup = memo(function ToolGroup({
   return (
     <div>
       <button
-        onClick={() => {
-          setUserToggled(true)
-          setOverride(!open)
-        }}
+        onClick={() => setOverride(!open)}
         className="group/hdr flex h-[26px] w-full items-center gap-2 px-1 text-left text-xs text-muted-foreground transition-colors duration-150 hover:text-foreground"
         title={rawTitle ?? groupSummary(tools, sessions)}
       >
@@ -943,7 +943,9 @@ export const ToolGroup = memo(function ToolGroup({
           </span>
         )}
       </button>
-      <TweenHeight open={open} animate={userToggled}>
+      {/* animate: true — auto-collapse (text arrived) tweens like a user
+          toggle; first mount still renders at final size instantly. */}
+      <TweenHeight open={open} animate>
         <div className="relative">
           {/* guide rail — 1px hairline centered under the chevron tile */}
           <div className="absolute top-0 bottom-0 left-3 w-px bg-(--rail)" />
