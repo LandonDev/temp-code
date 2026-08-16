@@ -561,9 +561,9 @@ textarea::-webkit-scrollbar {
  * the !important levers.
  * ------------------------------------------------------------------------- */
 .monaco-editor .suggest-widget {
-  border-radius: 10px;
-  overflow: hidden;
-  box-shadow: 0 10px 28px rgb(0 0 0 / 0.4);
+  border-radius: 10px !important;
+  overflow: hidden !important;
+  box-shadow: 0 10px 28px rgb(0 0 0 / 0.4) !important;
 }
 .monaco-editor .suggest-widget .monaco-list-row {
   padding-left: 4px;
@@ -632,35 +632,35 @@ html:not(.dark) .monaco-editor .suggest-widget .monaco-list-row:has(.codicon-sym
   font-family: inherit;
 }
 .monaco-editor .suggest-widget .codicon-symbol-class { background: #4a7cf0 !important; }
-.monaco-editor .suggest-widget .codicon-symbol-class::before { content: 'C'; }
+.monaco-editor .suggest-widget .codicon.codicon-symbol-class::before { content: 'C'; }
 .monaco-editor .suggest-widget .codicon-symbol-interface { background: #34a05a !important; }
-.monaco-editor .suggest-widget .codicon-symbol-interface::before { content: 'I'; }
+.monaco-editor .suggest-widget .codicon.codicon-symbol-interface::before { content: 'I'; }
 .monaco-editor .suggest-widget .codicon-symbol-enum { background: #b07203 !important; }
-.monaco-editor .suggest-widget .codicon-symbol-enum::before { content: 'E'; }
+.monaco-editor .suggest-widget .codicon.codicon-symbol-enum::before { content: 'E'; }
 .monaco-editor .suggest-widget .codicon-symbol-enum-member { background: #b07203 !important; }
-.monaco-editor .suggest-widget .codicon-symbol-enum-member::before { content: 'e'; }
+.monaco-editor .suggest-widget .codicon.codicon-symbol-enum-member::before { content: 'e'; }
 .monaco-editor .suggest-widget .codicon-symbol-method { background: #c75450 !important; }
-.monaco-editor .suggest-widget .codicon-symbol-method::before { content: 'm'; }
+.monaco-editor .suggest-widget .codicon.codicon-symbol-method::before { content: 'm'; }
 .monaco-editor .suggest-widget .codicon-symbol-function { background: #c75450 !important; }
-.monaco-editor .suggest-widget .codicon-symbol-function::before { content: 'f'; }
+.monaco-editor .suggest-widget .codicon.codicon-symbol-function::before { content: 'f'; }
 .monaco-editor .suggest-widget .codicon-symbol-constructor { background: #c75450 !important; }
-.monaco-editor .suggest-widget .codicon-symbol-constructor::before { content: 'c'; }
+.monaco-editor .suggest-widget .codicon.codicon-symbol-constructor::before { content: 'c'; }
 .monaco-editor .suggest-widget .codicon-symbol-field { background: #c77dbb !important; }
-.monaco-editor .suggest-widget .codicon-symbol-field::before { content: 'f'; }
+.monaco-editor .suggest-widget .codicon.codicon-symbol-field::before { content: 'f'; }
 .monaco-editor .suggest-widget .codicon-symbol-property { background: #c77dbb !important; }
-.monaco-editor .suggest-widget .codicon-symbol-property::before { content: 'p'; }
+.monaco-editor .suggest-widget .codicon.codicon-symbol-property::before { content: 'p'; }
 .monaco-editor .suggest-widget .codicon-symbol-variable { background: #4a9aa6 !important; }
-.monaco-editor .suggest-widget .codicon-symbol-variable::before { content: 'v'; }
+.monaco-editor .suggest-widget .codicon.codicon-symbol-variable::before { content: 'v'; }
 .monaco-editor .suggest-widget .codicon-symbol-constant { background: #b07203 !important; }
-.monaco-editor .suggest-widget .codicon-symbol-constant::before { content: 'c'; }
+.monaco-editor .suggest-widget .codicon.codicon-symbol-constant::before { content: 'c'; }
 .monaco-editor .suggest-widget .codicon-symbol-keyword { background: #787878 !important; }
-.monaco-editor .suggest-widget .codicon-symbol-keyword::before { content: 'k'; }
+.monaco-editor .suggest-widget .codicon.codicon-symbol-keyword::before { content: 'k'; }
 .monaco-editor .suggest-widget .codicon-symbol-snippet { background: #787878 !important; }
-.monaco-editor .suggest-widget .codicon-symbol-snippet::before { content: 't'; }
+.monaco-editor .suggest-widget .codicon.codicon-symbol-snippet::before { content: 't'; }
 .monaco-editor .suggest-widget .codicon-symbol-module { background: #6b6e76 !important; }
-.monaco-editor .suggest-widget .codicon-symbol-module::before { content: 'M'; }
+.monaco-editor .suggest-widget .codicon.codicon-symbol-module::before { content: 'M'; }
 .monaco-editor .suggest-widget .codicon-symbol-text { background: #6b6e76 !important; }
-.monaco-editor .suggest-widget .codicon-symbol-text::before { content: 'a'; }
+.monaco-editor .suggest-widget .codicon.codicon-symbol-text::before { content: 'a'; }
 /* footer tip bar */
 .monaco-editor .suggest-widget .suggest-status-bar {
   border-top: 1px solid rgb(255 255 255 / 0.06);

@@ -272,3 +272,35 @@ Risks, with mitigations:
   diagnostics take a file's markers only after its first non-empty
   answer for the project, and hand them back on disconnect — a cold
   engine can never blank real squiggles.
+
+### Post-verification amendments (live drills, 2026-08-16)
+
+- **The pool speaks a little LSP for the engine.** Two dumb-pipe
+  assumptions broke on page reloads: (1) intellij-server refuses a
+  second `initialize`, so the pool caches the first `InitializeResult`
+  and replays it to reconnecting clients; (2) a server→client request
+  fired while no client is attached hangs the awaiting coroutine
+  forever — import stalls, templates-only completions — so the pool
+  answers `workspace/configuration`, progress-create, capability
+  registrations, and `window/showMessageRequest` itself.
+- **Repos with a checked-in `.idea` silently skip import** (A/B-tested:
+  same fixture imports without `.idea`, skips with it). The cure is the
+  undocumented `initializationOptions.buildTools: { <folderUri>:
+  'maven' | 'gradle' }` (found via `InitializeOptions` bytecode); main
+  detects the build file and forces the importer. Poisoned analyzer
+  caches from stalled imports must be deleted
+  (`~/Library/Caches/JetBrains/analyzer/workspaces/<md5>`).
+- **A latent M13 off-by-one in COMPLETION_KINDS** (duplicated leading
+  Text entry) shifted every completion kind by one — invisible until
+  the IDEA badges made kinds visible. Fixed; methods are methods now.
+- **Templates-only lists must not win the race**: a cold engine serves
+  postfix templates before members; the race now requires at least one
+  substantive (non-snippet/text) item to beat jdtls.
+- **jdtls autobuild writes ECJ error-stub classes** for broken sources
+  into target/classes; debugging a file with compile errors throws
+  `Unresolved compilation problems` at entry. Expected Eclipse
+  behavior, noted for debugging UX.
+- **The IDEA popup look** ships as CSS over monaco's suggest widget:
+  #2B2D30 panel (10px radius), #393B40 selection, letter-badge icons
+  per kind, bold matched letters, solid-gray inline signatures and
+  right-aligned types, footer tip bar, 26px rows.

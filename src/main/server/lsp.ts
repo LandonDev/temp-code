@@ -546,8 +546,7 @@ function wireProcess(server: PoolServer): void {
               // the engine skip the import entirely (found the hard way on
               // a repo with both pom.xml and .idea). Choose like IDEA
               // would: build files over the checked-in project model.
-              const actions = (msg.params as { actions?: { title: string }[] } | undefined)
-                ?.actions
+              const actions = (msg.params as { actions?: { title: string }[] } | undefined)?.actions
               if (actions?.length) {
                 const order = ['maven', 'gradle', 'bazel', 'jps']
                 const rank = (t: string): number => {
@@ -560,7 +559,11 @@ function wireProcess(server: PoolServer): void {
             proc.stdin?.write(frame(JSON.stringify({ jsonrpc: '2.0', id: msg.id, result })))
             return
           }
-          if (server.initPendingId != null && msg.id === server.initPendingId && msg.result !== undefined) {
+          if (
+            server.initPendingId != null &&
+            msg.id === server.initPendingId &&
+            msg.result !== undefined
+          ) {
             server.initCache = msg.result
             server.initPendingId = null
           }
@@ -621,6 +624,8 @@ export interface EnsureResult {
   /** idea: the EULA acceptance handshake + default JDK for resolution */
   eulaHash?: string
   defaultSdk?: string
+  /** idea: forced importer for the project root (maven/gradle) */
+  buildTool?: string
 }
 
 async function ensureExtras(server: PoolServer): Promise<Partial<EnsureResult>> {
@@ -633,7 +638,21 @@ async function ensureExtras(server: PoolServer): Promise<Partial<EnsureResult>> 
   if (server.lang === 'idea') {
     const jdks = await discoverJdks()
     const sdk = jdks.find((r) => r.version >= 21) ?? jdks[0]
-    return { eulaHash: ideaEulaHash(), ...(sdk ? { defaultSdk: sdk.path } : {}) }
+    // Repos with a checked-in .idea make the engine's build-tool detection
+    // skip the import silently (A/B-tested); an explicit buildTools entry
+    // in initializationOptions forces the importer and everything works.
+    const buildTool = existsSync(join(server.cwd, 'pom.xml'))
+      ? 'maven'
+      : ['settings.gradle', 'settings.gradle.kts', 'build.gradle', 'build.gradle.kts'].some((f) =>
+            existsSync(join(server.cwd, f))
+          )
+        ? 'gradle'
+        : undefined
+    return {
+      eulaHash: ideaEulaHash(),
+      ...(sdk ? { defaultSdk: sdk.path } : {}),
+      ...(buildTool ? { buildTool } : {})
+    }
   }
   return { javaRuntimes: await discoverJdks() }
 }
