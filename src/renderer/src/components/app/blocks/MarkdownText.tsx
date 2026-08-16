@@ -25,9 +25,21 @@ export const MarkdownText = memo(function MarkdownText({
 }): React.JSX.Element {
   const openFileRef = useApp((s) => s.openFileRef)
   const files = useApp((s) => (s.selectedProjectId ? s.files[s.selectedProjectId] : undefined))
+  const sessions = useApp((s) => s.sessions)
+  const select = useApp((s) => s.select)
   // Coarse chunks glide out through a reveal buffer, and each small step
   // dissolves in under the paint-only veil (mugen FadePainter).
   const shown = useSmoothText(text, streaming)
+  // Thread mentions stay human here too (UserMessage does the same): the
+  // token becomes a link on the title, clicking it opens the thread.
+  const resolved = useMemo(
+    () =>
+      shown.replace(/@thread:([\w-]{6,})/g, (token, id: string) => {
+        const title = sessions[id]?.title
+        return title ? `[@${title.replace(/[[\]()]/g, '')}](#thread:${id})` : token
+      }),
+    [shown, sessions]
+  )
   const veilRef = useRef<HTMLDivElement>(null)
   useStreamVeil(veilRef, shown, streaming)
   const byBasename = useMemo(() => {
@@ -63,8 +75,9 @@ export const MarkdownText = memo(function MarkdownText({
                 onClick={(e) => {
                   e.preventDefault()
                   if (!href) return
-                  // Real URLs leave the app; anything path-like stays in it.
+                  // Real URLs leave the app; threads select; paths stay in it.
                   if (/^https?:\/\//.test(href)) window.open(href)
+                  else if (href.startsWith('#thread:')) void select(href.slice('#thread:'.length))
                   else openFileRef(href)
                 }}
                 className="cursor-pointer"
@@ -108,7 +121,7 @@ export const MarkdownText = memo(function MarkdownText({
           }
         }}
       >
-        {shown}
+        {resolved}
       </Markdown>
     </div>
   )
