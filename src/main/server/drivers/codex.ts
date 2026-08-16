@@ -146,6 +146,24 @@ function mcpDisplay(item: Item): { app?: string; action?: string } {
   return { app: app || undefined, action: action || undefined }
 }
 
+/** A connector tool result saying "reauthenticate" carries the ids that
+ *  name its fix: chatgpt.com/apps/<slug>/<connector_id>, the same page
+ *  the Codex app opens. */
+function connectorReauth(item: Item): { app: string; url: string } | undefined {
+  const result = item.result as
+    | { _meta?: { _codex_apps?: { connector_auth_failure?: Record<string, unknown> } } }
+    | null
+    | undefined
+  const fail = result?._meta?._codex_apps?.connector_auth_failure
+  if (!fail || fail.is_auth_failure !== true) return undefined
+  const app = mcpDisplay(item).app ?? String(fail.connector_name ?? 'connector')
+  const url =
+    typeof fail.install_url === 'string'
+      ? fail.install_url
+      : `https://chatgpt.com/apps/${app.toLowerCase().replace(/[^a-z0-9]+/g, '-')}/${String(fail.connector_id ?? '')}`
+  return fail.connector_id || typeof fail.install_url === 'string' ? { app, url } : undefined
+}
+
 export const codexDriver: HarnessDriver = {
   id: 'codex',
 
@@ -273,6 +291,7 @@ export const codexDriver: HarnessDriver = {
           emit({
             type: 'tool-result',
             callId: String(item.id),
+            reauth: connectorReauth(item),
             output: JSON.stringify(item.result ?? null, null, 2),
             isError: item.status === 'failed'
           })
