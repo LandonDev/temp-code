@@ -1,5 +1,5 @@
 {
-  "n": 6,
-  "notes": "Codex first turn waits for MCP startup; plugin refs name their prefix",
-  "ts": 1786899270059
+  "n": 7,
+  "notes": "Codex threads run on an overlay CODEX_HOME so connectors reach the model",
+  "ts": 1786901562607
 }
