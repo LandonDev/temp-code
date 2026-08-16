@@ -1,5 +1,5 @@
 {
-  "n": 18,
-  "notes": "Appshots: composer chip, delivery routing, shutter sound, transcript",
-  "ts": 1786914144926
+  "n": 19,
+  "notes": "Fix the white-freeze on launch: an Appshots selector looped the renderer. Plus live context meter, window switch in the effort menu.",
+  "ts": 1786916706585
 }
