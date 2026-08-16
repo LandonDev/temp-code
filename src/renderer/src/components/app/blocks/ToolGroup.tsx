@@ -1,7 +1,11 @@
-import { memo, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { lazy, memo, Suspense, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { cn, displayPath } from '../../../lib/utils'
+import { client } from '../../../lib/client'
 import { commandPhrases, humanizeCommand, pastPhrase, stripShell } from '../../../lib/humanize'
 import { useApp } from '../../../state/store'
+
+/** Monaco stays out of the startup path — loads on first in-place edit. */
+const InlineEditor = lazy(() => import('../../editor/InlineEditor'))
 import { ZIcon, type ZIconName } from '../zicon'
 import { duration } from '../bits'
 import { MatrixSpinner } from '../WorkingStrip'
@@ -449,42 +453,140 @@ function OutputBlock({ text, error }: { text: string; error?: boolean }): React.
   )
 }
 
-/** Diff hunks — emerald adds / red deletes, capped at 600 lines. */
-function DiffBlock({ b }: { b: ToolBlock }): React.JSX.Element {
-  const hunks = editModel(b).hunks
-  const capped: { old: string[]; new: string[] }[] = []
-  let budget = DIFF_LINE_CAP
-  for (const h of hunks) {
-    if (budget <= 0) break
-    const oldShown = h.old.slice(0, budget)
-    budget -= oldShown.length
-    const newShown = h.new.slice(0, Math.max(0, budget))
-    budget -= newShown.length
-    capped.push({ old: oldShown, new: newShown })
+/** One line of a unified diff view. `gap` separates hunks. */
+interface DiffRow {
+  type: 'add' | 'del' | 'ctx' | 'gap'
+  oldNo?: number
+  newNo?: number
+  text: string
+}
+
+/** Hunks → unnumbered rows — the fallback while line numbers resolve. */
+function rowsFromHunks(hunks: { old: string[]; new: string[] }[]): DiffRow[] {
+  const rows: DiffRow[] = []
+  hunks.forEach((h, n) => {
+    if (n > 0) rows.push({ type: 'gap', text: '' })
+    for (const t of h.old) rows.push({ type: 'del', text: t })
+    for (const t of h.new) rows.push({ type: 'add', text: t })
+  })
+  return rows
+}
+
+/** First index where `seq` appears contiguously in `lines`, else -1. */
+function findSeq(lines: string[], seq: string[]): number {
+  if (!seq.length) return -1
+  outer: for (let i = 0; i <= lines.length - seq.length; i++) {
+    for (let j = 0; j < seq.length; j++) {
+      if (lines[i + j] !== seq[j]) continue outer
+    }
+    return i
   }
+  return -1
+}
+
+/** Number claude-edit hunks by finding the landed text in the file, and
+ *  wrap them in two lines of surrounding context. */
+function locateHunks(hunks: { old: string[]; new: string[] }[], content: string): DiffRow[] {
+  const lines = content.split('\n')
+  const rows: DiffRow[] = []
+  hunks.forEach((h, n) => {
+    if (n > 0) rows.push({ type: 'gap', text: '' })
+    const start = findSeq(lines, h.new)
+    if (start === -1) {
+      for (const t of h.old) rows.push({ type: 'del', text: t })
+      for (const t of h.new) rows.push({ type: 'add', text: t })
+      return
+    }
+    for (let i = Math.max(0, start - 2); i < start; i++) {
+      rows.push({ type: 'ctx', newNo: i + 1, text: lines[i] })
+    }
+    for (const t of h.old) rows.push({ type: 'del', text: t })
+    h.new.forEach((t, j) => rows.push({ type: 'add', newNo: start + j + 1, text: t }))
+    const end = start + h.new.length
+    for (let i = end; i < Math.min(lines.length, end + 2); i++) {
+      rows.push({ type: 'ctx', newNo: i + 1, text: lines[i] })
+    }
+  })
+  return rows
+}
+
+/** Rows for a card's diff: codex patches carry numbers and context in the
+ *  diff itself; claude edits locate theirs by reading the landed file. */
+function useDiffRows(b: ToolBlock, m: EditModel): DiffRow[] {
+  const projectId = useApp((s) => s.selectedProjectId)
+  const cwd = useApp((s) => s.projects.find((p) => p.id === s.selectedProjectId)?.cwd)
+  const [located, setLocated] = useState<DiffRow[] | null>(null)
+  const needsLocate = !m.rows && m.hunks.length > 0 && b.output !== undefined
+  useEffect(() => {
+    if (!needsLocate || !projectId) return
+    let alive = true
+    let rel = m.path
+    if (rel.startsWith('/') && cwd) {
+      const root = cwd.endsWith('/') ? cwd : `${cwd}/`
+      if (!rel.startsWith(root)) return
+      rel = rel.slice(root.length)
+    }
+    void client
+      .request<string | null>('fs.read', { projectId, path: rel })
+      .then((content) => {
+        if (alive && content !== null) setLocated(locateHunks(m.hunks, content))
+      })
+      .catch(() => {})
+    return () => {
+      alive = false
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- refetch per block, not per render
+  }, [b.id, needsLocate, projectId])
+  return m.rows ?? located ?? rowsFromHunks(m.hunks)
+}
+
+/** Unified diff — line numbers in the gutter, dim context, emerald adds,
+ *  red deletes, capped at 600 lines. Click a numbered line to edit there. */
+function DiffBlock({
+  b,
+  onEditAt
+}: {
+  b: ToolBlock
+  onEditAt?: (line: number) => void
+}): React.JSX.Element {
+  const m = editModel(b)
+  const rows = useDiffRows(b, m)
+  const shown = rows.slice(0, DIFF_LINE_CAP)
   return (
     <div className="py-1.5 font-mono text-[11.5px] leading-[18px]">
-      {capped.map((h, n) => (
-        <div key={n} className={cn(n > 0 && 'mt-1.5 border-t border-(--hairline) pt-1.5')}>
-          {h.old.map((l, j) => (
-            <div
-              key={`o${j}`}
-              className="bg-destructive/10 px-3 whitespace-pre-wrap [overflow-wrap:anywhere] text-destructive"
-            >
-              − {l || ' '}
-            </div>
-          ))}
-          {h.new.map((l, j) => (
-            <div
-              key={`n${j}`}
-              className="bg-success/10 px-3 whitespace-pre-wrap [overflow-wrap:anywhere] text-success"
-            >
-              + {l || ' '}
-            </div>
-          ))}
-        </div>
-      ))}
-      {budget <= 0 && <div className="px-3 text-[10.5px] text-faint">… diff truncated</div>}
+      {shown.map((r, n) =>
+        r.type === 'gap' ? (
+          <div key={n} className="px-3 py-0.5 text-[10px] text-faint select-none">
+            ⋯
+          </div>
+        ) : (
+          <div
+            key={n}
+            onClick={onEditAt && r.newNo !== undefined ? () => onEditAt(r.newNo!) : undefined}
+            title={onEditAt && r.newNo !== undefined ? 'Edit here' : undefined}
+            className={cn(
+              'flex',
+              r.type === 'add' && 'bg-success/10 text-success',
+              r.type === 'del' && 'bg-destructive/10 text-destructive',
+              r.type === 'ctx' && 'text-muted-foreground/70',
+              onEditAt && r.newNo !== undefined && 'cursor-pointer hover:brightness-125'
+            )}
+          >
+            <span className="w-10 shrink-0 pr-2 text-right text-[10px] leading-[18px] text-faint tabular-nums select-none">
+              {r.type === 'del' ? (r.oldNo ?? '') : (r.newNo ?? '')}
+            </span>
+            <span className="w-4 shrink-0 select-none">
+              {r.type === 'add' ? '+' : r.type === 'del' ? '−' : ''}
+            </span>
+            <span className="min-w-0 flex-1 pr-3 whitespace-pre-wrap [overflow-wrap:anywhere]">
+              {r.text || ' '}
+            </span>
+          </div>
+        )
+      )}
+      {rows.length > DIFF_LINE_CAP && (
+        <div className="px-3 text-[10.5px] text-faint">… diff truncated</div>
+      )}
     </div>
   )
 }
@@ -845,25 +947,47 @@ interface EditModel {
   extraPaths: string[]
   /** first changed line in the new file, when the diff names one */
   line?: number
+  /** numbered unified rows, when the source diff carries them (codex) */
+  rows?: DiffRow[]
 }
 
-/** Codex fileChange diffs: unified hunks for updates, whole content for
- *  adds. Context lines drop — the editor holds the full picture. */
+/** Codex fileChange diffs: unified hunks for updates (context and line
+ *  numbers kept as rows), whole numbered content for adds. */
 function parsePatchDiff(
   diff: string,
   isAdd: boolean
-): { hunks: { old: string[]; new: string[] }[]; adds: number; dels: number; line?: number } {
+): {
+  hunks: { old: string[]; new: string[] }[]
+  adds: number
+  dels: number
+  line?: number
+  rows: DiffRow[]
+} {
   const all = diff === '' ? [] : diff.split('\n')
   if (isAdd || !all.some((l) => /^[@+-]/.test(l))) {
-    return { hunks: all.length ? [{ old: [], new: all }] : [], adds: all.length, dels: 0, line: 1 }
+    return {
+      hunks: all.length ? [{ old: [], new: all }] : [],
+      adds: all.length,
+      dels: 0,
+      line: 1,
+      rows: all.map((text, n) => ({ type: 'add', newNo: n + 1, text }))
+    }
   }
   const hunks: { old: string[]; new: string[] }[] = []
+  const rows: DiffRow[] = []
   let cur: { old: string[]; new: string[] } | null = null
   let line: number | undefined
+  let oldNo = 0
+  let newNo = 0
   for (const l of all) {
     if (l.startsWith('@@')) {
-      const m = /\+(\d+)/.exec(l)
-      if (line === undefined && m) line = Number(m[1])
+      const m = /-(\d+)[^+]*\+(\d+)/.exec(l)
+      if (m) {
+        oldNo = Number(m[1])
+        newNo = Number(m[2])
+        if (line === undefined) line = newNo
+      }
+      if (cur) rows.push({ type: 'gap', text: '' })
       cur = { old: [], new: [] }
       hunks.push(cur)
       continue
@@ -873,15 +997,23 @@ function parsePatchDiff(
       cur = { old: [], new: [] }
       hunks.push(cur)
     }
-    if (l.startsWith('+')) cur.new.push(l.slice(1))
-    else if (l.startsWith('-')) cur.old.push(l.slice(1))
+    if (l.startsWith('+')) {
+      cur.new.push(l.slice(1))
+      rows.push({ type: 'add', newNo: newNo++, text: l.slice(1) })
+    } else if (l.startsWith('-')) {
+      cur.old.push(l.slice(1))
+      rows.push({ type: 'del', oldNo: oldNo++, text: l.slice(1) })
+    } else {
+      rows.push({ type: 'ctx', oldNo: oldNo++, newNo: newNo++, text: l.replace(/^ /, '') })
+    }
   }
   const kept = hunks.filter((h) => h.old.length || h.new.length)
   return {
     hunks: kept,
     adds: kept.reduce((n, h) => n + h.new.length, 0),
     dels: kept.reduce((n, h) => n + h.old.length, 0),
-    line
+    line,
+    rows
   }
 }
 
@@ -922,7 +1054,9 @@ function editModel(b: ToolBlock): EditModel {
         path: str(i.file_path),
         adds: content.length,
         create: true,
-        hunks: [{ old: [], new: content }]
+        line: 1,
+        hunks: [{ old: [], new: content }],
+        rows: content.map((text, n) => ({ type: 'add', newNo: n + 1, text }))
       }
     }
     case 'NotebookEdit': {
@@ -948,6 +1082,7 @@ function editModel(b: ToolBlock): EditModel {
           create,
           hunks: d.hunks,
           line: d.line,
+          rows: d.rows,
           extraPaths: []
         }
       }
@@ -974,20 +1109,34 @@ export const ZEditCard = memo(function ZEditCard({
   const [open, setOpen] = usePersistedOpen(`e:${b.callId}`, defaultOpen)
   const [userToggled, setUserToggled] = useState(false)
   const openFileRef = useApp((s) => s.openFileRef)
-  const projectId = useApp((s) => s.selectedProjectId)
-  const projectCwd = useApp((s) => s.projects.find((p) => p.id === s.selectedProjectId)?.cwd)
+  const project = useApp((s) => s.projects.find((p) => p.id === s.selectedProjectId))
+  const projectCwd = project?.cwd
   const openFileSurface = useApp((s) => s.openFileSurface)
   const m = editModel(b)
-  /** The change spot, in the app's own editor — small fixes happen there. */
+  // In-place editing: the dropdown swaps its diff for the real editor.
+  const [editMode, setEditMode] = useState(false)
+  const [editLine, setEditLine] = useState<number | undefined>()
+  /** Project-relative path, or null when the file is outside the project. */
+  const rel = ((): string | null => {
+    if (!m.path.startsWith('/')) return m.path || null
+    if (!projectCwd) return null
+    const root = projectCwd.endsWith('/') ? projectCwd : `${projectCwd}/`
+    return m.path.startsWith(root) ? m.path.slice(root.length) : null
+  })()
+  /** The change spot, in the full editor surface. */
   const openInEditor = (): void => {
-    if (!projectId) return
-    let rel = m.path
-    if (rel.startsWith('/') && projectCwd) {
-      const root = projectCwd.endsWith('/') ? projectCwd : `${projectCwd}/`
-      if (!rel.startsWith(root)) return
-      rel = rel.slice(root.length)
-    }
-    openFileSurface(projectId, rel, m.line !== undefined ? { lineNumber: m.line, column: 1 } : null)
+    if (!project || !rel) return
+    openFileSurface(
+      project.id,
+      rel,
+      m.line !== undefined ? { lineNumber: m.line, column: 1 } : null
+    )
+  }
+  const editHere = (line?: number): void => {
+    setEditLine(line ?? m.line)
+    setEditMode(true)
+    setUserToggled(true)
+    setOpen(true)
   }
   const running = b.output === undefined
   // Input still streaming from the driver: spinner + verb, with the file
@@ -1099,9 +1248,38 @@ export const ZEditCard = memo(function ZEditCard({
         )}
       </div>
       <TweenHeight open={open} animate={userToggled}>
-        <div className="border-t border-(--hairline)">
-          {m.hunks.length > 0 ? (
-            <DiffBlock b={b} />
+        <div className="relative border-t border-(--hairline)">
+          {editMode && project && rel ? (
+            <>
+              <button
+                onClick={() => setEditMode(false)}
+                className="absolute top-1.5 right-2 z-10 text-[10px] font-medium text-faint transition-colors duration-150 hover:text-foreground"
+              >
+                diff
+              </button>
+              <Suspense
+                fallback={
+                  <div className="flex h-80 items-center justify-center">
+                    <MatrixSpinner />
+                  </div>
+                }
+              >
+                <InlineEditor project={project} path={rel} line={editLine ?? m.line} />
+              </Suspense>
+            </>
+          ) : m.hunks.length > 0 ? (
+            <>
+              {project && rel && (
+                <button
+                  onClick={() => editHere()}
+                  title="Edit in place"
+                  className="absolute top-1.5 right-2 z-10 text-[10px] font-medium text-faint transition-colors duration-150 hover:text-foreground"
+                >
+                  edit
+                </button>
+              )}
+              <DiffBlock b={b} onEditAt={project && rel ? (line) => editHere(line) : undefined} />
+            </>
           ) : (
             <div className="space-y-1 px-3 py-2">
               {[m.path, ...m.extraPaths].filter(Boolean).map((p) => (
