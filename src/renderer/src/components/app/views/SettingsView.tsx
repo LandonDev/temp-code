@@ -310,6 +310,34 @@ function SummaryModelSwitch(): React.JSX.Element {
   )
 }
 
+/** Progress within an update step: percent against the ETA learned from
+ *  the last run of that step, easing to 95% if it runs long. */
+function StepProgress({
+  startedAt,
+  etaMs
+}: {
+  startedAt?: number
+  etaMs?: number
+}): React.JSX.Element {
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 500)
+    return () => clearInterval(t)
+  }, [])
+  const elapsed = Math.max(0, now - (startedAt ?? now))
+  const pct = etaMs
+    ? Math.min(95, (elapsed / etaMs) * 100)
+    : Math.min(90, 100 * (1 - Math.exp(-elapsed / 30_000)))
+  return (
+    <div className="h-1 overflow-hidden rounded-full bg-secondary/70">
+      <div
+        className="h-full rounded-full bg-info transition-[width] duration-500 ease-linear"
+        style={{ width: `${pct}%` }}
+      />
+    </div>
+  )
+}
+
 /** The app updating itself: release number, an automatic look for newer,
  *  and — only when one exists — the button that builds it, closes, and
  *  reopens. Dev instances just say what they are. */
@@ -363,6 +391,11 @@ function UpdatesPanel(): React.JSX.Element {
             </Button>
           ))}
       </SettingsRow>
+      {s?.phase === 'building' && (
+        <div className="px-4 py-2.5">
+          <StepProgress startedAt={s.stepStartedAt} etaMs={s.stepEtaMs} />
+        </div>
+      )}
     </SettingsPanel>
   )
 }
