@@ -32,6 +32,15 @@ const APPROVAL_POLICY: Record<PermissionPolicy, string> = {
   auto: 'never'
 }
 
+// The sandbox is where codex's real capabilities live: workspace-write
+// alone blocks ALL network, which silently kills MCP servers, plugins
+// (Linear), and web access however the user's own codex is configured.
+const SANDBOX: Record<PermissionPolicy, string> = {
+  safe: 'read-only',
+  edits: 'workspace-write',
+  auto: 'danger-full-access'
+}
+
 // Our reasoning enum matches codex's effort ladder 1:1 (model/list,
 // codex-cli 0.147.0) — sol/terra go all the way to ultra.
 const EFFORT: Record<Reasoning, string> = {
@@ -453,7 +462,7 @@ export const codexDriver: HarnessDriver = {
         cwd: session.cwd,
         model: session.model,
         approvalPolicy: APPROVAL_POLICY[session.permission],
-        sandbox: 'workspace-write',
+        sandbox: SANDBOX[session.permission],
         config: {
           // The structured-question tool (request_user_input) is
           // feature-gated off by default — without it the model dumps

@@ -27,7 +27,19 @@ export async function expandSlashRefs(
   const blocks: string[] = []
   for (const m of text.matchAll(TOKEN)) {
     const c = byName.get(m[1])
-    if (!c?.path || seen.has(c.name)) continue
+    if (!c || seen.has(c.name)) continue
+    // Addons (plugins / MCP servers) have no file to inline — the tools
+    // are already live in the harness; the model just needs pointing.
+    if (c.source === 'plugin' || c.source === 'mcp') {
+      seen.add(c.name)
+      blocks.push(
+        c.source === 'plugin'
+          ? `Where the message says /${c.name}: use your "${c.name}" plugin (its tools are available to you) for that part of the request.`
+          : `Where the message says /${c.name}: use the tools of your "${c.name}" MCP server for that part of the request.`
+      )
+      continue
+    }
+    if (!c.path) continue
     seen.add(c.name)
     // claude runs a leading /command natively — expanding it too would
     // invoke it twice.

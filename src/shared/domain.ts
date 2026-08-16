@@ -34,12 +34,12 @@ export interface ProjectMeta {
   createdAt: number
 }
 
-/** A slash command the provider's harness understands (skill, custom
- *  command, or prompt), discovered from its own directories. */
+/** A slash reference the provider's harness understands — skill, custom
+ *  command, prompt, or an addon (plugin / MCP server) it has configured. */
 export interface SlashCommand {
   name: string
   description: string
-  source: 'skill' | 'command' | 'prompt'
+  source: 'skill' | 'command' | 'prompt' | 'plugin' | 'mcp'
   scope: 'user' | 'project'
   /** absolute path of the defining file (server-side use: expansion) */
   path?: string

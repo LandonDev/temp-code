@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
-import { FileText, Image as ImageIcon, MessageSquare, SlashSquare, X } from 'lucide-react'
+import { FileText, Image as ImageIcon, MessageSquare, X } from 'lucide-react'
 import type { ProviderId, Reasoning } from '@shared/catalog'
 import type { Attachment, PermissionPolicy, SessionMeta } from '@shared/events'
 import type { SlashCommand } from '@shared/domain'
@@ -15,6 +15,7 @@ import { ZIcon } from './zicon'
 import { ModelPicker } from './ModelPicker'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select'
 import { rankFiles } from '../../lib/rank'
+import { AddonMark, SourceLabel } from './AddonMark'
 
 const REASONING_LABELS: Record<Reasoning, string> = {
   low: 'Low',
@@ -394,7 +395,7 @@ export function PromptBar({
                           n === active && 'bg-accent'
                         )}
                       >
-                        <SlashSquare className="size-3.5 shrink-0 text-muted-foreground" />
+                        <AddonMark command={c} size={14} />
                         <span className="shrink-0 text-[13px] font-medium">/{c.name}</span>
                         {c.description && (
                           <span className="min-w-0 truncate text-xs text-muted-foreground">
@@ -402,7 +403,7 @@ export function PromptBar({
                           </span>
                         )}
                         <span className="ml-auto shrink-0 pl-2 text-[11px] text-muted-foreground/60">
-                          {c.source}
+                          <SourceLabel source={c.source} />
                         </span>
                       </button>
                     ))

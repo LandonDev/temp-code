@@ -66,6 +66,46 @@ async function mdFilesIn(
   return out
 }
 
+/** Addons the provider itself has configured: codex plugins + MCP
+ *  servers (config.toml), claude MCP servers (~/.claude.json). Minimal
+ *  parses — names and enablement only, never the full config. */
+async function codexAddons(): Promise<SlashCommand[]> {
+  const toml = await readFile(join(homedir(), '.codex', 'config.toml'), 'utf8').catch(() => '')
+  const out: SlashCommand[] = []
+  // Section-scan: header then flags until the next header.
+  const sections = toml.split(/^\[/m)
+  for (const sec of sections) {
+    const disabled = /^enabled\s*=\s*false/m.test(sec)
+    const plugin = sec.match(/^plugins\."([^"@]+)(?:@[^"]*)?"\]/)
+    if (plugin && !disabled) {
+      out.push({ name: plugin[1], description: 'Codex plugin', source: 'plugin', scope: 'user' })
+      continue
+    }
+    const mcp = sec.match(/^mcp_servers\.([\w."-]+?)\]/)
+    if (mcp && !disabled && !mcp[1].includes('.')) {
+      const name = mcp[1].replace(/"/g, '')
+      out.push({ name, description: 'MCP server', source: 'mcp', scope: 'user' })
+    }
+  }
+  return out
+}
+
+async function claudeAddons(): Promise<SlashCommand[]> {
+  const raw = await readFile(join(homedir(), '.claude.json'), 'utf8').catch(() => null)
+  if (!raw) return []
+  try {
+    const cfg = JSON.parse(raw) as { mcpServers?: Record<string, unknown> }
+    return Object.keys(cfg.mcpServers ?? {}).map((name) => ({
+      name,
+      description: 'MCP server',
+      source: 'mcp' as const,
+      scope: 'user' as const
+    }))
+  } catch {
+    return []
+  }
+}
+
 const cache = new Map<string, { at: number; commands: SlashCommand[] }>()
 const CACHE_MS = 30_000
 
@@ -81,12 +121,14 @@ export async function listCommands(provider: ProviderId, cwd: string): Promise<S
           skillsIn(join(home, '.claude', 'skills'), 'user'),
           skillsIn(join(cwd, '.claude', 'skills'), 'project'),
           mdFilesIn(join(home, '.claude', 'commands'), 'command', 'user'),
-          mdFilesIn(join(cwd, '.claude', 'commands'), 'command', 'project')
+          mdFilesIn(join(cwd, '.claude', 'commands'), 'command', 'project'),
+          claudeAddons()
         ]
       : provider === 'codex'
         ? [
             skillsIn(join(home, '.codex', 'skills'), 'user'),
-            mdFilesIn(join(home, '.codex', 'prompts'), 'prompt', 'user')
+            mdFilesIn(join(home, '.codex', 'prompts'), 'prompt', 'user'),
+            codexAddons()
           ]
         : [
             mdFilesIn(join(home, '.cursor', 'commands'), 'command', 'user'),
