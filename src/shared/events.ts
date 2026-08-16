@@ -176,6 +176,16 @@ export const AgentEventSchema = z.discriminatedUnion('type', [
     error: z.string().optional()
   }),
 
+  // Cumulative token-counter snapshot mid-turn (codex emits these
+  // throttled from tokenUsage/updated; claude only reports at turn end).
+  // Per-task token deltas derive from snapshots at task boundaries —
+  // where no snapshot brackets a task, the UI shows nothing, never a guess.
+  z.object({
+    type: z.literal('usage'),
+    inputTokens: z.number().optional(),
+    outputTokens: z.number().optional()
+  }),
+
   // Orchestration: this session spawned a child session.
   z.object({ type: z.literal('agent-spawned'), childSessionId: z.string() }),
 

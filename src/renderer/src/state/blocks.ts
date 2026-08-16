@@ -114,6 +114,9 @@ export interface FoldState {
   taskSeen: Set<string>
   /** indexes of optimistic user blocks awaiting their server echo */
   pendingUsers: number[]
+  /** cumulative token snapshots keyed to the task active when they landed
+   *  (M25) — per-task deltas derive from boundary pairs, never guesses */
+  usageMarks: { todo: number; input?: number; output?: number }[]
 }
 
 export function emptyFold(): FoldState {
@@ -128,7 +131,8 @@ export function emptyFold(): FoldState {
     taskIds: new Map(),
     taskByCall: new Map(),
     taskSeen: new Set(),
-    pendingUsers: []
+    pendingUsers: [],
+    usageMarks: []
   }
 }
 
@@ -395,8 +399,22 @@ export function foldEvent(s: FoldState, e: AgentEvent, ts?: number): void {
       }
       break
     }
+    case 'usage': {
+      // Cumulative counter snapshot — one mark per task, latest wins.
+      const mark = { todo: s.activeTodo, input: e.inputTokens, output: e.outputTokens }
+      const last = s.usageMarks.at(-1)
+      if (last && last.todo === s.activeTodo) s.usageMarks[s.usageMarks.length - 1] = mark
+      else s.usageMarks.push(mark)
+      break
+    }
     case 'turn-complete':
       if (e.costUsd !== undefined) s.costUsd = e.costUsd
+      if (e.inputTokens !== undefined || e.outputTokens !== undefined) {
+        const mark = { todo: s.activeTodo, input: e.inputTokens, output: e.outputTokens }
+        const last = s.usageMarks.at(-1)
+        if (last && last.todo === s.activeTodo) s.usageMarks[s.usageMarks.length - 1] = mark
+        else s.usageMarks.push(mark)
+      }
       // The turn ending settles every streaming block — an interrupt can
       // beat the per-item finals, and a "Thinking" shimmer must never
       // outlive the turn it belongs to.

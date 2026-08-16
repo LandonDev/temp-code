@@ -383,9 +383,9 @@ const EFFORT_LABELS: Record<Reasoning, string> = {
 }
 
 /** Coordination brief for one of several parallel workers on one plan. */
-const workerBrief = (i: number, n: number): string =>
+const workerBrief = (i: number, n: number, title?: string): string =>
   n === 1
-    ? 'Implement the plan.'
+    ? `Implement the plan${title ? ` "${title}"` : ''}.`
     : `Implement the plan. You are worker ${i + 1} of ${n} working this plan in parallel. Coordinate ONLY through the plan file's ## Tasks checklist: re-read the plan file before picking each task; skip tasks that are ticked or marked in progress; when you pick one, append "(in progress: worker ${i + 1})" to its line, and replace that marker with a clean tick when done.`
 
 /** The plan pane's one action: hand the approved plan to builders — who
@@ -434,7 +434,7 @@ function StartButton({
         await send(
           thread.id,
           type === 'implementation'
-            ? workerBrief(i, n)
+            ? workerBrief(i, n, base)
             : 'Orchestrate implementation of the plan across subagents.'
         )
       }

@@ -65,6 +65,7 @@ import {
   warmIdeaIndexes
 } from './lsp'
 import { fimComplete } from './fim'
+import { closeAllLiveWatchers, onLiveEdit } from './livediff'
 
 /** The session an app.* call claims to be from — must actually exist. */
 function callerOf(registry: SessionRegistry, sessionId: string): SessionMeta {
@@ -153,6 +154,7 @@ export async function startServer(dbPath: string): Promise<RunningServer> {
 
     // Every client gets session-meta updates (cheap, drives the sidebar).
     const offMeta = registry.onMeta((session) => sendFrame({ push: 'session', session }))
+    const offLive = onLiveEdit((p) => sendFrame(p))
     const offQueue = registry.onQueue((sessionId, items) =>
       sendFrame({ push: 'queue', sessionId, items })
     )
@@ -706,6 +708,7 @@ export async function startServer(dbPath: string): Promise<RunningServer> {
     ws.on('close', () => {
       offMeta()
       offQueue()
+      offLive()
       offRemoved()
       for (const off of unsubs.values()) off()
       unsubs.clear()
@@ -731,6 +734,7 @@ export async function startServer(dbPath: string): Promise<RunningServer> {
       clearInterval(warmTimer)
       await registry.disposeAll()
       await closeAllWatchers()
+      await closeAllLiveWatchers()
       stopAllLsp()
       stopAllDap()
       wss.close()

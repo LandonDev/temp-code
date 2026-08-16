@@ -1,6 +1,7 @@
-import { lazy, memo, Suspense, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { lazy, memo, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { cn, displayPath } from '../../../lib/utils'
 import { client } from '../../../lib/client'
+import { highlight } from '../../../lib/highlight'
 import { commandPhrases, humanizeCommand, pastPhrase, stripShell } from '../../../lib/humanize'
 import { useApp } from '../../../state/store'
 
@@ -700,16 +701,82 @@ function addRanges(rows: DiffRow[]): { start: number; end: number }[] {
   return out
 }
 
+/** File extension → shiki language id; unknowns render plain (never
+ *  mis-colored). */
+const LANG_BY_EXT: Record<string, string> = {
+  ts: 'typescript',
+  tsx: 'tsx',
+  js: 'javascript',
+  jsx: 'jsx',
+  mjs: 'javascript',
+  cjs: 'javascript',
+  json: 'json',
+  css: 'css',
+  scss: 'scss',
+  html: 'html',
+  java: 'java',
+  kt: 'kotlin',
+  py: 'python',
+  rs: 'rust',
+  go: 'go',
+  c: 'c',
+  h: 'c',
+  cpp: 'cpp',
+  md: 'markdown',
+  sh: 'bash',
+  zsh: 'bash',
+  yml: 'yaml',
+  yaml: 'yaml',
+  toml: 'toml',
+  sql: 'sql',
+  xml: 'xml',
+  rb: 'ruby',
+  php: 'php',
+  swift: 'swift'
+}
+export const langOf = (path: string): string | null =>
+  LANG_BY_EXT[path.split('.').pop()?.toLowerCase() ?? ''] ?? null
+
+/** Settled-pass syntax highlighting (M24): one worker run per card, split
+ *  back into per-row innerHTML. Streaming rows stay plain (rule: fast). */
+function useDiffHighlight(rows: DiffRow[], path?: string, settled?: boolean): (string | null)[] {
+  const [html, setHtml] = useState<(string | null)[]>([])
+  const lang = path ? langOf(path) : null
+  const joined = useMemo(() => rows.map((r) => (r.type === 'gap' ? '' : r.text)).join('\n'), [rows])
+  useEffect(() => {
+    if (!settled || !lang || rows.length === 0 || rows.length > DIFF_LINE_CAP) {
+      setHtml([])
+      return
+    }
+    let alive = true
+    void highlight(joined, lang).then((h) => {
+      if (!alive || !h) return
+      const lines = [...h.matchAll(/<span class="line">(.*?)<\/span>\n?/gs)].map((m) => m[1])
+      if (lines.length === rows.length) setHtml(lines)
+    })
+    return () => {
+      alive = false
+    }
+  }, [joined, lang, settled, rows.length])
+  return html
+}
+
 /** Unified diff — line numbers in the gutter, dim context, emerald adds,
  *  red deletes, capped at 600 lines. Click a numbered line to edit there. */
 function DiffBlock({
   rows,
+  path,
+  settled,
   onEditAt
 }: {
   rows: DiffRow[]
+  /** enables syntax highlighting once settled */
+  path?: string
+  settled?: boolean
   onEditAt?: (line: number) => void
 }): React.JSX.Element {
   const shown = rows.slice(0, DIFF_LINE_CAP)
+  const html = useDiffHighlight(rows, path, settled)
   return (
     <div className="py-1.5 font-mono text-[11.5px] leading-[18px]">
       {shown.map((r, n) =>
@@ -724,8 +791,10 @@ function DiffBlock({
             title={onEditAt && r.newNo !== undefined ? 'Edit here' : undefined}
             className={cn(
               'flex',
-              r.type === 'add' && 'bg-success/10 text-success',
-              r.type === 'del' && 'bg-destructive/10 text-destructive',
+              r.type === 'add' && 'bg-success/10',
+              r.type === 'del' && 'bg-destructive/10',
+              r.type === 'add' && !html[n] && 'text-success',
+              r.type === 'del' && !html[n] && 'text-destructive',
               r.type === 'ctx' && 'text-muted-foreground/70',
               onEditAt && r.newNo !== undefined && 'cursor-pointer hover:brightness-125'
             )}
@@ -733,12 +802,25 @@ function DiffBlock({
             <span className="w-10 shrink-0 pr-2 text-right text-[10px] leading-[18px] text-faint tabular-nums select-none">
               {r.type === 'del' ? (r.oldNo ?? '') : (r.newNo ?? '')}
             </span>
-            <span className="w-4 shrink-0 select-none">
+            <span
+              className={cn(
+                'w-4 shrink-0 select-none',
+                r.type === 'add' && 'text-success',
+                r.type === 'del' && 'text-destructive'
+              )}
+            >
               {r.type === 'add' ? '+' : r.type === 'del' ? '−' : ''}
             </span>
-            <span className="min-w-0 flex-1 pr-3 whitespace-pre-wrap [overflow-wrap:anywhere]">
-              {r.text || ' '}
-            </span>
+            {html[n] ? (
+              <span
+                className="min-w-0 flex-1 pr-3 whitespace-pre-wrap [overflow-wrap:anywhere]"
+                dangerouslySetInnerHTML={{ __html: html[n]! }}
+              />
+            ) : (
+              <span className="min-w-0 flex-1 pr-3 whitespace-pre-wrap [overflow-wrap:anywhere]">
+                {r.text || ' '}
+              </span>
+            )}
           </div>
         )
       )}
@@ -1192,8 +1274,9 @@ interface EditModel {
 }
 
 /** Codex fileChange diffs: unified hunks for updates (context and line
- *  numbers kept as rows), whole numbered content for adds. */
-function parsePatchDiff(
+ *  numbers kept as rows), whole numbered content for adds. Exported for
+ *  the live change stream's disk diffs (docs/PLAN-5.md M22/M23). */
+export function parsePatchDiff(
   diff: string,
   isAdd: boolean
 ): {
@@ -1341,10 +1424,13 @@ export function editModel(b: ToolBlock): EditModel {
  */
 export const ZEditCard = memo(function ZEditCard({
   b,
-  defaultOpen = false
+  defaultOpen = false,
+  sessionId
 }: {
   b: ToolBlock
   defaultOpen?: boolean
+  /** enables the live disk-diff overlay + auto open/collapse (M23) */
+  sessionId?: string
 }): React.JSX.Element {
   const [open, setOpen] = usePersistedOpen(`e:${b.callId}`, defaultOpen)
   const [userToggled, setUserToggled] = useState(false)
@@ -1389,10 +1475,30 @@ export const ZEditCard = memo(function ZEditCard({
   const [wasStreaming] = useState(streamingIn)
   // file_path streams first — a second key means its value finished.
   const pathReady = m.path !== '' && (!b.partialInput || Object.keys(input(b)).length > 1)
+
+  // Live disk-diff overlay (M22/M23): while the call is in flight, the
+  // watcher's disk truth beats the harness's buffered input — rows grow
+  // and the counters tick as the file actually changes. Once the harness
+  // result lands, the harness diff is authoritative again.
+  const liveRec = useApp((s) => {
+    if (!sessionId || !running) return undefined
+    const rel = m.path.startsWith('/') ? undefined : m.path
+    const byRel = rel ? s.liveEdits[sessionId]?.[rel] : undefined
+    if (byRel) return byRel
+    // Absolute harness paths match by suffix against the cwd-relative key.
+    const all = s.liveEdits[sessionId]
+    if (!all || !m.path) return undefined
+    return Object.values(all).find((e) => m.path.endsWith(`/${e.path}`))
+  })
+  const liveParsed = useMemo(
+    () => (liveRec?.diff ? parsePatchDiff(liveRec.diff, liveRec.kind === 'created') : null),
+    [liveRec?.diff, liveRec?.kind]
+  )
+
   // Count the diffstat up only when we watched the change land live.
   const [liveAtMount] = useState(running)
-  const adds = useCountUp(m.adds, liveAtMount)
-  const dels = useCountUp(m.dels, liveAtMount)
+  const adds = useCountUp(liveRec && running ? (liveRec.adds ?? 0) : m.adds, liveAtMount)
+  const dels = useCountUp(liveRec && running ? (liveRec.dels ?? 0) : m.dels, liveAtMount)
   const name = m.path.split('/').pop() ?? m.path
   const rawDir = m.path.includes('/') ? m.path.slice(0, m.path.lastIndexOf('/')) : ''
   const shownDir = rawDir ? displayPath(rawDir, projectCwd) : ''
@@ -1455,11 +1561,11 @@ export const ZEditCard = memo(function ZEditCard({
             {b.isError ? (
               <span className="text-xs font-medium text-destructive">failed</span>
             ) : (
-              (m.adds > 0 || m.dels > 0) && (
+              (adds > 0 || dels > 0) && (
                 <span className="text-xs font-semibold tracking-tight tabular-nums">
-                  {m.adds > 0 && <span className="text-success">+{adds}</span>}
-                  {m.adds > 0 && m.dels > 0 && ' '}
-                  {m.dels > 0 && <span className="text-destructive">−{dels}</span>}
+                  {adds > 0 && <span className="text-success">+{adds}</span>}
+                  {adds > 0 && dels > 0 && ' '}
+                  {dels > 0 && <span className="text-destructive">−{dels}</span>}
                 </span>
               )
             )}
@@ -1490,7 +1596,10 @@ export const ZEditCard = memo(function ZEditCard({
           </span>
         )}
       </div>
-      <TweenHeight open={open} animate={userToggled}>
+      {/* Auto mode (sessionId given): the diff is open exactly while the
+          edit is happening, then collapses to the chip — unless the user
+          toggled, which always wins. */}
+      <TweenHeight open={userToggled ? open : sessionId ? running : open} animate>
         <div className="relative border-t border-(--hairline)">
           {editMode && project && rel ? (
             <>
@@ -1519,6 +1628,9 @@ export const ZEditCard = memo(function ZEditCard({
                 />
               </Suspense>
             </>
+          ) : running && liveParsed ? (
+            // In flight: the disk truth streams — rows grow with each write.
+            <DiffBlock rows={liveParsed.rows} />
           ) : m.hunks.length > 0 ? (
             <>
               {project && rel && (
@@ -1532,6 +1644,8 @@ export const ZEditCard = memo(function ZEditCard({
               )}
               <DiffBlock
                 rows={rows}
+                path={m.path}
+                settled={!running}
                 onEditAt={project && rel ? (line) => editHere(line) : undefined}
               />
             </>
