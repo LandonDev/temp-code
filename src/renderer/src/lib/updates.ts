@@ -7,6 +7,9 @@ export interface UpdateStatus {
   notes: string
   canApply: boolean
   phase: 'idle' | 'checking' | 'building' | 'restarting' | 'error'
+  /** while building: which step, and the child's latest output line */
+  step?: string
+  detail?: string
   error?: string
 }
 

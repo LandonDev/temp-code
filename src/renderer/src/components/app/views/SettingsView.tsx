@@ -326,7 +326,7 @@ function UpdatesPanel(): React.JSX.Element {
             ? 'Dev build — updates apply to the installed app.'
             : busy
               ? s.phase === 'building'
-                ? 'Building the update… the app restarts itself when it is ready.'
+                ? (s.detail ?? 'Starting the build…')
                 : 'Restarting…'
               : s.phase === 'error'
                 ? (s.error ?? 'Update failed.')
@@ -345,7 +345,7 @@ function UpdatesPanel(): React.JSX.Element {
             >
               {busy && <Spinner className="size-3" />}
               {s.phase === 'building'
-                ? 'Building…'
+                ? (s.step ?? 'Building') + '…'
                 : s.phase === 'restarting'
                   ? 'Restarting…'
                   : `Update to ${s.latest}`}
