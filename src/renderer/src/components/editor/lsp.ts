@@ -148,8 +148,8 @@ const toLspRange = (r: monaco.IRange): LspRange => ({
 })
 // LSP CompletionItemKind (1-based) → monaco CompletionItemKind
 const CIK = monaco.languages.CompletionItemKind
+// index = LSP CompletionItemKind - 1 (kind 1 = Text … 25 = TypeParameter)
 const COMPLETION_KINDS: monaco.languages.CompletionItemKind[] = [
-  CIK.Text,
   CIK.Text,
   CIK.Method,
   CIK.Function,
@@ -881,15 +881,19 @@ function settingsFor(
     javaRuntimes?: { name: string; path: string }[]
     eulaHash?: string
     defaultSdk?: string
+    buildTool?: string
   },
-  engine: 'standard' | 'idea' = 'standard'
+  engine: 'standard' | 'idea' = 'standard',
+  rootUri?: string
 ): Record<string, unknown> {
   if (engine === 'idea') {
-    // The EULA-hash handshake + a JDK for resolution — that's the whole
-    // initializationOptions surface intellij-server wants.
+    // EULA handshake + a JDK + a forced importer for the root: repos with
+    // a checked-in .idea otherwise skip import silently (docs/PLAN-4.md
+    // amendments — A/B-tested against the engine).
     return {
       ...(extras.eulaHash ? { eulaHash: extras.eulaHash } : {}),
-      ...(extras.defaultSdk ? { defaultSdk: extras.defaultSdk } : {})
+      ...(extras.defaultSdk ? { defaultSdk: extras.defaultSdk } : {}),
+      ...(extras.buildTool && rootUri ? { buildTools: { [rootUri]: extras.buildTool } } : {})
     }
   }
   if (kind === 'web') {
@@ -975,6 +979,7 @@ export function ensureConnection(
           javaRuntimes?: { name: string; path: string }[]
           eulaHash?: string
           defaultSdk?: string
+          buildTool?: string
         }>('lsp.ensure', { projectId: project.id, lang: engine === 'idea' ? 'idea' : kind })
         if (res.status === 'error' || res.status === 'needs-eula') return null
         const conn = new LspConnection(
@@ -982,7 +987,7 @@ export function ensureConnection(
           kind,
           res.serverId,
           res.wsPath,
-          settingsFor(kind, res, engine),
+          settingsFor(kind, res, engine, monaco.Uri.file(project.cwd).toString()),
           engine
         )
         await conn.connect()
