@@ -1,5 +1,5 @@
 {
-  "n": 24,
-  "notes": "Appshots: settings page — enable, destination, sound, permission rows",
-  "ts": 1786920091337
+  "n": 25,
+  "notes": "Appshots: monitor exits itself when the app dies without will-quit",
+  "ts": 1786920648497
 }
