@@ -11,6 +11,7 @@ import { addProjectWorktree, currentBranch, ensureLocalExclude, isGitRepo } from
 import { parseRules, type OrchestrationRules } from '@shared/rules'
 import { DEFAULT_THREAD_DEFAULTS, parseDefaults, type ThreadDefaults } from '@shared/defaults'
 import { planPathFor, planSeed, projectContext, threadPreamble } from './threads'
+import { notifyParentOfSettle } from './orchestration'
 import {
   appendJournal,
   INLINE_DIGEST_MAX_CHARS,
@@ -651,6 +652,7 @@ export class SessionRegistry {
     }
     const row = this.store.appendEvent(sessionId, event)
     this.lastActivity.set(sessionId, row.ts)
+    let settleToReport: SessionMeta | null = null
     // Status events also update the session row (drives the sidebar).
     // busySince anchors the "working for" timers: it is set when a stretch
     // of work begins and holds through steers and queue drains, so the
@@ -667,12 +669,24 @@ export class SessionRegistry {
       if (next) this.notifyMeta(next)
       // A settled turn releases the next queued message.
       if (event.status === 'idle') this.drainQueue(sessionId)
+      // Dormant supervision: a subagent leaving "running" wakes its parent
+      // with an automatic report — immediately when the parent is idle,
+      // queued behind its current work otherwise. Skipped when a
+      // wait_for_agent already covers this child.
+      if (
+        next?.parentId &&
+        cur?.status === 'running' &&
+        (event.status === 'idle' || event.status === 'error' || event.status === 'waiting')
+      ) {
+        settleToReport = next
+      }
     }
     // Shared context (M8): a finished turn refreshes the thread's mirror.
     if (event.type === 'turn-complete' && this.store.getSession(sessionId)?.projectId) {
       scheduleMirror(this, sessionId)
     }
     for (const listener of this.subscribers.get(sessionId) ?? []) listener(row)
+    if (settleToReport) notifyParentOfSettle(this, settleToReport)
   }
 
   subscribe(sessionId: string, listener: SessionListener): () => void {

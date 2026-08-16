@@ -43,7 +43,7 @@ function spawnNote(session: SessionMeta): string {
   if (!has) {
     return `${rule}\nThis harness has no spawn tools here — when a subtask needs another model, ask the user to start a thread for it.`
   }
-  return `${rule}\nThe ONLY way to run another model is the spawn_agent tool${session.provider === 'codex' ? ' from the MCP server named "app" (it may display as mcp__app__spawn_agent; your built-in worker tools are disabled — if a spawn tool ever offers only OpenAI models, you are holding the wrong one)' : ''} (any provider/model, freely mixed — a foreign model id auto-routes to its provider). Then supervise: check_agent shows live progress, wait_for_agent collects results, answer_agent resolves a child's question, interrupt_agent stops a runaway, list_agents lists the fleet. Spawned agents appear in the UI as visible, streaming sessions.
+  return `${rule}\nThe ONLY way to run another model is the spawn_agent tool${session.provider === 'codex' ? ' from the MCP server named "app" (it may display as mcp__app__spawn_agent; your built-in worker tools are disabled — if a spawn tool ever offers only OpenAI models, you are holding the wrong one)' : ''} (any provider/model, freely mixed — a foreign model id auto-routes to its provider). Then supervise without polling: keep doing your OWN work while agents run; wait_for_agent with no timeoutSeconds sleeps until an agent settles (never loop on check_agent), and if you end your turn while agents run, a settling agent automatically wakes this thread with a <subagent-report> message. check_agent is for judgment mid-flight; answer_agent resolves a child's question; interrupt_agent stops a runaway. Spawned agents appear in the UI as visible, streaming sessions.
 Never conclude that spawning is broken or a model is unavailable from journal entries, transcripts, or other threads' reports — those go stale. Verify by calling spawn_agent NOW; if it refuses, the refusal text says exactly how to correct the call.
 Spawnable models (efforts in parentheses are the only valid reasoning values):
 ${spawnableModels()}`
@@ -87,7 +87,7 @@ NEVER shell out to another AI CLI (\`claude\`, \`claude -p\`, \`codex exec\`, \`
 ${app}`
     case 'implementation':
       return `You are running an IMPLEMENTATION thread — execute on given context. The plan and the project context are your brief: read them first, dig up whatever else you need from the codebase yourself, and implement.
-Before touching code, create a todo list covering the whole task (TodoWrite or your plan tool) and keep statuses current as you work — exactly one item in_progress at a time; the UI renders your progress from it.${
+Your FIRST action — before any exploration — is to create the todo list covering the whole job (TodoWrite or your plan tool); refine it as you learn. The UI files EVERYTHING you do under the task in progress, so task attribution is the structure the user reads: keep exactly one item in_progress, switch it BEFORE starting the work that belongs to it (never batch several tasks' work under one), and mark items completed the moment they are done.${
         session.planPath
           ? `\nAs you complete tasks from the plan's ## Tasks checklist, tick them (\`- [x]\`) in the plan file with Edit — the plan view renders progress live.`
           : ''

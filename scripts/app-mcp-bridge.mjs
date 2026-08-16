@@ -65,9 +65,11 @@ async function appRequest(method, params, timeoutMs = 120_000) {
   return new Promise((resolve, reject) => {
     pending.set(id, { resolve, reject })
     ws.send(JSON.stringify({ id, method, params: { sessionId: SESSION, ...params } }))
-    setTimeout(() => {
-      if (pending.delete(id)) reject(new Error('app server timeout'))
-    }, timeoutMs)
+    if (timeoutMs > 0) {
+      setTimeout(() => {
+        if (pending.delete(id)) reject(new Error('app server timeout'))
+      }, timeoutMs)
+    }
   })
 }
 
@@ -187,7 +189,11 @@ const TOOLS = [
           description: 'Several agents — with mode "any", results arrive in completion order'
         },
         mode: { type: 'string', enum: ['any', 'all'] },
-        timeoutSeconds: { type: 'number', description: 'Default 600' }
+        timeoutSeconds: {
+          type: 'number',
+          description:
+            '0 / omitted = sleep until settled (the normal case — no polling). Set only to get control back early.'
+        }
       }
     }
   },
@@ -238,9 +244,14 @@ const METHOD_FOR = {
 async function callTool(name, args) {
   const method = METHOD_FOR[name]
   if (!method) throw new Error(`unknown tool: ${name}`)
-  // wait_for_agent blocks up to its own timeout — give the WS call room.
+  // wait_for_agent sleeps until the agent settles (0 = no deadline); an
+  // explicit timeoutSeconds gets a small buffer on top.
   const timeoutMs =
-    name === 'wait_for_agent' ? ((args?.timeoutSeconds ?? 600) + 30) * 1000 : 120_000
+    name === 'wait_for_agent'
+      ? args?.timeoutSeconds
+        ? (args.timeoutSeconds + 30) * 1000
+        : 0
+      : 120_000
   const result = await appRequest(method, args ?? {}, timeoutMs)
   if (name === 'app_read_thread' && result === null) {
     return 'refused: unknown thread id. app_list_threads shows valid ids.'

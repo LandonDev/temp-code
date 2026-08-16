@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
-import { Check, Circle } from 'lucide-react'
+import { Check, ChevronRight, Circle } from 'lucide-react'
 import type { SessionMeta } from '@shared/events'
 import { useApp } from '../../../state/store'
 import type { Block } from '../../../state/blocks'
@@ -11,7 +11,7 @@ import { Spinner } from '../../ui/spinner'
 import { AgentDetail, AgentRow, useAgents } from '../AgentFleet'
 import { ApprovalCard } from '../blocks/ApprovalCard'
 import { QuestionCard } from '../blocks/QuestionCard'
-import { ErrorChip, EDIT_TOOLS, splitEdit, ZEditCard } from '../blocks/ToolGroup'
+import { editModel, ErrorChip, EDIT_TOOLS, splitEdit, ZEditCard } from '../blocks/ToolGroup'
 import { MarkdownText } from '../blocks/MarkdownText'
 import { SidePanel } from '../SidePanel'
 import { PromptBar } from '../PromptBar'
@@ -62,6 +62,24 @@ export function ImplementationView({ session }: { session: SessionMeta }): React
       ),
     [blocks]
   )
+
+  // The breakdown: file each work item under the task that was in
+  // progress when it was born (block.todo). Items from before the first
+  // list — or when no list exists — group separately; indices past a
+  // shrunken list clamp to the last task.
+  const [openGroups, setOpenGroups] = useState<Set<number>>(new Set())
+  const workByTodo = useMemo(() => {
+    const m = new Map<number, Block[]>()
+    for (const b of work) {
+      const k = todos.length === 0 ? -1 : b.todo < 0 ? -1 : Math.min(b.todo, todos.length - 1)
+      const arr = m.get(k)
+      if (arr) arr.push(b)
+      else m.set(k, [b])
+    }
+    return m
+  }, [work, todos.length])
+  const preWork = todos.length ? (workByTodo.get(-1) ?? []) : []
+  const postWork = todos.length === 0 ? (workByTodo.get(-1) ?? []) : []
 
   // Per-todo wall clock, from block timestamps.
   const spans = useMemo(() => {
@@ -115,30 +133,6 @@ export function ImplementationView({ session }: { session: SessionMeta }): React
               )
             )}
 
-            {todos.length > 0 && (
-              <div className="mb-5 flex flex-col">
-                {todos.map((todo, i) => {
-                  const span = spans.get(i)
-                  const live = running && todo.status === 'in_progress'
-                  const ms =
-                    todo.status === 'pending' || !span
-                      ? null
-                      : live
-                        ? now - span.first
-                        : span.last - span.first
-                  return (
-                    <TodoRow
-                      key={i}
-                      content={todo.content}
-                      status={todo.status}
-                      live={live}
-                      ms={ms !== null && ms > 1500 ? ms : null}
-                    />
-                  )
-                })}
-              </div>
-            )}
-
             {agents.length > 0 && (
               <div className="mb-5">
                 <p className="mb-1 text-[11px] font-medium tracking-[0.06em] text-muted-foreground uppercase">
@@ -158,20 +152,69 @@ export function ImplementationView({ session }: { session: SessionMeta }): React
               </div>
             )}
 
-            {work.length > 0 && (
-              <div className="flex flex-col gap-2">
-                {work.map((b) =>
-                  b.kind === 'approval' ? (
-                    <ApprovalCard key={b.id} block={b} sessionId={session.id} />
-                  ) : b.kind === 'question' ? (
-                    <QuestionCard key={b.id} block={b} sessionId={session.id} />
-                  ) : b.kind === 'error' ? (
-                    <ErrorChip key={b.id} text={b.text} />
-                  ) : (
-                    <FreshEdit key={b.id} block={b as ToolBlock} />
-                  )
+            {/* The breakdown: every action files under the task that was in
+                progress when it happened. Settled tasks fold their work to
+                a one-line summary; the live task streams open. */}
+            {preWork.length > 0 && (
+              <div className="mb-4">
+                {todos.length > 0 && (
+                  <p className="mb-1.5 text-[11px] font-medium tracking-[0.06em] text-muted-foreground/70 uppercase">
+                    Setup
+                  </p>
                 )}
+                <WorkItems blocks={preWork} sessionId={session.id} />
               </div>
+            )}
+
+            {todos.length > 0 && (
+              <div className="mb-5 flex flex-col">
+                {todos.map((todo, i) => {
+                  const span = spans.get(i)
+                  const live = running && todo.status === 'in_progress'
+                  const ms =
+                    todo.status === 'pending' || !span
+                      ? null
+                      : live
+                        ? now - span.first
+                        : span.last - span.first
+                  const items = workByTodo.get(i) ?? []
+                  const needsUser = items.some(
+                    (b) => (b.kind === 'approval' || b.kind === 'question') && !b.resolved
+                  )
+                  const folded = todo.status === 'completed' && !needsUser && !openGroups.has(i)
+                  return (
+                    <div key={i}>
+                      <TodoRow
+                        content={todo.content}
+                        status={todo.status}
+                        live={live}
+                        ms={ms !== null && ms > 1500 ? ms : null}
+                      />
+                      {items.length > 0 &&
+                        (folded ? (
+                          <FoldedWork
+                            blocks={items}
+                            onOpen={() =>
+                              setOpenGroups((s) => {
+                                const next = new Set(s)
+                                next.add(i)
+                                return next
+                              })
+                            }
+                          />
+                        ) : (
+                          <div className="mt-1 mb-2 ml-[7px] border-l border-border/60 pt-0.5 pb-1 pl-4">
+                            <WorkItems blocks={items} sessionId={session.id} />
+                          </div>
+                        ))}
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+
+            {todos.length === 0 && postWork.length > 0 && (
+              <WorkItems blocks={postWork} sessionId={session.id} />
             )}
 
             {running && work.length === 0 && (
@@ -209,6 +252,71 @@ export function ImplementationView({ session }: { session: SessionMeta }): React
         )}
       </AnimatePresence>
     </div>
+  )
+}
+
+/** The work stream for one group, in birth order. */
+function WorkItems({
+  blocks,
+  sessionId
+}: {
+  blocks: Block[]
+  sessionId: string
+}): React.JSX.Element {
+  return (
+    <div className="flex flex-col gap-2">
+      {blocks.map((b) =>
+        b.kind === 'approval' ? (
+          <ApprovalCard key={b.id} block={b} sessionId={sessionId} />
+        ) : b.kind === 'question' ? (
+          <QuestionCard key={b.id} block={b} sessionId={sessionId} />
+        ) : b.kind === 'error' ? (
+          <ErrorChip key={b.id} text={b.text} />
+        ) : (
+          <FreshEdit key={b.id} block={b as ToolBlock} />
+        )
+      )}
+    </div>
+  )
+}
+
+/** A settled task's work, folded to its footprint — click to expand. */
+function FoldedWork({
+  blocks,
+  onOpen
+}: {
+  blocks: Block[]
+  onOpen: () => void
+}): React.JSX.Element {
+  let files = 0
+  let adds = 0
+  let dels = 0
+  let errors = 0
+  for (const b of blocks) {
+    if (b.kind === 'error') errors++
+    if (b.kind !== 'tool') continue
+    for (const e of splitEdit(b).edits) {
+      const m = editModel(e)
+      files++
+      adds += m.adds
+      dels += m.dels
+    }
+  }
+  return (
+    <button
+      onClick={onOpen}
+      className="mb-1 ml-[7px] flex items-center gap-1.5 border-l border-border/60 py-0.5 pl-4 text-[11px] tabular-nums text-muted-foreground/70 transition-colors hover:text-foreground"
+    >
+      <ChevronRight className="size-3" />
+      {files} {files === 1 ? 'change' : 'changes'}
+      {adds + dels > 0 && (
+        <span>
+          <span className="text-success">+{adds}</span>{' '}
+          <span className="text-destructive">−{dels}</span>
+        </span>
+      )}
+      {errors > 0 && <span className="text-destructive">{errors} errors</span>}
+    </button>
   )
 }
 

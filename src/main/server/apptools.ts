@@ -53,7 +53,10 @@ export function bridgeMcpConfig(sessionId: string): Record<string, unknown> | nu
       ELECTRON_RUN_AS_NODE: '1',
       TEMP_CODE_PORT: String(bridge.port),
       TEMP_CODE_SESSION: sessionId
-    }
+    },
+    // wait_for_agent sleeps until a subagent settles — codex must not
+    // kill the call with its default per-tool timeout.
+    tool_timeout_sec: 86_400
   }
 }
 

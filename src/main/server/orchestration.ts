@@ -155,7 +155,8 @@ function tokensOf(
   return { input, output, costUsd: Math.round(costUsd * 10000) / 10000 }
 }
 
-/** Wait until the child finishes its current turn (idle/error/waiting). */
+/** Wait until the child finishes its current turn (idle/error/waiting).
+ *  timeoutMs <= 0 waits indefinitely — dormant, no polling. */
 function waitForSettled(
   reg: SessionRegistry,
   sessionId: string,
@@ -168,13 +169,16 @@ function waitForSettled(
     }
     const now = check()
     if (now) return resolve(now)
-    const timer = setTimeout(() => {
-      off()
-      resolve(null)
-    }, timeoutMs)
+    const timer =
+      timeoutMs > 0
+        ? setTimeout(() => {
+            off()
+            resolve(null)
+          }, timeoutMs)
+        : null
     const off = reg.subscribe(sessionId, (row) => {
       if (row.event.type === 'status' && row.event.status !== 'running') {
-        clearTimeout(timer)
+        if (timer) clearTimeout(timer)
         off()
         resolve(check())
       }
@@ -182,7 +186,8 @@ function waitForSettled(
   })
 }
 
-/** First of several children to settle, with its id; null on timeout. */
+/** First of several children to settle, with its id; null on timeout
+ *  (timeoutMs <= 0 = never). */
 function waitForAnySettled(
   reg: SessionRegistry,
   ids: string[],
@@ -193,16 +198,59 @@ function waitForAnySettled(
     const finish = (v: { id: string; meta: SessionMeta } | null): void => {
       if (done) return
       done = true
-      clearTimeout(timer)
+      if (timer) clearTimeout(timer)
       resolve(v)
     }
-    const timer = setTimeout(() => finish(null), timeoutMs)
+    const timer = timeoutMs > 0 ? setTimeout(() => finish(null), timeoutMs) : null
     for (const id of ids) {
       void waitForSettled(reg, id, timeoutMs).then((meta) => {
         if (meta) finish({ id, meta })
       })
     }
   })
+}
+
+// ── dormant supervision ──────────────────────────────────────────────
+// A parent should never have to poll: wait_for_agent with no timeout
+// sleeps until a child settles, and a child settling while the parent is
+// NOT waiting wakes the parent through its message queue (immediately
+// when idle, after its current work otherwise).
+
+/** Children currently inside a wait_for_agent — their settle is already
+ *  being delivered as that tool's result, so no wake message. */
+const awaited = new Map<string, number>()
+const holdAwaited = (ids: string[]): (() => void) => {
+  for (const id of ids) awaited.set(id, (awaited.get(id) ?? 0) + 1)
+  return () => {
+    for (const id of ids) {
+      const n = (awaited.get(id) ?? 1) - 1
+      if (n <= 0) awaited.delete(id)
+      else awaited.set(id, n)
+    }
+  }
+}
+
+/** Called by the registry when a child transitions out of running. Queues
+ *  an automatic report to the parent unless a wait already covers it. */
+export function notifyParentOfSettle(reg: SessionRegistry, child: SessionMeta): void {
+  if (!child.parentId || awaited.has(child.id)) return
+  const parent = reg.list().find((s) => s.id === child.parentId)
+  if (!parent || parent.archived) return
+  const turn = latestTurnRows(reg.eventsAfter(child.id, 0))
+  const pending = child.status === 'waiting' ? pendingOf(turn) : null
+  const tail = turnText(turn).slice(-600)
+  const body =
+    child.status === 'waiting'
+      ? pending?.kind === 'question'
+        ? `It is WAITING on a question — answer it with answer_agent (requestId ${pending.requestId}).`
+        : 'It is WAITING on a permission approval — only the user can grant that.'
+      : tail
+        ? `Latest reply:\n${tail}`
+        : '(no reply text)'
+  reg.queueAdd(
+    child.parentId,
+    `<subagent-report>\nAutomatic notification: subagent "${child.title}" (${child.id}) settled with status ${child.status}.\n${body}\nUse check_agent for detail, send_to_agent to follow up. Continue your work accordingly — do not reply to this notification itself.\n</subagent-report>`
+  )
 }
 
 const text = (t: string): { content: [{ type: 'text'; text: string }] } => ({
@@ -376,6 +424,22 @@ export async function orchSendToAgent(
   return 'sent'
 }
 
+/** Latest task-list state from the child's plan-tool calls, if any. */
+function todoProgress(rows: EventRow[]): { done: number; total: number } | null {
+  for (let i = rows.length - 1; i >= 0; i--) {
+    const e = rows[i].event
+    if (e.type !== 'tool-call' || (e.name !== 'TodoWrite' && e.name !== 'update_plan')) continue
+    const input = e.input as { todos?: { status?: string }[]; plan?: { status?: string }[] } | null
+    const items = e.name === 'TodoWrite' ? input?.todos : input?.plan
+    if (!Array.isArray(items)) continue
+    return {
+      done: items.filter((t) => t?.status === 'completed').length,
+      total: items.length
+    }
+  }
+  return null
+}
+
 export function orchCheckAgent(parent: SessionMeta, agentId: string): string {
   if (!registry) return 'orchestration registry not ready'
   const meta = childOf(parent, agentId)
@@ -404,6 +468,7 @@ export function orchCheckAgent(parent: SessionMeta, agentId: string): string {
       lastText: (finals || deltas).slice(-2000)
     },
     pending: pendingOf(turn),
+    tasks: todoProgress(rows),
     tokens: tokensOf(rows, meta.provider)
   })
 }
@@ -423,23 +488,32 @@ export async function orchWaitForAgent(
   const ids = [...(args.agentIds ?? []), ...(args.agentId ? [args.agentId] : [])]
   if (ids.length === 0) return 'refused: pass agentId or agentIds'
   for (const id of ids) if (!childOf(parent, id)) return notChild(id)
-  const timeoutMs = (args.timeoutSeconds ?? 600) * 1000
-  if (args.mode === 'all' && ids.length > 1) {
-    const metas = await Promise.all(ids.map((id) => waitForSettled(registry!, id, timeoutMs)))
-    return JSON.stringify(
-      ids.map((id, i) => {
-        const meta = metas[i]
-        return meta
-          ? settledReport(id, meta)
-          : { agentId: id, status: 'timeout', note: 'still running' }
+  // 0 / omitted = sleep until settled — the default; a timeout is opt-in.
+  const timeoutMs = (args.timeoutSeconds ?? 0) * 1000
+  const release = holdAwaited(ids)
+  try {
+    if (args.mode === 'all' && ids.length > 1) {
+      const metas = await Promise.all(ids.map((id) => waitForSettled(registry!, id, timeoutMs)))
+      return JSON.stringify(
+        ids.map((id, i) => {
+          const meta = metas[i]
+          return meta
+            ? settledReport(id, meta)
+            : { agentId: id, status: 'timeout', note: 'still running' }
+        })
+      )
+    }
+    const settled = await waitForAnySettled(registry, ids, timeoutMs)
+    if (!settled) {
+      return JSON.stringify({
+        status: 'timeout',
+        note: 'still running — check_agent shows progress'
       })
-    )
+    }
+    return JSON.stringify(settledReport(settled.id, settled.meta))
+  } finally {
+    release()
   }
-  const settled = await waitForAnySettled(registry, ids, timeoutMs)
-  if (!settled) {
-    return JSON.stringify({ status: 'timeout', note: 'still running — check_agent shows progress' })
-  }
-  return JSON.stringify(settledReport(settled.id, settled.meta))
 }
 
 export async function orchAnswerAgent(
@@ -546,8 +620,10 @@ export function orchestratorMcp(parent: SessionMeta): McpSdkServerConfigWithInst
             .describe('any: return the first to settle; all: wait for every one'),
           timeoutSeconds: z
             .number()
-            .default(600)
-            .describe('Give up waiting after this long (the agents keep running)')
+            .default(0)
+            .describe(
+              '0 / omitted = sleep until settled (the normal case — no polling). Set only when you want control back early; the agents keep running.'
+            )
         },
         async (args) => text(await orchWaitForAgent(parent, args))
       ),
@@ -615,16 +691,20 @@ read/investigate, reviewers judge, orchestrators sub-orchestrate.
 Give each agent a complete, self-contained task prompt — it cannot see this
 conversation. Parallelize independent work; sequence dependent work.
 
-Supervise, don't fire-and-forget. Collect fan-outs with wait_for_agent
-(agentIds + mode "any") so results arrive in completion order. Check
-long-running agents periodically with check_agent: a large idleForSeconds
-or a wrong-direction tool trail means redirect (interrupt_agent, then
-send_to_agent) or replace. wait_for_agent timeouts are normal for long
-tasks — check, then wait again. A "waiting" agent is stuck on its
-"pending" payload: a structured question you answer with answer_agent, or
-a permission approval that only the user can grant — surface those to the
-user and keep working on other agents. Verify results before relaying
-them, and keep the user posted: what you delegated where, and why.`.trim()
+Supervise without polling. After spawning, keep doing your OWN work —
+subagents run in parallel with you. When you need results, call
+wait_for_agent (agentIds + mode "any" collects fan-outs in completion
+order): with no timeoutSeconds it sleeps until an agent settles, so never
+loop on check_agent to "poll". And if you simply end your turn while
+agents run, a settling agent automatically wakes this thread with a
+<subagent-report> message — going dormant is a valid strategy. Use
+check_agent only for judgment mid-flight: a large idleForSeconds or a
+wrong-direction tool trail means redirect (interrupt_agent, then
+send_to_agent) or replace. A "waiting" agent is stuck on its "pending"
+payload: a structured question you answer with answer_agent, or a
+permission approval that only the user can grant — surface those to the
+user and keep working. Verify results before relaying them, and keep the
+user posted: what you delegated where, and why.`.trim()
 
 const DELEGATION_LINES: Record<OrchestrationRules['conduct']['delegation'], string> = {
   strict:
