@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react'
 import type { ProjectMeta } from '@shared/domain'
-import { useApp } from '../../state/store'
 import { Spinner } from '../ui/spinner'
 import { monacoReady } from './monaco'
 import { registerProviders } from './lsp'
@@ -31,14 +30,8 @@ export default function InlineEditor({
   useEffect(() => {
     void monacoReady().then(() => {
       registerProviders()
-      if (line !== undefined) {
-        useApp.setState({
-          reveal: { key: `${project.id}:${path}`, position: { lineNumber: line, column: 1 } }
-        })
-      }
       setReady(true)
     })
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot mount
   }, [])
   if (!ready) {
     return (
@@ -49,7 +42,13 @@ export default function InlineEditor({
   }
   return (
     <div className="flex h-80 flex-col">
-      <EditorSurface project={project} path={path} highlight={highlight} onSave={onSave} />
+      <EditorSurface
+        project={project}
+        path={path}
+        highlight={highlight}
+        revealLine={line}
+        onSave={onSave}
+      />
     </div>
   )
 }
