@@ -141,6 +141,12 @@ export const BlockRow = memo(function BlockRow({
   block: Block
   sessionId: string
 }): React.JSX.Element {
+  // Without neighbors we can't tell a finalized section from a growing one —
+  // hold summaries for the whole running turn instead.
+  const running = useApp((s) => {
+    const st = s.sessions[sessionId]?.status
+    return st === 'running' || st === 'starting'
+  })
   if (block.kind === 'tool') {
     if (EDIT_TOOLS.has(block.name)) {
       const { edits, internal } = splitEdit(block)
@@ -149,11 +155,11 @@ export const BlockRow = memo(function BlockRow({
           {edits.map((eb) => (
             <ZEditCard key={eb.id} b={eb} />
           ))}
-          {internal && <ToolGroup tools={[internal]} sessionId={sessionId} />}
+          {internal && <ToolGroup tools={[internal]} sessionId={sessionId} active={running} />}
         </>
       )
     }
-    return <ToolGroup tools={[block]} sessionId={sessionId} />
+    return <ToolGroup tools={[block]} sessionId={sessionId} active={running} />
   }
   if (block.kind === 'thinking' && block.text.trim() === '') return <></>
   return <RowContent row={{ type: 'block', id: block.id, block, turn: 0 }} sessionId={sessionId} />
@@ -168,8 +174,12 @@ const RowContent = memo(function RowContent({
   sessionId: string
   autoOpen?: boolean
 }): React.JSX.Element {
+  // autoOpen doubles as "may still grow": it's exactly the last-group-while-
+  // running condition, which is also when summaries must hold off.
   if (row.type === 'group')
-    return <ToolGroup tools={row.tools} autoOpen={autoOpen} sessionId={sessionId} />
+    return (
+      <ToolGroup tools={row.tools} autoOpen={autoOpen} active={autoOpen} sessionId={sessionId} />
+    )
   if (row.type === 'edit') return <ZEditCard b={row.block} />
   const block = row.block
   switch (block.kind) {

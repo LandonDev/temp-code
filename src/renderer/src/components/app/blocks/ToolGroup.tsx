@@ -404,15 +404,22 @@ interface SectionSummary {
  *  this is one request per group per app run at most. */
 const summaryCache = new Map<string, SectionSummary | null>()
 
-/** One plain sentence (and, when enabled, per-tool captions) for a settled
- *  tool section, written by a small fast model — the thread's own
- *  subscription on Auto, or the pinned model from settings. */
-function useSectionSummary(tools: ToolBlock[], sessionId?: string): SectionSummary | null {
+/** One plain sentence (and, when enabled, per-tool captions) for a
+ *  FINALIZED tool section, written by a small fast model — the thread's own
+ *  subscription on Auto, or the pinned model from settings. `active` means
+ *  the section may still grow (nothing follows it yet, turn running):
+ *  summarizing then would fire again on every new tool and override
+ *  itself, so it waits. */
+function useSectionSummary(
+  tools: ToolBlock[],
+  sessionId?: string,
+  active = false
+): SectionSummary | null {
   const wantSentence = useApp((s) => s.toolSummaries)
   const wantCaptions = useApp((s) => s.toolCaptions)
   const model = useApp((s) => s.summaryModel)
   const projectCwd = useApp((s) => s.projects.find((p) => p.id === s.selectedProjectId)?.cwd)
-  const settled = tools.length > 0 && tools.every((t) => t.output !== undefined)
+  const settled = !active && tools.length > 0 && tools.every((t) => t.output !== undefined)
   const want = settled && (wantCaptions || (wantSentence && tools.length > 1))
   const key = want ? `${tools[0].callId}:${tools.length}:${wantCaptions ? 'c' : 's'}` : null
   const [, bump] = useState(0)
@@ -1007,10 +1014,13 @@ const Chip = memo(function Chip({
 export const ToolGroup = memo(function ToolGroup({
   tools,
   autoOpen = false,
+  active = false,
   sessionId
 }: {
   tools: ToolBlock[]
   autoOpen?: boolean
+  /** the section may still grow — summaries wait until it's finalized */
+  active?: boolean
   sessionId?: string
 }): React.JSX.Element {
   const gkey = `g:${tools[0].callId}`
@@ -1026,7 +1036,7 @@ export const ToolGroup = memo(function ToolGroup({
   // Auto-open shows the CHIP LIST growing — a single tool has no list,
   // its expansion is the invocation/output dump, so it stays folded.
   const open = override ?? (autoOpen && tools.length > 1)
-  const summary = useSectionSummary(tools, sessionId)
+  const summary = useSectionSummary(tools, sessionId, active)
   const wantSentence = useApp((s) => s.toolSummaries)
   const sentence = wantSentence ? (summary?.sentence ?? null) : null
 
