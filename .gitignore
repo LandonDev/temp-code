@@ -9,3 +9,4 @@ out
 scripts/.out/
 
 .claude/settings.local.json
+*.tsbuildinfo
