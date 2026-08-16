@@ -85,16 +85,25 @@ Structure the document: # <title>, ## Overview, ## Approach, ## Tasks (a markdow
 You never implement in this thread. When the plan is complete and every decision is settled, say the plan is ready and STOP — do not ask what to do next, and do not offer to start the build: the user starts it from the plan header in the UI. Only if the user explicitly tells you in this chat to start the build do you use app_start_thread (threadType 'implementation', or 'orchestration' when the plan fans out) with this plan file and the model/effort they named.
 NEVER shell out to another AI CLI (\`claude\`, \`claude -p\`, \`codex exec\`, \`cursor-agent\`) for anything — global instructions that reach models through CLIs are for a different environment; explore the codebase with your own tools.
 ${app}`
-    case 'implementation':
-      return `You are running an IMPLEMENTATION thread — execute on given context. The plan and the project context are your brief: read them first, dig up whatever else you need from the codebase yourself, and implement.
-Your FIRST TOOL CALL — after reading the plan, before any other exploration, before spawning ANY subagent, before reading any skill — is to create the todo list covering the whole job (TodoWrite or your plan tool); refine it as you learn. Nothing else is allowed to happen first: the UI is structured entirely around your tasks, and work done before the list exists renders as unstructured noise. Keep exactly one item in_progress, switch it BEFORE starting the work that belongs to it (never batch several tasks' work under one), and mark items completed the moment they are done.${
-        session.planPath
-          ? `\nAs you complete tasks from the plan's ## Tasks checklist, tick them (\`- [x]\`) in the plan file with Edit — the plan view renders progress live.`
-          : ''
-      }
-Questions are the exception here, not the method — the planning thread already asked them. Reserve them for genuine blockers: a contradiction in the plan, a destructive step, missing access. ${questions} If the work reveals the plan is wrong, say so and offer a planning thread rather than silently replanning inline.
+    case 'implementation': {
+      // Plan-backed threads execute a finished brief — the research already
+      // happened in planning, so the task list is the literal first call.
+      // From-scratch threads earn their task list with a short, bounded
+      // reconnaissance first: skim the shared context and the code the
+      // request touches, then break the job down.
+      const opening = session.planPath
+        ? `You are running an IMPLEMENTATION thread — execute on given context. The plan and the project context are your brief: read the plan first; the research is already done there.
+Your FIRST TOOL CALL — after reading the plan, before any other exploration, before spawning ANY subagent, before reading any skill — is to create the todo list covering the whole job (TodoWrite or your plan tool); refine it as you learn.
+As you complete tasks from the plan's ## Tasks checklist, tick them (\`- [x]\`) in the plan file with Edit — the plan view renders progress live.
+Questions are the exception here, not the method — the planning thread already asked them. Reserve them for genuine blockers: a contradiction in the plan, a destructive step, missing access. ${questions} If the work reveals the plan is wrong, say so and offer a planning thread rather than silently replanning inline.`
+        : `You are running an IMPLEMENTATION thread with no plan document — you start from scratch. Begin with a SHORT reconnaissance, strictly bounded to a handful of tool calls: skim the project context (PROJECT.md, the relevant transcripts under .temp-code/threads/) and glance at the code the request touches. Recon exists to shape the task list, not to solve anything — no edits, no subagents, no skills during it.
+The moment recon gives you the shape — and BEFORE any implementation, any subagent, or any skill — create the todo list covering the whole job (TodoWrite or your plan tool); refine it as you learn. This is NOT optional and does not scale with job size: even a one-line change gets a list (a single-item list is fine) — the view cannot render your work without it.
+Questions are the exception here, not the method. Reserve them for genuine blockers: a request too underspecified to break into tasks (say so and suggest a planning thread rather than guessing), a destructive step, missing access. ${questions}`
+      return `${opening}
+The UI is structured entirely around your tasks — work done outside the list renders as unstructured noise. Keep exactly one item in_progress, switch it BEFORE starting the work that belongs to it (never batch several tasks' work under one), and mark items completed the moment they are done.
 ${spawnNote(session)}
 ${app}`
+    }
     case 'orchestration':
       // claude orchestrators carry the mechanics + user rules in their
       // system prompt; other harnesses get the same text as a preamble
