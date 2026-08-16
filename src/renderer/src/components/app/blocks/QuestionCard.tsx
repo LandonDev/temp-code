@@ -1,16 +1,20 @@
 import { memo, useState } from 'react'
-import { Check, X } from 'lucide-react'
+import { motion } from 'motion/react'
+import { Check, ChevronLeft, X } from 'lucide-react'
 import { useApp } from '../../../state/store'
-import type { Block, QuestionSpec } from '../../../state/blocks'
+import type { Block } from '../../../state/blocks'
 import { cn } from '../../../lib/utils'
+import { EASE_OUT } from '../../../lib/ease'
 
 type QuestionBlock = Extract<Block, { kind: 'question' }>
 
 /**
  * The model stopped to ask — options as real choices, not an Allow/Deny
- * card. Single-select with one question answers on click; anything more
- * (multi-select, several questions, typed text) confirms explicitly.
- * Violet family: this is the "needs your answer" moment, same as planning.
+ * card. Always ONE question at a time: a harness may batch several into
+ * one request, but the card steps through them ("2 of 3"), collecting the
+ * answers and resolving the request only after the last. A single-select
+ * step with nothing typed answers on click; multi-select or typed text
+ * confirms explicitly. Violet family: the "needs your answer" moment.
  */
 export const QuestionCard = memo(function QuestionCard({
   block,
@@ -23,6 +27,7 @@ export const QuestionCard = memo(function QuestionCard({
   // picked[i] = selected labels for question i; other[i] = typed text.
   const [picked, setPicked] = useState<string[][]>(() => block.questions.map(() => []))
   const [other, setOther] = useState<string[]>(() => block.questions.map(() => ''))
+  const [step, setStep] = useState(0)
 
   if (block.resolved) {
     return (
@@ -47,25 +52,37 @@ export const QuestionCard = memo(function QuestionCard({
     )
   }
 
-  const answerFor = (i: number): string[] => {
+  const total = block.questions.length
+  const q = block.questions[step]
+  const last = step === total - 1
+
+  const withTyped = (sel: string[], i: number): string[] => {
     const typed = other[i].trim()
-    return typed ? [...picked[i], typed] : picked[i]
+    return typed && !sel.includes(typed) ? [...sel, typed] : sel
   }
-  const complete = block.questions.every((_, i) => answerFor(i).length > 0)
   const submit = (answers: string[][] | null): void => {
     void answer(sessionId, block.requestId, answers)
   }
-  // One single-select question with nothing typed: a click IS the answer.
-  const instant = block.questions.length === 1 && !block.questions[0].multiSelect
+  /** Record this step's answer; advance, or resolve after the last one. */
+  const advance = (ans: string[]): void => {
+    const next = picked.map((sel, i) => (i === step ? ans : sel))
+    setPicked(next)
+    if (last) submit(next.map((sel, i) => (i === step ? ans : withTyped(sel, i))))
+    else setStep(step + 1)
+  }
 
-  const toggle = (qi: number, label: string, q: QuestionSpec): void => {
-    if (instant && !other[0].trim()) {
-      submit([[label]])
+  const stepAnswer = withTyped(picked[step], step)
+  // A single-select step with nothing typed: the click IS the answer.
+  const instant = !q.multiSelect && !other[step].trim()
+
+  const toggle = (label: string): void => {
+    if (instant) {
+      advance([label])
       return
     }
     setPicked((p) =>
       p.map((sel, i) =>
-        i !== qi
+        i !== step
           ? sel
           : q.multiSelect
             ? sel.includes(label)
@@ -82,6 +99,20 @@ export const QuestionCard = memo(function QuestionCard({
         <p className="text-[10px] font-semibold tracking-[0.08em] text-violet uppercase">
           Needs your answer
         </p>
+        {total > 1 && (
+          <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
+            {step > 0 && (
+              <button
+                onClick={() => setStep(step - 1)}
+                aria-label="Previous question"
+                className="flex size-4 items-center justify-center rounded transition hover:bg-accent hover:text-foreground"
+              >
+                <ChevronLeft className="size-3" />
+              </button>
+            )}
+            {step + 1} of {total}
+          </span>
+        )}
         <button
           onClick={() => submit(null)}
           aria-label="Dismiss question"
@@ -92,78 +123,82 @@ export const QuestionCard = memo(function QuestionCard({
         </button>
       </div>
 
-      {block.questions.map((q, qi) => (
-        <div key={qi} className={cn('px-4 pb-1', qi > 0 && 'mt-1 border-t border-violet/10 pt-3')}>
-          <div className="flex items-start gap-2">
-            {q.header && (
-              <span className="mt-px shrink-0 rounded bg-violet/10 px-1.5 py-0.5 text-[10px] font-medium text-violet">
-                {q.header}
-              </span>
-            )}
-            <p className="text-[13px] leading-snug">{q.question}</p>
-          </div>
-          <div className="mt-2 flex flex-col gap-1 pb-2">
-            {q.options.map((o) => {
-              const selected = picked[qi].includes(o.label)
-              return (
-                <button
-                  key={o.label}
-                  onClick={() => toggle(qi, o.label, q)}
+      <motion.div
+        key={step}
+        initial={{ opacity: 0, x: 10 }}
+        animate={{ opacity: 1, x: 0 }}
+        transition={{ duration: 0.18, ease: EASE_OUT }}
+        className="px-4 pb-1"
+      >
+        <div className="flex items-start gap-2">
+          {q.header && (
+            <span className="mt-px shrink-0 rounded bg-violet/10 px-1.5 py-0.5 text-[10px] font-medium text-violet">
+              {q.header}
+            </span>
+          )}
+          <p className="text-[13px] leading-snug">{q.question}</p>
+        </div>
+        <div className="mt-2 flex flex-col gap-1 pb-2">
+          {q.options.map((o) => {
+            const selected = picked[step].includes(o.label)
+            return (
+              <button
+                key={o.label}
+                onClick={() => toggle(o.label)}
+                className={cn(
+                  'flex w-full items-start gap-2.5 rounded-lg border px-3 py-2 text-left transition-colors active:scale-[0.995]',
+                  selected
+                    ? 'border-violet/40 bg-violet/10'
+                    : 'border-border/60 bg-card hover:bg-accent/40'
+                )}
+              >
+                <span
                   className={cn(
-                    'flex w-full items-start gap-2.5 rounded-lg border px-3 py-2 text-left transition-colors active:scale-[0.995]',
-                    selected
-                      ? 'border-violet/40 bg-violet/10'
-                      : 'border-border/60 bg-card hover:bg-accent/40'
+                    'mt-[3px] flex size-3.5 shrink-0 items-center justify-center border transition-colors',
+                    q.multiSelect ? 'rounded-[4px]' : 'rounded-full',
+                    selected ? 'border-violet bg-violet text-white' : 'border-border-strong'
                   )}
                 >
-                  <span
-                    className={cn(
-                      'mt-[3px] flex size-3.5 shrink-0 items-center justify-center border transition-colors',
-                      q.multiSelect ? 'rounded-[4px]' : 'rounded-full',
-                      selected ? 'border-violet bg-violet text-white' : 'border-border-strong'
-                    )}
-                  >
-                    {selected && <Check className="size-2.5" strokeWidth={3} />}
-                  </span>
-                  <span className="min-w-0">
-                    <span className="block text-[13px] leading-snug font-medium">{o.label}</span>
-                    {o.description && (
-                      <span className="mt-px block text-[11px] leading-4 text-muted-foreground">
-                        {o.description}
-                      </span>
-                    )}
-                  </span>
-                </button>
-              )
-            })}
-            {q.allowFreeform !== false && (
-              <input
-                value={other[qi]}
-                onChange={(e) => setOther((t) => t.map((v, i) => (i === qi ? e.target.value : v)))}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && answerFor(qi).length && complete) {
-                    submit(block.questions.map((_, i) => answerFor(i)))
-                  }
-                }}
-                placeholder={q.options.length ? 'Other…' : 'Type an answer…'}
-                className="h-8 rounded-lg border border-border/60 bg-card px-3 text-[13px] outline-none placeholder:text-muted-foreground/50 focus:border-violet/40"
-              />
-            )}
-          </div>
+                  {selected && <Check className="size-2.5" strokeWidth={3} />}
+                </span>
+                <span className="min-w-0">
+                  <span className="block text-[13px] leading-snug font-medium">{o.label}</span>
+                  {o.description && (
+                    <span className="mt-px block text-[11px] leading-4 text-muted-foreground">
+                      {o.description}
+                    </span>
+                  )}
+                </span>
+              </button>
+            )
+          })}
+          {q.allowFreeform !== false && (
+            <input
+              value={other[step]}
+              onChange={(e) => setOther((t) => t.map((v, i) => (i === step ? e.target.value : v)))}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && stepAnswer.length) advance(stepAnswer)
+              }}
+              placeholder={q.options.length ? 'Other…' : 'Type an answer…'}
+              className="h-8 rounded-lg border border-border/60 bg-card px-3 text-[13px] outline-none placeholder:text-muted-foreground/50 focus:border-violet/40"
+            />
+          )}
         </div>
-      ))}
+      </motion.div>
 
-      {!(instant && !other[0]?.trim()) && (
+      {!instant && (
         <div className="flex justify-end border-t border-violet/10 px-3 py-2">
           <button
-            disabled={!complete}
-            onClick={() => submit(block.questions.map((_, i) => answerFor(i)))}
+            disabled={stepAnswer.length === 0}
+            onClick={() => advance(stepAnswer)}
             className={cn(
               'rounded-lg px-3 py-1.5 text-[13px] font-medium transition active:scale-95',
-              complete ? 'bg-primary text-primary-foreground' : 'bg-secondary text-muted-foreground'
+              stepAnswer.length
+                ? 'bg-primary text-primary-foreground'
+                : 'bg-secondary text-muted-foreground'
             )}
           >
-            Answer
+            {last ? 'Answer' : 'Next'}
           </button>
         </div>
       )}
