@@ -34,8 +34,12 @@ type PendingAction =
   | { type: 'rename'; path: string; name: string }
   | { type: 'delete'; path: string; name: string }
 
+// Tree item ids are project-relative paths; the root is '.' because
+// headless-tree treats a '' id as missing.
+const ROOT = '.'
+
 const parentOf = (path: string): string =>
-  path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : ''
+  path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : ROOT
 
 export function FilesPanel({ projectId }: { projectId: string }): React.JSX.Element {
   const project = useApp((s) => s.projects.find((p) => p.id === projectId))
@@ -45,7 +49,8 @@ export function FilesPanel({ projectId }: { projectId: string }): React.JSX.Elem
   const cacheRef = useRef(new Map<string, NodeData>())
 
   const tree = useTree<NodeData>({
-    rootItemId: '',
+    rootItemId: ROOT,
+    initialState: { expandedItems: [ROOT] },
     getItemName: (item) => item.getItemData()?.name ?? '…',
     isItemFolder: (item) => item.getItemData()?.kind !== 'file',
     createLoadingItemData: () => ({ name: '…', kind: 'file' }),
@@ -53,14 +58,14 @@ export function FilesPanel({ projectId }: { projectId: string }): React.JSX.Elem
       getItem: (id) =>
         cacheRef.current.get(id) ?? {
           name: id.split('/').pop() ?? project?.name ?? '',
-          kind: id === '' ? 'dir' : 'file'
+          kind: id === ROOT ? 'dir' : 'file'
         },
       getChildren: async (id) => {
         const entries = await client
-          .request<FsEntry[]>('fs.list', { projectId, dir: id })
+          .request<FsEntry[]>('fs.list', { projectId, dir: id === ROOT ? '' : id })
           .catch(() => [])
         return entries.map((e) => {
-          const childId = id ? `${id}/${e.name}` : e.name
+          const childId = id === ROOT ? e.name : `${id}/${e.name}`
           cacheRef.current.set(childId, { name: e.name, kind: e.kind })
           return childId
         })
@@ -82,29 +87,32 @@ export function FilesPanel({ projectId }: { projectId: string }): React.JSX.Elem
 
   if (!project) return <div />
 
-  const dirFor = (itemId: string, kind: NodeData['kind']): string =>
-    kind === 'dir' ? itemId : parentOf(itemId)
+  const dirFor = (itemId: string, kind: NodeData['kind']): string => {
+    const dir = kind === 'dir' ? itemId : parentOf(itemId)
+    return dir === ROOT ? '' : dir
+  }
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-2">
       <Tree tree={tree} indent={14} toggleIconType="chevron">
         {tree.getItems().map((item) => {
           const id = item.getId()
-          if (id === '') return null
+          if (id === ROOT) return null
           const data = item.getItemData()
           const isDir = item.isFolder()
           return (
             <ContextMenu key={id}>
               <ContextMenuTrigger asChild>
-                <TreeItem
-                  item={item}
-                  className="not-last:pb-0"
-                  onClick={() => {
-                    if (!isDir) openFileSurface(projectId, id, null)
-                  }}
-                >
+                {/* The open action lives on the label: TreeItem spreads
+                    headless-tree's own getProps() last, which would clobber
+                    an onClick passed to it. Single click opens (dbl-click
+                    still works — opening is idempotent). */}
+                <TreeItem item={item} className="not-last:pb-0">
                   <TreeItemLabel
                     item={item}
+                    onClick={() => {
+                      if (!isDir) openFileSurface(projectId, id, null)
+                    }}
                     className="gap-1.5 rounded-md bg-transparent px-1.5 py-1 text-[13px] not-in-data-[folder=true]:ps-5 in-data-[selected=true]:bg-accent"
                   >
                     {!isDir && <FileCode2 className="size-3.5 shrink-0 text-muted-foreground/60" />}
