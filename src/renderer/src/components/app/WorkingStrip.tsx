@@ -78,10 +78,13 @@ export const WorkingStrip = memo(function WorkingStrip({
   const starting = status === 'starting'
   const active = running || starting
 
-  // The turn began at the last user message — an anchor that survives
-  // leaving and re-entering the thread (a mount-time Date.now() would
-  // restart the clock on every visit).
+  // The whole working stretch, counted from its first message — the same
+  // clock as the tab. busySince is server-stamped, so it survives steers,
+  // queue drains, and leaving and re-entering the thread; the last user
+  // message only backstops sessions from before the column existed.
   const turnStart = useApp((s) => {
+    const since = s.sessions[sessionId]?.busySince
+    if (since) return since
     const blocks = s.blocks[sessionId]
     if (!blocks) return undefined
     for (let i = blocks.length - 1; i >= 0; i--) {

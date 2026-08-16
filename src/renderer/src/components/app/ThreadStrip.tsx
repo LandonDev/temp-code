@@ -37,7 +37,7 @@ function TabIndicator({
 }: {
   status: SessionStatus
   unread: boolean
-  /** when the thread started working (status → running transition) */
+  /** when this working stretch began (its first message) */
   since: number
   now: number
 }): React.JSX.Element | null {
@@ -184,7 +184,7 @@ export function ThreadStrip(): React.JSX.Element | null {
                             <TabIndicator
                               status={t.status}
                               unread={unread}
-                              since={t.updatedAt}
+                              since={t.busySince ?? t.updatedAt}
                               now={now}
                             />
                           </TabsTrigger>

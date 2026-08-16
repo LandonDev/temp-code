@@ -24,6 +24,8 @@ type BlockKind =
       attachments?: Attachment[]
       /** optimistic echo not yet confirmed by the server — renders at 65% */
       pending?: boolean
+      /** when the work this message started settled (its section's timer) */
+      doneTs?: number
     }
   | { kind: 'assistant'; text: string; streaming: boolean }
   | {
@@ -386,6 +388,11 @@ export function foldEvent(s: FoldState, e: AgentEvent, ts?: number): void {
         const b = s.blocks[i]
         if ((b.kind === 'assistant' || b.kind === 'thinking') && b.streaming) {
           s.blocks[i] = { ...b, streaming: false }
+        }
+        // The turn end also closes every open section (steered messages
+        // share the end), giving each user message its own timer.
+        if (b.kind === 'user' && b.doneTs === undefined) {
+          s.blocks[i] = { ...s.blocks[i], doneTs: ts } as (typeof s.blocks)[number]
         }
       }
       break

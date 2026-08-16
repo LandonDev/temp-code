@@ -4,6 +4,7 @@ import { cn } from '../../../lib/utils'
 import { client } from '../../../lib/client'
 import { useApp } from '../../../state/store'
 import { ZIcon } from '../zicon'
+import { duration } from '../bits'
 import type { Block } from '../../../state/blocks'
 
 type UserBlock = Extract<Block, { kind: 'user' }>
@@ -96,10 +97,48 @@ function TokenizedText({ text }: { text: string }): React.JSX.Element {
  * echo renders at 65% opacity and snaps to full when the server confirms
  * (same row, so nothing reflows). An image-only send shows no bubble.
  */
-export const UserMessage = memo(function UserMessage({
-  block
+/** How long the work this message kicked off took — settled sections show
+ *  their final time, the one still running ticks. Quiet under 3s. */
+function SectionTimer({
+  block,
+  sessionId
 }: {
   block: UserBlock
+  sessionId: string
+}): React.JSX.Element | null {
+  const live = useApp((s) => {
+    if (block.doneTs !== undefined) return false
+    const st = s.sessions[sessionId]?.status
+    if (st !== 'running' && st !== 'starting') return false
+    const blocks = s.blocks[sessionId]
+    if (!blocks) return false
+    for (let i = blocks.length - 1; i >= 0; i--) {
+      if (blocks[i].kind === 'user') return blocks[i].ts === block.ts
+    }
+    return false
+  })
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    if (!live) return
+    const t = setInterval(() => setNow(Date.now()), 1000)
+    return () => clearInterval(t)
+  }, [live])
+
+  const start = block.ts
+  if (start === undefined) return null
+  const ms = block.doneTs !== undefined ? block.doneTs - start : live ? now - start : null
+  if (ms === null || ms < 3000) return null
+  return (
+    <span className="mt-1 text-[10.5px] tabular-nums text-muted-foreground/60">{duration(ms)}</span>
+  )
+}
+
+export const UserMessage = memo(function UserMessage({
+  block,
+  sessionId
+}: {
+  block: UserBlock
+  sessionId: string
 }): React.JSX.Element {
   const images = block.attachments?.filter((a) => a.kind === 'image') ?? []
   const files = block.attachments?.filter((a) => a.kind !== 'image') ?? []
@@ -138,6 +177,7 @@ export const UserMessage = memo(function UserMessage({
           <TokenizedText text={text} />
         </div>
       )}
+      <SectionTimer block={block} sessionId={sessionId} />
     </div>
   )
 })
