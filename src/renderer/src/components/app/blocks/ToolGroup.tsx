@@ -484,14 +484,26 @@ function findSeq(lines: string[], seq: string[]): number {
   return -1
 }
 
-/** Number claude-edit hunks by finding the landed text in the file, and
- *  wrap them in two lines of surrounding context. */
+/** Where a hunk's landed text starts in the file. Exact match first; if
+ *  the user has since tweaked the middle, anchor on an edge line. */
+function locateStart(lines: string[], h: { old: string[]; new: string[] }): number {
+  const exact = findSeq(lines, h.new)
+  if (exact !== -1 || h.new.length === 0) return exact
+  const first = lines.indexOf(h.new[0])
+  if (first !== -1) return first
+  const last = lines.lastIndexOf(h.new[h.new.length - 1])
+  return last === -1 ? -1 : Math.max(0, last - (h.new.length - 1))
+}
+
+/** Number hunks by finding the landed text in the file, wrapped in two
+ *  lines of context. Added rows render the file's CURRENT lines, so an
+ *  in-place tweak shows up when the diff re-locates after a save. */
 function locateHunks(hunks: { old: string[]; new: string[] }[], content: string): DiffRow[] {
   const lines = content.split('\n')
   const rows: DiffRow[] = []
   hunks.forEach((h, n) => {
     if (n > 0) rows.push({ type: 'gap', text: '' })
-    const start = findSeq(lines, h.new)
+    const start = locateStart(lines, h)
     if (start === -1) {
       for (const t of h.old) rows.push({ type: 'del', text: t })
       for (const t of h.new) rows.push({ type: 'add', text: t })
@@ -501,7 +513,9 @@ function locateHunks(hunks: { old: string[]; new: string[] }[], content: string)
       rows.push({ type: 'ctx', newNo: i + 1, text: lines[i] })
     }
     for (const t of h.old) rows.push({ type: 'del', text: t })
-    h.new.forEach((t, j) => rows.push({ type: 'add', newNo: start + j + 1, text: t }))
+    h.new.forEach((_, j) => {
+      rows.push({ type: 'add', newNo: start + j + 1, text: lines[start + j] ?? '' })
+    })
     const end = start + h.new.length
     for (let i = end; i < Math.min(lines.length, end + 2); i++) {
       rows.push({ type: 'ctx', newNo: i + 1, text: lines[i] })
@@ -512,12 +526,13 @@ function locateHunks(hunks: { old: string[]; new: string[] }[], content: string)
 
 /** Rows for a card's diff: codex patches carry numbers and context in the
  *  diff itself; claude edits locate theirs by reading the landed file.
- *  `refresh` re-locates after the user edited the file in place. */
+ *  `refresh` re-locates (any provider) after an in-place edit saved, so
+ *  the diff shows the file as it now is, not as the patch left it. */
 function useDiffRows(b: ToolBlock, m: EditModel, refresh = 0): DiffRow[] {
   const projectId = useApp((s) => s.selectedProjectId)
   const cwd = useApp((s) => s.projects.find((p) => p.id === s.selectedProjectId)?.cwd)
   const [located, setLocated] = useState<DiffRow[] | null>(null)
-  const needsLocate = !m.rows && m.hunks.length > 0 && b.output !== undefined
+  const needsLocate = m.hunks.length > 0 && b.output !== undefined && (!m.rows || refresh > 0)
   useEffect(() => {
     if (!needsLocate || !projectId) return
     let alive = true
@@ -538,6 +553,7 @@ function useDiffRows(b: ToolBlock, m: EditModel, refresh = 0): DiffRow[] {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- refetch per block, not per render
   }, [b.id, needsLocate, projectId, refresh])
+  if (refresh > 0 && located) return located
   return m.rows ?? located ?? rowsFromHunks(m.hunks)
 }
 

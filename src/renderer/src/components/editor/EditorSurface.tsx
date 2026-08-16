@@ -20,6 +20,7 @@ export function EditorSurface({
   path,
   readOnly = false,
   highlight,
+  revealLine,
   onSave
 }: {
   project: ProjectMeta
@@ -27,6 +28,8 @@ export function EditorSurface({
   readOnly?: boolean
   /** line ranges to wash (the model's fresh changes, in card embeds) */
   highlight?: { start: number; end: number }[]
+  /** cursor + center on this line once the editor has real dimensions */
+  revealLine?: number
   /** called after a ⌘S flush lands — card embeds fold back to the diff */
   onSave?: () => void
 }): React.JSX.Element {
@@ -34,6 +37,7 @@ export function EditorSurface({
   const [phase, setPhase] = useState<'loading' | 'ready' | 'tooLarge' | 'error'>('loading')
   const [fileState, setFileState] = useState<FileState>({ pending: false, conflict: null })
   const [key, setKey] = useState('')
+  const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null)
   // Refs so the mount effect never re-runs (and re-creates the editor)
   // when the caller re-renders with fresh closures.
   const highlightRef = useRef(highlight)
@@ -42,6 +46,30 @@ export function EditorSurface({
     highlightRef.current = highlight
     onSaveRef.current = onSave
   })
+
+  // Card embeds mount the editor inside a container Monaco hasn't measured
+  // yet — a reveal against a zero-height viewport is a no-op. Apply once
+  // the layout is real, and again whenever the caller picks a new line.
+  useEffect(() => {
+    const ed = editorRef.current
+    if (phase !== 'ready' || !ed || revealLine === undefined) return
+    const pos = { lineNumber: revealLine, column: 1 }
+    const apply = (): void => {
+      ed.setPosition(pos)
+      ed.revealPositionInCenterIfOutsideViewport(pos)
+    }
+    if (ed.getLayoutInfo().height > 0) {
+      apply()
+      return
+    }
+    const d = ed.onDidLayoutChange((info) => {
+      if (info.height > 0) {
+        apply()
+        d.dispose()
+      }
+    })
+    return () => d.dispose()
+  }, [phase, revealLine])
 
   useEffect(() => {
     let disposed = false
@@ -71,6 +99,7 @@ export function EditorSurface({
         model: handle.model,
         readOnly
       })
+      editorRef.current = editor
       const saved = viewStates.get(stateKey)
       if (saved) editor.restoreViewState(saved)
       // One-shot reveal (cross-file goto-definition, ⌘T symbol jumps).
@@ -112,6 +141,7 @@ export function EditorSurface({
         if (vs) viewStates.set(stateKey, vs)
         editor.dispose()
       }
+      editorRef.current = null
       handle?.release()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- remount per (project, path); the parent keys us
