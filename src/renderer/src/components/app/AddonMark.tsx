@@ -1,35 +1,13 @@
 import { Blocks, Plug, SlashSquare, SquareTerminal } from 'lucide-react'
 import type { SlashCommand } from '@shared/domain'
-import * as si from 'simple-icons'
 import { cn } from '../../lib/utils'
+import { brandOf } from '../../lib/addon-brand'
 
 /**
  * The face of a slash reference: real brand marks for the addons that
  * have one (Linear looks like Linear), quiet category glyphs for the
  * rest. simple-icons is data-only — one path per brand.
  */
-
-type SimpleIcon = { path: string; hex: string }
-
-/** addon name (as configured) → simple-icons export */
-const BRANDS: Record<string, SimpleIcon | undefined> = {
-  linear: si.siLinear,
-  github: si.siGithub,
-  vercel: si.siVercel,
-  stripe: si.siStripe,
-  sentry: si.siSentry,
-  trello: si.siTrello,
-  clerk: si.siClerk,
-  convex: si.siConvex,
-  notion: si.siNotion,
-  figma: si.siFigma,
-  'google-drive': si.siGoogledrive,
-  googledrive: si.siGoogledrive,
-  webflow: si.siWebflow,
-  cloudflare: si.siCloudflare,
-  supabase: si.siSupabase,
-  postgres: si.siPostgresql
-}
 
 export function AddonMark({
   command,
@@ -43,7 +21,7 @@ export function AddonMark({
   colored?: boolean
   className?: string
 }): React.JSX.Element {
-  const brand = BRANDS[command.name.toLowerCase()]
+  const brand = brandOf(command.name)
   if (brand) {
     return (
       <svg

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { FileText, Image as ImageIcon, MessageSquare, X } from 'lucide-react'
 import type { ProviderId, Reasoning } from '@shared/catalog'
@@ -16,6 +16,7 @@ import { ModelPicker } from './ModelPicker'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select'
 import { rankFiles } from '../../lib/rank'
 import { AddonMark } from './AddonMark'
+import { ComposerInput, type ComposerInputHandle } from './ComposerInput'
 import { addonTitle } from '../../lib/addon-names'
 
 const REASONING_LABELS: Record<Reasoning, string> = {
@@ -147,6 +148,7 @@ export function PromptBar({
 
   const [text, setText] = useState('')
   const [caret, setCaret] = useState(0)
+  const [chipSpans, setChipSpans] = useState<Array<[number, number]>>([])
   const [dismissed, setDismissed] = useState<string | null>(null)
   // Selection is remembered per (mode, query) so a new keystroke resets to
   // the top without an effect.
@@ -164,7 +166,7 @@ export function PromptBar({
   })
   const [reasoning, setReasoning] = useState<Reasoning>(session?.reasoning ?? 'medium')
   const reduce = useReducedMotion()
-  const areaRef = useRef<HTMLTextAreaElement>(null)
+  const areaRef = useRef<ComposerInputHandle>(null)
   const listRef = useRef<HTMLDivElement>(null)
   const pickerRef = useRef<HTMLInputElement>(null)
 
@@ -182,7 +184,13 @@ export function PromptBar({
     if (project) void fetchFiles(project.id)
   }, [project, fetchFiles])
 
-  const trigger = useMemo(() => triggerAt(text, caret), [text, caret])
+  const rawTrigger = useMemo(() => triggerAt(text, caret), [text, caret])
+  // A chip's serialized token must never read as an in-progress trigger.
+  const trigger = useMemo(() => {
+    if (!rawTrigger) return null
+    const covered = chipSpans.some(([a, b]) => rawTrigger.start < b && caret > a)
+    return covered ? null : rawTrigger
+  }, [rawTrigger, chipSpans, caret])
   const matches = useMemo(() => {
     if (!trigger || `${trigger.mode}:${trigger.start}` === dismissed) return []
     if (trigger.mode === 'command') {
@@ -215,22 +223,6 @@ export function PromptBar({
     listRef.current?.querySelector('[data-active=true]')?.scrollIntoView({ block: 'nearest' })
   }, [active])
 
-  // Composer morph (Zeron FlipMorph): the textarea auto-grows one line →
-  // 260px and every height change tweens 180ms ease-out. The pill sits at
-  // the bottom of the column, so growth is bottom-anchored.
-  useLayoutEffect(() => {
-    const a = areaRef.current
-    if (!a) return
-    const prev = a.style.height
-    a.style.transition = 'none'
-    a.style.height = 'auto'
-    const target = Math.min(260, a.scrollHeight)
-    a.style.height = prev || `${target}px`
-    void a.offsetHeight
-    a.style.transition = 'height 180ms ease-out'
-    a.style.height = `${target}px`
-  }, [text])
-
   const attachImage = useCallback(
     async (file: File): Promise<void> => {
       const attachment = await saveAttachment(file.name || 'image.png', await toBase64(file))
@@ -250,12 +242,10 @@ export function PromptBar({
           ? prev
           : [...prev, { path, name: path.split('/').pop() ?? path, kind: 'file' }]
       )
-      setText((t) => {
-        const sep = t.length === 0 || /\s$/.test(t) ? '' : ' '
-        return `${t}${sep}@${ref} `
-      })
+      const sep = text.length === 0 || /\s$/.test(text) ? '' : ' '
+      areaRef.current?.appendText(`${sep}@${ref} `)
     },
-    [project]
+    [project, text]
   )
 
   // Window-level drop: anywhere on the app attaches to the open thread.
@@ -331,15 +321,16 @@ export function PromptBar({
     } else {
       inserted = `@${(m as Extract<AtMatch, { kind: 'file' }>).path}`
     }
-    const next = `${text.slice(0, trigger.start)}${inserted} ${text.slice(caret)}`
-    setText(next)
     setDismissed(null)
-    const pos = trigger.start + inserted.length + 1
-    requestAnimationFrame(() => {
-      areaRef.current?.focus()
-      areaRef.current?.setSelectionRange(pos, pos)
-      setCaret(pos)
-    })
+    const cmd = trigger.mode === 'command' ? (m as SlashCommand) : null
+    if (cmd && (cmd.source === 'plugin' || cmd.source === 'mcp')) {
+      // Addons render as chips in the composer, same as the transcript.
+      areaRef.current?.replaceRange(trigger.start, caret, {
+        chip: { token: `/${cmd.name}`, name: cmd.name }
+      })
+    } else {
+      areaRef.current?.replaceRange(trigger.start, caret, { text: `${inserted} ` })
+    }
   }
 
   /** invert=true = the ⌘Enter path: do the NON-default mid-turn action. */
@@ -348,6 +339,7 @@ export function PromptBar({
     if (!t && images.length === 0) return
     const attachments = [...images.map((i) => i.attachment), ...fileRefs]
     setText('')
+    areaRef.current?.clear()
     for (const i of images) URL.revokeObjectURL(i.previewUrl)
     setImages([])
     setFileRefs([])
@@ -580,15 +572,15 @@ export function PromptBar({
               </AnimatePresence>
             </div>
           )}
-          <textarea
+          <ComposerInput
             ref={areaRef}
-            value={text}
-            onChange={(e) => {
-              setText(e.target.value)
-              setCaret(e.target.selectionStart ?? e.target.value.length)
+            heightKey={text}
+            onState={(t, c, chips) => {
+              setText(t)
+              setCaret(c)
+              setChipSpans(chips)
               setDismissed(null)
             }}
-            onSelect={(e) => setCaret(e.currentTarget.selectionStart ?? 0)}
             onPaste={(e) => {
               const files = [...e.clipboardData.files].filter((f) => f.type.startsWith('image/'))
               if (files.length) {
@@ -621,11 +613,10 @@ export function PromptBar({
                 submit(e.metaKey)
               }
             }}
-            rows={1}
             placeholder="Do anything…"
-            aria-label="Message"
             className={cn(
-              'block w-full resize-none bg-transparent pl-4 text-[14px] leading-[22.75px] outline-none placeholder:text-faint',
+              'block w-full bg-transparent pl-4 text-[14px] leading-[22.75px] outline-none',
+              'empty:before:pointer-events-none empty:before:text-faint empty:before:content-[attr(data-placeholder)]',
               expanded ? 'pt-3.5 pr-4' : 'py-[13px] pr-[300px]'
             )}
           />
