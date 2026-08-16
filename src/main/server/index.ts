@@ -445,6 +445,13 @@ export async function startServer(dbPath: string): Promise<RunningServer> {
             registry.setThreadDefaults(req.params.workspaceId, req.params.defaults)
             sendFrame({ id: req.id, ok: true, result: null })
             break
+          case 'appshots.get':
+            sendFrame({ id: req.id, ok: true, result: registry.getAppshotSettings() })
+            break
+          case 'appshots.set':
+            registry.setAppshotSettings(req.params.settings)
+            sendFrame({ id: req.id, ok: true, result: null })
+            break
           case 'commands.list':
             sendFrame({
               id: req.id,
