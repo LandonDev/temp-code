@@ -10,7 +10,7 @@ import { duration } from '../bits'
 import { Spinner } from '../../ui/spinner'
 import { ApprovalCard } from '../blocks/ApprovalCard'
 import { QuestionCard } from '../blocks/QuestionCard'
-import { ErrorChip, EDIT_TOOLS, ZEditCard } from '../blocks/ToolGroup'
+import { ErrorChip, EDIT_TOOLS, splitEdit, ZEditCard } from '../blocks/ToolGroup'
 import { MarkdownText } from '../blocks/MarkdownText'
 import { SidePanel } from '../SidePanel'
 import { PromptBar } from '../PromptBar'
@@ -45,7 +45,8 @@ export function ImplementationView({ session }: { session: SessionMeta }): React
     () =>
       blocks.filter(
         (b) =>
-          (b.kind === 'tool' && EDIT_TOOLS.has(b.name)) ||
+          // Bookkeeping-only edits (.temp-code/) aren't work to review.
+          (b.kind === 'tool' && EDIT_TOOLS.has(b.name) && splitEdit(b).edits.length > 0) ||
           ((b.kind === 'approval' || b.kind === 'question') && !b.resolved) ||
           b.kind === 'error'
       ),
@@ -171,11 +172,14 @@ export function ImplementationView({ session }: { session: SessionMeta }): React
   )
 }
 
-/** Edit cards land open — the diff IS the content here, not a detail. */
+/** Edit cards land open — the diff IS the content here, not a detail.
+ *  One card per file, never collapsed behind "+N more". */
 function FreshEdit({ block }: { block: ToolBlock }): React.JSX.Element {
   return (
-    <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}>
-      <ZEditCard b={block} defaultOpen />
+    <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} className="space-y-2">
+      {splitEdit(block).edits.map((eb) => (
+        <ZEditCard key={eb.id} b={eb} defaultOpen />
+      ))}
     </motion.div>
   )
 }
