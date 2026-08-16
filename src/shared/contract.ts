@@ -4,6 +4,7 @@ import { AttachmentSchema, PermissionPolicySchema } from './events'
 import { ProjectModeSchema, ThreadTypeSchema } from './domain'
 import { OrchestrationRulesSchema } from './rules'
 import { ThreadDefaultsSchema } from './defaults'
+import { AppshotSettingsSchema } from './appshots'
 import type { EventRow, SessionMeta } from './events'
 
 /**
@@ -234,6 +235,17 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
       workspaceId: z.string().nullable().default(null),
       defaults: ThreadDefaultsSchema.nullable()
     })
+  }),
+  // Appshots (M10): global capture settings, one settings-table row.
+  z.object({
+    id: z.string(),
+    method: z.literal('appshots.get'),
+    params: z.object({})
+  }),
+  z.object({
+    id: z.string(),
+    method: z.literal('appshots.set'),
+    params: z.object({ settings: AppshotSettingsSchema })
   }),
   z.object({
     id: z.string(),

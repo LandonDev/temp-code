@@ -44,14 +44,19 @@ const blockIdentity = {
  *  content; other files ride along as path references the harness reads.
  *  kind 'thread' references another thread (M9): the server writes a local
  *  digest file and rewrites the message's @thread:<id> token to its path —
- *  thread attachments never reach the harness as files. */
+ *  thread attachments never reach the harness as files.
+ *  kind 'appshot' is a window capture (M10): path is the screenshot PNG,
+ *  textPath the window's accessibility text. The server expands it into a
+ *  plain image + file pair before the harness sees it. */
 export const AttachmentSchema = z.object({
   path: z.string(),
   name: z.string(),
   mime: z.string().optional(),
-  kind: z.enum(['image', 'file', 'thread']),
+  kind: z.enum(['image', 'file', 'thread', 'appshot']),
   /** kind 'thread': the referenced thread's session id */
-  sessionId: z.string().optional()
+  sessionId: z.string().optional(),
+  /** kind 'appshot': the captured window's AX text (absent when thin) */
+  textPath: z.string().optional()
 })
 export type Attachment = z.infer<typeof AttachmentSchema>
 

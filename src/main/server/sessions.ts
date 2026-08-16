@@ -10,6 +10,11 @@ import type { Store } from './db'
 import { addProjectWorktree, currentBranch, ensureLocalExclude, isGitRepo } from './git'
 import { parseRules, type OrchestrationRules } from '@shared/rules'
 import { DEFAULT_THREAD_DEFAULTS, parseDefaults, type ThreadDefaults } from '@shared/defaults'
+import {
+  AppshotSettingsSchema,
+  DEFAULT_APPSHOT_SETTINGS,
+  type AppshotSettings
+} from '@shared/appshots'
 import { planPathFor, planSeed, projectContext, threadPreamble } from './threads'
 import { notifyParentOfSettle } from './orchestration'
 import {
@@ -256,6 +261,20 @@ export class SessionRegistry {
     this.store.setSetting(key, defaults ? JSON.stringify(defaults) : null)
   }
 
+  /** Appshot capture settings — global, defaults until the user changes them. */
+  getAppshotSettings(): AppshotSettings {
+    const raw = this.store.getSetting('appshots')
+    if (raw) {
+      const parsed = AppshotSettingsSchema.safeParse(JSON.parse(raw))
+      if (parsed.success) return parsed.data
+    }
+    return DEFAULT_APPSHOT_SETTINGS
+  }
+
+  setAppshotSettings(settings: AppshotSettings): void {
+    this.store.setSetting('appshots', JSON.stringify(settings))
+  }
+
   /** What a new thread starts with here: workspace override → global → built-in. */
   resolveThreadDefaults(workspaceId: string | null): ThreadDefaults {
     return (
@@ -454,11 +473,26 @@ export class SessionRegistry {
         out = `${out}\n\n<thread-reference title=${JSON.stringify(refMeta.title)}>\n${digest}\n</thread-reference>`
       }
     }
-    // Thread references are resolved above — the harness gets only real files.
+    // Thread references are resolved above; appshots expand into the plain
+    // image + text-file pair every harness understands (the persisted event
+    // keeps the appshot itself, so the transcript renders the chip).
     try {
       await handle.send(
         out,
-        attachments?.filter((a) => a.kind !== 'thread')
+        attachments
+          ?.filter((a) => a.kind !== 'thread')
+          .flatMap((a) => {
+            if (a.kind !== 'appshot') return [a]
+            const shot: Attachment = {
+              path: a.path,
+              name: a.name,
+              mime: 'image/png',
+              kind: 'image'
+            }
+            return a.textPath
+              ? [shot, { path: a.textPath, name: `${a.name} (window text)`, kind: 'file' as const }]
+              : [shot]
+          })
       )
     } catch (err) {
       // A steer at a provider that can't take mid-turn input (cursor's
