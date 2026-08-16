@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import {
   Archive,
   Blocks,
+  Camera,
   Coffee,
   Code,
   FolderGit2,
@@ -40,7 +41,14 @@ const THEME_OPTIONS: { value: ThemePref; label: string }[] = [
 ]
 
 type SettingsPage =
-  'general' | 'defaults' | 'editor' | 'orchestration' | 'providers' | 'archived' | `ws:${string}`
+  | 'general'
+  | 'defaults'
+  | 'appshots'
+  | 'editor'
+  | 'orchestration'
+  | 'providers'
+  | 'archived'
+  | `ws:${string}`
 
 const PAGES: { id: SettingsPage; label: string; icon: LucideIcon; hint: string }[] = [
   { id: 'general', label: 'General', icon: SettingsIcon, hint: 'Appearance.' },
@@ -49,6 +57,12 @@ const PAGES: { id: SettingsPage; label: string; icon: LucideIcon; hint: string }
     label: 'Defaults',
     icon: SlidersHorizontal,
     hint: 'What a new thread starts with. Workspaces can override from their sidebar menu.'
+  },
+  {
+    id: 'appshots',
+    label: 'Appshots',
+    icon: Camera,
+    hint: 'Double-tap ⌘ in any app to drop its front window — screenshot plus window text — into a composer here.'
   },
   {
     id: 'editor',
@@ -192,6 +206,7 @@ export function SettingsView(): React.JSX.Element {
               )}
               {page === 'general' && <UpdatesPanel />}
               {page === 'defaults' && <ThreadDefaultsEditor workspaceId={null} />}
+              {page === 'appshots' && <AppshotsSettings />}
               {page === 'editor' && <EditorSettings />}
               {page === 'orchestration' && <OrchestrationRulesEditor workspaceId={null} />}
               {page === 'providers' && <ProviderHealthList />}
@@ -307,6 +322,173 @@ function SummaryModelSwitch(): React.JSX.Element {
         </button>
       ))}
     </div>
+  )
+}
+
+type AppshotPermissions = Awaited<ReturnType<typeof window.api.appshots.permissions>>
+
+const APPSHOT_DESTINATIONS = [
+  { value: 'automatic', label: 'Automatic' },
+  { value: 'last-chat', label: 'Last chat' },
+  { value: 'new-chat', label: 'New chat' }
+] as const
+
+/** One TCC service row: live status; Grant fires the native prompt, and a
+ *  second attempt opens the System Settings pane macOS won't re-prompt for. */
+function PermissionRow({
+  label,
+  description,
+  granted,
+  pane,
+  onPrompt
+}: {
+  label: string
+  description: string
+  granted: boolean
+  /** System Settings privacy pane anchor, e.g. Privacy_ScreenCapture */
+  pane: string
+  onPrompt: () => Promise<void>
+}): React.JSX.Element {
+  const [prompted, setPrompted] = useState(false)
+  return (
+    <SettingsRow
+      label={label}
+      description={
+        granted
+          ? 'Granted.'
+          : prompted
+            ? 'If it already shows granted in System Settings, quit and reopen TempCode to apply.'
+            : description
+      }
+    >
+      {granted ? (
+        <span className="text-xs text-muted-foreground">On</span>
+      ) : (
+        <Button
+          size="sm"
+          variant="outline"
+          className="h-7 text-xs"
+          onClick={() => {
+            if (prompted) {
+              window.open(`x-apple.systempreferences:com.apple.preference.security?${pane}`)
+            } else {
+              setPrompted(true)
+              void onPrompt()
+            }
+          }}
+        >
+          {prompted ? 'Open System Settings' : 'Grant'}
+        </Button>
+      )}
+    </SettingsRow>
+  )
+}
+
+function AppshotsSettings(): React.JSX.Element {
+  const settings = useApp((s) => s.appshots)
+  const setSettings = useApp((s) => s.setAppshotSettings)
+  const reduce = useReducedMotion()
+  const [perms, setPerms] = useState<AppshotPermissions | null>(null)
+
+  const refresh = useCallback(() => {
+    void window.api.appshots
+      .permissions()
+      .then(setPerms)
+      .catch(() => {})
+  }, [])
+  // Live status: grants land out-of-band in System Settings, so poll
+  // quietly while the page is up (the check is a cheap helper run).
+  useEffect(() => {
+    refresh()
+    const t = setInterval(refresh, 5000)
+    return () => clearInterval(t)
+  }, [refresh])
+
+  const prompt = useCallback(async (): Promise<void> => {
+    await window.api.appshots.permissions(true).then(setPerms)
+  }, [])
+
+  if (perms && !perms.available) {
+    return (
+      <SettingsPanel>
+        <SettingsRow
+          label="Not available"
+          description="The capture helper is missing from this build (it needs macOS and the Xcode command-line tools)."
+        >
+          <span />
+        </SettingsRow>
+      </SettingsPanel>
+    )
+  }
+
+  return (
+    <>
+      <SettingsPanel>
+        <SettingsRow label="Capture on double-⌘" description="Two quick taps of the bare ⌘ key.">
+          <Switch
+            checked={settings.enabled}
+            onChange={(on) => {
+              void setSettings({ ...settings, enabled: on })
+              // The hotkey can't be heard before Accessibility is granted —
+              // turning the feature on is the moment to ask.
+              if (on && perms && (!perms.screen || !perms.ax)) void prompt()
+            }}
+          />
+        </SettingsRow>
+        <SettingsRow
+          label="Destination"
+          description="Automatic drops into the open thread, or a new chat when none is."
+        >
+          <div className="inline-flex items-center gap-0.5 rounded-lg bg-secondary/60 p-0.5">
+            {APPSHOT_DESTINATIONS.map((o) => (
+              <button
+                key={o.value}
+                onClick={() => void setSettings({ ...settings, destination: o.value })}
+                className={cn(
+                  'relative rounded-md px-3 py-1 text-xs transition-colors',
+                  settings.destination === o.value
+                    ? 'text-foreground'
+                    : 'text-muted-foreground hover:text-foreground'
+                )}
+              >
+                {settings.destination === o.value && (
+                  <motion.span
+                    layoutId="appshot-dest-pill"
+                    transition={reduce ? { duration: 0 } : SPRING_LAYOUT}
+                    className="absolute inset-0 rounded-md bg-background shadow-[0_1px_3px_rgb(0_0_0/0.12)] dark:bg-accent"
+                  />
+                )}
+                <span className="relative">{o.label}</span>
+              </button>
+            ))}
+          </div>
+        </SettingsRow>
+        <SettingsRow label="Shutter sound" description="A click when the capture lands.">
+          <Switch
+            checked={settings.sound}
+            onChange={(on) => void setSettings({ ...settings, sound: on })}
+          />
+        </SettingsRow>
+      </SettingsPanel>
+      {perms && (
+        <SettingsPanel>
+          <PermissionRow
+            label="Screen Recording"
+            description="Takes the window screenshot."
+            granted={perms.screen}
+            pane="Privacy_ScreenCapture"
+            onPrompt={prompt}
+          />
+          <PermissionRow
+            label="Accessibility"
+            description="Hears the hotkey and reads the window's text."
+            granted={perms.ax}
+            pane="Privacy_Accessibility"
+            onPrompt={prompt}
+          />
+        </SettingsPanel>
+      )}
+    </>
   )
 }
 
