@@ -673,3 +673,61 @@ html:not(.dark) .monaco-editor .suggest-widget .suggest-status-bar {
   background: #f7f8fa;
   border-top-color: rgb(0 0 0 / 0.08);
 }
+
+/* IDEA pins the right column (return type / package): the left side —
+ * signature first, never the type — gives way and ellipsizes. Short
+ * types always render whole; long packages stay pinned and truncate. */
+.monaco-editor .suggest-widget .monaco-list .monaco-list-row > .contents > .main > .left {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+}
+.monaco-editor
+  .suggest-widget
+  .monaco-list
+  .monaco-list-row
+  > .contents
+  > .main
+  > .left
+  > .monaco-icon-label {
+  flex-shrink: 0;
+}
+.monaco-editor
+  .suggest-widget
+  .monaco-list
+  .monaco-list-row
+  > .contents
+  > .main
+  > .left
+  > .signature-label {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: pre;
+}
+.monaco-editor .suggest-widget .monaco-list .monaco-list-row > .contents > .main > .right {
+  flex: 0 0 auto !important;
+  max-width: 45% !important;
+  margin-left: 12px;
+}
+.monaco-editor
+  .suggest-widget
+  .monaco-list
+  .monaco-list-row
+  > .contents
+  > .main
+  > .right
+  > .details-label {
+  overflow: hidden !important;
+  text-overflow: ellipsis;
+  white-space: pre;
+  max-width: none !important;
+  flex-shrink: 0;
+}
+/* …and the row's main container must fill the row for the pin to land
+ * on a common right edge (monaco lets it shrink-wrap). */
+.monaco-editor .suggest-widget .monaco-list .monaco-list-row > .contents > .main {
+  flex: 1 1 auto !important;
+  min-width: 0;
+}
