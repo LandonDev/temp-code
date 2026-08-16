@@ -83,6 +83,8 @@ const THEME_KEY = 'theme'
 const LAST_SEEN_KEY = 'thread-last-seen'
 const MID_TURN_KEY = 'mid-turn-default'
 const TOOL_SUMMARIES_KEY = 'tool-summaries'
+const TOOL_CAPTIONS_KEY = 'tool-captions'
+const SUMMARY_MODEL_KEY = 'summary-model'
 const SURFACES_KEY = 'surfaces-v1'
 const FORMAT_KEY = 'format-on-save'
 const GHOST_KEY = 'ghost-text'
@@ -182,6 +184,10 @@ interface AppState {
   midTurnDefault: 'queue' | 'steer'
   /** settled tool sections get a one-sentence model-written summary */
   toolSummaries: boolean
+  /** every settled tool also gets a short model-written caption */
+  toolCaptions: boolean
+  /** which subscription writes them: auto = each thread's own provider */
+  summaryModel: 'auto' | 'haiku' | 'spark'
 
   init: () => Promise<void>
   refreshTree: () => Promise<void>
@@ -240,6 +246,8 @@ interface AppState {
   markSeen: (sessionId: string) => void
   setMidTurnDefault: (v: 'queue' | 'steer') => void
   setToolSummaries: (v: boolean) => void
+  setToolCaptions: (v: boolean) => void
+  setSummaryModel: (v: 'auto' | 'haiku' | 'spark') => void
   /** Fast mode / 1M context; harness restarts with resume on next send. */
   tune: (sessionId: string, patch: { fast?: boolean; context1m?: boolean }) => Promise<void>
   fetchContext: (sessionId: string) => Promise<void>
@@ -378,6 +386,11 @@ export const useApp = create<AppState>((set, get) => ({
   contexts: {},
   midTurnDefault: localStorage.getItem(MID_TURN_KEY) === 'steer' ? 'steer' : 'queue',
   toolSummaries: localStorage.getItem(TOOL_SUMMARIES_KEY) !== 'off',
+  toolCaptions: localStorage.getItem(TOOL_CAPTIONS_KEY) !== 'off',
+  summaryModel: ((): 'auto' | 'haiku' | 'spark' => {
+    const v = localStorage.getItem(SUMMARY_MODEL_KEY)
+    return v === 'haiku' || v === 'spark' ? v : 'auto'
+  })(),
 
   init: async () => {
     if (initStarted) return
@@ -796,6 +809,16 @@ export const useApp = create<AppState>((set, get) => ({
   setToolSummaries: (v) => {
     localStorage.setItem(TOOL_SUMMARIES_KEY, v ? 'on' : 'off')
     set({ toolSummaries: v })
+  },
+
+  setToolCaptions: (v) => {
+    localStorage.setItem(TOOL_CAPTIONS_KEY, v ? 'on' : 'off')
+    set({ toolCaptions: v })
+  },
+
+  setSummaryModel: (v) => {
+    localStorage.setItem(SUMMARY_MODEL_KEY, v)
+    set({ summaryModel: v })
   },
 
   queueAdd: async (sessionId, text, opts) => {

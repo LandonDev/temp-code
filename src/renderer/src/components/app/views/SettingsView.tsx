@@ -171,9 +171,21 @@ export function SettingsView(): React.JSX.Element {
                   </SettingsRow>
                   <SettingsRow
                     label="Tool summaries"
-                    description="A small fast model turns each finished tool section into one sentence, on the thread's own subscription."
+                    description="A small fast model turns each finished tool section into one sentence."
                   >
                     <ToolSummariesSwitch />
+                  </SettingsRow>
+                  <SettingsRow
+                    label="Per-tool captions"
+                    description="Each finished tool also gets a short note of what it did — same model call, no extra cost."
+                  >
+                    <ToolCaptionsSwitch />
+                  </SettingsRow>
+                  <SettingsRow
+                    label="Summary model"
+                    description="Auto uses each thread's own subscription; or pin one model for everything."
+                  >
+                    <SummaryModelSwitch />
                   </SettingsRow>
                 </SettingsPanel>
               )}
@@ -253,6 +265,47 @@ function ToolSummariesSwitch(): React.JSX.Element {
   const value = useApp((s) => s.toolSummaries)
   const setValue = useApp((s) => s.setToolSummaries)
   return <Switch checked={value} onChange={setValue} />
+}
+
+function ToolCaptionsSwitch(): React.JSX.Element {
+  const value = useApp((s) => s.toolCaptions)
+  const setValue = useApp((s) => s.setToolCaptions)
+  return <Switch checked={value} onChange={setValue} />
+}
+
+const SUMMARY_MODELS = [
+  { value: 'auto', label: 'Auto' },
+  { value: 'haiku', label: 'Haiku 4.5' },
+  { value: 'spark', label: 'Codex Spark' }
+] as const
+
+function SummaryModelSwitch(): React.JSX.Element {
+  const value = useApp((s) => s.summaryModel)
+  const setValue = useApp((s) => s.setSummaryModel)
+  const reduce = useReducedMotion()
+  return (
+    <div className="inline-flex items-center gap-0.5 rounded-lg bg-secondary/60 p-0.5">
+      {SUMMARY_MODELS.map((o) => (
+        <button
+          key={o.value}
+          onClick={() => setValue(o.value)}
+          className={cn(
+            'relative rounded-md px-3 py-1 text-xs transition-colors',
+            value === o.value ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'
+          )}
+        >
+          {value === o.value && (
+            <motion.span
+              layoutId="summary-model-pill"
+              transition={reduce ? { duration: 0 } : SPRING_LAYOUT}
+              className="absolute inset-0 rounded-md bg-background shadow-[0_1px_3px_rgb(0_0_0/0.12)] dark:bg-accent"
+            />
+          )}
+          <span className="relative">{o.label}</span>
+        </button>
+      ))}
+    </div>
+  )
 }
 
 function MidTurnSwitch(): React.JSX.Element {

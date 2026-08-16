@@ -7,7 +7,8 @@ import { useApp } from '../../../state/store'
 /** Monaco stays out of the startup path — loads on first in-place edit. */
 const InlineEditor = lazy(() => import('../../editor/InlineEditor'))
 import { ZIcon, type ZIconName } from '../zicon'
-import { duration } from '../bits'
+import { duration, ProviderMark } from '../bits'
+import type { ProviderId } from '@shared/catalog'
 import { MatrixSpinner } from '../WorkingStrip'
 import { TextShimmer } from '../../motion/text-shimmer'
 import type { Block } from '../../../state/blocks'
@@ -210,8 +211,41 @@ export function splitEdit(b: ToolBlock): { edits: ToolBlock[]; internal: ToolBlo
   return isInternalPath(pathOf(b)) ? { edits: [], internal: b } : { edits: [b], internal: null }
 }
 
-/** Thread titles for resolving ids in app-tool rows; ids never render. */
-type ThreadTitles = Record<string, { title: string } | undefined>
+/** Thread titles/providers for resolving ids in tool rows; ids never render. */
+type ThreadTitles = Record<string, { title: string; provider?: ProviderId } | undefined>
+
+/** Orchestrator subagent ops; claude's own Agent/Task tool rides along. */
+const AGENT_TOOLS = new Set([
+  'spawn_agent',
+  'send_to_agent',
+  'check_agent',
+  'wait_for_agent',
+  'interrupt_agent',
+  'answer_agent'
+])
+
+/** The subagent session this call is about — input arg, or the spawn result. */
+function agentIdOf(b: ToolBlock): string | null {
+  const fromInput = str(input(b).agentId)
+  if (fromInput) return fromInput
+  const m = b.output ? /"agentId"\s*:\s*"([\w-]+)"/.exec(b.output) : null
+  return m?.[1] ?? null
+}
+
+/** Which provider's model runs the subagent behind this call — drives the
+ *  brand mark on the row. */
+function agentProviderOf(b: ToolBlock, titles: ThreadTitles): ProviderId | null {
+  const n = shortName(b.name)
+  if (n === 'Agent' || n === 'Task') return 'claude'
+  if (!AGENT_TOOLS.has(n)) return null
+  const id = agentIdOf(b)
+  const known = id ? titles[id]?.provider : undefined
+  if (known) return known
+  const p = str(input(b).provider).toLowerCase()
+  if (/codex|gpt|openai/.test(p)) return 'codex'
+  if (/cursor|composer/.test(p)) return 'cursor'
+  return p ? 'claude' : null
+}
 
 /** In-house app_* tools render as what they DO. The raw input stays one
  *  click away in the expansion, like every other tool. */
@@ -230,6 +264,35 @@ function appView(
       return { label: 'Updated', detail: what, phrase: `updated ${what}` }
     }
     return null
+  }
+  const name = shortName(b.name)
+  // Subagent calls read as who was asked to do what, never as raw ids.
+  if (AGENT_TOOLS.has(name) || name === 'Agent' || name === 'Task') {
+    const id = agentIdOf(b)
+    const title = id ? titles[id]?.title : undefined
+    const verb =
+      name === 'spawn_agent'
+        ? 'Spawned'
+        : name === 'send_to_agent'
+          ? 'Messaged'
+          : name === 'wait_for_agent'
+            ? 'Waited for'
+            : name === 'interrupt_agent'
+              ? 'Stopped'
+              : name === 'check_agent'
+                ? 'Checked'
+                : name === 'answer_agent'
+                  ? 'Answered'
+                  : 'Subagent'
+    const task = trim(str(i.description) || str(i.task) || str(i.prompt) || str(i.message), 48)
+    return {
+      label: verb,
+      detail: title ?? task,
+      phrase: `${verb === 'Subagent' ? 'ran' : verb.toLowerCase()} ${title ? `“${trim(title, 24)}”` : 'a subagent'}`
+    }
+  }
+  if (name === 'list_agents') {
+    return { label: 'Agents', detail: 'listed', phrase: 'listed the subagents' }
   }
   switch (shortName(b.name)) {
     case 'app_list_threads':
@@ -330,34 +393,49 @@ export function groupSummary(tools: ToolBlock[], titles: ThreadTitles = {}): str
   return namedFirst ? joined : joined.charAt(0).toUpperCase() + joined.slice(1)
 }
 
-/** Model-written section summaries, keyed per settled group. `null` marks
- *  in-flight or failed — the mechanical summary stays as the fallback.
- *  Server-side they cache permanently, so this is one request per group
- *  per app run at most. */
-const sentenceCache = new Map<string, string | null>()
+interface SectionSummary {
+  sentence: string | null
+  captions: (string | null)[]
+}
 
-/** One plain sentence for a settled multi-tool section, written by a small
- *  fast model on the thread's own subscription. Off via settings. */
-function useSentenceSummary(tools: ToolBlock[], sessionId?: string): string | null {
-  const enabled = useApp((s) => s.toolSummaries)
+/** Model-written summaries, keyed per settled group (+ whether captions
+ *  were requested). `null` marks in-flight or failed — the mechanical
+ *  text stays as the fallback. Server-side results cache permanently, so
+ *  this is one request per group per app run at most. */
+const summaryCache = new Map<string, SectionSummary | null>()
+
+/** One plain sentence (and, when enabled, per-tool captions) for a settled
+ *  tool section, written by a small fast model — the thread's own
+ *  subscription on Auto, or the pinned model from settings. */
+function useSectionSummary(tools: ToolBlock[], sessionId?: string): SectionSummary | null {
+  const wantSentence = useApp((s) => s.toolSummaries)
+  const wantCaptions = useApp((s) => s.toolCaptions)
+  const model = useApp((s) => s.summaryModel)
   const projectCwd = useApp((s) => s.projects.find((p) => p.id === s.selectedProjectId)?.cwd)
-  const settled = tools.length > 1 && tools.every((t) => t.output !== undefined)
-  const key = settled ? `${tools[0].callId}:${tools.length}` : null
+  const settled = tools.length > 0 && tools.every((t) => t.output !== undefined)
+  const want = settled && (wantCaptions || (wantSentence && tools.length > 1))
+  const key = want ? `${tools[0].callId}:${tools.length}:${wantCaptions ? 'c' : 's'}` : null
   const [, bump] = useState(0)
   useEffect(() => {
-    if (!enabled || !key || !sessionId || sentenceCache.has(key)) return
+    if (!key || !sessionId || summaryCache.has(key)) return
     let alive = true
-    sentenceCache.set(key, null)
+    summaryCache.set(key, null)
     const items = tools.slice(0, 24).map((t) => ({
       name: shortName(t.name),
       detail: detailOf(t, projectCwd),
       output: t.output ? t.output.slice(0, 220) : undefined
     }))
     void client
-      .request<string | null>('tools.summarize', { sessionId, groupKey: key, items })
-      .then((s) => {
-        if (s) {
-          sentenceCache.set(key, s)
+      .request<SectionSummary | null>('tools.summarize', {
+        sessionId,
+        groupKey: `${tools[0].callId}:${tools.length}`,
+        items,
+        model,
+        captions: wantCaptions
+      })
+      .then((r) => {
+        if (r) {
+          summaryCache.set(key, r)
           if (alive) bump((n) => n + 1)
         }
       })
@@ -366,8 +444,8 @@ function useSentenceSummary(tools: ToolBlock[], sessionId?: string): string | nu
       alive = false
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- one request per settled group
-  }, [enabled, key, sessionId])
-  return key ? (sentenceCache.get(key) ?? null) : null
+  }, [key, sessionId])
+  return key ? (summaryCache.get(key) ?? null) : null
 }
 
 /** Expansion state survives virtualization — rows scrolled out of the
@@ -837,7 +915,14 @@ function TodoBlock({ b }: { b: ToolBlock }): React.JSX.Element {
 
 /** One chip: a 30px card that grows in place when expanded — invocation
  *  first, then output/diff, stacked under white/6% hairlines. */
-const Chip = memo(function Chip({ b }: { b: ToolBlock }): React.JSX.Element {
+const Chip = memo(function Chip({
+  b,
+  caption
+}: {
+  b: ToolBlock
+  /** model-written note of what this call did; replaces the derived detail */
+  caption?: string | null
+}): React.JSX.Element {
   const [open, setOpen] = usePersistedOpen(b.callId)
   const [userToggled, setUserToggled] = useState(false)
   const projectCwd = useApp((s) => s.projects.find((p) => p.id === s.selectedProjectId)?.cwd)
@@ -845,7 +930,8 @@ const Chip = memo(function Chip({ b }: { b: ToolBlock }): React.JSX.Element {
   const k = kindOf(b)
   const chip = CHIP[k]
   const app = appView(b, sessions)
-  const detail = app?.detail ?? detailOf(b, projectCwd)
+  const agentProv = agentProviderOf(b, sessions)
+  const detail = caption ?? app?.detail ?? detailOf(b, projectCwd)
   const running = b.output === undefined
   // The driver announces a call before its input finishes streaming — until
   // the complete input lands the chip is a spinner, never a half-filled row
@@ -864,7 +950,13 @@ const Chip = memo(function Chip({ b }: { b: ToolBlock }): React.JSX.Element {
           className="flex h-[30px] w-full items-center gap-2 px-2 text-left text-xs"
         >
           <span className="flex size-[18px] shrink-0 items-center justify-center rounded-[5px] bg-(--tile-strong) text-muted-foreground">
-            {loading ? <MatrixSpinner cell={2} /> : <ZIcon name={chip.icon} size={12} />}
+            {loading ? (
+              <MatrixSpinner cell={2} />
+            ) : agentProv ? (
+              <ProviderMark provider={agentProv} size={12} />
+            ) : (
+              <ZIcon name={chip.icon} size={12} />
+            )}
           </span>
           <span
             className={cn(
@@ -934,7 +1026,9 @@ export const ToolGroup = memo(function ToolGroup({
   // Auto-open shows the CHIP LIST growing — a single tool has no list,
   // its expansion is the invocation/output dump, so it stays folded.
   const open = override ?? (autoOpen && tools.length > 1)
-  const sentence = useSentenceSummary(tools, sessionId)
+  const summary = useSectionSummary(tools, sessionId)
+  const wantSentence = useApp((s) => s.toolSummaries)
+  const sentence = wantSentence ? (summary?.sentence ?? null) : null
 
   const single = tools.length === 1 ? tools[0] : null
   const k = single ? kindOf(single) : null
@@ -943,12 +1037,18 @@ export const ToolGroup = memo(function ToolGroup({
     ? (app?.label ??
       (k === 'mcp' || k === 'tool' ? shortName(single.name) : CHIP[k ?? 'tool'].label))
     : null
-  const detail = single ? (app?.detail ?? detailOf(single, projectCwd)) : null
+  const mechanicalDetail = single ? (app?.detail ?? detailOf(single, projectCwd)) : null
+  const detail = single ? (summary?.captions[0] ?? mechanicalDetail) : null
+  const singleAgentProv = single ? agentProviderOf(single, sessions) : null
   const running = tools.some((t) => t.output === undefined && t.input !== undefined)
   // The hover title always tells the literal truth — for a run row that's
   // the command itself, since the label is a humanized paraphrase.
   const rawTitle =
-    single && k === 'run' ? str(input(single).command) : single ? `${label} ${detail}` : null
+    single && k === 'run'
+      ? str(input(single).command)
+      : single
+        ? `${label} ${mechanicalDetail}`
+        : null
 
   return (
     <div>
@@ -960,6 +1060,9 @@ export const ToolGroup = memo(function ToolGroup({
         <ChevronTile open={open} />
         {single ? (
           <>
+            {singleAgentProv && (
+              <ProviderMark provider={singleAgentProv} size={12} className="shrink-0" />
+            )}
             <span
               className={cn(
                 'shrink-0 font-medium',
@@ -1000,7 +1103,7 @@ export const ToolGroup = memo(function ToolGroup({
                 <ToolDetails b={single} />
               </div>
             ) : (
-              tools.map((t) => <Chip key={t.id} b={t} />)
+              tools.map((t, n) => <Chip key={t.id} b={t} caption={summary?.captions[n] ?? null} />)
             )}
           </div>
         </div>

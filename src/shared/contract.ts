@@ -256,7 +256,11 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
             output: z.string().optional()
           })
         )
-        .max(24)
+        .max(24),
+      /** which subscription writes it: auto = the thread's own provider */
+      model: z.enum(['auto', 'haiku', 'spark']).default('auto'),
+      /** also caption each tool with a short phrase (same single call) */
+      captions: z.boolean().default(false)
     })
   }),
   // Persist pasted bytes (screenshots) so they have a path like any file.
