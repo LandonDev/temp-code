@@ -4,7 +4,12 @@
  * expansion, so this only has to be honest, short, and readable.
  */
 
-/** `/bin/zsh -lc '…'` → `…` — drop the shell wrapper and its quotes. */
+/** `/bin/zsh -lc '…'` → `…` — drop the shell wrapper and its quotes.
+ *  Exported for the transcript's pretty invocation view. */
+export function stripShell(raw: string): string {
+  return unwrap(raw)
+}
+
 function unwrap(raw: string): string {
   const m = /^\s*(?:\S*\/)?(?:ba|z|da)?sh\s+-[a-z]*c\s+([\s\S]+)$/.exec(raw.trim())
   if (!m) return raw.trim()
