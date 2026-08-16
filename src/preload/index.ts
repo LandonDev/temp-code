@@ -7,6 +7,8 @@ interface UpdateStatus {
   notes: string
   canApply: boolean
   phase: 'idle' | 'checking' | 'building' | 'restarting' | 'error'
+  step?: string
+  detail?: string
   error?: string
 }
 

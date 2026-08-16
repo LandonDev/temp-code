@@ -31,6 +31,9 @@ export interface UpdateStatus {
   /** dev-mode instances show state but can't apply */
   canApply: boolean
   phase: 'idle' | 'checking' | 'building' | 'restarting' | 'error'
+  /** while building: which step, and the child's latest output line */
+  step?: string
+  detail?: string
   error?: string
 }
 
@@ -53,6 +56,41 @@ function setStatus(patch: Partial<UpdateStatus>): void {
 function bunBin(): string {
   const local = join(homedir(), '.bun', 'bin', 'bun')
   return existsSync(local) ? local : 'bun'
+}
+
+/** Run one update step, streaming its last output line into the status
+ *  so the button never looks stuck. */
+function step(
+  name: string,
+  cmd: string,
+  args: string[],
+  opts: { cwd?: string; env?: NodeJS.ProcessEnv } = {}
+): Promise<void> {
+  setStatus({ step: name, detail: undefined })
+  return new Promise((resolve, reject) => {
+    const child = spawn(cmd, args, { ...opts, stdio: ['ignore', 'pipe', 'pipe'] })
+    let lastLine = ''
+    let tail = ''
+    const onChunk = (chunk: Buffer): void => {
+      tail = (tail + chunk.toString()).slice(-4096)
+      const lines = tail
+        .split('\n')
+        .map((l) => l.trim())
+        .filter(Boolean)
+      const line = lines.at(-1) ?? ''
+      if (line && line !== lastLine) {
+        lastLine = line
+        setStatus({ detail: line.slice(0, 120) })
+      }
+    }
+    child.stdout.on('data', onChunk)
+    child.stderr.on('data', onChunk)
+    child.on('error', reject)
+    child.on('close', (code) => {
+      if (code === 0) resolve()
+      else reject(new Error(`${name} failed (${code})${lastLine ? `: ${lastLine}` : ''}`))
+    })
+  })
 }
 
 async function check(): Promise<UpdateStatus> {
@@ -78,16 +116,24 @@ async function apply(): Promise<void> {
     // The prod worktree shares the repo's object store, so the tag is
     // visible without any fetch. Created lazily on the first update.
     if (!existsSync(PROD_WORKTREE)) {
-      await exec('git', ['-C', REPO, 'worktree', 'add', '--detach', PROD_WORKTREE, tag])
+      await step('Preparing', 'git', [
+        '-C',
+        REPO,
+        'worktree',
+        'add',
+        '--detach',
+        PROD_WORKTREE,
+        tag
+      ])
     } else {
-      await exec('git', ['-C', PROD_WORKTREE, 'checkout', '--force', '--detach', tag])
+      await step('Preparing', 'git', ['-C', PROD_WORKTREE, 'checkout', '--force', '--detach', tag])
     }
     const env = { ...process.env, PATH: `${join(homedir(), '.bun', 'bin')}:${process.env.PATH}` }
-    await exec(bunBin(), ['install'], { cwd: PROD_WORKTREE, env, maxBuffer: 64 * 1024 * 1024 })
-    await exec(bunBin(), ['run', 'build:app'], {
+    await step('Installing dependencies', bunBin(), ['install'], { cwd: PROD_WORKTREE, env })
+    await step('Building', bunBin(), ['x', 'electron-vite', 'build'], { cwd: PROD_WORKTREE, env })
+    await step('Packaging', bunBin(), ['x', 'electron-builder', '--dir'], {
       cwd: PROD_WORKTREE,
-      env,
-      maxBuffer: 64 * 1024 * 1024
+      env
     })
 
     // electron-builder --dir puts the bundle under dist/mac*/TempCode.app.
@@ -98,7 +144,7 @@ async function apply(): Promise<void> {
 
     // The swap has to outlive this process: a detached script waits for
     // us to exit, replaces the installed app, and reopens it.
-    setStatus({ phase: 'restarting' })
+    setStatus({ phase: 'restarting', step: undefined, detail: undefined })
     const script = join(mkdtempSync(join(tmpdir(), 'tempcode-update-')), 'swap.sh')
     writeFileSync(
       script,
@@ -113,7 +159,12 @@ open "${APP_DEST}"
     spawn('/bin/bash', [script], { detached: true, stdio: 'ignore' }).unref()
     setTimeout(() => app.quit(), 400)
   } catch (err) {
-    setStatus({ phase: 'error', error: err instanceof Error ? err.message : String(err) })
+    setStatus({
+      phase: 'error',
+      step: undefined,
+      detail: undefined,
+      error: err instanceof Error ? err.message : String(err)
+    })
   }
 }
 
