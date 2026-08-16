@@ -81,13 +81,17 @@ export function ContextMeter({ sessionId }: { sessionId: string }): React.JSX.El
   const usage = useApp((s) => s.contexts[sessionId]) as ContextUsage | null | undefined
   const session = useApp((s) => s.sessions[sessionId])
   const fetchContext = useApp((s) => s.fetchContext)
-  const tune = useApp((s) => s.tune)
   const [open, setOpen] = useState(false)
 
-  // Refresh whenever the popover opens; the store also refreshes on settle.
+  // Live accounting: refresh on open, and keep refreshing while a turn
+  // runs — the ring and the open popover both move as messages land.
+  const running = session?.status === 'running' || session?.status === 'starting'
   useEffect(() => {
     if (open) void fetchContext(sessionId)
-  }, [open, sessionId, fetchContext])
+    if (!open && !running) return
+    const t = setInterval(() => void fetchContext(sessionId), open ? 3000 : 6000)
+    return () => clearInterval(t)
+  }, [open, running, sessionId, fetchContext])
 
   const hasMax = !!usage && usage.maxTokens > 0
   const pct = usage && hasMax ? Math.min(100, Math.round(usage.percentage)) : null
@@ -183,31 +187,6 @@ export function ContextMeter({ sessionId }: { sessionId: string }): React.JSX.El
                   tokens: t.tokens
                 }))}
               />
-            )}
-
-            {/* context window control (claude's 1M beta) */}
-            {session?.provider === 'claude' &&
-              !(usage.maxTokens >= 1_000_000 && !session.context1m) && (
-              <div className="mt-3 flex items-center justify-between gap-3 border-t border-border/50 px-1 pt-2.5">
-                <span className="text-[11.5px] text-muted-foreground">Context window</span>
-                <div className="inline-flex items-center gap-0.5 rounded-lg bg-secondary/60 p-0.5">
-                  {([false, true] as const).map((wide) => (
-                    <button
-                      key={String(wide)}
-                      onClick={() => void tune(sessionId, { context1m: wide })}
-                      title="Applies from the next message"
-                      className={cn(
-                        'rounded-md px-2 py-0.5 text-[11px] transition-colors',
-                        (session?.context1m ?? false) === wide
-                          ? 'bg-background text-foreground shadow-[0_1px_3px_rgb(0_0_0/0.12)] dark:bg-accent'
-                          : 'text-muted-foreground hover:text-foreground'
-                      )}
-                    >
-                      {wide ? '1M' : 'Standard'}
-                    </button>
-                  ))}
-                </div>
-              </div>
             )}
           </div>
         )}
