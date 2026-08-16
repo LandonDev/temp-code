@@ -16,6 +16,7 @@ import { ModelPicker } from './ModelPicker'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select'
 import { rankFiles } from '../../lib/rank'
 import { AddonMark } from './AddonMark'
+import { addonTitle } from '../../lib/addon-names'
 
 const REASONING_LABELS: Record<Reasoning, string> = {
   low: 'Low',
@@ -186,7 +187,7 @@ export function PromptBar({
     if (!trigger || `${trigger.mode}:${trigger.start}` === dismissed) return []
     if (trigger.mode === 'command') {
       const q = trigger.query.toLowerCase()
-      const order: SlashCommand['source'][] = ['skill', 'command', 'prompt', 'plugin', 'mcp']
+      const order: SlashCommand['source'][] = ['plugin', 'mcp', 'skill', 'command', 'prompt']
       return (commands ?? [])
         .filter((c) => c.name.toLowerCase().includes(q))
         .sort(
@@ -417,7 +418,11 @@ export function PromptBar({
                           )}
                         >
                           <AddonMark command={c} size={14} />
-                          <span className="shrink-0 text-[13px] font-medium">/{c.name}</span>
+                          <span className="shrink-0 text-[13px] font-medium">
+                            {c.source === 'plugin' || c.source === 'mcp'
+                              ? addonTitle(c.name)
+                              : `/${c.name}`}
+                          </span>
                           {c.description && (
                             <span className="min-w-0 truncate text-xs text-muted-foreground">
                               {c.description}

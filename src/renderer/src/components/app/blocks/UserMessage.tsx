@@ -7,6 +7,7 @@ import { useApp } from '../../../state/store'
 import { ZIcon } from '../zicon'
 import { duration } from '../bits'
 import { AddonMark } from '../AddonMark'
+import { addonTitle } from '../../../lib/addon-names'
 import type { Block } from '../../../state/blocks'
 
 type UserBlock = Extract<Block, { kind: 'user' }>
@@ -104,13 +105,14 @@ function TokenizedText({
         }
         if (n % 2 === 1 && part.startsWith('/')) {
           const ref = commands?.find((c) => c.name === part.slice(1))
+          const addon = ref && (ref.source === 'plugin' || ref.source === 'mcp')
           return (
             <span
               key={n}
               className="inline-flex items-center gap-1 rounded-sm bg-accent px-1 align-baseline font-medium"
             >
               {ref && <AddonMark command={ref} size={11} className="translate-y-px" />}
-              {part}
+              {addon ? addonTitle(ref.name) : part}
             </span>
           )
         }
