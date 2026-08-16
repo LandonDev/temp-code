@@ -1,5 +1,9 @@
 import * as monaco from 'monaco-editor/editor/editor.api'
 import 'monaco-editor/features/register.all'
+// register.all only wires the *viewport* (range) semantic-tokens contrib;
+// the full-document feature must be imported explicitly — without it
+// semantic highlighting silently never runs (jdtls serves full only).
+import 'monaco-editor/editor/contrib/semanticTokens/browser/documentSemanticTokens'
 import 'monaco-editor/languages/definitions/typescript/register'
 import 'monaco-editor/languages/definitions/javascript/register'
 import 'monaco-editor/languages/definitions/css/register'
@@ -15,9 +19,10 @@ import 'monaco-editor/languages/definitions/sql/register'
 import 'monaco-editor/languages/definitions/shell/register'
 import 'monaco-editor/languages/definitions/python/register'
 import EditorWorker from 'monaco-editor/editor/editor.worker?worker'
-import { createHighlighter, bundledThemes, type ThemeRegistrationAny } from 'shiki'
+import { createHighlighter, type ThemeRegistrationAny } from 'shiki'
 import { createJavaScriptRegexEngine } from 'shiki/engine/javascript'
-import { shikiToMonaco } from '@shikijs/monaco'
+import { shikiToMonaco, textmateThemeToMonacoTheme } from '@shikijs/monaco'
+import { darcula, intellijLight, semanticRules } from './themes/intellij'
 
 /**
  * All Monaco wiring in one module (docs/PLAN-3.md M11, the electron-vite
@@ -180,6 +185,8 @@ function readPalette(dark: boolean): Record<string, string> {
     'editorWarning.foreground': cssToHex(v('--warning'))!,
     'editorInfo.foreground': cssToHex(v('--info'))!,
     'editorGhostText.foreground': cssToHex(v('--faint'))!,
+    'editorInlayHint.foreground': cssToHex(v('--muted-foreground'))!,
+    'editorInlayHint.background': withAlpha('--foreground', 0.06),
     'diffEditor.insertedTextBackground': withAlpha('--success', 0.14),
     'diffEditor.removedTextBackground': withAlpha('--destructive', 0.14),
     'diffEditor.insertedLineBackground': withAlpha('--success', 0.07),
@@ -190,6 +197,11 @@ function readPalette(dark: boolean): Record<string, string> {
     'peekViewEditor.background': cssToHex(v('--background'))!,
     'peekViewResult.background': cssToHex(v('--popover'))!,
     'peekViewTitle.background': cssToHex(v('--popover'))!
+  }
+  // No rainbow brackets (IDEA doesn't): monaco falls back to gold/orchid
+  // defaults wherever colorization sneaks on, so pin all six to plain fg.
+  for (let i = 1; i <= 6; i++) {
+    palette[`editorBracketHighlight.foreground${i}`] = palette['editor.foreground']
   }
   html.classList.toggle('dark', had)
   return palette
@@ -224,19 +236,19 @@ let readyP: Promise<void> | null = null
 /** Load grammars + register tc-light/tc-dark; idempotent. */
 export function monacoReady(): Promise<void> {
   readyP ??= (async () => {
-    const [{ default: light }, { default: dark }] = await Promise.all([
-      bundledThemes['github-light'](),
-      bundledThemes['one-dark-pro']()
-    ])
+    // IntelliJ syntax colors on the app's own workbench colors (backgrounds,
+    // selection, widgets) — readPalette wins over the theme's colors.
+    const lightPalette = readPalette(false)
+    const darkPalette = readPalette(true)
     const tcLight: ThemeRegistrationAny = {
-      ...light,
+      ...intellijLight,
       name: 'tc-light',
-      colors: { ...light.colors, ...readPalette(false) }
+      colors: { ...intellijLight.colors, ...lightPalette }
     }
     const tcDark: ThemeRegistrationAny = {
-      ...dark,
+      ...darcula,
       name: 'tc-dark',
-      colors: { ...dark.colors, ...readPalette(true) }
+      colors: { ...darcula.colors, ...darkPalette }
     }
     // The JS regex engine: no WASM, so the renderer CSP stays wasm-free
     // (oniguruma's WebAssembly.instantiate is blocked by script-src 'self').
@@ -246,6 +258,21 @@ export function monacoReady(): Promise<void> {
       engine: createJavaScriptRegexEngine({ forgiving: true })
     })
     shikiToMonaco(highlighter, monaco)
+    // Semantic-token styling rides the same theme trie as textmate tokens:
+    // re-define both themes with the semantic rules appended (safe — the
+    // shiki tokenizer keeps its own copy of the base rules).
+    for (const [name, reg, dark, palette] of [
+      ['tc-light', tcLight, false, lightPalette],
+      ['tc-dark', tcDark, true, darkPalette]
+    ] as const) {
+      // shiki types this against monaco-editor-core (not installed) — the
+      // shape is IStandaloneThemeData.
+      const t = textmateThemeToMonacoTheme(reg as never) as monaco.editor.IStandaloneThemeData
+      monaco.editor.defineTheme(name, {
+        ...t,
+        rules: [...t.rules, ...semanticRules(dark, palette['editor.foreground'])]
+      })
+    }
     applyEditorTheme()
     // Follow the app's theme flips (store.setTheme toggles .dark on <html>).
     new MutationObserver(applyEditorTheme).observe(document.documentElement, {
@@ -265,9 +292,13 @@ export function applyEditorTheme(): void {
 // ── shared editor options (DESIGN.md: quiet chrome, buffer is the hero) ──
 
 export const EDITOR_OPTIONS: monaco.editor.IStandaloneEditorConstructionOptions = {
-  fontFamily: "'Geist Mono', 'SF Mono', ui-monospace, Menlo, monospace",
-  fontSize: 12,
-  lineHeight: 19,
+  // IDEA's own face and sizing: JetBrains Mono 13, roomy leading, no
+  // ligatures (the IDEA default).
+  fontFamily: "'JetBrains Mono', 'Geist Mono', ui-monospace, Menlo, monospace",
+  fontSize: 13,
+  lineHeight: 20,
+  fontLigatures: false,
+  'semanticHighlighting.enabled': true,
   minimap: { enabled: false },
   glyphMargin: false,
   folding: true,
@@ -287,7 +318,7 @@ export const EDITOR_OPTIONS: monaco.editor.IStandaloneEditorConstructionOptions 
   occurrencesHighlight: 'singleFile',
   selectionHighlight: true,
   scrollbar: { verticalScrollbarSize: 10, horizontalScrollbarSize: 10, useShadows: false },
-  lightbulb: { enabled: 'off' as never },
+  lightbulb: { enabled: 'onCode' as never },
   fixedOverflowWidgets: true,
   tabSize: 2
 }

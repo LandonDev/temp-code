@@ -7,6 +7,7 @@ import { useApp } from './state/store'
 import { Sidebar } from './components/app/Sidebar'
 import { Titlebar } from './components/app/Titlebar'
 import { ThreadStrip } from './components/app/ThreadStrip'
+import { SurfaceStrip } from './components/app/SurfaceStrip'
 import { RightRail } from './components/app/RightRail'
 import { QuickOpen } from './components/app/QuickOpen'
 import { ChatView } from './components/app/views/ChatView'
@@ -91,6 +92,7 @@ export default function App(): React.JSX.Element {
         ) : (
           <>
             <ThreadStrip />
+            <SurfaceStrip />
             {activeSurface ? (
               <Suspense
                 fallback={

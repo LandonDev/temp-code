@@ -292,6 +292,12 @@ async function spawnJava(server: PoolServer): Promise<void> {
       '-Dosgi.bundles.defaultStartLevel=4',
       '-Declipse.product=org.eclipse.jdt.ls.core.product',
       '-Dlog.level=WARN',
+      // The reference launcher's GC tuning — throughput GC keeps builds
+      // (and thus diagnostics) responsive.
+      '-XX:+UseParallelGC',
+      '-XX:GCTimeRatio=4',
+      '-XX:AdaptiveSizePolicyWeight=90',
+      '-Dsun.zip.disableMemoryMapping=true',
       '-Xmx1500m',
       '--add-modules=ALL-SYSTEM',
       '--add-opens',
