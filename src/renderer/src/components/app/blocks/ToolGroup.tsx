@@ -1576,7 +1576,7 @@ export const ZEditCard = memo(function ZEditCard({
           </span>
         </button>
         {m.path && (
-          <span className="flex shrink-0 items-center opacity-0 transition-opacity duration-150 group-hover/edit:opacity-100">
+          <span className="flex w-0 shrink-0 items-center overflow-hidden opacity-0 transition-all duration-200 group-hover/edit:w-12 group-hover/edit:opacity-100">
             <button
               onClick={openInEditor}
               aria-label="Edit in editor at this change"
