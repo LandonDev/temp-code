@@ -128,8 +128,10 @@ export function EditorSurface({
       editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
         void handle?.flushNow().then(() => onSaveRef.current?.())
       })
+      // ⌘P — IDEA's Parameter Info (file search stays on ⇧⇧ and on ⌘P
+      // outside the buffer).
       editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyP, () => {
-        useApp.getState().setQuickOpen('files')
+        editor?.trigger('keyboard', 'editor.action.triggerParameterHints', null)
       })
       // Alt+Enter — IntelliJ's quickfix reflex (⌘. still works too).
       editor.addCommand(monaco.KeyMod.Alt | monaco.KeyCode.Enter, () => {

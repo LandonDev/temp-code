@@ -328,6 +328,9 @@ export const EDITOR_OPTIONS: monaco.editor.IStandaloneEditorConstructionOptions 
   // placeholders (the option's declared default is false but an upstream
   // validation bug makes it true unless set explicitly).
   suggestSelection: 'recentlyUsed',
+  // IDEA overtypes any matching closer: typing ) in front of a ) that a
+  // snippet or auto-close inserted skips it instead of doubling it.
+  autoClosingOvertype: 'always',
   wordBasedSuggestions: 'off',
   suggest: { localityBonus: true, snippetsPreventQuickSuggestions: false, showStatusBar: true },
   suggestLineHeight: 26,
