@@ -14,7 +14,14 @@ import { ContextMeter } from './ContextMeter'
 import { Zap } from 'lucide-react'
 import { ZIcon } from './zicon'
 import { ModelPicker } from './ModelPicker'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectSeparator,
+  SelectTrigger,
+  SelectValue
+} from '../ui/select'
 import { rankFiles } from '../../lib/rank'
 import { AddonMark } from './AddonMark'
 import { ComposerInput, type ComposerInputHandle } from './ComposerInput'
@@ -173,7 +180,9 @@ export function PromptBar({
   const fetchCommands = useApp((s) => s.fetchCommands)
   const fetchFiles = useApp((s) => s.fetchFiles)
   const saveAttachment = useApp((s) => s.saveAttachment)
-  const appshots = useApp((s) => (s.selectedId ? (s.pendingAppshots[s.selectedId] ?? []) : []))
+  // Fallbacks must live OUTSIDE the selector: zustand v5 evaluates it on
+  // every snapshot read, and a fresh [] each call is an infinite rerender.
+  const appshots = useApp((s) => (s.selectedId ? s.pendingAppshots[s.selectedId] : undefined)) ?? []
   const removePendingAppshot = useApp((s) => s.removePendingAppshot)
   const clearPendingAppshots = useApp((s) => s.clearPendingAppshots)
   const send = useApp((s) => s.send)
@@ -213,6 +222,14 @@ export function PromptBar({
   // Reasoning is per model — the ladder (and whether the select shows at
   // all) comes from the picked model's catalog entry.
   const ladder = provider?.models.find((m) => m.id === choice.model)?.reasoning ?? []
+  // The 200k/1M rows only exist where the beta actually gates the window —
+  // natively-1M models (every current Claude but Haiku) have nothing to switch.
+  const ctxUsage = useApp((st) =>
+    st.selectedId ? (st.contexts[st.selectedId] as { maxTokens?: number } | undefined) : undefined
+  )
+  const showWindowRows =
+    session?.provider === 'claude' &&
+    !((ctxUsage?.maxTokens ?? 0) >= 1_000_000 && !session.context1m)
 
   useEffect(() => {
     if (providerId && cwd) void fetchCommands(providerId, cwd)
@@ -725,7 +742,18 @@ export function PromptBar({
                   }}
                 />
                 {ladder.length > 1 && (
-                  <Select value={reasoning} onValueChange={(v) => setReasoning(v as Reasoning)}>
+                  <Select
+                    value={reasoning}
+                    onValueChange={(v) => {
+                      // The window rows share this menu but not its value —
+                      // picking one retunes the thread and leaves effort be.
+                      if (v === 'ctx:std' || v === 'ctx:1m') {
+                        void tune(selectedId, { context1m: v === 'ctx:1m' })
+                        return
+                      }
+                      setReasoning(v as Reasoning)
+                    }}
+                  >
                     <SelectTrigger size="sm" aria-label="Reasoning effort" className="gap-1 px-1.5">
                       <SelectValue />
                     </SelectTrigger>
@@ -735,6 +763,25 @@ export function PromptBar({
                           {REASONING_LABELS[r]}
                         </SelectItem>
                       ))}
+                      {showWindowRows && (
+                        <>
+                          <SelectSeparator />
+                          <div className="px-2 pt-1 pb-0.5 text-[10px] font-medium tracking-[0.08em] text-muted-foreground/60 uppercase">
+                            Context window
+                          </div>
+                          {(
+                            [
+                              ['ctx:std', 'Standard · 200k', !session.context1m],
+                              ['ctx:1m', '1M', !!session.context1m]
+                            ] as const
+                          ).map(([v, label, on]) => (
+                            <SelectItem key={v} value={v}>
+                              <span className={cn(!on && 'text-muted-foreground')}>{label}</span>
+                              {on && <span className="ml-2 text-[10px] text-success">active</span>}
+                            </SelectItem>
+                          ))}
+                        </>
+                      )}
                     </SelectContent>
                   </Select>
                 )}
