@@ -132,6 +132,7 @@ export const codexDriver: HarnessDriver = {
     const env = await harnessEnv()
 
     let currentTurnId: string | null = null
+    let planUpdateSeq = 0
     let lastUsage: { inputTokens?: number; outputTokens?: number } = {}
     let contextTokens = 0
     let contextWindow = 0
@@ -269,6 +270,27 @@ export const codexDriver: HarnessDriver = {
             blockIndex: 0
           })
           break
+        case 'turn/plan/updated': {
+          // Codex's native task list (update_plan) arrives as its own
+          // notification, not an item — surface it as an update_plan
+          // tool call so the todo model and the implementation board see
+          // it. Statuses normalize (inProgress → in_progress).
+          const plan = (params.plan as { step?: string; status?: string }[] | undefined) ?? []
+          const callId = `plan-${String(params.turnId ?? 'turn')}-${planUpdateSeq++}`
+          emit({
+            type: 'tool-call',
+            callId,
+            name: 'update_plan',
+            input: {
+              plan: plan.map((p) => ({
+                step: p.step,
+                status: p.status === 'inProgress' ? 'in_progress' : p.status
+              }))
+            }
+          })
+          emit({ type: 'tool-result', callId, output: 'task list updated', isError: false })
+          break
+        }
         case 'thread/tokenUsage/updated': {
           const tu = params.tokenUsage as
             | {
