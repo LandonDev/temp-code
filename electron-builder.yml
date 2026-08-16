@@ -13,6 +13,10 @@ files:
 # The app spawns real child processes out of node_modules (claude cli.js,
 # vtsls); asar would hide them behind a virtual path. Size over surprises.
 asar: false
+# ELECTRON_RUN_AS_NODE leaks into agent shells and even rides through
+# `open` — with the fuse off the installed app simply ignores it.
+electronFuses:
+  runAsNode: false
 win:
   executableName: temp-code
 nsis:
