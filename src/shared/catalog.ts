@@ -165,3 +165,21 @@ export const CATALOG: Record<ProviderId, ProviderInfo> = {
 export function modelInfo(provider: ProviderId, modelId: string): ModelInfo | undefined {
   return CATALOG[provider].models.find((m) => m.id === modelId)
 }
+
+/**
+ * A model id names its harness. If the requested provider doesn't serve
+ * the model, route to the one that does (claude asked to run gpt-5.6-sol
+ * → codex) instead of handing a foreign id to a harness that will error.
+ * A model no provider knows falls back to the requested provider's default.
+ */
+export function resolveModel(
+  provider: ProviderId,
+  model: string
+): { provider: ProviderId; model: string } {
+  if (!model) return { provider, model: CATALOG[provider].defaultModel }
+  if (modelInfo(provider, model)) return { provider, model }
+  for (const p of Object.keys(CATALOG) as ProviderId[]) {
+    if (modelInfo(p, model)) return { provider: p, model }
+  }
+  return { provider, model: CATALOG[provider].defaultModel }
+}

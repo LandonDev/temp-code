@@ -1,7 +1,7 @@
 import { nanoid } from 'nanoid'
 import { basename } from 'node:path'
 import { CreateSessionParams, type CreateSessionInput } from '@shared/contract'
-import { CATALOG, type ProviderId } from '@shared/catalog'
+import { CATALOG, resolveModel, type ProviderId } from '@shared/catalog'
 import type { AgentEvent, Attachment, EventRow, SessionMeta } from '@shared/events'
 import type { ProjectMeta, ProjectMode, WorkspaceMeta } from '@shared/domain'
 import { BUILT_IN_DRIVERS } from './drivers'
@@ -269,8 +269,13 @@ export class SessionRegistry {
     // Fields the caller left open come from the thread defaults
     // (workspace override → global → built-in).
     const d = this.resolveThreadDefaults(project?.workspaceId ?? null)
-    const provider = params.provider ?? d.provider
-    const model = params.model ?? (d.model || CATALOG[provider].defaultModel)
+    // A model id names its harness: a session asked to run another
+    // provider's model routes to that provider instead of erroring.
+    const requested = params.provider ?? d.provider
+    const { provider, model } = resolveModel(
+      requested,
+      params.model ?? (d.model || CATALOG[requested].defaultModel)
+    )
     const meta: SessionMeta = {
       id,
       parentId: params.parentId,
@@ -305,6 +310,19 @@ export class SessionRegistry {
     if (params.parentId) {
       this.append(params.parentId, { type: 'agent-spawned', childSessionId: meta.id })
     }
+    // A build starting from a plan auto-archives its planning thread: the
+    // conversation is over, the plan file carries the context. Archiving
+    // touches nothing the models use — mirrors and the plan doc stay, and
+    // any send into the thread revives it.
+    if (
+      meta.planPath &&
+      (meta.threadType === 'implementation' || meta.threadType === 'orchestration')
+    ) {
+      const planThread = this.store
+        .listSessions()
+        .find((s) => s.threadType === 'planning' && s.planPath === meta.planPath && !s.archived)
+      if (planThread) void this.setArchived(planThread.id, true)
+    }
     // Start the harness eagerly so status/errors surface immediately.
     void this.handleFor(meta.id).catch(() => {})
     return meta
@@ -330,7 +348,13 @@ export class SessionRegistry {
         this.notifyMeta(next)
       }
     }
-    const provider = opts?.provider ?? meta.provider
+    // A model id names its harness (resolveModel): a message asking this
+    // thread for another provider's model switches the thread to that
+    // provider rather than handing the harness a model it will reject.
+    const routed = opts?.model
+      ? resolveModel(opts?.provider ?? meta.provider, opts.model)
+      : { provider: opts?.provider ?? meta.provider, model: undefined }
+    const provider = routed.provider
     const reasoning = opts?.reasoning ?? meta.reasoning
     let handoff = ''
     if (provider !== meta.provider) {
@@ -340,7 +364,7 @@ export class SessionRegistry {
       await this.dropHandle(sessionId)
       const next = this.store.updateSession(sessionId, {
         provider,
-        model: opts?.model ?? CATALOG[provider].defaultModel,
+        model: routed.model ?? CATALOG[provider].defaultModel,
         reasoning,
         nativeId: null
       })
@@ -352,7 +376,7 @@ export class SessionRegistry {
       // Per-message model/reasoning: persist the change and drop the live
       // handle — the next handleFor() boots the harness fresh (resume keeps
       // the conversation) with the new settings.
-      const model = opts?.model ?? meta.model
+      const model = routed.model ?? meta.model
       if (model !== meta.model || reasoning !== meta.reasoning) {
         await this.dropHandle(sessionId)
         const next = this.store.updateSession(sessionId, { model, reasoning })

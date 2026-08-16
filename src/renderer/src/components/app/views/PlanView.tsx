@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { ChevronRight, GitFork, ListChecks, MessageSquare, Play } from 'lucide-react'
+import type { ProviderId, Reasoning } from '@shared/catalog'
 import type { SessionMeta } from '@shared/events'
 import { useApp } from '../../../state/store'
 import { cn } from '../../../lib/utils'
@@ -8,6 +9,8 @@ import { EASE_OUT } from '../../../lib/ease'
 import { THREAD_GLYPHS, THREAD_LABELS, THREAD_TINTS, StatusDot, timeAgo } from '../bits'
 import { MarkdownText } from '../blocks/MarkdownText'
 import { Popover, PopoverContent, PopoverTrigger } from '../../ui/popover'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../ui/select'
+import { ModelPicker } from '../ModelPicker'
 import { Transcript } from '../Transcript'
 import { WorkingStrip } from '../WorkingStrip'
 import { PromptBar } from '../PromptBar'
@@ -362,7 +365,23 @@ function HandoffChip({ spawned }: { spawned: SessionMeta }): React.JSX.Element {
   )
 }
 
-/** The plan pane's one action: hand the approved plan to a builder. */
+const EFFORT_LABELS: Record<Reasoning, string> = {
+  low: 'Low',
+  medium: 'Medium',
+  high: 'High',
+  xhigh: 'Extra high',
+  max: 'Max',
+  ultra: 'Ultra'
+}
+
+/** Coordination brief for one of several parallel workers on one plan. */
+const workerBrief = (i: number, n: number): string =>
+  n === 1
+    ? 'Implement the plan.'
+    : `Implement the plan. You are worker ${i + 1} of ${n} working this plan in parallel. Coordinate ONLY through the plan file's ## Tasks checklist: re-read the plan file before picking each task; skip tasks that are ticked or marked in progress; when you pick one, append "(in progress: worker ${i + 1})" to its line, and replace that marker with a clean tick when done.`
+
+/** The plan pane's one action: hand the approved plan to builders — who
+ *  (model + effort), how many, or an orchestrator that splits it itself. */
 function StartButton({
   session,
   tasks
@@ -370,30 +389,45 @@ function StartButton({
   session: SessionMeta
   tasks: string[]
 }): React.JSX.Element {
+  const catalog = useApp((s) => s.catalog)
   const createThread = useApp((s) => s.createThread)
   const send = useApp((s) => s.send)
   const [busy, setBusy] = useState(false)
+  // The build's model defaults to the planning thread's — change it here.
+  const [choice, setChoice] = useState<{ provider: ProviderId; model: string }>({
+    provider: session.provider,
+    model: session.model
+  })
+  const [reasoning, setReasoning] = useState<Reasoning>(session.reasoning)
+  const [workers, setWorkers] = useState(1)
   const reduce = useReducedMotion()
+  const ladder =
+    catalog?.[choice.provider]?.models.find((m) => m.id === choice.model)?.reasoning ?? []
 
   const start = async (type: 'implementation' | 'orchestration'): Promise<void> => {
     if (busy || !session.projectId) return
     setBusy(true)
     try {
-      const thread = await createThread({
-        projectId: session.projectId,
-        threadType: type,
-        provider: 'claude',
-        model: session.model,
-        agentType: type === 'orchestration' ? 'orchestrator' : 'implementer',
-        planPath: session.planPath ?? undefined,
-        title: session.title.replace(/^Plan:?\s*/i, '')
-      })
-      await send(
-        thread.id,
-        type === 'implementation'
-          ? 'Implement the plan.'
-          : 'Orchestrate implementation of the plan across subagents.'
-      )
+      const base = session.title.replace(/^Plan:?\s*/i, '')
+      const n = type === 'implementation' ? workers : 1
+      for (let i = 0; i < n; i++) {
+        const thread = await createThread({
+          projectId: session.projectId,
+          threadType: type,
+          provider: choice.provider,
+          model: choice.model,
+          reasoning,
+          agentType: type === 'orchestration' ? 'orchestrator' : 'implementer',
+          planPath: session.planPath ?? undefined,
+          title: n > 1 ? `${base} (${i + 1}/${n})` : base
+        })
+        await send(
+          thread.id,
+          type === 'implementation'
+            ? workerBrief(i, n)
+            : 'Orchestrate implementation of the plan across subagents.'
+        )
+      }
     } finally {
       setBusy(false)
     }
@@ -417,20 +451,77 @@ function StartButton({
             Start
           </button>
         </PopoverTrigger>
-        <PopoverContent align="end" side="bottom" className="w-72 rounded-xl p-1.5">
-          <button
-            disabled={busy}
-            onClick={() => void start('implementation')}
-            className="flex w-full items-start gap-2.5 rounded-md px-2.5 py-2 text-left transition-colors hover:bg-accent active:scale-[0.99]"
+        <PopoverContent align="end" side="bottom" className="w-80 rounded-xl p-1.5">
+          {/* Who builds it: model + effort for the new thread(s). */}
+          <div className="flex items-center gap-1 px-1 pt-0.5 pb-1.5">
+            <ModelPicker
+              provider={choice.provider}
+              model={choice.model}
+              onPick={(p, m) => {
+                setChoice({ provider: p, model: m })
+                const next = catalog?.[p].models.find((x) => x.id === m)
+                const steps = next?.reasoning ?? []
+                if (!steps.includes(reasoning)) {
+                  setReasoning(next?.defaultReasoning ?? steps[0] ?? 'medium')
+                }
+              }}
+            />
+            {ladder.length > 1 && (
+              <Select value={reasoning} onValueChange={(v) => setReasoning(v as Reasoning)}>
+                <SelectTrigger size="sm" aria-label="Reasoning effort" className="gap-1 px-1.5">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {ladder.map((r) => (
+                    <SelectItem key={r} value={r}>
+                      {EFFORT_LABELS[r]}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+          </div>
+          <div className="-mx-1 mb-1 h-px bg-hairline" />
+          <div
+            role="button"
+            tabIndex={0}
+            onClick={() => !busy && void start('implementation')}
+            onKeyDown={(e) => e.key === 'Enter' && !busy && void start('implementation')}
+            className="flex w-full cursor-pointer items-start gap-2.5 rounded-md px-2.5 py-2 text-left transition-colors hover:bg-accent active:scale-[0.99]"
           >
             <ListChecks className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
-            <span>
-              <span className="block text-[13px] font-medium">Implement</span>
+            <span className="min-w-0 flex-1">
+              <span className="block text-[13px] font-medium">
+                Implement{workers > 1 ? ` × ${workers}` : ''}
+              </span>
               <span className="block text-[11px] text-muted-foreground">
-                {withCount("One agent works the plan's tasks")}
+                {workers > 1
+                  ? withCount(`${workers} threads split the plan's tasks`)
+                  : withCount("One agent works the plan's tasks")}
               </span>
             </span>
-          </button>
+            {/* How many parallel implementation threads. */}
+            <span
+              onClick={(e) => e.stopPropagation()}
+              className="flex shrink-0 gap-0.5 rounded-md bg-secondary/60 p-0.5"
+            >
+              {[1, 2, 3].map((n) => (
+                <button
+                  key={n}
+                  onClick={() => setWorkers(n)}
+                  aria-label={`${n} thread${n > 1 ? 's' : ''}`}
+                  className={cn(
+                    'flex size-5 items-center justify-center rounded text-[11px] transition-colors',
+                    workers === n
+                      ? 'bg-background text-foreground shadow-sm'
+                      : 'text-muted-foreground hover:text-foreground'
+                  )}
+                >
+                  {n}
+                </button>
+              ))}
+            </span>
+          </div>
           <button
             disabled={busy}
             onClick={() => void start('orchestration')}
