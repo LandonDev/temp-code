@@ -190,6 +190,10 @@ export interface SessionMeta {
   status: SessionStatus
   archived: boolean
   permission: PermissionPolicy
+  /** Claude fast mode (faster output on supported models); harness restarts on change. */
+  fast: boolean
+  /** Opt into the 1M-token context window beta (claude). */
+  context1m: boolean
   /** Provider-native session/thread id, once known (for resume). */
   nativeId: string | null
   createdAt: number

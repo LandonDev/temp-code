@@ -362,6 +362,24 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
     method: z.literal('session.permission'),
     params: z.object({ sessionId: z.string(), permission: PermissionPolicySchema })
   }),
+  // Session tuning: fast mode / 1M context. Harness restarts with resume
+  // on the next send, same as a model change.
+  z.object({
+    id: z.string(),
+    method: z.literal('session.tune'),
+    params: z.object({
+      sessionId: z.string(),
+      fast: z.boolean().optional(),
+      context1m: z.boolean().optional()
+    })
+  }),
+  // Live context-window usage breakdown (claude: the /context data);
+  // null when the provider has no live handle or no accounting.
+  z.object({
+    id: z.string(),
+    method: z.literal('session.context'),
+    params: z.object({ sessionId: z.string() })
+  }),
   // App tools over WS (docs/PLAN-2.md M10): what the in-process claude
   // toolset does, reachable by the codex stdio bridge. sessionId is the
   // calling thread — validated against the registry like any other method.

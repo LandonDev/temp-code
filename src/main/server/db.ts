@@ -65,7 +65,9 @@ export function openDb(path: string): DatabaseSync {
     `ALTER TABLE sessions ADD COLUMN permission TEXT NOT NULL DEFAULT 'edits'`,
     `ALTER TABLE sessions ADD COLUMN project_id TEXT`,
     `ALTER TABLE sessions ADD COLUMN thread_type TEXT`,
-    `ALTER TABLE sessions ADD COLUMN plan_path TEXT`
+    `ALTER TABLE sessions ADD COLUMN plan_path TEXT`,
+    `ALTER TABLE sessions ADD COLUMN fast INTEGER NOT NULL DEFAULT 0`,
+    `ALTER TABLE sessions ADD COLUMN context_1m INTEGER NOT NULL DEFAULT 0`
   ]) {
     try {
       db.exec(stmt)
@@ -91,6 +93,8 @@ interface SessionRowRaw {
   status: string
   archived: number
   permission: string
+  fast: number
+  context_1m: number
   native_id: string | null
   created_at: number
   updated_at: number
@@ -111,6 +115,8 @@ function toMeta(r: SessionRowRaw): SessionMeta {
     cwd: r.cwd,
     status: r.status as SessionStatus,
     archived: !!r.archived,
+    fast: !!r.fast,
+    context1m: !!r.context_1m,
     permission: r.permission as SessionMeta['permission'],
     nativeId: r.native_id,
     createdAt: r.created_at,
@@ -124,8 +130,8 @@ export class Store {
   insertSession(meta: SessionMeta): void {
     this.db
       .prepare(
-        `INSERT INTO sessions (id, parent_id, project_id, thread_type, plan_path, provider, model, reasoning, agent_type, title, cwd, status, archived, permission, native_id, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        `INSERT INTO sessions (id, parent_id, project_id, thread_type, plan_path, provider, model, reasoning, agent_type, title, cwd, status, archived, permission, fast, context_1m, native_id, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         meta.id,
@@ -142,6 +148,8 @@ export class Store {
         meta.status,
         meta.archived ? 1 : 0,
         meta.permission,
+        meta.fast ? 1 : 0,
+        meta.context1m ? 1 : 0,
         meta.nativeId,
         meta.createdAt,
         meta.updatedAt
@@ -161,6 +169,8 @@ export class Store {
         | 'model'
         | 'reasoning'
         | 'permission'
+        | 'fast'
+        | 'context1m'
       >
     >
   ): SessionMeta | null {
@@ -169,7 +179,7 @@ export class Store {
     const next = { ...cur, ...patch, updatedAt: Date.now() }
     this.db
       .prepare(
-        `UPDATE sessions SET status = ?, title = ?, native_id = ?, archived = ?, provider = ?, model = ?, reasoning = ?, permission = ?, updated_at = ? WHERE id = ?`
+        `UPDATE sessions SET status = ?, title = ?, native_id = ?, archived = ?, provider = ?, model = ?, reasoning = ?, permission = ?, fast = ?, context_1m = ?, updated_at = ? WHERE id = ?`
       )
       .run(
         next.status,
@@ -180,6 +190,8 @@ export class Store {
         next.model,
         next.reasoning,
         next.permission,
+        next.fast ? 1 : 0,
+        next.context1m ? 1 : 0,
         next.updatedAt,
         id
       )

@@ -425,6 +425,10 @@ export const claudeDriver: HarnessDriver = {
       ...(session.permission === 'auto' ? { allowDangerouslySkipPermissions: true } : {}),
       canUseTool,
       hooks: { PreToolUse: [{ matcher: 'AskUserQuestion', hooks: [askUserQuestionHook] }] },
+      // Fast mode is a Claude settings key, not an Option — a per-session
+      // --settings override flips it (state reports back on init/result).
+      ...(session.fast ? { extraArgs: { settings: JSON.stringify({ fastMode: true }) } } : {}),
+      ...(session.context1m ? { betas: ['context-1m-2025-08-07' as const] } : {}),
       ...(session.nativeId ? { resume: session.nativeId } : {}),
       // App tools (docs/PLAN-2.md M10): every claude session can list/read
       // sibling threads and start new ones. Orchestrators additionally get
@@ -486,6 +490,10 @@ export const claudeDriver: HarnessDriver = {
       },
       answer(requestId: string, answers: string[][] | null): void {
         pendingQuestions.get(requestId)?.(answers)
+      },
+      async contextUsage(): Promise<unknown> {
+        // The /context breakdown, straight from the harness.
+        return q.getContextUsage()
       },
       async dispose(): Promise<void> {
         for (const finish of [...pendingApprovals.values()]) finish(false, true)
