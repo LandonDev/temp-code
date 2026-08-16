@@ -587,7 +587,9 @@ function EditorSettings(): React.JSX.Element {
               <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground">
                 {s.state === 'running'
                   ? `${s.memoryBytes ? fmtBytes(s.memoryBytes) : ''}${s.idleMs > 60_000 ? ` · idle ${Math.round(s.idleMs / 60_000)}m` : ''}`
-                  : s.state}
+                  : s.state === 'indexing'
+                    ? 'indexing…'
+                    : s.state}
               </span>
             </div>
           )

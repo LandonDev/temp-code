@@ -312,7 +312,7 @@ export class LspConnection {
       ws.onerror = (): void => reject(new Error('lsp tunnel failed to open'))
     })
     ws.onmessage = (e): void => this.onMessage(String(e.data))
-    ws.onclose = (): void => void this.onClose()
+    ws.onclose = (e): void => void this.onClose(e.code)
     const init = await this.request<{ capabilities: Record<string, unknown> }>('initialize', {
       processId: null,
       clientInfo: { name: 'temp-code' },
@@ -442,7 +442,7 @@ export class LspConnection {
     useApp.setState({ lspBusy: { ...lspBusy, [this.project.id]: text } })
   }
 
-  private async onClose(): Promise<void> {
+  private async onClose(code?: number): Promise<void> {
     for (const p of this.pending.values()) p.reject(new Error('lsp connection closed'))
     this.pending.clear()
     this.openDocs.clear()
@@ -456,6 +456,17 @@ export class LspConnection {
     // from the standard connection's cache (docs/PLAN-4.md M16).
     if (this.engine === 'idea') restoreJdtlsMarkers(this.project.id)
     if (this.disposed) return
+    // Deliberate pool stop (4001 = LRU eviction: another project needed
+    // the engine slot). Reconnecting would evict *that* project and its
+    // connection would evict us back — a ping-pong of 3 GB JVM boots.
+    // Stay down instead; re-selecting this project boots fresh (connect()
+    // re-syncs every open model).
+    if (this.engine === 'idea' && code === 4001) {
+      this.disposed = true
+      conns.delete(`${this.project.id}:idea`)
+      if (settledIdea.get(this.project.id) === this) settledIdea.delete(this.project.id)
+      return
+    }
     // The pool restarted (crash policy) or evicted us. One re-ensure — the
     // pool's own crash policy bounds retries; an error there ends here too.
     this.initP = null
@@ -1038,6 +1049,38 @@ function recordIdea(projectId: string, ok: boolean): void {
     h.hits = 0
   }
   ideaHealth.set(projectId, h)
+}
+
+/** Whether a project root carries JVM build files (focus-boot gate). */
+const projectHasJvmBuild = new Map<string, boolean>()
+
+/** Called on project selection: boot the engine before any file opens,
+ *  so the first completion already races a warm connection. The
+ *  background index warmer (main) makes this boot fast; this call makes
+ *  it early. Gated on build files — the engine only imports with a
+ *  build tool, so it is useless (and 3 GB) anywhere else. */
+export async function warmProjectEngine(project: ProjectMeta): Promise<void> {
+  let jvm = projectHasJvmBuild.get(project.id)
+  if (jvm === undefined) {
+    try {
+      const entries = await client.request<{ name: string }[]>('fs.list', {
+        projectId: project.id,
+        dir: ''
+      })
+      const builds = new Set([
+        'pom.xml',
+        'build.gradle',
+        'build.gradle.kts',
+        'settings.gradle',
+        'settings.gradle.kts'
+      ])
+      jvm = entries.some((e) => builds.has(e.name))
+    } catch {
+      jvm = false
+    }
+    projectHasJvmBuild.set(project.id, jvm)
+  }
+  if (jvm) void ensureConnection(project, 'java', 'idea')
 }
 
 /** Called by EditorSurface when a file surface mounts. */

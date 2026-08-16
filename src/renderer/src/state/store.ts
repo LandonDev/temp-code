@@ -596,6 +596,10 @@ export const useApp = create<AppState>((set, get) => ({
       .sort((a, b) => b.createdAt - a.createdAt)
     void get().select(threads[0]?.id ?? null)
     if (projectId) void get().fetchChanges(projectId)
+    // Focus-boot the IntelliJ engine for Java projects (dynamic import:
+    // the editor module imports this store).
+    const focused = get().projects.find((p) => p.id === projectId)
+    if (focused) void import('../components/editor/lsp').then((m) => m.warmProjectEngine(focused))
     syncWatch(get())
   },
 

@@ -14,6 +14,7 @@ import {
 } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { pathToFileURL } from 'node:url'
 import { Readable } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
 import { promisify } from 'node:util'
@@ -36,7 +37,10 @@ const execFileP = promisify(execFile)
 
 export type LspLang = 'java' | 'web' | 'idea'
 
-const CAPS: Record<LspLang, number> = { java: 2, web: 3, idea: 1 }
+// idea: 2 keeps the engines of the two most recent projects warm for
+// instant switching; the third evicts the LRU (whose renderer connection
+// stays down by design — see onClose in the renderer).
+const CAPS: Record<LspLang, number> = { java: 2, web: 3, idea: 2 }
 // intellij-server boots slowly and indexes expensively — keep it warm far
 // longer than the cheap-to-restart servers.
 const IDLE_STOP_MS: Record<LspLang, number> = {
@@ -510,22 +514,46 @@ const spawnFor = (server: PoolServer): Promise<void> =>
       ? spawnIdea(server)
       : spawnWeb(server)
 
+// Server→client requests the pool answers itself for the engine: the
+// renderer would answer them with nulls anyway, and a request broadcast
+// while no client is attached (page reload window) would otherwise hang
+// the awaiting server coroutine forever — import stalls, templates-only
+// completions (found the hard way).
+const POOL_ANSWERED = new Set([
+  'workspace/configuration',
+  'window/workDoneProgress/create',
+  'client/registerCapability',
+  'client/unregisterCapability',
+  'window/showMessageRequest'
+])
+
+/** The pool's answer to an engine server→client request. */
+function ideaAnswerFor(method: string, params: unknown): unknown {
+  if (method === 'workspace/configuration') {
+    return ((params as { items?: unknown[] } | undefined)?.items ?? []).map(() => null)
+  }
+  if (method === 'window/showMessageRequest') {
+    // "Build tool conflicts are detected…" — a null answer makes the
+    // engine skip the import entirely (found the hard way on a repo with
+    // both pom.xml and .idea). Choose like IDEA would: build files over
+    // the checked-in project model.
+    const actions = (params as { actions?: { title: string }[] } | undefined)?.actions
+    if (actions?.length) {
+      const order = ['maven', 'gradle', 'bazel', 'jps']
+      const rank = (t: string): number => {
+        const at = order.findIndex((o) => t.toLowerCase().includes(o))
+        return at < 0 ? order.length : at
+      }
+      return [...actions].sort((a, b) => rank(a.title) - rank(b.title))[0] ?? null
+    }
+  }
+  return null
+}
+
 function wireProcess(server: PoolServer): void {
   const proc = server.proc
   if (!proc) return
   const frames = new StdioFrames()
-  // Server→client requests the pool answers itself for the engine: the
-  // renderer would answer them with nulls anyway, and a request broadcast
-  // while no client is attached (page reload window) would otherwise hang
-  // the awaiting server coroutine forever — import stalls, templates-only
-  // completions (found the hard way).
-  const POOL_ANSWERED = new Set([
-    'workspace/configuration',
-    'window/workDoneProgress/create',
-    'client/registerCapability',
-    'client/unregisterCapability',
-    'window/showMessageRequest'
-  ])
   proc.stdout?.on('data', (chunk: Buffer) => {
     server.lastUsed = Date.now()
     frames.push(chunk, (body) => {
@@ -538,25 +566,15 @@ function wireProcess(server: PoolServer): void {
             params?: { items?: unknown[]; actions?: { title: string }[] }
           }
           if (msg.id !== undefined && msg.method && POOL_ANSWERED.has(msg.method)) {
-            let result: unknown = null
-            if (msg.method === 'workspace/configuration') {
-              result = (msg.params?.items ?? []).map(() => null)
-            } else if (msg.method === 'window/showMessageRequest') {
-              // "Build tool conflicts are detected…" — a null answer makes
-              // the engine skip the import entirely (found the hard way on
-              // a repo with both pom.xml and .idea). Choose like IDEA
-              // would: build files over the checked-in project model.
-              const actions = (msg.params as { actions?: { title: string }[] } | undefined)?.actions
-              if (actions?.length) {
-                const order = ['maven', 'gradle', 'bazel', 'jps']
-                const rank = (t: string): number => {
-                  const at = order.findIndex((o) => t.toLowerCase().includes(o))
-                  return at < 0 ? order.length : at
-                }
-                result = [...actions].sort((a, b) => rank(a.title) - rank(b.title))[0] ?? null
-              }
-            }
-            proc.stdin?.write(frame(JSON.stringify({ jsonrpc: '2.0', id: msg.id, result })))
+            proc.stdin?.write(
+              frame(
+                JSON.stringify({
+                  jsonrpc: '2.0',
+                  id: msg.id,
+                  result: ideaAnswerFor(msg.method, msg.params)
+                })
+              )
+            )
             return
           }
           if (
@@ -612,6 +630,19 @@ function wireProcess(server: PoolServer): void {
   })
 }
 
+// Repos with a checked-in .idea make the engine's build-tool detection
+// skip the import silently (A/B-tested); an explicit buildTools entry
+// in initializationOptions forces the importer and everything works.
+function detectBuildTool(cwd: string): string | undefined {
+  return existsSync(join(cwd, 'pom.xml'))
+    ? 'maven'
+    : ['settings.gradle', 'settings.gradle.kts', 'build.gradle', 'build.gradle.kts'].some((f) =>
+          existsSync(join(cwd, f))
+        )
+      ? 'gradle'
+      : undefined
+}
+
 export interface EnsureResult {
   serverId: string
   wsPath: string
@@ -638,16 +669,7 @@ async function ensureExtras(server: PoolServer): Promise<Partial<EnsureResult>> 
   if (server.lang === 'idea') {
     const jdks = await discoverJdks()
     const sdk = jdks.find((r) => r.version >= 21) ?? jdks[0]
-    // Repos with a checked-in .idea make the engine's build-tool detection
-    // skip the import silently (A/B-tested); an explicit buildTools entry
-    // in initializationOptions forces the importer and everything works.
-    const buildTool = existsSync(join(server.cwd, 'pom.xml'))
-      ? 'maven'
-      : ['settings.gradle', 'settings.gradle.kts', 'build.gradle', 'build.gradle.kts'].some((f) =>
-            existsSync(join(server.cwd, f))
-          )
-        ? 'gradle'
-        : undefined
+    const buildTool = detectBuildTool(server.cwd)
     return {
       eulaHash: ideaEulaHash(),
       ...(sdk ? { defaultSdk: sdk.path } : {}),
@@ -689,6 +711,9 @@ export async function ensureLsp(
     }
   }
   if (existing) pool.delete(key) // error state: a fresh ensure retries
+  // A background warm job holds the same --system-path lock — the live
+  // engine wins; the index it wrote so far is crash-tolerant.
+  if (lang === 'idea') await cancelWarm(projectId)
   evictForCap(lang)
   const server: PoolServer = {
     id: `${lang}-${projectId}-${Date.now().toString(36)}`,
@@ -755,6 +780,242 @@ export function attachLspSocket(serverId: string, ws: WebSocket): void {
   })
 }
 
+// ── background index warming ─────────────────────────────────────────
+// The engine's first import of a project takes minutes; its index cache
+// persists across runs. A sequential queue warms every Java project's
+// index ahead of use: spawn the engine at background QoS (taskpolicy -b),
+// initialize, wait for its `intellij/ready-for-test` notification (the
+// signal the dist's own bin/warmup.py waits for), shut down. Re-warms
+// when the git HEAD or the engine build moves. A live pool server always
+// wins the --system-path lock: ensureLsp cancels any in-flight warm.
+
+interface WarmState {
+  head: string | null
+  build: string
+  warmedAt: number
+  cwd: string
+}
+interface WarmJob {
+  projectId: string
+  cwd: string
+  proc: ChildProcess | null
+  cancelled: boolean
+}
+
+const WARM_TIMEOUT_MS = 30 * 60_000
+const WARM_RETRY_MS = 60 * 60_000
+const warmDir = (): string => join(ideaRoot(), 'warm')
+const warmStateFile = (projectId: string): string => join(warmDir(), `${projectId}.json`)
+const warmQueue: WarmJob[] = []
+let warmActive: WarmJob | null = null
+/** Failed warms wait an hour before retrying (no hot loop on a broken repo). */
+const warmFailedAt = new Map<string, number>()
+
+function readWarmState(projectId: string): WarmState | null {
+  try {
+    return JSON.parse(readFileSync(warmStateFile(projectId), 'utf8')) as WarmState
+  } catch {
+    return null
+  }
+}
+
+async function gitHead(cwd: string): Promise<string | null> {
+  try {
+    const { stdout } = await execFileP('git', ['rev-parse', 'HEAD'], { cwd })
+    return stdout.trim() || null
+  } catch {
+    return null
+  }
+}
+
+async function warmOne(job: WarmJob): Promise<void> {
+  await ensureIdeaDist()
+  const system = join(ideaRoot(), 'system', job.projectId)
+  mkdirSync(system, { recursive: true })
+  const bin = join(ideaDist(), 'bin', 'intellij-server')
+  const args = ['--stdio', '--system-path', system]
+  // Background QoS: indexing never competes with the user's foreground.
+  const nice = existsSync('/usr/sbin/taskpolicy')
+  const jdks = await discoverJdks()
+  const sdk = jdks.find((r) => r.version >= 21) ?? jdks[0]
+  const rootUri = pathToFileURL(job.cwd).toString()
+  const buildTool = detectBuildTool(job.cwd)
+
+  const proc = spawn(nice ? '/usr/sbin/taskpolicy' : bin, nice ? ['-b', bin, ...args] : args, {
+    cwd: job.cwd,
+    env: { ...(await harnessEnv()), INTELLIJ_DATA_SHARING: 'none', IJ_JAVA_OPTIONS: '-Xmx3g' }
+  })
+  job.proc = proc
+  const send = (msg: object): void => {
+    try {
+      proc.stdin?.write(frame(JSON.stringify(msg)))
+    } catch {
+      // stdin already gone — exit handling reports it
+    }
+  }
+
+  await new Promise<void>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      proc.kill('SIGKILL')
+      reject(new Error('warm-up timed out'))
+    }, WARM_TIMEOUT_MS)
+    const frames = new StdioFrames()
+    proc.stdout?.on('data', (chunk: Buffer) =>
+      frames.push(chunk, (body) => {
+        let msg: { id?: string | number; method?: string; error?: { message?: string } }
+        try {
+          msg = JSON.parse(body) as typeof msg
+        } catch {
+          return
+        }
+        if (msg.id !== undefined && msg.method) {
+          // Any unanswered server→client request hangs the engine's import
+          // coroutine (found the hard way in the pool) — answer everything.
+          send({
+            jsonrpc: '2.0',
+            id: msg.id,
+            result: ideaAnswerFor(msg.method, (msg as { params?: unknown }).params)
+          })
+        } else if (msg.id === 1) {
+          if (msg.error) {
+            clearTimeout(timer)
+            reject(new Error(msg.error.message ?? 'initialize failed'))
+          } else {
+            send({ jsonrpc: '2.0', method: 'initialized', params: {} })
+          }
+        } else if (msg.method === 'intellij/ready-for-test') {
+          clearTimeout(timer)
+          resolve()
+        }
+      })
+    )
+    proc.on('error', (err) => {
+      clearTimeout(timer)
+      reject(err)
+    })
+    proc.on('exit', () => {
+      clearTimeout(timer)
+      reject(new Error(job.cancelled ? 'cancelled' : 'engine exited during warm-up'))
+    })
+    send({
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'initialize',
+      params: {
+        processId: process.pid,
+        rootUri,
+        capabilities: {},
+        workspaceFolders: [{ uri: rootUri, name: job.projectId }],
+        initializationOptions: {
+          eulaHash: ideaEulaHash(),
+          ...(sdk ? { defaultSdk: sdk.path } : {}),
+          ...(buildTool ? { buildTools: { [rootUri]: buildTool } } : {})
+        }
+      }
+    })
+  }).finally(() => {
+    if (proc.exitCode !== null) return
+    send({ jsonrpc: '2.0', id: 'tc-shutdown', method: 'shutdown' })
+    send({ jsonrpc: '2.0', method: 'exit' })
+    const term = setTimeout(() => proc.kill('SIGTERM'), 1500)
+    const kill = setTimeout(() => proc.kill('SIGKILL'), 5000)
+    proc.once('exit', () => {
+      clearTimeout(term)
+      clearTimeout(kill)
+    })
+  })
+}
+
+function kickWarmQueue(): void {
+  if (warmActive) return
+  const job = warmQueue.shift()
+  if (!job) return
+  warmActive = job
+  void (async () => {
+    try {
+      // HEAD from before the warm: commits landing mid-warm re-warm later.
+      const head = await gitHead(job.cwd)
+      await warmOne(job)
+      mkdirSync(warmDir(), { recursive: true })
+      writeFileSync(
+        warmStateFile(job.projectId),
+        JSON.stringify({
+          head,
+          build: ideaCurrent().build,
+          warmedAt: Date.now(),
+          cwd: job.cwd
+        } satisfies WarmState)
+      )
+      warmFailedAt.delete(job.projectId)
+    } catch {
+      if (!job.cancelled) warmFailedAt.set(job.projectId, Date.now())
+    } finally {
+      warmActive = null
+      kickWarmQueue()
+    }
+  })()
+}
+
+/** A live engine needs the warm job's --system-path lock gone first. */
+function cancelWarm(projectId: string): Promise<void> {
+  const queued = warmQueue.findIndex((j) => j.projectId === projectId)
+  if (queued >= 0) warmQueue.splice(queued, 1)
+  const active = warmActive
+  if (!active || active.projectId !== projectId) return Promise.resolve()
+  active.cancelled = true
+  const proc = active.proc
+  if (!proc || proc.exitCode !== null) return Promise.resolve()
+  return new Promise((resolve) => {
+    proc.once('exit', () => resolve())
+    proc.kill('SIGTERM')
+    setTimeout(() => proc.kill('SIGKILL'), 3000).unref()
+  })
+}
+
+/** Queue warm-ups for every project that needs one. Skips: EULA
+ *  unaccepted, no build files, live engine running, HEAD + build
+ *  unchanged since the last warm, failed less than an hour ago. */
+export async function warmIdeaIndexes(projects: { id: string; cwd: string }[]): Promise<void> {
+  if (!ideaEulaAccepted()) return
+  for (const p of projects) {
+    if (!existsSync(p.cwd) || !detectBuildTool(p.cwd)) continue
+    const live = pool.get(`${p.id}:idea`)
+    if (live && live.state !== 'error') continue
+    if (warmActive?.projectId === p.id || warmQueue.some((j) => j.projectId === p.id)) continue
+    const failed = warmFailedAt.get(p.id)
+    if (failed && Date.now() - failed < WARM_RETRY_MS) continue
+    const state = readWarmState(p.id)
+    if (state && state.build === ideaCurrent().build && state.head === (await gitHead(p.cwd)))
+      continue
+    warmQueue.push({ projectId: p.id, cwd: p.cwd, proc: null, cancelled: false })
+  }
+  kickWarmQueue()
+}
+
+/** Deleted projects leave warm-state files behind — sweep those. Only
+ *  those: the per-project system dirs are megabytes and shared with any
+ *  other app instance (a dev build's sweep must never rip a lock dir out
+ *  from under the installed app's engine), and the analyzer's index
+ *  cache key is opaque; it lives in ~/Library/Caches where macOS may
+ *  purge it. */
+export function sweepIdeaWarmState(knownIds: string[]): void {
+  const known = new Set(knownIds)
+  let entries: string[]
+  try {
+    entries = readdirSync(warmDir())
+  } catch {
+    return
+  }
+  for (const entry of entries) {
+    if (known.has(entry.replace(/\.json$/, ''))) continue
+    try {
+      rmSync(join(warmDir(), entry), { force: true })
+    } catch {
+      // already gone — fine
+    }
+  }
+}
+
 async function rssBytes(pid: number): Promise<number | null> {
   if (process.platform === 'win32') return null
   try {
@@ -769,7 +1030,7 @@ async function rssBytes(pid: number): Promise<number | null> {
 /** Running servers, memory, idle time — Settings/debug visibility. */
 export async function lspStatus(): Promise<LspStatusRow[]> {
   const now = Date.now()
-  return Promise.all(
+  const rows: LspStatusRow[] = await Promise.all(
     [...pool.values()].map(async (s) => ({
       serverId: s.id,
       projectId: s.projectId,
@@ -780,11 +1041,27 @@ export async function lspStatus(): Promise<LspStatusRow[]> {
       ...(s.error ? { error: s.error } : {})
     }))
   )
+  if (warmActive) {
+    rows.push({
+      serverId: `warm-${warmActive.projectId}`,
+      projectId: warmActive.projectId,
+      lang: 'idea',
+      state: 'indexing',
+      memoryBytes: warmActive.proc?.pid ? await rssBytes(warmActive.proc.pid) : null,
+      idleMs: 0
+    })
+  }
+  return rows
 }
 
 /** Shutdown/test hook. */
 export function stopAllLsp(): void {
   for (const s of [...pool.values()]) stopServer(s)
+  warmQueue.length = 0
+  if (warmActive) {
+    warmActive.cancelled = true
+    warmActive.proc?.kill('SIGKILL')
+  }
   if (sweepTimer) {
     clearInterval(sweepTimer)
     sweepTimer = null
