@@ -5,6 +5,7 @@ import type { ProviderId, Reasoning } from '@shared/catalog'
 import type { Attachment, PermissionPolicy, SessionMeta } from '@shared/events'
 import type { SlashCommand } from '@shared/domain'
 import { useApp } from '../../state/store'
+import { client } from '../../lib/client'
 import { cn, displayPath } from '../../lib/utils'
 import { EASE_OUT, SPRING_PANEL, SPRING_SWAP } from '../../lib/ease'
 import { StatusDot, timeAgo } from './bits'
@@ -47,6 +48,39 @@ const PERMISSION_LABELS: Record<PermissionPolicy, string> = {
 interface PendingImage {
   attachment: Attachment
   previewUrl: string
+}
+
+/** One captured window in the composer: thumbnail + app-name caption. */
+function AppshotChip({ a, onRemove }: { a: Attachment; onRemove: () => void }): React.JSX.Element {
+  const [src, setSrc] = useState<string | null>(null)
+  useEffect(() => {
+    let alive = true
+    void client
+      .request<string>('attachment.read', { path: a.path })
+      .then((url) => alive && setSrc(url))
+      .catch(() => {})
+    return () => {
+      alive = false
+    }
+  }, [a.path])
+  return (
+    <div className="group relative w-24" title={a.name}>
+      <div className="h-14 w-24 overflow-hidden rounded-lg border bg-secondary">
+        {src && <img src={src} alt={a.name} className="h-full w-full object-cover" />}
+      </div>
+      <p className="mt-0.5 truncate text-[10.5px] leading-tight text-muted-foreground">
+        {a.name}
+        {!a.textPath && <span className="text-muted-foreground/60"> · no text</span>}
+      </p>
+      <button
+        onClick={onRemove}
+        aria-label={`Remove ${a.name}`}
+        className="absolute -top-1.5 -right-1.5 flex size-4 items-center justify-center rounded-full border bg-background text-muted-foreground opacity-0 shadow-sm transition group-hover:opacity-100 hover:text-foreground active:scale-95"
+      >
+        <X className="size-2.5" />
+      </button>
+    </div>
+  )
 }
 
 const toBase64 = async (file: File): Promise<string> => {
@@ -139,6 +173,9 @@ export function PromptBar({
   const fetchCommands = useApp((s) => s.fetchCommands)
   const fetchFiles = useApp((s) => s.fetchFiles)
   const saveAttachment = useApp((s) => s.saveAttachment)
+  const appshots = useApp((s) => (s.selectedId ? (s.pendingAppshots[s.selectedId] ?? []) : []))
+  const removePendingAppshot = useApp((s) => s.removePendingAppshot)
+  const clearPendingAppshots = useApp((s) => s.clearPendingAppshots)
   const send = useApp((s) => s.send)
   const queueAdd = useApp((s) => s.queueAdd)
   const midTurnDefault = useApp((s) => s.midTurnDefault)
@@ -248,6 +285,13 @@ export function PromptBar({
     [project, text]
   )
 
+  // Appshot delivery focuses the composer once staging is done.
+  useEffect(() => {
+    const onFocus = (): void => areaRef.current?.focus()
+    window.addEventListener('composer-focus', onFocus)
+    return () => window.removeEventListener('composer-focus', onFocus)
+  }, [])
+
   // Window-level drop: anywhere on the app attaches to the open thread.
   useEffect(() => {
     if (!selectedId) return
@@ -297,11 +341,16 @@ export function PromptBar({
 
   if (!selectedId || !session) return null
   const running = session.status === 'running' || session.status === 'starting'
-  const canSend = !!text.trim() || images.length > 0
+  const canSend = !!text.trim() || images.length > 0 || appshots.length > 0
   // FlipMorph: a short single-line prompt keeps the 49px compact pill with
   // the whole cluster inline; anything more expands (180ms, bottom-anchored).
   const expanded =
-    !!narrow || images.length > 0 || fileRefs.length > 0 || text.includes('\n') || text.length > 40
+    !!narrow ||
+    images.length > 0 ||
+    fileRefs.length > 0 ||
+    appshots.length > 0 ||
+    text.includes('\n') ||
+    text.length > 40
 
   const accept = (index: number): void => {
     if (!trigger) return
@@ -336,13 +385,14 @@ export function PromptBar({
   /** invert=true = the ⌘Enter path: do the NON-default mid-turn action. */
   const submit = (invert = false): void => {
     const t = text.trim()
-    if (!t && images.length === 0) return
-    const attachments = [...images.map((i) => i.attachment), ...fileRefs]
+    if (!t && images.length === 0 && appshots.length === 0) return
+    const attachments = [...images.map((i) => i.attachment), ...appshots, ...fileRefs]
     setText('')
     areaRef.current?.clear()
     for (const i of images) URL.revokeObjectURL(i.previewUrl)
     setImages([])
     setFileRefs([])
+    clearPendingAppshots(selectedId)
     const opts = {
       provider: session && choice.provider !== session.provider ? choice.provider : undefined,
       model: choice.model || undefined,
@@ -514,9 +564,22 @@ export function PromptBar({
             Bottom-anchored in the layout, so height morphs grow upward.
             Light mode separates with a soft shadow instead. */}
         <div className="relative rounded-[16px] border border-border bg-input shadow-[0_1px_2px_rgb(0_0_0/0.04),0_4px_16px_rgb(0_0_0/0.06)] transition-colors duration-150 focus-within:border-border-strong dark:shadow-none">
-          {(images.length > 0 || fileRefs.length > 0) && (
+          {(images.length > 0 || fileRefs.length > 0 || appshots.length > 0) && (
             <div className="flex flex-wrap items-center gap-1.5 px-3.5 pt-3">
               <AnimatePresence initial={false}>
+                {appshots.map((a) => (
+                  <motion.div
+                    key={a.path}
+                    layout
+                    initial={reduce ? false : { opacity: 0, scale: 0.9 }}
+                    animate={{ opacity: 1, scale: 1, transition: SPRING_SWAP }}
+                    exit={
+                      reduce ? undefined : { opacity: 0, scale: 0.9, transition: { duration: 0.1 } }
+                    }
+                  >
+                    <AppshotChip a={a} onRemove={() => removePendingAppshot(selectedId, a.path)} />
+                  </motion.div>
+                ))}
                 {images.map((img) => (
                   <motion.div
                     key={img.attachment.path}

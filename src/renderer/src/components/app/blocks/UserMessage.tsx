@@ -23,7 +23,8 @@ function thumbFor(path: string): Promise<string> {
   return p
 }
 
-/** Attachment thumbs ride above the bubble, right-aligned — 112×80. */
+/** Attachment thumbs ride above the bubble, right-aligned — 112×80.
+ *  Appshots (window captures) carry an app-name caption under the thumb. */
 function ImageThumb({ a }: { a: Attachment }): React.JSX.Element {
   const [src, setSrc] = useState<string | null>(null)
   useEffect(() => {
@@ -36,8 +37,15 @@ function ImageThumb({ a }: { a: Attachment }): React.JSX.Element {
     }
   }, [a.path])
   return (
-    <div className="h-20 w-28 shrink-0 overflow-hidden rounded-[10px] border border-border bg-secondary">
-      {src && <img src={src} alt={a.name} className="h-full w-full object-cover" />}
+    <div className="w-28 shrink-0" title={a.name}>
+      <div className="h-20 w-28 overflow-hidden rounded-[10px] border border-border bg-secondary">
+        {src && <img src={src} alt={a.name} className="h-full w-full object-cover" />}
+      </div>
+      {a.kind === 'appshot' && (
+        <p className="mt-0.5 truncate text-[10.5px] leading-tight text-muted-foreground">
+          {a.name}
+        </p>
+      )}
     </div>
   )
 }
@@ -171,8 +179,8 @@ export const UserMessage = memo(function UserMessage({
   block: UserBlock
   sessionId: string
 }): React.JSX.Element {
-  const images = block.attachments?.filter((a) => a.kind === 'image') ?? []
-  const files = block.attachments?.filter((a) => a.kind !== 'image') ?? []
+  const images = block.attachments?.filter((a) => a.kind === 'image' || a.kind === 'appshot') ?? []
+  const files = block.attachments?.filter((a) => a.kind !== 'image' && a.kind !== 'appshot') ?? []
   const text = block.text === '(see attachments)' && images.length > 0 ? '' : block.text
 
   return (

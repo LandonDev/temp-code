@@ -12,6 +12,8 @@ import type {
   WorkspaceMeta
 } from '@shared/domain'
 import type { CreateSessionInput, QueuedMessage } from '@shared/contract'
+import { DEFAULT_APPSHOT_SETTINGS, type AppshotSettings } from '@shared/appshots'
+import shutterUrl from '../assets/shutter.wav?url'
 import { client } from '../lib/client'
 import { dispatchFileEvent, flushAllBuffers } from '../lib/file-events'
 import {
@@ -182,6 +184,10 @@ interface AppState {
   contexts: Record<string, unknown>
   /** what Enter does while a turn runs; ⌘Enter does the other */
   midTurnDefault: 'queue' | 'steer'
+  /** Appshots (M10): capture settings (server-owned) + staged captures */
+  appshots: AppshotSettings
+  /** captured appshots waiting in a thread's composer, per session */
+  pendingAppshots: Record<string, Attachment[]>
   /** settled tool sections get a one-sentence model-written summary */
   toolSummaries: boolean
   /** every settled tool also gets a short model-written caption */
@@ -245,6 +251,11 @@ interface AppState {
   /** Mark a thread's activity as seen (clears its unread dot). */
   markSeen: (sessionId: string) => void
   setMidTurnDefault: (v: 'queue' | 'steer') => void
+  setAppshotSettings: (settings: AppshotSettings) => Promise<void>
+  /** Route a fresh capture: pick/create the destination thread, stage it. */
+  appshotArrived: (a: Attachment) => Promise<void>
+  removePendingAppshot: (sessionId: string, path: string) => void
+  clearPendingAppshots: (sessionId: string) => void
   setToolSummaries: (v: boolean) => void
   setToolCaptions: (v: boolean) => void
   setSummaryModel: (v: 'auto' | 'haiku' | 'spark') => void
@@ -385,6 +396,8 @@ export const useApp = create<AppState>((set, get) => ({
   queues: {},
   contexts: {},
   midTurnDefault: localStorage.getItem(MID_TURN_KEY) === 'steer' ? 'steer' : 'queue',
+  appshots: DEFAULT_APPSHOT_SETTINGS,
+  pendingAppshots: {},
   toolSummaries: localStorage.getItem(TOOL_SUMMARIES_KEY) !== 'off',
   toolCaptions: localStorage.getItem(TOOL_CAPTIONS_KEY) !== 'off',
   summaryModel: ((): 'auto' | 'haiku' | 'spark' => {
@@ -519,6 +532,18 @@ export const useApp = create<AppState>((set, get) => ({
     await client.connect()
     const catalog = await client.request<Catalog>('catalog.get')
     set({ catalog })
+    void client
+      .request<AppshotSettings>('appshots.get')
+      .then((appshots) => set({ appshots }))
+      .catch(() => {})
+    // Captures arrive from the main process whenever the user double-taps ⌘.
+    window.api.appshots?.onCapture((a) => void get().appshotArrived(a as Attachment))
+    window.api.appshots?.onError((err) => {
+      // A permission gap is fixable in Settings — land the user on the row.
+      if (err.code === 'screen-permission' || err.code === 'ax-permission') {
+        set({ settingsOpen: true, settingsJump: 'appshots' })
+      }
+    })
     // Land somewhere sensible: the first project, if any.
     const { projects, selectedProjectId } = get()
     if (!selectedProjectId && projects.length) get().selectProject(projects[0].id)
@@ -808,6 +833,65 @@ export const useApp = create<AppState>((set, get) => ({
   setMidTurnDefault: (v) => {
     localStorage.setItem(MID_TURN_KEY, v)
     set({ midTurnDefault: v })
+  },
+
+  setAppshotSettings: async (settings) => {
+    set({ appshots: settings }) // optimistic; the row is ours alone
+    await client.request('appshots.set', { settings })
+  },
+
+  appshotArrived: async (a) => {
+    const { appshots: settings, sessions } = get()
+    const roots = Object.values(sessions).filter((s) => !s.parentId && !s.archived)
+    // Destination: automatic = the open thread; last-chat = the most recent
+    // chat thread; new-chat (or nothing to land in) = a fresh chat.
+    let target: string | null = null
+    if (settings.destination === 'automatic') {
+      target = get().selectedId
+    } else if (settings.destination === 'last-chat') {
+      target =
+        roots.filter((s) => s.threadType === 'chat').sort((x, y) => y.updatedAt - x.updatedAt)[0]
+          ?.id ?? null
+    }
+    if (target) {
+      await get().select(target)
+    } else {
+      const projectId =
+        get().selectedProjectId ??
+        roots.sort((x, y) => y.updatedAt - x.updatedAt)[0]?.projectId ??
+        get().projects[0]?.id
+      if (!projectId) return // no project anywhere — nowhere to stage
+      target = (await get().createThread({ threadType: 'chat', projectId })).id
+    }
+    const dest = target
+    // The composer must be visible: leave any editor surface for the thread.
+    const meta = get().sessions[dest]
+    if (meta?.projectId) get().setActiveSurface(meta.projectId, null)
+    set((s) => {
+      const cur = s.pendingAppshots[dest] ?? []
+      if (cur.some((x) => x.path === a.path)) return {}
+      return { pendingAppshots: { ...s.pendingAppshots, [dest]: [...cur, a] } }
+    })
+    if (settings.sound) void new Audio(shutterUrl).play().catch(() => {})
+    // Focus once the composer for the (possibly new) thread is mounted.
+    requestAnimationFrame(() => window.dispatchEvent(new CustomEvent('composer-focus')))
+  },
+
+  removePendingAppshot: (sessionId, path) => {
+    set((s) => ({
+      pendingAppshots: {
+        ...s.pendingAppshots,
+        [sessionId]: (s.pendingAppshots[sessionId] ?? []).filter((x) => x.path !== path)
+      }
+    }))
+  },
+
+  clearPendingAppshots: (sessionId) => {
+    set((s) => {
+      const pendingAppshots = { ...s.pendingAppshots }
+      delete pendingAppshots[sessionId]
+      return { pendingAppshots }
+    })
   },
 
   setToolSummaries: (v) => {
