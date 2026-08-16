@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
-import { ChevronRight, GitFork, ListChecks, Play } from 'lucide-react'
+import { ChevronRight, GitFork, ListChecks, MessageSquare, Play } from 'lucide-react'
 import type { SessionMeta } from '@shared/events'
 import { useApp } from '../../../state/store'
 import { cn } from '../../../lib/utils'
@@ -8,16 +8,20 @@ import { EASE_OUT } from '../../../lib/ease'
 import { THREAD_GLYPHS, THREAD_LABELS, THREAD_TINTS, StatusDot, timeAgo } from '../bits'
 import { MarkdownText } from '../blocks/MarkdownText'
 import { Popover, PopoverContent, PopoverTrigger } from '../../ui/popover'
-import { QuietChannel } from '../QuietChannel'
+import { Transcript } from '../Transcript'
+import { WorkingStrip } from '../WorkingStrip'
 import { PromptBar } from '../PromptBar'
 
 /**
- * Planning thread: the plan document IS the view. The agent writes a real
- * file; we poll it and render it section by section — a revised section
- * flashes a violet wash so a live document never mutates silently. An
- * outline gutter tracks the structure on wide windows. The conversation
- * lives in the quiet channel; when the agent stops on a question, the
- * question surfaces as a card right above the prompt bar.
+ * Planning thread, in three phases. It opens as a normal chat — the
+ * conversation is the whole surface while the plan is being shaped. The
+ * moment the plan document has content, the document animates in on the
+ * left and the chat continues alongside on the right — an even split, with
+ * a draggable divider (double-click resets). Once the plan has handed off,
+ * the chat collapses to a slim bar on the right edge; one click brings it
+ * back. A thread stopped on a question always forces the chat open.
+ * Starting the build lives in the plan pane's header — the plan is what
+ * you approve, so that is where its action sits.
  */
 
 interface Section {
@@ -63,6 +67,8 @@ export function PlanView({ session }: { session: SessionMeta }): React.JSX.Eleme
   const readFile = useApp((s) => s.readFile)
   const [doc, setDoc] = useState<string | null>(null)
   const running = session.status === 'running' || session.status === 'starting'
+  const waiting = session.status === 'waiting'
+  const reduce = useReducedMotion()
 
   useEffect(() => {
     if (!session.planPath) return
@@ -145,72 +151,163 @@ export function PlanView({ session }: { session: SessionMeta }): React.JSX.Eleme
         x.threadType !== 'planning'
     )
   )
-  const question = useApp((s) => {
-    if (running) return null
-    const blocks = s.blocks[session.id]
-    if (!blocks?.length) return null
-    const last = blocks.at(-1)
-    if (last?.kind !== 'assistant' || !last.text.trim()) return null
-    const para =
-      last.text
-        .trim()
-        .split(/\n{2,}/)
-        .at(-1) ?? ''
-    return para.includes('?') ? para : null
-  })
+
+  // Chat pane phases: open alongside the plan while the conversation runs;
+  // collapsed to the edge bar once the plan has handed off. A pending
+  // question always forces it open — answers live in the chat. Both are
+  // render-time adjusts (the prevLen pattern above), not effects.
+  const [chatOpen, setChatOpen] = useState(true)
+  const [sawSpawned, setSawSpawned] = useState(!!spawned)
+  if (!!spawned !== sawSpawned) {
+    setSawSpawned(!!spawned)
+    if (spawned) setChatOpen(false)
+  }
+  const [sawWaiting, setSawWaiting] = useState(waiting)
+  if (waiting !== sawWaiting) {
+    setSawWaiting(waiting)
+    if (waiting) setChatOpen(true)
+  }
+  const collapsed = hasDoc && !chatOpen
+
+  // The split: plan pane width in %, even by default, draggable between
+  // 30 and 70 (double-click the divider to reset).
+  const containerRef = useRef<HTMLDivElement>(null)
+  const [split, setSplit] = useState(50)
+  const [dragging, setDragging] = useState(false)
+  const startDrag = (e: React.PointerEvent): void => {
+    e.preventDefault()
+    setDragging(true)
+    const el = containerRef.current
+    if (!el) return
+    const rect = el.getBoundingClientRect()
+    const move = (ev: PointerEvent): void => {
+      setSplit(Math.min(70, Math.max(30, ((ev.clientX - rect.left) / rect.width) * 100)))
+    }
+    const up = (): void => {
+      setDragging(false)
+      window.removeEventListener('pointermove', move)
+      window.removeEventListener('pointerup', up)
+    }
+    window.addEventListener('pointermove', move)
+    window.addEventListener('pointerup', up)
+  }
 
   return (
-    <>
-      <div className="relative flex min-h-0 flex-1">
-        {hasDoc && sections.some((s) => s.heading) && (
-          <Outline
-            sections={sections}
-            active={activeSection}
-            onJump={(i) => sectionRefs.current[i]?.scrollIntoView({ behavior: 'smooth' })}
-          />
-        )}
-        <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto select-text">
-          <div className="mx-auto w-full max-w-3xl px-6 py-6">
-            {spawned && <HandoffLine spawned={spawned} />}
-            {hasDoc ? (
-              sections.map((s, i) => (
-                <div
-                  key={`${i}:${flash[i] ?? 0}`}
-                  ref={(el) => {
-                    sectionRefs.current[i] = el
-                  }}
-                  className={cn(
-                    '-mx-3 rounded-lg px-3 text-[13px]',
-                    (flash[i] ?? 0) > 0 && 'animate-[z-plan-wash_1.4s_ease-out]'
+    <div ref={containerRef} className="flex min-h-0 flex-1">
+      <AnimatePresence initial={false}>
+        {hasDoc && (
+          <motion.div
+            key="plan"
+            initial={reduce ? false : { flexBasis: '0%', opacity: 0 }}
+            animate={{ flexBasis: collapsed ? '100%' : `${split}%`, opacity: 1 }}
+            transition={dragging || reduce ? { duration: 0 } : { duration: 0.28, ease: EASE_OUT }}
+            style={{ flexGrow: 0, flexShrink: 1 }}
+            className="flex min-h-0 min-w-0 flex-col overflow-hidden"
+          >
+            {/* Plan pane header: identity on the left, its action on the
+                right — Start until the handoff, then the running thread. */}
+            <div className="flex h-9 shrink-0 items-center justify-between border-b border-hairline pr-2 pl-4">
+              <span className="flex items-center gap-2 text-[11px] font-medium tracking-[0.06em] text-muted-foreground uppercase">
+                Plan
+                {tasks.length > 0 && (
+                  <span className="font-normal tracking-normal normal-case">
+                    {tasks.length} tasks
+                  </span>
+                )}
+              </span>
+              {spawned ? (
+                <HandoffChip spawned={spawned} />
+              ) : (
+                <AnimatePresence>
+                  {!running && !waiting && (
+                    <StartButton key="start" session={session} tasks={tasks} />
                   )}
-                >
-                  <MarkdownText text={s.body} streaming={running && i === sections.length - 1} />
+                </AnimatePresence>
+              )}
+            </div>
+            <div className="relative flex min-h-0 flex-1">
+              {collapsed && sections.some((s) => s.heading) && (
+                <Outline
+                  sections={sections}
+                  active={activeSection}
+                  onJump={(i) => sectionRefs.current[i]?.scrollIntoView({ behavior: 'smooth' })}
+                />
+              )}
+              <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto select-text">
+                <div className="mx-auto w-full max-w-3xl px-6 py-6">
+                  {sections.map((s, i) => (
+                    <div
+                      key={`${i}:${flash[i] ?? 0}`}
+                      ref={(el) => {
+                        sectionRefs.current[i] = el
+                      }}
+                      className={cn(
+                        '-mx-3 rounded-lg px-3 text-[13px]',
+                        (flash[i] ?? 0) > 0 && 'animate-[z-plan-wash_1.4s_ease-out]'
+                      )}
+                    >
+                      <MarkdownText
+                        text={s.body}
+                        streaming={running && i === sections.length - 1}
+                      />
+                    </div>
+                  ))}
                 </div>
-              ))
-            ) : (
-              <div className="flex items-center gap-2 text-[13px] text-muted-foreground">
-                {running && <span className="size-1.5 animate-pulse rounded-full bg-success" />}
-                {running ? 'Drafting the plan…' : 'Describe what to plan below.'}
               </div>
-            )}
-          </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {hasDoc && !collapsed && (
+        <div
+          onPointerDown={startDrag}
+          onDoubleClick={() => setSplit(50)}
+          title="Drag to resize · double-click to reset"
+          className={cn(
+            'w-[3px] shrink-0 cursor-col-resize bg-hairline transition-colors hover:bg-border-strong',
+            dragging && 'bg-border-strong'
+          )}
+        />
+      )}
+
+      {collapsed ? (
+        <button
+          onClick={() => setChatOpen(true)}
+          title="Show conversation"
+          aria-label="Show conversation"
+          className="flex w-8 shrink-0 flex-col items-center gap-2 border-l border-hairline pt-4 text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground"
+        >
+          <MessageSquare className="size-3.5" />
+          <StatusDot status={session.status} />
+        </button>
+      ) : (
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+          {hasDoc && (
+            <div className="flex h-9 shrink-0 items-center justify-between border-b border-hairline pr-1.5 pl-4">
+              <span className="text-[11px] font-medium tracking-[0.06em] text-muted-foreground uppercase">
+                Conversation
+              </span>
+              <button
+                onClick={() => setChatOpen(false)}
+                title="Hide conversation"
+                aria-label="Hide conversation"
+                className="flex size-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+              >
+                <ChevronRight className="size-3.5" />
+              </button>
+            </div>
+          )}
+          <Transcript sessionId={session.id} />
+          <WorkingStrip sessionId={session.id} />
+          <PromptBar compact={hasDoc} narrow={hasDoc} />
         </div>
-      </div>
-
-      <QuietChannel sessionId={session.id} label="Conversation" />
-
-      <div className="relative">
-        <AnimatePresence>
-          {hasDoc && !running && !spawned && <StartHandoff session={session} tasks={tasks} />}
-        </AnimatePresence>
-        <AnimatePresence>{question && <QuestionCard key="q" text={question} />}</AnimatePresence>
-        <PromptBar compact />
-      </div>
-    </>
+      )}
+    </div>
   )
 }
 
-/** Heading map down the left edge — only where the window has the room. */
+/** Heading map down the left edge — only on the full-width plan. */
 function Outline({
   sections,
   active,
@@ -246,8 +343,8 @@ function Outline({
   )
 }
 
-/** After Start: the plan becomes the reference doc for the work in flight. */
-function HandoffLine({ spawned }: { spawned: SessionMeta }): React.JSX.Element {
+/** After Start: the pane header points at the thread working the plan. */
+function HandoffChip({ spawned }: { spawned: SessionMeta }): React.JSX.Element {
   const select = useApp((s) => s.select)
   const type = spawned.threadType ?? 'implementation'
   const Glyph = THREAD_GLYPHS[type]
@@ -255,7 +352,7 @@ function HandoffLine({ spawned }: { spawned: SessionMeta }): React.JSX.Element {
   return (
     <button
       onClick={() => void select(spawned.id)}
-      className="group mb-5 flex items-center gap-2 text-[11px] text-muted-foreground transition-colors hover:text-foreground"
+      className="group flex items-center gap-1.5 rounded-md px-2 py-1 text-[11px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
     >
       <Glyph className={cn('size-3', THREAD_TINTS[type])} />
       {THREAD_LABELS[type]} {live ? 'running' : 'finished'} · {timeAgo(spawned.updatedAt)}
@@ -265,28 +362,8 @@ function HandoffLine({ spawned }: { spawned: SessionMeta }): React.JSX.Element {
   )
 }
 
-/** The agent stopped on a question — surface it; the prompt bar below answers. */
-function QuestionCard({ text }: { text: string }): React.JSX.Element {
-  const reduce = useReducedMotion()
-  return (
-    <motion.div
-      initial={reduce ? false : { opacity: 0, y: 8 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, transition: { duration: 0.1 } }}
-      transition={{ duration: 0.25, ease: EASE_OUT }}
-      className="mx-auto w-full max-w-3xl px-6 pb-1"
-    >
-      <div className="rounded-xl border border-violet/25 bg-violet/[0.05] px-4 py-3">
-        <p className="text-[10px] font-semibold tracking-[0.08em] text-violet uppercase">
-          Needs your answer
-        </p>
-        <p className="mt-1 text-[13px] leading-relaxed whitespace-pre-wrap">{text}</p>
-      </div>
-    </motion.div>
-  )
-}
-
-function StartHandoff({
+/** The plan pane's one action: hand the approved plan to a builder. */
+function StartButton({
   session,
   tasks
 }: {
@@ -327,21 +404,20 @@ function StartHandoff({
 
   return (
     <motion.div
-      initial={reduce ? false : { opacity: 0, y: 8, scale: 0.9 }}
-      animate={{ opacity: 1, y: 0, scale: 1 }}
-      exit={reduce ? undefined : { opacity: 0, y: 8, scale: 0.9 }}
+      initial={reduce ? false : { opacity: 0, scale: 0.9 }}
+      animate={{ opacity: 1, scale: 1 }}
+      exit={reduce ? undefined : { opacity: 0, scale: 0.9 }}
       // The plan settling is a rare, earned moment — a touch of overshoot.
       transition={{ type: 'spring', stiffness: 420, damping: 28, mass: 0.6 }}
-      className="pointer-events-none absolute inset-x-0 -top-10 z-10 flex justify-center"
     >
       <Popover>
         <PopoverTrigger asChild>
-          <button className="pointer-events-auto flex items-center gap-1.5 rounded-full bg-primary px-3.5 py-1.5 text-[13px] font-medium text-primary-foreground shadow-[0_2px_12px_rgb(0_0_0/0.15)] transition-transform hover:scale-[1.02] active:scale-95">
-            <Play className="size-3.5 fill-current" />
+          <button className="flex items-center gap-1.5 rounded-full bg-primary px-3 py-1 text-[12px] font-medium text-primary-foreground shadow-[0_1px_6px_rgb(0_0_0/0.12)] transition-transform hover:scale-[1.02] active:scale-95">
+            <Play className="size-3 fill-current" />
             Start
           </button>
         </PopoverTrigger>
-        <PopoverContent align="center" side="top" className="w-72 rounded-xl p-1.5">
+        <PopoverContent align="end" side="bottom" className="w-72 rounded-xl p-1.5">
           <button
             disabled={busy}
             onClick={() => void start('implementation')}
