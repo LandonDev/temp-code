@@ -5,6 +5,7 @@ import { useApp } from '../../state/store'
 import type { Block } from '../../state/blocks'
 import { ApprovalCard } from './blocks/ApprovalCard'
 import { QuestionCard } from './blocks/QuestionCard'
+import { CompactionCard } from './blocks/CompactionCard'
 import { MarkdownText } from './blocks/MarkdownText'
 import { ThinkingBlock } from './blocks/ThinkingBlock'
 import { EDIT_TOOLS, ErrorChip, groupSummary, ToolGroup, ZEditCard } from './blocks/ToolGroup'
@@ -90,6 +91,12 @@ function rowGlance(row: Row): { kind: GlanceKind; who: string; text: string } {
       return { kind: 'alert', who: 'Question', text: b.questions[0]?.question ?? '' }
     case 'error':
       return { kind: 'alert', who: 'Error', text: b.text }
+    case 'compaction':
+      return {
+        kind: 'alert',
+        who: 'Compaction',
+        text: b.phase === 'start' ? 'Compacting context' : 'Context compacted'
+      }
     default:
       return { kind: 'tool', who: '', text: '' }
   }
@@ -157,6 +164,8 @@ const RowContent = memo(function RowContent({
       return <ApprovalCard block={block} sessionId={sessionId} />
     case 'question':
       return <QuestionCard block={block} sessionId={sessionId} />
+    case 'compaction':
+      return <CompactionCard block={block} />
     case 'error':
       return <ErrorChip text={block.text} />
     default:

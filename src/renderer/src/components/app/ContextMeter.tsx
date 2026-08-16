@@ -53,7 +53,8 @@ export function ContextMeter({ sessionId }: { sessionId: string }): React.JSX.El
     if (open) void fetchContext(sessionId)
   }, [open, sessionId, fetchContext])
 
-  const pct = usage ? Math.min(100, Math.round(usage.percentage)) : null
+  const hasMax = !!usage && usage.maxTokens > 0
+  const pct = usage && hasMax ? Math.min(100, Math.round(usage.percentage)) : null
   const r = 4.5
   const c = 2 * Math.PI * r
 
@@ -84,14 +85,14 @@ export function ContextMeter({ sessionId }: { sessionId: string }): React.JSX.El
               />
             )}
           </svg>
-          {pct !== null ? `${pct}%` : 'Context'}
+          {pct !== null ? `${pct}%` : usage ? fmt(usage.totalTokens) : 'Context'}
         </button>
       </PopoverTrigger>
       <PopoverContent align="end" side="top" className="w-80 rounded-xl p-0">
         {!usage ? (
           <div className="flex h-24 items-center justify-center gap-2 text-xs text-muted-foreground">
             {session?.status === 'idle' && !usage ? (
-              <>Context loads after this thread's next reply.</>
+              <>Context loads after the next reply.</>
             ) : (
               <Spinner className="size-3.5" />
             )}
@@ -101,12 +102,19 @@ export function ContextMeter({ sessionId }: { sessionId: string }): React.JSX.El
             <div className="flex items-baseline justify-between gap-3 px-1">
               <span className="text-[13px] font-medium">Context</span>
               <span className="text-[11px] tabular-nums text-muted-foreground">
-                {fmt(usage.totalTokens)} / {fmt(usage.maxTokens)} · {Math.round(usage.percentage)}%
+                {hasMax
+                  ? `${fmt(usage.totalTokens)} / ${fmt(usage.maxTokens)} · ${Math.round(usage.percentage)}%`
+                  : `${fmt(usage.totalTokens)} used · window unknown`}
               </span>
             </div>
 
             {/* stacked usage bar */}
-            <div className="mt-2 flex h-1.5 overflow-hidden rounded-full bg-secondary/70">
+            <div
+              className={cn(
+                'mt-2 flex h-1.5 overflow-hidden rounded-full bg-secondary/70',
+                !hasMax && 'hidden'
+              )}
+            >
               {usage.categories
                 .filter((cat) => cat.tokens > 0)
                 .map((cat, ix) => (
@@ -159,27 +167,29 @@ export function ContextMeter({ sessionId }: { sessionId: string }): React.JSX.El
               />
             )}
 
-            {/* context window control */}
-            <div className="mt-3 flex items-center justify-between gap-3 border-t border-border/50 px-1 pt-2.5">
-              <span className="text-[11.5px] text-muted-foreground">Context window</span>
-              <div className="inline-flex items-center gap-0.5 rounded-lg bg-secondary/60 p-0.5">
-                {([false, true] as const).map((wide) => (
-                  <button
-                    key={String(wide)}
-                    onClick={() => void tune(sessionId, { context1m: wide })}
-                    title="Applies from the next message"
-                    className={cn(
-                      'rounded-md px-2 py-0.5 text-[11px] transition-colors',
-                      (session?.context1m ?? false) === wide
-                        ? 'bg-background text-foreground shadow-[0_1px_3px_rgb(0_0_0/0.12)] dark:bg-accent'
-                        : 'text-muted-foreground hover:text-foreground'
-                    )}
-                  >
-                    {wide ? '1M' : 'Standard'}
-                  </button>
-                ))}
+            {/* context window control (claude's 1M beta) */}
+            {session?.provider === 'claude' && (
+              <div className="mt-3 flex items-center justify-between gap-3 border-t border-border/50 px-1 pt-2.5">
+                <span className="text-[11.5px] text-muted-foreground">Context window</span>
+                <div className="inline-flex items-center gap-0.5 rounded-lg bg-secondary/60 p-0.5">
+                  {([false, true] as const).map((wide) => (
+                    <button
+                      key={String(wide)}
+                      onClick={() => void tune(sessionId, { context1m: wide })}
+                      title="Applies from the next message"
+                      className={cn(
+                        'rounded-md px-2 py-0.5 text-[11px] transition-colors',
+                        (session?.context1m ?? false) === wide
+                          ? 'bg-background text-foreground shadow-[0_1px_3px_rgb(0_0_0/0.12)] dark:bg-accent'
+                          : 'text-muted-foreground hover:text-foreground'
+                      )}
+                    >
+                      {wide ? '1M' : 'Standard'}
+                    </button>
+                  ))}
+                </div>
               </div>
-            </div>
+            )}
           </div>
         )}
       </PopoverContent>

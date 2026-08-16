@@ -751,25 +751,23 @@ export function PromptBar({
           </span>
           <span className="flex items-center gap-2">
             {session.provider === 'claude' && (
-              <>
-                <button
-                  onClick={() => void tune(selectedId, { fast: !session.fast })}
-                  title={
-                    session.fast
-                      ? 'Fast mode on — faster output on supported Claude models. Applies from the next message.'
-                      : 'Normal speed. Fast mode speeds up output on supported Claude models (Opus family).'
-                  }
-                  className={cn(
-                    'flex items-center gap-1 rounded-full px-1.5 py-0.5 transition-colors',
-                    session.fast ? 'text-warning' : 'hover:text-foreground'
-                  )}
-                >
-                  <Zap className={cn('size-3', session.fast && 'fill-current')} />
-                  {session.fast ? 'Fast' : 'Normal'}
-                </button>
-                <ContextMeter sessionId={selectedId} />
-              </>
+              <button
+                onClick={() => void tune(selectedId, { fast: !session.fast })}
+                title={
+                  session.fast
+                    ? 'Fast mode on — faster output on supported Claude models. Applies from the next message.'
+                    : 'Normal speed. Fast mode speeds up output on supported Claude models (Opus family).'
+                }
+                className={cn(
+                  'flex items-center gap-1 rounded-full px-1.5 py-0.5 transition-colors',
+                  session.fast ? 'text-warning' : 'hover:text-foreground'
+                )}
+              >
+                <Zap className={cn('size-3', session.fast && 'fill-current')} />
+                {session.fast ? 'Fast' : 'Normal'}
+              </button>
             )}
+            <ContextMeter sessionId={selectedId} />
             {project?.branch && (
               <span className="flex items-center gap-1.5">
                 <ZIcon name="git-branch" size={12} />

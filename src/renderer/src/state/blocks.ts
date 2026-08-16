@@ -60,6 +60,15 @@ type BlockKind =
       auto?: boolean
     }
   | {
+      kind: 'compaction'
+      phase: 'start' | 'done' | 'failed'
+      trigger?: 'auto' | 'manual'
+      preTokens?: number
+      postTokens?: number
+      durationMs?: number
+      error?: string
+    }
+  | {
       kind: 'question'
       requestId: string
       questions: QuestionSpec[]
@@ -317,6 +326,29 @@ export function foldEvent(s: FoldState, e: AgentEvent, ts?: number): void {
       if (idx !== undefined) {
         const b = s.blocks[idx] as Extract<Block, { kind: 'approval' }>
         s.blocks[idx] = { ...b, resolved: true, allow: e.allow, auto: e.auto }
+      }
+      break
+    }
+    case 'compaction': {
+      // start opens a card; done/failed settle the open one in place.
+      if (e.phase === 'start') {
+        push(s, { kind: 'compaction', phase: 'start' }, ts)
+        break
+      }
+      const ix = s.blocks.findLastIndex((b) => b.kind === 'compaction' && b.phase === 'start')
+      const settled = {
+        kind: 'compaction' as const,
+        phase: e.phase,
+        trigger: e.trigger,
+        preTokens: e.preTokens,
+        postTokens: e.postTokens,
+        durationMs: e.durationMs,
+        error: e.error
+      }
+      if (ix >= 0) {
+        s.blocks[ix] = { ...s.blocks[ix], ...settled }
+      } else {
+        push(s, settled, ts)
       }
       break
     }

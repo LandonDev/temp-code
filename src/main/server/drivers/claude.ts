@@ -114,6 +114,25 @@ function handleMessage(ctx: DriverCtx, state: StreamState, msg: SDKMessage): voi
       // The CLI boots lazily on the first send, so init arrives mid-turn —
       // record the native id but leave the running status alone.
       if (msg.subtype === 'init') ctx.setNativeId(msg.session_id)
+      // Compaction lifecycle: status 'compacting' opens the distinct UI,
+      // the boundary closes it with the numbers, a failed result closes
+      // it with the error.
+      else if (msg.subtype === 'status') {
+        if (msg.status === 'compacting') {
+          emit({ type: 'compaction', phase: 'start' })
+        } else if (msg.compact_result === 'failed') {
+          emit({ type: 'compaction', phase: 'failed', error: msg.compact_error })
+        }
+      } else if (msg.subtype === 'compact_boundary') {
+        emit({
+          type: 'compaction',
+          phase: 'done',
+          trigger: msg.compact_metadata.trigger,
+          preTokens: msg.compact_metadata.pre_tokens,
+          postTokens: msg.compact_metadata.post_tokens,
+          durationMs: msg.compact_metadata.duration_ms
+        })
+      }
       break
     case 'stream_event': {
       const ev = msg.event
