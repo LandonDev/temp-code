@@ -480,11 +480,46 @@ export class SessionRegistry {
   }
 
   async approve(sessionId: string, requestId: string, allow: boolean): Promise<void> {
-    this.handles.get(sessionId)?.approve?.(requestId, allow)
+    if (this.handles.get(sessionId)?.approve?.(requestId, allow)) return
+    // Stale request: asked by a previous process of this harness, whose
+    // resolver died with it. Settle the card so it can't wedge the UI —
+    // the tool call it guarded is gone either way.
+    if (this.unresolvedRequest(sessionId, requestId, 'approval')) {
+      this.append(sessionId, { type: 'approval-resolved', requestId, allow })
+    }
   }
 
   async answer(sessionId: string, requestId: string, answers: string[][] | null): Promise<void> {
-    this.handles.get(sessionId)?.answer?.(requestId, answers)
+    if (this.handles.get(sessionId)?.answer?.(requestId, answers)) return
+    // Stale request: settle the card, then deliver the answers as an
+    // ordinary message so the model still receives the decisions.
+    const req = this.unresolvedRequest(sessionId, requestId, 'question')
+    if (!req || req.type !== 'question-request') return
+    this.append(sessionId, { type: 'question-resolved', requestId, answers })
+    if (answers?.some((a) => a.length)) {
+      const lines = req.questions
+        .map((q, i) => (answers[i]?.length ? `- ${q.question} → ${answers[i].join(', ')}` : null))
+        .filter(Boolean)
+      await this.send(sessionId, `Answers to your earlier questions:\n${lines.join('\n')}`)
+    }
+  }
+
+  /** The still-unresolved question/approval request for an id, if any. */
+  private unresolvedRequest(
+    sessionId: string,
+    requestId: string,
+    kind: 'question' | 'approval'
+  ): Extract<AgentEvent, { type: 'question-request' | 'approval-request' }> | null {
+    const rows = this.store.eventsAfter(sessionId, 0)
+    const resolved = kind === 'question' ? 'question-resolved' : 'approval-resolved'
+    if (rows.some((r) => r.event.type === resolved && r.event.requestId === requestId)) return null
+    const reqType = kind === 'question' ? 'question-request' : 'approval-request'
+    const req = rows.find(
+      (r) => r.event.type === reqType && (r.event as { requestId?: string }).requestId === requestId
+    )
+    return req
+      ? (req.event as Extract<AgentEvent, { type: 'question-request' | 'approval-request' }>)
+      : null
   }
 
   async rename(sessionId: string, title: string): Promise<void> {
