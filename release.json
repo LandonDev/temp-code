@@ -1,5 +1,5 @@
 {
-  "n": 14,
-  "notes": "Appshots groundwork: native capture helper (capture + permissions)",
-  "ts": 1786913471543
+  "n": 15,
+  "notes": "Appshots: double-⌘ hotkey monitor + swiftc build step",
+  "ts": 1786913628582
 }
