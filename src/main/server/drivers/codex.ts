@@ -1,18 +1,5 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { createInterface } from 'node:readline'
-import {
-  copyFileSync,
-  existsSync,
-  lstatSync,
-  mkdirSync,
-  readdirSync,
-  readFileSync,
-  rmSync,
-  symlinkSync,
-  writeFileSync
-} from 'node:fs'
-import { homedir } from 'node:os'
-import { join } from 'node:path'
 import type { Attachment, PermissionPolicy, SessionStatus } from '@shared/events'
 import type { Reasoning } from '@shared/catalog'
 import type { DriverCtx, DriverHandle, HarnessDriver } from './types'
@@ -143,62 +130,6 @@ class AppServerConn {
 
 type Item = Record<string, unknown> & { type?: string; id?: string }
 
-/**
- * Codex threads run under an overlay CODEX_HOME: every entry of ~/.codex
- * is symlinked in (skills, prompts, sessions, auth) except config.toml,
- * which is rewritten without the Aliax proxy base URL. The connector
- * (Apps) runtime refuses to serve tools through a browser-fingerprinted
- * proxy — only codex's own client talking straight to chatgpt.com gets
- * them — so these threads go direct. Trade-off: Aliax's pinned account
- * does not apply here; threads follow `codex login` (auth.json).
- */
-function overlayCodexHome(): string {
-  const real = join(homedir(), '.codex')
-  const overlay = join(homedir(), 'Library', 'Application Support', 'temp-code', 'codex-home')
-  mkdirSync(overlay, { recursive: true })
-
-  // auth.json heal: codex refreshes tokens by rename-replace, which turns
-  // the symlink into a real file. That file is then the freshest copy —
-  // push it back to the real home and re-link, so the TUI and we stay on
-  // one token chain.
-  const overlayAuth = join(overlay, 'auth.json')
-  if (existsSync(overlayAuth) && !lstatSync(overlayAuth).isSymbolicLink()) {
-    copyFileSync(overlayAuth, join(real, 'auth.json'))
-    rmSync(overlayAuth)
-  }
-
-  // The connector caches must stay per-home: the shared ones were written
-  // while codex ran through the proxy and pin an empty tool set.
-  const cacheLink = join(overlay, 'cache')
-  try {
-    if (lstatSync(cacheLink).isSymbolicLink()) rmSync(cacheLink)
-  } catch {
-    /* fresh overlay */
-  }
-
-  for (const entry of readdirSync(real)) {
-    if (entry === 'config.toml' || entry === 'cache' || entry.includes('.tmp-')) continue
-    const link = join(overlay, entry)
-    try {
-      if (existsSync(link) || lstatSync(link).isSymbolicLink()) continue
-    } catch {
-      /* no entry — link it */
-    }
-    try {
-      symlinkSync(join(real, entry), link)
-    } catch {
-      /* raced by a parallel thread start */
-    }
-  }
-
-  // config.toml minus the proxy base URL (the aliax marker block or any
-  // bare chatgpt_base_url line) — connectors need the real backend.
-  const lines = readFileSync(join(real, 'config.toml'), 'utf8').split('\n')
-  const kept = lines.filter((l) => !l.trim().startsWith('chatgpt_base_url'))
-  writeFileSync(join(overlay, 'config.toml'), kept.join('\n'))
-  return overlay
-}
-
 /** The humanized face of an addon call — exactly what the Codex app
  *  shows: appContext's appName + actionName when the plugin provides
  *  them, else the plugin/server name and a de-snaked tool name. */
@@ -224,11 +155,6 @@ export const codexDriver: HarnessDriver = {
     const binPath = await resolveBinary('codex')
     if (!binPath) throw new Error('codex CLI not found — install it and log in (`codex login`)')
     const env = await harnessEnv()
-    try {
-      env.CODEX_HOME = overlayCodexHome()
-    } catch {
-      // No ~/.codex to overlay — run with whatever codex resolves itself.
-    }
 
     let currentTurnId: string | null = null
     // MCP servers (plugins included) take seconds to mount their tools;
