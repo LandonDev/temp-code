@@ -1,5 +1,5 @@
 {
-  "n": 2,
-  "notes": "Releases cut themselves: post-commit auto-release on master",
-  "ts": 1786864191080
+  "n": 3,
+  "notes": "Stop tracking tsbuildinfo caches",
+  "ts": 1786864595714
 }
