@@ -368,6 +368,10 @@ interface PoolServer {
   sockets: Set<WebSocket>
   lastUsed: number
   lastCrashAt: number
+  /** intellij-server refuses a second initialize; the pool replays the
+   *  first InitializeResult to reconnecting clients (page reloads). */
+  initCache?: unknown
+  initPendingId?: string | number | null
 }
 
 const pool = new Map<string, PoolServer>()
@@ -510,9 +514,60 @@ function wireProcess(server: PoolServer): void {
   const proc = server.proc
   if (!proc) return
   const frames = new StdioFrames()
+  // Server→client requests the pool answers itself for the engine: the
+  // renderer would answer them with nulls anyway, and a request broadcast
+  // while no client is attached (page reload window) would otherwise hang
+  // the awaiting server coroutine forever — import stalls, templates-only
+  // completions (found the hard way).
+  const POOL_ANSWERED = new Set([
+    'workspace/configuration',
+    'window/workDoneProgress/create',
+    'client/registerCapability',
+    'client/unregisterCapability',
+    'window/showMessageRequest'
+  ])
   proc.stdout?.on('data', (chunk: Buffer) => {
     server.lastUsed = Date.now()
     frames.push(chunk, (body) => {
+      if (server.lang === 'idea') {
+        try {
+          const msg = JSON.parse(body) as {
+            id?: string | number
+            method?: string
+            result?: unknown
+            params?: { items?: unknown[]; actions?: { title: string }[] }
+          }
+          if (msg.id !== undefined && msg.method && POOL_ANSWERED.has(msg.method)) {
+            let result: unknown = null
+            if (msg.method === 'workspace/configuration') {
+              result = (msg.params?.items ?? []).map(() => null)
+            } else if (msg.method === 'window/showMessageRequest') {
+              // "Build tool conflicts are detected…" — a null answer makes
+              // the engine skip the import entirely (found the hard way on
+              // a repo with both pom.xml and .idea). Choose like IDEA
+              // would: build files over the checked-in project model.
+              const actions = (msg.params as { actions?: { title: string }[] } | undefined)
+                ?.actions
+              if (actions?.length) {
+                const order = ['maven', 'gradle', 'bazel', 'jps']
+                const rank = (t: string): number => {
+                  const at = order.findIndex((o) => t.toLowerCase().includes(o))
+                  return at < 0 ? order.length : at
+                }
+                result = [...actions].sort((a, b) => rank(a.title) - rank(b.title))[0] ?? null
+              }
+            }
+            proc.stdin?.write(frame(JSON.stringify({ jsonrpc: '2.0', id: msg.id, result })))
+            return
+          }
+          if (server.initPendingId != null && msg.id === server.initPendingId && msg.result !== undefined) {
+            server.initCache = msg.result
+            server.initPendingId = null
+          }
+        } catch {
+          // not JSON — fall through to broadcast
+        }
+      }
       for (const ws of server.sockets) {
         if (ws.readyState === ws.OPEN) ws.send(body)
       }
@@ -532,6 +587,8 @@ function wireProcess(server: PoolServer): void {
       return
     }
     server.lastCrashAt = now
+    server.initCache = undefined
+    server.initPendingId = null
     // One silent restart; clients reconnect on socket close and re-init.
     void (async () => {
       try {
@@ -654,7 +711,24 @@ export function attachLspSocket(serverId: string, ws: WebSocket): void {
   server.lastUsed = Date.now()
   ws.on('message', (data) => {
     server.lastUsed = Date.now()
-    server.proc?.stdin?.write(frame(String(data)))
+    const raw = String(data)
+    if (server.lang === 'idea') {
+      try {
+        const msg = JSON.parse(raw) as { id?: string | number; method?: string }
+        if (msg.method === 'initialize' && msg.id !== undefined) {
+          if (server.initCache !== undefined) {
+            // Already initialized: replay instead of forwarding — the
+            // engine would error the session otherwise.
+            ws.send(JSON.stringify({ jsonrpc: '2.0', id: msg.id, result: server.initCache }))
+            return
+          }
+          server.initPendingId = msg.id
+        }
+      } catch {
+        // non-JSON frame — forward as-is
+      }
+    }
+    server.proc?.stdin?.write(frame(raw))
   })
   ws.on('close', () => {
     server.sockets.delete(ws)
