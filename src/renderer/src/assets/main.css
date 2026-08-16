@@ -510,3 +510,15 @@ textarea::-webkit-scrollbar {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* IDEA completion rows: the right-hand type/package column renders at
+ * full size like IntelliJ's, not monaco's 85% (style injected at runtime,
+ * so !important is the only lever at equal specificity). */
+.monaco-editor .suggest-widget .monaco-list-row > .contents > .main > .right > .details-label {
+  font-size: 100% !important;
+}
+
+/* Lines the model just changed, highlighted in the inline card editor. */
+.monaco-editor .model-change-line {
+  background-color: color-mix(in srgb, var(--success) 10%, transparent);
+}

@@ -93,6 +93,7 @@ interface LspInlayHint {
 }
 interface LspCompletionItem {
   label: string | { label: string }
+  labelDetails?: { detail?: string; description?: string }
   kind?: number
   detail?: string
   documentation?: string | { value: string }
@@ -276,7 +277,10 @@ export class LspConnection {
             completionItem: {
               snippetSupport: true,
               documentationFormat: ['markdown', 'plaintext'],
-              additionalTextEdits: true,
+              // Structured labels: name | dim signature | right-aligned type.
+              // jdtls collapses `label` to the bare member name when this is
+              // advertised and ships the rest in labelDetails.
+              labelDetailsSupport: true,
               resolveSupport: { properties: ['documentation', 'detail', 'additionalTextEdits'] }
             },
             contextSupport: true
@@ -795,7 +799,29 @@ function settingsFor(
         inlayHints: { parameterNames: { enabled: 'literals' } },
         format: { enabled: true },
         signatureHelp: { enabled: true },
-        completion: { enabled: true },
+        completion: {
+          enabled: true,
+          // jdt.ls caps at 50 items in rough alphabetical order — the
+          // direct cause of irrelevant lists. 0 lifts the cap so the
+          // relevance ranking (sortText) decides.
+          maxResults: 0,
+          // IDEA-defining candidates: postfix templates (".var", ".if"),
+          // chained suggestions, favorite statics offered unqualified.
+          postfix: { enabled: true },
+          chain: { enabled: true },
+          guessMethodArguments: 'off',
+          matchCase: 'off',
+          favoriteStaticMembers: [
+            'org.junit.Assert.*',
+            'org.junit.Assume.*',
+            'org.junit.jupiter.api.Assertions.*',
+            'org.junit.jupiter.api.Assumptions.*',
+            'org.mockito.Mockito.*',
+            'org.mockito.ArgumentMatchers.*',
+            'java.util.Objects.requireNonNull',
+            'java.util.Objects.requireNonNullElse'
+          ]
+        },
         maven: { downloadSources: false },
         references: { includeDecompiledSources: true }
       }
@@ -1027,10 +1053,25 @@ export function registerProviders(): void {
           const range = edit
             ? toMonacoRange('insert' in edit && edit.insert ? edit.insert : edit.range)
             : defaultRange
+          const insertText = edit?.newText ?? item.insertText ?? label
+          // IDEA pops parameter info the moment a call completes. Neither
+          // server can trigger it (vtsls refuses editor.* ids; jdtls wants
+          // a jdt.ls-extension round-trip), so attach it client-side.
+          const callLike =
+            (item.kind === 2 || item.kind === 3 || item.kind === 4) && insertText.includes('(')
           const suggestion: monaco.languages.CompletionItem & { __lsp?: LspCompletionItem } = {
-            label,
+            label: item.labelDetails
+              ? {
+                  label,
+                  detail: item.labelDetails.detail,
+                  description: item.labelDetails.description
+                }
+              : label,
             kind: COMPLETION_KINDS[(item.kind ?? 1) - 1] ?? CIK.Text,
-            insertText: edit?.newText ?? item.insertText ?? label,
+            insertText,
+            command: callLike
+              ? { id: 'editor.action.triggerParameterHints', title: '' }
+              : undefined,
             insertTextRules:
               item.insertTextFormat === 2
                 ? monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet
