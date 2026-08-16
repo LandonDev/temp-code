@@ -24,13 +24,18 @@ env -u ELECTRON_RUN_AS_NODE \
   process on its own, so main-process changes always need a relaunch.
 - Kill your dev instance when the pass is done.
 
-## End every pass with a release
-When the slice is committed and verified:
-```bash
-bun scripts/release.ts "one-line release notes"
-```
-It gates on a clean tree + typecheck + build, bumps release.json, commits
-and tags `release-N`. The installed app checks automatically (and by
-button) and offers the update with your notes; the user applies it when
-they choose. Never build into or swap /Applications/TempCode.app yourself,
-and never run the release with a broken typecheck "to fix later".
+## Releases cut themselves — just commit finished work
+A post-commit hook on master (.githooks/, wired via core.hooksPath) runs
+`bun scripts/release.ts` after every commit: it gates on a clean tree +
+typecheck + build, bumps release.json, commits and tags `release-N`,
+using your commit subject as the release notes. The installed app checks
+automatically (and by button) and offers the update; the user applies it
+when they choose.
+
+- Commit complete, verified slices — every green commit on master ships.
+- If the hook skipped (tree was dirty at commit time, or the gate was
+  red), the next green commit releases everything since; you can also run
+  `bun scripts/release.ts "notes"` yourself.
+- Worker log: /tmp/temp-code-auto-release.log.
+- Never build into or swap /Applications/TempCode.app yourself, and never
+  commit with a broken typecheck "to fix later" — that blocks the train.
