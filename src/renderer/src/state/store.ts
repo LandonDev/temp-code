@@ -182,6 +182,10 @@ interface AppState {
   queues: Record<string, QueuedMessage[]>
   /** latest context-usage snapshot per session (claude /context data) */
   contexts: Record<string, unknown>
+  /** Live disk-diff stream (M22): sessionId → path → latest state. */
+  liveEdits: Record<string, Record<string, LiveEditState>>
+  /** Cumulative token snapshots per task boundary (M25). */
+  usage: Record<string, { todo: number; input?: number; output?: number }[]>
   /** what Enter does while a turn runs; ⌘Enter does the other */
   midTurnDefault: 'queue' | 'steer'
   /** Appshots (M10): capture settings (server-owned) + staged captures */
@@ -335,6 +339,20 @@ function scheduleChangesRefresh(
   )
 }
 
+/** A live disk-diff record (M22) as the renderer holds it. */
+export interface LiveEditState {
+  path: string
+  kind: 'changed' | 'created' | 'deleted'
+  adds?: number
+  dels?: number
+  diff: string | null
+  bytes?: number
+  burst?: boolean
+  state: 'editing' | 'settled'
+  startedTs: number
+  ts: number
+}
+
 function publishFold(
   set: (fn: (s: AppState) => Partial<AppState>) => void,
   sessionId: string,
@@ -343,7 +361,8 @@ function publishFold(
   set((s) => ({
     blocks: { ...s.blocks, [sessionId]: fold.blocks.slice() },
     costs: { ...s.costs, [sessionId]: fold.costUsd },
-    todos: { ...s.todos, [sessionId]: fold.todos }
+    todos: { ...s.todos, [sessionId]: fold.todos },
+    usage: { ...s.usage, [sessionId]: fold.usageMarks.slice() }
   }))
 }
 
@@ -395,6 +414,8 @@ export const useApp = create<AppState>((set, get) => ({
   lastSeen: JSON.parse(localStorage.getItem(LAST_SEEN_KEY) ?? '{}') as Record<string, number>,
   queues: {},
   contexts: {},
+  liveEdits: {},
+  usage: {},
   midTurnDefault: localStorage.getItem(MID_TURN_KEY) === 'steer' ? 'steer' : 'queue',
   appshots: DEFAULT_APPSHOT_SETTINGS,
   pendingAppshots: {},
@@ -496,6 +517,32 @@ export const useApp = create<AppState>((set, get) => ({
       } else if (push.push === 'file-event') {
         dispatchFileEvent(push)
         scheduleChangesRefresh(push.projectId, get().fetchChanges)
+      } else if (push.push === 'live-edit') {
+        // Ephemeral disk truth (M22): bounded per session, cleared shortly
+        // after the session settles — the event log stays the record.
+        set((s) => {
+          const next = { ...s.liveEdits }
+          for (const sid of push.sessionIds) {
+            const cur = { ...(next[sid] ?? {}) }
+            const prev = cur[push.edit.path]
+            cur[push.edit.path] = {
+              path: push.edit.path,
+              kind: push.edit.kind,
+              adds: push.edit.adds ?? prev?.adds,
+              dels: push.edit.dels ?? prev?.dels,
+              diff: push.edit.diff ?? prev?.diff ?? null,
+              bytes: push.edit.bytes,
+              burst: push.edit.burst,
+              state: push.edit.settled ? 'settled' : 'editing',
+              startedTs: prev?.startedTs ?? push.edit.ts,
+              ts: push.edit.ts
+            }
+            const keys = Object.keys(cur)
+            if (keys.length > 500) delete cur[keys[0]]
+            next[sid] = cur
+          }
+          return { liveEdits: next }
+        })
       } else if (push.push === 'session-removed') {
         set((s) => {
           const sessions = { ...s.sessions }

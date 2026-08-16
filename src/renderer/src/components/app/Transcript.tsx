@@ -153,7 +153,7 @@ export const BlockRow = memo(function BlockRow({
       return (
         <>
           {edits.map((eb) => (
-            <ZEditCard key={eb.id} b={eb} />
+            <ZEditCard key={eb.id} b={eb} sessionId={sessionId} />
           ))}
           {internal && <ToolGroup tools={[internal]} sessionId={sessionId} active={running} />}
         </>
@@ -180,7 +180,7 @@ const RowContent = memo(function RowContent({
     return (
       <ToolGroup tools={row.tools} autoOpen={autoOpen} active={autoOpen} sessionId={sessionId} />
     )
-  if (row.type === 'edit') return <ZEditCard b={row.block} />
+  if (row.type === 'edit') return <ZEditCard b={row.block} sessionId={sessionId} />
   const block = row.block
   switch (block.kind) {
     case 'user':

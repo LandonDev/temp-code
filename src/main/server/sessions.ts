@@ -17,6 +17,7 @@ import {
 } from '@shared/appshots'
 import { planPathFor, planSeed, projectContext, threadPreamble } from './threads'
 import { notifyParentOfSettle } from './orchestration'
+import { liveDiffOnStatus } from './livediff'
 import {
   appendJournal,
   INLINE_DIGEST_MAX_CHARS,
@@ -710,6 +711,8 @@ export class SessionRegistry {
           : (cur?.busySince ?? row.ts)
       const next = this.store.updateSession(sessionId, { status: event.status, busySince })
       if (next) this.notifyMeta(next)
+      // Live change stream (M22): watchers follow running sessions.
+      if (next) liveDiffOnStatus(this, next, cur?.status)
       // A settled turn releases the next queued message.
       if (event.status === 'idle') this.drainQueue(sessionId)
       // Dormant supervision: a subagent leaving "running" wakes its parent

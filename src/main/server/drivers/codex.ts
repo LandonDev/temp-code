@@ -189,6 +189,7 @@ export const codexDriver: HarnessDriver = {
       }
     })
     let planUpdateSeq = 0
+    let lastUsageEmit = 0
     let lastUsage: { inputTokens?: number; outputTokens?: number } = {}
     let contextTokens = 0
     let contextWindow = 0
@@ -351,6 +352,21 @@ export const codexDriver: HarnessDriver = {
             blockIndex: 0
           })
           break
+        case 'item/fileChange/patchUpdated': {
+          // A growing patch streams per update (M23) — ride the existing
+          // partial tool-call path so cards render files as they appear.
+          const item = (params.item ?? params) as Item
+          if (item?.id !== undefined) {
+            emit({
+              type: 'tool-call',
+              callId: String(item.id),
+              name: 'apply_patch',
+              input: item.changes ?? (params.changes as unknown),
+              partial: true
+            })
+          }
+          break
+        }
         case 'turn/plan/updated': {
           // Codex's native task list (update_plan) arrives as its own
           // notification, not an item — surface it as an update_plan
@@ -385,6 +401,16 @@ export const codexDriver: HarnessDriver = {
           // The last turn's total ≈ what the context currently holds.
           if (tu?.last?.totalTokens !== undefined) contextTokens = tu.last.totalTokens
           if (tu?.modelContextWindow) contextWindow = tu.modelContextWindow
+          // Cumulative snapshots for per-task token deltas (M25) —
+          // throttled so the log doesn't grow with every chunk.
+          if (tu?.total && Date.now() - lastUsageEmit > 5_000) {
+            lastUsageEmit = Date.now()
+            emit({
+              type: 'usage',
+              inputTokens: tu.total.inputTokens,
+              outputTokens: tu.total.outputTokens
+            })
+          }
           break
         }
         case 'turn/completed': {

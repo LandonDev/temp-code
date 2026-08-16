@@ -554,5 +554,23 @@ export type ServerPush =
   | { push: 'session-removed'; sessionIds: string[] }
   // Watcher spine (M11): project-relative path, debounced ~100 ms.
   | { push: 'file-event'; projectId: string; path: string; kind: 'changed' | 'created' | 'deleted' }
+  // Live change stream (docs/PLAN-5.md M22): disk-truth diffs while a
+  // session runs. Ephemeral — never persisted; renderer state only.
+  | {
+      push: 'live-edit'
+      cwd: string
+      sessionIds: string[]
+      edit: {
+        path: string
+        kind: 'changed' | 'created' | 'deleted'
+        adds?: number
+        dels?: number
+        diff: string | null
+        bytes?: number
+        burst?: boolean
+        settled?: boolean
+        ts: number
+      }
+    }
 
 export type ServerFrame = ServerResponse | ServerPush

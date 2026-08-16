@@ -303,3 +303,15 @@ Risks and their answers:
   bare wrong number.
 - **Auto-open fighting the user** → the `auto`/`user` flag; auto-state
   transitions never touch a card the user has clicked.
+
+## Amendments (implementation, 2026-08-16)
+
+- Claude edit-card line numbers already existed (locateHunks reads the
+  landed file); M24 added highlighting + numbered live-diff rows.
+- Synthetic `via shell` cards render on the implementation board (under
+  the live task); the transcript keeps harness-only rows for now.
+- Per-task tokens show output-token deltas from exact boundary snapshots
+  only (codex mid-turn `usage` events + turn totals); tasks without
+  bracketing snapshots show nothing rather than an estimate.
+- The activity classifier lives with the board (ImplementationView); the
+  shared-lib refactor waits until a second surface needs it.
