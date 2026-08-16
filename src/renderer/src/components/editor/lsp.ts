@@ -24,6 +24,9 @@ export type LangKind = 'java' | 'web'
 /** Dev-only didChange→publishDiagnostics latency log. */
 const LSP_DEBUG = import.meta.env.DEV
 
+/** Languages the IntelliJ engine serves (docs/PLAN-4.md M19). */
+const IDEA_LANGS = new Set(['java', 'kotlin'])
+
 /** monaco language id → pool kind (null = no server serves it). */
 export function kindForLanguage(languageId: string): LangKind | null {
   if (languageId === 'java') return 'java'
@@ -37,7 +40,8 @@ const LSP_LANGUAGE: Record<string, string> = {
   tsx: 'typescriptreact',
   javascript: 'javascript',
   jsx: 'javascriptreact',
-  java: 'java'
+  java: 'java',
+  kotlin: 'kotlin'
 }
 
 // ── LSP wire types (the slice we speak) ──────────────────────────────
@@ -614,7 +618,9 @@ export class LspConnection {
 
   /** Does this connection own the model? (language kind + project root) */
   owns(model: monaco.editor.ITextModel): boolean {
-    if (kindForLanguage(model.getLanguageId()) !== this.kind) return false
+    if (this.engine === 'idea') {
+      if (!IDEA_LANGS.has(model.getLanguageId())) return false
+    } else if (kindForLanguage(model.getLanguageId()) !== this.kind) return false
     const root = this.project.cwd.endsWith('/') ? this.project.cwd : `${this.project.cwd}/`
     return model.uri.scheme === 'file' && model.uri.path.startsWith(root)
   }
@@ -841,6 +847,32 @@ async function ensurePreviewModel(project: ProjectMeta, uri: monaco.Uri): Promis
   }
 }
 
+// ── decompiled sources (docs/PLAN-4.md M18) ──────────────────────────
+// Library navigation lands on jar: URIs; the engine's `decompile`
+// command supplies the text and peek renders it like any model.
+
+const decompiledModels = new Map<string, monaco.editor.ITextModel>()
+
+async function ensureDecompiledModel(projectId: string, rawUri: string): Promise<void> {
+  const uri = monaco.Uri.parse(rawUri)
+  if (monaco.editor.getModel(uri)) return
+  const ij = settledIdea.get(projectId)
+  if (!ij?.alive) return
+  const res = await ij
+    .request<{ code?: string } | null>('workspace/executeCommand', {
+      command: 'decompile',
+      arguments: [rawUri]
+    })
+    .catch(() => null)
+  if (!res?.code) return
+  decompiledModels.set(rawUri, monaco.editor.createModel(res.code, 'java', uri))
+  if (decompiledModels.size > 20) {
+    const oldest = decompiledModels.entries().next().value as [string, monaco.editor.ITextModel]
+    decompiledModels.delete(oldest[0])
+    oldest[1].dispose()
+  }
+}
+
 function settingsFor(
   kind: LangKind,
   extras: {
@@ -1005,11 +1037,10 @@ function recordIdea(projectId: string, ok: boolean): void {
 /** Called by EditorSurface when a file surface mounts. */
 export function ensureForModel(project: ProjectMeta, model: monaco.editor.ITextModel): void {
   const kind = kindForLanguage(model.getLanguageId())
-  if (!kind) return
-  void ensureConnection(project, kind).then((conn) => conn?.maybeOpen(model))
-  // Warm-ahead: the IntelliJ engine starts importing the moment a Java
-  // surface mounts, so the race has a warm opponent by the time you type.
-  if (kind === 'java') {
+  if (kind) void ensureConnection(project, kind).then((conn) => conn?.maybeOpen(model))
+  // Warm-ahead: the IntelliJ engine starts importing the moment a Java or
+  // Kotlin surface mounts (kotlin's only server — docs/PLAN-4.md M19).
+  if (IDEA_LANGS.has(model.getLanguageId())) {
     void ensureConnection(project, 'java', 'idea').then((conn) => conn?.maybeOpen(model))
   }
 }
@@ -1033,6 +1064,15 @@ const docId = (model: monaco.editor.ITextModel): { uri: string } => ({
 /** Read-side routing (docs/PLAN-4.md M17): the IntelliJ engine answers
  *  when alive, eligible, and capable; jdtls fills on miss or timeout.
  *  Web models never detour — their standard connection is the only one. */
+/** The alive-and-eligible IntelliJ connection for a model, if any. */
+function ideaFor(model: monaco.editor.ITextModel): LspConnection | null {
+  if (!IDEA_LANGS.has(model.getLanguageId())) return null
+  const entry = entryForUri(model.uri)
+  if (!entry) return null
+  const ij = settledIdea.get(entry.projectId)
+  return ij?.alive && ideaEligible(entry.projectId) ? ij : null
+}
+
 async function readSide<T>(
   model: monaco.editor.ITextModel,
   cap: string,
@@ -1041,16 +1081,22 @@ async function readSide<T>(
   budgetMs = 800
 ): Promise<T | null> {
   const std = await connFor(model)
-  if (!std) return null
-  const ij = model.getLanguageId() === 'java' ? settledIdea.get(std.project.id) : undefined
-  if (ij?.alive && ideaEligible(std.project.id) && ij.capabilities[cap]) {
-    const r = await Promise.race([
-      ij.request<T>(method, params).catch(() => null),
-      new Promise<'timeout'>((res) => setTimeout(() => res('timeout'), budgetMs))
-    ])
-    if (r !== 'timeout' && r !== null) return r
+  const ij = ideaFor(model)
+  if (ij?.capabilities[cap]) {
+    ij.maybeOpen(model)
+    // With a standard fallback the engine gets a budget; without one
+    // (kotlin) it IS the answer — wait it out.
+    if (std?.capabilities[cap]) {
+      const r = await Promise.race([
+        ij.request<T>(method, params).catch(() => null),
+        new Promise<'timeout'>((res) => setTimeout(() => res('timeout'), budgetMs))
+      ])
+      if (r !== 'timeout' && r !== null) return r
+    } else {
+      return ij.request<T>(method, params).catch(() => null)
+    }
   }
-  if (!std.capabilities[cap]) return null
+  if (!std?.capabilities[cap]) return null
   return std.request<T>(method, params).catch(() => null)
 }
 
@@ -1144,7 +1190,7 @@ async function runCodeAction(
   raw: LspCodeAction | LspCommand,
   source?: LspConnection
 ): Promise<void> {
-  const conn = source?.alive ? source : await connFor(model)
+  const conn = source?.alive ? source : ((await connFor(model)) ?? ideaFor(model))
   const entry = entryForUri(model.uri)
   const project = useApp.getState().projects.find((p) => p.id === entry?.projectId)
   if (!conn || !project) return
@@ -1173,7 +1219,7 @@ async function runCodeAction(
 
 // ── providers (registered once, route by model) ──────────────────────
 
-const ALL_LSP_LANGS = ['typescript', 'tsx', 'javascript', 'jsx', 'java']
+const ALL_LSP_LANGS = ['typescript', 'tsx', 'javascript', 'jsx', 'java', 'kotlin']
 
 let registered = false
 export function registerProviders(): void {
@@ -1184,7 +1230,9 @@ export function registerProviders(): void {
     triggerCharacters: ['.', '"', "'", '/', '@', '<', ':', '('],
     async provideCompletionItems(model, position, context) {
       const conn = await connFor(model)
-      if (!conn) return null
+      const entry = entryForUri(model.uri)
+      const pid = entry?.projectId ?? conn?.project.id ?? ''
+      if (!conn && !(IDEA_LANGS.has(model.getLanguageId()) && conns.has(`${pid}:idea`))) return null
       type CompletionResult =
         { items: LspCompletionItem[]; isIncomplete?: boolean } | LspCompletionItem[] | null
       const params = {
@@ -1196,31 +1244,33 @@ export function registerProviders(): void {
         }
       }
       // jdtls is always in flight; the IntelliJ engine wins if it answers
-      // inside the budget with items (docs/PLAN-4.md M15).
+      // inside the budget with items. Kotlin has no jdtls leg — the engine
+      // answer is awaited outright (docs/PLAN-4.md M15/M19).
       const jdtlsP = conn
-        .request<CompletionResult>('textDocument/completion', params)
-        .catch(() => null)
+        ? conn.request<CompletionResult>('textDocument/completion', params).catch(() => null)
+        : Promise.resolve(null)
       let result: CompletionResult = null
-      let source = conn
-      const pid = conn.project.id
-      if (model.getLanguageId() === 'java' && conns.has(`${pid}:idea`) && ideaEligible(pid)) {
+      let source = conn as LspConnection
+      if (IDEA_LANGS.has(model.getLanguageId()) && conns.has(`${pid}:idea`) && ideaEligible(pid)) {
         const ideaP = (async (): Promise<{ r: CompletionResult } | null> => {
           const idea = await conns.get(`${pid}:idea`)
           if (!idea) return null // engine absent — no race, no strike
           idea.maybeOpen(model)
           return { r: await idea.request<CompletionResult>('textDocument/completion', params) }
         })().catch(() => ({ r: null }))
-        const winner = await Promise.race([
-          ideaP,
-          new Promise<'timeout'>((res) => setTimeout(() => res('timeout'), IDEA_BUDGET_MS))
-        ])
+        const winner = conn
+          ? await Promise.race([
+              ideaP,
+              new Promise<'timeout'>((res) => setTimeout(() => res('timeout'), IDEA_BUDGET_MS))
+            ])
+          : await ideaP
         if (winner === 'timeout') recordIdea(pid, false)
         else if (winner !== null) {
           recordIdea(pid, winner.r !== null)
           const arr = winner.r === null ? [] : Array.isArray(winner.r) ? winner.r : winner.r.items
           if (arr.length > 0) {
             result = winner.r
-            source = settledIdea.get(pid) ?? conn
+            source = settledIdea.get(pid) ?? source
           }
         }
       }
@@ -1402,9 +1452,13 @@ export function registerProviders(): void {
     const project = useApp.getState().projects.find((p) => p.id === entry?.projectId)
     const locations: monaco.languages.Location[] = []
     for (const loc of list.slice(0, 50)) {
-      const uri = monaco.Uri.parse('targetUri' in loc ? loc.targetUri : loc.uri)
+      const raw = 'targetUri' in loc ? loc.targetUri : loc.uri
+      const uri = monaco.Uri.parse(raw)
       const range = toMonacoRange('targetUri' in loc ? loc.targetSelectionRange : loc.range)
-      if (project) await ensurePreviewModel(project, uri)
+      if (project) {
+        if (uri.scheme === 'file') await ensurePreviewModel(project, uri)
+        else await ensureDecompiledModel(project.id, raw)
+      }
       locations.push({ uri, range })
     }
     return locations
@@ -1550,7 +1604,7 @@ export function registerProviders(): void {
 
   monaco.languages.registerCodeActionProvider(ALL_LSP_LANGS, {
     async provideCodeActions(model, range, context) {
-      const conn = await connFor(model)
+      const conn = (await connFor(model)) ?? ideaFor(model)
       if (!conn?.capabilities.codeActionProvider) return null
       const ask = async (c: LspConnection): Promise<(LspCodeAction | LspCommand)[] | null> => {
         // Context diagnostics come from the asking connection's own cache,
@@ -1573,8 +1627,8 @@ export function registerProviders(): void {
       // jdtls quickfixes otherwise — never both (duplicate titles).
       let source = conn
       let result: (LspCodeAction | LspCommand)[] | null = null
-      const ij = model.getLanguageId() === 'java' ? settledIdea.get(conn.project.id) : undefined
-      if (ij?.alive && ideaEligible(conn.project.id)) {
+      const ij = ideaFor(model)
+      if (ij && ij !== conn) {
         const r = await Promise.race([
           ask(ij).catch(() => null),
           new Promise<'timeout'>((res) => setTimeout(() => res('timeout'), 800))
@@ -1673,7 +1727,16 @@ export function registerProviders(): void {
   // Cross-file navigation opens a file surface (registered opener wins
   // over monaco's default no-op for unknown resources).
   monaco.editor.registerEditorOpener({
-    openCodeEditor(_source, resource, selectionOrPosition) {
+    openCodeEditor(source, resource, selectionOrPosition) {
+      // Decompiled targets have no file surface — show them in the peek
+      // widget over the source editor instead (docs/PLAN-4.md M18).
+      if (resource.scheme !== 'file') {
+        if (monaco.editor.getModel(resource)) {
+          source.trigger('tc', 'editor.action.peekDefinition', null)
+          return true
+        }
+        return false
+      }
       const state = useApp.getState()
       const project = state.projects.find((p) => {
         const root = p.cwd.endsWith('/') ? p.cwd : `${p.cwd}/`
@@ -1802,6 +1865,88 @@ export async function workspaceSymbols(
     })
   )
   return results.flat().slice(0, 100)
+}
+
+// ── hierarchies (docs/PLAN-4.md M18): callers and super/subtypes ─────
+
+interface HierarchyItem {
+  name: string
+  detail?: string
+  uri: string
+  selectionRange: LspRange
+  range: LspRange
+}
+
+export interface HierarchyResult {
+  title: string
+  rows: { name: string; containerName: string; uri: string; range: monaco.IRange }[]
+}
+
+async function hierarchyConn(
+  model: monaco.editor.ITextModel,
+  cap: string
+): Promise<LspConnection | null> {
+  const ij = ideaFor(model)
+  if (ij?.capabilities[cap]) return ij
+  const std = await connFor(model)
+  return std?.capabilities[cap] ? std : null
+}
+
+const itemRow = (item: HierarchyItem, tag: string): HierarchyResult['rows'][number] => ({
+  name: item.name,
+  containerName: [tag, item.detail ?? item.uri.split('/').pop() ?? ''].filter(Boolean).join(' · '),
+  uri: item.uri,
+  range: toMonacoRange(item.selectionRange ?? item.range)
+})
+
+/** Call hierarchy (⌃⌥H): who calls the symbol at the cursor. */
+export async function callHierarchy(
+  model: monaco.editor.ITextModel,
+  position: monaco.Position
+): Promise<HierarchyResult | null> {
+  const conn = await hierarchyConn(model, 'callHierarchyProvider')
+  if (!conn) return null
+  const prep = await conn
+    .request<HierarchyItem[] | null>('textDocument/prepareCallHierarchy', {
+      textDocument: docId(model),
+      position: toLspPos(position)
+    })
+    .catch(() => null)
+  const item = prep?.[0]
+  if (!item) return null
+  const incoming = await conn
+    .request<{ from: HierarchyItem }[] | null>('callHierarchy/incomingCalls', { item })
+    .catch(() => null)
+  return {
+    title: `Callers of ${item.name}`,
+    rows: (incoming ?? []).map((c) => itemRow(c.from, ''))
+  }
+}
+
+/** Type hierarchy (⌃H): supertypes and subtypes of the type at the cursor. */
+export async function typeHierarchy(
+  model: monaco.editor.ITextModel,
+  position: monaco.Position
+): Promise<HierarchyResult | null> {
+  const conn = await hierarchyConn(model, 'typeHierarchyProvider')
+  if (!conn) return null
+  const prep = await conn
+    .request<HierarchyItem[] | null>('textDocument/prepareTypeHierarchy', {
+      textDocument: docId(model),
+      position: toLspPos(position)
+    })
+    .catch(() => null)
+  const item = prep?.[0]
+  if (!item) return null
+  const [supers, subs] = await Promise.all([
+    conn.request<HierarchyItem[] | null>('typeHierarchy/supertypes', { item }).catch(() => null),
+    conn.request<HierarchyItem[] | null>('typeHierarchy/subtypes', { item }).catch(() => null)
+  ])
+  const rows = [
+    ...(supers ?? []).map((t) => itemRow(t, '↑ supertype')),
+    ...(subs ?? []).map((t) => itemRow(t, '↓ subtype'))
+  ]
+  return { title: `Type hierarchy of ${item.name}`, rows }
 }
 
 // ── AI ghost text (M14): pluggable, off by default ───────────────────

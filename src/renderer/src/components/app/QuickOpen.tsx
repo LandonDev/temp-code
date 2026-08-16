@@ -23,6 +23,7 @@ export function QuickOpen(): React.JSX.Element | null {
   const mode = useApp((s) => s.quickOpen)
   const setQuickOpenRaw = useApp((s) => s.setQuickOpen)
   const projectId = useApp((s) => s.selectedProjectId)
+  const hierarchy = useApp((s) => s.hierarchy)
   const project = useApp((s) => s.projects.find((p) => p.id === s.selectedProjectId))
   const files = useApp((s) => (s.selectedProjectId ? s.files[s.selectedProjectId] : undefined))
   const fetchFiles = useApp((s) => s.fetchFiles)
@@ -32,7 +33,7 @@ export function QuickOpen(): React.JSX.Element | null {
   const [at, setAt] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
   const reduce = useReducedMotion()
-  const setQuickOpen = (m: 'files' | 'symbols' | null): void => {
+  const setQuickOpen = (m: 'files' | 'symbols' | 'hierarchy' | null): void => {
     setQuickOpenRaw(m)
     if (m === null) {
       setQuery('')
@@ -67,7 +68,14 @@ export function QuickOpen(): React.JSX.Element | null {
   if (!mode || !projectId || !project) return null
 
   const fileRows = mode === 'files' ? rankFiles(files ?? [], query.trim(), 12) : []
-  const shownSymbols = query.trim() ? symbols : []
+  const q = query.trim().toLowerCase()
+  // Hierarchy rows arrive precomputed (⌃H / ⌃⌥H); typing filters them.
+  const shownSymbols =
+    mode === 'hierarchy'
+      ? (hierarchy?.rows ?? []).filter((r) => !q || r.name.toLowerCase().includes(q))
+      : query.trim()
+        ? symbols
+        : []
   const count = mode === 'files' ? fileRows.length : shownSymbols.length
 
   const openAt = (index: number): void => {
@@ -126,7 +134,13 @@ export function QuickOpen(): React.JSX.Element | null {
               }
               if (e.key === 'Enter') openAt(at)
             }}
-            placeholder={mode === 'files' ? 'Go to file…' : 'Go to symbol in project…'}
+            placeholder={
+              mode === 'files'
+                ? 'Go to file…'
+                : mode === 'hierarchy'
+                  ? (hierarchy?.title ?? 'Hierarchy')
+                  : 'Go to symbol in project…'
+            }
             className="w-full border-b border-border/60 bg-transparent px-4 py-3 text-[13px] outline-none placeholder:text-muted-foreground/60"
           />
           <div className="max-h-[320px] overflow-y-auto p-1">
@@ -148,7 +162,7 @@ export function QuickOpen(): React.JSX.Element | null {
                   </span>
                 </button>
               ))}
-            {mode === 'symbols' &&
+            {(mode === 'symbols' || mode === 'hierarchy') &&
               shownSymbols.map((sym, i) => (
                 <button
                   key={`${sym.uri}:${i}`}
@@ -168,7 +182,11 @@ export function QuickOpen(): React.JSX.Element | null {
               ))}
             {count === 0 && (
               <p className="px-3 py-4 text-center text-[11px] text-muted-foreground/60">
-                {mode === 'symbols' && !query.trim() ? 'Type to search symbols' : 'No matches'}
+                {mode === 'symbols' && !query.trim()
+                  ? 'Type to search symbols'
+                  : mode === 'hierarchy'
+                    ? 'Nothing found here'
+                    : 'No matches'}
               </p>
             )}
           </div>
