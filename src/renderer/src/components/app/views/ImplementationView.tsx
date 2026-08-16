@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
+import { AnimatePresence, LayoutGroup, motion, useReducedMotion } from 'motion/react'
 import { Check, ChevronRight, Circle, MessageSquare } from 'lucide-react'
 import type { SessionMeta } from '@shared/events'
 import { useApp, type LiveEditState } from '../../../state/store'
@@ -12,7 +12,14 @@ import { Spinner } from '../../ui/spinner'
 import { AgentDetail, AgentRow, useAgents } from '../AgentFleet'
 import { ApprovalCard } from '../blocks/ApprovalCard'
 import { QuestionCard } from '../blocks/QuestionCard'
-import { editModel, ErrorChip, EDIT_TOOLS, splitEdit, ZEditCard } from '../blocks/ToolGroup'
+import {
+  editModel,
+  ErrorChip,
+  EDIT_TOOLS,
+  splitEdit,
+  TweenHeight,
+  ZEditCard
+} from '../blocks/ToolGroup'
 import { MarkdownText } from '../blocks/MarkdownText'
 import { Transcript } from '../Transcript'
 import { WorkingStrip } from '../WorkingStrip'
@@ -148,9 +155,12 @@ export function ImplementationView({ session }: { session: SessionMeta }): React
     el.addEventListener('scroll', onScroll, { passive: true })
     return () => el.removeEventListener('scroll', onScroll)
   }, [session.id])
+  const interactingUntil = useRef(0)
   useLayoutEffect(() => {
     const el = scrollRef.current
-    if (el && atBottomRef.current && running) el.scrollTop = el.scrollHeight
+    if (el && atBottomRef.current && running && Date.now() > interactingUntil.current) {
+      el.scrollTop = el.scrollHeight
+    }
   })
 
   const goal = blocks.find((b) => b.kind === 'user')
@@ -203,7 +213,11 @@ export function ImplementationView({ session }: { session: SessionMeta }): React
             style={{ flexGrow: 0, flexShrink: 1 }}
             className="flex min-h-0 min-w-0 flex-col overflow-hidden"
           >
-            <div ref={scrollRef} className="flex-1 overflow-y-auto select-text">
+            <div
+              ref={scrollRef}
+              onPointerDown={() => (interactingUntil.current = Date.now() + 1500)}
+              className="flex-1 overflow-y-auto select-text"
+            >
               <div className="mx-auto w-full max-w-3xl px-6 py-5">
                 {goal && (
                   <div className="mb-5">
@@ -299,38 +313,39 @@ export function ImplementationView({ session }: { session: SessionMeta }): React
                               ms={ms !== null && ms > 1500 ? ms : null}
                             />
                           </div>
-                          {!closedTasks.has(i) && live && <TaskActivity blocks={taskBlocks} />}
-                          {!closedTasks.has(i) &&
-                            items.length > 0 &&
-                            (folded ? (
-                              <TaskGrid
-                                blocks={taskBlocks}
-                                sessionId={session.id}
-                                openPath={openChange?.task === i ? openChange.path : null}
-                                onPick={(path) =>
-                                  setOpenChange(
-                                    openChange?.task === i && openChange.path === path
-                                      ? null
-                                      : { task: i, path }
-                                  )
-                                }
-                              />
-                            ) : (
-                              <div className="px-3 pt-1 pb-2">
-                                <WorkItems blocks={items} sessionId={session.id} />
-                              </div>
-                            ))}
-                          {!closedTasks.has(i) && live && diskOnly.length > 0 && (
-                            <DiskCards edits={diskOnly} />
-                          )}
-                          {(live || todo.status === 'completed') && (
-                            <TaskMeta
-                              index={i}
-                              blocks={taskBlocks}
-                              marks={usageMarks}
-                              span={span}
-                            />
-                          )}
+                          <TweenHeight open={!closedTasks.has(i)} animate>
+                            <div>
+                              {live && <TaskActivity blocks={taskBlocks} />}
+                              {items.length > 0 &&
+                                (folded ? (
+                                  <TaskGrid
+                                    blocks={taskBlocks}
+                                    sessionId={session.id}
+                                    openPath={openChange?.task === i ? openChange.path : null}
+                                    onPick={(path) =>
+                                      setOpenChange(
+                                        openChange?.task === i && openChange.path === path
+                                          ? null
+                                          : { task: i, path }
+                                      )
+                                    }
+                                  />
+                                ) : (
+                                  <div className="px-3 pt-1 pb-2">
+                                    <WorkItems blocks={items} sessionId={session.id} />
+                                  </div>
+                                ))}
+                              {live && diskOnly.length > 0 && <DiskCards edits={diskOnly} />}
+                              {(live || todo.status === 'completed') && (
+                                <TaskMeta
+                                  index={i}
+                                  blocks={taskBlocks}
+                                  marks={usageMarks}
+                                  span={span}
+                                />
+                              )}
+                            </div>
+                          </TweenHeight>
                         </div>
                       )
                     })}
@@ -657,55 +672,57 @@ function TaskGrid({
   if (files.size === 0) return null
   const open = openPath ? files.get(openPath) : null
   return (
-    <div className="grid grid-cols-[repeat(auto-fill,minmax(190px,1fr))] gap-x-4 px-4 pb-2">
-      {[...files.entries()].map(([path, f]) =>
-        openPath === path ? null : (
-          <motion.button
-            key={path}
-            layoutId={`chg-${sessionId}-${path}`}
-            onClick={() => onPick(path)}
-            title={path}
-            className="flex items-center gap-2 py-0.5 text-left text-[12px] transition-colors hover:text-foreground"
-          >
-            <span className="min-w-0 flex-1 truncate text-muted-foreground">{f.name}</span>
-            <span className="shrink-0 tabular-nums">
-              {f.adds > 0 && <span className="text-success">+{f.adds}</span>}{' '}
-              {f.dels > 0 && <span className="text-destructive">−{f.dels}</span>}
-            </span>
-            {f.ms > 1500 && (
-              <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground/50">
-                ~{duration(f.ms)}
+    <LayoutGroup>
+      <div className="grid grid-cols-[repeat(auto-fill,minmax(190px,1fr))] gap-x-4 px-4 pb-2">
+        {[...files.entries()].map(([path, f]) =>
+          openPath === path ? null : (
+            <motion.button
+              key={path}
+              layout
+              layoutId={`chg-${sessionId}-${path}`}
+              transition={SPRING_PANEL}
+              onClick={() => onPick(path)}
+              title={path}
+              className="flex items-center gap-2 py-0.5 text-left text-[12px] transition-colors hover:text-foreground"
+            >
+              <span className="w-9 shrink-0 text-right text-[10px] tabular-nums text-muted-foreground/50">
+                {f.ms > 1500 ? `~${duration(f.ms)}` : ''}
               </span>
-            )}
-          </motion.button>
-        )
-      )}
-      <AnimatePresence>
-        {open && openPath && (
-          <motion.div
-            key={openPath}
-            layoutId={`chg-${sessionId}-${openPath}`}
-            transition={SPRING_PANEL}
-            className="col-span-full py-1"
-            // Closing the card IS the collapse: a click on the card's own
-            // header row morphs it back to its text row. Inner buttons
-            // (edit links, line clicks) keep their normal behavior.
-            onClickCapture={(e) => {
-              const el = e.target as HTMLElement
-              const btn = el.closest('button')
-              const card = e.currentTarget.querySelector('.group\\/edit')
-              if (btn && card && btn === card.querySelector('button')) {
-                e.preventDefault()
-                e.stopPropagation()
-                onPick(openPath)
-              }
-            }}
-          >
-            <ZEditCard b={open.block} defaultOpen />
-          </motion.div>
+              <span className="min-w-0 flex-1 truncate text-muted-foreground">{f.name}</span>
+              <span className="shrink-0 tabular-nums">
+                {f.adds > 0 && <span className="text-success">+{f.adds}</span>}{' '}
+                {f.dels > 0 && <span className="text-destructive">−{f.dels}</span>}
+              </span>
+            </motion.button>
+          )
         )}
-      </AnimatePresence>
-    </div>
+        <AnimatePresence>
+          {open && openPath && (
+            <motion.div
+              key={openPath}
+              layoutId={`chg-${sessionId}-${openPath}`}
+              transition={SPRING_PANEL}
+              className="col-span-full py-1"
+              // Closing the card IS the collapse: a click on the card's own
+              // header row morphs it back to its text row. Inner buttons
+              // (edit links, line clicks) keep their normal behavior.
+              onClickCapture={(e) => {
+                const el = e.target as HTMLElement
+                const btn = el.closest('button')
+                const card = e.currentTarget.querySelector('.group\\/edit')
+                if (btn && card && btn === card.querySelector('button')) {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  onPick(openPath)
+                }
+              }}
+            >
+              <ZEditCard b={open.block} defaultOpen />
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+    </LayoutGroup>
   )
 }
 
@@ -730,6 +747,7 @@ function TaskMeta({
       ? end.output - base.output
       : undefined
   const compactions = blocks.filter((b) => b.kind === 'compaction' && b.phase === 'done').length
+  const [hover, setHover] = useState<number | null>(null)
   const fmtTok = (n: number): string => (n >= 1000 ? `${Math.round(n / 1000)}k` : `${n}`)
 
   const dur = span ? span.last - span.first : 0
@@ -738,7 +756,24 @@ function TaskMeta({
       ? blocks.flatMap((b) => {
           if (b.ts === undefined || b.kind !== 'tool') return []
           const k = actKind(b.name)
-          return [{ at: (b.ts - span!.first) / dur, k, name: b.name, off: b.ts - span!.first }]
+          // What THIS mark did — the payload beats the tool name.
+          const i = (b.input && typeof b.input === 'object' ? b.input : {}) as Record<
+            string,
+            unknown
+          >
+          const raw =
+            [i.file_path, i.path, i.command, i.pattern, i.query, i.description].find(
+              (v) => typeof v === 'string' && v
+            ) ?? ''
+          const payload = String(raw).split('/').slice(-2).join('/').slice(0, 60)
+          return [
+            {
+              at: (b.ts - span!.first) / dur,
+              k,
+              detail: payload ? `${b.name} · ${payload}` : b.name,
+              off: b.ts - span!.first
+            }
+          ]
         })
       : []
   const compactTicks =
@@ -772,48 +807,63 @@ function TaskMeta({
         </p>
       )}
       {ticks.length > 1 && (
-        <div className="group/tl relative">
+        <div
+          className="relative"
+          onMouseLeave={() => setHover(null)}
+          onMouseMove={(e) => {
+            // Nearest mark to the cursor: the popup names what IT did.
+            const rect = e.currentTarget.getBoundingClientRect()
+            const x = (e.clientX - rect.left) / rect.width
+            let best = -1
+            let bestD = 0.03 // within 3% of the bar, else nothing
+            ticks.forEach((t, n) => {
+              const d = Math.abs(t.at - x)
+              if (d < bestD) {
+                bestD = d
+                best = n
+              }
+            })
+            setHover(best >= 0 ? best : null)
+          }}
+        >
           <div className="relative mt-1 h-[5px] overflow-hidden rounded-full bg-secondary/50">
             {ticks.map((t, n) => (
               <span
                 key={n}
-                title={`${t.name} · ${duration(t.off)} in`}
-                className={cn('absolute top-0 h-full w-[3px] rounded-full', TICK_COLOR[t.k])}
+                className={cn(
+                  'absolute top-0 h-full w-[3px] rounded-full',
+                  TICK_COLOR[t.k],
+                  hover === n && 'brightness-150'
+                )}
                 style={{ left: `${Math.min(99, t.at * 100)}%` }}
               />
             ))}
             {compactTicks.map((t, n) => (
               <span
                 key={`c${n}`}
-                title="context compacted"
                 className="absolute top-0 h-full w-[2px] bg-violet"
                 style={{ left: `${Math.min(99, t.at * 100)}%` }}
               />
             ))}
           </div>
-          {/* Legend floats over the bar on hover — nothing reflows. */}
-          <p className="pointer-events-none absolute bottom-full left-0 z-20 mb-1.5 hidden gap-2.5 rounded-lg border border-border bg-popover px-2.5 py-1.5 text-[10px] whitespace-nowrap text-muted-foreground shadow-[0_4px_16px_rgb(0_0_0/0.12)] group-hover/tl:flex">
-            <span className="flex items-center gap-1">
-              <span className="size-1.5 rounded-full bg-success/80" />
-              edits
-            </span>
-            <span className="flex items-center gap-1">
-              <span className="size-1.5 rounded-full bg-info/60" />
-              reads &amp; searches
-            </span>
-            <span className="flex items-center gap-1">
-              <span className="size-1.5 rounded-full bg-warning/60" />
-              commands
-            </span>
-            <span className="flex items-center gap-1">
-              <span className="size-1.5 rounded-full bg-violet/70" />
-              subagents
-            </span>
-            <span className="flex items-center gap-1">
-              <span className="size-1.5 rounded-full bg-violet" />
-              compaction
-            </span>
-          </p>
+          {/* The popup floats over the bar at the mark — nothing reflows. */}
+          {hover !== null && ticks[hover] && (
+            <div
+              className="pointer-events-none absolute bottom-full z-20 mb-1.5 -translate-x-1/2 rounded-lg border border-border bg-popover px-2.5 py-1 text-[11px] whitespace-nowrap shadow-[0_4px_16px_rgb(0_0_0/0.12)]"
+              style={{ left: `${Math.min(92, Math.max(8, ticks[hover].at * 100))}%` }}
+            >
+              <span
+                className={cn(
+                  'mr-1.5 inline-block size-1.5 rounded-full align-middle',
+                  TICK_COLOR[ticks[hover].k]
+                )}
+              />
+              {ticks[hover].detail}
+              <span className="ml-1.5 text-muted-foreground/60 tabular-nums">
+                {duration(ticks[hover].off)} in
+              </span>
+            </div>
+          )}
         </div>
       )}
     </div>

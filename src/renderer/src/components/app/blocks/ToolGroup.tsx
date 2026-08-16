@@ -515,7 +515,7 @@ function ChevronTile({ open }: { open: boolean }): React.JSX.Element {
 
 /** Height tween wrapper: 200ms ease-out on user toggles ONLY — auto-open,
  *  streaming growth and remounts render at final size with no animation. */
-function TweenHeight({
+export function TweenHeight({
   open,
   animate,
   children
