@@ -2,6 +2,7 @@ import type { ProjectMeta } from '@shared/domain'
 import { client } from '../../lib/client'
 import { useApp } from '../../state/store'
 import { monaco } from './monaco'
+import { registerWillRename } from '../../lib/file-events'
 import { entryForUri, onModelSaved, openFile, registerSaveHook, type OpenedFile } from './models'
 
 /**
@@ -1029,6 +1030,30 @@ const docId = (model: monaco.editor.ITextModel): { uri: string } => ({
   uri: model.uri.toString()
 })
 
+/** Read-side routing (docs/PLAN-4.md M17): the IntelliJ engine answers
+ *  when alive, eligible, and capable; jdtls fills on miss or timeout.
+ *  Web models never detour — their standard connection is the only one. */
+async function readSide<T>(
+  model: monaco.editor.ITextModel,
+  cap: string,
+  method: string,
+  params: unknown,
+  budgetMs = 800
+): Promise<T | null> {
+  const std = await connFor(model)
+  if (!std) return null
+  const ij = model.getLanguageId() === 'java' ? settledIdea.get(std.project.id) : undefined
+  if (ij?.alive && ideaEligible(std.project.id) && ij.capabilities[cap]) {
+    const r = await Promise.race([
+      ij.request<T>(method, params).catch(() => null),
+      new Promise<'timeout'>((res) => setTimeout(() => res('timeout'), budgetMs))
+    ])
+    if (r !== 'timeout' && r !== null) return r
+  }
+  if (!std.capabilities[cap]) return null
+  return std.request<T>(method, params).catch(() => null)
+}
+
 // ── semantic tokens (the IntelliJ look: fields purple, statics italic) ──
 // The legend is provider-level, so registration waits for the first
 // initialized connection of a kind and reuses its server's legend. A
@@ -1302,14 +1327,12 @@ export function registerProviders(): void {
 
   monaco.languages.registerHoverProvider(ALL_LSP_LANGS, {
     async provideHover(model, position) {
-      const conn = await connFor(model)
-      if (!conn) return null
-      const hover = await conn
-        .request<{ contents: unknown; range?: LspRange } | null>('textDocument/hover', {
-          textDocument: docId(model),
-          position: toLspPos(position)
-        })
-        .catch(() => null)
+      const hover = await readSide<{ contents: unknown; range?: LspRange }>(
+        model,
+        'hoverProvider',
+        'textDocument/hover',
+        { textDocument: docId(model), position: toLspPos(position) }
+      )
       if (!hover?.contents) return null
       const parts = Array.isArray(hover.contents) ? hover.contents : [hover.contents]
       const value = parts
@@ -1335,25 +1358,21 @@ export function registerProviders(): void {
   monaco.languages.registerSignatureHelpProvider(ALL_LSP_LANGS, {
     signatureHelpTriggerCharacters: ['(', ','],
     async provideSignatureHelp(model, position) {
-      const conn = await connFor(model)
-      if (!conn) return null
-      const help = await conn
-        .request<{
-          signatures: {
-            label: string
+      const help = await readSide<{
+        signatures: {
+          label: string
+          documentation?: string | { value: string }
+          parameters?: {
+            label: string | [number, number]
             documentation?: string | { value: string }
-            parameters?: {
-              label: string | [number, number]
-              documentation?: string | { value: string }
-            }[]
           }[]
-          activeSignature?: number
-          activeParameter?: number
-        } | null>('textDocument/signatureHelp', {
-          textDocument: docId(model),
-          position: toLspPos(position)
-        })
-        .catch(() => null)
+        }[]
+        activeSignature?: number
+        activeParameter?: number
+      }>(model, 'signatureHelpProvider', 'textDocument/signatureHelp', {
+        textDocument: docId(model),
+        position: toLspPos(position)
+      })
       if (!help?.signatures.length) return null
       return {
         value: {
@@ -1393,44 +1412,65 @@ export function registerProviders(): void {
 
   monaco.languages.registerDefinitionProvider(ALL_LSP_LANGS, {
     async provideDefinition(model, position) {
-      const conn = await connFor(model)
-      if (!conn) return null
-      const result = await conn
-        .request<LspLocation | LspLocation[] | LspLocationLink[] | null>(
-          'textDocument/definition',
-          { textDocument: docId(model), position: toLspPos(position) }
-        )
-        .catch(() => null)
+      const result = await readSide<LspLocation | LspLocation[] | LspLocationLink[]>(
+        model,
+        'definitionProvider',
+        'textDocument/definition',
+        { textDocument: docId(model), position: toLspPos(position) }
+      )
+      return toLocations(model, result)
+    }
+  })
+
+  monaco.languages.registerTypeDefinitionProvider(ALL_LSP_LANGS, {
+    async provideTypeDefinition(model, position) {
+      const result = await readSide<LspLocation | LspLocation[] | LspLocationLink[]>(
+        model,
+        'typeDefinitionProvider',
+        'textDocument/typeDefinition',
+        { textDocument: docId(model), position: toLspPos(position) }
+      )
+      return toLocations(model, result)
+    }
+  })
+
+  monaco.languages.registerImplementationProvider(ALL_LSP_LANGS, {
+    async provideImplementation(model, position) {
+      const result = await readSide<LspLocation | LspLocation[] | LspLocationLink[]>(
+        model,
+        'implementationProvider',
+        'textDocument/implementation',
+        { textDocument: docId(model), position: toLspPos(position) }
+      )
       return toLocations(model, result)
     }
   })
 
   monaco.languages.registerReferenceProvider(ALL_LSP_LANGS, {
     async provideReferences(model, position) {
-      const conn = await connFor(model)
-      if (!conn) return null
-      const result = await conn
-        .request<LspLocation[] | null>('textDocument/references', {
+      const result = await readSide<LspLocation[]>(
+        model,
+        'referencesProvider',
+        'textDocument/references',
+        {
           textDocument: docId(model),
           position: toLspPos(position),
           context: { includeDeclaration: true }
-        })
-        .catch(() => null)
+        }
+      )
       return toLocations(model, result)
     }
   })
 
   monaco.languages.registerRenameProvider(ALL_LSP_LANGS, {
     async provideRenameEdits(model, position, newName) {
-      const conn = await connFor(model)
-      if (!conn) return null
-      const edit = await conn
-        .request<LspWorkspaceEdit | null>('textDocument/rename', {
-          textDocument: docId(model),
-          position: toLspPos(position),
-          newName
-        })
-        .catch(() => null)
+      const edit = await readSide<LspWorkspaceEdit>(
+        model,
+        'renameProvider',
+        'textDocument/rename',
+        { textDocument: docId(model), position: toLspPos(position), newName },
+        3000 // renames search the workspace — a fair budget, still bounded
+      )
       if (!edit) return null
       // Pre-open touched files so monaco's bulk edit can apply everything
       // (open models autosave; nothing needs a second write path here).
@@ -1463,11 +1503,12 @@ export function registerProviders(): void {
 
   monaco.languages.registerDocumentSymbolProvider(ALL_LSP_LANGS, {
     async provideDocumentSymbols(model) {
-      const conn = await connFor(model)
-      if (!conn) return null
-      const symbols = await conn
-        .request<LspSymbol[] | null>('textDocument/documentSymbol', { textDocument: docId(model) })
-        .catch(() => null)
+      const symbols = await readSide<LspSymbol[]>(
+        model,
+        'documentSymbolProvider',
+        'textDocument/documentSymbol',
+        { textDocument: docId(model) }
+      )
       if (!symbols) return null
       const convert = (s: LspSymbol): monaco.languages.DocumentSymbol => {
         const range = s.range ?? s.location?.range
@@ -1564,14 +1605,12 @@ export function registerProviders(): void {
   monaco.languages.registerInlayHintsProvider(ALL_LSP_LANGS, {
     onDidChangeInlayHints: inlayRefresh.event,
     async provideInlayHints(model, range) {
-      const conn = await connFor(model)
-      if (!conn?.capabilities.inlayHintProvider) return null
-      const hints = await conn
-        .request<LspInlayHint[] | null>('textDocument/inlayHint', {
-          textDocument: docId(model),
-          range: toLspRange(range)
-        })
-        .catch(() => null)
+      const hints = await readSide<LspInlayHint[]>(
+        model,
+        'inlayHintProvider',
+        'textDocument/inlayHint',
+        { textDocument: docId(model), range: toLspRange(range) }
+      )
       if (!hints) return null
       return {
         hints: hints.map((h) => ({
@@ -1591,14 +1630,12 @@ export function registerProviders(): void {
 
   monaco.languages.registerFoldingRangeProvider(ALL_LSP_LANGS, {
     async provideFoldingRanges(model) {
-      const conn = await connFor(model)
-      if (!conn?.capabilities.foldingRangeProvider) return null
-      const ranges = await conn
-        .request<{ startLine: number; endLine: number; kind?: string }[] | null>(
-          'textDocument/foldingRange',
-          { textDocument: docId(model) }
-        )
-        .catch(() => null)
+      const ranges = await readSide<{ startLine: number; endLine: number; kind?: string }[]>(
+        model,
+        'foldingRangeProvider',
+        'textDocument/foldingRange',
+        { textDocument: docId(model) }
+      )
       // null → monaco falls back to indentation folding.
       return (
         ranges?.map((r) => ({
@@ -1617,14 +1654,12 @@ export function registerProviders(): void {
 
   monaco.languages.registerDocumentHighlightProvider(ALL_LSP_LANGS, {
     async provideDocumentHighlights(model, position) {
-      const conn = await connFor(model)
-      if (!conn?.capabilities.documentHighlightProvider) return null
-      const list = await conn
-        .request<{ range: LspRange; kind?: number }[] | null>('textDocument/documentHighlight', {
-          textDocument: docId(model),
-          position: toLspPos(position)
-        })
-        .catch(() => null)
+      const list = await readSide<{ range: LspRange; kind?: number }[]>(
+        model,
+        'documentHighlightProvider',
+        'textDocument/documentHighlight',
+        { textDocument: docId(model), position: toLspPos(position) }
+      )
       if (!list) return null
       const DHK = monaco.languages.DocumentHighlightKind
       const KINDS = [DHK.Text, DHK.Text, DHK.Read, DHK.Write]
@@ -1673,16 +1708,32 @@ monaco.editor.onDidCreateEditor((editor) => {
 })
 
 async function formattingEdits(model: monaco.editor.ITextModel): Promise<LspTextEdit[] | null> {
-  const conn = await connFor(model)
-  if (!conn) return null
-  if (!conn.capabilities.documentFormattingProvider) return null
-  return conn
-    .request<LspTextEdit[] | null>('textDocument/formatting', {
-      textDocument: docId(model),
-      options: { tabSize: 2, insertSpaces: true }
-    })
-    .catch(() => null)
+  // Routed: the IntelliJ engine formats with the project's IDEA code style.
+  return readSide<LspTextEdit[]>(model, 'documentFormattingProvider', 'textDocument/formatting', {
+    textDocument: docId(model),
+    options: { tabSize: 2, insertSpaces: true }
+  })
 }
+
+// File renames route through the IntelliJ engine first (M17): the
+// workspace/willRenameFiles edit updates imports before the fs.rename.
+registerWillRename(async (projectId, fromRel, toRel) => {
+  const project = useApp.getState().projects.find((p) => p.id === projectId)
+  const ij = settledIdea.get(projectId)
+  if (!project || !ij?.alive) return
+  const root = project.cwd.endsWith('/') ? project.cwd : `${project.cwd}/`
+  const files = [
+    {
+      oldUri: monaco.Uri.file(root + fromRel).toString(),
+      newUri: monaco.Uri.file(root + toRel).toString()
+    }
+  ]
+  const edit = await Promise.race([
+    ij.request<LspWorkspaceEdit | null>('workspace/willRenameFiles', { files }).catch(() => null),
+    new Promise<null>((res) => setTimeout(() => res(null), 1500))
+  ])
+  if (edit) await applyWorkspaceEdit(project, edit)
+})
 
 // Format-on-save (M14): the registry calls this pre-flush when enabled.
 registerSaveHook(async (model) => {
@@ -1709,6 +1760,25 @@ export async function workspaceSymbols(
   project: ProjectMeta,
   query: string
 ): Promise<WorkspaceSymbolRow[]> {
+  // The IntelliJ engine's index answers alone when it's up (JDK included,
+  // IDEA ranking); otherwise every live standard connection contributes.
+  const ij = settledIdea.get(project.id)
+  if (ij?.alive && ideaEligible(project.id)) {
+    const symbols = await ij
+      .request<LspSymbol[] | null>('workspace/symbol', { query })
+      .catch(() => null)
+    if (symbols?.length) {
+      return symbols.slice(0, 100).map((sym) => ({
+        name: sym.name,
+        kind: SYMBOL_KINDS[sym.kind - 1] ?? SK.Variable,
+        containerName: sym.containerName ?? '',
+        uri: sym.location?.uri ?? '',
+        range: sym.location
+          ? toMonacoRange(sym.location.range)
+          : { startLineNumber: 1, startColumn: 1, endLineNumber: 1, endColumn: 1 }
+      }))
+    }
+  }
   const kinds: LangKind[] = ['web', 'java']
   const live = kinds
     .map((kind) => conns.get(`${project.id}:${kind}`))

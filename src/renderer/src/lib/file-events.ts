@@ -33,3 +33,25 @@ export function registerFlusher(fn: () => Promise<void>): void {
 export function flushAllBuffers(): Promise<void> {
   return flusher?.() ?? Promise.resolve()
 }
+
+// ── file-rename intelligence hook (docs/PLAN-4.md M17) ───────────────
+// The editor chunk registers a workspace/willRenameFiles handler when
+// loaded; the Files panel calls through this seam so renaming a file
+// updates imports without the panel ever importing monaco.
+
+type WillRename = (projectId: string, fromRel: string, toRel: string) => Promise<void>
+let willRename: WillRename | null = null
+
+export function registerWillRename(handler: WillRename): void {
+  willRename = handler
+}
+
+/** Apply rename-driven edits (imports) before the actual fs.rename;
+ *  no-op when the editor chunk (or the engine) isn't up. */
+export async function applyWillRename(
+  projectId: string,
+  fromRel: string,
+  toRel: string
+): Promise<void> {
+  await willRename?.(projectId, fromRel, toRel).catch(() => undefined)
+}

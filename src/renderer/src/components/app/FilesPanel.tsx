@@ -4,7 +4,7 @@ import { asyncDataLoaderFeature, selectionFeature } from '@headless-tree/core'
 import { FileCode2, FolderOpen, FolderPlus, FilePlus2, Pencil, Trash2, Eye } from 'lucide-react'
 import type { FsEntry } from '@shared/domain'
 import { client } from '../../lib/client'
-import { onFileEvent } from '../../lib/file-events'
+import { applyWillRename, onFileEvent } from '../../lib/file-events'
 import { useApp } from '../../state/store'
 import { cn } from '../../lib/utils'
 import { Tree, TreeItem, TreeItemLabel } from '../reui/tree'
@@ -211,11 +211,10 @@ function ActionDialog({
           return
         }
         const dir = parentOf(action.path)
-        await client.request('fs.rename', {
-          projectId,
-          path: action.path,
-          to: dir ? `${dir}/${trimmed}` : trimmed
-        })
+        const to = dir === ROOT ? trimmed : `${dir}/${trimmed}`
+        // IDEA-grade rename: imports update first (no-op sans engine).
+        await applyWillRename(projectId, action.path, to)
+        await client.request('fs.rename', { projectId, path: action.path, to })
       } else if (action.type === 'delete') {
         await client.request('fs.delete', { projectId, path: action.path })
       }
