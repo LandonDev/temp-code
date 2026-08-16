@@ -1,6 +1,7 @@
 import { memo, useEffect, useMemo, useState } from 'react'
 import { cn } from '../../lib/utils'
 import { useApp } from '../../state/store'
+import { duration } from './bits'
 
 /**
  * Zeron working indicator, in a permanently reserved 24px strip above the
@@ -37,11 +38,6 @@ const seedOf = (s: string): number => {
   let h = 0
   for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0
   return Math.abs(h)
-}
-
-function formatElapsed(ms: number): string {
-  const s = Math.floor(ms / 1000)
-  return s < 60 ? `${s}s` : `${Math.floor(s / 60)}m ${s % 60}s`
 }
 
 /** 750ms diagonal gradient wave over a 3×3 matrix of cells — the app's one
@@ -125,7 +121,7 @@ export const WorkingStrip = memo(function WorkingStrip({
           <>
             <MatrixSpinner />
             <span>{word}</span>
-            <span className="tabular-nums text-faint">{formatElapsed(elapsed)}</span>
+            <span className="tabular-nums text-faint">{duration(elapsed)}</span>
           </>
         )}
       </div>

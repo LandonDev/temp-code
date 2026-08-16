@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readFileSync, realpathSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { WebSocketServer, type WebSocket } from 'ws'
 import { CATALOG } from '@shared/catalog'
@@ -76,8 +76,22 @@ function callerOf(registry: SessionRegistry, sessionId: string): SessionMeta {
 
 /** file.read is fenced to project working trees (plan docs live there). */
 function readAllowedFile(registry: SessionRegistry, path: string): string | null {
+  // Containment allows either spelling of a root — /tmp vs /private/tmp
+  // (or any symlinked workspace root) must not fail the check, and a file
+  // that doesn't exist yet (plan polls) must still resolve.
+  const real = (p: string): string => {
+    try {
+      return realpathSync(p)
+    } catch {
+      return p
+    }
+  }
   const abs = resolve(path)
-  const allowed = registry.listProjects().some((p) => abs.startsWith(resolve(p.cwd)))
+  const absReal = real(abs)
+  const allowed = registry
+    .listProjects()
+    .flatMap((p) => [resolve(p.cwd), real(resolve(p.cwd))])
+    .some((root) => abs.startsWith(root) || absReal.startsWith(root))
   if (!allowed) throw new Error('path outside app-managed directories')
   try {
     return readFileSync(abs, 'utf8')

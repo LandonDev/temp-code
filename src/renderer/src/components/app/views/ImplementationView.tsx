@@ -175,6 +175,14 @@ export function ImplementationView({ session }: { session: SessionMeta }): React
     setSawWaiting(waiting)
     if (waiting) setChatOpen(true)
   }
+  // The run finishing with every task done is the moment the conversation
+  // stops mattering — fold it to the edge bar. A stop mid-plan (or on a
+  // question) keeps it open: the user still has to talk.
+  const [sawRunning, setSawRunning] = useState(running)
+  if (running !== sawRunning) {
+    setSawRunning(running)
+    if (!running && !waiting && allDone) setChatOpen(false)
+  }
   const collapsed = hasBoard && !chatOpen
 
   // Board/chat split in %, draggable 30–70, double-click resets.
@@ -340,6 +348,8 @@ export function ImplementationView({ session }: { session: SessionMeta }): React
                                   blocks={taskBlocks}
                                   marks={usageMarks}
                                   span={span}
+                                  live={live}
+                                  now={now}
                                 />
                               )}
                             </div>
@@ -631,6 +641,29 @@ function TaskActivity({ blocks }: { blocks: Block[] }): React.JSX.Element | null
   )
 }
 
+/** The WHOLE change a task made to one file: a single edit as-is, several
+ *  fused into one synthetic block whose hunks run in call order — clicking
+ *  a grid row never shows just the last touch. */
+function wholeChange(path: string, edits: ToolBlock[]): ToolBlock {
+  if (edits.length === 1) return edits[0]
+  const first = edits[0]
+  const last = edits[edits.length - 1]
+  return {
+    ...last,
+    id: `${first.id}all`,
+    callId: `${first.callId}#all`,
+    name: '__merged__',
+    input: {
+      file_path: path,
+      create: editModel(first).create,
+      hunks: edits.flatMap((e) => editModel(e).hunks)
+    },
+    output: last.output ?? '',
+    ts: first.ts,
+    doneTs: last.doneTs
+  }
+}
+
 /** A settled task's footprint: every touched file as a quiet text row —
  *  click one and its diff morphs open in place (AgentDetail-style). */
 function TaskGrid({
@@ -645,7 +678,7 @@ function TaskGrid({
   const gid = useId()
   const files = new Map<
     string,
-    { name: string; adds: number; dels: number; ms: number; block: ToolBlock }
+    { name: string; adds: number; dels: number; ms: number; edits: ToolBlock[] }
   >()
   for (const b of blocks) {
     if (b.kind !== 'tool' || !EDIT_TOOLS.has(b.name)) continue
@@ -657,11 +690,11 @@ function TaskGrid({
         adds: 0,
         dels: 0,
         ms: 0,
-        block: eb
+        edits: []
       }
       cur.adds += m.adds
       cur.dels += m.dels
-      cur.block = eb // latest edit of the file carries the final diff
+      cur.edits.push(eb)
       if (eb.doneTs !== undefined && eb.ts !== undefined) cur.ms += eb.doneTs - eb.ts
       files.set(m.path, cur)
     }
@@ -728,7 +761,7 @@ function TaskGrid({
                 }
               }}
             >
-              <ZEditCard b={open.block} defaultOpen />
+              <ZEditCard b={wholeChange(openPath, open.edits)} pinnedOpen />
             </motion.div>
           </motion.div>
         )}
@@ -743,12 +776,17 @@ function TaskMeta({
   index,
   blocks,
   marks,
-  span
+  span,
+  live = false,
+  now = 0
 }: {
   index: number
   blocks: Block[]
   marks: { todo: number; input?: number; output?: number }[]
   span?: { first: number; last: number }
+  /** the task is the one working right now — its timeline runs on the clock */
+  live?: boolean
+  now?: number
 }): React.JSX.Element | null {
   // Token delta = last mark inside this task minus last mark before it.
   const end = [...marks].reverse().find((m) => m.todo === index)
@@ -761,7 +799,11 @@ function TaskMeta({
   const [hover, setHover] = useState<number | null>(null)
   const fmtTok = (n: number): string => (n >= 1000 ? `${Math.round(n / 1000)}k` : `${n}`)
 
-  const dur = span ? span.last - span.first : 0
+  // A live task's timeline runs to NOW, not to its last event — the bar
+  // keeps growing between events, and the 1s-linear transition on each
+  // tick makes the marks glide left instead of stepping.
+  const tlEnd = span ? (live ? Math.max(now, span.last) : span.last) : 0
+  const dur = span ? tlEnd - span.first : 0
   const ticks =
     dur > 3000
       ? blocks.flatMap((b) => {
@@ -842,7 +884,7 @@ function TaskMeta({
               <span
                 key={n}
                 className={cn(
-                  'absolute top-0 h-full w-[3px] rounded-full',
+                  'absolute top-0 h-full w-[3px] rounded-full transition-[left] duration-1000 ease-linear',
                   TICK_COLOR[t.k],
                   hover === n && 'brightness-150'
                 )}
@@ -852,7 +894,7 @@ function TaskMeta({
             {compactTicks.map((t, n) => (
               <span
                 key={`c${n}`}
-                className="absolute top-0 h-full w-[2px] bg-violet"
+                className="absolute top-0 h-full w-[2px] bg-violet transition-[left] duration-1000 ease-linear"
                 style={{ left: `${Math.min(99, t.at * 100)}%` }}
               />
             ))}

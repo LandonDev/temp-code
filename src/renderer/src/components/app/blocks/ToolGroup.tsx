@@ -539,19 +539,30 @@ export function TweenHeight({
     // Start from wherever the element actually is — a toggle that lands
     // mid-tween continues from the current height instead of jumping.
     const from = el.offsetHeight
+    const done = (): void => {
+      el.style.transition = 'none'
+      el.style.height = open ? 'auto' : '0px'
+      el.removeEventListener('transitionend', done)
+    }
+    // Same height both ways → transitionend never fires; snap to final.
+    if (from === target) {
+      done()
+      return
+    }
     el.style.transition = 'none'
     el.style.height = `${from}px`
     // Force the start frame, then tween to the target (RESIZE: 200ms ease-out).
     void el.offsetHeight
     el.style.transition = 'height 200ms ease-out'
     el.style.height = `${target}px`
-    const done = (): void => {
-      el.style.transition = 'none'
-      if (open) el.style.height = 'auto'
-      el.removeEventListener('transitionend', done)
-    }
     el.addEventListener('transitionend', done)
-    return () => el.removeEventListener('transitionend', done)
+    // Hidden tabs and interrupted transitions can swallow transitionend —
+    // without this, height sticks at a fixed px and later toggles look dead.
+    const fallback = window.setTimeout(done, 260)
+    return () => {
+      el.removeEventListener('transitionend', done)
+      clearTimeout(fallback)
+    }
   }, [open, animate])
   return (
     <div ref={ref} className="overflow-hidden" style={{ height: open ? 'auto' : 0 }}>
@@ -670,13 +681,17 @@ function useDiffRows(b: ToolBlock, m: EditModel, refresh = 0): DiffRow[] {
     if (!needsLocate || !projectId) return
     let alive = true
     let rel = m.path
-    if (rel.startsWith('/') && cwd) {
-      const root = cwd.endsWith('/') ? cwd : `${cwd}/`
-      if (!rel.startsWith(root)) return
-      rel = rel.slice(root.length)
+    let req: Promise<string | null>
+    const root = cwd ? (cwd.endsWith('/') ? cwd : `${cwd}/`) : null
+    if (rel.startsWith('/') && (!root || !rel.startsWith(root))) {
+      // Outside the selected project (another project, a worktree): the
+      // absolute read still resolves — line numbers survive the mismatch.
+      req = client.request<string | null>('file.read', { path: rel })
+    } else {
+      if (root && rel.startsWith(root)) rel = rel.slice(root.length)
+      req = client.request<string | null>('fs.read', { projectId, path: rel })
     }
-    void client
-      .request<string | null>('fs.read', { projectId, path: rel })
+    void req
       .then((content) => {
         if (alive && content !== null) setLocated(locateHunks(m.hunks, content))
       })
@@ -744,17 +759,32 @@ export const langOf = (path: string): string | null =>
 function useDiffHighlight(rows: DiffRow[], path?: string, settled?: boolean): (string | null)[] {
   const [html, setHtml] = useState<(string | null)[]>([])
   const lang = path ? langOf(path) : null
-  const joined = useMemo(() => rows.map((r) => (r.type === 'gap' ? '' : r.text)).join('\n'), [rows])
+  // Only the shown slice goes to the worker — a diff past the cap still
+  // gets its visible lines colored instead of losing highlighting entirely.
+  const joined = useMemo(
+    () =>
+      rows
+        .slice(0, DIFF_LINE_CAP)
+        .map((r) => (r.type === 'gap' ? '' : r.text))
+        .join('\n'),
+    [rows]
+  )
   useEffect(() => {
-    if (!settled || !lang || rows.length === 0 || rows.length > DIFF_LINE_CAP) {
+    if (!settled || !lang || rows.length === 0) {
       setHtml([])
       return
     }
     let alive = true
     void highlight(joined, lang).then((h) => {
       if (!alive || !h) return
-      const lines = [...h.matchAll(/<span class="line">(.*?)<\/span>\n?/gs)].map((m) => m[1])
-      if (lines.length === rows.length) setHtml(lines)
+      // Line spans hold NESTED token spans — a non-greedy regex to the
+      // first </span> truncates every multi-token line. Newlines only
+      // exist BETWEEN line spans, so split on them and peel the wrapper.
+      const body = /<code[^>]*>([\s\S]*)<\/code>/.exec(h)?.[1] ?? ''
+      const lines = body
+        .split('\n')
+        .map((l) => l.replace(/^<span class="line">/, '').replace(/<\/span>$/, ''))
+      if (lines.length > 0) setHtml(lines)
     })
     return () => {
       alive = false
@@ -769,15 +799,18 @@ function DiffBlock({
   rows,
   path,
   settled,
+  visible,
   onEditAt
 }: {
   rows: DiffRow[]
   /** enables syntax highlighting once settled */
   path?: string
   settled?: boolean
+  /** reveal pass (M23): only the first N rows render — the diff streams in */
+  visible?: number
   onEditAt?: (line: number) => void
 }): React.JSX.Element {
-  const shown = rows.slice(0, DIFF_LINE_CAP)
+  const shown = rows.slice(0, Math.min(DIFF_LINE_CAP, visible ?? Infinity))
   const html = useDiffHighlight(rows, path, settled)
   return (
     <div className="py-1.5 font-mono text-[11.5px] leading-[18px]">
@@ -826,7 +859,7 @@ function DiffBlock({
           </div>
         )
       )}
-      {rows.length > DIFF_LINE_CAP && (
+      {rows.length > DIFF_LINE_CAP && visible === undefined && (
         <div className="px-3 text-[10.5px] text-faint">… diff truncated</div>
       )}
     </div>
@@ -1393,6 +1426,19 @@ export function editModel(b: ToolBlock): EditModel {
         hunks: [{ old: [], new: src }]
       }
     }
+    // Synthetic block fusing every edit a task made to one file (the
+    // board's "whole change" card) — hunks run in call order.
+    case '__merged__': {
+      const hunks = (Array.isArray(i.hunks) ? i.hunks : []) as { old: string[]; new: string[] }[]
+      return {
+        ...empty,
+        path: str(i.file_path),
+        create: i.create === true,
+        adds: hunks.reduce((n, h) => n + h.new.length, 0),
+        dels: hunks.reduce((n, h) => n + h.old.length, 0),
+        hunks
+      }
+    }
     case 'apply_patch': {
       const changes = Array.isArray(b.input) ? (b.input as Record<string, unknown>[]) : []
       // splitEdit hands each card exactly one change — render its real diff.
@@ -1427,10 +1473,14 @@ export function editModel(b: ToolBlock): EditModel {
 export const ZEditCard = memo(function ZEditCard({
   b,
   defaultOpen = false,
+  pinnedOpen = false,
   sessionId
 }: {
   b: ToolBlock
   defaultOpen?: boolean
+  /** diff stays open regardless of persisted/auto state (the board's
+   *  morphed-open card — closing it is the surrounding morph, not a fold) */
+  pinnedOpen?: boolean
   /** enables the live disk-diff overlay + auto open/collapse (M23) */
   sessionId?: string
 }): React.JSX.Element {
@@ -1499,6 +1549,39 @@ export const ZEditCard = memo(function ZEditCard({
 
   // Count the diffstat up only when we watched the change land live.
   const [liveAtMount] = useState(running)
+
+  // The edit itself lands in one atomic write (the CLI buffers input
+  // deltas; the disk write is single) — so the "streaming" the user sees
+  // is a REVEAL: when a watched call settles, its diff rows pour in fast,
+  // hold a beat with the card open, then the card folds to its chip.
+  const rowsRef = useRef<number>(0)
+  const [revealed, setRevealed] = useState<number | null>(null)
+  const [holdOpen, setHoldOpen] = useState(running)
+  useEffect(() => {
+    rowsRef.current = rows.length
+  }, [rows.length])
+  useEffect(() => {
+    if (running || !liveAtMount || !sessionId) return
+    let raf = 0
+    let t: number | undefined
+    const t0 = performance.now()
+    const dur = Math.min(900, 150 + rowsRef.current * 6)
+    const tick = (nowT: number): void => {
+      const p = Math.min(1, Math.max(0, (nowT - t0) / dur))
+      setRevealed(Math.max(1, Math.round(p * rowsRef.current)))
+      if (p < 1) raf = requestAnimationFrame(tick)
+      else {
+        setRevealed(null)
+        t = window.setTimeout(() => setHoldOpen(false), 800)
+      }
+    }
+    raf = requestAnimationFrame(tick)
+    return () => {
+      cancelAnimationFrame(raf)
+      if (t !== undefined) clearTimeout(t)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- one reveal per settle
+  }, [running])
   const adds = useCountUp(liveRec && running ? (liveRec.adds ?? 0) : m.adds, liveAtMount)
   const dels = useCountUp(liveRec && running ? (liveRec.dels ?? 0) : m.dels, liveAtMount)
   const name = m.path.split('/').pop() ?? m.path
@@ -1598,10 +1681,14 @@ export const ZEditCard = memo(function ZEditCard({
           </span>
         )}
       </div>
-      {/* Auto mode (sessionId given): the diff is open exactly while the
-          edit is happening, then collapses to the chip — unless the user
-          toggled, which always wins. */}
-      <TweenHeight open={userToggled ? open : sessionId ? running : open} animate>
+      {/* Auto mode (sessionId given): the diff is open while the edit is
+          happening AND through the reveal+hold after it lands, then
+          collapses to the chip — unless the user toggled, which always
+          wins. pinnedOpen (the board's morphed card) trumps everything. */}
+      <TweenHeight
+        open={pinnedOpen ? true : userToggled ? open : sessionId ? running || holdOpen : open}
+        animate
+      >
         <div className="relative border-t border-(--hairline)">
           {editMode && project && rel ? (
             <>
@@ -1648,6 +1735,7 @@ export const ZEditCard = memo(function ZEditCard({
                 rows={rows}
                 path={m.path}
                 settled={!running}
+                visible={revealed ?? undefined}
                 onEditAt={project && rel ? (line) => editHere(line) : undefined}
               />
             </>

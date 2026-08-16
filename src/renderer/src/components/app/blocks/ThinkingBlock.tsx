@@ -3,12 +3,13 @@ import { cn } from '../../../lib/utils'
 import { TextShimmer } from '../../motion/text-shimmer'
 import { ZIcon } from '../zicon'
 import { useSmoothText } from './smooth'
+import { duration } from '../bits'
 
 function durationLabel(ms?: number): string {
   if (ms === undefined) return 'Thought for a moment'
   const s = Math.round(ms / 1000)
   if (s < 1) return 'Thought for a moment'
-  return s < 60 ? `Thought for ${s} seconds` : `Thought for ${Math.floor(s / 60)}m ${s % 60}s`
+  return s < 60 ? `Thought for ${s} seconds` : `Thought for ${duration(ms)}`
 }
 
 /**
