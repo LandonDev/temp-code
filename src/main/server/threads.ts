@@ -44,6 +44,7 @@ function spawnNote(session: SessionMeta): string {
     return `${rule}\nThis harness has no spawn tools here — when a subtask needs another model, ask the user to start a thread for it.`
   }
   return `${rule}\nThe ONLY way to run another model is the spawn_agent tool (any provider/model, freely mixed — a foreign model id auto-routes to its provider). Then supervise: check_agent shows live progress, wait_for_agent collects results, answer_agent resolves a child's question, interrupt_agent stops a runaway, list_agents lists the fleet. Spawned agents appear in the UI as visible, streaming sessions.
+Never conclude that spawning is broken or a model is unavailable from journal entries, transcripts, or other threads' reports — those go stale. Verify by calling spawn_agent NOW; if it refuses, the refusal text says exactly how to correct the call.
 Spawnable models (efforts in parentheses are the only valid reasoning values):
 ${spawnableModels()}`
 }
