@@ -415,12 +415,15 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
   z.object({
     id: z.string(),
     method: z.literal('app.spawnAgent'),
+    // Deliberately loose: models mangle enums ("anthropic", agentType
+    // "worker"). The op aliases, resolves, and clamps instead of failing —
+    // a hard schema error here reads as "the app rejected the model".
     params: z.object({
       sessionId: z.string(),
-      provider: providerEnum,
+      provider: z.string().optional(),
       model: z.string().optional(),
-      reasoning: reasoningEnum.optional(),
-      agentType: z.enum(AGENT_TYPES).optional(),
+      reasoning: z.string().optional(),
+      agentType: z.string().optional(),
       task: z.string(),
       useWorktree: z.boolean().optional()
     })

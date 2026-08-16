@@ -9,7 +9,7 @@ import {
   tool,
   type McpSdkServerConfigWithInstance
 } from '@anthropic-ai/claude-agent-sdk'
-import { AGENT_TYPES, CATALOG, type ProviderId } from '@shared/catalog'
+import { AGENT_TYPES, CATALOG, modelInfo, type ProviderId } from '@shared/catalog'
 import { DEFAULT_RULES, ruleModel, type OrchestrationRules } from '@shared/rules'
 import type { EventRow, SessionMeta } from '@shared/events'
 import type { SessionRegistry } from './sessions'
@@ -234,21 +234,96 @@ const settledReport = (id: string, meta: SessionMeta): Record<string, unknown> =
   }
 }
 
+/** The spawnable model table — one source for prompts and preambles. */
+export function spawnableModels(): string {
+  return Object.values(CATALOG)
+    .map(
+      (p) =>
+        `- ${p.id}:\n${p.models
+          .map(
+            (m) =>
+              `    ${m.id}${m.reasoning.length ? ` (${m.reasoning.join('|')})` : ' (no effort control)'}`
+          )
+          .join('\n')}`
+    )
+    .join('\n')
+}
+
+/** Models name providers loosely in the wild — accept the obvious spellings. */
+const PROVIDER_ALIASES: Record<string, ProviderId> = {
+  claude: 'claude',
+  anthropic: 'claude',
+  codex: 'codex',
+  openai: 'codex',
+  gpt: 'codex',
+  cursor: 'cursor'
+}
+
+const canon = (s: string): string => s.toLowerCase().replace(/[^a-z0-9.]/g, '')
+
+/**
+ * Forgiving spawn-target resolution: alias the provider, match the model
+ * exactly anywhere in the catalog, then loosely by id/label substring
+ * ("opus" → claude-opus-5). Only a model nothing matches is refused —
+ * with the full table, so the caller can self-correct.
+ */
+function resolveSpawnTarget(
+  rawProvider: string | undefined,
+  rawModel: string | undefined,
+  fallback: ProviderId
+): { provider: ProviderId; model: string } | { error: string } {
+  const provider = rawProvider ? PROVIDER_ALIASES[rawProvider.toLowerCase().trim()] : undefined
+  if (!rawModel) {
+    const p = provider ?? fallback
+    return { provider: p, model: CATALOG[p].defaultModel }
+  }
+  for (const p of Object.keys(CATALOG) as ProviderId[]) {
+    if (modelInfo(p, rawModel)) {
+      return provider && modelInfo(provider, rawModel)
+        ? { provider, model: rawModel }
+        : { provider: p, model: rawModel }
+    }
+  }
+  const q = canon(rawModel)
+  const order = [...(provider ? [provider] : []), ...(Object.keys(CATALOG) as ProviderId[])]
+  for (const p of order) {
+    const hit = CATALOG[p].models.find((m) => canon(m.id).includes(q) || canon(m.label).includes(q))
+    if (hit) return { provider: p, model: hit.id }
+  }
+  return {
+    error: `refused: no provider serves a model matching "${rawModel}". Spawnable models:\n${spawnableModels()}`
+  }
+}
+
 export interface SpawnAgentArgs {
-  provider: ProviderId
+  /** Loose: aliases like "anthropic"/"openai" accepted; omitted = derived
+   *  from the model, else the caller's own provider. */
+  provider?: string
   model?: string
-  reasoning?: SessionMeta['reasoning']
-  agentType?: (typeof AGENT_TYPES)[number]
+  /** Off-ladder values clamp to the model's default instead of failing. */
+  reasoning?: string
+  /** Unknown types coerce to 'implementer' instead of failing. */
+  agentType?: string
   task: string
   useWorktree?: boolean
 }
 
 export async function orchSpawnAgent(parent: SessionMeta, args: SpawnAgentArgs): Promise<string> {
   if (!registry) return 'orchestration registry not ready'
+  const target = resolveSpawnTarget(args.provider, args.model, parent.provider)
+  if ('error' in target) return target.error
+  const info = modelInfo(target.provider, target.model)!
+  const reasoning = (
+    args.reasoning && info.reasoning.includes(args.reasoning as SessionMeta['reasoning'])
+      ? args.reasoning
+      : (info.defaultReasoning ?? info.reasoning[0] ?? 'medium')
+  ) as SessionMeta['reasoning']
   // Enforce the user's conduct rules — these are settings, not
   // suggestions. The refusal text tells the model how to proceed.
   const rules = rulesFor(parent)
-  const agentType = args.agentType ?? 'implementer'
+  const agentType = (AGENT_TYPES as readonly string[]).includes(args.agentType ?? '')
+    ? (args.agentType as (typeof AGENT_TYPES)[number])
+    : 'implementer'
   const children = registry.list().filter((s) => s.parentId === parent.id)
   const live = children.filter(
     (s) => s.status === 'running' || s.status === 'starting' || s.status === 'waiting'
@@ -270,15 +345,15 @@ export async function orchSpawnAgent(parent: SessionMeta, args: SpawnAgentArgs):
   const parentNow = registry.list().find((s) => s.id === parent.id) ?? parent
   const child = await registry.create({
     projectId: parent.projectId,
-    provider: args.provider,
-    model: args.model ?? CATALOG[args.provider].defaultModel,
-    reasoning: args.reasoning ?? 'medium',
+    provider: target.provider,
+    model: target.model,
+    reasoning,
     agentType,
     permission: parentNow.permission,
     cwd,
     // The task IS the identity — boards, tabs and the sidebar all
     // lead with it. Provider/type stay visible as metadata.
-    title: args.task.trim().split('\n')[0].slice(0, 80) || `${args.provider} · ${agentType}`,
+    title: args.task.trim().split('\n')[0].slice(0, 80) || `${target.provider} · ${agentType}`,
     parentId: parent.id
   })
   await registry.send(child.id, args.task)
@@ -419,7 +494,10 @@ export function orchestratorMcp(parent: SessionMeta): McpSdkServerConfigWithInst
         'spawn_agent',
         'Spawn a subagent session and send it its task. Returns the agent id. The agent works asynchronously — use wait_for_agent to collect its result.',
         {
-          provider: z.enum(providerIds).describe('Which harness runs the agent'),
+          provider: z
+            .enum(providerIds)
+            .optional()
+            .describe('Which harness runs the agent (omit to derive from the model)'),
           model: z
             .string()
             .optional()
@@ -530,17 +608,7 @@ only path that gives the user a visible, streaming subagent session.
 
 Spawnable models (map loose names like "gpt 5.6" onto these ids; efforts
 listed are the ONLY valid reasoning values per model):
-${Object.values(CATALOG)
-  .map(
-    (p) =>
-      `- ${p.id}:\n${p.models
-        .map(
-          (m) =>
-            `    ${m.id}${m.reasoning.length ? ` (${m.reasoning.join('|')})` : ' (no effort control)'}`
-        )
-        .join('\n')}`
-  )
-  .join('\n')}
+${spawnableModels()}
 Agent types: ${AGENT_TYPES.join(', ')} — implementers write code, explorers
 read/investigate, reviewers judge, orchestrators sub-orchestrate.
 

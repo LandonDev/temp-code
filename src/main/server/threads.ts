@@ -3,7 +3,7 @@ import type { SessionMeta } from '@shared/events'
 import type { ProjectMeta } from '@shared/domain'
 import { mirrorRelPath } from './mirror'
 import { hasAppBridge } from './apptools'
-import { orchestratorPrompt } from './orchestration'
+import { orchestratorPrompt, spawnableModels } from './orchestration'
 
 /**
  * Thread-type behavior. Provider-agnostic: instead of per-driver system
@@ -43,7 +43,9 @@ function spawnNote(session: SessionMeta): string {
   if (!has) {
     return `${rule}\nThis harness has no spawn tools here — when a subtask needs another model, ask the user to start a thread for it.`
   }
-  return `${rule}\nThe ONLY way to run another model is the spawn_agent tool (any provider/model, freely mixed — a foreign model id auto-routes to its provider). Then supervise: check_agent shows live progress, wait_for_agent collects results, answer_agent resolves a child's question, interrupt_agent stops a runaway, list_agents lists the fleet. Spawned agents appear in the UI as visible, streaming sessions.`
+  return `${rule}\nThe ONLY way to run another model is the spawn_agent tool (any provider/model, freely mixed — a foreign model id auto-routes to its provider). Then supervise: check_agent shows live progress, wait_for_agent collects results, answer_agent resolves a child's question, interrupt_agent stops a runaway, list_agents lists the fleet. Spawned agents appear in the UI as visible, streaming sessions.
+Spawnable models (efforts in parentheses are the only valid reasoning values):
+${spawnableModels()}`
 }
 
 /** claude reaches the app tools in-process, codex via the stdio bridge,

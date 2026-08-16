@@ -130,11 +130,15 @@ const TOOLS = [
     inputSchema: {
       type: 'object',
       properties: {
-        provider: { type: 'string', enum: PROVIDERS, description: 'Which harness runs the agent' },
+        provider: {
+          type: 'string',
+          enum: PROVIDERS,
+          description: 'Which harness runs the agent (omit to derive from the model)'
+        },
         model: {
           type: 'string',
           description:
-            'Model id served by that provider (defaults: claude=claude-sonnet-5, codex=gpt-5.6-sol, cursor=composer-2.5); a model of another provider auto-routes to it'
+            'Model id — the full spawnable table is in your thread instructions (defaults: claude=claude-sonnet-5, codex=gpt-5.6-sol, cursor=composer-2.5). Loose names like "opus" resolve; a model of another provider auto-routes to it.'
         },
         reasoning: { type: 'string', enum: ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'] },
         agentType: {
@@ -147,7 +151,7 @@ const TOOLS = [
           description: 'Isolate a writing agent in its own git worktree (default true)'
         }
       },
-      required: ['provider', 'task']
+      required: ['task']
     }
   },
   {
