@@ -436,7 +436,16 @@ export const codexDriver: HarnessDriver = {
           // The structured-question tool (request_user_input) is
           // feature-gated off by default — without it the model dumps
           // "reply 1A/2B" menus as plain text instead of asking in the UI.
-          features: { default_mode_request_user_input: true },
+          features: {
+            default_mode_request_user_input: true,
+            // Codex's native multi-agent tools are literally named
+            // spawn_agent/wait_agent/list_agents, serve ONLY OpenAI
+            // models, and shadow the app's cross-provider spawn toolset
+            // by bare name — models call them and conclude "only OpenAI
+            // workers exist". Off, so spawn_agent always means the app's.
+            multi_agent: false,
+            multi_agent_v2: false
+          },
           // Fast = OpenAI's priority service tier. Only sent when on, so
           // off keeps whatever the user's own codex config chooses.
           ...(session.fast ? { service_tier: 'priority' } : {}),
