@@ -128,15 +128,29 @@ async function capture(createWindow: () => void): Promise<void> {
     sendToRenderer('appshot-error', { code })
     return
   }
+  const name = result.windowTitle
+    ? `${result.appName} — ${result.windowTitle}`
+    : result.appName
   let textPath: string | undefined
   if (!result.thin && result.text) {
     textPath = `${base}.md`
-    await writeFile(textPath, result.text)
+    // A header so the model knows what this flat dump is — and that the
+    // screenshot beside it carries everything visual.
+    await writeFile(
+      textPath,
+      `# ${name}\n\n` +
+        `Text from the captured window's accessibility tree, top to bottom. It can ` +
+        `include content scrolled out of view. Indentation follows containment; ` +
+        `interactive elements carry tags like [button] or [menu item]. This file has ` +
+        `no layout, color, or styling — the screenshot attached with it shows all of ` +
+        `that, so read them together.\n\n` +
+        result.text
+    )
   }
   const attachment: Attachment = {
     kind: 'appshot',
     path: png,
-    name: result.windowTitle ? `${result.appName} — ${result.windowTitle}` : result.appName,
+    name,
     mime: 'image/png',
     textPath
   }
