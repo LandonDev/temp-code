@@ -1,5 +1,5 @@
 {
-  "n": 69,
-  "notes": "Faint separators bracket and divide the active-tab lines on project cards",
-  "ts": 1786999851000
+  "n": 70,
+  "notes": "New threads and projects no longer fail with spawn EBADF when two worktree sessions run at once",
+  "ts": 1787001436000
 }
