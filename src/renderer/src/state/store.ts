@@ -185,7 +185,12 @@ interface AppState {
   /** Live disk-diff stream (M22): sessionId → path → latest state. */
   liveEdits: Record<string, Record<string, LiveEditState>>
   /** Cumulative token snapshots per task boundary (M25). */
-  usage: Record<string, { todo: number; input?: number; output?: number }[]>
+  usage: Record<string, { round: number; todo: number; input?: number; output?: number }[]>
+  /** Todo lists of finished follow-up rounds, by round index. */
+  pastTodos: Record<string, TodoItem[][]>
+  /** The user stopped the last run (interrupt) — cleared on the next send.
+   *  A stopped run must not auto-fold the conversation pane. */
+  stopped: Record<string, boolean>
   /** what Enter does while a turn runs; ⌘Enter does the other */
   midTurnDefault: 'queue' | 'steer'
   /** Appshots (M10): capture settings (server-owned) + staged captures */
@@ -365,7 +370,8 @@ function publishFold(
     blocks: { ...s.blocks, [sessionId]: fold.blocks.slice() },
     costs: { ...s.costs, [sessionId]: fold.costUsd },
     todos: { ...s.todos, [sessionId]: fold.todos },
-    usage: { ...s.usage, [sessionId]: fold.usageMarks.slice() }
+    usage: { ...s.usage, [sessionId]: fold.usageMarks.slice() },
+    pastTodos: { ...s.pastTodos, [sessionId]: fold.pastTodos }
   }))
 }
 
@@ -419,6 +425,8 @@ export const useApp = create<AppState>((set, get) => ({
   contexts: {},
   liveEdits: {},
   usage: {},
+  pastTodos: {},
+  stopped: {},
   midTurnDefault: localStorage.getItem(MID_TURN_KEY) === 'steer' ? 'steer' : 'queue',
   appshots: DEFAULT_APPSHOT_SETTINGS,
   pendingAppshots: {},
@@ -554,16 +562,18 @@ export const useApp = create<AppState>((set, get) => ({
           const blocks = { ...s.blocks }
           const costs = { ...s.costs }
           const todos = { ...s.todos }
+          const pastTodos = { ...s.pastTodos }
           for (const id of push.sessionIds) {
             delete sessions[id]
             delete events[id]
             delete blocks[id]
             delete costs[id]
             delete todos[id]
+            delete pastTodos[id]
             folds.delete(id)
           }
           const selectedId = push.sessionIds.includes(s.selectedId ?? '') ? null : s.selectedId
-          return { sessions, events, blocks, costs, todos, selectedId }
+          return { sessions, events, blocks, costs, todos, pastTodos, selectedId }
         })
       }
     })
@@ -831,6 +841,7 @@ export const useApp = create<AppState>((set, get) => ({
     }
     foldOptimisticUser(fold, text, opts?.attachments)
     publishFold(set, sessionId, fold)
+    set((s) => ({ stopped: { ...s.stopped, [sessionId]: false } }))
     const before = get().sessions[sessionId]
     if (before && before.status !== 'running') {
       set((s) => ({
@@ -850,6 +861,7 @@ export const useApp = create<AppState>((set, get) => ({
   },
 
   interrupt: async (sessionId) => {
+    set((s) => ({ stopped: { ...s.stopped, [sessionId]: true } }))
     await client.request('session.interrupt', { sessionId })
   },
 

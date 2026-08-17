@@ -84,8 +84,12 @@ type BlockKind =
     }
 
 /** `todo` = index of the todo that was in_progress when the block was born
- *  (-1 before the first todo list) — how the implementation view groups. */
-export type Block = BlockKind & { id: string; todo: number; ts?: number }
+ *  (-1 before the first todo list) — how the implementation view groups.
+ *  `round` = which user request this block answers: a user message sent
+ *  AFTER the previous turn completed starts a new round (steering messages
+ *  mid-turn do not). Rounds keep follow-ups from bleeding into the old
+ *  board — tasks, spans and token marks all scope to their round. */
+export type Block = BlockKind & { id: string; todo: number; round: number; ts?: number }
 
 export interface TodoItem {
   content: string
@@ -116,7 +120,16 @@ export interface FoldState {
   pendingUsers: number[]
   /** cumulative token snapshots keyed to the task active when they landed
    *  (M25) — per-task deltas derive from boundary pairs, never guesses */
-  usageMarks: { todo: number; input?: number; output?: number }[]
+  usageMarks: { round: number; todo: number; input?: number; output?: number }[]
+  /** current round (0-based) — bumps when a user message opens a new turn */
+  round: number
+  /** a turn is open (user spoke, no turn-complete yet) — steering messages
+   *  land inside it instead of starting a round */
+  turnOpen: boolean
+  sawUser: boolean
+  /** todo list of each finished round, by round index — the follow-up
+   *  archive the board renders as history */
+  pastTodos: TodoItem[][]
 }
 
 export function emptyFold(): FoldState {
@@ -132,20 +145,39 @@ export function emptyFold(): FoldState {
     taskByCall: new Map(),
     taskSeen: new Set(),
     pendingUsers: [],
-    usageMarks: []
+    usageMarks: [],
+    round: 0,
+    turnOpen: false,
+    sawUser: false,
+    pastTodos: []
   }
+}
+
+/** A user message arriving on a CLOSED turn starts a new round: the old
+ *  board's todos archive, the active-task pointer resets (so the idle gap
+ *  and the new turn's early work never bill to the last old task). */
+function beginTurn(s: FoldState): void {
+  if (!s.turnOpen && s.sawUser) {
+    s.pastTodos = [...s.pastTodos, s.todos]
+    s.todos = []
+    s.activeTodo = -1
+    s.round++
+  }
+  s.turnOpen = true
+  s.sawUser = true
 }
 
 /** Show the user's message the instant they hit send — the server echoes
  *  the authoritative user-text event a round-trip later; foldEvent then
  *  claims this block instead of appending a duplicate. */
 export function foldOptimisticUser(s: FoldState, text: string, attachments?: Attachment[]): void {
+  beginTurn(s)
   s.pendingUsers.push(push(s, { kind: 'user', text, attachments, pending: true }, Date.now()))
 }
 
 function push(s: FoldState, block: BlockKind, ts?: number): number {
   const id = String(s.nextId++)
-  s.blocks.push({ ...block, id, todo: s.activeTodo, ts })
+  s.blocks.push({ ...block, id, todo: s.activeTodo, round: s.round, ts })
   return s.blocks.length - 1
 }
 
@@ -226,6 +258,7 @@ export function foldEvent(s: FoldState, e: AgentEvent, ts?: number): void {
     case 'user-text': {
       const pending = s.pendingUsers.shift()
       if (pending !== undefined && s.blocks[pending]?.kind === 'user') {
+        // The optimistic push already ran beginTurn — just claim the block.
         const b = s.blocks[pending] as Extract<Block, { kind: 'user' }>
         s.blocks[pending] = {
           ...b,
@@ -235,6 +268,7 @@ export function foldEvent(s: FoldState, e: AgentEvent, ts?: number): void {
           ts: ts ?? b.ts
         }
       } else {
+        beginTurn(s)
         push(s, { kind: 'user', text: e.text, attachments: e.attachments }, ts)
       }
       break
@@ -400,20 +434,33 @@ export function foldEvent(s: FoldState, e: AgentEvent, ts?: number): void {
       break
     }
     case 'usage': {
-      // Cumulative counter snapshot — one mark per task, latest wins.
-      const mark = { todo: s.activeTodo, input: e.inputTokens, output: e.outputTokens }
+      // Cumulative counter snapshot — one mark per (round, task), latest wins.
+      const mark = {
+        round: s.round,
+        todo: s.activeTodo,
+        input: e.inputTokens,
+        output: e.outputTokens
+      }
       const last = s.usageMarks.at(-1)
-      if (last && last.todo === s.activeTodo) s.usageMarks[s.usageMarks.length - 1] = mark
-      else s.usageMarks.push(mark)
+      if (last && last.todo === s.activeTodo && last.round === s.round) {
+        s.usageMarks[s.usageMarks.length - 1] = mark
+      } else s.usageMarks.push(mark)
       break
     }
     case 'turn-complete':
+      s.turnOpen = false
       if (e.costUsd !== undefined) s.costUsd = e.costUsd
       if (e.inputTokens !== undefined || e.outputTokens !== undefined) {
-        const mark = { todo: s.activeTodo, input: e.inputTokens, output: e.outputTokens }
+        const mark = {
+          round: s.round,
+          todo: s.activeTodo,
+          input: e.inputTokens,
+          output: e.outputTokens
+        }
         const last = s.usageMarks.at(-1)
-        if (last && last.todo === s.activeTodo) s.usageMarks[s.usageMarks.length - 1] = mark
-        else s.usageMarks.push(mark)
+        if (last && last.todo === s.activeTodo && last.round === s.round) {
+          s.usageMarks[s.usageMarks.length - 1] = mark
+        } else s.usageMarks.push(mark)
       }
       // The turn ending settles every streaming block — an interrupt can
       // beat the per-item finals, and a "Thinking" shimmer must never
