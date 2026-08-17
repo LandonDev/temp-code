@@ -1,5 +1,5 @@
 {
-  "n": 38,
-  "notes": "Live-diff watcher refuses cwds that would freeze the app: non-repos and 30k+-file repos",
-  "ts": 1786937005656
+  "n": 39,
+  "notes": "Dark-mode diffs get their dark palette back",
+  "ts": 1786940693121
 }
