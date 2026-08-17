@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect } from 'react'
+import { lazy, Suspense, useDeferredValue, useEffect } from 'react'
 import { motion } from 'motion/react'
 import { FolderPlus } from 'lucide-react'
 import { EASE_OUT } from './lib/ease'
@@ -28,7 +28,13 @@ export default function App(): React.JSX.Element {
   const connected = useApp((s) => s.connected)
   const workspaces = useApp((s) => s.workspaces)
   const projectId = useApp((s) => s.selectedProjectId)
-  const session = useApp((s) => (s.selectedId ? s.sessions[s.selectedId] : undefined))
+  const selectedId = useApp((s) => s.selectedId)
+  // The thread view swaps on the DEFERRED id: a sidebar click commits its
+  // own (cheap, animated) update first, and the heavy view mounts in an
+  // interruptible render behind it — the selection slide never stutters
+  // on the swap.
+  const deferredId = useDeferredValue(selectedId)
+  const session = useApp((s) => (deferredId ? s.sessions[deferredId] : undefined))
   const activeSurface = useApp((s) =>
     s.selectedProjectId ? (s.activeSurface[s.selectedProjectId] ?? null) : null
   )

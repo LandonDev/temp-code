@@ -115,6 +115,14 @@ export function PlanView({ session }: { session: SessionMeta }): React.JSX.Eleme
   const tasks = useMemo(() => planTasks(sections), [sections])
   const hasDoc = sections.length > 0
 
+  // A doc landing right after mount is a restored plan (the async file
+  // poll answering), not a live first write — it must appear instantly.
+  // The growth animation reflows both panes every frame, and on a project
+  // switch it lands mid sidebar-slide and judders everything. Only a doc
+  // born later (the agent writing it while you watch) animates in.
+  const mountedAt = useRef(performance.now())
+  const liveEntry = performance.now() - mountedAt.current > 800
+
   // Revision wash: a settled section whose content changed flashes once.
   // The streaming tail (last section while running) is growth, not revision.
   const prevRef = useRef<Section[]>([])
@@ -179,9 +187,12 @@ export function PlanView({ session }: { session: SessionMeta }): React.JSX.Eleme
   )
 
   // Chat pane phases: open alongside the plan while the conversation runs;
-  // collapsed to the edge bar once the plan has handed off. A pending
-  // question always forces it open — answers live in the chat. Both are
-  // render-time adjusts (the prevLen pattern above), not effects.
+  // collapsed to the edge bar once the plan has handed off, and once the
+  // turn settles with the plan written — the plan is the deliverable, the
+  // chat is a click away. A pending question always forces it open —
+  // answers live in the chat. All are render-time adjusts (the prevLen
+  // pattern above), not effects, so a manual toggle wins until the next
+  // phase change.
   const [chatOpen, setChatOpen] = useState(true)
   const [sawSpawned, setSawSpawned] = useState(!!spawned)
   if (!!spawned !== sawSpawned) {
@@ -192,6 +203,12 @@ export function PlanView({ session }: { session: SessionMeta }): React.JSX.Eleme
   if (waiting !== sawWaiting) {
     setSawWaiting(waiting)
     if (waiting) setChatOpen(true)
+  }
+  const settledDoc = hasDoc && session.status === 'idle'
+  const [sawSettledDoc, setSawSettledDoc] = useState(settledDoc)
+  if (settledDoc !== sawSettledDoc) {
+    setSawSettledDoc(settledDoc)
+    if (settledDoc) setChatOpen(false)
   }
   const collapsed = hasDoc && !chatOpen
 
@@ -224,7 +241,7 @@ export function PlanView({ session }: { session: SessionMeta }): React.JSX.Eleme
         {hasDoc && (
           <motion.div
             key="plan"
-            initial={reduce ? false : { flexBasis: '0%', opacity: 0 }}
+            initial={reduce || !liveEntry ? false : { flexBasis: '0%', opacity: 0 }}
             animate={{ flexBasis: collapsed ? '100%' : `${split}%`, opacity: 1 }}
             transition={dragging || reduce ? { duration: 0 } : { duration: 0.28, ease: EASE_OUT }}
             style={{ flexGrow: 0, flexShrink: 1 }}
