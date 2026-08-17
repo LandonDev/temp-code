@@ -150,7 +150,10 @@ export function Sidebar(): React.JSX.Element {
           </button>
         </div>
 
-        <div className="flex-1 space-y-3 overflow-y-auto px-2 pb-2">
+        {/* layoutRoot scopes the active pill's shared-layout measurement to the
+            sidebar; layoutScroll folds this element's scroll offset into it —
+            without both, the pill's flight replays stale page/scroll deltas. */}
+        <motion.div layoutRoot layoutScroll className="flex-1 space-y-3 overflow-y-auto px-2 pb-2">
           <div>
             {workspaces.map((ws) => (
               <WorkspaceGroup
@@ -172,7 +175,7 @@ export function Sidebar(): React.JSX.Element {
           </div>
 
           <ChatsGroup sessions={unsorted} />
-        </div>
+        </motion.div>
 
         <div className="flex h-10 shrink-0 items-center gap-2 border-t border-border/60 px-2">
           <button
@@ -329,11 +332,12 @@ function WorkspaceGroup({
       <AnimatePresence initial={false}>
         {open && (
           <motion.div
-            initial={reduce ? false : { height: 0, opacity: 0 }}
-            animate={{ height: 'auto', opacity: 1 }}
-            exit={reduce ? undefined : { height: 0, opacity: 0 }}
+            // Clip only while the fold animates: a permanent overflow-hidden
+            // would clip the active pill's flight in from another workspace.
+            initial={reduce ? false : { height: 0, opacity: 0, overflow: 'hidden' }}
+            animate={{ height: 'auto', opacity: 1, transitionEnd: { overflow: 'visible' } }}
+            exit={reduce ? undefined : { height: 0, opacity: 0, overflow: 'hidden' }}
             transition={reduce ? { duration: 0 } : SPRING_LAYOUT}
-            className="overflow-hidden"
           >
             <div className="mt-0.5 space-y-px">
               {active.length === 0 && chats.length === 0 && archived.length === 0 ? (
@@ -469,7 +473,7 @@ function ProjectRow({
           .filter(Boolean)
           .join(' · ')}
         className={cn(
-          'relative flex w-full flex-col gap-[3px] rounded-md px-2 py-2 text-left transition-transform active:scale-[0.99]',
+          'relative flex w-full flex-col gap-[3px] rounded-md px-2 py-2 text-left',
           !selected && 'hover:bg-accent/50'
         )}
       >
@@ -684,7 +688,7 @@ function ChatRow({ session }: { session: SessionMeta }): React.JSX.Element {
         }}
         onDoubleClick={() => setRenaming(true)}
         className={cn(
-          'relative flex h-7 w-full items-center gap-1.5 rounded-md px-2 text-left transition-transform active:scale-[0.99]',
+          'relative flex h-7 w-full items-center gap-1.5 rounded-md px-2 text-left',
           !selected && 'hover:bg-accent/50'
         )}
       >
@@ -778,11 +782,12 @@ function ChatsGroup({ sessions }: { sessions: SessionMeta[] }): React.JSX.Elemen
       <AnimatePresence initial={false}>
         {open && sessions.length > 0 && (
           <motion.div
-            initial={reduce ? false : { height: 0, opacity: 0 }}
-            animate={{ height: 'auto', opacity: 1 }}
-            exit={reduce ? undefined : { height: 0, opacity: 0 }}
+            // Same as the workspace fold: clip only while animating so the
+            // active pill can fly across group boundaries unclipped.
+            initial={reduce ? false : { height: 0, opacity: 0, overflow: 'hidden' }}
+            animate={{ height: 'auto', opacity: 1, transitionEnd: { overflow: 'visible' } }}
+            exit={reduce ? undefined : { height: 0, opacity: 0, overflow: 'hidden' }}
             transition={reduce ? { duration: 0 } : SPRING_LAYOUT}
-            className="overflow-hidden"
           >
             <div className="mt-0.5 space-y-px">
               {sessions.map((s) => (
