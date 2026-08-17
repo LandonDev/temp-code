@@ -32,33 +32,50 @@ const slugify = (name: string): string =>
     .replace(/(^-|-$)/g, '')
     .slice(0, 40) || 'project'
 
+/** Whether `branch` exists as a local branch or on any remote. */
+export async function branchExists(repoPath: string, branch: string): Promise<boolean> {
+  const local = branch.replace(/^origin\//, '')
+  for (const ref of [`refs/heads/${local}`, `refs/remotes/origin/${local}`]) {
+    try {
+      await execFileP('git', ['-C', repoPath, 'show-ref', '--verify', '--quiet', ref])
+      return true
+    } catch {
+      // keep looking
+    }
+  }
+  return false
+}
+
 /**
  * Create a project worktree off the workspace repo. Returns {cwd, branch}.
- * baseRef picks the new branch's fork point (default: repo HEAD);
- * existingBranch adopts a branch instead of creating tc/<slug> — "open my
- * PR branch as a project".
+ * opts.branch is the branch the worktree targets: adopted when it exists
+ * (locally or on origin), created from opts.baseRef (default: repo HEAD)
+ * when it doesn't. No branch given → auto tc/<slug> from baseRef.
  */
 export async function addProjectWorktree(
   repoPath: string,
   name: string,
-  opts: { baseRef?: string; existingBranch?: string } = {}
+  opts: { branch?: string; baseRef?: string } = {}
 ): Promise<{ cwd: string; branch: string }> {
   const base = join(homedir(), '.temp-code', 'worktrees')
   mkdirSync(base, { recursive: true })
   let slug = slugify(name)
   let dir = join(base, slug)
-  if (opts.existingBranch) {
+  if (opts.branch) {
     // A remote pick (origin/foo) checks out a local tracking branch `foo`.
-    const local = opts.existingBranch.replace(/^origin\//, '')
+    const branch = opts.branch.replace(/^origin\//, '')
+    const exists = await branchExists(repoPath, branch)
+    const args = exists ? [dir, branch] : [dir, '-b', branch, ...(opts.baseRef ? [opts.baseRef] : [])]
     for (let n = 2; n < 20; n++) {
       try {
-        await execFileP('git', ['-C', repoPath, 'worktree', 'add', dir, local])
-        return { cwd: dir, branch: local }
+        await execFileP('git', ['-C', repoPath, 'worktree', 'add', ...args])
+        return { cwd: dir, branch }
       } catch (err) {
         const msg = String(err)
         if (!msg.includes('already exists')) throw err
         slug = `${slugify(name)}-${n}`
         dir = join(base, slug)
+        args[0] = dir
       }
     }
     throw new Error('could not allocate a worktree directory')

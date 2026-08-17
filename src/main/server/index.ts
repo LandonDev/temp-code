@@ -225,7 +225,7 @@ export async function startServer(dbPath: string): Promise<RunningServer> {
               req.params.workspaceId,
               req.params.name,
               req.params.mode,
-              { baseRef: req.params.baseRef, existingBranch: req.params.existingBranch }
+              { branch: req.params.branch, baseRef: req.params.baseRef }
             )
             sendFrame({ id: req.id, ok: true, result: created })
             void warmIdeaIndexes([{ id: created.id, cwd: created.cwd }])
@@ -461,6 +461,13 @@ export async function startServer(dbPath: string): Promise<RunningServer> {
             registry.setThreadDefaults(req.params.workspaceId, req.params.defaults)
             sendFrame({ id: req.id, ok: true, result: null })
             break
+          case 'turnpass.get':
+            sendFrame({ id: req.id, ok: true, result: registry.getTurnPass(req.params.workspaceId) })
+            break
+          case 'turnpass.set':
+            registry.setTurnPass(req.params.workspaceId, req.params.pass)
+            sendFrame({ id: req.id, ok: true, result: null })
+            break
           case 'appshots.get':
             sendFrame({ id: req.id, ok: true, result: registry.getAppshotSettings() })
             break
@@ -606,6 +613,10 @@ export async function startServer(dbPath: string): Promise<RunningServer> {
               fast: req.params.fast,
               context1m: req.params.context1m
             })
+            sendFrame({ id: req.id, ok: true, result: null })
+            break
+          case 'session.retype':
+            await registry.retype(req.params.sessionId, req.params.threadType)
             sendFrame({ id: req.id, ok: true, result: null })
             break
           case 'session.context':

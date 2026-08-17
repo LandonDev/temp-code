@@ -82,6 +82,12 @@ type BlockKind =
       /** chosen labels per question; null once resolved = dismissed */
       answers?: string[][] | null
     }
+  | {
+      /** completed-turn pass marker — everything after it (until the pass's
+       *  own turn-complete) carries the pass flag and renders highlighted */
+      kind: 'pass'
+      actions: string[]
+    }
 
 /** `todo` = index of the todo that was in_progress when the block was born
  *  (-1 before the first todo list) — how the implementation view groups.
@@ -89,7 +95,14 @@ type BlockKind =
  *  AFTER the previous turn completed starts a new round (steering messages
  *  mid-turn do not). Rounds keep follow-ups from bleeding into the old
  *  board — tasks, spans and token marks all scope to their round. */
-export type Block = BlockKind & { id: string; todo: number; round: number; ts?: number }
+export type Block = BlockKind & {
+  id: string
+  todo: number
+  round: number
+  ts?: number
+  /** born during a completed-turn pass — renders set apart from turn work */
+  pass?: boolean
+}
 
 export interface TodoItem {
   content: string
@@ -127,6 +140,8 @@ export interface FoldState {
    *  land inside it instead of starting a round */
   turnOpen: boolean
   sawUser: boolean
+  /** inside a completed-turn pass — blocks born now get the pass flag */
+  inPass: boolean
   /** todo list of each finished round, by round index — the follow-up
    *  archive the board renders as history */
   pastTodos: TodoItem[][]
@@ -149,6 +164,7 @@ export function emptyFold(): FoldState {
     round: 0,
     turnOpen: false,
     sawUser: false,
+    inPass: false,
     pastTodos: []
   }
 }
@@ -185,7 +201,14 @@ export function foldOptimisticUser(s: FoldState, text: string, attachments?: Att
 
 function push(s: FoldState, block: BlockKind, ts?: number): number {
   const id = String(s.nextId++)
-  s.blocks.push({ ...block, id, todo: s.activeTodo, round: s.round, ts })
+  s.blocks.push({
+    ...block,
+    id,
+    todo: s.activeTodo,
+    round: s.round,
+    ts,
+    ...(s.inPass ? { pass: true } : {})
+  })
   return s.blocks.length - 1
 }
 
@@ -284,7 +307,16 @@ export function foldEvent(s: FoldState, e: AgentEvent, ts?: number): void {
     case 'status':
       // Logged end-of-turn signals close the turn even when the
       // turn-complete event itself was lost (crash between the two).
-      if (e.status === 'idle' || e.status === 'error') s.turnOpen = false
+      if (e.status === 'idle' || e.status === 'error') {
+        s.turnOpen = false
+        s.inPass = false
+      }
+      break
+    case 'turn-pass':
+      // The completed-turn pass opens here; blocks fold as pass work
+      // until its turn-complete (or a status end) closes it.
+      push(s, { kind: 'pass', actions: e.actions }, ts)
+      s.inPass = true
       break
     case 'assistant-text':
       foldText(s, 'assistant', e, ts)
@@ -462,6 +494,7 @@ export function foldEvent(s: FoldState, e: AgentEvent, ts?: number): void {
     }
     case 'turn-complete':
       s.turnOpen = false
+      s.inPass = false
       if (e.costUsd !== undefined) s.costUsd = e.costUsd
       if (e.inputTokens !== undefined || e.outputTokens !== undefined) {
         const mark = {

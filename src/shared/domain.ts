@@ -75,7 +75,7 @@ export interface CommitInfo {
   authoredAt: number
 }
 
-/** project.branches result: pickers for baseRef / existingBranch. */
+/** project.branches result: the target-branch / create-from pickers. */
 export interface BranchList {
   locals: string[]
   remotes: string[]

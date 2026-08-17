@@ -111,6 +111,12 @@ export const AgentEventSchema = z.discriminatedUnion('type', [
     detail: z.string().optional()
   }),
 
+  // End-of-turn pass (the workspace "completed turn" setting): the server
+  // injected a follow-up instruction after the turn settled. Everything
+  // from here to the next turn-complete belongs to the pass — the UI
+  // highlights those tool calls apart from the turn's own work.
+  z.object({ type: z.literal('turn-pass'), actions: z.array(z.string()) }),
+
   // End of a turn, with whatever accounting the provider reports.
   z.object({
     type: z.literal('turn-complete'),

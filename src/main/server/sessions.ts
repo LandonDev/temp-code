@@ -4,13 +4,14 @@ import { basename } from 'node:path'
 import { CreateSessionParams, type CreateSessionInput } from '@shared/contract'
 import { CATALOG, resolveModel, type ProviderId } from '@shared/catalog'
 import type { AgentEvent, Attachment, EventRow, SessionMeta } from '@shared/events'
-import type { ProjectMeta, ProjectMode, WorkspaceMeta } from '@shared/domain'
+import type { ProjectMeta, ProjectMode, ThreadType, WorkspaceMeta } from '@shared/domain'
 import { BUILT_IN_DRIVERS } from './drivers'
 import type { DriverHandle } from './drivers/types'
 import type { Store } from './db'
 import { addProjectWorktree, currentBranch, ensureLocalExclude, isGitRepo } from './git'
 import { parseRules, type OrchestrationRules } from '@shared/rules'
 import { DEFAULT_THREAD_DEFAULTS, parseDefaults, type ThreadDefaults } from '@shared/defaults'
+import { parseTurnPass, passActions, passEnabled, type TurnPass } from '@shared/turnpass'
 import {
   AppshotSettingsSchema,
   DEFAULT_APPSHOT_SETTINGS,
@@ -101,6 +102,9 @@ export class SessionRegistry {
   private queues = new Map<string, QueuedMessage[]>()
   private queueListeners = new Set<QueueListener>()
   private draining = new Set<string>()
+  /** Completed-turn pass state: armed at turn-complete, fired at idle. */
+  private passPending = new Map<string, TurnPass>()
+  private passActive = new Set<string>()
   private lastActivity = new Map<string, number>()
   private sweepTimer: ReturnType<typeof setInterval> | null = null
 
@@ -184,7 +188,7 @@ export class SessionRegistry {
     workspaceId: string,
     name: string,
     mode: ProjectMode,
-    opts: { baseRef?: string; existingBranch?: string } = {}
+    opts: { branch?: string; baseRef?: string } = {}
   ): Promise<ProjectMeta> {
     const ws = this.store.listWorkspaces().find((w) => w.id === workspaceId)
     if (!ws) throw new Error(`unknown workspace: ${workspaceId}`)
@@ -268,6 +272,15 @@ export class SessionRegistry {
   setThreadDefaults(workspaceId: string | null, defaults: ThreadDefaults | null): void {
     const key = workspaceId ? `thread-defaults:${workspaceId}` : 'thread-defaults'
     this.store.setSetting(key, defaults ? JSON.stringify(defaults) : null)
+  }
+
+  /** Completed-turn pass for a workspace; null = not configured. */
+  getTurnPass(workspaceId: string): TurnPass | null {
+    return parseTurnPass(this.store.getSetting(`turn-pass:${workspaceId}`))
+  }
+
+  setTurnPass(workspaceId: string, pass: TurnPass | null): void {
+    this.store.setSetting(`turn-pass:${workspaceId}`, pass ? JSON.stringify(pass) : null)
   }
 
   /** Appshot capture settings — global, defaults until the user changes them. */
@@ -455,14 +468,24 @@ export class SessionRegistry {
       }
     }
     let out = text
-    if (first) {
+    // A retyped thread re-instructs on its next message: the new type's
+    // preamble rides along once, prefaced so the model knows it replaces
+    // the instructions the thread opened with.
+    const retyped = !first && this.store.getRetyped(sessionId)
+    if (retyped) this.store.setRetyped(sessionId, false)
+    if (first || retyped) {
       const parts = [threadPreamble(meta)]
       if (meta.threadType !== 'planning' && meta.planPath) parts.push(planSeed(meta.planPath))
       const preamble = parts.filter(Boolean).join('\n\n')
-      if (preamble) out = `<thread-instructions>\n${preamble}\n</thread-instructions>\n\n${text}`
+      if (preamble) {
+        const note = retyped
+          ? `The user CHANGED this thread's type mid-conversation. The instructions below REPLACE the ones this thread opened with — earlier turns may follow the old shape; from this message on, follow these.\n\n`
+          : ''
+        out = `<thread-instructions>\n${note}${preamble}\n</thread-instructions>\n\n${text}`
+      }
       // Shared context (M8): root project threads open knowing the project —
       // the journal, the sibling transcripts, the journal-append contract.
-      if (!meta.parentId && meta.projectId) {
+      if (first && !meta.parentId && meta.projectId) {
         const project = this.store.getProject(meta.projectId)
         if (project) {
           const ws = this.store.listWorkspaces().find((w) => w.id === project.workspaceId)
@@ -611,6 +634,31 @@ export class SessionRegistry {
     if (next) this.notifyMeta(next)
   }
 
+  /** Change the thread's type mid-conversation. Persists the new identity
+   *  (plan file for planning, orchestrator agent for orchestration), drops
+   *  the handle so the harness reboots with the right system prompt, and —
+   *  when the conversation is already underway — flags the thread so the
+   *  next send carries the new type's instructions. */
+  async retype(sessionId: string, threadType: ThreadType): Promise<void> {
+    const meta = this.store.getSession(sessionId)
+    // Subagents (parentId set) have no thread identity to change.
+    if (!meta || meta.parentId || !meta.threadType || meta.threadType === threadType) return
+    await this.dropHandle(sessionId)
+    const patch: Parameters<Store['updateSession']>[1] = { threadType }
+    if (threadType === 'planning' && !meta.planPath) {
+      patch.planPath = planPathFor(meta.cwd, sessionId)
+    }
+    if (threadType === 'orchestration') patch.agentType = 'orchestrator'
+    else if (meta.agentType === 'orchestrator') patch.agentType = 'implementer'
+    // A still-untitled thread follows its type's placeholder title.
+    if ((Object.values(THREAD_TITLES) as string[]).includes(meta.title)) {
+      patch.title = THREAD_TITLES[threadType]
+    }
+    this.store.setRetyped(sessionId, this.store.hasUserText(sessionId))
+    const next = this.store.updateSession(sessionId, patch)
+    if (next) this.notifyMeta(next)
+  }
+
   /** Live context usage from the session's harness, if it can report it. */
   async contextUsage(sessionId: string): Promise<unknown> {
     // Never poke a streaming harness. Mid-turn control requests can't be
@@ -636,6 +684,8 @@ export class SessionRegistry {
 
   async delete(sessionId: string): Promise<void> {
     this.queues.delete(sessionId)
+    this.passPending.delete(sessionId)
+    this.passActive.delete(sessionId)
     const all = this.store.listSessions()
     const root = all.find((s) => s.id === sessionId)
     const ids = this.store.deleteSessionTree(sessionId)
@@ -742,8 +792,23 @@ export class SessionRegistry {
       if (next) this.notifyMeta(next)
       // Live change stream (M22): watchers follow running sessions.
       if (next) liveDiffOnStatus(this, next, cur?.status)
-      // A settled turn releases the next queued message.
-      if (event.status === 'idle') this.drainQueue(sessionId)
+      // A settled turn runs the pending completed-turn pass first; only a
+      // fully settled session (pass included) releases queued messages.
+      if (event.status === 'idle') {
+        const pass = this.passActive.has(sessionId) ? null : this.passPending.get(sessionId)
+        this.passActive.delete(sessionId)
+        if (pass) {
+          this.passPending.delete(sessionId)
+          this.passActive.add(sessionId)
+          void this.runTurnPass(sessionId, pass)
+        } else {
+          this.drainQueue(sessionId)
+        }
+      }
+      if (event.status === 'error') {
+        this.passPending.delete(sessionId)
+        this.passActive.delete(sessionId)
+      }
       // Dormant supervision: a subagent leaving "running" wakes its parent
       // with an automatic report — immediately when the parent is idle,
       // queued behind its current work otherwise. Skipped when a
@@ -757,8 +822,9 @@ export class SessionRegistry {
       }
     }
     // Shared context (M8): a finished turn refreshes the thread's mirror.
-    if (event.type === 'turn-complete' && this.store.getSession(sessionId)?.projectId) {
-      scheduleMirror(this, sessionId)
+    if (event.type === 'turn-complete') {
+      if (this.store.getSession(sessionId)?.projectId) scheduleMirror(this, sessionId)
+      this.armTurnPass(sessionId)
     }
     for (const listener of this.subscribers.get(sessionId) ?? []) listener(row)
     if (settleToReport) notifyParentOfSettle(this, settleToReport)
@@ -858,6 +924,58 @@ export class SessionRegistry {
       await this.send(sessionId, item.text, item)
     } catch {
       this.queueAdd(sessionId, item.text, item, true)
+    }
+  }
+
+  // ── completed-turn pass (workspace setting) ────────────────────────
+
+  /** At turn-complete: arm the pass when the session's workspace asks for
+   *  one. Root implementation/orchestration threads only, and never off
+   *  the pass's own turn. */
+  private armTurnPass(sessionId: string): void {
+    if (this.passActive.has(sessionId)) return
+    const meta = this.store.getSession(sessionId)
+    if (!meta || meta.parentId) return
+    if (meta.threadType !== 'implementation' && meta.threadType !== 'orchestration') return
+    const workspaceId = meta.projectId
+      ? this.store.getProject(meta.projectId)?.workspaceId
+      : meta.workspaceId
+    if (!workspaceId) return
+    const pass = this.getTurnPass(workspaceId)
+    if (passEnabled(pass)) this.passPending.set(sessionId, pass)
+  }
+
+  /** Inject the pass as its own turn: a `turn-pass` marker event (the
+   *  transcript's highlight boundary), then the instruction straight to
+   *  the harness — no user-text bubble, this is the app talking. */
+  private async runTurnPass(sessionId: string, pass: TurnPass): Promise<void> {
+    try {
+      const handle = await this.handleFor(sessionId)
+      this.append(sessionId, { type: 'turn-pass', actions: passActions(pass) })
+      this.lastActivity.set(sessionId, Date.now())
+      const steps: string[] = []
+      if (pass.verify) {
+        steps.push(
+          "Verify the work from the turn that just ended: run the project's checks (typecheck, tests, lint — whatever the project defines) and fix what fails."
+        )
+      }
+      if (pass.build) {
+        steps.push(
+          "Create a build with the project's build command and say where it landed; fix the build if it breaks."
+        )
+      }
+      if (pass.commit !== 'off') {
+        steps.push(
+          `Commit every change from this work to the current branch with a clear message${pass.commit === 'push' ? ', then push the branch to origin' : ''}.`
+        )
+      }
+      await handle.send(
+        `<turn-pass>\nThe turn settled. The workspace's completed-turn setting now asks you to:\n${steps.map((s, i) => `${i + 1}. ${s}`).join('\n')}\nIf the turn changed nothing to verify, build, or commit, say so in one short line and stop. Never start new feature work in this pass.\n</turn-pass>`
+      )
+    } catch {
+      // Harness refused (gone, mid-restart) — settle back to normal flow.
+      this.passActive.delete(sessionId)
+      this.drainQueue(sessionId)
     }
   }
 

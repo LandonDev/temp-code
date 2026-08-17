@@ -5,6 +5,7 @@ import { ProjectModeSchema, ThreadTypeSchema } from './domain'
 import { OrchestrationRulesSchema } from './rules'
 import { ThreadDefaultsSchema } from './defaults'
 import { AppshotSettingsSchema } from './appshots'
+import { TurnPassSchema } from './turnpass'
 import type { EventRow, SessionMeta } from './events'
 
 /**
@@ -66,10 +67,11 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
       workspaceId: z.string(),
       name: z.string(),
       mode: ProjectModeSchema,
-      /** worktree fork point (a ref like origin/main); default: workspace HEAD */
-      baseRef: z.string().optional(),
-      /** adopt an existing branch instead of creating tc/<slug> */
-      existingBranch: z.string().optional()
+      /** branch the worktree targets: adopted when it exists, created when
+       *  it doesn't; omitted = auto tc/<slug> */
+      branch: z.string().optional(),
+      /** where a new branch forks from (a ref like origin/main); default: workspace HEAD */
+      baseRef: z.string().optional()
     })
   }),
   z.object({ id: z.string(), method: z.literal('project.list') }),
@@ -237,6 +239,18 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
       workspaceId: z.string().nullable().default(null),
       defaults: ThreadDefaultsSchema.nullable()
     })
+  }),
+  // Completed-turn pass: per-workspace actions the model runs after every
+  // settled turn (verify / build / commit / push). Workspace-scoped only.
+  z.object({
+    id: z.string(),
+    method: z.literal('turnpass.get'),
+    params: z.object({ workspaceId: z.string() })
+  }),
+  z.object({
+    id: z.string(),
+    method: z.literal('turnpass.set'),
+    params: z.object({ workspaceId: z.string(), pass: TurnPassSchema.nullable() })
   }),
   // Appshots (M10): global capture settings, one settings-table row.
   z.object({
@@ -435,6 +449,13 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
       fast: z.boolean().optional(),
       context1m: z.boolean().optional()
     })
+  }),
+  // Change the thread's type mid-conversation. The harness restarts with
+  // resume on the next send, which also carries the new type's instructions.
+  z.object({
+    id: z.string(),
+    method: z.literal('session.retype'),
+    params: z.object({ sessionId: z.string(), threadType: ThreadTypeSchema })
   }),
   // Live context-window usage breakdown (claude: the /context data);
   // null when the provider has no live handle or no accounting.

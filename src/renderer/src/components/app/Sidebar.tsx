@@ -16,6 +16,7 @@ import {
 import { StatusDot, THREAD_GLYPHS, THREAD_TINTS, timeAgo } from './bits'
 import { ZIcon } from './zicon'
 import { NewProjectDialog } from './NewProjectDialog'
+import { NewWorkspaceDialog } from './NewWorkspaceDialog'
 import { ConfirmDialog } from './ConfirmDialog'
 import { updateReady, useUpdateStatus } from '../../lib/updates'
 
@@ -32,14 +33,14 @@ export function Sidebar(): React.JSX.Element {
   const connected = useApp((s) => s.connected)
   const settingsOpen = useApp((s) => s.settingsOpen)
   const setSettingsOpen = useApp((s) => s.setSettingsOpen)
-  const addWorkspace = useApp((s) => s.addWorkspace)
   const [newProjectWs, setNewProjectWs] = useState<WorkspaceMeta | null>(null)
+  const [newWorkspacePath, setNewWorkspacePath] = useState<string | null>(null)
 
   const unsorted = useMemo(() => unsortedSessions(sessions), [sessions])
 
   const pickWorkspace = async (): Promise<void> => {
     const path = await window.api.pickDirectory()
-    if (path) await addWorkspace(path)
+    if (path) setNewWorkspacePath(path)
   }
 
   return (
@@ -93,6 +94,9 @@ export function Sidebar(): React.JSX.Element {
 
       {newProjectWs && (
         <NewProjectDialog workspace={newProjectWs} onClose={() => setNewProjectWs(null)} />
+      )}
+      {newWorkspacePath && (
+        <NewWorkspaceDialog path={newWorkspacePath} onClose={() => setNewWorkspacePath(null)} />
       )}
     </aside>
   )
