@@ -428,6 +428,8 @@ function ProjectRow({
       t.id !== selectedId &&
       t.updatedAt > (lastSeen[t.id] ?? 0)
   )
+  // What's left after every state above claimed its tabs — the quiet rest.
+  const dormant = threads.length - running.length - unread.length - waiting - failed
   const now = useNow(running.length > 0)
 
   if (renaming) {
@@ -565,20 +567,26 @@ function ProjectRow({
           )
         })}
 
-        <div className="flex w-full items-center gap-2 text-[11px] leading-4 tabular-nums">
-          {waiting > 0 && (
-            <Stat dot="bg-warning" tint="text-warning" pulse count={waiting} word="need you" />
-          )}
-          {failed > 0 && (
-            <Stat dot="bg-destructive" tint="text-destructive" count={failed} word="failed" />
-          )}
-          <span className="truncate text-muted-foreground/60">
-            {threads.length === 0
-              ? 'No tabs'
-              : `${threads.length} ${threads.length === 1 ? 'tab' : 'tabs'}`}
-            {archivedCount > 0 && ` · ${archivedCount} archived`}
-          </span>
-        </div>
+        {(waiting > 0 || failed > 0 || dormant > 0 || archivedCount > 0 || threads.length === 0) && (
+          <div className="flex w-full items-center gap-2 text-[11px] leading-4 tabular-nums">
+            {waiting > 0 && (
+              <Stat dot="bg-warning" tint="text-warning" pulse count={waiting} word="need you" />
+            )}
+            {failed > 0 && (
+              <Stat dot="bg-destructive" tint="text-destructive" count={failed} word="failed" />
+            )}
+            <span className="truncate text-muted-foreground/60">
+              {threads.length === 0
+                ? 'No tabs'
+                : [
+                    dormant > 0 && `${dormant} dormant`,
+                    archivedCount > 0 && `${archivedCount} archived`
+                  ]
+                    .filter(Boolean)
+                    .join(' · ')}
+            </span>
+          </div>
+        )}
       </button>
       <div className="absolute top-2 right-1.5 opacity-0 transition-opacity group-hover/row:opacity-100">
         <DropdownMenu>
