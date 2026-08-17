@@ -1,6 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
-import { ChevronLeft, ChevronRight, GitFork, ListChecks, MessageSquare, Play, ShieldCheck, SlidersHorizontal } from 'lucide-react'
+import {
+  ChevronLeft,
+  ChevronRight,
+  GitFork,
+  ListChecks,
+  MessageSquare,
+  Play,
+  ShieldCheck,
+  SlidersHorizontal
+} from 'lucide-react'
 import type { ProviderId, Reasoning } from '@shared/catalog'
 import type { PermissionPolicy, SessionMeta } from '@shared/events'
 import { useApp } from '../../../state/store'
@@ -17,6 +26,7 @@ import { Spinner } from '../../ui/spinner'
 import { Transcript } from '../Transcript'
 import { WorkingStrip } from '../WorkingStrip'
 import { PromptBar } from '../PromptBar'
+import { FleetPanel, FleetPulseLine } from '../AgentFleet'
 
 /**
  * Planning thread, in three phases. It opens as a normal chat — the
@@ -306,10 +316,15 @@ export function PlanView({ session }: { session: SessionMeta }): React.JSX.Eleme
           )}
           {/* No minimap in the side pane — it overlaps the text there. */}
           <Transcript sessionId={session.id} minimap={!hasDoc} />
+          <FleetPulseLine sessionId={session.id} />
           <WorkingStrip sessionId={session.id} />
           <PromptBar compact={hasDoc} narrow={hasDoc} />
         </div>
       )}
+
+      {/* Recon fleet: planning threads spawn explorers — same panel the
+          chat grows, folded to its edge tab once the fleet settles. */}
+      <FleetPanel sessionId={session.id} />
     </div>
   )
 }
@@ -496,167 +511,176 @@ function StartButton({
             </div>
           ) : (
             <>
-          {/* Who builds it, and under what rules — the same knobs a new
+              {/* Who builds it, and under what rules — the same knobs a new
               chat gets: model, effort, access. */}
-          <div className="border-b border-border/60 px-3 pt-2.5 pb-2">
-            <p className="text-[13px] font-medium">
-              Start building
-              {tasks.length > 0 && (
-                <span className="ml-1.5 font-normal text-muted-foreground">
-                  {tasks.length} tasks
-                </span>
-              )}
-            </p>
-            <div className="mt-1.5 -ml-1 flex flex-wrap items-center gap-0.5">
-              <ModelPicker
-                provider={choice.provider}
-                model={choice.model}
-                onPick={(p, m) => {
-                  setChoice({ provider: p, model: m })
-                  const next = catalog?.[p].models.find((x) => x.id === m)
-                  const steps = next?.reasoning ?? []
-                  if (!steps.includes(reasoning)) {
-                    setReasoning(next?.defaultReasoning ?? steps[0] ?? 'medium')
-                  }
-                }}
-              />
-              {ladder.length > 1 && (
-                <Select value={reasoning} onValueChange={(v) => setReasoning(v as Reasoning)}>
-                  <SelectTrigger size="sm" aria-label="Reasoning effort" className="gap-1 px-1.5">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {ladder.map((r) => (
-                      <SelectItem key={r} value={r}>
-                        {EFFORT_LABELS[r]}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              )}
-              <Select
-                value={permission}
-                onValueChange={(v) => setPermission(v as PermissionPolicy)}
-              >
-                <SelectTrigger size="sm" aria-label="Access" className="gap-1 px-1.5">
-                  <ShieldCheck className="size-3 text-muted-foreground" />
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {(Object.keys(PERMISSION_LABELS) as PermissionPolicy[]).map((p) => (
-                    <SelectItem key={p} value={p}>
-                      {PERMISSION_LABELS[p]}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
+              <div className="border-b border-border/60 px-3 pt-2.5 pb-2">
+                <p className="text-[13px] font-medium">
+                  Start building
+                  {tasks.length > 0 && (
+                    <span className="ml-1.5 font-normal text-muted-foreground">
+                      {tasks.length} tasks
+                    </span>
+                  )}
+                </p>
+                <div className="mt-1.5 -ml-1 flex flex-wrap items-center gap-0.5">
+                  <ModelPicker
+                    provider={choice.provider}
+                    model={choice.model}
+                    onPick={(p, m) => {
+                      setChoice({ provider: p, model: m })
+                      const next = catalog?.[p].models.find((x) => x.id === m)
+                      const steps = next?.reasoning ?? []
+                      if (!steps.includes(reasoning)) {
+                        setReasoning(next?.defaultReasoning ?? steps[0] ?? 'medium')
+                      }
+                    }}
+                  />
+                  {ladder.length > 1 && (
+                    <Select value={reasoning} onValueChange={(v) => setReasoning(v as Reasoning)}>
+                      <SelectTrigger
+                        size="sm"
+                        aria-label="Reasoning effort"
+                        className="gap-1 px-1.5"
+                      >
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {ladder.map((r) => (
+                          <SelectItem key={r} value={r}>
+                            {EFFORT_LABELS[r]}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                  <Select
+                    value={permission}
+                    onValueChange={(v) => setPermission(v as PermissionPolicy)}
+                  >
+                    <SelectTrigger size="sm" aria-label="Access" className="gap-1 px-1.5">
+                      <ShieldCheck className="size-3 text-muted-foreground" />
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(Object.keys(PERMISSION_LABELS) as PermissionPolicy[]).map((p) => (
+                        <SelectItem key={p} value={p}>
+                          {PERMISSION_LABELS[p]}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
 
-          <div className="p-1">
-            <div
-              role="button"
-              tabIndex={0}
-              onClick={() => void start('implementation')}
-              onKeyDown={(e) => e.key === 'Enter' && void start('implementation')}
-              className={cn(
-                'group/act flex w-full cursor-pointer items-center gap-3 rounded-lg px-2 py-2 text-left transition-colors duration-150 hover:bg-accent active:scale-[0.99]',
-                busy && 'pointer-events-none opacity-60'
-              )}
-            >
-              <span className="flex size-8 shrink-0 items-center justify-center rounded-lg border border-border/70 bg-background/60 shadow-[inset_0_1px_0_rgb(255_255_255/0.05)] transition-transform duration-150 group-hover/act:scale-105">
-                {busy === 'implementation' ? (
-                  <Spinner className="size-3.5 text-muted-foreground" />
-                ) : (
-                  <ListChecks className="size-4 text-success/80" />
-                )}
-              </span>
-              <span className="min-w-0 flex-1">
-                <span className="block text-[13px] font-medium">
-                  Implement{workers > 1 ? ` × ${workers}` : ''}
-                </span>
-                <span className="block text-[11px] text-muted-foreground">
-                  {workers > 1
-                    ? `${workers} threads split the plan's tasks`
-                    : "One agent works the plan's tasks"}
-                </span>
-              </span>
-              {/* How many parallel implementation threads. */}
-              <span
-                onClick={(e) => e.stopPropagation()}
-                className="flex shrink-0 gap-0.5 rounded-md bg-secondary/60 p-0.5"
-              >
-                {[1, 2, 3].map((n) => (
+              <div className="p-1">
+                <div
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => void start('implementation')}
+                  onKeyDown={(e) => e.key === 'Enter' && void start('implementation')}
+                  className={cn(
+                    'group/act flex w-full cursor-pointer items-center gap-3 rounded-lg px-2 py-2 text-left transition-colors duration-150 hover:bg-accent active:scale-[0.99]',
+                    busy && 'pointer-events-none opacity-60'
+                  )}
+                >
+                  <span className="flex size-8 shrink-0 items-center justify-center rounded-lg border border-border/70 bg-background/60 shadow-[inset_0_1px_0_rgb(255_255_255/0.05)] transition-transform duration-150 group-hover/act:scale-105">
+                    {busy === 'implementation' ? (
+                      <Spinner className="size-3.5 text-muted-foreground" />
+                    ) : (
+                      <ListChecks className="size-4 text-success/80" />
+                    )}
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-[13px] font-medium">
+                      Implement{workers > 1 ? ` × ${workers}` : ''}
+                    </span>
+                    <span className="block text-[11px] text-muted-foreground">
+                      {workers > 1
+                        ? `${workers} threads split the plan's tasks`
+                        : "One agent works the plan's tasks"}
+                    </span>
+                  </span>
+                  {/* How many parallel implementation threads. */}
+                  <span
+                    onClick={(e) => e.stopPropagation()}
+                    className="flex shrink-0 gap-0.5 rounded-md bg-secondary/60 p-0.5"
+                  >
+                    {[1, 2, 3].map((n) => (
+                      <button
+                        key={n}
+                        onClick={() => setWorkers(n)}
+                        aria-label={`${n} thread${n > 1 ? 's' : ''}`}
+                        className={cn(
+                          'flex size-5 items-center justify-center rounded text-[11px] transition-colors',
+                          workers === n
+                            ? 'bg-background text-foreground shadow-sm'
+                            : 'text-muted-foreground hover:text-foreground'
+                        )}
+                      >
+                        {n}
+                      </button>
+                    ))}
+                  </span>
+                </div>
+                <div
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => busy === null && void start('orchestration')}
+                  onKeyDown={(e) =>
+                    e.key === 'Enter' && busy === null && void start('orchestration')
+                  }
+                  className={cn(
+                    'group/act flex w-full cursor-pointer items-center gap-3 rounded-lg px-2 py-2 text-left transition-colors duration-150 hover:bg-accent active:scale-[0.99]',
+                    busy !== null && 'pointer-events-none opacity-60'
+                  )}
+                >
+                  <span className="flex size-8 shrink-0 items-center justify-center rounded-lg border border-border/70 bg-background/60 shadow-[inset_0_1px_0_rgb(255_255_255/0.05)] transition-transform duration-150 group-hover/act:scale-105">
+                    {busy === 'orchestration' ? (
+                      <Spinner className="size-3.5 text-muted-foreground" />
+                    ) : (
+                      <GitFork className="size-4 text-violet/80" />
+                    )}
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-[13px] font-medium">Orchestrate</span>
+                    <span className="block text-[11px] text-muted-foreground">
+                      {tuneSummary(tune) ?? 'Split across subagents in parallel'}
+                    </span>
+                  </span>
                   <button
-                    key={n}
-                    onClick={() => setWorkers(n)}
-                    aria-label={`${n} thread${n > 1 ? 's' : ''}`}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setView('tune')
+                    }}
+                    title="Instructions & rule overrides"
+                    aria-label="Orchestration options"
                     className={cn(
-                      'flex size-5 items-center justify-center rounded text-[11px] transition-colors',
-                      workers === n
-                        ? 'bg-background text-foreground shadow-sm'
-                        : 'text-muted-foreground hover:text-foreground'
+                      'flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition hover:bg-background/60 hover:text-foreground active:scale-95',
+                      tuneSummary(tune) ? 'opacity-100' : 'opacity-0 group-hover/act:opacity-100'
                     )}
                   >
-                    {n}
+                    <SlidersHorizontal className="size-3.5" />
                   </button>
-                ))}
-              </span>
-            </div>
-            <div
-              role="button"
-              tabIndex={0}
-              onClick={() => busy === null && void start('orchestration')}
-              onKeyDown={(e) => e.key === 'Enter' && busy === null && void start('orchestration')}
-              className={cn(
-                'group/act flex w-full cursor-pointer items-center gap-3 rounded-lg px-2 py-2 text-left transition-colors duration-150 hover:bg-accent active:scale-[0.99]',
-                busy !== null && 'pointer-events-none opacity-60'
-              )}
-            >
-              <span className="flex size-8 shrink-0 items-center justify-center rounded-lg border border-border/70 bg-background/60 shadow-[inset_0_1px_0_rgb(255_255_255/0.05)] transition-transform duration-150 group-hover/act:scale-105">
-                {busy === 'orchestration' ? (
-                  <Spinner className="size-3.5 text-muted-foreground" />
-                ) : (
-                  <GitFork className="size-4 text-violet/80" />
-                )}
-              </span>
-              <span className="min-w-0 flex-1">
-                <span className="block text-[13px] font-medium">Orchestrate</span>
-                <span className="block text-[11px] text-muted-foreground">
-                  {tuneSummary(tune) ?? 'Split across subagents in parallel'}
-                </span>
-              </span>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation()
-                  setView('tune')
-                }}
-                title="Instructions & rule overrides"
-                aria-label="Orchestration options"
-                className={cn(
-                  'flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition hover:bg-background/60 hover:text-foreground active:scale-95',
-                  tuneSummary(tune) ? 'opacity-100' : 'opacity-0 group-hover/act:opacity-100'
-                )}
-              >
-                <SlidersHorizontal className="size-3.5" />
-              </button>
-            </div>
-          </div>
+                </div>
+              </div>
 
-          {tasks.length > 0 && (
-            <div className="rounded-b-xl border-t border-border/60 bg-muted/40 px-3 pt-1.5 pb-2">
-              {tasks.slice(0, 3).map((t, i) => (
-                <p key={i} className="truncate text-[11px] leading-[18px] text-muted-foreground">
-                  {i + 1}. {t}
-                </p>
-              ))}
-              {tasks.length > 3 && (
-                <p className="text-[11px] leading-[18px] text-muted-foreground/60">
-                  +{tasks.length - 3} more
-                </p>
+              {tasks.length > 0 && (
+                <div className="rounded-b-xl border-t border-border/60 bg-muted/40 px-3 pt-1.5 pb-2">
+                  {tasks.slice(0, 3).map((t, i) => (
+                    <p
+                      key={i}
+                      className="truncate text-[11px] leading-[18px] text-muted-foreground"
+                    >
+                      {i + 1}. {t}
+                    </p>
+                  ))}
+                  {tasks.length > 3 && (
+                    <p className="text-[11px] leading-[18px] text-muted-foreground/60">
+                      +{tasks.length - 3} more
+                    </p>
+                  )}
+                </div>
               )}
-            </div>
-          )}
             </>
           )}
         </PopoverContent>

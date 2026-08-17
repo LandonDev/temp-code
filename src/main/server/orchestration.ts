@@ -789,6 +789,18 @@ existing code, an experiment, an independent second opinion — and
 supervise what you spawn while the conversation continues.`
 }
 
+/** Mechanics for planning threads: the fleet feeds the plan document. */
+export function planningSpawnPrompt(): string {
+  return `${ORCHESTRATOR_MECHANICS}
+
+This is a PLANNING thread: your deliverable is the plan document, and
+subagents exist to feed it. Spawn explorers to map code and gather
+context in parallel, or a reviewer for an independent read on an
+approach — never implementers: nothing gets built from this thread, and
+no subagent writes anything beyond notes. Fold what they find into the
+plan as their reports land.`
+}
+
 /** The rules governing a session: workspace override → global → defaults,
  *  with the thread's own per-run conduct tune laid on top. */
 export function rulesFor(session: SessionMeta): OrchestrationRules {
