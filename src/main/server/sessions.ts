@@ -590,6 +590,12 @@ export class SessionRegistry {
 
   /** Live context usage from the session's harness, if it can report it. */
   async contextUsage(sessionId: string): Promise<unknown> {
+    // Never poke a streaming harness. Mid-turn control requests can't be
+    // answered until the turn settles, and a queue of them at result time
+    // can cost the stream its result message — wedging the thread on
+    // "working" forever.
+    const status = this.store.getSession(sessionId)?.status
+    if (status === 'running' || status === 'starting') return null
     const handle = this.handles.get(sessionId)
     if (!handle?.contextUsage) return null
     try {

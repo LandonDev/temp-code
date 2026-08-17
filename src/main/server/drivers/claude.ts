@@ -108,6 +108,9 @@ interface StreamState {
   currentMsgId: Map<string, string>
   /** key: `${lane}:${blockIndex}` → tool input JSON accumulating from deltas */
   toolInput: Map<string, { callId: string; name: string; json: string; lastEmit: number }>
+  /** a turn is in flight (send happened, no result yet) — lets the drain
+   *  loop settle the status if the stream dies without one */
+  working: boolean
 }
 
 /** How often a growing tool input is re-parsed and forwarded to the UI. */
@@ -295,6 +298,7 @@ function handleMessage(ctx: DriverCtx, state: StreamState, msg: SDKMessage): voi
     }
     case 'result':
       state.toolInput.clear()
+      state.working = false
       if (msg.subtype === 'success') {
         emit({
           type: 'turn-complete',
@@ -327,7 +331,7 @@ export const claudeDriver: HarnessDriver = {
   async start(ctx: DriverCtx): Promise<DriverHandle> {
     const { session, emit } = ctx
     const input = new InputQueue()
-    const state: StreamState = { currentMsgId: new Map(), toolInput: new Map() }
+    const state: StreamState = { currentMsgId: new Map(), toolInput: new Map(), working: false }
     const pendingApprovals = new Map<string, (allow: boolean, auto?: boolean) => void>()
     const pendingQuestions = new Map<string, (answers: string[][] | null) => void>()
 
@@ -509,7 +513,16 @@ export const claudeDriver: HarnessDriver = {
     void (async () => {
       try {
         for await (const msg of q) handleMessage(ctx, state, msg)
+        // Stream over with a turn still open: the result message is never
+        // coming (process died, or the SDK dropped it). Settle the status
+        // or the thread shows "working" forever.
+        if (state.working) {
+          state.working = false
+          emit({ type: 'error', message: 'harness stream ended mid-turn' })
+          emit({ type: 'status', status: 'idle' })
+        }
       } catch (err) {
+        state.working = false
         emit({ type: 'error', message: err instanceof Error ? err.message : String(err) })
         emit({ type: 'status', status: 'error' })
       }
@@ -517,6 +530,7 @@ export const claudeDriver: HarnessDriver = {
 
     return {
       async send(text: string, attachments?: Attachment[]): Promise<void> {
+        state.working = true
         emit({ type: 'status', status: 'running' })
         // The harness only runs a LEADING /command natively; mid-message
         // and additional skill references get expanded server-side.

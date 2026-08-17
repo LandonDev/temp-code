@@ -24,7 +24,11 @@ import {
 } from '../ui/select'
 import { rankFiles } from '../../lib/rank'
 import { AddonMark } from './AddonMark'
-import { ComposerInput, type ComposerInputHandle } from './ComposerInput'
+import {
+  ComposerInput,
+  type ComposerInputHandle,
+  type ComposerSegment
+} from './ComposerInput'
 import { addonTitle } from '../../lib/addon-names'
 
 const REASONING_LABELS: Record<Reasoning, string> = {
@@ -56,6 +60,14 @@ interface PendingImage {
   attachment: Attachment
   previewUrl: string
 }
+
+/** Unsent prompts by thread — navigating away and back keeps the draft.
+ *  In-memory on purpose: it mirrors live composer state, object URLs and
+ *  all, and a fresh app start naturally starts clean. */
+const drafts = new Map<
+  string,
+  { segments: ComposerSegment[]; images: PendingImage[]; fileRefs: Attachment[] }
+>()
 
 /** One captured window in the composer: thumbnail + app-name caption. */
 function AppshotChip({ a, onRemove }: { a: Attachment; onRemove: () => void }): React.JSX.Element {
@@ -226,14 +238,10 @@ export function PromptBar({
   // Reasoning is per model — the ladder (and whether the select shows at
   // all) comes from the picked model's catalog entry.
   const ladder = provider?.models.find((m) => m.id === choice.model)?.reasoning ?? []
-  // The 200k/1M rows only exist where the beta actually gates the window —
-  // natively-1M models (every current Claude but Haiku) have nothing to switch.
-  const ctxUsage = useApp((st) =>
-    st.selectedId ? (st.contexts[st.selectedId] as { maxTokens?: number } | undefined) : undefined
-  )
-  const showWindowRows =
-    session?.provider === 'claude' &&
-    !((ctxUsage?.maxTokens ?? 0) >= 1_000_000 && !session.context1m)
+  // The 200k/1M rows ride the effort menu for every claude thread — new
+  // chats included — and the trigger reads "Medium, 200k" so the window
+  // is visible without opening it.
+  const showWindowRows = choice.provider === 'claude'
 
   useEffect(() => {
     if (providerId && cwd) void fetchCommands(providerId, cwd)
@@ -312,6 +320,28 @@ export function PromptBar({
     window.addEventListener('composer-focus', onFocus)
     return () => window.removeEventListener('composer-focus', onFocus)
   }, [])
+
+  // Drafts survive navigation: an unsent prompt comes back when the user
+  // returns to the thread. Restore fills the composer on mount (chips
+  // intact); the mirror below keeps the map current on every change and
+  // clears it the moment the message sends or is emptied by hand.
+  useEffect(() => {
+    const d = selectedId ? drafts.get(selectedId) : undefined
+    if (!d) return
+    if (d.segments.length) areaRef.current?.restore(d.segments)
+    if (d.images.length) setImages(d.images)
+    if (d.fileRefs.length) setFileRefs(d.fileRefs)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- restore once per mount
+  }, [])
+  useEffect(() => {
+    if (!selectedId) return
+    const segments = areaRef.current?.snapshot() ?? []
+    if (segments.length || images.length || fileRefs.length) {
+      drafts.set(selectedId, { segments, images, fileRefs })
+    } else {
+      drafts.delete(selectedId)
+    }
+  }, [selectedId, text, images, fileRefs])
 
   // Window-level drop: anywhere on the app attaches to the open thread.
   useEffect(() => {
@@ -759,7 +789,8 @@ export function PromptBar({
                     }}
                   >
                     <SelectTrigger size="sm" aria-label="Reasoning effort" className="gap-1 px-1.5">
-                      <SelectValue />
+                      {REASONING_LABELS[reasoning]}
+                      {showWindowRows && `, ${session.context1m ? '1M' : '200k'}`}
                     </SelectTrigger>
                     <SelectContent>
                       {ladder.map((r) => (

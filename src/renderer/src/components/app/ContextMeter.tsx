@@ -83,8 +83,11 @@ export function ContextMeter({ sessionId }: { sessionId: string }): React.JSX.El
   const fetchContext = useApp((s) => s.fetchContext)
   const [open, setOpen] = useState(false)
 
-  // Live accounting: refresh on open, and keep refreshing while a turn
-  // runs — the ring and the open popover both move as messages land.
+  // Live accounting — but only between turns. A streaming harness can't
+  // answer the control request, and a queue of mid-turn requests can cost
+  // the stream its result message (the "working forever" wedge) — so while
+  // a turn runs, nothing is fetched; the store refreshes on the idle
+  // transition and the open popover polls the settled harness.
   const running = session?.status === 'running' || session?.status === 'starting'
   const [answered, setAnswered] = useState(false)
   // Reset per open/session during render (canonical prev-state pattern).
@@ -95,9 +98,9 @@ export function ContextMeter({ sessionId }: { sessionId: string }): React.JSX.El
     setAnswered(false)
   }
   useEffect(() => {
-    if (open) void fetchContext(sessionId).finally(() => setAnswered(true))
-    if (!open && !running) return
-    const t = setInterval(() => void fetchContext(sessionId), open ? 3000 : 6000)
+    if (!open || running) return
+    void fetchContext(sessionId).finally(() => setAnswered(true))
+    const t = setInterval(() => void fetchContext(sessionId), 3000)
     return () => clearInterval(t)
   }, [open, running, sessionId, fetchContext])
 
@@ -121,13 +124,10 @@ export function ContextMeter({ sessionId }: { sessionId: string }): React.JSX.El
       <PopoverContent align="end" side="top" className="w-80 rounded-xl p-0">
         {!usage ? (
           <div className="flex h-24 items-center justify-center gap-2 px-6 text-center text-xs text-muted-foreground">
-            {!answered ? (
-              <Spinner className="size-3.5" />
-            ) : running ? (
-              // The harness can't answer the control request mid-stream on
-              // big threads — the poll keeps trying; say so instead of
-              // spinning forever.
+            {running ? (
               <>Context updates when this turn settles.</>
+            ) : !answered ? (
+              <Spinner className="size-3.5" />
             ) : (
               <>Context loads after the next reply.</>
             )}
