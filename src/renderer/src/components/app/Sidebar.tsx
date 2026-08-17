@@ -3,7 +3,7 @@ import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { ChevronRight, FolderPlus, GitBranch, MoreHorizontal, Pencil, Plus } from 'lucide-react'
 import type { ProjectMeta, WorkspaceMeta } from '@shared/domain'
 import type { SessionMeta } from '@shared/events'
-import { threadsOfProject, unsortedSessions, useApp } from '../../state/store'
+import { chatsOfWorkspace, threadsOfProject, unsortedSessions, useApp } from '../../state/store'
 import { cn } from '../../lib/utils'
 import { SPRING_LAYOUT } from '../../lib/ease'
 import {
@@ -13,7 +13,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger
 } from '../ui/dropdown-menu'
-import { StatusDot, timeAgo } from './bits'
+import { StatusDot, THREAD_GLYPHS, THREAD_TINTS, timeAgo } from './bits'
 import { ZIcon } from './zicon'
 import { NewProjectDialog } from './NewProjectDialog'
 import { ConfirmDialog } from './ConfirmDialog'
@@ -68,7 +68,7 @@ export function Sidebar(): React.JSX.Element {
           </button>
         </div>
 
-        {unsorted.length > 0 && <UnsortedGroup sessions={unsorted} />}
+        <ChatsGroup sessions={unsorted} />
       </div>
 
       <div className="flex h-10 shrink-0 items-center gap-2 border-t border-border/60 px-2">
@@ -114,6 +114,16 @@ function WorkspaceGroup({
   const reduce = useReducedMotion()
   const removeWorkspace = useApp((s) => s.removeWorkspace)
   const setSettingsOpen = useApp((s) => s.setSettingsOpen)
+  const selectProject = useApp((s) => s.selectProject)
+  const createThread = useApp((s) => s.createThread)
+
+  const chats = chatsOfWorkspace(sessions, workspace.id)
+  const newChat = async (): Promise<void> => {
+    // One-off chat outside a project: runs at the workspace root.
+    selectProject(null)
+    await createThread({ threadType: 'chat', workspaceId: workspace.id })
+    setOpen(true)
+  }
 
   return (
     <div className="group/ws mt-1 first:mt-0">
@@ -153,6 +163,7 @@ function WorkspaceGroup({
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start" className="min-w-40">
               <DropdownMenuItem onClick={onNewProject}>New project</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => void newChat()}>New chat</DropdownMenuItem>
               <DropdownMenuItem onClick={() => setSettingsOpen(true, `ws:${workspace.id}`)}>
                 Workspace settings
               </DropdownMenuItem>
@@ -184,7 +195,7 @@ function WorkspaceGroup({
             className="overflow-hidden"
           >
             <div className="mt-0.5 space-y-px">
-              {projects.length === 0 ? (
+              {projects.length === 0 && chats.length === 0 ? (
                 <button
                   onClick={onNewProject}
                   className="ml-4 flex h-7 items-center gap-1.5 rounded-md px-2 text-xs text-muted-foreground/60 transition-colors hover:text-muted-foreground"
@@ -192,7 +203,10 @@ function WorkspaceGroup({
                   <Plus className="size-3" /> New project
                 </button>
               ) : (
-                projects.map((p) => <ProjectRow key={p.id} project={p} sessions={sessions} />)
+                <>
+                  {projects.map((p) => <ProjectRow key={p.id} project={p} sessions={sessions} />)}
+                  {chats.map((c) => <ChatRow key={c.id} session={c} />)}
+                </>
               )}
             </div>
           </motion.div>
@@ -336,25 +350,152 @@ function UpdateDot(): React.JSX.Element | null {
   return <span title="Update ready" className="ml-auto size-1.5 shrink-0 rounded-full bg-info" />
 }
 
-/** Legacy sessions from before projects existed — kept reachable, out of the way. */
-function UnsortedGroup({ sessions }: { sessions: SessionMeta[] }): React.JSX.Element {
-  const [open, setOpen] = useState(false)
+/** A one-off chat thread in the sidebar — workspace chats and loose chats alike. */
+function ChatRow({ session }: { session: SessionMeta }): React.JSX.Element {
+  const selected = useApp((s) => s.selectedId === session.id && !s.selectedProjectId)
   const select = useApp((s) => s.select)
   const selectProject = useApp((s) => s.selectProject)
-  const selectedId = useApp((s) => s.selectedId)
-  const reduce = useReducedMotion()
+  const renameSession = useApp((s) => s.renameSession)
+  const deleteSession = useApp((s) => s.deleteSession)
+  const [renaming, setRenaming] = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState(false)
+  const Glyph = THREAD_GLYPHS[session.threadType ?? 'chat']
+
+  if (renaming) {
+    return (
+      <div className="ml-4 flex h-7 items-center rounded-md bg-accent px-2">
+        <input
+          autoFocus
+          defaultValue={session.title}
+          onFocus={(e) => e.target.select()}
+          onKeyDown={(e) => {
+            e.stopPropagation()
+            if (e.key === 'Enter') e.currentTarget.blur()
+            if (e.key === 'Escape') {
+              e.currentTarget.value = session.title
+              e.currentTarget.blur()
+            }
+          }}
+          onBlur={(e) => {
+            setRenaming(false)
+            const v = e.target.value.trim()
+            if (v && v !== session.title) void renameSession(session.id, v)
+          }}
+          className="w-full bg-transparent text-[13px] leading-5 outline-none"
+        />
+      </div>
+    )
+  }
 
   return (
-    <div>
+    <div className="group/row relative ml-4">
+      {selected && (
+        <motion.div
+          layoutId="sidebar-active"
+          transition={SPRING_LAYOUT}
+          className="absolute inset-0 rounded-md bg-accent"
+        />
+      )}
       <button
-        onClick={() => setOpen(!open)}
-        className="flex h-7 w-full items-center gap-1.5 px-1.5 text-[11px] font-medium tracking-wide text-muted-foreground/50 uppercase transition-colors hover:text-muted-foreground"
+        onPointerDown={() => {
+          selectProject(null)
+          void select(session.id)
+        }}
+        onDoubleClick={() => setRenaming(true)}
+        className={cn(
+          'relative flex h-7 w-full items-center gap-1.5 rounded-md px-2 text-left transition-transform active:scale-[0.99]',
+          !selected && 'hover:bg-accent/50'
+        )}
       >
-        <ChevronRight className={cn('size-3 transition-transform', open && 'rotate-90')} />
-        Unsorted · {sessions.length}
+        <Glyph
+          className={cn('size-3 shrink-0 opacity-80', THREAD_TINTS[session.threadType ?? 'chat'])}
+        />
+        <span
+          className={cn(
+            'min-w-0 flex-1 truncate text-[13px] leading-5',
+            selected ? 'text-foreground' : 'text-foreground/80'
+          )}
+        >
+          {session.title}
+        </span>
+        <StatusDot status={session.status} />
+        <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground/60 group-hover/row:opacity-0">
+          {timeAgo(session.updatedAt)}
+        </span>
       </button>
+      <div className="absolute top-1/2 right-1 -translate-y-1/2 opacity-0 transition-opacity group-hover/row:opacity-100">
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              aria-label="Chat options"
+              className="flex size-5 items-center justify-center rounded text-muted-foreground transition hover:text-foreground active:scale-95"
+            >
+              <MoreHorizontal className="size-3.5" />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="min-w-40">
+            <DropdownMenuItem onClick={() => setRenaming(true)}>
+              <Pencil className="size-3.5 text-muted-foreground" />
+              Rename
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem variant="destructive" onClick={() => setConfirmDelete(true)}>
+              Delete chat…
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+      <ConfirmDialog
+        open={confirmDelete}
+        title={`Delete ${session.title.length > 32 ? `${session.title.slice(0, 32).trimEnd()}…` : session.title}?`}
+        body="The chat and its whole transcript are gone for good."
+        confirmLabel="Delete chat"
+        onConfirm={() => deleteSession(session.id)}
+        onClose={() => setConfirmDelete(false)}
+      />
+    </div>
+  )
+}
+
+/** Loose chats outside any workspace (legacy unsorted sessions land here too). */
+function ChatsGroup({ sessions }: { sessions: SessionMeta[] }): React.JSX.Element {
+  const [open, setOpen] = useState(true)
+  const selectProject = useApp((s) => s.selectProject)
+  const createThread = useApp((s) => s.createThread)
+  const reduce = useReducedMotion()
+
+  const newChat = async (): Promise<void> => {
+    selectProject(null)
+    await createThread({ threadType: 'chat' })
+    setOpen(true)
+  }
+
+  return (
+    <div className="group/chats">
+      <div className="flex h-7 items-center rounded-md pr-1 pl-1.5 hover:bg-accent/40">
+        <button
+          onClick={() => setOpen(!open)}
+          className="flex h-full min-w-0 flex-1 items-center gap-1.5 text-left"
+        >
+          <ChevronRight
+            className={cn(
+              'size-3 shrink-0 text-muted-foreground/70 transition-transform',
+              open && 'rotate-90'
+            )}
+          />
+          <span className="truncate text-xs font-medium text-muted-foreground">Chats</span>
+        </button>
+        <button
+          onClick={() => void newChat()}
+          title="New chat"
+          aria-label="New chat"
+          className="flex size-5 items-center justify-center rounded text-muted-foreground opacity-0 transition hover:text-foreground active:scale-95 group-hover/chats:opacity-100"
+        >
+          <Plus className="size-3.5" />
+        </button>
+      </div>
       <AnimatePresence initial={false}>
-        {open && (
+        {open && sessions.length > 0 && (
           <motion.div
             initial={reduce ? false : { height: 0, opacity: 0 }}
             animate={{ height: 'auto', opacity: 1 }}
@@ -362,24 +503,11 @@ function UnsortedGroup({ sessions }: { sessions: SessionMeta[] }): React.JSX.Ele
             transition={reduce ? { duration: 0 } : SPRING_LAYOUT}
             className="overflow-hidden"
           >
-            {sessions.map((s) => (
-              <button
-                key={s.id}
-                onPointerDown={() => {
-                  selectProject(null)
-                  void select(s.id)
-                }}
-                className={cn(
-                  'ml-4 flex h-7 w-[calc(100%-1rem)] items-center gap-2 rounded-md px-2 text-left text-xs',
-                  selectedId === s.id
-                    ? 'bg-accent text-foreground'
-                    : 'text-muted-foreground hover:bg-accent/50'
-                )}
-              >
-                <StatusDot status={s.status} />
-                <span className="truncate">{s.title}</span>
-              </button>
-            ))}
+            <div className="mt-0.5 space-y-px">
+              {sessions.map((s) => (
+                <ChatRow key={s.id} session={s} />
+              ))}
+            </div>
           </motion.div>
         )}
       </AnimatePresence>

@@ -1149,10 +1149,19 @@ export const threadsOfProject = (
     .filter((s) => s.projectId === projectId && !s.parentId && !s.archived)
     .sort((a, b) => b.updatedAt - a.updatedAt)
 
-/** Legacy/loose root sessions with no project. */
+/** One-off chats hung directly off a workspace (no project), newest first. */
+export const chatsOfWorkspace = (
+  sessions: Record<string, SessionMeta>,
+  workspaceId: string
+): SessionMeta[] =>
+  Object.values(sessions)
+    .filter((s) => s.workspaceId === workspaceId && !s.projectId && !s.parentId && !s.archived)
+    .sort((a, b) => b.updatedAt - a.updatedAt)
+
+/** Loose chats outside any workspace or project (legacy sessions included). */
 export const unsortedSessions = (sessions: Record<string, SessionMeta>): SessionMeta[] =>
   Object.values(sessions)
-    .filter((s) => !s.projectId && !s.parentId && !s.archived)
+    .filter((s) => !s.projectId && !s.workspaceId && !s.parentId && !s.archived)
     .sort((a, b) => b.createdAt - a.createdAt)
 
 /** Subagents of an orchestration thread, oldest first. */
