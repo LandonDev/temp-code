@@ -192,6 +192,8 @@ interface AppState {
   appshots: AppshotSettings
   /** captured appshots waiting in a thread's composer, per session */
   pendingAppshots: Record<string, Attachment[]>
+  /** the capture the fly-in overlay is animating right now; null when idle */
+  appshotFlash: { a: Attachment; key: number } | null
   /** settled tool sections get a one-sentence model-written summary */
   toolSummaries: boolean
   /** every settled tool also gets a short model-written caption */
@@ -260,6 +262,7 @@ interface AppState {
   appshotArrived: (a: Attachment) => Promise<void>
   removePendingAppshot: (sessionId: string, path: string) => void
   clearPendingAppshots: (sessionId: string) => void
+  clearAppshotFlash: () => void
   setToolSummaries: (v: boolean) => void
   setToolCaptions: (v: boolean) => void
   setSummaryModel: (v: 'auto' | 'haiku' | 'spark') => void
@@ -419,6 +422,7 @@ export const useApp = create<AppState>((set, get) => ({
   midTurnDefault: localStorage.getItem(MID_TURN_KEY) === 'steer' ? 'steer' : 'queue',
   appshots: DEFAULT_APPSHOT_SETTINGS,
   pendingAppshots: {},
+  appshotFlash: null,
   toolSummaries: localStorage.getItem(TOOL_SUMMARIES_KEY) !== 'off',
   toolCaptions: localStorage.getItem(TOOL_CAPTIONS_KEY) !== 'off',
   summaryModel: ((): 'auto' | 'haiku' | 'spark' => {
@@ -917,12 +921,18 @@ export const useApp = create<AppState>((set, get) => ({
     set((s) => {
       const cur = s.pendingAppshots[dest] ?? []
       if (cur.some((x) => x.path === a.path)) return {}
-      return { pendingAppshots: { ...s.pendingAppshots, [dest]: [...cur, a] } }
+      return {
+        pendingAppshots: { ...s.pendingAppshots, [dest]: [...cur, a] },
+        // The fly-in overlay picks this up and plays the capture landing.
+        appshotFlash: { a, key: Date.now() }
+      }
     })
     if (settings.sound) void new Audio(shutterUrl).play().catch(() => {})
     // Focus once the composer for the (possibly new) thread is mounted.
     requestAnimationFrame(() => window.dispatchEvent(new CustomEvent('composer-focus')))
   },
+
+  clearAppshotFlash: () => set({ appshotFlash: null }),
 
   removePendingAppshot: (sessionId, path) => {
     set((s) => ({
