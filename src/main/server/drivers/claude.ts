@@ -12,6 +12,7 @@ import { nativeImage } from 'electron'
 import type { Attachment, PermissionPolicy } from '@shared/events'
 import type { DriverCtx, DriverHandle, HarnessDriver } from './types'
 import { parsePartialJson } from './partial-json'
+import { toolDisplay } from './display'
 import {
   implementerSpawnPrompt,
   ORCHESTRATOR_TOOLS,
@@ -188,7 +189,8 @@ function handleMessage(ctx: DriverCtx, state: StreamState, msg: SDKMessage): voi
             callId: ev.content_block.id,
             name: ev.content_block.name,
             input: undefined,
-            parentCallId
+            parentCallId,
+            display: toolDisplay(ev.content_block.name, undefined)
           })
           state.toolInput.set(`${lane}:${ev.index}`, {
             callId: ev.content_block.id,
@@ -206,12 +208,14 @@ function handleMessage(ctx: DriverCtx, state: StreamState, msg: SDKMessage): voi
         if (t) {
           state.toolInput.delete(key)
           try {
+            const input = JSON.parse(t.json.trim() || '{}')
             emit({
               type: 'tool-call',
               callId: t.callId,
               name: t.name,
-              input: JSON.parse(t.json.trim() || '{}'),
-              parentCallId
+              input,
+              parentCallId,
+              display: toolDisplay(t.name, input)
             })
           } catch {
             // Unparseable — the final assistant message will deliver it.
@@ -260,7 +264,8 @@ function handleMessage(ctx: DriverCtx, state: StreamState, msg: SDKMessage): voi
                   name: t.name,
                   input: parsed,
                   partial: true,
-                  parentCallId
+                  parentCallId,
+                  display: toolDisplay(t.name, parsed)
                 })
               }
             }
@@ -297,7 +302,8 @@ function handleMessage(ctx: DriverCtx, state: StreamState, msg: SDKMessage): voi
             callId: block.id,
             name: block.name,
             input: block.input,
-            parentCallId
+            parentCallId,
+            display: toolDisplay(block.name, block.input)
           })
         }
       })
