@@ -312,6 +312,9 @@ export function ImplementationView({ session }: { session: SessionMeta }): React
             key="board"
             initial={reduce ? false : { flexBasis: '0%', opacity: 0 }}
             animate={{ flexBasis: collapsed ? '100%' : `${split}%`, opacity: 1 }}
+            // Entering compose slides the board closed while the chat pane
+            // grows into its place — without this it vanished in one frame.
+            exit={{ flexBasis: '0%', opacity: 0 }}
             transition={dragging || reduce ? { duration: 0 } : { duration: 0.28, ease: EASE_OUT }}
             style={{ flexGrow: 0, flexShrink: 1 }}
             className="flex min-h-0 min-w-0 flex-col overflow-hidden"
@@ -465,7 +468,7 @@ export function ImplementationView({ session }: { session: SessionMeta }): React
         />
       )}
 
-      {collapsed ? (
+      {collapsed && (
         <button
           onClick={() => setChatOpen(true)}
           title="Show conversation"
@@ -475,47 +478,58 @@ export function ImplementationView({ session }: { session: SessionMeta }): React
           <MessageSquare className="size-3.5" />
           <StatusDot status={session.status} />
         </button>
-      ) : (
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-          {hasBoard && (
-            <div className="flex h-9 shrink-0 items-center justify-between border-b border-hairline pr-1.5 pl-4">
-              <span className="text-[11px] font-medium tracking-[0.06em] text-muted-foreground uppercase">
-                Conversation
-              </span>
-              <button
-                onClick={() => {
-                  if (composing) {
-                    armNewPass(session.id, false)
-                    setComposeFrom(null)
-                    setComposeRan(false)
-                  } else setChatOpen(false)
-                }}
-                title={composing ? 'Show the board' : 'Hide conversation'}
-                aria-label={composing ? 'Show the board' : 'Hide conversation'}
-                className="flex size-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-              >
-                <ChevronRight className={cn('size-3.5', composing && 'rotate-180')} />
-              </button>
-            </div>
-          )}
-          {/* No minimap in the side pane — it overlaps the text there. */}
-          <Transcript sessionId={session.id} minimap={!hasBoard || composing} />
-          <WorkingStrip sessionId={session.id} />
-          {/* The composer stays open — typing keeps working in the CURRENT
+      )}
+      {/* The chat pane stays MOUNTED while folded — hidden at its open
+          width, so the transcript's virtualizer keeps its measurements.
+          Unmounting it made every reopen ("Start next pass", the chat
+          bar) re-measure the whole backlog in view: rows overlapped at
+          their 48px estimates for a second or two before settling. */}
+      <div
+        inert={collapsed}
+        style={collapsed ? { width: `${100 - split}%` } : undefined}
+        className={cn(
+          'flex min-h-0 min-w-0 flex-col',
+          collapsed ? 'invisible absolute inset-y-0 right-0' : 'flex-1'
+        )}
+      >
+        {hasBoard && (
+          <div className="flex h-9 shrink-0 items-center justify-between border-b border-hairline pr-1.5 pl-4">
+            <span className="text-[11px] font-medium tracking-[0.06em] text-muted-foreground uppercase">
+              Conversation
+            </span>
+            <button
+              onClick={() => {
+                if (composing) {
+                  armNewPass(session.id, false)
+                  setComposeFrom(null)
+                  setComposeRan(false)
+                } else setChatOpen(false)
+              }}
+              title={composing ? 'Show the board' : 'Hide conversation'}
+              aria-label={composing ? 'Show the board' : 'Hide conversation'}
+              className="flex size-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+            >
+              <ChevronRight className={cn('size-3.5', composing && 'rotate-180')} />
+            </button>
+          </div>
+        )}
+        {/* No minimap in the side pane — it overlaps the text there. */}
+        <Transcript sessionId={session.id} minimap={!hasBoard || composing} />
+        <WorkingStrip sessionId={session.id} />
+        {/* The composer stays open — typing keeps working in the CURRENT
               pass (questions, clarifications, more work). The banner is
               the door to the next one, riding the composer's own column
               so it can never misalign with the pill. */}
-          <PromptBar
-            compact={hasBoard && !composing}
-            narrow={hasBoard && !composing}
-            topSlot={
-              passDone && !composing ? (
-                <PassBanner passNum={passNum} color={nextColor} onNext={startNextPass} />
-              ) : undefined
-            }
-          />
-        </div>
-      )}
+        <PromptBar
+          compact={hasBoard && !composing}
+          narrow={hasBoard && !composing}
+          topSlot={
+            passDone && !composing ? (
+              <PassBanner passNum={passNum} color={nextColor} onNext={startNextPass} />
+            ) : undefined
+          }
+        />
+      </div>
 
       <AnimatePresence>
         {openAgent && (
