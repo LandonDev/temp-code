@@ -311,7 +311,17 @@ export function ThreadStrip(): React.JSX.Element | null {
                         <div onDoubleClick={() => setRenaming(t.id)}>
                           <TabsTrigger
                             value={t.id}
-                            className="h-[26px] min-h-0 gap-1.5 px-2.5 py-0 font-normal"
+                            className={cn(
+                              'h-[26px] min-h-0 gap-1.5 px-2.5 py-0 font-normal',
+                              // Attention states wash the WHOLE tab, not just
+                              // the edge dot — a glance at the strip separates
+                              // "needs me" (amber), "broke" (red) and
+                              // "finished while I was away" (blue) without
+                              // reading anything.
+                              t.status === 'waiting' && 'bg-warning/10 hover:bg-warning/15',
+                              t.status === 'error' && 'bg-destructive/10 hover:bg-destructive/15',
+                              t.status === 'idle' && unread && 'bg-info/10 hover:bg-info/15'
+                            )}
                           >
                             <Glyph
                               className={cn(
