@@ -1,5 +1,5 @@
 {
-  "n": 61,
-  "notes": "The context ring is live — it moves as replies stream, on every thread, and the breakdown only shows when it is current",
-  "ts": 1786990954618
+  "n": 62,
+  "notes": "Project settings from the three-dots menu — rename, switch or create the worktree branch, and set a per-project completed-turn override",
+  "ts": 1786997154874
 }
