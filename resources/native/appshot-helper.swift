@@ -2,7 +2,7 @@
 //
 // Subcommands (JSON on stdout, one object per line):
 //   monitor                                  emit {"event":"hotkey"} on a bare double-⌘ tap
-//   capture --exclude-pids 1,2 --out p.png   shoot the frontmost window + collect its AX text
+//   capture --exclude-pids 1,2 --out p.jpg   shoot the frontmost window + collect its AX text
 //   permissions [--prompt]                   report {"screen":bool,"ax":bool}, optionally prompting
 //
 // Built by the electron.vite plugin with `swiftc -O` into resources/native/.
@@ -103,6 +103,9 @@ func frontmostWindow(excluding pids: Set<pid_t>) -> TargetWindow? {
   // The list is front-to-back; the first ordinary-layer window wins.
   for info in list {
     guard let layer = info[kCGWindowLayer as String] as? Int, layer == 0 else { continue }
+    // The installed app's main process dodges pgrep (its args are unreadable
+    // to other processes), so the pid list can miss it — match by name too.
+    if (info[kCGWindowOwnerName as String] as? String) == "TempCode" { continue }
     guard let pid = info[kCGWindowOwnerPID as String] as? pid_t, !pids.contains(pid) else {
       continue
     }
@@ -122,6 +125,10 @@ func frontmostWindow(excluding pids: Set<pid_t>) -> TargetWindow? {
 
 // MARK: - capture: screenshot
 
+/// Models reject images past ~2000px on a side, and a Retina full-screen
+/// window is always past it — cap the long edge and ship JPEG.
+let maxImageEdge: CGFloat = 1600
+
 @available(macOS 14.0, *)
 func screenshot(windowID: CGWindowID, to path: String) -> String? {
   var out: String? = "screenshot-failed"
@@ -135,8 +142,11 @@ func screenshot(windowID: CGWindowID, to path: String) -> String? {
     let filter = SCContentFilter(desktopIndependentWindow: win)
     let config = SCStreamConfiguration()
     let scale = CGFloat(filter.pointPixelScale)
-    config.width = Int(filter.contentRect.width * scale)
-    config.height = Int(filter.contentRect.height * scale)
+    let w = filter.contentRect.width * scale
+    let h = filter.contentRect.height * scale
+    let k = min(1, maxImageEdge / max(w, h, 1))
+    config.width = Int(w * k)
+    config.height = Int(h * k)
     config.showsCursor = false
     config.captureResolution = .best
     SCScreenshotManager.captureImage(contentFilter: filter, configuration: config) { image, err in
@@ -146,12 +156,13 @@ func screenshot(windowID: CGWindowID, to path: String) -> String? {
         return
       }
       let rep = NSBitmapImageRep(cgImage: image)
-      guard let png = rep.representation(using: .png, properties: [:]) else {
-        out = "png-encode-failed"
+      guard let jpeg = rep.representation(using: .jpeg, properties: [.compressionFactor: 0.85])
+      else {
+        out = "jpeg-encode-failed"
         return
       }
       do {
-        try png.write(to: URL(fileURLWithPath: path))
+        try jpeg.write(to: URL(fileURLWithPath: path))
         out = nil
       } catch { out = "write-failed: \(error.localizedDescription)" }
     }
@@ -205,6 +216,29 @@ let roleTags: [String: String] = [
   "AXToolbar": "toolbar",
 ]
 
+/// Some apps (IntelliJ and other JetBrains IDEs with screen-reader support
+/// off) publish tree/table rows as empty stubs — descending yields nothing.
+/// A bounded probe tells us whether a container has any text at all, so the
+/// dump can say so instead of emitting a bare container title.
+func subtreeHasText(_ root: AXUIElement, budget: Int = 200) -> Bool {
+  var stack = axChildren(root)
+  var visited = 0
+  while visited < budget, let el = stack.popLast() {
+    visited += 1
+    for attr in [kAXValueAttribute, kAXTitleAttribute, kAXDescriptionAttribute] {
+      if let s = axString(el, attr as String),
+        s.trimmingCharacters(in: .whitespacesAndNewlines).count > 1
+      {
+        return true
+      }
+    }
+    stack.append(contentsOf: axChildren(el))
+  }
+  return false
+}
+
+let containerRoles: Set<String> = ["AXOutline", "AXTable", "AXList"]
+
 /// Depth-first walk collecting every visible string the tree exposes,
 /// in tree order (≈ reading order), deduped, capped at ~200 KB. Lines are
 /// indented by containment (one level per text-bearing ancestor) and
@@ -220,6 +254,15 @@ func collectText(root: AXUIElement) -> String {
     visited += 1
     var own: [String] = []
     let role = axString(el, kAXRoleAttribute)
+    // A tree/table whose rows are all textless stubs: say so and move on,
+    // rather than leaving a bare title that looks like an empty panel.
+    if let r = role, containerRoles.contains(r), !axChildren(el).isEmpty, !subtreeHasText(el) {
+      let indent = String(repeating: "  ", count: min(depth, indentCap))
+      let what = axString(el, kAXDescriptionAttribute) ?? "list"
+      lines.append("\(indent)[\(what) — items not exposed to accessibility; see the screenshot]")
+      bytes += 64
+      continue
+    }
     if role != "AXSecureTextField" {
       let tag = role.flatMap { roleTags[$0] }.map { "[\($0)] " } ?? ""
       let indent = String(repeating: "  ", count: min(depth, indentCap))
@@ -321,7 +364,7 @@ case "monitor":
 case "permissions":
   runPermissions(prompt: args.contains("--prompt"))
 case "capture":
-  guard let out = flagValue("--out") else { fail("usage", "capture --exclude-pids 1,2 --out p.png") }
+  guard let out = flagValue("--out") else { fail("usage", "capture --exclude-pids 1,2 --out p.jpg") }
   let pids = Set((flagValue("--exclude-pids") ?? "").split(separator: ",").compactMap { pid_t($0) })
   runCapture(excludePids: pids, out: out)
 case "axdump":

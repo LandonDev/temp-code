@@ -168,8 +168,8 @@ const trim = (s: string, n = 32): string => (s.length > n ? `${s.slice(0, n - 1)
 /** App bookkeeping lives under .temp-code/ — journal, plans, mirrors. */
 export const isInternalPath = (p: string): boolean => /(^|\/)\.temp-code(\/|$)/.test(p)
 
-/** Appshot capture files (attachments dir, `<id>-appshot.png` / `.md`). */
-const isAppshotPath = (p: string): boolean => /-appshot\.(png|md)$/.test(p)
+/** Appshot capture files (attachments dir, `<id>-appshot.jpg` / `.md`). */
+const isAppshotPath = (p: string): boolean => /-appshot\.(png|jpg|md)$/.test(p)
 
 /** Every file an edit-tool call touches (apply_patch may carry several). */
 function editPaths(b: ToolBlock): string[] {

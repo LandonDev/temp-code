@@ -496,7 +496,7 @@ export class SessionRegistry {
             const shot: Attachment = {
               path: a.path,
               name: a.name,
-              mime: 'image/png',
+              mime: a.mime ?? 'image/jpeg',
               kind: 'image'
             }
             return a.textPath
