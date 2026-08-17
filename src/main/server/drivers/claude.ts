@@ -8,6 +8,7 @@ import {
   type SDKUserMessage
 } from '@anthropic-ai/claude-agent-sdk'
 import { readFileSync } from 'node:fs'
+import { nativeImage } from 'electron'
 import type { Attachment, PermissionPolicy } from '@shared/events'
 import type { DriverCtx, DriverHandle, HarnessDriver } from './types'
 import { parsePartialJson } from './partial-json'
@@ -40,6 +41,9 @@ import { expandSlashRefs } from '../slash'
  *    the UI shows the latest, never sums
  */
 
+/** Longest image side the API accepts without rejection (2000px limit). */
+const MAX_IMAGE_EDGE = 1568
+
 /** Unbounded async queue bridging send() calls into query()'s input iterable. */
 class InputQueue implements AsyncIterable<SDKUserMessage> {
   private buffer: SDKUserMessage[] = []
@@ -55,13 +59,28 @@ class InputQueue implements AsyncIterable<SDKUserMessage> {
     for (const a of attachments) {
       if (a.kind === 'image' && a.mime) {
         try {
+          // Oversized images (>2000px on a side) get rejected by the API and
+          // have wedged the CLI at result time — downscale before sending.
+          let data: string
+          let mediaType = a.mime
+          const img = nativeImage.createFromPath(a.path)
+          const size = img.isEmpty() ? { width: 0, height: 0 } : img.getSize()
+          if (size.width > MAX_IMAGE_EDGE || size.height > MAX_IMAGE_EDGE) {
+            const s = MAX_IMAGE_EDGE / Math.max(size.width, size.height)
+            data = img
+              .resize({
+                width: Math.round(size.width * s),
+                height: Math.round(size.height * s)
+              })
+              .toJPEG(85)
+              .toString('base64')
+            mediaType = 'image/jpeg'
+          } else {
+            data = readFileSync(a.path).toString('base64')
+          }
           content.push({
             type: 'image',
-            source: {
-              type: 'base64',
-              media_type: a.mime as 'image/png',
-              data: readFileSync(a.path).toString('base64')
-            }
+            source: { type: 'base64', media_type: mediaType as 'image/png', data }
           })
         } catch {
           refs.push(a.path)
@@ -111,6 +130,14 @@ interface StreamState {
   /** a turn is in flight (send happened, no result yet) — lets the drain
    *  loop settle the status if the stream dies without one */
   working: boolean
+  /** set when a top-lane assistant message finished with NO tool calls —
+   *  the only thing left is the result, so prolonged silence after this
+   *  means the CLI wedged (seen with oversized image attachments). Any
+   *  other message disarms it; tool execution is never mistaken for a
+   *  wedge because its assistant message carries tool_use blocks. */
+  armedAt: number | null
+  /** one stdin nudge per armed stretch */
+  nudged: boolean
 }
 
 /** How often a growing tool input is re-parsed and forwarded to the UI. */
@@ -118,6 +145,10 @@ const PARTIAL_INPUT_EVERY_MS = 100
 
 function handleMessage(ctx: DriverCtx, state: StreamState, msg: SDKMessage): void {
   const { emit } = ctx
+  // Every message is a sign of life; only a completed tool-free assistant
+  // message re-arms the overdue-result watch below.
+  state.armedAt = null
+  state.nudged = false
   switch (msg.type) {
     case 'system':
       // The CLI boots lazily on the first send, so init arrives mid-turn —
@@ -270,6 +301,11 @@ function handleMessage(ctx: DriverCtx, state: StreamState, msg: SDKMessage): voi
           })
         }
       })
+      // A top-lane assistant message with no tool calls is the turn's last
+      // word — nothing follows but the result. Start the overdue clock.
+      if (!parentCallId && !msg.message.content.some((b) => b.type === 'tool_use')) {
+        state.armedAt = Date.now()
+      }
       break
     }
     case 'user': {
@@ -331,7 +367,13 @@ export const claudeDriver: HarnessDriver = {
   async start(ctx: DriverCtx): Promise<DriverHandle> {
     const { session, emit } = ctx
     const input = new InputQueue()
-    const state: StreamState = { currentMsgId: new Map(), toolInput: new Map(), working: false }
+    const state: StreamState = {
+      currentMsgId: new Map(),
+      toolInput: new Map(),
+      working: false,
+      armedAt: null,
+      nudged: false
+    }
     const pendingApprovals = new Map<string, (allow: boolean, auto?: boolean) => void>()
     const pendingQuestions = new Map<string, (answers: string[][] | null) => void>()
 
@@ -443,7 +485,12 @@ export const claudeDriver: HarnessDriver = {
       })
     }
 
+    // Lets the watchdog put a wedged CLI down for real — closing the input
+    // iterable alone won't end a process that stopped listening.
+    const abort = new AbortController()
+
     const options: Options = {
+      abortController: abort,
       model: session.model,
       cwd: session.cwd,
       // The SDK ladder tops out at max; 'ultra' is codex-only (a session
@@ -509,6 +556,39 @@ export const claudeDriver: HarnessDriver = {
 
     const q = query({ prompt: input, options })
 
+    // Overdue-result watchdog. The CLI has been seen going silent AFTER the
+    // reply fully streamed — result never sent, process alive at 0% CPU
+    // (both observed wedges carried oversized image attachments). Once the
+    // final tool-free assistant message lands, the result is due within
+    // moments: after 45s of silence, nudge the CLI's stdin with a benign
+    // control request (that has shaken a queued result loose before); after
+    // 90s, settle the thread ourselves and put the process down — the next
+    // send resumes the conversation in a fresh one.
+    const NUDGE_AFTER_MS = 45_000
+    const RECOVER_AFTER_MS = 90_000
+    const watchdog = setInterval(() => {
+      if (!state.working || state.armedAt === null) return
+      const quiet = Date.now() - state.armedAt
+      if (quiet >= RECOVER_AFTER_MS) {
+        state.working = false
+        state.armedAt = null
+        emit({ type: 'error', message: 'the harness never reported the turn done — recovered' })
+        emit({ type: 'status', status: 'idle' })
+        abort.abort()
+      } else if (quiet >= NUDGE_AFTER_MS && !state.nudged) {
+        state.nudged = true
+        void q.getContextUsage().catch(() => {})
+      }
+    }, 5_000)
+
+    // A recovered or ended harness can't take another message — send()
+    // reports it so the registry boots a fresh process (resume carries the
+    // conversation over).
+    let dead = false
+    abort.signal.addEventListener('abort', () => {
+      dead = true
+    })
+
     // Drain the harness stream for the life of the session.
     void (async () => {
       try {
@@ -522,14 +602,33 @@ export const claudeDriver: HarnessDriver = {
           emit({ type: 'status', status: 'idle' })
         }
       } catch (err) {
+        // A watchdog abort already settled the status — swallow its throw.
+        if (abort.signal.aborted) return
         state.working = false
-        emit({ type: 'error', message: err instanceof Error ? err.message : String(err) })
-        emit({ type: 'status', status: 'error' })
+        // emit persists to SQLite; if THAT is what threw (a locked
+        // database), a bare retry here would kill the drain loop entirely
+        // and freeze the thread on "Working…" with nothing logged.
+        try {
+          emit({ type: 'error', message: err instanceof Error ? err.message : String(err) })
+          emit({ type: 'status', status: 'error' })
+        } catch {
+          setTimeout(() => {
+            try {
+              emit({ type: 'status', status: 'error' })
+            } catch {
+              // the log has bigger problems; the boot reset will settle it
+            }
+          }, 5_000)
+        }
+      } finally {
+        dead = true
+        clearInterval(watchdog)
       }
     })()
 
     return {
       async send(text: string, attachments?: Attachment[]): Promise<void> {
+        if (dead) throw new Error('harness gone')
         state.working = true
         emit({ type: 'status', status: 'running' })
         // The harness only runs a LEADING /command natively; mid-message

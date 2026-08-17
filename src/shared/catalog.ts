@@ -20,6 +20,11 @@ export interface ModelInfo {
   reasoning: Reasoning[]
   /** Where the effort select lands when this model is picked. */
   defaultReasoning?: Reasoning
+  /** Context window in tokens, when known — the ONE source of truth the
+   *  composer trigger and the context meter both present. Every current
+   *  claude model serves 1M natively (verified live: threads sail past
+   *  250k with no beta flag, no compaction, no errors). */
+  context?: number
 }
 
 export interface ProviderInfo {
@@ -44,25 +49,29 @@ export const CATALOG: Record<ProviderId, ProviderInfo> = {
         id: 'claude-fable-5',
         label: 'Fable 5',
         reasoning: CLAUDE_EFFORTS,
-        defaultReasoning: 'medium'
+        defaultReasoning: 'medium',
+        context: 1_000_000
       },
       {
         id: 'claude-opus-5',
         label: 'Opus 5',
         reasoning: CLAUDE_EFFORTS,
-        defaultReasoning: 'medium'
+        defaultReasoning: 'medium',
+        context: 1_000_000
       },
       {
         id: 'claude-opus-4-8',
         label: 'Opus 4.8',
         reasoning: CLAUDE_EFFORTS,
-        defaultReasoning: 'medium'
+        defaultReasoning: 'medium',
+        context: 1_000_000
       },
       {
         id: 'claude-sonnet-5',
         label: 'Sonnet 5',
         reasoning: CLAUDE_EFFORTS,
-        defaultReasoning: 'medium'
+        defaultReasoning: 'medium',
+        context: 1_000_000
       }
     ],
     defaultModel: 'claude-sonnet-5'
