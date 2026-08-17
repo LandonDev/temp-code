@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
-import { GitBranch, GitPullRequestArrow } from 'lucide-react'
+import { CornerDownRight, GitBranch, GitPullRequestArrow } from 'lucide-react'
 import type { BranchList, ProjectMode, WorkspaceMeta } from '@shared/domain'
 import { useApp } from '../../state/store'
 import { cn } from '../../lib/utils'
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../ui/dialog'
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '../ui/dialog'
 import { Button } from '../ui/button'
 import { Input } from '../ui/input'
 import { Spinner } from '../ui/spinner'
@@ -56,7 +56,7 @@ export function NewProjectDialog({
   )
   const suggestions = useMemo(() => {
     if (!trimmed || exists) return []
-    return allRefs.filter((r) => r.toLowerCase().includes(trimmed.toLowerCase())).slice(0, 5)
+    return allRefs.filter((r) => r.toLowerCase().includes(trimmed.toLowerCase())).slice(0, 4)
   }, [trimmed, exists, allRefs])
 
   const submit = async (): Promise<void> => {
@@ -80,26 +80,14 @@ export function NewProjectDialog({
     }
   }
 
-  const modes: {
-    id: ProjectMode
-    label: string
-    hint: string
-    icon: React.JSX.Element
-    disabled?: boolean
-  }[] = [
+  const modes: { id: ProjectMode; label: string; icon: React.JSX.Element; disabled?: boolean }[] = [
     {
       id: 'worktree',
       label: 'Worktree',
-      hint: 'Own branch and folder, isolated from your checkout',
-      icon: <GitPullRequestArrow className="size-4" />,
+      icon: <GitPullRequestArrow className="size-3.5" />,
       disabled: !workspace.git
     },
-    {
-      id: 'local',
-      label: 'Local',
-      hint: `Work directly in ${workspace.name}`,
-      icon: <GitBranch className="size-4" />
-    }
+    { id: 'local', label: 'Local', icon: <GitBranch className="size-3.5" /> }
   ]
 
   return (
@@ -116,85 +104,102 @@ export function NewProjectDialog({
             onKeyDown={(e) => e.key === 'Enter' && void submit()}
             placeholder="What are you working on?"
           />
-          <div className="flex gap-2">
-            {modes.map((m) => (
-              <button
-                key={m.id}
-                disabled={m.disabled}
-                onClick={() => setMode(m.id)}
-                className={cn(
-                  'flex-1 rounded-lg border p-3 text-left transition-colors active:scale-[0.99]',
-                  mode === m.id ? 'border-ring bg-accent/50' : 'hover:bg-accent/30',
-                  m.disabled && 'cursor-not-allowed opacity-40'
-                )}
-              >
-                <div className="flex items-center gap-2 text-[13px] font-medium">
+          <div>
+            <div className="grid grid-cols-2 gap-0.5 rounded-lg bg-muted/60 p-0.5">
+              {modes.map((m) => (
+                <button
+                  key={m.id}
+                  disabled={m.disabled}
+                  onClick={() => setMode(m.id)}
+                  className={cn(
+                    'flex h-7 items-center justify-center gap-1.5 rounded-md text-[13px] font-medium transition-colors',
+                    mode === m.id
+                      ? 'bg-background text-foreground shadow-sm ring-1 ring-foreground/10'
+                      : 'text-muted-foreground hover:text-foreground',
+                    m.disabled && 'cursor-not-allowed opacity-40 hover:text-muted-foreground'
+                  )}
+                >
                   {m.icon}
                   {m.label}
-                </div>
-                <p className="mt-1 text-[11px] leading-snug text-muted-foreground">{m.hint}</p>
-              </button>
-            ))}
+                </button>
+              ))}
+            </div>
+            <p className="mt-1.5 px-1 text-[11px] leading-4 text-muted-foreground">
+              {mode === 'worktree'
+                ? 'Own branch and folder, isolated from your checkout.'
+                : `Works directly in ${workspace.name}.`}
+            </p>
           </div>
           {mode === 'worktree' && workspace.git && (
-            <div className="flex flex-col gap-1.5">
-              <Input
-                value={branch}
-                onChange={(e) => setBranch(e.target.value)}
-                placeholder="Branch (empty = new tc/… branch)"
-                className="h-8 text-[12px]"
-                spellCheck={false}
-              />
+            <div className="flex flex-col gap-1">
+              <div className="relative">
+                <GitBranch className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground/70" />
+                <Input
+                  value={branch}
+                  onChange={(e) => setBranch(e.target.value)}
+                  placeholder="Branch (automatic)"
+                  className="h-8 pl-8 font-mono text-[12px] placeholder:font-sans"
+                  spellCheck={false}
+                />
+              </div>
               {suggestions.length > 0 && (
-                <div className="flex flex-wrap gap-1">
+                <div className="flex flex-col">
                   {suggestions.map((r) => (
                     <button
                       key={r}
                       onClick={() => setBranch(r)}
-                      className="rounded-md bg-accent/50 px-2 py-0.5 font-mono text-[11px] text-muted-foreground transition-colors hover:text-foreground"
+                      className="rounded-md px-2 py-1 text-left font-mono text-[11px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                     >
                       {r}
                     </button>
                   ))}
                 </div>
               )}
-              {trimmed &&
-                (exists ? (
-                  <p className="text-[11px] text-muted-foreground">
-                    Opens the existing <span className="font-mono">{trimmed}</span> branch.
-                  </p>
-                ) : (
-                  <div className="flex items-center gap-2">
-                    <span className="shrink-0 text-[11px] text-muted-foreground">
-                      New branch, created from
-                    </span>
-                    <Select value={baseRef} onValueChange={setBaseRef}>
-                      <SelectTrigger className="h-7 flex-1 text-[12px]">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="@head" className="text-[12px]">
-                          Current HEAD{branches?.current ? ` (${branches.current})` : ''}
-                        </SelectItem>
-                        {allRefs.map((r) => (
-                          <SelectItem key={r} value={r} className="text-[12px]">
-                            {r}
+              {trimmed && (
+                <div className="flex h-6 items-center gap-1.5 px-1 text-[11px] text-muted-foreground">
+                  <CornerDownRight className="size-3 shrink-0 opacity-60" />
+                  {exists ? (
+                    <span>Opens the existing branch</span>
+                  ) : (
+                    <>
+                      <span className="shrink-0">New branch from</span>
+                      <Select value={baseRef} onValueChange={setBaseRef}>
+                        <SelectTrigger size="sm" className="min-w-0 px-1.5">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="@head" className="text-[12px]">
+                            Current HEAD{branches?.current ? ` (${branches.current})` : ''}
                           </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                ))}
+                          {allRefs.map((r) => (
+                            <SelectItem key={r} value={r} className="font-mono text-[12px]">
+                              {r}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </>
+                  )}
+                </div>
+              )}
             </div>
           )}
-          {error && <p className="text-xs text-destructive">{error}</p>}
-          <div className="flex justify-end">
-            <Button size="sm" disabled={!name.trim() || busy} onClick={() => void submit()}>
-              {busy && <Spinner className="size-3.5" />}
-              Create
-            </Button>
-          </div>
+          {error && <p className="px-1 text-[11px] leading-4 text-destructive">{error}</p>}
         </div>
+        <DialogFooter>
+          <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button
+            size="sm"
+            className="h-7 text-xs"
+            disabled={!name.trim() || busy}
+            onClick={() => void submit()}
+          >
+            {busy && <Spinner className="size-3" />}
+            Create
+          </Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   )
