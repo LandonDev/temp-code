@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import {
+  Check,
   ChevronLeft,
   ChevronRight,
   GitFork,
@@ -18,7 +19,14 @@ import { EASE_OUT } from '../../../lib/ease'
 import { THREAD_GLYPHS, THREAD_LABELS, THREAD_TINTS, StatusDot, timeAgo } from '../bits'
 import { MarkdownText } from '../blocks/MarkdownText'
 import { Popover, PopoverContent, PopoverTrigger } from '../../ui/popover'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../ui/select'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectSeparator,
+  SelectTrigger,
+  SelectValue
+} from '../../ui/select'
 import { ModelPicker } from '../ModelPicker'
 import { OrchestrationTune, tuneSummary } from '../OrchestrationTune'
 import type { ThreadRules } from '@shared/rules'
@@ -424,6 +432,9 @@ function StartButton({
     model: session.model
   })
   const [reasoning, setReasoning] = useState<Reasoning>(session.reasoning)
+  // Context window seeds from the planning thread's; only meaningful for
+  // claude models with a 1M-capable window (same rule as PromptBar).
+  const [ctx1m, setCtx1m] = useState(session.context1m)
   const [permission, setPermission] = useState<PermissionPolicy>(session.permission)
   const [workers, setWorkers] = useState(1)
   // Orchestration options: per-run instructions + conduct overrides on
@@ -436,8 +447,9 @@ function StartButton({
       : null
   )
   const reduce = useReducedMotion()
-  const ladder =
-    catalog?.[choice.provider]?.models.find((m) => m.id === choice.model)?.reasoning ?? []
+  const picked = catalog?.[choice.provider]?.models.find((m) => m.id === choice.model)
+  const ladder = picked?.reasoning ?? []
+  const model1m = choice.provider === 'claude' && (picked?.context ?? 0) >= 1_000_000
 
   const start = async (type: 'implementation' | 'orchestration'): Promise<void> => {
     if (busy || !session.projectId) return
@@ -453,6 +465,7 @@ function StartButton({
           model: choice.model,
           reasoning,
           permission,
+          context1m: model1m && ctx1m,
           agentType: type === 'orchestration' ? 'orchestrator' : 'implementer',
           planPath: session.planPath ?? undefined,
           title: n > 1 ? `${base} (${i + 1}/${n})` : base,
@@ -536,13 +549,25 @@ function StartButton({
                     }}
                   />
                   {ladder.length > 1 && (
-                    <Select value={reasoning} onValueChange={(v) => setReasoning(v as Reasoning)}>
+                    <Select
+                      value={reasoning}
+                      onValueChange={(v) => {
+                        // The window rows share this menu but not its value —
+                        // picking one sets the build's window, effort stays.
+                        if (v === 'ctx:std' || v === 'ctx:1m') {
+                          setCtx1m(v === 'ctx:1m')
+                          return
+                        }
+                        setReasoning(v as Reasoning)
+                      }}
+                    >
                       <SelectTrigger
                         size="sm"
                         aria-label="Reasoning effort"
                         className="gap-1 px-1.5"
                       >
-                        <SelectValue />
+                        {EFFORT_LABELS[reasoning]}
+                        {model1m && `, ${ctx1m ? '1M' : '200k'}`}
                       </SelectTrigger>
                       <SelectContent>
                         {ladder.map((r) => (
@@ -550,6 +575,33 @@ function StartButton({
                             {EFFORT_LABELS[r]}
                           </SelectItem>
                         ))}
+                        {model1m && (
+                          <>
+                            <SelectSeparator />
+                            <div className="px-2 pt-1 pb-0.5 text-[10px] font-medium tracking-[0.08em] text-muted-foreground/60 uppercase">
+                              Context window
+                            </div>
+                            {(
+                              [
+                                ['ctx:std', 'Standard · 200k', !ctx1m],
+                                ['ctx:1m', '1M', ctx1m]
+                              ] as const
+                            ).map(([v, label, on]) => (
+                              <SelectItem
+                                key={v}
+                                value={v}
+                                className={cn(!on && 'text-muted-foreground')}
+                              >
+                                {label}
+                                {on && (
+                                  <span className="pointer-events-none absolute top-1/2 right-2 flex size-3.5 -translate-y-1/2 items-center justify-center">
+                                    <Check className="size-3.5" />
+                                  </span>
+                                )}
+                              </SelectItem>
+                            ))}
+                          </>
+                        )}
                       </SelectContent>
                     </Select>
                   )}

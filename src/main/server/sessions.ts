@@ -502,7 +502,7 @@ export class SessionRegistry {
       archived: false,
       permission: params.permission ?? d.permission,
       fast: false,
-      context1m: false,
+      context1m: params.context1m ?? false,
       busySince: null,
       threadRules: params.threadRules ?? null,
       nativeId: null,
