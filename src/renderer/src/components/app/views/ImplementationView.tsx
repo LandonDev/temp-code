@@ -103,7 +103,7 @@ export function ImplementationView({ session }: { session: SessionMeta }): React
         // Bookkeeping-only edits (.temp-code/) aren't work to review.
         (b.kind === 'tool' && EDIT_TOOLS.has(b.name) && splitEdit(b).edits.length > 0) ||
         ((b.kind === 'approval' || b.kind === 'question') && !b.resolved) ||
-        b.kind === 'error'
+        (b.kind === 'error' && !b.cleared)
       ) {
         R.work.push(b)
       }
@@ -926,7 +926,7 @@ function WorkItems({
         ) : b.kind === 'question' ? (
           <QuestionCard key={b.id} block={b} sessionId={sessionId} />
         ) : b.kind === 'error' ? (
-          <ErrorChip key={b.id} text={b.text} />
+          b.cleared ? null : <ErrorChip key={b.id} text={b.text} sessionId={sessionId} />
         ) : (
           <FreshEdit key={b.id} block={b as ToolBlock} sessionId={sessionId} />
         )

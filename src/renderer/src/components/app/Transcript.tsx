@@ -55,6 +55,8 @@ function rowsFor(blocks: Block[]): Row[] {
     // appears and then vanishes when the step settles reads as jitter.
     // The transcript's trailing "Thinking" status covers the live case.
     if (b.kind === 'thinking' && b.text.trim() === '') continue
+    // Errors settled by a Continue no longer render anywhere.
+    if (b.kind === 'error' && b.cleared) continue
     if (b.kind === 'user') turn++
     if (b.kind === 'tool') {
       // File changes stand alone and loud — one card per file, never
@@ -278,7 +280,8 @@ const RowContent = memo(function RowContent({
     case 'pass':
       return <PassDivider actions={block.actions} />
     case 'error':
-      return <ErrorChip text={block.text} />
+      if (block.cleared) return <></>
+      return <ErrorChip text={block.text} sessionId={sessionId} />
     default:
       return <></>
   }

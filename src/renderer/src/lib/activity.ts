@@ -18,7 +18,7 @@ export function activityLine(blocks: Block[] | undefined): string | null {
       return detail ? `${b.name} · ${detail}` : b.name
     }
     if (b.kind === 'assistant' && b.text.trim()) return b.text.trim().split('\n')[0]
-    if (b.kind === 'error') return b.text
+    if (b.kind === 'error' && !b.cleared) return b.text
   }
   return null
 }

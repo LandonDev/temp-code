@@ -203,7 +203,12 @@ export const AgentEventSchema = z.discriminatedUnion('type', [
   // Orchestration: this session spawned a child session.
   z.object({ type: z.literal('agent-spawned'), childSessionId: z.string() }),
 
-  z.object({ type: z.literal('error'), message: z.string() })
+  z.object({ type: z.literal('error'), message: z.string() }),
+
+  // The user hit Continue after fixing what killed the turn (e.g. switched
+  // accounts on a session limit): every error shown so far is settled —
+  // the UI hides the chips and the harness picks the work back up.
+  z.object({ type: z.literal('errors-cleared') })
 ])
 export type AgentEvent = z.infer<typeof AgentEventSchema>
 

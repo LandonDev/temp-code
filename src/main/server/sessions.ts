@@ -184,6 +184,11 @@ export class SessionRegistry {
   /** Completed-turn pass state: armed at turn-complete, fired at idle. */
   private passPending = new Map<string, TurnPass>()
   private passActive = new Set<string>()
+  /** Turns that emitted an error event (usage limit, execution failure) —
+   *  such a turn is not a "completed turn", so the pass never runs on it.
+   *  The status-level guard below misses these: drivers often emit the
+   *  error event and still settle with status idle. */
+  private erroredTurns = new Set<string>()
   private lastActivity = new Map<string, number>()
   /** "Where it's at" per working thread ("Editing PromptBar.tsx") —
    *  transient by design: server memory only, cleared when the turn
@@ -550,6 +555,9 @@ export class SessionRegistry {
   ): Promise<void> {
     let meta = this.store.getSession(sessionId)
     if (!meta) throw new Error(`unknown session: ${sessionId}`)
+    // A real message starts a fresh turn — the error taint belongs to the
+    // one that died. (The pass's own handle.send bypasses this method.)
+    this.erroredTurns.delete(sessionId)
     // Zeron unarchive-on-send: a message into an archived thread revives it.
     if (meta.archived) {
       const next = this.store.updateSession(sessionId, { archived: false })
@@ -925,6 +933,31 @@ export class SessionRegistry {
     if (next) this.notifyMeta(next)
   }
 
+  /** The Continue button on an errored thread: the user fixed what killed
+   *  the turn (switched accounts on a session limit), so settle the shown
+   *  errors, reboot the harness (resume keeps the conversation), and tell
+   *  it to pick the work back up. Errored subagents continue first, so an
+   *  orchestrator wakes to a fleet that is already moving again. */
+  async continueRun(sessionId: string): Promise<void> {
+    const meta = this.store.getSession(sessionId)
+    if (!meta || meta.status === 'running' || meta.status === 'starting') return
+    const children = this.store
+      .listSessions()
+      .filter((s) => s.parentId === sessionId && s.status === 'error')
+    for (const child of children) await this.continueRun(child.id)
+    this.append(sessionId, { type: 'errors-cleared' })
+    await this.dropHandle(sessionId)
+    try {
+      const handle = await this.handleFor(sessionId)
+      this.lastActivity.set(sessionId, Date.now())
+      await handle.send(
+        `<continue-run>\nThe previous turn was cut off by a harness error (a session limit or similar) that the user has since fixed. ${children.length > 0 ? 'Your errored subagents were restarted the same way and are picking their work back up. ' : ''}Continue exactly where you left off: check your task list and your last few actions, finish anything half-done, and keep going. If the work was already complete, say so in one short line.\n</continue-run>`
+      )
+    } catch {
+      // Boot failed (still logged out?) — handleFor surfaced the error.
+    }
+  }
+
   private async dropHandle(sessionId: string): Promise<void> {
     const inflight = this.starting.get(sessionId)
     if (inflight) await inflight.catch(() => {})
@@ -1054,10 +1087,16 @@ export class SessionRegistry {
         settleToReport = next
       }
     }
+    // An error event taints the whole turn (drivers emit it and still
+    // settle with status idle — seen with usage-limit errors).
+    if (event.type === 'error') {
+      this.erroredTurns.add(sessionId)
+      this.passPending.delete(sessionId)
+    }
     // Shared context (M8): a finished turn refreshes the thread's mirror.
     if (event.type === 'turn-complete') {
       if (this.store.getSession(sessionId)?.projectId) scheduleMirror(this, sessionId)
-      this.armTurnPass(sessionId)
+      if (!this.erroredTurns.has(sessionId)) this.armTurnPass(sessionId)
     }
     for (const listener of this.subscribers.get(sessionId) ?? []) listener(row)
     if (settleToReport) notifyParentOfSettle(this, settleToReport)
@@ -1233,8 +1272,15 @@ export class SessionRegistry {
           `Commit every change from this work${where} with a clear message${pass.commit === 'push' ? ', then push that branch to origin' : ''}.`
         )
       }
+      // A settle with an unfinished list is housekeeping, not a finish
+      // line — the pass must not read as "the work is done".
+      const tally = this.tasksOf(sessionId)
+      const unfinished =
+        tally && tally.done < tally.total
+          ? `\nThe task list shows only ${tally.done}/${tally.total} tasks completed — this pass only tidies what exists. End by saying plainly that the work is UNFINISHED and what remains, so the user can resume it.`
+          : ''
       await handle.send(
-        `<turn-pass>\nThe turn settled. The completed-turn setting now asks you to:\n${steps.map((s, i) => `${i + 1}. ${s}`).join('\n')}\nThese are the project's own completion settings — they OVERRIDE any branch, worktree, PR, or completion convention a skill or other instruction gave earlier in this thread. If the turn changed nothing to verify, build, or commit, say so in one short line and stop. Never start new feature work in this pass.\n</turn-pass>`
+        `<turn-pass>\nThe turn settled. The completed-turn setting now asks you to:\n${steps.map((s, i) => `${i + 1}. ${s}`).join('\n')}\nThese are the project's own completion settings — they OVERRIDE any branch, worktree, PR, or completion convention a skill or other instruction gave earlier in this thread. If the turn changed nothing to verify, build, or commit, say so in one short line and stop. Never start new feature work in this pass.${unfinished}\n</turn-pass>`
       )
     } catch {
       // Harness refused (gone, mid-restart) — settle back to normal flow.
