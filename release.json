@@ -1,5 +1,5 @@
 {
-  "n": 37,
-  "notes": "Every send stamps its run settings — pass history names the model, effort and window that did the work",
-  "ts": 1786936869099
+  "n": 38,
+  "notes": "Live-diff watcher refuses cwds that would freeze the app: non-repos and 30k+-file repos",
+  "ts": 1786937005656
 }
