@@ -883,9 +883,10 @@ function RoundSection({
   )
 }
 
-/** The pass banner, above the composer once a pass completes: typing below
- *  keeps working in the CURRENT pass; the button starts the next one,
- *  wearing that pass's color. */
+/** The pass banner: a quiet tab tucked behind the composer's top edge
+ *  (Codex queue-style) once a pass completes. Same width as the composer,
+ *  attached to it — typing below keeps working in the CURRENT pass; the
+ *  colored action starts the next one. */
 function PassBanner({
   passNum,
   color,
@@ -896,19 +897,24 @@ function PassBanner({
   onNext: () => void
 }): React.JSX.Element {
   return (
-    <div className="px-3 pb-1.5">
-      <div
-        className="flex h-9 items-center justify-between gap-3 rounded-[10px] border pr-1.5 pl-3"
-        style={{ background: `${color}12`, borderColor: `${color}2e` }}
-      >
-        <span className="text-[11.5px] text-muted-foreground">Pass {passNum} complete</span>
-        <button
-          onClick={onNext}
-          className="rounded-[7px] px-2.5 py-1 text-[11.5px] font-medium text-white transition hover:brightness-110 active:scale-95"
-          style={{ background: color }}
+    <div className="shrink-0 px-3">
+      <div className="mx-auto w-full max-w-[688px]">
+        <div
+          className="-mb-3 flex items-center justify-between rounded-t-[14px] border border-b-0 pt-1 pr-2 pb-4 pl-3.5"
+          style={{ background: `${color}0f`, borderColor: `${color}26` }}
         >
-          Start pass {passNum + 1}
-        </button>
+          <span className="flex items-center gap-2 text-[11.5px] text-muted-foreground">
+            <span className="size-1.5 rounded-full" style={{ background: color }} />
+            Pass {passNum} complete
+          </span>
+          <button
+            onClick={onNext}
+            className="rounded-md px-2 py-0.5 text-[11.5px] font-medium transition-[filter] hover:brightness-125 active:scale-95"
+            style={{ color }}
+          >
+            Start pass {passNum + 1}
+          </button>
+        </div>
       </div>
     </div>
   )
