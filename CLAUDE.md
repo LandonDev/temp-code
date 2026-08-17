@@ -16,6 +16,12 @@ env -u ELECTRON_RUN_AS_NODE \
 ```
 - Own database, own window; CDP on 9224 for driving and screenshots
   (`window.__app` exposes the store in dev builds).
+- These are ENFORCED in code: a dev build without TEMP_CODE_USER_DATA
+  exits immediately (it would open the installed app's database — a
+  second SQLite writer there freezes the user's live threads), and each
+  userData dir takes a single-instance lock. If several sessions test at
+  once, each needs its OWN userData dir and debug port (temp-code-dev2 /
+  9226, …).
 - `env -u ELECTRON_RUN_AS_NODE` is required — the variable leaks into
   agent shells and breaks Electron.
 - Renderer must be on port 5173; a different port means a stale dev

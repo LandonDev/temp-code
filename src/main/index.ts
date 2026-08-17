@@ -19,6 +19,24 @@ if (process.env.TEMP_CODE_DEBUG_PORT) {
   app.commandLine.appendSwitch('remote-debugging-port', process.env.TEMP_CODE_DEBUG_PORT)
 }
 
+// Two hard walls against sharing a database. A dev instance without its own
+// userData would open the installed app's database — a second SQLite writer
+// there stalls the running app's event writes mid-turn (threads freeze on
+// "Working…") and its boot-time status reset scribbles over live sessions.
+// So: dev builds REQUIRE the env override, and any userData accepts only
+// one instance, ever (the lock is per userData dir).
+if (!app.isPackaged && !process.env.TEMP_CODE_USER_DATA) {
+  console.error(
+    'refusing to run: dev instances must set TEMP_CODE_USER_DATA ' +
+      "(see CLAUDE.md) — this would open the installed app's database"
+  )
+  app.exit(1)
+}
+if (!app.requestSingleInstanceLock()) {
+  console.error('refusing to run: another instance already owns this userData directory')
+  app.exit(1)
+}
+
 function createWindow(): void {
   const mainWindow = new BrowserWindow({
     width: 1280,
