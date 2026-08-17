@@ -1,17 +1,19 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { motion, useReducedMotion } from 'motion/react'
-import { ArrowUp, Check, GitBranch, X } from 'lucide-react'
+import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
+import { ArrowUp, Check, ChevronRight, GitBranch, Users, X } from 'lucide-react'
 import type { SessionStatus, SessionMeta } from '@shared/events'
 import { childrenOf, useApp } from '../../state/store'
 import { cn } from '../../lib/utils'
+import { useNow } from '../../lib/useNow'
 import { activityLine, lastAssistantLine, taskTitle } from '../../lib/activity'
-import { SPRING_PANEL } from '../../lib/ease'
+import { EASE_OUT, SPRING_PANEL } from '../../lib/ease'
 import { duration, ProviderMark, StatusDot } from './bits'
 import { Spinner } from '../ui/spinner'
 import { EDIT_TOOLS, editModel, splitEdit } from './blocks/ToolGroup'
 import { UsageRing } from './ContextMeter'
 import type { Block } from '../../state/blocks'
 import { Transcript } from './Transcript'
+import { MatrixSpinner } from './WorkingStrip'
 
 /**
  * The subagent fleet, shared by every view that spawns agents: rows lead
@@ -372,6 +374,127 @@ export function AgentDetail({
           </button>
         </div>
       </motion.div>
+    </div>
+  )
+}
+
+/**
+ * The fleet as a right-edge companion panel (chat and planning threads):
+ * slides in when the thread's agents go live, collapses to an edge tab
+ * once every agent settles, reopens from the tab any time. A manual
+ * toggle wins until the fleet next changes state. Renders nothing until
+ * the thread has spawned at least one agent.
+ */
+export function FleetPanel({ sessionId }: { sessionId: string }): React.JSX.Element | null {
+  const session = useApp((s) => s.sessions[sessionId])
+  const sessions = useApp((s) => s.sessions)
+  const agents = useAgents(sessionId)
+  const working = agents.filter((a) => a.status === 'running' || a.status === 'starting').length
+  const waiting = agents.filter((a) => a.status === 'waiting').length
+  const anyLive = working > 0 || waiting > 0
+  const now = useNow(anyLive)
+  const [openAgentId, setOpenAgentId] = useState<string | null>(null)
+  const openAgent = openAgentId ? (sessions[openAgentId] ?? null) : null
+
+  const [userOpen, setUserOpen] = useState<boolean | null>(null)
+  const [sawLive, setSawLive] = useState(anyLive)
+  if (anyLive !== sawLive) {
+    setSawLive(anyLive)
+    setUserOpen(null)
+  }
+  const panelOpen = agents.length > 0 && (userOpen ?? anyLive)
+
+  if (agents.length === 0) return null
+  return (
+    <>
+      <AnimatePresence initial={false}>
+        {panelOpen && (
+          <motion.div
+            key="fleet"
+            initial={{ width: 0, opacity: 0 }}
+            animate={{ width: 340, opacity: 1 }}
+            exit={{ width: 0, opacity: 0 }}
+            transition={{ duration: 0.28, ease: EASE_OUT }}
+            className="flex min-h-0 shrink-0 flex-col overflow-hidden border-l border-hairline"
+          >
+            <div className="flex h-9 w-[340px] shrink-0 items-center justify-between pr-1.5 pl-4">
+              <span className="text-[11px] font-medium tracking-[0.06em] text-muted-foreground uppercase">
+                Subagents
+              </span>
+              <button
+                onClick={() => setUserOpen(false)}
+                title="Hide subagents"
+                aria-label="Hide subagents"
+                className="flex size-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+              >
+                <ChevronRight className="size-3.5" />
+              </button>
+            </div>
+            <div className="min-h-0 w-[340px] flex-1 overflow-y-auto px-1.5 pb-3">
+              <div className="flex flex-col gap-0.5">
+                {agents.map((agent) => (
+                  <AgentRow
+                    key={agent.id}
+                    agent={agent}
+                    now={now}
+                    hidden={openAgentId === agent.id}
+                    onOpen={() => setOpenAgentId(agent.id)}
+                  />
+                ))}
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {!panelOpen && (
+        <button
+          onClick={() => setUserOpen(true)}
+          title="Show subagents"
+          aria-label="Show subagents"
+          className="flex w-8 shrink-0 flex-col items-center gap-2 border-l border-hairline pt-4 text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground"
+        >
+          <Users className="size-3.5" />
+          <span
+            className={cn(
+              'size-1.5 rounded-full',
+              waiting > 0 ? 'bg-warning' : anyLive ? 'animate-pulse bg-success' : 'bg-border'
+            )}
+          />
+        </button>
+      )}
+
+      <AnimatePresence>
+        {openAgent && session && (
+          <AgentDetail
+            key={openAgent.id}
+            agent={openAgent}
+            parent={session}
+            onClose={() => setOpenAgentId(null)}
+          />
+        )}
+      </AnimatePresence>
+    </>
+  )
+}
+
+/** The quiet pulse line for a thread whose own turn is dormant while its
+ *  fleet works — rendered above the composer by chat and planning views. */
+export function FleetPulseLine({ sessionId }: { sessionId: string }): React.JSX.Element | null {
+  const session = useApp((s) => s.sessions[sessionId])
+  const agents = useAgents(sessionId)
+  const working = agents.filter((a) => a.status === 'running' || a.status === 'starting').length
+  const waiting = agents.filter((a) => a.status === 'waiting').length
+  const mainIdle = session?.status !== 'running' && session?.status !== 'starting'
+  if (!mainIdle || (working === 0 && waiting === 0)) return null
+  return (
+    <div className="mx-auto flex w-full max-w-[688px] shrink-0 items-center gap-2 px-6 pb-1 text-xs text-muted-foreground">
+      <MatrixSpinner />
+      <span>
+        {working > 0
+          ? `${working} subagent${working > 1 ? 's' : ''} working`
+          : `${waiting} subagent${waiting > 1 ? 's' : ''} waiting on approval`}
+      </span>
     </div>
   )
 }
