@@ -22,6 +22,9 @@ export interface ComposerChip {
   name: string
 }
 
+/** One run of composer content — drafts round-trip through these. */
+export type ComposerSegment = { text: string } | { chip: ComposerChip }
+
 export interface ComposerInputHandle {
   focus: () => void
   /** replace [from, to) of the serialized text with plain text or a chip */
@@ -32,6 +35,10 @@ export interface ComposerInputHandle {
   ) => void
   appendText: (text: string) => void
   clear: () => void
+  /** current content as segments, chips intact — for saving a draft */
+  snapshot: () => ComposerSegment[]
+  /** replace all content from segments — for restoring a draft */
+  restore: (segments: ComposerSegment[]) => void
 }
 
 /** Serialized length contributed by one DOM node. */
@@ -135,9 +142,47 @@ function positionFor(root: HTMLElement, offset: number): { node: Node; offset: n
   return walk(root)
 }
 
+/** Content as segments — the walk mirrors serialize() but keeps chips whole. */
+function snapshotAll(root: HTMLElement): ComposerSegment[] {
+  const out: ComposerSegment[] = []
+  const pushText = (t: string): void => {
+    if (!t) return
+    const last = out[out.length - 1]
+    if (last && 'text' in last) last.text += t
+    else out.push({ text: t })
+  }
+  const walk = (node: Node): void => {
+    for (const child of node.childNodes) {
+      if (child instanceof HTMLElement && child.dataset.token !== undefined) {
+        out.push({ chip: { token: child.dataset.token, name: child.dataset.name ?? '' } })
+        continue
+      }
+      if (child.nodeType === Node.TEXT_NODE) {
+        pushText(child.nodeValue ?? '')
+        continue
+      }
+      if (child instanceof HTMLElement) {
+        if (child.tagName === 'BR') {
+          pushText('\n')
+          continue
+        }
+        if (getComputedStyle(child).display === 'block') pushText('\n')
+        walk(child)
+      }
+    }
+  }
+  walk(root)
+  // mirror serializeAll's leading-newline trim
+  if (out.length && 'text' in out[0] && out[0].text.startsWith('\n')) {
+    out[0].text = out[0].text.slice(1)
+  }
+  return out.filter((s) => 'chip' in s || s.text)
+}
+
 function chipElement(chip: ComposerChip): HTMLElement {
   const el = document.createElement('span')
   el.dataset.token = chip.token
+  el.dataset.name = chip.name
   el.contentEditable = 'false'
   el.className =
     'inline-flex items-center gap-1 rounded-[5px] bg-accent px-1 align-baseline text-[13px] font-medium select-none'
@@ -212,6 +257,27 @@ export const ComposerInput = forwardRef<
       const root = rootRef.current
       if (!root) return
       root.innerHTML = ''
+      report()
+    },
+    snapshot: () => {
+      const root = rootRef.current
+      return root ? snapshotAll(root) : []
+    },
+    restore: (segments) => {
+      const root = rootRef.current
+      if (!root) return
+      root.innerHTML = ''
+      for (const seg of segments) {
+        if ('chip' in seg) {
+          root.append(chipElement(seg.chip))
+          continue
+        }
+        const lines = seg.text.split('\n')
+        lines.forEach((line, i) => {
+          if (i > 0) root.append(document.createElement('br'))
+          if (line) root.append(document.createTextNode(line))
+        })
+      }
       report()
     }
   }))
