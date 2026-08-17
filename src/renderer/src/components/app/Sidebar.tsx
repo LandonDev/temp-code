@@ -715,9 +715,20 @@ function ChatRow({ session }: { session: SessionMeta }): React.JSX.Element {
   const selectProject = useApp((s) => s.selectProject)
   const renameSession = useApp((s) => s.renameSession)
   const deleteSession = useApp((s) => s.deleteSession)
+  const lastSeen = useApp((s) => s.lastSeen[session.id] ?? 0)
   const [renaming, setRenaming] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const Glyph = THREAD_GLYPHS[session.threadType ?? 'chat']
+  // Same dress as a project row's thread lines: tinted spinner up front
+  // while working (full activity in the tooltip, elapsed at the end),
+  // the blue dot + bold title once finished unseen.
+  const working = session.status === 'running' || session.status === 'starting'
+  const unread =
+    (session.status === 'idle' || session.status === 'done') &&
+    !selected &&
+    session.updatedAt > lastSeen
+  const now = useNow(working)
+  const ms = now - (session.busySince ?? session.updatedAt)
 
   if (renaming) {
     return (
@@ -760,25 +771,35 @@ function ChatRow({ session }: { session: SessionMeta }): React.JSX.Element {
           void select(session.id)
         }}
         onDoubleClick={() => setRenaming(true)}
+        title={working ? (session.activity ?? undefined) : undefined}
         className={cn(
           'relative flex h-7 w-full items-center gap-1.5 rounded-md px-2 text-left',
           !selected && 'hover:bg-accent/50'
         )}
       >
+        {working && <MatrixSpinner cell={1.8} tint={session.activityKind} />}
+        {unread && <span className="size-1.5 shrink-0 rounded-full bg-info" />}
         <Glyph
           className={cn('size-3 shrink-0 opacity-80', THREAD_TINTS[session.threadType ?? 'chat'])}
         />
         <span
           className={cn(
             'min-w-0 flex-1 truncate text-[13px] leading-5',
-            selected ? 'text-foreground' : 'text-foreground/80'
+            selected || unread ? 'text-foreground' : 'text-foreground/80',
+            unread && 'font-medium'
           )}
         >
           {session.title}
         </span>
-        <StatusDot status={session.status} />
+        {!working && <StatusDot status={session.status} />}
         <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground/60 group-hover/row:opacity-0">
-          {timeAgo(session.updatedAt)}
+          {working ? (
+            <span className={cn('whitespace-nowrap', ms < 3000 && 'opacity-0')}>
+              {duration(ms)}
+            </span>
+          ) : (
+            timeAgo(session.updatedAt)
+          )}
         </span>
       </button>
       <div className="absolute top-1/2 right-1 -translate-y-1/2 opacity-0 transition-opacity group-hover/row:opacity-100">
