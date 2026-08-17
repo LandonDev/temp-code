@@ -125,6 +125,17 @@ export const AgentEventSchema = z.discriminatedUnion('type', [
   // highlights those tool calls apart from the turn's own work.
   z.object({ type: z.literal('turn-pass'), actions: z.array(z.string()) }),
 
+  // Dormant supervision: a subagent settled and the server handed its
+  // report straight to the parent harness — never through the user-visible
+  // message queue. This event is the transcript's quiet record of why the
+  // next turn started.
+  z.object({
+    type: z.literal('agent-report'),
+    agentId: z.string(),
+    title: z.string(),
+    status: z.string()
+  }),
+
   // End of a turn, with whatever accounting the provider reports.
   z.object({
     type: z.literal('turn-complete'),

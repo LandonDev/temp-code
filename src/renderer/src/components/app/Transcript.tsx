@@ -1,5 +1,5 @@
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { Check, CheckCheck, Copy, Target } from 'lucide-react'
+import { Bot, Check, CheckCheck, Copy, Target } from 'lucide-react'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { cn } from '../../lib/utils'
 import { useApp } from '../../state/store'
@@ -99,6 +99,27 @@ function PassDivider({ actions }: { actions: string[] }): React.JSX.Element {
   )
 }
 
+/** A subagent's settle report went straight to the harness — the chat
+ *  shows only this slim record of why the next turn started. */
+function ReportRow({ block }: { block: Extract<Block, { kind: 'report' }> }): React.JSX.Element {
+  const note = block.status === 'idle' ? '' : ` (${block.status})`
+  return (
+    <div
+      className="flex items-center gap-3 py-1"
+      role="note"
+      aria-label={`Subagent report: ${block.title}`}
+    >
+      <span className="h-px flex-1 bg-border" />
+      <span className="flex min-w-0 shrink items-center gap-1.5 text-[11px] text-muted-foreground">
+        <Bot className="size-3 shrink-0" />
+        <span className="shrink-0">Subagent report</span>
+        <span className="truncate">— {block.title}{note}</span>
+      </span>
+      <span className="h-px flex-1 bg-border" />
+    </div>
+  )
+}
+
 /** Goal lifecycle as a slim system row (compaction-divider family). The
  *  met row is the completion moment — weight, not glow. */
 function GoalRow({ block }: { block: Extract<Block, { kind: 'goal' }> }): React.JSX.Element {
@@ -172,6 +193,8 @@ function rowGlance(row: Row): { kind: GlanceKind; who: string; text: string } {
       return { kind: 'tool', who: 'Goal', text: b.reason ?? b.condition }
     case 'pass':
       return { kind: 'tool', who: 'Pass', text: b.actions.join(' · ') }
+    case 'report':
+      return { kind: 'tool', who: 'Subagent', text: b.title }
     default:
       return { kind: 'tool', who: '', text: '' }
   }
@@ -321,6 +344,8 @@ const RowContent = memo(function RowContent({
       return <GoalRow block={block} />
     case 'pass':
       return <PassDivider actions={block.actions} />
+    case 'report':
+      return <ReportRow block={block} />
     case 'error':
       if (block.cleared) return <></>
       return <ErrorChip text={block.text} sessionId={sessionId} blockId={block.id} />

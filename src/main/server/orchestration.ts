@@ -256,10 +256,12 @@ export function notifyParentOfSettle(reg: SessionRegistry, child: SessionMeta): 
       : tail
         ? `Latest reply:\n${tail}`
         : '(no reply text)'
-  reg.queueAdd(
-    child.parentId,
-    `<subagent-report>\nAutomatic notification: subagent "${child.title}" (${child.id}) settled with status ${child.status}.\n${body}\nUse check_agent for detail, send_to_agent to follow up. Continue your work accordingly — do not reply to this notification itself.\n</subagent-report>`
-  )
+  reg.deliverAgentReport(child.parentId, {
+    agentId: child.id,
+    title: child.title,
+    status: child.status,
+    text: `<subagent-report>\nAutomatic notification: subagent "${child.title}" (${child.id}) settled with status ${child.status}.\n${body}\nUse check_agent for detail, send_to_agent to follow up. Continue your work accordingly — do not reply to this notification itself.\n</subagent-report>`
+  })
 }
 
 const text = (t: string): { content: [{ type: 'text'; text: string }] } => ({

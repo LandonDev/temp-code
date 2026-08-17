@@ -115,6 +115,14 @@ export interface QueuedMessage extends QueuedSendOpts {
   ts: number
 }
 
+/** A subagent settle report headed for its parent's harness. */
+interface AgentReport {
+  text: string
+  agentId: string
+  title: string
+  status: string
+}
+
 /** Dispose idle harness handles after this long; resume restores them. */
 const IDLE_DISPOSE_MS = 10 * 60 * 1000
 
@@ -211,6 +219,9 @@ export class SessionRegistry {
   private queues = new Map<string, QueuedMessage[]>()
   private queueListeners = new Set<QueueListener>()
   private draining = new Set<string>()
+  /** Subagent settle reports awaiting a busy parent — delivered straight
+   *  to the harness on idle, ahead of the user queue, never through it. */
+  private pendingReports = new Map<string, AgentReport[]>()
   /** Completed-turn pass state: armed at turn-complete, fired at idle. */
   private passPending = new Map<string, TurnPass>()
   private passActive = new Set<string>()
@@ -894,10 +905,7 @@ export class SessionRegistry {
     })
   }
 
-  private async goalCall(
-    sessionId: string,
-    fn: (h: DriverHandle) => Promise<void>
-  ): Promise<void> {
+  private async goalCall(sessionId: string, fn: (h: DriverHandle) => Promise<void>): Promise<void> {
     const handle = await this.handleFor(sessionId)
     this.lastActivity.set(sessionId, Date.now())
     try {
@@ -1256,7 +1264,7 @@ export class SessionRegistry {
           this.passPending.delete(sessionId)
           this.passActive.add(sessionId)
           void this.runTurnPass(sessionId, pass)
-        } else {
+        } else if (!this.drainReports(sessionId)) {
           this.drainQueue(sessionId)
         }
       }
@@ -1498,8 +1506,52 @@ export class SessionRegistry {
     } catch {
       // Harness refused (gone, mid-restart) — settle back to normal flow.
       this.passActive.delete(sessionId)
-      this.drainQueue(sessionId)
+      if (!this.drainReports(sessionId)) this.drainQueue(sessionId)
     }
+  }
+
+  // ── subagent settle reports (dormant supervision) ──────────────────
+
+  /** Hand a subagent's settle report to the parent harness directly — the
+   *  model must see it, the chat must not: no user-text event, no queue
+   *  entry, no pass stamping. Idle parents get it now, busy ones at their
+   *  next settle, ahead of queued user messages (a queued message opens a
+   *  fresh round; the report belongs to the round that spawned the agent). */
+  deliverAgentReport(sessionId: string, report: AgentReport): void {
+    const list = this.pendingReports.get(sessionId) ?? []
+    list.push(report)
+    this.pendingReports.set(sessionId, list)
+    if (this.store.getSession(sessionId)?.status === 'idle') this.drainReports(sessionId)
+  }
+
+  /** On idle: send one parked report straight to the harness. Returns
+   *  whether a report took this settle (the queue then waits its turn). */
+  private drainReports(sessionId: string): boolean {
+    if (this.draining.has(sessionId)) return false
+    const list = this.pendingReports.get(sessionId)
+    if (!list?.length) return false
+    const item = list.shift()!
+    if (!list.length) this.pendingReports.delete(sessionId)
+    this.draining.add(sessionId)
+    void (async () => {
+      const handle = await this.handleFor(sessionId)
+      this.append(sessionId, {
+        type: 'agent-report',
+        agentId: item.agentId,
+        title: item.title,
+        status: item.status
+      })
+      this.lastActivity.set(sessionId, Date.now())
+      await handle.send(item.text)
+    })()
+      .catch(() => {
+        // Harness refused (gone, mid-restart) — park it for the next settle.
+        const q = this.pendingReports.get(sessionId) ?? []
+        q.unshift(item)
+        this.pendingReports.set(sessionId, q)
+      })
+      .finally(() => this.draining.delete(sessionId))
+    return true
   }
 
   /** On idle: send the next queued message, one per settle. */
