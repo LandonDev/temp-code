@@ -26,6 +26,7 @@ import {
 import { rankFiles } from '../../lib/rank'
 import { AddonMark } from './AddonMark'
 import { ComposerInput, type ComposerInputHandle, type ComposerSegment } from './ComposerInput'
+import { readCopiedMessage, type CopiedMessage } from '../../lib/copy-message'
 import { addonTitle } from '../../lib/addon-names'
 
 const REASONING_LABELS: Record<Reasoning, string> = {
@@ -326,6 +327,26 @@ export function PromptBar({
     },
     [saveAttachment]
   )
+
+  /** A copied prompt pasted back: the text flavor inserts on its own;
+   *  this restores the attachments — appshots and images into the preview
+   *  strip (order kept), files and thread references as chips. */
+  const restoreCopied = useCallback(async (msg: CopiedMessage): Promise<void> => {
+    for (const a of msg.attachments) {
+      if (a.kind === 'image' || a.kind === 'appshot') {
+        const previewUrl = await imageDataFor(a.path).catch(() => null)
+        if (previewUrl) {
+          setImages((prev) =>
+            prev.some((i) => i.attachment.path === a.path)
+              ? prev
+              : [...prev, { attachment: a, previewUrl }]
+          )
+        }
+      } else {
+        setFileRefs((prev) => (prev.some((f) => f.path === a.path) ? prev : [...prev, a]))
+      }
+    }
+  }, [])
 
   const addFileRef = useCallback(
     (path: string): void => {
@@ -738,6 +759,11 @@ export function PromptBar({
               setDismissed(null)
             }}
             onPaste={(e) => {
+              const copied = readCopiedMessage(e.clipboardData)
+              if (copied) {
+                void restoreCopied(copied)
+                return
+              }
               const files = [...e.clipboardData.files].filter((f) => f.type.startsWith('image/'))
               if (files.length) {
                 e.preventDefault()

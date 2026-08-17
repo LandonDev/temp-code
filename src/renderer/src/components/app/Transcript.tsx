@@ -1,5 +1,5 @@
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { CheckCheck } from 'lucide-react'
+import { Check, CheckCheck, Copy } from 'lucide-react'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { cn } from '../../lib/utils'
 import { useApp } from '../../state/store'
@@ -19,6 +19,7 @@ import {
   ZEditCard
 } from './blocks/ToolGroup'
 import { UserMessage } from './blocks/UserMessage'
+import { copyMarkdown, copyUserMessage } from '../../lib/copy-message'
 import { ZIcon } from './zicon'
 import { Spinner } from '../ui/spinner'
 
@@ -155,6 +156,59 @@ function fmtTs(ts: number): string {
 }
 
 const easeInOut = (t: number): number => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2)
+
+/** Everything the assistant said in the turn, as one markdown document. */
+function turnMarkdown(rows: Row[], turn: number): string {
+  const parts: string[] = []
+  for (const r of rows) {
+    if (r.turn === turn && r.type === 'block' && r.block.kind === 'assistant') {
+      const t = r.block.text.trim()
+      if (t) parts.push(t)
+    }
+  }
+  return parts.join('\n\n')
+}
+
+/** Hover-strip copy affordance. A user prompt copies with its attachments
+ *  (pasteable back into the composer, references intact); an assistant
+ *  turn copies its full reply as markdown. */
+function CopyTurn({ row, rows }: { row: Row; rows: Row[] }): React.JSX.Element | null {
+  const [copied, setCopied] = useState(false)
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const user = row.type === 'block' && row.block.kind === 'user' ? row.block : null
+  if (!user && !turnMarkdown(rows, row.turn)) return null
+
+  const copy = (): void => {
+    if (user) {
+      // The attachment-only placeholder is re-added on send — don't copy it.
+      const text = user.text === '(see attachments)' && user.attachments?.length ? '' : user.text
+      copyUserMessage({ text, attachments: user.attachments ?? [] })
+    } else {
+      // Thread tokens leave the app as their human titles.
+      const sessions = useApp.getState().sessions
+      copyMarkdown(
+        turnMarkdown(rows, row.turn).replace(
+          /@thread:([\w-]{6,})/g,
+          (token, id: string) => (sessions[id]?.title ? `@${sessions[id].title}` : token)
+        )
+      )
+    }
+    setCopied(true)
+    if (timer.current) clearTimeout(timer.current)
+    timer.current = setTimeout(() => setCopied(false), 1500)
+  }
+
+  return (
+    <button
+      onClick={copy}
+      title={user ? 'Copy message' : 'Copy as markdown'}
+      aria-label={user ? 'Copy message' : 'Copy response as markdown'}
+      className="flex size-4 items-center justify-center rounded-sm text-faint transition-colors hover:text-foreground"
+    >
+      {copied ? <Check className="size-3 text-success" /> : <Copy className="size-3" />}
+    </button>
+  )
+}
 
 /** Single-block renderer for the non-chat views (implementation traces).
  *  `sessionId` is the session the block belongs to (approvals answer it). */
@@ -616,12 +670,16 @@ export function Transcript({
                   {lastOfTurn && ts !== undefined && (
                     <div
                       className={cn(
-                        'flex h-4 items-end text-[11px] leading-none text-faint transition-opacity duration-150',
+                        'flex h-4 items-end gap-1.5 text-[11px] leading-none text-faint transition-opacity duration-150',
                         isUser && 'justify-end',
-                        hoveredTurn === row.turn ? 'opacity-100' : 'opacity-0'
+                        hoveredTurn === row.turn
+                          ? 'opacity-100'
+                          : 'pointer-events-none opacity-0'
                       )}
                     >
+                      {isUser && <CopyTurn row={row} rows={rows} />}
                       {fmtTs(ts)}
+                      {!isUser && <CopyTurn row={row} rows={rows} />}
                     </div>
                   )}
                 </div>
