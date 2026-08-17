@@ -1,5 +1,5 @@
 {
-  "n": 70,
-  "notes": "New threads and projects no longer fail with spawn EBADF when two worktree sessions run at once",
-  "ts": 1787001436000
+  "n": 71,
+  "notes": "File watchers no longer eat a descriptor per file — the system-wide freeze after v70 can't recur, and stuck project loading is fixed",
+  "ts": 1787002799000
 }
