@@ -1,4 +1,4 @@
-import { mkdirSync, readdirSync, renameSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readdirSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { appendFile, readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { EventRow, SessionMeta } from '@shared/events'
@@ -182,9 +182,12 @@ export const journalPath = (cwd: string): string => join(cwd, '.temp-code', 'PRO
 
 const today = (): string => new Date().toISOString().slice(0, 10)
 
-/** Seeded once at project creation; model-maintained after that. */
+/** Seeded once at project creation; model-maintained after that. A
+ *  second project pointed at the same checkout finds a journal already
+ *  there — that one is the history, so leave it alone. */
 export function seedJournal(project: ProjectMeta): void {
   try {
+    if (existsSync(journalPath(project.cwd))) return
     mkdirSync(join(project.cwd, '.temp-code'), { recursive: true })
     const where =
       project.mode === 'worktree'
