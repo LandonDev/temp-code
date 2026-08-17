@@ -66,22 +66,24 @@ function TabIndicator({
 }): React.JSX.Element | null {
   if (status === 'running' || status === 'starting') {
     const ms = now - since
-    // Fixed-width boxes for the time and the activity: the tab claims its
-    // working size ONCE at turn start and holds it — activity changes swap
-    // text in place instead of pumping the whole strip's layout.
+    // Compact and still: tinted spinner (the color names the work-kind),
+    // elapsed, and just the VERB of the activity — each in a fixed box
+    // claimed once at turn start, so nothing pumps the strip's layout.
+    // The full "Editing PromptBar.tsx" lives in the tooltip.
+    const verb = activity?.split(' ')[0] ?? ''
     return (
-      <span className="flex shrink-0 items-center gap-1.5">
+      <span className="flex shrink-0 items-center gap-1" title={activity ?? undefined}>
         <MatrixSpinner cell={1.8} tint={activityKind} />
         <span
           className={cn(
-            'w-11 shrink-0 text-right text-[10.5px] tabular-nums text-muted-foreground/60',
+            'w-8 shrink-0 truncate text-right text-[10.5px] tabular-nums text-muted-foreground/60',
             ms < 3000 && 'opacity-0'
           )}
         >
           {duration(ms)}
         </span>
-        <span className="w-24 shrink-0 truncate text-left text-[10.5px] text-muted-foreground/80">
-          {activity ?? ''}
+        <span className="w-12 shrink-0 truncate text-left text-[10.5px] text-muted-foreground/80">
+          {verb}
         </span>
       </span>
     )
@@ -223,7 +225,13 @@ export function ThreadStrip(): React.JSX.Element | null {
                             />
                             <span
                               className={cn(
-                                'max-w-44 truncate',
+                                'truncate',
+                                // A working tab lends the indicator some of
+                                // its title budget; the whole tab stays
+                                // narrower than an idle one with this title.
+                                t.status === 'running' || t.status === 'starting'
+                                  ? 'max-w-32'
+                                  : 'max-w-44',
                                 // Unread reads like unread mail: bold, full
                                 // color. Dormant tabs recede so live ones
                                 // carry the eye.
