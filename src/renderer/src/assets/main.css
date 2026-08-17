@@ -542,6 +542,20 @@ textarea::-webkit-scrollbar {
   background-color: color-mix(in srgb, var(--success) 10%, transparent);
 }
 
+/* File-callout reveal: the landed line holds a violet wash, then lets go. */
+.monaco-editor .reveal-flash-line {
+  animation: reveal-flash 1.8s ease-out forwards;
+}
+@keyframes reveal-flash {
+  0%,
+  30% {
+    background-color: color-mix(in srgb, var(--code-text) 16%, transparent);
+  }
+  100% {
+    background-color: transparent;
+  }
+}
+
 /* Debugger (docs/PLAN-4.md M20): breakpoint dot + paused-line wash. */
 .monaco-editor .tc-breakpoint::after {
   content: '';
