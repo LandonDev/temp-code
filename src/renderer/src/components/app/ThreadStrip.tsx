@@ -47,7 +47,7 @@ const TYPE_HINTS: Record<ThreadType, string> = {
  *  finished while you were elsewhere → blue dot + bold title (the mail
  *  idiom, applied by the caller); dormant → nothing, and the caller mutes
  *  the title so live tabs carry the eye. */
-function TabIndicator({
+export function TabIndicator({
   status,
   unread,
   since,

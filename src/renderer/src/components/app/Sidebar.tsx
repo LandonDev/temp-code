@@ -33,6 +33,8 @@ import {
   DropdownMenuTrigger
 } from '../ui/dropdown-menu'
 import { StatusDot, THREAD_GLYPHS, THREAD_TINTS, timeAgo } from './bits'
+import { TabIndicator } from './ThreadStrip'
+import { useNow } from '../../lib/useNow'
 import { ZIcon } from './zicon'
 import { NewProjectDialog } from './NewProjectDialog'
 import { NewWorkspaceDialog } from './NewWorkspaceDialog'
@@ -411,9 +413,10 @@ function ProjectRow({
   const latest = threads.reduce<number>((a, t) => Math.max(a, t.updatedAt), 0)
 
   // The tab states that matter, loudest first: running, waiting on the
-  // user, failed, finished-but-unseen. Everything else is dormant and only
-  // counts toward the muted total.
-  const running = threads.filter((t) => t.status === 'running' || t.status === 'starting').length
+  // user, failed, finished-but-unseen. Running and unread threads each get
+  // their own line wearing the same indicator their tab does; waiting and
+  // failed stay counts, and everything dormant only feeds the muted total.
+  const running = threads.filter((t) => t.status === 'running' || t.status === 'starting')
   const waiting = threads.filter((t) => t.status === 'waiting').length
   const failed = threads.filter((t) => t.status === 'error').length
   const unread = threads.filter(
@@ -421,7 +424,8 @@ function ProjectRow({
       (t.status === 'idle' || t.status === 'done') &&
       t.id !== selectedId &&
       t.updatedAt > (lastSeen[t.id] ?? 0)
-  ).length
+  )
+  const now = useNow(running.length > 0)
 
   if (renaming) {
     // The row itself becomes the editor — no dialog for a name.
@@ -463,10 +467,10 @@ function ProjectRow({
         onPointerDown={() => selectProject(project.id)}
         onDoubleClick={() => setRenaming(true)}
         title={[
-          running > 0 && `${running} running`,
+          running.length > 0 && `${running.length} running`,
           waiting > 0 && `${waiting} waiting on you`,
           failed > 0 && `${failed} failed`,
-          unread > 0 && `${unread} unread`,
+          unread.length > 0 && `${unread.length} unread`,
           `${threads.length} open ${threads.length === 1 ? 'tab' : 'tabs'}`,
           archivedCount > 0 && `${archivedCount} archived`
         ]
@@ -501,17 +505,37 @@ function ProjectRow({
           </span>
         </div>
 
+        {/* One line per live-or-unseen thread, wearing exactly what its
+            tab wears: tinted spinner + elapsed + verb (or tally) while
+            working, the blue dot + bold title once finished unseen. */}
+        {running.map((t) => (
+          <div key={t.id} className="flex w-full items-center gap-1.5 text-[11px] leading-4">
+            <span className="min-w-0 flex-1 truncate text-muted-foreground">{t.title}</span>
+            <TabIndicator
+              status={t.status}
+              unread={false}
+              since={t.busySince ?? t.updatedAt}
+              now={now}
+              activity={t.activity}
+              activityKind={t.activityKind}
+              tasks={t.threadType === 'implementation' ? (t.tasks ?? null) : null}
+            />
+          </div>
+        ))}
+        {unread.map((t) => (
+          <div key={t.id} className="flex w-full items-center gap-1.5 text-[11px] leading-4">
+            <span className="min-w-0 flex-1 truncate font-medium text-foreground">{t.title}</span>
+            <TabIndicator status={t.status} unread since={t.updatedAt} now={now} />
+          </div>
+        ))}
+
         <div className="flex w-full items-center gap-2 text-[11px] leading-4 tabular-nums">
-          {running > 0 && (
-            <Stat dot="bg-success" tint="text-success" pulse count={running} word="running" />
-          )}
           {waiting > 0 && (
             <Stat dot="bg-warning" tint="text-warning" pulse count={waiting} word="need you" />
           )}
           {failed > 0 && (
             <Stat dot="bg-destructive" tint="text-destructive" count={failed} word="failed" />
           )}
-          {unread > 0 && <Stat dot="bg-info" tint="text-info" count={unread} word="unread" />}
           <span className="truncate text-muted-foreground/60">
             {threads.length === 0
               ? 'No tabs'
