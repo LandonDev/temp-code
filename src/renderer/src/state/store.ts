@@ -1,3 +1,4 @@
+import { startTransition } from 'react'
 import { create } from 'zustand'
 import type { CATALOG, ProviderId, Reasoning } from '@shared/catalog'
 import type { Attachment, EventRow, PermissionPolicy, SessionMeta } from '@shared/events'
@@ -945,12 +946,15 @@ export const useApp = create<AppState>((set, get) => ({
         merged.sort((a, b) => a.seq - b.seq)
         return { events: { ...s.events, [sessionId]: merged } }
       })
-      // History arrived out of band — refold from scratch.
+      // History arrived out of band — refold from scratch. The publish
+      // rides a transition: a whole thread's blocks landing at once is the
+      // heaviest render in the app, and it must not starve whatever is
+      // animating (the sidebar slide on a project switch).
       const fold = foldAll(get().events[sessionId] ?? [])
       folds.set(sessionId, fold)
-      publishFold(set, sessionId, fold)
+      startTransition(() => publishFold(set, sessionId, fold))
     }
-    set((s) => ({ loaded: { ...s.loaded, [sessionId]: true } }))
+    startTransition(() => set((s) => ({ loaded: { ...s.loaded, [sessionId]: true } })))
   },
 
   createThread: async (params) => {
