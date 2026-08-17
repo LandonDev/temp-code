@@ -128,6 +128,20 @@ export function ThreadStrip(): React.JSX.Element | null {
   const reduce = useReducedMotion()
 
   const threads = useMemo(() => threadsOfProject(sessions, projectId), [sessions, projectId])
+  // Live tabs (working, needs-you, failed, unread, and the open one) lead;
+  // dormant/read threads settle behind a divider, smaller and faded, so
+  // the strip's left edge is always "what matters now". Unread stays in
+  // the live group until it's been looked at.
+  const live = threads.filter(
+    (t) =>
+      t.id === selectedId ||
+      t.status !== 'idle' ||
+      (t.id !== selectedId && t.updatedAt > (lastSeen[t.id] ?? 0))
+  )
+  const dorm = threads.filter((t) => !live.includes(t))
+  const dormantIds = useMemo(() => new Set(dorm.map((t) => t.id)), [dorm])
+  const ordered: (SessionMeta | 'divider')[] =
+    live.length && dorm.length ? [...live, 'divider', ...dorm] : [...live, ...dorm]
   const anyLive = threads.some((t) => t.status === 'running' || t.status === 'starting')
   const now = useNow(anyLive)
   const archived = useMemo(
@@ -168,9 +182,21 @@ export function ThreadStrip(): React.JSX.Element | null {
       >
         <TabsList className="h-full">
           <AnimatePresence initial={false} mode="popLayout">
-            {threads.map((t) => {
+            {ordered.map((entry) => {
+              if (entry === 'divider') {
+                return (
+                  <motion.span
+                    key="divider"
+                    layout
+                    transition={SPRING_LAYOUT}
+                    className="mx-1.5 h-4 w-px shrink-0 self-center bg-border"
+                  />
+                )
+              }
+              const t = entry
               const Glyph = t.threadType ? THREAD_GLYPHS[t.threadType] : THREAD_GLYPHS.chat
               const unread = t.id !== selectedId && t.updatedAt > (lastSeen[t.id] ?? 0)
+              const dormant = dormantIds.has(t.id)
               return (
                 <motion.div
                   key={t.id}
@@ -215,12 +241,19 @@ export function ThreadStrip(): React.JSX.Element | null {
                         <div onDoubleClick={() => setRenaming(t.id)}>
                           <TabsTrigger
                             value={t.id}
-                            className="h-[26px] min-h-0 gap-1.5 px-2.5 py-0 font-normal"
+                            className={cn(
+                              'min-h-0 gap-1.5 py-0 font-normal',
+                              dormant
+                                ? 'h-[22px] px-2 text-[12px] opacity-50 transition-opacity hover:opacity-90'
+                                : 'h-[26px] px-2.5'
+                            )}
                           >
                             <Glyph
                               className={cn(
                                 'size-[13px] opacity-80',
-                                THREAD_TINTS[t.threadType ?? 'chat']
+                                dormant
+                                  ? 'text-muted-foreground grayscale'
+                                  : THREAD_TINTS[t.threadType ?? 'chat']
                               )}
                             />
                             <span
@@ -236,10 +269,7 @@ export function ThreadStrip(): React.JSX.Element | null {
                                 // color. Dormant tabs recede so live ones
                                 // carry the eye.
                                 unread && 'font-medium text-foreground',
-                                t.id !== selectedId &&
-                                  t.status === 'idle' &&
-                                  !unread &&
-                                  'text-muted-foreground/70'
+                                dormant && 'max-w-36 text-muted-foreground'
                               )}
                             >
                               {t.title}
