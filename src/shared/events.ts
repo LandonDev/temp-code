@@ -239,6 +239,9 @@ export interface SessionMeta {
   busySince: number | null
   /** Provider-native session/thread id, once known (for resume). */
   nativeId: string | null
+  /** What a working thread is doing right now ("Editing PromptBar.tsx") —
+   *  transient, server-memory only, null the moment the turn settles. */
+  activity?: string | null
   createdAt: number
   updatedAt: number
 }

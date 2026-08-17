@@ -17,6 +17,7 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover'
 import { Input } from '../ui/input'
 import { Spinner } from '../ui/spinner'
+import { MatrixSpinner } from './WorkingStrip'
 import { ConfirmDialog } from './ConfirmDialog'
 import { useNow } from '../../lib/useNow'
 import { duration, THREAD_GLYPHS, THREAD_LABELS, THREAD_TINTS, timeAgo } from './bits'
@@ -34,37 +35,56 @@ const TYPE_HINTS: Record<ThreadType, string> = {
   orchestration: 'Spawn and direct subagents'
 }
 
-/** Tab-edge status: what this thread is doing, or what it wants from you.
- *  Working → spinner; needs you (approval/question) → amber; failed → red;
- *  finished something while you were elsewhere → unread dot. */
+/** Tab-edge status, one glance apart (apple-design: things that mean
+ *  different things must look different):
+ *  working → the app's matrix-spinner motif + elapsed + what it's doing;
+ *  needs you (approval/question) → amber "Needs you", in words;
+ *  failed → red "Failed";
+ *  finished while you were elsewhere → blue dot + bold title (the mail
+ *  idiom, applied by the caller); dormant → nothing, and the caller mutes
+ *  the title so live tabs carry the eye. */
 function TabIndicator({
   status,
   unread,
   since,
-  now
+  now,
+  activity
 }: {
   status: SessionStatus
   unread: boolean
   /** when this working stretch began (its first message) */
   since: number
   now: number
+  /** server-reported "where it's at" ("Editing PromptBar.tsx") */
+  activity?: string | null
 }): React.JSX.Element | null {
   if (status === 'running' || status === 'starting') {
     const ms = now - since
     return (
-      <span className="flex shrink-0 items-center gap-1">
-        <Spinner className="size-3 text-muted-foreground" />
+      <span className="flex shrink-0 items-center gap-1.5">
+        <MatrixSpinner cell={1.8} />
         {ms >= 3000 && (
           <span className="text-[10.5px] tabular-nums text-muted-foreground/60">
             {duration(ms)}
+          </span>
+        )}
+        {activity && (
+          <span className="max-w-32 truncate text-[10.5px] text-muted-foreground/80">
+            {activity}
           </span>
         )}
       </span>
     )
   }
   if (status === 'waiting')
-    return <span className="size-1.5 shrink-0 animate-pulse rounded-full bg-warning" />
-  if (status === 'error') return <span className="size-1.5 shrink-0 rounded-full bg-destructive" />
+    return (
+      <span className="flex shrink-0 items-center gap-1 text-[10.5px] font-medium text-warning">
+        <span className="size-1.5 animate-pulse rounded-full bg-warning" />
+        Needs you
+      </span>
+    )
+  if (status === 'error')
+    return <span className="shrink-0 text-[10.5px] font-medium text-destructive">Failed</span>
   if (unread) return <span className="size-1.5 shrink-0 rounded-full bg-info" />
   return null
 }
@@ -190,12 +210,27 @@ export function ThreadStrip(): React.JSX.Element | null {
                                 THREAD_TINTS[t.threadType ?? 'chat']
                               )}
                             />
-                            <span className="max-w-44 truncate">{t.title}</span>
+                            <span
+                              className={cn(
+                                'max-w-44 truncate',
+                                // Unread reads like unread mail: bold, full
+                                // color. Dormant tabs recede so live ones
+                                // carry the eye.
+                                unread && 'font-medium text-foreground',
+                                t.id !== selectedId &&
+                                  t.status === 'idle' &&
+                                  !unread &&
+                                  'text-muted-foreground/70'
+                              )}
+                            >
+                              {t.title}
+                            </span>
                             <TabIndicator
                               status={t.status}
                               unread={unread}
                               since={t.busySince ?? t.updatedAt}
                               now={now}
+                              activity={t.activity}
                             />
                           </TabsTrigger>
                         </div>
