@@ -1,5 +1,5 @@
 {
-  "n": 62,
-  "notes": "Project settings from the three-dots menu — rename, switch or create the worktree branch, and set a per-project completed-turn override",
-  "ts": 1786997154874
+  "n": 63,
+  "notes": "Approved subagent models — per-model approve switches and reasoning min/max ranges, enforced when threads spawn subagents",
+  "ts": 1786998398852
 }
