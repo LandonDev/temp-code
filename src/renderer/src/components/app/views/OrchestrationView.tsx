@@ -84,7 +84,9 @@ function FleetHeader({
   session: SessionMeta
   agents: SessionMeta[]
 }): React.JSX.Element {
-  const goal = useApp((s) => s.blocks[session.id])?.find((b) => b.kind === 'user')
+  // The LATEST request is the active goal — a follow-up replaces the
+  // original headline instead of hiding behind it.
+  const goal = useApp((s) => s.blocks[session.id])?.findLast((b) => b.kind === 'user')
   const n = (s: SessionStatus[]): number => agents.filter((a) => s.includes(a.status)).length
   const counts: [number, string, string?][] = [
     [n(['running', 'starting']), 'working'],

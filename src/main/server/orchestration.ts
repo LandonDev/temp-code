@@ -704,7 +704,13 @@ send_to_agent) or replace. A "waiting" agent is stuck on its "pending"
 payload: a structured question you answer with answer_agent, or a
 permission approval that only the user can grant — surface those to the
 user and keep working. Verify results before relaying them, and keep the
-user posted: what you delegated where, and why.`.trim()
+user posted: what you delegated where, and why.
+
+A FOLLOW-UP message after the fleet settled is a new round of work, not a
+footnote: re-plan it deliberately. Reuse a settled agent via send_to_agent
+when its warm context genuinely helps (same files, same subsystem);
+otherwise spawn fresh agents scoped to the new request. Never leave
+follow-up work implicit or bolt it onto a finished agent's stale task.`.trim()
 
 const DELEGATION_LINES: Record<OrchestrationRules['conduct']['delegation'], string> = {
   strict:

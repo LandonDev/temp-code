@@ -3,7 +3,7 @@ import { AnimatePresence, LayoutGroup, motion, useReducedMotion } from 'motion/r
 import { Check, ChevronRight, Circle, MessageSquare } from 'lucide-react'
 import type { SessionMeta } from '@shared/events'
 import { useApp, type LiveEditState } from '../../../state/store'
-import type { Block } from '../../../state/blocks'
+import type { Block, TodoItem } from '../../../state/blocks'
 import { cn } from '../../../lib/utils'
 import { useNow } from '../../../lib/useNow'
 import { EASE_OUT, SPRING_PANEL } from '../../../lib/ease'
@@ -34,8 +34,11 @@ type ToolBlock = Extract<Block, { kind: 'tool' }>
  * errors) and the agent's closing report. All other mechanics (thinking,
  * reads, commands, prose) live in the chat panel docked on the right.
  */
+const EMPTY_TODOS: TodoItem[] = []
+const EMPTY_ROUNDS: TodoItem[][] = []
+
 export function ImplementationView({ session }: { session: SessionMeta }): React.JSX.Element {
-  const todos = useApp((s) => s.todos[session.id]) ?? []
+  const todos = useApp((s) => s.todos[session.id]) ?? EMPTY_TODOS
   const blocksRaw = useApp((s) => s.blocks[session.id])
   const blocks = useMemo(() => blocksRaw ?? [], [blocksRaw])
   const running = session.status === 'running' || session.status === 'starting'
@@ -50,61 +53,59 @@ export function ImplementationView({ session }: { session: SessionMeta }): React
   const agentNow = useNow(anyAgentLive)
   const openAgent = openAgentId ? (sessions[openAgentId] ?? null) : null
 
-  const allDone = todos.length > 0 && todos.every((t) => t.status === 'completed')
-  // The agent's final report renders as the closing note under the work.
+  // Rounds (follow-ups): each user request that opened a new turn is its
+  // own board section — its todo list, its work, its timers. Nothing
+  // bleeds across the idle gap between requests.
+  const pastTodosAll = useApp((s) => s.pastTodos[session.id]) ?? EMPTY_ROUNDS
+  const stopped = useApp((s) => !!s.stopped[session.id])
+  const curRound = pastTodosAll.length
+  const rounds = useMemo(() => {
+    const list: RoundData[] = Array.from({ length: curRound + 1 }, (_, r) => ({
+      todos: r < curRound ? pastTodosAll[r] : todos,
+      blocks: [],
+      work: [],
+      header: null
+    }))
+    for (const b of blocks) {
+      const R = list[Math.min(b.round ?? 0, curRound)]
+      R.blocks.push(b)
+      if (R.header === null && b.kind === 'user') R.header = b
+      if (
+        // Bookkeeping-only edits (.temp-code/) aren't work to review.
+        (b.kind === 'tool' && EDIT_TOOLS.has(b.name) && splitEdit(b).edits.length > 0) ||
+        ((b.kind === 'approval' || b.kind === 'question') && !b.resolved) ||
+        b.kind === 'error'
+      ) {
+        R.work.push(b)
+      }
+    }
+    return list
+  }, [blocks, todos, pastTodosAll, curRound])
+  const cur = rounds[curRound]
+
+  const allDone = cur.todos.length > 0 && cur.todos.every((t) => t.status === 'completed')
+  // The agent's final report renders as the closing note under the work —
+  // and a follow-up that produced no task list (a question, a tweak) shows
+  // its answer here too, so the board never ends on a bare header.
   const closing = useMemo(() => {
     const last = blocks.at(-1)
-    return allDone && last?.kind === 'assistant' && !last.streaming && last.text.trim()
+    return (allDone || (!running && cur.todos.length === 0)) &&
+      last?.kind === 'assistant' &&
+      !last.streaming &&
+      last.text.trim()
       ? last
       : null
-  }, [blocks, allDone])
+  }, [blocks, allDone, running, cur.todos.length])
 
-  // The hero stream: file changes, plus the blocks that demand the user.
-  // Resolved approvals are history, not work — the chat panel keeps them.
-  const work = useMemo(
-    () =>
-      blocks.filter(
-        (b) =>
-          // Bookkeeping-only edits (.temp-code/) aren't work to review.
-          (b.kind === 'tool' && EDIT_TOOLS.has(b.name) && splitEdit(b).edits.length > 0) ||
-          ((b.kind === 'approval' || b.kind === 'question') && !b.resolved) ||
-          b.kind === 'error'
-      ),
-    [blocks]
-  )
-
-  // The breakdown: file each work item under the task that was in
-  // progress when it was born (block.todo). Items from before the first
-  // list — or when no list exists — group separately; indices past a
-  // shrunken list clamp to the last task.
-  const [closedTasks, setClosedTasks] = useState<Set<number>>(new Set())
+  /** user-toggled task bodies — XOR against the round's default (current
+   *  round opens, past rounds fold shut when a follow-up starts) */
+  const [toggledTasks, setToggledTasks] = useState<Set<string>>(new Set())
   /** a grid row clicked open: its diff morphs open inside the task */
-  const [openChange, setOpenChange] = useState<{ task: number; path: string } | null>(null)
-  const workByTodo = useMemo(() => {
-    const m = new Map<number, Block[]>()
-    for (const b of work) {
-      const k = todos.length === 0 ? -1 : b.todo < 0 ? -1 : Math.min(b.todo, todos.length - 1)
-      const arr = m.get(k)
-      if (arr) arr.push(b)
-      else m.set(k, [b])
-    }
-    return m
-  }, [work, todos.length])
-  const preWork = todos.length ? (workByTodo.get(-1) ?? []) : []
-  const postWork = todos.length === 0 ? (workByTodo.get(-1) ?? []) : []
-
-  // EVERY block per task (reads, commands, searches — not just work items):
-  // feeds the live activity summary, the completion grid and the timeline.
-  const blocksByTodo = useMemo(() => {
-    const m = new Map<number, Block[]>()
-    for (const b of blocks) {
-      const k = todos.length === 0 ? -1 : b.todo < 0 ? -1 : Math.min(b.todo, todos.length - 1)
-      const arr = m.get(k)
-      if (arr) arr.push(b)
-      else m.set(k, [b])
-    }
-    return m
-  }, [blocks, todos.length])
+  const [openChange, setOpenChange] = useState<{
+    round: number
+    task: number
+    path: string
+  } | null>(null)
 
   // Disk changes with no matching harness edit (M23): shell-made work.
   const liveMap = useApp((s) => s.liveEdits[session.id])
@@ -128,19 +129,7 @@ export function ImplementationView({ session }: { session: SessionMeta }): React
 
   const usageMarks = useApp((s) => s.usage[session.id]) ?? []
 
-  // Per-todo wall clock, from block timestamps.
-  const spans = useMemo(() => {
-    const m = new Map<number, { first: number; last: number }>()
-    for (const b of blocks) {
-      if (b.ts === undefined) continue
-      const s = m.get(b.todo)
-      if (!s) m.set(b.todo, { first: b.ts, last: b.ts })
-      else s.last = b.ts
-    }
-    return m
-  }, [blocks])
-
-  const active = todos.findIndex((t) => t.status === 'in_progress')
+  const active = cur.todos.findIndex((t) => t.status === 'in_progress')
   const now = useNow(running && active !== -1)
 
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -175,13 +164,14 @@ export function ImplementationView({ session }: { session: SessionMeta }): React
     setSawWaiting(waiting)
     if (waiting) setChatOpen(true)
   }
-  // The run finishing with every task done is the moment the conversation
-  // stops mattering — fold it to the edge bar. A stop mid-plan (or on a
-  // question) keeps it open: the user still has to talk.
+  // The run FINISHING with every task done is the moment the conversation
+  // stops mattering — fold it to the edge bar. A user stop (interrupt), a
+  // question, or an unfinished plan keeps it open: the user still has to
+  // talk.
   const [sawRunning, setSawRunning] = useState(running)
   if (running !== sawRunning) {
     setSawRunning(running)
-    if (!running && !waiting && allDone) setChatOpen(false)
+    if (!running && !waiting && allDone && !stopped) setChatOpen(false)
   }
   const collapsed = hasBoard && !chatOpen
 
@@ -235,7 +225,7 @@ export function ImplementationView({ session }: { session: SessionMeta }): React
                         {goal.kind === 'user' && goal.text.split('\n')[0]}
                       </p>
                     )}
-                    {todos.length > 0 && <ProgressSegments todos={todos} />}
+                    {curRound === 0 && todos.length > 0 && <ProgressSegments todos={todos} />}
                     <ChangesLine session={session} />
                   </div>
                 )}
@@ -259,115 +249,31 @@ export function ImplementationView({ session }: { session: SessionMeta }): React
                   </div>
                 )}
 
-                {/* The breakdown: every action files under the task that was in
-                progress when it happened. Settled tasks fold their work to
-                a one-line summary; the live task streams open. */}
-                {preWork.length > 0 && (
-                  <div className="mb-4">
-                    {todos.length > 0 && (
-                      <p className="mb-1.5 text-[11px] font-medium tracking-[0.06em] text-muted-foreground/70 uppercase">
-                        Setup
-                      </p>
-                    )}
-                    <WorkItems blocks={preWork} sessionId={session.id} />
-                  </div>
-                )}
+                {/* One section per request round: the original goal's board,
+                then each follow-up under its own message header. Old rounds
+                fold their task bodies shut the moment a new one begins. */}
+                {rounds.map((data, r) => (
+                  <RoundSection
+                    key={r}
+                    session={session}
+                    round={r}
+                    data={data}
+                    isCurrent={r === curRound}
+                    running={running}
+                    now={now}
+                    marks={usageMarks}
+                    diskOnly={diskOnly}
+                    openChange={openChange}
+                    setOpenChange={setOpenChange}
+                    toggled={toggledTasks}
+                    setToggled={setToggledTasks}
+                  />
+                ))}
 
-                {todos.length > 0 && (
-                  <div className="mb-5 flex flex-col">
-                    {todos.map((todo, i) => {
-                      const span = spans.get(i)
-                      const live = running && todo.status === 'in_progress'
-                      const ms =
-                        todo.status === 'pending' || !span
-                          ? null
-                          : live
-                            ? now - span.first
-                            : span.last - span.first
-                      const items = workByTodo.get(i) ?? []
-                      const needsUser = items.some(
-                        (b) => (b.kind === 'approval' || b.kind === 'question') && !b.resolved
-                      )
-                      const folded = todo.status === 'completed' && !needsUser
-                      const taskBlocks = blocksByTodo.get(i) ?? []
-                      return (
-                        <div
-                          key={i}
-                          className={cn(
-                            'mb-2 overflow-hidden rounded-[10px] transition-colors duration-150',
-                            live
-                              ? 'bg-accent/70 hover:bg-accent'
-                              : 'bg-accent/35 hover:bg-accent/60'
-                          )}
-                        >
-                          <div
-                            role="button"
-                            tabIndex={0}
-                            onClick={() =>
-                              setClosedTasks((prev) => {
-                                const next = new Set(prev)
-                                if (next.has(i)) next.delete(i)
-                                else next.add(i)
-                                return next
-                              })
-                            }
-                            className="cursor-pointer px-2 pt-0.5"
-                          >
-                            <TodoRow
-                              content={todo.content}
-                              status={todo.status}
-                              live={live}
-                              ms={ms !== null && ms > 1500 ? ms : null}
-                            />
-                          </div>
-                          <TweenHeight open={!closedTasks.has(i)} animate>
-                            <div>
-                              {live && <TaskActivity blocks={taskBlocks} />}
-                              {items.length > 0 &&
-                                (folded ? (
-                                  <TaskGrid
-                                    blocks={taskBlocks}
-                                    openPath={openChange?.task === i ? openChange.path : null}
-                                    onPick={(path) =>
-                                      setOpenChange(
-                                        openChange?.task === i && openChange.path === path
-                                          ? null
-                                          : { task: i, path }
-                                      )
-                                    }
-                                  />
-                                ) : (
-                                  <div className="px-3 pt-1 pb-2">
-                                    <WorkItems blocks={items} sessionId={session.id} />
-                                  </div>
-                                ))}
-                              {live && diskOnly.length > 0 && <DiskCards edits={diskOnly} />}
-                              {(live || todo.status === 'completed') && (
-                                <TaskMeta
-                                  index={i}
-                                  blocks={taskBlocks}
-                                  marks={usageMarks}
-                                  span={span}
-                                  live={live}
-                                  now={now}
-                                />
-                              )}
-                            </div>
-                          </TweenHeight>
-                        </div>
-                      )
-                    })}
-                  </div>
-                )}
-
-                {todos.length === 0 && postWork.length > 0 && (
-                  <WorkItems blocks={postWork} sessionId={session.id} />
-                )}
-
-                {running && work.length === 0 && (
+                {running && cur.work.length === 0 && (
                   <div className="flex items-center gap-2 py-1 text-[13px] text-muted-foreground">
                     <Spinner className="size-3.5" />
-                    {todos.length === 0 ? 'Breaking the task down…' : 'Working…'}
+                    {cur.todos.length === 0 ? 'Breaking the task down…' : 'Working…'}
                   </div>
                 )}
 
@@ -443,6 +349,203 @@ export function ImplementationView({ session }: { session: SessionMeta }): React
           />
         )}
       </AnimatePresence>
+    </div>
+  )
+}
+
+/** One request round: its todo list, its blocks, its work items, and the
+ *  user message that opened it. */
+interface RoundData {
+  todos: TodoItem[]
+  blocks: Block[]
+  work: Block[]
+  header: Block | null
+}
+
+/** File blocks under the task in progress at their birth; -1 = before the
+ *  round's first list. Indices past a shrunken list clamp to the last. */
+function groupByTodo(list: Block[], todoCount: number): Map<number, Block[]> {
+  const m = new Map<number, Block[]>()
+  for (const b of list) {
+    const k = todoCount === 0 ? -1 : b.todo < 0 ? -1 : Math.min(b.todo, todoCount - 1)
+    const arr = m.get(k)
+    if (arr) arr.push(b)
+    else m.set(k, [b])
+  }
+  return m
+}
+
+/** One round's board: (for follow-ups) the request as a section header,
+ *  then setup work, the task cards, or the flat work list when the round
+ *  produced no task list. Task bodies default open on the current round
+ *  and fold shut on past ones — a click toggles either way. */
+function RoundSection({
+  session,
+  round,
+  data,
+  isCurrent,
+  running,
+  now,
+  marks,
+  diskOnly,
+  openChange,
+  setOpenChange,
+  toggled,
+  setToggled
+}: {
+  session: SessionMeta
+  round: number
+  data: RoundData
+  isCurrent: boolean
+  running: boolean
+  now: number
+  marks: { round: number; todo: number; input?: number; output?: number }[]
+  diskOnly: LiveEditState[]
+  openChange: { round: number; task: number; path: string } | null
+  setOpenChange: (v: { round: number; task: number; path: string } | null) => void
+  toggled: Set<string>
+  setToggled: React.Dispatch<React.SetStateAction<Set<string>>>
+}): React.JSX.Element | null {
+  const { todos, blocks, work } = data
+  const workByTodo = useMemo(() => groupByTodo(work, todos.length), [work, todos.length])
+  const blocksByTodo = useMemo(() => groupByTodo(blocks, todos.length), [blocks, todos.length])
+  // Per-todo wall clock from this round's blocks only — a follow-up can
+  // never stretch an old task across the idle gap.
+  const spans = useMemo(() => {
+    const m = new Map<number, { first: number; last: number }>()
+    for (const b of blocks) {
+      if (b.ts === undefined) continue
+      const s = m.get(b.todo)
+      if (!s) m.set(b.todo, { first: b.ts, last: b.ts })
+      else s.last = b.ts
+    }
+    return m
+  }, [blocks])
+  const roundMarks = useMemo(() => marks.filter((m) => m.round === round), [marks, round])
+  const preWork = todos.length ? (workByTodo.get(-1) ?? []) : []
+  const flatWork = todos.length === 0 ? (workByTodo.get(-1) ?? []) : []
+
+  if (round > 0 && !data.header && todos.length === 0 && work.length === 0) return null
+  return (
+    <div>
+      {round > 0 && data.header?.kind === 'user' && (
+        <div className="mt-7 mb-3">
+          <p className="text-[14px] leading-snug font-medium tracking-[-0.01em]">
+            {data.header.text.split('\n')[0]}
+          </p>
+          {isCurrent && todos.length > 0 && <ProgressSegments todos={todos} />}
+        </div>
+      )}
+
+      {preWork.length > 0 && (
+        <div className="mb-4">
+          {round === 0 && (
+            <p className="mb-1.5 text-[11px] font-medium tracking-[0.06em] text-muted-foreground/70 uppercase">
+              Setup
+            </p>
+          )}
+          <WorkItems blocks={preWork} sessionId={session.id} />
+        </div>
+      )}
+
+      {todos.length > 0 && (
+        <div className="mb-5 flex flex-col">
+          {todos.map((todo, i) => {
+            const key = `${round}:${i}`
+            const span = spans.get(i)
+            const live = isCurrent && running && todo.status === 'in_progress'
+            const ms =
+              todo.status === 'pending' || !span
+                ? null
+                : live
+                  ? now - span.first
+                  : span.last - span.first
+            const items = workByTodo.get(i) ?? []
+            const needsUser = items.some(
+              (b) => (b.kind === 'approval' || b.kind === 'question') && !b.resolved
+            )
+            const folded = todo.status === 'completed' && !needsUser
+            const taskBlocks = blocksByTodo.get(i) ?? []
+            const bodyOpen = toggled.has(key) ? !isCurrent : isCurrent
+            return (
+              <div
+                key={key}
+                className={cn(
+                  'mb-2 overflow-hidden rounded-[10px] transition-colors duration-150',
+                  live ? 'bg-accent/70 hover:bg-accent' : 'bg-accent/35 hover:bg-accent/60'
+                )}
+              >
+                <div
+                  role="button"
+                  tabIndex={0}
+                  onClick={() =>
+                    setToggled((prev) => {
+                      const next = new Set(prev)
+                      if (next.has(key)) next.delete(key)
+                      else next.add(key)
+                      return next
+                    })
+                  }
+                  className="cursor-pointer px-2 pt-0.5"
+                >
+                  <TodoRow
+                    content={todo.content}
+                    status={todo.status}
+                    live={live}
+                    ms={ms !== null && ms > 1500 ? ms : null}
+                  />
+                </div>
+                <TweenHeight open={bodyOpen} animate>
+                  <div>
+                    {live && <TaskActivity blocks={taskBlocks} />}
+                    {items.length > 0 &&
+                      (folded ? (
+                        <TaskGrid
+                          blocks={taskBlocks}
+                          openPath={
+                            openChange?.round === round && openChange.task === i
+                              ? openChange.path
+                              : null
+                          }
+                          onPick={(path) =>
+                            setOpenChange(
+                              openChange?.round === round &&
+                                openChange.task === i &&
+                                openChange.path === path
+                                ? null
+                                : { round, task: i, path }
+                            )
+                          }
+                        />
+                      ) : (
+                        <div className="px-3 pt-1 pb-2">
+                          <WorkItems blocks={items} sessionId={session.id} />
+                        </div>
+                      ))}
+                    {live && diskOnly.length > 0 && <DiskCards edits={diskOnly} />}
+                    {(live || todo.status === 'completed') && (
+                      <TaskMeta
+                        index={i}
+                        blocks={taskBlocks}
+                        marks={roundMarks}
+                        span={span}
+                        live={live}
+                        now={now}
+                      />
+                    )}
+                  </div>
+                </TweenHeight>
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      {flatWork.length > 0 && (
+        <div className="mb-4">
+          <WorkItems blocks={flatWork} sessionId={session.id} />
+        </div>
+      )}
     </div>
   )
 }
