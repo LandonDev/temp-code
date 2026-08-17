@@ -40,6 +40,7 @@ export function EditorSurface({
   const [fileState, setFileState] = useState<FileState>({ pending: false, conflict: null })
   const [key, setKey] = useState('')
   const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null)
+  const reveal = useApp((s) => s.reveal)
   // Refs so the mount effect never re-runs (and re-creates the editor)
   // when the caller re-renders with fresh closures.
   const highlightRef = useRef(highlight)
@@ -72,6 +73,28 @@ export function EditorSurface({
     })
     return () => d.dispose()
   }, [phase, revealLine])
+
+  // One-shot reveal (file:line callouts, cross-file goto-definition, ⌘T
+  // symbol jumps). Reactive rather than mount-time so a callout click
+  // still jumps when this file is already the open surface. The landed
+  // line takes a wash that fades — same violet as the callout chip.
+  useEffect(() => {
+    const ed = editorRef.current
+    if (phase !== 'ready' || !ed || !reveal || reveal.key !== `${project.id}:${path}`) return
+    useApp.getState().clearReveal()
+    ed.setPosition(reveal.position)
+    ed.revealPositionInCenterIfOutsideViewport(reveal.position)
+    ed.focus()
+    const flash = ed.createDecorationsCollection([
+      {
+        range: new monaco.Range(reveal.position.lineNumber, 1, reveal.position.lineNumber, 1),
+        options: { isWholeLine: true, className: 'reveal-flash-line' }
+      }
+    ])
+    setTimeout(() => {
+      if (editorRef.current === ed) flash.clear()
+    }, 2000)
+  }, [phase, reveal, project.id, path])
 
   useEffect(() => {
     let disposed = false
@@ -107,13 +130,6 @@ export function EditorSurface({
       editorRef.current = editor
       const saved = viewStates.get(stateKey)
       if (saved) editor.restoreViewState(saved)
-      // One-shot reveal (cross-file goto-definition, ⌘T symbol jumps).
-      const { reveal, clearReveal } = useApp.getState()
-      if (reveal && reveal.key === stateKey) {
-        editor.setPosition(reveal.position)
-        editor.revealPositionInCenterIfOutsideViewport(reveal.position)
-        clearReveal()
-      }
       editor.focus()
       const hl = highlightRef.current
       if (hl?.length) {
