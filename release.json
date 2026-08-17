@@ -1,5 +1,5 @@
 {
-  "n": 63,
-  "notes": "Approved subagent models — per-model approve switches and reasoning min/max ranges, enforced when threads spawn subagents",
-  "ts": 1786998398852
+  "n": 64,
+  "notes": "Agent detail morph stays smooth while the agent streams",
+  "ts": 1786998583426
 }
