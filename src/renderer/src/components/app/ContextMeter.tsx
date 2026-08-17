@@ -22,7 +22,10 @@ interface ContextUsage {
   totalTokens: number
   maxTokens: number
   percentage: number
-  model: string
+  model?: string
+  /** The totals moved past this breakdown (live stream update, or a turn
+   *  started) — the numbers are current, the category rows are not. */
+  stale?: boolean
   memoryFiles?: { path: string; type: string; tokens: number }[]
   mcpTools?: { name: string; serverName: string; tokens: number }[]
   systemTools?: { name: string; tokens: number }[]
@@ -113,6 +116,7 @@ export function ContextMeter({ sessionId }: { sessionId: string }): React.JSX.El
   const maxTokens = modeMax ?? usage?.maxTokens ?? 0
   const hasMax = !!usage && maxTokens > 0
   const pct = usage && hasMax ? Math.min(100, Math.round((usage.totalTokens / maxTokens) * 100)) : null
+  const hasDetail = !!usage && !usage.stale && usage.categories.length > 0
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -132,7 +136,7 @@ export function ContextMeter({ sessionId }: { sessionId: string }): React.JSX.El
         {!usage ? (
           <div className="flex h-24 items-center justify-center gap-2 px-6 text-center text-xs text-muted-foreground">
             {running ? (
-              <>Context updates when this turn settles.</>
+              <>Context appears with the first reply.</>
             ) : !answered ? (
               <Spinner className="size-3.5" />
             ) : (
@@ -154,7 +158,7 @@ export function ContextMeter({ sessionId }: { sessionId: string }): React.JSX.El
             <div
               className={cn(
                 'mt-2 flex h-1.5 overflow-hidden rounded-full bg-secondary/70',
-                !hasMax && 'hidden'
+                !(hasMax && hasDetail) && 'hidden'
               )}
             >
               {usage.categories
@@ -171,24 +175,36 @@ export function ContextMeter({ sessionId }: { sessionId: string }): React.JSX.El
                 ))}
             </div>
 
-            <div className="mt-2.5 flex flex-col gap-1 px-1">
-              {usage.categories.map((cat, ix) => (
-                <div key={cat.name} className="flex items-center gap-2 text-[11.5px]">
-                  <span
-                    className="size-1.5 shrink-0 rounded-full"
-                    style={{ background: tint(cat.color, ix) }}
-                  />
-                  <span className="min-w-0 flex-1 truncate text-foreground/85 capitalize">
-                    {cat.name}
-                  </span>
-                  <span className="shrink-0 tabular-nums text-muted-foreground">
-                    {fmt(cat.tokens)}
-                  </span>
-                </div>
-              ))}
-            </div>
+            {/* A breakdown is only ever shown when it matches the totals —
+                live totals with historical rows would lie. */}
+            {!hasDetail && (
+              <p className="mt-2 px-1 text-[11px] text-muted-foreground">
+                {running
+                  ? 'Live total — the breakdown loads when this turn settles.'
+                  : 'The breakdown loads after the next reply.'}
+              </p>
+            )}
 
-            {(usage.memoryFiles?.length ?? 0) > 0 && (
+            {hasDetail && (
+              <div className="mt-2.5 flex flex-col gap-1 px-1">
+                {usage.categories.map((cat, ix) => (
+                  <div key={cat.name} className="flex items-center gap-2 text-[11.5px]">
+                    <span
+                      className="size-1.5 shrink-0 rounded-full"
+                      style={{ background: tint(cat.color, ix) }}
+                    />
+                    <span className="min-w-0 flex-1 truncate text-foreground/85 capitalize">
+                      {cat.name}
+                    </span>
+                    <span className="shrink-0 tabular-nums text-muted-foreground">
+                      {fmt(cat.tokens)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {hasDetail && (usage.memoryFiles?.length ?? 0) > 0 && (
               <BreakdownList
                 title="Memory files"
                 rows={usage.memoryFiles!.map((f) => ({
@@ -198,7 +214,7 @@ export function ContextMeter({ sessionId }: { sessionId: string }): React.JSX.El
                 }))}
               />
             )}
-            {(usage.mcpTools?.length ?? 0) > 0 && (
+            {hasDetail && (usage.mcpTools?.length ?? 0) > 0 && (
               <BreakdownList
                 title="MCP tools"
                 rows={usage.mcpTools!.map((t) => ({

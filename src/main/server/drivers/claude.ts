@@ -154,6 +154,8 @@ interface StreamState {
   /** the API refused the transcript ("Prompt is too long") — the drain
    *  loop compacts in place once the turn settles so the next send fits */
   overflowed: boolean
+  /** last live context footprint forwarded (dedupes context events) */
+  contextTokens: number
   /** one recovery compact per overflow; a compact that lands re-arms */
   compactRecoveryTried: boolean
 }
@@ -161,8 +163,39 @@ interface StreamState {
 /** How often a growing tool input is re-parsed and forwarded to the UI. */
 const PARTIAL_INPUT_EVERY_MS = 100
 
+/** What the conversation occupies in the window right now: everything the
+ *  API just read (prompt + cache) plus what it wrote. */
+function footprintOf(usage: {
+  input_tokens?: number | null
+  cache_creation_input_tokens?: number | null
+  cache_read_input_tokens?: number | null
+  output_tokens?: number | null
+}): number {
+  return (
+    (usage.input_tokens ?? 0) +
+    (usage.cache_creation_input_tokens ?? 0) +
+    (usage.cache_read_input_tokens ?? 0) +
+    (usage.output_tokens ?? 0)
+  )
+}
+
 function handleMessage(ctx: DriverCtx, state: StreamState, msg: SDKMessage): void {
   const { emit } = ctx
+  // Live context accounting, straight off the stream: each TOP-LANE API
+  // message reports what the request occupied (subagent lanes have their
+  // own windows and must not bleed in). Forwarded the moment it moves so
+  // the meter never shows last turn's number during this one.
+  const liveContext = (usage: Parameters<typeof footprintOf>[0]): void => {
+    const tokens = footprintOf(usage)
+    if (tokens > 0 && tokens !== state.contextTokens) {
+      state.contextTokens = tokens
+      emit({
+        type: 'context',
+        tokens,
+        window: ctx.session.context1m ? 1_000_000 : 200_000
+      })
+    }
+  }
   // Every message is a sign of life; only a completed tool-free assistant
   // message re-arms the overdue-result watch below.
   state.armedAt = null
@@ -191,6 +224,17 @@ function handleMessage(ctx: DriverCtx, state: StreamState, msg: SDKMessage): voi
           postTokens: msg.compact_metadata.post_tokens,
           durationMs: msg.compact_metadata.duration_ms
         })
+        // The squeeze is the one context change with no API usage report —
+        // drop the meter at the boundary instead of waiting for the next reply.
+        const post = msg.compact_metadata.post_tokens
+        if (post !== undefined && post > 0) {
+          state.contextTokens = post
+          emit({
+            type: 'context',
+            tokens: post,
+            window: ctx.session.context1m ? 1_000_000 : 200_000
+          })
+        }
       }
       break
     case 'stream_event': {
@@ -199,6 +243,7 @@ function handleMessage(ctx: DriverCtx, state: StreamState, msg: SDKMessage): voi
       const parentCallId = msg.parent_tool_use_id ?? undefined
       if (ev.type === 'message_start') {
         state.currentMsgId.set(lane, ev.message.id)
+        if (!lane) liveContext(ev.message.usage)
       } else if (ev.type === 'content_block_start') {
         if (ev.content_block.type === 'tool_use') {
           // Early visibility: the chip appears while input is still streaming.
@@ -313,6 +358,7 @@ function handleMessage(ctx: DriverCtx, state: StreamState, msg: SDKMessage): voi
         break
       }
       const parentCallId = msg.parent_tool_use_id ?? undefined
+      if (!parentCallId) liveContext(msg.message.usage)
       const msgId = msg.message.id
       msg.message.content.forEach((block, blockIndex) => {
         if (block.type === 'text') {
@@ -611,7 +657,8 @@ export const claudeDriver: HarnessDriver = {
       armedAt: null,
       nudged: false,
       overflowed: false,
-      compactRecoveryTried: false
+      compactRecoveryTried: false,
+      contextTokens: 0
     }
     const pendingApprovals = new Map<string, (allow: boolean, auto?: boolean) => void>()
     const pendingQuestions = new Map<string, (answers: string[][] | null) => void>()

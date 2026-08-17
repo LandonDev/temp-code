@@ -200,6 +200,16 @@ export const AgentEventSchema = z.discriminatedUnion('type', [
     outputTokens: z.number().optional()
   }),
 
+  // Live context footprint: what the conversation occupies in the model's
+  // window RIGHT NOW, updated as replies stream. Never persisted — the
+  // registry folds it onto SessionMeta.context and drops the event.
+  z.object({
+    type: z.literal('context'),
+    tokens: z.number(),
+    /** the window those tokens count against, when the harness knows it */
+    window: z.number().optional()
+  }),
+
   // Goal lifecycle (claude /goal, codex thread goals): the harness confirms
   // every transition — the app never emits these optimistically.
   z.object({
@@ -278,6 +288,9 @@ export interface SessionMeta {
   tasks?: { done: number; total: number } | null
   /** The active goal, folded from goal events; null/absent when none. */
   goal?: { condition: string; iterations: number; setAt: number } | null
+  /** Live context footprint from the harness stream — current the moment
+   *  a reply lands, for every thread, selected or not. Server-memory. */
+  context?: { tokens: number; window: number | null } | null
   /** Orchestration threads: this run's tune — conduct overrides on top of
    *  the workspace/global rules, plus free-text instructions. */
   threadRules?: import('./rules').ThreadRules | null
