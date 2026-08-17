@@ -188,6 +188,8 @@ interface AppState {
   usage: Record<string, { round: number; todo: number; input?: number; output?: number }[]>
   /** Todo lists of finished follow-up rounds, by round index. */
   pastTodos: Record<string, TodoItem[][]>
+  /** Cumulative cost at each round boundary — per-pass cost by difference. */
+  pastCosts: Record<string, (number | undefined)[]>
   /** The user stopped the last run (interrupt) — cleared on the next send.
    *  A stopped run must not auto-fold the conversation pane. */
   stopped: Record<string, boolean>
@@ -373,7 +375,8 @@ function publishFold(
     costs: { ...s.costs, [sessionId]: fold.costUsd },
     todos: { ...s.todos, [sessionId]: fold.todos },
     usage: { ...s.usage, [sessionId]: fold.usageMarks.slice() },
-    pastTodos: { ...s.pastTodos, [sessionId]: fold.pastTodos }
+    pastTodos: { ...s.pastTodos, [sessionId]: fold.pastTodos },
+    pastCosts: { ...s.pastCosts, [sessionId]: fold.pastCosts }
   }))
 }
 
@@ -428,6 +431,7 @@ export const useApp = create<AppState>((set, get) => ({
   liveEdits: {},
   usage: {},
   pastTodos: {},
+  pastCosts: {},
   stopped: {},
   midTurnDefault: localStorage.getItem(MID_TURN_KEY) === 'steer' ? 'steer' : 'queue',
   appshots: DEFAULT_APPSHOT_SETTINGS,
