@@ -108,6 +108,14 @@ type BlockKind =
       kind: 'pass'
       actions: string[]
     }
+  | {
+      /** a subagent's settle report went straight to the harness — this
+       *  quiet marker is all the chat shows of it */
+      kind: 'report'
+      agentId: string
+      title: string
+      status: string
+    }
 
 /** `todo` = index of the todo that was in_progress when the block was born
  *  (-1 before the first todo list) — how the implementation view groups.
@@ -383,6 +391,9 @@ export function foldEvent(s: FoldState, e: AgentEvent, ts?: number): void {
       // until its turn-complete (or a status end) closes it.
       push(s, { kind: 'pass', actions: e.actions }, ts)
       s.inPass = true
+      break
+    case 'agent-report':
+      push(s, { kind: 'report', agentId: e.agentId, title: e.title, status: e.status }, ts)
       break
     case 'assistant-text':
       foldText(s, 'assistant', e, ts)
