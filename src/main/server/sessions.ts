@@ -1510,7 +1510,18 @@ export class SessionRegistry {
     const item = q.shift()!
     this.notifyQueue(sessionId)
     this.draining.add(sessionId)
-    void this.send(sessionId, item.text, item)
+    // A queued message released after the pass finished IS the next pass —
+    // the same stamp the board's pass button sends. Without it, send()
+    // stamps newPass:false and the message glues onto the finished round.
+    const meta = this.store.getSession(sessionId)
+    const tally = this.tasksOf(sessionId)
+    const newPass =
+      !!meta &&
+      !meta.parentId &&
+      (meta.threadType === 'implementation' || meta.threadType === 'orchestration') &&
+      !!tally &&
+      tally.done === tally.total
+    void this.send(sessionId, item.text, newPass ? { ...item, newPass: true } : item)
       .catch(() => {
         q.unshift(item)
         this.notifyQueue(sessionId)
