@@ -851,7 +851,7 @@ export const claudeDriver: HarnessDriver = {
     const NUDGE_AFTER_MS = 45_000
     const RECOVER_AFTER_MS = 90_000
     const watchdog = setInterval(() => {
-      if (!state.working || state.armedAt === null) return
+      if (disposed || !state.working || state.armedAt === null) return
       const quiet = Date.now() - state.armedAt
       if (quiet >= RECOVER_AFTER_MS) {
         state.working = false
@@ -873,10 +873,18 @@ export const claudeDriver: HarnessDriver = {
       dead = true
     })
 
+    // Set by dispose(): the registry has moved on (continue-run boots a
+    // replacement handle). The dying process's stream still winds down
+    // after that — anything it emits now would land AFTER the new
+    // handle's 'running' and flip the session back to error/idle while
+    // the resumed turn is streaming. A disposed handle stays mute.
+    let disposed = false
+
     // Drain the harness stream for the life of the session.
     void (async () => {
       try {
         for await (const msg of q) {
+          if (disposed) continue
           handleMessage(watchedCtx, state, msg)
           // Overflow self-heal: the API refused the transcript ("Prompt is
           // too long" — seen when a Standard-mode thread outruns compaction
@@ -897,14 +905,14 @@ export const claudeDriver: HarnessDriver = {
         // Stream over with a turn still open: the result message is never
         // coming (process died, or the SDK dropped it). Settle the status
         // or the thread shows "working" forever.
-        if (state.working) {
+        if (state.working && !disposed) {
           state.working = false
           emit({ type: 'error', message: 'harness stream ended mid-turn' })
           emit({ type: 'status', status: 'idle' })
         }
       } catch (err) {
         // A watchdog abort already settled the status — swallow its throw.
-        if (abort.signal.aborted) return
+        if (disposed || abort.signal.aborted) return
         state.working = false
         // emit persists to SQLite; if THAT is what threw (a locked
         // database), a bare retry here would kill the drain loop entirely
@@ -984,6 +992,7 @@ export const claudeDriver: HarnessDriver = {
         return usage
       },
       async dispose(): Promise<void> {
+        disposed = true
         for (const finish of [...pendingApprovals.values()]) finish(false, true)
         for (const finish of [...pendingQuestions.values()]) finish(null)
         input.close()
