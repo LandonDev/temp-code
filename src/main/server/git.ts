@@ -1,7 +1,7 @@
 import { execFile } from 'node:child_process'
-import { mkdirSync } from 'node:fs'
+import { mkdirSync, realpathSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { join } from 'node:path'
+import { join, sep } from 'node:path'
 import { promisify } from 'node:util'
 import type { FileChange } from '@shared/domain'
 
@@ -59,6 +59,47 @@ async function worktreeOf(repoPath: string, branch: string): Promise<string | nu
     // fall through
   }
   return null
+}
+
+/**
+ * Worktrees of `dir`'s repo that nothing accounts for: not a known dir
+ * (project checkouts, workspace paths), not app-managed (everything the
+ * app creates lives under ~/.temp-code/worktrees). These are what a
+ * skill's own git flow leaves behind mid-turn.
+ */
+export async function strayWorktrees(
+  dir: string,
+  knownDirs: string[]
+): Promise<{ dir: string; branch: string | null }[]> {
+  const canon = (p: string): string => {
+    try {
+      return realpathSync(p)
+    } catch {
+      return p
+    }
+  }
+  const known = new Set(knownDirs.map(canon))
+  const managedRoot = canon(join(homedir(), '.temp-code', 'worktrees')) + sep
+  try {
+    const { stdout } = await execFileP('git', ['-C', dir, 'worktree', 'list', '--porcelain'])
+    const all: { dir: string; branch: string | null }[] = []
+    let cur: { dir: string; branch: string | null } | null = null
+    for (const line of stdout.split('\n')) {
+      if (line.startsWith('worktree ')) {
+        if (cur) all.push(cur)
+        cur = { dir: line.slice(9), branch: null }
+      } else if (cur && line.startsWith('branch refs/heads/')) {
+        cur.branch = line.slice('branch refs/heads/'.length)
+      }
+    }
+    if (cur) all.push(cur)
+    return all.filter((w) => {
+      const c = canon(w.dir)
+      return !known.has(c) && !c.startsWith(managedRoot)
+    })
+  } catch {
+    return []
+  }
 }
 
 /**
