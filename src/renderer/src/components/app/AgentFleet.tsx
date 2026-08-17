@@ -291,6 +291,21 @@ export function AgentDetail({
   const model = useModelLabel(agent)
   const [text, setText] = useState('')
   const reduce = useReducedMotion()
+  // The transcript is a heavy, live-streaming subtree — mounted inside
+  // the morphing element it re-layouts on every chunk and wrecks the
+  // shared-layout spring. It mounts only once the morph settles, and
+  // unmounts again before the close morph.
+  const [settled, setSettled] = useState(false)
+  useEffect(() => {
+    // Fallback: onLayoutAnimationComplete can miss (reduced motion, no
+    // paired row) — never leave the body empty past the morph's length.
+    const t = setTimeout(() => setSettled(true), 450)
+    return () => clearTimeout(t)
+  }, [])
+  const close = (): void => {
+    setSettled(false)
+    onClose()
+  }
   // Isolated worktree branch, when the agent got one.
   const branch = agent.cwd !== parent.cwd ? `tc/${agent.cwd.split('/').at(-1)}` : null
 
@@ -307,12 +322,13 @@ export function AgentDetail({
         initial={reduce ? false : { opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
-        onClick={onClose}
+        onClick={close}
         className="absolute inset-0 bg-black/10 supports-backdrop-filter:backdrop-blur-xs"
       />
       <motion.div
         layoutId={`agent-${agent.id}`}
         transition={SPRING_PANEL}
+        onLayoutAnimationComplete={() => setSettled(true)}
         className="relative flex h-full max-h-[640px] w-full max-w-2xl flex-col overflow-hidden rounded-xl border bg-card shadow-[0_8px_40px_rgb(0_0_0/0.18)]"
       >
         <div className="flex shrink-0 items-center gap-2.5 border-b border-border/60 px-4 py-2.5">
@@ -337,7 +353,7 @@ export function AgentDetail({
             </span>
           )}
           <button
-            onClick={onClose}
+            onClick={close}
             aria-label="Close agent detail"
             className="flex size-6 items-center justify-center rounded-md text-muted-foreground transition hover:bg-accent hover:text-foreground active:scale-95"
           >
@@ -345,11 +361,22 @@ export function AgentDetail({
           </button>
         </div>
 
-        <Transcript
-          sessionId={agent.id}
-          minimap={false}
-          className="min-h-0 flex-1 overflow-y-auto bg-background select-text"
-        />
+        {settled ? (
+          <motion.div
+            initial={reduce ? false : { opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 0.15, ease: EASE_OUT }}
+            className="flex min-h-0 flex-1 flex-col"
+          >
+            <Transcript
+              sessionId={agent.id}
+              minimap={false}
+              className="min-h-0 flex-1 overflow-y-auto bg-background select-text"
+            />
+          </motion.div>
+        ) : (
+          <div className="min-h-0 flex-1 bg-background" />
+        )}
 
         <div className="flex shrink-0 items-center gap-2 border-t border-border/60 px-3 py-2">
           <input
