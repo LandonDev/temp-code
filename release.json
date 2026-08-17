@@ -1,5 +1,5 @@
 {
-  "n": 31,
-  "notes": "Fixes stuck-on-Working threads for real (rogue dev instances were freezing the prod database; now impossible + the driver self-recovers). Effort trigger and context meter agree: the window is 1M.",
-  "ts": 1786931464564
+  "n": 32,
+  "notes": "Board diffs go dense, shell edits open and join the summary, the chat pane follows the run",
+  "ts": 1786932015835
 }
