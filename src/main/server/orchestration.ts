@@ -686,8 +686,9 @@ conversation. Parallelize independent work; sequence dependent work.
 
 Subagents ALWAYS go through spawn_agent — spawned agents are visible,
 steerable sessions in the app's fleet panel with their own transcripts.
-The built-in Task tool is disabled here for exactly that reason: its
-lanes are invisible to the user. Anything you would have handed to Task
+The built-in subagent tool (named Task or Agent depending on harness
+version) is disabled here for exactly that reason: its lanes are
+invisible to the user. Anything you would have handed to it
 (exploration, a general-purpose errand), hand to spawn_agent instead.
 
 Supervise without polling. After spawning, keep doing your OWN work —

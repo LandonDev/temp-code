@@ -533,9 +533,11 @@ export const claudeDriver: HarnessDriver = {
             // tools. (Prompt text explains the denial to the model.)
             const conduct = rulesFor(session).conduct
             const denied = [
-              // Native Task lanes are invisible — the fleet is the only
-              // sanctioned way to run subagents.
+              // Native subagent lanes are invisible — the fleet is the only
+              // sanctioned way to run subagents. The SDK renamed the tool
+              // Task → Agent in the Fable-era CLI; deny both spellings.
               'Task',
+              'Agent',
               ...(conduct.selfEdit ? [] : ['Edit', 'MultiEdit', 'Write', 'NotebookEdit']),
               ...(conduct.selfShell ? [] : ['Bash'])
             ]
@@ -566,9 +568,10 @@ export const claudeDriver: HarnessDriver = {
                 app: appToolsMcp(session)
               },
               allowedTools: [...ORCHESTRATOR_TOOLS, ...APP_TOOLS],
-              // Native Task lanes are invisible to the user — the whole
-              // point of spawn_agent is a visible, steerable session.
-              disallowedTools: ['Task'],
+              // Native subagent lanes are invisible to the user — the whole
+              // point of spawn_agent is a visible, steerable session. The
+              // tool is Task in older CLIs, Agent in the Fable era.
+              disallowedTools: ['Task', 'Agent'],
               systemPrompt: {
                 type: 'preset' as const,
                 preset: 'claude_code' as const,
