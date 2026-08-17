@@ -46,6 +46,21 @@ export async function branchExists(repoPath: string, branch: string): Promise<bo
   return false
 }
 
+/** The worktree (if any) that has `branch` checked out. */
+async function worktreeOf(repoPath: string, branch: string): Promise<string | null> {
+  try {
+    const { stdout } = await execFileP('git', ['-C', repoPath, 'worktree', 'list', '--porcelain'])
+    let dir: string | null = null
+    for (const line of stdout.split('\n')) {
+      if (line.startsWith('worktree ')) dir = line.slice(9)
+      else if (line === `branch refs/heads/${branch}`) return dir
+    }
+  } catch {
+    // fall through
+  }
+  return null
+}
+
 /**
  * Create a project worktree off the workspace repo. Returns {cwd, branch}.
  * opts.branch is the branch the worktree targets: adopted when it exists
@@ -59,12 +74,20 @@ export async function addProjectWorktree(
 ): Promise<{ cwd: string; branch: string }> {
   const base = join(homedir(), '.temp-code', 'worktrees')
   mkdirSync(base, { recursive: true })
+  // Registrations whose directory is gone would fail every add below.
+  await execFileP('git', ['-C', repoPath, 'worktree', 'prune']).catch(() => {})
   let slug = slugify(name)
   let dir = join(base, slug)
   if (opts.branch) {
     // A remote pick (origin/foo) checks out a local tracking branch `foo`.
     const branch = opts.branch.replace(/^origin\//, '')
     const exists = await branchExists(repoPath, branch)
+    if (exists) {
+      // Already checked out somewhere (e.g. a deleted project's leftover
+      // worktree) — reuse that checkout; a second one is impossible anyway.
+      const current = await worktreeOf(repoPath, branch)
+      if (current) return { cwd: current, branch }
+    }
     const args = exists ? [dir, branch] : [dir, '-b', branch, ...(opts.baseRef ? [opts.baseRef] : [])]
     for (let n = 2; n < 20; n++) {
       try {
@@ -72,10 +95,18 @@ export async function addProjectWorktree(
         return { cwd: dir, branch }
       } catch (err) {
         const msg = String(err)
-        if (!msg.includes('already exists')) throw err
-        slug = `${slugify(name)}-${n}`
-        dir = join(base, slug)
-        args[0] = dir
+        if (msg.includes(`branch named '${branch}' already exists`)) {
+          // A previous attempt created the branch before failing on its
+          // directory (git makes the branch first) — adopt it instead of
+          // burning every retry on the same -b failure.
+          args.splice(1, args.length - 1, branch)
+        } else if (msg.includes('already exists')) {
+          slug = `${slugify(name)}-${n}`
+          dir = join(base, slug)
+          args[0] = dir
+        } else {
+          throw err
+        }
       }
     }
     throw new Error('could not allocate a worktree directory')
@@ -104,6 +135,37 @@ export async function addProjectWorktree(
     }
   }
   throw new Error('could not allocate a worktree name')
+}
+
+/** git's stderr beats "exit 1" in a dialog. */
+const surfacing = (err: unknown): Error => {
+  const e = err as { stderr?: string; message?: string }
+  return new Error((e.stderr || e.message || String(err)).trim())
+}
+
+/** Remove a project worktree from disk and git's registry. */
+export async function removeWorktree(repoPath: string, dir: string): Promise<void> {
+  try {
+    await execFileP('git', ['-C', repoPath, 'worktree', 'remove', '--force', dir])
+  } catch (err) {
+    // Folder already gone by hand — drop the stale registration instead.
+    if (!String(err).includes('No such file')) throw surfacing(err)
+    await execFileP('git', ['-C', repoPath, 'worktree', 'prune']).catch(() => {})
+  }
+}
+
+export async function deleteLocalBranch(repoPath: string, branch: string): Promise<void> {
+  await execFileP('git', ['-C', repoPath, 'branch', '-D', branch]).catch((err) => {
+    throw surfacing(err)
+  })
+}
+
+export async function deleteRemoteBranch(repoPath: string, branch: string): Promise<void> {
+  await execFileP('git', ['-C', repoPath, 'push', 'origin', '--delete', branch], {
+    maxBuffer: 4 * 1024 * 1024
+  }).catch((err) => {
+    throw surfacing(err)
+  })
 }
 
 /** App-managed files (plan docs) — never user-facing "changes". */

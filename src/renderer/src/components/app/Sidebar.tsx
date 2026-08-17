@@ -1,6 +1,16 @@
 import { useMemo, useState } from 'react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
-import { ChevronRight, FolderPlus, GitBranch, MoreHorizontal, Pencil, Plus } from 'lucide-react'
+import {
+  Archive,
+  ArchiveRestore,
+  ChevronRight,
+  FolderPlus,
+  GitBranch,
+  MoreHorizontal,
+  Pencil,
+  Plus,
+  Trash2
+} from 'lucide-react'
 import type { ProjectMeta, WorkspaceMeta } from '@shared/domain'
 import type { SessionMeta } from '@shared/events'
 import { chatsOfWorkspace, threadsOfProject, unsortedSessions, useApp } from '../../state/store'
@@ -18,6 +28,7 @@ import { ZIcon } from './zicon'
 import { NewProjectDialog } from './NewProjectDialog'
 import { NewWorkspaceDialog } from './NewWorkspaceDialog'
 import { ConfirmDialog } from './ConfirmDialog'
+import { ProjectTeardownDialog } from './ProjectTeardownDialog'
 import { updateReady, useUpdateStatus } from '../../lib/updates'
 
 /**
@@ -121,6 +132,8 @@ function WorkspaceGroup({
   const selectProject = useApp((s) => s.selectProject)
   const createThread = useApp((s) => s.createThread)
 
+  const active = projects.filter((p) => !p.archived)
+  const archived = projects.filter((p) => p.archived)
   const chats = chatsOfWorkspace(sessions, workspace.id)
   const newChat = async (): Promise<void> => {
     // One-off chat outside a project: runs at the workspace root.
@@ -199,7 +212,7 @@ function WorkspaceGroup({
             className="overflow-hidden"
           >
             <div className="mt-0.5 space-y-px">
-              {projects.length === 0 && chats.length === 0 ? (
+              {active.length === 0 && chats.length === 0 && archived.length === 0 ? (
                 <button
                   onClick={onNewProject}
                   className="ml-4 flex h-7 items-center gap-1.5 rounded-md px-2 text-xs text-muted-foreground/60 transition-colors hover:text-muted-foreground"
@@ -208,8 +221,9 @@ function WorkspaceGroup({
                 </button>
               ) : (
                 <>
-                  {projects.map((p) => <ProjectRow key={p.id} project={p} sessions={sessions} />)}
+                  {active.map((p) => <ProjectRow key={p.id} project={p} sessions={sessions} />)}
                   {chats.map((c) => <ChatRow key={c.id} session={c} />)}
+                  <ArchivedProjects projects={archived} />
                 </>
               )}
             </div>
@@ -230,9 +244,10 @@ function ProjectRow({
   const selected = useApp((s) => s.selectedProjectId === project.id)
   const selectProject = useApp((s) => s.selectProject)
   const removeProject = useApp((s) => s.removeProject)
+  const archiveProject = useApp((s) => s.archiveProject)
   const renameProject = useApp((s) => s.renameProject)
   const [renaming, setRenaming] = useState(false)
-  const [confirmDelete, setConfirmDelete] = useState(false)
+  const [confirm, setConfirm] = useState<'archive' | 'delete' | null>(null)
 
   const threads = threadsOfProject(sessions, project.id)
   const busy = threads.find(
@@ -324,25 +339,95 @@ function ProjectRow({
               <Pencil className="size-3.5 text-muted-foreground" />
               Rename
             </DropdownMenuItem>
+            <DropdownMenuItem
+              onClick={() => {
+                // Nothing to tear down on a local project — archive right away.
+                if (project.mode === 'worktree') setConfirm('archive')
+                else void archiveProject(project.id, true)
+              }}
+            >
+              <Archive className="size-3.5 text-muted-foreground" />
+              {project.mode === 'worktree' ? 'Archive project…' : 'Archive project'}
+            </DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DropdownMenuItem variant="destructive" onClick={() => setConfirmDelete(true)}>
+            <DropdownMenuItem variant="destructive" onClick={() => setConfirm('delete')}>
               Delete project…
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
-      <ConfirmDialog
-        open={confirmDelete}
-        title={`Delete ${project.name}?`}
-        body={
-          project.mode === 'worktree'
-            ? 'Its threads are deleted. The worktree and branch on disk stay.'
-            : 'Its threads are deleted. Files on disk stay.'
-        }
-        confirmLabel="Delete project"
-        onConfirm={() => removeProject(project.id)}
-        onClose={() => setConfirmDelete(false)}
-      />
+      {confirm && (
+        <ProjectTeardownDialog
+          open
+          project={project}
+          action={confirm}
+          onConfirm={(cleanup) =>
+            confirm === 'delete'
+              ? removeProject(project.id, cleanup)
+              : archiveProject(project.id, true, cleanup)
+          }
+          onClose={() => setConfirm(null)}
+        />
+      )}
+    </div>
+  )
+}
+
+/** Archived projects, folded away under the workspace's rows. */
+function ArchivedProjects({ projects }: { projects: ProjectMeta[] }): React.JSX.Element | null {
+  const archiveProject = useApp((s) => s.archiveProject)
+  const [open, setOpen] = useState(false)
+  const [deleting, setDeleting] = useState<ProjectMeta | null>(null)
+
+  if (projects.length === 0) return null
+
+  return (
+    <div className="ml-4">
+      <button
+        onClick={() => setOpen(!open)}
+        className="flex h-6 items-center gap-1.5 rounded-md px-2 text-[11px] text-muted-foreground/60 transition-colors hover:text-muted-foreground"
+      >
+        <Archive className="size-3" />
+        Archived · {projects.length}
+      </button>
+      {open &&
+        projects.map((p) => (
+          <div
+            key={p.id}
+            className="group/arch flex h-7 items-center gap-2 rounded-md px-2 hover:bg-accent/40"
+          >
+            <span className="min-w-0 flex-1 truncate text-[13px] leading-5 text-muted-foreground">
+              {p.name}
+            </span>
+            <div className="flex items-center gap-0.5 opacity-0 transition-opacity group-hover/arch:opacity-100">
+              <button
+                title="Restore"
+                aria-label="Restore project"
+                onClick={() => void archiveProject(p.id, false)}
+                className="flex size-5 items-center justify-center rounded text-muted-foreground transition hover:text-foreground active:scale-95"
+              >
+                <ArchiveRestore className="size-3.5" />
+              </button>
+              <button
+                title="Delete"
+                aria-label="Delete project"
+                onClick={() => setDeleting(p)}
+                className="flex size-5 items-center justify-center rounded text-muted-foreground transition hover:text-destructive active:scale-95"
+              >
+                <Trash2 className="size-3.5" />
+              </button>
+            </div>
+          </div>
+        ))}
+      {deleting && (
+        <ProjectTeardownDialog
+          open
+          project={deleting}
+          action="delete"
+          onConfirm={(cleanup) => useApp.getState().removeProject(deleting.id, cleanup)}
+          onClose={() => setDeleting(null)}
+        />
+      )}
     </div>
   )
 }

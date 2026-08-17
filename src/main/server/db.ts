@@ -52,6 +52,7 @@ export function openDb(path: string): DatabaseSync {
       mode         TEXT NOT NULL,
       branch       TEXT,
       cwd          TEXT NOT NULL,
+      archived     INTEGER NOT NULL DEFAULT 0,
       created_at   INTEGER NOT NULL
     );
     CREATE TABLE IF NOT EXISTS settings (
@@ -70,7 +71,8 @@ export function openDb(path: string): DatabaseSync {
     `ALTER TABLE sessions ADD COLUMN fast INTEGER NOT NULL DEFAULT 0`,
     `ALTER TABLE sessions ADD COLUMN context_1m INTEGER NOT NULL DEFAULT 0`,
     `ALTER TABLE sessions ADD COLUMN busy_since INTEGER`,
-    `ALTER TABLE sessions ADD COLUMN retyped INTEGER NOT NULL DEFAULT 0`
+    `ALTER TABLE sessions ADD COLUMN retyped INTEGER NOT NULL DEFAULT 0`,
+    `ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0`
   ]) {
     try {
       db.exec(stmt)
@@ -327,6 +329,7 @@ export class Store {
       mode: string
       branch: string | null
       cwd: string
+      archived: number
       created_at: number
     }[]
     return rows.map((r) => ({
@@ -336,6 +339,7 @@ export class Store {
       mode: r.mode as ProjectMeta['mode'],
       branch: r.branch,
       cwd: r.cwd,
+      archived: !!r.archived,
       createdAt: r.created_at
     }))
   }
@@ -350,6 +354,10 @@ export class Store {
 
   renameProject(id: string, name: string): void {
     this.db.prepare(`UPDATE projects SET name = ? WHERE id = ?`).run(name, id)
+  }
+
+  setProjectArchived(id: string, archived: boolean): void {
+    this.db.prepare(`UPDATE projects SET archived = ? WHERE id = ?`).run(archived ? 1 : 0, id)
   }
 
   sessionsOfProject(projectId: string): SessionMeta[] {

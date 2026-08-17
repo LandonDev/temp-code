@@ -5,6 +5,7 @@ import type {
   BranchList,
   CommitInfo,
   FileChange,
+  ProjectCleanup,
   ProjectMeta,
   ProjectMode,
   SlashCommand,
@@ -218,7 +219,8 @@ interface AppState {
     mode: ProjectMode,
     opts?: { branch?: string; baseRef?: string }
   ) => Promise<ProjectMeta>
-  removeProject: (projectId: string) => Promise<void>
+  removeProject: (projectId: string, cleanup?: ProjectCleanup) => Promise<void>
+  archiveProject: (projectId: string, archived: boolean, cleanup?: ProjectCleanup) => Promise<void>
   selectProject: (projectId: string | null) => void
   /** open (or focus) a file surface; reveal jumps the cursor after mount */
   openFileSurface: (
@@ -613,7 +615,8 @@ export const useApp = create<AppState>((set, get) => ({
     })
     // Land somewhere sensible: the first project, if any.
     const { projects, selectedProjectId } = get()
-    if (!selectedProjectId && projects.length) get().selectProject(projects[0].id)
+    const first = projects.find((p) => !p.archived)
+    if (!selectedProjectId && first) get().selectProject(first.id)
   },
 
   refreshTree: async () => {
@@ -668,9 +671,16 @@ export const useApp = create<AppState>((set, get) => ({
     await get().refreshTree()
   },
 
-  removeProject: async (projectId) => {
-    await client.request('project.delete', { projectId })
+  removeProject: async (projectId, cleanup) => {
+    await client.request('project.delete', { projectId, cleanup })
     if (get().selectedProjectId === projectId) set({ selectedProjectId: null, selectedId: null })
+    await get().refreshTree()
+  },
+
+  archiveProject: async (projectId, archived, cleanup) => {
+    await client.request('project.archive', { projectId, archived, cleanup })
+    if (archived && get().selectedProjectId === projectId)
+      set({ selectedProjectId: null, selectedId: null })
     await get().refreshTree()
   },
 
@@ -928,7 +938,7 @@ export const useApp = create<AppState>((set, get) => ({
       const projectId =
         get().selectedProjectId ??
         roots.sort((x, y) => y.updatedAt - x.updatedAt)[0]?.projectId ??
-        get().projects[0]?.id
+        get().projects.find((p) => !p.archived)?.id
       if (!projectId) return // no project anywhere — nowhere to stage
       target = (await get().createThread({ threadType: 'chat', projectId })).id
     }
