@@ -39,6 +39,7 @@ import {
   workingTreeChanges
 } from './git'
 import { listCommands } from './commands'
+import { workspaceIcon } from './wsicon'
 import { setSummarizeContext, summarizeTools } from './summarize'
 import { readAttachment, saveAttachment } from './attachments'
 import {
@@ -220,6 +221,15 @@ export async function startServer(dbPath: string): Promise<RunningServer> {
             await registry.deleteWorkspace(req.params.workspaceId)
             sendFrame({ id: req.id, ok: true, result: null })
             break
+          case 'workspace.icon': {
+            const ws = registry.listWorkspaces().find((w) => w.id === req.params.workspaceId)
+            sendFrame({
+              id: req.id,
+              ok: true,
+              result: ws ? await workspaceIcon(ws.path) : { dataUrl: null, host: null }
+            })
+            break
+          }
           case 'project.create': {
             const created = await registry.createProject(
               req.params.workspaceId,

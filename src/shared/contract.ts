@@ -69,6 +69,12 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
     method: z.literal('workspace.delete'),
     params: z.object({ workspaceId: z.string() })
   }),
+  // Sidebar logo: repo favicon / GitHub avatar as a data URL, else the git host.
+  z.object({
+    id: z.string(),
+    method: z.literal('workspace.icon'),
+    params: z.object({ workspaceId: z.string() })
+  }),
   z.object({
     id: z.string(),
     method: z.literal('project.create'),

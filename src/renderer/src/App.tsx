@@ -79,7 +79,7 @@ export default function App(): React.JSX.Element {
   return (
     <div className="flex h-screen">
       <Sidebar />
-      <main className="relative flex min-w-0 flex-1 flex-col border-l border-border/60 bg-background">
+      <main className="relative flex min-w-0 flex-1 flex-col bg-background">
         <Titlebar />
         {settingsOpen ? (
           <motion.div

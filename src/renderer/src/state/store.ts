@@ -10,6 +10,7 @@ import type {
   ProjectMode,
   SlashCommand,
   ThreadType,
+  WorkspaceIcon,
   WorkspaceMeta
 } from '@shared/domain'
 import type { CreateSessionInput, QueuedMessage } from '@shared/contract'
@@ -91,6 +92,12 @@ const SUMMARY_MODEL_KEY = 'summary-model'
 const SURFACES_KEY = 'surfaces-v1'
 const FORMAT_KEY = 'format-on-save'
 const GHOST_KEY = 'ghost-text'
+const SIDEBAR_WIDTH_KEY = 'sidebar-width'
+const SIDEBAR_COLLAPSED_KEY = 'sidebar-collapsed'
+
+export const SIDEBAR_MIN = 208
+export const SIDEBAR_MAX = 400
+export const SIDEBAR_DEFAULT = 260
 
 const osDark = window.matchMedia('(prefers-color-scheme: dark)')
 
@@ -124,6 +131,8 @@ interface AppState {
   connected: boolean
   catalog: Catalog | null
   workspaces: WorkspaceMeta[]
+  /** sidebar logos, fetched once per workspace (repo favicon / host mark) */
+  workspaceIcons: Record<string, WorkspaceIcon>
   projects: ProjectMeta[]
   sessions: Record<string, SessionMeta>
   events: Record<string, EventRow[]>
@@ -143,6 +152,9 @@ interface AppState {
   railOpen: boolean
   /** which rail panel is up: Changes or Files */
   railPanel: 'changes' | 'files' | 'debug'
+  /** sidebar chrome (persisted): drag-resized width + collapsed */
+  sidebarWidth: number
+  sidebarCollapsed: boolean
   /** open editor surfaces per project (persisted with the project) */
   surfaces: Record<string, SurfaceRef[]>
   /** active surface key per project; null = a thread is in the main view */
@@ -243,6 +255,8 @@ interface AppState {
   setQuickOpen: (mode: 'files' | 'symbols' | 'hierarchy' | null) => void
   openHierarchy: (title: string, rows: HierarchyRow[]) => void
   setRailPanel: (panel: 'changes' | 'files' | 'debug') => void
+  setSidebarWidth: (width: number) => void
+  setSidebarCollapsed: (collapsed: boolean) => void
   setFormatOnSave: (lang: 'java' | 'web', on: boolean) => void
   setGhostText: (on: boolean) => void
   select: (sessionId: string | null) => Promise<void>
@@ -393,6 +407,7 @@ export const useApp = create<AppState>((set, get) => ({
   connected: false,
   catalog: null,
   workspaces: [],
+  workspaceIcons: {},
   projects: [],
   sessions: {},
   events: {},
@@ -407,6 +422,11 @@ export const useApp = create<AppState>((set, get) => ({
   loaded: {},
   railOpen: false,
   railPanel: 'changes',
+  sidebarWidth: Math.min(
+    SIDEBAR_MAX,
+    Math.max(SIDEBAR_MIN, Number(localStorage.getItem(SIDEBAR_WIDTH_KEY)) || SIDEBAR_DEFAULT)
+  ),
+  sidebarCollapsed: localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === '1',
   surfaces: JSON.parse(localStorage.getItem(SURFACES_KEY) ?? '{}') as Record<string, SurfaceRef[]>,
   activeSurface: {},
   reveal: null,
@@ -645,6 +665,14 @@ export const useApp = create<AppState>((set, get) => ({
         lastSeen
       }
     })
+    // Logos resolve lazily (disk probe, maybe a network fetch) — once each.
+    for (const ws of workspaces) {
+      if (get().workspaceIcons[ws.id]) continue
+      void client
+        .request<WorkspaceIcon>('workspace.icon', { workspaceId: ws.id })
+        .then((icon) => set((s) => ({ workspaceIcons: { ...s.workspaceIcons, [ws.id]: icon } })))
+        .catch(() => {})
+    }
   },
 
   addWorkspace: async (path) => {
@@ -799,6 +827,16 @@ export const useApp = create<AppState>((set, get) => ({
   openHierarchy: (title, rows) => set({ hierarchy: { title, rows }, quickOpen: 'hierarchy' }),
 
   setRailPanel: (panel) => set({ railPanel: panel }),
+
+  setSidebarWidth: (width) => {
+    set({ sidebarWidth: width })
+    localStorage.setItem(SIDEBAR_WIDTH_KEY, String(Math.round(width)))
+  },
+
+  setSidebarCollapsed: (collapsed) => {
+    set({ sidebarCollapsed: collapsed })
+    localStorage.setItem(SIDEBAR_COLLAPSED_KEY, collapsed ? '1' : '0')
+  },
 
   setFormatOnSave: (lang, on) => {
     const formatOnSave = { ...get().formatOnSave, [lang]: on }

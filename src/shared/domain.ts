@@ -36,6 +36,13 @@ export interface ProjectMeta {
   createdAt: number
 }
 
+/** Sidebar logo for a workspace: a real image (repo favicon, GitHub owner
+ *  avatar) as a data URL, else the git host whose mark the renderer draws. */
+export interface WorkspaceIcon {
+  dataUrl: string | null
+  host: 'github' | 'gitlab' | 'bitbucket' | null
+}
+
 /** What archiving/deleting a worktree project also tears down in git. */
 export interface ProjectCleanup {
   worktree?: boolean

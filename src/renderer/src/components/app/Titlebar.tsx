@@ -1,6 +1,22 @@
-import { PanelRight } from 'lucide-react'
+import { PanelLeft, PanelRight } from 'lucide-react'
 import { useApp } from '../../state/store'
 import { cn } from '../../lib/utils'
+
+/** With the sidebar hidden, the traffic lights sit over this strip:
+ *  clear them, then offer the way back. */
+function CollapsedLead(): React.JSX.Element {
+  const setSidebarCollapsed = useApp((s) => s.setSidebarCollapsed)
+  return (
+    <button
+      onClick={() => setSidebarCollapsed(false)}
+      title="Show sidebar (⌘B)"
+      aria-label="Show sidebar"
+      className="ml-[68px] mr-1 flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition hover:bg-accent/60 hover:text-foreground active:scale-95"
+    >
+      <PanelLeft className="size-[15px]" />
+    </button>
+  )
+}
 
 /**
  * The main column's top strip: breadcrumb left, rail toggle right.
@@ -20,10 +36,17 @@ export function Titlebar(): React.JSX.Element {
   const railOpen = useApp((s) => s.railOpen)
   const setRailOpen = useApp((s) => s.setRailOpen)
   const settingsOpen = useApp((s) => s.settingsOpen)
+  const collapsed = useApp((s) => s.sidebarCollapsed)
 
   if (settingsOpen) {
     return (
-      <header className="titlebar-drag flex h-[38px] shrink-0 items-center px-4 pt-0.5">
+      <header
+        className={cn(
+          'titlebar-drag flex h-[38px] shrink-0 items-center pt-0.5',
+          collapsed ? 'pr-4 pl-0' : 'px-4'
+        )}
+      >
+        {collapsed && <CollapsedLead />}
         <span className="text-[13px] font-medium">Settings</span>
       </header>
     )
@@ -31,7 +54,13 @@ export function Titlebar(): React.JSX.Element {
 
   return (
     // Zeron titlebar: 38px, content sitting 2px lower.
-    <header className="titlebar-drag flex h-[38px] shrink-0 items-center gap-1.5 px-4 pt-0.5">
+    <header
+      className={cn(
+        'titlebar-drag flex h-[38px] shrink-0 items-center gap-1.5 pt-0.5',
+        collapsed ? 'pr-4 pl-0' : 'px-4'
+      )}
+    >
+      {collapsed && <CollapsedLead />}
       {workspace && (
         <span className="text-[13px] text-muted-foreground">{workspace.name}</span>
       )}
