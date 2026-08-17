@@ -190,7 +190,7 @@ function useAgentLine(agent: SessionMeta): { text: string | null; tone: string }
           : 'waiting for approval'
       }
       case 'error': {
-        const err = blocks?.findLast((b) => b.kind === 'error')
+        const err = blocks?.findLast((b) => b.kind === 'error' && !b.cleared)
         return err?.kind === 'error' ? err.text : 'failed'
       }
       case 'running':

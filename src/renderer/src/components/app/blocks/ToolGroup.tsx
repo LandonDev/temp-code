@@ -1822,15 +1822,40 @@ export const ZEditCard = memo(function ZEditCard({
   )
 })
 
-/** Harness error — its own 34px chip, red family (transcript.rs error_chip). */
-export function ErrorChip({ text }: { text: string }): React.JSX.Element {
+/** Harness error — its own 34px chip, red family (transcript.rs error_chip).
+ *  With a sessionId, an errored session grows a Continue button: the user
+ *  fixed what killed the turn (switched accounts on a session limit), one
+ *  click settles every chip and the harness picks the work back up. */
+export function ErrorChip({
+  text,
+  sessionId
+}: {
+  text: string
+  sessionId?: string
+}): React.JSX.Element {
+  const errored = useApp((s) => (sessionId ? s.sessions[sessionId]?.status === 'error' : false))
+  const [busy, setBusy] = useState(false)
+  const onContinue = (): void => {
+    if (busy || !sessionId) return
+    setBusy(true)
+    client.request('session.continue', { sessionId }).finally(() => setBusy(false))
+  }
   return (
     <div className="flex h-[34px] items-center gap-2 rounded-[10px] border border-destructive/16 bg-destructive/5 px-2">
       <span className="flex size-5 shrink-0 items-center justify-center rounded-[5px] bg-destructive/12 text-destructive-muted/80">
         <ZIcon name="danger-triangle" size={12} />
       </span>
       <span className="shrink-0 text-xs font-medium text-destructive-muted/80">Error</span>
-      <span className="min-w-0 truncate text-xs text-foreground/80">{text}</span>
+      <span className="min-w-0 flex-1 truncate text-xs text-foreground/80">{text}</span>
+      {errored && (
+        <button
+          onClick={onContinue}
+          disabled={busy}
+          className="shrink-0 rounded-[6px] bg-destructive/12 px-2 py-1 text-[11px] font-medium text-destructive-muted transition-colors hover:bg-destructive/20 disabled:opacity-60"
+        >
+          {busy ? 'Continuing…' : 'Continue'}
+        </button>
+      )}
     </div>
   )
 }

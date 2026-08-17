@@ -59,7 +59,12 @@ type BlockKind =
       /** activity events from a subagent running under this call */
       subCount: number
     }
-  | { kind: 'error'; text: string }
+  | {
+      kind: 'error'
+      text: string
+      /** settled by a Continue — the chip no longer renders */
+      cleared?: boolean
+    }
   | {
       kind: 'approval'
       requestId: string
@@ -576,6 +581,13 @@ export function foldEvent(s: FoldState, e: AgentEvent, ts?: number): void {
       break
     case 'error':
       push(s, { kind: 'error', text: e.message })
+      break
+    case 'errors-cleared':
+      // Continue settled every error shown so far — the chips disappear.
+      for (let i = 0; i < s.blocks.length; i++) {
+        const b = s.blocks[i]
+        if (b.kind === 'error' && !b.cleared) s.blocks[i] = { ...b, cleared: true }
+      }
       break
     // status / agent-spawned drive the sidebar, not the transcript
   }

@@ -415,6 +415,11 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
   }),
   z.object({
     id: z.string(),
+    method: z.literal('session.continue'),
+    params: z.object({ sessionId: z.string() })
+  }),
+  z.object({
+    id: z.string(),
     method: z.literal('session.approve'),
     params: z.object({ sessionId: z.string(), requestId: z.string(), allow: z.boolean() })
   }),
