@@ -424,20 +424,61 @@ export async function orchSendToAgent(
   return 'sent'
 }
 
-/** Latest task-list state from the child's plan-tool calls, if any. */
+/** Latest task-list state from the child's plan-tool calls, if any.
+ *  TodoWrite/update_plan replace the whole list per call; the SDK task
+ *  tools (TaskCreate/TaskUpdate — what Fable-era CLIs offer instead of
+ *  TodoWrite) build it incrementally, so this walks forward mirroring the
+ *  renderer fold. Some models stringify the array — parse that too. */
 function todoProgress(rows: EventRow[]): { done: number; total: number } | null {
-  for (let i = rows.length - 1; i >= 0; i--) {
-    const e = rows[i].event
-    if (e.type !== 'tool-call' || (e.name !== 'TodoWrite' && e.name !== 'update_plan')) continue
-    const input = e.input as { todos?: { status?: string }[]; plan?: { status?: string }[] } | null
-    const items = e.name === 'TodoWrite' ? input?.todos : input?.plan
-    if (!Array.isArray(items)) continue
-    return {
-      done: items.filter((t) => t?.status === 'completed').length,
-      total: items.length
+  let list: { status?: string }[] | null = null
+  const taskIdx = new Map<string, number>()
+  const byCall = new Map<string, number>()
+  const seen = new Set<string>()
+  for (const r of rows) {
+    const e = r.event
+    if (e.type === 'tool-result') {
+      const created = byCall.get(e.callId)
+      if (created !== undefined) {
+        byCall.delete(e.callId)
+        const m = /#(\d+)/.exec(e.output)
+        if (m) taskIdx.set(m[1], created)
+      }
+      continue
+    }
+    if (e.type !== 'tool-call' || e.partial) continue
+    if (e.name === 'TodoWrite' || e.name === 'update_plan') {
+      const input = e.input as { todos?: unknown; plan?: unknown } | null
+      let items = e.name === 'TodoWrite' ? input?.todos : input?.plan
+      if (typeof items === 'string') {
+        try {
+          items = JSON.parse(items)
+        } catch {
+          items = null
+        }
+      }
+      if (Array.isArray(items)) list = items as { status?: string }[]
+    } else if (e.name === 'TaskCreate' && !seen.has(e.callId)) {
+      const subject = (e.input as { subject?: string } | null)?.subject
+      if (subject) {
+        seen.add(e.callId)
+        list = [...(list ?? []), { status: 'pending' }]
+        byCall.set(e.callId, list.length - 1)
+      }
+    } else if (e.name === 'TaskUpdate' && !seen.has(e.callId)) {
+      const i = e.input as { taskId?: unknown; status?: string } | null
+      const idx = taskIdx.get(String(i?.taskId))
+      if (idx !== undefined && list && idx < list.length && i?.status) {
+        seen.add(e.callId)
+        const status = i.status
+        list = list.map((t, n) => (n === idx ? { ...t, status } : t))
+      }
     }
   }
-  return null
+  if (!list || list.length === 0) return null
+  return {
+    done: list.filter((t) => t?.status === 'completed').length,
+    total: list.length
+  }
 }
 
 export function orchCheckAgent(parent: SessionMeta, agentId: string): string {
