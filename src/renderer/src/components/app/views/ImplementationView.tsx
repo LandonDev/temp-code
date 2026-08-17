@@ -49,9 +49,8 @@ const WHEN_FMT = new Intl.DateTimeFormat(undefined, {
   minute: '2-digit'
 })
 
-/** Every pass wears a color: hash-seeded per (session, pass) so it is
- *  stable across reloads and random across threads, nudged so consecutive
- *  passes never repeat. */
+/** Every pass wears a color, the same one in every thread: pass 1 is
+ *  always green, pass 2 sky, and so on around the wheel. */
 const PASS_COLORS = [
   '#10b981',
   '#0ea5e9',
@@ -62,18 +61,8 @@ const PASS_COLORS = [
   '#84cc16',
   '#d946ef'
 ]
-function passColor(sessionId: string, round: number): string {
-  let prev = -1
-  let idx = 0
-  for (let r = 0; r <= round; r++) {
-    let h = 0
-    const s = `${sessionId}:${r}`
-    for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0
-    idx = Math.abs(h) % PASS_COLORS.length
-    if (idx === prev) idx = (idx + 1) % PASS_COLORS.length
-    prev = idx
-  }
-  return PASS_COLORS[idx]
+function passColor(passNum: number): string {
+  return PASS_COLORS[Math.max(0, passNum - 1) % PASS_COLORS.length]
 }
 
 export function ImplementationView({ session }: { session: SessionMeta }): React.JSX.Element {
@@ -124,7 +113,8 @@ export function ImplementationView({ session }: { session: SessionMeta }): React
   const cur = rounds[curRound]
 
   // Passes number by what the board SHOWS — a pure Q&A round has no row
-  // and consumes no number. Colors stay keyed by the raw round index.
+  // and consumes no number. Colors key off this number too, so pass N
+  // wears the same color in every thread.
   const passNums = useMemo(() => {
     let n = 0
     return rounds.map((r) => (r.todos.length > 0 || r.work.length > 0 ? ++n : 0))
@@ -276,7 +266,7 @@ export function ImplementationView({ session }: { session: SessionMeta }): React
     setChatOpen(true)
     requestAnimationFrame(() => window.dispatchEvent(new CustomEvent('composer-focus')))
   }
-  const nextColor = passColor(session.id, curRound + 1)
+  const nextColor = passColor(passNum + 1)
 
   const collapsed = hasBoard && !chatOpen && !composing
 
@@ -835,7 +825,7 @@ function RoundSection({
             <span className="flex items-center gap-2">
               <span
                 className="size-1.5 shrink-0 rounded-full"
-                style={{ background: passColor(session.id, round) }}
+                style={{ background: passColor(passNum) }}
               />
               <span className="shrink-0 text-[13px] font-semibold tracking-[-0.01em] text-foreground/85">
                 Pass {passNum}
@@ -877,7 +867,7 @@ function RoundSection({
           <p className="text-[15px] leading-snug font-medium tracking-[-0.01em]">
             <span
               className="mr-2 mb-[1px] inline-block size-2 rounded-full align-middle"
-              style={{ background: passColor(session.id, round) }}
+              style={{ background: passColor(passNum) }}
             />
             {headerText}
           </p>
