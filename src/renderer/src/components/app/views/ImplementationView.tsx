@@ -49,6 +49,33 @@ const WHEN_FMT = new Intl.DateTimeFormat(undefined, {
   minute: '2-digit'
 })
 
+/** Every pass wears a color: hash-seeded per (session, pass) so it is
+ *  stable across reloads and random across threads, nudged so consecutive
+ *  passes never repeat. */
+const PASS_COLORS = [
+  '#10b981',
+  '#0ea5e9',
+  '#8b5cf6',
+  '#f59e0b',
+  '#f43f5e',
+  '#06b6d4',
+  '#84cc16',
+  '#d946ef'
+]
+function passColor(sessionId: string, round: number): string {
+  let prev = -1
+  let idx = 0
+  for (let r = 0; r <= round; r++) {
+    let h = 0
+    const s = `${sessionId}:${r}`
+    for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0
+    idx = Math.abs(h) % PASS_COLORS.length
+    if (idx === prev) idx = (idx + 1) % PASS_COLORS.length
+    prev = idx
+  }
+  return PASS_COLORS[idx]
+}
+
 export function ImplementationView({ session }: { session: SessionMeta }): React.JSX.Element {
   const todos = useApp((s) => s.todos[session.id]) ?? EMPTY_TODOS
   const blocksRaw = useApp((s) => s.blocks[session.id])
@@ -95,6 +122,14 @@ export function ImplementationView({ session }: { session: SessionMeta }): React
     return list
   }, [blocks, todos, pastTodosAll, curRound])
   const cur = rounds[curRound]
+
+  // Passes number by what the board SHOWS — a pure Q&A round has no row
+  // and consumes no number. Colors stay keyed by the raw round index.
+  const passNums = useMemo(() => {
+    let n = 0
+    return rounds.map((r) => (r.todos.length > 0 || r.work.length > 0 ? ++n : 0))
+  }, [rounds])
+  const passNum = passNums[curRound] || Math.max(0, ...passNums)
 
   const allDone = cur.todos.length > 0 && cur.todos.every((t) => t.status === 'completed')
   // The agent's final report renders as the closing note under the work —
@@ -198,7 +233,33 @@ export function ImplementationView({ session }: { session: SessionMeta }): React
     if (running) setChatOpen(true)
     else if (!waiting && allDone && !stopped) setChatOpen(false)
   }
-  const collapsed = hasBoard && !chatOpen
+
+  // The pass gate: a FINISHED pass covers the composer — the next message
+  // is a new pass, and it starts by pressing the pass-colored button.
+  // Composing runs the chat full screen (the board steps aside) until the
+  // new pass makes tasks — or its turn settles without any — then the
+  // board returns on its own. Steering mid-run and post-halt continues
+  // never see the gate: their composer stays open.
+  const passDone = !running && !waiting && allDone
+  const [composeFrom, setComposeFrom] = useState<number | null>(null)
+  const [composeRan, setComposeRan] = useState(false)
+  const composing = composeFrom !== null
+  if (composeFrom !== null) {
+    if (!composeRan && running && curRound > composeFrom) setComposeRan(true)
+    if (curRound > composeFrom && (todos.length > 0 || (composeRan && !running && !waiting))) {
+      setComposeFrom(null)
+      setComposeRan(false)
+    }
+  }
+  const startNextPass = (): void => {
+    setComposeFrom(curRound)
+    setComposeRan(false)
+    setChatOpen(true)
+    requestAnimationFrame(() => window.dispatchEvent(new CustomEvent('composer-focus')))
+  }
+  const nextColor = passColor(session.id, curRound + 1)
+
+  const collapsed = hasBoard && !chatOpen && !composing
 
   // Board/chat split in %, draggable 30–70, double-click resets.
   const containerRef = useRef<HTMLDivElement>(null)
@@ -226,7 +287,7 @@ export function ImplementationView({ session }: { session: SessionMeta }): React
   return (
     <div ref={containerRef} className="relative flex min-h-0 flex-1">
       <AnimatePresence initial={false}>
-        {hasBoard && (
+        {hasBoard && !composing && (
           <motion.div
             key="board"
             initial={reduce ? false : { flexBasis: '0%', opacity: 0 }}
@@ -289,6 +350,7 @@ export function ImplementationView({ session }: { session: SessionMeta }): React
                         key={r}
                         session={session}
                         round={r}
+                        passNum={passNums[r]}
                         data={data}
                         isCurrent={false}
                         multi
@@ -318,6 +380,7 @@ export function ImplementationView({ session }: { session: SessionMeta }): React
                   key={curRound}
                   session={session}
                   round={curRound}
+                  passNum={passNums[curRound]}
                   data={cur}
                   isCurrent
                   multi={curRound > 0}
@@ -350,13 +413,27 @@ export function ImplementationView({ session }: { session: SessionMeta }): React
                     <MarkdownText text={closing.text} streaming={false} />
                   </motion.div>
                 )}
+
+                {/* The pass is done and the chat usually folded — the next
+                    pass starts HERE, wearing its color. */}
+                {passDone && (
+                  <div className="mt-5">
+                    <button
+                      onClick={startNextPass}
+                      className="rounded-lg px-3.5 py-1.5 text-[12.5px] font-medium text-white transition hover:brightness-110 active:scale-95"
+                      style={{ background: nextColor }}
+                    >
+                      Start pass {passNum + 1}
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           </motion.div>
         )}
       </AnimatePresence>
 
-      {hasBoard && !collapsed && (
+      {hasBoard && !collapsed && !composing && (
         <div
           onPointerDown={startDrag}
           onDoubleClick={() => setSplit(50)}
@@ -386,19 +463,30 @@ export function ImplementationView({ session }: { session: SessionMeta }): React
                 Conversation
               </span>
               <button
-                onClick={() => setChatOpen(false)}
-                title="Hide conversation"
-                aria-label="Hide conversation"
+                onClick={() => {
+                  if (composing) {
+                    setComposeFrom(null)
+                    setComposeRan(false)
+                  } else setChatOpen(false)
+                }}
+                title={composing ? 'Show the board' : 'Hide conversation'}
+                aria-label={composing ? 'Show the board' : 'Hide conversation'}
                 className="flex size-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
               >
-                <ChevronRight className="size-3.5" />
+                <ChevronRight className={cn('size-3.5', composing && 'rotate-180')} />
               </button>
             </div>
           )}
           {/* No minimap in the side pane — it overlaps the text there. */}
-          <Transcript sessionId={session.id} minimap={!hasBoard} />
+          <Transcript sessionId={session.id} minimap={!hasBoard || composing} />
           <WorkingStrip sessionId={session.id} />
-          <PromptBar compact={hasBoard} narrow={hasBoard} />
+          {/* The composer stays open — typing keeps working in the CURRENT
+              pass (questions, clarifications, more work). The banner is
+              the door to the next one. */}
+          {passDone && !composing && (
+            <PassBanner passNum={passNum} color={nextColor} onNext={startNextPass} />
+          )}
+          <PromptBar compact={hasBoard && !composing} narrow={hasBoard && !composing} />
         </div>
       )}
 
@@ -463,6 +551,7 @@ function groupByTodo(list: Block[], todoCount: number): Map<number, Block[]> {
 function RoundSection({
   session,
   round,
+  passNum,
   data,
   isCurrent,
   multi,
@@ -480,6 +569,8 @@ function RoundSection({
 }: {
   session: SessionMeta
   round: number
+  /** display number — hidden Q&A rounds don't consume one */
+  passNum: number
   data: RoundData
   isCurrent: boolean
   /** the thread has follow-up rounds — headers and separators appear */
@@ -716,8 +807,12 @@ function RoundSection({
           />
           <span className="min-w-0 flex-1">
             <span className="flex items-center gap-2">
+              <span
+                className="size-1.5 shrink-0 rounded-full"
+                style={{ background: passColor(session.id, round) }}
+              />
               <span className="shrink-0 text-[13px] font-semibold tracking-[-0.01em] text-foreground/85">
-                Pass {round + 1}
+                Pass {passNum}
               </span>
               <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-muted-foreground transition-colors group-hover/round:text-foreground">
                 {headerText}
@@ -753,11 +848,48 @@ function RoundSection({
     <div>
       {multi && headerText && (
         <div className="mb-4">
-          <p className="text-[15px] leading-snug font-medium tracking-[-0.01em]">{headerText}</p>
+          <p className="text-[15px] leading-snug font-medium tracking-[-0.01em]">
+            <span
+              className="mr-2 mb-[1px] inline-block size-2 rounded-full align-middle"
+              style={{ background: passColor(session.id, round) }}
+            />
+            {headerText}
+          </p>
           {todos.length > 0 && <ProgressSegments todos={todos} />}
         </div>
       )}
       {body}
+    </div>
+  )
+}
+
+/** The pass banner, above the composer once a pass completes: typing below
+ *  keeps working in the CURRENT pass; the button starts the next one,
+ *  wearing that pass's color. */
+function PassBanner({
+  passNum,
+  color,
+  onNext
+}: {
+  passNum: number
+  color: string
+  onNext: () => void
+}): React.JSX.Element {
+  return (
+    <div className="px-3 pb-1.5">
+      <div
+        className="flex h-9 items-center justify-between gap-3 rounded-[10px] border pr-1.5 pl-3"
+        style={{ background: `${color}12`, borderColor: `${color}2e` }}
+      >
+        <span className="text-[11.5px] text-muted-foreground">Pass {passNum} complete</span>
+        <button
+          onClick={onNext}
+          className="rounded-[7px] px-2.5 py-1 text-[11.5px] font-medium text-white transition hover:brightness-110 active:scale-95"
+          style={{ background: color }}
+        >
+          Start pass {passNum + 1}
+        </button>
+      </div>
     </div>
   )
 }

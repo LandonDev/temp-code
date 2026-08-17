@@ -189,19 +189,23 @@ const STALE_TURN_MS = 10 * 60_000
  *  resumes it; after that it reads as abandoned and a new pass begins. */
 const RESUME_WINDOW_MS = 30 * 60_000
 
-function beginTurn(s: FoldState, ts?: number): void {
+function beginTurn(s: FoldState, ts?: number, newPass?: boolean): void {
   const lastTs = s.blocks.findLast((b) => b.ts !== undefined)?.ts
   const stale =
     s.turnOpen && lastTs !== undefined && ts !== undefined && ts - lastTs > STALE_TURN_MS
-  // A pass only ends when its WORK did: an unfinished task list means the
-  // next message resumes this pass — a continue after a stop or an error,
-  // a correction mid-job — never a new one. But only while the pass is
-  // still warm: unfinished work abandoned for longer reads as dropped,
-  // and the next request deserves its own pass.
+  // Explicit beats inferred: sends stamped with newPass (the board's pass
+  // button, or its absence) decide directly — typing under the banner
+  // keeps working in the current pass. Unstamped (legacy) sends fall back
+  // to the inferred rules: a pass only ends when its WORK did — an
+  // unfinished task list means the next message resumes this pass (a
+  // continue after a stop or an error) while the pass is warm; colder
+  // unfinished work reads as abandoned.
   const unfinished = s.todos.length > 0 && s.todos.some((t) => t.status !== 'completed')
   const gap = lastTs !== undefined && ts !== undefined ? ts - lastTs : 0
   const resuming = unfinished && gap <= RESUME_WINDOW_MS
-  if ((!s.turnOpen || stale) && s.sawUser && !resuming) {
+  const wantNew =
+    newPass !== undefined ? newPass && (!s.turnOpen || stale) : (!s.turnOpen || stale) && !resuming
+  if (wantNew && s.sawUser) {
     s.pastTodos = [...s.pastTodos, s.todos]
     s.pastCosts = [...s.pastCosts, s.costUsd]
     s.todos = []
@@ -215,8 +219,13 @@ function beginTurn(s: FoldState, ts?: number): void {
 /** Show the user's message the instant they hit send — the server echoes
  *  the authoritative user-text event a round-trip later; foldEvent then
  *  claims this block instead of appending a duplicate. */
-export function foldOptimisticUser(s: FoldState, text: string, attachments?: Attachment[]): void {
-  beginTurn(s, Date.now())
+export function foldOptimisticUser(
+  s: FoldState,
+  text: string,
+  attachments?: Attachment[],
+  newPass?: boolean
+): void {
+  beginTurn(s, Date.now(), newPass)
   s.pendingUsers.push(push(s, { kind: 'user', text, attachments, pending: true }, Date.now()))
 }
 
@@ -317,7 +326,12 @@ export function foldEvent(s: FoldState, e: AgentEvent, ts?: number): void {
   switch (e.type) {
     case 'user-text': {
       // Run settings stamped by the server (newer logs) ride the event.
-      const stamp = e as { model?: string; reasoning?: string; context1m?: boolean }
+      const stamp = e as {
+        model?: string
+        reasoning?: string
+        context1m?: boolean
+        newPass?: boolean
+      }
       const meta = {
         model: stamp.model,
         reasoning: stamp.reasoning,
@@ -336,7 +350,7 @@ export function foldEvent(s: FoldState, e: AgentEvent, ts?: number): void {
           ...meta
         }
       } else {
-        beginTurn(s, ts)
+        beginTurn(s, ts, stamp.newPass)
         push(s, { kind: 'user', text: e.text, attachments: e.attachments, ...meta }, ts)
       }
       break
