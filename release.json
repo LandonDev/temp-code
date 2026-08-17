@@ -1,5 +1,5 @@
 {
-  "n": 50,
-  "notes": "Dormant threads get their own shelf under the working row",
-  "ts": 1786947596433
+  "n": 51,
+  "notes": "Planning threads get the fleet too; the panel becomes one shared component",
+  "ts": 1786949472372
 }
