@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { Archive, ArchiveRestore, ChevronLeft, Pencil, Plus, Search, SlidersHorizontal, Trash2 } from 'lucide-react'
 import type { ThreadType } from '@shared/domain'
@@ -43,6 +43,7 @@ const TYPE_HINTS: Record<ThreadType, string> = {
  *  working → the app's matrix-spinner motif + elapsed + what it's doing;
  *  needs you (approval/question) → amber "Needs you", in words;
  *  failed → red "Failed";
+ *  plan written, no build started → violet "Plan ready";
  *  finished while you were elsewhere → blue dot + bold title (the mail
  *  idiom, applied by the caller); dormant → nothing, and the caller mutes
  *  the title so live tabs carry the eye. */
@@ -53,7 +54,8 @@ function TabIndicator({
   now,
   activity,
   activityKind,
-  tasks
+  tasks,
+  planReady
 }: {
   status: SessionStatus
   unread: boolean
@@ -66,6 +68,8 @@ function TabIndicator({
   activityKind?: 'think' | 'investigate' | 'edit' | null
   /** implementation threads: this round's task tally */
   tasks?: { done: number; total: number } | null
+  /** planning threads: plan written, awaiting a build */
+  planReady?: boolean
 }): React.JSX.Element | null {
   // An implementation thread's tally says more than any status word, so it
   // sits at the tab's edge in every state — done/total, never abbreviated.
@@ -119,6 +123,13 @@ function TabIndicator({
       )
     if (status === 'error')
       return <span className="shrink-0 text-[10.5px] font-medium text-destructive">Failed</span>
+    if (planReady)
+      return (
+        <span className="flex shrink-0 items-center gap-1 text-[10.5px] font-medium text-violet">
+          <span className="size-1.5 rounded-full bg-violet" />
+          Plan ready
+        </span>
+      )
     if (unread) return <span className="size-1.5 shrink-0 rounded-full bg-info" />
     return null
   })()
@@ -130,6 +141,45 @@ function TabIndicator({
       {tally}
     </span>
   )
+}
+
+/** Which idle planning threads have a WRITTEN plan awaiting a build.
+ *  The strip peeks at each one's plan file on a slow poll (PlanView's
+ *  idle cadence) — a bare planning thread that hasn't produced a document
+ *  yet doesn't count. Starting a build archives the planning thread
+ *  server-side, which drops it from the strip on its own. */
+function usePlanReady(threads: SessionMeta[]): Record<string, boolean> {
+  const readFile = useApp((s) => s.readFile)
+  const [ready, setReady] = useState<Record<string, boolean>>({})
+  const key = threads
+    .filter((t) => t.threadType === 'planning' && t.status === 'idle' && t.planPath)
+    .map((t) => t.id)
+    .join(',')
+  useEffect(() => {
+    const ids = key ? key.split(',') : []
+    if (ids.length === 0) {
+      setReady({})
+      return
+    }
+    let alive = true
+    const poll = async (): Promise<void> => {
+      const entries = await Promise.all(
+        ids.map(async (id) => {
+          const path = useApp.getState().sessions[id]?.planPath
+          const doc = path ? await readFile(path) : null
+          return [id, !!doc?.trim()] as const
+        })
+      )
+      if (alive) setReady(Object.fromEntries(entries))
+    }
+    void poll()
+    const t = setInterval(() => void poll(), 8000)
+    return () => {
+      alive = false
+      clearInterval(t)
+    }
+  }, [key, readFile])
+  return ready
 }
 
 /**
@@ -164,8 +214,10 @@ export function ThreadStrip(): React.JSX.Element | null {
   // left edge is always "what matters now". Unread stays in the live
   // group until it's been looked at. Being OPEN earns nothing — a
   // selected dormant thread stays on the shelf, just highlighted there.
+  // A written plan awaiting its build holds the top row too.
+  const planReady = usePlanReady(threads)
   const live = threads.filter(
-    (t) => t.status !== 'idle' || t.updatedAt > (lastSeen[t.id] ?? 0)
+    (t) => t.status !== 'idle' || t.updatedAt > (lastSeen[t.id] ?? 0) || planReady[t.id]
   )
   const dorm = threads.filter((t) => !live.includes(t))
   /** This pass's tally, for the threads whose work IS a task list. */
@@ -292,6 +344,7 @@ export function ThreadStrip(): React.JSX.Element | null {
                               activity={t.activity}
                               activityKind={t.activityKind}
                               tasks={tasksOf(t)}
+                              planReady={!!planReady[t.id]}
                             />
                           </TabsTrigger>
                         </div>
