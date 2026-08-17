@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import {
   Archive,
@@ -7,13 +7,22 @@ import {
   FolderPlus,
   GitBranch,
   MoreHorizontal,
+  PanelLeft,
   Pencil,
   Plus,
   Trash2
 } from 'lucide-react'
 import type { ProjectMeta, WorkspaceMeta } from '@shared/domain'
 import type { SessionMeta } from '@shared/events'
-import { chatsOfWorkspace, threadsOfProject, unsortedSessions, useApp } from '../../state/store'
+import {
+  chatsOfWorkspace,
+  SIDEBAR_DEFAULT,
+  SIDEBAR_MAX,
+  SIDEBAR_MIN,
+  threadsOfProject,
+  unsortedSessions,
+  useApp
+} from '../../state/store'
 import { cn } from '../../lib/utils'
 import { SPRING_LAYOUT } from '../../lib/ease'
 import {
@@ -32,11 +41,24 @@ import { ProjectTeardownDialog } from './ProjectTeardownDialog'
 import { updateReady, useUpdateStatus } from '../../lib/updates'
 
 /**
- * Workspaces → projects. One left-edge rhythm: workspace names start at
- * x=24 (6px pad + 12px chevron + 6px gap) and project rows indent to the
- * same 24 so titles align down the bar. The active project gets a
- * shared-layout pill; rows respond on pointer-down.
+ * Workspaces → projects, one flat left edge: workspace headers carry the
+ * repo's own logo, project rows sit flush below them at the same x and
+ * say what their tabs are up to. The bar drag-resizes at its right edge
+ * (rubber-banding past its limits) and collapses — drag it shut or ⌘B.
  */
+
+/** Dragging below this raw width snaps the bar closed. */
+const COLLAPSE_AT = 130
+
+/** Progressive resistance past the min/max — the bar slows, never walls. */
+const rubberband = (over: number): number => (over * 300 * 0.55) / (300 + 0.55 * over)
+const rubber = (raw: number): number =>
+  raw > SIDEBAR_MAX
+    ? SIDEBAR_MAX + rubberband(raw - SIDEBAR_MAX)
+    : raw < SIDEBAR_MIN
+      ? SIDEBAR_MIN - rubberband(SIDEBAR_MIN - raw)
+      : raw
+
 export function Sidebar(): React.JSX.Element {
   const workspaces = useApp((s) => s.workspaces)
   const projects = useApp((s) => s.projects)
@@ -44,64 +66,144 @@ export function Sidebar(): React.JSX.Element {
   const connected = useApp((s) => s.connected)
   const settingsOpen = useApp((s) => s.settingsOpen)
   const setSettingsOpen = useApp((s) => s.setSettingsOpen)
+  const width = useApp((s) => s.sidebarWidth)
+  const collapsed = useApp((s) => s.sidebarCollapsed)
+  const setSidebarWidth = useApp((s) => s.setSidebarWidth)
+  const setSidebarCollapsed = useApp((s) => s.setSidebarCollapsed)
+  const [dragging, setDragging] = useState(false)
+  const reduce = useReducedMotion()
   const [newProjectWs, setNewProjectWs] = useState<WorkspaceMeta | null>(null)
   const [newWorkspacePath, setNewWorkspacePath] = useState<string | null>(null)
 
   const unsorted = useMemo(() => unsortedSessions(sessions), [sessions])
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      if ((e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey && e.key === 'b') {
+        e.preventDefault()
+        const s = useApp.getState()
+        s.setSidebarCollapsed(!s.sidebarCollapsed)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
 
   const pickWorkspace = async (): Promise<void> => {
     const path = await window.api.pickDirectory()
     if (path) setNewWorkspacePath(path)
   }
 
+  const startResize = (e: React.PointerEvent<HTMLDivElement>): void => {
+    e.preventDefault()
+    const handle = e.currentTarget
+    try {
+      handle.setPointerCapture(e.pointerId)
+    } catch {
+      // capture is best-effort; tracking still works while over the handle
+    }
+    const startX = e.clientX
+    const startW = useApp.getState().sidebarWidth
+    let raw = startW
+    setDragging(true)
+    const onMove = (ev: PointerEvent): void => {
+      raw = startW + (ev.clientX - startX)
+      setSidebarWidth(rubber(raw))
+    }
+    const onUp = (): void => {
+      setDragging(false)
+      handle.removeEventListener('pointermove', onMove)
+      if (raw < COLLAPSE_AT) {
+        // Snap shut; reopening restores the pre-drag width.
+        setSidebarCollapsed(true)
+        setSidebarWidth(startW)
+      } else {
+        setSidebarWidth(Math.min(SIDEBAR_MAX, Math.max(SIDEBAR_MIN, raw)))
+      }
+    }
+    handle.addEventListener('pointermove', onMove)
+    handle.addEventListener('pointerup', onUp, { once: true })
+    handle.addEventListener('pointercancel', onUp, { once: true })
+  }
+
   return (
-    <aside className="flex w-[232px] shrink-0 flex-col bg-sidebar">
-      {/* traffic-light strip */}
-      <div className="titlebar-drag h-11 shrink-0" />
-
-      <div className="flex-1 space-y-3 overflow-y-auto px-2 pb-2">
-        <div>
-          {workspaces.map((ws) => (
-            <WorkspaceGroup
-              key={ws.id}
-              workspace={ws}
-              projects={projects.filter((p) => p.workspaceId === ws.id)}
-              sessions={sessions}
-              onNewProject={() => setNewProjectWs(ws)}
-            />
-          ))}
-
+    <motion.aside
+      initial={false}
+      animate={{ width: collapsed ? 0 : width }}
+      transition={dragging || reduce ? { duration: 0 } : SPRING_LAYOUT}
+      className={cn(
+        'relative shrink-0 overflow-hidden bg-sidebar',
+        !collapsed && 'border-r border-border/60'
+      )}
+    >
+      {/* Content keeps its width while the bar animates, so it slides, not squishes. */}
+      <div className="flex h-full flex-col" style={{ width }}>
+        {/* traffic-light strip; the hide control lives here, Finder-style */}
+        <div className="titlebar-drag group/strip relative h-11 shrink-0">
           <button
-            onClick={() => void pickWorkspace()}
-            className="mt-1 flex h-7 w-full items-center gap-1.5 rounded-md px-1.5 text-[13px] text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground active:scale-[0.99]"
+            onClick={() => setSidebarCollapsed(true)}
+            title="Hide sidebar (⌘B)"
+            aria-label="Hide sidebar"
+            className="absolute top-1/2 right-2 flex size-6 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground opacity-0 transition hover:bg-accent/60 hover:text-foreground active:scale-95 group-hover/strip:opacity-100"
           >
-            <FolderPlus className="size-3.5 shrink-0 opacity-80" />
-            Add workspace
+            <PanelLeft className="size-[15px]" />
           </button>
         </div>
 
-        <ChatsGroup sessions={unsorted} />
+        <div className="flex-1 space-y-3 overflow-y-auto px-2 pb-2">
+          <div>
+            {workspaces.map((ws) => (
+              <WorkspaceGroup
+                key={ws.id}
+                workspace={ws}
+                projects={projects.filter((p) => p.workspaceId === ws.id)}
+                sessions={sessions}
+                onNewProject={() => setNewProjectWs(ws)}
+              />
+            ))}
+
+            <button
+              onClick={() => void pickWorkspace()}
+              className="mt-1 flex h-7 w-full items-center gap-1.5 rounded-md px-2 text-[13px] text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground active:scale-[0.99]"
+            >
+              <FolderPlus className="size-3.5 shrink-0 opacity-80" />
+              Add workspace
+            </button>
+          </div>
+
+          <ChatsGroup sessions={unsorted} />
+        </div>
+
+        <div className="flex h-10 shrink-0 items-center gap-2 border-t border-border/60 px-2">
+          <button
+            onClick={() => setSettingsOpen(!settingsOpen)}
+            className={cn(
+              'flex h-7 min-w-0 flex-1 items-center gap-2 rounded-md px-1.5 text-[13px] text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground active:scale-[0.99]',
+              settingsOpen && 'bg-accent text-foreground'
+            )}
+          >
+            <ZIcon name="settings-minimalistic" size={15} className="shrink-0 opacity-80" />
+            Settings
+            <UpdateDot />
+          </button>
+          {!connected && (
+            <span
+              title="Reconnecting…"
+              className="mr-1 size-1.5 shrink-0 animate-pulse rounded-full bg-warning"
+            />
+          )}
+        </div>
       </div>
 
-      <div className="flex h-10 shrink-0 items-center gap-2 border-t border-border/60 px-2">
-        <button
-          onClick={() => setSettingsOpen(!settingsOpen)}
-          className={cn(
-            'flex h-7 min-w-0 flex-1 items-center gap-2 rounded-md px-1.5 text-[13px] text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground active:scale-[0.99]',
-            settingsOpen && 'bg-accent text-foreground'
-          )}
-        >
-          <ZIcon name="settings-minimalistic" size={15} className="shrink-0 opacity-80" />
-          Settings
-          <UpdateDot />
-        </button>
-        {!connected && (
-          <span
-            title="Reconnecting…"
-            className="mr-1 size-1.5 shrink-0 animate-pulse rounded-full bg-warning"
-          />
+      {/* resize handle: 1:1 drag, double-click resets */}
+      <div
+        onPointerDown={startResize}
+        onDoubleClick={() => setSidebarWidth(SIDEBAR_DEFAULT)}
+        className={cn(
+          'absolute inset-y-0 right-0 z-10 w-[3px] cursor-col-resize transition-colors hover:bg-border',
+          dragging && 'bg-border'
         )}
-      </div>
+      />
 
       {newProjectWs && (
         <NewProjectDialog workspace={newProjectWs} onClose={() => setNewProjectWs(null)} />
@@ -109,8 +211,26 @@ export function Sidebar(): React.JSX.Element {
       {newWorkspacePath && (
         <NewWorkspaceDialog path={newWorkspacePath} onClose={() => setNewWorkspacePath(null)} />
       )}
-    </aside>
+    </motion.aside>
   )
+}
+
+/** The repo's own face: favicon/avatar image, else its git host's mark. */
+function WorkspaceLogo({ workspaceId }: { workspaceId: string }): React.JSX.Element {
+  const icon = useApp((s) => s.workspaceIcons[workspaceId])
+  if (icon?.dataUrl)
+    return (
+      <img
+        src={icon.dataUrl}
+        alt=""
+        className="size-[18px] shrink-0 rounded-[4px] object-cover"
+      />
+    )
+  if (icon?.host === 'github')
+    return <ZIcon name="github-mark" size={16} className="shrink-0 text-foreground/70" />
+  if (icon?.host === 'gitlab')
+    return <ZIcon name="gitlab-mark" size={16} className="shrink-0 text-foreground/70" />
+  return <ZIcon name="folder" size={16} className="shrink-0 text-muted-foreground/80" />
 }
 
 function WorkspaceGroup({
@@ -143,22 +263,26 @@ function WorkspaceGroup({
   }
 
   return (
-    <div className="group/ws mt-1 first:mt-0">
-      <div className="flex h-7 items-center rounded-md pr-1 pl-1.5 hover:bg-accent/40">
+    <div className="group/ws mt-2 first:mt-0">
+      <div className="flex h-8 items-center rounded-md pr-1 pl-2 hover:bg-accent/40">
         <button
           onClick={() => setOpen(!open)}
-          className="flex h-full min-w-0 flex-1 items-center gap-1.5 text-left"
+          className="flex h-full min-w-0 flex-1 items-center gap-2 text-left"
         >
+          <WorkspaceLogo workspaceId={workspace.id} />
+          <span className="truncate text-[13px] font-semibold text-foreground/90">
+            {workspace.name}
+          </span>
           <motion.span
             animate={{ rotate: open ? 90 : 0 }}
             transition={reduce ? { duration: 0 } : SPRING_LAYOUT}
-            className="flex size-3 shrink-0 items-center justify-center text-muted-foreground/70"
+            className={cn(
+              'flex size-3 shrink-0 items-center justify-center text-muted-foreground/70 transition-opacity',
+              open && 'opacity-0 group-hover/ws:opacity-100'
+            )}
           >
             <ChevronRight className="size-3" />
           </motion.span>
-          <span className="truncate text-xs font-medium text-muted-foreground">
-            {workspace.name}
-          </span>
         </button>
         <div className="flex items-center gap-0.5 opacity-0 transition-opacity group-hover/ws:opacity-100">
           <button
@@ -215,7 +339,7 @@ function WorkspaceGroup({
               {active.length === 0 && chats.length === 0 && archived.length === 0 ? (
                 <button
                   onClick={onNewProject}
-                  className="ml-4 flex h-7 items-center gap-1.5 rounded-md px-2 text-xs text-muted-foreground/60 transition-colors hover:text-muted-foreground"
+                  className="flex h-7 items-center gap-1.5 rounded-md px-2 text-xs text-muted-foreground/60 transition-colors hover:text-muted-foreground"
                 >
                   <Plus className="size-3" /> New project
                 </button>
@@ -234,6 +358,28 @@ function WorkspaceGroup({
   )
 }
 
+/** One colored count in a project's tab summary. */
+function Stat({
+  dot,
+  tint,
+  pulse,
+  count,
+  word
+}: {
+  dot: string
+  tint: string
+  pulse?: boolean
+  count: number
+  word: string
+}): React.JSX.Element {
+  return (
+    <span className={cn('flex shrink-0 items-center gap-1', tint)}>
+      <span className={cn('size-1.5 rounded-full', dot, pulse && 'animate-pulse')} />
+      {count} {word}
+    </span>
+  )
+}
+
 function ProjectRow({
   project,
   sessions
@@ -242,6 +388,8 @@ function ProjectRow({
   sessions: Record<string, SessionMeta>
 }): React.JSX.Element {
   const selected = useApp((s) => s.selectedProjectId === project.id)
+  const selectedId = useApp((s) => s.selectedId)
+  const lastSeen = useApp((s) => s.lastSeen)
   const selectProject = useApp((s) => s.selectProject)
   const removeProject = useApp((s) => s.removeProject)
   const archiveProject = useApp((s) => s.archiveProject)
@@ -250,15 +398,31 @@ function ProjectRow({
   const [confirm, setConfirm] = useState<'archive' | 'delete' | null>(null)
 
   const threads = threadsOfProject(sessions, project.id)
-  const busy = threads.find(
-    (t) => t.status === 'running' || t.status === 'waiting' || t.status === 'error'
+  const archivedCount = useMemo(
+    () =>
+      Object.values(sessions).filter((s) => s.projectId === project.id && !s.parentId && s.archived)
+        .length,
+    [sessions, project.id]
   )
-  const latest = threads.at(-1)
+  const latest = threads.reduce<number>((a, t) => Math.max(a, t.updatedAt), 0)
+
+  // The tab states that matter, loudest first: running, waiting on the
+  // user, failed, finished-but-unseen. Everything else is dormant and only
+  // counts toward the muted total.
+  const running = threads.filter((t) => t.status === 'running' || t.status === 'starting').length
+  const waiting = threads.filter((t) => t.status === 'waiting').length
+  const failed = threads.filter((t) => t.status === 'error').length
+  const unread = threads.filter(
+    (t) =>
+      (t.status === 'idle' || t.status === 'done') &&
+      t.id !== selectedId &&
+      t.updatedAt > (lastSeen[t.id] ?? 0)
+  ).length
 
   if (renaming) {
     // The row itself becomes the editor — no dialog for a name.
     return (
-      <div className="ml-4 flex items-center rounded-md bg-accent px-2 py-1.5">
+      <div className="flex items-center rounded-md bg-accent px-2 py-1.5">
         <input
           autoFocus
           defaultValue={project.name}
@@ -283,7 +447,7 @@ function ProjectRow({
   }
 
   return (
-    <div className="group/row relative ml-4">
+    <div className="group/row relative">
       {selected && (
         <motion.div
           layoutId="sidebar-active"
@@ -294,37 +458,65 @@ function ProjectRow({
       <button
         onPointerDown={() => selectProject(project.id)}
         onDoubleClick={() => setRenaming(true)}
+        title={[
+          running > 0 && `${running} running`,
+          waiting > 0 && `${waiting} waiting on you`,
+          failed > 0 && `${failed} failed`,
+          unread > 0 && `${unread} unread`,
+          `${threads.length} open ${threads.length === 1 ? 'tab' : 'tabs'}`,
+          archivedCount > 0 && `${archivedCount} archived`
+        ]
+          .filter(Boolean)
+          .join(' · ')}
         className={cn(
-          'relative flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left transition-transform active:scale-[0.99]',
+          'relative flex w-full flex-col gap-[3px] rounded-md px-2 py-2 text-left transition-transform active:scale-[0.99]',
           !selected && 'hover:bg-accent/50'
         )}
       >
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-1.5">
-            <span
-              className={cn(
-                'truncate text-[13px] leading-5',
-                selected ? 'text-foreground' : 'text-foreground/80'
-              )}
-            >
-              {project.name}
+        <div className="flex w-full items-center gap-2">
+          <span
+            className={cn(
+              'min-w-0 flex-1 truncate text-[13px] leading-5',
+              selected ? 'text-foreground' : 'text-foreground/80'
+            )}
+          >
+            {project.name}
+          </span>
+          {latest > 0 && (
+            <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground/60 group-hover/row:opacity-0">
+              {timeAgo(latest)}
             </span>
-            {busy && <StatusDot status={busy.status} />}
-          </div>
-          {project.branch && (
-            <div className="mt-px flex items-center gap-1 text-[11px] leading-4 text-muted-foreground/70">
-              <GitBranch className="size-2.5 shrink-0" />
-              <span className="truncate">{project.branch}</span>
-            </div>
           )}
         </div>
-        {latest && (
-          <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground/60 group-hover/row:opacity-0">
-            {timeAgo(latest.updatedAt)}
+
+        <div className="flex w-full items-center gap-1 text-[11px] leading-4 text-muted-foreground/70">
+          <GitBranch className="size-2.5 shrink-0" />
+          <span className="truncate">{project.branch ?? 'local checkout'}</span>
+          <span className="shrink-0 text-muted-foreground/50">
+            · {project.mode === 'worktree' ? 'worktree' : 'local'}
           </span>
-        )}
+        </div>
+
+        <div className="flex w-full items-center gap-2 text-[11px] leading-4 tabular-nums">
+          {running > 0 && (
+            <Stat dot="bg-success" tint="text-success" pulse count={running} word="running" />
+          )}
+          {waiting > 0 && (
+            <Stat dot="bg-warning" tint="text-warning" pulse count={waiting} word="need you" />
+          )}
+          {failed > 0 && (
+            <Stat dot="bg-destructive" tint="text-destructive" count={failed} word="failed" />
+          )}
+          {unread > 0 && <Stat dot="bg-info" tint="text-info" count={unread} word="unread" />}
+          <span className="truncate text-muted-foreground/60">
+            {threads.length === 0
+              ? 'No tabs'
+              : `${threads.length} ${threads.length === 1 ? 'tab' : 'tabs'}`}
+            {archivedCount > 0 && ` · ${archivedCount} archived`}
+          </span>
+        </div>
       </button>
-      <div className="absolute top-1/2 right-1 -translate-y-1/2 opacity-0 transition-opacity group-hover/row:opacity-100">
+      <div className="absolute top-2 right-1.5 opacity-0 transition-opacity group-hover/row:opacity-100">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button
@@ -382,7 +574,7 @@ function ArchivedProjects({ projects }: { projects: ProjectMeta[] }): React.JSX.
   if (projects.length === 0) return null
 
   return (
-    <div className="ml-4">
+    <div>
       <button
         onClick={() => setOpen(!open)}
         className="flex h-6 items-center gap-1.5 rounded-md px-2 text-[11px] text-muted-foreground/60 transition-colors hover:text-muted-foreground"
@@ -452,7 +644,7 @@ function ChatRow({ session }: { session: SessionMeta }): React.JSX.Element {
 
   if (renaming) {
     return (
-      <div className="ml-4 flex h-7 items-center rounded-md bg-accent px-2">
+      <div className="flex h-7 items-center rounded-md bg-accent px-2">
         <input
           autoFocus
           defaultValue={session.title}
@@ -477,7 +669,7 @@ function ChatRow({ session }: { session: SessionMeta }): React.JSX.Element {
   }
 
   return (
-    <div className="group/row relative ml-4">
+    <div className="group/row relative">
       {selected && (
         <motion.div
           layoutId="sidebar-active"
@@ -561,18 +753,18 @@ function ChatsGroup({ sessions }: { sessions: SessionMeta[] }): React.JSX.Elemen
 
   return (
     <div className="group/chats">
-      <div className="flex h-7 items-center rounded-md pr-1 pl-1.5 hover:bg-accent/40">
+      <div className="flex h-8 items-center rounded-md pr-1 pl-2 hover:bg-accent/40">
         <button
           onClick={() => setOpen(!open)}
-          className="flex h-full min-w-0 flex-1 items-center gap-1.5 text-left"
+          className="flex h-full min-w-0 flex-1 items-center gap-2 text-left"
         >
+          <span className="truncate text-[13px] font-semibold text-foreground/90">Chats</span>
           <ChevronRight
             className={cn(
               'size-3 shrink-0 text-muted-foreground/70 transition-transform',
-              open && 'rotate-90'
+              open && 'rotate-90 opacity-0 group-hover/chats:opacity-100'
             )}
           />
-          <span className="truncate text-xs font-medium text-muted-foreground">Chats</span>
         </button>
         <button
           onClick={() => void newChat()}

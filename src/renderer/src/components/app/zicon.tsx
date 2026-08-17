@@ -27,6 +27,8 @@ import documentText from '../../assets/zicons/document.svg?raw'
 import claudeMark from '../../assets/zicons/claude-mark.svg?raw'
 import openaiMark from '../../assets/zicons/openai-mark.svg?raw'
 import cursorMark from '../../assets/zicons/cursor-mark.svg?raw'
+import githubMark from '../../assets/zicons/github-mark.svg?raw'
+import gitlabMark from '../../assets/zicons/gitlab-mark.svg?raw'
 import star from '../../assets/zicons/star.svg?raw'
 import starBold from '../../assets/zicons/star-bold.svg?raw'
 import settingsMinimalistic from '../../assets/zicons/settings-minimalistic.svg?raw'
@@ -63,6 +65,8 @@ const ICONS = {
   'claude-mark': claudeMark,
   'openai-mark': openaiMark,
   'cursor-mark': cursorMark,
+  'github-mark': githubMark,
+  'gitlab-mark': gitlabMark,
   star,
   'star-bold': starBold,
   'settings-minimalistic': settingsMinimalistic,
