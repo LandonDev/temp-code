@@ -69,7 +69,8 @@ export function openDb(path: string): DatabaseSync {
     `ALTER TABLE sessions ADD COLUMN plan_path TEXT`,
     `ALTER TABLE sessions ADD COLUMN fast INTEGER NOT NULL DEFAULT 0`,
     `ALTER TABLE sessions ADD COLUMN context_1m INTEGER NOT NULL DEFAULT 0`,
-    `ALTER TABLE sessions ADD COLUMN busy_since INTEGER`
+    `ALTER TABLE sessions ADD COLUMN busy_since INTEGER`,
+    `ALTER TABLE sessions ADD COLUMN retyped INTEGER NOT NULL DEFAULT 0`
   ]) {
     try {
       db.exec(stmt)
@@ -180,6 +181,9 @@ export class Store {
         | 'fast'
         | 'context1m'
         | 'busySince'
+        | 'threadType'
+        | 'planPath'
+        | 'agentType'
       >
     >
   ): SessionMeta | null {
@@ -188,7 +192,7 @@ export class Store {
     const next = { ...cur, ...patch, updatedAt: Date.now() }
     this.db
       .prepare(
-        `UPDATE sessions SET status = ?, title = ?, native_id = ?, archived = ?, provider = ?, model = ?, reasoning = ?, permission = ?, fast = ?, context_1m = ?, busy_since = ?, updated_at = ? WHERE id = ?`
+        `UPDATE sessions SET status = ?, title = ?, native_id = ?, archived = ?, provider = ?, model = ?, reasoning = ?, permission = ?, fast = ?, context_1m = ?, busy_since = ?, thread_type = ?, plan_path = ?, agent_type = ?, updated_at = ? WHERE id = ?`
       )
       .run(
         next.status,
@@ -202,10 +206,26 @@ export class Store {
         next.fast ? 1 : 0,
         next.context1m ? 1 : 0,
         next.busySince,
+        next.threadType,
+        next.planPath,
+        next.agentType,
         next.updatedAt,
         id
       )
     return next
+  }
+
+  /** Thread type changed mid-conversation; the next send re-instructs.
+   *  Server-only state — never part of SessionMeta. */
+  getRetyped(id: string): boolean {
+    const r = this.db.prepare(`SELECT retyped FROM sessions WHERE id = ?`).get(id) as
+      | { retyped: number }
+      | undefined
+    return !!r?.retyped
+  }
+
+  setRetyped(id: string, on: boolean): void {
+    this.db.prepare(`UPDATE sessions SET retyped = ? WHERE id = ?`).run(on ? 1 : 0, id)
   }
 
   /** Delete a session and all of its descendants (log included). */

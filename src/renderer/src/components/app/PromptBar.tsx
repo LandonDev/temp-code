@@ -3,12 +3,12 @@ import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { Check, FileText, Image as ImageIcon, MessageSquare, X } from 'lucide-react'
 import type { ProviderId, Reasoning } from '@shared/catalog'
 import type { Attachment, PermissionPolicy, SessionMeta } from '@shared/events'
-import type { SlashCommand } from '@shared/domain'
+import type { SlashCommand, ThreadType } from '@shared/domain'
 import { useApp } from '../../state/store'
 import { client } from '../../lib/client'
 import { cn, displayPath } from '../../lib/utils'
 import { EASE_OUT, SPRING_PANEL, SPRING_SWAP } from '../../lib/ease'
-import { StatusDot, timeAgo } from './bits'
+import { StatusDot, THREAD_GLYPHS, THREAD_LABELS, THREAD_TINTS, timeAgo } from './bits'
 import { MessageQueue } from './MessageQueue'
 import { ContextMeter } from './ContextMeter'
 import { Zap } from 'lucide-react'
@@ -205,6 +205,7 @@ export function PromptBar({
   const queueAdd = useApp((s) => s.queueAdd)
   const midTurnDefault = useApp((s) => s.midTurnDefault)
   const tune = useApp((s) => s.tune)
+  const retype = useApp((s) => s.retype)
   const interrupt = useApp((s) => s.interrupt)
   const setPermission = useApp((s) => s.setPermission)
 
@@ -736,7 +737,7 @@ export function PromptBar({
             className={cn(
               'block w-full bg-transparent pl-4 text-[14px] leading-[22.75px] outline-none',
               'empty:before:pointer-events-none empty:before:text-faint empty:before:content-[attr(data-placeholder)]',
-              expanded ? 'pt-3.5 pr-4' : 'py-[13px] pr-[300px]'
+              expanded ? 'pt-3.5 pr-4' : 'py-[13px] pr-[400px]'
             )}
           />
           <input
@@ -766,6 +767,40 @@ export function PromptBar({
           <div className="absolute right-2.5 bottom-[9px] flex items-center gap-0.5">
             {provider && (
               <>
+                {session.threadType && !session.parentId && (
+                  <Select
+                    value={session.threadType}
+                    onValueChange={(v) => void retype(selectedId, v as ThreadType)}
+                  >
+                    <SelectTrigger size="sm" aria-label="Thread type" className="gap-1.5 px-1.5">
+                      {(() => {
+                        const Glyph = THREAD_GLYPHS[session.threadType]
+                        return (
+                          <Glyph
+                            className={cn(
+                              'size-3.5 opacity-80',
+                              THREAD_TINTS[session.threadType]
+                            )}
+                          />
+                        )
+                      })()}
+                      {THREAD_LABELS[session.threadType]}
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(Object.keys(THREAD_LABELS) as ThreadType[]).map((t) => {
+                        const Glyph = THREAD_GLYPHS[t]
+                        return (
+                          <SelectItem key={t} value={t}>
+                            <span className="flex items-center gap-2">
+                              <Glyph className={cn('size-3.5 opacity-80', THREAD_TINTS[t])} />
+                              {THREAD_LABELS[t]}
+                            </span>
+                          </SelectItem>
+                        )
+                      })}
+                    </SelectContent>
+                  </Select>
+                )}
                 <ModelPicker
                   provider={choice.provider}
                   model={choice.model}
