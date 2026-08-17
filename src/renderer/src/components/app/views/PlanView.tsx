@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
-import { ChevronRight, GitFork, ListChecks, MessageSquare, Play, ShieldCheck } from 'lucide-react'
+import { ChevronLeft, ChevronRight, GitFork, ListChecks, MessageSquare, Play, ShieldCheck, SlidersHorizontal } from 'lucide-react'
 import type { ProviderId, Reasoning } from '@shared/catalog'
 import type { PermissionPolicy, SessionMeta } from '@shared/events'
 import { useApp } from '../../../state/store'
@@ -11,6 +11,8 @@ import { MarkdownText } from '../blocks/MarkdownText'
 import { Popover, PopoverContent, PopoverTrigger } from '../../ui/popover'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../ui/select'
 import { ModelPicker } from '../ModelPicker'
+import { OrchestrationTune, tuneSummary } from '../OrchestrationTune'
+import type { ThreadRules } from '@shared/rules'
 import { Spinner } from '../../ui/spinner'
 import { Transcript } from '../Transcript'
 import { WorkingStrip } from '../WorkingStrip'
@@ -409,6 +411,15 @@ function StartButton({
   const [reasoning, setReasoning] = useState<Reasoning>(session.reasoning)
   const [permission, setPermission] = useState<PermissionPolicy>(session.permission)
   const [workers, setWorkers] = useState(1)
+  // Orchestration options: per-run instructions + conduct overrides on
+  // top of the Settings defaults, swapped into this popover in place.
+  const [view, setView] = useState<'main' | 'tune'>('main')
+  const [tune, setTune] = useState<ThreadRules>({})
+  const workspaceId = useApp((s) =>
+    session.projectId
+      ? (s.projects.find((p) => p.id === session.projectId)?.workspaceId ?? null)
+      : null
+  )
   const reduce = useReducedMotion()
   const ladder =
     catalog?.[choice.provider]?.models.find((m) => m.id === choice.model)?.reasoning ?? []
@@ -429,7 +440,10 @@ function StartButton({
           permission,
           agentType: type === 'orchestration' ? 'orchestrator' : 'implementer',
           planPath: session.planPath ?? undefined,
-          title: n > 1 ? `${base} (${i + 1}/${n})` : base
+          title: n > 1 ? `${base} (${i + 1}/${n})` : base,
+          ...(type === 'orchestration' && (tune.conduct || tune.instructions?.trim())
+            ? { threadRules: tune }
+            : {})
         })
         await send(
           thread.id,
@@ -459,6 +473,29 @@ function StartButton({
           </button>
         </PopoverTrigger>
         <PopoverContent align="end" side="bottom" className="w-[340px] gap-0 p-0">
+          {view === 'tune' ? (
+            <div className="p-3">
+              <div className="mb-2 flex items-center gap-1">
+                <button
+                  onClick={() => setView('main')}
+                  aria-label="Back"
+                  className="flex size-6 items-center justify-center rounded-md text-muted-foreground transition hover:bg-accent hover:text-foreground active:scale-95"
+                >
+                  <ChevronLeft className="size-4" />
+                </button>
+                <span className="text-[13px] font-medium">Orchestration options</span>
+              </div>
+              <OrchestrationTune workspaceId={workspaceId} value={tune} onChange={setTune} />
+              <button
+                disabled={busy !== null}
+                onClick={() => void start('orchestration')}
+                className="mt-3 flex h-8 w-full items-center justify-center gap-1.5 rounded-lg bg-primary text-[12.5px] font-medium text-primary-foreground transition hover:opacity-90 active:scale-[0.99] disabled:opacity-60"
+              >
+                {busy === 'orchestration' ? <Spinner className="size-3.5" /> : 'Orchestrate'}
+              </button>
+            </div>
+          ) : (
+            <>
           {/* Who builds it, and under what rules — the same knobs a new
               chat gets: model, effort, access. */}
           <div className="border-b border-border/60 px-3 pt-2.5 pb-2">
@@ -566,10 +603,15 @@ function StartButton({
                 ))}
               </span>
             </div>
-            <button
-              disabled={busy !== null}
-              onClick={() => void start('orchestration')}
-              className="group/act flex w-full items-center gap-3 rounded-lg px-2 py-2 text-left transition-colors duration-150 hover:bg-accent active:scale-[0.99] disabled:opacity-60"
+            <div
+              role="button"
+              tabIndex={0}
+              onClick={() => busy === null && void start('orchestration')}
+              onKeyDown={(e) => e.key === 'Enter' && busy === null && void start('orchestration')}
+              className={cn(
+                'group/act flex w-full cursor-pointer items-center gap-3 rounded-lg px-2 py-2 text-left transition-colors duration-150 hover:bg-accent active:scale-[0.99]',
+                busy !== null && 'pointer-events-none opacity-60'
+              )}
             >
               <span className="flex size-8 shrink-0 items-center justify-center rounded-lg border border-border/70 bg-background/60 shadow-[inset_0_1px_0_rgb(255_255_255/0.05)] transition-transform duration-150 group-hover/act:scale-105">
                 {busy === 'orchestration' ? (
@@ -578,13 +620,27 @@ function StartButton({
                   <GitFork className="size-4 text-violet/80" />
                 )}
               </span>
-              <span>
+              <span className="min-w-0 flex-1">
                 <span className="block text-[13px] font-medium">Orchestrate</span>
                 <span className="block text-[11px] text-muted-foreground">
-                  Split across subagents in parallel
+                  {tuneSummary(tune) ?? 'Split across subagents in parallel'}
                 </span>
               </span>
-            </button>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation()
+                  setView('tune')
+                }}
+                title="Instructions & rule overrides"
+                aria-label="Orchestration options"
+                className={cn(
+                  'flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition hover:bg-background/60 hover:text-foreground active:scale-95',
+                  tuneSummary(tune) ? 'opacity-100' : 'opacity-0 group-hover/act:opacity-100'
+                )}
+              >
+                <SlidersHorizontal className="size-3.5" />
+              </button>
+            </div>
           </div>
 
           {tasks.length > 0 && (
@@ -600,6 +656,8 @@ function StartButton({
                 </p>
               )}
             </div>
+          )}
+            </>
           )}
         </PopoverContent>
       </Popover>

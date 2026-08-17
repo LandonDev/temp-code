@@ -3,6 +3,7 @@ import { mkdirSync } from 'node:fs'
 import { dirname } from 'node:path'
 import type { AgentEvent, EventRow, SessionMeta, SessionStatus } from '@shared/events'
 import type { ProjectMeta, WorkspaceMeta } from '@shared/domain'
+import { parseThreadRules } from '@shared/rules'
 
 /**
  * node:sqlite, zero native deps (no electron-rebuild pain).
@@ -72,6 +73,7 @@ export function openDb(path: string): DatabaseSync {
     `ALTER TABLE sessions ADD COLUMN context_1m INTEGER NOT NULL DEFAULT 0`,
     `ALTER TABLE sessions ADD COLUMN busy_since INTEGER`,
     `ALTER TABLE sessions ADD COLUMN retyped INTEGER NOT NULL DEFAULT 0`,
+    `ALTER TABLE sessions ADD COLUMN thread_rules TEXT`,
     `ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0`
   ]) {
     try {
@@ -102,6 +104,7 @@ interface SessionRowRaw {
   fast: number
   context_1m: number
   busy_since: number | null
+  thread_rules: string | null
   native_id: string | null
   created_at: number
   updated_at: number
@@ -126,6 +129,7 @@ function toMeta(r: SessionRowRaw): SessionMeta {
     fast: !!r.fast,
     context1m: !!r.context_1m,
     busySince: r.busy_since,
+    threadRules: parseThreadRules(r.thread_rules),
     permission: r.permission as SessionMeta['permission'],
     nativeId: r.native_id,
     createdAt: r.created_at,
@@ -139,8 +143,8 @@ export class Store {
   insertSession(meta: SessionMeta): void {
     this.db
       .prepare(
-        `INSERT INTO sessions (id, parent_id, project_id, workspace_id, thread_type, plan_path, provider, model, reasoning, agent_type, title, cwd, status, archived, permission, fast, context_1m, busy_since, native_id, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        `INSERT INTO sessions (id, parent_id, project_id, workspace_id, thread_type, plan_path, provider, model, reasoning, agent_type, title, cwd, status, archived, permission, fast, context_1m, busy_since, thread_rules, native_id, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         meta.id,
@@ -161,6 +165,7 @@ export class Store {
         meta.fast ? 1 : 0,
         meta.context1m ? 1 : 0,
         meta.busySince,
+        meta.threadRules ? JSON.stringify(meta.threadRules) : null,
         meta.nativeId,
         meta.createdAt,
         meta.updatedAt

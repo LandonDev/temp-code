@@ -466,6 +466,7 @@ export class SessionRegistry {
       fast: false,
       context1m: false,
       busySince: null,
+      threadRules: params.threadRules ?? null,
       nativeId: null,
       createdAt: now,
       updatedAt: now

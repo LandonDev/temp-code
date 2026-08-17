@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
-import { Archive, ArchiveRestore, Pencil, Plus, Search, Trash2 } from 'lucide-react'
+import { Archive, ArchiveRestore, ChevronLeft, Pencil, Plus, Search, SlidersHorizontal, Trash2 } from 'lucide-react'
 import type { ThreadType } from '@shared/domain'
 import type { SessionMeta, SessionStatus } from '@shared/events'
 import { threadsOfProject, useApp } from '../../state/store'
@@ -19,6 +19,8 @@ import { Input } from '../ui/input'
 import { Spinner } from '../ui/spinner'
 import { MatrixSpinner } from './WorkingStrip'
 import { ConfirmDialog } from './ConfirmDialog'
+import { OrchestrationTune } from './OrchestrationTune'
+import type { ThreadRules } from '@shared/rules'
 import { useNow } from '../../lib/useNow'
 import { duration, THREAD_GLYPHS, THREAD_LABELS, THREAD_TINTS, timeAgo } from './bits'
 
@@ -389,21 +391,31 @@ function NewThreadButton({
 }): React.JSX.Element {
   const catalog = useApp((s) => s.catalog)
   const createThread = useApp((s) => s.createThread)
+  const workspaceId = useApp(
+    (s) => s.projects.find((p) => p.id === projectId)?.workspaceId ?? null
+  )
   const [open, setOpen] = useState(false)
   const [busy, setBusy] = useState<ThreadType | null>(null)
+  // 'tune' swaps the popover into the orchestration options — same
+  // surface, anchored where it came from; Back returns along that path.
+  const [view, setView] = useState<'list' | 'tune'>('list')
+  const [tune, setTune] = useState<ThreadRules>({})
 
   if (!catalog) return <span />
 
   // One click per type — provider/model/reasoning/security come from the
   // thread defaults (workspace override → global), resolved server-side.
-  const create = async (type: ThreadType): Promise<void> => {
+  const create = async (type: ThreadType, threadRules?: ThreadRules): Promise<void> => {
     if (busy) return
     setBusy(type)
     try {
       await createThread({
         projectId,
         threadType: type,
-        agentType: type === 'orchestration' ? 'orchestrator' : 'implementer'
+        agentType: type === 'orchestration' ? 'orchestrator' : 'implementer',
+        ...(threadRules && (threadRules.conduct || threadRules.instructions?.trim())
+          ? { threadRules }
+          : {})
       })
       setOpen(false)
     } finally {
@@ -411,8 +423,16 @@ function NewThreadButton({
     }
   }
 
+  const reset = (o: boolean): void => {
+    setOpen(o)
+    if (!o) {
+      setView('list')
+      setTune({})
+    }
+  }
+
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover open={open} onOpenChange={reset}>
       <PopoverTrigger asChild>
         <button
           aria-label="New thread"
@@ -426,40 +446,80 @@ function NewThreadButton({
           {empty && <span className="text-[13px]">New thread</span>}
         </button>
       </PopoverTrigger>
-      <PopoverContent align="start" className="w-72 gap-0 p-1">
-        {(Object.keys(THREAD_LABELS) as ThreadType[]).map((t) => {
-          const Glyph = THREAD_GLYPHS[t]
-          return (
+      <PopoverContent align="start" className={cn('gap-0 p-1', view === 'tune' ? 'w-80' : 'w-72')}>
+        {view === 'tune' ? (
+          <div className="p-2">
+            <div className="mb-2 flex items-center gap-1">
+              <button
+                onClick={() => setView('list')}
+                aria-label="Back"
+                className="flex size-6 items-center justify-center rounded-md text-muted-foreground transition hover:bg-accent hover:text-foreground active:scale-95"
+              >
+                <ChevronLeft className="size-4" />
+              </button>
+              <span className="text-[13px] font-medium">Orchestration options</span>
+            </div>
+            <OrchestrationTune workspaceId={workspaceId} value={tune} onChange={setTune} />
             <button
-              key={t}
               disabled={busy !== null}
-              onClick={() => void create(t)}
-              className={cn(
-                'group/new flex w-full items-center gap-3 rounded-lg px-2 py-2 text-left transition-colors duration-150 active:scale-[0.99]',
-                'hover:bg-accent disabled:opacity-60'
-              )}
+              onClick={() => void create('orchestration', tune)}
+              className="mt-3 flex h-8 w-full items-center justify-center gap-1.5 rounded-lg bg-primary text-[12.5px] font-medium text-primary-foreground transition hover:opacity-90 active:scale-[0.99] disabled:opacity-60"
             >
-              <span
+              {busy === 'orchestration' ? <Spinner className="size-3.5" /> : 'Start orchestration'}
+            </button>
+          </div>
+        ) : (
+          (Object.keys(THREAD_LABELS) as ThreadType[]).map((t) => {
+            const Glyph = THREAD_GLYPHS[t]
+            return (
+              <div
+                key={t}
+                role="button"
+                tabIndex={0}
+                aria-disabled={busy !== null}
+                onClick={() => busy === null && void create(t)}
+                onKeyDown={(e) => e.key === 'Enter' && busy === null && void create(t)}
                 className={cn(
-                  'flex size-8 shrink-0 items-center justify-center rounded-lg border border-border/70 bg-background/60',
-                  'shadow-[inset_0_1px_0_rgb(255_255_255/0.05)] transition-transform duration-150 group-hover/new:scale-105'
+                  'group/new flex w-full cursor-pointer items-center gap-3 rounded-lg px-2 py-2 text-left transition-colors duration-150 active:scale-[0.99]',
+                  'hover:bg-accent',
+                  busy !== null && 'pointer-events-none opacity-60'
                 )}
               >
-                {busy === t ? (
-                  <Spinner className="size-3.5 text-muted-foreground" />
-                ) : (
-                  <Glyph className={cn('size-4', THREAD_TINTS[t])} />
-                )}
-              </span>
-              <span className="min-w-0 flex-1">
-                <span className="block text-[13px] font-medium">{THREAD_LABELS[t]}</span>
-                <span className="block text-[11px] leading-snug text-muted-foreground">
-                  {TYPE_HINTS[t]}
+                <span
+                  className={cn(
+                    'flex size-8 shrink-0 items-center justify-center rounded-lg border border-border/70 bg-background/60',
+                    'shadow-[inset_0_1px_0_rgb(255_255_255/0.05)] transition-transform duration-150 group-hover/new:scale-105'
+                  )}
+                >
+                  {busy === t ? (
+                    <Spinner className="size-3.5 text-muted-foreground" />
+                  ) : (
+                    <Glyph className={cn('size-4', THREAD_TINTS[t])} />
+                  )}
                 </span>
-              </span>
-            </button>
-          )
-        })}
+                <span className="min-w-0 flex-1">
+                  <span className="block text-[13px] font-medium">{THREAD_LABELS[t]}</span>
+                  <span className="block text-[11px] leading-snug text-muted-foreground">
+                    {TYPE_HINTS[t]}
+                  </span>
+                </span>
+                {t === 'orchestration' && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setView('tune')
+                    }}
+                    title="Instructions & rule overrides"
+                    aria-label="Orchestration options"
+                    className="flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground opacity-0 transition group-hover/new:opacity-100 hover:bg-background/60 hover:text-foreground active:scale-95"
+                  >
+                    <SlidersHorizontal className="size-3.5" />
+                  </button>
+                )}
+              </div>
+            )
+          })
+        )}
       </PopoverContent>
     </Popover>
   )

@@ -2,7 +2,7 @@ import { z } from 'zod'
 import { AGENT_TYPES } from './catalog'
 import { AttachmentSchema, PermissionPolicySchema } from './events'
 import { ProjectModeSchema, ThreadTypeSchema } from './domain'
-import { OrchestrationRulesSchema } from './rules'
+import { OrchestrationRulesSchema, ThreadRulesSchema } from './rules'
 import { ThreadDefaultsSchema } from './defaults'
 import { AppshotSettingsSchema } from './appshots'
 import { TurnPassSchema } from './turnpass'
@@ -46,7 +46,9 @@ export const CreateSessionParams = z.object({
   threadType: ThreadTypeSchema.nullable().default(null),
   /** planning handoff: seed an implementation/orchestration thread from this plan file */
   planPath: z.string().optional(),
-  permission: PermissionPolicySchema.optional()
+  permission: PermissionPolicySchema.optional(),
+  /** orchestration: per-run conduct overrides + custom instructions */
+  threadRules: ThreadRulesSchema.optional()
 })
 export type CreateSessionParams = z.infer<typeof CreateSessionParams>
 /** Pre-parse shape (defaults still optional) — what callers construct. */

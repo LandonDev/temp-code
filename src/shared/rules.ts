@@ -113,6 +113,55 @@ export const DEFAULT_RULES: OrchestrationRules = {
   ]
 }
 
+/**
+ * Per-thread tune, set when an orchestration thread is created: the
+ * workspace/global rules stay the DEFAULT, each conduct setting can be
+ * overridden for this one run, and free-text instructions ride along
+ * into the orchestrator's prompt. Absent keys inherit.
+ */
+export const ThreadRulesSchema = z.object({
+  // Spelled out rather than derived from OrchestrationRulesSchema: that
+  // schema's .default()s would fill every missing key at parse time,
+  // turning "inherit" into a frozen copy of today's defaults.
+  conduct: z
+    .object({
+      delegation: z.enum(['strict', 'balanced', 'free']).optional(),
+      selfEdit: z.boolean().optional(),
+      selfShell: z.boolean().optional(),
+      verifyResults: z.boolean().optional(),
+      escalate: z.boolean().optional(),
+      useWorktrees: z.boolean().optional(),
+      maxParallel: z.number().int().min(0).max(32).optional(),
+      maxAgents: z.number().int().min(0).max(200).optional()
+    })
+    .optional(),
+  instructions: z.string().optional()
+})
+export type ThreadRules = z.infer<typeof ThreadRulesSchema>
+export type ConductOverride = NonNullable<ThreadRules['conduct']>
+
+/** The effective rules: base (workspace → global → defaults) with this
+ *  thread's conduct overrides laid on top. Routing always inherits. */
+export function mergeThreadRules(
+  base: OrchestrationRules,
+  tune: ThreadRules | null | undefined
+): OrchestrationRules {
+  if (!tune?.conduct || Object.keys(tune.conduct).length === 0) return base
+  return { ...base, conduct: { ...base.conduct, ...tune.conduct } }
+}
+
+/** Parse a stored per-thread tune; invalid or empty → null. */
+export function parseThreadRules(raw: string | null): ThreadRules | null {
+  if (!raw) return null
+  try {
+    const t = ThreadRulesSchema.parse(JSON.parse(raw))
+    const hasConduct = t.conduct && Object.keys(t.conduct).length > 0
+    return hasConduct || t.instructions?.trim() ? t : null
+  } catch {
+    return null
+  }
+}
+
 /** Parse stored JSON; anything invalid falls back to the defaults. */
 export function parseRules(raw: string | null): OrchestrationRules | null {
   if (!raw) return null
