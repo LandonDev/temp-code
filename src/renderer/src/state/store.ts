@@ -148,6 +148,8 @@ interface AppState {
   selectedProjectId: string | null
   /** the open thread (or unsorted legacy session) */
   selectedId: string | null
+  /** last-open thread per project (persisted): restored on project switch */
+  lastThread: Record<string, string>
   /** sessions whose event backlog has arrived (Transcript loader gate) */
   loaded: Record<string, boolean>
   railOpen: boolean
@@ -433,6 +435,7 @@ export const useApp = create<AppState>((set, get) => ({
   ),
   sidebarCollapsed: localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === '1',
   surfaces: JSON.parse(localStorage.getItem(SURFACES_KEY) ?? '{}') as Record<string, SurfaceRef[]>,
+  lastThread: JSON.parse(localStorage.getItem(LAST_THREAD_KEY) ?? '{}') as Record<string, string>,
   activeSurface: {},
   reveal: null,
   fileStates: {},
@@ -731,12 +734,15 @@ export const useApp = create<AppState>((set, get) => ({
     if (projectId === get().selectedProjectId) return
     void flushAllBuffers() // never leave a dirty buffer behind a switch
     set({ selectedProjectId: projectId })
-    // Open the project's most recent thread, if it has one. Surfaces and
-    // their active tab are per-project state — they restore by themselves.
+    // Reopen the thread that was up when the user left this project; fall
+    // back to the most recent one. Surfaces and their active tab are
+    // per-project state — they restore by themselves.
     const threads = Object.values(get().sessions)
       .filter((s) => s.projectId === projectId && !s.parentId && !s.archived)
       .sort((a, b) => b.createdAt - a.createdAt)
-    void get().select(threads[0]?.id ?? null)
+    const remembered = projectId && get().lastThread[projectId]
+    const target = threads.find((s) => s.id === remembered) ?? threads[0]
+    void get().select(target?.id ?? null)
     if (projectId) void get().fetchChanges(projectId)
     // Focus-boot the IntelliJ engine for Java projects (dynamic import:
     // the editor module imports this store).
@@ -864,6 +870,12 @@ export const useApp = create<AppState>((set, get) => ({
     // whichever surface was up when the user left.
     set({ selectedId: sessionId, settingsOpen: false })
     if (!sessionId) return
+    const meta = get().sessions[sessionId]
+    if (meta?.projectId && !meta.parentId) {
+      const lastThread = { ...get().lastThread, [meta.projectId]: sessionId }
+      localStorage.setItem(LAST_THREAD_KEY, JSON.stringify(lastThread))
+      set({ lastThread })
+    }
     get().markSeen(sessionId)
     await get().loadSession(sessionId)
   },
