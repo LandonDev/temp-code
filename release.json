@@ -1,5 +1,5 @@
 {
-  "n": 27,
-  "notes": "Context switch in every claude chat (trigger shows e.g. Medium, 200k); drafts survive navigation; threads can no longer stick on working.",
-  "ts": 1786925409750
+  "n": 28,
+  "notes": "Follow-up rounds: each request is its own board section, timers never bleed, stops don't fold the chat",
+  "ts": 1786925583897
 }
