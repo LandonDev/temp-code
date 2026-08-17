@@ -1,5 +1,5 @@
 {
-  "n": 60,
-  "notes": "The project card names its running and unread threads — each line wears its tab's own indicator",
-  "ts": 1786990525000
+  "n": 61,
+  "notes": "The context ring is live — it moves as replies stream, on every thread, and the breakdown only shows when it is current",
+  "ts": 1786990954618
 }
