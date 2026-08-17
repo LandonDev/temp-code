@@ -10,6 +10,15 @@ import { startServer, type RunningServer } from './server'
 
 let server: RunningServer | null = null
 
+// Live-diff watchers cost one kqueue fd per watched file on macOS (chokidar
+// 4+ has no FSEvents backend), so two ~4k-file worktrees running at once sit
+// at Chromium's 8192-fd default and every spawn() after that fails EBADF —
+// new threads and projects can't start. Raise the soft limit to the OS hard
+// limit (Electron clamps).
+if (process.platform !== 'win32') {
+  process.setFdLimit(1_048_576)
+}
+
 // Parallel dev instances (worktrees) get their own userData + database so
 // they never contend with the primary checkout's running app.
 if (process.env.TEMP_CODE_USER_DATA) {

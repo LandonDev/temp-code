@@ -306,7 +306,10 @@ function onFsEvent(w: LiveWatch, kind: LiveEditPush['edit']['kind'], abs: string
 }
 
 async function startWatch(cwd: string, sessionId: string): Promise<void> {
-  const existing = live.get(cwd)
+  // Key strictly by the resolved root — scheduleStop looks up w.cwd (resolved),
+  // so an unresolved key would orphan the watcher.
+  const root = resolve(cwd)
+  const existing = live.get(root)
   if (existing) {
     existing.sessions.add(sessionId)
     if (existing.stopTimer) {
@@ -315,7 +318,6 @@ async function startWatch(cwd: string, sessionId: string): Promise<void> {
     }
     return
   }
-  const root = resolve(cwd)
   // The watcher's initial scan walks the whole tree on the main process.
   // A non-repo cwd (/tmp, a home directory) or a giant repo starves the
   // event loop — CDP, the WS server and the SDK streams all stall and
@@ -349,7 +351,7 @@ async function startWatch(cwd: string, sessionId: string): Promise<void> {
     return
   }
   // The probes above awaited — a parallel session may have won the race.
-  const raced = live.get(cwd)
+  const raced = live.get(root)
   if (raced) {
     raced.sessions.add(sessionId)
     return
@@ -379,7 +381,7 @@ async function startWatch(cwd: string, sessionId: string): Promise<void> {
     burstDiffed: new Set(),
     stopTimer: null
   }
-  live.set(cwd, w)
+  live.set(root, w)
 
   // Turn-start truth: files already dirty baseline against their CURRENT
   // content, so their diffs cover only this run (over-cap → 'head').
