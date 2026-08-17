@@ -1,5 +1,5 @@
 {
-  "n": 30,
-  "notes": "Board: previous passes tuck into collapsed rows, wide break before the current work",
-  "ts": 1786930341429
+  "n": 31,
+  "notes": "Fixes stuck-on-Working threads for real (rogue dev instances were freezing the prod database; now impossible + the driver self-recovers). Effort trigger and context meter agree: the window is 1M.",
+  "ts": 1786931464564
 }
