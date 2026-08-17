@@ -103,12 +103,13 @@ function sendToRenderer(channel: string, payload: unknown): void {
 async function capture(createWindow: () => void): Promise<void> {
   mkdirSync(ATTACH_DIR, { recursive: true })
   const base = join(ATTACH_DIR, `${nanoid(8)}-appshot`)
-  const png = `${base}.png`
+  // JPEG capped at 1600px long edge — models reject anything past ~2000px.
+  const shot = `${base}.jpg`
   let result: CaptureResult
   try {
     const { stdout } = await exec(
       HELPER,
-      ['capture', '--exclude-pids', await excludePids(), '--out', png],
+      ['capture', '--exclude-pids', await excludePids(), '--out', shot],
       { timeout: CAPTURE_TIMEOUT_MS }
     )
     result = JSON.parse(stdout)
@@ -149,9 +150,9 @@ async function capture(createWindow: () => void): Promise<void> {
   }
   const attachment: Attachment = {
     kind: 'appshot',
-    path: png,
+    path: shot,
     name,
-    mime: 'image/png',
+    mime: 'image/jpeg',
     textPath
   }
   if (BrowserWindow.getAllWindows().length === 0) createWindow()
