@@ -25,11 +25,7 @@ import {
 } from '../ui/select'
 import { rankFiles } from '../../lib/rank'
 import { AddonMark } from './AddonMark'
-import {
-  ComposerInput,
-  type ComposerInputHandle,
-  type ComposerSegment
-} from './ComposerInput'
+import { ComposerInput, type ComposerInputHandle, type ComposerSegment } from './ComposerInput'
 import { addonTitle } from '../../lib/addon-names'
 
 const REASONING_LABELS: Record<Reasoning, string> = {
@@ -103,7 +99,11 @@ function AppshotChip({
         data-appshot-chip={a.path}
         className="h-14 w-24 overflow-hidden rounded-lg border bg-secondary"
       >
-        <button onClick={onOpen} aria-label={`Preview ${a.name}`} className="block h-full w-full cursor-zoom-in">
+        <button
+          onClick={onOpen}
+          aria-label={`Preview ${a.name}`}
+          className="block h-full w-full cursor-zoom-in"
+        >
           {src && <img src={src} alt={a.name} className="h-full w-full object-cover" />}
         </button>
       </div>
@@ -191,12 +191,17 @@ function rankThreads(
  */
 export function PromptBar({
   compact,
-  narrow
+  narrow,
+  topSlot
 }: {
   compact?: boolean
   /** Rendered in a side pane: always use the expanded layout (the inline
    *  cluster needs ~300px of pill it doesn't have) and tighter padding. */
   narrow?: boolean
+  /** Rendered inside the composer's own centering column, directly above
+   *  the pill — attached tabs (the pass banner) share its exact geometry
+   *  and can never poke out around the pill's corners. */
+  topSlot?: React.ReactNode
 }): React.JSX.Element | null {
   const selectedId = useApp((s) => s.selectedId)
   const session = useApp((s) => (s.selectedId ? s.sessions[s.selectedId] : undefined))
@@ -490,6 +495,7 @@ export function PromptBar({
   return (
     <div className={cn('shrink-0 pb-3', narrow ? 'px-3' : 'px-6', compact ? 'pt-0.5' : 'pt-1')}>
       <div className="relative mx-auto w-full max-w-[688px]">
+        {topSlot}
         <MessageQueue sessionId={selectedId} />
         <AnimatePresence>
           {open && (
@@ -807,10 +813,7 @@ export function PromptBar({
                         const Glyph = THREAD_GLYPHS[session.threadType]
                         return (
                           <Glyph
-                            className={cn(
-                              'size-3.5 opacity-80',
-                              THREAD_TINTS[session.threadType]
-                            )}
+                            className={cn('size-3.5 opacity-80', THREAD_TINTS[session.threadType])}
                           />
                         )
                       })()}
