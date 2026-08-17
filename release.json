@@ -1,5 +1,5 @@
 {
-  "n": 40,
-  "notes": "Per-run orchestration tune: custom instructions + rule overrides at start",
-  "ts": 1786941635843
+  "n": 41,
+  "notes": "Project teardown survives already-gone branches; engines stop before their worktree is removed",
+  "ts": 1786942265392
 }
