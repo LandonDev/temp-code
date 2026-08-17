@@ -74,6 +74,11 @@ const WATCH_IGNORED = new Set([
 interface LiveWatch {
   cwd: string
   sessions: Set<string>
+  /** sessions that settled moments ago — still own their trailing writes */
+  recent: Map<string, number>
+  /** rel path → owning root sessions, captured at fs-event time while the
+   *  attribution is knowable (the debounced diff runs later) */
+  owners: Map<string, Set<string>>
   watcher: FSWatcher
   git: boolean
   /** tmp dir holding baseline copies; removed with the watcher */
@@ -93,6 +98,11 @@ interface LiveWatch {
 
 const live = new Map<string, LiveWatch>()
 const listeners = new Set<(p: LiveEditPush) => void>()
+/** The registry, captured on the first status callback — the ownership
+ *  probe (which session is mid-write) lives there. */
+let registry: SessionRegistry | null = null
+/** How long a settled session still owns its trailing writes. */
+const RECENT_SESSION_MS = 5_000
 
 export function onLiveEdit(listener: (p: LiveEditPush) => void): () => void {
   listeners.add(listener)
@@ -220,10 +230,15 @@ async function computeAndEmit(w: LiveWatch, rel: string, settled: boolean): Prom
     }
   }
 
+  const owners = w.owners.get(rel)
+  if (settled) w.owners.delete(rel)
+  // Unowned changes never reach a renderer: they belong to an outside
+  // writer or a thread that was not actually writing.
+  if (!owners?.size) return
   emit({
     push: 'live-edit',
     cwd: w.cwd,
-    sessionIds: [...w.sessions],
+    sessionIds: [...owners],
     edit: {
       path: rel,
       kind,
@@ -250,6 +265,25 @@ function onFsEvent(w: LiveWatch, kind: LiveEditPush['edit']['kind'], abs: string
   w.window.push(now)
   while (w.window.length && w.window[0] < now - 1000) w.window.shift()
   if (w.window.length > FLOOD_PATHS_PER_S) w.burstUntil = now + 2000
+
+  // Ownership, captured NOW while it is knowable: the sessions actually
+  // running a disk-writing tool this moment (or that settled seconds ago)
+  // own the change. Attributed to the writer AND its root thread (the
+  // board that displays subagent work). No owner — another thread's cwd
+  // neighbor, an outside app, an IDE — means nobody renders it.
+  if (registry) {
+    for (const [id, t] of w.recent) if (now - t > RECENT_SESSION_MS) w.recent.delete(id)
+    let owned = w.owners.get(rel)
+    for (const id of [...w.sessions, ...w.recent.keys()]) {
+      if (!registry.diskActiveAt(id, now)) continue
+      if (!owned) {
+        owned = new Set()
+        w.owners.set(rel, owned)
+      }
+      owned.add(id)
+      owned.add(registry.rootSessionOf(id))
+    }
+  }
 
   const prev = w.timers.get(rel)
   if (prev) clearTimeout(prev)
@@ -326,6 +360,8 @@ async function startWatch(cwd: string, sessionId: string): Promise<void> {
   const w: LiveWatch = {
     cwd: root,
     sessions: new Set([sessionId]),
+    recent: new Map(),
+    owners: new Map(),
     watcher: watch(root, {
       ignored: (p) => ignored(root, p),
       ignoreInitial: true,
@@ -383,10 +419,11 @@ function scheduleStop(cwd: string): void {
 
 /** Called by the registry on every status transition. */
 export function liveDiffOnStatus(
-  _reg: SessionRegistry,
+  reg: SessionRegistry,
   meta: SessionMeta,
   prev: SessionMeta['status'] | undefined
 ): void {
+  registry = reg
   const runningNow = meta.status === 'running' || meta.status === 'starting'
   const ranBefore = prev === 'running' || prev === 'starting'
   if (runningNow && !ranBefore) {
@@ -395,6 +432,7 @@ export function liveDiffOnStatus(
     const w = live.get(resolve(meta.cwd)) ?? live.get(meta.cwd)
     if (w) {
       w.sessions.delete(meta.id)
+      w.recent.set(meta.id, Date.now())
       scheduleStop(w.cwd)
     }
   }

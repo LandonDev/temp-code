@@ -166,6 +166,23 @@ function describeTool(name: string, input: unknown): Activity {
   }
 }
 
+/** Tools that write the disk, across all three harnesses (claude / codex /
+ *  cursor) — the set that makes a session a candidate owner of a live
+ *  disk change. */
+const DISK_TOOLS = new Set([
+  'Bash',
+  'shell',
+  'Shell',
+  'Edit',
+  'MultiEdit',
+  'Write',
+  'NotebookEdit',
+  'apply_patch',
+  'Delete'
+])
+/** A write can flush moments after its tool result lands. */
+const DISK_TOOL_GRACE_MS = 2_500
+
 /**
  * The session registry: owns the session tree, the append-only event log,
  * live driver handles, and per-session subscriptions. The single write
@@ -189,6 +206,11 @@ export class SessionRegistry {
    *  The status-level guard below misses these: drivers often emit the
    *  error event and still settle with status idle. */
   private erroredTurns = new Set<string>()
+  /** Disk-writing tool calls in flight per session (callId → closedAt,
+   *  null while open). The live change stream asks which watching session
+   *  was actually writing when a file changed — ownership at the source,
+   *  instead of broadcasting every edit to every session in the cwd. */
+  private diskToolCalls = new Map<string, Map<string, number | null>>()
   private lastActivity = new Map<string, number>()
   /** "Where it's at" per working thread ("Editing PromptBar.tsx") —
    *  transient by design: server memory only, cleared when the turn
@@ -242,6 +264,28 @@ export class SessionRegistry {
 
   list(): SessionMeta[] {
     return this.store.listSessions().map((s) => this.decorate(s))
+  }
+
+  /** Was this session running a disk-writing tool at ts (with grace for
+   *  writes that flush just after the result)? Livediff's ownership probe. */
+  diskActiveAt(sessionId: string, ts: number): boolean {
+    const calls = this.diskToolCalls.get(sessionId)
+    if (!calls) return false
+    for (const closed of calls.values()) {
+      if (closed === null || ts <= closed + DISK_TOOL_GRACE_MS) return true
+    }
+    return false
+  }
+
+  /** Root thread of a subagent chain — the board that displays its work. */
+  rootSessionOf(sessionId: string): string {
+    let cur = this.store.getSession(sessionId)
+    for (let hops = 0; cur?.parentId && hops < 20; hops++) {
+      const parent = this.store.getSession(cur.parentId)
+      if (!parent) break
+      cur = parent
+    }
+    return cur?.id ?? sessionId
   }
 
   /** The thread's current task tally, walking its stored log once and
@@ -946,6 +990,10 @@ export class SessionRegistry {
       .filter((s) => s.parentId === sessionId && s.status === 'error')
     for (const child of children) await this.continueRun(child.id)
     this.append(sessionId, { type: 'errors-cleared' })
+    // The continue is a fresh turn: drop the errored-turn taint so a
+    // finished resume gets its completed-turn pass (this path sends via
+    // handle.send, bypassing send()'s own clear).
+    this.erroredTurns.delete(sessionId)
     await this.dropHandle(sessionId)
     try {
       const handle = await this.handleFor(sessionId)
@@ -1085,6 +1133,30 @@ export class SessionRegistry {
         (event.status === 'idle' || event.status === 'error' || event.status === 'waiting')
       ) {
         settleToReport = next
+      }
+    }
+    // Track disk-writing tools in flight — the live change stream's
+    // ownership source. Partial calls open early (execution starts later,
+    // so the window is a harmless superset); the result closes.
+    if (event.type === 'tool-call' && DISK_TOOLS.has(event.name)) {
+      let calls = this.diskToolCalls.get(sessionId)
+      if (!calls) {
+        calls = new Map()
+        this.diskToolCalls.set(sessionId, calls)
+      }
+      if (!calls.has(event.callId)) calls.set(event.callId, null)
+    } else if (event.type === 'tool-result') {
+      const calls = this.diskToolCalls.get(sessionId)
+      if (calls?.get(event.callId) === null) calls.set(event.callId, row.ts)
+    } else if (event.type === 'status' && event.status !== 'running') {
+      // Turn boundary: close anything still open (a died turn never sends
+      // results) and drop entries long past the grace.
+      const calls = this.diskToolCalls.get(sessionId)
+      if (calls) {
+        for (const [id, closed] of calls) {
+          if (closed === null) calls.set(id, row.ts)
+          else if (row.ts - closed > 60_000) calls.delete(id)
+        }
       }
     }
     // An error event taints the whole turn (drivers emit it and still
