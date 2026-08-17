@@ -227,11 +227,7 @@ function WorkspaceLogo({ workspaceId }: { workspaceId: string }): React.JSX.Elem
   const icon = useApp((s) => s.workspaceIcons[workspaceId])
   if (icon?.dataUrl)
     return (
-      <img
-        src={icon.dataUrl}
-        alt=""
-        className="size-[18px] shrink-0 rounded-[4px] object-cover"
-      />
+      <img src={icon.dataUrl} alt="" className="size-[18px] shrink-0 rounded-[4px] object-cover" />
     )
   if (icon?.host === 'github')
     return <ZIcon name="github-mark" size={16} className="shrink-0 text-foreground/70" />
@@ -353,8 +349,12 @@ function WorkspaceGroup({
                 </button>
               ) : (
                 <>
-                  {active.map((p) => <ProjectRow key={p.id} project={p} sessions={sessions} />)}
-                  {chats.map((c) => <ChatRow key={c.id} session={c} />)}
+                  {active.map((p) => (
+                    <ProjectRow key={p.id} project={p} sessions={sessions} />
+                  ))}
+                  {chats.map((c) => (
+                    <ChatRow key={c.id} session={c} />
+                  ))}
                   <ArchivedProjects projects={archived} />
                 </>
               )}
@@ -513,61 +513,81 @@ function ProjectRow({
         {/* One line per live-or-unseen thread, status leading the eye:
             tinted spinner (or the blue unread dot) up front, title, elapsed
             at the end. An implementation thread's tally and current task
-            get their own indented line underneath. */}
-        {running.map((t) => {
-          const ms = now - (t.busySince ?? t.updatedAt)
-          const tasks = t.threadType === 'implementation' ? (t.tasks ?? null) : null
-          const Glyph = THREAD_GLYPHS[t.threadType ?? 'chat']
-          return (
-            <div key={t.id} className="w-full" title={t.activity ?? undefined}>
-              <div className="flex w-full items-center gap-1.5 text-[11px] leading-4">
-                <MatrixSpinner cell={1.8} tint={t.activityKind} />
-                <Glyph
-                  className={cn('size-3 shrink-0 opacity-80', THREAD_TINTS[t.threadType ?? 'chat'])}
-                />
-                <span className="min-w-0 flex-1 truncate text-muted-foreground">{t.title}</span>
-                <span
-                  className={cn(
-                    'shrink-0 text-[10.5px] whitespace-nowrap tabular-nums text-muted-foreground/60',
-                    ms < 3000 && 'opacity-0'
-                  )}
-                >
-                  {duration(ms)}
-                </span>
-              </div>
-              {tasks && (
-                <div className="flex items-center gap-1.5 pl-3 text-[11px] leading-4">
-                  <span
-                    className={cn(
-                      'shrink-0 text-[10.5px] tabular-nums',
-                      tasks.done === tasks.total ? 'text-success' : 'text-muted-foreground/80'
-                    )}
-                    title={`${tasks.done} of ${tasks.total} tasks done`}
-                  >
-                    {tasks.done}/{tasks.total}
-                  </span>
-                  {tasks.current && (
-                    <span className="truncate text-muted-foreground/60">{tasks.current}</span>
+            get their own indented line underneath. Faint rules bracket the
+            block and separate the lines, even when there's only one. */}
+        {(running.length > 0 || unread.length > 0) && (
+          <div className="w-full divide-y divide-border/40 border-y border-border/40">
+            {running.map((t) => {
+              const ms = now - (t.busySince ?? t.updatedAt)
+              const tasks = t.threadType === 'implementation' ? (t.tasks ?? null) : null
+              const Glyph = THREAD_GLYPHS[t.threadType ?? 'chat']
+              return (
+                <div key={t.id} className="w-full py-[3px]" title={t.activity ?? undefined}>
+                  <div className="flex w-full items-center gap-1.5 text-[11px] leading-4">
+                    <MatrixSpinner cell={1.8} tint={t.activityKind} />
+                    <Glyph
+                      className={cn(
+                        'size-3 shrink-0 opacity-80',
+                        THREAD_TINTS[t.threadType ?? 'chat']
+                      )}
+                    />
+                    <span className="min-w-0 flex-1 truncate text-muted-foreground">{t.title}</span>
+                    <span
+                      className={cn(
+                        'shrink-0 text-[10.5px] whitespace-nowrap tabular-nums text-muted-foreground/60',
+                        ms < 3000 && 'opacity-0'
+                      )}
+                    >
+                      {duration(ms)}
+                    </span>
+                  </div>
+                  {tasks && (
+                    <div className="flex items-center gap-1.5 pl-3 text-[11px] leading-4">
+                      <span
+                        className={cn(
+                          'shrink-0 text-[10.5px] tabular-nums',
+                          tasks.done === tasks.total ? 'text-success' : 'text-muted-foreground/80'
+                        )}
+                        title={`${tasks.done} of ${tasks.total} tasks done`}
+                      >
+                        {tasks.done}/{tasks.total}
+                      </span>
+                      {tasks.current && (
+                        <span className="truncate text-muted-foreground/60">{tasks.current}</span>
+                      )}
+                    </div>
                   )}
                 </div>
-              )}
-            </div>
-          )
-        })}
-        {unread.map((t) => {
-          const Glyph = THREAD_GLYPHS[t.threadType ?? 'chat']
-          return (
-            <div key={t.id} className="flex w-full items-center gap-1.5 text-[11px] leading-4">
-              <span className="size-1.5 shrink-0 rounded-full bg-info" />
-              <Glyph
-                className={cn('size-3 shrink-0 opacity-80', THREAD_TINTS[t.threadType ?? 'chat'])}
-              />
-              <span className="min-w-0 flex-1 truncate font-medium text-foreground">{t.title}</span>
-            </div>
-          )
-        })}
+              )
+            })}
+            {unread.map((t) => {
+              const Glyph = THREAD_GLYPHS[t.threadType ?? 'chat']
+              return (
+                <div
+                  key={t.id}
+                  className="flex w-full items-center gap-1.5 py-[3px] text-[11px] leading-4"
+                >
+                  <span className="size-1.5 shrink-0 rounded-full bg-info" />
+                  <Glyph
+                    className={cn(
+                      'size-3 shrink-0 opacity-80',
+                      THREAD_TINTS[t.threadType ?? 'chat']
+                    )}
+                  />
+                  <span className="min-w-0 flex-1 truncate font-medium text-foreground">
+                    {t.title}
+                  </span>
+                </div>
+              )
+            })}
+          </div>
+        )}
 
-        {(waiting > 0 || failed > 0 || dormant > 0 || archivedCount > 0 || threads.length === 0) && (
+        {(waiting > 0 ||
+          failed > 0 ||
+          dormant > 0 ||
+          archivedCount > 0 ||
+          threads.length === 0) && (
           <div className="flex w-full items-center gap-2 text-[11px] leading-4 tabular-nums">
             {waiting > 0 && (
               <Stat dot="bg-warning" tint="text-warning" pulse count={waiting} word="need you" />
