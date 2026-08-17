@@ -17,6 +17,7 @@ import {
   isGitRepo,
   removeWorktree
 } from './git'
+import { stopProjectLsp } from './lsp'
 import { parseRules, type OrchestrationRules } from '@shared/rules'
 import { DEFAULT_THREAD_DEFAULTS, parseDefaults, type ThreadDefaults } from '@shared/defaults'
 import { parseTurnPass, passActions, passEnabled, type TurnPass } from '@shared/turnpass'
@@ -303,7 +304,12 @@ export class SessionRegistry {
     if (!p || p.mode !== 'worktree') return
     const ws = this.store.listWorkspaces().find((w) => w.id === p.workspaceId)
     if (!ws) return
-    if (cleanup.worktree || cleanup.localBranch) await removeWorktree(ws.path, p.cwd)
+    if (cleanup.worktree || cleanup.localBranch) {
+      // Engines rooted in the worktree die first — a survivor's restart
+      // would respawn from the deleted directory.
+      await stopProjectLsp(projectId)
+      await removeWorktree(ws.path, p.cwd)
+    }
     if (cleanup.localBranch && p.branch) await deleteLocalBranch(ws.path, p.branch)
     if (cleanup.remoteBranch && p.branch) await deleteRemoteBranch(ws.path, p.branch)
   }
