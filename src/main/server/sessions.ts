@@ -514,7 +514,16 @@ export class SessionRegistry {
     // preambles ride along on the first message, provider-agnostic.
     const first = !this.store.hasUserText(sessionId)
     const attachments = opts?.attachments?.length ? opts.attachments : undefined
-    this.append(sessionId, { type: 'user-text', text, attachments })
+    // Stamp the run settings that will execute this message — the board's
+    // pass history reads them off the round's opening event.
+    this.append(sessionId, {
+      type: 'user-text',
+      text,
+      attachments,
+      model: meta.model,
+      reasoning: meta.reasoning,
+      context1m: meta.context1m
+    })
     // Cursor-style: an untitled thread takes its name from the first message.
     if (first && (Object.values(THREAD_TITLES) as string[]).includes(meta.title)) {
       const title = text.trim().split('\n')[0].slice(0, 60)
