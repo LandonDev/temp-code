@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
-import { FileText, Image as ImageIcon, MessageSquare, X } from 'lucide-react'
+import { Check, FileText, Image as ImageIcon, MessageSquare, X } from 'lucide-react'
 import type { ProviderId, Reasoning } from '@shared/catalog'
 import type { Attachment, PermissionPolicy, SessionMeta } from '@shared/events'
 import type { SlashCommand } from '@shared/domain'
@@ -18,6 +18,7 @@ import {
   Select,
   SelectContent,
   SelectItem,
+  SelectSeparator,
   SelectTrigger,
   SelectValue
 } from '../ui/select'
@@ -237,11 +238,15 @@ export function PromptBar({
   // Reasoning is per model — the ladder (and whether the select shows at
   // all) comes from the picked model's catalog entry.
   const ladder = provider?.models.find((m) => m.id === choice.model)?.reasoning ?? []
-  // The trigger states the model's real window ("Medium, 1M") straight
-  // from the catalog — the same truth the context meter reports. There is
-  // no window switch: every current claude model serves 1M natively, so a
-  // 200k/1M choice would be theater that contradicts the meter.
-  const windowTokens = provider?.models.find((m) => m.id === choice.model)?.context
+  // Context mode rides the effort menu for claude models with a 1M-capable
+  // window (per the catalog): Standard auto-compacts the thread near 200k
+  // (cheaper — long-context pricing doubles past 200k input); 1M rides the
+  // full native window. The trigger, these rows, and the meter all read
+  // session.context1m — one truth, updating together on switch.
+  const model1m =
+    choice.provider === 'claude' &&
+    (provider?.models.find((m) => m.id === choice.model)?.context ?? 0) >= 1_000_000
+  const windowLabel = model1m ? (session?.context1m ? '1M' : '200k') : null
 
   useEffect(() => {
     if (providerId && cwd) void fetchCommands(providerId, cwd)
@@ -776,11 +781,21 @@ export function PromptBar({
                   }}
                 />
                 {ladder.length > 1 && (
-                  <Select value={reasoning} onValueChange={(v) => setReasoning(v as Reasoning)}>
+                  <Select
+                    value={reasoning}
+                    onValueChange={(v) => {
+                      // The window rows share this menu but not its value —
+                      // picking one retunes the thread and leaves effort be.
+                      if (v === 'ctx:std' || v === 'ctx:1m') {
+                        void tune(selectedId, { context1m: v === 'ctx:1m' })
+                        return
+                      }
+                      setReasoning(v as Reasoning)
+                    }}
+                  >
                     <SelectTrigger size="sm" aria-label="Reasoning effort" className="gap-1 px-1.5">
                       {REASONING_LABELS[reasoning]}
-                      {windowTokens !== undefined &&
-                        `, ${windowTokens >= 1_000_000 ? `${windowTokens / 1_000_000}M` : `${Math.round(windowTokens / 1000)}k`}`}
+                      {windowLabel && `, ${windowLabel}`}
                     </SelectTrigger>
                     <SelectContent>
                       {ladder.map((r) => (
@@ -788,6 +803,33 @@ export function PromptBar({
                           {REASONING_LABELS[r]}
                         </SelectItem>
                       ))}
+                      {model1m && (
+                        <>
+                          <SelectSeparator />
+                          <div className="px-2 pt-1 pb-0.5 text-[10px] font-medium tracking-[0.08em] text-muted-foreground/60 uppercase">
+                            Context window
+                          </div>
+                          {(
+                            [
+                              ['ctx:std', 'Standard · 200k', !session.context1m],
+                              ['ctx:1m', '1M', !!session.context1m]
+                            ] as const
+                          ).map(([v, label, on]) => (
+                            <SelectItem
+                              key={v}
+                              value={v}
+                              className={cn(!on && 'text-muted-foreground')}
+                            >
+                              {label}
+                              {on && (
+                                <span className="pointer-events-none absolute top-1/2 right-2 flex size-3.5 -translate-y-1/2 items-center justify-center">
+                                  <Check className="size-3.5" />
+                                </span>
+                              )}
+                            </SelectItem>
+                          ))}
+                        </>
+                      )}
                     </SelectContent>
                   </Select>
                 )}

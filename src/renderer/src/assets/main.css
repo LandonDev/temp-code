@@ -512,8 +512,11 @@ textarea::-webkit-scrollbar {
 .dark [data-slot='context-menu-content'],
 .dark [data-slot='menubar-content'] {
   background: oklch(0.33 0 0 / 34%);
+  /* No -webkit- prefix here: Electron is pure Chromium (unprefixed works
+   * everywhere), and the build's minifier collapses the prefixed pair into
+   * ONLY -webkit-backdrop-filter — which Chromium ignores, so packaged
+   * builds shipped transparent, unblurred menus while dev looked right. */
   backdrop-filter: blur(44px) saturate(1.8) brightness(1.18);
-  -webkit-backdrop-filter: blur(44px) saturate(1.8) brightness(1.18);
 }
 
 /* Reduced motion: near-instant CSS transitions. Motion components handle

@@ -501,9 +501,18 @@ export const claudeDriver: HarnessDriver = {
       ...(session.permission === 'auto' ? { allowDangerouslySkipPermissions: true } : {}),
       canUseTool,
       hooks: { PreToolUse: [{ matcher: 'AskUserQuestion', hooks: [askUserQuestionHook] }] },
-      // Fast mode is a Claude settings key, not an Option — a per-session
-      // --settings override flips it (state reports back on init/result).
-      ...(session.fast ? { extraArgs: { settings: JSON.stringify({ fastMode: true }) } } : {}),
+      // Claude settings keys (not Options) ride a per-session --settings
+      // override: fast mode, and the context mode — Standard keeps the
+      // thread under 200k via the CLI's own auto-compact (also dodging the
+      // 2x long-context pricing above 200k input); 1M turns auto-compact
+      // off and rides the full native window.
+      extraArgs: {
+        settings: JSON.stringify({
+          ...(session.fast ? { fastMode: true } : {}),
+          autoCompactEnabled: !session.context1m,
+          ...(session.context1m ? {} : { autoCompactWindow: 200_000 })
+        })
+      },
       ...(session.context1m ? { betas: ['context-1m-2025-08-07' as const] } : {}),
       ...(session.nativeId ? { resume: session.nativeId } : {}),
       // App tools (docs/PLAN-2.md M10): every claude session can list/read
@@ -650,20 +659,19 @@ export const claudeDriver: HarnessDriver = {
       },
       async contextUsage(): Promise<unknown> {
         // The /context breakdown, straight from the harness — except the
-        // window size. The SDK's model table still says 200k for models
-        // that serve 1M natively (every current Claude except Haiku), and
-        // real threads sail past 250k without compaction or errors, so the
-        // meter must not claim 125% of a window that isn't there.
+        // window size, which reflects the SESSION'S MODE, not the SDK's
+        // stale model table: Standard auto-compacts near 200k, 1M rides
+        // the full native window. Trigger, meter, and driver all answer
+        // from the same session field.
         const usage = (await q.getContextUsage()) as {
           totalTokens: number
           maxTokens: number
           percentage: number
-          model: string
         }
-        const native1m = /claude/.test(usage.model) && !/haiku/.test(usage.model)
-        if (native1m && usage.maxTokens < 1_000_000) {
-          usage.maxTokens = 1_000_000
-          usage.percentage = (usage.totalTokens / usage.maxTokens) * 100
+        const target = session.context1m ? 1_000_000 : 200_000
+        if (usage.maxTokens !== target) {
+          usage.maxTokens = target
+          usage.percentage = (usage.totalTokens / target) * 100
         }
         return usage
       },
