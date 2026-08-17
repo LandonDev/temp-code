@@ -26,6 +26,11 @@ type BlockKind =
       pending?: boolean
       /** when the work this message started settled (its section's timer) */
       doneTs?: number
+      /** run settings stamped on the event by the server (newer logs only)
+       *  — the board's pass history reads them off the round's opener */
+      model?: string
+      reasoning?: string
+      context1m?: boolean
     }
   | { kind: 'assistant'; text: string; streaming: boolean }
   | {
@@ -145,6 +150,9 @@ export interface FoldState {
   /** todo list of each finished round, by round index — the follow-up
    *  archive the board renders as history */
   pastTodos: TodoItem[][]
+  /** cumulative session cost when each round archived — per-pass cost is
+   *  the difference between neighbors */
+  pastCosts: (number | undefined)[]
 }
 
 export function emptyFold(): FoldState {
@@ -165,7 +173,8 @@ export function emptyFold(): FoldState {
     turnOpen: false,
     sawUser: false,
     inPass: false,
-    pastTodos: []
+    pastTodos: [],
+    pastCosts: []
   }
 }
 
@@ -183,6 +192,7 @@ function beginTurn(s: FoldState, ts?: number): void {
     s.turnOpen && lastTs !== undefined && ts !== undefined && ts - lastTs > STALE_TURN_MS
   if ((!s.turnOpen || stale) && s.sawUser) {
     s.pastTodos = [...s.pastTodos, s.todos]
+    s.pastCosts = [...s.pastCosts, s.costUsd]
     s.todos = []
     s.activeTodo = -1
     s.round++
@@ -212,10 +222,18 @@ function push(s: FoldState, block: BlockKind, ts?: number): number {
   return s.blocks.length - 1
 }
 
-/** Normalize the two harness plan tools into one shape. */
+/** Normalize the two harness plan tools into one shape. Some models
+ *  stringify the array — parse that too rather than dropping the list. */
 function todosFrom(name: string, input: unknown): TodoItem[] | null {
   const obj = input as { todos?: unknown; plan?: unknown } | null
-  const raw = name === 'TodoWrite' ? obj?.todos : name === 'update_plan' ? obj?.plan : null
+  let raw = name === 'TodoWrite' ? obj?.todos : name === 'update_plan' ? obj?.plan : null
+  if (typeof raw === 'string') {
+    try {
+      raw = JSON.parse(raw)
+    } catch {
+      return null
+    }
+  }
   if (!Array.isArray(raw)) return null
   return raw.flatMap((t) => {
     const item = t as { content?: string; step?: string; status?: string }
@@ -287,6 +305,13 @@ export function foldEvent(s: FoldState, e: AgentEvent, ts?: number): void {
 
   switch (e.type) {
     case 'user-text': {
+      // Run settings stamped by the server (newer logs) ride the event.
+      const stamp = e as { model?: string; reasoning?: string; context1m?: boolean }
+      const meta = {
+        model: stamp.model,
+        reasoning: stamp.reasoning,
+        context1m: stamp.context1m
+      }
       const pending = s.pendingUsers.shift()
       if (pending !== undefined && s.blocks[pending]?.kind === 'user') {
         // The optimistic push already ran beginTurn — just claim the block.
@@ -296,11 +321,12 @@ export function foldEvent(s: FoldState, e: AgentEvent, ts?: number): void {
           text: e.text,
           attachments: e.attachments,
           pending: undefined,
-          ts: ts ?? b.ts
+          ts: ts ?? b.ts,
+          ...meta
         }
       } else {
         beginTurn(s, ts)
-        push(s, { kind: 'user', text: e.text, attachments: e.attachments }, ts)
+        push(s, { kind: 'user', text: e.text, attachments: e.attachments, ...meta }, ts)
       }
       break
     }

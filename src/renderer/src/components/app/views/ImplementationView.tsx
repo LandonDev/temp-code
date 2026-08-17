@@ -2,6 +2,7 @@ import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 're
 import { AnimatePresence, LayoutGroup, motion, useReducedMotion } from 'motion/react'
 import { Check, ChevronRight, Circle, MessageSquare } from 'lucide-react'
 import type { SessionMeta } from '@shared/events'
+import { modelInfo } from '@shared/catalog'
 import { useApp, type LiveEditState } from '../../../state/store'
 import type { Block, TodoItem } from '../../../state/blocks'
 import { cn } from '../../../lib/utils'
@@ -38,6 +39,15 @@ type ToolBlock = Extract<Block, { kind: 'tool' }>
  */
 const EMPTY_TODOS: TodoItem[] = []
 const EMPTY_ROUNDS: TodoItem[][] = []
+const EMPTY_COSTS: (number | undefined)[] = []
+
+/** "Aug 16, 9:25 PM" — the pass record's completion stamp, local time. */
+const WHEN_FMT = new Intl.DateTimeFormat(undefined, {
+  month: 'short',
+  day: 'numeric',
+  hour: 'numeric',
+  minute: '2-digit'
+})
 
 export function ImplementationView({ session }: { session: SessionMeta }): React.JSX.Element {
   const todos = useApp((s) => s.todos[session.id]) ?? EMPTY_TODOS
@@ -59,6 +69,7 @@ export function ImplementationView({ session }: { session: SessionMeta }): React
   // own board section — its todo list, its work, its timers. Nothing
   // bleeds across the idle gap between requests.
   const pastTodosAll = useApp((s) => s.pastTodos[session.id]) ?? EMPTY_ROUNDS
+  const pastCosts = useApp((s) => s.pastCosts[session.id]) ?? EMPTY_COSTS
   const stopped = useApp((s) => !!s.stopped[session.id])
   const curRound = pastTodosAll.length
   const rounds = useMemo(() => {
@@ -292,6 +303,7 @@ export function ImplementationView({ session }: { session: SessionMeta }): React
                         }
                         running={running}
                         now={now}
+                        pastCosts={pastCosts}
                         marks={usageMarks}
                         diskOnly={diskOnly}
                         openChange={openChange}
@@ -312,6 +324,7 @@ export function ImplementationView({ session }: { session: SessionMeta }): React
                   expanded
                   running={running}
                   now={now}
+                  pastCosts={pastCosts}
                   marks={usageMarks}
                   diskOnly={diskOnly}
                   openChange={openChange}
@@ -440,6 +453,7 @@ function RoundSection({
   onToggle,
   running,
   now,
+  pastCosts,
   marks,
   diskOnly,
   openChange,
@@ -457,6 +471,8 @@ function RoundSection({
   onToggle?: () => void
   running: boolean
   now: number
+  /** cumulative session cost at each round boundary (pass cost = diff) */
+  pastCosts: (number | undefined)[]
   marks: { round: number; todo: number; input?: number; output?: number }[]
   diskOnly: LiveEditState[]
   openChange: { round: number; task: number; path: string } | null
@@ -645,35 +661,74 @@ function RoundSection({
     </>
   )
 
-  // A previous pass: one quiet row — the request, how it went, what it
-  // touched — expanding in place to the full board.
+  // A previous pass: "Pass N" leading its request, with the run's record
+  // underneath — when it finished, how long it took, what ran it (model ·
+  // effort · window, on logs that stamp them) and what it cost — expanding
+  // in place to the full board.
   if (multi && !isCurrent) {
+    const startTs = blocks.find((b) => b.ts !== undefined)?.ts
+    const endTs = blocks.findLast((b) => b.ts !== undefined)?.ts
+    const header = data.header?.kind === 'user' ? data.header : null
+    const cost = (() => {
+      const end = pastCosts[round]
+      if (end === undefined) return undefined
+      const prev = pastCosts
+        .slice(0, round)
+        .filter((c): c is number => c !== undefined)
+        .at(-1)
+      return end - (prev ?? 0)
+    })()
+    const meta: string[] = []
+    if (endTs !== undefined) meta.push(WHEN_FMT.format(endTs))
+    if (startTs !== undefined && endTs !== undefined && endTs - startTs > 1000) {
+      meta.push(duration(endTs - startTs))
+    }
+    if (header?.model) {
+      meta.push(modelInfo(session.provider, header.model)?.label ?? header.model)
+      if (header.reasoning) {
+        meta.push(header.reasoning[0].toUpperCase() + header.reasoning.slice(1))
+      }
+      meta.push(header.context1m ? '1M' : '200k')
+    }
+    if (cost !== undefined && cost > 0.005) meta.push(`$${cost.toFixed(2)}`)
     return (
       <div>
         <button
           onClick={onToggle}
-          className="group/round flex w-full items-center gap-2.5 py-2.5 text-left"
+          className="group/round flex w-full items-start gap-2.5 py-2 text-left"
         >
           <ChevronRight
             className={cn(
-              'size-3.5 shrink-0 text-muted-foreground/50 transition-transform duration-200',
+              'mt-[3px] size-3.5 shrink-0 text-muted-foreground/50 transition-transform duration-200',
               expanded && 'rotate-90'
             )}
           />
-          <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-muted-foreground transition-colors group-hover/round:text-foreground">
-            {headerText}
+          <span className="min-w-0 flex-1">
+            <span className="flex items-center gap-2">
+              <span className="shrink-0 text-[13px] font-semibold tracking-[-0.01em] text-foreground/85">
+                Pass {round + 1}
+              </span>
+              <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-muted-foreground transition-colors group-hover/round:text-foreground">
+                {headerText}
+              </span>
+              {todos.length > 0 && (
+                <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground/60">
+                  {done}/{todos.length} tasks
+                </span>
+              )}
+              {(stat.adds > 0 || stat.dels > 0) && (
+                <span className="shrink-0 text-[11px] font-semibold tabular-nums">
+                  {stat.adds > 0 && <span className="text-success">+{stat.adds}</span>}{' '}
+                  {stat.dels > 0 && <span className="text-destructive">−{stat.dels}</span>}
+                </span>
+              )}
+            </span>
+            {meta.length > 0 && (
+              <span className="mt-0.5 block truncate text-[11px] tabular-nums text-muted-foreground/55">
+                {meta.join(' · ')}
+              </span>
+            )}
           </span>
-          {todos.length > 0 && (
-            <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground/60">
-              {done}/{todos.length} tasks
-            </span>
-          )}
-          {(stat.adds > 0 || stat.dels > 0) && (
-            <span className="shrink-0 text-[11px] font-semibold tabular-nums">
-              {stat.adds > 0 && <span className="text-success">+{stat.adds}</span>}{' '}
-              {stat.dels > 0 && <span className="text-destructive">−{stat.dels}</span>}
-            </span>
-          )}
         </button>
         <TweenHeight open={expanded} animate>
           <div className="pt-1 pb-2 pl-6">{body}</div>
