@@ -636,6 +636,17 @@ export class SessionRegistry {
         }
       }
     }
+    // A NEW pass re-arms the task-list contract in-band: the thread
+    // preamble that demanded it rode the FIRST message only, and by later
+    // passes (or after a compaction) it can be gone from context — so
+    // every pass opener carries the instruction itself.
+    if (
+      opts?.newPass &&
+      !first &&
+      (meta.threadType === 'implementation' || meta.threadType === 'orchestration')
+    ) {
+      out = `<new-pass>\nThis message begins a NEW pass. Your FIRST tool call — before any exploration, edit, or subagent — creates the fresh task list for THIS pass with whichever task tool this session has (one TaskCreate per task, or TodoWrite/update_plan), containing ONLY this pass's tasks. This holds for every pass no matter how small the request — the board renders nothing without it. Then work the list: one item in_progress at a time, completed the moment it's done.\n</new-pass>\n\n${out}`
+    }
     if (handoff) out = `${handoff}\n\n${out}`
     // Thread references (M9): each referenced thread becomes a fresh local
     // digest file; the @thread:<id> token is rewritten to its path (every
