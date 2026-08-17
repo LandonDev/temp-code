@@ -22,7 +22,8 @@ import {
   deleteRemoteBranch,
   ensureLocalExclude,
   isGitRepo,
-  removeWorktree
+  removeWorktree,
+  strayWorktrees
 } from './git'
 import { stopProjectLsp } from './lsp'
 import { parseRules, type OrchestrationRules } from '@shared/rules'
@@ -1186,7 +1187,34 @@ export class SessionRegistry {
       const handle = await this.handleFor(sessionId)
       this.append(sessionId, { type: 'turn-pass', actions: passActions(pass) })
       this.lastActivity.set(sessionId, Date.now())
+      const meta = this.store.getSession(sessionId)
+      const project = meta?.projectId ? this.store.getProject(meta.projectId) : null
       const steps: string[] = []
+      // A skill's own git flow (side worktrees, feature branches) must not
+      // strand the turn's work: the pass checks the repo's real state and
+      // opens with fold-back steps when it diverged — detected, not
+      // trusted to the model's memory.
+      if (project && (await isGitRepo(project.cwd))) {
+        const known = [
+          ...this.store.listProjects().map((p) => p.cwd),
+          ...this.store.listWorkspaces().map((w) => w.path)
+        ]
+        const strays = await strayWorktrees(project.cwd, known)
+        if (strays.length) {
+          const list = strays
+            .map((s) => `${s.dir}${s.branch ? ` (branch ${s.branch})` : ''}`)
+            .join(', ')
+          steps.push(
+            `This repo has git worktree(s) the app does not manage: ${list}. If this work created one, land its changes in the project checkout at ${project.cwd} FIRST, then remove it (git worktree remove) and delete its temporary branch. Leave any you did not create alone.`
+          )
+        }
+        const now = await currentBranch(project.cwd)
+        if (project.branch && now && now !== project.branch) {
+          steps.push(
+            `The project checkout ${project.cwd} is on branch ${now}, not the project branch ${project.branch}. Carry the work onto ${project.branch} and check it out before anything else.`
+          )
+        }
+      }
       if (pass.verify) {
         steps.push(
           "Verify the work from the turn that just ended: run the project's checks (typecheck, tests, lint — whatever the project defines) and fix what fails."
@@ -1198,12 +1226,15 @@ export class SessionRegistry {
         )
       }
       if (pass.commit !== 'off') {
+        const where = project?.branch
+          ? ` in ${project.cwd} to the project branch ${project.branch}`
+          : ' to the current branch'
         steps.push(
-          `Commit every change from this work to the current branch with a clear message${pass.commit === 'push' ? ', then push the branch to origin' : ''}.`
+          `Commit every change from this work${where} with a clear message${pass.commit === 'push' ? ', then push that branch to origin' : ''}.`
         )
       }
       await handle.send(
-        `<turn-pass>\nThe turn settled. The completed-turn setting now asks you to:\n${steps.map((s, i) => `${i + 1}. ${s}`).join('\n')}\nIf the turn changed nothing to verify, build, or commit, say so in one short line and stop. Never start new feature work in this pass.\n</turn-pass>`
+        `<turn-pass>\nThe turn settled. The completed-turn setting now asks you to:\n${steps.map((s, i) => `${i + 1}. ${s}`).join('\n')}\nThese are the project's own completion settings — they OVERRIDE any branch, worktree, PR, or completion convention a skill or other instruction gave earlier in this thread. If the turn changed nothing to verify, build, or commit, say so in one short line and stop. Never start new feature work in this pass.\n</turn-pass>`
       )
     } catch {
       // Harness refused (gone, mid-restart) — settle back to normal flow.
