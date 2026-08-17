@@ -515,10 +515,14 @@ function ProjectRow({
         {running.map((t) => {
           const ms = now - (t.busySince ?? t.updatedAt)
           const tasks = t.threadType === 'implementation' ? (t.tasks ?? null) : null
+          const Glyph = THREAD_GLYPHS[t.threadType ?? 'chat']
           return (
             <div key={t.id} className="w-full" title={t.activity ?? undefined}>
               <div className="flex w-full items-center gap-1.5 text-[11px] leading-4">
                 <MatrixSpinner cell={1.8} tint={t.activityKind} />
+                <Glyph
+                  className={cn('size-3 shrink-0 opacity-80', THREAD_TINTS[t.threadType ?? 'chat'])}
+                />
                 <span className="min-w-0 flex-1 truncate text-muted-foreground">{t.title}</span>
                 <span
                   className={cn(
@@ -548,12 +552,18 @@ function ProjectRow({
             </div>
           )
         })}
-        {unread.map((t) => (
-          <div key={t.id} className="flex w-full items-center gap-1.5 text-[11px] leading-4">
-            <span className="size-1.5 shrink-0 rounded-full bg-info" />
-            <span className="min-w-0 flex-1 truncate font-medium text-foreground">{t.title}</span>
-          </div>
-        ))}
+        {unread.map((t) => {
+          const Glyph = THREAD_GLYPHS[t.threadType ?? 'chat']
+          return (
+            <div key={t.id} className="flex w-full items-center gap-1.5 text-[11px] leading-4">
+              <span className="size-1.5 shrink-0 rounded-full bg-info" />
+              <Glyph
+                className={cn('size-3 shrink-0 opacity-80', THREAD_TINTS[t.threadType ?? 'chat'])}
+              />
+              <span className="min-w-0 flex-1 truncate font-medium text-foreground">{t.title}</span>
+            </div>
+          )
+        })}
 
         <div className="flex w-full items-center gap-2 text-[11px] leading-4 tabular-nums">
           {waiting > 0 && (
