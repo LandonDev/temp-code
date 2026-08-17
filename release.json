@@ -1,5 +1,5 @@
 {
-  "n": 26,
-  "notes": "Board round 5: diff reveal on land, whole-file changes, real Java highlighting, gliding timelines, h/d timers, auto-fold chat",
-  "ts": 1786922184593
+  "n": 27,
+  "notes": "Context switch in every claude chat (trigger shows e.g. Medium, 200k); drafts survive navigation; threads can no longer stick on working.",
+  "ts": 1786925409750
 }
