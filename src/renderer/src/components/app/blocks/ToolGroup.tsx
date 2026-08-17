@@ -887,8 +887,12 @@ export function DiffBlock({
                 {r.type === 'add' ? '+' : r.type === 'del' ? '−' : ''}
               </span>
               {html[n] ? (
+                // `shiki` puts the row under main.css's dual-theme flip —
+                // without it dark mode renders the LIGHT palette's near-black
+                // tokens on the dark background.
                 <span
                   className={cn(
+                    'shiki',
                     dense
                       ? 'pr-4 whitespace-pre'
                       : 'min-w-0 flex-1 pr-3 whitespace-pre-wrap [overflow-wrap:anywhere]'
