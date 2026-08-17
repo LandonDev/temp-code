@@ -13,7 +13,7 @@ import {
   existsSync
 } from 'node:fs'
 import { dirname, join, relative, resolve, sep } from 'node:path'
-import { watch, type FSWatcher } from 'chokidar'
+import { watchTree, type TreeWatcher } from './treewatch'
 import type { FsEntry, FsReadResult } from '@shared/domain'
 
 /**
@@ -33,19 +33,6 @@ const MAX_FILE_BYTES = 2 * 1024 * 1024
 /** Directories the tree hides entirely. */
 const HIDDEN = new Set(['.git', '.temp-code'])
 
-/** Directory names the watcher ignores at any depth (build storms). */
-const WATCH_IGNORED = new Set([
-  '.git',
-  '.temp-code',
-  'node_modules',
-  'target',
-  'build',
-  'dist',
-  'out',
-  '.gradle',
-  '.idea',
-  '.next'
-])
 
 /** Resolve a project-relative path inside cwd or throw. */
 export function jail(cwd: string, relPath: string): string {
@@ -149,19 +136,13 @@ export interface FileEvent {
 }
 
 interface ProjectWatch {
-  watcher: FSWatcher
+  watcher: TreeWatcher
   listeners: Set<(e: FileEvent) => void>
   /** per-path debounce (~100 ms) — a burst of writes coalesces to one push */
   pending: Map<string, { kind: FileEvent['kind']; timer: NodeJS.Timeout }>
 }
 
 const watches = new Map<string, ProjectWatch>()
-
-function pathIgnored(root: string, abs: string): boolean {
-  const rel = relative(root, abs)
-  if (!rel || rel.startsWith('..')) return false
-  return rel.split(sep).some((seg) => WATCH_IGNORED.has(seg))
-}
 
 /**
  * Refcounted per-project watcher: alive while at least one subscriber
@@ -175,12 +156,6 @@ export function subscribeFileEvents(
   let entry = watches.get(projectId)
   if (!entry) {
     const root = resolve(cwd)
-    const watcher = watch(root, {
-      ignored: (p) => pathIgnored(root, p),
-      ignoreInitial: true,
-      persistent: true
-    })
-    const created: ProjectWatch = { watcher, listeners: new Set(), pending: new Map() }
     const emit = (kind: FileEvent['kind'], abs: string): void => {
       const rel = relative(root, abs).split(sep).join('/')
       if (!rel || rel.startsWith('..')) return
@@ -197,12 +172,11 @@ export function subscribeFileEvents(
       }, 100)
       created.pending.set(rel, { kind, timer })
     }
-    watcher.on('add', (p) => emit('created', p))
-    watcher.on('change', (p) => emit('changed', p))
-    watcher.on('unlink', (p) => emit('deleted', p))
-    watcher.on('addDir', (p) => emit('created', p))
-    watcher.on('unlinkDir', (p) => emit('deleted', p))
-    watcher.on('error', () => {}) // transient fs races — the next event self-heals
+    const created: ProjectWatch = {
+      watcher: watchTree(root, { onEvent: emit, dirs: true }),
+      listeners: new Set(),
+      pending: new Map()
+    }
     entry = created
     watches.set(projectId, entry)
   }

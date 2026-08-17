@@ -4,7 +4,7 @@ import { copyFileSync, mkdirSync, rmSync, statSync, writeFileSync } from 'node:f
 import { tmpdir } from 'node:os'
 import { join, relative, resolve, sep } from 'node:path'
 import { promisify } from 'node:util'
-import { watch, type FSWatcher } from 'chokidar'
+import { watchTree, WATCH_IGNORED, type TreeWatcher } from './treewatch'
 import type { SessionMeta } from '@shared/events'
 import type { SessionRegistry } from './sessions'
 
@@ -57,19 +57,6 @@ const STOP_GRACE_MS = 5_000
  *  scan would starve the main-process event loop. */
 const WATCH_FILE_CAP = 30_000
 
-/** Mirrors the file service's ignore list (build storms, .git, app dirs). */
-const WATCH_IGNORED = new Set([
-  '.git',
-  '.temp-code',
-  'node_modules',
-  'target',
-  'build',
-  'dist',
-  'out',
-  '.gradle',
-  '.idea',
-  '.next'
-])
 
 interface LiveWatch {
   cwd: string
@@ -79,7 +66,7 @@ interface LiveWatch {
   /** rel path → owning root sessions, captured at fs-event time while the
    *  attribution is knowable (the debounced diff runs later) */
   owners: Map<string, Set<string>>
-  watcher: FSWatcher
+  watcher: TreeWatcher
   git: boolean
   /** tmp dir holding baseline copies; removed with the watcher */
   baseDir: string
@@ -113,11 +100,6 @@ const emit = (p: LiveEditPush): void => {
   for (const l of listeners) l(p)
 }
 
-const ignored = (root: string, abs: string): boolean => {
-  const rel = relative(root, abs)
-  if (!rel || rel.startsWith('..')) return false
-  return rel.split(sep).some((seg) => WATCH_IGNORED.has(seg))
-}
 
 /** Copy current content as a baseline, within the caps. */
 function tryBaselineCopy(w: LiveWatch, abs: string): string | 'head' {
@@ -196,7 +178,9 @@ async function computeAndEmit(w: LiveWatch, rel: string, settled: boolean): Prom
     // Resolve the baseline once per path.
     let base = w.baseline.get(rel)
     if (base === undefined) {
-      base = kind === 'created' ? 'empty' : await headBaseline(w, rel)
+      // Always resolve through HEAD — FSEvents can coalesce a modify into
+      // a 'created' report, and HEAD yields 'empty' for truly-new files.
+      base = await headBaseline(w, rel)
       w.baseline.set(rel, base)
     }
     if (base === 'head' && w.git) {
@@ -364,11 +348,7 @@ async function startWatch(cwd: string, sessionId: string): Promise<void> {
     sessions: new Set([sessionId]),
     recent: new Map(),
     owners: new Map(),
-    watcher: watch(root, {
-      ignored: (p) => ignored(root, p),
-      ignoreInitial: true,
-      persistent: true
-    }),
+    watcher: watchTree(root, { onEvent: (kind, abs) => onFsEvent(w, kind, abs) }),
     git,
     baseDir,
     baseline: new Map(),
@@ -401,10 +381,6 @@ async function startWatch(cwd: string, sessionId: string): Promise<void> {
     }
   }
 
-  w.watcher.on('add', (p) => onFsEvent(w, 'created', p))
-  w.watcher.on('change', (p) => onFsEvent(w, 'changed', p))
-  w.watcher.on('unlink', (p) => onFsEvent(w, 'deleted', p))
-  w.watcher.on('error', () => {})
 }
 
 function scheduleStop(cwd: string): void {
