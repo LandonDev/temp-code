@@ -11,7 +11,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { EASE_OUT } from "@renderer/lib/ease";
+import { EASE_OUT, SPRING_LAYOUT } from "@renderer/lib/ease";
 import { cn } from "@renderer/lib/utils";
 
 type Variant = "pill" | "underline" | "segment" | "soft";
@@ -31,14 +31,9 @@ function useTabs() {
   return ctx;
 }
 
-// Weighty spring for the active-tab indicator: a touch of overshoot so it
-// settles with life instead of snapping.
-const transition: Transition = {
-  type: "spring",
-  stiffness: 170,
-  damping: 24,
-  mass: 1.2,
-};
+// The active-tab indicator glides on the app's standard layout spring —
+// no overshoot, so a click reads as one clean slide.
+const transition: Transition = SPRING_LAYOUT;
 
 export function Tabs({
   defaultValue,
@@ -165,7 +160,7 @@ export function TabsTrigger({
             if (current !== value) setValue(value);
           }}
           className={cn(
-            "relative z-10 inline-flex items-center justify-center whitespace-nowrap rounded-md bg-transparent px-2.5 py-1 text-[13px] outline-none transition-[color,transform] duration-150 active:scale-[0.98]",
+            "relative z-10 inline-flex items-center justify-center whitespace-nowrap rounded-md bg-transparent px-2.5 py-1 text-[13px] outline-none transition-colors duration-150",
             active
               ? "text-foreground"
               : "text-muted-foreground hover:bg-accent/50 hover:text-foreground",
