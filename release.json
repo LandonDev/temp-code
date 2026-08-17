@@ -1,5 +1,5 @@
 {
-  "n": 41,
-  "notes": "Project teardown survives already-gone branches; engines stop before their worktree is removed",
-  "ts": 1786942265392
+  "n": 42,
+  "notes": "Orchestrators editable from their tab; working tabs hold still and color their work",
+  "ts": 1786942655183
 }
