@@ -14,6 +14,7 @@ import { ContextMeter } from './ContextMeter'
 import { Zap } from 'lucide-react'
 import { ZIcon } from './zicon'
 import { ModelPicker } from './ModelPicker'
+import { imageDataFor, openLightbox, type LightboxItem } from './Lightbox'
 import {
   Select,
   SelectContent,
@@ -69,13 +70,26 @@ const drafts = new Map<
   { segments: ComposerSegment[]; images: PendingImage[]; fileRefs: Attachment[] }
 >()
 
+/** Appshots and pasted images preview as one lightbox group, in strip order. */
+const composerLightboxItems = (appshots: Attachment[], images: PendingImage[]): LightboxItem[] => [
+  ...appshots.map((a) => ({ path: a.path, name: a.name })),
+  ...images.map((i) => ({ src: i.previewUrl, name: i.attachment.name }))
+]
+
 /** One captured window in the composer: thumbnail + app-name caption. */
-function AppshotChip({ a, onRemove }: { a: Attachment; onRemove: () => void }): React.JSX.Element {
+function AppshotChip({
+  a,
+  onRemove,
+  onOpen
+}: {
+  a: Attachment
+  onRemove: () => void
+  onOpen: () => void
+}): React.JSX.Element {
   const [src, setSrc] = useState<string | null>(null)
   useEffect(() => {
     let alive = true
-    void client
-      .request<string>('attachment.read', { path: a.path })
+    void imageDataFor(a.path)
       .then((url) => alive && setSrc(url))
       .catch(() => {})
     return () => {
@@ -89,7 +103,9 @@ function AppshotChip({ a, onRemove }: { a: Attachment; onRemove: () => void }): 
         data-appshot-chip={a.path}
         className="h-14 w-24 overflow-hidden rounded-lg border bg-secondary"
       >
-        {src && <img src={src} alt={a.name} className="h-full w-full object-cover" />}
+        <button onClick={onOpen} aria-label={`Preview ${a.name}`} className="block h-full w-full cursor-zoom-in">
+          {src && <img src={src} alt={a.name} className="h-full w-full object-cover" />}
+        </button>
       </div>
       <p className="mt-0.5 truncate text-[10.5px] leading-tight text-muted-foreground">
         {a.name}
@@ -631,7 +647,13 @@ export function PromptBar({
                       reduce ? undefined : { opacity: 0, scale: 0.9, transition: { duration: 0.1 } }
                     }
                   >
-                    <AppshotChip a={a} onRemove={() => removePendingAppshot(selectedId, a.path)} />
+                    <AppshotChip
+                      a={a}
+                      onRemove={() => removePendingAppshot(selectedId, a.path)}
+                      onOpen={() =>
+                        openLightbox(composerLightboxItems(appshots, images), appshots.indexOf(a))
+                      }
+                    />
                   </motion.div>
                 ))}
                 {images.map((img) => (
@@ -645,11 +667,22 @@ export function PromptBar({
                     }
                     className="group relative"
                   >
-                    <img
-                      src={img.previewUrl}
-                      alt={img.attachment.name}
-                      className="h-12 w-12 rounded-lg border object-cover"
-                    />
+                    <button
+                      onClick={() =>
+                        openLightbox(
+                          composerLightboxItems(appshots, images),
+                          appshots.length + images.indexOf(img)
+                        )
+                      }
+                      aria-label={`Preview ${img.attachment.name}`}
+                      className="block cursor-zoom-in"
+                    >
+                      <img
+                        src={img.previewUrl}
+                        alt={img.attachment.name}
+                        className="h-12 w-12 rounded-lg border object-cover"
+                      />
+                    </button>
                     <button
                       onClick={() => removeImage(img.attachment.path)}
                       aria-label={`Remove ${img.attachment.name}`}
