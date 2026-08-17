@@ -34,6 +34,7 @@ import {
 } from '@shared/appshots'
 import { planPathFor, planSeed, projectContext, threadPreamble } from './threads'
 import { notifyParentOfSettle } from './orchestration'
+import { foldTodo, newTodoFold, tallyOf, type TaskTally, type TodoFold } from './todos'
 import { liveDiffOnStatus } from './livediff'
 import {
   appendJournal,
@@ -186,6 +187,10 @@ export class SessionRegistry {
    *  transient by design: server memory only, cleared when the turn
    *  settles, attached to every meta push for the tab strip. */
   private activities = new Map<string, Activity>()
+  /** Per-thread task list, folded from the log — seeded on first ask, then
+   *  kept live event by event, so every tab can show its tally without
+   *  subscribing to the thread. */
+  private todoFolds = new Map<string, TodoFold>()
   private sweepTimer: ReturnType<typeof setInterval> | null = null
 
   constructor(private store: Store) {}
@@ -226,10 +231,19 @@ export class SessionRegistry {
   }
 
   list(): SessionMeta[] {
-    return this.store.listSessions().map((s) => {
-      const act = this.activities.get(s.id)
-      return { ...s, activity: act?.text ?? null, activityKind: act?.kind ?? null }
-    })
+    return this.store.listSessions().map((s) => this.decorate(s))
+  }
+
+  /** The thread's current task tally, walking its stored log once and
+   *  keeping the fold warm from then on. */
+  private tasksOf(sessionId: string): TaskTally | null {
+    let fold = this.todoFolds.get(sessionId)
+    if (!fold) {
+      fold = newTodoFold()
+      for (const row of this.store.eventsAfter(sessionId, 0)) foldTodo(fold, row.event, row.ts)
+      this.todoFolds.set(sessionId, fold)
+    }
+    return tallyOf(fold)
   }
 
   /** When the session last produced or received anything (drives
@@ -860,6 +874,7 @@ export class SessionRegistry {
       this.subscribers.delete(id)
       this.lastActivity.delete(id)
       this.activities.delete(id)
+      this.todoFolds.delete(id)
       const meta = all.find((s) => s.id === id)
       if (meta) removeMirror(this, meta) // mirrors die with the thread
     }
@@ -942,16 +957,27 @@ export class SessionRegistry {
     }
     const row = this.store.appendEvent(sessionId, event)
     this.lastActivity.set(sessionId, row.ts)
+    // Keep the task tally current (only if this thread's fold is already
+    // warm — an untouched one seeds itself from the log when first asked).
+    const warm = this.todoFolds.get(sessionId)
+    let tasksMoved = false
+    if (warm) {
+      const before = tallyOf(warm)
+      foldTodo(warm, event, row.ts)
+      const after = tallyOf(warm)
+      tasksMoved = before?.done !== after?.done || before?.total !== after?.total
+    }
     // Track "where it's at" for the tabs; a change on a non-status event
     // pushes its own meta update (status events notify below regardless).
     const act = activityOf(event)
-    if (act !== undefined && act?.text !== this.activities.get(sessionId)?.text) {
+    const actMoved = act !== undefined && act?.text !== this.activities.get(sessionId)?.text
+    if (actMoved) {
       if (act === null) this.activities.delete(sessionId)
       else this.activities.set(sessionId, act)
-      if (event.type !== 'status') {
-        const meta = this.store.getSession(sessionId)
-        if (meta) this.notifyMeta(meta)
-      }
+    }
+    if ((actMoved || tasksMoved) && event.type !== 'status') {
+      const meta = this.store.getSession(sessionId)
+      if (meta) this.notifyMeta(meta)
     }
     let settleToReport: SessionMeta | null = null
     // Status events also update the session row (drives the sidebar).
@@ -1174,10 +1200,20 @@ export class SessionRegistry {
       .finally(() => this.draining.delete(sessionId))
   }
 
-  private notifyMeta(session: SessionMeta): void {
+  /** Everything the tab strip needs that isn't in the stored row: what the
+   *  thread is doing, and how far through its task list it is. */
+  private decorate(session: SessionMeta): SessionMeta {
     const act = this.activities.get(session.id)
-    const s = { ...session, activity: act?.text ?? null, activityKind: act?.kind ?? null }
-    for (const l of this.metaListeners) l(s)
+    return {
+      ...session,
+      activity: act?.text ?? null,
+      activityKind: act?.kind ?? null,
+      tasks: this.tasksOf(session.id)
+    }
+  }
+
+  private notifyMeta(session: SessionMeta): void {
+    for (const l of this.metaListeners) l(this.decorate(session))
   }
 
   async disposeAll(): Promise<void> {
