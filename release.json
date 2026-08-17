@@ -1,5 +1,5 @@
 {
-  "n": 66,
-  "notes": "Subagent reports no longer land in the chat — they go straight to the model, with a slim divider marking the wake",
-  "ts": 1787003191000
+  "n": 67,
+  "notes": "Chats outside projects show the working spinner, current activity, and unread dot — just like project thread lines",
+  "ts": 1786999282000
 }
