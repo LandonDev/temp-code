@@ -47,6 +47,8 @@ export const CreateSessionParams = z.object({
   /** planning handoff: seed an implementation/orchestration thread from this plan file */
   planPath: z.string().optional(),
   permission: PermissionPolicySchema.optional(),
+  /** claude models with a 1M-capable window: start on the full window */
+  context1m: z.boolean().optional(),
   /** orchestration: per-run conduct overrides + custom instructions */
   threadRules: ThreadRulesSchema.optional()
 })
