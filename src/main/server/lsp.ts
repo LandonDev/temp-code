@@ -406,6 +406,17 @@ function stopServer(server: PoolServer): void {
   }
 }
 
+/** Kill every engine rooted in a project before its worktree goes away.
+ *  A survivor exits when its cwd vanishes and the silent crash-restart
+ *  respawns it from the deleted directory — the JVM dies at VM init
+ *  with a "Cannot start the IDE" alert. */
+export async function stopProjectLsp(projectId: string): Promise<void> {
+  for (const s of [...pool.values()]) {
+    if (s.projectId === projectId) stopServer(s)
+  }
+  await cancelWarm(projectId)
+}
+
 /** Least-recently-used server of a language beyond its cap stops first. */
 function evictForCap(lang: LspLang): void {
   const of = [...pool.values()].filter((s) => s.lang === lang)
@@ -610,6 +621,11 @@ function wireProcess(server: PoolServer): void {
     server.lastCrashAt = now
     server.initCache = undefined
     server.initPendingId = null
+    if (!existsSync(server.cwd)) {
+      // cwd deleted out from under it — a respawn would die at VM init.
+      pool.delete(`${server.projectId}:${server.lang}`)
+      return
+    }
     // One silent restart; clients reconnect on socket close and re-init.
     void (async () => {
       try {

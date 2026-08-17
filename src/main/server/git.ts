@@ -143,19 +143,24 @@ const surfacing = (err: unknown): Error => {
   return new Error((e.stderr || e.message || String(err)).trim())
 }
 
-/** Remove a project worktree from disk and git's registry. */
+/** Remove a project worktree from disk and git's registry. Each teardown
+ *  step treats "already gone" as done — a retry after a partial cleanup
+ *  must sail through the steps that succeeded the first time. */
 export async function removeWorktree(repoPath: string, dir: string): Promise<void> {
   try {
     await execFileP('git', ['-C', repoPath, 'worktree', 'remove', '--force', dir])
   } catch (err) {
+    const msg = String(err)
+    if (msg.includes('is not a working tree')) return // already removed
     // Folder already gone by hand — drop the stale registration instead.
-    if (!String(err).includes('No such file')) throw surfacing(err)
+    if (!msg.includes('No such file')) throw surfacing(err)
     await execFileP('git', ['-C', repoPath, 'worktree', 'prune']).catch(() => {})
   }
 }
 
 export async function deleteLocalBranch(repoPath: string, branch: string): Promise<void> {
   await execFileP('git', ['-C', repoPath, 'branch', '-D', branch]).catch((err) => {
+    if (String(err).includes('not found')) return
     throw surfacing(err)
   })
 }
@@ -164,6 +169,8 @@ export async function deleteRemoteBranch(repoPath: string, branch: string): Prom
   await execFileP('git', ['-C', repoPath, 'push', 'origin', '--delete', branch], {
     maxBuffer: 4 * 1024 * 1024
   }).catch((err) => {
+    // Never pushed (or already deleted) — the desired state holds.
+    if (String(err).includes('remote ref does not exist')) return
     throw surfacing(err)
   })
 }
