@@ -65,7 +65,11 @@ export const AgentEventSchema = z.discriminatedUnion('type', [
   z.object({
     type: z.literal('user-text'),
     text: z.string(),
-    attachments: z.array(AttachmentSchema).optional()
+    attachments: z.array(AttachmentSchema).optional(),
+    /** run settings at send time — the board's pass history renders them */
+    model: z.string().optional(),
+    reasoning: z.string().optional(),
+    context1m: z.boolean().optional()
   }),
 
   // Assistant output. delta=true → streaming chunk to append;
