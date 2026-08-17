@@ -281,7 +281,7 @@ const RowContent = memo(function RowContent({
       return <PassDivider actions={block.actions} />
     case 'error':
       if (block.cleared) return <></>
-      return <ErrorChip text={block.text} sessionId={sessionId} />
+      return <ErrorChip text={block.text} sessionId={sessionId} blockId={block.id} />
     default:
       return <></>
   }
