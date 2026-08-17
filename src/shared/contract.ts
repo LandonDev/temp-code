@@ -383,6 +383,11 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
   }),
   z.object({
     id: z.string(),
+    method: z.literal('session.setThreadRules'),
+    params: z.object({ sessionId: z.string(), threadRules: ThreadRulesSchema.nullable() })
+  }),
+  z.object({
+    id: z.string(),
     method: z.literal('session.archive'),
     params: z.object({ sessionId: z.string(), archived: z.boolean() })
   }),

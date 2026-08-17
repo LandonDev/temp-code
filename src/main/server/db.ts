@@ -191,6 +191,7 @@ export class Store {
         | 'threadType'
         | 'planPath'
         | 'agentType'
+        | 'threadRules'
       >
     >
   ): SessionMeta | null {
@@ -199,7 +200,7 @@ export class Store {
     const next = { ...cur, ...patch, updatedAt: Date.now() }
     this.db
       .prepare(
-        `UPDATE sessions SET status = ?, title = ?, native_id = ?, archived = ?, provider = ?, model = ?, reasoning = ?, permission = ?, fast = ?, context_1m = ?, busy_since = ?, thread_type = ?, plan_path = ?, agent_type = ?, updated_at = ? WHERE id = ?`
+        `UPDATE sessions SET status = ?, title = ?, native_id = ?, archived = ?, provider = ?, model = ?, reasoning = ?, permission = ?, fast = ?, context_1m = ?, busy_since = ?, thread_type = ?, plan_path = ?, agent_type = ?, thread_rules = ?, updated_at = ? WHERE id = ?`
       )
       .run(
         next.status,
@@ -216,6 +217,7 @@ export class Store {
         next.threadType,
         next.planPath,
         next.agentType,
+        next.threadRules ? JSON.stringify(next.threadRules) : null,
         next.updatedAt,
         id
       )

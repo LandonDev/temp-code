@@ -15,6 +15,7 @@ import {
   ContextMenuTrigger
 } from '../ui/context-menu'
 import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover'
+import { Dialog, DialogContent, DialogTitle } from '../ui/dialog'
 import { Input } from '../ui/input'
 import { Spinner } from '../ui/spinner'
 import { MatrixSpinner } from './WorkingStrip'
@@ -50,7 +51,8 @@ function TabIndicator({
   unread,
   since,
   now,
-  activity
+  activity,
+  activityKind
 }: {
   status: SessionStatus
   unread: boolean
@@ -59,22 +61,28 @@ function TabIndicator({
   now: number
   /** server-reported "where it's at" ("Editing PromptBar.tsx") */
   activity?: string | null
+  /** tints the spinner: pink investigating, green editing, gray thinking */
+  activityKind?: 'think' | 'investigate' | 'edit' | null
 }): React.JSX.Element | null {
   if (status === 'running' || status === 'starting') {
     const ms = now - since
+    // Fixed-width boxes for the time and the activity: the tab claims its
+    // working size ONCE at turn start and holds it — activity changes swap
+    // text in place instead of pumping the whole strip's layout.
     return (
       <span className="flex shrink-0 items-center gap-1.5">
-        <MatrixSpinner cell={1.8} />
-        {ms >= 3000 && (
-          <span className="text-[10.5px] tabular-nums text-muted-foreground/60">
-            {duration(ms)}
-          </span>
-        )}
-        {activity && (
-          <span className="max-w-32 truncate text-[10.5px] text-muted-foreground/80">
-            {activity}
-          </span>
-        )}
+        <MatrixSpinner cell={1.8} tint={activityKind} />
+        <span
+          className={cn(
+            'w-11 shrink-0 text-right text-[10.5px] tabular-nums text-muted-foreground/60',
+            ms < 3000 && 'opacity-0'
+          )}
+        >
+          {duration(ms)}
+        </span>
+        <span className="w-24 shrink-0 truncate text-left text-[10.5px] text-muted-foreground/80">
+          {activity ?? ''}
+        </span>
       </span>
     )
   }
@@ -113,6 +121,7 @@ export function ThreadStrip(): React.JSX.Element | null {
   const setActiveSurface = useApp((s) => s.setActiveSurface)
   const [renaming, setRenaming] = useState<string | null>(null)
   const [deleting, setDeleting] = useState<string | null>(null)
+  const [tuning, setTuning] = useState<string | null>(null)
   const deleteSession = useApp((s) => s.deleteSession)
   const reduce = useReducedMotion()
 
@@ -233,6 +242,7 @@ export function ThreadStrip(): React.JSX.Element | null {
                               since={t.busySince ?? t.updatedAt}
                               now={now}
                               activity={t.activity}
+                              activityKind={t.activityKind}
                             />
                           </TabsTrigger>
                         </div>
@@ -242,6 +252,12 @@ export function ThreadStrip(): React.JSX.Element | null {
                           <Pencil className="size-3.5 text-muted-foreground" />
                           Rename
                         </ContextMenuItem>
+                        {t.threadType === 'orchestration' && (
+                          <ContextMenuItem onClick={() => setTuning(t.id)}>
+                            <SlidersHorizontal className="size-3.5 text-muted-foreground" />
+                            Orchestration options…
+                          </ContextMenuItem>
+                        )}
                         <ContextMenuItem onClick={() => archive(t.id)}>
                           <Archive className="size-3.5 text-muted-foreground" />
                           Archive
@@ -263,6 +279,13 @@ export function ThreadStrip(): React.JSX.Element | null {
       <NewThreadButton projectId={projectId} empty={threads.length === 0} />
       <div className="flex-1" />
       <ArchivedShelf archived={archived} />
+      {tuning && (
+        <TuneDialog
+          key={tuning}
+          session={sessions[tuning]}
+          onClose={() => setTuning(null)}
+        />
+      )}
       <ConfirmDialog
         open={deleting !== null}
         title={`Delete ${clampTitle(deleting ? sessions[deleting]?.title : undefined) ?? 'thread'}?`}
@@ -522,5 +545,57 @@ function NewThreadButton({
         )}
       </PopoverContent>
     </Popover>
+  )
+}
+
+
+/** Right-click → Orchestration options: edit a live thread's per-run tune.
+ *  Saves apply on the next send (the harness reboots with the new prompt);
+ *  spawn caps read rules per call and tighten immediately. */
+function TuneDialog({
+  session,
+  onClose
+}: {
+  session: SessionMeta | undefined
+  onClose: () => void
+}): React.JSX.Element | null {
+  const setThreadRules = useApp((s) => s.setThreadRules)
+  const workspaceId = useApp((s) =>
+    session?.projectId
+      ? (s.projects.find((p) => p.id === session.projectId)?.workspaceId ?? null)
+      : (session?.workspaceId ?? null)
+  )
+  const [tune, setTune] = useState<ThreadRules>(session?.threadRules ?? {})
+  if (!session) return null
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="w-[360px] gap-0 p-4">
+        <DialogTitle className="text-[13.5px] font-medium">Orchestration options</DialogTitle>
+        <p className="mt-0.5 mb-3 truncate text-[11.5px] text-muted-foreground">
+          {session.title} — changes apply from the next message.
+        </p>
+        <OrchestrationTune workspaceId={workspaceId} value={tune} onChange={setTune} />
+        <div className="mt-4 flex justify-end gap-2">
+          <button
+            onClick={onClose}
+            className="flex h-7 items-center rounded-lg px-3 text-[12.5px] text-muted-foreground transition hover:bg-accent hover:text-foreground active:scale-[0.98]"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={() => {
+              void setThreadRules(
+                session.id,
+                tune.conduct || tune.instructions?.trim() ? tune : null
+              )
+              onClose()
+            }}
+            className="flex h-7 items-center rounded-lg bg-primary px-3 text-[12.5px] font-medium text-primary-foreground transition hover:opacity-90 active:scale-[0.98]"
+          >
+            Save
+          </button>
+        </div>
+      </DialogContent>
+    </Dialog>
   )
 }

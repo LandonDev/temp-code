@@ -96,14 +96,22 @@ export interface QueuedMessage extends QueuedSendOpts {
 /** Dispose idle harness handles after this long; resume restores them. */
 const IDLE_DISPOSE_MS = 10 * 60 * 1000
 
-/** What an event says the thread is doing, for the tab strip.
- *  string = new activity, null = turn settled (clear), undefined = no
+/** What an event says the thread is doing, for the tab strip — text plus
+ *  the kind that tints the spinner (investigate/edit/think).
+ *  value = new activity, null = turn settled (clear), undefined = no
  *  opinion (deltas, results, and other chatter never churn the tabs). */
-function activityOf(event: AgentEvent): string | null | undefined {
-  if (event.type === 'status') return event.status === 'running' ? 'Thinking' : null
+type Activity = { text: string; kind: NonNullable<SessionMeta['activityKind']> }
+
+function activityOf(event: AgentEvent): Activity | null | undefined {
+  if (event.type === 'status') {
+    return event.status === 'running' ? { text: 'Thinking', kind: 'think' } : null
+  }
   if (event.type === 'tool-call' && !event.partial && !event.parentCallId) {
     if (event.display?.app) {
-      return event.display.action ? `${event.display.action}` : `Using ${event.display.app}`
+      return {
+        text: event.display.action ? `${event.display.action}` : `Using ${event.display.app}`,
+        kind: 'investigate'
+      }
     }
     return describeTool(event.name, event.input)
   }
@@ -113,35 +121,38 @@ function activityOf(event: AgentEvent): string | null | undefined {
 const fileOf = (p: unknown): string | null =>
   typeof p === 'string' && p ? (p.split('/').pop() ?? null) : null
 
-function describeTool(name: string, input: unknown): string {
+function describeTool(name: string, input: unknown): Activity {
   const i = (input ?? {}) as Record<string, unknown>
   switch (name) {
     case 'Read':
-      return `Reading ${fileOf(i.file_path) ?? 'a file'}`
+      return { text: `Reading ${fileOf(i.file_path) ?? 'a file'}`, kind: 'investigate' }
     case 'Edit':
     case 'MultiEdit':
     case 'Write':
     case 'NotebookEdit':
-      return `Editing ${fileOf(i.file_path ?? i.notebook_path) ?? 'a file'}`
+      return {
+        text: `Editing ${fileOf(i.file_path ?? i.notebook_path) ?? 'a file'}`,
+        kind: 'edit'
+      }
     case 'Bash': {
       const cmd = typeof i.command === 'string' ? i.command.trim().split(/\s+/)[0] : ''
-      return cmd ? `Running ${fileOf(cmd) ?? cmd}` : 'Running a command'
+      return { text: cmd ? `Running ${fileOf(cmd) ?? cmd}` : 'Running a command', kind: 'edit' }
     }
     case 'Grep':
     case 'Glob':
-      return 'Searching'
+      return { text: 'Searching', kind: 'investigate' }
     case 'WebSearch':
     case 'WebFetch':
-      return 'Browsing'
+      return { text: 'Browsing', kind: 'investigate' }
     case 'Task':
-      return 'Delegating'
+      return { text: 'Delegating', kind: 'think' }
     case 'TodoWrite':
-      return 'Planning'
+      return { text: 'Planning', kind: 'think' }
     case 'AskUserQuestion':
-      return 'Asking you'
+      return { text: 'Asking you', kind: 'think' }
     default: {
       const mcp = /^mcp__([^_]+)__/.exec(name)
-      return `Using ${mcp ? mcp[1] : name}`
+      return { text: `Using ${mcp ? mcp[1] : name}`, kind: 'investigate' }
     }
   }
 }
@@ -168,7 +179,7 @@ export class SessionRegistry {
   /** "Where it's at" per working thread ("Editing PromptBar.tsx") —
    *  transient by design: server memory only, cleared when the turn
    *  settles, attached to every meta push for the tab strip. */
-  private activities = new Map<string, string>()
+  private activities = new Map<string, Activity>()
   private sweepTimer: ReturnType<typeof setInterval> | null = null
 
   constructor(private store: Store) {}
@@ -209,9 +220,10 @@ export class SessionRegistry {
   }
 
   list(): SessionMeta[] {
-    return this.store
-      .listSessions()
-      .map((s) => ({ ...s, activity: this.activities.get(s.id) ?? null }))
+    return this.store.listSessions().map((s) => {
+      const act = this.activities.get(s.id)
+      return { ...s, activity: act?.text ?? null, activityKind: act?.kind ?? null }
+    })
   }
 
   /** When the session last produced or received anything (drives
@@ -749,6 +761,24 @@ export class SessionRegistry {
     if (next) this.notifyMeta(next)
   }
 
+  /** Edit a live orchestration thread's per-run tune. The handle drops so
+   *  the next send boots with the new prompt/rules (resume keeps the
+   *  conversation); spawn caps read rules per call and apply at once. */
+  async setThreadRules(
+    sessionId: string,
+    threadRules: SessionMeta['threadRules'] | null
+  ): Promise<void> {
+    await this.dropHandle(sessionId)
+    const hasContent =
+      threadRules &&
+      ((threadRules.conduct && Object.keys(threadRules.conduct).length > 0) ||
+        threadRules.instructions?.trim())
+    const next = this.store.updateSession(sessionId, {
+      threadRules: hasContent ? threadRules : null
+    })
+    if (next) this.notifyMeta(next)
+  }
+
   /** Change the thread's type mid-conversation. Persists the new identity
    *  (plan file for planning, orchestrator agent for orchestration), drops
    *  the handle so the harness reboots with the right system prompt, and —
@@ -894,7 +924,7 @@ export class SessionRegistry {
     // Track "where it's at" for the tabs; a change on a non-status event
     // pushes its own meta update (status events notify below regardless).
     const act = activityOf(event)
-    if (act !== undefined && (act ?? undefined) !== this.activities.get(sessionId)) {
+    if (act !== undefined && act?.text !== this.activities.get(sessionId)?.text) {
       if (act === null) this.activities.delete(sessionId)
       else this.activities.set(sessionId, act)
       if (event.type !== 'status') {
@@ -1123,7 +1153,8 @@ export class SessionRegistry {
   }
 
   private notifyMeta(session: SessionMeta): void {
-    const s = { ...session, activity: this.activities.get(session.id) ?? null }
+    const act = this.activities.get(session.id)
+    const s = { ...session, activity: act?.text ?? null, activityKind: act?.kind ?? null }
     for (const l of this.metaListeners) l(s)
   }
 

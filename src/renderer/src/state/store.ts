@@ -263,6 +263,7 @@ interface AppState {
   setPermission: (sessionId: string, permission: PermissionPolicy) => Promise<void>
   setArchived: (sessionId: string, archived: boolean) => Promise<void>
   renameSession: (sessionId: string, title: string) => Promise<void>
+  setThreadRules: (sessionId: string, threadRules: SessionMeta['threadRules']) => Promise<void>
   /** Mark a thread's activity as seen (clears its unread dot). */
   markSeen: (sessionId: string) => void
   setMidTurnDefault: (v: 'queue' | 'steer') => void
@@ -887,6 +888,15 @@ export const useApp = create<AppState>((set, get) => ({
 
   answer: async (sessionId, requestId, answers) => {
     await client.request('session.answer', { sessionId, requestId, answers })
+  },
+
+  setThreadRules: async (sessionId, threadRules) => {
+    // Optimistic; the meta push echoes the authoritative row.
+    set((s) => {
+      const cur = s.sessions[sessionId]
+      return cur ? { sessions: { ...s.sessions, [sessionId]: { ...cur, threadRules } } } : {}
+    })
+    await client.request('session.setThreadRules', { sessionId, threadRules })
   },
 
   renameSession: async (sessionId, title) => {

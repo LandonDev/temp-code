@@ -41,8 +41,19 @@ const seedOf = (s: string): number => {
 }
 
 /** 750ms diagonal gradient wave over a 3×3 matrix of cells — the app's one
- *  busy motif. Also runs at 2px in tool chips while a call's input loads. */
-export function MatrixSpinner({ cell = 2.5 }: { cell?: number }): React.JSX.Element {
+ *  busy motif. Also runs at 2px in tool chips while a call's input loads.
+ *  `tint` recolors the cells by what the thread is doing (activityKind):
+ *  pink while investigating, green while editing, the busy gray while
+ *  thinking — the color transition is eased so kind changes glide. */
+export function MatrixSpinner({
+  cell = 2.5,
+  tint
+}: {
+  cell?: number
+  tint?: 'think' | 'investigate' | 'edit' | null
+}): React.JSX.Element {
+  const tintClass =
+    tint === 'investigate' ? 'bg-pink-400' : tint === 'edit' ? 'bg-success' : 'bg-busy'
   return (
     <span className="grid shrink-0 grid-cols-3" style={{ gap: cell * 0.6 }}>
       {Array.from({ length: 9 }, (_, n) => {
@@ -50,7 +61,7 @@ export function MatrixSpinner({ cell = 2.5 }: { cell?: number }): React.JSX.Elem
         return (
           <span
             key={n}
-            className="rounded-[0.5px] bg-busy"
+            className={cn('rounded-[0.5px] transition-colors duration-300', tintClass)}
             style={{
               width: cell,
               height: cell,
@@ -70,6 +81,7 @@ export const WorkingStrip = memo(function WorkingStrip({
   sessionId: string
 }): React.JSX.Element {
   const status = useApp((s) => s.sessions[sessionId]?.status)
+  const activityKind = useApp((s) => s.sessions[sessionId]?.activityKind)
   const running = status === 'running'
   const starting = status === 'starting'
   const active = running || starting
@@ -119,7 +131,7 @@ export const WorkingStrip = memo(function WorkingStrip({
           <span>Sending…</span>
         ) : (
           <>
-            <MatrixSpinner />
+            <MatrixSpinner tint={activityKind} />
             <span>{word}</span>
             <span className="tabular-nums text-faint">{duration(elapsed)}</span>
           </>

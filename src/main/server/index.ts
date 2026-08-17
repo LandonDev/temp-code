@@ -575,6 +575,10 @@ export async function startServer(dbPath: string): Promise<RunningServer> {
             await registry.rename(req.params.sessionId, req.params.title)
             sendFrame({ id: req.id, ok: true, result: null })
             break
+          case 'session.setThreadRules':
+            await registry.setThreadRules(req.params.sessionId, req.params.threadRules)
+            sendFrame({ id: req.id, ok: true, result: null })
+            break
           case 'session.archive':
             await registry.setArchived(req.params.sessionId, req.params.archived)
             sendFrame({ id: req.id, ok: true, result: null })
