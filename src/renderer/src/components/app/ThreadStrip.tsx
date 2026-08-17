@@ -52,7 +52,8 @@ function TabIndicator({
   since,
   now,
   activity,
-  activityKind
+  activityKind,
+  tasks
 }: {
   status: SessionStatus
   unread: boolean
@@ -63,42 +64,72 @@ function TabIndicator({
   activity?: string | null
   /** tints the spinner: pink investigating, green editing, gray thinking */
   activityKind?: 'think' | 'investigate' | 'edit' | null
+  /** implementation threads: this round's task tally */
+  tasks?: { done: number; total: number } | null
 }): React.JSX.Element | null {
-  if (status === 'running' || status === 'starting') {
-    const ms = now - since
-    // Compact and still: tinted spinner (the color names the work-kind),
-    // elapsed, and just the VERB of the activity — each in a fixed box
-    // claimed once at turn start, so nothing pumps the strip's layout.
-    // The full "Editing PromptBar.tsx" lives in the tooltip.
-    const verb = activity?.split(' ')[0] ?? ''
-    return (
-      <span className="flex shrink-0 items-center gap-1" title={activity ?? undefined}>
-        <MatrixSpinner cell={1.8} tint={activityKind} />
-        <span
-          className={cn(
-            'w-8 shrink-0 truncate text-right text-[10.5px] tabular-nums text-muted-foreground/60',
-            ms < 3000 && 'opacity-0'
+  // An implementation thread's tally says more than any status word, so it
+  // sits at the tab's edge in every state — done/total, never abbreviated.
+  const tally = tasks ? (
+    <span
+      className={cn(
+        'shrink-0 text-[10.5px] tabular-nums',
+        tasks.done === tasks.total ? 'text-success' : 'text-muted-foreground/80'
+      )}
+      title={`${tasks.done} of ${tasks.total} tasks done`}
+    >
+      {tasks.done}/{tasks.total}
+    </span>
+  ) : null
+
+  const body = ((): React.JSX.Element | null => {
+    if (status === 'running' || status === 'starting') {
+      const ms = now - since
+      // Compact and still: tinted spinner (the color names the work-kind),
+      // elapsed, and just the VERB of the activity. The elapsed time reads
+      // whole — a clipped "5m 2…" is worse than a tab a few pixels wider.
+      // The full "Editing PromptBar.tsx" lives in the tooltip; on a thread
+      // that carries a tally the verb steps aside for it, since the
+      // spinner's tint already names the kind of work.
+      const verb = activity?.split(' ')[0] ?? ''
+      return (
+        <span className="flex shrink-0 items-center gap-1" title={activity ?? undefined}>
+          <MatrixSpinner cell={1.8} tint={activityKind} />
+          <span
+            className={cn(
+              'shrink-0 text-right text-[10.5px] whitespace-nowrap tabular-nums text-muted-foreground/60',
+              ms < 3000 && 'opacity-0'
+            )}
+          >
+            {duration(ms)}
+          </span>
+          {!tally && (
+            <span className="w-12 shrink-0 truncate text-left text-[10.5px] text-muted-foreground/80">
+              {verb}
+            </span>
           )}
-        >
-          {duration(ms)}
         </span>
-        <span className="w-12 shrink-0 truncate text-left text-[10.5px] text-muted-foreground/80">
-          {verb}
+      )
+    }
+    if (status === 'waiting')
+      return (
+        <span className="flex shrink-0 items-center gap-1 text-[10.5px] font-medium text-warning">
+          <span className="size-1.5 animate-pulse rounded-full bg-warning" />
+          Needs you
         </span>
-      </span>
-    )
-  }
-  if (status === 'waiting')
-    return (
-      <span className="flex shrink-0 items-center gap-1 text-[10.5px] font-medium text-warning">
-        <span className="size-1.5 animate-pulse rounded-full bg-warning" />
-        Needs you
-      </span>
-    )
-  if (status === 'error')
-    return <span className="shrink-0 text-[10.5px] font-medium text-destructive">Failed</span>
-  if (unread) return <span className="size-1.5 shrink-0 rounded-full bg-info" />
-  return null
+      )
+    if (status === 'error')
+      return <span className="shrink-0 text-[10.5px] font-medium text-destructive">Failed</span>
+    if (unread) return <span className="size-1.5 shrink-0 rounded-full bg-info" />
+    return null
+  })()
+
+  if (!body && !tally) return null
+  return (
+    <span className="flex shrink-0 items-center gap-1.5">
+      {body}
+      {tally}
+    </span>
+  )
 }
 
 /**
@@ -128,17 +159,22 @@ export function ThreadStrip(): React.JSX.Element | null {
   const reduce = useReducedMotion()
 
   const threads = useMemo(() => threadsOfProject(sessions, projectId), [sessions, projectId])
-  // Live tabs (working, needs-you, failed, unread, and the open one) lead;
-  // dormant/read threads settle behind a divider, smaller and faded, so
-  // the strip's left edge is always "what matters now". Unread stays in
-  // the live group until it's been looked at.
+  // Live tabs (working, needs-you, failed, unread) lead; dormant/read
+  // threads settle on the shelf below, smaller and faded, so the strip's
+  // left edge is always "what matters now". Unread stays in the live
+  // group until it's been looked at. Being OPEN earns nothing — a
+  // selected dormant thread stays on the shelf, just highlighted there.
   const live = threads.filter(
-    (t) =>
-      t.id === selectedId ||
-      t.status !== 'idle' ||
-      (t.id !== selectedId && t.updatedAt > (lastSeen[t.id] ?? 0))
+    (t) => t.status !== 'idle' || t.updatedAt > (lastSeen[t.id] ?? 0)
   )
   const dorm = threads.filter((t) => !live.includes(t))
+  /** This round's tally for an implementation thread, once it has a list. */
+  const tasksOf = (t: SessionMeta): { done: number; total: number } | null => {
+    if (t.threadType !== 'implementation') return null
+    const list = allTodos[t.id]
+    if (!list?.length) return null
+    return { done: list.filter((x) => x.status === 'completed').length, total: list.length }
+  }
   const anyLive = threads.some((t) => t.status === 'running' || t.status === 'starting')
   const now = useNow(anyLive)
   const archived = useMemo(
@@ -259,6 +295,7 @@ export function ThreadStrip(): React.JSX.Element | null {
                               now={now}
                               activity={t.activity}
                               activityKind={t.activityKind}
+                              tasks={tasksOf(t)}
                             />
                           </TabsTrigger>
                         </div>
@@ -305,6 +342,7 @@ export function ThreadStrip(): React.JSX.Element | null {
           <AnimatePresence initial={false} mode="popLayout">
             {dorm.map((t) => {
               const Glyph = t.threadType ? THREAD_GLYPHS[t.threadType] : THREAD_GLYPHS.chat
+              const open = !activeSurface && t.id === selectedId
               return (
                 <motion.div
                   key={t.id}
@@ -340,9 +378,21 @@ export function ThreadStrip(): React.JSX.Element | null {
                       <button
                         onClick={() => onValue(t.id)}
                         onDoubleClick={() => setRenaming(t.id)}
-                        className="flex h-[20px] items-center gap-1 rounded-[5px] px-1.5 text-[11.5px] text-muted-foreground/70 opacity-70 transition hover:bg-accent/60 hover:text-foreground hover:opacity-100 active:scale-[0.98]"
+                        className={cn(
+                          'flex h-[20px] items-center gap-1 rounded-[5px] px-1.5 text-[11.5px] transition active:scale-[0.98]',
+                          open
+                            ? 'bg-accent text-foreground'
+                            : 'text-muted-foreground/70 opacity-70 hover:bg-accent/60 hover:text-foreground hover:opacity-100'
+                        )}
                       >
-                        <Glyph className="size-3 shrink-0 opacity-60 grayscale" />
+                        <Glyph
+                          className={cn(
+                            'size-3 shrink-0',
+                            open
+                              ? cn('opacity-80', THREAD_TINTS[t.threadType ?? 'chat'])
+                              : 'opacity-60 grayscale'
+                          )}
+                        />
                         <span className="max-w-36 truncate">{t.title}</span>
                       </button>
                     </ContextMenuTrigger>

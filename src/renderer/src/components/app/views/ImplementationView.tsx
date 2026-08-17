@@ -889,10 +889,11 @@ function RoundSection({
   )
 }
 
-/** The pass banner: a quiet tab tucked behind the composer's top edge
- *  (Codex queue-style) once a pass completes. Same width as the composer,
- *  attached to it — typing below keeps working in the CURRENT pass; the
- *  colored action starts the next one. */
+/** The pass banner: a quiet tab sitting on the composer's top edge
+ *  (Codex queue-style) once a pass completes. Inset from the pill's
+ *  rounded corners so nothing hides behind the translucent pill — the
+ *  whole tab is one button; typing below instead keeps working in the
+ *  CURRENT pass. */
 function PassBanner({
   passNum,
   color,
@@ -903,22 +904,19 @@ function PassBanner({
   onNext: () => void
 }): React.JSX.Element {
   return (
-    <div
-      className="-mb-3 flex items-center justify-between rounded-t-[14px] border border-b-0 pt-1 pr-2 pb-4 pl-3.5"
-      style={{ background: `${color}0f`, borderColor: `${color}26` }}
+    <button
+      onClick={onNext}
+      className="mx-4 flex w-[calc(100%-2rem)] items-center justify-between rounded-t-[10px] border border-b-0 py-1 pr-2.5 pl-3 transition-[filter] hover:brightness-140 active:brightness-115"
+      style={{ background: `${color}14`, borderColor: `${color}26` }}
     >
       <span className="flex items-center gap-2 text-[11.5px] text-muted-foreground">
         <span className="size-1.5 rounded-full" style={{ background: color }} />
         Pass {passNum} complete
       </span>
-      <button
-        onClick={onNext}
-        className="rounded-md px-2 py-0.5 text-[11.5px] font-medium transition-[filter] hover:brightness-125 active:scale-95"
-        style={{ color }}
-      >
+      <span className="text-[11.5px] font-medium" style={{ color }}>
         Start pass {passNum + 1}
-      </button>
-    </div>
+      </span>
+    </button>
   )
 }
 
