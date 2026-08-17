@@ -10,7 +10,7 @@ import {
   type McpSdkServerConfigWithInstance
 } from '@anthropic-ai/claude-agent-sdk'
 import { AGENT_TYPES, CATALOG, modelInfo, type ProviderId } from '@shared/catalog'
-import { DEFAULT_RULES, ruleModel, type OrchestrationRules } from '@shared/rules'
+import { DEFAULT_RULES, mergeThreadRules, ruleModel, type OrchestrationRules } from '@shared/rules'
 import type { EventRow, SessionMeta } from '@shared/events'
 import type { SessionRegistry } from './sessions'
 
@@ -804,7 +804,11 @@ user-facing work, low effort for trivial tasks.`
  *  plus the user's structured rules (workspace override or global). */
 export function orchestratorPrompt(session: SessionMeta): string {
   const rules = rulesFor(session)
-  return `${ORCHESTRATOR_MECHANICS}\n\n${renderRules(rules)}`
+  const custom = session.threadRules?.instructions?.trim()
+  const extra = custom
+    ? `\n\n## This run's instructions (user-defined, binding)\n\n${custom}`
+    : ''
+  return `${ORCHESTRATOR_MECHANICS}\n\n${renderRules(rules)}${extra}`
 }
 
 /** Mechanics for claude implementation threads: the same spawn toolset
@@ -818,14 +822,15 @@ Spawn subagents when it genuinely helps — parallel mechanical work, an
 independent review, a second opinion — and supervise what you spawn.`
 }
 
-/** The rules governing a session: its workspace's override, else global. */
+/** The rules governing a session: workspace override → global → defaults,
+ *  with the thread's own per-run conduct tune laid on top. */
 export function rulesFor(session: SessionMeta): OrchestrationRules {
   const workspaceId = session.projectId
     ? (registry?.getProject(session.projectId)?.workspaceId ?? null)
     : null
-  return (
+  const base =
     (workspaceId ? registry?.getOrchestrationRules(workspaceId) : null) ??
     registry?.getOrchestrationRules(null) ??
     DEFAULT_RULES
-  )
+  return mergeThreadRules(base, session.threadRules)
 }
