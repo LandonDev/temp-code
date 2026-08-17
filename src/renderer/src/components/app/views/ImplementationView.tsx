@@ -223,7 +223,18 @@ export function ImplementationView({ session }: { session: SessionMeta }): React
   // Once ANY round produced tasks the thread stays a board — a follow-up
   // that needed no task list must not collapse the whole split view.
   const hasBoard = todos.length > 0 || pastTodosAll.some((t) => t.length > 0) || agents.length > 0
-  const [chatOpen, setChatOpen] = useState(true)
+  // Returning to a finished thread lands on the board alone — the work is
+  // done and "implemented", so the chat starts folded. Same condition the
+  // finish-time adjust below uses, applied at mount; `loaded` covers first
+  // loads that mount before the event backlog hydrates.
+  const settled = !running && !waiting && allDone && !stopped
+  const loaded = useApp((s) => !!s.loaded[session.id])
+  const [chatOpen, setChatOpen] = useState(!(loaded && settled))
+  const [sawLoaded, setSawLoaded] = useState(loaded)
+  if (loaded !== sawLoaded) {
+    setSawLoaded(loaded)
+    if (loaded && settled) setChatOpen(false)
+  }
   const [sawWaiting, setSawWaiting] = useState(waiting)
   if (waiting !== sawWaiting) {
     setSawWaiting(waiting)
