@@ -1,5 +1,5 @@
 {
-  "n": 48,
-  "notes": "The tab strip separates now from later: live and unread tabs lead at full strength; dormant ones sit behind a divider, smaller and faded.",
-  "ts": 1786945029421
+  "n": 49,
+  "notes": "Sidebar, rebuilt: repo logos, tab counts and live states on every project, drag to resize or collapse (⌘B)",
+  "ts": 1786945280953
 }
