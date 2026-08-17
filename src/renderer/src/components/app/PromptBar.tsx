@@ -62,7 +62,7 @@ interface PendingImage {
 }
 
 /** Unsent prompts by thread — navigating away and back keeps the draft.
- *  In-memory on purpose: it mirrors live composer state, object URLs and
+ *  In-memory on purpose: it mirrors live composer state, previews and
  *  all, and a fresh app start naturally starts clean. */
 const drafts = new Map<
   string,
@@ -106,8 +106,7 @@ function AppshotChip({ a, onRemove }: { a: Attachment; onRemove: () => void }): 
   )
 }
 
-const toBase64 = async (file: File): Promise<string> => {
-  const buf = await file.arrayBuffer()
+const toBase64 = (buf: ArrayBuffer): string => {
   let bin = ''
   const bytes = new Uint8Array(buf)
   for (let i = 0; i < bytes.length; i += 0x8000) {
@@ -297,8 +296,11 @@ export function PromptBar({
 
   const attachImage = useCallback(
     async (file: File): Promise<void> => {
-      const attachment = await saveAttachment(file.name || 'image.png', await toBase64(file))
-      const previewUrl = URL.createObjectURL(file)
+      // Preview via a data URL: the CSP allows data: but not blob:, so an
+      // object URL here renders as a broken image.
+      const b64 = toBase64(await file.arrayBuffer())
+      const attachment = await saveAttachment(file.name || 'image.png', b64)
+      const previewUrl = `data:${file.type || 'image/png'};base64,${b64}`
       setImages((prev) => [...prev, { attachment, previewUrl }])
     },
     [saveAttachment]
@@ -446,7 +448,6 @@ export function PromptBar({
     const attachments = [...images.map((i) => i.attachment), ...appshots, ...fileRefs]
     setText('')
     areaRef.current?.clear()
-    for (const i of images) URL.revokeObjectURL(i.previewUrl)
     setImages([])
     setFileRefs([])
     clearPendingAppshots(selectedId)
@@ -467,11 +468,7 @@ export function PromptBar({
   }
 
   const removeImage = (path: string): void => {
-    setImages((prev) => {
-      const gone = prev.find((i) => i.attachment.path === path)
-      if (gone) URL.revokeObjectURL(gone.previewUrl)
-      return prev.filter((i) => i.attachment.path !== path)
-    })
+    setImages((prev) => prev.filter((i) => i.attachment.path !== path))
   }
 
   return (
