@@ -155,9 +155,17 @@ export function emptyFold(): FoldState {
 
 /** A user message arriving on a CLOSED turn starts a new round: the old
  *  board's todos archive, the active-task pointer resets (so the idle gap
- *  and the new turn's early work never bill to the last old task). */
-function beginTurn(s: FoldState): void {
-  if (!s.turnOpen && s.sawUser) {
+ *  and the new turn's early work never bill to the last old task). A turn
+ *  that died without its end events (app crash, kill) must not swallow the
+ *  next request — long silence since the last block reads as a dead turn,
+ *  not an open one. */
+const STALE_TURN_MS = 10 * 60_000
+
+function beginTurn(s: FoldState, ts?: number): void {
+  const lastTs = s.blocks.findLast((b) => b.ts !== undefined)?.ts
+  const stale =
+    s.turnOpen && lastTs !== undefined && ts !== undefined && ts - lastTs > STALE_TURN_MS
+  if ((!s.turnOpen || stale) && s.sawUser) {
     s.pastTodos = [...s.pastTodos, s.todos]
     s.todos = []
     s.activeTodo = -1
@@ -171,7 +179,7 @@ function beginTurn(s: FoldState): void {
  *  the authoritative user-text event a round-trip later; foldEvent then
  *  claims this block instead of appending a duplicate. */
 export function foldOptimisticUser(s: FoldState, text: string, attachments?: Attachment[]): void {
-  beginTurn(s)
+  beginTurn(s, Date.now())
   s.pendingUsers.push(push(s, { kind: 'user', text, attachments, pending: true }, Date.now()))
 }
 
@@ -268,11 +276,16 @@ export function foldEvent(s: FoldState, e: AgentEvent, ts?: number): void {
           ts: ts ?? b.ts
         }
       } else {
-        beginTurn(s)
+        beginTurn(s, ts)
         push(s, { kind: 'user', text: e.text, attachments: e.attachments }, ts)
       }
       break
     }
+    case 'status':
+      // Logged end-of-turn signals close the turn even when the
+      // turn-complete event itself was lost (crash between the two).
+      if (e.status === 'idle' || e.status === 'error') s.turnOpen = false
+      break
     case 'assistant-text':
       foldText(s, 'assistant', e, ts)
       break

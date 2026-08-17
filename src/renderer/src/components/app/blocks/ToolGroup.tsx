@@ -801,13 +801,22 @@ function useDiffHighlight(rows: DiffRow[], path?: string, settled?: boolean): (s
   return html
 }
 
+/** Past this many rows, a dense diff caps its height and scrolls inside. */
+const DENSE_VIEWPORT_ROWS = 28
+
 /** Unified diff — line numbers in the gutter, dim context, emerald adds,
- *  red deletes, capped at 600 lines. Click a numbered line to edit there. */
-function DiffBlock({
+ *  red deletes, capped at 600 lines. Click a numbered line to edit there.
+ *  `dense` (the implementation board): tighter type, lines render whole on
+ *  one row each (horizontal scroll instead of wrapping), and a large diff
+ *  caps at ~half the viewport and scrolls inside — pinned to the bottom
+ *  while it streams or reveals, free once settled. Exported for the
+ *  board's shell-edit cards (M23 disk truth). */
+export function DiffBlock({
   rows,
   path,
   settled,
   visible,
+  dense,
   onEditAt
 }: {
   rows: DiffRow[]
@@ -816,60 +825,94 @@ function DiffBlock({
   settled?: boolean
   /** reveal pass (M23): only the first N rows render — the diff streams in */
   visible?: number
+  dense?: boolean
   onEditAt?: (line: number) => void
 }): React.JSX.Element {
   const shown = rows.slice(0, Math.min(DIFF_LINE_CAP, visible ?? Infinity))
   const html = useDiffHighlight(rows, path, settled)
+  const capped = dense && rows.length > DENSE_VIEWPORT_ROWS
+  const scroller = useRef<HTMLDivElement>(null)
+  useLayoutEffect(() => {
+    const el = scroller.current
+    if (!el || !capped) return
+    // Streaming/revealing: the newest rows are the story — follow them.
+    if (!settled || visible !== undefined) el.scrollTop = el.scrollHeight
+  }, [capped, settled, visible, rows.length])
   return (
-    <div className="py-1.5 font-mono text-[11.5px] leading-[18px]">
-      {shown.map((r, n) =>
-        r.type === 'gap' ? (
-          <div key={n} className="px-3 py-0.5 text-[10px] text-faint select-none">
-            ⋯
-          </div>
-        ) : (
-          <div
-            key={n}
-            onClick={onEditAt && r.newNo !== undefined ? () => onEditAt(r.newNo!) : undefined}
-            title={onEditAt && r.newNo !== undefined ? 'Edit here' : undefined}
-            className={cn(
-              'flex',
-              r.type === 'add' && 'bg-success/10',
-              r.type === 'del' && 'bg-destructive/10',
-              r.type === 'add' && !html[n] && 'text-success',
-              r.type === 'del' && !html[n] && 'text-destructive',
-              r.type === 'ctx' && 'text-muted-foreground/70',
-              onEditAt && r.newNo !== undefined && 'cursor-pointer hover:brightness-125'
-            )}
-          >
-            <span className="w-10 shrink-0 pr-2 text-right text-[10px] leading-[18px] text-faint tabular-nums select-none">
-              {r.type === 'del' ? (r.oldNo ?? '') : (r.newNo ?? '')}
-            </span>
-            <span
+    <div
+      ref={scroller}
+      className={cn(
+        'font-mono',
+        dense ? 'py-1 text-[11px] leading-[16px]' : 'py-1.5 text-[11.5px] leading-[18px]',
+        capped && 'max-h-[min(48vh,540px)] overflow-auto overscroll-contain'
+      )}
+    >
+      <div className={cn(dense && 'min-w-max')}>
+        {shown.map((r, n) =>
+          r.type === 'gap' ? (
+            <div key={n} className="px-3 py-0.5 text-[10px] text-faint select-none">
+              ⋯
+            </div>
+          ) : (
+            <div
+              key={n}
+              onClick={onEditAt && r.newNo !== undefined ? () => onEditAt(r.newNo!) : undefined}
+              title={onEditAt && r.newNo !== undefined ? 'Edit here' : undefined}
               className={cn(
-                'w-4 shrink-0 select-none',
-                r.type === 'add' && 'text-success',
-                r.type === 'del' && 'text-destructive'
+                'flex',
+                r.type === 'add' && 'bg-success/10',
+                r.type === 'del' && 'bg-destructive/10',
+                r.type === 'add' && !html[n] && 'text-success',
+                r.type === 'del' && !html[n] && 'text-destructive',
+                r.type === 'ctx' && 'text-muted-foreground/70',
+                onEditAt && r.newNo !== undefined && 'cursor-pointer hover:brightness-125'
               )}
             >
-              {r.type === 'add' ? '+' : r.type === 'del' ? '−' : ''}
-            </span>
-            {html[n] ? (
               <span
-                className="min-w-0 flex-1 pr-3 whitespace-pre-wrap [overflow-wrap:anywhere]"
-                dangerouslySetInnerHTML={{ __html: html[n]! }}
-              />
-            ) : (
-              <span className="min-w-0 flex-1 pr-3 whitespace-pre-wrap [overflow-wrap:anywhere]">
-                {r.text || ' '}
+                className={cn(
+                  'shrink-0 pr-2 text-right text-[10px] text-faint tabular-nums select-none',
+                  dense ? 'w-9 leading-[16px]' : 'w-10 leading-[18px]'
+                )}
+              >
+                {r.type === 'del' ? (r.oldNo ?? '') : (r.newNo ?? '')}
               </span>
-            )}
-          </div>
-        )
-      )}
-      {rows.length > DIFF_LINE_CAP && visible === undefined && (
-        <div className="px-3 text-[10.5px] text-faint">… diff truncated</div>
-      )}
+              <span
+                className={cn(
+                  'shrink-0 select-none',
+                  dense ? 'w-3.5' : 'w-4',
+                  r.type === 'add' && 'text-success',
+                  r.type === 'del' && 'text-destructive'
+                )}
+              >
+                {r.type === 'add' ? '+' : r.type === 'del' ? '−' : ''}
+              </span>
+              {html[n] ? (
+                <span
+                  className={cn(
+                    dense
+                      ? 'pr-4 whitespace-pre'
+                      : 'min-w-0 flex-1 pr-3 whitespace-pre-wrap [overflow-wrap:anywhere]'
+                  )}
+                  dangerouslySetInnerHTML={{ __html: html[n]! }}
+                />
+              ) : (
+                <span
+                  className={cn(
+                    dense
+                      ? 'pr-4 whitespace-pre'
+                      : 'min-w-0 flex-1 pr-3 whitespace-pre-wrap [overflow-wrap:anywhere]'
+                  )}
+                >
+                  {r.text || ' '}
+                </span>
+              )}
+            </div>
+          )
+        )}
+        {rows.length > DIFF_LINE_CAP && visible === undefined && (
+          <div className="px-3 text-[10.5px] text-faint">… diff truncated</div>
+        )}
+      </div>
     </div>
   )
 }
@@ -1482,6 +1525,7 @@ export const ZEditCard = memo(function ZEditCard({
   b,
   defaultOpen = false,
   pinnedOpen = false,
+  dense = false,
   sessionId
 }: {
   b: ToolBlock
@@ -1489,6 +1533,8 @@ export const ZEditCard = memo(function ZEditCard({
   /** diff stays open regardless of persisted/auto state (the board's
    *  morphed-open card — closing it is the surrounding morph, not a fold) */
   pinnedOpen?: boolean
+  /** board mode: tighter diff type, unwrapped lines, big diffs cap+scroll */
+  dense?: boolean
   /** enables the live disk-diff overlay + auto open/collapse (M23) */
   sessionId?: string
 }): React.JSX.Element {
@@ -1727,7 +1773,7 @@ export const ZEditCard = memo(function ZEditCard({
             </>
           ) : running && liveParsed ? (
             // In flight: the disk truth streams — rows grow with each write.
-            <DiffBlock rows={liveParsed.rows} />
+            <DiffBlock rows={liveParsed.rows} dense={dense} />
           ) : m.hunks.length > 0 ? (
             <>
               {project && rel && (
@@ -1744,6 +1790,7 @@ export const ZEditCard = memo(function ZEditCard({
                 path={m.path}
                 settled={!running}
                 visible={revealed ?? undefined}
+                dense={dense}
                 onEditAt={project && rel ? (line) => editHere(line) : undefined}
               />
             </>

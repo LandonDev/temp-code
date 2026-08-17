@@ -296,6 +296,27 @@ export const ComposerInput = forwardRef<
     a.style.height = `${target}px`
   }, [heightKey])
 
+  // The pane this sits in can animate open from zero width (the board's
+  // conversation fold) — a height measured mid-animation wraps the content
+  // absurdly and then sticks. Re-measure whenever the box's WIDTH changes;
+  // height-only resizes (our own morph) bail out, so no feedback loop.
+  const lastWidth = useRef(0)
+  useLayoutEffect(() => {
+    const a = rootRef.current
+    if (!a) return
+    const ro = new ResizeObserver(() => {
+      const w = a.clientWidth
+      if (w === lastWidth.current) return
+      lastWidth.current = w
+      if (w === 0) return
+      a.style.transition = 'none'
+      a.style.height = 'auto'
+      a.style.height = `${Math.min(260, a.scrollHeight)}px`
+    })
+    ro.observe(a)
+    return () => ro.disconnect()
+  }, [])
+
   // selectionchange is document-level — needed for caret-only moves.
   useEffect(() => {
     const onSel = (): void => {
