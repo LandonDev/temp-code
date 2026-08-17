@@ -156,6 +156,7 @@ export const cursorDriver: HarnessDriver = {
             }
             const usage = msg.usage as { inputTokens?: number; outputTokens?: number } | undefined
             contextTokens = (usage?.inputTokens ?? 0) + (usage?.outputTokens ?? 0)
+            if (contextTokens > 0) emit({ type: 'context', tokens: contextTokens })
             emit({
               type: 'turn-complete',
               inputTokens: usage?.inputTokens,

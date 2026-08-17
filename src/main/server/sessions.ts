@@ -235,6 +235,10 @@ export class SessionRegistry {
   /** Active goal per thread, folded from harness-confirmed goal events —
    *  same lazy-seed-then-warm pattern as todoFolds. */
   private goalFolds = new Map<string, GoalState>()
+  /** Live context footprint per thread, straight off each harness stream —
+   *  transient like activities; rides every meta push so all rings stay
+   *  current without any thread being subscribed. */
+  private liveContexts = new Map<string, { tokens: number; window: number | null }>()
   /** create()-with-goal: applied on the kickoff send, ahead of the
    *  message, so the goal precedes the work on both providers. */
   private pendingGoals = new Map<string, string>()
@@ -675,6 +679,8 @@ export class SessionRegistry {
       // harness starts a fresh native session seeded with the transcript.
       handoff = transcriptHandoff(this.store.eventsAfter(sessionId, 0))
       await this.dropHandle(sessionId)
+      // The old engine's accounting means nothing to the new one.
+      this.liveContexts.delete(sessionId)
       const next = this.store.updateSession(sessionId, {
         provider,
         model: routed.model ?? CATALOG[provider].defaultModel,
@@ -1053,6 +1059,7 @@ export class SessionRegistry {
       this.todoFolds.delete(id)
       this.goalFolds.delete(id)
       this.pendingGoals.delete(id)
+      this.liveContexts.delete(id)
       const meta = all.find((s) => s.id === id)
       if (meta) removeMirror(this, meta) // mirrors die with the thread
     }
@@ -1161,6 +1168,17 @@ export class SessionRegistry {
     if (event.type === 'tool-call' && event.partial) {
       const row: EventRow = { sessionId, seq: -1, ts: Date.now(), event, ephemeral: true }
       for (const listener of this.subscribers.get(sessionId) ?? []) listener(row)
+      return
+    }
+    // Live context accounting is meta, not transcript: fold it onto the
+    // session row and push, never into the log.
+    if (event.type === 'context') {
+      const prev = this.liveContexts.get(sessionId)
+      const window = event.window ?? prev?.window ?? null
+      if (prev?.tokens === event.tokens && prev?.window === window) return
+      this.liveContexts.set(sessionId, { tokens: event.tokens, window })
+      const meta = this.store.getSession(sessionId)
+      if (meta) this.notifyMeta(meta)
       return
     }
     const row = this.store.appendEvent(sessionId, event)
@@ -1494,7 +1512,8 @@ export class SessionRegistry {
       activity: act?.text ?? null,
       activityKind: act?.kind ?? null,
       tasks: this.tasksOf(session.id),
-      goal: this.goalOf(session.id)
+      goal: this.goalOf(session.id),
+      context: this.liveContexts.get(session.id) ?? null
     }
   }
 

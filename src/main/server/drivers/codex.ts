@@ -440,8 +440,18 @@ export const codexDriver: HarnessDriver = {
           if (tu?.total)
             lastUsage = { inputTokens: tu.total.inputTokens, outputTokens: tu.total.outputTokens }
           // The last turn's total ≈ what the context currently holds.
-          if (tu?.last?.totalTokens !== undefined) contextTokens = tu.last.totalTokens
-          if (tu?.modelContextWindow) contextWindow = tu.modelContextWindow
+          if (tu?.last?.totalTokens !== undefined && tu.last.totalTokens !== contextTokens) {
+            contextTokens = tu.last.totalTokens
+            if (tu?.modelContextWindow) contextWindow = tu.modelContextWindow
+            // Live meter: forwarded as it moves so every thread's ring is
+            // current mid-turn, not just after a settle.
+            if (contextTokens > 0)
+              emit({
+                type: 'context',
+                tokens: contextTokens,
+                ...(contextWindow ? { window: contextWindow } : {})
+              })
+          } else if (tu?.modelContextWindow) contextWindow = tu.modelContextWindow
           // Cumulative snapshots for per-task token deltas (M25) —
           // throttled so the log doesn't grow with every chunk.
           if (tu?.total && Date.now() - lastUsageEmit > 5_000) {

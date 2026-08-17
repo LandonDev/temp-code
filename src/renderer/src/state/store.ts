@@ -127,6 +127,9 @@ let initStarted = false
  *  pre-compact total until the next real turn. Fetches that still look
  *  pre-compact are dropped in favor of the boundary's numbers. */
 const pendingCompact = new Map<string, { pre: number; post: number }>()
+/** Last live context footprint applied per session — dedupes the copy that
+ *  rides on every meta push, so a repeat never re-stales a fresh fetch. */
+const lastLiveCtx = new Map<string, number>()
 
 interface AppState {
   connected: boolean
@@ -495,10 +498,53 @@ export const useApp = create<AppState>((set, get) => ({
         // accounting means nothing there, so the meter empties until the
         // first reply. Model swaps within a provider keep the window.
         if (prev && prev.provider !== push.session.provider) {
+          lastLiveCtx.delete(push.session.id)
           set((s) => {
             const rest = { ...s.contexts }
             delete rest[push.session.id]
             return { contexts: rest }
+          })
+        }
+        // Live footprint riding on the meta push: the ring moves with the
+        // stream, and a moved count marks any fetched breakdown outdated —
+        // it hides until the next idle-time fetch, never showing stale rows.
+        const live = push.session.context
+        if (live && live.tokens !== lastLiveCtx.get(push.session.id)) {
+          lastLiveCtx.set(push.session.id, live.tokens)
+          set((s) => {
+            const id = push.session.id
+            const cur = s.contexts[id] as
+              | { totalTokens: number; maxTokens: number; percentage: number }
+              | null
+              | undefined
+            const maxTokens = live.window ?? cur?.maxTokens ?? 0
+            if (cur?.totalTokens === live.tokens && cur.maxTokens === maxTokens) return {}
+            const base = cur ?? { categories: [] }
+            return {
+              contexts: {
+                ...s.contexts,
+                [id]: {
+                  ...base,
+                  totalTokens: live.tokens,
+                  maxTokens,
+                  percentage: maxTokens > 0 ? (live.tokens / maxTokens) * 100 : 0,
+                  stale: true
+                }
+              }
+            }
+          })
+        }
+        // A turn beginning makes any fetched breakdown historical — hide it
+        // (the ring keeps its number) until the settle refetches.
+        const nowRunning =
+          push.session.status === 'running' || push.session.status === 'starting'
+        if (nowRunning && prev && !(prev.status === 'running' || prev.status === 'starting')) {
+          set((s) => {
+            const cur = s.contexts[push.session.id] as { stale?: boolean } | null | undefined
+            if (!cur || cur.stale) return {}
+            return {
+              contexts: { ...s.contexts, [push.session.id]: { ...cur, stale: true } }
+            }
           })
         }
         // A settled turn is when the context accounting moved — capture it
@@ -877,6 +923,11 @@ export const useApp = create<AppState>((set, get) => ({
       set({ lastThread })
     }
     get().markSeen(sessionId)
+    // A settled thread's breakdown may predate this renderer (or a missed
+    // idle fetch) — refresh on arrival; the server answers null mid-turn.
+    if (meta && meta.status !== 'running' && meta.status !== 'starting') {
+      void get().fetchContext(sessionId)
+    }
     await get().loadSession(sessionId)
   },
 
