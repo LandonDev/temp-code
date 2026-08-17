@@ -11,6 +11,7 @@ import { SurfaceStrip } from './components/app/SurfaceStrip'
 import { RightRail } from './components/app/RightRail'
 import { QuickOpen } from './components/app/QuickOpen'
 import { AppshotFlyIn } from './components/app/AppshotFlyIn'
+import { Lightbox } from './components/app/Lightbox'
 import { ChatView } from './components/app/views/ChatView'
 import { PlanView } from './components/app/views/PlanView'
 import { ImplementationView } from './components/app/views/ImplementationView'
@@ -145,6 +146,7 @@ export default function App(): React.JSX.Element {
       <RightRail />
       <QuickOpen />
       <AppshotFlyIn />
+      <Lightbox />
     </div>
   )
 }

@@ -2,34 +2,23 @@ import { memo, useEffect, useState } from 'react'
 import { FileText, MessageSquare } from 'lucide-react'
 import type { Attachment } from '@shared/events'
 import { cn } from '../../../lib/utils'
-import { client } from '../../../lib/client'
 import { useApp } from '../../../state/store'
 import { ZIcon } from '../zicon'
 import { duration } from '../bits'
 import { AddonMark } from '../AddonMark'
+import { imageDataFor, openLightbox } from '../Lightbox'
 import { addonTitle } from '../../../lib/addon-names'
 import type { Block } from '../../../state/blocks'
 
 type UserBlock = Extract<Block, { kind: 'user' }>
 
-/** Thumbnail data URLs, fetched once per path for the app's lifetime. */
-const thumbCache = new Map<string, Promise<string>>()
-function thumbFor(path: string): Promise<string> {
-  let p = thumbCache.get(path)
-  if (!p) {
-    p = client.request<string>('attachment.read', { path })
-    thumbCache.set(path, p)
-  }
-  return p
-}
-
 /** Attachment thumbs ride above the bubble, right-aligned — 112×80.
  *  Appshots (window captures) carry an app-name caption under the thumb. */
-function ImageThumb({ a }: { a: Attachment }): React.JSX.Element {
+function ImageThumb({ a, onOpen }: { a: Attachment; onOpen: () => void }): React.JSX.Element {
   const [src, setSrc] = useState<string | null>(null)
   useEffect(() => {
     let alive = true
-    void thumbFor(a.path)
+    void imageDataFor(a.path)
       .then((url) => alive && setSrc(url))
       .catch(() => {})
     return () => {
@@ -38,9 +27,13 @@ function ImageThumb({ a }: { a: Attachment }): React.JSX.Element {
   }, [a.path])
   return (
     <div className="w-28 shrink-0" title={a.name}>
-      <div className="h-20 w-28 overflow-hidden rounded-[10px] border border-border bg-secondary">
+      <button
+        onClick={onOpen}
+        aria-label={`Preview ${a.name}`}
+        className="block h-20 w-28 cursor-zoom-in overflow-hidden rounded-[10px] border border-border bg-secondary"
+      >
         {src && <img src={src} alt={a.name} className="h-full w-full object-cover" />}
-      </div>
+      </button>
       {a.kind === 'appshot' && (
         <p className="mt-0.5 truncate text-[10.5px] leading-tight text-muted-foreground">
           {a.name}
@@ -192,8 +185,12 @@ export const UserMessage = memo(function UserMessage({
     >
       {images.length > 0 && (
         <div className="mb-2 flex flex-wrap justify-end gap-1.5">
-          {images.map((a) => (
-            <ImageThumb key={a.path} a={a} />
+          {images.map((a, n) => (
+            <ImageThumb
+              key={a.path}
+              a={a}
+              onOpen={() => openLightbox(images.map((i) => ({ path: i.path, name: i.name })), n)}
+            />
           ))}
         </div>
       )}
