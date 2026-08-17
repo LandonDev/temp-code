@@ -180,19 +180,49 @@ func axChildren(_ el: AXUIElement) -> [AXUIElement] {
 
 let textCapBytes = 200_000
 let nodeCap = 30_000
+let indentCap = 4
+
+/// Tags for elements whose text is uninterpretable without its role — a
+/// bare "2353" reads as nothing until it says it was a button or a menu
+/// item. Plain static text stays untagged.
+let roleTags: [String: String] = [
+  "AXButton": "button",
+  "AXPopUpButton": "menu button",
+  "AXMenuButton": "menu button",
+  "AXMenuItem": "menu item",
+  "AXMenuBarItem": "menu",
+  "AXLink": "link",
+  "AXTextField": "input",
+  "AXTextArea": "input",
+  "AXComboBox": "input",
+  "AXSearchField": "input",
+  "AXCheckBox": "checkbox",
+  "AXRadioButton": "option",
+  "AXTab": "tab",
+  "AXHeading": "heading",
+  "AXSlider": "slider",
+  "AXDisclosureTriangle": "disclosure",
+  "AXToolbar": "toolbar",
+]
 
 /// Depth-first walk collecting every visible string the tree exposes,
-/// in tree order (≈ reading order), deduped, capped at ~200 KB.
+/// in tree order (≈ reading order), deduped, capped at ~200 KB. Lines are
+/// indented by containment (one level per text-bearing ancestor) and
+/// interactive elements carry a [role] tag, so the flat dump keeps some
+/// of the tree's shape.
 func collectText(root: AXUIElement) -> String {
   var lines: [String] = []
   var seen = Set<String>()
   var bytes = 0
   var visited = 0
-  var stack: [(AXUIElement, String)] = [(root, "")]
-  while bytes < textCapBytes, visited < nodeCap, let (el, context) = stack.popLast() {
+  var stack: [(AXUIElement, String, Int)] = [(root, "", 0)]
+  while bytes < textCapBytes, visited < nodeCap, let (el, context, depth) = stack.popLast() {
     visited += 1
     var own: [String] = []
-    if axString(el, kAXRoleAttribute) != "AXSecureTextField" {
+    let role = axString(el, kAXRoleAttribute)
+    if role != "AXSecureTextField" {
+      let tag = role.flatMap { roleTags[$0] }.map { "[\($0)] " } ?? ""
+      let indent = String(repeating: "  ", count: min(depth, indentCap))
       for attr in [kAXValueAttribute, kAXTitleAttribute, kAXDescriptionAttribute] {
         guard let s = axString(el, attr as String)?.trimmingCharacters(in: .whitespacesAndNewlines),
           s.count > 1
@@ -201,13 +231,15 @@ func collectText(root: AXUIElement) -> String {
         // A container's title/value usually aggregates its children's text —
         // skip anything the nearest text-bearing ancestor already said.
         guard !context.contains(s), seen.insert(s).inserted else { continue }
-        lines.append(s)
-        bytes += s.utf8.count + 1
+        let line = indent + tag + s
+        lines.append(line)
+        bytes += line.utf8.count + 1
       }
     }
     // popLast is LIFO — push reversed to keep document order.
     let childContext = own.isEmpty ? context : own.joined(separator: "\n")
-    stack.append(contentsOf: axChildren(el).reversed().map { ($0, childContext) })
+    let childDepth = own.isEmpty ? depth : depth + 1
+    stack.append(contentsOf: axChildren(el).reversed().map { ($0, childContext, childDepth) })
   }
   return lines.joined(separator: "\n")
 }
