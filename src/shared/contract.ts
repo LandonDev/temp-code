@@ -358,7 +358,9 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
       provider: providerEnum.optional(),
       model: z.string().optional(),
       reasoning: reasoningEnum.optional(),
-      attachments: z.array(AttachmentSchema).optional()
+      attachments: z.array(AttachmentSchema).optional(),
+      /** this send starts a new pass (the board's pass button) */
+      newPass: z.boolean().optional()
     })
   }),
   z.object({

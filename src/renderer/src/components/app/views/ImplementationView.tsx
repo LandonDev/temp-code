@@ -164,22 +164,39 @@ export function ImplementationView({ session }: { session: SessionMeta }): React
   } | null>(null)
 
   // Disk changes with no matching harness edit (M23): shell-made work.
+  // Attribution guard: the watcher sees the whole cwd, so a change only
+  // counts as THIS thread's shell work if it began inside one of the
+  // thread's own tool windows — a shell command running, or a subagent
+  // working under one of its calls. Another thread sharing the checkout,
+  // an IDE save, or a stray CLI never lands on this board.
   const liveMap = useApp((s) => s.liveEdits[session.id])
   const diskOnly = useMemo(() => {
     if (!liveMap) return []
     const harnessPaths = new Set<string>()
+    const windows: { from: number; to: number }[] = []
     for (const b of blocks) {
-      if (b.kind !== 'tool' || !EDIT_TOOLS.has(b.name)) continue
-      for (const eb of splitEdit(b).edits) {
-        const p = editModel(eb).path
-        if (p) harnessPaths.add(p.split('/').pop() ?? p)
+      if (b.kind !== 'tool') continue
+      if (EDIT_TOOLS.has(b.name)) {
+        for (const eb of splitEdit(b).edits) {
+          const p = editModel(eb).path
+          if (p) harnessPaths.add(p.split('/').pop() ?? p)
+        }
+      }
+      if (b.ts === undefined) continue
+      const shell = b.name === 'Bash' || b.name === 'shell' || b.name === 'Shell'
+      if (shell || b.subCount > 0) {
+        windows.push({
+          from: b.ts - 1500,
+          to: b.doneTs === undefined ? Number.MAX_SAFE_INTEGER : b.doneTs + 2500
+        })
       }
     }
     return Object.values(liveMap).filter(
       (e) =>
         !e.burst &&
         (e.diff || e.state === 'editing') &&
-        !harnessPaths.has(e.path.split('/').pop() ?? e.path)
+        !harnessPaths.has(e.path.split('/').pop() ?? e.path) &&
+        windows.some((w) => e.startedTs >= w.from && e.startedTs <= w.to)
     )
   }, [liveMap, blocks])
 
@@ -251,7 +268,9 @@ export function ImplementationView({ session }: { session: SessionMeta }): React
       setComposeRan(false)
     }
   }
+  const armNewPass = useApp((s) => s.armNewPass)
   const startNextPass = (): void => {
+    armNewPass(session.id, true)
     setComposeFrom(curRound)
     setComposeRan(false)
     setChatOpen(true)
@@ -465,6 +484,7 @@ export function ImplementationView({ session }: { session: SessionMeta }): React
               <button
                 onClick={() => {
                   if (composing) {
+                    armNewPass(session.id, false)
                     setComposeFrom(null)
                     setComposeRan(false)
                   } else setChatOpen(false)

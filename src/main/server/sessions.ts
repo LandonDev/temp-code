@@ -4,7 +4,13 @@ import { basename } from 'node:path'
 import { CreateSessionParams, type CreateSessionInput } from '@shared/contract'
 import { CATALOG, resolveModel, type ProviderId } from '@shared/catalog'
 import type { AgentEvent, Attachment, EventRow, SessionMeta } from '@shared/events'
-import type { ProjectCleanup, ProjectMeta, ProjectMode, ThreadType, WorkspaceMeta } from '@shared/domain'
+import type {
+  ProjectCleanup,
+  ProjectMeta,
+  ProjectMode,
+  ThreadType,
+  WorkspaceMeta
+} from '@shared/domain'
 import { BUILT_IN_DRIVERS } from './drivers'
 import type { DriverHandle } from './drivers/types'
 import type { Store } from './db'
@@ -520,6 +526,7 @@ export class SessionRegistry {
       model?: string
       reasoning?: SessionMeta['reasoning']
       attachments?: Attachment[]
+      newPass?: boolean
     }
   ): Promise<void> {
     let meta = this.store.getSession(sessionId)
@@ -577,14 +584,17 @@ export class SessionRegistry {
     const first = !this.store.hasUserText(sessionId)
     const attachments = opts?.attachments?.length ? opts.attachments : undefined
     // Stamp the run settings that will execute this message — the board's
-    // pass history reads them off the round's opening event.
+    // pass history reads them off the round's opening event — and whether
+    // this send opens a NEW pass (the pass button) or continues the
+    // current one (typed under the banner).
     this.append(sessionId, {
       type: 'user-text',
       text,
       attachments,
       model: meta.model,
       reasoning: meta.reasoning,
-      context1m: meta.context1m
+      context1m: meta.context1m,
+      newPass: opts?.newPass === true
     })
     // Cursor-style: an untitled thread takes its name from the first message.
     if (first && (Object.values(THREAD_TITLES) as string[]).includes(meta.title)) {
@@ -1098,7 +1108,8 @@ export class SessionRegistry {
       ? this.store.getProject(meta.projectId)?.workspaceId
       : meta.workspaceId
     if (!workspaceId) return
-    const pass = (meta.projectId && this.getProjectTurnPass(meta.projectId)) || this.getTurnPass(workspaceId)
+    const pass =
+      (meta.projectId && this.getProjectTurnPass(meta.projectId)) || this.getTurnPass(workspaceId)
     if (passEnabled(pass)) this.passPending.set(sessionId, pass)
   }
 
