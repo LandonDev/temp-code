@@ -10,6 +10,7 @@ import {
   PanelLeft,
   Pencil,
   Plus,
+  Settings2,
   Trash2
 } from 'lucide-react'
 import type { ProjectMeta, WorkspaceMeta } from '@shared/domain'
@@ -40,6 +41,7 @@ import { NewProjectDialog } from './NewProjectDialog'
 import { NewWorkspaceDialog } from './NewWorkspaceDialog'
 import { ConfirmDialog } from './ConfirmDialog'
 import { ProjectTeardownDialog } from './ProjectTeardownDialog'
+import { ProjectSettingsDialog } from './ProjectSettingsDialog'
 import { updateReady, useUpdateStatus } from '../../lib/updates'
 
 /**
@@ -401,6 +403,7 @@ function ProjectRow({
   const archiveProject = useApp((s) => s.archiveProject)
   const renameProject = useApp((s) => s.renameProject)
   const [renaming, setRenaming] = useState(false)
+  const [settings, setSettings] = useState(false)
   const [confirm, setConfirm] = useState<'archive' | 'delete' | null>(null)
 
   const threads = threadsOfProject(sessions, project.id)
@@ -582,6 +585,10 @@ function ProjectRow({
               <Pencil className="size-3.5 text-muted-foreground" />
               Rename
             </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setSettings(true)}>
+              <Settings2 className="size-3.5 text-muted-foreground" />
+              Project settings
+            </DropdownMenuItem>
             <DropdownMenuItem
               onClick={() => {
                 // Nothing to tear down on a local project — archive right away.
@@ -599,6 +606,7 @@ function ProjectRow({
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
+      {settings && <ProjectSettingsDialog project={project} onClose={() => setSettings(false)} />}
       {confirm && (
         <ProjectTeardownDialog
           open

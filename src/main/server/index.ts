@@ -248,6 +248,14 @@ export async function startServer(dbPath: string): Promise<RunningServer> {
             registry.renameProject(req.params.projectId, req.params.name)
             sendFrame({ id: req.id, ok: true, result: null })
             break
+          case 'project.setBranch':
+            await registry.setProjectBranch(
+              req.params.projectId,
+              req.params.branch,
+              req.params.baseRef
+            )
+            sendFrame({ id: req.id, ok: true, result: null })
+            break
           case 'project.archive':
             await registry.archiveProject(
               req.params.projectId,

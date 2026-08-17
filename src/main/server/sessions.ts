@@ -23,7 +23,8 @@ import {
   ensureLocalExclude,
   isGitRepo,
   removeWorktree,
-  strayWorktrees
+  strayWorktrees,
+  switchBranch
 } from './git'
 import { stopProjectLsp } from './lsp'
 import { parseRules, type OrchestrationRules } from '@shared/rules'
@@ -416,6 +417,17 @@ export class SessionRegistry {
   renameProject(projectId: string, name: string): void {
     const t = name.trim()
     if (t) this.store.renameProject(projectId, t)
+  }
+
+  /** Switch a worktree project's checkout to another branch (existing or
+   *  new from baseRef) and record it. Local projects follow the checkout
+   *  and can't be switched from here. */
+  async setProjectBranch(projectId: string, branch: string, baseRef?: string): Promise<void> {
+    const p = this.store.getProject(projectId)
+    if (!p) throw new Error(`unknown project: ${projectId}`)
+    if (p.mode !== 'worktree') throw new Error('only worktree projects can switch branches')
+    const local = await switchBranch(p.cwd, branch, { baseRef })
+    this.store.setProjectBranch(projectId, local)
   }
 
   /** Tear down the chosen git leftovers of a worktree project. Runs

@@ -101,6 +101,16 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
   }),
   z.object({
     id: z.string(),
+    method: z.literal('project.setBranch'),
+    params: z.object({
+      projectId: z.string(),
+      /** existing name switches the checkout; a new one is created from baseRef */
+      branch: z.string(),
+      baseRef: z.string().optional()
+    })
+  }),
+  z.object({
+    id: z.string(),
     method: z.literal('project.archive'),
     params: z.object({
       projectId: z.string(),

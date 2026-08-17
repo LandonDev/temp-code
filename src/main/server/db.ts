@@ -363,6 +363,10 @@ export class Store {
     this.db.prepare(`UPDATE projects SET name = ? WHERE id = ?`).run(name, id)
   }
 
+  setProjectBranch(id: string, branch: string): void {
+    this.db.prepare(`UPDATE projects SET branch = ? WHERE id = ?`).run(branch, id)
+  }
+
   setProjectArchived(id: string, archived: boolean): void {
     this.db.prepare(`UPDATE projects SET archived = ? WHERE id = ?`).run(archived ? 1 : 0, id)
   }

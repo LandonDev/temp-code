@@ -184,6 +184,29 @@ const surfacing = (err: unknown): Error => {
   return new Error((e.stderr || e.message || String(err)).trim())
 }
 
+/** Switch a project checkout to another branch: an existing name checks
+ *  out (a remote pick gets a local tracking branch), a new one is created
+ *  from `baseRef` (default: current HEAD). Uncommitted changes ride along
+ *  when git allows it; a conflict or a branch another worktree holds
+ *  fails with git's own message. Returns the local branch name. */
+export async function switchBranch(
+  dir: string,
+  branch: string,
+  opts: { baseRef?: string } = {}
+): Promise<string> {
+  const local = branch.replace(/^origin\//, '')
+  const exists = await branchExists(dir, local)
+  const args = exists
+    ? ['checkout', local]
+    : ['checkout', '-b', local, ...(opts.baseRef ? [opts.baseRef] : [])]
+  try {
+    await execFileP('git', ['-C', dir, ...args])
+  } catch (err) {
+    throw surfacing(err)
+  }
+  return local
+}
+
 /** Remove a project worktree from disk and git's registry. Each teardown
  *  step treats "already gone" as done — a retry after a partial cleanup
  *  must sail through the steps that succeeded the first time. */
