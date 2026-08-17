@@ -50,7 +50,9 @@ export const CreateSessionParams = z.object({
   /** claude models with a 1M-capable window: start on the full window */
   context1m: z.boolean().optional(),
   /** orchestration: per-run conduct overrides + custom instructions */
-  threadRules: ThreadRulesSchema.optional()
+  threadRules: ThreadRulesSchema.optional(),
+  /** set this goal on the harness before the kickoff message (plan Start) */
+  goal: z.string().optional()
 })
 export type CreateSessionParams = z.infer<typeof CreateSessionParams>
 /** Pre-parse shape (defaults still optional) — what callers construct. */
@@ -500,6 +502,19 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
     id: z.string(),
     method: z.literal('session.retype'),
     params: z.object({ sessionId: z.string(), threadType: ThreadTypeSchema })
+  }),
+  // Goal (claude /goal, codex thread goals): a finish condition the agent
+  // works toward until the harness confirms it is met. The fold onto
+  // SessionMeta.goal comes only from harness-confirmed goal events.
+  z.object({
+    id: z.string(),
+    method: z.literal('session.setGoal'),
+    params: z.object({ sessionId: z.string(), condition: z.string().min(1) })
+  }),
+  z.object({
+    id: z.string(),
+    method: z.literal('session.clearGoal'),
+    params: z.object({ sessionId: z.string() })
   }),
   // Live context-window usage breakdown (claude: the /context data);
   // null when the provider has no live handle or no accounting.

@@ -200,6 +200,20 @@ export const AgentEventSchema = z.discriminatedUnion('type', [
     outputTokens: z.number().optional()
   }),
 
+  // Goal lifecycle (claude /goal, codex thread goals): the harness confirms
+  // every transition — the app never emits these optimistically.
+  z.object({
+    type: z.literal('goal'),
+    phase: z.enum(['set', 'updated', 'met', 'cleared']),
+    condition: z.string(),
+    /** claude: how many end-of-turn checks the goal has survived */
+    iterations: z.number().optional(),
+    /** claude: the checker's last verdict ("tests still failing") */
+    reason: z.string().optional(),
+    /** the model set/changed the goal itself (codex create_goal/update_goal) */
+    byModel: z.boolean().optional()
+  }),
+
   // Orchestration: this session spawned a child session.
   z.object({ type: z.literal('agent-spawned'), childSessionId: z.string() }),
 
@@ -262,6 +276,8 @@ export interface SessionMeta {
    *  from the log so a tab shows it without opening the thread. Null when
    *  this pass has no list yet. */
   tasks?: { done: number; total: number } | null
+  /** The active goal, folded from goal events; null/absent when none. */
+  goal?: { condition: string; iterations: number; setAt: number } | null
   /** Orchestration threads: this run's tune — conduct overrides on top of
    *  the workspace/global rules, plus free-text instructions. */
   threadRules?: import('./rules').ThreadRules | null

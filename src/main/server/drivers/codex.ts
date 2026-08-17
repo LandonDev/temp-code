@@ -190,6 +190,14 @@ export const codexDriver: HarnessDriver = {
       }
     })
     let planUpdateSeq = 0
+    // Mirrors the harness's current goal (thread goals, probed live on
+    // codex-cli 0.147.0 — scripts/probe-goal-codex.ts) so notifications can
+    // be classified set-vs-updated and no-change updates dropped. Seeded
+    // from the folded log: codex re-announces the goal on thread resume,
+    // and an unseeded mirror would log that echo as a fresh set.
+    let lastGoal: { condition: string; status: string } | null = session.goal
+      ? { condition: session.goal.condition, status: 'active' }
+      : null
     let lastUsageEmit = 0
     let lastUsage: { inputTokens?: number; outputTokens?: number } = {}
     let contextTokens = 0
@@ -310,8 +318,39 @@ export const codexDriver: HarnessDriver = {
       }
     }
 
+    const goalUpdated = (params: Record<string, unknown>): void => {
+      const goal = params.goal as { objective?: string; status?: string } | undefined
+      if (!goal || typeof goal.objective !== 'string') return
+      const status = String(goal.status ?? 'active')
+      // turnId is non-null exactly when the model set/updated the goal
+      // itself (its create_goal/update_goal tools, mid-turn).
+      const byModel = params.turnId != null || undefined
+      if (status === 'complete') {
+        // Met transitions a live goal; 'complete' with none known is the
+        // resume echo of a goal that already ended — the log has its met.
+        if (!lastGoal) return
+        emit({ type: 'goal', phase: 'met', condition: goal.objective, byModel })
+        lastGoal = null
+        return
+      }
+      // ThreadGoal also carries usage counters and pacing states (paused,
+      // blocked, …); only an objective change is a row. The mirror still
+      // tracks status so 'complete' above stays a real transition.
+      const changed = goal.objective !== lastGoal?.condition
+      if (changed)
+        emit({ type: 'goal', phase: lastGoal ? 'updated' : 'set', condition: goal.objective, byModel })
+      lastGoal = { condition: goal.objective, status }
+    }
+
     const onNotify = (method: string, params: Record<string, unknown>): void => {
       switch (method) {
+        case 'thread/goal/updated':
+          goalUpdated(params)
+          break
+        case 'thread/goal/cleared':
+          if (lastGoal) emit({ type: 'goal', phase: 'cleared', condition: lastGoal.condition })
+          lastGoal = null
+          break
         case 'mcpServer/startupStatus/updated': {
           const name = String(params.name ?? '')
           if (params.status === 'starting') mcpStarting.add(name)
@@ -613,6 +652,30 @@ export const codexDriver: HarnessDriver = {
       )
     }
 
+    // Rehydrate the persisted goal (goals live in ~/.codex/goals_1.sqlite
+    // and survive resume). Emit only when the log disagrees — a resume of
+    // an unchanged goal must not add a duplicate row.
+    try {
+      const res = (await conn.request('thread/goal/get', { threadId })) as {
+        goal?: { objective?: string; status?: string } | null
+      }
+      const g = res?.goal
+      if (g && typeof g.objective === 'string' && g.status !== 'complete') {
+        if (session.goal?.condition !== g.objective)
+          emit({
+            type: 'goal',
+            phase: session.goal ? 'updated' : 'set',
+            condition: g.objective
+          })
+        lastGoal = { condition: g.objective, status: String(g.status ?? 'active') }
+      } else if (session.goal) {
+        emit({ type: 'goal', phase: 'cleared', condition: session.goal.condition })
+        lastGoal = null
+      }
+    } catch {
+      // goal RPCs need ChatGPT auth; without it the thread still works
+    }
+
     return {
       async send(text: string, attachments: Attachment[] = []): Promise<void> {
         setStatus('running')
@@ -664,6 +727,18 @@ export const codexDriver: HarnessDriver = {
         const finish = pendingQuestions.get(requestId)
         finish?.(answers)
         return !!finish
+      },
+      async setGoal(condition: string): Promise<void> {
+        // Codex reuses a completed goal's row on set and keeps its
+        // 'complete' status — the new goal would be born dead. Clear the
+        // stale row first; with no live goal the cleared notification is
+        // dropped by its lastGoal guard.
+        if (!lastGoal) await conn.request('thread/goal/clear', { threadId }).catch(() => {})
+        // Confirmation arrives as a thread/goal/updated notification.
+        await conn.request('thread/goal/set', { threadId, objective: condition })
+      },
+      async clearGoal(): Promise<void> {
+        await conn.request('thread/goal/clear', { threadId })
       },
       async contextUsage(): Promise<unknown> {
         if (!contextTokens) return null

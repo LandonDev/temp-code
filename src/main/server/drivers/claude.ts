@@ -7,7 +7,17 @@ import {
   type SDKMessage,
   type SDKUserMessage
 } from '@anthropic-ai/claude-agent-sdk'
-import { readFileSync } from 'node:fs'
+import {
+  closeSync,
+  existsSync,
+  openSync,
+  readFileSync,
+  readSync,
+  readdirSync,
+  statSync
+} from 'node:fs'
+import { homedir } from 'node:os'
+import { join } from 'node:path'
 import { nativeImage } from 'electron'
 import type { Attachment, PermissionPolicy } from '@shared/events'
 import type { DriverCtx, DriverHandle, HarnessDriver } from './types'
@@ -385,6 +395,200 @@ function handleMessage(ctx: DriverCtx, state: StreamState, msg: SDKMessage): voi
   }
 }
 
+/**
+ * Goal observation — tails the CLI's session transcript JSONL.
+ *
+ * The CLI never forwards its active_goal state over the SDK stream in
+ * normal mode (emission is gated on CLAUDE_CODE_REMOTE, which changes far
+ * too much else to be usable). What it does do — and itself relies on for
+ * resume — is record every goal transition as an `attachment` entry of
+ * type `goal_status` in ~/.claude/projects/<cwd-slug>/<sessionId>.jsonl.
+ * Shapes verified live (scripts/probe-goal-claude.ts):
+ *   set      {met:false, sentinel:true, condition}
+ *   check    {met:false, condition, reason}         — mid-turn, hook not passed
+ *   met      {met:true,  condition, reason, iterations, durationMs, tokens}
+ *   cleared  {met:true,  sentinel:true, condition}
+ *   failed   {met:false, failed:true, condition, reason, ...} — judged
+ *            impossible; the CLI removes the goal
+ * Polled at 1s with a byte offset so each entry is read once.
+ */
+interface GoalWatch {
+  /** (Re)attach to the transcript once the native session id is known. */
+  arm: (sessionId: string) => void
+  close: () => void
+}
+
+/** How much transcript tail to scan when attaching to a resumed session. */
+const GOAL_TAIL_BYTES = 256 * 1024
+
+function goalWatcher(ctx: DriverCtx): GoalWatch {
+  const { emit } = ctx
+  // A resumed session's history is already folded into SessionMeta — seed
+  // from it and only surface entries written after this driver started
+  // (fresh sessions read from byte 0 to catch the first set sentinel).
+  const resumedId = ctx.session.nativeId
+  const armedAt = Date.now()
+  let active: string | null = ctx.session.goal?.condition ?? null
+  let iterations = ctx.session.goal?.iterations ?? 0
+  let watching: string | null = null
+  let file: string | null = null
+  let offset = 0
+  let partial = ''
+  let timer: NodeJS.Timeout | null = null
+
+  const translate = (a: {
+    met?: boolean
+    sentinel?: boolean
+    failed?: boolean
+    condition?: string
+    reason?: string
+    iterations?: number
+  }): void => {
+    const condition = typeof a.condition === 'string' ? a.condition : (active ?? '')
+    if (a.sentinel) {
+      if (a.met) {
+        // `/goal clear` — the hook was removed without the condition passing.
+        emit({ type: 'goal', phase: 'cleared', condition })
+        active = null
+      } else {
+        emit({ type: 'goal', phase: active ? 'updated' : 'set', condition })
+        active = condition
+      }
+      iterations = 0
+    } else if (a.met) {
+      emit({
+        type: 'goal',
+        phase: 'met',
+        condition,
+        iterations: a.iterations ?? iterations,
+        reason: a.reason
+      })
+      active = null
+      iterations = 0
+    } else if (a.failed) {
+      emit({
+        type: 'goal',
+        phase: 'cleared',
+        condition,
+        iterations: a.iterations ?? iterations,
+        reason: a.reason
+      })
+      active = null
+      iterations = 0
+    } else {
+      // A check that didn't pass — the turn continues. These entries carry
+      // no running count, so it's kept here.
+      iterations += 1
+      emit({ type: 'goal', phase: 'updated', condition, iterations, reason: a.reason })
+    }
+  }
+
+  const drain = (): void => {
+    if (!file) return
+    let size: number
+    try {
+      size = statSync(file).size
+    } catch {
+      return
+    }
+    if (size <= offset) return
+    let chunk: string
+    try {
+      const fd = openSync(file, 'r')
+      try {
+        const buf = Buffer.alloc(size - offset)
+        readSync(fd, buf, 0, buf.length, offset)
+        chunk = buf.toString('utf8')
+      } finally {
+        closeSync(fd)
+      }
+    } catch {
+      return
+    }
+    offset = size
+    partial += chunk
+    const lines = partial.split('\n')
+    partial = lines.pop() ?? ''
+    for (const line of lines) {
+      if (!line.includes('"goal_status"')) continue
+      try {
+        const entry = JSON.parse(line) as {
+          type?: string
+          timestamp?: string
+          attachment?: {
+            type?: string
+            met?: boolean
+            sentinel?: boolean
+            failed?: boolean
+            condition?: string
+            reason?: string
+            iterations?: number
+          }
+        }
+        if (entry.type !== 'attachment' || entry.attachment?.type !== 'goal_status') continue
+        // On resume, tail-scanned history predates this driver — the fold
+        // already carries it; re-emitting would duplicate rows.
+        if (resumedId && entry.timestamp && Date.parse(entry.timestamp) < armedAt) continue
+        translate(entry.attachment)
+      } catch {
+        // torn write or the tail-scan's partial first line — skip
+      }
+    }
+  }
+
+  const locate = (sessionId: string): string | null => {
+    const root = join(homedir(), '.claude', 'projects')
+    // The CLI's project-dir slug rule, read out of the 2.1.233 binary.
+    const slug = ctx.session.cwd.replace(/[^a-zA-Z0-9-_]/g, '-')
+    const direct = join(root, slug, `${sessionId}.jsonl`)
+    if (existsSync(direct)) return direct
+    // Survive slug-rule drift: the session id is globally unique.
+    try {
+      for (const name of readdirSync(root)) {
+        const p = join(root, name, `${sessionId}.jsonl`)
+        if (existsSync(p)) return p
+      }
+    } catch {
+      // projects dir missing — nothing to tail yet
+    }
+    return null
+  }
+
+  const attach = (): void => {
+    if (!watching) return
+    file = locate(watching)
+    if (!file) return
+    partial = ''
+    offset = 0
+    if (watching === resumedId) {
+      // Skip deep history but keep the recent tail in view — a goal set in
+      // the moments between resume and attach still lands (the timestamp
+      // filter in drain() drops anything older than this driver).
+      try {
+        offset = Math.max(0, statSync(file).size - GOAL_TAIL_BYTES)
+      } catch {
+        offset = 0
+      }
+    }
+  }
+
+  return {
+    arm(sessionId: string): void {
+      if (watching === sessionId) return
+      watching = sessionId
+      attach()
+      timer ??= setInterval(() => {
+        if (!file) attach()
+        drain()
+      }, 1000)
+    },
+    close(): void {
+      if (timer) clearInterval(timer)
+      timer = null
+    }
+  }
+}
+
 const PERMISSION_MODE: Record<PermissionPolicy, PermissionMode> = {
   safe: 'default',
   edits: 'acceptEdits',
@@ -524,6 +728,17 @@ export const claudeDriver: HarnessDriver = {
     // iterable alone won't end a process that stopped listening.
     const abort = new AbortController()
 
+    // Goal state lives in the CLI's transcript file, not the SDK stream —
+    // arm the tail as soon as init reveals the session id.
+    const goalWatch = goalWatcher(ctx)
+    const watchedCtx: DriverCtx = {
+      ...ctx,
+      setNativeId: (id) => {
+        ctx.setNativeId(id)
+        goalWatch.arm(id)
+      }
+    }
+
     const options: Options = {
       abortController: abort,
       model: session.model,
@@ -662,7 +877,7 @@ export const claudeDriver: HarnessDriver = {
     void (async () => {
       try {
         for await (const msg of q) {
-          handleMessage(ctx, state, msg)
+          handleMessage(watchedCtx, state, msg)
           // Overflow self-heal: the API refused the transcript ("Prompt is
           // too long" — seen when a Standard-mode thread outruns compaction
           // in a single turn). Once the turn settles, compact in place so
@@ -709,6 +924,7 @@ export const claudeDriver: HarnessDriver = {
       } finally {
         dead = true
         clearInterval(watchdog)
+        goalWatch.close()
       }
     })()
 
@@ -733,6 +949,21 @@ export const claudeDriver: HarnessDriver = {
         const finish = pendingQuestions.get(requestId)
         finish?.(answers)
         return !!finish
+      },
+      async setGoal(condition: string): Promise<void> {
+        if (dead) throw new Error('harness gone')
+        // `/goal` runs as a full turn — the CLI injects a start-working
+        // prompt and the model begins immediately. Confirmation lands in
+        // the transcript as a goal_status entry, never here.
+        state.working = true
+        emit({ type: 'status', status: 'running' })
+        input.push(`/goal ${condition.replace(/\s+/g, ' ').trim()}`)
+      },
+      async clearGoal(): Promise<void> {
+        if (dead) throw new Error('harness gone')
+        state.working = true
+        emit({ type: 'status', status: 'running' })
+        input.push('/goal clear')
       },
       async contextUsage(): Promise<unknown> {
         // The /context breakdown, straight from the harness — except the

@@ -90,6 +90,7 @@ const TOOL_SUMMARIES_KEY = 'tool-summaries'
 const TOOL_CAPTIONS_KEY = 'tool-captions'
 const SUMMARY_MODEL_KEY = 'summary-model'
 const SURFACES_KEY = 'surfaces-v1'
+const LAST_THREAD_KEY = 'last-thread-by-project'
 const FORMAT_KEY = 'format-on-save'
 const GHOST_KEY = 'ghost-text'
 const SIDEBAR_WIDTH_KEY = 'sidebar-width'
@@ -281,6 +282,10 @@ interface AppState {
   /** Answer a model question; null = dismiss without answering. */
   answer: (sessionId: string, requestId: string, answers: string[][] | null) => Promise<void>
   setPermission: (sessionId: string, permission: PermissionPolicy) => Promise<void>
+  /** Set/replace or clear the thread's goal; SessionMeta.goal updates when
+   *  the harness confirms (never optimistically). */
+  setGoal: (sessionId: string, condition: string) => Promise<void>
+  clearGoal: (sessionId: string) => Promise<void>
   setArchived: (sessionId: string, archived: boolean) => Promise<void>
   renameSession: (sessionId: string, title: string) => Promise<void>
   setThreadRules: (sessionId: string, threadRules: SessionMeta['threadRules']) => Promise<void>
@@ -1129,6 +1134,14 @@ export const useApp = create<AppState>((set, get) => ({
 
   setPermission: async (sessionId, permission) => {
     await client.request('session.permission', { sessionId, permission })
+  },
+
+  setGoal: async (sessionId, condition) => {
+    await client.request('session.setGoal', { sessionId, condition })
+  },
+
+  clearGoal: async (sessionId) => {
+    await client.request('session.clearGoal', { sessionId })
   },
 
   setArchived: async (sessionId, archived) => {

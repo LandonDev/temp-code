@@ -610,6 +610,14 @@ export async function startServer(dbPath: string): Promise<RunningServer> {
             await registry.approve(req.params.sessionId, req.params.requestId, req.params.allow)
             sendFrame({ id: req.id, ok: true, result: null })
             break
+          case 'session.setGoal':
+            await registry.setGoal(req.params.sessionId, req.params.condition)
+            sendFrame({ id: req.id, ok: true, result: null })
+            break
+          case 'session.clearGoal':
+            await registry.clearGoal(req.params.sessionId)
+            sendFrame({ id: req.id, ok: true, result: null })
+            break
           case 'queue.list':
             sendFrame({ id: req.id, ok: true, result: registry.queueList(req.params.sessionId) })
             break
