@@ -53,6 +53,9 @@ const FLOOD_PATHS_PER_S = 200
 const BURST_DIFF_TOP = 25
 /** Grace after the last running session settles before the watcher dies. */
 const STOP_GRACE_MS = 5_000
+/** Repos past this many tracked files never get a watcher — the initial
+ *  scan would starve the main-process event loop. */
+const WATCH_FILE_CAP = 30_000
 
 /** Mirrors the file service's ignore list (build storms, .git, app dirs). */
 const WATCH_IGNORED = new Set([
@@ -279,16 +282,47 @@ async function startWatch(cwd: string, sessionId: string): Promise<void> {
     return
   }
   const root = resolve(cwd)
-  const baseDir = join(tmpdir(), 'temp-code-live', randomBytes(8).toString('hex'))
-  mkdirSync(baseDir, { recursive: true })
-  writeFileSync(join(baseDir, '.empty'), '')
+  // The watcher's initial scan walks the whole tree on the main process.
+  // A non-repo cwd (/tmp, a home directory) or a giant repo starves the
+  // event loop — CDP, the WS server and the SDK streams all stall and
+  // every thread wedges on "Working". No repo, or too many tracked files:
+  // no live change stream. Everything else still works.
   let git = false
   try {
     await execFileP('git', ['-C', root, 'rev-parse', '--git-dir'])
     git = true
   } catch {
-    /* non-git — first-seen changes degrade to diff:null, then stream */
+    /* non-git */
   }
+  if (!git) {
+    console.warn(`[livediff] ${root}: not a git repo — live change stream off`)
+    return
+  }
+  try {
+    const { stdout } = await execFileP('git', ['-C', root, 'ls-files'], {
+      maxBuffer: 32 * 1024 * 1024
+    })
+    let files = 0
+    for (let i = 0; i < stdout.length; i++) if (stdout.charCodeAt(i) === 10) files++
+    if (files > WATCH_FILE_CAP) {
+      console.warn(
+        `[livediff] ${root}: ${files} tracked files (cap ${WATCH_FILE_CAP}) — live change stream off`
+      )
+      return
+    }
+  } catch {
+    console.warn(`[livediff] ${root}: repo too large to size — live change stream off`)
+    return
+  }
+  // The probes above awaited — a parallel session may have won the race.
+  const raced = live.get(cwd)
+  if (raced) {
+    raced.sessions.add(sessionId)
+    return
+  }
+  const baseDir = join(tmpdir(), 'temp-code-live', randomBytes(8).toString('hex'))
+  mkdirSync(baseDir, { recursive: true })
+  writeFileSync(join(baseDir, '.empty'), '')
   const w: LiveWatch = {
     cwd: root,
     sessions: new Set([sessionId]),
