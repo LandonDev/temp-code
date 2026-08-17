@@ -8,6 +8,13 @@ import { AppshotSettingsSchema } from './appshots'
 import { TurnPassSchema } from './turnpass'
 import type { EventRow, SessionMeta } from './events'
 
+/** Git teardown options when a worktree project is archived or deleted. */
+const ProjectCleanupSchema = z.object({
+  worktree: z.boolean().optional(),
+  localBranch: z.boolean().optional(),
+  remoteBranch: z.boolean().optional()
+})
+
 /**
  * The websocket contract. One socket per client; JSON frames.
  * Client → server: requests ({ id, method, params }) answered by
@@ -82,8 +89,17 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
   }),
   z.object({
     id: z.string(),
+    method: z.literal('project.archive'),
+    params: z.object({
+      projectId: z.string(),
+      archived: z.boolean(),
+      cleanup: ProjectCleanupSchema.optional()
+    })
+  }),
+  z.object({
+    id: z.string(),
     method: z.literal('project.delete'),
-    params: z.object({ projectId: z.string() })
+    params: z.object({ projectId: z.string(), cleanup: ProjectCleanupSchema.optional() })
   }),
   // Changed files in the project's working tree (git-derived).
   z.object({
@@ -240,17 +256,23 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
       defaults: ThreadDefaultsSchema.nullable()
     })
   }),
-  // Completed-turn pass: per-workspace actions the model runs after every
-  // settled turn (verify / build / commit / push). Workspace-scoped only.
+  // Completed-turn pass: actions the model runs after every settled turn
+  // (verify / build / commit / push). The workspace holds the default; a
+  // projectId targets that project's override instead (get: null =
+  // inherits; set null: back to inheriting).
   z.object({
     id: z.string(),
     method: z.literal('turnpass.get'),
-    params: z.object({ workspaceId: z.string() })
+    params: z.object({ workspaceId: z.string(), projectId: z.string().optional() })
   }),
   z.object({
     id: z.string(),
     method: z.literal('turnpass.set'),
-    params: z.object({ workspaceId: z.string(), pass: TurnPassSchema.nullable() })
+    params: z.object({
+      workspaceId: z.string(),
+      projectId: z.string().optional(),
+      pass: TurnPassSchema.nullable()
+    })
   }),
   // Appshots (M10): global capture settings, one settings-table row.
   z.object({

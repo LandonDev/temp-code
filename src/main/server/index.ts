@@ -238,8 +238,16 @@ export async function startServer(dbPath: string): Promise<RunningServer> {
             registry.renameProject(req.params.projectId, req.params.name)
             sendFrame({ id: req.id, ok: true, result: null })
             break
+          case 'project.archive':
+            await registry.archiveProject(
+              req.params.projectId,
+              req.params.archived,
+              req.params.cleanup
+            )
+            sendFrame({ id: req.id, ok: true, result: null })
+            break
           case 'project.delete':
-            await registry.deleteProject(req.params.projectId)
+            await registry.deleteProject(req.params.projectId, req.params.cleanup)
             sendFrame({ id: req.id, ok: true, result: null })
             break
           case 'project.changes': {
@@ -462,10 +470,17 @@ export async function startServer(dbPath: string): Promise<RunningServer> {
             sendFrame({ id: req.id, ok: true, result: null })
             break
           case 'turnpass.get':
-            sendFrame({ id: req.id, ok: true, result: registry.getTurnPass(req.params.workspaceId) })
+            sendFrame({
+              id: req.id,
+              ok: true,
+              result: req.params.projectId
+                ? registry.getProjectTurnPass(req.params.projectId)
+                : registry.getTurnPass(req.params.workspaceId)
+            })
             break
           case 'turnpass.set':
-            registry.setTurnPass(req.params.workspaceId, req.params.pass)
+            if (req.params.projectId) registry.setProjectTurnPass(req.params.projectId, req.params.pass)
+            else registry.setTurnPass(req.params.workspaceId, req.params.pass)
             sendFrame({ id: req.id, ok: true, result: null })
             break
           case 'appshots.get':

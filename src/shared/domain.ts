@@ -31,7 +31,16 @@ export interface ProjectMeta {
   branch: string | null
   /** where the project's threads run: the worktree dir, or the workspace path */
   cwd: string
+  /** hidden from the sidebar's main list; restorable, threads kept */
+  archived: boolean
   createdAt: number
+}
+
+/** What archiving/deleting a worktree project also tears down in git. */
+export interface ProjectCleanup {
+  worktree?: boolean
+  localBranch?: boolean
+  remoteBranch?: boolean
 }
 
 /** A slash reference the provider's harness understands — skill, custom

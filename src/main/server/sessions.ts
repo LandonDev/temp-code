@@ -4,11 +4,19 @@ import { basename } from 'node:path'
 import { CreateSessionParams, type CreateSessionInput } from '@shared/contract'
 import { CATALOG, resolveModel, type ProviderId } from '@shared/catalog'
 import type { AgentEvent, Attachment, EventRow, SessionMeta } from '@shared/events'
-import type { ProjectMeta, ProjectMode, ThreadType, WorkspaceMeta } from '@shared/domain'
+import type { ProjectCleanup, ProjectMeta, ProjectMode, ThreadType, WorkspaceMeta } from '@shared/domain'
 import { BUILT_IN_DRIVERS } from './drivers'
 import type { DriverHandle } from './drivers/types'
 import type { Store } from './db'
-import { addProjectWorktree, currentBranch, ensureLocalExclude, isGitRepo } from './git'
+import {
+  addProjectWorktree,
+  currentBranch,
+  deleteLocalBranch,
+  deleteRemoteBranch,
+  ensureLocalExclude,
+  isGitRepo,
+  removeWorktree
+} from './git'
 import { parseRules, type OrchestrationRules } from '@shared/rules'
 import { DEFAULT_THREAD_DEFAULTS, parseDefaults, type ThreadDefaults } from '@shared/defaults'
 import { parseTurnPass, passActions, passEnabled, type TurnPass } from '@shared/turnpass'
@@ -265,6 +273,7 @@ export class SessionRegistry {
       mode,
       branch,
       cwd,
+      archived: false,
       createdAt: Date.now()
     }
     this.store.insertProject(meta)
@@ -286,9 +295,33 @@ export class SessionRegistry {
     if (t) this.store.renameProject(projectId, t)
   }
 
-  async deleteProject(projectId: string): Promise<void> {
+  /** Tear down the chosen git leftovers of a worktree project. Runs
+   *  against the workspace repo; order matters — a branch can't die while
+   *  its worktree has it checked out. */
+  private async cleanupProjectGit(projectId: string, cleanup: ProjectCleanup): Promise<void> {
+    const p = this.store.getProject(projectId)
+    if (!p || p.mode !== 'worktree') return
+    const ws = this.store.listWorkspaces().find((w) => w.id === p.workspaceId)
+    if (!ws) return
+    if (cleanup.worktree || cleanup.localBranch) await removeWorktree(ws.path, p.cwd)
+    if (cleanup.localBranch && p.branch) await deleteLocalBranch(ws.path, p.branch)
+    if (cleanup.remoteBranch && p.branch) await deleteRemoteBranch(ws.path, p.branch)
+  }
+
+  async archiveProject(
+    projectId: string,
+    archived: boolean,
+    cleanup?: ProjectCleanup
+  ): Promise<void> {
+    if (archived && cleanup) await this.cleanupProjectGit(projectId, cleanup)
+    this.store.setProjectArchived(projectId, archived)
+  }
+
+  async deleteProject(projectId: string, cleanup?: ProjectCleanup): Promise<void> {
+    if (cleanup) await this.cleanupProjectGit(projectId, cleanup)
     await this.deleteProjectSessions(projectId)
     this.store.deleteProject(projectId)
+    this.store.setSetting(`turn-pass:project:${projectId}`, null)
   }
 
   private async deleteProjectSessions(projectId: string): Promise<void> {
@@ -337,6 +370,16 @@ export class SessionRegistry {
 
   setTurnPass(workspaceId: string, pass: TurnPass | null): void {
     this.store.setSetting(`turn-pass:${workspaceId}`, pass ? JSON.stringify(pass) : null)
+  }
+
+  /** A project's override of the workspace pass; null = inherits. An
+   *  all-off pass is a real override: that project runs nothing. */
+  getProjectTurnPass(projectId: string): TurnPass | null {
+    return parseTurnPass(this.store.getSetting(`turn-pass:project:${projectId}`))
+  }
+
+  setProjectTurnPass(projectId: string, pass: TurnPass | null): void {
+    this.store.setSetting(`turn-pass:project:${projectId}`, pass ? JSON.stringify(pass) : null)
   }
 
   /** Appshot capture settings — global, defaults until the user changes them. */
@@ -1018,7 +1061,7 @@ export class SessionRegistry {
       ? this.store.getProject(meta.projectId)?.workspaceId
       : meta.workspaceId
     if (!workspaceId) return
-    const pass = this.getTurnPass(workspaceId)
+    const pass = (meta.projectId && this.getProjectTurnPass(meta.projectId)) || this.getTurnPass(workspaceId)
     if (passEnabled(pass)) this.passPending.set(sessionId, pass)
   }
 
@@ -1047,7 +1090,7 @@ export class SessionRegistry {
         )
       }
       await handle.send(
-        `<turn-pass>\nThe turn settled. The workspace's completed-turn setting now asks you to:\n${steps.map((s, i) => `${i + 1}. ${s}`).join('\n')}\nIf the turn changed nothing to verify, build, or commit, say so in one short line and stop. Never start new feature work in this pass.\n</turn-pass>`
+        `<turn-pass>\nThe turn settled. The completed-turn setting now asks you to:\n${steps.map((s, i) => `${i + 1}. ${s}`).join('\n')}\nIf the turn changed nothing to verify, build, or commit, say so in one short line and stop. Never start new feature work in this pass.\n</turn-pass>`
       )
     } catch {
       // Harness refused (gone, mid-restart) — settle back to normal flow.

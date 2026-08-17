@@ -1,7 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
-import { CornerDownRight, GitBranch, GitPullRequestArrow } from 'lucide-react'
+import { ChevronRight, CornerDownRight, GitBranch, GitPullRequestArrow } from 'lucide-react'
 import type { BranchList, ProjectMode, WorkspaceMeta } from '@shared/domain'
+import { TURN_PASS_OFF, passActions, type TurnPass } from '@shared/turnpass'
+import { client } from '../../lib/client'
 import { useApp } from '../../state/store'
+import { TurnPassFields } from './TurnPass'
 import { cn } from '../../lib/utils'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '../ui/dialog'
 import { Button } from '../ui/button'
@@ -40,6 +43,11 @@ export function NewProjectDialog({
   const [baseRef, setBaseRef] = useState('@head')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // Workspace's completed-turn setting shows as the default; editing it
+  // here stores an override for just this project.
+  const [pass, setPass] = useState<TurnPass>(TURN_PASS_OFF)
+  const [passTouched, setPassTouched] = useState(false)
+  const [passOpen, setPassOpen] = useState(false)
 
   useEffect(() => {
     if (!workspace.git) return
@@ -47,6 +55,13 @@ export function NewProjectDialog({
       .then(setBranches)
       .catch(() => {})
   }, [workspace.id, workspace.git, fetchBranches])
+
+  useEffect(() => {
+    void client
+      .request<TurnPass | null>('turnpass.get', { workspaceId: workspace.id })
+      .then((p) => setPass((cur) => (cur === TURN_PASS_OFF ? (p ?? TURN_PASS_OFF) : cur)))
+      .catch(() => {})
+  }, [workspace.id])
 
   const trimmed = branch.trim()
   const exists = branchExists(branches, trimmed)
@@ -72,6 +87,10 @@ export function NewProjectDialog({
             }
           : {}
       const project = await createProject(workspace.id, name.trim(), mode, opts)
+      if (passTouched) {
+        // An all-off override is real: this project runs nothing.
+        await client.request('turnpass.set', { workspaceId: workspace.id, projectId: project.id, pass })
+      }
       selectProject(project.id)
       onClose()
     } catch (err) {
@@ -184,6 +203,31 @@ export function NewProjectDialog({
               )}
             </div>
           )}
+          <div>
+            <button
+              onClick={() => setPassOpen(!passOpen)}
+              className="flex h-6 w-full items-center gap-1 px-1 text-[11px] text-muted-foreground transition-colors hover:text-foreground"
+            >
+              <ChevronRight
+                className={cn('size-3 shrink-0 transition-transform', passOpen && 'rotate-90')}
+              />
+              <span>Completed turn</span>
+              <span className="ml-auto truncate text-muted-foreground/70">
+                {passActions(pass).join(', ') || 'Off'}
+              </span>
+            </button>
+            {passOpen && (
+              <div className="mt-1.5">
+                <TurnPassFields
+                  value={pass}
+                  onChange={(next) => {
+                    setPass(next)
+                    setPassTouched(true)
+                  }}
+                />
+              </div>
+            )}
+          </div>
           {error && <p className="px-1 text-[11px] leading-4 text-destructive">{error}</p>}
         </div>
         <DialogFooter>
