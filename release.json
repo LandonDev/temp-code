@@ -1,5 +1,5 @@
 {
-  "n": 44,
-  "notes": "Pass banner becomes a composer tab — same width, tucked behind the pill, text action",
-  "ts": 1786943774711
+  "n": 45,
+  "notes": "Working tabs are compact again: tinted spinner + time + just the verb; full activity in the tooltip.",
+  "ts": 1786944125592
 }
