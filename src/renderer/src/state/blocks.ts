@@ -185,12 +185,23 @@ export function emptyFold(): FoldState {
  *  next request — long silence since the last block reads as a dead turn,
  *  not an open one. */
 const STALE_TURN_MS = 10 * 60_000
+/** How long an unfinished pass stays "warm" — a message within this window
+ *  resumes it; after that it reads as abandoned and a new pass begins. */
+const RESUME_WINDOW_MS = 30 * 60_000
 
 function beginTurn(s: FoldState, ts?: number): void {
   const lastTs = s.blocks.findLast((b) => b.ts !== undefined)?.ts
   const stale =
     s.turnOpen && lastTs !== undefined && ts !== undefined && ts - lastTs > STALE_TURN_MS
-  if ((!s.turnOpen || stale) && s.sawUser) {
+  // A pass only ends when its WORK did: an unfinished task list means the
+  // next message resumes this pass — a continue after a stop or an error,
+  // a correction mid-job — never a new one. But only while the pass is
+  // still warm: unfinished work abandoned for longer reads as dropped,
+  // and the next request deserves its own pass.
+  const unfinished = s.todos.length > 0 && s.todos.some((t) => t.status !== 'completed')
+  const gap = lastTs !== undefined && ts !== undefined ? ts - lastTs : 0
+  const resuming = unfinished && gap <= RESUME_WINDOW_MS
+  if ((!s.turnOpen || stale) && s.sawUser && !resuming) {
     s.pastTodos = [...s.pastTodos, s.todos]
     s.pastCosts = [...s.pastCosts, s.costUsd]
     s.todos = []

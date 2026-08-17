@@ -425,6 +425,23 @@ interface RoundData {
   header: Block | null
 }
 
+/** Working time across a block sequence, in order. Tool calls count their
+ *  full run (ts → doneTs); the idle gap BEFORE a user message never counts
+ *  — that's the user thinking between a halt and a resume, not the pass
+ *  working. A resumed pass therefore shows time spent, not wall time. */
+function activeMs(list: Block[], liveNow?: number): number {
+  let total = 0
+  let prev: number | undefined
+  for (const b of list) {
+    if (b.ts === undefined) continue
+    if (prev !== undefined && b.kind !== 'user') total += Math.max(0, b.ts - prev)
+    const end = b.kind === 'tool' ? (b.doneTs ?? b.ts) : b.ts
+    prev = Math.max(prev ?? end, end)
+  }
+  if (liveNow !== undefined && prev !== undefined) total += Math.max(0, liveNow - prev)
+  return total
+}
+
 /** File blocks under the task in progress at their birth; -1 = before the
  *  round's first list. Indices past a shrunken list clamp to the last. */
 function groupByTodo(list: Block[], todoCount: number): Map<number, Block[]> {
@@ -563,18 +580,14 @@ function RoundSection({
             const key = `${round}:${i}`
             const span = spans.get(i)
             const live = isCurrent && running && todo.status === 'in_progress'
+            const taskBlocks = blocksByTodo.get(i) ?? []
             const ms =
-              todo.status === 'pending' || !span
-                ? null
-                : live
-                  ? now - span.first
-                  : span.last - span.first
+              todo.status === 'pending' ? null : activeMs(taskBlocks, live ? now : undefined)
             const items = workByTodo.get(i) ?? []
             const needsUser = items.some(
               (b) => (b.kind === 'approval' || b.kind === 'question') && !b.resolved
             )
             const folded = todo.status === 'completed' && !needsUser
-            const taskBlocks = blocksByTodo.get(i) ?? []
             const bodyOpen = toggled.has(key) ? !isCurrent : isCurrent
             return (
               <div
@@ -666,7 +679,6 @@ function RoundSection({
   // effort · window, on logs that stamp them) and what it cost — expanding
   // in place to the full board.
   if (multi && !isCurrent) {
-    const startTs = blocks.find((b) => b.ts !== undefined)?.ts
     const endTs = blocks.findLast((b) => b.ts !== undefined)?.ts
     const header = data.header?.kind === 'user' ? data.header : null
     const cost = (() => {
@@ -680,9 +692,8 @@ function RoundSection({
     })()
     const meta: string[] = []
     if (endTs !== undefined) meta.push(WHEN_FMT.format(endTs))
-    if (startTs !== undefined && endTs !== undefined && endTs - startTs > 1000) {
-      meta.push(duration(endTs - startTs))
-    }
+    const worked = activeMs(blocks)
+    if (worked > 1000) meta.push(duration(worked))
     if (header?.model) {
       meta.push(modelInfo(session.provider, header.model)?.label ?? header.model)
       if (header.reasoning) {
