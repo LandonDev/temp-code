@@ -530,17 +530,21 @@ export function Transcript({
   }, [sessionId])
 
   // Tab switches select instantly; a big backlog still fetching shows a
-  // quiet centered spinner instead of a blank plane that pops full.
-  if (!loaded && rows.length === 0) {
-    return (
-      <div className={cn('relative flex min-h-0 flex-1 items-center justify-center', className)}>
-        <Spinner className="size-4 text-muted-foreground/60 animate-[z-fade-quick_300ms_ease-out]" />
-      </div>
-    )
-  }
+  // quiet centered spinner. The spinner OVERLAYS the (empty) scroller
+  // rather than replacing it — the scroller must exist from the first
+  // render, because the wheel/scroll listeners bind once per session and
+  // a transcript whose scroller mounts late never gets them: the user's
+  // scroll then can't release the bottom pin, and every remeasure yanks
+  // the view back down.
+  const fetching = !loaded && rows.length === 0
 
   return (
     <div className={cn('relative min-h-0 flex-1', className)}>
+      {fetching && (
+        <div className="absolute inset-0 z-10 flex items-center justify-center">
+          <Spinner className="size-4 text-muted-foreground/60 animate-[z-fade-quick_300ms_ease-out]" />
+        </div>
+      )}
       <div
         ref={scrollRef}
         className="h-full overflow-y-auto select-text [overflow-anchor:none]"
