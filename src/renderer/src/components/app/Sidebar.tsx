@@ -509,17 +509,24 @@ function ProjectRow({
             tab wears: tinted spinner + elapsed + verb (or tally) while
             working, the blue dot + bold title once finished unseen. */}
         {running.map((t) => (
-          <div key={t.id} className="flex w-full items-center gap-1.5 text-[11px] leading-4">
-            <span className="min-w-0 flex-1 truncate text-muted-foreground">{t.title}</span>
-            <TabIndicator
-              status={t.status}
-              unread={false}
-              since={t.busySince ?? t.updatedAt}
-              now={now}
-              activity={t.activity}
-              activityKind={t.activityKind}
-              tasks={t.threadType === 'implementation' ? (t.tasks ?? null) : null}
-            />
+          <div key={t.id} className="w-full">
+            <div className="flex w-full items-center gap-1.5 text-[11px] leading-4">
+              <span className="min-w-0 flex-1 truncate text-muted-foreground">{t.title}</span>
+              <TabIndicator
+                status={t.status}
+                unread={false}
+                since={t.busySince ?? t.updatedAt}
+                now={now}
+                activity={t.activity}
+                activityKind={t.activityKind}
+                tasks={t.threadType === 'implementation' ? (t.tasks ?? null) : null}
+              />
+            </div>
+            {t.threadType === 'implementation' && t.tasks?.current && (
+              <div className="truncate pl-3 text-[11px] leading-4 text-muted-foreground/60">
+                {t.tasks.current}
+              </div>
+            )}
           </div>
         ))}
         {unread.map((t) => (

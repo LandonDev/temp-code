@@ -1191,7 +1191,10 @@ export class SessionRegistry {
       const before = tallyOf(warm)
       foldTodo(warm, event, row.ts)
       const after = tallyOf(warm)
-      tasksMoved = before?.done !== after?.done || before?.total !== after?.total
+      tasksMoved =
+        before?.done !== after?.done ||
+        before?.total !== after?.total ||
+        before?.current !== after?.current
     }
     // Keep the goal fold current the same way; a goal event pushes meta so
     // the prompt-bar indicator flips without a status change.

@@ -284,8 +284,8 @@ export interface SessionMeta {
   activityKind?: 'think' | 'investigate' | 'edit' | null
   /** How far through its CURRENT task list the thread is — server-folded
    *  from the log so a tab shows it without opening the thread. Null when
-   *  this pass has no list yet. */
-  tasks?: { done: number; total: number } | null
+   *  this pass has no list yet. `current` names the in-progress task. */
+  tasks?: { done: number; total: number; current?: string | null } | null
   /** The active goal, folded from goal events; null/absent when none. */
   goal?: { condition: string; iterations: number; setAt: number } | null
   /** Live context footprint from the harness stream — current the moment
