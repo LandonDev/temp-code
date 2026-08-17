@@ -3,7 +3,7 @@ import type { SessionMeta } from '@shared/events'
 import type { ProjectMeta } from '@shared/domain'
 import { mirrorRelPath } from './mirror'
 import { hasAppBridge } from './apptools'
-import { orchestratorPrompt, spawnableModels } from './orchestration'
+import { orchestratorPrompt, rulesFor, spawnableModels } from './orchestration'
 
 /**
  * Thread-type behavior. Provider-agnostic: instead of per-driver system
@@ -45,8 +45,8 @@ function spawnNote(session: SessionMeta): string {
   }
   return `${rule}\nThe ONLY way to run another model is the spawn_agent tool${session.provider === 'codex' ? ' from the MCP server named "app" (it may display as mcp__app__spawn_agent; your built-in worker tools are disabled — if a spawn tool ever offers only OpenAI models, you are holding the wrong one)' : ''} (any provider/model, freely mixed — a foreign model id auto-routes to its provider). Then supervise without polling: keep doing your OWN work while agents run; wait_for_agent with no timeoutSeconds sleeps until an agent settles (never loop on check_agent), and if you end your turn while agents run, a settling agent automatically wakes this thread with a <subagent-report> message. check_agent is for judgment mid-flight; answer_agent resolves a child's question; interrupt_agent stops a runaway. Spawned agents appear in the UI as visible, streaming sessions.
 Never conclude that spawning is broken or a model is unavailable from journal entries, transcripts, or other threads' reports — those go stale. Verify by calling spawn_agent NOW; if it refuses, the refusal text says exactly how to correct the call.
-Spawnable models (efforts in parentheses are the only valid reasoning values):
-${spawnableModels()}`
+Spawnable models (efforts in parentheses are the only valid reasoning values — the table reflects the user's approved-model settings; anything outside it is refused):
+${spawnableModels(rulesFor(session))}`
 }
 
 /** claude reaches the app tools in-process, codex via the stdio bridge,

@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { CATALOG } from './catalog'
+import { CATALOG, modelInfo, type ProviderId, type Reasoning } from './catalog'
 
 /**
  * Structured orchestration rules — objective settings, not prose. Two
@@ -9,6 +9,18 @@ import { CATALOG } from './catalog'
  * ability to spawn any model from any provider is app mechanics, baked
  * into the prompt — these rules only decide what gets picked.
  */
+
+const ReasoningEnum = z.enum(['low', 'medium', 'high', 'xhigh', 'max', 'ultra'])
+
+/** Per-model spawn policy, keyed `provider:modelId` in rules.models.
+ *  A missing entry means approved with the model's full effort ladder. */
+export const ModelPolicySchema = z.object({
+  approved: z.boolean().default(true),
+  /** effort bounds, clamped to the model's ladder; absent = ladder end */
+  minReasoning: ReasoningEnum.optional(),
+  maxReasoning: ReasoningEnum.optional()
+})
+export type ModelPolicy = z.infer<typeof ModelPolicySchema>
 
 export const RoutingRuleSchema = z.object({
   id: z.string(),
@@ -41,6 +53,8 @@ export const OrchestrationRulesSchema = z.object({
     /** total subagents per thread; 0 = unlimited (enforced in spawn_agent) */
     maxAgents: z.number().int().min(0).max(200).default(0)
   }),
+  /** subagent model policies by `provider:modelId`; {} = all approved */
+  models: z.record(z.string(), ModelPolicySchema).default({}),
   routing: z.array(RoutingRuleSchema)
 })
 export type OrchestrationRules = z.infer<typeof OrchestrationRulesSchema>
@@ -61,6 +75,7 @@ export const DEFAULT_RULES: OrchestrationRules = {
     maxParallel: 4,
     maxAgents: 0
   },
+  models: {},
   routing: [
     {
       id: 'trivial',
@@ -175,4 +190,56 @@ export function parseRules(raw: string | null): OrchestrationRules | null {
 /** Model label helper for prompt text ('' = provider default). */
 export function ruleModel(r: RoutingRule): string {
   return r.model || CATALOG[r.provider].defaultModel
+}
+
+// ── model policy (approved subagent models + effort bounds) ──────────
+
+export const modelKey = (provider: ProviderId, modelId: string): string =>
+  `${provider}:${modelId}`
+
+export function modelApproved(
+  rules: OrchestrationRules,
+  provider: ProviderId,
+  modelId: string
+): boolean {
+  return rules.models[modelKey(provider, modelId)]?.approved ?? true
+}
+
+/** The effort ladder the policy leaves open for a model — its catalog
+ *  ladder sliced to [minReasoning, maxReasoning]. Bounds off the ladder
+ *  (or crossed) are ignored rather than emptying it. */
+export function approvedLadder(
+  rules: OrchestrationRules,
+  provider: ProviderId,
+  modelId: string
+): Reasoning[] {
+  const ladder = modelInfo(provider, modelId)?.reasoning ?? []
+  const p = rules.models[modelKey(provider, modelId)]
+  if (!p || ladder.length === 0) return ladder
+  let lo = p.minReasoning ? ladder.indexOf(p.minReasoning) : 0
+  let hi = p.maxReasoning ? ladder.indexOf(p.maxReasoning) : ladder.length - 1
+  if (lo < 0) lo = 0
+  if (hi < 0) hi = ladder.length - 1
+  return lo <= hi ? ladder.slice(lo, hi + 1) : ladder
+}
+
+/** Requested effort fitted to the approved ladder: kept when inside,
+ *  clamped to the nearer bound when the model serves it outside the
+ *  approved range, else the default (itself fitted). */
+export function fitReasoning(
+  rules: OrchestrationRules,
+  provider: ProviderId,
+  modelId: string,
+  requested: string | undefined
+): Reasoning {
+  const ladder = approvedLadder(rules, provider, modelId)
+  if (ladder.length === 0) return 'medium'
+  if (requested && ladder.includes(requested as Reasoning)) return requested as Reasoning
+  const full = modelInfo(provider, modelId)?.reasoning ?? []
+  const want = requested && full.includes(requested as Reasoning) ? (requested as Reasoning) : null
+  const pick = want ?? modelInfo(provider, modelId)?.defaultReasoning ?? ladder[0]
+  const ix = full.indexOf(pick)
+  if (ix >= 0 && ix < full.indexOf(ladder[0])) return ladder[0]
+  if (ix > full.indexOf(ladder[ladder.length - 1])) return ladder[ladder.length - 1]
+  return ladder.includes(pick) ? pick : ladder[0]
 }

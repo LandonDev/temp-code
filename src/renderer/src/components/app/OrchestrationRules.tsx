@@ -1,7 +1,14 @@
 import { useEffect, useMemo, useState } from 'react'
 import { ArrowUp, Plus } from 'lucide-react'
-import type { OrchestrationRules, RoutingRule } from '@shared/rules'
-import type { ProviderId, Reasoning } from '@shared/catalog'
+import {
+  approvedLadder,
+  modelApproved,
+  modelKey,
+  type ModelPolicy,
+  type OrchestrationRules,
+  type RoutingRule
+} from '@shared/rules'
+import type { ModelInfo, ProviderId, Reasoning } from '@shared/catalog'
 import { client } from '../../lib/client'
 import { useApp } from '../../state/store'
 import { cn } from '../../lib/utils'
@@ -54,6 +61,7 @@ export function OrchestrationRulesEditor({
 }: {
   workspaceId: string | null
 }): React.JSX.Element {
+  const catalog = useApp((s) => s.catalog)
   const [rules, setRules] = useState<OrchestrationRules | null>(null)
   const [overridden, setOverridden] = useState(false)
   const [editing, setEditing] = useState<RoutingRule | 'new' | null>(null)
@@ -81,6 +89,16 @@ export function OrchestrationRulesEditor({
   }
   const patchConduct = (patch: Partial<OrchestrationRules['conduct']>): void =>
     push({ ...rules, conduct: { ...rules.conduct, ...patch } })
+  // A policy back at its default (approved, unbounded) leaves the store.
+  const patchModel = (p: ProviderId, modelId: string, patch: Partial<ModelPolicy>): void => {
+    const key = modelKey(p, modelId)
+    const prev: ModelPolicy = rules.models[key] ?? { approved: true }
+    const next: ModelPolicy = { ...prev, ...patch }
+    const models = { ...rules.models }
+    if (next.approved && !next.minReasoning && !next.maxReasoning) delete models[key]
+    else models[key] = next
+    push({ ...rules, models })
+  }
 
   const clearScope = (): void => {
     void client.request('rules.set', { workspaceId, rules: null }).then(() =>
@@ -225,6 +243,31 @@ export function OrchestrationRulesEditor({
       </SettingsGroup>
 
       <SettingsGroup
+        title="Models"
+        hint="Unapproved models are refused when threads spawn subagents; efforts clamp into each range."
+      >
+        <div className="flex flex-col gap-3">
+          {(Object.keys(catalog ?? {}) as ProviderId[]).map((p) => (
+            <SettingsPanel key={p}>
+              <div className="flex items-center gap-2 px-4 py-2 text-[11px] text-muted-foreground">
+                <ProviderMark provider={p} size={11} />
+                {catalog?.[p].label ?? p}
+              </div>
+              {(catalog?.[p].models ?? []).map((m) => (
+                <ModelRow
+                  key={m.id}
+                  provider={p}
+                  model={m}
+                  rules={rules}
+                  onChange={(patch) => patchModel(p, m.id, patch)}
+                />
+              ))}
+            </SettingsPanel>
+          ))}
+        </div>
+      </SettingsGroup>
+
+      <SettingsGroup
         title="Routing"
         hint="The first matching rule decides provider, model, and effort. Click a rule to edit it."
       >
@@ -233,6 +276,7 @@ export function OrchestrationRulesEditor({
             <RuleRow
               key={r.id}
               rule={r}
+              rules={rules}
               first={ix === 0}
               onToggle={(v) =>
                 push({
@@ -256,6 +300,7 @@ export function OrchestrationRulesEditor({
       {editing && (
         <RuleDialog
           rule={editing === 'new' ? null : editing}
+          rules={rules}
           onSave={saveRule}
           onDelete={editing === 'new' ? undefined : () => deleteRule(editing.id)}
           onClose={() => setEditing(null)}
@@ -290,14 +335,73 @@ function CapSelect({
   )
 }
 
+function ModelRow({
+  provider,
+  model,
+  rules,
+  onChange
+}: {
+  provider: ProviderId
+  model: ModelInfo
+  rules: OrchestrationRules
+  onChange: (patch: Partial<ModelPolicy>) => void
+}): React.JSX.Element {
+  const approved = modelApproved(rules, provider, model.id)
+  const range = approvedLadder(rules, provider, model.id)
+  const ladder = model.reasoning
+  const min = range[0]
+  const max = range[range.length - 1]
+  const effortSelect = (
+    value: Reasoning,
+    allowed: Reasoning[],
+    save: (v: Reasoning) => void
+  ): React.JSX.Element => (
+    <Select value={value} onValueChange={(v) => save(v as Reasoning)}>
+      <SelectTrigger size="sm" className="w-24">
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        {allowed.map((r) => (
+          <SelectItem key={r} value={r}>
+            {EFFORT_LABELS[r]}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  )
+  return (
+    <div className={cn('flex items-center gap-4 px-4 py-2.5', !approved && 'opacity-50')}>
+      <span className="min-w-0 flex-1 truncate text-[13px]">{model.label}</span>
+      {approved && ladder.length > 1 && (
+        <span className="flex shrink-0 items-center gap-1.5 text-[11px] text-muted-foreground">
+          {effortSelect(min, ladder.slice(0, ladder.indexOf(max) + 1), (v) =>
+            onChange({ minReasoning: v === ladder[0] ? undefined : v })
+          )}
+          –
+          {effortSelect(max, ladder.slice(ladder.indexOf(min)), (v) =>
+            onChange({ maxReasoning: v === ladder[ladder.length - 1] ? undefined : v })
+          )}
+        </span>
+      )}
+      <Switch
+        checked={approved}
+        onChange={(v) => onChange({ approved: v })}
+        aria-label={`Approve ${model.label}`}
+      />
+    </div>
+  )
+}
+
 function RuleRow({
   rule,
+  rules,
   first,
   onToggle,
   onMoveUp,
   onEdit
 }: {
   rule: RoutingRule
+  rules: OrchestrationRules
   first: boolean
   onToggle: (v: boolean) => void
   onMoveUp: () => void
@@ -306,6 +410,7 @@ function RuleRow({
   const catalog = useApp((s) => s.catalog)
   const modelId = rule.model || catalog?.[rule.provider]?.defaultModel || ''
   const model = catalog?.[rule.provider]?.models.find((m) => m.id === modelId)
+  const approved = modelApproved(rules, rule.provider, modelId)
   return (
     <div
       className={cn(
@@ -322,6 +427,7 @@ function RuleRow({
           {model?.reasoning.length ? (
             <span className="text-muted-foreground/60">· {EFFORT_LABELS[rule.reasoning]}</span>
           ) : null}
+          {!approved && <span className="text-destructive/80">· not approved</span>}
         </span>
       </button>
       {!first && (
@@ -339,11 +445,13 @@ function RuleRow({
 
 function RuleDialog({
   rule,
+  rules,
   onSave,
   onDelete,
   onClose
 }: {
   rule: RoutingRule | null
+  rules: OrchestrationRules
   onSave: (r: RoutingRule) => void
   onDelete?: () => void
   onClose: () => void
@@ -354,11 +462,14 @@ function RuleDialog({
   const [model, setModel] = useState(rule?.model ?? '')
   const [reasoning, setReasoning] = useState<Reasoning>(rule?.reasoning ?? 'medium')
 
-  const models = useMemo(() => catalog?.[provider]?.models ?? [], [catalog, provider])
+  const models = useMemo(
+    () => (catalog?.[provider]?.models ?? []).filter((m) => modelApproved(rules, provider, m.id)),
+    [catalog, provider, rules]
+  )
   const effective = model || catalog?.[provider]?.defaultModel || ''
   const ladder = useMemo(
-    () => models.find((m) => m.id === effective)?.reasoning ?? [],
-    [models, effective]
+    () => (models.some((m) => m.id === effective) ? approvedLadder(rules, provider, effective) : []),
+    [models, effective, rules, provider]
   )
   // Keep effort valid for the picked model (render-time adjust).
   if (ladder.length && !ladder.includes(reasoning)) setReasoning(ladder[0])

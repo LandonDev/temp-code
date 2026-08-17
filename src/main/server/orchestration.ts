@@ -10,7 +10,15 @@ import {
   type McpSdkServerConfigWithInstance
 } from '@anthropic-ai/claude-agent-sdk'
 import { AGENT_TYPES, CATALOG, modelInfo, type ProviderId } from '@shared/catalog'
-import { DEFAULT_RULES, mergeThreadRules, ruleModel, type OrchestrationRules } from '@shared/rules'
+import {
+  DEFAULT_RULES,
+  approvedLadder,
+  fitReasoning,
+  mergeThreadRules,
+  modelApproved,
+  ruleModel,
+  type OrchestrationRules
+} from '@shared/rules'
 import type { EventRow, SessionMeta } from '@shared/events'
 import type { SessionRegistry } from './sessions'
 import { foldTodo, newTodoFold, tallyOf } from './todos'
@@ -283,19 +291,31 @@ const settledReport = (id: string, meta: SessionMeta): Record<string, unknown> =
   }
 }
 
-/** The spawnable model table — one source for prompts and preambles. */
-export function spawnableModels(): string {
-  return Object.values(CATALOG)
-    .map(
-      (p) =>
-        `- ${p.id}:\n${p.models
-          .map(
-            (m) =>
-              `    ${m.id}${m.reasoning.length ? ` (${m.reasoning.join('|')})` : ' (no effort control)'}`
-          )
-          .join('\n')}`
-    )
-    .join('\n')
+/** The spawnable model table — one source for prompts, preambles and
+ *  refusals. Renders only the models the user approved, each with the
+ *  effort range the policy leaves open. */
+export function spawnableModels(rules: OrchestrationRules): string {
+  const blocks = Object.values(CATALOG)
+    .map((p) => {
+      const models = p.models.filter((m) => modelApproved(rules, p.id, m.id))
+      if (models.length === 0) return null
+      return `- ${p.id}:\n${models
+        .map((m) => {
+          const ladder = approvedLadder(rules, p.id, m.id)
+          return `    ${m.id}${ladder.length ? ` (${ladder.join('|')})` : ' (no effort control)'}`
+        })
+        .join('\n')}`
+    })
+    .filter(Boolean)
+  return blocks.length ? blocks.join('\n') : '(none — the user has approved no subagent models)'
+}
+
+/** A provider's spawn default under the policy: the catalog default when
+ *  approved, else its first approved model. */
+function approvedDefault(rules: OrchestrationRules, provider: ProviderId): string | null {
+  const p = CATALOG[provider]
+  if (modelApproved(rules, provider, p.defaultModel)) return p.defaultModel
+  return p.models.find((m) => modelApproved(rules, provider, m.id))?.id ?? null
 }
 
 /** Models name providers loosely in the wild — accept the obvious spellings. */
@@ -313,34 +333,46 @@ const canon = (s: string): string => s.toLowerCase().replace(/[^a-z0-9.]/g, '')
 /**
  * Forgiving spawn-target resolution: alias the provider, match the model
  * exactly anywhere in the catalog, then loosely by id/label substring
- * ("opus" → claude-opus-5). Only a model nothing matches is refused —
- * with the full table, so the caller can self-correct.
+ * ("opus" → claude-opus-5) — considering only models the user approved.
+ * A miss is refused with the approved table, so the caller can
+ * self-correct.
  */
 function resolveSpawnTarget(
   rawProvider: string | undefined,
   rawModel: string | undefined,
-  fallback: ProviderId
+  fallback: ProviderId,
+  rules: OrchestrationRules
 ): { provider: ProviderId; model: string } | { error: string } {
+  const table = (): string => `Approved models:\n${spawnableModels(rules)}`
   const provider = rawProvider ? PROVIDER_ALIASES[rawProvider.toLowerCase().trim()] : undefined
   if (!rawModel) {
     const p = provider ?? fallback
-    return { provider: p, model: CATALOG[p].defaultModel }
+    const model = approvedDefault(rules, p)
+    return model
+      ? { provider: p, model }
+      : { error: `refused: the user has approved no ${p} models for subagents. ${table()}` }
   }
-  for (const p of Object.keys(CATALOG) as ProviderId[]) {
-    if (modelInfo(p, rawModel)) {
-      return provider && modelInfo(provider, rawModel)
-        ? { provider, model: rawModel }
-        : { provider: p, model: rawModel }
+  const exactIn = (Object.keys(CATALOG) as ProviderId[]).filter((p) => modelInfo(p, rawModel))
+  if (exactIn.length > 0) {
+    const serving =
+      provider && exactIn.includes(provider) ? [provider, ...exactIn] : exactIn
+    const ok = serving.find((p) => modelApproved(rules, p, rawModel))
+    if (ok) return { provider: ok, model: rawModel }
+    return {
+      error: `refused: the user has not approved ${rawModel} for subagents — pick an approved model instead. ${table()}`
     }
   }
   const q = canon(rawModel)
   const order = [...(provider ? [provider] : []), ...(Object.keys(CATALOG) as ProviderId[])]
   for (const p of order) {
-    const hit = CATALOG[p].models.find((m) => canon(m.id).includes(q) || canon(m.label).includes(q))
+    const hit = CATALOG[p].models.find(
+      (m) =>
+        modelApproved(rules, p, m.id) && (canon(m.id).includes(q) || canon(m.label).includes(q))
+    )
     if (hit) return { provider: p, model: hit.id }
   }
   return {
-    error: `refused: no provider serves a model matching "${rawModel}". Spawnable models:\n${spawnableModels()}`
+    error: `refused: no provider serves an approved model matching "${rawModel}". ${table()}`
   }
 }
 
@@ -359,17 +391,18 @@ export interface SpawnAgentArgs {
 
 export async function orchSpawnAgent(parent: SessionMeta, args: SpawnAgentArgs): Promise<string> {
   if (!registry) return 'orchestration registry not ready'
-  const target = resolveSpawnTarget(args.provider, args.model, parent.provider)
-  if ('error' in target) return target.error
-  const info = modelInfo(target.provider, target.model)!
-  const reasoning = (
-    args.reasoning && info.reasoning.includes(args.reasoning as SessionMeta['reasoning'])
-      ? args.reasoning
-      : (info.defaultReasoning ?? info.reasoning[0] ?? 'medium')
-  ) as SessionMeta['reasoning']
-  // Enforce the user's conduct rules — these are settings, not
-  // suggestions. The refusal text tells the model how to proceed.
+  // Enforce the user's rules — these are settings, not suggestions. The
+  // refusal text tells the model how to proceed. Model policy gates the
+  // target and clamps effort into the approved range.
   const rules = rulesFor(parent)
+  const target = resolveSpawnTarget(args.provider, args.model, parent.provider, rules)
+  if ('error' in target) return target.error
+  const reasoning = fitReasoning(
+    rules,
+    target.provider,
+    target.model,
+    args.reasoning
+  ) as SessionMeta['reasoning']
   const agentType = (AGENT_TYPES as readonly string[]).includes(args.agentType ?? '')
     ? (args.agentType as (typeof AGENT_TYPES)[number])
     : 'implementer'
@@ -660,7 +693,8 @@ export const ORCHESTRATOR_TOOLS = [
 // table), rendered to text — and enforced in code where possible (tool
 // denial in the driver, spawn caps above).
 
-const ORCHESTRATOR_MECHANICS = `
+const orchestratorMechanics = (rules: OrchestrationRules): string =>
+  `
 You can orchestrate subagents across providers with the orchestrator tools
 (spawn_agent, send_to_agent, check_agent, wait_for_agent, answer_agent,
 interrupt_agent, list_agents).
@@ -676,8 +710,10 @@ about a different environment and does not apply here. spawn_agent is the
 only path that gives the user a visible, streaming subagent session.
 
 Spawnable models (map loose names like "gpt 5.6" onto these ids; efforts
-listed are the ONLY valid reasoning values per model):
-${spawnableModels()}
+listed are the ONLY valid reasoning values per model — this table already
+reflects the user's approved-model settings, and anything outside it is
+refused):
+${spawnableModels(rules)}
 Agent types: ${AGENT_TYPES.join(', ')} — implementers write code, explorers
 read/investigate, reviewers judge, orchestrators sub-orchestrate.
 
@@ -745,16 +781,22 @@ function renderRules(rules: OrchestrationRules): string {
     .map((l) => `- ${l}`)
     .join('\n')
 
-  const active = rules.routing.filter((r) => r.enabled)
+  // Rows pointing at unapproved models are dropped, and each row's effort
+  // is fitted to the approved range — the table never tells the model to
+  // do something spawn_agent would refuse or silently adjust.
+  const active = rules.routing.filter(
+    (r) => r.enabled && modelApproved(rules, r.provider, ruleModel(r))
+  )
+  const fallback = approvedDefault(rules, 'claude')
   const routing = active.length
     ? `Routing table — for each task, use the FIRST matching row's exact
 provider/model/effort (deviate only when the user explicitly names a
 model, and say so):
-${active.map((r, i) => `${i + 1}. ${r.task} → ${r.provider} · ${ruleModel(r)} · ${r.reasoning}`).join('\n')}
-No row matches → claude · ${CATALOG.claude.defaultModel} · medium.`
-    : `No routing table configured — pick provider/model/effort by judgment:
-cheap models for mechanical work, capable models for judgment and
-user-facing work, low effort for trivial tasks.`
+${active.map((r, i) => `${i + 1}. ${r.task} → ${r.provider} · ${ruleModel(r)} · ${fitReasoning(rules, r.provider, ruleModel(r), r.reasoning)}`).join('\n')}
+${fallback ? `No row matches → claude · ${fallback} · ${fitReasoning(rules, 'claude', fallback, 'medium')}.` : 'No row matches → pick any approved model by judgment.'}`
+    : `No routing table configured — pick an approved provider/model/effort
+by judgment: cheap models for mechanical work, capable models for
+judgment and user-facing work, low effort for trivial tasks.`
 
   return `## Conduct (user-defined, binding)\n\n${conduct}\n\n## Routing (user-defined, binding)\n\n${routing}`
 }
@@ -765,14 +807,14 @@ export function orchestratorPrompt(session: SessionMeta): string {
   const rules = rulesFor(session)
   const custom = session.threadRules?.instructions?.trim()
   const extra = custom ? `\n\n## This run's instructions (user-defined, binding)\n\n${custom}` : ''
-  return `${ORCHESTRATOR_MECHANICS}\n\n${renderRules(rules)}${extra}`
+  return `${orchestratorMechanics(rules)}\n\n${renderRules(rules)}${extra}`
 }
 
 /** Mechanics for claude implementation threads: the same spawn toolset
  *  without the conductor rules — the implementer works first, delegates
  *  when it genuinely helps. */
-export function implementerSpawnPrompt(): string {
-  return `${ORCHESTRATOR_MECHANICS}
+export function implementerSpawnPrompt(session: SessionMeta): string {
+  return `${orchestratorMechanics(rulesFor(session))}
 
 You are the implementer, not a conductor: do the work yourself by default.
 Spawn subagents when it genuinely helps — parallel mechanical work, an
@@ -781,8 +823,8 @@ independent review, a second opinion — and supervise what you spawn.`
 
 /** Mechanics for chat threads: conversation first, delegation when real
  *  work would help the discussion. */
-export function chatSpawnPrompt(): string {
-  return `${ORCHESTRATOR_MECHANICS}
+export function chatSpawnPrompt(session: SessionMeta): string {
+  return `${orchestratorMechanics(rulesFor(session))}
 
 This is a conversation thread: think with the user by default. Spawn
 subagents when concrete work would sharpen the discussion — mapping
@@ -791,8 +833,8 @@ supervise what you spawn while the conversation continues.`
 }
 
 /** Mechanics for planning threads: the fleet feeds the plan document. */
-export function planningSpawnPrompt(): string {
-  return `${ORCHESTRATOR_MECHANICS}
+export function planningSpawnPrompt(session: SessionMeta): string {
+  return `${orchestratorMechanics(rulesFor(session))}
 
 This is a PLANNING thread: your deliverable is the plan document, and
 subagents exist to feed it. Spawn explorers to map code and gather
