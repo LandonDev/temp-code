@@ -1,5 +1,5 @@
 {
-  "n": 51,
-  "notes": "Planning threads get the fleet too; the panel becomes one shared component",
-  "ts": 1786949472372
+  "n": 52,
+  "notes": "Starting a build from a plan lets you pick the context window",
+  "ts": 1786950113407
 }
