@@ -32,8 +32,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger
 } from '../ui/dropdown-menu'
-import { StatusDot, THREAD_GLYPHS, THREAD_TINTS, timeAgo } from './bits'
-import { TabIndicator } from './ThreadStrip'
+import { duration, StatusDot, THREAD_GLYPHS, THREAD_TINTS, timeAgo } from './bits'
+import { MatrixSpinner } from './WorkingStrip'
 import { useNow } from '../../lib/useNow'
 import { ZIcon } from './zicon'
 import { NewProjectDialog } from './NewProjectDialog'
@@ -505,34 +505,50 @@ function ProjectRow({
           </span>
         </div>
 
-        {/* One line per live-or-unseen thread, wearing exactly what its
-            tab wears: tinted spinner + elapsed + verb (or tally) while
-            working, the blue dot + bold title once finished unseen. */}
-        {running.map((t) => (
-          <div key={t.id} className="w-full">
-            <div className="flex w-full items-center gap-1.5 text-[11px] leading-4">
-              <span className="min-w-0 flex-1 truncate text-muted-foreground">{t.title}</span>
-              <TabIndicator
-                status={t.status}
-                unread={false}
-                since={t.busySince ?? t.updatedAt}
-                now={now}
-                activity={t.activity}
-                activityKind={t.activityKind}
-                tasks={t.threadType === 'implementation' ? (t.tasks ?? null) : null}
-              />
-            </div>
-            {t.threadType === 'implementation' && t.tasks?.current && (
-              <div className="truncate pl-3 text-[11px] leading-4 text-muted-foreground/60">
-                {t.tasks.current}
+        {/* One line per live-or-unseen thread, status leading the eye:
+            tinted spinner (or the blue unread dot) up front, title, elapsed
+            at the end. An implementation thread's tally and current task
+            get their own indented line underneath. */}
+        {running.map((t) => {
+          const ms = now - (t.busySince ?? t.updatedAt)
+          const tasks = t.threadType === 'implementation' ? (t.tasks ?? null) : null
+          return (
+            <div key={t.id} className="w-full" title={t.activity ?? undefined}>
+              <div className="flex w-full items-center gap-1.5 text-[11px] leading-4">
+                <MatrixSpinner cell={1.8} tint={t.activityKind} />
+                <span className="min-w-0 flex-1 truncate text-muted-foreground">{t.title}</span>
+                <span
+                  className={cn(
+                    'shrink-0 text-[10.5px] whitespace-nowrap tabular-nums text-muted-foreground/60',
+                    ms < 3000 && 'opacity-0'
+                  )}
+                >
+                  {duration(ms)}
+                </span>
               </div>
-            )}
-          </div>
-        ))}
+              {tasks && (
+                <div className="flex items-center gap-1.5 pl-3 text-[11px] leading-4">
+                  <span
+                    className={cn(
+                      'shrink-0 text-[10.5px] tabular-nums',
+                      tasks.done === tasks.total ? 'text-success' : 'text-muted-foreground/80'
+                    )}
+                    title={`${tasks.done} of ${tasks.total} tasks done`}
+                  >
+                    {tasks.done}/{tasks.total}
+                  </span>
+                  {tasks.current && (
+                    <span className="truncate text-muted-foreground/60">{tasks.current}</span>
+                  )}
+                </div>
+              )}
+            </div>
+          )
+        })}
         {unread.map((t) => (
           <div key={t.id} className="flex w-full items-center gap-1.5 text-[11px] leading-4">
+            <span className="size-1.5 shrink-0 rounded-full bg-info" />
             <span className="min-w-0 flex-1 truncate font-medium text-foreground">{t.title}</span>
-            <TabIndicator status={t.status} unread since={t.updatedAt} now={now} />
           </div>
         ))}
 
