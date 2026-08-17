@@ -4,6 +4,8 @@ import type { AgentEvent } from '@shared/events'
 export interface TaskTally {
   done: number
   total: number
+  /** The in-progress task's name ("Running tests"), null between tasks. */
+  current: string | null
 }
 
 /**
@@ -18,7 +20,7 @@ export interface TaskTally {
  * addressing items by the "#3" the create call's result reported.
  */
 export interface TodoFold {
-  list: { status: string }[]
+  list: { status: string; name: string }[]
   /** "3" (from "Task #3 created") → its index in the list */
   taskIdx: Map<string, number>
   /** pending TaskCreate calls waiting for the result that names them */
@@ -105,17 +107,28 @@ export function foldTodo(s: TodoFold, e: AgentEvent, ts: number): void {
           }
         }
         if (Array.isArray(items)) {
-          s.list = items.map((t) => ({ status: String((t as { status?: string })?.status ?? '') }))
+          s.list = items.map((t) => {
+            const it = t as { status?: string; activeForm?: string; content?: string; step?: string }
+            return {
+              status: String(it?.status ?? ''),
+              name: String(it?.activeForm ?? it?.content ?? it?.step ?? '')
+            }
+          })
         }
       } else if (e.name === 'TaskCreate' && !s.seen.has(e.callId)) {
-        const subject = (e.input as { subject?: string } | null)?.subject
-        if (subject) {
+        const input = e.input as { subject?: string; activeForm?: string } | null
+        if (input?.subject) {
           s.seen.add(e.callId)
-          s.list = [...s.list, { status: 'pending' }]
+          s.list = [...s.list, { status: 'pending', name: input.activeForm ?? input.subject }]
           s.byCall.set(e.callId, s.list.length - 1)
         }
       } else if (e.name === 'TaskUpdate' && !s.seen.has(e.callId)) {
-        const i = e.input as { taskId?: unknown; status?: string } | null
+        const i = e.input as {
+          taskId?: unknown
+          status?: string
+          activeForm?: string
+          subject?: string
+        } | null
         const idx = s.taskIdx.get(String(i?.taskId))
         const status = i?.status
         if (
@@ -124,7 +137,9 @@ export function foldTodo(s: TodoFold, e: AgentEvent, ts: number): void {
           (status === 'pending' || status === 'in_progress' || status === 'completed')
         ) {
           s.seen.add(e.callId)
-          s.list = s.list.map((t, n) => (n === idx ? { status } : t))
+          s.list = s.list.map((t, n) =>
+            n === idx ? { status, name: i?.activeForm ?? i?.subject ?? t.name } : t
+          )
         }
       }
       break
@@ -137,5 +152,9 @@ export function foldTodo(s: TodoFold, e: AgentEvent, ts: number): void {
 
 export function tallyOf(s: TodoFold): TaskTally | null {
   if (s.list.length === 0) return null
-  return { done: s.list.filter((t) => t.status === 'completed').length, total: s.list.length }
+  return {
+    done: s.list.filter((t) => t.status === 'completed').length,
+    total: s.list.length,
+    current: s.list.find((t) => t.status === 'in_progress')?.name || null
+  }
 }
