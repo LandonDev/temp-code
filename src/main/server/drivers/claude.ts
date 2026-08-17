@@ -14,6 +14,7 @@ import type { DriverCtx, DriverHandle, HarnessDriver } from './types'
 import { parsePartialJson } from './partial-json'
 import { toolDisplay } from './display'
 import {
+  chatSpawnPrompt,
   implementerSpawnPrompt,
   ORCHESTRATOR_TOOLS,
   orchestratorMcp,
@@ -531,6 +532,9 @@ export const claudeDriver: HarnessDriver = {
             // tools. (Prompt text explains the denial to the model.)
             const conduct = rulesFor(session).conduct
             const denied = [
+              // Native Task lanes are invisible — the fleet is the only
+              // sanctioned way to run subagents.
+              'Task',
               ...(conduct.selfEdit ? [] : ['Edit', 'MultiEdit', 'Write', 'NotebookEdit']),
               ...(conduct.selfShell ? [] : ['Bash'])
             ]
@@ -540,7 +544,7 @@ export const claudeDriver: HarnessDriver = {
                 app: appToolsMcp(session)
               },
               allowedTools: [...ORCHESTRATOR_TOOLS, ...APP_TOOLS],
-              ...(denied.length ? { disallowedTools: denied } : {}),
+              disallowedTools: denied,
               systemPrompt: {
                 type: 'preset' as const,
                 preset: 'claude_code' as const,
@@ -548,19 +552,24 @@ export const claudeDriver: HarnessDriver = {
               }
             }
           })()
-        : session.threadType === 'implementation'
+        : session.threadType === 'implementation' || session.threadType === 'chat'
           ? {
-              // Implementation threads spawn subagents through the same
-              // toolset — never by shelling out to another model's CLI.
+              // Implementation AND chat threads spawn subagents through the
+              // same toolset — never by shelling out to another model's CLI,
+              // and never invisibly through the built-in Task tool. A chat
+              // that delegates grows the same fleet panel the board has.
               mcpServers: {
                 orchestrator: orchestratorMcp(session),
                 app: appToolsMcp(session)
               },
               allowedTools: [...ORCHESTRATOR_TOOLS, ...APP_TOOLS],
+              // Native Task lanes are invisible to the user — the whole
+              // point of spawn_agent is a visible, steerable session.
+              disallowedTools: ['Task'],
               systemPrompt: {
                 type: 'preset' as const,
                 preset: 'claude_code' as const,
-                append: implementerSpawnPrompt()
+                append: session.threadType === 'chat' ? chatSpawnPrompt() : implementerSpawnPrompt()
               }
             }
           : {

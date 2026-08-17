@@ -732,6 +732,12 @@ read/investigate, reviewers judge, orchestrators sub-orchestrate.
 Give each agent a complete, self-contained task prompt — it cannot see this
 conversation. Parallelize independent work; sequence dependent work.
 
+Subagents ALWAYS go through spawn_agent — spawned agents are visible,
+steerable sessions in the app's fleet panel with their own transcripts.
+The built-in Task tool is disabled here for exactly that reason: its
+lanes are invisible to the user. Anything you would have handed to Task
+(exploration, a general-purpose errand), hand to spawn_agent instead.
+
 Supervise without polling. After spawning, keep doing your OWN work —
 subagents run in parallel with you. When you need results, call
 wait_for_agent (agentIds + mode "any" collects fan-outs in completion
@@ -805,9 +811,7 @@ user-facing work, low effort for trivial tasks.`
 export function orchestratorPrompt(session: SessionMeta): string {
   const rules = rulesFor(session)
   const custom = session.threadRules?.instructions?.trim()
-  const extra = custom
-    ? `\n\n## This run's instructions (user-defined, binding)\n\n${custom}`
-    : ''
+  const extra = custom ? `\n\n## This run's instructions (user-defined, binding)\n\n${custom}` : ''
   return `${ORCHESTRATOR_MECHANICS}\n\n${renderRules(rules)}${extra}`
 }
 
@@ -820,6 +824,17 @@ export function implementerSpawnPrompt(): string {
 You are the implementer, not a conductor: do the work yourself by default.
 Spawn subagents when it genuinely helps — parallel mechanical work, an
 independent review, a second opinion — and supervise what you spawn.`
+}
+
+/** Mechanics for chat threads: conversation first, delegation when real
+ *  work would help the discussion. */
+export function chatSpawnPrompt(): string {
+  return `${ORCHESTRATOR_MECHANICS}
+
+This is a conversation thread: think with the user by default. Spawn
+subagents when concrete work would sharpen the discussion — mapping
+existing code, an experiment, an independent second opinion — and
+supervise what you spawn while the conversation continues.`
 }
 
 /** The rules governing a session: workspace override → global → defaults,
