@@ -72,7 +72,11 @@ function AppshotChip({ a, onRemove }: { a: Attachment; onRemove: () => void }): 
   }, [a.path])
   return (
     <div className="group relative w-24" title={a.name}>
-      <div className="h-14 w-24 overflow-hidden rounded-lg border bg-secondary">
+      {/* data-appshot-chip: the fly-in overlay lands here */}
+      <div
+        data-appshot-chip={a.path}
+        className="h-14 w-24 overflow-hidden rounded-lg border bg-secondary"
+      >
         {src && <img src={src} alt={a.name} className="h-full w-full object-cover" />}
       </div>
       <p className="mt-0.5 truncate text-[10.5px] leading-tight text-muted-foreground">

@@ -10,6 +10,7 @@ import { ThreadStrip } from './components/app/ThreadStrip'
 import { SurfaceStrip } from './components/app/SurfaceStrip'
 import { RightRail } from './components/app/RightRail'
 import { QuickOpen } from './components/app/QuickOpen'
+import { AppshotFlyIn } from './components/app/AppshotFlyIn'
 import { ChatView } from './components/app/views/ChatView'
 import { PlanView } from './components/app/views/PlanView'
 import { ImplementationView } from './components/app/views/ImplementationView'
@@ -143,6 +144,7 @@ export default function App(): React.JSX.Element {
       </main>
       <RightRail />
       <QuickOpen />
+      <AppshotFlyIn />
     </div>
   )
 }
