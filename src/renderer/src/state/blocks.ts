@@ -85,6 +85,16 @@ type BlockKind =
       error?: string
     }
   | {
+      /** goal lifecycle marker — slim system row, same family as settled
+       *  compaction dividers; met is the completion moment */
+      kind: 'goal'
+      phase: 'set' | 'updated' | 'met' | 'cleared'
+      condition: string
+      iterations?: number
+      reason?: string
+      byModel?: boolean
+    }
+  | {
       kind: 'question'
       requestId: string
       questions: QuestionSpec[]
@@ -509,6 +519,22 @@ export function foldEvent(s: FoldState, e: AgentEvent, ts?: number): void {
       }
       break
     }
+    case 'goal':
+      // Every phase appends its own row — the log reads as history:
+      // set, the end-of-turn checks, then met/cleared.
+      push(
+        s,
+        {
+          kind: 'goal',
+          phase: e.phase,
+          condition: e.condition,
+          iterations: e.iterations,
+          reason: e.reason,
+          byModel: e.byModel
+        },
+        ts
+      )
+      break
     case 'question-request':
       if (!s.byRequest.has(e.requestId)) {
         s.byRequest.set(

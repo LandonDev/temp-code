@@ -9,7 +9,9 @@ import {
   MessageSquare,
   Play,
   ShieldCheck,
-  SlidersHorizontal
+  SlidersHorizontal,
+  Target,
+  X
 } from 'lucide-react'
 import type { ProviderId, Reasoning } from '@shared/catalog'
 import type { PermissionPolicy, SessionMeta } from '@shared/events'
@@ -437,6 +439,13 @@ function StartButton({
   const [ctx1m, setCtx1m] = useState(session.context1m)
   const [permission, setPermission] = useState<PermissionPolicy>(session.permission)
   const [workers, setWorkers] = useState(1)
+  // The build's finish line, derived from the plan; editable, clearable —
+  // empty starts the thread with no goal.
+  const [goal, setGoal] = useState(
+    tasks.length > 0
+      ? "Every task in the plan's checklist is checked off and typecheck passes"
+      : 'The plan is fully implemented and typecheck passes'
+  )
   // Orchestration options: per-run instructions + conduct overrides on
   // top of the Settings defaults, swapped into this popover in place.
   const [view, setView] = useState<'main' | 'tune'>('main')
@@ -468,6 +477,7 @@ function StartButton({
           context1m: model1m && ctx1m,
           agentType: type === 'orchestration' ? 'orchestrator' : 'implementer',
           planPath: session.planPath ?? undefined,
+          goal: goal.trim() || undefined,
           title: n > 1 ? `${base} (${i + 1}/${n})` : base,
           ...(type === 'orchestration' && (tune.conduct || tune.instructions?.trim())
             ? { threadRules: tune }
@@ -622,6 +632,33 @@ function StartButton({
                     </SelectContent>
                   </Select>
                 </div>
+              </div>
+
+              {/* The finish line the build works toward — clear it to
+                  start without a goal. */}
+              <div className="flex items-center gap-2 border-b border-border/60 px-3 py-2">
+                <Target
+                  className={cn(
+                    'size-3.5 shrink-0',
+                    goal.trim() ? 'text-primary' : 'text-muted-foreground/60'
+                  )}
+                />
+                <input
+                  value={goal}
+                  onChange={(e) => setGoal(e.target.value)}
+                  placeholder="Goal — keep working until… (optional)"
+                  aria-label="Goal"
+                  className="min-w-0 flex-1 bg-transparent text-[12px] outline-none placeholder:text-muted-foreground/60"
+                />
+                {goal && (
+                  <button
+                    onClick={() => setGoal('')}
+                    aria-label="Clear goal"
+                    className="flex size-5 shrink-0 items-center justify-center rounded text-muted-foreground/70 transition hover:text-foreground active:scale-95"
+                  >
+                    <X className="size-3" />
+                  </button>
+                )}
               </div>
 
               <div className="p-1">

@@ -58,6 +58,18 @@ const THREAD_TITLES = {
 type SessionListener = (row: EventRow) => void
 type MetaListener = (session: SessionMeta) => void
 
+/** One goal at a time: set/updated replace it, met/cleared end it. */
+type GoalState = { condition: string; iterations: number; setAt: number } | null
+function foldGoal(prev: GoalState, event: AgentEvent, ts: number): GoalState {
+  if (event.type !== 'goal') return prev
+  if (event.phase === 'met' || event.phase === 'cleared') return null
+  return {
+    condition: event.condition,
+    iterations: event.iterations ?? (event.phase === 'set' ? 0 : (prev?.iterations ?? 0)),
+    setAt: event.phase === 'updated' && prev ? prev.setAt : ts
+  }
+}
+
 /** Cap for the transcript handoff sent to a new harness on provider switch. */
 const HANDOFF_MAX_CHARS = 24_000
 
@@ -220,6 +232,12 @@ export class SessionRegistry {
    *  kept live event by event, so every tab can show its tally without
    *  subscribing to the thread. */
   private todoFolds = new Map<string, TodoFold>()
+  /** Active goal per thread, folded from harness-confirmed goal events —
+   *  same lazy-seed-then-warm pattern as todoFolds. */
+  private goalFolds = new Map<string, GoalState>()
+  /** create()-with-goal: applied on the kickoff send, ahead of the
+   *  message, so the goal precedes the work on both providers. */
+  private pendingGoals = new Map<string, string>()
   /** threads titled by slicing their first message, awaiting a real title:
    *  sessionId → the placeholder (to detect a user rename) + the message */
   private pendingTitles = new Map<string, { placeholder: string; text: string }>()
@@ -298,6 +316,20 @@ export class SessionRegistry {
       this.todoFolds.set(sessionId, fold)
     }
     return tallyOf(fold)
+  }
+
+  /** The thread's active goal, walking the stored log once and keeping
+   *  the fold warm from then on (append() below). */
+  private goalOf(sessionId: string): GoalState {
+    let goal = this.goalFolds.get(sessionId)
+    if (goal === undefined) {
+      goal = null
+      for (const row of this.store.eventsAfter(sessionId, 0)) {
+        goal = foldGoal(goal, row.event, row.ts)
+      }
+      this.goalFolds.set(sessionId, goal)
+    }
+    return goal
   }
 
   /** When the session last produced or received anything (drives
@@ -581,6 +613,9 @@ export class SessionRegistry {
         .find((s) => s.threadType === 'planning' && s.planPath === meta.planPath && !s.archived)
       if (planThread) void this.setArchived(planThread.id, true)
     }
+    // A requested goal waits for the kickoff message (send() applies it
+    // just before the text), so goal and work arrive in order.
+    if (params.goal?.trim()) this.pendingGoals.set(id, params.goal.trim())
     // Start the harness eagerly so status/errors surface immediately.
     void this.handleFor(meta.id).catch(() => {})
     return meta
@@ -608,6 +643,22 @@ export class SessionRegistry {
       if (next) {
         meta = next
         this.notifyMeta(next)
+      }
+    }
+    // Typed goal control: codex parses no slash commands, so `/goal …` on
+    // a codex thread routes to the goal RPCs instead of a turn (claude
+    // runs /goal natively — it passes through as a normal message). The
+    // typed text is not logged; the harness's goal event is the record.
+    if (meta.provider === 'codex') {
+      const goalCmd = /^\/goal(?:\s+([\s\S]+))?$/.exec(text.trim())
+      if (goalCmd) {
+        const condition = goalCmd[1]?.trim()
+        if (condition && condition.toLowerCase() !== 'clear') {
+          await this.setGoal(sessionId, condition)
+        } else {
+          await this.clearGoal(sessionId)
+        }
+        return
       }
     }
     // A model id names its harness (resolveModel): a message asking this
@@ -650,6 +701,17 @@ export class SessionRegistry {
     }
     const handle = await this.handleFor(sessionId)
     this.lastActivity.set(sessionId, Date.now())
+    // A goal passed to session.create lands here, ahead of the kickoff:
+    // claude queues its /goal turn first, codex sets the RPC before
+    // turn/start. Failure (no goal support, logged out) never blocks the
+    // kickoff itself.
+    const pendingGoal = this.pendingGoals.get(sessionId)
+    if (pendingGoal) {
+      this.pendingGoals.delete(sessionId)
+      try {
+        await handle.setGoal?.(pendingGoal)
+      } catch {}
+    }
     // The visible transcript carries only what the user typed; thread-type
     // preambles ride along on the first message, provider-agnostic.
     const first = !this.store.hasUserText(sessionId)
@@ -795,6 +857,42 @@ export class SessionRegistry {
     const meta = this.store.getSession(sessionId)
     if (meta && meta.status !== 'idle' && meta.status !== 'error') {
       this.append(sessionId, { type: 'status', status: 'idle' })
+    }
+  }
+
+  /** Set or replace the thread's goal. The harness confirms with a goal
+   *  event — nothing is emitted here, so there are never duplicate rows. */
+  async setGoal(sessionId: string, condition: string): Promise<void> {
+    await this.goalCall(sessionId, (h) => {
+      if (!h.setGoal) throw new Error('this provider has no goal support')
+      return h.setGoal(condition)
+    })
+  }
+
+  async clearGoal(sessionId: string): Promise<void> {
+    await this.goalCall(sessionId, (h) => {
+      if (!h.clearGoal) throw new Error('this provider has no goal support')
+      return h.clearGoal()
+    })
+  }
+
+  private async goalCall(
+    sessionId: string,
+    fn: (h: DriverHandle) => Promise<void>
+  ): Promise<void> {
+    const handle = await this.handleFor(sessionId)
+    this.lastActivity.set(sessionId, Date.now())
+    try {
+      await fn(handle)
+    } catch (err) {
+      // Same recovery as send(): a dead harness reboots (resume keeps the
+      // conversation) and takes the call.
+      if (err instanceof Error && err.message.includes('harness gone')) {
+        await this.dropHandle(sessionId)
+        await fn(await this.handleFor(sessionId))
+        return
+      }
+      throw err
     }
   }
 
@@ -953,6 +1051,8 @@ export class SessionRegistry {
       this.lastActivity.delete(id)
       this.activities.delete(id)
       this.todoFolds.delete(id)
+      this.goalFolds.delete(id)
+      this.pendingGoals.delete(id)
       const meta = all.find((s) => s.id === id)
       if (meta) removeMirror(this, meta) // mirrors die with the thread
     }
@@ -1027,7 +1127,8 @@ export class SessionRegistry {
 
     const startP = driver
       .start({
-        session: meta,
+        // Drivers seed goal state from here (resume dedup, watcher init).
+        session: { ...meta, goal: this.goalOf(sessionId) },
         emit: (event) => this.append(sessionId, event),
         setNativeId: (nativeId) => {
           const next = this.store.updateSession(sessionId, { nativeId })
@@ -1074,6 +1175,13 @@ export class SessionRegistry {
       const after = tallyOf(warm)
       tasksMoved = before?.done !== after?.done || before?.total !== after?.total
     }
+    // Keep the goal fold current the same way; a goal event pushes meta so
+    // the prompt-bar indicator flips without a status change.
+    const goalMoved = event.type === 'goal'
+    if (goalMoved) {
+      const prev = this.goalFolds.get(sessionId)
+      if (prev !== undefined) this.goalFolds.set(sessionId, foldGoal(prev, event, row.ts))
+    }
     // A finished first turn upgrades the sliced-first-message title to a
     // generated one (fire-and-forget; the slice stays if the call fails).
     if (event.type === 'turn-complete') this.maybeRetitle(sessionId)
@@ -1085,7 +1193,7 @@ export class SessionRegistry {
       if (act === null) this.activities.delete(sessionId)
       else this.activities.set(sessionId, act)
     }
-    if ((actMoved || tasksMoved) && event.type !== 'status') {
+    if ((actMoved || tasksMoved || goalMoved) && event.type !== 'status') {
       const meta = this.store.getSession(sessionId)
       if (meta) this.notifyMeta(meta)
     }
@@ -1385,7 +1493,8 @@ export class SessionRegistry {
       ...session,
       activity: act?.text ?? null,
       activityKind: act?.kind ?? null,
-      tasks: this.tasksOf(session.id)
+      tasks: this.tasksOf(session.id),
+      goal: this.goalOf(session.id)
     }
   }
 

@@ -35,6 +35,10 @@ export interface DriverHandle {
   answer?: (requestId: string, answers: string[][] | null) => boolean
   /** Context-window usage breakdown (claude: /context data). */
   contextUsage?: () => Promise<unknown>
+  /** Set/replace the goal condition on the harness (claude /goal, codex
+   *  thread/goal/set). Confirmation arrives as a goal event, never here. */
+  setGoal?: (condition: string) => Promise<void>
+  clearGoal?: () => Promise<void>
   dispose: () => Promise<void>
 }
 

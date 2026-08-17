@@ -45,6 +45,24 @@ function writeAtomic(path: string, content: string): void {
   renameSync(tmp, path)
 }
 
+/** Goal lifecycle as one system line per event. Claude's mid-turn checks
+ *  carry a reason; sets/updates without one read as plain state changes. */
+function goalLine(e: Extract<EventRow['event'], { type: 'goal' }>): string {
+  const by = e.byModel ? ' by the model' : ''
+  switch (e.phase) {
+    case 'set':
+      return `Goal set${by} — ${e.condition}`
+    case 'updated':
+      return e.reason
+        ? `Goal check (iteration ${e.iterations ?? 0}): ${e.reason}`
+        : `Goal updated${by} — ${e.condition}`
+    case 'met':
+      return `Goal met${e.reason ? ` — ${e.reason}` : ''}`
+    case 'cleared':
+      return `Goal cleared${e.reason ? ` — ${e.reason}` : ''}`
+  }
+}
+
 /** The readable dialogue: ## User / ## Assistant sections, one-line tool
  *  actions as bullets. No thinking, no tool payloads. */
 export function renderDialogue(rows: EventRow[]): string {
@@ -62,6 +80,9 @@ export function renderDialogue(rows: EventRow[]): string {
     if (row.event.type === 'user-text') {
       flush()
       sections.push(`## User\n\n${row.event.text}`)
+    } else if (row.event.type === 'goal') {
+      flush()
+      sections.push(`_${goalLine(row.event)}_`)
     } else {
       turn.push(row)
     }

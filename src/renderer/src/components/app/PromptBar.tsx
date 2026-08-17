@@ -14,6 +14,7 @@ import { ContextMeter } from './ContextMeter'
 import { Zap } from 'lucide-react'
 import { ZIcon } from './zicon'
 import { ModelPicker } from './ModelPicker'
+import { GoalControl } from './GoalControl'
 import { imageDataFor, openLightbox, type LightboxItem } from './Lightbox'
 import {
   Select,
@@ -945,6 +946,9 @@ export function PromptBar({
               </>
             )}
             <div className="flex items-center gap-1.5 pl-1">
+              {session.provider !== 'cursor' && (
+                <GoalControl sessionId={selectedId} goal={session.goal} />
+              )}
               <button
                 onClick={() => pickerRef.current?.click()}
                 aria-label="Attach files"

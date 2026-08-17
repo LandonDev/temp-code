@@ -1,5 +1,5 @@
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { Check, CheckCheck, Copy } from 'lucide-react'
+import { Check, CheckCheck, Copy, Target } from 'lucide-react'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { cn } from '../../lib/utils'
 import { useApp } from '../../state/store'
@@ -99,6 +99,44 @@ function PassDivider({ actions }: { actions: string[] }): React.JSX.Element {
   )
 }
 
+/** Goal lifecycle as a slim system row (compaction-divider family). The
+ *  met row is the completion moment — weight, not glow. */
+function GoalRow({ block }: { block: Extract<Block, { kind: 'goal' }> }): React.JSX.Element {
+  const met = block.phase === 'met'
+  const by = block.byModel ? ' by the model' : ''
+  const label =
+    block.phase === 'set'
+      ? `Goal set${by}`
+      : block.phase === 'updated'
+        ? block.reason
+          ? `Goal check${block.iterations ? ` #${block.iterations}` : ''}`
+          : `Goal updated${by}`
+        : met
+          ? 'Goal met'
+          : 'Goal cleared'
+  // One detail per row, never two: checks and met show the checker's
+  // reason, set/updated show the condition, cleared stands alone.
+  const detail =
+    block.phase === 'cleared' ? undefined : (block.reason ?? block.condition) || undefined
+  return (
+    <div className="flex items-center gap-3 py-1" role="note" aria-label={label}>
+      <span className={cn('h-px flex-1', met ? 'bg-foreground/25' : 'bg-border')} />
+      <span
+        className={cn(
+          'flex min-w-0 shrink items-center gap-1.5 text-[11px]',
+          met ? 'text-foreground' : 'text-muted-foreground'
+        )}
+        title={detail}
+      >
+        {met ? <Check className="size-3 shrink-0" /> : <Target className="size-3 shrink-0" />}
+        <span className={cn('shrink-0', met && 'font-medium')}>{label}</span>
+        {detail && <span className="truncate">— {detail}</span>}
+      </span>
+      <span className={cn('h-px flex-1', met ? 'bg-foreground/25' : 'bg-border')} />
+    </div>
+  )
+}
+
 type GlanceKind = 'user' | 'reply' | 'edit' | 'tool' | 'alert'
 
 /** What a row IS, at minimap distance: who spoke / what happened + a
@@ -130,6 +168,8 @@ function rowGlance(row: Row): { kind: GlanceKind; who: string; text: string } {
         who: 'Compaction',
         text: b.phase === 'start' ? 'Compacting context' : 'Context compacted'
       }
+    case 'goal':
+      return { kind: 'tool', who: 'Goal', text: b.reason ?? b.condition }
     case 'pass':
       return { kind: 'tool', who: 'Pass', text: b.actions.join(' · ') }
     default:
@@ -277,6 +317,8 @@ const RowContent = memo(function RowContent({
       return <QuestionCard block={block} sessionId={sessionId} />
     case 'compaction':
       return <CompactionCard block={block} />
+    case 'goal':
+      return <GoalRow block={block} />
     case 'pass':
       return <PassDivider actions={block.actions} />
     case 'error':
