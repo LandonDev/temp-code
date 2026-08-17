@@ -69,7 +69,11 @@ export const AgentEventSchema = z.discriminatedUnion('type', [
     /** run settings at send time — the board's pass history renders them */
     model: z.string().optional(),
     reasoning: z.string().optional(),
-    context1m: z.boolean().optional()
+    context1m: z.boolean().optional(),
+    /** the user pressed the pass button for this send (true) or typed under
+     *  the banner (false) — absent on logs from before the stamp, where the
+     *  fold falls back to inferring pass boundaries */
+    newPass: z.boolean().optional()
   }),
 
   // Assistant output. delta=true → streaming chunk to append;

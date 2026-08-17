@@ -547,7 +547,8 @@ export async function startServer(dbPath: string): Promise<RunningServer> {
               provider: req.params.provider,
               model: req.params.model,
               reasoning: req.params.reasoning,
-              attachments: req.params.attachments
+              attachments: req.params.attachments,
+              newPass: req.params.newPass
             })
             sendFrame({ id: req.id, ok: true, result: null })
             break

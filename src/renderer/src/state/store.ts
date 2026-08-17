@@ -109,6 +109,9 @@ export function storedTheme(): ThemePref {
  *  immutable snapshots (blocks arrays) for React. */
 const folds = new Map<string, FoldState>()
 
+/** Threads whose NEXT send opens a new pass (the board's pass button). */
+const newPassArmed = new Set<string>()
+
 /** StrictMode mounts effects twice in dev — init must run once. */
 let initStarted = false
 
@@ -256,6 +259,9 @@ interface AppState {
       attachments?: Attachment[]
     }
   ) => Promise<void>
+  /** the board's pass button: the NEXT send from this thread opens a new
+   *  pass (one-shot — consumed by send, cancellable) */
+  armNewPass: (sessionId: string, armed: boolean) => void
   interrupt: (sessionId: string) => Promise<void>
   approve: (sessionId: string, requestId: string, allow: boolean) => Promise<void>
   /** Answer a model question; null = dismiss without answering. */
@@ -849,6 +855,10 @@ export const useApp = create<AppState>((set, get) => ({
   },
 
   send: async (sessionId, text, opts) => {
+    // One-shot pass arm: the board's pass button decided what this send
+    // means; the flag rides the event so refolds agree forever.
+    const newPass = newPassArmed.has(sessionId)
+    newPassArmed.delete(sessionId)
     // Optimistic: the message and the working state appear this frame; the
     // server's echo claims the block instead of duplicating it.
     let fold = folds.get(sessionId)
@@ -856,7 +866,7 @@ export const useApp = create<AppState>((set, get) => ({
       fold = foldAll(get().events[sessionId] ?? [])
       folds.set(sessionId, fold)
     }
-    foldOptimisticUser(fold, text, opts?.attachments)
+    foldOptimisticUser(fold, text, opts?.attachments, newPass)
     publishFold(set, sessionId, fold)
     set((s) => ({ stopped: { ...s.stopped, [sessionId]: false } }))
     const before = get().sessions[sessionId]
@@ -866,7 +876,7 @@ export const useApp = create<AppState>((set, get) => ({
       }))
     }
     try {
-      await client.request('session.send', { sessionId, text, ...opts })
+      await client.request('session.send', { sessionId, text, newPass, ...opts })
     } catch (err) {
       // Roll back: refold from the authoritative log, restore status.
       const clean = foldAll(get().events[sessionId] ?? [])
@@ -875,6 +885,11 @@ export const useApp = create<AppState>((set, get) => ({
       if (before) set((s) => ({ sessions: { ...s.sessions, [sessionId]: before } }))
       throw err
     }
+  },
+
+  armNewPass: (sessionId, armed) => {
+    if (armed) newPassArmed.add(sessionId)
+    else newPassArmed.delete(sessionId)
   },
 
   interrupt: async (sessionId) => {
