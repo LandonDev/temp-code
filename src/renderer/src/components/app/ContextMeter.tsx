@@ -104,8 +104,15 @@ export function ContextMeter({ sessionId }: { sessionId: string }): React.JSX.El
     return () => clearInterval(t)
   }, [open, running, sessionId, fetchContext])
 
-  const hasMax = !!usage && usage.maxTokens > 0
-  const pct = usage && hasMax ? Math.min(100, Math.round(usage.percentage)) : null
+  // The window is the session's context MODE for claude (Standard = the
+  // 200k auto-compact budget, 1M = the full native window) — the same
+  // field the composer trigger and the switch read, so all three move
+  // together the instant it flips, not on the next fetch.
+  const modeMax =
+    session?.provider === 'claude' ? (session.context1m ? 1_000_000 : 200_000) : null
+  const maxTokens = modeMax ?? usage?.maxTokens ?? 0
+  const hasMax = !!usage && maxTokens > 0
+  const pct = usage && hasMax ? Math.min(100, Math.round((usage.totalTokens / maxTokens) * 100)) : null
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -138,7 +145,7 @@ export function ContextMeter({ sessionId }: { sessionId: string }): React.JSX.El
               <span className="text-[13px] font-medium">Context</span>
               <span className="text-[11px] tabular-nums text-muted-foreground">
                 {hasMax
-                  ? `${fmt(usage.totalTokens)} / ${fmt(usage.maxTokens)} · ${Math.round(usage.percentage)}%`
+                  ? `${fmt(usage.totalTokens)} / ${fmt(maxTokens)} · ${pct}%`
                   : `${fmt(usage.totalTokens)} used · window unknown`}
               </span>
             </div>
@@ -157,7 +164,7 @@ export function ContextMeter({ sessionId }: { sessionId: string }): React.JSX.El
                     key={cat.name}
                     title={`${cat.name} · ${fmt(cat.tokens)}`}
                     style={{
-                      width: `${(cat.tokens / usage.maxTokens) * 100}%`,
+                      width: `${(cat.tokens / maxTokens) * 100}%`,
                       background: tint(cat.color, ix)
                     }}
                   />
