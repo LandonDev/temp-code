@@ -1,5 +1,5 @@
 {
-  "n": 34,
-  "notes": "The window switch returns as a real control; packaged menus get their glass back",
-  "ts": 1786933121317
+  "n": 35,
+  "notes": "Threads change type mid-conversation: a composer picker retypes the thread and re-instructs the model",
+  "ts": 1786934881186
 }
