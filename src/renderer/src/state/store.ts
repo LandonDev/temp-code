@@ -1183,7 +1183,7 @@ export const childrenOf = (
     .filter((s) => s.parentId === parentId)
     .sort((a, b) => a.createdAt - b.createdAt)
 
-// Dev-only: expose the store for CDP-driven inspection in `bun run dev`.
-if (import.meta.env.DEV) {
-  ;(window as unknown as Record<string, unknown>).__app = useApp
-}
+// Expose the store for CDP-driven inspection — dev AND built runs (a
+// packaged app only opens CDP when TEMP_CODE_DEBUG_PORT is set, so this
+// is inert in normal use and makes preview/prod builds debuggable).
+;(window as unknown as Record<string, unknown>).__app = useApp

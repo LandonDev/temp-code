@@ -87,6 +87,56 @@ export interface QueuedMessage extends QueuedSendOpts {
 /** Dispose idle harness handles after this long; resume restores them. */
 const IDLE_DISPOSE_MS = 10 * 60 * 1000
 
+/** What an event says the thread is doing, for the tab strip.
+ *  string = new activity, null = turn settled (clear), undefined = no
+ *  opinion (deltas, results, and other chatter never churn the tabs). */
+function activityOf(event: AgentEvent): string | null | undefined {
+  if (event.type === 'status') return event.status === 'running' ? 'Thinking' : null
+  if (event.type === 'tool-call' && !event.partial && !event.parentCallId) {
+    if (event.display?.app) {
+      return event.display.action ? `${event.display.action}` : `Using ${event.display.app}`
+    }
+    return describeTool(event.name, event.input)
+  }
+  return undefined
+}
+
+const fileOf = (p: unknown): string | null =>
+  typeof p === 'string' && p ? (p.split('/').pop() ?? null) : null
+
+function describeTool(name: string, input: unknown): string {
+  const i = (input ?? {}) as Record<string, unknown>
+  switch (name) {
+    case 'Read':
+      return `Reading ${fileOf(i.file_path) ?? 'a file'}`
+    case 'Edit':
+    case 'MultiEdit':
+    case 'Write':
+    case 'NotebookEdit':
+      return `Editing ${fileOf(i.file_path ?? i.notebook_path) ?? 'a file'}`
+    case 'Bash': {
+      const cmd = typeof i.command === 'string' ? i.command.trim().split(/\s+/)[0] : ''
+      return cmd ? `Running ${fileOf(cmd) ?? cmd}` : 'Running a command'
+    }
+    case 'Grep':
+    case 'Glob':
+      return 'Searching'
+    case 'WebSearch':
+    case 'WebFetch':
+      return 'Browsing'
+    case 'Task':
+      return 'Delegating'
+    case 'TodoWrite':
+      return 'Planning'
+    case 'AskUserQuestion':
+      return 'Asking you'
+    default: {
+      const mcp = /^mcp__([^_]+)__/.exec(name)
+      return `Using ${mcp ? mcp[1] : name}`
+    }
+  }
+}
+
 /**
  * The session registry: owns the session tree, the append-only event log,
  * live driver handles, and per-session subscriptions. The single write
@@ -106,6 +156,10 @@ export class SessionRegistry {
   private passPending = new Map<string, TurnPass>()
   private passActive = new Set<string>()
   private lastActivity = new Map<string, number>()
+  /** "Where it's at" per working thread ("Editing PromptBar.tsx") —
+   *  transient by design: server memory only, cleared when the turn
+   *  settles, attached to every meta push for the tab strip. */
+  private activities = new Map<string, string>()
   private sweepTimer: ReturnType<typeof setInterval> | null = null
 
   constructor(private store: Store) {}
@@ -146,7 +200,9 @@ export class SessionRegistry {
   }
 
   list(): SessionMeta[] {
-    return this.store.listSessions()
+    return this.store
+      .listSessions()
+      .map((s) => ({ ...s, activity: this.activities.get(s.id) ?? null }))
   }
 
   /** When the session last produced or received anything (drives
@@ -693,6 +749,7 @@ export class SessionRegistry {
       await this.dropHandle(id)
       this.subscribers.delete(id)
       this.lastActivity.delete(id)
+      this.activities.delete(id)
       const meta = all.find((s) => s.id === id)
       if (meta) removeMirror(this, meta) // mirrors die with the thread
     }
@@ -775,6 +832,17 @@ export class SessionRegistry {
     }
     const row = this.store.appendEvent(sessionId, event)
     this.lastActivity.set(sessionId, row.ts)
+    // Track "where it's at" for the tabs; a change on a non-status event
+    // pushes its own meta update (status events notify below regardless).
+    const act = activityOf(event)
+    if (act !== undefined && (act ?? undefined) !== this.activities.get(sessionId)) {
+      if (act === null) this.activities.delete(sessionId)
+      else this.activities.set(sessionId, act)
+      if (event.type !== 'status') {
+        const meta = this.store.getSession(sessionId)
+        if (meta) this.notifyMeta(meta)
+      }
+    }
     let settleToReport: SessionMeta | null = null
     // Status events also update the session row (drives the sidebar).
     // busySince anchors the "working for" timers: it is set when a stretch
@@ -996,7 +1064,8 @@ export class SessionRegistry {
   }
 
   private notifyMeta(session: SessionMeta): void {
-    for (const l of this.metaListeners) l(session)
+    const s = { ...session, activity: this.activities.get(session.id) ?? null }
+    for (const l of this.metaListeners) l(s)
   }
 
   async disposeAll(): Promise<void> {
