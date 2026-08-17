@@ -139,9 +139,6 @@ export function ThreadStrip(): React.JSX.Element | null {
       (t.id !== selectedId && t.updatedAt > (lastSeen[t.id] ?? 0))
   )
   const dorm = threads.filter((t) => !live.includes(t))
-  const dormantIds = useMemo(() => new Set(dorm.map((t) => t.id)), [dorm])
-  const ordered: (SessionMeta | 'divider')[] =
-    live.length && dorm.length ? [...live, 'divider', ...dorm] : [...live, ...dorm]
   const anyLive = threads.some((t) => t.status === 'running' || t.status === 'starting')
   const now = useNow(anyLive)
   const archived = useMemo(
@@ -173,7 +170,8 @@ export function ThreadStrip(): React.JSX.Element | null {
   }
 
   return (
-    <div className="flex h-10 shrink-0 items-center gap-1 border-b border-border/60 px-4">
+    <div className="shrink-0 border-b border-border/60">
+      <div className="flex h-10 items-center gap-1 px-4">
       <Tabs
         value={value}
         onValueChange={onValue}
@@ -182,21 +180,9 @@ export function ThreadStrip(): React.JSX.Element | null {
       >
         <TabsList className="h-full">
           <AnimatePresence initial={false} mode="popLayout">
-            {ordered.map((entry) => {
-              if (entry === 'divider') {
-                return (
-                  <motion.span
-                    key="divider"
-                    layout
-                    transition={SPRING_LAYOUT}
-                    className="mx-1.5 h-4 w-px shrink-0 self-center bg-border"
-                  />
-                )
-              }
-              const t = entry
+            {live.map((t) => {
               const Glyph = t.threadType ? THREAD_GLYPHS[t.threadType] : THREAD_GLYPHS.chat
               const unread = t.id !== selectedId && t.updatedAt > (lastSeen[t.id] ?? 0)
-              const dormant = dormantIds.has(t.id)
               return (
                 <motion.div
                   key={t.id}
@@ -241,19 +227,12 @@ export function ThreadStrip(): React.JSX.Element | null {
                         <div onDoubleClick={() => setRenaming(t.id)}>
                           <TabsTrigger
                             value={t.id}
-                            className={cn(
-                              'min-h-0 gap-1.5 py-0 font-normal',
-                              dormant
-                                ? 'h-[22px] px-2 text-[12px] opacity-50 transition-opacity hover:opacity-90'
-                                : 'h-[26px] px-2.5'
-                            )}
+                            className="h-[26px] min-h-0 gap-1.5 px-2.5 py-0 font-normal"
                           >
                             <Glyph
                               className={cn(
                                 'size-[13px] opacity-80',
-                                dormant
-                                  ? 'text-muted-foreground grayscale'
-                                  : THREAD_TINTS[t.threadType ?? 'chat']
+                                THREAD_TINTS[t.threadType ?? 'chat']
                               )}
                             />
                             <span
@@ -268,8 +247,7 @@ export function ThreadStrip(): React.JSX.Element | null {
                                 // Unread reads like unread mail: bold, full
                                 // color. Dormant tabs recede so live ones
                                 // carry the eye.
-                                unread && 'font-medium text-foreground',
-                                dormant && 'max-w-36 text-muted-foreground'
+                                unread && 'font-medium text-foreground'
                               )}
                             >
                               {t.title}
@@ -314,9 +292,89 @@ export function ThreadStrip(): React.JSX.Element | null {
           </AnimatePresence>
         </TabsList>
       </Tabs>
-      <NewThreadButton projectId={projectId} empty={threads.length === 0} />
-      <div className="flex-1" />
-      <ArchivedShelf archived={archived} />
+        <NewThreadButton projectId={projectId} empty={threads.length === 0} />
+        <div className="flex-1" />
+        <ArchivedShelf archived={archived} />
+      </div>
+
+      {/* The shelf: dormant threads live a line BELOW the working ones —
+          smaller, grayscale, faded — and only climb back up by working,
+          failing, needing you, or finishing unread. */}
+      {dorm.length > 0 && (
+        <div className="flex h-7 items-center gap-0.5 overflow-x-auto px-4 pb-1 [scrollbar-width:none]">
+          <AnimatePresence initial={false} mode="popLayout">
+            {dorm.map((t) => {
+              const Glyph = t.threadType ? THREAD_GLYPHS[t.threadType] : THREAD_GLYPHS.chat
+              return (
+                <motion.div
+                  key={t.id}
+                  layout
+                  initial={reduce ? false : { opacity: 0, scale: 0.92 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={reduce ? undefined : { opacity: 0, scale: 0.92 }}
+                  transition={SPRING_LAYOUT}
+                >
+                  {renaming === t.id ? (
+                    <input
+                      autoFocus
+                      defaultValue={t.title}
+                      onFocus={(e) => e.target.select()}
+                      onKeyDown={(e) => {
+                        e.stopPropagation()
+                        if (e.key === 'Enter') e.currentTarget.blur()
+                        if (e.key === 'Escape') {
+                          e.currentTarget.value = t.title
+                          e.currentTarget.blur()
+                        }
+                      }}
+                      onBlur={(e) => {
+                        setRenaming(null)
+                        const v = e.target.value.trim()
+                        if (v && v !== t.title) void renameSession(t.id, v)
+                      }}
+                      className="h-[20px] w-36 rounded-[5px] bg-accent px-1.5 text-[11.5px] outline-none"
+                    />
+                  ) : (
+                  <ContextMenu>
+                    <ContextMenuTrigger asChild>
+                      <button
+                        onClick={() => onValue(t.id)}
+                        onDoubleClick={() => setRenaming(t.id)}
+                        className="flex h-[20px] items-center gap-1 rounded-[5px] px-1.5 text-[11.5px] text-muted-foreground/70 opacity-70 transition hover:bg-accent/60 hover:text-foreground hover:opacity-100 active:scale-[0.98]"
+                      >
+                        <Glyph className="size-3 shrink-0 opacity-60 grayscale" />
+                        <span className="max-w-36 truncate">{t.title}</span>
+                      </button>
+                    </ContextMenuTrigger>
+                    <ContextMenuContent>
+                      <ContextMenuItem onClick={() => setRenaming(t.id)}>
+                        <Pencil className="size-3.5 text-muted-foreground" />
+                        Rename
+                      </ContextMenuItem>
+                      {t.threadType === 'orchestration' && (
+                        <ContextMenuItem onClick={() => setTuning(t.id)}>
+                          <SlidersHorizontal className="size-3.5 text-muted-foreground" />
+                          Orchestration options…
+                        </ContextMenuItem>
+                      )}
+                      <ContextMenuItem onClick={() => archive(t.id)}>
+                        <Archive className="size-3.5 text-muted-foreground" />
+                        Archive
+                      </ContextMenuItem>
+                      <ContextMenuSeparator />
+                      <ContextMenuItem variant="destructive" onClick={() => setDeleting(t.id)}>
+                        <Trash2 className="size-3.5" />
+                        Delete…
+                      </ContextMenuItem>
+                    </ContextMenuContent>
+                  </ContextMenu>
+                  )}
+                </motion.div>
+              )
+            })}
+          </AnimatePresence>
+        </div>
+      )}
       {tuning && (
         <TuneDialog
           key={tuning}
