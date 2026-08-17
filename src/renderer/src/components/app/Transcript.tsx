@@ -1,4 +1,5 @@
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { CheckCheck } from 'lucide-react'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { cn } from '../../lib/utils'
 import { useApp } from '../../state/store'
@@ -64,14 +65,35 @@ function rowsFor(blocks: Block[]): Row[] {
       const grouped = isEdit ? internal : b
       if (grouped) {
         const last = rows.at(-1)
-        if (last?.type === 'group') last.tools.push(grouped)
-        else rows.push({ type: 'group', id: `g${grouped.id}`, tools: [grouped], turn })
+        // Pass work never folds into a turn's group (or vice versa) —
+        // the highlight boundary must match the group boundary.
+        if (last?.type === 'group' && !last.tools[0].pass === !grouped.pass) {
+          last.tools.push(grouped)
+        } else rows.push({ type: 'group', id: `g${grouped.id}`, tools: [grouped], turn })
       }
       continue
     }
     rows.push({ type: 'block', id: b.id, block: b, turn })
   }
   return rows
+}
+
+/** Whether the row is completed-turn pass work (drives the highlight). */
+function rowPass(row: Row): boolean {
+  if (row.type === 'group') return !!row.tools[0].pass
+  return !!row.block.pass
+}
+
+/** The completed-turn pass boundary: quiet divider naming what runs. */
+function PassDivider({ actions }: { actions: string[] }): React.JSX.Element {
+  return (
+    <div className="flex items-center gap-2 py-0.5 text-[11px] text-info/90">
+      <span className="h-px flex-1 bg-info/20" />
+      <CheckCheck className="size-3 shrink-0" />
+      <span className="font-medium">Completed turn · {actions.join(' · ')}</span>
+      <span className="h-px flex-1 bg-info/20" />
+    </div>
+  )
 }
 
 type GlanceKind = 'user' | 'reply' | 'edit' | 'tool' | 'alert'
@@ -105,6 +127,8 @@ function rowGlance(row: Row): { kind: GlanceKind; who: string; text: string } {
         who: 'Compaction',
         text: b.phase === 'start' ? 'Compacting context' : 'Context compacted'
       }
+    case 'pass':
+      return { kind: 'tool', who: 'Pass', text: b.actions.join(' · ') }
     default:
       return { kind: 'tool', who: '', text: '' }
   }
@@ -197,6 +221,8 @@ const RowContent = memo(function RowContent({
       return <QuestionCard block={block} sessionId={sessionId} />
     case 'compaction':
       return <CompactionCard block={block} />
+    case 'pass':
+      return <PassDivider actions={block.actions} />
     case 'error':
       return <ErrorChip text={block.text} />
     default:
@@ -568,6 +594,9 @@ export function Transcript({
                   className={cn(
                     // Block gap 8, turn gap 14 (user rows carry the extra).
                     isUser ? 'py-2.5' : 'py-1',
+                    // Pass work reads as its own band: a quiet info wash
+                    // behind everything between the divider and the settle.
+                    rowPass(row) && '-mx-2 rounded-lg bg-info/[0.05] px-2',
                     fresh && 'animate-[z-fade-in_500ms_cubic-bezier(0.16,1,0.3,1)]'
                   )}
                 >

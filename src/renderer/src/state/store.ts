@@ -214,7 +214,7 @@ interface AppState {
     workspaceId: string,
     name: string,
     mode: ProjectMode,
-    opts?: { baseRef?: string; existingBranch?: string }
+    opts?: { branch?: string; baseRef?: string }
   ) => Promise<ProjectMeta>
   removeProject: (projectId: string) => Promise<void>
   selectProject: (projectId: string | null) => void
@@ -273,6 +273,8 @@ interface AppState {
   setSummaryModel: (v: 'auto' | 'haiku' | 'spark') => void
   /** Fast mode / 1M context; harness restarts with resume on next send. */
   tune: (sessionId: string, patch: { fast?: boolean; context1m?: boolean }) => Promise<void>
+  /** Change the thread's type; the next send carries the new instructions. */
+  retype: (sessionId: string, threadType: ThreadType) => Promise<void>
   fetchContext: (sessionId: string) => Promise<boolean>
   queueAdd: (
     sessionId: string,
@@ -1000,6 +1002,10 @@ export const useApp = create<AppState>((set, get) => ({
   },
   queueSteer: async (sessionId, messageId) => {
     await client.request('queue.steer', { sessionId, messageId })
+  },
+
+  retype: async (sessionId, threadType) => {
+    await client.request('session.retype', { sessionId, threadType })
   },
 
   tune: async (sessionId, patch) => {
