@@ -1,5 +1,5 @@
 {
-  "n": 64,
-  "notes": "Agent detail morph stays smooth while the agent streams",
-  "ts": 1786998583426
+  "n": 65,
+  "notes": "Reopening the folded chat is smooth, and a queued message starts the next pass",
+  "ts": 1786998871108
 }
