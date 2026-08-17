@@ -13,9 +13,11 @@ import { AgentDetail, AgentRow, useAgents } from '../AgentFleet'
 import { ApprovalCard } from '../blocks/ApprovalCard'
 import { QuestionCard } from '../blocks/QuestionCard'
 import {
+  DiffBlock,
   editModel,
   ErrorChip,
   EDIT_TOOLS,
+  parsePatchDiff,
   splitEdit,
   TweenHeight,
   ZEditCard
@@ -165,21 +167,25 @@ export function ImplementationView({ session }: { session: SessionMeta }): React
   // to show (tasks or subagents), then a draggable split — board left,
   // conversation right. The chat can fold to an edge bar; a thread stopped
   // on a question forces it open (render-time adjust, not an effect).
-  const hasBoard = todos.length > 0 || agents.length > 0
+  // Once ANY round produced tasks the thread stays a board — a follow-up
+  // that needed no task list must not collapse the whole split view.
+  const hasBoard = todos.length > 0 || pastTodosAll.some((t) => t.length > 0) || agents.length > 0
   const [chatOpen, setChatOpen] = useState(true)
   const [sawWaiting, setSawWaiting] = useState(waiting)
   if (waiting !== sawWaiting) {
     setSawWaiting(waiting)
     if (waiting) setChatOpen(true)
   }
-  // The run FINISHING with every task done is the moment the conversation
-  // stops mattering — fold it to the edge bar. A user stop (interrupt), a
-  // question, or an unfinished plan keeps it open: the user still has to
-  // talk.
+  // The conversation pane follows the run: a thread that starts working
+  // again (follow-up, queued message, waking subagent) reopens it, and the
+  // run FINISHING with every task done folds it away again. A user stop
+  // (interrupt), a question, or an unfinished plan keeps it open: the
+  // user still has to talk.
   const [sawRunning, setSawRunning] = useState(running)
   if (running !== sawRunning) {
     setSawRunning(running)
-    if (!running && !waiting && allDone && !stopped) setChatOpen(false)
+    if (running) setChatOpen(true)
+    else if (!waiting && allDone && !stopped) setChatOpen(false)
   }
   const collapsed = hasBoard && !chatOpen
 
@@ -477,6 +483,32 @@ function RoundSection({
   const preWork = todos.length ? (workByTodo.get(-1) ?? []) : []
   const flatWork = todos.length === 0 ? (workByTodo.get(-1) ?? []) : []
 
+  // Shell-made changes file under the task that was running when the edit
+  // began: the last task started before it, kept only if the edit falls
+  // inside that task's span (the live tail stays open-ended).
+  const shellByTask = useMemo(() => {
+    const m = new Map<number, LiveEditState[]>()
+    const entries = [...spans.entries()]
+      .filter(([i]) => i >= 0)
+      .sort((a, b) => a[1].first - b[1].first)
+    if (entries.length === 0) return m
+    for (const e of diskOnly) {
+      let owner: number | null = null
+      for (const [i, s] of entries) {
+        if (e.startedTs >= s.first - 1500) owner = i
+      }
+      if (owner === null) continue
+      const s = spans.get(owner)!
+      const openEnded = isCurrent && running && owner === entries[entries.length - 1][0]
+      if (openEnded || e.startedTs <= s.last + 3000) {
+        const arr = m.get(owner)
+        if (arr) arr.push(e)
+        else m.set(owner, [e])
+      }
+    }
+    return m
+  }, [diskOnly, spans, isCurrent, running])
+
   const done = todos.filter((t) => t.status === 'completed').length
   const stat = useMemo(() => {
     let adds = 0
@@ -559,10 +591,11 @@ function RoundSection({
                 <TweenHeight open={bodyOpen} animate>
                   <div>
                     {live && <TaskActivity blocks={taskBlocks} />}
-                    {items.length > 0 &&
+                    {(items.length > 0 || (folded && shellByTask.has(i))) &&
                       (folded ? (
                         <TaskGrid
                           blocks={taskBlocks}
+                          shell={shellByTask.get(i)}
                           openPath={
                             openChange?.round === round && openChange.task === i
                               ? openChange.path
@@ -583,7 +616,9 @@ function RoundSection({
                           <WorkItems blocks={items} sessionId={session.id} />
                         </div>
                       ))}
-                    {live && diskOnly.length > 0 && <DiskCards edits={diskOnly} />}
+                    {live && (shellByTask.get(i)?.length ?? 0) > 0 && (
+                      <DiskCards edits={shellByTask.get(i)!} />
+                    )}
                     {(live || todo.status === 'completed') && (
                       <TaskMeta
                         index={i}
@@ -699,7 +734,7 @@ function FreshEdit({
     <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} className="space-y-2">
       {splitEdit(block).edits.map((eb) => (
         // Auto mode: open exactly while the edit streams, chip when done.
-        <ZEditCard key={eb.id} b={eb} sessionId={sessionId} />
+        <ZEditCard key={eb.id} b={eb} sessionId={sessionId} dense />
       ))}
     </motion.div>
   )
@@ -878,21 +913,51 @@ function wholeChange(path: string, edits: ToolBlock[]): ToolBlock {
   }
 }
 
+/** A shell-made change as a card the board can open: its unified diff
+ *  rides in an apply_patch-shaped block, labeled honestly via the row. */
+function diskBlock(e: LiveEditState): ToolBlock {
+  return {
+    kind: 'tool',
+    id: `disk:${e.path}`,
+    callId: `disk:${e.path}`,
+    name: 'apply_patch',
+    input: [
+      { path: e.path, diff: e.diff ?? '', kind: { type: e.kind === 'created' ? 'add' : 'update' } }
+    ],
+    output: 'via shell',
+    subCount: 0,
+    todo: -1,
+    round: 0,
+    ts: e.startedTs,
+    doneTs: e.ts
+  }
+}
+
 /** A settled task's footprint: every touched file as a quiet text row —
- *  click one and its diff morphs open in place (AgentDetail-style). */
+ *  click one and its diff morphs open in place (AgentDetail-style).
+ *  Shell-made changes join the grid as rows marked `shell`. */
 function TaskGrid({
   blocks,
+  shell,
   openPath,
   onPick
 }: {
   blocks: Block[]
+  shell?: LiveEditState[]
   openPath: string | null
   onPick: (path: string) => void
 }): React.JSX.Element | null {
   const gid = useId()
   const files = new Map<
     string,
-    { name: string; adds: number; dels: number; ms: number; edits: ToolBlock[] }
+    {
+      name: string
+      adds: number
+      dels: number
+      ms: number
+      edits: ToolBlock[]
+      disk?: LiveEditState
+    }
   >()
   for (const b of blocks) {
     if (b.kind !== 'tool' || !EDIT_TOOLS.has(b.name)) continue
@@ -912,6 +977,17 @@ function TaskGrid({
       if (eb.doneTs !== undefined && eb.ts !== undefined) cur.ms += eb.doneTs - eb.ts
       files.set(m.path, cur)
     }
+  }
+  for (const e of shell ?? []) {
+    if (files.has(e.path)) continue
+    files.set(e.path, {
+      name: e.path.split('/').pop() ?? e.path,
+      adds: e.adds ?? 0,
+      dels: e.dels ?? 0,
+      ms: e.ts - e.startedTs,
+      edits: [],
+      disk: e
+    })
   }
   if (files.size === 0) return null
   const open = openPath ? files.get(openPath) : null
@@ -938,7 +1014,10 @@ function TaskGrid({
             <span className="w-9 shrink-0 text-right text-[10px] tabular-nums text-muted-foreground/50">
               {f.ms > 1500 ? `~${duration(f.ms)}` : ''}
             </span>
-            <span className="min-w-0 flex-1 truncate text-muted-foreground">{f.name}</span>
+            <span className="min-w-0 flex-1 truncate text-muted-foreground">
+              {f.name}
+              {f.disk && <span className="ml-1.5 text-[10px] text-muted-foreground/45">shell</span>}
+            </span>
             <span className="shrink-0 tabular-nums">
               {f.adds > 0 && <span className="text-success">+{f.adds}</span>}{' '}
               {f.dels > 0 && <span className="text-destructive">−{f.dels}</span>}
@@ -975,7 +1054,11 @@ function TaskGrid({
                 }
               }}
             >
-              <ZEditCard b={wholeChange(openPath, open.edits)} pinnedOpen />
+              <ZEditCard
+                b={open.disk ? diskBlock(open.disk) : wholeChange(openPath, open.edits)}
+                pinnedOpen
+                dense
+              />
             </motion.div>
           </motion.div>
         )}
@@ -1138,28 +1221,60 @@ function TaskMeta({
 }
 
 /** Shell-made changes the harness never described (M23): disk truth,
- *  labeled as such — never presented as a tool edit. */
+ *  labeled as such — never presented as a tool edit. Rows with a diff
+ *  expand in place to show it. */
 function DiskCards({ edits }: { edits: LiveEditState[] }): React.JSX.Element {
+  const [open, setOpen] = useState<Set<string>>(new Set())
   return (
     <div className="flex flex-col gap-1 px-3 pb-2">
-      {edits.slice(0, 20).map((e) => (
-        <div key={e.path} className="rounded-[9px] border border-border/50 bg-background/40">
-          <div className="flex h-7 items-center gap-2 px-2.5 text-[12px]">
-            {e.state === 'editing' && <Spinner className="size-3" />}
-            <span className="min-w-0 truncate font-medium">{e.path.split('/').pop()}</span>
-            <span className="truncate text-[10.5px] text-muted-foreground/60">{e.path}</span>
-            <span className="ml-auto flex shrink-0 items-center gap-1.5">
-              <span className="text-[10px] text-muted-foreground/50">via shell</span>
-              {(e.adds ?? 0) + (e.dels ?? 0) > 0 && (
-                <span className="text-[11px] font-semibold tabular-nums">
-                  {(e.adds ?? 0) > 0 && <span className="text-success">+{e.adds}</span>}{' '}
-                  {(e.dels ?? 0) > 0 && <span className="text-destructive">−{e.dels}</span>}
-                </span>
-              )}
-            </span>
+      {edits.slice(0, 20).map((e) => {
+        const expandable = !!e.diff
+        const isOpen = open.has(e.path)
+        return (
+          <div key={e.path} className="rounded-[9px] border border-border/50 bg-background/40">
+            <button
+              disabled={!expandable}
+              onClick={() =>
+                setOpen((prev) => {
+                  const next = new Set(prev)
+                  if (next.has(e.path)) next.delete(e.path)
+                  else next.add(e.path)
+                  return next
+                })
+              }
+              className="flex h-7 w-full items-center gap-2 px-2.5 text-left text-[12px]"
+            >
+              {e.state === 'editing' && <Spinner className="size-3" />}
+              <span className="min-w-0 truncate font-medium">{e.path.split('/').pop()}</span>
+              <span className="truncate text-[10.5px] text-muted-foreground/60">{e.path}</span>
+              <span className="ml-auto flex shrink-0 items-center gap-1.5">
+                <span className="text-[10px] text-muted-foreground/50">via shell</span>
+                {(e.adds ?? 0) + (e.dels ?? 0) > 0 && (
+                  <span className="text-[11px] font-semibold tabular-nums">
+                    {(e.adds ?? 0) > 0 && <span className="text-success">+{e.adds}</span>}{' '}
+                    {(e.dels ?? 0) > 0 && <span className="text-destructive">−{e.dels}</span>}
+                  </span>
+                )}
+                {expandable && (
+                  <ChevronRight
+                    className={cn(
+                      'size-3 text-muted-foreground/50 transition-transform duration-200',
+                      isOpen && 'rotate-90'
+                    )}
+                  />
+                )}
+              </span>
+            </button>
+            {expandable && (
+              <TweenHeight open={isOpen} animate>
+                <div className="border-t border-border/50">
+                  <DiffBlock rows={parsePatchDiff(e.diff!, e.kind === 'created').rows} dense />
+                </div>
+              </TweenHeight>
+            )}
           </div>
-        </div>
-      ))}
+        )
+      })}
     </div>
   )
 }
