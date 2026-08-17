@@ -502,11 +502,17 @@ export function ImplementationView({ session }: { session: SessionMeta }): React
           <WorkingStrip sessionId={session.id} />
           {/* The composer stays open — typing keeps working in the CURRENT
               pass (questions, clarifications, more work). The banner is
-              the door to the next one. */}
-          {passDone && !composing && (
-            <PassBanner passNum={passNum} color={nextColor} onNext={startNextPass} />
-          )}
-          <PromptBar compact={hasBoard && !composing} narrow={hasBoard && !composing} />
+              the door to the next one, riding the composer's own column
+              so it can never misalign with the pill. */}
+          <PromptBar
+            compact={hasBoard && !composing}
+            narrow={hasBoard && !composing}
+            topSlot={
+              passDone && !composing ? (
+                <PassBanner passNum={passNum} color={nextColor} onNext={startNextPass} />
+              ) : undefined
+            }
+          />
         </div>
       )}
 
@@ -897,25 +903,21 @@ function PassBanner({
   onNext: () => void
 }): React.JSX.Element {
   return (
-    <div className="shrink-0 px-3">
-      <div className="mx-auto w-full max-w-[688px]">
-        <div
-          className="-mb-3 flex items-center justify-between rounded-t-[14px] border border-b-0 pt-1 pr-2 pb-4 pl-3.5"
-          style={{ background: `${color}0f`, borderColor: `${color}26` }}
-        >
-          <span className="flex items-center gap-2 text-[11.5px] text-muted-foreground">
-            <span className="size-1.5 rounded-full" style={{ background: color }} />
-            Pass {passNum} complete
-          </span>
-          <button
-            onClick={onNext}
-            className="rounded-md px-2 py-0.5 text-[11.5px] font-medium transition-[filter] hover:brightness-125 active:scale-95"
-            style={{ color }}
-          >
-            Start pass {passNum + 1}
-          </button>
-        </div>
-      </div>
+    <div
+      className="-mb-3 flex items-center justify-between rounded-t-[14px] border border-b-0 pt-1 pr-2 pb-4 pl-3.5"
+      style={{ background: `${color}0f`, borderColor: `${color}26` }}
+    >
+      <span className="flex items-center gap-2 text-[11.5px] text-muted-foreground">
+        <span className="size-1.5 rounded-full" style={{ background: color }} />
+        Pass {passNum} complete
+      </span>
+      <button
+        onClick={onNext}
+        className="rounded-md px-2 py-0.5 text-[11.5px] font-medium transition-[filter] hover:brightness-125 active:scale-95"
+        style={{ color }}
+      >
+        Start pass {passNum + 1}
+      </button>
     </div>
   )
 }
