@@ -103,7 +103,7 @@ function TabIndicator({
             {duration(ms)}
           </span>
           {!tally && (
-            <span className="w-12 shrink-0 truncate text-left text-[10.5px] text-muted-foreground/80">
+            <span className="w-14 shrink-0 truncate text-left text-[10.5px] text-muted-foreground/80">
               {verb}
             </span>
           )}
@@ -168,13 +168,9 @@ export function ThreadStrip(): React.JSX.Element | null {
     (t) => t.status !== 'idle' || t.updatedAt > (lastSeen[t.id] ?? 0)
   )
   const dorm = threads.filter((t) => !live.includes(t))
-  /** This round's tally for an implementation thread, once it has a list. */
-  const tasksOf = (t: SessionMeta): { done: number; total: number } | null => {
-    if (t.threadType !== 'implementation') return null
-    const list = allTodos[t.id]
-    if (!list?.length) return null
-    return { done: list.filter((x) => x.status === 'completed').length, total: list.length }
-  }
+  /** This pass's tally, for the threads whose work IS a task list. */
+  const tasksOf = (t: SessionMeta): { done: number; total: number } | null =>
+    t.threadType === 'implementation' ? (t.tasks ?? null) : null
   const anyLive = threads.some((t) => t.status === 'running' || t.status === 'starting')
   const now = useNow(anyLive)
   const archived = useMemo(

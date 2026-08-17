@@ -253,6 +253,10 @@ export interface SessionMeta {
   /** The activity's family, tinting the busy spinner: investigating
    *  (reads/searches), editing (writes/commands), or thinking. */
   activityKind?: 'think' | 'investigate' | 'edit' | null
+  /** How far through its CURRENT task list the thread is — server-folded
+   *  from the log so a tab shows it without opening the thread. Null when
+   *  this pass has no list yet. */
+  tasks?: { done: number; total: number } | null
   /** Orchestration threads: this run's tune — conduct overrides on top of
    *  the workspace/global rules, plus free-text instructions. */
   threadRules?: import('./rules').ThreadRules | null
