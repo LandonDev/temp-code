@@ -1823,17 +1823,38 @@ export const ZEditCard = memo(function ZEditCard({
 })
 
 /** Harness error — its own 34px chip, red family (transcript.rs error_chip).
- *  With a sessionId, an errored session grows a Continue button: the user
- *  fixed what killed the turn (switched accounts on a session limit), one
- *  click settles every chip and the harness picks the work back up. */
+ *  With a sessionId, the thread's trailing error grows a Continue button: the
+ *  user fixed what killed the turn (switched accounts on a session limit), one
+ *  click settles every chip and the harness picks the work back up. Gated on
+ *  the transcript, not session status — a session-limit death can leave the
+ *  thread idle (the turn "completed" around the error), and the server accepts
+ *  a continue from any settled state. */
 export function ErrorChip({
   text,
-  sessionId
+  sessionId,
+  blockId
 }: {
   text: string
   sessionId?: string
+  blockId?: string
 }): React.JSX.Element {
-  const errored = useApp((s) => (sessionId ? s.sessions[sessionId]?.status === 'error' : false))
+  const showContinue = useApp((s) => {
+    if (!sessionId) return false
+    const status = s.sessions[sessionId]?.status
+    if (!status || status === 'running' || status === 'starting') return false
+    if (!blockId) return status === 'error'
+    // Only the trailing error offers the button (one per thread): scan back
+    // past settled chips and dividers — the run must have ended on this error.
+    const blocks = s.blocks[sessionId]
+    if (!blocks) return false
+    for (let i = blocks.length - 1; i >= 0; i--) {
+      const b = blocks[i]
+      if (b.kind === 'pass' || b.kind === 'compaction') continue
+      if (b.kind === 'error' && b.cleared) continue
+      return b.kind === 'error' && b.id === blockId
+    }
+    return false
+  })
   const [busy, setBusy] = useState(false)
   const onContinue = (): void => {
     if (busy || !sessionId) return
@@ -1847,7 +1868,7 @@ export function ErrorChip({
       </span>
       <span className="shrink-0 text-xs font-medium text-destructive-muted/80">Error</span>
       <span className="min-w-0 flex-1 truncate text-xs text-foreground/80">{text}</span>
-      {errored && (
+      {showContinue && (
         <button
           onClick={onContinue}
           disabled={busy}

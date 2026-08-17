@@ -926,7 +926,9 @@ function WorkItems({
         ) : b.kind === 'question' ? (
           <QuestionCard key={b.id} block={b} sessionId={sessionId} />
         ) : b.kind === 'error' ? (
-          b.cleared ? null : <ErrorChip key={b.id} text={b.text} sessionId={sessionId} />
+          b.cleared ? null : (
+            <ErrorChip key={b.id} text={b.text} sessionId={sessionId} blockId={b.id} />
+          )
         ) : (
           <FreshEdit key={b.id} block={b as ToolBlock} sessionId={sessionId} />
         )
