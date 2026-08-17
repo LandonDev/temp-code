@@ -5,6 +5,7 @@ import type { Reasoning } from '@shared/catalog'
 import type { DriverCtx, DriverHandle, HarnessDriver } from './types'
 import { harnessEnv, resolveBinary } from './binaries'
 import { expandSlashRefs } from '../slash'
+import { toolDisplay } from './display'
 import { bridgeMcpConfig } from '../apptools'
 
 /**
@@ -209,7 +210,8 @@ export const codexDriver: HarnessDriver = {
             type: 'tool-call',
             callId: String(item.id),
             name: 'shell',
-            input: { command: item.command, cwd: item.cwd }
+            input: { command: item.command, cwd: item.cwd },
+            display: toolDisplay('Bash', { command: item.command })
           })
           break
         case 'fileChange':
