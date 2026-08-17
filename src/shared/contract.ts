@@ -33,6 +33,8 @@ export const CreateSessionParams = z.object({
   title: z.string().optional(),
   parentId: z.string().nullable().default(null),
   projectId: z.string().nullable().default(null),
+  /** one-off chat outside a project: hang it off this workspace (cwd = its path) */
+  workspaceId: z.string().nullable().default(null),
   threadType: ThreadTypeSchema.nullable().default(null),
   /** planning handoff: seed an implementation/orchestration thread from this plan file */
   planPath: z.string().optional(),

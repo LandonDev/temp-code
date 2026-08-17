@@ -1,4 +1,5 @@
 import { nanoid } from 'nanoid'
+import { homedir } from 'node:os'
 import { basename } from 'node:path'
 import { CreateSessionParams, type CreateSessionInput } from '@shared/contract'
 import { CATALOG, resolveModel, type ProviderId } from '@shared/catalog'
@@ -168,6 +169,9 @@ export class SessionRegistry {
 
   /** Removes the workspace, its projects, and their threads (worktrees stay on disk). */
   async deleteWorkspace(workspaceId: string): Promise<void> {
+    for (const s of this.store.sessionsOfWorkspace(workspaceId)) {
+      if (!s.parentId) await this.delete(s.id) // one-off chats; roots cascade
+    }
     const projectIds = this.store.deleteWorkspace(workspaceId)
     for (const pid of projectIds) await this.deleteProjectSessions(pid)
   }
@@ -299,11 +303,19 @@ export class SessionRegistry {
     const now = Date.now()
     const id = nanoid(12)
     const project = params.projectId ? this.store.getProject(params.projectId) : null
-    const cwd = project?.cwd ?? params.cwd
-    if (!cwd) throw new Error('session needs a cwd or a projectId')
+    // One-off chats: a workspace chat runs at the workspace root, a fully
+    // loose chat in the home directory.
+    const workspace =
+      !project && params.workspaceId
+        ? this.store.listWorkspaces().find((w) => w.id === params.workspaceId)
+        : null
+    if (!project && params.workspaceId && !workspace) {
+      throw new Error(`unknown workspace: ${params.workspaceId}`)
+    }
+    const cwd = project?.cwd ?? workspace?.path ?? params.cwd ?? homedir()
     // Fields the caller left open come from the thread defaults
     // (workspace override → global → built-in).
-    const d = this.resolveThreadDefaults(project?.workspaceId ?? null)
+    const d = this.resolveThreadDefaults(project?.workspaceId ?? workspace?.id ?? null)
     // A model id names its harness: a session asked to run another
     // provider's model routes to that provider instead of erroring.
     const requested = params.provider ?? d.provider
@@ -315,6 +327,7 @@ export class SessionRegistry {
       id,
       parentId: params.parentId,
       projectId: params.projectId,
+      workspaceId: workspace?.id ?? null,
       threadType: params.threadType,
       // Planning threads own a plan file; seeded threads point at their source.
       planPath: params.threadType === 'planning' ? planPathFor(cwd, id) : (params.planPath ?? null),
@@ -486,29 +499,35 @@ export class SessionRegistry {
     // Thread references are resolved above; appshots expand into the plain
     // image + text-file pair every harness understands (the persisted event
     // keeps the appshot itself, so the transcript renders the chip).
+    const sendAttachments = attachments
+      ?.filter((a) => a.kind !== 'thread')
+      .flatMap((a) => {
+        if (a.kind !== 'appshot') return [a]
+        const shot: Attachment = {
+          path: a.path,
+          name: a.name,
+          mime: a.mime ?? 'image/jpeg',
+          kind: 'image'
+        }
+        return a.textPath
+          ? [shot, { path: a.textPath, name: `${a.name} (window text)`, kind: 'file' as const }]
+          : [shot]
+      })
     try {
-      await handle.send(
-        out,
-        attachments
-          ?.filter((a) => a.kind !== 'thread')
-          .flatMap((a) => {
-            if (a.kind !== 'appshot') return [a]
-            const shot: Attachment = {
-              path: a.path,
-              name: a.name,
-              mime: a.mime ?? 'image/jpeg',
-              kind: 'image'
-            }
-            return a.textPath
-              ? [shot, { path: a.textPath, name: `${a.name} (window text)`, kind: 'file' as const }]
-              : [shot]
-          })
-      )
+      await handle.send(out, sendAttachments)
     } catch (err) {
       // A steer at a provider that can't take mid-turn input (cursor's
       // process-per-turn) front-queues instead of erroring the composer.
       if (err instanceof Error && err.message.includes('still running')) {
         this.queueAdd(sessionId, text, opts, true)
+        return
+      }
+      // The handle's harness is gone (watchdog recovery, stream death) —
+      // boot a fresh one and deliver there; resume keeps the conversation.
+      if (err instanceof Error && err.message.includes('harness gone')) {
+        await this.dropHandle(sessionId)
+        const fresh = await this.handleFor(sessionId)
+        await fresh.send(out, sendAttachments)
         return
       }
       throw err

@@ -64,6 +64,7 @@ export function openDb(path: string): DatabaseSync {
     `ALTER TABLE sessions ADD COLUMN archived INTEGER NOT NULL DEFAULT 0`,
     `ALTER TABLE sessions ADD COLUMN permission TEXT NOT NULL DEFAULT 'edits'`,
     `ALTER TABLE sessions ADD COLUMN project_id TEXT`,
+    `ALTER TABLE sessions ADD COLUMN workspace_id TEXT`,
     `ALTER TABLE sessions ADD COLUMN thread_type TEXT`,
     `ALTER TABLE sessions ADD COLUMN plan_path TEXT`,
     `ALTER TABLE sessions ADD COLUMN fast INTEGER NOT NULL DEFAULT 0`,
@@ -83,6 +84,7 @@ interface SessionRowRaw {
   id: string
   parent_id: string | null
   project_id: string | null
+  workspace_id: string | null
   thread_type: string | null
   plan_path: string | null
   provider: string
@@ -107,6 +109,7 @@ function toMeta(r: SessionRowRaw): SessionMeta {
     id: r.id,
     parentId: r.parent_id,
     projectId: r.project_id,
+    workspaceId: r.workspace_id,
     threadType: r.thread_type as SessionMeta['threadType'],
     planPath: r.plan_path,
     provider: r.provider as SessionMeta['provider'],
@@ -133,13 +136,14 @@ export class Store {
   insertSession(meta: SessionMeta): void {
     this.db
       .prepare(
-        `INSERT INTO sessions (id, parent_id, project_id, thread_type, plan_path, provider, model, reasoning, agent_type, title, cwd, status, archived, permission, fast, context_1m, busy_since, native_id, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        `INSERT INTO sessions (id, parent_id, project_id, workspace_id, thread_type, plan_path, provider, model, reasoning, agent_type, title, cwd, status, archived, permission, fast, context_1m, busy_since, native_id, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         meta.id,
         meta.parentId,
         meta.projectId,
+        meta.workspaceId,
         meta.threadType,
         meta.planPath,
         meta.provider,
@@ -332,6 +336,14 @@ export class Store {
     const rows = this.db
       .prepare(`SELECT * FROM sessions WHERE project_id = ?`)
       .all(projectId) as unknown as SessionRowRaw[]
+    return rows.map(toMeta)
+  }
+
+  /** One-off chats hung directly off a workspace (no project). */
+  sessionsOfWorkspace(workspaceId: string): SessionMeta[] {
+    const rows = this.db
+      .prepare(`SELECT * FROM sessions WHERE workspace_id = ?`)
+      .all(workspaceId) as unknown as SessionRowRaw[]
     return rows.map(toMeta)
   }
 

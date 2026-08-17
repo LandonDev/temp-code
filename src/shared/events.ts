@@ -208,6 +208,9 @@ export interface SessionMeta {
   parentId: string | null
   /** project this thread belongs to (null: legacy or orphan) */
   projectId: string | null
+  /** one-off chats outside a project: the workspace they hang off (null
+   *  when the thread has a project, or floats outside workspaces entirely) */
+  workspaceId: string | null
   /** null for subagent children — they render on the parent's board, not the strip */
   threadType: ThreadType | null
   /** planning threads: where the plan document lives; seeded threads: the source plan */

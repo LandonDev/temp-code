@@ -8,12 +8,14 @@ import { cn } from '../../lib/utils'
  * strip drags the window.)
  */
 export function Titlebar(): React.JSX.Element {
-  const workspace = useApp((s) =>
-    s.workspaces.find(
-      (w) => w.id === s.projects.find((p) => p.id === s.selectedProjectId)?.workspaceId
-    )
-  )
   const project = useApp((s) => s.projects.find((p) => p.id === s.selectedProjectId))
+  // Projectless chat: the breadcrumb is the only place its title shows.
+  const chat = useApp((s) =>
+    !s.selectedProjectId && s.selectedId ? s.sessions[s.selectedId] : undefined
+  )
+  const workspace = useApp((s) =>
+    s.workspaces.find((w) => w.id === (project?.workspaceId ?? chat?.workspaceId))
+  )
   const cost = useApp((s) => (s.selectedId ? s.costs[s.selectedId] : undefined))
   const railOpen = useApp((s) => s.railOpen)
   const setRailOpen = useApp((s) => s.setRailOpen)
@@ -31,15 +33,15 @@ export function Titlebar(): React.JSX.Element {
     // Zeron titlebar: 38px, content sitting 2px lower.
     <header className="titlebar-drag flex h-[38px] shrink-0 items-center gap-1.5 px-4 pt-0.5">
       {workspace && (
-        <>
-          <span className="text-[13px] text-muted-foreground">{workspace.name}</span>
-          {project && (
-            <>
-              <span className="text-[13px] text-muted-foreground/50">/</span>
-              <span className="text-[13px] font-medium">{project.name}</span>
-            </>
-          )}
-        </>
+        <span className="text-[13px] text-muted-foreground">{workspace.name}</span>
+      )}
+      {workspace && (project || chat) && (
+        <span className="text-[13px] text-muted-foreground/50">/</span>
+      )}
+      {project ? (
+        <span className="text-[13px] font-medium">{project.name}</span>
+      ) : (
+        chat && <span className="truncate text-[13px] font-medium">{chat.title}</span>
       )}
       <div className="ml-auto flex items-center gap-2">
         {cost !== undefined && (
