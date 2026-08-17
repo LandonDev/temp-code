@@ -141,6 +141,11 @@ interface StreamState {
   armedAt: number | null
   /** one stdin nudge per armed stretch */
   nudged: boolean
+  /** the API refused the transcript ("Prompt is too long") — the drain
+   *  loop compacts in place once the turn settles so the next send fits */
+  overflowed: boolean
+  /** one recovery compact per overflow; a compact that lands re-arms */
+  compactRecoveryTried: boolean
 }
 
 /** How often a growing tool input is re-parsed and forwarded to the UI. */
@@ -167,6 +172,7 @@ function handleMessage(ctx: DriverCtx, state: StreamState, msg: SDKMessage): voi
           emit({ type: 'compaction', phase: 'failed', error: msg.compact_error })
         }
       } else if (msg.subtype === 'compact_boundary') {
+        state.compactRecoveryTried = false
         emit({
           type: 'compaction',
           phase: 'done',
@@ -277,6 +283,25 @@ function handleMessage(ctx: DriverCtx, state: StreamState, msg: SDKMessage): voi
       break
     }
     case 'assistant': {
+      // Synthetic messages are the CLI dressing an API refusal up as
+      // assistant text. Report them as the errors they are — rendering
+      // "Prompt is too long" as if the model said it confused everyone.
+      if (msg.message.model === '<synthetic>') {
+        const text = msg.message.content
+          .map((b) => (b.type === 'text' ? b.text : ''))
+          .join(' ')
+          .trim()
+        if (/prompt is too long/i.test(text)) {
+          state.overflowed = true
+          emit({
+            type: 'error',
+            message: 'the conversation outgrew its context window — compacting to make room'
+          })
+        } else if (text) {
+          emit({ type: 'error', message: text })
+        }
+        break
+      }
       const parentCallId = msg.parent_tool_use_id ?? undefined
       const msgId = msg.message.id
       msg.message.content.forEach((block, blockIndex) => {
@@ -380,7 +405,9 @@ export const claudeDriver: HarnessDriver = {
       toolInput: new Map(),
       working: false,
       armedAt: null,
-      nudged: false
+      nudged: false,
+      overflowed: false,
+      compactRecoveryTried: false
     }
     const pendingApprovals = new Map<string, (allow: boolean, auto?: boolean) => void>()
     const pendingQuestions = new Map<string, (answers: string[][] | null) => void>()
@@ -514,11 +541,18 @@ export const claudeDriver: HarnessDriver = {
       // thread under 200k via the CLI's own auto-compact (also dodging the
       // 2x long-context pricing above 200k input); 1M turns auto-compact
       // off and rides the full native window.
+      //
+      // The compact window is 180k, NOT 200k: the CLI arms compaction at
+      // window − 33k, and without the 1M beta the API hard-rejects a
+      // request at 200k − max_tokens (≈168k) with "Prompt is too long".
+      // A 200k setting put the compact trigger (167k) a hair under the
+      // rejection wall — one long turn sailed past both and bricked the
+      // thread. 180k arms compaction at ~147k, real headroom.
       extraArgs: {
         settings: JSON.stringify({
           ...(session.fast ? { fastMode: true } : {}),
           autoCompactEnabled: !session.context1m,
-          ...(session.context1m ? {} : { autoCompactWindow: 200_000 })
+          ...(session.context1m ? {} : { autoCompactWindow: 180_000 })
         })
       },
       ...(session.context1m ? { betas: ['context-1m-2025-08-07' as const] } : {}),
@@ -627,7 +661,24 @@ export const claudeDriver: HarnessDriver = {
     // Drain the harness stream for the life of the session.
     void (async () => {
       try {
-        for await (const msg of q) handleMessage(ctx, state, msg)
+        for await (const msg of q) {
+          handleMessage(ctx, state, msg)
+          // Overflow self-heal: the API refused the transcript ("Prompt is
+          // too long" — seen when a Standard-mode thread outruns compaction
+          // in a single turn). Once the turn settles, compact in place so
+          // the next send fits. One try per overflow; without it the CLI's
+          // context estimate stays poisoned by the zero-usage synthetic
+          // message and the thread is bricked for good.
+          if (state.overflowed && !state.working) {
+            state.overflowed = false
+            if (!state.compactRecoveryTried) {
+              state.compactRecoveryTried = true
+              state.working = true
+              emit({ type: 'status', status: 'running' })
+              input.push('/compact')
+            }
+          }
+        }
         // Stream over with a turn still open: the result message is never
         // coming (process died, or the SDK dropped it). Settle the status
         // or the thread shows "working" forever.

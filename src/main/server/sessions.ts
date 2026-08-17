@@ -12,6 +12,7 @@ import type {
   WorkspaceMeta
 } from '@shared/domain'
 import { BUILT_IN_DRIVERS } from './drivers'
+import { generateTitle } from './drivers/title'
 import type { DriverHandle } from './drivers/types'
 import type { Store } from './db'
 import {
@@ -191,6 +192,9 @@ export class SessionRegistry {
    *  kept live event by event, so every tab can show its tally without
    *  subscribing to the thread. */
   private todoFolds = new Map<string, TodoFold>()
+  /** threads titled by slicing their first message, awaiting a real title:
+   *  sessionId → the placeholder (to detect a user rename) + the message */
+  private pendingTitles = new Map<string, { placeholder: string; text: string }>()
   private sweepTimer: ReturnType<typeof setInterval> | null = null
 
   constructor(private store: Store) {}
@@ -610,12 +614,15 @@ export class SessionRegistry {
       context1m: meta.context1m,
       newPass: opts?.newPass === true
     })
-    // Cursor-style: an untitled thread takes its name from the first message.
+    // Cursor-style: an untitled thread takes its name from the first
+    // message right away; a generated title replaces the raw slice once
+    // the first turn completes (maybeRetitle).
     if (first && (Object.values(THREAD_TITLES) as string[]).includes(meta.title)) {
       const title = text.trim().split('\n')[0].slice(0, 60)
       if (title) {
         const next = this.store.updateSession(sessionId, { title })
         if (next) this.notifyMeta(next)
+        this.pendingTitles.set(sessionId, { placeholder: title, text })
       }
     }
     let out = text
@@ -784,8 +791,26 @@ export class SessionRegistry {
   async rename(sessionId: string, title: string): Promise<void> {
     const t = title.trim().slice(0, 120)
     if (!t) return
+    // A deliberate rename wins over any generated title still in flight.
+    this.pendingTitles.delete(sessionId)
     const next = this.store.updateSession(sessionId, { title: t })
     if (next) this.notifyMeta(next)
+  }
+
+  /** After the first turn: swap the sliced-first-message placeholder for a
+   *  generated title. Skips silently if the user renamed meanwhile. */
+  private maybeRetitle(sessionId: string): void {
+    const pending = this.pendingTitles.get(sessionId)
+    if (!pending) return
+    this.pendingTitles.delete(sessionId)
+    if (this.store.getSession(sessionId)?.title !== pending.placeholder) return
+    void generateTitle(pending.text).then((title) => {
+      if (!title) return
+      const cur = this.store.getSession(sessionId)
+      if (!cur || cur.title !== pending.placeholder) return
+      const next = this.store.updateSession(sessionId, { title })
+      if (next) this.notifyMeta(next)
+    })
   }
 
   /** Fast mode / context window: persist and drop the handle — the next
@@ -967,6 +992,9 @@ export class SessionRegistry {
       const after = tallyOf(warm)
       tasksMoved = before?.done !== after?.done || before?.total !== after?.total
     }
+    // A finished first turn upgrades the sliced-first-message title to a
+    // generated one (fire-and-forget; the slice stays if the call fails).
+    if (event.type === 'turn-complete') this.maybeRetitle(sessionId)
     // Track "where it's at" for the tabs; a change on a non-status event
     // pushes its own meta update (status events notify below regardless).
     const act = activityOf(event)
