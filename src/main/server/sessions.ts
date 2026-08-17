@@ -128,10 +128,14 @@ export class SessionRegistry {
   /** At boot no harness handles exist, so a session persisted as running,
    *  waiting, or starting is stale from a previous process — reset it, or
    *  the sidebar and working strip show work that isn't happening (and
-   *  can't be stopped). */
+   *  can't be stopped). The dead process also never wrote its closing
+   *  status event, so refolds would see a forever-open turn: append the
+   *  synthetic idle directly (none of append()'s live-session side effects
+   *  — queue drain, parent supervision — belong at boot). */
   resetStaleStatuses(): void {
     for (const s of this.store.listSessions()) {
       if (s.status === 'running' || s.status === 'waiting' || s.status === 'starting') {
+        this.store.appendEvent(s.id, { type: 'status', status: 'idle' })
         this.store.updateSession(s.id, { status: 'idle', busySince: null })
       }
     }
