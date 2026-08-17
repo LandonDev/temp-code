@@ -1211,35 +1211,40 @@ function TaskGrid({
   // from/to them) but layoutDependency pins them — motion only re-measures
   // when openPath changes, so unrelated reflows (a task collapsing above)
   // move them rigidly with the page instead of springing them around.
-  // The clicked row stays mounted (motion hides the follower itself), so
-  // sibling rows never reshuffle; the card's height tweens open below the
-  // grid so everything under it slides instead of jumping.
+  // The clicked row leaves the grid while its diff is open: siblings slide
+  // over to fill the slot, the card morphs open from the row's snapshot
+  // (shared layoutId), and on close it morphs back into the remounting row.
+  // The height wrapper tweens so everything below slides instead of jumping.
   return (
     <LayoutGroup id={gid}>
       <div className="grid grid-cols-[repeat(auto-fill,minmax(190px,1fr))] gap-x-4 px-4 pb-2">
-        {[...files.entries()].map(([path, f]) => (
-          <motion.button
-            key={path}
-            layoutId={`chg-${path}`}
-            layoutDependency={openPath}
-            transition={SPRING_PANEL}
-            onClick={() => onPick(path)}
-            title={path}
-            className="flex items-center gap-2 py-0.5 text-left text-[12px] transition-colors hover:text-foreground"
-          >
-            <span className="w-9 shrink-0 text-right text-[10px] tabular-nums text-muted-foreground/50">
-              {f.ms > 1500 ? `~${duration(f.ms)}` : ''}
-            </span>
-            <span className="min-w-0 flex-1 truncate text-muted-foreground">
-              {f.name}
-              {f.disk && <span className="ml-1.5 text-[10px] text-muted-foreground/45">shell</span>}
-            </span>
-            <span className="shrink-0 tabular-nums">
-              {f.adds > 0 && <span className="text-success">+{f.adds}</span>}{' '}
-              {f.dels > 0 && <span className="text-destructive">−{f.dels}</span>}
-            </span>
-          </motion.button>
-        ))}
+        {[...files.entries()].map(([path, f]) =>
+          path === openPath ? null : (
+            <motion.button
+              key={path}
+              layoutId={`chg-${path}`}
+              layoutDependency={openPath}
+              transition={SPRING_PANEL}
+              onClick={() => onPick(path)}
+              title={path}
+              className="flex items-center gap-2 py-0.5 text-left text-[12px] transition-colors hover:text-foreground"
+            >
+              <span className="w-9 shrink-0 text-right text-[10px] tabular-nums text-muted-foreground/50">
+                {f.ms > 1500 ? `~${duration(f.ms)}` : ''}
+              </span>
+              <span className="min-w-0 flex-1 truncate text-muted-foreground">
+                {f.name}
+                {f.disk && (
+                  <span className="ml-1.5 text-[10px] text-muted-foreground/45">shell</span>
+                )}
+              </span>
+              <span className="shrink-0 tabular-nums">
+                {f.adds > 0 && <span className="text-success">+{f.adds}</span>}{' '}
+                {f.dels > 0 && <span className="text-destructive">−{f.dels}</span>}
+              </span>
+            </motion.button>
+          )
+        )}
       </div>
       <AnimatePresence initial={false}>
         {open && openPath && (
