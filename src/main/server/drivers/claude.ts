@@ -873,10 +873,10 @@ export const claudeDriver: HarnessDriver = {
                 preset: 'claude_code' as const,
                 append:
                   session.threadType === 'chat'
-                    ? chatSpawnPrompt()
+                    ? chatSpawnPrompt(session)
                     : session.threadType === 'planning'
-                      ? planningSpawnPrompt()
-                      : implementerSpawnPrompt()
+                      ? planningSpawnPrompt(session)
+                      : implementerSpawnPrompt(session)
               }
             }
           : {
