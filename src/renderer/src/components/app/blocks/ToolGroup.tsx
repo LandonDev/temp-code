@@ -168,6 +168,9 @@ const trim = (s: string, n = 32): string => (s.length > n ? `${s.slice(0, n - 1)
 /** App bookkeeping lives under .temp-code/ — journal, plans, mirrors. */
 export const isInternalPath = (p: string): boolean => /(^|\/)\.temp-code(\/|$)/.test(p)
 
+/** Appshot capture files (attachments dir, `<id>-appshot.png` / `.md`). */
+const isAppshotPath = (p: string): boolean => /-appshot\.(png|md)$/.test(p)
+
 /** Every file an edit-tool call touches (apply_patch may carry several). */
 function editPaths(b: ToolBlock): string[] {
   if (b.name === 'apply_patch') {
@@ -256,6 +259,11 @@ function appView(
   titles: ThreadTitles
 ): { label: string; detail: string; phrase: string } | null {
   const i = input(b)
+  // Reads of a capture's files say what they are — the nanoid filename
+  // means nothing to anyone.
+  if (isAppshotPath(pathOf(b))) {
+    return { label: 'Read', detail: 'appshot', phrase: 'read the appshot' }
+  }
   // Edits that only touch app bookkeeping read as what they mean, not as
   // file edits ("Updated project memory"). Real-file edits never come
   // through here — splitEdit routes them to their own cards.
