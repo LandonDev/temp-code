@@ -246,6 +246,9 @@ export interface SessionMeta {
   /** What a working thread is doing right now ("Editing PromptBar.tsx") —
    *  transient, server-memory only, null the moment the turn settles. */
   activity?: string | null
+  /** The activity's family, tinting the busy spinner: investigating
+   *  (reads/searches), editing (writes/commands), or thinking. */
+  activityKind?: 'think' | 'investigate' | 'edit' | null
   /** Orchestration threads: this run's tune — conduct overrides on top of
    *  the workspace/global rules, plus free-text instructions. */
   threadRules?: import('./rules').ThreadRules | null
