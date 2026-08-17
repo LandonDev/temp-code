@@ -1,5 +1,5 @@
 {
-  "n": 42,
-  "notes": "Orchestrators editable from their tab; working tabs hold still and color their work",
-  "ts": 1786942655183
+  "n": 43,
+  "notes": "Pass boundaries are explicit now, and other actors' shell edits stay off the board",
+  "ts": 1786943455882
 }
