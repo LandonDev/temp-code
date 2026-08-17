@@ -100,6 +100,14 @@ export function ImplementationView({ session }: { session: SessionMeta }): React
   /** user-toggled task bodies — XOR against the round's default (current
    *  round opens, past rounds fold shut when a follow-up starts) */
   const [toggledTasks, setToggledTasks] = useState<Set<string>>(new Set())
+  /** past rounds the user expanded back open — resets when a new round
+   *  starts, so every new pass begins with history tucked away */
+  const [openRounds, setOpenRounds] = useState<Set<number>>(new Set())
+  const [sawRound, setSawRound] = useState(curRound)
+  if (sawRound !== curRound) {
+    setSawRound(curRound)
+    setOpenRounds(new Set())
+  }
   /** a grid row clicked open: its diff morphs open inside the task */
   const [openChange, setOpenChange] = useState<{
     round: number
@@ -218,13 +226,17 @@ export function ImplementationView({ session }: { session: SessionMeta }): React
               <div className="mx-auto w-full max-w-3xl px-6 py-5">
                 {goal && (
                   <div className="mb-5">
+                    {/* With follow-up rounds, the original request lives in
+                        its own collapsed row below — repeating it here would
+                        say the same thing twice. The plan pin stays: it is
+                        the thread's identity, not a round's. */}
                     {session.planPath ? (
                       <PlanPin session={session} />
-                    ) : (
+                    ) : curRound === 0 ? (
                       <p className="text-[15px] leading-snug font-medium tracking-[-0.01em]">
                         {goal.kind === 'user' && goal.text.split('\n')[0]}
                       </p>
-                    )}
+                    ) : null}
                     {curRound === 0 && todos.length > 0 && <ProgressSegments todos={todos} />}
                     <ChangesLine session={session} />
                   </div>
@@ -249,26 +261,58 @@ export function ImplementationView({ session }: { session: SessionMeta }): React
                   </div>
                 )}
 
-                {/* One section per request round: the original goal's board,
-                then each follow-up under its own message header. Old rounds
-                fold their task bodies shut the moment a new one begins. */}
-                {rounds.map((data, r) => (
-                  <RoundSection
-                    key={r}
-                    session={session}
-                    round={r}
-                    data={data}
-                    isCurrent={r === curRound}
-                    running={running}
-                    now={now}
-                    marks={usageMarks}
-                    diskOnly={diskOnly}
-                    openChange={openChange}
-                    setOpenChange={setOpenChange}
-                    toggled={toggledTasks}
-                    setToggled={setToggledTasks}
-                  />
-                ))}
+                {/* Previous passes tuck away: each collapses to one row
+                (request · tasks · diffstat) in a bordered group, expanding
+                in place. A wide gap separates them from the current work,
+                which always renders in full. */}
+                {curRound > 0 && (
+                  <div className="mb-8 divide-y divide-hairline border-y border-hairline">
+                    {rounds.slice(0, curRound).map((data, r) => (
+                      <RoundSection
+                        key={r}
+                        session={session}
+                        round={r}
+                        data={data}
+                        isCurrent={false}
+                        multi
+                        expanded={openRounds.has(r)}
+                        onToggle={() =>
+                          setOpenRounds((prev) => {
+                            const next = new Set(prev)
+                            if (next.has(r)) next.delete(r)
+                            else next.add(r)
+                            return next
+                          })
+                        }
+                        running={running}
+                        now={now}
+                        marks={usageMarks}
+                        diskOnly={diskOnly}
+                        openChange={openChange}
+                        setOpenChange={setOpenChange}
+                        toggled={toggledTasks}
+                        setToggled={setToggledTasks}
+                      />
+                    ))}
+                  </div>
+                )}
+                <RoundSection
+                  key={curRound}
+                  session={session}
+                  round={curRound}
+                  data={cur}
+                  isCurrent
+                  multi={curRound > 0}
+                  expanded
+                  running={running}
+                  now={now}
+                  marks={usageMarks}
+                  diskOnly={diskOnly}
+                  openChange={openChange}
+                  setOpenChange={setOpenChange}
+                  toggled={toggledTasks}
+                  setToggled={setToggledTasks}
+                />
 
                 {running && cur.work.length === 0 && (
                   <div className="flex items-center gap-2 py-1 text-[13px] text-muted-foreground">
@@ -375,15 +419,19 @@ function groupByTodo(list: Block[], todoCount: number): Map<number, Block[]> {
   return m
 }
 
-/** One round's board: (for follow-ups) the request as a section header,
- *  then setup work, the task cards, or the flat work list when the round
- *  produced no task list. Task bodies default open on the current round
- *  and fold shut on past ones — a click toggles either way. */
+/** One round's board. The CURRENT round renders in full — (for follow-ups)
+ *  the request as a prominent header, then setup work, the task cards, or
+ *  the flat work list. PAST rounds tuck away into one collapsed row
+ *  (request · tasks done · diffstat) that expands in place. Task bodies
+ *  default open on the current round and fold shut on past ones. */
 function RoundSection({
   session,
   round,
   data,
   isCurrent,
+  multi,
+  expanded,
+  onToggle,
   running,
   now,
   marks,
@@ -397,6 +445,10 @@ function RoundSection({
   round: number
   data: RoundData
   isCurrent: boolean
+  /** the thread has follow-up rounds — headers and separators appear */
+  multi: boolean
+  expanded: boolean
+  onToggle?: () => void
   running: boolean
   now: number
   marks: { round: number; todo: number; input?: number; output?: number }[]
@@ -425,18 +477,27 @@ function RoundSection({
   const preWork = todos.length ? (workByTodo.get(-1) ?? []) : []
   const flatWork = todos.length === 0 ? (workByTodo.get(-1) ?? []) : []
 
-  if (round > 0 && !data.header && todos.length === 0 && work.length === 0) return null
-  return (
-    <div>
-      {round > 0 && data.header?.kind === 'user' && (
-        <div className="mt-7 mb-3">
-          <p className="text-[14px] leading-snug font-medium tracking-[-0.01em]">
-            {data.header.text.split('\n')[0]}
-          </p>
-          {isCurrent && todos.length > 0 && <ProgressSegments todos={todos} />}
-        </div>
-      )}
+  const done = todos.filter((t) => t.status === 'completed').length
+  const stat = useMemo(() => {
+    let adds = 0
+    let dels = 0
+    for (const b of work) {
+      if (b.kind !== 'tool' || !EDIT_TOOLS.has(b.name)) continue
+      for (const eb of splitEdit(b).edits) {
+        const m = editModel(eb)
+        adds += m.adds
+        dels += m.dels
+      }
+    }
+    return { adds, dels }
+  }, [work])
+  const headerText = data.header?.kind === 'user' ? data.header.text.split('\n')[0] : ''
 
+  // A round with nothing on the board (a pure Q&A pass) has no row to earn.
+  if (multi && !isCurrent && todos.length === 0 && work.length === 0) return null
+
+  const body = (
+    <>
       {preWork.length > 0 && (
         <div className="mb-4">
           {round === 0 && (
@@ -546,6 +607,56 @@ function RoundSection({
           <WorkItems blocks={flatWork} sessionId={session.id} />
         </div>
       )}
+    </>
+  )
+
+  // A previous pass: one quiet row — the request, how it went, what it
+  // touched — expanding in place to the full board.
+  if (multi && !isCurrent) {
+    return (
+      <div>
+        <button
+          onClick={onToggle}
+          className="group/round flex w-full items-center gap-2.5 py-2.5 text-left"
+        >
+          <ChevronRight
+            className={cn(
+              'size-3.5 shrink-0 text-muted-foreground/50 transition-transform duration-200',
+              expanded && 'rotate-90'
+            )}
+          />
+          <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-muted-foreground transition-colors group-hover/round:text-foreground">
+            {headerText}
+          </span>
+          {todos.length > 0 && (
+            <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground/60">
+              {done}/{todos.length} tasks
+            </span>
+          )}
+          {(stat.adds > 0 || stat.dels > 0) && (
+            <span className="shrink-0 text-[11px] font-semibold tabular-nums">
+              {stat.adds > 0 && <span className="text-success">+{stat.adds}</span>}{' '}
+              {stat.dels > 0 && <span className="text-destructive">−{stat.dels}</span>}
+            </span>
+          )}
+        </button>
+        <TweenHeight open={expanded} animate>
+          <div className="pt-1 pb-2 pl-6">{body}</div>
+        </TweenHeight>
+      </div>
+    )
+  }
+
+  // The current pass: full size, its request as the working headline.
+  return (
+    <div>
+      {multi && headerText && (
+        <div className="mb-4">
+          <p className="text-[15px] leading-snug font-medium tracking-[-0.01em]">{headerText}</p>
+          {todos.length > 0 && <ProgressSegments todos={todos} />}
+        </div>
+      )}
+      {body}
     </div>
   )
 }
