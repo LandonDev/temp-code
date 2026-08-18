@@ -339,7 +339,7 @@ function WorkspaceGroup({
             exit={reduce ? undefined : { height: 0, opacity: 0, overflow: 'hidden' }}
             transition={reduce ? { duration: 0 } : SPRING_LAYOUT}
           >
-            <div className="mt-0.5 space-y-px">
+            <div className="mt-0.5 space-y-1">
               {active.length === 0 && chats.length === 0 && archived.length === 0 ? (
                 <button
                   onClick={onNewProject}
@@ -435,7 +435,7 @@ function ProjectRow({
   if (renaming) {
     // The row itself becomes the editor — no dialog for a name.
     return (
-      <div className="flex items-center rounded-md bg-accent px-2 py-1.5">
+      <div className="flex items-center rounded-md border border-border/50 bg-accent px-2 py-1.5">
         <input
           autoFocus
           defaultValue={project.name}
@@ -460,7 +460,9 @@ function ProjectRow({
   }
 
   return (
-    <div className="group/row relative">
+    // A faint enclosing rule gives each project its own surface — without
+    // it, multi-line rows in the same workspace read as one run-on block.
+    <div className="group/row relative rounded-md border border-border/50">
       {selected && (
         <motion.div
           layoutId="sidebar-active"
