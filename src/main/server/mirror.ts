@@ -8,7 +8,7 @@ import {
   writeFileSync
 } from 'node:fs'
 import { appendFile, readFile } from 'node:fs/promises'
-import { join, relative, isAbsolute } from 'node:path'
+import { basename, join, relative, isAbsolute } from 'node:path'
 import type { EventRow, SessionMeta } from '@shared/events'
 import type { ProjectMeta } from '@shared/domain'
 import { latestTurnRows, toolLinesOf, turnText } from './orchestration'
@@ -201,6 +201,7 @@ export function writeThreadsIndex(dir: string): void {
       front.title,
       front.status ?? '?',
       front.files ? `files: ${front.files}` : 'files: —',
+      ...(front.plan ? [`plan: ${basename(front.plan)}`] : []),
       join('threads', file)
     ]
     entries.push({ updated, line: `- ${parts.join(' · ')}` })
@@ -209,7 +210,7 @@ export function writeThreadsIndex(dir: string): void {
   const body = entries.length ? entries.map((e) => e.line).join('\n') : '_No threads yet._'
   writeAtomic(
     join(dir, INDEX_NAME),
-    `# Thread index\n\n_Written by the app after every turn. date · type · title · status · files touched · path (relative to .temp-code/). Grep it by file path or topic, then read only the threads it points at._\n\n${body}\n`
+    `# Thread index\n\n_Written by the app after every turn. date · type · title · status · files touched · plan · path (relative to .temp-code/). Grep it by file path or topic, then read only the threads it points at._\n\n${body}\n`
   )
 }
 

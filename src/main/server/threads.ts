@@ -96,7 +96,7 @@ ${app}`
 Your FIRST TOOL CALL — after reading the plan, before any other exploration, before spawning ANY subagent, before reading any skill — is to create the todo list covering the whole job with whichever task-list tool this session has: TaskCreate (one call per task, TaskUpdate to move status), TodoWrite, or update_plan. If one errors as unavailable, use the one that exists — never proceed without a list. Refine it as you learn.
 As you complete tasks from the plan's ## Tasks checklist, tick them (\`- [x]\`) in the plan file with Edit — the plan view renders progress live.
 Questions are the exception here, not the method — the planning thread already asked them. Reserve them for genuine blockers: a contradiction in the plan, a destructive step, missing access — or genuine confusion. If you are confused about what something means or how it is supposed to work, ASK; never guess your way past confusion. ${questions} If the work reveals the plan is wrong, say so and offer a planning thread rather than silently replanning inline.`
-        : `You are running an IMPLEMENTATION thread with no plan document — you start from scratch. Begin with a SHORT reconnaissance, strictly bounded to a handful of tool calls: skim the project context (PROJECT.md, the relevant transcripts under .temp-code/threads/) and glance at the code the request touches. Recon exists to shape the task list, not to solve anything — no edits, no subagents, no skills during it.
+        : `You are running an IMPLEMENTATION thread with no plan document — you start from scratch. Begin with a SHORT reconnaissance, strictly bounded to a handful of tool calls: check threads/INDEX.md for threads touching your files, plus the tail of PROJECT.md and glance at the code the request touches. Recon exists to shape the task list, not to solve anything — no edits, no subagents, no skills during it.
 The moment recon gives you the shape — and BEFORE any implementation, any subagent, or any skill — create the todo list covering the whole job with whichever task-list tool this session has: TaskCreate (one call per task, TaskUpdate to move status), TodoWrite, or update_plan. If one errors as unavailable, use the one that exists — never proceed without a list. Refine it as you learn. This is NOT optional and does not scale with job size: even a one-line change gets a list (a single-item list is fine) — the view cannot render your work without it.
 Questions are the exception here, not the method. Reserve them for genuine blockers: a request too underspecified to break into tasks (say so and suggest a planning thread rather than guessing), a destructive step, missing access — or genuine confusion. If you are confused about what something means or how it is supposed to work, ASK; never guess your way past confusion. ${questions}`
       return `${opening}
@@ -136,7 +136,7 @@ const ago = (ts: number): string => {
 }
 
 /** Index caps at the most recently updated threads — never their contents. */
-const CONTEXT_INDEX_MAX = 20
+const CONTEXT_INDEX_MAX = 8
 
 /**
  * The `<project-context>` block prepended to a project thread's first
@@ -160,17 +160,11 @@ export function projectContext(
   )
   const overflow =
     roots.length > listed.length
-      ? `\n    · …and ${roots.length - listed.length} older — list .temp-code/threads/ for all`
+      ? `\n    · …and ${roots.length - listed.length} older — threads/INDEX.md lists them all`
       : ''
   const threads = threadLines.length
-    ? `- threads/ — transcripts of the project's other threads:\n${threadLines.join('\n')}${overflow}`
-    : "- threads/ — transcripts of the project's other threads (none yet besides this one)"
-  const plans = roots
-    .filter((s) => s.threadType === 'planning' && s.planPath)
-    .map((s) => `    · "${s.title}" — ${join('.temp-code', `plan-${s.id}.md`)}`)
-  const planBlock = plans.length
-    ? `- plan-*.md — plan documents:\n${plans.join('\n')}`
-    : '- plan-*.md — plan documents.'
+    ? `Most recent threads:\n${threadLines.join('\n')}${overflow}`
+    : 'No other threads yet.'
   const where = [
     workspaceName ? `workspace "${workspaceName}"` : null,
     project.branch ? `branch ${project.branch}` : null
@@ -180,17 +174,16 @@ export function projectContext(
 
   return `<project-context>
 This thread belongs to project "${project.name}"${where ? ` (${where})` : ''}.
-Shared project context lives in .temp-code/:
-- PROJECT.md — the project journal. Read it FIRST.
+Shared context lives in .temp-code/ — FIND what you need, never bulk-read:
+- threads/INDEX.md — one line per thread: date · type · title · status · files touched · transcript path. Grep it by file path or topic to find the threads that touched what you're working on.
+- threads/<id>-<slug>.md — transcripts. Frontmatter and ## Outcome at the top summarize each one; read just the head (~40 lines) first, and the full body only when the outcome says it is the right thread.
+- PROJECT.md — the journal: one dated line per durable outcome. Skim the tail of ## Log for recent state; PROJECT-archive.md has older entries.
+- plan-*.md — plan documents.
 ${threads}
-${planBlock}
-Consult transcripts when the user refers to other work. This index is a
-snapshot from thread creation — re-list .temp-code/threads/ when you need
-current state.
+Every file you open costs context — open transcripts one at a time, only when INDEX.md or the journal points there.
 
-Append to PROJECT.md (a dated bullet under ## Log) whenever this thread
-produces a durable outcome: a decision made, a plan written, work merged,
-an approach abandoned. Keep entries to one or two lines. Never rewrite
-others' entries.
+When this thread produces a durable outcome (a decision, a plan written, work merged, an approach abandoned), append ONE line to PROJECT.md under ## Log:
+- <YYYY-MM-DD> — <what and where, ≤200 chars, naming the key files>
+One line, no sub-bullets. Never rewrite others' entries. Transcripts, outcomes, and INDEX.md are written by the app — you never maintain them.
 </project-context>`
 }

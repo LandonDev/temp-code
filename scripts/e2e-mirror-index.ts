@@ -127,14 +127,36 @@ const bigLine =
 check('files: caps at 20', bigLine.split(', ').length === 20, `${bigLine.split(', ').length} entries`)
 
 // ── INDEX.md ─────────────────────────────────────────────────────────
-const older = fakeThread({ title: 'Older work', updatedAt: Date.now() - 5 * 86_400_000 })
+const older = fakeThread({
+  title: 'Older work',
+  threadType: 'planning',
+  planPath: join(project.cwd, '.temp-code', 'plan-idxthread03.md'),
+  updatedAt: Date.now() - 5 * 86_400_000
+})
 log(older.id, { type: 'user-text', text: 'x' }, { type: 'assistant-text', text: 'y', delta: false })
 mirrorSession(registry, older.id)
 const index = readFileSync(join(threadsDir, 'INDEX.md'), 'utf8')
-check('INDEX.md exists with a line per thread', index.split('\n').filter((l) => l.startsWith('- ')).length === 3, index)
-check('INDEX.md line carries title, status, files and path', /- \d{4}-\d{2}-\d{2} · implementation · "Fix the cursor driver" · idle · files: src\/main\/server\/drivers\/cursor\.ts.* · threads\//.test(index), index.split('\n').find((l) => l.includes('cursor')) ?? '')
+check(
+  'INDEX.md exists with a line per thread',
+  index.split('\n').filter((l) => l.startsWith('- ')).length === 3,
+  `${index.split('\n').filter((l) => l.startsWith('- ')).length} lines`
+)
+check(
+  'INDEX.md line carries date, type, title, status, files and path',
+  /- \d{4}-\d{2}-\d{2} · implementation · "Fix the cursor driver" · idle · files: src\/main\/server\/drivers\/cursor\.ts, src\/renderer\/App\.tsx · threads\/idxthread01-/.test(index),
+  index.split('\n').find((l) => l.includes('cursor')) ?? ''
+)
+check(
+  'INDEX.md names a planning thread\'s plan file',
+  index.includes('· plan: plan-idxthread03.md ·'),
+  index.split('\n').find((l) => l.includes('Older work')) ?? ''
+)
 const order = index.split('\n').filter((l) => l.startsWith('- '))
-check('INDEX.md is newest first', !order[0].includes('Older work') && order.at(-1)!.includes('Older work'), order.join(' | '))
+check(
+  'INDEX.md is newest first',
+  !order[0].includes('Older work') && order.at(-1)!.includes('Older work'),
+  order.map((l) => l.slice(2, 40)).join(' | ')
+)
 
 // ── boot backfill lifts mirrors written before the new fields ────────
 const stale = fakeThread({ title: 'Pre-upgrade thread' })
