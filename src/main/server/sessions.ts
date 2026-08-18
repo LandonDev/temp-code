@@ -233,6 +233,11 @@ export class SessionRegistry {
    *  The status-level guard below misses these: drivers often emit the
    *  error event and still settle with status idle. */
   private erroredTurns = new Set<string>()
+  /** Sessions whose harness must reboot once the current turn settles —
+   *  a tune saved mid-turn. Disposing a streaming handle mutes the turn
+   *  (events drop, the thread wedges on "working"), so the drop waits
+   *  for the settling status event. */
+  private pendingReboot = new Set<string>()
   /** Disk-writing tool calls in flight per session (callId → closedAt,
    *  null while open). The live change stream asks which watching session
    *  was actually writing when a file changed — ownership at the source,
@@ -956,7 +961,14 @@ export class SessionRegistry {
   /** User-facing hard Stop ends every active or paused member of the visible
    *  root tree. Agent supervision still uses interrupt() for one child. */
   async stopRun(sessionId: string): Promise<void> {
-    const tree = this.sessionTree(this.rootSessionOf(sessionId)).filter(
+    await this.stopTree(this.rootSessionOf(sessionId))
+  }
+
+  /** Interrupt every live member of the subtree at rootId — Stop semantics
+   *  for flows (delete, archive) that act on the given thread, not the
+   *  visible root. */
+  private async stopTree(rootId: string): Promise<void> {
+    const tree = this.sessionTree(rootId).filter(
       (session) =>
         session.status === 'paused' ||
         session.status === 'starting' ||
@@ -1196,12 +1208,19 @@ export class SessionRegistry {
 
   /** Edit a live orchestration thread's per-run tune. The handle drops so
    *  the next send boots with the new prompt/rules (resume keeps the
-   *  conversation); spawn caps read rules per call and apply at once. */
+   *  conversation); spawn caps read rules per call and apply at once.
+   *  Mid-turn the drop is deferred to the settling status event — a
+   *  disposed streaming handle would mute the rest of the turn. */
   async setThreadRules(
     sessionId: string,
     threadRules: SessionMeta['threadRules'] | null
   ): Promise<void> {
-    await this.dropHandle(sessionId)
+    const status = this.store.getSession(sessionId)?.status
+    if (status === 'running' || status === 'starting' || status === 'waiting') {
+      this.pendingReboot.add(sessionId)
+    } else {
+      await this.dropHandle(sessionId)
+    }
     const hasContent =
       threadRules &&
       ((threadRules.conduct && Object.keys(threadRules.conduct).length > 0) ||
@@ -1255,12 +1274,22 @@ export class SessionRegistry {
   }
 
   async setArchived(sessionId: string, archived: boolean): Promise<void> {
-    if (archived) await this.dropHandle(sessionId)
+    // Archiving a running thread is a Stop: the harness and every live
+    // subagent get interrupted — dropHandle alone only mutes the handle,
+    // leaving the turn (and the fleet) working on a shelved thread.
+    if (archived) {
+      await this.stopTree(sessionId)
+      await this.dropHandle(sessionId)
+    }
     const next = this.store.updateSession(sessionId, { archived })
     if (next) this.notifyMeta(next)
   }
 
   async delete(sessionId: string): Promise<void> {
+    // Same Stop-first rule as archive: interrupt the whole subtree while
+    // the rows still exist, so no harness keeps executing (or spawning)
+    // against a thread that is about to be gone.
+    await this.stopTree(sessionId)
     this.queues.delete(sessionId)
     this.passPending.delete(sessionId)
     this.passActive.delete(sessionId)
@@ -1269,6 +1298,7 @@ export class SessionRegistry {
     const ids = this.store.deleteSessionTree(sessionId)
     for (const id of ids) {
       await this.dropHandle(id)
+      this.pendingReboot.delete(id)
       this.subscribers.delete(id)
       this.lastActivity.delete(id)
       this.activities.delete(id)
@@ -1505,6 +1535,16 @@ export class SessionRegistry {
       const meta = this.store.getSession(sessionId)
       if (meta) this.notifyMeta(meta)
       return
+    }
+    // A tune saved mid-turn waits here: the turn has settled, so the
+    // harness can now reboot with the new rules (resume keeps the
+    // conversation).
+    if (
+      event.type === 'status' &&
+      (event.status === 'idle' || event.status === 'error') &&
+      this.pendingReboot.delete(sessionId)
+    ) {
+      void this.dropHandle(sessionId)
     }
     const beforeRecovery = this.storedContinuableError(sessionId)
     const row = this.store.appendEvent(sessionId, event)
