@@ -1,5 +1,5 @@
 {
-  "n": 82,
-  "notes": "Deleting or archiving a running thread stops it and all its subagents; orchestration rule changes reach a running orchestrator",
-  "ts": 1787074477244
+  "n": 83,
+  "notes": "Failed means failed: only a thread's own trailing error shows red, a Stop reads as a quiet Stopped note, and threads stuck red from old stops heal on their own",
+  "ts": 1787075431000
 }
