@@ -51,7 +51,7 @@ export function cursorModelArg(model: string, reasoning: Reasoning): string {
 const PERMISSION_ARGS: Record<PermissionPolicy, string[]> = {
   safe: ['--mode', 'plan'],
   edits: ['--force', '--sandbox', 'enabled'],
-  auto: ['--force']
+  auto: ['--force', '--sandbox', 'disabled']
 }
 
 /** readToolCall → Read, shellToolCall → Shell, ... */
