@@ -27,13 +27,18 @@ export function cursorModelArg(model: string, reasoning: Reasoning): string {
 /**
  * Cursor driver — `cursor-agent -p --trust --output-format stream-json`,
  * process-per-turn, resumed with `--resume <session_id>` (verified live
- * against cursor-agent 2026.07.23):
+ * against cursor-agent 2026.08.11):
  *
  *   system/init {session_id, model} · thinking {subtype delta|completed}
- *   assistant {message.content[].text, model_call_id} — one full message
- *   per model call · tool_call {subtype started|completed, call_id,
- *   tool_call: {<kind>ToolCall: {args, result}}} · result {is_error,
- *   usage {inputTokens, outputTokens}}
+ *   assistant {message.content[].text} — one whole message, and the
+ *   closing one of a turn carries no model_call_id · tool_call {subtype
+ *   started|completed, call_id, tool_call: {<kind>ToolCall: {args,
+ *   result}}} · result {is_error, usage {inputTokens, outputTokens}}
+ *
+ * A dropped connection emits connection/reconnecting then retry/starting
+ * with is_resume, and cursor-agent replays the turn from its last
+ * checkpoint — the same messages arrive again. After three of those it
+ * exits 1 with no result.
  */
 
 /** readToolCall → Read, shellToolCall → Shell, ... */
@@ -63,11 +68,15 @@ export const cursorDriver: HarnessDriver = {
 
     const runTurn = (text: string): void => {
       const turn = ++turnSeq
-      // Per-turn accumulation so streaming blocks get an authoritative
-      // final when the turn ends.
+      // Thinking streams as deltas, so it needs an accumulator for its
+      // authoritative final. Assistant messages arrive whole — each one is
+      // emitted once, settled, under its own key.
       const thinkingAcc = new Map<string, string>()
-      const textAcc = new Map<string, string>()
-      const thinkKey = (): string => `think-${turn}`
+      const seen = new Set<string>()
+      let thinkIdx = 0
+      let msgIdx = 0
+      let replaying = false
+      const thinkKey = (): string => `think-${turn}-${thinkIdx}`
 
       const args = [
         '-p',
@@ -99,34 +108,69 @@ export const cursorDriver: HarnessDriver = {
           case 'thinking':
             if (msg.subtype === 'delta' && typeof msg.text === 'string') {
               const key = thinkKey()
-              thinkingAcc.set(key, (thinkingAcc.get(key) ?? '') + msg.text)
-              emit({ type: 'thinking', text: msg.text, delta: true, msgId: key, blockIndex: 0 })
+              const prior = thinkingAcc.get(key)
+              const full = (prior ?? '') + msg.text
+              thinkingAcc.set(key, full)
+              // After a rollback this block already holds what the first run
+              // through put on screen. Its opening chunk replaces that; the
+              // rest append as usual.
+              const reopening = replaying && prior === undefined
+              emit({
+                type: 'thinking',
+                text: reopening ? full : msg.text,
+                delta: !reopening,
+                msgId: key,
+                blockIndex: 0
+              })
             } else if (msg.subtype === 'completed') {
               const key = thinkKey()
               const full = thinkingAcc.get(key)
               if (full !== undefined) {
                 emit({ type: 'thinking', text: full, delta: false, msgId: key, blockIndex: 0 })
               }
+              // A turn holds several thinking blocks; each gets its own key
+              // so the next one starts a block instead of growing this one.
+              thinkIdx++
             }
             break
           case 'assistant': {
             const message = msg.message as
               { content?: { type?: string; text?: string }[] } | undefined
-            const msgId = String(msg.model_call_id ?? `turn-${turn}`)
-            for (const block of message?.content ?? []) {
-              if (block.type === 'text' && block.text) {
-                textAcc.set(msgId, (textAcc.get(msgId) ?? '') + block.text)
-                emit({
-                  type: 'assistant-text',
-                  text: block.text,
-                  delta: true,
-                  msgId,
-                  blockIndex: 0
-                })
-              }
-            }
+            const text = (message?.content ?? [])
+              .filter((b) => b.type === 'text' && b.text)
+              .map((b) => b.text)
+              .join('')
+            if (!text) break
+            // When its connection drops, cursor-agent rolls the turn back to
+            // a checkpoint and replays it, re-sending messages it already
+            // streamed — and the closing message carries no model_call_id to
+            // tell the copies apart. Keying by arrival and skipping text
+            // already shown is what keeps one answer from arriving three
+            // times.
+            if (seen.has(text)) break
+            seen.add(text)
+            emit({
+              type: 'assistant-text',
+              text,
+              delta: false,
+              msgId: `msg-${turn}-${msgIdx++}`,
+              blockIndex: 0
+            })
             break
           }
+          case 'retry':
+            if (msg.subtype === 'starting') {
+              // cursor-agent rewound to its checkpoint and is about to say
+              // the turn over. Rewind the thinking blocks with it so the
+              // replay rewrites them instead of stacking a second copy
+              // underneath. Assistant messages need no rewind — repeated
+              // text is dropped below, and text that changed belongs after
+              // what already stands.
+              thinkIdx = 0
+              thinkingAcc.clear()
+              replaying = true
+            }
+            break
           case 'tool_call': {
             const callId = String(msg.call_id ?? '')
             const tc = (msg.tool_call ?? {}) as Record<string, unknown>
@@ -149,10 +193,6 @@ export const cursorDriver: HarnessDriver = {
           }
           case 'result': {
             sawResult = true
-            // Finalize streamed blocks with their accumulated text.
-            for (const [key, full] of textAcc) {
-              emit({ type: 'assistant-text', text: full, delta: false, msgId: key, blockIndex: 0 })
-            }
             if (msg.is_error) {
               emit({ type: 'error', message: String(msg.result ?? 'cursor-agent error') })
             }
@@ -178,12 +218,9 @@ export const cursorDriver: HarnessDriver = {
         if (proc === p) proc = null
         if (disposed) return
         if (code !== 0 && !sawResult) {
-          // Died mid-turn (cursor-agent gives up after retrying a dropped
-          // stream). Finalize what it did stream so the answer survives the
-          // error instead of hanging as an unclosed delta.
-          for (const [key, full] of textAcc) {
-            emit({ type: 'assistant-text', text: full, delta: false, msgId: key, blockIndex: 0 })
-          }
+          // Died mid-turn: cursor-agent gives up after three replays of a
+          // dropped stream. Whatever it said is already on the transcript —
+          // every message was emitted settled, not as an open delta.
           const tail = stderrTail.trim()
           emit({
             type: 'error',
