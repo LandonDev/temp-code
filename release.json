@@ -1,5 +1,5 @@
 {
-  "n": 76,
-  "notes": "A Cursor thread keeps the message you sent it and says its answer once",
-  "ts": 1787027624494
+  "n": 77,
+  "notes": "Cursor threads group work under its task list, and every file it writes shows the file and its diff",
+  "ts": 1787035020214
 }
