@@ -1,0 +1,225 @@
+/** Deterministic pause/recovery coverage with a controlled in-memory driver. */
+import { mkdtempSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import type { HarnessDriver } from '../src/main/server/drivers/types'
+import { BUILT_IN_DRIVERS } from '../src/main/server/drivers'
+import { openDb, Store } from '../src/main/server/db'
+import { SessionRegistry } from '../src/main/server/sessions'
+import type { TurnPass } from '../src/shared/turnpass'
+
+const sends: { sessionId: string; text: string }[] = []
+const boots: string[] = []
+const interrupts: string[] = []
+const failContinue = new Set<string>()
+
+const controlledDriver: HarnessDriver = {
+  id: 'claude',
+  async start({ session, emit, setNativeId }) {
+    boots.push(session.id)
+    setNativeId(session.nativeId ?? `native-${session.id}`)
+    return {
+      async send(text) {
+        sends.push({ sessionId: session.id, text })
+        if (failContinue.has(session.id) && text.includes('<continue-run>')) {
+          throw new Error(`controlled resume failure: ${session.id}`)
+        }
+        emit({ type: 'status', status: 'running' })
+      },
+      interrupt() {
+        interrupts.push(session.id)
+        queueMicrotask(() => emit({ type: 'status', status: 'idle' }))
+      },
+      async dispose() {
+        return Promise.resolve()
+      }
+    }
+  }
+}
+BUILT_IN_DRIVERS.claude = controlledDriver
+
+let failures = 0
+const check = (name: string, ok: boolean, detail = ''): void => {
+  console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${detail ? ` - ${detail}` : ''}`)
+  if (!ok) failures++
+}
+const tick = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0))
+const waitFor = async (predicate: () => boolean, label: string): Promise<void> => {
+  for (let attempt = 0; attempt < 100; attempt++) {
+    if (predicate()) return
+    await tick()
+  }
+  throw new Error(`timeout: ${label}`)
+}
+
+const dbPath = join(mkdtempSync(join(tmpdir(), 'tc-pause-lc-')), 'pause.db')
+const store = new Store(openDb(dbPath))
+let registry = new SessionRegistry(store)
+const base = {
+  provider: 'claude' as const,
+  model: 'claude-sonnet-5',
+  reasoning: 'low' as const,
+  agentType: 'implementer' as const,
+  permission: 'edits' as const,
+  cwd: '/tmp',
+  parentId: null
+}
+
+// One failed idle root and one failed error root count once each. The batch
+// attempts both even when one replacement send fails.
+const errorA = await registry.create({ ...base, title: 'error-a' })
+const errorB = await registry.create({ ...base, title: 'error-b' })
+await tick()
+registry.append(errorA.id, { type: 'error', message: 'limit a' })
+registry.append(errorA.id, { type: 'status', status: 'idle' })
+registry.append(errorB.id, { type: 'error', message: 'limit b' })
+registry.append(errorB.id, { type: 'status', status: 'error' })
+check(
+  'two failed roots produce a recovery count of two',
+  registry.list().filter((session) => !session.parentId && session.treeCanContinue).length === 2
+)
+failContinue.add(errorB.id)
+const errorBatch = await registry.continueAllErrors()
+check('error batch attempts every root', errorBatch.attempted.length === 2)
+check(
+  'error batch reports one success and one failure',
+  errorBatch.succeeded.length === 1 && errorBatch.failed.length === 1
+)
+check(
+  'successful retry clears stored errors',
+  registry.list().find((s) => s.id === errorA.id)?.canContinue === false
+)
+check(
+  'failed retry remains recoverable',
+  registry.list().find((s) => s.id === errorB.id)?.canContinue === true
+)
+
+// Failed descendants count as one root and boot before the orchestrator.
+const orch = await registry.create({ ...base, title: 'orchestrator', agentType: 'orchestrator' })
+const childA = await registry.create({ ...base, title: 'child-a', parentId: orch.id })
+const childB = await registry.create({ ...base, title: 'child-b', parentId: orch.id })
+await tick()
+registry.append(childA.id, { type: 'error', message: 'child a failed' })
+registry.append(childA.id, { type: 'status', status: 'idle' })
+registry.append(childB.id, { type: 'error', message: 'child b failed' })
+registry.append(childB.id, { type: 'status', status: 'error' })
+check(
+  'failed orchestration descendants count once at the root',
+  registry.list().filter((s) => !s.parentId && s.treeCanContinue && s.id === orch.id).length === 1
+)
+boots.length = 0
+await registry.continueRun(orch.id)
+const orchBoot = boots.indexOf(orch.id)
+check(
+  'failed descendants reboot before their root',
+  orchBoot > boots.indexOf(childA.id) && orchBoot > boots.indexOf(childB.id),
+  boots.join(',')
+)
+
+// Pause wins the interrupt race, freezes elapsed time, and parks pass,
+// report, and user queues until the resumed turn settles in that order.
+const queued = await registry.create({ ...base, title: 'queued-root' })
+await tick()
+store.updateSession(queued.id, { status: 'running', busySince: Date.now() - 5_000 })
+await registry.pauseRun(queued.id)
+await tick()
+const paused = store.getSession(queued.id)!
+check('pause survives a late idle callback', paused.status === 'paused')
+check('pause snapshots active elapsed time', (paused.frozenActiveElapsed ?? 0) >= 4_500)
+const passPending = (registry as unknown as { passPending: Map<string, TurnPass> }).passPending
+passPending.set(queued.id, { verify: true, build: false, commit: 'off' })
+registry.deliverAgentReport(queued.id, {
+  text: '<agent-report>child complete</agent-report>',
+  agentId: childA.id,
+  title: childA.title,
+  status: 'idle'
+})
+registry.queueAdd(queued.id, 'queued user message')
+const beforeParked = sends.length
+registry.append(queued.id, { type: 'turn-complete' })
+registry.append(queued.id, { type: 'status', status: 'idle' })
+await tick()
+check('paused pass, report, and user queue stay parked', sends.length === beforeParked)
+
+await registry.resumePausedRun(queued.id)
+const resumed = store.getSession(queued.id)!
+const resumedElapsed = Date.now() - (resumed.busySince ?? Date.now())
+check(
+  'resume restores the frozen timer',
+  Math.abs(resumedElapsed - (paused.frozenActiveElapsed ?? 0)) < 500
+)
+registry.append(queued.id, { type: 'status', status: 'idle' })
+await waitFor(() => sends.some((send) => send.text.includes('<turn-pass>')), 'turn pass')
+registry.append(queued.id, { type: 'status', status: 'idle' })
+await waitFor(() => sends.some((send) => send.text.includes('<agent-report>')), 'agent report')
+registry.append(queued.id, { type: 'status', status: 'idle' })
+await waitFor(
+  () => sends.some((send) => send.text === 'queued user message'),
+  'queued user message'
+)
+const orderedTexts = sends.filter((send) => send.sessionId === queued.id).map((send) => send.text)
+const resumeAt = orderedTexts.findIndex((text) => text.includes('<continue-paused-run>'))
+const passAt = orderedTexts.findIndex((text) => text.includes('<turn-pass>'))
+const reportAt = orderedTexts.findIndex((text) => text.includes('<agent-report>'))
+const queueAt = orderedTexts.findIndex((text) => text === 'queued user message')
+check(
+  'settle order is resumed turn, pass, report, then queue',
+  resumeAt < passAt && passAt < reportAt && reportAt < queueAt
+)
+
+// Recursive pause covers the root tree and recursive resume boots children
+// first. Hard Stop clears every paused member and leaves no pause summary.
+store.updateSession(orch.id, { status: 'running', busySince: Date.now() - 2_000 })
+store.updateSession(childA.id, { status: 'running', busySince: Date.now() - 1_000 })
+store.updateSession(childB.id, { status: 'waiting', busySince: Date.now() - 1_500 })
+await registry.pauseRun(orch.id)
+await tick()
+check(
+  'orchestration pause marks root and all live descendants',
+  [orch.id, childA.id, childB.id].every((id) => store.getSession(id)?.status === 'paused')
+)
+boots.length = 0
+await registry.resumePausedRun(orch.id)
+check(
+  'paused descendants resume before the root',
+  boots.indexOf(orch.id) > boots.indexOf(childA.id) &&
+    boots.indexOf(orch.id) > boots.indexOf(childB.id),
+  boots.join(',')
+)
+await registry.pauseRun(orch.id)
+await registry.stopRun(orch.id)
+await tick()
+check(
+  'hard Stop clears the whole paused tree',
+  [orch.id, childA.id, childB.id].every((id) => store.getSession(id)?.status === 'idle')
+)
+check(
+  'hard Stop leaves no paused root summary',
+  registry.list().find((s) => s.id === orch.id)?.treeHasPaused === false
+)
+
+// Paused state and its timer survive process restart; Continue uses native
+// resume with no old handle in memory.
+const restart = await registry.create({ ...base, title: 'restart-root' })
+await tick()
+store.updateSession(restart.id, { status: 'running', busySince: Date.now() - 3_000 })
+await registry.pauseRun(restart.id)
+const frozenBeforeRestart = store.getSession(restart.id)?.frozenActiveElapsed ?? 0
+await registry.disposeAll()
+registry = new SessionRegistry(store)
+registry.resetStaleStatuses()
+check('boot cleanup preserves paused state', store.getSession(restart.id)?.status === 'paused')
+check(
+  'boot cleanup preserves frozen elapsed time',
+  store.getSession(restart.id)?.frozenActiveElapsed === frozenBeforeRestart
+)
+boots.length = 0
+await registry.resumePausedRun(restart.id)
+check(
+  'restart Continue boots a new native-resume handle',
+  boots.includes(restart.id) && store.getSession(restart.id)?.status === 'running'
+)
+
+await registry.disposeAll()
+console.log(failures === 0 ? '\nALL PASS' : `\n${failures} FAILURES`)
+process.exit(failures === 0 ? 0 : 1)

@@ -1,6 +1,18 @@
 import { useEffect, useMemo, useState } from 'react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
-import { Archive, ArchiveRestore, ChevronLeft, Pencil, Plus, Search, SlidersHorizontal, Trash2 } from 'lucide-react'
+import {
+  Archive,
+  ArchiveRestore,
+  ChevronLeft,
+  Pause,
+  Pencil,
+  Play,
+  Plus,
+  Search,
+  SlidersHorizontal,
+  Square,
+  Trash2
+} from 'lucide-react'
 import type { ThreadType } from '@shared/domain'
 import type { SessionMeta, SessionStatus } from '@shared/events'
 import { threadsOfProject, useApp } from '../../state/store'
@@ -55,7 +67,8 @@ export function TabIndicator({
   activity,
   activityKind,
   tasks,
-  planReady
+  planReady,
+  frozenElapsed
 }: {
   status: SessionStatus
   unread: boolean
@@ -70,6 +83,8 @@ export function TabIndicator({
   tasks?: { done: number; total: number } | null
   /** planning threads: plan written, awaiting a build */
   planReady?: boolean
+  /** paused active time, excluding the paused span */
+  frozenElapsed?: number | null
 }): React.JSX.Element | null {
   // An implementation thread's tally says more than any status word, so it
   // sits at the tab's edge in every state — done/total, never abbreviated.
@@ -114,6 +129,16 @@ export function TabIndicator({
         </span>
       )
     }
+    if (status === 'paused')
+      return (
+        <span className="flex shrink-0 items-center gap-1 text-[10.5px] font-medium text-warning">
+          <Pause className="size-3 fill-current" strokeWidth={1.8} />
+          Paused
+          <span className="font-normal tabular-nums text-current/75">
+            {duration(Math.max(0, frozenElapsed ?? 0))}
+          </span>
+        </span>
+      )
     if (status === 'waiting')
       return (
         <span className="flex shrink-0 items-center gap-1 text-[10.5px] font-medium text-warning">
@@ -157,10 +182,7 @@ function usePlanReady(threads: SessionMeta[]): Record<string, boolean> {
     .join(',')
   useEffect(() => {
     const ids = key ? key.split(',') : []
-    if (ids.length === 0) {
-      setReady({})
-      return
-    }
+    if (ids.length === 0) return
     let alive = true
     const poll = async (): Promise<void> => {
       const entries = await Promise.all(
@@ -206,6 +228,9 @@ export function ThreadStrip(): React.JSX.Element | null {
   const [deleting, setDeleting] = useState<string | null>(null)
   const [tuning, setTuning] = useState<string | null>(null)
   const deleteSession = useApp((s) => s.deleteSession)
+  const pause = useApp((s) => s.pause)
+  const resume = useApp((s) => s.resume)
+  const interrupt = useApp((s) => s.interrupt)
   const reduce = useReducedMotion()
 
   const threads = useMemo(() => threadsOfProject(sessions, projectId), [sessions, projectId])
@@ -217,13 +242,19 @@ export function ThreadStrip(): React.JSX.Element | null {
   // A written plan awaiting its build holds the top row too.
   const planReady = usePlanReady(threads)
   const live = threads.filter(
-    (t) => t.status !== 'idle' || t.updatedAt > (lastSeen[t.id] ?? 0) || planReady[t.id]
+    (t) =>
+      t.status !== 'idle' ||
+      t.treeHasLiveWork ||
+      t.treeHasPaused ||
+      t.treeCanContinue ||
+      t.updatedAt > (lastSeen[t.id] ?? 0) ||
+      planReady[t.id]
   )
   const dorm = threads.filter((t) => !live.includes(t))
   /** This pass's tally, for the threads whose work IS a task list. */
   const tasksOf = (t: SessionMeta): { done: number; total: number } | null =>
     t.threadType === 'implementation' ? (t.tasks ?? null) : null
-  const anyLive = threads.some((t) => t.status === 'running' || t.status === 'starting')
+  const anyLive = threads.some((t) => t.treeHasLiveWork)
   const now = useNow(anyLive)
   const archived = useMemo(
     () =>
@@ -256,146 +287,173 @@ export function ThreadStrip(): React.JSX.Element | null {
   return (
     <div className="shrink-0 border-b border-border/60">
       <div className="flex h-10 items-center gap-1 px-4">
-      <Tabs
-        value={value}
-        onValueChange={onValue}
-        variant="soft"
-        className="flex min-w-0 items-center self-stretch overflow-x-auto [scrollbar-width:none]"
-      >
-        <TabsList className="h-full">
-          <AnimatePresence initial={false} mode="popLayout">
-            {live.map((t) => {
-              const Glyph = t.threadType ? THREAD_GLYPHS[t.threadType] : THREAD_GLYPHS.chat
-              const unread = t.id !== selectedId && t.updatedAt > (lastSeen[t.id] ?? 0)
-              return (
-                <motion.div
-                  key={t.id}
-                  layout
-                  initial={reduce ? false : { opacity: 0, scale: 0.9 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={reduce ? undefined : { opacity: 0, scale: 0.9 }}
-                  transition={SPRING_LAYOUT}
-                >
-                  {renaming === t.id ? (
-                    // The tab itself becomes the editor — no dialog for a name.
-                    <div className="flex h-[26px] items-center gap-1.5 rounded-md bg-accent px-2.5">
-                      <Glyph
-                        className={cn(
-                          'size-[13px] shrink-0 opacity-80',
-                          THREAD_TINTS[t.threadType ?? 'chat']
-                        )}
-                      />
-                      <input
-                        autoFocus
-                        defaultValue={t.title}
-                        onFocus={(e) => e.target.select()}
-                        onKeyDown={(e) => {
-                          e.stopPropagation()
-                          if (e.key === 'Enter') e.currentTarget.blur()
-                          if (e.key === 'Escape') {
-                            e.currentTarget.value = t.title
-                            e.currentTarget.blur()
-                          }
-                        }}
-                        onBlur={(e) => {
-                          setRenaming(null)
-                          const v = e.target.value.trim()
-                          if (v && v !== t.title) void renameSession(t.id, v)
-                        }}
-                        className="w-40 bg-transparent text-[13px] outline-none"
-                      />
-                    </div>
-                  ) : (
-                    <ContextMenu>
-                      <ContextMenuTrigger asChild>
-                        <div onDoubleClick={() => setRenaming(t.id)}>
-                          <TabsTrigger
-                            value={t.id}
-                            className={cn(
-                              'h-[26px] min-h-0 gap-1.5 px-2.5 py-0 font-normal',
-                              // Attention states wash the WHOLE tab, not just
-                              // the edge dot — a glance at the strip separates
-                              // "needs me" (amber), "broke" (red) and
-                              // "finished while I was away" (blue) without
-                              // reading anything.
-                              // Dark runs the bright 400-series tokens on
-                              // near-black, where the same alpha reads
-                              // weaker (see --code-wash: 10% light, 12%
-                              // dark) — so each wash steps up a notch there.
-                              t.status === 'waiting' &&
-                                'bg-warning/10 hover:bg-warning/15 dark:bg-warning/15 dark:hover:bg-warning/20',
-                              t.status === 'error' &&
-                                'bg-destructive/10 hover:bg-destructive/15 dark:bg-destructive/15 dark:hover:bg-destructive/20',
-                              t.status === 'idle' &&
-                                unread &&
-                                'bg-info/10 hover:bg-info/15 dark:bg-info/15 dark:hover:bg-info/20'
-                            )}
-                          >
-                            <Glyph
+        <Tabs
+          value={value}
+          onValueChange={onValue}
+          variant="soft"
+          className="flex min-w-0 items-center self-stretch overflow-x-auto [scrollbar-width:none]"
+        >
+          <TabsList className="h-full">
+            <AnimatePresence initial={false} mode="popLayout">
+              {live.map((t) => {
+                const Glyph = t.threadType ? THREAD_GLYPHS[t.threadType] : THREAD_GLYPHS.chat
+                const unread = t.id !== selectedId && t.updatedAt > (lastSeen[t.id] ?? 0)
+                const displayStatus: SessionStatus = t.treeHasPaused
+                  ? 'paused'
+                  : t.treeCanContinue
+                    ? 'error'
+                    : t.status
+                return (
+                  <motion.div
+                    key={t.id}
+                    layout
+                    initial={reduce ? false : { opacity: 0, scale: 0.9 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={reduce ? undefined : { opacity: 0, scale: 0.9 }}
+                    transition={SPRING_LAYOUT}
+                  >
+                    {renaming === t.id ? (
+                      // The tab itself becomes the editor — no dialog for a name.
+                      <div className="flex h-[26px] items-center gap-1.5 rounded-md bg-accent px-2.5">
+                        <Glyph
+                          className={cn(
+                            'size-[13px] shrink-0 opacity-80',
+                            THREAD_TINTS[t.threadType ?? 'chat']
+                          )}
+                        />
+                        <input
+                          autoFocus
+                          defaultValue={t.title}
+                          onFocus={(e) => e.target.select()}
+                          onKeyDown={(e) => {
+                            e.stopPropagation()
+                            if (e.key === 'Enter') e.currentTarget.blur()
+                            if (e.key === 'Escape') {
+                              e.currentTarget.value = t.title
+                              e.currentTarget.blur()
+                            }
+                          }}
+                          onBlur={(e) => {
+                            setRenaming(null)
+                            const v = e.target.value.trim()
+                            if (v && v !== t.title) void renameSession(t.id, v)
+                          }}
+                          className="w-40 bg-transparent text-[13px] outline-none"
+                        />
+                      </div>
+                    ) : (
+                      <ContextMenu>
+                        <ContextMenuTrigger asChild>
+                          <div onDoubleClick={() => setRenaming(t.id)}>
+                            <TabsTrigger
+                              value={t.id}
                               className={cn(
-                                'size-[13px] opacity-80',
-                                THREAD_TINTS[t.threadType ?? 'chat']
-                              )}
-                            />
-                            <span
-                              className={cn(
-                                'truncate',
-                                // A working tab lends the indicator some of
-                                // its title budget; the whole tab stays
-                                // narrower than an idle one with this title.
-                                t.status === 'running' || t.status === 'starting'
-                                  ? 'max-w-32'
-                                  : 'max-w-44',
-                                // Unread reads like unread mail: bold, full
-                                // color. Dormant tabs recede so live ones
-                                // carry the eye.
-                                unread && 'font-medium text-foreground'
+                                'h-[26px] min-h-0 gap-1.5 px-2.5 py-0 font-normal',
+                                // Attention states wash the WHOLE tab, not just
+                                // the edge dot — a glance at the strip separates
+                                // "needs me" (amber), "broke" (red) and
+                                // "finished while I was away" (blue) without
+                                // reading anything.
+                                // Dark runs the bright 400-series tokens on
+                                // near-black, where the same alpha reads
+                                // weaker (see --code-wash: 10% light, 12%
+                                // dark) — so each wash steps up a notch there.
+                                displayStatus === 'waiting' &&
+                                  'bg-warning/10 hover:bg-warning/15 dark:bg-warning/15 dark:hover:bg-warning/20',
+                                t.treeHasPaused &&
+                                  'bg-warning/10 hover:bg-warning/15 dark:bg-warning/15 dark:hover:bg-warning/20',
+                                displayStatus === 'error' &&
+                                  'bg-destructive/10 hover:bg-destructive/15 dark:bg-destructive/15 dark:hover:bg-destructive/20',
+                                t.status === 'idle' &&
+                                  unread &&
+                                  'bg-info/10 hover:bg-info/15 dark:bg-info/15 dark:hover:bg-info/20'
                               )}
                             >
-                              {t.title}
-                            </span>
-                            <TabIndicator
-                              status={t.status}
-                              unread={unread}
-                              since={t.busySince ?? t.updatedAt}
-                              now={now}
-                              activity={t.activity}
-                              activityKind={t.activityKind}
-                              tasks={tasksOf(t)}
-                              planReady={!!planReady[t.id]}
-                            />
-                          </TabsTrigger>
-                        </div>
-                      </ContextMenuTrigger>
-                      <ContextMenuContent>
-                        <ContextMenuItem onClick={() => setRenaming(t.id)}>
-                          <Pencil className="size-3.5 text-muted-foreground" />
-                          Rename
-                        </ContextMenuItem>
-                        {t.threadType === 'orchestration' && (
-                          <ContextMenuItem onClick={() => setTuning(t.id)}>
-                            <SlidersHorizontal className="size-3.5 text-muted-foreground" />
-                            Orchestration options…
+                              <Glyph
+                                className={cn(
+                                  'size-[13px] opacity-80',
+                                  THREAD_TINTS[t.threadType ?? 'chat']
+                                )}
+                              />
+                              <span
+                                className={cn(
+                                  'truncate',
+                                  // A working tab lends the indicator some of
+                                  // its title budget; the whole tab stays
+                                  // narrower than an idle one with this title.
+                                  t.treeHasLiveWork || t.treeHasPaused ? 'max-w-32' : 'max-w-44',
+                                  // Unread reads like unread mail: bold, full
+                                  // color. Dormant tabs recede so live ones
+                                  // carry the eye.
+                                  unread && 'font-medium text-foreground'
+                                )}
+                              >
+                                {t.title}
+                              </span>
+                              <TabIndicator
+                                status={displayStatus}
+                                unread={unread}
+                                since={t.busySince ?? t.updatedAt}
+                                now={now}
+                                activity={t.activity}
+                                activityKind={t.activityKind}
+                                tasks={tasksOf(t)}
+                                planReady={!!planReady[t.id]}
+                                frozenElapsed={t.treeFrozenActiveElapsed ?? t.frozenActiveElapsed}
+                              />
+                            </TabsTrigger>
+                          </div>
+                        </ContextMenuTrigger>
+                        <ContextMenuContent>
+                          <ContextMenuItem onClick={() => setRenaming(t.id)}>
+                            <Pencil className="size-3.5 text-muted-foreground" />
+                            Rename
                           </ContextMenuItem>
-                        )}
-                        <ContextMenuItem onClick={() => archive(t.id)}>
-                          <Archive className="size-3.5 text-muted-foreground" />
-                          Archive
-                        </ContextMenuItem>
-                        <ContextMenuSeparator />
-                        <ContextMenuItem variant="destructive" onClick={() => setDeleting(t.id)}>
-                          <Trash2 className="size-3.5" />
-                          Delete…
-                        </ContextMenuItem>
-                      </ContextMenuContent>
-                    </ContextMenu>
-                  )}
-                </motion.div>
-              )
-            })}
-          </AnimatePresence>
-        </TabsList>
-      </Tabs>
+                          {t.threadType === 'orchestration' && (
+                            <ContextMenuItem onClick={() => setTuning(t.id)}>
+                              <SlidersHorizontal className="size-3.5 text-muted-foreground" />
+                              Orchestration options…
+                            </ContextMenuItem>
+                          )}
+                          {t.treeHasPaused ? (
+                            <ContextMenuItem onClick={() => void resume(t.id)}>
+                              <Play className="size-3.5 text-warning" />
+                              Continue
+                            </ContextMenuItem>
+                          ) : t.treeHasLiveWork ? (
+                            <ContextMenuItem onClick={() => void pause(t.id)}>
+                              <Pause className="size-3.5 text-warning" />
+                              Pause
+                            </ContextMenuItem>
+                          ) : null}
+                          {(t.treeHasLiveWork || t.treeHasPaused) && (
+                            <ContextMenuItem
+                              variant="destructive"
+                              onClick={() => void interrupt(t.id)}
+                            >
+                              <Square className="size-3.5 fill-current" />
+                              Stop
+                            </ContextMenuItem>
+                          )}
+                          {(t.treeHasLiveWork || t.treeHasPaused) && <ContextMenuSeparator />}
+                          <ContextMenuItem onClick={() => archive(t.id)}>
+                            <Archive className="size-3.5 text-muted-foreground" />
+                            Archive
+                          </ContextMenuItem>
+                          <ContextMenuSeparator />
+                          <ContextMenuItem variant="destructive" onClick={() => setDeleting(t.id)}>
+                            <Trash2 className="size-3.5" />
+                            Delete…
+                          </ContextMenuItem>
+                        </ContextMenuContent>
+                      </ContextMenu>
+                    )}
+                  </motion.div>
+                )
+              })}
+            </AnimatePresence>
+          </TabsList>
+        </Tabs>
         <NewThreadButton projectId={projectId} empty={threads.length === 0} />
         <div className="flex-1" />
         <ArchivedShelf archived={archived} />
@@ -440,51 +498,51 @@ export function ThreadStrip(): React.JSX.Element | null {
                       className="h-[20px] w-36 rounded-[5px] bg-accent px-1.5 text-[11.5px] outline-none"
                     />
                   ) : (
-                  <ContextMenu>
-                    <ContextMenuTrigger asChild>
-                      <button
-                        onClick={() => onValue(t.id)}
-                        onDoubleClick={() => setRenaming(t.id)}
-                        className={cn(
-                          'flex h-[20px] items-center gap-1 rounded-[5px] px-1.5 text-[11.5px] transition active:scale-[0.98]',
-                          open
-                            ? 'bg-accent text-foreground'
-                            : 'text-muted-foreground/70 opacity-70 hover:bg-accent/60 hover:text-foreground hover:opacity-100'
-                        )}
-                      >
-                        <Glyph
+                    <ContextMenu>
+                      <ContextMenuTrigger asChild>
+                        <button
+                          onClick={() => onValue(t.id)}
+                          onDoubleClick={() => setRenaming(t.id)}
                           className={cn(
-                            'size-3 shrink-0',
+                            'flex h-[20px] items-center gap-1 rounded-[5px] px-1.5 text-[11.5px] transition active:scale-[0.98]',
                             open
-                              ? cn('opacity-80', THREAD_TINTS[t.threadType ?? 'chat'])
-                              : 'opacity-60 grayscale'
+                              ? 'bg-accent text-foreground'
+                              : 'text-muted-foreground/70 opacity-70 hover:bg-accent/60 hover:text-foreground hover:opacity-100'
                           )}
-                        />
-                        <span className="max-w-36 truncate">{t.title}</span>
-                      </button>
-                    </ContextMenuTrigger>
-                    <ContextMenuContent>
-                      <ContextMenuItem onClick={() => setRenaming(t.id)}>
-                        <Pencil className="size-3.5 text-muted-foreground" />
-                        Rename
-                      </ContextMenuItem>
-                      {t.threadType === 'orchestration' && (
-                        <ContextMenuItem onClick={() => setTuning(t.id)}>
-                          <SlidersHorizontal className="size-3.5 text-muted-foreground" />
-                          Orchestration options…
+                        >
+                          <Glyph
+                            className={cn(
+                              'size-3 shrink-0',
+                              open
+                                ? cn('opacity-80', THREAD_TINTS[t.threadType ?? 'chat'])
+                                : 'opacity-60 grayscale'
+                            )}
+                          />
+                          <span className="max-w-36 truncate">{t.title}</span>
+                        </button>
+                      </ContextMenuTrigger>
+                      <ContextMenuContent>
+                        <ContextMenuItem onClick={() => setRenaming(t.id)}>
+                          <Pencil className="size-3.5 text-muted-foreground" />
+                          Rename
                         </ContextMenuItem>
-                      )}
-                      <ContextMenuItem onClick={() => archive(t.id)}>
-                        <Archive className="size-3.5 text-muted-foreground" />
-                        Archive
-                      </ContextMenuItem>
-                      <ContextMenuSeparator />
-                      <ContextMenuItem variant="destructive" onClick={() => setDeleting(t.id)}>
-                        <Trash2 className="size-3.5" />
-                        Delete…
-                      </ContextMenuItem>
-                    </ContextMenuContent>
-                  </ContextMenu>
+                        {t.threadType === 'orchestration' && (
+                          <ContextMenuItem onClick={() => setTuning(t.id)}>
+                            <SlidersHorizontal className="size-3.5 text-muted-foreground" />
+                            Orchestration options…
+                          </ContextMenuItem>
+                        )}
+                        <ContextMenuItem onClick={() => archive(t.id)}>
+                          <Archive className="size-3.5 text-muted-foreground" />
+                          Archive
+                        </ContextMenuItem>
+                        <ContextMenuSeparator />
+                        <ContextMenuItem variant="destructive" onClick={() => setDeleting(t.id)}>
+                          <Trash2 className="size-3.5" />
+                          Delete…
+                        </ContextMenuItem>
+                      </ContextMenuContent>
+                    </ContextMenu>
                   )}
                 </motion.div>
               )
@@ -493,11 +551,7 @@ export function ThreadStrip(): React.JSX.Element | null {
         </div>
       )}
       {tuning && (
-        <TuneDialog
-          key={tuning}
-          session={sessions[tuning]}
-          onClose={() => setTuning(null)}
-        />
+        <TuneDialog key={tuning} session={sessions[tuning]} onClose={() => setTuning(null)} />
       )}
       <ConfirmDialog
         open={deleting !== null}
@@ -627,9 +681,7 @@ function NewThreadButton({
 }): React.JSX.Element {
   const catalog = useApp((s) => s.catalog)
   const createThread = useApp((s) => s.createThread)
-  const workspaceId = useApp(
-    (s) => s.projects.find((p) => p.id === projectId)?.workspaceId ?? null
-  )
+  const workspaceId = useApp((s) => s.projects.find((p) => p.id === projectId)?.workspaceId ?? null)
   const [open, setOpen] = useState(false)
   const [busy, setBusy] = useState<ThreadType | null>(null)
   // 'tune' swaps the popover into the orchestration options — same
@@ -760,7 +812,6 @@ function NewThreadButton({
     </Popover>
   )
 }
-
 
 /** Right-click → Orchestration options: edit a live thread's per-run tune.
  *  Saves apply on the next send (the harness reboots with the new prompt);

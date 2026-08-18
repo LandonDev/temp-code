@@ -1,11 +1,17 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
-import { Check, FileText, Image as ImageIcon, MessageSquare, X } from 'lucide-react'
+import {
+  Check,
+  FileText,
+  Image as ImageIcon,
+  MessageSquare,
+  Pause as PauseIcon,
+  X
+} from 'lucide-react'
 import type { ProviderId, Reasoning } from '@shared/catalog'
 import type { Attachment, PermissionPolicy, SessionMeta } from '@shared/events'
 import type { SlashCommand, ThreadType } from '@shared/domain'
 import { useApp } from '../../state/store'
-import { client } from '../../lib/client'
 import { cn, displayPath } from '../../lib/utils'
 import { EASE_OUT, SPRING_PANEL, SPRING_SWAP } from '../../lib/ease'
 import { StatusDot, THREAD_GLYPHS, THREAD_LABELS, THREAD_TINTS, timeAgo } from './bits'
@@ -184,7 +190,7 @@ function rankThreads(
 }
 
 /**
- * The composer: a floating rounded surface. Send morphs into Stop while a
+ * The composer: a floating rounded surface. Send morphs into Pause while a
  * turn runs; typing stays enabled (the harness queues messages).
  *
  * `/` completes the provider's skills/commands/prompts, `@` completes
@@ -197,8 +203,7 @@ export function PromptBar({
   topSlot
 }: {
   compact?: boolean
-  /** Rendered in a side pane: always use the expanded layout (the inline
-   *  cluster needs ~300px of pill it doesn't have) and tighter padding. */
+  /** Rendered in a side pane: tighter horizontal padding. */
   narrow?: boolean
   /** Rendered inside the composer's own centering column, directly above
    *  the pill — attached tabs (the pass banner) share its exact geometry
@@ -228,7 +233,7 @@ export function PromptBar({
   const midTurnDefault = useApp((s) => s.midTurnDefault)
   const tune = useApp((s) => s.tune)
   const retype = useApp((s) => s.retype)
-  const interrupt = useApp((s) => s.interrupt)
+  const pause = useApp((s) => s.pause)
   const setPermission = useApp((s) => s.setPermission)
 
   const [text, setText] = useState('')
@@ -442,17 +447,11 @@ export function PromptBar({
   }, [selectedId, attachImage, addFileRef])
 
   if (!selectedId || !session) return null
-  const running = session.status === 'running' || session.status === 'starting'
+  const paused = session.status === 'paused' || !!session.treeHasPaused
+  const running =
+    !paused &&
+    (session.status === 'running' || session.status === 'starting' || !!session.treeHasLiveWork)
   const canSend = !!text.trim() || images.length > 0 || appshots.length > 0
-  // FlipMorph: a short single-line prompt keeps the 49px compact pill with
-  // the whole cluster inline; anything more expands (180ms, bottom-anchored).
-  const expanded =
-    !!narrow ||
-    images.length > 0 ||
-    fileRefs.length > 0 ||
-    appshots.length > 0 ||
-    text.includes('\n') ||
-    text.length > 40
 
   const accept = (index: number): void => {
     if (!trigger) return
@@ -798,9 +797,8 @@ export function PromptBar({
             }}
             placeholder="Do anything…"
             className={cn(
-              'block w-full bg-transparent pl-4 text-[14px] leading-[22.75px] outline-none',
-              'empty:before:pointer-events-none empty:before:text-faint empty:before:content-[attr(data-placeholder)]',
-              expanded ? 'pt-3.5 pr-4' : 'py-[13px] pr-[400px]'
+              'block w-full bg-transparent pt-3.5 pr-4 pl-4 text-[14px] leading-[22.75px] outline-none',
+              'empty:before:pointer-events-none empty:before:text-faint empty:before:content-[attr(data-placeholder)]'
             )}
           />
           <input
@@ -820,12 +818,9 @@ export function PromptBar({
               e.target.value = ''
             }}
           />
-          {/* expanded mode reserves a 46px actions strip; compact collapses
-              it so the cluster shares the single 49px row */}
-          <div
-            className="transition-[height] duration-[180ms] ease-out"
-            style={{ height: expanded ? 46 : 0 }}
-          />
+          {/* the input always gets its own row; this reserves the 46px
+              actions strip the absolute cluster rides in */}
+          <div className="h-[46px]" />
           {/* the cluster rides the pill's bottom-right through the morph */}
           <div className="absolute right-2.5 bottom-[9px] flex items-center gap-0.5">
             {provider && (
@@ -956,13 +951,11 @@ export function PromptBar({
               >
                 <ZIcon name="paperclip" size={14} />
               </button>
-              {/* Send / Queue / Steer / Stop: idle → send; running + text →
+              {/* Send / Queue / Steer / Pause: idle → send; running + text →
                   the settings default (⌘Enter or ⌘click does the other);
-                  running + empty → stop (red square). */}
+                  running + empty → pause. */}
               <button
-                onClick={(e) =>
-                  running && !canSend ? void interrupt(selectedId) : submit(e.metaKey)
-                }
+                onClick={(e) => (running && !canSend ? void pause(selectedId) : submit(e.metaKey))}
                 disabled={!running && !canSend}
                 aria-label={
                   running
@@ -970,7 +963,7 @@ export function PromptBar({
                       ? midTurnDefault === 'queue'
                         ? 'Queue'
                         : 'Steer'
-                      : 'Stop'
+                      : 'Pause'
                     : 'Send'
                 }
                 title={
@@ -988,7 +981,7 @@ export function PromptBar({
                   <motion.span
                     key={
                       running && !canSend
-                        ? 'stop'
+                        ? 'pause'
                         : running && midTurnDefault === 'queue'
                           ? 'queue'
                           : 'send'
@@ -1008,7 +1001,7 @@ export function PromptBar({
                     className="flex items-center justify-center"
                   >
                     {running && !canSend ? (
-                      <span className="block size-2.5 rounded-[2px] bg-destructive" />
+                      <PauseIcon className="size-3.5 fill-warning text-warning" strokeWidth={1.8} />
                     ) : running && midTurnDefault === 'queue' ? (
                       <ZIcon name="checklist" size={14} />
                     ) : (

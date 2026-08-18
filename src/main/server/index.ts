@@ -497,7 +497,8 @@ export async function startServer(dbPath: string): Promise<RunningServer> {
             })
             break
           case 'turnpass.set':
-            if (req.params.projectId) registry.setProjectTurnPass(req.params.projectId, req.params.pass)
+            if (req.params.projectId)
+              registry.setProjectTurnPass(req.params.projectId, req.params.pass)
             else registry.setTurnPass(req.params.workspaceId, req.params.pass)
             sendFrame({ id: req.id, ok: true, result: null })
             break
@@ -571,8 +572,22 @@ export async function startServer(dbPath: string): Promise<RunningServer> {
             sendFrame({ id: req.id, ok: true, result: null })
             break
           case 'session.interrupt':
-            await registry.interrupt(req.params.sessionId)
+            await registry.stopRun(req.params.sessionId)
             sendFrame({ id: req.id, ok: true, result: null })
+            break
+          case 'session.pause':
+            await registry.pauseRun(req.params.sessionId)
+            sendFrame({ id: req.id, ok: true, result: null })
+            break
+          case 'session.resume':
+            await registry.resumePausedRun(req.params.sessionId)
+            sendFrame({ id: req.id, ok: true, result: null })
+            break
+          case 'session.continueAllErrors':
+            sendFrame({ id: req.id, ok: true, result: await registry.continueAllErrors() })
+            break
+          case 'session.resumeAllPaused':
+            sendFrame({ id: req.id, ok: true, result: await registry.resumeAllPaused() })
             break
           case 'session.subscribe': {
             const { sessionId } = req.params

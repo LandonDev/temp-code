@@ -2,8 +2,10 @@ import { nanoid } from 'nanoid'
 import { homedir } from 'node:os'
 import { basename } from 'node:path'
 import { CreateSessionParams, type CreateSessionInput } from '@shared/contract'
+import type { SessionBatchResult } from '@shared/contract'
 import { CATALOG, resolveModel, type ProviderId } from '@shared/catalog'
 import type { AgentEvent, Attachment, EventRow, SessionMeta } from '@shared/events'
+import { foldContinuableError, summarizeRootTree } from '@shared/session-lifecycle'
 import type {
   ProjectCleanup,
   ProjectMeta,
@@ -107,6 +109,7 @@ interface QueuedSendOpts {
   model?: string
   reasoning?: SessionMeta['reasoning']
   attachments?: Attachment[]
+  newPass?: boolean
 }
 
 export interface QueuedMessage extends QueuedSendOpts {
@@ -244,6 +247,9 @@ export class SessionRegistry {
    *  kept live event by event, so every tab can show its tally without
    *  subscribing to the thread. */
   private todoFolds = new Map<string, TodoFold>()
+  /** Authoritative trailing-error fold, seeded from the stored log and kept
+   *  warm as new events arrive. */
+  private continuableErrors = new Map<string, boolean>()
   /** Active goal per thread, folded from harness-confirmed goal events —
    *  same lazy-seed-then-warm pattern as todoFolds. */
   private goalFolds = new Map<string, GoalState>()
@@ -297,7 +303,8 @@ export class SessionRegistry {
   }
 
   list(): SessionMeta[] {
-    return this.store.listSessions().map((s) => this.decorate(s))
+    const sessions = this.store.listSessions()
+    return sessions.map((s) => this.decorate(s, sessions))
   }
 
   /** Was this session running a disk-writing tool at ts (with grace for
@@ -346,6 +353,19 @@ export class SessionRegistry {
       this.goalFolds.set(sessionId, goal)
     }
     return goal
+  }
+
+  /** Whether stored work still ends in an uncleared, unsuperseded error. */
+  private canContinueError(sessionId: string): boolean {
+    let canContinue = this.continuableErrors.get(sessionId)
+    if (canContinue === undefined) {
+      canContinue = false
+      for (const row of this.store.eventsAfter(sessionId, 0)) {
+        canContinue = foldContinuableError(canContinue, row.event)
+      }
+      this.continuableErrors.set(sessionId, canContinue)
+    }
+    return canContinue
   }
 
   /** When the session last produced or received anything (drives
@@ -617,6 +637,8 @@ export class SessionRegistry {
       fast: false,
       context1m: params.context1m ?? false,
       busySince: null,
+      pausedAt: null,
+      frozenActiveElapsed: null,
       threadRules: params.threadRules ?? null,
       nativeId: null,
       createdAt: now,
@@ -661,6 +683,12 @@ export class SessionRegistry {
   ): Promise<void> {
     let meta = this.store.getSession(sessionId)
     if (!meta) throw new Error(`unknown session: ${sessionId}`)
+    // A paused tree accepts no harness input. User work stays ordered in the
+    // same queue and releases only after the resumed turn settles.
+    if (this.isTreePaused(sessionId)) {
+      this.queueAdd(sessionId, text, opts)
+      return
+    }
     // A real message starts a fresh turn — the error taint belongs to the
     // one that died. (The pass's own handle.send bypasses this method.)
     this.erroredTurns.delete(sessionId)
@@ -739,7 +767,9 @@ export class SessionRegistry {
       this.pendingGoals.delete(sessionId)
       try {
         await handle.setGoal?.(pendingGoal)
-      } catch {}
+      } catch {
+        // Goal support is optional; the kickoff still proceeds.
+      }
     }
     // The visible transcript carries only what the user typed; thread-type
     // preambles ride along on the first message, provider-agnostic.
@@ -875,6 +905,19 @@ export class SessionRegistry {
   }
 
   async interrupt(sessionId: string): Promise<void> {
+    const meta = this.store.getSession(sessionId)
+    if (meta?.status === 'paused') {
+      this.store.appendEvent(sessionId, { type: 'status', status: 'idle' })
+      const next = this.store.updateSession(sessionId, {
+        status: 'idle',
+        busySince: null,
+        pausedAt: null,
+        frozenActiveElapsed: null
+      })
+      if (next) this.notifyMeta(next)
+      await this.dropHandle(sessionId)
+      return
+    }
     const handle = this.handles.get(sessionId)
     if (handle) {
       handle.interrupt()
@@ -883,10 +926,141 @@ export class SessionRegistry {
     // No live harness (crashed, disposed, or the app restarted) — nothing is
     // actually running, whatever the persisted status says. Stop must still
     // work: clear the stale status so the UI settles.
-    const meta = this.store.getSession(sessionId)
     if (meta && meta.status !== 'idle' && meta.status !== 'error') {
       this.append(sessionId, { type: 'status', status: 'idle' })
     }
+  }
+
+  /** User-facing hard Stop ends every active or paused member of the visible
+   *  root tree. Agent supervision still uses interrupt() for one child. */
+  async stopRun(sessionId: string): Promise<void> {
+    const tree = this.sessionTree(this.rootSessionOf(sessionId)).filter(
+      (session) =>
+        session.status === 'paused' ||
+        session.status === 'starting' ||
+        session.status === 'running' ||
+        session.status === 'waiting'
+    )
+    await Promise.allSettled(tree.map((session) => this.interrupt(session.id)))
+  }
+
+  /** Pause a visible root and every live descendant. State lands before any
+   *  provider interrupt, so late callbacks can only observe `paused`. */
+  async pauseRun(sessionId: string): Promise<void> {
+    const rootId = this.rootSessionOf(sessionId)
+    const tree = this.sessionTree(rootId)
+    const live = tree.filter(
+      (session) =>
+        session.status === 'starting' ||
+        session.status === 'running' ||
+        session.status === 'waiting'
+    )
+    if (live.length === 0) return
+
+    const root = tree.find((session) => session.id === rootId)
+    const targets = root && !live.some((session) => session.id === rootId) ? [root, ...live] : live
+    const now = Date.now()
+    for (const session of targets) {
+      const frozenActiveElapsed = Math.max(
+        0,
+        session.busySince === null ? (session.frozenActiveElapsed ?? 0) : now - session.busySince
+      )
+      this.store.appendEvent(session.id, { type: 'status', status: 'paused' })
+      const next = this.store.updateSession(session.id, {
+        status: 'paused',
+        busySince: null,
+        pausedAt: now,
+        frozenActiveElapsed
+      })
+      this.activities.delete(session.id)
+      if (next) this.notifyMeta(next)
+    }
+
+    await Promise.allSettled(
+      targets.map(async (session) => {
+        const handle =
+          this.handles.get(session.id) ??
+          (await this.starting.get(session.id)?.catch(() => undefined))
+        handle?.interrupt()
+      })
+    )
+  }
+
+  /** Resume paused descendants deepest-first. Each session stays paused
+   *  until its replacement handle accepts the control send. */
+  async resumePausedRun(sessionId: string): Promise<void> {
+    const rootId = this.rootSessionOf(sessionId)
+    const tree = this.sessionTree(rootId)
+    const depth = new Map<string, number>()
+    for (const session of tree) {
+      let value = 0
+      let cursor = session
+      while (cursor.parentId) {
+        value++
+        const parent = tree.find((candidate) => candidate.id === cursor.parentId)
+        if (!parent) break
+        cursor = parent
+      }
+      depth.set(session.id, value)
+    }
+    const paused = tree
+      .filter((session) => session.status === 'paused')
+      .sort((a, b) => (depth.get(b.id) ?? 0) - (depth.get(a.id) ?? 0))
+    const failures: unknown[] = []
+    for (const session of paused) {
+      try {
+        await this.resumePausedSession(session.id)
+      } catch (error) {
+        failures.push(error)
+      }
+    }
+    if (failures.length > 0) {
+      throw new AggregateError(failures, `failed to resume ${failures.length} paused session(s)`)
+    }
+  }
+
+  private async resumePausedSession(sessionId: string): Promise<void> {
+    const before = this.store.getSession(sessionId)
+    if (!before || before.status !== 'paused') return
+    const frozen = Math.max(0, before.frozenActiveElapsed ?? 0)
+    await this.dropHandle(sessionId)
+    const handle = await this.handleFor(sessionId)
+    await handle.send(
+      '<continue-paused-run>\nThe user paused this turn and has now continued it. Inspect your task list and your last actions, then continue the interrupted work exactly where you left off. Do not restart completed work.\n</continue-paused-run>'
+    )
+    const now = Date.now()
+    this.store.appendEvent(sessionId, { type: 'status', status: 'running' })
+    const next = this.store.updateSession(sessionId, {
+      status: 'running',
+      busySince: now - frozen,
+      pausedAt: null,
+      frozenActiveElapsed: null
+    })
+    this.lastActivity.set(sessionId, now)
+    if (next) this.notifyMeta(next)
+  }
+
+  private sessionTree(rootId: string): SessionMeta[] {
+    const all = this.store.listSessions()
+    const tree: SessionMeta[] = []
+    const pending = [rootId]
+    const seen = new Set<string>()
+    while (pending.length > 0) {
+      const id = pending.pop()!
+      if (seen.has(id)) continue
+      seen.add(id)
+      const session = all.find((candidate) => candidate.id === id)
+      if (!session) continue
+      tree.push(session)
+      for (const child of all) if (child.parentId === id) pending.push(child.id)
+    }
+    return tree
+  }
+
+  private isTreePaused(sessionId: string): boolean {
+    return this.sessionTree(this.rootSessionOf(sessionId)).some(
+      (session) => session.status === 'paused'
+    )
   }
 
   /** Set or replace the thread's goal. The harness confirms with a goal
@@ -1077,6 +1251,7 @@ export class SessionRegistry {
       this.lastActivity.delete(id)
       this.activities.delete(id)
       this.todoFolds.delete(id)
+      this.continuableErrors.delete(id)
       this.goalFolds.delete(id)
       this.pendingGoals.delete(id)
       this.liveContexts.delete(id)
@@ -1100,7 +1275,12 @@ export class SessionRegistry {
 
   async restart(sessionId: string): Promise<void> {
     await this.dropHandle(sessionId)
-    const next = this.store.updateSession(sessionId, { status: 'idle', busySince: null })
+    const next = this.store.updateSession(sessionId, {
+      status: 'idle',
+      busySince: null,
+      pausedAt: null,
+      frozenActiveElapsed: null
+    })
     if (next) this.notifyMeta(next)
   }
 
@@ -1110,26 +1290,114 @@ export class SessionRegistry {
    *  it to pick the work back up. Errored subagents continue first, so an
    *  orchestrator wakes to a fleet that is already moving again. */
   async continueRun(sessionId: string): Promise<void> {
+    const tree = this.sessionTree(sessionId)
+    if (tree.length === 0) return
+    const affected = tree.filter((session) => this.canContinueError(session.id))
+    if (affected.length === 0) return
+
+    const affectedIds = new Set(affected.map((session) => session.id))
+    const depth = new Map<string, number>()
+    for (const session of tree) {
+      let value = 0
+      let cursor = session
+      while (cursor.parentId) {
+        value++
+        const parent = tree.find((candidate) => candidate.id === cursor.parentId)
+        if (!parent) break
+        cursor = parent
+      }
+      depth.set(session.id, value)
+    }
+    // Failed descendants restart first. The requested session also wakes
+    // when only its descendants failed, so an orchestrator resumes with its
+    // fleet already moving.
+    const targets = tree
+      .filter((session) => affectedIds.has(session.id) || session.id === sessionId)
+      .sort((a, b) => (depth.get(b.id) ?? 0) - (depth.get(a.id) ?? 0))
+    const failures: unknown[] = []
+    for (const target of targets) {
+      try {
+        await this.continueErroredSession(
+          target.id,
+          affected.some((session) => session.parentId === target.id)
+        )
+      } catch (error) {
+        failures.push(error)
+      }
+    }
+    if (failures.length > 0) {
+      throw new AggregateError(failures, `failed to continue ${failures.length} session(s)`)
+    }
+  }
+
+  async continueAllErrors(): Promise<SessionBatchResult> {
+    const roots = this.list().filter(
+      (session) => !session.parentId && !session.archived && session.treeCanContinue
+    )
+    return this.runRootBatch(roots, (root) => this.continueRun(root.id))
+  }
+
+  async resumeAllPaused(): Promise<SessionBatchResult> {
+    const roots = this.list().filter(
+      (session) => !session.parentId && !session.archived && session.treeHasPaused
+    )
+    return this.runRootBatch(roots, (root) => this.resumePausedRun(root.id))
+  }
+
+  private async runRootBatch(
+    roots: SessionMeta[],
+    action: (root: SessionMeta) => Promise<void>
+  ): Promise<SessionBatchResult> {
+    const attempted = [...new Set(roots.map((root) => root.id))]
+    const settled = await Promise.allSettled(
+      attempted.map((id) => action(roots.find((root) => root.id === id)!))
+    )
+    const succeeded: string[] = []
+    const failed: SessionBatchResult['failed'] = []
+    settled.forEach((result, index) => {
+      const sessionId = attempted[index]
+      if (result.status === 'fulfilled') succeeded.push(sessionId)
+      else {
+        failed.push({
+          sessionId,
+          error: result.reason instanceof Error ? result.reason.message : String(result.reason)
+        })
+      }
+    })
+    return { attempted, succeeded, failed }
+  }
+
+  private async continueErroredSession(
+    sessionId: string,
+    restartedDescendants: boolean
+  ): Promise<void> {
     const meta = this.store.getSession(sessionId)
-    if (!meta || meta.status === 'running' || meta.status === 'starting') return
-    const children = this.store
-      .listSessions()
-      .filter((s) => s.parentId === sessionId && s.status === 'error')
-    for (const child of children) await this.continueRun(child.id)
-    this.append(sessionId, { type: 'errors-cleared' })
-    // The continue is a fresh turn: drop the errored-turn taint so a
-    // finished resume gets its completed-turn pass (this path sends via
-    // handle.send, bypassing send()'s own clear).
-    this.erroredTurns.delete(sessionId)
+    if (
+      !meta ||
+      meta.status === 'running' ||
+      meta.status === 'starting' ||
+      meta.status === 'paused'
+    ) {
+      if (meta?.status === 'paused') throw new Error(`session ${sessionId} is manually paused`)
+      return
+    }
     await this.dropHandle(sessionId)
     try {
       const handle = await this.handleFor(sessionId)
       this.lastActivity.set(sessionId, Date.now())
       await handle.send(
-        `<continue-run>\nThe previous turn was cut off by a harness error (a session limit or similar) that the user has since fixed. ${children.length > 0 ? 'Your errored subagents were restarted the same way and are picking their work back up. ' : ''}Continue exactly where you left off: check your task list and your last few actions, finish anything half-done, and keep going. If the work was already complete, say so in one short line.\n</continue-run>`
+        `<continue-run>\nThe previous turn was cut off by a harness error (a session limit or similar) that the user has since fixed. ${restartedDescendants ? 'Your failed subagents were restarted first and are picking their work back up. ' : ''}Continue exactly where you left off: check your task list and your last few actions, finish anything half-done, and keep going. If the work was already complete, say so in one short line.\n</continue-run>`
       )
-    } catch {
-      // Boot failed (still logged out?) — handleFor surfaced the error.
+      // The replacement accepted the work. Only now settle the old chips;
+      // a boot or send failure leaves the fold true for another retry.
+      if (this.canContinueError(sessionId)) this.append(sessionId, { type: 'errors-cleared' })
+      this.erroredTurns.delete(sessionId)
+    } catch (error) {
+      const current = this.store.getSession(sessionId)
+      if (current && current.status !== 'paused') {
+        this.append(sessionId, { type: 'status', status: 'error' })
+      }
+      throw error
     }
   }
 
@@ -1181,6 +1449,13 @@ export class SessionRegistry {
   }
 
   append(sessionId: string, event: AgentEvent): void {
+    // A manual pause wins races with the old provider and with a replacement
+    // handle that has not accepted its continuation yet. Pause never gains
+    // an error chip or loses its state through a late status callback.
+    const persisted = this.store.getSession(sessionId)
+    if (persisted?.status === 'paused' && (event.type === 'status' || event.type === 'error')) {
+      return
+    }
     // Streaming previews (partial tool input) are broadcast-only: each one
     // carries the whole input so far, so persisting them would write the
     // same growing payload into the log over and over. The final tool-call
@@ -1201,7 +1476,11 @@ export class SessionRegistry {
       if (meta) this.notifyMeta(meta)
       return
     }
+    const beforeRecovery = this.canContinueError(sessionId)
     const row = this.store.appendEvent(sessionId, event)
+    const afterRecovery = foldContinuableError(beforeRecovery, event)
+    this.continuableErrors.set(sessionId, afterRecovery)
+    const recoveryMoved = beforeRecovery !== afterRecovery
     this.lastActivity.set(sessionId, row.ts)
     // Keep the task tally current (only if this thread's fold is already
     // warm — an untouched one seeds itself from the log when first asked).
@@ -1234,7 +1513,7 @@ export class SessionRegistry {
       if (act === null) this.activities.delete(sessionId)
       else this.activities.set(sessionId, act)
     }
-    if ((actMoved || tasksMoved || goalMoved) && event.type !== 'status') {
+    if ((actMoved || tasksMoved || goalMoved || recoveryMoved) && event.type !== 'status') {
       const meta = this.store.getSession(sessionId)
       if (meta) this.notifyMeta(meta)
     }
@@ -1315,7 +1594,7 @@ export class SessionRegistry {
       this.passPending.delete(sessionId)
     }
     // Shared context (M8): a finished turn refreshes the thread's mirror.
-    if (event.type === 'turn-complete') {
+    if (event.type === 'turn-complete' && persisted?.status !== 'paused') {
       if (this.store.getSession(sessionId)?.projectId) scheduleMirror(this, sessionId)
       if (!this.erroredTurns.has(sessionId)) this.armTurnPass(sessionId)
     }
@@ -1367,7 +1646,9 @@ export class SessionRegistry {
     this.queues.set(sessionId, q)
     this.notifyQueue(sessionId)
     // The turn may have settled while the user was typing.
-    if (this.store.getSession(sessionId)?.status === 'idle') this.drainQueue(sessionId)
+    if (this.store.getSession(sessionId)?.status === 'idle' && !this.isTreePaused(sessionId)) {
+      this.drainQueue(sessionId)
+    }
     return item
   }
 
@@ -1405,6 +1686,7 @@ export class SessionRegistry {
    *  provider that can't steer throws mid-turn, and the message falls
    *  back to the FRONT of the queue (sends next). */
   async queueSteer(sessionId: string, messageId: string): Promise<void> {
+    if (this.isTreePaused(sessionId)) return
     const q = this.queues.get(sessionId) ?? []
     const item = q.find((m) => m.id === messageId)
     if (!item) return
@@ -1428,7 +1710,7 @@ export class SessionRegistry {
   private armTurnPass(sessionId: string): void {
     if (this.passActive.has(sessionId)) return
     const meta = this.store.getSession(sessionId)
-    if (!meta || meta.parentId) return
+    if (!meta || meta.parentId || this.isTreePaused(sessionId)) return
     if (meta.threadType !== 'implementation' && meta.threadType !== 'orchestration') return
     const workspaceId = meta.projectId
       ? this.store.getProject(meta.projectId)?.workspaceId
@@ -1443,6 +1725,7 @@ export class SessionRegistry {
    *  transcript's highlight boundary), then the instruction straight to
    *  the harness — no user-text bubble, this is the app talking. */
   private async runTurnPass(sessionId: string, pass: TurnPass): Promise<void> {
+    if (this.isTreePaused(sessionId)) return
     try {
       const handle = await this.handleFor(sessionId)
       this.append(sessionId, { type: 'turn-pass', actions: passActions(pass) })
@@ -1521,12 +1804,15 @@ export class SessionRegistry {
     const list = this.pendingReports.get(sessionId) ?? []
     list.push(report)
     this.pendingReports.set(sessionId, list)
-    if (this.store.getSession(sessionId)?.status === 'idle') this.drainReports(sessionId)
+    if (this.store.getSession(sessionId)?.status === 'idle' && !this.isTreePaused(sessionId)) {
+      this.drainReports(sessionId)
+    }
   }
 
   /** On idle: send one parked report straight to the harness. Returns
    *  whether a report took this settle (the queue then waits its turn). */
   private drainReports(sessionId: string): boolean {
+    if (this.isTreePaused(sessionId)) return false
     if (this.draining.has(sessionId)) return false
     const list = this.pendingReports.get(sessionId)
     if (!list?.length) return false
@@ -1556,6 +1842,7 @@ export class SessionRegistry {
 
   /** On idle: send the next queued message, one per settle. */
   private drainQueue(sessionId: string): void {
+    if (this.isTreePaused(sessionId)) return
     if (this.draining.has(sessionId)) return
     const q = this.queues.get(sessionId)
     if (!q?.length) return
@@ -1583,20 +1870,45 @@ export class SessionRegistry {
 
   /** Everything the tab strip needs that isn't in the stored row: what the
    *  thread is doing, and how far through its task list it is. */
-  private decorate(session: SessionMeta): SessionMeta {
+  private decorate(
+    session: SessionMeta,
+    sessions: SessionMeta[] = this.store.listSessions()
+  ): SessionMeta {
     const act = this.activities.get(session.id)
+    let root = session
+    for (let hops = 0; root.parentId && hops < 20; hops++) {
+      const parent = sessions.find((candidate) => candidate.id === root.parentId)
+      if (!parent) break
+      root = parent
+    }
+    const tree = summarizeRootTree(root, sessions, (id) => this.canContinueError(id))
     return {
       ...session,
       activity: act?.text ?? null,
       activityKind: act?.kind ?? null,
       tasks: this.tasksOf(session.id),
       goal: this.goalOf(session.id),
-      context: this.liveContexts.get(session.id) ?? null
+      context: this.liveContexts.get(session.id) ?? null,
+      canContinue: this.canContinueError(session.id),
+      treeCanContinue: tree.canContinueError,
+      treeHasLiveWork: tree.hasLiveWork,
+      treeHasPaused: tree.hasPaused,
+      treeFrozenActiveElapsed: tree.frozenActiveElapsed
     }
   }
 
   private notifyMeta(session: SessionMeta): void {
-    for (const l of this.metaListeners) l(this.decorate(session))
+    const sessions = this.store.listSessions()
+    const decorated = this.decorate(session, sessions)
+    for (const l of this.metaListeners) l(decorated)
+    if (session.parentId) {
+      const rootId = this.rootSessionOf(session.id)
+      const root = sessions.find((candidate) => candidate.id === rootId)
+      if (root) {
+        const decoratedRoot = this.decorate(root, sessions)
+        for (const l of this.metaListeners) l(decoratedRoot)
+      }
+    }
   }
 
   async disposeAll(): Promise<void> {

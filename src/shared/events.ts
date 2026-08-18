@@ -14,6 +14,7 @@ export const SessionStatusSchema = z.enum([
   'idle',
   'running',
   'waiting',
+  'paused',
   'error',
   'done'
 ])
@@ -285,6 +286,12 @@ export interface SessionMeta {
   /** When the current working stretch began (first message of the run);
    *  survives steers and queue drains, null while truly idle. */
   busySince: number | null
+  /** Wall-clock time when a manual pause took effect. Persisted so a
+   *  restart cannot turn a paused run into a stale idle run. */
+  pausedAt: number | null
+  /** Active working time captured at pause. This excludes the paused span
+   *  and becomes the resumed busySince anchor after Continue succeeds. */
+  frozenActiveElapsed: number | null
   /** Provider-native session/thread id, once known (for resume). */
   nativeId: string | null
   /** What a working thread is doing right now ("Editing PromptBar.tsx") —
@@ -302,6 +309,15 @@ export interface SessionMeta {
   /** Live context footprint from the harness stream — current the moment
    *  a reply lands, for every thread, selected or not. Server-memory. */
   context?: { tokens: number; window: number | null } | null
+  /** Stored-log fold: the latest failed turn has not been cleared or
+   *  superseded by later conversation work. */
+  canContinue?: boolean
+  /** Root-tree summaries. These count one visible root even when several
+   *  descendants need recovery or carry live/paused work. */
+  treeCanContinue?: boolean
+  treeHasLiveWork?: boolean
+  treeHasPaused?: boolean
+  treeFrozenActiveElapsed?: number | null
   /** Orchestration threads: this run's tune — conduct overrides on top of
    *  the workspace/global rules, plus free-text instructions. */
   threadRules?: import('./rules').ThreadRules | null

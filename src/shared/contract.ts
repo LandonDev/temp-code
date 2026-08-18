@@ -58,6 +58,12 @@ export type CreateSessionParams = z.infer<typeof CreateSessionParams>
 /** Pre-parse shape (defaults still optional) — what callers construct. */
 export type CreateSessionInput = z.input<typeof CreateSessionParams>
 
+export interface SessionBatchResult {
+  attempted: string[]
+  succeeded: string[]
+  failed: { sessionId: string; error: string }[]
+}
+
 export const ClientRequestSchema = z.discriminatedUnion('method', [
   z.object({ id: z.string(), method: z.literal('catalog.get') }),
   // Per-provider health: binary found on the login-shell PATH, version.
@@ -388,6 +394,18 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
     method: z.literal('session.interrupt'),
     params: z.object({ sessionId: z.string() })
   }),
+  z.object({
+    id: z.string(),
+    method: z.literal('session.pause'),
+    params: z.object({ sessionId: z.string() })
+  }),
+  z.object({
+    id: z.string(),
+    method: z.literal('session.resume'),
+    params: z.object({ sessionId: z.string() })
+  }),
+  z.object({ id: z.string(), method: z.literal('session.continueAllErrors') }),
+  z.object({ id: z.string(), method: z.literal('session.resumeAllPaused') }),
   z.object({
     id: z.string(),
     method: z.literal('session.subscribe'),

@@ -72,6 +72,8 @@ export function openDb(path: string): DatabaseSync {
     `ALTER TABLE sessions ADD COLUMN fast INTEGER NOT NULL DEFAULT 0`,
     `ALTER TABLE sessions ADD COLUMN context_1m INTEGER NOT NULL DEFAULT 0`,
     `ALTER TABLE sessions ADD COLUMN busy_since INTEGER`,
+    `ALTER TABLE sessions ADD COLUMN paused_at INTEGER`,
+    `ALTER TABLE sessions ADD COLUMN frozen_active_elapsed INTEGER`,
     `ALTER TABLE sessions ADD COLUMN retyped INTEGER NOT NULL DEFAULT 0`,
     `ALTER TABLE sessions ADD COLUMN thread_rules TEXT`,
     `ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0`
@@ -104,6 +106,8 @@ interface SessionRowRaw {
   fast: number
   context_1m: number
   busy_since: number | null
+  paused_at: number | null
+  frozen_active_elapsed: number | null
   thread_rules: string | null
   native_id: string | null
   created_at: number
@@ -129,6 +133,8 @@ function toMeta(r: SessionRowRaw): SessionMeta {
     fast: !!r.fast,
     context1m: !!r.context_1m,
     busySince: r.busy_since,
+    pausedAt: r.paused_at,
+    frozenActiveElapsed: r.frozen_active_elapsed,
     threadRules: parseThreadRules(r.thread_rules),
     permission: r.permission as SessionMeta['permission'],
     nativeId: r.native_id,
@@ -143,8 +149,8 @@ export class Store {
   insertSession(meta: SessionMeta): void {
     this.db
       .prepare(
-        `INSERT INTO sessions (id, parent_id, project_id, workspace_id, thread_type, plan_path, provider, model, reasoning, agent_type, title, cwd, status, archived, permission, fast, context_1m, busy_since, thread_rules, native_id, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        `INSERT INTO sessions (id, parent_id, project_id, workspace_id, thread_type, plan_path, provider, model, reasoning, agent_type, title, cwd, status, archived, permission, fast, context_1m, busy_since, paused_at, frozen_active_elapsed, thread_rules, native_id, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         meta.id,
@@ -165,6 +171,8 @@ export class Store {
         meta.fast ? 1 : 0,
         meta.context1m ? 1 : 0,
         meta.busySince,
+        meta.pausedAt,
+        meta.frozenActiveElapsed,
         meta.threadRules ? JSON.stringify(meta.threadRules) : null,
         meta.nativeId,
         meta.createdAt,
@@ -188,6 +196,8 @@ export class Store {
         | 'fast'
         | 'context1m'
         | 'busySince'
+        | 'pausedAt'
+        | 'frozenActiveElapsed'
         | 'threadType'
         | 'planPath'
         | 'agentType'
@@ -200,7 +210,7 @@ export class Store {
     const next = { ...cur, ...patch, updatedAt: Date.now() }
     this.db
       .prepare(
-        `UPDATE sessions SET status = ?, title = ?, native_id = ?, archived = ?, provider = ?, model = ?, reasoning = ?, permission = ?, fast = ?, context_1m = ?, busy_since = ?, thread_type = ?, plan_path = ?, agent_type = ?, thread_rules = ?, updated_at = ? WHERE id = ?`
+        `UPDATE sessions SET status = ?, title = ?, native_id = ?, archived = ?, provider = ?, model = ?, reasoning = ?, permission = ?, fast = ?, context_1m = ?, busy_since = ?, paused_at = ?, frozen_active_elapsed = ?, thread_type = ?, plan_path = ?, agent_type = ?, thread_rules = ?, updated_at = ? WHERE id = ?`
       )
       .run(
         next.status,
@@ -214,6 +224,8 @@ export class Store {
         next.fast ? 1 : 0,
         next.context1m ? 1 : 0,
         next.busySince,
+        next.pausedAt,
+        next.frozenActiveElapsed,
         next.threadType,
         next.planPath,
         next.agentType,
@@ -228,8 +240,7 @@ export class Store {
    *  Server-only state — never part of SessionMeta. */
   getRetyped(id: string): boolean {
     const r = this.db.prepare(`SELECT retyped FROM sessions WHERE id = ?`).get(id) as
-      | { retyped: number }
-      | undefined
+      { retyped: number } | undefined
     return !!r?.retyped
   }
 

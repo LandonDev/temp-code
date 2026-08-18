@@ -8,9 +8,12 @@ import {
   GitBranch,
   MoreHorizontal,
   PanelLeft,
+  Pause,
   Pencil,
+  Play,
   Plus,
   Settings2,
+  Square,
   Trash2
 } from 'lucide-react'
 import type { ProjectMeta, WorkspaceMeta } from '@shared/domain'
@@ -402,6 +405,9 @@ function ProjectRow({
   const removeProject = useApp((s) => s.removeProject)
   const archiveProject = useApp((s) => s.archiveProject)
   const renameProject = useApp((s) => s.renameProject)
+  const pauseRun = useApp((s) => s.pause)
+  const resumeRun = useApp((s) => s.resume)
+  const interrupt = useApp((s) => s.interrupt)
   const [renaming, setRenaming] = useState(false)
   const [settings, setSettings] = useState(false)
   const [confirm, setConfirm] = useState<'archive' | 'delete' | null>(null)
@@ -419,17 +425,31 @@ function ProjectRow({
   // user, failed, finished-but-unseen. Running and unread threads each get
   // their own line wearing the same indicator their tab does; waiting and
   // failed stay counts, and everything dormant only feeds the muted total.
-  const running = threads.filter((t) => t.status === 'running' || t.status === 'starting')
-  const waiting = threads.filter((t) => t.status === 'waiting').length
-  const failed = threads.filter((t) => t.status === 'error').length
+  const pausedThreads = threads.filter((t) => t.status === 'paused' || t.treeHasPaused)
+  const running = threads.filter(
+    (t) =>
+      !pausedThreads.includes(t) &&
+      t.status !== 'waiting' &&
+      !t.treeCanContinue &&
+      (t.status === 'running' || t.status === 'starting' || t.treeHasLiveWork)
+  )
+  const waiting = threads.filter(
+    (t) => !pausedThreads.includes(t) && !t.treeCanContinue && t.status === 'waiting'
+  ).length
+  const failed = threads.filter(
+    (t) => !pausedThreads.includes(t) && (t.status === 'error' || t.treeCanContinue)
+  ).length
   const unread = threads.filter(
     (t) =>
       (t.status === 'idle' || t.status === 'done') &&
+      !t.treeCanContinue &&
+      !t.treeHasLiveWork &&
       t.id !== selectedId &&
       t.updatedAt > (lastSeen[t.id] ?? 0)
   )
   // What's left after every state above claimed its tabs — the quiet rest.
-  const dormant = threads.length - running.length - unread.length - waiting - failed
+  const dormant =
+    threads.length - running.length - pausedThreads.length - unread.length - waiting - failed
   const now = useNow(running.length > 0)
 
   if (renaming) {
@@ -475,6 +495,7 @@ function ProjectRow({
         onDoubleClick={() => setRenaming(true)}
         title={[
           running.length > 0 && `${running.length} running`,
+          pausedThreads.length > 0 && `${pausedThreads.length} paused`,
           waiting > 0 && `${waiting} waiting on you`,
           failed > 0 && `${failed} failed`,
           unread.length > 0 && `${unread.length} unread`,
@@ -517,7 +538,7 @@ function ProjectRow({
             at the end. An implementation thread's tally and current task
             get their own indented line underneath. Faint rules bracket the
             block and separate the lines, even when there's only one. */}
-        {(running.length > 0 || unread.length > 0) && (
+        {(running.length > 0 || pausedThreads.length > 0 || unread.length > 0) && (
           <div className="w-full divide-y divide-border/40 border-y border-border/40">
             {running.map((t) => {
               const ms = now - (t.busySince ?? t.updatedAt)
@@ -562,6 +583,39 @@ function ProjectRow({
                 </div>
               )
             })}
+            {pausedThreads.map((t) => {
+              const tasks = t.threadType === 'implementation' ? (t.tasks ?? null) : null
+              const Glyph = THREAD_GLYPHS[t.threadType ?? 'chat']
+              const elapsed = t.treeFrozenActiveElapsed ?? t.frozenActiveElapsed ?? 0
+              return (
+                <div key={t.id} className="w-full bg-warning/5 py-[3px]">
+                  <div className="flex w-full items-center gap-1.5 text-[11px] leading-4 text-warning">
+                    <Pause className="size-3 shrink-0 fill-current" strokeWidth={1.8} />
+                    <Glyph
+                      className={cn(
+                        'size-3 shrink-0 opacity-80',
+                        THREAD_TINTS[t.threadType ?? 'chat']
+                      )}
+                    />
+                    <span className="min-w-0 flex-1 truncate">{t.title}</span>
+                    <span className="shrink-0 font-medium">Paused</span>
+                    <span className="shrink-0 text-[10.5px] tabular-nums text-current/75">
+                      {duration(Math.max(0, elapsed))}
+                    </span>
+                  </div>
+                  {tasks && (
+                    <div className="flex items-center gap-1.5 pl-3 text-[11px] leading-4">
+                      <span className="shrink-0 text-[10.5px] tabular-nums text-warning/80">
+                        {tasks.done}/{tasks.total}
+                      </span>
+                      {tasks.current && (
+                        <span className="truncate text-warning/70">{tasks.current}</span>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )
+            })}
             {unread.map((t) => {
               const Glyph = THREAD_GLYPHS[t.threadType ?? 'chat']
               return (
@@ -587,6 +641,7 @@ function ProjectRow({
 
         {(waiting > 0 ||
           failed > 0 ||
+          pausedThreads.length > 0 ||
           dormant > 0 ||
           archivedCount > 0 ||
           threads.length === 0) && (
@@ -596,6 +651,12 @@ function ProjectRow({
             )}
             {failed > 0 && (
               <Stat dot="bg-destructive" tint="text-destructive" count={failed} word="failed" />
+            )}
+            {pausedThreads.length > 0 && (
+              <span className="flex shrink-0 items-center gap-1 text-warning">
+                <Pause className="size-3 fill-current" strokeWidth={1.8} />
+                {pausedThreads.length} paused
+              </span>
             )}
             <span className="truncate text-muted-foreground/60">
               {threads.length === 0
@@ -629,6 +690,39 @@ function ProjectRow({
               <Settings2 className="size-3.5 text-muted-foreground" />
               Project settings
             </DropdownMenuItem>
+            {pausedThreads.length > 0 ? (
+              <DropdownMenuItem
+                onClick={() =>
+                  void Promise.allSettled(pausedThreads.map((thread) => resumeRun(thread.id)))
+                }
+              >
+                <Play className="size-3.5 text-warning" />
+                Continue paused threads
+              </DropdownMenuItem>
+            ) : running.length > 0 ? (
+              <DropdownMenuItem
+                onClick={() =>
+                  void Promise.allSettled(running.map((thread) => pauseRun(thread.id)))
+                }
+              >
+                <Pause className="size-3.5 text-warning" />
+                Pause active threads
+              </DropdownMenuItem>
+            ) : null}
+            {(running.length > 0 || pausedThreads.length > 0) && (
+              <DropdownMenuItem
+                variant="destructive"
+                onClick={() =>
+                  void Promise.allSettled(
+                    [...running, ...pausedThreads].map((thread) => interrupt(thread.id))
+                  )
+                }
+              >
+                <Square className="size-3.5 fill-current" />
+                Stop active threads
+              </DropdownMenuItem>
+            )}
+            {(running.length > 0 || pausedThreads.length > 0) && <DropdownMenuSeparator />}
             <DropdownMenuItem
               onClick={() => {
                 // Nothing to tear down on a local project — archive right away.
@@ -737,6 +831,9 @@ function ChatRow({ session }: { session: SessionMeta }): React.JSX.Element {
   const selectProject = useApp((s) => s.selectProject)
   const renameSession = useApp((s) => s.renameSession)
   const deleteSession = useApp((s) => s.deleteSession)
+  const pauseRun = useApp((s) => s.pause)
+  const resumeRun = useApp((s) => s.resume)
+  const interrupt = useApp((s) => s.interrupt)
   const lastSeen = useApp((s) => s.lastSeen[session.id] ?? 0)
   const [renaming, setRenaming] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
@@ -744,13 +841,17 @@ function ChatRow({ session }: { session: SessionMeta }): React.JSX.Element {
   // Same dress as a project row's thread lines: tinted spinner up front
   // while working (full activity in the tooltip, elapsed at the end),
   // the blue dot + bold title once finished unseen.
-  const working = session.status === 'running' || session.status === 'starting'
+  const paused = session.status === 'paused' || !!session.treeHasPaused
+  const working =
+    !paused &&
+    (session.status === 'running' || session.status === 'starting' || !!session.treeHasLiveWork)
   const unread =
     (session.status === 'idle' || session.status === 'done') &&
     !selected &&
     session.updatedAt > lastSeen
   const now = useNow(working)
   const ms = now - (session.busySince ?? session.updatedAt)
+  const frozen = session.treeFrozenActiveElapsed ?? session.frozenActiveElapsed ?? 0
 
   if (renaming) {
     return (
@@ -793,13 +894,17 @@ function ChatRow({ session }: { session: SessionMeta }): React.JSX.Element {
           void select(session.id)
         }}
         onDoubleClick={() => setRenaming(true)}
-        title={working ? (session.activity ?? undefined) : undefined}
+        title={paused ? 'Paused' : working ? (session.activity ?? undefined) : undefined}
         className={cn(
           'relative flex h-7 w-full items-center gap-1.5 rounded-md px-2 text-left',
-          !selected && 'hover:bg-accent/50'
+          !selected && 'hover:bg-accent/50',
+          paused && !selected && 'bg-warning/8 hover:bg-warning/12'
         )}
       >
         {working && <MatrixSpinner cell={1.8} tint={session.activityKind} />}
+        {paused && (
+          <Pause className="size-3 shrink-0 fill-current text-warning" strokeWidth={1.8} />
+        )}
         {unread && <span className="size-1.5 shrink-0 rounded-full bg-info" />}
         <Glyph
           className={cn('size-3 shrink-0 opacity-80', THREAD_TINTS[session.threadType ?? 'chat'])}
@@ -814,8 +919,13 @@ function ChatRow({ session }: { session: SessionMeta }): React.JSX.Element {
           {session.title}
         </span>
         {!working && <StatusDot status={session.status} />}
+        {paused && <span className="shrink-0 text-[10.5px] font-medium text-warning">Paused</span>}
         <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground/60 group-hover/row:opacity-0">
-          {working ? (
+          {paused ? (
+            <span className="whitespace-nowrap text-warning/75">
+              {duration(Math.max(0, frozen))}
+            </span>
+          ) : working ? (
             <span className={cn('whitespace-nowrap', ms < 3000 && 'opacity-0')}>
               {duration(ms)}
             </span>
@@ -839,6 +949,23 @@ function ChatRow({ session }: { session: SessionMeta }): React.JSX.Element {
               <Pencil className="size-3.5 text-muted-foreground" />
               Rename
             </DropdownMenuItem>
+            {paused ? (
+              <DropdownMenuItem onClick={() => void resumeRun(session.id)}>
+                <Play className="size-3.5 text-warning" />
+                Continue
+              </DropdownMenuItem>
+            ) : working ? (
+              <DropdownMenuItem onClick={() => void pauseRun(session.id)}>
+                <Pause className="size-3.5 text-warning" />
+                Pause
+              </DropdownMenuItem>
+            ) : null}
+            {(working || paused) && (
+              <DropdownMenuItem variant="destructive" onClick={() => void interrupt(session.id)}>
+                <Square className="size-3.5 fill-current" />
+                Stop
+              </DropdownMenuItem>
+            )}
             <DropdownMenuSeparator />
             <DropdownMenuItem variant="destructive" onClick={() => setConfirmDelete(true)}>
               Delete chat…
