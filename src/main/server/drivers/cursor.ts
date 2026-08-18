@@ -51,7 +51,9 @@ export const cursorDriver: HarnessDriver = {
 
     const binPath = await resolveBinary('cursor-agent')
     if (!binPath)
-      throw new Error('cursor-agent not found — install it and log in (`cursor-agent login`)')
+      throw new Error(
+        'cursor-agent not found on the login-shell PATH — install it, log in (`cursor-agent login`), and make sure its bin dir is exported from ~/.zprofile'
+      )
     const env = await harnessEnv()
 
     let proc: ChildProcess | null = null
@@ -176,7 +178,19 @@ export const cursorDriver: HarnessDriver = {
         if (proc === p) proc = null
         if (disposed) return
         if (code !== 0 && !sawResult) {
-          emit({ type: 'error', message: `cursor-agent exited (${code}): ${stderrTail.trim()}` })
+          // Died mid-turn (cursor-agent gives up after retrying a dropped
+          // stream). Finalize what it did stream so the answer survives the
+          // error instead of hanging as an unclosed delta.
+          for (const [key, full] of textAcc) {
+            emit({ type: 'assistant-text', text: full, delta: false, msgId: key, blockIndex: 0 })
+          }
+          const tail = stderrTail.trim()
+          emit({
+            type: 'error',
+            message: /RetriableError|WritableIterable is closed/.test(tail)
+              ? 'cursor-agent lost its connection to Cursor and gave up retrying. Send again to pick the thread back up.'
+              : `cursor-agent exited (${code}): ${tail}`
+          })
           emit({ type: 'status', status: 'error' })
         } else {
           emit({ type: 'status', status: 'idle' })
