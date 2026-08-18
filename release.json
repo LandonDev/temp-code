@@ -1,5 +1,5 @@
 {
-  "n": 71,
-  "notes": "File watchers no longer eat a descriptor per file — the system-wide freeze after v70 can't recur, and stuck project loading is fixed",
-  "ts": 1787002799000
+  "n": 72,
+  "notes": "Projects in a workspace read as distinct cards — faint enclosing rules and space between",
+  "ts": 1787016451000
 }
