@@ -318,9 +318,17 @@ export function ThreadStrip(): React.JSX.Element | null {
                               // "needs me" (amber), "broke" (red) and
                               // "finished while I was away" (blue) without
                               // reading anything.
-                              t.status === 'waiting' && 'bg-warning/10 hover:bg-warning/15',
-                              t.status === 'error' && 'bg-destructive/10 hover:bg-destructive/15',
-                              t.status === 'idle' && unread && 'bg-info/10 hover:bg-info/15'
+                              // Dark runs the bright 400-series tokens on
+                              // near-black, where the same alpha reads
+                              // weaker (see --code-wash: 10% light, 12%
+                              // dark) — so each wash steps up a notch there.
+                              t.status === 'waiting' &&
+                                'bg-warning/10 hover:bg-warning/15 dark:bg-warning/15 dark:hover:bg-warning/20',
+                              t.status === 'error' &&
+                                'bg-destructive/10 hover:bg-destructive/15 dark:bg-destructive/15 dark:hover:bg-destructive/20',
+                              t.status === 'idle' &&
+                                unread &&
+                                'bg-info/10 hover:bg-info/15 dark:bg-info/15 dark:hover:bg-info/20'
                             )}
                           >
                             <Glyph
