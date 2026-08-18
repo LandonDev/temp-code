@@ -756,7 +756,18 @@ export class SessionRegistry {
         }
       }
     }
-    const handle = await this.handleFor(sessionId)
+    let handle: DriverHandle
+    try {
+      handle = await this.handleFor(sessionId)
+    } catch {
+      // The harness never started — a missing binary, a logged-out CLI.
+      // handleFor has already put the reason on the transcript; hold the
+      // message at the front of the queue instead of dropping it, so once
+      // the cause is fixed the thread runs what the user actually asked for
+      // rather than an empty continue.
+      this.queueAdd(sessionId, text, opts, true)
+      return
+    }
     this.lastActivity.set(sessionId, Date.now())
     // A goal passed to session.create lands here, ahead of the kickoff:
     // claude queues its /goal turn first, codex sets the RPC before
