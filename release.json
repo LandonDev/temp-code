@@ -1,5 +1,5 @@
 {
-  "n": 74,
-  "notes": "A Pause all button in the title bar stops every working thread at once",
-  "ts": 1787023295000
+  "n": 75,
+  "notes": "Cursor works again — cursor-agent is found even when its bin dir is only on the interactive PATH",
+  "ts": 1787025809000
 }
