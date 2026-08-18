@@ -1822,44 +1822,56 @@ export const ZEditCard = memo(function ZEditCard({
   )
 })
 
-/** Harness error — its own 34px chip, red family (transcript.rs error_chip).
+/** Harness error - its own 34px chip, red family (transcript.rs error_chip).
  *  With a sessionId, the thread's trailing error grows a Continue button: the
  *  user fixed what killed the turn (switched accounts on a session limit), one
- *  click settles every chip and the harness picks the work back up. Gated on
- *  the transcript, not session status — a session-limit death can leave the
- *  thread idle (the turn "completed" around the error), and the server accepts
- *  a continue from any settled state. */
+ *  click settles every chip and the harness picks the work back up. Eligibility
+ *  comes from server metadata; the local block check only places one button on
+ *  the final visible error chip. */
 export function ErrorChip({
   text,
   sessionId,
-  blockId
+  blockId,
+  stopped
 }: {
   text: string
   sessionId?: string
   blockId?: string
+  /** the user hit Stop — a quiet gray note, never a failure or a Continue */
+  stopped?: boolean
 }): React.JSX.Element {
   const showContinue = useApp((s) => {
     if (!sessionId) return false
-    const status = s.sessions[sessionId]?.status
-    if (!status || status === 'running' || status === 'starting') return false
-    if (!blockId) return status === 'error'
-    // Only the trailing error offers the button (one per thread): scan back
-    // past settled chips and dividers — the run must have ended on this error.
+    const session = s.sessions[sessionId]
+    if (!session?.canContinue || session.status === 'paused') return false
+    if (!blockId) return true
+    // Metadata decides whether recovery is valid. This scan only picks the
+    // last visible error chip so a thread never renders duplicate actions.
     const blocks = s.blocks[sessionId]
     if (!blocks) return false
     for (let i = blocks.length - 1; i >= 0; i--) {
       const b = blocks[i]
-      if (b.kind === 'pass' || b.kind === 'compaction') continue
       if (b.kind === 'error' && b.cleared) continue
-      return b.kind === 'error' && b.id === blockId
+      if (b.kind === 'error') return b.id === blockId
     }
     return false
   })
+  const continueRun = useApp((s) => s.continueRun)
   const [busy, setBusy] = useState(false)
   const onContinue = (): void => {
     if (busy || !sessionId) return
     setBusy(true)
-    client.request('session.continue', { sessionId }).finally(() => setBusy(false))
+    continueRun(sessionId).finally(() => setBusy(false))
+  }
+  if (stopped) {
+    return (
+      <div className="flex h-[34px] items-center gap-2 rounded-[10px] border border-border/60 bg-muted/40 px-2">
+        <span className="flex size-5 shrink-0 items-center justify-center rounded-[5px] bg-muted text-muted-foreground/80">
+          <ZIcon name="stop" size={12} />
+        </span>
+        <span className="shrink-0 text-xs font-medium text-muted-foreground">Stopped</span>
+      </div>
+    )
   }
   return (
     <div className="flex h-[34px] items-center gap-2 rounded-[10px] border border-destructive/16 bg-destructive/5 px-2">

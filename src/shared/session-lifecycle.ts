@@ -6,7 +6,11 @@ import type { AgentEvent, SessionMeta } from './events'
 export function foldContinuableError(current: boolean, event: AgentEvent): boolean {
   switch (event.type) {
     case 'error':
-      return true
+      // A user Stop is not a failure, and neither is the Claude driver's
+      // "turn ended: <subtype>" wind-down note (interrupts, max turns —
+      // the session stays usable and settles idle). Matching the message
+      // also heals threads persisted before the stopped stamp existed.
+      return event.stopped || event.message.startsWith('turn ended:') ? current : true
     case 'errors-cleared':
     case 'user-text':
     case 'assistant-text':
@@ -56,8 +60,13 @@ export function summarizeRootTree(
   // a live sibling or child left behind waits until the tree settles, so
   // no running thread wears a recovery label it cannot act on.
   const hasLiveWork = tree.some((session) => LIVE_STATUSES.has(session.status))
+  // Only the root's own trailing error makes the thread read failed. A
+  // subagent's error never gets follow-up events of its own, so counting
+  // descendants held threads red long after the root moved past the
+  // failure and finished; a child death always wakes the parent, so the
+  // failure surfaces through the root's transcript when it matters.
   return {
-    canContinueError: !hasLiveWork && tree.some((session) => canContinue(session.id)),
+    canContinueError: !hasLiveWork && canContinue(root.id),
     hasLiveWork,
     hasPaused: tree.some((session) => session.status === 'paused'),
     frozenActiveElapsed: root.frozenActiveElapsed

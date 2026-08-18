@@ -149,6 +149,20 @@ async function main(): Promise<void> {
     markIdle
   )
   check('interrupt returns to idle', afterIntEvent.type === 'status', `${Date.now() - beforeInterrupt}ms`)
+  // A user Stop is not a failure: the wind-down error (if the driver
+  // reported one) is stamped stopped and never arms recovery.
+  const intErrors = registry
+    .eventsAfter(a.id, markIdle)
+    .filter((r) => r.event.type === 'error')
+  check(
+    'stop stamps its wind-down error as stopped',
+    intErrors.every((r) => r.event.type === 'error' && r.event.stopped === true),
+    `${intErrors.length} error(s)`
+  )
+  check(
+    'stopped thread never reads failed',
+    registry.list().find((s) => s.id === a.id)?.treeCanContinue === false
+  )
 
   // --- 5. resume across "relaunch" -----------------------------------------
   await registry.disposeAll()
