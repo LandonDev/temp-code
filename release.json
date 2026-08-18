@@ -1,5 +1,5 @@
 {
-  "n": 75,
-  "notes": "Cursor works again — cursor-agent is found even when its bin dir is only on the interactive PATH",
-  "ts": 1787025809000
+  "n": 76,
+  "notes": "A Cursor thread keeps the message you sent it and says its answer once",
+  "ts": 1787027624494
 }
