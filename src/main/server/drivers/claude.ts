@@ -788,7 +788,13 @@ export const claudeDriver: HarnessDriver = {
 
     const options: Options = {
       abortController: abort,
-      model: session.model,
+      // 1M rides the CLI's `[1m]` model suffix — the same lever as Claude
+      // Code's own 1M picker: it sets the client-side window to 1M and the
+      // CLI adds the API-side signaling itself. The `betas` Option is a
+      // trap here: the CLI drops user-supplied betas on subscription auth
+      // ("API key users only"), so a beta-based request silently fell back
+      // to a 200k window and overflowed at ~180k.
+      model: session.context1m ? `${session.model}[1m]` : session.model,
       cwd: session.cwd,
       // The SDK ladder tops out at max; 'ultra' is codex-only (a session
       // switched off sol mid-ultra clamps rather than erroring).
@@ -821,7 +827,6 @@ export const claudeDriver: HarnessDriver = {
           ...(session.context1m ? {} : { autoCompactWindow: 190_000 })
         })
       },
-      ...(session.context1m ? { betas: ['context-1m-2025-08-07' as const] } : {}),
       ...(session.nativeId ? { resume: session.nativeId } : {}),
       // App tools (docs/PLAN-2.md M10): every claude session can list/read
       // sibling threads and start new ones. Orchestrators additionally get
