@@ -207,7 +207,11 @@ export class Store {
   ): SessionMeta | null {
     const cur = this.getSession(id)
     if (!cur) return null
-    const next = { ...cur, ...patch, updatedAt: Date.now() }
+    // A key present but undefined must not clear the stored value — the
+    // tune route sends { fast, context1m } with only one of them set, and
+    // `undefined ? 1 : 0` below would zero the other.
+    const defined = Object.fromEntries(Object.entries(patch).filter(([, v]) => v !== undefined))
+    const next = { ...cur, ...defined, updatedAt: Date.now() }
     this.db
       .prepare(
         `UPDATE sessions SET status = ?, title = ?, native_id = ?, archived = ?, provider = ?, model = ?, reasoning = ?, permission = ?, fast = ?, context_1m = ?, busy_since = ?, paused_at = ?, frozen_active_elapsed = ?, thread_type = ?, plan_path = ?, agent_type = ?, thread_rules = ?, updated_at = ? WHERE id = ?`
