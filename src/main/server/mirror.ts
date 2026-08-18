@@ -24,7 +24,8 @@ import type { SessionRegistry } from './sessions'
 
 /** Mirror size cap — head-trimmed like the provider-switch handoff. */
 const MIRROR_MAX_CHARS = 60_000
-/** How much of the closing turn the `## Outcome` header carries. */
+/** How much of the closing turn the `## Outcome` header carries — its
+ *  END, where the thread says what it settled on. */
 const OUTCOME_MAX_CHARS = 1_200
 /** How many touched files the `files:` frontmatter line names. */
 const FILES_MAX = 20
@@ -156,7 +157,9 @@ export function renderMirror(
   ].join('\n')
   // The payload first: a reader gets what this thread concluded inside the
   // opening lines, and only reads the dialogue if that says it's the one.
-  const outcome = turnText(latestTurnRows(rows)).trim().slice(0, OUTCOME_MAX_CHARS)
+  const closing = turnText(latestTurnRows(rows)).trim()
+  const outcome =
+    closing.length > OUTCOME_MAX_CHARS ? `…${closing.slice(-OUTCOME_MAX_CHARS)}` : closing
   const head = outcome ? `${front}\n\n## Outcome\n\n${outcome}` : front
   let body = renderDialogue(rows)
   if (body.length > MIRROR_MAX_CHARS) {
@@ -322,8 +325,29 @@ export function writeThreadDigest(
 ): string {
   mkdirSync(join(targetCwd, '.temp-code', 'refs'), { recursive: true })
   const rel = join('.temp-code', 'refs', `${refMeta.id}.md`)
-  writeAtomic(join(targetCwd, rel), threadDigest(reg, refMeta))
+  const sameProject = contextCwd(reg, refMeta) === targetCwd
+  const pointer = sameProject
+    ? `\n_Full transcript: ${mirrorRelPath(refMeta)}_\n`
+    : ''
+  writeAtomic(join(targetCwd, rel), capDigest(threadDigest(reg, refMeta), pointer))
   return rel
+}
+
+/** A seed is the single biggest thing a thread reads on turn one, so it
+ *  gets the head whole — frontmatter and `## Outcome`, the settled result
+ *  — plus as much of the newest dialogue as the cap leaves. Older turns
+ *  stay one file read away, behind the pointer. */
+function capDigest(digest: string, pointer: string): string {
+  const budget = INLINE_DIGEST_MAX_CHARS - pointer.length
+  if (digest.length <= budget) return `${digest}${pointer}`
+  const frontEnd = digest.indexOf('\n---\n', 4) + 5 // close of the frontmatter
+  const outcome = digest.indexOf('\n## Outcome\n', frontEnd)
+  const dialogue = outcome > 0 ? digest.indexOf('\n## ', outcome + 4) : -1
+  const head = digest.slice(0, dialogue > 0 ? dialogue : Math.max(frontEnd, 0)).trimEnd()
+  const marker = '\n\n_[earlier turns trimmed]_\n\n…'
+  const room = budget - head.length - marker.length - pointer.length
+  if (room < 1_000) return `${head}${marker}${pointer}` // an outcome this big is the digest
+  return `${head}${marker}${digest.slice(-room)}${pointer}`
 }
 
 // ── PROJECT.md, the journal ──────────────────────────────────────────

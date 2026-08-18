@@ -6,7 +6,8 @@
  * Covers: `files:` frontmatter (writes before reads, project-relative,
  * capped), `## Outcome` at the head, `threads/INDEX.md` regeneration and
  * ordering, boot backfill of mirrors written before those fields, and
- * journal rotation into PROJECT-archive.md past the cap.
+ * journal rotation into PROJECT-archive.md past the cap, and the capped
+ * seed digest with its full-transcript pointer.
  * Run: bun run script:e2e-mirror-index
  */
 import { mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
@@ -15,7 +16,13 @@ import { join } from 'node:path'
 import { openDb, Store } from '../src/main/server/db'
 import { SessionRegistry } from '../src/main/server/sessions'
 import { setOrchestrationRegistry } from '../src/main/server/orchestration'
-import { backfillMirrors, journalPath, mirrorSession } from '../src/main/server/mirror'
+import {
+  INLINE_DIGEST_MAX_CHARS,
+  backfillMirrors,
+  journalPath,
+  mirrorSession,
+  writeThreadDigest
+} from '../src/main/server/mirror'
 import type { AgentEvent, SessionMeta } from '../src/shared/events'
 
 const store = new Store(openDb(join(mkdtempSync(join(tmpdir(), 'tc-idx-')), 'idx.db')))
@@ -195,6 +202,68 @@ check('archive pointer sits under ## Log', /## Log\n\n_Older entries: PROJECT-ar
 check('journal keeps its preamble', after.startsWith('# Idx\n\n_journal_\n\n## Log'))
 mirrorSession(registry, a.id)
 check('rotation is idempotent under the cap', readFileSync(journalPath(project.cwd), 'utf8') === after)
+
+// ── seed digest cap ──────────────────────────────────────────────────
+const source = fakeThread({ title: 'Long chat', threadType: 'chat' })
+const para = 'The context budget conversation went long and covered a great many details. '
+for (let i = 0; i < 12; i++) {
+  log(
+    source.id,
+    { type: 'user-text', text: `round ${i}` },
+    { type: 'assistant-text', text: para.repeat(60), delta: false }
+  )
+}
+log(source.id, {
+  type: 'assistant-text',
+  text: 'FINAL: seeds are capped at twelve thousand characters.',
+  delta: false
+})
+mirrorSession(registry, source.id)
+const rel = writeThreadDigest(registry, store.getSession(source.id)!, project.cwd)
+const digest = readFileSync(join(project.cwd, rel), 'utf8')
+check('digest fits the inline cap', digest.length <= INLINE_DIGEST_MAX_CHARS, `${digest.length} chars`)
+check('digest keeps frontmatter', digest.startsWith('---\ntitle: "Long chat"'))
+/** The outcome section: it ends at the next heading, or at the trim
+ *  marker the digest puts in place of the turns it dropped. */
+const outcomeOf = (text: string): string =>
+  (text.split('## Outcome\n\n')[1] ?? '')
+    .split('\n## ')[0]
+    .split('\n\n_[earlier turns trimmed]_')[0]
+    .trimEnd()
+check(
+  'digest keeps the outcome whole, ending on what the thread settled',
+  outcomeOf(digest).endsWith('FINAL: seeds are capped at twelve thousand characters.'),
+  outcomeOf(digest).slice(-60)
+)
+check(
+  'digest outcome matches the mirror it came from',
+  outcomeOf(digest) ===
+    outcomeOf(
+      readFileSync(
+        join(threadsDir, readdirSync(threadsDir).find((f) => f.startsWith(source.id))!),
+        'utf8'
+      )
+    )
+)
+check('digest marks the trim', digest.includes('_[earlier turns trimmed]_'))
+check('digest keeps the newest turns', digest.includes('round 11'))
+check('digest drops the oldest turns', !digest.includes('round 0'))
+check(
+  'digest points at the full transcript',
+  digest.trimEnd().endsWith(`_Full transcript: ${join('.temp-code', 'threads', 'idxthread')}` + '05-long-chat.md_'),
+  digest.trimEnd().split('\n').at(-1) ?? ''
+)
+
+// A short thread is not trimmed, and still gets the pointer.
+const brief = fakeThread({ title: 'Brief chat', threadType: 'chat' })
+log(brief.id, { type: 'user-text', text: 'hi' }, { type: 'assistant-text', text: 'done', delta: false })
+mirrorSession(registry, brief.id)
+const small = readFileSync(
+  join(project.cwd, writeThreadDigest(registry, store.getSession(brief.id)!, project.cwd)),
+  'utf8'
+)
+check('a short digest is untouched', !small.includes('_[earlier turns trimmed]_') && small.includes('hi'))
+check('a short digest still points at the transcript', small.includes('_Full transcript: '))
 
 await registry.disposeAll()
 console.log(failures === 0 ? '\nALL PASS' : `\n${failures} FAILURES`)
