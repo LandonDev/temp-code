@@ -804,17 +804,21 @@ export const claudeDriver: HarnessDriver = {
       // 2x long-context pricing above 200k input); 1M turns auto-compact
       // off and rides the full native window.
       //
-      // The compact window is 180k, NOT 200k: the CLI arms compaction at
+      // The compact window is 190k, NOT 200k: the CLI arms compaction at
       // window − 33k, and without the 1M beta the API hard-rejects a
       // request at 200k − max_tokens (≈168k) with "Prompt is too long".
       // A 200k setting put the compact trigger (167k) a hair under the
       // rejection wall — one long turn sailed past both and bricked the
-      // thread. 180k arms compaction at ~147k, real headroom.
+      // thread. 190k arms compaction at ~157k, 11k under the wall: a turn
+      // that grows past that gets one visible overflow error and the
+      // driver's own /compact recovery, not a bricked thread. It was 180k
+      // (trigger 147k); the extra 10k is ~7% fewer compactions, each one
+      // a ~150k summarization pass plus a full cache rewrite.
       extraArgs: {
         settings: JSON.stringify({
           ...(session.fast ? { fastMode: true } : {}),
           autoCompactEnabled: !session.context1m,
-          ...(session.context1m ? {} : { autoCompactWindow: 180_000 })
+          ...(session.context1m ? {} : { autoCompactWindow: 190_000 })
         })
       },
       ...(session.context1m ? { betas: ['context-1m-2025-08-07' as const] } : {}),
