@@ -1,5 +1,5 @@
 {
-  "n": 78,
-  "notes": "A thread that is working again no longer says it failed or needs recovery",
-  "ts": 1787035071000
+  "n": 79,
+  "notes": "A Cursor thread can run the commands its access allows, and its shell output reads like a terminal",
+  "ts": 1787038401230
 }
