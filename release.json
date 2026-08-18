@@ -1,5 +1,5 @@
 {
-  "n": 77,
-  "notes": "Cursor threads group work under its task list, and every file it writes shows the file and its diff",
-  "ts": 1787035020214
+  "n": 78,
+  "notes": "A thread that is working again no longer says it failed or needs recovery",
+  "ts": 1787035071000
 }
