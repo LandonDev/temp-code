@@ -1,5 +1,6 @@
-import { PanelLeft, PanelRight } from 'lucide-react'
-import { useApp } from '../../state/store'
+import { useState } from 'react'
+import { PanelLeft, PanelRight, Pause } from 'lucide-react'
+import { runningRoots, useApp } from '../../state/store'
 import { cn } from '../../lib/utils'
 
 /** With the sidebar hidden, the traffic lights sit over this strip:
@@ -14,6 +15,49 @@ function CollapsedLead(): React.JSX.Element {
       className="ml-[68px] mr-1 flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition hover:bg-accent/60 hover:text-foreground active:scale-95"
     >
       <PanelLeft className="size-[15px]" />
+    </button>
+  )
+}
+
+/** Stops every thread that is still working, wherever the user is. It
+ *  shows only while something runs, so the strip stays quiet otherwise. */
+function PauseAll(): React.JSX.Element | null {
+  const sessions = useApp((s) => s.sessions)
+  const pauseAllRunning = useApp((s) => s.pauseAllRunning)
+  const running = runningRoots(sessions).length
+  const [busy, setBusy] = useState(false)
+  const [failed, setFailed] = useState(0)
+
+  if (running === 0) return null
+
+  const run = async (): Promise<void> => {
+    if (busy) return
+    setBusy(true)
+    setFailed(0)
+    try {
+      const result = await pauseAllRunning()
+      setFailed(result.failed.length)
+    } catch {
+      setFailed(running)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <button
+      onClick={() => void run()}
+      disabled={busy}
+      title={`Pause all ${running === 1 ? 'running thread' : `${running} running threads`}`}
+      className={cn(
+        'flex h-6 items-center gap-1 rounded-md px-1.5 text-[11px] font-medium transition active:scale-95 disabled:active:scale-100',
+        failed > 0
+          ? 'text-destructive hover:bg-destructive/10'
+          : 'text-muted-foreground hover:bg-accent/60 hover:text-foreground'
+      )}
+    >
+      <Pause className="size-[13px]" strokeWidth={1.8} />
+      {busy ? 'Pausing…' : failed > 0 ? 'Pause failed — retry' : 'Pause all'}
     </button>
   )
 }
@@ -48,6 +92,9 @@ export function Titlebar(): React.JSX.Element {
       >
         {collapsed && <CollapsedLead />}
         <span className="text-[13px] font-medium">Settings</span>
+        <div className="ml-auto flex items-center">
+          <PauseAll />
+        </div>
       </header>
     )
   }
@@ -61,9 +108,7 @@ export function Titlebar(): React.JSX.Element {
       )}
     >
       {collapsed && <CollapsedLead />}
-      {workspace && (
-        <span className="text-[13px] text-muted-foreground">{workspace.name}</span>
-      )}
+      {workspace && <span className="text-[13px] text-muted-foreground">{workspace.name}</span>}
       {workspace && (project || chat) && (
         <span className="text-[13px] text-muted-foreground/50">/</span>
       )}
@@ -73,6 +118,7 @@ export function Titlebar(): React.JSX.Element {
         chat && <span className="truncate text-[13px] font-medium">{chat.title}</span>
       )}
       <div className="ml-auto flex items-center gap-2">
+        <PauseAll />
         {cost !== undefined && (
           <span className="text-[11px] tabular-nums text-muted-foreground">${cost.toFixed(2)}</span>
         )}

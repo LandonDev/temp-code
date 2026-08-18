@@ -586,6 +586,9 @@ export async function startServer(dbPath: string): Promise<RunningServer> {
           case 'session.continueAllErrors':
             sendFrame({ id: req.id, ok: true, result: await registry.continueAllErrors() })
             break
+          case 'session.pauseAllRunning':
+            sendFrame({ id: req.id, ok: true, result: await registry.pauseAllRunning() })
+            break
           case 'session.resumeAllPaused':
             sendFrame({ id: req.id, ok: true, result: await registry.resumeAllPaused() })
             break

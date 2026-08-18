@@ -288,6 +288,7 @@ interface AppState {
   resume: (sessionId: string) => Promise<void>
   continueRun: (sessionId: string) => Promise<void>
   continueAllErrors: () => Promise<SessionBatchResult>
+  pauseAllRunning: () => Promise<SessionBatchResult>
   resumeAllPaused: () => Promise<SessionBatchResult>
   approve: (sessionId: string, requestId: string, allow: boolean) => Promise<void>
   /** Answer a model question; null = dismiss without answering. */
@@ -1027,6 +1028,8 @@ export const useApp = create<AppState>((set, get) => ({
 
   continueAllErrors: () => client.request<SessionBatchResult>('session.continueAllErrors'),
 
+  pauseAllRunning: () => client.request<SessionBatchResult>('session.pauseAllRunning'),
+
   resumeAllPaused: () => client.request<SessionBatchResult>('session.resumeAllPaused'),
 
   approve: async (sessionId, requestId, allow) => {
@@ -1353,6 +1356,11 @@ export const unsortedSessions = (sessions: Record<string, SessionMeta>): Session
 export const recoveryRoots = (sessions: Record<string, SessionMeta>): SessionMeta[] =>
   Object.values(sessions).filter(
     (session) => !session.parentId && !session.archived && session.treeCanContinue
+  )
+
+export const runningRoots = (sessions: Record<string, SessionMeta>): SessionMeta[] =>
+  Object.values(sessions).filter(
+    (session) => !session.parentId && !session.archived && session.treeHasLiveWork
   )
 
 export const pausedRoots = (sessions: Record<string, SessionMeta>): SessionMeta[] =>

@@ -405,6 +405,7 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
     params: z.object({ sessionId: z.string() })
   }),
   z.object({ id: z.string(), method: z.literal('session.continueAllErrors') }),
+  z.object({ id: z.string(), method: z.literal('session.pauseAllRunning') }),
   z.object({ id: z.string(), method: z.literal('session.resumeAllPaused') }),
   z.object({
     id: z.string(),
