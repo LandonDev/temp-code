@@ -48,6 +48,81 @@ function toolName(toolCall: Record<string, unknown>): { key: string; name: strin
   return { key, name: base.charAt(0).toUpperCase() + base.slice(1) }
 }
 
+/** TODO_STATUS_IN_PROGRESS → in_progress. Anything unrecognized is pending. */
+function todoStatus(raw: unknown): string {
+  const s = String(raw ?? '')
+    .replace(/^TODO_STATUS_/, '')
+    .toLowerCase()
+  return s === 'in_progress' || s === 'completed' || s === 'cancelled' ? s : 'pending'
+}
+
+/**
+ * Cursor's todo list, held for the session. Its updateTodos call sends the
+ * whole list when merge is false and ONLY the changed items when it is
+ * true — so a driver that just forwarded the call would show a
+ * three-task list collapsing to the one task that moved. Keeping the list
+ * here and replaying all of it is what lets the app fold cursor's todos
+ * with everyone else's.
+ */
+class CursorTodos {
+  private order: string[] = []
+  private byId = new Map<string, { content: string; status: string }>()
+
+  /** Returns the full list in TodoWrite's shape, or null if there is none. */
+  apply(args: unknown): { content: string; status: string }[] | null {
+    const a = args as { todos?: unknown; merge?: unknown } | null
+    if (!Array.isArray(a?.todos)) return null
+    if (a.merge !== true) {
+      this.order = []
+      this.byId.clear()
+    }
+    for (const raw of a.todos) {
+      const t = raw as { id?: unknown; content?: unknown; status?: unknown }
+      const id = String(t?.id ?? '')
+      const content = String(t?.content ?? '')
+      if (!id || !content) continue
+      if (!this.byId.has(id)) this.order.push(id)
+      this.byId.set(id, { content, status: todoStatus(t?.status) })
+    }
+    return this.order.flatMap((id) => {
+      const t = this.byId.get(id)
+      return t ? [t] : []
+    })
+  }
+}
+
+/**
+ * Cursor writes files with one editToolCall for both new files and
+ * changes, carrying the pending text as `streamContent` and, once it
+ * lands, a real unified diff. Renaming it to apply_patch hands the app the
+ * same shape codex's patches arrive in, so the file card, its diffstat and
+ * the changes view all work without knowing cursor exists.
+ */
+function editAsPatch(
+  args: unknown,
+  result: Record<string, unknown> | null
+): { path: string; diff: string; kind: { type: string } }[] | null {
+  const a = args as { path?: unknown; streamContent?: unknown } | null
+  const path = String(a?.path ?? '')
+  if (!path) return null
+  const ok = (result?.success ?? null) as {
+    diffString?: unknown
+    beforeFullFileContent?: unknown
+    afterFullFileContent?: unknown
+  } | null
+  // A new file carries its whole content, a change carries a unified diff —
+  // the two shapes apply_patch already reads for kind add and update.
+  const body = (text: unknown): string => String(text ?? '').replace(/\n$/, '')
+  if (!ok) {
+    // Still writing: show the file with the text so far. The finished call
+    // replaces this with what really changed.
+    return [{ path, diff: body(a?.streamContent), kind: { type: 'add' } }]
+  }
+  return ok.beforeFullFileContent === undefined
+    ? [{ path, diff: body(ok.afterFullFileContent), kind: { type: 'add' } }]
+    : [{ path, diff: body(ok.diffString), kind: { type: 'update' } }]
+}
+
 export const cursorDriver: HarnessDriver = {
   id: 'cursor',
 
@@ -62,6 +137,9 @@ export const cursorDriver: HarnessDriver = {
     const env = await harnessEnv()
 
     let proc: ChildProcess | null = null
+    // The todo list belongs to the cursor session, not to one turn — a
+    // resumed thread keeps updating the list it built earlier.
+    const todos = new CursorTodos()
     let turnSeq = 0
     let disposed = false
     let contextTokens = 0
@@ -176,10 +254,22 @@ export const cursorDriver: HarnessDriver = {
             const tc = (msg.tool_call ?? {}) as Record<string, unknown>
             const { key, name } = toolName(tc)
             const inner = (tc[key] ?? {}) as { args?: unknown; result?: Record<string, unknown> }
-            if (msg.subtype === 'started') {
-              emit({ type: 'tool-call', callId, name, input: inner.args })
-            } else if (msg.subtype === 'completed') {
-              const result = inner.result ?? {}
+            const done = msg.subtype === 'completed'
+            const result = inner.result ?? {}
+
+            // Cursor's two file-shaped calls get renamed to the ones the app
+            // already knows, so the todo fold, the file cards and the changes
+            // view all read them without knowing cursor exists. Everything
+            // else passes through under its own name.
+            const list = key === 'updateTodosToolCall' ? todos.apply(inner.args) : null
+            const patch =
+              key === 'editToolCall' ? editAsPatch(inner.args, done ? result : null) : null
+            if (list) emit({ type: 'tool-call', callId, name: 'TodoWrite', input: { todos: list } })
+            else if (patch)
+              emit({ type: 'tool-call', callId, name: 'apply_patch', input: patch, partial: !done })
+            else if (!done) emit({ type: 'tool-call', callId, name, input: inner.args })
+
+            if (done) {
               const isError = !('success' in result)
               const payload = ('success' in result ? result.success : result) ?? result
               emit({
