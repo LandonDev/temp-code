@@ -393,10 +393,14 @@ export interface SpawnAgentArgs {
 
 export async function orchSpawnAgent(parent: SessionMeta, args: SpawnAgentArgs): Promise<string> {
   if (!registry) return 'orchestration registry not ready'
+  // The MCP closure holds a boot-time snapshot of the caller; read it
+  // fresh so a permission change or tune edit made after boot governs
+  // this spawn, not the rules the harness happened to start under.
+  const parentNow = registry.list().find((s) => s.id === parent.id) ?? parent
   // Enforce the user's rules — these are settings, not suggestions. The
   // refusal text tells the model how to proceed. Model policy gates the
   // target and clamps effort into the approved range.
-  const rules = rulesFor(parent)
+  const rules = rulesFor(parentNow)
   const target = resolveSpawnTarget(args.provider, args.model, parent.provider, rules)
   if ('error' in target) return target.error
   const reasoning = fitReasoning(
@@ -424,9 +428,7 @@ export async function orchSpawnAgent(parent: SessionMeta, args: SpawnAgentArgs):
       ? await worktreeFor(parent.cwd, `${parent.id}-${Date.now() % 100000}`)
       : null) ?? parent.cwd
   // Children follow the parent's permission policy — the user granted it
-  // once, and the fleet works under that grant. Read it fresh: the user
-  // may have changed it since spawn time.
-  const parentNow = registry.list().find((s) => s.id === parent.id) ?? parent
+  // once, and the fleet works under that grant.
   const child = await registry.create({
     projectId: parent.projectId,
     provider: target.provider,
@@ -441,10 +443,16 @@ export async function orchSpawnAgent(parent: SessionMeta, args: SpawnAgentArgs):
     parentId: parent.id
   })
   await registry.send(child.id, args.task)
+  // Live headroom rides every spawn result: the boot prompt's cap goes
+  // stale when the user retunes mid-run, and a model told "at most 4"
+  // self-limits — this is how it learns the current ceiling.
   return JSON.stringify({
     agentId: child.id,
     title: child.title,
     cwd,
+    ...(rules.conduct.maxParallel > 0
+      ? { parallel: `${live.length + 1} of ${rules.conduct.maxParallel} allowed slots in use` }
+      : {}),
     note: 'working — use wait_for_agent to collect the result'
   })
 }
