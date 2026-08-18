@@ -220,6 +220,43 @@ check(
   boots.includes(restart.id) && store.getSession(restart.id)?.status === 'running'
 )
 
+// Pause all: one attempt per running root, archived roots untouched,
+// descendants folded into their root rather than attempted on their own.
+const runA = await registry.create({ ...base, title: 'pause-all-a' })
+const runB = await registry.create({ ...base, title: 'pause-all-b' })
+const runChild = await registry.create({ ...base, title: 'pause-all-child', parentId: runB.id })
+const shelved = await registry.create({ ...base, title: 'pause-all-archived' })
+await tick()
+store.updateSession(shelved.id, { archived: true })
+for (const id of [runA.id, runB.id, runChild.id, shelved.id]) {
+  store.updateSession(id, { status: 'running', busySince: Date.now() - 1_000 })
+}
+const pauseBatch = await registry.pauseAllRunning()
+await tick()
+check(
+  'pause all attempts each running root once',
+  new Set(pauseBatch.attempted).size === pauseBatch.attempted.length
+)
+check(
+  'pause all covers every running root',
+  pauseBatch.attempted.includes(runA.id) && pauseBatch.attempted.includes(runB.id)
+)
+check('pause all skips archived roots', !pauseBatch.attempted.includes(shelved.id))
+check(
+  'pause all never attempts a descendant as a root',
+  !pauseBatch.attempted.includes(runChild.id)
+)
+check(
+  'pause all pauses each root tree',
+  [runA.id, runB.id, runChild.id].every((id) => store.getSession(id)?.status === 'paused')
+)
+check('pause all leaves archived work running', store.getSession(shelved.id)?.status === 'running')
+check('pause all reports no failures', pauseBatch.failed.length === 0)
+check(
+  'nothing running leaves pause all with no work',
+  (await registry.pauseAllRunning()).attempted.length === 0
+)
+
 await registry.disposeAll()
 console.log(failures === 0 ? '\nALL PASS' : `\n${failures} FAILURES`)
 process.exit(failures === 0 ? 0 : 1)

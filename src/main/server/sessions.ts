@@ -1337,6 +1337,14 @@ export class SessionRegistry {
     return this.runRootBatch(roots, (root) => this.continueRun(root.id))
   }
 
+  /** Pause every root that still has live work. */
+  async pauseAllRunning(): Promise<SessionBatchResult> {
+    const roots = this.list().filter(
+      (session) => !session.parentId && !session.archived && session.treeHasLiveWork
+    )
+    return this.runRootBatch(roots, (root) => this.pauseRun(root.id))
+  }
+
   async resumeAllPaused(): Promise<SessionBatchResult> {
     const roots = this.list().filter(
       (session) => !session.parentId && !session.archived && session.treeHasPaused
