@@ -1,7 +1,7 @@
 import { spawn, type ChildProcess } from 'node:child_process'
 import { createInterface } from 'node:readline'
 import { modelInfo, type Reasoning } from '@shared/catalog'
-import type { Attachment } from '@shared/events'
+import type { Attachment, PermissionPolicy } from '@shared/events'
 import type { DriverCtx, DriverHandle, HarnessDriver } from './types'
 import { harnessEnv, resolveBinary } from './binaries'
 import { expandSlashRefs } from '../slash'
@@ -40,6 +40,19 @@ export function cursorModelArg(model: string, reasoning: Reasoning): string {
  * checkpoint — the same messages arrive again. After three of those it
  * exits 1 with no result.
  */
+
+/**
+ * Cursor weighs every command against its own config file, and `-p` has
+ * nowhere to ask — so anything the config doesn't list comes back
+ * rejected, which is how a thread set to full access got refused `git`.
+ * Each policy names cursor's own equivalent instead of leaving it to a
+ * file the app doesn't own.
+ */
+const PERMISSION_ARGS: Record<PermissionPolicy, string[]> = {
+  safe: ['--mode', 'plan'],
+  edits: ['--force', '--sandbox', 'enabled'],
+  auto: ['--force']
+}
 
 /** readToolCall → Read, shellToolCall → Shell, ... */
 function toolName(toolCall: Record<string, unknown>): { key: string; name: string } {
@@ -123,6 +136,41 @@ function editAsPatch(
     : [{ path, diff: body(ok.diffString), kind: { type: 'update' } }]
 }
 
+/**
+ * Cursor sends its whole command parse tree with every shell call —
+ * hundreds of lines the transcript would store and the raw view would
+ * show. Only the fields the run card reads survive.
+ */
+function shellInput(args: unknown): Record<string, unknown> {
+  const a = (args ?? {}) as Record<string, unknown>
+  const out: Record<string, unknown> = { command: String(a.command ?? '') }
+  if (a.description) out.description = String(a.description)
+  if (a.workingDirectory) out.workingDirectory = String(a.workingDirectory)
+  if (a.isBackground === true) out.isBackground = true
+  return out
+}
+
+/**
+ * A shell result should read like a terminal, not like JSON: the output
+ * as it came, and a closing line for a non-zero exit or a refusal.
+ */
+function shellResult(result: Record<string, unknown>): { text: string; isError: boolean } | null {
+  const no = result.rejected as { command?: unknown } | undefined
+  if (no)
+    return {
+      text: `cursor would not run \`${String(no.command ?? '')}\` — this thread's access does not cover it.`,
+      isError: true
+    }
+  const r = (result.success ?? result.failure) as Record<string, unknown> | undefined
+  if (!r) return null
+  const body = String(
+    r.interleavedOutput ?? `${String(r.stdout ?? '')}${String(r.stderr ?? '')}`
+  ).trimEnd()
+  const failed = result.failure !== undefined
+  const code = Number(r.exitCode ?? 0)
+  return { text: failed && code !== 0 ? `${body}\n(exit ${code})`.trim() : body, isError: failed }
+}
+
 export const cursorDriver: HarnessDriver = {
   id: 'cursor',
 
@@ -159,6 +207,7 @@ export const cursorDriver: HarnessDriver = {
       const args = [
         '-p',
         '--trust',
+        ...PERMISSION_ARGS[session.permission],
         '--output-format',
         'stream-json',
         ...(session.model ? ['--model', cursorModelArg(session.model, session.reasoning)] : []),
@@ -267,9 +316,20 @@ export const cursorDriver: HarnessDriver = {
             if (list) emit({ type: 'tool-call', callId, name: 'TodoWrite', input: { todos: list } })
             else if (patch)
               emit({ type: 'tool-call', callId, name: 'apply_patch', input: patch, partial: !done })
-            else if (!done) emit({ type: 'tool-call', callId, name, input: inner.args })
+            else if (!done)
+              emit({
+                type: 'tool-call',
+                callId,
+                name,
+                input: key === 'shellToolCall' ? shellInput(inner.args) : inner.args
+              })
 
             if (done) {
+              const shell = key === 'shellToolCall' ? shellResult(result) : null
+              if (shell) {
+                emit({ type: 'tool-result', callId, output: shell.text, isError: shell.isError })
+                break
+              }
               const isError = !('success' in result)
               const payload = ('success' in result ? result.success : result) ?? result
               emit({
