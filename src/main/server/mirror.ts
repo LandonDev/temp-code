@@ -237,6 +237,8 @@ export function mirrorSession(
     }
     writeAtomic(join(dir, name), renderMirror(meta, reg.eventsAfter(sessionId, 0)))
     if (opts.index !== false) writeThreadsIndex(dir)
+    rotateJournal(cwd) // a model append lands shortly before this write
+
   } catch {
     // Mirrors are best-effort context, never a failure the user sees.
   }
@@ -344,7 +346,7 @@ export function seedJournal(project: ProjectMeta): void {
           : 'local'
     writeAtomic(
       journalPath(project.cwd),
-      `# ${project.name}\n\n_Project journal. Threads append dated bullets under ## Log when they produce a durable outcome; humans read it to catch up._\n\n## Log\n\n- ${today()} — project created (${where})\n`
+      `# ${project.name}\n\n_Project journal. One dated line per durable outcome, naming the files it touched — append under ## Log, never rewrite. Humans read it to catch up._\n\n## Log\n\n- ${today()} — project created (${where})\n`
     )
   } catch {
     // best-effort
@@ -359,7 +361,69 @@ export async function appendJournal(cwd: string, line: string): Promise<void> {
     const exists = await readFile(path, 'utf8').catch(() => null)
     if (exists === null) return
     await appendFile(path, `- ${today()} — ${line}\n`)
+    rotateJournal(cwd)
   } catch {
     // best-effort
+  }
+}
+
+/** Past this the journal is costing every thread more than it tells them. */
+const JOURNAL_MAX_BYTES = 6_000
+/** Rotation trims back to here, so it fires once in a while, not per turn. */
+const JOURNAL_TARGET_BYTES = 4_000
+/** Recent state a thread can still skim, even if other sections keep the
+ *  file over its cap on their own. */
+const JOURNAL_MIN_ENTRIES = 8
+const ARCHIVE_NAME = 'PROJECT-archive.md'
+const ARCHIVE_POINTER = `_Older entries: ${ARCHIVE_NAME}._`
+
+/** Move the oldest `## Log` entries to `.temp-code/PROJECT-archive.md`
+ *  once the journal outgrows its cap, keeping each entry whole and
+ *  verbatim — nothing is rewritten, so the "never rewrite others'
+ *  entries" contract survives rotation. Called from the app's own writes
+ *  (mirror path, appendJournal), never mid-turn. */
+export function rotateJournal(cwd: string): void {
+  try {
+    const path = journalPath(cwd)
+    if (!existsSync(path)) return
+    const text = readFileSync(path, 'utf8')
+    if (Buffer.byteLength(text) <= JOURNAL_MAX_BYTES) return
+    const lines = text.split('\n')
+    const start = lines.findIndex((l) => l.startsWith('## Log'))
+    if (start < 0) return
+    let end = lines.findIndex((l, i) => i > start && l.startsWith('## '))
+    if (end < 0) end = lines.length
+
+    // The log region as whole entries, oldest first: a `- ` line plus
+    // whatever trails it (wrapped text, stray sub-bullets) until the next.
+    const entries: string[][] = []
+    const preamble: string[] = []
+    for (const line of lines.slice(start + 1, end)) {
+      if (line.startsWith('- ')) entries.push([line])
+      else if (entries.length) entries[entries.length - 1].push(line)
+      else preamble.push(line)
+    }
+
+    const moved: string[][] = []
+    let size = Buffer.byteLength(text)
+    while (entries.length > JOURNAL_MIN_ENTRIES && size > JOURNAL_TARGET_BYTES) {
+      const entry = entries.shift() as string[]
+      moved.push(entry)
+      size -= Buffer.byteLength(`${entry.join('\n')}\n`)
+    }
+    if (!moved.length) return
+
+    const archive = join(cwd, '.temp-code', ARCHIVE_NAME)
+    const prior = existsSync(archive)
+      ? readFileSync(archive, 'utf8').replace(/\n+$/, '\n')
+      : `# Journal archive\n\n_Entries rotated out of PROJECT.md, oldest first._\n`
+    writeAtomic(archive, `${prior}${moved.map((e) => e.join('\n').trimEnd()).join('\n')}\n`)
+
+    const kept = preamble.filter((l) => l.trim() && l.trim() !== ARCHIVE_POINTER)
+    const region = ['## Log', '', ARCHIVE_POINTER, ...(kept.length ? ['', ...kept] : []), '']
+    const next = [...lines.slice(0, start), ...region, ...entries.flat(), ...lines.slice(end)]
+    writeAtomic(path, `${next.join('\n').replace(/\n{3,}/g, '\n\n').trimEnd()}\n`)
+  } catch {
+    // best-effort, like every other write in this file
   }
 }
