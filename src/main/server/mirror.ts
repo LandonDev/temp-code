@@ -1,9 +1,17 @@
-import { existsSync, mkdirSync, readdirSync, renameSync, rmSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  writeFileSync
+} from 'node:fs'
 import { appendFile, readFile } from 'node:fs/promises'
-import { join } from 'node:path'
+import { join, relative, isAbsolute } from 'node:path'
 import type { EventRow, SessionMeta } from '@shared/events'
 import type { ProjectMeta } from '@shared/domain'
-import { toolLinesOf, turnText } from './orchestration'
+import { latestTurnRows, toolLinesOf, turnText } from './orchestration'
 import type { SessionRegistry } from './sessions'
 
 /**
@@ -16,6 +24,12 @@ import type { SessionRegistry } from './sessions'
 
 /** Mirror size cap — head-trimmed like the provider-switch handoff. */
 const MIRROR_MAX_CHARS = 60_000
+/** How much of the closing turn the `## Outcome` header carries. */
+const OUTCOME_MAX_CHARS = 1_200
+/** How many touched files the `files:` frontmatter line names. */
+const FILES_MAX = 20
+/** The mechanical retrieval index every thread is pointed at. */
+const INDEX_NAME = 'INDEX.md'
 /** A burst of turn-completes (orchestrator fleets) writes once. */
 const MIRROR_DEBOUNCE_MS = 2_000
 
@@ -91,12 +105,41 @@ export function renderDialogue(rows: EventRow[]): string {
   return sections.join('\n\n')
 }
 
+/** Tools that CHANGE a file, across providers — their paths lead the
+ *  `files:` line, because the thread that wrote a file is the one you
+ *  want when you go looking for who touched it. */
+const WRITES = /edit|write|patch|create|update|notebook/i
+
+/** Project-relative paths this thread's file tools touched, writes first,
+ *  reads after, deduped in that order and capped. `.temp-code/` is the
+ *  app's own context dir — never what a reader is grepping for. */
+export function filesTouched(rows: EventRow[], cwd: string): string[] {
+  const writes: string[] = []
+  const reads: string[] = []
+  for (const { event } of rows) {
+    if (event.type !== 'tool-call' || event.partial) continue
+    const input = (event.input && typeof event.input === 'object' ? event.input : {}) as Record<
+      string,
+      unknown
+    >
+    const key = ['file_path', 'path', 'notebook_path'].find((k) => typeof input[k] === 'string')
+    if (!key) continue
+    const raw = input[key] as string
+    const rel = isAbsolute(raw) ? relative(cwd, raw) : raw
+    // Outside the checkout (a worktree scratch file, /tmp) tells a reader nothing.
+    if (!rel || rel.startsWith('..') || isAbsolute(rel) || rel.startsWith('.temp-code/')) continue
+    ;(WRITES.test(event.name) ? writes : reads).push(rel)
+  }
+  return [...new Set([...writes, ...reads])].slice(0, FILES_MAX)
+}
+
 /** Full mirror content: frontmatter + dialogue, head-trimmed to the cap. */
 export function renderMirror(
   meta: SessionMeta,
   rows: EventRow[],
   projectName?: string | null
 ): string {
+  const files = filesTouched(rows, meta.cwd)
   const front = [
     '---',
     `title: ${JSON.stringify(meta.title)}`,
@@ -108,13 +151,66 @@ export function renderMirror(
     `sessionId: ${meta.id}`,
     ...(meta.parentId ? [`parentSessionId: ${meta.parentId}`] : []),
     ...(meta.planPath ? [`plan: ${meta.planPath}`] : []),
+    ...(files.length ? [`files: ${files.join(', ')}`] : []),
     '---'
   ].join('\n')
+  // The payload first: a reader gets what this thread concluded inside the
+  // opening lines, and only reads the dialogue if that says it's the one.
+  const outcome = turnText(latestTurnRows(rows)).trim().slice(0, OUTCOME_MAX_CHARS)
+  const head = outcome ? `${front}\n\n## Outcome\n\n${outcome}` : front
   let body = renderDialogue(rows)
   if (body.length > MIRROR_MAX_CHARS) {
     body = `_[earlier turns trimmed]_\n\n…${body.slice(-MIRROR_MAX_CHARS)}`
   }
-  return `${front}\n\n${body}\n`
+  return `${head}\n\n${body}\n`
+}
+
+/** Frontmatter of a mirror, read from its head — the index never parses
+ *  a whole transcript. */
+function frontmatterOf(head: string): Record<string, string> {
+  const out: Record<string, string> = {}
+  const lines = head.split('\n')
+  if (lines[0] !== '---') return out
+  for (const line of lines.slice(1)) {
+    if (line === '---') break
+    const at = line.indexOf(': ')
+    if (at > 0) out[line.slice(0, at)] = line.slice(at + 2)
+  }
+  return out
+}
+
+/** `threads/INDEX.md` — one line per thread, newest first, rebuilt from
+ *  the mirrors' own frontmatter after every mirror write. Mechanical, so
+ *  it is always current and costs no model tokens; regenerating from the
+ *  directory makes last-writer-wins correct across parallel sessions. */
+export function writeThreadsIndex(dir: string): void {
+  const entries: { updated: string; line: string }[] = []
+  for (const file of readdirSync(dir)) {
+    if (!file.endsWith('.md') || file === INDEX_NAME) continue
+    let front: Record<string, string>
+    try {
+      front = frontmatterOf(readFileSync(join(dir, file), 'utf8').slice(0, 4_000))
+    } catch {
+      continue
+    }
+    if (!front.title) continue
+    const updated = front.updated ?? ''
+    const parts = [
+      updated.slice(0, 10) || '?',
+      front.type ?? 'thread',
+      front.title,
+      front.status ?? '?',
+      front.files ? `files: ${front.files}` : 'files: —',
+      join('threads', file)
+    ]
+    entries.push({ updated, line: `- ${parts.join(' · ')}` })
+  }
+  entries.sort((a, b) => b.updated.localeCompare(a.updated))
+  const body = entries.length ? entries.map((e) => e.line).join('\n') : '_No threads yet._'
+  writeAtomic(
+    join(dir, INDEX_NAME),
+    `# Thread index\n\n_Written by the app after every turn. date · type · title · status · files touched · path (relative to .temp-code/). Grep it by file path or topic, then read only the threads it points at._\n\n${body}\n`
+  )
 }
 
 /** The project cwd a session's context files live in. Subagents may run in
@@ -123,7 +219,11 @@ function contextCwd(reg: SessionRegistry, meta: SessionMeta): string | null {
   return meta.projectId ? (reg.getProject(meta.projectId)?.cwd ?? null) : null
 }
 
-export function mirrorSession(reg: SessionRegistry, sessionId: string): void {
+export function mirrorSession(
+  reg: SessionRegistry,
+  sessionId: string,
+  opts: { index?: boolean } = {}
+): void {
   const meta = reg.list().find((s) => s.id === sessionId)
   const cwd = meta && contextCwd(reg, meta)
   if (!meta || !cwd) return
@@ -136,6 +236,7 @@ export function mirrorSession(reg: SessionRegistry, sessionId: string): void {
       if (f !== name && f.includes(meta.id)) rmSync(join(dir, f), { force: true })
     }
     writeAtomic(join(dir, name), renderMirror(meta, reg.eventsAfter(sessionId, 0)))
+    if (opts.index !== false) writeThreadsIndex(dir)
   } catch {
     // Mirrors are best-effort context, never a failure the user sees.
   }
@@ -154,6 +255,30 @@ export function scheduleMirror(reg: SessionRegistry, sessionId: string): void {
   )
 }
 
+/** Boot-time catch-up: mirrors written before `files:` and `## Outcome`
+ *  existed regenerate once, so INDEX.md is complete from day one. Pure
+ *  serialization off the event log — no model, no network — and deferred
+ *  past startup so it never competes with the first window. */
+export function backfillMirrors(reg: SessionRegistry): void {
+  const timer = setTimeout(() => {
+    const dirs = new Set<string>()
+    for (const meta of reg.list()) {
+      if (!meta.projectId || meta.archived) continue
+      mirrorSession(reg, meta.id, { index: false })
+      const cwd = contextCwd(reg, meta)
+      if (cwd) dirs.add(join(cwd, '.temp-code', 'threads'))
+    }
+    for (const dir of dirs) {
+      try {
+        writeThreadsIndex(dir)
+      } catch {
+        // best-effort, like every other mirror write
+      }
+    }
+  }, 5_000)
+  timer.unref()
+}
+
 /** Deleting a thread removes its mirror (archived threads keep theirs). */
 export function removeMirror(reg: SessionRegistry, meta: SessionMeta): void {
   const cwd = contextCwd(reg, meta)
@@ -166,6 +291,7 @@ export function removeMirror(reg: SessionRegistry, meta: SessionMeta): void {
     for (const f of readdirSync(dir)) {
       if (f.includes(meta.id)) rmSync(join(dir, f), { force: true })
     }
+    writeThreadsIndex(dir)
   } catch {
     // no mirror dir — nothing to remove
   }

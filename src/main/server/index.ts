@@ -7,6 +7,7 @@ import type { SessionMeta } from '@shared/events'
 import { openDb, Store } from './db'
 import { SessionRegistry } from './sessions'
 import { runDoctor } from './drivers/binaries'
+import { backfillMirrors } from './mirror'
 import {
   orchAnswerAgent,
   orchCheckAgent,
@@ -124,6 +125,7 @@ export async function startServer(dbPath: string): Promise<RunningServer> {
   setOrchestrationRegistry(registry)
   setAppToolsRegistry(registry)
   setSummarizeContext(registry, store)
+  backfillMirrors(registry) // old mirrors gain files:/Outcome, INDEX.md fills in
   void runDoctor() // warm the cache so the new-session modal opens ready
 
   // Background IntelliJ index warming: shortly after startup, then every
