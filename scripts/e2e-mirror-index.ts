@@ -5,7 +5,8 @@
  *
  * Covers: `files:` frontmatter (writes before reads, project-relative,
  * capped), `## Outcome` at the head, `threads/INDEX.md` regeneration and
- * ordering, and boot backfill of mirrors written before those fields.
+ * ordering, boot backfill of mirrors written before those fields, and
+ * journal rotation into PROJECT-archive.md past the cap.
  * Run: bun run script:e2e-mirror-index
  */
 import { mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
@@ -14,7 +15,7 @@ import { join } from 'node:path'
 import { openDb, Store } from '../src/main/server/db'
 import { SessionRegistry } from '../src/main/server/sessions'
 import { setOrchestrationRegistry } from '../src/main/server/orchestration'
-import { backfillMirrors, mirrorSession } from '../src/main/server/mirror'
+import { backfillMirrors, journalPath, mirrorSession } from '../src/main/server/mirror'
 import type { AgentEvent, SessionMeta } from '../src/shared/events'
 
 const store = new Store(openDb(join(mkdtempSync(join(tmpdir(), 'tc-idx-')), 'idx.db')))
@@ -153,6 +154,25 @@ const lifted = readFileSync(join(threadsDir, `${stale.id}-pre-upgrade-thread.md`
 check('backfill adds files: to an old mirror', lifted.includes('files: src/legacy.ts'), lifted.slice(0, 200))
 check('backfill adds ## Outcome to an old mirror', lifted.includes('## Outcome\n\nlegacy outcome text'))
 check('backfill leaves INDEX.md complete', readFileSync(join(threadsDir, 'INDEX.md'), 'utf8').includes('Pre-upgrade thread'))
+
+// ── journal rotation ─────────────────────────────────────────────────
+const bullets = Array.from(
+  { length: 120 },
+  (_, i) =>
+    `- 2026-0${(i % 9) + 1}-1${i % 10} — entry ${i}: shipped a durable outcome and wrote it down in src/some/file-${i}.ts`
+)
+writeFileSync(journalPath(project.cwd), `# Idx\n\n_journal_\n\n## Log\n\n${bullets.join('\n')}\n`)
+const before = readFileSync(journalPath(project.cwd), 'utf8').length
+mirrorSession(registry, a.id) // the app's own write path rotates
+const after = readFileSync(journalPath(project.cwd), 'utf8')
+const archive = readFileSync(join(project.cwd, '.temp-code', 'PROJECT-archive.md'), 'utf8')
+check('journal rotated below the cap', after.length < before && after.length < 6_000, `${before} → ${after.length}`)
+check('journal keeps its newest entries', after.includes('entry 119:'))
+check('archive took the oldest entry verbatim', archive.includes('- 2026-01-10 — entry 0: shipped a durable outcome and wrote it down in src/some/file-0.ts'))
+check('archive pointer sits under ## Log', /## Log\n\n_Older entries: PROJECT-archive\.md\._\n/.test(after), after.slice(0, 140).replace(/\n/g, '⏎'))
+check('journal keeps its preamble', after.startsWith('# Idx\n\n_journal_\n\n## Log'))
+mirrorSession(registry, a.id)
+check('rotation is idempotent under the cap', readFileSync(journalPath(project.cwd), 'utf8') === after)
 
 await registry.disposeAll()
 console.log(failures === 0 ? '\nALL PASS' : `\n${failures} FAILURES`)
