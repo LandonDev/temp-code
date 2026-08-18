@@ -239,7 +239,9 @@ export const AgentEventSchema = z.discriminatedUnion('type', [
   // Orchestration: this session spawned a child session.
   z.object({ type: z.literal('agent-spawned'), childSessionId: z.string() }),
 
-  z.object({ type: z.literal('error'), message: z.string() }),
+  // stopped: the turn ended because the user hit Stop — shown as a quiet
+  // "Stopped" note, never as a failure, and it never arms recovery.
+  z.object({ type: z.literal('error'), message: z.string(), stopped: z.boolean().optional() }),
 
   // The user hit Continue after fixing what killed the turn (e.g. switched
   // accounts on a session limit): every error shown so far is settled —

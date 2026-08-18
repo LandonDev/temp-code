@@ -95,7 +95,8 @@ check(
   registry.list().find((s) => s.id === errorB.id)?.canContinue === true
 )
 
-// Failed descendants count as one root and boot before the orchestrator.
+// Failed descendants never flag the root's tree on their own, but a
+// continue on the root still reboots them first.
 const orch = await registry.create({ ...base, title: 'orchestrator', agentType: 'orchestrator' })
 const childA = await registry.create({ ...base, title: 'child-a', parentId: orch.id })
 const childB = await registry.create({ ...base, title: 'child-b', parentId: orch.id })
@@ -105,8 +106,8 @@ registry.append(childA.id, { type: 'status', status: 'idle' })
 registry.append(childB.id, { type: 'error', message: 'child b failed' })
 registry.append(childB.id, { type: 'status', status: 'error' })
 check(
-  'failed orchestration descendants count once at the root',
-  registry.list().filter((s) => !s.parentId && s.treeCanContinue && s.id === orch.id).length === 1
+  'failed descendants alone never flag the root tree',
+  registry.list().find((s) => s.id === orch.id)?.treeCanContinue === false
 )
 boots.length = 0
 await registry.continueRun(orch.id)
@@ -287,8 +288,9 @@ check(
   metaOf(revived.id)?.canContinue === false
 )
 
-// A dead subagent waits its turn: while the orchestration works, its root
-// reads as working, and the flag surfaces once the root settles.
+// A dead subagent never paints its root failed: the root reads as working
+// while it runs and stays clean once it settles — only the root's own
+// trailing error makes the thread read failed.
 const liveOrch = await registry.create({ ...base, title: 'live-orch', agentType: 'orchestrator' })
 const deadChild = await registry.create({ ...base, title: 'dead-child', parentId: liveOrch.id })
 await tick()
@@ -301,8 +303,8 @@ check(
 )
 registry.append(liveOrch.id, { type: 'status', status: 'idle' })
 check(
-  'the dead child surfaces once the orchestration settles',
-  metaOf(liveOrch.id)?.treeCanContinue === true
+  'a settled orchestration never wears a stale child error',
+  metaOf(liveOrch.id)?.treeCanContinue === false
 )
 
 await registry.disposeAll()

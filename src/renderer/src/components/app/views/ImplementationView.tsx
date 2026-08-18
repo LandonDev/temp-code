@@ -726,7 +726,7 @@ function RoundSection({
                 key={key}
                 className={cn(
                   'mb-2 overflow-hidden rounded-[10px] transition-colors duration-150',
-                  live ? 'bg-accent/70 hover:bg-accent' : 'bg-accent/35 hover:bg-accent/60'
+                  live ? 'bg-brand/10 hover:bg-brand/15' : 'bg-accent/35 hover:bg-accent/60'
                 )}
               >
                 <div
@@ -952,7 +952,7 @@ function WorkItems({
           <QuestionCard key={b.id} block={b} sessionId={sessionId} />
         ) : b.kind === 'error' ? (
           b.cleared ? null : (
-            <ErrorChip key={b.id} text={b.text} sessionId={sessionId} blockId={b.id} />
+            <ErrorChip key={b.id} text={b.text} sessionId={sessionId} blockId={b.id} stopped={b.stopped} />
           )
         ) : (
           <FreshEdit key={b.id} block={b as ToolBlock} sessionId={sessionId} />

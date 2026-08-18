@@ -348,7 +348,14 @@ const RowContent = memo(function RowContent({
       return <ReportRow block={block} />
     case 'error':
       if (block.cleared) return <></>
-      return <ErrorChip text={block.text} sessionId={sessionId} blockId={block.id} />
+      return (
+        <ErrorChip
+          text={block.text}
+          sessionId={sessionId}
+          blockId={block.id}
+          stopped={block.stopped}
+        />
+      )
     default:
       return <></>
   }

@@ -233,6 +233,11 @@ export class SessionRegistry {
    *  The status-level guard below misses these: drivers often emit the
    *  error event and still settle with status idle. */
   private erroredTurns = new Set<string>()
+  /** Sessions the user just hit Stop on. Drivers report an interrupt as an
+   *  error event ("turn ended: …"); while this flag is up that event is
+   *  stamped stopped:true so a stop never reads as a failure. Cleared when
+   *  the turn settles. */
+  private stopping = new Set<string>()
   /** Sessions whose harness must reboot once the current turn settles —
    *  a tune saved mid-turn. Disposing a streaming handle mutes the turn
    *  (events drop, the thread wedges on "working"), so the drop waits
@@ -947,6 +952,7 @@ export class SessionRegistry {
     }
     const handle = this.handles.get(sessionId)
     if (handle) {
+      this.stopping.add(sessionId)
       handle.interrupt()
       return
     }
@@ -1298,6 +1304,7 @@ export class SessionRegistry {
     const ids = this.store.deleteSessionTree(sessionId)
     for (const id of ids) {
       await this.dropHandle(id)
+      this.stopping.delete(id)
       this.pendingReboot.delete(id)
       this.subscribers.delete(id)
       this.lastActivity.delete(id)
@@ -1536,15 +1543,22 @@ export class SessionRegistry {
       if (meta) this.notifyMeta(meta)
       return
     }
-    // A tune saved mid-turn waits here: the turn has settled, so the
-    // harness can now reboot with the new rules (resume keeps the
-    // conversation).
-    if (
-      event.type === 'status' &&
-      (event.status === 'idle' || event.status === 'error') &&
-      this.pendingReboot.delete(sessionId)
-    ) {
-      void this.dropHandle(sessionId)
+    // The user hit Stop: the driver reports the cut-off turn as an error
+    // ("turn ended: …") — stamp it so it reads as a stop, not a failure.
+    if (event.type === 'error' && this.stopping.has(sessionId)) {
+      event = { ...event, stopped: true }
+    }
+    if (event.type === 'status') {
+      this.stopping.delete(sessionId)
+      // A tune saved mid-turn waits here: the turn has settled, so the
+      // harness can now reboot with the new rules (resume keeps the
+      // conversation).
+      if (
+        (event.status === 'idle' || event.status === 'error') &&
+        this.pendingReboot.delete(sessionId)
+      ) {
+        void this.dropHandle(sessionId)
+      }
     }
     const beforeRecovery = this.storedContinuableError(sessionId)
     const row = this.store.appendEvent(sessionId, event)

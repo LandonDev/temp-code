@@ -64,6 +64,8 @@ type BlockKind =
       text: string
       /** settled by a Continue — the chip no longer renders */
       cleared?: boolean
+      /** the user hit Stop — quiet "Stopped" note, not a failure */
+      stopped?: boolean
     }
   | {
       kind: 'approval'
@@ -617,7 +619,7 @@ export function foldEvent(s: FoldState, e: AgentEvent, ts?: number): void {
       }
       break
     case 'error':
-      push(s, { kind: 'error', text: e.message })
+      push(s, { kind: 'error', text: e.message, stopped: e.stopped })
       break
     case 'errors-cleared':
       // Continue settled every error shown so far — the chips disappear.
