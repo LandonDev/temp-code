@@ -189,6 +189,10 @@ export const cursorDriver: HarnessDriver = {
     // resumed thread keeps updating the list it built earlier.
     const todos = new CursorTodos()
     let turnSeq = 0
+    // A stand-down is not a failure: interrupt kills cursor-agent with SIGINT,
+    // which exits 130 with no result. Without this the orchestrator's own
+    // interrupt_agent painted every stopped child red.
+    let stoodDown = false
     let disposed = false
     let contextTokens = 0
 
@@ -216,6 +220,7 @@ export const cursorDriver: HarnessDriver = {
       ]
       const p = spawn(binPath, args, { cwd: session.cwd, env, stdio: ['ignore', 'pipe', 'pipe'] })
       proc = p
+      stoodDown = false
 
       let sawResult = false
       createInterface({ input: p.stdout! }).on('line', (line) => {
@@ -367,7 +372,7 @@ export const cursorDriver: HarnessDriver = {
       p.on('exit', (code) => {
         if (proc === p) proc = null
         if (disposed) return
-        if (code !== 0 && !sawResult) {
+        if (code !== 0 && !sawResult && !stoodDown) {
           // Died mid-turn: cursor-agent gives up after three replays of a
           // dropped stream. Whatever it said is already on the transcript —
           // every message was emitted settled, not as an open delta.
@@ -404,6 +409,7 @@ export const cursorDriver: HarnessDriver = {
         )
       },
       interrupt(): void {
+        stoodDown = true
         proc?.kill('SIGINT')
       },
       async contextUsage(): Promise<unknown> {
