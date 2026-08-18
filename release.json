@@ -1,5 +1,5 @@
 {
-  "n": 80,
-  "notes": "Standing a Cursor agent down no longer marks it failed",
-  "ts": 1787069966488
+  "n": 81,
+  "notes": "Full-access Cursor subagents run with the sandbox explicitly off",
+  "ts": 1787072264040
 }
