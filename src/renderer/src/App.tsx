@@ -6,6 +6,7 @@ import { flushAllBuffers } from './lib/file-events'
 import { useApp } from './state/store'
 import { Sidebar } from './components/app/Sidebar'
 import { Titlebar } from './components/app/Titlebar'
+import { GlobalThreadBanners } from './components/app/GlobalThreadBanners'
 import { ThreadStrip } from './components/app/ThreadStrip'
 import { SurfaceStrip } from './components/app/SurfaceStrip'
 import { RightRail } from './components/app/RightRail'
@@ -87,6 +88,7 @@ export default function App(): React.JSX.Element {
       <Sidebar />
       <main className="relative flex min-w-0 flex-1 flex-col bg-background">
         <Titlebar />
+        <GlobalThreadBanners />
         {settingsOpen ? (
           <motion.div
             key="settings"

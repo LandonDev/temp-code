@@ -1,4 +1,5 @@
 import { memo, useEffect, useMemo, useState } from 'react'
+import { Pause } from 'lucide-react'
 import { cn } from '../../lib/utils'
 import { useApp } from '../../state/store'
 import { duration } from './bits'
@@ -82,9 +83,18 @@ export const WorkingStrip = memo(function WorkingStrip({
 }): React.JSX.Element {
   const status = useApp((s) => s.sessions[sessionId]?.status)
   const activityKind = useApp((s) => s.sessions[sessionId]?.activityKind)
+  const frozenActiveElapsed = useApp(
+    (s) =>
+      s.sessions[sessionId]?.treeFrozenActiveElapsed ??
+      s.sessions[sessionId]?.frozenActiveElapsed ??
+      0
+  )
+  const resume = useApp((s) => s.resume)
   const running = status === 'running'
   const starting = status === 'starting'
+  const paused = status === 'paused'
   const active = running || starting
+  const visible = active || paused
 
   // The whole working stretch, counted from its first message — the same
   // clock as the tab. busySince is server-stamped, so it survives steers,
@@ -107,7 +117,11 @@ export const WorkingStrip = memo(function WorkingStrip({
     const t = setInterval(() => setNow(Date.now()), 1000)
     return () => clearInterval(t)
   }, [active])
-  const elapsed = active ? Math.max(0, now - (turnStart ?? now)) : 0
+  const elapsed = paused
+    ? Math.max(0, frozenActiveElapsed)
+    : active
+      ? Math.max(0, now - (turnStart ?? now))
+      : 0
 
   // Flavour word: seeded per chat, rotates every 7s.
   const seed = useMemo(() => seedOf(sessionId), [sessionId])
@@ -118,16 +132,43 @@ export const WorkingStrip = memo(function WorkingStrip({
     return () => clearInterval(t)
   }, [running])
   const word = FLAVOUR_WORDS[(seed + tick) % FLAVOUR_WORDS.length]
+  const [resumeBusy, setResumeBusy] = useState(false)
+  const onResume = (): void => {
+    if (resumeBusy) return
+    setResumeBusy(true)
+    resume(sessionId).finally(() => setResumeBusy(false))
+  }
 
   return (
-    <div className="mx-auto flex h-6 w-full max-w-[736px] shrink-0 items-center gap-2 px-6">
+    <div
+      className={cn(
+        'mx-auto flex h-6 w-full max-w-[736px] shrink-0 items-center gap-2 px-6',
+        paused && 'border-y border-warning/15 bg-warning/8'
+      )}
+    >
       <div
         className={cn(
           'flex items-center gap-2 text-xs text-muted-foreground transition-opacity duration-150',
-          active ? 'opacity-100' : 'opacity-0'
+          visible ? 'opacity-100' : 'opacity-0',
+          paused && 'w-full text-warning'
         )}
+        aria-live="polite"
       >
-        {starting ? (
+        {paused ? (
+          <>
+            <Pause className="size-3 shrink-0 fill-current" strokeWidth={1.8} />
+            <span className="font-medium">Paused</span>
+            <span className="tabular-nums text-current/75">{duration(elapsed)}</span>
+            <button
+              type="button"
+              onClick={onResume}
+              disabled={resumeBusy}
+              className="ml-auto rounded-md border border-warning/25 bg-warning/10 px-2 py-0.5 text-[11px] font-medium transition-colors hover:bg-warning/18 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60"
+            >
+              {resumeBusy ? 'Continuing…' : 'Continue'}
+            </button>
+          </>
+        ) : starting ? (
           <span>Sending…</span>
         ) : (
           <>

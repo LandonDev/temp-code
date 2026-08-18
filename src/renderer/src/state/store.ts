@@ -14,7 +14,7 @@ import type {
   WorkspaceIcon,
   WorkspaceMeta
 } from '@shared/domain'
-import type { CreateSessionInput, QueuedMessage } from '@shared/contract'
+import type { CreateSessionInput, QueuedMessage, SessionBatchResult } from '@shared/contract'
 import { DEFAULT_APPSHOT_SETTINGS, type AppshotSettings } from '@shared/appshots'
 import shutterUrl from '../assets/shutter.wav?url'
 import { client } from '../lib/client'
@@ -284,6 +284,11 @@ interface AppState {
    *  pass (one-shot — consumed by send, cancellable) */
   armNewPass: (sessionId: string, armed: boolean) => void
   interrupt: (sessionId: string) => Promise<void>
+  pause: (sessionId: string) => Promise<void>
+  resume: (sessionId: string) => Promise<void>
+  continueRun: (sessionId: string) => Promise<void>
+  continueAllErrors: () => Promise<SessionBatchResult>
+  resumeAllPaused: () => Promise<SessionBatchResult>
   approve: (sessionId: string, requestId: string, allow: boolean) => Promise<void>
   /** Answer a model question; null = dismiss without answering. */
   answer: (sessionId: string, requestId: string, answers: string[][] | null) => Promise<void>
@@ -515,9 +520,7 @@ export const useApp = create<AppState>((set, get) => ({
           set((s) => {
             const id = push.session.id
             const cur = s.contexts[id] as
-              | { totalTokens: number; maxTokens: number; percentage: number }
-              | null
-              | undefined
+              { totalTokens: number; maxTokens: number; percentage: number } | null | undefined
             const maxTokens = live.window ?? cur?.maxTokens ?? 0
             if (cur?.totalTokens === live.tokens && cur.maxTokens === maxTokens) return {}
             const base = cur ?? { categories: [] }
@@ -537,8 +540,7 @@ export const useApp = create<AppState>((set, get) => ({
         }
         // A turn beginning makes any fetched breakdown historical — hide it
         // (the ring keeps its number) until the settle refetches.
-        const nowRunning =
-          push.session.status === 'running' || push.session.status === 'starting'
+        const nowRunning = push.session.status === 'running' || push.session.status === 'starting'
         if (nowRunning && prev && !(prev.status === 'running' || prev.status === 'starting')) {
           set((s) => {
             const cur = s.contexts[push.session.id] as { stale?: boolean } | null | undefined
@@ -969,6 +971,11 @@ export const useApp = create<AppState>((set, get) => ({
     // means; the flag rides the event so refolds agree forever.
     const newPass = newPassArmed.has(sessionId)
     newPassArmed.delete(sessionId)
+    const before = get().sessions[sessionId]
+    if (before && (before.status === 'paused' || before.treeHasPaused)) {
+      await get().queueAdd(sessionId, text, opts)
+      return
+    }
     // Optimistic: the message and the working state appear this frame; the
     // server's echo claims the block instead of duplicating it.
     let fold = folds.get(sessionId)
@@ -979,7 +986,6 @@ export const useApp = create<AppState>((set, get) => ({
     foldOptimisticUser(fold, text, opts?.attachments, newPass)
     publishFold(set, sessionId, fold)
     set((s) => ({ stopped: { ...s.stopped, [sessionId]: false } }))
-    const before = get().sessions[sessionId]
     if (before && before.status !== 'running') {
       set((s) => ({
         sessions: { ...s.sessions, [sessionId]: { ...before, status: 'starting' } }
@@ -1006,6 +1012,22 @@ export const useApp = create<AppState>((set, get) => ({
     set((s) => ({ stopped: { ...s.stopped, [sessionId]: true } }))
     await client.request('session.interrupt', { sessionId })
   },
+
+  pause: async (sessionId) => {
+    await client.request('session.pause', { sessionId })
+  },
+
+  resume: async (sessionId) => {
+    await client.request('session.resume', { sessionId })
+  },
+
+  continueRun: async (sessionId) => {
+    await client.request('session.continue', { sessionId })
+  },
+
+  continueAllErrors: () => client.request<SessionBatchResult>('session.continueAllErrors'),
+
+  resumeAllPaused: () => client.request<SessionBatchResult>('session.resumeAllPaused'),
 
   approve: async (sessionId, requestId, allow) => {
     await client.request('session.approve', { sessionId, requestId, allow })
@@ -1326,6 +1348,17 @@ export const unsortedSessions = (sessions: Record<string, SessionMeta>): Session
   Object.values(sessions)
     .filter((s) => !s.projectId && !s.workspaceId && !s.parentId && !s.archived)
     .sort((a, b) => b.createdAt - a.createdAt)
+
+/** Unarchived visible roots represented by each app-wide lifecycle banner. */
+export const recoveryRoots = (sessions: Record<string, SessionMeta>): SessionMeta[] =>
+  Object.values(sessions).filter(
+    (session) => !session.parentId && !session.archived && session.treeCanContinue
+  )
+
+export const pausedRoots = (sessions: Record<string, SessionMeta>): SessionMeta[] =>
+  Object.values(sessions).filter(
+    (session) => !session.parentId && !session.archived && session.treeHasPaused
+  )
 
 /** Subagents of an orchestration thread, oldest first. */
 export const childrenOf = (
