@@ -7,6 +7,7 @@ import { BUILT_IN_DRIVERS } from '../src/main/server/drivers'
 import { openDb, Store } from '../src/main/server/db'
 import { SessionRegistry } from '../src/main/server/sessions'
 import type { TurnPass } from '../src/shared/turnpass'
+import type { SessionMeta } from '../src/shared/events'
 
 const sends: { sessionId: string; text: string }[] = []
 const boots: string[] = []
@@ -255,6 +256,53 @@ check('pause all reports no failures', pauseBatch.failed.length === 0)
 check(
   'nothing running leaves pause all with no work',
   (await registry.pauseAllRunning()).attempted.length === 0
+)
+
+// A thread that is working again never reads as failed. The stored fold
+// stays put, so an error nothing superseded returns if the thread settles
+// without producing anything.
+const revived = await registry.create({ ...base, title: 'revived-root' })
+await tick()
+registry.append(revived.id, { type: 'error', message: 'limit' })
+registry.append(revived.id, { type: 'status', status: 'idle' })
+const metaOf = (id: string): SessionMeta | undefined => registry.list().find((s) => s.id === id)
+check(
+  'a settled error still offers recovery',
+  metaOf(revived.id)?.canContinue === true && metaOf(revived.id)?.treeCanContinue === true
+)
+registry.append(revived.id, { type: 'status', status: 'running' })
+check(
+  'a working thread drops the recovery flag',
+  metaOf(revived.id)?.canContinue === false && metaOf(revived.id)?.treeCanContinue === false
+)
+const skipBatch = await registry.continueAllErrors()
+check('recovery batches leave a working thread alone', !skipBatch.attempted.includes(revived.id))
+registry.append(revived.id, { type: 'status', status: 'idle' })
+check('an unproductive run brings the flag back', metaOf(revived.id)?.canContinue === true)
+registry.append(revived.id, { type: 'status', status: 'running' })
+registry.append(revived.id, { type: 'assistant-text', text: 'back at it', delta: false })
+registry.append(revived.id, { type: 'status', status: 'idle' })
+check(
+  'work that produced something clears the error for good',
+  metaOf(revived.id)?.canContinue === false
+)
+
+// A dead subagent waits its turn: while the orchestration works, its root
+// reads as working, and the flag surfaces once the root settles.
+const liveOrch = await registry.create({ ...base, title: 'live-orch', agentType: 'orchestrator' })
+const deadChild = await registry.create({ ...base, title: 'dead-child', parentId: liveOrch.id })
+await tick()
+registry.append(deadChild.id, { type: 'error', message: 'child died' })
+registry.append(deadChild.id, { type: 'status', status: 'error' })
+registry.append(liveOrch.id, { type: 'status', status: 'running' })
+check(
+  'a working orchestration hides a dead child behind its own live status',
+  metaOf(liveOrch.id)?.treeCanContinue === false && metaOf(liveOrch.id)?.treeHasLiveWork === true
+)
+registry.append(liveOrch.id, { type: 'status', status: 'idle' })
+check(
+  'the dead child surfaces once the orchestration settles',
+  metaOf(liveOrch.id)?.treeCanContinue === true
 )
 
 await registry.disposeAll()

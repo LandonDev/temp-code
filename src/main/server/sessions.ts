@@ -356,7 +356,7 @@ export class SessionRegistry {
   }
 
   /** Whether stored work still ends in an uncleared, unsuperseded error. */
-  private canContinueError(sessionId: string): boolean {
+  private storedContinuableError(sessionId: string): boolean {
     let canContinue = this.continuableErrors.get(sessionId)
     if (canContinue === undefined) {
       canContinue = false
@@ -366,6 +366,17 @@ export class SessionRegistry {
       this.continuableErrors.set(sessionId, canContinue)
     }
     return canContinue
+  }
+
+  /** Whether the user can still recover this session. Work that is moving
+   *  again — restarted by hand, by its parent, or by a queued message —
+   *  never advertises failure, even before its first new event lands. The
+   *  stored fold is untouched, so an error nothing superseded comes back
+   *  if the session settles without producing anything. */
+  private canContinueError(sessionId: string): boolean {
+    const status = this.store.getSession(sessionId)?.status
+    if (status === 'starting' || status === 'running' || status === 'waiting') return false
+    return this.storedContinuableError(sessionId)
   }
 
   /** When the session last produced or received anything (drives
@@ -1409,7 +1420,7 @@ export class SessionRegistry {
       )
       // The replacement accepted the work. Only now settle the old chips;
       // a boot or send failure leaves the fold true for another retry.
-      if (this.canContinueError(sessionId)) this.append(sessionId, { type: 'errors-cleared' })
+      if (this.storedContinuableError(sessionId)) this.append(sessionId, { type: 'errors-cleared' })
       this.erroredTurns.delete(sessionId)
     } catch (error) {
       const current = this.store.getSession(sessionId)
@@ -1495,7 +1506,7 @@ export class SessionRegistry {
       if (meta) this.notifyMeta(meta)
       return
     }
-    const beforeRecovery = this.canContinueError(sessionId)
+    const beforeRecovery = this.storedContinuableError(sessionId)
     const row = this.store.appendEvent(sessionId, event)
     const afterRecovery = foldContinuableError(beforeRecovery, event)
     this.continuableErrors.set(sessionId, afterRecovery)

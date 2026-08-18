@@ -52,9 +52,13 @@ export function summarizeRootTree(
     pending.push(...(byParent.get(session.id) ?? []))
   }
 
+  // A tree with work still moving reads as working, not failed: an error
+  // a live sibling or child left behind waits until the tree settles, so
+  // no running thread wears a recovery label it cannot act on.
+  const hasLiveWork = tree.some((session) => LIVE_STATUSES.has(session.status))
   return {
-    canContinueError: tree.some((session) => canContinue(session.id)),
-    hasLiveWork: tree.some((session) => LIVE_STATUSES.has(session.status)),
+    canContinueError: !hasLiveWork && tree.some((session) => canContinue(session.id)),
+    hasLiveWork,
     hasPaused: tree.some((session) => session.status === 'paused'),
     frozenActiveElapsed: root.frozenActiveElapsed
   }

@@ -436,8 +436,13 @@ function ProjectRow({
   const waiting = threads.filter(
     (t) => !pausedThreads.includes(t) && !t.treeCanContinue && t.status === 'waiting'
   ).length
+  // Live work outranks a failure the thread already moved past, so a
+  // working thread is never counted among the failed ones.
   const failed = threads.filter(
-    (t) => !pausedThreads.includes(t) && (t.status === 'error' || t.treeCanContinue)
+    (t) =>
+      !pausedThreads.includes(t) &&
+      !t.treeHasLiveWork &&
+      (t.status === 'error' || t.treeCanContinue)
   ).length
   const unread = threads.filter(
     (t) =>
