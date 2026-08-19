@@ -1,5 +1,5 @@
 {
-  "n": 84,
-  "notes": "1M context works again: Fable 1M threads ride the [1m] model suffix instead of a beta header the CLI drops on subscription auth, and toggling fast no longer wipes the 1M flag (or the reverse)",
-  "ts": 1787090500000
+  "n": 85,
+  "notes": "Research threads: a new thread type that fans out web-research subagents, streams queries and sources onto a live board, and writes a cited report to .temp-code/reports/ that every other thread can find and cite",
+  "ts": 1787163300000
 }
