@@ -37,7 +37,7 @@ import {
   DEFAULT_APPSHOT_SETTINGS,
   type AppshotSettings
 } from '@shared/appshots'
-import { planPathFor, planSeed, projectContext, threadPreamble } from './threads'
+import { planPathFor, planSeed, projectContext, reportPathFor, threadPreamble } from './threads'
 import { notifyParentOfSettle } from './orchestration'
 import { foldTodo, newTodoFold, tallyOf, type TaskTally, type TodoFold } from './todos'
 import { liveDiffOnStatus } from './livediff'
@@ -55,7 +55,8 @@ const THREAD_TITLES = {
   chat: 'New chat',
   planning: 'New plan',
   implementation: 'New task',
-  orchestration: 'New orchestration'
+  orchestration: 'New orchestration',
+  research: 'New research'
 } as const
 
 type SessionListener = (row: EventRow) => void
@@ -273,6 +274,14 @@ export class SessionRegistry {
   /** threads titled by slicing their first message, awaiting a real title:
    *  sessionId → the placeholder (to detect a user rename) + the message */
   private pendingTitles = new Map<string, { placeholder: string; text: string }>()
+  /** research boards: WebFetch calls awaiting a title from their result
+   *  (key = the boarded event's callId), and per-root dedupe of already
+   *  boarded queries/urls so repeats never bloat the root's log */
+  private researchFetches = new Map<
+    string,
+    { rootId: string; url: string; agentId: string; agentLabel: string }
+  >()
+  private researchSeen = new Map<string, Set<string>>()
   private sweepTimer: ReturnType<typeof setInterval> | null = null
 
   constructor(private store: Store) {}
@@ -637,8 +646,14 @@ export class SessionRegistry {
       projectId: params.projectId,
       workspaceId: workspace?.id ?? null,
       threadType: params.threadType,
-      // Planning threads own a plan file; seeded threads point at their source.
-      planPath: params.threadType === 'planning' ? planPathFor(cwd, id) : (params.planPath ?? null),
+      // Planning threads own a plan file, research threads a report file;
+      // seeded threads point at their source.
+      planPath:
+        params.threadType === 'planning'
+          ? planPathFor(cwd, id)
+          : params.threadType === 'research'
+            ? reportPathFor(cwd, id)
+            : (params.planPath ?? null),
       provider,
       model,
       reasoning: params.reasoning ?? d.reasoning,
@@ -839,7 +854,11 @@ export class SessionRegistry {
     if (retyped) this.store.setRetyped(sessionId, false)
     if (first || retyped) {
       const parts = [threadPreamble(meta)]
-      if (meta.threadType !== 'planning' && meta.planPath) parts.push(planSeed(meta.planPath))
+      // Planning and research threads WRITE their planPath file (plan /
+      // report) — only executing types read it as a brief.
+      if (meta.threadType !== 'planning' && meta.threadType !== 'research' && meta.planPath) {
+        parts.push(planSeed(meta.planPath))
+      }
       const preamble = parts.filter(Boolean).join('\n\n')
       if (preamble) {
         const note = retyped
@@ -1248,7 +1267,15 @@ export class SessionRegistry {
     if (!meta || meta.parentId || !meta.threadType || meta.threadType === threadType) return
     await this.dropHandle(sessionId)
     const patch: Parameters<Store['updateSession']>[1] = { threadType }
-    if (threadType === 'planning' && !meta.planPath) {
+    // Research owns the planPath slot outright — it is the report
+    // destination, minted on entry and released on exit (a report path
+    // must never masquerade as a plan for the next type).
+    const reportPath = reportPathFor(meta.cwd, sessionId)
+    if (threadType === 'research') {
+      patch.planPath = reportPath
+    } else if (meta.planPath === reportPath) {
+      patch.planPath = threadType === 'planning' ? planPathFor(meta.cwd, sessionId) : null
+    } else if (threadType === 'planning' && !meta.planPath) {
       patch.planPath = planPathFor(meta.cwd, sessionId)
     }
     if (threadType === 'orchestration') patch.agentType = 'orchestrator'
@@ -1532,6 +1559,11 @@ export class SessionRegistry {
       for (const listener of this.subscribers.get(sessionId) ?? []) listener(row)
       return
     }
+    // Research boards: web tool calls anywhere in a research thread's agent
+    // tree surface as research-source events on the ROOT session (partials
+    // returned above, so every tool-call here is final).
+    if (event.type === 'tool-call') this.harvestResearchCall(sessionId, event)
+    else if (event.type === 'tool-result') this.harvestResearchTitle(sessionId, event)
     // Live context accounting is meta, not transcript: fold it onto the
     // session row and push, never into the log.
     if (event.type === 'context') {
@@ -1684,6 +1716,80 @@ export class SessionRegistry {
     }
     for (const listener of this.subscribers.get(sessionId) ?? []) listener(row)
     if (settleToReport) notifyParentOfSettle(this, settleToReport)
+  }
+
+  // ── research boards (sources harvested from the agent tree) ─────────
+
+  /** The research thread this session's ancestor chain roots in, if any. */
+  private researchRoot(sessionId: string): SessionMeta | null {
+    let cur = this.store.getSession(sessionId)
+    for (let i = 0; cur?.parentId && i < 16; i++) cur = this.store.getSession(cur.parentId)
+    return cur?.threadType === 'research' ? cur : null
+  }
+
+  /** A final web tool call in a research tree becomes a research-source
+   *  event on the root: WebSearch/web_search board their query, WebFetch
+   *  its url. Deduped per (agent, query/url); callIds are prefixed with
+   *  the calling session so agents' "call_1"s never collide in one log. */
+  private harvestResearchCall(
+    sessionId: string,
+    event: Extract<AgentEvent, { type: 'tool-call' }>
+  ): void {
+    const isSearch = /^(websearch|web_search)$/i.test(event.name)
+    const isFetch = /^(webfetch|web_fetch)$/i.test(event.name)
+    if (!isSearch && !isFetch) return
+    const root = this.researchRoot(sessionId)
+    if (!root) return
+    const input = (
+      event.input && typeof event.input === 'object' ? event.input : {}
+    ) as Record<string, unknown>
+    const agentLabel = this.store.getSession(sessionId)?.title ?? 'research'
+    let seen = this.researchSeen.get(root.id)
+    if (!seen) {
+      seen = new Set()
+      this.researchSeen.set(root.id, seen)
+    }
+    const callId = `${sessionId}:${event.callId}`
+    if (isSearch) {
+      const query = typeof input.query === 'string' ? input.query.trim() : ''
+      if (!query || seen.has(`q:${sessionId}:${query}`)) return
+      seen.add(`q:${sessionId}:${query}`)
+      this.append(root.id, { type: 'research-source', callId, query, agentId: sessionId, agentLabel })
+    } else {
+      const url = typeof input.url === 'string' ? input.url.trim() : ''
+      if (!url || seen.has(`u:${sessionId}:${url}`)) return
+      seen.add(`u:${sessionId}:${url}`)
+      this.researchFetches.set(callId, { rootId: root.id, url, agentId: sessionId, agentLabel })
+      this.append(root.id, { type: 'research-source', callId, url, agentId: sessionId, agentLabel })
+    }
+  }
+
+  /** A boarded fetch's result upgrades its row in place (same callId, now
+   *  with a title) when one is recoverable from the processed output. */
+  private harvestResearchTitle(
+    sessionId: string,
+    event: Extract<AgentEvent, { type: 'tool-result' }>
+  ): void {
+    const callId = `${sessionId}:${event.callId}`
+    const pending = this.researchFetches.get(callId)
+    if (!pending) return
+    this.researchFetches.delete(callId)
+    if (event.isError) return
+    const head = event.output.slice(0, 4000)
+    const m =
+      head.match(/<title[^>]*>\s*([^<]{1,200}?)\s*<\/title>/i) ??
+      head.match(/^#\s+(.{1,200})$/m) ??
+      head.match(/^Title:\s*(.{1,200})$/im)
+    const title = m?.[1]?.replace(/\s+/g, ' ').trim()
+    if (!title) return
+    this.append(pending.rootId, {
+      type: 'research-source',
+      callId,
+      url: pending.url,
+      agentId: pending.agentId,
+      agentLabel: pending.agentLabel,
+      title
+    })
   }
 
   subscribe(sessionId: string, listener: SessionListener): () => void {

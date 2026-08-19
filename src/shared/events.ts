@@ -113,6 +113,22 @@ export const AgentEventSchema = z.discriminatedUnion('type', [
     parentCallId: z.string().optional()
   }),
 
+  // A web source consulted anywhere in a research thread's agent tree —
+  // harvested server-side from WebSearch/WebFetch tool calls and appended
+  // to the ROOT research session, so the sources board gets persistence,
+  // backfill, and live push for free. A query event (no url) opens a
+  // query header; url events are the sources beneath it. An event with
+  // the same callId replaces the earlier one (title enrichment).
+  z.object({
+    type: z.literal('research-source'),
+    callId: z.string(),
+    url: z.string().optional(),
+    query: z.string().optional(),
+    agentId: z.string(),
+    agentLabel: z.string(),
+    title: z.string().optional()
+  }),
+
   // Session lifecycle.
   z.object({
     type: z.literal('status'),

@@ -854,6 +854,20 @@ no subagent writes anything beyond notes. Fold what they find into the
 plan as their reports land.`
 }
 
+/** Mechanics for research threads: the fleet IS the method — parallel
+ *  web explorers feeding a cited report. */
+export function researchSpawnPrompt(session: SessionMeta): string {
+  return `${orchestratorMechanics(rulesFor(session))}
+
+This is a RESEARCH thread: your deliverable is a cited report, and
+subagents are how you cover ground. Spawn parallel explorers, one per
+research angle, each with a self-contained brief: search the web with
+several query formulations, fetch and read the promising pages deeply,
+chase citations to primary sources, and return findings with a URL for
+every claim. Review coverage as reports land; spawn follow-ups for gaps
+and contradictions. You synthesize — the report is yours to write.`
+}
+
 /** The rules governing a session: workspace override → global → defaults,
  *  with the thread's own per-run conduct tune laid on top. */
 export function rulesFor(session: SessionMeta): OrchestrationRules {
