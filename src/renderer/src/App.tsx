@@ -17,6 +17,7 @@ import { ChatView } from './components/app/views/ChatView'
 import { PlanView } from './components/app/views/PlanView'
 import { ImplementationView } from './components/app/views/ImplementationView'
 import { OrchestrationView } from './components/app/views/OrchestrationView'
+import { ResearchView } from './components/app/views/ResearchView'
 import { SettingsView } from './components/app/views/SettingsView'
 import { Spinner } from './components/ui/spinner'
 
@@ -168,6 +169,8 @@ function ThreadView({ sessionId }: { sessionId: string }): React.JSX.Element {
       return <ImplementationView session={session} />
     case 'orchestration':
       return <OrchestrationView session={session} />
+    case 'research':
+      return <ResearchView session={session} />
     default:
       return <ChatView sessionId={sessionId} />
   }

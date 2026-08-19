@@ -1,5 +1,5 @@
 import type { LucideIcon } from 'lucide-react'
-import { GitFork, ListChecks, Map as MapIcon, MessageSquare } from 'lucide-react'
+import { GitFork, ListChecks, Map as MapIcon, MessageSquare, Telescope } from 'lucide-react'
 import type { ThreadType } from '@shared/domain'
 import type { ProviderId } from '@shared/catalog'
 import type { SessionStatus } from '@shared/events'
@@ -29,14 +29,16 @@ export const THREAD_GLYPHS: Record<ThreadType, LucideIcon> = {
   chat: MessageSquare,
   planning: MapIcon,
   implementation: ListChecks,
-  orchestration: GitFork
+  orchestration: GitFork,
+  research: Telescope
 }
 
 export const THREAD_LABELS: Record<ThreadType, string> = {
   chat: 'Chat',
   planning: 'Plan',
   implementation: 'Implement',
-  orchestration: 'Orchestrate'
+  orchestration: 'Orchestrate',
+  research: 'Research'
 }
 
 /** Identity tint per thread type — the glyph carries it, nothing else. */
@@ -44,7 +46,8 @@ export const THREAD_TINTS: Record<ThreadType, string> = {
   chat: 'text-info',
   planning: 'text-violet',
   implementation: 'text-success',
-  orchestration: 'text-warning'
+  orchestration: 'text-warning',
+  research: 'text-cyan'
 }
 
 /** Brand mark + tint per provider (Zeron harness_brand_icon: the Claude

@@ -47,7 +47,8 @@ const TYPE_HINTS: Record<ThreadType, string> = {
   chat: 'Ask questions, explore the code',
   planning: 'Produce a plan document to implement from',
   implementation: 'Execute a task, todos in focus',
-  orchestration: 'Spawn and direct subagents'
+  orchestration: 'Spawn and direct subagents',
+  research: 'Deep-dive a topic on the web, produce a cited report'
 }
 
 /** Tab-edge status, one glance apart (apple-design: things that mean
@@ -409,10 +410,12 @@ export function ThreadStrip(): React.JSX.Element | null {
                             <Pencil className="size-3.5 text-muted-foreground" />
                             Rename
                           </ContextMenuItem>
-                          {t.threadType === 'orchestration' && (
+                          {(t.threadType === 'orchestration' || t.threadType === 'research') && (
                             <ContextMenuItem onClick={() => setTuning(t.id)}>
                               <SlidersHorizontal className="size-3.5 text-muted-foreground" />
-                              Orchestration options…
+                              {t.threadType === 'research'
+                                ? 'Research options…'
+                                : 'Orchestration options…'}
                             </ContextMenuItem>
                           )}
                           {t.treeHasPaused ? (
@@ -526,10 +529,12 @@ export function ThreadStrip(): React.JSX.Element | null {
                           <Pencil className="size-3.5 text-muted-foreground" />
                           Rename
                         </ContextMenuItem>
-                        {t.threadType === 'orchestration' && (
+                        {(t.threadType === 'orchestration' || t.threadType === 'research') && (
                           <ContextMenuItem onClick={() => setTuning(t.id)}>
                             <SlidersHorizontal className="size-3.5 text-muted-foreground" />
-                            Orchestration options…
+                            {t.threadType === 'research'
+                              ? 'Research options…'
+                              : 'Orchestration options…'}
                           </ContextMenuItem>
                         )}
                         <ContextMenuItem onClick={() => archive(t.id)}>
@@ -684,9 +689,9 @@ function NewThreadButton({
   const workspaceId = useApp((s) => s.projects.find((p) => p.id === projectId)?.workspaceId ?? null)
   const [open, setOpen] = useState(false)
   const [busy, setBusy] = useState<ThreadType | null>(null)
-  // 'tune' swaps the popover into the orchestration options — same
+  // Tuning swaps the popover into the spawn options for that type — same
   // surface, anchored where it came from; Back returns along that path.
-  const [view, setView] = useState<'list' | 'tune'>('list')
+  const [tuning, setTuning] = useState<'orchestration' | 'research' | null>(null)
   const [tune, setTune] = useState<ThreadRules>({})
 
   if (!catalog) return <span />
@@ -714,7 +719,7 @@ function NewThreadButton({
   const reset = (o: boolean): void => {
     setOpen(o)
     if (!o) {
-      setView('list')
+      setTuning(null)
       setTune({})
     }
   }
@@ -734,26 +739,34 @@ function NewThreadButton({
           {empty && <span className="text-[13px]">New thread</span>}
         </button>
       </PopoverTrigger>
-      <PopoverContent align="start" className={cn('gap-0 p-1', view === 'tune' ? 'w-80' : 'w-72')}>
-        {view === 'tune' ? (
+      <PopoverContent align="start" className={cn('gap-0 p-1', tuning ? 'w-80' : 'w-72')}>
+        {tuning ? (
           <div className="p-2">
             <div className="mb-2 flex items-center gap-1">
               <button
-                onClick={() => setView('list')}
+                onClick={() => setTuning(null)}
                 aria-label="Back"
                 className="flex size-6 items-center justify-center rounded-md text-muted-foreground transition hover:bg-accent hover:text-foreground active:scale-95"
               >
                 <ChevronLeft className="size-4" />
               </button>
-              <span className="text-[13px] font-medium">Orchestration options</span>
+              <span className="text-[13px] font-medium">
+                {tuning === 'research' ? 'Research options' : 'Orchestration options'}
+              </span>
             </div>
             <OrchestrationTune workspaceId={workspaceId} value={tune} onChange={setTune} />
             <button
               disabled={busy !== null}
-              onClick={() => void create('orchestration', tune)}
+              onClick={() => void create(tuning, tune)}
               className="mt-3 flex h-8 w-full items-center justify-center gap-1.5 rounded-lg bg-primary text-[12.5px] font-medium text-primary-foreground transition hover:opacity-90 active:scale-[0.99] disabled:opacity-60"
             >
-              {busy === 'orchestration' ? <Spinner className="size-3.5" /> : 'Start orchestration'}
+              {busy === tuning ? (
+                <Spinner className="size-3.5" />
+              ) : tuning === 'research' ? (
+                'Start research'
+              ) : (
+                'Start orchestration'
+              )}
             </button>
           </div>
         ) : (
@@ -791,14 +804,14 @@ function NewThreadButton({
                     {TYPE_HINTS[t]}
                   </span>
                 </span>
-                {t === 'orchestration' && (
+                {(t === 'orchestration' || t === 'research') && (
                   <button
                     onClick={(e) => {
                       e.stopPropagation()
-                      setView('tune')
+                      setTuning(t)
                     }}
                     title="Instructions & rule overrides"
-                    aria-label="Orchestration options"
+                    aria-label={t === 'research' ? 'Research options' : 'Orchestration options'}
                     className="flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground opacity-0 transition group-hover/new:opacity-100 hover:bg-background/60 hover:text-foreground active:scale-95"
                   >
                     <SlidersHorizontal className="size-3.5" />
@@ -834,7 +847,9 @@ function TuneDialog({
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="w-[360px] gap-0 p-4">
-        <DialogTitle className="text-[13.5px] font-medium">Orchestration options</DialogTitle>
+        <DialogTitle className="text-[13.5px] font-medium">
+          {session.threadType === 'research' ? 'Research options' : 'Orchestration options'}
+        </DialogTitle>
         <p className="mt-0.5 mb-3 truncate text-[11.5px] text-muted-foreground">
           {session.title} — changes apply from the next message.
         </p>

@@ -27,6 +27,7 @@ import {
   chatSpawnPrompt,
   implementerSpawnPrompt,
   planningSpawnPrompt,
+  researchSpawnPrompt,
   ORCHESTRATOR_TOOLS,
   orchestratorMcp,
   orchestratorPrompt,
@@ -862,12 +863,13 @@ export const claudeDriver: HarnessDriver = {
           })()
         : session.threadType === 'implementation' ||
             session.threadType === 'chat' ||
-            session.threadType === 'planning'
+            session.threadType === 'planning' ||
+            session.threadType === 'research'
           ? {
-              // Implementation, chat AND planning threads spawn subagents
-              // through the same toolset — never by shelling out to another
-              // model's CLI, and never invisibly through the built-in Task
-              // tool. Every thread that delegates grows the fleet panel.
+              // Implementation, chat, planning AND research threads spawn
+              // subagents through the same toolset — never by shelling out
+              // to another model's CLI, and never invisibly through the
+              // built-in Task tool. Every delegation grows the fleet panel.
               mcpServers: {
                 orchestrator: orchestratorMcp(session),
                 app: appToolsMcp(session)
@@ -885,7 +887,9 @@ export const claudeDriver: HarnessDriver = {
                     ? chatSpawnPrompt(session)
                     : session.threadType === 'planning'
                       ? planningSpawnPrompt(session)
-                      : implementerSpawnPrompt(session)
+                      : session.threadType === 'research'
+                        ? researchSpawnPrompt(session)
+                        : implementerSpawnPrompt(session)
               }
             }
           : {

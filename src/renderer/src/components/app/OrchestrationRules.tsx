@@ -139,7 +139,7 @@ export function OrchestrationRulesEditor({
             ? overridden
               ? 'This workspace overrides the global rules.'
               : 'Using the global rules; any change creates a workspace override.'
-            : 'The defaults for every orchestration; each thread can override them when you start it. Denied abilities are enforced, not suggested.'
+            : 'The defaults for every thread that spawns subagents — orchestration and research fan-out alike; each thread can override them when you start it. Denied abilities are enforced, not suggested.'
         }
         action={
           <button

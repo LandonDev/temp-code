@@ -100,7 +100,7 @@ export function appReadThread(reg: SessionRegistry, threadId: string): string | 
 }
 
 export interface StartThreadArgs {
-  threadType: 'chat' | 'planning' | 'implementation' | 'orchestration'
+  threadType: 'chat' | 'planning' | 'implementation' | 'orchestration' | 'research'
   provider: ProviderId
   model?: string
   reasoning?: string
@@ -220,7 +220,7 @@ export function appToolsMcp(session: SessionMeta): McpSdkServerConfigWithInstanc
         'app_start_thread',
         'Create a new thread and send its first message — it starts working immediately, visibly. Use ONLY when the user asked for a handoff or agreed to one (e.g. plan approved → implementation thread; chat crystallized → planning thread seeded from it).',
         {
-          threadType: z.enum(['chat', 'planning', 'implementation', 'orchestration']),
+          threadType: z.enum(['chat', 'planning', 'implementation', 'orchestration', 'research']),
           provider: z.enum(providerIds),
           model: z
             .string()

@@ -1,3 +1,4 @@
+import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { SessionMeta } from '@shared/events'
 import type { ProjectMeta } from '@shared/domain'
@@ -17,6 +18,12 @@ import { orchestratorPrompt, rulesFor, spawnableModels } from './orchestration'
 
 export const planPathFor = (cwd: string, sessionId: string): string =>
   join(cwd, '.temp-code', `plan-${sessionId}.md`)
+
+/** Research reports live in their own dir; the path rides the session's
+ *  planPath field (untyped TEXT), so the plan-file machinery — live poll,
+ *  pin, app_start_thread seeding — works on reports unchanged. */
+export const reportPathFor = (cwd: string, sessionId: string): string =>
+  join(cwd, '.temp-code', 'reports', `${sessionId}.md`)
 
 /** The provider's structured-question tool — the ONLY sanctioned way to
  *  put options to the user (the UI renders them as answerable cards).
@@ -106,6 +113,18 @@ A FOLLOW-UP message after your list finished is a NEW round of work, and the UI 
 ${spawnNote(session)}
 ${app}`
     }
+    case 'research':
+      return `You are running a RESEARCH thread — deep research on the live web, distilled into a durable cited report. Your sources are the web (WebSearch/WebFetch and their equivalents), not this codebase. If this configuration has no web tools, say so plainly and stop — never fake research from memory.
+Your deliverable is the report at ${session.planPath}. Create it EARLY (create parent directories) with frontmatter — title, date, status: in-progress, and a one-line summary — and keep it updated as you go; it is rendered live to the user. Set status: complete when the research is done.
+Work the loop:
+1. SCOPE — restate the question and break it into the sub-questions and angles worth chasing. Ask the user only if the request is genuinely ambiguous.
+2. FAN OUT — spawn parallel explorer subagents, one per angle, each with a self-contained brief: search broadly (several query formulations, never just one), read the promising results deeply (fetch the pages, not just snippets), chase citations back to primary sources, prefer recent and authoritative material, and return structured findings with a URL for every claim.
+3. ITERATE — review coverage as agents report. Spawn follow-up agents for gaps, contradictions between sources, and intricacies that surfaced mid-research. Cross-check contested claims against independent sources before accepting them.
+4. SYNTHESIZE — write the report, citing as you go. Structure: the TL;DR up top, findings organized by question with inline numbered citations, a full sources list, contested or uncertain points called out as such, open questions at the end. Target breadth AND depth: many sources, primary over secondary, disagreements surfaced rather than averaged away.
+FOLLOW-UP messages are answer-first: answer from the report and the sources already gathered. Only when the answer is not in hand, spawn one or two narrowly-briefed agents for exactly that question — and fold material findings back into the report (edit in place, note what changed).
+${questions}
+${spawnNote(session)}
+${app}`
     case 'orchestration':
       // claude orchestrators carry the mechanics + user rules in their
       // system prompt; other harnesses get the same text as a preamble
@@ -138,6 +157,41 @@ const ago = (ts: number): string => {
 /** Index caps at the most recently updated threads — never their contents. */
 const CONTEXT_INDEX_MAX = 8
 
+/** One line per research report in reports/, from each file's frontmatter
+ *  (research threads write it: title, date, status) — newest first, same
+ *  cap as threads. Missing dir or unreadable file = no lines. */
+function reportLines(cwd: string): string[] {
+  try {
+    const dir = join(cwd, '.temp-code', 'reports')
+    return readdirSync(dir, { withFileTypes: true })
+      .filter((f) => f.isFile() && f.name.endsWith('.md'))
+      .flatMap((f) => {
+        try {
+          const head = readFileSync(join(dir, f.name), 'utf8').slice(0, 600)
+          const get = (k: string): string | null =>
+            head
+              .match(new RegExp(`^${k}:\\s*(.+)$`, 'm'))?.[1]
+              ?.trim()
+              .replace(/^["']|["']$/g, '') ?? null
+          const meta = [get('date'), get('status')].filter(Boolean).join(', ')
+          return [
+            {
+              date: get('date') ?? '',
+              line: `    · "${get('title') ?? f.name}"${meta ? ` (${meta})` : ''} — .temp-code/reports/${f.name}`
+            }
+          ]
+        } catch {
+          return []
+        }
+      })
+      .sort((a, b) => b.date.localeCompare(a.date))
+      .slice(0, CONTEXT_INDEX_MAX)
+      .map((r) => r.line)
+  } catch {
+    return []
+  }
+}
+
 /**
  * The `<project-context>` block prepended to a project thread's first
  * message: where shared context lives, what the sibling threads are, and
@@ -165,6 +219,7 @@ export function projectContext(
   const threads = threadLines.length
     ? `Most recent threads:\n${threadLines.join('\n')}${overflow}`
     : 'No other threads yet.'
+  const reports = reportLines(session.cwd)
   const where = [
     workspaceName ? `workspace "${workspaceName}"` : null,
     project.branch ? `branch ${project.branch}` : null
@@ -179,7 +234,7 @@ Shared context lives in .temp-code/ — FIND what you need, never bulk-read:
 - threads/<id>-<slug>.md — transcripts. Frontmatter and ## Outcome at the top summarize each one; read just the head (~40 lines) first, and the full body only when the outcome says it is the right thread.
 - PROJECT.md — the journal: one dated line per durable outcome. Skim the tail of ## Log for recent state; PROJECT-archive.md has older entries.
 - plan-*.md — plan documents.
-${threads}
+${reports.length ? `- reports/*.md — research reports, citable by any thread:\n${reports.join('\n')}\n` : ''}${threads}
 Every file you open costs context — open transcripts one at a time, only when INDEX.md or the journal points there.
 
 When this thread produces a durable outcome (a decision, a plan written, work merged, an approach abandoned), append ONE line to PROJECT.md under ## Log:

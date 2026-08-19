@@ -7,7 +7,13 @@ import { z } from 'zod'
  * (SessionMeta) carrying a projectId + threadType.
  */
 
-export const ThreadTypeSchema = z.enum(['chat', 'planning', 'implementation', 'orchestration'])
+export const ThreadTypeSchema = z.enum([
+  'chat',
+  'planning',
+  'implementation',
+  'orchestration',
+  'research'
+])
 export type ThreadType = z.infer<typeof ThreadTypeSchema>
 
 export const ProjectModeSchema = z.enum(['worktree', 'local'])
