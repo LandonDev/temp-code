@@ -1,4 +1,5 @@
 import { nanoid } from 'nanoid'
+import { existsSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { basename } from 'node:path'
 import { CreateSessionParams, type CreateSessionInput } from '@shared/contract'
@@ -1504,6 +1505,29 @@ export class SessionRegistry {
     if (handle) await handle.dispose().catch(() => {})
   }
 
+  /** A harness spawned into a missing cwd dies with the SDK's misleading
+   *  "binary failed to launch (libc)" error. Catch it here instead — and
+   *  for app-managed project worktrees, quietly remake the checkout: same
+   *  slug → same path, and the branch is re-created from the repo HEAD
+   *  when it was deleted along with the directory. */
+  private async ensureCwd(meta: SessionMeta): Promise<void> {
+    if (existsSync(meta.cwd)) return
+    const project = meta.projectId ? this.store.getProject(meta.projectId) : null
+    if (project && project.mode === 'worktree' && project.cwd === meta.cwd) {
+      const ws = this.store.listWorkspaces().find((w) => w.id === project.workspaceId)
+      if (ws) {
+        const restored = await addProjectWorktree(ws.path, project.name, {
+          branch: project.branch ?? undefined
+        })
+        if (restored.cwd === meta.cwd) return
+        throw new Error(
+          `this project's checkout was missing; its branch is now checked out at ${restored.cwd}, not ${meta.cwd} — repoint the project or remove that checkout`
+        )
+      }
+    }
+    throw new Error(`this thread's folder no longer exists: ${meta.cwd}`)
+  }
+
   private async handleFor(sessionId: string): Promise<DriverHandle> {
     const existing = this.handles.get(sessionId)
     if (existing) return existing
@@ -1514,16 +1538,18 @@ export class SessionRegistry {
     if (!meta) throw new Error(`unknown session: ${sessionId}`)
     const driver = BUILT_IN_DRIVERS[meta.provider]
 
-    const startP = driver
-      .start({
-        // Drivers seed goal state from here (resume dedup, watcher init).
-        session: { ...meta, goal: this.goalOf(sessionId) },
-        emit: (event) => this.append(sessionId, event),
-        setNativeId: (nativeId) => {
-          const next = this.store.updateSession(sessionId, { nativeId })
-          if (next) this.notifyMeta(next)
-        }
-      })
+    const startP = this.ensureCwd(meta)
+      .then(() =>
+        driver.start({
+          // Drivers seed goal state from here (resume dedup, watcher init).
+          session: { ...meta, goal: this.goalOf(sessionId) },
+          emit: (event) => this.append(sessionId, event),
+          setNativeId: (nativeId) => {
+            const next = this.store.updateSession(sessionId, { nativeId })
+            if (next) this.notifyMeta(next)
+          }
+        })
+      )
       .then((handle) => {
         this.handles.set(sessionId, handle)
         this.starting.delete(sessionId)
