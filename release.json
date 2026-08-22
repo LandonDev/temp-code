@@ -1,5 +1,5 @@
 {
-  "n": 85,
-  "notes": "Research threads: a new thread type that fans out web-research subagents, streams queries and sources onto a live board, and writes a cited report to .temp-code/reports/ that every other thread can find and cite",
-  "ts": 1787163300000
+  "n": 86,
+  "notes": "A thread whose project worktree vanished remakes the checkout instead of dying",
+  "ts": 1787422360971
 }
