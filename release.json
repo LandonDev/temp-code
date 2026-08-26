@@ -1,5 +1,5 @@
 {
-  "n": 86,
-  "notes": "A thread whose project worktree vanished remakes the checkout instead of dying",
-  "ts": 1787422360971
+  "n": 87,
+  "notes": "Wheel-scroll thread tabs, Stop for paused threads everywhere, chats sort by activity, right-click file links",
+  "ts": 1787717930380
 }
