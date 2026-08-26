@@ -9,6 +9,7 @@ import { AddonMark } from '../AddonMark'
 import { imageDataFor, openLightbox } from '../Lightbox'
 import { addonTitle } from '../../../lib/addon-names'
 import type { Block } from '../../../state/blocks'
+import { FileRefMenu } from './FileRefMenu'
 
 type UserBlock = Extract<Block, { kind: 'user' }>
 
@@ -93,15 +94,16 @@ function TokenizedText({
             ? base.replace(/^[\w-]{8}-/, '')
             : base
           return (
-            <button
-              key={n}
-              onClick={() => openFileRef(path)}
-              title={path}
-              className="inline-flex items-center gap-1 rounded-sm bg-accent px-1 align-baseline font-mono text-[12px] text-foreground hover:underline"
-            >
-              <FileText className="size-3 shrink-0 opacity-60" />
-              {label}
-            </button>
+            <FileRefMenu key={n} target={path}>
+              <button
+                onClick={() => openFileRef(path)}
+                title={path}
+                className="inline-flex items-center gap-1 rounded-sm bg-accent px-1 align-baseline font-mono text-[12px] text-foreground hover:underline"
+              >
+                <FileText className="size-3 shrink-0 opacity-60" />
+                {label}
+              </button>
+            </FileRefMenu>
           )
         }
         if (n % 2 === 1 && part.startsWith('/')) {
@@ -189,7 +191,12 @@ export const UserMessage = memo(function UserMessage({
             <ImageThumb
               key={a.path}
               a={a}
-              onOpen={() => openLightbox(images.map((i) => ({ path: i.path, name: i.name })), n)}
+              onOpen={() =>
+                openLightbox(
+                  images.map((i) => ({ path: i.path, name: i.name })),
+                  n
+                )
+              }
             />
           ))}
         </div>

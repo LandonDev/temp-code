@@ -1350,7 +1350,7 @@ export const chatsOfWorkspace = (
 export const unsortedSessions = (sessions: Record<string, SessionMeta>): SessionMeta[] =>
   Object.values(sessions)
     .filter((s) => !s.projectId && !s.workspaceId && !s.parentId && !s.archived)
-    .sort((a, b) => b.createdAt - a.createdAt)
+    .sort((a, b) => b.updatedAt - a.updatedAt)
 
 /** Unarchived visible roots represented by each app-wide lifecycle banner. */
 export const recoveryRoots = (sessions: Record<string, SessionMeta>): SessionMeta[] =>

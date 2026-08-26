@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type WheelEvent } from 'react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import {
   Archive,
@@ -36,6 +36,12 @@ import { OrchestrationTune } from './OrchestrationTune'
 import type { ThreadRules } from '@shared/rules'
 import { useNow } from '../../lib/useNow'
 import { duration, THREAD_GLYPHS, THREAD_LABELS, THREAD_TINTS, timeAgo } from './bits'
+
+/** Mouse wheels only emit deltaY; translate it so the strip scrolls
+ *  sideways. Trackpad swipes (deltaX-dominant) keep native scrolling. */
+function wheelToX(e: WheelEvent<HTMLDivElement>): void {
+  if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) e.currentTarget.scrollLeft += e.deltaY
+}
 
 /** Dialog titles stay one line — long thread names get elided. */
 function clampTitle(t: string | undefined): string | undefined {
@@ -288,175 +294,183 @@ export function ThreadStrip(): React.JSX.Element | null {
   return (
     <div className="shrink-0 border-b border-border/60">
       <div className="flex h-10 items-center gap-1 px-4">
-        <Tabs
-          value={value}
-          onValueChange={onValue}
-          variant="soft"
+        <div
           className="flex min-w-0 items-center self-stretch overflow-x-auto [scrollbar-width:none]"
+          onWheel={wheelToX}
         >
-          <TabsList className="h-full">
-            <AnimatePresence initial={false} mode="popLayout">
-              {live.map((t) => {
-                const Glyph = t.threadType ? THREAD_GLYPHS[t.threadType] : THREAD_GLYPHS.chat
-                const unread = t.id !== selectedId && t.updatedAt > (lastSeen[t.id] ?? 0)
-                const displayStatus: SessionStatus = t.treeHasPaused
-                  ? 'paused'
-                  : t.treeCanContinue
-                    ? 'error'
-                    : t.status
-                return (
-                  <motion.div
-                    key={t.id}
-                    layout
-                    initial={reduce ? false : { opacity: 0, scale: 0.9 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    exit={reduce ? undefined : { opacity: 0, scale: 0.9 }}
-                    transition={SPRING_LAYOUT}
-                  >
-                    {renaming === t.id ? (
-                      // The tab itself becomes the editor — no dialog for a name.
-                      <div className="flex h-[26px] items-center gap-1.5 rounded-md bg-accent px-2.5">
-                        <Glyph
-                          className={cn(
-                            'size-[13px] shrink-0 opacity-80',
-                            THREAD_TINTS[t.threadType ?? 'chat']
-                          )}
-                        />
-                        <input
-                          autoFocus
-                          defaultValue={t.title}
-                          onFocus={(e) => e.target.select()}
-                          onKeyDown={(e) => {
-                            e.stopPropagation()
-                            if (e.key === 'Enter') e.currentTarget.blur()
-                            if (e.key === 'Escape') {
-                              e.currentTarget.value = t.title
-                              e.currentTarget.blur()
-                            }
-                          }}
-                          onBlur={(e) => {
-                            setRenaming(null)
-                            const v = e.target.value.trim()
-                            if (v && v !== t.title) void renameSession(t.id, v)
-                          }}
-                          className="w-40 bg-transparent text-[13px] outline-none"
-                        />
-                      </div>
-                    ) : (
-                      <ContextMenu>
-                        <ContextMenuTrigger asChild>
-                          <div onDoubleClick={() => setRenaming(t.id)}>
-                            <TabsTrigger
-                              value={t.id}
-                              className={cn(
-                                'h-[26px] min-h-0 gap-1.5 px-2.5 py-0 font-normal',
-                                // Attention states wash the WHOLE tab, not just
-                                // the edge dot — a glance at the strip separates
-                                // "needs me" (amber), "broke" (red) and
-                                // "finished while I was away" (blue) without
-                                // reading anything.
-                                // Dark runs the bright 400-series tokens on
-                                // near-black, where the same alpha reads
-                                // weaker (see --code-wash: 10% light, 12%
-                                // dark) — so each wash steps up a notch there.
-                                displayStatus === 'waiting' &&
-                                  'bg-warning/10 hover:bg-warning/15 dark:bg-warning/15 dark:hover:bg-warning/20',
-                                t.treeHasPaused &&
-                                  'bg-warning/10 hover:bg-warning/15 dark:bg-warning/15 dark:hover:bg-warning/20',
-                                displayStatus === 'error' &&
-                                  'bg-destructive/10 hover:bg-destructive/15 dark:bg-destructive/15 dark:hover:bg-destructive/20',
-                                t.status === 'idle' &&
-                                  unread &&
-                                  'bg-info/10 hover:bg-info/15 dark:bg-info/15 dark:hover:bg-info/20'
-                              )}
-                            >
-                              <Glyph
+          <Tabs
+            value={value}
+            onValueChange={onValue}
+            variant="soft"
+            className="flex items-center self-stretch"
+          >
+            <TabsList className="h-full">
+              <AnimatePresence initial={false} mode="popLayout">
+                {live.map((t) => {
+                  const Glyph = t.threadType ? THREAD_GLYPHS[t.threadType] : THREAD_GLYPHS.chat
+                  const unread = t.id !== selectedId && t.updatedAt > (lastSeen[t.id] ?? 0)
+                  const displayStatus: SessionStatus = t.treeHasPaused
+                    ? 'paused'
+                    : t.treeCanContinue
+                      ? 'error'
+                      : t.status
+                  return (
+                    <motion.div
+                      key={t.id}
+                      layout
+                      initial={reduce ? false : { opacity: 0, scale: 0.9 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      exit={reduce ? undefined : { opacity: 0, scale: 0.9 }}
+                      transition={SPRING_LAYOUT}
+                    >
+                      {renaming === t.id ? (
+                        // The tab itself becomes the editor — no dialog for a name.
+                        <div className="flex h-[26px] items-center gap-1.5 rounded-md bg-accent px-2.5">
+                          <Glyph
+                            className={cn(
+                              'size-[13px] shrink-0 opacity-80',
+                              THREAD_TINTS[t.threadType ?? 'chat']
+                            )}
+                          />
+                          <input
+                            autoFocus
+                            defaultValue={t.title}
+                            onFocus={(e) => e.target.select()}
+                            onKeyDown={(e) => {
+                              e.stopPropagation()
+                              if (e.key === 'Enter') e.currentTarget.blur()
+                              if (e.key === 'Escape') {
+                                e.currentTarget.value = t.title
+                                e.currentTarget.blur()
+                              }
+                            }}
+                            onBlur={(e) => {
+                              setRenaming(null)
+                              const v = e.target.value.trim()
+                              if (v && v !== t.title) void renameSession(t.id, v)
+                            }}
+                            className="w-40 bg-transparent text-[13px] outline-none"
+                          />
+                        </div>
+                      ) : (
+                        <ContextMenu>
+                          <ContextMenuTrigger asChild>
+                            <div onDoubleClick={() => setRenaming(t.id)}>
+                              <TabsTrigger
+                                value={t.id}
                                 className={cn(
-                                  'size-[13px] opacity-80',
-                                  THREAD_TINTS[t.threadType ?? 'chat']
-                                )}
-                              />
-                              <span
-                                className={cn(
-                                  'truncate',
-                                  // A working tab lends the indicator some of
-                                  // its title budget; the whole tab stays
-                                  // narrower than an idle one with this title.
-                                  t.treeHasLiveWork || t.treeHasPaused ? 'max-w-32' : 'max-w-44',
-                                  // Unread reads like unread mail: bold, full
-                                  // color. Dormant tabs recede so live ones
-                                  // carry the eye.
-                                  unread && 'font-medium text-foreground'
+                                  'h-[26px] min-h-0 gap-1.5 px-2.5 py-0 font-normal',
+                                  // Attention states wash the WHOLE tab, not just
+                                  // the edge dot — a glance at the strip separates
+                                  // "needs me" (amber), "broke" (red) and
+                                  // "finished while I was away" (blue) without
+                                  // reading anything.
+                                  // Dark runs the bright 400-series tokens on
+                                  // near-black, where the same alpha reads
+                                  // weaker (see --code-wash: 10% light, 12%
+                                  // dark) — so each wash steps up a notch there.
+                                  displayStatus === 'waiting' &&
+                                    'bg-warning/10 hover:bg-warning/15 dark:bg-warning/15 dark:hover:bg-warning/20',
+                                  t.treeHasPaused &&
+                                    'bg-warning/10 hover:bg-warning/15 dark:bg-warning/15 dark:hover:bg-warning/20',
+                                  displayStatus === 'error' &&
+                                    'bg-destructive/10 hover:bg-destructive/15 dark:bg-destructive/15 dark:hover:bg-destructive/20',
+                                  t.status === 'idle' &&
+                                    unread &&
+                                    'bg-info/10 hover:bg-info/15 dark:bg-info/15 dark:hover:bg-info/20'
                                 )}
                               >
-                                {t.title}
-                              </span>
-                              <TabIndicator
-                                status={displayStatus}
-                                unread={unread}
-                                since={t.busySince ?? t.updatedAt}
-                                now={now}
-                                activity={t.activity}
-                                activityKind={t.activityKind}
-                                tasks={tasksOf(t)}
-                                planReady={!!planReady[t.id]}
-                                frozenElapsed={t.treeFrozenActiveElapsed ?? t.frozenActiveElapsed}
-                              />
-                            </TabsTrigger>
-                          </div>
-                        </ContextMenuTrigger>
-                        <ContextMenuContent>
-                          <ContextMenuItem onClick={() => setRenaming(t.id)}>
-                            <Pencil className="size-3.5 text-muted-foreground" />
-                            Rename
-                          </ContextMenuItem>
-                          {(t.threadType === 'orchestration' || t.threadType === 'research') && (
-                            <ContextMenuItem onClick={() => setTuning(t.id)}>
-                              <SlidersHorizontal className="size-3.5 text-muted-foreground" />
-                              {t.threadType === 'research'
-                                ? 'Research options…'
-                                : 'Orchestration options…'}
+                                <Glyph
+                                  className={cn(
+                                    'size-[13px] opacity-80',
+                                    THREAD_TINTS[t.threadType ?? 'chat']
+                                  )}
+                                />
+                                <span
+                                  className={cn(
+                                    'truncate',
+                                    // A working tab lends the indicator some of
+                                    // its title budget; the whole tab stays
+                                    // narrower than an idle one with this title.
+                                    t.treeHasLiveWork || t.treeHasPaused ? 'max-w-32' : 'max-w-44',
+                                    // Unread reads like unread mail: bold, full
+                                    // color. Dormant tabs recede so live ones
+                                    // carry the eye.
+                                    unread && 'font-medium text-foreground'
+                                  )}
+                                >
+                                  {t.title}
+                                </span>
+                                <TabIndicator
+                                  status={displayStatus}
+                                  unread={unread}
+                                  since={t.busySince ?? t.updatedAt}
+                                  now={now}
+                                  activity={t.activity}
+                                  activityKind={t.activityKind}
+                                  tasks={tasksOf(t)}
+                                  planReady={!!planReady[t.id]}
+                                  frozenElapsed={t.treeFrozenActiveElapsed ?? t.frozenActiveElapsed}
+                                />
+                              </TabsTrigger>
+                            </div>
+                          </ContextMenuTrigger>
+                          <ContextMenuContent>
+                            <ContextMenuItem onClick={() => setRenaming(t.id)}>
+                              <Pencil className="size-3.5 text-muted-foreground" />
+                              Rename
                             </ContextMenuItem>
-                          )}
-                          {t.treeHasPaused ? (
-                            <ContextMenuItem onClick={() => void resume(t.id)}>
-                              <Play className="size-3.5 text-warning" />
-                              Continue
+                            {(t.threadType === 'orchestration' || t.threadType === 'research') && (
+                              <ContextMenuItem onClick={() => setTuning(t.id)}>
+                                <SlidersHorizontal className="size-3.5 text-muted-foreground" />
+                                {t.threadType === 'research'
+                                  ? 'Research options…'
+                                  : 'Orchestration options…'}
+                              </ContextMenuItem>
+                            )}
+                            {t.treeHasPaused ? (
+                              <ContextMenuItem onClick={() => void resume(t.id)}>
+                                <Play className="size-3.5 text-warning" />
+                                Continue
+                              </ContextMenuItem>
+                            ) : t.treeHasLiveWork ? (
+                              <ContextMenuItem onClick={() => void pause(t.id)}>
+                                <Pause className="size-3.5 text-warning" />
+                                Pause
+                              </ContextMenuItem>
+                            ) : null}
+                            {(t.treeHasLiveWork || t.treeHasPaused) && (
+                              <ContextMenuItem
+                                variant="destructive"
+                                onClick={() => void interrupt(t.id)}
+                              >
+                                <Square className="size-3.5 fill-current" />
+                                Stop
+                              </ContextMenuItem>
+                            )}
+                            {(t.treeHasLiveWork || t.treeHasPaused) && <ContextMenuSeparator />}
+                            <ContextMenuItem onClick={() => archive(t.id)}>
+                              <Archive className="size-3.5 text-muted-foreground" />
+                              Archive
                             </ContextMenuItem>
-                          ) : t.treeHasLiveWork ? (
-                            <ContextMenuItem onClick={() => void pause(t.id)}>
-                              <Pause className="size-3.5 text-warning" />
-                              Pause
-                            </ContextMenuItem>
-                          ) : null}
-                          {(t.treeHasLiveWork || t.treeHasPaused) && (
+                            <ContextMenuSeparator />
                             <ContextMenuItem
                               variant="destructive"
-                              onClick={() => void interrupt(t.id)}
+                              onClick={() => setDeleting(t.id)}
                             >
-                              <Square className="size-3.5 fill-current" />
-                              Stop
+                              <Trash2 className="size-3.5" />
+                              Delete…
                             </ContextMenuItem>
-                          )}
-                          {(t.treeHasLiveWork || t.treeHasPaused) && <ContextMenuSeparator />}
-                          <ContextMenuItem onClick={() => archive(t.id)}>
-                            <Archive className="size-3.5 text-muted-foreground" />
-                            Archive
-                          </ContextMenuItem>
-                          <ContextMenuSeparator />
-                          <ContextMenuItem variant="destructive" onClick={() => setDeleting(t.id)}>
-                            <Trash2 className="size-3.5" />
-                            Delete…
-                          </ContextMenuItem>
-                        </ContextMenuContent>
-                      </ContextMenu>
-                    )}
-                  </motion.div>
-                )
-              })}
-            </AnimatePresence>
-          </TabsList>
-        </Tabs>
+                          </ContextMenuContent>
+                        </ContextMenu>
+                      )}
+                    </motion.div>
+                  )
+                })}
+              </AnimatePresence>
+            </TabsList>
+          </Tabs>
+        </div>
         <NewThreadButton projectId={projectId} empty={threads.length === 0} />
         <div className="flex-1" />
         <ArchivedShelf archived={archived} />
@@ -466,7 +480,10 @@ export function ThreadStrip(): React.JSX.Element | null {
           smaller, grayscale, faded — and only climb back up by working,
           failing, needing you, or finishing unread. */}
       {dorm.length > 0 && (
-        <div className="flex h-7 items-center gap-0.5 overflow-x-auto px-4 pb-1 [scrollbar-width:none]">
+        <div
+          className="flex h-7 items-center gap-0.5 overflow-x-auto px-4 pb-1 [scrollbar-width:none]"
+          onWheel={wheelToX}
+        >
           <AnimatePresence initial={false} mode="popLayout">
             {dorm.map((t) => {
               const Glyph = t.threadType ? THREAD_GLYPHS[t.threadType] : THREAD_GLYPHS.chat

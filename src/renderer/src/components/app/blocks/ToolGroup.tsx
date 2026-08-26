@@ -14,6 +14,7 @@ import type { ProviderId } from '@shared/catalog'
 import { MatrixSpinner } from '../WorkingStrip'
 import { TextShimmer } from '../../motion/text-shimmer'
 import type { Block } from '../../../state/blocks'
+import { FileRefMenu } from './FileRefMenu'
 
 type ToolBlock = Extract<Block, { kind: 'tool' }>
 
@@ -1656,68 +1657,70 @@ export const ZEditCard = memo(function ZEditCard({
       )}
     >
       <div className="flex h-9 items-center gap-2.5 pr-2 pl-2">
-        <button
-          onClick={() => {
-            setUserToggled(true)
-            setOpen(!open)
-          }}
-          className="flex min-w-0 flex-1 items-center gap-2.5 text-left"
-        >
-          <span className="flex size-5 shrink-0 items-center justify-center rounded-[6px] bg-(--tile-strong) text-foreground/80">
+        <FileRefMenu target={m.path}>
+          <button
+            onClick={() => {
+              setUserToggled(true)
+              setOpen(!open)
+            }}
+            className="flex min-w-0 flex-1 items-center gap-2.5 text-left"
+          >
+            <span className="flex size-5 shrink-0 items-center justify-center rounded-[6px] bg-(--tile-strong) text-foreground/80">
+              {streamingIn ? (
+                <MatrixSpinner cell={2.5} />
+              ) : (
+                <ZIcon name={m.create ? 'document-add' : 'pen'} size={13} />
+              )}
+            </span>
             {streamingIn ? (
-              <MatrixSpinner cell={2.5} />
+              <span className="min-w-0 truncate text-[13px] text-muted-foreground">
+                {verb}
+                {pathReady && (
+                  <span className="ml-1.5 font-medium text-foreground animate-[z-fade-quick_150ms_ease-out]">
+                    {name}
+                  </span>
+                )}
+              </span>
             ) : (
-              <ZIcon name={m.create ? 'document-add' : 'pen'} size={13} />
-            )}
-          </span>
-          {streamingIn ? (
-            <span className="min-w-0 truncate text-[13px] text-muted-foreground">
-              {verb}
-              {pathReady && (
-                <span className="ml-1.5 font-medium text-foreground animate-[z-fade-quick_150ms_ease-out]">
-                  {name}
-                </span>
-              )}
-            </span>
-          ) : (
-            <span
-              className={cn(
-                'min-w-0 truncate text-[13px]',
-                wasStreaming && 'animate-[z-fade-quick_150ms_ease-out]'
-              )}
-            >
-              <span className="font-medium">{name || b.name}</span>
-              {dir && <span className="ml-1.5 text-xs text-muted-foreground">{dir}</span>}
-              {m.extraPaths.length > 0 && (
-                <span className="ml-1.5 text-xs text-muted-foreground">
-                  +{m.extraPaths.length} more
-                </span>
-              )}
-            </span>
-          )}
-          <span className="ml-auto flex shrink-0 items-center gap-2 pl-2">
-            {toolMs(b) !== undefined && (
-              <span className="text-[10.5px] tabular-nums text-muted-foreground/50">
-                {duration(toolMs(b)!)}
+              <span
+                className={cn(
+                  'min-w-0 truncate text-[13px]',
+                  wasStreaming && 'animate-[z-fade-quick_150ms_ease-out]'
+                )}
+              >
+                <span className="font-medium">{name || b.name}</span>
+                {dir && <span className="ml-1.5 text-xs text-muted-foreground">{dir}</span>}
+                {m.extraPaths.length > 0 && (
+                  <span className="ml-1.5 text-xs text-muted-foreground">
+                    +{m.extraPaths.length} more
+                  </span>
+                )}
               </span>
             )}
-            {b.isError ? (
-              <span className="text-xs font-medium text-destructive">failed</span>
-            ) : (
-              (adds > 0 || dels > 0) && (
-                <span className="text-xs font-semibold tracking-tight tabular-nums">
-                  {adds > 0 && <span className="text-success">+{adds}</span>}
-                  {adds > 0 && dels > 0 && ' '}
-                  {dels > 0 && <span className="text-destructive">−{dels}</span>}
+            <span className="ml-auto flex shrink-0 items-center gap-2 pl-2">
+              {toolMs(b) !== undefined && (
+                <span className="text-[10.5px] tabular-nums text-muted-foreground/50">
+                  {duration(toolMs(b)!)}
                 </span>
-              )
-            )}
-            {running && !streamingIn && (
-              <span className="size-1.5 animate-pulse rounded-full bg-busy" />
-            )}
-            <ChevronTile open={open} />
-          </span>
-        </button>
+              )}
+              {b.isError ? (
+                <span className="text-xs font-medium text-destructive">failed</span>
+              ) : (
+                (adds > 0 || dels > 0) && (
+                  <span className="text-xs font-semibold tracking-tight tabular-nums">
+                    {adds > 0 && <span className="text-success">+{adds}</span>}
+                    {adds > 0 && dels > 0 && ' '}
+                    {dels > 0 && <span className="text-destructive">−{dels}</span>}
+                  </span>
+                )
+              )}
+              {running && !streamingIn && (
+                <span className="size-1.5 animate-pulse rounded-full bg-busy" />
+              )}
+              <ChevronTile open={open} />
+            </span>
+          </button>
+        </FileRefMenu>
         {m.path && (
           <span className="flex w-0 shrink-0 items-center overflow-hidden opacity-0 transition-all duration-200 group-hover/edit:w-12 group-hover/edit:opacity-100">
             <button
@@ -1801,13 +1804,14 @@ export const ZEditCard = memo(function ZEditCard({
           ) : (
             <div className="space-y-1 px-3 py-2">
               {[m.path, ...m.extraPaths].filter(Boolean).map((p) => (
-                <button
-                  key={p}
-                  onClick={() => openFileRef(p)}
-                  className="block w-full truncate text-left font-mono text-[11.5px] text-muted-foreground hover:text-foreground"
-                >
-                  {displayPath(p, projectCwd)}
-                </button>
+                <FileRefMenu key={p} target={p}>
+                  <button
+                    onClick={() => openFileRef(p)}
+                    className="block w-full truncate text-left font-mono text-[11.5px] text-muted-foreground hover:text-foreground"
+                  >
+                    {displayPath(p, projectCwd)}
+                  </button>
+                </FileRefMenu>
               ))}
               {b.isError && b.output !== undefined && (
                 <pre className="font-mono text-[11.5px] whitespace-pre-wrap text-destructive">
