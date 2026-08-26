@@ -13,7 +13,8 @@ export function GlobalThreadBanners(): React.JSX.Element | null {
   const pausedCount = paused.length
   const continueAllErrors = useApp((state) => state.continueAllErrors)
   const resumeAllPaused = useApp((state) => state.resumeAllPaused)
-  const [busy, setBusy] = useState<BannerKind | null>(null)
+  const interrupt = useApp((state) => state.interrupt)
+  const [busy, setBusy] = useState<BannerKind | 'stop' | null>(null)
   const [recoveryFailures, setRecoveryFailures] = useState<string[]>([])
   const [pauseFailures, setPauseFailures] = useState<string[]>([])
 
@@ -47,6 +48,20 @@ export function GlobalThreadBanners(): React.JSX.Element | null {
     }
   }
 
+  const stopPaused = async (): Promise<void> => {
+    if (busy) return
+    setBusy('stop')
+    setPauseFailures([])
+    try {
+      const results = await Promise.allSettled(paused.map((root) => interrupt(root.id)))
+      setPauseFailures(
+        paused.filter((_, i) => results[i].status === 'rejected').map((root) => root.id)
+      )
+    } finally {
+      setBusy(null)
+    }
+  }
+
   return (
     <section className="shrink-0" aria-label="Thread alerts" aria-live="polite">
       {recoveryCount > 0 && (
@@ -65,8 +80,10 @@ export function GlobalThreadBanners(): React.JSX.Element | null {
           count={pausedCount}
           failures={paused.filter((root) => pauseFailures.includes(root.id)).length}
           busy={busy === 'paused'}
+          stopBusy={busy === 'stop'}
           disabled={busy !== null}
           onContinue={() => void runPaused()}
+          onStop={() => void stopPaused()}
         />
       )}
     </section>
@@ -78,15 +95,19 @@ function ThreadBanner({
   count,
   failures,
   busy,
+  stopBusy,
   disabled,
-  onContinue
+  onContinue,
+  onStop
 }: {
   kind: BannerKind
   count: number
   failures: number
   busy: boolean
+  stopBusy?: boolean
   disabled: boolean
   onContinue: () => void
+  onStop?: () => void
 }): React.JSX.Element {
   const recovery = kind === 'recovery'
   const Icon = recovery ? AlertTriangle : Pause
@@ -109,18 +130,29 @@ function ThreadBanner({
       <Icon className="size-3.5 shrink-0" strokeWidth={1.8} aria-hidden="true" />
       <span className="font-medium">{label}</span>
       {failureLabel && <span className="text-current/75">{failureLabel}</span>}
+      {onStop && (
+        <button
+          type="button"
+          onClick={onStop}
+          disabled={disabled}
+          className="ml-auto shrink-0 rounded-md border border-destructive/25 bg-destructive/10 px-2 py-0.5 text-[11px] font-medium text-destructive transition-colors hover:bg-destructive/18 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background disabled:cursor-default disabled:opacity-60"
+        >
+          {stopBusy ? 'Stopping…' : count === 1 ? 'Stop' : 'Stop all'}
+        </button>
+      )}
       <button
         type="button"
         onClick={onContinue}
         disabled={disabled}
         className={cn(
-          'ml-auto shrink-0 rounded-md border px-2 py-0.5 text-[11px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background disabled:cursor-default disabled:opacity-60',
+          'shrink-0 rounded-md border px-2 py-0.5 text-[11px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background disabled:cursor-default disabled:opacity-60',
+          !onStop && 'ml-auto',
           recovery
             ? 'border-destructive/25 bg-destructive/10 hover:bg-destructive/18'
             : 'border-warning/25 bg-warning/10 hover:bg-warning/18'
         )}
       >
-        {busy ? 'Continuing…' : 'Continue all'}
+        {busy ? 'Continuing…' : count === 1 ? 'Continue' : 'Continue all'}
       </button>
     </div>
   )

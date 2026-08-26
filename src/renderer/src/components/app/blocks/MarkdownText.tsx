@@ -4,6 +4,7 @@ import remarkGfm from 'remark-gfm'
 import { useApp } from '../../../state/store'
 import { cn } from '../../../lib/utils'
 import { CodeBlock } from './CodeBlock'
+import { FileRefMenu } from './FileRefMenu'
 import { useStreamVeil } from './veil'
 import { useSmoothText } from './smooth'
 
@@ -69,7 +70,8 @@ export const MarkdownText = memo(function MarkdownText({
         remarkPlugins={[remarkGfm]}
         components={{
           a({ href, children }) {
-            return (
+            const isFile = !!href && !/^https?:\/\//.test(href) && !href.startsWith('#thread:')
+            const anchor = (
               <a
                 href={href}
                 onClick={(e) => {
@@ -85,6 +87,7 @@ export const MarkdownText = memo(function MarkdownText({
                 {children}
               </a>
             )
+            return isFile ? <FileRefMenu target={href}>{anchor}</FileRefMenu> : anchor
           },
           code({ className, children, ...props }) {
             const match = /language-(\w+)/.exec(className ?? '')
@@ -96,13 +99,15 @@ export const MarkdownText = memo(function MarkdownText({
             const target = refTarget(raw)
             if (target) {
               return (
-                <button
-                  onClick={() => openFileRef(target)}
-                  title="Open in Changes"
-                  className="rounded bg-(--code-wash) px-1 py-0.5 font-mono text-[0.85em] text-(--code-text) transition-colors hover:underline"
-                >
-                  {raw}
-                </button>
+                <FileRefMenu target={target}>
+                  <button
+                    onClick={() => openFileRef(target)}
+                    title="Open in Changes"
+                    className="rounded bg-(--code-wash) px-1 py-0.5 font-mono text-[0.85em] text-(--code-text) transition-colors hover:underline"
+                  >
+                    {raw}
+                  </button>
+                </FileRefMenu>
               )
             }
             return (

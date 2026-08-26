@@ -90,6 +90,7 @@ export const WorkingStrip = memo(function WorkingStrip({
       0
   )
   const resume = useApp((s) => s.resume)
+  const interrupt = useApp((s) => s.interrupt)
   const running = status === 'running'
   const starting = status === 'starting'
   const paused = status === 'paused'
@@ -161,9 +162,16 @@ export const WorkingStrip = memo(function WorkingStrip({
             <span className="tabular-nums text-current/75">{duration(elapsed)}</span>
             <button
               type="button"
+              onClick={() => void interrupt(sessionId)}
+              className="ml-auto rounded-md border border-destructive/25 bg-destructive/10 px-2 py-0.5 text-[11px] font-medium text-destructive transition-colors hover:bg-destructive/18 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              Stop
+            </button>
+            <button
+              type="button"
               onClick={onResume}
               disabled={resumeBusy}
-              className="ml-auto rounded-md border border-warning/25 bg-warning/10 px-2 py-0.5 text-[11px] font-medium transition-colors hover:bg-warning/18 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60"
+              className="rounded-md border border-warning/25 bg-warning/10 px-2 py-0.5 text-[11px] font-medium transition-colors hover:bg-warning/18 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60"
             >
               {resumeBusy ? 'Continuing…' : 'Continue'}
             </button>
