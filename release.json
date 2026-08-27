@@ -1,5 +1,5 @@
 {
-  "n": 87,
-  "notes": "Wheel-scroll thread tabs, Stop for paused threads everywhere, chats sort by activity, right-click file links",
-  "ts": 1787717930380
+  "n": 88,
+  "notes": "Worktree project edits render as real file cards, not app bookkeeping",
+  "ts": 1787848502946
 }
