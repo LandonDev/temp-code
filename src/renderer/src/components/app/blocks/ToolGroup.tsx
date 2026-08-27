@@ -166,8 +166,11 @@ function detailOf(b: ToolBlock, cwd?: string): string {
 
 const trim = (s: string, n = 32): string => (s.length > n ? `${s.slice(0, n - 1)}…` : s)
 
-/** App bookkeeping lives under .temp-code/ — journal, plans, mirrors. */
-export const isInternalPath = (p: string): boolean => /(^|\/)\.temp-code(\/|$)/.test(p)
+/** App bookkeeping lives under .temp-code/ — journal, plans, mirrors.
+ *  NOT `.temp-code/worktrees/<name>/…`: those are project checkouts full of
+ *  real files (a worktree's own nested `.temp-code/` still counts). */
+export const isInternalPath = (p: string): boolean =>
+  /(^|\/)\.temp-code(\/(?!worktrees\/)|$)/.test(p)
 
 /** Appshot capture files (attachments dir, `<id>-appshot.jpg` / `.md`). */
 const isAppshotPath = (p: string): boolean => /-appshot\.(png|jpg|md)$/.test(p)
