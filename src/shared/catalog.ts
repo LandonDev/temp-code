@@ -46,6 +46,13 @@ export const CATALOG: Record<ProviderId, ProviderInfo> = {
     label: 'Claude',
     models: [
       {
+        id: 'claude-fable-5-1',
+        label: 'Fable 5.1',
+        reasoning: CLAUDE_EFFORTS,
+        defaultReasoning: 'medium',
+        context: 1_000_000
+      },
+      {
         id: 'claude-fable-5',
         label: 'Fable 5',
         reasoning: CLAUDE_EFFORTS,
