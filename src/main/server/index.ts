@@ -6,7 +6,7 @@ import { ClientRequestSchema, type ServerFrame } from '@shared/contract'
 import type { SessionMeta } from '@shared/events'
 import { openDb, Store } from './db'
 import { SessionRegistry } from './sessions'
-import { runDoctor } from './drivers/binaries'
+import { runDoctor, updateProvider } from './drivers/binaries'
 import { backfillMirrors } from './mirror'
 import {
   orchAnswerAgent,
@@ -207,6 +207,13 @@ export async function startServer(dbPath: string): Promise<RunningServer> {
               id: req.id,
               ok: true,
               result: { ...(await runDoctor()), java: await javaDoctor() }
+            })
+            break
+          case 'providers.update':
+            sendFrame({
+              id: req.id,
+              ok: true,
+              result: await updateProvider(req.params.provider)
             })
             break
           case 'workspace.create':

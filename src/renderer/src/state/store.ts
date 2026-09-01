@@ -345,6 +345,7 @@ interface AppState {
   renameProject: (projectId: string, name: string) => Promise<void>
   setTheme: (theme: ThemePref) => void
   fetchDoctor: () => Promise<void>
+  updateProvider: (provider: ProviderId) => Promise<void>
   toggleFavoriteModel: (provider: ProviderId, modelId: string) => void
   /** Open the right rail on a file's diff. Accepts absolute or
    *  project-relative paths; absolute paths outside the project no-op. */
@@ -1292,6 +1293,12 @@ export const useApp = create<AppState>((set, get) => ({
   fetchDoctor: async () => {
     const doctor = await client.request<DoctorReport>('doctor.get')
     set({ doctor })
+  },
+
+  updateProvider: async (provider) => {
+    const health = await client.request<ProviderHealth>('providers.update', { provider })
+    const doctor = get().doctor
+    set({ doctor: { ...(doctor ?? ({} as DoctorReport)), [provider]: health } })
   },
 
   toggleFavoriteModel: (provider, modelId) => {

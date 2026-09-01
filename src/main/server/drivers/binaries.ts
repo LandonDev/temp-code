@@ -1,5 +1,6 @@
 import { execFile } from 'node:child_process'
-import { access, constants } from 'node:fs/promises'
+import { access, constants, realpath } from 'node:fs/promises'
+import { createRequire } from 'node:module'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
@@ -104,18 +105,81 @@ export interface DoctorReport {
   error?: string
 }
 
-const BIN_NAME: Record<ProviderId, string | null> = {
-  claude: null, // the Agent SDK ships its own bundled CLI
+const BIN_NAME: Record<ProviderId, string> = {
+  claude: 'claude',
   codex: 'codex',
   cursor: 'cursor-agent'
 }
 
-async function checkProvider(provider: ProviderId): Promise<DoctorReport> {
-  const bin = BIN_NAME[provider]
-  if (!bin) {
-    // The Agent SDK bundles its own CLI — always available with the app.
-    return { found: true, version: 'bundled Agent SDK' }
+// ── claude: bundled SDK CLI vs standalone install ────────────────────
+//
+// The claude provider runs through the Agent SDK, which pins its own CLI
+// build — and the API rejects requests from CLIs too old for a new model
+// ("version 2.1.251 or newer is required"). `claude update` only touches
+// the user's standalone install, so sessions spawn that standalone CLI
+// whenever it's newer than the bundled one (pathToClaudeCodeExecutable);
+// the bundled CLI remains the fallback and updates with app releases.
+
+let bundledClaudeV: string | null | undefined
+function bundledClaudeVersion(): string | null {
+  if (bundledClaudeV === undefined) {
+    try {
+      const req = createRequire(import.meta.url)
+      const manifest = req('@anthropic-ai/claude-agent-sdk/manifest.json') as { version?: string }
+      bundledClaudeV = manifest.version ?? null
+    } catch {
+      bundledClaudeV = null
+    }
   }
+  return bundledClaudeV
+}
+
+const parseV = (v: string): number[] => (v.match(/\d+(\.\d+)+/)?.[0] ?? '0').split('.').map(Number)
+const newerV = (a: string, b: string): boolean => {
+  const [x, y] = [parseV(a), parseV(b)]
+  for (let i = 0; i < Math.max(x.length, y.length); i++) {
+    const d = (x[i] ?? 0) - (y[i] ?? 0)
+    if (d !== 0) return d > 0
+  }
+  return false
+}
+
+export interface ClaudeChoice {
+  /** standalone CLI to spawn via pathToClaudeCodeExecutable; null = bundled */
+  path: string | null
+  version: string | null
+}
+
+let claudeChoiceP: Promise<ClaudeChoice> | null = null
+export function resolveClaude(): Promise<ClaudeChoice> {
+  claudeChoiceP ??= (async () => {
+    const bundled = bundledClaudeVersion()
+    const path = await resolveBinary('claude')
+    if (path) {
+      try {
+        const env = await harnessEnv()
+        const { stdout } = await execFileP(path, ['--version'], { env, timeout: 15_000 })
+        const version = stdout.trim().split('\n')[0]
+        if (!bundled || newerV(version, bundled)) return { path, version }
+      } catch {
+        // unusable standalone install — fall back to the bundled CLI
+      }
+    }
+    return { path: null, version: bundled }
+  })()
+  return claudeChoiceP
+}
+
+async function checkProvider(provider: ProviderId): Promise<DoctorReport> {
+  if (provider === 'claude') {
+    const choice = await resolveClaude()
+    if (choice.path) return { found: true, path: choice.path, version: choice.version ?? undefined }
+    return {
+      found: true,
+      version: choice.version ? `${choice.version} (bundled)` : 'bundled Agent SDK'
+    }
+  }
+  const bin = BIN_NAME[provider]
   const path = await resolveBinary(bin)
   if (!path) return { found: false, error: `${bin} not found on the login-shell PATH` }
   try {
@@ -141,4 +205,48 @@ export function runDoctor(): Promise<Record<ProviderId, DoctorReport>> {
   })()
   doctorCache = { at: Date.now(), report }
   return report
+}
+
+/**
+ * Update a provider's CLI in place, then re-check it. claude and
+ * cursor-agent self-update; codex has no self-updater, so the update
+ * goes through whatever installed it (npm or homebrew, judged from the
+ * binary's real path). Throws with the tool's own output on failure.
+ */
+export async function updateProvider(provider: ProviderId): Promise<DoctorReport> {
+  const env = await harnessEnv()
+  const opts = { env, timeout: 600_000, maxBuffer: 8 * 1024 * 1024 }
+  const fail = (err: unknown): never => {
+    const e = err as Error & { stderr?: string; stdout?: string }
+    const detail = (e.stderr || e.stdout || e.message || String(err)).trim().split('\n').slice(-4)
+    throw new Error(detail.join('\n'))
+  }
+  if (provider === 'claude' || provider === 'cursor') {
+    const bin = BIN_NAME[provider]
+    const path = await resolveBinary(bin)
+    if (!path) {
+      throw new Error(
+        provider === 'claude'
+          ? 'no standalone Claude Code install found — the bundled CLI updates with app releases'
+          : 'cursor-agent not found on the login-shell PATH'
+      )
+    }
+    await execFileP(path, ['update'], opts).catch(fail)
+  } else {
+    const path = await resolveBinary('codex')
+    if (!path) throw new Error('codex not found on the login-shell PATH')
+    const real = await realpath(path)
+    const cmd = real.includes('node_modules/@openai/codex')
+      ? 'npm install -g @openai/codex@latest'
+      : real.includes('/Cellar/')
+        ? 'brew upgrade codex'
+        : null
+    if (!cmd) throw new Error(`can't tell how codex was installed (${real}) — update it manually`)
+    await execFileP('/bin/zsh', ['-lc', cmd], opts).catch(fail)
+  }
+  // paths and versions may have moved — re-resolve everything
+  binCache.clear()
+  claudeChoiceP = null
+  doctorCache = null
+  return checkProvider(provider)
 }
