@@ -647,10 +647,23 @@ function ProviderHealthList(): React.JSX.Element {
   const catalog = useApp((s) => s.catalog)
   const doctor = useApp((s) => s.doctor)
   const fetchDoctor = useApp((s) => s.fetchDoctor)
+  const updateProvider = useApp((s) => s.updateProvider)
+  const [updating, setUpdating] = useState<ProviderId | null>(null)
+  const [errors, setErrors] = useState<Partial<Record<ProviderId, string>>>({})
 
   useEffect(() => {
     void fetchDoctor()
   }, [fetchDoctor])
+
+  const runUpdate = (p: ProviderId): void => {
+    setUpdating(p)
+    setErrors((e) => ({ ...e, [p]: undefined }))
+    updateProvider(p)
+      .catch((err) =>
+        setErrors((e) => ({ ...e, [p]: err instanceof Error ? err.message : String(err) }))
+      )
+      .finally(() => setUpdating(null))
+  }
 
   if (!catalog) return <Spinner className="size-4 text-muted-foreground/60" />
 
@@ -659,32 +672,51 @@ function ProviderHealthList(): React.JSX.Element {
       {Object.values(catalog).map((p) => {
         const health = doctor?.[p.id as ProviderId]
         return (
-          <div key={p.id} className="flex items-center gap-3 px-4 py-3">
-            <ProviderMark
-              provider={p.id}
-              size={16}
-              className={cn(p.id !== 'claude' && 'text-foreground/80')}
-            />
-            <span className="min-w-0 flex-1">
-              <span className="block text-[13px] font-medium">{p.label}</span>
-              {health?.path && (
-                <span className="block truncate font-mono text-[10.5px] text-muted-foreground/60">
-                  {health.path}
+          <div key={p.id}>
+            <div className="flex items-center gap-3 px-4 py-3">
+              <ProviderMark
+                provider={p.id}
+                size={16}
+                className={cn(p.id !== 'claude' && 'text-foreground/80')}
+              />
+              <span className="min-w-0 flex-1">
+                <span className="block text-[13px] font-medium">{p.label}</span>
+                {health?.path && (
+                  <span className="block truncate font-mono text-[10.5px] text-muted-foreground/60">
+                    {health.path}
+                  </span>
+                )}
+              </span>
+              {!health ? (
+                <Spinner className="size-3.5 text-muted-foreground/50" />
+              ) : health.found ? (
+                <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                  <span className="size-1.5 rounded-full bg-success" />
+                  {health.version ?? 'Ready'}
+                </span>
+              ) : (
+                <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                  <span className="size-1.5 rounded-full bg-destructive" />
+                  Not found
                 </span>
               )}
-            </span>
-            {!health ? (
-              <Spinner className="size-3.5 text-muted-foreground/50" />
-            ) : health.found ? (
-              <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                <span className="size-1.5 rounded-full bg-success" />
-                {health.version ?? 'Ready'}
-              </span>
-            ) : (
-              <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                <span className="size-1.5 rounded-full bg-destructive" />
-                Not found
-              </span>
+              {health?.found && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 text-xs"
+                  disabled={updating !== null}
+                  onClick={() => runUpdate(p.id as ProviderId)}
+                >
+                  {updating === p.id && <Spinner className="size-3" />}
+                  {updating === p.id ? 'Updating…' : 'Update'}
+                </Button>
+              )}
+            </div>
+            {errors[p.id as ProviderId] && (
+              <div className="-mt-1.5 px-4 pb-2.5 pl-[43px] text-[11px] text-destructive">
+                {errors[p.id as ProviderId]}
+              </div>
             )}
           </div>
         )

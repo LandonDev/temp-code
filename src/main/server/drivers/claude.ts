@@ -35,6 +35,7 @@ import {
 } from '../orchestration'
 import { APP_TOOLS, appToolsMcp } from '../apptools'
 import { expandSlashRefs } from '../slash'
+import { resolveClaude } from './binaries'
 
 /**
  * Claude driver — the Claude Code harness as a library. The SDK spawns the
@@ -787,8 +788,15 @@ export const claudeDriver: HarnessDriver = {
       }
     }
 
+    // The SDK's bundled CLI is pinned at build time, and the API rejects
+    // CLIs too old for newly launched models. When a standalone `claude`
+    // install is newer, spawn that one instead (Settings → provider row
+    // updates it in place); the bundled CLI stays the fallback.
+    const claudeCli = await resolveClaude()
+
     const options: Options = {
       abortController: abort,
+      ...(claudeCli.path ? { pathToClaudeCodeExecutable: claudeCli.path } : {}),
       // 1M rides the CLI's `[1m]` model suffix — the same lever as Claude
       // Code's own 1M picker: it sets the client-side window to 1M and the
       // CLI adds the API-side signaling itself. The `betas` Option is a
