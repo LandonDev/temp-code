@@ -1,5 +1,5 @@
 {
-  "n": 90,
-  "notes": "Provider versions + Update buttons in Settings; Claude runs your newest installed CLI",
-  "ts": 1788289032025
+  "n": 91,
+  "notes": "Task board works again for Fable 5.1 / Opus 4.8+ / Sonnet 5 threads on the updated Claude CLI",
+  "ts": 1788323008255
 }
