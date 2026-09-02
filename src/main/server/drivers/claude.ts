@@ -797,6 +797,12 @@ export const claudeDriver: HarnessDriver = {
     const options: Options = {
       abortController: abort,
       ...(claudeCli.path ? { pathToClaudeCodeExecutable: claudeCli.path } : {}),
+      // CLI ≥ 2.1.25x hides TodoWrite/TaskCreate/TaskUpdate on Opus ≥ 4.8,
+      // Sonnet ≥ 5 and Fable ≥ 5 (a growthbook-gated experiment, off by
+      // default). The task board, tab tallies and the orchestrator's
+      // supervision all fold those tool calls, so a thread without them is
+      // invisible — the CLI's own env override switches them back on.
+      env: { ...process.env, CLAUDE_CODE_ENABLE_TODO_TOOLS: '1' },
       // 1M rides the CLI's `[1m]` model suffix — the same lever as Claude
       // Code's own 1M picker: it sets the client-side window to 1M and the
       // CLI adds the API-side signaling itself. The `betas` Option is a
