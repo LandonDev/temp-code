@@ -86,9 +86,16 @@ export const CATALOG: Record<ProviderId, ProviderInfo> = {
   codex: {
     id: 'codex',
     label: 'Codex',
-    // codex `model/list`, minus the deprecated gpt-5.4 family (each row
-    // carries an upgrade pointer to its 5.6 replacement).
+    // codex `model/list` (codex-cli 0.153.1 — gpt-6-astra first appears
+    // there), minus the deprecated gpt-5.4 family (each row carries an
+    // upgrade pointer to its 5.6 replacement).
     models: [
+      {
+        id: 'gpt-6-astra',
+        label: 'GPT-6 Astra',
+        reasoning: ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'],
+        defaultReasoning: 'medium'
+      },
       {
         id: 'gpt-5.6-sol',
         label: 'GPT-5.6 Sol',
