@@ -295,6 +295,7 @@ export interface SessionMeta {
   title: string
   cwd: string
   status: SessionStatus
+  pinned: boolean
   archived: boolean
   permission: PermissionPolicy
   /** Claude fast mode (faster output on supported models); harness restarts on change. */
