@@ -7,6 +7,7 @@ import { resolve } from 'node:path'
 export default defineConfig({
   resolve: {
     alias: {
+      '@server/shared': resolve(__dirname, 'src/shared'),
       '@shared': resolve(__dirname, 'src/shared'),
       '@renderer': resolve(__dirname, 'src/renderer/src')
     }

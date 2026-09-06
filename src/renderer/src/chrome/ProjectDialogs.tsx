@@ -1,0 +1,555 @@
+import {
+  useEffect,
+  useRef,
+  useState,
+  type FormEvent,
+  type ReactNode,
+} from "react";
+import { Modal } from "./Modal";
+import { TerminalSpinner } from "./TerminalSpinner";
+import { prettyCwd } from "../lib/paths";
+import {
+  archiveProject,
+  createProject,
+  deleteProject,
+  listBranches,
+  renameProject,
+  setProjectBranch,
+} from "../lib/tcserver/projects";
+import type {
+  BranchList,
+  ProjectCleanup,
+  ProjectMeta,
+  ProjectMode,
+  WorkspaceMeta,
+} from "../lib/tcserver/types";
+
+const INPUT =
+  "w-full rounded-md border border-content/10 bg-content/5 px-2 py-1.5 text-[12px] text-content outline-none placeholder:text-content/35 hover:border-content/20 focus:border-accent/60";
+const LABEL = "text-[11px] font-medium text-content/50";
+const GHOST =
+  "rounded-md px-3 py-1.5 text-[12px] text-content/70 hover:bg-content/8 hover:text-content";
+const PRIMARY =
+  "flex items-center gap-2 rounded-md bg-content px-3 py-1.5 text-[12px] font-medium text-background-base hover:bg-content/80 disabled:cursor-not-allowed disabled:opacity-50";
+const DANGER =
+  "flex items-center gap-2 rounded-md bg-red-500/20 px-3 py-1.5 text-[12px] font-medium text-red-300 hover:bg-red-500/30 disabled:cursor-not-allowed disabled:opacity-50";
+
+const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e));
+
+function Footer({
+  onCancel,
+  confirmLabel,
+  danger,
+  pending,
+  disabled,
+  onConfirm,
+}: {
+  onCancel: () => void;
+  confirmLabel: string;
+  danger?: boolean;
+  pending?: boolean;
+  disabled?: boolean;
+  onConfirm?: () => void;
+}) {
+  return (
+    <div className="flex items-center justify-end gap-2 border-t border-content/10 px-4 py-3">
+      <button type="button" onClick={onCancel} className={GHOST}>
+        Cancel
+      </button>
+      <button
+        type={onConfirm ? "button" : "submit"}
+        onClick={onConfirm}
+        disabled={pending || disabled}
+        className={danger ? DANGER : PRIMARY}
+      >
+        {pending ? (
+          <TerminalSpinner className="inline-block w-3 text-center text-[11px] leading-none" />
+        ) : null}
+        {confirmLabel}
+      </button>
+    </div>
+  );
+}
+
+function Field({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <label className="flex flex-col gap-1">
+      <span className={LABEL}>{label}</span>
+      {children}
+    </label>
+  );
+}
+
+function ErrorLine({ error }: { error: string | null }) {
+  return error ? (
+    <p className="text-[11px] leading-4 text-red-400/90">{error}</p>
+  ) : null;
+}
+
+/** Modal steals focus to its close button on mount; take it back a frame later. */
+function useFocusOnMount<T extends HTMLElement>() {
+  const ref = useRef<T>(null);
+  useEffect(() => {
+    const id = requestAnimationFrame(() => ref.current?.focus());
+    return () => cancelAnimationFrame(id);
+  }, []);
+  return ref;
+}
+
+function useBranches(workspaceId: string, enabled: boolean): BranchList | null {
+  const [list, setList] = useState<BranchList | null>(null);
+  useEffect(() => {
+    if (!enabled) return;
+    let live = true;
+    listBranches(workspaceId)
+      .then((l) => live && setList(l))
+      .catch(() => live && setList({ locals: [], remotes: [], current: null }));
+    return () => {
+      live = false;
+    };
+  }, [workspaceId, enabled]);
+  return list;
+}
+
+function branchExists(list: BranchList | null, name: string): boolean {
+  if (!list || !name) return false;
+  return (
+    list.locals.includes(name) ||
+    list.remotes.includes(name) ||
+    list.remotes.includes(`origin/${name}`)
+  );
+}
+
+function suggestionsFor(list: BranchList | null, needle: string): string[] {
+  if (!list) return [];
+  const q = needle.trim().toLowerCase();
+  if (!q) return [];
+  const all = [...new Set([...list.locals, ...list.remotes])];
+  return all
+    .filter((b) => b !== needle && b.toLowerCase().includes(q))
+    .slice(0, 4);
+}
+
+function BranchField({
+  value,
+  onChange,
+  branches,
+  placeholder,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  branches: BranchList | null;
+  placeholder?: string;
+}) {
+  const suggestions = suggestionsFor(branches, value);
+  return (
+    <Field label="Branch">
+      <input
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        spellCheck={false}
+        autoCapitalize="off"
+        className={`${INPUT} font-mono`}
+      />
+      {suggestions.length ? (
+        <div className="flex flex-wrap gap-1 pt-1">
+          {suggestions.map((b) => (
+            <button
+              key={b}
+              type="button"
+              onClick={() => onChange(b)}
+              className="rounded bg-content/8 px-1.5 py-0.5 font-mono text-[11px] text-content/70 hover:bg-content/12 hover:text-content"
+            >
+              {b}
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </Field>
+  );
+}
+
+function BaseRefField({
+  value,
+  onChange,
+  branches,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  branches: BranchList | null;
+}) {
+  return (
+    <Field label="Start from">
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className={INPUT}
+      >
+        <option value="@head">
+          {branches?.current
+            ? `Current HEAD (${branches.current})`
+            : "Current HEAD"}
+        </option>
+        {(branches?.locals ?? []).map((b) => (
+          <option key={b} value={b}>
+            {b}
+          </option>
+        ))}
+      </select>
+    </Field>
+  );
+}
+
+// ---------------------------------------------------------------------------
+
+export function NewProjectDialog({
+  workspace,
+  onClose,
+  onCreated,
+}: {
+  workspace: WorkspaceMeta;
+  onClose: () => void;
+  onCreated: (project: ProjectMeta) => void;
+}) {
+  const [name, setName] = useState("");
+  const [mode, setMode] = useState<ProjectMode>(
+    workspace.git ? "worktree" : "local",
+  );
+  const [branch, setBranch] = useState("");
+  const [baseRef, setBaseRef] = useState("@head");
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const nameRef = useFocusOnMount<HTMLInputElement>();
+  const branches = useBranches(workspace.id, workspace.git);
+  const exists = branchExists(branches, branch.trim());
+
+  const submit = async (e: FormEvent) => {
+    e.preventDefault();
+    const trimmed = name.trim();
+    if (!trimmed || pending) return;
+    setPending(true);
+    setError(null);
+    try {
+      const b = branch.trim();
+      const project = await createProject({
+        workspaceId: workspace.id,
+        name: trimmed,
+        mode,
+        ...(mode === "worktree" && b ? { branch: b } : {}),
+        ...(mode === "worktree" && !exists && baseRef !== "@head"
+          ? { baseRef }
+          : {}),
+      });
+      onCreated(project);
+    } catch (err) {
+      setError(errorText(err));
+      setPending(false);
+    }
+  };
+
+  return (
+    <Modal
+      onClose={onClose}
+      title="New project"
+      description={workspace.name}
+      size="sm"
+    >
+      <form onSubmit={submit}>
+        <div className="flex flex-col gap-3 px-4 py-3">
+          <Field label="Name">
+            <input
+              ref={nameRef}
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Project name"
+              className={INPUT}
+            />
+          </Field>
+          <div className="flex flex-col gap-1">
+            <span className={LABEL}>Mode</span>
+            <div className="grid grid-cols-2 gap-0.5 rounded-lg bg-content/5 p-0.5">
+              {(["worktree", "local"] as const).map((m) => {
+                const disabled = m === "worktree" && !workspace.git;
+                return (
+                  <button
+                    key={m}
+                    type="button"
+                    disabled={disabled}
+                    onClick={() => setMode(m)}
+                    className={`h-7 rounded-md text-[12px] font-medium capitalize ${
+                      mode === m
+                        ? "bg-content/10 text-content"
+                        : "text-content/60 hover:text-content"
+                    } ${disabled ? "cursor-not-allowed opacity-40" : ""}`}
+                  >
+                    {m}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+          {mode === "worktree" ? (
+            <>
+              <BranchField
+                value={branch}
+                onChange={setBranch}
+                branches={branches}
+                placeholder="tc/<name>"
+              />
+              {!exists ? (
+                <BaseRefField
+                  value={baseRef}
+                  onChange={setBaseRef}
+                  branches={branches}
+                />
+              ) : null}
+            </>
+          ) : null}
+          <ErrorLine error={error} />
+        </div>
+        <Footer
+          onCancel={onClose}
+          confirmLabel="Create"
+          pending={pending}
+          disabled={!name.trim()}
+        />
+      </form>
+    </Modal>
+  );
+}
+
+export function ProjectSettingsDialog({
+  project,
+  workspace,
+  onClose,
+}: {
+  project: ProjectMeta;
+  workspace: WorkspaceMeta;
+  onClose: () => void;
+}) {
+  const [name, setName] = useState(project.name);
+  const [branch, setBranch] = useState(project.branch ?? "");
+  const [baseRef, setBaseRef] = useState("@head");
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const nameRef = useFocusOnMount<HTMLInputElement>();
+  const worktree = project.mode === "worktree";
+  const branches = useBranches(workspace.id, worktree);
+  const exists = branchExists(branches, branch.trim());
+
+  const nameDirty = name.trim() !== project.name && !!name.trim();
+  const branchDirty =
+    worktree && !!branch.trim() && branch.trim() !== (project.branch ?? "");
+  const dirty = nameDirty || branchDirty;
+
+  const submit = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!dirty || pending) return;
+    setPending(true);
+    setError(null);
+    try {
+      if (branchDirty) {
+        await setProjectBranch(
+          project.id,
+          branch.trim(),
+          !exists && baseRef !== "@head" ? baseRef : undefined,
+        );
+      }
+      if (nameDirty) await renameProject(project.id, name.trim());
+      onClose();
+    } catch (err) {
+      setError(errorText(err));
+      setPending(false);
+    }
+  };
+
+  return (
+    <Modal
+      onClose={onClose}
+      title="Project settings"
+      description={`${worktree ? "Worktree" : "Local"} · ${prettyCwd(project.cwd)}`}
+      size="sm"
+    >
+      <form onSubmit={submit}>
+        <div className="flex flex-col gap-3 px-4 py-3">
+          <Field label="Name">
+            <input
+              ref={nameRef}
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              className={INPUT}
+            />
+          </Field>
+          {worktree ? (
+            <>
+              <BranchField
+                value={branch}
+                onChange={setBranch}
+                branches={branches}
+              />
+              {branchDirty && !exists ? (
+                <BaseRefField
+                  value={baseRef}
+                  onChange={setBaseRef}
+                  branches={branches}
+                />
+              ) : null}
+            </>
+          ) : null}
+          <ErrorLine error={error} />
+        </div>
+        <Footer
+          onCancel={onClose}
+          confirmLabel="Save"
+          pending={pending}
+          disabled={!dirty}
+        />
+      </form>
+    </Modal>
+  );
+}
+
+export function ProjectTeardownDialog({
+  project,
+  action,
+  onClose,
+  onDone,
+}: {
+  project: ProjectMeta;
+  action: "archive" | "delete";
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const [worktree, setWorktree] = useState(false);
+  const [localBranch, setLocalBranch] = useState(false);
+  const [remoteBranch, setRemoteBranch] = useState(false);
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const deleting = action === "delete";
+  const any = worktree || localBranch || remoteBranch;
+
+  const confirm = async () => {
+    if (pending) return;
+    setPending(true);
+    setError(null);
+    const cleanup: ProjectCleanup | undefined = any
+      ? { worktree: worktree || localBranch, localBranch, remoteBranch }
+      : undefined;
+    try {
+      if (deleting) await deleteProject(project.id, cleanup);
+      else await archiveProject(project.id, true, cleanup);
+      onDone();
+    } catch (err) {
+      setError(errorText(err));
+      setPending(false);
+    }
+  };
+
+  const boxes = [
+    {
+      label: "Remove worktree",
+      checked: worktree || localBranch,
+      disabled: localBranch,
+      set: setWorktree,
+    },
+    {
+      label: `Delete local branch ${project.branch ?? ""}`.trim(),
+      checked: localBranch,
+      set: setLocalBranch,
+    },
+    {
+      label: "Delete remote branch",
+      checked: remoteBranch,
+      set: setRemoteBranch,
+    },
+  ];
+
+  return (
+    <Modal
+      onClose={onClose}
+      title={deleting ? "Delete project" : "Archive project"}
+      description={project.name}
+      size="sm"
+    >
+      <div className="flex flex-col gap-3 px-4 py-3">
+        <p className="text-[12px] leading-snug text-content/60">
+          {deleting
+            ? "Its threads are deleted for good."
+            : "The project leaves the sidebar. Its threads stay; restore it anytime."}
+        </p>
+        <div className="flex flex-col gap-1.5">
+          {boxes.map((b) => (
+            <label
+              key={b.label}
+              className={`flex items-center gap-2 text-[12px] ${
+                b.disabled ? "text-content/40" : "text-content/80"
+              }`}
+            >
+              <input
+                type="checkbox"
+                className="size-3.5 accent-accent"
+                checked={b.checked}
+                disabled={b.disabled}
+                onChange={(e) => b.set(e.target.checked)}
+              />
+              {b.label}
+            </label>
+          ))}
+        </div>
+        <ErrorLine error={error} />
+      </div>
+      <Footer
+        onCancel={onClose}
+        onConfirm={confirm}
+        confirmLabel={deleting ? "Delete" : "Archive"}
+        danger={deleting || any}
+        pending={pending}
+      />
+    </Modal>
+  );
+}
+
+export function ConfirmDialog({
+  title,
+  body,
+  confirmLabel,
+  danger,
+  onCancel,
+  onConfirm,
+}: {
+  title: string;
+  body: string;
+  confirmLabel: string;
+  danger?: boolean;
+  onCancel: () => void;
+  onConfirm: () => void | Promise<void>;
+}) {
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const confirm = async () => {
+    setPending(true);
+    setError(null);
+    try {
+      await onConfirm();
+    } catch (err) {
+      setError(errorText(err));
+      setPending(false);
+    }
+  };
+  return (
+    <Modal onClose={onCancel} title={title} size="sm">
+      <div className="flex flex-col gap-2 px-4 py-3">
+        <p className="text-[12px] leading-snug text-content/60">{body}</p>
+        <ErrorLine error={error} />
+      </div>
+      <Footer
+        onCancel={onCancel}
+        onConfirm={confirm}
+        confirmLabel={confirmLabel}
+        danger={danger}
+        pending={pending}
+      />
+    </Modal>
+  );
+}
