@@ -181,7 +181,9 @@ const api = {
     dockBadge: (): Promise<string | null> => ipcRenderer.invoke('debug:dock-badge'),
     windowTitle: (): Promise<string | undefined> => ipcRenderer.invoke('debug:window-title'),
     ptyFlow: (): Promise<{ pauses: number; resumes: number }> =>
-      ipcRenderer.invoke('debug:pty-flow')
+      ipcRenderer.invoke('debug:pty-flow'),
+    assetFetch: (url: string): Promise<{ status: number; body: string }> =>
+      ipcRenderer.invoke('debug:asset-fetch', url)
   }
 }
 

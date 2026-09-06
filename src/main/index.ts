@@ -1,4 +1,4 @@
-import { app, shell, dialog, BrowserWindow, ipcMain } from 'electron'
+import { app, shell, dialog, net, BrowserWindow, ipcMain } from 'electron'
 import { homedir } from 'os'
 import { join } from 'path'
 import { copyFileSync, existsSync, mkdirSync } from 'fs'
@@ -111,10 +111,22 @@ app.whenReady().then(async () => {
 
 /** Dev-only hooks so the CDP exit test can drive things a page cannot. */
 function registerDebug(): void {
-  ipcMain.handle('debug:menu-click', (_e, id: string) => clickMenuItem(String(id)))
+  ipcMain.handle('debug:menu-click', (e, id: string) =>
+    clickMenuItem(String(id), BrowserWindow.fromWebContents(e.sender))
+  )
   ipcMain.handle('debug:dock-badge', () => (app.dock ? app.dock.getBadge() : null))
   ipcMain.handle('debug:window-title', (e) => BrowserWindow.fromWebContents(e.sender)?.getTitle())
   ipcMain.handle('debug:pty-flow', () => ptyFlowCounters())
+  // The old renderer's CSP forbids tempcode-asset:, so the scheme is
+  // exercised from main instead.
+  ipcMain.handle('debug:asset-fetch', async (_e, url: string) => {
+    try {
+      const res = await net.fetch(String(url))
+      return { status: res.status, body: (await res.text()).slice(0, 200) }
+    } catch (e) {
+      return { status: 0, body: `threw ${(e as Error).message}` }
+    }
+  })
 }
 
 app.on('window-all-closed', () => {

@@ -22,7 +22,9 @@ interface Session {
   owner: number
   pty: IPty
   shellPid: number
-  tty: Promise<string | null>
+  /** Resolved on first use: right after the fork the child has not taken
+   *  its controlling terminal yet and `ps` answers `??`. */
+  ttyName: string | null
   chunks: Buffer[]
   buffered: number
   lastFlush: number
@@ -158,6 +160,12 @@ function discard(session: Session): void {
   terminate(session.shellPid)
 }
 
+async function ttyOf(session: Session): Promise<string | null> {
+  if (session.ttyName) return session.ttyName
+  session.ttyName = await ttyName(session.shellPid)
+  return session.ttyName
+}
+
 async function ttyName(pid: number): Promise<string | null> {
   try {
     const { stdout } = await execFileP('ps', ['-p', String(pid), '-o', 'tty='])
@@ -217,7 +225,7 @@ async function spawn(owner: number, args: SpawnArgs): Promise<string | null> {
     owner,
     pty,
     shellPid: pty.pid,
-    tty: ttyName(pty.pid),
+    ttyName: null,
     chunks: [],
     buffered: 0,
     lastFlush: Date.now(),
@@ -278,7 +286,7 @@ export function registerPty(): void {
 
   ipcMain.handle('pty-status', async (_e, id: string): Promise<{ foreground: string | null }> => {
     const session = require_(id)
-    const tty = await session.tty
+    const tty = await ttyOf(session)
     if (!tty) return { foreground: null }
     try {
       const { stdout } = await execFileP('ps', ['-t', tty, '-o', 'pid=,pgid=,stat=,args='])

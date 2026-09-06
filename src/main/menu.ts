@@ -2,6 +2,10 @@ import { app, BrowserWindow, Menu, type MenuItemConstructorOptions } from 'elect
 import { MENU_TREE, type MenuNode } from './menu-tree'
 import { createWindow } from './windows'
 
+/** Only set while a dev-only synthetic click runs: a menu can be clicked
+ *  from CDP while the app is not frontmost, when nothing is focused. */
+let debugTarget: BrowserWindow | null = null
+
 /** Custom items go to whichever window the user is looking at. */
 function dispatch(id: string): void {
   if (id === 'new_window') {
@@ -12,8 +16,8 @@ function dispatch(id: string): void {
     app.quit()
     return
   }
-  const win = BrowserWindow.getFocusedWindow()
-  if (!win) return
+  const win = BrowserWindow.getFocusedWindow() ?? debugTarget
+  if (!win || win.isDestroyed()) return
   win.webContents.send('native:menu', id)
 }
 
@@ -45,9 +49,14 @@ export function registerMenu(): void {
 }
 
 /** Dev-only: lets the exit test exercise menu wiring without a keyboard. */
-export function clickMenuItem(id: string): boolean {
+export function clickMenuItem(id: string, target?: BrowserWindow | null): boolean {
   const item = (installed ?? Menu.getApplicationMenu())?.getMenuItemById(id)
   if (!item) return false
-  item.click()
+  debugTarget = target ?? null
+  try {
+    item.click()
+  } finally {
+    debugTarget = null
+  }
   return true
 }
