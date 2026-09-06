@@ -1,4 +1,6 @@
 import { DatabaseSync } from 'node:sqlite'
+import { ensureNotesTable } from './notes'
+import { WorkspaceSnapshotSchema, type WorkspaceSnapshot } from '@shared/contract-m3a'
 import { mkdirSync } from 'node:fs'
 import { dirname } from 'node:path'
 import type { AgentEvent, EventRow, SessionMeta, SessionStatus } from '@shared/events'
@@ -63,6 +65,7 @@ export function openDb(path: string): DatabaseSync {
   `)
   // Migrations for databases created before these columns existed.
   for (const stmt of [
+    `ALTER TABLE sessions ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0`,
     `ALTER TABLE sessions ADD COLUMN archived INTEGER NOT NULL DEFAULT 0`,
     `ALTER TABLE sessions ADD COLUMN permission TEXT NOT NULL DEFAULT 'edits'`,
     `ALTER TABLE sessions ADD COLUMN project_id TEXT`,
@@ -84,6 +87,7 @@ export function openDb(path: string): DatabaseSync {
       // column already exists
     }
   }
+  ensureNotesTable(db)
   return db
 }
 
@@ -101,6 +105,7 @@ interface SessionRowRaw {
   title: string
   cwd: string
   status: string
+  pinned: number
   archived: number
   permission: string
   fast: number
@@ -129,6 +134,7 @@ function toMeta(r: SessionRowRaw): SessionMeta {
     title: r.title,
     cwd: r.cwd,
     status: r.status as SessionStatus,
+    pinned: !!r.pinned,
     archived: !!r.archived,
     fast: !!r.fast,
     context1m: !!r.context_1m,
@@ -146,11 +152,27 @@ function toMeta(r: SessionRowRaw): SessionMeta {
 export class Store {
   constructor(private db: DatabaseSync) {}
 
+  getWorkspaceSnapshot(): WorkspaceSnapshot | null {
+    const raw = this.getSetting('renderer.workspaceSnapshot.v1')
+    return raw === null ? null : WorkspaceSnapshotSchema.parse(JSON.parse(raw))
+  }
+
+  setWorkspaceSnapshot(snapshot: unknown): void {
+    const valid = WorkspaceSnapshotSchema.parse(snapshot)
+    const json = JSON.stringify(valid)
+    if (Buffer.byteLength(json, 'utf8') > 2_000_000) throw new Error('workspace snapshot is too large')
+    this.setSetting('renderer.workspaceSnapshot.v1', json)
+  }
+
+  setSessionWorkspace(id: string, workspaceId: string): void {
+    this.db.prepare('UPDATE sessions SET workspace_id = ? WHERE id = ?').run(workspaceId, id)
+  }
+
   insertSession(meta: SessionMeta): void {
     this.db
       .prepare(
-        `INSERT INTO sessions (id, parent_id, project_id, workspace_id, thread_type, plan_path, provider, model, reasoning, agent_type, title, cwd, status, archived, permission, fast, context_1m, busy_since, paused_at, frozen_active_elapsed, thread_rules, native_id, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        `INSERT INTO sessions (id, parent_id, project_id, workspace_id, thread_type, plan_path, provider, model, reasoning, agent_type, title, cwd, status, archived, pinned, permission, fast, context_1m, busy_since, paused_at, frozen_active_elapsed, thread_rules, native_id, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         meta.id,
@@ -167,6 +189,7 @@ export class Store {
         meta.cwd,
         meta.status,
         meta.archived ? 1 : 0,
+        meta.pinned ? 1 : 0,
         meta.permission,
         meta.fast ? 1 : 0,
         meta.context1m ? 1 : 0,
@@ -189,6 +212,7 @@ export class Store {
         | 'title'
         | 'nativeId'
         | 'archived'
+        | 'pinned'
         | 'provider'
         | 'model'
         | 'reasoning'
@@ -214,13 +238,14 @@ export class Store {
     const next = { ...cur, ...defined, updatedAt: Date.now() }
     this.db
       .prepare(
-        `UPDATE sessions SET status = ?, title = ?, native_id = ?, archived = ?, provider = ?, model = ?, reasoning = ?, permission = ?, fast = ?, context_1m = ?, busy_since = ?, paused_at = ?, frozen_active_elapsed = ?, thread_type = ?, plan_path = ?, agent_type = ?, thread_rules = ?, updated_at = ? WHERE id = ?`
+        `UPDATE sessions SET status = ?, title = ?, native_id = ?, archived = ?, pinned = ?, provider = ?, model = ?, reasoning = ?, permission = ?, fast = ?, context_1m = ?, busy_since = ?, paused_at = ?, frozen_active_elapsed = ?, thread_type = ?, plan_path = ?, agent_type = ?, thread_rules = ?, updated_at = ? WHERE id = ?`
       )
       .run(
         next.status,
         next.title,
         next.nativeId,
         next.archived ? 1 : 0,
+        next.pinned ? 1 : 0,
         next.provider,
         next.model,
         next.reasoning,
