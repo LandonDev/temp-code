@@ -41,7 +41,9 @@
     "script:e2e-lsp": "esbuild scripts/e2e-lsp.ts --bundle --platform=node --format=esm --packages=external --alias:@shared=./src/shared --outfile=scripts/.out/e2e-lsp.mjs && node scripts/.out/e2e-lsp.mjs",
     "script:e2e-mirror-index": "esbuild scripts/e2e-mirror-index.ts --bundle --platform=node --format=esm --packages=external --alias:@shared=./src/shared --alias:electron=./scripts/electron-shim.mjs --outfile=scripts/.out/e2e-mirror-index.mjs && node scripts/.out/e2e-mirror-index.mjs",
     "script:measure-context": "esbuild scripts/measure-context.ts --bundle --platform=node --format=esm --packages=external --alias:@shared=./src/shared --alias:electron=./scripts/electron-shim.mjs --outfile=scripts/.out/measure-context.mjs && node scripts/.out/measure-context.mjs",
-    "script:e2e-editor-finish": "esbuild scripts/e2e-editor-finish.ts --bundle --platform=node --format=esm --packages=external --alias:@shared=./src/shared --outfile=scripts/.out/e2e-editor-finish.mjs && node scripts/.out/e2e-editor-finish.mjs"
+    "script:e2e-editor-finish": "esbuild scripts/e2e-editor-finish.ts --bundle --platform=node --format=esm --packages=external --alias:@shared=./src/shared --outfile=scripts/.out/e2e-editor-finish.mjs && node scripts/.out/e2e-editor-finish.mjs",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "0.3.227",
@@ -101,6 +103,7 @@
     "react": "^19.2.1",
     "react-dom": "^19.2.1",
     "typescript": "^5.9.3",
-    "vite": "^7.2.6"
+    "vite": "^7.2.6",
+    "vitest": "^3.2.4"
   }
 }
