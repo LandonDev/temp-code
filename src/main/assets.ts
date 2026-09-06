@@ -10,7 +10,15 @@ export function registerAssetScheme(): void {
   protocol.registerSchemesAsPrivileged([
     {
       scheme: ASSET_SCHEME,
-      privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true }
+      // corsEnabled lets the renderer `fetch()` a logo from its own origin;
+      // without it only <img>/<link> loads work.
+      privileges: {
+        standard: true,
+        secure: true,
+        supportFetchAPI: true,
+        stream: true,
+        corsEnabled: true
+      }
     }
   ])
 }
