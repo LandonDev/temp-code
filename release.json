@@ -1,5 +1,5 @@
 {
-  "n": 94,
-  "notes": "Build tab can build another branch (other checkouts in place, unheld branches in a detached build worktree) without switching the project checkout",
-  "ts": 1788733623746
+  "n": 95,
+  "notes": "Build tab shows how far the chosen branch is behind origin and fetches it with live progress",
+  "ts": 1788734599986
 }
