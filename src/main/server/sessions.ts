@@ -33,6 +33,8 @@ import { stopProjectLsp } from './lsp'
 import { parseRules, type OrchestrationRules } from '@shared/rules'
 import { DEFAULT_THREAD_DEFAULTS, parseDefaults, type ThreadDefaults } from '@shared/defaults'
 import { parseTurnPass, passActions, passEnabled, type TurnPass } from '@shared/turnpass'
+import { parseBuildConfig, type BuildConfig, type EffectiveBuild } from '@shared/build'
+import { detectBuild } from './build'
 import {
   AppshotSettingsSchema,
   DEFAULT_APPSHOT_SETTINGS,
@@ -582,6 +584,36 @@ export class SessionRegistry {
 
   setProjectTurnPass(projectId: string, pass: TurnPass | null): void {
     this.store.setSetting(`turn-pass:project:${projectId}`, pass ? JSON.stringify(pass) : null)
+  }
+
+  /** Build command for a workspace (Build rail); null = not configured. */
+  getBuild(workspaceId: string): BuildConfig | null {
+    return parseBuildConfig(this.store.getSetting(`build:${workspaceId}`))
+  }
+
+  setBuild(workspaceId: string, config: BuildConfig | null): void {
+    this.store.setSetting(`build:${workspaceId}`, config ? JSON.stringify(config) : null)
+  }
+
+  /** A project's override of the workspace build; null = inherits. */
+  getProjectBuild(projectId: string): BuildConfig | null {
+    return parseBuildConfig(this.store.getSetting(`build:project:${projectId}`))
+  }
+
+  setProjectBuild(projectId: string, config: BuildConfig | null): void {
+    this.store.setSetting(`build:project:${projectId}`, config ? JSON.stringify(config) : null)
+  }
+
+  /** What a project builds with: override → workspace → detected → null. */
+  async effectiveBuild(projectId: string): Promise<EffectiveBuild | null> {
+    const project = this.store.getProject(projectId)
+    if (!project) return null
+    const own = this.getProjectBuild(projectId)
+    if (own) return { ...own, source: 'project' }
+    const ws = this.getBuild(project.workspaceId)
+    if (ws) return { ...ws, source: 'workspace' }
+    const detected = await detectBuild(project.cwd)
+    return detected ? { ...detected, source: 'detected' } : null
   }
 
   /** Appshot capture settings — global, defaults until the user changes them. */
@@ -1980,8 +2012,11 @@ export class SessionRegistry {
         )
       }
       if (pass.build) {
+        const build = project ? await this.effectiveBuild(project.id) : null
         steps.push(
-          "Create a build with the project's build command and say where it landed; fix the build if it breaks."
+          build
+            ? `Create a build by running \`${build.command}\` in ${project!.cwd} and say where it landed; fix the build if it breaks.`
+            : "Create a build with the project's build command and say where it landed; fix the build if it breaks."
         )
       }
       if (pass.commit !== 'off') {

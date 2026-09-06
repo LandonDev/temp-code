@@ -2,9 +2,11 @@ import { useEffect, useMemo, useState } from 'react'
 import { ChevronRight, CornerDownRight, GitBranch } from 'lucide-react'
 import type { BranchList, ProjectMeta } from '@shared/domain'
 import { TURN_PASS_OFF, passActions, type TurnPass } from '@shared/turnpass'
+import type { BuildConfig } from '@shared/build'
 import { client } from '../../lib/client'
 import { useApp } from '../../state/store'
 import { TurnPassFields } from './TurnPass'
+import { BUILD_EMPTY, BuildFields, buildOrNull } from './BuildSettings'
 import { cn } from '../../lib/utils'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '../ui/dialog'
 import { Button } from '../ui/button'
@@ -54,6 +56,13 @@ export function ProjectSettingsDialog({
   const [wsPass, setWsPass] = useState<TurnPass | null>(null)
   const [passOpen, setPassOpen] = useState(false)
 
+  // Build: null = inherit (workspace setting, else detection).
+  const [buildOverride, setBuildOverride] = useState<BuildConfig | null>(null)
+  const [savedBuild, setSavedBuild] = useState<BuildConfig | null>(null)
+  const [wsBuild, setWsBuild] = useState<BuildConfig | null>(null)
+  const [detectedBuild, setDetectedBuild] = useState<BuildConfig | null>(null)
+  const [buildOpen, setBuildOpen] = useState(false)
+
   const worktree = project.mode === 'worktree'
 
   useEffect(() => {
@@ -79,7 +88,25 @@ export function ProjectSettingsDialog({
       .request<TurnPass | null>('turnpass.get', { workspaceId: project.workspaceId })
       .then(setWsPass)
       .catch(() => {})
-  }, [project.id, project.workspaceId])
+    void client
+      .request<BuildConfig | null>('build.get', {
+        workspaceId: project.workspaceId,
+        projectId: project.id
+      })
+      .then((c) => {
+        setBuildOverride(c)
+        setSavedBuild(c)
+      })
+      .catch(() => {})
+    void client
+      .request<BuildConfig | null>('build.get', { workspaceId: project.workspaceId })
+      .then(setWsBuild)
+      .catch(() => {})
+    void client
+      .request<BuildConfig | null>('build.detect', { path: project.cwd })
+      .then(setDetectedBuild)
+      .catch(() => {})
+  }, [project.id, project.workspaceId, project.cwd])
 
   const trimmed = branch.trim()
   const exists = branchExists(branches, trimmed)
@@ -96,7 +123,17 @@ export function ProjectSettingsDialog({
   const effective = override ?? wsPass ?? TURN_PASS_OFF
   const passChanged =
     JSON.stringify(override) !== JSON.stringify(savedOverride)
-  const dirty = name.trim() !== project.name || branchChanged || passChanged
+  const effectiveBuild = buildOverride ?? wsBuild ?? BUILD_EMPTY
+  const buildChanged =
+    JSON.stringify(buildOrNull(buildOverride)) !== JSON.stringify(buildOrNull(savedBuild))
+  const buildSummary = buildOrNull(buildOverride)
+    ? buildOverride!.command.trim()
+    : wsBuild
+      ? `${wsBuild.command} · workspace`
+      : detectedBuild
+        ? `${detectedBuild.command} · detected`
+        : 'None'
+  const dirty = name.trim() !== project.name || branchChanged || passChanged || buildChanged
 
   const submit = async (): Promise<void> => {
     if (!dirty || busy || !name.trim()) return
@@ -115,6 +152,13 @@ export function ProjectSettingsDialog({
           workspaceId: project.workspaceId,
           projectId: project.id,
           pass: override
+        })
+      }
+      if (buildChanged) {
+        await client.request('build.set', {
+          workspaceId: project.workspaceId,
+          projectId: project.id,
+          config: buildOrNull(buildOverride)
         })
       }
       if (name.trim() !== project.name) await renameProject(project.id, name.trim())
@@ -216,6 +260,38 @@ export function ProjectSettingsDialog({
                 {override !== null && (
                   <button
                     onClick={() => setOverride(null)}
+                    className="self-start px-1 text-[11px] text-muted-foreground transition-colors hover:text-foreground"
+                  >
+                    Use workspace setting
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+          <div>
+            <button
+              onClick={() => setBuildOpen(!buildOpen)}
+              className="flex h-6 w-full items-center gap-1 px-1 text-[11px] text-muted-foreground transition-colors hover:text-foreground"
+            >
+              <ChevronRight
+                className={cn('size-3 shrink-0 transition-transform', buildOpen && 'rotate-90')}
+              />
+              <span>Build</span>
+              <span className="ml-auto truncate font-mono text-[10.5px] text-muted-foreground/70">
+                {buildSummary}
+              </span>
+            </button>
+            {buildOpen && (
+              <div className="mt-1.5 flex flex-col gap-1">
+                <BuildFields
+                  value={effectiveBuild}
+                  onChange={setBuildOverride}
+                  detected={detectedBuild}
+                  compact
+                />
+                {buildOverride !== null && (
+                  <button
+                    onClick={() => setBuildOverride(null)}
                     className="self-start px-1 text-[11px] text-muted-foreground transition-colors hover:text-foreground"
                   >
                     Use workspace setting

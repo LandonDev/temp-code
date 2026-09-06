@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useApp } from '../../state/store'
+import { surfaceKey, useApp } from '../../state/store'
 import { Spinner } from '../ui/spinner'
 import { monacoReady } from './monaco'
 import { registerProviders } from './lsp'
@@ -15,6 +15,11 @@ export default function EditorHost(): React.JSX.Element | null {
   const projectId = useApp((s) => s.selectedProjectId)
   const project = useApp((s) => s.projects.find((p) => p.id === s.selectedProjectId))
   const active = useApp((s) => (s.selectedProjectId ? s.activeSurface[s.selectedProjectId] : null))
+  const surface = useApp((s) =>
+    s.selectedProjectId && active
+      ? (s.surfaces[s.selectedProjectId] ?? []).find((x) => surfaceKey(x) === active)
+      : undefined
+  )
   const [ready, setReady] = useState(false)
 
   useEffect(() => {
@@ -33,10 +38,15 @@ export default function EditorHost(): React.JSX.Element | null {
     )
   }
   const sep = active.indexOf(':')
-  const kind = active.slice(0, sep)
-  const path = active.slice(sep + 1)
+  const kind = surface?.kind ?? active.slice(0, sep)
+  const path = surface?.path ?? active.slice(sep + 1)
   return kind === 'diff' ? (
-    <DiffSurface key={`${projectId}:${active}`} project={project} path={path} />
+    <DiffSurface
+      key={`${projectId}:${active}`}
+      project={project}
+      path={path}
+      base={surface?.base}
+    />
   ) : (
     <EditorSurface key={`${projectId}:${active}`} project={project} path={path} />
   )

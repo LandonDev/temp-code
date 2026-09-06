@@ -97,6 +97,32 @@ export interface CommitInfo {
   authoredAt: number
 }
 
+/** project.compare result: this checkout vs a target branch (Branch rail). */
+export interface CompareResult {
+  target: string
+  mergeBase: string
+  ahead: number
+  behind: number
+  /** commits only this branch has (target..HEAD), newest first, capped */
+  ours: CommitInfo[]
+  /** commits only the target has (HEAD..target), newest first, capped */
+  theirs: CommitInfo[]
+  /** files this branch changed since the merge base */
+  files: FileChange[]
+}
+
+/** project.mergeFrom / project.mergeInto outcome. Conflicts never leave a
+ *  half-merged tree: the operation aborts and lists the files. */
+export type MergeResult =
+  | {
+      ok: true
+      sha: string
+      fastForward: boolean
+      /** the checkout the merge ran in when it was not this project's own */
+      where?: string
+    }
+  | { ok: false; conflicts: string[] }
+
 /** project.branches result: the target-branch / create-from pickers. */
 export interface BranchList {
   locals: string[]

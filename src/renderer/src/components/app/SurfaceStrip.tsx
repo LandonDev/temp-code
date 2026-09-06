@@ -111,6 +111,9 @@ function SurfaceTab({
         <Glyph className="size-[13px] opacity-80 text-muted-foreground" />
         <span className="max-w-44 truncate" title={surface.path}>
           {surface.kind === 'diff' ? `Δ ${name}` : name}
+          {surface.baseLabel && (
+            <span className="text-muted-foreground/70"> · vs {surface.baseLabel}</span>
+          )}
         </span>
         {(adds > 0 || dels > 0) && (
           <span className="flex gap-1 text-[10.5px] tabular-nums">

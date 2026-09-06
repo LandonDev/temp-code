@@ -32,11 +32,14 @@ import {
   aheadCount,
   branches,
   commit,
+  compare,
   fileDiff,
   listFiles,
   log,
+  mergeFrom,
+  mergeInto,
   push,
-  showHead,
+  showRef,
   workingTreeChanges
 } from './git'
 import { listCommands } from './commands'
@@ -67,6 +70,7 @@ import {
   warmIdeaIndexes
 } from './lsp'
 import { fimComplete } from './fim'
+import { BuildRunner, detectBuild } from './build'
 import { closeAllLiveWatchers, onLiveEdit } from './livediff'
 
 /** The session an app.* call claims to be from — must actually exist. */
@@ -141,6 +145,8 @@ export async function startServer(dbPath: string): Promise<RunningServer> {
   const warmTimer = setInterval(warmAll, 10 * 60_000)
   warmTimer.unref()
 
+  const builder = new BuildRunner()
+
   const wss = new WebSocketServer({ host: '127.0.0.1', port: 0 })
 
   wss.on('connection', (ws: WebSocket, req) => {
@@ -172,6 +178,7 @@ export async function startServer(dbPath: string): Promise<RunningServer> {
     // Every client gets session-meta updates (cheap, drives the sidebar).
     const offMeta = registry.onMeta((session) => sendFrame({ push: 'session', session }))
     const offLive = onLiveEdit((p) => sendFrame(p))
+    const offBuild = builder.onPush((p) => sendFrame(p))
     const offQueue = registry.onQueue((sessionId, items) =>
       sendFrame({ push: 'queue', sessionId, items })
     )
@@ -399,7 +406,34 @@ export async function startServer(dbPath: string): Promise<RunningServer> {
             sendFrame({
               id: req.id,
               ok: true,
-              result: await showHead(project.cwd, req.params.path)
+              result: await showRef(project.cwd, req.params.path, req.params.ref)
+            })
+            break
+          }
+          case 'project.compare': {
+            const project = mustProject(req.params.projectId)
+            sendFrame({
+              id: req.id,
+              ok: true,
+              result: await compare(project.cwd, req.params.target)
+            })
+            break
+          }
+          case 'project.mergeFrom': {
+            const project = mustProject(req.params.projectId)
+            sendFrame({
+              id: req.id,
+              ok: true,
+              result: await mergeFrom(project.cwd, req.params.target, req.params.mode)
+            })
+            break
+          }
+          case 'project.mergeInto': {
+            const project = mustProject(req.params.projectId)
+            sendFrame({
+              id: req.id,
+              ok: true,
+              result: await mergeInto(project.cwd, req.params.target)
             })
             break
           }
@@ -510,6 +544,44 @@ export async function startServer(dbPath: string): Promise<RunningServer> {
               registry.setProjectTurnPass(req.params.projectId, req.params.pass)
             else registry.setTurnPass(req.params.workspaceId, req.params.pass)
             sendFrame({ id: req.id, ok: true, result: null })
+            break
+          case 'build.get':
+            sendFrame({
+              id: req.id,
+              ok: true,
+              result: req.params.projectId
+                ? registry.getProjectBuild(req.params.projectId)
+                : registry.getBuild(req.params.workspaceId)
+            })
+            break
+          case 'build.set':
+            if (req.params.projectId) registry.setProjectBuild(req.params.projectId, req.params.config)
+            else registry.setBuild(req.params.workspaceId, req.params.config)
+            sendFrame({ id: req.id, ok: true, result: null })
+            break
+          case 'build.effective':
+            sendFrame({
+              id: req.id,
+              ok: true,
+              result: await registry.effectiveBuild(mustProject(req.params.projectId).id)
+            })
+            break
+          case 'build.detect':
+            sendFrame({ id: req.id, ok: true, result: await detectBuild(req.params.path) })
+            break
+          case 'build.run': {
+            const project = mustProject(req.params.projectId)
+            const build = await registry.effectiveBuild(project.id)
+            if (!build) throw new Error('no build command configured')
+            sendFrame({ id: req.id, ok: true, result: await builder.run(project.id, project.cwd, build) })
+            break
+          }
+          case 'build.cancel':
+            builder.cancel(req.params.projectId)
+            sendFrame({ id: req.id, ok: true, result: null })
+            break
+          case 'build.status':
+            sendFrame({ id: req.id, ok: true, result: builder.status(req.params.projectId) })
             break
           case 'appshots.get':
             sendFrame({ id: req.id, ok: true, result: registry.getAppshotSettings() })
@@ -811,6 +883,7 @@ export async function startServer(dbPath: string): Promise<RunningServer> {
       offMeta()
       offQueue()
       offLive()
+      offBuild()
       offRemoved()
       for (const off of unsubs.values()) off()
       unsubs.clear()
@@ -834,6 +907,7 @@ export async function startServer(dbPath: string): Promise<RunningServer> {
     close: async () => {
       clearTimeout(warmKickoff)
       clearInterval(warmTimer)
+      builder.disposeAll()
       await registry.disposeAll()
       await closeAllWatchers()
       await closeAllLiveWatchers()

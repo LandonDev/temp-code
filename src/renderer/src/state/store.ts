@@ -5,6 +5,7 @@ import type { Attachment, EventRow, PermissionPolicy, SessionMeta } from '@share
 import type {
   BranchList,
   CommitInfo,
+  CompareResult,
   FileChange,
   ProjectCleanup,
   ProjectMeta,
@@ -15,6 +16,7 @@ import type {
   WorkspaceMeta
 } from '@shared/domain'
 import type { CreateSessionInput, QueuedMessage, SessionBatchResult } from '@shared/contract'
+import type { BuildRun } from '@shared/build'
 import { DEFAULT_APPSHOT_SETTINGS, type AppshotSettings } from '@shared/appshots'
 import shutterUrl from '../assets/shutter.wav?url'
 import { client } from '../lib/client'
@@ -54,9 +56,16 @@ export interface SurfaceRef {
   kind: 'file' | 'diff'
   /** project-relative path */
   path: string
+  /** diff: the ref on the left (default HEAD); the Branch rail passes the merge base */
+  base?: string
+  /** what `base` stands for in the tab label (the target branch) */
+  baseLabel?: string
 }
 
-export const surfaceKey = (s: SurfaceRef): string => `${s.kind}:${s.path}`
+export const surfaceKey = (s: SurfaceRef): string =>
+  s.kind === 'diff' && s.base ? `diff:${s.path}@${s.base}` : `${s.kind}:${s.path}`
+
+export type RailPanel = 'changes' | 'files' | 'debug' | 'branch' | 'build'
 
 /** Debugger mirror (docs/PLAN-4.md M20) — written by editor/debug.ts. */
 export interface DebugFrame {
@@ -157,8 +166,8 @@ interface AppState {
   /** sessions whose event backlog has arrived (Transcript loader gate) */
   loaded: Record<string, boolean>
   railOpen: boolean
-  /** which rail panel is up: Changes or Files */
-  railPanel: 'changes' | 'files' | 'debug'
+  /** which rail panel is up */
+  railPanel: RailPanel
   /** sidebar chrome (persisted): drag-resized width + collapsed */
   sidebarWidth: number
   sidebarCollapsed: boolean
@@ -178,6 +187,10 @@ interface AppState {
   gitLog: Record<string, { commits: CommitInfo[]; ahead: number | null }>
   /** branches of the workspace repo (project-create pickers) */
   branchLists: Record<string, BranchList>
+  /** Branch rail: this checkout vs its target, per project */
+  compare: Record<string, CompareResult | undefined>
+  /** Build rail: last run + buffered log per project (server replays) */
+  builds: Record<string, { run: BuildRun | null; lines: string[] }>
   quickOpen: 'files' | 'symbols' | 'hierarchy' | null
   /** rows for the hierarchy overlay (⌃H / ⌃⌥H, docs/PLAN-4.md M18) */
   hierarchy: { title: string; rows: HierarchyRow[] } | null
@@ -250,7 +263,11 @@ interface AppState {
     path: string,
     revealAt?: { lineNumber: number; column: number } | null
   ) => void
-  openDiffSurface: (projectId: string, path: string) => void
+  openDiffSurface: (
+    projectId: string,
+    path: string,
+    base?: { ref: string; label: string }
+  ) => void
   closeSurface: (projectId: string, key: string) => void
   /** key of a file/diff surface, or null to show the selected thread */
   setActiveSurface: (projectId: string, key: string | null) => void
@@ -259,9 +276,14 @@ interface AppState {
   pushProject: (projectId: string, targetBranch?: string) => Promise<void>
   fetchGitLog: (projectId: string) => Promise<void>
   fetchBranches: (workspaceId: string) => Promise<BranchList>
+  /** compare against `target` (omitted = the server's default); throws on an unknown target */
+  fetchCompare: (projectId: string, target?: string) => Promise<CompareResult>
+  fetchBuildStatus: (projectId: string) => Promise<void>
+  runBuild: (projectId: string) => Promise<void>
+  cancelBuild: (projectId: string) => Promise<void>
   setQuickOpen: (mode: 'files' | 'symbols' | 'hierarchy' | null) => void
   openHierarchy: (title: string, rows: HierarchyRow[]) => void
-  setRailPanel: (panel: 'changes' | 'files' | 'debug') => void
+  setRailPanel: (panel: RailPanel) => void
   setSidebarWidth: (width: number) => void
   setSidebarCollapsed: (collapsed: boolean) => void
   setFormatOnSave: (lang: 'java' | 'web', on: boolean) => void
@@ -454,6 +476,8 @@ export const useApp = create<AppState>((set, get) => ({
   lspBusy: {},
   gitLog: {},
   branchLists: {},
+  compare: {},
+  builds: {},
   quickOpen: null,
   hierarchy: null,
   debugPhase: 'idle',
@@ -623,6 +647,15 @@ export const useApp = create<AppState>((set, get) => ({
       } else if (push.push === 'file-event') {
         dispatchFileEvent(push)
         scheduleChangesRefresh(push.projectId, get().fetchChanges)
+      } else if (push.push === 'build') {
+        // A new run id starts a fresh log; the same run appends its batch.
+        set((s) => {
+          const cur = s.builds[push.projectId]
+          const same = cur?.run?.id === push.run.id
+          const lines = same ? [...cur!.lines, ...(push.lines ?? [])] : (push.lines ?? [])
+          if (lines.length > 3000) lines.splice(0, lines.length - 3000)
+          return { builds: { ...s.builds, [push.projectId]: { run: push.run, lines } } }
+        })
       } else if (push.push === 'live-edit') {
         // Ephemeral disk truth (M22): bounded per session, cleared shortly
         // after the session settles — the event log stays the record.
@@ -820,14 +853,17 @@ export const useApp = create<AppState>((set, get) => ({
     syncWatch(get())
   },
 
-  openDiffSurface: (projectId, path) => {
+  openDiffSurface: (projectId, path, base) => {
     void flushAllBuffers()
-    const key = `diff:${path}`
+    const ref: SurfaceRef = base
+      ? { kind: 'diff', path, base: base.ref, baseLabel: base.label }
+      : { kind: 'diff', path }
+    const key = surfaceKey(ref)
     set((s) => {
       const list = s.surfaces[projectId] ?? []
       const surfaces = list.some((x) => surfaceKey(x) === key)
         ? s.surfaces
-        : { ...s.surfaces, [projectId]: [...list, { kind: 'diff' as const, path }] }
+        : { ...s.surfaces, [projectId]: [...list, ref] }
       localStorage.setItem(SURFACES_KEY, JSON.stringify(surfaces))
       return { surfaces, activeSurface: { ...s.activeSurface, [projectId]: key } }
     })
@@ -883,6 +919,27 @@ export const useApp = create<AppState>((set, get) => ({
     const list = await client.request<BranchList>('project.branches', { workspaceId })
     set((s) => ({ branchLists: { ...s.branchLists, [workspaceId]: list } }))
     return list
+  },
+
+  fetchCompare: async (projectId, target) => {
+    const result = await client.request<CompareResult>('project.compare', { projectId, target })
+    set((s) => ({ compare: { ...s.compare, [projectId]: result } }))
+    return result
+  },
+
+  fetchBuildStatus: async (projectId) => {
+    const status = await client
+      .request<{ run: BuildRun | null; lines: string[] }>('build.status', { projectId })
+      .catch(() => ({ run: null, lines: [] }))
+    set((s) => ({ builds: { ...s.builds, [projectId]: status } }))
+  },
+
+  runBuild: async (projectId) => {
+    await client.request('build.run', { projectId })
+  },
+
+  cancelBuild: async (projectId) => {
+    await client.request('build.cancel', { projectId })
   },
 
   setQuickOpen: (mode) => set({ quickOpen: mode, ...(mode === null ? { hierarchy: null } : {}) }),

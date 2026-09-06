@@ -3,7 +3,7 @@ import { mkdirSync, realpathSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join, sep } from 'node:path'
 import { promisify } from 'node:util'
-import type { FileChange } from '@shared/domain'
+import type { CommitInfo, CompareResult, FileChange, MergeResult } from '@shared/domain'
 
 const execFileP = promisify(execFile)
 
@@ -374,29 +374,27 @@ export async function push(
 }
 
 /** Recent commits on the checked-out branch — the rail's history list. */
-export async function log(
-  dir: string,
-  limit: number
-): Promise<{ sha: string; subject: string; authoredAt: number }[]> {
+export async function log(dir: string, limit: number): Promise<CommitInfo[]> {
   if (!(await isGitRepo(dir))) return []
-  try {
-    const { stdout } = await execFileP('git', [
-      '-C',
-      dir,
-      'log',
-      `-${Math.max(1, Math.min(limit, 100))}`,
-      '--format=%H%x00%s%x00%at'
-    ])
-    return stdout
-      .split('\n')
-      .filter(Boolean)
-      .map((line) => {
-        const [sha, subject, at] = line.split('\0')
-        return { sha, subject, authoredAt: Number(at) * 1000 }
-      })
-  } catch {
-    return [] // fresh repo with no commits yet
-  }
+  return logRange(dir, [], limit).catch(() => []) // fresh repo with no commits yet
+}
+
+async function logRange(dir: string, range: string[], limit: number): Promise<CommitInfo[]> {
+  const { stdout } = await execFileP('git', [
+    '-C',
+    dir,
+    'log',
+    `-${Math.max(1, Math.min(limit, 100))}`,
+    '--format=%H%x00%s%x00%at',
+    ...range
+  ])
+  return stdout
+    .split('\n')
+    .filter(Boolean)
+    .map((line) => {
+      const [sha, subject, at] = line.split('\0')
+      return { sha, subject, authoredAt: Number(at) * 1000 }
+    })
 }
 
 /** Local + remote branch names (pickers), current checkout marked. */
@@ -440,11 +438,11 @@ export async function aheadCount(dir: string): Promise<number | null> {
   }
 }
 
-/** `git show HEAD:<path>` — the diff surface's left side. Null when the
- *  path is new (untracked/added): the diff renders against empty. */
-export async function showHead(dir: string, path: string): Promise<string | null> {
+/** `git show <ref>:<path>` — the diff surface's left side. Null when the
+ *  path is absent there (untracked/added): the diff renders against empty. */
+export async function showRef(dir: string, path: string, ref = 'HEAD'): Promise<string | null> {
   try {
-    const { stdout } = await execFileP('git', ['-C', dir, 'show', `HEAD:${path}`], {
+    const { stdout } = await execFileP('git', ['-C', dir, 'show', `${ref}:${path}`], {
       maxBuffer: 8 * 1024 * 1024
     })
     return stdout
@@ -507,5 +505,247 @@ export async function blameRange(
     return { author: latest, others: authors.size - 1 }
   } catch {
     return { author: null, others: 0 }
+  }
+}
+
+// ── branch compare & merge (Branch rail) ─────────────────────────────
+// Compare the project checkout against a target branch, bring the target
+// in (merge/rebase), or land the branch on the target. Conflicts never
+// leave a half-merged tree: the operation aborts and reports the files.
+
+/** Never let git open an editor or prompt for credentials under the app. */
+const quietGit = { GIT_EDITOR: 'true', GIT_TERMINAL_PROMPT: '0' }
+const gitOpts = { maxBuffer: 8 * 1024 * 1024, env: { ...process.env, ...quietGit } }
+
+const rev = async (dir: string, ref: string): Promise<string> =>
+  (await execFileP('git', ['-C', dir, 'rev-parse', '--verify', '--quiet', `${ref}^{commit}`]))
+    .stdout.trim()
+
+async function refExists(dir: string, ref: string): Promise<boolean> {
+  return rev(dir, ref).then(
+    () => true,
+    () => false
+  )
+}
+
+/** The branch a compare defaults to: origin's HEAD, else main/master (a
+ *  local head first, else its origin ref), else the first other local branch. */
+export async function defaultTarget(dir: string): Promise<string> {
+  const current = await currentBranch(dir)
+  const candidates: string[] = []
+  try {
+    const { stdout } = await execFileP('git', [
+      '-C',
+      dir,
+      'symbolic-ref',
+      '--short',
+      'refs/remotes/origin/HEAD'
+    ])
+    candidates.push(stdout.trim().replace(/^origin\//, ''))
+  } catch {
+    // no origin/HEAD
+  }
+  candidates.push('main', 'master')
+  for (const name of candidates) {
+    if (!name || name === current) continue
+    if (await refExists(dir, `refs/heads/${name}`)) return name
+    if (await refExists(dir, `refs/remotes/origin/${name}`)) return `origin/${name}`
+  }
+  const { locals } = await branches(dir)
+  return locals.find((b) => b !== current) ?? 'main'
+}
+
+/** Tracked changes present (staged or not)? Untracked files don't count —
+ *  git refuses on its own when a merge would overwrite one. */
+export async function isClean(dir: string): Promise<boolean> {
+  const { stdout } = await execFileP('git', [
+    '-C',
+    dir,
+    'status',
+    '--porcelain',
+    '--untracked-files=no'
+  ])
+  return stdout.split('\n').every((l) => !l || isAppPath(l.slice(3).replace(/^"|"$/g, '')))
+}
+
+/** Files that differ between two commits (this branch vs its merge base). */
+async function diffFiles(dir: string, from: string, to: string): Promise<FileChange[]> {
+  const out = new Map<string, FileChange>()
+  const { stdout: numstat } = await execFileP(
+    'git',
+    ['-C', dir, 'diff', '--numstat', '-M', from, to],
+    gitOpts
+  )
+  for (const line of numstat.split('\n')) {
+    const m = line.match(/^(\d+|-)\t(\d+|-)\t(.+)$/)
+    if (!m) continue
+    // renames print as "old => new" or "{a => b}/rest"; keep the new name
+    const path = m[3].includes(' => ')
+      ? m[3].replace(/\{([^}]*) => ([^}]*)\}/, '$2').replace(/^.* => /, '')
+      : m[3]
+    out.set(path, {
+      path,
+      adds: m[1] === '-' ? 0 : Number(m[1]),
+      dels: m[2] === '-' ? 0 : Number(m[2]),
+      status: 'modified'
+    })
+  }
+  const { stdout: names } = await execFileP(
+    'git',
+    ['-C', dir, 'diff', '--name-status', '-M', from, to],
+    gitOpts
+  )
+  for (const line of names.split('\n')) {
+    const parts = line.split('\t')
+    if (parts.length < 2) continue
+    const code = parts[0][0]
+    const path = parts[parts.length - 1]
+    const cur = out.get(path) ?? { path, adds: 0, dels: 0, status: 'modified' as const }
+    const status: FileChange['status'] =
+      code === 'A' ? 'added' : code === 'D' ? 'deleted' : code === 'R' ? 'renamed' : 'modified'
+    out.set(path, { ...cur, status })
+  }
+  return [...out.values()]
+    .filter((c) => !isAppPath(c.path))
+    .sort((a, b) => a.path.localeCompare(b.path))
+}
+
+/** This checkout vs `target` (default: defaultTarget). Unknown target throws. */
+export async function compare(dir: string, target?: string): Promise<CompareResult> {
+  const t = target ?? (await defaultTarget(dir))
+  if (!(await refExists(dir, t))) throw new Error(`unknown branch: ${t}`)
+  let mergeBase: string
+  try {
+    mergeBase = (await execFileP('git', ['-C', dir, 'merge-base', t, 'HEAD'])).stdout.trim()
+  } catch (err) {
+    throw surfacing(err)
+  }
+  const { stdout: counts } = await execFileP('git', [
+    '-C',
+    dir,
+    'rev-list',
+    '--left-right',
+    '--count',
+    `${t}...HEAD`
+  ])
+  const [behind, ahead] = counts.trim().split(/\s+/).map(Number)
+  const [ours, theirs, files] = await Promise.all([
+    logRange(dir, [`${t}..HEAD`], 50),
+    logRange(dir, [`HEAD..${t}`], 50),
+    diffFiles(dir, mergeBase, 'HEAD')
+  ])
+  return { target: t, mergeBase, ahead, behind, ours, theirs, files }
+}
+
+async function conflictedFiles(dir: string): Promise<string[]> {
+  const { stdout } = await execFileP('git', [
+    '-C',
+    dir,
+    'diff',
+    '--name-only',
+    '--diff-filter=U'
+  ]).catch(() => ({ stdout: '' }))
+  return stdout.split('\n').filter(Boolean)
+}
+
+/** Run a merge/rebase in `dir`; on failure abort it and report conflicts,
+ *  or rethrow git's message when nothing conflicted (a real error). */
+async function runOrAbort(
+  dir: string,
+  mode: 'merge' | 'rebase',
+  args: string[]
+): Promise<MergeResult | null> {
+  try {
+    await execFileP('git', ['-C', dir, mode, ...args], gitOpts)
+    return null
+  } catch (err) {
+    const conflicts = await conflictedFiles(dir)
+    await execFileP('git', ['-C', dir, mode, '--abort'], gitOpts).catch(() => {})
+    if (conflicts.length) return { ok: false, conflicts }
+    throw surfacing(err)
+  }
+}
+
+const isMergeCommit = (dir: string): Promise<boolean> => refExists(dir, 'HEAD^2')
+
+/** Bring `target` into this checkout by merge or rebase. */
+export async function mergeFrom(
+  dir: string,
+  target: string,
+  mode: 'merge' | 'rebase'
+): Promise<MergeResult> {
+  if (!(await refExists(dir, target))) throw new Error(`unknown branch: ${target}`)
+  if (!(await isClean(dir))) throw new Error('Commit or stash your changes first')
+  const failed = await runOrAbort(dir, mode, mode === 'merge' ? ['--no-edit', target] : [target])
+  if (failed) return failed
+  const sha = await rev(dir, 'HEAD')
+  return { ok: true, sha, fastForward: mode === 'merge' && !(await isMergeCommit(dir)) }
+}
+
+/** merge-tree's conflicted-file section (--name-only): after the tree
+ *  line, one path per line up to the first blank line. */
+function parseMergeTreeConflicts(stdout: string): string[] {
+  const lines = stdout.split('\n').slice(1)
+  const end = lines.indexOf('')
+  const files = (end === -1 ? lines : lines.slice(0, end)).filter(Boolean)
+  return files.length ? [...new Set(files)] : ['conflicts (details in git)']
+}
+
+/** Land this branch on local branch `target`. When a checkout holds the
+ *  target the merge runs there (it must be clean); otherwise the merge
+ *  happens with merge-tree and the ref moves without touching any tree. */
+export async function mergeInto(dir: string, target: string): Promise<MergeResult> {
+  const source = await currentBranch(dir)
+  if (!source || source === 'HEAD') throw new Error('no branch checked out')
+  if (!(await refExists(dir, `refs/heads/${target}`)))
+    throw new Error(`${target} is not a local branch`)
+  const holder = await worktreeOf(dir, target)
+  if (holder) {
+    if (!(await isClean(holder)))
+      throw new Error(`${target} is checked out at ${holder} with uncommitted changes`)
+    const failed = await runOrAbort(holder, 'merge', ['--no-edit', source])
+    if (failed) return failed
+    const sha = await rev(holder, 'HEAD')
+    return { ok: true, sha, fastForward: !(await isMergeCommit(holder)), where: holder }
+  }
+  const head = await rev(dir, 'HEAD')
+  const tip = await rev(dir, `refs/heads/${target}`)
+  const { stdout: baseOut } = await execFileP('git', ['-C', dir, 'merge-base', target, 'HEAD'])
+  const base = baseOut.trim()
+  if (base === head) return { ok: true, sha: tip, fastForward: true } // nothing to land
+  const moveRef = (sha: string): Promise<unknown> =>
+    execFileP('git', ['-C', dir, 'update-ref', `refs/heads/${target}`, sha, tip], gitOpts)
+  if (base === tip) {
+    await moveRef(head).catch((err) => {
+      throw surfacing(err)
+    })
+    return { ok: true, sha: head, fastForward: true }
+  }
+  let treeOut: string
+  try {
+    treeOut = (
+      await execFileP(
+        'git',
+        ['-C', dir, 'merge-tree', '--write-tree', '--name-only', target, 'HEAD'],
+        gitOpts
+      )
+    ).stdout
+  } catch (err) {
+    const e = err as { code?: number; stdout?: string }
+    if (e.code === 1 && e.stdout) return { ok: false, conflicts: parseMergeTreeConflicts(e.stdout) }
+    throw surfacing(err)
+  }
+  const tree = treeOut.split('\n')[0].trim()
+  try {
+    const { stdout } = await execFileP(
+      'git',
+      ['-C', dir, 'commit-tree', tree, '-p', tip, '-p', head, '-m', `Merge ${source} into ${target}`],
+      gitOpts
+    )
+    const sha = stdout.trim()
+    await moveRef(sha)
+    return { ok: true, sha, fastForward: false }
+  } catch (err) {
+    throw surfacing(err)
   }
 }

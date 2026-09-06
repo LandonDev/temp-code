@@ -6,6 +6,8 @@ import { OrchestrationRulesSchema, ThreadRulesSchema } from './rules'
 import { ThreadDefaultsSchema } from './defaults'
 import { AppshotSettingsSchema } from './appshots'
 import { TurnPassSchema } from './turnpass'
+import { BuildConfigSchema } from './build'
+import type { BuildRun } from './build'
 import type { EventRow, SessionMeta } from './events'
 
 /** Git teardown options when a worktree project is archived or deleted. */
@@ -221,11 +223,82 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
     method: z.literal('project.branches'),
     params: z.object({ workspaceId: z.string() })
   }),
-  // `git show HEAD:<path>` — the diff surface's left (original) side.
+  // `git show <ref>:<path>` — the diff surface's left (original) side;
+  // ref defaults to HEAD, the Branch rail passes the merge base.
   z.object({
     id: z.string(),
     method: z.literal('project.show'),
-    params: z.object({ projectId: z.string(), path: z.string() })
+    params: z.object({ projectId: z.string(), path: z.string(), ref: z.string().optional() })
+  }),
+  // ── branch compare / merge (Branch rail) ─────────────────────────────
+  // No target → the server's default (origin/HEAD, main, master, …); the
+  // result names the target it used.
+  z.object({
+    id: z.string(),
+    method: z.literal('project.compare'),
+    params: z.object({ projectId: z.string(), target: z.string().optional() })
+  }),
+  // Bring the target's commits into this checkout (merge or rebase).
+  // Conflicts abort and come back as { ok: false, conflicts }.
+  z.object({
+    id: z.string(),
+    method: z.literal('project.mergeFrom'),
+    params: z.object({
+      projectId: z.string(),
+      target: z.string(),
+      mode: z.enum(['merge', 'rebase']).default('merge')
+    })
+  }),
+  // Land this branch on a local target: in the checkout holding it when
+  // one exists (and is clean), else via merge-tree without any checkout.
+  z.object({
+    id: z.string(),
+    method: z.literal('project.mergeInto'),
+    params: z.object({ projectId: z.string(), target: z.string() })
+  }),
+  // ── build (Build rail) ───────────────────────────────────────────────
+  // Config mirrors turnpass.*: workspace default, optional project override.
+  z.object({
+    id: z.string(),
+    method: z.literal('build.get'),
+    params: z.object({ workspaceId: z.string(), projectId: z.string().optional() })
+  }),
+  z.object({
+    id: z.string(),
+    method: z.literal('build.set'),
+    params: z.object({
+      workspaceId: z.string(),
+      projectId: z.string().optional(),
+      config: BuildConfigSchema.nullable()
+    })
+  }),
+  // What a project would run: override → workspace → detected → null.
+  z.object({
+    id: z.string(),
+    method: z.literal('build.effective'),
+    params: z.object({ projectId: z.string() })
+  }),
+  // Detected defaults for a path (settings placeholders).
+  z.object({
+    id: z.string(),
+    method: z.literal('build.detect'),
+    params: z.object({ path: z.string() })
+  }),
+  z.object({
+    id: z.string(),
+    method: z.literal('build.run'),
+    params: z.object({ projectId: z.string() })
+  }),
+  z.object({
+    id: z.string(),
+    method: z.literal('build.cancel'),
+    params: z.object({ projectId: z.string() })
+  }),
+  // Last run + buffered log lines, so a re-opened panel replays.
+  z.object({
+    id: z.string(),
+    method: z.literal('build.status'),
+    params: z.object({ projectId: z.string() })
   }),
   // Code Vision (docs/PLAN-4.md follow-up): last editor of a method range.
   z.object({
@@ -671,6 +744,9 @@ export type ServerPush =
   | { push: 'session-removed'; sessionIds: string[] }
   // Watcher spine (M11): project-relative path, debounced ~100 ms.
   | { push: 'file-event'; projectId: string; path: string; kind: 'changed' | 'created' | 'deleted' }
+  // Build rail: run state plus any new log lines (batched ~50 ms). A new
+  // run id means the renderer starts a fresh log.
+  | { push: 'build'; projectId: string; run: BuildRun; lines?: string[] }
   // Live change stream (docs/PLAN-5.md M22): disk-truth diffs while a
   // session runs. Ephemeral — never persisted; renderer state only.
   | {

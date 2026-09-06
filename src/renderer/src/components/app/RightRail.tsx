@@ -7,18 +7,25 @@ import { timeAgo } from './bits'
 import { Checkbox } from '../ui/checkbox'
 import { StatefulButton, type ButtonState } from '../motion/button/stateful'
 import { FilesPanel } from './FilesPanel'
+import { BranchPanel } from './BranchPanel'
+import { BuildPanel } from './BuildPanel'
 
 /**
  * The right rail (docs/PLAN-3.md M11/M12): a small panel registry —
- * Changes (now the commit surface) and Files. Push-driven off file-events;
- * clicking a changed file opens a diff surface in the strip.
+ * Changes (the commit surface), Files, Branch (compare/merge), Build, and
+ * Debug. Push-driven off file-events; clicking a changed file opens a
+ * diff surface in the strip.
  */
+const PANELS = ['changes', 'files', 'branch', 'build', 'debug'] as const
 export function RightRail(): React.JSX.Element {
   const open = useApp((s) => s.railOpen)
   const projectId = useApp((s) => s.selectedProjectId)
   const panel = useApp((s) => s.railPanel)
   const setPanel = useApp((s) => s.setRailPanel)
   const changes = useApp((s) => (s.selectedProjectId ? s.changes[s.selectedProjectId] : undefined))
+  const building = useApp(
+    (s) => !!s.selectedProjectId && s.builds[s.selectedProjectId]?.run?.status === 'running'
+  )
   const reduce = useReducedMotion()
 
   return (
@@ -32,13 +39,13 @@ export function RightRail(): React.JSX.Element {
           className="shrink-0 overflow-hidden border-l border-border/60 bg-sidebar"
         >
           <div className="flex h-full w-72 flex-col">
-            <div className="titlebar-drag flex h-11 shrink-0 items-center gap-4 px-4">
-              {(['changes', 'files', 'debug'] as const).map((p) => (
+            <div className="titlebar-drag flex h-11 shrink-0 items-center gap-3.5 px-4">
+              {PANELS.map((p) => (
                 <button
                   key={p}
                   onClick={() => setPanel(p)}
                   className={cn(
-                    'text-xs font-medium transition-colors',
+                    'flex items-center gap-1.5 text-xs font-medium transition-colors',
                     panel === p ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'
                   )}
                 >
@@ -46,6 +53,13 @@ export function RightRail(): React.JSX.Element {
                     <>Changes{(changes?.length ?? 0) > 0 && ` · ${changes!.length}`}</>
                   ) : p === 'files' ? (
                     'Files'
+                  ) : p === 'branch' ? (
+                    'Branch'
+                  ) : p === 'build' ? (
+                    <>
+                      Build
+                      {building && <span className="size-1.5 animate-pulse rounded-full bg-success" />}
+                    </>
                   ) : (
                     'Debug'
                   )}
@@ -56,6 +70,10 @@ export function RightRail(): React.JSX.Element {
               <ChangesPanel key={projectId} projectId={projectId} />
             ) : panel === 'files' ? (
               <FilesPanel key={projectId} projectId={projectId} />
+            ) : panel === 'branch' ? (
+              <BranchPanel key={projectId} projectId={projectId} />
+            ) : panel === 'build' ? (
+              <BuildPanel key={projectId} projectId={projectId} />
             ) : (
               <DebugPanel key={projectId} projectId={projectId} />
             )}
