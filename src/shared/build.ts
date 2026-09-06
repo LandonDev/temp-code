@@ -54,6 +54,17 @@ export interface BuildTarget {
   kind: 'project' | 'checkout' | 'branch'
 }
 
+/** The selected build branch against origin: counts as last fetched,
+ *  plus whether origin holds commits not fetched yet (null: unreachable). */
+export interface RemoteStatus {
+  branch: string
+  /** origin has this branch at all */
+  upstream: boolean
+  ahead: number
+  behind: number
+  stale: boolean | null
+}
+
 export interface BuildRun {
   id: string
   status: BuildStatus

@@ -285,6 +285,21 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
     method: z.literal('build.targets'),
     params: z.object({ projectId: z.string() })
   }),
+  // The build branch vs origin: ahead/behind as last fetched, and whether
+  // origin has moved since (ls-remote).
+  z.object({
+    id: z.string(),
+    method: z.literal('build.remote'),
+    params: z.object({ projectId: z.string(), branch: z.string().optional() })
+  }),
+  // Fetch origin/<branch> (progress arrives as `sync` pushes) and
+  // fast-forward the local branch where it lives; resolves with the new
+  // remote status.
+  z.object({
+    id: z.string(),
+    method: z.literal('build.pull'),
+    params: z.object({ projectId: z.string(), branch: z.string().optional() })
+  }),
   // Detected defaults for a path (settings placeholders).
   z.object({
     id: z.string(),
@@ -756,6 +771,8 @@ export type ServerPush =
   // Build rail: run state plus any new log lines (batched ~50 ms). A new
   // run id means the renderer starts a fresh log.
   | { push: 'build'; projectId: string; run: BuildRun; lines?: string[] }
+  // build.pull progress: git's latest progress line and its percent, if any.
+  | { push: 'sync'; projectId: string; branch: string; line: string; percent: number | null }
   // Live change stream (docs/PLAN-5.md M22): disk-truth diffs while a
   // session runs. Ephemeral — never persisted; renderer state only.
   | {

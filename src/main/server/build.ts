@@ -13,7 +13,8 @@ import {
   type BuildOutput,
   type BuildRun,
   type BuildTarget,
-  type EffectiveBuild
+  type EffectiveBuild,
+  type RemoteStatus
 } from '@shared/build'
 import { harnessEnv } from './drivers/binaries'
 import { branches, checkouts, currentBranch } from './git'
@@ -115,6 +116,150 @@ export async function resolveBuildDir(
     throw new Error((e.stderr || e.message || String(err)).trim())
   }
   return { cwd: dir, branch }
+}
+
+// ── origin sync for the selected build branch ────────────────────────
+
+const quietGit = { ...process.env, GIT_TERMINAL_PROMPT: '0', GIT_EDITOR: 'true' }
+
+const revOf = (dir: string, ref: string): Promise<string | null> =>
+  execFileP('git', ['-C', dir, 'rev-parse', '--verify', '--quiet', ref]).then(
+    (r) => r.stdout.trim() || null,
+    () => null
+  )
+
+/** Local branch vs origin/<branch>: counts from the last fetch, and a
+ *  cheap ls-remote to learn whether origin has moved since. */
+export async function remoteStatus(
+  project: { cwd: string; branch: string | null },
+  branch?: string
+): Promise<RemoteStatus | null> {
+  const b = branch ?? project.branch ?? (await currentBranch(project.cwd))
+  if (!b) return null
+  const dir = project.cwd
+  const local = await revOf(dir, `refs/heads/${b}`)
+  if (!local) return null
+  const fetched = await revOf(dir, `refs/remotes/origin/${b}`)
+  let ahead = 0
+  let behind = 0
+  if (fetched) {
+    const { stdout } = await execFileP('git', [
+      '-C',
+      dir,
+      'rev-list',
+      '--left-right',
+      '--count',
+      `refs/remotes/origin/${b}...refs/heads/${b}`
+    ])
+    ;[behind, ahead] = stdout.trim().split(/\s+/).map(Number)
+  }
+  let remote: string | null | undefined
+  try {
+    const { stdout } = await execFileP(
+      'git',
+      ['-C', dir, 'ls-remote', '--heads', 'origin', `refs/heads/${b}`],
+      { env: quietGit, timeout: 8000 }
+    )
+    remote = stdout.trim().split(/\s+/)[0] || null
+  } catch {
+    remote = undefined // unreachable: counts stand, staleness unknown
+  }
+  return {
+    branch: b,
+    upstream: !!fetched || !!remote,
+    ahead,
+    behind,
+    stale: remote === undefined ? null : remote !== null && remote !== fetched
+  }
+}
+
+export interface SyncProgress {
+  line: string
+  percent: number | null
+}
+
+/** Fetch origin/<branch> with progress, then fast-forward the local
+ *  branch — in the checkout holding it (this project's, or another), or
+ *  by moving the ref when nothing holds it. Diverged branches fetch but
+ *  are not moved; the thrown message says so. */
+export async function pullBranch(
+  project: { cwd: string; branch: string | null },
+  branch: string | undefined,
+  onProgress: (p: SyncProgress) => void
+): Promise<RemoteStatus | null> {
+  const b = branch ?? project.branch ?? (await currentBranch(project.cwd))
+  if (!b) throw new Error('no branch checked out')
+  await new Promise<void>((resolve, reject) => {
+    const child = spawn('git', ['-C', project.cwd, 'fetch', '--progress', '--no-tags', 'origin', b], {
+      env: quietGit,
+      stdio: ['ignore', 'pipe', 'pipe']
+    })
+    let tail = ''
+    let last = ''
+    let timer: NodeJS.Timeout | null = null
+    let pending: SyncProgress | null = null
+    const emit = (line: string): void => {
+      const m = /(\d{1,3})%/.exec(line)
+      pending = { line, percent: m ? Number(m[1]) : null }
+      timer ??= setTimeout(() => {
+        timer = null
+        if (pending) onProgress(pending)
+        pending = null
+      }, 80)
+    }
+    child.stderr?.setEncoding('utf8')
+    child.stderr?.on('data', (chunk: string) => {
+      const parts = chunk.split(/[\r\n]/)
+      for (const part of parts) {
+        const line = part.trim()
+        if (!line) continue
+        last = line
+        tail = `${tail}${line}\n`.slice(-2000)
+        emit(line)
+      }
+    })
+    child.on('error', reject)
+    child.on('close', (code) => {
+      if (timer) clearTimeout(timer)
+      if (pending) onProgress(pending)
+      if (code === 0) resolve()
+      else reject(new Error(last || tail.trim() || `git fetch exited ${code}`))
+    })
+  })
+  onProgress({ line: 'Updating branch', percent: null })
+  const fetched = await revOf(project.cwd, `refs/remotes/origin/${b}`)
+  if (!fetched) throw new Error(`origin has no branch ${b}`)
+  const local = await revOf(project.cwd, `refs/heads/${b}`)
+  if (local !== fetched) {
+    const holder = (await checkouts(project.cwd)).find((c) => c.branch === b)
+    try {
+      if (holder) {
+        await execFileP('git', ['-C', holder.dir, 'merge', '--ff-only', `refs/remotes/origin/${b}`], {
+          env: quietGit
+        })
+      } else {
+        await execFileP('git', [
+          '-C',
+          project.cwd,
+          'merge-base',
+          '--is-ancestor',
+          `refs/heads/${b}`,
+          `refs/remotes/origin/${b}`
+        ])
+        await execFileP('git', ['-C', project.cwd, 'branch', '-f', b, `refs/remotes/origin/${b}`])
+      }
+    } catch (err) {
+      const e = err as { stderr?: string }
+      const status = await remoteStatus(project, b)
+      const diverged = status && status.ahead > 0
+      throw new Error(
+        diverged
+          ? `Fetched, but ${b} has ${status.ahead} local commit${status.ahead === 1 ? '' : 's'} not on origin — update it from the Branch tab`
+          : (e.stderr || String(err)).trim()
+      )
+    }
+  }
+  return remoteStatus(project, b)
 }
 
 // eslint-disable-next-line no-control-regex
