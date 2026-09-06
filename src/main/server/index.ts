@@ -5,6 +5,7 @@ import { CATALOG } from '@shared/catalog'
 import { ClientRequestSchema, type ServerFrame } from '@shared/contract'
 import type { SessionMeta } from '@shared/events'
 import { openDb, Store } from './db'
+import { handleFsGit } from './fsgit'
 import { SessionRegistry } from './sessions'
 import { runDoctor, updateProvider } from './drivers/binaries'
 import { backfillMirrors } from './mirror'
@@ -212,6 +213,8 @@ export async function startServer(dbPath: string): Promise<RunningServer> {
       }
       const req = parsed.data
       try {
+        const fsGit = await handleFsGit(req)
+        if (fsGit.handled) return sendFrame({ id: req.id, ok: true, result: fsGit.result })
         switch (req.method) {
           case 'catalog.get':
             sendFrame({ id: req.id, ok: true, result: CATALOG })
