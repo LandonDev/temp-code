@@ -36,6 +36,7 @@
     "script:e2e-thread-refs": "esbuild scripts/e2e-thread-refs.ts --bundle --platform=node --format=esm --packages=external --alias:@shared=./src/shared --outfile=scripts/.out/e2e-thread-refs.mjs && node scripts/.out/e2e-thread-refs.mjs",
     "script:e2e-app-tools": "esbuild scripts/e2e-app-tools.ts --bundle --platform=node --format=esm --packages=external --alias:@shared=./src/shared --outfile=scripts/.out/e2e-app-tools.mjs && node scripts/.out/e2e-app-tools.mjs",
     "script:e2e-files": "esbuild scripts/e2e-files.ts --bundle --platform=node --format=esm --packages=external --alias:@shared=./src/shared --outfile=scripts/.out/e2e-files.mjs && node scripts/.out/e2e-files.mjs",
+    "script:e2e-branch-build": "esbuild scripts/e2e-branch-build.ts --bundle --platform=node --format=esm --packages=external --alias:@shared=./src/shared --alias:electron=./scripts/electron-shim.mjs --outfile=scripts/.out/e2e-branch-build.mjs && node scripts/.out/e2e-branch-build.mjs",
     "script:e2e-git-flow": "esbuild scripts/e2e-git-flow.ts --bundle --platform=node --format=esm --packages=external --alias:@shared=./src/shared --outfile=scripts/.out/e2e-git-flow.mjs && node scripts/.out/e2e-git-flow.mjs",
     "script:e2e-lsp": "esbuild scripts/e2e-lsp.ts --bundle --platform=node --format=esm --packages=external --alias:@shared=./src/shared --outfile=scripts/.out/e2e-lsp.mjs && node scripts/.out/e2e-lsp.mjs",
     "script:e2e-mirror-index": "esbuild scripts/e2e-mirror-index.ts --bundle --platform=node --format=esm --packages=external --alias:@shared=./src/shared --alias:electron=./scripts/electron-shim.mjs --outfile=scripts/.out/e2e-mirror-index.mjs && node scripts/.out/e2e-mirror-index.mjs",
@@ -75,6 +76,7 @@
     "simple-icons": "^16.28.0",
     "tailwind-merge": "^3.6.0",
     "tailwindcss": "^4.3.3",
+    "tinyglobby": "0.2.17",
     "ws": "^8.21.3",
     "zod": "^4.4.3",
     "zustand": "^5.0.14"

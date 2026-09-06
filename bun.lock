@@ -37,6 +37,7 @@
         "simple-icons": "^16.28.0",
         "tailwind-merge": "^3.6.0",
         "tailwindcss": "^4.3.3",
+        "tinyglobby": "0.2.17",
         "ws": "^8.21.3",
         "zod": "^4.4.3",
         "zustand": "^5.0.14",

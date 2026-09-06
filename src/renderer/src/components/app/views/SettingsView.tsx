@@ -29,6 +29,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '
 import { OrchestrationRulesEditor } from '../OrchestrationRules'
 import { ThreadDefaultsEditor } from '../ThreadDefaults'
 import { TurnPassEditor } from '../TurnPass'
+import { BuildEditor } from '../BuildSettings'
 import { SettingsPanel, SettingsRow } from '../SettingsPanel'
 import { updateReady, useUpdateStatus } from '../../../lib/updates'
 import { ConfirmDialog } from '../ConfirmDialog'
@@ -216,6 +217,7 @@ export function SettingsView(): React.JSX.Element {
                 <>
                   <ThreadDefaultsEditor workspaceId={page.slice(3)} />
                   <TurnPassEditor workspaceId={page.slice(3)} />
+                  <BuildEditor workspaceId={page.slice(3)} />
                   <OrchestrationRulesEditor workspaceId={page.slice(3)} />
                 </>
               )}

@@ -7,17 +7,20 @@ import { ensureForModel } from './lsp'
 import { openFile, type OpenedFile } from './models'
 
 /**
- * A diff surface (docs/PLAN-3.md M14): `git show HEAD:<path>` on the left,
- * the live disk model on the right — editable, autosaving through the same
+ * A diff surface (docs/PLAN-3.md M14): `git show <base>:<path>` on the
+ * left (HEAD by default; the Branch rail passes the merge base), the live
+ * disk model on the right — editable, autosaving through the same
  * registry as any file surface. "Edit the agent's change as you review
  * it", and the exact surface the in-thread flow will reuse.
  */
 export function DiffSurface({
   project,
-  path
+  path,
+  base
 }: {
   project: ProjectMeta
   path: string
+  base?: string
 }): React.JSX.Element {
   const hostRef = useRef<HTMLDivElement>(null)
   const [phase, setPhase] = useState<'loading' | 'ready' | 'error'>('loading')
@@ -30,7 +33,7 @@ export function DiffSurface({
     void (async () => {
       try {
         const [head, opened] = await Promise.all([
-          client.request<string | null>('project.show', { projectId: project.id, path }),
+          client.request<string | null>('project.show', { projectId: project.id, path, ref: base }),
           openFile(project, path)
         ])
         handle = opened
@@ -61,8 +64,8 @@ export function DiffSurface({
       original?.dispose()
       handle?.release()
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- remount per (project, path); the parent keys us
-  }, [project.id, path])
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- remount per (project, path, base); the parent keys us
+  }, [project.id, path, base])
 
   return (
     <div className="relative flex min-h-0 flex-1 flex-col">
