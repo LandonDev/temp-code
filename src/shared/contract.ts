@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { M3aRequestSchemas } from './contract-m3a'
+import { FsGitRequestSchemas } from './contract-fsgit'
 import { AGENT_TYPES } from './catalog'
 import { AttachmentSchema, PermissionPolicySchema } from './events'
 import { ProjectModeSchema, ThreadTypeSchema } from './domain'
@@ -70,6 +71,7 @@ export interface SessionBatchResult {
 
 export const ClientRequestSchema = z.discriminatedUnion('method', [
   ...M3aRequestSchemas,
+  ...FsGitRequestSchemas,
   z.object({ id: z.string(), method: z.literal('catalog.get') }),
   // Per-provider health: binary found on the login-shell PATH, version.
   z.object({ id: z.string(), method: z.literal('doctor.get') }),
