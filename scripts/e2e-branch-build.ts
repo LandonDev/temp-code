@@ -17,7 +17,14 @@ import { openDb, Store } from '../src/main/server/db'
 import { SessionRegistry } from '../src/main/server/sessions'
 import { setOrchestrationRegistry } from '../src/main/server/orchestration'
 import { commit, compare, isClean, mergeFrom, mergeInto } from '../src/main/server/git'
-import { BuildRunner, buildTargets, detectBuild, resolveBuildDir } from '../src/main/server/build'
+import {
+  BuildRunner,
+  buildTargets,
+  detectBuild,
+  pullBranch,
+  remoteStatus,
+  resolveBuildDir
+} from '../src/main/server/build'
 import type { BuildRun } from '../src/shared/build'
 
 let failures = 0
@@ -363,6 +370,62 @@ check(
   JSON.stringify(r.run)
 )
 check('project checkout untouched by the other build', !existsSync(join(project.cwd, 'here.jar')))
+
+// ── origin sync for a build branch ───────────────────────────────────
+const clone2 = mkdtempSync(join(tmpdir(), 'tc-branch-clone-'))
+execFileSync('git', ['clone', '-q', origin, clone2])
+git(clone2, 'config', 'user.email', 'e2e@temp-code.local')
+git(clone2, 'config', 'user.name', 'e2e')
+git(clone2, 'checkout', '-q', '-b', 'sync')
+write(clone2, 's1.txt', 'one\n')
+git(clone2, 'add', '-A')
+git(clone2, 'commit', '-q', '-m', 's1')
+git(clone2, 'push', '-q', 'origin', 'sync')
+git(repo, 'fetch', '-q', 'origin')
+git(repo, 'branch', 'sync', 'origin/sync') // local, unheld, current
+let rs = await remoteStatus(project, 'sync')
+check('unheld branch current with origin', rs?.upstream && rs.ahead === 0 && rs.behind === 0 && rs.stale === false, JSON.stringify(rs))
+rs = await remoteStatus(project, 'main')
+check('main: unpushed commits show as ahead, not stale', rs?.upstream && rs.ahead > 0 && rs.behind === 0 && rs.stale === false, JSON.stringify(rs))
+check('branch without origin', (await remoteStatus(project, 'release'))?.upstream === false)
+write(clone2, 's2.txt', 'two\n')
+git(clone2, 'add', '-A')
+git(clone2, 'commit', '-q', '-m', 's2')
+git(clone2, 'push', '-q', 'origin', 'sync')
+rs = await remoteStatus(project, 'sync')
+check('origin moved → stale, counts still from the last fetch', rs?.stale === true && rs.behind === 0, JSON.stringify(rs))
+const progress: string[] = []
+rs = await pullBranch(project, 'sync', (p) => progress.push(p.line))
+check(
+  'pull unheld: ref fast-forwarded, progress streamed, now current',
+  git(repo, 'rev-parse', 'sync') === git(clone2, 'rev-parse', 'HEAD') && progress.length > 0 && rs?.stale === false && rs.behind === 0,
+  `${progress.length} lines · ${JSON.stringify(rs)}`
+)
+git(ff.cwd, 'checkout', '-q', 'sync') // now a checkout holds it
+write(clone2, 's3.txt', 'three\n')
+git(clone2, 'add', '-A')
+git(clone2, 'commit', '-q', '-m', 's3')
+git(clone2, 'push', '-q', 'origin', 'sync')
+git(repo, 'fetch', '-q', 'origin', 'sync')
+rs = await remoteStatus(project, 'sync')
+check('fetched but not merged → behind 1', rs?.behind === 1 && rs.stale === false, JSON.stringify(rs))
+rs = await pullBranch(project, 'sync', () => {})
+check(
+  'pull held: checkout fast-forwarded with its working tree',
+  git(ff.cwd, 'rev-parse', 'HEAD') === git(clone2, 'rev-parse', 'HEAD') && existsSync(join(ff.cwd, 's3.txt')) && rs?.behind === 0
+)
+write(ff.cwd, 'local.txt', 'mine\n')
+await commitAll(ff.cwd, 'local only')
+write(clone2, 's4.txt', 'four\n')
+git(clone2, 'add', '-A')
+git(clone2, 'commit', '-q', '-m', 's4')
+git(clone2, 'push', '-q', 'origin', 'sync')
+const localTip = git(ff.cwd, 'rev-parse', 'HEAD')
+await pullBranch(project, 'sync', () => {}).then(
+  () => check('diverged pull refused', false),
+  (err) => check('diverged pull refused, says why', String(err).includes('1 local commit'), String(err))
+)
+check('diverged: local untouched, origin fetched', git(ff.cwd, 'rev-parse', 'HEAD') === localTip && (await remoteStatus(project, 'sync'))?.behind === 1)
 
 for (const dir of cleanup) git(repo, 'worktree', 'remove', '--force', dir)
 await registry.disposeAll()

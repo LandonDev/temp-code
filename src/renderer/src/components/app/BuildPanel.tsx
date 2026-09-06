@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
-import type { BuildRun, BuildTarget, EffectiveBuild } from '@shared/build'
+import type { BuildRun, BuildTarget, EffectiveBuild, RemoteStatus } from '@shared/build'
 import { client } from '../../lib/client'
 import { useApp } from '../../state/store'
 import { useNow } from '../../lib/useNow'
@@ -30,6 +30,8 @@ export function BuildPanel({ projectId }: { projectId: string }): React.JSX.Elem
   const fetchBuildStatus = useApp((s) => s.fetchBuildStatus)
   const runBuild = useApp((s) => s.runBuild)
   const cancelBuild = useApp((s) => s.cancelBuild)
+  const pullBranch = useApp((s) => s.pullBranch)
+  const sync = useApp((s) => s.syncs[projectId])
   const setSettingsOpen = useApp((s) => s.setSettingsOpen)
   const project = useApp((s) => s.projects.find((p) => p.id === projectId))
   const workspaceId = project?.workspaceId
@@ -38,6 +40,11 @@ export function BuildPanel({ projectId }: { projectId: string }): React.JSX.Elem
   // Which branch to build: the project's own by default; another checkout
   // or local branch builds there without switching this checkout.
   const [targets, setTargets] = useState<BuildTarget[]>([])
+  // The chosen branch vs origin; undefined while loading, null when it
+  // has no local ref (nothing to compare).
+  const [remote, setRemote] = useState<RemoteStatus | null | undefined>(undefined)
+  const [pulling, setPulling] = useState(false)
+  const [pullError, setPullError] = useState<string | null>(null)
   const [target, setTarget] = useState<string | null>(() =>
     localStorage.getItem(targetKey(projectId))
   )
@@ -67,6 +74,43 @@ export function BuildPanel({ projectId }: { projectId: string }): React.JSX.Elem
       .then(setEffective)
       .catch(() => setEffective(null))
   }, [projectId, chosen, own])
+
+  useEffect(() => {
+    if (!chosen) return
+    let live = true
+    setRemote(undefined)
+    setPullError(null)
+    void client
+      .request<RemoteStatus | null>('build.remote', {
+        projectId,
+        branch: chosen !== own ? chosen : undefined
+      })
+      .then((r) => live && setRemote(r))
+      .catch(() => live && setRemote(null))
+    return () => {
+      live = false
+    }
+  }, [projectId, chosen, own])
+
+  const pull = async (): Promise<void> => {
+    if (!chosen) return
+    setPulling(true)
+    setPullError(null)
+    try {
+      setRemote(await pullBranch(projectId, chosen !== own ? chosen : undefined))
+    } catch (err) {
+      setPullError(err instanceof Error ? err.message : String(err))
+      void client
+        .request<RemoteStatus | null>('build.remote', {
+          projectId,
+          branch: chosen !== own ? chosen : undefined
+        })
+        .then(setRemote)
+        .catch(() => {})
+    } finally {
+      setPulling(false)
+    }
+  }
 
   const pick = (branch: string): void => {
     localStorage.setItem(targetKey(projectId), branch)
@@ -123,13 +167,21 @@ export function BuildPanel({ projectId }: { projectId: string }): React.JSX.Elem
         <StatefulButton
           size="sm"
           variant={running ? 'secondary' : 'primary'}
-          disabled={!effective}
+          disabled={!effective || pulling}
           onClick={() => void (running ? cancelBuild(projectId) : start())}
           className="h-7 shrink-0 text-xs"
         >
           {running ? 'Cancel' : 'Build'}
         </StatefulButton>
       </div>
+      <RemoteLine
+        remote={remote}
+        pulling={pulling}
+        progress={pulling ? sync : undefined}
+        error={pullError}
+        disabled={running}
+        onPull={() => void pull()}
+      />
       <div className="shrink-0 px-4 pb-2 text-[11px] leading-4">
         {effective ? (
           <div className="truncate font-mono text-muted-foreground" title={effective.command}>
@@ -160,6 +212,86 @@ export function BuildPanel({ projectId }: { projectId: string }): React.JSX.Elem
       <Log lines={lines} runId={run?.id ?? null} />
       {run && run.status !== 'running' && <StatusLine run={run} own={own} />}
       {run && run.outputs.length > 0 && <Outputs outputs={run.outputs} />}
+    </div>
+  )
+}
+
+/** The chosen branch against origin, and the way to catch it up. Quiet
+ *  when current; a count and a Fetch button when origin is ahead; git's
+ *  own progress while fetching. */
+function RemoteLine({
+  remote,
+  pulling,
+  progress,
+  error,
+  disabled,
+  onPull
+}: {
+  remote: RemoteStatus | null | undefined
+  pulling: boolean
+  progress: { line: string; percent: number | null } | undefined
+  error: string | null
+  disabled: boolean
+  onPull: () => void
+}): React.JSX.Element | null {
+  if (remote === undefined && !pulling) {
+    return <div className="h-6 shrink-0" />
+  }
+  const needs = !!remote && (remote.behind > 0 || remote.stale === true)
+  const text = pulling
+    ? (progress?.line ?? 'Fetching…')
+    : !remote
+      ? null
+      : !remote.upstream
+        ? 'Not on origin'
+        : remote.behind > 0
+          ? `↓${remote.behind} behind origin${remote.ahead > 0 ? ` · ↑${remote.ahead}` : ''}${remote.stale ? ' · more on origin' : ''}`
+          : remote.stale
+            ? 'Origin has new commits'
+            : remote.ahead > 0
+              ? `↑${remote.ahead} ahead of origin`
+              : 'Up to date with origin'
+  if (text === null) return null
+  return (
+    <div className="shrink-0 px-4 pb-2">
+      <div className="flex h-6 items-center gap-2 text-[11px]">
+        <span
+          className={cn(
+            'min-w-0 flex-1 truncate tabular-nums',
+            pulling ? 'font-mono text-[10.5px] text-muted-foreground' : needs ? 'text-foreground' : 'text-muted-foreground/70'
+          )}
+          title={text}
+        >
+          {text}
+        </span>
+        {(needs || pulling) && (
+          <StatefulButton
+            size="sm"
+            variant="secondary"
+            state={pulling ? 'loading' : 'idle'}
+            disabled={disabled}
+            loadingText="Fetching"
+            onClick={onPull}
+            className="h-6 shrink-0 px-2 text-[11px]"
+          >
+            Fetch
+          </StatefulButton>
+        )}
+      </div>
+      {pulling && (
+        <div className="mt-1 h-0.5 w-full overflow-hidden rounded-full bg-border">
+          <div
+            className={cn(
+              'h-full bg-foreground/60 transition-[width] duration-200',
+              progress?.percent === null || progress === undefined ? 'w-1/4 animate-pulse' : ''
+            )}
+            style={progress?.percent != null ? { width: `${progress.percent}%` } : undefined}
+          />
+        </div>
+      )}
+      {error && !pulling && (
+        <p className="mt-1 break-words text-[11px] leading-snug text-destructive">{error}</p>
+      )}
     </div>
   )
 }

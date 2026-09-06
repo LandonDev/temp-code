@@ -16,7 +16,7 @@ import type {
   WorkspaceMeta
 } from '@shared/domain'
 import type { CreateSessionInput, QueuedMessage, SessionBatchResult } from '@shared/contract'
-import type { BuildRun } from '@shared/build'
+import type { BuildRun, RemoteStatus } from '@shared/build'
 import { DEFAULT_APPSHOT_SETTINGS, type AppshotSettings } from '@shared/appshots'
 import shutterUrl from '../assets/shutter.wav?url'
 import { client } from '../lib/client'
@@ -191,6 +191,8 @@ interface AppState {
   compare: Record<string, CompareResult | undefined>
   /** Build rail: last run + buffered log per project (server replays) */
   builds: Record<string, { run: BuildRun | null; lines: string[] }>
+  /** Build rail: latest fetch progress per project while a pull runs */
+  syncs: Record<string, { branch: string; line: string; percent: number | null } | undefined>
   quickOpen: 'files' | 'symbols' | 'hierarchy' | null
   /** rows for the hierarchy overlay (⌃H / ⌃⌥H, docs/PLAN-4.md M18) */
   hierarchy: { title: string; rows: HierarchyRow[] } | null
@@ -281,6 +283,8 @@ interface AppState {
   fetchBuildStatus: (projectId: string) => Promise<void>
   /** build `branch` (default: the project's own) without switching the checkout */
   runBuild: (projectId: string, branch?: string) => Promise<void>
+  /** fetch origin/<branch> and fast-forward it where it lives; progress rides `syncs` */
+  pullBranch: (projectId: string, branch?: string) => Promise<RemoteStatus | null>
   cancelBuild: (projectId: string) => Promise<void>
   setQuickOpen: (mode: 'files' | 'symbols' | 'hierarchy' | null) => void
   openHierarchy: (title: string, rows: HierarchyRow[]) => void
@@ -479,6 +483,7 @@ export const useApp = create<AppState>((set, get) => ({
   branchLists: {},
   compare: {},
   builds: {},
+  syncs: {},
   quickOpen: null,
   hierarchy: null,
   debugPhase: 'idle',
@@ -648,6 +653,13 @@ export const useApp = create<AppState>((set, get) => ({
       } else if (push.push === 'file-event') {
         dispatchFileEvent(push)
         scheduleChangesRefresh(push.projectId, get().fetchChanges)
+      } else if (push.push === 'sync') {
+        set((s) => ({
+          syncs: {
+            ...s.syncs,
+            [push.projectId]: { branch: push.branch, line: push.line, percent: push.percent }
+          }
+        }))
       } else if (push.push === 'build') {
         // A new run id starts a fresh log; the same run appends its batch.
         set((s) => {
@@ -941,6 +953,16 @@ export const useApp = create<AppState>((set, get) => ({
 
   cancelBuild: async (projectId) => {
     await client.request('build.cancel', { projectId })
+  },
+
+  pullBranch: async (projectId, branch) => {
+    const clear = (): void => set((s) => ({ syncs: { ...s.syncs, [projectId]: undefined } }))
+    clear()
+    try {
+      return await client.request<RemoteStatus | null>('build.pull', { projectId, branch })
+    } finally {
+      clear()
+    }
   },
 
   setQuickOpen: (mode) => set({ quickOpen: mode, ...(mode === null ? { hierarchy: null } : {}) }),

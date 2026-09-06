@@ -70,7 +70,14 @@ import {
   warmIdeaIndexes
 } from './lsp'
 import { fimComplete } from './fim'
-import { BuildRunner, buildTargets, detectBuild, resolveBuildDir } from './build'
+import {
+  BuildRunner,
+  buildTargets,
+  detectBuild,
+  pullBranch,
+  remoteStatus,
+  resolveBuildDir
+} from './build'
 import { closeAllLiveWatchers, onLiveEdit } from './livediff'
 
 /** The session an app.* call claims to be from — must actually exist. */
@@ -578,6 +585,25 @@ export async function startServer(dbPath: string): Promise<RunningServer> {
             const project = registry.getProject(req.params.projectId)
             if (!project) throw new Error(`unknown project: ${req.params.projectId}`)
             sendFrame({ id: req.id, ok: true, result: await buildTargets(project) })
+            break
+          }
+          case 'build.remote': {
+            const project = registry.getProject(req.params.projectId)
+            if (!project) throw new Error(`unknown project: ${req.params.projectId}`)
+            sendFrame({ id: req.id, ok: true, result: await remoteStatus(project, req.params.branch) })
+            break
+          }
+          case 'build.pull': {
+            const project = registry.getProject(req.params.projectId)
+            if (!project) throw new Error(`unknown project: ${req.params.projectId}`)
+            const branch = req.params.branch ?? project.branch ?? ''
+            sendFrame({
+              id: req.id,
+              ok: true,
+              result: await pullBranch(project, req.params.branch, (p) =>
+                sendFrame({ push: 'sync', projectId: project.id, branch, ...p })
+              )
+            })
             break
           }
           case 'build.detect':
