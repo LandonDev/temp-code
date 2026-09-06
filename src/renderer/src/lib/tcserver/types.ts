@@ -2,6 +2,8 @@
 // server/shared; nothing from there runs in the webview.
 export type {
   CreateSessionInput,
+  ServerFrame,
+  ServerPush,
   ServerResponse,
   QueuedMessage,
   SessionBatchResult,
@@ -9,6 +11,7 @@ export type {
 export type {
   AgentEvent,
   EventRow,
+  SessionMeta,
   PermissionPolicy,
   Attachment as ServerAttachment,
   ToolPreview as ServerToolPreview,
@@ -22,18 +25,6 @@ export type {
 } from "@server/shared/catalog";
 export type { SessionStatus } from "@server/shared/events";
 
-// Fork-only contract pieces the server gains in M3a (session.pin, catalog
-// pushes). Typed here so the renderer compiles against today's server;
-// fold these back into the re-exports above once the server has them.
-export type SessionMeta = import("@server/shared/events").SessionMeta & {
-  /** kept at the top of the sidebar list */
-  pinned?: boolean;
-};
-export type ServerPush =
-  | import("@server/shared/contract").ServerPush
-  | { push: "workspaces"; workspaces: import("@server/shared/domain").WorkspaceMeta[] }
-  | { push: "projects"; projects: import("@server/shared/domain").ProjectMeta[] };
-export type ServerFrame = import("@server/shared/contract").ServerResponse | ServerPush;
 export type { ThreadType, SlashCommand } from "@server/shared/domain";
 export type { ThreadDefaults } from "@server/shared/defaults";
 export type {

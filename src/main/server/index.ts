@@ -9,6 +9,7 @@ import { CATALOG } from '@shared/catalog'
 import { ClientRequestSchema, type ServerFrame } from '@shared/contract'
 import type { SessionMeta } from '@shared/events'
 import { openDb, Store } from './db'
+import { handleFsGit } from './fsgit'
 import { SessionRegistry } from './sessions'
 import { runDoctor, updateProvider } from './drivers/binaries'
 import { backfillMirrors } from './mirror'
@@ -223,6 +224,8 @@ export async function startServer(dbPath: string, options: { dataDir?: string } 
       try {
         const extension = await handleM3a(req, m3a)
         if (extension.handled) { sendFrame({ id: req.id, ok: true, result: extension.result }); return }
+        const fsGit = await handleFsGit(req)
+        if (fsGit.handled) return sendFrame({ id: req.id, ok: true, result: fsGit.result })
         switch (req.method) {
           case 'catalog.get':
             sendFrame({ id: req.id, ok: true, result: CATALOG })
