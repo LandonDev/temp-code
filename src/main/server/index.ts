@@ -70,7 +70,7 @@ import {
   warmIdeaIndexes
 } from './lsp'
 import { fimComplete } from './fim'
-import { BuildRunner, detectBuild } from './build'
+import { BuildRunner, buildTargets, detectBuild, resolveBuildDir } from './build'
 import { closeAllLiveWatchers, onLiveEdit } from './livediff'
 
 /** The session an app.* call claims to be from — must actually exist. */
@@ -559,21 +559,42 @@ export async function startServer(dbPath: string): Promise<RunningServer> {
             else registry.setBuild(req.params.workspaceId, req.params.config)
             sendFrame({ id: req.id, ok: true, result: null })
             break
-          case 'build.effective':
+          case 'build.effective': {
+            const project = registry.getProject(req.params.projectId)
+            if (!project) throw new Error(`unknown project: ${req.params.projectId}`)
+            // Detection for another branch looks at a checkout that holds it;
+            // an unheld branch is only materialized when a build runs.
+            const holder = req.params.branch
+              ? (await buildTargets(project)).find((t) => t.branch === req.params.branch)?.cwd
+              : null
             sendFrame({
               id: req.id,
               ok: true,
-              result: await registry.effectiveBuild(mustProject(req.params.projectId).id)
+              result: await registry.effectiveBuild(project.id, holder ?? undefined)
             })
             break
+          }
+          case 'build.targets': {
+            const project = registry.getProject(req.params.projectId)
+            if (!project) throw new Error(`unknown project: ${req.params.projectId}`)
+            sendFrame({ id: req.id, ok: true, result: await buildTargets(project) })
+            break
+          }
           case 'build.detect':
             sendFrame({ id: req.id, ok: true, result: await detectBuild(req.params.path) })
             break
           case 'build.run': {
-            const project = mustProject(req.params.projectId)
-            const build = await registry.effectiveBuild(project.id)
+            const project = registry.getProject(req.params.projectId)
+            if (!project) throw new Error(`unknown project: ${req.params.projectId}`)
+            if (builder.isRunning(project.id)) throw new Error('a build is already running')
+            const where = await resolveBuildDir(project, req.params.branch)
+            const build = await registry.effectiveBuild(project.id, where.cwd)
             if (!build) throw new Error('no build command configured')
-            sendFrame({ id: req.id, ok: true, result: await builder.run(project.id, project.cwd, build) })
+            sendFrame({
+              id: req.id,
+              ok: true,
+              result: await builder.run(project.id, where.cwd, build, where.branch)
+            })
             break
           }
           case 'build.cancel':

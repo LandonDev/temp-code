@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
-import type { BuildRun, EffectiveBuild } from '@shared/build'
+import type { BuildRun, BuildTarget, EffectiveBuild } from '@shared/build'
 import { client } from '../../lib/client'
 import { useApp } from '../../state/store'
 import { useNow } from '../../lib/useNow'
@@ -7,6 +7,17 @@ import { cn } from '../../lib/utils'
 import { duration } from './bits'
 import { FileRefMenu } from './blocks/FileRefMenu'
 import { StatefulButton } from '../motion/button/stateful'
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectTrigger,
+  SelectValue
+} from '../ui/select'
+
+const targetKey = (projectId: string): string => `build-target:${projectId}`
 
 /**
  * The Build rail: one button that runs the project's build command in
@@ -20,27 +31,52 @@ export function BuildPanel({ projectId }: { projectId: string }): React.JSX.Elem
   const runBuild = useApp((s) => s.runBuild)
   const cancelBuild = useApp((s) => s.cancelBuild)
   const setSettingsOpen = useApp((s) => s.setSettingsOpen)
-  const workspaceId = useApp((s) => s.projects.find((p) => p.id === projectId)?.workspaceId)
+  const project = useApp((s) => s.projects.find((p) => p.id === projectId))
+  const workspaceId = project?.workspaceId
   const [effective, setEffective] = useState<EffectiveBuild | null | undefined>(undefined)
   const [error, setError] = useState<string | null>(null)
+  // Which branch to build: the project's own by default; another checkout
+  // or local branch builds there without switching this checkout.
+  const [targets, setTargets] = useState<BuildTarget[]>([])
+  const [target, setTarget] = useState<string | null>(() =>
+    localStorage.getItem(targetKey(projectId))
+  )
 
   const run = build?.run ?? null
   const lines = build?.lines ?? []
   const running = run?.status === 'running'
   const now = useNow(running)
+  const own = targets[0]?.branch ?? project?.branch ?? null
+  const chosen = target && targets.some((t) => t.branch === target) ? target : own
 
   useEffect(() => {
     void fetchBuildStatus(projectId)
     void client
-      .request<EffectiveBuild | null>('build.effective', { projectId })
+      .request<BuildTarget[]>('build.targets', { projectId })
+      .then(setTargets)
+      .catch(() => {})
+  }, [projectId, fetchBuildStatus])
+
+  useEffect(() => {
+    setEffective(undefined)
+    void client
+      .request<EffectiveBuild | null>('build.effective', {
+        projectId,
+        branch: chosen && chosen !== own ? chosen : undefined
+      })
       .then(setEffective)
       .catch(() => setEffective(null))
-  }, [projectId, fetchBuildStatus])
+  }, [projectId, chosen, own])
+
+  const pick = (branch: string): void => {
+    localStorage.setItem(targetKey(projectId), branch)
+    setTarget(branch)
+  }
 
   const start = async (): Promise<void> => {
     setError(null)
     try {
-      await runBuild(projectId)
+      await runBuild(projectId, chosen && chosen !== own ? chosen : undefined)
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
     }
@@ -48,29 +84,37 @@ export function BuildPanel({ projectId }: { projectId: string }): React.JSX.Elem
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex shrink-0 items-center gap-2 px-4 pb-2">
-        <div className="min-w-0 flex-1 text-[11px] leading-4">
-          {effective ? (
-            <>
-              <div className="truncate font-mono" title={effective.command}>
-                {effective.command}
-              </div>
-              {effective.source !== 'project' && (
-                <div className="text-[10.5px] text-muted-foreground/60">{effective.source}</div>
-              )}
-            </>
-          ) : effective === null ? (
-            <span className="text-muted-foreground/70">
-              No build command yet ·{' '}
-              <button
-                onClick={() => workspaceId && setSettingsOpen(true, `ws:${workspaceId}`)}
-                className="text-muted-foreground underline-offset-2 transition-colors hover:text-foreground hover:underline"
-              >
-                set one
-              </button>
-            </span>
-          ) : null}
-        </div>
+      <div className="flex shrink-0 items-center gap-2 px-4 pb-1">
+        <Select value={chosen ?? ''} onValueChange={pick} disabled={running || targets.length < 2}>
+          <SelectTrigger
+            size="sm"
+            className="-ml-1 min-w-0 flex-1 border-transparent bg-transparent px-1 font-mono text-[11px] shadow-none hover:bg-accent/60 disabled:opacity-100 [&_svg]:data-[disabled]:hidden"
+            title={
+              targets.find((t) => t.branch === chosen)?.cwd ??
+              (chosen ? `${chosen} — built in its own worktree` : undefined)
+            }
+          >
+            <SelectValue placeholder="…" />
+          </SelectTrigger>
+          <SelectContent>
+            {(['project', 'checkout', 'branch'] as const).map((kind) => {
+              const group = targets.filter((t) => t.kind === kind)
+              if (group.length === 0) return null
+              return (
+                <SelectGroup key={kind}>
+                  {kind !== 'project' && (
+                    <SelectLabel>{kind === 'checkout' ? 'Other checkouts' : 'Branches'}</SelectLabel>
+                  )}
+                  {group.map((t) => (
+                    <SelectItem key={t.branch} value={t.branch} className="font-mono text-[12px]">
+                      {t.branch}
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
+              )
+            })}
+          </SelectContent>
+        </Select>
         {running && run && (
           <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground">
             {duration(now - run.startedAt)}
@@ -86,13 +130,35 @@ export function BuildPanel({ projectId }: { projectId: string }): React.JSX.Elem
           {running ? 'Cancel' : 'Build'}
         </StatefulButton>
       </div>
+      <div className="shrink-0 px-4 pb-2 text-[11px] leading-4">
+        {effective ? (
+          <div className="truncate font-mono text-muted-foreground" title={effective.command}>
+            {effective.command}
+            {effective.source !== 'project' && (
+              <span className="text-muted-foreground/50"> · {effective.source}</span>
+            )}
+          </div>
+        ) : effective === null ? (
+          <span className="text-muted-foreground/70">
+            No build command yet ·{' '}
+            <button
+              onClick={() => workspaceId && setSettingsOpen(true, `ws:${workspaceId}`)}
+              className="text-muted-foreground underline-offset-2 transition-colors hover:text-foreground hover:underline"
+            >
+              set one
+            </button>
+          </span>
+        ) : (
+          <span className="invisible">…</span>
+        )}
+      </div>
       {error && (
         <p className="shrink-0 break-words px-4 pb-2 text-[11px] leading-snug text-destructive">
           {error}
         </p>
       )}
       <Log lines={lines} runId={run?.id ?? null} />
-      {run && run.status !== 'running' && <StatusLine run={run} />}
+      {run && run.status !== 'running' && <StatusLine run={run} own={own} />}
       {run && run.outputs.length > 0 && <Outputs outputs={run.outputs} />}
     </div>
   )
@@ -130,8 +196,9 @@ function Log({ lines, runId }: { lines: string[]; runId: string | null }): React
   )
 }
 
-function StatusLine({ run }: { run: BuildRun }): React.JSX.Element {
+function StatusLine({ run, own }: { run: BuildRun; own: string | null }): React.JSX.Element {
   const took = duration((run.endedAt ?? Date.now()) - run.startedAt)
+  const where = run.branch && run.branch !== own ? ` · ${run.branch}` : ''
   return (
     <p
       className={cn(
@@ -142,10 +209,10 @@ function StatusLine({ run }: { run: BuildRun }): React.JSX.Element {
       )}
     >
       {run.status === 'ok'
-        ? `Built in ${took}`
+        ? `Built in ${took}${where}`
         : run.status === 'failed'
-          ? `Failed${run.exitCode !== undefined ? ` · exit ${run.exitCode}` : ''} · ${took}`
-          : 'Cancelled'}
+          ? `Failed${run.exitCode !== undefined ? ` · exit ${run.exitCode}` : ''} · ${took}${where}`
+          : `Cancelled${where}`}
     </p>
   )
 }

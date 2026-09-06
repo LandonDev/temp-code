@@ -1,7 +1,9 @@
-import { spawn, type ChildProcess } from 'node:child_process'
-import { existsSync } from 'node:fs'
+import { execFile, spawn, type ChildProcess } from 'node:child_process'
+import { existsSync, mkdirSync } from 'node:fs'
 import { readFile, stat } from 'node:fs/promises'
-import { join, relative, resolve } from 'node:path'
+import { homedir } from 'node:os'
+import { basename, join, relative, resolve } from 'node:path'
+import { promisify } from 'node:util'
 import { nanoid } from 'nanoid'
 import { glob } from 'tinyglobby'
 import type { ServerPush } from '@shared/contract'
@@ -10,9 +12,13 @@ import {
   type BuildConfig,
   type BuildOutput,
   type BuildRun,
+  type BuildTarget,
   type EffectiveBuild
 } from '@shared/build'
 import { harnessEnv } from './drivers/binaries'
+import { branches, checkouts, currentBranch } from './git'
+
+const execFileP = promisify(execFile)
 
 /**
  * The Build rail's engine: one build per project at a time, run in the
@@ -52,6 +58,63 @@ export async function detectBuild(cwd: string): Promise<BuildConfig | null> {
     }
   }
   return null
+}
+
+// ── build targets: build another branch without touching the project ──
+
+/** The project's own branch first, then the repo's other checkouts, then
+ *  local branches no checkout holds. */
+export async function buildTargets(project: {
+  cwd: string
+  branch: string | null
+}): Promise<BuildTarget[]> {
+  const own = project.branch ?? (await currentBranch(project.cwd))
+  const out: BuildTarget[] = own ? [{ branch: own, cwd: project.cwd, kind: 'project' }] : []
+  const held = new Set<string>(own ? [own] : [])
+  for (const c of await checkouts(project.cwd)) {
+    if (!c.branch || held.has(c.branch)) continue
+    held.add(c.branch)
+    out.push({ branch: c.branch, cwd: c.dir, kind: 'checkout' })
+  }
+  const { locals } = await branches(project.cwd).catch(() => ({ locals: [] as string[] }))
+  for (const b of locals) if (!held.has(b)) out.push({ branch: b, cwd: null, kind: 'branch' })
+  return out
+}
+
+const slug = (s: string): string => s.replace(/[^a-zA-Z0-9._-]+/g, '-').slice(0, 60)
+
+/** Where a build of `branch` runs: the project checkout for its own
+ *  branch, the checkout holding the branch, else an app-managed detached
+ *  worktree under ~/.temp-code/builds (re-pointed at the branch each time). */
+export async function resolveBuildDir(
+  project: { cwd: string; branch: string | null },
+  branch: string | undefined
+): Promise<{ cwd: string; branch: string | null }> {
+  const own = project.branch ?? (await currentBranch(project.cwd))
+  if (!branch || branch === own) return { cwd: project.cwd, branch: own }
+  const holder = (await checkouts(project.cwd)).find((c) => c.branch === branch)
+  if (holder) return { cwd: holder.dir, branch }
+  const { locals } = await branches(project.cwd)
+  if (!locals.includes(branch)) throw new Error(`${branch} is not a local branch`)
+  const root = join(homedir(), '.temp-code', 'builds')
+  mkdirSync(root, { recursive: true })
+  // Named after the repo (its common git dir's parent), not this worktree.
+  const { stdout: common } = await execFileP('git', ['-C', project.cwd, 'rev-parse', '--git-common-dir'])
+  const repoRoot = resolve(project.cwd, common.trim(), '..')
+  const dir = join(root, `${slug(basename(repoRoot))}-${slug(branch)}`)
+  const registered = (await checkouts(project.cwd)).some((c) => c.dir === dir)
+  try {
+    if (registered && existsSync(dir)) {
+      await execFileP('git', ['-C', dir, 'checkout', '--detach', '--force', branch])
+    } else {
+      await execFileP('git', ['-C', project.cwd, 'worktree', 'prune'])
+      await execFileP('git', ['-C', project.cwd, 'worktree', 'add', '--detach', dir, branch])
+    }
+  } catch (err) {
+    const e = err as { stderr?: string; message?: string }
+    throw new Error((e.stderr || e.message || String(err)).trim())
+  }
+  return { cwd: dir, branch }
 }
 
 // eslint-disable-next-line no-control-regex
@@ -140,13 +203,20 @@ export class BuildRunner {
     return this.slots.get(projectId)?.run.status === 'running'
   }
 
-  async run(projectId: string, cwd: string, build: EffectiveBuild): Promise<BuildRun> {
+  async run(
+    projectId: string,
+    cwd: string,
+    build: EffectiveBuild,
+    branch: string | null = null
+  ): Promise<BuildRun> {
     if (this.isRunning(projectId)) throw new Error('a build is already running')
     const slot: Slot = {
       run: {
         id: nanoid(10),
         status: 'running',
         command: build.command,
+        cwd,
+        branch,
         startedAt: Date.now(),
         outputs: []
       },

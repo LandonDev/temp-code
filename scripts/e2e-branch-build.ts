@@ -17,7 +17,7 @@ import { openDb, Store } from '../src/main/server/db'
 import { SessionRegistry } from '../src/main/server/sessions'
 import { setOrchestrationRegistry } from '../src/main/server/orchestration'
 import { commit, compare, isClean, mergeFrom, mergeInto } from '../src/main/server/git'
-import { BuildRunner, detectBuild } from '../src/main/server/build'
+import { BuildRunner, buildTargets, detectBuild, resolveBuildDir } from '../src/main/server/build'
 import type { BuildRun } from '../src/shared/build'
 
 let failures = 0
@@ -314,6 +314,55 @@ registry.setProjectBuild(project.id, null)
 registry.setBuild(ws.id, null)
 eff = await registry.effectiveBuild(project.id)
 check('cleared → back to detection', eff?.source === 'detected')
+
+// ── build targets: build another branch without switching the project ──
+const targets = await buildTargets(project)
+check(
+  'targets: own branch first, main as a checkout, unheld branches without a dir',
+  targets[0]?.branch === project.branch &&
+    targets[0]?.cwd === project.cwd &&
+    targets.some((t) => t.branch === 'main' && t.cwd && real(t.cwd) === real(repo) && t.kind === 'checkout') &&
+    targets.some((t) => t.branch === 'release2' && t.cwd === null && t.kind === 'branch'),
+  JSON.stringify(targets)
+)
+const ownDir = await resolveBuildDir(project, undefined)
+check('no branch → the project checkout', ownDir.cwd === project.cwd && ownDir.branch === project.branch)
+const mainDir = await resolveBuildDir(project, 'main')
+check('held branch → its checkout', real(mainDir.cwd) === real(repo) && mainDir.branch === 'main')
+const rel2Dir = await resolveBuildDir(project, 'release2')
+cleanup.push(rel2Dir.cwd)
+check(
+  'unheld branch → detached build worktree at its tip',
+  rel2Dir.cwd.includes('/.temp-code/builds/') &&
+    git(rel2Dir.cwd, 'rev-parse', 'HEAD') === git(repo, 'rev-parse', 'release2') &&
+    git(rel2Dir.cwd, 'rev-parse', '--abbrev-ref', 'HEAD') === 'HEAD' &&
+    existsSync(join(rel2Dir.cwd, 'rel.txt')),
+  rel2Dir.cwd
+)
+check('release2 still not held by any checkout', !(await buildTargets(project)).some((t) => t.branch === 'release2' && t.cwd))
+const again = await resolveBuildDir(project, 'release2')
+check('second resolve reuses the build worktree', again.cwd === rel2Dir.cwd)
+await resolveBuildDir(project, 'nope').then(
+  () => check('unknown branch refused', false),
+  (err) => check('unknown branch refused', String(err).includes('not a local branch'), String(err))
+)
+waiting = done('b5')
+await runner.run(
+  'b5',
+  rel2Dir.cwd,
+  { command: 'echo building release2 && touch here.jar', outputs: '*.jar', source: 'detected' },
+  'release2'
+)
+r = await waiting
+check(
+  'build in the build worktree: outputs live there, run names the branch',
+  r.run.status === 'ok' &&
+    r.run.branch === 'release2' &&
+    r.run.cwd === rel2Dir.cwd &&
+    r.run.outputs[0]?.abs === join(rel2Dir.cwd, 'here.jar'),
+  JSON.stringify(r.run)
+)
+check('project checkout untouched by the other build', !existsSync(join(project.cwd, 'here.jar')))
 
 for (const dir of cleanup) git(repo, 'worktree', 'remove', '--force', dir)
 await registry.disposeAll()

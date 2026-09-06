@@ -273,9 +273,16 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
     })
   }),
   // What a project would run: override → workspace → detected → null.
+  // `branch` points detection at that branch's checkout instead.
   z.object({
     id: z.string(),
     method: z.literal('build.effective'),
+    params: z.object({ projectId: z.string(), branch: z.string().optional() })
+  }),
+  // Branches a project can build without switching its checkout.
+  z.object({
+    id: z.string(),
+    method: z.literal('build.targets'),
     params: z.object({ projectId: z.string() })
   }),
   // Detected defaults for a path (settings placeholders).
@@ -284,10 +291,12 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
     method: z.literal('build.detect'),
     params: z.object({ path: z.string() })
   }),
+  // `branch` (default: the project's own) picks where the build runs — a
+  // checkout holding it, else an app-managed detached build worktree.
   z.object({
     id: z.string(),
     method: z.literal('build.run'),
-    params: z.object({ projectId: z.string() })
+    params: z.object({ projectId: z.string(), branch: z.string().optional() })
   }),
   z.object({
     id: z.string(),
