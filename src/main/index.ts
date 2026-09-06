@@ -1,12 +1,24 @@
-import { app, shell, dialog, BrowserWindow, ipcMain } from 'electron'
+import { app, shell, dialog, net, BrowserWindow, ipcMain } from 'electron'
 import { homedir } from 'os'
 import { join } from 'path'
 import { copyFileSync, existsSync, mkdirSync } from 'fs'
 import { registerUpdates } from './update'
 import { registerAppshots } from './appshots'
-import { electronApp, optimizer, is } from '@electron-toolkit/utils'
-import icon from '../../resources/icon.png?asset'
+import { electronApp, optimizer } from '@electron-toolkit/utils'
 import { startServer, type RunningServer } from './server'
+import { registerAssetProtocol, registerAssetScheme } from './assets'
+import { killAllPtys, ptyFlowCounters, registerPty } from './pty'
+import { clickMenuItem, registerMenu } from './menu'
+import { registerDialogs } from './dialogs'
+import {
+  activateWindows,
+  createWindow,
+  hasQuitSubscriber,
+  isQuitting,
+  registerDock,
+  registerWindows,
+  requestQuit
+} from './windows'
 
 let server: RunningServer | null = null
 
@@ -44,43 +56,8 @@ if (!app.requestSingleInstanceLock()) {
   app.exit(1)
 }
 
-function createWindow(): void {
-  const mainWindow = new BrowserWindow({
-    width: 1280,
-    height: 800,
-    minWidth: 900,
-    minHeight: 600,
-    show: false,
-    autoHideMenuBar: true,
-    titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
-    // Zeron glass: real window vibrancy under the shell; the renderer tints
-    // it #080808/80% and keeps the content panel opaque.
-    ...(process.platform === 'darwin'
-      ? { vibrancy: 'under-window' as const, visualEffectState: 'active' as const }
-      : {}),
-    backgroundColor: process.platform === 'darwin' ? '#00000000' : '#060606',
-    ...(process.platform === 'linux' ? { icon } : {}),
-    webPreferences: {
-      preload: join(__dirname, '../preload/index.js'),
-      sandbox: false
-    }
-  })
-
-  mainWindow.on('ready-to-show', () => {
-    mainWindow.show()
-  })
-
-  mainWindow.webContents.setWindowOpenHandler((details) => {
-    shell.openExternal(details.url)
-    return { action: 'deny' }
-  })
-
-  if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
-    mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL'])
-  } else {
-    mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
-  }
-}
+// Privileged scheme registration only takes effect before the app is ready.
+registerAssetScheme()
 
 app.whenReady().then(async () => {
   electronApp.setAppUserModelId('dev.landon.temp-code')
@@ -103,8 +80,15 @@ app.whenReady().then(async () => {
       }
     }
   }
+  registerAssetProtocol()
   server = await startServer(join(app.getPath('userData'), 'temp-code.db'))
   registerUpdates()
+  registerPty()
+  registerWindows()
+  registerDialogs()
+  registerMenu()
+  registerDock()
+  if (!app.isPackaged) registerDebug()
   if (process.platform === 'darwin') registerAppshots(server, createWindow)
   ipcMain.handle('server-port', () => server?.port ?? null)
   ipcMain.handle('pick-directory', async (_e, defaultPath?: string) => {
@@ -121,9 +105,29 @@ app.whenReady().then(async () => {
   createWindow()
 
   app.on('activate', function () {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow()
+    activateWindows()
   })
 })
+
+/** Dev-only hooks so the CDP exit test can drive things a page cannot. */
+function registerDebug(): void {
+  ipcMain.handle('debug:menu-click', (e, id: string) =>
+    clickMenuItem(String(id), BrowserWindow.fromWebContents(e.sender))
+  )
+  ipcMain.handle('debug:dock-badge', () => (app.dock ? app.dock.getBadge() : null))
+  ipcMain.handle('debug:window-title', (e) => BrowserWindow.fromWebContents(e.sender)?.getTitle())
+  ipcMain.handle('debug:pty-flow', () => ptyFlowCounters())
+  // The old renderer's CSP forbids tempcode-asset:, so the scheme is
+  // exercised from main instead.
+  ipcMain.handle('debug:asset-fetch', async (_e, url: string) => {
+    try {
+      const res = await net.fetch(String(url))
+      return { status: res.status, body: (await res.text()).slice(0, 200) }
+    } catch (e) {
+      return { status: 0, body: `threw ${(e as Error).message}` }
+    }
+  })
+}
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
@@ -131,6 +135,14 @@ app.on('window-all-closed', () => {
   }
 })
 
-app.on('before-quit', () => {
+app.on('before-quit', (e) => {
+  // A renderer that asked for the last word gets it once; after
+  // `app:confirm-quit` the gate is open and we shut down for real.
+  if (!isQuitting() && hasQuitSubscriber()) {
+    e.preventDefault()
+    requestQuit()
+    return
+  }
+  killAllPtys()
   void server?.close()
 })
