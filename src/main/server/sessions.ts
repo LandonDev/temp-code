@@ -604,15 +604,16 @@ export class SessionRegistry {
     this.store.setSetting(`build:project:${projectId}`, config ? JSON.stringify(config) : null)
   }
 
-  /** What a project builds with: override → workspace → detected → null. */
-  async effectiveBuild(projectId: string): Promise<EffectiveBuild | null> {
+  /** What a project builds with: override → workspace → detected → null.
+   *  `cwd` is the checkout detection looks at (another branch's worktree). */
+  async effectiveBuild(projectId: string, cwd?: string): Promise<EffectiveBuild | null> {
     const project = this.store.getProject(projectId)
     if (!project) return null
     const own = this.getProjectBuild(projectId)
     if (own) return { ...own, source: 'project' }
     const ws = this.getBuild(project.workspaceId)
     if (ws) return { ...ws, source: 'workspace' }
-    const detected = await detectBuild(project.cwd)
+    const detected = await detectBuild(cwd ?? project.cwd)
     return detected ? { ...detected, source: 'detected' } : null
   }
 

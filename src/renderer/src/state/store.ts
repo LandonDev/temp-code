@@ -279,7 +279,8 @@ interface AppState {
   /** compare against `target` (omitted = the server's default); throws on an unknown target */
   fetchCompare: (projectId: string, target?: string) => Promise<CompareResult>
   fetchBuildStatus: (projectId: string) => Promise<void>
-  runBuild: (projectId: string) => Promise<void>
+  /** build `branch` (default: the project's own) without switching the checkout */
+  runBuild: (projectId: string, branch?: string) => Promise<void>
   cancelBuild: (projectId: string) => Promise<void>
   setQuickOpen: (mode: 'files' | 'symbols' | 'hierarchy' | null) => void
   openHierarchy: (title: string, rows: HierarchyRow[]) => void
@@ -934,8 +935,8 @@ export const useApp = create<AppState>((set, get) => ({
     set((s) => ({ builds: { ...s.builds, [projectId]: status } }))
   },
 
-  runBuild: async (projectId) => {
-    await client.request('build.run', { projectId })
+  runBuild: async (projectId, branch) => {
+    await client.request('build.run', { projectId, branch })
   },
 
   cancelBuild: async (projectId) => {

@@ -46,19 +46,31 @@ export async function branchExists(repoPath: string, branch: string): Promise<bo
   return false
 }
 
+/** Every checkout of `dir`'s repo (main checkout first): its path and the
+ *  branch it holds (null when detached). */
+export async function checkouts(dir: string): Promise<{ dir: string; branch: string | null }[]> {
+  try {
+    const { stdout } = await execFileP('git', ['-C', dir, 'worktree', 'list', '--porcelain'])
+    const all: { dir: string; branch: string | null }[] = []
+    let cur: { dir: string; branch: string | null } | null = null
+    for (const line of stdout.split('\n')) {
+      if (line.startsWith('worktree ')) {
+        if (cur) all.push(cur)
+        cur = { dir: line.slice(9), branch: null }
+      } else if (cur && line.startsWith('branch refs/heads/')) {
+        cur.branch = line.slice('branch refs/heads/'.length)
+      }
+    }
+    if (cur) all.push(cur)
+    return all
+  } catch {
+    return []
+  }
+}
+
 /** The worktree (if any) that has `branch` checked out. */
 async function worktreeOf(repoPath: string, branch: string): Promise<string | null> {
-  try {
-    const { stdout } = await execFileP('git', ['-C', repoPath, 'worktree', 'list', '--porcelain'])
-    let dir: string | null = null
-    for (const line of stdout.split('\n')) {
-      if (line.startsWith('worktree ')) dir = line.slice(9)
-      else if (line === `branch refs/heads/${branch}`) return dir
-    }
-  } catch {
-    // fall through
-  }
-  return null
+  return (await checkouts(repoPath)).find((c) => c.branch === branch)?.dir ?? null
 }
 
 /**
@@ -79,27 +91,13 @@ export async function strayWorktrees(
     }
   }
   const known = new Set(knownDirs.map(canon))
-  const managedRoot = canon(join(homedir(), '.temp-code', 'worktrees')) + sep
-  try {
-    const { stdout } = await execFileP('git', ['-C', dir, 'worktree', 'list', '--porcelain'])
-    const all: { dir: string; branch: string | null }[] = []
-    let cur: { dir: string; branch: string | null } | null = null
-    for (const line of stdout.split('\n')) {
-      if (line.startsWith('worktree ')) {
-        if (cur) all.push(cur)
-        cur = { dir: line.slice(9), branch: null }
-      } else if (cur && line.startsWith('branch refs/heads/')) {
-        cur.branch = line.slice('branch refs/heads/'.length)
-      }
-    }
-    if (cur) all.push(cur)
-    return all.filter((w) => {
-      const c = canon(w.dir)
-      return !known.has(c) && !c.startsWith(managedRoot)
-    })
-  } catch {
-    return []
-  }
+  const managedRoots = ['worktrees', 'builds'].map(
+    (d) => canon(join(homedir(), '.temp-code', d)) + sep
+  )
+  return (await checkouts(dir)).filter((w) => {
+    const c = canon(w.dir)
+    return !known.has(c) && !managedRoots.some((root) => c.startsWith(root))
+  })
 }
 
 /**

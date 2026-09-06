@@ -44,10 +44,23 @@ export interface BuildOutput {
 
 export type BuildStatus = 'running' | 'ok' | 'failed' | 'cancelled'
 
+/** Somewhere a project can build without switching its own checkout:
+ *  its own branch, another checkout of the repo, or a local branch no
+ *  checkout holds (built in an app-managed detached worktree). */
+export interface BuildTarget {
+  branch: string
+  /** the checkout that holds the branch; null = a build worktree is made */
+  cwd: string | null
+  kind: 'project' | 'checkout' | 'branch'
+}
+
 export interface BuildRun {
   id: string
   status: BuildStatus
   command: string
+  /** where it ran and what was checked out there */
+  cwd: string
+  branch: string | null
   startedAt: number
   endedAt?: number
   exitCode?: number
