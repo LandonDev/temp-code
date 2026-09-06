@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { M3aRequestSchemas } from './contract-m3a'
 import { AGENT_TYPES } from './catalog'
 import { AttachmentSchema, PermissionPolicySchema } from './events'
 import { ProjectModeSchema, ThreadTypeSchema } from './domain'
@@ -32,6 +33,7 @@ const providerEnum = z.enum(['claude', 'codex', 'cursor'])
 const reasoningEnum = z.enum(['low', 'medium', 'high', 'xhigh', 'max', 'ultra'])
 
 export const CreateSessionParams = z.object({
+  id: z.string().regex(/^[A-Za-z0-9_-]+$/).optional(),
   // provider/model/reasoning/permission omitted → the server fills them
   // from the thread defaults (workspace override, else global).
   provider: providerEnum.optional(),
@@ -67,6 +69,7 @@ export interface SessionBatchResult {
 }
 
 export const ClientRequestSchema = z.discriminatedUnion('method', [
+  ...M3aRequestSchemas,
   z.object({ id: z.string(), method: z.literal('catalog.get') }),
   // Per-provider health: binary found on the login-shell PATH, version.
   z.object({ id: z.string(), method: z.literal('doctor.get') }),
@@ -762,6 +765,8 @@ export interface QueuedMessage {
 }
 
 export type ServerPush =
+  | { push: 'workspaces'; workspaces: import('./domain').WorkspaceMeta[] }
+  | { push: 'projects'; projects: import('./domain').ProjectMeta[] }
   | { push: 'event'; row: EventRow }
   | { push: 'session'; session: SessionMeta }
   | { push: 'queue'; sessionId: string; items: QueuedMessage[] }
