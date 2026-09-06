@@ -1,5 +1,5 @@
 {
-  "n": 93,
-  "notes": "Right rail gains Branch (compare/merge/rebase vs a target, conflicts abort and list files) and Build (streamed build log, outputs in Finder, per-workspace/project command) tabs",
-  "ts": 1788732601574
+  "n": 94,
+  "notes": "Build tab can build another branch (other checkouts in place, unheld branches in a detached build worktree) without switching the project checkout",
+  "ts": 1788733623746
 }
