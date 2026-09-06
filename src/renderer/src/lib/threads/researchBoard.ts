@@ -1,0 +1,65 @@
+import type { ResearchSource } from "../tcserver/todos";
+
+/**
+ * The research board's data: research-source rows folded into one group
+ * per angle (agent), each holding its queries in order with the sources
+ * they surfaced beneath. Sources fetched before any query sit under a
+ * `null` query. Totals count unique URLs and queries across the thread —
+ * a source two angles consulted shows in both groups but counts once.
+ */
+
+export type SourceRow = { url: string; title?: string };
+export type QueryGroup = {
+  /** null = sources fetched before any query (direct fetches) */
+  query: string | null;
+  sources: SourceRow[];
+};
+export type Angle = { agentId: string; label: string; queries: QueryGroup[] };
+export type ResearchBoard = { angles: Angle[]; sources: number; searches: number };
+
+export const EMPTY_BOARD: ResearchBoard = { angles: [], sources: 0, searches: 0 };
+
+export function foldResearchBoard(rows: ResearchSource[]): ResearchBoard {
+  if (rows.length === 0) return EMPTY_BOARD;
+  const angles: Angle[] = [];
+  const byAgent = new Map<string, Angle>();
+  const byCall = new Map<string, SourceRow>();
+  const urls = new Set<string>();
+  const queries = new Set<string>();
+  for (const e of rows) {
+    const known = byCall.get(e.callId);
+    if (known) {
+      if (e.title) known.title = e.title;
+      continue;
+    }
+    let angle = byAgent.get(e.agentId);
+    if (!angle) {
+      angle = { agentId: e.agentId, label: e.agentLabel, queries: [] };
+      byAgent.set(e.agentId, angle);
+      angles.push(angle);
+    }
+    if (e.query) {
+      queries.add(e.query);
+      angle.queries.push({ query: e.query, sources: [] });
+    } else if (e.url) {
+      urls.add(e.url);
+      let group = angle.queries[angle.queries.length - 1];
+      if (!group) {
+        group = { query: null, sources: [] };
+        angle.queries.push(group);
+      }
+      const src: SourceRow = { url: e.url, title: e.title };
+      group.sources.push(src);
+      byCall.set(e.callId, src);
+    }
+  }
+  return { angles, sources: urls.size, searches: queries.size };
+}
+
+export function hostOf(url: string): string {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return "";
+  }
+}
