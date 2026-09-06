@@ -1,5 +1,9 @@
 import { existsSync, readFileSync, realpathSync } from 'node:fs'
-import { resolve } from 'node:path'
+import { dirname, resolve } from 'node:path'
+import { handleM3a } from './m3a'
+import { Notes } from './notes'
+import { ProjectLogos } from './projectLogos'
+import { ClaudeUsage } from './rateLimits'
 import { WebSocketServer, type WebSocket } from 'ws'
 import { CATALOG } from '@shared/catalog'
 import { ClientRequestSchema, type ServerFrame } from '@shared/contract'
@@ -128,9 +132,11 @@ export interface RunningServer {
   close: () => Promise<void>
 }
 
-export async function startServer(dbPath: string): Promise<RunningServer> {
-  const store = new Store(openDb(dbPath))
+export async function startServer(dbPath: string, options: { dataDir?: string } = {}): Promise<RunningServer> {
+  const db = openDb(dbPath)
+  const store = new Store(db)
   const registry = new SessionRegistry(store)
+  const m3a = { store, registry, notes: new Notes(db), logos: new ProjectLogos(options.dataDir ?? dirname(dbPath)), usage: new ClaudeUsage() }
   registry.resetStaleStatuses()
   registry.startIdleSweep()
   setOrchestrationRegistry(registry)
@@ -184,6 +190,9 @@ export async function startServer(dbPath: string): Promise<RunningServer> {
 
     // Every client gets session-meta updates (cheap, drives the sidebar).
     const offMeta = registry.onMeta((session) => sendFrame({ push: 'session', session }))
+    const offCatalog = registry.onCatalog((kind) => sendFrame(kind === 'workspaces'
+      ? { push: 'workspaces', workspaces: registry.listWorkspaces() }
+      : { push: 'projects', projects: registry.listProjects() }))
     const offLive = onLiveEdit((p) => sendFrame(p))
     const offBuild = builder.onPush((p) => sendFrame(p))
     const offQueue = registry.onQueue((sessionId, items) =>
@@ -212,6 +221,8 @@ export async function startServer(dbPath: string): Promise<RunningServer> {
       }
       const req = parsed.data
       try {
+        const extension = await handleM3a(req, m3a)
+        if (extension.handled) { sendFrame({ id: req.id, ok: true, result: extension.result }); return }
         switch (req.method) {
           case 'catalog.get':
             sendFrame({ id: req.id, ok: true, result: CATALOG })
@@ -928,6 +939,7 @@ export async function startServer(dbPath: string): Promise<RunningServer> {
 
     ws.on('close', () => {
       offMeta()
+      offCatalog()
       offQueue()
       offLive()
       offBuild()
@@ -960,7 +972,9 @@ export async function startServer(dbPath: string): Promise<RunningServer> {
       await closeAllLiveWatchers()
       stopAllLsp()
       stopAllDap()
-      wss.close()
+      for (const client of wss.clients) client.terminate()
+      await new Promise<void>((resolve, reject) => wss.close((error) => error ? reject(error) : resolve()))
+      db.close()
     }
   }
 }

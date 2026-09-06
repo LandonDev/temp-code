@@ -216,7 +216,29 @@ const DISK_TOOL_GRACE_MS = 2_500
  * live driver handles, and per-session subscriptions. The single write
  * path — everything user-visible flows through append().
  */
+export function isPlaceholderTitle(meta: SessionMeta): boolean {
+  return (Object.values(THREAD_TITLES) as string[]).includes(meta.title) ||
+    meta.title === `${meta.provider} · ${meta.agentType}`
+}
+
 export class SessionRegistry {
+  private catalogListeners = new Set<(kind: 'workspaces' | 'projects') => void>()
+
+  onCatalog(listener: (kind: 'workspaces' | 'projects') => void): () => void {
+    this.catalogListeners.add(listener)
+    return () => this.catalogListeners.delete(listener)
+  }
+
+  private notifyCatalog(kind: 'workspaces' | 'projects'): void {
+    for (const listener of this.catalogListeners) listener(kind)
+  }
+
+  setPinned(sessionId: string, pinned: boolean): void {
+    const next = this.store.updateSession(sessionId, { pinned })
+    if (!next) throw new Error(`unknown session: ${sessionId}`)
+    this.notifyMeta(next)
+  }
+
   private handles = new Map<string, DriverHandle>()
   private starting = new Map<string, Promise<DriverHandle>>()
   private subscribers = new Map<string, Set<SessionListener>>()
@@ -420,6 +442,13 @@ export class SessionRegistry {
       createdAt: Date.now()
     }
     this.store.insertWorkspace(meta)
+    for (const session of this.store.listSessions()) {
+      if (session.projectId || session.workspaceId || session.cwd !== path) continue
+      this.store.setSessionWorkspace(session.id, meta.id)
+      const next = this.store.getSession(session.id)
+      if (next) this.notifyMeta(next)
+    }
+    this.notifyCatalog('workspaces')
     return meta
   }
 
@@ -434,6 +463,8 @@ export class SessionRegistry {
     }
     const projectIds = this.store.deleteWorkspace(workspaceId)
     for (const pid of projectIds) await this.deleteProjectSessions(pid)
+    this.notifyCatalog('workspaces')
+    this.notifyCatalog('projects')
   }
 
   async createProject(
@@ -467,6 +498,7 @@ export class SessionRegistry {
     this.store.insertProject(meta)
     void ensureLocalExclude(cwd) // plan docs (.temp-code/) stay out of git
     seedJournal(meta) // PROJECT.md — the shared journal threads append to
+    this.notifyCatalog('projects')
     return meta
   }
 
@@ -480,7 +512,9 @@ export class SessionRegistry {
 
   renameProject(projectId: string, name: string): void {
     const t = name.trim()
-    if (t) this.store.renameProject(projectId, t)
+    if (!t) return
+    this.store.renameProject(projectId, t)
+    this.notifyCatalog('projects')
   }
 
   /** Switch a worktree project's checkout to another branch (existing or
@@ -492,6 +526,7 @@ export class SessionRegistry {
     if (p.mode !== 'worktree') throw new Error('only worktree projects can switch branches')
     const local = await switchBranch(p.cwd, branch, { baseRef })
     this.store.setProjectBranch(projectId, local)
+    this.notifyCatalog('projects')
   }
 
   /** Tear down the chosen git leftovers of a worktree project. Runs
@@ -519,6 +554,7 @@ export class SessionRegistry {
   ): Promise<void> {
     if (archived && cleanup) await this.cleanupProjectGit(projectId, cleanup)
     this.store.setProjectArchived(projectId, archived)
+    this.notifyCatalog('projects')
   }
 
   async deleteProject(projectId: string, cleanup?: ProjectCleanup): Promise<void> {
@@ -526,6 +562,7 @@ export class SessionRegistry {
     await this.deleteProjectSessions(projectId)
     this.store.deleteProject(projectId)
     this.store.setSetting(`turn-pass:project:${projectId}`, null)
+    this.notifyCatalog('projects')
   }
 
   private async deleteProjectSessions(projectId: string): Promise<void> {
@@ -652,16 +689,20 @@ export class SessionRegistry {
   async create(raw: CreateSessionInput): Promise<SessionMeta> {
     const params = CreateSessionParams.parse(raw)
     const now = Date.now()
-    const id = nanoid(12)
+    if (params.id && this.store.getSession(params.id)) throw new Error(`session id already taken: ${params.id}`)
+    const id = params.id ?? nanoid(12)
     const project = params.projectId ? this.store.getProject(params.projectId) : null
     // One-off chats: a workspace chat runs at the workspace root, a fully
     // loose chat in the home directory.
-    const workspace =
+    let workspace =
       !project && params.workspaceId
         ? this.store.listWorkspaces().find((w) => w.id === params.workspaceId)
         : null
     if (!project && params.workspaceId && !workspace) {
       throw new Error(`unknown workspace: ${params.workspaceId}`)
+    }
+    if (!project && !workspace && !params.workspaceId && params.cwd) {
+      workspace = this.store.listWorkspaces().find((w) => w.path === params.cwd) ?? null
     }
     const cwd = project?.cwd ?? workspace?.path ?? params.cwd ?? homedir()
     // Fields the caller left open come from the thread defaults
@@ -703,6 +744,7 @@ export class SessionRegistry {
       // ready for input.
       status: 'idle',
       archived: false,
+      pinned: false,
       permission: params.permission ?? d.permission,
       fast: false,
       context1m: params.context1m ?? false,
@@ -872,7 +914,7 @@ export class SessionRegistry {
     // Cursor-style: an untitled thread takes its name from the first
     // message right away; a generated title replaces the raw slice once
     // the first turn completes (maybeRetitle).
-    if (first && (Object.values(THREAD_TITLES) as string[]).includes(meta.title)) {
+    if (first && isPlaceholderTitle(meta)) {
       const title = text.trim().split('\n')[0].slice(0, 60)
       if (title) {
         const next = this.store.updateSession(sessionId, { title })

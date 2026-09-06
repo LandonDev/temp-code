@@ -43,7 +43,8 @@
     "script:measure-context": "esbuild scripts/measure-context.ts --bundle --platform=node --format=esm --packages=external --alias:@shared=./src/shared --alias:electron=./scripts/electron-shim.mjs --outfile=scripts/.out/measure-context.mjs && node scripts/.out/measure-context.mjs",
     "script:e2e-editor-finish": "esbuild scripts/e2e-editor-finish.ts --bundle --platform=node --format=esm --packages=external --alias:@shared=./src/shared --outfile=scripts/.out/e2e-editor-finish.mjs && node scripts/.out/e2e-editor-finish.mjs",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "script:e2e-m3a": "esbuild scripts/e2e-m3a.ts --bundle --platform=node --format=esm --packages=external --alias:@shared=./src/shared --alias:electron=./scripts/electron-shim.mjs --outfile=scripts/.out/e2e-m3a.mjs && node scripts/.out/e2e-m3a.mjs"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "0.3.227",
