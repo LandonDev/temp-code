@@ -67,6 +67,7 @@ import {
 } from "../lib/threadMentions";
 import { EditRow } from "./EditRow";
 import { isEditBlock } from "./editModel";
+import { TranscriptSessionContext } from "./transcriptSession";
 import { TranscriptSelectionMenu } from "./TranscriptSelectionMenu";
 import {
   activityPhaseTitle,
@@ -97,6 +98,8 @@ const TURN_PAGE_SIZE = 20;
 
 type Props = {
   blocks: Block[];
+  /** the session shown, for rows that remember state per session */
+  sessionId?: string;
   busy?: boolean;
   cwd?: string;
   harness?: HarnessId;
@@ -117,6 +120,7 @@ type Props = {
 
 export function AgentTranscript({
   blocks,
+  sessionId,
   busy,
   cwd,
   harness,
@@ -296,6 +300,7 @@ export function AgentTranscript({
 
   return (
     <SelectSessionContext.Provider value={onSelectSession}>
+    <TranscriptSessionContext.Provider value={sessionId}>
     <div
       ref={setScroller}
       className="agent-transcript h-full overflow-y-auto overscroll-none [overflow-anchor:none] font-mono text-[13px] leading-5"
@@ -419,6 +424,7 @@ export function AgentTranscript({
         />
       ) : null}
     </div>
+    </TranscriptSessionContext.Provider>
     </SelectSessionContext.Provider>
   );
 }

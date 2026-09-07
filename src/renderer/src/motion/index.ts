@@ -6,3 +6,4 @@ export { TextShimmer } from "./TextShimmer";
 export { TweenHeight } from "./TweenHeight";
 export { useHoverCapable } from "./useHoverCapable";
 export { cn } from "./cn";
+export { useCountUp } from "./useCountUp";
