@@ -31,6 +31,7 @@ import type { ThreadType } from "../lib/tcserver/types";
 import { AgentTranscript } from "./AgentTranscript";
 import { EmptySession } from "./EmptySession";
 import { ThreadView, type ChatOpts } from "./threads/ThreadView";
+import { ChatColumn, type ChatSlots } from "./threads/chatSlots";
 import { WorkingStrip } from "./threads/WorkingStrip";
 import * as serverCommands from "../lib/tcserver/commands";
 import { MOD } from "../lib/platform";
@@ -295,8 +296,10 @@ export const SessionPane = memo(function SessionPane({
       />
     </Composer>
   );
-  const renderChat = (opts?: ChatOpts) => (
-    <>
+  // The column as parts so a view can seat the transcript apart from the
+  // composer; `renderChat` stacks them the way the pane always has.
+  const renderSlots = (opts?: ChatOpts): ChatSlots => ({
+    transcript: (
       <div className="relative min-h-0 flex-1">
         <AgentTranscript
           sessionId={session.id}
@@ -340,14 +343,14 @@ export const SessionPane = memo(function SessionPane({
           </div>
         ) : null}
       </div>
-      <div className="mx-auto w-full max-w-4xl shrink-0">
-        {session.threadType !== "orchestration" ? (
-          <WorkingStrip session={session} onStop={() => onStop(session.id)} onResume={resume} />
-        ) : null}
-        {composerOf(opts)}
-      </div>
-    </>
-  );
+    ),
+    strip:
+      session.threadType !== "orchestration" ? (
+        <WorkingStrip session={session} onStop={() => onStop(session.id)} onResume={resume} />
+      ) : null,
+    composer: composerOf(opts),
+  });
+  const renderChat = (opts?: ChatOpts) => <ChatColumn slots={renderSlots(opts)} />;
 
   // Keyed remount per session; the brief fade bridges the swap without
   // delaying it (no exit animation).
@@ -429,6 +432,7 @@ export const SessionPane = memo(function SessionPane({
         <ThreadView
           session={session}
           renderChat={renderChat}
+          renderSlots={renderSlots}
           composing={newPassArmed}
           onArmNewPass={armNewPass}
           onOpenFile={onOpenFile}

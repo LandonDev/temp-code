@@ -1,3 +1,4 @@
+import { takeReviewRequest } from "./reviewRequest";
 import type { ReleaseNotesTabSource } from "./releaseNotes";
 import {
   applyTerminalMeta,
@@ -35,6 +36,8 @@ export type FilePaneTab = {
   cwd: string;
   releaseNotes?: ReleaseNotesTabSource;
   review?: boolean;
+  /** review base ref (a merge base from the Branch rail); HEAD when unset */
+  diffBase?: string;
   terminal?: boolean;
   /** Which editor renders a file; absent means CodeMirror. */
   editor?: "monaco";
@@ -88,12 +91,13 @@ export function newFileTab(
   review = false,
   editor?: "monaco",
 ): FilePaneTab {
+  const base = takeReviewRequest(path);
   return {
     id: crypto.randomUUID(),
     path,
     cwd,
-    ...(review ? { review: true } : {}),
-    ...(editor ? { editor } : {}),
+    ...(review || base ? { review: true } : {}),
+    ...(base ? { diffBase: base, editor: "monaco" as const } : editor ? { editor } : {}),
   };
 }
 
@@ -298,7 +302,8 @@ export function editorTabKey(file: FilePaneTab): string {
   if (file.terminal) return `terminal:${file.id}`;
   if (file.debug) return `debug:${file.path}`;
   if (file.releaseNotes) return `release-notes:${file.releaseNotes.version}`;
-  return file.review ? `review:${file.path}` : `file:${file.path}`;
+  if (file.review) return file.diffBase ? `review@${file.diffBase}:${file.path}` : `review:${file.path}`;
+  return `file:${file.path}`;
 }
 
 export function newEditorPane(file: FilePaneTab): EditorPane {
