@@ -551,6 +551,50 @@ export function FileTree({
     if (e.key === "Escape" && clip?.mode === "cut") {
       e.preventDefault();
       setClip(null);
+      return;
+    }
+    if (e.altKey || mod) return;
+    // Arrow keys walk the rows as rendered; a row is selected and focused
+    // together so the next key starts from where the highlight sits.
+    const rows = Array.from(
+      rootRef.current?.querySelectorAll<HTMLElement>("[role='treeitem'][data-path]") ?? [],
+    );
+    const at = rows.findIndex((row) => row.dataset.path === path);
+    const land = (row: HTMLElement | undefined) => {
+      if (!row?.dataset.path) return;
+      e.preventDefault();
+      onSelect(row.dataset.path);
+      row.focus({ preventScroll: true });
+      row.scrollIntoView({ block: "nearest" });
+    };
+    switch (e.key) {
+      case "ArrowDown":
+        return land(rows[at < 0 ? 0 : Math.min(at + 1, rows.length - 1)]);
+      case "ArrowUp":
+        return land(rows[at < 0 ? rows.length - 1 : Math.max(at - 1, 0)]);
+      case "Home":
+        return land(rows[0]);
+      case "End":
+        return land(rows[rows.length - 1]);
+      case "ArrowRight":
+        if (!isDir) return;
+        e.preventDefault();
+        if (expanded.has(path)) land(rows[at + 1]);
+        else toggle(path);
+        return;
+      case "ArrowLeft":
+        if (isDir && expanded.has(path)) {
+          e.preventDefault();
+          toggle(path);
+          return;
+        }
+        if (!isRoot) land(rows.find((row) => row.dataset.path === parentPath(path)));
+        return;
+      case "Enter":
+        e.preventDefault();
+        if (isDir) toggle(path);
+        else onOpenFile(path);
+        return;
     }
   };
 
@@ -698,7 +742,10 @@ export function FileTree({
         <div className="flex h-8 shrink-0 items-center">
           <button
             type="button"
+            role="treeitem"
+            data-path={cwd}
             aria-expanded={rootOpen}
+            aria-selected={selectedPath === cwd}
             title={cwd}
             onClick={() => {
               onSelect(cwd);
@@ -713,7 +760,7 @@ export function FileTree({
                 e.clientY,
               );
             }}
-            className={`flex min-w-0 flex-1 items-center gap-1 h-full pl-2 text-left`}
+            className="flex min-w-0 flex-1 items-center gap-1 h-full pl-2 text-left outline-none"
           >
             <span className="grid size-4 shrink-0 place-items-center text-content/50">
               {rootOpen ? (
@@ -985,12 +1032,14 @@ function TreeNode({ entry, depth }: { entry: FsEntry; depth: number }) {
         <button
           type="button"
           role="treeitem"
+          data-path={entry.path}
           title={entry.path}
           aria-expanded={entry.isDir ? open : undefined}
+          aria-selected={selected}
           onClick={onClick}
           onContextMenu={(e) => onItemContextMenu(entry, e)}
           style={{ paddingLeft: 8 + depth * 12 }}
-          className={`flex h-7.5 w-full cursor-default items-center gap-1 pr-2 text-left text-[14px] leading-none ${
+          className={`flex h-7.5 w-full cursor-default items-center gap-1 pr-2 text-left text-[14px] leading-none outline-none ${
             selected
               ? "bg-content/10 text-content"
               : "text-content hover:bg-content/5"

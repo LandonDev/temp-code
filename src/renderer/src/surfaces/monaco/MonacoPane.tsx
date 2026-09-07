@@ -51,7 +51,6 @@ export default function MonacoPane(props: Props) {
   const [fileState, setFileState] = useState<FileState>({ pending: false, conflict: null });
   const [needsEula, setNeedsEula] = useState(false);
   const project = projectForCwd(cwd);
-  const busy = useEditorState((s) => (project ? (s.lspBusy[project.id] ?? null) : null));
   const problems = useEditorState((s) => s.problems[path] ?? 0);
   const onOpenFileRef = useRef(onOpenFile);
   const onDirtyChangeRef = useRef(onDirtyChange);
@@ -258,11 +257,6 @@ export default function MonacoPane(props: Props) {
       ) : null}
       {phase === "error" ? <Stub text="Could not read this file." /> : null}
       <div ref={hostRef} className="min-h-0 flex-1" style={{ display: phase === "ready" ? undefined : "none" }} />
-      {busy && phase === "ready" ? (
-        <div className="pointer-events-none absolute right-3 bottom-2 text-[11px] text-content/45 tabular-nums">
-          {busy}
-        </div>
-      ) : null}
     </div>
   );
 }
