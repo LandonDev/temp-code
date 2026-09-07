@@ -51,6 +51,7 @@ export function AttachmentChip({ attachment, onRemove, onOpen }: Props) {
         image ? '' : 'bg-content/10 py-0.5 pl-1 pr-1'
       }`}
       title={attachment.path ?? attachment.name}
+      data-attachment-path={attachment.path}
     >
       {image ? (
         onOpen ? (
@@ -58,12 +59,12 @@ export function AttachmentChip({ attachment, onRemove, onOpen }: Props) {
             type="button"
             onClick={onOpen}
             aria-label={`Preview ${attachment.name}`}
-            className="block size-9 shrink-0 cursor-zoom-in overflow-hidden rounded-lg"
+            className={`block size-9 shrink-0 cursor-zoom-in overflow-hidden rounded-lg ${attachment.textPath ? 'w-14' : ''}`}
           >
-            <img src={preview} alt="" className="size-full object-cover" />
+            <img src={preview} alt="" className={`size-full object-cover ${attachment.textPath ? 'w-14' : ''}`} />
           </button>
         ) : (
-          <img src={preview} alt="" className="size-9 shrink-0 rounded-lg object-cover" />
+          <img src={preview} alt="" className={`size-9 shrink-0 rounded-lg object-cover ${attachment.textPath ? 'w-14' : ''}`} />
         )
       ) : (
         <>

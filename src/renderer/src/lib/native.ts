@@ -37,6 +37,7 @@ export type NativeCommand =
   | "git_github_work_item_details"
   | "git_github_work_item_thread"
   | "git_github_work_items"
+  | "git_log"
   | "git_pr_create"
   | "git_pr_status"
   | "git_pull"
@@ -172,6 +173,7 @@ const serverMethods: Partial<Record<NativeCommand, string>> = {
   git_github_work_item_details: "github.details",
   git_github_work_item_thread: "github.thread",
   git_github_work_items: "github.workItems",
+  git_log: "git.log",
   git_pr_create: "github.createPr",
   git_pr_status: "github.prStatus",
   git_pull: "git.pull",
@@ -478,4 +480,18 @@ export const updates = {
   apply: (): Promise<UpdateStatus> => window.api.updates.apply(),
   onStatus: (cb: (status: UpdateStatus) => void): UnlistenFn =>
     window.api.updates.onStatus(cb),
+};
+
+/** Main's appshot push: the capture it wrote to disk, and the permission
+ *  state behind the double-⌘ monitor. */
+export type AppshotCapture = Parameters<Parameters<typeof window.api.appshots.onCapture>[0]>[0];
+export type AppshotPermissions = Awaited<ReturnType<typeof window.api.appshots.permissions>>;
+
+export const appshots = {
+  onCapture: (cb: (capture: AppshotCapture) => void): UnlistenFn =>
+    window.api.appshots.onCapture(cb),
+  onError: (cb: (error: { code: string }) => void): UnlistenFn =>
+    window.api.appshots.onError(cb),
+  permissions: (prompt?: boolean): Promise<AppshotPermissions> =>
+    window.api.appshots.permissions(prompt),
 };

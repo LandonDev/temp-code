@@ -1,7 +1,10 @@
 import { CircleAlert } from "./icons";
 import { createPortal } from "react-dom";
 import type { ApprovalDecision } from "../lib/harness";
-import type { PendingApprovalNotice } from "../lib/approvalToast";
+import { useMemo } from "react";
+import { hiddenApprovalNotices, type PendingApprovalNotice } from "../lib/approvalToast";
+import type { WorkspaceTab } from "../lib/layout";
+import { useServerSessions } from "../lib/tcserver/store";
 import { LAYER } from "../lib/layers";
 import {
   HARNESS_TITLE,
@@ -21,6 +24,26 @@ type Props = {
     decision: ApprovalDecision,
   ) => void;
 };
+
+/** Toasts for approvals pending in sessions the user is not looking at.
+ *  Subscribes to the store itself so App does not re-render per push. */
+export function HiddenApprovalToasts({
+  tabs,
+  activeTabId,
+  composerFocused,
+  ...rest
+}: Omit<Props, "notices"> & {
+  tabs: WorkspaceTab[];
+  activeTabId: string;
+  composerFocused: boolean;
+}) {
+  const sessions = useServerSessions();
+  const notices = useMemo(
+    () => hiddenApprovalNotices(sessions, activeTabId, tabs, composerFocused),
+    [sessions, activeTabId, tabs, composerFocused],
+  );
+  return <ApprovalToasts notices={notices} {...rest} />;
+}
 
 export function ApprovalToasts({ notices, onFocusSession, onApproval }: Props) {
   if (notices.length === 0) return null;

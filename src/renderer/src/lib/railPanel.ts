@@ -1,11 +1,11 @@
 import { useSyncExternalStore } from "react";
+import { setRightRailOpen } from "./rightRail";
 
 /** Which tab the project rail shows. Persisted; a fresh launch reopens the last one. */
-export type RailPanel = "changes" | "files" | "branch" | "build";
-// M7b adds "debug" here.
+export type RailPanel = "changes" | "files" | "branch" | "build" | "debug";
 
 const KEY = "monocode.railPanel";
-const PANELS: RailPanel[] = ["changes", "files", "branch", "build"];
+const PANELS: RailPanel[] = ["changes", "files", "branch", "build", "debug"];
 
 function load(): RailPanel {
   try {
@@ -28,6 +28,12 @@ export function setRailPanel(next: RailPanel): void {
     /* private mode */
   }
   for (const l of listeners) l();
+}
+
+/** ⌃D / "Debug this file": the session shows in the rail's Debug tab. */
+export function showDebugRail(): void {
+  setRailPanel("debug");
+  setRightRailOpen(true);
 }
 
 function subscribe(l: () => void): () => void {

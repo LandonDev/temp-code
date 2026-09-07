@@ -4,12 +4,15 @@ import {
   memo,
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
   useSyncExternalStore,
   type PointerEvent as ReactPointerEvent,
 } from "react";
 import { Composer } from "../chrome/Composer";
+import { AppshotFlyIn } from "../chrome/AppshotFlyIn";
+import { noteActiveSession } from "../lib/appshots";
 import { motion, useReducedMotion } from "motion/react";
 import { EASE_OUT } from "../lib/ease";
 import { MessageQueue } from "../chrome/MessageQueue";
@@ -180,6 +183,25 @@ export const SessionPane = memo(function SessionPane({
     return () => window.removeEventListener(ADD_TO_CHAT_EVENT, onAdd);
   }, [addSelectionToChat, focused]);
   const workCwd = sessionWorkCwd(session);
+  // Stable per session so the transcript's memoised turn list holds across
+  // pane re-renders (a tab switch, a composer keystroke).
+  const sessionId = session.id;
+  const onTurnSecondOpinion = useMemo(
+    () =>
+      onSecondOpinion
+        ? (harness: HarnessId, turn: Block[], model: string) =>
+            onSecondOpinion(sessionId, harness, turn, model)
+        : undefined,
+    [onSecondOpinion, sessionId],
+  );
+  const onTurnHandoff = useMemo(
+    () =>
+      onHandoff
+        ? (harness: HarnessId, turn: Block[], model: string) =>
+            onHandoff(sessionId, harness, turn, model)
+        : undefined,
+    [onHandoff, sessionId],
+  );
   const isEmpty = session.blocks.length === 0;
   const showDeckProjectPicker = isEmpty && !looksLikeProject(session.cwd);
   const dockComposer = !isEmpty || inSplit;
@@ -195,6 +217,13 @@ export const SessionPane = memo(function SessionPane({
       });
     }
   }, []);
+  // The focused, visible pane is where an "automatic" appshot lands.
+  useEffect(() => {
+    if (!focused || !visible) return;
+    noteActiveSession(session.id);
+    return () => noteActiveSession(null);
+  }, [focused, session.id, visible]);
+
   const submit = useCallback(
     (text: string, attachments: Attachment[], intent: ComposerIntent) => {
       onSubmit(session.id, text, attachments, {
@@ -232,7 +261,9 @@ export const SessionPane = memo(function SessionPane({
     [session.id],
   );
   const composerOf = (opts?: ChatOpts) => (
-    <Composer
+    <>
+      <AppshotFlyIn sessionId={session.id} active={focused && visible} />
+      <Composer
       enabled={visible}
       focused={focused && composerFocused}
       hotkeys={focused}
@@ -296,6 +327,7 @@ export const SessionPane = memo(function SessionPane({
         onOpenDiff={onOpenDiff}
       />
     </Composer>
+    </>
   );
   // The column as parts so a view can seat the transcript apart from the
   // composer; `renderChat` stacks them the way the pane always has.
@@ -316,16 +348,8 @@ export const SessionPane = memo(function SessionPane({
           onOpenFile={onOpenFile}
           onOpenDiff={onOpenDiff}
           onSelectSession={onOpenSession}
-          onSecondOpinion={
-            onSecondOpinion
-              ? (harness, turn, model) => onSecondOpinion(session.id, harness, turn, model)
-              : undefined
-          }
-          onHandoff={
-            onHandoff
-              ? (harness, turn, model) => onHandoff(session.id, harness, turn, model)
-              : undefined
-          }
+          onSecondOpinion={onTurnSecondOpinion}
+          onHandoff={onTurnHandoff}
           onJumpToBottomChange={setShowJumpToBottom}
           onJumpToBottomReady={onJumpToBottomReady}
         />

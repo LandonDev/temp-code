@@ -142,6 +142,13 @@ export async function searchSessions(options: {
   return { hits, truncated: false };
 }
 
+/** The session as the server's meta describes it, transcript not fetched
+ *  (blocks empty until `sessionStore.ensureLoaded`). Drafts come back whole. */
+export async function peekSession(sessionId: string): Promise<Session | null> {
+  await sessionStore.ready();
+  return sessionStore.get(sessionId) ?? null;
+}
+
 /** The folded session, fetched from the server on first ask. */
 export async function getSession(sessionId: string): Promise<Session | null> {
   await sessionStore.ready();
