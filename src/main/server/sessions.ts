@@ -18,6 +18,7 @@ import { BUILT_IN_DRIVERS } from './drivers'
 import { generateTitle } from './drivers/title'
 import type { DriverHandle } from './drivers/types'
 import type { Store } from './db'
+import type { CheckpointStore } from './checkpoint'
 import {
   addProjectWorktree,
   currentBranch,
@@ -309,7 +310,19 @@ export class SessionRegistry {
   private researchSeen = new Map<string, Set<string>>()
   private sweepTimer: ReturnType<typeof setInterval> | null = null
 
+  /** Undo checkpoints; armed before every harness send so the baseline
+   *  is snapshotted before the provider can write. Set by the server. */
+  checkpoints: CheckpointStore | null = null
+
   constructor(private store: Store) {}
+
+  /** Snapshot the session's already-dirty files once per session and cwd.
+   *  Never blocks a turn: a failure here only costs undo for that turn. */
+  private async armCheckpoint(sessionId: string): Promise<void> {
+    const cwd = this.store.getSession(sessionId)?.cwd?.trim()
+    if (!this.checkpoints || !cwd || cwd === '~') return
+    await this.checkpoints.ensure(sessionId, cwd).catch(() => {})
+  }
 
   /**
    * Idle disposal — what keeps dozens of sessions cheap. A handle whose
@@ -1011,6 +1024,7 @@ export class SessionRegistry {
           : [shot]
       })
     try {
+      await this.armCheckpoint(sessionId)
       await handle.send(out, sendAttachments)
     } catch (err) {
       // A steer at a provider that can't take mid-turn input (cursor's
@@ -1160,6 +1174,7 @@ export class SessionRegistry {
     const frozen = Math.max(0, before.frozenActiveElapsed ?? 0)
     await this.dropHandle(sessionId)
     const handle = await this.handleFor(sessionId)
+    await this.armCheckpoint(sessionId)
     await handle.send(
       '<continue-paused-run>\nThe user paused this turn and has now continued it. Inspect your task list and your last actions, then continue the interrupted work exactly where you left off. Do not restart completed work.\n</continue-paused-run>'
     )
@@ -1555,6 +1570,7 @@ export class SessionRegistry {
     try {
       const handle = await this.handleFor(sessionId)
       this.lastActivity.set(sessionId, Date.now())
+      await this.armCheckpoint(sessionId)
       await handle.send(
         `<continue-run>\nThe previous turn was cut off by a harness error (a session limit or similar) that the user has since fixed. ${restartedDescendants ? 'Your failed subagents were restarted first and are picking their work back up. ' : ''}Continue exactly where you left off: check your task list and your last few actions, finish anything half-done, and keep going. If the work was already complete, say so in one short line.\n</continue-run>`
       )
@@ -2077,6 +2093,7 @@ export class SessionRegistry {
         tally && tally.done < tally.total
           ? `\nThe task list shows only ${tally.done}/${tally.total} tasks completed — this pass only tidies what exists. End by saying plainly that the work is UNFINISHED and what remains, so the user can resume it.`
           : ''
+      await this.armCheckpoint(sessionId)
       await handle.send(
         `<turn-pass>\nThe turn settled. The completed-turn setting now asks you to:\n${steps.map((s, i) => `${i + 1}. ${s}`).join('\n')}\nThese are the project's own completion settings — they OVERRIDE any branch, worktree, PR, or completion convention a skill or other instruction gave earlier in this thread. If the turn changed nothing to verify, build, or commit, say so in one short line and stop. Never start new feature work in this pass.${unfinished}\n</turn-pass>`
       )
@@ -2122,6 +2139,7 @@ export class SessionRegistry {
         status: item.status
       })
       this.lastActivity.set(sessionId, Date.now())
+      await this.armCheckpoint(sessionId)
       await handle.send(item.text)
     })()
       .catch(() => {

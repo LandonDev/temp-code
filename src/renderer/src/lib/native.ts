@@ -105,6 +105,7 @@ type Args = Record<string, unknown> | undefined;
 type Backed = (args: Args) => Promise<unknown>;
 
 const arg = <T>(args: Args, key: string): T => (args ?? {})[key] as T;
+const scope = (args: Args) => ({ sessionId: arg<string>(args, "sessionId"), cwd: arg<string>(args, "cwd") });
 
 /** The WS client's request(), injected once at boot (`bindServer` from the
  *  server link) so server-backed commands need no import cycle. */
@@ -122,6 +123,15 @@ const server: ServerRequest = (method, params) => {
 const backed: Partial<Record<NativeCommand, Backed>> = {
   sidecar_port: () => getServerPort(),
   reveal_path: (args) => window.api.revealInFinder(arg<string>(args, "path")),
+  session_checkpoint_ensure: (args) => server("checkpoint.ensure", scope(args)),
+  session_checkpoint_capture: (args) =>
+    server("checkpoint.capture", { ...scope(args), paths: arg<string[]>(args, "paths") ?? [] }),
+  session_checkpoint_sync: (args) => server("checkpoint.sync", scope(args)),
+  session_checkpoint_status: (args) => server("checkpoint.status", scope(args)),
+  session_checkpoint_undo: (args) =>
+    server("checkpoint.undo", { ...scope(args), relative: arg<string | null>(args, "relative") ?? null }),
+  session_checkpoint_keep: (args) =>
+    server("checkpoint.keep", { ...scope(args), relative: arg<string | null>(args, "relative") ?? null }),
   // Linear (M11): server-owned token, GraphQL in the server.
   linear_status: () => server("linear.status"),
   linear_set_token: (args) =>
