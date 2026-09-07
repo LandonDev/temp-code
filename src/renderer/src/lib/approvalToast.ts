@@ -1,5 +1,5 @@
 import { leafIds, type WorkspaceTab } from "./layout";
-import type { Block, Session } from "./session";
+import { hasPendingApproval, type Block, type Session } from "./session";
 import { toolCallLabel } from "../surfaces/transcriptActivity";
 
 export type PendingApprovalNotice = {
@@ -48,6 +48,7 @@ export function hiddenApprovalNotices(
 ): Array<PendingApprovalNotice & { session: Session }> {
   const notices: Array<PendingApprovalNotice & { session: Session }> = [];
   for (const session of sessions) {
+    if (!hasPendingApproval(session.blocks)) continue;
     const pending = pendingApprovalForSession(session);
     if (!pending) continue;
     if (

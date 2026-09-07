@@ -65,7 +65,7 @@ export function filterTabsForProject(
  */
 export function tabProjectKey(
   tab: WorkspaceTab,
-  sessions: Session[],
+  sessions: readonly Pick<Session, "id" | "projectId">[],
 ): string | null {
   for (const id of leafIds(tab.layout)) {
     const session = sessions.find((entry) => entry.id === id);
@@ -76,7 +76,7 @@ export function tabProjectKey(
 
 export function filterTabsForProjectId(
   tabs: WorkspaceTab[],
-  sessions: Session[],
+  sessions: readonly Pick<Session, "id" | "projectId">[],
   projectId: string | null,
 ): WorkspaceTab[] {
   return tabs.filter((tab) => tabProjectKey(tab, sessions) === projectId);
