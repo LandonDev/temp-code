@@ -13,7 +13,8 @@ import {
   storedModelId,
   type DefaultsScope,
 } from "../lib/tcserver/defaults";
-import { useThreadDefaults, workspaceStore } from "../lib/tcserver/workspaces";
+import { useThreadDefaults, useWorkspaceCatalog, workspaceStore } from "../lib/tcserver/workspaces";
+import { openWorkspaceSettings } from "../lib/settings";
 import type { ThreadDefaults, WorkspaceMeta } from "../lib/tcserver/types";
 import { Heading, Row, SecondaryButton, Select } from "../surfaces/settingsBits";
 
@@ -125,9 +126,36 @@ export function ThreadDefaultsEditor({
       <p className="pb-2 text-[12px] leading-relaxed text-content/45">
         {scopeHint(workspaceId, scope ?? BUILT_IN_SCOPE)}
       </p>
+      {workspaceId === null ? <OverridingWorkspaces /> : null}
       {scope ? <ThreadDefaultsFields value={scope.defaults} onChange={save} /> : null}
       {error ? <p className="pt-2 text-[11px] text-red-400/90">{error}</p> : null}
     </section>
+  );
+}
+
+/** Under the global editor: which workspaces keep their own set. Each name
+ *  opens that workspace's page, where the override lives. */
+function OverridingWorkspaces() {
+  const { workspaces, defaults } = useWorkspaceCatalog();
+  const overriding = workspaces.filter((w) => defaults.get(w.id)?.overridden);
+  if (overriding.length === 0) return null;
+  return (
+    <p className="pb-2 text-[12px] leading-relaxed text-content/45" data-testid="defaults-overrides">
+      Overridden in{" "}
+      {overriding.map((w, i) => (
+        <span key={w.id}>
+          {i > 0 ? ", " : null}
+          <button
+            type="button"
+            className="text-content/70 underline decoration-content/20 underline-offset-2 hover:text-content"
+            onClick={() => openWorkspaceSettings(w.id)}
+          >
+            {w.name}
+          </button>
+        </span>
+      ))}
+      .
+    </p>
   );
 }
 
