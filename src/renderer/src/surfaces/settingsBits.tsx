@@ -21,7 +21,7 @@ export function Row({
   children,
 }: {
   label: ReactNode;
-  description?: string;
+  description?: ReactNode;
   children?: ReactNode;
 }) {
   return (

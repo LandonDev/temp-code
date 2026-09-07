@@ -3,7 +3,7 @@ import type { Store } from './db'
 import type { SessionRegistry } from './sessions'
 import type { Notes } from './notes'
 import type { ProjectLogos } from './projectLogos'
-import type { ClaudeUsage } from './rateLimits'
+import type { ClaudeUsage, CodexUsage } from './rateLimits'
 import { searchProject } from './search'
 import { generateText } from './drivers/title'
 
@@ -13,6 +13,7 @@ interface Context {
   notes: Notes
   logos: ProjectLogos
   usage: ClaudeUsage
+  codexUsage: CodexUsage
 }
 export async function handleM3a(
   req: ClientRequest,
@@ -51,6 +52,8 @@ export async function handleM3a(
       return done()
     case 'rateLimits.claudeUsage':
       return done(await ctx.usage.fetch())
+    case 'rateLimits.codexUsage':
+      return done(await ctx.codexUsage.fetch())
     default:
       return { handled: false }
   }
