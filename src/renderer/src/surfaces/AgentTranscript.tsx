@@ -67,6 +67,12 @@ import { commandParts, isAgentCall, useKnownCommands, type CommandPart } from ".
 import { TurnStateContext, useTurnState, type TurnSession } from "./turnState";
 import { HarnessIcon } from "../chrome/HarnessIcon";
 import { useLockOverscroll } from "../hooks/useLockOverscroll";
+import {
+  blockForSeq,
+  pendingTranscriptJump,
+  subscribeTranscriptJump,
+  takeTranscriptJump,
+} from "../lib/transcriptJump";
 import { useTranscriptLayout } from "../hooks/useTranscriptLayout";
 import { useTranscriptZen } from "../hooks/useTranscriptZen";
 import { useTranscriptAnchor } from "../hooks/useTranscriptAnchor";
@@ -589,6 +595,37 @@ export function AgentTranscript({
     );
   };
 
+  // Scroll-to-row entry point (session search): the request waits in
+  // lib/transcriptJump until this session's history holds the row, then the
+  // window grows to its turn and the same glide the minimap uses lands on
+  // it. No second engine — glideTo owns the motion and the mode.
+  const [jumpTick, setJumpTick] = useState(0);
+  useEffect(
+    () => subscribeTranscriptJump(() => setJumpTick((n) => n + 1)),
+    [],
+  );
+  useLayoutEffect(() => {
+    if (!sessionId) return;
+    const jump = pendingTranscriptJump(sessionId);
+    if (!jump) return;
+    const block = blockForSeq(blocks, jump.seq);
+    if (!block) return;
+    const turnIndex = turns.findIndex((turn) =>
+      turn.some((b) => b.id === block.id),
+    );
+    if (turnIndex < 0) return;
+    if (turnIndex < firstVisibleTurn) {
+      setVisibleTurnCount(turns.length - turnIndex);
+      return;
+    }
+    const el = scroller.current?.querySelector(
+      `[data-block="${CSS.escape(block.id)}"]`,
+    );
+    if (!(el instanceof HTMLElement)) return;
+    takeTranscriptJump(sessionId);
+    glideTo(el);
+  }, [sessionId, blocks, turns, firstVisibleTurn, jumpTick, glideTo]);
+
   return (
     <SelectSessionContext.Provider value={onSelectSession}>
     <TranscriptSessionContext.Provider value={sessionId}>
@@ -843,7 +880,7 @@ const TurnView = memo(function TurnView({
             />
           )
         ) : item.block.role === "user" ? (
-          <div key={item.block.id} className="flex min-w-0 flex-col">
+          <div key={item.block.id} data-block={item.block.id} className="flex min-w-0 flex-col">
             <TranscriptBlock
               block={item.block}
               layout={layout}
@@ -1198,6 +1235,7 @@ const TranscriptBlock = memo(function TranscriptBlock({
 
   return (
     <div
+      data-block={block.id}
       data-selectable-agent-response={block.streaming ? undefined : block.id}
       className={`min-w-0 px-4 pb-1 text-content ${compactTop ? "pt-2" : "pt-3"}`}
     >

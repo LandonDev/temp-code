@@ -37,7 +37,9 @@ export type MessageHit = {
   harness: HarnessId;
   title: string;
   updatedAt: number;
-  blockId: string;
+  /** In-memory hits name the block; server hits name the event row. */
+  blockId?: string;
+  seq?: number;
   role: string;
   preview: string;
   score: number;
@@ -299,9 +301,9 @@ export function hitsFromSessionSearch(
       });
       continue;
     }
-    if (row.kind !== "message" || !row.blockId) continue;
+    if (row.kind !== "message" || (!row.blockId && row.seq === undefined)) continue;
     hits.push({
-      id: `message:${row.sessionId}:${row.blockId}`,
+      id: `message:${row.sessionId}:${row.blockId ?? `seq-${row.seq}`}`,
       kind: "message",
       sessionId: row.sessionId,
       cwd: row.cwd,
@@ -309,6 +311,7 @@ export function hitsFromSessionSearch(
       title,
       updatedAt: row.updatedAt,
       blockId: row.blockId,
+      seq: row.seq,
       role: row.role ?? "assistant",
       preview: row.preview,
       score: 16 + recencyBonus(row.updatedAt),

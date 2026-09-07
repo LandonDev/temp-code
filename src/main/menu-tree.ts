@@ -2,6 +2,11 @@
  * The application menu as data: MonoCode's tree (`src-tauri/src/menu.rs`)
  * with its accelerators, under our own name. Kept free of Electron imports
  * so the table can be tested on its own.
+ *
+ * Ids double as command ids in the renderer's command map
+ * (src/renderer/src/lib/appCommands.ts); keep the two in step. Departures
+ * from the donor: ⌘O is Go to Symbol and ⌘T Type Hierarchy (Open Project is
+ * menu-only, New Tab moved to ⌘N), and ⌘S is Save All.
  */
 
 export const APP_NAME = 'TempCode'
@@ -52,12 +57,16 @@ export const MENU_TREE: MenuSection[] = [
     label: 'File',
     items: [
       cmd('new_window', 'New Window', 'CmdOrCtrl+Shift+N'),
-      cmd('open_project', 'Open Project…', 'CmdOrCtrl+O'),
+      cmd('open_project', 'Open Project…'),
       cmd('open_search', 'Search…', 'CmdOrCtrl+K'),
       cmd('go_to_file', 'Go to File…', 'CmdOrCtrl+P'),
+      cmd('go_to_symbol', 'Go to Symbol…', 'CmdOrCtrl+O'),
+      cmd('show_hierarchy', 'Type Hierarchy', 'CmdOrCtrl+T'),
       cmd('find_in_project', 'Find in Files…', 'CmdOrCtrl+Shift+F'),
       sep,
-      cmd('new_tab', 'New Tab', 'CmdOrCtrl+T'),
+      cmd('save_all', 'Save All', 'CmdOrCtrl+S'),
+      sep,
+      cmd('new_tab', 'New Tab', 'CmdOrCtrl+N'),
       cmd('new_terminal', 'New Terminal', 'CmdOrCtrl+`'),
       cmd('new_terminal_tab', 'New Terminal Tab', 'CmdOrCtrl+Shift+`'),
       cmd('split_right', 'Split Pane Right', 'CmdOrCtrl+D'),
@@ -114,7 +123,7 @@ export const MENU_COMMANDS: MenuCommand[] = MENU_TREE.flatMap((section) =>
   section.items.filter((item): item is { kind: 'command' } & MenuCommand => item.kind === 'command')
 ).map(({ id, label, accelerator }) => ({ id, label, ...(accelerator ? { accelerator } : {}) }))
 
-/** These two act in main; the other 31 go to the focused renderer. */
+/** These two act in main; the other 34 go to the focused renderer. */
 export const MAIN_MENU_IDS = ['new_window', 'quit'] as const
 
 export const RENDERER_MENU_IDS: string[] = MENU_COMMANDS.map((c) => c.id).filter(

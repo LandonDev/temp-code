@@ -1,6 +1,11 @@
 import { DatabaseSync } from 'node:sqlite'
 import { ensureNotesTable } from './notes'
-import { WorkspaceSnapshotSchema, type WorkspaceSnapshot } from '@shared/contract-m3a'
+import {
+  WorkspaceSnapshotSchema,
+  type SessionSearchHit,
+  type SessionSearchResult,
+  type WorkspaceSnapshot
+} from '@shared/contract-m3a'
 import { mkdirSync } from 'node:fs'
 import { dirname } from 'node:path'
 import type { AgentEvent, EventRow, SessionMeta, SessionStatus } from '@shared/events'
@@ -148,6 +153,8 @@ function toMeta(r: SessionRowRaw): SessionMeta {
     updatedAt: r.updated_at
   }
 }
+
+const SEARCH_CAP = 200
 
 export class Store {
   constructor(private db: DatabaseSync) {}
@@ -446,6 +453,50 @@ export class Store {
   }
 
   /** Has this session ever received a user message? (drives first-send preambles) */
+  /** Case-insensitive substring search over every stored user and assistant
+   *  text row, newest first, so the renderer finds threads it never opened.
+   *  Deltas and in-harness subagent prose are skipped: the full block that
+   *  follows a delta stream repeats its text, and nested output has no row
+   *  of its own in the transcript. Capped at 200 hits. */
+  searchEvents(options: {
+    query: string
+    workspaceId?: string
+    limit?: number
+  }): SessionSearchResult {
+    const needle = options.query.trim().toLowerCase()
+    const limit = Math.min(options.limit ?? SEARCH_CAP, SEARCH_CAP)
+    if (!needle) return { hits: [], truncated: false }
+    const rows = this.db
+      .prepare(
+        `SELECT e.session_id AS sessionId, e.seq AS seq, e.ts AS ts,
+                json_extract(e.payload, '$.type') AS type,
+                json_extract(e.payload, '$.text') AS text
+         FROM events e JOIN sessions s ON s.id = e.session_id
+         WHERE json_extract(e.payload, '$.type') IN ('user-text', 'assistant-text')
+           AND COALESCE(json_extract(e.payload, '$.delta'), 0) = 0
+           AND json_extract(e.payload, '$.parentCallId') IS NULL
+           AND instr(lower(json_extract(e.payload, '$.text')), ?) > 0
+           ${options.workspaceId ? 'AND s.workspace_id = ?' : ''}
+         ORDER BY e.ts DESC, e.seq DESC
+         LIMIT ?`
+      )
+      .all(
+        ...(options.workspaceId ? [needle, options.workspaceId] : [needle]),
+        limit + 1
+      ) as unknown as Array<{ sessionId: string; seq: number; ts: number; type: string; text: string }>
+    const hits: SessionSearchHit[] = rows.slice(0, limit).map((row) => {
+      const at = row.text.toLowerCase().indexOf(needle)
+      return {
+        sessionId: row.sessionId,
+        seq: row.seq,
+        role: row.type === 'user-text' ? 'user' : 'assistant',
+        snippet: row.text.slice(Math.max(0, at - 60), at + 120).trim(),
+        ts: row.ts
+      }
+    })
+    return { hits, truncated: rows.length > limit }
+  }
+
   hasUserText(sessionId: string): boolean {
     const r = this.db
       .prepare(

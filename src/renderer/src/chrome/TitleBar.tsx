@@ -1600,7 +1600,7 @@ function TitleBarComponent({
             so the strip carries no trailing actions. */}
         {deckLayout ? null : (
           <div className="flex shrink-0 items-center gap-0.5 border-l border-content/10 px-1.5">
-            <IconButton label={`New Tab (${MOD}T)`} onClick={onNew}>
+            <IconButton label={`New Tab (${MOD}N)`} onClick={onNew}>
               <Plus className="size-3.5" strokeWidth={1.75} />
             </IconButton>
             {onNewTerminal ? (
