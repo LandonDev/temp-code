@@ -97,12 +97,19 @@ export function isHiddenEditorHost(node: {
 }
 
 function editorElementForFind(): HTMLElement | null {
+  if (monacoHasFocus()) return null;
   const focused = focusedEditorElement();
   if (focused && isUsableEditorElement(focused)) return focused;
   for (const node of document.querySelectorAll(".cm-editor")) {
     if (node instanceof HTMLElement && isUsableEditorElement(node)) return node;
   }
   return null;
+}
+
+/** Focus inside a Monaco editor: Monaco's own find owns the keys. */
+function monacoHasFocus(): boolean {
+  const active = document.activeElement;
+  return active instanceof Element && Boolean(active.closest(".monaco-editor"));
 }
 
 function focusedEditorElement(): HTMLElement | null {

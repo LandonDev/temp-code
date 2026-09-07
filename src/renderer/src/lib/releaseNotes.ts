@@ -1,4 +1,21 @@
 import bundledChangelog from "../../CHANGELOG.md?raw";
+import release from "../../../../release.json";
+
+/**
+ * The running release's notes come from release.json (written by
+ * scripts/release.ts at tag time); a waiting release's notes arrive on the
+ * update feed. The Keep-a-Changelog parser below still serves feed notes
+ * that are a full changelog section.
+ */
+export const BUNDLED_RELEASE = {
+  version: String(release.n),
+  notes: release.notes,
+  date: new Date(release.ts).toISOString().slice(0, 10),
+};
+
+function bundledReleaseMarkdown(): string {
+  return `## [${BUNDLED_RELEASE.version}] - ${BUNDLED_RELEASE.date}\n\n${BUNDLED_RELEASE.notes}`;
+}
 
 export type ReleaseNotesTabSource = {
   version: string;
@@ -10,7 +27,7 @@ export type ReleaseNotesDocument = {
 };
 
 export function releaseNotesTitle(version: string): string {
-  return `What's new in MonoCode ${version}`;
+  return `What's new in release ${version}`;
 }
 
 export function releaseNotesForVersion(
@@ -19,6 +36,9 @@ export function releaseNotesForVersion(
 ): ReleaseNotesDocument | null {
   const normalized = version.trim();
   if (!normalized || normalized === "Unreleased") return null;
+  if (changelog === bundledChangelog && normalized === BUNDLED_RELEASE.version) {
+    return { source: { version: normalized }, markdown: bundledReleaseMarkdown() };
+  }
 
   const escapedVersion = normalized.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const heading = new RegExp(

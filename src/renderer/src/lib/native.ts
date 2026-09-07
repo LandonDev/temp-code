@@ -22,6 +22,7 @@ export type NativeCommand =
   | "destroy_window"
   | "enable_window_glass"
   | "fetch_claude_usage"
+  | "fetch_codex_usage"
   | "git_branches"
   | "git_checkout"
   | "git_commit"
@@ -156,6 +157,7 @@ const serverMethods: Partial<Record<NativeCommand, string>> = {
   create_path: "fs.createPath",
   delete_path: "fs.deletePath",
   fetch_claude_usage: "rateLimits.claudeUsage",
+  fetch_codex_usage: "rateLimits.codexUsage",
   git_branches: "git.branches",
   git_checkout: "git.checkout",
   git_commit: "git.commitStaged",

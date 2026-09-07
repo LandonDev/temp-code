@@ -19,7 +19,7 @@ export const SETTINGS_SECTIONS: {
   {
     id: "general",
     label: "General",
-    description: "App-wide behavior and the build you are running.",
+    description: "App-wide behavior, tool summaries, and the release you are running.",
   },
   {
     id: "appearance",
@@ -29,7 +29,7 @@ export const SETTINGS_SECTIONS: {
   {
     id: "editor",
     label: "Editor",
-    description: "Saving, formatting, ghost text, and the IntelliJ engine.",
+    description: "Saving, formatting, ghost text, and the language servers behind the editor.",
   },
   {
     id: "keybindings",
@@ -41,7 +41,7 @@ export const SETTINGS_SECTIONS: {
     id: "providers",
     label: "Providers",
     description:
-      "Agent CLIs MonoCode can drive, and the model new sessions start with.",
+      "Agent CLIs TempCode can drive, and the model new sessions start with.",
   },
   {
     id: "orchestration",
@@ -52,7 +52,7 @@ export const SETTINGS_SECTIONS: {
   {
     id: "archive",
     label: "Archive",
-    description: "Projects and conversations you have archived.",
+    description: "Archived projects and threads from every project. Restore one to keep working in it.",
   },
 ];
 
@@ -464,4 +464,57 @@ export function subscribeMidTurnDefault(onStoreChange: () => void) {
   window.addEventListener(MID_TURN_DEFAULT_CHANGE_EVENT, onStoreChange);
   return () =>
     window.removeEventListener(MID_TURN_DEFAULT_CHANGE_EVENT, onStoreChange);
+}
+
+// Tool summaries: a small fast model describes each finished tool section.
+// Same localStorage keys as the pre-transplant renderer so the server-side
+// summariser's settings survive the swap (M6a reads them when it lands).
+const TOOL_SUMMARIES_KEY = "tool-summaries";
+const TOOL_CAPTIONS_KEY = "tool-captions";
+const SUMMARY_MODEL_KEY = "summary-model";
+
+export type SummaryModel = "auto" | "haiku" | "spark";
+
+export const SUMMARY_MODELS: { value: SummaryModel; label: string }[] = [
+  { value: "auto", label: "Auto" },
+  { value: "haiku", label: "Haiku 4.5" },
+  { value: "spark", label: "Spark" },
+];
+
+function loadOnOff(key: string): boolean {
+  try {
+    return localStorage.getItem(key) !== "off";
+  } catch {
+    return true;
+  }
+}
+
+function saveOnOff(key: string, on: boolean) {
+  try {
+    localStorage.setItem(key, on ? "on" : "off");
+  } catch {
+    // private mode / quota
+  }
+}
+
+export const loadToolSummaries = () => loadOnOff(TOOL_SUMMARIES_KEY);
+export const saveToolSummaries = (on: boolean) => saveOnOff(TOOL_SUMMARIES_KEY, on);
+export const loadToolCaptions = () => loadOnOff(TOOL_CAPTIONS_KEY);
+export const saveToolCaptions = (on: boolean) => saveOnOff(TOOL_CAPTIONS_KEY, on);
+
+export function loadSummaryModel(): SummaryModel {
+  try {
+    const raw = localStorage.getItem(SUMMARY_MODEL_KEY);
+    return SUMMARY_MODELS.some((m) => m.value === raw) ? (raw as SummaryModel) : "auto";
+  } catch {
+    return "auto";
+  }
+}
+
+export function saveSummaryModel(value: SummaryModel) {
+  try {
+    localStorage.setItem(SUMMARY_MODEL_KEY, value);
+  } catch {
+    // private mode / quota
+  }
 }

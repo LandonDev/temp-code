@@ -11,9 +11,13 @@ import type { ModelInfo, ProviderId, ProviderInfo } from "./types";
  * every harness; one `doctor.get` (cached 30 s) answers "is it installed".
  */
 
-export type Doctor = Partial<
-  Record<string, { found: boolean; version?: string; error?: string }>
->;
+export type DoctorRow = {
+  found: boolean;
+  path?: string;
+  version?: string;
+  error?: string;
+};
+export type Doctor = Partial<Record<string, DoctorRow>>;
 
 const CONTEXT_OPTIONS = [
   { value: "200k", label: "200k" },

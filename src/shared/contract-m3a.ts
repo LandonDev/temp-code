@@ -95,5 +95,6 @@ export const M3aRequestSchemas = [
     method: z.literal('projectLogo.remove'),
     params: z.object({ projectPath: z.string() })
   }),
-  z.object({ id: z.string(), method: z.literal('rateLimits.claudeUsage') })
+  z.object({ id: z.string(), method: z.literal('rateLimits.claudeUsage') }),
+  z.object({ id: z.string(), method: z.literal('rateLimits.codexUsage') })
 ] as const

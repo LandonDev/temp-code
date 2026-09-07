@@ -283,6 +283,37 @@ type CodexWindowSnapshot = {
   resetsAt: unknown;
 };
 
+/**
+ * The Codex CLI's usage endpoint (`rateLimits.codexUsage` on the server):
+ * `rate_limit.{primary_window,secondary_window}` with `used_percent`,
+ * `limit_window_seconds` and a seconds-epoch `reset_at`.
+ */
+export function parseCodexUsageBody(body: string): ProviderRateLimits {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(body);
+  } catch {
+    return errorRateLimits("codex", "Codex usage was unreadable");
+  }
+  const limit = asRecord(asRecord(parsed)?.rate_limit);
+  const window = (raw: unknown) => {
+    const rec = asRecord(raw);
+    if (!rec) return null;
+    const seconds = numberField(rec, "limit_window_seconds");
+    return {
+      used_percent: rec.used_percent,
+      window_duration_mins: seconds == null ? null : seconds / 60,
+      resets_at: rec.reset_at,
+    };
+  };
+  return parseCodexRateLimits({
+    rateLimits: {
+      primary: window(limit?.primary_window),
+      secondary: window(limit?.secondary_window),
+    },
+  });
+}
+
 export function parseCodexRateLimits(result: unknown): ProviderRateLimits {
   const rec = asRecord(result);
   const wrapper = asRecord(rec?.rateLimits) ?? rec;

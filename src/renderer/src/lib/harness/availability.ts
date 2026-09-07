@@ -62,7 +62,7 @@ export function harnessUnavailableHint(id: HarnessId): string {
   }
   const { name, install } = CLI[id];
   const how = install ? ` (\`${install}\`)` : "";
-  return `${name} not found${how}. Install it, or restart MonoCode if it is already installed.`;
+  return `${name} not found${how}. Install it, or restart TempCode if it is already installed.`;
 }
 
 /** One `doctor.get` per 30 s answers for every harness; `force` refreshes. */

@@ -15,3 +15,19 @@ export function registerWillRename(fn: WillRename): void {
 export async function applyWillRename(cwd: string, fromPath: string, toPath: string): Promise<void> {
   await handler?.(cwd, fromPath, toPath).catch(() => undefined);
 }
+
+/**
+ * Before a rename or move lands on disk the editor chunk settles the open
+ * buffers under the path (flush with autosave on, carry the dirty text to
+ * the new path with it off) so the tab that re-opens shows the right text.
+ */
+type BeforeMove = (fromPath: string, toPath: string) => Promise<void>;
+let beforeMove: BeforeMove | null = null;
+
+export function registerBeforeMove(fn: BeforeMove): void {
+  beforeMove = fn;
+}
+
+export async function applyBeforeMove(fromPath: string, toPath: string): Promise<void> {
+  await beforeMove?.(fromPath, toPath).catch(() => undefined);
+}

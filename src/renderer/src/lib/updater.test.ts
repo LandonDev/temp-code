@@ -71,7 +71,7 @@ describe("installPendingUpdate", () => {
     const result = await installPendingUpdate();
 
     expect(mocks.apply).not.toHaveBeenCalled();
-    expect(result).toEqual({ phase: "current", currentVersion: "95" });
+    expect(result).toEqual({ phase: "current", currentVersion: "95", canApply: true });
   });
 
   it("surfaces a build that fails to start", async () => {

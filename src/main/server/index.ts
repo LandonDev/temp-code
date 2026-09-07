@@ -3,7 +3,7 @@ import { dirname, join, resolve } from 'node:path'
 import { handleM3a } from './m3a'
 import { Notes } from './notes'
 import { ProjectLogos } from './projectLogos'
-import { ClaudeUsage } from './rateLimits'
+import { ClaudeUsage, CodexUsage } from './rateLimits'
 import { WebSocketServer, type WebSocket } from 'ws'
 import { CATALOG } from '@shared/catalog'
 import { ClientRequestSchema, type ServerFrame } from '@shared/contract'
@@ -143,7 +143,7 @@ export async function startServer(dbPath: string, options: { dataDir?: string } 
   const checkpoints = new CheckpointStore(join(options.dataDir ?? dirname(dbPath), 'checkpoints'))
   const registry = new SessionRegistry(store)
   registry.checkpoints = checkpoints
-  const m3a = { store, registry, notes: new Notes(db), logos: new ProjectLogos(options.dataDir ?? dirname(dbPath)), usage: new ClaudeUsage() }
+  const m3a = { store, registry, notes: new Notes(db), logos: new ProjectLogos(options.dataDir ?? dirname(dbPath)), usage: new ClaudeUsage(), codexUsage: new CodexUsage() }
   const linear = new Linear(options.dataDir ?? dirname(dbPath))
   registry.resetStaleStatuses()
   registry.startIdleSweep()

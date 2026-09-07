@@ -1,4 +1,5 @@
-import { applyWillRename } from "../lib/editorRename";
+import { applyBeforeMove, applyWillRename } from "../lib/editorRename";
+import { onFileEvent, watchCwd } from "../lib/projectWatch";
 import {
   ChevronDown,
   ChevronRight,
@@ -340,6 +341,7 @@ export function FileTree({
     if (!/[/\\]/.test(fileName)) {
       await applyWillRename(cwd, path, `${parentPath(path)}/${fileName}`);
     }
+    await applyBeforeMove(path, `${parentPath(path)}/${fileName}`);
     const next = await renamePath(path, fileName);
     const wasDir = isDirAt(cwd, path);
     const parent = parentPath(path);
@@ -393,6 +395,12 @@ export function FileTree({
     const from = clip.path;
     const mode = clip.mode;
     const isDir = clip.isDir;
+    if (mode === "cut") {
+      // Same path as a rename: imports first, then the open buffers.
+      const to = `${destParent}/${basename(from)}`;
+      await applyWillRename(cwd, from, to);
+      await applyBeforeMove(from, to);
+    }
     const created =
       mode === "cut"
         ? await movePath(from, destParent)
@@ -553,6 +561,35 @@ export function FileTree({
     scrollParent.addEventListener("scroll", onScroll, true);
     return () => scrollParent.removeEventListener("scroll", onScroll, true);
   }, [menu]);
+
+  // The server's tree watcher: a change under a listed folder re-lists
+  // that folder (batched), so agent and shell writes show without a nudge.
+  useEffect(() => {
+    const release = watchCwd(cwd);
+    const parents = new Set<string>();
+    let timer: number | null = null;
+    const unsub = onFileEvent((event) => {
+      if (event.path !== cwd && !event.path.startsWith(`${cwd}/`)) return;
+      if (event.kind === "deleted") forgetDir(event.path);
+      const parent = parentPath(event.path);
+      if (!peekDir(parent)) return;
+      parents.add(parent);
+      if (timer !== null) return;
+      timer = window.setTimeout(() => {
+        timer = null;
+        const batch = [...parents];
+        parents.clear();
+        void Promise.all(batch.map((dir) => refreshDir(dir).catch(() => forgetDir(dir)))).then(() =>
+          setEpoch((n) => n + 1),
+        );
+      }, 150);
+    });
+    return () => {
+      release();
+      unsub();
+      if (timer !== null) window.clearTimeout(timer);
+    };
+  }, [cwd]);
 
   useEffect(() => {
     const unsub = subscribeDirsChanged(() => setEpoch((n) => n + 1));
