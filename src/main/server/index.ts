@@ -15,6 +15,7 @@ import { handleCheckpoint } from './checkpointRpc'
 import { Linear, handleLinear } from './linear'
 import { SessionRegistry } from './sessions'
 import { runDoctor, updateProvider } from './drivers/binaries'
+import { probeCatalogs } from './drivers/catalogProbe'
 import { backfillMirrors } from './mirror'
 import {
   orchAnswerAgent,
@@ -151,6 +152,7 @@ export async function startServer(dbPath: string, options: { dataDir?: string } 
   setSummarizeContext(registry, store)
   backfillMirrors(registry) // old mirrors gain files:/Outcome, INDEX.md fills in
   void runDoctor() // warm the cache so the new-session modal opens ready
+  void probeCatalogs() // the five probed harnesses ask their CLIs for models
 
   // Background IntelliJ index warming: shortly after startup, then every
   // 10 minutes (catches HEAD moves from commits/branch switches). Both
@@ -238,6 +240,7 @@ export async function startServer(dbPath: string, options: { dataDir?: string } 
         if (lin.handled) return sendFrame({ id: req.id, ok: true, result: lin.result })
         switch (req.method) {
           case 'catalog.get':
+            if (req.params?.refresh) await probeCatalogs(true)
             sendFrame({ id: req.id, ok: true, result: CATALOG })
             break
           case 'doctor.get':
