@@ -1,8 +1,9 @@
 import { registerWillRename } from "../../../lib/editorRename";
 import { openFileAt } from "../../../lib/monaco/opener";
+import { onFileEvent } from "../../../lib/projectWatch";
 import { client } from "../../../lib/tcserver/client";
-import { dirPrefix } from "../../../lib/tcserver/projects";
-import { monaco } from "../monaco";
+import { dirPrefix, projectForCwd } from "../../../lib/tcserver/projects";
+import { languageForPath, monaco } from "../monaco";
 import { entryForUri, registerSaveHook } from "../models";
 import { registerGhostText } from "../ghost";
 import {
@@ -34,6 +35,7 @@ import {
   docString,
   IDEA_LANGS,
   isCommand,
+  kindForLanguage,
   SK,
   SYMBOL_KINDS,
   toLspPos,
@@ -797,16 +799,41 @@ async function formattingEdits(model: monaco.editor.ITextModel): Promise<LspText
 
 // File renames route through the IntelliJ engine first: the
 // workspace/willRenameFiles edit updates imports before the rename.
+// Without the engine (or for TypeScript) the file's standard server —
+// jdtls, vtsls — answers the same request.
+// Servers learn about files they did not edit themselves — a tree rename,
+// a checkout, an agent's write — from the client's watcher; jdtls and
+// vtsls ask for it and otherwise keep resolving the old file.
+onFileEvent((e) => {
+  const type = e.kind === "created" ? 1 : e.kind === "deleted" ? 3 : 2;
+  const changes = [{ uri: monaco.Uri.file(e.path).toString(), type }];
+  for (const p of conns.values()) {
+    void p.then((c) => {
+      if (c?.alive && c.engine !== "idea" && c.project.id === e.projectId) {
+        c.notify("workspace/didChangeWatchedFiles", { changes });
+      }
+    });
+  }
+});
+
 registerWillRename(async (cwd, fromPath, toPath) => {
   const ij = [...settledIdea.values()].find((c) => c.project.cwd === cwd || fromPath.startsWith(c.root));
-  if (!ij?.alive) return;
+  const conn = ij?.alive ? ij : await standardConnFor(cwd, fromPath);
+  if (!conn?.alive) return;
   const files = [{ oldUri: monaco.Uri.file(fromPath).toString(), newUri: monaco.Uri.file(toPath).toString() }];
   const edit = await Promise.race([
-    ij.request<LspWorkspaceEdit | null>("workspace/willRenameFiles", { files }).catch(() => null),
+    conn.request<LspWorkspaceEdit | null>("workspace/willRenameFiles", { files }).catch(() => null),
     new Promise<null>((res) => setTimeout(() => res(null), 1500)),
   ]);
-  if (edit) await applyWorkspaceEdit(ij.project.cwd, edit);
+  if (edit) await applyWorkspaceEdit(conn.project.cwd, edit);
 });
+
+async function standardConnFor(cwd: string, path: string): Promise<LspConnection | null> {
+  const kind = kindForLanguage(languageForPath(path));
+  const project = projectForCwd(cwd);
+  if (!kind || !project) return null;
+  return (await conns.get(`${project.id}:${kind}`)) ?? null;
+}
 
 // Format-on-save: the registry calls this before a flush when enabled.
 registerSaveHook(async (model) => {
