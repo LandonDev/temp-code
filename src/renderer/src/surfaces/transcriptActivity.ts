@@ -8,7 +8,7 @@ import {
 } from "../lib/harness/preview";
 import { displayPath } from "../lib/paths";
 import type { Block } from "../lib/session";
-import { groupPhrase, toolPhrase } from "../lib/toolPhrase";
+import { groupPhrase, kindOf, toolPhrase } from "../lib/toolPhrase";
 
 export type ToolCallState = "pending" | "accepted" | "rejected";
 
@@ -217,7 +217,9 @@ export function groupTurns(blocks: Block[]): Block[][] {
  */
 export function groupTurnItems(blocks: Block[], zen = false): TurnItem[] {
   const visible = blocks.filter(
-    (block) => !isIgnoredTurnBlock(block, zen) && !isHiddenTool(block),
+    (block) =>
+      !isIgnoredTurnBlock(block, zen) &&
+      (isTodoBlock(block) || !isHiddenTool(block)),
   );
   // Zen off: nothing folds, so every prose block counts as final.
   const finalStart = zen ? finalResponseStart(visible) : 0;
@@ -231,8 +233,9 @@ export function groupTurnItems(blocks: Block[], zen = false): TurnItem[] {
   };
   visible.forEach((block, index) => {
     if (
-      isActivityBlock(block, zen) ||
-      (index < finalStart && isProseBlock(block))
+      !isTodoBlock(block) &&
+      (isActivityBlock(block, zen) ||
+        (index < finalStart && isProseBlock(block)))
     ) {
       activity.push(block);
       return;
@@ -242,6 +245,11 @@ export function groupTurnItems(blocks: Block[], zen = false): TurnItem[] {
   });
   flush();
   return items;
+}
+
+/** The agent's todo list stands as its own row where it was written. */
+export function isTodoBlock(block: Block): boolean {
+  return block.role === "tool" && kindOf(block) === "todo";
 }
 
 function isIgnoredTurnBlock(block: Block, zen: boolean): boolean {
