@@ -6,7 +6,10 @@ import {
   type ReactNode,
 } from "react";
 import { Modal } from "./Modal";
+import { BUILD_EMPTY, BuildFields, buildOrNull } from "./rail/buildSettings";
 import { TerminalSpinner } from "./TerminalSpinner";
+import { client } from "../lib/tcserver/client";
+import type { BuildConfig } from "@server/shared/build";
 import { prettyCwd } from "../lib/paths";
 import {
   archiveProject,
@@ -338,11 +341,37 @@ export function ProjectSettingsDialog({
   const worktree = project.mode === "worktree";
   const branches = useBranches(workspace.id, worktree);
   const exists = branchExists(branches, branch.trim());
+  const [savedBuild, setSavedBuild] = useState<BuildConfig | null | undefined>(undefined);
+  const [build, setBuild] = useState<BuildConfig>(BUILD_EMPTY);
+  const [detected, setDetected] = useState<BuildConfig | null>(null);
+  useEffect(() => {
+    let live = true;
+    void client
+      .request<BuildConfig | null>("build.get", { workspaceId: workspace.id, projectId: project.id })
+      .then((c) => {
+        if (!live) return;
+        setSavedBuild(c);
+        setBuild(c ?? BUILD_EMPTY);
+      })
+      .catch(() => live && setSavedBuild(null));
+    void client
+      .request<BuildConfig | null>("build.detect", { path: project.cwd })
+      .then((d) => live && setDetected(d))
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [workspace.id, project.id, project.cwd]);
 
   const nameDirty = name.trim() !== project.name && !!name.trim();
   const branchDirty =
     worktree && !!branch.trim() && branch.trim() !== (project.branch ?? "");
-  const dirty = nameDirty || branchDirty;
+  const nextBuild = buildOrNull(build);
+  const buildDirty =
+    savedBuild !== undefined &&
+    ((nextBuild?.command ?? "") !== (savedBuild?.command ?? "") ||
+      (nextBuild?.outputs ?? "") !== (savedBuild?.outputs ?? ""));
+  const dirty = nameDirty || branchDirty || buildDirty;
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
@@ -358,6 +387,13 @@ export function ProjectSettingsDialog({
         );
       }
       if (nameDirty) await renameProject(project.id, name.trim());
+      if (buildDirty) {
+        await client.request("build.set", {
+          workspaceId: workspace.id,
+          projectId: project.id,
+          config: nextBuild,
+        });
+      }
       onClose();
     } catch (err) {
       setError(errorText(err));
@@ -399,6 +435,10 @@ export function ProjectSettingsDialog({
               ) : null}
             </>
           ) : null}
+          <div className="mt-1 flex flex-col gap-3 border-t border-content/10 pt-3">
+            <span className={LABEL}>Build override</span>
+            <BuildFields value={build} onChange={setBuild} detected={detected} compact />
+          </div>
           <ErrorLine error={error} />
         </div>
         <Footer
