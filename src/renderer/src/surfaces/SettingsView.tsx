@@ -1068,6 +1068,11 @@ function ProvidersPage() {
 }
 
 /** Providers whose CLI the server knows how to update in place. */
+/** "2.1.263 (Claude Code)" → "v2.1.263 (Claude Code)"; "codex-cli 0.153.4" stays as is. */
+function versionLabel(version: string): string {
+  return /^\d/.test(version) ? `v${version}` : version;
+}
+
 const UPDATABLE: ReadonlySet<HarnessId> = new Set(["claude", "codex", "cursor"]);
 
 function ProviderRow({
@@ -1135,7 +1140,7 @@ function ProviderRow({
             aria-hidden
             className={`size-1.5 rounded-full ${doctor.error ? "bg-warning" : "bg-success"}`}
           />
-          {doctor.version ? `v${doctor.version.replace(/^v/, "")}` : "Installed"}
+          {doctor.version ? versionLabel(doctor.version) : "Installed"}
           {models.length > 0 ? (
             <span className="text-content/35">
               · {models.length} {models.length === 1 ? "model" : "models"}
