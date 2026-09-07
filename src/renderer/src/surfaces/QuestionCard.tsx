@@ -1,121 +1,96 @@
-import { useState } from "react";
-import type { QuestionMeta } from "../lib/session";
+import { useState, type ReactNode } from "react";
+import type { QuestionMeta, QuestionSpec } from "../lib/session";
 import { answer as answerQuestion } from "../lib/tcserver/commands";
+import {
+  advance,
+  advanceLabel,
+  answersOf,
+  back,
+  initialStepper,
+  pickAndAdvance,
+  stepComplete,
+  stepLabel,
+  typeOther,
+  type StepperState,
+} from "../lib/questionStepper";
+import { ChevronLeft } from "../chrome/icons";
 
 /**
- * The model stopped to ask. One card per request: each question's
- * options as buttons (toggles when multi-select), a free-text field when
- * the harness allows one, and a single submit for the whole set.
+ * The model stopped to ask. One question shows at a time however many the
+ * harness batched: a single-select pick answers it and moves on, a
+ * multi-select or typed answer waits for Next, and the whole set goes back
+ * in one answer after the last. Back keeps every pick.
+ *
+ * `renderPage` is the seam for the page motion: it receives each step's
+ * body with the step index as its key, so a keyed slide can wrap it.
  */
 export function QuestionCard({
   question,
   onAnswer = (requestId, answers) =>
     void answerQuestion(question.sessionId, requestId, answers),
+  renderPage = (page) => page,
 }: {
   question: QuestionMeta;
   onAnswer?: (requestId: string, answers: string[][] | null) => void;
+  renderPage?: (page: ReactNode, step: number) => ReactNode;
 }) {
-  const [picked, setPicked] = useState<string[][]>(() =>
-    question.questions.map(() => []),
-  );
-  const [other, setOther] = useState<string[]>(() =>
-    question.questions.map(() => ""),
-  );
+  const questions = question.questions;
+  const count = questions.length;
+  const [state, setState] = useState<StepperState>(() => initialStepper(count));
 
   if (question.answers !== undefined) {
-    return (
-      <div className="mt-1 flex flex-col gap-1 text-[12px] text-content/60">
-        {question.answers === null ? (
-          <span>Dismissed</span>
-        ) : (
-          question.questions.map((q, i) => (
-            <div key={i} className="flex min-w-0 gap-1.5">
-              <span className="shrink-0 text-content/45">{q.header ?? q.question}</span>
-              <span className="min-w-0 truncate text-content/80">
-                {question.answers?.[i]?.join(", ") || "No answer"}
-              </span>
-            </div>
-          ))
-        )}
-      </div>
-    );
+    return <AnsweredQuestions question={question} />;
   }
 
-  const answers = question.questions.map((_, i) => {
-    const typed = other[i].trim();
-    return typed ? [...picked[i], typed] : picked[i];
-  });
-  const complete = answers.every((a) => a.length > 0);
+  const submit = (s: StepperState) => onAnswer?.(question.requestId, answersOf(s));
+  const q = questions[state.step];
+  if (!q) return null;
+  const counter = stepLabel(state.step, count);
+  const complete = stepComplete(state, state.step);
 
-  const toggle = (i: number, label: string, multi: boolean) => {
-    setPicked((prev) => {
-      const next = prev.slice();
-      const has = next[i].includes(label);
-      next[i] = multi
-        ? has
-          ? next[i].filter((l) => l !== label)
-          : [...next[i], label]
-        : has
-          ? []
-          : [label];
-      return next;
-    });
+  const pick = (label: string) => {
+    const r = pickAndAdvance(state, questions, label);
+    setState(r.state);
+    if (r.done) submit(r.state);
+  };
+  const go = () => {
+    const r = advance(state, count);
+    setState(r.state);
+    if (r.done) submit(r.state);
   };
 
   return (
     <div className="mt-1.5 flex flex-col gap-3">
-      {question.questions.map((q, i) => (
-        <div key={i} className="flex flex-col gap-1.5">
-          <div className="text-[13px] leading-5 text-content/85">{q.question}</div>
-          <div className="flex flex-wrap gap-1.5">
-            {q.options.map((option) => {
-              const on = picked[i].includes(option.label);
-              return (
-                <button
-                  key={option.label}
-                  type="button"
-                  aria-pressed={on}
-                  title={option.description}
-                  className={
-                    on
-                      ? "rounded-md bg-content px-2.5 py-0.5 text-[11px] text-background-base"
-                      : "rounded-md bg-content/10 px-2.5 py-0.5 text-[11px] text-content/70 hover:bg-content/20"
-                  }
-                  onClick={() => toggle(i, option.label, q.multiSelect === true)}
-                >
-                  {option.label}
-                </button>
-              );
-            })}
-          </div>
-          {q.allowFreeform !== false ? (
-            <input
-              type="text"
-              value={other[i]}
-              placeholder="Other"
-              className="w-full max-w-sm rounded-md border border-content/12 bg-transparent px-2 py-1 text-[12px] text-content/85 outline-none placeholder:text-content/35 focus:border-content/30"
-              onChange={(e) =>
-                setOther((prev) => {
-                  const next = prev.slice();
-                  next[i] = e.target.value;
-                  return next;
-                })
-              }
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && complete) onAnswer?.(question.requestId, answers);
-              }}
-            />
-          ) : null}
-        </div>
-      ))}
-      <div className="flex gap-2">
+      {renderPage(
+        <QuestionPage
+          key={state.step}
+          spec={q}
+          picked={state.picked[state.step]}
+          other={state.other[state.step]}
+          onPick={pick}
+          onType={(text) => setState((s) => typeOther(s, s.step, text))}
+          onEnter={go}
+        />,
+        state.step,
+      )}
+      <div className="flex items-center gap-2">
+        {state.step > 0 ? (
+          <button
+            type="button"
+            aria-label="Previous question"
+            className="grid size-6 place-items-center rounded-md bg-content/10 text-content/70 hover:bg-content/20"
+            onClick={() => setState(back(state))}
+          >
+            <ChevronLeft className="size-3.5" strokeWidth={1.75} />
+          </button>
+        ) : null}
         <button
           type="button"
           disabled={!complete}
           className="rounded-md bg-content px-2.5 py-0.5 text-[11px] text-background-base hover:bg-content/80 disabled:opacity-40"
-          onClick={() => onAnswer?.(question.requestId, answers)}
+          onClick={go}
         >
-          Submit
+          {advanceLabel(state, count)}
         </button>
         <button
           type="button"
@@ -124,7 +99,88 @@ export function QuestionCard({
         >
           Dismiss
         </button>
+        {counter ? (
+          <span className="ml-auto text-[11px] tabular-nums text-content/40">{counter}</span>
+        ) : null}
       </div>
+    </div>
+  );
+}
+
+/** One question: its prompt, its options and the free-text field. */
+export function QuestionPage({
+  spec,
+  picked,
+  other,
+  onPick,
+  onType,
+  onEnter,
+}: {
+  spec: QuestionSpec;
+  picked: string[];
+  other: string;
+  onPick: (label: string) => void;
+  onType: (text: string) => void;
+  onEnter: () => void;
+}) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      {spec.header ? (
+        <div className="text-[11px] uppercase tracking-wide text-content/40">{spec.header}</div>
+      ) : null}
+      <div className="text-[13px] leading-5 text-content/85">{spec.question}</div>
+      <div className="flex flex-wrap gap-1.5">
+        {spec.options.map((option) => {
+          const on = picked.includes(option.label);
+          return (
+            <button
+              key={option.label}
+              type="button"
+              aria-pressed={on}
+              title={option.description}
+              className={
+                on
+                  ? "rounded-md bg-content px-2.5 py-0.5 text-[11px] text-background-base"
+                  : "rounded-md bg-content/10 px-2.5 py-0.5 text-[11px] text-content/70 hover:bg-content/20"
+              }
+              onClick={() => onPick(option.label)}
+            >
+              {option.label}
+            </button>
+          );
+        })}
+      </div>
+      {spec.allowFreeform !== false ? (
+        <input
+          type="text"
+          value={other}
+          placeholder="Other"
+          className="w-full max-w-sm rounded-md border border-content/12 bg-transparent px-2 py-1 text-[12px] text-content/85 outline-none placeholder:text-content/35 focus:border-content/30"
+          onChange={(e) => onType(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") onEnter();
+          }}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function AnsweredQuestions({ question }: { question: QuestionMeta }) {
+  return (
+    <div className="mt-1 flex flex-col gap-1 text-[12px] text-content/60">
+      {question.answers === null ? (
+        <span>Dismissed</span>
+      ) : (
+        question.questions.map((q, i) => (
+          <div key={i} className="flex min-w-0 gap-1.5">
+            <span className="shrink-0 text-content/45">{q.header ?? q.question}</span>
+            <span className="min-w-0 truncate text-content/80">
+              {question.answers?.[i]?.join(", ") || "No answer"}
+            </span>
+          </div>
+        ))
+      )}
     </div>
   );
 }
