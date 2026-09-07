@@ -108,7 +108,30 @@ export interface DoctorReport {
 const BIN_NAME: Record<ProviderId, string> = {
   claude: 'claude',
   codex: 'codex',
-  cursor: 'cursor-agent'
+  cursor: 'cursor-agent',
+  grok: 'grok',
+  opencode: 'opencode',
+  pi: 'pi',
+  omp: 'omp',
+  fx: 'fx'
+}
+
+/** The ported harnesses resolve through their own finders (extra install
+ *  dirs, fx's agent check); `--version` is not probed for them. */
+const PORTED: Partial<Record<ProviderId, () => Promise<{ path: string }>>> = {}
+async function portedResolver(provider: ProviderId): Promise<(() => Promise<{ path: string }>) | null> {
+  if (!['grok', 'opencode', 'pi', 'omp', 'fx'].includes(provider)) return null
+  if (!PORTED[provider]) {
+    const child = await import('./harness/child')
+    Object.assign(PORTED, {
+      grok: child.resolveGrokBinary,
+      opencode: child.resolveOpenCodeBinary,
+      pi: child.resolvePiBinary,
+      omp: child.resolveOmpBinary,
+      fx: child.resolveFxBinary
+    })
+  }
+  return PORTED[provider] ?? null
 }
 
 // ── claude: bundled SDK CLI vs standalone install ────────────────────
@@ -180,6 +203,15 @@ async function checkProvider(provider: ProviderId): Promise<DoctorReport> {
     }
   }
   const bin = BIN_NAME[provider]
+  const ported = await portedResolver(provider)
+  if (ported) {
+    try {
+      const { path } = await ported()
+      return { found: true, path }
+    } catch (err) {
+      return { found: false, error: err instanceof Error ? err.message : `${bin} not found` }
+    }
+  }
   const path = await resolveBinary(bin)
   if (!path) return { found: false, error: `${bin} not found on the login-shell PATH` }
   try {
@@ -196,12 +228,9 @@ let doctorCache: { at: number; report: Promise<Record<ProviderId, DoctorReport>>
 export function runDoctor(): Promise<Record<ProviderId, DoctorReport>> {
   if (doctorCache && Date.now() - doctorCache.at < 60_000) return doctorCache.report
   const report = (async () => {
-    const [claude, codex, cursor] = await Promise.all([
-      checkProvider('claude'),
-      checkProvider('codex'),
-      checkProvider('cursor')
-    ])
-    return { claude, codex, cursor }
+    const ids = Object.keys(BIN_NAME) as ProviderId[]
+    const rows = await Promise.all(ids.map((id) => checkProvider(id)))
+    return Object.fromEntries(ids.map((id, i) => [id, rows[i]])) as Record<ProviderId, DoctorReport>
   })()
   doctorCache = { at: Date.now(), report }
   return report

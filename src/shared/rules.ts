@@ -26,7 +26,7 @@ export const RoutingRuleSchema = z.object({
   id: z.string(),
   /** when this rule applies — shown to the orchestrator verbatim */
   task: z.string(),
-  provider: z.enum(['claude', 'codex', 'cursor']),
+  provider: z.enum(['claude', 'codex', 'cursor', 'grok', 'opencode', 'pi', 'omp', 'fx']),
   /** model id; '' = the provider's default */
   model: z.string().default(''),
   reasoning: z.enum(['low', 'medium', 'high', 'xhigh', 'max', 'ultra']).default('medium'),
