@@ -1,5 +1,6 @@
 import {
   useEffect,
+  useId,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -7,8 +8,10 @@ import {
   type Dispatch,
   type SetStateAction,
 } from "react";
-import { AnimatePresence } from "motion/react";
+import { AnimatePresence, LayoutGroup, motion, useReducedMotion } from "motion/react";
 import type { OpenFileFn } from "../../lib/search";
+import { EASE_OUT, SPRING_PANEL } from "../../lib/ease";
+import { TweenHeight } from "../../motion";
 import { FilePreview } from "../../chrome/FilePreview";
 import { Check, ChevronRight, Circle } from "../../chrome/icons";
 import { usePlanFile } from "../../hooks/usePlanFile";
@@ -33,6 +36,7 @@ import {
 import { AgentMarkdown } from "../AgentMarkdown";
 import { duration, Spinner, useNow } from "./bits";
 import { AgentDetail } from "./fleet/AgentDetail";
+import { OpenAgentDetailContext } from "../agentDetailContext";
 import { AgentRow } from "./fleet/AgentRow";
 import { SplitShell } from "./SplitShell";
 import type { ThreadViewProps } from "./ThreadView";
@@ -204,16 +208,18 @@ export function ImplementationView(props: ThreadViewProps) {
   });
 
   const goal = blocks.find((b) => b.role === "user");
+  const reduce = useReducedMotion();
 
   // A plain chat until there is a board to show (tasks or subagents), then
   // a split — board left, conversation right. Once ANY round produced
   // tasks the thread stays a board.
   const hasBoard = todos.length > 0 || pastTodosAll.some((t) => t.length > 0) || agents.length > 0;
   // Returning to a finished thread lands on the board alone — the chat
-  // starts folded. `loaded` covers first loads that mount before the
-  // backlog hydrates.
+  // starts folded. `loaded` is the store's explicit bit (set once the
+  // backlog has replayed), so a first mount before hydration never folds
+  // on an empty transcript and an empty finished thread still settles.
   const settled = !running && !waiting && allDone && !stopped;
-  const loaded = blocks.length > 0;
+  const loaded = session.loaded === true;
   const [chatOpen, setChatOpen] = useState(!(loaded && settled));
   const [sawLoaded, setSawLoaded] = useState(loaded);
   if (loaded !== sawLoaded) {
@@ -350,9 +356,14 @@ export function ImplementationView(props: ThreadViewProps) {
         ) : null}
 
         {closing ? (
-          <div className="z-rise-in mt-6 border-t border-content/10 pt-4">
+          <motion.div
+            initial={reduce ? false : { opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.25, ease: EASE_OUT }}
+            className="mt-6 border-t border-content/10 pt-4"
+          >
             <AgentMarkdown text={closing.text} cwd={session.cwd} onOpenFile={props.onOpenFile} />
-          </div>
+          </motion.div>
         ) : null}
 
         {/* The pass is done and the chat usually folded — the next pass
@@ -404,6 +415,7 @@ export function ImplementationView(props: ThreadViewProps) {
 
   return (
     <div className="relative flex min-h-0 min-w-0 flex-1">
+      <OpenAgentDetailContext.Provider value={setOpenAgentId}>
       <SplitShell
         board={board}
         chat={chat}
@@ -412,6 +424,7 @@ export function ImplementationView(props: ThreadViewProps) {
         onOpenChat={openChat}
         status={session.status}
       />
+      </OpenAgentDetailContext.Provider>
       <AnimatePresence>
         {openAgentId ? (
           <AgentDetail
@@ -502,6 +515,7 @@ function RoundSection({
   setToggled: Dispatch<SetStateAction<Set<string>>>;
 }) {
   const { todos, blocks, work } = data;
+  const reduce = useReducedMotion();
   const workByTodo = useMemo(() => groupByTodo(work, todos.length), [work, todos.length]);
   const blocksByTodo = useMemo(() => groupByTodo(blocks, todos.length), [blocks, todos.length]);
   // Per-todo wall clock from this round's blocks only.
@@ -598,7 +612,7 @@ function RoundSection({
                     ms={ms !== null && ms > 1500 ? ms : null}
                   />
                 </div>
-                <div className="zen-phase-body" data-open={bodyOpen}>
+                <TweenHeight open={bodyOpen} animate={!reduce}>
                   <div>
                     {live ? <TaskActivity blocks={taskBlocks} /> : null}
                     {items.length > 0 || (folded && shell) ? (
@@ -645,7 +659,7 @@ function RoundSection({
                       />
                     ) : null}
                   </div>
-                </div>
+                </TweenHeight>
               </div>
             );
           })}
@@ -718,11 +732,9 @@ function RoundSection({
             ) : null}
           </span>
         </button>
-        <div className="zen-phase-body" data-open={expanded}>
-          <div>
-            <div className="pt-1 pb-2 pl-6">{body}</div>
-          </div>
-        </div>
+        <TweenHeight open={expanded} animate={!reduce}>
+          <div className="pt-1 pb-2 pl-6">{body}</div>
+        </TweenHeight>
       </div>
     );
   }
@@ -782,13 +794,8 @@ function PassBanner({ passNum, color, onNext }: { passNum: number; color: string
 
 /** The work stream for one group, in birth order. Approvals and questions
  *  live in the transcript; here they are one line that opens the chat. */
-function WorkItems({
-  blocks,
-  cwd,
-  stopped,
-  onNeedsUser,
-  onOpenFile,
-}: WorkHandlers & { blocks: Block[]; cwd: string }) {
+function WorkItems({ blocks, cwd, stopped, onNeedsUser, onOpenFile }: WorkHandlers & { blocks: Block[]; cwd: string }) {
+  const reduce = useReducedMotion();
   const lastError = findLast(blocks, isError);
   return (
     <div className="flex flex-col gap-2">
@@ -809,9 +816,14 @@ function WorkItems({
         ) : isError(b) ? (
           <ErrorChip key={b.id} text={b.text} stopped={stopped && b === lastError} />
         ) : b.tool?.preview ? (
-          <div key={b.id} className="z-rise-in">
+          <motion.div
+            key={b.id}
+            initial={reduce ? false : { opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.25, ease: EASE_OUT }}
+          >
             <FilePreview preview={b.tool.preview} status="accepted" cwd={cwd} onOpenFile={onOpenFile} />
-          </div>
+          </motion.div>
         ) : null,
       )}
     </div>
@@ -966,24 +978,29 @@ function ChangeCard({
   cwd,
   onOpenFile,
   onOpenDiff,
+  onClose,
 }: {
   block: Block;
   cwd: string;
   onOpenFile: OpenFileFn;
   onOpenDiff: (path?: string) => void;
+  onClose?: () => void;
 }) {
   const preview = block.tool?.preview;
   if (!preview) return null;
   return (
     <div className="py-1">
       <FilePreview preview={preview} status="accepted" cwd={cwd} onOpenFile={onOpenFile} />
-      <button
-        type="button"
-        onClick={() => onOpenDiff(preview.path)}
-        className="mt-1 px-1 text-[11px] text-content/45 transition-colors hover:text-content"
-      >
-        Open diff
-      </button>
+      <div className="mt-1 flex gap-3 px-1 text-[11px] text-content/45">
+        <button type="button" onClick={() => onOpenDiff(preview.path)} className="transition-colors hover:text-content">
+          Open diff
+        </button>
+        {onClose ? (
+          <button type="button" onClick={onClose} className="transition-colors hover:text-content">
+            Close
+          </button>
+        ) : null}
+      </div>
     </div>
   );
 }
@@ -1008,6 +1025,7 @@ function TaskGrid({
   onOpenFile: OpenFileFn;
   onOpenDiff: (path?: string) => void;
 }) {
+  const gid = useId();
   const files = new Map<
     string,
     { name: string; adds: number; dels: number; ms: number; edits: Block[]; disk?: LiveEditState }
@@ -1040,47 +1058,67 @@ function TaskGrid({
     });
   }
   const open = openPath ? files.get(openPath) : null;
-  // The last opened card stays mounted through its collapse so the close
-  // animates instead of cutting.
-  const [shown, setShown] = useState<{ path: string; block: Block } | null>(null);
-  if (open && openPath && shown?.path !== openPath) {
-    setShown({ path: openPath, block: open.disk ? diskBlock(open.disk) : wholeChange(openPath, open.edits) });
-  }
   if (files.size === 0) return null;
+  // Locked layout: rows keep a stable layoutId (so the card can morph
+  // from/to them) but layoutDependency pins them — motion only re-measures
+  // when openPath changes, so unrelated reflows (a task collapsing above)
+  // move them rigidly with the page instead of springing them around.
+  // The clicked row leaves the grid while its card is open: siblings slide
+  // over to fill the slot, the card morphs open from the row's snapshot
+  // (shared layoutId), and on close it morphs back into the remounting row.
+  // The height wrapper tweens so everything below slides instead of jumping.
+  // The group id is this mount's, so the same file in another pane, task
+  // or round never morphs across.
   return (
-    <>
+    <LayoutGroup id={gid}>
       <div className="grid grid-cols-[repeat(auto-fill,minmax(190px,1fr))] gap-x-4 px-4 pb-2">
-        {[...files.entries()].map(([path, f]) => (
-          <button
-            key={path}
-            type="button"
-            onClick={() => onPick(path)}
-            title={path}
-            className={`flex items-center gap-2 py-0.5 text-left text-[12px] transition-colors hover:text-content ${
-              path === openPath ? "text-content" : ""
-            }`}
+        {[...files.entries()].map(([path, f]) =>
+          path === openPath ? null : (
+            <motion.button
+              key={path}
+              type="button"
+              layoutId={`chg-${path}`}
+              layoutDependency={openPath}
+              transition={SPRING_PANEL}
+              onClick={() => onPick(path)}
+              title={path}
+              className="flex items-center gap-2 py-0.5 text-left text-[12px] transition-colors hover:text-content"
+            >
+              <span className="w-9 shrink-0 text-right text-[11px] tabular-nums text-content/35">
+                {f.ms > 1500 ? `~${duration(f.ms)}` : ""}
+              </span>
+              <span className="min-w-0 flex-1 truncate text-content/55">
+                {f.name}
+                {f.disk ? <span className="ml-1.5 text-[11px] text-content/35">shell</span> : null}
+              </span>
+              <Stat adds={f.adds} dels={f.dels} />
+            </motion.button>
+          ),
+        )}
+      </div>
+      <AnimatePresence initial={false}>
+        {open && openPath ? (
+          <motion.div
+            key={openPath}
+            initial={{ height: 0 }}
+            animate={{ height: "auto" }}
+            exit={{ height: 0 }}
+            transition={{ duration: 0.22, ease: EASE_OUT }}
+            className="overflow-hidden px-3"
           >
-            <span className="w-9 shrink-0 text-right text-[11px] tabular-nums text-content/35">
-              {f.ms > 1500 ? `~${duration(f.ms)}` : ""}
-            </span>
-            <span className={`min-w-0 flex-1 truncate ${path === openPath ? "" : "text-content/55"}`}>
-              {f.name}
-              {f.disk ? <span className="ml-1.5 text-[11px] text-content/35">shell</span> : null}
-            </span>
-            <Stat adds={f.adds} dels={f.dels} />
-          </button>
-        ))}
-      </div>
-      <div className="zen-phase-body" data-open={!!open}>
-        <div>
-          {shown ? (
-            <div className="px-3">
-              <ChangeCard block={shown.block} cwd={cwd} onOpenFile={onOpenFile} onOpenDiff={onOpenDiff} />
-            </div>
-          ) : null}
-        </div>
-      </div>
-    </>
+            <motion.div layoutId={`chg-${openPath}`} layoutDependency={openPath} transition={SPRING_PANEL}>
+              <ChangeCard
+                block={open.disk ? diskBlock(open.disk) : wholeChange(openPath, open.edits)}
+                cwd={cwd}
+                onOpenFile={onOpenFile}
+                onOpenDiff={onOpenDiff}
+                onClose={() => onPick(openPath)}
+              />
+            </motion.div>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
+    </LayoutGroup>
   );
 }
 
@@ -1150,7 +1188,14 @@ function TaskMeta({
       ? blocks.flatMap((b) =>
           b.ts === undefined || b.role !== "tool"
             ? []
-            : [{ at: (b.ts - span.first) / dur, k: actKind(b), detail: tickDetail(b), off: b.ts - span.first }],
+            : [
+                {
+                  at: (b.ts - span.first) / dur,
+                  k: actKind(b),
+                  detail: tickDetail(b),
+                  off: b.ts - span.first,
+                },
+              ],
         )
       : [];
   const compactTicks =
@@ -1252,6 +1297,7 @@ function DiskCards({
   onOpenFile: OpenFileFn;
   onOpenDiff: (path?: string) => void;
 }) {
+  const reduce = useReducedMotion();
   const [open, setOpen] = useState<Set<string>>(new Set());
   return (
     <div className="flex flex-col gap-1 px-3 pb-2">
@@ -1281,11 +1327,9 @@ function DiskCards({
               </span>
             </button>
             {expandable ? (
-              <div className="zen-phase-body" data-open={isOpen}>
-                <div>
-                  <ChangeCard block={diskBlock(e)} cwd={cwd} onOpenFile={onOpenFile} onOpenDiff={onOpenDiff} />
-                </div>
-              </div>
+              <TweenHeight open={isOpen} animate={!reduce}>
+                <ChangeCard block={diskBlock(e)} cwd={cwd} onOpenFile={onOpenFile} onOpenDiff={onOpenDiff} />
+              </TweenHeight>
             ) : null}
           </div>
         );

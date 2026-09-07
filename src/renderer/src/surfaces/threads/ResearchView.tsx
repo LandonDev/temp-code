@@ -1,5 +1,7 @@
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { OpenFileFn } from "../../lib/search";
+import { EASE_OUT } from "../../lib/ease";
 import { ChevronRight, Search } from "../../chrome/icons";
 import { usePlanFile } from "../../hooks/usePlanFile";
 import type { Block, Session } from "../../lib/session";
@@ -15,6 +17,8 @@ import {
 } from "../../lib/threads/researchBoard";
 import { AgentMarkdown } from "../AgentMarkdown";
 import { PaneHeader, Spinner } from "./bits";
+import { AgentDetail } from "./fleet/AgentDetail";
+import { OpenAgentDetailContext } from "../agentDetailContext";
 import { FleetPulseLine } from "./fleet/FleetPanel";
 import { SplitShell } from "./SplitShell";
 import type { ThreadViewProps } from "./ThreadView";
@@ -73,7 +77,7 @@ export function Favicon({ url }: { url: string }) {
 // ── the view ───────────────────────────────────────────────────────────
 
 export function ResearchView(props: ThreadViewProps) {
-  const { session, renderChat, onOpenFile, onOpenSession } = props;
+  const { session, renderChat, onOpenFile } = props;
   const status = session.status;
   const running = status === "running" || status === "starting";
   const waiting = status === "waiting";
@@ -115,6 +119,9 @@ export function ResearchView(props: ThreadViewProps) {
   }
   const collapsed = hasBoard && !chatOpen;
 
+  // A boarded angle group opens the agent's detail in place.
+  const [openAgentId, setOpenAgentId] = useState<string | null>(null);
+
   const detail =
     board.sources > 0 || board.searches > 0
       ? `${board.sources} source${board.sources === 1 ? "" : "s"} · ${board.searches} search${
@@ -142,7 +149,7 @@ export function ResearchView(props: ThreadViewProps) {
                   key={angle.agentId}
                   angle={angle}
                   self={angle.agentId === session.id}
-                  onOpen={() => onOpenSession?.(angle.agentId)}
+                  onOpen={() => setOpenAgentId(angle.agentId)}
                 />
               ))}
             </div>
@@ -172,14 +179,31 @@ export function ResearchView(props: ThreadViewProps) {
   );
 
   return (
-    <SplitShell
-      board={boardPane}
-      chat={chatPane}
-      hasBoard={hasBoard}
-      collapsed={collapsed}
-      onOpenChat={() => setChatOpen(true)}
-      status={status}
-    />
+    <div className="relative flex min-h-0 min-w-0 flex-1">
+      <OpenAgentDetailContext.Provider value={setOpenAgentId}>
+      <SplitShell
+        board={boardPane}
+        chat={chatPane}
+        hasBoard={hasBoard}
+        collapsed={collapsed}
+        onOpenChat={() => setChatOpen(true)}
+        status={status}
+      />
+      </OpenAgentDetailContext.Provider>
+      <AnimatePresence>
+        {openAgentId ? (
+          <AgentDetail
+            key={openAgentId}
+            agentId={openAgentId}
+            parentCwd={session.cwd}
+            onClose={() => setOpenAgentId(null)}
+            onOpenSession={props.onOpenSession}
+            onOpenFile={onOpenFile}
+            onOpenDiff={props.onOpenDiff}
+          />
+        ) : null}
+      </AnimatePresence>
+    </div>
   );
 }
 
@@ -197,11 +221,16 @@ function ReportPane({
   onOpenFile: OpenFileFn;
 }) {
   const complete = report.status === "complete";
+  const reduce = useReducedMotion();
   const onOpen = (): void => {
     if (session.planPath) onOpenFile(session.planPath);
   };
   return (
-    <div className="z-rise-in">
+    <motion.div
+      initial={reduce ? false : { opacity: 0, y: 6 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.25, ease: EASE_OUT }}
+    >
       <button
         type="button"
         onClick={onOpen}
@@ -230,7 +259,7 @@ function ReportPane({
       ) : report.summary ? (
         <p className="mt-1 text-[12px] leading-snug text-content/55">{report.summary}</p>
       ) : null}
-    </div>
+    </motion.div>
   );
 }
 

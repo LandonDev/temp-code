@@ -40,36 +40,7 @@ export function ContextMeter({ usage }: { usage?: ContextUsage }) {
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
-      <svg
-        width={SIZE}
-        height={SIZE}
-        viewBox={`0 0 ${SIZE} ${SIZE}`}
-        className={ringClass(ratio)}
-        role="img"
-        aria-label={`${headline}, ${detail}`}
-      >
-        <circle
-          cx={SIZE / 2}
-          cy={SIZE / 2}
-          r={RADIUS}
-          fill="none"
-          stroke="currentColor"
-          strokeWidth={STROKE}
-          className="opacity-25"
-        />
-        <circle
-          cx={SIZE / 2}
-          cy={SIZE / 2}
-          r={RADIUS}
-          fill="none"
-          stroke="currentColor"
-          strokeWidth={STROKE}
-          strokeLinecap="round"
-          strokeDasharray={CIRCUMFERENCE}
-          strokeDashoffset={CIRCUMFERENCE * (1 - ratio)}
-          transform={`rotate(-90 ${SIZE / 2} ${SIZE / 2})`}
-        />
-      </svg>
+      <ContextRing ratio={ratio} label={`${headline}, ${detail}`} />
       {hovered ? (
         <Popover
           anchor={root}
@@ -82,5 +53,43 @@ export function ContextMeter({ usage }: { usage?: ContextUsage }) {
         </Popover>
       ) : null}
     </div>
+  );
+}
+
+/** The 14px ring on its own; an unknown ratio draws the empty track. */
+export function ContextRing({ ratio, label, className }: { ratio: number | null; label: string; className?: string }) {
+  return (
+    <svg
+      width={SIZE}
+      height={SIZE}
+      viewBox={`0 0 ${SIZE} ${SIZE}`}
+      className={`${ringClass(ratio ?? 0)} ${className ?? ""}`}
+      role="img"
+      aria-label={label}
+    >
+      <circle
+        cx={SIZE / 2}
+        cy={SIZE / 2}
+        r={RADIUS}
+        fill="none"
+        stroke="currentColor"
+        strokeWidth={STROKE}
+        className="opacity-25"
+      />
+      {ratio !== null ? (
+        <circle
+          cx={SIZE / 2}
+          cy={SIZE / 2}
+          r={RADIUS}
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={STROKE}
+          strokeLinecap="round"
+          strokeDasharray={CIRCUMFERENCE}
+          strokeDashoffset={CIRCUMFERENCE * (1 - ratio)}
+          transform={`rotate(-90 ${SIZE / 2} ${SIZE / 2})`}
+        />
+      ) : null}
+    </svg>
   );
 }

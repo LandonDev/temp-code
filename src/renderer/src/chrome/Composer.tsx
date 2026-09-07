@@ -46,7 +46,7 @@ import { GoalControl } from "./GoalControl";
 import { AddonMark } from "./AddonMark";
 import { CommandPopover, type AtMatch, type PopoverMatches } from "./CommandPopover";
 import { ComposerRunner } from "./ComposerRunner";
-import { ContextMeter } from "./ContextMeter";
+import { ContextControl } from "./ContextControl";
 import { AttachmentChip } from "./AttachmentChip";
 import { BranchPicker } from "./BranchPicker";
 import { CwdPicker } from "./CwdPicker";
@@ -683,9 +683,6 @@ export function Composer({
                 onClose={() => ref.current?.focus()}
               />
             ) : null}
-            <div className="ml-auto flex shrink-0 items-center">
-              <ContextMeter usage={context} />
-            </div>
           </div>
 
           {attachments.length > 0 ? (
@@ -793,7 +790,7 @@ export function Composer({
                 if (
                   e.target instanceof Element &&
                   e.target.closest(
-                    "[data-model-picker], [data-access-picker], [data-model-settings], [data-thread-type-picker], [data-goal-control]",
+                    "[data-model-picker], [data-access-picker], [data-model-settings], [data-thread-type-picker], [data-goal-control], [data-context-control]",
                   )
                 ) {
                   return;
@@ -829,6 +826,14 @@ export function Composer({
                   <GoalControl
                     sessionId={sessionId}
                     goal={goal}
+                    onClose={() => ref.current?.focus()}
+                  />
+                ) : null}
+                {sessionId ? (
+                  <ContextControl
+                    sessionId={sessionId}
+                    usage={context}
+                    busy={busy}
                     onClose={() => ref.current?.focus()}
                   />
                 ) : null}
