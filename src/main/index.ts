@@ -9,7 +9,7 @@ import { startServer, type RunningServer } from './server'
 import { registerAssetProtocol, registerAssetScheme } from './assets'
 import { killAllPtys, ptyFlowCounters, registerPty } from './pty'
 import { clickMenuItem, registerMenu } from './menu'
-import { registerDialogs } from './dialogs'
+import { queueNextPick, registerDialogs } from './dialogs'
 import {
   activateWindows,
   createWindow,
@@ -117,6 +117,7 @@ function registerDebug(): void {
   ipcMain.handle('debug:dock-badge', () => (app.dock ? app.dock.getBadge() : null))
   ipcMain.handle('debug:window-title', (e) => BrowserWindow.fromWebContents(e.sender)?.getTitle())
   ipcMain.handle('debug:pty-flow', () => ptyFlowCounters())
+  ipcMain.handle('debug:next-pick', (_e, paths: string[]) => queueNextPick(paths.map(String)))
   // The old renderer's CSP forbids tempcode-asset:, so the scheme is
   // exercised from main instead.
   ipcMain.handle('debug:asset-fetch', async (_e, url: string) => {

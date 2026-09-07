@@ -3,6 +3,7 @@ import { normalizeProjectPath } from "../recents";
 import { client } from "./client";
 import type { Link } from "./store";
 import type { ProjectMeta, ServerPush, ThreadDefaults, WorkspaceIcon, WorkspaceMeta } from "./types";
+import { BUILT_IN_SCOPE, parseDefaultsScope, type DefaultsScope } from "./defaults";
 
 /**
  * The server's workspace and project lists, beside `sessionStore`. Both
@@ -15,8 +16,9 @@ export type WorkspaceCatalog = {
   workspaces: WorkspaceMeta[];
   projects: ProjectMeta[];
   icons: ReadonlyMap<string, WorkspaceIcon>;
-  /** Thread defaults per workspace id ("" = global); null = not set at that scope. */
-  defaults: ReadonlyMap<string, ThreadDefaults | null>;
+  /** Thread defaults per workspace id ("" = global): the set in force there
+   *  and whether the scope stores its own. Absent until loaded. */
+  defaults: ReadonlyMap<string, DefaultsScope>;
   loaded: boolean;
 };
 
@@ -45,6 +47,20 @@ export function workspaceByPath(
   if (!path || path === "~") return undefined;
   const key = normalizeProjectPath(path);
   return workspaces.find((w) => normalizeProjectPath(w.path) === key);
+}
+
+/**
+ * The key a workspace's label, colour and mascot are stored under. Workspace
+ * ids keep two folders with the same basename apart; a path the catalog does
+ * not know yet (a fresh pick, an archived project) falls back to the basename
+ * so nothing is lost before the catalog catches up.
+ */
+export function workspaceLabelKey(
+  workspaces: readonly WorkspaceMeta[],
+  path: string,
+  fallback: string,
+): string {
+  return workspaceByPath(workspaces, path)?.id ?? fallback;
 }
 
 export function projectOf(
@@ -132,37 +148,53 @@ class WorkspaceStore {
     await Promise.all([null, ...workspaces.map((w) => w.id)].map((id) => this.loadDefaults(id)));
   }
 
-  /** The thread defaults that apply to a workspace: its own override, else
-   *  the global set, else undefined while neither has loaded. */
-  defaultsFor(workspaceId: string | null | undefined): ThreadDefaults | null | undefined {
-    const own = workspaceId ? this.state.defaults.get(workspaceId) : undefined;
-    if (own) return own;
-    return this.state.defaults.get(GLOBAL);
+  /** The thread defaults in force for a workspace (its own override, else
+   *  the global set); undefined while nothing has loaded. */
+  defaultsFor(workspaceId: string | null | undefined): ThreadDefaults | undefined {
+    return (
+      (workspaceId ? this.state.defaults.get(workspaceId) : undefined) ??
+      this.state.defaults.get(GLOBAL)
+    )?.defaults;
   }
 
-  /** The override stored at exactly this scope (null when unset). */
-  defaultsAt(workspaceId: string | null): ThreadDefaults | null | undefined {
+  /** The scope as the server reports it: effective set + override bit. */
+  defaultsAt(workspaceId: string | null): DefaultsScope | undefined {
     return this.state.defaults.get(workspaceId ?? GLOBAL);
   }
 
-  async loadDefaults(workspaceId: string | null): Promise<ThreadDefaults | null> {
-    if (!this.link) return null;
-    const value = await this.link
-      .request<ThreadDefaults | null>("defaults.get", { workspaceId })
-      .catch(() => null);
-    this.setDefaults(workspaceId, value);
-    return value;
+  async loadDefaults(workspaceId: string | null): Promise<DefaultsScope> {
+    if (!this.link) return BUILT_IN_SCOPE;
+    const scope = await this.link
+      .request<unknown>("defaults.get", { workspaceId })
+      .then(parseDefaultsScope)
+      .catch(() => this.state.defaults.get(workspaceId ?? GLOBAL) ?? BUILT_IN_SCOPE);
+    this.setDefaults(new Map([[workspaceId ?? GLOBAL, scope]]));
+    return scope;
   }
 
+  /** Store a set at the scope, or null to clear it: a workspace falls back
+   *  to the global set, the global set to the built-in one. A global change
+   *  reaches every workspace without an override of its own. */
   async saveDefaults(workspaceId: string | null, defaults: ThreadDefaults | null): Promise<void> {
     if (!this.link) return;
     await this.link.request("defaults.set", { workspaceId, defaults });
-    this.setDefaults(workspaceId, defaults);
+    const next = new Map<string, DefaultsScope>();
+    if (workspaceId) {
+      const inherited = this.state.defaults.get(GLOBAL)?.defaults ?? BUILT_IN_SCOPE.defaults;
+      next.set(workspaceId, defaults ? { defaults, overridden: true } : { defaults: inherited, overridden: false });
+    } else {
+      const global = defaults ? { defaults, overridden: true } : BUILT_IN_SCOPE;
+      next.set(GLOBAL, global);
+      for (const [id, scope] of this.state.defaults) {
+        if (id !== GLOBAL && !scope.overridden) next.set(id, { defaults: global.defaults, overridden: false });
+      }
+    }
+    this.setDefaults(next);
   }
 
-  private setDefaults(workspaceId: string | null, value: ThreadDefaults | null): void {
+  private setDefaults(changes: ReadonlyMap<string, DefaultsScope>): void {
     const defaults = new Map(this.state.defaults);
-    defaults.set(workspaceId ?? GLOBAL, value);
+    for (const [id, scope] of changes) defaults.set(id, scope);
     this.set({ ...this.state, defaults });
   }
 
@@ -216,4 +248,15 @@ export function useWorkspaceIcon(workspaceId: string | null | undefined): Worksp
     if (workspaceId) workspaceStore.icon(workspaceId);
   }, [workspaceId]);
   return workspaceId ? icons.get(workspaceId) : undefined;
+}
+
+/** A scope's thread defaults, loading them the first time they are asked for. */
+export function useThreadDefaults(workspaceId: string | null | undefined): DefaultsScope | undefined {
+  const { defaults } = useWorkspaceCatalog();
+  const key = workspaceId ?? GLOBAL;
+  const scope = defaults.get(key);
+  useEffect(() => {
+    if (!scope) void workspaceStore.loadDefaults(workspaceId ?? null);
+  }, [scope, workspaceId]);
+  return scope;
 }

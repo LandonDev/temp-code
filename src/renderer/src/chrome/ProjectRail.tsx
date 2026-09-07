@@ -63,7 +63,12 @@ import { formatLiveElapsed, type LiveAgent } from "../lib/liveAgents";
 import { HarnessIcon } from "./HarnessIcon";
 import { ProjectLogoIcon } from "./ProjectLogoIcon";
 import { subscribeProjectRailActions } from "../lib/projectRailActions";
-import { useWorkspaceIcon, useWorkspaces, workspaceByPath } from "../lib/tcserver/workspaces";
+import {
+  useWorkspaceIcon,
+  useWorkspaces,
+  workspaceByPath,
+  workspaceLabelKey,
+} from "../lib/tcserver/workspaces";
 import { ProjectMascot } from "./ProjectMascot";
 import { RailAction, RailSearch } from "./RailAction";
 import { RemoveProjectDialog } from "./RemoveProjectDialog";
@@ -176,6 +181,10 @@ export function ProjectRail({
   });
   const [railOrder, setRailOrder] = useState(loadProjectRailOrder);
   const [pinnedPaths, setPinnedPaths] = useState(loadPinnedProjects);
+  // Labels, colours and mascots key by workspace id so two folders that
+  // share a basename stay apart.
+  const workspaces = useWorkspaces();
+  const labelKey = (path: string) => workspaceLabelKey(workspaces, path, projectName(path));
   const [groupLabels, setGroupLabels] = useState(loadTabGroupLabels);
   useEffect(() => {
     const refresh = () => setGroupLabels(loadTabGroupLabels());
@@ -245,7 +254,7 @@ export function ProjectRail({
       x,
       y,
       path,
-      projectKey: projectName(path),
+      projectKey: labelKey(path),
     });
   };
 
@@ -349,14 +358,14 @@ export function ProjectRail({
         if (action.kind === "menu") {
           openProjectMenu(action.path, action.x, action.y);
         } else {
-          const projectKey = projectName(action.path);
+          const projectKey = labelKey(action.path);
           setRemoving({
             path: action.path,
             name: resolveTabGroupLabel(projectKey, groupLabels, basename(action.path)),
           });
         }
       }),
-    [groupLabels],
+    [groupLabels, workspaces],
   );
 
   const onConfirmDelete = () => {
@@ -701,8 +710,8 @@ function LiveAgentCard({
   groupCustomColors: Record<string, string>;
   groupMascots: Record<string, string>;
 }) {
-  const projectKey = projectName(agent.cwd);
-  const project = resolveTabGroupLabel(projectKey, groupLabels, projectKey);
+  const projectKey = workspaceLabelKey(useWorkspaces(), agent.cwd, projectName(agent.cwd));
+  const project = resolveTabGroupLabel(projectKey, groupLabels, projectName(agent.cwd));
   const color = resolveTabGroupColor(
     projectKey,
     groupColors,
@@ -911,12 +920,12 @@ function ProjectCard({
   groupMascots: Record<string, string>;
 }) {
   const fallbackName = basename(item.path);
-  const projectKey = projectName(item.path);
+  const workspaceId = workspaceByPath(useWorkspaces(), item.path)?.id ?? null;
+  const projectKey = workspaceId ?? projectName(item.path);
   const name = resolveTabGroupLabel(projectKey, groupLabels, fallbackName);
   const logoPath = resolveTabGroupLogo(projectKey, groupLogos);
   // No logo set: the server's repo icon or host mark stands in, unless the
   // user picked a mascot on purpose.
-  const workspaceId = workspaceByPath(useWorkspaces(), item.path)?.id ?? null;
   const serverIcon = useWorkspaceIcon(workspaceId);
   const showLogo =
     !!logoPath ||
