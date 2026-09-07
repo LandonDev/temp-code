@@ -93,7 +93,7 @@ export function refreshCatalog(link: Link = client): Promise<void> {
     .then((catalog) => {
       for (const provider of Object.values(catalog)) {
         if (!(HARNESSES as string[]).includes(provider.id)) continue;
-        setHarnessModels(provider.id as HarnessId, agentModelsFor(provider));
+        setHarnessModels(provider.id as HarnessId, agentModelsFor(provider), provider.defaultModel);
       }
     })
     .finally(() => {

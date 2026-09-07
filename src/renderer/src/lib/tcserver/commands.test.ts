@@ -1,8 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { newSession } from "../session";
 import {
+  clearGoal,
+  context,
   continueAllErrors,
   continueSession,
+  pauseAllRunning,
+  runSettingsFor,
+  setGoal,
+  setThreadRules,
   queueAdd,
   queueList,
   queueRemove,
@@ -194,7 +200,7 @@ describe("queue", () => {
   });
 
   it("add, update, remove and steer are one RPC each", async () => {
-    await queueAdd("s1", "later", [{ path: "/a", name: "a", kind: "file" }], link);
+    await queueAdd("s1", "later", [{ path: "/a", name: "a", kind: "file" }], {}, link);
     expect(link.of("queue.add")[0]).toEqual({ sessionId: "s1", text: "later", attachments: [{ path: "/a", name: "a", kind: "file" }] });
     await queueUpdate("s1", "q1", "edited", link);
     expect(link.of("queue.update")[0]).toEqual({ sessionId: "s1", messageId: "q1", text: "edited" });
@@ -243,5 +249,47 @@ describe("attachments and reasoning", () => {
     expect(reasoningOf({ modelSettings: { effort: "ultrathink" } })).toBe("max");
     expect(reasoningOf({ modelSettings: { effort: "xhigh" } })).toBe("xhigh");
     expect(reasoningOf({ modelSettings: {} })).toBeUndefined();
+  });
+});
+
+describe("run settings on queued messages", () => {
+  beforeEach(() => {
+    link.push({ push: "session", session: meta({ id: "s1", status: "running" }) });
+  });
+
+  it("carries only what the local session changed", () => {
+    const session = sessionStore.get("s1")!;
+    expect(runSettingsFor(session)).toEqual({});
+    expect(runSettingsFor({ ...session, model: "claude:opus-5", modelSettings: { effort: "high" } })).toEqual({ model: "claude-opus-5", reasoning: "high" });
+    expect(runSettingsFor({ ...session, harness: "codex", model: "codex:gpt-6-astra" })).toMatchObject({ provider: "codex", model: "gpt-6-astra" });
+  });
+
+  it("a steered message rides with the picker's model", async () => {
+    const session = { ...sessionStore.get("s1")!, model: "claude:opus-5" };
+    sessionStore.mutate([session]);
+    await steer(session, "switch", [], undefined, undefined, link);
+    expect(link.of("queue.add")[0]).toEqual({ sessionId: "s1", text: "switch", model: "claude-opus-5" });
+  });
+
+  it("queueAdd spreads the settings it is given", async () => {
+    await queueAdd("s1", "later", [], { provider: "codex", model: "gpt-6-astra", reasoning: "high" }, link);
+    expect(link.of("queue.add")[0]).toEqual({ sessionId: "s1", text: "later", provider: "codex", model: "gpt-6-astra", reasoning: "high" });
+  });
+});
+
+describe("session wrappers", () => {
+  it("map one to one onto the server methods and skip drafts", async () => {
+    link.push({ push: "session", session: meta({ id: "s1" }) });
+    await pauseAllRunning(link);
+    expect(link.of("session.pauseAllRunning")).toEqual([undefined]);
+    expect(await context("draft", link)).toBeNull();
+    await context("s1", link);
+    expect(link.of("session.context")).toEqual([{ sessionId: "s1" }]);
+    await setGoal("s1", "tests pass", link);
+    await clearGoal("s1", link);
+    await setThreadRules("s1", null, link);
+    expect(link.of("session.setGoal")).toEqual([{ sessionId: "s1", condition: "tests pass" }]);
+    expect(link.of("session.clearGoal")).toEqual([{ sessionId: "s1" }]);
+    expect(link.of("session.setThreadRules")).toEqual([{ sessionId: "s1", threadRules: null }]);
   });
 });
