@@ -1154,6 +1154,11 @@ export default function App({
     (projectId: string | null) => {
       setSelectedProjectId(projectId);
       if (!projectId) return;
+      // A full-screen view (inbox, notes, search) would otherwise stay on top
+      // of the pane, most visibly when that project's tab is already active.
+      setSearchViewOpen(false);
+      setInboxViewOpen(false);
+      setNotesViewOpen(false);
       const tabs = tabsRef.current;
       const sessions = sessionsRef.current;
       const inProject = (tab: WorkspaceTab) =>
