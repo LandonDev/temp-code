@@ -1,9 +1,11 @@
+import { requestSettings } from "./monaco/debugTab";
 import { ALT, IS_MAC, MOD, SHIFT } from "./platform";
 
 const SECTION_KEY = "monocode.settingsSection";
 
-export type SettingsSectionId =
+export type StaticSettingsSectionId =
   | "general"
+  | "defaults"
   | "appearance"
   | "editor"
   | "keybindings"
@@ -13,8 +15,11 @@ export type SettingsSectionId =
   | "appshots"
   | "archive";
 
+/** A fixed page, or one workspace's own page (`ws:<workspace id>`). */
+export type SettingsSectionId = StaticSettingsSectionId | `ws:${string}`;
+
 export const SETTINGS_SECTIONS: {
-  id: SettingsSectionId;
+  id: StaticSettingsSectionId;
   label: string;
   description: string;
 }[] = [
@@ -22,6 +27,12 @@ export const SETTINGS_SECTIONS: {
     id: "general",
     label: "General",
     description: "App-wide behavior, tool summaries, and the release you are running.",
+  },
+  {
+    id: "defaults",
+    label: "Thread defaults",
+    description:
+      "What a new thread starts with. Each workspace can override these from its own page.",
   },
   {
     id: "appearance",
@@ -75,10 +86,27 @@ export const SETTINGS_SECTION_DEFAULT: SettingsSectionId = "general";
 export function isSettingsSectionId(
   value: unknown,
 ): value is SettingsSectionId {
-  return SETTINGS_SECTIONS.some((section) => section.id === value);
+  return (
+    SETTINGS_SECTIONS.some((section) => section.id === value) ||
+    (typeof value === "string" && value.startsWith("ws:") && value.length > 3)
+  );
+}
+
+export const workspaceSettingsSection = (workspaceId: string): SettingsSectionId =>
+  `ws:${workspaceId}`;
+
+/** The workspace a section belongs to, or null for the fixed pages. */
+export function workspaceOfSection(id: SettingsSectionId): string | null {
+  return id.startsWith("ws:") ? id.slice(3) : null;
+}
+
+/** Open Settings on one workspace's page (defaults, turn pass, build, rules). */
+export function openWorkspaceSettings(workspaceId: string): void {
+  requestSettings(workspaceSettingsSection(workspaceId));
 }
 
 export function settingsSectionLabel(id: SettingsSectionId): string {
+  if (workspaceOfSection(id)) return "Workspace";
   return (
     SETTINGS_SECTIONS.find((section) => section.id === id)?.label ?? "General"
   );

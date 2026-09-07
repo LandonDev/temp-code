@@ -3,6 +3,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, use
 import { Sidebar } from "./chrome/Sidebar";
 import { HiddenApprovalToasts } from "./chrome/ApprovalToasts";
 import { WhatsNewDialog } from "./chrome/WhatsNewDialog";
+import { NewWorkspaceDialog } from "./chrome/ProjectDialogs";
 import { ShellTitleBar, type HeaderEvents } from "./chrome/ShellTitleBar";
 import { MenuBar } from "./chrome/MenuBar";
 import { FilePicker } from "./chrome/FilePicker";
@@ -173,13 +174,14 @@ import {
   loadSelectedProject,
   rebaseToWorkspace,
   resolveSessionContext,
+  type ResolvedContext,
   saveSelectedProject,
   workspacePathOfSession,
 } from "./lib/projectContext";
 import { createWorkspace, deleteWorkspace } from "./lib/tcserver/projects";
 import type { ProjectMeta } from "./lib/tcserver/types";
 import { useWorkspaceCatalog, workspaceByPath, workspaceStore } from "./lib/tcserver/workspaces";
-import { modeForPolicy } from "./lib/tcserver/access";
+import { draftFromDefaults } from "./lib/tcserver/defaults";
 import type { ThreadType } from "./lib/tcserver/types";
 import { markSessionSeen } from "./lib/sessionSeen";
 import { historyStore } from "./lib/historyStore";
@@ -232,7 +234,7 @@ import {
   subscribeSessionHistory,
   type SessionSummary,
 } from "./lib/sessionStore";
-import { pickerModelId, sessionStore, useSessionShells, type SessionShell } from "./lib/tcserver/store";
+import { sessionStore, useSessionShells, type SessionShell } from "./lib/tcserver/store";
 import { toggleRightRail, useRightRailOpen } from "./lib/rightRail";
 import { ProjectRail } from "./chrome/rail/ProjectRail";
 import {
@@ -686,8 +688,29 @@ export default function App({
       }),
     [],
   );
-  /** A draft here, seeded from the workspace's thread defaults when it has
-   *  them, so the pickers show what the server would use anyway. */
+  /** A draft for a resolved context, seeded from the workspace's thread
+   *  defaults when it has them (so the pickers show what the server would
+   *  use anyway), else from `fallback`. */
+  const seededSession = useCallback(
+    (
+      ctx: ResolvedContext,
+      cwd: string,
+      fallback: Pick<Session, "harness" | "model" | "runtimeMode" | "modelSettings"> | undefined,
+      threadType: ThreadType = "chat",
+      threadRules: ThreadRules | null = null,
+    ) => {
+      const context = { ...ctx, threadType, threadRules };
+      const defaults = workspaceStore.defaultsFor(ctx.workspaceId);
+      const seed =
+        defaults && (HARNESSES as string[]).includes(defaults.provider)
+          ? draftFromDefaults(defaults)
+          : fallback;
+      return seed
+        ? newSession(seed.harness, cwd, seed.model, seed.runtimeMode, seed.modelSettings, context)
+        : newDefaultSession(cwd, sessionDefaultsRef.current?.runtimeMode, context);
+    },
+    [],
+  );
   const createSessionHere = useCallback(
     (
       opts: {
@@ -698,30 +721,10 @@ export default function App({
       } = {},
     ) => {
       const ctx = sessionContext(opts.projectId);
-      const context = {
-        ...ctx,
-        threadType: opts.threadType ?? "chat",
-        threadRules: opts.threadRules ?? null,
-      };
-      const defaults = workspaceStore.defaultsFor(ctx.workspaceId);
-      if (defaults && (HARNESSES as string[]).includes(defaults.provider)) {
-        const harness = defaults.provider as HarnessId;
-        return newSession(
-          harness,
-          ctx.cwd,
-          defaults.model ? pickerModelId(harness, defaults.model) : undefined,
-          opts.runtimeMode ?? modeForPolicy(defaults.permission),
-          { effort: defaults.reasoning },
-          context,
-        );
-      }
-      return newDefaultSession(
-        ctx.cwd,
-        opts.runtimeMode ?? sessionDefaultsRef.current?.runtimeMode,
-        context,
-      );
+      const session = seededSession(ctx, ctx.cwd, undefined, opts.threadType, opts.threadRules);
+      return opts.runtimeMode ? { ...session, runtimeMode: opts.runtimeMode } : session;
     },
-    [sessionContext],
+    [seededSession, sessionContext],
   );
   const sidebarCwd =
     active?.cwd ??
@@ -906,9 +909,14 @@ export default function App({
   // then parks it and resumes on the next prompt. Runs off the store, not a
   // render, so a busy flip sweeps without re-rendering App.
   useEffect(() => {
-    const visibleIds = openSessionIds(tabs);
     const keepUnseen = liveAgentsEnabled;
+    let pending: number | null = null;
     const sweep = () => {
+      pending = null;
+      // Read the tabs at sweep time: a store bump for a new session lands
+      // before the React state that opens its tab, so a sweep off the bump
+      // itself would drop every fresh draft as hidden.
+      const visibleIds = openSessionIds(tabsRef.current);
       const unseen = liveAgentTracker.unseenIds();
       const idleDetached = sessionStore.getSnapshot().filter(
         (session) =>
@@ -936,8 +944,15 @@ export default function App({
         return next.length === prev.length ? prev : next;
       });
     };
+    const sweepAfterCommit = () => {
+      if (pending == null) pending = window.setTimeout(sweep, 0);
+    };
     sweep();
-    return sessionStore.subscribe(sweep);
+    const unsubscribe = sessionStore.subscribe(sweepAfterCommit);
+    return () => {
+      unsubscribe();
+      if (pending != null) window.clearTimeout(pending);
+    };
   }, [tabs, liveAgentsEnabled]);
 
   // Hidden tabs mount their panes after first paint, one per idle slice, so
@@ -1672,6 +1687,7 @@ export default function App({
         : newDefaultSession(ctx.cwd, sessionDefaults?.runtimeMode, { ...ctx, threadType });
       const tab = newTab(session.id);
       setSessions((prev) => [...prev, session]);
+      if (threadType) void serverCommands.ensureCreated(session).catch(() => undefined);
       setTabs((prev) => insertTabInGroup(prev, tab, groupId));
       setActiveTabId(tab.id);
       setComposerFocused(true);
@@ -2669,11 +2685,21 @@ export default function App({
       setProjectCwd(normalized);
       setRecents(rememberProject(normalized));
       const moved = cwdContext(normalized);
+      // A blank draft moving between workspaces takes the new one's defaults.
+      const fresh = current && isBlankSession(current) ? seededSession(moved, normalized, current) : null;
       setSessions((prev) =>
         prev.map((s) =>
           s.id === sessionId
             ? {
                 ...s,
+                ...(fresh
+                  ? {
+                      harness: fresh.harness,
+                      model: fresh.model,
+                      runtimeMode: fresh.runtimeMode,
+                      modelSettings: fresh.modelSettings,
+                    }
+                  : {}),
                 cwd: normalized,
                 projectId: moved.projectId,
                 workspaceId: moved.workspaceId,
@@ -2703,7 +2729,7 @@ export default function App({
       });
       notifyReviewChanged(sessionId);
     },
-    [appendTab, projectOfTab],
+    [appendTab, cwdContext, projectOfTab, seededSession],
   );
 
   const onBranchChange = useCallback(
@@ -2767,14 +2793,7 @@ export default function App({
       }
 
       const seed = current ?? sessionStore.getSnapshot()[0];
-      const session = newSession(
-        seed?.harness ?? "claude",
-        normalized,
-        seed?.model,
-        seed?.runtimeMode,
-        seed?.modelSettings,
-        cwdContext(normalized),
-      );
+      const session = seededSession(cwdContext(normalized), normalized, seed);
       const tab = newTab(session.id);
       setProjectCwd(normalized);
       setRecents(rememberProject(normalized));
@@ -2783,14 +2802,17 @@ export default function App({
       setActiveTabId(tab.id);
       setComposerFocused(true);
     },
-    [activateTab, appendTab, onCwdChange],
+    [activateTab, appendTab, cwdContext, onCwdChange, seededSession],
   );
 
+  const [newWorkspacePath, setNewWorkspacePath] = useState<string | null>(null);
   const pickProject = useCallback(async () => {
     const path = await pickFolder();
     if (!path) return;
-    await createWorkspace(path).catch(() => undefined);
-    onSelectProject(path);
+    // A folder the catalog knows just comes forward; a new one gets the
+    // New Workspace dialog (turn pass) before it joins.
+    if (workspaceByPath(workspaceStore.workspaces, path)) onSelectProject(path);
+    else setNewWorkspacePath(path);
   }, [onSelectProject]);
 
   const onRemoveProject = useCallback(
@@ -3110,11 +3132,18 @@ export default function App({
     void run.catch(() => undefined);
   }, []);
 
+  /** The empty session's type picker. A draft becomes a real thread of that
+   *  type at once, so its rules and tune have somewhere to live. */
   const onThreadTypeChange = useCallback((sessionId: string, threadType: ThreadType) => {
     setSessions((prev) =>
       prev.map((s) => (s.id === sessionId ? { ...s, threadType } : s)),
     );
-    void serverCommands.retype(sessionId, threadType).catch(() => undefined);
+    const session = sessionStore.getSnapshot().find((s) => s.id === sessionId);
+    if (!session) return;
+    const run = sessionStore.metaOf(sessionId)
+      ? serverCommands.retype(sessionId, threadType)
+      : serverCommands.ensureCreated({ ...session, threadType });
+    void run.catch(() => undefined);
   }, []);
 
   const onSubmit = useCallback(
@@ -3567,6 +3596,9 @@ export default function App({
       });
       const tab = newTab(session.id);
       setSessions((prev) => [...prev, session]);
+      // Real on the server from the first click: the thread's rules travel
+      // with the create, and a later tune has somewhere to land.
+      void serverCommands.ensureCreated(session).catch(() => undefined);
       appendTab(tab, session.cwd);
       setActiveTabId(tab.id);
       setComposerFocused(true);
@@ -4498,6 +4530,16 @@ export default function App({
           version={whatsNew.version}
           markdown={whatsNew.markdown}
           onClose={() => setWhatsNew(null)}
+        />
+      ) : null}
+      {newWorkspacePath ? (
+        <NewWorkspaceDialog
+          path={newWorkspacePath}
+          onClose={() => setNewWorkspacePath(null)}
+          onCreated={(workspace) => {
+            setNewWorkspacePath(null);
+            onSelectProject(workspace.path);
+          }}
         />
       ) : null}
     </div>

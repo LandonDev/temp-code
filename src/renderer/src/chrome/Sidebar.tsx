@@ -28,7 +28,8 @@ import { IS_MAC, MOD } from "../lib/platform";
 import { projectName } from "../lib/paths";
 import type { HarnessId } from "../lib/session";
 import type { ProjectMeta } from "../lib/tcserver/types";
-import { useWorkspaces } from "../lib/tcserver/workspaces";
+import { useWorkspaces, workspaceLabelKey } from "../lib/tcserver/workspaces";
+import { openWorkspaceSettings } from "../lib/settings";
 import { requestProjectRailAction } from "../lib/projectRailActions";
 import WorkspaceSessions from "./WorkspaceSessions";
 import { WorkspaceMenu } from "./WorkspaceMenu";
@@ -609,19 +610,7 @@ function SidebarComponent({
           onNewChat={() => onNewChat?.(null)}
           onThreadDefaults={workspace ? () => setThreadDefaultsOpen(true) : undefined}
           onOrchestration={workspace ? () => openOrchestrationSettings(workspace.id) : undefined}
-          onWorkspaceSettings={
-            railVisible
-              ? () => {
-                  const rect = workspaceMenu.getBoundingClientRect();
-                  requestProjectRailAction({
-                    kind: "menu",
-                    path: workspacePath,
-                    x: rect.left,
-                    y: rect.bottom + 4,
-                  });
-                }
-              : undefined
-          }
+          onWorkspaceSettings={workspace ? () => openWorkspaceSettings(workspace.id) : undefined}
           onRemoveWorkspace={
             railVisible
               ? () => requestProjectRailAction({ kind: "remove", path: workspacePath })
@@ -753,7 +742,7 @@ function SidebarProjectPicker({
   const [groupCustomColors] = useState(loadTabGroupCustomColors);
   const [groupMascots] = useState(loadTabGroupMascots);
   const groupLogos = useTabGroupLogos();
-  const projectKey = projectName(cwd);
+  const projectKey = workspaceLabelKey(useWorkspaces(), cwd, projectName(cwd));
   const label = resolveTabGroupLabel(
     projectKey,
     groupLabels,

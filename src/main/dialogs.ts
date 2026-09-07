@@ -25,8 +25,20 @@ export function defaultCwd(): string {
   return homedir() || '~'
 }
 
+/** Dev-only: the CDP exit test cannot drive a native sheet, so it can
+ *  queue the answer the next open dialog would return. */
+let nextPick: string[] | null = null
+export function queueNextPick(paths: string[]): void {
+  nextPick = paths
+}
+
 export function registerDialogs(): void {
   ipcMain.handle('dialog:open', async (e, options: OpenOptions = {}) => {
+    if (nextPick) {
+      const paths = nextPick
+      nextPick = null
+      return openDialogResult(false, paths, options)
+    }
     const parent = parentOf(e)
     const opts = openDialogOptions(options)
     const res = parent

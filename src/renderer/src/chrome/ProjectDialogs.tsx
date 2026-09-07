@@ -6,14 +6,18 @@ import {
   type ReactNode,
 } from "react";
 import { Modal } from "./Modal";
+import { ChevronRight } from "./icons";
 import { BUILD_EMPTY, BuildFields, buildOrNull } from "./rail/buildSettings";
 import { TerminalSpinner } from "./TerminalSpinner";
+import { TurnPassFields, loadTurnPass, saveTurnPass } from "./TurnPassFields";
 import { client } from "../lib/tcserver/client";
 import type { BuildConfig } from "@server/shared/build";
+import { TURN_PASS_OFF, passActions, passEnabled, type TurnPass } from "@server/shared/turnpass";
 import { prettyCwd } from "../lib/paths";
 import {
   archiveProject,
   createProject,
+  createWorkspace,
   deleteProject,
   listBranches,
   renameProject,
@@ -87,6 +91,70 @@ function ErrorLine({ error }: { error: string | null }) {
   return error ? (
     <p className="text-[11px] leading-4 text-red-400/90">{error}</p>
   ) : null;
+}
+
+function Hint({ children }: { children: ReactNode }) {
+  return <p className="text-[11px] leading-4 text-content/45">{children}</p>;
+}
+
+const baseName = (path: string) => path.replace(/\/+$/, "").split("/").pop() || path;
+
+const samePass = (a: TurnPass | null, b: TurnPass | null) =>
+  a === b || (!!a && !!b && a.verify === b.verify && a.build === b.build && a.commit === b.commit);
+
+const passSummary = (pass: TurnPass) => passActions(pass).join(", ") || "Off";
+
+/** A collapsed section with a one-line summary; opens in place. */
+function Disclosure({
+  label,
+  summary,
+  children,
+}: {
+  label: string;
+  summary: ReactNode;
+  children: ReactNode;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="flex flex-col gap-3 border-t border-content/10 pt-3">
+      <button
+        type="button"
+        aria-expanded={open}
+        onClick={() => setOpen(!open)}
+        className="flex items-center gap-1.5 text-left"
+      >
+        <ChevronRight
+          className={`size-3 shrink-0 text-content/40 transition-transform ${open ? "rotate-90" : ""}`}
+        />
+        <span className={LABEL}>{label}</span>
+        <span className="min-w-0 flex-1 truncate text-right text-[11px] text-content/45">
+          {summary}
+        </span>
+      </button>
+      {open ? children : null}
+    </div>
+  );
+}
+
+/** One project's pass override, plus the workspace pass it would inherit. */
+function useTurnPass(workspaceId: string, projectId?: string) {
+  const [pass, setPass] = useState<TurnPass | null | undefined>(undefined);
+  const [inherited, setInherited] = useState<TurnPass | null>(null);
+  useEffect(() => {
+    let live = true;
+    loadTurnPass(workspaceId)
+      .then((p) => live && setInherited(p))
+      .catch(() => {});
+    if (projectId) {
+      loadTurnPass(workspaceId, projectId)
+        .then((p) => live && setPass(p))
+        .catch(() => live && setPass(null));
+    } else setPass(null);
+    return () => {
+      live = false;
+    };
+  }, [workspaceId, projectId]);
+  return { pass, setPass, inherited };
 }
 
 /** Modal steals focus to its close button on mount; take it back a frame later. */
@@ -194,17 +262,79 @@ function BaseRefField({
             ? `Current HEAD (${branches.current})`
             : "Current HEAD"}
         </option>
-        {(branches?.locals ?? []).map((b) => (
-          <option key={b} value={b}>
-            {b}
-          </option>
-        ))}
+        {(
+          [
+            ["Local", branches?.locals ?? []],
+            ["Remote", branches?.remotes ?? []],
+          ] as const
+        ).map(([group, names]) =>
+          names.length ? (
+            <optgroup key={group} label={group}>
+              {names.map((b) => (
+                <option key={b} value={b}>
+                  {b}
+                </option>
+              ))}
+            </optgroup>
+          ) : null,
+        )}
       </select>
     </Field>
   );
 }
 
 // ---------------------------------------------------------------------------
+
+export function NewWorkspaceDialog({
+  path,
+  onClose,
+  onCreated,
+}: {
+  path: string;
+  onClose: () => void;
+  onCreated: (workspace: WorkspaceMeta) => void;
+}) {
+  const [pass, setPass] = useState<TurnPass>(TURN_PASS_OFF);
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const submit = async (e: FormEvent) => {
+    e.preventDefault();
+    if (pending) return;
+    setPending(true);
+    setError(null);
+    try {
+      const workspace = await createWorkspace(path);
+      if (passEnabled(pass)) await saveTurnPass(workspace.id, pass);
+      onCreated(workspace);
+    } catch (err) {
+      setError(errorText(err));
+      setPending(false);
+    }
+  };
+
+  return (
+    <Modal
+      onClose={onClose}
+      busy={pending}
+      title={`Add ${baseName(path)}`}
+      description={prettyCwd(path)}
+      size="sm"
+    >
+      <form onSubmit={submit}>
+        <div className="flex flex-col gap-3 px-4 py-3">
+          <div>
+            <span className={LABEL}>Completed turn</span>
+            <Hint>What threads here do after each turn settles.</Hint>
+          </div>
+          <TurnPassFields value={pass} onChange={setPass} compact />
+          <ErrorLine error={error} />
+        </div>
+        <Footer onCancel={onClose} confirmLabel="Add workspace" pending={pending} />
+      </form>
+    </Modal>
+  );
+}
 
 export function NewProjectDialog({
   workspace,
@@ -226,6 +356,9 @@ export function NewProjectDialog({
   const nameRef = useFocusOnMount<HTMLInputElement>();
   const branches = useBranches(workspace.id, workspace.git);
   const exists = branchExists(branches, branch.trim());
+  const { inherited } = useTurnPass(workspace.id);
+  const [pass, setPass] = useState<TurnPass | null>(null);
+  const shownPass = pass ?? inherited ?? TURN_PASS_OFF;
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
@@ -244,6 +377,9 @@ export function NewProjectDialog({
           ? { baseRef }
           : {}),
       });
+      if (pass && !samePass(pass, inherited)) {
+        await saveTurnPass(workspace.id, pass, project.id);
+      }
       onCreated(project);
     } catch (err) {
       setError(errorText(err));
@@ -266,7 +402,7 @@ export function NewProjectDialog({
               ref={nameRef}
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="Project name"
+              placeholder="What are you working on?"
               className={INPUT}
             />
           </Field>
@@ -292,6 +428,11 @@ export function NewProjectDialog({
                 );
               })}
             </div>
+            <Hint>
+              {mode === "worktree"
+                ? "Own branch and folder, isolated from your checkout."
+                : `Works directly in ${workspace.name}.`}
+            </Hint>
           </div>
           {mode === "worktree" ? (
             <>
@@ -299,17 +440,22 @@ export function NewProjectDialog({
                 value={branch}
                 onChange={setBranch}
                 branches={branches}
-                placeholder="tc/<name>"
+                placeholder="Branch (automatic)"
               />
-              {!exists ? (
+              {exists ? (
+                <Hint>Opens the existing branch.</Hint>
+              ) : (
                 <BaseRefField
                   value={baseRef}
                   onChange={setBaseRef}
                   branches={branches}
                 />
-              ) : null}
+              )}
             </>
           ) : null}
+          <Disclosure label="Completed turn" summary={passSummary(shownPass)}>
+            <TurnPassFields value={shownPass} onChange={setPass} compact />
+          </Disclosure>
           <ErrorLine error={error} />
         </div>
         <Footer
@@ -342,7 +488,8 @@ export function ProjectSettingsDialog({
   const branches = useBranches(workspace.id, worktree);
   const exists = branchExists(branches, branch.trim());
   const [savedBuild, setSavedBuild] = useState<BuildConfig | null | undefined>(undefined);
-  const [build, setBuild] = useState<BuildConfig>(BUILD_EMPTY);
+  const [buildOverride, setBuildOverride] = useState<BuildConfig | null>(null);
+  const [wsBuild, setWsBuild] = useState<BuildConfig | null>(null);
   const [detected, setDetected] = useState<BuildConfig | null>(null);
   useEffect(() => {
     let live = true;
@@ -351,9 +498,13 @@ export function ProjectSettingsDialog({
       .then((c) => {
         if (!live) return;
         setSavedBuild(c);
-        setBuild(c ?? BUILD_EMPTY);
+        setBuildOverride(c);
       })
       .catch(() => live && setSavedBuild(null));
+    void client
+      .request<BuildConfig | null>("build.get", { workspaceId: workspace.id })
+      .then((c) => live && setWsBuild(c))
+      .catch(() => {});
     void client
       .request<BuildConfig | null>("build.detect", { path: project.cwd })
       .then((d) => live && setDetected(d))
@@ -362,16 +513,30 @@ export function ProjectSettingsDialog({
       live = false;
     };
   }, [workspace.id, project.id, project.cwd]);
+  const { pass, setPass, inherited } = useTurnPass(workspace.id, project.id);
+  const [savedPass, setSavedPass] = useState<TurnPass | null | undefined>(undefined);
+  useEffect(() => {
+    if (pass !== undefined && savedPass === undefined) setSavedPass(pass);
+  }, [pass, savedPass]);
+  const shownPass = pass ?? inherited ?? TURN_PASS_OFF;
 
   const nameDirty = name.trim() !== project.name && !!name.trim();
   const branchDirty =
     worktree && !!branch.trim() && branch.trim() !== (project.branch ?? "");
-  const nextBuild = buildOrNull(build);
+  const nextBuild = buildOrNull(buildOverride);
   const buildDirty =
     savedBuild !== undefined &&
     ((nextBuild?.command ?? "") !== (savedBuild?.command ?? "") ||
       (nextBuild?.outputs ?? "") !== (savedBuild?.outputs ?? ""));
-  const dirty = nameDirty || branchDirty || buildDirty;
+  const passDirty = savedPass !== undefined && !samePass(pass ?? null, savedPass);
+  const dirty = nameDirty || branchDirty || buildDirty || passDirty;
+  const buildSummary = buildOverride
+    ? buildOverride.command || "Custom"
+    : wsBuild
+      ? `${wsBuild.command} · workspace`
+      : detected
+        ? `${detected.command} · detected`
+        : "None";
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
@@ -387,6 +552,7 @@ export function ProjectSettingsDialog({
         );
       }
       if (nameDirty) await renameProject(project.id, name.trim());
+      if (passDirty) await saveTurnPass(workspace.id, pass ?? null, project.id);
       if (buildDirty) {
         await client.request("build.set", {
           workspaceId: workspace.id,
@@ -426,19 +592,47 @@ export function ProjectSettingsDialog({
                 onChange={setBranch}
                 branches={branches}
               />
-              {branchDirty && !exists ? (
-                <BaseRefField
-                  value={baseRef}
-                  onChange={setBaseRef}
-                  branches={branches}
-                />
+              {branchDirty ? (
+                exists ? (
+                  <Hint>Switches to the existing branch.</Hint>
+                ) : (
+                  <BaseRefField
+                    value={baseRef}
+                    onChange={setBaseRef}
+                    branches={branches}
+                  />
+                )
               ) : null}
             </>
           ) : null}
-          <div className="mt-1 flex flex-col gap-3 border-t border-content/10 pt-3">
-            <span className={LABEL}>Build override</span>
-            <BuildFields value={build} onChange={setBuild} detected={detected} compact />
-          </div>
+          <Disclosure
+            label="Completed turn"
+            summary={`${passSummary(shownPass)}${pass ? "" : " · workspace"}`}
+          >
+            <TurnPassFields value={shownPass} onChange={setPass} compact />
+            {pass ? (
+              <button type="button" onClick={() => setPass(null)} className={`${GHOST} self-start`}>
+                Use workspace setting
+              </button>
+            ) : null}
+          </Disclosure>
+          <Disclosure label="Build" summary={buildSummary}>
+            <BuildFields
+              value={buildOverride ?? wsBuild ?? BUILD_EMPTY}
+              onChange={setBuildOverride}
+              detected={detected}
+              compact
+            />
+            {buildOverride ? (
+              <button
+                type="button"
+                onClick={() => setBuildOverride(null)}
+                className={`${GHOST} self-start`}
+              >
+                Use workspace setting
+              </button>
+            ) : null}
+          </Disclosure>
           <ErrorLine error={error} />
         </div>
         <Footer
@@ -470,6 +664,7 @@ export function ProjectTeardownDialog({
   const [error, setError] = useState<string | null>(null);
   const deleting = action === "delete";
   const any = worktree || localBranch || remoteBranch;
+  const cleanable = project.mode === "worktree" && !!project.branch;
 
   const confirm = async () => {
     if (pending) return;
@@ -488,31 +683,36 @@ export function ProjectTeardownDialog({
     }
   };
 
-  const boxes = [
-    {
-      label: "Remove worktree",
-      checked: worktree || localBranch,
-      disabled: localBranch,
-      set: setWorktree,
-    },
-    {
-      label: `Delete local branch ${project.branch ?? ""}`.trim(),
-      checked: localBranch,
-      set: setLocalBranch,
-    },
-    {
-      label: "Delete remote branch",
-      checked: remoteBranch,
-      set: setRemoteBranch,
-    },
-  ];
+  const mono = (text: string) => <code className="font-mono text-[11px]">{text}</code>;
+  const boxes = cleanable
+    ? [
+        {
+          key: "worktree",
+          label: "Remove the worktree folder",
+          checked: worktree || localBranch,
+          disabled: localBranch,
+          set: setWorktree,
+        },
+        {
+          key: "local",
+          label: <>Delete branch {mono(project.branch ?? "")}</>,
+          checked: localBranch,
+          set: setLocalBranch,
+        },
+        {
+          key: "remote",
+          label: <>Delete {mono(`origin/${project.branch ?? ""}`)}</>,
+          checked: remoteBranch,
+          set: setRemoteBranch,
+        },
+      ]
+    : [];
 
   return (
     <Modal
       onClose={onClose}
       busy={pending}
-      title={deleting ? "Delete project" : "Archive project"}
-      description={project.name}
+      title={`${deleting ? "Delete" : "Archive"} ${project.name}?`}
       size="sm"
     >
       <div className="flex flex-col gap-3 px-4 py-3">
@@ -521,10 +721,11 @@ export function ProjectTeardownDialog({
             ? "Its threads are deleted for good."
             : "The project leaves the sidebar. Its threads stay; restore it anytime."}
         </p>
+        {boxes.length ? (
         <div className="flex flex-col gap-1.5">
           {boxes.map((b) => (
             <label
-              key={b.label}
+              key={b.key}
               className={`flex items-center gap-2 text-[12px] ${
                 b.disabled ? "text-content/40" : "text-content/80"
               }`}
@@ -540,12 +741,13 @@ export function ProjectTeardownDialog({
             </label>
           ))}
         </div>
+        ) : null}
         <ErrorLine error={error} />
       </div>
       <Footer
         onCancel={onClose}
         onConfirm={confirm}
-        confirmLabel={deleting ? "Delete" : "Archive"}
+        confirmLabel={deleting ? "Delete project" : "Archive"}
         danger={deleting || any}
         pending={pending}
       />

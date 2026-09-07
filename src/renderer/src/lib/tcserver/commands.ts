@@ -300,7 +300,11 @@ export async function setThreadRules(
   threadRules: ThreadRules | null,
   link = client,
 ): Promise<void> {
-  if (sessionStore.isDraft(sessionId)) return;
+  // A draft keeps them locally; ensureCreated sends them with the create.
+  if (sessionStore.isDraft(sessionId)) {
+    sessionStore.patch(sessionId, { threadRules });
+    return;
+  }
   await link.request("session.setThreadRules", { sessionId, threadRules });
 }
 
