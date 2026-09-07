@@ -143,7 +143,7 @@ function Breakdown({
         title="MCP tools"
         rows={(reading?.mcpTools ?? []).map((t) => ({
           key: `${t.server}/${t.name}`,
-          label: t.server ? `${t.server} · ${t.name}` : t.name,
+          label: t.server ? `${t.server} · ${mcpToolName(t.name, t.server)}` : t.name,
           tokens: t.tokens,
         }))}
       />
@@ -181,6 +181,12 @@ const FALLBACK_COLORS = ["#7c86ff", "#34d399", "#f59e0b", "#f472b6", "#60a5fa", 
 
 function colorOf(c: ContextCategory, index: number): string {
   return c.color ?? FALLBACK_COLORS[index % FALLBACK_COLORS.length];
+}
+
+/** `mcp__server__tool` reads as `tool` beside its server. */
+function mcpToolName(name: string, server: string): string {
+  const prefix = `mcp__${server}__`;
+  return name.startsWith(prefix) ? name.slice(prefix.length) : name;
 }
 
 /** The last two path segments: enough to tell CLAUDE.md files apart. */
