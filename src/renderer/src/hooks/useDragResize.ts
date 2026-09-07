@@ -5,6 +5,8 @@ import {
   useState,
   type PointerEvent as ReactPointerEvent,
 } from "react";
+import { animate } from "motion/react";
+import { SPRING_LAYOUT } from "../lib/ease";
 import { suppressTextSelection } from "../lib/drag";
 
 type Options = {
@@ -17,6 +19,17 @@ type Options = {
 
 function clampTo(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, Math.round(value)));
+}
+
+/** Diminishing overshoot past a bound: the pane stretches, but ever more reluctantly. */
+function rubberband(over: number) {
+  return (over * 300 * 0.55) / (300 + 0.55 * over);
+}
+
+function rubber(raw: number, min: number, max: number) {
+  if (raw > max) return max + rubberband(raw - max);
+  if (raw < min) return min - rubberband(min - raw);
+  return raw;
 }
 
 /** Drag a pane's width by writing the DOM directly so React re-renders can't fight the cursor. */
@@ -57,11 +70,25 @@ export function useDragResize({
     if (el) el.style.width = `${widthRef.current}px`;
   }, []);
 
+  const settle = useRef<{ stop: () => void } | null>(null);
+
   const commit = (next: number) => {
     const value = clamp(next);
-    apply(value);
+    const pane = paneRef.current;
+    const from = widthRef.current;
+    settle.current?.stop();
+    settle.current = null;
+    widthRef.current = value;
     setWidth(value);
     onCommitRef.current?.(value);
+    if (!pane) return;
+    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (from === value || reduce) {
+      pane.style.width = `${value}px`;
+      return;
+    }
+    // Spring from the stretched (or previous) width to the committed one.
+    settle.current = animate(pane, { width: [`${from}px`, `${value}px`] }, SPRING_LAYOUT);
   };
 
   const onPointerDown = (event: ReactPointerEvent<HTMLElement>) => {
@@ -71,7 +98,9 @@ export function useDragResize({
     const handle = event.currentTarget;
     const pointerId = event.pointerId;
     const startX = event.clientX;
-    const startW = widthRef.current;
+    settle.current?.stop();
+    settle.current = null;
+    const startW = paneRef.current?.offsetWidth ?? widthRef.current;
     handle.setPointerCapture(pointerId);
     setDragging(true);
     const restoreSelection = suppressTextSelection();
@@ -81,7 +110,7 @@ export function useDragResize({
 
     const onMove = (ev: PointerEvent) => {
       if (ev.pointerId !== pointerId) return;
-      apply(clamp(startW + (ev.clientX - startX)));
+      apply(rubber(startW + (ev.clientX - startX), minRef.current, maxRef.current()));
     };
 
     const stop = () => {
