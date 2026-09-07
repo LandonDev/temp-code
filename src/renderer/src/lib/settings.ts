@@ -9,6 +9,7 @@ export type SettingsSectionId =
   | "keybindings"
   | "providers"
   | "orchestration"
+  | "build"
   | "archive";
 
 export const SETTINGS_SECTIONS: {
@@ -48,6 +49,12 @@ export const SETTINGS_SECTIONS: {
     label: "Orchestration",
     description:
       "What threads that spawn subagents may do themselves, which models they may spawn, and where each kind of work goes.",
+  },
+  {
+    id: "build",
+    label: "Build",
+    description:
+      "The command the Build rail tab runs for a workspace, and the files it produces. Projects can override it in their settings.",
   },
   {
     id: "archive",
