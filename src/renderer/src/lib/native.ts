@@ -368,6 +368,8 @@ export function listen<T = unknown>(
   switch (event) {
     case "quit_requested":
       return Promise.resolve(window.api.app.onQuitRequested(() => emit(null)));
+    case "persist_requested":
+      return Promise.resolve(window.api.win.onPersistRequested(() => emit(null)));
     case "pty-data":
       return Promise.resolve(
         window.api.pty.onData((id, data) => emit({ id, data })),
@@ -384,6 +386,16 @@ export function listen<T = unknown>(
 }
 
 // ── Window ─────────────────────────────────────────────────────────────────
+
+/** The slot this window lives in; its workspace snapshot is keyed by it. */
+export function windowSlot(): string {
+  return window.api.win.slot;
+}
+
+/** Tell main this window's snapshot is on disk (after `persist_requested`). */
+export function windowPersisted(): void {
+  window.api.win.persisted();
+}
 
 export type NativeWindow = {
   minimize(): Promise<void>;

@@ -70,11 +70,15 @@ export const M3aRequestSchemas = [
     method: z.literal('text.generate'),
     params: z.object({ prompt: z.string(), cwd: z.string().optional() })
   }),
-  z.object({ id: z.string(), method: z.literal('workspace.getSnapshot') }),
+  z.object({
+    id: z.string(),
+    method: z.literal('workspace.getSnapshot'),
+    params: z.object({ window: z.string().optional() }).optional()
+  }),
   z.object({
     id: z.string(),
     method: z.literal('workspace.setSnapshot'),
-    params: z.object({ snapshot: WorkspaceSnapshotSchema })
+    params: z.object({ snapshot: WorkspaceSnapshotSchema, window: z.string().optional() })
   }),
   z.object({ id: z.string(), method: z.literal('notes.list') }),
   z.object({

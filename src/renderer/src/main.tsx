@@ -10,7 +10,7 @@ import { sessionStore } from "./lib/tcserver/store";
 import { workspaceStore } from "./lib/tcserver/workspaces";
 import { rulesStore } from "./lib/tcserver/rules";
 import { slashCommandStore } from "./lib/tcserver/slashCommands";
-import { handleQuitRequested, loadBootWorkspace } from "./lib/appLifecycle";
+import { handleQuitRequested, loadBootWorkspace, persistLiveWorkspace } from "./lib/appLifecycle";
 import { consumeInstalledUpdate } from "./lib/updateNotice";
 import { updateStore } from "./lib/updateStore";
 import { initAppshots } from "./lib/appshots";
@@ -53,6 +53,9 @@ function BootGate({ children }: { children: React.ReactNode }) {
 
 void listen("quit_requested", () => {
   void handleQuitRequested();
+});
+void listen("persist_requested", () => {
+  void persistLiveWorkspace();
 });
 
 void loadBootWorkspace().then(

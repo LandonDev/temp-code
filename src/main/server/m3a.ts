@@ -30,9 +30,9 @@ export async function handleM3a(
     case 'text.generate':
       return done({ text: await generateText(req.params.prompt, { cwd: req.params.cwd }) })
     case 'workspace.getSnapshot':
-      return done(ctx.store.getWorkspaceSnapshot())
+      return done(ctx.store.getWorkspaceSnapshot(req.params?.window))
     case 'workspace.setSnapshot':
-      ctx.store.setWorkspaceSnapshot(req.params.snapshot)
+      ctx.store.setWorkspaceSnapshot(req.params.snapshot, req.params.window)
       return done()
     case 'notes.list':
       return done(ctx.notes.list())

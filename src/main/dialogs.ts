@@ -9,7 +9,6 @@ import {
   type MessageOptions,
   type OpenOptions
 } from './dialog-options'
-import { beginQuit, showAllWindows } from './windows'
 
 function parentOf(event: { sender: Electron.WebContents }): BrowserWindow | null {
   return BrowserWindow.fromWebContents(event.sender)
@@ -70,12 +69,4 @@ export function registerDialogs(): void {
   ipcMain.handle('app:version', () => app.getVersion())
   ipcMain.handle('app:home-dir', () => homedir() || process.env.HOME || '~')
   ipcMain.handle('app:default-cwd', () => defaultCwd())
-
-  // The renderer has finished asking the user; the next `before-quit` must
-  // go straight through instead of bouncing back for another confirmation.
-  ipcMain.handle('app:confirm-quit', () => {
-    beginQuit()
-    showAllWindows()
-    app.quit()
-  })
 }

@@ -1,4 +1,4 @@
-import { invoke, ask } from "./native";
+import { invoke, ask, windowPersisted } from "./native";
 import {
   hasInFlightSessions,
   inFlightRefs,
@@ -78,6 +78,29 @@ export function setQuitWorkspace(
   return () => {
     if (liveWorkspace?.sessions === sessions) liveWorkspace = null;
   };
+}
+
+/** Another window confirmed the quit; write this window's layout without
+ *  asking anything and tell main it is done. Busy sessions had their say
+ *  in the window that held the dialog. */
+export async function persistLiveWorkspace(): Promise<void> {
+  quitting = true;
+  try {
+    if (liveWorkspace) {
+      await persistQuitState(
+        liveWorkspace.sessions(),
+        liveWorkspace.tabs(),
+        liveWorkspace.activeTabId(),
+        liveWorkspace.projectCwd(),
+        liveWorkspace.projectTerminals(),
+      );
+    } else {
+      const pending = (await loadBootWorkspace()).resumed ?? bootingResumed;
+      if (pending) await persistBootingResume(pending);
+    }
+  } finally {
+    windowPersisted();
+  }
 }
 
 export async function handleQuitRequested(): Promise<void> {
@@ -224,8 +247,23 @@ export async function hideCurrentWindow(): Promise<void> {
   await invoke("hide_window");
 }
 
-export async function closeCurrentWindow(): Promise<void> {
-  await invoke("destroy_window");
+/** Close of one window: its layout is persisted, then the window dies. The
+ *  quitting flag stops the debounced auto-save from writing a snapshot after
+ *  main has already dropped this window's slot. */
+export async function persistAndCloseWindow(
+  sessions: Session[],
+  tabs: WorkspaceTab[],
+  activeTabId: string,
+  projectCwd: string,
+  projectTerminals: ProjectTerminalDock[] = [],
+): Promise<void> {
+  if (quitting) return;
+  quitting = true;
+  try {
+    await persistQuitState(sessions, tabs, activeTabId, projectCwd, projectTerminals);
+  } finally {
+    await invoke("destroy_window");
+  }
 }
 
 /** Quit and unload keep only the layout; the server keeps the chats. */
