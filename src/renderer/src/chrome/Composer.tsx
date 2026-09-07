@@ -84,7 +84,7 @@ import { resolveTabGroupLogo } from "../lib/tabGroups";
 import { ThreadTypeChip } from "./ThreadTypeChip";
 import { useSlashCommands } from "../lib/tcserver/slashCommands";
 import { readCopiedMessage } from "../lib/copyMessage";
-import { useSessionMetas } from "../lib/tcserver/store";
+import { useSessionMetasWhen } from "../lib/tcserver/store";
 import type { SlashCommand, ThreadType } from "../lib/tcserver/types";
 import { useProjects } from "../lib/tcserver/workspaces";
 
@@ -271,7 +271,7 @@ export function Composer({
   const commandOpen = live?.mode === "command";
   const mentionOpen = live?.mode === "file";
   const commands = useSlashCommands(harness, executionCwd, commandOpen);
-  const metas = useSessionMetas();
+  const metas = useSessionMetasWhen(!!live);
   const projects = useProjects();
   const attachmentsSupported = harnessSupportsAttachments(harness);
   const commandsByName = useMemo(
