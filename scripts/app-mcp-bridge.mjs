@@ -78,6 +78,32 @@ async function appRequest(method, params, timeoutMs = 120_000) {
 const PROVIDERS = ['claude', 'codex', 'cursor']
 const TOOLS = [
   {
+    // Codex's native update_plan went away with the goal tools; the app's
+    // implementation board still renders from it, so the bridge carries a
+    // stand-in of the same shape. Answered locally — nothing to forward.
+    name: 'update_plan',
+    description:
+      'Create or replace your task list for this job (the app renders it as the implementation board). Call it FIRST with every task, then again whenever a status changes: one in_progress at a time, completed the moment a task is done.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        explanation: { type: 'string' },
+        plan: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              step: { type: 'string' },
+              status: { type: 'string', enum: ['pending', 'in_progress', 'completed'] }
+            },
+            required: ['step', 'status']
+          }
+        }
+      },
+      required: ['plan']
+    }
+  },
+  {
     name: 'app_list_threads',
     description:
       "List this project's threads in the temp-code app: id, title, type, status, model, plan file, transcript path, last activity.",
@@ -242,6 +268,7 @@ const METHOD_FOR = {
 }
 
 async function callTool(name, args) {
+  if (name === 'update_plan') return 'task list updated'
   const method = METHOD_FOR[name]
   if (!method) throw new Error(`unknown tool: ${name}`)
   // wait_for_agent sleeps until the agent settles (0 = no deadline); an

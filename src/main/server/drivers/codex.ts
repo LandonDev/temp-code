@@ -147,6 +147,14 @@ function mcpDisplay(item: Item): { app?: string; action?: string } {
   return { app: app || undefined, action: action || undefined }
 }
 
+/** Bridged app tools keep their MCP "server.tool" name except the task
+ *  list: the bridge's update_plan stands in for the native tool Codex no
+ *  longer has, and the todo model matches it by bare name. */
+function mcpName(item: Item): string {
+  if (item.server === 'app' && item.tool === 'update_plan') return 'update_plan'
+  return `${item.server}.${item.tool}`
+}
+
 /** A connector tool result saying "reauthenticate" carries the ids that
  *  name its fix: chatgpt.com/apps/<slug>/<connector_id>, the same page
  *  the Codex app opens. */
@@ -234,9 +242,9 @@ export const codexDriver: HarnessDriver = {
           emit({
             type: 'tool-call',
             callId: String(item.id),
-            name: `${item.server}.${item.tool}`,
+            name: mcpName(item),
             input: item.arguments,
-            display: mcpDisplay(item)
+            display: item.tool === 'update_plan' ? undefined : mcpDisplay(item)
           })
           break
         case 'webSearch':
@@ -295,9 +303,9 @@ export const codexDriver: HarnessDriver = {
           emit({
             type: 'tool-call',
             callId: String(item.id),
-            name: `${item.server}.${item.tool}`,
+            name: mcpName(item),
             input: item.arguments,
-            display: mcpDisplay(item)
+            display: item.tool === 'update_plan' ? undefined : mcpDisplay(item)
           })
           emit({
             type: 'tool-result',
