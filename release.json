@@ -1,5 +1,5 @@
 {
-  "n": 95,
-  "notes": "Build tab shows how far the chosen branch is behind origin and fetches it with live progress",
-  "ts": 1788734599986
+  "n": 96,
+  "notes": "Codex threads get their task list back — gpt-6-astra can create the implementation board again",
+  "ts": 1788822008705
 }
