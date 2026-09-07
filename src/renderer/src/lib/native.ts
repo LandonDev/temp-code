@@ -105,11 +105,31 @@ type Args = Record<string, unknown> | undefined;
 type Backed = (args: Args) => Promise<unknown>;
 
 const arg = <T>(args: Args, key: string): T => (args ?? {})[key] as T;
+const scope = (args: Args) => ({ sessionId: arg<string>(args, "sessionId"), cwd: arg<string>(args, "cwd") });
+
+/** The WS request function, injected by main.tsx once the socket is up.
+ *  Server-backed commands reject until then instead of opening a socket. */
+type ServerRequest = (method: string, params: unknown) => Promise<unknown>;
+let serverRequest: ServerRequest | null = null;
+export function installServerRequest(fn: ServerRequest): void {
+  serverRequest = fn;
+}
+const server = (method: string, params: unknown): Promise<unknown> =>
+  serverRequest ? serverRequest(method, params) : Promise.reject(new Error(`server not connected: ${method}`));
 
 /** Commands with a backend today. Everything else rejects `not ported`. */
 const backed: Partial<Record<NativeCommand, Backed>> = {
   sidecar_port: () => getServerPort(),
   reveal_path: (args) => window.api.revealInFinder(arg<string>(args, "path")),
+  session_checkpoint_ensure: (args) => server("checkpoint.ensure", scope(args)),
+  session_checkpoint_capture: (args) =>
+    server("checkpoint.capture", { ...scope(args), paths: arg<string[]>(args, "paths") ?? [] }),
+  session_checkpoint_sync: (args) => server("checkpoint.sync", scope(args)),
+  session_checkpoint_status: (args) => server("checkpoint.status", scope(args)),
+  session_checkpoint_undo: (args) =>
+    server("checkpoint.undo", { ...scope(args), relative: arg<string | null>(args, "relative") ?? null }),
+  session_checkpoint_keep: (args) =>
+    server("checkpoint.keep", { ...scope(args), relative: arg<string | null>(args, "relative") ?? null }),
 };
 
 export function notPorted(name: string): Error {
