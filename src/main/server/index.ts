@@ -12,6 +12,7 @@ import { openDb, Store } from './db'
 import { handleFsGit } from './fsgit'
 import { CheckpointStore } from './checkpoint'
 import { handleCheckpoint } from './checkpointRpc'
+import { Linear, handleLinear } from './linear'
 import { SessionRegistry } from './sessions'
 import { runDoctor, updateProvider } from './drivers/binaries'
 import { backfillMirrors } from './mirror'
@@ -142,6 +143,7 @@ export async function startServer(dbPath: string, options: { dataDir?: string } 
   const registry = new SessionRegistry(store)
   registry.checkpoints = checkpoints
   const m3a = { store, registry, notes: new Notes(db), logos: new ProjectLogos(options.dataDir ?? dirname(dbPath)), usage: new ClaudeUsage() }
+  const linear = new Linear(options.dataDir ?? dirname(dbPath))
   registry.resetStaleStatuses()
   registry.startIdleSweep()
   setOrchestrationRegistry(registry)
@@ -232,6 +234,8 @@ export async function startServer(dbPath: string, options: { dataDir?: string } 
         if (fsGit.handled) return sendFrame({ id: req.id, ok: true, result: fsGit.result })
         const checkpoint = await handleCheckpoint(req, checkpoints)
         if (checkpoint.handled) return sendFrame({ id: req.id, ok: true, result: checkpoint.result })
+        const lin = await handleLinear(req, linear)
+        if (lin.handled) return sendFrame({ id: req.id, ok: true, result: lin.result })
         switch (req.method) {
           case 'catalog.get':
             sendFrame({ id: req.id, ok: true, result: CATALOG })

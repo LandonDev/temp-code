@@ -107,15 +107,17 @@ type Backed = (args: Args) => Promise<unknown>;
 const arg = <T>(args: Args, key: string): T => (args ?? {})[key] as T;
 const scope = (args: Args) => ({ sessionId: arg<string>(args, "sessionId"), cwd: arg<string>(args, "cwd") });
 
-/** The WS request function, injected by main.tsx once the socket is up.
- *  Server-backed commands reject until then instead of opening a socket. */
-type ServerRequest = (method: string, params: unknown) => Promise<unknown>;
+/** The WS client's request(), injected once at boot (`bindServer` from the
+ *  server link) so server-backed commands need no import cycle. */
+type ServerRequest = <T>(method: string, params?: unknown) => Promise<T>;
 let serverRequest: ServerRequest | null = null;
-export function installServerRequest(fn: ServerRequest): void {
-  serverRequest = fn;
+export function bindServer(request: ServerRequest): void {
+  serverRequest = request;
 }
-const server = (method: string, params: unknown): Promise<unknown> =>
-  serverRequest ? serverRequest(method, params) : Promise.reject(new Error(`server not connected: ${method}`));
+const server: ServerRequest = (method, params) => {
+  if (!serverRequest) return Promise.reject(new Error("server not bound"));
+  return serverRequest(method, params);
+};
 
 /** Commands with a backend today. Everything else rejects `not ported`. */
 const backed: Partial<Record<NativeCommand, Backed>> = {
@@ -130,6 +132,27 @@ const backed: Partial<Record<NativeCommand, Backed>> = {
     server("checkpoint.undo", { ...scope(args), relative: arg<string | null>(args, "relative") ?? null }),
   session_checkpoint_keep: (args) =>
     server("checkpoint.keep", { ...scope(args), relative: arg<string | null>(args, "relative") ?? null }),
+  // Linear (M11): server-owned token, GraphQL in the server.
+  linear_status: () => server("linear.status"),
+  linear_set_token: (args) =>
+    server("linear.setToken", { token: arg<string>(args, "token") }),
+  linear_list_teams: () => server("linear.teams"),
+  linear_list_issues: (args) =>
+    server("linear.issues", {
+      assignedToMe: arg<boolean>(args, "assignedToMe"),
+      state: arg<string>(args, "state"),
+      teamIds: arg<string[]>(args, "teamIds"),
+    }),
+  linear_issue_details: (args) =>
+    server("linear.details", { id: arg<string>(args, "id") }),
+  linear_issue_thread: (args) =>
+    server("linear.thread", { id: arg<string>(args, "id") }),
+  linear_issue_comment: (args) =>
+    server("linear.comment", {
+      id: arg<string>(args, "id"),
+      body: arg<string>(args, "body"),
+      parentId: arg<string>(args, "parentId"),
+    }),
 };
 
 export function notPorted(name: string): Error {
