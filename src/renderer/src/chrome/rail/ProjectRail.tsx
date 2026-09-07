@@ -1,7 +1,8 @@
-import { memo } from "react";
+import { lazy, memo, Suspense } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useGitFileStatuses } from "../../hooks/useGitFileStatuses";
 import { EASE_DRAWER } from "../../lib/ease";
+import { useEditorState } from "../../lib/monaco/editorState";
 import { useBuild } from "../../lib/projectRailStore";
 import { setRailPanel, useRailPanel, type RailPanel } from "../../lib/railPanel";
 import { useRightRailOpen } from "../../lib/rightRail";
@@ -9,15 +10,19 @@ import { projectForCwd } from "../../lib/tcserver/projects";
 import { useProjects } from "../../lib/tcserver/workspaces";
 import { cn } from "../../motion/cn";
 import { FileTree } from "../FileTree";
-import { SourceControl } from "../SourceControl";
+import { Spinner } from "../../surfaces/threads/bits";
 import { BranchPanel } from "./BranchPanel";
 import { BuildPanel } from "./BuildPanel";
+import { ChangesPanel } from "./ChangesPanel";
+
+// The Debug tab drives the editor chunk's DAP session; it loads with it.
+const DebugPanel = lazy(() => import("./DebugPanel"));
 
 /**
  * The project's right rail: a 288px drawer at the main grid boundary, right
- * of the pane tree and the diff pane. Changes and Files reuse the sidebar's
- * panels; Branch and Build are temp-code's. Everything inside is keyed by
- * the project the current cwd resolves to, never a global selection.
+ * of the pane tree and the diff pane. Files reuses the sidebar's tree;
+ * Changes, Branch, Build and Debug are temp-code's. Everything inside is
+ * keyed by the project the current cwd resolves to, never a global selection.
  */
 
 const WIDTH = 288;
@@ -26,7 +31,7 @@ const TABS: { id: RailPanel; label: string }[] = [
   { id: "files", label: "Files" },
   { id: "branch", label: "Branch" },
   { id: "build", label: "Build" },
-  // M7b: { id: "debug", label: "Debug" }
+  { id: "debug", label: "Debug" },
 ];
 
 type Props = {
@@ -79,6 +84,7 @@ function RailBody({ projectId, cwd, onOpenFile, onOpenDiff }: Props & { projectI
   const panel = useRailPanel();
   const gitStatuses = useGitFileStatuses(cwd, panel === "files");
   const building = useBuild(projectId)?.run?.status === "running";
+  const debugPhase = useEditorState((s) => s.debugPhase);
   return (
     <>
       <div
@@ -103,18 +109,35 @@ function RailBody({ projectId, cwd, onOpenFile, onOpenDiff }: Props & { projectI
             {t.id === "build" && building ? (
               <span className="size-1.5 animate-pulse rounded-full bg-success" aria-label="Building" />
             ) : null}
+            {t.id === "debug" && debugPhase !== "idle" ? (
+              <span
+                className={cn("size-1.5 rounded-full", debugPhase === "stopped" ? "bg-warning" : "animate-pulse bg-busy")}
+                aria-label={debugPhase}
+              />
+            ) : null}
           </button>
         ))}
       </div>
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
         {panel === "changes" ? (
-          <SourceControl cwd={cwd} enabled onOpenFile={onOpenDiff} />
+          <ChangesPanel cwd={cwd} onOpenDiff={onOpenDiff} />
         ) : null}
         {panel === "files" ? (
           <FileTree key={cwd} cwd={cwd} onOpenFile={onOpenFile} gitStatuses={gitStatuses} />
         ) : null}
         {panel === "branch" ? <BranchPanel projectId={projectId} onOpenDiff={onOpenDiff} /> : null}
         {panel === "build" ? <BuildPanel projectId={projectId} /> : null}
+        {panel === "debug" ? (
+          <Suspense
+            fallback={
+              <div className="flex h-16 items-center justify-center">
+                <Spinner className="size-3.5 text-content/50" />
+              </div>
+            }
+          >
+            <DebugPanel />
+          </Suspense>
+        ) : null}
       </div>
     </>
   );

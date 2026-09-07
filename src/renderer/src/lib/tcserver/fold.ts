@@ -198,10 +198,23 @@ export function foldEvent(
       const attachments = e.attachments?.length
         ? e.attachments.map(fromServerAttachment)
         : undefined;
-      const stamp = e as { model?: string; reasoning?: string; context1m?: boolean; newPass?: boolean };
+      const stamp = e as {
+        model?: string;
+        reasoning?: string;
+        context1m?: boolean;
+        fast?: boolean;
+        newPass?: boolean;
+      };
       const turn =
         stamp.model || stamp.reasoning || stamp.context1m !== undefined
-          ? { turn: { model: stamp.model, reasoning: stamp.reasoning, context1m: stamp.context1m } }
+          ? {
+              turn: {
+                model: stamp.model,
+                reasoning: stamp.reasoning,
+                context1m: stamp.context1m,
+                fast: stamp.fast,
+              },
+            }
           : {};
       let idx = blocks.findIndex((b) => b.pending && b.text === e.text);
       if (idx < 0) idx = blocks.findIndex((b) => b.pending);
@@ -579,9 +592,10 @@ export function fromServerAttachment(a: ServerAttachment): Attachment {
     id: a.path,
     name: a.name,
     mimeType: a.mime ?? "",
-    kind: a.kind === "image" ? "image" : "file",
+    kind: a.kind === "image" || a.kind === "appshot" ? "image" : "file",
     size: 0,
     path: a.path,
+    ...(a.textPath ? { textPath: a.textPath } : {}),
   };
 }
 

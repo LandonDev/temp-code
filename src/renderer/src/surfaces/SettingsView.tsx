@@ -167,6 +167,7 @@ import { openOrchestrationSettings, takeRequestedScope } from "../lib/tcserver/r
 import { useWorkspaces, workspaceLabelKey } from "../lib/tcserver/workspaces";
 import { workspaceOfSection } from "../lib/settings";
 import { Heading, Row, Segmented, Select, SecondaryButton, Toggle } from "./settingsBits";
+import { AppshotsPage } from "./AppshotsSettings";
 import { MatrixSpinner } from "./threads/bits";
 import { installing, updateStore, useUpdateSnapshot } from "../lib/updateStore";
 
@@ -278,6 +279,7 @@ export function SettingsView({
           {section === "providers" ? <ProvidersPage /> : null}
           {section === "orchestration" ? <OrchestrationPage /> : null}
           {section === "build" ? <BuildPage /> : null}
+          {section === "appshots" ? <AppshotsPage /> : null}
           {section === "archive" ? (
             <ArchivePage
               onOpenSession={onOpenSession}

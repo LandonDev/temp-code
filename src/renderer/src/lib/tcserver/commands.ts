@@ -65,7 +65,11 @@ export async function toServerAttachments(
     attachments.map(async (a): Promise<ServerAttachment | null> => {
       const kind = a.kind === "image" ? "image" : "file";
       if (a.path) {
-        return { path: a.path, name: a.name, kind, ...(a.mimeType ? { mime: a.mimeType } : {}) };
+        const mime = a.mimeType ? { mime: a.mimeType } : {};
+        // An appshot rides as one attachment; the server splits it into the
+        // image and its text before the driver sees it.
+        if (a.textPath) return { path: a.path, name: a.name, kind: "appshot", textPath: a.textPath, ...mime };
+        return { path: a.path, name: a.name, kind, ...mime };
       }
       if (a.data) {
         const dataBase64 = a.data.includes(",") ? a.data.slice(a.data.indexOf(",") + 1) : a.data;
@@ -220,6 +224,18 @@ export async function queueUpdate(
   link = client,
 ): Promise<void> {
   await link.request("queue.update", { sessionId, messageId, text });
+}
+
+/** Per-message run settings; null clears one so the message follows the thread. */
+export type QueueTune = { [K in keyof QueueRunSettings]?: QueueRunSettings[K] | null };
+
+export async function queueTune(
+  sessionId: string,
+  messageId: string,
+  settings: QueueTune,
+  link = client,
+): Promise<void> {
+  await link.request("queue.update", { sessionId, messageId, ...settings });
 }
 
 /** Optimistic: the strip keeps the dragged order while the RPC is in flight. */

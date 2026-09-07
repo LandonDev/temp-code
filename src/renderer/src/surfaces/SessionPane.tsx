@@ -11,6 +11,8 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from "react";
 import { Composer } from "../chrome/Composer";
+import { AppshotFlyIn } from "../chrome/AppshotFlyIn";
+import { noteActiveSession } from "../lib/appshots";
 import { motion, useReducedMotion } from "motion/react";
 import { EASE_OUT } from "../lib/ease";
 import { MessageQueue } from "../chrome/MessageQueue";
@@ -211,10 +213,17 @@ export const SessionPane = memo(function SessionPane({
     setNewPassArmed(armed);
     if (armed) {
       requestAnimationFrame(() => {
-        rootRef.current?.querySelector<HTMLTextAreaElement>("[data-composer-box] textarea")?.focus();
+        rootRef.current?.querySelector<HTMLElement>("[data-composer-box] [data-composer-input]")?.focus();
       });
     }
   }, []);
+  // The focused, visible pane is where an "automatic" appshot lands.
+  useEffect(() => {
+    if (!focused || !visible) return;
+    noteActiveSession(session.id);
+    return () => noteActiveSession(null);
+  }, [focused, session.id, visible]);
+
   const submit = useCallback(
     (text: string, attachments: Attachment[], intent: ComposerIntent) => {
       onSubmit(session.id, text, attachments, {
@@ -235,6 +244,7 @@ export const SessionPane = memo(function SessionPane({
     queue.length > 0 ? (
       <MessageQueue
         items={queue}
+        sessionId={session.id}
         paused={paused}
         onSteer={(id) => void serverCommands.queueSteer(session.id, id).catch(() => undefined)}
         onRemove={(id) => void serverCommands.queueRemove(session.id, id).catch(() => undefined)}
@@ -251,7 +261,9 @@ export const SessionPane = memo(function SessionPane({
     [session.id],
   );
   const composerOf = (opts?: ChatOpts) => (
-    <Composer
+    <>
+      <AppshotFlyIn sessionId={session.id} active={focused && visible} />
+      <Composer
       enabled={visible}
       focused={focused && composerFocused}
       hotkeys={focused}
@@ -315,6 +327,7 @@ export const SessionPane = memo(function SessionPane({
         onOpenDiff={onOpenDiff}
       />
     </Composer>
+    </>
   );
   // The column as parts so a view can seat the transcript apart from the
   // composer; `renderChat` stacks them the way the pane always has.

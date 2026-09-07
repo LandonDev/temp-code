@@ -111,6 +111,8 @@ export type Attachment = {
   data?: string;
   /** Object URL for in-session thumbnails. Not persisted. */
   previewUrl?: string;
+  /** Appshots: the captured window's accessibility text, sent beside the image. */
+  textPath?: string;
 };
 
 export type Block = {
@@ -174,7 +176,7 @@ export type Block = {
   /** Born during a completed-turn pass. */
   pass?: boolean;
   /** Run settings the server stamped on a user turn. */
-  turn?: { model?: string; reasoning?: string; context1m?: boolean };
+  turn?: { model?: string; reasoning?: string; context1m?: boolean; fast?: boolean };
 };
 
 export type CompactionMeta = {
