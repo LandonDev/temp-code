@@ -1,15 +1,13 @@
-import { Bug, GripVertical, Terminal, X } from "./icons";
+import { GripVertical, Terminal, X } from "./icons";
 import type { PointerEvent as ReactPointerEvent, ReactNode } from "react";
 import { useLayoutEffect, useRef } from "react";
 import { basename } from "../lib/fs";
 import {
-  isDebugTab,
   isReleaseNotesTab,
   isReviewTab,
   isTerminalTab,
   type FilePaneTab,
 } from "../lib/layout";
-import { useEditorState } from "../lib/monaco/editorState";
 import { releaseNotesTitle } from "../lib/releaseNotes";
 import { terminalTabLabel } from "../lib/terminalTab";
 import { useLockOverscroll } from "../hooks/useLockOverscroll";
@@ -49,15 +47,6 @@ export function surfaceTabPresentation(
     };
   }
 
-  if (isDebugTab(file)) {
-    return {
-      name: "Debug",
-      label: "Debug",
-      iconName: "debug",
-      tooltip: `Debug · ${basename(file.path)}`,
-    };
-  }
-
   const review = isReviewTab(file);
   const terminal = isTerminalTab(file);
   const name = terminal ? terminalTabLabel(file) : basename(file.path);
@@ -92,7 +81,6 @@ export function SurfaceTabs({
   trailing,
 }: Props) {
   const lockOverscroll = useLockOverscroll<HTMLDivElement>();
-  const debugPhase = useEditorState((s) => s.debugPhase);
   const activeTabRef = useRef<HTMLDivElement | null>(null);
   const fileIds = files.map((file) => file.id);
   const sortable = useSortable(fileIds, onReorder);
@@ -137,7 +125,6 @@ export function SurfaceTabs({
         const errors = fileErrorCounts.get(file.id) ?? 0;
         const review = isReviewTab(file);
         const terminal = isTerminalTab(file);
-        const debug = isDebugTab(file);
         const { label, iconName, tooltip } = surfaceTabPresentation(file);
         const dragging = sortable.draggingId === file.id;
         const showStart =
@@ -196,8 +183,6 @@ export function SurfaceTabs({
             >
               {terminal ? (
                 <Terminal className="size-3.5 shrink-0" strokeWidth={1.75} />
-              ) : debug ? (
-                <Bug className="size-3.5 shrink-0" strokeWidth={1.75} />
               ) : (
                 <FileTypeIcon name={iconName} isDir={false} size={15} />
               )}
@@ -217,15 +202,6 @@ export function SurfaceTabs({
                   className="size-1.5 shrink-0 rounded-full bg-content/75"
                   title="Unsaved changes"
                   aria-label="Unsaved changes"
-                />
-              ) : null}
-              {debug && debugPhase !== "idle" ? (
-                <span
-                  className={`size-1.5 shrink-0 rounded-full ${
-                    debugPhase === "stopped" ? "bg-warning" : "bg-busy"
-                  }`}
-                  title={debugPhase}
-                  aria-label={debugPhase}
                 />
               ) : null}
             </button>
