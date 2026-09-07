@@ -68,3 +68,16 @@ describe("tweenHeight", () => {
     expect(pending.size).toBe(0);
   });
 });
+
+describe("TweenHeight markup", () => {
+  it("never passes height through the style prop (React would commit the target before the tween measures)", async () => {
+    const { createElement } = await import("react");
+    const { renderToStaticMarkup } = await import("react-dom/server");
+    const { TweenHeight } = await import("./TweenHeight");
+    for (const open of [true, false]) {
+      const html = renderToStaticMarkup(createElement(TweenHeight, { open, animate: true }, "x"));
+      expect(html).not.toContain("height");
+      expect(html).toContain("overflow-hidden");
+    }
+  });
+});
