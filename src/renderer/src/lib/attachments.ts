@@ -118,6 +118,7 @@ export function persistableAttachment(file: Attachment): Attachment {
     kind: file.kind,
     size: file.size,
     ...(file.path ? { path: file.path } : {}),
+    ...(file.textPath ? { textPath: file.textPath } : {}),
   };
 }
 

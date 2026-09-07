@@ -45,12 +45,15 @@ export function AttachmentChip({ attachment, onRemove }: Props) {
         image ? "" : "bg-content/10 py-0.5 pl-1 pr-1"
       }`}
       title={attachment.path ?? attachment.name}
+      data-attachment-path={attachment.path}
     >
       {image ? (
         <img
           src={preview}
           alt=""
-          className="size-9 shrink-0 rounded-lg object-cover"
+          className={`size-9 shrink-0 rounded-lg object-cover ${
+            attachment.textPath ? "w-14" : ""
+          }`}
         />
       ) : (
         <>

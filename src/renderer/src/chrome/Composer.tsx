@@ -48,6 +48,7 @@ import { CommandPopover, type AtMatch, type PopoverMatches } from "./CommandPopo
 import { ComposerRunner } from "./ComposerRunner";
 import { ContextControl } from "./ContextControl";
 import { AttachmentChip } from "./AttachmentChip";
+import { subscribeAppshots } from "../lib/appshots";
 import { BranchPicker } from "./BranchPicker";
 import { CwdPicker } from "./CwdPicker";
 import { FileTypeIcon } from "./FileTypeIcon";
@@ -83,7 +84,7 @@ import { resolveTabGroupLogo } from "../lib/tabGroups";
 import { ThreadTypeChip } from "./ThreadTypeChip";
 import { useSlashCommands } from "../lib/tcserver/slashCommands";
 import { readCopiedMessage } from "../lib/copyMessage";
-import { useSessionMetas } from "../lib/tcserver/store";
+import { useSessionMetasWhen } from "../lib/tcserver/store";
 import type { SlashCommand, ThreadType } from "../lib/tcserver/types";
 import { useProjects } from "../lib/tcserver/workspaces";
 
@@ -270,7 +271,7 @@ export function Composer({
   const commandOpen = live?.mode === "command";
   const mentionOpen = live?.mode === "file";
   const commands = useSlashCommands(harness, executionCwd, commandOpen);
-  const metas = useSessionMetas();
+  const metas = useSessionMetasWhen(!!live);
   const projects = useProjects();
   const attachmentsSupported = harnessSupportsAttachments(harness);
   const commandsByName = useMemo(
@@ -342,6 +343,13 @@ export function Composer({
     },
     [harness, syncHasValue],
   );
+
+  // Appshots routed to this session land here, whether they arrived
+  // before or after the composer mounted.
+  useEffect(() => {
+    if (!sessionId) return;
+    return subscribeAppshots(sessionId, addAttachments);
+  }, [addAttachments, sessionId]);
 
   const removeAttachment = useCallback(
     (id: string) => {
