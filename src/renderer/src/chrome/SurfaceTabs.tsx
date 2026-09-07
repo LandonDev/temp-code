@@ -2,6 +2,9 @@ import { GripVertical, Terminal, X } from "./icons";
 import type { PointerEvent as ReactPointerEvent, ReactNode } from "react";
 import { useLayoutEffect, useRef } from "react";
 import { basename } from "../lib/fs";
+import { useGitSnapshot } from "../lib/gitIndexStore";
+import { useEditorState } from "../lib/monaco/editorState";
+import { projectForCwd } from "../lib/tcserver/projects";
 import {
   isReleaseNotesTab,
   isReviewTab,
@@ -84,6 +87,14 @@ export function SurfaceTabs({
 }: Props) {
   const lockOverscroll = useLockOverscroll<HTMLDivElement>();
   const activeTabRef = useRef<HTMLDivElement | null>(null);
+  // Every tab of one pane shares a checkout; the pane's first file names it.
+  const cwd = files[0]?.cwd ?? "";
+  const { index } = useGitSnapshot(cwd);
+  const changed = index?.files ?? [];
+  const busy = useEditorState((s) => {
+    const project = cwd ? projectForCwd(cwd) : undefined;
+    return project ? (s.lspBusy[project.id] ?? null) : null;
+  });
   const fileIds = files.map((file) => file.id);
   const sortable = useSortable(fileIds, onReorder);
   const canDrag = files.length > 1;
@@ -128,6 +139,7 @@ export function SurfaceTabs({
         const review = isReviewTab(file);
         const terminal = isTerminalTab(file);
         const { label, iconName, tooltip } = surfaceTabPresentation(file);
+        const change = terminal ? undefined : changed.find((f) => f.path === file.path);
         const dragging = sortable.draggingId === file.id;
         const showStart =
           sortable.draggingId &&
@@ -199,6 +211,13 @@ export function SurfaceTabs({
               >
                 {label}
               </span>
+              {change && change.status !== "untracked" && (change.additions > 0 || change.deletions > 0) ? (
+                <span className="shrink-0 text-[10.5px] tabular-nums">
+                  {change.additions > 0 ? <span className="text-success">+{change.additions}</span> : null}
+                  {change.additions > 0 && change.deletions > 0 ? " " : ""}
+                  {change.deletions > 0 ? <span className="text-danger">−{change.deletions}</span> : null}
+                </span>
+              ) : null}
               {dirty ? (
                 <span
                   className="size-1.5 shrink-0 rounded-full bg-content/75"
@@ -237,6 +256,14 @@ export function SurfaceTabs({
         />
       ) : null}
       </div>
+      {busy ? (
+        <div
+          className="flex max-w-72 shrink-0 items-center truncate px-3 text-[11px] text-content/40 tabular-nums"
+          title={busy}
+        >
+          {busy}
+        </div>
+      ) : null}
       {trailing}
     </div>
   );
