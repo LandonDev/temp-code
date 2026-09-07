@@ -15,6 +15,7 @@ import type { Session } from "./session";
 import { restoreSessionCheckout } from "./fs";
 import {
   getSession,
+  peekSession,
   listSessionsByProject,
   loadWorkspaceSnapshot,
   saveWorkspaceSnapshot,
@@ -188,11 +189,20 @@ async function loadResumedWorkspaceOnce(): Promise<ResumedWorkspace | null> {
   for (const tab of snapshot.tabs) {
     for (const id of leafIds(tab.layout)) ids.add(id);
   }
+  // Only the tab on screen needs its transcript before first paint. The
+  // other tabs restore from the server's meta (no blocks) and fetch their
+  // history when their pane mounts, one per idle slice after paint, so
+  // launch does not scale with how many heavy tabs the workspace holds.
+  const activeTab =
+    snapshot.tabs.find((tab) => tab.id === snapshot.activeTabId) ?? snapshot.tabs[0];
+  const activeIds = new Set(activeTab ? leafIds(activeTab.layout) : []);
 
   const loaded = new Map<string, Session>();
   await Promise.all(
     [...ids].map(async (id) => {
-      const record = await getSession(id).catch(() => null);
+      const record = await (activeIds.has(id) ? getSession(id) : peekSession(id)).catch(
+        () => null,
+      );
       if (record) loaded.set(id, record);
     }),
   );
