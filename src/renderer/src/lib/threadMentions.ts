@@ -74,3 +74,10 @@ export function useThreadTitles(text: string): TitleOf {
   useSyncExternalStore(subscribeMetas, snapshot, snapshot);
   return storeTitleOf;
 }
+
+/** Titles for a known set of thread ids, re-rendering only when one changes. */
+export function useTitlesOf(ids: string[]): TitleOf {
+  const snapshot = () => ids.map((id) => `${id}=${storeTitleOf(id) ?? ""}`).join("|");
+  useSyncExternalStore(subscribeMetas, snapshot, snapshot);
+  return storeTitleOf;
+}

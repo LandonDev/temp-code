@@ -12,6 +12,7 @@ import type {
   ServerAttachment,
   SessionBatchResult,
   SessionMeta,
+  ThreadRules,
   ThreadType,
 } from "./types";
 
@@ -155,8 +156,23 @@ export async function steer(
     extra,
   );
   const files = [...(await toServerAttachments(attachments, link)), ...(extra?.attachments ?? [])];
-  const item = await queueAdd(session.id, text, files, link);
+  const item = await queueAdd(session.id, text, files, runSettingsFor(session), link);
   await queueSteer(session.id, item.id, link);
+}
+
+/** Run settings a queued message carries to its eventual send: the
+ *  composer's provider/model/effort, where they differ from the server's. */
+export type QueueRunSettings = { provider?: string; model?: string; reasoning?: string };
+
+export function runSettingsFor(session: Session): QueueRunSettings {
+  const meta = sessionStore.metaOf(session.id);
+  const model = nativeModelId(session.model);
+  const reasoning = reasoningOf(session);
+  return {
+    ...(!meta || session.harness !== meta.provider ? { provider: session.harness } : {}),
+    ...(!meta || model !== meta.model ? { model } : {}),
+    ...(reasoning && (!meta || reasoning !== meta.reasoning) ? { reasoning } : {}),
+  };
 }
 
 // ── queue ────────────────────────────────────────────────────────────
@@ -174,12 +190,14 @@ export async function queueAdd(
   sessionId: string,
   text: string,
   attachments: ServerAttachment[] = [],
+  settings: QueueRunSettings = {},
   link = client,
 ): Promise<QueuedMessage> {
   const item = await link.request<QueuedMessage | null>("queue.add", {
     sessionId,
     text,
     ...(attachments.length > 0 ? { attachments } : {}),
+    ...settings,
   });
   if (item) return item;
   // A server that answers null already pushed the list; the item is its
@@ -237,6 +255,42 @@ export async function continueSession(sessionId: string, link = client): Promise
 export async function interrupt(sessionId: string, link = client): Promise<void> {
   if (sessionStore.isDraft(sessionId)) return;
   await link.request("session.interrupt", { sessionId });
+}
+
+/** Pause every running thread at once. */
+export function pauseAllRunning(link = client): Promise<SessionBatchResult> {
+  return link.request<SessionBatchResult>("session.pauseAllRunning");
+}
+
+/** Context-window breakdown for one thread, as the harness reports it
+ *  (claude's /context data); null while it streams or has no accounting. */
+export async function context(sessionId: string, link = client): Promise<unknown> {
+  if (sessionStore.isDraft(sessionId)) return null;
+  return link.request<unknown>("session.context", { sessionId });
+}
+
+export async function setGoal(sessionId: string, condition: string, link = client): Promise<void> {
+  if (sessionStore.isDraft(sessionId)) return;
+  await link.request("session.setGoal", { sessionId, condition });
+}
+
+export async function clearGoal(sessionId: string, link = client): Promise<void> {
+  if (sessionStore.isDraft(sessionId)) return;
+  await link.request("session.clearGoal", { sessionId });
+}
+
+export async function setThreadRules(
+  sessionId: string,
+  threadRules: ThreadRules | null,
+  link = client,
+): Promise<void> {
+  if (sessionStore.isDraft(sessionId)) return;
+  await link.request("session.setThreadRules", { sessionId, threadRules });
+}
+
+/** Data URL for an image the server holds (history attachments). */
+export function readAttachment(path: string, link = client): Promise<string> {
+  return link.request<string>("attachment.read", { path });
 }
 
 export async function pause(sessionId: string, link = client): Promise<void> {
