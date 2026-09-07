@@ -3,6 +3,7 @@ import { useId, useMemo } from "react";
 import { taskTitle } from "../../lib/threads/agents";
 import { chatOf, slotsOf } from "./chatSlots";
 import { AgentDetail } from "./fleet/AgentDetail";
+import { OpenAgentDetailContext } from "../agentDetailContext";
 import { AgentRow } from "./fleet/AgentRow";
 import { FleetHeader } from "./fleet/FleetHeader";
 import { useFleetModel } from "./fleet/useFleetModel";
@@ -51,7 +52,7 @@ export function OrchestrationView(props: ThreadViewProps) {
   if (!hasBoard) {
     return (
       <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
-        {chatOf(props, { topSlot })}
+        <OpenAgentDetailContext.Provider value={fleet.setDetailId}>{chatOf(props, { topSlot })}</OpenAgentDetailContext.Provider>
         {detail}
       </div>
     );
@@ -82,7 +83,7 @@ export function OrchestrationView(props: ThreadViewProps) {
             {slots.composer ? <div className="mx-auto w-full max-w-4xl shrink-0">{slots.composer}</div> : null}
           </div>
           <SidePanel label="Orchestrator log" status={session.status}>
-            {slots.transcript}
+            <OpenAgentDetailContext.Provider value={fleet.setDetailId}>{slots.transcript}</OpenAgentDetailContext.Provider>
           </SidePanel>
           {detail}
         </div>
