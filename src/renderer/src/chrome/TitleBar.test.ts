@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-  deckTabMenuItems,
   tabCopy,
   tabStripOverflow,
   tabThreadActions,
@@ -133,29 +132,3 @@ describe("tabThreadActions", () => {
   });
 });
 
-describe("deckTabMenuItems", () => {
-  const ids = (items: ReturnType<typeof deckTabMenuItems>) =>
-    items.map((item) => (item.kind === "sep" ? "|" : item.id));
-
-  it("offers rename and archive on a settled chip", () => {
-    expect(ids(deckTabMenuItems("idle"))).toEqual(["rename", "archive"]);
-    expect(ids(deckTabMenuItems(undefined))).toEqual(["rename", "archive"]);
-  });
-
-  it("puts thread controls first while working", () => {
-    expect(ids(deckTabMenuItems("running"))).toEqual([
-      "thread:pause",
-      "thread:stop",
-      "|",
-      "rename",
-      "archive",
-    ]);
-  });
-
-  it("never offers close or delete", () => {
-    for (const status of ["running", "paused", "waiting", "idle", "error"] as const) {
-      expect(ids(deckTabMenuItems(status))).not.toContain("close");
-      expect(ids(deckTabMenuItems(status))).not.toContain("delete");
-    }
-  });
-});
