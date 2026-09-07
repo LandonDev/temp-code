@@ -1,9 +1,10 @@
 import React, { useLayoutEffect } from "react";
 import ReactDOM from "react-dom/client";
-import { invoke, listen } from "./lib/native";
+import { bindServer, invoke, listen } from "./lib/native";
 import App from "./App";
 import { initAppearance } from "./lib/appearance";
 import { initSounds } from "./lib/sounds";
+import { client } from "./lib/tcserver/client";
 import { initServerLink } from "./lib/tcserver/link";
 import { sessionStore } from "./lib/tcserver/store";
 import { workspaceStore } from "./lib/tcserver/workspaces";
@@ -16,6 +17,8 @@ import "./index.css";
 
 initAppearance();
 initSounds();
+// The bridge dispatches server commands over the one shared client.
+bindServer(client);
 initServerLink();
 sessionStore.connect();
 workspaceStore.connect();

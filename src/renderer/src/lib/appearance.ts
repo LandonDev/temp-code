@@ -3,7 +3,6 @@ import { IS_MAC } from "./platform";
 const THEME_HUE_KEY = "monocode.themeHue";
 const THEME_SATURATION_KEY = "monocode.themeSaturation";
 const OPACITY_KEY = "monocode.sidebarOpacity";
-const BLUR_KEY = "monocode.sidebarBlur";
 const OPEN_KEY = "monocode.sidebarOpen";
 const PROJECT_RAIL_OPEN_KEY = "monocode.projectRailOpen";
 const BODY_KEY = "monocode.bodyGlass";
@@ -66,9 +65,6 @@ export const SIDEBAR_OPACITY_MIN = 0.15;
 export const SIDEBAR_OPACITY_MAX = 1;
 export const SIDEBAR_OPACITY_DEFAULT = 0.85;
 
-export const SIDEBAR_BLUR_MIN = 1;
-export const SIDEBAR_BLUR_MAX = 64;
-export const SIDEBAR_BLUR_DEFAULT = 24;
 
 export const PROJECT_RAIL_WIDTH_MIN = 180;
 export const PROJECT_RAIL_WIDTH_MAX = 360;
@@ -172,7 +168,6 @@ export function initAppearance() {
   applyThemePreference(loadThemePreference());
   watchSystemColorScheme();
   applySidebarOpacity(loadSidebarOpacity());
-  applySidebarBlur(loadSidebarBlur());
   applyBodyGlass(loadBodyGlass());
 }
 
@@ -251,32 +246,6 @@ export function saveSidebarOpacity(value: number) {
 export function applySidebarOpacity(value: number) {
   const next = clamp(value, SIDEBAR_OPACITY_MIN, SIDEBAR_OPACITY_MAX);
   document.documentElement.style.setProperty("--sidebar-opacity", String(next));
-  return next;
-}
-
-export function loadSidebarBlur(): number {
-  return Math.round(
-    clamp(
-      readNumber(BLUR_KEY) ?? SIDEBAR_BLUR_DEFAULT,
-      SIDEBAR_BLUR_MIN,
-      SIDEBAR_BLUR_MAX,
-    ),
-  );
-}
-
-export function saveSidebarBlur(value: number) {
-  writeNumber(
-    BLUR_KEY,
-    Math.round(clamp(value, SIDEBAR_BLUR_MIN, SIDEBAR_BLUR_MAX)),
-  );
-}
-
-export function applySidebarBlur(value: number) {
-  const next = Math.round(
-    clamp(value, SIDEBAR_BLUR_MIN, SIDEBAR_BLUR_MAX),
-  );
-  // Electron has vibrancy only; the numeric blur radius was a Tauri-side
-  // private API and its control goes away with the bridge (M2b).
   return next;
 }
 

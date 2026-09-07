@@ -1,5 +1,5 @@
 import { ArrowDownCircle, Loader, RefreshCw } from "./icons";
-import { updateStore, useUpdateSnapshot } from "../lib/updateStore";
+import { installing, updateStore, useUpdateSnapshot } from "../lib/updateStore";
 import type { InstalledUpdate } from "../lib/updateNotice";
 import { UpdateRailCard } from "./UpdateRailCard";
 
@@ -33,16 +33,17 @@ export function SidebarUpdate({
 }) {
   const snapshot = useUpdateSnapshot();
 
-  const busy =
-    snapshot.phase === "checking" || snapshot.phase === "downloading";
+  const busy = snapshot.phase === "checking" || installing(snapshot);
   const hasUpdate = snapshot.phase === "available";
   const label = hasUpdate
     ? `Update to ${snapshot.availableVersion}`
-    : busy
-      ? snapshot.phase === "downloading"
-        ? `Downloading${snapshot.progress != null ? ` ${snapshot.progress}%` : "…"}`
-        : "Checking…"
-      : "Check for updates";
+    : snapshot.phase === "building"
+      ? `Updating${snapshot.step ? ` · ${snapshot.step}` : "…"}`
+      : snapshot.phase === "restarting"
+        ? "Restarting…"
+        : busy
+          ? "Checking…"
+          : "Check for updates";
 
   const onClick = () => {
     if (busy) return;

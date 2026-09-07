@@ -23,14 +23,12 @@ import { useLockOverscroll } from "../hooks/useLockOverscroll";
 import {
   applyBodyGlass,
   applyThemePreference,
-  applySidebarBlur,
   applySidebarOpacity,
   applyThemeTint,
   BODY_GLASS_DEFAULT,
   THEME_PREFERENCE_DEFAULT,
   loadBodyGlass,
   loadThemePreference,
-  loadSidebarBlur,
   loadSidebarLayout,
   loadSidebarOpacity,
   loadThemeHue,
@@ -40,7 +38,6 @@ import {
   loadTranscriptAnchor,
   saveBodyGlass,
   saveThemePreference,
-  saveSidebarBlur,
   saveSidebarLayout,
   saveSidebarOpacity,
   saveThemeHue,
@@ -50,9 +47,6 @@ import {
   saveTranscriptAnchor,
   TRANSCRIPT_ZEN_CHANGE_EVENT,
   TRANSCRIPT_ANCHOR_CHANGE_EVENT,
-  SIDEBAR_BLUR_DEFAULT,
-  SIDEBAR_BLUR_MAX,
-  SIDEBAR_BLUR_MIN,
   SIDEBAR_OPACITY_DEFAULT,
   SIDEBAR_OPACITY_MAX,
   SIDEBAR_OPACITY_MIN,
@@ -157,7 +151,7 @@ import { takeRequestedScope } from "../lib/tcserver/rules";
 import { useWorkspaces } from "../lib/tcserver/workspaces";
 import { Heading, Row, Segmented, Select, SecondaryButton, Toggle } from "./settingsBits";
 import { MatrixSpinner } from "./threads/bits";
-import { updateStore, useUpdateSnapshot } from "../lib/updateStore";
+import { installing, updateStore, useUpdateSnapshot } from "../lib/updateStore";
 
 type Props = {
   section: SettingsSectionId;
@@ -642,22 +636,23 @@ function UpdateRow({
   onOpenWhatsNew: (version: string, markdown?: string) => void;
 }) {
   const snapshot = useUpdateSnapshot();
-  const busy =
-    snapshot.phase === "checking" || snapshot.phase === "downloading";
+  const busy = snapshot.phase === "checking" || installing(snapshot);
   const hasUpdate = snapshot.phase === "available";
 
   const status =
     snapshot.phase === "available"
-      ? `Version ${snapshot.availableVersion} is available.`
-      : snapshot.phase === "downloading"
-        ? `Downloading${snapshot.progress != null ? ` ${snapshot.progress}%` : "…"}`
-        : snapshot.phase === "checking"
-          ? "Checking for updates…"
-          : snapshot.phase === "current"
-            ? "You're on the latest version."
-            : snapshot.phase === "error"
-              ? (snapshot.error ?? "Update check failed.")
-              : "MonoCode updates itself from the release feed.";
+      ? `Release ${snapshot.availableVersion} is available.`
+      : snapshot.phase === "building"
+        ? `Updating${snapshot.step ? ` · ${snapshot.step}` : "…"}${snapshot.detail ? ` — ${snapshot.detail}` : ""}`
+        : snapshot.phase === "restarting"
+          ? "Restarting into the new release…"
+          : snapshot.phase === "checking"
+            ? "Checking for updates…"
+            : snapshot.phase === "current"
+              ? "You're on the latest version."
+              : snapshot.phase === "error"
+                ? (snapshot.error ?? "Update check failed.")
+                : "MonoCode updates itself from the release feed.";
 
   // With an update waiting, What's new shows the feed's notes for it.
   const onWhatsNew = () =>
@@ -697,7 +692,7 @@ function UpdateRow({
           ) : (
             <RefreshCw className="size-3.5" strokeWidth={1.75} aria-hidden />
           )}
-          {hasUpdate ? "Download" : "Check for updates"}
+          {hasUpdate ? "Install" : "Check for updates"}
         </SecondaryButton>
       </div>
     </Row>
@@ -710,7 +705,6 @@ function useAppearanceSettings() {
   const [themePreference, setThemePreference] =
     useState<ThemePreference>(loadThemePreference);
   const [opacity, setOpacity] = useState(loadSidebarOpacity);
-  const [blur, setBlur] = useState(loadSidebarBlur);
   const [themeHue, setThemeHue] = useState(loadThemeHue);
   const [themeSaturation, setThemeSaturation] = useState(loadThemeSaturation);
   const [bodyGlass, setBodyGlass] = useState(loadBodyGlass);
@@ -725,12 +719,6 @@ function useAppearanceSettings() {
     const next = applySidebarOpacity(percent / 100);
     saveSidebarOpacity(next);
     setOpacity(next);
-  }, []);
-
-  const onBlur = useCallback((radius: number) => {
-    const next = applySidebarBlur(radius);
-    saveSidebarBlur(next);
-    setBlur(next);
   }, []);
 
   const onTint = useCallback((hue: number, saturation: number) => {
@@ -750,21 +738,18 @@ function useAppearanceSettings() {
   const restoreDefaults = useCallback(() => {
     onThemePreference(THEME_PREFERENCE_DEFAULT);
     onOpacity(Math.round(SIDEBAR_OPACITY_DEFAULT * 100));
-    onBlur(SIDEBAR_BLUR_DEFAULT);
     onTint(THEME_HUE_DEFAULT, THEME_SATURATION_DEFAULT);
     onBodyGlass(BODY_GLASS_DEFAULT);
-  }, [onBlur, onBodyGlass, onThemePreference, onOpacity, onTint]);
+  }, [onBodyGlass, onThemePreference, onOpacity, onTint]);
 
   return {
     themePreference,
     opacity,
-    blur,
     themeHue,
     themeSaturation,
     bodyGlass,
     onThemePreference,
     onOpacity,
-    onBlur,
     onTint,
     onBodyGlass,
     restoreDefaults,
@@ -802,19 +787,6 @@ function AppearancePage({ appearance }: { appearance: AppearanceSettings }) {
           min={Math.round(SIDEBAR_OPACITY_MIN * 100)}
           max={Math.round(SIDEBAR_OPACITY_MAX * 100)}
           onChange={appearance.onOpacity}
-        />
-      </Row>
-      <Row
-        label="Blur radius"
-        description="Background blur behind the window. Higher values cost more to composite."
-      >
-        <Slider
-          label="Blur radius"
-          value={appearance.blur}
-          display={String(appearance.blur)}
-          min={SIDEBAR_BLUR_MIN}
-          max={SIDEBAR_BLUR_MAX}
-          onChange={appearance.onBlur}
         />
       </Row>
       <Row label="Hue" description="Base hue for accents and tinted surfaces.">

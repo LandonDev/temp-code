@@ -930,7 +930,9 @@ export default function App({
     if (workspaceSyncKey.current === key) return;
     workspaceSyncKey.current = key;
     const timer = window.setTimeout(() => {
-      void saveWorkspaceSnapshot(snapshot).catch(() => undefined);
+      void saveWorkspaceSnapshot(snapshot).catch((err) => {
+        console.error("[workspace] snapshot save failed:", err);
+      });
     }, 250);
     return () => window.clearTimeout(timer);
   }, [tabs, sessions, activeTabId, projectCwd, projectTerminals, windowTransfer]);
@@ -3875,7 +3877,7 @@ export default function App({
 
   useEffect(() => {
     void invoke("set_traffic_lights_visible", { visible: true }).catch(
-      () => {},
+      (err) => console.error("[window] traffic lights:", err),
     );
   }, []);
 
