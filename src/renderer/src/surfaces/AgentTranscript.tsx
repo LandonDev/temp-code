@@ -53,8 +53,12 @@ import {
 } from "../lib/toolSummary";
 import { isTurnPaused, passActionsOf, turnElapsed, useClock } from "../lib/turnClock";
 import { errorRowOf, isErrorBlock } from "../lib/turnOutcome";
-import { useSessionMetas } from "../lib/tcserver/store";
+import { useSessionMeta } from "../lib/tcserver/store";
 import { ErrorChip } from "./ErrorChip";
+import { CompactionCard } from "./CompactionCard";
+import { AgentSpawnRow } from "./AgentSpawnRow";
+import { CommandChip, ConnectorMark, ConnectorSummary, ReconnectChip, SubagentMark, SubagentSteps, reauthOf } from "./ToolChips";
+import { commandParts, isAgentCall, useKnownCommands, type CommandPart } from "./toolMarks";
 import { TurnStateContext, useTurnState, type TurnSession } from "./turnState";
 import { HarnessIcon } from "../chrome/HarnessIcon";
 import { useLockOverscroll } from "../hooks/useLockOverscroll";
@@ -66,9 +70,9 @@ import type { TranscriptLayout } from "../lib/appearance";
 import { AgentMarkdown, SelectSessionContext } from "./AgentMarkdown";
 import type { OpenFileFn } from "../lib/search";
 import {
-  hasThreadMention,
   storeTitleOf,
   threadMentionParts,
+  type ThreadMentionPart,
   threadMentionsToTitles,
   useThreadTitles,
 } from "../lib/threadMentions";
@@ -725,6 +729,8 @@ const TranscriptBlock = memo(function TranscriptBlock({
   }
 
   if (block.role === "system") {
+    if (block.compaction) return <CompactionCard block={block} />;
+    if (block.agent) return <AgentSpawnRow block={block} />;
     if (isErrorBlock(block)) return <ErrorRowView block={block} />;
     const actions = passActionsOf(block);
     if (actions) return <PassRow actions={actions} />;
@@ -835,14 +841,21 @@ function UserMessageBlock({
   );
 }
 
-/** A user's words, with each `@thread:<id>` as a chip that opens the thread. */
+/**
+ * A user's words, with each `@thread:<id>` as a chip that opens the thread
+ * and each `/command` the session knows as the addon it names.
+ */
 function UserText({ text }: { text: string }) {
   const titleOf = useThreadTitles(text);
+  const commands = useKnownCommands(useTranscriptSession());
   const onSelectSession = useContext(SelectSessionContext);
-  if (!hasThreadMention(text)) return <>{text}</>;
+  const parts: (ThreadMentionPart | CommandPart)[] = threadMentionParts(text, titleOf).flatMap(
+    (part): (ThreadMentionPart | CommandPart)[] => ("id" in part ? [part] : commandParts(part.text, commands)),
+  );
+  if (parts.length === 1 && "text" in parts[0]) return <>{text}</>;
   return (
     <>
-      {threadMentionParts(text, titleOf).map((part, index) =>
+      {parts.map((part, index) =>
         "id" in part ? (
           <button
             key={index}
@@ -856,6 +869,8 @@ function UserText({ text }: { text: string }) {
             <MessageSquare className="size-3 opacity-60" />
             {part.title}
           </button>
+        ) : "command" in part ? (
+          <CommandChip key={index} command={part.command} />
         ) : (
           part.text
         ),
@@ -1061,7 +1076,7 @@ function ErrorRowView({ block }: { block: Block }) {
   const session = useTurnState();
   const sessionId = useTranscriptSession();
   // The tree's continue flag lives on the meta until the projection carries it.
-  const meta = useSessionMetas().find((m) => m.id === sessionId);
+  const meta = useSessionMeta(sessionId);
   const row = errorRowOf(
     session
       ? { ...session, treeCanContinue: session.treeCanContinue ?? meta?.treeCanContinue }
@@ -1178,8 +1193,10 @@ function ActivityPhaseGroup({
     );
   }
 
+  const reauth = open ? undefined : reauthOf(phase.steps);
   return (
     <div className="flex min-w-0 flex-col">
+      <div className="flex min-w-0 items-center gap-1.5">
       <button
         type="button"
         aria-expanded={open}
@@ -1187,7 +1204,7 @@ function ActivityPhaseGroup({
           open ? `Hide the steps for ${title}` : `Show the steps for ${title}`
         }
         onClick={() => setOverride(!open)}
-        className="group flex w-full min-w-0 items-center gap-1.5 py-1 text-left"
+        className="group flex w-full min-w-0 flex-1 items-center gap-1.5 py-1 text-left"
       >
         {/*
          * The two icons share one 14px box, so the swap is instant: fading
@@ -1207,6 +1224,8 @@ function ActivityPhaseGroup({
         </span>
         {label}
       </button>
+      {reauth ? <ReconnectChip reauth={reauth} /> : null}
+      </div>
       <div className="zen-phase-body" data-open={open}>
         <div
           ref={setLiveScroller}
@@ -1586,9 +1605,19 @@ function ActivityToolRow({
         className={`group/tool flex min-w-0 items-center gap-1.5 py-1 ${expandable ? "cursor-pointer" : ""}`}
         onClick={expandable ? () => setOpen((value) => !value) : undefined}
       >
-        {bare ? null : <ActivityToolIcon state={state} live={live} />}
-        {app ? (
-          <AppToolSummary view={app} chip={bare} failed={state === "rejected"} />
+        {bare ? null : state === "pending" ? (
+          <ActivityToolIcon state={state} live={live} />
+        ) : block.tool?.display?.app ? (
+          <ConnectorMark app={block.tool.display.app} />
+        ) : isAgentCall(block) ? (
+          <SubagentMark block={block} />
+        ) : (
+          <ActivityToolIcon state={state} live={live} />
+        )}
+        {block.tool?.display?.app ? (
+          <ConnectorSummary display={block.tool.display} chip={bare} failed={state === "rejected"} />
+        ) : app ? (
+          <AppToolSummary view={app} chip={bare} failed={state === "rejected"} agent={isAgentCall(block)} />
         ) : (
           <ToolCallSummary
             label={label}
@@ -1599,6 +1628,8 @@ function ActivityToolRow({
             onOpenFile={openFile}
           />
         )}
+        <SubagentSteps count={block.tool?.subCount} />
+        {block.tool?.reauth ? <ReconnectChip reauth={block.tool.reauth} /> : null}
         {pending || block.question ? null : <ToolCallStatusIcon state={state} />}
         {expandable ? <ToolDisclosure open={open} /> : null}
       </div>
