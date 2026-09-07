@@ -3,6 +3,7 @@ import { useTitlesOf } from "../lib/threadMentions";
 import type { Block } from "../lib/session";
 import { SelectSessionContext } from "./AgentMarkdown";
 import { appThreadIds, appView, type AppView } from "./appTool";
+import { useOpenAgentDetail } from "./agentDetailContext";
 
 /** The app view of a call, kept current as thread titles arrive. */
 export function useAppView(block: Block): AppView | null {
@@ -18,15 +19,20 @@ export function AppToolSummary({
   view,
   chip = false,
   failed = false,
+  agent = false,
 }: {
   view: AppView;
   chip?: boolean;
   failed?: boolean;
+  /** The thread is a subagent: open it in this pane's detail panel when one hosts it. */
+  agent?: boolean;
 }) {
   const onSelectSession = useContext(SelectSessionContext);
+  const openDetail = useOpenAgentDetail();
+  const open = agent && openDetail ? openDetail : onSelectSession;
   const actionTone = failed ? "text-red-400" : "text-content/50";
   const targetTone = failed ? "text-red-400" : chip ? "text-content/70" : "text-content/85";
-  const link = view.threadId && onSelectSession ? view.threadId : undefined;
+  const link = view.threadId && open ? view.threadId : undefined;
   return (
     <span className="flex min-w-0 flex-1 items-center gap-1.5 font-sans text-sm">
       <span className={`shrink-0 ${actionTone}`}>{view.label}</span>
@@ -39,7 +45,7 @@ export function AppToolSummary({
           title={view.detail}
           onClick={(event) => {
             event.stopPropagation();
-            onSelectSession?.(link);
+            open?.(link);
           }}
         >
           {view.detail}
