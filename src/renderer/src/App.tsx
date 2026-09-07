@@ -182,6 +182,7 @@ import { useWorkspaceCatalog, workspaceByPath, workspaceStore } from "./lib/tcse
 import { modeForPolicy } from "./lib/tcserver/access";
 import type { ThreadType } from "./lib/tcserver/types";
 import { markSessionSeen } from "./lib/sessionSeen";
+import { historyStore } from "./lib/historyStore";
 import { applyZoom, loadZoom, zoomIn, zoomOut, zoomReset } from "./lib/zoom";
 import { migrateWorkspaces } from "./lib/workspaceMigration";
 import {
@@ -527,9 +528,12 @@ export default function App({
   const [fileErrorCounts, setFileErrorCounts] = useState<Map<string, number>>(
     () => new Map(),
   );
-  const [history, setHistory] = useState<SessionSummary[]>(
-    () => bootHistory,
-  );
+  // History lives in historyStore so its per-turn refreshes skip App.
+  useState(() => {
+    if (historyStore.get().length === 0 && bootHistory.length > 0) historyStore.set(bootHistory);
+    return true;
+  });
+  const setHistory = historyStore.set;
   /**
    * Projects whose rows are already in `history`. This has to be state, not a
    * ref: `sidebarCwd` is derived during render, so the frame that first shows
@@ -2151,7 +2155,7 @@ export default function App({
         if (resolved) rememberOpenedFile(sidebarCwdRef.current, resolved);
         setTabs((prev) =>
           prev.map((tab) => {
-            if (tab.id !== activeTabId) return tab;
+            if (tab.id !== activeTabIdRef.current) return tab;
             const opened = resolved
               ? openEditorTab(
                   tab,
@@ -2163,7 +2167,7 @@ export default function App({
                   ),
                 )
               : tab;
-            if (deckLayout) return opened;
+            if (deckLayoutRef.current) return opened;
             return {
               ...opened,
               diffOpen: true,
@@ -2171,7 +2175,7 @@ export default function App({
             };
           }),
         );
-        if (deckLayout) {
+        if (deckLayoutRef.current) {
           setSidebarOpen(true);
           saveSidebarOpen(true);
           setSidebarTab("changes");
@@ -2179,7 +2183,7 @@ export default function App({
         setComposerFocused(false);
       })();
     },
-    [activeTabId, deckLayout],
+    [],
   );
 
   const onToggleDiff = useCallback(() => {
@@ -2525,7 +2529,7 @@ export default function App({
         (session) => session.id === sessionId,
       );
       const summary =
-        history.find((entry) => entry.id === sessionId) ?? open ?? null;
+        historyStore.get().find((entry) => entry.id === sessionId) ?? open ?? null;
       const label = summary
         ? sessionDisplayTitle(summary.title, summary.harness)
         : "this session";
@@ -2598,7 +2602,7 @@ export default function App({
       );
       void refreshHistory(sidebarCwd);
     },
-    [activateTab, history, refreshHistory, sidebarCwd, tabCloseScope],
+    [activateTab, refreshHistory, sidebarCwd, tabCloseScope],
   );
 
   const onFocusDir = useCallback(
@@ -2951,7 +2955,7 @@ export default function App({
         const resolved =
           (await resolveOpenablePath(gitCwdRef.current, path)) ?? path;
         rememberOpenedFile(sidebarCwdRef.current, resolved);
-        const tab = tabsRef.current.find((entry) => entry.id === activeTabId);
+        const tab = tabsRef.current.find((entry) => entry.id === activeTabIdRef.current);
         if (!tab) return;
         const editor = options?.editor ?? editorForPath(resolved);
         const file = newFileTab(
@@ -2976,7 +2980,9 @@ export default function App({
         setComposerFocused(false);
       })();
     },
-    [activeTabId],
+    // Reads the active tab through its ref: the identity stays put across
+    // tab switches, so the memoised transcripts under it do too.
+    [],
   );
 
   const onFileDirtyChange = useCallback((fileId: string, dirty: boolean) => {
@@ -3623,14 +3629,6 @@ export default function App({
   const headerWorkspaceId = deckLayout
     ? sessionContext(selectedProjectId).workspaceId ?? null
     : null;
-
-  // `history` now spans every visited project; consumers that expect the
-  // current project only get this slice.
-  const projectHistory = useMemo(
-    () =>
-      history.filter((entry) => sameProjectPath(entry.cwd, sidebarCwd)),
-    [history, sidebarCwd],
-  );
 
   const onToggleSidebar = useCallback(() => {
     if (deckLayout) {
@@ -4422,7 +4420,6 @@ export default function App({
             open
             cwd={sidebarCwd}
             recents={railRecents}
-            history={projectHistory}
             focusToken={searchViewFocusToken}
             besideRail={deckLayout && projectRailOpen}
             onClose={onLeaveSearch}
@@ -4513,6 +4510,9 @@ async function whenFocused(action: () => Promise<unknown>): Promise<void> {
 
 function isBlankSession(session: Session | undefined): boolean {
   if (!session || session.busy) return false;
+  // A server session whose transcript has not been fetched yet is unknown,
+  // not blank: a restored heavy tab must not be reused as a fresh one.
+  if (!session.loaded && !sessionStore.isDraft(session.id)) return false;
   return !session.blocks.some((block) => block.role === "user");
 }
 

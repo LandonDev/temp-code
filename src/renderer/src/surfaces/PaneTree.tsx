@@ -33,7 +33,7 @@ import type {
   HarnessId,
   RuntimeMode,
 } from "../lib/session";
-import { useSession } from "../lib/tcserver/store";
+import { sessionStore, useSession } from "../lib/tcserver/store";
 import type { ThreadType } from "../lib/tcserver/types";
 import { FilePane } from "./FilePane";
 import { SessionPane } from "./SessionPane";
@@ -117,6 +117,11 @@ type SessionLeafProps = Omit<ComponentProps<typeof SessionPane>, "session"> & { 
  *  other session (or a streamed turn elsewhere) never reaches this subtree. */
 function SessionLeaf({ id, ...props }: SessionLeafProps) {
   const session = useSession(id);
+  // A tab restored at launch carries its meta only; the transcript arrives
+  // once the pane is on the page (hidden panes mount one per idle slice).
+  useEffect(() => {
+    void sessionStore.ensureLoaded(id);
+  }, [id]);
   if (!session) return null;
   return <SessionPane session={session} {...props} />;
 }
