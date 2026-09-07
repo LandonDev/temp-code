@@ -8,7 +8,7 @@ import {
 } from "react";
 import type { ThreadRules } from "@server/shared/rules";
 import { SPRING_LAYOUT } from "../lib/ease";
-import { HARNESSES, type HarnessId } from "../lib/session";
+import { HARNESSES, sessionDisplayTitle, type HarnessId } from "../lib/session";
 import type { ThreadType } from "../lib/tcserver/types";
 import type { HeaderChip, HeaderModel } from "../lib/threadHeaderModel";
 import type { ReadyMap, StripThread } from "../lib/threadStripModel";
@@ -165,7 +165,12 @@ export function ThreadHeaderStrip({
 }
 
 function chipTitle(chip: StripChip): string {
-  return chip.thread.title.trim() || "New session";
+  const { title, provider } = chip.thread;
+  const shown =
+    provider && (HARNESSES as string[]).includes(provider)
+      ? sessionDisplayTitle(title, provider as HarnessId)
+      : title;
+  return shown.trim() || "New session";
 }
 
 function chipTooltip(chip: StripChip): string {
