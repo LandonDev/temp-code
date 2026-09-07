@@ -422,3 +422,17 @@ describe("monaco and debug tabs", () => {
     expect(isolated.terminalPanes[0].files).toEqual([debug]);
   });
 });
+
+describe("review requests", () => {
+  it("ride into the next tab for that path as a Monaco diff with a base", async () => {
+    const { requestReview, clearReviewRequest } = await import("./reviewRequest");
+    requestReview("/repo/src/a.ts", "abc123");
+    const plain = newFileTab("/repo/src/b.ts", "/repo");
+    expect(plain.review).toBeUndefined();
+    const tab = newFileTab("/repo/src/a.ts", "/repo");
+    expect(tab).toMatchObject({ review: true, diffBase: "abc123", editor: "monaco" });
+    expect(editorTabKey(tab)).toBe("review@abc123:/repo/src/a.ts");
+    expect(newFileTab("/repo/src/a.ts", "/repo").diffBase).toBeUndefined();
+    clearReviewRequest();
+  });
+});
