@@ -36,7 +36,8 @@ import { WorkspaceMenu } from "./WorkspaceMenu";
 import { NewProjectDialog } from "./ProjectDialogs";
 import { ThreadDefaultsDialog } from "./ThreadDefaultsDialog";
 import { openOrchestrationSettings } from "../lib/tcserver/rules";
-import type { LiveAgent } from "../lib/liveAgents";
+import { useLiveAgents } from "../lib/liveAgentTracker";
+import { useBusyProjectPaths } from "../hooks/useBusyProjectPaths";
 import type { SettingsSectionId } from "../lib/settings";
 import type { InstalledUpdate } from "../lib/updateNotice";
 import {
@@ -130,8 +131,6 @@ type Props = {
   textHarness?: HarnessId;
   onShowSourceControl?: () => void;
   recents?: RecentProject[];
-  busyProjectPaths?: Iterable<string>;
-  liveAgents?: LiveAgent[];
   onSelectAgent?: (sessionId: string) => void;
   onSelectProject?: (path: string) => void;
   onOpenProject?: () => void;
@@ -192,8 +191,6 @@ function SidebarComponent({
   textHarness,
   onShowSourceControl,
   recents = [],
-  busyProjectPaths,
-  liveAgents = [],
   onSelectAgent,
   onSelectProject,
   onOpenProject,
@@ -224,6 +221,8 @@ function SidebarComponent({
   onOpenWhatsNew,
   onDismissUpdate,
 }: Props) {
+  const busyProjectPaths = useBusyProjectPaths();
+  const liveAgents = useLiveAgents();
   const reduceMotion = useReducedMotion();
   const gitRoot = gitCwd || cwd;
   // Focus boot: start the JVM engine for a build-file project as soon as
