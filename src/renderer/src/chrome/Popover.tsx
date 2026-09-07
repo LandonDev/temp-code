@@ -10,6 +10,7 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { LAYER } from "../lib/layers";
+import { ghostOut } from "./Modal";
 import {
   placePopover,
   type AnchorRect,
@@ -53,6 +54,8 @@ type Props = Omit<ComponentPropsWithoutRef<"div">, "style"> & {
   ignore?: string;
   ref?: Ref<HTMLDivElement>;
 };
+
+export const POPOVER_OUT_MS = 100;
 
 const SURFACE =
   "rounded-xl border border-content/10 bg-content/10 shadow-xl backdrop-blur-xl outline-none";
@@ -187,6 +190,18 @@ export function Popover({
   useEffect(() => {
     if (autoFocus) surface.current?.focus();
   }, [autoFocus]);
+
+  // Menus unmount outright; a ghost copy plays the 100ms exit. A surface
+  // still connected at cleanup is StrictMode rehearsing, not a real close.
+  useEffect(() => {
+    return () => {
+      const el = surface.current;
+      if (el && !el.isConnected) {
+        el.classList.remove("popover-open");
+        ghostOut(el, "popover-close", POPOVER_OUT_MS);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (!onDismiss) return;
