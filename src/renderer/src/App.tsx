@@ -2351,7 +2351,8 @@ export default function App({
       leafIds(entry.layout).includes(sessionId),
     );
     if (!tab) return false;
-    setActiveTabId(tab.id);
+    // activateTab brings the tab's workspace forward too (deck filter).
+    activateTab(tab.id);
     setTabs((prev) =>
       prev.map((entry) =>
         entry.id === tab.id ? { ...entry, focusedId: sessionId } : entry,
@@ -2359,7 +2360,7 @@ export default function App({
     );
     setComposerFocused(true);
     return true;
-  }, []);
+  }, [activateTab]);
 
   const replaceBlankPaneWithSession = useCallback((session: Session) => {
     const tab =
@@ -2439,6 +2440,20 @@ export default function App({
   const openSessionBesideRef = useRef<
     ((sourceId: string, session: Session, cwd: string, focusComposer?: boolean) => void) | null
   >(null);
+  // A thread from another workspace (a search hit, a server-created thread)
+  // brings its workspace forward, or the deck filter would hide the tab we
+  // are about to open and the rail and sessions list would disagree.
+  const selectWorkspaceOfSession = useCallback(
+    (session: Pick<Session, "cwd" | "projectId" | "workspaceId">) => {
+      const path = normalizeProjectPath(workspacePathOfSession(session, catalogRef.current));
+      if (looksLikeProject(path) && !sameProjectPath(projectCwdRef.current, path)) {
+        setProjectCwd(path);
+        setRecents(rememberProject(path));
+      }
+    },
+    [],
+  );
+
   const onSelectHistorySession = useCallback(
     async (sessionId: string, seq?: number) => {
       // A search hit's row: the transcript picks the request up once its
@@ -2448,6 +2463,7 @@ export default function App({
       if (focusOpenSession(sessionId)) return;
       const session = await ensureOpenSession(sessionId);
       if (!session) return;
+      selectWorkspaceOfSession(session);
       // A subagent splits beside its parent and never gets a tab of its own.
       if (session.parentId) {
         const parentId = session.parentId;
@@ -2472,6 +2488,7 @@ export default function App({
       ensureOpenSession,
       focusOpenSession,
       replaceBlankPaneWithSession,
+      selectWorkspaceOfSession,
     ],
   );
 
@@ -2480,13 +2497,6 @@ export default function App({
   useEffect(
     () =>
       sessionStore.onSessionAdded((meta) => {
-        // Its workspace becomes the selected one, or the deck filter would
-        // hide the tab we are about to open.
-        const path = normalizeProjectPath(workspacePathOfSession(meta, catalogRef.current));
-        if (looksLikeProject(path) && !sameProjectPath(projectCwdRef.current, path)) {
-          setProjectCwd(path);
-          setRecents(rememberProject(path));
-        }
         void onSelectHistorySession(meta.id);
       }),
     [onSelectHistorySession],

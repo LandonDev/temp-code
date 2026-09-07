@@ -531,7 +531,7 @@ export function registerProviders(): void {
         return {
           name: s.name,
           detail: "",
-          kind: SYMBOL_KINDS[s.kind - 1] ?? SK.Variable,
+          kind: SYMBOL_KINDS[s.kind] ?? SK.Variable,
           tags: [],
           range: range ? (toMonacoRange(range) as monaco.Range) : new monaco.Range(1, 1, 1, 1),
           selectionRange: selection
@@ -853,7 +853,7 @@ export interface WorkspaceSymbolRow {
 
 const symbolRow = (sym: LspSymbol): WorkspaceSymbolRow => ({
   name: sym.name,
-  kind: SYMBOL_KINDS[sym.kind - 1] ?? SK.Variable,
+  kind: SYMBOL_KINDS[sym.kind] ?? SK.Variable,
   containerName: sym.containerName ?? "",
   uri: sym.location?.uri ?? "",
   range: sym.location

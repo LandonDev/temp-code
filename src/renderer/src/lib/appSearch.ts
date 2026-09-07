@@ -219,6 +219,7 @@ export function searchSessionMessages(
         title,
         updatedAt: session.updatedAt,
         blockId: block.id,
+        seq: block.seq,
         role: block.role,
         preview: snippetAround(text, query),
         score: 20 + recencyBonus(session.updatedAt),
