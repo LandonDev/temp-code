@@ -91,6 +91,7 @@ export async function ensureCreated(session: Session, link = client): Promise<Se
     threadType: session.threadType ?? "chat",
     agentType: agentTypeFor(session.threadType),
     ...(session.planPath ? { planPath: session.planPath } : {}),
+    ...(session.threadRules ? { threadRules: session.threadRules } : {}),
     projectId: session.projectId ?? null,
     // A draft minted before the catalog loaded still lands in its folder's workspace.
     workspaceId:
