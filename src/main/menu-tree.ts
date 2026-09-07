@@ -123,8 +123,9 @@ export const MENU_COMMANDS: MenuCommand[] = MENU_TREE.flatMap((section) =>
   section.items.filter((item): item is { kind: 'command' } & MenuCommand => item.kind === 'command')
 ).map(({ id, label, accelerator }) => ({ id, label, ...(accelerator ? { accelerator } : {}) }))
 
-/** These two act in main; the other 34 go to the focused renderer. */
-export const MAIN_MENU_IDS = ['new_window', 'quit'] as const
+/** Quit acts in main; the other 35 go to the focused renderer (New Window
+ *  falls back to main only when no window is there to take it). */
+export const MAIN_MENU_IDS = ['quit'] as const
 
 export const RENDERER_MENU_IDS: string[] = MENU_COMMANDS.map((c) => c.id).filter(
   (id) => !(MAIN_MENU_IDS as readonly string[]).includes(id)

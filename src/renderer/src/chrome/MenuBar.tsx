@@ -1,4 +1,3 @@
-import { invoke } from "../lib/native";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ExplorerMenu, type ExplorerMenuItem } from "./ExplorerMenu";
 import { ALT, MOD, SHIFT } from "../lib/platform";
@@ -109,9 +108,6 @@ export function MenuBar({
           break;
         case "toggle_terminal":
           onToggleTerminal?.();
-          break;
-        case "new_window":
-          void invoke("open_new_window").catch(() => {});
           break;
         case "open_project":
           onPickProject?.();

@@ -27,7 +27,7 @@
  *   ⌘O                    go_to_symbol      ⌘T        show_hierarchy
  *   ⌘S                    save_all          ⌘N        new_tab
  *   ⌘K open_search  ⌘B toggle_sidebar  ⌘⌥Z toggle_zen  ⌘, open_settings
- *   ⌘⇧F find_in_project  ⌘= / ⌘- / ⌘0 zoom
+ *   ⌘⇧F find_in_project  ⌘⇧N new_window  ⌘= / ⌘- / ⌘0 zoom
  *   Tab and pane chords: lib/tabKeys.ts (⌘W ⌘D ⌘⇧D ⌘J ⌘[ ⌘] ⌘1–9 ⌘` …)
  *   Open Project has no key; it stays in the File menu.
  */
@@ -66,6 +66,7 @@ export const APP_COMMANDS = [
   "check_for_updates",
   "sidebar_opacity",
   "find_in_project",
+  "new_window",
   "find",
   "open_model_picker",
   "zoom_in",
@@ -229,6 +230,7 @@ export function createKeyResolver(now: () => number = () => performance.now()) {
 
     if (e.shiftKey) {
       if (key === "f") return { id: "find_in_project" };
+      if (key === "n") return { id: "new_window" };
       return null;
     }
 

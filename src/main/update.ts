@@ -1,4 +1,4 @@
-import { app, ipcMain, BrowserWindow } from 'electron'
+import { app, ipcMain } from 'electron'
 import { execFile, spawn } from 'node:child_process'
 import { promisify } from 'node:util'
 import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
@@ -6,6 +6,7 @@ import { readdir } from 'node:fs/promises'
 import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import release from '../../release.json'
+import { targetWindow } from './windows'
 
 const exec = promisify(execFile)
 
@@ -52,11 +53,11 @@ let status: UpdateStatus = {
   phase: 'idle'
 }
 
+/** The notice goes to the window in front, as the donor scoped it; other
+ *  windows read the same status when they ask. */
 function setStatus(patch: Partial<UpdateStatus>): void {
   status = { ...status, ...patch }
-  for (const w of BrowserWindow.getAllWindows()) {
-    w.webContents.send('update-status', status)
-  }
+  targetWindow()?.webContents.send('update-status', status)
 }
 
 /** bun lives in ~/.bun for this user; packaged apps get a bare PATH. */

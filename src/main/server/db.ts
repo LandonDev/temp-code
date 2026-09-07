@@ -159,16 +159,27 @@ const SEARCH_CAP = 200
 export class Store {
   constructor(private db: DatabaseSync) {}
 
-  getWorkspaceSnapshot(): WorkspaceSnapshot | null {
-    const raw = this.getSetting('renderer.workspaceSnapshot.v1')
+  /** One snapshot per window slot. The first window keeps the pre-M12 key
+   *  so an upgrade restores what it had; every other slot gets its own. */
+  private snapshotKey(window?: string): string {
+    const base = 'renderer.workspaceSnapshot.v1'
+    return window && window !== 'main' ? `${base}:${window}` : base
+  }
+
+  getWorkspaceSnapshot(window?: string): WorkspaceSnapshot | null {
+    const raw = this.getSetting(this.snapshotKey(window))
     return raw === null ? null : WorkspaceSnapshotSchema.parse(JSON.parse(raw))
   }
 
-  setWorkspaceSnapshot(snapshot: unknown): void {
+  setWorkspaceSnapshot(snapshot: unknown, window?: string): void {
     const valid = WorkspaceSnapshotSchema.parse(snapshot)
     const json = JSON.stringify(valid)
     if (Buffer.byteLength(json, 'utf8') > 2_000_000) throw new Error('workspace snapshot is too large')
-    this.setSetting('renderer.workspaceSnapshot.v1', json)
+    this.setSetting(this.snapshotKey(window), json)
+  }
+
+  dropWorkspaceSnapshot(window: string): void {
+    this.setSetting(this.snapshotKey(window), null)
   }
 
   setSessionWorkspace(id: string, workspaceId: string): void {

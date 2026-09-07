@@ -121,6 +121,8 @@ const api = {
   },
 
   win: {
+    /** This window's slot: names its bounds and its workspace snapshot. */
+    slot: process.argv.find((a) => a.startsWith('--tc-window-slot='))?.slice(17) ?? 'main',
     minimize: (): Promise<void> => ipcRenderer.invoke('window:minimize'),
     toggleMaximize: (): Promise<void> => ipcRenderer.invoke('window:toggle-maximize'),
     close: (): Promise<void> => ipcRenderer.invoke('window:close'),
@@ -143,7 +145,11 @@ const api = {
     onCloseRequested: (cb: () => void): (() => void) => {
       ipcRenderer.send('window:close-subscribe')
       return on('window:close-requested', cb)
-    }
+    },
+    /** Quit was confirmed in another window; write your snapshot now and
+     *  call persisted() so the exit can go on. */
+    onPersistRequested: (cb: () => void): (() => void) => on('window:persist-requested', cb),
+    persisted: (): void => ipcRenderer.send('window:persisted')
   },
 
   menu: {
@@ -184,7 +190,10 @@ const api = {
       ipcRenderer.invoke('debug:pty-flow'),
     nextPick: (paths: string[]): Promise<void> => ipcRenderer.invoke('debug:next-pick', paths),
     assetFetch: (url: string): Promise<{ status: number; body: string }> =>
-      ipcRenderer.invoke('debug:asset-fetch', url)
+      ipcRenderer.invoke('debug:asset-fetch', url),
+    windows: (): Promise<unknown[]> => ipcRenderer.invoke('debug:windows'),
+    ptys: (): Promise<unknown[]> => ipcRenderer.invoke('debug:ptys'),
+    appshot: (): Promise<number | null> => ipcRenderer.invoke('debug:appshot')
   }
 }
 
