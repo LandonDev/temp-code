@@ -182,6 +182,7 @@ const api = {
     windowTitle: (): Promise<string | undefined> => ipcRenderer.invoke('debug:window-title'),
     ptyFlow: (): Promise<{ pauses: number; resumes: number }> =>
       ipcRenderer.invoke('debug:pty-flow'),
+    nextPick: (paths: string[]): Promise<void> => ipcRenderer.invoke('debug:next-pick', paths),
     assetFetch: (url: string): Promise<{ status: number; body: string }> =>
       ipcRenderer.invoke('debug:asset-fetch', url)
   }
