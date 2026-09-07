@@ -1,21 +1,12 @@
 import { motion, useReducedMotion } from "motion/react";
-import { useMemo } from "react";
 import { SPRING_PANEL } from "../../../lib/ease";
 import { HarnessIcon } from "../../../chrome/HarnessIcon";
 import { Check, X } from "../../../chrome/icons";
-import {
-  TONE_CLASS,
-  agentLine,
-  agentStats,
-  hasStats,
-  isLiveStatus,
-  modelLabel,
-  useSessionById,
-  type AgentStats,
-} from "../../../lib/threads/agents";
+import { TONE_CLASS, hasStats, isLiveStatus, modelLabel } from "../../../lib/threads/agents";
 import { asHarness } from "../../../lib/tcserver/store";
 import type { SessionMeta } from "../../../lib/tcserver/types";
 import { Spinner, duration } from "../bits";
+import { statsParts, useAgentModel, type FleetStats } from "./useFleetModel";
 
 /**
  * One subagent as a row: status glyph, title, what it is doing, its edit
@@ -50,38 +41,31 @@ function CtxRing({ pct }: { pct: number }) {
   );
 }
 
-export function AgentStatsLine({ stats, className = "" }: { stats: AgentStats; className?: string }) {
-  if (!hasStats(stats)) return null;
-  const parts: React.ReactNode[] = [];
-  if (stats.adds > 0 || stats.dels > 0) {
-    parts.push(
-      <span key="diff">
-        <span className="text-success">+{stats.adds}</span>{" "}
-        <span className="text-danger">−{stats.dels}</span>
-      </span>,
-    );
-  }
-  if (stats.tasksTotal > 0) {
-    parts.push(
-      <span key="tasks">
-        {stats.tasksDone}/{stats.tasksTotal} tasks
-      </span>,
-    );
-  }
-  if (stats.ctxPct !== null) {
-    parts.push(
-      <span key="ctx" className="inline-flex items-center gap-1">
-        <CtxRing pct={stats.ctxPct} />
-        {stats.ctxPct}%
-      </span>,
-    );
-  }
+/** The stats as one quiet line: "+120 −45 · 3/7 tasks · 43% · ◔ 42%". */
+export function AgentStatsLine({ stats, className = "" }: { stats: FleetStats; className?: string }) {
+  if (!hasStats(stats) && !stats.compacting) return null;
+  const parts = statsParts(stats);
   return (
     <span className={`inline-flex items-center gap-1.5 text-[11px] tabular-nums text-content/45 ${className}`}>
       {parts.map((p, i) => (
-        <span key={i} className="inline-flex items-center gap-1.5">
+        <span key={p.key} className="inline-flex items-center gap-1.5">
           {i > 0 && <span className="text-content/25">·</span>}
-          {p}
+          {p.key === "diff" ? (
+            <span>
+              <span className="text-success">+{p.adds}</span> <span className="text-danger">−{p.dels}</span>
+            </span>
+          ) : p.key === "tasks" ? (
+            <span>
+              {p.done}/{p.total} tasks · {p.pct}%
+            </span>
+          ) : p.key === "compact" ? (
+            <span className="text-violet">compacting…</span>
+          ) : (
+            <span className="inline-flex items-center gap-1">
+              <CtxRing pct={p.pct} />
+              {p.pct}%
+            </span>
+          )}
         </span>
       ))}
     </span>
@@ -104,13 +88,7 @@ export function AgentRow({
   onOpen: () => void;
 }) {
   const reduce = useReducedMotion();
-  const session = useSessionById(agent.id);
-  const blocks = session?.blocks;
-  const live = isLiveStatus(agent.status);
-  const line = useMemo(() => agentLine(agent.status, blocks ?? []), [agent.status, blocks]);
-  const stats = useMemo(() => agentStats(session), [session]);
-  const elapsed = live ? now - agent.createdAt : agent.updatedAt - agent.createdAt;
-  const idle = !live && agent.status !== "waiting" && agent.status !== "error";
+  const { session, live, idle, line, stats, elapsed } = useAgentModel(agent, now);
   const cost = session?.thread?.cost;
 
   return (

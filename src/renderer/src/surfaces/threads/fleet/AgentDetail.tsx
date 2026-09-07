@@ -1,16 +1,18 @@
 import { motion, useReducedMotion } from "motion/react";
 import type { OpenFileFn } from "../../../lib/search";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { SPRING_PANEL } from "../../../lib/ease";
+import { EASE_OUT, SPRING_PANEL } from "../../../lib/ease";
 import { HarnessIcon } from "../../../chrome/HarnessIcon";
 import { ArrowUp, GitBranch, X } from "../../../chrome/icons";
 import { respondHarnessApproval } from "../../../lib/harness";
-import { agentStats, isLiveStatus, modelLabel, useMetaById, useSessionById } from "../../../lib/threads/agents";
+import { isLiveStatus, modelLabel, useMetaById, useSessionById } from "../../../lib/threads/agents";
 import * as commands from "../../../lib/tcserver/commands";
 import { asHarness } from "../../../lib/tcserver/store";
 import { AgentTranscript } from "../../AgentTranscript";
 import { StatusDot } from "../bits";
 import { AgentStatsLine } from "./AgentRow";
+import { useContextReading } from "./contextCache";
+import { fleetStats } from "./useFleetModel";
 
 /**
  * A subagent's transcript in a pane-scoped overlay: header with its
@@ -39,7 +41,9 @@ export function AgentDetail({
 }) {
   const meta = useMetaById(agentId);
   const session = useSessionById(agentId);
-  const stats = useMemo(() => agentStats(session), [session]);
+  const live = isLiveStatus(meta?.status);
+  const reading = useContextReading(agentId, live);
+  const stats = useMemo(() => fleetStats(session, reading), [session, reading]);
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -72,7 +76,6 @@ export function AgentDetail({
 
   if (!meta) return null;
   const harness = asHarness(meta.provider);
-  const live = isLiveStatus(meta.status);
   const branch = meta.cwd && meta.cwd !== parentCwd ? meta.cwd.split("/").filter(Boolean).pop() : null;
   const cost = session?.thread?.cost;
 
@@ -97,7 +100,7 @@ export function AgentDetail({
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
         transition={{ duration: 0.16 }}
-        className="absolute inset-0 bg-black/10 backdrop-blur-xs"
+        className="absolute inset-0 bg-black/10 supports-backdrop-filter:backdrop-blur-xs"
         onClick={close}
       />
       <motion.div
@@ -153,7 +156,7 @@ export function AgentDetail({
             <motion.div
               initial={reduce ? false : { opacity: 0 }}
               animate={{ opacity: 1 }}
-              transition={{ duration: 0.15 }}
+              transition={{ duration: 0.15, ease: EASE_OUT }}
               className="absolute inset-0"
             >
               <AgentTranscript

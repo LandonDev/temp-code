@@ -145,6 +145,32 @@ export function foldOptimisticUser(
 const OPEN_STATUSES = new Set(["starting", "running", "waiting"]);
 const COMPACTING = "Compacting context";
 
+function withCompaction(blocks: Block[], idx: number, compaction: Block["compaction"]): Block[] {
+  if (idx < 0 || blocks[idx]?.role !== "system") return blocks;
+  const next = blocks.slice();
+  next[idx] = { ...next[idx], compaction };
+  return next;
+}
+
+/** Stamp the child on the status row just appended (a repeat note appends nothing). */
+function withAgent(blocks: Block[], agent: NonNullable<Block["agent"]>): Block[] {
+  const last = blocks[blocks.length - 1];
+  if (last?.role !== "system" || last.agent?.id === agent.id) return blocks;
+  const next = blocks.slice();
+  next[next.length - 1] = { ...last, agent };
+  return next;
+}
+
+/** A subagent step under a spawning call: the parent's chip counts it. */
+function countSubStep(blocks: Block[], parentCallId: string): Block[] {
+  const idx = findLastIndex(blocks, (b) => b.tool?.callId === parentCallId);
+  if (idx < 0) return blocks;
+  const next = blocks.slice();
+  const parent = next[idx];
+  next[idx] = { ...parent, tool: { ...parent.tool, subCount: (parent.tool?.subCount ?? 0) + 1 } };
+  return next;
+}
+
 export function foldEvent(
   state: FoldState,
   row: EventRow,
@@ -271,10 +297,14 @@ export function foldEvent(
               ? { partialInput: e.input }
               : { input: e.input, partialInput: undefined }),
             ...(e.display ? { display: e.display } : {}),
+            ...(e.parentCallId ? { parentCallId: e.parentCallId } : {}),
           },
         },
         e.callId,
       );
+      if (e.parentCallId && !e.partial) {
+        blocks = countSubStep(blocks, e.parentCallId);
+      }
       if (persisted) {
         const idx = findLastIndex(blocks, (b) => b.tool?.callId === e.callId);
         if (idx >= 0 && blocks[idx].ts === undefined && blocks[idx].round !== undefined) {
@@ -456,9 +486,11 @@ export function foldEvent(
       if (thread.stopped) th().stopped = false;
       break;
     }
-    case "compaction":
+    case "compaction": {
+      const { type: _type, ...meta } = e;
       if (e.phase === "start") {
         blocks = appendStatusBlock(blocks, COMPACTING, fresh("s"));
+        blocks = withCompaction(blocks, blocks.length - 1, { ...meta, startedAt: row.ts });
         th().compacting = true;
       } else {
         const note =
@@ -470,12 +502,20 @@ export function foldEvent(
         if (last?.role === "system" && last.text === COMPACTING) {
           blocks = blocks.slice();
           blocks[blocks.length - 1] = { ...last, text: note };
+          blocks = withCompaction(blocks, blocks.length - 1, { ...last.compaction, ...meta });
         } else {
           blocks = appendStatusBlock(blocks, note, fresh("s"));
+          blocks = withCompaction(blocks, blocks.length - 1, meta);
+        }
+        // The meter drops with the transcript: the next turn's reading
+        // confirms, but the user should not wait for it.
+        if (e.phase === "done" && e.postTokens !== undefined) {
+          context = mergeContextUsage(context, { used: e.postTokens });
         }
         if (thread.compacting) th().compacting = false;
       }
       break;
+    }
     case "plan":
       blocks = [...sealLastStream(blocks), { id: `p:${row.seq}`, role: "plan", text: e.text }];
       break;
@@ -487,9 +527,11 @@ export function foldEvent(
       break;
     case "agent-report":
       blocks = appendStatusBlock(blocks, `Agent ${e.title}: ${e.status}`, fresh("s"));
+      blocks = withAgent(blocks, { id: e.agentId, title: e.title, status: e.status });
       break;
     case "agent-spawned":
       blocks = appendStatusBlock(blocks, `Spawned agent ${e.childSessionId}`, fresh("s"));
+      blocks = withAgent(blocks, { id: e.childSessionId });
       if (!thread.agents.includes(e.childSessionId)) {
         const t = th();
         t.agents = [...t.agents, e.childSessionId];
