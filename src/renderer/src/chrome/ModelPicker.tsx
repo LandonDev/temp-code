@@ -9,6 +9,7 @@ import {
   type ReactNode,
 } from "react";
 import {
+  allModels,
   coerceModelPickerTab,
   findModel,
   getModelSnapshot,
@@ -55,6 +56,17 @@ type Props = {
 };
 
 const MENU_WIDTH = 300;
+
+/** Search ladder across every provider: name prefix, name substring, then
+ *  "provider name" substring; null is no match. */
+export function matchRank(query: string, name: string, providerLabel: string): number | null {
+  const q = query.toLowerCase();
+  const n = name.toLowerCase();
+  if (n.startsWith(q)) return 0;
+  if (n.includes(q)) return 1;
+  if (`${providerLabel} ${name}`.toLowerCase().includes(q)) return 3;
+  return null;
+}
 const MENU_MIN_HEIGHT = 180;
 const MENU_MAX_HEIGHT = 340;
 
@@ -93,6 +105,7 @@ export function ModelPicker({
   const tabRef = useRef(tab);
   const openRef = useRef(open);
   const lastHotkey = useRef(0);
+  const searchRef = useRef(false);
 
   const shownInPicker = (id: HarnessId) =>
     showProviderInModelPicker(
@@ -141,10 +154,19 @@ export function ModelPicker({
     setQuery("");
   }, [open]);
 
+  const searching = query.trim().length > 0;
+
   useEffect(() => {
-    if (!open || visibleTab === "favorites") return;
+    if (!open) return;
+    if (searching) {
+      void refreshHarnessCatalogs(pickerHarnesses);
+      return;
+    }
+    if (visibleTab === "favorites") return;
     void refreshHarnessCatalogs([visibleTab]);
-  }, [open, visibleTab]);
+    // pickerHarnesses is derived from the availability snapshot below.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, visibleTab, searching, availabilityVersion]);
 
   useEffect(() => {
     const inBlockingUi = (target: EventTarget | null) => {
@@ -183,6 +205,8 @@ export function ModelPicker({
       if (mod || e.altKey || e.shiftKey) return;
       if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
       if (inBlockingUi(e.target)) return;
+      // Search spans every provider, so there is no tab to step.
+      if (searchRef.current) return;
       e.preventDefault();
       e.stopPropagation();
       selectTab(
@@ -212,10 +236,12 @@ export function ModelPicker({
     if (open) search.current?.focus();
   }, [open]);
 
+  searchRef.current = searching;
+
   const visible = useMemo(() => {
-    const needle = query.trim().toLowerCase();
-    const pool =
-      visibleTab === "favorites"
+    const needle = query.trim();
+    if (!needle) {
+      return visibleTab === "favorites"
         ? favorites
             .map((id) => findModel(id))
             .filter(
@@ -223,12 +249,22 @@ export function ModelPicker({
                 item != null && shownInPicker(item.harness),
             )
         : modelsFor(visibleTab);
-    if (!needle) return pool;
-    return pool.filter((item) => {
-      const hay =
-        `${item.name} ${HARNESS_TITLE[item.harness]} ${HARNESS_LABEL[item.harness]}`.toLowerCase();
-      return hay.includes(needle);
-    });
+    }
+    // Typing searches every shown provider: rank ladder, favorites first
+    // within a rank, catalog order last.
+    return allModels()
+      .filter((item) => shownInPicker(item.harness))
+      .flatMap((item, order) => {
+        const rank = matchRank(
+          needle,
+          item.name,
+          `${HARNESS_TITLE[item.harness]} ${HARNESS_LABEL[item.harness]}`,
+        );
+        if (rank == null) return [];
+        return [{ item, rank: rank * 2 + (favorites.includes(item.id) ? 0 : 1), order }];
+      })
+      .sort((a, b) => a.rank - b.rank || a.order - b.order)
+      .map((row) => row.item);
     // Catalog, install probes, and picker-visibility all feed this list:
     // catalogs land after mount, and hiding a provider must drop its favorites.
   }, [
@@ -337,6 +373,7 @@ export function ModelPicker({
           data-model-picker
           className="flex flex-col overflow-hidden"
         >
+          {searching ? null : (
           <nav
             role="tablist"
             aria-label="Providers"
@@ -366,6 +403,7 @@ export function ModelPicker({
               </ProviderTabButton>
             ))}
           </nav>
+          )}
 
           <div className="flex min-h-0 min-w-0 flex-1 flex-col">
             <div className="pb-1.5">
@@ -389,7 +427,9 @@ export function ModelPicker({
               currentId={current.id}
               favorites={favorites}
               emptyLabel={
-                visibleTab === "favorites" && !query.trim()
+                searching
+                  ? "No matching models"
+                  : visibleTab === "favorites" && !query.trim()
                   ? "No favorite models"
                   : visibleTab !== "favorites" &&
                       !isHarnessAvailable(visibleTab)

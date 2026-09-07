@@ -213,7 +213,7 @@ export const SessionPane = memo(function SessionPane({
     setNewPassArmed(armed);
     if (armed) {
       requestAnimationFrame(() => {
-        rootRef.current?.querySelector<HTMLTextAreaElement>("[data-composer-box] textarea")?.focus();
+        rootRef.current?.querySelector<HTMLElement>("[data-composer-box] [data-composer-input]")?.focus();
       });
     }
   }, []);
@@ -244,6 +244,7 @@ export const SessionPane = memo(function SessionPane({
     queue.length > 0 ? (
       <MessageQueue
         items={queue}
+        sessionId={session.id}
         paused={paused}
         onSteer={(id) => void serverCommands.queueSteer(session.id, id).catch(() => undefined)}
         onRemove={(id) => void serverCommands.queueRemove(session.id, id).catch(() => undefined)}

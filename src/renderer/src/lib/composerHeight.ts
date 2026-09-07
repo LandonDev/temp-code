@@ -4,7 +4,7 @@
  * layout, then let the transition carry it. The box is bottom-anchored so
  * it grows upward. Reduced motion, or no change, snaps.
  */
-export function morphTextareaHeight(el: HTMLTextAreaElement, max: number): void {
+export function morphTextareaHeight(el: HTMLElement, max: number): void {
   const prev = el.style.height;
   el.style.transition = "none";
   el.style.height = "auto";
