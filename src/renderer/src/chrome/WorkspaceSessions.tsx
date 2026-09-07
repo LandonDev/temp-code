@@ -4,7 +4,6 @@ import {
   useState,
   useSyncExternalStore,
   type KeyboardEvent as ReactKeyboardEvent,
-  type MouseEvent as ReactMouseEvent,
   type ReactNode,
 } from "react";
 import { MotionConfig, motion } from "motion/react";
@@ -27,9 +26,25 @@ import {
 import { TerminalSpinner } from "./TerminalSpinner";
 import { duration, timeAgo } from "../lib/format";
 import { modelLabel } from "../lib/threads/agents";
-import { AGENT_GLYPHS } from "../surfaces/threads/bits";
+import {
+  AGENT_GLYPHS,
+  MatrixSpinner,
+  THREAD_GLYPHS,
+  THREAD_TINTS,
+} from "../surfaces/threads/bits";
+import {
+  cardTasks,
+  cardTooltip,
+  pausedElapsed,
+  projectCardStatus,
+  projectRunAction,
+  quietSummary,
+  runningElapsed,
+  stoppableThreads,
+  type CardThread,
+} from "../lib/projectCardModel";
 import { useLastSeen } from "../lib/sessionSeen";
-import { interrupt } from "../lib/tcserver/commands";
+import { interrupt, pause, resume } from "../lib/tcserver/commands";
 import {
   archiveProject,
   deleteProject,
@@ -44,7 +59,6 @@ import type {
 import { useWorkspaceCatalog } from "../lib/tcserver/workspaces";
 import {
   groupWorkspaceSessions,
-  summarizeThreads,
   type ProjectGroup,
   type ThreadRow,
 } from "../lib/workspaceSessions";
@@ -119,11 +133,25 @@ function Spinner() {
   );
 }
 
-function Stat({ n, label, tone }: { n: number; label: string; tone: string }) {
-  if (!n) return null;
+function Stat({
+  dot,
+  tint,
+  pulse,
+  count,
+  word,
+}: {
+  dot: string;
+  tint: string;
+  pulse?: boolean;
+  count: number;
+  word: string;
+}) {
   return (
-    <span className={tone}>
-      {n} {label}
+    <span className={`flex shrink-0 items-center gap-1 ${tint}`}>
+      <span
+        className={`size-1.5 rounded-full ${dot} ${pulse ? "animate-pulse" : ""}`}
+      />
+      {count} {word}
     </span>
   );
 }
@@ -371,59 +399,102 @@ function ThreadRows({ thread, actions }: { thread: ThreadRow; actions: RowAction
   );
 }
 
-function LiveStrip({
-  threads,
-  now,
-  onOpen,
-}: {
-  threads: ThreadRow[];
-  now: number;
-  onOpen: (id: string) => void;
-}) {
-  const live = threads.filter((t) => t.running || t.paused || t.unread);
-  if (!live.length) return null;
+type Tasks = NonNullable<CardThread["tasks"]>;
+
+/** An implementation thread's tally and current task, one step in. */
+function TaskLine({ tasks, paused }: { tasks: Tasks; paused?: boolean }) {
+  const tally = paused
+    ? "text-warning/80"
+    : tasks.done === tasks.total
+      ? "text-success"
+      : "text-content/70";
   return (
-    <div className="divide-y divide-content/10 border-y border-content/10">
-      {live.map((t) => {
-        const elapsed = now - (t.busySince ?? t.updatedAt);
+    <div className="flex items-center gap-1.5 pl-3 text-[11px] leading-4">
+      <span
+        className={`shrink-0 text-[10.5px] tabular-nums ${tally}`}
+        title={`${tasks.done} of ${tasks.total} tasks done`}
+      >
+        {tasks.done}/{tasks.total}
+      </span>
+      {tasks.current ? (
+        <span className={`truncate ${paused ? "text-warning/70" : "text-content/45"}`}>
+          {tasks.current}
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
+function ThreadGlyph({ thread }: { thread: ThreadRow }) {
+  const type = thread.threadType ?? "chat";
+  const Glyph = THREAD_GLYPHS[type];
+  return <Glyph className={`size-3 shrink-0 opacity-80 ${THREAD_TINTS[type]}`} />;
+}
+
+/** One line per live-or-unseen thread, status leading the eye: tinted
+ *  spinner (or the blue unread dot) up front, title, elapsed at the end.
+ *  A paused line freezes its elapsed where the pause left it. */
+function LiveLines({
+  status,
+  now,
+}: {
+  status: ReturnType<typeof projectCardStatus<ThreadRow>>;
+  now: number;
+}) {
+  if (!status.running.length && !status.paused.length && !status.unread.length)
+    return null;
+  return (
+    <div className="w-full divide-y divide-content/10 border-y border-content/10">
+      {status.running.map((t) => {
+        const ms = runningElapsed(t, now);
+        const tasks = cardTasks(t);
         return (
-          <button
-            key={t.id}
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              onOpen(t.id);
-            }}
-            className={`flex h-7 w-full items-center gap-1.5 px-2 text-left text-[12px] ${
-              t.paused
-                ? "bg-amber-400/5 text-amber-400"
-                : "text-content/60 hover:bg-content/5"
-            }`}
-          >
-            {t.running ? (
-              <Spinner />
-            ) : t.paused ? (
-              <Pause className="size-3 shrink-0" />
-            ) : (
-              <span className="size-1.5 shrink-0 rounded-full bg-accent" />
-            )}
-            <span
-              className={`min-w-0 flex-1 truncate ${t.unread ? "font-medium text-content" : ""}`}
-            >
-              {t.title || "Untitled"}
-            </span>
-            {t.running ? (
-              <span
-                className={`shrink-0 text-[11px] tabular-nums text-content/45 ${elapsed < 3000 ? "opacity-0" : ""}`}
-              >
-                {duration(elapsed)}
+          <div key={t.id} className="w-full py-[3px]" title={t.activity ?? undefined}>
+            <div className="flex w-full items-center gap-1.5 text-[11px] leading-4">
+              <MatrixSpinner cell={1.8} tint={t.activityKind} />
+              <ThreadGlyph thread={t} />
+              <span className="min-w-0 flex-1 truncate text-content/55">
+                {t.title || "Untitled"}
               </span>
-            ) : t.paused ? (
-              <span className="shrink-0 text-[11px]">Paused</span>
-            ) : null}
-          </button>
+              <span
+                className={`shrink-0 text-[10.5px] whitespace-nowrap tabular-nums text-content/45 ${ms < 3000 ? "opacity-0" : ""}`}
+              >
+                {duration(ms)}
+              </span>
+            </div>
+            {tasks ? <TaskLine tasks={tasks} /> : null}
+          </div>
         );
       })}
+      {status.paused.map((t) => {
+        const tasks = cardTasks(t);
+        return (
+          <div key={t.id} className="w-full bg-warning/5 py-[3px]">
+            <div className="flex w-full items-center gap-1.5 text-[11px] leading-4 text-warning">
+              <Pause className="size-3 shrink-0 fill-current" strokeWidth={1.8} />
+              <ThreadGlyph thread={t} />
+              <span className="min-w-0 flex-1 truncate">{t.title || "Untitled"}</span>
+              <span className="shrink-0 font-medium">Paused</span>
+              <span className="shrink-0 text-[10.5px] tabular-nums text-current/75">
+                {duration(pausedElapsed(t))}
+              </span>
+            </div>
+            {tasks ? <TaskLine tasks={tasks} paused /> : null}
+          </div>
+        );
+      })}
+      {status.unread.map((t) => (
+        <div
+          key={t.id}
+          className="flex w-full items-center gap-1.5 py-[3px] text-[11px] leading-4"
+        >
+          <span className="size-1.5 shrink-0 rounded-full bg-info" />
+          <ThreadGlyph thread={t} />
+          <span className="min-w-0 flex-1 truncate font-medium text-content">
+            {t.title || "Untitled"}
+          </span>
+        </div>
+      ))}
     </div>
   );
 }
@@ -434,6 +505,7 @@ type CardProps = {
   group: ProjectGroup;
   selected: boolean;
   now: number;
+  lastSeen: Record<string, number>;
   rows: RowActions;
   onSelect: () => void;
   onNewChat: () => void;
@@ -443,10 +515,14 @@ type CardProps = {
   onDelete: () => void;
 };
 
+/** temp-code's project card: always the summary, never a thread list. The
+ *  strip above the pane is where the threads live; this card only says how
+ *  the project is doing and selects it the moment the pointer lands. */
 function ProjectCard({
   group,
   selected,
   now,
+  lastSeen,
   rows,
   onSelect,
   onNewChat,
@@ -456,52 +532,60 @@ function ProjectCard({
   onDelete,
 }: CardProps) {
   const { project, threads, latest, archivedCount } = group;
-  const [collapsed, setCollapsed] = useState(false);
   const [renaming, setRenaming] = useState(false);
-  useEffect(() => setCollapsed(false), [selected]);
-  const expanded = selected && !collapsed;
-  const sum = summarizeThreads(threads);
-  const running = threads.filter((t) => t.running);
+  const status = projectCardStatus(threads, rows.activeSessionId ?? null, lastSeen);
+  const runAction = projectRunAction(status);
+  const stoppable = stoppableThreads(status);
+  const teardown = project.mode === "worktree" && Boolean(project.branch);
   const showSummary =
-    sum.needYou ||
-    sum.failed ||
-    sum.paused ||
-    sum.dormant ||
-    archivedCount ||
-    !threads.length;
+    status.waiting > 0 ||
+    status.failed > 0 ||
+    status.paused.length > 0 ||
+    status.dormant > 0 ||
+    archivedCount > 0 ||
+    threads.length === 0;
 
-  const menu = (at: { x: number; y: number }) =>
+  const menu = (at: { x: number; y: number }) => {
+    const items: ExplorerMenuItem[] = [
+      { kind: "item", id: "chat", label: "New chat" },
+      { kind: "item", id: "rename", label: "Rename" },
+      { kind: "item", id: "settings", label: "Project settings" },
+    ];
+    if (runAction === "resume")
+      items.push({ kind: "item", id: "resume", label: "Continue paused threads" });
+    else if (runAction === "pause")
+      items.push({ kind: "item", id: "pause", label: "Pause active threads" });
+    if (stoppable.length)
+      items.push(
+        { kind: "item", id: "stop", label: "Stop active threads", danger: true },
+        { kind: "sep" },
+      );
+    items.push(
+      {
+        kind: "item",
+        id: "archive",
+        label: teardown ? "Archive project…" : "Archive project",
+      },
+      { kind: "sep" },
+      { kind: "item", id: "delete", label: "Delete project…", danger: true },
+    );
     rows.openMenu({
       ...at,
-      items: [
-        { kind: "item", id: "chat", label: "New chat" },
-        { kind: "item", id: "rename", label: "Rename" },
-        { kind: "item", id: "settings", label: "Project settings" },
-        {
-          kind: "item",
-          id: "stop",
-          label: "Stop threads",
-          disabled: !running.length,
-        },
-        { kind: "sep" },
-        { kind: "item", id: "archive", label: "Archive" },
-        { kind: "item", id: "delete", label: "Delete", danger: true },
-      ],
+      items,
       onPick: (id) => {
         if (id === "chat") onNewChat();
         else if (id === "rename") setRenaming(true);
         else if (id === "settings") onSettings();
-        else if (id === "stop") running.forEach((t) => void interrupt(t.id));
+        else if (id === "resume")
+          void Promise.allSettled(status.paused.map((t) => resume(t.id)));
+        else if (id === "pause")
+          void Promise.allSettled(status.running.map((t) => pause(t.id)));
+        else if (id === "stop")
+          void Promise.allSettled(stoppable.map((t) => interrupt(t.id)));
         else if (id === "archive") onArchive();
         else if (id === "delete") onDelete();
       },
     });
-
-  const onHeaderClick = (e: ReactMouseEvent) => {
-    if (renaming) return;
-    e.stopPropagation();
-    if (selected) setCollapsed((c) => !c);
-    else onSelect();
   };
 
   return (
@@ -511,26 +595,25 @@ function ProjectCard({
         e.preventDefault();
         menu({ x: e.clientX, y: e.clientY });
       }}
-      className={`group/card relative rounded-lg border border-content/10 ${
-        selected ? "bg-content/8" : "hover:bg-content/5"
-      }`}
+      className="group/card relative isolate rounded-md border border-content/10"
     >
+      {selected ? <ActivePill /> : null}
       <div
         role="button"
         tabIndex={0}
-        onClick={onHeaderClick}
-        onKeyDown={(e) =>
-          e.key === "Enter" &&
-          !renaming &&
-          (selected ? setCollapsed((c) => !c) : onSelect())
-        }
-        className="flex cursor-default flex-col gap-0.5 px-2 pt-2 pb-1.5"
+        title={cardTooltip(status, archivedCount)}
+        onPointerDown={() => !renaming && !selected && onSelect()}
+        onKeyDown={(e) => e.key === "Enter" && !renaming && onSelect()}
+        onDoubleClick={() => setRenaming(true)}
+        className={`relative flex w-full cursor-default flex-col gap-[3px] rounded-md px-2 py-2 text-left ${
+          selected ? "" : "hover:bg-content/5"
+        }`}
       >
-        <div className="flex items-center gap-1.5">
+        <div className="flex w-full items-center gap-2">
           {renaming ? (
             <InlineRename
               value={project.name}
-              className="text-[13px] font-medium"
+              className="text-[13px]"
               onCommit={(n) => {
                 setRenaming(false);
                 onRename(n);
@@ -540,80 +623,57 @@ function ProjectCard({
           ) : (
             <>
               <span
-                onDoubleClick={(e) => {
-                  e.stopPropagation();
-                  setRenaming(true);
-                }}
-                className={`min-w-0 flex-1 truncate text-[13px] font-medium ${
+                className={`min-w-0 flex-1 truncate text-[13px] leading-5 ${
                   selected ? "text-content" : "text-content/80"
                 }`}
               >
                 {project.name}
               </span>
-              <span className="shrink-0 text-[11px] tabular-nums text-content/45 group-hover/card:opacity-0">
-                {timeAgo(latest, now)}
-              </span>
-              <Kebab
-                className="absolute top-2 right-1.5 opacity-0 group-hover/card:opacity-100 focus:opacity-100"
-                onOpen={(el) => menu(menuAt(el))}
-              />
+              {latest > 0 ? (
+                <span className="shrink-0 text-[11px] tabular-nums text-content/45 group-hover/card:opacity-0">
+                  {timeAgo(latest, now)}
+                </span>
+              ) : null}
             </>
           )}
         </div>
-        <div className="flex min-w-0 items-center gap-1 text-[11px] text-content/45">
-          <GitBranch className="size-3 shrink-0" />
-          <span className="truncate font-mono">
-            {project.branch ?? "local checkout"}
+
+        <div className="flex w-full items-center gap-1 text-[11px] leading-4 text-content/55">
+          <GitBranch className="size-2.5 shrink-0" />
+          <span className="truncate">{project.branch ?? "local checkout"}</span>
+          <span className="shrink-0 text-content/40">
+            · {project.mode === "worktree" ? "worktree" : "local"}
           </span>
-          <span className="shrink-0">· {project.mode}</span>
         </div>
+
+        <LiveLines status={status} now={now} />
+
+        {showSummary ? (
+          <div className="flex w-full items-center gap-2 text-[11px] leading-4 tabular-nums">
+            {status.waiting > 0 ? (
+              <Stat dot="bg-warning" tint="text-warning" pulse count={status.waiting} word="need you" />
+            ) : null}
+            {status.failed > 0 ? (
+              <Stat dot="bg-danger" tint="text-danger" count={status.failed} word="failed" />
+            ) : null}
+            {status.paused.length > 0 ? (
+              <span className="flex shrink-0 items-center gap-1 text-warning">
+                <Pause className="size-3 fill-current" strokeWidth={1.8} />
+                {status.paused.length} paused
+              </span>
+            ) : null}
+            <span className="truncate text-content/45">
+              {quietSummary(status, archivedCount)}
+            </span>
+          </div>
+        ) : null}
       </div>
-
-      <Fold open={!expanded}>
-        <div className="pb-1.5">
-          <LiveStrip threads={threads} now={now} onOpen={rows.onOpen} />
-          {showSummary ? (
-            <div className="flex flex-wrap items-center gap-x-2 px-2 pt-1.5 text-[11px] text-content/45">
-              <Stat n={sum.needYou} label="need you" tone="text-amber-400" />
-              <Stat n={sum.failed} label="failed" tone="text-red-400" />
-              <Stat n={sum.paused} label="paused" tone="text-amber-400/80" />
-              {threads.length ? (
-                <span>
-                  {[
-                    sum.dormant ? `${sum.dormant} dormant` : null,
-                    archivedCount ? `${archivedCount} archived` : null,
-                  ]
-                    .filter(Boolean)
-                    .join(" · ")}
-                </span>
-              ) : (
-                <span>
-                  {archivedCount ? `${archivedCount} archived` : "No threads"}
-                </span>
-              )}
-            </div>
-          ) : null}
-        </div>
-      </Fold>
-
-      <Fold open={expanded}>
-        <div className="flex flex-col gap-px px-1 pb-1.5">
-          {threads.map((t) => (
-            <ThreadRows key={t.id} thread={t} actions={rows} />
-          ))}
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              onNewChat();
-            }}
-            className="flex h-7 items-center gap-1.5 rounded-md px-2 text-[12px] text-content/50 hover:bg-content/5 hover:text-content"
-          >
-            <Plus className="size-3.5" />
-            New chat
-          </button>
-        </div>
-      </Fold>
+      {!renaming ? (
+        <Kebab
+          className="absolute top-2 right-1.5 opacity-0 group-hover/card:opacity-100 focus:opacity-100"
+          onOpen={(el) => menu(menuAt(el))}
+        />
+      ) : null}
     </section>
   );
 }
@@ -723,9 +783,9 @@ export default function WorkspaceSessions({
   const workspace: WorkspaceMeta | undefined = workspaces.find(
     (w) => w.id === workspaceId,
   );
+  const live = (t: ThreadRow) => t.running || Boolean(t.treeHasLiveWork);
   const anyRunning =
-    groups.chats.some((t) => t.running) ||
-    groups.projects.some((g) => g.threads.some((t) => t.running));
+    groups.chats.some(live) || groups.projects.some((g) => g.threads.some(live));
   const now = useNow(anyRunning);
 
   const [menu, setMenu] = useState<MenuState | null>(null);
@@ -768,6 +828,7 @@ export default function WorkspaceSessions({
           group={group}
           selected={group.project.id === selectedProjectId}
           now={now}
+          lastSeen={lastSeen}
           rows={rows}
           onSelect={() => onSelectProject(group.project.id)}
           onNewChat={() => onNewChat(group.project.id)}
