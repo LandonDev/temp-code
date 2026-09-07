@@ -4513,7 +4513,6 @@ export default function App({
                     <PaneTree
                       visible={tab.id === activeTabId}
                       layout={tab.layout}
-                      sessions={sessions}
                       editorPanes={[
                         ...tab.editorPanes,
                         ...(tab.terminalPanes ?? []),
