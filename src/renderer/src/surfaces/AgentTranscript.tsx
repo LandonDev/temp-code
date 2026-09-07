@@ -295,9 +295,14 @@ export function AgentTranscript({
     return () => observer.disconnect();
   }, [scrollerEl, setShowJump]);
 
-  const turns = groupTurns(blocks);
+  const previousTurns = useRef<Block[][]>([]);
+  const turns = useMemo(() => {
+    const next = stableTurns(groupTurns(blocks), previousTurns.current);
+    previousTurns.current = next;
+    return next;
+  }, [blocks]);
   const firstVisibleTurn = Math.max(0, turns.length - visibleTurnCount);
-  const visibleTurns = turns.slice(firstVisibleTurn);
+  const visibleTurns = useMemo(() => turns.slice(firstVisibleTurn), [turns, firstVisibleTurn]);
 
   useLayoutEffect(() => {
     const previousHeight = prependHeight.current;
@@ -338,112 +343,26 @@ export function AgentTranscript({
             </button>
           </div>
         ) : null}
-        {visibleTurns.map((turn, turnIndex) => {
-          const isLastTurn = firstVisibleTurn + turnIndex === turns.length - 1;
-          const userBlock = turnUserBlock(turn);
-          // A steered turn closes its earlier sections by doneTs alone.
-          const durationMs =
-            userBlock?.durationMs ??
-            (userBlock?.doneTs != null && userBlock.startedAt != null
-              ? Math.max(0, userBlock.doneTs - userBlock.startedAt)
-              : undefined);
-          const settled = !(busy && isLastTurn);
-          const items = groupTurnItems(turn, zen);
-          // Where the work ends and the answer begins, in zen: the last group
-          // of activity in the turn.
-          const foldedAt = zen ? lastActivityIndex(items) : -1;
-          const startedAt = userBlock?.startedAt;
-          // The agent starting its answer is the end of the work: fold the
-          // groups then, not when the turn finally settles, so the collapse
-          // never lands under the text you have already started reading.
-          const answering =
-            foldedAt >= 0 &&
-            items
-              .slice(foldedAt + 1)
-              .some(
-                (item) => item.type === "block" && isProseBlock(item.block),
-              );
-          return (
-            <div
-              key={turn[0].id}
-              className={`transcript-turn flex min-w-0 flex-col gap-1${
-                isLastTurn ? " transcript-turn-live" : ""
-              }${
-                promptAnchor && anchorTurn && isLastTurn && userBlock
-                  ? " transcript-turn-anchor"
-                  : ""
-              }`}
-            >
-              {items.map((item, itemIndex) =>
-                item.type === "activity" ? (
-                  zen ? (
-                    <ActivityPhases
-                      key={item.blocks[0].id}
-                      blocks={item.blocks}
-                      cwd={cwd}
-                      done={settled || answering}
-                      onApproval={onApproval}
-                      onOpenFile={onOpenFile}
-                      onOpenDiff={onOpenDiff}
-                    />
-                  ) : (
-                    <ActivityGroup
-                      key={item.blocks[0].id}
-                      blocks={item.blocks}
-                      cwd={cwd}
-                      onApproval={onApproval}
-                      onOpenFile={onOpenFile}
-                      onOpenDiff={onOpenDiff}
-                    />
-                  )
-                ) : (
-                  <TranscriptBlock
-                    key={item.block.id}
-                    block={item.block}
-                    layout={transcriptLayout}
-                    stickyIndex={firstVisibleTurn + turnIndex + 1}
-                    compactTop={
-                      foldedAt >= 0 &&
-                      itemIndex === foldedAt + 1 &&
-                      isProseBlock(item.block)
-                    }
-                    onApproval={onApproval}
-                    onOpenFile={onOpenFile}
-                    onOpenDiff={onOpenDiff}
-                    cwd={cwd}
-                  />
-                ),
-              )}
-              {durationMs != null && settled ? (
-                <TurnDuration
-                  elapsedMs={durationMs}
-                  done
-                  completedAt={
-                    startedAt != null ? startedAt + durationMs : undefined
-                  }
-                  copyText={threadMentionsToTitles(turnCopyText(turn), storeTitleOf)}
-                  onSaveNote={onSaveNote}
-                  fromHarness={
-                    harness ? harnessForTurn(blocks, turn, harness) : undefined
-                  }
-                  onSecondOpinion={
-                    onSecondOpinion
-                      ? (target, model) => onSecondOpinion(target, turn, model)
-                      : undefined
-                  }
-                  onHandoff={
-                    onHandoff
-                      ? (target, model) => onHandoff(target, turn, model)
-                      : undefined
-                  }
-                />
-              ) : null}
-              {isLastTurn && (!settled || (durationMs == null && turnState && isTurnPaused(turnState))) ? (
-                <LiveTurnDuration turn={turn} />
-              ) : null}
-            </div>
-          );
-        })}
+        <TurnList
+          visibleTurns={visibleTurns}
+          firstVisibleTurn={firstVisibleTurn}
+          turnCount={turns.length}
+          busy={!!busy}
+          zen={zen}
+          promptAnchor={promptAnchor}
+          anchorTurn={anchorTurn}
+          cwd={cwd}
+          layout={transcriptLayout}
+          blocks={blocks}
+          harness={harness}
+          turnState={turnState ?? null}
+          onApproval={onApproval}
+          onOpenFile={onOpenFile}
+          onOpenDiff={onOpenDiff}
+          onSaveNote={onSaveNote}
+          onSecondOpinion={onSecondOpinion}
+          onHandoff={onHandoff}
+        />
       </div>
       {onAddToChat ? (
         <TranscriptSelectionMenu
@@ -458,6 +377,236 @@ export function AgentTranscript({
     </SelectSessionContext.Provider>
   );
 }
+
+/**
+ * Re-uses the previous array for every turn whose blocks are the same
+ * objects, so folding a delta into the live turn leaves the rest untouched
+ * and their memoised views hold.
+ */
+function stableTurns(next: Block[][], previous: Block[][]): Block[][] {
+  let changed = next.length !== previous.length;
+  const out = next.map((turn, i) => {
+    const old = previous[i];
+    if (old && old.length === turn.length && old.every((block, j) => block === turn[j])) return old;
+    changed = true;
+    return turn;
+  });
+  return changed ? out : previous;
+}
+
+type TurnListProps = {
+  visibleTurns: Block[][];
+  firstVisibleTurn: number;
+  turnCount: number;
+  busy: boolean;
+  zen: boolean;
+  promptAnchor: boolean;
+  anchorTurn: boolean;
+  cwd?: string;
+  layout: TranscriptLayout;
+  blocks: Block[];
+  harness?: HarnessId;
+  turnState: TurnSession | null;
+  onApproval?: Props["onApproval"];
+  onOpenFile?: OpenFileFn;
+  onOpenDiff?: (path: string) => void;
+  onSaveNote?: (text: string) => void;
+  onSecondOpinion?: Props["onSecondOpinion"];
+  onHandoff?: Props["onHandoff"];
+};
+
+/**
+ * The turns on the page. Memoised on the transcript's inputs alone, so a
+ * tab coming back into view (`visible` flipping, a scroll effect) renders
+ * the scroller shell and none of the rows.
+ */
+const TurnList = memo(function TurnList({
+  visibleTurns,
+  firstVisibleTurn,
+  turnCount,
+  busy,
+  zen,
+  promptAnchor,
+  anchorTurn,
+  cwd,
+  layout,
+  blocks,
+  harness,
+  turnState,
+  onApproval,
+  onOpenFile,
+  onOpenDiff,
+  onSaveNote,
+  onSecondOpinion,
+  onHandoff,
+}: TurnListProps) {
+  // Resolved here as plain strings so a turn's view keeps stable props.
+  const fromHarnesses = useMemo(
+    () => visibleTurns.map((turn) => (harness ? harnessForTurn(blocks, turn, harness) : undefined)),
+    [blocks, harness, visibleTurns],
+  );
+  return (
+    <>
+      {visibleTurns.map((turn, turnIndex) => {
+        const isLastTurn = firstVisibleTurn + turnIndex === turnCount - 1;
+        return (
+          <TurnView
+            key={turn[0].id}
+            turn={turn}
+            stickyIndex={firstVisibleTurn + turnIndex + 1}
+            isLastTurn={isLastTurn}
+            settled={!(busy && isLastTurn)}
+            anchored={promptAnchor && anchorTurn && isLastTurn}
+            zen={zen}
+            cwd={cwd}
+            layout={layout}
+            fromHarness={fromHarnesses[turnIndex]}
+            turnState={isLastTurn ? turnState : null}
+            onApproval={onApproval}
+            onOpenFile={onOpenFile}
+            onOpenDiff={onOpenDiff}
+            onSaveNote={onSaveNote}
+            onSecondOpinion={onSecondOpinion}
+            onHandoff={onHandoff}
+          />
+        );
+      })}
+    </>
+  );
+});
+
+type TurnViewProps = {
+  turn: Block[];
+  stickyIndex: number;
+  isLastTurn: boolean;
+  settled: boolean;
+  anchored: boolean;
+  zen: boolean;
+  cwd?: string;
+  layout: TranscriptLayout;
+  fromHarness?: HarnessId;
+  /** The session, for the live turn only; older turns never see it change. */
+  turnState: TurnSession | null;
+  onApproval?: Props["onApproval"];
+  onOpenFile?: OpenFileFn;
+  onOpenDiff?: (path: string) => void;
+  onSaveNote?: (text: string) => void;
+  onSecondOpinion?: Props["onSecondOpinion"];
+  onHandoff?: Props["onHandoff"];
+};
+
+/**
+ * One turn. Its `turn` array keeps its identity while its blocks do (see
+ * `stableTurns`), so a streamed delta re-renders the live turn alone.
+ */
+const TurnView = memo(function TurnView({
+  turn,
+  stickyIndex,
+  isLastTurn,
+  settled,
+  anchored,
+  zen,
+  cwd,
+  layout,
+  fromHarness,
+  turnState,
+  onApproval,
+  onOpenFile,
+  onOpenDiff,
+  onSaveNote,
+  onSecondOpinion,
+  onHandoff,
+}: TurnViewProps) {
+  const userBlock = turnUserBlock(turn);
+  // A steered turn closes its earlier sections by doneTs alone.
+  const durationMs =
+    userBlock?.durationMs ??
+    (userBlock?.doneTs != null && userBlock.startedAt != null
+      ? Math.max(0, userBlock.doneTs - userBlock.startedAt)
+      : undefined);
+  const items = useMemo(() => groupTurnItems(turn, zen), [turn, zen]);
+  // Where the work ends and the answer begins, in zen: the last group
+  // of activity in the turn.
+  const foldedAt = zen ? lastActivityIndex(items) : -1;
+  const startedAt = userBlock?.startedAt;
+  // The agent starting its answer is the end of the work: fold the
+  // groups then, not when the turn finally settles, so the collapse
+  // never lands under the text you have already started reading.
+  const answering =
+    foldedAt >= 0 &&
+    items
+      .slice(foldedAt + 1)
+      .some((item) => item.type === "block" && isProseBlock(item.block));
+  return (
+    <div
+      className={`transcript-turn flex min-w-0 flex-col gap-1${
+        isLastTurn ? " transcript-turn-live" : ""
+      }${anchored && userBlock ? " transcript-turn-anchor" : ""}`}
+    >
+      {items.map((item, itemIndex) =>
+        item.type === "activity" ? (
+          zen ? (
+            <ActivityPhases
+              key={item.blocks[0].id}
+              blocks={item.blocks}
+              cwd={cwd}
+              done={settled || answering}
+              onApproval={onApproval}
+              onOpenFile={onOpenFile}
+              onOpenDiff={onOpenDiff}
+            />
+          ) : (
+            <ActivityGroup
+              key={item.blocks[0].id}
+              blocks={item.blocks}
+              cwd={cwd}
+              onApproval={onApproval}
+              onOpenFile={onOpenFile}
+              onOpenDiff={onOpenDiff}
+            />
+          )
+        ) : (
+          <TranscriptBlock
+            key={item.block.id}
+            block={item.block}
+            layout={layout}
+            stickyIndex={stickyIndex}
+            compactTop={
+              foldedAt >= 0 &&
+              itemIndex === foldedAt + 1 &&
+              isProseBlock(item.block)
+            }
+            onApproval={onApproval}
+            onOpenFile={onOpenFile}
+            onOpenDiff={onOpenDiff}
+            cwd={cwd}
+          />
+        ),
+      )}
+      {durationMs != null && settled ? (
+        <TurnDuration
+          elapsedMs={durationMs}
+          done
+          completedAt={startedAt != null ? startedAt + durationMs : undefined}
+          copyText={threadMentionsToTitles(turnCopyText(turn), storeTitleOf)}
+          onSaveNote={onSaveNote}
+          fromHarness={fromHarness}
+          onSecondOpinion={
+            onSecondOpinion
+              ? (target, model) => onSecondOpinion(target, turn, model)
+              : undefined
+          }
+          onHandoff={
+            onHandoff ? (target, model) => onHandoff(target, turn, model) : undefined
+          }
+        />
+      ) : null}
+      {isLastTurn && (!settled || (durationMs == null && turnState && isTurnPaused(turnState))) ? (
+        <LiveTurnDuration turn={turn} />
+      ) : null}
+    </div>
+  );
+});
 
 /**
  * The running timer for the turn still in flight. Ticks on the shared clock
