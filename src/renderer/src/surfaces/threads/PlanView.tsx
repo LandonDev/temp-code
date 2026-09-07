@@ -1,21 +1,20 @@
-import {
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  useSyncExternalStore,
-} from "react";
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import type { ThreadRules } from "@server/shared/rules";
 import { AccessPicker } from "../../chrome/AccessPicker";
 import {
+  ChevronLeft,
   ChevronRight,
   CircleDot,
   GitFork,
   ListChecks,
   Play,
+  SlidersHorizontal,
   X,
 } from "../../chrome/icons";
 import { ModelPicker } from "../../chrome/ModelPicker";
 import { ModelSettings } from "../../chrome/ModelSettings";
+import { ThreadTune, normalizeTune, tuneSummary } from "../../chrome/ThreadTune";
 import { Popover } from "../../chrome/Popover";
 import {
   mergeModelSettings,
@@ -185,13 +184,12 @@ export function PlanView(props: ThreadViewProps) {
         detail={tasks.length > 0 ? `${tasks.length} tasks` : null}
       >
         {spawned ? (
-          <HandoffChip
-            spawned={spawned}
-            onOpen={() => props.onOpenSession?.(spawned.id)}
-          />
-        ) : !running && !waiting ? (
-          <StartButton session={session} tasks={tasks} />
-        ) : null}
+          <HandoffChip spawned={spawned} onOpen={() => props.onOpenSession?.(spawned.id)} />
+        ) : (
+          <AnimatePresence>
+            {!running && !waiting ? <StartButton key="start" session={session} tasks={tasks} /> : null}
+          </AnimatePresence>
+        )}
       </PaneHeader>
       <div className="relative flex min-h-0 flex-1">
         {collapsed && sections.some((s) => s.heading) ? (
@@ -355,13 +353,8 @@ const ACTION_TILE =
 
 /** The plan pane's one action: hand the approved plan to builders — who
  *  (model + effort), how many, or an orchestrator that splits it itself. */
-function StartButton({
-  session,
-  tasks,
-}: {
-  session: Session;
-  tasks: string[];
-}) {
+function StartButton({ session, tasks }: { session: Session; tasks: string[] }) {
+  const reduce = useReducedMotion();
   const trigger = useRef<HTMLButtonElement>(null);
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState<BuildType | null>(null);
@@ -382,7 +375,10 @@ function StartButton({
       ? "Every task in the plan's checklist is checked off and typecheck passes"
       : "The plan is fully implemented and typecheck passes",
   );
-  // Orchestration tune (per-run instructions + conduct overrides) lands with threadRules in M5.
+  // Per-run orchestration tune: instructions and conduct overrides for
+  // this one thread, over the Settings defaults.
+  const [view, setView] = useState<"main" | "tune">("main");
+  const [tune, setTune] = useState<ThreadRules>({});
 
   const start = async (type: BuildType): Promise<void> => {
     if (busy) return;
@@ -393,6 +389,7 @@ function StartButton({
         "",
       );
       const n = type === "implementation" ? workers : 1;
+      const rules = normalizeTune(tune);
       for (let i = 0; i < n; i++) {
         await startThread(
           {
@@ -407,6 +404,7 @@ function StartButton({
             planPath: session.planPath ?? undefined,
             goal: goal.trim() || undefined,
             title: n > 1 ? `${base} (${i + 1}/${n})` : base,
+            ...(type === "orchestration" && rules ? { threadRules: rules } : {}),
           },
           type === "implementation"
             ? workerBrief(i, n, base)
@@ -419,8 +417,13 @@ function StartButton({
   };
 
   return (
-    // The plan settling is a rare, earned moment — a touch of overshoot.
-    <div className="z-pop-in">
+    <motion.div
+      initial={reduce ? false : { opacity: 0, scale: 0.9 }}
+      animate={{ opacity: 1, scale: 1 }}
+      exit={reduce ? undefined : { opacity: 0, scale: 0.9 }}
+      // The plan settling is a rare, earned moment — a touch of overshoot.
+      transition={{ type: "spring", stiffness: 420, damping: 28, mass: 0.6 }}
+    >
       <button
         ref={trigger}
         type="button"
@@ -445,163 +448,183 @@ function StartButton({
           ignore="[data-model-picker], [data-model-settings], [data-access-picker]"
           onDismiss={() => setOpen(false)}
         >
-          {/* Who builds it, and under what rules — the same knobs a new
-              chat gets: model, effort, access. */}
-          <div className="border-b border-content/10 px-3 pt-2.5 pb-2">
-            <p className="text-[13px] font-medium">
-              Start building
-              {tasks.length > 0 ? (
-                <span className="ml-1.5 font-normal text-content/55">
-                  {tasks.length} tasks
-                </span>
-              ) : null}
-            </p>
-            <div className="mt-1.5 -ml-1 flex flex-wrap items-center gap-1">
-              <ModelPicker
-                harness={choice.harness}
-                model={choice.model}
-                onChange={(h, m) => {
-                  setChoice({ harness: h, model: m });
-                  setSettings(mergeModelSettings(resolveModel(h, m), settings));
-                }}
-              />
-              <ModelSettings
-                harness={choice.harness}
-                model={choice.model}
-                values={settings}
-                onChange={setSettings}
-              />
-              <AccessPicker value={mode} onChange={setMode} />
+          {view === "tune" ? (
+            <div className="py-2">
+              <div className="flex items-center gap-1 px-2">
+                <button
+                  type="button"
+                  onClick={() => setView("main")}
+                  aria-label="Back"
+                  className="flex size-6 items-center justify-center rounded-md text-content/55 transition hover:bg-content/5 hover:text-content active:scale-95"
+                >
+                  <ChevronLeft className="size-4" strokeWidth={1.75} />
+                </button>
+                <span className="text-[13px] font-medium">Orchestration options</span>
+              </div>
+              <ThreadTune tune={tune} onChange={setTune} workspaceId={session.workspaceId ?? null} />
+              <div className="px-3">
+                <button
+                  type="button"
+                  disabled={busy !== null}
+                  onClick={() => void start("orchestration")}
+                  className="mt-1 flex h-8 w-full items-center justify-center gap-1.5 rounded-lg bg-content text-[12.5px] font-medium text-background-base transition hover:bg-content/90 active:scale-[0.99] disabled:opacity-60"
+                >
+                  {busy === "orchestration" ? <Spinner className="size-3.5" /> : "Orchestrate"}
+                </button>
+              </div>
             </div>
-          </div>
-
-          {/* The finish line the build works toward — clear it to
-              start without a goal. */}
-          <div className="flex items-center gap-2 border-b border-content/10 px-3 py-2">
-            <CircleDot
-              className={`size-3.5 shrink-0 ${goal.trim() ? "text-accent" : "text-content/40"}`}
-              strokeWidth={1.75}
-            />
-            <input
-              value={goal}
-              onChange={(e) => setGoal(e.target.value)}
-              placeholder="Keep working until… (optional)"
-              aria-label="Goal"
-              className="min-w-0 flex-1 bg-transparent text-[12px] outline-none placeholder:text-content/40"
-            />
-            {goal ? (
-              <button
-                type="button"
-                onClick={() => setGoal("")}
-                aria-label="Clear goal"
-                className="flex size-5 shrink-0 items-center justify-center rounded text-content/45 transition hover:text-content active:scale-[0.96]"
-              >
-                <X className="size-3" strokeWidth={1.75} />
-              </button>
-            ) : null}
-          </div>
-
-          <div className="p-1">
-            <div
-              role="button"
-              tabIndex={0}
-              onClick={() => void start("implementation")}
-              onKeyDown={(e) =>
-                e.key === "Enter" && void start("implementation")
-              }
-              className={`${ACTION_ROW} ${busy ? "pointer-events-none opacity-60" : ""}`}
-            >
-              <span className={ACTION_TILE}>
-                {busy === "implementation" ? (
-                  <Spinner className="size-3.5 text-content/55" />
-                ) : (
-                  <ListChecks
-                    className="size-4 text-success/80"
-                    strokeWidth={1.75}
+          ) : (
+            <>
+              {/* Who builds it, and under what rules — the same knobs a new
+              chat gets: model, effort, access. */}
+              <div className="border-b border-content/10 px-3 pt-2.5 pb-2">
+                <p className="text-[13px] font-medium">
+                  Start building
+                  {tasks.length > 0 ? (
+                    <span className="ml-1.5 font-normal text-content/55">{tasks.length} tasks</span>
+                  ) : null}
+                </p>
+                <div className="mt-1.5 -ml-1 flex flex-wrap items-center gap-1">
+                  <ModelPicker
+                    harness={choice.harness}
+                    model={choice.model}
+                    onChange={(h, m) => {
+                      setChoice({ harness: h, model: m });
+                      setSettings(mergeModelSettings(resolveModel(h, m), settings));
+                    }}
                   />
-                )}
-              </span>
-              <span className="min-w-0 flex-1">
-                <span className="block text-[13px] font-medium">
-                  Implement{workers > 1 ? ` × ${workers}` : ""}
-                </span>
-                <span className="block text-[11px] text-content/55">
-                  {workers > 1
-                    ? `${workers} threads split the plan's tasks`
-                    : "One agent works the plan's tasks"}
-                </span>
-              </span>
-              {/* How many parallel implementation threads. */}
-              <span
-                onClick={(e) => e.stopPropagation()}
-                className="flex shrink-0 gap-0.5 rounded-md bg-content/8 p-0.5"
-              >
-                {[1, 2, 3].map((n) => (
+                  <ModelSettings
+                    harness={choice.harness}
+                    model={choice.model}
+                    values={settings}
+                    onChange={setSettings}
+                  />
+                  <AccessPicker value={mode} onChange={setMode} />
+                </div>
+              </div>
+
+              {/* The finish line the build works toward — clear it to
+              start without a goal. */}
+              <div className="flex items-center gap-2 border-b border-content/10 px-3 py-2">
+                <CircleDot
+                  className={`size-3.5 shrink-0 ${goal.trim() ? "text-accent" : "text-content/40"}`}
+                  strokeWidth={1.75}
+                />
+                <input
+                  value={goal}
+                  onChange={(e) => setGoal(e.target.value)}
+                  placeholder="Keep working until… (optional)"
+                  aria-label="Goal"
+                  className="min-w-0 flex-1 bg-transparent text-[12px] outline-none placeholder:text-content/40"
+                />
+                {goal ? (
                   <button
-                    key={n}
                     type="button"
-                    onClick={() => setWorkers(n)}
-                    aria-label={`${n} thread${n > 1 ? "s" : ""}`}
-                    className={`flex size-5 items-center justify-center rounded text-[11px] transition-colors ${
-                      workers === n
-                        ? "bg-background-base text-content shadow-sm"
-                        : "text-content/55 hover:text-content"
+                    onClick={() => setGoal("")}
+                    aria-label="Clear goal"
+                    className="flex size-5 shrink-0 items-center justify-center rounded text-content/45 transition hover:text-content active:scale-[0.96]"
+                  >
+                    <X className="size-3" strokeWidth={1.75} />
+                  </button>
+                ) : null}
+              </div>
+
+              <div className="p-1">
+                <div
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => void start("implementation")}
+                  onKeyDown={(e) => e.key === "Enter" && void start("implementation")}
+                  className={`${ACTION_ROW} ${busy ? "pointer-events-none opacity-60" : ""}`}
+                >
+                  <span className={ACTION_TILE}>
+                    {busy === "implementation" ? (
+                      <Spinner className="size-3.5 text-content/55" />
+                    ) : (
+                      <ListChecks className="size-4 text-success/80" strokeWidth={1.75} />
+                    )}
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-[13px] font-medium">Implement{workers > 1 ? ` × ${workers}` : ""}</span>
+                    <span className="block text-[11px] text-content/55">
+                      {workers > 1 ? `${workers} threads split the plan's tasks` : "One agent works the plan's tasks"}
+                    </span>
+                  </span>
+                  {/* How many parallel implementation threads. */}
+                  <span
+                    onClick={(e) => e.stopPropagation()}
+                    className="flex shrink-0 gap-0.5 rounded-md bg-content/8 p-0.5"
+                  >
+                    {[1, 2, 3].map((n) => (
+                      <button
+                        key={n}
+                        type="button"
+                        onClick={() => setWorkers(n)}
+                        aria-label={`${n} thread${n > 1 ? "s" : ""}`}
+                        className={`flex size-5 items-center justify-center rounded text-[11px] transition-colors ${
+                          workers === n
+                            ? "bg-background-base text-content shadow-sm"
+                            : "text-content/55 hover:text-content"
+                        }`}
+                      >
+                        {n}
+                      </button>
+                    ))}
+                  </span>
+                </div>
+                <div
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => void start("orchestration")}
+                  onKeyDown={(e) => e.key === "Enter" && void start("orchestration")}
+                  className={`${ACTION_ROW} ${busy ? "pointer-events-none opacity-60" : ""}`}
+                >
+                  <span className={ACTION_TILE}>
+                    {busy === "orchestration" ? (
+                      <Spinner className="size-3.5 text-content/55" />
+                    ) : (
+                      <GitFork className="size-4 text-violet/80" strokeWidth={1.75} />
+                    )}
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-[13px] font-medium">Orchestrate</span>
+                    <span className="block text-[11px] text-content/55">
+                      {tuneSummary(tune) ?? "Split across subagents in parallel"}
+                    </span>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setView("tune");
+                    }}
+                    title="Instructions & rule overrides"
+                    aria-label="Orchestration options"
+                    className={`flex size-6 shrink-0 items-center justify-center rounded-md text-content/55 transition hover:bg-content/8 hover:text-content active:scale-95 ${
+                      tuneSummary(tune) ? "opacity-100" : "opacity-0 group-hover/act:opacity-100"
                     }`}
                   >
-                    {n}
+                    <SlidersHorizontal className="size-3.5" strokeWidth={1.75} />
                   </button>
-                ))}
-              </span>
-            </div>
-            <div
-              role="button"
-              tabIndex={0}
-              onClick={() => void start("orchestration")}
-              onKeyDown={(e) =>
-                e.key === "Enter" && void start("orchestration")
-              }
-              className={`${ACTION_ROW} ${busy ? "pointer-events-none opacity-60" : ""}`}
-            >
-              <span className={ACTION_TILE}>
-                {busy === "orchestration" ? (
-                  <Spinner className="size-3.5 text-content/55" />
-                ) : (
-                  <GitFork
-                    className="size-4 text-violet/80"
-                    strokeWidth={1.75}
-                  />
-                )}
-              </span>
-              <span className="min-w-0 flex-1">
-                <span className="block text-[13px] font-medium">
-                  Orchestrate
-                </span>
-                <span className="block text-[11px] text-content/55">
-                  Split across subagents in parallel
-                </span>
-              </span>
-            </div>
-          </div>
+                </div>
+              </div>
 
-          {tasks.length > 0 ? (
-            <div className="rounded-b-xl border-t border-content/10 bg-content/5 px-3 pt-1.5 pb-2">
-              {tasks.slice(0, 3).map((t, i) => (
-                <p
-                  key={i}
-                  className="truncate text-[11px] leading-[18px] text-content/55"
-                >
-                  {i + 1}. {t}
-                </p>
-              ))}
-              {tasks.length > 3 ? (
-                <p className="text-[11px] leading-[18px] text-content/40">
-                  +{tasks.length - 3} more
-                </p>
+              {tasks.length > 0 ? (
+                <div className="rounded-b-xl border-t border-content/10 bg-content/5 px-3 pt-1.5 pb-2">
+                  {tasks.slice(0, 3).map((t, i) => (
+                    <p key={i} className="truncate text-[11px] leading-[18px] text-content/55">
+                      {i + 1}. {t}
+                    </p>
+                  ))}
+                  {tasks.length > 3 ? (
+                    <p className="text-[11px] leading-[18px] text-content/40">+{tasks.length - 3} more</p>
+                  ) : null}
+                </div>
               ) : null}
-            </div>
-          ) : null}
+            </>
+          )}
         </Popover>
       ) : null}
-    </div>
+    </motion.div>
   );
 }

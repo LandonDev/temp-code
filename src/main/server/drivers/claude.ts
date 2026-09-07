@@ -37,6 +37,10 @@ import { APP_TOOLS, appToolsMcp } from '../apptools'
 import { expandSlashRefs } from '../slash'
 import { resolveClaude } from './binaries'
 
+// Dev override: a small window (e.g. 45_000 → compaction arms at ~12k)
+// makes a real compaction reachable in one short thread for UI work.
+const AUTO_COMPACT_WINDOW = Number(process.env.TEMP_CODE_AUTO_COMPACT_WINDOW) || 190_000
+
 /**
  * Claude driver — the Claude Code harness as a library. The SDK spawns the
  * official CLI over pipes and runs under the user's own `claude` login
@@ -839,7 +843,7 @@ export const claudeDriver: HarnessDriver = {
         settings: JSON.stringify({
           ...(session.fast ? { fastMode: true } : {}),
           autoCompactEnabled: !session.context1m,
-          ...(session.context1m ? {} : { autoCompactWindow: 190_000 })
+          ...(session.context1m ? {} : { autoCompactWindow: AUTO_COMPACT_WINDOW })
         })
       },
       ...(session.nativeId ? { resume: session.nativeId } : {}),

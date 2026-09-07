@@ -1,22 +1,16 @@
-import type { ReactNode } from "react";
 import type { OpenFileFn } from "../../lib/search";
 import type { Session } from "../../lib/session";
+import type { ChatSource } from "./chatSlots";
 import { ChatView } from "./ChatView";
 import { ImplementationView } from "./ImplementationView";
 import { OrchestrationView } from "./OrchestrationView";
 import { PlanView } from "./PlanView";
 import { ResearchView } from "./ResearchView";
 
-/** What a view may ask of the chat column it is handed. */
-export type ChatOpts = {
-  /** Rides the composer's top edge (the pass banner). */
-  topSlot?: ReactNode;
-};
+export type { ChatOpts } from "./chatSlots";
 
-export type ThreadViewProps = {
+export type ThreadViewProps = ChatSource & {
   session: Session;
-  /** Builds the transcript + strip + composer column; call it once per render. */
-  renderChat: (opts?: ChatOpts) => ReactNode;
   /** The board is hidden while a new pass is being composed. */
   composing: boolean;
   onArmNewPass: (armed: boolean) => void;
