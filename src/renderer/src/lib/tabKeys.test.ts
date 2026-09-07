@@ -43,7 +43,8 @@ describe("tabCommand", () => {
   });
 
   it("keeps existing tab chrome bindings", () => {
-    expect(tabCommand(key({ key: "t", metaKey: true }))).toBe("new");
+    expect(tabCommand(key({ key: "n", metaKey: true }))).toBe("new");
+    expect(tabCommand(key({ key: "t", metaKey: true }))).toBeNull();
     expect(tabCommand(key({ key: "d", metaKey: true }))).toBe("split-right");
     expect(tabCommand(key({ key: "j", metaKey: true }))).toBe(
       "toggle-terminal",
@@ -85,7 +86,7 @@ describe("tabCommand inside a focused Monaco editor", () => {
   });
 
   it("still handles them elsewhere and ⌘ chords everywhere", () => {
-    expect(tabCommand(at(outside, { ctrlKey: true, key: "t" }))).not.toBeNull();
-    expect(tabCommand(at(inMonaco, { metaKey: true, key: "t" }))).not.toBeNull();
+    expect(tabCommand(at(outside, { ctrlKey: true, key: "n" }))).not.toBeNull();
+    expect(tabCommand(at(inMonaco, { metaKey: true, key: "d" }))).not.toBeNull();
   });
 });

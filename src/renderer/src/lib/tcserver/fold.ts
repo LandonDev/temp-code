@@ -228,6 +228,7 @@ export function foldEvent(
           id,
           startedAt: row.ts,
           ts: row.ts,
+          ...(persisted ? { seq: row.seq } : {}),
           ...turn,
           ...(prev.attachments?.length
             ? { attachments: prev.attachments }
@@ -244,6 +245,7 @@ export function foldEvent(
             role: "user",
             text: e.text,
             startedAt: row.ts,
+            ...(persisted ? { seq: row.seq } : {}),
             ...turn,
             ...(attachments ? { attachments } : {}),
           },
@@ -271,7 +273,13 @@ export function foldEvent(
         if (e.delta && !e.text) break;
         blocks = [
           ...sealLastStream(blocks),
-          { id: key ?? fresh(role === "assistant" ? "a" : "r"), role, text: e.text, streaming: e.delta },
+          {
+            id: key ?? fresh(role === "assistant" ? "a" : "r"),
+            role,
+            text: e.text,
+            streaming: e.delta,
+            ...(persisted && role === "assistant" ? { seq: row.seq } : {}),
+          },
         ];
         break;
       }

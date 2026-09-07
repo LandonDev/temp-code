@@ -168,6 +168,9 @@ export type Block = {
   noteCard?: NoteCardMeta;
   /** Event time this block was born; `doneTs` when its work settled. */
   ts?: number;
+  /** Event log row that opened this block (user and assistant text only);
+   *  session search jumps land on it. */
+  seq?: number;
   doneTs?: number;
   /** Which user request this block answers (0-based); see ThreadState. */
   round?: number;

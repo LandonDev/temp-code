@@ -74,7 +74,8 @@ async function gitGrep(
   query: string,
   options: ProjectSearchOptions
 ): Promise<ProjectSearchResult | null> {
-  const args = ['-C', root, 'grep', '-z', '-n', '-I', '--no-color']
+  // --untracked: new files count before their first `git add`.
+  const args = ['-C', root, 'grep', '--untracked', '-z', '-n', '-I', '--no-color']
   if (!options.caseSensitive) args.push('-i')
   if (options.wholeWord) args.push('-w')
   args.push(

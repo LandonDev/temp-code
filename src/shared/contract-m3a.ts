@@ -35,6 +35,18 @@ export interface ProjectSearchResult {
   matches: ProjectSearchMatch[]
   truncated: boolean
 }
+/** One row of the stored event log that mentions the query. */
+export interface SessionSearchHit {
+  sessionId: string
+  seq: number
+  role: 'user' | 'assistant'
+  snippet: string
+  ts: number
+}
+export interface SessionSearchResult {
+  hits: SessionSearchHit[]
+  truncated: boolean
+}
 export const WorkspaceSnapshotSchema = z.record(z.string(), z.json())
 export type WorkspaceSnapshot = z.infer<typeof WorkspaceSnapshotSchema>
 export interface ClaudeUsageFetch {
@@ -84,6 +96,15 @@ export const M3aRequestSchemas = [
     id: z.string(),
     method: z.literal('search.project'),
     params: z.object({ options: ProjectSearchOptionsSchema })
+  }),
+  z.object({
+    id: z.string(),
+    method: z.literal('session.search'),
+    params: z.object({
+      query: z.string(),
+      workspaceId: z.string().optional(),
+      limit: z.number().int().positive().max(200).optional()
+    })
   }),
   z.object({
     id: z.string(),

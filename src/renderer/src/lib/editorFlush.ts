@@ -1,8 +1,9 @@
 /**
  * A seam between the app shell and the editor panes: each mounted pane
  * registers how to flush its buffer, and closing a dirty tab with autosave
- * on flushes through here instead of confirming. No editor imports, so the
- * shell never pulls an editor chunk in.
+ * on flushes through here instead of confirming, and Save All (⌘S) flushes
+ * every registered pane. No editor imports, so the shell never pulls an
+ * editor chunk in.
  */
 
 type Flusher = () => Promise<boolean>;
@@ -26,4 +27,20 @@ export async function flushEditor(path: string): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+/** Write every open editor's buffer; the paths whose write failed. */
+export async function flushAllEditors(): Promise<string[]> {
+  const failed: string[] = [];
+  await Promise.all(
+    [...flushers.keys()].map(async (path) => {
+      if (!(await flushEditor(path))) failed.push(path);
+    }),
+  );
+  return failed;
+}
+
+/** Paths with a registered editor, for tests and the dev facade. */
+export function registeredEditorPaths(): string[] {
+  return [...flushers.keys()];
 }

@@ -309,19 +309,22 @@ export type KeybindingRow = {
 };
 
 /**
- * Mirrors the bindings we actually handle: the native menu accelerators in
- * `src-tauri/src/menu.rs`, `tabCommand`, and the window key handler in App.
+ * Mirrors the bindings we actually handle: the command map in
+ * lib/appCommands.ts (native menu accelerators, `tabCommand`, window keys).
  */
 export const KEYBINDINGS: KeybindingRow[] = [
   { command: "App: Search", keys: `${MOD}K`, when: "Always" },
   { command: "App: Go to File", keys: `${MOD}P`, when: "Always" },
+  { command: "App: Go to File", keys: "Shift Shift", when: "Always" },
+  { command: "App: Go to Symbol", keys: `${MOD}O`, when: "Always" },
+  { command: "App: Type Hierarchy", keys: `${MOD}T`, when: "Always" },
   { command: "App: Find in Files", keys: `${MOD}${SHIFT}F`, when: "Always" },
-  { command: "App: Open Project", keys: `${MOD}O`, when: "Always" },
+  { command: "App: Save All", keys: `${MOD}S`, when: "Always" },
   { command: "App: New Window", keys: `${MOD}${SHIFT}N`, when: "Always" },
   { command: "App: Toggle Sidebar", keys: `${MOD}B`, when: "Always" },
   { command: "App: Toggle Zen Mode", keys: `${MOD}${ALT}Z`, when: "Always" },
   { command: "App: Switch Model", keys: `${MOD}.`, when: "Always" },
-  { command: "Tab: New", keys: `${MOD}T`, when: "Always" },
+  { command: "Tab: New", keys: `${MOD}N`, when: "Always" },
   { command: "Tab: Next", keys: `${MOD}${SHIFT}]`, when: "Always" },
   { command: "Tab: Previous", keys: `${MOD}${SHIFT}[`, when: "Always" },
   { command: "Tab: Cycle Next", keys: `${CTRL}Tab`, when: "Always" },

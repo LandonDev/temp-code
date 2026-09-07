@@ -1,14 +1,21 @@
 import { invoke } from "./native";
-import { hasPendingApproval, type Session } from "./session";
+import { sessionStore } from "./tcserver/store";
 
 let lastCount = -1;
 
-/** Push the pending-approval count to the macOS Dock badge. */
-export function syncDockBadge(sessions: Session[]): void {
+/** The Dock badge counts threads waiting on the user — an approval or a
+ *  question — across every thread the server knows, open or not. Running
+ *  and idle threads never count. */
+export function waitingCount(): number {
   let count = 0;
-  for (const session of sessions) {
-    if (hasPendingApproval(session.blocks)) count++;
+  for (const meta of sessionStore.metas()) {
+    if (meta.status === "waiting" && !meta.archived) count++;
   }
+  return count;
+}
+
+export function syncDockBadge(): void {
+  const count = waitingCount();
   if (count === lastCount) return;
   lastCount = count;
   void invoke("set_dock_badge", { count }).catch((err) => {
