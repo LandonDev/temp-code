@@ -135,7 +135,9 @@ export function UsageFooter({
       {showUsage ? (
         <>
           {wantClaude ? <ProviderChip limits={claude} now={now} /> : null}
-          {wantCodex ? <ProviderChip limits={codex} now={now} /> : null}
+          {wantCodex && codex.status !== "unavailable" ? (
+            <ProviderChip limits={codex} now={now} />
+          ) : null}
         </>
       ) : session ? (
         <SessionChip session={session} />

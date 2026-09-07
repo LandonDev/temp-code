@@ -26,6 +26,11 @@ export type UpdaterSnapshot = {
   /** While building: main's current step and its latest output line. */
   step?: string;
   detail?: string;
+  /** While building: when the step began and how long it took last time. */
+  stepStartedAt?: number;
+  stepEtaMs?: number;
+  /** Dev instances mirror status but only the installed app applies. */
+  canApply?: boolean;
   error?: string;
 };
 
@@ -33,9 +38,10 @@ export function snapshotFromStatus(status: UpdateStatus): UpdaterSnapshot {
   const currentVersion = String(status.current);
   const hasUpdate = status.latest != null && status.latest > status.current;
   const availableVersion = hasUpdate ? String(status.latest) : undefined;
+  const canApply = status.canApply;
   switch (status.phase) {
     case "checking":
-      return { phase: "checking", currentVersion };
+      return { phase: "checking", currentVersion, canApply };
     case "building":
       return {
         phase: "building",
@@ -43,15 +49,19 @@ export function snapshotFromStatus(status: UpdateStatus): UpdaterSnapshot {
         availableVersion,
         step: status.step,
         detail: status.detail,
+        stepStartedAt: status.stepStartedAt,
+        stepEtaMs: status.stepEtaMs,
+        canApply,
       };
     case "restarting":
-      return { phase: "restarting", currentVersion, availableVersion };
+      return { phase: "restarting", currentVersion, availableVersion, canApply };
     case "error":
       return {
         phase: "error",
         currentVersion,
         availableVersion,
         error: status.error ?? "Update failed.",
+        canApply,
       };
     case "idle":
       if (hasUpdate) {
@@ -60,9 +70,14 @@ export function snapshotFromStatus(status: UpdateStatus): UpdaterSnapshot {
           currentVersion,
           availableVersion,
           notes: status.notes.trim() || undefined,
+          canApply,
         };
       }
-      return { phase: status.latest == null ? "idle" : "current", currentVersion };
+      return {
+        phase: status.latest == null ? "idle" : "current",
+        currentVersion,
+        canApply,
+      };
   }
 }
 
@@ -125,10 +140,10 @@ export async function runUpdateFlow(
   }
   if (manual && snapshot.phase === "error") {
     await message(`Couldn't check for updates.\n\n${snapshot.error}`, {
-      title: "MonoCode",
+      title: "TempCode",
     });
   } else if (manual && snapshot.phase !== "idle") {
-    await message("You're on the latest version.", { title: "MonoCode" });
+    await message("You're on the latest release.", { title: "TempCode" });
   }
   return snapshot;
 }
@@ -151,7 +166,7 @@ export async function installPendingUpdate(
       error: "This dev instance can't apply updates. Use the installed app.",
     };
     onProgress?.(failed);
-    await message(failed.error!, { title: "MonoCode" });
+    await message(failed.error!, { title: "TempCode" });
     return failed;
   }
   const started = snapshotFromStatus(await updates.apply());
@@ -163,7 +178,7 @@ export async function installPendingUpdate(
   onProgress?.(result);
   if (result.phase === "error") {
     await message(`Couldn't install the update.\n\n${result.error}`, {
-      title: "MonoCode",
+      title: "TempCode",
     });
   }
   return result;
