@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { Link } from "./store";
-import type { ProjectMeta, ServerPush, WorkspaceMeta } from "./types";
+import type { ProjectMeta, ServerPush, ThreadDefaults, WorkspaceMeta } from "./types";
 import { projectOf, workspaceByPath, workspaceIdOf, workspaceStore } from "./workspaces";
 import { createProject, createWorkspace } from "./projects";
 
@@ -138,5 +138,114 @@ describe("workspaceStore", () => {
     await tick();
     expect(workspaceStore.icon("w1")?.host).toBe("github");
     expect(link.of("workspace.icon")).toHaveLength(1);
+  });
+});
+
+describe("thread defaults", () => {
+  const set = (over: Partial<ThreadDefaults> = {}): ThreadDefaults => ({
+    provider: "claude",
+    model: "",
+    reasoning: "medium",
+    permission: "edits",
+    ...over,
+  });
+
+  class DefaultsLink extends FakeLink {
+    stored = new Map<string, ThreadDefaults>();
+    request<T>(method: string, params?: unknown): Promise<T> {
+      if (method === "defaults.get") {
+        const { workspaceId } = params as { workspaceId: string | null };
+        const own = this.stored.get(workspaceId ?? "");
+        const result = {
+          defaults: own ?? (workspaceId ? this.stored.get("") : undefined) ?? set(),
+          overridden: own !== undefined,
+        };
+        this.calls.push({ method, params });
+        return Promise.resolve(result as T);
+      }
+      if (method === "defaults.set") {
+        const { workspaceId, defaults } = params as { workspaceId: string | null; defaults: ThreadDefaults | null };
+        if (defaults) this.stored.set(workspaceId ?? "", defaults);
+        else this.stored.delete(workspaceId ?? "");
+        this.calls.push({ method, params });
+        return Promise.resolve(null as T);
+      }
+      return super.request(method, params);
+    }
+  }
+
+  let link: DefaultsLink;
+  beforeEach(() => {
+    link = new DefaultsLink();
+    link.workspaces = [ws(), ws({ id: "w2", path: "/home/me/other" })];
+    workspaceStore.reset();
+  });
+  afterEach(() => workspaceStore.reset());
+
+  it("parses the wrapper: an inherited scope carries the global set without the override bit", async () => {
+    link.stored.set("", set({ reasoning: "high" }));
+    link.stored.set("w2", set({ provider: "codex", model: "gpt-6-astra" }));
+    workspaceStore.connect(link);
+    await tick();
+    await tick();
+    expect(workspaceStore.defaultsAt(null)).toEqual({ defaults: set({ reasoning: "high" }), overridden: true });
+    expect(workspaceStore.defaultsAt("w1")).toEqual({ defaults: set({ reasoning: "high" }), overridden: false });
+    expect(workspaceStore.defaultsAt("w2")?.overridden).toBe(true);
+    expect(workspaceStore.defaultsFor("w1")?.reasoning).toBe("high");
+    expect(workspaceStore.defaultsFor("w2")?.provider).toBe("codex");
+    expect(workspaceStore.defaultsFor(null)?.reasoning).toBe("high");
+  });
+
+  it("is undefined before anything loads, then the built-in set when nothing is stored", async () => {
+    expect(workspaceStore.defaultsFor("w1")).toBeUndefined();
+    workspaceStore.connect(link);
+    await tick();
+    await tick();
+    expect(workspaceStore.defaultsAt(null)).toEqual({ defaults: set(), overridden: false });
+    expect(workspaceStore.defaultsFor("w1")).toEqual(set());
+  });
+
+  it("a workspace override marks the scope and leaves the global set alone", async () => {
+    workspaceStore.connect(link);
+    await tick();
+    await tick();
+    await workspaceStore.saveDefaults("w1", set({ permission: "auto" }));
+    expect(workspaceStore.defaultsAt("w1")).toEqual({ defaults: set({ permission: "auto" }), overridden: true });
+    expect(workspaceStore.defaultsAt(null)?.overridden).toBe(false);
+    expect(workspaceStore.defaultsFor("w2")).toEqual(set());
+  });
+
+  it("a global change reaches every workspace without its own override", async () => {
+    link.stored.set("w2", set({ provider: "cursor" }));
+    workspaceStore.connect(link);
+    await tick();
+    await tick();
+    await workspaceStore.saveDefaults(null, set({ reasoning: "max" }));
+    expect(workspaceStore.defaultsAt(null)).toEqual({ defaults: set({ reasoning: "max" }), overridden: true });
+    expect(workspaceStore.defaultsFor("w1")?.reasoning).toBe("max");
+    expect(workspaceStore.defaultsAt("w1")?.overridden).toBe(false);
+    expect(workspaceStore.defaultsFor("w2")).toEqual(set({ provider: "cursor" }));
+  });
+
+  it("reset: a workspace falls back to the global set, the global set to the built-in one", async () => {
+    link.stored.set("", set({ reasoning: "low" }));
+    link.stored.set("w1", set({ provider: "codex" }));
+    workspaceStore.connect(link);
+    await tick();
+    await tick();
+    await workspaceStore.saveDefaults("w1", null);
+    expect(link.of("defaults.set").at(-1)?.params).toEqual({ workspaceId: "w1", defaults: null });
+    expect(workspaceStore.defaultsAt("w1")).toEqual({ defaults: set({ reasoning: "low" }), overridden: false });
+    await workspaceStore.saveDefaults(null, null);
+    expect(workspaceStore.defaultsAt(null)).toEqual({ defaults: set(), overridden: false });
+    expect(workspaceStore.defaultsFor("w1")).toEqual(set());
+  });
+
+  it("a failed load keeps what it had", async () => {
+    workspaceStore.connect(link);
+    await tick();
+    await tick();
+    link.request = () => Promise.reject(new Error("down"));
+    expect(await workspaceStore.loadDefaults("w1")).toEqual({ defaults: set(), overridden: false });
   });
 });
