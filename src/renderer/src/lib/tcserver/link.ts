@@ -1,3 +1,4 @@
+import { bindServer } from "../native";
 import { client } from "./client";
 import { smoke } from "./smoke";
 
@@ -17,6 +18,7 @@ const TAG = "[monocode:server]";
 /** Boot hook: connect to the in-process server, report provider status, expose devtools helpers. */
 export function initServerLink(): void {
   window.__monocode = { server: client, smoke };
+  bindServer((method, params) => client.request(method, params));
   client.onOpen(() => void report());
   client.connect().catch((e) => console.error(`${TAG} connect failed:`, e));
 }

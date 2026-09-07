@@ -106,10 +106,43 @@ type Backed = (args: Args) => Promise<unknown>;
 
 const arg = <T>(args: Args, key: string): T => (args ?? {})[key] as T;
 
+/** The WS client's request(), injected once at boot (`bindServer` from the
+ *  server link) so server-backed commands need no import cycle. */
+type ServerRequest = <T>(method: string, params?: unknown) => Promise<T>;
+let serverRequest: ServerRequest | null = null;
+export function bindServer(request: ServerRequest): void {
+  serverRequest = request;
+}
+const server: ServerRequest = (method, params) => {
+  if (!serverRequest) return Promise.reject(new Error("server not bound"));
+  return serverRequest(method, params);
+};
+
 /** Commands with a backend today. Everything else rejects `not ported`. */
 const backed: Partial<Record<NativeCommand, Backed>> = {
   sidecar_port: () => getServerPort(),
   reveal_path: (args) => window.api.revealInFinder(arg<string>(args, "path")),
+  // Linear (M11): server-owned token, GraphQL in the server.
+  linear_status: () => server("linear.status"),
+  linear_set_token: (args) =>
+    server("linear.setToken", { token: arg<string>(args, "token") }),
+  linear_list_teams: () => server("linear.teams"),
+  linear_list_issues: (args) =>
+    server("linear.issues", {
+      assignedToMe: arg<boolean>(args, "assignedToMe"),
+      state: arg<string>(args, "state"),
+      teamIds: arg<string[]>(args, "teamIds"),
+    }),
+  linear_issue_details: (args) =>
+    server("linear.details", { id: arg<string>(args, "id") }),
+  linear_issue_thread: (args) =>
+    server("linear.thread", { id: arg<string>(args, "id") }),
+  linear_issue_comment: (args) =>
+    server("linear.comment", {
+      id: arg<string>(args, "id"),
+      body: arg<string>(args, "body"),
+      parentId: arg<string>(args, "parentId"),
+    }),
 };
 
 export function notPorted(name: string): Error {
