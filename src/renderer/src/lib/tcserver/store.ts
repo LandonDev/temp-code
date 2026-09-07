@@ -66,6 +66,9 @@ type Entry = {
   loaded: boolean;
   loading: Promise<void> | null;
   subscribed: boolean;
+  /** Pushes held back while a history fetch is in flight; they fold after
+   *  it so a live row never lands ahead of the older rows it follows. */
+  held: EventRow[] | null;
 };
 
 const OPEN_STATUSES = new Set(["starting", "running", "waiting"]);
@@ -174,6 +177,10 @@ export function applyThreadMeta(
   if (changed("busySince")) set({ busySince: meta.busySince });
   if (changed("pausedAt")) set({ pausedAt: meta.pausedAt });
   if (changed("frozenActiveElapsed")) set({ frozenActiveElapsed: meta.frozenActiveElapsed });
+  if (changed("treeCanContinue")) set({ treeCanContinue: meta.treeCanContinue });
+  if (changed("treeHasLiveWork")) set({ treeHasLiveWork: meta.treeHasLiveWork });
+  if (changed("treeHasPaused")) set({ treeHasPaused: meta.treeHasPaused });
+  if (changed("treeFrozenActiveElapsed")) set({ treeFrozenActiveElapsed: meta.treeFrozenActiveElapsed });
   if (changed("activity")) set({ activity: meta.activity ?? null });
   if (changed("activityKind")) set({ activityKind: meta.activityKind ?? null });
   if (!prev || !sameTasks(prev.tasks, meta.tasks)) set({ tasks: meta.tasks ?? null });
@@ -378,6 +385,9 @@ class SessionStore {
     }
     for (const [id, entry] of this.entries) {
       if (entry.meta && !seen.has(id)) this.drop(id);
+      // Subscriptions belong to the socket that made them; a new socket
+      // starts with none, so every loaded session subscribes again.
+      entry.subscribed = false;
     }
     this.bumpMeta();
     await Promise.all(
@@ -405,6 +415,7 @@ class SessionStore {
     entry.loading = this.replayGap(entry)
       .then(() => {
         entry.loaded = true;
+        entry.session = { ...entry.session, loaded: true };
         this.bump();
       })
       .finally(() => {
@@ -416,11 +427,14 @@ class SessionStore {
   private async replayGap(entry: Entry): Promise<void> {
     if (!this.link) return;
     const id = entry.session.id;
-    if (!entry.subscribed) {
-      await this.link.request("session.subscribe", { sessionId: id });
-      entry.subscribed = true;
-    }
-    const [rows] = await Promise.all([
+    if (entry.held) return;
+    entry.held = [];
+    try {
+      if (!entry.subscribed) {
+        await this.link.request("session.subscribe", { sessionId: id });
+        entry.subscribed = true;
+      }
+      const [rows] = await Promise.all([
       this.link.request<EventRow[]>("session.events", {
         sessionId: id,
         afterSeq: entry.lastSeq,
@@ -431,8 +445,25 @@ class SessionStore {
         .request<QueuedMessage[]>("queue.list", { sessionId: id })
         .then((items) => this.setQueue(id, items ?? []))
         .catch(() => undefined),
-    ]);
-    for (const row of rows) this.foldRow(entry, row);
+      ]);
+      for (const row of rows) this.foldRow(entry, row);
+    } finally {
+      const held = entry.held;
+      entry.held = null;
+      // The fold drops whatever history already covered.
+      for (const row of held ?? []) this.applyPush(entry, row);
+    }
+  }
+
+  private applyPush(entry: Entry, row: EventRow): void {
+    if (entry.held) {
+      entry.held.push(row);
+      return;
+    }
+    if (this.foldRow(entry, row)) {
+      this.bumpSoon();
+      for (const l of this.eventListeners) l(row.sessionId, row, entry.session);
+    }
   }
 
   private onPush(push: ServerPush): void {
@@ -479,11 +510,7 @@ class SessionStore {
       }
       case "event": {
         const entry = this.entries.get(push.row.sessionId);
-        if (!entry) return;
-        if (this.foldRow(entry, push.row)) {
-          this.bump();
-          for (const l of this.eventListeners) l(push.row.sessionId, push.row, entry.session);
-        }
+        if (entry) this.applyPush(entry, push.row);
         break;
       }
       case "session-removed":
@@ -526,6 +553,7 @@ class SessionStore {
         loaded: false,
         loading: null,
         subscribed: false,
+        held: null,
       });
       return;
     }
@@ -594,6 +622,7 @@ class SessionStore {
           loaded: true,
           loading: null,
           subscribed: false,
+          held: null,
         });
       } else if (entry.session !== session) {
         entry.session = session;
@@ -654,14 +683,46 @@ class SessionStore {
     for (const listener of this.metaListeners) listener();
   }
 
-  private bump(): void {
+  private notifyPending: number | null = null;
+
+  /**
+   * Streamed events arrive far faster than frames paint. The snapshot updates
+   * now; listeners hear once per frame, so React reconciles once per frame
+   * instead of once per delta. A synchronous bump() flushes it early.
+   */
+  private bumpSoon(): void {
     this.version += 1;
+    this.snapshot = this.buildSnapshot();
+    if (this.notifyPending != null) return;
+    const flush = () => {
+      if (this.notifyPending == null) return;
+      this.notifyPending = null;
+      this.bump();
+    };
+    this.notifyPending =
+      typeof requestAnimationFrame === "function"
+        ? requestAnimationFrame(flush)
+        : (setTimeout(flush, 0) as unknown as number);
+  }
+
+  private buildSnapshot(): Session[] {
     const next: Session[] = [];
     for (const id of this.openOrder) {
       const entry = this.entries.get(id);
       if (entry) next.push(entry.session);
     }
-    this.snapshot = next;
+    return next;
+  }
+
+  private bump(): void {
+    if (this.notifyPending != null) {
+      // A sync bump supersedes the scheduled one; the flush sees null and skips.
+      if (typeof cancelAnimationFrame === "function") cancelAnimationFrame(this.notifyPending);
+      else clearTimeout(this.notifyPending);
+      this.notifyPending = null;
+    }
+    this.version += 1;
+    this.snapshot = this.buildSnapshot();
     for (const listener of this.listeners) listener();
     for (const [id, waiters] of this.idleWaiters) {
       const entry = this.entries.get(id);

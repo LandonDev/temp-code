@@ -234,12 +234,23 @@ export function getModelSnapshot(): number {
   return catalogVersion;
 }
 
-export function setHarnessModels(harness: HarnessId, models: AgentModel[]) {
+/**
+ * Overlay a live catalog. `defaultNativeId` is the provider's own default
+ * (temp-code's catalog names one per provider); it wins over the built-in
+ * guess when it is in the list.
+ */
+export function setHarnessModels(
+  harness: HarnessId,
+  models: AgentModel[],
+  defaultNativeId?: string,
+) {
   if (models.length === 0) return;
   overlays = { ...overlays, [harness]: models };
   overlayDefaults = {
     ...overlayDefaults,
-    [harness]: pickDefaultId(harness, models),
+    [harness]:
+      models.find((model) => model.nativeId === defaultNativeId)?.id ??
+      pickDefaultId(harness, models),
   };
   emit();
 }

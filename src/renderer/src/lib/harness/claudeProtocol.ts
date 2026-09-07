@@ -711,7 +711,7 @@ export function toolTitle(
 
 export function previewFromTool(
   name: string,
-  input: Record<string, unknown>,
+  input: unknown,
   output?: string,
 ): ToolPreview | undefined {
   const kind = toolKindFromName(name);
@@ -722,7 +722,7 @@ export function previewFromTool(
       kind,
       input,
       rawInput: input,
-      content: output,
+      content: patchContent(input) ?? output,
     },
     {
       title: name,
@@ -731,6 +731,20 @@ export function previewFromTool(
       rawInput: input,
     },
   );
+}
+
+/**
+ * A server-normalized patch is an array of { path, kind, diff } records.
+ * The preview extractor reads diffs from content blocks, so hand it the
+ * first file's diff that way; otherwise the array flattens to bare fields
+ * and the card has nothing to expand.
+ */
+function patchContent(input: unknown): unknown[] | undefined {
+  if (!Array.isArray(input)) return undefined;
+  const first = asRecord(input[0]);
+  const path = stringField(first, "path");
+  const diff = stringField(first, "diff");
+  return path || diff ? [{ type: "diff", path, patch: diff }] : undefined;
 }
 
 export function summarizeToolRequest(
