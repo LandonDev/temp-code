@@ -6,7 +6,7 @@ import { client } from "./client";
 import { modeForPolicy } from "./access";
 import { foldEvent, foldOptimisticUser, type FoldState } from "./fold";
 import { emptyThread } from "./todos";
-import type { EventRow, QueuedMessage, ServerPush, SessionMeta } from "./types";
+import type { EventRow, QueuedMessage, ServerPush, SessionMeta, SessionStatus } from "./types";
 
 /**
  * The one session store: every server session's meta, the folded
@@ -48,6 +48,60 @@ export type LiveEditListener = (sessionIds: string[], edit: LiveEditNotice) => v
 const MAX_LIVE_EDITS = 500;
 const NO_EDITS: Record<string, LiveEditState> = {};
 const NO_QUEUE: QueuedMessage[] = [];
+const NO_IDS: readonly string[] = [];
+
+/**
+ * The slow-changing part of an open session: what the shell (App, the
+ * tab strip, project grouping) needs to lay things out. Excludes the
+ * transcript, busy/status and thread state, which change every turn, so a
+ * `useSessionShells()` subscriber sits out streamed turns entirely.
+ */
+export type SessionShell = Pick<
+  Session,
+  | "id"
+  | "harness"
+  | "model"
+  | "modelSettings"
+  | "runtimeMode"
+  | "title"
+  | "cwd"
+  | "projectId"
+  | "workspaceId"
+  | "threadType"
+  | "threadRules"
+  | "createdAt"
+  | "parentId"
+  | "planPath"
+  | "archived"
+  | "agentType"
+>;
+
+const SHELL_KEYS: readonly (keyof SessionShell)[] = [
+  "id",
+  "harness",
+  "model",
+  "modelSettings",
+  "runtimeMode",
+  "title",
+  "cwd",
+  "projectId",
+  "workspaceId",
+  "threadType",
+  "threadRules",
+  "createdAt",
+  "parentId",
+  "planPath",
+  "archived",
+  "agentType",
+];
+
+/** The previous shell when nothing the shell carries changed, else a fresh one. */
+function shellOf(session: Session, previous: SessionShell | undefined): SessionShell {
+  if (previous && SHELL_KEYS.every((key) => previous[key] === session[key])) return previous;
+  const out = {} as Record<keyof SessionShell, unknown>;
+  for (const key of SHELL_KEYS) out[key] = session[key];
+  return out as SessionShell;
+}
 
 export type Link = {
   request<T>(method: string, params?: unknown): Promise<T>;
@@ -223,6 +277,8 @@ class SessionStore {
   private readyDone = false;
   private idleWaiters = new Map<string, Set<() => void>>();
   private snapshot: Session[] = [];
+  private ids: readonly string[] = NO_IDS;
+  private shells: SessionShell[] = [];
   private version = 0;
   private link: Link | null = null;
   private detach: (() => void)[] = [];
@@ -276,6 +332,12 @@ class SessionStore {
 
   /** The open sessions, in the order App last set. Stable until a change. */
   getSnapshot = (): Session[] => this.snapshot;
+
+  /** Open session ids in order. Same array until a session opens, closes or moves. */
+  getIds = (): readonly string[] => this.ids;
+
+  /** Open sessions' shells in order. Same array until a shell field changes. */
+  getShells = (): SessionShell[] => this.shells;
 
   /** Fires when the server's session set or any meta changes (not per event). */
   onMetaChange(listener: () => void): () => void {
@@ -705,6 +767,22 @@ class SessionStore {
         : (setTimeout(flush, 0) as unknown as number);
   }
 
+  /** Recompute the id list and shells, keeping identities where nothing changed. */
+  private refreshProjections(): void {
+    const sessions = this.snapshot;
+    const sameIds =
+      sessions.length === this.ids.length && sessions.every((s, i) => s.id === this.ids[i]);
+    if (!sameIds) this.ids = sessions.map((s) => s.id);
+    let changed = sessions.length !== this.shells.length;
+    const shells = sessions.map((session, i) => {
+      const previous = this.shells[i]?.id === session.id ? this.shells[i] : undefined;
+      const shell = shellOf(session, previous);
+      if (shell !== previous) changed = true;
+      return shell;
+    });
+    if (changed) this.shells = shells;
+  }
+
   private buildSnapshot(): Session[] {
     const next: Session[] = [];
     for (const id of this.openOrder) {
@@ -723,6 +801,7 @@ class SessionStore {
     }
     this.version += 1;
     this.snapshot = this.buildSnapshot();
+    this.refreshProjections();
     for (const listener of this.listeners) listener();
     for (const [id, waiters] of this.idleWaiters) {
       const entry = this.entries.get(id);
@@ -741,6 +820,40 @@ export function useServerSessions(): Session[] {
   return useSyncExternalStore(sessionStore.subscribe, sessionStore.getSnapshot);
 }
 
+/** Open session ids as React state; the same array until the set or order changes. */
+export function useSessionIds(): readonly string[] {
+  return useSyncExternalStore(sessionStore.subscribe, sessionStore.getIds);
+}
+
+/** Open sessions' shells as React state; unchanged through streamed turns. */
+export function useSessionShells(): SessionShell[] {
+  return useSyncExternalStore(sessionStore.subscribe, sessionStore.getShells);
+}
+
+/** One open session as React state; re-renders only when that session changes. */
+export function useSession(id: string | null | undefined): Session | undefined {
+  return useSyncExternalStore(sessionStore.subscribe, () =>
+    id ? sessionStore.get(id) : undefined,
+  );
+}
+
+/** One session's server status ("idle" for a draft); re-renders on that value alone. */
+export function useSessionStatus(id: string | null | undefined): SessionStatus | undefined {
+  return useSyncExternalStore(sessionStore.subscribe, () => {
+    if (!id) return undefined;
+    const session = sessionStore.get(id);
+    if (!session) return undefined;
+    return session.status ?? (session.busy ? "running" : "idle");
+  });
+}
+
+/** Whether one session has a turn in flight. */
+export function useSessionBusy(id: string | null | undefined): boolean {
+  return useSyncExternalStore(sessionStore.subscribe, () =>
+    id ? !!sessionStore.get(id)?.busy : false,
+  );
+}
+
 let metasCache: SessionMeta[] | null = null;
 sessionStore.onMetaChange(() => {
   metasCache = null;
@@ -751,6 +864,11 @@ const subscribeMetas = (l: () => void): (() => void) => sessionStore.onMetaChang
 /** Every server-known meta as React state, open or not. */
 export function useSessionMetas(): SessionMeta[] {
   return useSyncExternalStore(subscribeMetas, readMetas);
+}
+
+/** One session's server meta as React state; null for a draft or unknown id. */
+export function useSessionMeta(id: string | null | undefined): SessionMeta | null {
+  return useSyncExternalStore(subscribeMetas, () => (id ? sessionStore.metaOf(id) : null));
 }
 
 const subscribeLiveEdits = (l: () => void): (() => void) => sessionStore.onLiveEdit(l);

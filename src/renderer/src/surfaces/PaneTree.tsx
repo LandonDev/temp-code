@@ -5,6 +5,7 @@ import {
   useEffect,
   useRef,
   useState,
+  type ComponentProps,
   type PointerEvent as ReactPointerEvent,
 } from "react";
 import type { OpenFileFn } from "../lib/search";
@@ -31,15 +32,14 @@ import type {
   Block,
   HarnessId,
   RuntimeMode,
-  Session,
 } from "../lib/session";
+import { useSession } from "../lib/tcserver/store";
 import type { ThreadType } from "../lib/tcserver/types";
 import { FilePane } from "./FilePane";
 import { SessionPane } from "./SessionPane";
 
 type Shared = {
   visible: boolean;
-  sessions: Session[];
   editorPanes: EditorPane[];
   dirtyFileIds: Set<string>;
   fileErrorCounts: Map<string, number>;
@@ -111,10 +111,19 @@ type PaneDrag = {
 
 const DRAG_THRESHOLD = 5;
 
+type SessionLeafProps = Omit<ComponentProps<typeof SessionPane>, "session"> & { id: string };
+
+/** One conversation pane, subscribed to its own session so a change in any
+ *  other session (or a streamed turn elsewhere) never reaches this subtree. */
+function SessionLeaf({ id, ...props }: SessionLeafProps) {
+  const session = useSession(id);
+  if (!session) return null;
+  return <SessionPane session={session} {...props} />;
+}
+
 function PaneTreeComponent({
   visible,
   layout,
-  sessions,
   editorPanes,
   dirtyFileIds,
   fileErrorCounts,
@@ -269,7 +278,6 @@ function PaneTreeComponent({
     <div ref={treeRef} className="relative h-full min-h-0 min-w-0">
       {leaves.map((leaf) => {
         const editorPane = editorPanes.find((pane) => pane.id === leaf.id);
-        const session = sessions.find((entry) => entry.id === leaf.id);
         const dragging = drop?.fromId === leaf.id;
         const onPaneDragStart = inSplit ? paneDragStartFor(leaf.id) : undefined;
         return (
@@ -293,7 +301,6 @@ function PaneTreeComponent({
                 focused={focusedId === editorPane.id}
                 dirtyFileIds={dirtyFileIds}
                 fileErrorCounts={fileErrorCounts}
-                sessions={sessions}
                 onFocus={onFocus}
                 onSelectFile={onSelectFile}
                 onCloseFile={onCloseFile}
@@ -305,11 +312,11 @@ function PaneTreeComponent({
                 onPaneDragStart={onPaneDragStart}
                 onTerminalMetaChange={onTerminalMetaChange}
               />
-            ) : session ? (
-              <SessionPane
-                session={session}
+            ) : (
+              <SessionLeaf
+                id={leaf.id}
                 visible={visible}
-                focused={focusedId === session.id}
+                focused={focusedId === leaf.id}
                 inSplit={inSplit}
                 composerFocused={composerFocused}
                 recents={recents}
@@ -337,7 +344,7 @@ function PaneTreeComponent({
                 onNewTerminal={onNewTerminal}
                 onPaneDragStart={onPaneDragStart}
               />
-            ) : null}
+            )}
           </div>
         );
       })}
