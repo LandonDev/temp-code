@@ -18,6 +18,8 @@ const TOP: Record<ModalSize, string> = {
 
 type Props = {
   onClose: () => void;
+  /** Work in flight: Escape, the backdrop, and the close button all wait. */
+  busy?: boolean;
   title: string;
   description?: string;
   size?: ModalSize;
@@ -26,8 +28,24 @@ type Props = {
   children: ReactNode;
 };
 
+const FOCUSABLE =
+  'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+/** Plays a fading copy of `el` in its place so an unmounted layer can still leave. */
+export function ghostOut(el: HTMLElement, closingClass: string, ms: number) {
+  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  const ghost = el.cloneNode(true) as HTMLElement;
+  ghost.classList.add(closingClass);
+  ghost.style.pointerEvents = "none";
+  ghost.setAttribute("aria-hidden", "true");
+  ghost.setAttribute("inert", "");
+  document.body.appendChild(ghost);
+  window.setTimeout(() => ghost.remove(), ms);
+}
+
 export function ModalPanel({
   onClose,
+  busy = false,
   title,
   description,
   size = "md",
@@ -40,16 +58,55 @@ export function ModalPanel({
   const titleId = `${uid}-title`;
   const descriptionId = description ? `${uid}-desc` : undefined;
 
+  const panelRef = useRef<HTMLDivElement>(null);
+  const busyRef = useRef(busy);
+  busyRef.current = busy;
+
+  // Focus lands on the close button and, on unmount, returns to wherever it
+  // came from.
   useEffect(() => {
+    const previous = document.activeElement;
     closeRef.current?.focus();
+    return () => {
+      if (previous instanceof HTMLElement && previous.isConnected) {
+        previous.focus({ preventScroll: true });
+      }
+    };
   }, []);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
-      event.preventDefault();
-      event.stopPropagation();
-      onClose();
+      if (event.key === "Escape") {
+        event.preventDefault();
+        event.stopPropagation();
+        if (!busyRef.current) onClose();
+        return;
+      }
+      if (event.key !== "Tab") return;
+      // Tab cycles inside the panel; focus never leaves the dialog.
+      const panel = panelRef.current;
+      if (!panel) return;
+      const items = Array.from(
+        panel.querySelectorAll<HTMLElement>(FOCUSABLE),
+      ).filter((el) => el.offsetParent !== null || el === document.activeElement);
+      if (items.length === 0) {
+        event.preventDefault();
+        return;
+      }
+      const first = items[0];
+      const last = items[items.length - 1];
+      const active = document.activeElement;
+      const inside = active instanceof Node && panel.contains(active);
+      if (!inside) {
+        event.preventDefault();
+        (event.shiftKey ? last : first).focus();
+      } else if (event.shiftKey && active === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && active === last) {
+        event.preventDefault();
+        first.focus();
+      }
     };
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
@@ -60,8 +117,10 @@ export function ModalPanel({
       className={`absolute left-1/2 ${TOP[size]} ${WIDTH[size]} -translate-x-1/2`}
     >
       <div
+        ref={panelRef}
         role="dialog"
         aria-modal="true"
+        aria-busy={busy || undefined}
         aria-labelledby={titleId}
         aria-describedby={descriptionId}
         onMouseDown={(event) => event.stopPropagation()}
@@ -88,8 +147,9 @@ export function ModalPanel({
             ref={closeRef}
             type="button"
             aria-label="Close"
+            disabled={busy}
             onClick={onClose}
-            className="grid size-7 shrink-0 place-items-center rounded-md text-content/45 hover:bg-content/8 hover:text-content focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+            className="grid size-7 shrink-0 place-items-center rounded-md text-content/45 hover:bg-content/8 hover:text-content focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:cursor-default disabled:opacity-40 disabled:hover:bg-transparent"
           >
             <X className="size-3.5" strokeWidth={1.75} />
           </button>
@@ -105,12 +165,28 @@ export function ModalPanel({
   );
 }
 
+export const MODAL_OUT_MS = 120;
+
 export function Modal(props: Props) {
+  const layerRef = useRef<HTMLDivElement>(null);
+  const { busy, onClose } = props;
+
+  // The parent unmounts us outright; a ghost copy plays the exit. A layer
+  // still connected at cleanup is StrictMode rehearsing, not a real close.
+  useEffect(() => {
+    const layer = layerRef.current;
+    return () => {
+      if (layer && !layer.isConnected) {
+        ghostOut(layer, "modal-closing", MODAL_OUT_MS);
+      }
+    };
+  }, []);
+
   return createPortal(
-    <div className="fixed inset-0" style={{ zIndex: LAYER.dialog }}>
+    <div ref={layerRef} className="fixed inset-0" style={{ zIndex: LAYER.dialog }}>
       <div
         className="modal-backdrop absolute inset-0 bg-black/40"
-        onMouseDown={props.onClose}
+        onMouseDown={busy ? undefined : onClose}
       />
       <ModalPanel {...props} />
     </div>,

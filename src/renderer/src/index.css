@@ -687,6 +687,16 @@ header[data-tauri-drag-region] button {
   opacity: 0;
 }
 
+/* motion/TextShimmer: the highlight sweeps once per 1.4s. */
+@keyframes text-shimmer {
+  from {
+    background-position: 150% center;
+  }
+  to {
+    background-position: -50% center;
+  }
+}
+
 @keyframes shimmer-text {
   from {
     background-position: 100% center;
@@ -921,27 +931,49 @@ header[data-tauri-drag-region] button {
 }
 
 .popover-open {
-  animation: popover-open 170ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation: popover-open 140ms cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
-.popover-open[data-popover-side="bottom"] {
+/* The reverse, played on a ghost copy after the menu unmounts: a quarter of
+   the travel back toward the anchor. */
+@keyframes popover-close {
+  to {
+    opacity: 0;
+    transform: translate(
+        calc(var(--popover-shift, 0px) / 4),
+        calc(var(--popover-lift, 0px) / 4)
+      )
+      scale(0.98);
+  }
+}
+
+.popover-close {
+  animation: popover-close 100ms ease both;
+}
+
+.popover-open[data-popover-side="bottom"],
+.popover-close[data-popover-side="bottom"] {
   --popover-lift: -8px;
 }
 
-.popover-open[data-popover-side="top"] {
+.popover-open[data-popover-side="top"],
+.popover-close[data-popover-side="top"] {
   --popover-lift: 8px;
 }
 
-.popover-open[data-popover-side="right"] {
+.popover-open[data-popover-side="right"],
+.popover-close[data-popover-side="right"] {
   --popover-shift: -8px;
 }
 
-.popover-open[data-popover-side="left"] {
+.popover-open[data-popover-side="left"],
+.popover-close[data-popover-side="left"] {
   --popover-shift: 8px;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .popover-open {
+  .popover-open,
+  .popover-close {
     animation: none;
   }
 }
@@ -960,11 +992,24 @@ header[data-tauri-drag-region] button {
 @keyframes modal-panel-in {
   from {
     opacity: 0;
-    transform: translateY(8px) scale(0.98);
+    transform: translateY(8px) scale(0.96);
   }
   to {
     opacity: 1;
     transform: none;
+  }
+}
+
+@keyframes modal-backdrop-out {
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes modal-panel-out {
+  to {
+    opacity: 0;
+    transform: translateY(4px) scale(0.98);
   }
 }
 
@@ -973,12 +1018,23 @@ header[data-tauri-drag-region] button {
 }
 
 .modal-panel {
-  animation: modal-panel-in 200ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation: modal-panel-in 180ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* Played on a ghost copy after the dialog unmounts. */
+.modal-closing .modal-backdrop {
+  animation: modal-backdrop-out 120ms ease both;
+}
+
+.modal-closing .modal-panel {
+  animation: modal-panel-out 120ms ease both;
 }
 
 @media (prefers-reduced-motion: reduce) {
   .modal-backdrop,
-  .modal-panel {
+  .modal-panel,
+  .modal-closing .modal-backdrop,
+  .modal-closing .modal-panel {
     animation: none;
   }
 }
@@ -1062,7 +1118,7 @@ header[data-tauri-drag-region] button {
 @keyframes z-matrix {
   0%,
   100% {
-    opacity: 0.25;
+    opacity: 0.15;
   }
   40% {
     opacity: 1;
@@ -1164,7 +1220,6 @@ header[data-tauri-drag-region] button {
   animation: z-fade-quick 150ms ease-out;
 }
 
-.edit-row-body,
 .thinking-body {
   transition:
     grid-template-rows 200ms ease-out,
@@ -1177,7 +1232,6 @@ header[data-tauri-drag-region] button {
     animation: none;
   }
 
-  .edit-row-body,
   .thinking-body {
     transition: none;
   }
@@ -1201,7 +1255,7 @@ header[data-tauri-drag-region] button {
 @keyframes reveal-flash {
   0%,
   30% {
-    background-color: color-mix(in srgb, var(--color-accent) 18%, transparent);
+    background-color: color-mix(in srgb, var(--color-content) 16%, transparent);
   }
   100% {
     background-color: transparent;
