@@ -1050,7 +1050,7 @@ header[data-tauri-drag-region] button {
 @keyframes z-matrix {
   0%,
   100% {
-    opacity: 0.25;
+    opacity: 0.15;
   }
   40% {
     opacity: 1;
@@ -1189,7 +1189,7 @@ header[data-tauri-drag-region] button {
 @keyframes reveal-flash {
   0%,
   30% {
-    background-color: color-mix(in srgb, var(--color-accent) 18%, transparent);
+    background-color: color-mix(in srgb, var(--color-content) 16%, transparent);
   }
   100% {
     background-color: transparent;

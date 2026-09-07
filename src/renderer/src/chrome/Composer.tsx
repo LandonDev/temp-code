@@ -1,4 +1,6 @@
 import { Plus, StickyNote } from "./icons";
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
+import { EASE_OUT, SPRING_SWAP } from "../lib/ease";
 import {
   useCallback,
   useEffect,
@@ -219,6 +221,7 @@ export function Composer({
   );
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [fileDrag, setFileDrag] = useState(false);
+  const reduce = useReducedMotion();
   const midTurnDefault = useSyncExternalStore(
     subscribeMidTurnDefault,
     loadMidTurnDefault,
@@ -619,11 +622,19 @@ export function Composer({
               : "border-content/10 has-focus:border-content/20"
           }`}
         >
-          {fileDrag ? (
-            <div className="pointer-events-none absolute inset-0 z-20 grid place-items-center rounded-lg bg-accent/8 text-[12px] text-content/70">
-              Drop files to attach
-            </div>
-          ) : null}
+          <AnimatePresence>
+            {fileDrag ? (
+              <motion.div
+                initial={reduce ? false : { opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={reduce ? undefined : { opacity: 0 }}
+                transition={{ duration: 0.12, ease: EASE_OUT }}
+                className="pointer-events-none absolute inset-0 z-20 grid place-items-center rounded-lg bg-accent/8 text-[12px] text-content/70"
+              >
+                Drop files to attach
+              </motion.div>
+            ) : null}
+          </AnimatePresence>
           <div className="flex min-w-0 items-center gap-2.5 px-3 pt-2.5">
             {hideProjectPicker ? null : (
               <CwdPicker
@@ -657,13 +668,22 @@ export function Composer({
 
           {attachments.length > 0 ? (
             <div className="flex flex-wrap gap-1.5 px-3 pt-2">
-              {attachments.map((file) => (
-                <AttachmentChip
-                  key={file.id}
-                  attachment={file}
-                  onRemove={() => removeAttachment(file.id)}
-                />
-              ))}
+              <AnimatePresence initial={false}>
+                {attachments.map((file) => (
+                  <motion.div
+                    key={file.id}
+                    layout
+                    initial={reduce ? false : { opacity: 0, scale: 0.9 }}
+                    animate={{ opacity: 1, scale: 1, transition: SPRING_SWAP }}
+                    exit={reduce ? undefined : { opacity: 0, scale: 0.9, transition: { duration: 0.1 } }}
+                  >
+                    <AttachmentChip
+                      attachment={file}
+                      onRemove={() => removeAttachment(file.id)}
+                    />
+                  </motion.div>
+                ))}
+              </AnimatePresence>
             </div>
           ) : null}
 

@@ -20,6 +20,8 @@ import {
   type SidebarTabId,
 } from "../lib/appearance";
 import { basename } from "../lib/fs";
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
+import { SPRING_LAYOUT } from "../lib/ease";
 import { IS_MAC, MOD } from "../lib/platform";
 import { projectName } from "../lib/paths";
 import type { HarnessId } from "../lib/session";
@@ -219,6 +221,7 @@ function SidebarComponent({
   onOpenWhatsNew,
   onDismissUpdate,
 }: Props) {
+  const reduceMotion = useReducedMotion();
   const gitRoot = gitCwd || cwd;
   const inboxUnseen = useInboxUnseen(recents, cwd);
   const resize = useDragResize({
@@ -692,7 +695,20 @@ function SidebarComponent({
           onDismissUpdate={onDismissUpdate}
         />
       ) : null}
-      {sidebarVisible ? sidebarContent : null}
+      <AnimatePresence initial={false}>
+        {sidebarVisible ? (
+          <motion.div
+            key="sidebar"
+            initial={{ width: 0 }}
+            animate={{ width: "auto" }}
+            exit={{ width: 0 }}
+            transition={reduceMotion ? { duration: 0 } : SPRING_LAYOUT}
+            className="flex h-full shrink-0 overflow-hidden"
+          >
+            {sidebarContent}
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
     </div>
   );
 }
