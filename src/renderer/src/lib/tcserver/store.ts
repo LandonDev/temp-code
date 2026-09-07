@@ -653,6 +653,13 @@ class SessionStore {
     for (const l of this.addedListeners) l(meta);
   }
 
+  /** Ask the shell to show a session it already knows: the same cue a
+   *  fresh thread sends, so App opens or focuses its tab. */
+  requestOpen(id: string): void {
+    const meta = this.metaOf(id);
+    if (meta) this.noteAdded(meta);
+  }
+
   private drop(id: string): void {
     this.entries.delete(id);
     this.queues.delete(id);

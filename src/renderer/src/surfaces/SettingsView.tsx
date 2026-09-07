@@ -165,6 +165,7 @@ import { BuildEditor, takeRequestedBuildScope } from "../chrome/rail/buildSettin
 import { takeRequestedScope } from "../lib/tcserver/rules";
 import { useWorkspaces } from "../lib/tcserver/workspaces";
 import { Heading, Row, Segmented, Select, SecondaryButton, Toggle } from "./settingsBits";
+import { AppshotsPage } from "./AppshotsSettings";
 import { MatrixSpinner } from "./threads/bits";
 import { installing, updateStore, useUpdateSnapshot } from "../lib/updateStore";
 
@@ -268,6 +269,7 @@ export function SettingsView({
           {section === "providers" ? <ProvidersPage /> : null}
           {section === "orchestration" ? <OrchestrationPage /> : null}
           {section === "build" ? <BuildPage /> : null}
+          {section === "appshots" ? <AppshotsPage /> : null}
           {section === "archive" ? (
             <ArchivePage
               onOpenSession={onOpenSession}

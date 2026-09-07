@@ -48,6 +48,7 @@ import { CommandPopover, type AtMatch, type PopoverMatches } from "./CommandPopo
 import { ComposerRunner } from "./ComposerRunner";
 import { ContextControl } from "./ContextControl";
 import { AttachmentChip } from "./AttachmentChip";
+import { subscribeAppshots } from "../lib/appshots";
 import { BranchPicker } from "./BranchPicker";
 import { CwdPicker } from "./CwdPicker";
 import { FileTypeIcon } from "./FileTypeIcon";
@@ -342,6 +343,13 @@ export function Composer({
     },
     [harness, syncHasValue],
   );
+
+  // Appshots routed to this session land here, whether they arrived
+  // before or after the composer mounted.
+  useEffect(() => {
+    if (!sessionId) return;
+    return subscribeAppshots(sessionId, addAttachments);
+  }, [addAttachments, sessionId]);
 
   const removeAttachment = useCallback(
     (id: string) => {
