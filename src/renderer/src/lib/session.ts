@@ -8,6 +8,7 @@ import {
   preferredModelSettings,
   resolveModel,
 } from "./models";
+import type { ThreadRules } from "@server/shared/rules";
 import type { AgentType, SessionStatus, ThreadType } from "./tcserver/types";
 import type { ThreadState } from "./tcserver/todos";
 
@@ -132,15 +133,25 @@ export type Block = {
     /** Provider tool name and input, kept so a result can re-render the preview. */
     name?: string;
     input?: unknown;
+    /** Streaming preview of the input while the model still writes it. */
+    partialInput?: unknown;
+    /** Humanized face for addon calls (app + action). */
+    display?: { app?: string; action?: string };
+    /** A connector answered "reauthenticate"; the link fixes it. */
+    reauth?: { app: string; url: string };
   };
   approval?: {
     requestId: string | number;
-    decided?: "allow" | "deny" | "cancelled";
+    decided?: "allow" | "deny";
+    /** Resolved by policy (timeout, interrupt), not the user. */
+    auto?: boolean;
   };
   /** The model stopped to ask; answered through the question card. */
   question?: QuestionMeta;
   /** Optimistic user turn the server has not echoed yet. */
   pending?: boolean;
+  /** An error row the user's own Stop produced: reads Stopped, never Failed. */
+  stopped?: boolean;
   handoff?: HandoffMeta;
   secondOpinion?: SecondOpinionMeta;
   /** Note chip shown on this user turn. Body is not stored; the harness already received it. */
@@ -230,6 +241,10 @@ export type Session = {
   handoffCard?: HandoffComposerCard;
   /** What kind of thread this is; null for subagent children. */
   threadType?: ThreadType | null;
+  /** Rule overrides sent with session.create; the server owns them after. */
+  threadRules?: ThreadRules | null;
+  /** When the draft was minted here, before the server stamps its own times. */
+  createdAt?: number;
   /** Plan document (planning) or report (research) path; seeded threads: the source plan. */
   planPath?: string | null;
   /** Parent session for subagent children. */
@@ -246,6 +261,13 @@ export type Session = {
   busySince?: number | null;
   pausedAt?: number | null;
   frozenActiveElapsed?: number | null;
+  /** Tree-wide flags the server folds over this thread and its children. */
+  treeCanContinue?: boolean;
+  treeHasLiveWork?: boolean;
+  treeHasPaused?: boolean;
+  treeFrozenActiveElapsed?: number | null;
+  /** The transcript has been fetched from the server at least once. */
+  loaded?: boolean;
   archived?: boolean;
   /** Board state folded from the event log (todos, rounds, cost, sources). */
   thread?: ThreadState;
@@ -290,6 +312,8 @@ export type SessionContext = {
   projectId?: string | null;
   workspaceId?: string | null;
   threadType?: ThreadType;
+  /** Per-thread rule overrides a research or orchestration draft starts with. */
+  threadRules?: ThreadRules | null;
 };
 
 export function newSession(
@@ -312,6 +336,8 @@ export function newSession(
     projectId: context.projectId ?? null,
     workspaceId: context.workspaceId ?? null,
     threadType: context.threadType ?? "chat",
+    ...(context.threadRules ? { threadRules: context.threadRules } : {}),
+    createdAt: Date.now(),
     blocks: [],
   };
 }
@@ -367,8 +393,15 @@ export function canReplaceSessionTitle(
   );
 }
 
+// Cached per blocks array: this runs for every session on every render, and
+// an idle session's array keeps its identity, so only the streaming one rescans.
+const pendingApprovalCache = new WeakMap<Block[], boolean>();
 export function hasPendingApproval(blocks: Block[]): boolean {
-  return blocks.some((block) => block.approval && !block.approval.decided);
+  const cached = pendingApprovalCache.get(blocks);
+  if (cached !== undefined) return cached;
+  const pending = blocks.some((block) => block.approval && !block.approval.decided);
+  pendingApprovalCache.set(blocks, pending);
+  return pending;
 }
 
 /** Title without the harness prefix stored for the tab strip. */

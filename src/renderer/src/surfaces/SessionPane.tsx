@@ -277,6 +277,7 @@ export const SessionPane = memo(function SessionPane({
       onPause={pause}
       busy={!!session.busy}
       paused={paused}
+      goal={session.goal}
       topSlot={
         opts?.topSlot || queueStrip ? (
           <>
@@ -302,6 +303,7 @@ export const SessionPane = memo(function SessionPane({
       <div className="relative min-h-0 flex-1">
         <AgentTranscript
           sessionId={session.id}
+          turn={session}
           blocks={session.blocks}
           busy={!!session.busy}
           visible={visible}

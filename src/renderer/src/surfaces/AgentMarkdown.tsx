@@ -21,6 +21,7 @@ import {
 } from "streamdown";
 import type { PluggableList } from "unified";
 import { FileTypeIcon } from "../chrome/FileTypeIcon";
+import { FileRefMenu } from "./FileRefMenu";
 import { createLazyMermaidPlugin } from "./mermaidPlugin";
 import { parseFileHref } from "../lib/paths";
 import type { OpenFileFn } from "../lib/search";
@@ -146,7 +147,7 @@ function MarkdownLink({
   const threadId = threadIdFromHref(href);
   const file = href && !threadId ? parseFileHref(href, cwd) : undefined;
 
-  return (
+  const anchor = (
     <a
       href={href}
       className={`text-sky-400/90 hover:text-sky-300 hover:underline ${className ?? ""}`}
@@ -172,6 +173,7 @@ function MarkdownLink({
       {children}
     </a>
   );
+  return file ? <FileRefMenu target={file.path} cwd={cwd}>{anchor}</FileRefMenu> : anchor;
 }
 
 type MarkdownCodeProps = ComponentProps<"code"> & { node?: unknown };
@@ -190,7 +192,7 @@ function MarkdownCode({
     const { cwd, onOpenFile } = useContext(FileOpenContext);
     const file = fileName ? parseFileHref(text, cwd) : undefined;
     const open = file && onOpenFile ? () => openAt(onOpenFile, file) : undefined;
-    return (
+    const code = (
       <code
         {...props}
         className={`inline-flex items-center gap-1 rounded-md bg-content/8 px-1.5 h-6 align-baseline font-mono text-[0.8em] text-content ${
@@ -218,6 +220,7 @@ function MarkdownCode({
         {children}
       </code>
     );
+    return file ? <FileRefMenu target={file.path} cwd={cwd}>{code}</FileRefMenu> : code;
   }
 
   const meta = codeMeta(node);

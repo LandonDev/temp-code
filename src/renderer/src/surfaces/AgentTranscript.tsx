@@ -6,6 +6,7 @@ import {
   FilePlusCorner,
   MessageSquare,
   Minus,
+  Pause,
   PenLine,
   Search,
   Sparkles,
@@ -32,12 +33,7 @@ import { SecondOpinionCard } from "../chrome/SecondOpinionCard";
 import { NoteMiniCard } from "../chrome/NoteMiniCard";
 import { TerminalSpinner } from "../chrome/TerminalSpinner";
 import type { ApprovalDecision } from "../lib/harness";
-import {
-  isEditTool,
-  isReadTool,
-  isSearchTool,
-  stubFilePreview,
-} from "../lib/harness/preview";
+import { isEditTool, stubFilePreview } from "../lib/harness/preview";
 import { copyText } from "../lib/clipboard";
 import { playCue } from "../lib/sounds";
 import { displayPath, resolveWorkspacePath } from "../lib/paths";
@@ -49,6 +45,17 @@ import {
   type HarnessId,
   type ToolPreview,
 } from "../lib/session";
+import { approvalDetailOf, approvalOutcome } from "../lib/approvalDetail";
+import {
+  ToolCaptionsContext,
+  captionMapOf,
+  useSectionSummary,
+} from "../lib/toolSummary";
+import { isTurnPaused, passActionsOf, turnElapsed, useClock } from "../lib/turnClock";
+import { errorRowOf, isErrorBlock } from "../lib/turnOutcome";
+import { useSessionMetas } from "../lib/tcserver/store";
+import { ErrorChip } from "./ErrorChip";
+import { TurnStateContext, useTurnState, type TurnSession } from "./turnState";
 import { HarnessIcon } from "../chrome/HarnessIcon";
 import { useLockOverscroll } from "../hooks/useLockOverscroll";
 import { useTranscriptLayout } from "../hooks/useTranscriptLayout";
@@ -66,8 +73,13 @@ import {
   useThreadTitles,
 } from "../lib/threadMentions";
 import { EditRow } from "./EditRow";
+import { ToolDetails } from "./ToolDetails";
+import { FileRefMenu } from "./FileRefMenu";
+import { splitEditCards } from "./editCards";
+import { AppToolSummary, useAppView } from "./AppToolSummary";
+import { CopyMessageButton } from "./CopyMessageButton";
 import { isEditBlock } from "./editModel";
-import { TranscriptSessionContext } from "./transcriptSession";
+import { TranscriptSessionContext, useTranscriptSession } from "./transcriptSession";
 import { TranscriptSelectionMenu } from "./TranscriptSelectionMenu";
 import {
   activityPhaseTitle,
@@ -80,6 +92,7 @@ import {
   isThinkingBlock,
   lastActivityIndex,
   isProseBlock,
+  awaitsUser,
   needsApproval,
   nestedScrollAbsorbsWheel,
   proseSummary,
@@ -100,6 +113,8 @@ type Props = {
   blocks: Block[];
   /** the session shown, for rows that remember state per session */
   sessionId?: string;
+  /** Timer and outcome state for the last turn: one clock, one source. */
+  turn?: TurnSession | null;
   busy?: boolean;
   cwd?: string;
   harness?: HarnessId;
@@ -121,6 +136,7 @@ type Props = {
 export function AgentTranscript({
   blocks,
   sessionId,
+  turn: turnState,
   busy,
   cwd,
   harness,
@@ -301,6 +317,7 @@ export function AgentTranscript({
   return (
     <SelectSessionContext.Provider value={onSelectSession}>
     <TranscriptSessionContext.Provider value={sessionId}>
+    <TurnStateContext.Provider value={turnState ?? null}>
     <div
       ref={setScroller}
       className="agent-transcript h-full overflow-y-auto overscroll-none [overflow-anchor:none] font-mono text-[13px] leading-5"
@@ -320,7 +337,12 @@ export function AgentTranscript({
         {visibleTurns.map((turn, turnIndex) => {
           const isLastTurn = firstVisibleTurn + turnIndex === turns.length - 1;
           const userBlock = turnUserBlock(turn);
-          const durationMs = userBlock?.durationMs;
+          // A steered turn closes its earlier sections by doneTs alone.
+          const durationMs =
+            userBlock?.durationMs ??
+            (userBlock?.doneTs != null && userBlock.startedAt != null
+              ? Math.max(0, userBlock.doneTs - userBlock.startedAt)
+              : undefined);
           const settled = !(busy && isLastTurn);
           const items = groupTurnItems(turn, zen);
           // Where the work ends and the answer begins, in zen: the last group
@@ -412,6 +434,9 @@ export function AgentTranscript({
                   }
                 />
               ) : null}
+              {isLastTurn && (!settled || (durationMs == null && turnState && isTurnPaused(turnState))) ? (
+                <LiveTurnDuration turn={turn} />
+              ) : null}
             </div>
           );
         })}
@@ -424,8 +449,26 @@ export function AgentTranscript({
         />
       ) : null}
     </div>
+    </TurnStateContext.Provider>
     </TranscriptSessionContext.Provider>
     </SelectSessionContext.Provider>
+  );
+}
+
+/**
+ * The running timer for the turn still in flight. Ticks on the shared clock
+ * so only this row re-renders each second, never the transcript.
+ */
+function LiveTurnDuration({ turn }: { turn: Block[] }) {
+  const session = useTurnState();
+  const paused = session ? isTurnPaused(session) : false;
+  const now = useClock(!paused);
+  const elapsed = session ? turnElapsed(session, now) : null;
+  const waiting = turn.some(
+    (b) => needsApproval(b) || (b.question != null && b.question.answers === undefined),
+  );
+  return (
+    <TurnDuration elapsedMs={elapsed} live waiting={waiting} paused={paused} />
   );
 }
 
@@ -434,6 +477,7 @@ function TurnDuration({
   live = false,
   done = false,
   waiting = false,
+  paused = false,
   completedAt,
   copyText: output,
   onSaveNote,
@@ -445,6 +489,8 @@ function TurnDuration({
   live?: boolean;
   done?: boolean;
   waiting?: boolean;
+  /** Frozen mid-turn: the elapsed time holds and the spinner stops. */
+  paused?: boolean;
   completedAt?: number;
   copyText?: string;
   onSaveNote?: (text: string) => void;
@@ -452,9 +498,11 @@ function TurnDuration({
   onSecondOpinion?: (harness: HarnessId, model: string) => void;
   onHandoff?: (harness: HarnessId, model: string) => void;
 }) {
-  const label = waiting
-    ? "Waiting for approval"
-    : formatWorkingDuration(elapsedMs, done);
+  const label = paused
+    ? `Paused · ${formatWorkingDuration(elapsedMs, true).replace(/^Worked/, "worked")}`
+    : waiting
+      ? "Waiting for you"
+      : formatWorkingDuration(elapsedMs, done);
   const dot = (
     <span
       aria-hidden
@@ -466,7 +514,7 @@ function TurnDuration({
       role={live ? "status" : undefined}
       aria-live={live ? "polite" : undefined}
       aria-label={
-        waiting ? "Waiting for approval" : live ? "Agent is working" : label
+        paused ? "Paused" : waiting ? "Waiting for you" : live ? "Agent is working" : label
       }
       className="flex items-center gap-3 px-4 pt-1 pb-3 font-sans text-sm text-content/40"
     >
@@ -489,13 +537,15 @@ function TurnDuration({
             <SecondOpinionButton from={fromHarness} onPick={onSecondOpinion} />
           ) : null}
         </span>
+      ) : paused ? (
+        <Pause className="size-3.5" strokeWidth={1.75} />
       ) : (
         <TerminalSpinner />
       )}
 
       {done ? dot : null}
 
-      {live && !done ? (
+      {live && !done && !paused ? (
         <Shimmer duration={1}>{label}</Shimmer>
       ) : (
         <span>{label}</span>
@@ -514,11 +564,12 @@ function TurnDuration({
 }
 
 /** Wall-clock stamp for a finished turn, in the reader's own locale. */
+const clockTimeFormat = new Intl.DateTimeFormat(undefined, {
+  hour: "numeric",
+  minute: "2-digit",
+});
 function formatClockTime(epochMs: number): string {
-  return new Date(epochMs).toLocaleTimeString(undefined, {
-    hour: "numeric",
-    minute: "2-digit",
-  });
+  return clockTimeFormat.format(epochMs);
 }
 
 function CopyTurnButton({ text }: { text: string }) {
@@ -674,6 +725,9 @@ const TranscriptBlock = memo(function TranscriptBlock({
   }
 
   if (block.role === "system") {
+    if (isErrorBlock(block)) return <ErrorRowView block={block} />;
+    const actions = passActionsOf(block);
+    if (actions) return <PassRow actions={actions} />;
     return (
       <div className="px-4 py-2 text-content/50">
         <pre className="min-w-0 whitespace-pre-wrap break-words">
@@ -738,7 +792,7 @@ function UserMessageBlock({
       }
     >
       <div
-        className={`min-w-0 bg-content/10 px-3 py-2 font-sans text-content ${
+        className={`group/message relative min-w-0 bg-content/10 px-3 py-2 font-sans text-content ${
           chat
             ? "w-fit max-w-xl rounded-xl"
             : "rounded-lg border border-content/10"
@@ -746,6 +800,9 @@ function UserMessageBlock({
         style={{ zIndex: stickyIndex }}
         onClick={overflows ? toggle : undefined}
       >
+        {text || block.attachments?.length ? (
+          <CopyMessageButton text={text} attachments={block.attachments ?? []} chat={chat} />
+        ) : null}
         {block.attachments?.length ? (
           <div
             className={`flex flex-wrap gap-1.5 ${text || card || note ? "mb-2" : ""}`}
@@ -999,6 +1056,36 @@ function useLivePhaseScroll(
  * While live, the open body stays a short scrolling window pinned to the
  * newest step; after the turn settles an opened group is full height again.
  */
+/** A driver error row: gray Stopped, or Failed with Continue when the tree can. */
+function ErrorRowView({ block }: { block: Block }) {
+  const session = useTurnState();
+  const sessionId = useTranscriptSession();
+  // The tree's continue flag lives on the meta until the projection carries it.
+  const meta = useSessionMetas().find((m) => m.id === sessionId);
+  const row = errorRowOf(
+    session
+      ? { ...session, treeCanContinue: session.treeCanContinue ?? meta?.treeCanContinue }
+      : { blocks: [block], status: "idle", thread: undefined },
+    block,
+  );
+  if (!sessionId) return null;
+  return (
+    <div className="px-4 py-1">
+      <ErrorChip sessionId={sessionId} row={row} busy={session?.busy} />
+    </div>
+  );
+}
+
+/** What the turn-pass did between turns: a compact line, not a system dump. */
+function PassRow({ actions }: { actions: string[] }) {
+  return (
+    <div className="flex items-center gap-2 px-4 py-1 font-sans text-[12px] text-content/45">
+      <span className="text-content/35">Pass</span>
+      <span className="min-w-0 truncate">{actions.join(" · ")}</span>
+    </div>
+  );
+}
+
 function ActivityPhaseGroup({
   phase,
   cwd,
@@ -1015,11 +1102,22 @@ function ActivityPhaseGroup({
   onOpenDiff?: (path: string) => void;
 }) {
   const [override, setOverride] = useState<boolean | null>(null);
-  const waiting = phase.steps.some(needsApproval);
+  const waiting = phase.steps.some(awaitsUser);
   const open = waiting || (override ?? active);
   const [liveScroller, setLiveScroller] = useState<HTMLDivElement | null>(null);
   useLivePhaseScroll(liveScroller, active && open, phase.steps);
-  const title = activityPhaseTitle(phase, active, cwd);
+  const sessionId = useTranscriptSession();
+  const summary = useSectionSummary(sessionId, phase.steps, active);
+  const captions = useMemo(
+    () => captionMapOf(phase.steps, summary),
+    [phase.steps, summary],
+  );
+  // The model's own sentence names a settled group the agent never
+  // introduced; while it runs, the live humanized header keeps ticking.
+  const title =
+    !phase.headline && !active && summary.sentence
+      ? summary.sentence
+      : activityPhaseTitle(phase, active, cwd);
   // Opening a group on purpose is also how you read the line that titled it,
   // whole. The auto-open while it runs is a live view, not a reading one, and
   // a one-line note the header already shows in full has nothing to add.
@@ -1129,6 +1227,7 @@ function ActivityPhaseGroup({
                 />
               </div>
             ) : null}
+            <ToolCaptionsContext.Provider value={captions}>
             {phase.steps.map((block) => (
               <div
                 key={block.id}
@@ -1145,12 +1244,13 @@ function ActivityPhaseGroup({
                 />
               </div>
             ))}
+            </ToolCaptionsContext.Provider>
           </div>
         </div>
       </div>
       {!open && edits.length > 0 ? (
         <div className="flex min-w-0 flex-col gap-1 pb-1 pl-5">
-          {edits.map((block) => (
+          {edits.flatMap((block) => splitEditCards(block).cards).map((block) => (
             <EditRow
               key={block.id}
               block={block}
@@ -1253,10 +1353,26 @@ function ActivityRow({
     );
   }
   if (isEditBlock(block) && !needsApproval(block) && !block.question) {
+    const { cards, internal } = splitEditCards(block);
     return (
-      <div className="py-1">
-        <EditRow block={block} cwd={cwd} onOpenFile={onOpenDiff ?? onOpenFile} />
-      </div>
+      <>
+        {cards.map((card) => (
+          <div key={card.id} className="py-1">
+            <EditRow block={card} cwd={cwd} onOpenFile={onOpenDiff ?? onOpenFile} />
+          </div>
+        ))}
+        {internal ? (
+          <ActivityToolRow
+            block={internal}
+            cwd={cwd}
+            live={live}
+            bare={railed}
+            onOpenFile={onOpenFile}
+          />
+        ) : null}
+        {/* A decided board leaves its one-line verdict under the edit it judged. */}
+        <ApprovalControls block={block} onApproval={onApproval} />
+      </>
     );
   }
   return (
@@ -1458,29 +1574,51 @@ function ActivityToolRow({
     : onOpenFile;
   // A call we watched start rises in; rows already settled at mount sit still.
   const [fresh] = useState(live && state === "pending");
+  const [open, setOpen] = useState(false);
+  const app = useAppView(block);
+  // Every call opens onto its details; the body mounts only once asked for.
+  const expandable = !!block.tool && !pending && !block.question;
 
   return (
     <div className={`flex min-w-0 flex-col ${fresh ? "z-fade-in" : ""}`}>
       <div
         aria-label={`Tool call: ${label}`}
-        className="flex min-w-0 items-center gap-1.5 py-1"
+        className={`group/tool flex min-w-0 items-center gap-1.5 py-1 ${expandable ? "cursor-pointer" : ""}`}
+        onClick={expandable ? () => setOpen((value) => !value) : undefined}
       >
         {bare ? null : <ActivityToolIcon state={state} live={live} />}
-        <ToolCallSummary
-          label={label}
-          preview={block.tool?.preview}
-          cwd={cwd}
-          chip={bare}
-          failed={state === "rejected"}
-          onOpenFile={openFile}
-        />
+        {app ? (
+          <AppToolSummary view={app} chip={bare} failed={state === "rejected"} />
+        ) : (
+          <ToolCallSummary
+            label={label}
+            preview={block.tool?.preview}
+            cwd={cwd}
+            chip={bare}
+            failed={state === "rejected"}
+            onOpenFile={openFile}
+          />
+        )}
         {pending || block.question ? null : <ToolCallStatusIcon state={state} />}
+        {expandable ? <ToolDisclosure open={open} /> : null}
       </div>
-      {pending ? (
-        <ApprovalControls block={block} onApproval={onApproval} />
-      ) : null}
+      {open && expandable ? <ToolDetails block={block} /> : null}
+      {/* Pending: the board. Decided: its one-line verdict. Neither: nothing. */}
+      <ApprovalControls block={block} onApproval={onApproval} />
       {block.question ? <QuestionCard question={block.question} /> : null}
     </div>
+  );
+}
+
+/** The chevron that opens a row onto its details: quiet until hovered. */
+function ToolDisclosure({ open }: { open: boolean }) {
+  return (
+    <ChevronRight
+      className={`ml-auto size-3.5 shrink-0 text-content/35 transition-transform ${
+        open ? "rotate-90" : "opacity-0 group-hover/tool:opacity-100"
+      }`}
+      strokeWidth={1.75}
+    />
   );
 }
 
@@ -1531,6 +1669,7 @@ function ToolCall({
   onOpenFile,
   onOpenDiff,
   embedded,
+  plain = false,
 }: {
   block: Block;
   cwd?: string;
@@ -1538,12 +1677,13 @@ function ToolCall({
   onOpenFile?: OpenFileFn;
   onOpenDiff?: (path: string) => void;
   embedded?: boolean;
+  /** Render as a plain tool row even when the call is an edit (a memory-file edit). */
+  plain?: boolean;
 }) {
   const [open, setOpen] = useState(false);
+  const app = useAppView(block);
   const preview = block.tool?.preview;
   const label = toolCallLabel(block, cwd);
-  const detail = block.tool?.detail?.trim();
-  const expanded = detail && detail !== label ? detail : label;
   const state = toolCallState(block);
   const stateLabel =
     state === "accepted"
@@ -1556,10 +1696,8 @@ function ToolCall({
     block.text || block.tool?.title,
     preview,
   );
-  const compact =
-    isReadTool(block.tool?.kind, label, preview) ||
-    isSearchTool(block.tool?.kind, label, preview);
-  const expandable = !compact && !!detail && detail !== label;
+  // Every call opens onto its details; the body mounts only once asked for.
+  const expandable = !!block.tool && !needsApproval(block);
 
   const frame = embedded ? "py-0.5" : "px-4 py-1";
 
@@ -1572,21 +1710,33 @@ function ToolCall({
     );
   }
 
-  if (editTool) {
-    return (
-      <div className={frame}>
-        {needsApproval(block) ? (
+  if (editTool && !plain) {
+    if (needsApproval(block)) {
+      return (
+        <div className={frame}>
           <FilePreview
             preview={preview ?? stubFilePreview(block.tool?.kind, label)}
             status={state}
             cwd={cwd}
             onOpenFile={onOpenDiff ?? onOpenFile}
           />
-        ) : (
-          <EditRow block={block} cwd={cwd} onOpenFile={onOpenDiff ?? onOpenFile} />
-        )}
-        <ApprovalControls block={block} onApproval={onApproval} />
-      </div>
+          <ApprovalControls block={block} onApproval={onApproval} />
+        </div>
+      );
+    }
+    // One card per file the call touched; app bookkeeping as a quiet row.
+    const { cards, internal } = splitEditCards(block);
+    return (
+      <>
+        {cards.map((card) => (
+          <div key={card.id} className={frame}>
+            <EditRow block={card} cwd={cwd} onOpenFile={onOpenDiff ?? onOpenFile} />
+          </div>
+        ))}
+        {internal ? (
+          <ToolCall block={internal} cwd={cwd} embedded={embedded} onOpenFile={onOpenFile} plain />
+        ) : null}
+      </>
     );
   }
 
@@ -1603,13 +1753,17 @@ function ToolCall({
           className="flex w-full min-w-0 items-center gap-2 rounded-lg py-1.5 text-left"
         >
           <ToolCallIcon state={state} />
-          <ToolCallSummary
-            label={label}
-            preview={preview}
-            cwd={cwd}
-            failed={state === "rejected"}
-            onOpenFile={onOpenFile}
-          />
+          {app ? (
+            <AppToolSummary view={app} failed={state === "rejected"} />
+          ) : (
+            <ToolCallSummary
+              label={label}
+              preview={preview}
+              cwd={cwd}
+              failed={state === "rejected"}
+              onOpenFile={onOpenFile}
+            />
+          )}
           <ChevronRight
             className={`size-3.5 shrink-0 text-content/35 transition-transform ${open ? "rotate-90" : ""}`}
             strokeWidth={1.75}
@@ -1621,20 +1775,20 @@ function ToolCall({
           className="flex w-full min-w-0 items-center gap-2"
         >
           <ToolCallIcon state={state} />
-          <ToolCallSummary
-            label={label}
-            preview={preview}
-            cwd={cwd}
-            failed={state === "rejected"}
-            onOpenFile={onOpenFile}
-          />
+          {app ? (
+            <AppToolSummary view={app} failed={state === "rejected"} />
+          ) : (
+            <ToolCallSummary
+              label={label}
+              preview={preview}
+              cwd={cwd}
+              failed={state === "rejected"}
+              onOpenFile={onOpenFile}
+            />
+          )}
         </div>
       )}
-      {open && expandable ? (
-        <pre className="mt-1.5 min-w-0 whitespace-pre-wrap break-words px-2.5 font-mono text-[12px] leading-5 text-content/55">
-          {expanded}
-        </pre>
-      ) : null}
+      {open && expandable ? <ToolDetails block={block} /> : null}
       <ApprovalControls block={block} onApproval={onApproval} />
     </div>
   );
@@ -1727,7 +1881,8 @@ function ToolCallSummary({
         {action}
       </span>
       {isFile ? (
-        canOpen ? (
+        <FileRefMenu target={preview?.path || target} cwd={cwd}>
+        {canOpen ? (
           <button
             type="button"
             className={`-my-0.5 flex min-w-0 cursor-pointer items-center gap-1 rounded px-1 py-0.5 text-left hover:text-sky-300 ${
@@ -1756,7 +1911,8 @@ function ToolCallSummary({
             <FileTypeIcon name={fileName} isDir={action === "List"} />
             <span className="min-w-0 truncate">{target}</span>
           </span>
-        )
+        )}
+        </FileRefMenu>
       ) : (
         <span
           className={`flex min-w-0 flex-1 items-center gap-1.5 pl-1 ${targetTone}`}
@@ -1792,9 +1948,18 @@ function ApprovalControls({
   onApproval?: (requestId: string | number, decision: ApprovalDecision) => void;
 }) {
   const approval = block.approval;
-  if (!approval || approval.decided) return null;
+  if (!approval) return null;
+  const detail = approvalDetailOf(block);
+  const outcome = approvalOutcome(approval);
+  if (approval.decided) {
+    return outcome ? (
+      <div className="mt-1 font-sans text-[11px] text-content/45">{outcome}</div>
+    ) : null;
+  }
   return (
-    <div className="mt-1.5 flex gap-2">
+    <div className="mt-1.5 flex flex-col gap-2">
+      {detail ? <ApprovalDetailView detail={detail} /> : null}
+      <div className="flex gap-2">
       <button
         type="button"
         className="rounded-md bg-content px-2.5 py-0.5 text-[11px] hover:bg-content/80     text-background-base"
@@ -1809,7 +1974,49 @@ function ApprovalControls({
       >
         Deny
       </button>
+      </div>
     </div>
+  );
+}
+
+/** What the agent is asking to do, in the words the board can decide on. */
+function ApprovalDetailView({
+  detail,
+}: {
+  detail: NonNullable<ReturnType<typeof approvalDetailOf>>;
+}) {
+  if (detail.kind === "shell") {
+    return (
+      <div className="flex min-w-0 flex-col gap-1">
+        <span className="font-sans text-[12px] text-content/70">{detail.doing}</span>
+        <pre className="min-w-0 max-h-32 overflow-auto whitespace-pre-wrap break-all rounded-md bg-content/6 px-2 py-1 text-[12px] text-content/80">
+          {detail.command}
+        </pre>
+      </div>
+    );
+  }
+  if (detail.kind === "file") {
+    return (
+      <div className="flex min-w-0 flex-col gap-1">
+        <span className="font-sans text-[12px] text-content/70">Write {detail.path}</span>
+        {detail.added.length ? (
+          <pre className="min-w-0 max-h-32 overflow-auto whitespace-pre-wrap break-all rounded-md bg-content/6 px-2 py-1 text-[12px] text-content/80">
+            {detail.added.join("\n")}
+            {detail.more ? "\n…" : null}
+          </pre>
+        ) : null}
+      </div>
+    );
+  }
+  return (
+    <dl className="grid min-w-0 grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-[12px]">
+      {detail.entries.map(([key, value]) => (
+        <div key={key} className="contents">
+          <dt className="text-content/45">{key}</dt>
+          <dd className="min-w-0 truncate text-content/80">{value}</dd>
+        </div>
+      ))}
+    </dl>
   );
 }
 

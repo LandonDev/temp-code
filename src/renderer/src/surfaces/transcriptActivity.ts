@@ -19,6 +19,20 @@ export function needsApproval(block: Block): boolean {
   return !!block.approval && !block.approval.decided;
 }
 
+/** A question card still waiting on the user (the turn has not moved on). */
+export function needsAnswer(block: Block): boolean {
+  return (
+    !!block.question &&
+    block.question.answers === undefined &&
+    block.tool?.status === "running"
+  );
+}
+
+/** Anything the turn cannot continue without: an approval or an answer. */
+export function awaitsUser(block: Block): boolean {
+  return needsApproval(block) || needsAnswer(block);
+}
+
 export function toolCallState(block: Block): ToolCallState {
   const status = block.tool?.status?.toLowerCase() ?? "";
   const decided = block.approval?.decided;
@@ -42,9 +56,7 @@ export function toolCallState(block: Block): ToolCallState {
   ) {
     return "pending";
   }
-  if (decided === "allow" || decided === "cancelled" || !status) {
-    return "accepted";
-  }
+  if (decided === "allow" || !status) return "accepted";
   return "pending";
 }
 
@@ -257,8 +269,8 @@ export function splitActivityRows(blocks: Block[]): {
   pending: Block[];
   hidden: Block[];
 } {
-  const pending = blocks.filter(needsApproval);
-  const completed = blocks.filter((block) => !needsApproval(block));
+  const pending = blocks.filter(awaitsUser);
+  const completed = blocks.filter((block) => !awaitsUser(block));
   const latest = completed[completed.length - 1];
   return {
     latest,

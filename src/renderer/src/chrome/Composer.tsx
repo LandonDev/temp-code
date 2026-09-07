@@ -39,9 +39,10 @@ import {
 } from "../lib/githubTasks";
 import type { HandoffComposerCard } from "../lib/handoff";
 import { looksLikeProject, type RecentProject } from "../lib/recents";
-import type { Attachment, HarnessId, RuntimeMode } from "../lib/session";
+import type { Attachment, HarnessId, RuntimeMode, ThreadGoal } from "../lib/session";
 import { harnessSupportsAttachments } from "../lib/session";
 import { AccessPicker } from "./AccessPicker";
+import { GoalControl } from "./GoalControl";
 import { AddonMark } from "./AddonMark";
 import { CommandPopover, type AtMatch, type PopoverMatches } from "./CommandPopover";
 import { ComposerRunner } from "./ComposerRunner";
@@ -81,6 +82,7 @@ import {
 import { resolveTabGroupLogo } from "../lib/tabGroups";
 import { ThreadTypeChip } from "./ThreadTypeChip";
 import { useSlashCommands } from "../lib/tcserver/slashCommands";
+import { readCopiedMessage } from "../lib/copyMessage";
 import { useSessionMetas } from "../lib/tcserver/store";
 import type { SlashCommand, ThreadType } from "../lib/tcserver/types";
 import { useProjects } from "../lib/tcserver/workspaces";
@@ -110,6 +112,8 @@ type Props = {
   busy?: boolean;
   /** The turn is paused: Enter queues and the row waits for Continue. */
   paused?: boolean;
+  /** The thread's standing goal, edited from the bottom bar. */
+  goal?: ThreadGoal | null;
   hotkeys?: boolean;
   onFocus: () => void;
   onCwdChange: (cwd: string) => void;
@@ -188,6 +192,7 @@ export function Composer({
   handoffCard,
   busy = false,
   paused = false,
+  goal = null,
   onFocus,
   onCwdChange,
   onBranchChange,
@@ -581,6 +586,23 @@ export function Composer({
   };
 
   const onPaste = (e: ClipboardEvent<HTMLTextAreaElement>) => {
+    // A prompt copied from a transcript carries its attachments in the
+    // HTML flavour; pasting it back restores images, files and mentions.
+    const copied = readCopiedMessage(e.clipboardData);
+    if (copied) {
+      e.preventDefault();
+      const el = e.currentTarget;
+      const start = el.selectionStart ?? el.value.length;
+      const end = el.selectionEnd ?? start;
+      const text = el.value.slice(0, start) + copied.text + el.value.slice(end);
+      el.value = text;
+      resizeTextarea(el);
+      el.setSelectionRange(start + copied.text.length, start + copied.text.length);
+      setDraft(text);
+      syncHasValue(text, attachmentsRef.current);
+      if (copied.attachments.length) addAttachments(copied.attachments);
+      return;
+    }
     const files = filesFromClipboard(e.clipboardData);
     if (files.length === 0) return;
     e.preventDefault();
@@ -771,7 +793,7 @@ export function Composer({
                 if (
                   e.target instanceof Element &&
                   e.target.closest(
-                    "[data-model-picker], [data-access-picker], [data-model-settings], [data-thread-type-picker]",
+                    "[data-model-picker], [data-access-picker], [data-model-settings], [data-thread-type-picker], [data-goal-control]",
                   )
                 ) {
                   return;
@@ -800,6 +822,13 @@ export function Composer({
                   <AccessPicker
                     value={runtimeMode}
                     onChange={onRuntimeModeChange}
+                    onClose={() => ref.current?.focus()}
+                  />
+                ) : null}
+                {sessionId ? (
+                  <GoalControl
+                    sessionId={sessionId}
+                    goal={goal}
                     onClose={() => ref.current?.focus()}
                   />
                 ) : null}

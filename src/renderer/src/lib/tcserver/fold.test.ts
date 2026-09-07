@@ -20,6 +20,10 @@ const ephemeral = (event: AgentEvent, ts = 5_000): EventRow => ({
   ephemeral: true,
 });
 
+/** Fold one more persisted event, numbered after everything folded so far. */
+const step = (state: ReturnType<typeof foldAll>, event: AgentEvent, ts?: number) =>
+  foldEvent(state, { ...rows([event])[0], seq: state.lastSeq + 1, ...(ts ? { ts } : {}) }, CWD);
+
 const strip = (state: ReturnType<typeof foldAll>) =>
   state.blocks.map(({ id: _id, ...rest }) => rest);
 
@@ -95,13 +99,13 @@ describe("foldEvent", () => {
       streaming: true,
       tool: { callId: "c1", status: "running", kind: "execute", name: "Bash" },
     });
-    s = foldEvent(s, rows([{ type: "tool-result", callId: "c1", output: "a.ts\nb.ts", isError: false }])[0], CWD);
+    s = step(s, { type: "tool-result", callId: "c1", output: "a.ts\nb.ts", isError: false });
     expect(s.blocks).toHaveLength(1);
     expect(s.blocks[0]).toMatchObject({
       streaming: false,
       tool: { status: "completed", detail: "a.ts\nb.ts" },
     });
-    const failed = foldEvent(s, rows([{ type: "tool-result", callId: "c1", output: "boom", isError: true }])[0], CWD);
+    const failed = step(s, { type: "tool-result", callId: "c1", output: "boom", isError: true });
     expect(failed.blocks[0].tool?.status).toBe("failed");
   });
 
@@ -228,12 +232,12 @@ describe("foldEvent", () => {
       expect(toolCallLabel(s.blocks[2], CWD)).toBe("Listing files");
     });
 
-    it("resolves deny and auto-cancel", () => {
+    it("resolves deny; a policy verdict is a denial that says so", () => {
       const base = rows([{ type: "approval-request", requestId: "r", toolName: "Bash", input: {} }]);
       const deny = foldAll([...base, ...rows([{ type: "approval-resolved", requestId: "r", allow: false }]).map((r) => ({ ...r, seq: 2 }))], CWD);
       expect(deny.blocks[0].approval?.decided).toBe("deny");
       const auto = foldAll([...base, { ...base[0], seq: 2, event: { type: "approval-resolved", requestId: "r", allow: false, auto: true } }], CWD);
-      expect(auto.blocks[0].approval?.decided).toBe("cancelled");
+      expect(auto.blocks[0].approval).toEqual({ requestId: "r", decided: "deny", auto: true });
     });
   });
 
@@ -246,7 +250,7 @@ describe("foldEvent", () => {
     let s = foldAll(rows([q]), CWD);
     expect(s.blocks[0]).toMatchObject({ role: "tool", text: "Auth", question: { sessionId: "s", requestId: "q1" }, tool: { kind: "question", status: "running" } });
     expect(s.busy).toBe(true);
-    s = foldEvent(s, rows([{ type: "question-resolved", requestId: "q1", answers: [["A"]] }])[0], CWD);
+    s = step(s, { type: "question-resolved", requestId: "q1", answers: [["A"]] });
     expect(s.blocks[0].question?.answers).toEqual([["A"]]);
     expect(s.blocks[0].tool?.status).toBe("completed");
   });
@@ -261,8 +265,8 @@ describe("foldEvent", () => {
     );
     expect(s.blocks).toHaveLength(1);
     expect(s.blocks[0]).toMatchObject({ tool: { callId: "t1", kind: "question", status: "running" }, question: { requestId: "q-t1" } });
-    s = foldEvent(s, rows([{ type: "question-resolved", requestId: "q-t1", answers: [["a"]] }])[0], CWD);
-    s = foldEvent(s, rows([{ type: "tool-result", callId: "t1", output: "ok", isError: false }])[0], CWD);
+    s = step(s, { type: "question-resolved", requestId: "q-t1", answers: [["a"]] });
+    s = step(s, { type: "tool-result", callId: "t1", output: "ok", isError: false });
     expect(s.blocks).toHaveLength(1);
     expect(s.blocks[0].tool?.status).toBe("completed");
     expect(s.blocks[0].question?.answers).toEqual([["a"]]);
@@ -271,13 +275,13 @@ describe("foldEvent", () => {
   it("status drives busy and detail becomes a deduped system line", () => {
     let s = foldAll(rows([{ type: "status", status: "starting" }]), CWD);
     expect(s.busy).toBe(true);
-    s = foldEvent(s, rows([{ type: "status", status: "running", detail: "Compacting" }])[0], CWD);
-    s = foldEvent(s, rows([{ type: "status", status: "running", detail: "Compacting" }])[0], CWD);
+    s = step(s, { type: "status", status: "running", detail: "Compacting" });
+    s = step(s, { type: "status", status: "running", detail: "Compacting" });
     expect(s.blocks).toHaveLength(1);
     expect(s.blocks[0]).toMatchObject({ role: "system", text: "Compacting" });
-    s = foldEvent(s, rows([{ type: "status", status: "waiting", detail: "awaiting approval" }])[0], CWD);
+    s = step(s, { type: "status", status: "waiting", detail: "awaiting approval" });
     expect(s.blocks).toHaveLength(1);
-    s = foldEvent(s, rows([{ type: "status", status: "idle" }])[0], CWD);
+    s = step(s, { type: "status", status: "idle" });
     expect(s.busy).toBe(false);
   });
 
@@ -293,7 +297,7 @@ describe("foldEvent", () => {
     expect(s.busy).toBe(false);
     expect(s.blocks[1].streaming).toBe(false);
     expect(s.blocks[2]).toMatchObject({ role: "system", text: "turn ended: stopped" });
-    s = foldEvent(s, rows([{ type: "errors-cleared" }])[0], CWD);
+    s = step(s, { type: "errors-cleared" });
     expect(s.blocks).toHaveLength(2);
   });
 
@@ -499,5 +503,118 @@ describe("thread state", () => {
     const s = foldAll(rows([{ type: "user-text", text: "go" }]), CWD);
     const again = foldEvent(s, ephemeral({ type: "tool-call", callId: "c", name: "Read", input: {}, partial: true }), CWD);
     expect(again.thread).toBe(s.thread);
+  });
+});
+
+describe("M4 transcript fixes", () => {
+  const call = (callId: string, name = "Bash", input: unknown = { command: "ls" }): AgentEvent => ({ type: "tool-call", callId, name, input });
+
+  it("rejects a persisted row whose seq was already folded", () => {
+    const s = foldAll(rows([{ type: "user-text", text: "hi" }, call("t1")]), CWD);
+    const again = foldEvent(s, rows([{ type: "user-text", text: "hi" }])[0], CWD);
+    expect(again).toBe(s);
+    expect(again.blocks).toHaveLength(2);
+    expect(foldEvent(s, ephemeral({ type: "assistant-text", text: "a", delta: true, msgId: "m", blockIndex: 0 })).blocks).toHaveLength(3);
+  });
+
+  it("an approval with a callId attaches only to that call", () => {
+    let s = foldAll(rows([call("t1"), call("t2")]), CWD);
+    s = step(s, { type: "approval-request", requestId: "r", toolName: "Bash", input: {}, callId: "t2" });
+    expect(s.blocks[0].approval).toBeUndefined();
+    expect(s.blocks[1].approval).toEqual({ requestId: "r" });
+    s = step(s, { type: "approval-request", requestId: "r2", toolName: "Bash", input: {}, callId: "nope" });
+    expect(s.blocks).toHaveLength(3);
+    expect(s.blocks[2].approval).toEqual({ requestId: "r2" });
+  });
+
+  it("a nameless approval never lands on a finished call from an earlier turn", () => {
+    let s = foldAll(
+      rows([
+        { type: "user-text", text: "one" },
+        call("t1"),
+        { type: "tool-result", callId: "t1", output: "", isError: false },
+        { type: "turn-complete" },
+        { type: "user-text", text: "two" },
+      ]),
+      CWD,
+    );
+    s = step(s, { type: "approval-request", requestId: "r", toolName: "Bash", input: { command: "rm" } });
+    expect(s.blocks[1].approval).toBeUndefined();
+    expect(s.blocks.at(-1)).toMatchObject({ role: "tool", approval: { requestId: "r" } });
+  });
+
+  it("tools still running when the turn ends settle as cancelled", () => {
+    let s = foldAll(rows([{ type: "user-text", text: "x" }, call("t1"), call("t2")]), CWD);
+    s = step(s, { type: "tool-result", callId: "t1", output: "ok", isError: false });
+    s = step(s, { type: "turn-complete" });
+    expect(s.blocks.map((b) => b.tool?.status)).toEqual([undefined, "completed", "cancelled"]);
+    let e = foldAll(rows([call("t3")]), CWD);
+    e = step(e, { type: "error", message: "boom", stopped: true });
+    expect(e.blocks[0].tool?.status).toBe("cancelled");
+    let i = foldAll(rows([call("t4")]), CWD);
+    i = step(i, { type: "status", status: "idle" });
+    expect(i.blocks[0].tool?.status).toBe("cancelled");
+  });
+
+  it("pause stamps the elapsed time and resume keeps counting from there", () => {
+    let s = foldAll(rows([[{ type: "user-text", text: "go" }, { ts: 10_000 }]]), CWD);
+    s = step(s, { type: "status", status: "paused" }, 13_000);
+    expect(s.blocks[0].durationMs).toBe(3_000);
+    expect(s.blocks[0].doneTs).toBeUndefined();
+    s = step(s, { type: "status", status: "running" }, 20_000);
+    expect(s.blocks[0].durationMs).toBeUndefined();
+    expect(s.blocks[0].startedAt).toBe(17_000);
+    s = step(s, { type: "turn-complete" }, 21_000);
+    expect(s.blocks[0].durationMs).toBe(4_000);
+  });
+
+  it("errors-cleared drops every error row plus the trailing system rows", () => {
+    let s = foldAll(
+      rows([
+        { type: "user-text", text: "x" },
+        { type: "error", message: "first" },
+        { type: "status", status: "running", detail: "retrying" },
+        { type: "assistant-text", text: "ok", delta: false, msgId: "m", blockIndex: 0 },
+        { type: "error", message: "second" },
+        { type: "status", status: "idle", detail: "gave up" },
+      ]),
+      CWD,
+    );
+    expect(s.blocks).toHaveLength(6);
+    s = step(s, { type: "errors-cleared" });
+    expect(s.blocks.map((b) => [b.role, b.text])).toEqual([
+      ["user", "x"],
+      ["system", "retrying"],
+      ["assistant", "ok"],
+    ]);
+  });
+
+  it("compaction start shows a note the outcome replaces in place", () => {
+    let s = foldAll(rows([{ type: "user-text", text: "x" }, { type: "compaction", phase: "start" }]), CWD);
+    expect(s.blocks[1]).toMatchObject({ role: "system", text: "Compacting context" });
+    expect(s.thread.compacting).toBe(true);
+    s = step(s, { type: "compaction", phase: "failed", error: "nope" });
+    expect(s.blocks).toHaveLength(2);
+    expect(s.blocks[1].text).toMatch(/failed/i);
+    expect(s.thread.compacting).toBe(false);
+  });
+
+  it("keeps partial input, display, and reauth on the block", () => {
+    let s = foldAll(rows([{ type: "tool-call", callId: "t1", name: "shell", input: { command: "l" }, partial: true, display: { app: "linear", action: "list" } }]), CWD);
+    expect(s.blocks[0].tool).toMatchObject({ partialInput: { command: "l" }, display: { app: "linear", action: "list" } });
+    expect(s.blocks[0].tool?.input).toBeUndefined();
+    s = step(s, { type: "tool-call", callId: "t1", name: "shell", input: { command: "ls" } });
+    expect(s.blocks[0].tool).toMatchObject({ input: { command: "ls" } });
+    expect(s.blocks[0].tool?.partialInput).toBeUndefined();
+    s = step(s, { type: "tool-result", callId: "t1", output: "expired", isError: true, reauth: { app: "linear", url: "https://x" } });
+    expect(s.blocks[0].tool?.reauth).toEqual({ app: "linear", url: "https://x" });
+  });
+
+  it("a normalized patch keeps an expandable preview", () => {
+    const changes = [{ path: "/repo/a.ts", kind: { type: "update" }, diff: "@@ -1,2 +1,2 @@\n-a\n+b\n c" }];
+    let s = foldAll(rows([{ type: "tool-call", callId: "p", name: "apply_patch", input: changes }]), CWD);
+    expect(s.blocks[0].tool?.preview?.lines?.length).toBeGreaterThan(0);
+    s = step(s, { type: "tool-result", callId: "p", output: "Success", isError: false });
+    expect(s.blocks[0].tool?.preview?.lines?.length).toBeGreaterThan(0);
   });
 });
