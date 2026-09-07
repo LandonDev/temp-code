@@ -132,6 +132,12 @@ export type Block = {
     /** Provider tool name and input, kept so a result can re-render the preview. */
     name?: string;
     input?: unknown;
+    /** Streaming preview of the input while the model still writes it. */
+    partialInput?: unknown;
+    /** Humanized face for addon calls (app + action). */
+    display?: { app?: string; action?: string };
+    /** A connector answered "reauthenticate"; the link fixes it. */
+    reauth?: { app: string; url: string };
   };
   approval?: {
     requestId: string | number;

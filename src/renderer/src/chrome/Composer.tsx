@@ -81,6 +81,7 @@ import {
 import { resolveTabGroupLogo } from "../lib/tabGroups";
 import { ThreadTypeChip } from "./ThreadTypeChip";
 import { useSlashCommands } from "../lib/tcserver/slashCommands";
+import { readCopiedMessage } from "../lib/copyMessage";
 import { useSessionMetas } from "../lib/tcserver/store";
 import type { SlashCommand, ThreadType } from "../lib/tcserver/types";
 import { useProjects } from "../lib/tcserver/workspaces";
@@ -581,6 +582,23 @@ export function Composer({
   };
 
   const onPaste = (e: ClipboardEvent<HTMLTextAreaElement>) => {
+    // A prompt copied from a transcript carries its attachments in the
+    // HTML flavour; pasting it back restores images, files and mentions.
+    const copied = readCopiedMessage(e.clipboardData);
+    if (copied) {
+      e.preventDefault();
+      const el = e.currentTarget;
+      const start = el.selectionStart ?? el.value.length;
+      const end = el.selectionEnd ?? start;
+      const text = el.value.slice(0, start) + copied.text + el.value.slice(end);
+      el.value = text;
+      resizeTextarea(el);
+      el.setSelectionRange(start + copied.text.length, start + copied.text.length);
+      setDraft(text);
+      syncHasValue(text, attachmentsRef.current);
+      if (copied.attachments.length) addAttachments(copied.attachments);
+      return;
+    }
     const files = filesFromClipboard(e.clipboardData);
     if (files.length === 0) return;
     e.preventDefault();
