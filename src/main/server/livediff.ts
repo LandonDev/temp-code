@@ -402,8 +402,13 @@ export function liveDiffOnStatus(
   prev: SessionMeta['status'] | undefined
 ): void {
   registry = reg
-  const runningNow = meta.status === 'running' || meta.status === 'starting'
-  const ranBefore = prev === 'running' || prev === 'starting'
+  // 'waiting' (an approval in flight) keeps the watcher and the session's
+  // ownership alive: the approved tool writes milliseconds after the answer,
+  // long before a torn-down watcher could be rebuilt.
+  const isLive = (s: SessionMeta['status'] | undefined): boolean =>
+    s === 'running' || s === 'starting' || s === 'waiting'
+  const runningNow = isLive(meta.status)
+  const ranBefore = isLive(prev)
   if (runningNow && !ranBefore) {
     void startWatch(meta.cwd, meta.id)
   } else if (!runningNow && ranBefore) {

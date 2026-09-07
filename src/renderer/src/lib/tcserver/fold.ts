@@ -9,7 +9,9 @@ import {
 import {
   appendStatusBlock,
   attachApprovalBlock,
+  resumeTurnClock,
   sealLastStream,
+  settleOpenTools,
   stopStreamingBlocks,
   upsertToolBlock,
 } from "../harness/toolBlock";
@@ -141,6 +143,7 @@ export function foldOptimisticUser(
 }
 
 const OPEN_STATUSES = new Set(["starting", "running", "waiting"]);
+const COMPACTING = "Compacting context";
 
 export function foldEvent(
   state: FoldState,
@@ -149,6 +152,8 @@ export function foldEvent(
 ): FoldState {
   const e = row.event;
   const persisted = !row.ephemeral && row.seq >= 0;
+  // A row already folded (a live push that history then repeats) is a no-op.
+  if (persisted && row.seq <= state.lastSeq) return state;
   let { blocks, busy, context, nextId, thread } = state;
   const lastSeq = persisted ? Math.max(state.lastSeq, row.seq) : state.lastSeq;
   const fresh = (prefix: string): string => `${prefix}:${nextId++}`;
@@ -257,9 +262,16 @@ export function foldEvent(
           title: title || e.name,
           kind: toolKind(e.name),
           status: "running",
-          preview: e.preview ?? previewFromTool(e.name, input),
+          // The raw input reaches the preview: normalized patches are arrays.
+          preview: e.preview ?? previewFromTool(e.name, e.input),
           streaming: true,
-          extra: { name: e.name, input: e.input },
+          extra: {
+            name: e.name,
+            ...(e.partial
+              ? { partialInput: e.input }
+              : { input: e.input, partialInput: undefined }),
+            ...(e.display ? { display: e.display } : {}),
+          },
         },
         e.callId,
       );
@@ -279,7 +291,7 @@ export function foldEvent(
       }
       const prev = blocks[findLastIndex(blocks, (b) => b.tool?.callId === e.callId)];
       const name = prev?.tool?.name ?? "tool";
-      const input = asRecord(prev?.tool?.input) ?? {};
+      const input = prev?.tool?.input ?? prev?.tool?.partialInput;
       blocks = upsertToolBlock(
         blocks,
         cwd,
@@ -289,6 +301,7 @@ export function foldEvent(
           detail: e.output,
           preview: previewFromTool(name, input, e.output),
           streaming: false,
+          ...(e.reauth ? { extra: { reauth: e.reauth } } : {}),
         },
         e.callId,
       );
@@ -311,9 +324,9 @@ export function foldEvent(
           title: e.title ?? toolTitle(e.toolName, input) ?? e.toolName,
           kind: toolKind(e.toolName),
           callId: e.callId,
-          preview: previewFromTool(e.toolName, input),
+          preview: previewFromTool(e.toolName, e.input),
           name: e.toolName,
-          input,
+          input: e.input,
         },
         `ap:${e.requestId}`,
       );
@@ -321,11 +334,19 @@ export function foldEvent(
       break;
     }
     case "approval-resolved": {
-      const decided = e.allow ? "allow" : e.auto ? "cancelled" : "deny";
+      // A policy verdict (timeout, interrupt) is still a denial; `auto`
+      // records who decided, never a third state.
+      const decided = e.allow ? "allow" : "deny";
+      const auto = e.auto === true;
       const idx = findLastIndex(blocks, (b) => b.approval?.requestId === e.requestId);
-      if (idx < 0 || blocks[idx].approval?.decided === decided) break;
+      if (idx < 0) break;
+      const cur = blocks[idx].approval;
+      if (cur?.decided === decided && !!cur.auto === auto) break;
       blocks = blocks.slice();
-      blocks[idx] = { ...blocks[idx], approval: { requestId: e.requestId, decided } };
+      blocks[idx] = {
+        ...blocks[idx],
+        approval: { requestId: e.requestId, decided, ...(auto ? { auto } : {}) },
+      };
       break;
     }
     case "question-request": {
@@ -379,7 +400,14 @@ export function foldEvent(
     }
     case "status": {
       busy = OPEN_STATUSES.has(e.status);
-      if (!busy) blocks = stopStreamingBlocks(blocks, row.ts);
+      if (e.status === "paused") {
+        // The turn clock freezes with the work; resuming restarts it.
+        blocks = stopStreamingBlocks(blocks, row.ts);
+      } else if (!busy) {
+        blocks = settleOpenTools(stopStreamingBlocks(blocks, row.ts));
+      } else {
+        blocks = resumeTurnClock(blocks, row.ts);
+      }
       // Logged end-of-turn signals close the turn even when the
       // turn-complete event itself was lost (crash between the two).
       if ((e.status === "idle" || e.status === "error") && (thread.turnOpen || thread.inPass)) {
@@ -395,7 +423,7 @@ export function foldEvent(
       break;
     }
     case "turn-complete": {
-      blocks = closeUserTurns(stopStreamingBlocks(blocks, row.ts), row.ts);
+      blocks = closeUserTurns(settleOpenTools(stopStreamingBlocks(blocks, row.ts)), row.ts);
       busy = false;
       const t = th();
       t.turnOpen = false;
@@ -413,21 +441,39 @@ export function foldEvent(
         { id: `err:${row.seq}`, role: "system", text: e.message, ...(e.stopped ? { stopped: true } : {}) },
       ];
       if (e.stopped) {
+        blocks = settleOpenTools(blocks);
         busy = false;
         th().stopped = true;
       }
       break;
     case "errors-cleared": {
+      // Continue settled every error shown so far; the system rows that
+      // followed the last one (status detail, stopped note) go with it.
       let end = blocks.length;
-      while (end > 0 && blocks[end - 1].id.startsWith("err:")) end--;
-      if (end !== blocks.length) blocks = blocks.slice(0, end);
+      while (end > 0 && blocks[end - 1].role === "system") end--;
+      const kept = blocks.slice(0, end).filter((b) => !b.id.startsWith("err:"));
+      if (kept.length !== blocks.length) blocks = kept;
+      if (thread.stopped) th().stopped = false;
       break;
     }
     case "compaction":
-      if (e.phase === "done") {
-        blocks = appendStatusBlock(blocks, "Context compacted", fresh("s"));
-      } else if (e.phase === "failed") {
-        blocks = appendStatusBlock(blocks, `Compaction failed${e.error ? `: ${e.error}` : ""}`, fresh("s"));
+      if (e.phase === "start") {
+        blocks = appendStatusBlock(blocks, COMPACTING, fresh("s"));
+        th().compacting = true;
+      } else {
+        const note =
+          e.phase === "done"
+            ? "Context compacted"
+            : `Compaction failed${e.error ? `: ${e.error}` : ""}`;
+        // The start note becomes the outcome when nothing came between.
+        const last = blocks[blocks.length - 1];
+        if (last?.role === "system" && last.text === COMPACTING) {
+          blocks = blocks.slice();
+          blocks[blocks.length - 1] = { ...last, text: note };
+        } else {
+          blocks = appendStatusBlock(blocks, note, fresh("s"));
+        }
+        if (thread.compacting) th().compacting = false;
       }
       break;
     case "plan":

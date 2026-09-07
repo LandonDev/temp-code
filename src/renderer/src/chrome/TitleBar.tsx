@@ -66,7 +66,7 @@ import { FileTypeIcon } from "./FileTypeIcon";
 import { HarnessIcon } from "./HarnessIcon";
 import { getCurrentWindow } from "../lib/native";
 import { TabIndicator, type TabThread } from "./TabIndicator";
-import { ThreadStrip, type ArchivedThread } from "./ThreadStrip";
+import { ThreadHeader, type ThreadHeaderProps } from "./ThreadHeader";
 import type { ThreadType } from "../lib/tcserver/types";
 import { THREAD_GLYPHS, THREAD_LABELS, THREAD_TINTS, useNow } from "../surfaces/threads/bits";
 import { WindowControls } from "./WindowControls";
@@ -97,8 +97,6 @@ export type Tab = {
   terminal?: boolean;
   /** The focused thread's type and live state, for the edge indicator. */
   thread?: TabThread;
-  /** Finished and read: a small chip on the shelf below the live row. */
-  dormant?: boolean;
   /** Last activity on the focused thread; the strip orders freshest first. */
   updatedAt?: number;
 };
@@ -112,15 +110,6 @@ function threadActionItems(status: TabThread["status"] | undefined): ExplorerMen
     id: `thread:${action}`,
     label: THREAD_ACTION_LABEL[action],
   }));
-}
-
-/** A deck chip's menu: thread controls, then Rename and Archive. Never Close. */
-export function deckTabMenuItems(status: TabThread["status"] | undefined): ExplorerMenuItem[] {
-  const items = threadActionItems(status);
-  if (items.length > 0) items.push({ kind: "sep" });
-  items.push({ kind: "item", id: "rename", label: "Rename" });
-  items.push({ kind: "item", id: "archive", label: "Archive" });
-  return items;
 }
 
 export function tabThreadActions(status: TabThread["status"] | undefined): TabThreadAction[] {
@@ -181,12 +170,8 @@ type Props = {
   onUngroup?: (groupId: string) => void;
   onGroupNewTab?: (groupId: string, threadType?: ThreadType) => void;
   onTabThreadAction?: (tabId: string, action: TabThreadAction) => void;
-  /** Deck mode: hide a thread chip; nothing on the strip deletes one. */
-  onArchiveTab?: (tabId: string) => void;
-  onRenameTab?: (tabId: string, title: string) => void;
-  /** Deck mode: the selected project's archived threads, for the shelf. */
-  archivedThreads?: ArchivedThread[];
-  onRestoreThread?: (sessionId: string) => void;
+  /** Deck mode: temp-code's thread strip and heading controls, in the strip's place. */
+  header?: ThreadHeaderProps;
   onGroupClose?: (tabIds: string[]) => void;
   onGroupMoveToNewWindow?: (tabIds: string[]) => void;
   recents?: RecentProject[];
@@ -949,17 +934,14 @@ function TitleBarComponent({
   onUngroup,
   onGroupNewTab,
   onTabThreadAction,
-  onArchiveTab,
-  onRenameTab,
-  archivedThreads = [],
-  onRestoreThread,
+  header,
   onGroupClose,
   onGroupMoveToNewWindow,
   recents = [],
   onSelectProject,
 }: Props) {
-  // Deck mode hands the strip to ThreadStrip: chips that never close, a
-  // dormant shelf below, no drag. Segments only serve the classic strip.
+  // Deck mode hands the strip to ThreadHeader: chips that never close, a
+  // shelf below, no drag. Segments only serve the classic strip.
   const tabIds = deckLayout ? [] : tabs.map((tab) => tab.id);
   const segments = deckLayout ? [] : segmentTabs(tabs);
   const canDragSegments = !deckLayout && segments.length > 1;
@@ -1037,7 +1019,6 @@ function TitleBarComponent({
     y: number;
     tabId: string;
   } | null>(null);
-  const [renamingTabId, setRenamingTabId] = useState<string | null>(null);
 
   const groupSummaries = segments.flatMap((segment) => {
     if (segment.kind !== "group") return [];
@@ -1134,7 +1115,6 @@ function TitleBarComponent({
     if (!tabMenu) return [];
     const tab = tabs.find((entry) => entry.id === tabMenu.tabId);
     if (!tab) return [];
-    if (deckLayout) return deckTabMenuItems(tab.thread?.status);
     const items = threadActionItems(tab.thread?.status);
     if (items.length > 0) items.push({ kind: "sep" });
     items.push({ kind: "item", id: "new-group", label: "Add to new group" });
@@ -1166,22 +1146,11 @@ function TitleBarComponent({
       const tabId = tabMenu.tabId;
       setTabMenu(null);
       if (id.startsWith("thread:")) onTabThreadAction?.(tabId, id.slice(7) as TabThreadAction);
-      else if (id === "rename") setRenamingTabId(tabId);
-      else if (id === "archive") onArchiveTab?.(tabId);
       else if (id === "new-group") onAddToNewGroup?.(tabId);
       else if (id === "remove") onRemoveFromGroup?.(tabId);
       else if (id.startsWith("add:")) onAddToGroup?.(tabId, id.slice(4));
     },
-    [onAddToGroup, onAddToNewGroup, onArchiveTab, onRemoveFromGroup, onTabThreadAction, tabMenu],
-  );
-
-  const onRenameCommit = useCallback(
-    (tabId: string, title: string) => {
-      setRenamingTabId(null);
-      const tab = tabs.find((entry) => entry.id === tabId);
-      if (title && tab && title !== tab.title) onRenameTab?.(tabId, title);
-    },
-    [onRenameTab, tabs],
+    [onAddToGroup, onAddToNewGroup, onRemoveFromGroup, onTabThreadAction, tabMenu],
   );
 
   const onGroupRename = useCallback((projectKey: string, label: string) => {
@@ -1436,22 +1405,13 @@ function TitleBarComponent({
           {tabOverflow.right ? (
             <TabStripChevron side="right" onClick={() => scrollTabsBy(1)} />
           ) : null}
-          {deckLayout ? (
-            <ThreadStrip
-              tabs={tabs}
-              activeId={activeId}
-              now={now}
-              renamingId={renamingTabId}
-              onSelect={onSelect}
-              onStartRename={setRenamingTabId}
-              onRename={onRenameCommit}
-              onContextMenu={onTabContextMenu}
+          {deckLayout && header ? (
+            <ThreadHeader
+              {...header}
+              stripRef={setTabStripRef}
               activeRef={(el) => {
                 activeTabRef.current = el;
               }}
-              stripRef={setTabStripRef}
-              archived={archivedThreads}
-              onRestore={(id) => onRestoreThread?.(id)}
             />
           ) : (
             <div

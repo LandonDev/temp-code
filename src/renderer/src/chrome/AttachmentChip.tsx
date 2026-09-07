@@ -1,7 +1,34 @@
+import { useEffect, useState } from "react";
 import { X } from "./icons";
 import { attachmentPreviewSrc } from "../lib/attachments";
 import type { Attachment } from "../lib/session";
+import { readAttachment } from "../lib/tcserver/commands";
 import { FileTypeIcon } from "./FileTypeIcon";
+
+const loaded = new Map<string, Promise<string | null>>();
+
+/** A history image carries only its path; the server hands back its bytes once. */
+function useAttachmentSrc(attachment: Attachment): string | undefined {
+  const direct = attachmentPreviewSrc(attachment);
+  const path = !direct && attachment.kind === "image" ? attachment.path : undefined;
+  const [fetched, setFetched] = useState<string | null>(null);
+  useEffect(() => {
+    if (!path) return;
+    let live = true;
+    let pending = loaded.get(path);
+    if (!pending) {
+      pending = readAttachment(path).catch(() => null);
+      loaded.set(path, pending);
+    }
+    void pending.then((src) => {
+      if (live) setFetched(src);
+    });
+    return () => {
+      live = false;
+    };
+  }, [path]);
+  return direct ?? (path ? (fetched ?? undefined) : undefined);
+}
 
 type Props = {
   attachment: Attachment;
@@ -9,7 +36,7 @@ type Props = {
 };
 
 export function AttachmentChip({ attachment, onRemove }: Props) {
-  const preview = attachmentPreviewSrc(attachment);
+  const preview = useAttachmentSrc(attachment);
   const image = attachment.kind === "image" && preview;
 
   return (
