@@ -91,5 +91,5 @@ function cap(s: string): string {
 export function approvalOutcome(approval: Approval | undefined): string | null {
   if (!approval?.decided) return null;
   if (approval.decided === "allow") return "approved";
-  return approval.auto || approval.decided === "cancelled" ? "denied (timed out)" : "denied";
+  return approval.auto ? "denied (timed out)" : "denied";
 }
