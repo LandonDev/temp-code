@@ -1,3 +1,4 @@
+import { memo } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useGitFileStatuses } from "../../hooks/useGitFileStatuses";
 import { EASE_DRAWER } from "../../lib/ease";
@@ -35,7 +36,8 @@ type Props = {
   onOpenDiff: (path: string) => void;
 };
 
-export function ProjectRail({ projectId, cwd, onOpenFile, onOpenDiff }: Props) {
+/** Memoized: a thread switch re-renders App, but the rail's props stay put within a project. */
+export const ProjectRail = memo(function ProjectRail({ projectId, cwd, onOpenFile, onOpenDiff }: Props) {
   const open = useRightRailOpen();
   const reduce = useReducedMotion();
   const projects = useProjects();
@@ -71,7 +73,7 @@ export function ProjectRail({ projectId, cwd, onOpenFile, onOpenDiff }: Props) {
       ) : null}
     </AnimatePresence>
   );
-}
+});
 
 function RailBody({ projectId, cwd, onOpenFile, onOpenDiff }: Props & { projectId: string }) {
   const panel = useRailPanel();
