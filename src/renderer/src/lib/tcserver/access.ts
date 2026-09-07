@@ -8,14 +8,18 @@ import type { PermissionPolicy } from "./types";
  * |---------------------|--------|---------------------|---------------------------------|------------------------------|
  * | supervised          | safe   | default             | untrusted + read-only sandbox   | plan mode                    |
  * | auto-accept-edits   | edits  | acceptEdits         | on-request + workspace-write    | force + sandbox enabled      |
- * | auto                | review | auto (AI-reviewed)  | same as edits (approximation)   | same as edits (approximation)|
+ * | auto                | edits  | acceptEdits         | on-request + workspace-write    | force + sandbox enabled      |
  * | full-access         | auto   | bypassPermissions   | never + danger-full-access      | force + sandbox disabled     |
+ *
+ * temp-code's server knows three policies (safe / edits / auto) and has no
+ * AI-reviewed tier. The picker's `auto` mode is deliberately the edits
+ * policy: the model still asks before anything beyond a file edit, which is
+ * the closest the server can get to "reviewed" without becoming full access.
+ * It therefore reads back as auto-accept-edits.
  */
 const TO_POLICY: Record<RuntimeMode, PermissionPolicy> = {
   supervised: "safe",
   "auto-accept-edits": "edits",
-  // temp-code's server has no `review` policy: the AI-reviewed mode runs
-  // as the edits policy until M4 maps access explicitly.
   auto: "edits",
   "full-access": "auto",
 };

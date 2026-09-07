@@ -983,16 +983,39 @@ export default function App({
         void forgetHarnessSession(harness, session.id);
       }
     }
-    setSessions((prev) =>
-      prev.filter(
+    setSessions((prev) => {
+      const next = prev.filter(
         (session) =>
           visibleIds.has(session.id) ||
           session.busy ||
           (keepUnseen && unseenFinishedRef.current.has(session.id)) ||
           skipForgetSessionIds.current.has(session.id),
-      ),
-    );
+      );
+      // The store bumps on any new array; a no-op sweep must not re-render
+      // (and re-run this effect) while a shielded session waits for its tab.
+      return next.length === prev.length ? prev : next;
+    });
   }, [sessions, tabs, liveAgentsEnabled]);
+
+  // Hidden tabs mount their panes after first paint, one per idle slice, so
+  // launch-to-session-list does not scale with how many heavy tabs restore.
+  const [hiddenMountBudget, setHiddenMountBudget] = useState(0);
+  useEffect(() => {
+    if (hiddenMountBudget >= tabs.length) return;
+    const handle = window.requestIdleCallback(
+      () => setHiddenMountBudget((n) => n + 1),
+      { timeout: 500 },
+    );
+    return () => window.cancelIdleCallback(handle);
+  }, [hiddenMountBudget, tabs.length]);
+  const mountedTabIds = useMemo(() => {
+    const ids = new Set<string>();
+    let hidden = 0;
+    for (const tab of tabs) {
+      if (tab.id === activeTabId || hidden++ < hiddenMountBudget) ids.add(tab.id);
+    }
+    return ids;
+  }, [tabs, activeTabId, hiddenMountBudget]);
 
   const activateTab = useCallback((id: string) => {
     setActiveTabId(id);
@@ -1016,27 +1039,6 @@ export default function App({
     );
   }, [deckLayout]);
 
-  /** Card click: select the project and bring its latest open tab forward. */
-  const onSelectProjectCard = useCallback(
-    (projectId: string | null) => {
-      setSelectedProjectId(projectId);
-      if (!projectId) return;
-      const tabs = tabsRef.current;
-      const sessions = sessionsRef.current;
-      const inProject = (tab: WorkspaceTab) =>
-        sessions.find((s) => s.id === tab.focusedId)?.projectId === projectId;
-      const current = tabs.find((tab) => tab.id === activeTabIdRef.current);
-      if (current && inProject(current)) return;
-      const visits = tabVisitRef.current;
-      const recent = [...visits.back]
-        .reverse()
-        .map((id) => tabs.find((tab) => tab.id === id))
-        .find((tab) => tab && inProject(tab));
-      const target = recent ?? tabs.find(inProject);
-      if (target) activateTab(target.id);
-    },
-    [activateTab],
-  );
 
   // The active tab names the selected project; a fresh loose draft says nothing.
   useEffect(() => {
@@ -1168,6 +1170,36 @@ export default function App({
       setComposerFocused(true);
     },
     [appendTab, createSessionHere],
+  );
+
+  /** Card click: select the project and bring its latest open tab forward. */
+  const onSelectProjectCard = useCallback(
+    (projectId: string | null) => {
+      setSelectedProjectId(projectId);
+      if (!projectId) return;
+      // A full-screen view (inbox, notes, search) would otherwise stay on top
+      // of the pane, most visibly when that project's tab is already active.
+      setSearchViewOpen(false);
+      setInboxViewOpen(false);
+      setNotesViewOpen(false);
+      const tabs = tabsRef.current;
+      const sessions = sessionsRef.current;
+      const inProject = (tab: WorkspaceTab) =>
+        sessions.find((s) => s.id === tab.focusedId)?.projectId === projectId;
+      const current = tabs.find((tab) => tab.id === activeTabIdRef.current);
+      if (current && inProject(current)) return;
+      const visits = tabVisitRef.current;
+      const recent = [...visits.back]
+        .reverse()
+        .map((id) => tabs.find((tab) => tab.id === id))
+        .find((tab) => tab && inProject(tab));
+      const target = recent ?? tabs.find(inProject);
+      // No pane of that project is open: start one, so the body never keeps
+      // showing another project's thread under this project's header.
+      if (target) activateTab(target.id);
+      else onNewChat(projectId);
+    },
+    [activateTab, onNewChat],
   );
 
   const onProjectCreated = useCallback(
@@ -2409,6 +2441,11 @@ export default function App({
       }
       const restored = await restoreSessionCheckout(loaded);
       if (!sessionsRef.current.some((session) => session.id === restored.id)) {
+        // The store update re-renders before the caller's tab lands, and the
+        // hidden-session sweep would drop the session in that gap. Shield it
+        // until the caller's synchronous continuation has run.
+        skipForgetSessionIds.current.add(restored.id);
+        setTimeout(() => skipForgetSessionIds.current.delete(restored.id), 0);
         const next = [...sessionsRef.current, restored];
         sessionsRef.current = next;
         setSessions(next);
@@ -2543,11 +2580,9 @@ export default function App({
   const tabSessionId = useCallback((tabId: string) => {
     const tab = tabsRef.current.find((entry) => entry.id === tabId);
     if (!tab) return null;
-    return (
-      leafIds(tab.layout).find((id) =>
-        sessionsRef.current.some((session) => session.id === id),
-      ) ?? null
-    );
+    const isSession = (id: string) => sessionsRef.current.some((session) => session.id === id);
+    if (isSession(tab.focusedId)) return tab.focusedId;
+    return leafIds(tab.layout).find(isSession) ?? null;
   }, []);
 
   const onArchiveTab = useCallback(
@@ -3230,10 +3265,12 @@ export default function App({
             const prepared = await prepareAttachments(attachments);
             const prompt = await preparePrompt(harnessText);
             const derived = await deriveMentionAttachments(text, workCwd);
-            await serverCommands.queueAdd(sessionId, prompt, [
-              ...(await serverCommands.toServerAttachments(prepared)),
-              ...derived,
-            ]);
+            await serverCommands.queueAdd(
+              sessionId,
+              prompt,
+              [...(await serverCommands.toServerAttachments(prepared)), ...derived],
+              serverCommands.runSettingsFor(current),
+            );
           } catch (error: unknown) {
             noteSystem(
               sessionId,
@@ -4347,7 +4384,7 @@ export default function App({
                 />
               ) : (
                 <div className="relative min-h-0 min-w-0 flex-1">
-              {tabs.map((tab) => (
+              {tabs.map((tab) => mountedTabIds.has(tab.id) && (
                 <div
                   key={tab.id}
                   aria-hidden={tab.id !== activeTabId}

@@ -3,6 +3,7 @@ import type { Block } from "../lib/session";
 import {
   activityPhaseTitle,
   activityPreviousLabel,
+  awaitsUser,
   buildActivityPhases,
   editVerb,
   groupTurnItems,
@@ -12,6 +13,7 @@ import {
   proseSummary,
   splitActivityRows,
   toolCallLabel,
+  toolCallState,
   turnCopyText,
 } from "./transcriptActivity";
 
@@ -620,5 +622,30 @@ describe("proseSummary", () => {
     expect(
       proseSummary("```ts\nconst a = 1;\n```\n\n- Ran [checks](x.md)"),
     ).toBe("Ran checks");
+  });
+});
+
+describe("awaitsUser / toolCallState", () => {
+  const question = (id: string, answers?: string[][]): Block => ({
+    id,
+    role: "tool",
+    text: "Pick",
+    tool: { kind: "question", title: "Pick", status: answers ? "completed" : "running" },
+    question: { sessionId: "s", requestId: id, questions: [], ...(answers ? { answers } : {}) },
+  });
+
+  it("an unanswered question waits on the user like an approval does", () => {
+    expect(awaitsUser(question("q"))).toBe(true);
+    expect(awaitsUser(question("q", [["a"]]))).toBe(false);
+    expect(awaitsUser(shell("a", "pending", { requestId: 1 }))).toBe(true);
+    expect(awaitsUser(shell("a", "pending", { requestId: 1, decided: "allow" }))).toBe(false);
+    const rows = splitActivityRows([shell("a"), question("q")]);
+    expect(rows.pending.map((b) => b.id)).toEqual(["q"]);
+  });
+
+  it("an auto-denied approval reads as denied, not accepted", () => {
+    expect(toolCallState(shell("a", "cancelled", { requestId: 1, decided: "deny", auto: true }))).toBe("rejected");
+    expect(toolCallState(shell("a", "completed", { requestId: 1, decided: "allow" }))).toBe("accepted");
+    expect(toolCallState(shell("a", "pending", { requestId: 1 }))).toBe("pending");
   });
 });
