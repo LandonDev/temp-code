@@ -36,6 +36,7 @@ import {
 import { AgentMarkdown } from "../AgentMarkdown";
 import { duration, Spinner, useNow } from "./bits";
 import { AgentDetail } from "./fleet/AgentDetail";
+import { OpenAgentDetailContext } from "../agentDetailContext";
 import { AgentRow } from "./fleet/AgentRow";
 import { SplitShell } from "./SplitShell";
 import type { ThreadViewProps } from "./ThreadView";
@@ -414,6 +415,7 @@ export function ImplementationView(props: ThreadViewProps) {
 
   return (
     <div className="relative flex min-h-0 min-w-0 flex-1">
+      <OpenAgentDetailContext.Provider value={setOpenAgentId}>
       <SplitShell
         board={board}
         chat={chat}
@@ -422,6 +424,7 @@ export function ImplementationView(props: ThreadViewProps) {
         onOpenChat={openChat}
         status={session.status}
       />
+      </OpenAgentDetailContext.Provider>
       <AnimatePresence>
         {openAgentId ? (
           <AgentDetail
