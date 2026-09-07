@@ -15,6 +15,7 @@ import {
   type ProjectTerminalDock,
 } from "./projectTerminal";
 import { normalizeProjectPath } from "./recents";
+import type { SessionShell } from "./tcserver/store";
 import {
   HARNESSES,
   RUNTIME_MODES,
@@ -49,7 +50,7 @@ export type WorkspaceSnapshot = {
 
 export function collectWorkspaceSnapshot(
   tabs: WorkspaceTab[],
-  sessions: Session[],
+  sessions: readonly SessionShell[],
   activeTabId: string,
   projectCwd: string,
   projectTerminals: ProjectTerminalDock[] = [],
@@ -185,7 +186,7 @@ export function hydrateWorkspaceSnapshot(
   };
 }
 
-function sessionStub(session: Session): WorkspaceSessionStub | null {
+function sessionStub(session: SessionShell): WorkspaceSessionStub | null {
   if (!session.id) return null;
   return {
     id: session.id,
