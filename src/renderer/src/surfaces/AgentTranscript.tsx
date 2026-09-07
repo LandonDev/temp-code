@@ -39,6 +39,11 @@ import { playCue } from "../lib/sounds";
 import { displayPath, resolveWorkspacePath } from "../lib/paths";
 import { harnessForTurn } from "../lib/secondOpinion";
 import { Shimmer } from "./Shimmer";
+import { TweenHeight } from "../motion/TweenHeight";
+import { usePersistedOpen } from "./editOpenState";
+import { TranscriptMinimap } from "./TranscriptMinimap";
+import { TodoListBlock } from "./TodoListBlock";
+import { useReducedMotion } from "motion/react";
 import {
   HARNESS_TITLE,
   type Block,
@@ -90,6 +95,7 @@ import {
   groupTurns,
   isIncompleteTool,
   isThinkingBlock,
+  isTodoBlock,
   lastActivityIndex,
   isProseBlock,
   awaitsUser,
@@ -105,9 +111,29 @@ import {
   type ToolCallState,
 } from "./transcriptActivity";
 
-const NEAR_BOTTOM_PX = 16;
 const INITIAL_TURNS = 20;
 const TURN_PAGE_SIZE = 20;
+
+/*
+ * One scroll engine (ported from temp-code). Three modes: `follow` rides the
+ * bottom on a spring, `parked` holds the prompt at the top of the viewport
+ * over a runway spacer while the answer grows, `free` leaves the reader
+ * alone. Only wheel, scrollbar drags and keys release a mode; the engine's
+ * own writes never do.
+ */
+const TOP_INSET = 12;
+const STICK_THRESHOLD = 70;
+const PILL_AT = 320;
+const GLIDE_MS = 500;
+const MAX_GLIDE_VIEWPORTS = 2.5;
+const SPACER_MS = 220;
+const FOLLOW_LEAD = 32;
+
+type ScrollMode = "follow" | "parked" | "free";
+
+const easeInOut = (t: number) =>
+  t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+const easeOut = (t: number) => 1 - Math.pow(1 - t, 3);
 
 type Props = {
   blocks: Block[];
@@ -154,17 +180,30 @@ export function AgentTranscript({
 }: Props) {
   const lockOverscroll = useLockOverscroll<HTMLDivElement>();
   const scroller = useRef<HTMLDivElement>(null);
-  const stickToBottom = useRef(true);
+  const spacer = useRef<HTMLDivElement>(null);
   const showJumpRef = useRef(false);
-  const distanceFromBottom = useRef(0);
   const prependHeight = useRef<number | null>(null);
   const wasVisible = useRef(false);
   const [scrollerEl, setScrollerEl] = useState<HTMLDivElement | null>(null);
   const [visibleTurnCount, setVisibleTurnCount] = useState(INITIAL_TURNS);
-  // Stretch the last turn after a send while this tab stays open. Closing
-  // the tab is a new visit: the remount uses the true transcript height so
-  // the latest reply sits on the composer instead of a hole of empty space.
-  const [anchorTurn, setAnchorTurn] = useState(!!busy);
+  const reduceMotion = useReducedMotion() === true;
+  // Engine state lives in refs: the rAF loop reads and writes it without a
+  // render, and nothing here changes what React draws.
+  const mode = useRef<ScrollMode>("follow");
+  const parkedTurn = useRef<HTMLElement | null>(null);
+  const glide = useRef<{ from: number; to: number; start: number } | null>(null);
+  const velocity = useRef(0);
+  const expectedTop = useRef(-1);
+  const dragging = useRef(false);
+  const spacerH = useRef(0);
+  const spacerAnim = useRef<{ from: number; start: number } | null>(null);
+  const raf = useRef(0);
+  // Glue to the bottom until the reader shows intent: history loading in
+  // pages must not drift a fresh transcript off its end.
+  const pinBottom = useRef(true);
+  const runningRef = useRef(!!busy);
+  const visibleRef = useRef(visible);
+  visibleRef.current = visible;
   const { selection, dismissSelection } = useTranscriptSelection(
     scrollerEl,
     onAddToChat !== undefined,
@@ -173,11 +212,6 @@ export function AgentTranscript({
   const zen = useTranscriptZen();
   const promptAnchor = useTranscriptAnchor();
   const lastUserId = lastUserBlockId(blocks);
-  const seenUserId = useRef(lastUserId);
-  if (lastUserId !== seenUserId.current) {
-    seenUserId.current = lastUserId;
-    if (lastUserId && !anchorTurn) setAnchorTurn(true);
-  }
   const setShowJump = useCallback(
     (show: boolean) => {
       if (showJumpRef.current === show) return;
@@ -187,25 +221,171 @@ export function AgentTranscript({
     [onJumpToBottomChange],
   );
 
-  const syncPinned = useCallback(
+  const setMode = (next: ScrollMode) => {
+    mode.current = next;
+    const el = scroller.current;
+    if (el && el.dataset.scrollMode !== next) el.dataset.scrollMode = next;
+  };
+
+  const setSpacer = (h: number) => {
+    spacerH.current = h;
+    const el = spacer.current;
+    if (el) el.style.height = `${h}px`;
+  };
+
+  /** A scroll write of our own; the scroll handler knows it by its value. */
+  const scrollTo = (el: HTMLElement, top: number) => {
+    el.scrollTop = top;
+    expectedTop.current = el.scrollTop;
+  };
+
+  const fromBottomOf = (el: HTMLElement) =>
+    el.scrollHeight - el.scrollTop - el.clientHeight;
+
+  const syncPill = useCallback(
     (el: HTMLElement) => {
-      const near = isNearBottom(el);
-      stickToBottom.current = near;
-      distanceFromBottom.current =
-        el.scrollHeight - el.scrollTop - el.clientHeight;
-      setShowJump(!near);
+      setShowJump(
+        mode.current !== "follow" &&
+          fromBottomOf(el) - spacerH.current > PILL_AT,
+      );
     },
     [setShowJump],
   );
 
-  const jumpToBottom = useCallback(() => {
-    stickToBottom.current = true;
-    distanceFromBottom.current = 0;
-    setShowJump(false);
+  const tickRef = useRef<(now: number) => void>(() => {});
+  const schedule = useCallback(() => {
+    if (raf.current || !visibleRef.current) return;
+    raf.current = requestAnimationFrame((now) => tickRef.current(now));
+  }, []);
+
+  const tick = useCallback((now: number) => {
+    raf.current = 0;
     const el = scroller.current;
-    syncTranscriptViewport(el);
-    pinToBottom(el);
-  }, [setShowJump]);
+    if (!el) return;
+    let again = false;
+    const anim = spacerAnim.current;
+    if (anim) {
+      const t = Math.min(1, (now - anim.start) / SPACER_MS);
+      setSpacer(anim.from * (1 - easeOut(t)));
+      if (t < 1) again = true;
+      else spacerAnim.current = null;
+    }
+    const g = glide.current;
+    if (g) {
+      const t = Math.min(1, (now - g.start) / GLIDE_MS);
+      scrollTo(el, g.from + (g.to - g.from) * easeInOut(t));
+      if (t < 1) again = true;
+      else {
+        glide.current = null;
+        velocity.current = 0;
+      }
+    } else if (mode.current === "follow") {
+      const max = el.scrollHeight - el.clientHeight;
+      const dist = max - el.scrollTop;
+      if (dist > el.clientHeight / 2 && !reduceMotion) {
+        // A burst (a code block landing whole) is too far for the spring's
+        // 32 px lead: glide there instead of snapping.
+        glide.current = { from: el.scrollTop, to: max, start: now };
+        again = true;
+      } else if (dist > 2) {
+        velocity.current = (velocity.current + (dist * 0.05) / 1.25) * 0.7;
+        const next = Math.max(el.scrollTop + velocity.current, max - FOLLOW_LEAD);
+        scrollTo(el, Math.min(next, max));
+        again = true;
+      } else {
+        // Sub-pixel steps round away on a retina scroller; land exactly.
+        if (dist > 0) scrollTo(el, max);
+        velocity.current = 0;
+      }
+      if (runningRef.current) again = true;
+    }
+    syncPill(el);
+    if (again) schedule();
+  }, [reduceMotion, schedule, syncPill]);
+  tickRef.current = tick;
+
+  /** The runway under a parked turn: room for the prompt to sit at the top. */
+  const layoutRunway = useCallback(() => {
+    const el = scroller.current;
+    const turn = parkedTurn.current;
+    const inner = el?.firstElementChild as HTMLElement | null;
+    if (!el || !turn || !inner) return;
+    const base = el.getBoundingClientRect().top - el.scrollTop;
+    const turnTop = turn.getBoundingClientRect().top - base;
+    const below = inner.getBoundingClientRect().bottom - base - turnTop;
+    setSpacer(Math.max(0, el.clientHeight - TOP_INSET - below));
+    scrollTo(el, turnTop - TOP_INSET);
+  }, []);
+
+  /** Retire the runway: at once if it sits below the fold, else a short tween. */
+  const collapseSpacer = useCallback(() => {
+    const el = scroller.current;
+    if (!el || spacerH.current <= 0) return;
+    const padTop = el.scrollHeight - spacerH.current;
+    if (reduceMotion || padTop >= el.scrollTop + el.clientHeight) {
+      spacerAnim.current = null;
+      setSpacer(0);
+      return;
+    }
+    spacerAnim.current = { from: spacerH.current, start: performance.now() };
+    schedule();
+  }, [reduceMotion, schedule]);
+
+  const startGlide = useCallback(
+    (to: number) => {
+      const el = scroller.current;
+      if (!el) return;
+      const max = Math.max(0, el.scrollHeight - el.clientHeight);
+      to = Math.min(max, Math.max(0, to));
+      if (reduceMotion) {
+        scrollTo(el, to);
+        return;
+      }
+      const cap = MAX_GLIDE_VIEWPORTS * el.clientHeight;
+      let from = el.scrollTop;
+      if (Math.abs(to - from) > cap) {
+        from = to + Math.sign(from - to) * cap;
+        scrollTo(el, from);
+      }
+      glide.current = { from, to, start: performance.now() };
+      velocity.current = 0;
+      schedule();
+    },
+    [reduceMotion, schedule],
+  );
+
+  /** The reader took the wheel: no mode moves the viewport under them. */
+  const release = useCallback(() => {
+    glide.current = null;
+    pinBottom.current = false;
+    parkedTurn.current = null;
+    setMode("free");
+  }, []);
+
+  const jumpToBottom = useCallback(() => {
+    const el = scroller.current;
+    if (!el) return;
+    parkedTurn.current = null;
+    setMode("follow");
+    spacerAnim.current = null;
+    setSpacer(0);
+    setShowJump(false);
+    startGlide(el.scrollHeight - el.clientHeight);
+  }, [setShowJump, startGlide]);
+
+  const glideTo = useCallback(
+    (target: HTMLElement) => {
+      const el = scroller.current;
+      if (!el) return;
+      release();
+      const top =
+        target.getBoundingClientRect().top -
+        el.getBoundingClientRect().top +
+        el.scrollTop;
+      startGlide(top - TOP_INSET);
+    },
+    [release, startGlide],
+  );
 
   const setScroller = useCallback(
     (el: HTMLDivElement | null) => {
@@ -222,93 +402,179 @@ export function AgentTranscript({
 
   useEffect(() => {
     if (!scrollerEl) return;
-    syncPinned(scrollerEl);
-    const onScroll = () => syncPinned(scrollerEl);
+    const el = scrollerEl;
+    const onScroll = () => {
+      if (el.scrollTop === expectedTop.current) return;
+      if (dragging.current) release();
+      if (mode.current === "free" && fromBottomOf(el) - spacerH.current <= STICK_THRESHOLD) {
+        setMode("follow");
+      }
+      syncPill(el);
+    };
     const onWheel = (e: WheelEvent) => {
-      if (e.deltaY < 0) {
-        stickToBottom.current = false;
-        setShowJump(true);
+      if (e.deltaY === 0) return;
+      release();
+      if (e.deltaY > 0 && fromBottomOf(el) - spacerH.current <= STICK_THRESHOLD) {
+        setMode("follow");
+        schedule();
+      }
+      syncPill(el);
+    };
+    const onPointerDown = (e: PointerEvent) => {
+      // The scrollbar gutter lies past the content box.
+      if (e.offsetX >= el.clientWidth) dragging.current = true;
+    };
+    const onPointerUp = () => {
+      dragging.current = false;
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "PageUp" || e.key === "Home" || e.key === "ArrowUp") release();
+      else if (e.key === "PageDown" || e.key === "End" || e.key === "ArrowDown") {
+        release();
+        if (e.key === "End" || fromBottomOf(el) - spacerH.current <= STICK_THRESHOLD) {
+          setMode("follow");
+          schedule();
+        }
       }
     };
-    scrollerEl.addEventListener("scroll", onScroll, { passive: true });
-    scrollerEl.addEventListener("wheel", onWheel, { passive: true });
+    el.addEventListener("scroll", onScroll, { passive: true });
+    el.addEventListener("wheel", onWheel, { passive: true });
+    el.addEventListener("pointerdown", onPointerDown);
+    window.addEventListener("pointerup", onPointerUp);
+    el.addEventListener("keydown", onKey);
     return () => {
-      scrollerEl.removeEventListener("scroll", onScroll);
-      scrollerEl.removeEventListener("wheel", onWheel);
+      el.removeEventListener("scroll", onScroll);
+      el.removeEventListener("wheel", onWheel);
+      el.removeEventListener("pointerdown", onPointerDown);
+      window.removeEventListener("pointerup", onPointerUp);
+      el.removeEventListener("keydown", onKey);
     };
-  }, [scrollerEl, setShowJump, syncPinned]);
+  }, [scrollerEl, release, schedule, syncPill]);
 
+  // Own send: with prompt anchoring the new prompt parks at the top over a
+  // runway; otherwise the transcript snaps to its end and follows from there.
+  // A pane that mounts on an unanswered prompt (the first message of a new
+  // session, a tab reopened while the agent works) treats it as its own
+  // send once the turn is running.
+  const unanswered = blocks.length > 0 && blocks[blocks.length - 1].role === "user";
+  const seenUserId = useRef(unanswered ? undefined : lastUserId);
   useLayoutEffect(() => {
-    stickToBottom.current = true;
-    setShowJump(false);
     const el = scroller.current;
-    syncTranscriptViewport(el);
-    pinToBottom(el);
-  }, [lastUserId, setShowJump]);
+    if (!el || lastUserId === seenUserId.current) return;
+    if (!busy && unanswered) return;
+    seenUserId.current = lastUserId;
+    glide.current = null;
+    spacerAnim.current = null;
+    pinBottom.current = false;
+    const turnEl = el.querySelector<HTMLElement>(":scope > div > .transcript-turn:last-of-type");
+    if (promptAnchor && lastUserId && turnEl && busy) {
+      setMode("parked");
+      parkedTurn.current = turnEl;
+      layoutRunway();
+    } else {
+      setMode("follow");
+      parkedTurn.current = null;
+      setSpacer(0);
+      scrollTo(el, el.scrollHeight);
+    }
+    setShowJump(false);
+  }, [lastUserId, promptAnchor, busy, unanswered, layoutRunway, setShowJump]);
+
+  // Turn end: a parked reader keeps their place while the runway retires, so
+  // a settled transcript never keeps blank space below its last row.
+  useLayoutEffect(() => {
+    runningRef.current = !!busy;
+    if (busy) {
+      schedule();
+      return;
+    }
+    if (mode.current === "parked") {
+      setMode("free");
+      parkedTurn.current = null;
+    }
+    collapseSpacer();
+    const el = scroller.current;
+    if (el) syncPill(el);
+  }, [busy, collapseSpacer, schedule, syncPill]);
 
   useLayoutEffect(() => {
     const opened = visible && !wasVisible.current;
     wasVisible.current = visible;
-    if (!opened) return;
+    if (!opened) {
+      if (!visible && raf.current) {
+        cancelAnimationFrame(raf.current);
+        raf.current = 0;
+      }
+      return;
+    }
     const el = scroller.current;
     if (!el) return;
-    syncTranscriptViewport(el);
-    // Hidden tabs stay laid out, so scroll is already correct. Only pin when
-    // the scroller looks empty (a leftover from `display: none`).
-    if (el.scrollHeight <= el.clientHeight + NEAR_BOTTOM_PX) {
-      stickToBottom.current = true;
-      setShowJump(false);
-      pinToBottom(el);
-    }
-  }, [visible, setShowJump]);
+    if (mode.current === "follow") scrollTo(el, el.scrollHeight);
+    else if (mode.current === "parked") layoutRunway();
+    syncPill(el);
+    schedule();
+  }, [visible, layoutRunway, schedule, syncPill]);
 
   useLayoutEffect(() => {
-    if (!stickToBottom.current) return;
     const el = scroller.current;
-    syncTranscriptViewport(el);
-    pinToBottom(el);
-  }, [blocks, busy]);
+    if (!el) return;
+    if (mode.current === "follow" && (pinBottom.current || !visible)) {
+      scrollTo(el, el.scrollHeight);
+    } else if (mode.current === "parked") layoutRunway();
+    else schedule();
+  }, [blocks, busy, visible, layoutRunway, schedule]);
 
   useLayoutEffect(() => {
     const el = scrollerEl;
     const inner = el?.firstElementChild;
     if (!el || !inner) return;
     const onResize = () => {
-      syncTranscriptViewport(el);
-      const distance = el.scrollHeight - el.scrollTop - el.clientHeight;
-      if (stickToBottom.current) {
-        pinToBottom(el);
-        distanceFromBottom.current = 0;
-        return;
-      }
-      distanceFromBottom.current = distance;
-      setShowJump(!isNearBottom(el));
+      if (mode.current === "parked") layoutRunway();
+      else if (mode.current === "follow" && (pinBottom.current || !visibleRef.current)) {
+        scrollTo(el, el.scrollHeight);
+      } else schedule();
+      syncPill(el);
     };
     const observer = new ResizeObserver(onResize);
     observer.observe(inner);
     observer.observe(el);
     onResize();
     return () => observer.disconnect();
-  }, [scrollerEl, setShowJump]);
+  }, [scrollerEl, layoutRunway, schedule, syncPill]);
+
+  // Strict mode runs this cleanup once on mount too: clearing the handle
+  // lets the next schedule() start a fresh loop instead of waiting on a
+  // cancelled frame.
+  useEffect(
+    () => () => {
+      if (raf.current) cancelAnimationFrame(raf.current);
+      raf.current = 0;
+    },
+    [],
+  );
 
   const turns = groupTurns(blocks);
   const firstVisibleTurn = Math.max(0, turns.length - visibleTurnCount);
   const visibleTurns = turns.slice(firstVisibleTurn);
+  // Turns born after mount fade in; the ones the transcript opened with, and
+  // the pages loaded above them, are already history.
+  const initialTurns = useRef<Set<string> | null>(null);
+  if (!initialTurns.current) {
+    initialTurns.current = new Set(turns.map((turn) => turn[0].id));
+  }
 
   useLayoutEffect(() => {
     const previousHeight = prependHeight.current;
     const el = scroller.current;
     if (previousHeight == null || !el) return;
     prependHeight.current = null;
-    el.scrollTop += el.scrollHeight - previousHeight;
-    distanceFromBottom.current =
-      el.scrollHeight - el.scrollTop - el.clientHeight;
+    scrollTo(el, el.scrollTop + el.scrollHeight - previousHeight);
   }, [visibleTurnCount]);
 
   const loadEarlier = () => {
     const el = scroller.current;
     if (el) prependHeight.current = el.scrollHeight;
-    stickToBottom.current = false;
+    release();
     setVisibleTurnCount((count) =>
       Math.min(turns.length, count + TURN_PAGE_SIZE),
     );
@@ -318,11 +584,12 @@ export function AgentTranscript({
     <SelectSessionContext.Provider value={onSelectSession}>
     <TranscriptSessionContext.Provider value={sessionId}>
     <TurnStateContext.Provider value={turnState ?? null}>
+    <div className="relative h-full">
     <div
       ref={setScroller}
       className="agent-transcript h-full overflow-y-auto overscroll-none [overflow-anchor:none] font-mono text-[13px] leading-5"
     >
-      <div className="mx-auto flex w-full min-w-0 max-w-4xl flex-col gap-1 pb-1">
+      <div className="mx-auto flex w-full min-w-0 max-w-4xl flex-col gap-1 px-4 pb-1">
         {firstVisibleTurn > 0 ? (
           <div className="flex justify-center px-4 py-3">
             <button
@@ -359,16 +626,15 @@ export function AgentTranscript({
               .some(
                 (item) => item.type === "block" && isProseBlock(item.block),
               );
+          const fresh = !initialTurns.current?.has(turn[0].id);
+          const lastGroup = lastActivityIndex(items);
           return (
             <div
               key={turn[0].id}
-              className={`transcript-turn flex min-w-0 flex-col gap-1${
+              data-turn={turn[0].id}
+              className={`transcript-turn group/turn flex min-w-0 flex-col gap-1${
                 isLastTurn ? " transcript-turn-live" : ""
-              }${
-                promptAnchor && anchorTurn && isLastTurn && userBlock
-                  ? " transcript-turn-anchor"
-                  : ""
-              }`}
+              }${fresh ? " z-fade-in" : ""}`}
             >
               {items.map((item, itemIndex) =>
                 item.type === "activity" ? (
@@ -387,11 +653,25 @@ export function AgentTranscript({
                       key={item.blocks[0].id}
                       blocks={item.blocks}
                       cwd={cwd}
+                      autoOpen={!settled && itemIndex === lastGroup}
                       onApproval={onApproval}
                       onOpenFile={onOpenFile}
                       onOpenDiff={onOpenDiff}
                     />
                   )
+                ) : item.block.role === "user" ? (
+                  <div key={item.block.id} className="flex min-w-0 flex-col">
+                    <TranscriptBlock
+                      block={item.block}
+                      layout={transcriptLayout}
+                      stickyIndex={firstVisibleTurn + turnIndex + 1}
+                      onApproval={onApproval}
+                      onOpenFile={onOpenFile}
+                      onOpenDiff={onOpenDiff}
+                      cwd={cwd}
+                    />
+                    <TurnStamp ts={item.block.ts ?? item.block.startedAt} chat={transcriptLayout === "chat"} />
+                  </div>
                 ) : (
                   <TranscriptBlock
                     key={item.block.id}
@@ -410,6 +690,14 @@ export function AgentTranscript({
                   />
                 ),
               )}
+              {!settled && showsThinkingTail(turn) ? (
+                <div
+                  key="tail"
+                  className="z-fade-in flex h-[26px] items-center px-4 font-sans text-sm"
+                >
+                  <Shimmer duration={1.4}>Thinking</Shimmer>
+                </div>
+              ) : null}
               {durationMs != null && settled ? (
                 <TurnDuration
                   elapsedMs={durationMs}
@@ -441,6 +729,7 @@ export function AgentTranscript({
           );
         })}
       </div>
+      <div ref={spacer} aria-hidden className="shrink-0" />
       {onAddToChat ? (
         <TranscriptSelectionMenu
           selection={selection}
@@ -448,6 +737,13 @@ export function AgentTranscript({
           onDismiss={dismissSelection}
         />
       ) : null}
+    </div>
+    <TranscriptMinimap
+      scroller={scrollerEl}
+      turns={visibleTurns}
+      visible={visible}
+      onJump={glideTo}
+    />
     </div>
     </TurnStateContext.Provider>
     </TranscriptSessionContext.Provider>
@@ -679,6 +975,10 @@ const TranscriptBlock = memo(function TranscriptBlock({
     );
   }
 
+  if (isTodoBlock(block)) {
+    return <TodoListBlock block={block} />;
+  }
+
   if (block.role === "tool") {
     return (
       <ToolCall
@@ -876,18 +1176,37 @@ const DISCLOSURE_ROW = "flex w-fit items-center gap-1.5 py-1 font-sans text-sm";
 function ActivityGroup({
   blocks,
   cwd,
+  autoOpen = false,
   onApproval,
   onOpenFile,
   onOpenDiff,
 }: {
   blocks: Block[];
   cwd?: string;
+  /** The group the agent is in: it opens by itself once a second call lands. */
+  autoOpen?: boolean;
   onApproval?: (requestId: string | number, decision: ApprovalDecision) => void;
   onOpenFile?: OpenFileFn;
   onOpenDiff?: (path: string) => void;
 }) {
-  const [showPrevious, setShowPrevious] = useState(false);
+  const sessionId = useTranscriptSession();
+  const [override, setOverride] = usePersistedOpen(
+    `${sessionId ?? "-"}:g:${blocks[0]?.id}`,
+  );
   const { latest, pending, hidden } = splitActivityRows(blocks);
+  const showPrevious = override ?? (autoOpen && hidden.length > 0);
+  const reduceMotion = useReducedMotion() === true;
+  // The fold tweens over rows that exist: mount them a frame before opening
+  // and keep them through the close.
+  const [mounted, setMounted] = useState(showPrevious);
+  useLayoutEffect(() => {
+    if (showPrevious) {
+      setMounted(true);
+      return;
+    }
+    const timer = window.setTimeout(() => setMounted(false), SPACER_MS + 40);
+    return () => window.clearTimeout(timer);
+  }, [showPrevious]);
 
   return (
     <div className="flex min-w-0 flex-col gap-0.5 px-4">
@@ -900,7 +1219,7 @@ function ActivityGroup({
               ? "Hide previous tool calls"
               : `Show ${hidden.length} previous tool calls`
           }
-          onClick={() => setShowPrevious((open) => !open)}
+          onClick={() => setOverride(!showPrevious)}
           className={`${DISCLOSURE_ROW} ${ACTIVITY_ROW_HEIGHT} shrink-0 text-content/40 transition-colors duration-200 hover:text-content/70`}
         >
           <ChevronRight
@@ -916,8 +1235,13 @@ function ActivityGroup({
           </span>
         </button>
       ) : null}
-      {showPrevious
-        ? hidden.map((block) => (
+      {mounted && hidden.length > 0 ? (
+        <TweenHeight
+          open={showPrevious && mounted}
+          animate={!reduceMotion}
+          className="flex flex-col gap-0.5"
+        >
+          {hidden.map((block) => (
             <ActivityRow
               key={block.id}
               block={block}
@@ -926,8 +1250,9 @@ function ActivityGroup({
               onOpenFile={onOpenFile}
               onOpenDiff={onOpenDiff}
             />
-          ))
-        : null}
+          ))}
+        </TweenHeight>
+      ) : null}
       {latest ? (
         <ActivityRow
           block={latest}
@@ -1101,12 +1426,15 @@ function ActivityPhaseGroup({
   onOpenFile?: OpenFileFn;
   onOpenDiff?: (path: string) => void;
 }) {
-  const [override, setOverride] = useState<boolean | null>(null);
+  const sessionId = useTranscriptSession();
+  const [override, setOverride] = usePersistedOpen(
+    `${sessionId ?? "-"}:p:${phase.id}`,
+  );
   const waiting = phase.steps.some(awaitsUser);
-  const open = waiting || (override ?? active);
+  // The live phase opens on its second step; a reader's choice is remembered.
+  const open = waiting || (override ?? (active && phase.steps.length > 1));
   const [liveScroller, setLiveScroller] = useState<HTMLDivElement | null>(null);
   useLivePhaseScroll(liveScroller, active && open, phase.steps);
-  const sessionId = useTranscriptSession();
   const summary = useSectionSummary(sessionId, phase.steps, active);
   const captions = useMemo(
     () => captionMapOf(phase.steps, summary),
@@ -2068,23 +2396,40 @@ function turnUserBlock(blocks: Block[]): Block | undefined {
   return undefined;
 }
 
+/** Within a line or two of the end of a nested scroller. */
 function isNearBottom(el: HTMLElement): boolean {
-  return el.scrollHeight - el.scrollTop - el.clientHeight <= NEAR_BOTTOM_PX;
+  return el.scrollHeight - el.scrollTop - el.clientHeight <= 16;
 }
 
-function pinToBottom(el: HTMLElement | null) {
-  if (!el) return;
-  el.scrollTop = el.scrollHeight;
+/**
+ * A live turn with nothing to show yet ends in a "Thinking" shimmer: after
+ * the prompt, behind an empty reasoning block, or before the first word of
+ * the answer. The next content takes that slot, so nothing jumps.
+ */
+function showsThinkingTail(turn: Block[]): boolean {
+  const last = turn[turn.length - 1];
+  if (!last || last.role === "user") return true;
+  if (last.role === "reasoning" || last.role === "assistant") return !last.text;
+  return false;
 }
 
-/** Keep the live turn's min-height in lockstep with the visible transcript. */
-function syncTranscriptViewport(el: HTMLElement | null) {
-  if (!el || el.clientHeight <= 0) return;
-  const inner = el.firstElementChild as HTMLElement | null;
-  const pad = inner
-    ? Number.parseFloat(getComputedStyle(inner).paddingBottom) || 0
-    : 0;
-  const next = `${Math.max(0, el.clientHeight - pad)}px`;
-  if (el.style.getPropertyValue("--transcript-viewport") === next) return;
-  el.style.setProperty("--transcript-viewport", next);
+const stampFormat = new Intl.DateTimeFormat(undefined, {
+  month: "short",
+  day: "numeric",
+  hour: "numeric",
+  minute: "2-digit",
+});
+
+/** When the prompt went out, shown under it while the turn is hovered. */
+function TurnStamp({ ts, chat }: { ts?: number; chat: boolean }) {
+  if (ts == null) return null;
+  return (
+    <div
+      className={`flex h-4 items-center px-4 font-sans text-[11px] text-content/40 opacity-0 transition-opacity duration-150 group-hover/turn:opacity-100 ${
+        chat ? "-mt-4 justify-end" : "-mt-3"
+      }`}
+    >
+      {stampFormat.format(ts)}
+    </div>
+  );
 }
