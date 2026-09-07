@@ -68,7 +68,7 @@ export function WhatsNewDialog({ version, markdown, onClose }: Props) {
     <Modal
       onClose={onClose}
       title="What's new"
-      description={`MonoCode ${version}${date ? ` · ${date}` : ""}`}
+      description={`Release ${version}${date ? ` · ${date}` : ""}`}
       size="md"
       className="h-[min(72vh,640px)]"
     >

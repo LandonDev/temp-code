@@ -291,44 +291,81 @@ const EDITOR_LANGS = [
 
 let readyP: Promise<void> | null = null;
 
-/** Load grammars and register mc-light / mc-dark; idempotent. */
-export function monacoReady(): Promise<void> {
-  readyP ??= (async () => {
-    const lightPalette = readPalette(false);
-    const darkPalette = readPalette(true);
-    const mcLight: ThemeRegistrationAny = {
+function themeRegistrations(): {
+  light: ThemeRegistrationAny;
+  dark: ThemeRegistrationAny;
+  lightPalette: Record<string, string>;
+  darkPalette: Record<string, string>;
+} {
+  const lightPalette = readPalette(false);
+  const darkPalette = readPalette(true);
+  return {
+    lightPalette,
+    darkPalette,
+    light: {
       ...intellijLight,
       name: "mc-light",
       colors: { ...intellijLight.colors, ...lightPalette },
-    };
-    const mcDark: ThemeRegistrationAny = {
+    },
+    dark: {
       ...darcula,
       name: "mc-dark",
       colors: { ...darcula.colors, ...darkPalette },
-    };
+    },
+  };
+}
+
+/** (Re)define mc-light / mc-dark from the tokens as they are right now.
+ *  Semantic-token styling rides the same theme trie as textmate tokens,
+ *  so both themes carry the semantic rules appended. */
+function defineThemes(): void {
+  const { light, dark, lightPalette, darkPalette } = themeRegistrations();
+  for (const [name, reg, isDark, palette] of [
+    ["mc-light", light, false, lightPalette],
+    ["mc-dark", dark, true, darkPalette],
+  ] as const) {
+    const t = textmateThemeToMonacoTheme(reg as never) as monaco.editor.IStandaloneThemeData;
+    monaco.editor.defineTheme(name, {
+      ...t,
+      rules: [...t.rules, ...semanticRules(isDark, palette["editor.foreground"])],
+    });
+  }
+}
+
+/** Load grammars and register mc-light / mc-dark; idempotent. */
+export function monacoReady(): Promise<void> {
+  readyP ??= (async () => {
+    const { light, dark } = themeRegistrations();
     // The JS regex engine: the CSP has no wasm, so oniguruma is out.
     const highlighter = await createHighlighter({
-      themes: [mcLight, mcDark],
+      themes: [light, dark],
       langs: EDITOR_LANGS,
       engine: createJavaScriptRegexEngine({ forgiving: true }),
     });
     shikiToMonaco(highlighter, monaco);
-    // Semantic-token styling rides the same theme trie as textmate tokens:
-    // re-define both themes with the semantic rules appended.
-    for (const [name, reg, dark, palette] of [
-      ["mc-light", mcLight, false, lightPalette],
-      ["mc-dark", mcDark, true, darkPalette],
-    ] as const) {
-      const t = textmateThemeToMonacoTheme(reg as never) as monaco.editor.IStandaloneThemeData;
-      monaco.editor.defineTheme(name, {
-        ...t,
-        rules: [...t.rules, ...semanticRules(dark, palette["editor.foreground"])],
-      });
-    }
+    defineThemes();
     applyEditorTheme();
-    window.addEventListener(SCHEME_CHANGE_EVENT, applyEditorTheme);
+    // The bundled face may land after the first editor measured itself.
+    void document.fonts.load("12px 'JetBrains Mono'").then(() => monaco.editor.remeasureFonts());
+    // Workbench colours come from the app tokens: recompute on a scheme
+    // flip and when the tint sliders rewrite the root's inline style.
+    window.addEventListener(SCHEME_CHANGE_EVENT, recomputeEditorTheme);
+    let tintTimer: number | null = null;
+    new MutationObserver(() => {
+      if (tintTimer !== null) window.clearTimeout(tintTimer);
+      tintTimer = window.setTimeout(() => {
+        tintTimer = null;
+        recomputeEditorTheme();
+      }, 80);
+    }).observe(document.documentElement, { attributes: true, attributeFilter: ["style"] });
   })();
   return readyP;
+}
+
+/** Re-read the tokens, redefine both themes, and re-apply the current one. */
+export function recomputeEditorTheme(): void {
+  defineThemes();
+  applyEditorTheme();
 }
 
 export function applyEditorTheme(): void {

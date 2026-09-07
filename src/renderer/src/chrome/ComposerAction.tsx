@@ -40,7 +40,7 @@ export function ComposerAction({ intent, midTurnDefault, disabled, onSubmit, onP
       aria-label={label}
       disabled={disabled}
       onClick={onClick}
-      className="relative grid size-6.5 place-items-center overflow-hidden rounded-md bg-white text-black hover:bg-white/90 disabled:cursor-default disabled:bg-white/30 disabled:text-black/40 disabled:hover:bg-white/30"
+      className="relative grid size-6.5 place-items-center overflow-hidden rounded-md bg-white text-black transition hover:bg-white/90 active:scale-95 disabled:cursor-default disabled:bg-white/30 disabled:text-black/40 disabled:hover:bg-white/30"
     >
       <AnimatePresence mode="wait" initial={false}>
         <motion.span
@@ -60,7 +60,7 @@ export function ComposerAction({ intent, midTurnDefault, disabled, onSubmit, onP
           className="grid place-items-center"
         >
           {glyph === "pause" ? (
-            <Pause className="size-3.5 fill-current" strokeWidth={0} />
+            <Pause className="size-3.5 fill-warning text-warning" strokeWidth={0} />
           ) : glyph === "queue" ? (
             <ListPlus className="size-3.5" strokeWidth={2} />
           ) : (

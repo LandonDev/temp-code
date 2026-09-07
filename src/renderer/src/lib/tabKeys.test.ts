@@ -72,3 +72,20 @@ describe("tabCommand", () => {
     ).toBe("next");
   });
 });
+
+describe("tabCommand inside a focused Monaco editor", () => {
+  const inMonaco = { closest: (sel: string) => (sel === ".monaco-editor" ? {} : null) };
+  const outside = { closest: () => null };
+  const at = (target: unknown, partial: Parameters<typeof key>[0]) =>
+    ({ ...key(partial), target }) as KeyboardEvent;
+
+  it("leaves Ctrl+T and Ctrl+D to the editor (refactor, debug)", () => {
+    expect(tabCommand(at(inMonaco, { ctrlKey: true, key: "t" }))).toBeNull();
+    expect(tabCommand(at(inMonaco, { ctrlKey: true, key: "d" }))).toBeNull();
+  });
+
+  it("still handles them elsewhere and ⌘ chords everywhere", () => {
+    expect(tabCommand(at(outside, { ctrlKey: true, key: "t" }))).not.toBeNull();
+    expect(tabCommand(at(inMonaco, { metaKey: true, key: "t" }))).not.toBeNull();
+  });
+});

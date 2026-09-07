@@ -1,39 +1,86 @@
 import { useEffect, useRef, useState } from "react";
+import { registerEditorFlusher } from "../../lib/editorFlush";
 import { gitFileDiff } from "../../lib/fs";
+import type { FileState } from "../../lib/monaco/editorState";
 import { displayPath } from "../../lib/paths";
+import { client } from "../../lib/tcserver/client";
 import { projectForCwd } from "../../lib/tcserver/projects";
 import { MatrixSpinner } from "../threads/bits";
-import { EDITOR_OPTIONS, editorFontFamily, languageForPath, monaco } from "./monaco";
+import { ConflictBar } from "./ConflictBar";
+import { trackEditor } from "./keys";
 import { ensureForModel } from "./lsp/idea";
-import { openFile, type OpenedFile } from "./models";
+import { registerProviders } from "./lsp/providers";
+import { EDITOR_OPTIONS, editorFontFamily, languageForPath, monaco } from "./monaco";
+import { openFile, resolveConflict, type OpenedFile } from "./models";
+import { monacoReady } from "./theme";
 
 /**
- * A review tab in Monaco: HEAD on the left, the live model on the right,
- * editable and autosaving through the same registry as any file tab.
+ * The text a review compares against: `base` (a ref; HEAD when unset) at
+ * the project, empty for an untracked path. Outside any project the git
+ * diff bridge answers instead.
  */
-export function DiffSurface({ path, cwd }: { path: string; cwd: string }) {
+async function baseText(path: string, cwd: string, base?: string): Promise<string> {
+  const relative = displayPath(path, cwd);
+  const project = projectForCwd(cwd);
+  if (project) {
+    const text = await client
+      .request<string | null>("project.show", { projectId: project.id, path: relative, ref: base })
+      .catch(() => null);
+    return text ?? "";
+  }
+  const diff = await gitFileDiff(cwd, relative).catch(() => null);
+  return diff && !diff.binary && !diff.tooLarge ? diff.original : "";
+}
+
+/**
+ * A review tab in Monaco: the base on the left, the live model on the
+ * right — the same registry buffer as a file tab, so it autosaves, ⌘S
+ * flushes, dirtiness reaches the tab, and a disk race shows the bar.
+ */
+export function DiffSurface({
+  path,
+  cwd,
+  base,
+  onDirtyChange,
+}: {
+  path: string;
+  cwd: string;
+  base?: string;
+  onDirtyChange?: (path: string, dirty: boolean) => void;
+}) {
   const hostRef = useRef<HTMLDivElement>(null);
   const [phase, setPhase] = useState<"loading" | "ready" | "error">("loading");
+  const [fileState, setFileState] = useState<FileState>({ pending: false, conflict: null });
+  const onDirtyChangeRef = useRef(onDirtyChange);
+  onDirtyChangeRef.current = onDirtyChange;
+
+  useEffect(() => {
+    onDirtyChangeRef.current?.(path, fileState.pending);
+  }, [path, fileState.pending]);
 
   useEffect(() => {
     let disposed = false;
     let handle: OpenedFile | null = null;
     let editor: monaco.editor.IStandaloneDiffEditor | null = null;
     let original: monaco.editor.ITextModel | null = null;
+    const cleanups: (() => void)[] = [];
     void (async () => {
       try {
-        const relative = displayPath(path, cwd);
-        const [diff, opened] = await Promise.all([
-          gitFileDiff(cwd, relative).catch(() => null),
-          openFile(path, cwd),
-        ]);
-        handle = opened;
-        if (disposed || !opened.model) {
-          if (!disposed) setPhase("error");
+        await monacoReady();
+        registerProviders();
+        const [head, opened] = await Promise.all([baseText(path, cwd, base), openFile(path, cwd)]);
+        if (disposed) {
+          opened.release();
           return;
         }
-        // Untracked or unreadable HEAD: diff against empty.
-        const head = diff && !diff.binary && !diff.tooLarge ? diff.original : "";
+        handle = opened;
+        if (!opened.model) {
+          setPhase("error");
+          return;
+        }
+        setFileState(opened.state);
+        cleanups.push(opened.onState(setFileState));
+        cleanups.push(registerEditorFlusher(path, opened.flushNow));
         original = monaco.editor.createModel(head, languageForPath(path));
         editor = monaco.editor.createDiffEditor(hostRef.current!, {
           ...EDITOR_OPTIONS,
@@ -45,6 +92,9 @@ export function DiffSurface({ path, cwd }: { path: string; cwd: string }) {
           diffAlgorithm: "advanced",
         });
         editor.setModel({ original, modified: opened.model });
+        const modified = editor.getModifiedEditor();
+        cleanups.push(trackEditor(modified));
+        modified.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => void opened.flushNow());
         const project = projectForCwd(cwd);
         if (project) ensureForModel(project, opened.model);
         setPhase("ready");
@@ -54,14 +104,23 @@ export function DiffSurface({ path, cwd }: { path: string; cwd: string }) {
     })();
     return () => {
       disposed = true;
+      for (const cleanup of cleanups) cleanup();
       editor?.dispose();
       original?.dispose();
       handle?.release();
+      setPhase("loading");
     };
-  }, [path, cwd]);
+  }, [path, cwd, base]);
 
   return (
     <div className="relative flex h-full min-h-0 flex-1 flex-col">
+      {fileState.conflict ? (
+        <ConflictBar
+          kind={fileState.conflict}
+          onReload={() => resolveConflict(path, "reload")}
+          onKeep={() => resolveConflict(path, "keep")}
+        />
+      ) : null}
       {phase === "loading" ? (
         <div className="flex flex-1 items-center justify-center">
           <MatrixSpinner />

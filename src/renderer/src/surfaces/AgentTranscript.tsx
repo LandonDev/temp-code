@@ -32,12 +32,7 @@ import { SecondOpinionCard } from "../chrome/SecondOpinionCard";
 import { NoteMiniCard } from "../chrome/NoteMiniCard";
 import { TerminalSpinner } from "../chrome/TerminalSpinner";
 import type { ApprovalDecision } from "../lib/harness";
-import {
-  isEditTool,
-  isReadTool,
-  isSearchTool,
-  stubFilePreview,
-} from "../lib/harness/preview";
+import { isEditTool, stubFilePreview } from "../lib/harness/preview";
 import { copyText } from "../lib/clipboard";
 import { playCue } from "../lib/sounds";
 import { displayPath, resolveWorkspacePath } from "../lib/paths";
@@ -66,7 +61,13 @@ import {
   useThreadTitles,
 } from "../lib/threadMentions";
 import { EditRow } from "./EditRow";
+import { ToolDetails } from "./ToolDetails";
+import { FileRefMenu } from "./FileRefMenu";
+import { splitEditCards } from "./editCards";
+import { AppToolSummary, useAppView } from "./AppToolSummary";
+import { CopyMessageButton } from "./CopyMessageButton";
 import { isEditBlock } from "./editModel";
+import { TranscriptSessionContext } from "./transcriptSession";
 import { TranscriptSelectionMenu } from "./TranscriptSelectionMenu";
 import {
   activityPhaseTitle,
@@ -98,6 +99,8 @@ const TURN_PAGE_SIZE = 20;
 
 type Props = {
   blocks: Block[];
+  /** the session shown, for rows that remember state per session */
+  sessionId?: string;
   busy?: boolean;
   cwd?: string;
   harness?: HarnessId;
@@ -118,6 +121,7 @@ type Props = {
 
 export function AgentTranscript({
   blocks,
+  sessionId,
   busy,
   cwd,
   harness,
@@ -297,6 +301,7 @@ export function AgentTranscript({
 
   return (
     <SelectSessionContext.Provider value={onSelectSession}>
+    <TranscriptSessionContext.Provider value={sessionId}>
     <div
       ref={setScroller}
       className="agent-transcript h-full overflow-y-auto overscroll-none [overflow-anchor:none] font-mono text-[13px] leading-5"
@@ -425,6 +430,7 @@ export function AgentTranscript({
         />
       ) : null}
     </div>
+    </TranscriptSessionContext.Provider>
     </SelectSessionContext.Provider>
   );
 }
@@ -739,7 +745,7 @@ function UserMessageBlock({
       }
     >
       <div
-        className={`min-w-0 bg-content/10 px-3 py-2 font-sans text-content ${
+        className={`group/message relative min-w-0 bg-content/10 px-3 py-2 font-sans text-content ${
           chat
             ? "w-fit max-w-xl rounded-xl"
             : "rounded-lg border border-content/10"
@@ -747,6 +753,9 @@ function UserMessageBlock({
         style={{ zIndex: stickyIndex }}
         onClick={overflows ? toggle : undefined}
       >
+        {text || block.attachments?.length ? (
+          <CopyMessageButton text={text} attachments={block.attachments ?? []} chat={chat} />
+        ) : null}
         {block.attachments?.length ? (
           <div
             className={`flex flex-wrap gap-1.5 ${text || card || note ? "mb-2" : ""}`}
@@ -1151,7 +1160,7 @@ function ActivityPhaseGroup({
       </div>
       {!open && edits.length > 0 ? (
         <div className="flex min-w-0 flex-col gap-1 pb-1 pl-5">
-          {edits.map((block) => (
+          {edits.flatMap((block) => splitEditCards(block).cards).map((block) => (
             <EditRow
               key={block.id}
               block={block}
@@ -1254,10 +1263,24 @@ function ActivityRow({
     );
   }
   if (isEditBlock(block) && !needsApproval(block) && !block.question) {
+    const { cards, internal } = splitEditCards(block);
     return (
-      <div className="py-1">
-        <EditRow block={block} cwd={cwd} onOpenFile={onOpenDiff ?? onOpenFile} />
-      </div>
+      <>
+        {cards.map((card) => (
+          <div key={card.id} className="py-1">
+            <EditRow block={card} cwd={cwd} onOpenFile={onOpenDiff ?? onOpenFile} />
+          </div>
+        ))}
+        {internal ? (
+          <ActivityToolRow
+            block={internal}
+            cwd={cwd}
+            live={live}
+            bare={railed}
+            onOpenFile={onOpenFile}
+          />
+        ) : null}
+      </>
     );
   }
   return (
@@ -1459,29 +1482,52 @@ function ActivityToolRow({
     : onOpenFile;
   // A call we watched start rises in; rows already settled at mount sit still.
   const [fresh] = useState(live && state === "pending");
+  const [open, setOpen] = useState(false);
+  const app = useAppView(block);
+  // Every call opens onto its details; the body mounts only once asked for.
+  const expandable = !!block.tool && !pending && !block.question;
 
   return (
     <div className={`flex min-w-0 flex-col ${fresh ? "z-fade-in" : ""}`}>
       <div
         aria-label={`Tool call: ${label}`}
-        className="flex min-w-0 items-center gap-1.5 py-1"
+        className={`group/tool flex min-w-0 items-center gap-1.5 py-1 ${expandable ? "cursor-pointer" : ""}`}
+        onClick={expandable ? () => setOpen((value) => !value) : undefined}
       >
         {bare ? null : <ActivityToolIcon state={state} live={live} />}
-        <ToolCallSummary
-          label={label}
-          preview={block.tool?.preview}
-          cwd={cwd}
-          chip={bare}
-          failed={state === "rejected"}
-          onOpenFile={openFile}
-        />
+        {app ? (
+          <AppToolSummary view={app} chip={bare} failed={state === "rejected"} />
+        ) : (
+          <ToolCallSummary
+            label={label}
+            preview={block.tool?.preview}
+            cwd={cwd}
+            chip={bare}
+            failed={state === "rejected"}
+            onOpenFile={openFile}
+          />
+        )}
         {pending || block.question ? null : <ToolCallStatusIcon state={state} />}
+        {expandable ? <ToolDisclosure open={open} /> : null}
       </div>
+      {open && expandable ? <ToolDetails block={block} /> : null}
       {pending ? (
         <ApprovalControls block={block} onApproval={onApproval} />
       ) : null}
       {block.question ? <QuestionCard question={block.question} /> : null}
     </div>
+  );
+}
+
+/** The chevron that opens a row onto its details: quiet until hovered. */
+function ToolDisclosure({ open }: { open: boolean }) {
+  return (
+    <ChevronRight
+      className={`ml-auto size-3.5 shrink-0 text-content/35 transition-transform ${
+        open ? "rotate-90" : "opacity-0 group-hover/tool:opacity-100"
+      }`}
+      strokeWidth={1.75}
+    />
   );
 }
 
@@ -1532,6 +1578,7 @@ function ToolCall({
   onOpenFile,
   onOpenDiff,
   embedded,
+  plain = false,
 }: {
   block: Block;
   cwd?: string;
@@ -1539,12 +1586,13 @@ function ToolCall({
   onOpenFile?: OpenFileFn;
   onOpenDiff?: (path: string) => void;
   embedded?: boolean;
+  /** Render as a plain tool row even when the call is an edit (a memory-file edit). */
+  plain?: boolean;
 }) {
   const [open, setOpen] = useState(false);
+  const app = useAppView(block);
   const preview = block.tool?.preview;
   const label = toolCallLabel(block, cwd);
-  const detail = block.tool?.detail?.trim();
-  const expanded = detail && detail !== label ? detail : label;
   const state = toolCallState(block);
   const stateLabel =
     state === "accepted"
@@ -1557,10 +1605,8 @@ function ToolCall({
     block.text || block.tool?.title,
     preview,
   );
-  const compact =
-    isReadTool(block.tool?.kind, label, preview) ||
-    isSearchTool(block.tool?.kind, label, preview);
-  const expandable = !compact && !!detail && detail !== label;
+  // Every call opens onto its details; the body mounts only once asked for.
+  const expandable = !!block.tool && !needsApproval(block);
 
   const frame = embedded ? "py-0.5" : "px-4 py-1";
 
@@ -1573,21 +1619,33 @@ function ToolCall({
     );
   }
 
-  if (editTool) {
-    return (
-      <div className={frame}>
-        {needsApproval(block) ? (
+  if (editTool && !plain) {
+    if (needsApproval(block)) {
+      return (
+        <div className={frame}>
           <FilePreview
             preview={preview ?? stubFilePreview(block.tool?.kind, label)}
             status={state}
             cwd={cwd}
             onOpenFile={onOpenDiff ?? onOpenFile}
           />
-        ) : (
-          <EditRow block={block} cwd={cwd} onOpenFile={onOpenDiff ?? onOpenFile} />
-        )}
-        <ApprovalControls block={block} onApproval={onApproval} />
-      </div>
+          <ApprovalControls block={block} onApproval={onApproval} />
+        </div>
+      );
+    }
+    // One card per file the call touched; app bookkeeping as a quiet row.
+    const { cards, internal } = splitEditCards(block);
+    return (
+      <>
+        {cards.map((card) => (
+          <div key={card.id} className={frame}>
+            <EditRow block={card} cwd={cwd} onOpenFile={onOpenDiff ?? onOpenFile} />
+          </div>
+        ))}
+        {internal ? (
+          <ToolCall block={internal} cwd={cwd} embedded={embedded} onOpenFile={onOpenFile} plain />
+        ) : null}
+      </>
     );
   }
 
@@ -1604,13 +1662,17 @@ function ToolCall({
           className="flex w-full min-w-0 items-center gap-2 rounded-lg py-1.5 text-left"
         >
           <ToolCallIcon state={state} />
-          <ToolCallSummary
-            label={label}
-            preview={preview}
-            cwd={cwd}
-            failed={state === "rejected"}
-            onOpenFile={onOpenFile}
-          />
+          {app ? (
+            <AppToolSummary view={app} failed={state === "rejected"} />
+          ) : (
+            <ToolCallSummary
+              label={label}
+              preview={preview}
+              cwd={cwd}
+              failed={state === "rejected"}
+              onOpenFile={onOpenFile}
+            />
+          )}
           <ChevronRight
             className={`size-3.5 shrink-0 text-content/35 transition-transform ${open ? "rotate-90" : ""}`}
             strokeWidth={1.75}
@@ -1622,20 +1684,20 @@ function ToolCall({
           className="flex w-full min-w-0 items-center gap-2"
         >
           <ToolCallIcon state={state} />
-          <ToolCallSummary
-            label={label}
-            preview={preview}
-            cwd={cwd}
-            failed={state === "rejected"}
-            onOpenFile={onOpenFile}
-          />
+          {app ? (
+            <AppToolSummary view={app} failed={state === "rejected"} />
+          ) : (
+            <ToolCallSummary
+              label={label}
+              preview={preview}
+              cwd={cwd}
+              failed={state === "rejected"}
+              onOpenFile={onOpenFile}
+            />
+          )}
         </div>
       )}
-      {open && expandable ? (
-        <pre className="mt-1.5 min-w-0 whitespace-pre-wrap break-words px-2.5 font-mono text-[12px] leading-5 text-content/55">
-          {expanded}
-        </pre>
-      ) : null}
+      {open && expandable ? <ToolDetails block={block} /> : null}
       <ApprovalControls block={block} onApproval={onApproval} />
     </div>
   );
@@ -1728,7 +1790,8 @@ function ToolCallSummary({
         {action}
       </span>
       {isFile ? (
-        canOpen ? (
+        <FileRefMenu target={preview?.path || target} cwd={cwd}>
+        {canOpen ? (
           <button
             type="button"
             className={`-my-0.5 flex min-w-0 cursor-pointer items-center gap-1 rounded px-1 py-0.5 text-left hover:text-sky-300 ${
@@ -1757,7 +1820,8 @@ function ToolCallSummary({
             <FileTypeIcon name={fileName} isDir={action === "List"} />
             <span className="min-w-0 truncate">{target}</span>
           </span>
-        )
+        )}
+        </FileRefMenu>
       ) : (
         <span
           className={`flex min-w-0 flex-1 items-center gap-1.5 pl-1 ${targetTone}`}

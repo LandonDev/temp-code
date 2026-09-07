@@ -8,11 +8,13 @@ import {
 } from "./icons";
 import {
   memo,
+  useEffect,
   useRef,
   useState,
   type MouseEvent as ReactMouseEvent,
   type ReactNode,
 } from "react";
+import { warmProjectForCwd } from "../lib/monaco/focusBoot";
 import {
   loadSidebarTabOrder,
   saveSidebarTabOrder,
@@ -20,6 +22,8 @@ import {
   type SidebarTabId,
 } from "../lib/appearance";
 import { basename } from "../lib/fs";
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
+import { SPRING_LAYOUT } from "../lib/ease";
 import { IS_MAC, MOD } from "../lib/platform";
 import { projectName } from "../lib/paths";
 import type { HarnessId } from "../lib/session";
@@ -219,7 +223,13 @@ function SidebarComponent({
   onOpenWhatsNew,
   onDismissUpdate,
 }: Props) {
+  const reduceMotion = useReducedMotion();
   const gitRoot = gitCwd || cwd;
+  // Focus boot: start the JVM engine for a build-file project as soon as
+  // it is selected, so the first Java tab opens warm.
+  useEffect(() => {
+    if (cwd && cwd !== "~") void warmProjectForCwd(gitRoot);
+  }, [cwd, gitRoot]);
   const inboxUnseen = useInboxUnseen(recents, cwd);
   const resize = useDragResize({
     min: MIN_WIDTH,
@@ -692,7 +702,20 @@ function SidebarComponent({
           onDismissUpdate={onDismissUpdate}
         />
       ) : null}
-      {sidebarVisible ? sidebarContent : null}
+      <AnimatePresence initial={false}>
+        {sidebarVisible ? (
+          <motion.div
+            key="sidebar"
+            initial={{ width: 0 }}
+            animate={{ width: "auto" }}
+            exit={{ width: 0 }}
+            transition={reduceMotion ? { duration: 0 } : SPRING_LAYOUT}
+            className="flex h-full shrink-0 overflow-hidden"
+          >
+            {sidebarContent}
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
     </div>
   );
 }
