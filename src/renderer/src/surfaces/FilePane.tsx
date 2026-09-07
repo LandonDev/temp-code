@@ -2,7 +2,6 @@ import type { PointerEvent as ReactPointerEvent } from "react";
 import { lazy, memo, Suspense } from "react";
 import { SurfaceTabs } from "../chrome/SurfaceTabs";
 import {
-  isDebugTab,
   isReleaseNotesTab,
   isTerminalTab,
   type EditorPane,
@@ -16,9 +15,8 @@ import { TerminalView } from "./TerminalView";
 import { MatrixSpinner } from "./threads/bits";
 
 // Monaco, shiki, and the LSP client live behind this boundary; the first
-// Monaco or debug tab pulls the chunk in, never app start.
+// Monaco tab pulls the chunk in, never app start.
 const MonacoPane = lazy(() => import("./monaco/MonacoPane"));
-const DebugPane = lazy(() => import("./monaco/debug/DebugPane"));
 
 function ChunkSpinner() {
   return (
@@ -96,10 +94,6 @@ function FilePaneComponent({
                 active={focused && file.id === pane.activeFileId}
                 onMetaChange={(patch) => onTerminalMetaChange?.(file.id, patch)}
               />
-            ) : isDebugTab(file) ? (
-              <Suspense fallback={<ChunkSpinner />}>
-                <DebugPane path={file.path} onOpenFile={onOpenFile} />
-              </Suspense>
             ) : file.editor === "monaco" ? (
               <Suspense fallback={<ChunkSpinner />}>
                 <MonacoPane

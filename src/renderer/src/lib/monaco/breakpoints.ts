@@ -32,7 +32,8 @@ function mirror(): void {
   });
 }
 
-export function saveBreakpoints(): void {
+/** Persist and announce; `changed` names the file whose set moved. */
+export function saveBreakpoints(changed?: string): void {
   try {
     localStorage.setItem(
       KEY,
@@ -42,13 +43,17 @@ export function saveBreakpoints(): void {
     // private mode / quota
   }
   mirror();
-  if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent(CHANGE_EVENT));
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent<string | undefined>(CHANGE_EVENT, { detail: changed }));
+  }
 }
 
-export function subscribeBreakpoints(onChange: () => void): () => void {
+/** `path` is the file that changed; undefined when the whole map reloaded. */
+export function subscribeBreakpoints(onChange: (path?: string) => void): () => void {
   if (typeof window === "undefined") return () => {};
-  window.addEventListener(CHANGE_EVENT, onChange);
-  return () => window.removeEventListener(CHANGE_EVENT, onChange);
+  const listener = (e: Event) => onChange((e as CustomEvent<string | undefined>).detail);
+  window.addEventListener(CHANGE_EVENT, listener);
+  return () => window.removeEventListener(CHANGE_EVENT, listener);
 }
 
 export function breakpointLines(path: string): number[] {
@@ -67,7 +72,7 @@ export function toggleBreakpoint(path: string, line: number): boolean {
   else set.delete(line);
   if (set.size) breakpoints.set(path, set);
   else breakpoints.delete(path);
-  saveBreakpoints();
+  saveBreakpoints(path);
   return on;
 }
 

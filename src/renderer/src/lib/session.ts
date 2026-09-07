@@ -111,6 +111,8 @@ export type Attachment = {
   data?: string;
   /** Object URL for in-session thumbnails. Not persisted. */
   previewUrl?: string;
+  /** Appshots: the captured window's accessibility text, sent beside the image. */
+  textPath?: string;
 };
 
 export type Block = {
