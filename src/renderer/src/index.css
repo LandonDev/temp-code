@@ -1198,7 +1198,6 @@ header[data-tauri-drag-region] button {
   animation: z-fade-quick 150ms ease-out;
 }
 
-.edit-row-body,
 .thinking-body {
   transition:
     grid-template-rows 200ms ease-out,
@@ -1211,7 +1210,6 @@ header[data-tauri-drag-region] button {
     animation: none;
   }
 
-  .edit-row-body,
   .thinking-body {
     transition: none;
   }

@@ -298,6 +298,7 @@ export const SessionPane = memo(function SessionPane({
     <>
       <div className="relative min-h-0 flex-1">
         <AgentTranscript
+          sessionId={session.id}
           blocks={session.blocks}
           busy={!!session.busy}
           visible={visible}
