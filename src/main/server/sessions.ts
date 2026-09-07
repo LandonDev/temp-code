@@ -16,7 +16,7 @@ import type {
 } from '@shared/domain'
 import { BUILT_IN_DRIVERS } from './drivers'
 import { generateTitle } from './drivers/title'
-import type { DriverHandle } from './drivers/types'
+import type { ApprovalRequest, DriverHandle } from './drivers/types'
 import type { Store } from './db'
 import type { CheckpointStore } from './checkpoint'
 import {
@@ -212,6 +212,9 @@ const DISK_TOOLS = new Set([
 /** A write can flush moments after its tool result lands. */
 const DISK_TOOL_GRACE_MS = 2_500
 
+/** Unanswered approvals deny themselves after this long. */
+const APPROVAL_TIMEOUT_MS = 5 * 60 * 1000
+
 /**
  * The session registry: owns the session tree, the append-only event log,
  * live driver handles, and per-session subscriptions. The single write
@@ -241,6 +244,9 @@ export class SessionRegistry {
   }
 
   private handles = new Map<string, DriverHandle>()
+  /** Approvals raised through requestApproval, per session: requestId →
+   *  settle. Drivers with their own prompt loop (codex) keep theirs. */
+  private pendingApprovals = new Map<string, Map<string, (allow: boolean, auto?: boolean) => void>>()
   private starting = new Map<string, Promise<DriverHandle>>()
   private subscribers = new Map<string, Set<SessionListener>>()
   private metaListeners = new Set<MetaListener>()
@@ -1246,7 +1252,55 @@ export class SessionRegistry {
     }
   }
 
+  /**
+   * Ask the user to approve a tool call and wait for the answer. Emits the
+   * approval-request and waiting status, resolves through approve(), and
+   * auto-denies on timeout, abort, or when the session's handle drops.
+   */
+  requestApproval(sessionId: string, req: ApprovalRequest): Promise<boolean> {
+    const requestId = req.requestId ?? `a-${nanoid(8)}`
+    let pending = this.pendingApprovals.get(sessionId)
+    if (!pending) {
+      pending = new Map()
+      this.pendingApprovals.set(sessionId, pending)
+    }
+    const map = pending
+    this.append(sessionId, {
+      type: 'approval-request',
+      requestId,
+      toolName: req.toolName,
+      input: req.input,
+      title: req.title,
+      callId: req.callId
+    })
+    this.append(sessionId, { type: 'status', status: 'waiting', detail: 'awaiting approval' })
+    return new Promise((resolve) => {
+      const finish = (allow: boolean, auto = false): void => {
+        if (!map.delete(requestId)) return
+        clearTimeout(timer)
+        this.append(sessionId, { type: 'approval-resolved', requestId, allow, auto })
+        this.append(sessionId, { type: 'status', status: 'running' })
+        resolve(allow)
+      }
+      const timer = setTimeout(() => finish(false, true), APPROVAL_TIMEOUT_MS)
+      map.set(requestId, finish)
+      req.signal?.addEventListener('abort', () => finish(false, true), { once: true })
+    })
+  }
+
+  private denyPendingApprovals(sessionId: string): void {
+    const pending = this.pendingApprovals.get(sessionId)
+    if (!pending) return
+    for (const finish of [...pending.values()]) finish(false, true)
+    this.pendingApprovals.delete(sessionId)
+  }
+
   async approve(sessionId: string, requestId: string, allow: boolean): Promise<void> {
+    const finish = this.pendingApprovals.get(sessionId)?.get(requestId)
+    if (finish) {
+      finish(allow)
+      return
+    }
     if (this.handles.get(sessionId)?.approve?.(requestId, allow)) return
     // Stale request: asked by a previous process of this harness, whose
     // resolver died with it. Settle the card so it can't wedge the UI —
@@ -1424,6 +1478,7 @@ export class SessionRegistry {
       await this.dropHandle(id)
       this.stopping.delete(id)
       this.pendingReboot.delete(id)
+      this.pendingApprovals.delete(id)
       this.subscribers.delete(id)
       this.lastActivity.delete(id)
       this.activities.delete(id)
@@ -1590,6 +1645,7 @@ export class SessionRegistry {
   private async dropHandle(sessionId: string): Promise<void> {
     const inflight = this.starting.get(sessionId)
     if (inflight) await inflight.catch(() => {})
+    this.denyPendingApprovals(sessionId)
     const handle = this.handles.get(sessionId)
     this.handles.delete(sessionId)
     this.starting.delete(sessionId)
@@ -1635,6 +1691,7 @@ export class SessionRegistry {
           // Drivers seed goal state from here (resume dedup, watcher init).
           session: { ...meta, goal: this.goalOf(sessionId) },
           emit: (event) => this.append(sessionId, event),
+          requestApproval: (req) => this.requestApproval(sessionId, req),
           setNativeId: (nativeId) => {
             const next = this.store.updateSession(sessionId, { nativeId })
             if (next) this.notifyMeta(next)
@@ -2225,6 +2282,7 @@ export class SessionRegistry {
 
   async disposeAll(): Promise<void> {
     if (this.sweepTimer) clearInterval(this.sweepTimer)
+    for (const id of [...this.pendingApprovals.keys()]) this.denyPendingApprovals(id)
     await Promise.allSettled([...this.handles.values()].map((h) => h.dispose()))
     this.handles.clear()
   }
