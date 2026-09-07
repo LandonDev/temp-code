@@ -114,3 +114,12 @@ export function appView(block: Block, titleOf: TitleOf): AppView | null {
       return null;
   }
 }
+
+/** The thread ids a call's view could name — what a row subscribes to. */
+export function appThreadIds(block: Block): string[] {
+  const i = inputOf(block);
+  const ids = [str(i.threadId), agentIdOf(block) ?? ""].filter(Boolean);
+  const text = str(i.description) || str(i.task) || str(i.prompt) || str(i.message);
+  for (const m of text.matchAll(/@thread:([\w-]{6,})/g)) ids.push(m[1]);
+  return Array.from(new Set(ids));
+}
