@@ -356,3 +356,39 @@ describe("M4 store fixes", () => {
     expect(sessionStore.get("s1")).toMatchObject({ treeCanContinue: false, treeHasPaused: true, treeFrozenActiveElapsed: null });
   });
 });
+
+describe("M4b projections", () => {
+  it("keeps the id list and shells stable through event pushes and busy flips", async () => {
+    link.metas = [meta({ title: "one" }), meta({ id: "s2", title: "two" })];
+    sessionStore.connect(link);
+    await sessionStore.ready();
+    await sessionStore.ensureLoaded("s1");
+    await sessionStore.ensureLoaded("s2");
+    sessionStore.mutate(() => [sessionStore.get("s1")!, sessionStore.get("s2")!]);
+    const ids = sessionStore.getIds();
+    const shells = sessionStore.getShells();
+    expect([...ids]).toEqual(["s1", "s2"]);
+    expect(shells.map((s) => s.title)).toEqual(["one", "two"]);
+    expect(shells[0]).not.toHaveProperty("blocks");
+
+    link.push({ push: "event", row: row("s1", 1, { type: "user-text", text: "q" }) });
+    await new Promise((r) => setTimeout(r, 30));
+    link.push({ push: "session", session: meta({ title: "one", status: "running" }) });
+    expect(sessionStore.get("s1")!.busy).toBe(true);
+    expect(sessionStore.getIds()).toBe(ids);
+    expect(sessionStore.getShells()).toBe(shells);
+
+    // A shell field changing swaps only that shell.
+    link.push({ push: "session", session: meta({ title: "renamed", status: "running" }) });
+    const next = sessionStore.getShells();
+    expect(next).not.toBe(shells);
+    expect(next[0].title).toBe("renamed");
+    expect(next[1]).toBe(shells[1]);
+    expect(sessionStore.getIds()).toBe(ids);
+
+    // Closing a session changes both.
+    sessionStore.mutate((prev) => prev.filter((s) => s.id !== "s2"));
+    expect([...sessionStore.getIds()]).toEqual(["s1"]);
+    expect(sessionStore.getShells()).toHaveLength(1);
+  });
+});
