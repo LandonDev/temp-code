@@ -183,8 +183,12 @@ describe("sessionStore", () => {
     const off = sessionStore.subscribe(() => notified++);
     link.push({ push: "event", row: row("s1", 1, { type: "user-text", text: "q" }) });
     link.push({ push: "event", row: row("s1", 2, { type: "assistant-text", text: "a", delta: true, msgId: "m", blockIndex: 0 }) });
+    // The snapshot is current at once; listeners hear once per frame.
+    expect(sessionStore.getSnapshot()[0].blocks).toHaveLength(2);
+    expect(notified).toBe(0);
+    await new Promise((r) => setTimeout(r, 30));
     off();
-    expect(notified).toBe(2);
+    expect(notified).toBe(1);
     const snap = sessionStore.getSnapshot();
     expect(snap).toHaveLength(1);
     expect(snap[0].blocks).toHaveLength(2);
@@ -299,5 +303,56 @@ describe("sessionStore", () => {
     sessionStore.adopt(meta({ id: "new" }));
     sessionStore.adopt(meta({ id: "made" }));
     expect(added).toEqual(["new", "made"]);
+  });
+});
+
+describe("M4 store fixes", () => {
+  it("re-subscribes every open session after a reconnect", async () => {
+    link.metas = [meta(), meta({ id: "s2" })];
+    sessionStore.connect(link);
+    await sessionStore.ready();
+    await sessionStore.ensureLoaded("s1");
+    await sessionStore.ensureLoaded("s2");
+    expect(link.method("session.subscribe")).toBe(2);
+    link.reopen();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(link.method("session.subscribe")).toBe(4);
+  });
+
+  it("holds pushes that land during a replay and folds them once", async () => {
+    link.metas = [meta()];
+    link.events.set("s1", [row("s1", 1, { type: "user-text", text: "hi" })]);
+    sessionStore.connect(link);
+    await sessionStore.ready();
+    await sessionStore.ensureLoaded("s1");
+    const late = row("s1", 2, { type: "assistant-text", text: "late", delta: false, msgId: "m", blockIndex: 0 });
+    link.events.get("s1")!.push(late);
+    link.reopen();
+    // The replay is in flight: the server also pushes the same row live.
+    link.push({ push: "event", row: late });
+    link.push({ push: "event", row: row("s1", 3, { type: "turn-complete" }) });
+    await new Promise((r) => setTimeout(r, 0));
+    const s = sessionStore.get("s1")!;
+    expect(s.blocks.map((b) => b.text)).toEqual(["hi", "late"]);
+    expect(s.busy).toBe(false);
+  });
+
+  it("marks a session loaded once its history is in", async () => {
+    link.metas = [meta()];
+    sessionStore.connect(link);
+    await sessionStore.ready();
+    expect(sessionStore.get("s1")?.loaded).toBeFalsy();
+    await sessionStore.ensureLoaded("s1");
+    expect(sessionStore.get("s1")?.loaded).toBe(true);
+  });
+
+  it("projects the tree flags off the meta", async () => {
+    link.metas = [meta({ treeCanContinue: true, treeHasLiveWork: true, treeHasPaused: false, treeFrozenActiveElapsed: 42 })];
+    sessionStore.connect(link);
+    await sessionStore.ready();
+    await sessionStore.ensureLoaded("s1");
+    expect(sessionStore.get("s1")).toMatchObject({ treeCanContinue: true, treeHasLiveWork: true, treeHasPaused: false, treeFrozenActiveElapsed: 42 });
+    link.push({ push: "session", session: meta({ treeCanContinue: false, treeHasLiveWork: false, treeHasPaused: true, treeFrozenActiveElapsed: null }) });
+    expect(sessionStore.get("s1")).toMatchObject({ treeCanContinue: false, treeHasPaused: true, treeFrozenActiveElapsed: null });
   });
 });

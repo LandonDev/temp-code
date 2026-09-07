@@ -3,8 +3,6 @@ import { RUNTIME_MODES } from "../session";
 import { modeForPolicy, policyForMode } from "./access";
 
 describe("access mapping", () => {
-  // temp-code's server has three policies; the AI-reviewed `auto` mode runs
-  // as `edits` until M4 maps access explicitly, so it does not round-trip.
   it("maps every runtime mode to a policy and the three policies back", () => {
     const policies = RUNTIME_MODES.map(policyForMode);
     expect(policies).toEqual(["safe", "edits", "edits", "auto"]);
@@ -12,5 +10,11 @@ describe("access mapping", () => {
       if (mode === "auto") continue;
       expect(modeForPolicy(policyForMode(mode))).toBe(mode);
     }
+  });
+
+  it("the reviewed mode is the edits policy on purpose, never full access", () => {
+    expect(policyForMode("auto")).toBe("edits");
+    expect(modeForPolicy(policyForMode("auto"))).toBe("auto-accept-edits");
+    expect(modeForPolicy("nope" as never)).toBe("supervised");
   });
 });

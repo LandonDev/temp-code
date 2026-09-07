@@ -1866,9 +1866,11 @@ export class SessionRegistry {
     } else if (event.type === 'tool-result') {
       const calls = this.diskToolCalls.get(sessionId)
       if (calls?.get(event.callId) === null) calls.set(event.callId, row.ts)
-    } else if (event.type === 'status' && event.status !== 'running') {
+    } else if (event.type === 'status' && event.status !== 'running' && event.status !== 'waiting') {
       // Turn boundary: close anything still open (a died turn never sends
-      // results) and drop entries long past the grace.
+      // results) and drop entries long past the grace. 'waiting' is not a
+      // boundary: a supervised tool call sits open behind its approval and
+      // writes only after the user allows it.
       const calls = this.diskToolCalls.get(sessionId)
       if (calls) {
         for (const [id, closed] of calls) {

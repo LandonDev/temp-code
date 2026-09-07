@@ -237,7 +237,18 @@ import {
   type SessionSummary,
 } from "./lib/sessionStore";
 import { pickerModelId, sessionStore, useServerSessions, useSessionMetas } from "./lib/tcserver/store";
-import { neighbourAfterArchive, stripOrder } from "./lib/threadStrip";
+import { toggleRightRail, useRightRailOpen } from "./lib/rightRail";
+import {
+  buildHeaderModel,
+  headerNeighbour,
+  headerOrder,
+  type HeaderModel,
+  type HeaderTab,
+} from "./lib/threadHeaderModel";
+import { projectRootThreads, runningRoots } from "./lib/threadStripModel";
+import type { ThreadAction, ThreadHeaderProps } from "./chrome/ThreadHeader";
+import type { ChipThread } from "./chrome/ThreadHeaderStrip";
+import type { ThreadRules } from "@server/shared/rules";
 import { usePlanReady } from "./hooks/usePlanReady";
 import { turnStartOf } from "./surfaces/threads/WorkingStrip";
 import type { TabThread } from "./chrome/TabIndicator";
@@ -400,7 +411,6 @@ function titleTabsEqual(a: TitleTab[], b: TitleTab[]): boolean {
       tab.fileFocused === other.fileFocused &&
       tab.terminal === other.terminal &&
       tab.groupId === other.groupId &&
-      tab.dormant === other.dormant &&
       tab.updatedAt === other.updatedAt &&
       sameTabThread(tab.thread, other.thread)
     );
@@ -504,9 +514,9 @@ export default function App({
   });
   /** Tab id -> project name, kept in sync with the rendered title tabs. */
   const tabProjectsRef = useRef(new Map<string, string>());
-  /** Title tabs on the dormant shelf; next/prev walk live tabs first, then these. */
-  /** Deck title tabs in strip order: live row first, then the shelf. */
-  const stripTabsRef = useRef<TitleTab[]>([]);
+  /** Deck tab ids in strip order: the chips' tabs (live row, then shelf), then tabs with no chip. */
+  const stripTabsRef = useRef<string[]>([]);
+  const headerModelRef = useRef<HeaderModel<ChipThread>>({ live: [], dormant: [], activeId: null });
   const projectOfTab = useCallback(
     (id: string) => tabProjectsRef.current.get(id),
     [],
@@ -720,10 +730,19 @@ export default function App({
    *  them, so the pickers show what the server would use anyway. */
   const createSessionHere = useCallback(
     (
-      opts: { projectId?: string | null; runtimeMode?: RuntimeMode; threadType?: ThreadType } = {},
+      opts: {
+        projectId?: string | null;
+        runtimeMode?: RuntimeMode;
+        threadType?: ThreadType;
+        threadRules?: ThreadRules | null;
+      } = {},
     ) => {
       const ctx = sessionContext(opts.projectId);
-      const context = { ...ctx, threadType: opts.threadType ?? "chat" };
+      const context = {
+        ...ctx,
+        threadType: opts.threadType ?? "chat",
+        threadRules: opts.threadRules ?? null,
+      };
       const defaults = workspaceStore.defaultsFor(ctx.workspaceId);
       if (defaults && (HARNESSES as string[]).includes(defaults.provider)) {
         const harness = defaults.provider as HarnessId;
@@ -983,16 +1002,39 @@ export default function App({
         void forgetHarnessSession(harness, session.id);
       }
     }
-    setSessions((prev) =>
-      prev.filter(
+    setSessions((prev) => {
+      const next = prev.filter(
         (session) =>
           visibleIds.has(session.id) ||
           session.busy ||
           (keepUnseen && unseenFinishedRef.current.has(session.id)) ||
           skipForgetSessionIds.current.has(session.id),
-      ),
-    );
+      );
+      // The store bumps on any new array; a no-op sweep must not re-render
+      // (and re-run this effect) while a shielded session waits for its tab.
+      return next.length === prev.length ? prev : next;
+    });
   }, [sessions, tabs, liveAgentsEnabled]);
+
+  // Hidden tabs mount their panes after first paint, one per idle slice, so
+  // launch-to-session-list does not scale with how many heavy tabs restore.
+  const [hiddenMountBudget, setHiddenMountBudget] = useState(0);
+  useEffect(() => {
+    if (hiddenMountBudget >= tabs.length) return;
+    const handle = window.requestIdleCallback(
+      () => setHiddenMountBudget((n) => n + 1),
+      { timeout: 500 },
+    );
+    return () => window.cancelIdleCallback(handle);
+  }, [hiddenMountBudget, tabs.length]);
+  const mountedTabIds = useMemo(() => {
+    const ids = new Set<string>();
+    let hidden = 0;
+    for (const tab of tabs) {
+      if (tab.id === activeTabId || hidden++ < hiddenMountBudget) ids.add(tab.id);
+    }
+    return ids;
+  }, [tabs, activeTabId, hiddenMountBudget]);
 
   const activateTab = useCallback((id: string) => {
     setActiveTabId(id);
@@ -1016,27 +1058,6 @@ export default function App({
     );
   }, [deckLayout]);
 
-  /** Card click: select the project and bring its latest open tab forward. */
-  const onSelectProjectCard = useCallback(
-    (projectId: string | null) => {
-      setSelectedProjectId(projectId);
-      if (!projectId) return;
-      const tabs = tabsRef.current;
-      const sessions = sessionsRef.current;
-      const inProject = (tab: WorkspaceTab) =>
-        sessions.find((s) => s.id === tab.focusedId)?.projectId === projectId;
-      const current = tabs.find((tab) => tab.id === activeTabIdRef.current);
-      if (current && inProject(current)) return;
-      const visits = tabVisitRef.current;
-      const recent = [...visits.back]
-        .reverse()
-        .map((id) => tabs.find((tab) => tab.id === id))
-        .find((tab) => tab && inProject(tab));
-      const target = recent ?? tabs.find(inProject);
-      if (target) activateTab(target.id);
-    },
-    [activateTab],
-  );
 
   // The active tab names the selected project; a fresh loose draft says nothing.
   useEffect(() => {
@@ -1168,6 +1189,36 @@ export default function App({
       setComposerFocused(true);
     },
     [appendTab, createSessionHere],
+  );
+
+  /** Card click: select the project and bring its latest open tab forward. */
+  const onSelectProjectCard = useCallback(
+    (projectId: string | null) => {
+      setSelectedProjectId(projectId);
+      if (!projectId) return;
+      // A full-screen view (inbox, notes, search) would otherwise stay on top
+      // of the pane, most visibly when that project's tab is already active.
+      setSearchViewOpen(false);
+      setInboxViewOpen(false);
+      setNotesViewOpen(false);
+      const tabs = tabsRef.current;
+      const sessions = sessionsRef.current;
+      const inProject = (tab: WorkspaceTab) =>
+        sessions.find((s) => s.id === tab.focusedId)?.projectId === projectId;
+      const current = tabs.find((tab) => tab.id === activeTabIdRef.current);
+      if (current && inProject(current)) return;
+      const visits = tabVisitRef.current;
+      const recent = [...visits.back]
+        .reverse()
+        .map((id) => tabs.find((tab) => tab.id === id))
+        .find((tab) => tab && inProject(tab));
+      const target = recent ?? tabs.find(inProject);
+      // No pane of that project is open: start one, so the body never keeps
+      // showing another project's thread under this project's header.
+      if (target) activateTab(target.id);
+      else onNewChat(projectId);
+    },
+    [activateTab, onNewChat],
   );
 
   const onProjectCreated = useCallback(
@@ -2100,7 +2151,7 @@ export default function App({
     if (!deckLayout) return tabs;
     const byId = new Map(deckProjectTabs.map((tab) => [tab.id, tab]));
     return stripTabsRef.current
-      .map((tab) => byId.get(tab.id))
+      .map((id) => byId.get(id))
       .filter((tab): tab is WorkspaceTab => tab != null);
   }, [deckLayout, deckProjectTabs, tabs]);
 
@@ -2409,6 +2460,11 @@ export default function App({
       }
       const restored = await restoreSessionCheckout(loaded);
       if (!sessionsRef.current.some((session) => session.id === restored.id)) {
+        // The store update re-renders before the caller's tab lands, and the
+        // hidden-session sweep would drop the session in that gap. Shield it
+        // until the caller's synchronous continuation has run.
+        skipForgetSessionIds.current.add(restored.id);
+        setTimeout(() => skipForgetSessionIds.current.delete(restored.id), 0);
         const next = [...sessionsRef.current, restored];
         sessionsRef.current = next;
         setSessions(next);
@@ -2513,12 +2569,11 @@ export default function App({
       }
       if (archived) {
         // The chip leaves the strip; its same-slot neighbour takes selection.
-        const tab = tabsRef.current.find((entry) =>
-          leafIds(entry.layout).includes(sessionId),
-        );
-        if (tab && tab.id === activeTabIdRef.current) {
-          const next = neighbourAfterArchive(stripTabsRef.current, tab.id);
-          if (next) activateTab(next.id);
+        const model = headerModelRef.current;
+        if (model.activeId === sessionId) {
+          const next = headerNeighbour(model, sessionId);
+          if (next?.tabId) activateTab(next.tabId);
+          else if (next) void onSelectHistorySession(next.id);
         }
       }
       await setSessionArchived(sessionId, archived).catch(() => undefined);
@@ -2536,34 +2591,7 @@ export default function App({
         });
       });
     },
-    [activateTab],
-  );
-
-  /** Deck strip: a chip's thread, for rename and archive. */
-  const tabSessionId = useCallback((tabId: string) => {
-    const tab = tabsRef.current.find((entry) => entry.id === tabId);
-    if (!tab) return null;
-    return (
-      leafIds(tab.layout).find((id) =>
-        sessionsRef.current.some((session) => session.id === id),
-      ) ?? null
-    );
-  }, []);
-
-  const onArchiveTab = useCallback(
-    (tabId: string) => {
-      const sessionId = tabSessionId(tabId);
-      if (sessionId) void onArchiveHistorySession(sessionId, true);
-    },
-    [onArchiveHistorySession, tabSessionId],
-  );
-
-  const onRenameTab = useCallback(
-    (tabId: string, title: string) => {
-      const sessionId = tabSessionId(tabId);
-      if (sessionId) void onRenameHistorySession(sessionId, title);
-    },
-    [onRenameHistorySession, tabSessionId],
+    [activateTab, onSelectHistorySession],
   );
 
   const onRestoreThread = useCallback(
@@ -3230,10 +3258,12 @@ export default function App({
             const prepared = await prepareAttachments(attachments);
             const prompt = await preparePrompt(harnessText);
             const derived = await deriveMentionAttachments(text, workCwd);
-            await serverCommands.queueAdd(sessionId, prompt, [
-              ...(await serverCommands.toServerAttachments(prepared)),
-              ...derived,
-            ]);
+            await serverCommands.queueAdd(
+              sessionId,
+              prompt,
+              [...(await serverCommands.toServerAttachments(prepared)), ...derived],
+              serverCommands.runSettingsFor(current),
+            );
           } catch (error: unknown) {
             noteSystem(
               sessionId,
@@ -3617,12 +3647,137 @@ export default function App({
   const planReady = usePlanReady(sessions);
   const lastSeen = useLastSeen();
   const nextTitleTabs: TitleTab[] = deckProjectTabs.map((tab) =>
-    toTitleTab(tab, sessions, dirtyFiles, planReady, deckLayout ? lastSeen : null),
+    toTitleTab(tab, sessions, dirtyFiles, planReady),
   );
   tabProjectsRef.current = new Map(
     nextTitleTabs.map((tab) => [tab.id, tab.project]),
   );
-  stripTabsRef.current = deckLayout ? stripOrder(nextTitleTabs) : nextTitleTabs;
+  // The strip is the selected project's root threads, open in a tab or not;
+  // a local draft joins until the server knows it.
+  const chipThreads = useMemo<ChipThread[]>(() => {
+    const known = new Set(sessionMetas.map((meta) => meta.id));
+    const drafts = sessions
+      .filter((session) => session.projectId && !known.has(session.id))
+      .map(
+        (session): ChipThread => ({
+          id: session.id,
+          title: session.title,
+          threadType: session.threadType ?? null,
+          provider: session.harness,
+          projectId: session.projectId ?? null,
+          parentId: session.parentId ?? null,
+          archived: false,
+          status: "idle",
+          updatedAt: session.createdAt ?? 0,
+          draft: true,
+          threadRules: session.threadRules ?? null,
+        }),
+      );
+    return drafts.length > 0 ? [...sessionMetas, ...drafts] : sessionMetas;
+  }, [sessionMetas, sessions]);
+  const chipThreadsRef = useRef(chipThreads);
+  chipThreadsRef.current = chipThreads;
+  const headerTabs = useMemo<HeaderTab[]>(
+    () =>
+      deckProjectTabs.map((tab) => {
+        const ids = leafIds(tab.layout);
+        const focused = tab.focusedId;
+        return {
+          id: tab.id,
+          sessionIds:
+            focused && ids.includes(focused)
+              ? [focused, ...ids.filter((id) => id !== focused)]
+              : ids,
+        };
+      }),
+    [deckProjectTabs],
+  );
+  const headerModel = useMemo(
+    () =>
+      buildHeaderModel({
+        threads: chipThreads,
+        tabs: headerTabs,
+        selectedProjectId: deckLayout ? selectedProjectId : null,
+        activeTabId,
+        lastSeen,
+        planReady,
+      }),
+    [activeTabId, chipThreads, deckLayout, headerTabs, lastSeen, planReady, selectedProjectId],
+  );
+  headerModelRef.current = headerModel;
+  const chipTabIds = new Set(
+    headerOrder(headerModel).flatMap((chip) => (chip.tabId ? [chip.tabId] : [])),
+  );
+  stripTabsRef.current = deckLayout
+    ? [...chipTabIds, ...deckProjectTabs.filter((tab) => !chipTabIds.has(tab.id)).map((tab) => tab.id)]
+    : nextTitleTabs.map((tab) => tab.id);
+
+  const railOpen = useRightRailOpen();
+  const onHeaderNew = useCallback(
+    (threadType: ThreadType, threadRules: ThreadRules | null) => {
+      setSearchViewOpen(false);
+      setInboxViewOpen(false);
+      setNotesViewOpen(false);
+      const session = createSessionHere({
+        projectId: selectedProjectIdRef.current,
+        threadType,
+        threadRules,
+      });
+      const tab = newTab(session.id);
+      setSessions((prev) => [...prev, session]);
+      appendTab(tab, session.cwd);
+      setActiveTabId(tab.id);
+      setComposerFocused(true);
+    },
+    [appendTab, createSessionHere],
+  );
+  const onHeaderAction = useCallback((sessionId: string, action: ThreadAction) => {
+    const run =
+      action === "pause"
+        ? serverCommands.pause(sessionId)
+        : action === "resume"
+          ? serverCommands.resume(sessionId)
+          : serverCommands.interrupt(sessionId);
+    void run.catch(() => undefined);
+  }, []);
+  const onHeaderSetRules = useCallback((sessionId: string, threadRules: ThreadRules | null) => {
+    setSessions((prev) => prev.map((s) => (s.id === sessionId ? { ...s, threadRules } : s)));
+    void serverCommands.setThreadRules(sessionId, threadRules).catch(() => undefined);
+  }, []);
+  const onHeaderDelete = useCallback(
+    (sessionId: string) => void onDeleteHistorySession(sessionId, { confirmed: true }),
+    [onDeleteHistorySession],
+  );
+  // A draft has nothing on the server to keep: archiving it discards the tab.
+  const onHeaderArchive = useCallback(
+    (sessionId: string) => {
+      const draft = chipThreadsRef.current.find((t) => t.id === sessionId)?.draft;
+      if (draft) onHeaderDelete(sessionId);
+      else void onArchiveHistorySession(sessionId, true);
+    },
+    [onArchiveHistorySession, onHeaderDelete],
+  );
+  const threadHeader: ThreadHeaderProps | undefined = deckLayout
+    ? {
+        model: headerModel,
+        planReady,
+        archived: archivedThreads,
+        workspaceId: sessionContext(selectedProjectId).workspaceId ?? null,
+        cost: active?.thread?.cost ?? null,
+        running: runningRoots(projectRootThreads(chipThreads, selectedProjectId)).length,
+        railOpen,
+        onSelect: onSelectHistorySession,
+        onRename: onRenameHistorySession,
+        onArchive: onHeaderArchive,
+        onDelete: onHeaderDelete,
+        onAction: onHeaderAction,
+        onSetRules: onHeaderSetRules,
+        onRestore: onRestoreThread,
+        onNew: onHeaderNew,
+        onPauseAll: () => serverCommands.pauseAllRunning(),
+        onToggleRail: toggleRightRail,
+      }
+    : undefined;
   const titleTabsRef = useRef(nextTitleTabs);
   if (!titleTabsEqual(titleTabsRef.current, nextTitleTabs)) {
     titleTabsRef.current = nextTitleTabs;
@@ -4280,10 +4435,7 @@ export default function App({
           onUngroup={onUngroup}
           onGroupNewTab={onGroupNewTab}
           onTabThreadAction={onTabThreadAction}
-          onArchiveTab={deckLayout ? onArchiveTab : undefined}
-          onRenameTab={deckLayout ? onRenameTab : undefined}
-          archivedThreads={archivedThreads}
-          onRestoreThread={deckLayout ? onRestoreThread : undefined}
+          header={threadHeader}
           onGroupClose={onGroupCloseTabs}
           onGroupMoveToNewWindow={onGroupMoveToNewWindow}
           recents={recents}
@@ -4347,7 +4499,7 @@ export default function App({
                 />
               ) : (
                 <div className="relative min-h-0 min-w-0 flex-1">
-              {tabs.map((tab) => (
+              {tabs.map((tab) => mountedTabIds.has(tab.id) && (
                 <div
                   key={tab.id}
                   aria-hidden={tab.id !== activeTabId}
@@ -4598,26 +4750,11 @@ function tabArchived(tab: WorkspaceTab, sessions: Session[]): boolean {
   return tabSessions.length > 0 && tabSessions.every((session) => session.archived);
 }
 
-function isDormantSession(
-  session: Session,
-  planReady: Record<string, boolean>,
-  lastSeen: Record<string, number>,
-): boolean {
-  if (isBlankSession(session) || planReady[session.id]) return false;
-  const meta = sessionStore.metaOf(session.id);
-  if (!meta) return false;
-  const settled = meta.status === "idle" || meta.status === "done";
-  if (!settled || session.busy) return false;
-  if (meta.treeHasLiveWork || meta.treeHasPaused || meta.treeCanContinue) return false;
-  return meta.updatedAt <= (lastSeen[session.id] ?? 0);
-}
-
 function toTitleTab(
   tab: WorkspaceTab,
   sessions: Session[],
   dirtyFiles: Set<string>,
   planReady: Record<string, boolean>,
-  lastSeen: Record<string, number> | null,
 ): TitleTab {
   const paneIds = leafIds(tab.layout);
   const multiPane = paneIds.length > 1;
@@ -4699,14 +4836,8 @@ function toTitleTab(
   );
   const focusedFile = focusedFileTab(tab);
 
-  const dormant =
-    lastSeen != null &&
-    tabSessions.length > 0 &&
-    tabSessions.every((session) => isDormantSession(session, planReady, lastSeen));
-
   return {
     thread: tabThreadOf(focused, planReady),
-    dormant,
     updatedAt: focused ? sessionStore.metaOf(focused.id)?.updatedAt : undefined,
     id: tab.id,
     project: focused

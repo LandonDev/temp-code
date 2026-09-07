@@ -14,9 +14,12 @@ vi.mock('./drivers', () => ({
     grok: {
       id: 'grok',
       start: async (ctx: DriverCtx) => ({
-        send: async () => {
+        send: async (text: string) => {
+          const edit = text === 'edit'
+          if (edit) ctx.emit({ type: 'tool-call', callId: 'c1', name: 'Edit', input: { file_path: 'a.js' } } as AgentEvent)
           const allow = await ctx.requestApproval({ toolName: 'shell', input: { cmd: 'ls' } })
           answers.push(allow)
+          if (edit) ctx.emit({ type: 'tool-result', callId: 'c1', output: '', isError: false } as AgentEvent)
           ctx.emit({ type: 'turn-complete' } as AgentEvent)
         },
         interrupt: () => {},
@@ -94,4 +97,21 @@ it('denies pending approvals when the session handle drops', async () => {
   await turn.catch(() => {})
   await settle()
   expect(answers).toEqual([false])
+})
+
+it('keeps a disk tool call open while its approval waits, so a late write still has an owner', async () => {
+  vi.useFakeTimers()
+  const s = await registry.create({ cwd: root, provider: 'grok' })
+  const turn = registry.send(s.id, 'edit')
+  await vi.advanceTimersByTimeAsync(50)
+  expect(types(s.id)).toContain('status:waiting')
+  // Well past the post-result grace: the call has not run yet, so it must still count.
+  await vi.advanceTimersByTimeAsync(30_000)
+  expect(registry.diskActiveAt(s.id, Date.now())).toBe(true)
+  await registry.approve(s.id, requestOf(s.id)!.requestId, true)
+  await turn
+  await vi.advanceTimersByTimeAsync(50)
+  expect(registry.diskActiveAt(s.id, Date.now())).toBe(true)
+  await vi.advanceTimersByTimeAsync(10_000)
+  expect(registry.diskActiveAt(s.id, Date.now())).toBe(false)
 })
