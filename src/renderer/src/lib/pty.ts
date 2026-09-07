@@ -1,9 +1,14 @@
-import { invoke, listen, type UnlistenFn } from "./native";
+import {
+  invoke,
+  listen,
+  type PtyDataPayload,
+  type PtyExitPayload,
+  type UnlistenFn,
+} from "./native";
 
-type DataPayload = { id: string; data: string };
-type ExitPayload = { id: string; code: number | null };
-
-type DataHandler = (data: Uint8Array) => void;
+/** Returns when the bytes are consumed (xterm has written them); the
+ *  bridge acks main afterwards so it can unpause the shell. */
+type DataHandler = (data: Uint8Array) => void | Promise<void>;
 type ExitHandler = (code: number | null) => void;
 
 const dataHandlers = new Map<string, DataHandler>();
@@ -26,13 +31,9 @@ let bridge: Promise<UnlistenFn[]> | null = null;
 let users = 0;
 let teardownTimer: ReturnType<typeof setTimeout> | undefined;
 
-function decodeBase64(data: string): Uint8Array {
-  const binary = atob(data);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) {
-    bytes[i] = binary.charCodeAt(i);
-  }
-  return bytes;
+/** Flow control: main pauses a shell whose bytes we have not paid back. */
+function ack(id: string, bytes: number) {
+  void invoke("pty_ack", { id, bytes });
 }
 
 /**
@@ -76,15 +77,21 @@ function clearBuffered(id: string) {
 function ensureBridge() {
   if (bridge) return;
   bridge = Promise.all([
-    listen<DataPayload>("pty-data", (event) => {
-      const { id, data } = event.payload;
+    listen<PtyDataPayload>("pty-data", (event) => {
+      const { id, data: chunk } = event.payload;
       const handler = dataHandlers.get(id);
       if (!handler && !openedPtys.has(id)) return;
-      const chunk = decodeBase64(data);
-      if (handler) handler(chunk);
-      else pushBuffered(id, chunk);
+      if (handler) {
+        // Ack once xterm has the bytes; a buffered chunk is already ours.
+        Promise.resolve(handler(chunk)).finally(() =>
+          ack(id, chunk.byteLength),
+        );
+      } else {
+        pushBuffered(id, chunk);
+        ack(id, chunk.byteLength);
+      }
     }),
-    listen<ExitPayload>("pty-exit", (event) => {
+    listen<PtyExitPayload>("pty-exit", (event) => {
       const { id, code } = event.payload;
       exitHandlers.get(id)?.(code);
     }),
@@ -170,7 +177,7 @@ export function subscribePty(
   const queued = dataBuffer.get(id);
   if (queued) {
     clearBuffered(id);
-    for (const chunk of queued) onData(chunk);
+    for (const chunk of queued) void onData(chunk);
   }
   return () => {
     if (dataHandlers.get(id) === onData) dataHandlers.delete(id);

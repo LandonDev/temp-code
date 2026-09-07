@@ -2,73 +2,109 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   announce: vi.fn(),
+  apply: vi.fn(),
   check: vi.fn(),
-  downloadAndInstall: vi.fn(),
-  getVersion: vi.fn(),
+  get: vi.fn(),
   message: vi.fn(),
-  relaunch: vi.fn(),
+  onStatus: vi.fn(),
   remember: vi.fn(),
 }));
 
 vi.mock("./native", () => ({
-  getVersion: mocks.getVersion,
   ask: vi.fn(),
   message: mocks.message,
-  relaunch: mocks.relaunch,
-  check: mocks.check,
+  updates: {
+    get: mocks.get,
+    check: mocks.check,
+    apply: mocks.apply,
+    onStatus: mocks.onStatus,
+  },
 }));
 vi.mock("./sounds", () => ({ announceUpdateAvailable: mocks.announce }));
 vi.mock("./updateNotice", () => ({ rememberInstalledUpdate: mocks.remember }));
 
+const status = (over: Record<string, unknown> = {}) => ({
+  current: 95,
+  latest: 96,
+  notes: "Notes",
+  canApply: true,
+  phase: "idle",
+  ...over,
+});
+
 beforeEach(() => {
   vi.clearAllMocks();
   vi.resetModules();
-  mocks.getVersion.mockResolvedValue("0.1.22");
-  mocks.relaunch.mockResolvedValue(undefined);
   mocks.message.mockResolvedValue(undefined);
+  mocks.get.mockResolvedValue(status());
 });
 
-async function updaterWithPendingUpdate() {
-  const update = {
-    version: "0.1.23",
-    downloadAndInstall: mocks.downloadAndInstall,
-  };
-  mocks.check.mockResolvedValue(update);
-  const updater = await import("./updater");
-  await updater.probeForUpdate();
-  return updater;
-}
-
 describe("installPendingUpdate", () => {
-  it("records a successful installation before relaunching", async () => {
-    mocks.downloadAndInstall.mockResolvedValue(undefined);
-    const updater = await updaterWithPendingUpdate();
+  it("starts main's build and reports it", async () => {
+    mocks.apply.mockResolvedValue(status({ phase: "building", step: "git" }));
+    const { installPendingUpdate } = await import("./updater");
+    const seen: string[] = [];
 
-    await updater.installPendingUpdate();
+    const result = await installPendingUpdate((s) => seen.push(s.phase));
 
-    expect(mocks.remember).toHaveBeenCalledWith("0.1.23");
-    expect(mocks.relaunch).toHaveBeenCalledOnce();
-    expect(mocks.remember.mock.invocationCallOrder[0]).toBeLessThan(
-      mocks.relaunch.mock.invocationCallOrder[0]!,
+    expect(mocks.apply).toHaveBeenCalledOnce();
+    expect(result).toMatchObject({ phase: "building", step: "git" });
+    expect(seen).toEqual(["building"]);
+    expect(mocks.message).not.toHaveBeenCalled();
+  });
+
+  it("refuses in a dev instance that cannot apply", async () => {
+    mocks.get.mockResolvedValue(status({ canApply: false }));
+    const { installPendingUpdate } = await import("./updater");
+
+    const result = await installPendingUpdate();
+
+    expect(mocks.apply).not.toHaveBeenCalled();
+    expect(result.phase).toBe("error");
+    expect(mocks.message).toHaveBeenCalledOnce();
+  });
+
+  it("does nothing when no update is waiting", async () => {
+    mocks.get.mockResolvedValue(status({ latest: 95 }));
+    const { installPendingUpdate } = await import("./updater");
+
+    const result = await installPendingUpdate();
+
+    expect(mocks.apply).not.toHaveBeenCalled();
+    expect(result).toEqual({ phase: "current", currentVersion: "95" });
+  });
+
+  it("surfaces a build that fails to start", async () => {
+    mocks.apply.mockResolvedValue(status({ phase: "error", error: "boom" }));
+    const { installPendingUpdate } = await import("./updater");
+
+    const result = await installPendingUpdate();
+
+    expect(result).toMatchObject({ phase: "error", error: "boom" });
+    expect(mocks.message).toHaveBeenCalledWith(
+      expect.stringContaining("boom"),
+      expect.anything(),
     );
   });
+});
 
-  it("does not record or relaunch after installation fails", async () => {
-    mocks.downloadAndInstall.mockRejectedValue(new Error("install failed"));
-    const updater = await updaterWithPendingUpdate();
+describe("watchUpdateStatus", () => {
+  it("records the installed version once main restarts", async () => {
+    let push: ((s: ReturnType<typeof status>) => void) | null = null;
+    mocks.onStatus.mockImplementation((cb) => {
+      push = cb;
+      return () => {};
+    });
+    const { watchUpdateStatus } = await import("./updater");
+    const phases: string[] = [];
+    watchUpdateStatus((s) => phases.push(s.phase));
 
-    const result = await updater.installPendingUpdate();
-
-    expect(result.phase).toBe("error");
+    push!(status({ phase: "building" }));
     expect(mocks.remember).not.toHaveBeenCalled();
-    expect(mocks.relaunch).not.toHaveBeenCalled();
-  });
+    push!(status({ phase: "restarting" }));
+    push!(status({ phase: "restarting" }));
 
-  it("does not record when no update is pending", async () => {
-    const updater = await import("./updater");
-
-    expect((await updater.installPendingUpdate()).phase).toBe("idle");
-    expect(mocks.remember).not.toHaveBeenCalled();
-    expect(mocks.relaunch).not.toHaveBeenCalled();
+    expect(mocks.remember).toHaveBeenCalledExactlyOnceWith("96");
+    expect(phases).toEqual(["building", "restarting", "restarting"]);
   });
 });

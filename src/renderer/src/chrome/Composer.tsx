@@ -11,10 +11,8 @@ import {
   type ReactNode,
   type UIEvent,
 } from "react";
-import { getCurrentWebview } from "../lib/native";
 import {
   attachmentsFromFiles,
-  attachmentsFromPaths,
   filesFromClipboard,
   mergeAttachments,
   pickAttachments,
@@ -494,30 +492,6 @@ export function Composer({
     }
     const dropRoot = () =>
       boxRef.current?.closest("[data-session-drop]") as HTMLElement | null;
-    let nativeDropAt = 0;
-
-    const toClientPoint = (x: number, y: number) => {
-      const scale = window.devicePixelRatio || 1;
-      // Tauri types this as PhysicalPosition, but macOS wry reports logical
-      // points. Only scale down when the point sits outside the CSS viewport.
-      if (scale !== 1 && (x > window.innerWidth || y > window.innerHeight)) {
-        return { x: x / scale, y: y / scale };
-      }
-      return { x, y };
-    };
-
-    const overTarget = (x: number, y: number) => {
-      const root = dropRoot();
-      if (!root) return false;
-      const point = toClientPoint(x, y);
-      const rect = root.getBoundingClientRect();
-      return (
-        point.x >= rect.left &&
-        point.x <= rect.right &&
-        point.y >= rect.top &&
-        point.y <= rect.bottom
-      );
-    };
 
     const onDragOver = (event: DragEvent) => {
       const data = event.dataTransfer;
@@ -540,7 +514,6 @@ export function Composer({
       event.preventDefault();
       setFileDrag(false);
       if (!attachmentsSupported) return;
-      if (Date.now() - nativeDropAt < 250) return;
       const files = [...data.files];
       if (files.length === 0) return;
       void attachmentsFromFiles(files).then(addAttachments);
@@ -551,38 +524,10 @@ export function Composer({
     root?.addEventListener("dragleave", onDragLeave);
     root?.addEventListener("drop", onDrop);
 
-    let cancelled = false;
-    let unlisten: (() => void) | undefined;
-    void getCurrentWebview()
-      .onDragDropEvent((event) => {
-        if (event.payload.type === "leave") {
-          setFileDrag(false);
-          return;
-        }
-        const { x, y } = event.payload.position;
-        const over = overTarget(x, y);
-        if (event.payload.type === "enter" || event.payload.type === "over") {
-          setFileDrag(over && attachmentsSupported);
-          return;
-        }
-        if (event.payload.type !== "drop") return;
-        setFileDrag(false);
-        if (!over || !attachmentsSupported) return;
-        nativeDropAt = Date.now();
-        void attachmentsFromPaths(event.payload.paths).then(addAttachments);
-      })
-      .then((fn) => {
-        if (cancelled) fn();
-        else unlisten = fn;
-      })
-      .catch(() => undefined);
-
     return () => {
-      cancelled = true;
       root?.removeEventListener("dragover", onDragOver);
       root?.removeEventListener("dragleave", onDragLeave);
       root?.removeEventListener("drop", onDrop);
-      unlisten?.();
     };
   }, [addAttachments, attachmentsSupported, enabled]);
 
