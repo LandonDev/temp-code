@@ -10,6 +10,7 @@ import { ClientRequestSchema, type ServerFrame } from '@shared/contract'
 import type { SessionMeta } from '@shared/events'
 import { openDb, Store } from './db'
 import { handleFsGit } from './fsgit'
+import { Linear, handleLinear } from './linear'
 import { SessionRegistry } from './sessions'
 import { runDoctor, updateProvider } from './drivers/binaries'
 import { backfillMirrors } from './mirror'
@@ -138,6 +139,7 @@ export async function startServer(dbPath: string, options: { dataDir?: string } 
   const store = new Store(db)
   const registry = new SessionRegistry(store)
   const m3a = { store, registry, notes: new Notes(db), logos: new ProjectLogos(options.dataDir ?? dirname(dbPath)), usage: new ClaudeUsage() }
+  const linear = new Linear(options.dataDir ?? dirname(dbPath))
   registry.resetStaleStatuses()
   registry.startIdleSweep()
   setOrchestrationRegistry(registry)
@@ -226,6 +228,8 @@ export async function startServer(dbPath: string, options: { dataDir?: string } 
         if (extension.handled) { sendFrame({ id: req.id, ok: true, result: extension.result }); return }
         const fsGit = await handleFsGit(req)
         if (fsGit.handled) return sendFrame({ id: req.id, ok: true, result: fsGit.result })
+        const lin = await handleLinear(req, linear)
+        if (lin.handled) return sendFrame({ id: req.id, ok: true, result: lin.result })
         switch (req.method) {
           case 'catalog.get':
             sendFrame({ id: req.id, ok: true, result: CATALOG })
