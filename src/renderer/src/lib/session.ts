@@ -139,7 +139,15 @@ export type Block = {
     display?: { app?: string; action?: string };
     /** A connector answered "reauthenticate"; the link fixes it. */
     reauth?: { app: string; url: string };
+    /** The spawning call this in-harness subagent step ran under. */
+    parentCallId?: string;
+    /** Steps a spawned subagent ran under this call so far. */
+    subCount?: number;
   };
+  /** A compaction system row: its lifecycle so the card can show progress and outcome. */
+  compaction?: CompactionMeta;
+  /** A spawned-agent system row: the child the row stands for. */
+  agent?: { id: string; title?: string; status?: string };
   approval?: {
     requestId: string | number;
     decided?: "allow" | "deny";
@@ -167,6 +175,17 @@ export type Block = {
   pass?: boolean;
   /** Run settings the server stamped on a user turn. */
   turn?: { model?: string; reasoning?: string; context1m?: boolean };
+};
+
+export type CompactionMeta = {
+  phase: "start" | "done" | "failed";
+  trigger?: "auto" | "manual";
+  preTokens?: number;
+  postTokens?: number;
+  durationMs?: number;
+  error?: string;
+  /** Event time compaction began; the card's clock runs from it. */
+  startedAt?: number;
 };
 
 export type ThreadTasks = { done: number; total: number; current?: string | null };
