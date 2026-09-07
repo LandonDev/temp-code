@@ -7,7 +7,9 @@ import { toggleBreakpoint } from "../../lib/monaco/breakpoints";
 import type { EditorNavigationTarget, OpenFileFn } from "../../lib/search";
 import { projectForCwd } from "../../lib/tcserver/projects";
 import { MatrixSpinner } from "../threads/bits";
+import { ConflictBar } from "./ConflictBar";
 import { DiffSurface } from "./DiffSurface";
+import { trackEditor } from "./keys";
 import { attachGitGutter } from "./gitGutter";
 import { ideaNeedsEula } from "./lsp/connection";
 import { ensureForModel } from "./lsp/idea";
@@ -23,6 +25,8 @@ type Props = {
   cwd: string;
   active: boolean;
   showDiff?: boolean;
+  /** review base ref; HEAD when unset */
+  diffBase?: string;
   navigation?: EditorNavigationTarget | null;
   onDirtyChange: (path: string, dirty: boolean) => void;
   onErrorCountChange?: (path: string, count: number) => void;
@@ -38,7 +42,7 @@ const viewStates = new Map<string, monaco.editor.ICodeEditorViewState>();
  * bar and a status line while the language server indexes.
  */
 export default function MonacoPane(props: Props) {
-  const { path, cwd, active, showDiff = false, navigation, onDirtyChange, onErrorCountChange, onOpenFile } = props;
+  const { path, cwd, active, showDiff = false, diffBase, navigation, onDirtyChange, onErrorCountChange, onOpenFile } = props;
   const hostRef = useRef<HTMLDivElement>(null);
   const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
   const [phase, setPhase] = useState<"loading" | "ready" | "unreadable" | "error">("loading");
@@ -129,6 +133,7 @@ export default function MonacoPane(props: Props) {
         glyphMargin: debuggable,
       });
       editorRef.current = editor;
+      cleanups.push(trackEditor(editor));
       const saved = viewStates.get(path);
       if (saved) editor.restoreViewState(saved);
 
@@ -222,7 +227,7 @@ export default function MonacoPane(props: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- remount per path; the parent keys us
   }, [path, cwd, showDiff]);
 
-  if (showDiff) return <DiffSurface path={path} cwd={cwd} />;
+  if (showDiff) return <DiffSurface path={path} cwd={cwd} base={diffBase} onDirtyChange={onDirtyChange} />;
 
   return (
     <div className="relative flex h-full min-h-0 flex-1 flex-col">
@@ -265,35 +270,6 @@ function Stub({ text }: { text: string }) {
   return (
     <div className="flex flex-1 items-center justify-center px-6 text-center text-[12px] text-content/50">
       {text}
-    </div>
-  );
-}
-
-/** The honest escape hatch: one line, two words each, no modal. */
-function ConflictBar({
-  kind,
-  onReload,
-  onKeep,
-}: {
-  kind: "external" | "deleted";
-  onReload: () => void;
-  onKeep: () => void;
-}) {
-  return (
-    <div className="flex h-8 shrink-0 items-center gap-3 border-b border-content/10 bg-warning/10 px-3 text-[12px]">
-      <span className="text-content/60">
-        {kind === "external" ? "Changed on disk while you were typing" : "Deleted on disk"}
-      </span>
-      <span className="flex-1" />
-      {kind === "external" ? (
-        <button type="button" onClick={onReload} className="font-medium hover:underline">
-          reload
-        </button>
-      ) : null}
-      {kind === "external" ? <span className="text-content/30">·</span> : null}
-      <button type="button" onClick={onKeep} className="font-medium hover:underline">
-        keep mine
-      </button>
     </div>
   );
 }

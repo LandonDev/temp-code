@@ -112,6 +112,12 @@ import {
   type LinearTeam,
 } from "../lib/linear";
 import { loadTabGroupLabels, resolveTabGroupLabel } from "../lib/tabGroups";
+import { probeDoctor, type Doctor, type DoctorRow } from "../lib/tcserver/catalog";
+import { useSessionMetas } from "../lib/tcserver/store";
+import { useProjects } from "../lib/tcserver/workspaces";
+import { BUNDLED_RELEASE } from "../lib/releaseNotes";
+import type { SessionMeta } from "@shared/events";
+import type { LspStatusRow } from "@shared/domain";
 import {
   filterKeybindings,
   KEYBINDINGS,
@@ -121,16 +127,24 @@ import {
   loadMidTurnDefault,
   loadLiveAgentsEnabled,
   loadNotesEnabled,
+  loadSummaryModel,
+  loadToolCaptions,
+  loadToolSummaries,
   saveClaudeHooks,
   saveComposerRunner,
   saveGridArcadeEnabled,
   saveMidTurnDefault,
   saveLiveAgentsEnabled,
   saveNotesEnabled,
+  saveSummaryModel,
+  saveToolCaptions,
+  saveToolSummaries,
   settingsSectionDescription,
   settingsSectionLabel,
+  SUMMARY_MODELS,
   type MidTurnDefault,
   type SettingsSectionId,
+  type SummaryModel,
 } from "../lib/settings";
 import { SPRING_LAYOUT } from "../lib/ease";
 import { loadSoundsEnabled, saveSoundsEnabled } from "../lib/sounds";
@@ -169,8 +183,6 @@ type Props = {
 
 export function SettingsView({
   section,
-  cwd,
-  sessions,
   besideRail = false,
   onClose,
   onOpenSession,
@@ -180,6 +192,8 @@ export function SettingsView({
   onDeleteProject,
   onOpenWhatsNew,
 }: Props) {
+  // `cwd` and `sessions` stay in Props for the caller; the archive page
+  // lists every project's threads from the server instead.
   const lockOverscroll = useLockOverscroll<HTMLDivElement>();
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
@@ -254,8 +268,6 @@ export function SettingsView({
           {section === "orchestration" ? <OrchestrationPage /> : null}
           {section === "archive" ? (
             <ArchivePage
-              cwd={cwd}
-              sessions={sessions}
               onOpenSession={onOpenSession}
               onArchiveSession={onArchiveSession}
               onDeleteSession={onDeleteSession}
@@ -290,6 +302,10 @@ function GeneralPage({
   );
   const [soundsEnabled, setSoundsEnabled] = useState(loadSoundsEnabled);
   const [claudeHooks, setClaudeHooks] = useState(loadClaudeHooks);
+  const [toolSummaries, setToolSummaries] = useState(loadToolSummaries);
+  const [toolCaptions, setToolCaptions] = useState(loadToolCaptions);
+  const [summaryModel, setSummaryModel] =
+    useState<SummaryModel>(loadSummaryModel);
 
   useEffect(() => {
     const onZen = (event: Event) => {
@@ -465,6 +481,49 @@ function GeneralPage({
         />
       </Row>
 
+      <Heading title="Tool summaries" />
+      <Row
+        label="Tool summaries"
+        description="A small fast model turns each finished tool section into one sentence."
+      >
+        <Toggle
+          label="Tool summaries"
+          on={toolSummaries}
+          onChange={(on) => {
+            saveToolSummaries(on);
+            setToolSummaries(on);
+          }}
+        />
+      </Row>
+      <Row
+        label="Per-tool captions"
+        description="Each finished tool also gets a short note of what it did — same model call, no extra cost."
+      >
+        <Toggle
+          label="Per-tool captions"
+          on={toolCaptions}
+          onChange={(on) => {
+            saveToolCaptions(on);
+            setToolCaptions(on);
+          }}
+        />
+      </Row>
+      <Row
+        label="Summary model"
+        description="Auto uses each thread's own subscription; or pin one model for everything."
+      >
+        <Select
+          label="Summary model"
+          value={summaryModel}
+          options={SUMMARY_MODELS}
+          onChange={(next) => {
+            const model = next as SummaryModel;
+            saveSummaryModel(model);
+            setSummaryModel(model);
+          }}
+        />
+      </Row>
+
       <Heading title="Linear" />
       <LinearSettings />
 
@@ -636,66 +695,118 @@ function UpdateRow({
   onOpenWhatsNew: (version: string, markdown?: string) => void;
 }) {
   const snapshot = useUpdateSnapshot();
+  const building = snapshot.phase === "building";
   const busy = snapshot.phase === "checking" || installing(snapshot);
   const hasUpdate = snapshot.phase === "available";
+  const canApply = snapshot.canApply === true;
 
-  const status =
-    snapshot.phase === "available"
-      ? `Release ${snapshot.availableVersion} is available.`
-      : snapshot.phase === "building"
-        ? `Updating${snapshot.step ? ` · ${snapshot.step}` : "…"}${snapshot.detail ? ` — ${snapshot.detail}` : ""}`
-        : snapshot.phase === "restarting"
-          ? "Restarting into the new release…"
-          : snapshot.phase === "checking"
-            ? "Checking for updates…"
-            : snapshot.phase === "current"
-              ? "You're on the latest version."
-              : snapshot.phase === "error"
-                ? (snapshot.error ?? "Update check failed.")
-                : "MonoCode updates itself from the release feed.";
+  const status = building
+    ? (snapshot.detail ?? "Starting the build…")
+    : snapshot.phase === "restarting"
+      ? "Restarting…"
+      : snapshot.phase === "checking"
+        ? "Checking…"
+        : snapshot.phase === "error"
+          ? (snapshot.error ?? "Update failed.")
+          : hasUpdate
+            ? canApply
+              ? (snapshot.notes ??
+                `Release ${snapshot.availableVersion} is ready.`)
+              : `Release ${snapshot.availableVersion} is out. Dev build — updates apply to the installed app.`
+            : snapshot.canApply === false
+              ? "Dev build — updates apply to the installed app."
+              : "Up to date.";
 
-  // With an update waiting, What's new shows the feed's notes for it.
+  // With an update waiting, What's new shows the feed's notes for it;
+  // otherwise the notes this build shipped with.
   const onWhatsNew = () =>
     hasUpdate && snapshot.availableVersion && snapshot.notes
       ? onOpenWhatsNew(snapshot.availableVersion, snapshot.notes)
-      : onOpenWhatsNew(snapshot.currentVersion);
+      : onOpenWhatsNew(BUNDLED_RELEASE.version, BUNDLED_RELEASE.notes);
 
   return (
     <Row
       label={
         <span className="flex items-baseline gap-2">
-          Version
+          Release
           <span className="font-mono text-[12px] text-content/45">
             {snapshot.currentVersion}
           </span>
         </span>
       }
-      description={status}
+      description={
+        <>
+          <span className="block">{status}</span>
+          {building ? (
+            <StepProgress
+              startedAt={snapshot.stepStartedAt}
+              etaMs={snapshot.stepEtaMs}
+            />
+          ) : null}
+        </>
+      }
     >
       <div className="flex items-center gap-2">
-        <SecondaryButton
-          onClick={onWhatsNew}
-          disabled={snapshot.currentVersion === "…"}
-        >
-          What's new
-        </SecondaryButton>
+        <SecondaryButton onClick={onWhatsNew}>What's new</SecondaryButton>
         <SecondaryButton
           onClick={() =>
-            void (hasUpdate ? updateStore.install() : updateStore.check(true))
+            void (hasUpdate && canApply
+              ? updateStore.install()
+              : updateStore.check(true))
           }
           disabled={busy}
         >
           {busy ? (
             <Loader className="size-3.5 animate-spin" aria-hidden />
-          ) : hasUpdate ? (
+          ) : hasUpdate && canApply ? (
             <ArrowDownCircle className="size-3.5 text-accent" aria-hidden />
           ) : (
             <RefreshCw className="size-3.5" strokeWidth={1.75} aria-hidden />
           )}
-          {hasUpdate ? "Install" : "Check for updates"}
+          {building && snapshot.step
+            ? `${snapshot.step}…`
+            : hasUpdate && canApply
+              ? `Update to ${snapshot.availableVersion}`
+              : "Check for updates"}
         </SecondaryButton>
       </div>
     </Row>
+  );
+}
+
+/** A real progress bar while main builds: the ETA is how long this step
+ *  took last time. Without one the bar just pulses. */
+function StepProgress({
+  startedAt,
+  etaMs,
+}: {
+  startedAt?: number;
+  etaMs?: number;
+}) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 250);
+    return () => window.clearInterval(timer);
+  }, []);
+  const known = startedAt != null && etaMs != null && etaMs > 0;
+  const fraction = known
+    ? Math.min(0.96, Math.max(0.02, (now - startedAt) / etaMs))
+    : null;
+  return (
+    <span
+      role="progressbar"
+      aria-valuemin={0}
+      aria-valuemax={100}
+      aria-valuenow={fraction == null ? undefined : Math.round(fraction * 100)}
+      className="mt-2 block h-1 w-64 overflow-hidden rounded-full bg-content/10"
+    >
+      <span
+        className={`block h-full rounded-full bg-accent transition-[width] duration-300 ${
+          fraction == null ? "w-1/3 animate-pulse" : ""
+        }`}
+        style={fraction == null ? undefined : { width: `${fraction * 100}%` }}
+      />
+    </span>
   );
 }
 
@@ -897,10 +1008,18 @@ function ProvidersPage() {
   );
   const [choice, setChoice] = useState(loadLastModelChoice);
   const [defaultModels, setDefaultModels] = useState(loadDefaultModels);
+  const [doctor, setDoctor] = useState<Doctor | null>(null);
+
+  const refreshDoctor = useCallback((force = false) => {
+    void probeHarnessAvailability({ force });
+    void probeDoctor({ force })
+      .then(setDoctor)
+      .catch(() => setDoctor({}));
+  }, []);
 
   useEffect(() => {
-    void probeHarnessAvailability();
-  }, []);
+    refreshDoctor();
+  }, [refreshDoctor]);
 
   const onModelChange = (harness: HarnessId, model: string) => {
     saveDefaultModel(harness, model);
@@ -920,16 +1039,19 @@ function ProvidersPage() {
   return (
     <>
       <p className="pb-2 text-[12px] leading-relaxed text-content/45">
-        A provider is listed as installed once its CLI is found on your PATH.
-        Uninstalled CLIs stay listed here but are omitted from the model picker.
-        Turn off Show in picker to hide an installed provider from those tabs.
-        The model beside each provider is what new conversations use when that
-        provider is selected; Use by default picks the provider itself.
+        A provider is listed as installed once its CLI is found on your PATH;
+        uninstalled ones are left out of the model picker. The model beside
+        each provider is what new threads use when that provider is selected.
       </p>
       {HARNESSES.map((harness) => (
         <ProviderRow
           key={harness}
           harness={harness}
+          doctor={doctor ? (doctor[harness] ?? { found: false }) : undefined}
+          onUpdated={(row) => {
+            setDoctor((prev) => ({ ...(prev ?? {}), [harness]: row }));
+            refreshDoctor(true);
+          }}
           selectedModel={
             defaultModels[harness] ??
             (choice?.harness === harness
@@ -945,14 +1067,27 @@ function ProvidersPage() {
   );
 }
 
+/** Providers whose CLI the server knows how to update in place. */
+/** "2.1.263 (Claude Code)" → "v2.1.263 (Claude Code)"; "codex-cli 0.153.4" stays as is. */
+function versionLabel(version: string): string {
+  return /^\d/.test(version) ? `v${version}` : version;
+}
+
+const UPDATABLE: ReadonlySet<HarnessId> = new Set(["claude", "codex", "cursor"]);
+
 function ProviderRow({
   harness,
+  doctor,
+  onUpdated,
   selectedModel,
   isDefault,
   onDefault,
   onModelChange,
 }: {
   harness: HarnessId;
+  /** undefined while the first probe runs */
+  doctor: DoctorRow | undefined;
+  onUpdated: (row: DoctorRow) => void;
   selectedModel: string;
   isDefault: boolean;
   onDefault: (harness: HarnessId, model: string) => void;
@@ -965,6 +1100,8 @@ function ProviderRow({
   const [inPicker, setInPicker] = useState(() =>
     isPickerProviderVisible(harness),
   );
+  const [updating, setUpdating] = useState(false);
+  const [updateError, setUpdateError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!available || models.length > 0) return;
@@ -975,6 +1112,56 @@ function ProviderRow({
     savePickerProviderVisible(harness, visible);
     setInPicker(visible);
   };
+
+  const onUpdate = async () => {
+    if (updating) return;
+    setUpdating(true);
+    setUpdateError(null);
+    try {
+      const row = await client.request<DoctorRow>("providers.update", {
+        provider: harness,
+      });
+      onUpdated(row);
+      void refreshHarnessCatalogs([harness]);
+    } catch (error) {
+      setUpdateError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setUpdating(false);
+    }
+  };
+
+  const health =
+    doctor === undefined ? (
+      <span className="text-content/35">Checking…</span>
+    ) : doctor.found ? (
+      <>
+        <span className="flex items-center gap-1.5">
+          <span
+            aria-hidden
+            className={`size-1.5 rounded-full ${doctor.error ? "bg-warning" : "bg-success"}`}
+          />
+          {doctor.version ? versionLabel(doctor.version) : "Installed"}
+          {models.length > 0 ? (
+            <span className="text-content/35">
+              · {models.length} {models.length === 1 ? "model" : "models"}
+            </span>
+          ) : null}
+        </span>
+        {doctor.path ? (
+          <span className="block truncate font-mono text-[11px] text-content/35">
+            {doctor.path}
+          </span>
+        ) : null}
+        {doctor.error ? (
+          <span className="block text-warning">{doctor.error}</span>
+        ) : null}
+      </>
+    ) : (
+      <span className="flex items-center gap-1.5">
+        <span aria-hidden className="size-1.5 rounded-full bg-danger" />
+        {harnessUnavailableHint(harness)}
+      </span>
+    );
 
   return (
     <Row
@@ -990,11 +1177,24 @@ function ProviderRow({
         </span>
       }
       description={
-        available
-          ? `${models.length} ${models.length === 1 ? "model" : "models"} available.`
-          : harnessUnavailableHint(harness)
+        <>
+          {health}
+          {updateError ? (
+            <span className="block whitespace-pre-line text-danger">
+              {updateError}
+            </span>
+          ) : null}
+        </>
       }
     >
+      {doctor?.found && UPDATABLE.has(harness) ? (
+        <SecondaryButton onClick={() => void onUpdate()} disabled={updating}>
+          {updating ? (
+            <Loader className="size-3.5 animate-spin" aria-hidden />
+          ) : null}
+          {updating ? "Updating…" : "Update"}
+        </SecondaryButton>
+      ) : null}
       {current ? (
         <Select
           label={`${HARNESS_TITLE[harness]} model`}
@@ -1070,37 +1270,67 @@ function archivedProjectLabel(path: string): string {
 }
 
 function ArchivePage({
-  cwd,
-  sessions,
   onOpenSession,
   onArchiveSession,
   onDeleteSession,
   onRestoreProject,
   onDeleteProject,
 }: {
-  cwd: string;
-  sessions: SessionSummary[];
   onOpenSession: (sessionId: string) => void;
   onArchiveSession: (sessionId: string, archived: boolean) => void;
-  onDeleteSession: (sessionId: string) => void;
+  onDeleteSession: (
+    sessionId: string,
+    options?: { confirmed?: boolean },
+  ) => void;
   onRestoreProject?: (path: string) => void;
   onDeleteProject?: (path: string) => void;
 }) {
   const [filters, setFilters] = useState(loadSessionSidebarFilters);
   const [deleting, setDeleting] = useState<ArchivedProject | null>(null);
+  const [deletingThread, setDeletingThread] = useState<SessionMeta | null>(
+    null,
+  );
+  const [query, setQuery] = useState("");
   const archivedProjects = useArchivedProjects();
+  const metas = useSessionMetas();
+  const projects = useProjects();
+  const projectNames = useMemo(
+    () => new Map(projects.map((project) => [project.id, project.name])),
+    [projects],
+  );
+  const nameOf = useCallback(
+    (meta: SessionMeta) =>
+      (meta.projectId ? projectNames.get(meta.projectId) : undefined) ??
+      (looksLikeProject(meta.cwd) ? projectName(meta.cwd) : ""),
+    [projectNames],
+  );
   const archived = useMemo(
     () =>
-      sessions
-        .filter((session) => session.archived)
+      metas
+        .filter((meta) => meta.archived && !meta.parentId)
         .sort((a, b) => b.updatedAt - a.updatedAt),
-    [sessions],
+    [metas],
   );
+  const shown = useMemo(() => {
+    const needle = query.trim().toLowerCase();
+    if (!needle) return archived;
+    return archived.filter((meta) =>
+      [meta.title, nameOf(meta), HARNESS_TITLE[meta.provider], meta.provider]
+        .join(" ")
+        .toLowerCase()
+        .includes(needle),
+    );
+  }, [archived, nameOf, query]);
 
   const onShowArchived = (showArchived: boolean) => {
     const next = { ...filters, showArchived };
     saveSessionSidebarFilters(next);
     setFilters(next);
+  };
+
+  const restore = (meta: SessionMeta) => {
+    onArchiveSession(meta.id, false);
+    onOpenSession(meta.id);
   };
 
   return (
@@ -1152,57 +1382,71 @@ function ArchivePage({
         />
       </Row>
 
-      <Heading
-        title={
-          looksLikeProject(cwd)
-            ? `Archived in ${projectName(cwd)}`
-            : "Archived conversations"
-        }
-      />
+      <Heading title="Archived threads" />
 
-      {!looksLikeProject(cwd) ? (
+      {archived.length === 0 ? (
         <p className="py-3 text-[12px] text-content/45">
-          Open a project to see its archived conversations.
-        </p>
-      ) : archived.length === 0 ? (
-        <p className="py-3 text-[12px] text-content/45">
-          No archived conversations in this project.
+          Nothing archived. Right-click a tab to archive it.
         </p>
       ) : (
-        <div className="overflow-hidden rounded-lg border border-content/10">
-          {archived.map((session) => (
-            <div
-              key={session.id}
-              className="flex items-center gap-3 border-b border-content/5 px-3 py-2 last:border-b-0"
-            >
-              <HarnessIcon
-                harness={session.harness}
-                className="size-3.5 shrink-0"
-              />
-              <button
-                type="button"
-                onClick={() => onOpenSession(session.id)}
-                className="min-w-0 flex-1 truncate text-left text-[13px] hover:text-content"
-              >
-                {sessionDisplayTitle(session.title, session.harness)}
-              </button>
-              <span className="shrink-0 text-[11px] text-content/35 tabular-nums">
-                {formatDate(session.updatedAt)}
-              </span>
-              <SecondaryButton
-                onClick={() => onArchiveSession(session.id, false)}
-              >
-                Unarchive
-              </SecondaryButton>
-              <SecondaryButton
-                danger
-                onClick={() => onDeleteSession(session.id)}
-              >
-                Delete
-              </SecondaryButton>
+        <>
+          <label className="mb-3 flex items-center gap-2 rounded-md border border-content/10 px-2.5 py-1.5 text-[12px] text-content/50 focus-within:border-content/25">
+            <Search className="size-3.5 shrink-0" strokeWidth={1.75} />
+            <input
+              type="search"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder={`Search ${archived.length} archived…`}
+              aria-label="Search archived threads"
+              className="min-w-0 flex-1 bg-transparent text-content outline-none placeholder:text-content/35"
+            />
+          </label>
+          {shown.length === 0 ? (
+            <p className="py-3 text-[12px] text-content/45">
+              No archived thread matches.
+            </p>
+          ) : (
+            <div className="overflow-hidden rounded-lg border border-content/10">
+              {shown.map((meta) => (
+                <div
+                  key={meta.id}
+                  className="flex items-center gap-3 border-b border-content/5 px-3 py-2 last:border-b-0"
+                >
+                  <HarnessIcon
+                    harness={meta.provider}
+                    className="size-3.5 shrink-0"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => restore(meta)}
+                    className="min-w-0 flex-1 text-left hover:text-content"
+                  >
+                    <span className="block truncate text-[13px]">
+                      {sessionDisplayTitle(meta.title, meta.provider)}
+                    </span>
+                    {nameOf(meta) ? (
+                      <span className="block truncate text-[11px] text-content/40">
+                        {nameOf(meta)}
+                      </span>
+                    ) : null}
+                  </button>
+                  <span className="shrink-0 text-[11px] text-content/35 tabular-nums">
+                    {formatDate(meta.updatedAt)}
+                  </span>
+                  <SecondaryButton onClick={() => restore(meta)}>
+                    Restore
+                  </SecondaryButton>
+                  <SecondaryButton
+                    danger
+                    onClick={() => setDeletingThread(meta)}
+                  >
+                    Delete
+                  </SecondaryButton>
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
+          )}
+        </>
       )}
 
       {deleting ? (
@@ -1216,8 +1460,38 @@ function ArchivePage({
           }}
         />
       ) : null}
+      {deletingThread ? (
+        <Modal
+          onClose={() => setDeletingThread(null)}
+          title={`Delete ${clampTitle(
+            sessionDisplayTitle(deletingThread.title, deletingThread.provider),
+          )}?`}
+          description="The thread and its whole transcript are gone for good."
+          size="sm"
+        >
+          <div className="flex justify-end gap-2 px-5 pb-4">
+            <SecondaryButton onClick={() => setDeletingThread(null)}>
+              Cancel
+            </SecondaryButton>
+            <SecondaryButton
+              danger
+              onClick={() => {
+                onDeleteSession(deletingThread.id, { confirmed: true });
+                setDeletingThread(null);
+              }}
+            >
+              Delete thread
+            </SecondaryButton>
+          </div>
+        </Modal>
+      ) : null}
     </>
   );
+}
+
+function clampTitle(title: string): string {
+  const trimmed = title.trim();
+  return trimmed.length > 48 ? `${trimmed.slice(0, 47)}…` : trimmed;
 }
 
 function formatDate(value: number): string {
@@ -1328,21 +1602,116 @@ function Slider({
 }
 
 type IdeaEngine = { dist: boolean; accepted: boolean; build: string };
+type JavaDoctor = {
+  found: boolean;
+  path?: string;
+  version?: string;
+  jdtls: boolean;
+  ideaServer?: IdeaEngine;
+  error?: string;
+};
+
+const LSP_LABEL: Record<LspStatusRow["lang"], string> = {
+  java: "jdtls",
+  idea: "IntelliJ engine",
+  web: "vtsls",
+};
+
+function fmtBytes(bytes: number): string {
+  if (bytes >= 1024 ** 3) return `${(bytes / 1024 ** 3).toFixed(1)} GB`;
+  return `${Math.round(bytes / 1024 ** 2)} MB`;
+}
+
+function lspRowStatus(row: LspStatusRow): string {
+  if (row.state === "running") {
+    const parts = [row.memoryBytes != null ? fmtBytes(row.memoryBytes) : "running"];
+    if (row.idleMs > 60_000) parts.push(`idle ${Math.round(row.idleMs / 60_000)}m`);
+    return parts.join(" · ");
+  }
+  if (row.state === "error") return row.error ?? "error";
+  return `${row.state}…`;
+}
+
+/** Live language-server rows, polled while the page is open. M7a's push
+ *  of readiness changes can replace the poll once it lands. */
+function LanguageServersRow() {
+  const [rows, setRows] = useState<LspStatusRow[] | null>(null);
+  const projects = useProjects();
+  const projectNames = useMemo(
+    () => new Map(projects.map((project) => [project.id, project.name])),
+    [projects],
+  );
+  useEffect(() => {
+    let cancelled = false;
+    const tick = () =>
+      void client
+        .request<LspStatusRow[]>("lsp.status")
+        .then((next) => {
+          if (!cancelled) setRows(next);
+        })
+        .catch(() => {
+          if (!cancelled) setRows([]);
+        });
+    tick();
+    const timer = window.setInterval(tick, 5_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, []);
+  return (
+    <Row
+      label="Language servers"
+      description={
+        rows === null
+          ? "…"
+          : rows.length === 0
+            ? "None running. A server starts when a file that needs it opens."
+            : undefined
+      }
+    >
+      {rows && rows.length > 0 ? (
+        <div className="flex flex-col items-end gap-1 text-[12px]">
+          {rows.map((row) => (
+            <span key={row.serverId} className="flex items-center gap-2">
+              <span className="text-content">{LSP_LABEL[row.lang]}</span>
+              <span className="text-content/45">
+                {projectNames.get(row.projectId) ?? row.projectId}
+              </span>
+              <span
+                className={`tabular-nums ${row.state === "error" ? "text-danger" : "text-content/45"}`}
+              >
+                {lspRowStatus(row)}
+              </span>
+            </span>
+          ))}
+        </div>
+      ) : null}
+    </Row>
+  );
+}
 
 function EditorPage() {
   const [autoSave, setAutoSave] = useState(loadAutoSave);
   const [formatOnSave, setFormatOnSave] = useState<FormatOnSave>(loadFormatOnSave);
   const [ghostText, setGhostText] = useState(loadGhostText);
   const [engine, setEngine] = useState<IdeaEngine | null | undefined>(undefined);
+  const [java, setJava] = useState<JavaDoctor | null | undefined>(undefined);
   const [eula, setEula] = useState<{ build: string; text: string } | null>(null);
   const [gateOpen, setGateOpen] = useState(false);
   const [note, setNote] = useState<string | null>(null);
 
   const refreshEngine = useCallback(() => {
     void client
-      .request<{ java?: { ideaServer?: IdeaEngine } }>("doctor.get")
-      .then((doctor) => setEngine(doctor.java?.ideaServer ?? null))
-      .catch(() => setEngine(null));
+      .request<{ java?: JavaDoctor }>("doctor.get")
+      .then((doctor) => {
+        setJava(doctor.java ?? null);
+        setEngine(doctor.java?.ideaServer ?? null);
+      })
+      .catch(() => {
+        setJava(null);
+        setEngine(null);
+      });
   }, []);
 
   useEffect(() => {
@@ -1388,6 +1757,15 @@ function EditorPage() {
       .catch(() => setNote("Update check failed."));
   };
 
+  const jdkState =
+    java === undefined
+      ? "…"
+      : !java || !java.found
+        ? (java?.error ?? "No JDK found. Install JDK 21 or newer for Java.")
+        : java.error
+          ? `JDK ${java.version} — needs 21+`
+          : `JDK ${java.version} · ${java.jdtls ? "jdtls ready" : "jdtls downloads on first use"}`;
+
   const engineState =
     engine === undefined
       ? "…"
@@ -1425,6 +1803,21 @@ function EditorPage() {
           }}
         />
       </Row>
+      <Row
+        label="JDK"
+        description={
+          <>
+            <span className={`block ${java && java.error ? "text-warning" : ""}`}>
+              {jdkState}
+            </span>
+            {java?.path ? (
+              <span className="block truncate font-mono text-[11px] text-content/35">
+                {java.path}
+              </span>
+            ) : null}
+          </>
+        }
+      />
       <Row label="IntelliJ engine" description={note ?? engineState}>
         {engine?.accepted ? (
           <SecondaryButton onClick={checkUpdate}>Check for update</SecondaryButton>
@@ -1432,6 +1825,7 @@ function EditorPage() {
           <SecondaryButton onClick={openGate}>Accept EULA</SecondaryButton>
         )}
       </Row>
+      <LanguageServersRow />
       {gateOpen ? (
         <Modal
           onClose={() => setGateOpen(false)}

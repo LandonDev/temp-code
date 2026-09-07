@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from 'vitest'
 import {
   ClaudeUsage,
+  CodexUsage,
+  parseCodexAuth,
   parseCredentials,
   tokenNeedsRefresh,
   type UsageDependencies
@@ -167,5 +169,72 @@ describe('Claude usage', () => {
       body: null,
       error: 'Claude not signed in'
     })
+  })
+})
+
+describe('Codex usage', () => {
+  const auth = JSON.stringify({
+    auth_mode: 'chatgpt',
+    tokens: { access_token: 'codex-secret', account_id: 'acct-1', refresh_token: 'r' }
+  })
+  function codexDeps(raw: string | null = auth) {
+    return {
+      fetch: vi.fn<typeof fetch>(),
+      readFile: vi.fn(async (path: string) => {
+        if (raw === null) throw new Error(`ENOENT ${path}`)
+        return raw
+      }),
+      home: '/test-home',
+      codexHome: undefined
+    }
+  }
+  it('is unavailable without the CLI login file or its tokens', async () => {
+    for (const raw of [null, '{}', '{"tokens":{"account_id":"a"}}', 'nope']) {
+      const d = codexDeps(raw)
+      expect((await new CodexUsage(d).fetch()).status).toBe('unavailable')
+      expect(d.fetch).not.toHaveBeenCalled()
+    }
+    expect(parseCodexAuth(auth)).toEqual({ accessToken: 'codex-secret', accountId: 'acct-1' })
+  })
+  it('reads $CODEX_HOME first, sends the account header and redacts the token', async () => {
+    const d = codexDeps()
+    vi.mocked(d.fetch).mockResolvedValue(
+      new Response('{"rate_limit":{"primary_window":{"used_percent":5}},"t":"codex-secret"}', {
+        status: 200
+      })
+    )
+    expect(await new CodexUsage({ ...d, codexHome: '/elsewhere' }).fetch()).toEqual({
+      status: 'ok',
+      httpStatus: 200,
+      body: '{"rate_limit":{"primary_window":{"used_percent":5}},"t":"[redacted]"}',
+      error: null
+    })
+    expect(d.readFile).toHaveBeenCalledWith('/elsewhere/auth.json')
+    expect(d.fetch).toHaveBeenCalledWith(
+      'https://chatgpt.com/backend-api/wham/usage',
+      expect.objectContaining({
+        headers: {
+          Authorization: 'Bearer codex-secret',
+          'ChatGPT-Account-Id': 'acct-1',
+          'User-Agent': 'codex-cli'
+        },
+        redirect: 'error'
+      })
+    )
+    const home = codexDeps()
+    vi.mocked(home.fetch).mockResolvedValue(new Response('{}', { status: 200 }))
+    await new CodexUsage(home).fetch()
+    expect(home.readFile).toHaveBeenCalledWith('/test-home/.codex/auth.json')
+  })
+  it('treats an expired login as unavailable and other failures as errors', async () => {
+    const d = codexDeps()
+    vi.mocked(d.fetch)
+      .mockResolvedValueOnce(new Response('', { status: 401 }))
+      .mockResolvedValueOnce(new Response('', { status: 500 }))
+      .mockRejectedValueOnce(new Error('offline'))
+    const usage = new CodexUsage(d)
+    expect((await usage.fetch()).status).toBe('unavailable')
+    expect(await usage.fetch()).toMatchObject({ status: 'error', httpStatus: 500 })
+    expect(await usage.fetch()).toMatchObject({ status: 'error', httpStatus: null })
   })
 })

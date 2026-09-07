@@ -2,6 +2,7 @@ import { invoke } from "./native";
 import {
   errorRateLimits,
   parseClaudeOAuthUsage,
+  parseCodexUsageBody,
   unavailableRateLimits,
   type ProviderRateLimits,
 } from "./rateLimits";
@@ -43,11 +44,27 @@ export async function fetchClaudeRateLimits(): Promise<ProviderRateLimits> {
   }
 }
 
-/**
- * Codex usage came from a local `codex app-server` probe. Harness
- * children live on the server now; a server-side usage method is a
- * follow-up, so the footer shows Codex usage as unavailable until then.
- */
+/** Codex usage from the CLI's login on the server; unavailable hides the chip. */
 export async function fetchCodexRateLimits(): Promise<ProviderRateLimits> {
-  return unavailableRateLimits("codex", "Codex usage not available yet");
+  try {
+    const result = await invoke<ClaudeUsageFetch>("fetch_codex_usage");
+    if (result.status === "ok" && result.body) {
+      return parseCodexUsageBody(result.body);
+    }
+    if (result.status === "unavailable") {
+      return unavailableRateLimits(
+        "codex",
+        result.error?.trim() || "Codex not signed in",
+      );
+    }
+    return errorRateLimits(
+      "codex",
+      result.error?.trim() || "Codex usage unavailable",
+    );
+  } catch (error) {
+    return errorRateLimits(
+      "codex",
+      error instanceof Error ? error.message : "Codex usage unavailable",
+    );
+  }
 }
