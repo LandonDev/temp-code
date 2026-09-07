@@ -10,18 +10,18 @@ import { projectForCwd } from "../../lib/tcserver/projects";
 import { useProjects } from "../../lib/tcserver/workspaces";
 import { cn } from "../../motion/cn";
 import { FileTree } from "../FileTree";
-import { SourceControl } from "../SourceControl";
 import { Spinner } from "../../surfaces/threads/bits";
 import { BranchPanel } from "./BranchPanel";
 import { BuildPanel } from "./BuildPanel";
+import { ChangesPanel } from "./ChangesPanel";
 
 // The Debug tab drives the editor chunk's DAP session; it loads with it.
 const DebugPanel = lazy(() => import("./DebugPanel"));
 
 /**
  * The project's right rail: a 288px drawer at the main grid boundary, right
- * of the pane tree and the diff pane. Changes and Files reuse the sidebar's
- * panels; Branch, Build and Debug are temp-code's. Everything inside is
+ * of the pane tree and the diff pane. Files reuses the sidebar's tree;
+ * Changes, Branch, Build and Debug are temp-code's. Everything inside is
  * keyed by the project the current cwd resolves to, never a global selection.
  */
 
@@ -120,7 +120,7 @@ function RailBody({ projectId, cwd, onOpenFile, onOpenDiff }: Props & { projectI
       </div>
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
         {panel === "changes" ? (
-          <SourceControl cwd={cwd} enabled onOpenFile={onOpenDiff} />
+          <ChangesPanel cwd={cwd} onOpenDiff={onOpenDiff} />
         ) : null}
         {panel === "files" ? (
           <FileTree key={cwd} cwd={cwd} onOpenFile={onOpenFile} gitStatuses={gitStatuses} />

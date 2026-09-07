@@ -50,16 +50,18 @@ export function surfaceTabPresentation(
   const review = isReviewTab(file);
   const terminal = isTerminalTab(file);
   const name = terminal ? terminalTabLabel(file) : basename(file.path);
+  const against = review ? (file.diffBase ? `vs ${shortRef(file.diffBase)}` : "Working Tree") : null;
   return {
     name,
-    label: review ? `${name} (Working Tree)` : name,
+    label: against ? `${name} (${against})` : name,
     iconName: name,
-    tooltip: terminal
-      ? `${name} · ${file.cwd}`
-      : review
-        ? `${file.path} (Working Tree)`
-        : file.path,
+    tooltip: terminal ? `${name} · ${file.cwd}` : against ? `${file.path} (${against})` : file.path,
   };
+}
+
+/** A full sha reads as its first seven; branch names and HEAD stay whole. */
+function shortRef(ref: string): string {
+  return /^[0-9a-f]{40}$/.test(ref) ? ref.slice(0, 7) : ref;
 }
 
 /** Mirrors the VS Code tab tooltip: the path, then what is wrong with it. */
