@@ -12,11 +12,19 @@ import { client } from "../../../lib/tcserver/client";
  * keeps the previous reading rather than clearing it.
  */
 
+export type ContextCategory = { name: string; tokens: number; color?: string };
+export type ContextMemoryFile = { path: string; tokens: number };
+export type ContextMcpTool = { name: string; server: string; tokens: number };
+
 export type ContextReading = {
   totalTokens: number;
   maxTokens: number;
   percentage: number;
   model?: string;
+  /** The /context breakdown, where the harness reports one (claude does). */
+  categories?: ContextCategory[];
+  memoryFiles?: ContextMemoryFile[];
+  mcpTools?: ContextMcpTool[];
 };
 
 export const CONTEXT_POLL_MS = 20_000;
@@ -45,12 +53,46 @@ export function parseReading(raw: unknown): ContextReading | null {
   if (!raw || typeof raw !== "object") return null;
   const rec = raw as Record<string, unknown>;
   if (typeof rec.totalTokens !== "number" || typeof rec.maxTokens !== "number") return null;
-  return {
+  const reading: ContextReading = {
     totalTokens: rec.totalTokens,
     maxTokens: rec.maxTokens,
     percentage: typeof rec.percentage === "number" ? rec.percentage : 0,
     model: typeof rec.model === "string" ? rec.model : undefined,
   };
+  const categories = list(rec.categories, (c) =>
+    typeof c.name === "string" && typeof c.tokens === "number"
+      ? { name: c.name, tokens: c.tokens, ...(typeof c.color === "string" ? { color: c.color } : {}) }
+      : null,
+  );
+  if (categories) reading.categories = categories;
+  const memoryFiles = list(rec.memoryFiles, (m) =>
+    typeof m.path === "string" && typeof m.tokens === "number" ? { path: m.path, tokens: m.tokens } : null,
+  );
+  if (memoryFiles) reading.memoryFiles = memoryFiles;
+  const mcpTools = list(rec.mcpTools, (t) =>
+    typeof t.name === "string" && typeof t.tokens === "number"
+      ? { name: t.name, server: typeof t.serverName === "string" ? t.serverName : "", tokens: t.tokens }
+      : null,
+  );
+  if (mcpTools) reading.mcpTools = mcpTools;
+  return reading;
+}
+
+function list<T>(raw: unknown, pick: (rec: Record<string, unknown>) => T | null): T[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const out: T[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== "object") continue;
+    const v = pick(item as Record<string, unknown>);
+    if (v) out.push(v);
+  }
+  return out;
+}
+
+/** What a re-render hangs on: totals plus the breakdown's shape and sizes. */
+function signature(r: ContextReading): string {
+  const cats = r.categories?.map((c) => `${c.name}=${c.tokens}`).join(",") ?? "";
+  return `${r.totalTokens}/${r.maxTokens}/${r.percentage}|${cats}|${r.memoryFiles?.length ?? ""}|${r.mcpTools?.length ?? ""}`;
 }
 
 export class ContextCache {
@@ -83,14 +125,7 @@ export class ContextCache {
     const next = parseReading(raw);
     if (!next) return;
     const prev = this.readings.get(sessionId);
-    if (
-      prev &&
-      prev.totalTokens === next.totalTokens &&
-      prev.maxTokens === next.maxTokens &&
-      prev.percentage === next.percentage
-    ) {
-      return;
-    }
+    if (prev && signature(prev) === signature(next)) return;
     this.readings.set(sessionId, next);
     for (const l of this.listeners) l();
   }
