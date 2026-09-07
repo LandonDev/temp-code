@@ -164,7 +164,7 @@ export function ThreadHeaderStrip({
   );
 }
 
-function chipTitle(chip: StripChip): string {
+export function chipTitle(chip: StripChip): string {
   const { title, provider } = chip.thread;
   const shown =
     provider && (HARNESSES as string[]).includes(provider)
