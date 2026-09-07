@@ -150,6 +150,8 @@ export type Block = {
   question?: QuestionMeta;
   /** Optimistic user turn the server has not echoed yet. */
   pending?: boolean;
+  /** An error row the user's own Stop produced: reads Stopped, never Failed. */
+  stopped?: boolean;
   handoff?: HandoffMeta;
   secondOpinion?: SecondOpinionMeta;
   /** Note chip shown on this user turn. Body is not stored; the harness already received it. */

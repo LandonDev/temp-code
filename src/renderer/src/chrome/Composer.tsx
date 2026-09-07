@@ -39,9 +39,10 @@ import {
 } from "../lib/githubTasks";
 import type { HandoffComposerCard } from "../lib/handoff";
 import { looksLikeProject, type RecentProject } from "../lib/recents";
-import type { Attachment, HarnessId, RuntimeMode } from "../lib/session";
+import type { Attachment, HarnessId, RuntimeMode, ThreadGoal } from "../lib/session";
 import { harnessSupportsAttachments } from "../lib/session";
 import { AccessPicker } from "./AccessPicker";
+import { GoalControl } from "./GoalControl";
 import { AddonMark } from "./AddonMark";
 import { CommandPopover, type AtMatch, type PopoverMatches } from "./CommandPopover";
 import { ComposerRunner } from "./ComposerRunner";
@@ -111,6 +112,8 @@ type Props = {
   busy?: boolean;
   /** The turn is paused: Enter queues and the row waits for Continue. */
   paused?: boolean;
+  /** The thread's standing goal, edited from the bottom bar. */
+  goal?: ThreadGoal | null;
   hotkeys?: boolean;
   onFocus: () => void;
   onCwdChange: (cwd: string) => void;
@@ -189,6 +192,7 @@ export function Composer({
   handoffCard,
   busy = false,
   paused = false,
+  goal = null,
   onFocus,
   onCwdChange,
   onBranchChange,
@@ -789,7 +793,7 @@ export function Composer({
                 if (
                   e.target instanceof Element &&
                   e.target.closest(
-                    "[data-model-picker], [data-access-picker], [data-model-settings], [data-thread-type-picker]",
+                    "[data-model-picker], [data-access-picker], [data-model-settings], [data-thread-type-picker], [data-goal-control]",
                   )
                 ) {
                   return;
@@ -818,6 +822,13 @@ export function Composer({
                   <AccessPicker
                     value={runtimeMode}
                     onChange={onRuntimeModeChange}
+                    onClose={() => ref.current?.focus()}
+                  />
+                ) : null}
+                {sessionId ? (
+                  <GoalControl
+                    sessionId={sessionId}
+                    goal={goal}
                     onClose={() => ref.current?.focus()}
                   />
                 ) : null}
