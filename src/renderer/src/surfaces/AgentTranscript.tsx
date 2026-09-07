@@ -514,11 +514,12 @@ function TurnDuration({
 }
 
 /** Wall-clock stamp for a finished turn, in the reader's own locale. */
+const clockTimeFormat = new Intl.DateTimeFormat(undefined, {
+  hour: "numeric",
+  minute: "2-digit",
+});
 function formatClockTime(epochMs: number): string {
-  return new Date(epochMs).toLocaleTimeString(undefined, {
-    hour: "numeric",
-    minute: "2-digit",
-  });
+  return clockTimeFormat.format(epochMs);
 }
 
 function CopyTurnButton({ text }: { text: string }) {

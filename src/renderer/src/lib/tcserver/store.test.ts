@@ -183,8 +183,12 @@ describe("sessionStore", () => {
     const off = sessionStore.subscribe(() => notified++);
     link.push({ push: "event", row: row("s1", 1, { type: "user-text", text: "q" }) });
     link.push({ push: "event", row: row("s1", 2, { type: "assistant-text", text: "a", delta: true, msgId: "m", blockIndex: 0 }) });
+    // The snapshot is current at once; listeners hear once per frame.
+    expect(sessionStore.getSnapshot()[0].blocks).toHaveLength(2);
+    expect(notified).toBe(0);
+    await new Promise((r) => setTimeout(r, 30));
     off();
-    expect(notified).toBe(2);
+    expect(notified).toBe(1);
     const snap = sessionStore.getSnapshot();
     expect(snap).toHaveLength(1);
     expect(snap[0].blocks).toHaveLength(2);

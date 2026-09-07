@@ -461,7 +461,7 @@ class SessionStore {
       return;
     }
     if (this.foldRow(entry, row)) {
-      this.bump();
+      this.bumpSoon();
       for (const l of this.eventListeners) l(row.sessionId, row, entry.session);
     }
   }
@@ -683,14 +683,46 @@ class SessionStore {
     for (const listener of this.metaListeners) listener();
   }
 
-  private bump(): void {
+  private notifyPending: number | null = null;
+
+  /**
+   * Streamed events arrive far faster than frames paint. The snapshot updates
+   * now; listeners hear once per frame, so React reconciles once per frame
+   * instead of once per delta. A synchronous bump() flushes it early.
+   */
+  private bumpSoon(): void {
     this.version += 1;
+    this.snapshot = this.buildSnapshot();
+    if (this.notifyPending != null) return;
+    const flush = () => {
+      if (this.notifyPending == null) return;
+      this.notifyPending = null;
+      this.bump();
+    };
+    this.notifyPending =
+      typeof requestAnimationFrame === "function"
+        ? requestAnimationFrame(flush)
+        : (setTimeout(flush, 0) as unknown as number);
+  }
+
+  private buildSnapshot(): Session[] {
     const next: Session[] = [];
     for (const id of this.openOrder) {
       const entry = this.entries.get(id);
       if (entry) next.push(entry.session);
     }
-    this.snapshot = next;
+    return next;
+  }
+
+  private bump(): void {
+    if (this.notifyPending != null) {
+      // A sync bump supersedes the scheduled one; the flush sees null and skips.
+      if (typeof cancelAnimationFrame === "function") cancelAnimationFrame(this.notifyPending);
+      else clearTimeout(this.notifyPending);
+      this.notifyPending = null;
+    }
+    this.version += 1;
+    this.snapshot = this.buildSnapshot();
     for (const listener of this.listeners) listener();
     for (const [id, waiters] of this.idleWaiters) {
       const entry = this.entries.get(id);
