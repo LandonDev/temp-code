@@ -37,6 +37,20 @@ describe("readingPercent", () => {
 });
 
 describe("parseReading", () => {
+  it("keeps the /context breakdown when the harness sends one", () => {
+    const r = parseReading({
+      totalTokens: 50,
+      maxTokens: 100,
+      percentage: 50,
+      categories: [{ name: "System prompt", tokens: 10, color: "#fff" }, { name: "bad" }],
+      memoryFiles: [{ path: "/a/b/CLAUDE.md", type: "Project", tokens: 3 }],
+      mcpTools: [{ name: "js", serverName: "node_repl", tokens: 7 }],
+    });
+    expect(r?.categories).toEqual([{ name: "System prompt", tokens: 10, color: "#fff" }]);
+    expect(r?.memoryFiles).toEqual([{ path: "/a/b/CLAUDE.md", tokens: 3 }]);
+    expect(r?.mcpTools).toEqual([{ name: "js", server: "node_repl", tokens: 7 }]);
+  });
+
   it("accepts the driver shape and drops nulls", () => {
     expect(parseReading(null)).toBeNull();
     expect(parseReading({ categories: [] })).toBeNull();
