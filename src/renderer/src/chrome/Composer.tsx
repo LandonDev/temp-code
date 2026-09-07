@@ -324,6 +324,23 @@ export function Composer({
     if (Object.keys(patch).length > 0) void tuneSession(sessionId, patch).catch(() => undefined)
   }
 
+  /** A model pick rebuilds the settings from the last-used ones (App owns
+   *  that), so once they land, tell the live thread what Fast and 1M now
+   *  are; otherwise the server keeps running the old tune behind the UI. */
+  const retuneAfterPick = useRef(false)
+  const changeModel = (nextHarness: HarnessId, nextModel: string) => {
+    onModelChange(nextHarness, nextModel)
+    retuneAfterPick.current = !!sessionId
+  }
+  useEffect(() => {
+    if (!retuneAfterPick.current || !sessionId) return
+    retuneAfterPick.current = false
+    void tuneSession(sessionId, {
+      fast: modelSettings.fast === 'true',
+      context1m: modelSettings.context === '1m',
+    }).catch(() => undefined)
+  }, [model, modelSettings, sessionId])
+
   const syncHasValue = useCallback(
     (text: string, files: Attachment[]) => {
       setHasValue(
@@ -786,7 +803,7 @@ export function Composer({
                   harness={harness}
                   model={model}
                   hotkeys={hotkeys && enabled}
-                  onChange={onModelChange}
+                  onChange={changeModel}
                   onClose={() => inputRef.current?.focus()}
                 />
                 <ModelSettings
