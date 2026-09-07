@@ -1,4 +1,4 @@
-import { invoke } from "./native";
+import { getPathForFile, invoke } from "./native";
 import { basename, pickFiles as pickFilePaths } from "./fs";
 import type { Attachment, AttachmentKind } from "./session";
 
@@ -12,7 +12,6 @@ type PathInfo = {
   isDir: boolean;
 };
 
-type NativeFile = File & { path?: string };
 
 export type PromptContentBlock =
   | { type: "text"; text: string }
@@ -362,9 +361,9 @@ async function attachmentFromBlob(file: File): Promise<Attachment | null> {
       path,
       previewUrl,
     };
-  } catch {
+  } catch (err) {
     if (previewUrl) URL.revokeObjectURL(previewUrl);
-    return null;
+    throw err;
   }
 }
 
@@ -451,9 +450,14 @@ function skipName(name: string): boolean {
   return SKIP_NAMES.has(basename(name).toLowerCase());
 }
 
+/** Disk path of a dropped or picked File; pasted blobs have none. */
 function nativePath(file: File): string | undefined {
-  const path = (file as NativeFile).path;
-  return path?.trim() ? path : undefined;
+  try {
+    const path = getPathForFile(file);
+    return path.trim() ? path : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 function fallbackName(mimeType: string): string {

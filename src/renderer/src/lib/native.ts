@@ -2,8 +2,9 @@
  * The one renderer module that touches `window.api`. It keeps the donor's
  * Tauri names (`invoke`, `listen`, `getCurrentWindow`, `convertFileSrc`,
  * `open`, `ask`, `message`, `getVersion`, …) so call sites change imports
- * only. `invoke` is a closed command map: a command with no backend yet
- * rejects with `not ported: <name>` and never fakes success.
+ * only. `invoke` is a closed command map: every command routes to the
+ * in-process server (over the shared WebSocket client) or to the main
+ * process (over preload); nothing fakes success.
  */
 
 export type UnlistenFn = () => void;
@@ -66,6 +67,7 @@ export type NativeCommand =
   | "notes_list"
   | "notes_upsert"
   | "open_new_window"
+  | "pty_ack"
   | "pty_kill"
   | "pty_kill_all"
   | "pty_resize"
@@ -98,7 +100,8 @@ export type NativeCommand =
   | "write_attachment"
   | "write_text_file";
 
-/** Events the donor listened for. Menu ids arrive as their own event names. */
+/** Events the donor listened for: the menu ids, `quit_requested`,
+ *  `pty-data` (`{id, data: Uint8Array}`) and `pty-exit` (`{id, code}`). */
 export type NativeEventName = string;
 
 type Args = Record<string, unknown> | undefined;
@@ -107,48 +110,189 @@ type Backed = (args: Args) => Promise<unknown>;
 const arg = <T>(args: Args, key: string): T => (args ?? {})[key] as T;
 const scope = (args: Args) => ({ sessionId: arg<string>(args, "sessionId"), cwd: arg<string>(args, "cwd") });
 
-/** The WS client's request(), injected once at boot (`bindServer` from the
- *  server link) so server-backed commands need no import cycle. */
-type ServerRequest = <T>(method: string, params?: unknown) => Promise<T>;
-let serverRequest: ServerRequest | null = null;
-export function bindServer(request: ServerRequest): void {
-  serverRequest = request;
-}
-const server: ServerRequest = (method, params) => {
-  if (!serverRequest) return Promise.reject(new Error("server not bound"));
-  return serverRequest(method, params);
+// ── Server dispatch ────────────────────────────────────────────────────────
+
+/** What the bridge needs from the WebSocket client. `tcserver/client.ts`
+ *  imports this module for the port, so the client is injected from
+ *  `main.tsx` instead of imported here. */
+export type ServerLink = {
+  readonly connected: boolean;
+  request<T>(method: string, params?: unknown): Promise<T>;
+  onOpen(listener: () => void): UnlistenFn;
 };
 
-/** Commands with a backend today. Everything else rejects `not ported`. */
-const backed: Partial<Record<NativeCommand, Backed>> = {
+const SERVER_OPEN_TIMEOUT_MS = 15_000;
+let server: ServerLink | null = null;
+
+export function bindServer(link: ServerLink): void {
+  server = link;
+}
+
+function whenServerOpen(link: ServerLink): Promise<void> {
+  if (link.connected) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      off();
+      reject(new Error("server not connected"));
+    }, SERVER_OPEN_TIMEOUT_MS);
+    const off = link.onOpen(() => {
+      clearTimeout(timer);
+      off();
+      resolve();
+    });
+  });
+}
+
+async function rpc<T>(method: string, params?: unknown): Promise<T> {
+  if (!server) throw new Error(`server link not bound (${method})`);
+  await whenServerOpen(server);
+  return server.request<T>(method, params);
+}
+
+/** Commands whose donor args are the server method's params unchanged. */
+const serverMethods: Partial<Record<NativeCommand, string>> = {
+  clone_repo: "git.clone",
+  copy_path: "fs.copyPath",
+  create_path: "fs.createPath",
+  delete_path: "fs.deletePath",
+  fetch_claude_usage: "rateLimits.claudeUsage",
+  git_branches: "git.branches",
+  git_checkout: "git.checkout",
+  git_commit: "git.commitStaged",
+  git_create_branch: "git.createBranch",
+  git_diff_index: "git.diffIndex",
+  git_diff_stats: "git.diffStats",
+  git_discard_file: "git.discardFile",
+  git_file_diff: "git.fileDiff",
+  git_github_pr_diff: "github.prDiff",
+  git_github_repo: "github.repo",
+  git_github_work_item_comment: "github.comment",
+  git_github_work_item_details: "github.details",
+  git_github_work_item_thread: "github.thread",
+  git_github_work_items: "github.workItems",
+  git_pr_create: "github.createPr",
+  git_pr_status: "github.prStatus",
+  git_pull: "git.pull",
+  git_push: "git.push",
+  git_range_context: "git.rangeContext",
+  git_stage_all: "git.stageAll",
+  git_stage_contents: "git.stageContents",
+  git_stage_file: "git.stageFile",
+  git_staged_context: "git.stagedContext",
+  git_stash: "git.stash",
+  git_sync: "git.sync",
+  git_unstage_all: "git.unstageAll",
+  git_unstage_file: "git.unstageFile",
+  inspect_paths: "fs.inspectPaths",
+  list_dir: "fs.listPath",
+  list_project_files: "fs.projectFiles",
+  move_path: "fs.movePath",
+  notes_delete: "notes.delete",
+  notes_get: "notes.get",
+  notes_list: "notes.list",
+  notes_upsert: "notes.upsert",
+  read_file_base64: "fs.readBase64",
+  read_file_preview: "fs.readPreview",
+  read_text_file: "fs.readText",
+  rename_path: "fs.renamePath",
+  search_project: "search.project",
+  stat_files: "fs.statFiles",
+  workspace_get_snapshot: "workspace.getSnapshot",
+  workspace_set_snapshot: "workspace.setSnapshot",
+  write_text_file: "fs.writeText",
+};
+
+// ── Command map ────────────────────────────────────────────────────────────
+
+const backed: Record<NativeCommand, Backed> = {
+  ...(Object.fromEntries(
+    Object.entries(serverMethods).map(([command, method]) => [
+      command,
+      (args: Args) => rpc(method, args),
+    ]),
+  ) as Record<NativeCommand, Backed>),
+
+  // Server commands whose params or result differ from the donor's.
+  write_attachment: async (args) => {
+    const saved = await rpc<{ path: string }>("attachment.save", {
+      name: arg<string>(args, "name"),
+      dataBase64: arg<string>(args, "data"),
+    });
+    return saved.path;
+  },
+  save_project_logo: (args) =>
+    rpc("projectLogo.save", {
+      projectPath: arg<string>(args, "project"),
+      sourcePath: arg<string>(args, "sourcePath"),
+    }),
+  remove_project_logo: (args) =>
+    rpc("projectLogo.remove", { projectPath: arg<string>(args, "project") }),
+
+  // Main process.
   sidecar_port: () => getServerPort(),
   reveal_path: (args) => window.api.revealInFinder(arg<string>(args, "path")),
-  session_checkpoint_ensure: (args) => server("checkpoint.ensure", scope(args)),
+  default_cwd: () => window.api.app.defaultCwd(),
+  home_dir: () => window.api.app.homeDir(),
+  confirm_quit: () => window.api.app.confirmQuit(),
+  set_dock_badge: (args) => window.api.app.dockBadge(arg<number>(args, "count")),
+  hide_window: () => window.api.win.hide(),
+  destroy_window: () => window.api.win.destroy(),
+  open_new_window: () => window.api.win.create(),
+  stage_window_transfer: (args) =>
+    window.api.win.stageTransfer(arg<unknown>(args, "payload")),
+  take_window_transfer: () => window.api.win.takeTransfer<string>(),
+  set_traffic_lights_visible: (args) =>
+    window.api.win.setButtonsVisible(arg<boolean>(args, "visible")),
+  enable_window_glass: () => window.api.win.enableGlass(),
+  set_zoom: (args) => window.api.win.setZoom(arg<number>(args, "level")),
+  pty_spawn: (args) =>
+    window.api.pty.spawn({
+      id: arg<string>(args, "id"),
+      cwd: arg<string>(args, "cwd"),
+      cols: arg<number>(args, "cols"),
+      rows: arg<number>(args, "rows"),
+    }),
+  pty_write: (args) =>
+    window.api.pty.write(arg<string>(args, "id"), arg<string>(args, "data")),
+  pty_resize: (args) =>
+    window.api.pty.resize(
+      arg<string>(args, "id"),
+      arg<number>(args, "cols"),
+      arg<number>(args, "rows"),
+    ),
+  pty_status: (args) => window.api.pty.status(arg<string>(args, "id")),
+  pty_kill: (args) => window.api.pty.kill(arg<string>(args, "id")),
+  pty_kill_all: () => window.api.pty.killAll(),
+  pty_ack: async (args) =>
+    window.api.pty.ack(arg<string>(args, "id"), arg<number>(args, "bytes")),
+
+  // Checkpoints (M9) and Linear (M11): params shaped here, not passed through.
+  session_checkpoint_ensure: (args) => rpc("checkpoint.ensure", scope(args)),
   session_checkpoint_capture: (args) =>
-    server("checkpoint.capture", { ...scope(args), paths: arg<string[]>(args, "paths") ?? [] }),
-  session_checkpoint_sync: (args) => server("checkpoint.sync", scope(args)),
-  session_checkpoint_status: (args) => server("checkpoint.status", scope(args)),
+    rpc("checkpoint.capture", { ...scope(args), paths: arg<string[]>(args, "paths") ?? [] }),
+  session_checkpoint_sync: (args) => rpc("checkpoint.sync", scope(args)),
+  session_checkpoint_status: (args) => rpc("checkpoint.status", scope(args)),
   session_checkpoint_undo: (args) =>
-    server("checkpoint.undo", { ...scope(args), relative: arg<string | null>(args, "relative") ?? null }),
+    rpc("checkpoint.undo", { ...scope(args), relative: arg<string | null>(args, "relative") ?? null }),
   session_checkpoint_keep: (args) =>
-    server("checkpoint.keep", { ...scope(args), relative: arg<string | null>(args, "relative") ?? null }),
+    rpc("checkpoint.keep", { ...scope(args), relative: arg<string | null>(args, "relative") ?? null }),
   // Linear (M11): server-owned token, GraphQL in the server.
-  linear_status: () => server("linear.status"),
+  linear_status: () => rpc("linear.status"),
   linear_set_token: (args) =>
-    server("linear.setToken", { token: arg<string>(args, "token") }),
-  linear_list_teams: () => server("linear.teams"),
+    rpc("linear.setToken", { token: arg<string>(args, "token") }),
+  linear_list_teams: () => rpc("linear.teams"),
   linear_list_issues: (args) =>
-    server("linear.issues", {
+    rpc("linear.issues", {
       assignedToMe: arg<boolean>(args, "assignedToMe"),
       state: arg<string>(args, "state"),
       teamIds: arg<string[]>(args, "teamIds"),
     }),
   linear_issue_details: (args) =>
-    server("linear.details", { id: arg<string>(args, "id") }),
+    rpc("linear.details", { id: arg<string>(args, "id") }),
   linear_issue_thread: (args) =>
-    server("linear.thread", { id: arg<string>(args, "id") }),
+    rpc("linear.thread", { id: arg<string>(args, "id") }),
   linear_issue_comment: (args) =>
-    server("linear.comment", {
+    rpc("linear.comment", {
       id: arg<string>(args, "id"),
       body: arg<string>(args, "body"),
       parentId: arg<string>(args, "parentId"),
@@ -175,14 +319,65 @@ export async function getServerPort(): Promise<number> {
   return port;
 }
 
-/** Native events (menu ids, pty-data, pty-exit, quit_requested). No backend
- *  emits them yet, so subscriptions resolve with a no-op unsubscribe. */
-export function listen<T = unknown>(
-  _event: NativeEventName,
-  _handler: (event: NativeEvent<T>) => void,
-): Promise<UnlistenFn> {
-  return Promise.resolve(() => undefined);
+// ── Events ─────────────────────────────────────────────────────────────────
+
+/** Menu ids share one `native:menu` subscription; it is held only while a
+ *  listener exists, so StrictMode's double effects leave no duplicates. */
+const menuHandlers = new Map<string, Set<(event: NativeEvent<string>) => void>>();
+let menuOff: UnlistenFn | null = null;
+
+function listenMenu(
+  id: string,
+  handler: (event: NativeEvent<string>) => void,
+): UnlistenFn {
+  let set = menuHandlers.get(id);
+  if (!set) {
+    set = new Set();
+    menuHandlers.set(id, set);
+  }
+  set.add(handler);
+  menuOff ??= window.api.menu.onCommand((command) => {
+    const handlers = menuHandlers.get(command);
+    if (!handlers) return;
+    for (const h of [...handlers]) h({ payload: command });
+  });
+  return () => {
+    set.delete(handler);
+    if (set.size === 0) menuHandlers.delete(id);
+    if (menuHandlers.size === 0 && menuOff) {
+      menuOff();
+      menuOff = null;
+    }
+  };
 }
+
+export type PtyDataPayload = { id: string; data: Uint8Array };
+export type PtyExitPayload = { id: string; code: number | null };
+
+export function listen<T = unknown>(
+  event: NativeEventName,
+  handler: (event: NativeEvent<T>) => void,
+): Promise<UnlistenFn> {
+  const emit = (payload: unknown) => handler({ payload: payload as T });
+  switch (event) {
+    case "quit_requested":
+      return Promise.resolve(window.api.app.onQuitRequested(() => emit(null)));
+    case "pty-data":
+      return Promise.resolve(
+        window.api.pty.onData((id, data) => emit({ id, data })),
+      );
+    case "pty-exit":
+      return Promise.resolve(
+        window.api.pty.onExit((id, code) => emit({ id, code })),
+      );
+    default:
+      return Promise.resolve(
+        listenMenu(event, handler as (event: NativeEvent<string>) => void),
+      );
+  }
+}
+
+// ── Window ─────────────────────────────────────────────────────────────────
 
 export type NativeWindow = {
   minimize(): Promise<void>;
@@ -197,37 +392,34 @@ export type NativeWindow = {
   ): Promise<UnlistenFn>;
 };
 
-const reject = (name: string) => () => Promise.reject(notPorted(name));
-
 export function getCurrentWindow(): NativeWindow {
+  const win = window.api.win;
   return {
-    minimize: reject("window_minimize"),
-    toggleMaximize: reject("window_toggle_maximize"),
-    close: reject("window_close"),
-    isMaximized: reject("window_is_maximized"),
-    isFocused: reject("window_is_focused"),
-    setTitle: reject("window_set_title"),
-    onResized: () => Promise.resolve(() => undefined),
-    onCloseRequested: () => Promise.resolve(() => undefined),
+    minimize: () => win.minimize(),
+    toggleMaximize: () => win.toggleMaximize(),
+    close: () => win.close(),
+    isMaximized: () => win.isMaximized(),
+    isFocused: () => win.isFocused(),
+    setTitle: (title) => win.setTitle(title),
+    onResized: (handler) => Promise.resolve(win.onResized(handler)),
+    // Subscribing makes main defer every close to us. A handler that does
+    // not prevent the default gets the donor's default: the window goes.
+    onCloseRequested: (handler) =>
+      Promise.resolve(
+        win.onCloseRequested(() => {
+          let prevented = false;
+          handler({ preventDefault: () => (prevented = true) });
+          if (!prevented) void win.destroy();
+        }),
+      ),
   };
 }
 
-export type DragDropPayload =
-  | { type: "enter" | "over"; position: { x: number; y: number }; paths: string[] }
-  | { type: "drop"; position: { x: number; y: number }; paths: string[] }
-  | { type: "leave" };
-
-export function getCurrentWebview(): {
-  onDragDropEvent(
-    handler: (event: NativeEvent<DragDropPayload>) => void,
-  ): Promise<UnlistenFn>;
-} {
-  return { onDragDropEvent: () => Promise.resolve(() => undefined) };
-}
+// ── Files, dialogs, app ────────────────────────────────────────────────────
 
 /** URL a saved project logo is served from (scoped custom protocol). */
 export function convertFileSrc(path: string): string {
-  return `tempcode-asset://local${encodeURI(path)}`;
+  return window.api.app.logoUrl(path);
 }
 
 /** Disk path of a dropped File (File.path is gone in Electron ≥32). */
@@ -243,8 +435,8 @@ export type OpenDialogOptions = {
   filters?: { name: string; extensions: string[] }[];
 };
 
-export function open(_options: OpenDialogOptions): Promise<string | string[] | null> {
-  return Promise.reject(notPorted("dialog_open"));
+export function open(options: OpenDialogOptions): Promise<string | string[] | null> {
+  return window.api.dialog.open(options);
 }
 
 export type DialogKind = "info" | "warning" | "error";
@@ -256,45 +448,32 @@ export type AskOptions = {
 };
 export type MessageOptions = { title?: string; kind?: DialogKind };
 
-export function ask(_text: string, _options?: AskOptions): Promise<boolean> {
-  return Promise.reject(notPorted("dialog_ask"));
+export function ask(text: string, options?: AskOptions): Promise<boolean> {
+  return window.api.dialog.ask(text, options);
 }
 
-export function message(_text: string, _options?: MessageOptions): Promise<void> {
-  return Promise.reject(notPorted("dialog_message"));
+export function message(text: string, options?: MessageOptions): Promise<void> {
+  return window.api.dialog.message(text, options);
 }
 
 export function getVersion(): Promise<string> {
-  return Promise.reject(notPorted("app_version"));
+  return window.api.app.version();
 }
 
-/** External links go through the main process's window-open handler,
- *  which opens them in the default browser and denies the popup. */
-export async function openUrl(url: string): Promise<void> {
-  window.open(url, "_blank", "noopener");
+export function openUrl(url: string): Promise<void> {
+  return window.api.app.openUrl(url);
 }
 
-export function relaunch(): Promise<void> {
-  return Promise.reject(notPorted("app_relaunch"));
-}
+// ── Updates ────────────────────────────────────────────────────────────────
 
-// ── Updater (Tauri plugin shape; reshaped onto window.api.updates in M2b) ──
+/** Main's update status: release numbers, not semver; the app relaunches
+ *  itself after `apply`, so there is no renderer-side relaunch. */
+export type UpdateStatus = Awaited<ReturnType<typeof window.api.updates.get>>;
 
-export type DownloadEvent =
-  | { event: "Started"; data: { contentLength?: number } }
-  | { event: "Progress"; data: { chunkLength: number } }
-  | { event: "Finished" };
-
-export type Update = {
-  version: string;
-  body?: string;
-  downloadAndInstall(onEvent?: (event: DownloadEvent) => void): Promise<void>;
+export const updates = {
+  get: (): Promise<UpdateStatus> => window.api.updates.get(),
+  check: (): Promise<UpdateStatus> => window.api.updates.check(),
+  apply: (): Promise<UpdateStatus> => window.api.updates.apply(),
+  onStatus: (cb: (status: UpdateStatus) => void): UnlistenFn =>
+    window.api.updates.onStatus(cb),
 };
-
-/** Until the updater is ported, checks fail the way an unconfigured donor
- *  updater did, which keeps automatic checks quiet. */
-export function check(): Promise<Update | null> {
-  return Promise.reject(
-    new Error("updater does not have any endpoints set (not ported: updater_check)"),
-  );
-}

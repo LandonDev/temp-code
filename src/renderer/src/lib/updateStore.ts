@@ -2,6 +2,7 @@ import { useSyncExternalStore } from "react";
 import {
   installPendingUpdate,
   runUpdateFlow,
+  watchUpdateStatus,
   type UpdaterSnapshot,
 } from "./updater";
 
@@ -9,8 +10,10 @@ import {
  * One update status for every surface: the sidebar footer, the Settings
  * Version row and the menu item all read and drive the same snapshot.
  * Probes once at launch, every half hour after that, and again when the
- * window regains focus if the last probe is older than five minutes. The
- * "update available" cue fires once per version (see sounds.ts).
+ * window regains focus if the last probe is older than five minutes. Main
+ * checks on its own too and streams every change (including a build it is
+ * running) through the status watch. The "update available" cue fires
+ * once per version (see sounds.ts).
  */
 
 export const CHECK_INTERVAL_MS = 30 * 60_000;
@@ -24,6 +27,7 @@ class UpdateStore {
   private lastCheckAt = 0;
   private timer: ReturnType<typeof setInterval> | null = null;
   private onFocus: (() => void) | null = null;
+  private unwatch: (() => void) | null = null;
   private inflight: Promise<UpdaterSnapshot> | null = null;
 
   subscribe = (listener: () => void): (() => void) => {
@@ -37,6 +41,9 @@ class UpdateStore {
 
   start(): void {
     if (this.timer) return;
+    this.unwatch = watchUpdateStatus((snapshot) => {
+      if (!this.inflight) this.set(snapshot);
+    });
     void this.check(false);
     this.timer = setInterval(() => void this.check(false), CHECK_INTERVAL_MS);
     if (typeof window !== "undefined") {
@@ -57,6 +64,8 @@ class UpdateStore {
       window.removeEventListener("focus", this.onFocus);
     }
     this.onFocus = null;
+    this.unwatch?.();
+    this.unwatch = null;
     this.lastCheckAt = 0;
     this.inflight = null;
     this.state = INITIAL;
@@ -65,11 +74,11 @@ class UpdateStore {
   /**
    * Probe the feed. Manual checks show the native dialogs; automatic ones
    * stay quiet and leave a failed probe as idle. A busy store (checking or
-   * downloading) ignores the request.
+   * installing) ignores the request.
    */
   check(manual: boolean): Promise<UpdaterSnapshot> {
     if (this.inflight) return this.inflight;
-    if (this.state.phase === "downloading") return Promise.resolve(this.state);
+    if (installing(this.state)) return Promise.resolve(this.state);
     this.lastCheckAt = Date.now();
     const run = runUpdateFlow(manual, this.set).then((result) => {
       if (!manual && result.phase === "error") {
@@ -95,6 +104,10 @@ class UpdateStore {
 }
 
 export const updateStore = new UpdateStore();
+
+export function installing(snapshot: UpdaterSnapshot): boolean {
+  return snapshot.phase === "building" || snapshot.phase === "restarting";
+}
 
 export function useUpdateSnapshot(): UpdaterSnapshot {
   return useSyncExternalStore(updateStore.subscribe, updateStore.getSnapshot);

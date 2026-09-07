@@ -11,5 +11,7 @@ export function syncDockBadge(sessions: Session[]): void {
   }
   if (count === lastCount) return;
   lastCount = count;
-  void invoke("set_dock_badge", { count }).catch(() => {});
+  void invoke("set_dock_badge", { count }).catch((err) => {
+    console.error("[dock] badge update failed:", err);
+  });
 }

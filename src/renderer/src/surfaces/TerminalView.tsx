@@ -188,7 +188,7 @@ export function TerminalView({ id, cwd, active, onMetaChange }: Props) {
             onMeta(patch);
           }
         }
-        term.write(data);
+        return new Promise<void>((resolve) => term.write(data, resolve));
       },
       (code) => {
         if (closed) return;

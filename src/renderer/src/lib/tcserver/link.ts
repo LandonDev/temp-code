@@ -18,7 +18,8 @@ const TAG = "[monocode:server]";
 /** Boot hook: connect to the in-process server, report provider status, expose devtools helpers. */
 export function initServerLink(): void {
   window.__monocode = { server: client, smoke };
-  bindServer((method, params) => client.request(method, params));
+  // The bridge dispatches server commands over this one shared client.
+  bindServer(client);
   client.onOpen(() => void report());
   client.connect().catch((e) => console.error(`${TAG} connect failed:`, e));
 }
