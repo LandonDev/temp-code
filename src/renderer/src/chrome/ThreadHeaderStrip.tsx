@@ -6,6 +6,7 @@ import {
   type ReactNode,
   type WheelEvent as ReactWheelEvent,
 } from "react";
+import type { ThreadRules } from "@server/shared/rules";
 import { SPRING_LAYOUT } from "../lib/ease";
 import { HARNESSES, type HarnessId } from "../lib/session";
 import type { ThreadType } from "../lib/tcserver/types";
@@ -39,6 +40,7 @@ export type ChipThread = StripThread & {
   activity?: string | null;
   activityKind?: TabThread["activityKind"];
   tasks?: { done: number; total: number } | null;
+  threadRules?: ThreadRules | null;
 };
 
 export type StripChip = HeaderChip<ChipThread>;
@@ -82,6 +84,7 @@ export function ThreadHeaderStrip({
   onRestore,
   stripRef,
   trailing,
+  end,
   ...events
 }: ChipEvents & {
   model: HeaderModel<ChipThread>;
@@ -92,6 +95,8 @@ export function ThreadHeaderStrip({
   stripRef: (el: HTMLDivElement | null) => void;
   /** Sits after the live chips: the new-thread chooser. */
   trailing?: ReactNode;
+  /** The row's far end, before the archived shelf: cost, Pause all, rail. */
+  end?: ReactNode;
 }) {
   const reduce = useReducedMotion();
   const activeId = model.activeId ?? "";
@@ -141,6 +146,7 @@ export function ThreadHeaderStrip({
           {trailing}
         </motion.div>
         <div className="min-w-1.5 flex-1" />
+        {end}
         <ArchivedShelf archived={archived} onRestore={onRestore} />
       </div>
       {model.dormant.length > 0 ? (
