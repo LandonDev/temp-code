@@ -8,6 +8,7 @@ import {
   preferredModelSettings,
   resolveModel,
 } from "./models";
+import type { ThreadRules } from "@server/shared/rules";
 import type { AgentType, SessionStatus, ThreadType } from "./tcserver/types";
 import type { ThreadState } from "./tcserver/todos";
 
@@ -238,6 +239,10 @@ export type Session = {
   handoffCard?: HandoffComposerCard;
   /** What kind of thread this is; null for subagent children. */
   threadType?: ThreadType | null;
+  /** Rule overrides sent with session.create; the server owns them after. */
+  threadRules?: ThreadRules | null;
+  /** When the draft was minted here, before the server stamps its own times. */
+  createdAt?: number;
   /** Plan document (planning) or report (research) path; seeded threads: the source plan. */
   planPath?: string | null;
   /** Parent session for subagent children. */
@@ -305,6 +310,8 @@ export type SessionContext = {
   projectId?: string | null;
   workspaceId?: string | null;
   threadType?: ThreadType;
+  /** Per-thread rule overrides a research or orchestration draft starts with. */
+  threadRules?: ThreadRules | null;
 };
 
 export function newSession(
@@ -327,6 +334,8 @@ export function newSession(
     projectId: context.projectId ?? null,
     workspaceId: context.workspaceId ?? null,
     threadType: context.threadType ?? "chat",
+    ...(context.threadRules ? { threadRules: context.threadRules } : {}),
+    createdAt: Date.now(),
     blocks: [],
   };
 }

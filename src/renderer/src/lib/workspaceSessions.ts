@@ -19,6 +19,16 @@ export type ThreadRow = {
   failed: boolean;
   needsYou: boolean;
   busySince: number | null;
+  /** What the project card needs to read the root's tree (see projectCardModel). */
+  threadType: SessionMeta["threadType"];
+  frozenActiveElapsed: number | null;
+  tasks?: SessionMeta["tasks"];
+  activity?: SessionMeta["activity"];
+  activityKind?: SessionMeta["activityKind"];
+  treeHasLiveWork?: boolean;
+  treeHasPaused?: boolean;
+  treeCanContinue?: boolean;
+  treeFrozenActiveElapsed?: number | null;
   /** Subagents of this root, ranked: waiting, failed, working, done. */
   children?: ThreadRow[];
   /** Set on child rows; drives the row glyph. */
@@ -70,6 +80,15 @@ export function threadRow(
     needsYou: meta.status === "waiting",
     unread: settled && !running && meta.updatedAt > (lastSeen[meta.id] ?? 0),
     busySince: meta.busySince ?? null,
+    threadType: meta.threadType,
+    frozenActiveElapsed: meta.frozenActiveElapsed ?? null,
+    tasks: meta.tasks,
+    activity: meta.activity,
+    activityKind: meta.activityKind,
+    treeHasLiveWork: meta.treeHasLiveWork,
+    treeHasPaused: meta.treeHasPaused,
+    treeCanContinue: meta.treeCanContinue,
+    treeFrozenActiveElapsed: meta.treeFrozenActiveElapsed,
     createdAt: meta.createdAt,
     ...(meta.parentId
       ? { agentType: meta.agentType, provider: meta.provider, model: meta.model }
