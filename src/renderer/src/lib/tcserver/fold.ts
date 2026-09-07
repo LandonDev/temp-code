@@ -579,9 +579,10 @@ export function fromServerAttachment(a: ServerAttachment): Attachment {
     id: a.path,
     name: a.name,
     mimeType: a.mime ?? "",
-    kind: a.kind === "image" ? "image" : "file",
+    kind: a.kind === "image" || a.kind === "appshot" ? "image" : "file",
     size: 0,
     path: a.path,
+    ...(a.textPath ? { textPath: a.textPath } : {}),
   };
 }
 
