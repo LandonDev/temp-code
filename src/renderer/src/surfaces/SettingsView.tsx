@@ -162,8 +162,11 @@ import { retryBlockedEnsures } from "../lib/monaco/lspGate";
 import { Modal } from "../chrome/Modal";
 import { OrchestrationRulesEditor } from "../chrome/OrchestrationRules";
 import { BuildEditor, takeRequestedBuildScope } from "../chrome/rail/buildSettings";
-import { takeRequestedScope } from "../lib/tcserver/rules";
-import { useWorkspaces } from "../lib/tcserver/workspaces";
+import { ThreadDefaultsEditor } from "../chrome/ThreadDefaultsDialog";
+import { TurnPassEditor } from "../chrome/TurnPassFields";
+import { openOrchestrationSettings, takeRequestedScope } from "../lib/tcserver/rules";
+import { useWorkspaces, workspaceLabelKey } from "../lib/tcserver/workspaces";
+import { workspaceOfSection } from "../lib/settings";
 import { Heading, Row, Segmented, Select, SecondaryButton, Toggle } from "./settingsBits";
 import { MatrixSpinner } from "./threads/bits";
 import { installing, updateStore, useUpdateSnapshot } from "../lib/updateStore";
@@ -199,6 +202,9 @@ export function SettingsView({
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
   const appearance = useAppearanceSettings();
+  const workspaceId = workspaceOfSection(section);
+  const workspace = useWorkspaces().find((w) => w.id === workspaceId);
+  const title = workspace?.name ?? settingsSectionLabel(section);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -230,9 +236,7 @@ export function SettingsView({
           <span aria-hidden className="shrink-0 text-content/25">
             /
           </span>
-          <span className="min-w-0 truncate text-content">
-            {settingsSectionLabel(section)}
-          </span>
+          <span className="min-w-0 truncate text-content">{title}</span>
         </div>
         {section === "appearance" ? (
           <button
@@ -254,12 +258,20 @@ export function SettingsView({
       >
         <div className="mx-auto w-full max-w-5xl px-8 py-8">
           <PageHeader
-            title={settingsSectionLabel(section)}
-            description={settingsSectionDescription(section)}
+            title={title}
+            description={
+              workspaceId
+                ? workspace
+                  ? prettyCwd(workspace.path)
+                  : "This workspace was removed."
+                : settingsSectionDescription(section)
+            }
           />
           {section === "general" ? (
             <GeneralPage onOpenWhatsNew={onOpenWhatsNew} />
           ) : null}
+          {section === "defaults" ? <ThreadDefaultsEditor workspaceId={null} first /> : null}
+          {workspace ? <WorkspacePage key={workspace.id} workspaceId={workspace.id} /> : null}
           {section === "appearance" ? (
             <AppearancePage appearance={appearance} />
           ) : null}
@@ -1230,6 +1242,30 @@ function ProviderRow({
 
 /** Global rules, or one workspace's whole-object override, picked by scope.
  *  The workspace menu deep-links here with its workspace preselected. */
+/**
+ * One workspace's overrides. Anything untouched inherits the global setting;
+ * orchestration rules edit on their own page with this workspace in scope.
+ */
+function WorkspacePage({ workspaceId }: { workspaceId: string }) {
+  return (
+    <>
+      <ThreadDefaultsEditor workspaceId={workspaceId} first />
+      <TurnPassEditor workspaceId={workspaceId} />
+      <Heading title="Build" />
+      <BuildEditor workspaceId={workspaceId} />
+      <Heading title="Orchestration" />
+      <Row
+        label="Rules"
+        description="What threads that spawn subagents may do themselves, and where each kind of work goes."
+      >
+        <SecondaryButton onClick={() => openOrchestrationSettings(workspaceId)}>
+          Edit rules
+        </SecondaryButton>
+      </Row>
+    </>
+  );
+}
+
 function OrchestrationPage() {
   const workspaces = useWorkspaces();
   const [scope, setScope] = useState<string | null>(() => takeRequestedScope() ?? null);
@@ -1288,12 +1324,14 @@ function useArchivedProjects(): ArchivedProject[] {
   return items;
 }
 
-function archivedProjectLabel(path: string): string {
-  return resolveTabGroupLabel(
-    projectName(path),
-    loadTabGroupLabels(),
-    projectName(path),
-  );
+function useArchivedProjectLabel(): (path: string) => string {
+  const workspaces = useWorkspaces();
+  return (path) =>
+    resolveTabGroupLabel(
+      workspaceLabelKey(workspaces, path, projectName(path)),
+      loadTabGroupLabels(),
+      projectName(path),
+    );
 }
 
 function ArchivePage({
@@ -1312,6 +1350,7 @@ function ArchivePage({
   onRestoreProject?: (path: string) => void;
   onDeleteProject?: (path: string) => void;
 }) {
+  const archivedProjectLabel = useArchivedProjectLabel();
   const [filters, setFilters] = useState(loadSessionSidebarFilters);
   const [deleting, setDeleting] = useState<ArchivedProject | null>(null);
   const [deletingThread, setDeletingThread] = useState<SessionMeta | null>(
