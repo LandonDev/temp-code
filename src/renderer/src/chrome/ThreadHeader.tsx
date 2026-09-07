@@ -9,7 +9,7 @@ import { ExplorerMenu, type ExplorerMenuItem } from "./ExplorerMenu";
 import { NewThreadChooser } from "./NewThreadChooser";
 import { ConfirmDialog } from "./ProjectDialogs";
 import { PanelRight } from "./icons";
-import { ThreadHeaderStrip, type ArchivedThread, type ChipThread, type StripChip } from "./ThreadHeaderStrip";
+import { ThreadHeaderStrip, chipTitle, type ArchivedThread, type ChipThread, type StripChip } from "./ThreadHeaderStrip";
 import { TuneDialog } from "./ThreadTune";
 import { IconButton } from "./TitleBar";
 
@@ -183,7 +183,7 @@ export function ThreadHeader({
       ) : null}
       {tuning ? (
         <TuneDialog
-          title={`${THREAD_LABELS[tuning.thread.threadType ?? "chat"]} options · ${tuning.thread.title || "New session"}`}
+          title={`${THREAD_LABELS[tuning.thread.threadType ?? "chat"]} options · ${chipTitle(tuning)}`}
           initial={tuning.thread.threadRules}
           workspaceId={workspaceId}
           onCancel={() => setTuning(null)}
@@ -195,7 +195,7 @@ export function ThreadHeader({
       ) : null}
       {deleting ? (
         <ConfirmDialog
-          title={`Delete ${deleting.thread.title || "this thread"}?`}
+          title={`Delete ${chipTitle(deleting)}?`}
           body="The thread and its whole transcript are gone for good. Archive keeps it instead."
           confirmLabel="Delete thread"
           danger
