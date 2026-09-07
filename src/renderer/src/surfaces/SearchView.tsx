@@ -37,10 +37,11 @@ import {
 } from "../lib/fileIndex";
 import { prettyCwd, projectName } from "../lib/paths";
 import { IS_MAC } from "../lib/platform";
-import { looksLikeProject, type RecentProject } from "../lib/recents";
+import { looksLikeProject, sameProjectPath, type RecentProject } from "../lib/recents";
 import { searchProject, type OpenFileFn } from "../lib/search";
-import { type Session } from "../lib/session";
-import { searchSessions, type SessionSummary } from "../lib/sessionStore";
+import { searchSessions } from "../lib/sessionStore";
+import { useServerSessions } from "../lib/tcserver/store";
+import { useHistoryRows } from "../lib/historyStore";
 
 const SCOPES: { id: SearchScope; label: string }[] = [
   { id: "all", label: "All" },
@@ -53,8 +54,6 @@ type Props = {
   open: boolean;
   cwd: string;
   recents: RecentProject[];
-  history: SessionSummary[];
-  sessions: Session[];
   focusToken?: number;
   besideRail?: boolean;
   onClose: () => void;
@@ -68,8 +67,6 @@ export function SearchView({
   open,
   cwd,
   recents,
-  history,
-  sessions,
   focusToken = 0,
   besideRail = false,
   onClose,
@@ -140,6 +137,13 @@ export function SearchView({
     };
   }, [cwd, open]);
 
+  const sessions = useServerSessions();
+  const rows = useHistoryRows();
+  // History spans every visited project; search only this one's.
+  const history = useMemo(
+    () => rows.filter((entry) => sameProjectPath(entry.cwd, cwd)),
+    [rows, cwd],
+  );
   const conversationRows = useMemo(
     () => conversationRowsFrom(history, sessions),
     [history, sessions],

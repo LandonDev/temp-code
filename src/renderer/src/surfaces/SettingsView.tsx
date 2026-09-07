@@ -99,7 +99,6 @@ import {
   loadSessionSidebarFilters,
   saveSessionSidebarFilters,
 } from "../lib/sessionFilters";
-import type { SessionSummary } from "../lib/sessionStore";
 import { clearInboxCache } from "../lib/githubTasks";
 import {
   disconnectLinear,
@@ -174,7 +173,6 @@ import { installing, updateStore, useUpdateSnapshot } from "../lib/updateStore";
 type Props = {
   section: SettingsSectionId;
   cwd: string;
-  sessions: SessionSummary[];
   besideRail?: boolean;
   onClose: () => void;
   onOpenSession: (sessionId: string) => void;
@@ -196,8 +194,8 @@ export function SettingsView({
   onDeleteProject,
   onOpenWhatsNew,
 }: Props) {
-  // `cwd` and `sessions` stay in Props for the caller; the archive page
-  // lists every project's threads from the server instead.
+  // `cwd` stays in Props for the caller; the archive page lists every
+  // project's threads from the server instead.
   const lockOverscroll = useLockOverscroll<HTMLDivElement>();
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
