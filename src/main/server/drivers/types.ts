@@ -14,11 +14,28 @@ import type { AgentEvent, Attachment, SessionMeta } from '@shared/events'
  *    the source of truth, drivers are stateless from the UI's view.
  */
 
+/** A tool call awaiting the user's Allow/Deny. */
+export interface ApprovalRequest {
+  /** the harness's own id when it has one; minted otherwise */
+  requestId?: string
+  toolName: string
+  input: unknown
+  title?: string
+  callId?: string
+  /** the harness gave up waiting (turn interrupted) */
+  signal?: AbortSignal
+}
+
 export interface DriverCtx {
   session: SessionMeta
   emit: (event: AgentEvent) => void
   /** Persist the provider-native session/thread id once known (resume). */
   setNativeId: (nativeId: string) => void
+  /** Ask the user: emits approval-request + status waiting, resolves on
+   *  session.approve (false after the timeout, on abort, or on dispose),
+   *  then emits approval-resolved + status running. One path for harness
+   *  permission prompts and the app tools' own gate. */
+  requestApproval: (req: ApprovalRequest) => Promise<boolean>
 }
 
 export interface DriverHandle {
