@@ -10,7 +10,6 @@ import {
 import type { TerminalMetaPatch } from "../lib/terminalTab";
 import type { EditorNavigationTarget, OpenFileFn } from "../lib/search";
 import { editorPathsEqual } from "../lib/search";
-import type { Session } from "../lib/session";
 import { FileEditor } from "./FileEditor";
 import { ReleaseNotesSurface } from "./ReleaseNotesSurface";
 import { TerminalView } from "./TerminalView";
@@ -34,7 +33,6 @@ type Props = {
   focused: boolean;
   dirtyFileIds: Set<string>;
   fileErrorCounts: Map<string, number>;
-  sessions: Session[];
   onFocus: (paneId: string) => void;
   onSelectFile: (paneId: string, fileId: string) => void;
   onCloseFile: (paneId: string, fileId: string) => void;

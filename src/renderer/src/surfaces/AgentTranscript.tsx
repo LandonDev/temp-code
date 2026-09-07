@@ -53,7 +53,7 @@ import {
 } from "../lib/toolSummary";
 import { isTurnPaused, passActionsOf, turnElapsed, useClock } from "../lib/turnClock";
 import { errorRowOf, isErrorBlock } from "../lib/turnOutcome";
-import { useSessionMetas } from "../lib/tcserver/store";
+import { useSessionMeta } from "../lib/tcserver/store";
 import { ErrorChip } from "./ErrorChip";
 import { CompactionCard } from "./CompactionCard";
 import { AgentSpawnRow } from "./AgentSpawnRow";
@@ -1076,7 +1076,7 @@ function ErrorRowView({ block }: { block: Block }) {
   const session = useTurnState();
   const sessionId = useTranscriptSession();
   // The tree's continue flag lives on the meta until the projection carries it.
-  const meta = useSessionMetas().find((m) => m.id === sessionId);
+  const meta = useSessionMeta(sessionId);
   const row = errorRowOf(
     session
       ? { ...session, treeCanContinue: session.treeCanContinue ?? meta?.treeCanContinue }
