@@ -618,3 +618,62 @@ describe("M4 transcript fixes", () => {
     expect(s.blocks[0].tool?.preview?.lines?.length).toBeGreaterThan(0);
   });
 });
+
+describe("M6c: compaction, agent and nested-step metadata", () => {
+  it("keeps the compaction lifecycle on the row and drops the meter on done", () => {
+    let s = foldAll(
+      rows([
+        { type: "user-text", text: "x" },
+        { type: "context", tokens: 180_000, window: 200_000 },
+        { type: "compaction", phase: "start", trigger: "auto", preTokens: 180_000 },
+      ]),
+      CWD,
+    );
+    expect(s.blocks[1].compaction).toEqual({ phase: "start", trigger: "auto", preTokens: 180_000, startedAt: 1_200 });
+    s = step(s, { type: "compaction", phase: "done", preTokens: 180_000, postTokens: 40_000, durationMs: 9_000 });
+    expect(s.blocks).toHaveLength(2);
+    expect(s.blocks[1].text).toBe("Context compacted");
+    expect(s.blocks[1].compaction).toMatchObject({
+      phase: "done",
+      trigger: "auto",
+      postTokens: 40_000,
+      durationMs: 9_000,
+      startedAt: 1_200,
+    });
+    expect(s.context).toEqual({ used: 40_000, window: 200_000 });
+  });
+
+  it("a failed compaction keeps its error and the meter", () => {
+    let s = foldAll(rows([{ type: "context", tokens: 5, window: 10 }, { type: "compaction", phase: "start" }]), CWD);
+    s = step(s, { type: "compaction", phase: "failed", error: "nope" });
+    expect(s.blocks[0].compaction).toMatchObject({ phase: "failed", error: "nope" });
+    expect(s.context).toEqual({ used: 5, window: 10 });
+  });
+
+  it("stamps the child on spawned and report rows", () => {
+    const s = foldAll(
+      rows([
+        { type: "agent-spawned", childSessionId: "k" },
+        { type: "agent-report", agentId: "k", title: "Explorer", status: "done" },
+      ]),
+      CWD,
+    );
+    expect(s.blocks[0].agent).toEqual({ id: "k" });
+    expect(s.blocks[1].agent).toEqual({ id: "k", title: "Explorer", status: "done" });
+  });
+
+  it("nested steps carry their parent and count on the spawning call", () => {
+    const s = foldAll(
+      rows([
+        { type: "tool-call", callId: "task1", name: "Task", input: { prompt: "look" } },
+        { type: "tool-call", callId: "c1", name: "Read", input: { file_path: "a" }, parentCallId: "task1", partial: true },
+        { type: "tool-call", callId: "c1", name: "Read", input: { file_path: "a" }, parentCallId: "task1" },
+        { type: "tool-call", callId: "c2", name: "Grep", input: { pattern: "x" }, parentCallId: "task1" },
+      ]),
+      CWD,
+    );
+    const parent = s.blocks.find((b) => b.tool?.callId === "task1");
+    expect(parent?.tool?.subCount).toBe(2);
+    expect(s.blocks.find((b) => b.tool?.callId === "c1")?.tool?.parentCallId).toBe("task1");
+  });
+});

@@ -1,19 +1,24 @@
-import { AnimatePresence, MotionConfig } from "motion/react";
+import { AnimatePresence, LayoutGroup, MotionConfig, motion } from "motion/react";
+import { useId } from "react";
 import type { OpenFileFn } from "../../../lib/search";
-import { useState } from "react";
+import { EASE_OUT } from "../../../lib/ease";
 import { ChevronRight, Users } from "../../../chrome/icons";
 import { fleetCounts, isLiveStatus, useAgents, useMetaById } from "../../../lib/threads/agents";
-import { MatrixSpinner, useNow } from "../bits";
+import { MatrixSpinner } from "../bits";
 import { AgentDetail } from "./AgentDetail";
 import { AgentRow } from "./AgentRow";
+import { useFleetModel } from "./useFleetModel";
 
 const PANEL_W = 340;
 
 /**
  * The subagent panel on a thread's right edge: rows while open, a slim
- * tab with a status dot while folded. It opens itself while any child is
- * live; a manual toggle wins until that state flips. Nothing renders
- * when the thread has no children.
+ * tab with a status dot while folded. It opens itself while any child
+ * works or waits on the user; a manual toggle wins until that state
+ * flips. Nothing renders when the thread has no children.
+ *
+ * Row and detail share a layout id scoped to this mount, so two panes on
+ * the same thread never morph into each other.
  */
 export function FleetPanel({
   sessionId,
@@ -28,86 +33,83 @@ export function FleetPanel({
   onOpenFile?: OpenFileFn;
   onOpenDiff?: (path?: string) => void;
 }) {
-  const agents = useAgents(sessionId);
-  const anyLive = agents.some((a) => isLiveStatus(a.status));
-  const anyWaiting = agents.some((a) => a.status === "waiting");
-  const [userOpen, setUserOpen] = useState<boolean | null>(null);
-  const [detailId, setDetailId] = useState<string | null>(null);
-  const now = useNow(anyLive);
-
-  // A manual toggle wins until the fleet next changes state, at which point
-  // the panel follows the fleet again (same render-phase reset as temp-code).
-  const [sawLive, setSawLive] = useState(anyLive);
-  if (anyLive !== sawLive) {
-    setSawLive(anyLive);
-    setUserOpen(null);
-  }
-
-  if (agents.length === 0) return null;
-  const open = userOpen ?? anyLive;
+  const fleet = useFleetModel(sessionId);
+  const scope = useId();
+  if (fleet.agents.length === 0) return null;
+  const { agents, open, active, anyWaiting, detailId, now } = fleet;
 
   return (
     <MotionConfig reducedMotion="user">
-      <div
-        className="relative shrink-0 overflow-hidden border-l border-content/10 transition-[width] duration-200 ease-out"
-        style={{ width: open ? PANEL_W : 32 }}
-      >
-        {open ? (
-          <div className="flex h-full flex-col" style={{ width: PANEL_W }}>
-            <div className="flex h-9 shrink-0 items-center gap-2 pr-1.5 pl-3">
-              <span className="text-[11px] font-medium tracking-[0.08em] text-content/50 uppercase">Subagents</span>
-              <span className="text-[11px] tabular-nums text-content/35">{agents.length}</span>
-              <button
-                type="button"
-                onClick={() => setUserOpen(false)}
-                aria-label="Hide subagents"
-                className="ml-auto flex size-6 items-center justify-center rounded-md text-content/45 transition-colors hover:bg-content/5 hover:text-content"
+      <LayoutGroup id={scope}>
+        <AnimatePresence initial={false}>
+          {open ? (
+            <motion.div
+              key="fleet"
+              initial={{ width: 0, opacity: 0 }}
+              animate={{ width: PANEL_W, opacity: 1 }}
+              exit={{ width: 0, opacity: 0 }}
+              transition={{ duration: 0.28, ease: EASE_OUT }}
+              className="flex min-h-0 shrink-0 flex-col overflow-hidden border-l border-content/10"
+            >
+              <div className="flex h-9 shrink-0 items-center gap-2 pr-1.5 pl-3" style={{ width: PANEL_W }}>
+                <span className="text-[11px] font-medium tracking-[0.08em] text-content/50 uppercase">Subagents</span>
+                <span className="text-[11px] tabular-nums text-content/35">{agents.length}</span>
+                <button
+                  type="button"
+                  onClick={() => fleet.setOpen(false)}
+                  aria-label="Hide subagents"
+                  className="ml-auto flex size-6 items-center justify-center rounded-md text-content/45 transition-colors hover:bg-content/5 hover:text-content"
+                >
+                  <ChevronRight className="size-3.5" />
+                </button>
+              </div>
+              <div
+                className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-1.5 pb-3"
+                style={{ width: PANEL_W }}
               >
-                <ChevronRight className="size-3.5" />
-              </button>
-            </div>
-            <div className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-1.5 pb-3">
-              {agents.map((agent) => (
-                <AgentRow
-                  key={agent.id}
-                  agent={agent}
-                  now={now}
-                  hidden={agent.id === detailId}
-                  onOpen={() => setDetailId(agent.id)}
-                />
-              ))}
-            </div>
-          </div>
-        ) : (
+                {agents.map((agent) => (
+                  <AgentRow
+                    key={agent.id}
+                    agent={agent}
+                    now={now}
+                    hidden={agent.id === detailId}
+                    onOpen={() => fleet.setDetailId(agent.id)}
+                  />
+                ))}
+              </div>
+            </motion.div>
+          ) : null}
+        </AnimatePresence>
+        {!open ? (
           <button
             type="button"
-            onClick={() => setUserOpen(true)}
+            onClick={() => fleet.setOpen(true)}
             title="Subagents"
             aria-label="Show subagents"
-            className="group flex h-full w-8 flex-col items-center gap-2 pt-2.5 transition-colors hover:bg-content/5"
+            className="group flex w-8 shrink-0 flex-col items-center gap-2 border-l border-content/10 pt-4 transition-colors hover:bg-content/5"
           >
             <Users className="size-3.5 text-content/55 transition-colors group-hover:text-content" />
             <span
               className={`size-1.5 rounded-full ${
-                anyWaiting ? "bg-warning" : anyLive ? "animate-pulse bg-success" : "bg-content/20"
+                anyWaiting ? "bg-warning" : active ? "animate-pulse bg-success" : "bg-content/20"
               }`}
             />
           </button>
-        )}
-      </div>
-      <AnimatePresence>
-        {detailId && (
-          <AgentDetail
-            key={detailId}
-            agentId={detailId}
-            parentCwd={parentCwd}
-            onClose={() => setDetailId(null)}
-            onOpenSession={onOpenSession}
-            onOpenFile={onOpenFile}
-            onOpenDiff={onOpenDiff}
-          />
-        )}
-      </AnimatePresence>
+        ) : null}
+        <AnimatePresence>
+          {detailId ? (
+            <AgentDetail
+              key={detailId}
+              agentId={detailId}
+              parentCwd={parentCwd}
+              onClose={() => fleet.setDetailId(null)}
+              onOpenSession={onOpenSession}
+              onOpenFile={onOpenFile}
+              onOpenDiff={onOpenDiff}
+            />
+          ) : null}
+        </AnimatePresence>
+      </LayoutGroup>
     </MotionConfig>
   );
 }
