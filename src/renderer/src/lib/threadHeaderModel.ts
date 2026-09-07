@@ -58,7 +58,8 @@ export function buildHeaderModel<T extends StripThread>(input: {
   const { live, dormant } = splitThreads(roots, input.lastSeen, input.planReady);
   const chip = (thread: T, isLive: boolean): HeaderChip<T> => {
     const status = displayStatus(thread);
-    const unread = isUnread(thread, input.lastSeen);
+    // A local draft has no server meta to stamp seen; it is new, not unread.
+    const unread = !thread.draft && isUnread(thread, input.lastSeen);
     return {
       id: thread.id,
       thread,
