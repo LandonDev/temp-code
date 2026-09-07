@@ -108,6 +108,7 @@ function FilePaneComponent({
                   path={file.path}
                   cwd={file.cwd}
                   showDiff={!!file.review}
+                  diffBase={file.diffBase}
                   active={focused && file.id === pane.activeFileId}
                   navigation={
                     editorNavigation &&
