@@ -1596,9 +1596,8 @@ function ActivityToolRow({
         {expandable ? <ToolDisclosure open={open} /> : null}
       </div>
       {open && expandable ? <ToolDetails block={block} /> : null}
-      {pending ? (
-        <ApprovalControls block={block} onApproval={onApproval} />
-      ) : null}
+      {/* Pending: the board. Decided: its one-line verdict. Neither: nothing. */}
+      <ApprovalControls block={block} onApproval={onApproval} />
       {block.question ? <QuestionCard question={block.question} /> : null}
     </div>
   );
