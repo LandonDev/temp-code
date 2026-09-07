@@ -1,17 +1,21 @@
 import { describe, expect, it } from 'vitest'
 import { APP_NAME, MAIN_MENU_IDS, MENU_COMMANDS, MENU_TREE, RENDERER_MENU_IDS } from './menu-tree'
 
-/** The donor's table, section 3 of the bridge notes, verbatim. */
+/** The donor's table, section 3 of the bridge notes, plus M8e's Go to
+ *  Symbol / Type Hierarchy / Save All (Open Project lost ⌘O, New Tab ⌘T). */
 const EXPECTED: [string, string | undefined][] = [
   ['open_settings', 'CmdOrCtrl+,'],
   ['check_for_updates', undefined],
   ['quit', 'CmdOrCtrl+Q'],
   ['new_window', 'CmdOrCtrl+Shift+N'],
-  ['open_project', 'CmdOrCtrl+O'],
+  ['open_project', undefined],
   ['open_search', 'CmdOrCtrl+K'],
   ['go_to_file', 'CmdOrCtrl+P'],
+  ['go_to_symbol', 'CmdOrCtrl+O'],
+  ['show_hierarchy', 'CmdOrCtrl+T'],
   ['find_in_project', 'CmdOrCtrl+Shift+F'],
-  ['new_tab', 'CmdOrCtrl+T'],
+  ['save_all', 'CmdOrCtrl+S'],
+  ['new_tab', 'CmdOrCtrl+N'],
   ['new_terminal', 'CmdOrCtrl+`'],
   ['new_terminal_tab', 'CmdOrCtrl+Shift+`'],
   ['split_right', 'CmdOrCtrl+D'],
@@ -44,9 +48,9 @@ describe('menu tree', () => {
     expect(actual).toEqual(EXPECTED)
   })
 
-  it('sends 31 ids to the renderer and keeps two in main', () => {
+  it('sends 34 ids to the renderer and keeps two in main', () => {
     expect(MAIN_MENU_IDS).toEqual(['new_window', 'quit'])
-    expect(RENDERER_MENU_IDS).toHaveLength(31)
+    expect(RENDERER_MENU_IDS).toHaveLength(34)
     expect(RENDERER_MENU_IDS).not.toContain('quit')
   })
 

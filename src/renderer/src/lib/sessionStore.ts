@@ -82,6 +82,8 @@ export type SessionSearchHit = {
   title: string;
   updatedAt: number;
   blockId?: string;
+  /** Event log row the hit came from; the transcript scrolls to it. */
+  seq?: number;
   role?: string;
   preview: string;
 };
@@ -93,7 +95,18 @@ export type SessionSearchResult = {
 
 const SEARCH_LIMIT = 200;
 
-/** Titles always; message bodies for the transcripts already loaded. */
+type ServerSearchHit = {
+  sessionId: string;
+  seq: number;
+  role: "user" | "assistant";
+  snippet: string;
+  ts: number;
+};
+
+/** Titles always; message bodies from the loaded transcripts, then the
+ *  server's event-log search (`session.search`) for every thread this window
+ *  never opened. Server rows for a block already matched in memory dedupe on
+ *  `sessionId:seq`. */
 export async function searchSessions(options: {
   query: string;
   cwd?: string;
@@ -103,6 +116,7 @@ export async function searchSessions(options: {
   if (!query) return { hits: [], truncated: false };
   await sessionStore.ready();
   const hits: SessionSearchHit[] = [];
+  const seen = new Set<string>();
   const metas = sessionStore
     .metas()
     .filter((meta) => !meta.parentId)
@@ -112,15 +126,16 @@ export async function searchSessions(options: {
         !options.cwd || options.cwd === "~" || sameProjectPath(meta.cwd, options.cwd),
     )
     .sort((a, b) => b.updatedAt - a.updatedAt);
+  const baseOf = (meta: SessionMeta) => ({
+    sessionId: meta.id,
+    cwd: normalizeProjectPath(meta.cwd),
+    harness: meta.provider,
+    title: meta.title,
+    updatedAt: meta.updatedAt,
+  });
   for (const meta of metas) {
     if (hits.length >= SEARCH_LIMIT) return { hits, truncated: true };
-    const base = {
-      sessionId: meta.id,
-      cwd: normalizeProjectPath(meta.cwd),
-      harness: meta.provider,
-      title: meta.title,
-      updatedAt: meta.updatedAt,
-    };
+    const base = baseOf(meta);
     if (meta.title.toLowerCase().includes(query)) {
       hits.push({ kind: "conversation", ...base, preview: meta.title });
     }
@@ -129,17 +144,42 @@ export async function searchSessions(options: {
       if (block.role !== "user" && block.role !== "assistant") continue;
       const at = block.text.toLowerCase().indexOf(query);
       if (at < 0) continue;
+      if (block.seq !== undefined) seen.add(`${meta.id}:${block.seq}`);
       hits.push({
         kind: "message",
         ...base,
         blockId: block.id,
+        seq: block.seq,
         role: block.role,
         preview: block.text.slice(Math.max(0, at - 60), at + 120).trim(),
       });
       if (hits.length >= SEARCH_LIMIT) return { hits, truncated: true };
     }
   }
-  return { hits, truncated: false };
+  const byId = new Map(metas.map((meta) => [meta.id, meta]));
+  const remote = await invoke<{ hits: ServerSearchHit[]; truncated: boolean }>(
+    "search_sessions",
+    { query: options.query.trim(), limit: SEARCH_LIMIT },
+  ).catch(() => ({ hits: [], truncated: false }));
+  for (const row of remote.hits) {
+    const meta = byId.get(row.sessionId);
+    if (!meta) continue;
+    // A loaded transcript was searched block by block above; its rows add
+    // nothing (a stream's final row would only repeat its block).
+    if (sessionStore.get(meta.id)?.blocks.length) continue;
+    const key = `${meta.id}:${row.seq}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    hits.push({
+      kind: "message",
+      ...baseOf(meta),
+      seq: row.seq,
+      role: row.role,
+      preview: row.snippet,
+    });
+    if (hits.length >= SEARCH_LIMIT) return { hits, truncated: true };
+  }
+  return { hits, truncated: remote.truncated };
 }
 
 /** The session as the server's meta describes it, transcript not fetched

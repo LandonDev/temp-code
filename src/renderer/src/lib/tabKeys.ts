@@ -1,7 +1,7 @@
 import { insideMonaco } from "./editorKeys";
 /**
  * Workspace keybindings:
- *   New tab             cmd-t
+ *   New tab             cmd-n
  *   Close tab           cmd-w
  *   Split pane right    cmd-d
  *   Split pane down     shift-cmd-d
@@ -41,7 +41,7 @@ export function tabCommand(e: KeyboardEvent): TabCommand | null {
   if (e.isComposing) return null;
 
   // A focused Monaco editor keeps its ctrl-only chords: ctrl-t (refactor)
-  // and ctrl-d (debug). cmd-t / cmd-d stay workspace commands.
+  // and ctrl-d (debug). cmd-d stays a workspace command.
   if (e.ctrlKey && !e.metaKey && !e.altKey && insideMonaco(e.target)) {
     const key = e.key.toLowerCase();
     if (key === "t" || key === "d") return null;
@@ -76,7 +76,7 @@ export function tabCommand(e: KeyboardEvent): TabCommand | null {
     return null;
   }
 
-  if (key === "t") return "new";
+  if (key === "n") return "new";
   if (key === "w") return "close";
   if (key === "d") return "split-right";
   if (key === "j") return "toggle-terminal";

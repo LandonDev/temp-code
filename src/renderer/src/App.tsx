@@ -7,6 +7,8 @@ import { NewWorkspaceDialog } from "./chrome/ProjectDialogs";
 import { ShellTitleBar, type HeaderEvents } from "./chrome/ShellTitleBar";
 import { MenuBar } from "./chrome/MenuBar";
 import { FilePicker } from "./chrome/FilePicker";
+import { SymbolPicker } from "./chrome/SymbolPicker";
+import { closeLightbox, isLightboxOpen, stepLightbox } from "./chrome/Lightbox";
 import { UsageFooter } from "./chrome/UsageFooter";
 import { useSidebarLayout } from "./hooks/useSidebarLayout";
 import {
@@ -151,7 +153,7 @@ import { notifyDirsChanged } from "./lib/fileTree";
 import { nudgeWatchedFiles } from "./lib/fileWatch";
 import { type EditorNavigationTarget, type OpenFileFn } from "./lib/search";
 import { editorForPath } from "./surfaces/monaco/route";
-import { flushEditor } from "./lib/editorFlush";
+import { flushAllEditors, flushEditor } from "./lib/editorFlush";
 import { loadAutoSave } from "./lib/settings";
 import { OPEN_DEBUG_EVENT, OPEN_SETTINGS_EVENT } from "./lib/monaco/debugTab";
 import {
@@ -178,7 +180,7 @@ import {
   saveSelectedProject,
   workspacePathOfSession,
 } from "./lib/projectContext";
-import { createWorkspace, deleteWorkspace } from "./lib/tcserver/projects";
+import { createWorkspace, deleteWorkspace, projectForCwd } from "./lib/tcserver/projects";
 import type { ProjectMeta } from "./lib/tcserver/types";
 import { useWorkspaceCatalog, workspaceByPath, workspaceStore } from "./lib/tcserver/workspaces";
 import { draftFromDefaults } from "./lib/tcserver/defaults";
@@ -248,8 +250,17 @@ import type { TabThreadAction } from "./chrome/TitleBar";
 import * as serverCommands from "./lib/tcserver/commands";
 import { syncDockBadge } from "./lib/dockBadge";
 import { liveAgentTracker } from "./lib/liveAgentTracker";
+import { requestTranscriptJump } from "./lib/transcriptJump";
+import { installAppFacade } from "./lib/appFacade";
 import { playCue } from "./lib/sounds";
-import { tabCommand } from "./lib/tabKeys";
+import {
+  APP_COMMANDS,
+  createKeyResolver,
+  dialogOpen,
+  isAppCommandId,
+  menuCommandAllowed,
+  type AppCommand,
+} from "./lib/appCommands";
 import {
   canTabVisitBack,
   canTabVisitForward,
@@ -523,6 +534,7 @@ export default function App({
     useState<EditorNavigationTarget | null>(null);
   const editorNavigationToken = useRef(0);
   const [filePickerOpen, setFilePickerOpen] = useState(false);
+  const [symbolPickerOpen, setSymbolPickerOpen] = useState(false);
   const [dirtyFiles, setDirtyFiles] = useState<Set<string>>(
     () => new Set(windowTransfer?.dirtyFileIds ?? []),
   );
@@ -778,9 +790,13 @@ export default function App({
   }, [activeSessionId]);
 
   useEffect(() => {
-    const sync = () => syncDockBadge(sessionStore.getSnapshot());
-    sync();
-    return sessionStore.subscribe(sync);
+    syncDockBadge();
+    const offSnapshot = sessionStore.subscribe(syncDockBadge);
+    const offMeta = sessionStore.onMetaChange(syncDockBadge);
+    return () => {
+      offSnapshot();
+      offMeta();
+    };
   }, []);
 
   useEffect(() => {
@@ -2335,7 +2351,8 @@ export default function App({
       leafIds(entry.layout).includes(sessionId),
     );
     if (!tab) return false;
-    setActiveTabId(tab.id);
+    // activateTab brings the tab's workspace forward too (deck filter).
+    activateTab(tab.id);
     setTabs((prev) =>
       prev.map((entry) =>
         entry.id === tab.id ? { ...entry, focusedId: sessionId } : entry,
@@ -2343,7 +2360,7 @@ export default function App({
     );
     setComposerFocused(true);
     return true;
-  }, []);
+  }, [activateTab]);
 
   const replaceBlankPaneWithSession = useCallback((session: Session) => {
     const tab =
@@ -2423,11 +2440,30 @@ export default function App({
   const openSessionBesideRef = useRef<
     ((sourceId: string, session: Session, cwd: string, focusComposer?: boolean) => void) | null
   >(null);
+  // A thread from another workspace (a search hit, a server-created thread)
+  // brings its workspace forward, or the deck filter would hide the tab we
+  // are about to open and the rail and sessions list would disagree.
+  const selectWorkspaceOfSession = useCallback(
+    (session: Pick<Session, "cwd" | "projectId" | "workspaceId">) => {
+      const path = normalizeProjectPath(workspacePathOfSession(session, catalogRef.current));
+      if (looksLikeProject(path) && !sameProjectPath(projectCwdRef.current, path)) {
+        setProjectCwd(path);
+        setRecents(rememberProject(path));
+      }
+    },
+    [],
+  );
+
   const onSelectHistorySession = useCallback(
-    async (sessionId: string) => {
+    async (sessionId: string, seq?: number) => {
+      // A search hit's row: the transcript picks the request up once its
+      // history holds that seq (lib/transcriptJump.ts), whether the thread is
+      // already on screen or opens below.
+      if (seq !== undefined) requestTranscriptJump(sessionId, seq);
       if (focusOpenSession(sessionId)) return;
       const session = await ensureOpenSession(sessionId);
       if (!session) return;
+      selectWorkspaceOfSession(session);
       // A subagent splits beside its parent and never gets a tab of its own.
       if (session.parentId) {
         const parentId = session.parentId;
@@ -2452,6 +2488,7 @@ export default function App({
       ensureOpenSession,
       focusOpenSession,
       replaceBlankPaneWithSession,
+      selectWorkspaceOfSession,
     ],
   );
 
@@ -2460,13 +2497,6 @@ export default function App({
   useEffect(
     () =>
       sessionStore.onSessionAdded((meta) => {
-        // Its workspace becomes the selected one, or the deck filter would
-        // hide the tab we are about to open.
-        const path = normalizeProjectPath(workspacePathOfSession(meta, catalogRef.current));
-        if (looksLikeProject(path) && !sameProjectPath(projectCwdRef.current, path)) {
-          setProjectCwd(path);
-          setRecents(rememberProject(path));
-        }
         void onSelectHistorySession(meta.id);
       }),
     [onSelectHistorySession],
@@ -3694,6 +3724,34 @@ export default function App({
     setFilePickerOpen(true);
   }, []);
 
+  const onGoToSymbol = useCallback(() => {
+    setSearchViewOpen(false);
+    setInboxViewOpen(false);
+    setNotesViewOpen(false);
+    setFilePickerOpen(false);
+    setSymbolPickerOpen(true);
+  }, []);
+
+  // ⌘T: the type hierarchy at the caret of a focused Monaco editor; with no
+  // editor focused it falls back to the symbol picker.
+  const onShowHierarchy = useCallback(() => {
+    if (!document.activeElement?.closest(".monaco-editor")) {
+      onGoToSymbol();
+      return;
+    }
+    void (async () => {
+      const { focusedEditor } = await import("./surfaces/monaco/keys");
+      const editor = focusedEditor();
+      if (!editor) return onGoToSymbol();
+      const { showHierarchy } = await import("./surfaces/monaco/lsp/providers");
+      await showHierarchy(editor, "types");
+    })();
+  }, [onGoToSymbol]);
+
+  const onSaveAll = useCallback(() => {
+    void flushAllEditors();
+  }, []);
+
   const onFindInProject = useCallback(() => {
     setSearchViewOpen(false);
     setInboxViewOpen(false);
@@ -3907,6 +3965,9 @@ export default function App({
     onFocusDir,
     onToggleSidebar,
     onGoToFile,
+    onGoToSymbol,
+    onShowHierarchy,
+    onSaveAll,
     onFindInProject,
     onOpenSearch,
     onOpenInbox,
@@ -3929,6 +3990,9 @@ export default function App({
     onFocusDir,
     onToggleSidebar,
     onGoToFile,
+    onGoToSymbol,
+    onShowHierarchy,
+    onSaveAll,
     onFindInProject,
     onOpenSearch,
     onOpenInbox,
@@ -3949,181 +4013,108 @@ export default function App({
     fn();
   }, []);
 
+  // Both routes into the command map (lib/appCommands.ts) end here.
+  const execute = useCallback(
+    (cmd: AppCommand) => {
+      const a = actions.current;
+      const go = (fn: () => void) =>
+        run(cmd.id === "activate_tab" ? `activate_tab_${cmd.index}` : cmd.id, fn);
+      switch (cmd.id) {
+        case "new_tab": return go(a.onNew);
+        case "close_tab": return go(a.onClosePane);
+        case "next_tab": return go(a.onNext);
+        case "prev_tab": return go(a.onPrev);
+        case "back_tab": return go(a.onVisitBack);
+        case "forward_tab": return go(a.onVisitForward);
+        case "activate_tab": return go(() => a.onActivate(cmd.index ?? 0));
+        case "split_right": return go(() => a.onSplit("right"));
+        case "split_down": return go(() => a.onSplit("down"));
+        case "new_terminal": return go(a.onNewTerminal);
+        case "new_terminal_tab": return go(a.onNewTerminalTab);
+        case "toggle_terminal": return go(a.onToggleProjectTerminal);
+        case "focus_left": return go(() => a.onFocusDir("left"));
+        case "focus_right": return go(() => a.onFocusDir("right"));
+        case "focus_up": return go(() => a.onFocusDir("up"));
+        case "focus_down": return go(() => a.onFocusDir("down"));
+        case "toggle_sidebar": return go(a.onToggleSidebar);
+        case "toggle_zen": return go(() => toggleTranscriptZen());
+        case "open_project": return go(() => void a.pickProject());
+        case "go_to_file": return go(a.onGoToFile);
+        case "go_to_symbol": return go(a.onGoToSymbol);
+        case "show_hierarchy": return go(a.onShowHierarchy);
+        case "save_all": return go(a.onSaveAll);
+        case "open_search": return go(a.onOpenSearch);
+        case "open_inbox": return go(a.onOpenInbox);
+        case "open_notes": return go(a.onOpenNotes);
+        case "open_settings": return go(() => a.openSettings());
+        case "check_for_updates": return go(() => void updateStore.check(true));
+        case "sidebar_opacity": return go(() => a.openSettings("appearance"));
+        case "find_in_project": return go(a.onFindInProject);
+        case "find": return go(() => openFindInActiveEditor());
+        case "open_model_picker":
+          return go(() => window.dispatchEvent(new Event("open_model_picker")));
+        // Main already sends menu commands to the focused window only (or
+        // the CDP debug target), so no focus check here: it kept menu zoom
+        // from working under CDP.
+        case "zoom_in": return go(() => void zoomIn().catch(() => {}));
+        case "zoom_out": return go(() => void zoomOut().catch(() => {}));
+        case "zoom_reset": return go(() => void zoomReset().catch(() => {}));
+        case "lightbox_close": return go(closeLightbox);
+        case "lightbox_prev": return go(() => stepLightbox(-1));
+        case "lightbox_next": return go(() => stepLightbox(1));
+      }
+    },
+    [run],
+  );
+
+  // Dev-only `window.__app` (lib/appFacade.ts): CDP scripts drive the app
+  // through the same command map and actions the UI uses.
   useEffect(() => {
+    installAppFacade({
+      execute,
+      newSession: () => actions.current.onNew(),
+      openSession: (id, seq) => onSelectHistorySession(id, seq),
+      send: (id, text) => onSubmit(id, text),
+    });
+  }, [execute, onSelectHistorySession, onSubmit]);
+
+  useEffect(() => {
+    const keyCommand = createKeyResolver();
     const onKey = (e: KeyboardEvent) => {
-      const cmd = tabCommand(e);
-      if (cmd) {
-        const target = e.target instanceof Element ? e.target : null;
-        if (
-          target?.closest(".monocode-terminal") &&
-          e.ctrlKey &&
-          !e.metaKey &&
-          (cmd === "back" ||
-            cmd === "forward" ||
-            /Mac|iPhone|iPad/.test(navigator.platform))
-        ) {
-          return;
-        }
-        if (
-          (cmd === "split-right" || cmd === "split-down") &&
-          target?.closest(".cm-editor")
-        ) {
-          return;
-        }
-        const inPicker =
-          target &&
-          target.closest(
-            "[data-model-picker], [data-file-picker], [data-branch-picker], [data-command-popover], [data-app-search]",
-          );
-        if (inPicker && typeof cmd === "object" && "activate" in cmd) {
-          return;
-        }
-        if (cmd === "toggle-terminal" && !deckLayoutRef.current) {
-          return;
-        }
-        e.preventDefault();
-        e.stopPropagation();
-        const a = actions.current;
-        if (cmd === "new") run("new", a.onNew);
-        else if (cmd === "close") run("close", a.onClosePane);
-        else if (cmd === "next") run("next", a.onNext);
-        else if (cmd === "prev") run("prev", a.onPrev);
-        else if (cmd === "back") run("back", a.onVisitBack);
-        else if (cmd === "forward") run("forward", a.onVisitForward);
-        else if (cmd === "split-right")
-          run("split-right", () => a.onSplit("right"));
-        else if (cmd === "split-down")
-          run("split-down", () => a.onSplit("down"));
-        else if (cmd === "new-terminal") run("new-terminal", a.onNewTerminal);
-        else if (cmd === "new-terminal-tab")
-          run("new-terminal-tab", a.onNewTerminalTab);
-        else if (cmd === "toggle-terminal")
-          run("toggle-terminal", a.onToggleProjectTerminal);
-        else if ("focus" in cmd)
-          run(`focus-${cmd.focus}`, () => a.onFocusDir(cmd.focus));
-        else run(`activate-${cmd.activate}`, () => a.onActivate(cmd.activate));
-        return;
-      }
-      if (!searchViewOpenRef.current && !inboxViewOpenRef.current && !notesViewOpenRef.current && handleEditorFindKey(e)) {
+      const lightboxOpen = isLightboxOpen();
+      if (
+        !lightboxOpen &&
+        !searchViewOpenRef.current &&
+        !inboxViewOpenRef.current &&
+        !notesViewOpenRef.current &&
+        handleEditorFindKey(e)
+      ) {
         e.stopPropagation();
         return;
       }
-      const mod = e.metaKey || e.ctrlKey;
-      if (mod && !e.altKey && !e.shiftKey && e.key.toLowerCase() === "b") {
-        e.preventDefault();
-        e.stopPropagation();
-        run("toggle_sidebar", actions.current.onToggleSidebar);
-        return;
-      }
-      if (mod && e.altKey && !e.shiftKey && e.code === "KeyZ") {
-        e.preventDefault();
-        e.stopPropagation();
-        run("toggle_zen", () => toggleTranscriptZen());
-        return;
-      }
-      if (mod && !e.altKey && !e.shiftKey && e.key.toLowerCase() === "p") {
-        e.preventDefault();
-        e.stopPropagation();
-        run("go_to_file", actions.current.onGoToFile);
-        return;
-      }
-      if (mod && !e.altKey && !e.shiftKey && e.key.toLowerCase() === "k") {
-        const target = e.target instanceof Element ? e.target : null;
-        if (target?.closest(".monocode-terminal") && e.ctrlKey && !e.metaKey) {
-          return;
-        }
-        e.preventDefault();
-        e.stopPropagation();
-        run("open_search", actions.current.onOpenSearch);
-        return;
-      }
-      if (mod && !e.altKey && !e.shiftKey && e.key === ",") {
-        e.preventDefault();
-        e.stopPropagation();
-        run("open_settings", () => actions.current.openSettings());
-        return;
-      }
-      if (mod && e.shiftKey && !e.altKey && e.key.toLowerCase() === "f") {
-        e.preventDefault();
-        e.stopPropagation();
-        run("find_in_project", actions.current.onFindInProject);
-      }
+      const cmd = keyCommand(e, { lightboxOpen, terminalToggle: deckLayoutRef.current });
+      if (!cmd) return;
+      e.preventDefault();
+      e.stopPropagation();
+      execute(cmd);
     };
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
-  }, [run]);
+  }, [execute]);
 
   useEffect(() => {
-    const unlisten: Array<Promise<() => void>> = [
-      listen("new_tab", () => run("new", actions.current.onNew)),
-      listen("close_tab", () => run("close", actions.current.onClosePane)),
-      listen("next_tab", () => run("next", actions.current.onNext)),
-      listen("prev_tab", () => run("prev", actions.current.onPrev)),
-      listen("back_tab", () => run("back", actions.current.onVisitBack)),
-      listen("forward_tab", () =>
-        run("forward", actions.current.onVisitForward),
-      ),
-      listen("split_right", () =>
-        run("split-right", () => actions.current.onSplit("right")),
-      ),
-      listen("split_down", () =>
-        run("split-down", () => actions.current.onSplit("down")),
-      ),
-      listen("new_terminal", () =>
-        run("new-terminal", actions.current.onNewTerminal),
-      ),
-      listen("new_terminal_tab", () =>
-        run("new-terminal-tab", actions.current.onNewTerminalTab),
-      ),
-      listen("toggle_terminal", () =>
-        run("toggle-terminal", actions.current.onToggleProjectTerminal),
-      ),
-      listen("focus_left", () =>
-        run("focus-left", () => actions.current.onFocusDir("left")),
-      ),
-      listen("focus_right", () =>
-        run("focus-right", () => actions.current.onFocusDir("right")),
-      ),
-      listen("focus_up", () =>
-        run("focus-up", () => actions.current.onFocusDir("up")),
-      ),
-      listen("focus_down", () =>
-        run("focus-down", () => actions.current.onFocusDir("down")),
-      ),
-      listen("toggle_sidebar", () =>
-        run("toggle_sidebar", actions.current.onToggleSidebar),
-      ),
-      listen("toggle_zen", () => run("toggle_zen", () => toggleTranscriptZen())),
-      listen("open_project", () => {
-        void actions.current.pickProject();
+    const unlisten = APP_COMMANDS.map((id) =>
+      listen(id, () => {
+        if (!menuCommandAllowed(id, { dialogOpen: dialogOpen(), lightboxOpen: isLightboxOpen() })) {
+          return;
+        }
+        execute({ id });
       }),
-      listen("go_to_file", () => actions.current.onGoToFile()),
-      listen("open_search", () => actions.current.onOpenSearch()),
-      listen("open_inbox", () => actions.current.onOpenInbox()),
-      listen("open_notes", () => actions.current.onOpenNotes()),
-      listen("open_settings", () => actions.current.openSettings()),
-      listen("check_for_updates", () => {
-        void updateStore.check(true);
-      }),
-      listen("sidebar_opacity", () => {
-        actions.current.openSettings("appearance");
-      }),
-      listen("find_in_project", () => actions.current.onFindInProject()),
-      listen("find", () => {
-        openFindInActiveEditor();
-      }),
-      listen("open_model_picker", () => {
-        window.dispatchEvent(new Event("open_model_picker"));
-      }),
-      // The menu broadcasts to every window; only the focused one zooms.
-      listen("zoom_in", () => void whenFocused(zoomIn)),
-      listen("zoom_out", () => void whenFocused(zoomOut)),
-      listen("zoom_reset", () => void whenFocused(zoomReset)),
-    ];
+    );
     return () => {
       void Promise.all(unlisten).then((fns) => fns.forEach((fn) => fn()));
     };
-  }, [run]);
+  }, [execute]);
 
   // Every window applies the saved zoom level on boot.
   useEffect(() => {
@@ -4238,6 +4229,9 @@ export default function App({
             onNewTerminal={onNewTerminal}
             onToggleTerminal={onToggleProjectTerminal}
             onGoToFile={onGoToFile}
+            onCommand={(id) => {
+              if (isAppCommandId(id)) execute({ id });
+            }}
             onToggleSidebar={onToggleSidebar}
             onShowSourceControl={onToggleChanges}
             onCloseCurrentTab={
@@ -4518,6 +4512,14 @@ export default function App({
         />
       ) : null}
 
+      {symbolPickerOpen ? (
+        <SymbolPicker
+          projectId={projectForCwd(gitCwd, projects)?.id ?? selectedProjectId ?? null}
+          onOpen={(path, navigation) => onOpenFile(path, navigation, { editor: "monaco" })}
+          onClose={() => setSymbolPickerOpen(false)}
+        />
+      ) : null}
+
       <HiddenApprovalToasts
         tabs={tabs}
         activeTabId={activeTabId}
@@ -4547,10 +4549,6 @@ export default function App({
 }
 
 
-
-async function whenFocused(action: () => Promise<unknown>): Promise<void> {
-  if (await getCurrentWindow().isFocused()) await action().catch(() => {});
-}
 
 function isBlankSession(session: Session | undefined): boolean {
   if (!session || session.busy) return false;

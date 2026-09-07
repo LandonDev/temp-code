@@ -45,6 +45,8 @@ export async function handleM3a(
       return done()
     case 'search.project':
       return done(await searchProject(req.params.options))
+    case 'session.search':
+      return done(ctx.store.searchEvents(req.params))
     case 'projectLogo.save':
       return done(await ctx.logos.save(req.params.projectPath, req.params.sourcePath))
     case 'projectLogo.remove':
