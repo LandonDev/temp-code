@@ -61,6 +61,11 @@ export function ptyFlowCounters(): { pauses: number; resumes: number } {
   return { pauses, resumes }
 }
 
+/** Dev-only: which window owns which shell, for the multi-window test. */
+export function listPtys(): { id: string; owner: number; pid: number }[] {
+  return [...sessions.values()].map((s) => ({ id: s.id, owner: s.owner, pid: s.shellPid }))
+}
+
 function expandHome(path: string): string {
   if (path === '~') return homedir()
   if (path.startsWith('~/')) return join(homedir(), path.slice(2))
