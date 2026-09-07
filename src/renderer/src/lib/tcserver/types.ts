@@ -27,6 +27,7 @@ export type { SessionStatus } from "@server/shared/events";
 
 export type { ThreadType, SlashCommand } from "@server/shared/domain";
 export type { ThreadDefaults } from "@server/shared/defaults";
+export type { ThreadRules } from "@server/shared/rules";
 export type {
   WorkspaceMeta,
   ProjectMeta,

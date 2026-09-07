@@ -49,23 +49,13 @@ export function ThreadBanners({ projectId, activeSessionId, onOpen }: Props) {
     }
   };
 
-  const continuePaused = () =>
-    run("paused", async () =>
-      paused.length === 1
-        ? serverCommands.resume(paused[0].id).then(() => 0)
-        : (await serverCommands.resumeAllPaused()).failed.length,
-    );
-  const stopPaused = () =>
-    run("stop", async () => {
-      const results = await Promise.allSettled(paused.map((m) => serverCommands.interrupt(m.id)));
-      return results.filter((r) => r.status === "rejected").length;
-    });
-  const continueErrored = () =>
-    run("recovery", async () =>
-      recovery.length === 1
-        ? serverCommands.continueSession(recovery[0].id).then(() => 0)
-        : (await serverCommands.continueAllErrors()).failed.length,
-    );
+  // Per thread, never the server-wide batch: the banner only lists this
+  // project's roots, so only those may move.
+  const each = async (list: typeof metas, work: (id: string) => Promise<unknown>) =>
+    (await Promise.allSettled(list.map((m) => work(m.id)))).filter((r) => r.status === "rejected").length;
+  const continuePaused = () => run("paused", () => each(paused, serverCommands.resume));
+  const stopPaused = () => run("stop", () => each(paused, serverCommands.interrupt));
+  const continueErrored = () => run("recovery", () => each(recovery, serverCommands.continueSession));
 
   return (
     <section className="shrink-0" aria-label="Thread alerts" aria-live="polite">
