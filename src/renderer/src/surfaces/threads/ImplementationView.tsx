@@ -214,10 +214,11 @@ export function ImplementationView(props: ThreadViewProps) {
   // tasks the thread stays a board.
   const hasBoard = todos.length > 0 || pastTodosAll.some((t) => t.length > 0) || agents.length > 0;
   // Returning to a finished thread lands on the board alone — the chat
-  // starts folded. `loaded` covers first loads that mount before the
-  // backlog hydrates.
+  // starts folded. `loaded` is the store's explicit bit (set once the
+  // backlog has replayed), so a first mount before hydration never folds
+  // on an empty transcript and an empty finished thread still settles.
   const settled = !running && !waiting && allDone && !stopped;
-  const loaded = blocks.length > 0;
+  const loaded = session.loaded === true;
   const [chatOpen, setChatOpen] = useState(!(loaded && settled));
   const [sawLoaded, setSawLoaded] = useState(loaded);
   if (loaded !== sawLoaded) {
