@@ -1,4 +1,3 @@
-import { code } from "@streamdown/code";
 import {
   createContext,
   isValidElement,
@@ -13,7 +12,6 @@ import {
 } from "react";
 import { harden } from "rehype-harden";
 import {
-  CodeBlock,
   Streamdown,
   defaultRehypePlugins,
   useIsCodeFenceIncomplete,
@@ -21,6 +19,7 @@ import {
 } from "streamdown";
 import type { PluggableList } from "unified";
 import { FileTypeIcon } from "../chrome/FileTypeIcon";
+import { CodeBlock } from "./CodeBlock";
 import { FileRefMenu } from "./FileRefMenu";
 import { createLazyMermaidPlugin } from "./mermaidPlugin";
 import { parseFileHref } from "../lib/paths";
@@ -50,7 +49,7 @@ const mermaid = createLazyMermaidPlugin({
   },
 });
 
-const MARKDOWN_PLUGINS = { code, mermaid };
+const MARKDOWN_PLUGINS = { mermaid };
 
 const MARKDOWN_REHYPE_PLUGINS: PluggableList = [
   defaultRehypePlugins.raw,
@@ -246,7 +245,7 @@ function MarkdownCode({
       <CodeBlock
         className={className}
         code={textContent(children)}
-        isIncomplete={incomplete}
+        incomplete={incomplete}
         language={fence.language}
         lineNumbers={lineNumbers}
         startLine={fence.startLine}
@@ -416,7 +415,7 @@ function MermaidBlock({
         </span>
         <CodeBlock
           code={code}
-          isIncomplete={incomplete}
+          incomplete={incomplete}
           language="mermaid"
           lineNumbers={false}
         />

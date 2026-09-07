@@ -178,14 +178,6 @@ html.is-mac .sidebar-glass {
   content-visibility: visible;
 }
 
-/*
- * After a send, the live turn fills the transcript viewport so the prompt sits
- * at the top. Switching tabs keeps this. Closing the tab drops it, so opening
- * that conversation again uses the true bottom (latest reply on the composer).
- */
-.transcript-turn-anchor {
-  min-height: var(--transcript-viewport, 0px);
-}
 
 html.is-mac.glass-body .body-glass {
   background: color-mix(
@@ -514,6 +506,29 @@ header[data-tauri-drag-region] button {
   font-size: 10px;
 }
 
+.agent-markdown [data-streamdown="code-block-body"][data-line-numbers] code > span::before {
+  content: counter(line);
+  counter-increment: line;
+  display: inline-block;
+  text-align: right;
+  user-select: none;
+}
+
+/* Shiki paints both IntelliJ palettes in one pass (Darcula as the default
+   colour, IntelliJ Light in the --shiki-light variables); the block itself
+   stays on the markdown's own tint. */
+.agent-markdown pre.shiki {
+  padding: 0;
+  background: transparent !important;
+}
+
+html.theme-light .agent-markdown .shiki,
+html.theme-light .agent-markdown .shiki span {
+  color: var(--shiki-light) !important;
+  font-style: var(--shiki-light-font-style, inherit);
+  font-weight: var(--shiki-light-font-weight, inherit);
+}
+
 .agent-markdown [data-streamdown="table-wrapper"] > div {
   border: 0;
   border-radius: 0;
@@ -755,8 +770,8 @@ header[data-tauri-drag-region] button {
   display: grid;
   grid-template-rows: 1fr;
   transition:
-    grid-template-rows 320ms cubic-bezier(0.22, 1, 0.36, 1),
-    opacity 220ms ease;
+    grid-template-rows 200ms ease-out,
+    opacity 200ms ease-out;
 }
 
 .zen-phase-body[data-open="false"] {
