@@ -56,5 +56,6 @@ describe("approvalOutcome", () => {
     expect(approvalOutcome({ requestId: 1, decided: "allow" })).toBe("approved");
     expect(approvalOutcome({ requestId: 1, decided: "deny" })).toBe("denied");
     expect(approvalOutcome({ requestId: 1, decided: "deny", auto: true })).toBe("denied (timed out)");
+    expect(approvalOutcome({ requestId: 1, decided: "cancelled" })).toBe("denied (timed out)");
   });
 });

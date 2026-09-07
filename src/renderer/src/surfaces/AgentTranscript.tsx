@@ -1346,6 +1346,8 @@ function ActivityRow({
     return (
       <div className="py-1">
         <EditRow block={block} cwd={cwd} onOpenFile={onOpenDiff ?? onOpenFile} />
+        {/* A decided board leaves its one-line verdict under the edit it judged. */}
+        <ApprovalControls block={block} onApproval={onApproval} />
       </div>
     );
   }
