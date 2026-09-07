@@ -137,6 +137,7 @@ export const COMPLETION_KINDS: monaco.languages.CompletionItemKind[] = [
   CIK.TypeParameter,
 ];
 export const SK = monaco.languages.SymbolKind;
+// Indexed by the LSP SymbolKind itself (1 = File … 26 = TypeParameter); slot 0 covers an unset kind.
 export const SYMBOL_KINDS: monaco.languages.SymbolKind[] = [
   SK.File, SK.File, SK.Module, SK.Namespace, SK.Package, SK.Class, SK.Method,
   SK.Property, SK.Field, SK.Constructor, SK.Enum, SK.Interface, SK.Function,

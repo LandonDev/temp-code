@@ -84,6 +84,7 @@ export type NativeCommand =
   | "reveal_path"
   | "save_project_logo"
   | "search_project"
+  | "search_sessions"
   | "session_checkpoint_capture"
   | "session_checkpoint_ensure"
   | "session_checkpoint_keep"
@@ -200,6 +201,7 @@ const serverMethods: Partial<Record<NativeCommand, string>> = {
   read_text_file: "fs.readText",
   rename_path: "fs.renamePath",
   search_project: "search.project",
+  search_sessions: "session.search",
   stat_files: "fs.statFiles",
   workspace_get_snapshot: "workspace.getSnapshot",
   workspace_set_snapshot: "workspace.setSnapshot",

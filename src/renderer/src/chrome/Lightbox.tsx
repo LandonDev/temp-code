@@ -36,6 +36,19 @@ export function openLightbox(items: LightboxItem[], index = 0): void {
   emit()
 }
 
+/** The command map (lib/appCommands.ts) drives Escape / ← / → through these. */
+export function isLightboxOpen(): boolean {
+  return state !== null
+}
+
+export function stepLightbox(delta: number): void {
+  step(delta)
+}
+
+export function closeLightbox(): void {
+  close()
+}
+
 function step(delta: number): void {
   if (!state || state.items.length < 2) return
   const n = state.items.length
@@ -109,20 +122,6 @@ export function Lightbox() {
   const snap = useSyncExternalStore(subscribe, () => state)
   const reduce = useReducedMotion()
   const primary = useIsPrimaryHost()
-
-  useEffect(() => {
-    if (!snap || !primary) return
-    const onKey = (e: globalThis.KeyboardEvent): void => {
-      if (e.key === 'Escape') close()
-      else if (e.key === 'ArrowLeft') step(-1)
-      else if (e.key === 'ArrowRight') step(1)
-      else return
-      e.preventDefault()
-      e.stopPropagation()
-    }
-    window.addEventListener('keydown', onKey, true)
-    return () => window.removeEventListener('keydown', onKey, true)
-  }, [snap, primary])
 
   if (!primary) return null
   const many = (snap?.items.length ?? 0) > 1

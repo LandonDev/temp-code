@@ -12,6 +12,8 @@ type Props = {
   onNewTerminal?: () => void;
   onToggleTerminal?: () => void;
   onGoToFile?: () => void;
+  /** Any item id not handled here goes to the app command map (lib/appCommands.ts). */
+  onCommand?: (id: string) => void;
   onToggleSidebar: () => void;
   onShowSourceControl?: () => void;
   onCloseCurrentTab?: () => void;
@@ -27,6 +29,7 @@ export function MenuBar({
   onNewTerminal,
   onToggleTerminal,
   onGoToFile,
+  onCommand,
   onToggleSidebar,
   onShowSourceControl,
   onCloseCurrentTab,
@@ -146,10 +149,13 @@ export function MenuBar({
         case "check_for_updates":
           void updateStore.check(true);
           break;
+        default:
+          onCommand?.(id);
       }
     },
     [
       closeMenu,
+      onCommand,
       onCloseCurrentTab,
       onFindInProject,
       onGoToFile,
@@ -169,14 +175,18 @@ export function MenuBar({
     switch (key) {
       case "file":
         return [
-          { kind: "item", id: "new_tab", label: "New Tab", shortcut: `${MOD}T` },
+          { kind: "item", id: "new_tab", label: "New Tab", shortcut: `${MOD}N` },
           { kind: "item", id: "new_terminal", label: "New Terminal", shortcut: `${MOD}\`` },
           { kind: "item", id: "new_window", label: "New Window", shortcut: `${MOD}${SHIFT}N` },
           { kind: "sep" },
-          { kind: "item", id: "open_project", label: "Open Project…", shortcut: `${MOD}O` },
+          { kind: "item", id: "open_project", label: "Open Project…" },
           { kind: "item", id: "open_search", label: "Search…", shortcut: `${MOD}K` },
           { kind: "item", id: "go_to_file", label: "Go to File…", shortcut: `${MOD}P` },
+          { kind: "item", id: "go_to_symbol", label: "Go to Symbol…", shortcut: `${MOD}O` },
+          { kind: "item", id: "show_hierarchy", label: "Type Hierarchy", shortcut: `${MOD}T` },
           { kind: "item", id: "find_in_project", label: "Find in Files…", shortcut: `${MOD}${SHIFT}F` },
+          { kind: "sep" },
+          { kind: "item", id: "save_all", label: "Save All", shortcut: `${MOD}S` },
           { kind: "sep" },
           { kind: "item", id: "close_tab", label: "Close Pane", shortcut: `${MOD}W` },
           { kind: "sep" },
