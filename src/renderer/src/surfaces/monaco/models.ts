@@ -1,9 +1,8 @@
 import { readTextFile, writeTextFile, notifyGitChanged } from "../../lib/fs";
+import { registerBeforeMove } from "../../lib/editorRename";
 import { syncWatchedMtime, watchFile } from "../../lib/fileWatch";
+import { onFileEvent, watchCwd } from "../../lib/projectWatch";
 import { loadAutoSave, loadFormatOnSave } from "../../lib/settings";
-import { client } from "../../lib/tcserver/client";
-import { dirPrefix } from "../../lib/tcserver/projects";
-import { workspaceStore } from "../../lib/tcserver/workspaces";
 import {
   getEditorState,
   setEditorState,
@@ -59,6 +58,7 @@ interface Entry {
   stateListeners: Set<(s: FileState) => void>;
   changeListeners: Set<(range: monaco.IRange) => void>;
   unwatch: () => void;
+  unwatchProject: () => void;
   dispose: () => void;
 }
 
@@ -128,15 +128,13 @@ function onExternalChange(entry: Entry): void {
   void reloadFromDisk(entry);
 }
 
-// The sidecar's project watch (when a thread has one running) reports
-// agent writes faster than the mtime poll does.
-client.onPush((push) => {
-  if (push.push !== "file-event") return;
-  const project = workspaceStore.projects.find((p) => p.id === push.projectId);
-  if (!project) return;
-  const entry = entries.get(`${dirPrefix(project.cwd)}${push.path}`);
+// The server's tree watcher (one subscription per project, held while a
+// model is open) reports agent and shell writes; the mtime poll is the
+// fallback for paths outside any project.
+onFileEvent((event) => {
+  const entry = entries.get(event.path);
   if (!entry) return;
-  if (push.kind === "deleted") {
+  if (event.kind === "deleted") {
     setState(entry, { conflict: "deleted" });
     return;
   }
@@ -239,8 +237,36 @@ export async function flushPath(path: string): Promise<boolean> {
 }
 
 if (typeof window !== "undefined") {
-  window.addEventListener("blur", () => void flushAll());
+  // Autosave off means nothing writes but ⌘S and the close prompt.
+  window.addEventListener("blur", () => {
+    if (loadAutoSave()) void flushAll();
+  });
 }
+
+// ── rename / move ────────────────────────────────────────────────────
+
+/** Dirty text carried from a moved path to its new one (autosave off). */
+const carried = new Map<string, string>();
+
+// Before the tree renames or moves a path: with autosave on the buffers
+// under it flush so the re-opened tab reads the right disk text; with it
+// off their dirty text follows them to the new path.
+registerBeforeMove(async (from, to) => {
+  for (const entry of [...entries.values()]) {
+    const rest =
+      entry.path === from ? "" : entry.path.startsWith(`${from}/`) ? entry.path.slice(from.length) : null;
+    if (rest === null) continue;
+    if (entry.timer !== null) {
+      window.clearTimeout(entry.timer);
+      entry.timer = null;
+    }
+    if (loadAutoSave()) {
+      await flush(entry);
+    } else if (entry.model.getAlternativeVersionId() !== entry.savedAltId) {
+      carried.set(`${to}${rest}`, entry.model.getValue());
+    }
+  }
+});
 
 // ── conflict resolution (the one-line bar's two actions) ─────────────
 
@@ -298,24 +324,27 @@ export async function openFile(path: string, cwd: string): Promise<OpenedFile> {
     entry = entries.get(path);
     if (!entry) {
       const uri = monaco.Uri.file(path);
+      const carry = carried.get(path);
+      carried.delete(path);
       const model =
         monaco.editor.getModel(uri) ??
-        monaco.editor.createModel(content, languageForPath(path), uri);
+        monaco.editor.createModel(carry ?? content, languageForPath(path), uri);
       const created: Entry = {
         path,
         cwd,
         model,
         refs: 0,
         diskText: content,
-        savedAltId: model.getAlternativeVersionId(),
+        savedAltId: carry === undefined ? model.getAlternativeVersionId() : -1,
         timer: null,
         flushing: null,
         queuedReload: false,
         applyingExternal: false,
-        state: { pending: false, conflict: null },
+        state: { pending: carry !== undefined, conflict: null },
         stateListeners: new Set(),
         changeListeners: new Set(),
         unwatch: () => {},
+        unwatchProject: () => {},
         dispose: () => {},
       };
       const sub = model.onDidChangeContent(() => {
@@ -323,9 +352,11 @@ export async function openFile(path: string, cwd: string): Promise<OpenedFile> {
         scheduleFlush(created);
       });
       created.unwatch = watchFile(path, () => onExternalChange(created));
+      created.unwatchProject = watchCwd(cwd);
       created.dispose = () => {
         sub.dispose();
         created.unwatch();
+        created.unwatchProject();
         model.dispose();
       };
       entries.set(path, created);

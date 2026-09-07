@@ -36,7 +36,8 @@ const LSP_DEBUG = import.meta.env.DEV;
 export interface EnsureResult extends EnsureExtras {
   serverId: string;
   wsPath: string;
-  status: "ready" | "starting" | "downloading" | "error" | "needs-eula";
+  /** the pool's server state, or the IntelliJ EULA gate */
+  status: "starting" | "downloading" | "running" | "error" | "needs-eula";
   error?: string;
 }
 
@@ -58,18 +59,23 @@ export const semanticRefresh = new Map<LangKind, monaco.Emitter<void>>();
 /** Fired on workspace/inlayHint/refresh. */
 export const inlayRefresh = new monaco.Emitter<void>();
 
-/** The engine dropped: put jdtls's cached diagnostics back on screen. */
+/** The engine dropped: clear its squiggles on every model it owned (Kotlin
+ *  has no other server, so its markers must not outlive the engine) and
+ *  put jdtls's cached diagnostics back where jdtls owns the model. */
 function restoreJdtlsMarkers(projectId: string): void {
   const std = settledStd.get(projectId);
+  const project = workspaceStore.projects.find((p) => p.id === projectId);
+  const prefix = project ? dirPrefix(project.cwd) : null;
   for (const uri of [...ideaDiagUris]) {
     const model = monaco.editor.getModel(monaco.Uri.parse(uri));
     if (!model) {
       ideaDiagUris.delete(uri);
       continue;
     }
-    if (!std?.owns(model)) continue;
+    if (prefix && !model.uri.path.startsWith(prefix)) continue;
     ideaDiagUris.delete(uri);
     monaco.editor.setModelMarkers(model, `lsp-idea-${projectId}`, []);
+    if (!std?.owns(model)) continue;
     const cached = std.diagnostics.get(uri);
     if (cached) monaco.editor.setModelMarkers(model, `lsp-java-${projectId}`, toMarkers(cached));
   }
@@ -88,6 +94,7 @@ export class LspConnection {
   private modelSubs = new Map<string, monaco.IDisposable>();
   private disposed = false;
   private initP: Promise<void> | null = null;
+  private everReady = false;
   readonly capabilities: Record<string, unknown> = {};
   /** Last published diagnostics per URI (LSP-shaped, feeds codeAction context). */
   readonly diagnostics = new Map<string, LspDiagnostic[]>();
@@ -215,6 +222,8 @@ export class LspConnection {
           symbol: {},
           workspaceFolders: true,
           executeCommand: {},
+          // jdtls and vtsls register willRenameFiles only for clients that say so.
+          fileOperations: { dynamicRegistration: true, willRename: true, didRename: true },
         },
         window: { workDoneProgress: true },
       },
@@ -225,6 +234,7 @@ export class LspConnection {
     this.notify("initialized", {});
     const settings = (this.settings as { settings?: unknown }).settings;
     if (settings) this.notify("workspace/didChangeConfiguration", { settings });
+    this.everReady = true;
     connectionInitialized.fire(this);
     // Sync every already-open matching model.
     for (const model of monaco.editor.getModels()) this.maybeOpen(model);
@@ -255,6 +265,16 @@ export class LspConnection {
       this.disposed = true;
       conns.delete(`${this.project.id}:idea`);
       if (settledIdea.get(this.project.id) === this) settledIdea.delete(this.project.id);
+      return;
+    }
+    // A server that died before answering initialize dies the same way on
+    // the pool's respawn; re-ensuring here would boot a JVM per second.
+    if (code === 4002 && !this.everReady) {
+      this.disposed = true;
+      const key = this.engine === "idea" ? `${this.project.id}:idea` : `${this.project.id}:${this.kind}`;
+      conns.delete(key);
+      if (settledIdea.get(this.project.id) === this) settledIdea.delete(this.project.id);
+      if (settledStd.get(this.project.id) === this) settledStd.delete(this.project.id);
       return;
     }
     // The pool restarted (crash policy) or evicted us. One re-ensure; the
@@ -428,6 +448,12 @@ export class LspConnection {
       },
     });
     this.schedulePull(uri);
+    // A reopened file: the server only re-publishes when something changed,
+    // so its last diagnostics come back from the cache.
+    const cached = this.diagnostics.get(uri);
+    if (cached && this.engine !== "idea" && !(this.kind === "java" && ideaDiagUris.has(uri))) {
+      monaco.editor.setModelMarkers(model, this.markerOwner, toMarkers(cached));
+    }
     this.modelSubs.set(
       uri,
       model.onDidChangeContent((e) => {
