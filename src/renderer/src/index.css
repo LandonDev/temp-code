@@ -245,19 +245,22 @@ html.is-resizing * {
   scrollbar-width: none;
 }
 
-.composer-field {
-  color: transparent;
-  caret-color: var(--color-content);
-  -webkit-text-fill-color: transparent;
+.composer-field:empty::before {
+  content: attr(data-placeholder);
+  pointer-events: none;
+  color: color-mix(in srgb, var(--color-content) 40%, transparent);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: block;
 }
 
-.composer-field::placeholder {
-  color: color-mix(in srgb, var(--color-content) 40%, transparent);
-  -webkit-text-fill-color: color-mix(
-    in srgb,
-    var(--color-content) 40%,
-    transparent
-  );
+::highlight(composer-skill) {
+  color: var(--color-skill);
+}
+
+::highlight(composer-mention) {
+  color: var(--color-mention);
 }
 
 .markdown-source-heading {

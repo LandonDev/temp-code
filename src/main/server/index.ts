@@ -816,7 +816,12 @@ export async function startServer(dbPath: string, options: { dataDir?: string } 
             sendFrame({ id: req.id, ok: true, result: null })
             break
           case 'queue.update':
-            registry.queueUpdate(req.params.sessionId, req.params.messageId, req.params.text)
+            registry.queueUpdate(req.params.sessionId, req.params.messageId, {
+              text: req.params.text,
+              provider: req.params.provider,
+              model: req.params.model,
+              reasoning: req.params.reasoning
+            })
             sendFrame({ id: req.id, ok: true, result: null })
             break
           case 'queue.reorder':

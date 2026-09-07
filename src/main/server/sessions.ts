@@ -2028,12 +2028,30 @@ export class SessionRegistry {
     this.notifyQueue(sessionId)
   }
 
-  queueUpdate(sessionId: string, messageId: string, text: string): void {
+  queueUpdate(
+    sessionId: string,
+    messageId: string,
+    patch: {
+      text?: string
+      provider?: string | null
+      model?: string | null
+      reasoning?: string | null
+    }
+  ): void {
     const q = this.queues.get(sessionId)
     if (!q) return
+    const field = <T extends string>(value: T | null | undefined, current: T | undefined) =>
+      value === undefined ? current : value === null ? undefined : value
+    const apply = (m: QueuedMessage): QueuedMessage => ({
+      ...m,
+      text: patch.text ?? m.text,
+      provider: field(patch.provider as ProviderId | null | undefined, m.provider),
+      model: field(patch.model, m.model),
+      reasoning: field(patch.reasoning as SessionMeta['reasoning'] | null, m.reasoning)
+    })
     this.queues.set(
       sessionId,
-      q.map((m) => (m.id === messageId ? { ...m, text } : m))
+      q.map((m) => (m.id === messageId ? apply(m) : m))
     )
     this.notifyQueue(sessionId)
   }
