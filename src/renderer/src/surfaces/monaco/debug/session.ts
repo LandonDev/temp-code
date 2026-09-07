@@ -316,11 +316,14 @@ export async function debugFile(project: ProjectMeta, path: string, text: string
 
 export const debugController = (): DebugController | null => active;
 
-// A live session re-syncs a file's breakpoints the moment they change.
-subscribeBreakpoints(() => {
+// A live session re-syncs the changed file the moment its breakpoints
+// move — that file by name, so clearing its last breakpoint sends an empty
+// list and the debuggee drops it (the all-paths walk skipped empty files).
+subscribeBreakpoints((path) => {
   const ctl = active;
   if (!ctl?.session) return;
-  void ctl.syncAllBreakpoints();
+  if (path === undefined) void ctl.syncAllBreakpoints();
+  else if (path.startsWith(dirPrefix(ctl.project.cwd))) void ctl.syncBreakpoints(path);
 });
 
 // ── editor decorations (breakpoints + current line) ──────────────────
