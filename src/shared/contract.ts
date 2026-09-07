@@ -1,6 +1,8 @@
 import { z } from 'zod'
 import { M3aRequestSchemas } from './contract-m3a'
 import { FsGitRequestSchemas } from './contract-fsgit'
+import { CheckpointRequestSchemas } from './contract-checkpoint'
+import { LinearRequestSchemas } from './contract-linear'
 import { AGENT_TYPES } from './catalog'
 import { AttachmentSchema, PermissionPolicySchema } from './events'
 import { ProjectModeSchema, ThreadTypeSchema } from './domain'
@@ -30,7 +32,7 @@ const ProjectCleanupSchema = z.object({
  * updates, which are cheap and drive the sidebar).
  */
 
-const providerEnum = z.enum(['claude', 'codex', 'cursor'])
+const providerEnum = z.enum(['claude', 'codex', 'cursor', 'grok', 'opencode', 'pi', 'omp', 'fx'])
 const reasoningEnum = z.enum(['low', 'medium', 'high', 'xhigh', 'max', 'ultra'])
 
 export const CreateSessionParams = z.object({
@@ -72,14 +74,21 @@ export interface SessionBatchResult {
 export const ClientRequestSchema = z.discriminatedUnion('method', [
   ...M3aRequestSchemas,
   ...FsGitRequestSchemas,
-  z.object({ id: z.string(), method: z.literal('catalog.get') }),
+  ...CheckpointRequestSchemas,
+  ...LinearRequestSchemas,
+  // refresh: re-probe the installed CLIs of the probed providers first.
+  z.object({
+    id: z.string(),
+    method: z.literal('catalog.get'),
+    params: z.object({ refresh: z.boolean().optional() }).optional()
+  }),
   // Per-provider health: binary found on the login-shell PATH, version.
   z.object({ id: z.string(), method: z.literal('doctor.get') }),
   // Update a provider's CLI in place; returns its fresh health row.
   z.object({
     id: z.string(),
     method: z.literal('providers.update'),
-    params: z.object({ provider: z.enum(['claude', 'codex', 'cursor']) })
+    params: z.object({ provider: providerEnum })
   }),
   z.object({
     id: z.string(),

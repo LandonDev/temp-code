@@ -1,5 +1,5 @@
 import { existsSync, readFileSync, realpathSync } from 'node:fs'
-import { dirname, resolve } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 import { handleM3a } from './m3a'
 import { Notes } from './notes'
 import { ProjectLogos } from './projectLogos'
@@ -10,8 +10,12 @@ import { ClientRequestSchema, type ServerFrame } from '@shared/contract'
 import type { SessionMeta } from '@shared/events'
 import { openDb, Store } from './db'
 import { handleFsGit } from './fsgit'
+import { CheckpointStore } from './checkpoint'
+import { handleCheckpoint } from './checkpointRpc'
+import { Linear, handleLinear } from './linear'
 import { SessionRegistry } from './sessions'
 import { runDoctor, updateProvider } from './drivers/binaries'
+import { probeCatalogs } from './drivers/catalogProbe'
 import { backfillMirrors } from './mirror'
 import {
   orchAnswerAgent,
@@ -136,8 +140,11 @@ export interface RunningServer {
 export async function startServer(dbPath: string, options: { dataDir?: string } = {}): Promise<RunningServer> {
   const db = openDb(dbPath)
   const store = new Store(db)
+  const checkpoints = new CheckpointStore(join(options.dataDir ?? dirname(dbPath), 'checkpoints'))
   const registry = new SessionRegistry(store)
+  registry.checkpoints = checkpoints
   const m3a = { store, registry, notes: new Notes(db), logos: new ProjectLogos(options.dataDir ?? dirname(dbPath)), usage: new ClaudeUsage() }
+  const linear = new Linear(options.dataDir ?? dirname(dbPath))
   registry.resetStaleStatuses()
   registry.startIdleSweep()
   setOrchestrationRegistry(registry)
@@ -145,6 +152,7 @@ export async function startServer(dbPath: string, options: { dataDir?: string } 
   setSummarizeContext(registry, store)
   backfillMirrors(registry) // old mirrors gain files:/Outcome, INDEX.md fills in
   void runDoctor() // warm the cache so the new-session modal opens ready
+  void probeCatalogs() // the five probed harnesses ask their CLIs for models
 
   // Background IntelliJ index warming: shortly after startup, then every
   // 10 minutes (catches HEAD moves from commits/branch switches). Both
@@ -226,8 +234,13 @@ export async function startServer(dbPath: string, options: { dataDir?: string } 
         if (extension.handled) { sendFrame({ id: req.id, ok: true, result: extension.result }); return }
         const fsGit = await handleFsGit(req)
         if (fsGit.handled) return sendFrame({ id: req.id, ok: true, result: fsGit.result })
+        const checkpoint = await handleCheckpoint(req, checkpoints)
+        if (checkpoint.handled) return sendFrame({ id: req.id, ok: true, result: checkpoint.result })
+        const lin = await handleLinear(req, linear)
+        if (lin.handled) return sendFrame({ id: req.id, ok: true, result: lin.result })
         switch (req.method) {
           case 'catalog.get':
+            if (req.params?.refresh) await probeCatalogs(true)
             sendFrame({ id: req.id, ok: true, result: CATALOG })
             break
           case 'doctor.get':

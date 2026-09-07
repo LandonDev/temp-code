@@ -108,6 +108,7 @@ type Args = Record<string, unknown> | undefined;
 type Backed = (args: Args) => Promise<unknown>;
 
 const arg = <T>(args: Args, key: string): T => (args ?? {})[key] as T;
+const scope = (args: Args) => ({ sessionId: arg<string>(args, "sessionId"), cwd: arg<string>(args, "cwd") });
 
 // ── Server dispatch ────────────────────────────────────────────────────────
 
@@ -183,13 +184,6 @@ const serverMethods: Partial<Record<NativeCommand, string>> = {
   git_unstage_all: "git.unstageAll",
   git_unstage_file: "git.unstageFile",
   inspect_paths: "fs.inspectPaths",
-  linear_issue_comment: "linear.comment",
-  linear_issue_details: "linear.details",
-  linear_issue_thread: "linear.thread",
-  linear_list_issues: "linear.issues",
-  linear_list_teams: "linear.teams",
-  linear_set_token: "linear.setToken",
-  linear_status: "linear.status",
   list_dir: "fs.listPath",
   list_project_files: "fs.projectFiles",
   move_path: "fs.movePath",
@@ -202,12 +196,6 @@ const serverMethods: Partial<Record<NativeCommand, string>> = {
   read_text_file: "fs.readText",
   rename_path: "fs.renamePath",
   search_project: "search.project",
-  session_checkpoint_capture: "checkpoint.capture",
-  session_checkpoint_ensure: "checkpoint.ensure",
-  session_checkpoint_keep: "checkpoint.keep",
-  session_checkpoint_status: "checkpoint.status",
-  session_checkpoint_sync: "checkpoint.sync",
-  session_checkpoint_undo: "checkpoint.undo",
   stat_files: "fs.statFiles",
   workspace_get_snapshot: "workspace.getSnapshot",
   workspace_set_snapshot: "workspace.setSnapshot",
@@ -277,6 +265,38 @@ const backed: Record<NativeCommand, Backed> = {
   pty_kill_all: () => window.api.pty.killAll(),
   pty_ack: async (args) =>
     window.api.pty.ack(arg<string>(args, "id"), arg<number>(args, "bytes")),
+
+  // Checkpoints (M9) and Linear (M11): params shaped here, not passed through.
+  session_checkpoint_ensure: (args) => rpc("checkpoint.ensure", scope(args)),
+  session_checkpoint_capture: (args) =>
+    rpc("checkpoint.capture", { ...scope(args), paths: arg<string[]>(args, "paths") ?? [] }),
+  session_checkpoint_sync: (args) => rpc("checkpoint.sync", scope(args)),
+  session_checkpoint_status: (args) => rpc("checkpoint.status", scope(args)),
+  session_checkpoint_undo: (args) =>
+    rpc("checkpoint.undo", { ...scope(args), relative: arg<string | null>(args, "relative") ?? null }),
+  session_checkpoint_keep: (args) =>
+    rpc("checkpoint.keep", { ...scope(args), relative: arg<string | null>(args, "relative") ?? null }),
+  // Linear (M11): server-owned token, GraphQL in the server.
+  linear_status: () => rpc("linear.status"),
+  linear_set_token: (args) =>
+    rpc("linear.setToken", { token: arg<string>(args, "token") }),
+  linear_list_teams: () => rpc("linear.teams"),
+  linear_list_issues: (args) =>
+    rpc("linear.issues", {
+      assignedToMe: arg<boolean>(args, "assignedToMe"),
+      state: arg<string>(args, "state"),
+      teamIds: arg<string[]>(args, "teamIds"),
+    }),
+  linear_issue_details: (args) =>
+    rpc("linear.details", { id: arg<string>(args, "id") }),
+  linear_issue_thread: (args) =>
+    rpc("linear.thread", { id: arg<string>(args, "id") }),
+  linear_issue_comment: (args) =>
+    rpc("linear.comment", {
+      id: arg<string>(args, "id"),
+      body: arg<string>(args, "body"),
+      parentId: arg<string>(args, "parentId"),
+    }),
 };
 
 export function notPorted(name: string): Error {
