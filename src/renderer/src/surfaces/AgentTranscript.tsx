@@ -58,6 +58,7 @@ import {
 } from "../lib/toolSummary";
 import { isTurnPaused, passActionsOf, turnElapsed, useClock } from "../lib/turnClock";
 import { errorRowOf, isErrorBlock } from "../lib/turnOutcome";
+import { useSessionMetas } from "../lib/tcserver/store";
 import { ErrorChip } from "./ErrorChip";
 import { TurnStateContext, useTurnState, type TurnSession } from "./turnState";
 import { HarnessIcon } from "../chrome/HarnessIcon";
@@ -1049,8 +1050,12 @@ function useLivePhaseScroll(
 function ErrorRowView({ block }: { block: Block }) {
   const session = useTurnState();
   const sessionId = useTranscriptSession();
+  // The tree's continue flag lives on the meta until the projection carries it.
+  const meta = useSessionMetas().find((m) => m.id === sessionId);
   const row = errorRowOf(
-    session ?? { blocks: [block], status: "idle", thread: undefined },
+    session
+      ? { ...session, treeCanContinue: session.treeCanContinue ?? meta?.treeCanContinue }
+      : { blocks: [block], status: "idle", thread: undefined },
     block,
   );
   if (!sessionId) return null;
