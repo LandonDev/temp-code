@@ -24,7 +24,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { AttachmentChip } from "../chrome/AttachmentChip";
+import { AttachmentChip, openAttachmentImages } from "../chrome/AttachmentChip";
 import { FilePreview } from "../chrome/FilePreview";
 import { FileTypeIcon } from "../chrome/FileTypeIcon";
 import { QuestionCard } from "./QuestionCard";
@@ -1114,7 +1114,15 @@ function UserMessageBlock({
             className={`flex flex-wrap gap-1.5 ${text || card || note ? "mb-2" : ""}`}
           >
             {block.attachments.map((file) => (
-              <AttachmentChip key={file.id} attachment={file} />
+              <AttachmentChip
+                key={file.id}
+                attachment={file}
+                onOpen={
+                  file.kind === "image"
+                    ? () => openAttachmentImages(block.attachments ?? [], file)
+                    : undefined
+                }
+              />
             ))}
           </div>
         ) : null}

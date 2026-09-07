@@ -38,15 +38,25 @@ function effortSetting(model: ModelInfo): ModelSetting | null {
   };
 }
 
+const FAST_OPTIONS = [
+  { value: "true", label: "On" },
+  { value: "false", label: "Off" },
+];
+
 const FAST_MODE: ModelSetting = {
   id: "fast",
   label: "Fast",
   kind: "toggle",
   value: "false",
-  options: [
-    { value: "true", label: "On" },
-    { value: "false", label: "Off" },
-  ],
+  description: "Fast mode",
+  options: FAST_OPTIONS,
+};
+
+/** Codex's Fast is priority processing (`service_tier: priority`); same
+ *  `fast` id so session.tune and the queue treat both alike. */
+const PRIORITY_MODE: ModelSetting = {
+  ...FAST_MODE,
+  description: "Fast (priority processing)",
 };
 
 /** `claude-…` models get the fast + context toggles (session.tune). */
@@ -71,6 +81,7 @@ export function agentModelsFor(provider: ProviderInfo): AgentModel[] {
     const settings = [
       ...(effortSetting(model) ? [effortSetting(model)!] : []),
       ...(harness === "claude" ? claudeSettings(model) : []),
+      ...(harness === "codex" ? [PRIORITY_MODE] : []),
     ];
     return {
       id: `${harness}:${model.id}`,
