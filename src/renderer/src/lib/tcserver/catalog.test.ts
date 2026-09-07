@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { modelsFor, resetHarnessModelOverlays, resolveModel } from "../models";
+import { defaultModelId, modelsFor, resetHarnessModelOverlays, resolveModel } from "../models";
 import {
   agentModelsFor,
   availabilityFromDoctor,
@@ -84,5 +84,22 @@ describe("probeDoctor", () => {
     await probeDoctor({ force: true }, link);
     expect(link.calls).toHaveLength(2);
     expect(availabilityFromDoctor(first)).toMatchObject({ claude: true, codex: false, cursor: true, fx: false, grok: false });
+  });
+});
+
+describe("provider defaults", () => {
+  it("the catalog's defaultModel becomes the picker default, not the first entry", async () => {
+    const codex: ProviderInfo = {
+      id: "codex",
+      label: "Codex",
+      defaultModel: "gpt-5.6-sol",
+      models: [
+        { id: "gpt-6-astra", label: "Astra", reasoning: ["low", "high"] },
+        { id: "gpt-5.6-sol", label: "Sol", reasoning: ["low", "high"] },
+      ],
+    };
+    await refreshCatalog(fakeLink({ "catalog.get": { codex, claude } }));
+    expect(defaultModelId("codex")).toBe("codex:gpt-5.6-sol");
+    expect(defaultModelId("claude")).toBe("claude:claude-sonnet-5");
   });
 });

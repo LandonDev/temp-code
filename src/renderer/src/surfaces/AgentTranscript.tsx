@@ -79,6 +79,7 @@ import {
   isThinkingBlock,
   lastActivityIndex,
   isProseBlock,
+  awaitsUser,
   needsApproval,
   nestedScrollAbsorbsWheel,
   proseSummary,
@@ -315,7 +316,12 @@ export function AgentTranscript({
         {visibleTurns.map((turn, turnIndex) => {
           const isLastTurn = firstVisibleTurn + turnIndex === turns.length - 1;
           const userBlock = turnUserBlock(turn);
-          const durationMs = userBlock?.durationMs;
+          // A steered turn closes its earlier sections by doneTs alone.
+          const durationMs =
+            userBlock?.durationMs ??
+            (userBlock?.doneTs != null && userBlock.startedAt != null
+              ? Math.max(0, userBlock.doneTs - userBlock.startedAt)
+              : undefined);
           const settled = !(busy && isLastTurn);
           const items = groupTurnItems(turn, zen);
           // Where the work ends and the answer begins, in zen: the last group
@@ -1009,7 +1015,7 @@ function ActivityPhaseGroup({
   onOpenDiff?: (path: string) => void;
 }) {
   const [override, setOverride] = useState<boolean | null>(null);
-  const waiting = phase.steps.some(needsApproval);
+  const waiting = phase.steps.some(awaitsUser);
   const open = waiting || (override ?? active);
   const [liveScroller, setLiveScroller] = useState<HTMLDivElement | null>(null);
   useLivePhaseScroll(liveScroller, active && open, phase.steps);

@@ -132,10 +132,18 @@ export type Block = {
     /** Provider tool name and input, kept so a result can re-render the preview. */
     name?: string;
     input?: unknown;
+    /** Streaming preview of the input while the model still writes it. */
+    partialInput?: unknown;
+    /** Humanized face for addon calls (app + action). */
+    display?: { app?: string; action?: string };
+    /** A connector answered "reauthenticate"; the link fixes it. */
+    reauth?: { app: string; url: string };
   };
   approval?: {
     requestId: string | number;
-    decided?: "allow" | "deny" | "cancelled";
+    decided?: "allow" | "deny";
+    /** Resolved by policy (timeout, interrupt), not the user. */
+    auto?: boolean;
   };
   /** The model stopped to ask; answered through the question card. */
   question?: QuestionMeta;
@@ -246,6 +254,13 @@ export type Session = {
   busySince?: number | null;
   pausedAt?: number | null;
   frozenActiveElapsed?: number | null;
+  /** Tree-wide flags the server folds over this thread and its children. */
+  treeCanContinue?: boolean;
+  treeHasLiveWork?: boolean;
+  treeHasPaused?: boolean;
+  treeFrozenActiveElapsed?: number | null;
+  /** The transcript has been fetched from the server at least once. */
+  loaded?: boolean;
   archived?: boolean;
   /** Board state folded from the event log (todos, rounds, cost, sources). */
   thread?: ThreadState;

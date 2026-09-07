@@ -1016,27 +1016,6 @@ export default function App({
     );
   }, [deckLayout]);
 
-  /** Card click: select the project and bring its latest open tab forward. */
-  const onSelectProjectCard = useCallback(
-    (projectId: string | null) => {
-      setSelectedProjectId(projectId);
-      if (!projectId) return;
-      const tabs = tabsRef.current;
-      const sessions = sessionsRef.current;
-      const inProject = (tab: WorkspaceTab) =>
-        sessions.find((s) => s.id === tab.focusedId)?.projectId === projectId;
-      const current = tabs.find((tab) => tab.id === activeTabIdRef.current);
-      if (current && inProject(current)) return;
-      const visits = tabVisitRef.current;
-      const recent = [...visits.back]
-        .reverse()
-        .map((id) => tabs.find((tab) => tab.id === id))
-        .find((tab) => tab && inProject(tab));
-      const target = recent ?? tabs.find(inProject);
-      if (target) activateTab(target.id);
-    },
-    [activateTab],
-  );
 
   // The active tab names the selected project; a fresh loose draft says nothing.
   useEffect(() => {
@@ -1168,6 +1147,31 @@ export default function App({
       setComposerFocused(true);
     },
     [appendTab, createSessionHere],
+  );
+
+  /** Card click: select the project and bring its latest open tab forward. */
+  const onSelectProjectCard = useCallback(
+    (projectId: string | null) => {
+      setSelectedProjectId(projectId);
+      if (!projectId) return;
+      const tabs = tabsRef.current;
+      const sessions = sessionsRef.current;
+      const inProject = (tab: WorkspaceTab) =>
+        sessions.find((s) => s.id === tab.focusedId)?.projectId === projectId;
+      const current = tabs.find((tab) => tab.id === activeTabIdRef.current);
+      if (current && inProject(current)) return;
+      const visits = tabVisitRef.current;
+      const recent = [...visits.back]
+        .reverse()
+        .map((id) => tabs.find((tab) => tab.id === id))
+        .find((tab) => tab && inProject(tab));
+      const target = recent ?? tabs.find(inProject);
+      // No pane of that project is open: start one, so the body never keeps
+      // showing another project's thread under this project's header.
+      if (target) activateTab(target.id);
+      else onNewChat(projectId);
+    },
+    [activateTab, onNewChat],
   );
 
   const onProjectCreated = useCallback(
@@ -2543,11 +2547,9 @@ export default function App({
   const tabSessionId = useCallback((tabId: string) => {
     const tab = tabsRef.current.find((entry) => entry.id === tabId);
     if (!tab) return null;
-    return (
-      leafIds(tab.layout).find((id) =>
-        sessionsRef.current.some((session) => session.id === id),
-      ) ?? null
-    );
+    const isSession = (id: string) => sessionsRef.current.some((session) => session.id === id);
+    if (isSession(tab.focusedId)) return tab.focusedId;
+    return leafIds(tab.layout).find(isSession) ?? null;
   }, []);
 
   const onArchiveTab = useCallback(
@@ -3230,10 +3232,12 @@ export default function App({
             const prepared = await prepareAttachments(attachments);
             const prompt = await preparePrompt(harnessText);
             const derived = await deriveMentionAttachments(text, workCwd);
-            await serverCommands.queueAdd(sessionId, prompt, [
-              ...(await serverCommands.toServerAttachments(prepared)),
-              ...derived,
-            ]);
+            await serverCommands.queueAdd(
+              sessionId,
+              prompt,
+              [...(await serverCommands.toServerAttachments(prepared)), ...derived],
+              serverCommands.runSettingsFor(current),
+            );
           } catch (error: unknown) {
             noteSystem(
               sessionId,
