@@ -185,25 +185,33 @@ export function attachApprovalBlock(
 }
 
 function findToolForApproval(blocks: Block[], event: ApprovalAttach): number {
+  // A call id names its invocation outright; when that call has no block
+  // yet, the card stands on its own and the call joins it by id.
   if (event.callId) {
-    const byId = blocks.findIndex((block) => block.tool?.callId === event.callId);
-    if (byId >= 0) return byId;
+    return blocks.findIndex((block) => block.tool?.callId === event.callId);
   }
-  // No call id: the latest call of the same tool still waiting on a verdict
-  // is the one being asked about.
+  // No call id: only a call from this turn still waiting on its result can
+  // be the one asked about. Settled calls from earlier never take a card.
+  let start = 0;
+  for (let i = blocks.length - 1; i >= 0; i--) {
+    if (blocks[i].role === "user") {
+      start = i + 1;
+      break;
+    }
+  }
+  const candidate = (block: Block) =>
+    block.role === "tool" && !block.approval && isOpenTool(block);
   if (event.name) {
-    for (let i = blocks.length - 1; i >= 0; i--) {
+    for (let i = blocks.length - 1; i >= start; i--) {
       const block = blocks[i];
-      if (block.role === "tool" && !block.approval && block.tool?.name === event.name) {
-        return i;
-      }
+      if (candidate(block) && block.tool?.name === event.name) return i;
     }
   }
   const needle = normalizeLabel(event.title);
   const unmatched: number[] = [];
-  for (let i = blocks.length - 1; i >= 0; i--) {
+  for (let i = blocks.length - 1; i >= start; i--) {
     const block = blocks[i];
-    if (block.role !== "tool" || block.approval) continue;
+    if (!candidate(block)) continue;
     unmatched.push(i);
     const label = normalizeLabel(block.text || block.tool?.title || "");
     if (needle && label === needle) return i;
@@ -340,6 +348,43 @@ export function stopStreamingBlocks(blocks: Block[], now: number): Block[] {
     blocks.map((block) => (block.streaming ? { ...block, streaming: false } : block)),
     now,
   );
+}
+
+const OPEN_TOOL_STATUSES = new Set(["running", "pending", "in_progress"]);
+
+/** A call still waiting on its result (or one that never reported a status). */
+export function isOpenTool(block: Block): boolean {
+  const status = block.tool?.status?.toLowerCase();
+  return !status || OPEN_TOOL_STATUSES.has(status);
+}
+
+/** The turn is over: a call still shown running will never finish. */
+export function settleOpenTools(blocks: Block[]): Block[] {
+  let next = blocks;
+  for (let i = 0; i < blocks.length; i++) {
+    const block = blocks[i];
+    const status = block.tool?.status?.toLowerCase();
+    if (!block.tool || !status || !OPEN_TOOL_STATUSES.has(status)) continue;
+    if (next === blocks) next = blocks.slice();
+    next[i] = { ...block, streaming: false, tool: { ...block.tool, status: "cancelled" } };
+  }
+  return next;
+}
+
+/** A paused turn resumes: its clock restarts where the pause stopped it. */
+export function resumeTurnClock(blocks: Block[], now: number): Block[] {
+  for (let i = blocks.length - 1; i >= 0; i--) {
+    const block = blocks[i];
+    if (block.role !== "user") continue;
+    if (block.durationMs == null || block.doneTs !== undefined || block.startedAt == null) {
+      return blocks;
+    }
+    const { durationMs, ...rest } = block;
+    const next = blocks.slice();
+    next[i] = { ...rest, startedAt: now - durationMs };
+    return next;
+  }
+  return blocks;
 }
 
 function displayLabel(

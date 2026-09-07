@@ -42,6 +42,8 @@ export type ThreadState = {
   cost?: number;
   /** The last run ended because the user hit Stop. */
   stopped: boolean;
+  /** The harness is squeezing the conversation right now. */
+  compacting: boolean;
   /** research-source rows, whole, for the research board. */
   sources: ResearchSource[];
   /** Child session ids this thread spawned. */
@@ -67,6 +69,7 @@ export function emptyThread(): ThreadState {
     costs: [],
     usage: [],
     stopped: false,
+    compacting: false,
     sources: [],
     agents: [],
     turnOpen: false,
