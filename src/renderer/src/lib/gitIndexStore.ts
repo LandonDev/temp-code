@@ -31,7 +31,7 @@ interface Entry {
   listeners: Set<() => void>;
   inFlight: boolean;
   pending: boolean;
-  timer: number | null;
+  timer: ReturnType<typeof setTimeout> | null;
   stop: (() => void) | null;
 }
 
@@ -83,7 +83,7 @@ function start(cwd: string, entry: Entry): void {
   if (entry.stop) return;
   const schedule = () => {
     if (entry.timer !== null) return;
-    entry.timer = window.setTimeout(() => {
+    entry.timer = setTimeout(() => {
       entry.timer = null;
       void load(cwd, entry);
     }, DEBOUNCE_MS);
@@ -97,35 +97,46 @@ function start(cwd: string, entry: Entry): void {
   const onFocus = () => {
     if (!document.hidden) schedule();
   };
-  window.addEventListener("focus", onFocus);
-  document.addEventListener("visibilitychange", onFocus);
+  const dom = typeof window !== "undefined";
+  if (dom) {
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onFocus);
+  }
   entry.stop = () => {
     release();
     unsubFiles();
     unsubGit();
-    window.removeEventListener("focus", onFocus);
-    document.removeEventListener("visibilitychange", onFocus);
-    if (entry.timer !== null) window.clearTimeout(entry.timer);
+    if (dom) {
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onFocus);
+    }
+    if (entry.timer !== null) clearTimeout(entry.timer);
     entry.timer = null;
     entry.stop = null;
   };
   void load(cwd, entry);
 }
 
-/** The checkout's snapshot; subscribing holds its watch open. Null cwd → empty. */
+/** Hold a checkout's snapshot live; the watch closes when the last holder lets go. */
+export function holdGitSnapshot(cwd: string): () => void {
+  const entry = entryFor(cwd);
+  const hold = () => undefined;
+  entry.listeners.add(hold);
+  start(cwd, entry);
+  return () => {
+    entry.listeners.delete(hold);
+    if (entry.listeners.size === 0) entry.stop?.();
+  };
+}
+
+export function getGitSnapshot(cwd: string): GitSnapshot {
+  return entries.get(cwd)?.snapshot ?? EMPTY;
+}
+
+/** The checkout's snapshot; rendering holds its watch open. Null cwd → empty. */
 export function useGitSnapshot(cwd: string | null | undefined): GitSnapshot {
   const key = cwd && cwd !== "~" ? cwd : null;
-  useEffect(() => {
-    if (!key) return;
-    const entry = entryFor(key);
-    const l = () => undefined;
-    entry.listeners.add(l);
-    start(key, entry);
-    return () => {
-      entry.listeners.delete(l);
-      if (entry.listeners.size === 0) entry.stop?.();
-    };
-  }, [key]);
+  useEffect(() => (key ? holdGitSnapshot(key) : undefined), [key]);
   return useSyncExternalStore(
     (l) => {
       if (!key) return () => undefined;
@@ -135,12 +146,12 @@ export function useGitSnapshot(cwd: string | null | undefined): GitSnapshot {
         entry.listeners.delete(l);
       };
     },
-    () => (key ? entryFor(key).snapshot : EMPTY),
+    () => (key ? getGitSnapshot(key) : EMPTY),
     () => EMPTY,
   );
 }
 
-/** Test hook. */
+/** Test hook: forget every checkout. */
 export function resetGitSnapshots(): void {
   for (const entry of entries.values()) entry.stop?.();
   entries.clear();
