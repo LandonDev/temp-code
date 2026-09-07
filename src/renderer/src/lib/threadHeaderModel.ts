@@ -1,4 +1,3 @@
-import { neighbourAfterArchive } from "./threadStrip";
 import {
   chipTone,
   displayStatus,
@@ -86,15 +85,17 @@ export function headerOrder<T extends StripThread>(model: HeaderModel<T>): Heade
   return [...model.live, ...model.dormant];
 }
 
-/** The chip that takes selection when `id` leaves the strip. */
+/** The chip that takes selection when `id` leaves the strip: its nearest
+ *  neighbour in strip order, or null when it was the last one. */
 export function headerNeighbour<T extends StripThread>(
   model: HeaderModel<T>,
   id: string,
 ): HeaderChip<T> | null {
-  return neighbourAfterArchive(
-    headerOrder(model).map((c) => ({ ...c, dormant: !c.live })),
-    id,
-  );
+  const order = headerOrder(model);
+  const at = order.findIndex((c) => c.id === id);
+  const rest = order.filter((c) => c.id !== id);
+  if (rest.length === 0) return null;
+  return rest[Math.min(Math.max(at, 0), rest.length - 1)];
 }
 
 /** Session id → the first tab that holds it. A thread on several tabs
