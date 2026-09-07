@@ -65,8 +65,9 @@ import {
   threadMentionsToTitles,
   useThreadTitles,
 } from "../lib/threadMentions";
-import { EditRow, TranscriptSessionContext } from "./EditRow";
+import { EditRow } from "./EditRow";
 import { isEditBlock } from "./editModel";
+import { TranscriptSessionContext } from "./transcriptSession";
 import { TranscriptSelectionMenu } from "./TranscriptSelectionMenu";
 import {
   activityPhaseTitle,
@@ -97,7 +98,7 @@ const TURN_PAGE_SIZE = 20;
 
 type Props = {
   blocks: Block[];
-  /** The owning session: edit rows read its live disk diffs. */
+  /** the session shown, for rows that remember state per session */
   sessionId?: string;
   busy?: boolean;
   cwd?: string;

@@ -187,7 +187,7 @@ function PreviewLine({
         </span>
       ) : null}
       <span className="min-w-0 flex-1 truncate pr-2 font-mono text-[11px] leading-4.5">
-        {highlight(line.text, line.kind === "context")}
+        {highlightCode(line.text, line.kind === "context")}
       </span>
     </div>
   );
@@ -208,7 +208,7 @@ function StatusIcon({ status }: { status: Status }) {
   return null;
 }
 
-function highlight(text: string, dimmed: boolean) {
+export function highlightCode(text: string, dimmed: boolean) {
   const dim = dimmed ? "opacity-70" : "";
   const trimmed = text.trimStart();
   if (

@@ -10,6 +10,8 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from "react";
 import { Composer } from "../chrome/Composer";
+import { motion, useReducedMotion } from "motion/react";
+import { EASE_OUT } from "../lib/ease";
 import { MessageQueue } from "../chrome/MessageQueue";
 import type { ComposerIntent } from "../lib/composerAction";
 import { useQueue } from "../lib/tcserver/store";
@@ -124,6 +126,7 @@ export const SessionPane = memo(function SessionPane({
   onNewTerminal,
   onPaneDragStart,
 }: Props) {
+  const reduceMotion = useReducedMotion();
   const title = sessionDisplayTitle(session.title, session.harness);
   const approve = useCallback(
     (requestId: string | number, decision: ApprovalDecision) =>
@@ -344,10 +347,16 @@ export const SessionPane = memo(function SessionPane({
     </>
   );
 
+  // Keyed remount per session; the brief fade bridges the swap without
+  // delaying it (no exit animation).
   return (
-    <div
+    <motion.div
+      key={session.id}
       ref={rootRef}
       data-session-drop={session.id}
+      initial={reduceMotion ? false : { opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: 0.12, ease: EASE_OUT }}
       className="flex h-full min-h-0 min-w-0 flex-1 flex-col"
       onMouseDown={() => onFocus(session.id)}
     >
@@ -426,6 +435,6 @@ export const SessionPane = memo(function SessionPane({
           onOpenSession={onOpenSession}
         />
       )}
-    </div>
+    </motion.div>
   );
 });
