@@ -19,6 +19,7 @@ import ArrowRight01Icon from "@hugeicons/core-free-icons/ArrowRight01Icon";
 import ArrowUp01Icon from "@hugeicons/core-free-icons/ArrowUp01Icon";
 import BlocksIcon from "@hugeicons/core-free-icons/BlocksIcon";
 import BotIcon from "@hugeicons/core-free-icons/BotIcon";
+import Camera01Icon from "@hugeicons/core-free-icons/Camera01Icon";
 import BrainIcon from "@hugeicons/core-free-icons/BrainIcon";
 import Cancel01Icon from "@hugeicons/core-free-icons/Cancel01Icon";
 import CaseSensitiveIcon from "@hugeicons/core-free-icons/CaseSensitiveIcon";
@@ -157,6 +158,7 @@ const UnfoldVerticalIcon: IconSvgElement = [
 
 export const AlertCircle = wrap(AlertCircleIcon, "AlertCircle");
 export const Bug = wrap(Bug01Icon, "Bug");
+export const Camera = wrap(Camera01Icon, "Camera");
 export const FileCode = wrap(FileCodeIcon, "FileCode");
 export const Circle = wrap(CircleIcon, "Circle");
 export const GitFork = wrap(GitForkIcon, "GitFork");
