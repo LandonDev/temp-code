@@ -1,12 +1,12 @@
-import { motion, useReducedMotion } from 'motion/react'
-import { useState, type ReactNode } from 'react'
-import { PanelRight } from '../../chrome/icons'
-import { SPRING_PANEL } from '../../lib/ease'
-import type { SessionStatus } from '../../lib/tcserver/types'
-import { Spinner, StatusDot } from './bits'
+import { motion, useReducedMotion } from "motion/react";
+import { useState, type ReactNode } from "react";
+import { PanelRight } from "../../chrome/icons";
+import { SPRING_PANEL } from "../../lib/ease";
+import type { SessionStatus } from "../../lib/tcserver/types";
+import { Spinner, StatusDot } from "./bits";
 
-const OPEN_W = 380
-const RAIL_W = 36
+const OPEN_W = 380;
+const RAIL_W = 36;
 
 /**
  * A log docked on the right edge, folded to a slim rail by default: the
@@ -14,18 +14,10 @@ const RAIL_W = 36
  * The body stays mounted while folded (`inert` + `invisible absolute`) so
  * a streaming transcript keeps its scroll and never re-mounts.
  */
-export function SidePanel({
-  label,
-  status,
-  children
-}: {
-  label: string
-  status?: SessionStatus
-  children: ReactNode
-}) {
-  const [open, setOpen] = useState(false)
-  const reduce = useReducedMotion()
-  const running = status === 'running' || status === 'starting'
+export function SidePanel({ label, status, children }: { label: string; status?: SessionStatus; children: ReactNode }) {
+  const [open, setOpen] = useState(false);
+  const reduce = useReducedMotion();
+  const running = status === "running" || status === "starting";
 
   return (
     <motion.div
@@ -46,7 +38,7 @@ export function SidePanel({
           <PanelRight className="size-4" strokeWidth={1.75} />
           <span
             className="text-[10px] font-medium tracking-[0.08em] uppercase transition-colors"
-            style={{ writingMode: 'vertical-rl' }}
+            style={{ writingMode: "vertical-rl" }}
           >
             {label}
           </span>
@@ -56,12 +48,10 @@ export function SidePanel({
       <div
         inert={!open}
         style={{ width: OPEN_W }}
-        className={`flex h-full flex-col ${open ? '' : 'invisible absolute inset-y-0 right-0'}`}
+        className={`flex h-full flex-col ${open ? "" : "invisible absolute inset-y-0 right-0"}`}
       >
         <div className="flex h-9 shrink-0 items-center gap-2 border-b border-content/10 pr-1.5 pl-3">
-          <span className="text-[10px] font-medium tracking-[0.08em] text-content/50 uppercase">
-            {label}
-          </span>
+          <span className="text-[10px] font-medium tracking-[0.08em] text-content/50 uppercase">{label}</span>
           {running ? <Spinner className="size-3 text-content/35" /> : null}
           <button
             type="button"
@@ -75,5 +65,5 @@ export function SidePanel({
         <div className="flex min-h-0 flex-1 flex-col">{children}</div>
       </div>
     </motion.div>
-  )
+  );
 }

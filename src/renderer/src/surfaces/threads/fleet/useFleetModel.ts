@@ -33,11 +33,7 @@ export function fleetActive(counts: FleetCounts): boolean {
  * quiet; then the panel follows the fleet again. Returns the override to
  * keep for this render.
  */
-export function resolveOverride(
-  override: boolean | null,
-  sawActive: boolean,
-  active: boolean,
-): boolean | null {
+export function resolveOverride(override: boolean | null, sawActive: boolean, active: boolean): boolean | null {
   return active === sawActive ? override : null;
 }
 

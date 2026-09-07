@@ -17,8 +17,7 @@ const block = (role: Block["role"], text: string, extra: Partial<Block> = {}): B
   ...extra,
 });
 
-const session = (extra: Partial<Session> = {}): Session =>
-  ({ id: "s", blocks: [], ...extra }) as unknown as Session;
+const session = (extra: Partial<Session> = {}): Session => ({ id: "s", blocks: [], ...extra }) as unknown as Session;
 
 const thread = (extra: Record<string, unknown> = {}) =>
   ({ todos: [], cost: undefined, ...extra }) as unknown as Session["thread"];
@@ -87,7 +86,9 @@ describe("fleetLine", () => {
   });
 
   it("falls through to the agent line otherwise", () => {
-    const s = session({ blocks: [block("tool", "", { tool: { name: "Bash", input: { command: "ls" } } as Block["tool"] })] });
+    const s = session({
+      blocks: [block("tool", "", { tool: { name: "Bash", input: { command: "ls" } } as Block["tool"] })],
+    });
     expect(fleetLine("running", s).text).toContain("ls");
     expect(fleetLine("waiting", s)).toEqual({ text: "waiting for approval", tone: "warning" });
   });
