@@ -1,7 +1,7 @@
 /**
  * Cut a release: `bun scripts/release.ts "one-line notes"`.
  *
- * Gates on a clean tree, typecheck, and a real build, then bumps
+ * Gates on a clean tree, typecheck, vitest, and a real build, then bumps
  * release.json, commits it, and tags `release-N`. The user's installed
  * app sees the new tag and offers the update — never install or swap
  * /Applications/TempCode.app from here.
@@ -28,6 +28,8 @@ if (dirty.length > 0) {
 
 console.log('› typecheck')
 run('bun', ['run', 'typecheck'])
+console.log('› vitest')
+run('bunx', ['vitest', 'run'])
 console.log('› build')
 run('bunx', ['electron-vite', 'build'])
 
