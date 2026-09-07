@@ -1,15 +1,16 @@
-import { Bug, GripVertical, Terminal, X } from "./icons";
+import { GripVertical, Terminal, X } from "./icons";
 import type { PointerEvent as ReactPointerEvent, ReactNode } from "react";
 import { useLayoutEffect, useRef } from "react";
 import { basename } from "../lib/fs";
+import { useGitSnapshot } from "../lib/gitIndexStore";
+import { useEditorState } from "../lib/monaco/editorState";
+import { projectForCwd } from "../lib/tcserver/projects";
 import {
-  isDebugTab,
   isReleaseNotesTab,
   isReviewTab,
   isTerminalTab,
   type FilePaneTab,
 } from "../lib/layout";
-import { useEditorState } from "../lib/monaco/editorState";
 import { releaseNotesTitle } from "../lib/releaseNotes";
 import { terminalTabLabel } from "../lib/terminalTab";
 import { useLockOverscroll } from "../hooks/useLockOverscroll";
@@ -49,28 +50,21 @@ export function surfaceTabPresentation(
     };
   }
 
-  if (isDebugTab(file)) {
-    return {
-      name: "Debug",
-      label: "Debug",
-      iconName: "debug",
-      tooltip: `Debug · ${basename(file.path)}`,
-    };
-  }
-
   const review = isReviewTab(file);
   const terminal = isTerminalTab(file);
   const name = terminal ? terminalTabLabel(file) : basename(file.path);
+  const against = review ? (file.diffBase ? `vs ${shortRef(file.diffBase)}` : "Working Tree") : null;
   return {
     name,
-    label: review ? `${name} (Working Tree)` : name,
+    label: against ? `${name} (${against})` : name,
     iconName: name,
-    tooltip: terminal
-      ? `${name} · ${file.cwd}`
-      : review
-        ? `${file.path} (Working Tree)`
-        : file.path,
+    tooltip: terminal ? `${name} · ${file.cwd}` : against ? `${file.path} (${against})` : file.path,
   };
+}
+
+/** A full sha reads as its first seven; branch names and HEAD stay whole. */
+function shortRef(ref: string): string {
+  return /^[0-9a-f]{40}$/.test(ref) ? ref.slice(0, 7) : ref;
 }
 
 /** Mirrors the VS Code tab tooltip: the path, then what is wrong with it. */
@@ -92,8 +86,15 @@ export function SurfaceTabs({
   trailing,
 }: Props) {
   const lockOverscroll = useLockOverscroll<HTMLDivElement>();
-  const debugPhase = useEditorState((s) => s.debugPhase);
   const activeTabRef = useRef<HTMLDivElement | null>(null);
+  // Every tab of one pane shares a checkout; the pane's first file names it.
+  const cwd = files[0]?.cwd ?? "";
+  const { index } = useGitSnapshot(cwd);
+  const changed = index?.files ?? [];
+  const busy = useEditorState((s) => {
+    const project = cwd ? projectForCwd(cwd) : undefined;
+    return project ? (s.lspBusy[project.id] ?? null) : null;
+  });
   const fileIds = files.map((file) => file.id);
   const sortable = useSortable(fileIds, onReorder);
   const canDrag = files.length > 1;
@@ -137,8 +138,8 @@ export function SurfaceTabs({
         const errors = fileErrorCounts.get(file.id) ?? 0;
         const review = isReviewTab(file);
         const terminal = isTerminalTab(file);
-        const debug = isDebugTab(file);
         const { label, iconName, tooltip } = surfaceTabPresentation(file);
+        const change = terminal ? undefined : changed.find((f) => f.path === file.path);
         const dragging = sortable.draggingId === file.id;
         const showStart =
           sortable.draggingId &&
@@ -196,8 +197,6 @@ export function SurfaceTabs({
             >
               {terminal ? (
                 <Terminal className="size-3.5 shrink-0" strokeWidth={1.75} />
-              ) : debug ? (
-                <Bug className="size-3.5 shrink-0" strokeWidth={1.75} />
               ) : (
                 <FileTypeIcon name={iconName} isDir={false} size={15} />
               )}
@@ -212,20 +211,18 @@ export function SurfaceTabs({
               >
                 {label}
               </span>
+              {change && change.status !== "untracked" && (change.additions > 0 || change.deletions > 0) ? (
+                <span className="shrink-0 text-[10.5px] tabular-nums">
+                  {change.additions > 0 ? <span className="text-success">+{change.additions}</span> : null}
+                  {change.additions > 0 && change.deletions > 0 ? " " : ""}
+                  {change.deletions > 0 ? <span className="text-danger">−{change.deletions}</span> : null}
+                </span>
+              ) : null}
               {dirty ? (
                 <span
                   className="size-1.5 shrink-0 rounded-full bg-content/75"
                   title="Unsaved changes"
                   aria-label="Unsaved changes"
-                />
-              ) : null}
-              {debug && debugPhase !== "idle" ? (
-                <span
-                  className={`size-1.5 shrink-0 rounded-full ${
-                    debugPhase === "stopped" ? "bg-warning" : "bg-busy"
-                  }`}
-                  title={debugPhase}
-                  aria-label={debugPhase}
                 />
               ) : null}
             </button>
@@ -259,6 +256,14 @@ export function SurfaceTabs({
         />
       ) : null}
       </div>
+      {busy ? (
+        <div
+          className="flex max-w-72 shrink-0 items-center truncate px-3 text-[11px] text-content/40 tabular-nums"
+          title={busy}
+        >
+          {busy}
+        </div>
+      ) : null}
       {trailing}
     </div>
   );

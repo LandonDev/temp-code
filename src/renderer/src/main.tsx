@@ -13,6 +13,7 @@ import { slashCommandStore } from "./lib/tcserver/slashCommands";
 import { handleQuitRequested, loadBootWorkspace } from "./lib/appLifecycle";
 import { consumeInstalledUpdate } from "./lib/updateNotice";
 import { updateStore } from "./lib/updateStore";
+import { initAppshots } from "./lib/appshots";
 import "./index.css";
 
 // Before App mounts its own window listener: the editor claims its chords first.
@@ -25,6 +26,7 @@ workspaceStore.connect();
 rulesStore.connect();
 slashCommandStore.connect();
 updateStore.start();
+initAppshots();
 
 function dismissBootSplash() {
   const splash = document.getElementById("boot-splash");

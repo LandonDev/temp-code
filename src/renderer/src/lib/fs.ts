@@ -69,8 +69,26 @@ export type GitFileDiff = {
   tooLarge: boolean;
 };
 
-export function gitFileDiff(cwd: string, relative: string): Promise<GitFileDiff> {
-  return invoke<GitFileDiff>("git_file_diff", { cwd, relative });
+/** `base` picks the left side: the index (default) or HEAD. */
+export function gitFileDiff(
+  cwd: string,
+  relative: string,
+  base?: "index" | "HEAD",
+): Promise<GitFileDiff> {
+  return invoke<GitFileDiff>("git_file_diff", { cwd, relative, base });
+}
+
+export type GitLogEntry = {
+  hash: string;
+  short: string;
+  subject: string;
+  author: string;
+  /** ISO 8601 author date */
+  date: string;
+};
+
+export function gitLog(cwd: string, limit = 20): Promise<GitLogEntry[]> {
+  return invoke<GitLogEntry[]>("git_log", { cwd, limit });
 }
 
 export function gitStageContents(

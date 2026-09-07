@@ -12,6 +12,7 @@ export type StaticSettingsSectionId =
   | "providers"
   | "orchestration"
   | "build"
+  | "appshots"
   | "archive";
 
 /** A fixed page, or one workspace's own page (`ws:<workspace id>`). */
@@ -66,6 +67,12 @@ export const SETTINGS_SECTIONS: {
     label: "Build",
     description:
       "The command the Build rail tab runs for a workspace, and the files it produces. Projects can override it in their settings.",
+  },
+  {
+    id: "appshots",
+    label: "Appshots",
+    description:
+      "Double-tap ⌘ over another app to drop its window, image and text, into a chat.",
   },
   {
     id: "archive",

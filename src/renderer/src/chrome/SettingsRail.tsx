@@ -2,6 +2,7 @@ import {
   Archive,
   ArrowLeft,
   Bot,
+  Camera,
   FileCode,
   Folder,
   Keyboard,
@@ -30,6 +31,7 @@ const SECTION_ICONS: Record<StaticSettingsSectionId, IconComponent> = {
   providers: Bot,
   orchestration: Users,
   build: Wrench,
+  appshots: Camera,
   archive: Archive,
 };
 
