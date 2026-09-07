@@ -6,18 +6,20 @@ import { createWindow } from './windows'
  *  from CDP while the app is not frontmost, when nothing is focused. */
 let debugTarget: BrowserWindow | null = null
 
-/** Custom items go to whichever window the user is looking at. */
+/** Custom items go to whichever window the user is looking at; New Window
+ *  too, so it runs through the renderer's command map like the key does.
+ *  Only with no window to ask (all closed, app still in the dock) does
+ *  main open one itself. */
 function dispatch(id: string): void {
-  if (id === 'new_window') {
-    createWindow()
-    return
-  }
   if (id === 'quit') {
     app.quit()
     return
   }
   const win = BrowserWindow.getFocusedWindow() ?? debugTarget
-  if (!win || win.isDestroyed()) return
+  if (!win || win.isDestroyed()) {
+    if (id === 'new_window') createWindow()
+    return
+  }
   win.webContents.send('native:menu', id)
 }
 

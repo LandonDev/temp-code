@@ -48,9 +48,10 @@ describe('menu tree', () => {
     expect(actual).toEqual(EXPECTED)
   })
 
-  it('sends 34 ids to the renderer and keeps two in main', () => {
-    expect(MAIN_MENU_IDS).toEqual(['new_window', 'quit'])
-    expect(RENDERER_MENU_IDS).toHaveLength(34)
+  it('sends 35 ids to the renderer and keeps quit in main', () => {
+    expect(MAIN_MENU_IDS).toEqual(['quit'])
+    expect(RENDERER_MENU_IDS).toHaveLength(35)
+    expect(RENDERER_MENU_IDS).toContain('new_window')
     expect(RENDERER_MENU_IDS).not.toContain('quit')
   })
 

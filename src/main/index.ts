@@ -7,14 +7,16 @@ import { registerAppshots } from './appshots'
 import { electronApp, optimizer } from '@electron-toolkit/utils'
 import { startServer, type RunningServer } from './server'
 import { registerAssetProtocol, registerAssetScheme } from './assets'
-import { killAllPtys, ptyFlowCounters, registerPty } from './pty'
+import { killAllPtys, listPtys, ptyFlowCounters, registerPty } from './pty'
 import { clickMenuItem, registerMenu } from './menu'
 import { queueNextPick, registerDialogs } from './dialogs'
 import {
   activateWindows,
   createWindow,
+  describeWindows,
   hasQuitSubscriber,
   isQuitting,
+  openSavedWindows,
   registerDock,
   registerWindows,
   requestQuit
@@ -84,7 +86,8 @@ app.whenReady().then(async () => {
   server = await startServer(join(app.getPath('userData'), 'temp-code.db'))
   registerUpdates()
   registerPty()
-  registerWindows()
+  const { store } = server
+  registerWindows({ dropSnapshot: (slot) => store.dropWorkspaceSnapshot(slot) })
   registerDialogs()
   registerMenu()
   registerDock()
@@ -102,7 +105,7 @@ app.whenReady().then(async () => {
     shell.showItemInFolder(path)
   })
 
-  createWindow()
+  openSavedWindows()
 
   app.on('activate', function () {
     activateWindows()
@@ -117,6 +120,8 @@ function registerDebug(): void {
   ipcMain.handle('debug:dock-badge', () => (app.dock ? app.dock.getBadge() : null))
   ipcMain.handle('debug:window-title', (e) => BrowserWindow.fromWebContents(e.sender)?.getTitle())
   ipcMain.handle('debug:pty-flow', () => ptyFlowCounters())
+  ipcMain.handle('debug:windows', () => describeWindows())
+  ipcMain.handle('debug:ptys', () => listPtys())
   ipcMain.handle('debug:next-pick', (_e, paths: string[]) => queueNextPick(paths.map(String)))
   // The old renderer's CSP forbids tempcode-asset:, so the scheme is
   // exercised from main instead.
@@ -130,6 +135,9 @@ function registerDebug(): void {
   })
 }
 
+// macOS keeps the app in the dock after the last window closes (the donor
+// does too); the kept slot comes back on the dock click. Elsewhere the last
+// window is the app.
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
     app.quit()
@@ -144,6 +152,7 @@ app.on('before-quit', (e) => {
     requestQuit()
     return
   }
+  // The server outlives every window and dies only here, with the PTYs.
   killAllPtys()
   void server?.close()
 })
