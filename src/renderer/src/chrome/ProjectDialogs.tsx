@@ -251,6 +251,7 @@ export function NewProjectDialog({
   return (
     <Modal
       onClose={onClose}
+      busy={pending}
       title="New project"
       description={workspace.name}
       size="sm"
@@ -367,6 +368,7 @@ export function ProjectSettingsDialog({
   return (
     <Modal
       onClose={onClose}
+      busy={pending}
       title="Project settings"
       description={`${worktree ? "Worktree" : "Local"} · ${prettyCwd(project.cwd)}`}
       size="sm"
@@ -468,6 +470,7 @@ export function ProjectTeardownDialog({
   return (
     <Modal
       onClose={onClose}
+      busy={pending}
       title={deleting ? "Delete project" : "Archive project"}
       description={project.name}
       size="sm"
@@ -538,7 +541,7 @@ export function ConfirmDialog({
     }
   };
   return (
-    <Modal onClose={onCancel} title={title} size="sm">
+    <Modal onClose={onCancel} busy={pending} title={title} size="sm">
       <div className="flex flex-col gap-2 px-4 py-3">
         <p className="text-[12px] leading-snug text-content/60">{body}</p>
         <ErrorLine error={error} />
