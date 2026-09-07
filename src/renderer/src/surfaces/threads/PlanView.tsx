@@ -14,7 +14,7 @@ import {
 } from "../../chrome/icons";
 import { ModelPicker } from "../../chrome/ModelPicker";
 import { ModelSettings } from "../../chrome/ModelSettings";
-import { OrchestrationTune, tuneIsSet, tuneSummary } from "../../chrome/OrchestrationTune";
+import { ThreadTune, normalizeTune, tuneSummary } from "../../chrome/ThreadTune";
 import { Popover } from "../../chrome/Popover";
 import {
   mergeModelSettings,
@@ -389,6 +389,7 @@ function StartButton({ session, tasks }: { session: Session; tasks: string[] }) 
         "",
       );
       const n = type === "implementation" ? workers : 1;
+      const rules = normalizeTune(tune);
       for (let i = 0; i < n; i++) {
         await startThread(
           {
@@ -403,7 +404,7 @@ function StartButton({ session, tasks }: { session: Session; tasks: string[] }) 
             planPath: session.planPath ?? undefined,
             goal: goal.trim() || undefined,
             title: n > 1 ? `${base} (${i + 1}/${n})` : base,
-            ...(type === "orchestration" && tuneIsSet(tune) ? { threadRules: tune } : {}),
+            ...(type === "orchestration" && rules ? { threadRules: rules } : {}),
           },
           type === "implementation"
             ? workerBrief(i, n, base)
@@ -448,8 +449,8 @@ function StartButton({ session, tasks }: { session: Session; tasks: string[] }) 
           onDismiss={() => setOpen(false)}
         >
           {view === "tune" ? (
-            <div className="p-3">
-              <div className="mb-2 flex items-center gap-1">
+            <div className="py-2">
+              <div className="flex items-center gap-1 px-2">
                 <button
                   type="button"
                   onClick={() => setView("main")}
@@ -460,15 +461,17 @@ function StartButton({ session, tasks }: { session: Session; tasks: string[] }) 
                 </button>
                 <span className="text-[13px] font-medium">Orchestration options</span>
               </div>
-              <OrchestrationTune workspaceId={session.workspaceId ?? null} value={tune} onChange={setTune} />
-              <button
-                type="button"
-                disabled={busy !== null}
-                onClick={() => void start("orchestration")}
-                className="mt-3 flex h-8 w-full items-center justify-center gap-1.5 rounded-lg bg-content text-[12.5px] font-medium text-background-base transition hover:bg-content/90 active:scale-[0.99] disabled:opacity-60"
-              >
-                {busy === "orchestration" ? <Spinner className="size-3.5" /> : "Orchestrate"}
-              </button>
+              <ThreadTune tune={tune} onChange={setTune} workspaceId={session.workspaceId ?? null} />
+              <div className="px-3">
+                <button
+                  type="button"
+                  disabled={busy !== null}
+                  onClick={() => void start("orchestration")}
+                  className="mt-1 flex h-8 w-full items-center justify-center gap-1.5 rounded-lg bg-content text-[12.5px] font-medium text-background-base transition hover:bg-content/90 active:scale-[0.99] disabled:opacity-60"
+                >
+                  {busy === "orchestration" ? <Spinner className="size-3.5" /> : "Orchestrate"}
+                </button>
+              </div>
             </div>
           ) : (
             <>

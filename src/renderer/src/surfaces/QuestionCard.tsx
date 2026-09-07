@@ -14,6 +14,7 @@ import {
   type StepperState,
 } from "../lib/questionStepper";
 import { ChevronLeft } from "../chrome/icons";
+import { slideQuestionPage } from "./threads/questionPage";
 
 /**
  * The model stopped to ask. One question shows at a time however many the
@@ -22,13 +23,14 @@ import { ChevronLeft } from "../chrome/icons";
  * in one answer after the last. Back keeps every pick.
  *
  * `renderPage` is the seam for the page motion: it receives each step's
- * body with the step index as its key, so a keyed slide can wrap it.
+ * body with the step index as its key. The default is the keyed slide
+ * from `threads/questionPage`; pass the identity to render pages still.
  */
 export function QuestionCard({
   question,
   onAnswer = (requestId, answers) =>
     void answerQuestion(question.sessionId, requestId, answers),
-  renderPage = (page) => page,
+  renderPage = slideQuestionPage,
 }: {
   question: QuestionMeta;
   onAnswer?: (requestId: string, answers: string[][] | null) => void;
