@@ -1,50 +1,50 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { getVersion, check, message, ask, relaunch } = vi.hoisted(() => ({
-  getVersion: vi.fn(),
+const { get, check, apply, message, ask } = vi.hoisted(() => ({
+  get: vi.fn(),
   check: vi.fn(),
+  apply: vi.fn(),
   message: vi.fn(),
   ask: vi.fn(),
-  relaunch: vi.fn(),
 }));
 
-vi.mock("./native", () => ({ getVersion, check, ask, message, relaunch }));
+vi.mock("./native", () => ({
+  ask,
+  message,
+  updates: { get, check, apply, onStatus: vi.fn() },
+}));
 vi.mock("./sounds", () => ({ announceUpdateAvailable: vi.fn() }));
 
 import { runUpdateFlow } from "./updater";
 
-describe("updater", () => {
+const status = (over: Record<string, unknown> = {}) => ({
+  current: 95,
+  latest: null,
+  notes: "",
+  canApply: true,
+  phase: "idle",
+  ...over,
+});
+
+describe("runUpdateFlow", () => {
+  beforeEach(() => {
+    get.mockResolvedValue(status());
+  });
   afterEach(() => {
     vi.resetAllMocks();
   });
 
-  it("keeps automatic checks quiet when updater endpoints are missing", async () => {
-    getVersion.mockResolvedValue("0.1.23");
-    check.mockRejectedValue(new Error("Updater does not have any endpoints set"));
+  it("keeps automatic checks quiet when the feed is unreachable", async () => {
+    check.mockResolvedValue(status({ phase: "error", error: "no feed" }));
 
-    await expect(runUpdateFlow(false)).resolves.toEqual({
-      phase: "idle",
-      currentVersion: "0.1.23",
+    await expect(runUpdateFlow(false)).resolves.toMatchObject({
+      phase: "error",
+      currentVersion: "95",
     });
     expect(message).not.toHaveBeenCalled();
   });
 
-  it("points manual checks without updater endpoints to GitHub releases", async () => {
-    getVersion.mockResolvedValue("0.1.23");
-    check.mockRejectedValue(new Error("Updater does not have any endpoints set"));
-
-    await expect(runUpdateFlow(true)).resolves.toEqual({
-      phase: "idle",
-      currentVersion: "0.1.23",
-    });
-    expect(message).toHaveBeenCalledWith(
-      expect.stringContaining("https://github.com/LandonDev/monocode-releases/releases/latest"),
-      { title: "MonoCode" },
-    );
-  });
-
-  it("still reports real updater failures", async () => {
-    getVersion.mockResolvedValue("0.1.23");
+  it("tells a manual check about a failed probe once", async () => {
     check.mockRejectedValue(new Error("network failed"));
 
     await expect(runUpdateFlow(true)).resolves.toMatchObject({
@@ -52,5 +52,44 @@ describe("updater", () => {
       error: "network failed",
     });
     expect(message).toHaveBeenCalledOnce();
+    expect(message).toHaveBeenCalledWith(
+      expect.stringContaining("network failed"),
+      expect.anything(),
+    );
+  });
+
+  it("tells a manual check when it is on the latest release", async () => {
+    check.mockResolvedValue(status({ latest: 95 }));
+
+    await expect(runUpdateFlow(true)).resolves.toEqual({
+      phase: "current",
+      currentVersion: "95",
+    });
+    expect(message).toHaveBeenCalledWith(
+      "You're on the latest version.",
+      expect.anything(),
+    );
+  });
+
+  it("offers a manual install and starts it on yes", async () => {
+    check.mockResolvedValue(status({ latest: 96, notes: "Hi" }));
+    get.mockResolvedValue(status({ latest: 96, notes: "Hi" }));
+    ask.mockResolvedValue(true);
+    apply.mockResolvedValue(status({ latest: 96, phase: "building" }));
+
+    await expect(runUpdateFlow(true)).resolves.toMatchObject({
+      phase: "building",
+    });
+    expect(ask).toHaveBeenCalledOnce();
+    expect(apply).toHaveBeenCalledOnce();
+  });
+
+  it("leaves a running build alone", async () => {
+    get.mockResolvedValue(status({ latest: 96, phase: "building" }));
+
+    await expect(runUpdateFlow(true)).resolves.toMatchObject({
+      phase: "building",
+    });
+    expect(check).not.toHaveBeenCalled();
   });
 });

@@ -1,175 +1,170 @@
-import { getVersion, ask, message, relaunch, check, type DownloadEvent, type Update } from "./native";
+import { ask, message, updates, type UpdateStatus } from "./native";
 import { announceUpdateAvailable } from "./sounds";
 import { rememberInstalledUpdate } from "./updateNotice";
+
+/**
+ * Donor update flow on top of main's self-updater. Releases are numbered,
+ * not semver; `apply` builds in main and relaunches the app itself, so the
+ * renderer only mirrors status and asks the user.
+ */
 
 export type UpdaterPhase =
   | "idle"
   | "checking"
   | "current"
   | "available"
-  | "downloading"
+  | "building"
+  | "restarting"
   | "error";
 
 export type UpdaterSnapshot = {
   phase: UpdaterPhase;
   currentVersion: string;
   availableVersion?: string;
-  /** Release notes from the update feed, shown before installing. */
+  /** Release notes for the waiting update, shown before installing. */
   notes?: string;
-  progress?: number;
+  /** While building: main's current step and its latest output line. */
+  step?: string;
+  detail?: string;
   error?: string;
 };
 
-let pendingUpdate: Update | null = null;
-
-function isUpdaterNotConfiguredError(error: unknown): boolean {
-  const text = error instanceof Error ? error.message : String(error);
-  return /updater does not have any endpoints set/i.test(text);
-}
-
-export async function readAppVersion(): Promise<string> {
-  try {
-    return await getVersion();
-  } catch {
-    return "0.0.0";
+export function snapshotFromStatus(status: UpdateStatus): UpdaterSnapshot {
+  const currentVersion = String(status.current);
+  const hasUpdate = status.latest != null && status.latest > status.current;
+  const availableVersion = hasUpdate ? String(status.latest) : undefined;
+  switch (status.phase) {
+    case "checking":
+      return { phase: "checking", currentVersion };
+    case "building":
+      return {
+        phase: "building",
+        currentVersion,
+        availableVersion,
+        step: status.step,
+        detail: status.detail,
+      };
+    case "restarting":
+      return { phase: "restarting", currentVersion, availableVersion };
+    case "error":
+      return {
+        phase: "error",
+        currentVersion,
+        availableVersion,
+        error: status.error ?? "Update failed.",
+      };
+    case "idle":
+      if (hasUpdate) {
+        return {
+          phase: "available",
+          currentVersion,
+          availableVersion,
+          notes: status.notes.trim() || undefined,
+        };
+      }
+      return { phase: status.latest == null ? "idle" : "current", currentVersion };
   }
 }
 
-export async function probeForUpdate(): Promise<Update | null> {
-  const update = await check();
-  pendingUpdate = update;
-  if (update) announceUpdateAvailable(update.version);
-  return update;
+const busy = (phase: UpdaterPhase) =>
+  phase === "building" || phase === "restarting";
+
+let remembered: string | undefined;
+
+/** Mirror main's status stream. Once main restarts into the new release,
+ *  the next boot shows its notes. */
+export function watchUpdateStatus(
+  onSnapshot: (snapshot: UpdaterSnapshot) => void,
+): () => void {
+  return updates.onStatus((status) => {
+    const snapshot = snapshotFromStatus(status);
+    if (
+      snapshot.phase === "restarting" &&
+      snapshot.availableVersion &&
+      remembered !== snapshot.availableVersion
+    ) {
+      remembered = snapshot.availableVersion;
+      rememberInstalledUpdate(snapshot.availableVersion);
+    }
+    onSnapshot(snapshot);
+  });
 }
 
 export async function runUpdateFlow(
   manual: boolean,
   onProgress?: (snapshot: UpdaterSnapshot) => void,
 ): Promise<UpdaterSnapshot> {
-  const currentVersion = await readAppVersion();
-  const base: UpdaterSnapshot = { phase: "checking", currentVersion };
-  onProgress?.(base);
+  const before = snapshotFromStatus(await updates.get());
+  if (busy(before.phase)) {
+    onProgress?.(before);
+    return before;
+  }
+  onProgress?.({ phase: "checking", currentVersion: before.currentVersion });
 
+  let snapshot: UpdaterSnapshot;
   try {
-    const update = await check();
-    if (!update) {
-      pendingUpdate = null;
-      const current: UpdaterSnapshot = { phase: "current", currentVersion };
-      onProgress?.(current);
-      if (manual) {
-        await message("You're on the latest version.", { title: "MonoCode" });
-      }
-      return current;
-    }
-
-    pendingUpdate = update;
-    announceUpdateAvailable(update.version);
-    const notes = update.body?.trim() || undefined;
-    const available: UpdaterSnapshot = {
-      phase: "available",
-      currentVersion,
-      availableVersion: update.version,
-      notes,
+    snapshot = snapshotFromStatus(await updates.check());
+  } catch (err) {
+    snapshot = {
+      phase: "error",
+      currentVersion: before.currentVersion,
+      error: err instanceof Error ? err.message : String(err),
     };
-    onProgress?.(available);
+  }
+  onProgress?.(snapshot);
 
-    if (!manual) return available;
-
-    const detail = notes ? `\n\n${notes}` : "";
+  if (snapshot.phase === "available") {
+    announceUpdateAvailable(snapshot.availableVersion!);
+    if (!manual) return snapshot;
+    const detail = snapshot.notes ? `\n\n${snapshot.notes}` : "";
     const yes = await ask(
-      `MonoCode ${update.version} is available (you have ${currentVersion}).${detail}\n\nInstall now?`,
+      `Release ${snapshot.availableVersion} is available (you have ${snapshot.currentVersion}).${detail}\n\nInstall now?`,
       { title: "Update available", kind: "info" },
     );
-    if (!yes) return available;
-
-    return installPendingUpdate(onProgress);
-  } catch (err) {
-    if (isUpdaterNotConfiguredError(err)) {
-      pendingUpdate = null;
-      const idle: UpdaterSnapshot = { phase: "idle", currentVersion };
-      onProgress?.(idle);
-      if (manual) {
-        await message(
-          "Automatic updates aren't configured for this build.\n\nDownload releases at https://github.com/LandonDev/monocode-releases/releases/latest",
-          { title: "MonoCode" },
-        );
-      }
-      return idle;
-    }
-
-    const error = err instanceof Error ? err.message : String(err);
-    const failed: UpdaterSnapshot = { phase: "error", currentVersion, error };
-    onProgress?.(failed);
-    if (manual) {
-      await message(`Couldn't check for updates.\n\n${error}`, {
-        title: "MonoCode",
-      });
-    }
-    return failed;
+    return yes ? installPendingUpdate(onProgress) : snapshot;
   }
+  if (manual && snapshot.phase === "error") {
+    await message(`Couldn't check for updates.\n\n${snapshot.error}`, {
+      title: "MonoCode",
+    });
+  } else if (manual && snapshot.phase !== "idle") {
+    await message("You're on the latest version.", { title: "MonoCode" });
+  }
+  return snapshot;
 }
 
+/** Start main's build of the waiting release. Progress then arrives on
+ *  the status stream; the app relaunches itself when it is done. */
 export async function installPendingUpdate(
   onProgress?: (snapshot: UpdaterSnapshot) => void,
 ): Promise<UpdaterSnapshot> {
-  const currentVersion = await readAppVersion();
-  const update = pendingUpdate;
-  if (!update) {
-    const idle: UpdaterSnapshot = { phase: "idle", currentVersion };
-    onProgress?.(idle);
-    return idle;
+  const status = await updates.get();
+  const snapshot = snapshotFromStatus(status);
+  if (snapshot.phase !== "available") {
+    onProgress?.(snapshot);
+    return snapshot;
   }
-
-  let downloaded = 0;
-  let contentLength = 0;
-
-  const downloading: UpdaterSnapshot = {
-    phase: "downloading",
-    currentVersion,
-    availableVersion: update.version,
-    progress: 0,
-  };
-  onProgress?.(downloading);
-
-  try {
-    await update.downloadAndInstall((event: DownloadEvent) => {
-      if (event.event === "Started") {
-        contentLength = event.data.contentLength ?? 0;
-        downloaded = 0;
-      } else if (event.event === "Progress") {
-        downloaded += event.data.chunkLength;
-      }
-
-      const progress =
-        contentLength > 0
-          ? Math.min(100, Math.round((downloaded / contentLength) * 100))
-          : undefined;
-
-      onProgress?.({
-        phase: "downloading",
-        currentVersion,
-        availableVersion: update.version,
-        progress,
-      });
-    });
-
-    rememberInstalledUpdate(update.version);
-    pendingUpdate = null;
-    await relaunch();
-    return {
-      phase: "current",
-      currentVersion: update.version,
-    };
-  } catch (err) {
-    const error = err instanceof Error ? err.message : String(err);
+  if (!status.canApply) {
     const failed: UpdaterSnapshot = {
+      ...snapshot,
       phase: "error",
-      currentVersion,
-      availableVersion: update.version,
-      error,
+      error: "This dev instance can't apply updates. Use the installed app.",
     };
     onProgress?.(failed);
-    await message(`Couldn't install the update.\n\n${error}`, { title: "MonoCode" });
+    await message(failed.error!, { title: "MonoCode" });
     return failed;
   }
+  const started = snapshotFromStatus(await updates.apply());
+  const result: UpdaterSnapshot = busy(started.phase)
+    ? started
+    : started.phase === "error"
+      ? started
+      : { ...snapshot, phase: "error", error: "The update did not start." };
+  onProgress?.(result);
+  if (result.phase === "error") {
+    await message(`Couldn't install the update.\n\n${result.error}`, {
+      title: "MonoCode",
+    });
+  }
+  return result;
 }

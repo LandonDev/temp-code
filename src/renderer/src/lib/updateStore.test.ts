@@ -2,17 +2,22 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   announce: vi.fn(),
+  apply: vi.fn(),
   check: vi.fn(),
-  getVersion: vi.fn(),
+  get: vi.fn(),
   message: vi.fn(),
+  onStatus: vi.fn(),
 }));
 
 vi.mock("./native", () => ({
-  getVersion: mocks.getVersion,
   ask: vi.fn(),
   message: mocks.message,
-  relaunch: vi.fn(),
-  check: mocks.check,
+  updates: {
+    get: mocks.get,
+    check: mocks.check,
+    apply: mocks.apply,
+    onStatus: mocks.onStatus,
+  },
 }));
 vi.mock("./sounds", () => ({ announceUpdateAvailable: mocks.announce }));
 
@@ -24,15 +29,32 @@ import {
 
 const fakeWindow = new EventTarget();
 
+const status = (over: Record<string, unknown> = {}) => ({
+  current: 95,
+  latest: 95,
+  notes: "",
+  canApply: true,
+  phase: "idle",
+  ...over,
+});
+
 async function flush() {
   for (let i = 0; i < 4; i++) await Promise.resolve();
 }
 
+let pushStatus: ((s: ReturnType<typeof status>) => void) | null = null;
+
 beforeEach(() => {
   vi.useFakeTimers();
   vi.stubGlobal("window", fakeWindow);
-  mocks.getVersion.mockResolvedValue("0.2.0");
-  mocks.check.mockResolvedValue(null);
+  mocks.get.mockResolvedValue(status());
+  mocks.check.mockResolvedValue(status());
+  mocks.onStatus.mockImplementation((cb) => {
+    pushStatus = cb;
+    return () => {
+      pushStatus = null;
+    };
+  });
 });
 
 afterEach(() => {
@@ -43,11 +65,10 @@ afterEach(() => {
 });
 
 describe("updateStore", () => {
-  it("probes at launch and keeps the feed's notes on the snapshot", async () => {
-    mocks.check.mockResolvedValue({
-      version: "0.2.1",
-      body: "## [0.2.1] - 2026-09-03\n\n### Changed\n\n- First auto-updating release\n",
-    });
+  it("probes at launch and keeps the release notes on the snapshot", async () => {
+    mocks.check.mockResolvedValue(
+      status({ latest: 96, notes: "Build tab shows behind-origin counts\n" }),
+    );
 
     updateStore.start();
     await flush();
@@ -55,11 +76,11 @@ describe("updateStore", () => {
     expect(mocks.check).toHaveBeenCalledOnce();
     expect(updateStore.getSnapshot()).toMatchObject({
       phase: "available",
-      currentVersion: "0.2.0",
-      availableVersion: "0.2.1",
-      notes: expect.stringContaining("First auto-updating release"),
+      currentVersion: "95",
+      availableVersion: "96",
+      notes: expect.stringContaining("behind-origin"),
     });
-    expect(mocks.announce).toHaveBeenCalledWith("0.2.1");
+    expect(mocks.announce).toHaveBeenCalledWith("96");
     expect(mocks.message).not.toHaveBeenCalled();
   });
 
@@ -71,7 +92,7 @@ describe("updateStore", () => {
 
     expect(updateStore.getSnapshot()).toEqual({
       phase: "idle",
-      currentVersion: "0.2.0",
+      currentVersion: "95",
     });
     expect(mocks.message).not.toHaveBeenCalled();
   });
@@ -110,5 +131,23 @@ describe("updateStore", () => {
     await flush();
 
     expect(seen).toEqual(["checking", "current"]);
+  });
+
+  it("mirrors main's build and restart and skips probes meanwhile", async () => {
+    updateStore.start();
+    await flush();
+
+    pushStatus!(status({ latest: 96, phase: "building", step: "bun install" }));
+    expect(updateStore.getSnapshot()).toMatchObject({
+      phase: "building",
+      availableVersion: "96",
+      step: "bun install",
+    });
+
+    await vi.advanceTimersByTimeAsync(CHECK_INTERVAL_MS);
+    expect(mocks.check).toHaveBeenCalledTimes(1);
+
+    pushStatus!(status({ latest: 96, phase: "restarting" }));
+    expect(updateStore.getSnapshot().phase).toBe("restarting");
   });
 });
