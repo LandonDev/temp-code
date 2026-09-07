@@ -160,6 +160,7 @@ import { client } from "../lib/tcserver/client";
 import { retryBlockedEnsures } from "../lib/monaco/lspGate";
 import { Modal } from "../chrome/Modal";
 import { OrchestrationRulesEditor } from "../chrome/OrchestrationRules";
+import { BuildEditor, takeRequestedBuildScope } from "../chrome/rail/buildSettings";
 import { takeRequestedScope } from "../lib/tcserver/rules";
 import { useWorkspaces } from "../lib/tcserver/workspaces";
 import { Heading, Row, Segmented, Select, SecondaryButton, Toggle } from "./settingsBits";
@@ -264,6 +265,7 @@ export function SettingsView({
           {section === "keybindings" ? <KeybindingsPage /> : null}
           {section === "providers" ? <ProvidersPage /> : null}
           {section === "orchestration" ? <OrchestrationPage /> : null}
+          {section === "build" ? <BuildPage /> : null}
           {section === "archive" ? (
             <ArchivePage
               onOpenSession={onOpenSession}
@@ -1246,6 +1248,31 @@ function OrchestrationPage() {
         </Row>
       ) : null}
       <OrchestrationRulesEditor key={scope ?? ""} workspaceId={known ? scope : null} />
+    </>
+  );
+}
+
+/** One workspace's build command; the Build rail tab deep-links here. */
+function BuildPage() {
+  const workspaces = useWorkspaces();
+  const [scope, setScope] = useState<string | null>(() => takeRequestedBuildScope() ?? null);
+  const selected = workspaces.find((w) => w.id === scope) ?? workspaces[0];
+  if (!selected) {
+    return <p className="py-4 text-[12px] text-content/45">No workspaces yet.</p>;
+  }
+  return (
+    <>
+      {workspaces.length > 1 ? (
+        <Row label="Workspace">
+          <Select
+            label="Build workspace"
+            value={selected.id}
+            onChange={setScope}
+            options={workspaces.map((w) => ({ value: w.id, label: w.name }))}
+          />
+        </Row>
+      ) : null}
+      <BuildEditor key={selected.id} workspaceId={selected.id} />
     </>
   );
 }

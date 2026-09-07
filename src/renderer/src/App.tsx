@@ -234,6 +234,7 @@ import {
 } from "./lib/sessionStore";
 import { pickerModelId, sessionStore, useSessionShells, type SessionShell } from "./lib/tcserver/store";
 import { toggleRightRail, useRightRailOpen } from "./lib/rightRail";
+import { ProjectRail } from "./chrome/rail/ProjectRail";
 import {
   headerNeighbour,
   type HeaderModel,
@@ -4411,6 +4412,7 @@ export default function App({
                 onOpenFile={onOpenDiff}
               />
             ) : null}
+            <ProjectRail projectId={selectedProjectId} cwd={gitCwd} onOpenFile={onOpenFile} onOpenDiff={onOpenDiff} />
             </div>
           </div>
         </main>
