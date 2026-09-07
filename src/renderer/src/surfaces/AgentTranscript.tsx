@@ -55,6 +55,7 @@ import { isTurnPaused, passActionsOf, turnElapsed, useClock } from "../lib/turnC
 import { errorRowOf, isErrorBlock } from "../lib/turnOutcome";
 import { useSessionMetas } from "../lib/tcserver/store";
 import { ErrorChip } from "./ErrorChip";
+import { CompactionCard } from "./CompactionCard";
 import { TurnStateContext, useTurnState, type TurnSession } from "./turnState";
 import { HarnessIcon } from "../chrome/HarnessIcon";
 import { useLockOverscroll } from "../hooks/useLockOverscroll";
@@ -725,6 +726,7 @@ const TranscriptBlock = memo(function TranscriptBlock({
   }
 
   if (block.role === "system") {
+    if (block.compaction) return <CompactionCard block={block} />;
     if (isErrorBlock(block)) return <ErrorRowView block={block} />;
     const actions = passActionsOf(block);
     if (actions) return <PassRow actions={actions} />;
