@@ -121,3 +121,22 @@ describe("todoItems", () => {
     expect(todoItems(tool("TodoWrite", {}))).toEqual([]);
   });
 });
+
+describe("partial input", () => {
+  it("reads the streamed partial until the full input lands", () => {
+    const streaming: Block = {
+      id: "t1",
+      role: "tool",
+      streaming: true,
+      tool: { name: "Bash", status: "running", partialInput: { command: "bun te" } },
+    } as Block;
+    expect(rawInput(streaming)).toBe("bun te");
+    expect(isSettled(streaming)).toBe(false);
+    const done: Block = {
+      ...streaming,
+      streaming: false,
+      tool: { name: "Bash", status: "completed", input: { command: "bun test" }, partialInput: { command: "bun te" } },
+    };
+    expect(rawInput(done)).toBe("bun test");
+  });
+});

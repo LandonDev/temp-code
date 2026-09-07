@@ -13,8 +13,13 @@ const str = (v: unknown): string => (typeof v === "string" ? v : "");
 export const rec = (v: unknown): Record<string, unknown> =>
   v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
 
+/** The call's input; while the model still writes it, the streamed partial. */
+export function toolInput(block: Block): unknown {
+  return block.tool?.input ?? block.tool?.partialInput;
+}
+
 export function inputOf(block: Block): Record<string, unknown> {
-  return rec(block.tool?.input);
+  return rec(toolInput(block));
 }
 
 /** The file a call names, if any. */
@@ -66,7 +71,7 @@ export function invocationBody(block: Block): string {
 
 /** Input, verbatim: the command for a shell call, pretty JSON otherwise. */
 export function rawInput(block: Block): string {
-  const input = block.tool?.input;
+  const input = toolInput(block);
   if (kindOf(block) === "run") {
     const c = commandText(rec(input).command);
     if (c) return c;
