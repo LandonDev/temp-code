@@ -74,6 +74,9 @@ export type SessionShell = Pick<
   | "planPath"
   | "archived"
   | "agentType"
+  | "providerSessionId"
+  | "branch"
+  | "worktreeCwd"
 >;
 
 const SHELL_KEYS: readonly (keyof SessionShell)[] = [
@@ -93,6 +96,9 @@ const SHELL_KEYS: readonly (keyof SessionShell)[] = [
   "planPath",
   "archived",
   "agentType",
+  "providerSessionId",
+  "branch",
+  "worktreeCwd",
 ];
 
 /** The previous shell when nothing the shell carries changed, else a fresh one. */
@@ -653,6 +659,13 @@ class SessionStore {
     for (const l of this.addedListeners) l(meta);
   }
 
+  /** Ask the shell to show a session it already knows: the same cue a
+   *  fresh thread sends, so App opens or focuses its tab. */
+  requestOpen(id: string): void {
+    const meta = this.metaOf(id);
+    if (meta) this.noteAdded(meta);
+  }
+
   private drop(id: string): void {
     this.entries.delete(id);
     this.queues.delete(id);
@@ -864,6 +877,13 @@ const subscribeMetas = (l: () => void): (() => void) => sessionStore.onMetaChang
 /** Every server-known meta as React state, open or not. */
 export function useSessionMetas(): SessionMeta[] {
   return useSyncExternalStore(subscribeMetas, readMetas);
+}
+
+const NO_METAS: SessionMeta[] = [];
+
+/** Every meta while `enabled`, else a constant empty list that never re-renders. */
+export function useSessionMetasWhen(enabled: boolean): SessionMeta[] {
+  return useSyncExternalStore(subscribeMetas, enabled ? readMetas : () => NO_METAS);
 }
 
 /** One session's server meta as React state; null for a draft or unknown id. */
