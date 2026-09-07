@@ -1617,7 +1617,7 @@ function ActivityToolRow({
         {block.tool?.display?.app ? (
           <ConnectorSummary display={block.tool.display} chip={bare} failed={state === "rejected"} />
         ) : app ? (
-          <AppToolSummary view={app} chip={bare} failed={state === "rejected"} />
+          <AppToolSummary view={app} chip={bare} failed={state === "rejected"} agent={isAgentCall(block)} />
         ) : (
           <ToolCallSummary
             label={label}
