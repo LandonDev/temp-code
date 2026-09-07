@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { registerEditorFlusher } from "../../lib/editorFlush";
-import { requestDebugTab, requestSettings } from "../../lib/monaco/debugTab";
+import { requestSettings } from "../../lib/monaco/debugTab";
+import { showDebugRail } from "../../lib/railPanel";
 import { useEditorState, type FileState } from "../../lib/monaco/editorState";
 import { setFileOpener } from "../../lib/monaco/opener";
 import { toggleBreakpoint } from "../../lib/monaco/breakpoints";
@@ -187,7 +188,7 @@ export default function MonacoPane(props: Props) {
         });
         const launch = () => {
           if (!project) return;
-          requestDebugTab(cwd, path);
+          showDebugRail();
           void debugFile(project, path, model.getValue());
         };
         editor.addCommand(monaco.KeyMod.WinCtrl | monaco.KeyCode.KeyD, launch);
