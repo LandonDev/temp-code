@@ -235,3 +235,86 @@ export class ClaudeUsage {
     return usage()
   }
 }
+
+// ---- Codex ---------------------------------------------------------------
+// The Codex CLI keeps its ChatGPT login in $CODEX_HOME/auth.json (default
+// ~/.codex). Its usage endpoint answers with the same shape the CLI's status
+// screen reads. The token is never refreshed here: the CLI owns that file,
+// and an expired login reads as "not signed in", not as an error.
+const CODEX_USAGE_URL = 'https://chatgpt.com/backend-api/wham/usage'
+const CODEX_USER_AGENT = 'codex-cli'
+export interface CodexUsageDependencies {
+  fetch: typeof fetch
+  readFile: (path: string) => Promise<string>
+  home: string
+  codexHome: string | undefined
+}
+const codexDefaults: CodexUsageDependencies = {
+  fetch: (input, init) => fetch(input, init),
+  readFile: (path) => readFile(path, 'utf8'),
+  home: homedir(),
+  codexHome: process.env.CODEX_HOME
+}
+export function parseCodexAuth(raw: string): { accessToken: string; accountId: string } | null {
+  try {
+    const blob: unknown = JSON.parse(raw)
+    if (!object(blob) || !object(blob.tokens)) return null
+    const accessToken = text(blob.tokens.access_token)
+    const accountId = text(blob.tokens.account_id)
+    return accessToken && accountId ? { accessToken, accountId } : null
+  } catch {
+    return null
+  }
+}
+export class CodexUsage {
+  private deps: CodexUsageDependencies
+  private pending: Promise<ClaudeUsageFetch> | null = null
+  constructor(deps: Partial<CodexUsageDependencies> = {}) {
+    this.deps = { ...codexDefaults, ...deps }
+  }
+  fetch(): Promise<ClaudeUsageFetch> {
+    this.pending ??= this.run()
+      .catch(() => result('error', null, null, 'Codex usage request failed'))
+      .finally(() => {
+        this.pending = null
+      })
+    return this.pending
+  }
+  private async run(): Promise<ClaudeUsageFetch> {
+    const d = this.deps
+    const path = join(d.codexHome?.trim() || join(d.home, '.codex'), 'auth.json')
+    let auth: ReturnType<typeof parseCodexAuth> = null
+    try {
+      auth = parseCodexAuth(await d.readFile(path))
+    } catch {
+      auth = null
+    }
+    if (!auth) return result('unavailable', null, null, 'Codex not signed in')
+    try {
+      const response = await d.fetch(CODEX_USAGE_URL, {
+        redirect: 'error',
+        signal: AbortSignal.timeout(10_000),
+        headers: {
+          Authorization: `Bearer ${auth.accessToken}`,
+          'ChatGPT-Account-Id': auth.accountId,
+          'User-Agent': CODEX_USER_AGENT
+        }
+      })
+      if (!response.ok) {
+        await response.body?.cancel()
+        if (response.status === 401 || response.status === 403)
+          return result('unavailable', response.status, null, 'Codex sign-in expired')
+        return result(
+          'error',
+          response.status,
+          null,
+          `Codex usage request failed (${response.status})`
+        )
+      }
+      const body = (await response.text()).split(auth.accessToken).join('[redacted]')
+      return result('ok', response.status, body, null)
+    } catch {
+      return result('error', null, null, 'Codex usage request failed')
+    }
+  }
+}

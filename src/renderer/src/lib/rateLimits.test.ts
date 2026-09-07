@@ -11,6 +11,7 @@ import {
   mapUsageWindow,
   parseClaudeOAuthUsage,
   parseCodexRateLimits,
+  parseCodexUsageBody,
   parseResetTimestamp,
   RATE_LIMIT_MIN_REFETCH_MS,
   rateLimitWindowTooltip,
@@ -309,5 +310,40 @@ describe("shouldFetchRateLimits", () => {
     expect(
       shouldFetchProvider(disconnected, { force: true, visible: true, now }),
     ).toBe(true);
+  });
+});
+
+describe("parseCodexUsageBody", () => {
+  it("maps the CLI usage endpoint's windows by their length", () => {
+    const limits = parseCodexUsageBody(
+      JSON.stringify({
+        rate_limit: {
+          primary_window: {
+            used_percent: 100,
+            limit_window_seconds: 604_800,
+            reset_at: 1_789_158_756,
+          },
+          secondary_window: null,
+        },
+      }),
+    );
+    expect(limits.status).toBe("ok");
+    expect(limits.session).toBeNull();
+    expect(limits.weekly).toEqual({
+      usedPercent: 100,
+      windowMinutes: 10_080,
+      resetsAt: 1_789_158_756_000,
+    });
+    const both = parseCodexUsageBody(
+      JSON.stringify({
+        rate_limit: {
+          primary_window: { used_percent: 12, limit_window_seconds: 18_000 },
+          secondary_window: { used_percent: 40, limit_window_seconds: 604_800 },
+        },
+      }),
+    );
+    expect(both.session?.usedPercent).toBe(12);
+    expect(both.weekly?.usedPercent).toBe(40);
+    expect(parseCodexUsageBody("nope").status).toBe("error");
   });
 });
