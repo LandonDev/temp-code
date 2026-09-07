@@ -599,7 +599,16 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
   z.object({
     id: z.string(),
     method: z.literal('queue.update'),
-    params: z.object({ sessionId: z.string(), messageId: z.string(), text: z.string().min(1) })
+    // Text and the per-message run settings edit independently; null clears
+    // a setting so the message follows the thread again.
+    params: z.object({
+      sessionId: z.string(),
+      messageId: z.string(),
+      text: z.string().min(1).optional(),
+      provider: providerEnum.nullable().optional(),
+      model: z.string().nullable().optional(),
+      reasoning: reasoningEnum.nullable().optional()
+    })
   }),
   z.object({
     id: z.string(),

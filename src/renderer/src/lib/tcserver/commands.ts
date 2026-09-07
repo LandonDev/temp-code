@@ -226,6 +226,18 @@ export async function queueUpdate(
   await link.request("queue.update", { sessionId, messageId, text });
 }
 
+/** Per-message run settings; null clears one so the message follows the thread. */
+export type QueueTune = { [K in keyof QueueRunSettings]?: QueueRunSettings[K] | null };
+
+export async function queueTune(
+  sessionId: string,
+  messageId: string,
+  settings: QueueTune,
+  link = client,
+): Promise<void> {
+  await link.request("queue.update", { sessionId, messageId, ...settings });
+}
+
 /** Optimistic: the strip keeps the dragged order while the RPC is in flight. */
 export async function queueReorder(sessionId: string, order: string[], link = client): Promise<void> {
   const byId = new Map(sessionStore.queueOf(sessionId).map((m) => [m.id, m]));
