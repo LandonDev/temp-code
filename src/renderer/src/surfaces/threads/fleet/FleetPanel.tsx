@@ -1,15 +1,15 @@
-import { AnimatePresence, LayoutGroup, MotionConfig, motion } from 'motion/react'
-import { useId } from 'react'
-import type { OpenFileFn } from '../../../lib/search'
-import { EASE_OUT } from '../../../lib/ease'
-import { ChevronRight, Users } from '../../../chrome/icons'
-import { fleetCounts, isLiveStatus, useAgents, useMetaById } from '../../../lib/threads/agents'
-import { MatrixSpinner } from '../bits'
-import { AgentDetail } from './AgentDetail'
-import { AgentRow } from './AgentRow'
-import { useFleetModel } from './useFleetModel'
+import { AnimatePresence, LayoutGroup, MotionConfig, motion } from "motion/react";
+import { useId } from "react";
+import type { OpenFileFn } from "../../../lib/search";
+import { EASE_OUT } from "../../../lib/ease";
+import { ChevronRight, Users } from "../../../chrome/icons";
+import { fleetCounts, isLiveStatus, useAgents, useMetaById } from "../../../lib/threads/agents";
+import { MatrixSpinner } from "../bits";
+import { AgentDetail } from "./AgentDetail";
+import { AgentRow } from "./AgentRow";
+import { useFleetModel } from "./useFleetModel";
 
-const PANEL_W = 340
+const PANEL_W = 340;
 
 /**
  * The subagent panel on a thread's right edge: rows while open, a slim
@@ -25,18 +25,18 @@ export function FleetPanel({
   parentCwd,
   onOpenSession,
   onOpenFile,
-  onOpenDiff
+  onOpenDiff,
 }: {
-  sessionId: string
-  parentCwd: string
-  onOpenSession?: (sessionId: string) => void
-  onOpenFile?: OpenFileFn
-  onOpenDiff?: (path?: string) => void
+  sessionId: string;
+  parentCwd: string;
+  onOpenSession?: (sessionId: string) => void;
+  onOpenFile?: OpenFileFn;
+  onOpenDiff?: (path?: string) => void;
 }) {
-  const fleet = useFleetModel(sessionId)
-  const scope = useId()
-  if (fleet.agents.length === 0) return null
-  const { agents, open, active, anyWaiting, detailId, now } = fleet
+  const fleet = useFleetModel(sessionId);
+  const scope = useId();
+  if (fleet.agents.length === 0) return null;
+  const { agents, open, active, anyWaiting, detailId, now } = fleet;
 
   return (
     <MotionConfig reducedMotion="user">
@@ -51,13 +51,8 @@ export function FleetPanel({
               transition={{ duration: 0.28, ease: EASE_OUT }}
               className="flex min-h-0 shrink-0 flex-col overflow-hidden border-l border-content/10"
             >
-              <div
-                className="flex h-9 shrink-0 items-center gap-2 pr-1.5 pl-3"
-                style={{ width: PANEL_W }}
-              >
-                <span className="text-[11px] font-medium tracking-[0.08em] text-content/50 uppercase">
-                  Subagents
-                </span>
+              <div className="flex h-9 shrink-0 items-center gap-2 pr-1.5 pl-3" style={{ width: PANEL_W }}>
+                <span className="text-[11px] font-medium tracking-[0.08em] text-content/50 uppercase">Subagents</span>
                 <span className="text-[11px] tabular-nums text-content/35">{agents.length}</span>
                 <button
                   type="button"
@@ -96,7 +91,7 @@ export function FleetPanel({
             <Users className="size-3.5 text-content/55 transition-colors group-hover:text-content" />
             <span
               className={`size-1.5 rounded-full ${
-                anyWaiting ? 'bg-warning' : active ? 'animate-pulse bg-success' : 'bg-content/20'
+                anyWaiting ? "bg-warning" : active ? "animate-pulse bg-success" : "bg-content/20"
               }`}
             />
           </button>
@@ -116,21 +111,21 @@ export function FleetPanel({
         </AnimatePresence>
       </LayoutGroup>
     </MotionConfig>
-  )
+  );
 }
 
 /** "3 subagents working" above the composer while the main thread is idle. */
 export function FleetPulseLine({ sessionId }: { sessionId: string }) {
-  const agents = useAgents(sessionId)
-  const status = useMetaById(sessionId)?.status
-  if (agents.length === 0 || isLiveStatus(status)) return null
-  const counts = fleetCounts(agents)
-  if (counts.working === 0 && counts.waiting === 0) return null
-  const n = counts.working > 0 ? counts.working : counts.waiting
+  const agents = useAgents(sessionId);
+  const status = useMetaById(sessionId)?.status;
+  if (agents.length === 0 || isLiveStatus(status)) return null;
+  const counts = fleetCounts(agents);
+  if (counts.working === 0 && counts.waiting === 0) return null;
+  const n = counts.working > 0 ? counts.working : counts.waiting;
   const label =
     counts.working > 0
-      ? `${n} subagent${n === 1 ? '' : 's'} working`
-      : `${n} subagent${n === 1 ? '' : 's'} waiting on approval`
+      ? `${n} subagent${n === 1 ? "" : "s"} working`
+      : `${n} subagent${n === 1 ? "" : "s"} waiting on approval`;
   return (
     <div className="mx-auto flex w-full max-w-[688px] items-center gap-2 px-6 pb-1 text-[12px] text-content/55">
       {counts.working > 0 ? (
@@ -140,5 +135,5 @@ export function FleetPulseLine({ sessionId }: { sessionId: string }) {
       )}
       {label}
     </div>
-  )
+  );
 }

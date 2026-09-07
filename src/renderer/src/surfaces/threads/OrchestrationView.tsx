@@ -1,13 +1,13 @@
-import { AnimatePresence, LayoutGroup, MotionConfig } from 'motion/react'
-import { useId, useMemo } from 'react'
-import { taskTitle } from '../../lib/threads/agents'
-import { chatOf, slotsOf } from './chatSlots'
-import { AgentDetail } from './fleet/AgentDetail'
-import { AgentRow } from './fleet/AgentRow'
-import { FleetHeader } from './fleet/FleetHeader'
-import { useFleetModel } from './fleet/useFleetModel'
-import { SidePanel } from './SidePanel'
-import type { ThreadViewProps } from './ThreadView'
+import { AnimatePresence, LayoutGroup, MotionConfig } from "motion/react";
+import { useId, useMemo } from "react";
+import { taskTitle } from "../../lib/threads/agents";
+import { chatOf, slotsOf } from "./chatSlots";
+import { AgentDetail } from "./fleet/AgentDetail";
+import { AgentRow } from "./fleet/AgentRow";
+import { FleetHeader } from "./fleet/FleetHeader";
+import { useFleetModel } from "./fleet/useFleetModel";
+import { SidePanel } from "./SidePanel";
+import type { ThreadViewProps } from "./ThreadView";
 
 /**
  * Orchestration thread: the fleet as full-width rows on the hero, the
@@ -16,21 +16,21 @@ import type { ThreadViewProps } from './ThreadView'
  * stream is the whole view.
  */
 export function OrchestrationView(props: ThreadViewProps) {
-  const { session } = props
-  const fleet = useFleetModel(session.id)
-  const scope = useId()
-  const { agents, detailId, now } = fleet
-  const hasBoard = agents.length > 0
+  const { session } = props;
+  const fleet = useFleetModel(session.id);
+  const scope = useId();
+  const { agents, detailId, now } = fleet;
+  const hasBoard = agents.length > 0;
   const goal = useMemo(() => {
-    const last = [...session.blocks].reverse().find((b) => b.role === 'user' && b.text.trim())
-    return last ? last.text.trim().split('\n')[0].trim() : taskTitle(session.blocks)
-  }, [session.blocks])
-  const empty = session.blocks.length === 0 && !hasBoard && !session.busy
+    const last = [...session.blocks].reverse().find((b) => b.role === "user" && b.text.trim());
+    return last ? last.text.trim().split("\n")[0].trim() : taskTitle(session.blocks);
+  }, [session.blocks]);
+  const empty = session.blocks.length === 0 && !hasBoard && !session.busy;
   const topSlot = empty ? (
     <p className="mx-auto w-full max-w-[688px] px-6 pb-2 text-[13px] text-content/45">
       Describe the goal. The orchestrator splits it across subagents and picks a model for each.
     </p>
-  ) : undefined
+  ) : undefined;
 
   const detail = (
     <AnimatePresence>
@@ -46,7 +46,7 @@ export function OrchestrationView(props: ThreadViewProps) {
         />
       ) : null}
     </AnimatePresence>
-  )
+  );
 
   if (!hasBoard) {
     return (
@@ -54,10 +54,10 @@ export function OrchestrationView(props: ThreadViewProps) {
         {chatOf(props, { topSlot })}
         {detail}
       </div>
-    )
+    );
   }
 
-  const slots = slotsOf(props)
+  const slots = slotsOf(props);
   return (
     <MotionConfig reducedMotion="user">
       <LayoutGroup id={scope}>
@@ -79,9 +79,7 @@ export function OrchestrationView(props: ThreadViewProps) {
                 </div>
               </div>
             </div>
-            {slots.composer ? (
-              <div className="mx-auto w-full max-w-4xl shrink-0">{slots.composer}</div>
-            ) : null}
+            {slots.composer ? <div className="mx-auto w-full max-w-4xl shrink-0">{slots.composer}</div> : null}
           </div>
           <SidePanel label="Orchestrator log" status={session.status}>
             {slots.transcript}
@@ -90,5 +88,5 @@ export function OrchestrationView(props: ThreadViewProps) {
         </div>
       </LayoutGroup>
     </MotionConfig>
-  )
+  );
 }

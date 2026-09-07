@@ -1,18 +1,18 @@
-import { motion, useReducedMotion } from 'motion/react'
-import type { OpenFileFn } from '../../../lib/search'
-import { useEffect, useMemo, useRef, useState } from 'react'
-import { EASE_OUT, SPRING_PANEL } from '../../../lib/ease'
-import { HarnessIcon } from '../../../chrome/HarnessIcon'
-import { ArrowUp, GitBranch, X } from '../../../chrome/icons'
-import { respondHarnessApproval } from '../../../lib/harness'
-import { isLiveStatus, modelLabel, useMetaById, useSessionById } from '../../../lib/threads/agents'
-import * as commands from '../../../lib/tcserver/commands'
-import { asHarness } from '../../../lib/tcserver/store'
-import { AgentTranscript } from '../../AgentTranscript'
-import { StatusDot } from '../bits'
-import { AgentStatsLine } from './AgentRow'
-import { useContextReading } from './contextCache'
-import { fleetStats } from './useFleetModel'
+import { motion, useReducedMotion } from "motion/react";
+import type { OpenFileFn } from "../../../lib/search";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { EASE_OUT, SPRING_PANEL } from "../../../lib/ease";
+import { HarnessIcon } from "../../../chrome/HarnessIcon";
+import { ArrowUp, GitBranch, X } from "../../../chrome/icons";
+import { respondHarnessApproval } from "../../../lib/harness";
+import { isLiveStatus, modelLabel, useMetaById, useSessionById } from "../../../lib/threads/agents";
+import * as commands from "../../../lib/tcserver/commands";
+import { asHarness } from "../../../lib/tcserver/store";
+import { AgentTranscript } from "../../AgentTranscript";
+import { StatusDot } from "../bits";
+import { AgentStatsLine } from "./AgentRow";
+import { useContextReading } from "./contextCache";
+import { fleetStats } from "./useFleetModel";
 
 /**
  * A subagent's transcript in a pane-scoped overlay: header with its
@@ -30,69 +30,68 @@ export function AgentDetail({
   onClose,
   onOpenSession,
   onOpenFile,
-  onOpenDiff
+  onOpenDiff,
 }: {
-  agentId: string
-  parentCwd: string
-  onClose: () => void
-  onOpenSession?: (sessionId: string) => void
-  onOpenFile?: OpenFileFn
-  onOpenDiff?: (path?: string) => void
+  agentId: string;
+  parentCwd: string;
+  onClose: () => void;
+  onOpenSession?: (sessionId: string) => void;
+  onOpenFile?: OpenFileFn;
+  onOpenDiff?: (path?: string) => void;
 }) {
-  const meta = useMetaById(agentId)
-  const session = useSessionById(agentId)
-  const live = isLiveStatus(meta?.status)
-  const reading = useContextReading(agentId, live)
-  const stats = useMemo(() => fleetStats(session, reading), [session, reading])
-  const [text, setText] = useState('')
-  const [sending, setSending] = useState(false)
-  const inputRef = useRef<HTMLInputElement>(null)
-  const reduce = useReducedMotion()
-  const [settled, setSettled] = useState(false)
+  const meta = useMetaById(agentId);
+  const session = useSessionById(agentId);
+  const live = isLiveStatus(meta?.status);
+  const reading = useContextReading(agentId, live);
+  const stats = useMemo(() => fleetStats(session, reading), [session, reading]);
+  const [text, setText] = useState("");
+  const [sending, setSending] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const reduce = useReducedMotion();
+  const [settled, setSettled] = useState(false);
 
   useEffect(() => {
     // onLayoutAnimationComplete can miss (reduced motion, no paired row);
     // never leave the body empty past the morph's length.
-    const t = setTimeout(() => setSettled(true), 450)
-    return () => clearTimeout(t)
-  }, [])
+    const t = setTimeout(() => setSettled(true), 450);
+    return () => clearTimeout(t);
+  }, []);
 
   const close = () => {
-    setSettled(false)
-    onClose()
-  }
+    setSettled(false);
+    onClose();
+  };
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        e.stopPropagation()
-        setSettled(false)
-        onClose()
+      if (e.key === "Escape") {
+        e.stopPropagation();
+        setSettled(false);
+        onClose();
       }
-    }
-    window.addEventListener('keydown', onKey, true)
-    return () => window.removeEventListener('keydown', onKey, true)
-  }, [onClose])
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [onClose]);
 
-  if (!meta) return null
-  const harness = asHarness(meta.provider)
-  const branch =
-    meta.cwd && meta.cwd !== parentCwd ? meta.cwd.split('/').filter(Boolean).pop() : null
-  const cost = session?.thread?.cost
+  if (!meta) return null;
+  const harness = asHarness(meta.provider);
+  const branch = meta.cwd && meta.cwd !== parentCwd ? meta.cwd.split("/").filter(Boolean).pop() : null;
+  const cost = session?.thread?.cost;
 
   const submit = async () => {
-    const body = text.trim()
-    if (!body || !session || sending) return
-    setSending(true)
-    setText('')
+    const body = text.trim();
+    if (!body || !session || sending) return;
+    setSending(true);
+    setText("");
     try {
-      if (live) await commands.steer(session, body)
-      else await commands.send(session, body)
+      if (live) await commands.steer(session, body);
+      else await commands.send(session, body);
     } finally {
-      setSending(false)
-      inputRef.current?.focus()
+      setSending(false);
+      inputRef.current?.focus();
     }
-  }
+  };
 
   return (
     <div className="absolute inset-0 z-40 flex items-center justify-center p-6">
@@ -114,9 +113,7 @@ export function AgentDetail({
           <div className="flex min-w-0 flex-1 flex-col gap-1">
             <div className="flex items-center gap-2">
               <StatusDot status={meta.status} />
-              <span className="truncate text-[13px] font-medium text-content">
-                {meta.title || 'Subagent'}
-              </span>
+              <span className="truncate text-[13px] font-medium text-content">{meta.title || "Subagent"}</span>
             </div>
             <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-content/45">
               <span className="inline-flex items-center gap-1">
@@ -137,8 +134,8 @@ export function AgentDetail({
             <button
               type="button"
               onClick={() => {
-                close()
-                onOpenSession(agentId)
+                close();
+                onOpenSession(agentId);
               }}
               className="h-6 shrink-0 rounded-md px-2 text-[11px] font-medium text-content/55 transition-colors hover:bg-content/5 hover:text-content"
             >
@@ -169,9 +166,7 @@ export function AgentDetail({
                 visible
                 cwd={meta.cwd || parentCwd}
                 harness={harness}
-                onApproval={(requestId, decision) =>
-                  respondHarnessApproval(harness, agentId, requestId, decision)
-                }
+                onApproval={(requestId, decision) => respondHarnessApproval(harness, agentId, requestId, decision)}
                 onOpenFile={onOpenFile}
                 onOpenDiff={onOpenDiff}
               />
@@ -181,15 +176,15 @@ export function AgentDetail({
         <form
           className="flex shrink-0 items-center gap-2 border-t border-content/10 px-3 py-2"
           onSubmit={(e) => {
-            e.preventDefault()
-            void submit()
+            e.preventDefault();
+            void submit();
           }}
         >
           <input
             ref={inputRef}
             value={text}
             onChange={(e) => setText(e.target.value)}
-            placeholder={live ? 'Steer this agent…' : 'Send to this agent…'}
+            placeholder={live ? "Steer this agent…" : "Send to this agent…"}
             disabled={!session}
             className="h-7 min-w-0 flex-1 rounded-md bg-content/5 px-2.5 text-[13px] text-content outline-none placeholder:text-content/35"
           />
@@ -204,5 +199,5 @@ export function AgentDetail({
         </form>
       </motion.div>
     </div>
-  )
+  );
 }
