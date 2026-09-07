@@ -928,6 +928,7 @@ export class SessionRegistry {
       model: meta.model,
       reasoning: meta.reasoning,
       context1m: meta.context1m,
+      fast: meta.fast,
       newPass: opts?.newPass === true
     })
     // Cursor-style: an untitled thread takes its name from the first

@@ -174,7 +174,7 @@ export type Block = {
   /** Born during a completed-turn pass. */
   pass?: boolean;
   /** Run settings the server stamped on a user turn. */
-  turn?: { model?: string; reasoning?: string; context1m?: boolean };
+  turn?: { model?: string; reasoning?: string; context1m?: boolean; fast?: boolean };
 };
 
 export type CompactionMeta = {
