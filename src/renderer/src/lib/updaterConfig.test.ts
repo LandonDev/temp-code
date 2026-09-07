@@ -64,9 +64,10 @@ describe("runUpdateFlow", () => {
     await expect(runUpdateFlow(true)).resolves.toEqual({
       phase: "current",
       currentVersion: "95",
+      canApply: true,
     });
     expect(message).toHaveBeenCalledWith(
-      "You're on the latest version.",
+      "You're on the latest release.",
       expect.anything(),
     );
   });
