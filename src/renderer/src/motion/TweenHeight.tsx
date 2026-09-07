@@ -85,12 +85,11 @@ export function TweenHeight({
     }
     return tweenHeight(el, open);
   }, [open, animate]);
+  // The height lives only in the layout effect: a `style` prop would let
+  // React commit the target height before the effect measures the start,
+  // and the tween would see from === target and snap.
   return (
-    <div
-      ref={ref}
-      className={className ? `overflow-hidden ${className}` : "overflow-hidden"}
-      style={{ height: open ? "auto" : 0 }}
-    >
+    <div ref={ref} className={className ? `overflow-hidden ${className}` : "overflow-hidden"}>
       {children}
     </div>
   );
