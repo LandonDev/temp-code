@@ -382,8 +382,15 @@ export function canReplaceSessionTitle(
   );
 }
 
+// Cached per blocks array: this runs for every session on every render, and
+// an idle session's array keeps its identity, so only the streaming one rescans.
+const pendingApprovalCache = new WeakMap<Block[], boolean>();
 export function hasPendingApproval(blocks: Block[]): boolean {
-  return blocks.some((block) => block.approval && !block.approval.decided);
+  const cached = pendingApprovalCache.get(blocks);
+  if (cached !== undefined) return cached;
+  const pending = blocks.some((block) => block.approval && !block.approval.decided);
+  pendingApprovalCache.set(blocks, pending);
+  return pending;
 }
 
 /** Title without the harness prefix stored for the tab strip. */

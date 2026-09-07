@@ -983,16 +983,39 @@ export default function App({
         void forgetHarnessSession(harness, session.id);
       }
     }
-    setSessions((prev) =>
-      prev.filter(
+    setSessions((prev) => {
+      const next = prev.filter(
         (session) =>
           visibleIds.has(session.id) ||
           session.busy ||
           (keepUnseen && unseenFinishedRef.current.has(session.id)) ||
           skipForgetSessionIds.current.has(session.id),
-      ),
-    );
+      );
+      // The store bumps on any new array; a no-op sweep must not re-render
+      // (and re-run this effect) while a shielded session waits for its tab.
+      return next.length === prev.length ? prev : next;
+    });
   }, [sessions, tabs, liveAgentsEnabled]);
+
+  // Hidden tabs mount their panes after first paint, one per idle slice, so
+  // launch-to-session-list does not scale with how many heavy tabs restore.
+  const [hiddenMountBudget, setHiddenMountBudget] = useState(0);
+  useEffect(() => {
+    if (hiddenMountBudget >= tabs.length) return;
+    const handle = window.requestIdleCallback(
+      () => setHiddenMountBudget((n) => n + 1),
+      { timeout: 500 },
+    );
+    return () => window.cancelIdleCallback(handle);
+  }, [hiddenMountBudget, tabs.length]);
+  const mountedTabIds = useMemo(() => {
+    const ids = new Set<string>();
+    let hidden = 0;
+    for (const tab of tabs) {
+      if (tab.id === activeTabId || hidden++ < hiddenMountBudget) ids.add(tab.id);
+    }
+    return ids;
+  }, [tabs, activeTabId, hiddenMountBudget]);
 
   const activateTab = useCallback((id: string) => {
     setActiveTabId(id);
@@ -2418,6 +2441,11 @@ export default function App({
       }
       const restored = await restoreSessionCheckout(loaded);
       if (!sessionsRef.current.some((session) => session.id === restored.id)) {
+        // The store update re-renders before the caller's tab lands, and the
+        // hidden-session sweep would drop the session in that gap. Shield it
+        // until the caller's synchronous continuation has run.
+        skipForgetSessionIds.current.add(restored.id);
+        setTimeout(() => skipForgetSessionIds.current.delete(restored.id), 0);
         const next = [...sessionsRef.current, restored];
         sessionsRef.current = next;
         setSessions(next);
@@ -4356,7 +4384,7 @@ export default function App({
                 />
               ) : (
                 <div className="relative min-h-0 min-w-0 flex-1">
-              {tabs.map((tab) => (
+              {tabs.map((tab) => mountedTabIds.has(tab.id) && (
                 <div
                   key={tab.id}
                   aria-hidden={tab.id !== activeTabId}
