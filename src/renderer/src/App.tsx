@@ -3,6 +3,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, use
 import { Sidebar } from "./chrome/Sidebar";
 import { HiddenApprovalToasts } from "./chrome/ApprovalToasts";
 import { WhatsNewDialog } from "./chrome/WhatsNewDialog";
+import { NewWorkspaceDialog } from "./chrome/ProjectDialogs";
 import { ShellTitleBar, type HeaderEvents } from "./chrome/ShellTitleBar";
 import { MenuBar } from "./chrome/MenuBar";
 import { FilePicker } from "./chrome/FilePicker";
@@ -179,7 +180,7 @@ import {
 import { createWorkspace, deleteWorkspace } from "./lib/tcserver/projects";
 import type { ProjectMeta } from "./lib/tcserver/types";
 import { useWorkspaceCatalog, workspaceByPath, workspaceStore } from "./lib/tcserver/workspaces";
-import { modeForPolicy } from "./lib/tcserver/access";
+import { draftFromDefaults } from "./lib/tcserver/defaults";
 import type { ThreadType } from "./lib/tcserver/types";
 import { markSessionSeen } from "./lib/sessionSeen";
 import { historyStore } from "./lib/historyStore";
@@ -232,7 +233,7 @@ import {
   subscribeSessionHistory,
   type SessionSummary,
 } from "./lib/sessionStore";
-import { pickerModelId, sessionStore, useSessionShells, type SessionShell } from "./lib/tcserver/store";
+import { sessionStore, useSessionShells, type SessionShell } from "./lib/tcserver/store";
 import { toggleRightRail, useRightRailOpen } from "./lib/rightRail";
 import { ProjectRail } from "./chrome/rail/ProjectRail";
 import {
@@ -705,13 +706,13 @@ export default function App({
       };
       const defaults = workspaceStore.defaultsFor(ctx.workspaceId);
       if (defaults && (HARNESSES as string[]).includes(defaults.provider)) {
-        const harness = defaults.provider as HarnessId;
+        const seed = draftFromDefaults(defaults);
         return newSession(
-          harness,
+          seed.harness,
           ctx.cwd,
-          defaults.model ? pickerModelId(harness, defaults.model) : undefined,
-          opts.runtimeMode ?? modeForPolicy(defaults.permission),
-          { effort: defaults.reasoning },
+          seed.model,
+          opts.runtimeMode ?? seed.runtimeMode,
+          seed.modelSettings,
           context,
         );
       }
@@ -1672,6 +1673,7 @@ export default function App({
         : newDefaultSession(ctx.cwd, sessionDefaults?.runtimeMode, { ...ctx, threadType });
       const tab = newTab(session.id);
       setSessions((prev) => [...prev, session]);
+      if (threadType) void serverCommands.ensureCreated(session).catch(() => undefined);
       setTabs((prev) => insertTabInGroup(prev, tab, groupId));
       setActiveTabId(tab.id);
       setComposerFocused(true);
@@ -2786,11 +2788,14 @@ export default function App({
     [activateTab, appendTab, onCwdChange],
   );
 
+  const [newWorkspacePath, setNewWorkspacePath] = useState<string | null>(null);
   const pickProject = useCallback(async () => {
     const path = await pickFolder();
     if (!path) return;
-    await createWorkspace(path).catch(() => undefined);
-    onSelectProject(path);
+    // A folder the catalog knows just comes forward; a new one gets the
+    // New Workspace dialog (turn pass) before it joins.
+    if (workspaceByPath(workspaceStore.workspaces, path)) onSelectProject(path);
+    else setNewWorkspacePath(path);
   }, [onSelectProject]);
 
   const onRemoveProject = useCallback(
@@ -3110,11 +3115,18 @@ export default function App({
     void run.catch(() => undefined);
   }, []);
 
+  /** The empty session's type picker. A draft becomes a real thread of that
+   *  type at once, so its rules and tune have somewhere to live. */
   const onThreadTypeChange = useCallback((sessionId: string, threadType: ThreadType) => {
     setSessions((prev) =>
       prev.map((s) => (s.id === sessionId ? { ...s, threadType } : s)),
     );
-    void serverCommands.retype(sessionId, threadType).catch(() => undefined);
+    const session = sessionStore.getSnapshot().find((s) => s.id === sessionId);
+    if (!session) return;
+    const run = sessionStore.metaOf(sessionId)
+      ? serverCommands.retype(sessionId, threadType)
+      : serverCommands.ensureCreated({ ...session, threadType });
+    void run.catch(() => undefined);
   }, []);
 
   const onSubmit = useCallback(
@@ -3567,6 +3579,9 @@ export default function App({
       });
       const tab = newTab(session.id);
       setSessions((prev) => [...prev, session]);
+      // Real on the server from the first click: the thread's rules travel
+      // with the create, and a later tune has somewhere to land.
+      void serverCommands.ensureCreated(session).catch(() => undefined);
       appendTab(tab, session.cwd);
       setActiveTabId(tab.id);
       setComposerFocused(true);
@@ -4498,6 +4513,16 @@ export default function App({
           version={whatsNew.version}
           markdown={whatsNew.markdown}
           onClose={() => setWhatsNew(null)}
+        />
+      ) : null}
+      {newWorkspacePath ? (
+        <NewWorkspaceDialog
+          path={newWorkspacePath}
+          onClose={() => setNewWorkspacePath(null)}
+          onCreated={(workspace) => {
+            setNewWorkspacePath(null);
+            onSelectProject(workspace.path);
+          }}
         />
       ) : null}
     </div>
