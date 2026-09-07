@@ -1,10 +1,12 @@
-import { useEffect, useRef, useState } from "react";
+import { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { ChevronRight, FilePlusCorner, PenLine, Trash2 } from "../chrome/icons";
 import { PreviewDiffLines } from "../chrome/FilePreview";
 import { TerminalSpinner } from "../chrome/TerminalSpinner";
 import { resolveWorkspacePath } from "../lib/paths";
 import type { OpenFileFn } from "../lib/search";
+import { liveDiffLines } from "../lib/liveDiff";
 import type { Block } from "../lib/session";
+import { useLiveEdits } from "../lib/tcserver/store";
 import { editModel, splitPath } from "./editModel";
 import { toolCallState } from "./transcriptActivity";
 
@@ -14,6 +16,9 @@ import { toolCallState } from "./transcriptActivity";
  * muted), a live verb while the call runs, then an unmissable +N / −N
  * diffstat with created and deleted states. Expands in place to the diff.
  */
+
+/** The session whose transcript these rows belong to, for live disk diffs. */
+export const TranscriptSessionContext = createContext<string | undefined>(undefined);
 
 /** Diffstat counts up only when we watched the change land live. */
 function useCountUp(target: number, animate: boolean): number {
@@ -53,13 +58,27 @@ export function EditRow({
   const failed = state === "rejected";
   const { name, dir } = splitPath(m.path, cwd);
   const filePath = m.path ? resolveWorkspacePath(m.path, cwd) : undefined;
-  const lines = block.tool?.preview?.lines ?? [];
+  // While the call runs the watcher's disk truth beats the harness's
+  // buffered input: rows and counters follow the file as it changes. Once
+  // the result lands the harness preview is authoritative again.
+  const sessionId = useContext(TranscriptSessionContext);
+  const live = useLiveEdits(sessionId ?? "");
+  const liveRec =
+    running && m.path
+      ? (live[m.path] ?? Object.values(live).find((e) => m.path.endsWith(`/${e.path}`)))
+      : undefined;
+  const liveLines = useMemo(
+    () => (liveRec?.diff ? liveDiffLines(liveRec.diff, liveRec.kind === "created") : []),
+    [liveRec],
+  );
+  const previewLines = block.tool?.preview?.lines ?? [];
+  const lines = previewLines.length > 0 ? previewLines : liveLines;
   const hasDiff = lines.some((l) => l.kind === "add" || l.kind === "del");
 
   // Watched live: the counters tick up and the name fades in once known.
   const [liveAtMount] = useState(running);
-  const adds = useCountUp(m.adds, liveAtMount);
-  const dels = useCountUp(m.dels, liveAtMount);
+  const adds = useCountUp(liveRec ? (liveRec.adds ?? 0) : m.adds, liveAtMount);
+  const dels = useCountUp(liveRec ? (liveRec.dels ?? 0) : m.dels, liveAtMount);
 
   // Auto mode: the diff rides open while the edit lands and holds a beat
   // after, then folds to the row — unless the user toggled, which wins.

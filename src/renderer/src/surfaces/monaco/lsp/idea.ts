@@ -1,4 +1,3 @@
-import { listDir } from "../../../lib/fs";
 import type { ProjectMeta } from "../../../lib/tcserver/types";
 import { dirPrefix, projectForCwd } from "../../../lib/tcserver/projects";
 import { monaco } from "../monaco";
@@ -42,33 +41,6 @@ export function projectForModel(model: monaco.editor.ITextModel): ProjectMeta | 
   const entry = entryForUri(model.uri);
   if (!entry) return undefined;
   return projectForCwd(entry.cwd);
-}
-
-/** Whether a project root carries JVM build files (focus-boot gate). */
-const projectHasJvmBuild = new Map<string, boolean>();
-const BUILD_FILES = new Set([
-  "pom.xml",
-  "build.gradle",
-  "build.gradle.kts",
-  "settings.gradle",
-  "settings.gradle.kts",
-]);
-
-/** Boot the engine before any file opens so the first completion already
- *  races a warm connection. Gated on build files: the engine only imports
- *  with a build tool, so it is useless (and 3 GB) anywhere else. */
-export async function warmProjectEngine(project: ProjectMeta): Promise<void> {
-  let jvm = projectHasJvmBuild.get(project.id);
-  if (jvm === undefined) {
-    try {
-      const entries = await listDir(project.cwd);
-      jvm = entries.some((e) => BUILD_FILES.has(e.name));
-    } catch {
-      jvm = false;
-    }
-    projectHasJvmBuild.set(project.id, jvm);
-  }
-  if (jvm) void ensureConnection(project, "java", "idea");
 }
 
 /** Called by the pane when a file mounts: boot the servers the model needs. */

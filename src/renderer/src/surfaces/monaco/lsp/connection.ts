@@ -36,7 +36,8 @@ const LSP_DEBUG = import.meta.env.DEV;
 export interface EnsureResult extends EnsureExtras {
   serverId: string;
   wsPath: string;
-  status: "ready" | "starting" | "downloading" | "error" | "needs-eula";
+  /** the pool's server state, or the IntelliJ EULA gate */
+  status: "starting" | "downloading" | "running" | "error" | "needs-eula";
   error?: string;
 }
 
@@ -58,18 +59,23 @@ export const semanticRefresh = new Map<LangKind, monaco.Emitter<void>>();
 /** Fired on workspace/inlayHint/refresh. */
 export const inlayRefresh = new monaco.Emitter<void>();
 
-/** The engine dropped: put jdtls's cached diagnostics back on screen. */
+/** The engine dropped: clear its squiggles on every model it owned (Kotlin
+ *  has no other server, so its markers must not outlive the engine) and
+ *  put jdtls's cached diagnostics back where jdtls owns the model. */
 function restoreJdtlsMarkers(projectId: string): void {
   const std = settledStd.get(projectId);
+  const project = workspaceStore.projects.find((p) => p.id === projectId);
+  const prefix = project ? dirPrefix(project.cwd) : null;
   for (const uri of [...ideaDiagUris]) {
     const model = monaco.editor.getModel(monaco.Uri.parse(uri));
     if (!model) {
       ideaDiagUris.delete(uri);
       continue;
     }
-    if (!std?.owns(model)) continue;
+    if (prefix && !model.uri.path.startsWith(prefix)) continue;
     ideaDiagUris.delete(uri);
     monaco.editor.setModelMarkers(model, `lsp-idea-${projectId}`, []);
+    if (!std?.owns(model)) continue;
     const cached = std.diagnostics.get(uri);
     if (cached) monaco.editor.setModelMarkers(model, `lsp-java-${projectId}`, toMarkers(cached));
   }

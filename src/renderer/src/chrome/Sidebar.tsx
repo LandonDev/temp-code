@@ -8,11 +8,13 @@ import {
 } from "./icons";
 import {
   memo,
+  useEffect,
   useRef,
   useState,
   type MouseEvent as ReactMouseEvent,
   type ReactNode,
 } from "react";
+import { warmProjectForCwd } from "../lib/monaco/focusBoot";
 import {
   loadSidebarTabOrder,
   saveSidebarTabOrder,
@@ -220,6 +222,11 @@ function SidebarComponent({
   onDismissUpdate,
 }: Props) {
   const gitRoot = gitCwd || cwd;
+  // Focus boot: start the JVM engine for a build-file project as soon as
+  // it is selected, so the first Java tab opens warm.
+  useEffect(() => {
+    if (cwd && cwd !== "~") void warmProjectForCwd(gitRoot);
+  }, [cwd, gitRoot]);
   const inboxUnseen = useInboxUnseen(recents, cwd);
   const resize = useDragResize({
     min: MIN_WIDTH,

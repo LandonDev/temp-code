@@ -1,3 +1,4 @@
+import { insideMonaco } from "./editorKeys";
 /**
  * Workspace keybindings:
  *   New tab             cmd-t
@@ -35,8 +36,16 @@ export type TabCommand =
   | { activate: number }
   | { focus: FocusDir };
 
+/** Whether a keydown started inside a Monaco editor. */
 export function tabCommand(e: KeyboardEvent): TabCommand | null {
   if (e.isComposing) return null;
+
+  // A focused Monaco editor keeps its ctrl-only chords: ctrl-t (refactor)
+  // and ctrl-d (debug). cmd-t / cmd-d stay workspace commands.
+  if (e.ctrlKey && !e.metaKey && !e.altKey && insideMonaco(e.target)) {
+    const key = e.key.toLowerCase();
+    if (key === "t" || key === "d") return null;
+  }
 
   const mod = e.metaKey || e.ctrlKey;
 

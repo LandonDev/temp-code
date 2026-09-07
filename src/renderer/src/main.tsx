@@ -1,6 +1,7 @@
 import React, { useLayoutEffect } from "react";
 import ReactDOM from "react-dom/client";
 import { invoke, listen } from "./lib/native";
+import { installEditorKeys } from "./lib/editorKeys";
 import App from "./App";
 import { initAppearance } from "./lib/appearance";
 import { initSounds } from "./lib/sounds";
@@ -14,6 +15,8 @@ import { consumeInstalledUpdate } from "./lib/updateNotice";
 import { updateStore } from "./lib/updateStore";
 import "./index.css";
 
+// Before App mounts its own window listener: the editor claims its chords first.
+installEditorKeys();
 initAppearance();
 initSounds();
 initServerLink();

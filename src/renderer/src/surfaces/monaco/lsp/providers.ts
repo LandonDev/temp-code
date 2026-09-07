@@ -11,6 +11,7 @@ import {
   inlayRefresh,
   semanticRefresh,
   settledIdea,
+  settledStd,
   type LspConnection,
 } from "./connection";
 import { applyEditsToModel, applyWorkspaceEdit } from "./edits";
@@ -210,6 +211,8 @@ export function registerProviders(): void {
   registered = true;
 
   connectionInitialized.event(maybeRegisterSemanticTokens);
+  // Connections that settled before the providers registered (a warm boot).
+  for (const conn of settledStd.values()) maybeRegisterSemanticTokens(conn);
 
   monaco.languages.registerCompletionItemProvider(ALL_LSP_LANGS, {
     triggerCharacters: [".", '"', "'", "/", "@", "<", ":", "("],

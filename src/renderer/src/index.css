@@ -3,6 +3,28 @@
 @source "../../../node_modules/@streamdown/code/dist/*.js";
 @source "../../../node_modules/@streamdown/mermaid/dist/*.js";
 
+/* JetBrains Mono, the editor's face (OFL, see assets/fonts/JetBrainsMono-OFL.txt).
+ * The real italic matters: semantic highlighting italicises statics. */
+@font-face {
+  font-family: "JetBrains Mono";
+  src: url("./assets/fonts/JetBrainsMono-Regular.ttf") format("truetype");
+  font-weight: 400;
+  font-display: block;
+}
+@font-face {
+  font-family: "JetBrains Mono";
+  src: url("./assets/fonts/JetBrainsMono-Italic.ttf") format("truetype");
+  font-weight: 400;
+  font-style: italic;
+  font-display: block;
+}
+@font-face {
+  font-family: "JetBrains Mono";
+  src: url("./assets/fonts/JetBrainsMono-Bold.ttf") format("truetype");
+  font-weight: 700;
+  font-display: block;
+}
+
 @theme {
   --color-background-base: hsl(
     var(--theme-hue) var(--theme-saturation) var(--background-lightness)
@@ -1217,11 +1239,18 @@ header[data-tauri-drag-region] button {
   height: 2px !important;
   margin-top: -1px;
 }
-/* Suggest widget: IDEA-style rows, the right column at full size. */
+/* Suggest widget: IDEA's new-UI popup. Surfaces come from the app tokens;
+ * the per-kind hues are IDEA's own, they are what makes it read as IDEA. */
 .monaco-editor .suggest-widget {
-  border-radius: 8px !important;
+  border-radius: 10px !important;
   overflow: hidden !important;
   box-shadow: 0 10px 28px rgb(0 0 0 / 0.35) !important;
+}
+.theme-light .monaco-editor .suggest-widget {
+  box-shadow: 0 10px 28px rgb(0 0 0 / 0.16) !important;
+}
+.monaco-editor .suggest-widget .monaco-list-row {
+  padding: 0 6px 0 4px;
 }
 .monaco-editor .suggest-widget .monaco-list-row .monaco-icon-label {
   font-weight: 500;
@@ -1229,25 +1258,145 @@ header[data-tauri-drag-region] button {
 .monaco-editor .suggest-widget .monaco-highlighted-label .highlight {
   font-weight: 700;
 }
+/* Column pinning: the name owns the row, the type sits at the right edge
+ * and gives way first, the way IDEA lays a row out. */
+.monaco-editor .suggest-widget .monaco-list-row > .contents > .main {
+  flex: 1 1 auto !important;
+  min-width: 0;
+}
+.monaco-editor .suggest-widget .monaco-list-row > .contents > .main > .left {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+}
+.monaco-editor .suggest-widget .monaco-list-row > .contents > .main > .left > .monaco-icon-label {
+  flex-shrink: 0;
+}
 .monaco-editor .suggest-widget .monaco-list-row > .contents > .main > .left > .signature-label {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: pre;
   opacity: 1 !important;
   color: color-mix(in srgb, var(--color-content) 55%, transparent);
 }
+.monaco-editor .suggest-widget .monaco-list-row > .contents > .main > .right {
+  flex: 0 0 auto !important;
+  max-width: 45%;
+  margin-left: 12px;
+}
 .monaco-editor .suggest-widget .monaco-list-row > .contents > .main > .right > .details-label {
   font-size: 100% !important;
+  overflow: hidden;
+  text-overflow: ellipsis;
   color: color-mix(in srgb, var(--color-content) 50%, transparent) !important;
   margin-right: 6px;
 }
+/* Kind-coloured names. */
+.monaco-editor .suggest-widget .monaco-list-row:has(.codicon-symbol-class) .monaco-icon-label,
+.monaco-editor .suggest-widget .monaco-list-row:has(.codicon-symbol-interface) .monaco-icon-label,
+.monaco-editor .suggest-widget .monaco-list-row:has(.codicon-symbol-struct) .monaco-icon-label,
+.monaco-editor .suggest-widget .monaco-list-row:has(.codicon-symbol-enum) .monaco-icon-label {
+  color: #6c9edd;
+}
+.theme-light .monaco-editor .suggest-widget .monaco-list-row:has(.codicon-symbol-class) .monaco-icon-label,
+.theme-light .monaco-editor .suggest-widget .monaco-list-row:has(.codicon-symbol-interface) .monaco-icon-label,
+.theme-light .monaco-editor .suggest-widget .monaco-list-row:has(.codicon-symbol-struct) .monaco-icon-label,
+.theme-light .monaco-editor .suggest-widget .monaco-list-row:has(.codicon-symbol-enum) .monaco-icon-label {
+  color: #2a5fb0;
+}
+.monaco-editor .suggest-widget .monaco-list-row:has(.codicon-symbol-constant) .monaco-icon-label,
+.monaco-editor .suggest-widget .monaco-list-row:has(.codicon-symbol-enum-member) .monaco-icon-label {
+  color: #c0a85c;
+  font-weight: 600;
+}
+.monaco-editor .suggest-widget .monaco-list-row:has(.codicon-symbol-keyword) .monaco-icon-label {
+  color: #cc7832;
+}
+/* Letter badges in place of codicons: a 15px disc with the kind's initial. */
+.monaco-editor .suggest-widget .codicon[class*="codicon-symbol-"] {
+  width: 15px;
+  height: 15px;
+  margin: 0 6px 0 2px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: "JetBrains Mono", var(--font-mono);
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1;
+  color: #fff;
+  background: #6b6e76;
+  flex-shrink: 0;
+}
+.monaco-editor .suggest-widget .codicon[class*="codicon-symbol-"]::before {
+  font-family: inherit;
+  content: "a";
+}
+.monaco-editor .suggest-widget .codicon-symbol-class { background: #4a7cf0 !important; }
+.monaco-editor .suggest-widget .codicon.codicon-symbol-class::before { content: "C"; }
+.monaco-editor .suggest-widget .codicon-symbol-struct { background: #4a7cf0 !important; }
+.monaco-editor .suggest-widget .codicon.codicon-symbol-struct::before { content: "S"; }
+.monaco-editor .suggest-widget .codicon-symbol-interface { background: #34a05a !important; }
+.monaco-editor .suggest-widget .codicon.codicon-symbol-interface::before { content: "I"; }
+.monaco-editor .suggest-widget .codicon-symbol-enum { background: #b07203 !important; }
+.monaco-editor .suggest-widget .codicon.codicon-symbol-enum::before { content: "E"; }
+.monaco-editor .suggest-widget .codicon-symbol-enum-member { background: #b07203 !important; }
+.monaco-editor .suggest-widget .codicon.codicon-symbol-enum-member::before { content: "e"; }
+.monaco-editor .suggest-widget .codicon-symbol-method { background: #c75450 !important; }
+.monaco-editor .suggest-widget .codicon.codicon-symbol-method::before { content: "m"; }
+.monaco-editor .suggest-widget .codicon-symbol-function { background: #c75450 !important; }
+.monaco-editor .suggest-widget .codicon.codicon-symbol-function::before { content: "f"; }
+.monaco-editor .suggest-widget .codicon-symbol-constructor { background: #c75450 !important; }
+.monaco-editor .suggest-widget .codicon.codicon-symbol-constructor::before { content: "c"; }
+.monaco-editor .suggest-widget .codicon-symbol-field { background: #c77dbb !important; }
+.monaco-editor .suggest-widget .codicon.codicon-symbol-field::before { content: "f"; }
+.monaco-editor .suggest-widget .codicon-symbol-property { background: #c77dbb !important; }
+.monaco-editor .suggest-widget .codicon.codicon-symbol-property::before { content: "p"; }
+.monaco-editor .suggest-widget .codicon-symbol-variable { background: #4a9aa6 !important; }
+.monaco-editor .suggest-widget .codicon.codicon-symbol-variable::before { content: "v"; }
+.monaco-editor .suggest-widget .codicon-symbol-constant { background: #b07203 !important; }
+.monaco-editor .suggest-widget .codicon.codicon-symbol-constant::before { content: "c"; }
+.monaco-editor .suggest-widget .codicon-symbol-keyword { background: #787878 !important; }
+.monaco-editor .suggest-widget .codicon.codicon-symbol-keyword::before { content: "k"; }
+.monaco-editor .suggest-widget .codicon-symbol-snippet { background: #787878 !important; }
+.monaco-editor .suggest-widget .codicon.codicon-symbol-snippet::before { content: "t"; }
+.monaco-editor .suggest-widget .codicon-symbol-module { background: #6b6e76 !important; }
+.monaco-editor .suggest-widget .codicon.codicon-symbol-module::before { content: "M"; }
+.monaco-editor .suggest-widget .codicon-symbol-text { background: #6b6e76 !important; }
+.monaco-editor .suggest-widget .codicon.codicon-symbol-text::before { content: "a"; }
 .monaco-editor .suggest-widget .suggest-status-bar {
   font-size: 10.5px;
   padding: 2px 10px;
   color: color-mix(in srgb, var(--color-content) 50%, transparent);
+  background: color-mix(in srgb, var(--color-content) 4%, var(--color-background-base));
+  border-top: 1px solid color-mix(in srgb, var(--color-content) 8%, transparent);
 }
-/* Hover card and code lenses on tokens. */
+/* Hover card (errors, docs) and code lenses on tokens. */
 .monaco-editor .monaco-hover {
   border-radius: 8px !important;
+  border: 1px solid color-mix(in srgb, var(--color-content) 14%, transparent) !important;
   box-shadow: 0 8px 24px rgb(0 0 0 / 0.3);
   overflow: hidden;
+}
+.theme-light .monaco-editor .monaco-hover {
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.12);
+}
+.monaco-editor .monaco-hover .hover-row {
+  padding: 2px 0;
+}
+.monaco-editor .monaco-hover .hover-row + .hover-row {
+  border-top: 1px solid color-mix(in srgb, var(--color-content) 8%, transparent);
+}
+.monaco-editor .monaco-hover .hover-row.status-bar {
+  border-top: 1px solid color-mix(in srgb, var(--color-content) 8%, transparent);
+  background: color-mix(in srgb, var(--color-content) 4%, var(--color-background-base));
+}
+.monaco-editor .monaco-hover .hover-row.status-bar .action-container .action-label {
+  color: var(--color-accent);
+  font-size: 11.5px;
 }
 .monaco-editor .codelens-decoration,
 .monaco-editor .codelens-decoration a {

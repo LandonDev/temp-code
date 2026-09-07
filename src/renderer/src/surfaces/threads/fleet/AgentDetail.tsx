@@ -157,6 +157,7 @@ export function AgentDetail({
               className="absolute inset-0"
             >
               <AgentTranscript
+                sessionId={agentId}
                 blocks={session?.blocks ?? []}
                 busy={!!session?.busy}
                 visible
