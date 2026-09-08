@@ -67,6 +67,16 @@ export function openDb(path: string): DatabaseSync {
       key   TEXT PRIMARY KEY,
       value TEXT NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS session_folds (
+      session_id    TEXT PRIMARY KEY,
+      folded_seq    INTEGER NOT NULL,
+      fold_version  INTEGER NOT NULL,
+      tasks_done    INTEGER,
+      tasks_total   INTEGER,
+      tasks_current TEXT,
+      goal          TEXT,
+      can_continue  INTEGER NOT NULL DEFAULT 0
+    );
   `)
   // Migrations for databases created before these columns existed.
   for (const stmt of [
@@ -94,6 +104,51 @@ export function openDb(path: string): DatabaseSync {
   }
   ensureNotesTable(db)
   return db
+}
+
+/**
+ * Bump when foldTodo, foldGoal or foldContinuableError changes meaning:
+ * every session_folds row falls behind at once and the boot sweep
+ * recomputes them. A persisted fold is otherwise sticky.
+ */
+export const FOLD_VERSION = 1
+
+/** The derived outputs of a session's log — what the sidebar shows — so
+ *  list() never reads events. `foldedSeq` is the highest event folded in;
+ *  a row behind MAX(seq) or FOLD_VERSION is stale and gets re-swept. A
+ *  missing row means "never folded"; `tasks: null` means "no task list". */
+export interface FoldRow {
+  sessionId: string
+  foldedSeq: number
+  foldVersion: number
+  tasks: { done: number; total: number; current: string | null } | null
+  goal: NonNullable<SessionMeta['goal']> | null
+  canContinue: boolean
+}
+
+interface FoldRowRaw {
+  session_id: string
+  folded_seq: number
+  fold_version: number
+  tasks_done: number | null
+  tasks_total: number | null
+  tasks_current: string | null
+  goal: string | null
+  can_continue: number
+}
+
+function toFold(r: FoldRowRaw): FoldRow {
+  return {
+    sessionId: r.session_id,
+    foldedSeq: r.folded_seq,
+    foldVersion: r.fold_version,
+    tasks:
+      r.tasks_done === null || r.tasks_total === null
+        ? null
+        : { done: r.tasks_done, total: r.tasks_total, current: r.tasks_current },
+    goal: r.goal ? (JSON.parse(r.goal) as FoldRow['goal']) : null,
+    canContinue: !!r.can_continue
+  }
 }
 
 interface SessionRowRaw {
@@ -308,8 +363,10 @@ export class Store {
     collect(id)
     const del = this.db.prepare(`DELETE FROM sessions WHERE id = ?`)
     const delEvents = this.db.prepare(`DELETE FROM events WHERE session_id = ?`)
+    const delFold = this.db.prepare(`DELETE FROM session_folds WHERE session_id = ?`)
     for (const sid of ids) {
       delEvents.run(sid)
+      delFold.run(sid)
       del.run(sid)
     }
     return ids
@@ -525,14 +582,71 @@ export class Store {
   }
 
   eventsAfter(sessionId: string, afterSeq: number): EventRow[] {
+    return this.eventsRange(sessionId, afterSeq, -1)
+  }
+
+  /** Up to `limit` events after `afterSeq` (-1 for all) — the chunked
+   *  read the fold sweep walks big logs with, yielding between chunks. */
+  eventsRange(sessionId: string, afterSeq: number, limit: number): EventRow[] {
     const rows = this.db
-      .prepare(`SELECT seq, ts, payload FROM events WHERE session_id = ? AND seq > ? ORDER BY seq`)
-      .all(sessionId, afterSeq) as unknown as { seq: number; ts: number; payload: string }[]
+      .prepare(
+        `SELECT seq, ts, payload FROM events WHERE session_id = ? AND seq > ? ORDER BY seq LIMIT ?`
+      )
+      .all(sessionId, afterSeq, limit) as unknown as { seq: number; ts: number; payload: string }[]
     return rows.map((r) => ({
       sessionId,
       seq: r.seq,
       ts: r.ts,
       event: JSON.parse(r.payload) as AgentEvent
     }))
+  }
+
+  /** Highest event seq per session — index-only, no payload read. */
+  maxSeqs(): Map<string, number> {
+    const rows = this.db
+      .prepare(`SELECT session_id, MAX(seq) AS max FROM events GROUP BY session_id`)
+      .all() as unknown as { session_id: string; max: number }[]
+    return new Map(rows.map((r) => [r.session_id, r.max]))
+  }
+
+  // ── session folds ──────────────────────────────────────────────────
+
+  listFolds(): FoldRow[] {
+    const rows = this.db.prepare(`SELECT * FROM session_folds`).all() as unknown as FoldRowRaw[]
+    return rows.map(toFold)
+  }
+
+  getFold(sessionId: string): FoldRow | null {
+    const r = this.db.prepare(`SELECT * FROM session_folds WHERE session_id = ?`).get(sessionId) as
+      FoldRowRaw | undefined
+    return r ? toFold(r) : null
+  }
+
+  putFold(fold: FoldRow): void {
+    this.db
+      .prepare(
+        `INSERT INTO session_folds
+           (session_id, folded_seq, fold_version, tasks_done, tasks_total, tasks_current, goal, can_continue)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(session_id) DO UPDATE SET
+           folded_seq = excluded.folded_seq, fold_version = excluded.fold_version,
+           tasks_done = excluded.tasks_done, tasks_total = excluded.tasks_total,
+           tasks_current = excluded.tasks_current, goal = excluded.goal,
+           can_continue = excluded.can_continue`
+      )
+      .run(
+        fold.sessionId,
+        fold.foldedSeq,
+        fold.foldVersion,
+        fold.tasks?.done ?? null,
+        fold.tasks?.total ?? null,
+        fold.tasks?.current ?? null,
+        fold.goal ? JSON.stringify(fold.goal) : null,
+        fold.canContinue ? 1 : 0
+      )
+  }
+
+  deleteFold(sessionId: string): void {
+    this.db.prepare(`DELETE FROM session_folds WHERE session_id = ?`).run(sessionId)
   }
 }
