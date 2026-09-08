@@ -17,6 +17,7 @@ import { SessionRegistry } from './sessions'
 import { runDoctor, updateProvider } from './drivers/binaries'
 import { probeCatalogs } from './drivers/catalogProbe'
 import { backfillMirrors } from './mirror'
+import { bootMark } from './boot'
 import {
   orchAnswerAgent,
   orchCheckAgent,
@@ -138,8 +139,12 @@ export interface RunningServer {
   close: () => Promise<void>
 }
 
+let firstListMarked = false
+
 export async function startServer(dbPath: string, options: { dataDir?: string } = {}): Promise<RunningServer> {
+  bootMark('server-start')
   const db = openDb(dbPath)
+  bootMark('db-open')
   const store = new Store(db)
   const checkpoints = new CheckpointStore(join(options.dataDir ?? dirname(dbPath), 'checkpoints'))
   const registry = new SessionRegistry(store)
@@ -707,9 +712,15 @@ export async function startServer(dbPath: string, options: { dataDir?: string } 
             sendFrame({ id: req.id, ok: true, result: session })
             break
           }
-          case 'session.list':
-            sendFrame({ id: req.id, ok: true, result: registry.list() })
+          case 'session.list': {
+            const sessions = registry.list()
+            if (!firstListMarked) {
+              firstListMarked = true
+              bootMark('first-session-list', `${sessions.length} sessions`)
+            }
+            sendFrame({ id: req.id, ok: true, result: sessions })
             break
+          }
           case 'session.events':
             sendFrame({
               id: req.id,
