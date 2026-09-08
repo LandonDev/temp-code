@@ -157,17 +157,20 @@ export async function startServer(dbPath: string, options: { dataDir?: string } 
   // Fold catch-up: sessions whose sidebar folds are missing or behind
   // their log (first boot after upgrade, a crash, an older build) heal in
   // the background, newest first, without blocking the first list.
+  // The mirror catch-up follows it so two heavy log readers never
+  // interleave.
   const foldTimer = setTimeout(() => {
     bootMark('fold-backfill start')
-    void sweepFolds(store, registry)
+    sweepFolds(store, registry)
       .then((n) => bootMark('fold-backfill done', `${n} sessions`))
       .catch((err) => console.error('[folds] sweep failed', err))
+      .then(() => backfillMirrors(registry))
+      .catch((err) => console.error('[mirror] backfill failed', err))
   }, 2_000)
   foldTimer.unref()
   setOrchestrationRegistry(registry)
   setAppToolsRegistry(registry)
   setSummarizeContext(registry, store)
-  backfillMirrors(registry) // old mirrors gain files:/Outcome, INDEX.md fills in
   void runDoctor() // warm the cache so the new-session modal opens ready
   void probeCatalogs() // the five probed harnesses ask their CLIs for models
 

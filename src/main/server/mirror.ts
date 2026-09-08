@@ -5,6 +5,7 @@ import {
   readFileSync,
   renameSync,
   rmSync,
+  statSync,
   writeFileSync
 } from 'node:fs'
 import { appendFile, readFile } from 'node:fs/promises'
@@ -262,30 +263,46 @@ export function scheduleMirror(reg: SessionRegistry, sessionId: string): void {
   )
 }
 
-/** Boot-time catch-up: mirrors written before `files:` and `## Outcome`
- *  existed regenerate once, so INDEX.md is complete from day one. Pure
- *  serialization off the event log — no model, no network — and deferred
- *  past startup so it never competes with the first window. */
-export function backfillMirrors(reg: SessionRegistry): void {
-  const timer = setTimeout(() => {
-    bootMark('mirror-backfill start')
-    const dirs = new Set<string>()
-    for (const meta of reg.list()) {
-      if (!meta.projectId || meta.archived) continue
-      mirrorSession(reg, meta.id, { index: false })
-      const cwd = contextCwd(reg, meta)
-      if (cwd) dirs.add(join(cwd, '.temp-code', 'threads'))
+/** A mirror written after the thread's last change needs no rewrite.
+ *  This is freshness by mtime only: a change to the mirror FORMAT does not
+ *  make old files stale. When the format changes, stamp it (a version
+ *  line in the frontmatter, say) and compare that here too — otherwise
+ *  the backfill silently keeps the old shape. */
+function mirrorFresh(dir: string, meta: SessionMeta): boolean {
+  try {
+    return statSync(join(dir, mirrorName(meta))).mtimeMs >= meta.updatedAt
+  } catch {
+    return false
+  }
+}
+
+/** Boot-time catch-up for mirrors that are missing or older than their
+ *  thread. Pure serialization off the event log — no model, no network —
+ *  one session per turn of the event loop so the window never freezes,
+ *  and each project's INDEX.md written once at the end. */
+export async function backfillMirrors(reg: SessionRegistry): Promise<void> {
+  bootMark('mirror-backfill start')
+  const dirs = new Set<string>()
+  let written = 0
+  for (const meta of reg.list()) {
+    if (!meta.projectId || meta.archived) continue
+    const cwd = contextCwd(reg, meta)
+    if (!cwd) continue
+    const dir = join(cwd, '.temp-code', 'threads')
+    dirs.add(dir)
+    if (mirrorFresh(dir, meta)) continue
+    mirrorSession(reg, meta.id, { index: false })
+    written++
+    await new Promise((r) => setImmediate(r))
+  }
+  for (const dir of dirs) {
+    try {
+      writeThreadsIndex(dir)
+    } catch {
+      // best-effort, like every other mirror write
     }
-    for (const dir of dirs) {
-      try {
-        writeThreadsIndex(dir)
-      } catch {
-        // best-effort, like every other mirror write
-      }
-    }
-    bootMark('mirror-backfill done')
-  }, 5_000)
-  timer.unref()
+  }
+  bootMark('mirror-backfill done', `${written} rewritten`)
 }
 
 /** Deleting a thread removes its mirror (archived threads keep theirs). */
