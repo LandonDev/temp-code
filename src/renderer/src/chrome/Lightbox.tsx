@@ -133,7 +133,7 @@ export function Lightbox() {
           initial={reduce ? false : { opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={reduce ? undefined : { opacity: 0, transition: { duration: 0.12 } }}
-          className="fixed inset-0 flex items-center justify-center bg-black/75 supports-backdrop-filter:backdrop-blur-sm"
+          className="fixed inset-0 flex items-center justify-center bg-black/75 glass-surface glass-surface--sm"
           style={{ zIndex: LAYER.dialog + 5 }}
           onClick={close}
         >

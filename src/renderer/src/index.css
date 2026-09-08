@@ -187,6 +187,47 @@ html.is-mac.glass-body .body-glass {
   );
 }
 
+/* Every popover, menu, dialog and floating panel shares this surface: the
+ * blur, tint and border in one place. `.glass-surface--sm|md|xl` pick the
+ * blur strength; the bare class is the Tailwind default (8px).
+ *
+ * `translateZ(0)` + `will-change: transform` promote the surface to its own
+ * compositor layer up front, and `contain: paint` + `isolation: isolate`
+ * keep the blur sampling a bounded region instead of forcing a window-wide
+ * recomposite. Both are set on mount, not toggled, so the layer already
+ * exists by the time the blur is asked for — that is what avoids the dark
+ * cutout/flicker macOS shows when `backdrop-filter` first paints over a
+ * vibrant transparent NSWindow.
+ */
+.glass-surface {
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  transform: translateZ(0);
+  will-change: transform;
+  contain: paint;
+  isolation: isolate;
+}
+
+.glass-surface--xs {
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+}
+
+.glass-surface--sm {
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+.glass-surface--md {
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.glass-surface--xl {
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+}
+
 textarea,
 input,
 .agent-transcript,
