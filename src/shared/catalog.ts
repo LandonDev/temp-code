@@ -9,7 +9,32 @@
  * Reasoning is PER MODEL — ladders differ within one provider.
  */
 
-export type ProviderId = 'claude' | 'codex' | 'cursor'
+export type ProviderId =
+  | 'claude'
+  | 'codex'
+  | 'cursor'
+  | 'grok'
+  | 'opencode'
+  | 'pi'
+  | 'omp'
+  | 'fx'
+
+/** Providers whose model list comes from probing the installed CLI at
+ *  boot (and on `catalog.get {refresh}`), not from this file. */
+export const PROBED_PROVIDERS: ProviderId[] = ['grok', 'opencode', 'pi', 'omp', 'fx']
+
+/** Replace a probed provider's models in place; the object identity of
+ *  CATALOG never changes, so every reader sees the update. */
+export function applyProbedCatalog(
+  id: ProviderId,
+  probed: { label?: string; models: ModelInfo[]; defaultModel: string } | null
+): void {
+  const entry = CATALOG[id]
+  if (!probed) return
+  entry.models = probed.models
+  entry.defaultModel = probed.defaultModel
+  if (probed.label) entry.label = probed.label
+}
 
 export type Reasoning = 'low' | 'medium' | 'high' | 'xhigh' | 'max' | 'ultra'
 
@@ -181,7 +206,14 @@ export const CATALOG: Record<ProviderId, ProviderInfo> = {
       }
     ],
     defaultModel: 'composer-2.5'
-  }
+  },
+  // Second-class harnesses: probed at boot from the installed CLIs (see
+  // PROBED_PROVIDERS); an uninstalled one keeps an empty list.
+  grok: { id: 'grok', label: 'Grok Build', models: [], defaultModel: '', experimental: true },
+  opencode: { id: 'opencode', label: 'OpenCode', models: [], defaultModel: '', experimental: true },
+  pi: { id: 'pi', label: 'Pi', models: [], defaultModel: '', experimental: true },
+  omp: { id: 'omp', label: 'omp', models: [], defaultModel: '', experimental: true },
+  fx: { id: 'fx', label: 'fx', models: [], defaultModel: '', experimental: true }
 }
 
 /** A provider's entry for a model id, if it's in the catalog. */

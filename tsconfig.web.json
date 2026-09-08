@@ -1,20 +1,25 @@
 {
   "extends": "@electron-toolkit/tsconfig/tsconfig.web.json",
   "include": [
-    "src/renderer/src/env.d.ts",
     "src/renderer/src/**/*",
     "src/renderer/src/**/*.tsx",
     "src/preload/*.d.ts",
     "src/shared/**/*"
   ],
+  "exclude": ["src/renderer/src/**/*.test.ts", "src/renderer/src/**/*.test.tsx"],
   "compilerOptions": {
     "composite": true,
     "jsx": "react-jsx",
-    "noUnusedLocals": false,
-    "noUnusedParameters": false,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "noImplicitReturns": false,
+    "noImplicitAny": true,
+    "useDefineForClassFields": true,
     "baseUrl": ".",
     "paths": {
       "@renderer/*": ["src/renderer/src/*"],
+      "@server/shared/*": ["src/shared/*"],
       "@shared/*": ["src/shared/*"]
     }
   }

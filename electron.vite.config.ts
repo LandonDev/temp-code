@@ -48,11 +48,13 @@ export default defineConfig({
     resolve: {
       alias: {
         '@renderer': resolve('src/renderer/src'),
+        // The transplanted renderer imports server types as
+        // `@server/shared/*` (MonoCode's layout); they live in src/shared.
+        '@server/shared': resolve('src/shared'),
         '@shared': resolve('src/shared')
       }
     },
-    // The editor chunk (Monaco + shiki + LSP client) loads lazily, which
-    // makes this a code-splitting build — workers must be ES modules.
+    // Monaco's editor worker is a lazy chunk; iife workers cannot code-split.
     worker: { format: 'es' },
     plugins: [react(), tailwindcss()]
   }

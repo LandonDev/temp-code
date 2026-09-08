@@ -1,4 +1,11 @@
 import { DatabaseSync } from 'node:sqlite'
+import { ensureNotesTable } from './notes'
+import {
+  WorkspaceSnapshotSchema,
+  type SessionSearchHit,
+  type SessionSearchResult,
+  type WorkspaceSnapshot
+} from '@shared/contract-m3a'
 import { mkdirSync } from 'node:fs'
 import { dirname } from 'node:path'
 import type { AgentEvent, EventRow, SessionMeta, SessionStatus } from '@shared/events'
@@ -63,6 +70,7 @@ export function openDb(path: string): DatabaseSync {
   `)
   // Migrations for databases created before these columns existed.
   for (const stmt of [
+    `ALTER TABLE sessions ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0`,
     `ALTER TABLE sessions ADD COLUMN archived INTEGER NOT NULL DEFAULT 0`,
     `ALTER TABLE sessions ADD COLUMN permission TEXT NOT NULL DEFAULT 'edits'`,
     `ALTER TABLE sessions ADD COLUMN project_id TEXT`,
@@ -84,6 +92,7 @@ export function openDb(path: string): DatabaseSync {
       // column already exists
     }
   }
+  ensureNotesTable(db)
   return db
 }
 
@@ -101,6 +110,7 @@ interface SessionRowRaw {
   title: string
   cwd: string
   status: string
+  pinned: number
   archived: number
   permission: string
   fast: number
@@ -129,6 +139,7 @@ function toMeta(r: SessionRowRaw): SessionMeta {
     title: r.title,
     cwd: r.cwd,
     status: r.status as SessionStatus,
+    pinned: !!r.pinned,
     archived: !!r.archived,
     fast: !!r.fast,
     context1m: !!r.context_1m,
@@ -143,14 +154,43 @@ function toMeta(r: SessionRowRaw): SessionMeta {
   }
 }
 
+const SEARCH_CAP = 200
+
 export class Store {
   constructor(private db: DatabaseSync) {}
+
+  /** One snapshot per window slot. The first window keeps the pre-M12 key
+   *  so an upgrade restores what it had; every other slot gets its own. */
+  private snapshotKey(window?: string): string {
+    const base = 'renderer.workspaceSnapshot.v1'
+    return window && window !== 'main' ? `${base}:${window}` : base
+  }
+
+  getWorkspaceSnapshot(window?: string): WorkspaceSnapshot | null {
+    const raw = this.getSetting(this.snapshotKey(window))
+    return raw === null ? null : WorkspaceSnapshotSchema.parse(JSON.parse(raw))
+  }
+
+  setWorkspaceSnapshot(snapshot: unknown, window?: string): void {
+    const valid = WorkspaceSnapshotSchema.parse(snapshot)
+    const json = JSON.stringify(valid)
+    if (Buffer.byteLength(json, 'utf8') > 2_000_000) throw new Error('workspace snapshot is too large')
+    this.setSetting(this.snapshotKey(window), json)
+  }
+
+  dropWorkspaceSnapshot(window: string): void {
+    this.setSetting(this.snapshotKey(window), null)
+  }
+
+  setSessionWorkspace(id: string, workspaceId: string): void {
+    this.db.prepare('UPDATE sessions SET workspace_id = ? WHERE id = ?').run(workspaceId, id)
+  }
 
   insertSession(meta: SessionMeta): void {
     this.db
       .prepare(
-        `INSERT INTO sessions (id, parent_id, project_id, workspace_id, thread_type, plan_path, provider, model, reasoning, agent_type, title, cwd, status, archived, permission, fast, context_1m, busy_since, paused_at, frozen_active_elapsed, thread_rules, native_id, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        `INSERT INTO sessions (id, parent_id, project_id, workspace_id, thread_type, plan_path, provider, model, reasoning, agent_type, title, cwd, status, archived, pinned, permission, fast, context_1m, busy_since, paused_at, frozen_active_elapsed, thread_rules, native_id, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         meta.id,
@@ -167,6 +207,7 @@ export class Store {
         meta.cwd,
         meta.status,
         meta.archived ? 1 : 0,
+        meta.pinned ? 1 : 0,
         meta.permission,
         meta.fast ? 1 : 0,
         meta.context1m ? 1 : 0,
@@ -189,6 +230,7 @@ export class Store {
         | 'title'
         | 'nativeId'
         | 'archived'
+        | 'pinned'
         | 'provider'
         | 'model'
         | 'reasoning'
@@ -214,13 +256,14 @@ export class Store {
     const next = { ...cur, ...defined, updatedAt: Date.now() }
     this.db
       .prepare(
-        `UPDATE sessions SET status = ?, title = ?, native_id = ?, archived = ?, provider = ?, model = ?, reasoning = ?, permission = ?, fast = ?, context_1m = ?, busy_since = ?, paused_at = ?, frozen_active_elapsed = ?, thread_type = ?, plan_path = ?, agent_type = ?, thread_rules = ?, updated_at = ? WHERE id = ?`
+        `UPDATE sessions SET status = ?, title = ?, native_id = ?, archived = ?, pinned = ?, provider = ?, model = ?, reasoning = ?, permission = ?, fast = ?, context_1m = ?, busy_since = ?, paused_at = ?, frozen_active_elapsed = ?, thread_type = ?, plan_path = ?, agent_type = ?, thread_rules = ?, updated_at = ? WHERE id = ?`
       )
       .run(
         next.status,
         next.title,
         next.nativeId,
         next.archived ? 1 : 0,
+        next.pinned ? 1 : 0,
         next.provider,
         next.model,
         next.reasoning,
@@ -421,6 +464,50 @@ export class Store {
   }
 
   /** Has this session ever received a user message? (drives first-send preambles) */
+  /** Case-insensitive substring search over every stored user and assistant
+   *  text row, newest first, so the renderer finds threads it never opened.
+   *  Deltas and in-harness subagent prose are skipped: the full block that
+   *  follows a delta stream repeats its text, and nested output has no row
+   *  of its own in the transcript. Capped at 200 hits. */
+  searchEvents(options: {
+    query: string
+    workspaceId?: string
+    limit?: number
+  }): SessionSearchResult {
+    const needle = options.query.trim().toLowerCase()
+    const limit = Math.min(options.limit ?? SEARCH_CAP, SEARCH_CAP)
+    if (!needle) return { hits: [], truncated: false }
+    const rows = this.db
+      .prepare(
+        `SELECT e.session_id AS sessionId, e.seq AS seq, e.ts AS ts,
+                json_extract(e.payload, '$.type') AS type,
+                json_extract(e.payload, '$.text') AS text
+         FROM events e JOIN sessions s ON s.id = e.session_id
+         WHERE json_extract(e.payload, '$.type') IN ('user-text', 'assistant-text')
+           AND COALESCE(json_extract(e.payload, '$.delta'), 0) = 0
+           AND json_extract(e.payload, '$.parentCallId') IS NULL
+           AND instr(lower(json_extract(e.payload, '$.text')), ?) > 0
+           ${options.workspaceId ? 'AND s.workspace_id = ?' : ''}
+         ORDER BY e.ts DESC, e.seq DESC
+         LIMIT ?`
+      )
+      .all(
+        ...(options.workspaceId ? [needle, options.workspaceId] : [needle]),
+        limit + 1
+      ) as unknown as Array<{ sessionId: string; seq: number; ts: number; type: string; text: string }>
+    const hits: SessionSearchHit[] = rows.slice(0, limit).map((row) => {
+      const at = row.text.toLowerCase().indexOf(needle)
+      return {
+        sessionId: row.sessionId,
+        seq: row.seq,
+        role: row.type === 'user-text' ? 'user' : 'assistant',
+        snippet: row.text.slice(Math.max(0, at - 60), at + 120).trim(),
+        ts: row.ts
+      }
+    })
+    return { hits, truncated: rows.length > limit }
+  }
+
   hasUserText(sessionId: string): boolean {
     const r = this.db
       .prepare(

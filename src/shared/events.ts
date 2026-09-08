@@ -61,6 +61,31 @@ export const AttachmentSchema = z.object({
 })
 export type Attachment = z.infer<typeof AttachmentSchema>
 
+/** A rendered face for a tool call (file read, diff, shell, search) the
+ *  driver already worked out — the UI shows it instead of guessing from
+ *  the raw input. Mirrors MonoCode's ToolPreview. */
+export const ToolPreviewSchema = z.object({
+  kind: z.enum(['read', 'write', 'shell', 'search']),
+  title: z.string().optional(),
+  path: z.string().optional(),
+  fileName: z.string().optional(),
+  startLine: z.number().optional(),
+  additions: z.number().optional(),
+  deletions: z.number().optional(),
+  query: z.string().optional(),
+  lines: z
+    .array(
+      z.object({
+        number: z.number().optional(),
+        kind: z.enum(['add', 'del', 'context']),
+        text: z.string()
+      })
+    )
+    .optional(),
+  output: z.string().optional()
+})
+export type ToolPreview = z.infer<typeof ToolPreviewSchema>
+
 export const AgentEventSchema = z.discriminatedUnion('type', [
   // A message the user (or the orchestrator, for subagents) sent in.
   z.object({
@@ -71,6 +96,7 @@ export const AgentEventSchema = z.discriminatedUnion('type', [
     model: z.string().optional(),
     reasoning: z.string().optional(),
     context1m: z.boolean().optional(),
+    fast: z.boolean().optional(),
     /** the user pressed the pass button for this send (true) or typed under
      *  the banner (false) — absent on logs from before the stamp, where the
      *  fold falls back to inferring pass boundaries */
@@ -101,7 +127,9 @@ export const AgentEventSchema = z.discriminatedUnion('type', [
     partial: z.boolean().optional(),
     parentCallId: z.string().optional(),
     /** humanized face for addon calls (codex appContext): app + action */
-    display: z.object({ app: z.string().optional(), action: z.string().optional() }).optional()
+    display: z.object({ app: z.string().optional(), action: z.string().optional() }).optional(),
+    /** driver-rendered face (ported harnesses that mine their own previews) */
+    preview: ToolPreviewSchema.optional()
   }),
   z.object({
     type: z.literal('tool-result'),
@@ -140,6 +168,9 @@ export const AgentEventSchema = z.discriminatedUnion('type', [
   // injected a follow-up instruction after the turn settled. Everything
   // from here to the next turn-complete belongs to the pass — the UI
   // highlights those tool calls apart from the turn's own work.
+  // The harness produced a plan document (plan mode / a plan pane).
+  z.object({ type: z.literal('plan'), text: z.string() }),
+
   z.object({ type: z.literal('turn-pass'), actions: z.array(z.string()) }),
 
   // Dormant supervision: a subagent settled and the server handed its
@@ -295,6 +326,7 @@ export interface SessionMeta {
   title: string
   cwd: string
   status: SessionStatus
+  pinned: boolean
   archived: boolean
   permission: PermissionPolicy
   /** Claude fast mode (faster output on supported models); harness restarts on change. */
