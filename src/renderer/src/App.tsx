@@ -332,7 +332,7 @@ import type { InstalledUpdate } from "./lib/updateNotice";
 import {
   hasInFlightSessions,
   hideCurrentWindow,
-  closeCurrentWindow,
+  persistAndCloseWindow,
   isAppQuitting,
   persistQuitState,
   reapWindowRuntime,
@@ -800,6 +800,7 @@ export default function App({
   }, []);
 
   useEffect(() => {
+    let cancelled = false;
     let unlistenClose: (() => void) | undefined;
     const releaseQuit = setQuitWorkspace(
       () => sessionStore.getSnapshot(),
@@ -817,20 +818,23 @@ export default function App({
           void hideCurrentWindow();
           return;
         }
-        void persistQuitState(
+        void persistAndCloseWindow(
           sessionStore.getSnapshot(),
           tabsRef.current,
           activeTabIdRef.current,
           projectCwdRef.current,
           projectTerminalsRef.current,
-        ).finally(() => {
-          void closeCurrentWindow();
-        });
+        );
       })
       .then((fn) => {
-        unlistenClose = fn;
+        // The subscription resolves after the effect may already have been
+        // torn down (StrictMode remounts); a listener left behind would close
+        // the window twice and persist a snapshot main has already dropped.
+        if (cancelled) fn();
+        else unlistenClose = fn;
       });
     return () => {
+      cancelled = true;
       releaseQuit();
       unlistenClose?.();
     };
@@ -873,8 +877,10 @@ export default function App({
     prefetchProjectFiles(sidebarCwd);
   }, [sidebarCwd]);
 
+  // Every window saves under its own slot, a transferred one included: the
+  // donor skipped this for transfer windows because it had one snapshot for
+  // the whole app, and the moved tab would have overwritten the source's.
   useEffect(() => {
-    if (windowTransfer) return;
     const snapshot = collectWorkspaceSnapshot(
       tabs,
       sessions,
@@ -886,12 +892,15 @@ export default function App({
     if (workspaceSyncKey.current === key) return;
     workspaceSyncKey.current = key;
     const timer = window.setTimeout(() => {
+      // A window on its way out has persisted already; a late auto-save
+      // would land after main dropped its slot.
+      if (isAppQuitting()) return;
       void saveWorkspaceSnapshot(snapshot).catch((err) => {
         console.error("[workspace] snapshot save failed:", err);
       });
     }, 250);
     return () => window.clearTimeout(timer);
-  }, [tabs, sessions, activeTabId, projectCwd, projectTerminals, windowTransfer]);
+  }, [tabs, sessions, activeTabId, projectCwd, projectTerminals]);
 
   useEffect(() => {
     if (lastProjectPath()) return;
@@ -4050,6 +4059,7 @@ export default function App({
         case "check_for_updates": return go(() => void updateStore.check(true));
         case "sidebar_opacity": return go(() => a.openSettings("appearance"));
         case "find_in_project": return go(a.onFindInProject);
+        case "new_window": return go(() => void invoke("open_new_window").catch(() => {}));
         case "find": return go(() => openFindInActiveEditor());
         case "open_model_picker":
           return go(() => window.dispatchEvent(new Event("open_model_picker")));

@@ -1,4 +1,4 @@
-import { invoke } from "./native";
+import { invoke, windowSlot } from "./native";
 import type { HarnessId, RuntimeMode, Session } from "./session";
 import { normalizeProjectPath, sameProjectPath } from "./recents";
 import * as commands from "./tcserver/commands";
@@ -224,12 +224,12 @@ let workspaceWrite: Promise<unknown> = Promise.resolve();
 export async function saveWorkspaceSnapshot(snapshot: unknown): Promise<void> {
   const run = workspaceWrite
     .catch(() => undefined)
-    .then(() => invoke("workspace_set_snapshot", { snapshot }));
+    .then(() => invoke("workspace_set_snapshot", { snapshot, window: windowSlot() }));
   workspaceWrite = run;
   await run;
 }
 
 export async function loadWorkspaceSnapshot(): Promise<unknown | null> {
-  const raw = await invoke<unknown | null>("workspace_get_snapshot");
+  const raw = await invoke<unknown | null>("workspace_get_snapshot", { window: windowSlot() });
   return raw ?? null;
 }

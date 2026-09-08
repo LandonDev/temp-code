@@ -134,6 +134,7 @@ function readAllowedFile(registry: SessionRegistry, path: string): string | null
 export interface RunningServer {
   port: number
   registry: SessionRegistry
+  store: Store
   close: () => Promise<void>
 }
 
@@ -984,6 +985,7 @@ export async function startServer(dbPath: string, options: { dataDir?: string } 
   return {
     port,
     registry,
+    store,
     close: async () => {
       clearTimeout(warmKickoff)
       clearInterval(warmTimer)
