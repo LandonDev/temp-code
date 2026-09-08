@@ -5,13 +5,17 @@ import { basename } from 'node:path'
 import { CreateSessionParams, type CreateSessionInput } from '@shared/contract'
 import type { SessionBatchResult } from '@shared/contract'
 import { CATALOG, resolveModel, type ProviderId } from '@shared/catalog'
-import type { AgentEvent, Attachment, EventRow, SessionMeta } from '@shared/events'
+import type { AgentEvent, Attachment, EventRow, SessionMeta, SessionStatus } from '@shared/events'
 import {
   foldContinuableError,
+  foldGoal,
   indexByParent,
   summarizeRootTree,
+  type GoalState,
   type ParentIndex
 } from '@shared/session-lifecycle'
+import { foldEvent, newFoldState, toFoldRow } from './folds'
+import { FOLD_VERSION, type FoldRow } from './db'
 import type {
   ProjectCleanup,
   ProjectMeta,
@@ -72,18 +76,6 @@ type SessionListener = (row: EventRow) => void
 type MetaListener = (session: SessionMeta) => void
 /** Lookups decorate() needs — built once per list(), never per session. */
 type SessionIndex = { byId: Map<string, SessionMeta>; byParent: ParentIndex }
-
-/** One goal at a time: set/updated replace it, met/cleared end it. */
-type GoalState = { condition: string; iterations: number; setAt: number } | null
-function foldGoal(prev: GoalState, event: AgentEvent, ts: number): GoalState {
-  if (event.type !== 'goal') return prev
-  if (event.phase === 'met' || event.phase === 'cleared') return null
-  return {
-    condition: event.condition,
-    iterations: event.iterations ?? (event.phase === 'set' ? 0 : (prev?.iterations ?? 0)),
-    setAt: event.phase === 'updated' && prev ? prev.setAt : ts
-  }
-}
 
 /** Cap for the transcript handoff sent to a new harness on provider switch. */
 const HANDOFF_MAX_CHARS = 24_000
@@ -293,16 +285,16 @@ export class SessionRegistry {
    *  transient by design: server memory only, cleared when the turn
    *  settles, attached to every meta push for the tab strip. */
   private activities = new Map<string, Activity>()
-  /** Per-thread task list, folded from the log — seeded on first ask, then
-   *  kept live event by event, so every tab can show its tally without
-   *  subscribing to the thread. */
+  /** Per-session derived folds (task tally, goal, trailing error) — the
+   *  persisted session_folds rows, loaded once at construction and kept
+   *  current by append(). list() reads these and never the event log. */
+  private folds = new Map<string, FoldRow>()
+  /** The richer in-memory task fold (list, call bookkeeping, turn state)
+   *  that the tally is emitted from. Not persisted: seeded from the log
+   *  the first time a session is appended to in this process, then kept
+   *  live event by event. A warm entry means append() owns that
+   *  session's fold row. */
   private todoFolds = new Map<string, TodoFold>()
-  /** Authoritative trailing-error fold, seeded from the stored log and kept
-   *  warm as new events arrive. */
-  private continuableErrors = new Map<string, boolean>()
-  /** Active goal per thread, folded from harness-confirmed goal events —
-   *  same lazy-seed-then-warm pattern as todoFolds. */
-  private goalFolds = new Map<string, GoalState>()
   /** Live context footprint per thread, straight off each harness stream —
    *  transient like activities; rides every meta push so all rings stay
    *  current without any thread being subscribed. */
@@ -327,7 +319,69 @@ export class SessionRegistry {
    *  is snapshotted before the provider can write. Set by the server. */
   checkpoints: CheckpointStore | null = null
 
-  constructor(private store: Store) {}
+  constructor(private store: Store) {
+    for (const fold of store.listFolds()) this.folds.set(fold.sessionId, fold)
+  }
+
+  // ── folds ───────────────────────────────────────────────────────────
+
+  foldOf(sessionId: string): FoldRow | undefined {
+    return this.folds.get(sessionId)
+  }
+
+  isFoldWarm(sessionId: string): boolean {
+    return this.todoFolds.has(sessionId)
+  }
+
+  private putFold(fold: FoldRow): void {
+    this.store.putFold(fold)
+    this.folds.set(fold.sessionId, fold)
+  }
+
+  /** Land swept rows and push each session's meta so its sidebar row
+   *  fills in live — one shared index for the whole batch. */
+  commitFolds(rows: FoldRow[]): void {
+    for (const fold of rows) this.putFold(fold)
+    const index = this.indexOf()
+    for (const fold of rows) {
+      const meta = index.byId.get(fold.sessionId)
+      if (!meta) continue
+      const decorated = this.decorate(meta, index)
+      for (const l of this.metaListeners) l(decorated)
+    }
+  }
+
+  /** The in-memory task fold, seeded from the stored log the first time a
+   *  session is appended to in this process (one walk, all three folds
+   *  together). A session with no current fold row gets one from the
+   *  same walk, so a send into a never-swept thread heals it at once. */
+  private warmTodoFold(sessionId: string): TodoFold {
+    const warm = this.todoFolds.get(sessionId)
+    if (warm) return warm
+    const state = newFoldState()
+    for (const row of this.store.eventsAfter(sessionId, 0)) foldEvent(state, row)
+    this.todoFolds.set(sessionId, state.todo)
+    const fold = this.folds.get(sessionId)
+    if (!fold || fold.foldedSeq < state.seq || fold.foldVersion !== FOLD_VERSION) {
+      this.putFold(toFoldRow(sessionId, state))
+    }
+    return state.todo
+  }
+
+  /** A status event appended outside append() (boot reset, pause, resume):
+   *  it changes no persisted fold output, so a current row just advances
+   *  its watermark; a stale or missing row stays for the sweep. */
+  private appendStatus(sessionId: string, status: SessionStatus): EventRow {
+    const event: AgentEvent = { type: 'status', status }
+    const row = this.store.appendEvent(sessionId, event)
+    const warm = this.todoFolds.get(sessionId)
+    if (warm) foldTodo(warm, event, row.ts)
+    const fold = this.folds.get(sessionId)
+    if (fold && fold.foldedSeq === row.seq - 1 && fold.foldVersion === FOLD_VERSION) {
+      this.putFold({ ...fold, foldedSeq: row.seq })
+    }
+    return row
+  }
 
   /** Snapshot the session's already-dirty files once per session and cwd.
    *  Never blocks a turn: a failure here only costs undo for that turn. */
@@ -366,7 +420,7 @@ export class SessionRegistry {
   resetStaleStatuses(): void {
     for (const s of this.store.listSessions()) {
       if (s.status === 'running' || s.status === 'waiting' || s.status === 'starting') {
-        this.store.appendEvent(s.id, { type: 'status', status: 'idle' })
+        this.appendStatus(s.id, 'idle')
         this.store.updateSession(s.id, { status: 'idle', busySince: null })
       }
     }
@@ -418,43 +472,22 @@ export class SessionRegistry {
     return cur?.id ?? sessionId
   }
 
-  /** The thread's current task tally, walking its stored log once and
-   *  keeping the fold warm from then on. */
+  /** The thread's current task tally: the warm fold if append() has
+   *  touched it this process, else the persisted row, else (not swept
+   *  yet) none. Never reads the event log. */
   private tasksOf(sessionId: string): TaskTally | null {
-    let fold = this.todoFolds.get(sessionId)
-    if (!fold) {
-      fold = newTodoFold()
-      for (const row of this.store.eventsAfter(sessionId, 0)) foldTodo(fold, row.event, row.ts)
-      this.todoFolds.set(sessionId, fold)
-    }
-    return tallyOf(fold)
+    const warm = this.todoFolds.get(sessionId)
+    return warm ? tallyOf(warm) : (this.folds.get(sessionId)?.tasks ?? null)
   }
 
-  /** The thread's active goal, walking the stored log once and keeping
-   *  the fold warm from then on (append() below). */
+  /** The thread's active goal, from its persisted fold row. */
   private goalOf(sessionId: string): GoalState {
-    let goal = this.goalFolds.get(sessionId)
-    if (goal === undefined) {
-      goal = null
-      for (const row of this.store.eventsAfter(sessionId, 0)) {
-        goal = foldGoal(goal, row.event, row.ts)
-      }
-      this.goalFolds.set(sessionId, goal)
-    }
-    return goal
+    return this.folds.get(sessionId)?.goal ?? null
   }
 
   /** Whether stored work still ends in an uncleared, unsuperseded error. */
   private storedContinuableError(sessionId: string): boolean {
-    let canContinue = this.continuableErrors.get(sessionId)
-    if (canContinue === undefined) {
-      canContinue = false
-      for (const row of this.store.eventsAfter(sessionId, 0)) {
-        canContinue = foldContinuableError(canContinue, row.event)
-      }
-      this.continuableErrors.set(sessionId, canContinue)
-    }
-    return canContinue
+    return this.folds.get(sessionId)?.canContinue ?? false
   }
 
   /** Whether the user can still recover this session. Work that is moving
@@ -802,6 +835,10 @@ export class SessionRegistry {
       updatedAt: now
     }
     this.store.insertSession(meta)
+    // Born folded: an empty row at seq 0, and a warm task fold so the
+    // first append never walks a log.
+    this.putFold(toFoldRow(id, newFoldState()))
+    this.todoFolds.set(id, newTodoFold())
     this.notifyMeta(meta)
     if (params.parentId) {
       this.append(params.parentId, { type: 'agent-spawned', childSessionId: meta.id })
@@ -1081,7 +1118,7 @@ export class SessionRegistry {
   async interrupt(sessionId: string): Promise<void> {
     const meta = this.store.getSession(sessionId)
     if (meta?.status === 'paused') {
-      this.store.appendEvent(sessionId, { type: 'status', status: 'idle' })
+      this.appendStatus(sessionId, 'idle')
       const next = this.store.updateSession(sessionId, {
         status: 'idle',
         busySince: null,
@@ -1147,7 +1184,7 @@ export class SessionRegistry {
         0,
         session.busySince === null ? (session.frozenActiveElapsed ?? 0) : now - session.busySince
       )
-      this.store.appendEvent(session.id, { type: 'status', status: 'paused' })
+      this.appendStatus(session.id, 'paused')
       const next = this.store.updateSession(session.id, {
         status: 'paused',
         busySince: null,
@@ -1212,7 +1249,7 @@ export class SessionRegistry {
       '<continue-paused-run>\nThe user paused this turn and has now continued it. Inspect your task list and your last actions, then continue the interrupted work exactly where you left off. Do not restart completed work.\n</continue-paused-run>'
     )
     const now = Date.now()
-    this.store.appendEvent(sessionId, { type: 'status', status: 'running' })
+    this.appendStatus(sessionId, 'running')
     const next = this.store.updateSession(sessionId, {
       status: 'running',
       busySince: now - frozen,
@@ -1510,8 +1547,7 @@ export class SessionRegistry {
       this.lastActivity.delete(id)
       this.activities.delete(id)
       this.todoFolds.delete(id)
-      this.continuableErrors.delete(id)
-      this.goalFolds.delete(id)
+      this.folds.delete(id)
       this.pendingGoals.delete(id)
       this.liveContexts.delete(id)
       const meta = all.find((s) => s.id === id)
@@ -1793,32 +1829,32 @@ export class SessionRegistry {
         void this.dropHandle(sessionId)
       }
     }
-    const beforeRecovery = this.storedContinuableError(sessionId)
+    // Seed the task fold before the insert so its walk excludes this
+    // event; the walk also lands a fold row for a never-swept session.
+    const warm = this.warmTodoFold(sessionId)
+    const prev = this.folds.get(sessionId) ?? toFoldRow(sessionId, newFoldState())
     const row = this.store.appendEvent(sessionId, event)
-    const afterRecovery = foldContinuableError(beforeRecovery, event)
-    this.continuableErrors.set(sessionId, afterRecovery)
-    const recoveryMoved = beforeRecovery !== afterRecovery
     this.lastActivity.set(sessionId, row.ts)
-    // Keep the task tally current (only if this thread's fold is already
-    // warm — an untouched one seeds itself from the log when first asked).
-    const warm = this.todoFolds.get(sessionId)
-    let tasksMoved = false
-    if (warm) {
-      const before = tallyOf(warm)
-      foldTodo(warm, event, row.ts)
-      const after = tallyOf(warm)
-      tasksMoved =
-        before?.done !== after?.done ||
-        before?.total !== after?.total ||
-        before?.current !== after?.current
-    }
-    // Keep the goal fold current the same way; a goal event pushes meta so
-    // the prompt-bar indicator flips without a status change.
+    const before = tallyOf(warm)
+    foldTodo(warm, event, row.ts)
+    const after = tallyOf(warm)
+    const tasksMoved =
+      before?.done !== after?.done ||
+      before?.total !== after?.total ||
+      before?.current !== after?.current
+    const afterRecovery = foldContinuableError(prev.canContinue, event)
+    const recoveryMoved = prev.canContinue !== afterRecovery
+    // A goal event pushes meta so the prompt-bar indicator flips without
+    // a status change.
     const goalMoved = event.type === 'goal'
-    if (goalMoved) {
-      const prev = this.goalFolds.get(sessionId)
-      if (prev !== undefined) this.goalFolds.set(sessionId, foldGoal(prev, event, row.ts))
-    }
+    this.putFold({
+      sessionId,
+      foldedSeq: row.seq,
+      foldVersion: FOLD_VERSION,
+      tasks: after,
+      goal: foldGoal(prev.goal, event, row.ts),
+      canContinue: afterRecovery
+    })
     // A finished first turn upgrades the sliced-first-message title to a
     // generated one (fire-and-forget; the slice stays if the call fails).
     if (event.type === 'turn-complete') this.maybeRetitle(sessionId)
