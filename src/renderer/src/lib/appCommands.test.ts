@@ -53,8 +53,9 @@ describe("command map: chords", () => {
     expect(resolve(key(k, { meta: true }), ctx)).toEqual({ id });
   });
 
-  it("⌘⇧F finds in project, ⌘⌥Z toggles zen, ⌘1 activates a tab", () => {
+  it("⌘⇧F finds in project, ⌘⇧N opens a window, ⌘⌥Z toggles zen, ⌘1 activates a tab", () => {
     expect(resolve(key("f", { meta: true, shift: true }), ctx)).toEqual({ id: "find_in_project" });
+    expect(resolve(key("n", { meta: true, shift: true }), ctx)).toEqual({ id: "new_window" });
     expect(resolve(key("z", { meta: true, alt: true }), ctx)).toEqual({ id: "toggle_zen" });
     expect(resolve(key("1", { meta: true }), ctx)).toEqual({ id: "activate_tab", index: 0 });
   });
@@ -111,6 +112,7 @@ describe("command map: guards", () => {
   it("a dialog swallows everything but zoom and Save All", () => {
     expect(resolve(key("p", { meta: true }, "dialog"), ctx)).toBeNull();
     expect(resolve(key("n", { meta: true }, "dialog"), ctx)).toBeNull();
+    expect(resolve(key("n", { meta: true, shift: true }, "dialog"), ctx)).toBeNull();
     expect(resolve(key("=", { meta: true }, "dialog"), ctx)).toEqual({ id: "zoom_in" });
     expect(resolve(key("s", { meta: true }, "dialog"), ctx)).toEqual({ id: "save_all" });
   });

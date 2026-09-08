@@ -8,6 +8,7 @@ import { promisify } from 'node:util'
 import { nanoid } from 'nanoid'
 import type { Attachment } from '@shared/events'
 import type { RunningServer } from './server'
+import { targetWindow } from './windows'
 
 const exec = promisify(execFile)
 
@@ -90,14 +91,20 @@ async function excludePids(): Promise<string> {
   return [...pids].join(',')
 }
 
-function sendToRenderer(channel: string, payload: unknown): void {
-  const wins = BrowserWindow.getAllWindows()
-  const listening = wins.filter((w) => ready.has(w.webContents.id))
-  if (channel === 'appshot' && listening.length === 0) {
-    queue.push(payload as Attachment)
-  } else {
-    for (const w of listening) w.webContents.send(channel, payload)
+/** One window gets the shot: the one in front if it listens, else any
+ *  that does. With none ready yet (cold launch) it waits in the queue. */
+function sendToRenderer(channel: string, payload: unknown): BrowserWindow | null {
+  const target = targetWindow()
+  const win =
+    target && ready.has(target.webContents.id)
+      ? target
+      : (BrowserWindow.getAllWindows().find((w) => ready.has(w.webContents.id)) ?? null)
+  if (!win) {
+    if (channel === 'appshot') queue.push(payload as Attachment)
+    return null
   }
+  win.webContents.send(channel, payload)
+  return win
 }
 
 async function capture(createWindow: () => void): Promise<void> {
@@ -156,8 +163,7 @@ async function capture(createWindow: () => void): Promise<void> {
     textPath
   }
   if (BrowserWindow.getAllWindows().length === 0) createWindow()
-  sendToRenderer('appshot', attachment)
-  const win = BrowserWindow.getAllWindows()[0]
+  const win = sendToRenderer('appshot', attachment) ?? targetWindow()
   if (win?.isMinimized()) win.restore()
   win?.show()
   app.focus({ steal: true })
@@ -201,6 +207,14 @@ function startMonitor(server: RunningServer, createWindow: () => void): void {
 
 export function registerAppshots(server: RunningServer, createWindow: () => void): void {
   ipcMain.handle('appshot-permissions', (_e, prompt?: boolean) => permissions(!!prompt))
+  // Dev-only: push a fake attachment down the real routing path and report
+  // which window took it, so window scoping can be checked without the helper.
+  if (!app.isPackaged)
+    ipcMain.handle('debug:appshot', () => {
+      const path = join(ATTACH_DIR, 'debug-appshot.jpg')
+      const attachment: Attachment = { path, name: 'debug-appshot.jpg', mime: 'image/jpeg', kind: 'appshot' }
+      return sendToRenderer('appshot', attachment)?.id ?? null
+    })
   // The renderer announces its listeners are mounted; queued captures flush.
   ipcMain.on('appshot-ready', (e) => {
     ready.add(e.sender.id)
