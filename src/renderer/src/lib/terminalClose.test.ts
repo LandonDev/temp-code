@@ -13,7 +13,7 @@ vi.mock("./native", () => ({
   ask: (...args: unknown[]) => ask(...args),
 }));
 
-const dialogOptions = { title: "MonoCode", kind: "warning" } as const;
+const dialogOptions = { title: "TempCode", kind: "warning" } as const;
 
 describe("confirmCloseTerminal", () => {
   afterEach(() => {
