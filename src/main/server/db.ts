@@ -1,4 +1,4 @@
-import { DatabaseSync } from 'node:sqlite'
+import { DatabaseSync, type StatementSync } from 'node:sqlite'
 import { ensureNotesTable } from './notes'
 import {
   WorkspaceSnapshotSchema,
@@ -214,6 +214,18 @@ const SEARCH_CAP = 200
 export class Store {
   constructor(private db: DatabaseSync) {}
 
+  /** Statements are prepared once per SQL string: preparing dominated a
+   *  boot profile where getSession() ran once per session per list(). */
+  private stmts = new Map<string, StatementSync>()
+  private stmt(sql: string): StatementSync {
+    let st = this.stmts.get(sql)
+    if (!st) {
+      st = this.db.prepare(sql)
+      this.stmts.set(sql, st)
+    }
+    return st
+  }
+
   /** One snapshot per window slot. The first window keeps the pre-M12 key
    *  so an upgrade restores what it had; every other slot gets its own. */
   private snapshotKey(window?: string): string {
@@ -238,12 +250,12 @@ export class Store {
   }
 
   setSessionWorkspace(id: string, workspaceId: string): void {
-    this.db.prepare('UPDATE sessions SET workspace_id = ? WHERE id = ?').run(workspaceId, id)
+    this.stmt('UPDATE sessions SET workspace_id = ? WHERE id = ?').run(workspaceId, id)
   }
 
   insertSession(meta: SessionMeta): void {
-    this.db
-      .prepare(
+    this
+      .stmt(
         `INSERT INTO sessions (id, parent_id, project_id, workspace_id, thread_type, plan_path, provider, model, reasoning, agent_type, title, cwd, status, archived, pinned, permission, fast, context_1m, busy_since, paused_at, frozen_active_elapsed, thread_rules, native_id, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
@@ -309,8 +321,8 @@ export class Store {
     // `undefined ? 1 : 0` below would zero the other.
     const defined = Object.fromEntries(Object.entries(patch).filter(([, v]) => v !== undefined))
     const next = { ...cur, ...defined, updatedAt: Date.now() }
-    this.db
-      .prepare(
+    this
+      .stmt(
         `UPDATE sessions SET status = ?, title = ?, native_id = ?, archived = ?, pinned = ?, provider = ?, model = ?, reasoning = ?, permission = ?, fast = ?, context_1m = ?, busy_since = ?, paused_at = ?, frozen_active_elapsed = ?, thread_type = ?, plan_path = ?, agent_type = ?, thread_rules = ?, updated_at = ? WHERE id = ?`
       )
       .run(
@@ -341,13 +353,13 @@ export class Store {
   /** Thread type changed mid-conversation; the next send re-instructs.
    *  Server-only state — never part of SessionMeta. */
   getRetyped(id: string): boolean {
-    const r = this.db.prepare(`SELECT retyped FROM sessions WHERE id = ?`).get(id) as
+    const r = this.stmt(`SELECT retyped FROM sessions WHERE id = ?`).get(id) as
       { retyped: number } | undefined
     return !!r?.retyped
   }
 
   setRetyped(id: string, on: boolean): void {
-    this.db.prepare(`UPDATE sessions SET retyped = ? WHERE id = ?`).run(on ? 1 : 0, id)
+    this.stmt(`UPDATE sessions SET retyped = ? WHERE id = ?`).run(on ? 1 : 0, id)
   }
 
   /** Delete a session and all of its descendants (log included). */
@@ -355,15 +367,15 @@ export class Store {
     const ids: string[] = []
     const collect = (cur: string): void => {
       ids.push(cur)
-      const kids = this.db
-        .prepare(`SELECT id FROM sessions WHERE parent_id = ?`)
+      const kids = this
+        .stmt(`SELECT id FROM sessions WHERE parent_id = ?`)
         .all(cur) as unknown as { id: string }[]
       for (const k of kids) collect(k.id)
     }
     collect(id)
-    const del = this.db.prepare(`DELETE FROM sessions WHERE id = ?`)
-    const delEvents = this.db.prepare(`DELETE FROM events WHERE session_id = ?`)
-    const delFold = this.db.prepare(`DELETE FROM session_folds WHERE session_id = ?`)
+    const del = this.stmt(`DELETE FROM sessions WHERE id = ?`)
+    const delEvents = this.stmt(`DELETE FROM events WHERE session_id = ?`)
+    const delFold = this.stmt(`DELETE FROM session_folds WHERE session_id = ?`)
     for (const sid of ids) {
       delEvents.run(sid)
       delFold.run(sid)
@@ -373,33 +385,33 @@ export class Store {
   }
 
   getSession(id: string): SessionMeta | null {
-    const r = this.db.prepare(`SELECT * FROM sessions WHERE id = ?`).get(id) as
+    const r = this.stmt(`SELECT * FROM sessions WHERE id = ?`).get(id) as
       SessionRowRaw | undefined
     return r ? toMeta(r) : null
   }
 
   childrenOf(parentId: string): SessionMeta[] {
-    const rows = this.db
-      .prepare(`SELECT * FROM sessions WHERE parent_id = ? ORDER BY created_at DESC`)
+    const rows = this
+      .stmt(`SELECT * FROM sessions WHERE parent_id = ? ORDER BY created_at DESC`)
       .all(parentId) as unknown as SessionRowRaw[]
     return rows.map(toMeta)
   }
 
   listSessions(): SessionMeta[] {
-    const rows = this.db
-      .prepare(`SELECT * FROM sessions ORDER BY created_at DESC`)
+    const rows = this
+      .stmt(`SELECT * FROM sessions ORDER BY created_at DESC`)
       .all() as unknown as SessionRowRaw[]
     return rows.map(toMeta)
   }
 
   appendEvent(sessionId: string, event: AgentEvent): EventRow {
     const ts = Date.now()
-    const r = this.db
-      .prepare(`SELECT COALESCE(MAX(seq), 0) AS max FROM events WHERE session_id = ?`)
+    const r = this
+      .stmt(`SELECT COALESCE(MAX(seq), 0) AS max FROM events WHERE session_id = ?`)
       .get(sessionId) as { max: number }
     const seq = r.max + 1
-    this.db
-      .prepare(`INSERT INTO events (session_id, seq, ts, payload) VALUES (?, ?, ?, ?)`)
+    this
+      .stmt(`INSERT INTO events (session_id, seq, ts, payload) VALUES (?, ?, ?, ?)`)
       .run(sessionId, seq, ts, JSON.stringify(event))
     return { sessionId, seq, ts, event }
   }
@@ -407,14 +419,14 @@ export class Store {
   // ── workspaces & projects ──────────────────────────────────────────
 
   insertWorkspace(w: WorkspaceMeta): void {
-    this.db
-      .prepare(`INSERT INTO workspaces (id, name, path, git, created_at) VALUES (?, ?, ?, ?, ?)`)
+    this
+      .stmt(`INSERT INTO workspaces (id, name, path, git, created_at) VALUES (?, ?, ?, ?, ?)`)
       .run(w.id, w.name, w.path, w.git ? 1 : 0, w.createdAt)
   }
 
   listWorkspaces(): WorkspaceMeta[] {
-    const rows = this.db
-      .prepare(`SELECT * FROM workspaces ORDER BY created_at`)
+    const rows = this
+      .stmt(`SELECT * FROM workspaces ORDER BY created_at`)
       .all() as unknown as {
       id: string
       name: string
@@ -433,25 +445,25 @@ export class Store {
 
   deleteWorkspace(id: string): string[] {
     const projectIds = (
-      this.db.prepare(`SELECT id FROM projects WHERE workspace_id = ?`).all(id) as unknown as {
+      this.stmt(`SELECT id FROM projects WHERE workspace_id = ?`).all(id) as unknown as {
         id: string
       }[]
     ).map((p) => p.id)
-    this.db.prepare(`DELETE FROM projects WHERE workspace_id = ?`).run(id)
-    this.db.prepare(`DELETE FROM workspaces WHERE id = ?`).run(id)
+    this.stmt(`DELETE FROM projects WHERE workspace_id = ?`).run(id)
+    this.stmt(`DELETE FROM workspaces WHERE id = ?`).run(id)
     return projectIds
   }
 
   insertProject(p: ProjectMeta): void {
-    this.db
-      .prepare(
+    this
+      .stmt(
         `INSERT INTO projects (id, workspace_id, name, mode, branch, cwd, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`
       )
       .run(p.id, p.workspaceId, p.name, p.mode, p.branch, p.cwd, p.createdAt)
   }
 
   listProjects(): ProjectMeta[] {
-    const rows = this.db.prepare(`SELECT * FROM projects ORDER BY created_at`).all() as unknown as {
+    const rows = this.stmt(`SELECT * FROM projects ORDER BY created_at`).all() as unknown as {
       id: string
       workspace_id: string
       name: string
@@ -478,32 +490,32 @@ export class Store {
   }
 
   deleteProject(id: string): void {
-    this.db.prepare(`DELETE FROM projects WHERE id = ?`).run(id)
+    this.stmt(`DELETE FROM projects WHERE id = ?`).run(id)
   }
 
   renameProject(id: string, name: string): void {
-    this.db.prepare(`UPDATE projects SET name = ? WHERE id = ?`).run(name, id)
+    this.stmt(`UPDATE projects SET name = ? WHERE id = ?`).run(name, id)
   }
 
   setProjectBranch(id: string, branch: string): void {
-    this.db.prepare(`UPDATE projects SET branch = ? WHERE id = ?`).run(branch, id)
+    this.stmt(`UPDATE projects SET branch = ? WHERE id = ?`).run(branch, id)
   }
 
   setProjectArchived(id: string, archived: boolean): void {
-    this.db.prepare(`UPDATE projects SET archived = ? WHERE id = ?`).run(archived ? 1 : 0, id)
+    this.stmt(`UPDATE projects SET archived = ? WHERE id = ?`).run(archived ? 1 : 0, id)
   }
 
   sessionsOfProject(projectId: string): SessionMeta[] {
-    const rows = this.db
-      .prepare(`SELECT * FROM sessions WHERE project_id = ?`)
+    const rows = this
+      .stmt(`SELECT * FROM sessions WHERE project_id = ?`)
       .all(projectId) as unknown as SessionRowRaw[]
     return rows.map(toMeta)
   }
 
   /** One-off chats hung directly off a workspace (no project). */
   sessionsOfWorkspace(workspaceId: string): SessionMeta[] {
-    const rows = this.db
-      .prepare(`SELECT * FROM sessions WHERE workspace_id = ?`)
+    const rows = this
+      .stmt(`SELECT * FROM sessions WHERE workspace_id = ?`)
       .all(workspaceId) as unknown as SessionRowRaw[]
     return rows.map(toMeta)
   }
@@ -511,16 +523,16 @@ export class Store {
   // ── settings (key/value, e.g. orchestrator policy) ─────────────────
 
   getSetting(key: string): string | null {
-    const r = this.db.prepare(`SELECT value FROM settings WHERE key = ?`).get(key) as
+    const r = this.stmt(`SELECT value FROM settings WHERE key = ?`).get(key) as
       { value: string } | undefined
     return r?.value ?? null
   }
 
   setSetting(key: string, value: string | null): void {
-    if (value === null) this.db.prepare(`DELETE FROM settings WHERE key = ?`).run(key)
+    if (value === null) this.stmt(`DELETE FROM settings WHERE key = ?`).run(key)
     else
-      this.db
-        .prepare(
+      this
+        .stmt(
           `INSERT INTO settings (key, value) VALUES (?, ?)
            ON CONFLICT(key) DO UPDATE SET value = excluded.value`
         )
@@ -541,8 +553,8 @@ export class Store {
     const needle = options.query.trim().toLowerCase()
     const limit = Math.min(options.limit ?? SEARCH_CAP, SEARCH_CAP)
     if (!needle) return { hits: [], truncated: false }
-    const rows = this.db
-      .prepare(
+    const rows = this
+      .stmt(
         `SELECT e.session_id AS sessionId, e.seq AS seq, e.ts AS ts,
                 json_extract(e.payload, '$.type') AS type,
                 json_extract(e.payload, '$.text') AS text
@@ -573,8 +585,8 @@ export class Store {
   }
 
   hasUserText(sessionId: string): boolean {
-    const r = this.db
-      .prepare(
+    const r = this
+      .stmt(
         `SELECT 1 AS x FROM events WHERE session_id = ? AND payload LIKE '%"user-text"%' LIMIT 1`
       )
       .get(sessionId)
@@ -588,8 +600,8 @@ export class Store {
   /** Up to `limit` events after `afterSeq` (-1 for all) — the chunked
    *  read the fold sweep walks big logs with, yielding between chunks. */
   eventsRange(sessionId: string, afterSeq: number, limit: number): EventRow[] {
-    const rows = this.db
-      .prepare(
+    const rows = this
+      .stmt(
         `SELECT seq, ts, payload FROM events WHERE session_id = ? AND seq > ? ORDER BY seq LIMIT ?`
       )
       .all(sessionId, afterSeq, limit) as unknown as { seq: number; ts: number; payload: string }[]
@@ -603,8 +615,8 @@ export class Store {
 
   /** Highest event seq per session — index-only, no payload read. */
   maxSeqs(): Map<string, number> {
-    const rows = this.db
-      .prepare(`SELECT session_id, MAX(seq) AS max FROM events GROUP BY session_id`)
+    const rows = this
+      .stmt(`SELECT session_id, MAX(seq) AS max FROM events GROUP BY session_id`)
       .all() as unknown as { session_id: string; max: number }[]
     return new Map(rows.map((r) => [r.session_id, r.max]))
   }
@@ -612,19 +624,19 @@ export class Store {
   // ── session folds ──────────────────────────────────────────────────
 
   listFolds(): FoldRow[] {
-    const rows = this.db.prepare(`SELECT * FROM session_folds`).all() as unknown as FoldRowRaw[]
+    const rows = this.stmt(`SELECT * FROM session_folds`).all() as unknown as FoldRowRaw[]
     return rows.map(toFold)
   }
 
   getFold(sessionId: string): FoldRow | null {
-    const r = this.db.prepare(`SELECT * FROM session_folds WHERE session_id = ?`).get(sessionId) as
+    const r = this.stmt(`SELECT * FROM session_folds WHERE session_id = ?`).get(sessionId) as
       FoldRowRaw | undefined
     return r ? toFold(r) : null
   }
 
   putFold(fold: FoldRow): void {
-    this.db
-      .prepare(
+    this
+      .stmt(
         `INSERT INTO session_folds
            (session_id, folded_seq, fold_version, tasks_done, tasks_total, tasks_current, goal, can_continue)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
@@ -647,6 +659,6 @@ export class Store {
   }
 
   deleteFold(sessionId: string): void {
-    this.db.prepare(`DELETE FROM session_folds WHERE session_id = ?`).run(sessionId)
+    this.stmt(`DELETE FROM session_folds WHERE session_id = ?`).run(sessionId)
   }
 }

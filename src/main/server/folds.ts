@@ -59,6 +59,8 @@ export interface SweepOptions {
   batch?: number
   /** yield point between chunks (tests pass a no-op) */
   yieldNow?: () => Promise<void>
+  /** called after every batch lands, with the running total */
+  onProgress?: (folded: number, total: number) => void
 }
 
 const yieldToLoop = (): Promise<void> => new Promise((r) => setImmediate(r))
@@ -90,6 +92,7 @@ export async function sweepFolds(
     host.commitFolds(pending)
     folded += pending.length
     pending = []
+    opts.onProgress?.(folded, stale.length)
   }
   for (const session of stale) {
     const row = await foldSession(store, host, session, chunk, yieldNow)
