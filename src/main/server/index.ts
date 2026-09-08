@@ -92,7 +92,7 @@ import { closeAllLiveWatchers, onLiveEdit } from './livediff'
 
 /** The session an app.* call claims to be from — must actually exist. */
 function callerOf(registry: SessionRegistry, sessionId: string): SessionMeta {
-  const caller = registry.list().find((s) => s.id === sessionId)
+  const caller = registry.get(sessionId)
   if (!caller) throw new Error(`unknown session: ${sessionId}`)
   return caller
 }
@@ -873,7 +873,7 @@ export async function startServer(dbPath: string, options: { dataDir?: string } 
           // App tools over WS (M10): the codex bridge's path to the same
           // registry operations the in-process claude toolset uses.
           case 'app.listThreads': {
-            const caller = registry.list().find((s) => s.id === req.params.sessionId)
+            const caller = registry.get(req.params.sessionId)
             if (!caller) throw new Error(`unknown session: ${req.params.sessionId}`)
             sendFrame({
               id: req.id,
@@ -883,7 +883,7 @@ export async function startServer(dbPath: string, options: { dataDir?: string } 
             break
           }
           case 'app.readThread': {
-            const caller = registry.list().find((s) => s.id === req.params.sessionId)
+            const caller = registry.get(req.params.sessionId)
             if (!caller) throw new Error(`unknown session: ${req.params.sessionId}`)
             sendFrame({
               id: req.id,
@@ -893,7 +893,7 @@ export async function startServer(dbPath: string, options: { dataDir?: string } 
             break
           }
           case 'app.startThread': {
-            const caller = registry.list().find((s) => s.id === req.params.sessionId)
+            const caller = registry.get(req.params.sessionId)
             if (!caller) throw new Error(`unknown session: ${req.params.sessionId}`)
             sendFrame({
               id: req.id,

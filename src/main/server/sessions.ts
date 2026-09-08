@@ -378,6 +378,19 @@ export class SessionRegistry {
     return sessions.map((s) => this.decorate(s, index))
   }
 
+  /** One decorated session — the lookup-by-id every caller used to do
+   *  with list().find(), which decorated all n sessions to read one. */
+  get(sessionId: string): SessionMeta | null {
+    const meta = this.store.getSession(sessionId)
+    return meta ? this.decorate(meta) : null
+  }
+
+  /** A parent's direct children, decorated. */
+  childrenOf(parentId: string): SessionMeta[] {
+    const index = this.indexOf()
+    return this.store.childrenOf(parentId).map((s) => this.decorate(s, index))
+  }
+
   /** The two lookups decorate() needs, built once per list. */
   private indexOf(sessions: SessionMeta[] = this.store.listSessions()): SessionIndex {
     return { byId: new Map(sessions.map((s) => [s.id, s])), byParent: indexByParent(sessions) }

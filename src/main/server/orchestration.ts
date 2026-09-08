@@ -173,7 +173,7 @@ function waitForSettled(
 ): Promise<SessionMeta | null> {
   return new Promise((resolve) => {
     const check = (): SessionMeta | null => {
-      const meta = reg.list().find((s) => s.id === sessionId) ?? null
+      const meta = reg.get(sessionId)
       return meta && meta.status !== 'running' ? meta : null
     }
     const now = check()
@@ -243,7 +243,7 @@ const holdAwaited = (ids: string[]): (() => void) => {
  *  an automatic report to the parent unless a wait already covers it. */
 export function notifyParentOfSettle(reg: SessionRegistry, child: SessionMeta): void {
   if (!child.parentId || awaited.has(child.id)) return
-  const parent = reg.list().find((s) => s.id === child.parentId)
+  const parent = reg.get(child.parentId)
   if (!parent || parent.archived) return
   const turn = latestTurnRows(reg.eventsAfter(child.id, 0))
   const pending = child.status === 'waiting' ? pendingOf(turn) : null
@@ -275,8 +275,10 @@ const text = (t: string): { content: [{ type: 'text'; text: string }] } => ({
 // the same way — never by shelling out to another CLI.
 
 /** Every agentId-taking op works only on the caller's own children. */
-const childOf = (parent: SessionMeta, agentId: string): SessionMeta | null =>
-  registry?.list().find((s) => s.id === agentId && s.parentId === parent.id) ?? null
+const childOf = (parent: SessionMeta, agentId: string): SessionMeta | null => {
+  const meta = registry?.get(agentId) ?? null
+  return meta?.parentId === parent.id ? meta : null
+}
 const notChild = (agentId: string): string =>
   `refused: ${agentId} is not a subagent of this session. list_agents shows your agents and their ids.`
 const idleSeconds = (id: string): number =>
@@ -396,7 +398,7 @@ export async function orchSpawnAgent(parent: SessionMeta, args: SpawnAgentArgs):
   // The MCP closure holds a boot-time snapshot of the caller; read it
   // fresh so a permission change or tune edit made after boot governs
   // this spawn, not the rules the harness happened to start under.
-  const parentNow = registry.list().find((s) => s.id === parent.id) ?? parent
+  const parentNow = registry.get(parent.id) ?? parent
   // Enforce the user's rules — these are settings, not suggestions. The
   // refusal text tells the model how to proceed. Model policy gates the
   // target and clamps effort into the approved range.
@@ -412,7 +414,7 @@ export async function orchSpawnAgent(parent: SessionMeta, args: SpawnAgentArgs):
   const agentType = (AGENT_TYPES as readonly string[]).includes(args.agentType ?? '')
     ? (args.agentType as (typeof AGENT_TYPES)[number])
     : 'implementer'
-  const children = registry.list().filter((s) => s.parentId === parent.id)
+  const children = registry.childrenOf(parent.id)
   const live = children.filter(
     (s) => s.status === 'running' || s.status === 'starting' || s.status === 'waiting'
   )
@@ -580,8 +582,7 @@ export function orchListAgents(parent: SessionMeta): string {
   if (!registry) return 'orchestration registry not ready'
   return JSON.stringify(
     registry
-      .list()
-      .filter((s) => s.parentId === parent.id)
+      .childrenOf(parent.id)
       .map((s) => ({
         agentId: s.id,
         title: s.title,
