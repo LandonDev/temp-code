@@ -1,12 +1,18 @@
 # temp-code — instructions for AI sessions
 
+## Two lines: prod on `stable`, the new shell on `master`
+- `stable` is the last pre-MonoCode release (v96 plus one commit that
+  points its updater at `stable`). It is what /Applications/TempCode.app
+  runs, with its data in `~/Library/Application Support/temp-code/`.
+- `master` is the new app (MonoCode's shell on our server). All work
+  happens here. Prod does not see master's releases until `stable` is
+  moved onto master (see "Moving prod over").
+
 ## The user lives in the installed app — never touch it
-Prod is /Applications/TempCode.app with its data in
-`~/Library/Application Support/temp-code/`. Do not launch anything
-against that userData (that means never `bun run dev` without
-TEMP_CODE_USER_DATA), do not send messages into the user's threads, and
-do not kill or restart the installed app. The user gets your work through the
-release flow below, on their own click.
+Do not launch anything against the prod userData (that means never
+`bun run dev` without TEMP_CODE_USER_DATA, and never `bun run dev:prod`
+from an AI session), do not send messages into the user's threads, and
+do not kill or restart the installed app.
 
 ## Testing: spawn an isolated dev instance
 ```bash
@@ -30,18 +36,36 @@ env -u ELECTRON_RUN_AS_NODE \
   process on its own, so main-process changes always need a relaunch.
 - Kill your dev instance when the pass is done.
 
+## The user dogfoods master on the prod data
+`bun run dev:prod` runs master against the prod userData (CDP on 9220).
+It is the user's command, not ours. The single-instance lock keeps it and
+the installed app from running at once: quit one before opening the
+other. Master only adds to the database (new tables, defaulted columns),
+so the two apps can take turns on it. Unread marks and layout live in
+localStorage, which differs by origin, so they do not carry across.
+
 ## Releases cut themselves — just commit finished work
 A post-commit hook on master (.githooks/, wired via core.hooksPath) runs
 `bun scripts/release.ts` after every commit: it gates on a clean tree +
-typecheck + build, bumps release.json, commits and tags `release-N`,
-using your commit subject as the release notes. The installed app checks
-automatically (and by button) and offers the update; the user applies it
-when they choose.
+typecheck + tests + build, bumps release.json, commits and tags
+`release-N`, using your commit subject as the release notes.
 
-- Commit complete, verified slices — every green commit on master ships.
+- Commit complete, verified slices — every green commit on master ships
+  to `stable` once it is moved.
 - If the hook skipped (tree was dirty at commit time, or the gate was
   red), the next green commit releases everything since; you can also run
   `bun scripts/release.ts "notes"` yourself.
 - Worker log: /tmp/temp-code-auto-release.log.
 - Never build into or swap /Applications/TempCode.app yourself, and never
   commit with a broken typecheck "to fix later" — that blocks the train.
+
+## Moving prod over (the user's call)
+```bash
+git branch -f stable master   # at a release commit
+```
+The installed app then offers the newest release on its next check and
+rebuilds itself from the tag. A fix on the old line instead: commit on
+`stable`, then in ~/IdeaProjects/temp-code-prod check it out and run
+`bun install && bunx electron-vite build && bunx electron-builder --dir`,
+and swap dist/mac-arm64/TempCode.app into /Applications by hand. Do not
+run scripts/release.ts on `stable`; release numbers belong to master.
