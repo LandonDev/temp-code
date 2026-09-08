@@ -71,6 +71,11 @@ describe("isLiveThread", () => {
     expect(isLiveThread(thread("y", { updatedAt: 1 }), {}, {})).toBe(true);
     expect(isLiveThread(thread("d", { draft: true }), { d: 100 }, {})).toBe(true);
   });
+
+  it("counts a never-seen root as seen up to the floor", () => {
+    expect(isLiveThread(thread("y", { updatedAt: 1 }), {}, {}, 50)).toBe(false);
+    expect(isLiveThread(thread("y", { updatedAt: 60 }), {}, {}, 50)).toBe(true);
+  });
 });
 
 describe("splitThreads", () => {

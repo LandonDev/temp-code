@@ -75,6 +75,17 @@ describe("projectCardStatus", () => {
     expect(status.dormant).toBe(1);
   });
 
+  it("counts an entry-less thread as read up to the floor", () => {
+    const status = projectCardStatus(
+      [thread("old", { updatedAt: 100 }), thread("new", { updatedAt: 200 })],
+      null,
+      {},
+      150,
+    );
+    expect(ids(status.unread)).toEqual(["new"]);
+    expect(status.dormant).toBe(1);
+  });
+
   it("is empty for a project with no threads", () => {
     const status = projectCardStatus([], null, {});
     expect(status).toMatchObject({ total: 0, dormant: 0, latest: 0, waiting: 0, failed: 0 });

@@ -51,15 +51,18 @@ export function buildHeaderModel<T extends StripThread>(input: {
   selectedProjectId: string | null;
   activeTabId: string | null;
   lastSeen: SeenMap;
+  /** Threads with no lastSeen entry count as seen up to this time. */
+  seenFloor?: number;
   planReady: ReadyMap;
 }): HeaderModel<T> {
   const roots = projectRootThreads(input.threads, input.selectedProjectId);
   const tabOf = tabIndex(input.tabs);
-  const { live, dormant } = splitThreads(roots, input.lastSeen, input.planReady);
+  const floor = input.seenFloor ?? 0;
+  const { live, dormant } = splitThreads(roots, input.lastSeen, input.planReady, floor);
   const chip = (thread: T, isLive: boolean): HeaderChip<T> => {
     const status = displayStatus(thread);
     // A local draft has no server meta to stamp seen; it is new, not unread.
-    const unread = !thread.draft && isUnread(thread, input.lastSeen);
+    const unread = !thread.draft && isUnread(thread, input.lastSeen, floor);
     return {
       id: thread.id,
       thread,

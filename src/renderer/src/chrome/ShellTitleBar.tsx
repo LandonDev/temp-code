@@ -16,7 +16,7 @@ import {
   type HarnessId,
   type Session,
 } from "../lib/session";
-import { useLastSeen } from "../lib/sessionSeen";
+import { useLastSeen, useSeenFloor } from "../lib/sessionSeen";
 import {
   sessionStore,
   useServerSessions,
@@ -96,6 +96,7 @@ function ShellTitleBarComponent({
   const sessionMetas = useSessionMetas();
   const planReady = usePlanReady(sessions);
   const lastSeen = useLastSeen();
+  const seenFloor = useSeenFloor();
   const nextTitleTabs: TitleTab[] = deckTabs.map((tab) =>
     toTitleTab(tab, sessions, dirtyFiles, planReady),
   );
@@ -147,9 +148,10 @@ function ShellTitleBarComponent({
         selectedProjectId: deckLayout ? selectedProjectId : null,
         activeTabId,
         lastSeen,
+        seenFloor,
         planReady,
       }),
-    [activeTabId, chipThreads, deckLayout, headerTabs, lastSeen, planReady, selectedProjectId],
+    [activeTabId, chipThreads, deckLayout, headerTabs, lastSeen, seenFloor, planReady, selectedProjectId],
   );
   headerModelRef.current = headerModel;
   const chipTabIds = new Set(

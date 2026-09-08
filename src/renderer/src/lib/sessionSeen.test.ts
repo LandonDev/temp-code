@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const KEY = "monocode.tc.lastSeen";
+const OLD_KEY = "thread-last-seen";
+const FLOOR_KEY = "monocode.tc.seenFloor";
 
 function mockLocalStorage(initial: Record<string, string> = {}) {
   const data = new Map(Object.entries(initial));
@@ -28,6 +30,7 @@ async function load() {
 describe("sessionSeen", () => {
   beforeEach(() => {
     vi.resetModules();
+    vi.restoreAllMocks();
   });
 
   it("reads an empty map when nothing is stored or the value is junk", async () => {
@@ -66,6 +69,42 @@ describe("sessionSeen", () => {
     expect(listener).toHaveBeenCalledTimes(1);
   });
 
+  it("adopts the old renderer's map when the new key is empty", async () => {
+    const data = mockLocalStorage({ [OLD_KEY]: JSON.stringify({ a: 5, b: "x" }) });
+    const mod = await load();
+    expect(mod.loadLastSeen()).toEqual({ a: 5 });
+    expect(JSON.parse(data.get(KEY) ?? "{}")).toEqual({ a: 5 });
+    expect(data.get(OLD_KEY)).toBeDefined();
+  });
+
+  it("leaves a populated new map alone", async () => {
+    const data = mockLocalStorage({
+      [KEY]: JSON.stringify({ n: 9 }),
+      [OLD_KEY]: JSON.stringify({ a: 5 }),
+    });
+    const mod = await load();
+    expect(mod.loadLastSeen()).toEqual({ n: 9 });
+    expect(JSON.parse(data.get(KEY) ?? "{}")).toEqual({ n: 9 });
+  });
+
+  it("ignores a junk old value but still stamps the floor", async () => {
+    vi.spyOn(Date, "now").mockReturnValue(1234);
+    const data = mockLocalStorage({ [OLD_KEY]: "not json" });
+    const mod = await load();
+    expect(mod.loadLastSeen()).toEqual({});
+    expect(mod.seenFloor()).toBe(1234);
+    expect(data.get(FLOOR_KEY)).toBe("1234");
+    expect(data.has(KEY)).toBe(false);
+  });
+
+  it("writes the floor once and keeps it across reloads", async () => {
+    const now = vi.spyOn(Date, "now").mockReturnValue(1000);
+    mockLocalStorage();
+    expect((await load()).seenFloor()).toBe(1000);
+    now.mockReturnValue(2000);
+    expect((await load()).seenFloor()).toBe(1000);
+  });
+
   it("survives a storage that throws", async () => {
     Object.defineProperty(globalThis, "localStorage", {
       configurable: true,
@@ -82,5 +121,6 @@ describe("sessionSeen", () => {
     expect(mod.loadLastSeen()).toEqual({});
     expect(() => mod.markSessionSeen("s1", 1)).not.toThrow();
     expect(mod.loadLastSeen()).toEqual({ s1: 1 });
+    expect(mod.seenFloor()).toBe(0);
   });
 });
