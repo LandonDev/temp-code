@@ -100,7 +100,7 @@ export function AgentDetail({
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
         transition={{ duration: 0.16 }}
-        className="absolute inset-0 bg-black/10 supports-backdrop-filter:backdrop-blur-xs"
+        className="absolute inset-0 bg-black/10 glass-surface glass-surface--xs"
         onClick={close}
       />
       <motion.div

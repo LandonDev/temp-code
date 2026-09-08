@@ -361,7 +361,7 @@ export const SessionPane = memo(function SessionPane({
               aria-label="Jump to latest"
               data-jump-to-bottom
               onClick={() => jumpToBottomRef.current?.()}
-              className="pointer-events-auto grid size-6 place-items-center rounded-md border border-content/15 bg-content/10 text-content shadow-md backdrop-blur-md hover:bg-content/5"
+              className="pointer-events-auto grid size-6 place-items-center rounded-md border border-content/15 bg-content/10 text-content shadow-md glass-surface glass-surface--md hover:bg-content/5"
             >
               <ChevronDown className="size-4" strokeWidth={2} />
             </button>
