@@ -8,6 +8,7 @@ import {
   writeFileSync
 } from 'node:fs'
 import { appendFile, readFile } from 'node:fs/promises'
+import { bootMark } from './boot'
 import { basename, join, relative, isAbsolute } from 'node:path'
 import type { EventRow, SessionMeta } from '@shared/events'
 import type { ProjectMeta } from '@shared/domain'
@@ -267,6 +268,7 @@ export function scheduleMirror(reg: SessionRegistry, sessionId: string): void {
  *  past startup so it never competes with the first window. */
 export function backfillMirrors(reg: SessionRegistry): void {
   const timer = setTimeout(() => {
+    bootMark('mirror-backfill start')
     const dirs = new Set<string>()
     for (const meta of reg.list()) {
       if (!meta.projectId || meta.archived) continue
@@ -281,6 +283,7 @@ export function backfillMirrors(reg: SessionRegistry): void {
         // best-effort, like every other mirror write
       }
     }
+    bootMark('mirror-backfill done')
   }, 5_000)
   timer.unref()
 }
