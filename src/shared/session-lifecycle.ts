@@ -22,6 +22,20 @@ export function foldContinuableError(current: boolean, event: AgentEvent): boole
   }
 }
 
+/** One goal at a time: set/updated replace it, met/cleared end it. A pure
+ *  function of the previous state and one event, so the persisted state
+ *  is complete — no log walk ever re-derives it. */
+export type GoalState = NonNullable<SessionMeta['goal']> | null
+export function foldGoal(prev: GoalState, event: AgentEvent, ts: number): GoalState {
+  if (event.type !== 'goal') return prev
+  if (event.phase === 'met' || event.phase === 'cleared') return null
+  return {
+    condition: event.condition,
+    iterations: event.iterations ?? (event.phase === 'set' ? 0 : (prev?.iterations ?? 0)),
+    setAt: event.phase === 'updated' && prev ? prev.setAt : ts
+  }
+}
+
 export interface RootTreeSummary {
   canContinueError: boolean
   hasLiveWork: boolean

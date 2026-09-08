@@ -18,6 +18,7 @@ import { runDoctor, updateProvider } from './drivers/binaries'
 import { probeCatalogs } from './drivers/catalogProbe'
 import { backfillMirrors } from './mirror'
 import { bootMark } from './boot'
+import { sweepFolds } from './folds'
 import {
   orchAnswerAgent,
   orchCheckAgent,
@@ -153,6 +154,16 @@ export async function startServer(dbPath: string, options: { dataDir?: string } 
   const linear = new Linear(options.dataDir ?? dirname(dbPath))
   registry.resetStaleStatuses()
   registry.startIdleSweep()
+  // Fold catch-up: sessions whose sidebar folds are missing or behind
+  // their log (first boot after upgrade, a crash, an older build) heal in
+  // the background, newest first, without blocking the first list.
+  const foldTimer = setTimeout(() => {
+    bootMark('fold-backfill start')
+    void sweepFolds(store, registry)
+      .then((n) => bootMark('fold-backfill done', `${n} sessions`))
+      .catch((err) => console.error('[folds] sweep failed', err))
+  }, 2_000)
+  foldTimer.unref()
   setOrchestrationRegistry(registry)
   setAppToolsRegistry(registry)
   setSummarizeContext(registry, store)
