@@ -31,20 +31,27 @@ export interface RootTreeSummary {
 
 const LIVE_STATUSES = new Set<SessionMeta['status']>(['starting', 'running', 'waiting'])
 
-/** Summarize one visible root without double-counting its descendants. */
-export function summarizeRootTree(
-  root: SessionMeta,
-  sessions: SessionMeta[],
-  canContinue: (sessionId: string) => boolean
-): RootTreeSummary {
-  const byParent = new Map<string, SessionMeta[]>()
+export type ParentIndex = Map<string, SessionMeta[]>
+
+/** Children keyed by parent id — built once per list, shared by every
+ *  root's summary so decorating n sessions stays linear. */
+export function indexByParent(sessions: SessionMeta[]): ParentIndex {
+  const byParent: ParentIndex = new Map()
   for (const session of sessions) {
     if (!session.parentId) continue
     const siblings = byParent.get(session.parentId) ?? []
     siblings.push(session)
     byParent.set(session.parentId, siblings)
   }
+  return byParent
+}
 
+/** Summarize one visible root without double-counting its descendants. */
+export function summarizeRootTree(
+  root: SessionMeta,
+  byParent: ParentIndex,
+  canContinue: (sessionId: string) => boolean
+): RootTreeSummary {
   const tree: SessionMeta[] = []
   const pending = [root]
   const seen = new Set<string>()

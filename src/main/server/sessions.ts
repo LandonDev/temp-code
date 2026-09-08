@@ -6,7 +6,12 @@ import { CreateSessionParams, type CreateSessionInput } from '@shared/contract'
 import type { SessionBatchResult } from '@shared/contract'
 import { CATALOG, resolveModel, type ProviderId } from '@shared/catalog'
 import type { AgentEvent, Attachment, EventRow, SessionMeta } from '@shared/events'
-import { foldContinuableError, summarizeRootTree } from '@shared/session-lifecycle'
+import {
+  foldContinuableError,
+  indexByParent,
+  summarizeRootTree,
+  type ParentIndex
+} from '@shared/session-lifecycle'
 import type {
   ProjectCleanup,
   ProjectMeta,
@@ -65,6 +70,8 @@ const THREAD_TITLES = {
 
 type SessionListener = (row: EventRow) => void
 type MetaListener = (session: SessionMeta) => void
+/** Lookups decorate() needs — built once per list(), never per session. */
+type SessionIndex = { byId: Map<string, SessionMeta>; byParent: ParentIndex }
 
 /** One goal at a time: set/updated replace it, met/cleared end it. */
 type GoalState = { condition: string; iterations: number; setAt: number } | null
@@ -367,7 +374,13 @@ export class SessionRegistry {
 
   list(): SessionMeta[] {
     const sessions = this.store.listSessions()
-    return sessions.map((s) => this.decorate(s, sessions))
+    const index = this.indexOf(sessions)
+    return sessions.map((s) => this.decorate(s, index))
+  }
+
+  /** The two lookups decorate() needs, built once per list. */
+  private indexOf(sessions: SessionMeta[] = this.store.listSessions()): SessionIndex {
+    return { byId: new Map(sessions.map((s) => [s.id, s])), byParent: indexByParent(sessions) }
   }
 
   /** Was this session running a disk-writing tool at ts (with grace for
@@ -1198,7 +1211,7 @@ export class SessionRegistry {
   }
 
   private sessionTree(rootId: string): SessionMeta[] {
-    const all = this.store.listSessions()
+    const index = this.indexOf()
     const tree: SessionMeta[] = []
     const pending = [rootId]
     const seen = new Set<string>()
@@ -1206,10 +1219,10 @@ export class SessionRegistry {
       const id = pending.pop()!
       if (seen.has(id)) continue
       seen.add(id)
-      const session = all.find((candidate) => candidate.id === id)
+      const session = index.byId.get(id)
       if (!session) continue
       tree.push(session)
-      for (const child of all) if (child.parentId === id) pending.push(child.id)
+      for (const child of index.byParent.get(id) ?? []) pending.push(child.id)
     }
     return tree
   }
@@ -2260,18 +2273,15 @@ export class SessionRegistry {
 
   /** Everything the tab strip needs that isn't in the stored row: what the
    *  thread is doing, and how far through its task list it is. */
-  private decorate(
-    session: SessionMeta,
-    sessions: SessionMeta[] = this.store.listSessions()
-  ): SessionMeta {
+  private decorate(session: SessionMeta, index: SessionIndex = this.indexOf()): SessionMeta {
     const act = this.activities.get(session.id)
     let root = session
     for (let hops = 0; root.parentId && hops < 20; hops++) {
-      const parent = sessions.find((candidate) => candidate.id === root.parentId)
+      const parent = index.byId.get(root.parentId)
       if (!parent) break
       root = parent
     }
-    const tree = summarizeRootTree(root, sessions, (id) => this.canContinueError(id))
+    const tree = summarizeRootTree(root, index.byParent, (id) => this.canContinueError(id))
     return {
       ...session,
       activity: act?.text ?? null,
@@ -2288,14 +2298,13 @@ export class SessionRegistry {
   }
 
   private notifyMeta(session: SessionMeta): void {
-    const sessions = this.store.listSessions()
-    const decorated = this.decorate(session, sessions)
+    const index = this.indexOf()
+    const decorated = this.decorate(session, index)
     for (const l of this.metaListeners) l(decorated)
     if (session.parentId) {
-      const rootId = this.rootSessionOf(session.id)
-      const root = sessions.find((candidate) => candidate.id === rootId)
+      const root = index.byId.get(this.rootSessionOf(session.id))
       if (root) {
-        const decoratedRoot = this.decorate(root, sessions)
+        const decoratedRoot = this.decorate(root, index)
         for (const l of this.metaListeners) l(decoratedRoot)
       }
     }
