@@ -42,6 +42,8 @@ export function projectCardStatus<T extends CardThread>(
   threads: readonly T[],
   selectedId: string | null,
   lastSeen: Record<string, number>,
+  /** Threads with no lastSeen entry count as seen up to this time. */
+  floor = 0,
 ): ProjectCardStatus<T> {
   const paused = threads.filter((t) => t.status === "paused" || !!t.treeHasPaused);
   const isPaused = new Set(paused);
@@ -65,7 +67,7 @@ export function projectCardStatus<T extends CardThread>(
       !t.treeCanContinue &&
       !t.treeHasLiveWork &&
       t.id !== selectedId &&
-      t.updatedAt > (lastSeen[t.id] ?? 0),
+      t.updatedAt > (lastSeen[t.id] ?? floor),
   );
   return {
     paused,

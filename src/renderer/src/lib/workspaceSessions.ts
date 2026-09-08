@@ -63,9 +63,11 @@ export type ThreadSummary = {
   unread: number;
 };
 
+/** `floor`: threads with no lastSeen entry count as seen up to this time. */
 export function threadRow(
   meta: SessionMeta,
   lastSeen: Record<string, number>,
+  floor = 0,
 ): ThreadRow {
   const running = meta.status === "starting" || meta.status === "running";
   const settled = meta.status === "idle" || meta.status === "done";
@@ -78,7 +80,7 @@ export function threadRow(
     paused: meta.status === "paused",
     failed: meta.status === "error",
     needsYou: meta.status === "waiting",
-    unread: settled && !running && meta.updatedAt > (lastSeen[meta.id] ?? 0),
+    unread: settled && !running && meta.updatedAt > (lastSeen[meta.id] ?? floor),
     busySince: meta.busySince ?? null,
     threadType: meta.threadType,
     frozenActiveElapsed: meta.frozenActiveElapsed ?? null,
@@ -100,6 +102,7 @@ export function threadRow(
 export function childRows(
   metas: readonly SessionMeta[],
   lastSeen: Record<string, number>,
+  floor = 0,
 ): Map<string, ThreadRow[]> {
   const byParent = new Map<string, SessionMeta[]>();
   for (const meta of metas) {
@@ -112,7 +115,7 @@ export function childRows(
   for (const [parentId, list] of byParent)
     out.set(
       parentId,
-      sortAgents(list).map((m) => threadRow(m, lastSeen)),
+      sortAgents(list).map((m) => threadRow(m, lastSeen, floor)),
     );
   return out;
 }
@@ -126,13 +129,14 @@ export function groupWorkspaceSessions(
   workspaces: readonly WorkspaceMeta[],
   workspaceId: string,
   lastSeen: Record<string, number>,
+  floor = 0,
 ): WorkspaceSessionGroups {
   const here = projects.filter((p) => p.workspaceId === workspaceId);
   const ids = new Set(here.map((p) => p.id));
   const byProject = new Map<string, ThreadRow[]>();
   const archivedCount = new Map<string, number>();
   const chats: ThreadRow[] = [];
-  const children = childRows(metas, lastSeen);
+  const children = childRows(metas, lastSeen, floor);
   const withChildren = (row: ThreadRow): ThreadRow => {
     const kids = children.get(row.id);
     return kids ? { ...row, children: kids } : row;
@@ -148,7 +152,7 @@ export function groupWorkspaceSessions(
         archivedCount.set(projectId, (archivedCount.get(projectId) ?? 0) + 1);
       continue;
     }
-    const row = withChildren(threadRow(meta, lastSeen));
+    const row = withChildren(threadRow(meta, lastSeen, floor));
     if (!projectId) {
       chats.push(row);
       continue;

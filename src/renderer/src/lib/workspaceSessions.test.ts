@@ -160,6 +160,12 @@ describe("threadRow", () => {
     expect(threadRow(meta("c", { updatedAt: 100 }), seen).unread).toBe(true);
   });
 
+  it("treats a thread with no entry as seen up to the floor", () => {
+    expect(threadRow(meta("old", { updatedAt: 100 }), {}, 150).unread).toBe(false);
+    expect(threadRow(meta("new", { updatedAt: 200 }), {}, 150).unread).toBe(true);
+    expect(threadRow(meta("seen", { updatedAt: 200 }), { seen: 300 }, 150).unread).toBe(false);
+  });
+
   it("never marks a running, waiting, paused, or failed thread unread", () => {
     for (const status of [
       "starting",

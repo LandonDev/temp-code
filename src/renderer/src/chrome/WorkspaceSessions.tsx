@@ -43,7 +43,7 @@ import {
   stoppableThreads,
   type CardThread,
 } from "../lib/projectCardModel";
-import { useLastSeen } from "../lib/sessionSeen";
+import { useLastSeen, useSeenFloor } from "../lib/sessionSeen";
 import { interrupt, pause, resume } from "../lib/tcserver/commands";
 import {
   archiveProject,
@@ -506,6 +506,7 @@ type CardProps = {
   selected: boolean;
   now: number;
   lastSeen: Record<string, number>;
+  seenFloor: number;
   rows: RowActions;
   onSelect: () => void;
   onNewChat: () => void;
@@ -523,6 +524,7 @@ function ProjectCard({
   selected,
   now,
   lastSeen,
+  seenFloor,
   rows,
   onSelect,
   onNewChat,
@@ -533,7 +535,7 @@ function ProjectCard({
 }: CardProps) {
   const { project, threads, latest, archivedCount } = group;
   const [renaming, setRenaming] = useState(false);
-  const status = projectCardStatus(threads, rows.activeSessionId ?? null, lastSeen);
+  const status = projectCardStatus(threads, rows.activeSessionId ?? null, lastSeen, seenFloor);
   const runAction = projectRunAction(status);
   const stoppable = stoppableThreads(status);
   const teardown = project.mode === "worktree" && Boolean(project.branch);
@@ -773,12 +775,14 @@ export default function WorkspaceSessions({
   const metas = useSessionMetas();
   const { workspaces, projects } = useWorkspaceCatalog();
   const lastSeen = useLastSeen();
+  const seenFloor = useSeenFloor();
   const groups = groupWorkspaceSessions(
     metas,
     projects,
     workspaces,
     workspaceId,
     lastSeen,
+    seenFloor,
   );
   const workspace: WorkspaceMeta | undefined = workspaces.find(
     (w) => w.id === workspaceId,
@@ -829,6 +833,7 @@ export default function WorkspaceSessions({
           selected={group.project.id === selectedProjectId}
           now={now}
           lastSeen={lastSeen}
+          seenFloor={seenFloor}
           rows={rows}
           onSelect={() => onSelectProject(group.project.id)}
           onNewChat={() => onNewChat(group.project.id)}

@@ -47,20 +47,30 @@ export function archivedRootThreads<T extends StripThread>(
     .sort(freshestFirst);
 }
 
-export function isUnread(t: Pick<StripThread, "id" | "updatedAt">, lastSeen: SeenMap): boolean {
-  return t.updatedAt > (lastSeen[t.id] ?? 0);
+/** `floor`: threads with no lastSeen entry count as seen up to this time. */
+export function isUnread(
+  t: Pick<StripThread, "id" | "updatedAt">,
+  lastSeen: SeenMap,
+  floor = 0,
+): boolean {
+  return t.updatedAt > (lastSeen[t.id] ?? floor);
 }
 
 /** temp-code's live rule: anything not settled-and-seen. `done` settles
  *  like `idle` (the server's terminal status for a finished run). */
-export function isLiveThread(t: StripThread, lastSeen: SeenMap, planReady: ReadyMap): boolean {
+export function isLiveThread(
+  t: StripThread,
+  lastSeen: SeenMap,
+  planReady: ReadyMap,
+  floor = 0,
+): boolean {
   return (
     !!t.draft ||
     (t.status !== "idle" && t.status !== "done") ||
     !!t.treeHasLiveWork ||
     !!t.treeHasPaused ||
     !!t.treeCanContinue ||
-    isUnread(t, lastSeen) ||
+    isUnread(t, lastSeen, floor) ||
     !!planReady[t.id]
   );
 }
@@ -69,11 +79,12 @@ export function splitThreads<T extends StripThread>(
   threads: readonly T[],
   lastSeen: SeenMap,
   planReady: ReadyMap,
+  floor = 0,
 ): { live: T[]; dormant: T[] } {
   const live: T[] = [];
   const dormant: T[] = [];
   for (const t of [...threads].sort(freshestFirst))
-    (isLiveThread(t, lastSeen, planReady) ? live : dormant).push(t);
+    (isLiveThread(t, lastSeen, planReady, floor) ? live : dormant).push(t);
   return { live, dormant };
 }
 
