@@ -229,7 +229,7 @@ export function mirrorSession(
   sessionId: string,
   opts: { index?: boolean } = {}
 ): void {
-  const meta = reg.list().find((s) => s.id === sessionId)
+  const meta = reg.get(sessionId)
   const cwd = meta && contextCwd(reg, meta)
   if (!meta || !cwd) return
   try {

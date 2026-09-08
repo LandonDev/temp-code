@@ -321,6 +321,13 @@ export class Store {
     return r ? toMeta(r) : null
   }
 
+  childrenOf(parentId: string): SessionMeta[] {
+    const rows = this.db
+      .prepare(`SELECT * FROM sessions WHERE parent_id = ? ORDER BY created_at DESC`)
+      .all(parentId) as unknown as SessionRowRaw[]
+    return rows.map(toMeta)
+  }
+
   listSessions(): SessionMeta[] {
     const rows = this.db
       .prepare(`SELECT * FROM sessions ORDER BY created_at DESC`)

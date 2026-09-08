@@ -215,7 +215,7 @@ export async function summarizeTools(
   if (cached && (!captions || cached.captions.some((c) => c !== null))) return cached
   const pending = inFlight.get(cacheKey)
   if (pending) return pending
-  const provider = registry.list().find((s) => s.id === sessionId)?.provider
+  const provider = registry.get(sessionId)?.provider
   const useSpark = model === 'spark' || (model === 'auto' && provider === 'codex')
   const prompt = buildPrompt(items, captions)
   const p = (useSpark ? summarizeWithCodex(prompt) : summarizeWithClaude(prompt))

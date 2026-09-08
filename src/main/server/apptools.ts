@@ -90,7 +90,7 @@ export function appListThreads(
 }
 
 export function appReadThread(reg: SessionRegistry, threadId: string): string | null {
-  const meta = reg.list().find((s) => s.id === threadId)
+  const meta = reg.get(threadId)
   if (!meta) return null
   let digest = threadDigest(reg, meta)
   if (digest.length > INLINE_DIGEST_MAX_CHARS) {
@@ -137,7 +137,7 @@ export async function appStartThread(
   if (args.projectId && !reg.getProject(args.projectId)) {
     return `refused: unknown projectId "${args.projectId}".`
   }
-  const seeds = (args.seedThreadIds ?? []).map((id) => reg.list().find((s) => s.id === id))
+  const seeds = (args.seedThreadIds ?? []).map((id) => reg.get(id))
   if (seeds.some((s) => !s)) {
     return `refused: seedThreadIds contains an unknown thread id. app_list_threads shows valid ids.`
   }
@@ -151,7 +151,7 @@ export async function appStartThread(
       : undefined)
   // Fresh read: the caller's CURRENT permission is what the new thread
   // inherits — it can never grant itself more than the user granted.
-  const callerNow = reg.list().find((s) => s.id === caller.id) ?? caller
+  const callerNow = reg.get(caller.id) ?? caller
   const thread = await reg.create({
     provider,
     model,
@@ -174,7 +174,7 @@ export async function appStartThread(
         }))
       : undefined
   })
-  const created = reg.list().find((s) => s.id === thread.id) ?? thread
+  const created = reg.get(thread.id) ?? thread
   return { threadId: thread.id, title: created.title }
 }
 
