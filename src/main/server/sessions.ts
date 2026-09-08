@@ -495,10 +495,10 @@ export class SessionRegistry {
    *  never advertises failure, even before its first new event lands. The
    *  stored fold is untouched, so an error nothing superseded comes back
    *  if the session settles without producing anything. */
-  private canContinueError(sessionId: string): boolean {
-    const status = this.store.getSession(sessionId)?.status
+  private canContinueError(meta: SessionMeta): boolean {
+    const status = meta.status
     if (status === 'starting' || status === 'running' || status === 'waiting') return false
-    return this.storedContinuableError(sessionId)
+    return this.storedContinuableError(meta.id)
   }
 
   /** When the session last produced or received anything (drives
@@ -1587,7 +1587,7 @@ export class SessionRegistry {
   async continueRun(sessionId: string): Promise<void> {
     const tree = this.sessionTree(sessionId)
     if (tree.length === 0) return
-    const affected = tree.filter((session) => this.canContinueError(session.id))
+    const affected = tree.filter((session) => this.canContinueError(session))
     if (affected.length === 0) return
 
     const affectedIds = new Set(affected.map((session) => session.id))
@@ -2330,7 +2330,10 @@ export class SessionRegistry {
       if (!parent) break
       root = parent
     }
-    const tree = summarizeRootTree(root, index.byParent, (id) => this.canContinueError(id))
+    const tree = summarizeRootTree(root, index.byParent, (id) => {
+      const meta = index.byId.get(id)
+      return !!meta && this.canContinueError(meta)
+    })
     return {
       ...session,
       activity: act?.text ?? null,
@@ -2338,7 +2341,7 @@ export class SessionRegistry {
       tasks: this.tasksOf(session.id),
       goal: this.goalOf(session.id),
       context: this.liveContexts.get(session.id) ?? null,
-      canContinue: this.canContinueError(session.id),
+      canContinue: this.canContinueError(session),
       treeCanContinue: tree.canContinueError,
       treeHasLiveWork: tree.hasLiveWork,
       treeHasPaused: tree.hasPaused,

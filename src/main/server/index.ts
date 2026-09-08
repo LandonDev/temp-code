@@ -141,6 +141,8 @@ export interface RunningServer {
 }
 
 let firstListMarked = false
+/** WS requests slower than this land in the boot log. */
+const SLOW_REQUEST_MS = 500
 
 export async function startServer(dbPath: string, options: { dataDir?: string } = {}): Promise<RunningServer> {
   bootMark('server-start')
@@ -161,7 +163,11 @@ export async function startServer(dbPath: string, options: { dataDir?: string } 
   // interleave.
   const foldTimer = setTimeout(() => {
     bootMark('fold-backfill start')
-    sweepFolds(store, registry)
+    sweepFolds(store, registry, {
+      onProgress: (n, total) => {
+        if (n % 200 === 0) bootMark('fold-backfill progress', `${n}/${total}`)
+      }
+    })
       .then((n) => bootMark('fold-backfill done', `${n} sessions`))
       .catch((err) => console.error('[folds] sweep failed', err))
       .then(() => backfillMirrors(registry))
@@ -249,6 +255,7 @@ export async function startServer(dbPath: string, options: { dataDir?: string } 
         return
       }
       const req = parsed.data
+      const startedAt = Date.now()
       try {
         const extension = await handleM3a(req, m3a)
         if (extension.handled) { sendFrame({ id: req.id, ok: true, result: extension.result }); return }
@@ -981,6 +988,11 @@ export async function startServer(dbPath: string, options: { dataDir?: string } 
           ok: false,
           error: err instanceof Error ? err.message : String(err)
         })
+      } finally {
+        // A request this slow held the main thread or waited behind
+        // something that did; either way the boot log should say which.
+        const ms = Date.now() - startedAt
+        if (ms > SLOW_REQUEST_MS) bootMark('slow-request', `${req.method} ${ms}ms`)
       }
     })
 

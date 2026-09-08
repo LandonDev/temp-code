@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { harnessEnv, resolveBinary } from './drivers/binaries'
 import type { Store } from './db'
+import type { SessionMeta } from '@shared/events'
 import type { SessionRegistry } from './sessions'
 
 /**
@@ -42,11 +43,11 @@ const OUTPUT_CAP = 220
 const TOTAL_CAP = 4000
 const TIMEOUT_MS = 60_000
 
-/** Ids never reach the model — threads and plans go by their titles. */
-function humanizeIds(text: string): string {
-  if (!registry) return text
+/** Ids never reach the model — threads and plans go by their titles.
+ *  Raw rows, not the decorated list: this runs per tool line. */
+function humanizeIds(text: string, sessions: SessionMeta[]): string {
   let out = text
-  for (const s of registry.list()) {
+  for (const s of sessions) {
     if (!out.includes(s.id)) continue
     out = out
       .replaceAll(`plan-${s.id}.md`, `the plan "${s.title}"`)
@@ -55,12 +56,24 @@ function humanizeIds(text: string): string {
   return out
 }
 
+/** Session rows for humanizeIds, re-read at most every few seconds:
+ *  summaries come in bursts of hundreds when a transcript opens. */
+let rowsCache: { at: number; rows: SessionMeta[] } | null = null
+function sessionRows(): SessionMeta[] {
+  const now = Date.now()
+  if (!rowsCache || now - rowsCache.at > 5_000) rowsCache = { at: now, rows: store?.listSessions() ?? [] }
+  return rowsCache.rows
+}
+
 function buildPrompt(items: SummarizeItem[], captions: boolean): string {
   const lines: string[] = []
   let budget = TOTAL_CAP
+  const sessions = sessionRows()
   items.forEach((it, n) => {
-    const detail = humanizeIds(it.detail.replace(/\s+/g, ' ')).slice(0, DETAIL_CAP)
-    const output = it.output ? humanizeIds(it.output.replace(/\s+/g, ' ')).slice(0, OUTPUT_CAP) : ''
+    const detail = humanizeIds(it.detail.replace(/\s+/g, ' '), sessions).slice(0, DETAIL_CAP)
+    const output = it.output
+      ? humanizeIds(it.output.replace(/\s+/g, ' '), sessions).slice(0, OUTPUT_CAP)
+      : ''
     const line = `${n + 1}. ${it.name}: ${detail}${output ? ` → ${output}` : ''}`
     if (line.length > budget) return
     budget -= line.length
