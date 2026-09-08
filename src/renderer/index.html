@@ -1,17 +1,69 @@
 <!doctype html>
-<html>
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <title>temp-code</title>
-    <!-- connect-src must allow the local server's WebSocket (dynamic port);
-         worker-src blob: covers vite's dev-mode worker loader (shiki). -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- Ported from MonoCode's Tauri CSP. tempcode-asset: serves project
+         logos through a scoped custom protocol; blob:/data: cover previews
+         and the shiki/Monaco workers; connect-src allows the local server's
+         WebSocket (dynamic port) and, in dev, vite's HMR origin. -->
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' ws://127.0.0.1:*; worker-src 'self' blob:"
+      content="default-src 'self'; script-src 'self'; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' tempcode-asset: data: blob: https://avatars.githubusercontent.com https://uploads.linear.app https://lh3.googleusercontent.com; font-src 'self' data:; connect-src 'self' ws://127.0.0.1:* ws://localhost:* http://localhost:5173 ws://localhost:5173 http://127.0.0.1:5173 ws://127.0.0.1:5173; media-src 'self' tempcode-asset: data: blob:; object-src 'none'; base-uri 'self'; frame-src 'none'"
     />
-  </head>
+    <title>TempCode</title>
+    <script src="./boot.js"></script>
+    <style>
+      :root {
+        --theme-hue: 240;
+        --theme-saturation: 0%;
+        --sidebar-opacity: 0.85;
+        --background-lightness: 9%;
+        --color-background-base: hsl(
+          var(--theme-hue) var(--theme-saturation) var(--background-lightness)
+        );
+      }
 
+      html.theme-light {
+        --background-lightness: 97%;
+      }
+
+      html,
+      body,
+      #boot-splash {
+        margin: 0;
+        background: var(--color-background-base);
+      }
+
+      /* Opaque cover until React paints. The logo is in HTML so it is
+         visible during the Dock bounce, before the bundle runs. */
+      #boot-splash {
+        position: fixed;
+        inset: 0;
+        z-index: 2147483647;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        pointer-events: none;
+        transition: opacity 0.16s ease;
+      }
+
+      #boot-splash.boot-splash-out {
+        opacity: 0;
+      }
+
+      #boot-splash img {
+        width: 72px;
+        height: 72px;
+        object-fit: contain;
+        display: block;
+      }
+    </style>
+  </head>
   <body>
+    <div id="boot-splash" aria-hidden="true">
+      <img src="./monocode.png" alt="" />
+    </div>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

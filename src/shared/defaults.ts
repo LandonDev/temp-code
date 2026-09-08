@@ -10,7 +10,7 @@ import { z } from 'zod'
  * gets the same answer.
  */
 export const ThreadDefaultsSchema = z.object({
-  provider: z.enum(['claude', 'codex', 'cursor']).default('claude'),
+  provider: z.enum(['claude', 'codex', 'cursor', 'grok', 'opencode', 'pi', 'omp', 'fx']).default('claude'),
   /** model id; '' = the provider's catalog default */
   model: z.string().default(''),
   reasoning: z.enum(['low', 'medium', 'high', 'xhigh', 'max', 'ultra']).default('medium'),

@@ -1,12 +1,21 @@
 import { existsSync, readFileSync, realpathSync } from 'node:fs'
-import { resolve } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
+import { handleM3a } from './m3a'
+import { Notes } from './notes'
+import { ProjectLogos } from './projectLogos'
+import { ClaudeUsage, CodexUsage } from './rateLimits'
 import { WebSocketServer, type WebSocket } from 'ws'
 import { CATALOG } from '@shared/catalog'
 import { ClientRequestSchema, type ServerFrame } from '@shared/contract'
 import type { SessionMeta } from '@shared/events'
 import { openDb, Store } from './db'
+import { handleFsGit } from './fsgit'
+import { CheckpointStore } from './checkpoint'
+import { handleCheckpoint } from './checkpointRpc'
+import { Linear, handleLinear } from './linear'
 import { SessionRegistry } from './sessions'
 import { runDoctor, updateProvider } from './drivers/binaries'
+import { probeCatalogs } from './drivers/catalogProbe'
 import { backfillMirrors } from './mirror'
 import {
   orchAnswerAgent,
@@ -125,12 +134,18 @@ function readAllowedFile(registry: SessionRegistry, path: string): string | null
 export interface RunningServer {
   port: number
   registry: SessionRegistry
+  store: Store
   close: () => Promise<void>
 }
 
-export async function startServer(dbPath: string): Promise<RunningServer> {
-  const store = new Store(openDb(dbPath))
+export async function startServer(dbPath: string, options: { dataDir?: string } = {}): Promise<RunningServer> {
+  const db = openDb(dbPath)
+  const store = new Store(db)
+  const checkpoints = new CheckpointStore(join(options.dataDir ?? dirname(dbPath), 'checkpoints'))
   const registry = new SessionRegistry(store)
+  registry.checkpoints = checkpoints
+  const m3a = { store, registry, notes: new Notes(db), logos: new ProjectLogos(options.dataDir ?? dirname(dbPath)), usage: new ClaudeUsage(), codexUsage: new CodexUsage() }
+  const linear = new Linear(options.dataDir ?? dirname(dbPath))
   registry.resetStaleStatuses()
   registry.startIdleSweep()
   setOrchestrationRegistry(registry)
@@ -138,6 +153,7 @@ export async function startServer(dbPath: string): Promise<RunningServer> {
   setSummarizeContext(registry, store)
   backfillMirrors(registry) // old mirrors gain files:/Outcome, INDEX.md fills in
   void runDoctor() // warm the cache so the new-session modal opens ready
+  void probeCatalogs() // the five probed harnesses ask their CLIs for models
 
   // Background IntelliJ index warming: shortly after startup, then every
   // 10 minutes (catches HEAD moves from commits/branch switches). Both
@@ -184,6 +200,9 @@ export async function startServer(dbPath: string): Promise<RunningServer> {
 
     // Every client gets session-meta updates (cheap, drives the sidebar).
     const offMeta = registry.onMeta((session) => sendFrame({ push: 'session', session }))
+    const offCatalog = registry.onCatalog((kind) => sendFrame(kind === 'workspaces'
+      ? { push: 'workspaces', workspaces: registry.listWorkspaces() }
+      : { push: 'projects', projects: registry.listProjects() }))
     const offLive = onLiveEdit((p) => sendFrame(p))
     const offBuild = builder.onPush((p) => sendFrame(p))
     const offQueue = registry.onQueue((sessionId, items) =>
@@ -212,8 +231,17 @@ export async function startServer(dbPath: string): Promise<RunningServer> {
       }
       const req = parsed.data
       try {
+        const extension = await handleM3a(req, m3a)
+        if (extension.handled) { sendFrame({ id: req.id, ok: true, result: extension.result }); return }
+        const fsGit = await handleFsGit(req)
+        if (fsGit.handled) return sendFrame({ id: req.id, ok: true, result: fsGit.result })
+        const checkpoint = await handleCheckpoint(req, checkpoints)
+        if (checkpoint.handled) return sendFrame({ id: req.id, ok: true, result: checkpoint.result })
+        const lin = await handleLinear(req, linear)
+        if (lin.handled) return sendFrame({ id: req.id, ok: true, result: lin.result })
         switch (req.method) {
           case 'catalog.get':
+            if (req.params?.refresh) await probeCatalogs(true)
             sendFrame({ id: req.id, ok: true, result: CATALOG })
             break
           case 'doctor.get':
@@ -789,7 +817,12 @@ export async function startServer(dbPath: string): Promise<RunningServer> {
             sendFrame({ id: req.id, ok: true, result: null })
             break
           case 'queue.update':
-            registry.queueUpdate(req.params.sessionId, req.params.messageId, req.params.text)
+            registry.queueUpdate(req.params.sessionId, req.params.messageId, {
+              text: req.params.text,
+              provider: req.params.provider,
+              model: req.params.model,
+              reasoning: req.params.reasoning
+            })
             sendFrame({ id: req.id, ok: true, result: null })
             break
           case 'queue.reorder':
@@ -928,6 +961,7 @@ export async function startServer(dbPath: string): Promise<RunningServer> {
 
     ws.on('close', () => {
       offMeta()
+      offCatalog()
       offQueue()
       offLive()
       offBuild()
@@ -951,6 +985,7 @@ export async function startServer(dbPath: string): Promise<RunningServer> {
   return {
     port,
     registry,
+    store,
     close: async () => {
       clearTimeout(warmKickoff)
       clearInterval(warmTimer)
@@ -960,7 +995,9 @@ export async function startServer(dbPath: string): Promise<RunningServer> {
       await closeAllLiveWatchers()
       stopAllLsp()
       stopAllDap()
-      wss.close()
+      for (const client of wss.clients) client.terminate()
+      await new Promise<void>((resolve, reject) => wss.close((error) => error ? reject(error) : resolve()))
+      db.close()
     }
   }
 }

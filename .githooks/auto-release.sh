@@ -1,6 +1,6 @@
 #!/bin/bash
 # The auto-release worker: while commits keep landing, keep trying. A
-# dirty tree or a red typecheck just means no release this round — the
+# dirty tree, a red typecheck or a red test just means no release this round — the
 # next green commit retries. Never touches the installed app.
 ROOT="$1"
 cd "$ROOT" || exit 1

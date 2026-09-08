@@ -16,8 +16,9 @@ import type {
 } from '@shared/domain'
 import { BUILT_IN_DRIVERS } from './drivers'
 import { generateTitle } from './drivers/title'
-import type { DriverHandle } from './drivers/types'
+import type { ApprovalRequest, DriverHandle } from './drivers/types'
 import type { Store } from './db'
+import type { CheckpointStore } from './checkpoint'
 import {
   addProjectWorktree,
   currentBranch,
@@ -211,13 +212,41 @@ const DISK_TOOLS = new Set([
 /** A write can flush moments after its tool result lands. */
 const DISK_TOOL_GRACE_MS = 2_500
 
+/** Unanswered approvals deny themselves after this long. */
+const APPROVAL_TIMEOUT_MS = 5 * 60 * 1000
+
 /**
  * The session registry: owns the session tree, the append-only event log,
  * live driver handles, and per-session subscriptions. The single write
  * path — everything user-visible flows through append().
  */
+export function isPlaceholderTitle(meta: SessionMeta): boolean {
+  return (Object.values(THREAD_TITLES) as string[]).includes(meta.title) ||
+    meta.title === `${meta.provider} · ${meta.agentType}`
+}
+
 export class SessionRegistry {
+  private catalogListeners = new Set<(kind: 'workspaces' | 'projects') => void>()
+
+  onCatalog(listener: (kind: 'workspaces' | 'projects') => void): () => void {
+    this.catalogListeners.add(listener)
+    return () => this.catalogListeners.delete(listener)
+  }
+
+  private notifyCatalog(kind: 'workspaces' | 'projects'): void {
+    for (const listener of this.catalogListeners) listener(kind)
+  }
+
+  setPinned(sessionId: string, pinned: boolean): void {
+    const next = this.store.updateSession(sessionId, { pinned })
+    if (!next) throw new Error(`unknown session: ${sessionId}`)
+    this.notifyMeta(next)
+  }
+
   private handles = new Map<string, DriverHandle>()
+  /** Approvals raised through requestApproval, per session: requestId →
+   *  settle. Drivers with their own prompt loop (codex) keep theirs. */
+  private pendingApprovals = new Map<string, Map<string, (allow: boolean, auto?: boolean) => void>>()
   private starting = new Map<string, Promise<DriverHandle>>()
   private subscribers = new Map<string, Set<SessionListener>>()
   private metaListeners = new Set<MetaListener>()
@@ -287,7 +316,19 @@ export class SessionRegistry {
   private researchSeen = new Map<string, Set<string>>()
   private sweepTimer: ReturnType<typeof setInterval> | null = null
 
+  /** Undo checkpoints; armed before every harness send so the baseline
+   *  is snapshotted before the provider can write. Set by the server. */
+  checkpoints: CheckpointStore | null = null
+
   constructor(private store: Store) {}
+
+  /** Snapshot the session's already-dirty files once per session and cwd.
+   *  Never blocks a turn: a failure here only costs undo for that turn. */
+  private async armCheckpoint(sessionId: string): Promise<void> {
+    const cwd = this.store.getSession(sessionId)?.cwd?.trim()
+    if (!this.checkpoints || !cwd || cwd === '~') return
+    await this.checkpoints.ensure(sessionId, cwd).catch(() => {})
+  }
 
   /**
    * Idle disposal — what keeps dozens of sessions cheap. A handle whose
@@ -420,6 +461,13 @@ export class SessionRegistry {
       createdAt: Date.now()
     }
     this.store.insertWorkspace(meta)
+    for (const session of this.store.listSessions()) {
+      if (session.projectId || session.workspaceId || session.cwd !== path) continue
+      this.store.setSessionWorkspace(session.id, meta.id)
+      const next = this.store.getSession(session.id)
+      if (next) this.notifyMeta(next)
+    }
+    this.notifyCatalog('workspaces')
     return meta
   }
 
@@ -434,6 +482,8 @@ export class SessionRegistry {
     }
     const projectIds = this.store.deleteWorkspace(workspaceId)
     for (const pid of projectIds) await this.deleteProjectSessions(pid)
+    this.notifyCatalog('workspaces')
+    this.notifyCatalog('projects')
   }
 
   async createProject(
@@ -467,6 +517,7 @@ export class SessionRegistry {
     this.store.insertProject(meta)
     void ensureLocalExclude(cwd) // plan docs (.temp-code/) stay out of git
     seedJournal(meta) // PROJECT.md — the shared journal threads append to
+    this.notifyCatalog('projects')
     return meta
   }
 
@@ -480,7 +531,9 @@ export class SessionRegistry {
 
   renameProject(projectId: string, name: string): void {
     const t = name.trim()
-    if (t) this.store.renameProject(projectId, t)
+    if (!t) return
+    this.store.renameProject(projectId, t)
+    this.notifyCatalog('projects')
   }
 
   /** Switch a worktree project's checkout to another branch (existing or
@@ -492,6 +545,7 @@ export class SessionRegistry {
     if (p.mode !== 'worktree') throw new Error('only worktree projects can switch branches')
     const local = await switchBranch(p.cwd, branch, { baseRef })
     this.store.setProjectBranch(projectId, local)
+    this.notifyCatalog('projects')
   }
 
   /** Tear down the chosen git leftovers of a worktree project. Runs
@@ -519,6 +573,7 @@ export class SessionRegistry {
   ): Promise<void> {
     if (archived && cleanup) await this.cleanupProjectGit(projectId, cleanup)
     this.store.setProjectArchived(projectId, archived)
+    this.notifyCatalog('projects')
   }
 
   async deleteProject(projectId: string, cleanup?: ProjectCleanup): Promise<void> {
@@ -526,6 +581,7 @@ export class SessionRegistry {
     await this.deleteProjectSessions(projectId)
     this.store.deleteProject(projectId)
     this.store.setSetting(`turn-pass:project:${projectId}`, null)
+    this.notifyCatalog('projects')
   }
 
   private async deleteProjectSessions(projectId: string): Promise<void> {
@@ -652,16 +708,20 @@ export class SessionRegistry {
   async create(raw: CreateSessionInput): Promise<SessionMeta> {
     const params = CreateSessionParams.parse(raw)
     const now = Date.now()
-    const id = nanoid(12)
+    if (params.id && this.store.getSession(params.id)) throw new Error(`session id already taken: ${params.id}`)
+    const id = params.id ?? nanoid(12)
     const project = params.projectId ? this.store.getProject(params.projectId) : null
     // One-off chats: a workspace chat runs at the workspace root, a fully
     // loose chat in the home directory.
-    const workspace =
+    let workspace =
       !project && params.workspaceId
         ? this.store.listWorkspaces().find((w) => w.id === params.workspaceId)
         : null
     if (!project && params.workspaceId && !workspace) {
       throw new Error(`unknown workspace: ${params.workspaceId}`)
+    }
+    if (!project && !workspace && !params.workspaceId && params.cwd) {
+      workspace = this.store.listWorkspaces().find((w) => w.path === params.cwd) ?? null
     }
     const cwd = project?.cwd ?? workspace?.path ?? params.cwd ?? homedir()
     // Fields the caller left open come from the thread defaults
@@ -703,6 +763,7 @@ export class SessionRegistry {
       // ready for input.
       status: 'idle',
       archived: false,
+      pinned: false,
       permission: params.permission ?? d.permission,
       fast: false,
       context1m: params.context1m ?? false,
@@ -867,12 +928,13 @@ export class SessionRegistry {
       model: meta.model,
       reasoning: meta.reasoning,
       context1m: meta.context1m,
+      fast: meta.fast,
       newPass: opts?.newPass === true
     })
     // Cursor-style: an untitled thread takes its name from the first
     // message right away; a generated title replaces the raw slice once
     // the first turn completes (maybeRetitle).
-    if (first && (Object.values(THREAD_TITLES) as string[]).includes(meta.title)) {
+    if (first && isPlaceholderTitle(meta)) {
       const title = text.trim().split('\n')[0].slice(0, 60)
       if (title) {
         const next = this.store.updateSession(sessionId, { title })
@@ -969,6 +1031,7 @@ export class SessionRegistry {
           : [shot]
       })
     try {
+      await this.armCheckpoint(sessionId)
       await handle.send(out, sendAttachments)
     } catch (err) {
       // A steer at a provider that can't take mid-turn input (cursor's
@@ -1118,6 +1181,7 @@ export class SessionRegistry {
     const frozen = Math.max(0, before.frozenActiveElapsed ?? 0)
     await this.dropHandle(sessionId)
     const handle = await this.handleFor(sessionId)
+    await this.armCheckpoint(sessionId)
     await handle.send(
       '<continue-paused-run>\nThe user paused this turn and has now continued it. Inspect your task list and your last actions, then continue the interrupted work exactly where you left off. Do not restart completed work.\n</continue-paused-run>'
     )
@@ -1189,7 +1253,55 @@ export class SessionRegistry {
     }
   }
 
+  /**
+   * Ask the user to approve a tool call and wait for the answer. Emits the
+   * approval-request and waiting status, resolves through approve(), and
+   * auto-denies on timeout, abort, or when the session's handle drops.
+   */
+  requestApproval(sessionId: string, req: ApprovalRequest): Promise<boolean> {
+    const requestId = req.requestId ?? `a-${nanoid(8)}`
+    let pending = this.pendingApprovals.get(sessionId)
+    if (!pending) {
+      pending = new Map()
+      this.pendingApprovals.set(sessionId, pending)
+    }
+    const map = pending
+    this.append(sessionId, {
+      type: 'approval-request',
+      requestId,
+      toolName: req.toolName,
+      input: req.input,
+      title: req.title,
+      callId: req.callId
+    })
+    this.append(sessionId, { type: 'status', status: 'waiting', detail: 'awaiting approval' })
+    return new Promise((resolve) => {
+      const finish = (allow: boolean, auto = false): void => {
+        if (!map.delete(requestId)) return
+        clearTimeout(timer)
+        this.append(sessionId, { type: 'approval-resolved', requestId, allow, auto })
+        this.append(sessionId, { type: 'status', status: 'running' })
+        resolve(allow)
+      }
+      const timer = setTimeout(() => finish(false, true), APPROVAL_TIMEOUT_MS)
+      map.set(requestId, finish)
+      req.signal?.addEventListener('abort', () => finish(false, true), { once: true })
+    })
+  }
+
+  private denyPendingApprovals(sessionId: string): void {
+    const pending = this.pendingApprovals.get(sessionId)
+    if (!pending) return
+    for (const finish of [...pending.values()]) finish(false, true)
+    this.pendingApprovals.delete(sessionId)
+  }
+
   async approve(sessionId: string, requestId: string, allow: boolean): Promise<void> {
+    const finish = this.pendingApprovals.get(sessionId)?.get(requestId)
+    if (finish) {
+      finish(allow)
+      return
+    }
     if (this.handles.get(sessionId)?.approve?.(requestId, allow)) return
     // Stale request: asked by a previous process of this harness, whose
     // resolver died with it. Settle the card so it can't wedge the UI —
@@ -1367,6 +1479,7 @@ export class SessionRegistry {
       await this.dropHandle(id)
       this.stopping.delete(id)
       this.pendingReboot.delete(id)
+      this.pendingApprovals.delete(id)
       this.subscribers.delete(id)
       this.lastActivity.delete(id)
       this.activities.delete(id)
@@ -1513,6 +1626,7 @@ export class SessionRegistry {
     try {
       const handle = await this.handleFor(sessionId)
       this.lastActivity.set(sessionId, Date.now())
+      await this.armCheckpoint(sessionId)
       await handle.send(
         `<continue-run>\nThe previous turn was cut off by a harness error (a session limit or similar) that the user has since fixed. ${restartedDescendants ? 'Your failed subagents were restarted first and are picking their work back up. ' : ''}Continue exactly where you left off: check your task list and your last few actions, finish anything half-done, and keep going. If the work was already complete, say so in one short line.\n</continue-run>`
       )
@@ -1532,6 +1646,7 @@ export class SessionRegistry {
   private async dropHandle(sessionId: string): Promise<void> {
     const inflight = this.starting.get(sessionId)
     if (inflight) await inflight.catch(() => {})
+    this.denyPendingApprovals(sessionId)
     const handle = this.handles.get(sessionId)
     this.handles.delete(sessionId)
     this.starting.delete(sessionId)
@@ -1577,6 +1692,7 @@ export class SessionRegistry {
           // Drivers seed goal state from here (resume dedup, watcher init).
           session: { ...meta, goal: this.goalOf(sessionId) },
           emit: (event) => this.append(sessionId, event),
+          requestApproval: (req) => this.requestApproval(sessionId, req),
           setNativeId: (nativeId) => {
             const next = this.store.updateSession(sessionId, { nativeId })
             if (next) this.notifyMeta(next)
@@ -1751,9 +1867,11 @@ export class SessionRegistry {
     } else if (event.type === 'tool-result') {
       const calls = this.diskToolCalls.get(sessionId)
       if (calls?.get(event.callId) === null) calls.set(event.callId, row.ts)
-    } else if (event.type === 'status' && event.status !== 'running') {
+    } else if (event.type === 'status' && event.status !== 'running' && event.status !== 'waiting') {
       // Turn boundary: close anything still open (a died turn never sends
-      // results) and drop entries long past the grace.
+      // results) and drop entries long past the grace. 'waiting' is not a
+      // boundary: a supervised tool call sits open behind its approval and
+      // writes only after the user allows it.
       const calls = this.diskToolCalls.get(sessionId)
       if (calls) {
         for (const [id, closed] of calls) {
@@ -1911,12 +2029,30 @@ export class SessionRegistry {
     this.notifyQueue(sessionId)
   }
 
-  queueUpdate(sessionId: string, messageId: string, text: string): void {
+  queueUpdate(
+    sessionId: string,
+    messageId: string,
+    patch: {
+      text?: string
+      provider?: string | null
+      model?: string | null
+      reasoning?: string | null
+    }
+  ): void {
     const q = this.queues.get(sessionId)
     if (!q) return
+    const field = <T extends string>(value: T | null | undefined, current: T | undefined) =>
+      value === undefined ? current : value === null ? undefined : value
+    const apply = (m: QueuedMessage): QueuedMessage => ({
+      ...m,
+      text: patch.text ?? m.text,
+      provider: field(patch.provider as ProviderId | null | undefined, m.provider),
+      model: field(patch.model, m.model),
+      reasoning: field(patch.reasoning as SessionMeta['reasoning'] | null, m.reasoning)
+    })
     this.queues.set(
       sessionId,
-      q.map((m) => (m.id === messageId ? { ...m, text } : m))
+      q.map((m) => (m.id === messageId ? apply(m) : m))
     )
     this.notifyQueue(sessionId)
   }
@@ -2035,6 +2171,7 @@ export class SessionRegistry {
         tally && tally.done < tally.total
           ? `\nThe task list shows only ${tally.done}/${tally.total} tasks completed — this pass only tidies what exists. End by saying plainly that the work is UNFINISHED and what remains, so the user can resume it.`
           : ''
+      await this.armCheckpoint(sessionId)
       await handle.send(
         `<turn-pass>\nThe turn settled. The completed-turn setting now asks you to:\n${steps.map((s, i) => `${i + 1}. ${s}`).join('\n')}\nThese are the project's own completion settings — they OVERRIDE any branch, worktree, PR, or completion convention a skill or other instruction gave earlier in this thread. If the turn changed nothing to verify, build, or commit, say so in one short line and stop. Never start new feature work in this pass.${unfinished}\n</turn-pass>`
       )
@@ -2080,6 +2217,7 @@ export class SessionRegistry {
         status: item.status
       })
       this.lastActivity.set(sessionId, Date.now())
+      await this.armCheckpoint(sessionId)
       await handle.send(item.text)
     })()
       .catch(() => {
@@ -2165,6 +2303,7 @@ export class SessionRegistry {
 
   async disposeAll(): Promise<void> {
     if (this.sweepTimer) clearInterval(this.sweepTimer)
+    for (const id of [...this.pendingApprovals.keys()]) this.denyPendingApprovals(id)
     await Promise.allSettled([...this.handles.values()].map((h) => h.dispose()))
     this.handles.clear()
   }
