@@ -260,6 +260,12 @@ export const SessionPane = memo(function SessionPane({
     () => serverCommands.resume(session.id).catch(() => undefined),
     [session.id],
   );
+  // A click inside the pane that already owns focus and the composer asks
+  // App for nothing; the action would be a no-op and the render a waste.
+  const focusPane = useCallback(() => {
+    if (focused && composerFocused) return;
+    onFocus(session.id);
+  }, [composerFocused, focused, onFocus, session.id]);
   const composerOf = (opts?: ChatOpts) => (
     <>
       <AppshotFlyIn sessionId={session.id} active={focused && visible} />
@@ -292,7 +298,7 @@ export const SessionPane = memo(function SessionPane({
       onInboxCardDismiss={() => onInboxCardDismiss?.(session.id)}
       onNoteCardDismiss={() => onNoteCardDismiss?.(session.id)}
       onHandoffCardDismiss={() => onHandoffCardDismiss?.(session.id)}
-      onFocus={() => onFocus(session.id)}
+      onFocus={focusPane}
       onCwdChange={(cwd) => onCwdChange(session.id, cwd)}
       onBranchChange={() => onBranchChange(session.id)}
       onNewTerminal={() => onNewTerminal(session.id)}
@@ -388,7 +394,7 @@ export const SessionPane = memo(function SessionPane({
       animate={{ opacity: 1 }}
       transition={{ duration: 0.12, ease: EASE_OUT }}
       className="flex h-full min-h-0 min-w-0 flex-1 flex-col"
-      onMouseDown={() => onFocus(session.id)}
+      onMouseDown={focusPane}
     >
       {inSplit ? (
         <div

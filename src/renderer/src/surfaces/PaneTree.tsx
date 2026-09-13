@@ -39,6 +39,7 @@ import { FilePane } from "./FilePane";
 import { SessionPane } from "./SessionPane";
 
 type Shared = {
+  tabId: string;
   visible: boolean;
   editorPanes: EditorPane[];
   dirtyFileIds: Set<string>;
@@ -54,7 +55,7 @@ type Shared = {
   onReorderFiles: (paneId: string, ids: string[]) => void;
   onFileDirtyChange: (fileId: string, dirty: boolean) => void;
   onFileErrorCountChange: (fileId: string, count: number) => void;
-  onRatio: (splitId: string, index: number, ratio: number) => void;
+  onRatio: (tabId: string, splitId: string, index: number, ratio: number) => void;
   onCwdChange: (sessionId: string, cwd: string) => void;
   onBranchChange: (sessionId: string) => void;
   onModelChange: (sessionId: string, harness: HarnessId, model: string) => void;
@@ -127,6 +128,7 @@ function SessionLeaf({ id, ...props }: SessionLeafProps) {
 }
 
 function PaneTreeComponent({
+  tabId,
   visible,
   layout,
   editorPanes,
@@ -365,7 +367,7 @@ function PaneTreeComponent({
           }
           onCommit={(ratio) => {
             setDraft(null);
-            onRatio(sash.splitId, sash.index, ratio);
+            onRatio(tabId, sash.splitId, sash.index, ratio);
           }}
           onCancel={() => setDraft(null)}
         />

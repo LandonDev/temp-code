@@ -575,16 +575,20 @@ export function setSplitRatio(
 ): LayoutNode {
   if (node.type === "leaf") return node;
   if (node.id !== splitId) {
-    return {
-      ...node,
-      children: node.children.map((child) =>
-        setSplitRatio(child, splitId, index, boundary),
-      ),
-    };
+    let changed = false;
+    const children = node.children.map((child) => {
+      const next = setSplitRatio(child, splitId, index, boundary);
+      if (next !== child) changed = true;
+      return next;
+    });
+    return changed ? { ...node, children } : node;
   }
   if (index < 0 || index >= node.sizes.length - 1) return node;
 
-  return { ...node, sizes: splitSizesAtBoundary(node.sizes, index, boundary) };
+  const sizes = splitSizesAtBoundary(node.sizes, index, boundary);
+  return sizes.every((size, i) => size === node.sizes[i])
+    ? node
+    : { ...node, sizes };
 }
 
 export function splitSizesAtBoundary(
