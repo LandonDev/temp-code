@@ -62,7 +62,9 @@ function FilePaneComponent({
   return (
     <div
       className="flex h-full min-h-0 min-w-0 flex-1 flex-col"
-      onMouseDown={() => onFocus(pane.id)}
+      onMouseDown={() => {
+        if (!focused) onFocus(pane.id);
+      }}
     >
       <SurfaceTabs
         files={pane.files}

@@ -1,5 +1,14 @@
 import { invoke, listen, getCurrentWindow, message } from "./lib/native";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import {
+  useCallback,
+  useDeferredValue,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import { Sidebar } from "./chrome/Sidebar";
 import { HiddenApprovalToasts } from "./chrome/ApprovalToasts";
 import { WhatsNewDialog } from "./chrome/WhatsNewDialog";
@@ -54,7 +63,6 @@ import {
   openTerminalTab,
   removePane,
   replaceLeafId,
-  setSplitRatio,
   siblingLeafId,
   splitPane,
   surfacePanes,
@@ -252,6 +260,13 @@ import { syncDockBadge } from "./lib/dockBadge";
 import { liveAgentTracker } from "./lib/liveAgentTracker";
 import { requestTranscriptJump } from "./lib/transcriptJump";
 import { installAppFacade } from "./lib/appFacade";
+import {
+  focusDiff,
+  focusPane,
+  setTabSplitRatio,
+  tabSurfacePanes,
+} from "./lib/workspaceFocus";
+import { createWorkspaceAutosave } from "./lib/workspaceAutosave";
 import { tallyRender } from "./lib/devRenders";
 import { playCue } from "./lib/sounds";
 import {
@@ -593,7 +608,6 @@ export default function App({
     canForward: false,
   });
   const turnGen = useRef(new Map<string, number>());
-  const workspaceSyncKey = useRef<string | null>(null);
   const skipForgetSessionIds = useRef(new Set<string>());
   const noteSystem = useCallback((sessionId: string, text: string) => {
     sessionStore.mutate((prev) =>
@@ -675,6 +689,14 @@ export default function App({
   }, []);
 
   const activeTab = tabs.find((t) => t.id === activeTabId) ?? tabs[0];
+  // The strip and sidebar move on the click; the pane swap, which is the
+  // heavy render, follows in a deferred pass so the click paints at once.
+  const deferredTabId = useDeferredValue(activeTabId);
+  // A closed tab may still be the deferred one for a pass; show the live
+  // tab rather than an empty column.
+  const shownTabId = tabs.some((tab) => tab.id === deferredTabId)
+    ? deferredTabId
+    : activeTabId;
   const active =
     sessions.find((session) => session.id === activeTab?.focusedId) ??
     sessions.find(
@@ -882,27 +904,36 @@ export default function App({
   // Every window saves under its own slot, a transferred one included: the
   // donor skipped this for transfer windows because it had one snapshot for
   // the whole app, and the moved tab would have overwritten the source's.
+  // The snapshot is collected when the timer fires, from the refs, so a
+  // burst of renders costs one JSON pass; a touch that changes nothing
+  // never drops a pending save (the old effect did, and lost layouts).
+  const workspaceAutosave = useMemo(
+    () =>
+      createWorkspaceAutosave({
+        collect: () =>
+          collectWorkspaceSnapshot(
+            tabsRef.current,
+            sessionStore.getSnapshot(),
+            activeTabIdRef.current,
+            projectCwdRef.current,
+            projectTerminalsRef.current,
+          ),
+        key: workspaceSnapshotKey,
+        // A window on its way out has persisted already; a late auto-save
+        // would land after main dropped its slot.
+        skip: isAppQuitting,
+        save: (snapshot) => {
+          void saveWorkspaceSnapshot(snapshot).catch((err) => {
+            console.error("[workspace] snapshot save failed:", err);
+          });
+        },
+      }),
+    [],
+  );
+  useEffect(() => () => workspaceAutosave.cancel(), [workspaceAutosave]);
   useEffect(() => {
-    const snapshot = collectWorkspaceSnapshot(
-      tabs,
-      sessions,
-      activeTabId,
-      projectCwd,
-      projectTerminals,
-    );
-    const key = workspaceSnapshotKey(snapshot);
-    if (workspaceSyncKey.current === key) return;
-    workspaceSyncKey.current = key;
-    const timer = window.setTimeout(() => {
-      // A window on its way out has persisted already; a late auto-save
-      // would land after main dropped its slot.
-      if (isAppQuitting()) return;
-      void saveWorkspaceSnapshot(snapshot).catch((err) => {
-        console.error("[workspace] snapshot save failed:", err);
-      });
-    }, 250);
-    return () => window.clearTimeout(timer);
-  }, [tabs, sessions, activeTabId, projectCwd, projectTerminals]);
+    workspaceAutosave.touch();
+  }, [workspaceAutosave, tabs, sessions, activeTabId, projectCwd, projectTerminals]);
 
   useEffect(() => {
     if (lastProjectPath()) return;
@@ -997,10 +1028,16 @@ export default function App({
     const ids = new Set<string>();
     let hidden = 0;
     for (const tab of tabs) {
-      if (tab.id === activeTabId || hidden++ < hiddenMountBudget) ids.add(tab.id);
+      if (
+        tab.id === activeTabId ||
+        tab.id === shownTabId ||
+        hidden++ < hiddenMountBudget
+      ) {
+        ids.add(tab.id);
+      }
     }
     return ids;
-  }, [tabs, activeTabId, hiddenMountBudget]);
+  }, [tabs, activeTabId, shownTabId, hiddenMountBudget]);
 
   const activateTab = useCallback((id: string) => {
     setActiveTabId(id);
@@ -2176,13 +2213,7 @@ export default function App({
   const onFocusPane = useCallback(
     (paneId: string) => {
       setProjectTerminalFocused(false);
-      setTabs((prev) =>
-        prev.map((t) =>
-          t.id === activeTabId
-            ? { ...t, focusedId: paneId, diffFocused: false }
-            : t,
-        ),
-      );
+      setTabs((prev) => focusPane(prev, activeTabId, paneId));
       setComposerFocused(
         sessionStore.getSnapshot().some((session) => session.id === paneId),
       );
@@ -2246,11 +2277,7 @@ export default function App({
   }, [activeTabId]);
 
   const onFocusDiff = useCallback(() => {
-    setTabs((prev) =>
-      prev.map((tab) =>
-        tab.id === activeTabId ? { ...tab, diffFocused: true } : tab,
-      ),
-    );
+    setTabs((prev) => focusDiff(prev, activeTabId));
     setComposerFocused(false);
   }, [activeTabId]);
 
@@ -2674,13 +2701,7 @@ export default function App({
 
   const onRatio = useCallback(
     (tabId: string, splitId: string, index: number, ratio: number) => {
-      setTabs((prev) =>
-        prev.map((t) =>
-          t.id === tabId
-            ? { ...t, layout: setSplitRatio(t.layout, splitId, index, ratio) }
-            : t,
-        ),
-      );
+      setTabs((prev) => setTabSplitRatio(prev, tabId, splitId, index, ratio));
     },
     [],
   );
@@ -4368,36 +4389,44 @@ export default function App({
                   onStart={onStartInboxItem}
                 />
               ) : (
-                <div className="relative min-h-0 min-w-0 flex-1">
+                <div
+                  className={
+                    // Pane callbacks target the live tab; until the deferred
+                    // pass shows it, a click would land on the old tab's panes.
+                    shownTabId === activeTabId
+                      ? "relative min-h-0 min-w-0 flex-1"
+                      : "pointer-events-none relative min-h-0 min-w-0 flex-1"
+                  }
+                >
               {tabs.map((tab) => mountedTabIds.has(tab.id) && (
                 <div
                   key={tab.id}
-                  aria-hidden={tab.id !== activeTabId}
+                  aria-hidden={tab.id !== shownTabId}
                   className={
-                    tab.id === activeTabId
+                    tab.id === shownTabId
                       ? "absolute inset-0 flex h-full min-h-0 flex-col"
                       : "hidden"
                   }
                 >
                   <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col">
                     <PaneTree
-                      visible={tab.id === activeTabId}
+                      tabId={tab.id}
+                      visible={tab.id === shownTabId}
                       layout={tab.layout}
-                      editorPanes={[
-                        ...tab.editorPanes,
-                        ...(tab.terminalPanes ?? []),
-                      ]}
+                      editorPanes={tabSurfacePanes(tab)}
                       dirtyFileIds={dirtyFiles}
                       fileErrorCounts={fileErrorCounts}
                       focusedId={
-                        tab.id === activeTabId &&
+                        tab.id === shownTabId &&
                         !tab.diffFocused &&
                         !projectTerminalFocused
                           ? tab.focusedId
                           : ""
                       }
                       composerFocused={
-                        composerFocused && !projectTerminalFocused
+                        composerFocused &&
+                        !projectTerminalFocused &&
+                        shownTabId === activeTabId
                       }
                       recents={recents}
                       hideProjectPicker={deckLayout}
@@ -4408,9 +4437,7 @@ export default function App({
                       onReorderFiles={onReorderFiles}
                       onFileDirtyChange={onFileDirtyChange}
                       onFileErrorCountChange={onFileErrorCountChange}
-                      onRatio={(splitId, index, ratio) =>
-                        onRatio(tab.id, splitId, index, ratio)
-                      }
+                      onRatio={onRatio}
                       onCwdChange={onCwdChange}
                       onBranchChange={onBranchChange}
                       onModelChange={onModelChange}
