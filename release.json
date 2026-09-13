@@ -1,5 +1,5 @@
 {
-  "n": 98,
-  "notes": "The release worker finds node",
-  "ts": 1789340812160
+  "n": 99,
+  "notes": "The window chrome reads its own store, and the workspace is planned before the first render",
+  "ts": 1789342312831
 }
