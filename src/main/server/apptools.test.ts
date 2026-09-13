@@ -1,7 +1,9 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { afterEach, expect, it } from 'vitest'
-import { bridgeMcpConfig, setAppBridge } from './apptools'
+import { afterEach, beforeEach, expect, it } from 'vitest'
+import type { SessionMeta } from '@shared/events'
+import type { SessionRegistry } from './sessions'
+import { appStartThread, bridgeMcpConfig, setAppBridge } from './apptools'
 
 afterEach(() => {
   setAppBridge(null)
@@ -39,6 +41,68 @@ it('bridgeMcpConfig carries ELECTRON_RUN_AS_NODE only through the Electron fallb
   })
   const config = bridgeMcpConfig('session-1') as { env: Record<string, string> }
   expect(config.env.ELECTRON_RUN_AS_NODE).toBe('1')
+})
+
+// ── app_start_thread and the 1M window ───────────────────────────────
+
+const created: Record<string, unknown>[] = []
+const caller = {
+  id: 'caller-1',
+  provider: 'claude',
+  projectId: null,
+  cwd: '/tmp',
+  permission: 'ask'
+} as unknown as SessionMeta
+
+/** Enough registry for appStartThread to reach create(); the real one
+ *  starts a driver, which a unit test has no business doing. */
+const fakeRegistry = {
+  get: (id: string) => (id === caller.id ? caller : null),
+  getProject: () => null,
+  create: async (params: Record<string, unknown>) => {
+    created.push(params)
+    return { id: 'thread-1', title: 'a thread' }
+  },
+  send: async () => {}
+} as unknown as SessionRegistry
+
+beforeEach(() => {
+  created.length = 0
+})
+
+it('app_start_thread passes context1m through on a claude model', async () => {
+  const result = await appStartThread(fakeRegistry, caller, {
+    threadType: 'chat',
+    provider: 'claude',
+    model: 'claude-opus-5',
+    firstMessage: 'go',
+    context1m: true
+  })
+  expect(result).toEqual({ threadId: 'thread-1', title: 'a thread' })
+  expect(created[0].context1m).toBe(true)
+})
+
+it('app_start_thread leaves context1m unset when it was not asked for', async () => {
+  await appStartThread(fakeRegistry, caller, {
+    threadType: 'chat',
+    provider: 'claude',
+    model: 'claude-opus-5',
+    firstMessage: 'go'
+  })
+  expect(created[0].context1m).toBeUndefined()
+})
+
+it('app_start_thread refuses context1m on a codex model and creates nothing', async () => {
+  const result = await appStartThread(fakeRegistry, caller, {
+    threadType: 'chat',
+    provider: 'codex',
+    model: 'gpt-6-astra',
+    firstMessage: 'go',
+    context1m: true
+  })
+  expect(result).toMatch(/^refused:/)
+  expect(result).toContain('1M context window')
+  expect(created).toHaveLength(0)
 })
 
 // ── packaging guard ──────────────────────────────────────────────────

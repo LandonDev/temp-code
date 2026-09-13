@@ -4,6 +4,7 @@ import { setHarnessModels, type AgentModel, type ModelSetting } from "../models"
 import { client } from "./client";
 import type { Link } from "./store";
 import type { ModelInfo, ProviderId, ProviderInfo } from "./types";
+import { supportsContext1m } from "@server/shared/catalog";
 
 /**
  * The server's capability catalog and provider health, fanned into
@@ -62,7 +63,7 @@ const PRIORITY_MODE: ModelSetting = {
 /** `claude-…` models get the fast + context toggles (session.tune). */
 function claudeSettings(model: ModelInfo): ModelSetting[] {
   const settings: ModelSetting[] = [];
-  if (model.context && model.context >= 1_000_000) {
+  if (supportsContext1m("claude", model.id)) {
     settings.push({
       id: "context",
       label: "Context",

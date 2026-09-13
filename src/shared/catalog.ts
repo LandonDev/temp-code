@@ -222,6 +222,16 @@ export function modelInfo(provider: ProviderId, modelId: string): ModelInfo | un
 }
 
 /**
+ * Whether a model can run with the 1M context window. Only the Claude
+ * harness honours `context1m` (drivers/claude.ts appends `[1m]`), and only
+ * models the catalog says serve a million tokens. One predicate so the
+ * picker, the spawn tools and their refusals can never disagree.
+ */
+export function supportsContext1m(provider: ProviderId, modelId: string): boolean {
+  return provider === 'claude' && (modelInfo(provider, modelId)?.context ?? 0) >= 1_000_000
+}
+
+/**
  * A model id names its harness. If the requested provider doesn't serve
  * the model, route to the one that does (claude asked to run gpt-5.6-sol
  * → codex) instead of handing a foreign id to a harness that will error.

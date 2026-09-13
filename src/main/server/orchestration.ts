@@ -9,7 +9,13 @@ import {
   tool,
   type McpSdkServerConfigWithInstance
 } from '@anthropic-ai/claude-agent-sdk'
-import { AGENT_TYPES, CATALOG, modelInfo, type ProviderId } from '@shared/catalog'
+import {
+  AGENT_TYPES,
+  CATALOG,
+  modelInfo,
+  supportsContext1m,
+  type ProviderId
+} from '@shared/catalog'
 import {
   DEFAULT_RULES,
   approvedLadder,
@@ -306,13 +312,19 @@ export function spawnableModels(rules: OrchestrationRules): string {
       return `- ${p.id}:\n${models
         .map((m) => {
           const ladder = approvedLadder(rules, p.id, m.id)
-          return `    ${m.id}${ladder.length ? ` (${ladder.join('|')})` : ' (no effort control)'}`
+          const suffix = supportsContext1m(p.id, m.id) ? ' +1m' : ''
+          return `    ${m.id}${ladder.length ? ` (${ladder.join('|')})` : ' (no effort control)'}${suffix}`
         })
         .join('\n')}`
     })
     .filter(Boolean)
-  return blocks.length ? blocks.join('\n') : '(none — the user has approved no subagent models)'
+  if (blocks.length === 0) return '(none — the user has approved no subagent models)'
+  return `${blocks.join('\n')}\n  +1m: pass context1m: true to run that model with the 1M context window.`
 }
+
+/** Every refusal ends with the table, so the caller can self-correct. */
+const approvedTable = (rules: OrchestrationRules): string =>
+  `Approved models:\n${spawnableModels(rules)}`
 
 /** A provider's spawn default under the policy: the catalog default when
  *  approved, else its first approved model. */
@@ -347,7 +359,7 @@ function resolveSpawnTarget(
   fallback: ProviderId,
   rules: OrchestrationRules
 ): { provider: ProviderId; model: string } | { error: string } {
-  const table = (): string => `Approved models:\n${spawnableModels(rules)}`
+  const table = (): string => approvedTable(rules)
   const provider = rawProvider ? PROVIDER_ALIASES[rawProvider.toLowerCase().trim()] : undefined
   if (!rawModel) {
     const p = provider ?? fallback
@@ -391,6 +403,8 @@ export interface SpawnAgentArgs {
   agentType?: string
   task: string
   useWorktree?: boolean
+  /** Claude models with a 1M window only; refused for anything else. */
+  context1m?: boolean
 }
 
 export async function orchSpawnAgent(parent: SessionMeta, args: SpawnAgentArgs): Promise<string> {
@@ -411,6 +425,9 @@ export async function orchSpawnAgent(parent: SessionMeta, args: SpawnAgentArgs):
     target.model,
     args.reasoning
   ) as SessionMeta['reasoning']
+  if (args.context1m && !supportsContext1m(target.provider, target.model)) {
+    return `refused: ${target.model} does not offer the 1M context window — only Claude models do. Spawn it without context1m, or pick a model marked +1m. ${approvedTable(rules)}`
+  }
   const agentType = (AGENT_TYPES as readonly string[]).includes(args.agentType ?? '')
     ? (args.agentType as (typeof AGENT_TYPES)[number])
     : 'implementer'
@@ -437,6 +454,7 @@ export async function orchSpawnAgent(parent: SessionMeta, args: SpawnAgentArgs):
     model: target.model,
     reasoning,
     agentType,
+    ...(args.context1m ? { context1m: true } : {}),
     permission: parentNow.permission,
     cwd,
     // The task IS the identity — boards, tabs and the sidebar all
@@ -621,6 +639,12 @@ export function orchestratorMcp(parent: SessionMeta): McpSdkServerConfigWithInst
             .describe('Must be one of the efforts the chosen model supports (see system prompt)'),
           agentType: z.enum(AGENT_TYPES).default('implementer'),
           task: z.string().describe('The complete, self-contained task prompt'),
+          context1m: z
+            .boolean()
+            .optional()
+            .describe(
+              'Claude models only: run the agent with the 1M context window. Rejected for models that do not offer it.'
+            ),
           useWorktree: z
             .boolean()
             .default(true)
