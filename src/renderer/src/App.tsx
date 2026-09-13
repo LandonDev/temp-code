@@ -4530,7 +4530,7 @@ export default function App({
                   className={
                     tab.id === shownTabId
                       ? "absolute inset-0 flex h-full min-h-0 flex-col"
-                      : "hidden"
+                      : "tab-parked absolute inset-0 flex h-full min-h-0 flex-col"
                   }
                 >
                   <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col">

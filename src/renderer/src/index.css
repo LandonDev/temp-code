@@ -170,6 +170,18 @@ html.is-mac .sidebar-glass {
 }
 
 /*
+ * A mounted tab behind the shown one keeps its boxes, scroll offsets and
+ * terminal state while layout, paint and hit testing skip it. display:none
+ * threw the layout away, so coming back re-laid-out every pane at once.
+ * The wrapper is sized by its insets, so the size containment that comes
+ * with content-visibility needs no contain-intrinsic-size here.
+ */
+.tab-parked {
+  content-visibility: hidden;
+  pointer-events: none;
+}
+
+/*
  * The live turn is still growing. Size containment would flash the 240px
  * intrinsic fallback when the first step arrives, which bounces Working
  * down and then back up.
