@@ -64,6 +64,7 @@ import { CwdPicker } from "./CwdPicker";
 import { FileTree } from "./FileTree";
 import { FileTypeIcon } from "./FileTypeIcon";
 import { ProjectRail } from "./ProjectRail";
+import { useProject, useRailRecents, useSelectedWorkspaceId } from "../stores/project";
 import { shell, useShell } from "../stores/shell";
 import { RailAction } from "./RailAction";
 import { SettingsNav } from "./SettingsRail";
@@ -123,7 +124,6 @@ type Props = {
   selectedDiffPath?: string;
   textHarness?: HarnessId;
   onShowSourceControl?: () => void;
-  recents?: RecentProject[];
   onSelectAgent?: (sessionId: string) => void;
   onSelectProject?: (path: string) => void;
   onOpenProject?: () => void;
@@ -135,9 +135,6 @@ type Props = {
   onOpenNotes?: () => void;
   onGoToFile?: () => void;
   notesEnabled?: boolean;
-  /** Server workspace shown in the Sessions tab (null before the catalog loads). */
-  workspaceId?: string | null;
-  selectedProjectId?: string | null;
   onSelectProjectCard?: (projectId: string | null) => void;
   onNewChat?: (projectId: string | null) => void;
   onProjectCreated?: (project: ProjectMeta) => void;
@@ -165,7 +162,6 @@ function SidebarComponent({
   selectedDiffPath,
   textHarness,
   onShowSourceControl,
-  recents = [],
   onSelectAgent,
   onSelectProject,
   onOpenProject,
@@ -177,13 +173,15 @@ function SidebarComponent({
   onOpenNotes,
   onGoToFile,
   notesEnabled = true,
-  workspaceId = null,
-  selectedProjectId = null,
   onSelectProjectCard,
   onNewChat,
   onProjectCreated,
   onOpenWhatsNew,
 }: Props) {
+  const recents = useRailRecents();
+  const selectedProjectId = useProject((s) => s.selectedProjectId);
+  /** Server workspace shown in the Sessions tab (null before the catalog loads). */
+  const workspaceId = useSelectedWorkspaceId();
   const { busy: busyProjectPaths, needsYou: needsYouProjectPaths } =
     useProjectSignals();
   const liveAgents = useLiveAgents();

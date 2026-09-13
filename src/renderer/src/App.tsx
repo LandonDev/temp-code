@@ -173,13 +173,11 @@ import {
   contextForCwd,
   contextOfSession,
   forgetLastSession,
-  loadSelectedProject,
   rebaseToWorkspace,
   resolveLanding,
   resolveSessionContext,
   type ResolvedContext,
   saveLastSession,
-  saveSelectedProject,
   workspacePathOfSession,
 } from "./lib/projectContext";
 import { createWorkspace, deleteWorkspace, projectForCwd } from "./lib/tcserver/projects";
@@ -190,6 +188,16 @@ import type { ThreadType } from "./lib/tcserver/types";
 import { markSessionSeen } from "./lib/sessionSeen";
 import { historyStore } from "./lib/historyStore";
 import type { BootWorkspace } from "./stores/bootstrap";
+import {
+  currentDockCwd,
+  gitCwdOf,
+  project,
+  projectStore,
+  selectedProjectOf,
+  sidebarCwdOf,
+  useProject,
+  useRailRecents,
+} from "./stores/project";
 import { anyViewOpen, shell, shellStore, useShell } from "./stores/shell";
 import { applyZoom, loadZoom, zoomIn, zoomOut, zoomReset } from "./lib/zoom";
 import { migrateWorkspaces } from "./lib/workspaceMigration";
@@ -197,7 +205,6 @@ import {
   archiveProject,
   forgetProject,
   lastProjectPath,
-  loadArchivedProjects,
   looksLikeProject,
   normalizeProjectPath,
   rememberProject,
@@ -396,41 +403,35 @@ function openSessionIds(tabs: WorkspaceTab[]): Set<string> {
 }
 
 
+/** The tab on screen and the chat it focuses; shared by the render and the
+ *  `current*Cwd` getters so both name the same folder. */
+function activeSessionOf<S extends { id: string }>(
+  tabs: WorkspaceTab[],
+  activeTabId: string,
+  sessions: S[],
+): { activeTab: WorkspaceTab | undefined; active: S | undefined } {
+  const activeTab = tabs.find((t) => t.id === activeTabId) ?? tabs[0];
+  const active =
+    sessions.find((session) => session.id === activeTab?.focusedId) ??
+    sessions.find(
+      (session) => activeTab && leafIds(activeTab.layout).includes(session.id),
+    );
+  return { activeTab, active };
+}
+
 export default function App({ boot }: { boot: BootWorkspace }) {
   tallyRender("app");
-  const [projectCwd, setProjectCwd] = useState(boot.projectCwd);
-  const [recents, setRecents] = useState(boot.recents);
+  const projectCwd = useProject((s) => s.projectCwd);
+  const recents = useProject((s) => s.recents);
+  const selectedProjectId = useProject((s) => s.selectedProjectId);
   const catalog = useWorkspaceCatalog();
   const { workspaces, projects } = catalog;
-  const catalogRef = useRef(catalog);
-  catalogRef.current = catalog;
-  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(
-    () => loadSelectedProject(projectCwd),
-  );
-  const selectedProjectIdRef = useRef(selectedProjectId);
-  selectedProjectIdRef.current = selectedProjectId;
-  const selectedProject = selectedProjectId
-    ? projects.find((p) => p.id === selectedProjectId && !p.archived)
-    : undefined;
+  const selectedProject = selectedProjectOf({ selectedProjectId }, projects);
   /** Where a project terminal opens and which dock it lands in: the
-   *  selected project's checkout (its worktree), else the workspace root. */
+   *  selected project's checkout (its worktree), else the workspace root.
+   *  Callbacks read `currentDockCwd()`. */
   const dockCwd = selectedProject?.cwd ?? projectCwd;
-  const dockCwdRef = useRef(dockCwd);
-  dockCwdRef.current = dockCwd;
-  const selectedWorkspace = workspaceByPath(workspaces, projectCwd);
-  /** Rail rows: every server workspace, opened-at from the local recents. */
-  const railRecents = useMemo(() => {
-    if (!catalog.loaded) return recents;
-    const hidden = new Set(loadArchivedProjects().map((item) => item.path));
-    return workspaces
-      .map((w) => ({
-        path: normalizeProjectPath(w.path),
-        openedAt:
-          recents.find((r) => sameProjectPath(r.path, w.path))?.openedAt ??
-          w.createdAt,
-      }))
-      .filter((item) => looksLikeProject(item.path) && !hidden.has(item.path));
-  }, [catalog.loaded, recents, workspaces]);
+  const railRecents = useRailRecents();
   /** The open sessions' shells: layout-relevant fields only, so a streamed
    *  turn or a busy flip never re-renders App. Callbacks read the full
    *  sessions from `sessionStore.getSnapshot()`. */
@@ -500,20 +501,35 @@ export default function App({ boot }: { boot: BootWorkspace }) {
    * ref: `sidebarCwd` is derived during render, so the frame that first shows
    * a new project must already know the listing has not arrived yet.
    */
-  const [loadedProjects, setLoadedProjects] = useState<ReadonlySet<string>>(
-    boot.loadedProjects,
-  );
-  const loadedProjectsRef = useRef(loadedProjects);
-  loadedProjectsRef.current = loadedProjects;
-
   const tabsRef = useRef(tabs);
   tabsRef.current = tabs;
   const projectTerminalsRef = useRef(projectTerminals);
   projectTerminalsRef.current = projectTerminals;
   const activeTabIdRef = useRef(activeTabId);
   activeTabIdRef.current = activeTabId;
-  const projectCwdRef = useRef(projectCwd);
-  projectCwdRef.current = projectCwd;
+  /** The sidebar's and git's folders as of now, for callbacks; the render
+   *  computes the same from live values below. */
+  const currentSidebarCwd = useCallback(() => {
+    const { activeTab, active } = activeSessionOf(
+      tabsRef.current,
+      activeTabIdRef.current,
+      sessionStore.getSnapshot(),
+    );
+    return sidebarCwdOf(
+      projectStore.getState(),
+      workspaceStore.getSnapshot().projects,
+      active,
+      activeTab,
+    );
+  }, []);
+  const currentGitCwd = useCallback(() => {
+    const { active } = activeSessionOf(
+      tabsRef.current,
+      activeTabIdRef.current,
+      sessionStore.getSnapshot(),
+    );
+    return gitCwdOf(active, currentSidebarCwd());
+  }, [currentSidebarCwd]);
   useEffect(() => {
     if (!notesEnabled) shell.closeNotes();
   }, [notesEnabled]);
@@ -550,7 +566,7 @@ export default function App({ boot }: { boot: BootWorkspace }) {
         sessionStore.getSnapshot(),
         tabsRef.current,
         activeTabIdRef.current,
-        projectCwdRef.current,
+        projectStore.getState().projectCwd,
         projectTerminalsRef.current,
       ).finally(() => {
         void reapWindowRuntime(tabsRef.current, projectTerminalsRef.current);
@@ -607,7 +623,7 @@ export default function App({ boot }: { boot: BootWorkspace }) {
     });
   }, []);
 
-  const activeTab = tabs.find((t) => t.id === activeTabId) ?? tabs[0];
+  const { activeTab, active } = activeSessionOf(tabs, activeTabId, sessions);
   // The strip and sidebar move on the click; the pane swap, which is the
   // heavy render, follows in a deferred pass so the click paints at once.
   const deferredTabId = useDeferredValue(activeTabId);
@@ -616,11 +632,6 @@ export default function App({ boot }: { boot: BootWorkspace }) {
   const shownTabId = tabs.some((tab) => tab.id === deferredTabId)
     ? deferredTabId
     : activeTabId;
-  const active =
-    sessions.find((session) => session.id === activeTab?.focusedId) ??
-    sessions.find(
-      (session) => activeTab && leafIds(activeTab.layout).includes(session.id),
-    );
   const sessionDefaults = active ?? sessions[0];
   const sessionDefaultsRef = useRef(sessionDefaults);
   sessionDefaultsRef.current = sessionDefaults;
@@ -628,18 +639,19 @@ export default function App({ boot }: { boot: BootWorkspace }) {
   const sessionContext = useCallback(
     (projectId?: string | null) =>
       resolveSessionContext({
-        ...catalogRef.current,
-        projectId: projectId === undefined ? selectedProjectIdRef.current : projectId,
-        workspacePath: projectCwdRef.current,
+        ...workspaceStore.getSnapshot(),
+        projectId:
+          projectId === undefined ? projectStore.getState().selectedProjectId : projectId,
+        workspacePath: projectStore.getState().projectCwd,
       }),
     [],
   );
   const cwdContext = useCallback(
     (cwd: string) =>
       contextForCwd({
-        ...catalogRef.current,
+        ...workspaceStore.getSnapshot(),
         cwd,
-        preferProjectId: selectedProjectIdRef.current,
+        preferProjectId: projectStore.getState().selectedProjectId,
       }),
     [],
   );
@@ -681,16 +693,8 @@ export default function App({ boot }: { boot: BootWorkspace }) {
     },
     [seededSession, sessionContext],
   );
-  const sidebarCwd =
-    active?.cwd ??
-    (activeTab ? focusedFileTab(activeTab)?.cwd : undefined) ??
-    selectedProject?.cwd ??
-    projectCwd;
-  const sidebarCwdRef = useRef(sidebarCwd);
-  sidebarCwdRef.current = sidebarCwd;
-  const gitCwd = active ? sessionWorkCwd(active) : sidebarCwd;
-  const gitCwdRef = useRef(gitCwd);
-  gitCwdRef.current = gitCwd;
+  const sidebarCwd = sidebarCwdOf({ projectCwd, selectedProjectId }, projects, active, activeTab);
+  const gitCwd = gitCwdOf(active, sidebarCwd);
 
   const usageProviders = useMemo(() => {
     if (active?.harness === "claude" || active?.harness === "codex") {
@@ -749,7 +753,7 @@ export default function App({ boot }: { boot: BootWorkspace }) {
       () => sessionStore.getSnapshot(),
       () => tabsRef.current,
       () => activeTabIdRef.current,
-      () => projectCwdRef.current,
+      () => projectStore.getState().projectCwd,
       () => projectTerminalsRef.current,
     );
     void getCurrentWindow()
@@ -765,7 +769,7 @@ export default function App({ boot }: { boot: BootWorkspace }) {
           sessionStore.getSnapshot(),
           tabsRef.current,
           activeTabIdRef.current,
-          projectCwdRef.current,
+          projectStore.getState().projectCwd,
           projectTerminalsRef.current,
         );
       })
@@ -791,14 +795,11 @@ export default function App({ boot }: { boot: BootWorkspace }) {
     // first load is still pending is derived from `loadedProjects`, not
     // tracked here — a status set from this effect lands a render too late to
     // suppress the empty state.
-    const key = normalizeProjectPath(cwd);
     try {
       const rows = await listSessionsByProject(cwd);
-      if (cwd !== sidebarCwdRef.current) return;
+      if (cwd !== currentSidebarCwd()) return;
       setHistory((current) => replaceProjectHistory(current, cwd, rows));
-      setLoadedProjects((prev) =>
-        prev.has(key) ? prev : new Set(prev).add(key),
-      );
+      project.markProjectLoaded(cwd);
     } catch {
       // A failed revalidate keeps the cached cards.
     }
@@ -811,7 +812,7 @@ export default function App({ boot }: { boot: BootWorkspace }) {
   useEffect(
     () =>
       subscribeSessionHistory(() => {
-        void refreshHistory(sidebarCwdRef.current);
+        void refreshHistory(currentSidebarCwd());
       }),
     [refreshHistory],
   );
@@ -834,7 +835,7 @@ export default function App({ boot }: { boot: BootWorkspace }) {
             tabsRef.current,
             sessionStore.getSnapshot(),
             activeTabIdRef.current,
-            projectCwdRef.current,
+            projectStore.getState().projectCwd,
             projectTerminalsRef.current,
           ),
         key: workspaceSnapshotKey,
@@ -859,8 +860,7 @@ export default function App({ boot }: { boot: BootWorkspace }) {
     void invoke<string>("default_cwd")
       .then((cwd) => {
         if (!looksLikeProject(cwd)) return;
-        setProjectCwd(cwd);
-        setRecents((prev) => (prev.length > 0 ? prev : rememberProject(cwd)));
+        project.adoptDefaultCwd(cwd);
         void createWorkspace(cwd).catch(() => undefined);
         setSessions((prev) =>
           prev.map((s) => (s.cwd === "~" ? { ...s, cwd } : s)),
@@ -964,13 +964,12 @@ export default function App({ boot }: { boot: BootWorkspace }) {
     if (deckLayout && tab) {
       const cwd = workspaceTabCwd(
         tab,
-        rebaseToWorkspace(sessionStore.getSnapshot(), catalogRef.current),
+        rebaseToWorkspace(sessionStore.getSnapshot(), workspaceStore.getSnapshot()),
       );
       if (cwd && looksLikeProject(cwd)) {
         const normalized = normalizeProjectPath(cwd);
-        if (!sameProjectPath(normalized, projectCwdRef.current)) {
-          setProjectCwd(normalized);
-          setRecents(rememberProject(normalized));
+        if (!sameProjectPath(normalized, projectStore.getState().projectCwd)) {
+          project.enterWorkspace(normalized);
         }
       }
     }
@@ -981,12 +980,18 @@ export default function App({ boot }: { boot: BootWorkspace }) {
   }, [deckLayout]);
 
 
-  // The active tab names the selected project; a fresh loose draft says nothing.
+  // The active tab names the selected project; a fresh loose draft says
+  // nothing. A workspace move already loaded that folder's remembered
+  // selection, so the pass that moved does not let the landing thread
+  // overwrite it.
+  const selectionCwdRef = useRef(projectCwd);
   useEffect(() => {
-    if (!active) return;
+    const moved = selectionCwdRef.current !== projectCwd;
+    selectionCwdRef.current = projectCwd;
+    if (moved || !active) return;
     if (!active.projectId && sessionStore.isDraft(active.id)) return;
-    setSelectedProjectId(active.projectId ?? null);
-  }, [active?.id, active?.projectId]);
+    project.selectProject(active.projectId ?? null);
+  }, [projectCwd, active?.id, active?.projectId]);
 
   // The focused thread is where its project, and its workspace, land next
   // time they are picked. A draft has no meta until its first send, so the
@@ -1005,22 +1010,11 @@ export default function App({ boot }: { boot: BootWorkspace }) {
     );
   }, [activeMeta?.id, activeMeta?.projectId, activeMeta?.archived, catalog.loaded]);
 
-  // Selection is remembered per workspace folder.
-  const selectionCwdRef = useRef(projectCwd);
-  useEffect(() => {
-    if (selectionCwdRef.current === projectCwd) {
-      saveSelectedProject(projectCwd, selectedProjectId);
-      return;
-    }
-    selectionCwdRef.current = projectCwd;
-    setSelectedProjectId(loadSelectedProject(projectCwd));
-  }, [projectCwd, selectedProjectId]);
-
   // A project that was archived or deleted drops out of the selection.
   useEffect(() => {
     if (!catalog.loaded || !selectedProjectId) return;
-    const project = projects.find((p) => p.id === selectedProjectId);
-    if (!project || project.archived) setSelectedProjectId(null);
+    const meta = projects.find((p) => p.id === selectedProjectId);
+    if (!meta || meta.archived) project.selectProject(null);
   }, [catalog.loaded, projects, selectedProjectId]);
 
   // First boot after the upgrade: remembered folders become workspaces.
@@ -1115,7 +1109,7 @@ export default function App({ boot }: { boot: BootWorkspace }) {
   const onNewChat = useCallback(
     (projectId: string | null) => {
       shell.closeViews();
-      setSelectedProjectId(projectId);
+      project.selectProject(projectId);
       const session = createSessionHere({ projectId });
       const tab = newTab(session.id);
       setSessions((prev) => [...prev, session]);
@@ -1132,7 +1126,7 @@ export default function App({ boot }: { boot: BootWorkspace }) {
   /** Card click: select the project and bring its latest open tab forward. */
   const onSelectProjectCard = useCallback(
     (projectId: string | null) => {
-      setSelectedProjectId(projectId);
+      project.selectProject(projectId);
       if (!projectId) return;
       // A full-screen view (inbox, notes, search) would otherwise stay on top
       // of the pane, most visibly when that project's tab is already active.
@@ -1159,7 +1153,7 @@ export default function App({ boot }: { boot: BootWorkspace }) {
       const landing = resolveLanding(
         { projectId },
         sessionStore.metas(),
-        catalogRef.current,
+        workspaceStore.getSnapshot(),
       );
       if (landing) void onSelectHistorySessionRef.current?.(landing);
       else onNewChat(projectId);
@@ -1168,14 +1162,14 @@ export default function App({ boot }: { boot: BootWorkspace }) {
   );
 
   const onProjectCreated = useCallback(
-    (project: ProjectMeta) => {
+    (created: ProjectMeta) => {
       // A worktree gets its own tab group; label it with the project name
       // so the tab bar shows "Auth rewrite", not the worktree slug.
-      if (project.mode === "worktree") {
-        saveTabGroupLabel(projectName(project.cwd), project.name);
+      if (created.mode === "worktree") {
+        saveTabGroupLabel(projectName(created.cwd), created.name);
         notifyTabGroupLabelsChanged();
       }
-      onNewChat(project.id);
+      onNewChat(created.id);
     },
     [onNewChat],
   );
@@ -1334,8 +1328,8 @@ export default function App({ boot }: { boot: BootWorkspace }) {
 
   const openProjectTerminal = useCallback(
     (cwd: string) => {
-      const workdir = cwd || dockCwdRef.current;
-      const projectPath = dockCwdRef.current;
+      const workdir = cwd || currentDockCwd();
+      const projectPath = currentDockCwd();
       if (!looksLikeProject(projectPath)) return false;
       setProjectTerminals((prev) => {
         const existing = findProjectTerminal(prev, projectPath);
@@ -1476,7 +1470,7 @@ export default function App({ boot }: { boot: BootWorkspace }) {
 
   const onHideProjectTerminal = useCallback(() => {
     setProjectTerminals((prev) =>
-      mapProjectTerminal(prev, dockCwdRef.current, (dock) =>
+      mapProjectTerminal(prev, currentDockCwd(), (dock) =>
         withDockOpen(dock, false),
       ),
     );
@@ -1485,7 +1479,7 @@ export default function App({ boot }: { boot: BootWorkspace }) {
 
   const onProjectTerminalSide = useCallback((side: DockSide) => {
     setProjectTerminals((prev) =>
-      mapProjectTerminal(prev, dockCwdRef.current, (dock) =>
+      mapProjectTerminal(prev, currentDockCwd(), (dock) =>
         withDockSide(dock, side, {
           width: window.innerWidth,
           height: window.innerHeight,
@@ -1496,7 +1490,7 @@ export default function App({ boot }: { boot: BootWorkspace }) {
 
   const onProjectTerminalSize = useCallback((size: number) => {
     setProjectTerminals((prev) =>
-      mapProjectTerminal(prev, dockCwdRef.current, (dock) =>
+      mapProjectTerminal(prev, currentDockCwd(), (dock) =>
         withDockSize(dock, size, {
           width: window.innerWidth,
           height: window.innerHeight,
@@ -1507,7 +1501,7 @@ export default function App({ boot }: { boot: BootWorkspace }) {
 
   const onSelectProjectTerminal = useCallback((fileId: string) => {
     setProjectTerminals((prev) =>
-      mapProjectTerminal(prev, dockCwdRef.current, (dock) =>
+      mapProjectTerminal(prev, currentDockCwd(), (dock) =>
         selectDockTerminal(dock, fileId),
       ),
     );
@@ -1516,19 +1510,19 @@ export default function App({ boot }: { boot: BootWorkspace }) {
 
   const onReorderProjectTerminals = useCallback((ids: string[]) => {
     setProjectTerminals((prev) =>
-      mapProjectTerminal(prev, dockCwdRef.current, (dock) =>
+      mapProjectTerminal(prev, currentDockCwd(), (dock) =>
         reorderDockTerminals(dock, orderByIds(dock.pane.files, ids)),
       ),
     );
   }, []);
 
   const onCloseProjectTerminal = useCallback((fileId: string) => {
-    const dock = findProjectTerminal(projectTerminalsRef.current, dockCwdRef.current);
+    const dock = findProjectTerminal(projectTerminalsRef.current, currentDockCwd());
     const file = dock?.pane.files.find((entry) => entry.id === fileId);
     if (!file) return;
     const finishClose = () => {
       setProjectTerminals((prev) =>
-        mapProjectTerminal(prev, dockCwdRef.current, (entry) =>
+        mapProjectTerminal(prev, currentDockCwd(), (entry) =>
           closeTerminalInDock(entry, fileId),
         ),
       );
@@ -1682,7 +1676,7 @@ export default function App({ boot }: { boot: BootWorkspace }) {
           )
         : undefined;
       const ctx = sessionInTab
-        ? contextOfSession(sessionInTab, catalogRef.current)
+        ? contextOfSession(sessionInTab, workspaceStore.getSnapshot())
         : sessionContext();
       const session = ctx.projectId
         ? createSessionHere({ projectId: ctx.projectId, threadType })
@@ -1756,7 +1750,7 @@ export default function App({ boot }: { boot: BootWorkspace }) {
           sessionIds.has(session.id),
         );
         const ctx = seedSession
-          ? contextOfSession(seedSession, catalogRef.current)
+          ? contextOfSession(seedSession, workspaceStore.getSnapshot())
           : sessionContext();
         const session = newSession(
           seedSession?.harness ?? "claude",
@@ -1960,7 +1954,7 @@ export default function App({ boot }: { boot: BootWorkspace }) {
         oldSession.model,
         oldSession.runtimeMode,
         oldSession.modelSettings,
-        contextOfSession(oldSession, catalogRef.current),
+        contextOfSession(oldSession, workspaceStore.getSnapshot()),
       );
 
       setSessions((prev) => [...prev, session]);
@@ -1997,7 +1991,7 @@ export default function App({ boot }: { boot: BootWorkspace }) {
         deckLayout &&
         projectTerminalFocused
       ) {
-        const dock = findProjectTerminal(projectTerminalsRef.current, dockCwdRef.current);
+        const dock = findProjectTerminal(projectTerminalsRef.current, currentDockCwd());
         if (dock) {
           onCloseProjectTerminal(dock.pane.activeFileId);
           return;
@@ -2163,9 +2157,9 @@ export default function App({ boot }: { boot: BootWorkspace }) {
     (path?: string) => {
       void (async () => {
         const resolved = path
-          ? ((await resolveOpenablePath(gitCwdRef.current, path)) ?? path)
+          ? ((await resolveOpenablePath(currentGitCwd(), path)) ?? path)
           : undefined;
-        if (resolved) rememberOpenedFile(sidebarCwdRef.current, resolved);
+        if (resolved) rememberOpenedFile(currentSidebarCwd(), resolved);
         setTabs((prev) =>
           prev.map((tab) => {
             if (tab.id !== activeTabIdRef.current) return tab;
@@ -2174,7 +2168,7 @@ export default function App({ boot }: { boot: BootWorkspace }) {
                   tab,
                   newFileTab(
                     resolved,
-                    sidebarCwdRef.current,
+                    currentSidebarCwd(),
                     true,
                     editorForPath(resolved) === "monaco" ? "monaco" : undefined,
                   ),
@@ -2421,10 +2415,9 @@ export default function App({ boot }: { boot: BootWorkspace }) {
   // are about to open and the rail and sessions list would disagree.
   const selectWorkspaceOfSession = useCallback(
     (session: Pick<Session, "cwd" | "projectId" | "workspaceId">) => {
-      const path = normalizeProjectPath(workspacePathOfSession(session, catalogRef.current));
-      if (looksLikeProject(path) && !sameProjectPath(projectCwdRef.current, path)) {
-        setProjectCwd(path);
-        setRecents(rememberProject(path));
+      const path = normalizeProjectPath(workspacePathOfSession(session, workspaceStore.getSnapshot()));
+      if (looksLikeProject(path) && !sameProjectPath(projectStore.getState().projectCwd, path)) {
+        project.enterWorkspace(path);
       }
     },
     [],
@@ -2674,7 +2667,7 @@ export default function App({ boot }: { boot: BootWorkspace }) {
             seed?.runtimeMode ?? summary?.runtimeMode,
             seed?.modelSettings,
             seed
-              ? contextOfSession(seed, catalogRef.current)
+              ? contextOfSession(seed, workspaceStore.getSnapshot())
               : cwdContext(summary?.cwd ?? sidebarCwd),
           ),
       });
@@ -2725,8 +2718,7 @@ export default function App({ boot }: { boot: BootWorkspace }) {
         !sameProjectPath(previous, normalized) &&
         !isBlankSession(current)
       ) {
-        setProjectCwd(normalized);
-        setRecents(rememberProject(normalized));
+        project.enterWorkspace(normalized);
         const session = newSession(
           current.harness,
           normalized,
@@ -2749,8 +2741,7 @@ export default function App({ boot }: { boot: BootWorkspace }) {
       ) {
         void keepSessionChanges(sessionId, previous).catch(() => undefined);
       }
-      setProjectCwd(normalized);
-      setRecents(rememberProject(normalized));
+      project.enterWorkspace(normalized);
       const moved = cwdContext(normalized);
       // A blank draft moving between workspaces takes the new one's defaults.
       const fresh = current && isBlankSession(current) ? seededSession(moved, normalized, current) : null;
@@ -2842,12 +2833,11 @@ export default function App({ boot }: { boot: BootWorkspace }) {
 
       const match = findTabForProject(
         tabsRef.current,
-        rebaseToWorkspace(sessionStore.getSnapshot(), catalogRef.current),
+        rebaseToWorkspace(sessionStore.getSnapshot(), workspaceStore.getSnapshot()),
         normalized,
       );
       if (match) {
-        setProjectCwd(normalized);
-        setRecents(rememberProject(normalized));
+        project.enterWorkspace(normalized);
         activateTab(match.id);
         return;
       }
@@ -2856,11 +2846,10 @@ export default function App({ boot }: { boot: BootWorkspace }) {
       const landing = resolveLanding(
         { workspacePath: normalized },
         sessionStore.metas(),
-        catalogRef.current,
+        workspaceStore.getSnapshot(),
       );
       if (landing) {
-        setProjectCwd(normalized);
-        setRecents(rememberProject(normalized));
+        project.enterWorkspace(normalized);
         void openLanding(landing, normalized);
         return;
       }
@@ -2873,8 +2862,7 @@ export default function App({ boot }: { boot: BootWorkspace }) {
       const seed = current ?? sessionStore.getSnapshot()[0];
       const session = seededSession(cwdContext(normalized), normalized, seed);
       const tab = newTab(session.id);
-      setProjectCwd(normalized);
-      setRecents(rememberProject(normalized));
+      project.enterWorkspace(normalized);
       setSessions((prev) => [...prev, session]);
       appendTab(tab, normalized);
       setActiveTabId(tab.id);
@@ -2896,22 +2884,22 @@ export default function App({ boot }: { boot: BootWorkspace }) {
   const onRemoveProject = useCallback(
     (path: string, options: { purgeData: boolean }) => {
       const normalized = normalizeProjectPath(path);
-      const wasCurrent = sameProjectPath(projectCwdRef.current, normalized);
+      const wasCurrent = sameProjectPath(projectStore.getState().projectCwd, normalized);
       const remaining = options.purgeData
         ? forgetProject(normalized)
         : archiveProject(normalized);
-      setRecents(remaining);
+      project.setRecents(remaining);
 
       const tabs = tabsRef.current;
       const sessions = sessionStore.getSnapshot();
-      const rebased = rebaseToWorkspace(sessions, catalogRef.current);
+      const rebased = rebaseToWorkspace(sessions, workspaceStore.getSnapshot());
       const projectTabs = filterTabsForProject(tabs, rebased, normalized);
       const projectTabIds = new Set(projectTabs.map((tab) => tab.id));
       const projectSessions = sessions.filter((_, index) =>
         sameProjectPath(rebased[index].cwd, normalized),
       );
       if (options.purgeData) {
-        const workspace = workspaceByPath(catalogRef.current.workspaces, normalized);
+        const workspace = workspaceByPath(workspaceStore.getSnapshot().workspaces, normalized);
         if (workspace) void deleteWorkspace(workspace.id).catch(() => undefined);
       }
       const projectSessionIds = new Set(
@@ -2988,9 +2976,10 @@ export default function App({ boot }: { boot: BootWorkspace }) {
         const next = remaining.find((item) => looksLikeProject(item.path));
         if (next) {
           onSelectProject(next.path);
-          setProjectCwd(next.path);
+          // It stays put when the focused thread already sits there.
+          project.setProjectCwd(next.path);
         } else {
-          setProjectCwd("~");
+          project.setProjectCwd("~");
           setComposerFocused(true);
         }
       }
@@ -3000,7 +2989,7 @@ export default function App({ boot }: { boot: BootWorkspace }) {
 
   const onRestoreProject = useCallback(
     (path: string) => {
-      setRecents(rememberProject(path));
+      project.setRecents(rememberProject(path));
       onSelectProject(path);
     },
     [onSelectProject],
@@ -3054,14 +3043,14 @@ export default function App({ boot }: { boot: BootWorkspace }) {
     (path, navigation, options) => {
       void (async () => {
         const resolved =
-          (await resolveOpenablePath(gitCwdRef.current, path)) ?? path;
-        rememberOpenedFile(sidebarCwdRef.current, resolved);
+          (await resolveOpenablePath(currentGitCwd(), path)) ?? path;
+        rememberOpenedFile(currentSidebarCwd(), resolved);
         const tab = tabsRef.current.find((entry) => entry.id === activeTabIdRef.current);
         if (!tab) return;
         const editor = options?.editor ?? editorForPath(resolved);
         const file = newFileTab(
           resolved,
-          sidebarCwdRef.current,
+          currentSidebarCwd(),
           false,
           editor === "monaco" ? "monaco" : undefined,
         );
@@ -3516,7 +3505,7 @@ export default function App({ boot }: { boot: BootWorkspace }) {
           model,
           source.runtimeMode,
           undefined,
-          contextOfSession(source, catalogRef.current),
+          contextOfSession(source, workspaceStore.getSnapshot()),
         ),
         title: formatSessionTitle(harness, SECOND_OPINION_TITLE),
       };
@@ -3552,7 +3541,7 @@ export default function App({ boot }: { boot: BootWorkspace }) {
           model,
           source.runtimeMode,
           undefined,
-          contextOfSession(source, catalogRef.current),
+          contextOfSession(source, workspaceStore.getSnapshot()),
         ),
         title: formatSessionTitle(
           harness,
@@ -3664,7 +3653,7 @@ export default function App({ boot }: { boot: BootWorkspace }) {
     (threadType: ThreadType, threadRules: ThreadRules | null) => {
       shell.closeViews();
       const session = createSessionHere({
-        projectId: selectedProjectIdRef.current,
+        projectId: projectStore.getState().selectedProjectId,
         threadType,
         threadRules,
       });
@@ -4028,7 +4017,7 @@ export default function App({ boot }: { boot: BootWorkspace }) {
   const dockGridRef = useRef<HTMLDivElement>(null);
   const dockDragSize = useRef<number | null>(null);
   const paintDockSize = useCallback((size: number) => {
-    const dock = findProjectTerminal(projectTerminalsRef.current, dockCwdRef.current);
+    const dock = findProjectTerminal(projectTerminalsRef.current, currentDockCwd());
     const el = dockGridRef.current;
     if (!dock || !el) return;
     dockDragSize.current = size;
@@ -4078,9 +4067,6 @@ export default function App({ boot }: { boot: BootWorkspace }) {
           activeTab ? selectedChangePath(activeTab, gitCwd) : undefined
         }
         textHarness={pickTextHarness(active?.harness)}
-        recents={railRecents}
-        workspaceId={selectedWorkspace?.id ?? null}
-        selectedProjectId={selectedProjectId}
         onSelectProjectCard={onSelectProjectCard}
         onNewChat={onNewChat}
         onProjectCreated={onProjectCreated}
@@ -4327,7 +4313,7 @@ export default function App({ boot }: { boot: BootWorkspace }) {
                 onOpenFile={onOpenDiff}
               />
             ) : null}
-            <ProjectRail projectId={selectedProjectId} cwd={gitCwd} onOpenFile={onOpenFile} onOpenDiff={onOpenDiff} />
+            <ProjectRail cwd={gitCwd} onOpenFile={onOpenFile} onOpenDiff={onOpenDiff} />
             </div>
           </div>
         </main>

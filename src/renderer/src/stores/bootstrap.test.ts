@@ -5,6 +5,7 @@ import { newDefaultSession } from "../lib/session";
 import type { SessionSummary } from "../lib/sessionStore";
 import { sessionStore } from "../lib/tcserver/store";
 import { bootstrapWorkspace, newBootSeed, planBoot } from "./bootstrap";
+import { projectStore } from "./project";
 import { shellStore } from "./shell";
 
 const seed = newBootSeed("/seed");
@@ -106,6 +107,8 @@ describe("bootstrapWorkspace", () => {
     expect(sessionStore.getSnapshot()).toEqual(transfer.sessions);
     expect(historyStore.get()).toEqual([row("h1")]);
     expect(shellStore.getState().updateNotice).toBe(update);
+    expect(projectStore.getState().projectCwd).toBe("/moved");
+    expect(projectStore.getState().recents).toBe(boot.recents);
   });
 
   it("leaves stores alone that already hold something", () => {
