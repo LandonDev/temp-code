@@ -1,8 +1,6 @@
 import {
-  useEffect,
   useRef,
   useState,
-  useSyncExternalStore,
   type KeyboardEvent as ReactKeyboardEvent,
   type ReactNode,
 } from "react";
@@ -50,12 +48,9 @@ import {
   deleteProject,
   renameProject,
 } from "../lib/tcserver/projects";
-import { sessionStore } from "../lib/tcserver/store";
-import type {
-  ProjectMeta,
-  SessionMeta,
-  WorkspaceMeta,
-} from "../lib/tcserver/types";
+import { useSessionMetas } from "../lib/tcserver/store";
+import { useClock, useSlowClock } from "../lib/turnClock";
+import type { ProjectMeta, WorkspaceMeta } from "../lib/tcserver/types";
 import { useWorkspaceCatalog } from "../lib/tcserver/workspaces";
 import {
   groupWorkspaceSessions,
@@ -90,31 +85,18 @@ type MenuState = {
 
 const MENU_WIDTH = 228;
 
-// --- store hooks -----------------------------------------------------------
+// --- clocks ---------------------------------------------------------------
 
-let metasCache: SessionMeta[] | null = null;
-sessionStore.onMetaChange(() => {
-  metasCache = null;
-});
-const readMetas = () => (metasCache ??= sessionStore.metas());
-const subscribeMetas = (listener: () => void) =>
-  sessionStore.onMetaChange(listener);
-
-function useSessionMetas(): SessionMeta[] {
-  return useSyncExternalStore(subscribeMetas, readMetas);
+/** "3m" since `at`, refreshed every half minute. Only this span re-renders on the tick. */
+function Ago({ at }: { at: number }) {
+  const now = useSlowClock(true);
+  return <>{timeAgo(at, now)}</>;
 }
 
-function useNow(fast: boolean): number {
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    setNow(Date.now());
-    const id = window.setInterval(
-      () => setNow(Date.now()),
-      fast ? 1000 : 30_000,
-    );
-    return () => window.clearInterval(id);
-  }, [fast]);
-  return now;
+/** A running span since `since`, refreshed each second. */
+function Elapsed({ since }: { since: number }) {
+  const now = useClock(true);
+  return <>{duration(Math.max(0, now - since))}</>;
 }
 
 // --- small parts -----------------------------------------------------------
@@ -243,7 +225,6 @@ const menuAt = (anchor: HTMLElement) => {
 
 type RowActions = {
   activeSessionId?: string;
-  now: number;
   onOpen: (id: string) => void;
   onRename: (id: string, title: string) => void;
   onDelete: (thread: ThreadRow) => void;
@@ -281,9 +262,11 @@ function ChatRow({
     });
   };
 
-  const trailing = thread.running
-    ? duration(actions.now - (thread.busySince ?? thread.updatedAt))
-    : timeAgo(thread.updatedAt, actions.now);
+  const trailing = thread.running ? (
+    <Elapsed since={thread.busySince ?? thread.updatedAt} />
+  ) : (
+    <Ago at={thread.updatedAt} />
+  );
 
   return (
     <div
@@ -433,14 +416,14 @@ function ThreadGlyph({ thread }: { thread: ThreadRow }) {
 
 /** One line per live-or-unseen thread, status leading the eye: tinted
  *  spinner (or the blue unread dot) up front, title, elapsed at the end.
- *  A paused line freezes its elapsed where the pause left it. */
+ *  A paused line freezes its elapsed where the pause left it. Only a card
+ *  with a running line subscribes to the second hand. */
 function LiveLines({
   status,
-  now,
 }: {
   status: ReturnType<typeof projectCardStatus<ThreadRow>>;
-  now: number;
 }) {
+  const now = useClock(status.running.length > 0);
   if (!status.running.length && !status.paused.length && !status.unread.length)
     return null;
   return (
@@ -504,7 +487,6 @@ function LiveLines({
 type CardProps = {
   group: ProjectGroup;
   selected: boolean;
-  now: number;
   lastSeen: Record<string, number>;
   seenFloor: number;
   rows: RowActions;
@@ -522,7 +504,6 @@ type CardProps = {
 function ProjectCard({
   group,
   selected,
-  now,
   lastSeen,
   seenFloor,
   rows,
@@ -633,7 +614,7 @@ function ProjectCard({
               </span>
               {latest > 0 ? (
                 <span className="shrink-0 text-[11px] tabular-nums text-content/45 group-hover/card:opacity-0">
-                  {timeAgo(latest, now)}
+                  <Ago at={latest} />
                 </span>
               ) : null}
             </>
@@ -648,7 +629,7 @@ function ProjectCard({
           </span>
         </div>
 
-        <LiveLines status={status} now={now} />
+        <LiveLines status={status} />
 
         {showSummary ? (
           <div className="flex w-full items-center gap-2 text-[11px] leading-4 tabular-nums">
@@ -787,11 +768,6 @@ export default function WorkspaceSessions({
   const workspace: WorkspaceMeta | undefined = workspaces.find(
     (w) => w.id === workspaceId,
   );
-  const live = (t: ThreadRow) => t.running || Boolean(t.treeHasLiveWork);
-  const anyRunning =
-    groups.chats.some(live) || groups.projects.some((g) => g.threads.some(live));
-  const now = useNow(anyRunning);
-
   const [menu, setMenu] = useState<MenuState | null>(null);
   const [dialog, setDialog] = useState<Dialog | null>(null);
   const [chatsOpen, setChatsOpen] = useState(true);
@@ -810,7 +786,6 @@ export default function WorkspaceSessions({
 
   const rows: RowActions = {
     activeSessionId,
-    now,
     onOpen: onOpenSession,
     onRename: onRenameSession,
     onDelete: (thread) => setDialog({ kind: "delete-chat", thread }),
@@ -831,7 +806,6 @@ export default function WorkspaceSessions({
           key={group.project.id}
           group={group}
           selected={group.project.id === selectedProjectId}
-          now={now}
           lastSeen={lastSeen}
           seenFloor={seenFloor}
           rows={rows}

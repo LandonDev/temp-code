@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import * as serverCommands from "../lib/tcserver/commands";
 import { useSessionMetas } from "../lib/tcserver/store";
 import type { SessionMeta } from "../lib/tcserver/types";
@@ -24,11 +24,19 @@ const ROOT = (m: SessionMeta, projectId: string | null): boolean =>
  */
 export function ThreadBanners({ projectId, activeSessionId, onOpen }: Props) {
   const metas = useSessionMetas();
-  const paused = metas.filter((m) => ROOT(m, projectId) && m.treeHasPaused);
-  const recovery = metas.filter((m) => ROOT(m, projectId) && m.treeCanContinue);
-  const needsYou = metas.filter(
-    (m) => ROOT(m, projectId) && m.status === "waiting" && m.id !== activeSessionId,
-  );
+  // One pass per meta change, never per render: the lists feed the buttons below.
+  const { paused, recovery, needsYou } = useMemo(() => {
+    const paused: SessionMeta[] = [];
+    const recovery: SessionMeta[] = [];
+    const needsYou: SessionMeta[] = [];
+    for (const m of metas) {
+      if (!ROOT(m, projectId)) continue;
+      if (m.treeHasPaused) paused.push(m);
+      if (m.treeCanContinue) recovery.push(m);
+      if (m.status === "waiting" && m.id !== activeSessionId) needsYou.push(m);
+    }
+    return { paused, recovery, needsYou };
+  }, [activeSessionId, metas, projectId]);
   const [busy, setBusy] = useState<Kind | "stop" | null>(null);
   const [failed, setFailed] = useState<Record<Kind, number>>({ recovery: 0, paused: 0, "needs-you": 0 });
 
@@ -51,7 +59,7 @@ export function ThreadBanners({ projectId, activeSessionId, onOpen }: Props) {
 
   // Per thread, never the server-wide batch: the banner only lists this
   // project's roots, so only those may move.
-  const each = async (list: typeof metas, work: (id: string) => Promise<unknown>) =>
+  const each = async (list: SessionMeta[], work: (id: string) => Promise<unknown>) =>
     (await Promise.allSettled(list.map((m) => work(m.id)))).filter((r) => r.status === "rejected").length;
   const continuePaused = () => run("paused", () => each(paused, serverCommands.resume));
   const stopPaused = () => run("stop", () => each(paused, serverCommands.interrupt));

@@ -1,6 +1,7 @@
 import { Pause } from "./icons";
 import type { ActivityKind } from "../lib/session";
 import type { SessionStatus } from "../lib/tcserver/types";
+import { useClock } from "../lib/turnClock";
 import { MatrixSpinner, duration } from "../surfaces/threads/bits";
 
 /** What a tab's focused thread is up to, computed in App from the session. */
@@ -25,10 +26,13 @@ export type TabThread = {
  * the activity verb; needs you → amber, in words; failed → red; plan
  * written, no build started → violet "Plan ready"; finished while you
  * were elsewhere → blue dot. An implementation thread's tally sits at
- * the edge in every state.
+ * the edge in every state. Only a working indicator subscribes to the
+ * shared second hand, so idle tabs never re-render on the tick.
  */
-export function TabIndicator({ thread, now }: { thread: TabThread; now: number }) {
+export function TabIndicator({ thread }: { thread: TabThread }) {
   const { status, tasks } = thread;
+  const working = status === "running" || status === "starting";
+  const now = useClock(working);
   const tally = tasks ? (
     <span
       className={`shrink-0 text-[11px] tabular-nums ${
@@ -41,7 +45,7 @@ export function TabIndicator({ thread, now }: { thread: TabThread; now: number }
   ) : null;
 
   const body = ((): React.ReactNode => {
-    if (status === "running" || status === "starting") {
+    if (working) {
       const ms = Math.max(0, now - thread.since);
       const verb = thread.activity?.split(" ")[0] ?? "";
       return (

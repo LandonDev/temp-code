@@ -780,20 +780,26 @@ class SessionStore {
         : (setTimeout(flush, 0) as unknown as number);
   }
 
-  /** Recompute the id list and shells, keeping identities where nothing changed. */
+  /**
+   * Recompute the id list and shells, keeping identities where nothing
+   * changed. A streamed event bumps once per frame with no shell field
+   * touched, so this allocates nothing on that path: a new array only
+   * once a shell differs, copied from the first change on.
+   */
   private refreshProjections(): void {
     const sessions = this.snapshot;
     const sameIds =
       sessions.length === this.ids.length && sessions.every((s, i) => s.id === this.ids[i]);
     if (!sameIds) this.ids = sessions.map((s) => s.id);
-    let changed = sessions.length !== this.shells.length;
-    const shells = sessions.map((session, i) => {
+    let next: SessionShell[] | null = sessions.length === this.shells.length ? null : [];
+    for (let i = 0; i < sessions.length; i++) {
+      const session = sessions[i];
       const previous = this.shells[i]?.id === session.id ? this.shells[i] : undefined;
       const shell = shellOf(session, previous);
-      if (shell !== previous) changed = true;
-      return shell;
-    });
-    if (changed) this.shells = shells;
+      if (!next && shell !== previous) next = this.shells.slice(0, i);
+      if (next) next.push(shell);
+    }
+    if (next) this.shells = next;
   }
 
   private buildSnapshot(): Session[] {

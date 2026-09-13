@@ -68,7 +68,7 @@ import { getCurrentWindow } from "../lib/native";
 import { TabIndicator, type TabThread } from "./TabIndicator";
 import { ThreadHeader, type ThreadHeaderProps } from "./ThreadHeader";
 import type { ThreadType } from "../lib/tcserver/types";
-import { THREAD_GLYPHS, THREAD_LABELS, THREAD_TINTS, useNow } from "../surfaces/threads/bits";
+import { THREAD_GLYPHS, THREAD_LABELS, THREAD_TINTS } from "../surfaces/threads/bits";
 import { WindowControls } from "./WindowControls";
 import { IS_MAC, MOD } from "../lib/platform";
 import type { RecentProject } from "../lib/recents";
@@ -323,7 +323,6 @@ function TitleTabItem({
   groupPosition,
   itemRef,
   deckLayout = false,
-  now,
 }: {
   tab: Tab;
   index: number;
@@ -338,7 +337,6 @@ function TitleTabItem({
   groupPosition?: TabGroupPosition;
   itemRef?: (el: HTMLDivElement | null) => void;
   deckLayout?: boolean;
-  now?: number;
 }) {
   const dragging = canDrag && sortable.draggingId === tab.id;
   const TypeGlyph =
@@ -452,7 +450,7 @@ function TitleTabItem({
                 aria-label="Unsaved changes"
               />
             ) : null}
-            {tab.thread ? <TabIndicator thread={tab.thread} now={now ?? Date.now()} /> : null}
+            {tab.thread ? <TabIndicator thread={tab.thread} /> : null}
           </span>
           {meta ? (
             <span className="hidden min-w-0 truncate text-[10px] leading-none text-content/45 @min-[11rem]:block">
@@ -589,7 +587,6 @@ function TabGroupBlock({
   onSelect,
   onClose,
   onTabContextMenu,
-  now,
   onToggleCollapse,
   onGroupContextMenu,
   deckLayout = false,
@@ -612,7 +609,6 @@ function TabGroupBlock({
   onSelect: (id: string) => void;
   onClose: (id: string) => void;
   onTabContextMenu: (tab: Tab, event: ReactMouseEvent<HTMLDivElement>) => void;
-  now: number;
   onToggleCollapse: () => void;
   onGroupContextMenu: (event: ReactMouseEvent<HTMLButtonElement>) => void;
   deckLayout?: boolean;
@@ -715,7 +711,6 @@ function TabGroupBlock({
                 dropTarget={dropTargetFor(sortable.dropTarget, "tab", tab.id)}
                 groupPosition={position}
                 deckLayout={deckLayout}
-                now={now}
                 itemRef={
                   tab.id === activeId
                     ? (el) => {
@@ -1049,11 +1044,6 @@ function TitleBarComponent({
       return next;
     });
   }, []);
-
-  const anyLive = tabs.some(
-    (tab) => tab.thread && (tab.thread.status === "running" || tab.thread.status === "starting"),
-  );
-  const now = useNow(anyLive);
 
   const onGroupContextMenu = useCallback(
     (
@@ -1471,7 +1461,6 @@ function TitleBarComponent({
                     onSelect={onSelect}
                     onClose={onClose}
                     onTabContextMenu={onTabContextMenu}
-                    now={now}
                     onToggleCollapse={() => toggleGroupCollapse(segment.key)}
                     onGroupContextMenu={(event) =>
                       onGroupContextMenu(segment, event)
@@ -1516,7 +1505,6 @@ function TitleBarComponent({
                       tab.id,
                     )}
                     deckLayout={deckLayout}
-                    now={now}
                     itemRef={
                       tab.id === activeId
                         ? (el) => {

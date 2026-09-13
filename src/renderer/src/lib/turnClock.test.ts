@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { Block } from "./session";
 import {
   clockForTest,
@@ -80,5 +80,33 @@ describe("shared clock", () => {
     a();
     b();
     expect(clockForTest.listeners()).toBe(0);
+  });
+});
+
+describe("half-minute clock", () => {
+  it("runs its own interval, apart from the second hand", () => {
+    let ticks = 0;
+    const stop = clockForTest.subscribe(() => ticks++);
+    expect(clockForTest.slowListeners()).toBe(0);
+    clockForTest.slowTick();
+    expect(ticks).toBe(0);
+    stop();
+  });
+});
+
+describe("stopped clock", () => {
+  it("refreshes on a read after a long gap, and holds within one period", () => {
+    vi.useFakeTimers();
+    try {
+      vi.advanceTimersByTime(2000);
+      const first = clockForTest.current();
+      vi.advanceTimersByTime(5000);
+      const later = clockForTest.current();
+      expect(later - first).toBe(5000);
+      vi.advanceTimersByTime(400);
+      expect(clockForTest.current()).toBe(later);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
