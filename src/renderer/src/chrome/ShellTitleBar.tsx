@@ -97,10 +97,14 @@ function ShellTitleBarComponent({
   const planReady = usePlanReady(sessions);
   const lastSeen = useLastSeen();
   const seenFloor = useSeenFloor();
-  const nextTitleTabs: TitleTab[] = deckTabs.map((tab) =>
-    toTitleTab(tab, sessions, dirtyFiles, planReady),
+  const nextTitleTabs = useMemo<TitleTab[]>(
+    () => deckTabs.map((tab) => toTitleTab(tab, sessions, dirtyFiles, planReady)),
+    [deckTabs, dirtyFiles, planReady, sessions],
   );
-  tabProjectsRef.current = new Map(nextTitleTabs.map((tab) => [tab.id, tab.project]));
+  tabProjectsRef.current = useMemo(
+    () => new Map(nextTitleTabs.map((tab) => [tab.id, tab.project])),
+    [nextTitleTabs],
+  );
   // The strip is the selected project's root threads, open in a tab or not;
   // a local draft joins until the server knows it.
   const chipThreads = useMemo<ChipThread[]>(() => {
@@ -154,12 +158,16 @@ function ShellTitleBarComponent({
     [activeTabId, chipThreads, deckLayout, headerTabs, lastSeen, seenFloor, planReady, selectedProjectId],
   );
   headerModelRef.current = headerModel;
-  const chipTabIds = new Set(
-    headerOrder(headerModel).flatMap((chip) => (chip.tabId ? [chip.tabId] : [])),
-  );
-  stripTabsRef.current = deckLayout
-    ? [...chipTabIds, ...deckTabs.filter((tab) => !chipTabIds.has(tab.id)).map((tab) => tab.id)]
-    : nextTitleTabs.map((tab) => tab.id);
+  stripTabsRef.current = useMemo(() => {
+    if (!deckLayout) return nextTitleTabs.map((tab) => tab.id);
+    const chipTabIds = new Set(
+      headerOrder(headerModel).flatMap((chip) => (chip.tabId ? [chip.tabId] : [])),
+    );
+    return [
+      ...chipTabIds,
+      ...deckTabs.filter((tab) => !chipTabIds.has(tab.id)).map((tab) => tab.id),
+    ];
+  }, [deckLayout, deckTabs, headerModel, nextTitleTabs]);
 
   /** The selected project's archived roots, freshest first, for the shelf. */
   const archivedThreads = useMemo<ArchivedThread[]>(() => {
@@ -179,7 +187,10 @@ function ShellTitleBarComponent({
   }, [deckLayout, selectedProjectId, sessionMetas]);
 
   const cost = sessions.find((session) => session.id === activeSessionId)?.thread?.cost ?? null;
-  const running = runningRoots(projectRootThreads(chipThreads, selectedProjectId)).length;
+  const running = useMemo(
+    () => runningRoots(projectRootThreads(chipThreads, selectedProjectId)).length,
+    [chipThreads, selectedProjectId],
+  );
   const header = useMemo<ThreadHeaderProps | undefined>(
     () =>
       deckLayout && headerEvents

@@ -4,7 +4,7 @@ import type { ThreadType } from "../lib/tcserver/types";
 import type { HeaderModel } from "../lib/threadHeaderModel";
 import { pauseAllLabel, type PauseAllState } from "../lib/threadHeaderModel";
 import type { ReadyMap } from "../lib/threadStripModel";
-import { THREAD_LABELS, useNow } from "../surfaces/threads/bits";
+import { THREAD_LABELS } from "../surfaces/threads/bits";
 import { ExplorerMenu, type ExplorerMenuItem } from "./ExplorerMenu";
 import { NewThreadChooser } from "./NewThreadChooser";
 import { ConfirmDialog } from "./ProjectDialogs";
@@ -92,8 +92,6 @@ export function ThreadHeader({
   const [tuning, setTuning] = useState<StripChip | null>(null);
   const [deleting, setDeleting] = useState<StripChip | null>(null);
   const [pauseAll, setPauseAll] = useState<PauseAllState>("idle");
-  const anyWorking = model.live.some((c) => c.status === "running" || c.status === "starting");
-  const now = useNow(anyWorking);
 
   const onContextMenu = useCallback((chip: StripChip, event: ReactMouseEvent<HTMLDivElement>) => {
     setMenu({ x: event.clientX, y: event.clientY, chip });
@@ -132,7 +130,6 @@ export function ThreadHeader({
     <>
       <ThreadHeaderStrip
         model={model}
-        now={now}
         planReady={planReady}
         renamingId={renamingId}
         onSelect={onSelect}

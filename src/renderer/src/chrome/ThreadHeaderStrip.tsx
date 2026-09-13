@@ -54,7 +54,6 @@ export type ArchivedThread = {
 };
 
 type ChipEvents = {
-  now: number;
   planReady: ReadyMap;
   renamingId: string | null;
   onStartRename: (id: string) => void;
@@ -284,7 +283,7 @@ function Chip({
         >
           {chipTitle(chip)}
         </span>
-        <TabIndicator thread={thread} now={events.now} />
+        <TabIndicator thread={thread} />
       </TabsTrigger>
     </span>
   );

@@ -430,12 +430,16 @@ export function AgentTranscript({
       }
       syncPill(el);
     };
-    const onPointerDown = (e: PointerEvent) => {
-      // The scrollbar gutter lies past the content box.
-      if (e.offsetX >= el.clientWidth) dragging.current = true;
-    };
+    // The window listener lives only for the length of a scrollbar drag.
     const onPointerUp = () => {
       dragging.current = false;
+      window.removeEventListener("pointerup", onPointerUp);
+    };
+    const onPointerDown = (e: PointerEvent) => {
+      // The scrollbar gutter lies past the content box.
+      if (e.offsetX < el.clientWidth) return;
+      dragging.current = true;
+      window.addEventListener("pointerup", onPointerUp);
     };
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "PageUp" || e.key === "Home" || e.key === "ArrowUp") release();
@@ -450,7 +454,6 @@ export function AgentTranscript({
     el.addEventListener("scroll", onScroll, { passive: true });
     el.addEventListener("wheel", onWheel, { passive: true });
     el.addEventListener("pointerdown", onPointerDown);
-    window.addEventListener("pointerup", onPointerUp);
     el.addEventListener("keydown", onKey);
     return () => {
       el.removeEventListener("scroll", onScroll);

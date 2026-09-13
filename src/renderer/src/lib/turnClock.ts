@@ -9,43 +9,77 @@ import type { Block, Session } from "./session";
  * and never re-renders on the tick.
  */
 
-let now = Date.now();
-let timer: ReturnType<typeof setInterval> | null = null;
-const listeners = new Set<() => void>();
+type Clock = {
+  subscribe: (l: () => void) => () => void;
+  current: () => number;
+  tick: () => void;
+  listeners: Set<() => void>;
+};
 
-function tick(): void {
-  now = Date.now();
-  for (const l of listeners) l();
-}
-
-function subscribe(l: () => void): () => void {
-  listeners.add(l);
-  if (!timer) {
+/** One interval shared by every subscriber; it starts with the first and stops with the last. */
+function makeClock(periodMs: number): Clock {
+  let now = Date.now();
+  let timer: ReturnType<typeof setInterval> | null = null;
+  const listeners = new Set<() => void>();
+  const tick = (): void => {
     now = Date.now();
-    timer = setInterval(tick, 1000);
-  }
-  return () => {
-    listeners.delete(l);
-    if (listeners.size === 0 && timer) {
-      clearInterval(timer);
-      timer = null;
-    }
+    for (const l of listeners) l();
   };
+  const subscribe = (l: () => void): (() => void) => {
+    listeners.add(l);
+    if (!timer) {
+      now = Date.now();
+      timer = setInterval(tick, periodMs);
+    }
+    return () => {
+      listeners.delete(l);
+      if (listeners.size === 0 && timer) {
+        clearInterval(timer);
+        timer = null;
+      }
+    };
+  };
+  // With no subscriber the hand is stopped; a first read after a long gap
+  // refreshes it so a freshly mounted row paints the right value at once.
+  // Reads inside one period return the same value, as getSnapshot must.
+  const current = (): number => {
+    if (!timer && Date.now() - now >= periodMs) now = Date.now();
+    return now;
+  };
+  return { subscribe, current, tick, listeners };
 }
+
+const seconds = makeClock(1000);
+const halfMinutes = makeClock(30_000);
 
 const idle = (): (() => void) => () => {};
 const zero = (): number => 0;
-const current = (): number => now;
 
 /** Epoch ms, refreshed each second while `active`; a still 0 otherwise. */
 export function useClock(active: boolean): number {
-  return useSyncExternalStore<number>(active ? subscribe : idle, active ? current : zero, zero);
+  return useSyncExternalStore<number>(
+    active ? seconds.subscribe : idle,
+    active ? seconds.current : zero,
+    zero,
+  );
+}
+
+/** Epoch ms, refreshed every half minute while `active`, for "3m ago" text; a still 0 otherwise. */
+export function useSlowClock(active: boolean): number {
+  return useSyncExternalStore<number>(
+    active ? halfMinutes.subscribe : idle,
+    active ? halfMinutes.current : zero,
+    zero,
+  );
 }
 
 export const clockForTest = {
-  listeners: (): number => listeners.size,
-  subscribe,
-  tick,
+  listeners: (): number => seconds.listeners.size,
+  subscribe: seconds.subscribe,
+  tick: seconds.tick,
+  current: seconds.current,
+  slowListeners: (): number => halfMinutes.listeners.size,
+  slowTick: halfMinutes.tick,
 };
 
 /** The slice of a Session the clock reads; `treeFrozenActiveElapsed` is the server's tree-wide fold (M4). */

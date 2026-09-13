@@ -386,6 +386,14 @@ describe("M4b projections", () => {
     expect(next[1]).toBe(shells[1]);
     expect(sessionStore.getIds()).toBe(ids);
 
+    // A change further down keeps every shell before it.
+    link.push({ push: "session", session: meta({ id: "s2", title: "two again" }) });
+    const later = sessionStore.getShells();
+    expect(later).not.toBe(next);
+    expect(later[0]).toBe(next[0]);
+    expect(later[1].title).toBe("two again");
+    expect(later).toHaveLength(2);
+
     // Closing a session changes both.
     sessionStore.mutate((prev) => prev.filter((s) => s.id !== "s2"));
     expect([...sessionStore.getIds()]).toEqual(["s1"]);
