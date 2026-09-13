@@ -9,8 +9,15 @@
 import { execFileSync } from 'node:child_process'
 import { readFileSync, writeFileSync } from 'node:fs'
 
+// The post-commit hook exports GIT_AUTHOR_*, GIT_INDEX_FILE and friends.
+// Leaked into the gate they make every git command in a test act as the
+// hook's own commit (gitops.test.ts saw the wrong author), so children
+// get a plain environment.
+const env = Object.fromEntries(
+  Object.entries(process.env).filter(([key]) => !key.startsWith('GIT_'))
+)
 const run = (cmd: string, args: string[]): string =>
-  execFileSync(cmd, args, { encoding: 'utf8', stdio: ['inherit', 'pipe', 'inherit'] })
+  execFileSync(cmd, args, { encoding: 'utf8', stdio: ['inherit', 'pipe', 'inherit'], env })
 
 const notes = process.argv[2]?.trim()
 if (!notes) {
