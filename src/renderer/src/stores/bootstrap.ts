@@ -15,6 +15,8 @@ import type { SessionSummary } from "../lib/sessionStore";
 import { sessionStore } from "../lib/tcserver/store";
 import type { InstalledUpdate } from "../lib/updateNotice";
 import type { WindowTransferPayload } from "../lib/windowTransfer";
+import { loadSelectedProject } from "../lib/projectContext";
+import { projectStore } from "./project";
 import { shell } from "./shell";
 
 /** What the boot loader found: a window transfer, a resumed workspace, or neither. */
@@ -96,7 +98,8 @@ function resumedComposerFocused(resumed: ResumedWorkspace): boolean {
  * Called from `main.tsx` before the first render: fills the session and
  * history stores when they are still empty, notes the installed update, and
  * returns the workspace App mounts with. Stores that already hold state
- * (a second mount in the same page) keep it.
+ * (a second mount in the same page) keep it; the project store takes the
+ * boot's placement either way.
  */
 export function bootstrapWorkspace(input: BootInput): BootWorkspace {
   const seed = newBootSeed();
@@ -110,5 +113,11 @@ export function bootstrapWorkspace(input: BootInput): BootWorkspace {
     historyStore.set(input.history);
   }
   shell.setUpdateNotice(input.installedUpdate);
+  projectStore.setState({
+    projectCwd: workspace.projectCwd,
+    recents: workspace.recents,
+    selectedProjectId: loadSelectedProject(workspace.projectCwd),
+    loadedProjects: workspace.loadedProjects,
+  });
   return workspace;
 }

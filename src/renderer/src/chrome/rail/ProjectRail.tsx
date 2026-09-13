@@ -8,6 +8,7 @@ import { setRailPanel, useRailPanel, type RailPanel } from "../../lib/railPanel"
 import { useRightRailOpen } from "../../lib/rightRail";
 import { projectForCwd } from "../../lib/tcserver/projects";
 import { useProjects } from "../../lib/tcserver/workspaces";
+import { useProject } from "../../stores/project";
 import { cn } from "../../motion/cn";
 import { FileTree } from "../FileTree";
 import { Spinner } from "../../surfaces/threads/bits";
@@ -35,15 +36,15 @@ const TABS: { id: RailPanel; label: string }[] = [
 ];
 
 type Props = {
-  projectId: string | null;
   cwd: string;
   onOpenFile: (path: string) => void;
   onOpenDiff: (path: string) => void;
 };
 
 /** Memoized: a thread switch re-renders App, but the rail's props stay put within a project. */
-export const ProjectRail = memo(function ProjectRail({ projectId, cwd, onOpenFile, onOpenDiff }: Props) {
+export const ProjectRail = memo(function ProjectRail({ cwd, onOpenFile, onOpenDiff }: Props) {
   const open = useRightRailOpen();
+  const projectId = useProject((s) => s.selectedProjectId);
   const reduce = useReducedMotion();
   const projects = useProjects();
   const project =
