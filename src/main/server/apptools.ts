@@ -33,8 +33,16 @@ export function setAppToolsRegistry(r: SessionRegistry): void {
 // connects back to the app's WS port and forwards the three tools as
 // app.* methods. The codex driver registers it per thread.
 
-let bridge: { port: number; scriptPath: string } | null = null
-export function setAppBridge(info: { port: number; scriptPath: string } | null): void {
+export interface AppBridgeInfo {
+  port: number
+  scriptPath: string
+  /** node, bun, or the Electron-as-node fallback — resolved once at boot. */
+  command: string
+  env: Record<string, string>
+}
+
+let bridge: AppBridgeInfo | null = null
+export function setAppBridge(info: AppBridgeInfo | null): void {
   bridge = info
 }
 export function hasAppBridge(): boolean {
@@ -42,15 +50,14 @@ export function hasAppBridge(): boolean {
 }
 
 /** MCP server entry for a codex thread's config override (config.toml
- *  shape: command/args/env). process.execPath + ELECTRON_RUN_AS_NODE runs
- *  the bridge under plain node whether the app is Electron or a script. */
+ *  shape: command/args/env). */
 export function bridgeMcpConfig(sessionId: string): Record<string, unknown> | null {
   if (!bridge) return null
   return {
-    command: process.execPath,
+    command: bridge.command,
     args: [bridge.scriptPath],
     env: {
-      ELECTRON_RUN_AS_NODE: '1',
+      ...bridge.env,
       TEMP_CODE_PORT: String(bridge.port),
       TEMP_CODE_SESSION: sessionId
     },
