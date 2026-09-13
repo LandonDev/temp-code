@@ -304,6 +304,43 @@ describe("sessionStore", () => {
     sessionStore.adopt(meta({ id: "made" }));
     expect(added).toEqual(["new", "made"]);
   });
+
+  it("requestOpen raises onOpenRequested for a known session, never onSessionAdded", async () => {
+    link.metas = [meta({ id: "boot" })];
+    sessionStore.connect(link);
+    const added: string[] = [];
+    const asked: string[] = [];
+    sessionStore.onSessionAdded((m) => added.push(m.id));
+    sessionStore.onOpenRequested((m) => asked.push(m.id));
+    await sessionStore.ready();
+    sessionStore.requestOpen("boot");
+    sessionStore.requestOpen("nope");
+    expect(asked).toEqual(["boot"]);
+    expect(added).toEqual([]);
+  });
+
+  it("requestOpen skips no one: an archived or child thread still comes forward", async () => {
+    link.metas = [meta({ id: "old", archived: true }), meta({ id: "kid", parentId: "old" })];
+    sessionStore.connect(link);
+    const asked: string[] = [];
+    sessionStore.onOpenRequested((m) => asked.push(m.id));
+    await sessionStore.ready();
+    sessionStore.requestOpen("old");
+    sessionStore.requestOpen("kid");
+    expect(asked).toEqual(["old", "kid"]);
+  });
+
+  it("adopting a thread the store already holds raises onSessionAdded no second time", async () => {
+    link.metas = [];
+    sessionStore.connect(link);
+    const added: string[] = [];
+    sessionStore.onSessionAdded((m) => added.push(m.id));
+    await sessionStore.ready();
+    sessionStore.adopt(meta({ id: "made" }));
+    sessionStore.adopt(meta({ id: "made", status: "running" }));
+    link.push({ push: "session", session: meta({ id: "made", status: "idle" }) });
+    expect(added).toEqual(["made"]);
+  });
 });
 
 describe("M4 store fixes", () => {

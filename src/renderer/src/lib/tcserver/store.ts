@@ -277,6 +277,7 @@ class SessionStore {
   private metaListeners = new Set<() => void>();
   private eventListeners = new Set<(sessionId: string, row: EventRow, session: Session) => void>();
   private addedListeners = new Set<(meta: SessionMeta) => void>();
+  private openListeners = new Set<(meta: SessionMeta) => void>();
   private liveEdits = new Map<string, Record<string, LiveEditState>>();
   private liveEditListeners = new Set<LiveEditListener>();
   private queueListeners = new Set<() => void>();
@@ -367,6 +368,15 @@ class SessionStore {
     this.addedListeners.add(listener);
     return () => {
       this.addedListeners.delete(listener);
+    };
+  }
+
+  /** Fires when something asks for a known session to come forward (an
+   *  appshot's target). Unlike `onSessionAdded`, this is the user's ask. */
+  onOpenRequested(listener: (meta: SessionMeta) => void): () => void {
+    this.openListeners.add(listener);
+    return () => {
+      this.openListeners.delete(listener);
     };
   }
 
@@ -659,11 +669,13 @@ class SessionStore {
     for (const l of this.addedListeners) l(meta);
   }
 
-  /** Ask the shell to show a session it already knows: the same cue a
-   *  fresh thread sends, so App opens or focuses its tab. */
+  /** Ask the shell to show a session it already knows: App opens or
+   *  focuses its tab. A server-made thread goes through `noteAdded`
+   *  instead and opens in the background. */
   requestOpen(id: string): void {
     const meta = this.metaOf(id);
-    if (meta) this.noteAdded(meta);
+    if (!meta) return;
+    for (const l of this.openListeners) l(meta);
   }
 
   private drop(id: string): void {

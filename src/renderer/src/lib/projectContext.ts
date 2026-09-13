@@ -1,6 +1,6 @@
 import { normalizeProjectPath } from "./recents";
 import type { Session } from "./session";
-import type { ProjectMeta, WorkspaceMeta } from "./tcserver/types";
+import type { ProjectMeta, SessionMeta, WorkspaceMeta } from "./tcserver/types";
 import { workspaceByPath } from "./tcserver/workspaces";
 
 /**
@@ -108,10 +108,11 @@ export function rebaseToWorkspace<T extends Pick<Session, "cwd" | "projectId" | 
 // ── selection persistence ──────────────────────────────────────────────
 
 const SELECTED_KEY = "monocode.tc.selectedProject";
+const LAST_SESSION_KEY = "monocode.tc.lastSession";
 
-function readSelected(): Record<string, string> {
+function readMap(storageKey: string): Record<string, string> {
   try {
-    const raw = localStorage.getItem(SELECTED_KEY);
+    const raw = localStorage.getItem(storageKey);
     const parsed: unknown = raw ? JSON.parse(raw) : null;
     return parsed && typeof parsed === "object" ? (parsed as Record<string, string>) : {};
   } catch {
@@ -119,19 +120,73 @@ function readSelected(): Record<string, string> {
   }
 }
 
+function writeMap(storageKey: string, map: Record<string, string>): void {
+  try {
+    localStorage.setItem(storageKey, JSON.stringify(map));
+  } catch {
+    // private mode / quota
+  }
+}
+
 export function loadSelectedProject(workspacePath: string): string | null {
-  const id = readSelected()[normalizeProjectPath(workspacePath)];
+  const id = readMap(SELECTED_KEY)[normalizeProjectPath(workspacePath)];
   return typeof id === "string" && id ? id : null;
 }
 
 export function saveSelectedProject(workspacePath: string, projectId: string | null): void {
   const key = normalizeProjectPath(workspacePath);
-  const next = readSelected();
+  const next = readMap(SELECTED_KEY);
   if (projectId) next[key] = projectId;
   else delete next[key];
-  try {
-    localStorage.setItem(SELECTED_KEY, JSON.stringify(next));
-  } catch {
-    // private mode / quota
-  }
+  writeMap(SELECTED_KEY, next);
+}
+
+// ── the last thread per project / workspace ────────────────────────────
+
+/** Where a landing is remembered: a project, or a workspace folder. */
+export type LandingScope = { projectId: string } | { workspacePath: string };
+
+const scopeKey = (scope: LandingScope): string =>
+  "projectId" in scope
+    ? `proj:${scope.projectId}`
+    : `ws:${normalizeProjectPath(scope.workspacePath)}`;
+
+export function loadLastSession(scope: LandingScope): string | null {
+  const id = readMap(LAST_SESSION_KEY)[scopeKey(scope)];
+  return typeof id === "string" && id ? id : null;
+}
+
+export function saveLastSession(scope: LandingScope, sessionId: string): void {
+  const key = scopeKey(scope);
+  const next = readMap(LAST_SESSION_KEY);
+  if (next[key] === sessionId) return;
+  next[key] = sessionId;
+  writeMap(LAST_SESSION_KEY, next);
+}
+
+/** Every scope that remembered this thread lets it go (delete, archive). */
+export function forgetLastSession(sessionId: string): void {
+  const map = readMap(LAST_SESSION_KEY);
+  const keys = Object.keys(map).filter((key) => map[key] === sessionId);
+  if (keys.length === 0) return;
+  for (const key of keys) delete map[key];
+  writeMap(LAST_SESSION_KEY, map);
+}
+
+/** The thread a scope lands on: the remembered one while it still exists,
+ *  is not archived and still belongs to the scope (a moved workspace or a
+ *  thread moved out of its project forgets). Null means seed a blank one. */
+export function resolveLanding(
+  scope: LandingScope,
+  metas: readonly SessionMeta[],
+  catalog: Catalog,
+): string | null {
+  const id = loadLastSession(scope);
+  if (!id) return null;
+  const meta = metas.find((m) => m.id === id);
+  // A subagent renders on its parent's board and is never a landing.
+  if (!meta || meta.archived || meta.parentId) return null;
+  if ("projectId" in scope) return meta.projectId === scope.projectId ? id : null;
+  const here = normalizeProjectPath(scope.workspacePath);
+  return normalizeProjectPath(workspacePathOfSession(meta, catalog)) === here ? id : null;
 }

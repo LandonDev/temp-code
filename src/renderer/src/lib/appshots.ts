@@ -111,8 +111,10 @@ async function createChat(): Promise<string | null> {
     agentType: 'implementer',
     ...(project ? { projectId: project.id } : { cwd: selected })
   })
-  // A fresh meta raises `onSessionAdded`, and App opens its tab.
+  // The push opens the thread behind the user's work; the drop is an
+  // explicit ask, so it comes forward too.
   sessionStore.adopt(meta)
+  sessionStore.requestOpen(meta.id)
   return meta.id
 }
 
