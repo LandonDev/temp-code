@@ -14,7 +14,7 @@ import { CheckpointStore } from './checkpoint'
 import { handleCheckpoint } from './checkpointRpc'
 import { Linear, handleLinear } from './linear'
 import { SessionRegistry } from './sessions'
-import { runDoctor, updateProvider } from './drivers/binaries'
+import { resolveAppBridgeLaunch, runDoctor, updateProvider } from './drivers/binaries'
 import { probeCatalogs } from './drivers/catalogProbe'
 import { backfillMirrors } from './mirror'
 import { bootMark } from './boot'
@@ -144,7 +144,10 @@ let firstListMarked = false
 /** WS requests slower than this land in the boot log. */
 const SLOW_REQUEST_MS = 500
 
-export async function startServer(dbPath: string, options: { dataDir?: string } = {}): Promise<RunningServer> {
+export async function startServer(
+  dbPath: string,
+  options: { dataDir?: string; appPath?: string } = {}
+): Promise<RunningServer> {
   bootMark('server-start')
   const db = openDb(dbPath)
   bootMark('db-open')
@@ -1014,10 +1017,21 @@ export async function startServer(dbPath: string, options: { dataDir?: string } 
   const address = wss.address()
   const port = typeof address === 'object' && address ? address.port : 0
 
-  // Codex reaches the app tools through the stdio bridge (M10). Dev and
-  // scripts run from the repo root; a missing script just disables it.
-  const bridgeScript = resolve(process.cwd(), 'scripts', 'app-mcp-bridge.mjs')
-  setAppBridge(existsSync(bridgeScript) ? { port, scriptPath: bridgeScript } : null)
+  // Codex reaches the app tools through the stdio bridge (M10). The app's
+  // own location covers dev (repo root) and packaged
+  // (Contents/Resources/app); the cwd fallback is for the standalone
+  // scripts/e2e-*.ts runs, which have no app path to pass in.
+  const bridgeScript = resolve(options.appPath ?? process.cwd(), 'scripts', 'app-mcp-bridge.mjs')
+  if (existsSync(bridgeScript)) {
+    const launch = await resolveAppBridgeLaunch()
+    setAppBridge({ port, scriptPath: bridgeScript, command: launch.command, env: launch.env })
+    if (launch.note) console.error(`[app-bridge] ${launch.note}`)
+  } else {
+    console.error(
+      `[app-bridge] app-mcp-bridge.mjs not found at ${bridgeScript} — app tools are unavailable to Codex threads`
+    )
+    setAppBridge(null)
+  }
 
   return {
     port,

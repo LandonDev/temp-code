@@ -83,7 +83,9 @@ app.whenReady().then(async () => {
     }
   }
   registerAssetProtocol()
-  server = await startServer(join(app.getPath('userData'), 'temp-code.db'))
+  server = await startServer(join(app.getPath('userData'), 'temp-code.db'), {
+    appPath: app.getAppPath()
+  })
   registerUpdates()
   registerPty()
   const { store } = server

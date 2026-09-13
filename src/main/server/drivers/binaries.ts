@@ -5,6 +5,7 @@ import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
 import type { ProviderId } from '@shared/catalog'
+import { hasAppBridge } from '../apptools'
 
 const execFileP = promisify(execFile)
 
@@ -96,6 +97,51 @@ function executable(path: string): Promise<boolean> {
     () => true,
     () => false
   )
+}
+
+/**
+ * scripts/app-mcp-bridge.mjs needs a plain node process — the packaged
+ * app ships with `electronFuses.runAsNode: false`, so ELECTRON_RUN_AS_NODE
+ * launches a second TempCode instead, which the single-instance lock then
+ * kills. Prefer a real `node` (≥22, for the global WebSocket client) or
+ * `bun` off the login PATH; the Electron-as-node trick is a last resort,
+ * correct in dev (where the fuse is on) but not in a packaged build.
+ */
+export interface AppBridgeLaunch {
+  command: string
+  env: Record<string, string>
+  note?: string
+}
+
+const MIN_BRIDGE_NODE_MAJOR = 22
+
+async function nodeMajorVersion(path: string): Promise<number | null> {
+  try {
+    const { stdout } = await execFileP(path, ['--version'], { timeout: 10_000 })
+    const major = Number(stdout.trim().replace(/^v/, '').split('.')[0])
+    return Number.isFinite(major) ? major : null
+  } catch {
+    return null
+  }
+}
+
+export async function resolveAppBridgeLaunch(): Promise<AppBridgeLaunch> {
+  const node = await resolveBinary('node')
+  if (node) {
+    const major = await nodeMajorVersion(node)
+    const note =
+      major != null && major < MIN_BRIDGE_NODE_MAJOR
+        ? `app-mcp-bridge.mjs wants node ${MIN_BRIDGE_NODE_MAJOR}+, found ${node} at ${major}`
+        : undefined
+    return { command: node, env: {}, note }
+  }
+  const bun = await resolveBinary('bun')
+  if (bun) return { command: bun, env: {} }
+  return {
+    command: process.execPath,
+    env: { ELECTRON_RUN_AS_NODE: '1' },
+    note: 'no node or bun on the login PATH — falling back to Electron-as-node, which only works in dev'
+  }
 }
 
 export interface DoctorReport {
@@ -207,7 +253,7 @@ async function checkProvider(provider: ProviderId): Promise<DoctorReport> {
   if (ported) {
     try {
       const { path } = await ported()
-      return { found: true, path }
+      return withBridgeNote(provider, { found: true, path })
     } catch (err) {
       return { found: false, error: err instanceof Error ? err.message : `${bin} not found` }
     }
@@ -217,10 +263,21 @@ async function checkProvider(provider: ProviderId): Promise<DoctorReport> {
   try {
     const env = await harnessEnv()
     const { stdout } = await execFileP(path, ['--version'], { env, timeout: 15_000 })
-    return { found: true, path, version: stdout.trim().split('\n')[0] }
+    return withBridgeNote(provider, { found: true, path, version: stdout.trim().split('\n')[0] })
   } catch (err) {
-    return { found: true, path, error: err instanceof Error ? err.message : String(err) }
+    return withBridgeNote(provider, {
+      found: true,
+      path,
+      error: err instanceof Error ? err.message : String(err)
+    })
   }
+}
+
+/** Only codex reaches the app tools through the stdio bridge (M10); cursor
+ *  has no per-run MCP config to hand it one. */
+function withBridgeNote(provider: ProviderId, report: DoctorReport): DoctorReport {
+  if (provider !== 'codex' || report.error || hasAppBridge()) return report
+  return { ...report, error: 'app tools unavailable for Codex' }
 }
 
 let doctorCache: { at: number; report: Promise<Record<ProviderId, DoctorReport>> } | null = null
