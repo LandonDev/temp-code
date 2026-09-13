@@ -54,6 +54,63 @@ export type WorkspaceSessionGroups = {
   chats: ThreadRow[];
 };
 
+type CachedRow = {
+  meta: SessionMeta;
+  seen: number | undefined;
+  floor: number;
+  kids: ThreadRow[] | undefined;
+  row: ThreadRow;
+};
+
+/**
+ * What the last grouping built, so the next one can hand back the same row
+ * for a thread whose meta and seen state did not move, and the same group
+ * for a project whose rows all came back unchanged. Memoized rows and cards
+ * downstream then skip. One per sidebar; feed it to `groupWorkspaceSessions`.
+ */
+export type RowCache = {
+  rows: Map<string, CachedRow>;
+  groups: Map<string, ProjectGroup>;
+  last: WorkspaceSessionGroups | null;
+};
+
+export const rowCache = (): RowCache => ({
+  rows: new Map(),
+  groups: new Map(),
+  last: null,
+});
+
+const sameList = <T>(a: readonly T[] | undefined, b: readonly T[] | undefined): boolean =>
+  a === b ||
+  (!!a && !!b && a.length === b.length && a.every((x, i) => x === b[i]));
+
+/** `threadRow`, but the cached row when nothing it reads has changed. */
+function cachedRow(
+  cache: RowCache | undefined,
+  next: Map<string, CachedRow> | undefined,
+  meta: SessionMeta,
+  lastSeen: Record<string, number>,
+  floor: number,
+  kids?: ThreadRow[],
+): ThreadRow {
+  const seen = lastSeen[meta.id];
+  const hit = cache?.rows.get(meta.id);
+  if (
+    hit &&
+    hit.meta === meta &&
+    hit.seen === seen &&
+    hit.floor === floor &&
+    sameList(hit.kids, kids)
+  ) {
+    next?.set(meta.id, hit);
+    return hit.row;
+  }
+  const base = threadRow(meta, lastSeen, floor);
+  const row = kids ? { ...base, children: kids } : base;
+  next?.set(meta.id, { meta, seen, floor, kids, row });
+  return row;
+}
+
 export type ThreadSummary = {
   needYou: number;
   failed: number;
@@ -103,6 +160,8 @@ export function childRows(
   metas: readonly SessionMeta[],
   lastSeen: Record<string, number>,
   floor = 0,
+  cache?: RowCache,
+  next?: Map<string, CachedRow>,
 ): Map<string, ThreadRow[]> {
   const byParent = new Map<string, SessionMeta[]>();
   for (const meta of metas) {
@@ -115,7 +174,7 @@ export function childRows(
   for (const [parentId, list] of byParent)
     out.set(
       parentId,
-      sortAgents(list).map((m) => threadRow(m, lastSeen, floor)),
+      sortAgents(list).map((m) => cachedRow(cache, next, m, lastSeen, floor)),
     );
   return out;
 }
@@ -130,17 +189,15 @@ export function groupWorkspaceSessions(
   workspaceId: string,
   lastSeen: Record<string, number>,
   floor = 0,
+  cache?: RowCache,
 ): WorkspaceSessionGroups {
   const here = projects.filter((p) => p.workspaceId === workspaceId);
   const ids = new Set(here.map((p) => p.id));
   const byProject = new Map<string, ThreadRow[]>();
   const archivedCount = new Map<string, number>();
   const chats: ThreadRow[] = [];
-  const children = childRows(metas, lastSeen, floor);
-  const withChildren = (row: ThreadRow): ThreadRow => {
-    const kids = children.get(row.id);
-    return kids ? { ...row, children: kids } : row;
-  };
+  const nextRows = cache ? new Map<string, CachedRow>() : undefined;
+  const children = childRows(metas, lastSeen, floor, cache, nextRows);
 
   for (const meta of metas) {
     if (meta.parentId) continue;
@@ -152,7 +209,7 @@ export function groupWorkspaceSessions(
         archivedCount.set(projectId, (archivedCount.get(projectId) ?? 0) + 1);
       continue;
     }
-    const row = withChildren(threadRow(meta, lastSeen, floor));
+    const row = cachedRow(cache, nextRows, meta, lastSeen, floor, children.get(meta.id));
     if (!projectId) {
       chats.push(row);
       continue;
@@ -163,21 +220,47 @@ export function groupWorkspaceSessions(
   }
 
   chats.sort(newestFirst);
+  const nextGroups = cache ? new Map<string, ProjectGroup>() : undefined;
   const groups = here.map((project): ProjectGroup => {
     const threads = (byProject.get(project.id) ?? []).sort(newestFirst);
-    return {
-      project,
-      threads,
-      latest: threads[0]?.updatedAt ?? project.createdAt,
-      archivedCount: archivedCount.get(project.id) ?? 0,
-    };
+    const latest = threads[0]?.updatedAt ?? project.createdAt;
+    const count = archivedCount.get(project.id) ?? 0;
+    const prev = cache?.groups.get(project.id);
+    const group =
+      prev &&
+      prev.project === project &&
+      prev.latest === latest &&
+      prev.archivedCount === count &&
+      sameList(prev.threads, threads)
+        ? prev
+        : { project, threads, latest, archivedCount: count };
+    nextGroups?.set(project.id, group);
+    return group;
   });
 
-  return {
-    projects: groups.filter((g) => !g.project.archived).sort(latestFirst),
-    archived: groups.filter((g) => g.project.archived).sort(latestFirst),
-    chats,
+  const last = cache?.last;
+  const keep = <T>(fresh: T[], old: T[] | undefined): T[] =>
+    old && sameList(old, fresh) ? old : fresh;
+  const out: WorkspaceSessionGroups = {
+    projects: keep(
+      groups.filter((g) => !g.project.archived).sort(latestFirst),
+      last?.projects,
+    ),
+    archived: keep(
+      groups.filter((g) => g.project.archived).sort(latestFirst),
+      last?.archived,
+    ),
+    chats: keep(chats, last?.chats),
   };
+  // The cache is written here, inside the caller's useMemo. A render React
+  // throws away loses one generation of reuse and nothing else: every hit
+  // is re-checked against the metas it is handed.
+  if (cache) {
+    cache.rows = nextRows!;
+    cache.groups = nextGroups!;
+    cache.last = out;
+  }
+  return out;
 }
 
 /** Each thread counts once: running, then paused, waiting, failed, unread, else dormant. */

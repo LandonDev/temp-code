@@ -1,9 +1,15 @@
 import {
+  memo,
+  useCallback,
+  useEffect,
+  useMemo,
   useRef,
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
   type ReactNode,
+  type TransitionEvent,
 } from "react";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import { MotionConfig, motion } from "motion/react";
 import { SPRING_LAYOUT } from "../lib/ease";
 import { ExplorerMenu, type ExplorerMenuItem } from "./ExplorerMenu";
@@ -41,7 +47,16 @@ import {
   stoppableThreads,
   type CardThread,
 } from "../lib/projectCardModel";
+import { SESSION_LIST_PAGE } from "../lib/sessionListWindow";
 import { useLastSeen, useSeenFloor } from "../lib/sessionSeen";
+import {
+  liveLines,
+  nextPage,
+  sessionItemIndex,
+  sidebarItems,
+  windowRows,
+  type SidebarItem,
+} from "../lib/sidebarRows";
 import { interrupt, pause, resume } from "../lib/tcserver/commands";
 import {
   archiveProject,
@@ -54,6 +69,7 @@ import type { ProjectMeta, WorkspaceMeta } from "../lib/tcserver/types";
 import { useWorkspaceCatalog } from "../lib/tcserver/workspaces";
 import {
   groupWorkspaceSessions,
+  rowCache,
   type ProjectGroup,
   type ThreadRow,
 } from "../lib/workspaceSessions";
@@ -101,11 +117,41 @@ function Elapsed({ since }: { since: number }) {
 
 // --- small parts -----------------------------------------------------------
 
-function Fold({ open, children }: { open: boolean; children: ReactNode }) {
+/** The grid transition in index.css runs 320 ms; a closed fold with no
+ *  transition (reduced motion) still empties itself after this long. */
+const FOLD_MS = 360;
+
+/** A collapsing section. Its children mount when it opens and unmount once
+ *  the closing transition has run, so a closed fold holds no DOM at all. */
+export function Fold({ open, children }: { open: boolean; children: ReactNode }) {
+  const [mounted, setMounted] = useState(open);
+  if (open && !mounted) setMounted(true);
+  useEffect(() => {
+    if (open || !mounted) return;
+    const timer = setTimeout(() => setMounted(false), FOLD_MS);
+    return () => clearTimeout(timer);
+  }, [open, mounted]);
+  const onEnd = (e: TransitionEvent<HTMLDivElement>) => {
+    if (!open && e.target === e.currentTarget && e.propertyName === "grid-template-rows")
+      setMounted(false);
+  };
   return (
-    <div className="ws-fold" data-open={open}>
-      <div inert={!open}>{children}</div>
+    <div className="ws-fold" data-open={open} onTransitionEnd={onEnd}>
+      <div inert={!open}>{mounted ? children : null}</div>
     </div>
+  );
+}
+
+/** The row behind which a windowed list keeps the rest. */
+function MoreRow({ hidden, onMore }: { hidden: number; onMore: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onMore}
+      className="flex h-6 w-full items-center rounded-md px-2 text-[11px] text-content/45 hover:bg-content/5 hover:text-content/70"
+    >
+      {hidden} more
+    </button>
   );
 }
 
@@ -231,7 +277,23 @@ type RowActions = {
   openMenu: (state: MenuState) => void;
 };
 
-function ChatRow({
+/** Scrolls the list's selected row into view when the selection moves, and
+ *  only then: a list the virtualizer re-mounts around an unchanged selection
+ *  must not tug the scroller. */
+function useRevealActive(activeSessionId: string | undefined) {
+  const ref = useRef<HTMLDivElement>(null);
+  const was = useRef(activeSessionId);
+  useEffect(() => {
+    if (activeSessionId === was.current) return;
+    was.current = activeSessionId;
+    ref.current
+      ?.querySelector('[aria-current="true"]')
+      ?.scrollIntoView?.({ block: "nearest" });
+  }, [activeSessionId]);
+  return ref;
+}
+
+const ChatRow = memo(function ChatRow({
   thread,
   actions,
 }: {
@@ -329,13 +391,15 @@ function ChatRow({
       ) : null}
     </div>
   );
-}
+});
 
-/** The selected row's wash; one shared layoutId so it glides between rows. */
-function ActivePill() {
+/** The selected item's wash. Rows share one layoutId so it glides between
+ *  rows; the selected card has its own, since the virtualizer mounts and
+ *  unmounts cards under a scroll and a shared pill would slide with them. */
+function ActivePill({ scope = "row" }: { scope?: "row" | "card" }) {
   return (
     <motion.div
-      layoutId="sidebar-active"
+      layoutId={`sidebar-active-${scope}`}
       transition={SPRING_LAYOUT}
       className="absolute inset-0 -z-10 rounded-md bg-content/10"
     />
@@ -343,7 +407,13 @@ function ActivePill() {
 }
 
 /** A subagent under its root: one step in, status, role glyph, title, model. */
-function ChildRow({ thread, actions }: { thread: ThreadRow; actions: RowActions }) {
+const ChildRow = memo(function ChildRow({
+  thread,
+  actions,
+}: {
+  thread: ThreadRow;
+  actions: RowActions;
+}) {
   const selected = thread.id === actions.activeSessionId;
   const Glyph = thread.agentType ? AGENT_GLYPHS[thread.agentType] : null;
   return (
@@ -368,10 +438,16 @@ function ChildRow({ thread, actions }: { thread: ThreadRow; actions: RowActions 
       ) : null}
     </div>
   );
-}
+});
 
 /** A root row and its subagents beneath it. */
-function ThreadRows({ thread, actions }: { thread: ThreadRow; actions: RowActions }) {
+const ThreadRows = memo(function ThreadRows({
+  thread,
+  actions,
+}: {
+  thread: ThreadRow;
+  actions: RowActions;
+}) {
   return (
     <>
       <ChatRow thread={thread} actions={actions} />
@@ -380,7 +456,38 @@ function ThreadRows({ thread, actions }: { thread: ThreadRow; actions: RowAction
       ))}
     </>
   );
-}
+});
+
+/** How many rows each windowed list shows, by list key; the root owns it so
+ *  a section the virtualizer unmounts comes back as long as it was. */
+type Pages = Record<string, number>;
+const pageOf = (pages: Pages, key: string): number => pages[key] ?? SESSION_LIST_PAGE;
+
+/** Root rows, one page at a time (`sessionListWindow`), the active row always in it. */
+export const ThreadList = memo(function ThreadList({
+  threads,
+  actions,
+  requested = SESSION_LIST_PAGE,
+  onMore,
+  className,
+}: {
+  threads: readonly ThreadRow[];
+  actions: RowActions;
+  requested?: number;
+  onMore?: () => void;
+  className: string;
+}) {
+  const { shown, hidden } = windowRows(threads, requested, actions.activeSessionId);
+  const ref = useRevealActive(actions.activeSessionId);
+  return (
+    <div ref={ref} className={className}>
+      {shown.map((t) => (
+        <ThreadRows key={t.id} thread={t} actions={actions} />
+      ))}
+      {hidden > 0 && onMore ? <MoreRow hidden={hidden} onMore={onMore} /> : null}
+    </div>
+  );
+});
 
 type Tasks = NonNullable<CardThread["tasks"]>;
 
@@ -414,70 +521,95 @@ function ThreadGlyph({ thread }: { thread: ThreadRow }) {
   return <Glyph className={`size-3 shrink-0 opacity-80 ${THREAD_TINTS[type]}`} />;
 }
 
+type LiveStatus = ReturnType<typeof projectCardStatus<ThreadRow>>;
+
+function RunningLine({ thread: t, now }: { thread: ThreadRow; now: number }) {
+  const ms = runningElapsed(t, now);
+  const tasks = cardTasks(t);
+  return (
+    <div className="w-full py-[3px]" title={t.activity ?? undefined}>
+      <div className="flex w-full items-center gap-1.5 text-[11px] leading-4">
+        <MatrixSpinner cell={1.8} tint={t.activityKind} />
+        <ThreadGlyph thread={t} />
+        <span className="min-w-0 flex-1 truncate text-content/55">
+          {t.title || "Untitled"}
+        </span>
+        <span
+          className={`shrink-0 text-[10.5px] whitespace-nowrap tabular-nums text-content/45 ${ms < 3000 ? "opacity-0" : ""}`}
+        >
+          {duration(ms)}
+        </span>
+      </div>
+      {tasks ? <TaskLine tasks={tasks} /> : null}
+    </div>
+  );
+}
+
+function PausedLine({ thread: t }: { thread: ThreadRow }) {
+  const tasks = cardTasks(t);
+  return (
+    <div className="w-full bg-warning/5 py-[3px]">
+      <div className="flex w-full items-center gap-1.5 text-[11px] leading-4 text-warning">
+        <Pause className="size-3 shrink-0 fill-current" strokeWidth={1.8} />
+        <ThreadGlyph thread={t} />
+        <span className="min-w-0 flex-1 truncate">{t.title || "Untitled"}</span>
+        <span className="shrink-0 font-medium">Paused</span>
+        <span className="shrink-0 text-[10.5px] tabular-nums text-current/75">
+          {duration(pausedElapsed(t))}
+        </span>
+      </div>
+      {tasks ? <TaskLine tasks={tasks} paused /> : null}
+    </div>
+  );
+}
+
+function UnreadLine({ thread: t }: { thread: ThreadRow }) {
+  return (
+    <div className="flex w-full items-center gap-1.5 py-[3px] text-[11px] leading-4">
+      <span className="size-1.5 shrink-0 rounded-full bg-info" />
+      <ThreadGlyph thread={t} />
+      <span className="min-w-0 flex-1 truncate font-medium text-content">
+        {t.title || "Untitled"}
+      </span>
+    </div>
+  );
+}
+
 /** One line per live-or-unseen thread, status leading the eye: tinted
  *  spinner (or the blue unread dot) up front, title, elapsed at the end.
  *  A paused line freezes its elapsed where the pause left it. Only a card
- *  with a running line subscribes to the second hand. */
-function LiveLines({
+ *  with a running line subscribes to the second hand. A card prints one
+ *  page of lines (`sessionListWindow`) and a "more" row for the rest. */
+export function LiveLines({
   status,
+  activeId,
+  requested = SESSION_LIST_PAGE,
+  onMore,
 }: {
-  status: ReturnType<typeof projectCardStatus<ThreadRow>>;
+  status: LiveStatus;
+  activeId: string | null;
+  requested?: number;
+  onMore?: () => void;
 }) {
   const now = useClock(status.running.length > 0);
-  if (!status.running.length && !status.paused.length && !status.unread.length)
-    return null;
+  const { shown, hidden } = windowRows(liveLines(status), requested, activeId);
+  if (!shown.length) return null;
   return (
     <div className="w-full divide-y divide-content/10 border-y border-content/10">
-      {status.running.map((t) => {
-        const ms = runningElapsed(t, now);
-        const tasks = cardTasks(t);
-        return (
-          <div key={t.id} className="w-full py-[3px]" title={t.activity ?? undefined}>
-            <div className="flex w-full items-center gap-1.5 text-[11px] leading-4">
-              <MatrixSpinner cell={1.8} tint={t.activityKind} />
-              <ThreadGlyph thread={t} />
-              <span className="min-w-0 flex-1 truncate text-content/55">
-                {t.title || "Untitled"}
-              </span>
-              <span
-                className={`shrink-0 text-[10.5px] whitespace-nowrap tabular-nums text-content/45 ${ms < 3000 ? "opacity-0" : ""}`}
-              >
-                {duration(ms)}
-              </span>
-            </div>
-            {tasks ? <TaskLine tasks={tasks} /> : null}
-          </div>
-        );
-      })}
-      {status.paused.map((t) => {
-        const tasks = cardTasks(t);
-        return (
-          <div key={t.id} className="w-full bg-warning/5 py-[3px]">
-            <div className="flex w-full items-center gap-1.5 text-[11px] leading-4 text-warning">
-              <Pause className="size-3 shrink-0 fill-current" strokeWidth={1.8} />
-              <ThreadGlyph thread={t} />
-              <span className="min-w-0 flex-1 truncate">{t.title || "Untitled"}</span>
-              <span className="shrink-0 font-medium">Paused</span>
-              <span className="shrink-0 text-[10.5px] tabular-nums text-current/75">
-                {duration(pausedElapsed(t))}
-              </span>
-            </div>
-            {tasks ? <TaskLine tasks={tasks} paused /> : null}
-          </div>
-        );
-      })}
-      {status.unread.map((t) => (
-        <div
-          key={t.id}
-          className="flex w-full items-center gap-1.5 py-[3px] text-[11px] leading-4"
-        >
-          <span className="size-1.5 shrink-0 rounded-full bg-info" />
-          <ThreadGlyph thread={t} />
-          <span className="min-w-0 flex-1 truncate font-medium text-content">
-            {t.title || "Untitled"}
-          </span>
+      {shown.map(({ kind, thread }) =>
+        kind === "running" ? (
+          <RunningLine key={thread.id} thread={thread} now={now} />
+        ) : kind === "paused" ? (
+          <PausedLine key={thread.id} thread={thread} />
+        ) : (
+          <UnreadLine key={thread.id} thread={thread} />
+        ),
+      )}
+      {hidden > 0 && onMore ? (
+        <div className="py-[3px]">
+          <MoreRow hidden={hidden} onMore={onMore} />
         </div>
-      ))}
+      ) : null}
     </div>
   );
 }
@@ -490,31 +622,42 @@ type CardProps = {
   lastSeen: Record<string, number>;
   seenFloor: number;
   rows: RowActions;
-  onSelect: () => void;
-  onNewChat: () => void;
-  onRename: (name: string) => void;
-  onSettings: () => void;
-  onArchive: () => void;
-  onDelete: () => void;
+  requested: number;
+  onMore: (key: string) => void;
+  onSelect: (projectId: string) => void;
+  onNewChat: (projectId: string) => void;
+  onRename: (projectId: string, name: string) => void;
+  onSettings: (project: ProjectMeta) => void;
+  onArchive: (project: ProjectMeta) => void;
+  onDelete: (project: ProjectMeta) => void;
 };
 
 /** temp-code's project card: always the summary, never a thread list. The
  *  strip above the pane is where the threads live; this card only says how
  *  the project is doing and selects it the moment the pointer lands. */
-function ProjectCard({
+const ProjectCard = memo(function ProjectCard({
   group,
   selected,
   lastSeen,
   seenFloor,
   rows,
-  onSelect,
-  onNewChat,
-  onRename,
-  onSettings,
-  onArchive,
-  onDelete,
+  requested,
+  onMore: more,
+  onSelect: selectProject,
+  onNewChat: newChat,
+  onRename: renameTo,
+  onSettings: openSettings,
+  onArchive: archive,
+  onDelete: remove,
 }: CardProps) {
   const { project, threads, latest, archivedCount } = group;
+  const onSelect = () => selectProject(project.id);
+  const onNewChat = () => newChat(project.id);
+  const onRename = (name: string) => renameTo(project.id, name);
+  const onSettings = () => openSettings(project);
+  const onArchive = () => archive(project);
+  const onDelete = () => remove(project);
+  const onMore = () => more(project.id);
   const [renaming, setRenaming] = useState(false);
   const status = projectCardStatus(threads, rows.activeSessionId ?? null, lastSeen, seenFloor);
   const runAction = projectRunAction(status);
@@ -580,7 +723,7 @@ function ProjectCard({
       }}
       className="group/card relative isolate rounded-md border border-content/10"
     >
-      {selected ? <ActivePill /> : null}
+      {selected ? <ActivePill scope="card" /> : null}
       <div
         role="button"
         tabIndex={0}
@@ -629,7 +772,12 @@ function ProjectCard({
           </span>
         </div>
 
-        <LiveLines status={status} />
+        <LiveLines
+          status={status}
+          activeId={rows.activeSessionId ?? null}
+          requested={requested}
+          onMore={onMore}
+        />
 
         {showSummary ? (
           <div className="flex w-full items-center gap-2 text-[11px] leading-4 tabular-nums">
@@ -659,23 +807,36 @@ function ProjectCard({
       ) : null}
     </section>
   );
-}
+});
 
 // --- archived --------------------------------------------------------------
 
-function ArchivedProjects({
+type ArchivedState = { open: boolean; shown: string | null };
+
+const ArchivedProjects = memo(function ArchivedProjects({
   groups,
   rows,
+  state,
+  setState,
+  pages,
+  onMore,
   onRestore,
   onDelete,
 }: {
   groups: ProjectGroup[];
   rows: RowActions;
+  state: ArchivedState;
+  setState: (update: (prev: ArchivedState) => ArchivedState) => void;
+  pages: Pages;
+  onMore: (key: string) => void;
   onRestore: (project: ProjectMeta) => void;
   onDelete: (project: ProjectMeta) => void;
 }) {
-  const [open, setOpen] = useState(false);
-  const [shown, setShown] = useState<string | null>(null);
+  const { open, shown } = state;
+  const setOpen = (update: (o: boolean) => boolean) =>
+    setState((prev) => ({ ...prev, open: update(prev.open) }));
+  const setShown = (update: (s: string | null) => string | null) =>
+    setState((prev) => ({ ...prev, shown: update(prev.shown) }));
   return (
     <div>
       <button
@@ -726,11 +887,13 @@ function ArchivedProjects({
                 </div>
               </div>
               <Fold open={shown === project.id}>
-                <div className="flex flex-col gap-px pl-2">
-                  {threads.map((t) => (
-                    <ThreadRows key={t.id} thread={t} actions={rows} />
-                  ))}
-                </div>
+                <ThreadList
+                  threads={threads}
+                  actions={rows}
+                  requested={pageOf(pages, `archived:${project.id}`)}
+                  onMore={() => onMore(`archived:${project.id}`)}
+                  className="flex flex-col gap-px pl-2"
+                />
               </Fold>
             </div>
           ))}
@@ -738,7 +901,78 @@ function ArchivedProjects({
       </Fold>
     </div>
   );
-}
+});
+
+/** The loose chats under the cards, folded as one. */
+const ChatsSection = memo(function ChatsSection({
+  threads,
+  rows,
+  open,
+  requested,
+  onMore,
+  onToggle,
+  onNewChat,
+}: {
+  threads: ThreadRow[];
+  rows: RowActions;
+  open: boolean;
+  requested: number;
+  onMore: () => void;
+  onToggle: () => void;
+  onNewChat: (projectId: string | null) => void;
+}) {
+  return (
+    <div>
+      <div className="group/chats flex h-6 items-center gap-1 px-2">
+        <button
+          type="button"
+          onClick={onToggle}
+          aria-expanded={open}
+          className="flex min-w-0 flex-1 items-center gap-1 text-[12px] font-medium text-content/60 hover:text-content"
+        >
+          <ChevronRight
+            className={`size-3 transition-transform duration-200 ${open ? "rotate-90" : ""}`}
+          />
+          Chats
+        </button>
+        <button
+          type="button"
+          aria-label="New chat"
+          onClick={() => onNewChat(null)}
+          className="flex size-5 items-center justify-center rounded text-content/50 opacity-0 group-hover/chats:opacity-100 hover:bg-content/10 hover:text-content focus:opacity-100"
+        >
+          <Plus className="size-3.5" />
+        </button>
+      </div>
+      <Fold open={open}>
+        <ThreadList
+          threads={threads}
+          actions={rows}
+          requested={requested}
+          onMore={onMore}
+          className="flex flex-col gap-px"
+        />
+      </Fold>
+    </div>
+  );
+});
+
+const ROW_PX = 28;
+
+/** Heights for the virtualizer's first pass; every item is then measured.
+ *  The chats section opens by default, so it counts its first page. */
+const estimateItem = (item: SidebarItem): number => {
+  switch (item.kind) {
+    case "project":
+      return 72;
+    case "chats":
+      return 24 + ROW_PX * Math.min(item.threads.length, SESSION_LIST_PAGE);
+    case "archived":
+      return 24;
+    case "empty":
+      return ROW_PX;
+  }
+};
 
 // --- root ------------------------------------------------------------------
 
@@ -757,13 +991,19 @@ export default function WorkspaceSessions({
   const { workspaces, projects } = useWorkspaceCatalog();
   const lastSeen = useLastSeen();
   const seenFloor = useSeenFloor();
-  const groups = groupWorkspaceSessions(
-    metas,
-    projects,
-    workspaces,
-    workspaceId,
-    lastSeen,
-    seenFloor,
+  const [cache] = useState(rowCache);
+  const groups = useMemo(
+    () =>
+      groupWorkspaceSessions(
+        metas,
+        projects,
+        workspaces,
+        workspaceId,
+        lastSeen,
+        seenFloor,
+        cache,
+      ),
+    [cache, lastSeen, metas, projects, seenFloor, workspaceId, workspaces],
   );
   const workspace: WorkspaceMeta | undefined = workspaces.find(
     (w) => w.id === workspaceId,
@@ -771,107 +1011,184 @@ export default function WorkspaceSessions({
   const [menu, setMenu] = useState<MenuState | null>(null);
   const [dialog, setDialog] = useState<Dialog | null>(null);
   const [chatsOpen, setChatsOpen] = useState(true);
+  const [archived, setArchived] = useState<ArchivedState>({ open: false, shown: null });
+  const [pages, setPages] = useState<Pages>({});
   const close = () => setDialog(null);
 
-  const teardownOrConfirm = (
-    project: ProjectMeta,
-    action: "archive" | "delete",
-  ) => {
-    if (project.mode === "worktree" && project.branch)
-      setDialog({ kind: "teardown", project, action });
-    else if (action === "delete")
-      setDialog({ kind: "delete-project", project });
-    else void archiveProject(project.id, true);
-  };
+  // The parent hands down fresh closures each render; the memoized cards and
+  // rows see one stable callback that reads the newest.
+  const latest = useRef({ onSelectProject, onOpenSession, onNewChat, onRenameSession });
+  latest.current = { onSelectProject, onOpenSession, onNewChat, onRenameSession };
+  const selectProject = useCallback((id: string) => latest.current.onSelectProject(id), []);
+  const openSession = useCallback((id: string) => latest.current.onOpenSession(id), []);
+  const newChat = useCallback(
+    (projectId: string | null) => latest.current.onNewChat(projectId),
+    [],
+  );
+  const renameSession = useCallback(
+    (id: string, title: string) => latest.current.onRenameSession(id, title),
+    [],
+  );
+  const rename = useCallback((id: string, name: string) => void renameProject(id, name), []);
+  const openSettings = useCallback(
+    (project: ProjectMeta) => setDialog({ kind: "settings", project }),
+    [],
+  );
+  const teardownOrConfirm = useCallback(
+    (project: ProjectMeta, action: "archive" | "delete") => {
+      if (project.mode === "worktree" && project.branch)
+        setDialog({ kind: "teardown", project, action });
+      else if (action === "delete") setDialog({ kind: "delete-project", project });
+      else void archiveProject(project.id, true);
+    },
+    [],
+  );
+  const archive = useCallback(
+    (project: ProjectMeta) => teardownOrConfirm(project, "archive"),
+    [teardownOrConfirm],
+  );
+  const remove = useCallback(
+    (project: ProjectMeta) => teardownOrConfirm(project, "delete"),
+    [teardownOrConfirm],
+  );
+  const restore = useCallback((project: ProjectMeta) => void archiveProject(project.id, false), []);
+  const toggleChats = useCallback(() => setChatsOpen((o) => !o), []);
+  const morePages = useCallback(
+    (key: string) => setPages((prev) => ({ ...prev, [key]: nextPage(pageOf(prev, key)) })),
+    [],
+  );
+  const moreChats = useCallback(() => morePages("chats"), [morePages]);
 
-  const rows: RowActions = {
-    activeSessionId,
-    onOpen: onOpenSession,
-    onRename: onRenameSession,
-    onDelete: (thread) => setDialog({ kind: "delete-chat", thread }),
-    openMenu: setMenu,
-  };
+  const rows = useMemo<RowActions>(
+    () => ({
+      activeSessionId,
+      onOpen: openSession,
+      onRename: renameSession,
+      onDelete: (thread) => setDialog({ kind: "delete-chat", thread }),
+      openMenu: setMenu,
+    }),
+    [activeSessionId, openSession, renameSession],
+  );
 
-  const empty =
-    !groups.projects.length && !groups.chats.length && !groups.archived.length;
+  // Cards are the virtual unit: each roots its own border and hover group,
+  // and the shared ActivePill lives inside one. Every item is measured, so
+  // a card that grows a live line pushes the ones below it. (A fold's
+  // height animation is measured too: the root re-renders per frame while
+  // a section opens or closes, and the memoized cards sit that out.)
+  const items = useMemo(() => sidebarItems(groups), [groups]);
+  const scroller = useRef<HTMLDivElement>(null);
+  const estimateSize = useCallback((i: number) => estimateItem(items[i]), [items]);
+  const getItemKey = useCallback((i: number) => items[i].key, [items]);
+  const virtualizer = useVirtualizer({
+    count: items.length,
+    getScrollElement: () => scroller.current,
+    estimateSize,
+    getItemKey,
+    overscan: 4,
+    gap: 8,
+  });
+
+  // Bring the selected card on screen once per selection: when it changes,
+  // or as soon as the list fills after a boot that restored it. A meta push
+  // re-sorting the cards must not scroll.
+  const revealed = useRef<string | null>(null);
+  useEffect(() => {
+    if (!selectedProjectId || revealed.current === selectedProjectId) return;
+    const index = items.findIndex(
+      (item) => item.kind === "project" && item.group.project.id === selectedProjectId,
+    );
+    if (index < 0) return;
+    revealed.current = selectedProjectId;
+    virtualizer.scrollToIndex(index, { align: "auto" });
+  }, [items, selectedProjectId, virtualizer]);
+  const revealedSession = useRef(activeSessionId);
+  useEffect(() => {
+    if (!activeSessionId || revealedSession.current === activeSessionId) return;
+    const index = sessionItemIndex(items, activeSessionId);
+    if (index < 0) return;
+    revealedSession.current = activeSessionId;
+    virtualizer.scrollToIndex(index, { align: "auto" });
+  }, [activeSessionId, items, virtualizer]);
+
+  const entry = (item: SidebarItem): ReactNode => {
+    switch (item.kind) {
+      case "project":
+        return (
+          <ProjectCard
+            group={item.group}
+            selected={item.group.project.id === selectedProjectId}
+            lastSeen={lastSeen}
+            seenFloor={seenFloor}
+            rows={rows}
+            requested={pageOf(pages, item.key)}
+            onMore={morePages}
+            onSelect={selectProject}
+            onNewChat={newChat}
+            onRename={rename}
+            onSettings={openSettings}
+            onArchive={archive}
+            onDelete={remove}
+          />
+        );
+      case "chats":
+        return (
+          <ChatsSection
+            threads={item.threads}
+            rows={rows}
+            open={chatsOpen}
+            requested={pageOf(pages, "chats")}
+            onMore={moreChats}
+            onToggle={toggleChats}
+            onNewChat={newChat}
+          />
+        );
+      case "archived":
+        return (
+          <ArchivedProjects
+            groups={item.groups}
+            rows={rows}
+            state={archived}
+            setState={setArchived}
+            pages={pages}
+            onMore={morePages}
+            onRestore={restore}
+            onDelete={remove}
+          />
+        );
+      case "empty":
+        return (
+          <button
+            type="button"
+            onClick={onNewProject}
+            className="flex h-7 items-center gap-1.5 rounded-md px-2 text-[12px] text-content/50 hover:bg-content/5 hover:text-content"
+          >
+            <Plus className="size-3.5" />
+            New project
+          </button>
+        );
+    }
+  };
 
   return (
     <MotionConfig reducedMotion="user">
       <motion.div
+        ref={scroller}
         layoutScroll
-        className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-2 pb-2"
+        className="min-h-0 flex-1 overflow-y-auto px-2 pb-2"
       >
-      {groups.projects.map((group) => (
-        <ProjectCard
-          key={group.project.id}
-          group={group}
-          selected={group.project.id === selectedProjectId}
-          lastSeen={lastSeen}
-          seenFloor={seenFloor}
-          rows={rows}
-          onSelect={() => onSelectProject(group.project.id)}
-          onNewChat={() => onNewChat(group.project.id)}
-          onRename={(name) => void renameProject(group.project.id, name)}
-          onSettings={() =>
-            setDialog({ kind: "settings", project: group.project })
-          }
-          onArchive={() => teardownOrConfirm(group.project, "archive")}
-          onDelete={() => teardownOrConfirm(group.project, "delete")}
-        />
-      ))}
-
-      {groups.chats.length ? (
-        <div>
-          <div className="group/chats flex h-6 items-center gap-1 px-2">
-            <button
-              type="button"
-              onClick={() => setChatsOpen((o) => !o)}
-              aria-expanded={chatsOpen}
-              className="flex min-w-0 flex-1 items-center gap-1 text-[12px] font-medium text-content/60 hover:text-content"
+        <div className="relative w-full" style={{ height: virtualizer.getTotalSize() }}>
+          {virtualizer.getVirtualItems().map((row) => (
+            <div
+              key={row.key}
+              data-index={row.index}
+              ref={virtualizer.measureElement}
+              className="absolute top-0 left-0 w-full"
+              style={{ transform: `translateY(${row.start}px)` }}
             >
-              <ChevronRight
-                className={`size-3 transition-transform duration-200 ${chatsOpen ? "rotate-90" : ""}`}
-              />
-              Chats
-            </button>
-            <button
-              type="button"
-              aria-label="New chat"
-              onClick={() => onNewChat(null)}
-              className="flex size-5 items-center justify-center rounded text-content/50 opacity-0 group-hover/chats:opacity-100 hover:bg-content/10 hover:text-content focus:opacity-100"
-            >
-              <Plus className="size-3.5" />
-            </button>
-          </div>
-          <Fold open={chatsOpen}>
-            <div className="flex flex-col gap-px">
-              {groups.chats.map((t) => (
-                <ThreadRows key={t.id} thread={t} actions={rows} />
-              ))}
+              {entry(items[row.index])}
             </div>
-          </Fold>
+          ))}
         </div>
-      ) : null}
-
-      {groups.archived.length ? (
-        <ArchivedProjects
-          groups={groups.archived}
-          rows={rows}
-          onRestore={(p) => void archiveProject(p.id, false)}
-          onDelete={(p) => teardownOrConfirm(p, "delete")}
-        />
-      ) : null}
-
-      {empty ? (
-        <button
-          type="button"
-          onClick={onNewProject}
-          className="flex h-7 items-center gap-1.5 rounded-md px-2 text-[12px] text-content/50 hover:bg-content/5 hover:text-content"
-        >
-          <Plus className="size-3.5" />
-          New project
-        </button>
-      ) : null}
 
       {menu ? (
         <ExplorerMenu
