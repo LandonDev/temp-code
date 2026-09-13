@@ -37,7 +37,7 @@ import { NewProjectDialog } from "./ProjectDialogs";
 import { ThreadDefaultsDialog } from "./ThreadDefaultsDialog";
 import { openOrchestrationSettings } from "../lib/tcserver/rules";
 import { useLiveAgents } from "../lib/liveAgentTracker";
-import { useBusyProjectPaths } from "../hooks/useBusyProjectPaths";
+import { useProjectSignals } from "../hooks/useProjectSignals";
 import type { SettingsSectionId } from "../lib/settings";
 import type { InstalledUpdate } from "../lib/updateNotice";
 import {
@@ -91,7 +91,7 @@ const TAB_LABELS: Record<SidebarTab, string> = {
   changes: "Changes",
 };
 
-function projectPathBusy(
+function projectPathIn(
   paths: Iterable<string> | undefined,
   cwd: string,
 ): boolean {
@@ -221,7 +221,8 @@ function SidebarComponent({
   onOpenWhatsNew,
   onDismissUpdate,
 }: Props) {
-  const busyProjectPaths = useBusyProjectPaths();
+  const { busy: busyProjectPaths, needsYou: needsYouProjectPaths } =
+    useProjectSignals();
   const liveAgents = useLiveAgents();
   const reduceMotion = useReducedMotion();
   const gitRoot = gitCwd || cwd;
@@ -443,7 +444,8 @@ function SidebarComponent({
             <SidebarProjectPicker
               cwd={cwd}
               recents={recents}
-              busy={projectPathBusy(busyProjectPaths, cwd)}
+              busy={projectPathIn(busyProjectPaths, cwd)}
+              needsYou={projectPathIn(needsYouProjectPaths, cwd)}
               onSelectProject={onSelectProject}
               onNewTerminal={onNewTerminal}
               onSearch={onSearch}
@@ -662,6 +664,7 @@ function SidebarComponent({
           recents={recents}
           inboxUnseen={inboxUnseen}
           busyPaths={busyProjectPaths}
+          needsYouPaths={needsYouProjectPaths}
           liveAgents={liveAgents}
           activeSessionId={activeSessionId}
           onSelectAgent={onSelectAgent}
@@ -714,6 +717,7 @@ function SidebarProjectPicker({
   cwd,
   recents,
   busy,
+  needsYou = false,
   onSelectProject,
   onNewTerminal,
   onSearch,
@@ -727,6 +731,7 @@ function SidebarProjectPicker({
   cwd: string;
   recents: RecentProject[];
   busy: boolean;
+  needsYou?: boolean;
   onSelectProject: (path: string) => void;
   onNewTerminal?: () => void;
   onSearch?: () => void;
@@ -780,7 +785,7 @@ function SidebarProjectPicker({
         ) : (
           <ProjectMascot
             project={projectKey}
-            color={color}
+            color={needsYou ? "var(--color-warning)" : color}
             name={resolveTabGroupMascot(projectKey, groupMascots)}
             className="size-3 shrink-0"
             active={busy}

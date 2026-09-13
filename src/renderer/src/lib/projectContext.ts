@@ -15,7 +15,7 @@ export type ResolvedContext = {
   cwd: string;
 };
 
-type Catalog = {
+export type Catalog = {
   workspaces: readonly WorkspaceMeta[];
   projects: readonly ProjectMeta[];
 };

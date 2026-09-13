@@ -111,6 +111,8 @@ type Props = {
   recents: RecentProject[];
   inboxUnseen?: boolean;
   busyPaths?: Iterable<string>;
+  /** Folders holding a thread blocked on the user. Outranks `busyPaths`. */
+  needsYouPaths?: Iterable<string>;
   canGoBack?: boolean;
   canGoForward?: boolean;
   onGoBack?: () => void;
@@ -144,6 +146,7 @@ export function ProjectRail({
   recents,
   inboxUnseen = false,
   busyPaths,
+  needsYouPaths,
   canGoBack = false,
   canGoForward = false,
   onGoBack,
@@ -222,6 +225,11 @@ export function ProjectRail({
     for (const path of busyPaths ?? []) set.add(path);
     return set;
   }, [busyPaths]);
+  const needsYou = useMemo(() => {
+    const set = new Set<string>();
+    for (const path of needsYouPaths ?? []) set.add(path);
+    return set;
+  }, [needsYouPaths]);
 
   useEffect(() => {
     setRailOrder((prev) => {
@@ -456,6 +464,7 @@ export function ProjectRail({
                 items={sections.pinned}
                 cwd={cwd}
                 busy={busy}
+                needsYou={needsYou}
                 sortable={pinnedSortable}
                 pinned
                 searchActive={searchActive || inboxActive || notesActive}
@@ -478,6 +487,7 @@ export function ProjectRail({
               onAdd={onOpenProject}
               cwd={cwd}
               busy={busy}
+              needsYou={needsYou}
               sortable={projectSortable}
               pinned={false}
               searchActive={searchActive || inboxActive || notesActive}
@@ -802,6 +812,7 @@ function ProjectSection({
   onAdd,
   cwd,
   busy,
+  needsYou,
   sortable,
   pinned,
   searchActive,
@@ -821,6 +832,7 @@ function ProjectSection({
   onAdd?: () => void;
   cwd: string;
   busy: Set<string>;
+  needsYou: Set<string>;
   sortable: SortableHandle;
   pinned: boolean;
   searchActive: boolean;
@@ -863,7 +875,8 @@ function ProjectSection({
             key={item.path}
             item={item}
             selected={!searchActive && sameProjectPath(item.path, cwd)}
-            busy={isBusyPath(item.path, busy)}
+            busy={pathIn(item.path, busy)}
+            needsYou={pathIn(item.path, needsYou)}
             pinned={pinned}
             sortable={sortable}
             index={index}
@@ -890,6 +903,7 @@ function ProjectCard({
   item,
   selected,
   busy,
+  needsYou,
   pinned,
   sortable,
   index,
@@ -906,6 +920,7 @@ function ProjectCard({
   item: RecentProject;
   selected: boolean;
   busy: boolean;
+  needsYou: boolean;
   pinned: boolean;
   sortable: SortableHandle;
   index: number;
@@ -953,8 +968,8 @@ function ProjectCard({
   const additions = stats?.additions ?? 0;
   const deletions = stats?.deletions ?? 0;
   const hasChanges = files > 0 || additions > 0 || deletions > 0;
-  const cardTitle = projectCardTitle(item.path, name, stats, busy);
-  const cardAriaLabel = projectCardAriaLabel(name, stats, busy);
+  const cardTitle = projectCardTitle(item.path, name, stats, busy, needsYou);
+  const cardAriaLabel = projectCardAriaLabel(name, stats, busy, needsYou);
 
   return (
     <div
@@ -994,7 +1009,7 @@ function ProjectCard({
         className="flex min-w-0 flex-1 cursor-default items-center gap-2 text-left group-hover:pr-6"
       >
         <div className="grid size-4 shrink-0 place-items-center transition-opacity group-hover:opacity-0">
-          {showLogo && !busy ? (
+          {showLogo && !busy && !needsYou ? (
             <ProjectLogoIcon
               path={logoPath}
               workspaceId={workspaceId}
@@ -1004,7 +1019,7 @@ function ProjectCard({
           ) : (
             <ProjectMascot
               project={projectKey}
-              color={color}
+              color={needsYou ? "var(--color-warning)" : color}
               name={resolveTabGroupMascot(projectKey, groupMascots)}
               className="size-3"
               active={busy}
@@ -1061,8 +1076,8 @@ function ProjectCard({
   );
 }
 
-function isBusyPath(path: string, busy: Set<string>): boolean {
-  for (const other of busy) {
+function pathIn(path: string, paths: Set<string>): boolean {
+  for (const other of paths) {
     if (sameProjectPath(path, other)) return true;
   }
   return false;
@@ -1099,14 +1114,17 @@ function ProjectDiffStat({
   );
 }
 
-function projectCardTitle(
+export function projectCardTitle(
   path: string,
   name: string,
   stats: GitDiffStats | null,
   busy: boolean,
+  needsYou = false,
 ): string {
   const parts = [name, path];
-  if (busy) parts.push("Working");
+  // A blocked thread outranks a working one, and only one of the two is said.
+  if (needsYou) parts.push("Needs you");
+  else if (busy) parts.push("Working");
   const files = stats?.files ?? 0;
   const additions = stats?.additions ?? 0;
   const deletions = stats?.deletions ?? 0;
@@ -1124,13 +1142,15 @@ function projectCardTitle(
   return parts.join("\n");
 }
 
-function projectCardAriaLabel(
+export function projectCardAriaLabel(
   name: string,
   stats: GitDiffStats | null,
   busy: boolean,
+  needsYou = false,
 ): string {
   const parts = [name];
-  if (busy) parts.push("working");
+  if (needsYou) parts.push("needs you");
+  else if (busy) parts.push("working");
   const files = stats?.files ?? 0;
   const additions = stats?.additions ?? 0;
   const deletions = stats?.deletions ?? 0;
