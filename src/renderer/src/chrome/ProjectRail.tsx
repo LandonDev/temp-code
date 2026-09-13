@@ -74,12 +74,11 @@ import { RailAction, RailSearch } from "./RailAction";
 import { RemoveProjectDialog } from "./RemoveProjectDialog";
 import { DevModeSlot, TabVisitNav } from "./TitleBar";
 import { SidebarUpdateFooter } from "./SidebarUpdate";
-import type { InstalledUpdate } from "../lib/updateNotice";
+import { shell, useShell } from "../stores/shell";
 import { SettingsNav } from "./SettingsRail";
 import { Shimmer } from "../surfaces/Shimmer";
 import { TabGroupMenu, type TabGroupMenuExtraItem } from "./TabGroupMenu";
 import { TerminalSpinner } from "./TerminalSpinner";
-import type { SettingsSectionId } from "../lib/settings";
 
 const REVEAL_LABEL = IS_MAC
   ? "Reveal in Finder"
@@ -118,27 +117,16 @@ type Props = {
   onGoBack?: () => void;
   onGoForward?: () => void;
   onSearch?: () => void;
-  searchActive?: boolean;
   onOpenInbox?: () => void;
-  inboxActive?: boolean;
   notesEnabled?: boolean;
   onOpenNotes?: () => void;
-  notesActive?: boolean;
-  onTogglePanel?: () => void;
   onSelectProject: (path: string) => void;
   onOpenProject: () => void;
   onRemoveProject?: (path: string, options: { purgeData: boolean }) => void;
   liveAgents?: LiveAgent[];
   activeSessionId?: string;
   onSelectAgent?: (sessionId: string) => void;
-  settingsOpen?: boolean;
-  settingsSection?: SettingsSectionId;
-  onOpenSettings?: () => void;
-  onSelectSettingsSection?: (section: SettingsSectionId) => void;
-  onCloseSettings?: () => void;
-  updateNotice?: InstalledUpdate | null;
   onOpenWhatsNew?: (version: string, markdown?: string) => void;
-  onDismissUpdate?: () => void;
 };
 
 export function ProjectRail({
@@ -152,28 +140,23 @@ export function ProjectRail({
   onGoBack,
   onGoForward,
   onSearch,
-  searchActive = false,
   onOpenInbox,
-  inboxActive = false,
   notesEnabled = true,
   onOpenNotes,
-  notesActive = false,
-  onTogglePanel,
   onSelectProject,
   onOpenProject,
   onRemoveProject,
   liveAgents = [],
   activeSessionId,
   onSelectAgent,
-  settingsOpen = false,
-  settingsSection = "general",
-  onOpenSettings,
-  onSelectSettingsSection,
-  onCloseSettings,
-  updateNotice = null,
   onOpenWhatsNew,
-  onDismissUpdate,
 }: Props) {
+  const searchActive = useShell((s) => s.searchViewOpen);
+  const inboxActive = useShell((s) => s.inboxViewOpen);
+  const notesActive = useShell((s) => s.notesViewOpen);
+  const settingsOpen = useShell((s) => s.settingsOpen);
+  const settingsSection = useShell((s) => s.settingsSection);
+  const updateNotice = useShell((s) => s.updateNotice);
   const resize = useDragResize({
     min: PROJECT_RAIL_WIDTH_MIN,
     max: () =>
@@ -409,7 +392,7 @@ export function ProjectRail({
           canGoForward={canGoForward}
           onGoBack={onGoBack}
           onGoForward={onGoForward}
-          onTogglePanel={settingsOpen ? undefined : onTogglePanel}
+          onTogglePanel={settingsOpen ? undefined : shell.toggleProjectRail}
           panelActive
         />
       </div>
@@ -417,8 +400,8 @@ export function ProjectRail({
       {settingsOpen ? (
         <SettingsNav
           section={settingsSection}
-          onSelect={(next) => onSelectSettingsSection?.(next)}
-          onClose={() => onCloseSettings?.()}
+          onSelect={shell.selectSettingsSection}
+          onClose={shell.closeSettings}
         />
       ) : (
         <>
@@ -514,13 +497,13 @@ export function ProjectRail({
           <SidebarUpdateFooter
             update={updateNotice}
             onOpenWhatsNew={onOpenWhatsNew}
-            onDismissUpdate={onDismissUpdate}
+            onDismissUpdate={shell.dismissUpdate}
           />
           <div className="flex shrink-0 flex-col gap-px p-2 pt-0">
             <RailAction
               label="Settings"
               icon={Settings}
-              onClick={onOpenSettings}
+              onClick={() => shell.openSettings()}
               shortcut={`${MOD},`}
               ariaLabel={`Settings (${MOD},)`}
             />

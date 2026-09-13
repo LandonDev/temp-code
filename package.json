@@ -101,7 +101,8 @@
     "tinyglobby": "0.2.17",
     "unified": "^11.0.5",
     "ws": "^8.21.3",
-    "zod": "^4.4.3"
+    "zod": "^4.4.3",
+    "zustand": "^5.0.15"
   },
   "devDependencies": {
     "@electron-toolkit/eslint-config-prettier": "^3.0.0",

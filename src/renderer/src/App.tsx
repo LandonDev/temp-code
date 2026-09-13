@@ -22,14 +22,8 @@ import { UsageFooter } from "./chrome/UsageFooter";
 import { useSidebarLayout } from "./hooks/useSidebarLayout";
 import {
   LAYOUT_CHANGE_EVENT,
-  loadSidebarOpen,
-  loadProjectRailOpen,
-  loadSidebarTabOrder,
-  saveSidebarOpen,
-  saveProjectRailOpen,
   toggleTranscriptZen,
   type SidebarLayout,
-  type SidebarTabId,
 } from "./lib/appearance";
 import { IS_MAC } from "./lib/platform";
 import { updateStore } from "./lib/updateStore";
@@ -111,10 +105,7 @@ import {
   tabGroupProject,
   ungroupTabs,
 } from "./lib/tabGroups";
-import {
-  collectWindowTransfer,
-  type WindowTransferPayload,
-} from "./lib/windowTransfer";
+import { collectWindowTransfer } from "./lib/windowTransfer";
 import {
   confirmCloseTerminal,
   confirmCloseTerminals,
@@ -198,6 +189,8 @@ import { draftFromDefaults } from "./lib/tcserver/defaults";
 import type { ThreadType } from "./lib/tcserver/types";
 import { markSessionSeen } from "./lib/sessionSeen";
 import { historyStore } from "./lib/historyStore";
+import type { BootWorkspace } from "./stores/bootstrap";
+import { anyViewOpen, shell, shellStore, useShell } from "./stores/shell";
 import { applyZoom, loadZoom, zoomIn, zoomOut, zoomReset } from "./lib/zoom";
 import { migrateWorkspaces } from "./lib/workspaceMigration";
 import {
@@ -205,7 +198,6 @@ import {
   forgetProject,
   lastProjectPath,
   loadArchivedProjects,
-  loadRecents,
   looksLikeProject,
   normalizeProjectPath,
   rememberProject,
@@ -246,7 +238,6 @@ import {
   saveWorkspaceSnapshot,
   setSessionArchived,
   subscribeSessionHistory,
-  type SessionSummary,
 } from "./lib/sessionStore";
 import {
   sessionStore,
@@ -328,12 +319,9 @@ import {
 import {
   loadLiveAgentsEnabled,
   loadNotesEnabled,
-  loadSettingsSection,
   isSettingsSectionId,
-  saveSettingsSection,
   subscribeLiveAgentsEnabled,
   subscribeNotesEnabled,
-  type SettingsSectionId,
 } from "./lib/settings";
 import {
   handleEditorFindKey,
@@ -353,7 +341,6 @@ import {
   collectWorkspaceSnapshot,
   workspaceSnapshotKey,
 } from "./lib/workspaceSnapshot";
-import type { InstalledUpdate } from "./lib/updateNotice";
 import {
   hasInFlightSessions,
   hideCurrentWindow,
@@ -362,7 +349,6 @@ import {
   persistQuitState,
   reapWindowRuntime,
   setQuitWorkspace,
-  type ResumedWorkspace,
 } from "./lib/appLifecycle";
 
 function userTurnCards(
@@ -410,32 +396,10 @@ function openSessionIds(tabs: WorkspaceTab[]): Set<string> {
 }
 
 
-export default function App({
-  windowTransfer = null,
-  resumed = null,
-  installedUpdate = null,
-  history: bootHistory = [],
-  historyCwd: bootHistoryCwd = null,
-}: {
-  windowTransfer?: WindowTransferPayload | null;
-  resumed?: ResumedWorkspace | null;
-  installedUpdate?: InstalledUpdate | null;
-  history?: SessionSummary[];
-  historyCwd?: string | null;
-}) {
+export default function App({ boot }: { boot: BootWorkspace }) {
   tallyRender("app");
-  const [projectCwd, setProjectCwd] = useState(
-    () =>
-      windowTransfer?.projectCwd ??
-      resumed?.projectCwd ??
-      lastProjectPath() ??
-      "~",
-  );
-  const [recents, setRecents] = useState(() =>
-    resumed?.projectCwd && looksLikeProject(resumed.projectCwd)
-      ? rememberProject(resumed.projectCwd)
-      : loadRecents(),
-  );
+  const [projectCwd, setProjectCwd] = useState(boot.projectCwd);
+  const [recents, setRecents] = useState(boot.recents);
   const catalog = useWorkspaceCatalog();
   const { workspaces, projects } = catalog;
   const catalogRef = useRef(catalog);
@@ -467,48 +431,18 @@ export default function App({
       }))
       .filter((item) => looksLikeProject(item.path) && !hidden.has(item.path));
   }, [catalog.loaded, recents, workspaces]);
-  const [seed] = useState(() => {
-    const cwd = lastProjectPath() ?? "~";
-    const session = newDefaultSession(cwd);
-    const tab = newTab(session.id);
-    return { session, tab };
-  });
-  useState(() => {
-    if (sessionStore.getSnapshot().length === 0) {
-      sessionStore.mutate(
-        windowTransfer?.sessions ?? resumed?.sessions ?? [seed.session],
-      );
-    }
-    return true;
-  });
   /** The open sessions' shells: layout-relevant fields only, so a streamed
    *  turn or a busy flip never re-renders App. Callbacks read the full
    *  sessions from `sessionStore.getSnapshot()`. */
   const sessions = useSessionShells();
   const setSessions = sessionStore.mutate;
-  const [tabs, setTabs] = useState<WorkspaceTab[]>(
-    () => windowTransfer?.tabs ?? resumed?.tabs ?? [seed.tab],
-  );
+  const [tabs, setTabs] = useState<WorkspaceTab[]>(boot.tabs);
   const [projectTerminals, setProjectTerminals] = useState<
     ProjectTerminal[]
-  >(
-    () =>
-      windowTransfer?.projectTerminals ?? resumed?.projectTerminals ?? [],
-  );
+  >(boot.projectTerminals);
   const [projectTerminalFocused, setProjectTerminalFocused] = useState(false);
-  const [activeTabId, setActiveTabId] = useState(
-    () => windowTransfer?.activeTabId ?? resumed?.activeTabId ?? seed.tab.id,
-  );
-  const [composerFocused, setComposerFocused] = useState(() => {
-    if (windowTransfer) return true;
-    if (!resumed) return false;
-    const tab =
-      resumed.tabs.find((entry) => entry.id === resumed.activeTabId) ??
-      resumed.tabs[0];
-    return (
-      !!tab && resumed.sessions.some((session) => session.id === tab.focusedId)
-    );
-  });
+  const [activeTabId, setActiveTabId] = useState(boot.activeTabId);
+  const [composerFocused, setComposerFocused] = useState(boot.composerFocused);
   /** Tab id -> project name, kept in sync with the rendered title tabs. */
   const tabProjectsRef = useRef(new Map<string, string>());
   /** Deck tab ids in strip order: the chips' tabs (live row, then shelf), then tabs with no chip. */
@@ -519,8 +453,8 @@ export default function App({
     (id: string) => tabProjectsRef.current.get(id),
     [],
   );
-  const [sidebarOpen, setSidebarOpen] = useState(loadSidebarOpen);
-  const [projectRailOpen, setProjectRailOpen] = useState(loadProjectRailOpen);
+  const sidebarOpen = useShell((s) => s.sidebarOpen);
+  const projectRailOpen = useShell((s) => s.projectRailOpen);
   const sidebarLayout = useSidebarLayout();
   const deckLayout = sidebarLayout === "deck";
   const tabCloseScope = deckLayout ? "project" : "workspace";
@@ -528,16 +462,12 @@ export default function App({
     ? findProjectTerminal(projectTerminals, dockCwd)
     : undefined;
   const dockVisible = !!currentProjectDock?.open;
-  const [sidebarTab, setSidebarTab] = useState<SidebarTabId>(
-    () => loadSidebarTabOrder()[0] ?? "sessions",
-  );
+  const sidebarTab = useShell((s) => s.sidebarTab);
   const classicInbox = !deckLayout && sidebarTab === "inbox";
-  const [filesSearchOpen, setFilesSearchOpen] = useState(false);
-  const [searchFocusToken, setSearchFocusToken] = useState(0);
-  const [searchViewOpen, setSearchViewOpen] = useState(false);
-  const [searchViewFocusToken, setSearchViewFocusToken] = useState(0);
-  const [inboxViewOpen, setInboxViewOpen] = useState(false);
-  const [notesViewOpen, setNotesViewOpen] = useState(false);
+  const searchViewOpen = useShell((s) => s.searchViewOpen);
+  const searchViewFocusToken = useShell((s) => s.searchViewFocusToken);
+  const inboxViewOpen = useShell((s) => s.inboxViewOpen);
+  const notesViewOpen = useShell((s) => s.notesViewOpen);
   const notesEnabled = useSyncExternalStore(
     subscribeNotesEnabled,
     loadNotesEnabled,
@@ -548,21 +478,15 @@ export default function App({
     loadLiveAgentsEnabled,
     () => true,
   );
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  const [updateNotice, setUpdateNotice] = useState(installedUpdate);
-  const [whatsNew, setWhatsNew] = useState<{
-    version: string;
-    markdown?: string;
-  } | null>(null);
-  const [settingsSection, setSettingsSection] =
-    useState<SettingsSectionId>(loadSettingsSection);
+  const settingsOpen = useShell((s) => s.settingsOpen);
+  const whatsNew = useShell((s) => s.whatsNew);
   const [editorNavigation, setEditorNavigation] =
     useState<EditorNavigationTarget | null>(null);
   const editorNavigationToken = useRef(0);
-  const [filePickerOpen, setFilePickerOpen] = useState(false);
-  const [symbolPickerOpen, setSymbolPickerOpen] = useState(false);
+  const filePickerOpen = useShell((s) => s.filePickerOpen);
+  const symbolPickerOpen = useShell((s) => s.symbolPickerOpen);
   const [dirtyFiles, setDirtyFiles] = useState<Set<string>>(
-    () => new Set(windowTransfer?.dirtyFileIds ?? []),
+    () => new Set(boot.dirtyFileIds),
   );
   // Not carried across a window transfer the way dirty state is: the editor
   // re-lints whatever it mounts, so the counts rebuild themselves.
@@ -570,10 +494,6 @@ export default function App({
     () => new Map(),
   );
   // History lives in historyStore so its per-turn refreshes skip App.
-  useState(() => {
-    if (historyStore.get().length === 0 && bootHistory.length > 0) historyStore.set(bootHistory);
-    return true;
-  });
   const setHistory = historyStore.set;
   /**
    * Projects whose rows are already in `history`. This has to be state, not a
@@ -581,10 +501,7 @@ export default function App({
    * a new project must already know the listing has not arrived yet.
    */
   const [loadedProjects, setLoadedProjects] = useState<ReadonlySet<string>>(
-    () =>
-      bootHistoryCwd
-        ? new Set([normalizeProjectPath(bootHistoryCwd)])
-        : new Set(),
+    boot.loadedProjects,
   );
   const loadedProjectsRef = useRef(loadedProjects);
   loadedProjectsRef.current = loadedProjects;
@@ -597,15 +514,8 @@ export default function App({
   activeTabIdRef.current = activeTabId;
   const projectCwdRef = useRef(projectCwd);
   projectCwdRef.current = projectCwd;
-  const searchViewOpenRef = useRef(searchViewOpen);
-  searchViewOpenRef.current = searchViewOpen;
-  const inboxViewOpenRef = useRef(inboxViewOpen);
-  inboxViewOpenRef.current = inboxViewOpen;
-  const notesViewOpenRef = useRef(notesViewOpen);
-  notesViewOpenRef.current = notesViewOpen;
-
   useEffect(() => {
-    if (!notesEnabled) setNotesViewOpen(false);
+    if (!notesEnabled) shell.closeNotes();
   }, [notesEnabled]);
 
   const deckLayoutRef = useRef(deckLayout);
@@ -652,7 +562,7 @@ export default function App({
       window.removeEventListener("pagehide", reap);
       window.removeEventListener("beforeunload", reap);
     };
-  }, [resumed]);
+  }, []);
 
   // Tool results refresh open editors, as the local adapters' tool.updated
   // events did. Checkpoints follow the server's turn events instead.
@@ -1176,7 +1086,7 @@ export default function App({
 
   const onOpenWhatsNew = useCallback((version: string, markdown?: string) => {
     if (markdown) {
-      setWhatsNew({ version, markdown });
+      shell.showWhatsNew({ version, markdown });
       return;
     }
     const document = releaseNotesForVersion(version);
@@ -1187,13 +1097,11 @@ export default function App({
       );
       return;
     }
-    setWhatsNew({ version: document.source.version });
+    shell.showWhatsNew({ version: document.source.version });
   }, []);
 
   const onNew = useCallback(() => {
-    setSearchViewOpen(false);
-    setInboxViewOpen(false);
-    setNotesViewOpen(false);
+    shell.closeViews();
     const session = createSessionHere();
     const tab = newTab(session.id);
     setSessions((prev) => [...prev, session]);
@@ -1206,9 +1114,7 @@ export default function App({
   /** Sidebar: a chat in the given project (null = loose chat in this workspace). */
   const onNewChat = useCallback(
     (projectId: string | null) => {
-      setSearchViewOpen(false);
-      setInboxViewOpen(false);
-      setNotesViewOpen(false);
+      shell.closeViews();
       setSelectedProjectId(projectId);
       const session = createSessionHere({ projectId });
       const tab = newTab(session.id);
@@ -1230,9 +1136,7 @@ export default function App({
       if (!projectId) return;
       // A full-screen view (inbox, notes, search) would otherwise stay on top
       // of the pane, most visibly when that project's tab is already active.
-      setSearchViewOpen(false);
-      setInboxViewOpen(false);
-      setNotesViewOpen(false);
+      shell.closeViews();
       const tabs = tabsRef.current;
       const sessions = sessionStore.getSnapshot();
       const inProject = (tab: WorkspaceTab) =>
@@ -1279,9 +1183,7 @@ export default function App({
   const onStartInboxItem = useCallback(
     async (item: InboxItem, body?: string) => {
       const start = (description?: string) => {
-        setInboxViewOpen(false);
-        setNotesViewOpen(false);
-        setSidebarTab("sessions");
+        shell.leaveToSessions();
         const ctx = item.projectPath
           ? cwdContext(item.projectPath)
           : sessionContext();
@@ -1333,10 +1235,7 @@ export default function App({
   const onAddNoteToChat = useCallback(
     (card: NoteComposerCard) => {
       if (!card.id) return;
-      setSearchViewOpen(false);
-      setInboxViewOpen(false);
-      setNotesViewOpen(false);
-      setSidebarTab("sessions");
+      shell.leaveToSessions();
       const ctx =
         card.sourceCwd && looksLikeProject(card.sourceCwd)
           ? cwdContext(card.sourceCwd)
@@ -2289,11 +2188,7 @@ export default function App({
             };
           }),
         );
-        if (deckLayoutRef.current) {
-          setSidebarOpen(true);
-          saveSidebarOpen(true);
-          setSidebarTab("changes");
-        }
+        if (deckLayoutRef.current) shell.showSidebarTab("changes");
         setComposerFocused(false);
       })();
     },
@@ -2321,9 +2216,7 @@ export default function App({
   }, [activeTabId]);
 
   const onShowSourceControl = useCallback(() => {
-    setSidebarOpen(true);
-    saveSidebarOpen(true);
-    setSidebarTab("changes");
+    shell.showSidebarTab("changes");
   }, []);
 
   const onToggleChanges = useCallback(() => {
@@ -2930,9 +2823,7 @@ export default function App({
 
   const onSelectProject = useCallback(
     (path: string) => {
-      setSearchViewOpen(false);
-      setInboxViewOpen(false);
-      setNotesViewOpen(false);
+      shell.closeViews();
       const normalized = normalizeProjectPath(path);
       if (!looksLikeProject(normalized)) return;
 
@@ -2992,14 +2883,14 @@ export default function App({
     [activateTab, appendTab, cwdContext, onCwdChange, openLanding, seededSession],
   );
 
-  const [newWorkspacePath, setNewWorkspacePath] = useState<string | null>(null);
+  const newWorkspacePath = useShell((s) => s.newWorkspacePath);
   const pickProject = useCallback(async () => {
     const path = await pickFolder();
     if (!path) return;
     // A folder the catalog knows just comes forward; a new one gets the
     // New Workspace dialog (turn pass) before it joins.
     if (workspaceByPath(workspaceStore.workspaces, path)) onSelectProject(path);
-    else setNewWorkspacePath(path);
+    else shell.setNewWorkspacePath(path);
   }, [onSelectProject]);
 
   const onRemoveProject = useCallback(
@@ -3762,9 +3653,7 @@ export default function App({
 
   const onSelectLiveAgent = useCallback(
     (sessionId: string) => {
-      setSearchViewOpen(false);
-      setInboxViewOpen(false);
-      setNotesViewOpen(false);
+      shell.closeViews();
       onOpenApprovalSession(sessionId);
     },
     [onOpenApprovalSession],
@@ -3773,9 +3662,7 @@ export default function App({
   const railOpen = useRightRailOpen();
   const onHeaderNew = useCallback(
     (threadType: ThreadType, threadRules: ThreadRules | null) => {
-      setSearchViewOpen(false);
-      setInboxViewOpen(false);
-      setNotesViewOpen(false);
+      shell.closeViews();
       const session = createSessionHere({
         projectId: selectedProjectIdRef.current,
         threadType,
@@ -3850,44 +3737,12 @@ export default function App({
     ? sessionContext(selectedProjectId).workspaceId ?? null
     : null;
 
-  const onToggleSidebar = useCallback(() => {
-    if (deckLayout) {
-      setProjectRailOpen((open) => {
-        const next = !open;
-        saveProjectRailOpen(next);
-        return next;
-      });
-      return;
-    }
-    setSidebarOpen((open) => {
-      const next = !open;
-      saveSidebarOpen(next);
-      return next;
-    });
-  }, [deckLayout]);
-
-  const onToggleProjectRail = useCallback(() => {
-    setProjectRailOpen((open) => {
-      const next = !open;
-      saveProjectRailOpen(next);
-      return next;
-    });
-  }, []);
-
-  const onGoToFile = useCallback(() => {
-    setSearchViewOpen(false);
-    setInboxViewOpen(false);
-    setNotesViewOpen(false);
-    setFilePickerOpen(true);
-  }, []);
-
-  const onGoToSymbol = useCallback(() => {
-    setSearchViewOpen(false);
-    setInboxViewOpen(false);
-    setNotesViewOpen(false);
-    setFilePickerOpen(false);
-    setSymbolPickerOpen(true);
-  }, []);
+  const onToggleSidebar = useCallback(
+    () => shell.toggleSidebar(sidebarLayout),
+    [sidebarLayout],
+  );
+  const onGoToFile = shell.openFilePicker;
+  const onGoToSymbol = shell.openSymbolPicker;
 
   // ⌘T: the type hierarchy at the caret of a focused Monaco editor; with no
   // editor focused it falls back to the symbol picker.
@@ -3909,75 +3764,14 @@ export default function App({
     void flushAllEditors();
   }, []);
 
-  const onFindInProject = useCallback(() => {
-    setSearchViewOpen(false);
-    setInboxViewOpen(false);
-    setNotesViewOpen(false);
-    setSidebarOpen(true);
-    saveSidebarOpen(true);
-    setSidebarTab("files");
-    setFilesSearchOpen(true);
-    setSearchFocusToken((token) => token + 1);
-  }, []);
-
-  const onOpenSearch = useCallback(() => {
-    setFilePickerOpen(false);
-    setSettingsOpen(false);
-    setInboxViewOpen(false);
-    setNotesViewOpen(false);
-    setSearchViewOpen(true);
-    setSearchViewFocusToken((token) => token + 1);
-  }, []);
-
-  const onLeaveSearch = useCallback(() => {
-    setSearchViewOpen(false);
-  }, []);
-
-  const onOpenInbox = useCallback(() => {
-    setFilePickerOpen(false);
-    setSettingsOpen(false);
-    setSearchViewOpen(false);
-    setNotesViewOpen(false);
-    if (deckLayout) {
-      setInboxViewOpen(true);
-      return;
-    }
-    setInboxViewOpen(false);
-    setSidebarOpen(true);
-    saveSidebarOpen(true);
-    setSidebarTab("inbox");
-  }, [deckLayout]);
-
-  const onLeaveInbox = useCallback(() => {
-    setInboxViewOpen(false);
-  }, []);
-
-  const onOpenNotes = useCallback(() => {
-    if (!loadNotesEnabled()) return;
-    setFilePickerOpen(false);
-    setSettingsOpen(false);
-    setSearchViewOpen(false);
-    setInboxViewOpen(false);
-    setNotesViewOpen(true);
-  }, []);
-
-  const onLeaveNotes = useCallback(() => {
-    setNotesViewOpen(false);
-  }, []);
-
-  const openSettings = useCallback((section?: SettingsSectionId) => {
-    setFilePickerOpen(false);
-    setSearchViewOpen(false);
-    setInboxViewOpen(false);
-    setNotesViewOpen(false);
-    if (section) {
-      setSettingsSection(section);
-      saveSettingsSection(section);
-    }
-    setSettingsOpen(true);
-  }, []);
-
-  const onOpenSettings = useCallback(() => openSettings(), [openSettings]);
+  const onFindInProject = shell.openFilesSearch;
+  const onOpenSearch = shell.openSearchView;
+  const onLeaveSearch = shell.closeSearchView;
+  const onOpenInbox = useCallback(() => shell.openInbox(sidebarLayout), [sidebarLayout]);
+  const onLeaveInbox = shell.closeInbox;
+  const onOpenNotes = shell.openNotes;
+  const onLeaveNotes = shell.closeNotes;
+  const onOpenSettings = useCallback(() => shell.openSettings(), []);
 
   // The editor chunk asks for a docked debug pane (⌃D) and for the
   // Settings Editor section (the EULA gate) through window events.
@@ -3993,7 +3787,7 @@ export default function App({
     };
     const onSettings = (event: Event) => {
       const section = (event as CustomEvent<string>).detail;
-      openSettings(isSettingsSectionId(section) ? section : undefined);
+      shell.openSettings(isSettingsSectionId(section) ? section : undefined);
     };
     window.addEventListener(OPEN_DEBUG_EVENT, onDebug);
     window.addEventListener(OPEN_SETTINGS_EVENT, onSettings);
@@ -4001,50 +3795,23 @@ export default function App({
       window.removeEventListener(OPEN_DEBUG_EVENT, onDebug);
       window.removeEventListener(OPEN_SETTINGS_EVENT, onSettings);
     };
-  }, [openSettings]);
-
-  const onCloseSettings = useCallback(() => {
-    setSettingsOpen(false);
-  }, []);
-
-  const onSelectSettingsSection = useCallback((section: SettingsSectionId) => {
-    setSettingsSection(section);
-    saveSettingsSection(section);
   }, []);
 
   const onOpenArchivedSession = useCallback(
     (sessionId: string) => {
-      setSettingsOpen(false);
+      shell.closeSettings();
       void onSelectHistorySession(sessionId);
     },
     [onSelectHistorySession],
   );
 
   const onRailBack = useCallback(() => {
-    if (settingsOpen) {
-      setSettingsOpen(false);
-      return;
-    }
-    if (searchViewOpen) {
-      setSearchViewOpen(false);
-      return;
-    }
-    if (inboxViewOpen) {
-      setInboxViewOpen(false);
-      return;
-    }
-    if (notesViewOpen) {
-      setNotesViewOpen(false);
-      return;
-    }
+    if (shell.leaveTopOverlay()) return;
     onVisitBack();
-  }, [onVisitBack, searchViewOpen, settingsOpen, inboxViewOpen, notesViewOpen]);
+  }, [onVisitBack]);
 
   const onRailForward = useCallback(() => {
-    setSearchViewOpen(false);
-    setSettingsOpen(false);
-    setInboxViewOpen(false);
-    setNotesViewOpen(false);
+    shell.closeOverlays();
     onVisitForward();
   }, [onVisitForward]);
 
@@ -4054,36 +3821,16 @@ export default function App({
       setTabs((prev) =>
         prev.map((tab) => ({ ...tab, diffOpen: false, diffFocused: false })),
       );
-      if (layout === "classic") {
-        setSidebarTab((tab) =>
-          inboxViewOpenRef.current
-            ? "inbox"
-            : tab === "changes"
-              ? "sessions"
-              : tab,
-        );
-        if (inboxViewOpenRef.current) {
-          setInboxViewOpen(false);
-          setSidebarOpen(true);
-          saveSidebarOpen(true);
-        }
-        setProjectTerminalFocused(false);
-      } else {
-        setSidebarTab((tab) => (tab === "inbox" ? "sessions" : tab));
-      }
+      shell.applyLayoutChange(layout);
+      if (layout === "classic") setProjectTerminalFocused(false);
     };
     window.addEventListener(LAYOUT_CHANGE_EVENT, onLayoutChange);
     return () => window.removeEventListener(LAYOUT_CHANGE_EVENT, onLayoutChange);
   }, []);
 
   useEffect(() => {
-    if (!deckLayout && sidebarTab === "changes") {
-      setSidebarTab("sessions");
-    }
-    if (deckLayout && sidebarTab === "inbox") {
-      setSidebarTab("sessions");
-    }
-  }, [deckLayout, sidebarTab]);
+    shell.settleSidebarTab(sidebarLayout);
+  }, [sidebarLayout, sidebarTab]);
 
   useEffect(() => {
     if (!dockVisible) setProjectTerminalFocused(false);
@@ -4133,7 +3880,7 @@ export default function App({
     onNewTerminal,
     onNewTerminalTab,
     onToggleProjectTerminal,
-    openSettings,
+    openSettings: shell.openSettings,
   });
   actions.current = {
     onNew,
@@ -4158,7 +3905,7 @@ export default function App({
     onNewTerminal,
     onNewTerminalTab,
     onToggleProjectTerminal,
-    openSettings,
+    openSettings: shell.openSettings,
   };
 
   const debounce = useRef({ name: "", at: 0 });
@@ -4242,9 +3989,7 @@ export default function App({
       const lightboxOpen = isLightboxOpen();
       if (
         !lightboxOpen &&
-        !searchViewOpenRef.current &&
-        !inboxViewOpenRef.current &&
-        !notesViewOpenRef.current &&
+        !anyViewOpen(shellStore.getState()) &&
         handleEditorFindKey(e)
       ) {
         e.stopPropagation();
@@ -4313,14 +4058,8 @@ export default function App({
       <Sidebar
         cwd={sidebarCwd}
         gitCwd={gitCwd}
-        open={deckLayout || sidebarOpen || settingsOpen}
         layout={sidebarLayout}
-        tab={sidebarTab}
-        onTabChange={setSidebarTab}
-        filesSearchOpen={filesSearchOpen}
-        onFilesSearchOpenChange={setFilesSearchOpen}
         onOpenFilesSearch={onFindInProject}
-        searchFocusToken={searchFocusToken}
         activeSessionId={active?.id}
         onSelectSession={onSelectHistorySession}
         onRenameSession={onRenameHistorySession}
@@ -4329,7 +4068,7 @@ export default function App({
         onOpenTerminal={(cwd) => onOpenTerminal(cwd)}
         onFileMoved={onFileMoved}
         onFileDeleted={onFileDeleted}
-        canGoBack={tabVisitNav.canBack || searchViewOpen || settingsOpen || inboxViewOpen || notesViewOpen}
+        canGoBack={tabVisitNav.canBack}
         canGoForward={tabVisitNav.canForward}
         onGoBack={onRailBack}
         onGoForward={onRailForward}
@@ -4355,20 +4094,8 @@ export default function App({
         onOpenInbox={onOpenInbox}
         onOpenNotes={notesEnabled ? onOpenNotes : undefined}
         onGoToFile={deckLayout ? onGoToFile : undefined}
-        searchActive={searchViewOpen}
-        inboxActive={inboxViewOpen}
-        notesActive={notesViewOpen}
         notesEnabled={notesEnabled}
-        projectRailOpen={projectRailOpen}
-        onToggleProjectRail={onToggleProjectRail}
-        settingsOpen={settingsOpen}
-        settingsSection={settingsSection}
-        onOpenSettings={onOpenSettings}
-        onSelectSettingsSection={onSelectSettingsSection}
-        onCloseSettings={onCloseSettings}
-        updateNotice={updateNotice}
         onOpenWhatsNew={onOpenWhatsNew}
-        onDismissUpdate={() => setUpdateNotice(null)}
       />
 
       <div className="body-glass flex min-h-0 min-w-0 flex-1 flex-col">
@@ -4417,9 +4144,7 @@ export default function App({
           activeId={activeTabId}
           cwd={sidebarCwd}
           gitCwd={gitCwd}
-          sidebarOpen={deckLayout || sidebarOpen}
           deckLayout={deckLayout}
-          projectRailOpen={projectRailOpen}
           sourceControlActive={
             deckLayout
               ? sidebarOpen && sidebarTab === "changes"
@@ -4641,10 +4366,7 @@ export default function App({
         ) : null}
         {settingsOpen ? (
           <SettingsView
-            section={settingsSection}
             cwd={sidebarCwd}
-            besideRail={deckLayout || sidebarOpen || settingsOpen}
-            onClose={onCloseSettings}
             onOpenSession={onOpenArchivedSession}
             onArchiveSession={onArchiveHistorySession}
             onDeleteSession={onDeleteHistorySession}
@@ -4672,7 +4394,7 @@ export default function App({
           cwd={gitCwd}
           openPaths={openFilePaths}
           onOpenFile={onOpenFile}
-          onClose={() => setFilePickerOpen(false)}
+          onClose={shell.closeFilePicker}
         />
       ) : null}
 
@@ -4680,7 +4402,7 @@ export default function App({
         <SymbolPicker
           projectId={projectForCwd(gitCwd, projects)?.id ?? selectedProjectId ?? null}
           onOpen={(path, navigation) => onOpenFile(path, navigation, { editor: "monaco" })}
-          onClose={() => setSymbolPickerOpen(false)}
+          onClose={shell.closeSymbolPicker}
         />
       ) : null}
 
@@ -4695,15 +4417,15 @@ export default function App({
         <WhatsNewDialog
           version={whatsNew.version}
           markdown={whatsNew.markdown}
-          onClose={() => setWhatsNew(null)}
+          onClose={shell.dismissWhatsNew}
         />
       ) : null}
       {newWorkspacePath ? (
         <NewWorkspaceDialog
           path={newWorkspacePath}
-          onClose={() => setNewWorkspacePath(null)}
+          onClose={() => shell.setNewWorkspacePath(null)}
           onCreated={(workspace) => {
-            setNewWorkspacePath(null);
+            shell.setNewWorkspacePath(null);
             onSelectProject(workspace.path);
           }}
         />

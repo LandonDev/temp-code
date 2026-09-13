@@ -10,7 +10,6 @@ import {
   useCallback,
   useEffect,
   useMemo,
-  useRef,
   useState,
   useSyncExternalStore,
 } from "react";
@@ -142,7 +141,6 @@ import {
   settingsSectionLabel,
   SUMMARY_MODELS,
   type MidTurnDefault,
-  type SettingsSectionId,
   type SummaryModel,
 } from "../lib/settings";
 import { SPRING_LAYOUT } from "../lib/ease";
@@ -170,12 +168,10 @@ import { Heading, Row, Segmented, Select, SecondaryButton, Toggle } from "./sett
 import { AppshotsPage } from "./AppshotsSettings";
 import { MatrixSpinner } from "./threads/bits";
 import { installing, updateStore, useUpdateSnapshot } from "../lib/updateStore";
+import { shell, useShell } from "../stores/shell";
 
 type Props = {
-  section: SettingsSectionId;
   cwd: string;
-  besideRail?: boolean;
-  onClose: () => void;
   onOpenSession: (sessionId: string) => void;
   onArchiveSession: (sessionId: string, archived: boolean) => void;
   onDeleteSession: (sessionId: string) => void;
@@ -185,9 +181,6 @@ type Props = {
 };
 
 export function SettingsView({
-  section,
-  besideRail = false,
-  onClose,
   onOpenSession,
   onArchiveSession,
   onDeleteSession,
@@ -198,8 +191,7 @@ export function SettingsView({
   // `cwd` stays in Props for the caller; the archive page lists every
   // project's threads from the server instead.
   const lockOverscroll = useLockOverscroll<HTMLDivElement>();
-  const onCloseRef = useRef(onClose);
-  onCloseRef.current = onClose;
+  const section = useShell((s) => s.settingsSection);
   const appearance = useAppearanceSettings();
   const workspaceId = workspaceOfSection(section);
   const workspace = useWorkspaces().find((w) => w.id === workspaceId);
@@ -212,7 +204,7 @@ export function SettingsView({
       if ((event.target as Element | null)?.closest?.('[role="dialog"]')) return;
       event.preventDefault();
       event.stopPropagation();
-      onCloseRef.current();
+      shell.closeSettings();
     };
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
@@ -229,7 +221,6 @@ export function SettingsView({
         className="flex h-10 shrink-0 select-none items-center border-b border-content/10"
         data-tauri-drag-region="deep"
       >
-        {IS_MAC && !besideRail ? <div className="w-[78px] shrink-0" /> : null}
         <div className="flex min-w-0 flex-1 items-center gap-2 px-3 text-[13px]">
           <span className="shrink-0 text-content/45">Settings</span>
           <span aria-hidden className="shrink-0 text-content/25">
