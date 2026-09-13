@@ -63,7 +63,13 @@ import {
 } from '../lib/settings'
 import { ComposerAction } from './ComposerAction'
 import { decideComposerAction, type ComposerIntent } from '../lib/composerAction'
-import { ComposerInput, type ComposerInputHandle, type ComposerToken } from './ComposerInput'
+import {
+  ComposerInput,
+  NO_TOKENS,
+  sameTokens,
+  type ComposerInputHandle,
+  type ComposerToken
+} from './ComposerInput'
 import { saveComposerDraft, takeComposerDraft } from '../lib/composerDrafts'
 import { Lightbox } from './Lightbox'
 import {
@@ -214,7 +220,9 @@ export function Composer({
   const caretRef = useRef(0)
   const chipsRef = useRef<Array<[number, number]>>([])
   const consumedQuoteId = useRef<number | null>(null)
-  const [draft, setDraft] = useState(initialDraft ?? '')
+  /** The serialized text as last reported. A ref: typing must not render
+   *  the composer; the token paint below is the only thing that reads it. */
+  const draftRef = useRef(initialDraft ?? '')
   const [hasValue, setHasValue] = useState(
     () => (initialDraft ?? '').trim().length > 0 || !!inboxCard || !!noteCard || !!handoffCard
   )
@@ -266,25 +274,47 @@ export function Composer({
   const mentionIndex = useMemo(() => buildMentionIndex(mentionFiles), [mentionFiles])
   // Plain `/skill` and `@file` runs get their colour; connector tokens are
   // chips already, so their command parts are skipped.
-  const tokens = useMemo<ComposerToken[]>(() => {
-    const out: ComposerToken[] = []
-    let offset = 0
-    for (const part of commandTextParts(draft, commandsByName)) {
-      if (part.command) {
-        if (part.command.source !== 'plugin' && part.command.source !== 'mcp') {
-          out.push({ start: offset, end: offset + part.text.length, kind: 'skill' })
+  const tokensFor = useCallback(
+    (text: string): ComposerToken[] => {
+      const out: ComposerToken[] = []
+      let offset = 0
+      for (const part of commandTextParts(text, commandsByName)) {
+        if (part.command) {
+          if (part.command.source !== 'plugin' && part.command.source !== 'mcp') {
+            out.push({ start: offset, end: offset + part.text.length, kind: 'skill' })
+          }
+        } else {
+          let inner = offset
+          for (const run of fileMentionParts(part.text, mentionIndex.labels)) {
+            if (run.file) out.push({ start: inner, end: inner + run.text.length, kind: 'mention' })
+            inner += run.text.length
+          }
         }
-      } else {
-        let inner = offset
-        for (const run of fileMentionParts(part.text, mentionIndex.labels)) {
-          if (run.file) out.push({ start: inner, end: inner + run.text.length, kind: 'mention' })
-          inner += run.text.length
-        }
+        offset += part.text.length
       }
-      offset += part.text.length
+      return out.length === 0 ? NO_TOKENS : out
+    },
+    [commandsByName, mentionIndex]
+  )
+  // The paint runs once per frame, not per keystroke, and renders only when
+  // a token actually moved — plain typing leaves the composer alone.
+  const [tokens, setTokens] = useState<ComposerToken[]>(NO_TOKENS)
+  const repaintFrame = useRef<number | null>(null)
+  const scheduleRepaint = useCallback(() => {
+    if (repaintFrame.current !== null) return
+    repaintFrame.current = requestAnimationFrame(() => {
+      repaintFrame.current = null
+      const next = tokensFor(draftRef.current)
+      setTokens((prev) => (sameTokens(prev, next) ? prev : next))
+    })
+  }, [tokensFor])
+  useEffect(() => {
+    scheduleRepaint()
+    return () => {
+      if (repaintFrame.current !== null) cancelAnimationFrame(repaintFrame.current)
+      repaintFrame.current = null
     }
-    return out
-  }, [commandsByName, draft, mentionIndex])
+  }, [scheduleRepaint])
   // `@path` has to end on whitespace, so files with spaces cannot be mentioned.
   const mentionable = useMemo(
     () => files.filter((file) => !file.isDir && !/\s/.test(file.relative)),
@@ -442,7 +472,10 @@ export function Composer({
     (text: string, caret: number, chips: Array<[number, number]>) => {
       caretRef.current = caret
       chipsRef.current = chips
-      setDraft(text)
+      if (text !== draftRef.current) {
+        draftRef.current = text
+        scheduleRepaint()
+      }
       syncHasValue(text, attachmentsRef.current)
       const next = triggerAt(text, caret)
       const covered = next ? chips.some(([a, b]) => next.start < b && caret > a) : false
@@ -452,7 +485,7 @@ export function Composer({
         return prev.mode === t.mode && prev.start === t.start && prev.query === t.query ? prev : t
       })
     },
-    [syncHasValue]
+    [scheduleRepaint, syncHasValue]
   )
 
   // A thread's composer keeps what it held across pane changes; a fresh one
@@ -597,7 +630,6 @@ export function Composer({
     })
     onSubmit(text, files, intent === 'pause' ? 'send' : intent)
     inputRef.current?.clear()
-    setDraft('')
     setAttachments([])
     setTrigger(null)
     syncHasValue('', [])
@@ -634,7 +666,7 @@ export function Composer({
     const copied = readCopiedMessage(e.clipboardData)
     if (copied) {
       e.preventDefault()
-      if (copied.text) document.execCommand('insertText', false, copied.text)
+      if (copied.text) inputRef.current?.insertText(copied.text)
       if (copied.attachments.length) addAttachments(copied.attachments)
       return
     }
@@ -644,6 +676,15 @@ export function Composer({
     if (!attachmentsSupported) return
     void attachmentsFromFiles(files).then(addAttachments)
   }
+
+  // A pasted log or file's worth of text rides as a file, not as typed
+  // text — a contenteditable holding 100 KB crawls on every keystroke.
+  const attachLargePaste = useCallback(
+    (file: File) => {
+      void attachmentsFromFiles([file]).then(addAttachments)
+    },
+    [addAttachments]
+  )
 
   const attachFromPicker = () => {
     if (!attachmentsSupported) return
@@ -776,8 +817,9 @@ export function Composer({
             onFocus={onFocus}
             onKeyDown={onKeyDown}
             onPaste={onPaste}
+            attachLargePastes={attachmentsSupported ? attachLargePaste : undefined}
             onState={(text, caret, chips) => {
-              setDismissed((prev) => (prev && text !== draft ? null : prev))
+              if (text !== draftRef.current) setDismissed((prev) => (prev ? null : prev))
               onInputState(text, caret, chips)
             }}
           />

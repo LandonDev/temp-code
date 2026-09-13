@@ -10,7 +10,20 @@ import {
 import { brandOf } from '../lib/addonBrand'
 import { addonTitle } from '../lib/addonNames'
 import { morphTextareaHeight } from '../lib/composerHeight'
+import { pastePlan } from '../lib/composerPaste'
+import {
+  insertPlainText,
+  positionsFor,
+  readComposer,
+  selectionIn,
+  serializeComposer,
+  snapshotSegments,
+  type ComposerChip,
+  type ComposerSegment
+} from '../lib/composerText'
 import { tallyRender } from '../lib/devRenders'
+
+export type { ComposerChip, ComposerSegment } from '../lib/composerText'
 
 /**
  * The composer's input: a managed contenteditable that renders connector
@@ -25,16 +38,6 @@ import { tallyRender } from '../lib/devRenders'
  * draft, clearing on send) go through the imperative handle.
  */
 
-export interface ComposerChip {
-  /** the literal token serialized into the message (e.g. "/linear") */
-  token: string
-  /** addon name for the label + brand mark */
-  name: string
-}
-
-/** One run of composer content — drafts round-trip through these. */
-export type ComposerSegment = { text: string } | { chip: ComposerChip }
-
 /** A plain `/skill` or `@mention` run to paint in the serialized text. */
 export type ComposerToken = { start: number; end: number; kind: 'skill' | 'mention' }
 
@@ -48,6 +51,8 @@ export interface ComposerInputHandle {
     to: number,
     insert: { text: string } | { chip: ComposerChip }
   ) => void
+  /** type plain text at the caret (or the end) as one edit — ⌘Z takes it back whole */
+  insertText: (text: string) => void
   clear: () => void
   /** current content as segments, chips intact — for saving a draft */
   snapshot: () => ComposerSegment[]
@@ -56,141 +61,6 @@ export interface ComposerInputHandle {
 }
 
 const HIGHLIGHT_NAMES = { skill: 'composer-skill', mention: 'composer-mention' } as const
-
-function isBlock(node: HTMLElement): boolean {
-  return getComputedStyle(node).display === 'block'
-}
-
-/** Serialized text contributed by one DOM node. */
-function serialize(node: Node): string {
-  if (node.nodeType === Node.TEXT_NODE) return node.nodeValue ?? ''
-  if (node instanceof HTMLElement) {
-    if (node.dataset.token !== undefined) return node.dataset.token
-    if (node.tagName === 'BR') return '\n'
-    // block children (divs the browser makes on line breaks) begin new lines
-    const inner = [...node.childNodes].map(serialize).join('')
-    return isBlock(node) ? `\n${inner}` : inner
-  }
-  return ''
-}
-
-function serializeAll(root: HTMLElement): string {
-  const out = [...root.childNodes].map(serialize).join('')
-  // The first block child would add a leading newline that isn't there.
-  return out.startsWith('\n') ? out.slice(1) : out
-}
-
-/** [start, end) spans the chips occupy in the serialized text — the
- *  autocomplete must never treat a chip's token as something being typed. */
-function chipRanges(root: HTMLElement): Array<[number, number]> {
-  const ranges: Array<[number, number]> = []
-  let offset = 0
-  const leading = root.firstChild instanceof HTMLElement && isBlock(root.firstChild)
-  const walk = (node: Node): void => {
-    for (const child of node.childNodes) {
-      if (child instanceof HTMLElement && child.dataset.token !== undefined) {
-        const len = child.dataset.token.length
-        ranges.push([offset, offset + len])
-        offset += len
-        continue
-      }
-      if (child.nodeType === Node.TEXT_NODE) {
-        offset += (child.nodeValue ?? '').length
-        continue
-      }
-      if (child instanceof HTMLElement) {
-        if (child.tagName === 'BR') {
-          offset += 1
-          continue
-        }
-        if (isBlock(child)) offset += 1
-        walk(child)
-      }
-    }
-  }
-  walk(root)
-  // mirror serializeAll's leading-newline trim
-  return leading ? ranges.map(([a, b]) => [Math.max(0, a - 1), Math.max(0, b - 1)]) : ranges
-}
-
-function selectionInside(root: HTMLElement): Range | null {
-  const sel = window.getSelection()
-  if (!sel || sel.rangeCount === 0) return null
-  const range = sel.getRangeAt(0)
-  return root.contains(range.endContainer) ? range : null
-}
-
-/** Serialized caret offset for the current selection inside root. */
-function caretOffset(root: HTMLElement): number {
-  const range = selectionInside(root)
-  if (!range) return serializeAll(root).length
-  const pre = range.cloneRange()
-  pre.selectNodeContents(root)
-  pre.setEnd(range.endContainer, range.endOffset)
-  const holder = document.createElement('div')
-  holder.append(pre.cloneContents())
-  // cloneContents keeps data-token spans, so chip lengths count correctly.
-  return serializeAll(holder).length
-}
-
-/** DOM position for a serialized offset (text nodes, or a chip's edge). */
-function positionFor(root: HTMLElement, offset: number): { node: Node; offset: number } | null {
-  let remaining = offset
-  const walk = (node: Node): { node: Node; offset: number } | null => {
-    for (const child of node.childNodes) {
-      const len = serialize(child).length
-      if (remaining <= len) {
-        if (child.nodeType === Node.TEXT_NODE) return { node: child, offset: remaining }
-        if (child instanceof HTMLElement && child.dataset.token !== undefined) {
-          // boundary of a chip — position after/before it in the parent
-          return {
-            node,
-            offset: [...node.childNodes].indexOf(child) + (remaining === len ? 1 : 0)
-          }
-        }
-        return walk(child)
-      }
-      remaining -= len
-    }
-    return null
-  }
-  return walk(root)
-}
-
-/** Content as segments — the walk mirrors serialize() but keeps chips whole. */
-function snapshotAll(root: HTMLElement): ComposerSegment[] {
-  const out: ComposerSegment[] = []
-  const pushText = (t: string): void => {
-    if (!t) return
-    const last = out[out.length - 1]
-    if (last && 'text' in last) last.text += t
-    else out.push({ text: t })
-  }
-  const walk = (node: Node): void => {
-    for (const child of node.childNodes) {
-      if (child instanceof HTMLElement && child.dataset.token !== undefined) {
-        out.push({ chip: { token: child.dataset.token, name: child.dataset.name ?? '' } })
-        continue
-      }
-      if (child.nodeType === Node.TEXT_NODE) {
-        pushText(child.nodeValue ?? '')
-        continue
-      }
-      if (child instanceof HTMLElement) {
-        if (child.tagName === 'BR') {
-          pushText('\n')
-          continue
-        }
-        if (isBlock(child)) pushText('\n')
-        walk(child)
-      }
-    }
-  }
-  walk(root)
-  const first = out[0]
-  if (first && 'text' in first && first.text.startsWith('\n')) first.text = first.text.slice(1)
-  return out.filter((s) => 'chip' in s || s.text)
-}
 
 function chipElement(chip: ComposerChip): HTMLElement {
   const el = document.createElement('span')
@@ -209,6 +79,9 @@ function chipElement(chip: ComposerChip): HTMLElement {
 }
 
 function placeCaret(root: HTMLElement, node: Node, offset: number): void {
+  // Focus first: focusing an editable that lacks the selection seats the
+  // caret at its start, which would undo the placement below.
+  root.focus()
   const sel = window.getSelection()
   if (!sel) return
   const range = document.createRange()
@@ -216,38 +89,71 @@ function placeCaret(root: HTMLElement, node: Node, offset: number): void {
   range.collapse(true)
   sel.removeAllRanges()
   sel.addRange(range)
-  root.focus()
 }
 
 function caretToEnd(root: HTMLElement): void {
   placeCaret(root, root, root.childNodes.length)
 }
 
-/** Paint plain `/skill` and `@mention` runs through the CSS highlight
- *  registry — the only way to colour ranges of a contenteditable without
- *  putting markup in the user's way. */
-function paintTokens(root: HTMLElement, tokens: readonly ComposerToken[]): void {
-  const registry = CSS.highlights
-  if (!registry) return
-  for (const kind of ['skill', 'mention'] as const) {
-    const ranges: Range[] = []
-    for (const token of tokens) {
-      if (token.kind !== kind) continue
-      const start = positionFor(root, token.start)
-      const end = positionFor(root, token.end)
-      if (!start || !end) continue
-      const range = document.createRange()
-      range.setStart(start.node, start.offset)
-      range.setEnd(end.node, end.offset)
-      ranges.push(range)
+function fillFromSegments(root: HTMLElement, segments: readonly ComposerSegment[]): void {
+  root.innerHTML = ''
+  for (const seg of segments) {
+    if ('chip' in seg) {
+      root.append(chipElement(seg.chip))
+      continue
     }
-    const name = HIGHLIGHT_NAMES[kind]
-    if (ranges.length === 0) registry.delete(name)
-    else registry.set(name, new Highlight(...ranges))
+    seg.text.split('\n').forEach((line, i) => {
+      if (i > 0) root.append(document.createElement('br'))
+      if (line) root.append(document.createTextNode(line))
+    })
   }
 }
 
-const NO_TOKENS: ComposerToken[] = []
+/** Paint plain `/skill` and `@mention` runs through the CSS highlight
+ *  registry — the only way to colour ranges of a contenteditable without
+ *  putting markup in the user's way. All token edges resolve in one walk. */
+function paintTokens(root: HTMLElement, tokens: readonly ComposerToken[]): void {
+  const registry = CSS.highlights
+  if (!registry) return
+  const edges = tokens
+    .flatMap((token, i) => [
+      { offset: token.start, token: i },
+      { offset: token.end, token: i }
+    ])
+    .sort((a, b) => a.offset - b.offset)
+  const positions = positionsFor(
+    root,
+    edges.map((e) => e.offset)
+  )
+  const ranges = new Map<number, Range>()
+  edges.forEach((edge, i) => {
+    const pos = positions[i]
+    if (!pos) return
+    let range = ranges.get(edge.token)
+    if (!range) {
+      range = document.createRange()
+      ranges.set(edge.token, range)
+    }
+    if (edge.offset === tokens[edge.token].start) range.setStart(pos.node, pos.offset)
+    else range.setEnd(pos.node, pos.offset)
+  })
+  for (const kind of ['skill', 'mention'] as const) {
+    const painted: Range[] = []
+    tokens.forEach((token, i) => {
+      const range = ranges.get(i)
+      if (token.kind === kind && range && !range.collapsed) painted.push(range)
+    })
+    const name = HIGHLIGHT_NAMES[kind]
+    if (painted.length === 0) registry.delete(name)
+    else registry.set(name, new Highlight(...painted))
+  }
+}
+
+export const NO_TOKENS: ComposerToken[] = []
+
+/** Content around one programmatic insertion, so ⌘Z can take it back whole. */
+type Insertion = { before: ComposerSegment[]; after: string; caret: number }
+const UNDO_DEPTH = 8
 
 export const ComposerInput = forwardRef<
   ComposerInputHandle,
@@ -256,6 +162,8 @@ export const ComposerInput = forwardRef<
     onKeyDown: (e: KeyboardEvent<HTMLDivElement>) => void
     onPaste: (e: ClipboardEvent<HTMLDivElement>) => void
     onFocus?: () => void
+    /** when given, a pasted text over the size threshold becomes a file here instead of typed text */
+    attachLargePastes?: (file: File) => void
     placeholder: string
     className?: string
     maxHeight: number
@@ -263,12 +171,29 @@ export const ComposerInput = forwardRef<
     tokens?: readonly ComposerToken[]
   }
 >(function ComposerInput(
-  { onState, onKeyDown, onPaste, onFocus, placeholder, className, maxHeight, tokens = NO_TOKENS },
+  {
+    onState,
+    onKeyDown,
+    onPaste,
+    onFocus,
+    attachLargePastes,
+    placeholder,
+    className,
+    maxHeight,
+    tokens = NO_TOKENS
+  },
   ref
 ) {
   tallyRender('composerInput')
   const rootRef = useRef<HTMLDivElement>(null)
   const lastText = useRef('')
+  /** an IME is composing: the DOM is in flux, report when it settles */
+  const composing = useRef(false)
+  /** an input event already reported this task; the selectionchange it queued follows */
+  const reportedThisFrame = useRef(false)
+  /** programmatic insertions the browser's own undo stack never saw */
+  const undo = useRef<Insertion[]>([])
+  const paintedTokens = useRef(tokens)
 
   const report = (): void => {
     const root = rootRef.current
@@ -278,28 +203,73 @@ export const ComposerInput = forwardRef<
     if (root.childNodes.length === 1 && root.firstChild instanceof HTMLBRElement) {
       root.innerHTML = ''
     }
-    const text = serializeAll(root)
+    const { text, caret, chips } = readComposer(root, selectionIn(root))
     if (text !== lastText.current) {
       lastText.current = text
       morphTextareaHeight(root, maxHeight)
     }
-    onState(text, caretOffset(root), chipRanges(root))
+    onState(text, caret, chips)
+  }
+
+  const onInput = (): void => {
+    if (composing.current) return
+    reportedThisFrame.current = true
+    // A timeout, not a frame: the selectionchange task is already queued
+    // and runs first, and a hidden window still runs timers.
+    setTimeout(() => {
+      reportedThisFrame.current = false
+    }, 0)
+    report()
+  }
+
+  /** Replace everything and repaint: the highlight ranges died with the old nodes. */
+  const rebuild = (root: HTMLElement, segments: readonly ComposerSegment[]): void => {
+    fillFromSegments(root, segments)
+    paintTokens(root, paintedTokens.current)
+  }
+
+  const insertText = (text: string): void => {
+    const root = rootRef.current
+    if (!root) return
+    const before = snapshotSegments(root)
+    if (selectionIn(root)) root.focus()
+    else caretToEnd(root)
+    const caret = readComposer(root, selectionIn(root)).caret
+    insertPlainText(root, text)
+    undo.current = [
+      ...undo.current.slice(1 - UNDO_DEPTH),
+      { before, after: serializeComposer(root), caret }
+    ]
+    report()
+  }
+
+  /** ⌘Z with the box exactly as an insertion left it: take that insertion back. */
+  const undoInsertion = (root: HTMLElement): boolean => {
+    const top = undo.current[undo.current.length - 1]
+    if (!top || serializeComposer(root) !== top.after) return false
+    undo.current = undo.current.slice(0, -1)
+    rebuild(root, top.before)
+    const at = positionsFor(root, [top.caret])[0]
+    if (at) placeCaret(root, at.node, at.offset)
+    else caretToEnd(root)
+    report()
+    return true
   }
 
   useImperativeHandle(ref, () => ({
     focus: () => {
       const root = rootRef.current
       if (!root) return
-      if (selectionInside(root)) root.focus()
+      if (selectionIn(root)) root.focus()
       else caretToEnd(root)
     },
-    value: () => (rootRef.current ? serializeAll(rootRef.current) : ''),
+    value: () => (rootRef.current ? serializeComposer(rootRef.current) : ''),
     replaceRange: (from, to, insert) => {
       const root = rootRef.current
       if (!root) return
-      const start = positionFor(root, from)
-      const end = positionFor(root, to)
+      const [start, end] = positionsFor(root, from <= to ? [from, to] : [to, from])
       if (!start || !end) return
+      root.focus()
       const range = document.createRange()
       range.setStart(start.node, start.offset)
       range.setEnd(end.node, end.offset)
@@ -316,37 +286,31 @@ export const ComposerInput = forwardRef<
       const sel = window.getSelection()
       sel?.removeAllRanges()
       sel?.addRange(after)
-      root.focus()
+      undo.current = []
       report()
     },
+    insertText,
     clear: () => {
       const root = rootRef.current
       if (!root) return
       root.innerHTML = ''
       root.style.height = 'auto'
+      undo.current = []
       report()
     },
-    snapshot: () => (rootRef.current ? snapshotAll(rootRef.current) : []),
+    snapshot: () => (rootRef.current ? snapshotSegments(rootRef.current) : []),
     restore: (segments) => {
       const root = rootRef.current
       if (!root) return
-      root.innerHTML = ''
-      for (const seg of segments) {
-        if ('chip' in seg) {
-          root.append(chipElement(seg.chip))
-          continue
-        }
-        seg.text.split('\n').forEach((line, i) => {
-          if (i > 0) root.append(document.createElement('br'))
-          if (line) root.append(document.createTextNode(line))
-        })
-      }
+      rebuild(root, segments)
       if (document.activeElement === root) caretToEnd(root)
+      undo.current = []
       report()
     }
   }))
 
   useLayoutEffect(() => {
+    paintedTokens.current = tokens
     const root = rootRef.current
     if (root) paintTokens(root, tokens)
   }, [tokens])
@@ -378,10 +342,13 @@ export const ComposerInput = forwardRef<
     return () => ro.disconnect()
   }, [maxHeight])
 
-  // selectionchange is document-level — needed for caret-only moves.
+  // selectionchange is document-level — needed for caret-only moves. An
+  // input event moves the caret too and has already reported this frame.
   useEffect(() => {
     const onSel = (): void => {
-      if (document.activeElement === rootRef.current) report()
+      if (document.activeElement !== rootRef.current) return
+      if (reportedThisFrame.current || composing.current) return
+      report()
     }
     document.addEventListener('selectionchange', onSel)
     return () => document.removeEventListener('selectionchange', onSel)
@@ -399,18 +366,58 @@ export const ComposerInput = forwardRef<
       spellCheck={false}
       data-composer-input
       data-placeholder={placeholder}
-      onInput={report}
+      onInput={onInput}
+      onCompositionStart={() => {
+        composing.current = true
+      }}
+      onCompositionEnd={() => {
+        composing.current = false
+        onInput()
+      }}
       onFocus={onFocus}
-      onKeyDown={onKeyDown}
+      onKeyDown={(e) => {
+        // A pasted block goes in as one Range edit the browser's undo stack
+        // never sees. Once the browser has undone whatever was typed after
+        // it, the box matches the post-paste text and this ⌘Z takes the
+        // paste back in one step.
+        if (
+          undo.current.length > 0 &&
+          (e.metaKey || e.ctrlKey) &&
+          !e.shiftKey &&
+          !e.altKey &&
+          e.key.toLowerCase() === 'z'
+        ) {
+          const root = rootRef.current
+          if (root && undoInsertion(root)) {
+            e.preventDefault()
+            return
+          }
+        }
+        onKeyDown(e)
+      }}
       onPaste={(e) => {
         onPaste(e)
         if (e.defaultPrevented) return
         // Plain text only — foreign markup must never enter the composer.
         e.preventDefault()
-        document.execCommand('insertText', false, e.clipboardData.getData('text/plain'))
+        const raw = e.clipboardData.getData('text/plain')
+        if (!raw) return
+        const plan = pastePlan(raw, attachLargePastes ? undefined : Infinity)
+        if ('attach' in plan) attachLargePastes?.(plan.attach)
+        else insertText(plan.inline)
       }}
       className={className}
       style={{ overflowY: 'auto', wordBreak: 'break-word', whiteSpace: 'pre-wrap' }}
     />
   )
 })
+
+/** Same spans, same kinds, in order — the paint has nothing new to draw. */
+export function sameTokens(a: readonly ComposerToken[], b: readonly ComposerToken[]): boolean {
+  if (a === b) return true
+  if (a.length !== b.length) return false
+  for (let i = 0; i < a.length; i++) {
+    if (a[i].start !== b[i].start || a[i].end !== b[i].end || a[i].kind !== b[i].kind) return false
+  }
+  return true
+}
