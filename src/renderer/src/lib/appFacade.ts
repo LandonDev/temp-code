@@ -21,9 +21,11 @@
  *   searchSessions(query)       what the Search view sees for this query
  *   editors()                   paths of the editors registered for Save All
  *   zoom()                      current zoom level
+ *   renders()                   dev render tallies by component ({ app, composerInput, … })
  *   commands                    the command id list
  */
 import { APP_COMMANDS, type AppCommand, type AppCommandId } from "./appCommands";
+import { devRenders } from "./devRenders";
 import { registeredEditorPaths } from "./editorFlush";
 import type { Session } from "./session";
 import { searchSessions } from "./sessionStore";
@@ -56,7 +58,9 @@ export type AppFacade = {
   searchSessions: typeof searchSessions;
   editors: () => string[];
   zoom: () => number;
+  renders: () => Readonly<Record<string, number>>;
 };
+
 
 declare global {
   interface Window {
@@ -84,5 +88,6 @@ export function installAppFacade(handlers: AppFacadeHandlers): void {
     searchSessions,
     editors: registeredEditorPaths,
     zoom: loadZoom,
+    renders: () => ({ ...devRenders }),
   };
 }
