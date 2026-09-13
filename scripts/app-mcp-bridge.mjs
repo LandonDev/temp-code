@@ -138,6 +138,11 @@ const TOOLS = [
         provider: { type: 'string', enum: PROVIDERS },
         model: { type: 'string' },
         reasoning: { type: 'string', enum: ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'] },
+        context1m: {
+          type: 'boolean',
+          description:
+            'Claude models only: run the thread with the 1M context window. Rejected for models that do not offer it.'
+        },
         projectId: { type: 'string', description: "Defaults to this thread's project" },
         planPath: {
           type: 'string',
@@ -177,6 +182,11 @@ const TOOLS = [
         useWorktree: {
           type: 'boolean',
           description: 'Isolate a writing agent in its own git worktree (default true)'
+        },
+        context1m: {
+          type: 'boolean',
+          description:
+            'Claude models only: run the agent with the 1M context window. Rejected for models that do not offer it.'
         }
       },
       required: ['task']

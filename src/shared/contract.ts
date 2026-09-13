@@ -700,6 +700,7 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
       provider: providerEnum,
       model: z.string().optional(),
       reasoning: reasoningEnum.optional(),
+      context1m: z.boolean().optional(),
       projectId: z.string().optional(),
       planPath: z.string().optional(),
       seedThreadIds: z.array(z.string()).optional(),
@@ -723,7 +724,8 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
       reasoning: z.string().optional(),
       agentType: z.string().optional(),
       task: z.string(),
-      useWorktree: z.boolean().optional()
+      useWorktree: z.boolean().optional(),
+      context1m: z.boolean().optional()
     })
   }),
   z.object({

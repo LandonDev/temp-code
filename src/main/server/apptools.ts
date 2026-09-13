@@ -4,7 +4,13 @@ import {
   tool,
   type McpSdkServerConfigWithInstance
 } from '@anthropic-ai/claude-agent-sdk'
-import { CATALOG, modelInfo, resolveModel, type ProviderId } from '@shared/catalog'
+import {
+  CATALOG,
+  modelInfo,
+  resolveModel,
+  supportsContext1m,
+  type ProviderId
+} from '@shared/catalog'
 import type { SessionMeta } from '@shared/events'
 import { INLINE_DIGEST_MAX_CHARS, mirrorRelPath, threadDigest } from './mirror'
 import type { SessionRegistry } from './sessions'
@@ -116,6 +122,8 @@ export interface StartThreadArgs {
   seedThreadIds?: string[]
   firstMessage: string
   title?: string
+  /** Claude models with a 1M window only; refused for anything else. */
+  context1m?: boolean
 }
 
 /** Create a thread and kick it off exactly as if the user had — same
@@ -139,6 +147,9 @@ export async function appStartThread(
     'medium') as SessionMeta['reasoning']
   if (info.reasoning.length && !info.reasoning.includes(reasoning)) {
     return `refused: ${model} supports reasoning ${info.reasoning.join('|')}, not "${reasoning}".`
+  }
+  if (args.context1m && !supportsContext1m(provider, model)) {
+    return `refused: ${model} does not offer the 1M context window — only Claude models do. Start the thread without context1m, or pick a Claude model.`
   }
   const projectId = args.projectId ?? caller.projectId
   if (args.projectId && !reg.getProject(args.projectId)) {
@@ -164,6 +175,7 @@ export async function appStartThread(
     model,
     reasoning,
     permission: callerNow.permission,
+    ...(args.context1m ? { context1m: true } : {}),
     projectId,
     threadType: args.threadType,
     planPath,
@@ -239,6 +251,12 @@ export function appToolsMcp(session: SessionMeta): McpSdkServerConfigWithInstanc
             .enum(['low', 'medium', 'high', 'xhigh', 'max', 'ultra'])
             .optional()
             .describe("Must be on the chosen model's ladder; defaults to the model's default"),
+          context1m: z
+            .boolean()
+            .optional()
+            .describe(
+              'Claude models only: run the thread with the 1M context window. Rejected for models that do not offer it.'
+            ),
           projectId: z.string().optional().describe("Defaults to this thread's project"),
           planPath: z
             .string()
