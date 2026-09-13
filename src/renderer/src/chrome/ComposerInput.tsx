@@ -10,6 +10,7 @@ import {
 import { brandOf } from '../lib/addonBrand'
 import { addonTitle } from '../lib/addonNames'
 import { morphTextareaHeight } from '../lib/composerHeight'
+import { tallyRender } from '../lib/devRenders'
 
 /**
  * The composer's input: a managed contenteditable that renders connector
@@ -265,6 +266,7 @@ export const ComposerInput = forwardRef<
   { onState, onKeyDown, onPaste, onFocus, placeholder, className, maxHeight, tokens = NO_TOKENS },
   ref
 ) {
+  tallyRender('composerInput')
   const rootRef = useRef<HTMLDivElement>(null)
   const lastText = useRef('')
 

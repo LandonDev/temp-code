@@ -252,6 +252,7 @@ import { syncDockBadge } from "./lib/dockBadge";
 import { liveAgentTracker } from "./lib/liveAgentTracker";
 import { requestTranscriptJump } from "./lib/transcriptJump";
 import { installAppFacade } from "./lib/appFacade";
+import { tallyRender } from "./lib/devRenders";
 import { playCue } from "./lib/sounds";
 import {
   APP_COMMANDS,
@@ -398,6 +399,7 @@ export default function App({
   history?: SessionSummary[];
   historyCwd?: string | null;
 }) {
+  tallyRender("app");
   const [projectCwd, setProjectCwd] = useState(
     () =>
       windowTransfer?.projectCwd ??

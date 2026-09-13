@@ -14,6 +14,16 @@ Do not launch anything against the prod userData (that means never
 from an AI session), do not send messages into the user's threads, and
 do not kill or restart the installed app.
 
+## TEMPORARY: no dev instances from AI sessions (until the user lifts it)
+On 2026-09-10 three implementation threads each ran their own dev
+instance on a copy of the 1.2 GB prod database. Three Electron apps
+parsing the event log at once stalled the whole machine. Until the user
+confirms performance is fixed, AI sessions do NOT launch Electron at all:
+no `bun run dev`, no packaged builds run, no CDP. Verify with vitest,
+typecheck, headless node scripts (the e2e pattern under scripts/ with
+electron-shim.mjs) and review. The user tests with `bun run dev:prod`.
+The section below stays for when the ban is lifted.
+
 ## Testing: spawn an isolated dev instance
 ```bash
 env -u ELECTRON_RUN_AS_NODE \
