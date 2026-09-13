@@ -2,8 +2,11 @@ import { describe, expect, it } from "vitest";
 import type { ProjectMeta, SessionMeta, WorkspaceMeta } from "./tcserver/types";
 import {
   groupWorkspaceSessions,
+  rowCache,
   summarizeThreads,
   threadRow,
+  type RowCache,
+  type WorkspaceSessionGroups,
 } from "./workspaceSessions";
 
 const ws = (id: string, path: string): WorkspaceMeta => ({
@@ -212,5 +215,77 @@ describe("summarizeThreads", () => {
       unread: 1,
       dormant: 1,
     });
+  });
+});
+
+describe("groupWorkspaceSessions with a row cache", () => {
+  const seen = { a: 100, b: 100 };
+  const build = (metas: SessionMeta[], cache: RowCache, lastSeen = seen) =>
+    groupWorkspaceSessions(metas, projects, workspaces, "wa", lastSeen, 0, cache);
+  const p1 = (out: WorkspaceSessionGroups) => out.projects.find((g) => g.project.id === "p1")!;
+
+  it("keeps a row and its group when an unrelated meta moves", () => {
+    const cache = rowCache();
+    const a = meta("a", { projectId: "p1", cwd: "/wt/p1" });
+    const b = meta("b", { projectId: "p1", cwd: "/wt/p1", updatedAt: 90 });
+    const loose = meta("loose", { workspaceId: "wa" });
+    const first = build([a, b, loose], cache);
+    const second = build([a, b, { ...loose, title: "renamed" }], cache);
+    expect(p1(second)).toBe(p1(first));
+    expect(second.projects).toBe(first.projects);
+    expect(second.chats).not.toBe(first.chats);
+    expect(second.chats[0]?.title).toBe("renamed");
+  });
+
+  it("rebuilds only the row whose meta or seen state changed", () => {
+    const cache = rowCache();
+    const a = meta("a", { projectId: "p1", cwd: "/wt/p1" });
+    const b = meta("b", { projectId: "p1", cwd: "/wt/p1", updatedAt: 90 });
+    const first = build([a, b], cache);
+    const [rowA, rowB] = p1(first).threads;
+
+    const aRunning: SessionMeta = { ...a, status: "running" };
+    const bumped = build([aRunning, b], cache);
+    expect(bumped.projects).not.toBe(first.projects);
+    expect(p1(bumped).threads[0]).not.toBe(rowA);
+    expect(p1(bumped).threads[0]?.running).toBe(true);
+    expect(p1(bumped).threads[1]).toBe(rowB);
+
+    const reseen = build([aRunning, b], cache, { a: 100, b: 200 });
+    expect(reseen.projects).not.toBe(bumped.projects);
+    expect(p1(reseen).threads[0]).toBe(p1(bumped).threads[0]);
+    expect(p1(reseen).threads[1]).not.toBe(rowB);
+  });
+
+  it("a parent row changes when one of its children does", () => {
+    const cache = rowCache();
+    const root = meta("root", { projectId: "p1", cwd: "/wt/p1" });
+    const kid = meta("kid", { parentId: "root", projectId: "p1", status: "running" });
+    const first = build([root, kid], cache);
+    const same = build([root, kid], cache);
+    expect(p1(same).threads[0]).toBe(p1(first).threads[0]);
+    const moved = build([root, { ...kid, status: "done" }], cache);
+    expect(p1(moved).threads[0]).not.toBe(p1(first).threads[0]);
+    expect(p1(moved).threads[0]?.children?.[0]?.status).toBe("done");
+  });
+
+  it("forgets rows that left", () => {
+    const cache = rowCache();
+    build([meta("gone", { projectId: "p1", cwd: "/wt/p1" })], cache);
+    expect(cache.rows.has("gone")).toBe(true);
+    build([], cache);
+    expect(cache.rows.has("gone")).toBe(false);
+  });
+
+  it("a renamed project rebuilds its group but keeps its rows", () => {
+    const cache = rowCache();
+    const a = meta("a", { projectId: "p1", cwd: "/wt/p1" });
+    const b = meta("b", { projectId: "p1", cwd: "/wt/p1" });
+    const first = build([a, b], cache);
+    const renamed = projects.map((p) => (p.id === "p1" ? { ...p, name: "P1 renamed" } : p));
+    const second = groupWorkspaceSessions([a, b], renamed, workspaces, "wa", seen, 0, cache);
+    expect(p1(second)).not.toBe(p1(first));
+    expect(p1(second).project.name).toBe("P1 renamed");
+    expect(p1(second).threads[0]).toBe(p1(first).threads[0]);
   });
 });
