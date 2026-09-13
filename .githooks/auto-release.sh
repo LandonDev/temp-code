@@ -4,7 +4,8 @@
 # next green commit retries. Never touches the installed app.
 ROOT="$1"
 cd "$ROOT" || exit 1
-export PATH="$HOME/.bun/bin:$PATH"
+# node must be found, else bunx vitest runs under Bun and node:sqlite is missing.
+export PATH="$HOME/.bun/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
 while [ -f .git/auto-release.pending ]; do
   rm -f .git/auto-release.pending
   if [ -n "$(git status --porcelain | grep -v '^??')" ]; then
