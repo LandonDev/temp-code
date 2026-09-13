@@ -38,8 +38,6 @@ import { ThreadDefaultsDialog } from "./ThreadDefaultsDialog";
 import { openOrchestrationSettings } from "../lib/tcserver/rules";
 import { useLiveAgents } from "../lib/liveAgentTracker";
 import { useProjectSignals } from "../hooks/useProjectSignals";
-import type { SettingsSectionId } from "../lib/settings";
-import type { InstalledUpdate } from "../lib/updateNotice";
 import {
   loadTabGroupColors,
   loadTabGroupCustomColors,
@@ -66,6 +64,7 @@ import { CwdPicker } from "./CwdPicker";
 import { FileTree } from "./FileTree";
 import { FileTypeIcon } from "./FileTypeIcon";
 import { ProjectRail } from "./ProjectRail";
+import { shell, useShell } from "../stores/shell";
 import { RailAction } from "./RailAction";
 import { SettingsNav } from "./SettingsRail";
 import { DevModeLabel, DevModeSlot, IconButton, TabVisitNav } from "./TitleBar";
@@ -106,7 +105,6 @@ type Props = {
   cwd: string;
   /** Working copy for Changes / explorer git. Falls back to `cwd`. */
   gitCwd?: string;
-  open: boolean;
   layout: SidebarLayout;
   activeSessionId?: string;
   onSelectSession: (sessionId: string) => void;
@@ -116,12 +114,7 @@ type Props = {
   onOpenTerminal?: (cwd: string) => void;
   onFileMoved?: (from: string, to: string) => void;
   onFileDeleted?: (path: string) => void;
-  tab: SidebarTab;
-  onTabChange: (tab: SidebarTab) => void;
-  filesSearchOpen: boolean;
-  onFilesSearchOpenChange: (open: boolean) => void;
   onOpenFilesSearch?: () => void;
-  searchFocusToken?: number;
   canGoBack?: boolean;
   canGoForward?: boolean;
   onGoBack?: () => void;
@@ -141,32 +134,19 @@ type Props = {
   onOpenInbox?: () => void;
   onOpenNotes?: () => void;
   onGoToFile?: () => void;
-  searchActive?: boolean;
-  inboxActive?: boolean;
-  notesActive?: boolean;
   notesEnabled?: boolean;
-  onToggleProjectRail?: () => void;
   /** Server workspace shown in the Sessions tab (null before the catalog loads). */
   workspaceId?: string | null;
   selectedProjectId?: string | null;
   onSelectProjectCard?: (projectId: string | null) => void;
   onNewChat?: (projectId: string | null) => void;
   onProjectCreated?: (project: ProjectMeta) => void;
-  projectRailOpen?: boolean;
-  settingsOpen?: boolean;
-  settingsSection?: SettingsSectionId;
-  onOpenSettings?: () => void;
-  onSelectSettingsSection?: (section: SettingsSectionId) => void;
-  onCloseSettings?: () => void;
-  updateNotice?: InstalledUpdate | null;
   onOpenWhatsNew?: (version: string, markdown?: string) => void;
-  onDismissUpdate?: () => void;
 };
 
 function SidebarComponent({
   cwd,
   gitCwd,
-  open,
   layout,
   activeSessionId,
   onSelectSession,
@@ -176,13 +156,8 @@ function SidebarComponent({
   onOpenTerminal,
   onFileMoved,
   onFileDeleted,
-  tab,
-  onTabChange,
-  filesSearchOpen,
-  onFilesSearchOpenChange,
   onOpenFilesSearch,
-  searchFocusToken = 0,
-  canGoBack = false,
+  canGoBack: canVisitBack = false,
   canGoForward = false,
   onGoBack,
   onGoForward,
@@ -201,25 +176,13 @@ function SidebarComponent({
   onOpenInbox,
   onOpenNotes,
   onGoToFile,
-  searchActive = false,
-  inboxActive = false,
-  notesActive = false,
   notesEnabled = true,
-  onToggleProjectRail,
   workspaceId = null,
   selectedProjectId = null,
   onSelectProjectCard,
   onNewChat,
   onProjectCreated,
-  projectRailOpen = true,
-  settingsOpen = false,
-  settingsSection = "general",
-  onOpenSettings,
-  onSelectSettingsSection,
-  onCloseSettings,
-  updateNotice = null,
   onOpenWhatsNew,
-  onDismissUpdate,
 }: Props) {
   const { busy: busyProjectPaths, needsYou: needsYouProjectPaths } =
     useProjectSignals();
@@ -245,11 +208,26 @@ function SidebarComponent({
   const sessionsLock = useLockOverscroll<HTMLDivElement>();
   const sessionsScrollRef = useRef<HTMLDivElement>(null);
   const deckLayout = layout === "deck";
+  const tab = useShell((s) => s.sidebarTab);
+  const filesSearchOpen = useShell((s) => s.filesSearchOpen);
+  const searchFocusToken = useShell((s) => s.searchFocusToken);
+  const searchActive = useShell((s) => s.searchViewOpen);
+  const inboxActive = useShell((s) => s.inboxViewOpen);
+  const notesActive = useShell((s) => s.notesViewOpen);
+  const sidebarOpen = useShell((s) => s.sidebarOpen);
+  const projectRailOpen = useShell((s) => s.projectRailOpen);
+  const settingsOpen = useShell((s) => s.settingsOpen);
+  const settingsSection = useShell((s) => s.settingsSection);
+  const updateNotice = useShell((s) => s.updateNotice);
+  const open = deckLayout || sidebarOpen || settingsOpen;
+  // Back leaves an overlay before it walks tab history.
+  const canGoBack =
+    canVisitBack || searchActive || settingsOpen || inboxActive || notesActive;
   const sortable = useSortable(tabOrder, (ids) => {
     const next = ids as SidebarTab[];
     setTabOrder(next);
     saveSidebarTabOrder(next);
-    if (next[0]) onTabChange(next[0]);
+    if (next[0]) shell.setSidebarTab(next[0]);
   });
   const visibleTabs = deckLayout
     ? tabOrder.filter((itemId) => itemId !== "inbox")
@@ -299,7 +277,7 @@ function SidebarComponent({
   const projectLogoPath = resolveTabGroupLogo(projectName(cwd), groupLogos);
 
   const onTabPick = (itemId: SidebarTab) => {
-    onTabChange(itemId);
+    shell.setSidebarTab(itemId);
   };
 
   const changeAdditions = changeStats?.additions ?? 0;
@@ -422,7 +400,7 @@ function SidebarComponent({
                 canGoForward={canGoForward}
                 onGoBack={onGoBack}
                 onGoForward={onGoForward}
-                onTogglePanel={onToggleProjectRail}
+                onTogglePanel={shell.toggleProjectRail}
                 panelActive={false}
               />
             </div>
@@ -475,8 +453,8 @@ function SidebarComponent({
       {classicSettings ? (
         <SettingsNav
           section={settingsSection}
-          onSelect={(next) => onSelectSettingsSection?.(next)}
-          onClose={() => onCloseSettings?.()}
+          onSelect={shell.selectSettingsSection}
+          onClose={shell.closeSettings}
         />
       ) : (
         <>
@@ -490,7 +468,7 @@ function SidebarComponent({
                 cwd={gitRoot}
                 focusToken={searchFocusToken}
                 onOpenFile={onOpenFile}
-                onClose={() => onFilesSearchOpenChange(false)}
+                onClose={() => shell.setFilesSearchOpen(false)}
               />
             ) : cwd && cwd !== "~" ? (
               <div className="flex min-h-0 flex-1 flex-col">
@@ -588,13 +566,13 @@ function SidebarComponent({
               <SidebarUpdateFooter
                 update={updateNotice}
                 onOpenWhatsNew={onOpenWhatsNew}
-                onDismissUpdate={onDismissUpdate}
+                onDismissUpdate={shell.dismissUpdate}
               />
               <div className="flex shrink-0 flex-col gap-px p-2 pt-0">
                 <RailAction
                   label="Settings"
                   icon={Settings}
-                  onClick={onOpenSettings}
+                  onClick={() => shell.openSettings()}
                   shortcut={`${MOD},`}
                   ariaLabel={`Settings (${MOD},)`}
                 />
@@ -673,24 +651,13 @@ function SidebarComponent({
           onGoBack={onGoBack}
           onGoForward={onGoForward}
           onSearch={onSearch}
-          searchActive={searchActive}
           onOpenInbox={onOpenInbox}
-          inboxActive={inboxActive}
           notesEnabled={notesEnabled}
           onOpenNotes={onOpenNotes}
-          notesActive={notesActive}
-          onTogglePanel={onToggleProjectRail}
           onSelectProject={onSelectProject}
           onOpenProject={onOpenProject}
           onRemoveProject={onRemoveProject}
-          settingsOpen={settingsOpen}
-          settingsSection={settingsSection}
-          onOpenSettings={onOpenSettings}
-          onSelectSettingsSection={onSelectSettingsSection}
-          onCloseSettings={onCloseSettings}
-          updateNotice={updateNotice}
           onOpenWhatsNew={onOpenWhatsNew}
-          onDismissUpdate={onDismissUpdate}
         />
       ) : null}
       <AnimatePresence initial={false}>

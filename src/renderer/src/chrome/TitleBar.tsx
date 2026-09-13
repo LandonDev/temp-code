@@ -72,6 +72,7 @@ import { THREAD_GLYPHS, THREAD_LABELS, THREAD_TINTS } from "../surfaces/threads/
 import { WindowControls } from "./WindowControls";
 import { IS_MAC, MOD } from "../lib/platform";
 import type { RecentProject } from "../lib/recents";
+import { useShell } from "../stores/shell";
 
 export type Tab = {
   id: string;
@@ -141,9 +142,7 @@ type Props = {
   activeId: string;
   cwd: string;
   gitCwd?: string;
-  sidebarOpen: boolean;
   deckLayout?: boolean;
-  projectRailOpen?: boolean;
   sourceControlActive?: boolean;
   onToggleSidebar: () => void;
   onShowSourceControl?: () => void;
@@ -900,9 +899,7 @@ function TitleBarComponent({
   activeId,
   cwd,
   gitCwd,
-  sidebarOpen,
   deckLayout = false,
-  projectRailOpen = true,
   sourceControlActive = false,
   onToggleSidebar,
   onShowSourceControl,
@@ -935,6 +932,10 @@ function TitleBarComponent({
   recents = [],
   onSelectProject,
 }: Props) {
+  const sidebarPref = useShell((s) => s.sidebarOpen);
+  const projectRailOpen = useShell((s) => s.projectRailOpen);
+  // Deck mode always shows the sidebar.
+  const sidebarOpen = deckLayout || sidebarPref;
   // Deck mode hands the strip to ThreadHeader: chips that never close, a
   // shelf below, no drag. Segments only serve the classic strip.
   const tabIds = deckLayout ? [] : tabs.map((tab) => tab.id);

@@ -12,6 +12,7 @@ import { rulesStore } from "./lib/tcserver/rules";
 import { slashCommandStore } from "./lib/tcserver/slashCommands";
 import { handleQuitRequested, loadBootWorkspace, persistLiveWorkspace } from "./lib/appLifecycle";
 import { consumeInstalledUpdate } from "./lib/updateNotice";
+import { bootstrapWorkspace } from "./stores/bootstrap";
 import { updateStore } from "./lib/updateStore";
 import { initAppshots } from "./lib/appshots";
 import "./index.css";
@@ -61,16 +62,17 @@ void listen("persist_requested", () => {
 void loadBootWorkspace().then(
   ({ windowTransfer, resumed, history, historyCwd }) => {
     const installedUpdate = windowTransfer ? null : consumeInstalledUpdate();
+    const boot = bootstrapWorkspace({
+      windowTransfer,
+      resumed,
+      history,
+      historyCwd,
+      installedUpdate,
+    });
     ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
       <React.StrictMode>
         <BootGate>
-          <App
-            windowTransfer={windowTransfer}
-            resumed={resumed}
-            installedUpdate={installedUpdate}
-            history={history}
-            historyCwd={historyCwd}
-          />
+          <App boot={boot} />
         </BootGate>
       </React.StrictMode>,
     );
