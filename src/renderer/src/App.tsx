@@ -181,10 +181,13 @@ import { removeProjectData } from "./lib/projectData";
 import {
   contextForCwd,
   contextOfSession,
+  forgetLastSession,
   loadSelectedProject,
   rebaseToWorkspace,
+  resolveLanding,
   resolveSessionContext,
   type ResolvedContext,
+  saveLastSession,
   saveSelectedProject,
   workspacePathOfSession,
 } from "./lib/projectContext";
@@ -209,6 +212,7 @@ import {
   sameProjectPath,
 } from "./lib/recents";
 import {
+  applyBackgroundOpen,
   applyDeletedSessionToWorkspace,
   filterTabsForProject,
   filterTabsForProjectId,
@@ -244,7 +248,12 @@ import {
   subscribeSessionHistory,
   type SessionSummary,
 } from "./lib/sessionStore";
-import { sessionStore, useSessionShells, type SessionShell } from "./lib/tcserver/store";
+import {
+  sessionStore,
+  useSessionMeta,
+  useSessionShells,
+  type SessionShell,
+} from "./lib/tcserver/store";
 import { toggleRightRail, useRightRailOpen } from "./lib/rightRail";
 import { ProjectRail } from "./chrome/rail/ProjectRail";
 import {
@@ -1069,6 +1078,23 @@ export default function App({
     setSelectedProjectId(active.projectId ?? null);
   }, [active?.id, active?.projectId]);
 
+  // The focused thread is where its project, and its workspace, land next
+  // time they are picked. A draft has no meta until its first send, so the
+  // effect follows the meta, not the pane; a subagent lands nowhere; and the
+  // workspace key waits for the catalog, else it would name the worktree.
+  const activeMeta = useSessionMeta(active?.id);
+  useEffect(() => {
+    if (!activeMeta || activeMeta.archived || activeMeta.parentId) return;
+    if (!catalog.loaded) return;
+    if (activeMeta.projectId) {
+      saveLastSession({ projectId: activeMeta.projectId }, activeMeta.id);
+    }
+    saveLastSession(
+      { workspacePath: workspacePathOfSession(activeMeta, catalog) },
+      activeMeta.id,
+    );
+  }, [activeMeta?.id, activeMeta?.projectId, activeMeta?.archived, catalog.loaded]);
+
   // Selection is remembered per workspace folder.
   const selectionCwdRef = useRef(projectCwd);
   useEffect(() => {
@@ -1194,6 +1220,9 @@ export default function App({
     [appendTab, createSessionHere],
   );
 
+  const onSelectHistorySessionRef = useRef<
+    ((sessionId: string, seq?: number) => Promise<void>) | null
+  >(null);
   /** Card click: select the project and bring its latest open tab forward. */
   const onSelectProjectCard = useCallback(
     (projectId: string | null) => {
@@ -1216,9 +1245,19 @@ export default function App({
         .map((id) => tabs.find((tab) => tab.id === id))
         .find((tab) => tab && inProject(tab));
       const target = recent ?? tabs.find(inProject);
-      // No pane of that project is open: start one, so the body never keeps
-      // showing another project's thread under this project's header.
-      if (target) activateTab(target.id);
+      if (target) {
+        activateTab(target.id);
+        return;
+      }
+      // No pane of that project is open: land on the thread it was last on,
+      // else start one, so the body never keeps showing another project's
+      // thread under this project's header.
+      const landing = resolveLanding(
+        { projectId },
+        sessionStore.metas(),
+        catalogRef.current,
+      );
+      if (landing) void onSelectHistorySessionRef.current?.(landing);
       else onNewChat(projectId);
     },
     [activateTab, onNewChat],
@@ -2476,7 +2515,13 @@ export default function App({
     [],
   );
   const openSessionBesideRef = useRef<
-    ((sourceId: string, session: Session, cwd: string, focusComposer?: boolean) => void) | null
+    | ((
+        sourceId: string,
+        session: Session,
+        cwd: string,
+        focusComposer?: boolean,
+      ) => void)
+    | null
   >(null);
   // A thread from another workspace (a search hit, a server-created thread)
   // brings its workspace forward, or the deck filter would hide the tab we
@@ -2501,6 +2546,9 @@ export default function App({
       if (focusOpenSession(sessionId)) return;
       const session = await ensureOpenSession(sessionId);
       if (!session) return;
+      // A tab may have landed during the await (a background open racing an
+      // explicit ask for the same thread): show that one, never a second.
+      if (focusOpenSession(sessionId)) return;
       selectWorkspaceOfSession(session);
       // A subagent splits beside its parent and never gets a tab of its own.
       if (session.parentId) {
@@ -2530,11 +2578,73 @@ export default function App({
     ],
   );
 
+  onSelectHistorySessionRef.current = onSelectHistorySession;
+
+  /** A thread the server made on its own joins the workspace behind the
+   *  user's work: no tab, pane or composer focus moves. */
+  const openSessionInBackground = useCallback(
+    async (sessionId: string) => {
+      if (tabsRef.current.some((tab) => leafIds(tab.layout).includes(sessionId))) return;
+      const session = await ensureOpenSession(sessionId);
+      if (!session) return;
+      // Functional updates compose with a tab the user is adding right now;
+      // `applyBackgroundOpen` is a no-op once the thread has a pane.
+      setSessions((prev) =>
+        prev.some((entry) => entry.id === session.id) ? prev : [...prev, session],
+      );
+      setTabs(
+        (prev) =>
+          applyBackgroundOpen({
+            tabs: prev,
+            sessions: [],
+            session,
+            insert: (tabs, tab) =>
+              insertTabBesideActive(tabs, tab, activeTabIdRef.current, (id) =>
+                id === tab.id ? projectName(session.cwd) : projectOfTab(id),
+              ),
+          }).tabs,
+      );
+    },
+    [ensureOpenSession, projectOfTab],
+  );
+
+  /** Land a workspace on the thread it was last on. A tab that is only a
+   *  blank chat takes the thread in place; any other tab still belongs to
+   *  the workspace being left, so the thread gets a tab of its own. */
+  const openLanding = useCallback(
+    async (sessionId: string, cwd: string) => {
+      if (focusOpenSession(sessionId)) return;
+      const session = await ensureOpenSession(sessionId);
+      if (!session) return;
+      if (focusOpenSession(sessionId)) return;
+      const tab = tabsRef.current.find((entry) => entry.id === activeTabIdRef.current);
+      const lone =
+        !!tab &&
+        leafIds(tab.layout).length === 1 &&
+        tab.editorPanes.length === 0 &&
+        tab.terminalPanes.length === 0;
+      if (lone && replaceBlankPaneWithSession(session)) return;
+      const next = newTab(session.id);
+      appendTab(next, cwd);
+      setActiveTabId(next.id);
+      setComposerFocused(true);
+    },
+    [appendTab, ensureOpenSession, focusOpenSession, replaceBlankPaneWithSession],
+  );
+
   // A thread the server created whole after boot — a plan's Start button or
-  // a model's app_start_thread — opens as a tab in its project's group.
+  // a model's app_start_thread — gets a tab in its project's group without
+  // taking the screen; an explicit ask (an appshot's target) comes forward.
   useEffect(
     () =>
       sessionStore.onSessionAdded((meta) => {
+        void openSessionInBackground(meta.id);
+      }),
+    [openSessionInBackground],
+  );
+  useEffect(
+    () =>
+      sessionStore.onOpenRequested((meta) => {
         void onSelectHistorySession(meta.id);
       }),
     [onSelectHistorySession],
@@ -2574,6 +2684,7 @@ export default function App({
         );
       }
       if (archived) {
+        forgetLastSession(sessionId);
         // The chip leaves the strip; its same-slot neighbour takes selection.
         const model = headerModelRef.current;
         if (model.activeId === sessionId) {
@@ -2620,6 +2731,7 @@ export default function App({
         : "this session";
 
       if (!options?.confirmed && !window.confirm(`Delete “${label}”?`)) return;
+      forgetLastSession(sessionId);
 
       if (open?.busy) {
         turnGen.current.set(
@@ -2837,11 +2949,6 @@ export default function App({
         (activeWorkspace ? focusedFileTab(activeWorkspace)?.cwd : undefined);
       if (currentCwd && sameProjectPath(currentCwd, normalized)) return;
 
-      if (current && isBlankSession(current)) {
-        onCwdChange(current.id, normalized);
-        return;
-      }
-
       const match = findTabForProject(
         tabsRef.current,
         rebaseToWorkspace(sessionStore.getSnapshot(), catalogRef.current),
@@ -2851,6 +2958,24 @@ export default function App({
         setProjectCwd(normalized);
         setRecents(rememberProject(normalized));
         activateTab(match.id);
+        return;
+      }
+
+      // The thread this workspace was last on comes back before a blank one.
+      const landing = resolveLanding(
+        { workspacePath: normalized },
+        sessionStore.metas(),
+        catalogRef.current,
+      );
+      if (landing) {
+        setProjectCwd(normalized);
+        setRecents(rememberProject(normalized));
+        void openLanding(landing, normalized);
+        return;
+      }
+
+      if (current && isBlankSession(current)) {
+        onCwdChange(current.id, normalized);
         return;
       }
 
@@ -2864,7 +2989,7 @@ export default function App({
       setActiveTabId(tab.id);
       setComposerFocused(true);
     },
-    [activateTab, appendTab, cwdContext, onCwdChange, seededSession],
+    [activateTab, appendTab, cwdContext, onCwdChange, openLanding, seededSession],
   );
 
   const [newWorkspacePath, setNewWorkspacePath] = useState<string | null>(null);

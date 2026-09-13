@@ -3,8 +3,10 @@ import {
   focusedFileTab,
   leaf,
   leafIds,
+  newTab,
   placePane,
   replaceLeafId,
+  splitPane,
   type PaneEdge,
   type WorkspaceTab,
 } from "./layout";
@@ -295,6 +297,47 @@ export function applyPlaceSessionOnPane({
   }
 
   return { tabs: nextTabs, sessions: nextSessions, activeTabId: targetTabId };
+}
+
+/**
+ * A thread the server made on its own (a plan's handoff, a model's
+ * app_start_thread) joins the workspace behind the user's work: no tab's
+ * `focusedId` moves and the caller leaves `activeTabId` alone. Already
+ * open: the same `tabs` and `sessions` come back. A child splits beside
+ * its open parent; anything else gets a tab of its own, placed by `insert`.
+ */
+export function applyBackgroundOpen({
+  tabs,
+  sessions,
+  session,
+  insert,
+}: {
+  tabs: WorkspaceTab[];
+  sessions: Session[];
+  session: Session;
+  insert: (tabs: WorkspaceTab[], tab: WorkspaceTab) => WorkspaceTab[];
+}): { tabs: WorkspaceTab[]; sessions: Session[] } {
+  if (tabs.some((tab) => leafIds(tab.layout).includes(session.id))) {
+    return { tabs, sessions };
+  }
+  const nextSessions = sessions.some((entry) => entry.id === session.id)
+    ? sessions
+    : [...sessions, session];
+  const parentId = session.parentId ?? null;
+  const host = parentId
+    ? tabs.find((tab) => leafIds(tab.layout).includes(parentId))
+    : undefined;
+  if (host && parentId) {
+    return {
+      tabs: tabs.map((tab) =>
+        tab === host
+          ? { ...tab, layout: splitPane(tab.layout, parentId, "right", session.id) }
+          : tab,
+      ),
+      sessions: nextSessions,
+    };
+  }
+  return { tabs: insert(tabs, newTab(session.id)), sessions: nextSessions };
 }
 
 export function isGroupableProject(

@@ -358,7 +358,7 @@ export type StartThreadParams = {
 
 /** Create a whole thread server-side and send its kickoff brief. The
  *  `session` push (or the adopt here, whichever lands first) raises
- *  `onSessionAdded`, which is how the UI opens a tab for it. */
+ *  `onSessionAdded`, and the UI gives it a tab behind the user's work. */
 export async function startThread(
   params: StartThreadParams,
   brief: string,

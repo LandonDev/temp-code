@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { leaf, leafIds, newTab, type WorkspaceTab } from "./layout";
 import type { Session } from "./session";
 import {
+  applyBackgroundOpen,
   applyDeletedSessionToWorkspace,
   applyPlaceSessionOnPane,
   filterTabsForProject,
@@ -411,5 +412,61 @@ describe("replaceGroupInTabOrder", () => {
       "c",
       "d",
     ]);
+  });
+});
+
+describe("applyBackgroundOpen", () => {
+  const append = (tabs: WorkspaceTab[], tab: WorkspaceTab) => [...tabs, tab];
+  const active = { ...tab("t1", "s1"), focusedId: "s1" };
+  const other = tab("t2", "s2");
+  const tabs = [active, other];
+  const sessions = [session("s1", "/repo"), session("s2", "/repo")];
+
+  it("leaves everything alone when the thread is already open", () => {
+    const out = applyBackgroundOpen({ tabs, sessions, session: sessions[1], insert: append });
+    expect(out.tabs).toBe(tabs);
+    expect(out.sessions).toBe(sessions);
+  });
+
+  it("splits a child beside its open parent without moving focus", () => {
+    const child = { ...session("c1", "/repo"), parentId: "s1" };
+    const out = applyBackgroundOpen({ tabs, sessions, session: child, insert: append });
+    expect(out.tabs).toHaveLength(2);
+    expect(leafIds(out.tabs[0].layout)).toEqual(["s1", "c1"]);
+    expect(out.tabs[0].focusedId).toBe("s1");
+    expect(out.tabs[1]).toBe(other);
+    expect(out.sessions.map((s) => s.id)).toEqual(["s1", "s2", "c1"]);
+  });
+
+  it("appends a tab for a new root thread, and for a child whose parent is closed", () => {
+    const root = session("s3", "/repo");
+    const out = applyBackgroundOpen({ tabs, sessions, session: root, insert: append });
+    expect(out.tabs.map((t) => leafIds(t.layout))).toEqual([["s1"], ["s2"], ["s3"]]);
+    expect(out.tabs[0]).toBe(active);
+    const orphan = { ...session("c2", "/repo"), parentId: "gone" };
+    const again = applyBackgroundOpen({ tabs, sessions, session: orphan, insert: append });
+    expect(leafIds(again.tabs[2].layout)).toEqual(["c2"]);
+  });
+
+  it("opening the same thread twice changes nothing the second time", () => {
+    const root = session("s3", "/repo");
+    const once = applyBackgroundOpen({ tabs, sessions, session: root, insert: append });
+    const twice = applyBackgroundOpen({ ...once, session: root, insert: append });
+    expect(twice.tabs).toBe(once.tabs);
+    expect(twice.sessions).toBe(once.sessions);
+  });
+
+  it("a server push leaves the active tab and its focused pane identical", () => {
+    const activeTabId = "t1";
+    for (const incoming of [
+      session("s3", "/repo"),
+      { ...session("c1", "/repo"), parentId: "s1" },
+      { ...session("c2", "/repo"), parentId: "s2" },
+    ]) {
+      const out = applyBackgroundOpen({ tabs, sessions, session: incoming, insert: append });
+      const activeAfter = out.tabs.find((t) => t.id === activeTabId)!;
+      expect(activeAfter.focusedId).toBe(active.focusedId);
+      expect(out.tabs.map((t) => t.id).slice(0, 2)).toEqual(["t1", "t2"]);
+    }
   });
 });
