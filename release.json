@@ -1,5 +1,5 @@
 {
-  "n": 107,
-  "notes": "Tool summaries and captions removed: opening a transcript no longer boots one CLI per collapsed section",
-  "ts": 1789417929122
+  "n": 108,
+  "notes": "Untrack src/main/server/media: two unreferenced files from another session were staged by mistake in a76e154",
+  "ts": 1789417995716
 }
