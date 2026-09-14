@@ -1,5 +1,5 @@
 {
-  "n": 111,
-  "notes": "Blank tabs collapse on restore: one empty thread tab per project (the active one, else the newest), and the arcade runs only in the focused pane of the shown tab, a frame after it paints",
-  "ts": 1789419633750
+  "n": 112,
+  "notes": "Hover prefetch: a tab or thread row hovered 150 ms fetches its transcript, and the two most recent tabs warm in an idle slice after the active one paints (two fetches in flight at most, none while the socket is down)",
+  "ts": 1789420191450
 }
