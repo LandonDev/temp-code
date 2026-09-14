@@ -15,18 +15,23 @@ import {
   useExternalPaneDrop,
 } from "../lib/paneDrop";
 import type { ApprovalDecision } from "../lib/harness";
-import type { EditorNavigationTarget } from "../lib/search";
+import { useSidebarLayout } from "../hooks/useSidebarLayout";
 import {
   layoutLeaves,
   layoutSashes,
+  leaf,
   setSplitRatio,
-  type EditorPane,
   type LayoutNode,
   type LayoutSash,
   type PaneEdge,
+  type WorkspaceTab,
 } from "../lib/layout";
 import type { RecentProject } from "../lib/recents";
 import type { TerminalMetaPatch } from "../lib/terminalTab";
+import { tabSurfacePanes } from "../lib/workspaceFocus";
+import { useEditors } from "../stores/editors";
+import { useProject } from "../stores/project";
+import { useWorkspaceTabs } from "../stores/workspace";
 import type {
   Attachment,
   Block,
@@ -36,18 +41,14 @@ import type {
 import { sessionStore, useSession } from "../lib/tcserver/store";
 import type { ThreadType } from "../lib/tcserver/types";
 import { FilePane } from "./FilePane";
+import { paneTreePropsEqual } from "./paneTreeProps";
 import { SessionPane } from "./SessionPane";
 
-type Shared = {
+type Props = {
   tabId: string;
   visible: boolean;
-  editorPanes: EditorPane[];
-  dirtyFileIds: Set<string>;
-  fileErrorCounts: Map<string, number>;
   focusedId: string;
   composerFocused: boolean;
-  recents: RecentProject[];
-  hideProjectPicker?: boolean;
   onFocus: (paneId: string) => void;
   onClose: (sessionId: string) => void;
   onSelectFile: (paneId: string, fileId: string) => void;
@@ -81,7 +82,6 @@ type Shared = {
     decision: ApprovalDecision,
   ) => void;
   onOpenFile: OpenFileFn;
-  editorNavigation?: EditorNavigationTarget | null;
   onOpenDiff: (path?: string) => void;
   onShowSourceControl?: () => void;
   onOpenSession?: (sessionId: string) => void;
@@ -101,8 +101,6 @@ type Shared = {
   onNewTerminal: (sessionId: string) => void;
   onTerminalMetaChange?: (fileId: string, patch: TerminalMetaPatch) => void;
 };
-
-type Props = Shared & { layout: LayoutNode };
 
 type PaneDrag = {
   fromId: string;
@@ -127,17 +125,25 @@ function SessionLeaf({ id, ...props }: SessionLeafProps) {
   return <SessionPane session={session} {...props} />;
 }
 
+const NO_DIRTY = new Set<string>();
+const NO_COUNTS = new Map<string, number>();
+const NO_RECENTS: RecentProject[] = [];
+
+/** Nothing to draw while a closed tab's tree unmounts. */
+const NO_TAB: WorkspaceTab = {
+  kind: "session",
+  id: "",
+  layout: leaf(""),
+  focusedId: "",
+  editorPanes: [],
+  terminalPanes: [],
+};
+
 function PaneTreeComponent({
   tabId,
   visible,
-  layout,
-  editorPanes,
-  dirtyFileIds,
-  fileErrorCounts,
   focusedId,
   composerFocused,
-  recents,
-  hideProjectPicker,
   onFocus,
   onClose,
   onSelectFile,
@@ -159,7 +165,6 @@ function PaneTreeComponent({
   onHandoffCardDismiss,
   onApproval,
   onOpenFile,
-  editorNavigation,
   onOpenDiff,
   onShowSourceControl,
   onOpenSession,
@@ -169,6 +174,19 @@ function PaneTreeComponent({
   onNewTerminal,
   onTerminalMetaChange,
 }: Props) {
+  // The tab record and the editors' state come off the stores, so App's
+  // render passes nothing that changes with a keystroke or a save.
+  const tab = useWorkspaceTabs((s) => s.tabs.find((entry) => entry.id === tabId)) ?? NO_TAB;
+  const { layout } = tab;
+  const editorPanes = tabSurfacePanes(tab);
+  // A hidden tree reads stable empties, so a save or a lint result re-renders
+  // the visible tree only; the flip to visible re-renders it with live values.
+  // Navigation stays live: a request can land in the commit that shows the tab.
+  const dirtyFileIds = useEditors((s) => (visible ? s.dirtyFiles : NO_DIRTY));
+  const fileErrorCounts = useEditors((s) => (visible ? s.fileErrorCounts : NO_COUNTS));
+  const editorNavigation = useEditors((s) => s.navigation);
+  const recents = useProject((s) => (visible ? s.recents : NO_RECENTS));
+  const hideProjectPicker = useSidebarLayout() === "deck";
   const treeRef = useRef<HTMLDivElement>(null);
   const layoutRef = useRef(layout);
   layoutRef.current = layout;
@@ -376,10 +394,7 @@ function PaneTreeComponent({
   );
 }
 
-export const PaneTree = memo(
-  PaneTreeComponent,
-  (previous, next) => !previous.visible && !next.visible,
-);
+export const PaneTree = memo(PaneTreeComponent, paneTreePropsEqual);
 
 function PaneDropHint({ edge }: { edge: PaneEdge }) {
   const wash =

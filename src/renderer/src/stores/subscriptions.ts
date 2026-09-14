@@ -1,3 +1,4 @@
+import { isAppQuitting } from "../lib/appLifecycle";
 import { installCheckpointBridge } from "../lib/checkpointBridge";
 import { syncDockBadge } from "../lib/dockBadge";
 import { sessionChildHarnesses } from "../lib/handoff";
@@ -13,12 +14,16 @@ import { invoke } from "../lib/native";
 import { saveLastSession, workspacePathOfSession } from "../lib/projectContext";
 import { lastProjectPath, looksLikeProject } from "../lib/recents";
 import { markSessionSeen } from "../lib/sessionSeen";
+import { saveWorkspaceSnapshot } from "../lib/sessionStore";
 import { loadLiveAgentsEnabled, subscribeLiveAgentsEnabled } from "../lib/settings";
 import { createWorkspace } from "../lib/tcserver/projects";
 import { sessionStore } from "../lib/tcserver/store";
 import { workspaceByPath, workspaceStore } from "../lib/tcserver/workspaces";
+import { createWorkspaceAutosave } from "../lib/workspaceAutosave";
 import { migrateWorkspaces } from "../lib/workspaceMigration";
+import { collectWorkspaceSnapshot, workspaceSnapshotKey } from "../lib/workspaceSnapshot";
 import { project, projectStore } from "./project";
+import { terminalsStore } from "./terminals";
 import { activeSessionOf, workspace, workspaceTabsStore } from "./workspace";
 import { openSessionIds, workspaceActions } from "./workspaceActions";
 
@@ -287,6 +292,56 @@ export function installActiveSessionSync(): Teardown {
   ]);
 }
 
+/**
+ * The workspace layout saves itself a beat after it changes: the tabs, the
+ * open sessions' shells, the folder and the docks. A burst of changes costs
+ * one JSON pass; a touch that changes nothing never drops a pending save.
+ */
+export function installAutosave(): Teardown {
+  const autosave = createWorkspaceAutosave({
+    collect: () =>
+      collectWorkspaceSnapshot(
+        workspaceTabsStore.getState().tabs,
+        sessionStore.getSnapshot(),
+        workspaceTabsStore.getState().activeTabId,
+        projectStore.getState().projectCwd,
+        terminalsStore.getState().docks,
+      ),
+    key: workspaceSnapshotKey,
+    // A window on its way out has persisted already; a late auto-save
+    // would land after main dropped its slot.
+    skip: isAppQuitting,
+    save: (snapshot) => {
+      void saveWorkspaceSnapshot(snapshot).catch((err) => {
+        console.error("[workspace] snapshot save failed:", err);
+      });
+    },
+  });
+  // Shells, not sessions: a streamed turn changes no layout.
+  let shells = sessionStore.getShells();
+  const onSessions = () => {
+    const next = sessionStore.getShells();
+    if (next === shells) return;
+    shells = next;
+    autosave.touch();
+  };
+  autosave.touch();
+  const offs = [
+    workspaceTabsStore.subscribe(
+      (s) => [s.tabs, s.activeTabId] as const,
+      () => autosave.touch(),
+      { equalityFn: (a, b) => a[0] === b[0] && a[1] === b[1] },
+    ),
+    projectStore.subscribe((s) => s.projectCwd, () => autosave.touch()),
+    terminalsStore.subscribe((s) => s.docks, () => autosave.touch()),
+    sessionStore.subscribe(onSessions),
+  ];
+  return () => {
+    teardownAll(offs)();
+    autosave.cancel();
+  };
+}
+
 /** Once per window: the dock badge, checkpoints, the default folder and the harness catalogs. */
 export function installBootTasks(): Teardown {
   let live = true;
@@ -352,6 +407,7 @@ export function installSubscriptions(): Teardown {
     installMountBudget(),
     installIdleSweep(),
     installActiveSessionSync(),
+    installAutosave(),
     installBootTasks(),
   ]);
 }

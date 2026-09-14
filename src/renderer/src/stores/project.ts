@@ -14,6 +14,7 @@ import {
   type RecentProject,
 } from "../lib/recents";
 import { sessionWorkCwd } from "../lib/session";
+import { useSessionShells, type SessionShell } from "../lib/tcserver/store";
 import {
   useWorkspaceCatalog,
   workspaceByPath,
@@ -21,6 +22,7 @@ import {
   type WorkspaceCatalog,
 } from "../lib/tcserver/workspaces";
 import type { ProjectMeta } from "../lib/tcserver/types";
+import { activeSessionOf, useWorkspaceTabs } from "./workspace";
 
 /**
  * Where the window is: the workspace folder, the project picked inside it,
@@ -209,3 +211,32 @@ export const project = {
   setRecents: (recents: RecentProject[]) => update((s) => setRecents(s, recents)),
   markProjectLoaded: (cwd: string) => update((s) => markProjectLoaded(s, cwd)),
 };
+
+/** The tab on screen and the session it shows, as React state. */
+export function useActivePane(): {
+  activeTab: WorkspaceTab | undefined;
+  active: SessionShell | undefined;
+} {
+  const tabs = useWorkspaceTabs((s) => s.tabs);
+  const activeTabId = useWorkspaceTabs((s) => s.activeTabId);
+  const sessions = useSessionShells();
+  return useMemo(
+    () => activeSessionOf(tabs, activeTabId, sessions),
+    [tabs, activeTabId, sessions],
+  );
+}
+
+/** The active pane and the two folders the chrome derives from it, as React state. */
+export function useProjectCwds(): {
+  activeTab: WorkspaceTab | undefined;
+  active: SessionShell | undefined;
+  sidebarCwd: string;
+  gitCwd: string;
+} {
+  const { activeTab, active } = useActivePane();
+  const projectCwd = useProject((s) => s.projectCwd);
+  const selectedProjectId = useProject((s) => s.selectedProjectId);
+  const { projects } = useWorkspaceCatalog();
+  const sidebarCwd = sidebarCwdOf({ projectCwd, selectedProjectId }, projects, active, activeTab);
+  return { activeTab, active, sidebarCwd, gitCwd: gitCwdOf(active, sidebarCwd) };
+}

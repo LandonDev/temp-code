@@ -1,6 +1,7 @@
 import {
   closeLeaf,
   focusedFileTab,
+  isFilesystemTab,
   leaf,
   leafIds,
   newTab,
@@ -10,7 +11,7 @@ import {
   type PaneEdge,
   type WorkspaceTab,
 } from "./layout";
-import { projectName } from "./paths";
+import { displayPath, projectName } from "./paths";
 import { sameProjectPath } from "./recents";
 import type { Session } from "./session";
 
@@ -355,4 +356,22 @@ export function replaceGroupInTabOrder(
   const next = allIds.slice();
   next.splice(startIndex, length, ...newGroupIds);
   return next;
+}
+
+/** A tab whose every session is archived; a tab with no session never is. */
+export function tabArchived(
+  tab: WorkspaceTab,
+  sessions: readonly Pick<Session, "id" | "archived">[],
+): boolean {
+  const tabSessions = leafIds(tab.layout)
+    .map((id) => sessions.find((session) => session.id === id))
+    .filter((session) => session != null);
+  return tabSessions.length > 0 && tabSessions.every((session) => session.archived);
+}
+
+/** The reviewed file a tab has focused, as the Changes panel names it. */
+export function selectedChangePath(tab: WorkspaceTab, gitCwd?: string): string | undefined {
+  const file = focusedFileTab(tab);
+  if (!file || !isFilesystemTab(file) || !file.review) return undefined;
+  return displayPath(file.path, gitCwd || file.cwd);
 }

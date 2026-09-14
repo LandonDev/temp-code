@@ -1,4 +1,16 @@
-import { memo, useMemo, useRef, type ComponentProps, type MutableRefObject } from "react";
+import { memo, useEffect, useMemo, useRef, type ComponentProps } from "react";
+import { useSidebarLayout } from "../hooks/useSidebarLayout";
+import { resolveSessionContext } from "../lib/projectContext";
+import { useRightRailOpen } from "../lib/rightRail";
+import { canTabVisitBack, canTabVisitForward } from "../lib/tabVisitHistory";
+import { useWorkspaceCatalog } from "../lib/tcserver/workspaces";
+import { filterTabsForProjectId, tabArchived } from "../lib/workspaceTabGroups";
+import { useEditors } from "../stores/editors";
+import { header } from "../stores/header";
+import { dockCwdOf, useProject, useProjectCwds } from "../stores/project";
+import { useShell } from "../stores/shell";
+import { useTerminals } from "../stores/terminals";
+import { useWorkspaceTabs } from "../stores/workspace";
 import { basename } from "../lib/fs";
 import {
   focusedFileTab,
@@ -9,6 +21,7 @@ import {
   type WorkspaceTab,
 } from "../lib/layout";
 import { projectName } from "../lib/paths";
+import { findProjectTerminal } from "../lib/projectTerminal";
 import { releaseNotesTitle } from "../lib/releaseNotes";
 import {
   hasPendingApproval,
@@ -21,12 +34,12 @@ import {
   sessionStore,
   useServerSessions,
   useSessionMetas,
+  useSessionShells,
 } from "../lib/tcserver/store";
 import { terminalTabLabel } from "../lib/terminalTab";
 import {
   buildHeaderModel,
   headerOrder,
-  type HeaderModel,
   type HeaderTab,
 } from "../lib/threadHeaderModel";
 import { projectRootThreads, runningRoots } from "../lib/threadStripModel";
@@ -52,46 +65,73 @@ export type HeaderEvents = Pick<
   | "onToggleRail"
 >;
 
-type Props = Omit<ComponentProps<typeof TitleBar>, "tabs" | "header"> & {
-  /** The tabs the strip shows (deck mode: the selected project's). */
-  deckTabs: WorkspaceTab[];
-  dirtyFiles: Set<string>;
-  selectedProjectId: string | null;
-  activeSessionId?: string;
-  /** The selected project's workspace, for the header's tune defaults. */
-  headerWorkspaceId: string | null;
-  railOpen: boolean;
+type StateProps =
+  | "tabs"
+  | "header"
+  | "activeId"
+  | "cwd"
+  | "gitCwd"
+  | "deckLayout"
+  | "sourceControlActive"
+  | "canGoBack"
+  | "canGoForward"
+  | "projectTerminalActive"
+  | "recents";
+
+type Props = Omit<ComponentProps<typeof TitleBar>, StateProps> & {
   /** Present in deck mode; absent renders the classic strip. */
   headerEvents?: HeaderEvents;
-  /** Tab id -> project name, read by App's tab-group callbacks. */
-  tabProjectsRef: MutableRefObject<Map<string, string>>;
-  /** Tab ids in strip order, read by App's tab cycling. */
-  stripTabsRef: MutableRefObject<string[]>;
-  headerModelRef: MutableRefObject<HeaderModel<ChipThread>>;
-  chipThreadsRef: MutableRefObject<ChipThread[]>;
 };
 
 /**
  * Owns the title bar's live model — tab chips, thread strip, plan readiness,
- * the active thread's cost — off the store directly, so a turn starting or
- * ending re-renders this and the memoised TitleBar under it, not App.
+ * the active thread's cost — off the stores directly, so a turn starting or
+ * ending, a tab switch or a save re-renders this and the memoised TitleBar
+ * under it, not App. What App's callbacks need of the projection (the tab
+ * order, each tab's project, the header model) is published to the header
+ * store after each commit.
  */
-function ShellTitleBarComponent({
-  deckTabs,
-  dirtyFiles,
-  selectedProjectId,
-  activeSessionId,
-  headerWorkspaceId,
-  railOpen,
-  headerEvents,
-  tabProjectsRef,
-  stripTabsRef,
-  headerModelRef,
-  chipThreadsRef,
-  ...titleBar
-}: Props) {
-  const deckLayout = !!titleBar.deckLayout;
-  const { activeId: activeTabId } = titleBar;
+function ShellTitleBarComponent({ headerEvents, ...titleBar }: Props) {
+  const deckLayout = useSidebarLayout() === "deck";
+  const tabs = useWorkspaceTabs((s) => s.tabs);
+  const activeTabId = useWorkspaceTabs((s) => s.activeTabId);
+  const canGoBack = useWorkspaceTabs((s) => canTabVisitBack(s.visits));
+  const canGoForward = useWorkspaceTabs((s) => canTabVisitForward(s.visits));
+  const projectCwd = useProject((s) => s.projectCwd);
+  const selectedProjectId = useProject((s) => s.selectedProjectId);
+  const recents = useProject((s) => s.recents);
+  const catalog = useWorkspaceCatalog();
+  const shells = useSessionShells();
+  const { activeTab, active, sidebarCwd: cwd, gitCwd } = useProjectCwds();
+  const activeSessionId = active?.id;
+  const dirtyFiles = useEditors((s) => s.dirtyFiles);
+  const sidebarOpen = useShell((s) => s.sidebarOpen);
+  const sidebarTab = useShell((s) => s.sidebarTab);
+  const railOpen = useRightRailOpen();
+  const dockCwd = dockCwdOf({ projectCwd, selectedProjectId }, catalog.projects);
+  const dock = useTerminals((s) => findProjectTerminal(s.docks, dockCwd));
+  const projectTerminalActive = deckLayout && !!dock && dock.pane.files.length > 0;
+  const sourceControlActive = deckLayout
+    ? sidebarOpen && sidebarTab === "changes"
+    : !!activeTab?.diffOpen;
+  const headerWorkspaceId = deckLayout
+    ? resolveSessionContext({
+        ...catalog,
+        projectId: selectedProjectId,
+        workspacePath: projectCwd,
+      }).workspaceId ?? null
+    : null;
+  // Deck mode shows the selected project's tabs, keyed by server project id.
+  // Loose chats and projectless drafts only show while no project is selected.
+  const deckTabs = useMemo(
+    () =>
+      deckLayout
+        ? filterTabsForProjectId(tabs, shells, selectedProjectId).filter(
+            (tab) => !tabArchived(tab, shells),
+          )
+        : tabs,
+    [deckLayout, tabs, shells, selectedProjectId],
+  );
   const sessions = useServerSessions();
   const sessionMetas = useSessionMetas();
   const planReady = usePlanReady(sessions);
@@ -101,7 +141,7 @@ function ShellTitleBarComponent({
     () => deckTabs.map((tab) => toTitleTab(tab, sessions, dirtyFiles, planReady)),
     [deckTabs, dirtyFiles, planReady, sessions],
   );
-  tabProjectsRef.current = useMemo(
+  const tabProjects = useMemo(
     () => new Map(nextTitleTabs.map((tab) => [tab.id, tab.project])),
     [nextTitleTabs],
   );
@@ -128,7 +168,6 @@ function ShellTitleBarComponent({
       );
     return drafts.length > 0 ? [...sessionMetas, ...drafts] : sessionMetas;
   }, [sessionMetas, sessions]);
-  chipThreadsRef.current = chipThreads;
   const headerTabs = useMemo<HeaderTab[]>(
     () =>
       deckTabs.map((tab) => {
@@ -157,8 +196,7 @@ function ShellTitleBarComponent({
       }),
     [activeTabId, chipThreads, deckLayout, headerTabs, lastSeen, seenFloor, planReady, selectedProjectId],
   );
-  headerModelRef.current = headerModel;
-  stripTabsRef.current = useMemo(() => {
+  const stripTabs = useMemo(() => {
     if (!deckLayout) return nextTitleTabs.map((tab) => tab.id);
     const chipTabIds = new Set(
       headerOrder(headerModel).flatMap((chip) => (chip.tabId ? [chip.tabId] : [])),
@@ -168,6 +206,9 @@ function ShellTitleBarComponent({
       ...deckTabs.filter((tab) => !chipTabIds.has(tab.id)).map((tab) => tab.id),
     ];
   }, [deckLayout, deckTabs, headerModel, nextTitleTabs]);
+  useEffect(() => {
+    header.publish({ tabProjects, stripTabs, model: headerModel, chipThreads });
+  }, [chipThreads, headerModel, stripTabs, tabProjects]);
 
   /** The selected project's archived roots, freshest first, for the shelf. */
   const archivedThreads = useMemo<ArchivedThread[]>(() => {
@@ -191,7 +232,7 @@ function ShellTitleBarComponent({
     () => runningRoots(projectRootThreads(chipThreads, selectedProjectId)).length,
     [chipThreads, selectedProjectId],
   );
-  const header = useMemo<ThreadHeaderProps | undefined>(
+  const headerProps = useMemo<ThreadHeaderProps | undefined>(
     () =>
       deckLayout && headerEvents
         ? {
@@ -212,7 +253,22 @@ function ShellTitleBarComponent({
   if (!titleTabsEqual(titleTabsRef.current, nextTitleTabs)) {
     titleTabsRef.current = nextTitleTabs;
   }
-  return <TitleBar {...titleBar} tabs={titleTabsRef.current} header={header} />;
+  return (
+    <TitleBar
+      {...titleBar}
+      tabs={titleTabsRef.current}
+      header={headerProps}
+      activeId={activeTabId}
+      cwd={cwd}
+      gitCwd={gitCwd}
+      deckLayout={deckLayout}
+      sourceControlActive={sourceControlActive}
+      canGoBack={canGoBack}
+      canGoForward={canGoForward}
+      projectTerminalActive={projectTerminalActive}
+      recents={recents}
+    />
+  );
 }
 
 export const ShellTitleBar = memo(ShellTitleBarComponent);

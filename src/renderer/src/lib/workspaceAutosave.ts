@@ -32,8 +32,8 @@ export function createWorkspaceAutosave<T>({
   wait = 250,
   maxWait = 2000,
   now = () => Date.now(),
-  setTimer = (fn, ms) => window.setTimeout(fn, ms),
-  clearTimer = (id) => window.clearTimeout(id),
+  setTimer = (fn, ms) => setTimeout(fn, ms) as unknown as number,
+  clearTimer = (id) => clearTimeout(id),
 }: WorkspaceAutosaveOptions<T>): WorkspaceAutosave {
   let timer: number | null = null;
   let firstTouch = 0;
