@@ -13,6 +13,7 @@ import { createWorkspace } from "../lib/tcserver/projects";
 import { sessionStore } from "../lib/tcserver/store";
 import type { ProjectMeta, SessionMeta, WorkspaceCatalog } from "../lib/tcserver/types";
 import { workspaceStore } from "../lib/tcserver/workspaces";
+import { PARK_MS } from "../lib/warmTabs";
 import { migrateWorkspaces } from "../lib/workspaceMigration";
 import { forgetHarnessSession, refreshHarnessCatalogs } from "../lib/harness";
 import { lastProjectPath } from "../lib/recents";
@@ -26,7 +27,7 @@ import {
   installLayoutSync,
   installNotesGate,
   installIdleSweep,
-  installMountBudget,
+  installWarmSet,
   installSubscriptions,
   installTerminalIsolation,
   installVisitSettling,
@@ -232,41 +233,36 @@ describe("installTerminalIsolation", () => {
   });
 });
 
-describe("installMountBudget", () => {
-  it("grows the budget one idle slice at a time until every hidden tab may mount", () => {
-    const idle: (() => void)[] = [];
-    const cancelIdleCallback = vi.fn();
-    vi.stubGlobal("window", {
-      requestIdleCallback: (cb: () => void) => {
-        idle.push(cb);
-        return idle.length;
-      },
-      cancelIdleCallback,
-    });
-    setTabs([tab("a"), tab("b"), tab("c")]);
-    teardown = installMountBudget();
-    expect(idle).toHaveLength(1);
-    idle.shift()!();
-    expect(workspaceTabsStore.getState().hiddenMountBudget).toBe(1);
-    expect(idle).toHaveLength(1);
-    idle.shift()!();
-    idle.shift()!();
-    expect(workspaceTabsStore.getState().hiddenMountBudget).toBe(3);
-    expect(idle).toHaveLength(0);
-    expect(cancelIdleCallback).not.toHaveBeenCalled();
+describe("installWarmSet", () => {
+  it("mounts the active tab on activation and unmounts parked tabs outside the warm set after PARK_MS", () => {
+    vi.useFakeTimers();
+    setTabs([tab("a"), tab("b"), tab("c"), tab("d")]);
+    teardown = installWarmSet();
+    expect(workspaceTabsStore.getState().mountedTabIds).toEqual(["a"]);
+    for (const id of ["b", "c", "d"]) {
+      workspace.setActiveTabId(id);
+      workspace.settleVisits();
+    }
+    expect(workspaceTabsStore.getState().mountedTabIds).toEqual(["a", "b", "c", "d"]);
+    vi.advanceTimersByTime(PARK_MS - 1);
+    expect(workspaceTabsStore.getState().mountedTabIds).toEqual(["a", "b", "c", "d"]);
+    vi.advanceTimersByTime(1);
+    expect(workspaceTabsStore.getState().mountedTabIds).toEqual(["b", "c", "d"]);
+    vi.useRealTimers();
   });
 
-  it("cancels a pending slice when the tabs fall within budget, and tears down cleanly", () => {
-    const cancelIdleCallback = vi.fn();
-    vi.stubGlobal("window", { requestIdleCallback: () => 42, cancelIdleCallback });
+  it("drops a closed tab from the mounted set and tears down its timer", () => {
+    vi.useFakeTimers();
     setTabs([tab("a"), tab("b")]);
-    teardown = installMountBudget();
-    workspace.setTabs([]);
-    expect(cancelIdleCallback).toHaveBeenCalledWith(42);
-    setTabs([tab("a"), tab("b")]);
+    teardown = installWarmSet();
+    workspace.setActiveTabId("b");
+    workspace.settleVisits();
+    workspace.setTabs((tabs) => tabs.filter((t) => t.id !== "a"));
+    expect(workspaceTabsStore.getState().mountedTabIds).toEqual(["b"]);
     teardown();
     teardown = null;
-    expect(cancelIdleCallback).toHaveBeenCalledTimes(2);
+    expect(vi.getTimerCount()).toBe(0);
+    vi.useRealTimers();
   });
 });
 

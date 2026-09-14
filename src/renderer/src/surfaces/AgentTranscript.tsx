@@ -63,6 +63,11 @@ import { TurnStateContext, useTurnState, type TurnSession } from "./turnState";
 import { HarnessIcon } from "../chrome/HarnessIcon";
 import { useLockOverscroll } from "../hooks/useLockOverscroll";
 import {
+  peekTranscriptScroll,
+  saveTranscriptScroll,
+  takeTranscriptScroll,
+} from "../lib/transcriptScrollMemory";
+import {
   blockForSeq,
   pendingTranscriptJump,
   subscribeTranscriptJump,
@@ -189,8 +194,14 @@ export function AgentTranscript({
   const showJumpRef = useRef(false);
   const prependHeight = useRef<number | null>(null);
   const wasVisible = useRef(false);
+  const everVisible = useRef(false);
+  const visibleTurnCountRef = useRef(INITIAL_TURNS);
   const [scrollerEl, setScrollerEl] = useState<HTMLDivElement | null>(null);
-  const [visibleTurnCount, setVisibleTurnCount] = useState(INITIAL_TURNS);
+  // A remount after a park takes the window it had grown to, so the
+  // reader's place (restored below) is still inside it.
+  const [visibleTurnCount, setVisibleTurnCount] = useState(
+    () => peekTranscriptScroll(sessionId ?? "")?.turnCount ?? INITIAL_TURNS,
+  );
   const reduceMotion = useReducedMotion() === true;
   // Engine state lives in refs: the rAF loop reads and writes it without a
   // render, and nothing here changes what React draws.
@@ -508,6 +519,7 @@ export function AgentTranscript({
   useLayoutEffect(() => {
     const opened = visible && !wasVisible.current;
     wasVisible.current = visible;
+    if (visible) everVisible.current = true;
     if (!opened) {
       if (!visible && raf.current) {
         cancelAnimationFrame(raf.current);
@@ -517,11 +529,37 @@ export function AgentTranscript({
     }
     const el = scroller.current;
     if (!el) return;
-    if (mode.current === "follow") scrollTo(el, el.scrollHeight);
+    const saved = takeTranscriptScroll(sessionId ?? "");
+    if (saved) {
+      // The pane was unmounted while parked: put the reader back.
+      pinBottom.current = false;
+      setMode("free");
+      scrollTo(el, el.scrollHeight - el.clientHeight - saved.fromBottom);
+    } else if (mode.current === "follow") scrollTo(el, el.scrollHeight);
     else if (mode.current === "parked") layoutRunway();
     syncPill(el);
     schedule();
-  }, [visible, layoutRunway, schedule, syncPill]);
+  }, [visible, sessionId, layoutRunway, schedule, syncPill]);
+
+  // Unmount (the tab left the warm set): remember where the reader was.
+  // The closure holds the element, so the ref being detached first is fine.
+  // A pane that never showed keeps whatever memory it mounted with.
+  useLayoutEffect(() => {
+    const el = scrollerEl;
+    if (!el) return;
+    return () => {
+      if (!everVisible.current) return;
+      saveTranscriptScroll(
+        sessionId ?? "",
+        mode.current === "follow"
+          ? null
+          : {
+              fromBottom: Math.max(0, fromBottomOf(el) - spacerH.current),
+              turnCount: visibleTurnCountRef.current,
+            },
+      );
+    };
+  }, [scrollerEl, sessionId]);
 
   useLayoutEffect(() => {
     const el = scroller.current;
@@ -567,6 +605,7 @@ export function AgentTranscript({
     previousTurns.current = next;
     return next;
   }, [blocks]);
+  visibleTurnCountRef.current = visibleTurnCount;
   const firstVisibleTurn = Math.max(0, turns.length - visibleTurnCount);
   const visibleTurns = useMemo(() => turns.slice(firstVisibleTurn), [turns, firstVisibleTurn]);
   // Turns born after mount fade in; the ones the transcript opened with, and

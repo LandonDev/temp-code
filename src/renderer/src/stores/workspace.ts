@@ -11,10 +11,11 @@ import {
   tabVisitForward,
   type TabVisitHistory,
 } from "../lib/tabVisitHistory";
+import { mountTab, trimMounted, warmTabIds } from "../lib/warmTabs";
 
 /**
  * The window's open tabs: which one is active, the back/forward trail of
- * visits, and how many hidden tabs may mount their panes so far. The
+ * visits, and which tabs currently have their panes mounted. The
  * `WorkspaceTab` shape is `lib/layout`'s; this store only holds the array.
  * (`lib/tcserver/workspaces` is the server's workspace catalog; this is the
  * window's workspace.)
@@ -26,8 +27,12 @@ export type WorkspaceTabsState = {
   visits: TabVisitHistory;
   /** The next activation came from the trail itself, so it is not recorded. */
   visitFromHistory: boolean;
-  /** How many hidden tabs may mount their panes; grows one per idle slice. */
-  hiddenMountBudget: number;
+  /**
+   * Tabs whose pane trees are on the page. The active tab joins at once;
+   * the rest leave once they have been parked for `PARK_MS`, down to the
+   * warm set (`lib/warmTabs`). Never a tab that is not open.
+   */
+  mountedTabIds: readonly string[];
 };
 
 export type Updater<T> = T | ((prev: T) => T);
@@ -41,7 +46,7 @@ export function initialWorkspaceTabsState(
     activeTabId,
     visits: emptyTabVisitHistory(activeTabId),
     visitFromHistory: false,
-    hiddenMountBudget: 0,
+    mountedTabIds: activeTabId ? [activeTabId] : [],
   };
 }
 
@@ -110,10 +115,18 @@ export function stepVisits(
   };
 }
 
-/** One more hidden tab may mount; a no-op once every tab is covered. */
-export function growMountBudget(state: WorkspaceTabsState): WorkspaceTabsState {
-  if (state.hiddenMountBudget >= state.tabs.length) return state;
-  return { ...state, hiddenMountBudget: state.hiddenMountBudget + 1 };
+/** The active tab's panes mount now; closed tabs leave the mounted set. */
+export function mountActiveTab(state: WorkspaceTabsState): WorkspaceTabsState {
+  const open = state.tabs.map((tab) => tab.id);
+  const mountedTabIds = mountTab(trimMounted(state.mountedTabIds, open), state.activeTabId);
+  return mountedTabIds === state.mountedTabIds ? state : { ...state, mountedTabIds };
+}
+
+/** Parked tabs outside the warm set unmount; the active tab always stays. */
+export function trimMountedTabs(state: WorkspaceTabsState): WorkspaceTabsState {
+  const warm = warmTabIds(state.tabs, state.activeTabId, state.visits);
+  const mountedTabIds = mountTab(trimMounted(state.mountedTabIds, warm), state.activeTabId);
+  return mountedTabIds === state.mountedTabIds ? state : { ...state, mountedTabIds };
 }
 
 export const workspaceTabsStore = createStore<WorkspaceTabsState>()(
@@ -145,7 +158,8 @@ export const workspace = {
   visitBack: () => step("back"),
   /** Step forward in the trail; returns the tab to activate, or null. */
   visitForward: () => step("forward"),
-  growMountBudget: () => workspaceTabsStore.setState(growMountBudget),
+  mountActiveTab: () => workspaceTabsStore.setState(mountActiveTab),
+  trimMountedTabs: () => workspaceTabsStore.setState(trimMountedTabs),
 };
 
 function step(direction: "back" | "forward"): string | null {

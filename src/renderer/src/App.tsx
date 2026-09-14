@@ -608,21 +608,14 @@ export default function App() {
     };
   }, []);
 
-  const hiddenMountBudget = useWorkspaceTabs((s) => s.hiddenMountBudget);
-  const mountedTabIds = useMemo(() => {
-    const ids = new Set<string>();
-    let hidden = 0;
-    for (const tab of tabs) {
-      if (
-        tab.id === activeTabId ||
-        tab.id === shownTabId ||
-        hidden++ < hiddenMountBudget
-      ) {
-        ids.add(tab.id);
-      }
-    }
-    return ids;
-  }, [tabs, activeTabId, shownTabId, hiddenMountBudget]);
+  // The warm set (stores/workspace) plus the tab being shown: the store's
+  // set catches up with a click a microtask later, and the deferred pass
+  // may still be showing the tab it just left.
+  const warmTabIds = useWorkspaceTabs((s) => s.mountedTabIds);
+  const mountedTabIds = useMemo(
+    () => new Set([...warmTabIds, activeTabId, shownTabId]),
+    [warmTabIds, activeTabId, shownTabId],
+  );
 
   const activateTab = useCallback((id: string) => {
     workspaceActions.activateTab(id);

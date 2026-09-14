@@ -32,6 +32,7 @@ import { createWorkspace } from "../lib/tcserver/projects";
 import { sessionStore } from "../lib/tcserver/store";
 import { workspaceByPath, workspaceStore } from "../lib/tcserver/workspaces";
 import { createWorkspaceAutosave } from "../lib/workspaceAutosave";
+import { PARK_MS } from "../lib/warmTabs";
 import { migrateWorkspaces } from "../lib/workspaceMigration";
 import { collectWorkspaceSnapshot, workspaceSnapshotKey } from "../lib/workspaceSnapshot";
 import { focus } from "./focus";
@@ -102,47 +103,30 @@ export function installTerminalIsolation(): Teardown {
 }
 
 /**
- * Hidden tabs mount their panes after first paint, one per idle slice, so
- * launch-to-session-list does not scale with how many heavy tabs restore.
+ * Only the warm set keeps its panes mounted (`lib/warmTabs`): the active
+ * tab mounts on activation, and a tab that leaves the warm set unmounts
+ * once it has been parked for `PARK_MS`, so a quick switch back finds it
+ * still laid out while a workspace of a hundred tabs mounts three.
  */
-export function installMountBudget(): Teardown {
-  const idle =
-    typeof window !== "undefined" && typeof window.requestIdleCallback === "function"
-      ? {
-          book: (run: () => void) => window.requestIdleCallback(run, { timeout: 500 }),
-          free: (handle: number) => window.cancelIdleCallback(handle),
-        }
-      : {
-          book: (run: () => void) => setTimeout(run, 0) as unknown as number,
-          free: (handle: number) => clearTimeout(handle),
-        };
-  let handle: number | null = null;
-  const cancel = () => {
-    if (handle == null) return;
-    idle.free(handle);
-    handle = null;
+export function installWarmSet(): Teardown {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  const settle = () => {
+    workspace.mountActiveTab();
+    if (timer != null) clearTimeout(timer);
+    timer = setTimeout(() => {
+      timer = null;
+      workspace.trimMountedTabs();
+    }, PARK_MS);
   };
-  const schedule = () => {
-    const { hiddenMountBudget, tabs } = workspaceTabsStore.getState();
-    if (hiddenMountBudget >= tabs.length) {
-      cancel();
-      return;
-    }
-    if (handle != null) return;
-    handle = idle.book(() => {
-      handle = null;
-      workspace.growMountBudget();
-    });
-  };
-  schedule();
+  settle();
   const off = workspaceTabsStore.subscribe(
-    (s) => [s.hiddenMountBudget, s.tabs.length] as const,
-    schedule,
+    (s) => [s.activeTabId, s.tabs] as const,
+    settle,
     { equalityFn: (a, b) => a[0] === b[0] && a[1] === b[1] },
   );
   return () => {
     off();
-    cancel();
+    if (timer != null) clearTimeout(timer);
   };
 }
 
@@ -507,7 +491,7 @@ export function installSubscriptions(): Teardown {
   return teardownAll([
     installVisitSettling(),
     installTerminalIsolation(),
-    installMountBudget(),
+    installWarmSet(),
     installIdleSweep(),
     installActiveSessionSync(),
     installAutosave(),
