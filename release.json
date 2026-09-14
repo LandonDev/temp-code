@@ -1,5 +1,5 @@
 {
-  "n": 118,
-  "notes": "Stage marks on the open path: click, session ready, pane commit, deferred transcript commit, first rows (performance.mark under a tc: prefix) so a CDP run can read where an open spends its time instead of polling the DOM",
-  "ts": 1789423890485
+  "n": 119,
+  "notes": "Tail and transcript window budgeted in rows, not turns: the server walks back about 300 transcript rows (a prompt, a tool call or one message each) over light columns and cuts on a row boundary, the store asks for rows, and the transcript mounts its last 100 rows and grows by 150 on demand, part-way through a turn if it must",
+  "ts": 1789424403515
 }
