@@ -1,5 +1,5 @@
 {
-  "n": 108,
-  "notes": "Untrack src/main/server/media: two unreferenced files from another session were staged by mistake in a76e154",
-  "ts": 1789417995716
+  "n": 109,
+  "notes": "Parked tabs unmount: only the active tab and the two most recent stay mounted, the rest leave the page 3 s after they park",
+  "ts": 1789419029034
 }
