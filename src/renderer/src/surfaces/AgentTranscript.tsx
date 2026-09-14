@@ -62,6 +62,7 @@ import { commandParts, isAgentCall, useKnownCommands, type CommandPart } from ".
 import { TurnStateContext, useTurnState, type TurnSession } from "./turnState";
 import { HarnessIcon } from "../chrome/HarnessIcon";
 import { useLockOverscroll } from "../hooks/useLockOverscroll";
+import { usePaneVisible } from "../hooks/paneVisibility";
 import {
   peekTranscriptScroll,
   saveTranscriptScroll,
@@ -186,8 +187,10 @@ export function AgentTranscript({
   onHandoff,
   onJumpToBottomChange,
   onJumpToBottomReady,
-  visible = true,
+  visible: visibleProp = true,
 }: Props) {
+  // A parked pane keeps its transcript mounted; the context turns it off.
+  const visible = visibleProp && usePaneVisible();
   const lockOverscroll = useLockOverscroll<HTMLDivElement>();
   const scroller = useRef<HTMLDivElement>(null);
   const spacer = useRef<HTMLDivElement>(null);
@@ -990,7 +993,7 @@ const TurnView = memo(function TurnView({
 function LiveTurnDuration({ turn }: { turn: Block[] }) {
   const session = useTurnState();
   const paused = session ? isTurnPaused(session) : false;
-  const now = useClock(!paused);
+  const now = useClock(!paused && usePaneVisible());
   const elapsed = session ? turnElapsed(session, now) : null;
   const waiting = turn.some(
     (b) => needsApproval(b) || (b.question != null && b.question.answers === undefined),

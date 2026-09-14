@@ -1,4 +1,5 @@
 import { useLayoutEffect, useRef, useState } from "react";
+import { usePaneVisible } from "../hooks/paneVisibility";
 
 /**
  * Smooth streaming reveal — the harness delivers text in coarse chunks
@@ -77,11 +78,12 @@ export function useSmoothText(text: string, streaming: boolean | undefined): str
     lastPaint: 0,
   });
 
+  const paneShown = usePaneVisible();
   useLayoutEffect(() => {
     const s = st.current;
     s.live = streaming;
     s.target = text;
-    if (isRewrite(s.prev, text, s.pos)) {
+    if (!paneShown || isRewrite(s.prev, text, s.pos)) {
       s.pos = text.length;
       setShown(text.length);
     }
@@ -113,7 +115,7 @@ export function useSmoothText(text: string, streaming: boolean | undefined): str
         s.raf = 0;
       }
     };
-  }, [text, streaming]);
+  }, [text, streaming, paneShown]);
 
   return shown >= text.length ? text : text.slice(0, shown);
 }

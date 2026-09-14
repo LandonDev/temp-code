@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { usePaneVisible } from "../hooks/paneVisibility";
 
 /** Tween a displayed count toward its target — 550ms ease-out cubic. The
  *  tween restarts from the value on screen, so a target that keeps moving
@@ -7,8 +8,13 @@ export function useCountUp(target: number, animate: boolean): number {
   const [v, setV] = useState(0);
   const cur = useRef(0);
   const raf = useRef(0);
+  const run = animate && usePaneVisible();
   useEffect(() => {
-    if (!animate || cur.current === target) return;
+    if (!run) {
+      cur.current = target;
+      return;
+    }
+    if (cur.current === target) return;
     const start = cur.current;
     const t0 = performance.now();
     const tick = (now: number): void => {
@@ -21,6 +27,6 @@ export function useCountUp(target: number, animate: boolean): number {
     };
     raf.current = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf.current);
-  }, [target, animate]);
-  return animate ? v : target;
+  }, [target, run]);
+  return run ? v : target;
 }

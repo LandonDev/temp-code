@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { usePaneVisible } from "../../hooks/paneVisibility";
 import { GitFork, ListChecks, MapIcon, MessageSquare, Search, Telescope, Users, Wrench } from "../../chrome/icons";
 import type { ActivityKind } from "../../lib/session";
 import type { AgentType, SessionStatus, ThreadType } from "../../lib/tcserver/types";
@@ -101,12 +102,13 @@ export function duration(ms: number): string {
 /** Re-render every `ms` while `active` — drives live elapsed labels. */
 export function useNow(active: boolean, ms = 1000): number {
   const [now, setNow] = useState(() => Date.now());
+  const shown = usePaneVisible();
   useEffect(() => {
-    if (!active) return;
+    if (!active || !shown) return;
     setNow(Date.now());
     const t = setInterval(() => setNow(Date.now()), ms);
     return () => clearInterval(t);
-  }, [active, ms]);
+  }, [active, shown, ms]);
   return now;
 }
 
