@@ -446,29 +446,6 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
     method: z.literal('commands.list'),
     params: z.object({ provider: providerEnum, cwd: z.string() })
   }),
-  // One-sentence summary of a settled tool group, from a small fast model
-  // on the thread's own subscription (haiku via claude -p, spark via codex).
-  z.object({
-    id: z.string(),
-    method: z.literal('tools.summarize'),
-    params: z.object({
-      sessionId: z.string(),
-      groupKey: z.string(),
-      items: z
-        .array(
-          z.object({
-            name: z.string(),
-            detail: z.string(),
-            output: z.string().optional()
-          })
-        )
-        .max(24),
-      /** which subscription writes it: auto = the thread's own provider */
-      model: z.enum(['auto', 'haiku', 'spark']).default('auto'),
-      /** also caption each tool with a short phrase (same single call) */
-      captions: z.boolean().default(false)
-    })
-  }),
   // Persist pasted bytes (screenshots) so they have a path like any file.
   z.object({
     id: z.string(),
