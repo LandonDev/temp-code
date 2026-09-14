@@ -1,5 +1,5 @@
 {
-  "n": 113,
-  "notes": "Tail-first transcript load: a first fetch asks session.events for the last 20 turns (the server walks back from the end, so a 40k-event log costs only the rows it returns), paints them, then fetches the rows before in the background and refolds in 2000-row slices; block ids come from seqs so the painted turns keep their keys when the head lands",
-  "ts": 1789420677412
+  "n": 114,
+  "notes": "Tab switch paints the strip, pane header and composer on the click; only the transcript body mounts in a deferred pass behind them (DeferredMount, keyed on the session), replacing the deferred whole-pane swap",
+  "ts": 1789420869547
 }
