@@ -230,7 +230,7 @@ import {
 import { dropContextWindow } from "./lib/contextUsage";
 import {
   deleteSession,
-  getSession,
+  loadSession,
   setSessionArchived,
 } from "./lib/sessionStore";
 import {
@@ -1811,7 +1811,8 @@ export default function App() {
       );
       if (open) return open;
 
-      const loaded = await getSession(sessionId).catch(() => null);
+      // The last turns are enough to open on; the rest of the log folds behind.
+      const loaded = await loadSession(sessionId).catch(() => null);
       if (!loaded) {
         void refreshHistory(sidebarCwd);
         return null;

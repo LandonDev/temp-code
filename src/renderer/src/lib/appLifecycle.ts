@@ -15,6 +15,7 @@ import type { Session } from "./session";
 import { restoreSessionCheckout } from "./fs";
 import {
   getSession,
+  loadSession,
   peekSession,
   listSessionsByProject,
   loadWorkspaceSnapshot,
@@ -223,7 +224,7 @@ async function loadResumedWorkspaceOnce(): Promise<ResumedWorkspace | null> {
   const loaded = new Map<string, Session>();
   await Promise.all(
     [...ids].map(async (id) => {
-      const record = await (activeIds.has(id) ? getSession(id) : peekSession(id)).catch(
+      const record = await (activeIds.has(id) ? loadSession(id) : peekSession(id)).catch(
         () => null,
       );
       if (record) loaded.set(id, record);

@@ -2,11 +2,12 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   getSession,
   listSessionsByProject,
+  loadSession,
   searchSessions,
   shouldPersistSession,
   summaryFromMeta,
 } from "./sessionStore";
-import { newSession } from "./session";
+import { newSession, type Session } from "./session";
 import { sessionStore, type Link } from "./tcserver/store";
 import type { EventRow, ServerPush, SessionMeta } from "./tcserver/types";
 
@@ -24,11 +25,26 @@ class FakeLink implements Link {
   connected = true;
   metas: SessionMeta[] = [];
   events = new Map<string, EventRow[]>();
+  /** Resolves before a head (beforeSeq) fetch answers, when set. */
+  holdHead: Promise<void> | null = null;
   request<T>(method: string, params?: unknown): Promise<T> {
     if (method === "session.list") return Promise.resolve(this.metas as T);
     if (method === "session.events") {
-      const { sessionId } = params as { sessionId: string };
-      return Promise.resolve((this.events.get(sessionId) ?? []) as T);
+      const { sessionId, afterSeq = 0, beforeSeq, tail } = params as {
+        sessionId: string; afterSeq?: number; beforeSeq?: number; tail?: number;
+      };
+      let rows = (this.events.get(sessionId) ?? []).filter(
+        (r) => r.seq > afterSeq && (beforeSeq === undefined || r.seq < beforeSeq),
+      );
+      if (tail !== undefined) {
+        const users = rows.filter((r) => r.event.type === "user-text");
+        if (users.length >= tail) {
+          const from = users[users.length - tail].seq;
+          rows = rows.filter((r) => r.seq >= from);
+        }
+      }
+      const hold = beforeSeq !== undefined ? this.holdHead : null;
+      return (hold ?? Promise.resolve()).then(() => rows as T);
     }
     return Promise.resolve(null as T);
   }
@@ -93,6 +109,33 @@ describe("getSession", () => {
     sessionStore.mutate([draft]);
     expect(await getSession(draft.id)).toBe(sessionStore.get(draft.id));
     expect(await getSession("nope")).toBeNull();
+  });
+});
+
+describe("loadSession", () => {
+  it("returns once the last turns are folded; getSession waits for the whole log", async () => {
+    link.metas = [meta({ id: "a" })];
+    const rows: EventRow[] = [];
+    for (let turn = 1; turn <= 25; turn++) {
+      rows.push({ sessionId: "a", seq: rows.length + 1, ts: turn, event: { type: "user-text", text: `q${turn}` } });
+      rows.push({ sessionId: "a", seq: rows.length + 1, ts: turn, event: { type: "turn-complete" } });
+    }
+    link.events.set("a", rows);
+    let releaseHead!: () => void;
+    link.holdHead = new Promise<void>((r) => (releaseHead = r));
+    sessionStore.connect(link);
+    const tail = await loadSession("a");
+    expect(tail?.loaded).toBe(true);
+    expect(tail?.blocks[0]?.text).toBe("q6");
+    expect(sessionStore.isComplete("a")).toBe(false);
+    let whole: Session | null | undefined;
+    const pending = getSession("a").then((s) => (whole = s));
+    await Promise.resolve();
+    expect(whole).toBeUndefined();
+    releaseHead();
+    await pending;
+    expect(whole?.blocks[0]?.text).toBe("q1");
+    expect(sessionStore.isComplete("a")).toBe(true);
   });
 });
 
