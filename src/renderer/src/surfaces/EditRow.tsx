@@ -2,6 +2,7 @@ import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { useReducedMotion } from "motion/react";
 import { ChevronRight, FilePlusCorner, PenLine, Trash2 } from "../chrome/icons";
 import { TerminalSpinner } from "../chrome/TerminalSpinner";
+import { usePaneVisible } from "../hooks/paneVisibility";
 import { readTextFile } from "../lib/fs";
 import { resolveWorkspacePath } from "../lib/paths";
 import type { OpenFileFn } from "../lib/search";
@@ -131,9 +132,10 @@ export function EditRow({
   const [holdOpen, setHoldOpen] = useState(running);
   const [revealed, setRevealed] = useState<number | null>(null);
   const rowCount = rows.length;
+  const paneShown = usePaneVisible();
   useEffect(() => {
     if (running || !liveAtMount) return;
-    if (reduce || rowCount === 0) {
+    if (reduce || !paneShown || rowCount === 0) {
       const t = window.setTimeout(() => setHoldOpen(false), 800);
       return () => clearTimeout(t);
     }
@@ -157,7 +159,7 @@ export function EditRow({
       clearTimeout(hold);
       setRevealed(null);
     };
-  }, [running, liveAtMount, rowCount, reduce]);
+  }, [running, liveAtMount, rowCount, reduce, paneShown]);
   const open = hasDiff && (editMode || (userOpen ?? (liveAtMount && (running || holdOpen))));
 
   const Icon = m.remove ? Trash2 : m.create ? FilePlusCorner : PenLine;

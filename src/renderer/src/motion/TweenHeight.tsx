@@ -1,4 +1,5 @@
 import { useLayoutEffect, useRef, type ReactNode } from "react";
+import { usePaneVisible } from "../hooks/paneVisibility";
 
 /**
  * A measured height fold (ported from temp-code). CSS cannot tween to
@@ -62,7 +63,7 @@ export function tweenHeight(
 
 export function TweenHeight({
   open,
-  animate,
+  animate: animateProp,
   children,
   className,
 }: {
@@ -74,6 +75,8 @@ export function TweenHeight({
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const first = useRef(true);
+  // A parked pane snaps: nothing on screen to tween for.
+  const animate = animateProp && usePaneVisible();
   useLayoutEffect(() => {
     const el = ref.current;
     if (!el) return;

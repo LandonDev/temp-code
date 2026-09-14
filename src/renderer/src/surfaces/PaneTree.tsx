@@ -15,6 +15,7 @@ import {
   useExternalPaneDrop,
 } from "../lib/paneDrop";
 import type { ApprovalDecision } from "../lib/harness";
+import { PaneVisibilityContext } from "../hooks/paneVisibility";
 import { useSidebarLayout } from "../hooks/useSidebarLayout";
 import {
   layoutLeaves,
@@ -304,6 +305,7 @@ function PaneTreeComponent({
   );
 
   return (
+    <PaneVisibilityContext.Provider value={visible}>
     <div ref={treeRef} className="relative h-full min-h-0 min-w-0">
       {leaves.map((leaf) => {
         const editorPane = editorPanes.find((pane) => pane.id === leaf.id);
@@ -395,6 +397,7 @@ function PaneTreeComponent({
         />
       ))}
     </div>
+    </PaneVisibilityContext.Provider>
   );
 }
 

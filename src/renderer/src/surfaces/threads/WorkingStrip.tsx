@@ -1,4 +1,5 @@
 import { memo, useEffect, useMemo, useState } from "react";
+import { usePaneVisible } from "../../hooks/paneVisibility";
 import { Pause } from "../../chrome/icons";
 import type { Session } from "../../lib/session";
 import { MatrixSpinner, duration } from "./bits";
@@ -67,13 +68,14 @@ export const WorkingStrip = memo(function WorkingStrip({
   const visible = active || paused;
   const turnStart = turnStartOf(session);
 
+  const shown = usePaneVisible();
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
-    if (!active) return;
+    if (!active || !shown) return;
     setNow(Date.now());
     const t = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(t);
-  }, [active]);
+  }, [active, shown]);
   const elapsed = paused
     ? Math.max(0, session.frozenActiveElapsed ?? 0)
     : active
@@ -83,10 +85,10 @@ export const WorkingStrip = memo(function WorkingStrip({
   const seed = useMemo(() => seedOf(session.id), [session.id]);
   const [tick, setTick] = useState(0);
   useEffect(() => {
-    if (!running) return;
+    if (!running || !shown) return;
     const t = setInterval(() => setTick((n) => n + 1), 7000);
     return () => clearInterval(t);
-  }, [running]);
+  }, [running, shown]);
   const word = FLAVOUR_WORDS[(seed + tick) % FLAVOUR_WORDS.length];
   const [resumeBusy, setResumeBusy] = useState(false);
   const resume = (): void => {

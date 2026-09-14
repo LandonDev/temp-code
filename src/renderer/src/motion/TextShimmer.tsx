@@ -1,5 +1,6 @@
 import { useReducedMotion } from "motion/react";
 import type { ReactNode } from "react";
+import { usePaneVisible } from "../hooks/paneVisibility";
 import { cn } from "./cn";
 
 /**
@@ -14,7 +15,8 @@ export function TextShimmer({
   className?: string;
 }) {
   const reduce = useReducedMotion();
-  if (reduce) return <span className={cn("text-content/55", className)}>{children}</span>;
+  const shown = usePaneVisible();
+  if (reduce || !shown) return <span className={cn("text-content/55", className)}>{children}</span>;
   return (
     <span
       className={cn(

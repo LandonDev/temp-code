@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { HARNESS_ICONS, MONOCHROME_HARNESSES } from "../chrome/HarnessIcon";
+import { usePaneVisible } from "../hooks/paneVisibility";
 import { MASCOT_GRID, PROJECT_MASCOTS } from "../lib/projectMascots";
 import { HARNESSES, type HarnessId } from "../lib/session";
 import {
@@ -166,9 +167,13 @@ export function TerminalGridBackground() {
     dir: 1,
   });
   const [hovered, setHovered] = useState(false);
+  const visible = usePaneVisible();
+  const visibleRef = useRef(visible);
+  const resumeRef = useRef<() => void>(() => {});
 
   indexRef.current = slide.index;
   playingRef.current = playing;
+  visibleRef.current = visible;
 
   const game = GRID_GAMES[slide.index] ?? GRID_GAMES[0]!;
 
@@ -325,7 +330,7 @@ export function TerminalGridBackground() {
     };
 
     const draw = (time: number) => {
-      if (document.hidden) {
+      if (document.hidden || !visibleRef.current) {
         raf = 0;
         return;
       }
@@ -369,10 +374,11 @@ export function TerminalGridBackground() {
     raf = requestAnimationFrame(draw);
 
     const onVisible = () => {
-      if (document.hidden || raf) return;
+      if (document.hidden || !visibleRef.current || raf) return;
       lastFrame = 0;
       raf = requestAnimationFrame(draw);
     };
+    resumeRef.current = onVisible;
     document.addEventListener("visibilitychange", onVisible);
 
     const resizeObserver = new ResizeObserver(layout);
@@ -393,8 +399,14 @@ export function TerminalGridBackground() {
       resizeObserver.disconnect();
       themeObserver.disconnect();
       boardsRef.current = null;
+      resumeRef.current = () => {};
     };
   }, []);
+
+  // The pane came back on screen: restart the loop `draw` let go of.
+  useEffect(() => {
+    if (visible) resumeRef.current();
+  }, [visible]);
 
   const takeControl = useCallback(() => {
     const board = boardsRef.current?.[indexRef.current];
@@ -431,7 +443,7 @@ export function TerminalGridBackground() {
   }, []);
 
   useEffect(() => {
-    if (playing || hovered || GRID_GAMES.length < 2) return;
+    if (playing || hovered || !visible || GRID_GAMES.length < 2) return;
 
     const id = window.setInterval(() => {
       if (document.hidden) return;
@@ -440,7 +452,7 @@ export function TerminalGridBackground() {
       );
     }, SLIDE_HOLD_MS);
     return () => window.clearInterval(id);
-  }, [playing, hovered, slide.index]);
+  }, [playing, hovered, visible, slide.index]);
 
   useEffect(() => {
     if (!playing) return;

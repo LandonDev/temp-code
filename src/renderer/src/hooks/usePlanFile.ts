@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { readFile } from "../lib/tcserver/commands";
+import { usePaneVisible } from "./paneVisibility";
 
 /**
  * The plan or report file a thread writes, polled through `file.read`.
@@ -13,11 +14,12 @@ export function usePlanFile(
   cadence: { running: number; idle: number } = { running: 1500, idle: 8000 },
 ): string | null {
   const [doc, setDoc] = useState<string | null>(null);
+  const shown = usePaneVisible();
   useEffect(() => {
     setDoc(null);
   }, [path]);
   useEffect(() => {
-    if (!path) return;
+    if (!path || !shown) return;
     let alive = true;
     const poll = async (): Promise<void> => {
       const content = await readFile(path);
@@ -29,6 +31,6 @@ export function usePlanFile(
       alive = false;
       clearInterval(t);
     };
-  }, [path, running, cadence.running, cadence.idle]);
+  }, [path, shown, running, cadence.running, cadence.idle]);
   return doc;
 }
