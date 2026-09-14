@@ -1,5 +1,5 @@
 {
-  "n": 120,
-  "notes": "Project-switch chrome measures nothing on the swap: a strip or sidebar whose rows change wholesale keys its presence boundary on a generation (no exit or enter springs, no layout snapshots, no shared-element glide from a chip that is gone) and glides again 400 ms later with a fresh layout id, never past 40 rows; chips take a per-row layoutDependency so unchanged re-renders skip snapshots; the sidebar virtualizer sizes a newly mounted row from its cache or estimate and lets the ResizeObserver correct it instead of reading a rect per row before the paint; tab-group records parse from localStorage once and refresh on write or a storage event",
-  "ts": 1789425529977
+  "n": 121,
+  "notes": "Arcade is an idle screen: the boards run only after 2 s with no pointer or key input anywhere in the window and stop on the next one, so a tab or project switch (a click, a key) never shares its frame with a board paint and a moving pointer keeps them still; canvases size and allocate on the first frame that draws, not on mount; a game you took control of runs on your keys",
+  "ts": 1789425716372
 }
