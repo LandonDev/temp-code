@@ -189,7 +189,17 @@ export async function peekSession(sessionId: string): Promise<Session | null> {
   return sessionStore.get(sessionId) ?? null;
 }
 
-/** The folded session, whole, fetched from the server on first ask. */
+/** The session with its last turns folded, for painting: the rest of the
+ *  log lands behind them. Whole already when it is small. */
+export async function loadSession(sessionId: string): Promise<Session | null> {
+  await sessionStore.ready();
+  if (sessionStore.isDraft(sessionId)) return sessionStore.get(sessionId) ?? null;
+  await sessionStore.ensureLoaded(sessionId);
+  return sessionStore.get(sessionId) ?? null;
+}
+
+/** The folded session, whole, fetched from the server on first ask
+ *  (mirrors, summaries, search: readers that need every row). */
 export async function getSession(sessionId: string): Promise<Session | null> {
   await sessionStore.ready();
   if (sessionStore.isDraft(sessionId)) return sessionStore.get(sessionId) ?? null;
