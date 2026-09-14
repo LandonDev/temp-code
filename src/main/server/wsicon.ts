@@ -1,10 +1,8 @@
 import { readFile, stat } from 'node:fs/promises'
 import { join } from 'node:path'
-import { execFile } from 'node:child_process'
-import { promisify } from 'node:util'
+import { execFileBudgeted as execFileP } from './spawnBudget'
 import type { WorkspaceIcon } from '@shared/domain'
 
-const execFileP = promisify(execFile)
 
 type GitHost = WorkspaceIcon['host']
 

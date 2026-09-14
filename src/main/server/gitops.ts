@@ -1,4 +1,4 @@
-import { execFile } from 'node:child_process'
+import { execFileChildBudgeted } from './spawnBudget'
 import { lstat, open, stat, unlink } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { isAbsolute, join, resolve } from 'node:path'
@@ -13,15 +13,16 @@ const rootPath = (cwd: string): string => resolve(cwd === '~' ? homedir() : cwd.
 /** No shell; stdin stays separate from arguments for index-only hunk staging. */
 function run(cwd: string, args: string[], input?: string): Promise<Buffer> {
   return new Promise((resolveOutput, reject) => {
-    const child = execFile('git', ['--no-pager', '-C', rootPath(cwd), ...args], {
+    void execFileChildBudgeted('git', ['--no-pager', '-C', rootPath(cwd), ...args], {
       encoding: 'buffer', maxBuffer: 32 * 1024 * 1024, timeout: 120_000,
       env: { ...process.env, GIT_OPTIONAL_LOCKS: '0', GIT_TERMINAL_PROMPT: '0', ...(args.includes('--') ? { GIT_LITERAL_PATHSPECS: '1' } : {}) }
     }, (error, stdout, stderr) => {
       if (error) reject(new Error(stderr.toString().trim() || stdout.toString().trim() || error.message))
-      else resolveOutput(stdout)
+      else resolveOutput(stdout as Buffer)
+    }).then((child) => {
+      child.stdin?.on('error', () => { /* execFile reports early process exit. */ })
+      child.stdin?.end(input)
     })
-    child.stdin?.on('error', () => { /* execFile reports early process exit. */ })
-    child.stdin?.end(input)
   })
 }
 const text = async (cwd: string, args: string[]): Promise<string> => (await run(cwd, args)).toString('utf8')

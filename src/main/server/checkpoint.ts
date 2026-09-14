@@ -1,4 +1,4 @@
-import { execFile } from 'node:child_process'
+import { execFileBudgeted } from './spawnBudget'
 import { lstat, mkdir, readdir, readFile, rename, rm, stat, unlink, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { dirname, isAbsolute, join, relative as relativePath, resolve, sep } from 'node:path'
@@ -437,22 +437,17 @@ const exists = async (path: string): Promise<boolean> => (await stat(path).catch
 const isFile = async (path: string): Promise<boolean> => (await stat(path).catch(() => null))?.isFile() ?? false
 const isDir = async (path: string): Promise<boolean> => (await stat(path).catch(() => null))?.isDirectory() ?? false
 
-function git(root: string, args: string[]): Promise<void> {
-  return new Promise((done, reject) => {
-    execFile(
-      'git',
-      ['--no-pager', '-C', root, ...args],
-      {
-        maxBuffer: 8 * 1024 * 1024,
-        timeout: 120_000,
-        env: { ...process.env, GIT_OPTIONAL_LOCKS: '0', GIT_TERMINAL_PROMPT: '0', GIT_LITERAL_PATHSPECS: '1' }
-      },
-      (error, stdout, stderr) => {
-        if (error) reject(new Error(String(stderr).trim() || String(stdout).trim() || error.message))
-        else done()
-      }
-    )
-  })
+async function git(root: string, args: string[]): Promise<void> {
+  try {
+    await execFileBudgeted('git', ['--no-pager', '-C', root, ...args], {
+      maxBuffer: 8 * 1024 * 1024,
+      timeout: 120_000,
+      env: { ...process.env, GIT_OPTIONAL_LOCKS: '0', GIT_TERMINAL_PROMPT: '0', GIT_LITERAL_PATHSPECS: '1' }
+    })
+  } catch (error) {
+    const e = error as Error & { stdout?: string; stderr?: string }
+    throw new Error(String(e.stderr ?? '').trim() || String(e.stdout ?? '').trim() || e.message)
+  }
 }
 
 const inHead = (root: string, relative: string): Promise<boolean> =>

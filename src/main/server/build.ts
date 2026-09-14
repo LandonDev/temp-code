@@ -1,9 +1,8 @@
-import { execFile, spawn, type ChildProcess } from 'node:child_process'
+import { spawn, type ChildProcess } from 'node:child_process'
 import { existsSync, mkdirSync } from 'node:fs'
 import { readFile, stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { basename, join, relative, resolve } from 'node:path'
-import { promisify } from 'node:util'
 import { nanoid } from 'nanoid'
 import { glob } from 'tinyglobby'
 import type { ServerPush } from '@shared/contract'
@@ -19,7 +18,7 @@ import {
 import { harnessEnv } from './drivers/binaries'
 import { branches, checkouts, currentBranch } from './git'
 
-const execFileP = promisify(execFile)
+import { execFileBudgeted as execFileP, spawnBudgeted, trackChild } from './spawnBudget'
 
 /**
  * The Build rail's engine: one build per project at a time, run in the
@@ -189,11 +188,11 @@ export async function pullBranch(
 ): Promise<RemoteStatus | null> {
   const b = branch ?? project.branch ?? (await currentBranch(project.cwd))
   if (!b) throw new Error('no branch checked out')
+  const child = await spawnBudgeted('git', ['-C', project.cwd, 'fetch', '--progress', '--no-tags', 'origin', b], {
+    env: quietGit,
+    stdio: ['ignore', 'pipe', 'pipe']
+  })
   await new Promise<void>((resolve, reject) => {
-    const child = spawn('git', ['-C', project.cwd, 'fetch', '--progress', '--no-tags', 'origin', b], {
-      env: quietGit,
-      stdio: ['ignore', 'pipe', 'pipe']
-    })
     let tail = ''
     let last = ''
     let timer: NodeJS.Timeout | null = null
@@ -377,12 +376,15 @@ export class BuildRunner {
     this.slots.set(projectId, slot)
     this.emit(projectId, slot, [])
     const env = { ...(await harnessEnv()), NO_COLOR: '1', TERM: 'dumb' }
-    const child = spawn('/bin/zsh', ['-lc', build.command], {
-      cwd,
-      env,
-      detached: true,
-      stdio: ['ignore', 'pipe', 'pipe']
-    })
+    // Its own group so cancel() can kill the whole tree; tracked so quit kills it too.
+    const child = trackChild(
+      spawn('/bin/zsh', ['-lc', build.command], {
+        cwd,
+        env,
+        detached: true,
+        stdio: ['ignore', 'pipe', 'pipe']
+      })
+    )
     slot.child = child
     const feed = (stream: NodeJS.ReadableStream | null): void => {
       if (!stream) return

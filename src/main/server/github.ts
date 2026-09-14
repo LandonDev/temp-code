@@ -1,9 +1,10 @@
-import { execFile, type ExecFileException } from 'node:child_process'
+import { type ExecFileException } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { access, constants, unlink, writeFile } from 'node:fs/promises'
 import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { harnessEnv, resolveBinary } from './drivers/binaries'
+import { execFileBudgeted } from './spawnBudget'
 
 export type GitHubTaskKind = 'issue' | 'pr'
 
@@ -191,17 +192,14 @@ function runCommand(
     maxBuffer?: number
   } = {}
 ): Promise<CommandResult> {
-  return new Promise((resolve) => {
-    execFile(
-      program,
-      [...args],
-      {
-        ...options,
-        encoding: 'utf8'
-      },
-      (error, stdout, stderr) => resolve({ error, stdout, stderr })
-    )
-  })
+  return execFileBudgeted(program, args, { ...options, encoding: 'utf8' }).then(
+    ({ stdout, stderr }) => ({ error: null, stdout, stderr }),
+    (error: ExecFileException & { stdout?: string; stderr?: string }) => ({
+      error,
+      stdout: error.stdout ?? '',
+      stderr: error.stderr ?? ''
+    })
+  )
 }
 
 function expandHome(path: string): string {

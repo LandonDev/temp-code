@@ -1,8 +1,7 @@
-import { execFile } from 'node:child_process'
+import { execFileBudgeted as execFileP } from './spawnBudget'
 import { mkdirSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
-import { promisify } from 'node:util'
 import { z } from 'zod'
 import {
   createSdkMcpServer,
@@ -29,7 +28,6 @@ import type { EventRow, SessionMeta } from '@shared/events'
 import type { SessionRegistry } from './sessions'
 import { foldTodo, newTodoFold, tallyOf } from './todos'
 
-const execFileP = promisify(execFile)
 
 /**
  * Orchestration (docs/PLAN.md M6, supervision in docs/PLAN-2.md M7). The

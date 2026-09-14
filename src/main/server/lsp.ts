@@ -1,4 +1,4 @@
-import { spawn, execFile, type ChildProcess } from 'node:child_process'
+import { type ChildProcess } from 'node:child_process'
 import { createRequire } from 'node:module'
 import { createHash } from 'node:crypto'
 import {
@@ -17,12 +17,11 @@ import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { Readable } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
-import { promisify } from 'node:util'
 import type { WebSocket } from 'ws'
 import type { LspStatusRow } from '@shared/domain'
 import { harnessEnv } from './drivers/binaries'
 
-const execFileP = promisify(execFile)
+import { execFileBudgeted as execFileP, spawnTracked as spawn } from './spawnBudget'
 
 /**
  * The language-server pool (docs/PLAN-3.md M13). Servers run here as child
