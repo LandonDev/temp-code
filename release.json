@@ -1,5 +1,5 @@
 {
-  "n": 116,
-  "notes": "Opening a thread paints on its last 20 turns: the click path and the boot restore of the active tab load through loadSession (tail first, the rest folds behind) instead of getSession, which waited for the whole log before the tab could open (a 38k-event thread took 17 s to appear)",
-  "ts": 1789421717970
+  "n": 117,
+  "notes": "First-paint budget: a collapsed edit row mounts no diff lines (the body renders the first time the diff opens and stays for the close tween); the cold profile charged 1.4 s of DiffLine and highlightCode work to bodies nobody had opened",
+  "ts": 1789422476173
 }
