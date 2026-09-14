@@ -7,41 +7,36 @@ type Props = {
   onDismiss: () => void;
 };
 
+/** One rail row after an update lands: the version, a "What's new" hint
+ *  in the shortcut slot, and a dismiss control. */
 export function UpdateRailCard({ update, onOpen, onDismiss }: Props) {
   if (!update) return null;
 
   return (
-    <section
-      role="status"
-      className="relative overflow-hidden rounded-lg bg-content/12"
-    >
+    <section role="status" className="relative">
       <button
         type="button"
         onClick={() => onOpen(update.version)}
-        className="flex w-full items-start gap-2 rounded-lg px-2 py-2 pr-8 text-left hover:bg-accent/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent"
+        className="pressable flex h-7 w-full items-center gap-2 rounded-md px-2 pr-8 text-left text-content/50 hover:bg-content/5 hover:text-content"
       >
-        <span className="mt-0.5 grid size-[18px] shrink-0 place-items-center">
-          <img
-            src={`${import.meta.env.BASE_URL}monocode.png`}
-            alt=""
-            aria-hidden
-            className="size-4 object-contain"
-          />
+        <img
+          src={`${import.meta.env.BASE_URL}monocode.png`}
+          alt=""
+          aria-hidden
+          className="size-3.5 shrink-0 object-contain"
+        />
+        <span className="min-w-0 flex-1 truncate text-[12px] leading-none text-content">
+          Updated to {update.version}
         </span>
-        <span className="min-w-0 flex-1">
-          <span className="block truncate text-[12px] font-medium leading-tight text-content">
-            Updated to {update.version}
-          </span>
-          <span className="mt-0.5 block truncate text-[11px] leading-tight text-content/50">
-            What's new
-          </span>
+        <span aria-hidden className="shrink-0 text-[11px] text-content/40">
+          What's new
         </span>
       </button>
       <button
         type="button"
         aria-label="Dismiss update notification"
         onClick={onDismiss}
-        className="absolute right-1 top-1 grid size-6 place-items-center rounded-md text-content/40 hover:bg-content/8 hover:text-content focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+        className="pressable absolute right-0.5 top-1/2 grid size-6 -translate-y-1/2 place-items-center rounded-md text-content/40 hover:bg-content/10 hover:text-content"
       >
         <X className="size-3.5" strokeWidth={1.75} />
       </button>

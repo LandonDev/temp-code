@@ -17,7 +17,7 @@ const TONE = {
   idle: "text-content/50 hover:bg-content/5 hover:text-content",
 };
 
-/** A left-rail row: an icon, a 13px label and an optional dot or shortcut. */
+/** A left-rail row: an icon, a 12px label and an optional dot or shortcut. */
 export function RailAction({ label, icon: Icon, onClick, active = false, dot = false, shortcut, ariaLabel }: Props) {
   return (
     <button
@@ -28,7 +28,7 @@ export function RailAction({ label, icon: Icon, onClick, active = false, dot = f
       className={`${ROW} ${active ? TONE.active : TONE.idle}`}
     >
       <Icon className="size-3.5 shrink-0" strokeWidth={1.75} />
-      <span className="min-w-0 flex-1 truncate text-[13px] leading-none">{label}</span>
+      <span className="min-w-0 flex-1 truncate text-[12px] leading-none">{label}</span>
       {dot ? (
         <span aria-hidden className="size-2 shrink-0 rounded-full bg-accent" />
       ) : shortcut ? (
