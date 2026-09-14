@@ -1,5 +1,5 @@
 {
-  "n": 117,
-  "notes": "First-paint budget: a collapsed edit row mounts no diff lines (the body renders the first time the diff opens and stays for the close tween); the cold profile charged 1.4 s of DiffLine and highlightCode work to bodies nobody had opened",
-  "ts": 1789422476173
+  "n": 118,
+  "notes": "Stage marks on the open path: click, session ready, pane commit, deferred transcript commit, first rows (performance.mark under a tc: prefix) so a CDP run can read where an open spends its time instead of polling the DOM",
+  "ts": 1789423890485
 }
