@@ -3,9 +3,8 @@ import type { BuildConfig } from "@server/shared/build";
 import { client } from "../../lib/tcserver/client";
 import { OPEN_SETTINGS_EVENT } from "../../lib/monaco/debugTab";
 import { useWorkspaces } from "../../lib/tcserver/workspaces";
-import { Row } from "../../surfaces/settingsBits";
+import { Input, Row } from "../../surfaces/settingsBits";
 import { Spinner } from "../../surfaces/threads/bits";
-import { cn } from "../../motion/cn";
 
 /**
  * The workspace's build command (Build rail tab, and what the completed-turn
@@ -18,9 +17,6 @@ export const BUILD_EMPTY: BuildConfig = { command: "", outputs: "" };
 /** An override with no command means "inherit" — store nothing. */
 export const buildOrNull = (c: BuildConfig | null): BuildConfig | null =>
   c && c.command.trim() ? { command: c.command.trim(), outputs: c.outputs.trim() } : null;
-
-const INPUT =
-  "rounded-md border border-content/10 bg-content/5 px-2 py-1 font-mono text-[12px] text-content outline-none placeholder:text-content/40 hover:border-content/20 focus:border-accent/60";
 
 export function BuildFields({
   value,
@@ -52,18 +48,18 @@ export function BuildFields({
     <>
       {fields.map((f) => {
         const input = (
-          <input
+          <Input
             value={value[f.key]}
             onChange={(e) => onChange({ ...value, [f.key]: e.target.value })}
             placeholder={f.placeholder}
             spellCheck={false}
             aria-label={`Build ${f.label.toLowerCase()}`}
-            className={cn(INPUT, compact ? "w-full" : "w-56")}
+            className={compact ? "w-full font-mono" : "w-56 font-mono"}
           />
         );
         return compact ? (
           <label key={f.key} className="flex flex-col gap-1">
-            <span className="text-[11px] font-medium text-content/50">{f.label}</span>
+            <span className="text-[11px] font-semibold tracking-[0.08em] text-content/50 uppercase">{f.label}</span>
             {input}
           </label>
         ) : (

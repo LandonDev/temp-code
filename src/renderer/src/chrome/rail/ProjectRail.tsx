@@ -1,7 +1,7 @@
 import { lazy, memo, Suspense } from "react";
-import { AnimatePresence, motion, useReducedMotion } from "motion/react";
+import { motion, useReducedMotion } from "motion/react";
 import { useGitFileStatuses } from "../../hooks/useGitFileStatuses";
-import { EASE_DRAWER } from "../../lib/ease";
+import { EASE_OUT } from "../../lib/ease";
 import { useEditorState } from "../../lib/monaco/editorState";
 import { useBuild } from "../../lib/projectRailStore";
 import { setRailPanel, useRailPanel, type RailPanel } from "../../lib/railPanel";
@@ -37,12 +37,14 @@ const TABS: { id: RailPanel; label: string }[] = [
 
 type Props = {
   cwd: string;
+  /** the review file the focused tab shows, relative to the git root */
+  selectedPath?: string;
   onOpenFile: (path: string) => void;
   onOpenDiff: (path: string) => void;
 };
 
 /** Memoized: a thread switch re-renders App, but the rail's props stay put within a project. */
-export const ProjectRail = memo(function ProjectRail({ cwd, onOpenFile, onOpenDiff }: Props) {
+export const ProjectRail = memo(function ProjectRail({ cwd, selectedPath, onOpenFile, onOpenDiff }: Props) {
   const open = useRightRailOpen();
   const projectId = useProject((s) => s.selectedProjectId);
   const reduce = useReducedMotion();
@@ -50,38 +52,40 @@ export const ProjectRail = memo(function ProjectRail({ cwd, onOpenFile, onOpenDi
   const project =
     (cwd && cwd !== "~" ? projectForCwd(cwd, projects) : undefined) ??
     projects.find((p) => p.id === projectId);
+  if (!open) return null;
+  // The drawer opens at full width at once; only its content fades in, and
+  // nothing animates on close (the width tween re-laid out the pane tree
+  // every frame).
   return (
-    <AnimatePresence initial={false}>
-      {open ? (
-        <motion.aside
-          key="rail"
-          initial={reduce ? false : { width: 0, opacity: 0 }}
-          animate={{ width: WIDTH, opacity: 1 }}
-          exit={reduce ? { width: 0 } : { width: 0, opacity: 0 }}
-          transition={{ duration: 0.32, ease: EASE_DRAWER }}
-          className="flex h-full shrink-0 flex-col overflow-hidden border-l border-content/10 bg-background-base"
-          aria-label="Project rail"
-        >
-          <div style={{ width: WIDTH }} className="flex h-full min-h-0 flex-col">
-            {project ? (
-              <RailBody
-                key={project.id}
-                projectId={project.id}
-                cwd={project.cwd}
-                onOpenFile={onOpenFile}
-                onOpenDiff={onOpenDiff}
-              />
-            ) : (
-              <p className="px-3 py-3 text-[12px] text-content/50">No project</p>
-            )}
-          </div>
-        </motion.aside>
-      ) : null}
-    </AnimatePresence>
+    <aside
+      style={{ width: WIDTH }}
+      className="flex h-full shrink-0 flex-col overflow-hidden border-l border-content/10 bg-background-base"
+      aria-label="Project rail"
+    >
+      <motion.div
+        initial={reduce ? false : { opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ duration: 0.12, ease: EASE_OUT }}
+        className="flex h-full min-h-0 flex-col"
+      >
+        {project ? (
+          <RailBody
+            key={project.id}
+            projectId={project.id}
+            cwd={project.cwd}
+            selectedPath={selectedPath}
+            onOpenFile={onOpenFile}
+            onOpenDiff={onOpenDiff}
+          />
+        ) : (
+          <p className="px-3 py-2 text-[12px] text-content/50">No project</p>
+        )}
+      </motion.div>
+    </aside>
   );
 });
 
-function RailBody({ projectId, cwd, onOpenFile, onOpenDiff }: Props & { projectId: string }) {
+function RailBody({ projectId, cwd, selectedPath, onOpenFile, onOpenDiff }: Props & { projectId: string }) {
   const panel = useRailPanel();
   const gitStatuses = useGitFileStatuses(cwd, panel === "files");
   const building = useBuild(projectId)?.run?.status === "running";
@@ -90,7 +94,7 @@ function RailBody({ projectId, cwd, onOpenFile, onOpenDiff }: Props & { projectI
     <>
       <div
         data-tauri-drag-region
-        className="flex h-11 shrink-0 items-center gap-0.5 border-b border-content/10 px-2"
+        className="flex h-9 shrink-0 items-center gap-px border-b border-content/10 px-2"
       >
         {TABS.map((t) => (
           <button
@@ -100,10 +104,10 @@ function RailBody({ projectId, cwd, onOpenFile, onOpenDiff }: Props & { projectI
             aria-selected={panel === t.id}
             onClick={() => setRailPanel(t.id)}
             className={cn(
-              "flex h-6 items-center gap-1.5 rounded-md px-2 text-[12px] transition-colors",
+              "pressable flex h-6 items-center gap-1.5 rounded-md px-2 text-[12px]",
               panel === t.id
-                ? "bg-content/8 text-content"
-                : "text-content/50 hover:bg-content/5 hover:text-content/70",
+                ? "bg-content/10 text-content"
+                : "text-content/50 hover:bg-content/5 hover:text-content",
             )}
           >
             {t.label}
@@ -121,12 +125,14 @@ function RailBody({ projectId, cwd, onOpenFile, onOpenDiff }: Props & { projectI
       </div>
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
         {panel === "changes" ? (
-          <ChangesPanel cwd={cwd} onOpenDiff={onOpenDiff} />
+          <ChangesPanel cwd={cwd} selectedPath={selectedPath} onOpenDiff={onOpenDiff} />
         ) : null}
         {panel === "files" ? (
           <FileTree key={cwd} cwd={cwd} onOpenFile={onOpenFile} gitStatuses={gitStatuses} />
         ) : null}
-        {panel === "branch" ? <BranchPanel projectId={projectId} onOpenDiff={onOpenDiff} /> : null}
+        {panel === "branch" ? (
+          <BranchPanel projectId={projectId} selectedPath={selectedPath} onOpenDiff={onOpenDiff} />
+        ) : null}
         {panel === "build" ? <BuildPanel projectId={projectId} /> : null}
         {panel === "debug" ? (
           <Suspense

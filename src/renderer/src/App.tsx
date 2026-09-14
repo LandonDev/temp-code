@@ -3585,7 +3585,12 @@ export default function App() {
                 onOpenFile={onOpenDiff}
               />
             ) : null}
-            <ProjectRail cwd={gitCwd} onOpenFile={onOpenFile} onOpenDiff={onOpenDiff} />
+            <ProjectRail
+              cwd={gitCwd}
+              selectedPath={activeTab ? selectedChangePath(activeTab, gitCwd) : undefined}
+              onOpenFile={onOpenFile}
+              onOpenDiff={onOpenDiff}
+            />
             </div>
           </div>
         </main>

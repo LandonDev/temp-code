@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { ChevronDown } from "../icons";
+import { Check, ChevronDown } from "../icons";
 import { Popover } from "../Popover";
 import { cn } from "../../motion/cn";
 
@@ -47,7 +47,7 @@ export function RailSelect({
         onClick={() => setOpen((o) => !o)}
         className={cn(
           "flex h-6 min-w-0 flex-1 items-center gap-1 rounded-md px-1 font-mono text-[11px] text-content transition-colors",
-          !inert && "hover:bg-content/8",
+          !inert && "hover:bg-content/8 active:bg-content/10",
           inert && "cursor-default",
         )}
       >
@@ -55,7 +55,7 @@ export function RailSelect({
           {value ?? placeholder}
         </span>
         {!inert ? (
-          <ChevronDown className="size-3 shrink-0 text-content/40" strokeWidth={1.75} />
+          <ChevronDown className="size-3.5 shrink-0 text-content/40" strokeWidth={1.75} />
         ) : null}
       </button>
       {open ? (
@@ -78,7 +78,7 @@ export function RailSelect({
               <div key={gi}>
                 {gi > 0 ? <div role="separator" className="my-1 h-px bg-content/10" /> : null}
                 {group.label ? (
-                  <div className="px-2 pb-1 pt-1.5 text-[11px] font-medium uppercase tracking-wide text-content/40">
+                  <div className="px-2 pb-1 pt-1.5 text-[11px] font-semibold tracking-[0.08em] text-content/50 uppercase">
                     {group.label}
                   </div>
                 ) : null}
@@ -95,11 +95,12 @@ export function RailSelect({
                       if (item.value !== value) onChange(item.value);
                     }}
                     className={cn(
-                      "flex h-7 w-full items-center rounded-lg px-2 text-left font-mono text-[12px] leading-none",
-                      item.value === value ? "bg-content/10 text-content" : "text-content hover:bg-content/5",
+                      "flex h-7 w-full items-center gap-3 rounded-lg px-2 text-left font-mono text-[13px] leading-none text-content",
+                      item.value === value ? "bg-content/10" : "hover:bg-content/5 active:bg-content/10",
                     )}
                   >
                     <span className="min-w-0 flex-1 truncate">{item.label}</span>
+                    {item.value === value ? <Check className="size-3.5 shrink-0" strokeWidth={2.25} /> : null}
                   </button>
                 ))}
               </div>

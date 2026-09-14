@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { InputHTMLAttributes, ReactNode } from "react";
 import { playCue } from "../lib/sounds";
 
 /** The row, switch and picker primitives every settings page is built from. */
@@ -162,4 +162,15 @@ export function SecondaryButton({
       {children}
     </button>
   );
+}
+
+export const INPUT_CLASS =
+  "rounded-lg border border-content/10 bg-content/5 px-2 py-1.5 text-[12px] text-content outline-none placeholder:text-content/40 focus:border-content/20 disabled:cursor-default disabled:opacity-40";
+
+/** The kit's text input: every settings form and dialog field takes this shape. */
+export function Input({
+  className,
+  ...props
+}: InputHTMLAttributes<HTMLInputElement>) {
+  return <input {...props} className={className ? `${INPUT_CLASS} ${className}` : INPUT_CLASS} />;
 }
