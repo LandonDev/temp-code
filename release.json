@@ -1,5 +1,5 @@
 {
-  "n": 115,
-  "notes": "First-paint budget: a collapsed edit row no longer reads its file to number the hunks (the read waits until the diff is opened), and a history image chip fetches its bytes only once it comes within a screen of the viewport (useNearViewport, IntersectionObserver)",
-  "ts": 1789421243615
+  "n": 116,
+  "notes": "Opening a thread paints on its last 20 turns: the click path and the boot restore of the active tab load through loadSession (tail first, the rest folds behind) instead of getSession, which waited for the whole log before the tab could open (a 38k-event thread took 17 s to appear)",
+  "ts": 1789421717970
 }
