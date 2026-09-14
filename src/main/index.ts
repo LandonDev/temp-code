@@ -6,6 +6,7 @@ import { registerUpdates } from './update'
 import { registerAppshots } from './appshots'
 import { electronApp, optimizer } from '@electron-toolkit/utils'
 import { startServer, type RunningServer } from './server'
+import { killTrackedChildren } from './server/spawnBudget'
 import { registerAssetProtocol, registerAssetScheme } from './assets'
 import { killAllPtys, listPtys, ptyFlowCounters, registerPty } from './pty'
 import { clickMenuItem, registerMenu } from './menu'
@@ -154,7 +155,23 @@ app.on('before-quit', (e) => {
     requestQuit()
     return
   }
-  // The server outlives every window and dies only here, with the PTYs.
+  // The server outlives every window and dies only here, with the PTYs
+  // and every helper process it started.
   killAllPtys()
   void server?.close()
+  killTrackedChildren()
 })
+
+// Nothing of ours outlives the main process: a signal or a plain exit
+// takes the helpers (git, gh, language servers) with it. Children stay in
+// our process group, so a group kill from outside gets them as well.
+process.on('exit', () => {
+  killTrackedChildren()
+})
+for (const signal of ['SIGTERM', 'SIGINT', 'SIGHUP'] as const) {
+  process.on(signal, () => {
+    killAllPtys()
+    killTrackedChildren()
+    process.exit(0)
+  })
+}

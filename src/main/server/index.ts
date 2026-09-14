@@ -80,6 +80,7 @@ import {
   sweepIdeaWarmState,
   warmIdeaIndexes
 } from './lsp'
+import { killTrackedChildren } from './spawnBudget'
 import { fimComplete } from './fim'
 import {
   BuildRunner,
@@ -1046,6 +1047,7 @@ export async function startServer(
       await closeAllLiveWatchers()
       stopAllLsp()
       stopAllDap()
+      killTrackedChildren()
       for (const client of wss.clients) client.terminate()
       await new Promise<void>((resolve, reject) => wss.close((error) => error ? reject(error) : resolve()))
       db.close()
