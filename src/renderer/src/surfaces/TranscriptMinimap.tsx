@@ -25,7 +25,7 @@ const TICK: Record<TickKind, { width: number; className: string; who: string }> 
   user: { width: 14, className: "bg-info", who: "You" },
   reply: { width: 12, className: "bg-content/50", who: "Agent" },
   edit: { width: 12, className: "bg-success/60", who: "Edit" },
-  tool: { width: 7, className: "bg-content/18", who: "Tool" },
+  tool: { width: 7, className: "bg-content/20", who: "Tool" },
   alert: { width: 12, className: "bg-warning", who: "Error" },
 };
 
@@ -33,6 +33,8 @@ const MIN_RAIL = 48;
 const MAX_RAIL = 320;
 const ROW_PX = 9;
 const MIN_WINDOW = 10;
+/** Ticks closer than this overlap; past it the rail samples every nth row. */
+const MIN_TICK_PX = 3;
 
 function tickOf(block: Block, turnId: string): Tick | null {
   if (block.role === "user") {
@@ -79,6 +81,14 @@ export const TranscriptMinimap = memo(function TranscriptMinimap({
 }) {
   const ticks = useMemo(() => ticksOf(turns), [turns]);
   const railH = Math.min(Math.max(ticks.length * ROW_PX, MIN_RAIL), MAX_RAIL);
+  const shown = useMemo(() => {
+    const stride = Math.max(1, Math.ceil((ticks.length * MIN_TICK_PX) / railH));
+    const out: { tick: Tick; index: number }[] = [];
+    for (let index = 0; index < ticks.length; index += stride) {
+      out.push({ tick: ticks[index], index });
+    }
+    return out;
+  }, [ticks, railH]);
   const windowRef = useRef<HTMLDivElement>(null);
   const [hover, setHover] = useState<Tick | null>(null);
 
@@ -115,7 +125,7 @@ export const TranscriptMinimap = memo(function TranscriptMinimap({
 
   return (
     <div
-      className="absolute top-1/2 left-1 z-10 w-5 -translate-y-1/2 opacity-60 transition-opacity duration-150 hover:opacity-100"
+      className="absolute top-1/2 left-1 z-10 w-5 -translate-y-1/2 opacity-60 transition-opacity hover:opacity-100"
       style={{ height: railH }}
       onMouseLeave={() => setHover(null)}
     >
@@ -124,7 +134,7 @@ export const TranscriptMinimap = memo(function TranscriptMinimap({
         aria-hidden
         className="pointer-events-none absolute inset-x-0 top-0 rounded-md bg-content/8"
       />
-      {ticks.map((tick, index) => {
+      {shown.map(({ tick, index }) => {
         const spec = TICK[tick.kind];
         const hovered = hover?.id === tick.id;
         return (
@@ -147,7 +157,7 @@ export const TranscriptMinimap = memo(function TranscriptMinimap({
       })}
       {hover ? (
         <div
-          className="z-fade-quick pointer-events-none absolute left-7 w-64 rounded-lg border border-content/10 bg-content/10 px-2.5 py-1.5 font-sans text-[12px] shadow-xl glass-surface glass-surface--xl"
+          className="z-fade-quick pointer-events-none absolute left-7 w-64 rounded-xl border border-content/10 bg-content/10 px-2.5 py-1.5 font-sans text-[12px] shadow-xl glass-surface glass-surface--xl"
           style={{
             top: Math.min(
               railH - 24,

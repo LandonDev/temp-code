@@ -34,7 +34,7 @@ function TypePicker({
   onChange: (type: ThreadType) => void;
 }) {
   return (
-    <div role="radiogroup" aria-label="Thread type" className="mb-3 flex flex-wrap gap-1 px-1">
+    <div role="radiogroup" aria-label="Thread type" className="-mx-2 mb-3 flex flex-wrap gap-1">
       {THREAD_TYPES.map((type) => {
         const Icon = THREAD_GLYPHS[type];
         const selected = type === value;
@@ -46,7 +46,7 @@ function TypePicker({
             aria-checked={selected}
             title={THREAD_HINTS[type]}
             onClick={() => onChange(type)}
-            className={`flex h-7 items-center gap-1.5 rounded-md px-2 text-[12px] transition-colors ${
+            className={`pressable flex h-7 items-center gap-1.5 rounded-md px-2 text-[12px] ${
               selected
                 ? "bg-content/10 text-content"
                 : "text-content/50 hover:bg-content/5 hover:text-content"
@@ -88,10 +88,10 @@ export function EmptySession({ cwd, arcade = true, composer, threadType, onThrea
     >
       {arcadeEnabled && arcade && painted ? <TerminalGridBackground /> : null}
       {composer ? (
-        <div className="pointer-events-none relative z-10 mx-auto flex w-full max-w-3xl flex-1 flex-col justify-center px-6 py-12">
-          <div className="pointer-events-auto mb-4 px-2.5">
+        <div className="pointer-events-none relative z-10 mx-auto flex w-full max-w-3xl flex-1 flex-col justify-center px-8 py-8">
+          <div className="pointer-events-auto mb-4">
             <h1
-              className="truncate text-lg text-content"
+              className="truncate text-2xl font-semibold leading-tight tracking-[-0.02em] text-content"
               title={project ? cwd : undefined}
             >
               {title}

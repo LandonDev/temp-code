@@ -75,7 +75,7 @@ export const CodeBlock = memo(function CodeBlock({
   return (
     <div
       data-streamdown="code-block"
-      className={`my-4 flex flex-col overflow-hidden rounded-lg border ${className ?? ""}`}
+      className={`my-4 flex flex-col overflow-hidden rounded-[10px] border border-content/10 bg-content/6 ${className ?? ""}`}
     >
       <div
         data-streamdown="code-block-header"
@@ -102,7 +102,7 @@ export const CodeBlock = memo(function CodeBlock({
         style={lineNumbers ? { counterReset: `line ${startLine - 1}` } : undefined}
       >
         {html ? (
-          <div className="code-block-shiki" dangerouslySetInnerHTML={{ __html: html }} />
+          <div dangerouslySetInnerHTML={{ __html: html }} />
         ) : (
           <pre>
             <code>

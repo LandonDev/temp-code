@@ -15,8 +15,8 @@ import {
 import { Composer } from "../chrome/Composer";
 import { AppshotFlyIn } from "../chrome/AppshotFlyIn";
 import { noteActiveSession } from "../lib/appshots";
-import { motion, useReducedMotion } from "motion/react";
-import { EASE_OUT } from "../lib/ease";
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
+import { EASE_OUT, SPRING_PRESS } from "../lib/ease";
 import { MessageQueue } from "../chrome/MessageQueue";
 import type { ComposerIntent } from "../lib/composerAction";
 import { useQueue } from "../lib/tcserver/store";
@@ -370,20 +370,28 @@ export const SessionPane = memo(function SessionPane({
           onJumpToBottomReady={onJumpToBottomReady}
         />
         </DeferredMount>
-        {showJumpToBottom ? (
-          <div className="pointer-events-none absolute inset-x-0 bottom-2 z-30 flex justify-center">
-            <button
-              type="button"
-              title="Jump to latest"
-              aria-label="Jump to latest"
-              data-jump-to-bottom
-              onClick={() => jumpToBottomRef.current?.()}
-              className="pointer-events-auto grid size-6 place-items-center rounded-md border border-content/15 bg-content/10 text-content shadow-md glass-surface glass-surface--md hover:bg-content/5"
+        <AnimatePresence>
+          {showJumpToBottom ? (
+            <motion.div
+              key="jump"
+              className="pointer-events-none absolute inset-x-0 bottom-2 z-30 flex justify-center"
+              initial={reduceMotion ? false : { opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1, transition: SPRING_PRESS }}
+              exit={{ opacity: 0, transition: { duration: 0.12, ease: EASE_OUT } }}
             >
-              <ChevronDown className="size-4" strokeWidth={2} />
-            </button>
-          </div>
-        ) : null}
+              <button
+                type="button"
+                title="Jump to latest"
+                aria-label="Jump to latest"
+                data-jump-to-bottom
+                onClick={() => jumpToBottomRef.current?.()}
+                className="pressable pointer-events-auto grid size-6 place-items-center rounded-md border border-content/10 bg-content/10 text-content shadow-md glass-surface glass-surface--md hover:bg-content/20"
+              >
+                <ChevronDown className="size-3.5" strokeWidth={1.75} />
+              </button>
+            </motion.div>
+          ) : null}
+        </AnimatePresence>
       </div>
     ),
     strip:
@@ -442,7 +450,7 @@ export const SessionPane = memo(function SessionPane({
             title={`Close Pane (${MOD}W)`}
             aria-label="Close pane"
             data-no-drag
-            className="grid size-5 shrink-0 place-items-center rounded-md text-content/50 hover:bg-content/10 hover:text-content"
+            className="pressable grid size-6 shrink-0 place-items-center rounded-md text-content/50 hover:bg-content/10 hover:text-content"
             onPointerDown={(e) => e.stopPropagation()}
             onMouseDown={(e) => e.stopPropagation()}
             onClick={(e) => {
@@ -450,7 +458,7 @@ export const SessionPane = memo(function SessionPane({
               onClose(session.id);
             }}
           >
-            <X className="size-3" strokeWidth={1.75} />
+            <X className="size-3.5" strokeWidth={1.75} />
           </button>
         </div>
       ) : null}

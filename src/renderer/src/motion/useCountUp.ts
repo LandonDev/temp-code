@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useReducedMotion } from "motion/react";
 import { usePaneVisible } from "../hooks/paneVisibility";
 
 /** Tween a displayed count toward its target — 550ms ease-out cubic. The
@@ -8,7 +9,9 @@ export function useCountUp(target: number, animate: boolean): number {
   const [v, setV] = useState(0);
   const cur = useRef(0);
   const raf = useRef(0);
-  const run = animate && usePaneVisible();
+  const shown = usePaneVisible();
+  const reduce = useReducedMotion() === true;
+  const run = animate && shown && !reduce;
   useEffect(() => {
     if (!run) {
       cur.current = target;

@@ -34,7 +34,7 @@ export function DiffBody({
         ),
       )}
       {rows.length > DIFF_LINE_CAP && visible === undefined ? (
-        <div className="pl-7 font-mono text-[10px] leading-4 text-content/40">
+        <div className="select-none pl-7 font-mono text-[10px] leading-4 text-content/40">
           … diff truncated
         </div>
       ) : null}
@@ -60,14 +60,15 @@ function DiffLine({
   const line = row.newNo;
   return (
     <div
-      className={`relative flex items-baseline ${bg} ${
-        editable ? "cursor-pointer hover:bg-content/6" : ""
-      }`}
-      title={editable ? "Edit here" : undefined}
+      className={`group relative flex items-baseline ${bg} ${editable ? "cursor-pointer" : ""}`}
       onClick={editable && line !== undefined ? () => onEditAt(line) : undefined}
     >
       <span className={`absolute inset-y-0 left-0 w-0.5 ${bar}`} />
-      <span className="w-7 shrink-0 pr-1 text-right font-mono text-[10px] text-content/40">
+      {/* Hover marks the gutter, so the line keeps its added/removed tint. */}
+      {editable ? (
+        <span className="absolute inset-y-0 left-0 w-0.5 bg-content/40 opacity-0 group-hover:opacity-100" />
+      ) : null}
+      <span className="w-7 shrink-0 select-none pr-1 text-right font-mono text-[10px] tabular-nums text-content/40">
         {number ?? ""}
       </span>
       <span className={`w-3 shrink-0 text-center font-mono text-[10px] font-bold ${markColor}`}>

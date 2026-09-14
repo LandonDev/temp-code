@@ -14,6 +14,8 @@ import {
   type StepperState,
 } from "../lib/questionStepper";
 import { ChevronLeft } from "../chrome/icons";
+import { CHIP, CHIP_ON } from "./chip";
+import { Input } from "./settingsBits";
 import { slideQuestionPage } from "./threads/questionPage";
 
 /**
@@ -140,11 +142,7 @@ export function QuestionPage({
               type="button"
               aria-pressed={on}
               title={option.description}
-              className={
-                on
-                  ? "rounded-md bg-content px-2.5 py-0.5 text-[11px] text-background-base"
-                  : "rounded-md bg-content/10 px-2.5 py-0.5 text-[11px] text-content/70 hover:bg-content/20"
-              }
+              className={on ? CHIP_ON : CHIP}
               onClick={() => onPick(option.label)}
             >
               {option.label}
@@ -153,11 +151,11 @@ export function QuestionPage({
         })}
       </div>
       {spec.allowFreeform !== false ? (
-        <input
+        <Input
           type="text"
           value={other}
           placeholder="Other"
-          className="w-full max-w-sm rounded-md border border-content/12 bg-transparent px-2 py-1 text-[12px] text-content outline-none placeholder:text-content/40 focus:border-content/30"
+          className="w-full max-w-sm"
           onChange={(e) => onType(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === "Enter") onEnter();
