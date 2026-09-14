@@ -19,7 +19,9 @@ import {
   revealDuration,
   rowsFromHunks,
   type DiffRow,
+  type EditDiff,
 } from "./diffRows";
+import { RenderCache, cacheKey } from "../lib/renderCache";
 import { editModel, splitPath } from "./editModel";
 import { editOpenKey, usePersistedOpen } from "./editOpenState";
 import { toolCallState } from "./transcriptActivity";
@@ -40,6 +42,23 @@ const InlineEditor = lazy(() => import("./monaco/InlineEditor"));
 /** The rows to show: the tool input's hunks located in the landed file
  *  once the call settles (and again after an inline save), the source's
  *  own numbering when it has one, else the server preview. */
+/** Parsed diffs by their settled input object: the store keeps a block's
+ *  input across remounts, so a second mount never re-splits the patch. */
+const diffByInput = new WeakMap<object, EditDiff>();
+/** Located rows by block and file, so a remount skips the file read. The
+ *  stored input guards against a block whose input was replaced. */
+const locatedCache = new RenderCache<{ input: unknown; rows: DiffRow[] }>(2000, 8_000_000);
+
+function cachedEditDiff(block: Block): EditDiff {
+  const input = block.tool?.input;
+  if (!input || typeof input !== "object" || block.streaming) return editDiff(block);
+  const hit = diffByInput.get(input);
+  if (hit) return hit;
+  const diff = editDiff(block);
+  diffByInput.set(input, diff);
+  return diff;
+}
+
 function useDiffRows(
   block: Block,
   filePath: string | undefined,
@@ -50,20 +69,33 @@ function useDiffRows(
   const name = block.tool?.name;
   const preview = block.tool?.preview?.lines;
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  const diff = useMemo(() => editDiff(block), [input, name]);
-  const [located, setLocated] = useState<{ gen: number; rows: DiffRow[] } | null>(null);
-  const wantsLocate = diff.hunks.length > 0 && settled && !!filePath && (!diff.rows || refresh > 0);
+  const diff = useMemo(() => cachedEditDiff(block), [input, name]);
+  const locatedKey = filePath ? cacheKey(block.id, filePath) : undefined;
+  const [located, setLocated] = useState<{ gen: number; rows: DiffRow[] } | null>(() => {
+    const hit = locatedKey ? locatedCache.get(locatedKey) : undefined;
+    return hit && hit.input === input ? { gen: 0, rows: hit.rows } : null;
+  });
+  const wantsLocate =
+    diff.hunks.length > 0 &&
+    settled &&
+    !!filePath &&
+    (!diff.rows || refresh > 0) &&
+    !(located && refresh === 0);
   useEffect(() => {
     if (!wantsLocate || !filePath) return;
     let alive = true;
     readTextFile(filePath)
       .then((content) => {
-        if (alive) setLocated({ gen: refresh, rows: locateHunks(diff.hunks, content) });
+        if (!alive) return;
+        const rows = locateHunks(diff.hunks, content);
+        setLocated({ gen: refresh, rows });
+        if (locatedKey) locatedCache.set(locatedKey, { input, rows }, rows.length * 40);
       })
       .catch(() => {});
     return () => {
       alive = false;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [wantsLocate, filePath, refresh, diff]);
   return useMemo(() => {
     if (located && (refresh > 0 ? located.gen === refresh : true)) {

@@ -1,6 +1,8 @@
+import type { ReactElement } from "react";
 import { CircleDashed, X } from "./icons";
 import { MAX_PREVIEW_LINES } from "../lib/harness/preview";
 import { displayPath, resolveWorkspacePath } from "../lib/paths";
+import { RenderCache, cacheKey } from "../lib/renderCache";
 import type { ToolPreview, ToolPreviewLine } from "../lib/session";
 import { FileTypeIcon } from "./FileTypeIcon";
 
@@ -208,7 +210,20 @@ function StatusIcon({ status }: { status: Status }) {
   return null;
 }
 
-export function highlightCode(text: string, dimmed: boolean) {
+/** One highlighted line per distinct text: elements are immutable, so a
+ *  remounted diff or preview reuses them instead of re-tokenizing. */
+const lineCache = new RenderCache<ReactElement>(20_000, 4_000_000);
+
+export function highlightCode(text: string, dimmed: boolean): ReactElement {
+  const key = cacheKey(dimmed ? "d" : "n", text);
+  const hit = lineCache.get(key);
+  if (hit) return hit;
+  const el = tokenizeLine(text, dimmed);
+  lineCache.set(key, el, text.length);
+  return el;
+}
+
+function tokenizeLine(text: string, dimmed: boolean): ReactElement {
   const dim = dimmed ? "opacity-70" : "";
   const trimmed = text.trimStart();
   if (
