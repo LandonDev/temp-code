@@ -10,6 +10,7 @@ import type { TitleOf } from "./threadMentions";
  */
 
 const str = (v: unknown): string => (typeof v === "string" ? v : "");
+// Treat arrays and missing values as empty records for field lookups.
 export const rec = (v: unknown): Record<string, unknown> =>
   v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
 
