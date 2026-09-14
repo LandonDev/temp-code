@@ -73,6 +73,7 @@ import { WindowControls } from "./WindowControls";
 import { IS_MAC, MOD } from "../lib/platform";
 import type { RecentProject } from "../lib/recents";
 import { useShell } from "../stores/shell";
+import { sessionPrefetch, tabSessionIds } from "../lib/sessionPrefetch";
 
 export type Tab = {
   id: string;
@@ -367,6 +368,8 @@ function TitleTabItem({
       className={`group @container relative flex h-full cursor-default touch-none items-center self-stretch ${
         deckLayout ? "min-w-0 w-full" : "w-56 min-w-28 shrink"
       } ${dragging ? "opacity-40" : ""}`}
+      onPointerEnter={() => sessionPrefetch.enter(tab.id, () => tabSessionIds(tab.id))}
+      onPointerLeave={() => sessionPrefetch.leave(tab.id)}
       data-tauri-drag-region="false"
       onPointerDown={(event) => {
         if (event.button !== 0) return;
