@@ -1,5 +1,5 @@
 {
-  "n": 102,
-  "notes": "App's tab actions and its store-driven effects move out of the component",
-  "ts": 1789349584987
+  "n": 103,
+  "notes": "The terminals, the editors' state and the title bar's projection get stores",
+  "ts": 1789351663443
 }
