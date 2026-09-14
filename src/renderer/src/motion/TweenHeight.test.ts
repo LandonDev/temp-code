@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { TWEEN_FALLBACK_MS, TWEEN_MS, tweenHeight, type TweenTarget } from "./TweenHeight";
+import { EASE_OUT_CSS } from "../lib/ease";
+import { TWEEN_FALLBACK_MS, TWEEN_MS, tweenHeight, type TweenEndEvent, type TweenTarget } from "./TweenHeight";
 
 /** A fake element plus fake timers, so the tween's timing is checkable. */
 function rig(from: number, scroll: number) {
-  const listeners = new Set<() => void>();
+  const listeners = new Set<(event: TweenEndEvent) => void>();
   const el: TweenTarget = {
     scrollHeight: scroll,
     offsetHeight: from,
@@ -20,8 +21,8 @@ function rig(from: number, scroll: number) {
     },
     clearTimeout: (id: number) => void pending.delete(id),
   };
-  const fire = () => {
-    for (const cb of [...listeners]) cb();
+  const fire = (event: TweenEndEvent = { target: el, propertyName: "height" }) => {
+    for (const cb of [...listeners]) cb(event);
   };
   return { el, timers, pending, fire, listeners };
 }
@@ -30,7 +31,7 @@ describe("tweenHeight", () => {
   it("tweens from the measured height to the scroll height, then hands back to auto", () => {
     const { el, timers, pending, fire, listeners } = rig(0, 120);
     tweenHeight(el, true, timers);
-    expect(el.style.transition).toBe(`height ${TWEEN_MS}ms ease-out`);
+    expect(el.style.transition).toBe(`height ${TWEEN_MS}ms ${EASE_OUT_CSS}`);
     expect(el.style.height).toBe("120px");
     expect(listeners.size).toBe(1);
     expect([...pending.values()][0]?.ms).toBe(TWEEN_FALLBACK_MS);
@@ -79,5 +80,18 @@ describe("TweenHeight markup", () => {
       expect(html).not.toContain("height");
       expect(html).toContain("overflow-hidden");
     }
+  });
+});
+
+describe("tweenHeight transitionend filtering", () => {
+  it("ignores a transitionend from a child or for another property", () => {
+    const { el, timers, fire, listeners } = rig(0, 120);
+    tweenHeight(el, true, timers);
+    fire({ target: {}, propertyName: "height" });
+    fire({ target: el, propertyName: "opacity" });
+    expect(el.style.height).toBe("120px");
+    expect(listeners.size).toBe(1);
+    fire();
+    expect(el.style.height).toBe("auto");
   });
 });

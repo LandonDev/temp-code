@@ -214,8 +214,8 @@ export function SettingsView({
         data-tauri-drag-region="deep"
       >
         <div className="flex min-w-0 flex-1 items-center gap-2 px-3 text-[13px]">
-          <span className="shrink-0 text-content/45">Settings</span>
-          <span aria-hidden className="shrink-0 text-content/25">
+          <span className="shrink-0 text-content/40">Settings</span>
+          <span aria-hidden className="shrink-0 text-content/20">
             /
           </span>
           <span className="min-w-0 truncate text-content">{title}</span>
@@ -587,7 +587,7 @@ function LinearSettings() {
                 aria-label="Linear API key"
                 autoComplete="off"
                 spellCheck={false}
-                className="min-w-0 flex-1 bg-transparent text-[12px] text-content outline-none placeholder:text-content/35"
+                className="min-w-0 flex-1 bg-transparent text-[12px] text-content outline-none placeholder:text-content/40"
               />
             </label>
             <SecondaryButton
@@ -600,14 +600,14 @@ function LinearSettings() {
         )}
       </Row>
       {error ? (
-        <p className="pb-2 text-[12px] text-red-400/90">{error}</p>
+        <p className="pb-2 text-[12px] text-danger">{error}</p>
       ) : null}
       {connected && teams.length > 0 ? (
         <div className="border-b border-content/5 py-4">
           <div className="text-[13px] font-medium text-content">
             Linear Teams
           </div>
-          <p className="mt-1 text-[12px] leading-relaxed text-content/45">
+          <p className="mt-1 text-[12px] leading-relaxed text-content/40">
             Unchecked teams stay out of the inbox.
           </p>
           <div className="mt-3 flex flex-col gap-0.5 -mx-2">
@@ -679,7 +679,7 @@ function UpdateRow({
       label={
         <span className="flex items-baseline gap-2">
           Release
-          <span className="font-mono text-[12px] text-content/45">
+          <span className="font-mono text-[12px] text-content/40">
             {snapshot.currentVersion}
           </span>
         </span>
@@ -707,7 +707,7 @@ function UpdateRow({
           disabled={busy}
         >
           {busy ? (
-            <Loader className="size-3.5 animate-spin" aria-hidden />
+            <Loader className="size-3.5 motion-safe:animate-spin" aria-hidden />
           ) : hasUpdate && canApply ? (
             <ArrowDownCircle className="size-3.5 text-accent" aria-hidden />
           ) : (
@@ -752,7 +752,7 @@ function StepProgress({
     >
       <span
         className={`block h-full rounded-full bg-accent transition-[width] duration-300 ${
-          fraction == null ? "w-1/3 animate-pulse" : ""
+          fraction == null ? "w-1/3 motion-safe:animate-pulse" : ""
         }`}
         style={fraction == null ? undefined : { width: `${fraction * 100}%` }}
       />
@@ -899,7 +899,7 @@ function KeybindingsPage() {
         <span className="shrink-0 text-[12px] text-content/40 tabular-nums">
           {rows.length} {rows.length === 1 ? "binding" : "bindings"}
         </span>
-        <label className="flex h-7 w-52 shrink-0 items-center gap-2 rounded-md border border-content/10 px-2 text-content/45 focus-within:border-content/20">
+        <label className="flex h-7 w-52 shrink-0 items-center gap-2 rounded-md border border-content/10 px-2 text-content/40 focus-within:border-content/20">
           <Search className="size-3.5 shrink-0" strokeWidth={1.75} />
           <input
             value={query}
@@ -908,7 +908,7 @@ function KeybindingsPage() {
             aria-label="Filter keybindings"
             spellCheck={false}
             autoComplete="off"
-            className="min-w-0 flex-1 bg-transparent text-[12px] text-content outline-none placeholder:text-content/35"
+            className="min-w-0 flex-1 bg-transparent text-[12px] text-content outline-none placeholder:text-content/40"
           />
         </label>
       </div>
@@ -920,7 +920,7 @@ function KeybindingsPage() {
           <span className="w-28 shrink-0">When</span>
         </div>
         {rows.length === 0 ? (
-          <p className="px-3 py-3 text-[12px] text-content/45">
+          <p className="px-3 py-3 text-[12px] text-content/40">
             No matching bindings
           </p>
         ) : (
@@ -930,7 +930,7 @@ function KeybindingsPage() {
               className="flex items-center border-b border-content/5 px-3 py-2 text-[12px] last:border-b-0"
             >
               <span className="min-w-0 flex-1 truncate">{row.command}</span>
-              <span className="w-40 shrink-0 font-mono text-[12px] text-content/80">
+              <span className="w-40 shrink-0 font-mono text-[12px] text-content/70">
                 {row.keys}
               </span>
               <span className="w-28 shrink-0 font-mono text-[11px] text-content/40">
@@ -988,7 +988,7 @@ function ProvidersPage() {
 
   return (
     <>
-      <p className="pb-2 text-[12px] leading-relaxed text-content/45">
+      <p className="pb-2 text-[12px] leading-relaxed text-content/40">
         A provider is listed as installed once its CLI is found on your PATH;
         uninstalled ones are left out of the model picker. The model beside
         each provider is what new threads use when that provider is selected.
@@ -1082,7 +1082,7 @@ function ProviderRow({
 
   const health =
     doctor === undefined ? (
-      <span className="text-content/35">Checking…</span>
+      <span className="text-content/40">Checking…</span>
     ) : doctor.found ? (
       <>
         <span className="flex items-center gap-1.5">
@@ -1092,13 +1092,13 @@ function ProviderRow({
           />
           {doctor.version ? versionLabel(doctor.version) : "Installed"}
           {models.length > 0 ? (
-            <span className="text-content/35">
+            <span className="text-content/40">
               · {models.length} {models.length === 1 ? "model" : "models"}
             </span>
           ) : null}
         </span>
         {doctor.path ? (
-          <span className="block truncate font-mono text-[11px] text-content/35">
+          <span className="block truncate font-mono text-[11px] text-content/40">
             {doctor.path}
           </span>
         ) : null}
@@ -1120,7 +1120,7 @@ function ProviderRow({
           <HarnessIcon harness={harness} className="size-4 shrink-0" />
           {HARNESS_TITLE[harness]}
           {isDefault ? (
-            <span className="rounded-full bg-content/10 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-content/60">
+            <span className="rounded-full bg-content/10 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-content/50">
               Default
             </span>
           ) : null}
@@ -1140,7 +1140,7 @@ function ProviderRow({
       {doctor?.found && UPDATABLE.has(harness) ? (
         <SecondaryButton onClick={() => void onUpdate()} disabled={updating}>
           {updating ? (
-            <Loader className="size-3.5 animate-spin" aria-hidden />
+            <Loader className="size-3.5 motion-safe:animate-spin" aria-hidden />
           ) : null}
           {updating ? "Updating…" : "Update"}
         </SecondaryButton>
@@ -1232,7 +1232,7 @@ function BuildPage() {
   const [scope, setScope] = useState<string | null>(() => takeRequestedBuildScope() ?? null);
   const selected = workspaces.find((w) => w.id === scope) ?? workspaces[0];
   if (!selected) {
-    return <p className="py-4 text-[12px] text-content/45">No workspaces yet.</p>;
+    return <p className="py-4 text-[12px] text-content/40">No workspaces yet.</p>;
   }
   return (
     <>
@@ -1339,7 +1339,7 @@ function ArchivePage({
     <>
       <Heading title="Archived projects" first />
       {archivedProjects.length === 0 ? (
-        <p className="py-3 text-[12px] text-content/45">
+        <p className="py-3 text-[12px] text-content/40">
           Archive a project from the rail to keep its chats without listing it
           in the sidebar.
         </p>
@@ -1387,12 +1387,12 @@ function ArchivePage({
       <Heading title="Archived threads" />
 
       {archived.length === 0 ? (
-        <p className="py-3 text-[12px] text-content/45">
+        <p className="py-3 text-[12px] text-content/40">
           Nothing archived. Right-click a tab to archive it.
         </p>
       ) : (
         <>
-          <label className="mb-3 flex items-center gap-2 rounded-md border border-content/10 px-2.5 py-1.5 text-[12px] text-content/50 focus-within:border-content/25">
+          <label className="mb-3 flex items-center gap-2 rounded-md border border-content/10 px-2.5 py-1.5 text-[12px] text-content/50 focus-within:border-content/20">
             <Search className="size-3.5 shrink-0" strokeWidth={1.75} />
             <input
               type="search"
@@ -1400,11 +1400,11 @@ function ArchivePage({
               onChange={(event) => setQuery(event.target.value)}
               placeholder={`Search ${archived.length} archived…`}
               aria-label="Search archived threads"
-              className="min-w-0 flex-1 bg-transparent text-content outline-none placeholder:text-content/35"
+              className="min-w-0 flex-1 bg-transparent text-content outline-none placeholder:text-content/40"
             />
           </label>
           {shown.length === 0 ? (
-            <p className="py-3 text-[12px] text-content/45">
+            <p className="py-3 text-[12px] text-content/40">
               No archived thread matches.
             </p>
           ) : (
@@ -1432,7 +1432,7 @@ function ArchivePage({
                       </span>
                     ) : null}
                   </button>
-                  <span className="shrink-0 text-[11px] text-content/35 tabular-nums">
+                  <span className="shrink-0 text-[11px] text-content/40 tabular-nums">
                     {formatDate(meta.updatedAt)}
                   </span>
                   <SecondaryButton onClick={() => restore(meta)}>
@@ -1521,7 +1521,7 @@ function PageHeader({
         {title}
       </h1>
       {description ? (
-        <p className="mt-1.5 max-w-xl text-[13px] leading-relaxed text-content/45">
+        <p className="mt-1.5 max-w-xl text-[13px] leading-relaxed text-content/40">
           {description}
         </p>
       ) : null}
@@ -1677,11 +1677,11 @@ function LanguageServersRow() {
           {rows.map((row) => (
             <span key={row.serverId} className="flex items-center gap-2">
               <span className="text-content">{LSP_LABEL[row.lang]}</span>
-              <span className="text-content/45">
+              <span className="text-content/40">
                 {projectNames.get(row.projectId) ?? row.projectId}
               </span>
               <span
-                className={`tabular-nums ${row.state === "error" ? "text-danger" : "text-content/45"}`}
+                className={`tabular-nums ${row.state === "error" ? "text-danger" : "text-content/40"}`}
               >
                 {lspRowStatus(row)}
               </span>
@@ -1813,7 +1813,7 @@ function EditorPage() {
               {jdkState}
             </span>
             {java?.path ? (
-              <span className="block truncate font-mono text-[11px] text-content/35">
+              <span className="block truncate font-mono text-[11px] text-content/40">
                 {java.path}
               </span>
             ) : null}
@@ -1842,7 +1842,7 @@ function EditorPage() {
           ) : note ? (
             <p className="text-[12px] text-danger">{note}</p>
           ) : (
-            <p className="flex items-center gap-2 text-[12px] text-content/60">
+            <p className="flex items-center gap-2 text-[12px] text-content/50">
               <MatrixSpinner cell={1.8} /> Downloading the engine to read its license…
             </p>
           )}

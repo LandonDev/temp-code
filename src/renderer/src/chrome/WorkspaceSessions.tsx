@@ -150,7 +150,7 @@ function MoreRow({ hidden, onMore }: { hidden: number; onMore: () => void }) {
     <button
       type="button"
       onClick={onMore}
-      className="flex h-6 w-full items-center rounded-md px-2 text-[11px] text-content/45 hover:bg-content/5 hover:text-content/70"
+      className="flex h-6 w-full items-center rounded-md px-2 text-[11px] text-content/40 hover:bg-content/5 hover:text-content/70"
     >
       {hidden} more
     </button>
@@ -179,7 +179,7 @@ function Stat({
   return (
     <span className={`flex shrink-0 items-center gap-1 ${tint}`}>
       <span
-        className={`size-1.5 rounded-full ${dot} ${pulse ? "animate-pulse" : ""}`}
+        className={`size-1.5 rounded-full ${dot} ${pulse ? "motion-safe:animate-pulse" : ""}`}
       />
       {count} {word}
     </span>
@@ -189,11 +189,11 @@ function Stat({
 function StatusDot({ status }: { status: ThreadRow["status"] }) {
   const cls =
     status === "waiting"
-      ? "bg-amber-400 animate-pulse"
+      ? "bg-warning motion-safe:animate-pulse"
       : status === "error"
-        ? "bg-red-400"
+        ? "bg-danger"
         : status === "starting"
-          ? "bg-content/40 animate-pulse"
+          ? "bg-content/40 motion-safe:animate-pulse"
           : null;
   return cls ? (
     <span className={`size-1.5 shrink-0 rounded-full ${cls}`} />
@@ -216,7 +216,7 @@ function Kebab({
         onOpen(e.currentTarget);
       }}
       onDoubleClick={(e) => e.stopPropagation()}
-      className={`flex size-5 shrink-0 items-center justify-center rounded text-content/50 hover:bg-content/10 hover:text-content ${className}`}
+      className={`flex size-5 shrink-0 items-center justify-center rounded-md text-content/50 hover:bg-content/10 hover:text-content ${className}`}
     >
       <MoreHorizontal className="size-3.5" />
     </button>
@@ -259,7 +259,7 @@ function InlineRename({
       onKeyDown={onKey}
       onClick={(e) => e.stopPropagation()}
       onFocus={(e) => e.currentTarget.select()}
-      className={`w-full rounded bg-content/10 px-1.5 py-0.5 leading-snug text-content outline-none ring-1 ring-accent/40 ${className}`}
+      className={`w-full rounded-md bg-content/10 px-1.5 py-0.5 leading-snug text-content outline-none ring-1 ring-accent/40 ${className}`}
     />
   );
 }
@@ -368,15 +368,15 @@ const ChatRow = memo(function ChatRow({
         selected
           ? "text-content"
           : thread.paused
-            ? "bg-amber-400/8 text-content/80 hover:bg-amber-400/12"
-            : "text-content/80 hover:bg-content/5 hover:text-content"
+            ? "bg-warning/8 text-content/70 hover:bg-warning/12"
+            : "text-content/70 hover:bg-content/5 hover:text-content"
       }`}
     >
       {selected ? <ActivePill layoutId={actions.pill} /> : null}
       {thread.running ? (
         <Spinner />
       ) : thread.paused ? (
-        <Pause className="size-3 shrink-0 text-amber-400" />
+        <Pause className="size-3 shrink-0 text-warning" />
       ) : thread.unread ? (
         <span className="size-1.5 shrink-0 rounded-full bg-accent" />
       ) : null}
@@ -400,7 +400,7 @@ const ChatRow = memo(function ChatRow({
       {!renaming ? (
         <>
           <StatusDot status={thread.status} />
-          <span className="shrink-0 text-[11px] tabular-nums text-content/45 group-hover/row:opacity-0">
+          <span className="shrink-0 text-[11px] tabular-nums text-content/40 group-hover/row:opacity-0">
             {trailing}
           </span>
           <Kebab
@@ -451,7 +451,7 @@ const ChildRow = memo(function ChildRow({
     >
       {selected ? <ActivePill layoutId={actions.pill} /> : null}
       {thread.running ? <Spinner /> : <StatusDot status={thread.status} />}
-      {Glyph ? <Glyph className="size-3 shrink-0 text-content/45" /> : null}
+      {Glyph ? <Glyph className="size-3 shrink-0 text-content/40" /> : null}
       <span className="min-w-0 flex-1 truncate">{thread.title || "Subagent"}</span>
       {thread.provider && thread.model ? (
         <span className="shrink-0 text-[11px] text-content/40">
@@ -523,13 +523,13 @@ function TaskLine({ tasks, paused }: { tasks: Tasks; paused?: boolean }) {
   return (
     <div className="flex items-center gap-1.5 pl-3 text-[11px] leading-4">
       <span
-        className={`shrink-0 text-[10.5px] tabular-nums ${tally}`}
+        className={`shrink-0 text-[11px] tabular-nums ${tally}`}
         title={`${tasks.done} of ${tasks.total} tasks done`}
       >
         {tasks.done}/{tasks.total}
       </span>
       {tasks.current ? (
-        <span className={`truncate ${paused ? "text-warning/70" : "text-content/45"}`}>
+        <span className={`truncate ${paused ? "text-warning/70" : "text-content/40"}`}>
           {tasks.current}
         </span>
       ) : null}
@@ -553,11 +553,11 @@ function RunningLine({ thread: t, now }: { thread: ThreadRow; now: number }) {
       <div className="flex w-full items-center gap-1.5 text-[11px] leading-4">
         <MatrixSpinner cell={1.8} tint={t.activityKind} />
         <ThreadGlyph thread={t} />
-        <span className="min-w-0 flex-1 truncate text-content/55">
+        <span className="min-w-0 flex-1 truncate text-content/50">
           {t.title || "Untitled"}
         </span>
         <span
-          className={`shrink-0 text-[10.5px] whitespace-nowrap tabular-nums text-content/45 ${ms < 3000 ? "opacity-0" : ""}`}
+          className={`shrink-0 text-[11px] whitespace-nowrap tabular-nums text-content/40 ${ms < 3000 ? "opacity-0" : ""}`}
         >
           {duration(ms)}
         </span>
@@ -572,11 +572,11 @@ function PausedLine({ thread: t }: { thread: ThreadRow }) {
   return (
     <div className="w-full bg-warning/5 py-[3px]">
       <div className="flex w-full items-center gap-1.5 text-[11px] leading-4 text-warning">
-        <Pause className="size-3 shrink-0 fill-current" strokeWidth={1.8} />
+        <Pause className="size-3 shrink-0 fill-current" strokeWidth={1.75} />
         <ThreadGlyph thread={t} />
         <span className="min-w-0 flex-1 truncate">{t.title || "Untitled"}</span>
         <span className="shrink-0 font-medium">Paused</span>
-        <span className="shrink-0 text-[10.5px] tabular-nums text-current/75">
+        <span className="shrink-0 text-[11px] tabular-nums text-current/70">
           {duration(pausedElapsed(t))}
         </span>
       </div>
@@ -772,13 +772,13 @@ const ProjectCard = memo(function ProjectCard({
             <>
               <span
                 className={`min-w-0 flex-1 truncate text-[13px] leading-5 ${
-                  selected ? "text-content" : "text-content/80"
+                  selected ? "text-content" : "text-content/70"
                 }`}
               >
                 {project.name}
               </span>
               {latest > 0 ? (
-                <span className="shrink-0 text-[11px] tabular-nums text-content/45 group-hover/card:opacity-0">
+                <span className="shrink-0 text-[11px] tabular-nums text-content/40 group-hover/card:opacity-0">
                   <Ago at={latest} />
                 </span>
               ) : null}
@@ -786,7 +786,7 @@ const ProjectCard = memo(function ProjectCard({
           )}
         </div>
 
-        <div className="flex w-full items-center gap-1 text-[11px] leading-4 text-content/55">
+        <div className="flex w-full items-center gap-1 text-[11px] leading-4 text-content/50">
           <GitBranch className="size-2.5 shrink-0" />
           <span className="truncate">{project.branch ?? "local checkout"}</span>
           <span className="shrink-0 text-content/40">
@@ -811,11 +811,11 @@ const ProjectCard = memo(function ProjectCard({
             ) : null}
             {status.paused.length > 0 ? (
               <span className="flex shrink-0 items-center gap-1 text-warning">
-                <Pause className="size-3 fill-current" strokeWidth={1.8} />
+                <Pause className="size-3 fill-current" strokeWidth={1.75} />
                 {status.paused.length} paused
               </span>
             ) : null}
-            <span className="truncate text-content/45">
+            <span className="truncate text-content/40">
               {quietSummary(status, archivedCount)}
             </span>
           </div>
@@ -865,7 +865,7 @@ const ArchivedProjects = memo(function ArchivedProjects({
         type="button"
         onClick={() => setOpen((o) => !o)}
         aria-expanded={open}
-        className="flex h-6 w-full items-center gap-1.5 rounded-md px-2 text-[11px] text-content/45 hover:text-content/70"
+        className="flex h-6 w-full items-center gap-1.5 rounded-md px-2 text-[11px] text-content/40 hover:text-content/70"
       >
         <ChevronRight
           className={`size-3 transition-transform duration-200 ${open ? "rotate-90" : ""}`}
@@ -894,7 +894,7 @@ const ArchivedProjects = memo(function ArchivedProjects({
                     type="button"
                     aria-label="Restore"
                     onClick={() => onRestore(project)}
-                    className="flex size-5 items-center justify-center rounded text-content/50 hover:bg-content/10 hover:text-content"
+                    className="flex size-5 items-center justify-center rounded-md text-content/50 hover:bg-content/10 hover:text-content"
                   >
                     <ArchiveRestore className="size-3.5" />
                   </button>
@@ -902,7 +902,7 @@ const ArchivedProjects = memo(function ArchivedProjects({
                     type="button"
                     aria-label="Delete"
                     onClick={() => onDelete(project)}
-                    className="flex size-5 items-center justify-center rounded text-content/50 hover:bg-red-500/15 hover:text-red-300"
+                    className="flex size-5 items-center justify-center rounded-md text-content/50 hover:bg-danger/15 hover:text-danger"
                   >
                     <Trash2 className="size-3.5" />
                   </button>
@@ -950,7 +950,7 @@ const ChatsSection = memo(function ChatsSection({
           type="button"
           onClick={onToggle}
           aria-expanded={open}
-          className="flex min-w-0 flex-1 items-center gap-1 text-[12px] font-medium text-content/60 hover:text-content"
+          className="flex min-w-0 flex-1 items-center gap-1 text-[12px] font-medium text-content/50 hover:text-content"
         >
           <ChevronRight
             className={`size-3 transition-transform duration-200 ${open ? "rotate-90" : ""}`}
@@ -961,7 +961,7 @@ const ChatsSection = memo(function ChatsSection({
           type="button"
           aria-label="New chat"
           onClick={() => onNewChat(null)}
-          className="flex size-5 items-center justify-center rounded text-content/50 opacity-0 group-hover/chats:opacity-100 hover:bg-content/10 hover:text-content focus:opacity-100"
+          className="flex size-5 items-center justify-center rounded-md text-content/50 opacity-0 group-hover/chats:opacity-100 hover:bg-content/10 hover:text-content focus:opacity-100"
         >
           <Plus className="size-3.5" />
         </button>

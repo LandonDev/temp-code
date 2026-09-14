@@ -129,7 +129,7 @@ function Breakdown({
         {categories.map((c, i) => (
           <li key={c.name} className="flex items-center gap-2">
             <span className="size-1.5 shrink-0 rounded-full" style={{ backgroundColor: colorOf(c, i) }} />
-            <span className="min-w-0 flex-1 truncate text-content/80">{c.name}</span>
+            <span className="min-w-0 flex-1 truncate text-content/70">{c.name}</span>
             <span className="tabular-nums text-content/50">{formatTokens(c.tokens)}</span>
           </li>
         ))}
@@ -158,7 +158,7 @@ function BreakdownList({ title, rows }: { title: string; rows: { key: string; la
   const total = rows.reduce((n, r) => n + r.tokens, 0);
   return (
     <div className="flex flex-col gap-1 text-[12px] leading-5">
-      <div className="flex items-baseline justify-between text-content/45">
+      <div className="flex items-baseline justify-between text-content/40">
         <span>{title}</span>
         <span className="tabular-nums">{formatTokens(total)}</span>
       </div>

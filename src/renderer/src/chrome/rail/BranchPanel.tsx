@@ -387,7 +387,7 @@ function CommitList({
               <span className="min-w-0 flex-1 truncate text-[11px] text-content" title={c.subject}>
                 {c.subject}
               </span>
-              <span className="shrink-0 text-[10.5px] tabular-nums text-content/40">{timeAgo(c.authoredAt)}</span>
+              <span className="shrink-0 text-[11px] tabular-nums text-content/40">{timeAgo(c.authoredAt)}</span>
             </div>
           ))
         : null}

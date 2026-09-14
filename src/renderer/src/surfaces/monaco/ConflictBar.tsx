@@ -10,7 +10,7 @@ export function ConflictBar({
 }) {
   return (
     <div className="flex h-8 shrink-0 items-center gap-3 border-b border-content/10 bg-warning/10 px-3 text-[12px]">
-      <span className="text-content/60">
+      <span className="text-content/50">
         {kind === "external" ? "Changed on disk while you were typing" : "Deleted on disk"}
       </span>
       <span className="flex-1" />

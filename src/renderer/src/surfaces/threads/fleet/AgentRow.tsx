@@ -14,8 +14,8 @@ import { statsParts, useAgentModel, type FleetStats } from "./useFleetModel";
  */
 
 export function StatusGlyph({ status }: { status: SessionMeta["status"] }) {
-  if (isLiveStatus(status)) return <Spinner className="size-3.5 text-content/45" />;
-  if (status === "waiting") return <span className="size-2 animate-pulse rounded-full bg-warning" />;
+  if (isLiveStatus(status)) return <Spinner className="size-3.5 text-content/40" />;
+  if (status === "waiting") return <span className="size-2 motion-safe:animate-pulse rounded-full bg-warning" />;
   if (status === "error") return <X className="size-3.5 text-danger" />;
   return <Check className="size-3.5 text-success" />;
 }
@@ -35,7 +35,7 @@ function CtxRing({ pct }: { pct: number }) {
         strokeDasharray={c}
         strokeDashoffset={c * (1 - pct / 100)}
         strokeLinecap="round"
-        className={pct >= 85 ? "stroke-warning" : "stroke-content/55"}
+        className={pct >= 85 ? "stroke-warning" : "stroke-content/50"}
       />
     </svg>
   );
@@ -46,10 +46,10 @@ export function AgentStatsLine({ stats, className = "" }: { stats: FleetStats; c
   if (!hasStats(stats) && !stats.compacting) return null;
   const parts = statsParts(stats);
   return (
-    <span className={`inline-flex items-center gap-1.5 text-[11px] tabular-nums text-content/45 ${className}`}>
+    <span className={`inline-flex items-center gap-1.5 text-[11px] tabular-nums text-content/40 ${className}`}>
       {parts.map((p, i) => (
         <span key={p.key} className="inline-flex items-center gap-1.5">
-          {i > 0 && <span className="text-content/25">·</span>}
+          {i > 0 && <span className="text-content/20">·</span>}
           {p.key === "diff" ? (
             <span>
               <span className="text-success">+{p.adds}</span> <span className="text-danger">−{p.dels}</span>
@@ -106,7 +106,7 @@ export function AgentRow({
         <StatusGlyph status={agent.status} />
       </span>
       <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-        <span className={`truncate text-[13px] font-medium ${idle ? "text-content/55" : "text-content"}`}>
+        <span className={`truncate text-[13px] font-medium ${idle ? "text-content/50" : "text-content"}`}>
           {agent.title || "Subagent"}
         </span>
         {line.text ? (
@@ -116,7 +116,7 @@ export function AgentRow({
         ) : null}
         <AgentStatsLine stats={stats} />
       </span>
-      <span className="flex shrink-0 flex-col items-end gap-0.5 text-[11px] tabular-nums text-content/45">
+      <span className="flex shrink-0 flex-col items-end gap-0.5 text-[11px] tabular-nums text-content/40">
         <span className="inline-flex items-center gap-1">
           <HarnessIcon harness={asHarness(agent.provider)} className="size-3" />
           {modelLabel(agent.provider, agent.model)}

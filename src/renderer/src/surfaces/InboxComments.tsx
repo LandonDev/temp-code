@@ -68,7 +68,7 @@ export function InboxComments({
   }
   if (!thread) {
     if (error) {
-      return <p className="text-[12px] text-content/45">{error}</p>;
+      return <p className="text-[12px] text-content/40">{error}</p>;
     }
     if (loading) return <CommentsPending />;
     return null;
@@ -90,12 +90,12 @@ export function InboxComments({
         ) : null}
         {loading ? (
           <LoaderCircle
-            className="size-3 animate-spin text-content/35"
+            className="size-3 motion-safe:animate-spin text-content/40"
             strokeWidth={1.75}
           />
         ) : null}
       </div>
-      {error ? <p className="text-[12px] text-content/45">{error}</p> : null}
+      {error ? <p className="text-[12px] text-content/40">{error}</p> : null}
       <ol className="flex flex-col gap-2">
         {thread.comments.map((comment) => (
           <li key={comment.id}>
@@ -179,7 +179,7 @@ export function InboxCommentForm({
             title="Cancel reply"
             aria-label="Cancel reply"
             onClick={onCancelReply}
-            className="grid size-5 shrink-0 place-items-center rounded-md text-content/45 hover:bg-content/10 hover:text-content"
+            className="grid size-5 shrink-0 place-items-center rounded-md text-content/40 hover:bg-content/10 hover:text-content"
           >
             <X className="size-3" strokeWidth={1.75} />
           </button>
@@ -196,20 +196,20 @@ export function InboxCommentForm({
           }
           onChange={(event) => setDraft(event.target.value)}
           onKeyDown={onKeyDown}
-          className="max-h-40 w-full resize-none overflow-y-auto bg-transparent px-3 py-2 text-[13px] leading-5 text-content outline-none placeholder:text-content/35 disabled:opacity-40"
+          className="max-h-40 w-full resize-none overflow-y-auto bg-transparent px-3 py-2 text-[13px] leading-5 text-content outline-none placeholder:text-content/40 disabled:opacity-40"
         />
         <div className="flex items-center justify-end px-2 pb-2">
           <button
             type="submit"
             disabled={!canPost}
-            className="inline-flex h-7 items-center rounded-md bg-content px-3 text-[12px] text-background-base hover:bg-content/80 disabled:cursor-default disabled:opacity-40"
+            className="inline-flex h-7 items-center rounded-md bg-content px-3 text-[12px] text-background-base hover:bg-content/70 disabled:cursor-default disabled:opacity-40"
           >
             {posting ? "Posting..." : replyTo ? "Reply" : "Comment"}
           </button>
         </div>
       </div>
       {error ? (
-        <p className="text-[12px] text-red-400/90">{error}</p>
+        <p className="text-[12px] text-danger">{error}</p>
       ) : null}
     </form>
   );
@@ -217,8 +217,8 @@ export function InboxCommentForm({
 
 function CommentsPending() {
   return (
-    <div className="flex items-center gap-2 border-t border-content/10 pt-5 text-[12px] text-content/45">
-      <LoaderCircle className="size-3.5 animate-spin" strokeWidth={1.75} />
+    <div className="flex items-center gap-2 border-t border-content/10 pt-5 text-[12px] text-content/40">
+      <LoaderCircle className="size-3.5 motion-safe:animate-spin" strokeWidth={1.75} />
       Loading comments
     </div>
   );
@@ -291,11 +291,11 @@ function InboxComment({
               <span
                 className={
                   comment.state === "APPROVED"
-                    ? "text-emerald-400/90"
+                    ? "text-success"
                     : comment.state === "CHANGES_REQUESTED"
-                      ? "text-rose-400/90"
+                      ? "text-danger"
                       : comment.resolved && part === "Resolved"
-                        ? "text-emerald-400/80"
+                        ? "text-success/70"
                         : "min-w-0 truncate"
                 }
               >
@@ -401,7 +401,7 @@ function InboxCommentPerson({
       ) : (
         <span
           aria-hidden
-          className="grid size-5 shrink-0 place-items-center rounded-full bg-content/12 text-[10px] font-medium text-content/55"
+          className="grid size-5 shrink-0 place-items-center rounded-full bg-content/12 text-[10px] font-medium text-content/50"
         >
           {initial}
         </span>

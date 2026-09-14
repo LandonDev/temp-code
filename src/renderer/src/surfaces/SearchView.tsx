@@ -351,7 +351,7 @@ export function SearchView({
           />
           {loading ? (
             <LoaderCircle
-              className="size-3.5 shrink-0 animate-spin text-content/35"
+              className="size-3.5 shrink-0 motion-safe:animate-spin text-content/40"
               strokeWidth={1.75}
             />
           ) : null}
@@ -391,7 +391,7 @@ export function SearchView({
         {empty ? (
           <EmptyState />
         ) : error && hits.length === 0 ? (
-          <p className="px-2 py-1.5 text-[12px] text-red-400">{error}</p>
+          <p className="px-2 py-1.5 text-[12px] text-danger">{error}</p>
         ) : noResults ? (
           <p className="px-2 py-1.5 text-[12px] text-content/50">No results</p>
         ) : (
@@ -436,7 +436,7 @@ function EmptyState() {
         </div>
       </div>
 
-      <p className="max-w-xs text-center text-[13px] text-content/45">
+      <p className="max-w-xs text-center text-[13px] text-content/40">
         Find files, conversations, messages, and projects.
       </p>
     </div>
@@ -543,7 +543,7 @@ function rowCopy(
     return {
       icon: (
         <MessageSquare
-          className="size-3.5 text-content/55"
+          className="size-3.5 text-content/50"
           strokeWidth={1.75}
         />
       ),
@@ -571,7 +571,7 @@ function rowCopy(
     icon: (
       <ProjectLogoIcon
         path={hit.path}
-        className="size-3.5 rounded-sm"
+        className="size-3.5 rounded-md"
         fallback={Folder}
       />
     ),

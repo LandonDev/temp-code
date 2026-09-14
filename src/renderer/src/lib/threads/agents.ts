@@ -117,7 +117,7 @@ export type AgentTone = "warning" | "danger" | "muted";
 export const TONE_CLASS: Record<AgentTone, string> = {
   warning: "text-warning",
   danger: "text-danger",
-  muted: "text-content/55",
+  muted: "text-content/50",
 };
 
 /** The row's one-line status and its colour. */

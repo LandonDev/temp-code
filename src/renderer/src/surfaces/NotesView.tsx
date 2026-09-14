@@ -212,11 +212,11 @@ export function NotesView({
           aria-label="New note"
           disabled={creating}
           onClick={() => void onCreate()}
-          className="grid size-6 shrink-0 place-items-center rounded-md text-content/45 hover:bg-content/10 hover:text-content disabled:opacity-40"
+          className="grid size-6 shrink-0 place-items-center rounded-md text-content/40 hover:bg-content/10 hover:text-content disabled:opacity-40"
         >
           {creating ? (
             <LoaderCircle
-              className="size-3.5 animate-spin"
+              className="size-3.5 motion-safe:animate-spin"
               strokeWidth={1.75}
             />
           ) : (
@@ -232,7 +232,7 @@ export function NotesView({
           <p className="px-3 py-2 text-[12px] text-content/50">{error}</p>
         ) : loading && notes.length === 0 ? (
           <div className="flex justify-center py-10 text-content/40">
-            <LoaderCircle className="size-4 animate-spin" strokeWidth={1.75} />
+            <LoaderCircle className="size-4 motion-safe:animate-spin" strokeWidth={1.75} />
           </div>
         ) : visible.length === 0 ? (
           <p className="px-3 py-2 text-[12px] text-content/50">
@@ -288,7 +288,7 @@ export function NotesView({
         )}
         <div className="flex min-w-0 flex-1 items-center gap-2 px-3 text-[13px]">
           <File
-            className="size-3.5 shrink-0 text-content/45"
+            className="size-3.5 shrink-0 text-content/40"
             strokeWidth={1.75}
           />
           <span className="min-w-0 truncate text-content">Notes</span>
@@ -339,7 +339,7 @@ function NoteProjectMark({
       {logoPath ? (
         <ProjectLogoIcon
           path={logoPath}
-          className="size-3.5 shrink-0 rounded-sm"
+          className="size-3.5 shrink-0 rounded-md"
           imageClassName="size-3.5"
         />
       ) : (
@@ -408,7 +408,7 @@ function NoteCard({
       className={`flex w-full flex-col rounded-md border px-2.5 py-2 text-left ${
         active
           ? "border-transparent bg-content/10 text-content"
-          : "border-transparent text-content/80 hover:bg-content/5 hover:text-content"
+          : "border-transparent text-content/70 hover:bg-content/5 hover:text-content"
       }`}
     >
       <span className="flex items-center gap-2">
@@ -426,7 +426,7 @@ function NoteCard({
           <span className="min-w-0 flex-1" />
         )}
         {time ? (
-          <span className="shrink-0 text-[11px] tabular-nums text-content/45">
+          <span className="shrink-0 text-[11px] tabular-nums text-content/40">
             {time}
           </span>
         ) : null}
@@ -435,7 +435,7 @@ function NoteCard({
         {note.title}
       </span>
       {preview ? (
-        <span className="mt-1 line-clamp-1 text-[12px] leading-snug text-content/45">
+        <span className="mt-1 line-clamp-1 text-[12px] leading-snug text-content/40">
           {preview}
         </span>
       ) : null}
@@ -462,7 +462,7 @@ function NoteDetail({
     return (
       <div className="flex h-full min-w-0 flex-1 flex-col items-center justify-center px-6 text-center">
         <File className="mb-3 size-6 text-content/30" strokeWidth={1.75} />
-        <p className="text-[13px] text-content/45">Select a note</p>
+        <p className="text-[13px] text-content/40">Select a note</p>
       </div>
     );
   }
@@ -611,7 +611,7 @@ function NoteEditor({
             }}
             onKeyDown={onTitleKeyDown}
             aria-label="Note title"
-            className="w-full border-0 bg-transparent p-0 text-[20px] font-semibold leading-tight text-content outline-none placeholder:text-content/35"
+            className="w-full border-0 bg-transparent p-0 text-[20px] font-semibold leading-tight text-content outline-none placeholder:text-content/40"
             placeholder="Untitled"
           />
           {time ? (
@@ -622,7 +622,7 @@ function NoteEditor({
               type="button"
               disabled={!canAddToChat}
               onClick={() => onAddToChat(draft)}
-              className="inline-flex items-center gap-1 rounded-md bg-content px-3 h-6.5 text-[12px] text-background-base hover:bg-content/80 disabled:cursor-default disabled:opacity-40"
+              className="inline-flex items-center gap-1 rounded-md bg-content px-3 h-6.5 text-[12px] text-background-base hover:bg-content/70 disabled:cursor-default disabled:opacity-40"
             >
               Add to chat
             </button>
@@ -634,14 +634,14 @@ function NoteEditor({
                   window.clearTimeout(saveTimer.current);
                 void onDelete(note.id);
               }}
-              className="inline-flex items-center gap-1.5 rounded-md px-3 h-7 text-[12px] text-content/70 hover:bg-content/10 hover:text-red-400"
+              className="inline-flex items-center gap-1.5 rounded-md px-3 h-7 text-[12px] text-content/70 hover:bg-content/10 hover:text-danger"
             >
               <Trash2 className="size-3.5" strokeWidth={1.75} />
               Delete
             </button>
           </div>
           {saveError ? (
-            <p className="text-[12px] text-red-400/90">{saveError}</p>
+            <p className="text-[12px] text-danger">{saveError}</p>
           ) : null}
         </header>
         <div
@@ -672,7 +672,7 @@ function NoteEditor({
         ) : body.trim() ? (
           <AgentMarkdown text={body} cwd={note.sourceCwd} />
         ) : (
-          <p className="text-[13px] text-content/45">No description</p>
+          <p className="text-[13px] text-content/40">No description</p>
         )}
       </div>
     </div>
@@ -696,7 +696,7 @@ function NoteSource({
     <div className="relative min-h-[448px]">
       <div
         aria-hidden
-        className="pointer-events-none grid font-mono text-[13px] leading-5 text-content/85"
+        className="pointer-events-none grid font-mono text-[13px] leading-5 text-content"
         style={{
           gridTemplateColumns: `${gutterWidth} minmax(0, 1fr)`,
         }}

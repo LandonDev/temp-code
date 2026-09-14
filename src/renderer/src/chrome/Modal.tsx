@@ -149,7 +149,7 @@ export function ModalPanel({
             aria-label="Close"
             disabled={busy}
             onClick={onClose}
-            className="grid size-7 shrink-0 place-items-center rounded-md text-content/45 hover:bg-content/8 hover:text-content focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:cursor-default disabled:opacity-40 disabled:hover:bg-transparent"
+            className="grid size-7 shrink-0 place-items-center rounded-md text-content/40 hover:bg-content/8 hover:text-content focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:cursor-default disabled:opacity-40 disabled:hover:bg-transparent"
           >
             <X className="size-3.5" strokeWidth={1.75} />
           </button>

@@ -47,8 +47,8 @@ export function NewThreadChooser({
         aria-expanded={open}
         data-tauri-drag-region="false"
         onClick={() => (open ? close() : setOpen(true))}
-        className={`flex h-6 shrink-0 items-center gap-1 rounded-md text-content/45 hover:bg-content/5 hover:text-content ${
-          empty ? "px-2 text-[12.5px]" : "w-6 justify-center"
+        className={`flex h-6 shrink-0 items-center gap-1 rounded-md text-content/40 hover:bg-content/5 hover:text-content ${
+          empty ? "px-2 text-[13px]" : "w-6 justify-center"
         } ${open ? "bg-content/10 text-content" : ""}`}
       >
         <Plus className="size-3.5" strokeWidth={1.75} />
@@ -75,7 +75,7 @@ export function NewThreadChooser({
                 >
                   <ChevronLeft className="size-3.5" strokeWidth={1.75} />
                 </button>
-                <span className="text-[12.5px] font-medium text-content">
+                <span className="text-[13px] font-medium text-content">
                   {THREAD_LABELS[tuning]} options
                 </span>
               </div>
@@ -84,7 +84,7 @@ export function NewThreadChooser({
                 <button
                   type="button"
                   onClick={() => start(tuning, normalizeTune(tune))}
-                  className="rounded-md bg-content px-3 py-1.5 text-[12px] font-medium text-background-base hover:bg-content/80"
+                  className="rounded-md bg-content px-3 py-1.5 text-[12px] font-medium text-background-base hover:bg-content/70"
                 >
                   Start {THREAD_LABELS[tuning].toLowerCase()}
                 </button>
@@ -104,8 +104,8 @@ export function NewThreadChooser({
                       <Glyph className="size-3.5" strokeWidth={1.75} />
                     </span>
                     <span className="min-w-0">
-                      <span className="block text-[12.5px] text-content">{THREAD_LABELS[type]}</span>
-                      <span className="block truncate text-[11px] text-content/45">{THREAD_HINTS[type]}</span>
+                      <span className="block text-[13px] text-content">{THREAD_LABELS[type]}</span>
+                      <span className="block truncate text-[11px] text-content/40">{THREAD_HINTS[type]}</span>
                     </span>
                   </button>
                   {TUNABLE.has(type) ? (

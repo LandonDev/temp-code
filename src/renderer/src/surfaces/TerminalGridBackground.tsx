@@ -559,7 +559,7 @@ export function TerminalGridBackground() {
           <span>
             score {score}
             {game.lives ? (
-              <span className="ml-3 text-content/35">
+              <span className="ml-3 text-content/40">
                 {lives > 0 ? "•".repeat(lives) : "game over"}
               </span>
             ) : null}
@@ -578,7 +578,7 @@ export function TerminalGridBackground() {
                   className={`cursor-pointer border px-2 py-1 ${
                     on
                       ? "border-content/40 bg-content/10 text-content"
-                      : "border-content/10 text-content/40 hover:border-content/25 hover:text-content/70"
+                      : "border-content/10 text-content/40 hover:border-content/20 hover:text-content/70"
                   }`}
                 >
                   {id}
@@ -593,8 +593,8 @@ export function TerminalGridBackground() {
               onClick={releaseControl}
               className="pointer-events-auto cursor-pointer border border-content/20 bg-background-base/70 px-2 py-1 text-content/70 hover:border-content/40 hover:text-content"
             >
-              <span className="text-content/35">[</span> release{" "}
-              <span className="text-content/35">]</span>
+              <span className="text-content/40">[</span> release{" "}
+              <span className="text-content/40">]</span>
             </button>
           </div>
         </div>
@@ -606,14 +606,14 @@ export function TerminalGridBackground() {
               tabIndex={-1}
               onMouseDown={(event) => event.preventDefault()}
               onClick={takeControl}
-              className="pointer-events-none flex cursor-pointer items-center gap-2 border border-content/25 bg-background-base/80 px-3 py-1.5 font-mono text-[11px] tracking-[0.16em] text-content/85 shadow-lg glass-surface glass-surface--sm group-hover:pointer-events-auto hover:border-content/45 hover:bg-content/10 hover:text-content"
+              className="pointer-events-none flex cursor-pointer items-center gap-2 border border-content/20 bg-background-base/80 px-3 py-1.5 font-mono text-[11px] tracking-[0.16em] text-content shadow-lg glass-surface glass-surface--sm group-hover:pointer-events-auto hover:border-content/40 hover:bg-content/10 hover:text-content"
             >
               <span className="text-content/40">[</span>
               take control
-              <span className="text-content/25">·</span>
+              <span className="text-content/20">·</span>
               {game.label}
               <span
-                className="inline-block h-3 w-1.5 bg-content/75 motion-safe:animate-pulse"
+                className="inline-block h-3 w-1.5 bg-content/70 motion-safe:animate-pulse"
                 aria-hidden
               />
               <span className="text-content/40">]</span>
@@ -637,7 +637,7 @@ export function TerminalGridBackground() {
                     <span
                       className={`block h-1.5 w-1.5 ${
                         on
-                          ? "bg-content/45"
+                          ? "bg-content/40"
                           : "bg-content/15 hover:bg-content/30"
                       }`}
                     />

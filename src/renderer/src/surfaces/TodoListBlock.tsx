@@ -15,7 +15,7 @@ export const TodoListBlock = memo(function TodoListBlock({ block }: { block: Blo
   return (
     <div className="px-4 py-1">
       <div className="rounded-lg bg-content/[0.04] px-3 py-2 font-sans text-[13px]">
-        <div className="mb-1 flex items-center justify-between text-[11px] text-content/45">
+        <div className="mb-1 flex items-center justify-between text-[11px] text-content/40">
           <span>Todo</span>
           <span className="tabular-nums">
             {done}/{items.length}
@@ -26,10 +26,10 @@ export const TodoListBlock = memo(function TodoListBlock({ block }: { block: Blo
             <li
               key={n}
               className={`flex items-start gap-2 leading-[18px] ${
-                t.status === "completed" ? "text-content/45 line-through" : "text-content/85"
+                t.status === "completed" ? "text-content/40 line-through" : "text-content"
               }`}
             >
-              <span className="mt-[3px] flex size-3 shrink-0 items-center justify-center text-content/45">
+              <span className="mt-[3px] flex size-3 shrink-0 items-center justify-center text-content/40">
                 {t.status === "completed" ? (
                   <Check className="size-3" strokeWidth={2} />
                 ) : t.status === "in_progress" ? (

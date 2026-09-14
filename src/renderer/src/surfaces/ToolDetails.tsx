@@ -50,7 +50,7 @@ export const ToolDetails = memo(function ToolDetails({
         type="button"
         onClick={() => setRaw(!raw)}
         title={raw ? "Formatted view" : "Verbatim invocation and output"}
-        className="absolute right-2.5 top-1.5 z-10 text-[10px] font-medium text-content/40 transition-colors hover:text-content/80"
+        className="absolute right-2.5 top-1.5 z-10 text-[10px] font-medium text-content/40 transition-colors hover:text-content/70"
       >
         {raw ? "pretty" : "raw"}
       </button>
@@ -78,9 +78,9 @@ export const ToolDetails = memo(function ToolDetails({
   );
 });
 
-const MONO = "font-mono text-[11.5px] leading-[18px] whitespace-pre-wrap [overflow-wrap:anywhere]";
+const MONO = "font-mono text-[12px] leading-[18px] whitespace-pre-wrap [overflow-wrap:anywhere]";
 
-function Mono({ text, className = "text-content/60" }: { text: string; className?: string }) {
+function Mono({ text, className = "text-content/50" }: { text: string; className?: string }) {
   return <pre className={`${MONO} ${className}`}>{text}</pre>;
 }
 
@@ -88,9 +88,9 @@ function KVRows({ obj, titleOf }: { obj: Record<string, unknown>; titleOf: Title
   return (
     <div className="space-y-px">
       {Object.entries(obj).map(([k, v]) => (
-        <div key={k} className="flex gap-2 text-[11.5px] leading-[18px]">
+        <div key={k} className="flex gap-2 text-[12px] leading-[18px]">
           <span className="w-24 shrink-0 truncate text-content/40">{k}</span>
-          <span className="min-w-0 flex-1 whitespace-pre-wrap break-words text-content/85">
+          <span className="min-w-0 flex-1 whitespace-pre-wrap break-words text-content">
             {kvDisplay(k, v, titleOf)}
           </span>
         </div>
@@ -111,27 +111,27 @@ function PrettyJson({ value, titleOf }: { value: unknown; titleOf: TitleOf }) {
             {v && typeof v === "object" ? (
               <KVRows obj={rec(v)} titleOf={titleOf} />
             ) : (
-              <div className="text-[11.5px] leading-[18px] text-content/85">{scalar(v)}</div>
+              <div className="text-[12px] leading-[18px] text-content">{scalar(v)}</div>
             )}
           </div>
         ))}
         {value.length > shown.length ? (
-          <div className="pt-1 text-[10.5px] text-content/40">… {value.length - shown.length} more</div>
+          <div className="pt-1 text-[11px] text-content/40">… {value.length - shown.length} more</div>
         ) : null}
       </div>
     );
   }
   if (value && typeof value === "object") return <KVRows obj={rec(value)} titleOf={titleOf} />;
-  return <div className="text-[11.5px] leading-[18px] text-content/85">{scalar(value)}</div>;
+  return <div className="text-[12px] leading-[18px] text-content">{scalar(value)}</div>;
 }
 
 function OutputBlock({ text, error }: { text: string; error: boolean }) {
   const { shown, more } = outputLines(text);
   return (
     <div className="px-3 py-1.5">
-      <Mono text={shown.join("\n") || "(no output)"} className={error ? "text-red-400" : "text-content/85"} />
+      <Mono text={shown.join("\n") || "(no output)"} className={error ? "text-danger" : "text-content"} />
       {more > 0 ? (
-        <div className="text-[10.5px] leading-[18px] text-content/40">… {more} more lines</div>
+        <div className="text-[11px] leading-[18px] text-content/40">… {more} more lines</div>
       ) : null}
     </div>
   );
@@ -143,8 +143,8 @@ function TodoBlock({ block }: { block: Block }) {
       {todoItems(block).map((t, n) => (
         <div
           key={n}
-          className={`flex items-start gap-2 text-[11.5px] leading-[18px] ${
-            t.status === "completed" ? "text-content/50" : "text-content/85"
+          className={`flex items-start gap-2 text-[12px] leading-[18px] ${
+            t.status === "completed" ? "text-content/50" : "text-content"
           }`}
         >
           <span className="w-3 shrink-0 text-center text-content/40">

@@ -38,7 +38,7 @@ export default function DebugPanel() {
             <Control label="Step into" glyph="↓" enabled={stopped} onClick={() => debugController()?.step("stepIn")} />
             <Control label="Step out" glyph="↑" enabled={stopped} onClick={() => debugController()?.step("stepOut")} />
             <span className="flex-1" />
-            <span className="text-[10.5px] tabular-nums text-content/50">{phase}</span>
+            <span className="text-[11px] tabular-nums text-content/50">{phase}</span>
             <Control label="Stop" glyph="■" enabled onClick={() => debugController()?.stop()} />
           </>
         )}
@@ -58,8 +58,8 @@ export default function DebugPanel() {
               }}
               className="flex w-full items-baseline gap-2 px-3 py-0.5 text-left transition-colors hover:bg-content/5"
             >
-              <span className={cn("truncate text-[11.5px]", !f.path && "text-content/45")}>{f.name}</span>
-              <span className="ml-auto shrink-0 text-[10.5px] tabular-nums text-content/40">{f.line}</span>
+              <span className={cn("truncate text-[12px]", !f.path && "text-content/40")}>{f.name}</span>
+              <span className="ml-auto shrink-0 text-[11px] tabular-nums text-content/40">{f.line}</span>
             </button>
           ))}
         </div>
@@ -77,7 +77,7 @@ export default function DebugPanel() {
               style={{ paddingLeft: `${12 + v.depth * 12}px` }}
             >
               <span className="shrink-0 text-info">{v.name}</span>
-              <span className="truncate text-content/60">{v.value}</span>
+              <span className="truncate text-content/50">{v.value}</span>
             </button>
           ))}
         </div>
@@ -108,7 +108,7 @@ export default function DebugPanel() {
           placeholder={stopped ? "Evaluate…" : ""}
           disabled={!stopped}
           aria-label="Evaluate expression"
-          className="w-full bg-transparent px-3 py-2 font-mono text-[11.5px] text-content outline-none placeholder:text-content/35 disabled:opacity-40"
+          className="w-full bg-transparent px-3 py-2 font-mono text-[12px] text-content outline-none placeholder:text-content/40 disabled:opacity-40"
         />
       </form>
     </div>
@@ -123,7 +123,7 @@ function Control({ label, glyph, enabled, onClick }: { label: string; glyph: str
       aria-label={label}
       disabled={!enabled}
       onClick={onClick}
-      className="flex size-6 items-center justify-center rounded text-[12px] text-content/70 transition-colors hover:bg-content/10 hover:text-content disabled:opacity-30 disabled:hover:bg-transparent"
+      className="flex size-6 items-center justify-center rounded-md text-[12px] text-content/70 transition-colors hover:bg-content/10 hover:text-content disabled:opacity-30 disabled:hover:bg-transparent"
     >
       {glyph}
     </button>

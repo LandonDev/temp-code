@@ -101,7 +101,7 @@ export function ThreadTune({
         value={tune.instructions ?? ""}
         placeholder="Custom instructions for this run…"
         onChange={(e) => onChange({ ...tune, instructions: e.target.value })}
-        className="w-full resize-none rounded-md border border-content/10 bg-content/5 px-2.5 py-2 text-[12.5px] leading-relaxed text-content outline-none placeholder:text-content/35 hover:border-content/20 focus:border-accent/60"
+        className="w-full resize-none rounded-md border border-content/10 bg-content/5 px-2.5 py-2 text-[13px] leading-relaxed text-content outline-none placeholder:text-content/40 hover:border-content/20 focus:border-accent/60"
       />
       {base ? (
         <div>
@@ -196,7 +196,7 @@ export function TuneDialog({
         <button
           type="button"
           onClick={() => onSave(normalizeTune(tune))}
-          className="rounded-md bg-content px-3 py-1.5 text-[12px] font-medium text-background-base hover:bg-content/80"
+          className="rounded-md bg-content px-3 py-1.5 text-[12px] font-medium text-background-base hover:bg-content/70"
         >
           Save
         </button>

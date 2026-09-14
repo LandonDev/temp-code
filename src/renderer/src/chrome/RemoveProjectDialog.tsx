@@ -59,12 +59,12 @@ export function RemoveProjectDialog({ name, path, onCancel, onConfirm }: Props) 
           <h2 className="text-[13px] font-medium leading-tight text-content">
             Delete “{name}”?
           </h2>
-          <p className="text-[12px] leading-snug text-content/55">
+          <p className="text-[12px] leading-snug text-content/50">
             Its projects and threads leave the app. Files and worktrees on
             disk stay. Opening the folder again brings it back empty.
           </p>
           {sessions != null && sessions > 0 ? (
-            <p className="text-[12px] leading-snug text-content/45">
+            <p className="text-[12px] leading-snug text-content/40">
               {sessions === 1
                 ? "1 saved conversation will be removed."
                 : `${sessions} saved conversations will be removed.`}
@@ -87,7 +87,7 @@ export function RemoveProjectDialog({ name, path, onCancel, onConfirm }: Props) 
           <button
             type="button"
             onClick={onConfirm}
-            className="rounded-md bg-red-500/20 px-3 py-1.5 text-[12px] font-medium text-red-300 hover:bg-red-500/30"
+            className="rounded-md bg-danger/20 px-3 py-1.5 text-[12px] font-medium text-danger hover:bg-danger/30"
           >
             Delete
           </button>

@@ -160,7 +160,7 @@ function MarkdownLink({
   const anchor = (
     <a
       href={href}
-      className={`text-sky-400/90 hover:text-sky-300 hover:underline ${className ?? ""}`}
+      className={`text-info hover:text-info hover:underline ${className ?? ""}`}
       {...props}
       onClick={(event) => {
         onClick?.(event);
@@ -206,7 +206,7 @@ function MarkdownCode({
       <code
         {...props}
         className={`inline-flex items-center gap-1 rounded-md bg-content/8 px-1.5 h-6 align-baseline font-mono text-[0.8em] text-content ${
-          open ? "cursor-pointer hover:text-sky-300 hover:underline" : ""
+          open ? "cursor-pointer hover:text-info hover:underline" : ""
         } ${className ?? ""}`}
         role={open ? "link" : undefined}
         tabIndex={open ? 0 : undefined}
@@ -355,7 +355,7 @@ export const MarkdownSource = memo(function MarkdownSource({
       ref={lockOverscroll}
       className="markdown-preview h-full overflow-y-auto overscroll-none [overflow-anchor:none]"
     >
-      <pre className="min-h-full min-w-0 whitespace-pre-wrap wrap-break-word px-4 py-3 font-mono text-[13px] leading-5 text-content/85">
+      <pre className="min-h-full min-w-0 whitespace-pre-wrap wrap-break-word px-4 py-3 font-mono text-[13px] leading-5 text-content">
         <MarkdownSourceHighlight text={text} />
       </pre>
     </div>
@@ -438,7 +438,7 @@ function MermaidBlock({
 
   if (!svg) {
     return (
-      <div className="h-32 animate-pulse rounded-[10px] border border-content/10 bg-content/6" />
+      <div className="h-32 motion-safe:animate-pulse rounded-[10px] border border-content/10 bg-content/6" />
     );
   }
 

@@ -147,9 +147,9 @@ function Banner({
       role={kind === "paused" ? "status" : "alert"}
       className={`flex min-h-7 items-center gap-2 border-b px-3 py-1 text-xs ${tint}`}
     >
-      <Icon className="size-3.5 shrink-0" strokeWidth={1.8} aria-hidden="true" />
+      <Icon className="size-3.5 shrink-0" strokeWidth={1.75} aria-hidden="true" />
       <span className="min-w-0 truncate font-medium">{text}</span>
-      {failed > 0 ? <span className="shrink-0 text-current/75">· {failed} failed</span> : null}
+      {failed > 0 ? <span className="shrink-0 text-current/70">· {failed} failed</span> : null}
       <span className="ml-auto flex shrink-0 items-center gap-1.5">
         {secondary ? (
           <button

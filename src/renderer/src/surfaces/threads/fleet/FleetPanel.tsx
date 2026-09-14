@@ -53,12 +53,12 @@ export function FleetPanel({
             >
               <div className="flex h-9 shrink-0 items-center gap-2 pr-1.5 pl-3" style={{ width: PANEL_W }}>
                 <span className="text-[11px] font-medium tracking-[0.08em] text-content/50 uppercase">Subagents</span>
-                <span className="text-[11px] tabular-nums text-content/35">{agents.length}</span>
+                <span className="text-[11px] tabular-nums text-content/40">{agents.length}</span>
                 <button
                   type="button"
                   onClick={() => fleet.setOpen(false)}
                   aria-label="Hide subagents"
-                  className="ml-auto flex size-6 items-center justify-center rounded-md text-content/45 transition-colors hover:bg-content/5 hover:text-content"
+                  className="ml-auto flex size-6 items-center justify-center rounded-md text-content/40 transition-colors hover:bg-content/5 hover:text-content"
                 >
                   <ChevronRight className="size-3.5" />
                 </button>
@@ -88,10 +88,10 @@ export function FleetPanel({
             aria-label="Show subagents"
             className="group flex w-8 shrink-0 flex-col items-center gap-2 border-l border-content/10 pt-4 transition-colors hover:bg-content/5"
           >
-            <Users className="size-3.5 text-content/55 transition-colors group-hover:text-content" />
+            <Users className="size-3.5 text-content/50 transition-colors group-hover:text-content" />
             <span
               className={`size-1.5 rounded-full ${
-                anyWaiting ? "bg-warning" : active ? "animate-pulse bg-success" : "bg-content/20"
+                anyWaiting ? "bg-warning" : active ? "motion-safe:animate-pulse bg-success" : "bg-content/20"
               }`}
             />
           </button>
@@ -127,11 +127,11 @@ export function FleetPulseLine({ sessionId }: { sessionId: string }) {
       ? `${n} subagent${n === 1 ? "" : "s"} working`
       : `${n} subagent${n === 1 ? "" : "s"} waiting on approval`;
   return (
-    <div className="mx-auto flex w-full max-w-[688px] items-center gap-2 px-6 pb-1 text-[12px] text-content/55">
+    <div className="mx-auto flex w-full max-w-[688px] items-center gap-2 px-6 pb-1 text-[12px] text-content/50">
       {counts.working > 0 ? (
         <MatrixSpinner cell={2} />
       ) : (
-        <span className="size-1.5 animate-pulse rounded-full bg-warning" />
+        <span className="size-1.5 motion-safe:animate-pulse rounded-full bg-warning" />
       )}
       {label}
     </div>

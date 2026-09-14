@@ -103,7 +103,7 @@ function Flight({ flash }: { flash: AppshotFlash }) {
         <motion.img
           src={src}
           alt=""
-          className="absolute rounded-xl border border-content/25 bg-background-base object-cover shadow-2xl"
+          className="absolute rounded-xl border border-content/20 bg-background-base object-cover shadow-2xl"
           style={{ left: rect.x, top: rect.y, width: rect.w, height: rect.h }}
           initial={reduce ? { opacity: 1 } : { opacity: 0, scale: 1.045 }}
           animate={

@@ -109,10 +109,10 @@ export function ThreadTypeChip({ value, onChange, onClose }: Props) {
               >
                 <Icon className={`size-4 shrink-0 ${THREAD_TINTS[type]}`} strokeWidth={1.75} />
                 <span className="min-w-0 flex-1">
-                  <span className={`block text-[12px] leading-tight ${selected ? "text-content" : "text-content/85"}`}>
+                  <span className={`block text-[12px] leading-tight ${selected ? "text-content" : "text-content"}`}>
                     {THREAD_LABELS[type]}
                   </span>
-                  <span className="block truncate text-[11px] leading-tight text-content/45">
+                  <span className="block truncate text-[11px] leading-tight text-content/40">
                     {THREAD_HINTS[type]}
                   </span>
                 </span>

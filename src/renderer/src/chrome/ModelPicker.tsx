@@ -478,7 +478,7 @@ function ProviderTabButton({
       }}
       className={`relative flex min-w-0 flex-1 items-center justify-center gap-1 px-2 py-3 text-[11px] leading-4 ${
         disabled
-          ? "cursor-not-allowed text-content/25"
+          ? "cursor-default text-content/20"
           : selected
             ? "bg-content/10 text-content"
             : "text-content/50 hover:bg-content/5 hover:text-content"
@@ -584,7 +584,7 @@ function ModelList({
                 onPick(item);
               }}
               className={`flex min-w-0 flex-1 items-center gap-2 px-1.5 py-2 text-left ${
-                disabled ? "cursor-not-allowed text-content/35" : "text-content"
+                disabled ? "cursor-default text-content/40" : "text-content"
               }`}
             >
               <span className="min-w-0 flex-1">

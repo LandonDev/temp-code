@@ -175,7 +175,7 @@ export function InboxFiltersMenu({
                 project.logoPath ? (
                   <ProjectLogoIcon
                     path={project.logoPath}
-                    className="size-3.5 shrink-0 rounded-sm"
+                    className="size-3.5 shrink-0 rounded-md"
                     imageClassName="size-3.5"
                   />
                 ) : undefined

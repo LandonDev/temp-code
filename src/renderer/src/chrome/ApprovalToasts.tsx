@@ -92,7 +92,7 @@ function ApprovalToastCard({
           <span className="min-w-0 flex-1 truncate text-[13px] font-semibold leading-snug text-content">
             {title}
           </span>
-          <span className="flex shrink-0 items-center gap-1 text-[11px] text-amber-400">
+          <span className="flex shrink-0 items-center gap-1 text-[11px] text-warning">
             <CircleAlert className="size-3.5" strokeWidth={1.75} />
             <span>Approval</span>
           </span>
@@ -105,7 +105,7 @@ function ApprovalToastCard({
       <div className="flex gap-2 border-t border-content/10 px-3.5 py-2.5">
         <button
           type="button"
-          className="flex-1 rounded-md bg-content px-2.5 py-1 text-[11px] font-medium text-background-base hover:bg-content/80"
+          className="flex-1 rounded-md bg-content px-2.5 py-1 text-[11px] font-medium text-background-base hover:bg-content/70"
           onClick={() => onApproval(session.id, requestId, "allow")}
         >
           Allow

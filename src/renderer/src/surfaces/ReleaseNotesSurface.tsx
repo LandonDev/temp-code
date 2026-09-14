@@ -25,7 +25,7 @@ export function ReleaseNotesSurface({
         {markdown ? (
           <AgentMarkdown text={markdown} streaming={false} />
         ) : (
-          <p className="text-[13px] text-content/60">
+          <p className="text-[13px] text-content/50">
             Release notes for this version are not available in this build.
           </p>
         )}

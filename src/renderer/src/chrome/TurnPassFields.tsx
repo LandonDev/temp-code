@@ -84,7 +84,7 @@ function CompactRow({
     <div className="flex items-center gap-4">
       <div className="min-w-0 flex-1">
         <div className="text-[12px] font-medium text-content">{label}</div>
-        <div className="text-[11px] leading-4 text-content/45">{hint}</div>
+        <div className="text-[11px] leading-4 text-content/40">{hint}</div>
       </div>
       {children}
     </div>
@@ -146,12 +146,12 @@ export function TurnPassEditor({ workspaceId }: { workspaceId: string }) {
   return (
     <section>
       <Heading title="Completed turn" />
-      <p className="pb-2 text-[12px] leading-relaxed text-content/45">
+      <p className="pb-2 text-[12px] leading-relaxed text-content/40">
         After a turn settles, implementation and orchestration threads run these
         before anything queued.
       </p>
       {value ? <TurnPassFields value={value} onChange={change} /> : null}
-      {error ? <p className="pt-2 text-[11px] text-red-400/90">{error}</p> : null}
+      {error ? <p className="pt-2 text-[11px] text-danger">{error}</p> : null}
     </section>
   );
 }

@@ -219,7 +219,7 @@ export function OrchestrationRulesEditor({ workspaceId }: { workspaceId: string 
           />
         ))}
         {rules.routing.length === 0 ? (
-          <p className="py-4 text-[12px] text-content/45">No rules. Subagents use each provider's default model.</p>
+          <p className="py-4 text-[12px] text-content/40">No rules. Subagents use each provider's default model.</p>
         ) : null}
       </Section>
 
@@ -256,7 +256,7 @@ function Section({
         <Heading title={title} first={first} />
         {action ? <div className="pb-1">{action}</div> : null}
       </div>
-      <p className="max-w-xl pb-2 text-[12px] leading-relaxed text-content/45">{hint}</p>
+      <p className="max-w-xl pb-2 text-[12px] leading-relaxed text-content/40">{hint}</p>
       {children}
     </>
   );
@@ -329,7 +329,7 @@ function ModelRow({
     >
       <span className="min-w-0 flex-1 truncate text-[13px] text-content">{model.label}</span>
       {approved && ladder.length > 1 ? (
-        <span className="flex shrink-0 items-center gap-1.5 text-[12px] text-content/45">
+        <span className="flex shrink-0 items-center gap-1.5 text-[12px] text-content/40">
           <EffortSelect
             label={`${model.label} lowest effort`}
             value={min}
@@ -384,11 +384,11 @@ function RuleRow({
         className="flex min-w-0 flex-1 items-center gap-4 rounded-md text-left hover:text-content"
       >
         <span className="min-w-0 flex-1 truncate text-[13px] text-content">{rule.task}</span>
-        <span className="flex shrink-0 items-center gap-1.5 text-[12px] text-content/45">
+        <span className="flex shrink-0 items-center gap-1.5 text-[12px] text-content/40">
           <HarnessIcon harness={rule.provider as HarnessId} className="size-3 shrink-0" />
           {model?.label ?? modelId}
           {model?.reasoning.length ? <span className="text-content/30">· {EFFORT_LABELS[rule.reasoning]}</span> : null}
-          {!approved ? <span className="text-red-400/80">· not approved</span> : null}
+          {!approved ? <span className="text-danger">· not approved</span> : null}
         </span>
       </button>
       <button
@@ -396,7 +396,7 @@ function RuleRow({
         onClick={onMoveUp}
         aria-label="Move rule up"
         disabled={first}
-        className="grid size-6 shrink-0 place-items-center rounded-md text-content/45 opacity-0 transition-opacity hover:bg-content/10 hover:text-content focus-visible:opacity-100 group-hover/rule:opacity-100 disabled:invisible"
+        className="grid size-6 shrink-0 place-items-center rounded-md text-content/40 opacity-0 transition-opacity hover:bg-content/10 hover:text-content focus-visible:opacity-100 group-hover/rule:opacity-100 disabled:invisible"
       >
         <ArrowUp className="size-3" strokeWidth={1.75} />
       </button>
@@ -409,7 +409,7 @@ const INPUT =
 const LABEL = "text-[11px] font-medium text-content/50";
 const GHOST = "rounded-md px-3 py-1.5 text-[12px] text-content/70 hover:bg-content/8 hover:text-content";
 const PRIMARY =
-  "rounded-md bg-content px-3 py-1.5 text-[12px] font-medium text-background-base hover:bg-content/80 disabled:cursor-not-allowed disabled:opacity-50";
+  "rounded-md bg-content px-3 py-1.5 text-[12px] font-medium text-background-base hover:bg-content/70 disabled:cursor-default disabled:opacity-50";
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -531,7 +531,7 @@ function RuleDialog({
         </div>
         <div className="flex items-center gap-2 border-t border-content/10 px-4 py-3">
           {onDelete ? (
-            <button type="button" onClick={onDelete} className={`${GHOST} text-red-400 hover:text-red-300`}>
+            <button type="button" onClick={onDelete} className={`${GHOST} text-danger hover:text-danger`}>
               Delete
             </button>
           ) : null}

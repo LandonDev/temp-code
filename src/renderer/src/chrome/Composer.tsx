@@ -833,7 +833,7 @@ export function Composer({
               disabled={!attachmentsSupported}
               onClick={attachFromPicker}
             >
-              <Plus className="size-3.5" strokeWidth={1.5} />
+              <Plus className="size-3.5" strokeWidth={1.75} />
             </ToolButton>
             <div
               className="composer-toolbar flex min-w-0 flex-1 items-center"

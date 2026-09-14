@@ -25,7 +25,7 @@ export function AgentSpawnRow({ block }: { block: Block }) {
   return (
     <div className="px-4">
       <div className="ml-[7px] flex min-w-0 items-center gap-1.5 border-l border-content/12 py-1 pl-3 font-sans text-sm">
-        <span className="grid size-3.5 shrink-0 place-items-center text-content/60">
+        <span className="grid size-3.5 shrink-0 place-items-center text-content/50">
           {meta ? <HarnessIcon harness={asHarness(meta.provider)} className="size-3" /> : null}
         </span>
         <span className="shrink-0 text-content/50">{report ? "Reported" : "Spawned"}</span>
@@ -33,7 +33,7 @@ export function AgentSpawnRow({ block }: { block: Block }) {
           type="button"
           disabled={!open}
           title={title}
-          className="-my-0.5 min-w-0 truncate rounded bg-content/6 px-1 py-0.5 text-left text-content/70 enabled:hover:bg-content/10 enabled:hover:text-content"
+          className="-my-0.5 min-w-0 truncate rounded-md bg-content/6 px-1 py-0.5 text-left text-content/70 enabled:hover:bg-content/10 enabled:hover:text-content"
           onClick={(event) => {
             event.stopPropagation();
             open?.(agent.id);
@@ -42,7 +42,7 @@ export function AgentSpawnRow({ block }: { block: Block }) {
           {title}
         </button>
         {status ? (
-          <span className="flex shrink-0 items-center gap-1 text-[12px] text-content/45">
+          <span className="flex shrink-0 items-center gap-1 text-[12px] text-content/40">
             {!report ? <StatusDot status={meta?.status} /> : null}
             {status}
           </span>

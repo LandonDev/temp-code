@@ -29,7 +29,7 @@ export function AddonMark({
       </svg>
     );
   }
-  const cls = `shrink-0 text-content/55 ${className}`;
+  const cls = `shrink-0 text-content/50 ${className}`;
   const px = { width: size, height: size };
   switch (command.source) {
     case "plugin":

@@ -115,7 +115,7 @@ export function SplitShell({
           type="button"
           onClick={onOpenChat}
           title={edgeTitle}
-          className="flex w-8 shrink-0 flex-col items-center gap-2 border-l border-content/10 pt-4 text-content/55 transition-colors hover:bg-content/5 hover:text-content"
+          className="flex w-8 shrink-0 flex-col items-center gap-2 border-l border-content/10 pt-4 text-content/50 transition-colors hover:bg-content/5 hover:text-content"
         >
           <MessageSquare className="size-3.5" strokeWidth={1.75} />
           <StatusDot status={status} />

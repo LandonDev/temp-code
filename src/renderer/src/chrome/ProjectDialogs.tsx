@@ -32,14 +32,14 @@ import type {
 } from "../lib/tcserver/types";
 
 const INPUT =
-  "w-full rounded-md border border-content/10 bg-content/5 px-2 py-1.5 text-[12px] text-content outline-none placeholder:text-content/35 hover:border-content/20 focus:border-accent/60";
+  "w-full rounded-md border border-content/10 bg-content/5 px-2 py-1.5 text-[12px] text-content outline-none placeholder:text-content/40 hover:border-content/20 focus:border-accent/60";
 const LABEL = "text-[11px] font-medium text-content/50";
 const GHOST =
   "rounded-md px-3 py-1.5 text-[12px] text-content/70 hover:bg-content/8 hover:text-content";
 const PRIMARY =
-  "flex items-center gap-2 rounded-md bg-content px-3 py-1.5 text-[12px] font-medium text-background-base hover:bg-content/80 disabled:cursor-not-allowed disabled:opacity-50";
+  "flex items-center gap-2 rounded-md bg-content px-3 py-1.5 text-[12px] font-medium text-background-base hover:bg-content/70 disabled:cursor-default disabled:opacity-50";
 const DANGER =
-  "flex items-center gap-2 rounded-md bg-red-500/20 px-3 py-1.5 text-[12px] font-medium text-red-300 hover:bg-red-500/30 disabled:cursor-not-allowed disabled:opacity-50";
+  "flex items-center gap-2 rounded-md bg-danger/20 px-3 py-1.5 text-[12px] font-medium text-danger hover:bg-danger/30 disabled:cursor-default disabled:opacity-50";
 
 const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
@@ -89,12 +89,12 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
 
 function ErrorLine({ error }: { error: string | null }) {
   return error ? (
-    <p className="text-[11px] leading-4 text-red-400/90">{error}</p>
+    <p className="text-[11px] leading-4 text-danger">{error}</p>
   ) : null;
 }
 
 function Hint({ children }: { children: ReactNode }) {
-  return <p className="text-[11px] leading-4 text-content/45">{children}</p>;
+  return <p className="text-[11px] leading-4 text-content/40">{children}</p>;
 }
 
 const baseName = (path: string) => path.replace(/\/+$/, "").split("/").pop() || path;
@@ -127,7 +127,7 @@ function Disclosure({
           className={`size-3 shrink-0 text-content/40 transition-transform ${open ? "rotate-90" : ""}`}
         />
         <span className={LABEL}>{label}</span>
-        <span className="min-w-0 flex-1 truncate text-right text-[11px] text-content/45">
+        <span className="min-w-0 flex-1 truncate text-right text-[11px] text-content/40">
           {summary}
         </span>
       </button>
@@ -230,7 +230,7 @@ function BranchField({
               key={b}
               type="button"
               onClick={() => onChange(b)}
-              className="rounded bg-content/8 px-1.5 py-0.5 font-mono text-[11px] text-content/70 hover:bg-content/12 hover:text-content"
+              className="rounded-md bg-content/8 px-1.5 py-0.5 font-mono text-[11px] text-content/70 hover:bg-content/12 hover:text-content"
             >
               {b}
             </button>
@@ -420,8 +420,8 @@ export function NewProjectDialog({
                     className={`h-7 rounded-md text-[12px] font-medium capitalize ${
                       mode === m
                         ? "bg-content/10 text-content"
-                        : "text-content/60 hover:text-content"
-                    } ${disabled ? "cursor-not-allowed opacity-40" : ""}`}
+                        : "text-content/50 hover:text-content"
+                    } ${disabled ? "cursor-default opacity-40" : ""}`}
                   >
                     {m}
                   </button>
@@ -716,7 +716,7 @@ export function ProjectTeardownDialog({
       size="sm"
     >
       <div className="flex flex-col gap-3 px-4 py-3">
-        <p className="text-[12px] leading-snug text-content/60">
+        <p className="text-[12px] leading-snug text-content/50">
           {deleting
             ? "Its threads are deleted for good."
             : "The project leaves the sidebar. Its threads stay; restore it anytime."}
@@ -727,7 +727,7 @@ export function ProjectTeardownDialog({
             <label
               key={b.key}
               className={`flex items-center gap-2 text-[12px] ${
-                b.disabled ? "text-content/40" : "text-content/80"
+                b.disabled ? "text-content/40" : "text-content/70"
               }`}
             >
               <input
@@ -785,7 +785,7 @@ export function ConfirmDialog({
   return (
     <Modal onClose={onCancel} busy={pending} title={title} size="sm">
       <div className="flex flex-col gap-2 px-4 py-3">
-        <p className="text-[12px] leading-snug text-content/60">{body}</p>
+        <p className="text-[12px] leading-snug text-content/50">{body}</p>
         <ErrorLine error={error} />
       </div>
       <Footer

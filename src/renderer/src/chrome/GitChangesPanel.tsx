@@ -358,7 +358,7 @@ function ChangedFiles({
                 void commit(false);
               }
             }}
-            className="max-h-40 w-full resize-none overflow-y-auto rounded-md bg-content/10 py-1 pr-8 pl-2 text-[13px] leading-5 text-content outline-none placeholder:text-content/35 disabled:opacity-40"
+            className="max-h-40 w-full resize-none overflow-y-auto rounded-md bg-content/10 py-1 pr-8 pl-2 text-[13px] leading-5 text-content outline-none placeholder:text-content/40 disabled:opacity-40"
           />
           <button
             type="button"
@@ -369,9 +369,9 @@ function ChangedFiles({
             className="absolute top-1 right-1 grid size-5 place-items-center rounded-md text-content bg-content/10 hover:bg-content/20 hover:text-content disabled:opacity-40"
           >
             {busy === "generate" ? (
-              <Loader className="size-3.5 animate-spin" strokeWidth={1.75} />
+              <Loader className="size-3.5 motion-safe:animate-spin" strokeWidth={1.75} />
             ) : (
-              <WandSparkles className="size-3" strokeWidth={1} />
+              <WandSparkles className="size-3" strokeWidth={1.75} />
             )}
           </button>
         </div>
@@ -442,7 +442,7 @@ function ChangedFiles({
         className="min-h-0 flex-1 overflow-y-auto overscroll-none py-1"
       >
         {files.length === 0 ? (
-          <p className="px-3 py-2 text-[12px] text-content/45">
+          <p className="px-3 py-2 text-[12px] text-content/40">
             {index
               ? index.ahead > 0 || index.behind > 0
                 ? syncStatusLabel(index)
@@ -647,7 +647,7 @@ function GitSyncActions({
         >
           {syncing ? (
             <Loader
-              className="size-3.5 shrink-0 animate-spin"
+              className="size-3.5 shrink-0 motion-safe:animate-spin"
               strokeWidth={1.75}
             />
           ) : (
@@ -664,17 +664,17 @@ function GitSyncActions({
           className={secondary}
         >
           <RefreshCw
-            className={`size-3.5 shrink-0 ${syncing ? "animate-spin" : ""}`}
+            className={`size-3.5 shrink-0 ${syncing ? "motion-safe:animate-spin" : ""}`}
             strokeWidth={1.75}
           />
           <span className="min-w-0 truncate">Sync Changes</span>
           {behind > 0 ? (
-            <span className="shrink-0 tabular-nums text-content/55">
+            <span className="shrink-0 tabular-nums text-content/50">
               ↓{behind}
             </span>
           ) : null}
           {ahead > 0 ? (
-            <span className="shrink-0 tabular-nums text-content/55">
+            <span className="shrink-0 tabular-nums text-content/50">
               ↑{ahead}
             </span>
           ) : null}
@@ -690,7 +690,7 @@ function GitSyncActions({
         >
           {busy === "pr" ? (
             <Loader
-              className="size-3.5 shrink-0 animate-spin"
+              className="size-3.5 shrink-0 motion-safe:animate-spin"
               strokeWidth={1.75}
             />
           ) : (
@@ -751,7 +751,7 @@ function FileSection({
               strokeWidth={1.75}
             />
           )}
-          <span className="min-w-0 truncate text-[10px] font-semibold tracking-[0.04em] text-content/55 uppercase">
+          <span className="min-w-0 truncate text-[10px] font-semibold tracking-[0.04em] text-content/50 uppercase">
             {title}
           </span>
           <span className="ml-1 grid h-4 min-w-4 shrink-0 place-items-center rounded-full bg-accent/80 px-1 text-[8px] text-white">
@@ -875,7 +875,7 @@ function IconAction({
       aria-label={title}
       disabled={disabled}
       onClick={onClick}
-      className="grid size-5 place-items-center rounded text-content/55 hover:bg-content/10 hover:text-content disabled:opacity-40"
+      className="grid size-5 place-items-center rounded-md text-content/50 hover:bg-content/10 hover:text-content disabled:opacity-40"
     >
       {children}
     </button>
@@ -893,10 +893,10 @@ function DiffCounts({
   return (
     <span className="flex shrink-0 items-center gap-1.5 font-mono text-[11px] font-semibold tabular-nums">
       {additions > 0 ? (
-        <span className="text-emerald-400">+{additions}</span>
+        <span className="text-success">+{additions}</span>
       ) : null}
       {deletions > 0 ? (
-        <span className="text-red-400">-{deletions}</span>
+        <span className="text-danger">-{deletions}</span>
       ) : null}
     </span>
   );
@@ -915,10 +915,10 @@ function statusLetter(status: string): string {
 }
 
 function statusColor(status: string): string {
-  if (status === "untracked") return "text-sky-400";
-  if (status === "added") return "text-emerald-400";
-  if (status === "deleted") return "text-red-400";
-  return "text-amber-400";
+  if (status === "untracked") return "text-info";
+  if (status === "added") return "text-success";
+  if (status === "deleted") return "text-danger";
+  return "text-warning";
 }
 
 function useDiffIndex(

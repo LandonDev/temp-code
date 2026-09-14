@@ -56,7 +56,7 @@ export function SidebarUpdate({
   return (
     <div
       className={`flex flex-col rounded-lg ${
-        hasUpdate ? "bg-accent/15 text-content" : "bg-content/5 text-content/75"
+        hasUpdate ? "bg-accent/15 text-content" : "bg-content/5 text-content/70"
       }`}
     >
       <button
@@ -69,7 +69,7 @@ export function SidebarUpdate({
       >
         <span className="grid size-[18px] shrink-0 place-items-center">
           {busy ? (
-            <Loader className="size-4 animate-spin opacity-70" aria-hidden />
+            <Loader className="size-4 motion-safe:animate-spin opacity-70" aria-hidden />
           ) : hasUpdate ? (
             <ArrowDownCircle className="size-4 text-accent" aria-hidden />
           ) : (
@@ -95,7 +95,7 @@ export function SidebarUpdate({
           onClick={() =>
             onOpenWhatsNew?.(snapshot.availableVersion!, snapshot.notes)
           }
-          className="-mt-1 rounded-b-lg px-2 pb-1.5 pl-[34px] text-left text-[11px] text-content/55 transition-colors hover:text-content"
+          className="-mt-1 rounded-b-lg px-2 pb-1.5 pl-[34px] text-left text-[11px] text-content/50 transition-colors hover:text-content"
         >
           What's new
         </button>

@@ -349,7 +349,7 @@ export function ImplementationView(props: ThreadViewProps) {
         />
 
         {running && cur.work.length === 0 ? (
-          <div className="flex items-center gap-2 py-1 text-[13px] text-content/55">
+          <div className="flex items-center gap-2 py-1 text-[13px] text-content/50">
             <Spinner className="size-3.5" />
             {cur.todos.length === 0 ? "Breaking the task down…" : "Working…"}
           </div>
@@ -396,7 +396,7 @@ export function ImplementationView(props: ThreadViewProps) {
             onClick={() => (composing ? props.onArmNewPass(false) : setChatOpen(false))}
             title={composing ? "Show the board" : "Hide conversation"}
             aria-label={composing ? "Show the board" : "Hide conversation"}
-            className="flex size-6 items-center justify-center rounded-md text-content/55 transition-colors hover:bg-content/8 hover:text-content"
+            className="flex size-6 items-center justify-center rounded-md text-content/50 transition-colors hover:bg-content/8 hover:text-content"
           >
             <ChevronRight className={`size-3.5 ${composing ? "rotate-180" : ""}`} strokeWidth={1.75} />
           </button>
@@ -705,7 +705,7 @@ function RoundSection({
           className="group/round flex w-full items-start gap-2.5 py-2 text-left"
         >
           <ChevronRight
-            className={`mt-[3px] size-3.5 shrink-0 text-content/35 transition-transform duration-200 ${
+            className={`mt-[3px] size-3.5 shrink-0 text-content/40 transition-transform duration-200 ${
               expanded ? "rotate-90" : ""
             }`}
             strokeWidth={1.75}
@@ -713,10 +713,10 @@ function RoundSection({
           <span className="min-w-0 flex-1">
             <span className="flex items-center gap-2">
               <span className="size-1.5 shrink-0 rounded-full" style={{ background: passColor(passNum) }} />
-              <span className="shrink-0 text-[13px] font-semibold tracking-[-0.01em] text-content/85">
+              <span className="shrink-0 text-[13px] font-semibold tracking-[-0.01em] text-content">
                 Pass {passNum}
               </span>
-              <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-content/55 transition-colors group-hover/round:text-content">
+              <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-content/50 transition-colors group-hover/round:text-content">
                 {headerText}
               </span>
               {todos.length > 0 ? (
@@ -782,7 +782,7 @@ function PassBanner({ passNum, color, onNext }: { passNum: number; color: string
       className="mx-4 flex w-[calc(100%-2rem)] items-center justify-between rounded-t-lg border border-b-0 py-1 pr-2.5 pl-3 transition-[filter] hover:brightness-140 active:brightness-115"
       style={{ background: `${color}14`, borderColor: `${color}26` }}
     >
-      <span className="flex items-center gap-2 text-[11px] text-content/55">
+      <span className="flex items-center gap-2 text-[11px] text-content/50">
         <span className="size-1.5 rounded-full" style={{ background: color }} />
         Pass {passNum} complete
       </span>
@@ -809,7 +809,7 @@ function WorkItems({ blocks, cwd, stopped, onNeedsUser, onOpenFile }: WorkHandle
             className="flex h-[34px] items-center gap-2 rounded-lg border border-warning/20 bg-warning/5 px-2.5 text-left transition-colors hover:bg-warning/10"
           >
             <span className="size-1.5 shrink-0 rounded-full bg-warning" />
-            <span className="min-w-0 flex-1 truncate text-xs text-content/80">
+            <span className="min-w-0 flex-1 truncate text-xs text-content/70">
               {b.question ? b.question.questions[0]?.question : b.tool?.title || b.text || "Approval"}
             </span>
             <span className="shrink-0 text-[11px] font-medium text-warning">needs you</span>
@@ -837,7 +837,7 @@ function ErrorChip({ text, stopped }: { text: string; stopped: boolean }) {
     return (
       <div className="flex h-[34px] items-center gap-2 rounded-lg border border-content/10 bg-content/5 px-2.5">
         <span className="size-1.5 shrink-0 rounded-full bg-content/40" />
-        <span className="shrink-0 text-xs font-medium text-content/55">Stopped</span>
+        <span className="shrink-0 text-xs font-medium text-content/50">Stopped</span>
       </div>
     );
   }
@@ -845,7 +845,7 @@ function ErrorChip({ text, stopped }: { text: string; stopped: boolean }) {
     <div className="flex h-[34px] items-center gap-2 rounded-lg border border-danger/15 bg-danger/5 px-2.5">
       <span className="size-1.5 shrink-0 rounded-full bg-danger/80" />
       <span className="shrink-0 text-xs font-medium text-danger/80">Error</span>
-      <span className="min-w-0 flex-1 truncate text-xs text-content/80">{text}</span>
+      <span className="min-w-0 flex-1 truncate text-xs text-content/70">{text}</span>
     </div>
   );
 }
@@ -866,7 +866,7 @@ function ProgressSegments({ todos }: { todos: { status: TodoStatus }[] }) {
             t.status === "completed"
               ? "bg-success"
               : t.status === "in_progress"
-                ? "animate-pulse bg-success/35"
+                ? "motion-safe:animate-pulse bg-success/35"
                 : "bg-content/15"
           }`}
         />
@@ -902,7 +902,7 @@ function ChangesLine({ session, onShow }: { session: Session; onShow?: () => voi
     <button
       type="button"
       onClick={onShow}
-      className="mt-2 flex items-center gap-1.5 text-[11px] tabular-nums text-content/55 transition-colors hover:text-content"
+      className="mt-2 flex items-center gap-1.5 text-[11px] tabular-nums text-content/50 transition-colors hover:text-content"
     >
       {files.length} {files.length === 1 ? "file" : "files"}
       <span className="text-success">+{adds}</span>
@@ -927,7 +927,7 @@ function TodoRow({
   return (
     <div
       className={`flex items-center gap-2.5 px-2 py-[5px] ${
-        live ? "text-content" : status === "completed" ? "text-content/55" : "text-content/40"
+        live ? "text-content" : status === "completed" ? "text-content/50" : "text-content/40"
       }`}
     >
       <span className="flex size-4 shrink-0 items-center justify-center">
@@ -936,18 +936,18 @@ function TodoRow({
         ) : status === "completed" ? (
           <Check className="size-3.5 text-success" strokeWidth={2} />
         ) : (
-          <Circle className="size-3 text-content/35" strokeWidth={1.75} />
+          <Circle className="size-3 text-content/40" strokeWidth={1.75} />
         )}
       </span>
       <span
         className={`min-w-0 flex-1 truncate text-[13px] font-medium ${
-          status === "completed" ? "text-content/55" : ""
+          status === "completed" ? "text-content/50" : ""
         }`}
       >
         {content}
       </span>
       {ms !== null ? (
-        <span className="shrink-0 text-[11px] tabular-nums text-content/35">{duration(ms)}</span>
+        <span className="shrink-0 text-[11px] tabular-nums text-content/40">{duration(ms)}</span>
       ) : null}
     </div>
   );
@@ -969,7 +969,7 @@ function TaskActivity({ blocks }: { blocks: Block[] }) {
   const other = counts.get("tool");
   if (other) parts.push(`${other} other tools`);
   if (parts.length === 0) return null;
-  return <p className="px-4 pb-1 text-[11px] tabular-nums text-content/45">{parts.join(" · ")}</p>;
+  return <p className="px-4 pb-1 text-[11px] tabular-nums text-content/40">{parts.join(" · ")}</p>;
 }
 
 /** The diff a grid row or shell row opens: the preview card (capped at a
@@ -992,7 +992,7 @@ function ChangeCard({
   return (
     <div className="py-1">
       <FilePreview preview={preview} status="accepted" cwd={cwd} onOpenFile={onOpenFile} />
-      <div className="mt-1 flex gap-3 px-1 text-[11px] text-content/45">
+      <div className="mt-1 flex gap-3 px-1 text-[11px] text-content/40">
         <button type="button" onClick={() => onOpenDiff(preview.path)} className="transition-colors hover:text-content">
           Open diff
         </button>
@@ -1085,12 +1085,12 @@ function TaskGrid({
               title={path}
               className="flex items-center gap-2 py-0.5 text-left text-[12px] transition-colors hover:text-content"
             >
-              <span className="w-9 shrink-0 text-right text-[11px] tabular-nums text-content/35">
+              <span className="w-9 shrink-0 text-right text-[11px] tabular-nums text-content/40">
                 {f.ms > 1500 ? `~${duration(f.ms)}` : ""}
               </span>
-              <span className="min-w-0 flex-1 truncate text-content/55">
+              <span className="min-w-0 flex-1 truncate text-content/50">
                 {f.name}
-                {f.disk ? <span className="ml-1.5 text-[11px] text-content/35">shell</span> : null}
+                {f.disk ? <span className="ml-1.5 text-[11px] text-content/40">shell</span> : null}
               </span>
               <Stat adds={f.adds} dels={f.dels} />
             </motion.button>
@@ -1130,7 +1130,7 @@ const TICK_COLOR: Record<string, string> = {
   subagent: "bg-violet/70",
   web: "bg-info/60",
   edit: "bg-success/80",
-  tool: "bg-content/25",
+  tool: "bg-content/20",
 };
 
 /** What a tool call did — the payload beats the tool name. */
@@ -1317,11 +1317,11 @@ function DiskCards({
               <span className="min-w-0 truncate font-medium">{e.path.split("/").pop()}</span>
               <span className="truncate text-[11px] text-content/40">{e.path}</span>
               <span className="ml-auto flex shrink-0 items-center gap-1.5">
-                <span className="text-[11px] text-content/35">via shell</span>
+                <span className="text-[11px] text-content/40">via shell</span>
                 <Stat adds={e.adds ?? 0} dels={e.dels ?? 0} className="text-[11px] font-semibold" />
                 {expandable ? (
                   <ChevronRight
-                    className={`size-3 text-content/35 transition-transform duration-200 ${isOpen ? "rotate-90" : ""}`}
+                    className={`size-3 text-content/40 transition-transform duration-200 ${isOpen ? "rotate-90" : ""}`}
                     strokeWidth={1.75}
                   />
                 ) : null}
@@ -1368,7 +1368,7 @@ function PlanPin({
         {title}
       </p>
       {total > 0 ? (
-        <span className="shrink-0 text-[11px] tabular-nums text-content/55">
+        <span className="shrink-0 text-[11px] tabular-nums text-content/50">
           {done}/{total} ticked
         </span>
       ) : null}

@@ -32,7 +32,7 @@ export function InboxMiniCard({ card, onDismiss }: Props) {
               className="size-3.5 shrink-0"
             />
             <KindIcon
-              className="size-3 shrink-0 text-content/45"
+              className="size-3 shrink-0 text-content/40"
               strokeWidth={1.75}
             />
             <span className="min-w-0 truncate text-[11px] text-content/50">
@@ -44,7 +44,7 @@ export function InboxMiniCard({ card, onDismiss }: Props) {
           </span>
           <span className="mt-1 flex min-w-0 items-center gap-2">
             {card.source ? (
-              <span className="min-w-0 flex-1 truncate text-[11px] text-content/45">
+              <span className="min-w-0 flex-1 truncate text-[11px] text-content/40">
                 {card.source}
               </span>
             ) : (
@@ -65,7 +65,7 @@ export function InboxMiniCard({ card, onDismiss }: Props) {
             title="Remove"
             aria-label={`Remove ${kindLabel} ${card.identifier}`}
             onClick={onDismiss}
-            className="absolute right-1.5 top-1.5 grid size-5 place-items-center rounded text-content/40 hover:bg-content/10 hover:text-content"
+            className="absolute right-1.5 top-1.5 grid size-5 place-items-center rounded-md text-content/40 hover:bg-content/10 hover:text-content"
           >
             <X className="size-3" strokeWidth={2} />
           </button>
@@ -78,7 +78,7 @@ export function InboxMiniCard({ card, onDismiss }: Props) {
 function InboxMiniLabel({ label }: { label: GithubLabel }) {
   const color = labelColor(label.color);
   return (
-    <span className="inline-flex min-w-0 max-w-20 items-center gap-1 rounded bg-content/8 px-1.5 py-px text-[10px] text-content/50">
+    <span className="inline-flex min-w-0 max-w-20 items-center gap-1 rounded-md bg-content/8 px-1.5 py-px text-[10px] text-content/50">
       {color ? (
         <span
           aria-hidden

@@ -89,7 +89,7 @@ export function SwitchBranchDialog({
           <h2 className="text-[13px] font-medium leading-tight text-content">
             Uncommitted changes
           </h2>
-          <p className="text-[12px] leading-snug text-content/55">
+          <p className="text-[12px] leading-snug text-content/50">
             {creating
               ? `Creating “${branch}” would overwrite your local changes. Stash them for later, or commit them on this branch first.`
               : `Switching to “${branch}” would overwrite your local changes. Stash them for later, or commit them on this branch first.`}
@@ -104,7 +104,7 @@ export function SwitchBranchDialog({
             placeholder={`Message (${MOD}↩ to commit)`}
             disabled={Boolean(busy) || generating}
             aria-label="Commit message"
-            className="max-h-40 w-full resize-none overflow-y-auto rounded-md bg-content/10 py-1 pr-8 pl-2 text-[13px] leading-5 text-content outline-none placeholder:text-content/35 disabled:opacity-40"
+            className="max-h-40 w-full resize-none overflow-y-auto rounded-md bg-content/10 py-1 pr-8 pl-2 text-[13px] leading-5 text-content outline-none placeholder:text-content/40 disabled:opacity-40"
             onChange={(event) => setMessage(event.target.value)}
             onKeyDown={(event) => {
               if (
@@ -126,15 +126,15 @@ export function SwitchBranchDialog({
             className="absolute top-1 right-1 grid size-5 place-items-center rounded-md bg-content/10 text-content hover:bg-content/20 hover:text-content disabled:opacity-40"
           >
             {generating ? (
-              <Loader className="size-3.5 animate-spin" strokeWidth={1.75} />
+              <Loader className="size-3.5 motion-safe:animate-spin" strokeWidth={1.75} />
             ) : (
-              <WandSparkles className="size-3" strokeWidth={1} />
+              <WandSparkles className="size-3" strokeWidth={1.75} />
             )}
           </button>
         </div>
 
         {error ? (
-          <p className="whitespace-pre-wrap text-[11px] leading-4 text-red-400/90">
+          <p className="whitespace-pre-wrap text-[11px] leading-4 text-danger">
             {error}
           </p>
         ) : null}
@@ -155,7 +155,7 @@ export function SwitchBranchDialog({
             className="inline-flex items-center gap-1.5 rounded-md bg-content/10 px-3 py-1.5 text-[12px] font-medium text-content hover:bg-content/15 disabled:opacity-40"
           >
             {busy === "commit" ? (
-              <Loader className="size-3.5 animate-spin" strokeWidth={1.75} />
+              <Loader className="size-3.5 motion-safe:animate-spin" strokeWidth={1.75} />
             ) : null}
             Commit & switch
           </button>
@@ -163,10 +163,10 @@ export function SwitchBranchDialog({
             type="button"
             disabled={Boolean(busy) || generating}
             onClick={onStash}
-            className="inline-flex items-center gap-1.5 rounded-md bg-content px-3 py-1.5 text-[12px] font-medium text-background-base hover:bg-content/80 disabled:opacity-40"
+            className="inline-flex items-center gap-1.5 rounded-md bg-content px-3 py-1.5 text-[12px] font-medium text-background-base hover:bg-content/70 disabled:opacity-40"
           >
             {busy === "stash" ? (
-              <Loader className="size-3.5 animate-spin" strokeWidth={1.75} />
+              <Loader className="size-3.5 motion-safe:animate-spin" strokeWidth={1.75} />
             ) : null}
             Stash & switch
           </button>

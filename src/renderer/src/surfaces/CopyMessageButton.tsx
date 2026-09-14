@@ -31,7 +31,7 @@ export function CopyMessageButton({
       type="button"
       title={copied ? "Copied" : "Copy message"}
       aria-label={copied ? "Copied" : "Copy message"}
-      className={`absolute z-10 rounded-md bg-background-base/80 p-1 text-content/50 opacity-0 glass-surface transition-opacity hover:bg-content/10 hover:text-content/80 focus-visible:opacity-100 group-hover/message:opacity-100 ${
+      className={`absolute z-10 rounded-md bg-background-base/80 p-1 text-content/50 opacity-0 glass-surface transition-opacity hover:bg-content/10 hover:text-content/70 focus-visible:opacity-100 group-hover/message:opacity-100 ${
         chat ? "-left-8 top-1/2 -translate-y-1/2" : "right-1.5 top-1.5"
       }`}
       onClick={(event) => {

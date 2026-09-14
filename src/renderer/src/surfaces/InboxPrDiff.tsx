@@ -81,7 +81,7 @@ export function InboxPrDiff({ diff }: Props) {
   });
 
   if (files.length === 0) {
-    return <p className="text-[13px] text-content/45">No file changes</p>;
+    return <p className="text-[13px] text-content/40">No file changes</p>;
   }
 
   const fileLabel = files.length === 1 ? "1 file" : `${files.length} files`;
@@ -97,7 +97,7 @@ export function InboxPrDiff({ diff }: Props) {
             title="Expand all files"
             aria-label="Expand all files"
             onClick={() => setOpen(new Set(files.map((file) => file.path)))}
-            className="grid size-7 place-items-center rounded-md text-content/45 hover:bg-content/10 hover:text-content"
+            className="grid size-7 place-items-center rounded-md text-content/40 hover:bg-content/10 hover:text-content"
           >
             <UnfoldVertical className="size-3.5" strokeWidth={1.75} />
           </button>
@@ -107,14 +107,14 @@ export function InboxPrDiff({ diff }: Props) {
             aria-label="Collapse all files"
             disabled={open.size === 0}
             onClick={() => setOpen(new Set())}
-            className="grid size-7 place-items-center rounded-md text-content/45 hover:bg-content/10 hover:text-content disabled:opacity-40"
+            className="grid size-7 place-items-center rounded-md text-content/40 hover:bg-content/10 hover:text-content disabled:opacity-40"
           >
             <FoldVertical className="size-3.5" strokeWidth={1.75} />
           </button>
         </span>
       </div>
       {diff?.truncated ? (
-        <p className="text-[12px] text-content/45">
+        <p className="text-[12px] text-content/40">
           Diff is too large to display in full. File list is shown without patches.
         </p>
       ) : null}
@@ -163,9 +163,9 @@ function PrFileCard({
         onClick={onToggle}
         className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left hover:bg-content/5"
       >
-        <Chevron className="size-3.5 shrink-0 text-content/45" strokeWidth={1.75} />
+        <Chevron className="size-3.5 shrink-0 text-content/40" strokeWidth={1.75} />
         <FileTypeIcon name={name} isDir={false} size={16} />
-        <span className="min-w-0 flex-1 truncate font-mono text-[12px] text-content/85" title={label}>
+        <span className="min-w-0 flex-1 truncate font-mono text-[12px] text-content" title={label}>
           {label}
         </span>
         <DiffCounts additions={file.additions} deletions={file.deletions} />
@@ -178,14 +178,14 @@ function PrFileCard({
 function PrFileBody({ file }: { file: PrDiffFile }) {
   if (file.binary) {
     return (
-      <p className="border-t border-content/10 px-3 py-3 text-[12px] text-content/45">
+      <p className="border-t border-content/10 px-3 py-3 text-[12px] text-content/40">
         Binary file changed
       </p>
     );
   }
   if (file.lines.length === 0) {
     return (
-      <p className="border-t border-content/10 px-3 py-3 text-[12px] text-content/45">
+      <p className="border-t border-content/10 px-3 py-3 text-[12px] text-content/40">
         No textual diff
       </p>
     );
@@ -219,31 +219,31 @@ function DiffLineRow({ line }: { line: PrDiffLine }) {
   }
   const bg =
     line.kind === "add"
-      ? "bg-teal-800/20"
+      ? "bg-success/10"
       : line.kind === "del"
-        ? "bg-rose-800/20"
+        ? "bg-danger/10"
         : "";
   const bar =
     line.kind === "add"
-      ? "bg-teal-400"
+      ? "bg-success"
       : line.kind === "del"
-        ? "bg-rose-400"
+        ? "bg-danger"
         : "bg-transparent";
   const mark = line.kind === "add" ? "+" : line.kind === "del" ? "−" : " ";
   const markColor =
     line.kind === "add"
-      ? "text-teal-400"
+      ? "text-success"
       : line.kind === "del"
-        ? "text-rose-400"
+        ? "text-danger"
         : "text-transparent";
 
   return (
     <div className={`relative flex min-w-max items-baseline ${bg}`}>
       <span className={`absolute inset-y-0 left-0 w-0.5 ${bar}`} />
-      <span className="w-10 shrink-0 pr-1 text-right font-mono text-[10px] tabular-nums text-content/35">
+      <span className="w-10 shrink-0 pr-1 text-right font-mono text-[10px] tabular-nums text-content/40">
         {line.oldNumber ?? ""}
       </span>
-      <span className="w-10 shrink-0 pr-1 text-right font-mono text-[10px] tabular-nums text-content/35">
+      <span className="w-10 shrink-0 pr-1 text-right font-mono text-[10px] tabular-nums text-content/40">
         {line.newNumber ?? ""}
       </span>
       <span className={`w-3 shrink-0 text-center font-mono text-[10px] font-bold ${markColor}`}>
@@ -266,8 +266,8 @@ function DiffCounts({
   if (additions <= 0 && deletions <= 0) return null;
   return (
     <span className="flex shrink-0 items-center gap-1.5 font-mono text-[11px] font-semibold tabular-nums">
-      {additions > 0 ? <span className="text-emerald-400">+{additions}</span> : null}
-      {deletions > 0 ? <span className="text-red-400">-{deletions}</span> : null}
+      {additions > 0 ? <span className="text-success">+{additions}</span> : null}
+      {deletions > 0 ? <span className="text-danger">-{deletions}</span> : null}
     </span>
   );
 }
@@ -280,7 +280,7 @@ function highlight(text: string, dimmed: boolean) {
     trimmed.startsWith("///") ||
     trimmed.startsWith("#")
   ) {
-    return <span className={`text-content/45 ${dim}`}>{text}</span>;
+    return <span className={`text-content/40 ${dim}`}>{text}</span>;
   }
 
   const parts: { text: string; color: string }[] = [];
@@ -293,9 +293,9 @@ function highlight(text: string, dimmed: boolean) {
     }
     const token = match[1];
     const color = KEYWORDS.has(token)
-      ? "text-teal-300"
+      ? "text-success"
       : /^[A-Z]/.test(token)
-        ? "text-amber-200/90"
+        ? "text-warning"
         : "";
     parts.push({ text: token, color });
     last = match.index + token.length;
@@ -303,7 +303,7 @@ function highlight(text: string, dimmed: boolean) {
   if (last < text.length) parts.push({ text: text.slice(last), color: "" });
 
   return (
-    <span className={`text-content/80 ${dim}`}>
+    <span className={`text-content/70 ${dim}`}>
       {parts.map((part, index) =>
         part.color ? (
           <span key={index} className={part.color}>

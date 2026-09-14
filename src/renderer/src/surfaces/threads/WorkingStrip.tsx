@@ -104,16 +104,16 @@ export const WorkingStrip = memo(function WorkingStrip({
       }`}
     >
       <div
-        className={`flex items-center gap-2 text-xs text-content/55 transition-opacity duration-150 ${
+        className={`flex items-center gap-2 text-xs text-content/50 transition-opacity duration-150 ${
           visible ? "opacity-100" : "opacity-0"
         } ${paused ? "w-full text-warning" : ""}`}
         aria-live="polite"
       >
         {paused ? (
           <>
-            <Pause className="size-3 shrink-0 fill-current" strokeWidth={1.8} />
+            <Pause className="size-3 shrink-0 fill-current" strokeWidth={1.75} />
             <span className="font-medium">Paused</span>
-            <span className="tabular-nums text-current/75">{duration(elapsed)}</span>
+            <span className="tabular-nums text-current/70">{duration(elapsed)}</span>
             <button
               type="button"
               onClick={onStop}
@@ -136,7 +136,7 @@ export const WorkingStrip = memo(function WorkingStrip({
           <>
             <MatrixSpinner tint={session.activityKind} />
             <span>{word}</span>
-            <span className="tabular-nums text-content/35">{duration(elapsed)}</span>
+            <span className="tabular-nums text-content/40">{duration(elapsed)}</span>
           </>
         )}
       </div>

@@ -94,7 +94,7 @@ export function MessageQueue({
                       const v = e.target.value.trim()
                       if (v && v !== m.text) onUpdate(m.id, v)
                     }}
-                    className="min-w-0 flex-1 resize-none bg-transparent text-[12.5px] leading-5 text-content outline-none"
+                    className="min-w-0 flex-1 resize-none bg-transparent text-[13px] leading-5 text-content outline-none"
                   />
                 ) : (
                   <button
@@ -103,8 +103,8 @@ export function MessageQueue({
                     title="Edit"
                     className="min-w-0 flex-1 text-left"
                   >
-                    <span className="line-clamp-2 text-[12.5px] leading-5 text-content/60">
-                      <span className="mr-1.5 text-[10.5px] text-content/35 tabular-nums">
+                    <span className="line-clamp-2 text-[13px] leading-5 text-content/50">
+                      <span className="mr-1.5 text-[11px] text-content/40 tabular-nums">
                         {ix + 1}
                       </span>
                       {m.text}
@@ -120,7 +120,7 @@ export function MessageQueue({
                         onClick={() => onSteer(m.id)}
                         aria-label="Send now"
                         title="Send now, into the running turn"
-                        className="flex size-5 items-center justify-center rounded text-content/60 transition hover:bg-content/10 hover:text-content active:scale-[0.96]"
+                        className="flex size-5 items-center justify-center rounded-md text-content/50 transition hover:bg-content/10 hover:text-content active:scale-[0.96]"
                       >
                         <ArrowUp className="size-3" strokeWidth={2.25} />
                       </button>
@@ -129,7 +129,7 @@ export function MessageQueue({
                       type="button"
                       onClick={() => onRemove(m.id)}
                       aria-label="Remove from queue"
-                      className="flex size-5 items-center justify-center rounded text-content/60 transition hover:bg-content/10 hover:text-content active:scale-[0.96]"
+                      className="flex size-5 items-center justify-center rounded-md text-content/50 transition hover:bg-content/10 hover:text-content active:scale-[0.96]"
                     >
                       <X className="size-3" />
                     </button>
@@ -204,10 +204,10 @@ function QueueTuneButton({ sessionId, item }: { sessionId: string; item: QueuedM
         title={overridden ? `${HARNESS_TITLE[harness]} · ${model.name}` : 'Model for this message'}
         onMouseDown={(e) => e.preventDefault()}
         onClick={() => setOpen((value) => !value)}
-        className={`flex h-5 items-center gap-1 rounded px-1 text-[10.5px] transition hover:bg-content/10 hover:text-content ${
+        className={`flex h-5 items-center gap-1 rounded-md px-1 text-[11px] transition hover:bg-content/10 hover:text-content ${
           overridden
             ? 'text-content/70'
-            : 'text-content/60 opacity-0 group-hover/q:opacity-100 focus-visible:opacity-100'
+            : 'text-content/50 opacity-0 group-hover/q:opacity-100 focus-visible:opacity-100'
         } ${open ? 'opacity-100 bg-content/10' : ''}`}
       >
         {overridden ? (
@@ -234,7 +234,7 @@ function QueueTuneButton({ sessionId, item }: { sessionId: string; item: QueuedM
           data-queue-tune
           className="flex flex-col gap-2 p-2"
         >
-          <label className="flex items-center justify-between gap-2 text-[11px] text-content/60">
+          <label className="flex items-center justify-between gap-2 text-[11px] text-content/50">
             Provider
             <Select
               label="Provider"
@@ -243,7 +243,7 @@ function QueueTuneButton({ sessionId, item }: { sessionId: string; item: QueuedM
               onChange={(value) => setHarness(value as HarnessId)}
             />
           </label>
-          <label className="flex items-center justify-between gap-2 text-[11px] text-content/60">
+          <label className="flex items-center justify-between gap-2 text-[11px] text-content/50">
             Model
             <Select
               label="Model"
@@ -256,7 +256,7 @@ function QueueTuneButton({ sessionId, item }: { sessionId: string; item: QueuedM
             />
           </label>
           {effortOptions.length > 0 ? (
-            <label className="flex items-center justify-between gap-2 text-[11px] text-content/60">
+            <label className="flex items-center justify-between gap-2 text-[11px] text-content/50">
               Reasoning
               <Select
                 label="Reasoning"
@@ -279,7 +279,7 @@ function QueueTuneButton({ sessionId, item }: { sessionId: string; item: QueuedM
                 apply({ provider: null, model: null, reasoning: null })
                 setOpen(false)
               }}
-              className="self-start rounded-md px-1.5 py-1 text-[11px] text-content/60 hover:bg-content/10 hover:text-content"
+              className="self-start rounded-md px-1.5 py-1 text-[11px] text-content/50 hover:bg-content/10 hover:text-content"
             >
               Follow the thread
             </button>

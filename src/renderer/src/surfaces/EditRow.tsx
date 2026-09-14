@@ -232,7 +232,7 @@ export function EditRow({
     setUserOpen(true)
   }
   const smallButton =
-    'absolute right-2 top-1 z-10 rounded-[5px] bg-content/8 px-1.5 py-0.5 text-[10px] text-content/60 hover:text-content'
+    'absolute right-2 top-1 z-10 rounded-[5px] bg-content/8 px-1.5 py-0.5 text-[10px] text-content/50 hover:text-content'
 
   return (
     <div
@@ -241,7 +241,7 @@ export function EditRow({
       } ${liveAtMount ? 'z-fade-in' : ''}`}
     >
       <div className="flex h-9 min-w-0 items-center gap-2.5 px-2">
-        <span className="flex size-5 shrink-0 items-center justify-center rounded-[6px] bg-content/10 text-content/80">
+        <span className="flex size-5 shrink-0 items-center justify-center rounded-[6px] bg-content/10 text-content/70">
           {running ? (
             <TerminalSpinner className="inline-block w-3.5 select-none text-center text-[11px] leading-none text-content/70" />
           ) : (
@@ -249,7 +249,7 @@ export function EditRow({
           )}
         </span>
         <span className="flex min-w-0 flex-1 items-baseline gap-1.5 text-[13px]">
-          {running ? <span className="shrink-0 text-content/55">{m.verb}</span> : null}
+          {running ? <span className="shrink-0 text-content/50">{m.verb}</span> : null}
           {name ? (
             <button
               type="button"
@@ -270,9 +270,9 @@ export function EditRow({
               >
                 {name}
               </span>
-              {dir ? <span className="ml-1.5 text-xs text-content/45">{dir}</span> : null}
+              {dir ? <span className="ml-1.5 text-xs text-content/40">{dir}</span> : null}
               {m.extraPaths.length > 0 ? (
-                <span className="ml-1.5 text-xs text-content/45">+{m.extraPaths.length} more</span>
+                <span className="ml-1.5 text-xs text-content/40">+{m.extraPaths.length} more</span>
               ) : null}
             </button>
           ) : null}
@@ -298,7 +298,7 @@ export function EditRow({
                 if (open) setEditMode(false)
                 setUserOpen(!open)
               }}
-              className="flex size-[18px] items-center justify-center rounded-[5px] bg-content/8 text-content/60 hover:text-content"
+              className="flex size-[18px] items-center justify-center rounded-[5px] bg-content/8 text-content/50 hover:text-content"
             >
               <ChevronRight
                 className={`size-3 transition-transform duration-200 ${open ? 'rotate-90' : ''}`}

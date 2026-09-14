@@ -31,7 +31,7 @@ const INPUT =
 const LABEL = "text-[11px] font-medium text-content/50";
 const GHOST = "rounded-md px-3 py-1.5 text-[12px] text-content/70 hover:bg-content/8 hover:text-content";
 const PRIMARY =
-  "rounded-md bg-content px-3 py-1.5 text-[12px] font-medium text-background-base hover:bg-content/80 disabled:cursor-not-allowed disabled:opacity-50";
+  "rounded-md bg-content px-3 py-1.5 text-[12px] font-medium text-background-base hover:bg-content/70 disabled:cursor-default disabled:opacity-50";
 
 const PERMISSIONS: ThreadDefaults["permission"][] = ["safe", "edits", "auto"];
 
@@ -123,12 +123,12 @@ export function ThreadDefaultsEditor({
           </span>
         ) : null}
       </div>
-      <p className="pb-2 text-[12px] leading-relaxed text-content/45">
+      <p className="pb-2 text-[12px] leading-relaxed text-content/40">
         {scopeHint(workspaceId, scope ?? BUILT_IN_SCOPE)}
       </p>
       {workspaceId === null ? <OverridingWorkspaces /> : null}
       {scope ? <ThreadDefaultsFields value={scope.defaults} onChange={save} /> : null}
-      {error ? <p className="pt-2 text-[11px] text-red-400/90">{error}</p> : null}
+      {error ? <p className="pt-2 text-[11px] text-danger">{error}</p> : null}
     </section>
   );
 }
@@ -140,7 +140,7 @@ function OverridingWorkspaces() {
   const overriding = workspaces.filter((w) => defaults.get(w.id)?.overridden);
   if (overriding.length === 0) return null;
   return (
-    <p className="pb-2 text-[12px] leading-relaxed text-content/45" data-testid="defaults-overrides">
+    <p className="pb-2 text-[12px] leading-relaxed text-content/40" data-testid="defaults-overrides">
       Overridden in{" "}
       {overriding.map((w, i) => (
         <span key={w.id}>
@@ -226,10 +226,10 @@ export function ThreadDefaultsDialog({
       >
         <div className="flex flex-col gap-3 px-4 py-4">
           {value ? <DialogFields value={value} onChange={setValue} /> : null}
-          <p className="text-[11px] leading-4 text-content/45">
+          <p className="text-[11px] leading-4 text-content/40">
             {scopeHint(workspace.id, scope ?? BUILT_IN_SCOPE)}
           </p>
-          {error ? <p className="text-[11px] leading-4 text-red-400/90">{error}</p> : null}
+          {error ? <p className="text-[11px] leading-4 text-danger">{error}</p> : null}
         </div>
         <div className="flex items-center gap-2 border-t border-content/10 px-4 py-3">
           {scope?.overridden ? (

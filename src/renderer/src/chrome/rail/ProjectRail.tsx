@@ -103,16 +103,16 @@ function RailBody({ projectId, cwd, onOpenFile, onOpenDiff }: Props & { projectI
               "flex h-6 items-center gap-1.5 rounded-md px-2 text-[12px] transition-colors",
               panel === t.id
                 ? "bg-content/8 text-content"
-                : "text-content/50 hover:bg-content/5 hover:text-content/80",
+                : "text-content/50 hover:bg-content/5 hover:text-content/70",
             )}
           >
             {t.label}
             {t.id === "build" && building ? (
-              <span className="size-1.5 animate-pulse rounded-full bg-success" aria-label="Building" />
+              <span className="size-1.5 motion-safe:animate-pulse rounded-full bg-success" aria-label="Building" />
             ) : null}
             {t.id === "debug" && debugPhase !== "idle" ? (
               <span
-                className={cn("size-1.5 rounded-full", debugPhase === "stopped" ? "bg-warning" : "animate-pulse bg-busy")}
+                className={cn("size-1.5 rounded-full", debugPhase === "stopped" ? "bg-warning" : "motion-safe:animate-pulse bg-busy")}
                 aria-label={debugPhase}
               />
             ) : null}

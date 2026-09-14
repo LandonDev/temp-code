@@ -424,7 +424,7 @@ export const SessionPane = memo(function SessionPane({
         >
           {onPaneDragStart ? (
             <GripVertical
-              className="size-3.5 shrink-0 text-content/35"
+              className="size-3.5 shrink-0 text-content/40"
               strokeWidth={1.75}
             />
           ) : null}
@@ -442,7 +442,7 @@ export const SessionPane = memo(function SessionPane({
             title={`Close Pane (${MOD}W)`}
             aria-label="Close pane"
             data-no-drag
-            className="grid size-5 shrink-0 place-items-center rounded text-content/50 hover:bg-content/10 hover:text-content"
+            className="grid size-5 shrink-0 place-items-center rounded-md text-content/50 hover:bg-content/10 hover:text-content"
             onPointerDown={(e) => e.stopPropagation()}
             onMouseDown={(e) => e.stopPropagation()}
             onClick={(e) => {

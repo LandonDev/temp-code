@@ -284,7 +284,7 @@ export function BranchPicker({
                 } disabled:opacity-40 disabled:hover:text-content/50`
           }
         >
-          <GitBranch className="size-3.5 shrink-0" strokeWidth={1.5} />
+          <GitBranch className="size-3.5 shrink-0" strokeWidth={1.75} />
           <span className="relative truncate font-mono text-[12px]">
             {awaitingBranch ? (
               <>
@@ -372,7 +372,7 @@ export function BranchPicker({
               onPick={pick}
             />
             {error ? (
-              <p className="max-h-16 shrink-0 overflow-y-auto whitespace-pre-wrap border-t border-content/10 px-2.5 py-2 text-[11px] leading-4 text-red-400/90">
+              <p className="max-h-16 shrink-0 overflow-y-auto whitespace-pre-wrap border-t border-content/10 px-2.5 py-2 text-[11px] leading-4 text-danger">
                 {error}
               </p>
             ) : null}
