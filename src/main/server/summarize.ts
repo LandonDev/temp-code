@@ -1,8 +1,9 @@
 import { spawn } from 'node:child_process'
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { harnessEnv, resolveBinary } from './drivers/binaries'
+import { oneShotBudget, trackChild } from './spawnBudget'
 import type { Store } from './db'
 import type { SessionMeta } from '@shared/events'
 import type { SessionRegistry } from './sessions'
@@ -14,6 +15,11 @@ import type { SessionRegistry } from './sessions'
  *   codex threads  → `codex exec` on GPT-5.3 Codex Spark at low effort
  * Results cache permanently in the settings table (a section's history
  * never changes), so each group is paid for exactly once.
+ *
+ * Both CLIs would otherwise boot every MCP server the user has configured
+ * (a Convex server alone is several hundred megabytes) for a one-line
+ * answer that uses no tools. Summaries run with MCP off, no tools, two at
+ * a time (`oneShotBudget`): a transcript opening asks for hundreds.
  */
 
 let registry: SessionRegistry | null = null
@@ -120,8 +126,17 @@ function run(
   env: NodeJS.ProcessEnv,
   readResult: (stdout: string) => string
 ): Promise<string | null> {
+  return oneShotBudget.run(() => runNow(bin, args, env, readResult))
+}
+
+function runNow(
+  bin: string,
+  args: string[],
+  env: NodeJS.ProcessEnv,
+  readResult: (stdout: string) => string
+): Promise<string | null> {
   return new Promise((resolve) => {
-    const proc = spawn(bin, args, { env, stdio: ['ignore', 'pipe', 'ignore'] })
+    const proc = trackChild(spawn(bin, args, { env, stdio: ['ignore', 'pipe', 'ignore'] }))
     let out = ''
     let done = false
     const finish = (v: string | null): void => {
@@ -168,7 +183,41 @@ async function summarizeWithClaude(prompt: string): Promise<string | null> {
   const bin = await resolveBinary('claude')
   if (!bin) return null
   const env = await harnessEnv()
-  return run(bin, ['-p', prompt, '--model', 'claude-haiku-4-5'], env, (out) => out)
+  return run(bin, ['-p', prompt, '--model', 'claude-haiku-4-5', ...CLAUDE_BARE_ARGS], env, (out) => out)
+}
+
+/** No MCP servers, no tools, no skills: the prompt is the whole job. */
+export const CLAUDE_BARE_ARGS = [
+  '--mcp-config',
+  '{"mcpServers":{}}',
+  '--strict-mcp-config',
+  '--tools',
+  '',
+  '--disable-slash-commands'
+]
+
+/**
+ * `codex exec` has no strict-MCP switch, but every configured server can
+ * be turned off by name: `-c mcp_servers.<name>.enabled=false`. The names
+ * come from the user's config.toml table headers.
+ */
+export function codexMcpOverrides(configToml: string): string[] {
+  const out: string[] = []
+  for (const m of configToml.matchAll(/^\s*\[mcp_servers\.([A-Za-z0-9_.-]+)\]\s*$/gm)) {
+    const name = m[1]
+    if (name.includes('.')) continue // a sub-table (tools, env), not a server
+    out.push('-c', `mcp_servers.${name}.enabled=false`)
+  }
+  return out
+}
+
+function codexConfigToml(): string {
+  const home = process.env.CODEX_HOME || join(homedir(), '.codex')
+  try {
+    return readFileSync(join(home, 'config.toml'), 'utf8')
+  } catch {
+    return ''
+  }
 }
 
 async function summarizeWithCodex(prompt: string): Promise<string | null> {
@@ -185,10 +234,12 @@ async function summarizeWithCodex(prompt: string): Promise<string | null> {
         '-s',
         'read-only',
         '--skip-git-repo-check',
+        '--ephemeral',
         '-m',
         'gpt-5.3-codex-spark',
         '-c',
         'model_reasoning_effort=low',
+        ...codexMcpOverrides(codexConfigToml()),
         '-o',
         outFile,
         prompt
