@@ -132,8 +132,8 @@ export function ExplorerMenu({
                 ? "text-content/30"
                 : item.danger
                   ? highlighted
-                    ? "bg-red-500/20 text-red-300"
-                    : "text-red-300/90 hover:bg-red-500/15"
+                    ? "bg-danger/20 text-danger"
+                    : "text-danger hover:bg-danger/15"
                   : highlighted
                     ? "bg-content/10 text-content"
                     : "text-content hover:bg-content/5"

@@ -240,7 +240,7 @@ export default function MonacoPane(props: Props) {
       ) : null}
       {needsEula && project ? (
         <div className="flex h-8 shrink-0 items-center gap-3 border-b border-content/10 px-3 text-[12px]">
-          <span className="text-content/60">IntelliJ engine needs the EULA</span>
+          <span className="text-content/50">IntelliJ engine needs the EULA</span>
           <span className="flex-1" />
           <button type="button" className="font-medium text-content hover:underline" onClick={() => requestSettings("editor")}>
             Accept

@@ -353,7 +353,7 @@ export function SecondOpinionButton({
                     </span>
                     {model.id === preferred ? (
                       <Check
-                        className="size-3 shrink-0 text-content/45"
+                        className="size-3 shrink-0 text-content/40"
                         strokeWidth={2}
                       />
                     ) : null}

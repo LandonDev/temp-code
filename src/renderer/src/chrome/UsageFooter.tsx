@@ -130,7 +130,7 @@ export function UsageFooter({
   return (
     <footer
       aria-label={ariaLabel}
-      className="flex h-7 shrink-0 items-center gap-3 overflow-x-auto border-t border-content/10 px-3 text-[11px] text-content/55"
+      className="flex h-7 shrink-0 items-center gap-3 overflow-x-auto border-t border-content/10 px-3 text-[11px] text-content/50"
     >
       {showUsage ? (
         <>
@@ -154,14 +154,14 @@ export function UsageFooter({
           {showUsage ? (
             <button
               type="button"
-              className="grid size-5 shrink-0 place-items-center rounded text-content/40 hover:bg-content/10 hover:text-content disabled:opacity-50"
+              className="grid size-5 shrink-0 place-items-center rounded-md text-content/40 hover:bg-content/10 hover:text-content disabled:opacity-50"
               aria-label="Refresh usage"
               title="Refresh usage"
               disabled={refreshing}
               onClick={() => void refresh(true)}
             >
               <RefreshCw
-                className={`size-3 ${refreshing ? "animate-spin" : ""}`}
+                className={`size-3 ${refreshing ? "motion-safe:animate-spin" : ""}`}
                 strokeWidth={1.75}
                 aria-hidden
               />
@@ -230,7 +230,7 @@ function RunningTerminalChip({
       <button
         ref={root}
         type="button"
-        className="inline-flex min-w-0 max-w-[16rem] items-center gap-1.5 whitespace-nowrap rounded px-1 -mx-1 hover:bg-content/10 hover:text-content"
+        className="inline-flex min-w-0 max-w-[16rem] items-center gap-1.5 whitespace-nowrap rounded-md px-1 -mx-1 hover:bg-content/10 hover:text-content"
         aria-label={ariaLabel}
         aria-pressed={panelOpen}
         aria-expanded={many && !panelOpen ? menuOpen : undefined}
@@ -324,18 +324,18 @@ function ProviderChip({
     >
       <HarnessIcon harness={limits.provider} className="size-3 shrink-0" />
       {loading ? (
-        <span className="animate-pulse text-content/35">···</span>
+        <span className="motion-safe:animate-pulse text-content/40">···</span>
       ) : disconnected ? (
-        <span className="text-content/35">not connected</span>
+        <span className="text-content/40">not connected</span>
       ) : windows.length === 0 ? (
-        <span className="text-content/35">{emptyUsageLabel(limits)}</span>
+        <span className="text-content/40">{emptyUsageLabel(limits)}</span>
       ) : (
         <>
           {tightest ? <MiniBar usedPct={tightest.usedPercent} /> : null}
           <span className="flex min-w-0 items-center gap-1 tabular-nums">
             {windows.map((entry, index) => (
               <span key={entry.key} className="inline-flex items-center gap-1">
-                {index > 0 ? <span className="text-content/25">·</span> : null}
+                {index > 0 ? <span className="text-content/20">·</span> : null}
                 <span>
                   {formatUsagePercent(entry.window.usedPercent)}{" "}
                   {formatRateLimitWindowChipLabel(entry.window, now)}
@@ -372,7 +372,7 @@ function MiniBar({ usedPct }: { usedPct: number }) {
 }
 
 function barClass(pct: number): string {
-  if (pct >= 90) return "bg-red-400";
-  if (pct >= 80) return "bg-amber-400";
-  return "bg-content/45";
+  if (pct >= 90) return "bg-danger";
+  if (pct >= 80) return "bg-warning";
+  return "bg-content/40";
 }

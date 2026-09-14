@@ -250,7 +250,7 @@ export function TabGroupMenu({
             >
               <span
                 className={`size-3.5 rounded-full ${
-                  selected ? "ring-2 ring-content/80 ring-offset-1 ring-offset-transparent" : ""
+                  selected ? "ring-2 ring-content/70 ring-offset-1 ring-offset-transparent" : ""
                 }`}
                 style={{ background: color }}
               />
@@ -270,7 +270,7 @@ export function TabGroupMenu({
           <span
             className={`grid size-3.5 place-items-center overflow-hidden rounded-full ${
               customColor != null || customPickerOpen
-                ? "ring-2 ring-content/80 ring-offset-1 ring-offset-transparent"
+                ? "ring-2 ring-content/70 ring-offset-1 ring-offset-transparent"
                 : ""
             }`}
             style={
@@ -309,7 +309,7 @@ export function TabGroupMenu({
               <ProjectMascot
                 project={groupId}
                 name={mascot.name}
-                className="size-3 text-content/75"
+                className="size-3 text-content/70"
               />
             </MascotSwatch>
           ))}
@@ -405,11 +405,11 @@ function MenuRow({
       onClick={onPick}
       className={`flex h-8 w-full items-center gap-2.5 rounded-lg px-2 text-left text-[13px] leading-none ${
         item.danger
-          ? "text-red-300/90 hover:bg-red-500/15"
+          ? "text-danger hover:bg-danger/15"
           : "text-content hover:bg-content/5"
       }`}
     >
-      <Icon className="size-3.5 shrink-0 text-content/55" strokeWidth={1.75} />
+      <Icon className="size-3.5 shrink-0 text-content/50" strokeWidth={1.75} />
       <span className="min-w-0 flex-1 truncate">{item.label}</span>
       {item.shortcut ? (
         <span className="shrink-0 text-[11px] text-content/40">

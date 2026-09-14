@@ -153,7 +153,7 @@ export function ProjectSearch({
         >
           <ChevronLeft className="size-4" strokeWidth={1.75} />
         </button>
-        <span className="min-w-0 flex-1 truncate text-[12px] text-content/55">
+        <span className="min-w-0 flex-1 truncate text-[12px] text-content/50">
           Search in files
         </span>
       </div>
@@ -167,7 +167,7 @@ export function ProjectSearch({
             placeholder="Search"
             aria-label="Search"
             spellCheck={false}
-            className="min-w-0 flex-1 bg-transparent py-1.5 text-[12px] text-content outline-none placeholder:text-content/35"
+            className="min-w-0 flex-1 bg-transparent py-1.5 text-[12px] text-content outline-none placeholder:text-content/40"
           />
           <Toggle
             label="Match case"
@@ -197,7 +197,7 @@ export function ProjectSearch({
           placeholder="files to include"
           aria-label="files to include"
           spellCheck={false}
-          className="w-full rounded-md border border-content/10 bg-content/5 px-2 py-1.5 text-[11px] text-content outline-none placeholder:text-content/35"
+          className="w-full rounded-md border border-content/10 bg-content/5 px-2 py-1.5 text-[11px] text-content outline-none placeholder:text-content/40"
         />
         <input
           value={exclude}
@@ -205,18 +205,18 @@ export function ProjectSearch({
           placeholder="files to exclude"
           aria-label="files to exclude"
           spellCheck={false}
-          className="w-full rounded-md border border-content/10 bg-content/5 px-2 py-1.5 text-[11px] text-content outline-none placeholder:text-content/35"
+          className="w-full rounded-md border border-content/10 bg-content/5 px-2 py-1.5 text-[11px] text-content outline-none placeholder:text-content/40"
         />
       </div>
 
-      <div className="flex min-h-8 shrink-0 items-center gap-2 px-3 py-1.5 text-[11px] text-content/45">
+      <div className="flex min-h-8 shrink-0 items-center gap-2 px-3 py-1.5 text-[11px] text-content/40">
         {loading ? (
           <>
-            <LoaderCircle className="size-3 animate-spin" strokeWidth={1.75} />
+            <LoaderCircle className="size-3 motion-safe:animate-spin" strokeWidth={1.75} />
             <span>Searching…</span>
           </>
         ) : error ? (
-          <span className="text-red-400">{error}</span>
+          <span className="text-danger">{error}</span>
         ) : query.trim() ? (
           <span>
             {matchCount === 0
@@ -255,10 +255,10 @@ export function ProjectSearch({
                     onClick={() => openMatch(match)}
                     className="flex w-full items-start gap-2 px-2 py-1 text-left hover:bg-content/5"
                   >
-                    <span className="w-7 shrink-0 pt-px text-right font-mono text-[11px] text-content/35 tabular-nums">
+                    <span className="w-7 shrink-0 pt-px text-right font-mono text-[11px] text-content/40 tabular-nums">
                       {match.line}
                     </span>
-                    <span className="min-w-0 flex-1 truncate font-mono text-[11px] leading-5 text-content/80">
+                    <span className="min-w-0 flex-1 truncate font-mono text-[11px] leading-5 text-content/70">
                       <MatchPreview
                         preview={match.preview.trimEnd()}
                         query={query.trim()}
@@ -295,7 +295,7 @@ function Toggle({
       aria-label={label}
       aria-pressed={active}
       onClick={onClick}
-      className={`grid size-6 place-items-center rounded-sm ${
+      className={`grid size-6 place-items-center rounded-md ${
         active
           ? "bg-content/15 text-content"
           : "text-content/40 hover:bg-content/10 hover:text-content/70"
@@ -346,7 +346,7 @@ function MatchPreview({
       return (
         <>
           {preview.slice(0, start)}
-          <mark className="rounded-sm bg-accent/35 text-content">
+          <mark className="rounded-md bg-accent/35 text-content">
             {preview.slice(start, end)}
           </mark>
           {preview.slice(end)}
@@ -365,7 +365,7 @@ function MatchPreview({
   return (
     <>
       {preview.slice(0, index)}
-      <mark className="rounded-sm bg-accent/35 text-content">
+      <mark className="rounded-md bg-accent/35 text-content">
         {preview.slice(index, end)}
       </mark>
       {preview.slice(end)}

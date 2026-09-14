@@ -327,7 +327,7 @@ export function ChangesPanel({
                               key={h.from}
                               className="group flex h-7 items-center gap-2 rounded-md pl-9 pr-2 text-[11px] transition-colors hover:bg-content/5"
                             >
-                              <span className="tabular-nums text-content/60">
+                              <span className="tabular-nums text-content/50">
                                 {h.from === h.to ? `L${h.from}` : `L${h.from}–${h.to}`}
                               </span>
                               <span className="tabular-nums">
@@ -340,7 +340,7 @@ export function ChangesPanel({
                                 type="button"
                                 disabled={!!busy}
                                 onClick={() => stageHunk(file, set, h)}
-                                className="rounded px-1.5 py-0.5 text-[10.5px] text-content/50 opacity-0 transition-colors hover:bg-content/10 hover:text-content group-hover:opacity-100 focus-visible:opacity-100 disabled:opacity-40"
+                                className="rounded-md px-1.5 py-0.5 text-[11px] text-content/50 opacity-0 transition-colors hover:bg-content/10 hover:text-content group-hover:opacity-100 focus-visible:opacity-100 disabled:opacity-40"
                               >
                                 {busy === `${file.relative}#${h.from}` ? "Staging…" : "Stage"}
                               </button>
@@ -366,7 +366,7 @@ export function ChangesPanel({
               <span className="min-w-0 flex-1 truncate text-[11px] text-content" title={c.subject}>
                 {c.subject}
               </span>
-              <span className="shrink-0 text-[10.5px] tabular-nums text-content/40">{timeAgo(Date.parse(c.date))}</span>
+              <span className="shrink-0 text-[11px] tabular-nums text-content/40">{timeAgo(Date.parse(c.date))}</span>
             </div>
           ))}
         </div>
@@ -385,7 +385,7 @@ export function ChangesPanel({
             placeholder={staged.length > 0 ? "Commit message" : "Stage something to commit"}
             disabled={staged.length === 0 || committing}
             aria-label="Commit message"
-            className="w-full rounded-md bg-content/10 px-2.5 py-1.5 text-xs text-content outline-none placeholder:text-content/35 disabled:opacity-40"
+            className="w-full rounded-md bg-content/10 px-2.5 py-1.5 text-xs text-content outline-none placeholder:text-content/40 disabled:opacity-40"
           />
           <div className="mt-2 flex gap-1.5">
             <StatefulButton
@@ -480,7 +480,7 @@ function Row({
             aria-label={fold.open ? "Hide hunks" : "Show hunks"}
             aria-expanded={fold.open}
             onClick={fold.onToggle}
-            className="grid size-4 place-items-center rounded text-content/40 hover:text-content"
+            className="grid size-4 place-items-center rounded-md text-content/40 hover:text-content"
           >
             <ChevronRight
               className={cn("size-3 transition-transform", fold.open && "rotate-90")}
@@ -540,7 +540,7 @@ function IconAction({
       aria-label={title}
       disabled={disabled}
       onClick={onClick}
-      className="grid size-5 place-items-center rounded text-content/55 transition-colors hover:bg-content/10 hover:text-content disabled:opacity-40 disabled:hover:bg-transparent"
+      className="grid size-5 place-items-center rounded-md text-content/50 transition-colors hover:bg-content/10 hover:text-content disabled:opacity-40 disabled:hover:bg-transparent"
     >
       {busy ? <Spinner className="size-3" /> : children}
     </button>

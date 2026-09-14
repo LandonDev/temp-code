@@ -121,7 +121,7 @@ export function SurfaceTabs({
           title="Drag to reorder pane"
           aria-label="Drag to reorder pane"
           tabIndex={-1}
-          className="grid h-full w-5 shrink-0 cursor-grab place-items-center text-content/35 hover:bg-content/5 hover:text-content/70 active:cursor-grabbing touch-none"
+          className="grid h-full w-5 shrink-0 cursor-grab place-items-center text-content/40 hover:bg-content/5 hover:text-content/70 active:cursor-grabbing touch-none"
           onPointerDown={(event) => {
             if (event.button !== 0) return;
             event.preventDefault();
@@ -192,7 +192,7 @@ export function SurfaceTabs({
               className={`flex min-w-0 flex-1 items-center gap-1.5 px-3 pr-8 text-left text-[12px] ${
                 canDrag ? "cursor-grab active:cursor-grabbing" : ""
               } ${
-                active ? "text-content" : "text-content/55 hover:text-content"
+                active ? "text-content" : "text-content/50 hover:text-content"
               }`}
             >
               {terminal ? (
@@ -204,15 +204,15 @@ export function SurfaceTabs({
                 className={`min-w-0 flex-1 truncate ${review ? "italic" : ""} ${
                   errors
                     ? active
-                      ? "text-red-400"
-                      : "text-red-400/75 group-hover:text-red-400"
+                      ? "text-danger"
+                      : "text-danger group-hover:text-danger"
                     : ""
                 }`}
               >
                 {label}
               </span>
               {change && change.status !== "untracked" && (change.additions > 0 || change.deletions > 0) ? (
-                <span className="shrink-0 text-[10.5px] tabular-nums">
+                <span className="shrink-0 text-[11px] tabular-nums">
                   {change.additions > 0 ? <span className="text-success">+{change.additions}</span> : null}
                   {change.additions > 0 && change.deletions > 0 ? " " : ""}
                   {change.deletions > 0 ? <span className="text-danger">−{change.deletions}</span> : null}
@@ -220,7 +220,7 @@ export function SurfaceTabs({
               ) : null}
               {dirty ? (
                 <span
-                  className="size-1.5 shrink-0 rounded-full bg-content/75"
+                  className="size-1.5 shrink-0 rounded-full bg-content/70"
                   title="Unsaved changes"
                   aria-label="Unsaved changes"
                 />
@@ -236,7 +236,7 @@ export function SurfaceTabs({
                 event.stopPropagation();
                 onCloseFile(file.id);
               }}
-              className={`absolute right-1.5 top-1/2 grid size-5 -translate-y-1/2 place-items-center rounded text-content/50 hover:bg-content/10 hover:text-content ${
+              className={`absolute right-1.5 top-1/2 grid size-5 -translate-y-1/2 place-items-center rounded-md text-content/50 hover:bg-content/10 hover:text-content ${
                 active ? "opacity-100" : "opacity-0 group-hover:opacity-100"
               }`}
             >

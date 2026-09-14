@@ -241,7 +241,7 @@ export function PlanView(props: ThreadViewProps) {
             onClick={() => setChatOpen(false)}
             title="Hide conversation"
             aria-label="Hide conversation"
-            className="flex size-6 items-center justify-center rounded-md text-content/55 transition-colors hover:bg-content/5 hover:text-content"
+            className="flex size-6 items-center justify-center rounded-md text-content/50 transition-colors hover:bg-content/5 hover:text-content"
           >
             <ChevronRight className="size-3.5" strokeWidth={1.75} />
           </button>
@@ -293,9 +293,9 @@ function Outline({
               key={i}
               type="button"
               onClick={() => onJump(i)}
-              className={`truncate rounded px-1.5 py-1 text-left text-[11px] leading-4 transition-colors ${
+              className={`truncate rounded-md px-1.5 py-1 text-left text-[11px] leading-4 transition-colors ${
                 s.level >= 3 ? "pl-4" : s.level === 2 ? "pl-2.5" : ""
-              } ${i === active ? "text-content" : "text-content/40 hover:text-content/55"}`}
+              } ${i === active ? "text-content" : "text-content/40 hover:text-content/50"}`}
             >
               {s.heading}
             </button>
@@ -321,7 +321,7 @@ function HandoffChip({
     <button
       type="button"
       onClick={onOpen}
-      className="group flex items-center gap-1.5 rounded-md px-2 py-1 text-[11px] text-content/55 transition-colors hover:bg-content/5 hover:text-content"
+      className="group flex items-center gap-1.5 rounded-md px-2 py-1 text-[11px] text-content/50 transition-colors hover:bg-content/5 hover:text-content"
     >
       <Glyph className={`size-3 ${THREAD_TINTS[type]}`} strokeWidth={1.75} />
       {THREAD_LABELS[type]} {live ? "running" : "finished"} ·{" "}
@@ -455,7 +455,7 @@ function StartButton({ session, tasks }: { session: Session; tasks: string[] }) 
                   type="button"
                   onClick={() => setView("main")}
                   aria-label="Back"
-                  className="flex size-6 items-center justify-center rounded-md text-content/55 transition hover:bg-content/5 hover:text-content active:scale-95"
+                  className="flex size-6 items-center justify-center rounded-md text-content/50 transition hover:bg-content/5 hover:text-content active:scale-95"
                 >
                   <ChevronLeft className="size-4" strokeWidth={1.75} />
                 </button>
@@ -467,7 +467,7 @@ function StartButton({ session, tasks }: { session: Session; tasks: string[] }) 
                   type="button"
                   disabled={busy !== null}
                   onClick={() => void start("orchestration")}
-                  className="mt-1 flex h-8 w-full items-center justify-center gap-1.5 rounded-lg bg-content text-[12.5px] font-medium text-background-base transition hover:bg-content/90 active:scale-[0.99] disabled:opacity-60"
+                  className="mt-1 flex h-8 w-full items-center justify-center gap-1.5 rounded-lg bg-content text-[13px] font-medium text-background-base transition hover:bg-content/90 active:scale-[0.99] disabled:opacity-60"
                 >
                   {busy === "orchestration" ? <Spinner className="size-3.5" /> : "Orchestrate"}
                 </button>
@@ -481,7 +481,7 @@ function StartButton({ session, tasks }: { session: Session; tasks: string[] }) 
                 <p className="text-[13px] font-medium">
                   Start building
                   {tasks.length > 0 ? (
-                    <span className="ml-1.5 font-normal text-content/55">{tasks.length} tasks</span>
+                    <span className="ml-1.5 font-normal text-content/50">{tasks.length} tasks</span>
                   ) : null}
                 </p>
                 <div className="mt-1.5 -ml-1 flex flex-wrap items-center gap-1">
@@ -522,7 +522,7 @@ function StartButton({ session, tasks }: { session: Session; tasks: string[] }) 
                     type="button"
                     onClick={() => setGoal("")}
                     aria-label="Clear goal"
-                    className="flex size-5 shrink-0 items-center justify-center rounded text-content/45 transition hover:text-content active:scale-[0.96]"
+                    className="flex size-5 shrink-0 items-center justify-center rounded-md text-content/40 transition hover:text-content active:scale-[0.96]"
                   >
                     <X className="size-3" strokeWidth={1.75} />
                   </button>
@@ -539,14 +539,14 @@ function StartButton({ session, tasks }: { session: Session; tasks: string[] }) 
                 >
                   <span className={ACTION_TILE}>
                     {busy === "implementation" ? (
-                      <Spinner className="size-3.5 text-content/55" />
+                      <Spinner className="size-3.5 text-content/50" />
                     ) : (
                       <ListChecks className="size-4 text-success/80" strokeWidth={1.75} />
                     )}
                   </span>
                   <span className="min-w-0 flex-1">
                     <span className="block text-[13px] font-medium">Implement{workers > 1 ? ` × ${workers}` : ""}</span>
-                    <span className="block text-[11px] text-content/55">
+                    <span className="block text-[11px] text-content/50">
                       {workers > 1 ? `${workers} threads split the plan's tasks` : "One agent works the plan's tasks"}
                     </span>
                   </span>
@@ -561,10 +561,10 @@ function StartButton({ session, tasks }: { session: Session; tasks: string[] }) 
                         type="button"
                         onClick={() => setWorkers(n)}
                         aria-label={`${n} thread${n > 1 ? "s" : ""}`}
-                        className={`flex size-5 items-center justify-center rounded text-[11px] transition-colors ${
+                        className={`flex size-5 items-center justify-center rounded-md text-[11px] transition-colors ${
                           workers === n
                             ? "bg-background-base text-content shadow-sm"
-                            : "text-content/55 hover:text-content"
+                            : "text-content/50 hover:text-content"
                         }`}
                       >
                         {n}
@@ -581,14 +581,14 @@ function StartButton({ session, tasks }: { session: Session; tasks: string[] }) 
                 >
                   <span className={ACTION_TILE}>
                     {busy === "orchestration" ? (
-                      <Spinner className="size-3.5 text-content/55" />
+                      <Spinner className="size-3.5 text-content/50" />
                     ) : (
                       <GitFork className="size-4 text-violet/80" strokeWidth={1.75} />
                     )}
                   </span>
                   <span className="min-w-0 flex-1">
                     <span className="block text-[13px] font-medium">Orchestrate</span>
-                    <span className="block text-[11px] text-content/55">
+                    <span className="block text-[11px] text-content/50">
                       {tuneSummary(tune) ?? "Split across subagents in parallel"}
                     </span>
                   </span>
@@ -600,7 +600,7 @@ function StartButton({ session, tasks }: { session: Session; tasks: string[] }) 
                     }}
                     title="Instructions & rule overrides"
                     aria-label="Orchestration options"
-                    className={`flex size-6 shrink-0 items-center justify-center rounded-md text-content/55 transition hover:bg-content/8 hover:text-content active:scale-95 ${
+                    className={`flex size-6 shrink-0 items-center justify-center rounded-md text-content/50 transition hover:bg-content/8 hover:text-content active:scale-95 ${
                       tuneSummary(tune) ? "opacity-100" : "opacity-0 group-hover/act:opacity-100"
                     }`}
                   >
@@ -612,7 +612,7 @@ function StartButton({ session, tasks }: { session: Session; tasks: string[] }) 
               {tasks.length > 0 ? (
                 <div className="rounded-b-xl border-t border-content/10 bg-content/5 px-3 pt-1.5 pb-2">
                   {tasks.slice(0, 3).map((t, i) => (
-                    <p key={i} className="truncate text-[11px] leading-[18px] text-content/55">
+                    <p key={i} className="truncate text-[11px] leading-[18px] text-content/50">
                       {i + 1}. {t}
                     </p>
                   ))}

@@ -8,7 +8,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { EASE_OUT, SPRING_LAYOUT } from "../lib/ease";
+import { SPRING_LAYOUT } from "../lib/ease";
 import { cn } from "./cn";
 
 /**
@@ -124,7 +124,7 @@ export function TabsTrigger({
         onClick={() => setValue(value)}
         className={cn(
           "relative isolate -mb-px inline-flex items-center px-3 pb-2 pt-1 text-[13px] font-medium transition-colors",
-          active ? "text-content" : "text-content/55 hover:text-content",
+          active ? "text-content" : "text-content/50 hover:text-content",
           className,
         )}
       >
@@ -163,7 +163,7 @@ export function TabsTrigger({
           }}
           className={cn(
             "relative z-10 inline-flex items-center justify-center whitespace-nowrap rounded-md bg-transparent px-2.5 py-1 text-[13px] outline-none transition-colors duration-150",
-            active ? "text-content" : "text-content/55 hover:bg-content/6 hover:text-content",
+            active ? "text-content" : "text-content/50 hover:bg-content/6 hover:text-content",
             className,
           )}
         >
@@ -191,7 +191,7 @@ export function TabsTrigger({
         onClick={() => setValue(value)}
         className={cn(
           "relative z-10 inline-flex items-center justify-center whitespace-nowrap bg-transparent px-3.5 py-1.5 text-[13px] font-medium outline-none transition-colors",
-          active ? "text-background-base" : "text-content/55 hover:text-content",
+          active ? "text-background-base" : "text-content/50 hover:text-content",
           radius,
           className,
         )}
@@ -199,38 +199,5 @@ export function TabsTrigger({
         {children}
       </button>
     </div>
-  );
-}
-
-export function TabsContent({
-  value,
-  children,
-  className,
-}: {
-  value: string;
-  children: ReactNode;
-  className?: string;
-}) {
-  const { value: current } = useTabs();
-  const reduce = useReducedMotion();
-  const active = current === value;
-  // Inactive panels stay mounted but hidden so their state survives a switch.
-  if (!active) {
-    return (
-      <div hidden className={className}>
-        {children}
-      </div>
-    );
-  }
-  return (
-    <motion.div
-      key={value}
-      initial={{ opacity: 0, y: reduce ? 0 : 4 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.18, ease: EASE_OUT }}
-      className={className}
-    >
-      {children}
-    </motion.div>
   );
 }

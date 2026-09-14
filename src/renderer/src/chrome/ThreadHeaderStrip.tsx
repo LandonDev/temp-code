@@ -270,7 +270,7 @@ function Chip({
       <RenameInput
         chip={chip}
         onRename={events.onRename}
-        className={shelf ? "h-5 w-36 px-1.5 text-[11.5px]" : "h-[26px] w-44 px-2.5 text-[13px]"}
+        className={shelf ? "h-5 w-36 px-1.5 text-[12px]" : "h-[26px] w-44 px-2.5 text-[13px]"}
       />
     );
   }
@@ -288,7 +288,7 @@ function Chip({
         value={chip.id}
         className={
           shelf
-            ? "h-5 max-w-36 min-w-0 justify-start gap-1 px-1.5 py-0 text-[11.5px] leading-none"
+            ? "h-5 max-w-36 min-w-0 justify-start gap-1 px-1.5 py-0 text-[12px] leading-none"
             : "h-[26px] max-w-56 min-w-0 justify-start gap-1.5 px-2.5 py-0 text-[13px] leading-none"
         }
       >
@@ -342,7 +342,7 @@ function ArchivedShelf({
         aria-expanded={open}
         data-tauri-drag-region="false"
         onClick={() => (open ? close() : setOpen(true))}
-        className={`mr-1.5 grid size-6 shrink-0 place-items-center rounded-md text-content/45 hover:bg-content/5 hover:text-content ${
+        className={`mr-1.5 grid size-6 shrink-0 place-items-center rounded-md text-content/40 hover:bg-content/5 hover:text-content ${
           open ? "bg-content/10 text-content" : ""
         }`}
       >
@@ -369,13 +369,13 @@ function ArchivedShelf({
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
                 placeholder="Search…"
-                className="h-7 w-full rounded-md bg-content/5 pr-2 pl-7 text-[12px] text-content outline-none placeholder:text-content/35"
+                className="h-7 w-full rounded-md bg-content/5 pr-2 pl-7 text-[12px] text-content outline-none placeholder:text-content/40"
               />
             </div>
           ) : null}
           <div className="max-h-80 overflow-y-auto">
             {shown.length === 0 ? (
-              <p className="px-2 py-3 text-center text-[11px] text-content/45">No matches.</p>
+              <p className="px-2 py-3 text-center text-[11px] text-content/40">No matches.</p>
             ) : null}
             <AnimatePresence initial={false}>
               {shown.map((thread) => {
@@ -400,9 +400,9 @@ function ArchivedShelf({
                       <span className="block truncate text-[13px] text-content">
                         {thread.title || "Untitled"}
                       </span>
-                      <span className="block text-[11px] text-content/45">{timeAgo(thread.updatedAt)}</span>
+                      <span className="block text-[11px] text-content/40">{timeAgo(thread.updatedAt)}</span>
                     </span>
-                    <span className="flex shrink-0 items-center gap-1 text-[11px] text-content/55 opacity-0 transition-opacity duration-150 group-hover/arch:opacity-100">
+                    <span className="flex shrink-0 items-center gap-1 text-[11px] text-content/50 opacity-0 transition-opacity duration-150 group-hover/arch:opacity-100">
                       <ArchiveRestore className="size-3.5" strokeWidth={1.75} />
                       Restore
                     </span>

@@ -303,7 +303,7 @@ function dropTargetFor(
 }
 
 function dropTargetTint(target: TabDropTarget): string {
-  return target === "blocked" ? "bg-rose-500/20" : "bg-accent/20";
+  return target === "blocked" ? "bg-danger/20" : "bg-accent/20";
 }
 
 type SegmentDragApi = ReturnType<typeof useSegmentDrag>;
@@ -425,7 +425,7 @@ function TitleTabItem({
         ) : tab.terminal || !fileIcon ? (
           <Terminal
             className={`size-3.5 shrink-0 ${
-              active ? "text-content" : "text-content/55"
+              active ? "text-content" : "text-content/50"
             }`}
             strokeWidth={1.75}
           />
@@ -455,7 +455,7 @@ function TitleTabItem({
             {tab.thread ? <TabIndicator thread={tab.thread} /> : null}
           </span>
           {meta ? (
-            <span className="hidden min-w-0 truncate text-[10px] leading-none text-content/45 @min-[11rem]:block">
+            <span className="hidden min-w-0 truncate text-[10px] leading-none text-content/40 @min-[11rem]:block">
               {meta}
             </span>
           ) : null}
@@ -473,7 +473,7 @@ function TitleTabItem({
             e.stopPropagation();
             onClose(tab.id);
           }}
-          className="absolute right-1 top-1/2 grid size-5 -translate-y-1/2 place-items-center rounded text-content/50 opacity-0 hover:bg-content/10 hover:text-content group-hover:opacity-100"
+          className="absolute right-1 top-1/2 grid size-5 -translate-y-1/2 place-items-center rounded-md text-content/50 opacity-0 hover:bg-content/10 hover:text-content group-hover:opacity-100"
         >
           <X className="size-3" strokeWidth={1.75} />
         </button>
@@ -548,7 +548,7 @@ function GroupLabel({
       {logoPath ? (
         <ProjectLogoIcon
           path={logoPath}
-          className="size-3.5 shrink-0 rounded-sm"
+          className="size-3.5 shrink-0 rounded-md"
           imageClassName="size-3.5"
         />
       ) : (
@@ -560,7 +560,7 @@ function GroupLabel({
           active={busy}
         />
       )}
-      <span className="text-[12.5px] truncate">{project}</span>
+      <span className="text-[13px] truncate">{project}</span>
       {collapsed ? (
         <span className="text-content shrink-0 tabular-nums opacity-70 pl-1">
           {count}
@@ -789,7 +789,7 @@ export function IconButton({
       }}
       className={`grid size-6.5 place-items-center rounded-md ${
         disabled
-          ? "text-content/25"
+          ? "text-content/20"
           : accent
             ? "text-accent hover:bg-content/10"
             : active
@@ -1609,7 +1609,7 @@ function TitleBarComponent({
         {deckLayout && IS_MAC ? null : (
           <div className="flex min-w-0 flex-1 items-center justify-center px-4">
             {!IS_MAC ? (
-              <span className="pointer-events-none truncate text-[11.5px] font-medium text-content/40 select-none">
+              <span className="pointer-events-none truncate text-[12px] font-medium text-content/40 select-none">
                 {systemTitle}
               </span>
             ) : null}
@@ -1674,10 +1674,10 @@ function ProjectDiffStats({
         <GitCompare className="size-3.5 shrink-0" strokeWidth={1.75} />
       )}
       {additions > 0 ? (
-        <span className="text-emerald-400">+{additions}</span>
+        <span className="text-success">+{additions}</span>
       ) : null}
       {deletions > 0 ? (
-        <span className="text-red-400">-{deletions}</span>
+        <span className="text-danger">-{deletions}</span>
       ) : null}
     </button>
   );

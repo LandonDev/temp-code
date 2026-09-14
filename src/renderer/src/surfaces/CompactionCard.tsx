@@ -17,9 +17,9 @@ export function CompactionCard({ block }: { block: Block }) {
   if (meta.phase === "start") return <ActiveCompaction startedAt={meta.startedAt} trigger={meta.trigger} />;
   if (meta.phase === "failed") {
     return (
-      <div className="flex items-center gap-2 px-4 py-1 font-sans text-[12px] text-red-400">
+      <div className="flex items-center gap-2 px-4 py-1 font-sans text-[12px] text-danger">
         <span>Compaction failed</span>
-        {meta.error ? <span className="min-w-0 truncate text-red-400/70">{meta.error}</span> : null}
+        {meta.error ? <span className="min-w-0 truncate text-danger/70">{meta.error}</span> : null}
       </div>
     );
   }
@@ -39,7 +39,7 @@ export function CompactionCard({ block }: { block: Block }) {
         <div
           role="separator"
           aria-label={`Context compacted ${parts.join(", ")}`}
-          className="flex max-w-[min(100%,24rem)] items-center gap-1.5 px-1.5 font-sans text-[12px] text-content/55"
+          className="flex max-w-[min(100%,24rem)] items-center gap-1.5 px-1.5 font-sans text-[12px] text-content/50"
         >
           <span>Context compacted</span>
           {parts.length ? <span className="text-content/40">{parts.join(" · ")}</span> : null}
@@ -61,7 +61,7 @@ function ActiveCompaction({ startedAt, trigger }: { startedAt?: number; trigger?
     <div
       role="status"
       aria-label="Compacting context"
-      className="flex flex-col gap-1.5 px-4 py-2 font-sans text-[12px] text-content/55"
+      className="flex flex-col gap-1.5 px-4 py-2 font-sans text-[12px] text-content/50"
     >
       <div className="flex items-center gap-2">
         <motion.span

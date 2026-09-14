@@ -736,7 +736,7 @@ export function AgentTranscript({
           <div className="flex justify-center px-4 py-3">
             <button
               type="button"
-              className="rounded-md bg-content/8 px-2.5 py-1.5 font-sans text-[12px] text-content/60 hover:bg-content/12 hover:text-content"
+              className="rounded-md bg-content/8 px-2.5 py-1.5 font-sans text-[12px] text-content/50 hover:bg-content/12 hover:text-content"
               onClick={loadEarlier}
             >
               Load earlier messages
@@ -1093,7 +1093,7 @@ function TurnDuration({
   const dot = (
     <span
       aria-hidden
-      className="size-[3px] shrink-0 rounded-full bg-content/25"
+      className="size-[3px] shrink-0 rounded-full bg-content/20"
     />
   );
   return (
@@ -1141,7 +1141,7 @@ function TurnDuration({
       {completedAt != null ? (
         <>
           {dot}
-          <span className="text-content/35">
+          <span className="text-content/40">
             {formatClockTime(completedAt)}
           </span>
         </>
@@ -1456,7 +1456,7 @@ function UserText({ text }: { text: string }) {
           <button
             key={index}
             type="button"
-            className="inline-flex items-center gap-1 rounded-sm bg-content/10 px-1 align-baseline text-[13px] text-content hover:underline"
+            className="inline-flex items-center gap-1 rounded-md bg-content/10 px-1 align-baseline text-[13px] text-content hover:underline"
             onClick={(event) => {
               event.stopPropagation();
               onSelectSession?.(part.id);
@@ -1715,8 +1715,8 @@ function ErrorRowView({ block }: { block: Block }) {
 /** What the turn-pass did between turns: a compact line, not a system dump. */
 function PassRow({ actions }: { actions: string[] }) {
   return (
-    <div className="flex items-center gap-2 px-4 py-1 font-sans text-[12px] text-content/45">
-      <span className="text-content/35">Pass</span>
+    <div className="flex items-center gap-2 px-4 py-1 font-sans text-[12px] text-content/40">
+      <span className="text-content/40">Pass</span>
       <span className="min-w-0 truncate">{actions.join(" · ")}</span>
     </div>
   );
@@ -1792,7 +1792,7 @@ function ActivityPhaseGroup({
   ) : (
     // Dimmed to sit with the icons: the work is chrome around the answer, and
     // only the answer reads at full strength.
-    <span className="min-w-0 flex-1 truncate font-sans text-sm text-content/50 transition-colors duration-200 group-hover:text-content/80">
+    <span className="min-w-0 flex-1 truncate font-sans text-sm text-content/50 transition-colors duration-200 group-hover:text-content/70">
       {title}
     </span>
   );
@@ -1830,7 +1830,7 @@ function ActivityPhaseGroup({
             className="group-hover:opacity-0"
           />
           <ChevronRight
-            className={`absolute size-3.5 text-content/45 opacity-0 transition-transform duration-200 group-hover:opacity-100 ${
+            className={`absolute size-3.5 text-content/40 opacity-0 transition-transform duration-200 group-hover:opacity-100 ${
               open ? "rotate-90" : ""
             }`}
             strokeWidth={1.75}
@@ -1910,7 +1910,7 @@ function ActivityPhaseIcon({
   className?: string;
 }) {
   const props = {
-    className: `size-3.5 shrink-0 text-content/45 ${className}`,
+    className: `size-3.5 shrink-0 text-content/40 ${className}`,
     strokeWidth: 1.75,
   };
   if (kind === "edit") return <PenLine {...props} />;
@@ -2088,7 +2088,7 @@ function ActivityThinkingRow({
       >
         {icon}
         <span
-          className={`min-w-0 flex-1 truncate font-sans text-sm text-content/50 transition-colors duration-200 group-hover:text-content/75 ${
+          className={`min-w-0 flex-1 truncate font-sans text-sm text-content/50 transition-colors duration-200 group-hover:text-content/70 ${
             bare ? pulse : ""
           }`}
         >
@@ -2257,7 +2257,7 @@ function ActivityToolRow({
 function ToolDisclosure({ open }: { open: boolean }) {
   return (
     <ChevronRight
-      className={`ml-auto size-3.5 shrink-0 text-content/35 transition-transform ${
+      className={`ml-auto size-3.5 shrink-0 text-content/40 transition-transform ${
         open ? "rotate-90" : "opacity-0 group-hover/tool:opacity-100"
       }`}
       strokeWidth={1.75}
@@ -2289,7 +2289,7 @@ function ActivityToolIcon({
 /** Failure stays marked. Running and success do not get a trailing icon. */
 function ToolCallStatusIcon({ state }: { state: ToolCallState }) {
   if (state === "rejected") {
-    return <X className="size-3.5 shrink-0 text-red-400" strokeWidth={2} />;
+    return <X className="size-3.5 shrink-0 text-danger" strokeWidth={2} />;
   }
   return null;
 }
@@ -2347,7 +2347,7 @@ function ToolCall({
   if (block.question) {
     return (
       <div className={frame}>
-        <div className="text-[12px] text-content/55">{label}</div>
+        <div className="text-[12px] text-content/50">{label}</div>
         <QuestionCard question={block.question} />
       </div>
     );
@@ -2408,7 +2408,7 @@ function ToolCall({
             />
           )}
           <ChevronRight
-            className={`size-3.5 shrink-0 text-content/35 transition-transform ${open ? "rotate-90" : ""}`}
+            className={`size-3.5 shrink-0 text-content/40 transition-transform ${open ? "rotate-90" : ""}`}
             strokeWidth={1.75}
           />
         </button>
@@ -2493,7 +2493,7 @@ function ToolCallSummary({
     return (
       <span
         className={`min-w-0 flex-1 truncate font-mono text-[13px] ${
-          failed ? "text-red-400" : chip ? "text-content/65" : "text-content/80"
+          failed ? "text-danger" : chip ? "text-content/70" : "text-content/70"
         }`}
       >
         {label}
@@ -2511,12 +2511,12 @@ function ToolCallSummary({
     "file";
   const filePath = resolveWorkspacePath(preview?.path || target, cwd);
   const canOpen = interactive && !!onOpenFile && !!filePath;
-  const actionTone = failed ? "text-red-400" : "text-content/50";
+  const actionTone = failed ? "text-danger" : "text-content/50";
   const targetTone = failed
-    ? "text-red-400"
+    ? "text-danger"
     : chip
       ? "text-content/70"
-      : "text-content/85";
+      : "text-content";
 
   return (
     <span className="flex min-w-0 flex-1 items-center gap-1.5 font-mono text-[13px]">
@@ -2528,7 +2528,7 @@ function ToolCallSummary({
         {canOpen ? (
           <button
             type="button"
-            className={`-my-0.5 flex min-w-0 cursor-pointer items-center gap-1 rounded px-1 py-0.5 text-left hover:text-sky-300 ${
+            className={`-my-0.5 flex min-w-0 cursor-pointer items-center gap-1 rounded-md px-1 py-0.5 text-left hover:text-info ${
               chip
                 ? `max-w-full bg-content/6 hover:bg-content/10 ${targetTone}`
                 : `flex-1 hover:underline ${targetTone}`
@@ -2544,7 +2544,7 @@ function ToolCallSummary({
           </button>
         ) : (
           <span
-            className={`flex min-w-0 items-center gap-1 rounded px-1 ${
+            className={`flex min-w-0 items-center gap-1 rounded-md px-1 ${
               chip
                 ? `max-w-full bg-content/6 ${targetTone}`
                 : `flex-1 ${targetTone}`
@@ -2570,7 +2570,7 @@ function ToolCallSummary({
 
 function ToolCallIcon({ state }: { state: ToolCallState }) {
   if (state === "rejected") {
-    return <X className="size-3.5 shrink-0 text-red-400" strokeWidth={2} />;
+    return <X className="size-3.5 shrink-0 text-danger" strokeWidth={2} />;
   }
   if (state === "pending") {
     return (
@@ -2596,7 +2596,7 @@ function ApprovalControls({
   const outcome = approvalOutcome(approval);
   if (approval.decided) {
     return outcome ? (
-      <div className="mt-1 font-sans text-[11px] text-content/45">{outcome}</div>
+      <div className="mt-1 font-sans text-[11px] text-content/40">{outcome}</div>
     ) : null;
   }
   return (
@@ -2605,7 +2605,7 @@ function ApprovalControls({
       <div className="flex gap-2">
       <button
         type="button"
-        className="rounded-md bg-content px-2.5 py-0.5 text-[11px] hover:bg-content/80     text-background-base"
+        className="rounded-md bg-content px-2.5 py-0.5 text-[11px] hover:bg-content/70     text-background-base"
         onClick={() => onApproval?.(approval.requestId, "allow")}
       >
         Allow
@@ -2632,7 +2632,7 @@ function ApprovalDetailView({
     return (
       <div className="flex min-w-0 flex-col gap-1">
         <span className="font-sans text-[12px] text-content/70">{detail.doing}</span>
-        <pre className="min-w-0 max-h-32 overflow-auto whitespace-pre-wrap break-all rounded-md bg-content/6 px-2 py-1 text-[12px] text-content/80">
+        <pre className="min-w-0 max-h-32 overflow-auto whitespace-pre-wrap break-all rounded-md bg-content/6 px-2 py-1 text-[12px] text-content/70">
           {detail.command}
         </pre>
       </div>
@@ -2643,7 +2643,7 @@ function ApprovalDetailView({
       <div className="flex min-w-0 flex-col gap-1">
         <span className="font-sans text-[12px] text-content/70">Write {detail.path}</span>
         {detail.added.length ? (
-          <pre className="min-w-0 max-h-32 overflow-auto whitespace-pre-wrap break-all rounded-md bg-content/6 px-2 py-1 text-[12px] text-content/80">
+          <pre className="min-w-0 max-h-32 overflow-auto whitespace-pre-wrap break-all rounded-md bg-content/6 px-2 py-1 text-[12px] text-content/70">
             {detail.added.join("\n")}
             {detail.more ? "\n…" : null}
           </pre>
@@ -2655,8 +2655,8 @@ function ApprovalDetailView({
     <dl className="grid min-w-0 grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-[12px]">
       {detail.entries.map(([key, value]) => (
         <div key={key} className="contents">
-          <dt className="text-content/45">{key}</dt>
-          <dd className="min-w-0 truncate text-content/80">{value}</dd>
+          <dt className="text-content/40">{key}</dt>
+          <dd className="min-w-0 truncate text-content/70">{value}</dd>
         </div>
       ))}
     </dl>
@@ -2681,11 +2681,11 @@ function HandoffDivider({ block }: { block: Block }) {
               ? `Preparing a handoff to ${HARNESS_TITLE[meta.to]}`
               : `Continued with ${label}`
           }
-          className="flex max-w-[min(100%,20rem)] items-center gap-1.5 px-1.5 font-sans text-[12px] text-content/55"
+          className="flex max-w-[min(100%,20rem)] items-center gap-1.5 px-1.5 font-sans text-[12px] text-content/50"
         >
           {preparing ? (
             <>
-              <TerminalSpinner className="inline-block w-3.5 shrink-0 select-none text-center text-[11px] leading-none text-content/45" />
+              <TerminalSpinner className="inline-block w-3.5 shrink-0 select-none text-center text-[11px] leading-none text-content/40" />
               <Shimmer duration={1.4}>{label}</Shimmer>
             </>
           ) : (

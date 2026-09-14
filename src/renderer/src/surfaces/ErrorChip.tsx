@@ -28,7 +28,7 @@ export function ErrorChip({
     return (
       <div
         role="status"
-        className="flex min-h-[34px] items-center gap-2 px-4 py-2 font-sans text-[12px] text-content/45"
+        className="flex min-h-[34px] items-center gap-2 px-4 py-2 font-sans text-[12px] text-content/40"
       >
         <StopCircle className="size-3.5 shrink-0" strokeWidth={1.75} />
         <span>Stopped</span>
@@ -39,13 +39,13 @@ export function ErrorChip({
   return (
     <div
       role="alert"
-      className="flex min-h-[34px] min-w-0 items-start gap-2 px-4 py-2 font-sans text-[12px] text-red-500"
+      className="flex min-h-[34px] min-w-0 items-start gap-2 px-4 py-2 font-sans text-[12px] text-danger"
     >
       <AlertCircle className="mt-0.5 size-3.5 shrink-0" strokeWidth={1.75} />
       <div className="flex min-w-0 flex-1 flex-col gap-1">
         <span className="min-w-0 break-words">
           <span className="font-medium">Failed</span>
-          {row.message ? <span className="text-red-500/80"> · {row.message}</span> : null}
+          {row.message ? <span className="text-danger"> · {row.message}</span> : null}
         </span>
         {row.showContinue ? (
           <span>

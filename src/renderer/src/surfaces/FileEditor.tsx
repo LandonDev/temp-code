@@ -342,7 +342,7 @@ export function FileEditor({
 
   if (loadState.status === "loading") {
     return (
-      <div className="grid h-full place-items-center text-[12px] text-content/45">
+      <div className="grid h-full place-items-center text-[12px] text-content/40">
         Opening {basename(path)}…
       </div>
     );
@@ -352,7 +352,7 @@ export function FileEditor({
     return (
       <div className="grid h-full place-items-center p-6">
         <div className="max-w-md text-center">
-          <AlertCircle className="mx-auto mb-3 size-5 text-red-400" />
+          <AlertCircle className="mx-auto mb-3 size-5 text-danger" />
           <p className="text-[13px] text-content">
             Couldn’t open {basename(path)}
           </p>
@@ -425,7 +425,7 @@ export function FileEditor({
           <span>Saved</span>
         ) : saveState.status === "error" ? (
           <span
-            className="max-w-64 truncate text-red-400"
+            className="max-w-64 truncate text-danger"
             title={saveState.message}
           >
             Save failed: {saveState.message}
@@ -866,11 +866,11 @@ function DiffChunkNav({
           disabled={total === 0 || index <= 0}
           onMouseDown={(event) => event.preventDefault()}
           onClick={onPrev}
-          className="grid size-6 place-items-center rounded text-content/70 hover:bg-content/10 hover:text-content disabled:opacity-35"
+          className="grid size-6 place-items-center rounded-md text-content/70 hover:bg-content/10 hover:text-content disabled:opacity-35"
         >
           <ChevronUp className="size-3.5" strokeWidth={1.75} />
         </button>
-        <span className="min-w-10 px-0.5 text-center font-mono text-[10.5px] font-medium tabular-nums text-content/55 select-none">
+        <span className="min-w-10 px-0.5 text-center font-mono text-[10.5px] font-medium tabular-nums text-content/50 select-none">
           {total === 0 ? "0/0" : `${index + 1}/${total}`}
         </span>
         <button
@@ -880,7 +880,7 @@ function DiffChunkNav({
           disabled={total === 0 || index >= total - 1}
           onMouseDown={(event) => event.preventDefault()}
           onClick={onNext}
-          className="grid size-6 place-items-center rounded text-content/70 hover:bg-content/10 hover:text-content disabled:opacity-35"
+          className="grid size-6 place-items-center rounded-md text-content/70 hover:bg-content/10 hover:text-content disabled:opacity-35"
         >
           <ChevronDown className="size-3.5" strokeWidth={1.75} />
         </button>
@@ -902,10 +902,10 @@ function DiffChunkStat({
   return (
     <span className="flex min-w-0 shrink-0 items-center gap-1.5 font-mono text-[11px] font-semibold tabular-nums">
       {additions > 0 ? (
-        <span className="text-emerald-400">+{additions}</span>
+        <span className="text-success">+{additions}</span>
       ) : null}
       {deletions > 0 ? (
-        <span className="text-red-400">-{deletions}</span>
+        <span className="text-danger">-{deletions}</span>
       ) : null}
     </span>
   );

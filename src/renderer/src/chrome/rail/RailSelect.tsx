@@ -78,7 +78,7 @@ export function RailSelect({
               <div key={gi}>
                 {gi > 0 ? <div role="separator" className="my-1 h-px bg-content/10" /> : null}
                 {group.label ? (
-                  <div className="px-2 pb-1 pt-1.5 text-[10.5px] font-medium uppercase tracking-wide text-content/40">
+                  <div className="px-2 pb-1 pt-1.5 text-[11px] font-medium uppercase tracking-wide text-content/40">
                     {group.label}
                   </div>
                 ) : null}

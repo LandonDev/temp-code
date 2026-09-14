@@ -41,7 +41,7 @@ export function ProjectLogoIcon({
         key={`${path ?? ""}:${revision}`}
         src={src}
         alt=""
-        className={`rounded-sm object-cover ${className} ${imageClassName ?? ""}`}
+        className={`rounded-md object-cover ${className} ${imageClassName ?? ""}`}
       />
     );
   }

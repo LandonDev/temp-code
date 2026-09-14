@@ -283,13 +283,13 @@ export function CwdPicker({
                     className={`flex w-full items-center justify-between gap-3 px-2.5 py-2 text-left ${
                       active === index
                         ? "bg-content/10 text-content"
-                        : "text-content/80 hover:bg-content/5"
+                        : "text-content/70 hover:bg-content/5"
                     }`}
                   >
                     <span className="min-w-0 truncate text-[13px]">
                       {basename(item.path)}
                     </span>
-                    <span className="max-w-28 shrink-0 truncate font-mono text-[11px] text-content/45">
+                    <span className="max-w-28 shrink-0 truncate font-mono text-[11px] text-content/40">
                       {prettyParent(item.path)}
                     </span>
                   </button>
@@ -316,7 +316,7 @@ export function CwdPicker({
                 className={`flex w-full items-center justify-between gap-3 px-2.5 py-2 text-left ${
                   active === moreIndex || moreOpen
                     ? "bg-content/10 text-content"
-                    : "text-content/80 hover:bg-content/5"
+                    : "text-content/70 hover:bg-content/5"
                 }`}
               >
                 <span className="text-[13px]">More Projects</span>
@@ -341,11 +341,11 @@ export function CwdPicker({
                 className={`flex w-full items-center justify-between gap-3 px-2.5 py-2 text-left ${
                   active === newTerminalIndex
                     ? "bg-content/10 text-content"
-                    : "text-content/80 hover:bg-content/5"
+                    : "text-content/70 hover:bg-content/5"
                 }`}
               >
                 <span className="text-[13px]">New terminal</span>
-                <span className="shrink-0 font-mono text-[11px] text-content/45">
+                <span className="shrink-0 font-mono text-[11px] text-content/40">
                   {MOD}`
                 </span>
               </button>
@@ -376,12 +376,12 @@ export function CwdPicker({
               title={item.path}
               onMouseDown={(e) => e.stopPropagation()}
               onClick={() => pick({ kind: "recent", path: item.path })}
-              className="flex w-full items-center justify-between gap-3 px-2.5 py-2 text-left text-content/80 hover:bg-content/5 hover:text-content"
+              className="flex w-full items-center justify-between gap-3 px-2.5 py-2 text-left text-content/70 hover:bg-content/5 hover:text-content"
             >
               <span className="min-w-0 truncate text-[13px]">
                 {basename(item.path)}
               </span>
-              <span className="max-w-28 shrink-0 truncate font-mono text-[11px] text-content/45">
+              <span className="max-w-28 shrink-0 truncate font-mono text-[11px] text-content/40">
                 {prettyParent(item.path)}
               </span>
             </button>

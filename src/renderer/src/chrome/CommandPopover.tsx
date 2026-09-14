@@ -101,7 +101,7 @@ export function CommandPopover({
                           : `/${c.name}`}
                       </span>
                       {c.description ? (
-                        <span className="min-w-0 truncate text-xs text-content/55">
+                        <span className="min-w-0 truncate text-xs text-content/50">
                           {c.description}
                         </span>
                       ) : null}
@@ -132,7 +132,7 @@ export function CommandPopover({
                       <div key={m.file.path}>
                         {label}
                         <button type="button" {...rowProps(n)}>
-                          <Icon className="size-3.5 shrink-0 text-content/55" />
+                          <Icon className="size-3.5 shrink-0 text-content/50" />
                           <span className="shrink-0 text-[13px]">{base}</span>
                           {dir ? (
                             <span className="min-w-0 truncate text-xs text-content/40">{dir}</span>
@@ -153,7 +153,7 @@ export function CommandPopover({
                         <span className="flex size-3.5 shrink-0 items-center justify-center">
                           <StatusDot status={t.status} className="size-2" />
                           {!QUIET_STATUSES.has(t.status) ? (
-                            <MessageSquare className="size-3.5 text-content/55" />
+                            <MessageSquare className="size-3.5 text-content/50" />
                           ) : null}
                         </span>
                         <span className="min-w-0 truncate text-[13px]">{t.title}</span>

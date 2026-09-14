@@ -49,7 +49,7 @@ function TypePicker({
             className={`flex h-7 items-center gap-1.5 rounded-md px-2 text-[12px] transition-colors ${
               selected
                 ? "bg-content/10 text-content"
-                : "text-content/55 hover:bg-content/5 hover:text-content/85"
+                : "text-content/50 hover:bg-content/5 hover:text-content"
             }`}
           >
             <Icon className={`size-3.5 ${selected ? THREAD_TINTS[type] : ""}`} strokeWidth={1.75} />

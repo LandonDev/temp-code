@@ -138,7 +138,7 @@ export function SessionReview({
               title="Undo all session changes"
               disabled={disabled}
               onClick={() => run("undo")}
-              className="h-6 rounded-md px-1.5  text-[11px] text-content/55 hover:bg-content/10 hover:text-content disabled:opacity-40"
+              className="h-6 rounded-md px-1.5  text-[11px] text-content/50 hover:bg-content/10 hover:text-content disabled:opacity-40"
             >
               Undo All
             </button>
@@ -147,7 +147,7 @@ export function SessionReview({
               title="Keep all session changes"
               disabled={disabled}
               onClick={() => run("keep")}
-              className="h-6 rounded-md px-1.5  text-[11px] text-content/55 hover:bg-content/10 hover:text-content disabled:opacity-40"
+              className="h-6 rounded-md px-1.5  text-[11px] text-content/50 hover:bg-content/10 hover:text-content disabled:opacity-40"
             >
               Keep All
             </button>
@@ -155,7 +155,7 @@ export function SessionReview({
               type="button"
               title="Review changes"
               onClick={() => onOpenDiff()}
-              className="h-6 rounded-md bg-content/15 px-2 text-[11px] text-content/80 hover:bg-content/20 hover:text-content"
+              className="h-6 rounded-md bg-content/15 px-2 text-[11px] text-content/70 hover:bg-content/20 hover:text-content"
             >
               Review
             </button>
@@ -188,7 +188,7 @@ function FileLabel({
       type="button"
       title={file.relative}
       onClick={() => onOpenDiff(file.path)}
-      className="flex min-w-0 flex-1 items-center gap-1.5 py-0.5 text-left text-content/80 hover:text-content"
+      className="flex min-w-0 flex-1 items-center gap-1.5 py-0.5 text-left text-content/70 hover:text-content"
     >
       <FileTypeIcon name={name} isDir={false} size={14} />
       <span className="min-w-0 truncate font-mono text-[12px]">{name}</span>
@@ -210,7 +210,7 @@ function FileRow({
       type="button"
       title={file.relative}
       onClick={() => onOpenDiff(file.path)}
-      className="flex h-7 w-full min-w-0 items-center gap-1.5 rounded-md px-1 text-left text-content/80 hover:bg-content/10 hover:text-content"
+      className="flex h-7 w-full min-w-0 items-center gap-1.5 rounded-md px-1 text-left text-content/70 hover:bg-content/10 hover:text-content"
     >
       <FileTypeIcon name={name} isDir={false} size={16} />
       <span className="min-w-0 flex-1 truncate font-mono text-[12px]">
@@ -226,11 +226,11 @@ function DiffCounts({ file }: { file: CheckpointFile }) {
   return (
     <span className="shrink-0 font-mono text-[11px] font-semibold">
       {file.additions > 0 ? (
-        <span className="text-emerald-400">+{file.additions}</span>
+        <span className="text-success">+{file.additions}</span>
       ) : null}
       {file.additions > 0 && file.deletions > 0 ? " " : null}
       {file.deletions > 0 ? (
-        <span className="text-red-400">-{file.deletions}</span>
+        <span className="text-danger">-{file.deletions}</span>
       ) : null}
     </span>
   );

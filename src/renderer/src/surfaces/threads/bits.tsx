@@ -70,10 +70,10 @@ export function StatusDot({
   className?: string;
 }) {
   const color: Partial<Record<SessionStatus, string>> = {
-    running: "bg-success animate-pulse",
-    waiting: "bg-warning animate-pulse",
+    running: "bg-success motion-safe:animate-pulse",
+    waiting: "bg-warning motion-safe:animate-pulse",
     error: "bg-danger",
-    starting: "bg-content/50 animate-pulse",
+    starting: "bg-content/50 motion-safe:animate-pulse",
   };
   const c = status ? color[status] : undefined;
   if (!c) return null;
@@ -178,7 +178,7 @@ export function Spinner({ className = "size-3" }: { className?: string }) {
   return (
     <span
       aria-hidden
-      className={`inline-block shrink-0 animate-spin rounded-full border-[1.5px] border-current border-t-transparent ${className}`}
+      className={`inline-block shrink-0 motion-safe:animate-spin rounded-full border-[1.5px] border-current border-t-transparent ${className}`}
     />
   );
 }

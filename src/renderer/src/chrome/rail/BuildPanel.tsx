@@ -169,7 +169,7 @@ export function BuildPanel({ projectId }: { projectId: string }) {
         {effective ? (
           <div className="truncate font-mono text-content/50" title={effective.command}>
             {effective.command}
-            {effective.source !== "project" ? <span className="text-content/35"> · {effective.source}</span> : null}
+            {effective.source !== "project" ? <span className="text-content/40"> · {effective.source}</span> : null}
           </div>
         ) : effective === null ? (
           <span className="text-content/50">
@@ -258,8 +258,8 @@ function RemoteLine({
         <div className="mt-1 h-0.5 w-full overflow-hidden rounded-full bg-content/10">
           <div
             className={cn(
-              "h-full bg-content/60 transition-[width] duration-200",
-              progress?.percent == null && "w-1/4 animate-pulse",
+              "h-full bg-content/50 transition-[width] duration-200",
+              progress?.percent == null && "w-1/4 motion-safe:animate-pulse",
             )}
             style={progress?.percent != null ? { width: `${progress.percent}%` } : undefined}
           />
@@ -285,7 +285,7 @@ function Log({ lines, runId }: { lines: string[]; runId: string | null }) {
         const el = ref.current;
         if (el) stick.current = el.scrollTop + el.clientHeight >= el.scrollHeight - 12;
       }}
-      className="min-h-0 flex-1 overflow-y-auto px-3 py-2 font-mono text-[11px] leading-relaxed text-content/60"
+      className="min-h-0 flex-1 overflow-y-auto px-3 py-2 font-mono text-[11px] leading-relaxed text-content/50"
     >
       {lines.length === 0 && !runId ? (
         <p className="py-6 text-center font-sans text-[11px] text-content/40">No builds yet</p>
@@ -341,7 +341,7 @@ function Outputs({ outputs }: { outputs: BuildRun["outputs"] }) {
                 {o.path.includes("/") ? o.path.slice(0, o.path.lastIndexOf("/")) : ""}
               </span>
             </span>
-            <span className="shrink-0 text-[10.5px] tabular-nums text-content/40">
+            <span className="shrink-0 text-[11px] tabular-nums text-content/40">
               {o.fresh ? fmtSize(o.size) : "not rebuilt"}
             </span>
           </button>

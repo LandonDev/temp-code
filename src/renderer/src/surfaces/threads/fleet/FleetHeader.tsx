@@ -4,8 +4,8 @@ import type { SessionMeta, SessionStatus } from "../../../lib/tcserver/types";
 const SEG: Partial<Record<SessionStatus, string>> = {
   idle: "bg-success",
   done: "bg-success",
-  running: "bg-success/35 animate-pulse",
-  starting: "bg-success/35 animate-pulse",
+  running: "bg-success/35 motion-safe:animate-pulse",
+  starting: "bg-success/35 motion-safe:animate-pulse",
   waiting: "bg-warning",
   error: "bg-danger",
 };
@@ -27,12 +27,12 @@ export function FleetHeader({ goal, agents }: { goal: string; agents: SessionMet
           <span key={a.id} className={`flex-1 rounded-full ${SEG[a.status] ?? "bg-content/20"}`} />
         ))}
       </div>
-      <div className="mt-2 flex gap-2 text-[11px] tabular-nums text-content/45">
+      <div className="mt-2 flex gap-2 text-[11px] tabular-nums text-content/40">
         {counts
           .filter(([n]) => n > 0)
           .map(([n, label, tone], i) => (
             <span key={label} className={tone}>
-              {i > 0 && <span className="mr-2 text-content/25">·</span>}
+              {i > 0 && <span className="mr-2 text-content/20">·</span>}
               {n} {label}
             </span>
           ))}

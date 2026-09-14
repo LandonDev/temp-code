@@ -59,7 +59,7 @@ export function Favicon({ url }: { url: string }) {
   const [failed, setFailed] = useState(false);
   if (!host || failed) {
     return (
-      <span className="flex size-4 shrink-0 items-center justify-center rounded bg-content/8 text-[9px] font-semibold text-content/55 uppercase">
+      <span className="flex size-4 shrink-0 items-center justify-center rounded-md bg-content/8 text-[9px] font-semibold text-content/50 uppercase">
         {host[0] ?? "?"}
       </span>
     );
@@ -69,7 +69,7 @@ export function Favicon({ url }: { url: string }) {
       src={`https://www.google.com/s2/favicons?domain=${host}&sz=64`}
       onError={() => setFailed(true)}
       alt=""
-      className="size-4 shrink-0 rounded"
+      className="size-4 shrink-0 rounded-md"
     />
   );
 }
@@ -168,7 +168,7 @@ export function ResearchView(props: ThreadViewProps) {
             onClick={() => setChatOpen(false)}
             title="Hide conversation"
             aria-label="Hide conversation"
-            className="flex size-6 items-center justify-center rounded-md text-content/55 transition-colors hover:bg-content/5 hover:text-content"
+            className="flex size-6 items-center justify-center rounded-md text-content/50 transition-colors hover:bg-content/5 hover:text-content"
           >
             <ChevronRight className="size-3.5" strokeWidth={1.75} />
           </button>
@@ -241,7 +241,7 @@ function ReportPane({
           {report.title ?? session.title}
         </p>
         {!complete ? (
-          <span className="flex shrink-0 items-center gap-1.5 text-[11px] text-content/55">
+          <span className="flex shrink-0 items-center gap-1.5 text-[11px] text-content/50">
             {running ? <Spinner className="size-3" /> : null}
             in progress
           </span>
@@ -257,7 +257,7 @@ function ReportPane({
           />
         </div>
       ) : report.summary ? (
-        <p className="mt-1 text-[12px] leading-snug text-content/55">{report.summary}</p>
+        <p className="mt-1 text-[12px] leading-snug text-content/50">{report.summary}</p>
       ) : null}
     </motion.div>
   );
@@ -303,14 +303,14 @@ function AngleGroup({
       >
         <span className="min-w-0 truncate text-[12px] font-medium">{label}</span>
         {live ? (
-          <span className="flex shrink-0 items-center gap-1.5 text-[11px] text-content/55">
+          <span className="flex shrink-0 items-center gap-1.5 text-[11px] text-content/50">
             <Spinner className="size-3" />
             {angleStatus(agent.blocks)}…
           </span>
         ) : null}
         {!self ? (
           <ChevronRight
-            className="ml-auto size-3 shrink-0 text-content/35 opacity-0 transition-opacity group-hover:opacity-100"
+            className="ml-auto size-3 shrink-0 text-content/40 opacity-0 transition-opacity group-hover:opacity-100"
             strokeWidth={1.75}
           />
         ) : null}
@@ -318,7 +318,7 @@ function AngleGroup({
       {angle.queries.map((q, i) => (
         <div key={i}>
           {q.query ? (
-            <div className="mt-1.5 flex items-center gap-1.5 px-2 text-[11px] text-content/55">
+            <div className="mt-1.5 flex items-center gap-1.5 px-2 text-[11px] text-content/50">
               <Search className="size-3 shrink-0" strokeWidth={1.75} />
               <span className="truncate">{q.query}</span>
             </div>

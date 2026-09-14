@@ -115,7 +115,7 @@ export function AgentDetail({
               <StatusDot status={meta.status} />
               <span className="truncate text-[13px] font-medium text-content">{meta.title || "Subagent"}</span>
             </div>
-            <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-content/45">
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-content/40">
               <span className="inline-flex items-center gap-1">
                 <HarnessIcon harness={harness} className="size-3" />
                 {meta.agentType} · {modelLabel(meta.provider, meta.model)} · {meta.reasoning}
@@ -137,7 +137,7 @@ export function AgentDetail({
                 close();
                 onOpenSession(agentId);
               }}
-              className="h-6 shrink-0 rounded-md px-2 text-[11px] font-medium text-content/55 transition-colors hover:bg-content/5 hover:text-content"
+              className="h-6 shrink-0 rounded-md px-2 text-[11px] font-medium text-content/50 transition-colors hover:bg-content/5 hover:text-content"
             >
               Open
             </button>
@@ -146,7 +146,7 @@ export function AgentDetail({
             type="button"
             onClick={close}
             aria-label="Close"
-            className="flex size-6 shrink-0 items-center justify-center rounded-md text-content/45 transition-colors hover:bg-content/5 hover:text-content"
+            className="flex size-6 shrink-0 items-center justify-center rounded-md text-content/40 transition-colors hover:bg-content/5 hover:text-content"
           >
             <X className="size-3.5" />
           </button>
@@ -186,7 +186,7 @@ export function AgentDetail({
             onChange={(e) => setText(e.target.value)}
             placeholder={live ? "Steer this agent…" : "Send to this agent…"}
             disabled={!session}
-            className="h-7 min-w-0 flex-1 rounded-md bg-content/5 px-2.5 text-[13px] text-content outline-none placeholder:text-content/35"
+            className="h-7 min-w-0 flex-1 rounded-md bg-content/5 px-2.5 text-[13px] text-content outline-none placeholder:text-content/40"
           />
           <button
             type="submit"

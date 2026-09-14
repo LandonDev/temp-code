@@ -29,7 +29,7 @@ export function Row({
       <div className="min-w-0 flex-1">
         <div className="text-[13px] font-medium text-content">{label}</div>
         {description ? (
-          <p className="mt-1 text-[12px] leading-relaxed text-content/45">
+          <p className="mt-1 text-[12px] leading-relaxed text-content/40">
             {description}
           </p>
         ) : null}
@@ -155,7 +155,7 @@ export function SecondaryButton({
       disabled={disabled}
       className={`flex shrink-0 items-center gap-1.5 rounded-md border border-content/10 px-2.5 py-1 text-[12px] ${
         danger
-          ? "text-red-400 hover:border-red-400/40 hover:bg-red-400/10"
+          ? "text-danger hover:border-danger/40 hover:bg-danger/10"
           : "text-content/70 hover:bg-content/10 hover:text-content"
       } disabled:cursor-default disabled:opacity-40 disabled:hover:bg-transparent`}
     >

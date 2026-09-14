@@ -36,7 +36,7 @@ export function TabIndicator({ thread }: { thread: TabThread }) {
   const tally = tasks ? (
     <span
       className={`shrink-0 text-[11px] tabular-nums ${
-        tasks.done === tasks.total ? "text-success" : "text-content/60"
+        tasks.done === tasks.total ? "text-success" : "text-content/50"
       }`}
       title={`${tasks.done} of ${tasks.total} tasks done`}
     >
@@ -52,14 +52,14 @@ export function TabIndicator({ thread }: { thread: TabThread }) {
         <span className="flex shrink-0 items-center gap-1" title={thread.activity ?? undefined}>
           <MatrixSpinner cell={1.8} tint={thread.activityKind} />
           <span
-            className={`shrink-0 text-right text-[11px] whitespace-nowrap tabular-nums text-content/45 ${
+            className={`shrink-0 text-right text-[11px] whitespace-nowrap tabular-nums text-content/40 ${
               ms < 3000 ? "opacity-0" : ""
             }`}
           >
             {duration(ms)}
           </span>
           {!tally && verb ? (
-            <span className="w-14 shrink-0 truncate text-left text-[11px] text-content/60">{verb}</span>
+            <span className="w-14 shrink-0 truncate text-left text-[11px] text-content/50">{verb}</span>
           ) : null}
         </span>
       );
@@ -67,9 +67,9 @@ export function TabIndicator({ thread }: { thread: TabThread }) {
     if (status === "paused") {
       return (
         <span className="flex shrink-0 items-center gap-1 text-[11px] font-medium text-warning">
-          <Pause className="size-3 fill-current" strokeWidth={1.8} />
+          <Pause className="size-3 fill-current" strokeWidth={1.75} />
           Paused
-          <span className="font-normal tabular-nums text-current/75">
+          <span className="font-normal tabular-nums text-current/70">
             {duration(Math.max(0, thread.frozenElapsed ?? 0))}
           </span>
         </span>
@@ -78,7 +78,7 @@ export function TabIndicator({ thread }: { thread: TabThread }) {
     if (status === "waiting") {
       return (
         <span className="flex shrink-0 items-center gap-1 text-[11px] font-medium text-warning">
-          <span className="size-1.5 animate-pulse rounded-full bg-warning" />
+          <span className="size-1.5 motion-safe:animate-pulse rounded-full bg-warning" />
           Needs you
         </span>
       );

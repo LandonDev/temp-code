@@ -13,7 +13,7 @@ import { agentProviderOf } from "./toolMarks";
 export function ConnectorMark({ app, className = "" }: { app: string; className?: string }) {
   return (
     <span className={`grid size-3.5 shrink-0 place-items-center ${className}`} title={addonTitle(app)}>
-      <AddonMark command={{ name: app, source: "mcp" }} size={13} colored={false} className="text-content/60" />
+      <AddonMark command={{ name: app, source: "mcp" }} size={13} colored={false} className="text-content/50" />
     </span>
   );
 }
@@ -31,7 +31,7 @@ export function SubagentMark({ block, className = "" }: { block: Block; classNam
 
 export function ProviderMark({ harness, className = "" }: { harness: HarnessId; className?: string }) {
   return (
-    <span className={`grid size-3.5 shrink-0 place-items-center text-content/60 ${className}`}>
+    <span className={`grid size-3.5 shrink-0 place-items-center text-content/50 ${className}`}>
       <HarnessIcon harness={asHarness(harness)} className="size-3" />
     </span>
   );
@@ -82,8 +82,8 @@ export function ConnectorSummary({
   chip?: boolean;
   failed?: boolean;
 }) {
-  const appTone = failed ? "text-red-400" : "text-content/50";
-  const actionTone = failed ? "text-red-400" : chip ? "text-content/70" : "text-content/85";
+  const appTone = failed ? "text-danger" : "text-content/50";
+  const actionTone = failed ? "text-danger" : chip ? "text-content/70" : "text-content";
   return (
     <span className="flex min-w-0 flex-1 items-center gap-1.5 font-sans text-sm">
       {display.app ? <span className={`shrink-0 ${appTone}`}>{addonTitle(display.app)}</span> : null}
@@ -101,7 +101,7 @@ export function CommandChip({ command }: { command: Pick<SlashCommand, "name" | 
   const proper = command.source === "mcp" || command.source === "plugin";
   return (
     <span
-      className="inline-flex items-center gap-1 rounded-sm bg-content/10 px-1 align-baseline text-[13px] text-content"
+      className="inline-flex items-center gap-1 rounded-md bg-content/10 px-1 align-baseline text-[13px] text-content"
       title={`/${command.name}`}
     >
       <AddonMark command={command} size={11} colored={false} />

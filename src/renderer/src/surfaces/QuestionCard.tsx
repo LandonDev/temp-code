@@ -89,7 +89,7 @@ export function QuestionCard({
         <button
           type="button"
           disabled={!complete}
-          className="rounded-md bg-content px-2.5 py-0.5 text-[11px] text-background-base hover:bg-content/80 disabled:opacity-40"
+          className="rounded-md bg-content px-2.5 py-0.5 text-[11px] text-background-base hover:bg-content/70 disabled:opacity-40"
           onClick={go}
         >
           {advanceLabel(state, count)}
@@ -130,7 +130,7 @@ export function QuestionPage({
       {spec.header ? (
         <div className="text-[11px] uppercase tracking-wide text-content/40">{spec.header}</div>
       ) : null}
-      <div className="text-[13px] leading-5 text-content/85">{spec.question}</div>
+      <div className="text-[13px] leading-5 text-content">{spec.question}</div>
       <div className="flex flex-wrap gap-1.5">
         {spec.options.map((option) => {
           const on = picked.includes(option.label);
@@ -157,7 +157,7 @@ export function QuestionPage({
           type="text"
           value={other}
           placeholder="Other"
-          className="w-full max-w-sm rounded-md border border-content/12 bg-transparent px-2 py-1 text-[12px] text-content/85 outline-none placeholder:text-content/35 focus:border-content/30"
+          className="w-full max-w-sm rounded-md border border-content/12 bg-transparent px-2 py-1 text-[12px] text-content outline-none placeholder:text-content/40 focus:border-content/30"
           onChange={(e) => onType(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === "Enter") onEnter();
@@ -170,14 +170,14 @@ export function QuestionPage({
 
 function AnsweredQuestions({ question }: { question: QuestionMeta }) {
   return (
-    <div className="mt-1 flex flex-col gap-1 text-[12px] text-content/60">
+    <div className="mt-1 flex flex-col gap-1 text-[12px] text-content/50">
       {question.answers === null ? (
         <span>Dismissed</span>
       ) : (
         question.questions.map((q, i) => (
           <div key={i} className="flex min-w-0 gap-1.5">
-            <span className="shrink-0 text-content/45">{q.header ?? q.question}</span>
-            <span className="min-w-0 truncate text-content/80">
+            <span className="shrink-0 text-content/40">{q.header ?? q.question}</span>
+            <span className="min-w-0 truncate text-content/70">
               {question.answers?.[i]?.join(", ") || "No answer"}
             </span>
           </div>

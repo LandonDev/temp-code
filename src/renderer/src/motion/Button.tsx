@@ -14,12 +14,11 @@ import {
 } from "react";
 import { EASE_OUT, SPRING_PRESS } from "../lib/ease";
 import { cn } from "./cn";
-import { useHoverCapable } from "./useHoverCapable";
 
 /**
- * The pressable: scales down on tap on a quick spring, lifts a hair on
- * hover where a real pointer exists, and can spawn a ripple from the
- * press point. Variants carry MonoCode's colours; the motion is temp-code's.
+ * The pressable: scales to 0.96 on tap on a quick spring (hover changes
+ * colour only) and can spawn a short ripple from the press point. Under
+ * reduced motion the press is a wash instead of a scale.
  */
 
 export type ButtonVariant = "primary" | "secondary" | "ghost" | "outline";
@@ -45,9 +44,9 @@ type Ripple = { id: number; x: number; y: number; size: number };
 
 const VARIANT_CLASS: Record<ButtonVariant, string> = {
   primary: "bg-accent text-white hover:bg-accent/90",
-  secondary: "border border-content/10 bg-content/8 text-content hover:bg-content/12",
+  secondary: "border border-content/10 bg-content/8 text-content hover:bg-content/10",
   ghost: "text-content/70 hover:bg-content/8 hover:text-content",
-  outline: "border border-content/15 bg-transparent text-content hover:bg-content/6",
+  outline: "border border-content/10 bg-transparent text-content hover:bg-content/5",
 };
 
 const SIZE_CLASS: Record<ButtonSize, string> = {
@@ -58,13 +57,15 @@ const SIZE_CLASS: Record<ButtonSize, string> = {
 };
 
 const BASE_CLASS =
-  "inline-flex select-none items-center justify-center font-medium transition-colors disabled:pointer-events-none disabled:opacity-50";
+  "inline-flex select-none items-center justify-center font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:pointer-events-none disabled:opacity-50";
+/** Reduced motion keeps a press wash so the tap still answers. */
+const REDUCE_CLASS = "active:bg-content/10";
 
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
   {
     variant = "primary",
     size = "md",
-    pressScale = 0.93,
+    pressScale = 0.96,
     ripple = false,
     className,
     children,
@@ -74,7 +75,6 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
   ref,
 ) {
   const reduce = useReducedMotion();
-  const canHover = useHoverCapable();
   const [ripples, setRipples] = useState<Ripple[]>([]);
   const nextId = useRef(0);
 
@@ -99,11 +99,11 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
       ref={ref}
       type="button"
       whileTap={reduce ? undefined : { scale: pressScale }}
-      whileHover={reduce || !canHover ? undefined : { scale: 1.02 }}
       transition={SPRING_PRESS}
       onPointerDown={handlePointerDown}
       className={cn(
         BASE_CLASS,
+        reduce && REDUCE_CLASS,
         ripple && "relative overflow-hidden",
         VARIANT_CLASS[variant],
         SIZE_CLASS[size],
@@ -122,7 +122,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
                 initial={{ scale: 0.05, opacity: 0.3 }}
                 animate={{ scale: 1, opacity: 0 }}
                 exit={{ opacity: 0 }}
-                transition={{ duration: 1.6, ease: EASE_OUT }}
+                transition={{ duration: 0.4, ease: EASE_OUT }}
                 onAnimationComplete={() =>
                   setRipples((prev) => prev.filter((x) => x.id !== r.id))
                 }
@@ -137,18 +137,16 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
 });
 
 export const ButtonLink = forwardRef<HTMLAnchorElement, ButtonLinkProps>(function ButtonLink(
-  { variant = "primary", size = "md", pressScale = 0.93, className, children, ...rest },
+  { variant = "primary", size = "md", pressScale = 0.96, className, children, ...rest },
   ref,
 ) {
   const reduce = useReducedMotion();
-  const canHover = useHoverCapable();
   return (
     <motion.a
       ref={ref}
       whileTap={reduce ? undefined : { scale: pressScale }}
-      whileHover={reduce || !canHover ? undefined : { scale: 1.02 }}
       transition={SPRING_PRESS}
-      className={cn(BASE_CLASS, VARIANT_CLASS[variant], SIZE_CLASS[size], className)}
+      className={cn(BASE_CLASS, reduce && REDUCE_CLASS, VARIANT_CLASS[variant], SIZE_CLASS[size], className)}
       {...rest}
     >
       {children}

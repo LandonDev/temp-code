@@ -87,7 +87,7 @@ export const CodeBlock = memo(function CodeBlock({
           onClick={copy}
           title={copied ? "Copied" : "Copy code"}
           aria-label={copied ? "Copied" : "Copy code"}
-          className="-my-1 -mr-1 grid size-6 shrink-0 place-items-center rounded-md text-content/45 transition-colors hover:bg-content/8 hover:text-content/80"
+          className="-my-1 -mr-1 grid size-6 shrink-0 place-items-center rounded-md text-content/40 transition-colors hover:bg-content/8 hover:text-content/70"
         >
           {copied ? (
             <Check className="size-3.5" strokeWidth={1.75} />

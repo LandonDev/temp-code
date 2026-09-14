@@ -28,7 +28,7 @@ export function OrchestrationView(props: ThreadViewProps) {
   }, [session.blocks]);
   const empty = session.blocks.length === 0 && !hasBoard && !session.busy;
   const topSlot = empty ? (
-    <p className="mx-auto w-full max-w-[688px] px-6 pb-2 text-[13px] text-content/45">
+    <p className="mx-auto w-full max-w-[688px] px-6 pb-2 text-[13px] text-content/40">
       Describe the goal. The orchestrator splits it across subagents and picks a model for each.
     </p>
   ) : undefined;

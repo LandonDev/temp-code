@@ -16,7 +16,7 @@ export function TextShimmer({
 }) {
   const reduce = useReducedMotion();
   const shown = usePaneVisible();
-  if (reduce || !shown) return <span className={cn("text-content/55", className)}>{children}</span>;
+  if (reduce || !shown) return <span className={cn("text-content/50", className)}>{children}</span>;
   return (
     <span
       className={cn(

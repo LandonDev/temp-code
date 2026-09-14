@@ -30,8 +30,8 @@ export function AppToolSummary({
   const onSelectSession = useContext(SelectSessionContext);
   const openDetail = useOpenAgentDetail();
   const open = agent && openDetail ? openDetail : onSelectSession;
-  const actionTone = failed ? "text-red-400" : "text-content/50";
-  const targetTone = failed ? "text-red-400" : chip ? "text-content/70" : "text-content/85";
+  const actionTone = failed ? "text-danger" : "text-content/50";
+  const targetTone = failed ? "text-danger" : chip ? "text-content/70" : "text-content";
   const link = view.threadId && open ? view.threadId : undefined;
   return (
     <span className="flex min-w-0 flex-1 items-center gap-1.5 font-sans text-sm">
@@ -39,7 +39,7 @@ export function AppToolSummary({
       {link ? (
         <button
           type="button"
-          className={`-my-0.5 min-w-0 truncate rounded px-1 py-0.5 text-left hover:text-sky-300 hover:underline ${
+          className={`-my-0.5 min-w-0 truncate rounded-md px-1 py-0.5 text-left hover:text-info hover:underline ${
             chip ? `max-w-full bg-content/6 hover:bg-content/10 ${targetTone}` : targetTone
           }`}
           title={view.detail}

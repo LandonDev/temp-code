@@ -119,7 +119,7 @@ function PermissionRow({
     <Row label={label} description={description}>
       <span className="flex items-center gap-1.5 text-[12px] text-content/70">
         {granted === null ? (
-          <span className="text-content/35">Checking…</span>
+          <span className="text-content/40">Checking…</span>
         ) : (
           <>
             <span

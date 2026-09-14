@@ -20,7 +20,7 @@ export const buildOrNull = (c: BuildConfig | null): BuildConfig | null =>
   c && c.command.trim() ? { command: c.command.trim(), outputs: c.outputs.trim() } : null;
 
 const INPUT =
-  "rounded-md border border-content/10 bg-content/5 px-2 py-1 font-mono text-[11.5px] text-content outline-none placeholder:text-content/35 hover:border-content/20 focus:border-accent/60";
+  "rounded-md border border-content/10 bg-content/5 px-2 py-1 font-mono text-[12px] text-content outline-none placeholder:text-content/40 hover:border-content/20 focus:border-accent/60";
 
 export function BuildFields({
   value,

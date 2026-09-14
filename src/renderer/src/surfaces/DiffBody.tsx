@@ -25,7 +25,7 @@ export function DiffBody({
         row.type === "gap" ? (
           <div
             key={n}
-            className="select-none pl-7 font-mono text-[10px] leading-4 text-content/35"
+            className="select-none pl-7 font-mono text-[10px] leading-4 text-content/40"
           >
             ⋯
           </div>
@@ -34,7 +34,7 @@ export function DiffBody({
         ),
       )}
       {rows.length > DIFF_LINE_CAP && visible === undefined ? (
-        <div className="pl-7 font-mono text-[10px] leading-4 text-content/35">
+        <div className="pl-7 font-mono text-[10px] leading-4 text-content/40">
           … diff truncated
         </div>
       ) : null}
@@ -51,10 +51,10 @@ function DiffLine({
 }) {
   const add = row.type === "add";
   const del = row.type === "del";
-  const bg = add ? "bg-teal-800/20" : del ? "bg-rose-800/20" : "";
-  const bar = add ? "bg-teal-400" : del ? "bg-rose-400" : "bg-transparent";
+  const bg = add ? "bg-success/10" : del ? "bg-danger/10" : "";
+  const bar = add ? "bg-success" : del ? "bg-danger" : "bg-transparent";
   const mark = add ? "+" : del ? "−" : " ";
-  const markColor = add ? "text-teal-300" : del ? "text-rose-300" : "text-content/30";
+  const markColor = add ? "text-success" : del ? "text-danger" : "text-content/30";
   const number = del ? row.oldNo : row.newNo;
   const editable = onEditAt !== undefined && !del && row.newNo !== undefined;
   const line = row.newNo;
@@ -67,7 +67,7 @@ function DiffLine({
       onClick={editable && line !== undefined ? () => onEditAt(line) : undefined}
     >
       <span className={`absolute inset-y-0 left-0 w-0.5 ${bar}`} />
-      <span className="w-7 shrink-0 pr-1 text-right font-mono text-[10px] text-content/35">
+      <span className="w-7 shrink-0 pr-1 text-right font-mono text-[10px] text-content/40">
         {number ?? ""}
       </span>
       <span className={`w-3 shrink-0 text-center font-mono text-[10px] font-bold ${markColor}`}>

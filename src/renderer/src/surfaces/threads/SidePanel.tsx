@@ -32,7 +32,7 @@ export function SidePanel({ label, status, children }: { label: string; status?:
           onClick={() => setOpen(true)}
           title={label}
           aria-label={`Expand ${label}`}
-          className="group flex h-full flex-col items-center gap-3 pt-2.5 text-content/55 transition-colors hover:bg-content/5 hover:text-content"
+          className="group flex h-full flex-col items-center gap-3 pt-2.5 text-content/50 transition-colors hover:bg-content/5 hover:text-content"
           style={{ width: RAIL_W }}
         >
           <PanelRight className="size-4" strokeWidth={1.75} />
@@ -52,12 +52,12 @@ export function SidePanel({ label, status, children }: { label: string; status?:
       >
         <div className="flex h-9 shrink-0 items-center gap-2 border-b border-content/10 pr-1.5 pl-3">
           <span className="text-[10px] font-medium tracking-[0.08em] text-content/50 uppercase">{label}</span>
-          {running ? <Spinner className="size-3 text-content/35" /> : null}
+          {running ? <Spinner className="size-3 text-content/40" /> : null}
           <button
             type="button"
             onClick={() => setOpen(false)}
             aria-label={`Collapse ${label}`}
-            className="ml-auto flex size-6 items-center justify-center rounded-md text-content/55 transition hover:bg-content/5 hover:text-content active:scale-95"
+            className="ml-auto flex size-6 items-center justify-center rounded-md text-content/50 transition hover:bg-content/5 hover:text-content active:scale-95"
           >
             <PanelRight className="size-3.5" strokeWidth={1.75} />
           </button>

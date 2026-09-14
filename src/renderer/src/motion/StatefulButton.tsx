@@ -1,13 +1,13 @@
-import { AnimatePresence, motion, useReducedMotion, type Variants } from "motion/react";
-import { forwardRef, type ReactNode, useLayoutEffect, useRef, useState } from "react";
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
+import { forwardRef, type ReactNode } from "react";
 import { Check, LoaderCircle, X } from "../chrome/icons";
-import { EASE_OUT, SPRING_SWAP } from "../lib/ease";
+import { EASE_OUT } from "../lib/ease";
 import { Button, type ButtonProps } from "./Button";
 
 /**
  * A button with four states — idle, loading, success, error. The label
- * rolls letter by letter (a short cascade) and the width follows, so the
- * state change reads as one motion instead of a swap.
+ * crossfades (150 ms, opacity only) inside a footprint sized by the widest
+ * state, so the row never reflows while a save is in flight.
  */
 
 export type ButtonState = "idle" | "loading" | "success" | "error";
@@ -21,131 +21,7 @@ export interface StatefulButtonProps extends Omit<ButtonProps, "children"> {
   icon?: ReactNode;
 }
 
-const CASCADE_STAGGER = 0.025;
-const ROLL_BLUR = "blur(6px)";
-
-const CASCADE_LETTER_VARIANTS: Variants = {
-  initial: { opacity: 0, y: "105%", filter: ROLL_BLUR },
-  animate: (delay: number = 0) => ({
-    opacity: 1,
-    y: "0%",
-    filter: "blur(0px)",
-    transition: { ...SPRING_SWAP, delay },
-  }),
-  exit: (delay: number = 0) => ({
-    opacity: 0,
-    y: "-105%",
-    filter: ROLL_BLUR,
-    transition: { duration: 0.16, ease: EASE_OUT, delay: delay * 0.5 },
-  }),
-};
-
-const ICON_VARIANTS: Variants = {
-  // Width collapses too, so the icon adds/removes its own space smoothly
-  // instead of popping the row width in a single frame.
-  initial: { opacity: 0, width: 0, scale: 0.7, filter: ROLL_BLUR },
-  animate: { opacity: 1, width: "1.5rem", scale: 1, filter: "blur(0px)", transition: SPRING_SWAP },
-  exit: {
-    opacity: 0,
-    width: 0,
-    scale: 0.7,
-    filter: ROLL_BLUR,
-    transition: { duration: 0.16, ease: EASE_OUT },
-  },
-};
-
-function IconSlot({ keyId, children }: { keyId: string; children: ReactNode }) {
-  const reduce = useReducedMotion();
-  return (
-    <motion.span
-      key={keyId}
-      variants={ICON_VARIANTS}
-      initial={reduce ? { opacity: 0 } : "initial"}
-      animate={reduce ? { opacity: 1 } : "animate"}
-      exit={reduce ? { opacity: 0 } : "exit"}
-      transition={reduce ? { duration: 0.15 } : undefined}
-      className="inline-grid shrink-0 place-items-center overflow-hidden"
-    >
-      {children}
-    </motion.span>
-  );
-}
-
-function TextSlot({ value, children }: { value: string; children: ReactNode }) {
-  const reduce = useReducedMotion();
-  const measureRef = useRef<HTMLSpanElement>(null);
-  const [width, setWidth] = useState<number>();
-  const label = typeof children === "string" ? children : null;
-  const cascade = label !== null && !reduce;
-
-  // Measure with the same per-letter layout as the cascade: the whole string
-  // keeps its kerning and can come out narrower than inline-block letters,
-  // which would clip the last glyph while the width animates.
-  useLayoutEffect(() => {
-    const nextWidth = measureRef.current?.offsetWidth;
-    if (!nextWidth) return;
-    setWidth((current) => (current === nextWidth ? current : nextWidth));
-  });
-
-  return (
-    <motion.span
-      initial={false}
-      animate={{ width }}
-      transition={reduce ? { duration: 0 } : SPRING_SWAP}
-      className="relative inline-block overflow-hidden whitespace-nowrap align-bottom"
-    >
-      <span ref={measureRef} aria-hidden className="invisible inline-block whitespace-nowrap">
-        {cascade
-          ? label.split("").map((char, index) => (
-              <span key={index} className="inline-block whitespace-pre">
-                {char}
-              </span>
-            ))
-          : children}
-      </span>
-
-      {cascade ? (
-        <>
-          <span className="sr-only">{label}</span>
-          <AnimatePresence initial={false}>
-            <motion.span
-              key={`cascade-${value}`}
-              aria-hidden
-              initial="initial"
-              animate="animate"
-              exit="exit"
-              className="absolute left-0 top-0 inline-block whitespace-pre"
-            >
-              {label.split("").map((char, index) => (
-                <motion.span
-                  key={index}
-                  custom={index * CASCADE_STAGGER}
-                  variants={CASCADE_LETTER_VARIANTS}
-                  className="inline-block whitespace-pre will-change-[opacity,filter,transform]"
-                >
-                  {char}
-                </motion.span>
-              ))}
-            </motion.span>
-          </AnimatePresence>
-        </>
-      ) : (
-        <AnimatePresence initial={false}>
-          <motion.span
-            key={`text-${value}`}
-            initial={reduce ? { opacity: 0 } : { opacity: 0, y: 14, filter: ROLL_BLUR }}
-            animate={reduce ? { opacity: 1 } : { opacity: 1, y: 0, filter: "blur(0px)" }}
-            exit={reduce ? { opacity: 0 } : { opacity: 0, y: -14, filter: ROLL_BLUR }}
-            transition={reduce ? { duration: 0.15 } : SPRING_SWAP}
-            className="absolute left-0 top-0 inline-block will-change-[opacity,filter,transform]"
-          >
-            {children}
-          </motion.span>
-        </AnimatePresence>
-      )}
-    </motion.span>
-  );
-}
+const SWAP = { duration: 0.15, ease: EASE_OUT } as const;
 
 export const StatefulButton = forwardRef<HTMLButtonElement, StatefulButtonProps>(
   function StatefulButton(
@@ -161,51 +37,60 @@ export const StatefulButton = forwardRef<HTMLButtonElement, StatefulButtonProps>
     },
     ref,
   ) {
+    const reduce = useReducedMotion();
     const isBusy = state === "loading";
-    const stateText =
-      state === "loading"
-        ? loadingText
-        : state === "success"
-          ? successText
-          : state === "error"
-            ? errorText
-            : children;
-    const textKey = typeof stateText === "string" ? `${state}-${stateText}` : state;
+    const faces: Record<ButtonState, ReactNode> = {
+      idle: (
+        <>
+          {children}
+          {icon}
+        </>
+      ),
+      loading: (
+        <>
+          <LoaderCircle className="size-3.5 motion-safe:animate-spin" strokeWidth={2} />
+          {loadingText}
+        </>
+      ),
+      success: (
+        <>
+          <Check className="size-3.5" strokeWidth={2.25} />
+          {successText}
+        </>
+      ),
+      error: (
+        <>
+          <X className="size-3.5" strokeWidth={2} />
+          {errorText}
+        </>
+      ),
+    };
 
     return (
-      <Button
-        ref={ref}
-        disabled={disabled || isBusy}
-        aria-busy={isBusy}
-        whileHover={undefined}
-        {...rest}
-      >
-        <span
-          aria-live="polite"
-          className="relative inline-flex items-center justify-center overflow-hidden"
-        >
-          <AnimatePresence initial={false}>
-            {state === "loading" ? (
-              <IconSlot keyId="loading-icon">
-                <LoaderCircle className="size-4 animate-spin" />
-              </IconSlot>
-            ) : null}
-            {state === "success" ? (
-              <IconSlot keyId="success-icon">
-                <Check className="size-4" />
-              </IconSlot>
-            ) : null}
-            {state === "error" ? (
-              <IconSlot keyId="error-icon">
-                <X className="size-4" />
-              </IconSlot>
-            ) : null}
-          </AnimatePresence>
-
-          <TextSlot value={textKey}>{stateText}</TextSlot>
-
-          <AnimatePresence initial={false}>
-            {state === "idle" && icon ? <IconSlot keyId="idle-icon">{icon}</IconSlot> : null}
+      <Button ref={ref} disabled={disabled || isBusy} aria-busy={isBusy} {...rest}>
+        {/* The grid stacks every face in one cell: the widest sets the
+            footprint, the current one is the only visible layer. */}
+        <span aria-live="polite" className="grid place-items-center">
+          {(Object.keys(faces) as ButtonState[]).map((key) => (
+            <span
+              key={key}
+              aria-hidden
+              className="invisible col-start-1 row-start-1 inline-flex items-center gap-1.5 whitespace-nowrap"
+            >
+              {faces[key]}
+            </span>
+          ))}
+          <AnimatePresence initial={false} mode="popLayout">
+            <motion.span
+              key={state}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={reduce ? { duration: 0 } : SWAP}
+              className="col-start-1 row-start-1 inline-flex items-center gap-1.5 whitespace-nowrap"
+            >
+              {faces[state]}
+            </motion.span>
           </AnimatePresence>
         </span>
       </Button>

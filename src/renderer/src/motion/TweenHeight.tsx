@@ -1,5 +1,6 @@
 import { useLayoutEffect, useRef, type ReactNode } from "react";
 import { usePaneVisible } from "../hooks/paneVisibility";
+import { EASE_OUT_CSS } from "../lib/ease";
 
 /**
  * A measured height fold (ported from temp-code). CSS cannot tween to
@@ -13,12 +14,19 @@ export const TWEEN_MS = 200;
 /** The tween plus a frame or two: fires only when transitionend never came. */
 export const TWEEN_FALLBACK_MS = 260;
 
+/** The slice of TransitionEvent the fold reads: a nested transition (a
+ * chip's colour, a child's own fold) must not end this one early. */
+export interface TweenEndEvent {
+  readonly target: unknown;
+  readonly propertyName: string;
+}
+
 export interface TweenTarget {
   readonly scrollHeight: number;
   readonly offsetHeight: number;
   style: { transition: string; height: string };
-  addEventListener(type: "transitionend", cb: () => void): void;
-  removeEventListener(type: "transitionend", cb: () => void): void;
+  addEventListener(type: "transitionend", cb: (event: TweenEndEvent) => void): void;
+  removeEventListener(type: "transitionend", cb: (event: TweenEndEvent) => void): void;
 }
 
 /**
@@ -37,7 +45,8 @@ export function tweenHeight(
   const target = open ? el.scrollHeight : 0;
   const from = el.offsetHeight;
   let fallback = 0;
-  const done = () => {
+  const done = (event?: TweenEndEvent) => {
+    if (event && (event.target !== el || event.propertyName !== "height")) return;
     el.style.transition = "none";
     el.style.height = open ? "auto" : "0px";
     el.removeEventListener("transitionend", done);
@@ -51,10 +60,10 @@ export function tweenHeight(
   el.style.height = `${from}px`;
   // Force layout so the browser sees the start height before the tween.
   void el.offsetHeight;
-  el.style.transition = `height ${TWEEN_MS}ms ease-out`;
+  el.style.transition = `height ${TWEEN_MS}ms ${EASE_OUT_CSS}`;
   el.style.height = `${target}px`;
   el.addEventListener("transitionend", done);
-  fallback = timers.setTimeout(done, TWEEN_FALLBACK_MS);
+  fallback = timers.setTimeout(() => done(), TWEEN_FALLBACK_MS);
   return () => {
     el.removeEventListener("transitionend", done);
     timers.clearTimeout(fallback);

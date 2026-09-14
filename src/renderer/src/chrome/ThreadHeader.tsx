@@ -155,8 +155,8 @@ export function ThreadHeader({
                 title={`Pause ${running === 1 ? "the running thread" : `${running} running threads`}`}
                 aria-busy={pauseAll === "busy"}
                 onClick={() => void pauseAllNow()}
-                className={`h-6 rounded-md px-2 text-[11.5px] hover:bg-content/5 ${
-                  pauseAll === "failed" ? "text-danger" : "text-content/60 hover:text-content"
+                className={`h-6 rounded-md px-2 text-[12px] hover:bg-content/5 ${
+                  pauseAll === "failed" ? "text-danger" : "text-content/50 hover:text-content"
                 }`}
               >
                 {pauseAllLabel(pauseAll)}
