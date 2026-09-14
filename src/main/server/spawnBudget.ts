@@ -69,6 +69,13 @@ export class ChildBudget {
 
 export const childBudget = new ChildBudget()
 
+/**
+ * One-shot model calls (tool summaries, titles, commit text): each boots a
+ * whole CLI, and a transcript opening can ask for hundreds at once. Two at
+ * a time, on their own lane so they never crowd out git.
+ */
+export const oneShotBudget = new ChildBudget(2)
+
 const children = new Set<ChildProcess>()
 
 /** Remember a child until it exits so quit can kill whatever is left. */

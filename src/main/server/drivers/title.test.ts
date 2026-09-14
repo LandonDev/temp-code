@@ -30,6 +30,8 @@ it('generates general text without title caps, tools, or a session', async () =>
       options: expect.objectContaining({
         pathToClaudeCodeExecutable: '/test/claude',
         tools: [],
+        mcpServers: {},
+        strictMcpConfig: true,
         maxTurns: 1,
         cwd: '/tmp/project'
       })

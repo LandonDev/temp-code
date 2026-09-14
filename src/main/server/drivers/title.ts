@@ -1,16 +1,26 @@
 import { tmpdir } from 'node:os'
 import { query } from '@anthropic-ai/claude-agent-sdk'
 import { harnessEnv, resolveClaude } from './binaries'
+import { oneShotBudget } from '../spawnBudget'
 
 /**
  * One-shot, tool-less text from the Claude SDK: thread titles, commit
  * messages, PR bodies, branch names. Returns null when the call fails —
  * callers keep their fallback, nothing breaks. `cwd` lets the model see
  * the project's CLAUDE.md conventions; default is a scratch directory.
+ * No MCP servers: the user's configured servers would each boot for a
+ * call that uses no tools. Two of these run at a time (`oneShotBudget`).
  */
-export async function generateText(
+export function generateText(
   prompt: string,
   opts: { cwd?: string; model?: string } = {}
+): Promise<string | null> {
+  return oneShotBudget.run(() => generateNow(prompt, opts))
+}
+
+async function generateNow(
+  prompt: string,
+  opts: { cwd?: string; model?: string }
 ): Promise<string | null> {
   try {
     const cli = await resolveClaude()
@@ -22,6 +32,8 @@ export async function generateText(
         model: opts.model ?? 'claude-sonnet-5',
         maxTurns: 1,
         tools: [],
+        mcpServers: {},
+        strictMcpConfig: true,
         cwd: opts.cwd ?? tmpdir()
       }
     })
