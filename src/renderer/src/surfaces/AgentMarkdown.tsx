@@ -14,6 +14,7 @@ import { harden } from "rehype-harden";
 import {
   Streamdown,
   defaultRehypePlugins,
+  defaultRemarkPlugins,
   useIsCodeFenceIncomplete,
   type Components,
 } from "streamdown";
@@ -22,6 +23,7 @@ import { FileTypeIcon } from "../chrome/FileTypeIcon";
 import { CodeBlock } from "./CodeBlock";
 import { FileRefMenu } from "./FileRefMenu";
 import { createLazyMermaidPlugin } from "./mermaidPlugin";
+import { cachedParse, restoreHast } from "../lib/markdownCache";
 import { parseFileHref } from "../lib/paths";
 import type { OpenFileFn } from "../lib/search";
 import {
@@ -64,6 +66,15 @@ const MARKDOWN_REHYPE_PLUGINS: PluggableList = [
     },
   ],
 ];
+
+// Settled blocks parse through the render cache (lib/markdownCache.ts):
+// the parser is bypassed and the last rehype step hands back the cached
+// tree, so a remount is a lookup. Streaming blocks keep the plain lists.
+// Both pairs are module constants: streamdown keys its processor cache
+// and Block memo on plugin identity.
+const MARKDOWN_REMARK_PLUGINS: PluggableList = Object.values(defaultRemarkPlugins);
+const CACHED_REMARK_PLUGINS: PluggableList = [...MARKDOWN_REMARK_PLUGINS, cachedParse];
+const CACHED_REHYPE_PLUGINS: PluggableList = [...MARKDOWN_REHYPE_PLUGINS, restoreHast];
 
 const FileOpenContext = createContext<{
   cwd?: string;
@@ -281,6 +292,7 @@ export const AgentMarkdown = memo(function AgentMarkdown({
   const shown = useSmoothText(source, streaming);
   const veilRef = useRef<HTMLDivElement>(null);
   useStreamVeil(veilRef, shown, streaming);
+  const settled = !streaming && shown === source;
   return (
     <FileOpenContext.Provider value={fileOpen}>
       {/* Relative: the veil paints absolutely-positioned covers over new glyphs. */}
@@ -291,7 +303,8 @@ export const AgentMarkdown = memo(function AgentMarkdown({
           controls={false}
           isAnimating={!!streaming || shown.length < source.length}
           plugins={MARKDOWN_PLUGINS}
-          rehypePlugins={MARKDOWN_REHYPE_PLUGINS}
+          remarkPlugins={settled ? CACHED_REMARK_PLUGINS : MARKDOWN_REMARK_PLUGINS}
+          rehypePlugins={settled ? CACHED_REHYPE_PLUGINS : MARKDOWN_REHYPE_PLUGINS}
         >
           {shown}
         </Streamdown>

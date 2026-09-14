@@ -1,7 +1,7 @@
 import { memo, useEffect, useRef, useState } from "react";
 import { Check, Copy } from "../chrome/icons";
 import { copyText } from "../lib/clipboard";
-import { highlight } from "../lib/highlight";
+import { highlight, highlightCached } from "../lib/highlight";
 import { playCue } from "../lib/sounds";
 
 /**
@@ -29,13 +29,19 @@ export const CodeBlock = memo(function CodeBlock({
 }) {
   const clean = code.replace(/\n$/, "");
   const lang = language.trim().toLowerCase();
-  const [html, setHtml] = useState<string | null>(null);
+  // A remount of a block the worker already coloured paints coloured.
+  const [html, setHtml] = useState<string | null>(() => highlightCached(clean, lang) ?? null);
   const [copied, setCopied] = useState(false);
   const copyTimer = useRef<number | null>(null);
 
   useEffect(() => {
     let alive = true;
     const run = () => {
+      const known = highlightCached(clean, lang);
+      if (known !== undefined) {
+        setHtml((cur) => (cur === known ? cur : known));
+        return;
+      }
       void highlight(clean, lang).then((h) => {
         if (alive && h) setHtml(h);
       });
