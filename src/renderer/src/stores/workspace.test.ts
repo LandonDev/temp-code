@@ -8,7 +8,8 @@ import {
   parseWorkspaceSnapshot,
 } from "../lib/workspaceSnapshot";
 import {
-  growMountBudget,
+  mountActiveTab,
+  trimMountedTabs,
   initialWorkspaceTabsState,
   setActiveTabId,
   setTabs,
@@ -53,11 +54,18 @@ describe("workspace tab reducers", () => {
     expect(setActiveTabId(s, () => "b").activeTabId).toBe("b");
   });
 
-  it("grow the mount budget one tab at a time, up to the open tabs", () => {
-    const s = state(["a", "b"]);
-    const full = growMountBudget(growMountBudget(s));
-    expect(full.hiddenMountBudget).toBe(2);
-    expect(growMountBudget(full)).toBe(full);
+  it("mount the active tab at once and trim parked tabs down to the warm set", () => {
+    let s = state(["a", "b", "c", "d", "e"]);
+    expect(s.mountedTabIds).toEqual(["a"]);
+    expect(mountActiveTab(s)).toBe(s);
+    for (const id of ["b", "c", "d", "e"]) s = mountActiveTab(visit(s, id));
+    expect(s.mountedTabIds).toEqual(["a", "b", "c", "d", "e"]);
+    const trimmed = trimMountedTabs(s);
+    expect(trimmed.mountedTabIds).toEqual(["c", "d", "e"]);
+    expect(trimMountedTabs(trimmed)).toBe(trimmed);
+    // A closed tab leaves the mounted set with the next activation.
+    const closed = setTabs(trimmed, (tabs) => tabs.filter((t) => t.id !== "d"));
+    expect(mountActiveTab(closed).mountedTabIds).toEqual(["c", "e"]);
   });
 
   it("default the active tab to the first one", () => {
@@ -150,8 +158,12 @@ describe("workspace actions", () => {
     workspace.settleVisits();
     expect(workspace.visitBack()).toBeNull();
     expect(fired).toBe(0);
-    workspace.growMountBudget();
-    expect(fired).toBe(1);
+    workspace.mountActiveTab();
+    workspace.trimMountedTabs();
+    expect(fired).toBe(0);
+    workspace.setActiveTabId("b");
+    workspace.mountActiveTab();
+    expect(fired).toBe(2);
     off();
   });
 });

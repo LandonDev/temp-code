@@ -116,7 +116,7 @@ type SessionLeafProps = Omit<ComponentProps<typeof SessionPane>, "session"> & { 
 function SessionLeaf({ id, ...props }: SessionLeafProps) {
   const session = useSession(id);
   // A tab restored at launch carries its meta only; the transcript arrives
-  // once the pane is on the page (hidden panes mount one per idle slice).
+  // once the pane is on the page (only the warm set of tabs mounts).
   useEffect(() => {
     void sessionStore.ensureLoaded(id);
   }, [id]);
