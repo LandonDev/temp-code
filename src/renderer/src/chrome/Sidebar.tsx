@@ -11,6 +11,7 @@ import {
   useEffect,
   useRef,
   useState,
+  useSyncExternalStore,
   type MouseEvent as ReactMouseEvent,
   type ReactNode,
 } from "react";
@@ -18,7 +19,6 @@ import { warmProjectForCwd } from "../lib/monaco/focusBoot";
 import {
   loadSidebarTabOrder,
   saveSidebarTabOrder,
-  type SidebarLayout,
   type SidebarTabId,
 } from "../lib/appearance";
 import { basename } from "../lib/fs";
@@ -26,10 +26,14 @@ import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { SPRING_LAYOUT } from "../lib/ease";
 import { IS_MAC, MOD } from "../lib/platform";
 import { projectName } from "../lib/paths";
-import type { HarnessId } from "../lib/session";
 import type { ProjectMeta } from "../lib/tcserver/types";
 import { useWorkspaces, workspaceLabelKey } from "../lib/tcserver/workspaces";
-import { openWorkspaceSettings } from "../lib/settings";
+import { loadNotesEnabled, openWorkspaceSettings, subscribeNotesEnabled } from "../lib/settings";
+import { pickTextHarness } from "../lib/harness/textHarness";
+import { canTabVisitBack, canTabVisitForward } from "../lib/tabVisitHistory";
+import { selectedChangePath } from "../lib/workspaceTabGroups";
+import { useSidebarLayout } from "../hooks/useSidebarLayout";
+import { useWorkspaceTabs } from "../stores/workspace";
 import { requestProjectRailAction } from "../lib/projectRailActions";
 import WorkspaceSessions from "./WorkspaceSessions";
 import { WorkspaceMenu } from "./WorkspaceMenu";
@@ -64,7 +68,12 @@ import { CwdPicker } from "./CwdPicker";
 import { FileTree } from "./FileTree";
 import { FileTypeIcon } from "./FileTypeIcon";
 import { ProjectRail } from "./ProjectRail";
-import { useProject, useRailRecents, useSelectedWorkspaceId } from "../stores/project";
+import {
+  useProject,
+  useProjectCwds,
+  useRailRecents,
+  useSelectedWorkspaceId,
+} from "../stores/project";
 import { shell, useShell } from "../stores/shell";
 import { RailAction } from "./RailAction";
 import { SettingsNav } from "./SettingsRail";
@@ -103,11 +112,6 @@ function projectPathIn(
 }
 
 type Props = {
-  cwd: string;
-  /** Working copy for Changes / explorer git. Falls back to `cwd`. */
-  gitCwd?: string;
-  layout: SidebarLayout;
-  activeSessionId?: string;
   onSelectSession: (sessionId: string) => void;
   onRenameSession?: (sessionId: string, title: string) => void;
   onDeleteSession?: (sessionId: string, options?: { confirmed?: boolean }) => void;
@@ -116,13 +120,9 @@ type Props = {
   onFileMoved?: (from: string, to: string) => void;
   onFileDeleted?: (path: string) => void;
   onOpenFilesSearch?: () => void;
-  canGoBack?: boolean;
-  canGoForward?: boolean;
   onGoBack?: () => void;
   onGoForward?: () => void;
   onOpenDiff?: (path: string) => void;
-  selectedDiffPath?: string;
-  textHarness?: HarnessId;
   onShowSourceControl?: () => void;
   onSelectAgent?: (sessionId: string) => void;
   onSelectProject?: (path: string) => void;
@@ -134,7 +134,6 @@ type Props = {
   onOpenInbox?: () => void;
   onOpenNotes?: () => void;
   onGoToFile?: () => void;
-  notesEnabled?: boolean;
   onSelectProjectCard?: (projectId: string | null) => void;
   onNewChat?: (projectId: string | null) => void;
   onProjectCreated?: (project: ProjectMeta) => void;
@@ -142,10 +141,6 @@ type Props = {
 };
 
 function SidebarComponent({
-  cwd,
-  gitCwd,
-  layout,
-  activeSessionId,
   onSelectSession,
   onRenameSession,
   onDeleteSession,
@@ -154,13 +149,9 @@ function SidebarComponent({
   onFileMoved,
   onFileDeleted,
   onOpenFilesSearch,
-  canGoBack: canVisitBack = false,
-  canGoForward = false,
   onGoBack,
   onGoForward,
   onOpenDiff,
-  selectedDiffPath,
-  textHarness,
   onShowSourceControl,
   onSelectAgent,
   onSelectProject,
@@ -172,12 +163,21 @@ function SidebarComponent({
   onOpenInbox,
   onOpenNotes,
   onGoToFile,
-  notesEnabled = true,
   onSelectProjectCard,
   onNewChat,
   onProjectCreated,
   onOpenWhatsNew,
 }: Props) {
+  // The folder, the focused session and the visit trail come off the stores:
+  // App passes handlers only, so a tab switch re-renders this, not App's tree.
+  const { activeTab, active, sidebarCwd: cwd, gitCwd } = useProjectCwds();
+  const activeSessionId = active?.id;
+  const textHarness = pickTextHarness(active?.harness);
+  const selectedDiffPath = activeTab ? selectedChangePath(activeTab, gitCwd) : undefined;
+  const layout = useSidebarLayout();
+  const canVisitBack = useWorkspaceTabs((s) => canTabVisitBack(s.visits));
+  const canGoForward = useWorkspaceTabs((s) => canTabVisitForward(s.visits));
+  const notesEnabled = useSyncExternalStore(subscribeNotesEnabled, loadNotesEnabled, () => true);
   const recents = useRailRecents();
   const selectedProjectId = useProject((s) => s.selectedProjectId);
   /** Server workspace shown in the Sessions tab (null before the catalog loads). */

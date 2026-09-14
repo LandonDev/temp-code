@@ -72,14 +72,10 @@ import {
 } from "./lib/releaseNotes";
 import { orderByIds } from "./lib/reorder";
 import {
-  addTerminalToDock,
   applyDockGridStyle,
   closeTerminalInDock,
-  createProjectTerminal,
   findProjectTerminal,
-  mapProjectTerminal,
   nextDockTerminalTitle,
-  patchProjectTerminals,
   reorderDockTerminals,
   selectDockTerminal,
   splitProjectTerminalsForMove,
@@ -87,7 +83,6 @@ import {
   withDockSide,
   withDockSize,
   type DockSide,
-  type ProjectTerminalDock as ProjectTerminal,
 } from "./lib/projectTerminal";
 import {
   addTabsToNewGroup,
@@ -143,7 +138,7 @@ import {
 } from "./lib/checkpoint";
 import { notifyDirsChanged } from "./lib/fileTree";
 import { nudgeWatchedFiles } from "./lib/fileWatch";
-import { type EditorNavigationTarget, type OpenFileFn } from "./lib/search";
+import type { OpenFileFn } from "./lib/search";
 import { editorForPath } from "./surfaces/monaco/route";
 import { flushAllEditors, flushEditor } from "./lib/editorFlush";
 import { loadAutoSave } from "./lib/settings";
@@ -154,7 +149,6 @@ import {
   saveLastModelSettings,
 } from "./lib/models";
 import {
-  displayPath,
   isEqualOrInside,
   projectName,
   rebasePath,
@@ -199,6 +193,9 @@ import {
 } from "./stores/workspace";
 import { projectTabTarget, workspaceActions } from "./stores/workspaceActions";
 import { skipForgetSessionIds } from "./stores/subscriptions";
+import { editors, useEditors } from "./stores/editors";
+import { headerStore, tabProjectOf } from "./stores/header";
+import { currentDock, currentDocks, terminals, useTerminals } from "./stores/terminals";
 import { applyZoom, loadZoom, zoomIn, zoomOut, zoomReset } from "./lib/zoom";
 import {
   archiveProject,
@@ -211,9 +208,9 @@ import {
 import {
   applyDeletedSessionToWorkspace,
   filterTabsForProject,
-  filterTabsForProjectId,
   findTabForProject,
   planWorkspaceTabClose,
+  selectedChangePath,
   tabProjectKey,
   workspaceTabCwd,
 } from "./lib/workspaceTabGroups";
@@ -239,23 +236,17 @@ import {
   deleteSession,
   getSession,
   listSessionsByProject,
-  saveWorkspaceSnapshot,
   setSessionArchived,
   subscribeSessionHistory,
 } from "./lib/sessionStore";
 import {
   sessionStore,
   useSessionShells,
-  type SessionShell,
 } from "./lib/tcserver/store";
-import { toggleRightRail, useRightRailOpen } from "./lib/rightRail";
+import { toggleRightRail } from "./lib/rightRail";
 import { ProjectRail } from "./chrome/rail/ProjectRail";
-import {
-  headerNeighbour,
-  type HeaderModel,
-} from "./lib/threadHeaderModel";
+import { headerNeighbour } from "./lib/threadHeaderModel";
 import type { ThreadAction } from "./chrome/ThreadHeader";
-import type { ChipThread } from "./chrome/ThreadHeaderStrip";
 import type { ThreadRules } from "@server/shared/rules";
 import type { TabThreadAction } from "./chrome/TitleBar";
 import * as serverCommands from "./lib/tcserver/commands";
@@ -264,9 +255,7 @@ import { installAppFacade } from "./lib/appFacade";
 import {
   focusDiff,
   setTabSplitRatio,
-  tabSurfacePanes,
 } from "./lib/workspaceFocus";
-import { createWorkspaceAutosave } from "./lib/workspaceAutosave";
 import { tallyRender } from "./lib/devRenders";
 import { playCue } from "./lib/sounds";
 import {
@@ -277,7 +266,6 @@ import {
   menuCommandAllowed,
   type AppCommand,
 } from "./lib/appCommands";
-import { canTabVisitBack, canTabVisitForward } from "./lib/tabVisitHistory";
 import { preparePrompt } from "./lib/promptPreparation";
 import { deriveMentionAttachments } from "./lib/mentionAttachments";
 import {
@@ -326,10 +314,6 @@ import {
   CONTINUE_PROMPT,
   canAutoContinue,
 } from "./lib/inFlight";
-import {
-  collectWorkspaceSnapshot,
-  workspaceSnapshotKey,
-} from "./lib/workspaceSnapshot";
 import {
   hasInFlightSessions,
   hideCurrentWindow,
@@ -397,24 +381,12 @@ export default function App({ boot }: { boot: BootWorkspace }) {
   const setSessions = sessionStore.mutate;
   const tabs = useWorkspaceTabs((s) => s.tabs);
   const setTabs = workspace.setTabs;
-  const [projectTerminals, setProjectTerminals] = useState<
-    ProjectTerminal[]
-  >(boot.projectTerminals);
+  const projectTerminals = useTerminals((s) => s.docks);
   const [projectTerminalFocused, setProjectTerminalFocused] = useState(false);
   const activeTabId = useWorkspaceTabs((s) => s.activeTabId);
   const setActiveTabId = workspace.setActiveTabId;
   const [composerFocused, setComposerFocused] = useState(boot.composerFocused);
-  /** Tab id -> project name, kept in sync with the rendered title tabs. */
-  const tabProjectsRef = useRef(new Map<string, string>());
-  /** Deck tab ids in strip order: the chips' tabs (live row, then shelf), then tabs with no chip. */
-  const stripTabsRef = useRef<string[]>([]);
-  const headerModelRef = useRef<HeaderModel<ChipThread>>({ live: [], dormant: [], activeId: null });
-  const chipThreadsRef = useRef<ChipThread[]>([]);
-  const projectOfTab = useCallback(
-    (id: string) => tabProjectsRef.current.get(id),
-    [],
-  );
-  const sidebarOpen = useShell((s) => s.sidebarOpen);
+  const projectOfTab = tabProjectOf;
   const projectRailOpen = useShell((s) => s.projectRailOpen);
   const sidebarLayout = useSidebarLayout();
   const deckLayout = sidebarLayout === "deck";
@@ -436,28 +408,11 @@ export default function App({ boot }: { boot: BootWorkspace }) {
   );
   const settingsOpen = useShell((s) => s.settingsOpen);
   const whatsNew = useShell((s) => s.whatsNew);
-  const [editorNavigation, setEditorNavigation] =
-    useState<EditorNavigationTarget | null>(null);
-  const editorNavigationToken = useRef(0);
   const filePickerOpen = useShell((s) => s.filePickerOpen);
   const symbolPickerOpen = useShell((s) => s.symbolPickerOpen);
-  const [dirtyFiles, setDirtyFiles] = useState<Set<string>>(
-    () => new Set(boot.dirtyFileIds),
-  );
-  // Not carried across a window transfer the way dirty state is: the editor
-  // re-lints whatever it mounts, so the counts rebuild themselves.
-  const [fileErrorCounts, setFileErrorCounts] = useState<Map<string, number>>(
-    () => new Map(),
-  );
+  const dirtyFiles = useEditors((s) => s.dirtyFiles);
   // History lives in historyStore so its per-turn refreshes skip App.
   const setHistory = historyStore.set;
-  /**
-   * Projects whose rows are already in `history`. This has to be state, not a
-   * ref: `sidebarCwd` is derived during render, so the frame that first shows
-   * a new project must already know the listing has not arrived yet.
-   */
-  const projectTerminalsRef = useRef(projectTerminals);
-  projectTerminalsRef.current = projectTerminals;
   /** The sidebar's and git's folders as of now, for callbacks; the render
    *  computes the same from live values below. */
   const currentSidebarCwd = useCallback(() => {
@@ -485,10 +440,6 @@ export default function App({ boot }: { boot: BootWorkspace }) {
     if (!notesEnabled) shell.closeNotes();
   }, [notesEnabled]);
 
-  const canVisitBack = useWorkspaceTabs((s) => canTabVisitBack(s.visits));
-  const canVisitForward = useWorkspaceTabs((s) =>
-    canTabVisitForward(s.visits),
-  );
   const turnGen = useRef(new Map<string, number>());
   const noteSystem = useCallback((sessionId: string, text: string) => {
     sessionStore.mutate((prev) =>
@@ -513,9 +464,9 @@ export default function App({ boot }: { boot: BootWorkspace }) {
         workspaceTabsStore.getState().tabs,
         workspaceTabsStore.getState().activeTabId,
         projectStore.getState().projectCwd,
-        projectTerminalsRef.current,
+        currentDocks(),
       ).finally(() => {
-        void reapWindowRuntime(workspaceTabsStore.getState().tabs, projectTerminalsRef.current);
+        void reapWindowRuntime(workspaceTabsStore.getState().tabs, currentDocks());
       });
     };
     window.addEventListener("pagehide", reap);
@@ -646,8 +597,6 @@ export default function App({ boot }: { boot: BootWorkspace }) {
     return !!focused && ids.has(focused.id);
   }, [activeTab, currentProjectDock, runningTerminals]);
 
-  const activeSessionId = active?.id;
-
   useEffect(() => {
     let cancelled = false;
     let unlistenClose: (() => void) | undefined;
@@ -656,7 +605,7 @@ export default function App({ boot }: { boot: BootWorkspace }) {
       () => workspaceTabsStore.getState().tabs,
       () => workspaceTabsStore.getState().activeTabId,
       () => projectStore.getState().projectCwd,
-      () => projectTerminalsRef.current,
+      currentDocks,
     );
     void getCurrentWindow()
       .onCloseRequested((event) => {
@@ -672,7 +621,7 @@ export default function App({ boot }: { boot: BootWorkspace }) {
           workspaceTabsStore.getState().tabs,
           workspaceTabsStore.getState().activeTabId,
           projectStore.getState().projectCwd,
-          projectTerminalsRef.current,
+          currentDocks(),
         );
       })
       .then((fn) => {
@@ -722,40 +671,6 @@ export default function App({ boot }: { boot: BootWorkspace }) {
   useEffect(() => {
     prefetchProjectFiles(sidebarCwd);
   }, [sidebarCwd]);
-
-  // Every window saves under its own slot, a transferred one included: the
-  // donor skipped this for transfer windows because it had one snapshot for
-  // the whole app, and the moved tab would have overwritten the source's.
-  // The snapshot is collected when the timer fires, from the refs, so a
-  // burst of renders costs one JSON pass; a touch that changes nothing
-  // never drops a pending save (the old effect did, and lost layouts).
-  const workspaceAutosave = useMemo(
-    () =>
-      createWorkspaceAutosave({
-        collect: () =>
-          collectWorkspaceSnapshot(
-            workspaceTabsStore.getState().tabs,
-            sessionStore.getSnapshot(),
-            workspaceTabsStore.getState().activeTabId,
-            projectStore.getState().projectCwd,
-            projectTerminalsRef.current,
-          ),
-        key: workspaceSnapshotKey,
-        // A window on its way out has persisted already; a late auto-save
-        // would land after main dropped its slot.
-        skip: isAppQuitting,
-        save: (snapshot) => {
-          void saveWorkspaceSnapshot(snapshot).catch((err) => {
-            console.error("[workspace] snapshot save failed:", err);
-          });
-        },
-      }),
-    [],
-  );
-  useEffect(() => () => workspaceAutosave.cancel(), [workspaceAutosave]);
-  useEffect(() => {
-    workspaceAutosave.touch();
-  }, [workspaceAutosave, tabs, sessions, activeTabId, projectCwd, projectTerminals]);
 
   const hiddenMountBudget = useWorkspaceTabs((s) => s.hiddenMountBudget);
   const mountedTabIds = useMemo(() => {
@@ -1052,21 +967,11 @@ export default function App({ boot }: { boot: BootWorkspace }) {
       const workdir = cwd || currentDockCwd();
       const projectPath = currentDockCwd();
       if (!looksLikeProject(projectPath)) return false;
-      setProjectTerminals((prev) => {
-        const existing = findProjectTerminal(prev, projectPath);
-        const file = newTerminalFile(
-          workdir,
-          existing
-            ? nextDockTerminalTitle(existing, workdir)
-            : undefined,
-        );
-        if (!existing) {
-          return [...prev, createProjectTerminal(projectPath, file)];
-        }
-        return mapProjectTerminal(prev, projectPath, (dock) =>
-          addTerminalToDock(dock, file),
-        );
-      });
+      const existing = currentDock(projectPath);
+      terminals.openTerminal(
+        projectPath,
+        newTerminalFile(workdir, existing ? nextDockTerminalTitle(existing, workdir) : undefined),
+      );
       focusProjectTerminal();
       return true;
     },
@@ -1131,15 +1036,9 @@ export default function App({ boot }: { boot: BootWorkspace }) {
       onOpenTerminal(active?.cwd ?? dockCwd);
       return;
     }
-    const dock = findProjectTerminal(projectTerminalsRef.current, dockCwd);
+    const dock = currentDock(dockCwd);
     if (dock && dock.pane.files.length > 0) {
-      if (!dock.open) {
-        setProjectTerminals((prev) =>
-          mapProjectTerminal(prev, dockCwd, (entry) =>
-            withDockOpen(entry, true),
-          ),
-        );
-      }
+      if (!dock.open) terminals.updateDock(dockCwd, (entry) => withDockOpen(entry, true));
       focusProjectTerminal();
       return;
     }
@@ -1168,17 +1067,13 @@ export default function App({ boot }: { boot: BootWorkspace }) {
 
   const onToggleProjectTerminal = useCallback(() => {
     if (!deckLayout || !looksLikeProject(dockCwd)) return;
-    const dock = findProjectTerminal(projectTerminalsRef.current, dockCwd);
+    const dock = currentDock(dockCwd);
     if (!dock) {
       openProjectTerminal(active?.cwd ?? dockCwd);
       return;
     }
     const nextOpen = !dock.open;
-    setProjectTerminals((prev) =>
-      mapProjectTerminal(prev, dockCwd, (entry) =>
-        withDockOpen(entry, nextOpen),
-      ),
-    );
+    terminals.updateDock(dockCwd, (entry) => withDockOpen(entry, nextOpen));
     if (nextOpen) focusProjectTerminal();
     else setProjectTerminalFocused(false);
   }, [
@@ -1190,72 +1085,46 @@ export default function App({ boot }: { boot: BootWorkspace }) {
   ]);
 
   const onHideProjectTerminal = useCallback(() => {
-    setProjectTerminals((prev) =>
-      mapProjectTerminal(prev, currentDockCwd(), (dock) =>
-        withDockOpen(dock, false),
-      ),
-    );
+    terminals.updateDock(currentDockCwd(), (dock) => withDockOpen(dock, false));
     setProjectTerminalFocused(false);
   }, []);
 
   const onProjectTerminalSide = useCallback((side: DockSide) => {
-    setProjectTerminals((prev) =>
-      mapProjectTerminal(prev, currentDockCwd(), (dock) =>
-        withDockSide(dock, side, {
-          width: window.innerWidth,
-          height: window.innerHeight,
-        }),
-      ),
+    terminals.updateDock(currentDockCwd(), (dock) =>
+      withDockSide(dock, side, { width: window.innerWidth, height: window.innerHeight }),
     );
   }, []);
 
   const onProjectTerminalSize = useCallback((size: number) => {
-    setProjectTerminals((prev) =>
-      mapProjectTerminal(prev, currentDockCwd(), (dock) =>
-        withDockSize(dock, size, {
-          width: window.innerWidth,
-          height: window.innerHeight,
-        }),
-      ),
+    terminals.updateDock(currentDockCwd(), (dock) =>
+      withDockSize(dock, size, { width: window.innerWidth, height: window.innerHeight }),
     );
   }, []);
 
   const onSelectProjectTerminal = useCallback((fileId: string) => {
-    setProjectTerminals((prev) =>
-      mapProjectTerminal(prev, currentDockCwd(), (dock) =>
-        selectDockTerminal(dock, fileId),
-      ),
-    );
+    terminals.updateDock(currentDockCwd(), (dock) => selectDockTerminal(dock, fileId));
     focusProjectTerminal();
   }, [focusProjectTerminal]);
 
   const onReorderProjectTerminals = useCallback((ids: string[]) => {
-    setProjectTerminals((prev) =>
-      mapProjectTerminal(prev, currentDockCwd(), (dock) =>
-        reorderDockTerminals(dock, orderByIds(dock.pane.files, ids)),
-      ),
+    terminals.updateDock(currentDockCwd(), (dock) =>
+      reorderDockTerminals(dock, orderByIds(dock.pane.files, ids)),
     );
   }, []);
 
   const onCloseProjectTerminal = useCallback((fileId: string) => {
-    const dock = findProjectTerminal(projectTerminalsRef.current, currentDockCwd());
+    const dock = currentDock(currentDockCwd());
     const file = dock?.pane.files.find((entry) => entry.id === fileId);
     if (!file) return;
     const finishClose = () => {
-      setProjectTerminals((prev) =>
-        mapProjectTerminal(prev, currentDockCwd(), (entry) =>
-          closeTerminalInDock(entry, fileId),
-        ),
-      );
+      terminals.updateDock(currentDockCwd(), (entry) => closeTerminalInDock(entry, fileId));
     };
     void confirmCloseTerminal(file).then((ok) => ok && finishClose());
   }, []);
 
   const onTerminalMetaChange = useCallback(
     (fileId: string, patch: TerminalMetaPatch) => {
-      setProjectTerminals((prev) =>
-        patchProjectTerminals(prev, fileId, patch),
-      );
+      terminals.patchTerminal(fileId, patch);
       setTabs((prev) =>
         prev.map((tab) => updateTerminalTab(tab, fileId, patch)),
       );
@@ -1265,23 +1134,17 @@ export default function App({ boot }: { boot: BootWorkspace }) {
 
   const onToggleRunningTerminal = useCallback(
     (fileId: string) => {
-      const dock = projectTerminalsRef.current.find((entry) =>
+      const dock = currentDocks().find((entry) =>
         entry.pane.files.some((file) => file.id === fileId),
       );
       if (dock) {
         if (dock.open) {
-          setProjectTerminals((prev) =>
-            mapProjectTerminal(prev, dock.projectPath, (entry) =>
-              withDockOpen(entry, false),
-            ),
-          );
+          terminals.updateDock(dock.projectPath, (entry) => withDockOpen(entry, false));
           setProjectTerminalFocused(false);
           return;
         }
-        setProjectTerminals((prev) =>
-          mapProjectTerminal(prev, dock.projectPath, (entry) =>
-            withDockOpen(selectDockTerminal(entry, fileId), true),
-          ),
+        terminals.updateDock(dock.projectPath, (entry) =>
+          withDockOpen(selectDockTerminal(entry, fileId), true),
         );
         focusProjectTerminal();
         return;
@@ -1363,11 +1226,7 @@ export default function App({ boot }: { boot: BootWorkspace }) {
       const finishClose = () => {
         const nextActiveTabId =
           closePlan.action === "close" ? closePlan.nextActiveTabId : undefined;
-        setDirtyFiles((prev) => {
-          const updated = new Set(prev);
-          for (const file of closingFiles) updated.delete(file.id);
-          return updated;
-        });
+        editors.forgetFiles(closingFiles.map((file) => file.id));
         workspaceActions.closeTab(id);
         if (id === workspaceTabsStore.getState().activeTabId && nextActiveTabId) {
           activateTab(nextActiveTabId);
@@ -1433,7 +1292,7 @@ export default function App({ boot }: { boot: BootWorkspace }) {
         tabIds.includes(tab.id),
       );
       const splitDocks = splitProjectTerminalsForMove(
-        projectTerminalsRef.current,
+        currentDocks(),
         movingTabs,
         remainingAtMove,
         sessionStore.getSnapshot(),
@@ -1462,7 +1321,7 @@ export default function App({ boot }: { boot: BootWorkspace }) {
         return;
       }
 
-      setProjectTerminals(splitDocks.remaining);
+      terminals.setDocks(splitDocks.remaining);
       const remainingTabs = workspaceTabsStore.getState().tabs.filter(
         (tab) => !tabIds.includes(tab.id),
       );
@@ -1498,11 +1357,7 @@ export default function App({ boot }: { boot: BootWorkspace }) {
         }
       }
 
-      setDirtyFiles((prev) => {
-        const next = new Set(prev);
-        for (const id of payload.dirtyFileIds) next.delete(id);
-        return next;
-      });
+      editors.forgetFiles(payload.dirtyFileIds);
 
       for (const id of sessionIds) skipForgetSessionIds.delete(id);
     },
@@ -1542,11 +1397,7 @@ export default function App({ boot }: { boot: BootWorkspace }) {
           const sibling = siblingLeafId(tab.layout, paneId);
           const withoutPane = removePane(tab.layout, paneId);
           if (!withoutPane) {
-            setDirtyFiles((prev) => {
-              const next = new Set(prev);
-              next.delete(fileId);
-              return next;
-            });
+            editors.forgetFiles([fileId]);
             const closePlan = planWorkspaceTabClose({
               tabs: workspaceTabsStore.getState().tabs,
               sessions: sessionStore.getSnapshot(),
@@ -1612,11 +1463,7 @@ export default function App({ boot }: { boot: BootWorkspace }) {
               : entry,
           ),
         );
-        setDirtyFiles((prev) => {
-          const next = new Set(prev);
-          next.delete(fileId);
-          return next;
-        });
+        editors.forgetFiles([fileId]);
         if (tab.id === activeTabId && files.length === 0) {
           setComposerFocused(
             sessionStore.getSnapshot().some((session) => session.id === nextFocus),
@@ -1679,11 +1526,7 @@ export default function App({ boot }: { boot: BootWorkspace }) {
       );
 
       setSessions((prev) => [...prev, session]);
-      setDirtyFiles((prev) => {
-        const updated = new Set(prev);
-        for (const file of closingFiles) updated.delete(file.id);
-        return updated;
-      });
+      editors.forgetFiles(closingFiles.map((file) => file.id));
       setTabs((prev) =>
         prev.map((entry) =>
           entry.id === id
@@ -1712,7 +1555,7 @@ export default function App({ boot }: { boot: BootWorkspace }) {
         deckLayout &&
         projectTerminalFocused
       ) {
-        const dock = findProjectTerminal(projectTerminalsRef.current, currentDockCwd());
+        const dock = currentDock(currentDockCwd());
         if (dock) {
           onCloseProjectTerminal(dock.pane.activeFileId);
           return;
@@ -1794,23 +1637,15 @@ export default function App({ boot }: { boot: BootWorkspace }) {
     ],
   );
 
-  // Deck mode shows the selected project's tabs, keyed by server project id.
-  // Loose chats and projectless drafts only show while no project is selected.
-  const deckProjectTabs = useMemo(() => {
-    if (!deckLayout) return tabs;
-    return filterTabsForProjectId(tabs, sessions, selectedProjectId).filter(
-      (tab) => !tabArchived(tab, sessions),
-    );
-  }, [deckLayout, tabs, sessions, selectedProjectId]);
-
   /** Tabs in strip order: the live row, then the dormant shelf. */
   const cycleScope = useCallback(() => {
     if (!deckLayout) return tabs;
-    const byId = new Map(deckProjectTabs.map((tab) => [tab.id, tab]));
-    return stripTabsRef.current
-      .map((id) => byId.get(id))
+    const byId = new Map(tabs.map((tab) => [tab.id, tab]));
+    return headerStore
+      .getState()
+      .stripTabs.map((id) => byId.get(id))
       .filter((tab): tab is WorkspaceTab => tab != null);
-  }, [deckLayout, deckProjectTabs, tabs]);
+  }, [deckLayout, tabs]);
 
   const onNext = useCallback(() => {
     const scope = cycleScope();
@@ -2246,7 +2081,7 @@ export default function App({ boot }: { boot: BootWorkspace }) {
       if (archived) {
         forgetLastSession(sessionId);
         // The chip leaves the strip; its same-slot neighbour takes selection.
-        const model = headerModelRef.current;
+        const model = headerStore.getState().model;
         if (model.activeId === sessionId) {
           const next = headerNeighbour(model, sessionId);
           if (next?.tabId) activateTab(next.tabId);
@@ -2613,21 +2448,14 @@ export default function App({ boot }: { boot: BootWorkspace }) {
       if (nextActiveTabId !== activeTabId) {
         setActiveTabId(nextActiveTabId);
       }
-      setDirtyFiles((prev) => {
-        const updated = new Set(prev);
-        for (const tab of projectTabs) {
-          for (const file of [
-            ...tab.editorPanes.flatMap((pane) => pane.files),
-            ...(tab.terminalPanes ?? []).flatMap((pane) => pane.files),
-          ]) {
-            updated.delete(file.id);
-          }
-        }
-        return updated;
-      });
-      setProjectTerminals((prev) =>
-        prev.filter((dock) => !sameProjectPath(dock.projectPath, normalized)),
+      editors.forgetFiles(
+        projectTabs.flatMap((tab) =>
+          [...tab.editorPanes, ...(tab.terminalPanes ?? [])].flatMap((pane) =>
+            pane.files.map((file) => file.id),
+          ),
+        ),
       );
+      terminals.removeProject(normalized);
 
       if (wasCurrent) {
         const next = remaining.find((item) => looksLikeProject(item.path));
@@ -2689,11 +2517,7 @@ export default function App({ boot }: { boot: BootWorkspace }) {
       ),
     );
     if (dropped.size === 0) return;
-    setDirtyFiles((prev) => {
-      const next = new Set(prev);
-      for (const id of dropped) next.delete(id);
-      return next;
-    });
+    editors.forgetFiles(dropped);
   }, []);
 
   const onOpenFile = useCallback<OpenFileFn>(
@@ -2716,14 +2540,7 @@ export default function App({ boot }: { boot: BootWorkspace }) {
             entry.id === tab.id ? openEditorTab(entry, file) : entry,
           ),
         );
-        if (navigation) {
-          editorNavigationToken.current += 1;
-          setEditorNavigation({
-            path: resolved,
-            ...navigation,
-            token: editorNavigationToken.current,
-          });
-        }
+        if (navigation) editors.navigateTo({ path: resolved, ...navigation });
         setComposerFocused(false);
       })();
     },
@@ -2732,29 +2549,9 @@ export default function App({ boot }: { boot: BootWorkspace }) {
     [],
   );
 
-  const onFileDirtyChange = useCallback((fileId: string, dirty: boolean) => {
-    setDirtyFiles((prev) => {
-      if (prev.has(fileId) === dirty) return prev;
-      const next = new Set(prev);
-      if (dirty) next.add(fileId);
-      else next.delete(fileId);
-      return next;
-    });
-  }, []);
+  const onFileDirtyChange = editors.setFileDirty;
 
-  /** The editor reports 0 as it unmounts, so closed tabs drop out on their own. */
-  const onFileErrorCountChange = useCallback(
-    (fileId: string, count: number) => {
-      setFileErrorCounts((prev) => {
-        if ((prev.get(fileId) ?? 0) === count) return prev;
-        const next = new Map(prev);
-        if (count > 0) next.set(fileId, count);
-        else next.delete(fileId);
-        return next;
-      });
-    },
-    [],
-  );
+  const onFileErrorCountChange = editors.setFileErrorCount;
 
   const onSelectFileSurface = useCallback((paneId: string, fileId: string) => {
     setTabs((prev) =>
@@ -3288,7 +3085,6 @@ export default function App({ boot }: { boot: BootWorkspace }) {
     [onOpenApprovalSession],
   );
 
-  const railOpen = useRightRailOpen();
   const onHeaderNew = useCallback(
     (threadType: ThreadType, threadRules: ThreadRules | null) => {
       shell.closeViews();
@@ -3328,7 +3124,7 @@ export default function App({ boot }: { boot: BootWorkspace }) {
   // A draft has nothing on the server to keep: archiving it discards the tab.
   const onHeaderArchive = useCallback(
     (sessionId: string) => {
-      const draft = chipThreadsRef.current.find((t) => t.id === sessionId)?.draft;
+      const draft = headerStore.getState().chipThreads.find((t) => t.id === sessionId)?.draft;
       if (draft) onHeaderDelete(sessionId);
       else void onArchiveHistorySession(sessionId, true);
     },
@@ -3362,10 +3158,6 @@ export default function App({ boot }: { boot: BootWorkspace }) {
       onHeaderNew,
     ],
   );
-  const headerWorkspaceId = deckLayout
-    ? sessionContext(selectedProjectId).workspaceId ?? null
-    : null;
-
   const onToggleSidebar = useCallback(
     () => shell.toggleSidebar(sidebarLayout),
     [sidebarLayout],
@@ -3657,7 +3449,7 @@ export default function App({ boot }: { boot: BootWorkspace }) {
   const dockGridRef = useRef<HTMLDivElement>(null);
   const dockDragSize = useRef<number | null>(null);
   const paintDockSize = useCallback((size: number) => {
-    const dock = findProjectTerminal(projectTerminalsRef.current, currentDockCwd());
+    const dock = currentDock(currentDockCwd());
     const el = dockGridRef.current;
     if (!dock || !el) return;
     dockDragSize.current = size;
@@ -3685,11 +3477,7 @@ export default function App({ boot }: { boot: BootWorkspace }) {
       }`}
     >
       <Sidebar
-        cwd={sidebarCwd}
-        gitCwd={gitCwd}
-        layout={sidebarLayout}
         onOpenFilesSearch={onFindInProject}
-        activeSessionId={active?.id}
         onSelectSession={onSelectHistorySession}
         onRenameSession={onRenameHistorySession}
         onDeleteSession={onDeleteHistorySession}
@@ -3697,16 +3485,10 @@ export default function App({ boot }: { boot: BootWorkspace }) {
         onOpenTerminal={(cwd) => onOpenTerminal(cwd)}
         onFileMoved={onFileMoved}
         onFileDeleted={onFileDeleted}
-        canGoBack={canVisitBack}
-        canGoForward={canVisitForward}
         onGoBack={onRailBack}
         onGoForward={onRailForward}
         onOpenDiff={onOpenDiff}
         onShowSourceControl={onToggleChanges}
-        selectedDiffPath={
-          activeTab ? selectedChangePath(activeTab, gitCwd) : undefined
-        }
-        textHarness={pickTextHarness(active?.harness)}
         onSelectProjectCard={onSelectProjectCard}
         onNewChat={onNewChat}
         onProjectCreated={onProjectCreated}
@@ -3718,9 +3500,8 @@ export default function App({ boot }: { boot: BootWorkspace }) {
         onNewTerminal={deckLayout ? onNewTerminal : undefined}
         onSearch={onOpenSearch}
         onOpenInbox={onOpenInbox}
-        onOpenNotes={notesEnabled ? onOpenNotes : undefined}
+        onOpenNotes={onOpenNotes}
         onGoToFile={deckLayout ? onGoToFile : undefined}
-        notesEnabled={notesEnabled}
         onOpenWhatsNew={onOpenWhatsNew}
       />
 
@@ -3756,39 +3537,15 @@ export default function App({ boot }: { boot: BootWorkspace }) {
           />
         ) : null}
         <ShellTitleBar
-          deckTabs={deckProjectTabs}
-          dirtyFiles={dirtyFiles}
-          selectedProjectId={selectedProjectId}
-          activeSessionId={activeSessionId}
-          headerWorkspaceId={headerWorkspaceId}
-          railOpen={railOpen}
           headerEvents={headerEvents}
-          tabProjectsRef={tabProjectsRef}
-          stripTabsRef={stripTabsRef}
-          headerModelRef={headerModelRef}
-          chipThreadsRef={chipThreadsRef}
-          activeId={activeTabId}
-          cwd={sidebarCwd}
-          gitCwd={gitCwd}
-          deckLayout={deckLayout}
-          sourceControlActive={
-            deckLayout
-              ? sidebarOpen && sidebarTab === "changes"
-              : !!activeTab?.diffOpen
-          }
           onToggleSidebar={onToggleSidebar}
           onShowSourceControl={onToggleChanges}
           onSelect={activateTab}
-          canGoBack={canVisitBack}
-          canGoForward={canVisitForward}
           onGoBack={onVisitBack}
           onGoForward={onVisitForward}
           onNew={onNew}
           onNewTerminal={onNewTerminal}
           onShowTerminal={onShowProjectTerminal}
-          projectTerminalActive={
-            !!currentProjectDock && currentProjectDock.pane.files.length > 0
-          }
           onOpenSettings={onOpenSettings}
           onOpenInbox={onOpenInbox}
           onOpenNotes={notesEnabled ? onOpenNotes : undefined}
@@ -3805,7 +3562,6 @@ export default function App({ boot }: { boot: BootWorkspace }) {
           onTabThreadAction={onTabThreadAction}
           onGroupClose={onGroupCloseTabs}
           onGroupMoveToNewWindow={onGroupMoveToNewWindow}
-          recents={recents}
           onSelectProject={deckLayout ? onSelectProject : undefined}
         />
         <ThreadBanners
@@ -3888,10 +3644,6 @@ export default function App({ boot }: { boot: BootWorkspace }) {
                     <PaneTree
                       tabId={tab.id}
                       visible={tab.id === shownTabId}
-                      layout={tab.layout}
-                      editorPanes={tabSurfacePanes(tab)}
-                      dirtyFileIds={dirtyFiles}
-                      fileErrorCounts={fileErrorCounts}
                       focusedId={
                         tab.id === shownTabId &&
                         !tab.diffFocused &&
@@ -3904,8 +3656,6 @@ export default function App({ boot }: { boot: BootWorkspace }) {
                         !projectTerminalFocused &&
                         shownTabId === activeTabId
                       }
-                      recents={recents}
-                      hideProjectPicker={deckLayout}
                       onFocus={onFocusPane}
                       onClose={onClosePane}
                       onSelectFile={onSelectFileSurface}
@@ -3927,7 +3677,6 @@ export default function App({ boot }: { boot: BootWorkspace }) {
                       onHandoffCardDismiss={onHandoffCardDismiss}
                       onApproval={onApproval}
                       onOpenFile={onOpenFile}
-                      editorNavigation={editorNavigation}
                       onOpenDiff={onOpenDiff}
                       onShowSourceControl={onToggleChanges}
                       onOpenSession={onOpenSessionById}
@@ -4070,15 +3819,6 @@ function isBlankSession(session: Session | undefined): boolean {
   return !session.blocks.some((block) => block.role === "user");
 }
 
-function selectedChangePath(
-  tab: WorkspaceTab,
-  gitCwd?: string,
-): string | undefined {
-  const file = focusedFileTab(tab);
-  if (!file || !isFilesystemTab(file) || !file.review) return undefined;
-  return displayPath(file.path, gitCwd || file.cwd);
-}
-
 function isBlankWorkspaceTab(tab: WorkspaceTab, sessions: Session[]): boolean {
   if (tab.editorPanes.some((pane) => pane.files.length > 0)) return false;
   if ((tab.terminalPanes ?? []).some((pane) => pane.files.length > 0))
@@ -4088,20 +3828,6 @@ function isBlankWorkspaceTab(tab: WorkspaceTab, sessions: Session[]): boolean {
   return isBlankSession(sessions.find((entry) => entry.id === ids[0]));
 }
 
-
-
-/**
- * A thread that is finished and read: settled, no live or paused work in its
- * tree, nothing new since the user last looked, and no plan awaiting a build.
- * Drafts and file-only tabs stay live.
- */
-/** A deck tab whose threads are all archived leaves the strip. */
-function tabArchived(tab: WorkspaceTab, sessions: readonly SessionShell[]): boolean {
-  const tabSessions = leafIds(tab.layout)
-    .map((id) => sessions.find((session) => session.id === id))
-    .filter((session): session is SessionShell => session != null);
-  return tabSessions.length > 0 && tabSessions.every((session) => session.archived);
-}
 
 
 function dropOpenFiles(

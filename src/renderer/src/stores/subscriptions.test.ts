@@ -3,6 +3,7 @@ import { leaf, newFileTab, newTab, newTerminalFile, type WorkspaceTab } from "..
 import { saveLastSession } from "../lib/projectContext";
 import { newSession, type Session } from "../lib/session";
 import { markSessionSeen } from "../lib/sessionSeen";
+import { saveWorkspaceSnapshot } from "../lib/sessionStore";
 import { createWorkspace } from "../lib/tcserver/projects";
 import { sessionStore } from "../lib/tcserver/store";
 import type { ProjectMeta, SessionMeta, WorkspaceCatalog } from "../lib/tcserver/types";
@@ -14,6 +15,7 @@ import { invoke } from "../lib/native";
 import { initialProjectState, project, projectStore } from "./project";
 import {
   installActiveSessionSync,
+  installAutosave,
   installBootTasks,
   installIdleSweep,
   installMountBudget,
@@ -22,6 +24,7 @@ import {
   installVisitSettling,
   skipForgetSessionIds,
 } from "./subscriptions";
+import { initialTerminalsState, terminals, terminalsStore } from "./terminals";
 import { initialWorkspaceTabsState, workspace, workspaceTabsStore } from "./workspace";
 
 vi.mock("../lib/harness", () => ({
@@ -37,6 +40,11 @@ vi.mock("../lib/models", async (importOriginal) => ({
 }));
 vi.mock("../lib/checkpointBridge", () => ({ installCheckpointBridge: () => () => {} }));
 vi.mock("../lib/native", () => ({ invoke: vi.fn(() => Promise.resolve()) }));
+vi.mock("../lib/appLifecycle", () => ({ isAppQuitting: () => false }));
+vi.mock("../lib/sessionStore", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../lib/sessionStore")>()),
+  saveWorkspaceSnapshot: vi.fn(() => Promise.resolve()),
+}));
 vi.mock("../lib/sessionSeen", () => ({ markSessionSeen: vi.fn() }));
 vi.mock("../lib/workspaceMigration", () => ({ migrateWorkspaces: vi.fn(() => Promise.resolve()) }));
 vi.mock("../lib/tcserver/projects", () => ({
@@ -128,6 +136,7 @@ beforeEach(() => {
   sessionStore.reset();
   workspaceStore.reset();
   projectStore.setState(initialProjectState({ projectCwd: "/repo" }), true);
+  terminalsStore.setState(initialTerminalsState(), true);
   setTabs([]);
   skipForgetSessionIds.clear();
   vi.clearAllMocks();
@@ -414,5 +423,44 @@ describe("installSubscriptions", () => {
     expect(projectStore.getState().selectedProjectId).toBe("p2");
     expect(workspaceTabsStore.getState().visits.current).toBe("b");
     expect(sessionStore.getSnapshot()).toHaveLength(3);
+  });
+});
+
+describe("installAutosave", () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  it("saves the layout a beat after the stores change, once per burst", () => {
+    setTabs([tab("a")]);
+    sessionStore.mutate([session("s-a")]);
+    teardown = installAutosave();
+    vi.advanceTimersByTime(300);
+    expect(saveWorkspaceSnapshot).toHaveBeenCalledTimes(1);
+    workspace.setTabs((tabs) => [...tabs, tab("b")]);
+    workspace.setActiveTabId("b");
+    terminals.openTerminal("/repo", newTerminalFile("/repo", "zsh"));
+    vi.advanceTimersByTime(300);
+    expect(saveWorkspaceSnapshot).toHaveBeenCalledTimes(2);
+    const snapshot = vi.mocked(saveWorkspaceSnapshot).mock.calls[1][0] as {
+      activeTabId: string;
+      projectTerminals?: unknown[];
+    };
+    expect(snapshot.activeTabId).toBe("b");
+    expect(snapshot.projectTerminals).toHaveLength(1);
+  });
+
+  it("ignores a streamed turn and stops after teardown", () => {
+    setTabs([tab("a")]);
+    sessionStore.mutate([session("s-a")]);
+    teardown = installAutosave();
+    vi.advanceTimersByTime(300);
+    sessionStore.mutate((prev) => prev.map((s) => ({ ...s, blocks: [...s.blocks] })));
+    vi.advanceTimersByTime(300);
+    expect(saveWorkspaceSnapshot).toHaveBeenCalledTimes(1);
+    teardown();
+    teardown = null;
+    workspace.setTabs((tabs) => [...tabs, tab("b")]);
+    vi.advanceTimersByTime(300);
+    expect(saveWorkspaceSnapshot).toHaveBeenCalledTimes(1);
   });
 });
