@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { HARNESS_ICONS, MONOCHROME_HARNESSES } from "../chrome/HarnessIcon";
+import { useInputIdle } from "../hooks/inputIdle";
 import { usePaneVisible } from "../hooks/paneVisibility";
 import { MASCOT_GRID, PROJECT_MASCOTS } from "../lib/projectMascots";
 import { HARNESSES, type HarnessId } from "../lib/session";
@@ -31,6 +32,12 @@ const SPRITE_SCALE = 0.8;
 /** How hard the bubble chases its speaker; sprites move cell by cell. */
 const BUBBLE_EASE = 0.2;
 const FRAME_MS = 33;
+/** The arcade is an idle screen: it runs only after this long with no
+ *  pointer or key input anywhere in the window, so a tab or project
+ *  switch (a click, a key) never shares its frame with a board paint, and
+ *  the boards stay still under a pointer. A game you took control of
+ *  runs on your keys. */
+const ARCADE_IDLE_MS = 2000;
 
 const HEADING: Record<string, { x: number; y: number }> = {
   ArrowUp: { x: 0, y: -1 },
@@ -168,12 +175,14 @@ export function TerminalGridBackground() {
   });
   const [hovered, setHovered] = useState(false);
   const visible = usePaneVisible();
-  const visibleRef = useRef(visible);
+  const idle = useInputIdle(ARCADE_IDLE_MS, visible);
+  const run = visible && (playing || idle);
+  const runRef = useRef(run);
   const resumeRef = useRef<() => void>(() => {});
 
   indexRef.current = slide.index;
   playingRef.current = playing;
-  visibleRef.current = visible;
+  runRef.current = run;
 
   const game = GRID_GAMES[slide.index] ?? GRID_GAMES[0]!;
 
@@ -210,11 +219,17 @@ export function TerminalGridBackground() {
     let raf = 0;
     let cols = 0;
     let rows = 0;
-    let rgb = parseContentRgb();
-    let surfaceRgb = parseSurfaceRgb();
+    let rgb = "";
+    let surfaceRgb = "";
     let lastFrame = 0;
+    // Canvases take their size (and allocate their bitmaps) on the first
+    // frame that draws, not on mount: a pane that never idles never pays.
+    let dirty = true;
 
     const layout = () => {
+      dirty = false;
+      rgb = parseContentRgb();
+      surfaceRgb = parseSurfaceRgb();
       const { width, height } = root.getBoundingClientRect();
       if (width <= 0 || height <= 0) return;
 
@@ -330,7 +345,7 @@ export function TerminalGridBackground() {
     };
 
     const draw = (time: number) => {
-      if (document.hidden || !visibleRef.current) {
+      if (document.hidden || !runRef.current) {
         raf = 0;
         return;
       }
@@ -338,6 +353,7 @@ export function TerminalGridBackground() {
       if (time - lastFrame < FRAME_MS) return;
       const dt = lastFrame ? time - lastFrame : FRAME_MS;
       lastFrame = time;
+      if (dirty) layout();
 
       const { width, height } = root.getBoundingClientRect();
       if (width <= 0 || height <= 0) return;
@@ -370,18 +386,17 @@ export function TerminalGridBackground() {
       }
     };
 
-    layout();
-    raf = requestAnimationFrame(draw);
-
-    const onVisible = () => {
-      if (document.hidden || !visibleRef.current || raf) return;
+    const onResume = () => {
+      if (document.hidden || !runRef.current || raf) return;
       lastFrame = 0;
       raf = requestAnimationFrame(draw);
     };
-    resumeRef.current = onVisible;
-    document.addEventListener("visibilitychange", onVisible);
+    resumeRef.current = onResume;
+    document.addEventListener("visibilitychange", onResume);
 
-    const resizeObserver = new ResizeObserver(layout);
+    const resizeObserver = new ResizeObserver(() => {
+      dirty = true;
+    });
     resizeObserver.observe(root);
 
     const themeObserver = new MutationObserver(() => {
@@ -395,7 +410,7 @@ export function TerminalGridBackground() {
 
     return () => {
       cancelAnimationFrame(raf);
-      document.removeEventListener("visibilitychange", onVisible);
+      document.removeEventListener("visibilitychange", onResume);
       resizeObserver.disconnect();
       themeObserver.disconnect();
       boardsRef.current = null;
@@ -403,10 +418,10 @@ export function TerminalGridBackground() {
     };
   }, []);
 
-  // The pane came back on screen: restart the loop `draw` let go of.
+  // Idle again, or a game taken: restart the loop `draw` let go of.
   useEffect(() => {
-    if (visible) resumeRef.current();
-  }, [visible]);
+    if (run) resumeRef.current();
+  }, [run]);
 
   const takeControl = useCallback(() => {
     const board = boardsRef.current?.[indexRef.current];
@@ -443,7 +458,7 @@ export function TerminalGridBackground() {
   }, []);
 
   useEffect(() => {
-    if (playing || hovered || !visible || GRID_GAMES.length < 2) return;
+    if (playing || hovered || !idle || GRID_GAMES.length < 2) return;
 
     const id = window.setInterval(() => {
       if (document.hidden) return;
@@ -452,7 +467,7 @@ export function TerminalGridBackground() {
       );
     }, SLIDE_HOLD_MS);
     return () => window.clearInterval(id);
-  }, [playing, hovered, visible, slide.index]);
+  }, [playing, hovered, idle, slide.index]);
 
   useEffect(() => {
     if (!playing) return;
