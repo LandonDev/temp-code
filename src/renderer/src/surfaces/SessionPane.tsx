@@ -1,5 +1,6 @@
 import { ChevronDown, GripVertical, X } from "../chrome/icons";
 import type { OpenFileFn } from "../lib/search";
+import { perfMark } from "../lib/perfMarks";
 import {
   memo,
   useCallback,
@@ -9,6 +10,7 @@ import {
   useState,
   useSyncExternalStore,
   type PointerEvent as ReactPointerEvent,
+  useLayoutEffect,
 } from "react";
 import { Composer } from "../chrome/Composer";
 import { AppshotFlyIn } from "../chrome/AppshotFlyIn";
@@ -172,6 +174,10 @@ export const SessionPane = memo(function SessionPane({
     },
     [session.cwd, session.harness, session.id, session.title],
   );
+
+  useLayoutEffect(() => {
+    perfMark("pane-commit", session.id);
+  }, [session.id]);
 
   useEffect(() => {
     if (!focused) return;
@@ -343,7 +349,7 @@ export const SessionPane = memo(function SessionPane({
       <div className="relative min-h-0 flex-1">
         {/* The header and composer commit with the click; the transcript,
             the heavy render, mounts in the deferred pass behind them. */}
-        <DeferredMount key={session.id}>
+        <DeferredMount key={session.id} markId={session.id}>
         <AgentTranscript
           sessionId={session.id}
           turn={session}

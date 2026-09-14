@@ -33,6 +33,7 @@ import { SecondOpinionCard } from "../chrome/SecondOpinionCard";
 import { NoteMiniCard } from "../chrome/NoteMiniCard";
 import { TerminalSpinner } from "../chrome/TerminalSpinner";
 import type { ApprovalDecision } from "../lib/harness";
+import { perfMark } from "../lib/perfMarks";
 import { isEditTool, stubFilePreview } from "../lib/harness/preview";
 import { copyText } from "../lib/clipboard";
 import { playCue } from "../lib/sounds";
@@ -528,6 +529,14 @@ export function AgentTranscript({
     const el = scroller.current;
     if (el) syncPill(el);
   }, [busy, collapseSpacer, schedule, syncPill]);
+
+  // First commit that carries rows for this session: the last stage mark.
+  const markedBlocks = useRef(false);
+  useLayoutEffect(() => {
+    if (markedBlocks.current || blocks.length === 0) return;
+    markedBlocks.current = true;
+    perfMark("transcript-blocks", sessionId);
+  }, [blocks.length, sessionId]);
 
   useLayoutEffect(() => {
     const opened = visible && !wasVisible.current;
