@@ -1,5 +1,5 @@
 {
-  "n": 114,
-  "notes": "Tab switch paints the strip, pane header and composer on the click; only the transcript body mounts in a deferred pass behind them (DeferredMount, keyed on the session), replacing the deferred whole-pane swap",
-  "ts": 1789420869547
+  "n": 115,
+  "notes": "First-paint budget: a collapsed edit row no longer reads its file to number the hunks (the read waits until the diff is opened), and a history image chip fetches its bytes only once it comes within a screen of the viewport (useNearViewport, IntersectionObserver)",
+  "ts": 1789421243615
 }
