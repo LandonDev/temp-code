@@ -30,6 +30,7 @@ import type { RecentProject } from "../lib/recents";
 import type { TerminalMetaPatch } from "../lib/terminalTab";
 import { tabSurfacePanes } from "../lib/workspaceFocus";
 import { useEditors } from "../stores/editors";
+import { useFocus } from "../stores/focus";
 import { useProject } from "../stores/project";
 import { useWorkspaceTabs } from "../stores/workspace";
 import type {
@@ -47,8 +48,6 @@ import { SessionPane } from "./SessionPane";
 type Props = {
   tabId: string;
   visible: boolean;
-  focusedId: string;
-  composerFocused: boolean;
   onFocus: (paneId: string) => void;
   onClose: (sessionId: string) => void;
   onSelectFile: (paneId: string, fileId: string) => void;
@@ -142,8 +141,6 @@ const NO_TAB: WorkspaceTab = {
 function PaneTreeComponent({
   tabId,
   visible,
-  focusedId,
-  composerFocused,
   onFocus,
   onClose,
   onSelectFile,
@@ -187,6 +184,13 @@ function PaneTreeComponent({
   const editorNavigation = useEditors((s) => s.navigation);
   const recents = useProject((s) => (visible ? s.recents : NO_RECENTS));
   const hideProjectPicker = useSidebarLayout() === "deck";
+  // Focus: the shown tab's focused pane, unless the diff or the dock holds
+  // it; the composer only once the deferred pass has caught up with the click.
+  const settled = useWorkspaceTabs((s) => visible && s.activeTabId === tabId);
+  const dockFocused = useFocus((s) => visible && s.projectTerminalFocused);
+  const composerWanted = useFocus((s) => visible && s.composerFocused);
+  const focusedId = visible && !tab.diffFocused && !dockFocused ? tab.focusedId : "";
+  const composerFocused = composerWanted && !dockFocused && settled;
   const treeRef = useRef<HTMLDivElement>(null);
   const layoutRef = useRef(layout);
   layoutRef.current = layout;

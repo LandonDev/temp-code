@@ -63,7 +63,7 @@ void listen("persist_requested", () => {
 void loadBootWorkspace().then(
   ({ windowTransfer, resumed, history, historyCwd }) => {
     const installedUpdate = windowTransfer ? null : consumeInstalledUpdate();
-    const boot = bootstrapWorkspace({
+    bootstrapWorkspace({
       windowTransfer,
       resumed,
       history,
@@ -75,7 +75,7 @@ void loadBootWorkspace().then(
     ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
       <React.StrictMode>
         <BootGate>
-          <App boot={boot} />
+          <App />
         </BootGate>
       </React.StrictMode>,
     );

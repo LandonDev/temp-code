@@ -6,7 +6,6 @@ import {
   lastProjectPath,
   loadRecents,
   looksLikeProject,
-  normalizeProjectPath,
   rememberProject,
   type RecentProject,
 } from "../lib/recents";
@@ -17,6 +16,7 @@ import type { InstalledUpdate } from "../lib/updateNotice";
 import type { WindowTransferPayload } from "../lib/windowTransfer";
 import { loadSelectedProject } from "../lib/projectContext";
 import { editorsStore, initialEditorsState } from "./editors";
+import { focusStore, initialFocusState } from "./focus";
 import { projectStore } from "./project";
 import { shell } from "./shell";
 import { initialTerminalsState, terminalsStore } from "./terminals";
@@ -41,8 +41,6 @@ export type BootWorkspace = {
   /** The composer takes focus when the active tab is a chat we know. */
   composerFocused: boolean;
   dirtyFileIds: string[];
-  /** Projects whose history rows the loader already brought. */
-  loadedProjects: ReadonlySet<string>;
 };
 
 /** A blank chat in the last project, for a window with nothing to restore. */
@@ -63,7 +61,7 @@ export function planBoot(
   seed: BootSeed,
   recents: RecentProject[] = loadRecents(),
 ): BootWorkspace & { sessions: Session[] } {
-  const { windowTransfer, resumed, historyCwd } = input;
+  const { windowTransfer, resumed } = input;
   const activeTabId =
     windowTransfer?.activeTabId ?? resumed?.activeTabId ?? seed.tab.id;
   const composerFocused = windowTransfer
@@ -82,9 +80,6 @@ export function planBoot(
     activeTabId,
     composerFocused,
     dirtyFileIds: windowTransfer?.dirtyFileIds ?? [],
-    loadedProjects: historyCwd
-      ? new Set([normalizeProjectPath(historyCwd)])
-      : new Set(),
   };
 }
 
@@ -102,7 +97,8 @@ function resumedComposerFocused(resumed: ResumedWorkspace): boolean {
  * history stores when they are still empty, notes the installed update, and
  * returns the workspace App mounts with. Session and history stores that
  * already hold state (a second mount in the same page) keep it; the project,
- * workspace, terminals and editors stores take the boot's placement either way.
+ * workspace, terminals, editors and focus stores take the boot's placement
+ * either way.
  */
 export function bootstrapWorkspace(input: BootInput): BootWorkspace {
   const seed = newBootSeed();
@@ -120,7 +116,6 @@ export function bootstrapWorkspace(input: BootInput): BootWorkspace {
     projectCwd: workspace.projectCwd,
     recents: workspace.recents,
     selectedProjectId: loadSelectedProject(workspace.projectCwd),
-    loadedProjects: workspace.loadedProjects,
   });
   workspaceTabsStore.setState(
     initialWorkspaceTabsState(workspace.tabs, workspace.activeTabId),
@@ -128,5 +123,6 @@ export function bootstrapWorkspace(input: BootInput): BootWorkspace {
   );
   terminalsStore.setState(initialTerminalsState(workspace.projectTerminals), true);
   editorsStore.setState(initialEditorsState(workspace.dirtyFileIds), true);
+  focusStore.setState(initialFocusState(workspace.composerFocused), true);
   return workspace;
 }
