@@ -1,5 +1,5 @@
 {
-  "n": 101,
-  "notes": "The window's open tabs live in their own store",
-  "ts": 1789344516170
+  "n": 102,
+  "notes": "App's tab actions and its store-driven effects move out of the component",
+  "ts": 1789349584987
 }
