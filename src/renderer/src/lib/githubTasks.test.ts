@@ -11,6 +11,7 @@ import {
   githubReviewStateLabel,
   groupProjectsByRepo,
   inboxComposerCard,
+  inboxFetchProjects,
   inboxItemKey,
   inboxListCacheKey,
   inboxPersonAvatarUrl,
@@ -236,6 +237,20 @@ describe("uniqueInboxProjects", () => {
         { path: "/tmp/docs" },
       ]),
     ).toEqual([{ path: "/tmp/web" }, { path: "/tmp/docs" }]);
+  });
+});
+
+describe("inboxFetchProjects", () => {
+  const rail = [
+    { path: "/tmp/web", openedAt: 2 },
+    { path: "/tmp/docs", openedAt: 1 },
+  ];
+  it("fetches the current project only until asked for all", () => {
+    expect(inboxFetchProjects(rail, "/tmp/web/", "current")).toEqual([rail[0]]);
+    expect(inboxFetchProjects(rail, "/tmp/web", "all")).toEqual(rail);
+  });
+  it("fetches nothing when no project is open", () => {
+    expect(inboxFetchProjects(rail, "~", "current")).toEqual([]);
   });
 });
 

@@ -11,14 +11,12 @@ export const SOUNDS_CHANGE_EVENT = "monocode:sounds-change";
 
 export type SoundCue =
   | "turnFinished"
-  | "inboxUnseen"
   | "updateAvailable"
   | "switch"
   | "copy";
 
 const CUES: Record<SoundCue, SoundName> = {
   turnFinished: "success",
-  inboxUnseen: "bloom",
   updateAvailable: "arrival",
   switch: "toggle",
   copy: "scan",
@@ -63,19 +61,7 @@ export function playCue(cue: SoundCue) {
   play(CUES[cue]);
 }
 
-let inboxDotOn = false;
-let inboxPrimed = false;
 let announcedUpdate: string | undefined;
-
-/**
- * Rising edge of the project-rail inbox dot, after the first snapshot.
- * Launching with items already unseen must not chime.
- */
-export function noteInboxUnseen(isUnseen: boolean) {
-  if (isUnseen && !inboxDotOn && inboxPrimed) playCue("inboxUnseen");
-  inboxDotOn = isUnseen;
-  inboxPrimed = true;
-}
 
 /** One cue per available version, including a later probe of the same build. */
 export function announceUpdateAvailable(version: string | null) {
@@ -90,7 +76,5 @@ export function announceUpdateAvailable(version: string | null) {
 
 /** Test helper: forget which inbox/update cues already fired. */
 export function resetSoundCues() {
-  inboxDotOn = false;
-  inboxPrimed = false;
   announcedUpdate = undefined;
 }

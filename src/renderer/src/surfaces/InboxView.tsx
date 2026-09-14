@@ -39,6 +39,7 @@ import {
   inboxItemKey,
   inboxItemRef,
   inboxItemStatus,
+  inboxFetchProjects,
   inboxListIsFresh,
   inboxProjectsForRail,
   listInboxItems,
@@ -55,7 +56,9 @@ import {
   type InboxItem,
   type InboxProviderErrors,
   type InboxQuery,
+  type InboxScope,
 } from "../lib/githubTasks";
+import { inboxSeenEntries } from "../lib/inboxBadge";
 import {
   applyInboxFilters,
   hasActiveInboxFilters,
@@ -75,6 +78,7 @@ import { setInboxSelection, useInboxSelection } from "../lib/inboxSelection";
 import {
   isInboxEntryUnseen,
   markInboxItemSeen,
+  seedInboxSeenIfNeeded,
   useInboxSeenTick,
 } from "../lib/inboxSeen";
 import {
@@ -166,10 +170,11 @@ function InboxProjectMark({
 }
 
 function peekInboxForRail(recents: RecentProject[], cwd: string) {
-  const projects = inboxProjectsForRail(recents, cwd);
+  const rail = inboxProjectsForRail(recents, cwd);
+  const projects = inboxFetchProjects(rail, cwd, "current");
   const filters = pruneInboxFilters(
     loadInboxFilters(),
-    projects.map((project) => project.path),
+    rail.map((project) => project.path),
   );
   return peekInboxList(projects, {
     assignedToMe: filters.assignedToMe,
@@ -280,6 +285,9 @@ export function InboxView({
     () => peekInboxForRail(recents, cwd)?.errors ?? {},
   );
   const [refresh, setRefresh] = useState(0);
+  // What the open inbox fetches: this project until the user asks for the
+  // rest. Nothing is fetched while the inbox is closed.
+  const [scope, setScope] = useState<InboxScope>("current");
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [filters, setFilters] = useState(loadInboxFilters);
   const [source, setSource] = useState(loadInboxSource);
@@ -294,6 +302,10 @@ export function InboxView({
   const projects = useMemo(
     () => inboxProjectsForRail(recents, cwd),
     [cwd, recents],
+  );
+  const fetchProjects = useMemo(
+    () => inboxFetchProjects(projects, cwd, scope),
+    [cwd, projects, scope],
   );
   const projectOptions = useMemo(
     () => inboxProjectOptions(projects, logos),
@@ -357,13 +369,13 @@ export function InboxView({
   useEffect(() => {
     const force = refresh !== prevRefresh.current;
     prevRefresh.current = refresh;
-    const cached = peekInboxList(projects, fetchQuery);
+    const cached = peekInboxList(fetchProjects, fetchQuery);
     if (cached) {
       setItems(cached.items);
       setProviderErrors(cached.errors);
       setLoading(false);
     }
-    if (!force && cached && inboxListIsFresh(projects, fetchQuery)) {
+    if (!force && cached && inboxListIsFresh(fetchProjects, fetchQuery)) {
       return;
     }
 
@@ -373,8 +385,11 @@ export function InboxView({
       setLoading(true);
       setProviderErrors({});
     }
-    void listInboxItems(projects, fetchQuery, { force })
+    void listInboxItems(fetchProjects, fetchQuery, { force })
       .then((next) => {
+        seedInboxSeenIfNeeded(
+          inboxSeenEntries(applyInboxFilters(next.items, activeFilters, "")),
+        );
         if (cancelled) return;
         setItems(next.items);
         setProviderErrors(next.errors);
@@ -395,7 +410,7 @@ export function InboxView({
     return () => {
       cancelled = true;
     };
-  }, [fetchQuery, projects, refresh]);
+  }, [activeFilters, fetchProjects, fetchQuery, refresh]);
 
   const visibleItems = useMemo(
     () =>
@@ -540,7 +555,7 @@ export function InboxView({
                   : "No issues or pull requests match these filters"
               : source === "linear"
                 ? "No Linear issues"
-                : projects.length === 0
+                : fetchProjects.length === 0
                   ? "Open a project to fill the inbox"
                   : "No matching issues or pull requests"}
           </p>
@@ -575,6 +590,17 @@ export function InboxView({
             })}
           </ul>
         )}
+        {source === "github" && projects.length > 1 && !loading ? (
+          <button
+            type="button"
+            onClick={() =>
+              setScope((value) => (value === "all" ? "current" : "all"))
+            }
+            className="mx-1.5 mb-1.5 h-7 w-[calc(100%-0.75rem)] rounded-md px-2 text-left text-[12px] text-content/50 hover:bg-content/5 hover:text-content"
+          >
+            {scope === "all" ? "This project only" : "Show all projects"}
+          </button>
+        ) : null}
       </div>
       {sidebar ? null : (
         <div
