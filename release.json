@@ -1,5 +1,5 @@
 {
-  "n": 104,
-  "notes": "Focus gets a store, and App.tsx is composition over the stores",
-  "ts": 1789352554784
+  "n": 105,
+  "notes": "Window stays opaque: vibrancy only with TEMP_CODE_GLASS=1, mac root gets a solid background",
+  "ts": 1789415496034
 }
