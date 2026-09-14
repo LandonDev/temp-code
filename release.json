@@ -1,5 +1,5 @@
 {
-  "n": 110,
-  "notes": "Parked panes schedule no frames: every timer and animation loop inside a pane gates on a PaneVisibility context, not document.hidden",
-  "ts": 1789419398845
+  "n": 111,
+  "notes": "Blank tabs collapse on restore: one empty thread tab per project (the active one, else the newest), and the arcade runs only in the focused pane of the shown tab, a frame after it paints",
+  "ts": 1789419633750
 }
