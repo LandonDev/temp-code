@@ -1,0 +1,357 @@
+import { installCheckpointBridge } from "../lib/checkpointBridge";
+import { syncDockBadge } from "../lib/dockBadge";
+import { sessionChildHarnesses } from "../lib/handoff";
+import {
+  forgetHarnessSession,
+  isLiveHarness,
+  probeHarnessAvailability,
+  refreshHarnessCatalogs,
+} from "../lib/harness";
+import { liveAgentTracker } from "../lib/liveAgentTracker";
+import { mergeModelSettings, resolveModel } from "../lib/models";
+import { invoke } from "../lib/native";
+import { saveLastSession, workspacePathOfSession } from "../lib/projectContext";
+import { lastProjectPath, looksLikeProject } from "../lib/recents";
+import { markSessionSeen } from "../lib/sessionSeen";
+import { loadLiveAgentsEnabled, subscribeLiveAgentsEnabled } from "../lib/settings";
+import { createWorkspace } from "../lib/tcserver/projects";
+import { sessionStore } from "../lib/tcserver/store";
+import { workspaceByPath, workspaceStore } from "../lib/tcserver/workspaces";
+import { migrateWorkspaces } from "../lib/workspaceMigration";
+import { project, projectStore } from "./project";
+import { activeSessionOf, workspace, workspaceTabsStore } from "./workspace";
+import { openSessionIds, workspaceActions } from "./workspaceActions";
+
+/**
+ * The effects App used to run off its renders, wired to the stores instead.
+ * `installSubscriptions()` runs once from `main.tsx`, after the boot fills
+ * the stores and before the first render. Each installer returns its
+ * teardown so tests can install one at a time.
+ *
+ * A store notifies synchronously inside `setState`, mid-way through a
+ * callback's writes. A subscriber that wrote back from there would hand the
+ * later subscribers a stale state, and a check that read there would see
+ * half a move. So every reaction that writes or decides waits for the
+ * current microtask to end: all the writes of one callback settle as one,
+ * the way one React commit did. The idle sweep waits a whole task, as it
+ * always has; the mount budget only books an idle slice, so it runs inline.
+ */
+
+type Teardown = () => void;
+
+/** One run per microtask no matter how many stores wrote. */
+function afterWrites(run: () => void): () => void {
+  let pending = false;
+  return () => {
+    if (pending) return;
+    pending = true;
+    queueMicrotask(() => {
+      pending = false;
+      run();
+    });
+  };
+}
+
+function teardownAll(offs: Teardown[]): Teardown {
+  return () => {
+    for (const off of offs) off();
+  };
+}
+
+/** The session on screen, off the stores. */
+export function currentActiveSession() {
+  const { tabs, activeTabId } = workspaceTabsStore.getState();
+  return activeSessionOf(tabs, activeTabId, sessionStore.getSnapshot()).active;
+}
+
+/** The visit trail follows the active tab; closed tabs fall out of it. */
+export function installVisitSettling(): Teardown {
+  const settle = afterWrites(() => workspace.settleVisits());
+  workspace.settleVisits();
+  return workspaceTabsStore.subscribe(
+    (s) => [s.tabs, s.activeTabId] as const,
+    settle,
+    { equalityFn: (a, b) => a[0] === b[0] && a[1] === b[1] },
+  );
+}
+
+/** Terminal tabs never share a strip with files. */
+export function installTerminalIsolation(): Teardown {
+  const isolate = afterWrites(() => workspaceActions.isolateTerminals());
+  workspaceActions.isolateTerminals();
+  return workspaceTabsStore.subscribe((s) => s.tabs, isolate);
+}
+
+/**
+ * Hidden tabs mount their panes after first paint, one per idle slice, so
+ * launch-to-session-list does not scale with how many heavy tabs restore.
+ */
+export function installMountBudget(): Teardown {
+  const idle =
+    typeof window !== "undefined" && typeof window.requestIdleCallback === "function"
+      ? {
+          book: (run: () => void) => window.requestIdleCallback(run, { timeout: 500 }),
+          free: (handle: number) => window.cancelIdleCallback(handle),
+        }
+      : {
+          book: (run: () => void) => setTimeout(run, 0) as unknown as number,
+          free: (handle: number) => clearTimeout(handle),
+        };
+  let handle: number | null = null;
+  const cancel = () => {
+    if (handle == null) return;
+    idle.free(handle);
+    handle = null;
+  };
+  const schedule = () => {
+    const { hiddenMountBudget, tabs } = workspaceTabsStore.getState();
+    if (hiddenMountBudget >= tabs.length) {
+      cancel();
+      return;
+    }
+    if (handle != null) return;
+    handle = idle.book(() => {
+      handle = null;
+      workspace.growMountBudget();
+    });
+  };
+  schedule();
+  const off = workspaceTabsStore.subscribe(
+    (s) => [s.hiddenMountBudget, s.tabs.length] as const,
+    schedule,
+    { equalityFn: (a, b) => a[0] === b[0] && a[1] === b[1] },
+  );
+  return () => {
+    off();
+    cancel();
+  };
+}
+
+/**
+ * Sessions the sweep must leave alone for a moment: a thread restored ahead
+ * of the tab that will show it, or one being handed to another window.
+ */
+export const skipForgetSessionIds = new Set<string>();
+
+/**
+ * Tabs are views. Hidden idle sessions drop their child. A visible session
+ * keeps its child for a few minutes after a turn so follow-ups stay instant,
+ * then parks it and resumes on the next prompt. A store bump for a new
+ * session lands before the write that opens its tab, so the sweep waits a
+ * task and reads the tabs then.
+ */
+export function installIdleSweep(): Teardown {
+  let pending: ReturnType<typeof setTimeout> | null = null;
+  const sweep = () => {
+    pending = null;
+    const keepUnseen = loadLiveAgentsEnabled();
+    const visibleIds = openSessionIds(workspaceTabsStore.getState().tabs);
+    const unseen = liveAgentTracker.unseenIds();
+    const idleDetached = sessionStore.getSnapshot().filter(
+      (session) =>
+        !visibleIds.has(session.id) &&
+        !session.busy &&
+        !(keepUnseen && unseen.has(session.id)),
+    );
+    if (idleDetached.length === 0) return;
+    for (const session of idleDetached) {
+      if (skipForgetSessionIds.has(session.id)) continue;
+      for (const harness of sessionChildHarnesses(session)) {
+        void forgetHarnessSession(harness, session.id);
+      }
+    }
+    sessionStore.mutate((prev) => {
+      const next = prev.filter(
+        (session) =>
+          visibleIds.has(session.id) ||
+          session.busy ||
+          (keepUnseen && unseen.has(session.id)) ||
+          skipForgetSessionIds.has(session.id),
+      );
+      // The store bumps on any new array; a no-op sweep must not re-notify
+      // (and re-run this) while a shielded session waits for its tab.
+      return next.length === prev.length ? prev : next;
+    });
+  };
+  const sweepAfterCommit = () => {
+    if (pending == null) pending = setTimeout(sweep, 0);
+  };
+  sweepAfterCommit();
+  const offs = [
+    sessionStore.subscribe(sweepAfterCommit),
+    workspaceTabsStore.subscribe((s) => s.tabs, sweepAfterCommit),
+    subscribeLiveAgentsEnabled(sweepAfterCommit),
+  ];
+  return () => {
+    teardownAll(offs)();
+    if (pending != null) clearTimeout(pending);
+  };
+}
+
+/**
+ * What follows the session on screen: the rail's focus, the read mark, the
+ * project selection, and where its project and workspace land next time.
+ */
+export function installActiveSessionSync(): Teardown {
+  // The active pane picks the project. A move to another workspace already
+  // loaded that folder's remembered selection, so the pass that moved does
+  // not let the landing thread overwrite it.
+  let selectionCwd = projectStore.getState().projectCwd;
+  let selectionKey: string | undefined;
+  const syncSelection = () => {
+    const { projectCwd } = projectStore.getState();
+    const active = currentActiveSession();
+    const key = `${active?.id ?? ""}\n${active?.projectId ?? ""}`;
+    const moved = selectionCwd !== projectCwd;
+    if (!moved && key === selectionKey) return;
+    selectionCwd = projectCwd;
+    selectionKey = key;
+    if (moved || !active) return;
+    if (!active.projectId && sessionStore.isDraft(active.id)) return;
+    project.selectProject(active.projectId ?? null);
+  };
+
+  // The focused thread is where its project, and its workspace, land next
+  // time they are picked. A draft has no meta until its first send, so this
+  // follows the meta, not the pane; a subagent lands nowhere; and the
+  // workspace key waits for the catalog, else it would name the worktree.
+  let landingKey: string | undefined;
+  const syncLanding = () => {
+    const active = currentActiveSession();
+    const meta = active ? sessionStore.metaOf(active.id) : null;
+    const catalog = workspaceStore.getSnapshot();
+    const key = [meta?.id, meta?.projectId, meta?.archived, catalog.loaded].join("\n");
+    if (key === landingKey) return;
+    landingKey = key;
+    if (!meta || meta.archived || meta.parentId || !catalog.loaded) return;
+    if (meta.projectId) saveLastSession({ projectId: meta.projectId }, meta.id);
+    saveLastSession({ workspacePath: workspacePathOfSession(meta, catalog) }, meta.id);
+  };
+
+  // A project that was archived or deleted drops out of the selection.
+  const dropStaleSelection = () => {
+    const catalog = workspaceStore.getSnapshot();
+    const { selectedProjectId } = projectStore.getState();
+    if (!catalog.loaded || !selectedProjectId) return;
+    const meta = catalog.projects.find((p) => p.id === selectedProjectId);
+    if (!meta || meta.archived) project.selectProject(null);
+  };
+
+  // First boot after the upgrade: remembered folders become workspaces.
+  // Every launch: the current folder is one too (workspace.create is idempotent).
+  let workspacesKey: readonly [boolean, string, unknown] | undefined;
+  const ensureWorkspace = () => {
+    const catalog = workspaceStore.getSnapshot();
+    const { projectCwd } = projectStore.getState();
+    const key = [catalog.loaded, projectCwd, catalog.workspaces] as const;
+    if (workspacesKey && key.every((part, i) => part === workspacesKey![i])) return;
+    workspacesKey = key;
+    if (!catalog.loaded) return;
+    void migrateWorkspaces();
+    if (looksLikeProject(projectCwd) && !workspaceByPath(catalog.workspaces, projectCwd)) {
+      void createWorkspace(projectCwd).catch(() => undefined);
+    }
+  };
+
+  // What is on screen counts as read, and the rail knows what is on screen.
+  let focusedId: string | undefined;
+  const mark = () => {
+    const id = currentActiveSession()?.id;
+    const meta = id ? sessionStore.metaOf(id) : null;
+    if (id && meta) markSessionSeen(id, meta.updatedAt);
+  };
+  const syncFocus = () => {
+    const id = currentActiveSession()?.id;
+    if (id === focusedId) return;
+    focusedId = id;
+    liveAgentTracker.setFocused(id);
+    mark();
+  };
+
+  const sync = () => {
+    syncFocus();
+    syncSelection();
+    syncLanding();
+    dropStaleSelection();
+    ensureWorkspace();
+  };
+  sync();
+  const scheduled = afterWrites(sync);
+  return teardownAll([
+    workspaceTabsStore.subscribe(scheduled),
+    sessionStore.subscribe(scheduled),
+    sessionStore.onMetaChange(scheduled),
+    sessionStore.onMetaChange(mark),
+    projectStore.subscribe(scheduled),
+    workspaceStore.subscribe(scheduled),
+  ]);
+}
+
+/** Once per window: the dock badge, checkpoints, the default folder and the harness catalogs. */
+export function installBootTasks(): Teardown {
+  let live = true;
+  syncDockBadge();
+  const offs = [
+    sessionStore.subscribe(syncDockBadge),
+    sessionStore.onMetaChange(syncDockBadge),
+    installCheckpointBridge(),
+    () => {
+      live = false;
+    },
+  ];
+
+  if (!lastProjectPath()) {
+    void invoke<string>("default_cwd")
+      .then((cwd) => {
+        if (!live || !looksLikeProject(cwd)) return;
+        project.adoptDefaultCwd(cwd);
+        void createWorkspace(cwd).catch(() => undefined);
+        sessionStore.mutate((prev) => prev.map((s) => (s.cwd === "~" ? { ...s, cwd } : s)));
+      })
+      .catch(() => {});
+  }
+
+  void probeHarnessAvailability();
+  // Only the harnesses already in this window. Probing every installed CLI
+  // at boot left unused agents (especially Pi) running in the background.
+  const harnesses = [...new Set(sessionStore.getSnapshot().map((session) => session.harness))];
+  void refreshHarnessCatalogs(harnesses).then(() => {
+    if (!live) return;
+    sessionStore.mutate((prev) =>
+      prev.map((session) => {
+        if (!isLiveHarness(session.harness)) return session;
+        const resolved = resolveModel(session.harness, session.model);
+        const modelSettings = mergeModelSettings(resolved, session.modelSettings);
+        if (resolved.id === session.model && sameSettings(modelSettings, session.modelSettings)) {
+          return session;
+        }
+        return { ...session, model: resolved.id, modelSettings };
+      }),
+    );
+  });
+  return teardownAll(offs);
+}
+
+function sameSettings(
+  a: Record<string, string> | undefined,
+  b: Record<string, string> | undefined,
+): boolean {
+  const left = a ?? {};
+  const right = b ?? {};
+  for (const key of new Set([...Object.keys(left), ...Object.keys(right)])) {
+    if (left[key] !== right[key]) return false;
+  }
+  return true;
+}
+
+/** Everything above, once, after the boot fills the stores. */
+export function installSubscriptions(): Teardown {
+  return teardownAll([
+    installVisitSettling(),
+    installTerminalIsolation(),
+    installMountBudget(),
+    installIdleSweep(),
+    installActiveSessionSync(),
+    installBootTasks(),
+  ]);
+}
