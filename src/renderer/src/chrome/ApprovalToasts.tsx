@@ -3,8 +3,9 @@ import { createPortal } from "react-dom";
 import type { ApprovalDecision } from "../lib/harness";
 import { useMemo } from "react";
 import { hiddenApprovalNotices, type PendingApprovalNotice } from "../lib/approvalToast";
-import type { WorkspaceTab } from "../lib/layout";
 import { useServerSessions } from "../lib/tcserver/store";
+import { useFocus } from "../stores/focus";
+import { useWorkspaceTabs } from "../stores/workspace";
 import { LAYER } from "../lib/layers";
 import {
   HARNESS_TITLE,
@@ -27,16 +28,10 @@ type Props = {
 
 /** Toasts for approvals pending in sessions the user is not looking at.
  *  Subscribes to the store itself so App does not re-render per push. */
-export function HiddenApprovalToasts({
-  tabs,
-  activeTabId,
-  composerFocused,
-  ...rest
-}: Omit<Props, "notices"> & {
-  tabs: WorkspaceTab[];
-  activeTabId: string;
-  composerFocused: boolean;
-}) {
+export function HiddenApprovalToasts(rest: Omit<Props, "notices">) {
+  const tabs = useWorkspaceTabs((s) => s.tabs);
+  const activeTabId = useWorkspaceTabs((s) => s.activeTabId);
+  const composerFocused = useFocus((s) => s.composerFocused);
   const sessions = useServerSessions();
   const notices = useMemo(
     () => hiddenApprovalNotices(sessions, activeTabId, tabs, composerFocused),

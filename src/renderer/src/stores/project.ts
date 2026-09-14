@@ -14,7 +14,7 @@ import {
   type RecentProject,
 } from "../lib/recents";
 import { sessionWorkCwd } from "../lib/session";
-import { useSessionShells, type SessionShell } from "../lib/tcserver/store";
+import { sessionStore, useSessionShells, type SessionShell } from "../lib/tcserver/store";
 import {
   useWorkspaceCatalog,
   workspaceByPath,
@@ -22,7 +22,7 @@ import {
   type WorkspaceCatalog,
 } from "../lib/tcserver/workspaces";
 import type { ProjectMeta } from "../lib/tcserver/types";
-import { activeSessionOf, useWorkspaceTabs } from "./workspace";
+import { activeSessionOf, useWorkspaceTabs, workspaceTabsStore } from "./workspace";
 
 /**
  * Where the window is: the workspace folder, the project picked inside it,
@@ -39,8 +39,6 @@ export type ProjectState = {
   recents: RecentProject[];
   /** The project picked in this workspace, remembered per folder. */
   selectedProjectId: string | null;
-  /** Workspaces whose history rows have arrived at least once. */
-  loadedProjects: ReadonlySet<string>;
 };
 
 export function initialProjectState(
@@ -51,7 +49,6 @@ export function initialProjectState(
     projectCwd,
     recents: [],
     selectedProjectId: loadSelectedProject(projectCwd),
-    loadedProjects: new Set(),
     ...overrides,
   };
 }
@@ -81,13 +78,6 @@ export function selectProject(state: ProjectState, projectId: string | null): Pr
 
 export function setRecents(state: ProjectState, recents: RecentProject[]): ProjectState {
   return state.recents === recents ? state : { ...state, recents };
-}
-
-/** The first history rows for `cwd` arrived. */
-export function markProjectLoaded(state: ProjectState, cwd: string): ProjectState {
-  const key = normalizeProjectPath(cwd);
-  if (state.loadedProjects.has(key)) return state;
-  return { ...state, loadedProjects: new Set(state.loadedProjects).add(key) };
 }
 
 // ── derived ─────────────────────────────────────────────────────────────
@@ -209,7 +199,6 @@ export const project = {
     if (projectStore.getState() !== before) saveSelectedProject(before.projectCwd, projectId);
   },
   setRecents: (recents: RecentProject[]) => update((s) => setRecents(s, recents)),
-  markProjectLoaded: (cwd: string) => update((s) => markProjectLoaded(s, cwd)),
 };
 
 /** The tab on screen and the session it shows, as React state. */
@@ -239,4 +228,26 @@ export function useProjectCwds(): {
   const { projects } = useWorkspaceCatalog();
   const sidebarCwd = sidebarCwdOf({ projectCwd, selectedProjectId }, projects, active, activeTab);
   return { activeTab, active, sidebarCwd, gitCwd: gitCwdOf(active, sidebarCwd) };
+}
+
+/** The tab on screen and the session it shows, as of now, for callbacks. */
+export function currentActivePane() {
+  const { tabs, activeTabId } = workspaceTabsStore.getState();
+  return activeSessionOf(tabs, activeTabId, sessionStore.getSnapshot());
+}
+
+/** The folder the sidebar shows, as of now; the render computes the same from live values. */
+export function currentSidebarCwd(): string {
+  const { activeTab, active } = currentActivePane();
+  return sidebarCwdOf(
+    projectStore.getState(),
+    workspaceStore.getSnapshot().projects,
+    active,
+    activeTab,
+  );
+}
+
+/** The checkout git commands run in, as of now. */
+export function currentGitCwd(): string {
+  return gitCwdOf(currentActivePane().active, currentSidebarCwd());
 }

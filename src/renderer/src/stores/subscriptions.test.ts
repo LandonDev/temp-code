@@ -3,7 +3,13 @@ import { leaf, newFileTab, newTab, newTerminalFile, type WorkspaceTab } from "..
 import { saveLastSession } from "../lib/projectContext";
 import { newSession, type Session } from "../lib/session";
 import { markSessionSeen } from "../lib/sessionSeen";
-import { saveWorkspaceSnapshot } from "../lib/sessionStore";
+import { listSessionsByProject, saveWorkspaceSnapshot } from "../lib/sessionStore";
+import { prefetchProjectFiles } from "../lib/fileIndex";
+import { loadSidebarLayout } from "../lib/appearance";
+import { loadNotesEnabled } from "../lib/settings";
+import { withDockOpen } from "../lib/projectTerminal";
+import { focus, focusStore, initialFocusState } from "./focus";
+import { initialShellState, shell, shellStore } from "./shell";
 import { createWorkspace } from "../lib/tcserver/projects";
 import { sessionStore } from "../lib/tcserver/store";
 import type { ProjectMeta, SessionMeta, WorkspaceCatalog } from "../lib/tcserver/types";
@@ -17,6 +23,9 @@ import {
   installActiveSessionSync,
   installAutosave,
   installBootTasks,
+  installHistoryRefresh,
+  installLayoutSync,
+  installNotesGate,
   installIdleSweep,
   installMountBudget,
   installSubscriptions,
@@ -44,6 +53,17 @@ vi.mock("../lib/appLifecycle", () => ({ isAppQuitting: () => false }));
 vi.mock("../lib/sessionStore", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../lib/sessionStore")>()),
   saveWorkspaceSnapshot: vi.fn(() => Promise.resolve()),
+  listSessionsByProject: vi.fn(() => Promise.resolve([])),
+  subscribeSessionHistory: vi.fn(() => () => {}),
+}));
+vi.mock("../lib/fileIndex", () => ({ prefetchProjectFiles: vi.fn() }));
+vi.mock("../lib/appearance", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../lib/appearance")>()),
+  loadSidebarLayout: vi.fn((): "classic" | "deck" => "classic"),
+}));
+vi.mock("../lib/settings", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../lib/settings")>()),
+  loadNotesEnabled: vi.fn(() => true),
 }));
 vi.mock("../lib/sessionSeen", () => ({ markSessionSeen: vi.fn() }));
 vi.mock("../lib/workspaceMigration", () => ({ migrateWorkspaces: vi.fn(() => Promise.resolve()) }));
@@ -137,6 +157,8 @@ beforeEach(() => {
   workspaceStore.reset();
   projectStore.setState(initialProjectState({ projectCwd: "/repo" }), true);
   terminalsStore.setState(initialTerminalsState(), true);
+  focusStore.setState(initialFocusState(), true);
+  shellStore.setState(initialShellState(), true);
   setTabs([]);
   skipForgetSessionIds.clear();
   vi.clearAllMocks();
@@ -462,5 +484,54 @@ describe("installAutosave", () => {
     workspace.setTabs((tabs) => [...tabs, tab("b")]);
     vi.advanceTimersByTime(300);
     expect(saveWorkspaceSnapshot).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("installHistoryRefresh", () => {
+  it("loads the sidebar folder's history and warms its files when the folder changes", async () => {
+    setTabs([tab("a")]);
+    sessionStore.mutate([session("s-a", { cwd: "/repo" })]);
+    teardown = installHistoryRefresh();
+    expect(listSessionsByProject).toHaveBeenCalledWith("/repo");
+    expect(prefetchProjectFiles).toHaveBeenCalledWith("/repo");
+    workspace.setTabs((tabs) => tabs);
+    await microtasks();
+    expect(listSessionsByProject).toHaveBeenCalledTimes(1);
+    sessionStore.mutate([session("s-a", { cwd: "/other" })]);
+    await microtasks();
+    expect(listSessionsByProject).toHaveBeenLastCalledWith("/other");
+    expect(prefetchProjectFiles).toHaveBeenLastCalledWith("/other");
+  });
+});
+
+describe("installNotesGate", () => {
+  it("closes the notes view when notes are off", () => {
+    shell.openNotes();
+    teardown = installNotesGate();
+    expect(shellStore.getState().notesViewOpen).toBe(true);
+    teardown();
+    vi.mocked(loadNotesEnabled).mockReturnValue(false);
+    teardown = installNotesGate();
+    expect(shellStore.getState().notesViewOpen).toBe(false);
+  });
+});
+
+describe("installLayoutSync", () => {
+  it("drops the dock's focus once its dock is not on screen", async () => {
+    vi.mocked(loadSidebarLayout).mockReturnValue("deck");
+    terminals.openTerminal("/repo", newTerminalFile("/repo", "zsh"));
+    focus.enterProjectTerminal();
+    teardown = installLayoutSync();
+    expect(focusStore.getState().projectTerminalFocused).toBe(true);
+    terminals.updateDock("/repo", (dock) => withDockOpen(dock, false));
+    await microtasks();
+    expect(focusStore.getState().projectTerminalFocused).toBe(false);
+  });
+
+  it("a dock in classic never holds focus", () => {
+    terminals.openTerminal("/repo", newTerminalFile("/repo", "zsh"));
+    focus.enterProjectTerminal();
+    teardown = installLayoutSync();
+    expect(focusStore.getState().projectTerminalFocused).toBe(false);
   });
 });

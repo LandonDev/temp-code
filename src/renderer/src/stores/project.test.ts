@@ -8,7 +8,6 @@ import {
   dockCwdOf,
   gitCwdOf,
   initialProjectState,
-  markProjectLoaded,
   moveToWorkspace,
   project,
   projectStore,
@@ -53,7 +52,6 @@ const state: ProjectState = {
   projectCwd: "/repo",
   recents: [{ path: "/repo", openedAt: 5 }],
   selectedProjectId: "p1",
-  loadedProjects: new Set(["/repo"]),
 };
 
 describe("project reducers", () => {
@@ -61,8 +59,6 @@ describe("project reducers", () => {
     expect(moveToWorkspace(state, "/repo", "ignored")).toBe(state);
     expect(selectProject(state, "p1")).toBe(state);
     expect(setRecents(state, state.recents)).toBe(state);
-    expect(markProjectLoaded(state, "/repo")).toBe(state);
-    expect(markProjectLoaded(state, "/repo/")).toBe(state);
   });
 
   it("a move takes the new folder's selection; staying keeps the current one", () => {
@@ -73,12 +69,6 @@ describe("project reducers", () => {
     const stayed = moveToWorkspace(state, "/repo", "p9", []);
     expect(stayed.selectedProjectId).toBe("p1");
     expect(stayed.recents).toEqual([]);
-  });
-
-  it("loaded projects are keyed by the normalized path", () => {
-    const next = markProjectLoaded(state, "/other/");
-    expect(next.loadedProjects.has("/other")).toBe(true);
-    expect(state.loadedProjects.has("/other")).toBe(false);
   });
 });
 

@@ -60,7 +60,6 @@ describe("planBoot", () => {
     expect(plan.tabs).toBe(resumed.tabs);
     expect(plan.composerFocused).toBe(true);
     expect(plan.dirtyFileIds).toEqual([]);
-    expect([...plan.loadedProjects]).toEqual(["/old"]);
     const orphan = { ...resumed, sessions: [] };
     expect(
       planBoot({ windowTransfer: null, resumed: orphan, history: [], historyCwd: null }, seed, [])
@@ -79,7 +78,6 @@ describe("planBoot", () => {
     expect(plan.tabs).toEqual([seed.tab]);
     expect(plan.activeTabId).toBe(seed.tab.id);
     expect(plan.composerFocused).toBe(false);
-    expect(plan.loadedProjects.size).toBe(0);
   });
 });
 

@@ -1,6 +1,8 @@
+import { LAYOUT_CHANGE_EVENT, loadSidebarLayout, type SidebarLayout } from "../lib/appearance";
 import { isAppQuitting } from "../lib/appLifecycle";
 import { installCheckpointBridge } from "../lib/checkpointBridge";
 import { syncDockBadge } from "../lib/dockBadge";
+import { prefetchProjectFiles } from "../lib/fileIndex";
 import { sessionChildHarnesses } from "../lib/handoff";
 import {
   forgetHarnessSession,
@@ -8,22 +10,35 @@ import {
   probeHarnessAvailability,
   refreshHarnessCatalogs,
 } from "../lib/harness";
+import { historyStore } from "../lib/historyStore";
 import { liveAgentTracker } from "../lib/liveAgentTracker";
 import { mergeModelSettings, resolveModel } from "../lib/models";
 import { invoke } from "../lib/native";
 import { saveLastSession, workspacePathOfSession } from "../lib/projectContext";
 import { lastProjectPath, looksLikeProject } from "../lib/recents";
+import { replaceProjectHistory } from "../lib/sessionHistory";
 import { markSessionSeen } from "../lib/sessionSeen";
-import { saveWorkspaceSnapshot } from "../lib/sessionStore";
-import { loadLiveAgentsEnabled, subscribeLiveAgentsEnabled } from "../lib/settings";
+import {
+  listSessionsByProject,
+  saveWorkspaceSnapshot,
+  subscribeSessionHistory,
+} from "../lib/sessionStore";
+import {
+  loadLiveAgentsEnabled,
+  loadNotesEnabled,
+  subscribeLiveAgentsEnabled,
+  subscribeNotesEnabled,
+} from "../lib/settings";
 import { createWorkspace } from "../lib/tcserver/projects";
 import { sessionStore } from "../lib/tcserver/store";
 import { workspaceByPath, workspaceStore } from "../lib/tcserver/workspaces";
 import { createWorkspaceAutosave } from "../lib/workspaceAutosave";
 import { migrateWorkspaces } from "../lib/workspaceMigration";
 import { collectWorkspaceSnapshot, workspaceSnapshotKey } from "../lib/workspaceSnapshot";
-import { project, projectStore } from "./project";
-import { terminalsStore } from "./terminals";
+import { focus } from "./focus";
+import { currentDockCwd, currentSidebarCwd, project, projectStore } from "./project";
+import { shell, shellStore } from "./shell";
+import { currentDock, terminalsStore } from "./terminals";
 import { activeSessionOf, workspace, workspaceTabsStore } from "./workspace";
 import { openSessionIds, workspaceActions } from "./workspaceActions";
 
@@ -342,6 +357,96 @@ export function installAutosave(): Teardown {
   };
 }
 
+/**
+ * Refresh a project's history rows. `history` holds every visited project's
+ * rows and the sidebar filters it by cwd, so a project loaded once paints from
+ * cache on the way back and revalidates quietly under the cards on screen.
+ * A failed revalidate keeps the cached cards.
+ */
+export async function refreshHistory(cwd: string): Promise<void> {
+  if (!cwd || cwd === "~") return;
+  try {
+    const rows = await listSessionsByProject(cwd);
+    if (cwd !== currentSidebarCwd()) return;
+    historyStore.set((current) => replaceProjectHistory(current, cwd, rows));
+  } catch {
+    // A failed revalidate keeps the cached cards.
+  }
+}
+
+/** The sidebar's folder loads its history and warms its file index when it changes. */
+export function installHistoryRefresh(): Teardown {
+  let cwd: string | undefined;
+  const sync = () => {
+    const next = currentSidebarCwd();
+    if (next === cwd) return;
+    cwd = next;
+    void refreshHistory(next);
+    prefetchProjectFiles(next);
+  };
+  sync();
+  const scheduled = afterWrites(sync);
+  return teardownAll([
+    workspaceTabsStore.subscribe(scheduled),
+    sessionStore.subscribe(scheduled),
+    projectStore.subscribe(scheduled),
+    workspaceStore.subscribe(scheduled),
+    subscribeSessionHistory(() => void refreshHistory(currentSidebarCwd())),
+  ]);
+}
+
+/** Notes turned off closes the notes view. */
+export function installNotesGate(): Teardown {
+  const check = () => {
+    if (!loadNotesEnabled()) shell.closeNotes();
+  };
+  check();
+  return subscribeNotesEnabled(check);
+}
+
+/**
+ * The sidebar layout: a switch closes every diff and drops the terminal
+ * focus when the dock leaves with classic; the sidebar tab settles to one
+ * the layout has; a dock that is not on screen cannot hold focus.
+ */
+export function installLayoutSync(): Teardown {
+  // The event carries the layout; storage is only the fallback at install,
+  // since a failed write still dispatches and the React tree follows the event.
+  let layout: SidebarLayout = loadSidebarLayout();
+  const onLayoutChange = (event: Event) => {
+    layout = (event as CustomEvent<SidebarLayout>).detail === "deck" ? "deck" : "classic";
+    workspace.setTabs((prev) =>
+      prev.some((tab) => tab.diffOpen || tab.diffFocused)
+        ? prev.map((tab) => ({ ...tab, diffOpen: false, diffFocused: false }))
+        : prev,
+    );
+    shell.applyLayoutChange(layout);
+    if (layout === "classic") focus.projectTerminal(false);
+  };
+  const settleTab = afterWrites(() => shell.settleSidebarTab(layout));
+  const dockVisible = () => layout === "deck" && !!currentDock(currentDockCwd())?.open;
+  const guardDock = afterWrites(() => {
+    if (!dockVisible()) focus.projectTerminal(false);
+  });
+  shell.settleSidebarTab(layout);
+  if (!dockVisible()) focus.projectTerminal(false);
+  const offs = [
+    shellStore.subscribe((s) => s.sidebarTab, settleTab),
+    terminalsStore.subscribe(guardDock),
+    projectStore.subscribe(guardDock),
+    workspaceStore.subscribe(guardDock),
+  ];
+  if (typeof window !== "undefined") {
+    const onLayout = (event: Event) => {
+      onLayoutChange(event);
+      guardDock();
+    };
+    window.addEventListener(LAYOUT_CHANGE_EVENT, onLayout);
+    offs.push(() => window.removeEventListener(LAYOUT_CHANGE_EVENT, onLayout));
+  }
+  return teardownAll(offs);
+}
+
 /** Once per window: the dock badge, checkpoints, the default folder and the harness catalogs. */
 export function installBootTasks(): Teardown {
   let live = true;
@@ -408,6 +513,9 @@ export function installSubscriptions(): Teardown {
     installIdleSweep(),
     installActiveSessionSync(),
     installAutosave(),
+    installHistoryRefresh(),
+    installNotesGate(),
+    installLayoutSync(),
     installBootTasks(),
   ]);
 }

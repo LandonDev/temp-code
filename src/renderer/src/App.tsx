@@ -6,7 +6,6 @@ import {
   useLayoutEffect,
   useMemo,
   useRef,
-  useState,
   useSyncExternalStore,
 } from "react";
 import { Sidebar } from "./chrome/Sidebar";
@@ -20,18 +19,13 @@ import { SymbolPicker } from "./chrome/SymbolPicker";
 import { closeLightbox, isLightboxOpen, stepLightbox } from "./chrome/Lightbox";
 import { UsageFooter } from "./chrome/UsageFooter";
 import { useSidebarLayout } from "./hooks/useSidebarLayout";
-import {
-  LAYOUT_CHANGE_EVENT,
-  toggleTranscriptZen,
-  type SidebarLayout,
-} from "./lib/appearance";
+import { toggleTranscriptZen } from "./lib/appearance";
 import { IS_MAC } from "./lib/platform";
 import { updateStore } from "./lib/updateStore";
 import { displayAttachments, prepareAttachments } from "./lib/attachments";
 import { basename, notifyGitChanged, pickFolder, restoreSessionCheckout } from "./lib/fs";
 import {
   invalidateProjectFiles,
-  prefetchProjectFiles,
   rememberOpenedFile,
   resolveOpenablePath,
 } from "./lib/fileIndex";
@@ -171,9 +165,11 @@ import { useWorkspaceCatalog, workspaceByPath, workspaceStore } from "./lib/tcse
 import { draftFromDefaults } from "./lib/tcserver/defaults";
 import type { ThreadType } from "./lib/tcserver/types";
 import { historyStore } from "./lib/historyStore";
-import type { BootWorkspace } from "./stores/bootstrap";
 import {
+  currentActivePane,
   currentDockCwd,
+  currentGitCwd,
+  currentSidebarCwd,
   gitCwdOf,
   project,
   projectStore,
@@ -192,10 +188,11 @@ import {
   workspaceTabsStore,
 } from "./stores/workspace";
 import { projectTabTarget, workspaceActions } from "./stores/workspaceActions";
-import { skipForgetSessionIds } from "./stores/subscriptions";
+import { refreshHistory, skipForgetSessionIds } from "./stores/subscriptions";
 import { editors, useEditors } from "./stores/editors";
 import { headerStore, tabProjectOf } from "./stores/header";
 import { currentDock, currentDocks, terminals, useTerminals } from "./stores/terminals";
+import { focus, useFocus } from "./stores/focus";
 import { applyZoom, loadZoom, zoomIn, zoomOut, zoomReset } from "./lib/zoom";
 import {
   archiveProject,
@@ -235,9 +232,7 @@ import { dropContextWindow } from "./lib/contextUsage";
 import {
   deleteSession,
   getSession,
-  listSessionsByProject,
   setSessionArchived,
-  subscribeSessionHistory,
 } from "./lib/sessionStore";
 import {
   sessionStore,
@@ -307,7 +302,6 @@ import {
 
 import {
   mergeHistorySummary,
-  replaceProjectHistory,
   summaryFromSession,
 } from "./lib/sessionHistory";
 import {
@@ -361,7 +355,12 @@ function withHarnessChoice(
 }
 
 
-export default function App({ boot }: { boot: BootWorkspace }) {
+/** The session new chats copy their runtime mode from: the one on screen, else the first open. */
+function currentSessionDefaults(): Session | undefined {
+  return currentActivePane().active ?? sessionStore.getSnapshot()[0];
+}
+
+export default function App() {
   tallyRender("app");
   const projectCwd = useProject((s) => s.projectCwd);
   const recents = useProject((s) => s.recents);
@@ -382,10 +381,11 @@ export default function App({ boot }: { boot: BootWorkspace }) {
   const tabs = useWorkspaceTabs((s) => s.tabs);
   const setTabs = workspace.setTabs;
   const projectTerminals = useTerminals((s) => s.docks);
-  const [projectTerminalFocused, setProjectTerminalFocused] = useState(false);
+  const projectTerminalFocused = useFocus((s) => s.projectTerminalFocused);
+  const setProjectTerminalFocused = focus.projectTerminal;
   const activeTabId = useWorkspaceTabs((s) => s.activeTabId);
   const setActiveTabId = workspace.setActiveTabId;
-  const [composerFocused, setComposerFocused] = useState(boot.composerFocused);
+  const setComposerFocused = focus.composer;
   const projectOfTab = tabProjectOf;
   const projectRailOpen = useShell((s) => s.projectRailOpen);
   const sidebarLayout = useSidebarLayout();
@@ -411,34 +411,6 @@ export default function App({ boot }: { boot: BootWorkspace }) {
   const filePickerOpen = useShell((s) => s.filePickerOpen);
   const symbolPickerOpen = useShell((s) => s.symbolPickerOpen);
   const dirtyFiles = useEditors((s) => s.dirtyFiles);
-  // History lives in historyStore so its per-turn refreshes skip App.
-  const setHistory = historyStore.set;
-  /** The sidebar's and git's folders as of now, for callbacks; the render
-   *  computes the same from live values below. */
-  const currentSidebarCwd = useCallback(() => {
-    const { activeTab, active } = activeSessionOf(
-      workspaceTabsStore.getState().tabs,
-      workspaceTabsStore.getState().activeTabId,
-      sessionStore.getSnapshot(),
-    );
-    return sidebarCwdOf(
-      projectStore.getState(),
-      workspaceStore.getSnapshot().projects,
-      active,
-      activeTab,
-    );
-  }, []);
-  const currentGitCwd = useCallback(() => {
-    const { active } = activeSessionOf(
-      workspaceTabsStore.getState().tabs,
-      workspaceTabsStore.getState().activeTabId,
-      sessionStore.getSnapshot(),
-    );
-    return gitCwdOf(active, currentSidebarCwd());
-  }, [currentSidebarCwd]);
-  useEffect(() => {
-    if (!notesEnabled) shell.closeNotes();
-  }, [notesEnabled]);
 
   const turnGen = useRef(new Map<string, number>());
   const noteSystem = useCallback((sessionId: string, text: string) => {
@@ -501,8 +473,6 @@ export default function App({ boot }: { boot: BootWorkspace }) {
     ? deferredTabId
     : activeTabId;
   const sessionDefaults = active ?? sessions[0];
-  const sessionDefaultsRef = useRef(sessionDefaults);
-  sessionDefaultsRef.current = sessionDefaults;
   /** Ids and cwd for a new session: the given (else selected) project, else a loose chat here. */
   const sessionContext = useCallback(
     (projectId?: string | null) =>
@@ -542,7 +512,7 @@ export default function App({ boot }: { boot: BootWorkspace }) {
           : fallback;
       return seed
         ? newSession(seed.harness, cwd, seed.model, seed.runtimeMode, seed.modelSettings, context)
-        : newDefaultSession(cwd, sessionDefaultsRef.current?.runtimeMode, context);
+        : newDefaultSession(cwd, currentSessionDefaults()?.runtimeMode, context);
     },
     [],
   );
@@ -637,40 +607,6 @@ export default function App({ boot }: { boot: BootWorkspace }) {
       unlistenClose?.();
     };
   }, []);
-
-  const refreshHistory = useCallback(async (cwd: string) => {
-    if (!cwd || cwd === "~") return;
-    // `history` holds every visited project's rows and the sidebar filters it
-    // by cwd, so a project loaded once paints from cache on the way back and
-    // revalidates quietly underneath the cards already on screen. Whether the
-    // first load is still pending is derived from `loadedProjects`, not
-    // tracked here — a status set from this effect lands a render too late to
-    // suppress the empty state.
-    try {
-      const rows = await listSessionsByProject(cwd);
-      if (cwd !== currentSidebarCwd()) return;
-      setHistory((current) => replaceProjectHistory(current, cwd, rows));
-      project.markProjectLoaded(cwd);
-    } catch {
-      // A failed revalidate keeps the cached cards.
-    }
-  }, []);
-
-  useEffect(() => {
-    void refreshHistory(sidebarCwd);
-  }, [sidebarCwd, refreshHistory]);
-
-  useEffect(
-    () =>
-      subscribeSessionHistory(() => {
-        void refreshHistory(currentSidebarCwd());
-      }),
-    [refreshHistory],
-  );
-
-  useEffect(() => {
-    prefetchProjectFiles(sidebarCwd);
-  }, [sidebarCwd]);
 
   const hiddenMountBudget = useWorkspaceTabs((s) => s.hiddenMountBudget);
   const mountedTabIds = useMemo(() => {
@@ -957,10 +893,7 @@ export default function App({ boot }: { boot: BootWorkspace }) {
     ],
   );
 
-  const focusProjectTerminal = useCallback(() => {
-    setProjectTerminalFocused(true);
-    setComposerFocused(false);
-  }, []);
+  const focusProjectTerminal = focus.enterProjectTerminal;
 
   const openProjectTerminal = useCallback(
     (cwd: string) => {
@@ -1244,7 +1177,7 @@ export default function App({ boot }: { boot: BootWorkspace }) {
       }
       finishClose();
     },
-    [dirtyFiles, activateTab, refreshHistory, sidebarCwd, tabCloseScope],
+    [dirtyFiles, activateTab, sidebarCwd, tabCloseScope],
   );
 
   const onGroupNewTab = useCallback(
@@ -1545,7 +1478,7 @@ export default function App({ boot }: { boot: BootWorkspace }) {
       setComposerFocused(true);
       void refreshHistory(sidebarCwd);
     },
-    [tabs, dirtyFiles, refreshHistory, sidebarCwd],
+    [tabs, dirtyFiles, sidebarCwd],
   );
 
   const onClosePane = useCallback(
@@ -1631,7 +1564,6 @@ export default function App({ boot }: { boot: BootWorkspace }) {
       onCloseTab,
       onClearTabSession,
       projectTerminalFocused,
-      refreshHistory,
       sidebarCwd,
       tabCloseScope,
     ],
@@ -1908,7 +1840,7 @@ export default function App({ boot }: { boot: BootWorkspace }) {
       }
       return restored;
     },
-    [refreshHistory, sidebarCwd],
+    [sidebarCwd],
   );
 
   /** A view's jump to another thread (the plan's handoff chip). */
@@ -2063,7 +1995,7 @@ export default function App({ boot }: { boot: BootWorkspace }) {
       await serverCommands.rename(sessionId, trimmed).catch(() => undefined);
       void refreshHistory(sidebarCwd);
     },
-    [refreshHistory, sidebarCwd],
+    [sidebarCwd],
   );
 
   const onArchiveHistorySession = useCallback(
@@ -2089,7 +2021,7 @@ export default function App({ boot }: { boot: BootWorkspace }) {
         }
       }
       await setSessionArchived(sessionId, archived).catch(() => undefined);
-      setHistory((current) => {
+      historyStore.set((current) => {
         const existing = current.find((entry) => entry.id === sessionId);
         if (existing) {
           return current.map((entry) =>
@@ -2194,7 +2126,7 @@ export default function App({ boot }: { boot: BootWorkspace }) {
       );
       void refreshHistory(sidebarCwd);
     },
-    [activateTab, refreshHistory, sidebarCwd, tabCloseScope],
+    [activateTab, sidebarCwd, tabCloseScope],
   );
 
   const onFocusDir = useCallback(
@@ -3236,27 +3168,6 @@ export default function App({ boot }: { boot: BootWorkspace }) {
     onVisitForward();
   }, [onVisitForward]);
 
-  useEffect(() => {
-    const onLayoutChange = (event: Event) => {
-      const layout = (event as CustomEvent<SidebarLayout>).detail;
-      setTabs((prev) =>
-        prev.map((tab) => ({ ...tab, diffOpen: false, diffFocused: false })),
-      );
-      shell.applyLayoutChange(layout);
-      if (layout === "classic") setProjectTerminalFocused(false);
-    };
-    window.addEventListener(LAYOUT_CHANGE_EVENT, onLayoutChange);
-    return () => window.removeEventListener(LAYOUT_CHANGE_EVENT, onLayoutChange);
-  }, []);
-
-  useEffect(() => {
-    shell.settleSidebarTab(sidebarLayout);
-  }, [sidebarLayout, sidebarTab]);
-
-  useEffect(() => {
-    if (!dockVisible) setProjectTerminalFocused(false);
-  }, [dockVisible]);
-
   const openFilePaths = useMemo(() => {
     const paths: string[] = [];
     const seen = new Set<string>();
@@ -3644,18 +3555,6 @@ export default function App({ boot }: { boot: BootWorkspace }) {
                     <PaneTree
                       tabId={tab.id}
                       visible={tab.id === shownTabId}
-                      focusedId={
-                        tab.id === shownTabId &&
-                        !tab.diffFocused &&
-                        !projectTerminalFocused
-                          ? tab.focusedId
-                          : ""
-                      }
-                      composerFocused={
-                        composerFocused &&
-                        !projectTerminalFocused &&
-                        shownTabId === activeTabId
-                      }
                       onFocus={onFocusPane}
                       onClose={onClosePane}
                       onSelectFile={onSelectFileSurface}
@@ -3782,9 +3681,6 @@ export default function App({ boot }: { boot: BootWorkspace }) {
       ) : null}
 
       <HiddenApprovalToasts
-        tabs={tabs}
-        activeTabId={activeTabId}
-        composerFocused={composerFocused}
         onFocusSession={onOpenApprovalSession}
         onApproval={onApproval}
       />
