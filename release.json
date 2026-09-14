@@ -1,5 +1,5 @@
 {
-  "n": 119,
-  "notes": "Tail and transcript window budgeted in rows, not turns: the server walks back about 300 transcript rows (a prompt, a tool call or one message each) over light columns and cuts on a row boundary, the store asks for rows, and the transcript mounts its last 100 rows and grows by 150 on demand, part-way through a turn if it must",
-  "ts": 1789424403515
+  "n": 120,
+  "notes": "Project-switch chrome measures nothing on the swap: a strip or sidebar whose rows change wholesale keys its presence boundary on a generation (no exit or enter springs, no layout snapshots, no shared-element glide from a chip that is gone) and glides again 400 ms later with a fresh layout id, never past 40 rows; chips take a per-row layoutDependency so unchanged re-renders skip snapshots; the sidebar virtualizer sizes a newly mounted row from its cache or estimate and lets the ResizeObserver correct it instead of reading a rect per row before the paint; tab-group records parse from localStorage once and refresh on write or a storage event",
+  "ts": 1789425529977
 }
