@@ -443,9 +443,11 @@ export function Composer({
     if (busy) setRunnerLive(true)
   }, [busy, runnerEnabled])
 
+  // The index walks the tree; only an open `@` menu is worth that.
   useEffect(() => {
+    if (!mentionOpen) return
     let cancelled = false
-    void loadProjectFiles(executionCwd, mentionOpen)
+    void loadProjectFiles(executionCwd, true)
       .then((next) => {
         if (!cancelled) setFiles(next)
       })

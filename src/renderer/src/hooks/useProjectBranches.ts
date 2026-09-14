@@ -119,8 +119,11 @@ export function useProjectBranchesState(
     },
     [active, cwd],
   );
+  // Disabled means "do not ask git", not "forget": a caller that stops
+  // listening still reads whatever the last lookup found.
   const getSnapshot = useCallback(() => {
-    return active ? entryFor(cwd).state : PENDING;
+    if (active) return entryFor(cwd).state;
+    return entries.get(cwd)?.state ?? PENDING;
   }, [active, cwd]);
 
   return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);

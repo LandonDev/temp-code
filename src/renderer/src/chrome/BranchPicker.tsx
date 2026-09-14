@@ -67,8 +67,10 @@ export function BranchPicker({
   onChangeRef.current = onChange;
 
   const inProject = Boolean(cwd) && cwd !== "~";
+  // A hidden or busy composer keeps the branch it knows and asks git for
+  // nothing; only the live one looks up the list.
   const { branches: projectBranches, settled: branchesSettled } =
-    useProjectBranchesState(cwd, inProject);
+    useProjectBranchesState(cwd, inProject && enabled);
 
   const current = branch || projectBranches?.current || null;
   const detached = !branch && !!projectBranches?.detached;
