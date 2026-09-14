@@ -9,9 +9,10 @@ import {
   type ReactNode,
   type TransitionEvent,
 } from "react";
-import { useVirtualizer } from "@tanstack/react-virtual";
+import { measureElement, useVirtualizer, type VirtualizerOptions } from "@tanstack/react-virtual";
 import { MotionConfig, motion } from "motion/react";
 import { SPRING_LAYOUT } from "../lib/ease";
+import { useListGlide } from "../lib/listGlide";
 import { ExplorerMenu, type ExplorerMenuItem } from "./ExplorerMenu";
 import {
   ArchiveRestore,
@@ -272,10 +273,26 @@ const menuAt = (anchor: HTMLElement) => {
 
 type RowActions = {
   activeSessionId?: string;
+  /** The row wash's shared layout id; unset while the list is mid-swap. */
+  pill: string | undefined;
   onOpen: (id: string) => void;
   onRename: (id: string, title: string) => void;
   onDelete: (thread: ThreadRow) => void;
   openMenu: (state: MenuState) => void;
+};
+
+/** Row sizes come from the ResizeObserver, which reports every row once on
+ *  observe and again when it grows: a row mounting under a switch keeps its
+ *  cached or estimated size instead of reading a rect, which would force a
+ *  layout per new row before the paint. */
+const measureRow: VirtualizerOptions<HTMLDivElement, HTMLDivElement>["measureElement"] = (
+  node,
+  entry,
+  instance,
+) => {
+  if (entry) return measureElement(node, entry, instance);
+  const index = instance.indexFromElement(node);
+  return instance.measurementsCache[index]?.size ?? instance.options.estimateSize(index);
 };
 
 /** Scrolls the list's selected row into view when the selection moves, and
@@ -355,7 +372,7 @@ const ChatRow = memo(function ChatRow({
             : "text-content/80 hover:bg-content/5 hover:text-content"
       }`}
     >
-      {selected ? <ActivePill /> : null}
+      {selected ? <ActivePill layoutId={actions.pill} /> : null}
       {thread.running ? (
         <Spinner />
       ) : thread.paused ? (
@@ -398,14 +415,14 @@ const ChatRow = memo(function ChatRow({
 
 /** The selected item's wash. Rows share one layoutId so it glides between
  *  rows; the selected card has its own, since the virtualizer mounts and
- *  unmounts cards under a scroll and a shared pill would slide with them. */
-function ActivePill({ scope = "row" }: { scope?: "row" | "card" }) {
+ *  unmounts cards under a scroll and a shared pill would slide with them.
+ *  With no id (a project switch still settling) it is a plain div: no
+ *  projection, no measuring. */
+const PILL_CLASS = "absolute inset-0 -z-10 rounded-md bg-content/10";
+function ActivePill({ layoutId }: { layoutId: string | undefined }) {
+  if (!layoutId) return <div className={PILL_CLASS} />;
   return (
-    <motion.div
-      layoutId={`sidebar-active-${scope}`}
-      transition={SPRING_LAYOUT}
-      className="absolute inset-0 -z-10 rounded-md bg-content/10"
-    />
+    <motion.div key={layoutId} layoutId={layoutId} transition={SPRING_LAYOUT} className={PILL_CLASS} />
   );
 }
 
@@ -432,7 +449,7 @@ const ChildRow = memo(function ChildRow({
         selected ? "text-content" : "text-content/70 hover:bg-content/5 hover:text-content"
       }`}
     >
-      {selected ? <ActivePill /> : null}
+      {selected ? <ActivePill layoutId={actions.pill} /> : null}
       {thread.running ? <Spinner /> : <StatusDot status={thread.status} />}
       {Glyph ? <Glyph className="size-3 shrink-0 text-content/45" /> : null}
       <span className="min-w-0 flex-1 truncate">{thread.title || "Subagent"}</span>
@@ -728,7 +745,7 @@ const ProjectCard = memo(function ProjectCard({
       }}
       className="group/card relative isolate rounded-md border border-content/10"
     >
-      {selected ? <ActivePill scope="card" /> : null}
+      {selected ? <ActivePill layoutId="sidebar-active-card" /> : null}
       <div
         role="button"
         tabIndex={0}
@@ -1064,15 +1081,20 @@ export default function WorkspaceSessions({
   );
   const moreChats = useCallback(() => morePages("chats"), [morePages]);
 
+  // A project switch swaps every row: that render glides nothing, and the
+  // pill takes a fresh id once the list settles so it never resumes from a
+  // snapshot of a row that is gone.
+  const { generation, glide } = useListGlide(selectedProjectId ? [selectedProjectId] : []);
   const rows = useMemo<RowActions>(
     () => ({
       activeSessionId,
+      pill: glide ? `sidebar-active-row-${generation}` : undefined,
       onOpen: openSession,
       onRename: renameSession,
       onDelete: (thread) => setDialog({ kind: "delete-chat", thread }),
       openMenu: setMenu,
     }),
-    [activeSessionId, openSession, renameSession],
+    [activeSessionId, generation, glide, openSession, renameSession],
   );
 
   // Cards are the virtual unit: each roots its own border and hover group,
@@ -1091,6 +1113,7 @@ export default function WorkspaceSessions({
     getItemKey,
     overscan: 4,
     gap: 8,
+    measureElement: measureRow,
   });
 
   // Bring the selected card on screen once per selection: when it changes,
