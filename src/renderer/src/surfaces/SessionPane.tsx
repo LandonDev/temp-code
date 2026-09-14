@@ -32,6 +32,7 @@ import {
 } from "../lib/session";
 import type { ThreadType } from "../lib/tcserver/types";
 import { AgentTranscript } from "./AgentTranscript";
+import { DeferredMount } from "./DeferredMount";
 import { EmptySession } from "./EmptySession";
 import { ThreadView, type ChatOpts } from "./threads/ThreadView";
 import { ChatColumn, type ChatSlots } from "./threads/chatSlots";
@@ -340,6 +341,9 @@ export const SessionPane = memo(function SessionPane({
   const renderSlots = (opts?: ChatOpts): ChatSlots => ({
     transcript: (
       <div className="relative min-h-0 flex-1">
+        {/* The header and composer commit with the click; the transcript,
+            the heavy render, mounts in the deferred pass behind them. */}
+        <DeferredMount key={session.id}>
         <AgentTranscript
           sessionId={session.id}
           turn={session}
@@ -359,6 +363,7 @@ export const SessionPane = memo(function SessionPane({
           onJumpToBottomChange={setShowJumpToBottom}
           onJumpToBottomReady={onJumpToBottomReady}
         />
+        </DeferredMount>
         {showJumpToBottom ? (
           <div className="pointer-events-none absolute inset-x-0 bottom-2 z-30 flex justify-center">
             <button

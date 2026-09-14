@@ -1,7 +1,6 @@
 import { invoke, listen, getCurrentWindow, message } from "./lib/native";
 import {
   useCallback,
-  useDeferredValue,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -464,14 +463,10 @@ export default function App() {
   );
 
   const { activeTab, active } = activeSessionOf(tabs, activeTabId, sessions);
-  // The strip and sidebar move on the click; the pane swap, which is the
-  // heavy render, follows in a deferred pass so the click paints at once.
-  const deferredTabId = useDeferredValue(activeTabId);
-  // A closed tab may still be the deferred one for a pass; show the live
-  // tab rather than an empty column.
-  const shownTabId = tabs.some((tab) => tab.id === deferredTabId)
-    ? deferredTabId
-    : activeTabId;
+  // The strip, sidebar, pane header and composer all move on the click;
+  // only the transcript body, the heavy render, follows in a deferred pass
+  // (SessionPane's DeferredMount), so the click paints at once.
+  const shownTabId = activeTabId;
   const sessionDefaults = active ?? sessions[0];
   /** Ids and cwd for a new session: the given (else selected) project, else a loose chat here. */
   const sessionContext = useCallback(
@@ -608,13 +603,12 @@ export default function App() {
     };
   }, []);
 
-  // The warm set (stores/workspace) plus the tab being shown: the store's
-  // set catches up with a click a microtask later, and the deferred pass
-  // may still be showing the tab it just left.
+  // The warm set (stores/workspace) plus the active tab: the store's set
+  // catches up with a click a microtask later.
   const warmTabIds = useWorkspaceTabs((s) => s.mountedTabIds);
   const mountedTabIds = useMemo(
-    () => new Set([...warmTabIds, activeTabId, shownTabId]),
-    [warmTabIds, activeTabId, shownTabId],
+    () => new Set([...warmTabIds, activeTabId]),
+    [warmTabIds, activeTabId],
   );
 
   const activateTab = useCallback((id: string) => {
@@ -3525,15 +3519,7 @@ export default function App() {
                   onStart={onStartInboxItem}
                 />
               ) : (
-                <div
-                  className={
-                    // Pane callbacks target the live tab; until the deferred
-                    // pass shows it, a click would land on the old tab's panes.
-                    shownTabId === activeTabId
-                      ? "relative min-h-0 min-w-0 flex-1"
-                      : "pointer-events-none relative min-h-0 min-w-0 flex-1"
-                  }
-                >
+                <div className="relative min-h-0 min-w-0 flex-1">
               {tabs.map((tab) => mountedTabIds.has(tab.id) && (
                 <div
                   key={tab.id}
