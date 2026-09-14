@@ -1,5 +1,5 @@
 {
-  "n": 100,
-  "notes": "The window's workspace, project and recents live in their own store",
-  "ts": 1789343470915
+  "n": 101,
+  "notes": "The window's open tabs live in their own store",
+  "ts": 1789344516170
 }
