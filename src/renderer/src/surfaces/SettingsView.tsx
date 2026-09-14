@@ -125,23 +125,15 @@ import {
   loadMidTurnDefault,
   loadLiveAgentsEnabled,
   loadNotesEnabled,
-  loadSummaryModel,
-  loadToolCaptions,
-  loadToolSummaries,
   saveClaudeHooks,
   saveComposerRunner,
   saveGridArcadeEnabled,
   saveMidTurnDefault,
   saveLiveAgentsEnabled,
   saveNotesEnabled,
-  saveSummaryModel,
-  saveToolCaptions,
-  saveToolSummaries,
   settingsSectionDescription,
   settingsSectionLabel,
-  SUMMARY_MODELS,
   type MidTurnDefault,
-  type SummaryModel,
 } from "../lib/settings";
 import { SPRING_LAYOUT } from "../lib/ease";
 import { loadSoundsEnabled, saveSoundsEnabled } from "../lib/sounds";
@@ -307,10 +299,6 @@ function GeneralPage({
   );
   const [soundsEnabled, setSoundsEnabled] = useState(loadSoundsEnabled);
   const [claudeHooks, setClaudeHooks] = useState(loadClaudeHooks);
-  const [toolSummaries, setToolSummaries] = useState(loadToolSummaries);
-  const [toolCaptions, setToolCaptions] = useState(loadToolCaptions);
-  const [summaryModel, setSummaryModel] =
-    useState<SummaryModel>(loadSummaryModel);
 
   useEffect(() => {
     const onZen = (event: Event) => {
@@ -483,49 +471,6 @@ function GeneralPage({
           label="Claude Code hooks"
           on={claudeHooks}
           onChange={onClaudeHooks}
-        />
-      </Row>
-
-      <Heading title="Tool summaries" />
-      <Row
-        label="Tool summaries"
-        description="A small fast model turns each finished tool section into one sentence."
-      >
-        <Toggle
-          label="Tool summaries"
-          on={toolSummaries}
-          onChange={(on) => {
-            saveToolSummaries(on);
-            setToolSummaries(on);
-          }}
-        />
-      </Row>
-      <Row
-        label="Per-tool captions"
-        description="Each finished tool also gets a short note of what it did — same model call, no extra cost."
-      >
-        <Toggle
-          label="Per-tool captions"
-          on={toolCaptions}
-          onChange={(on) => {
-            saveToolCaptions(on);
-            setToolCaptions(on);
-          }}
-        />
-      </Row>
-      <Row
-        label="Summary model"
-        description="Auto uses each thread's own subscription; or pin one model for everything."
-      >
-        <Select
-          label="Summary model"
-          value={summaryModel}
-          options={SUMMARY_MODELS}
-          onChange={(next) => {
-            const model = next as SummaryModel;
-            saveSummaryModel(model);
-            setSummaryModel(model);
-          }}
         />
       </Row>
 

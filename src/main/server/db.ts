@@ -103,6 +103,9 @@ export function openDb(path: string): DatabaseSync {
     }
   }
   ensureNotesTable(db)
+  // The model-written tool summaries were removed on 2026-09-14; their
+  // permanent cache rows would otherwise sit in the settings table forever.
+  db.exec(`DELETE FROM settings WHERE key LIKE 'toolsum:%'`)
   return db
 }
 

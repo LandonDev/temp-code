@@ -55,7 +55,6 @@ import {
 } from './git'
 import { listCommands } from './commands'
 import { workspaceIcon } from './wsicon'
-import { setSummarizeContext, summarizeTools } from './summarize'
 import { readAttachment, saveAttachment } from './attachments'
 import {
   closeAllWatchers,
@@ -180,7 +179,6 @@ export async function startServer(
   foldTimer.unref()
   setOrchestrationRegistry(registry)
   setAppToolsRegistry(registry)
-  setSummarizeContext(registry, store)
   void runDoctor() // warm the cache so the new-session modal opens ready
   void probeCatalogs() // the five probed harnesses ask their CLIs for models
 
@@ -700,19 +698,6 @@ export async function startServer(
               id: req.id,
               ok: true,
               result: await listCommands(req.params.provider, req.params.cwd)
-            })
-            break
-          case 'tools.summarize':
-            sendFrame({
-              id: req.id,
-              ok: true,
-              result: await summarizeTools(
-                req.params.sessionId,
-                req.params.groupKey,
-                req.params.items,
-                req.params.model,
-                req.params.captions
-              )
             })
             break
           case 'attachment.save':

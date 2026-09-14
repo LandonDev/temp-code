@@ -51,11 +51,6 @@ import {
   type ToolPreview,
 } from "../lib/session";
 import { approvalDetailOf, approvalOutcome } from "../lib/approvalDetail";
-import {
-  ToolCaptionsContext,
-  captionMapOf,
-  useSectionSummary,
-} from "../lib/toolSummary";
 import { isTurnPaused, passActionsOf, turnElapsed, useClock } from "../lib/turnClock";
 import { errorRowOf, isErrorBlock } from "../lib/turnOutcome";
 import { useSessionMeta } from "../lib/tcserver/store";
@@ -1653,17 +1648,7 @@ function ActivityPhaseGroup({
   const open = waiting || (override ?? (active && phase.steps.length > 1));
   const [liveScroller, setLiveScroller] = useState<HTMLDivElement | null>(null);
   useLivePhaseScroll(liveScroller, active && open, phase.steps);
-  const summary = useSectionSummary(sessionId, phase.steps, active);
-  const captions = useMemo(
-    () => captionMapOf(phase.steps, summary),
-    [phase.steps, summary],
-  );
-  // The model's own sentence names a settled group the agent never
-  // introduced; while it runs, the live humanized header keeps ticking.
-  const title =
-    !phase.headline && !active && summary.sentence
-      ? summary.sentence
-      : activityPhaseTitle(phase, active, cwd);
+  const title = activityPhaseTitle(phase, active, cwd);
   // Opening a group on purpose is also how you read the line that titled it,
   // whole. The auto-open while it runs is a live view, not a reading one, and
   // a one-line note the header already shows in full has nothing to add.
@@ -1777,7 +1762,6 @@ function ActivityPhaseGroup({
                 />
               </div>
             ) : null}
-            <ToolCaptionsContext.Provider value={captions}>
             {phase.steps.map((block) => (
               <div
                 key={block.id}
@@ -1794,7 +1778,6 @@ function ActivityPhaseGroup({
                 />
               </div>
             ))}
-            </ToolCaptionsContext.Provider>
           </div>
         </div>
       </div>
