@@ -1,5 +1,5 @@
 {
-  "n": 106,
-  "notes": "toolDetails: one comment on rec() — frees the release train that has been skipping since v105",
-  "ts": 1789417644974
+  "n": 107,
+  "notes": "Tool summaries and captions removed: opening a transcript no longer boots one CLI per collapsed section",
+  "ts": 1789417929122
 }
