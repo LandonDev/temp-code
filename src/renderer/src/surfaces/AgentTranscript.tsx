@@ -258,14 +258,17 @@ export function AgentTranscript({
     expectedTop.current = el.scrollTop;
   };
 
-  const fromBottomOf = (el: HTMLElement) =>
-    el.scrollHeight - el.scrollTop - el.clientHeight;
+  /** Heights read once at the top of a frame, before that frame writes. */
+  type Extent = { readonly scrollHeight: number; readonly clientHeight: number };
+
+  const fromBottomOf = (el: HTMLElement, ext: Extent = el) =>
+    ext.scrollHeight - el.scrollTop - ext.clientHeight;
 
   const syncPill = useCallback(
-    (el: HTMLElement) => {
+    (el: HTMLElement, ext?: Extent) => {
       setShowJump(
         mode.current !== "follow" &&
-          fromBottomOf(el) - spacerH.current > PILL_AT,
+          fromBottomOf(el, ext) - spacerH.current > PILL_AT,
       );
     },
     [setShowJump],
@@ -281,11 +284,18 @@ export function AgentTranscript({
     raf.current = 0;
     const el = scroller.current;
     if (!el) return;
+    // One layout read per frame, taken before the spacer write below dirties
+    // it. The spacer is the only thing this frame resizes, so its delta keeps
+    // the content height current without a second layout.
+    const clientHeight = el.clientHeight;
+    let scrollHeight = el.scrollHeight;
     let again = false;
     const anim = spacerAnim.current;
     if (anim) {
       const t = Math.min(1, (now - anim.start) / SPACER_MS);
+      const before = spacerH.current;
       setSpacer(anim.from * (1 - easeOut(t)));
+      scrollHeight += spacerH.current - before;
       if (t < 1) again = true;
       else spacerAnim.current = null;
     }
@@ -299,9 +309,9 @@ export function AgentTranscript({
         velocity.current = 0;
       }
     } else if (mode.current === "follow") {
-      const max = el.scrollHeight - el.clientHeight;
+      const max = scrollHeight - clientHeight;
       const dist = max - el.scrollTop;
-      if (dist > el.clientHeight / 2 && !reduceMotion) {
+      if (dist > clientHeight / 2 && !reduceMotion) {
         // A burst (a code block landing whole) is too far for the spring's
         // 32 px lead: glide there instead of snapping.
         glide.current = { from: el.scrollTop, to: max, start: now };
@@ -318,7 +328,7 @@ export function AgentTranscript({
       }
       if (runningRef.current) again = true;
     }
-    syncPill(el);
+    syncPill(el, { scrollHeight, clientHeight });
     if (again) schedule();
   }, [reduceMotion, schedule, syncPill]);
   tickRef.current = tick;
