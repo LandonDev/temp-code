@@ -566,7 +566,7 @@ function SidebarComponent({
                 onOpenWhatsNew={onOpenWhatsNew}
                 onDismissUpdate={shell.dismissUpdate}
               />
-              <div className="flex shrink-0 flex-col gap-px p-2 pt-0">
+              <div className="flex shrink-0 flex-col gap-px p-2 pt-px">
                 <RailAction
                   label="Settings"
                   icon={Settings}

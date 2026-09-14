@@ -12,24 +12,28 @@ export function SidebarUpdateFooter({
   onOpenWhatsNew?: (version: string, markdown?: string) => void;
   onDismissUpdate?: () => void;
 }) {
+  const card = !!update && !!onOpenWhatsNew && !!onDismissUpdate;
   return (
-    <div className="flex flex-col gap-1.5 p-2 pb-1">
-      {update && onOpenWhatsNew && onDismissUpdate ? (
+    <div className="flex flex-col gap-px px-2">
+      {card ? (
         <UpdateRailCard
           update={update}
           onOpen={onOpenWhatsNew}
           onDismiss={onDismissUpdate}
         />
       ) : null}
-      <SidebarUpdate onOpenWhatsNew={onOpenWhatsNew} />
+      {/* The card above already names the running version. */}
+      <SidebarUpdate onOpenWhatsNew={onOpenWhatsNew} showVersion={!card} />
     </div>
   );
 }
 
 export function SidebarUpdate({
   onOpenWhatsNew,
+  showVersion = true,
 }: {
   onOpenWhatsNew?: (version: string, markdown?: string) => void;
+  showVersion?: boolean;
 }) {
   const snapshot = useUpdateSnapshot();
 
@@ -54,52 +58,41 @@ export function SidebarUpdate({
     hasUpdate && !!snapshot.notes && !!onOpenWhatsNew && !!snapshot.availableVersion;
 
   return (
-    <div
-      className={`flex flex-col rounded-lg ${
-        hasUpdate ? "bg-accent/15 text-content" : "bg-content/5 text-content/70"
-      }`}
-    >
+    <>
       <button
         type="button"
         onClick={onClick}
         disabled={busy}
-        className={`flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left transition-colors ${
-          hasUpdate ? "hover:bg-accent/20" : "hover:bg-content/10 hover:text-content"
+        className={`pressable flex h-7 w-full items-center gap-2 rounded-md px-2 text-left ${
+          hasUpdate
+            ? "bg-accent/10 text-content hover:bg-accent/15"
+            : "text-content/50 hover:bg-content/5 hover:text-content"
         } disabled:cursor-default disabled:opacity-70`}
       >
-        <span className="grid size-[18px] shrink-0 place-items-center">
-          {busy ? (
-            <Loader className="size-4 motion-safe:animate-spin opacity-70" aria-hidden />
-          ) : hasUpdate ? (
-            <ArrowDownCircle className="size-4 text-accent" aria-hidden />
-          ) : (
-            <RefreshCw
-              className="size-4 opacity-70"
-              strokeWidth={1.75}
-              aria-hidden
-            />
-          )}
-        </span>
-        <span className="min-w-0 flex-1 flex items-center">
-          <span className="block truncate text-[12px] font-medium leading-tight">
-            {label}
-          </span>
-          <span className="ml-auto block text-[11px] text-content/40">
+        {busy ? (
+          <Loader className="size-3.5 shrink-0 motion-safe:animate-spin" strokeWidth={1.75} aria-hidden />
+        ) : hasUpdate ? (
+          <ArrowDownCircle className="size-3.5 shrink-0 text-accent" strokeWidth={1.75} aria-hidden />
+        ) : (
+          <RefreshCw className="size-3.5 shrink-0" strokeWidth={1.75} aria-hidden />
+        )}
+        <span className="min-w-0 flex-1 truncate text-[12px] leading-none">{label}</span>
+        {showVersion ? (
+          <span className="shrink-0 text-[11px] tabular-nums text-content/40">
             v{snapshot.currentVersion}
           </span>
-        </span>
+        ) : null}
       </button>
       {showNotes ? (
         <button
           type="button"
-          onClick={() =>
-            onOpenWhatsNew?.(snapshot.availableVersion!, snapshot.notes)
-          }
-          className="-mt-1 rounded-b-lg px-2 pb-1.5 pl-[34px] text-left text-[11px] text-content/50 transition-colors hover:text-content"
+          onClick={() => onOpenWhatsNew?.(snapshot.availableVersion!, snapshot.notes)}
+          className="pressable flex h-6 w-full items-center rounded-md pr-2 text-left text-[11px] text-content/50 hover:bg-content/5 hover:text-content"
+          style={{ paddingLeft: 8 + 12 }}
         >
           What's new
         </button>
       ) : null}
-    </div>
+    </>
   );
 }

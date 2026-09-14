@@ -154,14 +154,14 @@ export function UsageFooter({
           {showUsage ? (
             <button
               type="button"
-              className="grid size-5 shrink-0 place-items-center rounded-md text-content/40 hover:bg-content/10 hover:text-content disabled:opacity-50"
+              className="pressable grid size-6 shrink-0 place-items-center rounded-md text-content/40 hover:bg-content/10 hover:text-content disabled:opacity-40"
               aria-label="Refresh usage"
               title="Refresh usage"
               disabled={refreshing}
               onClick={() => void refresh(true)}
             >
               <RefreshCw
-                className={`size-3 ${refreshing ? "motion-safe:animate-spin" : ""}`}
+                className={`size-3.5 ${refreshing ? "motion-safe:animate-spin" : ""}`}
                 strokeWidth={1.75}
                 aria-hidden
               />
@@ -189,7 +189,7 @@ function SessionChip({ session }: { session: UsageFooterSession }) {
       className="inline-flex min-w-0 items-center gap-1.5 whitespace-nowrap"
       title={HARNESS_TITLE[session.harness]}
     >
-      <HarnessIcon harness={session.harness} className="size-3 shrink-0" />
+      <HarnessIcon harness={session.harness} className="size-3.5 shrink-0" />
       <span>{HARNESS_LABEL[session.harness]}</span>
     </span>
   );
@@ -230,7 +230,7 @@ function RunningTerminalChip({
       <button
         ref={root}
         type="button"
-        className="inline-flex min-w-0 max-w-[16rem] items-center gap-1.5 whitespace-nowrap rounded-md px-1 -mx-1 hover:bg-content/10 hover:text-content"
+        className="pressable inline-flex h-6 min-w-0 max-w-[16rem] items-center gap-1.5 whitespace-nowrap rounded-md px-1 -mx-1 hover:bg-content/5 hover:text-content"
         aria-label={ariaLabel}
         aria-pressed={panelOpen}
         aria-expanded={many && !panelOpen ? menuOpen : undefined}
@@ -246,7 +246,7 @@ function RunningTerminalChip({
         }}
       >
         <TerminalLiveMark />
-        <span className="truncate font-mono text-[10px] tabular-nums">
+        <span className="truncate font-mono text-[11px] tabular-nums">
           {label}
         </span>
       </button>
@@ -266,7 +266,7 @@ function RunningTerminalChip({
               key={terminal.id}
               type="button"
               role="menuitem"
-              className="flex h-7 w-full items-center gap-2 rounded-lg px-2 text-left text-[12px] leading-none text-content hover:bg-content/10"
+              className="flex h-7 w-full items-center gap-3 rounded-lg px-2 text-left text-[13px] leading-none text-content hover:bg-content/5 active:bg-content/10"
               onMouseDown={(event) => event.preventDefault()}
               onClick={() => toggle(terminal.id)}
             >
@@ -322,7 +322,7 @@ function ProviderChip({
             : undefined)
       }
     >
-      <HarnessIcon harness={limits.provider} className="size-3 shrink-0" />
+      <HarnessIcon harness={limits.provider} className="size-3.5 shrink-0" />
       {loading ? (
         <span className="motion-safe:animate-pulse text-content/40">···</span>
       ) : disconnected ? (
@@ -331,11 +331,10 @@ function ProviderChip({
         <span className="text-content/40">{emptyUsageLabel(limits)}</span>
       ) : (
         <>
-          {tightest ? <MiniBar usedPct={tightest.usedPercent} /> : null}
-          <span className="flex min-w-0 items-center gap-1 tabular-nums">
+          <span className={`flex min-w-0 items-center gap-1 tabular-nums ${usageTone(tightest)}`}>
             {windows.map((entry, index) => (
               <span key={entry.key} className="inline-flex items-center gap-1">
-                {index > 0 ? <span className="text-content/20">·</span> : null}
+                {index > 0 ? <span className="text-content/40">·</span> : null}
                 <span>
                   {formatUsagePercent(entry.window.usedPercent)}{" "}
                   {formatRateLimitWindowChipLabel(entry.window, now)}
@@ -349,30 +348,17 @@ function ProviderChip({
   );
 }
 
+/** The tightest window colours the whole readout once it nears its cap. */
+function usageTone(tightest: RateLimitWindow | null): string {
+  const pct = tightest ? clampUsedPercent(tightest.usedPercent) : 0;
+  if (pct >= 90) return "text-danger";
+  if (pct >= 80) return "text-warning";
+  return "";
+}
+
 function emptyUsageLabel(limits: ProviderRateLimits): string {
   if (limits.status !== "error") return "—";
   const text = limits.error?.toLowerCase() ?? "";
   if (text.includes("expired") || text.includes("sign-in")) return "expired";
   return "—";
-}
-
-function MiniBar({ usedPct }: { usedPct: number }) {
-  const pct = clampUsedPercent(usedPct);
-  return (
-    <span
-      className="h-1 w-8 shrink-0 overflow-hidden rounded-full bg-content/10"
-      aria-hidden
-    >
-      <span
-        className={`block h-full rounded-full ${barClass(pct)}`}
-        style={{ width: `${pct}%` }}
-      />
-    </span>
-  );
-}
-
-function barClass(pct: number): string {
-  if (pct >= 90) return "bg-danger";
-  if (pct >= 80) return "bg-warning";
-  return "bg-content/40";
 }
