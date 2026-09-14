@@ -1,4 +1,4 @@
-import { execFile } from 'node:child_process'
+import { execFileBudgeted as execFileP } from './spawnBudget'
 import { createReadStream } from 'node:fs'
 import {
   access,
@@ -29,10 +29,8 @@ import {
   sep
 } from 'node:path'
 import { createInterface } from 'node:readline'
-import { promisify } from 'node:util'
 import type { FsFileMtime, FsPathEntry, FsPathInfo, FsProjectFile } from '@shared/contract-fsgit'
 
-const execFileP = promisify(execFile)
 
 const MAX_TEXT_FILE_BYTES = 8 * 1024 * 1024
 const MAX_ATTACHMENT_EMBED_BYTES = 20 * 1024 * 1024

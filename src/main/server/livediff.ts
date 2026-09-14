@@ -1,14 +1,12 @@
-import { execFile } from 'node:child_process'
+import { execFileBudgeted as execFileP } from './spawnBudget'
 import { randomBytes } from 'node:crypto'
 import { copyFileSync, mkdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, relative, resolve, sep } from 'node:path'
-import { promisify } from 'node:util'
 import { watchTree, WATCH_IGNORED, type TreeWatcher } from './treewatch'
 import type { SessionMeta } from '@shared/events'
 import type { SessionRegistry } from './sessions'
 
-const execFileP = promisify(execFile)
 
 /**
  * The live change stream (docs/PLAN-5.md M22): disk-truth diffs the moment

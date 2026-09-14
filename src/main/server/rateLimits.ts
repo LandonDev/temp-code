@@ -1,11 +1,9 @@
-import { execFile } from 'node:child_process'
+import { execFileBudgeted as execFileP } from './spawnBudget'
 import { chmod, readFile, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
-import { promisify } from 'node:util'
 import type { ClaudeUsageFetch } from '@shared/contract-m3a'
 
-const execFileP = promisify(execFile)
 const SERVICE = 'Claude Code-credentials'
 const USER_AGENT = 'claude-code/2.1.0'
 const TOKEN_URL = 'https://platform.claude.com/v1/oauth/token'

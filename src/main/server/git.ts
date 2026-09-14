@@ -1,11 +1,9 @@
-import { execFile } from 'node:child_process'
+import { execFileBudgeted as execFileP } from './spawnBudget'
 import { mkdirSync, realpathSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join, sep } from 'node:path'
-import { promisify } from 'node:util'
 import type { CommitInfo, CompareResult, FileChange, MergeResult } from '@shared/domain'
 
-const execFileP = promisify(execFile)
 
 export async function isGitRepo(dir: string): Promise<boolean> {
   try {

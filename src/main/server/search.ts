@@ -1,12 +1,10 @@
-import { execFile } from 'node:child_process'
+import { execFileBudgeted as execFileP } from './spawnBudget'
 import { lstat, readFile, stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join, resolve } from 'node:path'
-import { promisify } from 'node:util'
 import { glob } from 'tinyglobby'
 import type { ProjectSearchOptions, ProjectSearchResult } from '@shared/contract-m3a'
 
-const execFileP = promisify(execFile)
 const MAX_MATCHES = 500
 const MAX_FILE_BYTES = 512 * 1024
 const tokens = (value?: string): string[] =>
