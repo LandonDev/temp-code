@@ -6,8 +6,8 @@
 export type TranscriptScrollMemory = {
   /** Distance from the bottom of the scroller, in px, spacer excluded. */
   fromBottom: number;
-  /** How many turns the transcript's window had grown to. */
-  turnCount: number;
+  /** How many rows the transcript's window had grown to. */
+  rowCount: number;
 };
 
 const memory = new Map<string, TranscriptScrollMemory>();

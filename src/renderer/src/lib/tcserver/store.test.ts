@@ -62,8 +62,9 @@ class FakeLink implements Link {
       };
       let rows = (this.events.get(sessionId) ?? []).filter((r) => r.seq > afterSeq && r.seq < beforeSeq);
       if (tail) {
-        const starts = rows.filter((r) => r.event.type === "user-text").slice(-tail);
-        if (starts.length === tail) rows = rows.filter((r) => r.seq >= starts[0].seq);
+        // Row budget, as the server counts it: a prompt or a message is a row.
+        const starts = rows.filter((r) => r.event.type === "user-text" || r.event.type === "assistant-text").slice(-(tail + 1));
+        if (starts.length === tail + 1) rows = rows.filter((r) => r.seq > starts[0].seq && r.seq >= starts[1].seq);
       }
       const result = rows as T;
       if (beforeSeq !== Infinity && this.holdHead) return this.holdHead.then(() => result);
@@ -464,9 +465,9 @@ describe("tail-first load", () => {
   };
   const tick = () => new Promise((r) => setTimeout(r, 0));
 
-  it("paints the last 20 turns first and folds the head behind them with stable ids", async () => {
+  it("paints the last 300 rows first and folds the head behind them with stable ids", async () => {
     link.metas = [meta()];
-    link.events.set("s1", log(25));
+    link.events.set("s1", log(200));
     let release: () => void = () => {};
     link.holdHead = new Promise((r) => (release = r));
     sessionStore.connect(link);
@@ -475,48 +476,48 @@ describe("tail-first load", () => {
     const tail = sessionStore.get("s1")!;
     expect(tail.loaded).toBe(true);
     expect(sessionStore.isComplete("s1")).toBe(false);
-    expect(tail.blocks).toHaveLength(40);
-    expect(tail.blocks[0]).toMatchObject({ role: "user", text: "q5" });
+    expect(tail.blocks).toHaveLength(300);
+    expect(tail.blocks[0]).toMatchObject({ role: "user", text: "q50" });
     const tailIds = tail.blocks.map((b) => b.id);
     const calls = link.calls.filter((c) => c.method === "session.events").map((c) => c.params);
     expect(calls).toEqual([
-      { sessionId: "s1", afterSeq: 0, tail: 20 },
-      { sessionId: "s1", afterSeq: 0, beforeSeq: 16 },
+      { sessionId: "s1", afterSeq: 0, tail: 300 },
+      { sessionId: "s1", afterSeq: 0, beforeSeq: 151 },
     ]);
     release();
     await sessionStore.ensureComplete("s1");
     const whole = sessionStore.get("s1")!;
-    expect(whole.blocks).toHaveLength(50);
-    expect(whole.blocks.slice(10).map((b) => b.id)).toEqual(tailIds);
+    expect(whole.blocks).toHaveLength(400);
+    expect(whole.blocks.slice(100).map((b) => b.id)).toEqual(tailIds);
     expect(whole.blocks[0]).toMatchObject({ role: "user", text: "q0" });
     expect(sessionStore.isComplete("s1")).toBe(true);
     expect(link.method("session.events")).toBe(2);
     // lastSeq is the log's end: a reconnect replays nothing.
     link.reopen();
     await tick();
-    expect(link.calls.filter((c) => c.method === "session.events").at(-1)?.params).toEqual({ sessionId: "s1", afterSeq: 75 });
+    expect(link.calls.filter((c) => c.method === "session.events").at(-1)?.params).toEqual({ sessionId: "s1", afterSeq: 600 });
   });
 
   it("a push during the head fetch survives the refold, in order", async () => {
     link.metas = [meta()];
-    link.events.set("s1", log(25));
+    link.events.set("s1", log(200));
     let release: () => void = () => {};
     link.holdHead = new Promise((r) => (release = r));
     sessionStore.connect(link);
     await sessionStore.ready();
     await sessionStore.ensureLoaded("s1");
-    link.push({ push: "event", row: row("s1", 76, { type: "user-text", text: "late" }) });
-    expect(sessionStore.get("s1")!.blocks).toHaveLength(41);
+    link.push({ push: "event", row: row("s1", 601, { type: "user-text", text: "late" }) });
+    expect(sessionStore.get("s1")!.blocks).toHaveLength(301);
     expect(sessionStore.get("s1")!.busy).toBe(true);
     release();
     await sessionStore.ensureComplete("s1");
     const s = sessionStore.get("s1")!;
-    expect(s.blocks).toHaveLength(51);
+    expect(s.blocks).toHaveLength(401);
     expect(s.blocks.at(-1)).toMatchObject({ role: "user", text: "late" });
     expect(s.busy).toBe(true);
     link.reopen();
     await tick();
-    expect(link.calls.filter((c) => c.method === "session.events").at(-1)?.params).toEqual({ sessionId: "s1", afterSeq: 76 });
+    expect(link.calls.filter((c) => c.method === "session.events").at(-1)?.params).toEqual({ sessionId: "s1", afterSeq: 601 });
   });
 
   it("a short log arrives whole in one request", async () => {

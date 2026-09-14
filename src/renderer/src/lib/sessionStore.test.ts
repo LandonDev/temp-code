@@ -116,7 +116,8 @@ describe("loadSession", () => {
   it("returns once the last turns are folded; getSession waits for the whole log", async () => {
     link.metas = [meta({ id: "a" })];
     const rows: EventRow[] = [];
-    for (let turn = 1; turn <= 25; turn++) {
+    // 305 one-row turns: the 300-row tail starts at q6.
+    for (let turn = 1; turn <= 305; turn++) {
       rows.push({ sessionId: "a", seq: rows.length + 1, ts: turn, event: { type: "user-text", text: `q${turn}` } });
       rows.push({ sessionId: "a", seq: rows.length + 1, ts: turn, event: { type: "turn-complete" } });
     }

@@ -123,8 +123,33 @@ import {
   type ToolCallState,
 } from "./transcriptActivity";
 
-const INITIAL_TURNS = 20;
-const TURN_PAGE_SIZE = 20;
+/** The window is budgeted in rows (blocks), never turns: an agent thread
+ *  packs tens of thousands of rows into two turns. The first turn shown
+ *  may start part-way through. */
+const INITIAL_ROWS = 100;
+const ROW_PAGE_SIZE = 150;
+
+/**
+ * Which turns hold the last `rows` blocks: the index of the first one and
+ * how many of its blocks to skip. A cut that would drop under half a page
+ * of a turn snaps back to the turn's start instead.
+ */
+export function windowTurns(
+  turns: Block[][],
+  rows: number,
+): { first: number; skip: number; shown: number } {
+  let remaining = rows;
+  let first = turns.length;
+  while (first > 0 && remaining > 0) {
+    first--;
+    remaining -= turns[first].length;
+  }
+  let skip = Math.max(0, -remaining);
+  if (skip > 0 && skip <= ROW_PAGE_SIZE / 2) skip = 0;
+  let shown = 0;
+  for (let i = first; i < turns.length; i++) shown += turns[i].length;
+  return { first, skip, shown: shown - skip };
+}
 
 /*
  * One scroll engine (ported from temp-code). Three modes: `follow` rides the
@@ -199,12 +224,12 @@ export function AgentTranscript({
   const prependHeight = useRef<number | null>(null);
   const wasVisible = useRef(false);
   const everVisible = useRef(false);
-  const visibleTurnCountRef = useRef(INITIAL_TURNS);
+  const visibleRowsRef = useRef(INITIAL_ROWS);
   const [scrollerEl, setScrollerEl] = useState<HTMLDivElement | null>(null);
   // A remount after a park takes the window it had grown to, so the
   // reader's place (restored below) is still inside it.
-  const [visibleTurnCount, setVisibleTurnCount] = useState(
-    () => peekTranscriptScroll(sessionId ?? "")?.turnCount ?? INITIAL_TURNS,
+  const [visibleRows, setVisibleRows] = useState(
+    () => peekTranscriptScroll(sessionId ?? "")?.rowCount ?? INITIAL_ROWS,
   );
   const reduceMotion = useReducedMotion() === true;
   // Engine state lives in refs: the rAF loop reads and writes it without a
@@ -577,7 +602,7 @@ export function AgentTranscript({
           ? null
           : {
               fromBottom: Math.max(0, fromBottomOf(el) - spacerH.current),
-              turnCount: visibleTurnCountRef.current,
+              rowCount: visibleRowsRef.current,
             },
       );
     };
@@ -627,9 +652,22 @@ export function AgentTranscript({
     previousTurns.current = next;
     return next;
   }, [blocks]);
-  visibleTurnCountRef.current = visibleTurnCount;
-  const firstVisibleTurn = Math.max(0, turns.length - visibleTurnCount);
-  const visibleTurns = useMemo(() => turns.slice(firstVisibleTurn), [turns, firstVisibleTurn]);
+  visibleRowsRef.current = visibleRows;
+  const { first: firstVisibleTurn, skip: firstTurnSkip, shown: shownRows } = useMemo(
+    () => windowTurns(turns, visibleRows),
+    [turns, visibleRows],
+  );
+  const visibleTurns = useMemo(() => {
+    const slice = turns.slice(firstVisibleTurn);
+    if (firstTurnSkip > 0 && slice.length > 0) slice[0] = slice[0].slice(firstTurnSkip);
+    return slice;
+  }, [turns, firstVisibleTurn, firstTurnSkip]);
+  // Keys and freshness come from the whole turn's first block, so a turn
+  // shown from part-way keeps its identity as the window grows into it.
+  const visibleTurnKeys = useMemo(
+    () => turns.slice(firstVisibleTurn).map((turn) => turn[0].id),
+    [turns, firstVisibleTurn],
+  );
   // Turns born after mount fade in; the ones the transcript opened with, and
   // the pages loaded above them, are already history.
   const initialTurns = useRef<Set<string> | null>(null);
@@ -643,15 +681,13 @@ export function AgentTranscript({
     if (previousHeight == null || !el) return;
     prependHeight.current = null;
     scrollTo(el, el.scrollTop + el.scrollHeight - previousHeight);
-  }, [visibleTurnCount]);
+  }, [visibleRows]);
 
   const loadEarlier = () => {
     const el = scroller.current;
     if (el) prependHeight.current = el.scrollHeight;
     release();
-    setVisibleTurnCount((count) =>
-      Math.min(turns.length, count + TURN_PAGE_SIZE),
-    );
+    setVisibleRows((rows) => Math.min(blocks.length, rows + ROW_PAGE_SIZE));
   };
 
   // Scroll-to-row entry point (session search): the request waits in
@@ -671,12 +707,10 @@ export function AgentTranscript({
     if (!jump) return;
     const block = blockForSeq(blocks, jump.seq);
     if (!block) return;
-    const turnIndex = turns.findIndex((turn) =>
-      turn.some((b) => b.id === block.id),
-    );
-    if (turnIndex < 0) return;
-    if (turnIndex < firstVisibleTurn) {
-      setVisibleTurnCount(turns.length - turnIndex);
+    const blockIndex = blocks.indexOf(block);
+    if (blockIndex < 0) return;
+    if (blockIndex < blocks.length - shownRows) {
+      setVisibleRows(blocks.length - blockIndex);
       return;
     }
     const sc = scroller.current;
@@ -686,7 +720,7 @@ export function AgentTranscript({
     if (!(el instanceof HTMLElement)) return;
     takeTranscriptJump(sessionId);
     glideTo(el);
-  }, [sessionId, visible, blocks, turns, firstVisibleTurn, jumpTick, glideTo]);
+  }, [sessionId, visible, blocks, shownRows, jumpTick, glideTo]);
 
   return (
     <SelectSessionContext.Provider value={onSelectSession}>
@@ -698,7 +732,7 @@ export function AgentTranscript({
       className="agent-transcript h-full overflow-y-auto overscroll-none [overflow-anchor:none] font-mono text-[13px] leading-5"
     >
       <div className="mx-auto flex w-full min-w-0 max-w-4xl flex-col gap-1 px-4 pb-1">
-        {firstVisibleTurn > 0 ? (
+        {shownRows < blocks.length ? (
           <div className="flex justify-center px-4 py-3">
             <button
               type="button"
@@ -711,6 +745,7 @@ export function AgentTranscript({
         ) : null}
         <TurnList
           visibleTurns={visibleTurns}
+          visibleTurnKeys={visibleTurnKeys}
           firstVisibleTurn={firstVisibleTurn}
           turnCount={turns.length}
           busy={!!busy}
@@ -769,6 +804,7 @@ function stableTurns(next: Block[][], previous: Block[][]): Block[][] {
 
 type TurnListProps = {
   visibleTurns: Block[][];
+  visibleTurnKeys: string[];
   firstVisibleTurn: number;
   turnCount: number;
   busy: boolean;
@@ -795,6 +831,7 @@ type TurnListProps = {
  */
 const TurnList = memo(function TurnList({
   visibleTurns,
+  visibleTurnKeys,
   firstVisibleTurn,
   turnCount,
   busy,
@@ -823,12 +860,12 @@ const TurnList = memo(function TurnList({
         const isLastTurn = firstVisibleTurn + turnIndex === turnCount - 1;
         return (
           <TurnView
-            key={turn[0].id}
+            key={visibleTurnKeys[turnIndex]}
             turn={turn}
             stickyIndex={firstVisibleTurn + turnIndex + 1}
             isLastTurn={isLastTurn}
             settled={!(busy && isLastTurn)}
-            fresh={!initialTurns.has(turn[0].id)}
+            fresh={!initialTurns.has(visibleTurnKeys[turnIndex])}
             zen={zen}
             cwd={cwd}
             layout={layout}
@@ -2174,7 +2211,7 @@ function ActivityToolRow({
   const expandable = !!block.tool && !pending && !block.question;
 
   return (
-    <div className={`flex min-w-0 flex-col ${fresh ? "z-fade-in" : ""}`}>
+    <div data-block={block.id} className={`flex min-w-0 flex-col ${fresh ? "z-fade-in" : ""}`}>
       <div
         aria-label={`Tool call: ${label}`}
         className={`group/tool flex min-w-0 items-center gap-1.5 py-1 ${expandable ? "cursor-pointer" : ""}`}
