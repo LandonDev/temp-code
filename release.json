@@ -1,5 +1,5 @@
 {
-  "n": 109,
-  "notes": "Parked tabs unmount: only the active tab and the two most recent stay mounted, the rest leave the page 3 s after they park",
-  "ts": 1789419029034
+  "n": 110,
+  "notes": "Parked panes schedule no frames: every timer and animation loop inside a pane gates on a PaneVisibility context, not document.hidden",
+  "ts": 1789419398845
 }
