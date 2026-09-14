@@ -15,7 +15,10 @@ import { cn } from "./cn";
  * Tabs whose active indicator glides between triggers as one shared-layout
  * element. The layout id is minted per <Tabs> and projection is scoped to
  * the wrapper, so two tab strips on screen never trade indicators and a
- * scrolled container never replays its offset as movement.
+ * scrolled container never replays its offset as movement. `glide` off
+ * withdraws the shared layout id, so a strip mid-swap mounts no measuring
+ * layout; `generation` mints a fresh id once it settles, so the indicator
+ * never resumes from a snapshot of a chip that is gone.
  */
 
 type Variant = "pill" | "underline" | "segment" | "soft";
@@ -23,7 +26,7 @@ type Variant = "pill" | "underline" | "segment" | "soft";
 type Ctx = {
   value: string;
   setValue: (v: string) => void;
-  layoutId: string;
+  layoutId: string | undefined;
   variant: Variant;
 };
 
@@ -40,6 +43,8 @@ export function Tabs({
   value,
   onValueChange,
   variant = "pill",
+  glide = true,
+  generation = 0,
   children,
   className,
 }: {
@@ -47,11 +52,14 @@ export function Tabs({
   value?: string;
   onValueChange?: (v: string) => void;
   variant?: Variant;
+  glide?: boolean;
+  generation?: number;
   children: ReactNode;
   className?: string;
 }) {
   const [internal, setInternal] = useState(defaultValue ?? "");
-  const layoutId = useId();
+  const id = useId();
+  const layoutId = glide ? `${id}-${generation}` : undefined;
   const reduce = useReducedMotion();
   const controlled = value !== undefined;
   const current = controlled ? value : internal;
@@ -123,6 +131,7 @@ export function TabsTrigger({
         {children}
         {active ? (
           <motion.span
+            key={layoutId}
             layoutId={layoutId}
             className={cn("absolute -bottom-px left-0 right-0 h-px bg-content", indicatorClassName)}
           />
@@ -138,6 +147,7 @@ export function TabsTrigger({
       <div className="relative">
         {active ? (
           <motion.span
+            key={layoutId}
             layoutId={layoutId}
             style={{ borderRadius: 6 }}
             className={cn("absolute inset-0 bg-content/10", indicatorClassName)}
@@ -168,6 +178,7 @@ export function TabsTrigger({
     <div className="relative">
       {active ? (
         <motion.span
+          key={layoutId}
           layoutId={layoutId}
           style={{ borderRadius: variant === "pill" ? 9999 : 8 }}
           className={cn("absolute inset-0 bg-content", radius, indicatorClassName)}

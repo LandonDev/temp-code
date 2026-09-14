@@ -8,6 +8,7 @@ import {
 } from "react";
 import type { ThreadRules } from "@server/shared/rules";
 import { SPRING_LAYOUT } from "../lib/ease";
+import { GLIDE_MAX_ROWS, useListGlide } from "../lib/listGlide";
 import { HARNESSES, sessionDisplayTitle, type HarnessId } from "../lib/session";
 import type { ThreadType } from "../lib/tcserver/types";
 import type { HeaderChip, HeaderModel } from "../lib/threadHeaderModel";
@@ -26,7 +27,9 @@ import { TabIndicator, type TabThread } from "./TabIndicator";
  * or not; nothing here closes one. Selection commits on pointer-down and
  * the active wash glides between chips; chips scale in and slide closed on
  * archive. Right-click for the thread's menu, double-click to rename, the
- * shelf at the row's end brings archived threads back.
+ * shelf at the row's end brings archived threads back. A project switch
+ * swaps every chip: that render animates nothing and measures nothing, and
+ * the rows start gliding again once they have settled.
  */
 
 /** What a chip needs from a thread; a SessionMeta satisfies it. */
@@ -99,12 +102,18 @@ export function ThreadHeaderStrip({
 }) {
   const reduce = useReducedMotion();
   const activeId = model.activeId ?? "";
+  const { generation, glide } = useListGlide(
+    model.live.map((c) => c.id).concat(model.dormant.map((c) => c.id)),
+  );
   const row = (chips: StripChip[], shelf: boolean) => (
-    <AnimatePresence initial={false} mode="popLayout">
+    <AnimatePresence key={generation} initial={false} mode="popLayout">
       {chips.map((chip) => (
         <motion.div
           key={chip.id}
-          layout
+          layout={glide}
+          // Only a chip's own row moves it; a re-render that leaves the row
+          // alone takes no snapshot.
+          layoutDependency={rowDependency(chips)}
           initial={reduce ? false : { opacity: 0, scale: shelf ? 0.92 : 0.9 }}
           animate={{ opacity: 1, scale: 1 }}
           exit={reduce ? undefined : { opacity: 0, scale: shelf ? 0.92 : 0.9 }}
@@ -130,6 +139,8 @@ export function ThreadHeaderStrip({
       variant="soft"
       value={activeId}
       onValueChange={onSelect}
+      glide={glide}
+      generation={generation}
       className="flex min-w-0 flex-1 flex-col"
     >
       <div className="flex h-10 min-w-0 items-center">
@@ -161,6 +172,12 @@ export function ThreadHeaderStrip({
       ) : null}
     </Tabs>
   );
+}
+
+function rowDependency(chips: StripChip[]): string {
+  let dep = "";
+  for (const chip of chips) dep += chip.id + ":" + chip.thread.title + "|";
+  return dep;
 }
 
 export function chipTitle(chip: StripChip): string {
@@ -367,7 +384,7 @@ function ArchivedShelf({
                   <motion.button
                     key={thread.id}
                     type="button"
-                    layout
+                    layout={shown.length <= GLIDE_MAX_ROWS}
                     exit={reduce ? undefined : { opacity: 0, height: 0 }}
                     transition={SPRING_LAYOUT}
                     onClick={() => restore(thread.id)}

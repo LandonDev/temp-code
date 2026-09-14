@@ -1,6 +1,7 @@
 import { Plus } from './icons'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { EASE_OUT, SPRING_SWAP } from '../lib/ease'
+import { GLIDE_MAX_ROWS } from '../lib/listGlide'
 import {
   useCallback,
   useEffect,
@@ -768,7 +769,7 @@ export function Composer({
                 {attachments.map((file) => (
                   <motion.div
                     key={file.id}
-                    layout
+                    layout={attachments.length <= GLIDE_MAX_ROWS}
                     initial={reduce ? false : { opacity: 0, scale: 0.9 }}
                     animate={{ opacity: 1, scale: 1, transition: SPRING_SWAP }}
                     exit={

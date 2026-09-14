@@ -38,7 +38,18 @@ export function tabGroupLogoDisplayRevision(): number {
   return logoDisplayRevision;
 }
 
-function readRecord(key: string): Record<string, string> {
+// Each record parses once; writes refresh the entry and a storage event
+// from another window drops it. Callers get a copy: savers mutate what
+// they load, and the title bar keeps a loaded record in state.
+const records = new Map<string, Record<string, string>>();
+if (typeof window !== "undefined") {
+  window.addEventListener("storage", (event) => {
+    if (event.key === null) records.clear();
+    else records.delete(event.key);
+  });
+}
+
+function parseRecord(key: string): Record<string, string> {
   try {
     const raw = localStorage.getItem(key);
     if (!raw) return {};
@@ -55,7 +66,17 @@ function readRecord(key: string): Record<string, string> {
   }
 }
 
+function readRecord(key: string): Record<string, string> {
+  let record = records.get(key);
+  if (!record) {
+    record = parseRecord(key);
+    records.set(key, record);
+  }
+  return { ...record };
+}
+
 function writeRecord(key: string, value: Record<string, string>): void {
+  records.set(key, { ...value });
   try {
     localStorage.setItem(key, JSON.stringify(value));
   } catch {
