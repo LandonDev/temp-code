@@ -19,6 +19,7 @@ import { closeLightbox, isLightboxOpen, stepLightbox } from "./chrome/Lightbox";
 import { UsageFooter } from "./chrome/UsageFooter";
 import { useSidebarLayout } from "./hooks/useSidebarLayout";
 import { toggleTranscriptZen } from "./lib/appearance";
+import { perfMark } from "./lib/perfMarks";
 import { IS_MAC } from "./lib/platform";
 import { updateStore } from "./lib/updateStore";
 import { displayAttachments, prepareAttachments } from "./lib/attachments";
@@ -691,6 +692,7 @@ export default function App() {
   /** Card click: select the project and bring its latest open tab forward. */
   const onSelectProjectCard = useCallback(
     (projectId: string | null) => {
+      perfMark("project-select", projectId ?? undefined);
       project.selectProject(projectId);
       if (!projectId) return;
       // A full-screen view (inbox, notes, search) would otherwise stay on top
@@ -1866,10 +1868,12 @@ export default function App() {
       // A search hit's row: the transcript picks the request up once its
       // history holds that seq (lib/transcriptJump.ts), whether the thread is
       // already on screen or opens below.
+      perfMark("open-click", sessionId);
       if (seq !== undefined) requestTranscriptJump(sessionId, seq);
       if (focusOpenSession(sessionId)) return;
       const session = await ensureOpenSession(sessionId);
       if (!session) return;
+      perfMark("open-ready", sessionId);
       // A tab may have landed during the await (a background open racing an
       // explicit ask for the same thread): show that one, never a second.
       if (focusOpenSession(sessionId)) return;
