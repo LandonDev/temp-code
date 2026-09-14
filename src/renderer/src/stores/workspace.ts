@@ -2,7 +2,7 @@ import { useStore } from "zustand";
 import { subscribeWithSelector } from "zustand/middleware";
 import { createStore } from "zustand/vanilla";
 import { loadSidebarLayout } from "../lib/appearance";
-import type { WorkspaceTab } from "../lib/layout";
+import { leafIds, type WorkspaceTab } from "../lib/layout";
 import {
   emptyTabVisitHistory,
   pruneTabVisitHistory,
@@ -152,4 +152,24 @@ function step(direction: "back" | "forward"): string | null {
   const { state, tabId } = stepVisits(workspaceTabsStore.getState(), direction);
   if (tabId) workspaceTabsStore.setState(state);
   return tabId;
+}
+
+/**
+ * The tab on screen and the session it shows: the focused pane's session,
+ * else the first pane that is one. Callbacks and subscriptions read it off
+ * the stores through `currentActiveSession()`; App's render computes the
+ * same from its live values.
+ */
+export function activeSessionOf<S extends { id: string }>(
+  tabs: WorkspaceTab[],
+  activeTabId: string,
+  sessions: S[],
+): { activeTab: WorkspaceTab | undefined; active: S | undefined } {
+  const activeTab = tabs.find((t) => t.id === activeTabId) ?? tabs[0];
+  const active =
+    sessions.find((session) => session.id === activeTab?.focusedId) ??
+    sessions.find(
+      (session) => activeTab && leafIds(activeTab.layout).includes(session.id),
+    );
+  return { activeTab, active };
 }

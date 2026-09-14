@@ -13,6 +13,7 @@ import { slashCommandStore } from "./lib/tcserver/slashCommands";
 import { handleQuitRequested, loadBootWorkspace, persistLiveWorkspace } from "./lib/appLifecycle";
 import { consumeInstalledUpdate } from "./lib/updateNotice";
 import { bootstrapWorkspace } from "./stores/bootstrap";
+import { installSubscriptions } from "./stores/subscriptions";
 import { updateStore } from "./lib/updateStore";
 import { initAppshots } from "./lib/appshots";
 import "./index.css";
@@ -69,6 +70,8 @@ void loadBootWorkspace().then(
       historyCwd,
       installedUpdate,
     });
+    // The stores are full; the effects that follow them start before the first render.
+    installSubscriptions();
     ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
       <React.StrictMode>
         <BootGate>
