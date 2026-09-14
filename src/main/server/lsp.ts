@@ -20,6 +20,7 @@ import { pipeline } from 'node:stream/promises'
 import type { WebSocket } from 'ws'
 import type { LspStatusRow } from '@shared/domain'
 import { harnessEnv } from './drivers/binaries'
+import { CRASH_WINDOW_MS, StderrTail, erroredEntryHolds, expiredBuildMessage } from './lspHealth'
 
 import { execFileBudgeted as execFileP, spawnTracked as spawn } from './spawnBudget'
 
@@ -47,7 +48,6 @@ const IDLE_STOP_MS: Record<LspLang, number> = {
   web: 10 * 60_000,
   idea: 60 * 60_000
 }
-const CRASH_WINDOW_MS = 30_000
 
 const JDTLS_VERSION = '1.60.0'
 const jdtlsRoot = (): string => join(homedir(), '.temp-code', 'jdtls')
@@ -367,6 +367,8 @@ interface PoolServer {
   lang: LspLang
   state: 'starting' | 'downloading' | 'running' | 'error'
   error?: string
+  /** When `state` went to 'error'; an ensure inside CRASH_WINDOW_MS returns it as is. */
+  erroredAt?: number
   proc: ChildProcess | null
   sockets: Set<WebSocket>
   lastUsed: number
@@ -379,6 +381,24 @@ interface PoolServer {
 
 const pool = new Map<string, PoolServer>()
 let sweepTimer: NodeJS.Timeout | null = null
+
+/** The engine's expiry line once seen: that dist is done for this session,
+ *  for warm-ups and live servers alike. A fresh build clears it. */
+let ideaBuildUnavailable: string | null = null
+
+function markError(server: PoolServer, message: string): void {
+  server.state = 'error'
+  server.error = message
+  server.erroredAt = Date.now()
+}
+
+/** Read an engine's last words on exit; its expiry retires the whole build. */
+function noteEngineExit(lang: LspLang, stderr: StderrTail): string | null {
+  if (lang !== 'idea') return null
+  const expired = expiredBuildMessage(stderr.read())
+  if (expired) ideaBuildUnavailable = expired
+  return expired
+}
 
 function stopServer(server: PoolServer): void {
   pool.delete(`${server.projectId}:${server.lang}`)
@@ -495,6 +515,7 @@ async function spawnJava(server: PoolServer): Promise<void> {
 }
 
 async function spawnIdea(server: PoolServer): Promise<void> {
+  if (ideaBuildUnavailable) throw new Error(ideaBuildUnavailable)
   if (!existsSync(join(ideaDist(), 'bin', 'intellij-server'))) {
     server.state = 'downloading'
     await ensureIdeaDist()
@@ -604,17 +625,23 @@ function wireProcess(server: PoolServer): void {
       }
     })
   })
-  proc.stderr?.on('data', () => {}) // jdtls chatter — not ours to relay
+  // Not relayed (jdtls chatter), but kept: the engine explains an exit here.
+  const stderr = new StderrTail()
+  proc.stderr?.on('data', (chunk: Buffer) => stderr.push(chunk))
   proc.on('exit', () => {
     if (server.proc !== proc) return // deliberate stop already handled it
     server.proc = null
     for (const ws of server.sockets) ws.close(4002, 'language server exited')
     server.sockets.clear()
+    const expired = noteEngineExit(server.lang, stderr)
+    if (expired) {
+      markError(server, expired)
+      return
+    }
     const now = Date.now()
     if (now - server.lastCrashAt < CRASH_WINDOW_MS) {
       // Two crashes in one burst: stop retrying, surface honestly.
-      server.state = 'error'
-      server.error = 'language server crashed repeatedly'
+      markError(server, 'language server crashed repeatedly')
       return
     }
     server.lastCrashAt = now
@@ -633,15 +660,13 @@ function wireProcess(server: PoolServer): void {
         wireProcess(server)
         server.state = 'running'
       } catch (err) {
-        server.state = 'error'
-        server.error = err instanceof Error ? err.message : String(err)
+        markError(server, err instanceof Error ? err.message : String(err))
       }
     })()
   })
   proc.on('error', (err) => {
     if (server.proc !== proc) return
-    server.state = 'error'
-    server.error = err.message
+    markError(server, err.message)
   })
 }
 
@@ -714,6 +739,9 @@ export async function ensureLsp(
   if (lang === 'idea' && !ideaEulaAccepted()) {
     return { serverId: '', wsPath: '', status: 'needs-eula' }
   }
+  if (lang === 'idea' && ideaBuildUnavailable) {
+    return { serverId: '', wsPath: '', status: 'error', error: ideaBuildUnavailable }
+  }
   const key = `${projectId}:${lang}`
   const existing = pool.get(key)
   if (existing && existing.state !== 'error') {
@@ -725,7 +753,18 @@ export async function ensureLsp(
       ...(await ensureExtras(existing))
     }
   }
-  if (existing) pool.delete(key) // error state: a fresh ensure retries
+  if (existing && erroredEntryHolds(existing.erroredAt, Date.now())) {
+    // Every ensure used to respawn an errored entry: an engine that dies
+    // at boot became a fork loop paced by the renderer. It stays errored.
+    return {
+      serverId: existing.id,
+      wsPath: `/lsp/${existing.id}`,
+      status: 'error',
+      error: existing.error,
+      ...(await ensureExtras(existing))
+    }
+  }
+  if (existing) pool.delete(key) // errored long enough: a fresh ensure retries
   // A background warm job holds the same --system-path lock — the live
   // engine wins; the index it wrote so far is crash-tolerant.
   if (lang === 'idea') await cancelWarm(projectId)
@@ -747,8 +786,7 @@ export async function ensureLsp(
     wireProcess(server)
     server.state = 'running'
   } catch (err) {
-    server.state = 'error'
-    server.error = err instanceof Error ? err.message : String(err)
+    markError(server, err instanceof Error ? err.message : String(err))
   }
   return {
     serverId: server.id,
@@ -844,6 +882,7 @@ async function gitHead(cwd: string): Promise<string | null> {
 }
 
 async function warmOne(job: WarmJob): Promise<void> {
+  if (ideaBuildUnavailable) throw new Error(ideaBuildUnavailable)
   await ensureIdeaDist()
   const system = join(ideaRoot(), 'system', job.projectId)
   mkdirSync(system, { recursive: true })
@@ -861,6 +900,8 @@ async function warmOne(job: WarmJob): Promise<void> {
     env: { ...(await harnessEnv()), INTELLIJ_DATA_SHARING: 'none', IJ_JAVA_OPTIONS: '-Xmx3g' }
   })
   job.proc = proc
+  const stderr = new StderrTail()
+  proc.stderr?.on('data', (chunk: Buffer) => stderr.push(chunk))
   const send = (msg: object): void => {
     try {
       proc.stdin?.write(frame(JSON.stringify(msg)))
@@ -910,7 +951,8 @@ async function warmOne(job: WarmJob): Promise<void> {
     })
     proc.on('exit', () => {
       clearTimeout(timer)
-      reject(new Error(job.cancelled ? 'cancelled' : 'engine exited during warm-up'))
+      const expired = noteEngineExit('idea', stderr)
+      reject(new Error(expired ?? (job.cancelled ? 'cancelled' : 'engine exited during warm-up')))
     })
     send({
       jsonrpc: '2.0',
@@ -991,7 +1033,7 @@ function cancelWarm(projectId: string): Promise<void> {
  *  unaccepted, no build files, live engine running, HEAD + build
  *  unchanged since the last warm, failed less than an hour ago. */
 export async function warmIdeaIndexes(projects: { id: string; cwd: string }[]): Promise<void> {
-  if (!ideaEulaAccepted()) return
+  if (!ideaEulaAccepted() || ideaBuildUnavailable) return
   for (const p of projects) {
     if (!existsSync(p.cwd) || !detectBuildTool(p.cwd)) continue
     const live = pool.get(`${p.id}:idea`)
