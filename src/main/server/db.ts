@@ -214,6 +214,42 @@ function toMeta(r: SessionRowRaw): SessionMeta {
 
 const SEARCH_CAP = 200
 
+/** How many events a tail walks back over at most, whatever the budget. */
+const TAIL_SCAN = 6000
+
+/** First seq of a `budget`-row tail over `scan` (newest first): the row
+ *  of the newest `budget` blocks, so the tail begins on a boundary.
+ *  Null when the scan holds fewer rows than the budget (send the range
+ *  whole); the oldest scanned seq when the scan cap hit first. */
+export function tailStart(
+  scan: { seq: number; type: string; callId: string | null; msgId: string | null; blockIndex: number | null }[],
+  budget: number
+): number | null {
+  const seen = new Set<string>()
+  let rows = 0
+  // The lowest seq of the newest `budget` blocks so far: the cut lands on
+  // it, so a turn's trailing bookkeeping rows stay with their turn.
+  let boundary: number | null = null
+  for (const r of scan) {
+    const key =
+      r.callId != null
+        ? `c:${r.callId}`
+        : r.msgId != null
+          ? `m:${r.msgId}:${r.blockIndex ?? ''}`
+          : r.type === 'user-text' || r.type === 'assistant-text' || r.type === 'thinking'
+            ? `s:${r.seq}`
+            : null
+    if (!key) continue
+    if (!seen.has(key)) {
+      seen.add(key)
+      rows++
+      if (rows > budget) return boundary ?? r.seq
+    }
+    boundary = r.seq
+  }
+  return scan.length === TAIL_SCAN ? scan[scan.length - 1].seq : null
+}
+
 export class Store {
   constructor(private db: DatabaseSync) {}
 
@@ -600,9 +636,14 @@ export class Store {
     return this.eventsRange(sessionId, afterSeq, -1)
   }
 
-  /** Events in (`afterSeq`, `beforeSeq`). With `tail`, only from the
-   *  `tail`-th most recent user turn on; a log with fewer turns comes back whole. The walk back stops at
-   *  that turn, so a huge log costs only the rows it returns. */
+  /** Events in (`afterSeq`, `beforeSeq`). With `tail`, only the rows that
+   *  fold into about the last `tail` transcript rows (a prompt, a tool call,
+   *  or one assistant/thinking message each), cut at a row boundary; a log
+   *  with fewer rows comes back whole. Rows are the paint unit: an agent
+   *  thread packs tens of thousands of events into two turns, so a budget
+   *  in turns would return the whole log. The walk back reads only light
+   *  columns and stops at TAIL_SCAN events, so a huge log costs at most
+   *  that many rows. */
   events(
     sessionId: string,
     opts: { afterSeq?: number; beforeSeq?: number; tail?: number } = {}
@@ -611,15 +652,25 @@ export class Store {
     const beforeSeq = opts.beforeSeq ?? Number.MAX_SAFE_INTEGER
     let fromSeq = afterSeq + 1
     if (opts.tail && opts.tail > 0) {
-      const starts = this
+      const scan = this
         .stmt(
-          `SELECT seq FROM events
+          `SELECT seq, json_extract(payload, '$.type') AS type,
+                  json_extract(payload, '$.callId') AS callId,
+                  json_extract(payload, '$.msgId') AS msgId,
+                  json_extract(payload, '$.blockIndex') AS blockIndex
+             FROM events
              WHERE session_id = ? AND seq > ? AND seq < ?
-               AND json_extract(payload, '$.type') = 'user-text'
              ORDER BY seq DESC LIMIT ?`
         )
-        .all(sessionId, afterSeq, beforeSeq, opts.tail) as unknown as { seq: number }[]
-      if (starts.length === opts.tail) fromSeq = starts[starts.length - 1].seq
+        .all(sessionId, afterSeq, beforeSeq, TAIL_SCAN) as unknown as {
+        seq: number
+        type: string
+        callId: string | null
+        msgId: string | null
+        blockIndex: number | null
+      }[]
+      const start = tailStart(scan, opts.tail)
+      if (start !== null) fromSeq = start
     }
     const rows = this
       .stmt(

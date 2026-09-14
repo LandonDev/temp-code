@@ -142,8 +142,10 @@ type Head = {
   waiters: (() => void)[];
 };
 
-/** A first load asks for this many user turns; the rest folds behind it. */
-const TAIL_TURNS = 20;
+/** A first load asks for about this many transcript rows (prompts, tool
+ *  calls, messages); the rest folds behind them. Rows, not turns: an agent
+ *  thread packs tens of thousands of events into two turns. */
+const TAIL_ROWS = 300;
 /** Rows folded per slice while the head of a long log folds in the background. */
 const HEAD_CHUNK = 2000;
 
@@ -548,7 +550,7 @@ class SessionStore {
       this.link.request<EventRow[]>("session.events", {
         sessionId: id,
         afterSeq: entry.lastSeq,
-        ...(tailFirst ? { tail: TAIL_TURNS } : {}),
+        ...(tailFirst ? { tail: TAIL_ROWS } : {}),
       }),
       // The queue lives in server memory: a restart empties it, so the
       // strip refills from the list rather than keeping stale rows.
