@@ -199,6 +199,13 @@ import {
   useRailRecents,
 } from "./stores/project";
 import { anyViewOpen, shell, shellStore, useShell } from "./stores/shell";
+import {
+  currentActiveTab,
+  currentDeckLayout,
+  useWorkspaceTabs,
+  workspace,
+  workspaceTabsStore,
+} from "./stores/workspace";
 import { applyZoom, loadZoom, zoomIn, zoomOut, zoomReset } from "./lib/zoom";
 import { migrateWorkspaces } from "./lib/workspaceMigration";
 import {
@@ -284,16 +291,7 @@ import {
   menuCommandAllowed,
   type AppCommand,
 } from "./lib/appCommands";
-import {
-  canTabVisitBack,
-  canTabVisitForward,
-  emptyTabVisitHistory,
-  pruneTabVisitHistory,
-  recordTabVisit,
-  tabVisitBack,
-  tabVisitForward,
-  type TabVisitHistory,
-} from "./lib/tabVisitHistory";
+import { canTabVisitBack, canTabVisitForward } from "./lib/tabVisitHistory";
 import { preparePrompt } from "./lib/promptPreparation";
 import { deriveMentionAttachments } from "./lib/mentionAttachments";
 import {
@@ -437,12 +435,14 @@ export default function App({ boot }: { boot: BootWorkspace }) {
    *  sessions from `sessionStore.getSnapshot()`. */
   const sessions = useSessionShells();
   const setSessions = sessionStore.mutate;
-  const [tabs, setTabs] = useState<WorkspaceTab[]>(boot.tabs);
+  const tabs = useWorkspaceTabs((s) => s.tabs);
+  const setTabs = workspace.setTabs;
   const [projectTerminals, setProjectTerminals] = useState<
     ProjectTerminal[]
   >(boot.projectTerminals);
   const [projectTerminalFocused, setProjectTerminalFocused] = useState(false);
-  const [activeTabId, setActiveTabId] = useState(boot.activeTabId);
+  const activeTabId = useWorkspaceTabs((s) => s.activeTabId);
+  const setActiveTabId = workspace.setActiveTabId;
   const [composerFocused, setComposerFocused] = useState(boot.composerFocused);
   /** Tab id -> project name, kept in sync with the rendered title tabs. */
   const tabProjectsRef = useRef(new Map<string, string>());
@@ -501,18 +501,14 @@ export default function App({ boot }: { boot: BootWorkspace }) {
    * ref: `sidebarCwd` is derived during render, so the frame that first shows
    * a new project must already know the listing has not arrived yet.
    */
-  const tabsRef = useRef(tabs);
-  tabsRef.current = tabs;
   const projectTerminalsRef = useRef(projectTerminals);
   projectTerminalsRef.current = projectTerminals;
-  const activeTabIdRef = useRef(activeTabId);
-  activeTabIdRef.current = activeTabId;
   /** The sidebar's and git's folders as of now, for callbacks; the render
    *  computes the same from live values below. */
   const currentSidebarCwd = useCallback(() => {
     const { activeTab, active } = activeSessionOf(
-      tabsRef.current,
-      activeTabIdRef.current,
+      workspaceTabsStore.getState().tabs,
+      workspaceTabsStore.getState().activeTabId,
       sessionStore.getSnapshot(),
     );
     return sidebarCwdOf(
@@ -524,8 +520,8 @@ export default function App({ boot }: { boot: BootWorkspace }) {
   }, []);
   const currentGitCwd = useCallback(() => {
     const { active } = activeSessionOf(
-      tabsRef.current,
-      activeTabIdRef.current,
+      workspaceTabsStore.getState().tabs,
+      workspaceTabsStore.getState().activeTabId,
       sessionStore.getSnapshot(),
     );
     return gitCwdOf(active, currentSidebarCwd());
@@ -534,14 +530,10 @@ export default function App({ boot }: { boot: BootWorkspace }) {
     if (!notesEnabled) shell.closeNotes();
   }, [notesEnabled]);
 
-  const deckLayoutRef = useRef(deckLayout);
-  deckLayoutRef.current = deckLayout;
-  const tabVisitRef = useRef(emptyTabVisitHistory(activeTabId));
-  const tabVisitFromHistoryRef = useRef(false);
-  const [tabVisitNav, setTabVisitNav] = useState({
-    canBack: false,
-    canForward: false,
-  });
+  const canVisitBack = useWorkspaceTabs((s) => canTabVisitBack(s.visits));
+  const canVisitForward = useWorkspaceTabs((s) =>
+    canTabVisitForward(s.visits),
+  );
   const turnGen = useRef(new Map<string, number>());
   const skipForgetSessionIds = useRef(new Set<string>());
   const noteSystem = useCallback((sessionId: string, text: string) => {
@@ -564,12 +556,12 @@ export default function App({ boot }: { boot: BootWorkspace }) {
       if (isAppQuitting()) return;
       void persistQuitState(
         sessionStore.getSnapshot(),
-        tabsRef.current,
-        activeTabIdRef.current,
+        workspaceTabsStore.getState().tabs,
+        workspaceTabsStore.getState().activeTabId,
         projectStore.getState().projectCwd,
         projectTerminalsRef.current,
       ).finally(() => {
-        void reapWindowRuntime(tabsRef.current, projectTerminalsRef.current);
+        void reapWindowRuntime(workspaceTabsStore.getState().tabs, projectTerminalsRef.current);
       });
     };
     window.addEventListener("pagehide", reap);
@@ -751,8 +743,8 @@ export default function App({ boot }: { boot: BootWorkspace }) {
     let unlistenClose: (() => void) | undefined;
     const releaseQuit = setQuitWorkspace(
       () => sessionStore.getSnapshot(),
-      () => tabsRef.current,
-      () => activeTabIdRef.current,
+      () => workspaceTabsStore.getState().tabs,
+      () => workspaceTabsStore.getState().activeTabId,
       () => projectStore.getState().projectCwd,
       () => projectTerminalsRef.current,
     );
@@ -767,8 +759,8 @@ export default function App({ boot }: { boot: BootWorkspace }) {
         }
         void persistAndCloseWindow(
           sessionStore.getSnapshot(),
-          tabsRef.current,
-          activeTabIdRef.current,
+          workspaceTabsStore.getState().tabs,
+          workspaceTabsStore.getState().activeTabId,
           projectStore.getState().projectCwd,
           projectTerminalsRef.current,
         );
@@ -832,9 +824,9 @@ export default function App({ boot }: { boot: BootWorkspace }) {
       createWorkspaceAutosave({
         collect: () =>
           collectWorkspaceSnapshot(
-            tabsRef.current,
+            workspaceTabsStore.getState().tabs,
             sessionStore.getSnapshot(),
-            activeTabIdRef.current,
+            workspaceTabsStore.getState().activeTabId,
             projectStore.getState().projectCwd,
             projectTerminalsRef.current,
           ),
@@ -893,7 +885,7 @@ export default function App({ boot }: { boot: BootWorkspace }) {
       // Read the tabs at sweep time: a store bump for a new session lands
       // before the React state that opens its tab, so a sweep off the bump
       // itself would drop every fresh draft as hidden.
-      const visibleIds = openSessionIds(tabsRef.current);
+      const visibleIds = openSessionIds(workspaceTabsStore.getState().tabs);
       const unseen = liveAgentTracker.unseenIds();
       const idleDetached = sessionStore.getSnapshot().filter(
         (session) =>
@@ -934,11 +926,11 @@ export default function App({ boot }: { boot: BootWorkspace }) {
 
   // Hidden tabs mount their panes after first paint, one per idle slice, so
   // launch-to-session-list does not scale with how many heavy tabs restore.
-  const [hiddenMountBudget, setHiddenMountBudget] = useState(0);
+  const hiddenMountBudget = useWorkspaceTabs((s) => s.hiddenMountBudget);
   useEffect(() => {
     if (hiddenMountBudget >= tabs.length) return;
     const handle = window.requestIdleCallback(
-      () => setHiddenMountBudget((n) => n + 1),
+      workspace.growMountBudget,
       { timeout: 500 },
     );
     return () => window.cancelIdleCallback(handle);
@@ -960,7 +952,7 @@ export default function App({ boot }: { boot: BootWorkspace }) {
 
   const activateTab = useCallback((id: string) => {
     setActiveTabId(id);
-    const tab = tabsRef.current.find((entry) => entry.id === id);
+    const tab = workspaceTabsStore.getState().tabs.find((entry) => entry.id === id);
     if (deckLayout && tab) {
       const cwd = workspaceTabCwd(
         tab,
@@ -1040,33 +1032,15 @@ export default function App({ boot }: { boot: BootWorkspace }) {
     return sessionStore.onMetaChange(mark);
   }, [active?.id]);
 
-  const commitTabVisit = useCallback((history: TabVisitHistory) => {
-    tabVisitRef.current = history;
-    const canBack = canTabVisitBack(history);
-    const canForward = canTabVisitForward(history);
-    setTabVisitNav((prev) =>
-      prev.canBack === canBack && prev.canForward === canForward
-        ? prev
-        : { canBack, canForward },
-    );
-  }, []);
-
   useEffect(() => {
-    const openIds = new Set(tabs.map((tab) => tab.id));
-    let next = pruneTabVisitHistory(tabVisitRef.current, openIds, activeTabId);
-    if (tabVisitFromHistoryRef.current) {
-      tabVisitFromHistoryRef.current = false;
-    } else if (next.current !== activeTabId) {
-      next = recordTabVisit(next, activeTabId);
-    }
-    commitTabVisit(pruneTabVisitHistory(next, openIds, activeTabId));
-  }, [activeTabId, commitTabVisit, tabs]);
+    workspace.settleVisits();
+  }, [activeTabId, tabs]);
 
   /** `cwd` scopes group inheritance: a tab from another project starts alone. */
   const appendTab = useCallback(
     (tab: WorkspaceTab, cwd?: string) => {
       setTabs((prev) =>
-        insertTabBesideActive(prev, tab, activeTabIdRef.current, (id) =>
+        insertTabBesideActive(prev, tab, workspaceTabsStore.getState().activeTabId, (id) =>
           id === tab.id
             ? cwd
               ? projectName(cwd)
@@ -1131,13 +1105,13 @@ export default function App({ boot }: { boot: BootWorkspace }) {
       // A full-screen view (inbox, notes, search) would otherwise stay on top
       // of the pane, most visibly when that project's tab is already active.
       shell.closeViews();
-      const tabs = tabsRef.current;
+      const tabs = workspaceTabsStore.getState().tabs;
       const sessions = sessionStore.getSnapshot();
       const inProject = (tab: WorkspaceTab) =>
         sessions.find((s) => s.id === tab.focusedId)?.projectId === projectId;
-      const current = tabs.find((tab) => tab.id === activeTabIdRef.current);
+      const current = tabs.find((tab) => tab.id === workspaceTabsStore.getState().activeTabId);
       if (current && inProject(current)) return;
-      const visits = tabVisitRef.current;
+      const visits = workspaceTabsStore.getState().visits;
       const recent = [...visits.back]
         .reverse()
         .map((id) => tabs.find((tab) => tab.id === id))
@@ -1565,11 +1539,11 @@ export default function App({ boot }: { boot: BootWorkspace }) {
         focusProjectTerminal();
         return;
       }
-      for (const tab of tabsRef.current) {
+      for (const tab of workspaceTabsStore.getState().tabs) {
         for (const pane of tab.terminalPanes ?? []) {
           if (!pane.files.some((file) => file.id === fileId)) continue;
           const showing =
-            activeTabIdRef.current === tab.id &&
+            workspaceTabsStore.getState().activeTabId === tab.id &&
             tab.focusedId === pane.id &&
             pane.activeFileId === fileId;
           if (showing) {
@@ -1607,7 +1581,7 @@ export default function App({ boot }: { boot: BootWorkspace }) {
 
   const onCloseTab = useCallback(
     (id: string, opts?: { confirmedTerminalIds?: string[] }) => {
-      const current = tabsRef.current;
+      const current = workspaceTabsStore.getState().tabs;
       const index = current.findIndex((t) => t.id === id);
       if (index < 0) return;
       const closePlan = planWorkspaceTabClose({
@@ -1647,8 +1621,8 @@ export default function App({ boot }: { boot: BootWorkspace }) {
           for (const file of closingFiles) updated.delete(file.id);
           return updated;
         });
-        setTabs(current.filter((t) => t.id !== id));
-        if (id === activeTabIdRef.current && nextActiveTabId) {
+        setTabs((prev) => prev.filter((t) => t.id !== id));
+        if (id === workspaceTabsStore.getState().activeTabId && nextActiveTabId) {
           activateTab(nextActiveTabId);
         }
         void refreshHistory(sidebarCwd);
@@ -1669,7 +1643,7 @@ export default function App({ boot }: { boot: BootWorkspace }) {
 
   const onGroupNewTab = useCallback(
     (groupId: string, threadType?: ThreadType) => {
-      const groupTab = tabsRef.current.find((tab) => tab.groupId === groupId);
+      const groupTab = workspaceTabsStore.getState().tabs.find((tab) => tab.groupId === groupId);
       const sessionInTab = groupTab
         ? sessionStore.getSnapshot().find((session) =>
             leafIds(groupTab.layout).includes(session.id),
@@ -1705,10 +1679,10 @@ export default function App({ boot }: { boot: BootWorkspace }) {
 
   const onGroupMoveToNewWindow = useCallback(
     async (tabIds: string[]) => {
-      const remainingAtMove = tabsRef.current.filter(
+      const remainingAtMove = workspaceTabsStore.getState().tabs.filter(
         (tab) => !tabIds.includes(tab.id),
       );
-      const movingTabs = tabsRef.current.filter((tab) =>
+      const movingTabs = workspaceTabsStore.getState().tabs.filter((tab) =>
         tabIds.includes(tab.id),
       );
       const splitDocks = splitProjectTerminalsForMove(
@@ -1718,10 +1692,10 @@ export default function App({ boot }: { boot: BootWorkspace }) {
         sessionStore.getSnapshot(),
       );
       const payload = collectWindowTransfer(
-        tabsRef.current,
+        workspaceTabsStore.getState().tabs,
         sessionStore.getSnapshot(),
         tabIds,
-        activeTabIdRef.current,
+        workspaceTabsStore.getState().activeTabId,
         dirtyFiles,
         projectCwd,
         splitDocks.moving,
@@ -1742,7 +1716,7 @@ export default function App({ boot }: { boot: BootWorkspace }) {
       }
 
       setProjectTerminals(splitDocks.remaining);
-      const remainingTabs = tabsRef.current.filter(
+      const remainingTabs = workspaceTabsStore.getState().tabs.filter(
         (tab) => !tabIds.includes(tab.id),
       );
       if (remainingTabs.length === 0) {
@@ -1772,8 +1746,8 @@ export default function App({ boot }: { boot: BootWorkspace }) {
         setSessions((prev) =>
           prev.filter((session) => !sessionIds.has(session.id)),
         );
-        if (tabIds.includes(activeTabIdRef.current)) {
-          activateTab(remainingTabs[0]?.id ?? activeTabIdRef.current);
+        if (tabIds.includes(workspaceTabsStore.getState().activeTabId)) {
+          activateTab(remainingTabs[0]?.id ?? workspaceTabsStore.getState().activeTabId);
         }
       }
 
@@ -1790,7 +1764,7 @@ export default function App({ boot }: { boot: BootWorkspace }) {
 
   const onCloseFile = useCallback(
     (paneId: string, fileId: string) => {
-      const tab = tabsRef.current.find((entry) =>
+      const tab = workspaceTabsStore.getState().tabs.find((entry) =>
         findSurfacePane(entry, paneId),
       );
       if (!tab) return;
@@ -1827,7 +1801,7 @@ export default function App({ boot }: { boot: BootWorkspace }) {
               return next;
             });
             const closePlan = planWorkspaceTabClose({
-              tabs: tabsRef.current,
+              tabs: workspaceTabsStore.getState().tabs,
               sessions: sessionStore.getSnapshot(),
               closingTabId: tab.id,
               scope: tabCloseScope,
@@ -2033,7 +2007,7 @@ export default function App({ boot }: { boot: BootWorkspace }) {
         // Deck mode: ⌘W never removes a thread from the strip.
         if (deckLayout) return;
         const closePlan = planWorkspaceTabClose({
-          tabs: tabsRef.current,
+          tabs: workspaceTabsStore.getState().tabs,
           sessions: sessionStore.getSnapshot(),
           closingTabId: activeTab.id,
           scope: tabCloseScope,
@@ -2106,32 +2080,14 @@ export default function App({ boot }: { boot: BootWorkspace }) {
   }, [activateTab, activeTabId, cycleScope]);
 
   const onVisitBack = useCallback(() => {
-    const openIds = new Set(tabsRef.current.map((tab) => tab.id));
-    const pruned = pruneTabVisitHistory(
-      tabVisitRef.current,
-      openIds,
-      activeTabIdRef.current,
-    );
-    const next = tabVisitBack(pruned);
-    if (!next || !openIds.has(next.current)) return;
-    tabVisitFromHistoryRef.current = true;
-    commitTabVisit(next);
-    activateTab(next.current);
-  }, [activateTab, commitTabVisit]);
+    const id = workspace.visitBack();
+    if (id) activateTab(id);
+  }, [activateTab]);
 
   const onVisitForward = useCallback(() => {
-    const openIds = new Set(tabsRef.current.map((tab) => tab.id));
-    const pruned = pruneTabVisitHistory(
-      tabVisitRef.current,
-      openIds,
-      activeTabIdRef.current,
-    );
-    const next = tabVisitForward(pruned);
-    if (!next || !openIds.has(next.current)) return;
-    tabVisitFromHistoryRef.current = true;
-    commitTabVisit(next);
-    activateTab(next.current);
-  }, [activateTab, commitTabVisit]);
+    const id = workspace.visitForward();
+    if (id) activateTab(id);
+  }, [activateTab]);
 
   const onActivate = useCallback(
     (slot: number) => {
@@ -2162,7 +2118,7 @@ export default function App({ boot }: { boot: BootWorkspace }) {
         if (resolved) rememberOpenedFile(currentSidebarCwd(), resolved);
         setTabs((prev) =>
           prev.map((tab) => {
-            if (tab.id !== activeTabIdRef.current) return tab;
+            if (tab.id !== workspaceTabsStore.getState().activeTabId) return tab;
             const opened = resolved
               ? openEditorTab(
                   tab,
@@ -2174,7 +2130,7 @@ export default function App({ boot }: { boot: BootWorkspace }) {
                   ),
                 )
               : tab;
-            if (deckLayoutRef.current) return opened;
+            if (currentDeckLayout()) return opened;
             return {
               ...opened,
               diffOpen: true,
@@ -2182,7 +2138,7 @@ export default function App({ boot }: { boot: BootWorkspace }) {
             };
           }),
         );
-        if (deckLayoutRef.current) shell.showSidebarTab("changes");
+        if (currentDeckLayout()) shell.showSidebarTab("changes");
         setComposerFocused(false);
       })();
     },
@@ -2311,7 +2267,7 @@ export default function App({ boot }: { boot: BootWorkspace }) {
   );
 
   const focusOpenSession = useCallback((sessionId: string) => {
-    const tab = tabsRef.current.find((entry) =>
+    const tab = workspaceTabsStore.getState().tabs.find((entry) =>
       leafIds(entry.layout).includes(sessionId),
     );
     if (!tab) return false;
@@ -2327,9 +2283,7 @@ export default function App({ boot }: { boot: BootWorkspace }) {
   }, [activateTab]);
 
   const replaceBlankPaneWithSession = useCallback((session: Session) => {
-    const tab =
-      tabsRef.current.find((entry) => entry.id === activeTabIdRef.current) ??
-      tabsRef.current[0];
+    const tab = currentActiveTab() ?? workspaceTabsStore.getState().tabs[0];
     if (!tab) return false;
 
     const paneId = isBlankSession(
@@ -2439,7 +2393,8 @@ export default function App({ boot }: { boot: BootWorkspace }) {
       // A subagent splits beside its parent and never gets a tab of its own.
       if (session.parentId) {
         const parentId = session.parentId;
-        if (!tabsRef.current.some((tab) => leafIds(tab.layout).includes(parentId))) {
+        const { tabs } = workspaceTabsStore.getState();
+        if (!tabs.some((tab) => leafIds(tab.layout).includes(parentId))) {
           const parent = await ensureOpenSession(parentId);
           if (!parent) return;
           const tab = newTab(parent.id);
@@ -2470,7 +2425,8 @@ export default function App({ boot }: { boot: BootWorkspace }) {
    *  user's work: no tab, pane or composer focus moves. */
   const openSessionInBackground = useCallback(
     async (sessionId: string) => {
-      if (tabsRef.current.some((tab) => leafIds(tab.layout).includes(sessionId))) return;
+      const { tabs } = workspaceTabsStore.getState();
+      if (tabs.some((tab) => leafIds(tab.layout).includes(sessionId))) return;
       const session = await ensureOpenSession(sessionId);
       if (!session) return;
       // Functional updates compose with a tab the user is adding right now;
@@ -2485,7 +2441,7 @@ export default function App({ boot }: { boot: BootWorkspace }) {
             sessions: [],
             session,
             insert: (tabs, tab) =>
-              insertTabBesideActive(tabs, tab, activeTabIdRef.current, (id) =>
+              insertTabBesideActive(tabs, tab, workspaceTabsStore.getState().activeTabId, (id) =>
                 id === tab.id ? projectName(session.cwd) : projectOfTab(id),
               ),
           }).tabs,
@@ -2503,7 +2459,7 @@ export default function App({ boot }: { boot: BootWorkspace }) {
       const session = await ensureOpenSession(sessionId);
       if (!session) return;
       if (focusOpenSession(sessionId)) return;
-      const tab = tabsRef.current.find((entry) => entry.id === activeTabIdRef.current);
+      const tab = currentActiveTab();
       const lone =
         !!tab &&
         leafIds(tab.layout).length === 1 &&
@@ -2640,7 +2596,7 @@ export default function App({ boot }: { boot: BootWorkspace }) {
       await deleteSession(sessionId).catch(() => undefined);
 
       if (
-        !tabsRef.current.some((tab) => leafIds(tab.layout).includes(sessionId))
+        !workspaceTabsStore.getState().tabs.some((tab) => leafIds(tab.layout).includes(sessionId))
       ) {
         setSessions((prev) =>
           prev.filter((session) => session.id !== sessionId),
@@ -2654,10 +2610,10 @@ export default function App({ boot }: { boot: BootWorkspace }) {
         sessions: nextSessions,
         activeTabId: nextActiveTabId,
       } = applyDeletedSessionToWorkspace({
-        tabs: tabsRef.current,
+        tabs: workspaceTabsStore.getState().tabs,
         sessions: sessionStore.getSnapshot(),
         sessionId,
-        activeTabId: activeTabIdRef.current,
+        activeTabId: workspaceTabsStore.getState().activeTabId,
         scope: tabCloseScope,
         createReplacement: (seed) =>
           newSession(
@@ -2674,7 +2630,7 @@ export default function App({ boot }: { boot: BootWorkspace }) {
 
       setSessions(nextSessions);
       setTabs(nextTabs);
-      if (nextActiveTabId !== activeTabIdRef.current) {
+      if (nextActiveTabId !== workspaceTabsStore.getState().activeTabId) {
         activateTab(nextActiveTabId);
       }
       setComposerFocused(
@@ -2818,8 +2774,8 @@ export default function App({ boot }: { boot: BootWorkspace }) {
       const normalized = normalizeProjectPath(path);
       if (!looksLikeProject(normalized)) return;
 
-      const activeWorkspace = tabsRef.current.find(
-        (entry) => entry.id === activeTabIdRef.current,
+      const activeWorkspace = workspaceTabsStore.getState().tabs.find(
+        (entry) => entry.id === workspaceTabsStore.getState().activeTabId,
       );
       const current = activeWorkspace
         ? sessionStore.getSnapshot().find(
@@ -2832,7 +2788,7 @@ export default function App({ boot }: { boot: BootWorkspace }) {
       if (currentCwd && sameProjectPath(currentCwd, normalized)) return;
 
       const match = findTabForProject(
-        tabsRef.current,
+        workspaceTabsStore.getState().tabs,
         rebaseToWorkspace(sessionStore.getSnapshot(), workspaceStore.getSnapshot()),
         normalized,
       );
@@ -2890,7 +2846,7 @@ export default function App({ boot }: { boot: BootWorkspace }) {
         : archiveProject(normalized);
       project.setRecents(remaining);
 
-      const tabs = tabsRef.current;
+      const tabs = workspaceTabsStore.getState().tabs;
       const sessions = sessionStore.getSnapshot();
       const rebased = rebaseToWorkspace(sessions, workspaceStore.getSnapshot());
       const projectTabs = filterTabsForProject(tabs, rebased, normalized);
@@ -2899,8 +2855,8 @@ export default function App({ boot }: { boot: BootWorkspace }) {
         sameProjectPath(rebased[index].cwd, normalized),
       );
       if (options.purgeData) {
-        const workspace = workspaceByPath(workspaceStore.getSnapshot().workspaces, normalized);
-        if (workspace) void deleteWorkspace(workspace.id).catch(() => undefined);
+        const removed = workspaceByPath(workspaceStore.getSnapshot().workspaces, normalized);
+        if (removed) void deleteWorkspace(removed.id).catch(() => undefined);
       }
       const projectSessionIds = new Set(
         projectSessions.map((session) => session.id),
@@ -2936,7 +2892,7 @@ export default function App({ boot }: { boot: BootWorkspace }) {
         if (!projectSessionIds.has(session.id)) return true;
         return !options.purgeData && session.busy;
       });
-      let nextActiveTabId = activeTabIdRef.current;
+      let nextActiveTabId = workspaceTabsStore.getState().activeTabId;
 
       if (nextTabs.length === 0) {
         const fallback = nextSessions[0];
@@ -2949,8 +2905,6 @@ export default function App({ boot }: { boot: BootWorkspace }) {
         nextActiveTabId = nextTabs[0]?.id ?? nextActiveTabId;
       }
 
-      tabsRef.current = nextTabs;
-      activeTabIdRef.current = nextActiveTabId;
       setSessions(nextSessions);
       setTabs(nextTabs);
       if (nextActiveTabId !== activeTabId) {
@@ -3017,7 +2971,7 @@ export default function App({ boot }: { boot: BootWorkspace }) {
   const onFileDeleted = useCallback((path: string) => {
     invalidateProjectFiles();
     const dropped = new Set<string>();
-    for (const tab of tabsRef.current) {
+    for (const tab of workspaceTabsStore.getState().tabs) {
       for (const pane of tab.editorPanes) {
         for (const file of pane.files) {
           if (isFilesystemTab(file) && isEqualOrInside(file.path, path)) {
@@ -3045,7 +2999,7 @@ export default function App({ boot }: { boot: BootWorkspace }) {
         const resolved =
           (await resolveOpenablePath(currentGitCwd(), path)) ?? path;
         rememberOpenedFile(currentSidebarCwd(), resolved);
-        const tab = tabsRef.current.find((entry) => entry.id === activeTabIdRef.current);
+        const tab = currentActiveTab();
         if (!tab) return;
         const editor = options?.editor ?? editorForPath(resolved);
         const file = newFileTab(
@@ -3183,7 +3137,7 @@ export default function App({ boot }: { boot: BootWorkspace }) {
 
   /** Pause / Continue / Stop from a tab's context menu, on its focused thread. */
   const onTabThreadAction = useCallback((tabId: string, action: TabThreadAction) => {
-    const tab = tabsRef.current.find((entry) => entry.id === tabId);
+    const tab = workspaceTabsStore.getState().tabs.find((entry) => entry.id === tabId);
     if (!tab) return;
     const ids = leafIds(tab.layout);
     const session =
@@ -3452,11 +3406,11 @@ export default function App({ boot }: { boot: BootWorkspace }) {
         setSessions([...current, session]);
       }
 
-      const tab = tabsRef.current.find((entry) =>
+      const tab = workspaceTabsStore.getState().tabs.find((entry) =>
         leafIds(entry.layout).includes(sourceId),
       );
       if (tab) {
-        const nextTabs = tabsRef.current.map((entry) =>
+        const nextTabs = workspaceTabsStore.getState().tabs.map((entry) =>
           entry.id === tab.id
             ? {
                 ...entry,
@@ -3466,9 +3420,8 @@ export default function App({ boot }: { boot: BootWorkspace }) {
               }
             : entry,
         );
-        tabsRef.current = nextTabs;
         setTabs(nextTabs);
-        if (tab.id !== activeTabIdRef.current) setActiveTabId(tab.id);
+        if (tab.id !== workspaceTabsStore.getState().activeTabId) setActiveTabId(tab.id);
       } else {
         const nextTab = newTab(session.id);
         appendTab(nextTab, cwd);
@@ -3767,7 +3720,7 @@ export default function App({ boot }: { boot: BootWorkspace }) {
   useEffect(() => {
     const onDebug = (event: Event) => {
       const { cwd, path } = (event as CustomEvent<{ cwd: string; path: string }>).detail;
-      const tabId = activeTabIdRef.current;
+      const tabId = workspaceTabsStore.getState().activeTabId;
       setTabs((prev) =>
         prev.map((tab) =>
           tab.id === tabId ? openDebugTab(tab, newDebugFile(cwd, path)) : tab,
@@ -3984,7 +3937,7 @@ export default function App({ boot }: { boot: BootWorkspace }) {
         e.stopPropagation();
         return;
       }
-      const cmd = keyCommand(e, { lightboxOpen, terminalToggle: deckLayoutRef.current });
+      const cmd = keyCommand(e, { lightboxOpen, terminalToggle: currentDeckLayout() });
       if (!cmd) return;
       e.preventDefault();
       e.stopPropagation();
@@ -4057,8 +4010,8 @@ export default function App({ boot }: { boot: BootWorkspace }) {
         onOpenTerminal={(cwd) => onOpenTerminal(cwd)}
         onFileMoved={onFileMoved}
         onFileDeleted={onFileDeleted}
-        canGoBack={tabVisitNav.canBack}
-        canGoForward={tabVisitNav.canForward}
+        canGoBack={canVisitBack}
+        canGoForward={canVisitForward}
         onGoBack={onRailBack}
         onGoForward={onRailForward}
         onOpenDiff={onOpenDiff}
@@ -4139,8 +4092,8 @@ export default function App({ boot }: { boot: BootWorkspace }) {
           onToggleSidebar={onToggleSidebar}
           onShowSourceControl={onToggleChanges}
           onSelect={activateTab}
-          canGoBack={tabVisitNav.canBack}
-          canGoForward={tabVisitNav.canForward}
+          canGoBack={canVisitBack}
+          canGoForward={canVisitForward}
           onGoBack={onVisitBack}
           onGoForward={onVisitForward}
           onNew={onNew}
@@ -4410,9 +4363,9 @@ export default function App({ boot }: { boot: BootWorkspace }) {
         <NewWorkspaceDialog
           path={newWorkspacePath}
           onClose={() => shell.setNewWorkspacePath(null)}
-          onCreated={(workspace) => {
+          onCreated={(created) => {
             shell.setNewWorkspacePath(null);
-            onSelectProject(workspace.path);
+            onSelectProject(created.path);
           }}
         />
       ) : null}
