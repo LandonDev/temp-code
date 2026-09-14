@@ -59,23 +59,41 @@ function cachedEditDiff(block: Block): EditDiff {
   return diff;
 }
 
-function useDiffRows(
-  block: Block,
-  filePath: string | undefined,
-  settled: boolean,
-  refresh: number,
-): DiffRow[] {
+/** Rows straight from the call: numbered when the source numbers them,
+ *  else in hunk order, else the server's preview. */
+function useParsedDiff(block: Block): { diff: EditDiff; rows: DiffRow[] } {
   const input = block.tool?.input;
   const name = block.tool?.name;
   const preview = block.tool?.preview?.lines;
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const diff = useMemo(() => cachedEditDiff(block), [input, name]);
+  const rows = useMemo(() => {
+    if (diff.rows) return diff.rows;
+    if (diff.hunks.length > 0) return rowsFromHunks(diff.hunks);
+    return previewToRows(preview ?? []);
+  }, [diff, preview]);
+  return { diff, rows };
+}
+
+/** The hunks located in the landed file (their line numbers), read once
+ *  the call settles and the body is wanted — a collapsed row never reads
+ *  its file — and again after an inline save. Null until located. */
+function useLocatedRows(
+  block: Block,
+  diff: EditDiff,
+  filePath: string | undefined,
+  settled: boolean,
+  refresh: number,
+  wanted: boolean,
+): DiffRow[] | null {
+  const input = block.tool?.input;
   const locatedKey = filePath ? cacheKey(block.id, filePath) : undefined;
   const [located, setLocated] = useState<{ gen: number; rows: DiffRow[] } | null>(() => {
     const hit = locatedKey ? locatedCache.get(locatedKey) : undefined;
     return hit && hit.input === input ? { gen: 0, rows: hit.rows } : null;
   });
   const wantsLocate =
+    wanted &&
     diff.hunks.length > 0 &&
     settled &&
     !!filePath &&
@@ -101,10 +119,8 @@ function useDiffRows(
     if (located && (refresh > 0 ? located.gen === refresh : true)) {
       if (refresh > 0 || !diff.rows) return located.rows;
     }
-    if (diff.rows) return diff.rows;
-    if (diff.hunks.length > 0) return rowsFromHunks(diff.hunks);
-    return previewToRows(preview ?? []);
-  }, [located, refresh, diff, preview]);
+    return null;
+  }, [located, refresh, diff]);
 }
 
 export function EditRow({
@@ -130,7 +146,7 @@ export function EditRow({
   const [editMode, setEditMode] = useState(false);
   const [editLine, setEditLine] = useState<number | undefined>();
   const [refresh, setRefresh] = useState(0);
-  const rows = useDiffRows(block, filePath, !running, refresh);
+  const { diff, rows: parsedRows } = useParsedDiff(block);
 
   // While the edit streams, the server's live diff for this file leads.
   const liveEdits = useLiveEdits(sessionId ?? "");
@@ -149,8 +165,9 @@ export function EditRow({
       liveRec?.diff ? parseUnifiedDiff(liveRec.diff, liveRec.kind === "created").rows ?? null : null,
     [liveRec],
   );
-  const shownRows = running && liveRows ? liveRows : rows;
-  const hasDiff = shownRows.some((r) => r.type === "add" || r.type === "del");
+  const hasDiff = (running && liveRows ? liveRows : parsedRows).some(
+    (r) => r.type === "add" || r.type === "del",
+  );
 
   // Watched live: the counters tick up and the name fades in once known.
   const [liveAtMount] = useState(running);
@@ -163,6 +180,11 @@ export function EditRow({
   const [userOpen, setUserOpen] = usePersistedOpen(editOpenKey(sessionId, block));
   const [holdOpen, setHoldOpen] = useState(running);
   const [revealed, setRevealed] = useState<number | null>(null);
+  const open = hasDiff && (editMode || (userOpen ?? (liveAtMount && (running || holdOpen))));
+  // The file read that numbers the hunks waits until the body is wanted.
+  const located = useLocatedRows(block, diff, filePath, !running, refresh, open);
+  const rows = located ?? parsedRows;
+  const shownRows = running && liveRows ? liveRows : rows;
   const rowCount = rows.length;
   const paneShown = usePaneVisible();
   useEffect(() => {
@@ -192,7 +214,6 @@ export function EditRow({
       setRevealed(null);
     };
   }, [running, liveAtMount, rowCount, reduce, paneShown]);
-  const open = hasDiff && (editMode || (userOpen ?? (liveAtMount && (running || holdOpen))));
 
   const Icon = m.remove ? Trash2 : m.create ? FilePlusCorner : PenLine;
   const startLine = block.tool?.preview?.startLine;

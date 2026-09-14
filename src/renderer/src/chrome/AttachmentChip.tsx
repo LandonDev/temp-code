@@ -1,17 +1,19 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { X } from './icons'
 import { attachmentPreviewSrc } from '../lib/attachments'
 import type { Attachment } from '../lib/session'
 import { FileTypeIcon } from './FileTypeIcon'
+import { useNearViewport } from '../hooks/useNearViewport'
 import { imageDataFor, openLightbox, type LightboxItem } from './Lightbox'
 
-/** A history image carries only its path; the server hands back its bytes once. */
-function useAttachmentSrc(attachment: Attachment): string | undefined {
+/** A history image carries only its path; the server hands back its bytes
+ *  once, asked for when the chip is about to be seen. */
+function useAttachmentSrc(attachment: Attachment, wanted: boolean): string | undefined {
   const direct = attachmentPreviewSrc(attachment)
   const path = !direct && attachment.kind === 'image' ? attachment.path : undefined
   const [fetched, setFetched] = useState<string | null>(null)
   useEffect(() => {
-    if (!path) return
+    if (!path || !wanted) return
     let live = true
     void imageDataFor(path).then((src) => {
       if (live) setFetched(src)
@@ -19,7 +21,7 @@ function useAttachmentSrc(attachment: Attachment): string | undefined {
     return () => {
       live = false
     }
-  }, [path])
+  }, [path, wanted])
   return direct ?? (path ? (fetched ?? undefined) : undefined)
 }
 
@@ -42,11 +44,13 @@ type Props = {
 }
 
 export function AttachmentChip({ attachment, onRemove, onOpen }: Props) {
-  const preview = useAttachmentSrc(attachment)
+  const ref = useRef<HTMLDivElement>(null)
+  const preview = useAttachmentSrc(attachment, useNearViewport(ref))
   const image = attachment.kind === 'image' && preview
 
   return (
     <div
+      ref={ref}
       className={`group relative flex min-w-0 items-center gap-1.5 rounded-md ${
         image ? '' : 'bg-content/10 py-0.5 pl-1 pr-1'
       }`}
@@ -61,10 +65,10 @@ export function AttachmentChip({ attachment, onRemove, onOpen }: Props) {
             aria-label={`Preview ${attachment.name}`}
             className={`block size-9 shrink-0 cursor-zoom-in overflow-hidden rounded-lg ${attachment.textPath ? 'w-14' : ''}`}
           >
-            <img src={preview} alt="" className={`size-full object-cover ${attachment.textPath ? 'w-14' : ''}`} />
+            <img src={preview} alt="" decoding="async" className={`size-full object-cover ${attachment.textPath ? 'w-14' : ''}`} />
           </button>
         ) : (
-          <img src={preview} alt="" className={`size-9 shrink-0 rounded-lg object-cover ${attachment.textPath ? 'w-14' : ''}`} />
+          <img src={preview} alt="" decoding="async" className={`size-9 shrink-0 rounded-lg object-cover ${attachment.textPath ? 'w-14' : ''}`} />
         )
       ) : (
         <>
