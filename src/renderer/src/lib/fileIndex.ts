@@ -43,11 +43,6 @@ export function recentOpenedFiles(cwd: string): string[] {
   return recentsByCwd.get(normCwd(cwd)) ?? [];
 }
 
-export function prefetchProjectFiles(cwd: string) {
-  if (!looksLikeProject(cwd)) return;
-  void loadProjectFiles(cwd);
-}
-
 export function loadProjectFiles(
   cwd: string,
   refresh = false,

@@ -101,14 +101,11 @@ class SlashCommandStore {
 export const slashCommandStore = new SlashCommandStore();
 
 /**
- * The commands for a composer. Refetches when the provider or cwd changes
- * and each time the `/` trigger opens over a stale entry.
+ * The commands for a composer. Fetched only when the `/` trigger opens over
+ * a stale entry: a mounted composer costs the server nothing on its own.
  */
 export function useSlashCommands(provider: string, cwd: string, open: boolean): SlashCommand[] {
   const state = useSyncExternalStore(slashCommandStore.subscribe, slashCommandStore.getSnapshot);
-  useEffect(() => {
-    void slashCommandStore.refresh(provider, cwd);
-  }, [provider, cwd]);
   useEffect(() => {
     if (open && slashCommandStore.isStale(provider, cwd)) {
       void slashCommandStore.refresh(provider, cwd);

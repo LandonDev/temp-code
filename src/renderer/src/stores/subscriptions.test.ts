@@ -4,7 +4,6 @@ import { saveLastSession } from "../lib/projectContext";
 import { newSession, type Session } from "../lib/session";
 import { markSessionSeen } from "../lib/sessionSeen";
 import { listSessionsByProject, saveWorkspaceSnapshot } from "../lib/sessionStore";
-import { prefetchProjectFiles } from "../lib/fileIndex";
 import { loadSidebarLayout } from "../lib/appearance";
 import { loadNotesEnabled } from "../lib/settings";
 import { withDockOpen } from "../lib/projectTerminal";
@@ -56,7 +55,6 @@ vi.mock("../lib/sessionStore", async (importOriginal) => ({
   listSessionsByProject: vi.fn(() => Promise.resolve([])),
   subscribeSessionHistory: vi.fn(() => () => {}),
 }));
-vi.mock("../lib/fileIndex", () => ({ prefetchProjectFiles: vi.fn() }));
 vi.mock("../lib/appearance", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../lib/appearance")>()),
   loadSidebarLayout: vi.fn((): "classic" | "deck" => "classic"),
@@ -488,19 +486,19 @@ describe("installAutosave", () => {
 });
 
 describe("installHistoryRefresh", () => {
-  it("loads the sidebar folder's history and warms its files when the folder changes", async () => {
+  it("loads the sidebar folder's history when the folder changes", async () => {
     setTabs([tab("a")]);
     sessionStore.mutate([session("s-a", { cwd: "/repo" })]);
     teardown = installHistoryRefresh();
     expect(listSessionsByProject).toHaveBeenCalledWith("/repo");
-    expect(prefetchProjectFiles).toHaveBeenCalledWith("/repo");
     workspace.setTabs((tabs) => tabs);
     await microtasks();
     expect(listSessionsByProject).toHaveBeenCalledTimes(1);
     sessionStore.mutate([session("s-a", { cwd: "/other" })]);
     await microtasks();
     expect(listSessionsByProject).toHaveBeenLastCalledWith("/other");
-    expect(prefetchProjectFiles).toHaveBeenLastCalledWith("/other");
+    // The file index walks the whole tree; a folder change alone never asks for it.
+    expect(invoke).not.toHaveBeenCalledWith("list_project_files", expect.anything());
   });
 });
 

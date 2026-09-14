@@ -2,7 +2,6 @@ import { LAYOUT_CHANGE_EVENT, loadSidebarLayout, type SidebarLayout } from "../l
 import { isAppQuitting } from "../lib/appLifecycle";
 import { installCheckpointBridge } from "../lib/checkpointBridge";
 import { syncDockBadge } from "../lib/dockBadge";
-import { prefetchProjectFiles } from "../lib/fileIndex";
 import { sessionChildHarnesses } from "../lib/handoff";
 import {
   forgetHarnessSession,
@@ -374,7 +373,7 @@ export async function refreshHistory(cwd: string): Promise<void> {
   }
 }
 
-/** The sidebar's folder loads its history and warms its file index when it changes. */
+/** The sidebar's folder loads its history when it changes. The file index waits for a picker. */
 export function installHistoryRefresh(): Teardown {
   let cwd: string | undefined;
   const sync = () => {
@@ -382,7 +381,6 @@ export function installHistoryRefresh(): Teardown {
     if (next === cwd) return;
     cwd = next;
     void refreshHistory(next);
-    prefetchProjectFiles(next);
   };
   sync();
   const scheduled = afterWrites(sync);
