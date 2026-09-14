@@ -127,6 +127,28 @@ type InboxListCache = InboxListResult & {
 
 let inboxListCache: InboxListCache | null = null;
 const inboxListInflight = new Map<string, Promise<InboxListResult>>();
+const inboxListListeners = new Set<() => void>();
+/** Every inbox fetch waits for the one before it: one request in flight, ever. */
+let inboxListQueue: Promise<unknown> = Promise.resolve();
+
+function setInboxListCache(next: InboxListCache | null) {
+  inboxListCache = next;
+  for (const listener of inboxListListeners) listener();
+}
+
+/** Fires when a fetched list lands in (or leaves) the cache. */
+export function subscribeInboxList(listener: () => void): () => void {
+  inboxListListeners.add(listener);
+  return () => {
+    inboxListListeners.delete(listener);
+  };
+}
+
+/** The last fetched list, whatever it was for. Never fetches. */
+export function peekLastInboxList(): InboxListResult | null {
+  if (!inboxListCache) return null;
+  return { items: inboxListCache.items, errors: inboxListCache.errors };
+}
 const repoByPath = new Map<string, string>();
 const detailsByKey = new Map<string, GithubWorkItemDetails>();
 const threadByKey = new Map<string, GithubWorkItemThread>();
@@ -135,7 +157,7 @@ const prDiffByKey = new Map<string, GithubPrDiff>();
 const prDiffInflight = new Map<string, Promise<GithubPrDiff>>();
 
 export function clearInboxCache() {
-  inboxListCache = null;
+  setInboxListCache(null);
   inboxListInflight.clear();
   repoByPath.clear();
   detailsByKey.clear();
@@ -426,14 +448,16 @@ export async function listInboxItems(
   }
   const pending = inboxListInflight.get(key);
   if (pending) return pending;
-  const promise = fetchInboxItems(projects, query)
+  const promise = inboxListQueue
+    .then(() => fetchInboxItems(projects, query))
     .then((result) => {
-      inboxListCache = { key, ...result, fetchedAt: Date.now() };
+      setInboxListCache({ key, ...result, fetchedAt: Date.now() });
       return result;
     })
     .finally(() => {
       if (inboxListInflight.get(key) === promise) inboxListInflight.delete(key);
     });
+  inboxListQueue = promise.catch(() => undefined);
   inboxListInflight.set(key, promise);
   return promise;
 }
@@ -442,39 +466,45 @@ async function fetchInboxItems(
   projects: readonly { path: string }[],
   query: InboxQuery,
 ): Promise<InboxListResult> {
+  // One gh call at a time: each `gh` is a large process that spawns git,
+  // and a fan-out across the rail once forked the machine into the ground.
   const unique = uniqueInboxProjects(projects);
   const preferredPaths = unique.map((project) => project.path);
-  const resolved = await Promise.all(
-    unique.map(async (project) => {
-      try {
-        return {
-          path: project.path,
-          repo: (await githubRepo(project.path)).trim(),
-        };
-      } catch {
-        return { path: project.path, repo: "" };
-      }
-    }),
-  );
-  const grouped = groupProjectsByRepo(resolved);
-  const githubJobs = grouped.flatMap((project) =>
-    (["issue", "pr"] as const).map(async (kind) => {
-      const items = await listGithubWorkItems(project.path, {
-        ...query,
-        kind,
+  const resolved: { path: string; repo: string }[] = [];
+  for (const project of unique) {
+    try {
+      resolved.push({
+        path: project.path,
+        repo: (await githubRepo(project.path)).trim(),
       });
-      return items.map((item) => ({
-        ...item,
-        projectPath: project.path,
-        provider: "github" as const,
-        repo: item.repo || project.repo,
-      }));
-    }),
-  );
-  const github = collectInboxResults(
-    await Promise.allSettled(githubJobs),
-    preferredPaths,
-  );
+    } catch {
+      resolved.push({ path: project.path, repo: "" });
+    }
+  }
+  const grouped = groupProjectsByRepo(resolved);
+  const settled: PromiseSettledResult<InboxItem[]>[] = [];
+  for (const project of grouped) {
+    for (const kind of ["issue", "pr"] as const) {
+      try {
+        const items = await listGithubWorkItems(project.path, {
+          ...query,
+          kind,
+        });
+        settled.push({
+          status: "fulfilled",
+          value: items.map((item) => ({
+            ...item,
+            projectPath: project.path,
+            provider: "github" as const,
+            repo: item.repo || project.repo,
+          })),
+        });
+      } catch (reason) {
+        settled.push({ status: "rejected", reason });
+      }
+    }
+  }
+  const github = collectInboxResults(settled, preferredPaths);
   const errors: InboxProviderErrors = {};
   if (github.error && grouped.length > 0) errors.github = github.error;
 
@@ -543,6 +573,24 @@ export function inboxProjectsForRail(
     (project) => !current || !sameProjectPath(project.path, current.path),
   );
   return current ? [current, ...rest] : rest;
+}
+
+export type InboxScope = "current" | "all";
+
+/**
+ * The projects an open inbox fetches: the one the user is looking at, or
+ * every rail project once they ask for it. Nothing fetches for a closed inbox.
+ */
+export function inboxFetchProjects(
+  projects: readonly RecentProject[],
+  cwd: string,
+  scope: InboxScope,
+): RecentProject[] {
+  if (scope === "all") return [...projects];
+  const current = projects.find((project) =>
+    sameProjectPath(project.path, cwd),
+  );
+  return current ? [current] : [];
 }
 
 export function uniqueInboxProjects(

@@ -192,7 +192,7 @@ function SidebarComponent({
   useEffect(() => {
     if (cwd && cwd !== "~") void warmProjectForCwd(gitRoot);
   }, [cwd, gitRoot]);
-  const inboxUnseen = useInboxUnseen(recents, cwd);
+  const inboxUnseen = useInboxUnseen();
   const resize = useDragResize({
     min: MIN_WIDTH,
     max: () => Math.min(MAX_WIDTH, Math.floor(window.innerWidth * 0.5)),
