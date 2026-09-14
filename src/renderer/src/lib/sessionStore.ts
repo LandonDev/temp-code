@@ -189,11 +189,11 @@ export async function peekSession(sessionId: string): Promise<Session | null> {
   return sessionStore.get(sessionId) ?? null;
 }
 
-/** The folded session, fetched from the server on first ask. */
+/** The folded session, whole, fetched from the server on first ask. */
 export async function getSession(sessionId: string): Promise<Session | null> {
   await sessionStore.ready();
   if (sessionStore.isDraft(sessionId)) return sessionStore.get(sessionId) ?? null;
-  await sessionStore.ensureLoaded(sessionId);
+  await sessionStore.ensureComplete(sessionId);
   return sessionStore.get(sessionId) ?? null;
 }
 

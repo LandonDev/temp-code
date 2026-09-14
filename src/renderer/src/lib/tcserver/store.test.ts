@@ -45,6 +45,8 @@ class FakeLink implements Link {
   calls: { method: string; params: unknown }[] = [];
   metas: SessionMeta[] = [];
   events = new Map<string, EventRow[]>();
+  /** When set, head (beforeSeq) fetches wait on it. */
+  holdHead: Promise<void> | null = null;
   private pushListeners = new Set<(push: ServerPush) => void>();
   private openListeners = new Set<() => void>();
 
@@ -52,9 +54,20 @@ class FakeLink implements Link {
     this.calls.push({ method, params });
     if (method === "session.list") return Promise.resolve(this.metas as T);
     if (method === "session.events") {
-      const { sessionId, afterSeq } = params as { sessionId: string; afterSeq: number };
-      const rows = (this.events.get(sessionId) ?? []).filter((r) => r.seq > afterSeq);
-      return Promise.resolve(rows as T);
+      const { sessionId, afterSeq = 0, beforeSeq = Infinity, tail } = params as {
+        sessionId: string;
+        afterSeq?: number;
+        beforeSeq?: number;
+        tail?: number;
+      };
+      let rows = (this.events.get(sessionId) ?? []).filter((r) => r.seq > afterSeq && r.seq < beforeSeq);
+      if (tail) {
+        const starts = rows.filter((r) => r.event.type === "user-text").slice(-tail);
+        if (starts.length === tail) rows = rows.filter((r) => r.seq >= starts[0].seq);
+      }
+      const result = rows as T;
+      if (beforeSeq !== Infinity && this.holdHead) return this.holdHead.then(() => result);
+      return Promise.resolve(result);
     }
     return Promise.resolve(null as T);
   }
@@ -435,5 +448,86 @@ describe("M4b projections", () => {
     sessionStore.mutate((prev) => prev.filter((s) => s.id !== "s2"));
     expect([...sessionStore.getIds()]).toEqual(["s1"]);
     expect(sessionStore.getShells()).toHaveLength(1);
+  });
+});
+
+describe("tail-first load", () => {
+  /** `turns` user turns of three rows each: prompt, final text, turn-complete. */
+  const log = (turns: number): EventRow[] => {
+    const rows: EventRow[] = [];
+    for (let t = 0; t < turns; t++) {
+      rows.push(row("s1", t * 3 + 1, { type: "user-text", text: `q${t}` }));
+      rows.push(row("s1", t * 3 + 2, { type: "assistant-text", text: `a${t}`, delta: false, msgId: `m${t}`, blockIndex: 0 }));
+      rows.push(row("s1", t * 3 + 3, { type: "turn-complete" }));
+    }
+    return rows;
+  };
+  const tick = () => new Promise((r) => setTimeout(r, 0));
+
+  it("paints the last 20 turns first and folds the head behind them with stable ids", async () => {
+    link.metas = [meta()];
+    link.events.set("s1", log(25));
+    let release: () => void = () => {};
+    link.holdHead = new Promise((r) => (release = r));
+    sessionStore.connect(link);
+    await sessionStore.ready();
+    await sessionStore.ensureLoaded("s1");
+    const tail = sessionStore.get("s1")!;
+    expect(tail.loaded).toBe(true);
+    expect(sessionStore.isComplete("s1")).toBe(false);
+    expect(tail.blocks).toHaveLength(40);
+    expect(tail.blocks[0]).toMatchObject({ role: "user", text: "q5" });
+    const tailIds = tail.blocks.map((b) => b.id);
+    const calls = link.calls.filter((c) => c.method === "session.events").map((c) => c.params);
+    expect(calls).toEqual([
+      { sessionId: "s1", afterSeq: 0, tail: 20 },
+      { sessionId: "s1", afterSeq: 0, beforeSeq: 16 },
+    ]);
+    release();
+    await sessionStore.ensureComplete("s1");
+    const whole = sessionStore.get("s1")!;
+    expect(whole.blocks).toHaveLength(50);
+    expect(whole.blocks.slice(10).map((b) => b.id)).toEqual(tailIds);
+    expect(whole.blocks[0]).toMatchObject({ role: "user", text: "q0" });
+    expect(sessionStore.isComplete("s1")).toBe(true);
+    expect(link.method("session.events")).toBe(2);
+    // lastSeq is the log's end: a reconnect replays nothing.
+    link.reopen();
+    await tick();
+    expect(link.calls.filter((c) => c.method === "session.events").at(-1)?.params).toEqual({ sessionId: "s1", afterSeq: 75 });
+  });
+
+  it("a push during the head fetch survives the refold, in order", async () => {
+    link.metas = [meta()];
+    link.events.set("s1", log(25));
+    let release: () => void = () => {};
+    link.holdHead = new Promise((r) => (release = r));
+    sessionStore.connect(link);
+    await sessionStore.ready();
+    await sessionStore.ensureLoaded("s1");
+    link.push({ push: "event", row: row("s1", 76, { type: "user-text", text: "late" }) });
+    expect(sessionStore.get("s1")!.blocks).toHaveLength(41);
+    expect(sessionStore.get("s1")!.busy).toBe(true);
+    release();
+    await sessionStore.ensureComplete("s1");
+    const s = sessionStore.get("s1")!;
+    expect(s.blocks).toHaveLength(51);
+    expect(s.blocks.at(-1)).toMatchObject({ role: "user", text: "late" });
+    expect(s.busy).toBe(true);
+    link.reopen();
+    await tick();
+    expect(link.calls.filter((c) => c.method === "session.events").at(-1)?.params).toEqual({ sessionId: "s1", afterSeq: 76 });
+  });
+
+  it("a short log arrives whole in one request", async () => {
+    link.metas = [meta()];
+    link.events.set("s1", log(5));
+    sessionStore.connect(link);
+    await sessionStore.ready();
+    await sessionStore.ensureLoaded("s1");
+    expect(sessionStore.isComplete("s1")).toBe(true);
+    expect(sessionStore.get("s1")!.blocks).toHaveLength(10);
+    await sessionStore.ensureComplete("s1");
+    expect(link.method("session.events")).toBe(1);
   });
 });

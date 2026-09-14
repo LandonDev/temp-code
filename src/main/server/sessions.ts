@@ -653,6 +653,11 @@ export class SessionRegistry {
     return this.store.eventsAfter(sessionId, afterSeq)
   }
 
+  /** A window of the log, tail-first when asked (see `Store.events`). */
+  events(sessionId: string, opts: { afterSeq?: number; beforeSeq?: number; tail?: number }): EventRow[] {
+    return this.store.events(sessionId, opts)
+  }
+
   // ── orchestration rules & thread defaults (global + workspace) ─────
 
   /** Structured orchestration rules for a scope; null = not set there

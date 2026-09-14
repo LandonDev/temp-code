@@ -4,7 +4,7 @@ import { HARNESSES } from "../session";
 import { resolveModel } from "../models";
 import { client } from "./client";
 import { modeForPolicy } from "./access";
-import { foldEvent, foldOptimisticUser, type FoldState } from "./fold";
+import { emptyFold, foldEvent, foldOptimisticUser, type FoldState } from "./fold";
 import { emptyThread } from "./todos";
 import type { EventRow, QueuedMessage, ServerPush, SessionMeta, SessionStatus } from "./types";
 
@@ -129,7 +129,23 @@ type Entry = {
   /** Pushes held back while a history fetch is in flight; they fold after
    *  it so a live row never lands ahead of the older rows it follows. */
   held: EventRow[] | null;
+  /** The part of the log before the tail that painted first: the rows
+   *  before `beforeSeq` are still to come, and every row folded since the
+   *  tail landed waits in `since` so the refold includes it. */
+  head: Head | null;
 };
+
+type Head = {
+  beforeSeq: number;
+  since: EventRow[];
+  fetching: boolean;
+  waiters: (() => void)[];
+};
+
+/** A first load asks for this many user turns; the rest folds behind it. */
+const TAIL_TURNS = 20;
+/** Rows folded per slice while the head of a long log folds in the background. */
+const HEAD_CHUNK = 2000;
 
 const OPEN_STATUSES = new Set(["starting", "running", "waiting"]);
 const READY_TIMEOUT_MS = 10_000;
@@ -319,6 +335,7 @@ class SessionStore {
     this.detach = [];
     this.link = null;
     this.opened = Promise.resolve();
+    for (const entry of this.entries.values()) this.settleHead(entry);
     this.entries.clear();
     this.openOrder = [];
     this.queues.clear();
@@ -502,11 +519,26 @@ class SessionStore {
     return entry.loading;
   }
 
+  /** Loaded and every row of the log folded (no head still on its way). */
+  isComplete(id: string): boolean {
+    const entry = this.entries.get(id);
+    return !!entry && entry.loaded && !entry.head;
+  }
+
+  /** `ensureLoaded`, then wait for the head of a tail-first load. */
+  async ensureComplete(id: string): Promise<void> {
+    await this.ensureLoaded(id);
+    const head = this.entries.get(id)?.head;
+    if (head) await new Promise<void>((resolve) => head.waiters.push(resolve));
+  }
+
   private async replayGap(entry: Entry): Promise<void> {
     if (!this.link) return;
     const id = entry.session.id;
     if (entry.held) return;
     entry.held = [];
+    // A first load paints the last turns first; the rest folds behind them.
+    const tailFirst = !entry.loaded && entry.lastSeq === 0 && !entry.head;
     try {
       if (!entry.subscribed) {
         await this.link.request("session.subscribe", { sessionId: id });
@@ -516,6 +548,7 @@ class SessionStore {
       this.link.request<EventRow[]>("session.events", {
         sessionId: id,
         afterSeq: entry.lastSeq,
+        ...(tailFirst ? { tail: TAIL_TURNS } : {}),
       }),
       // The queue lives in server memory: a restart empties it, so the
       // strip refills from the list rather than keeping stale rows.
@@ -524,6 +557,10 @@ class SessionStore {
         .then((items) => this.setQueue(id, items ?? []))
         .catch(() => undefined),
       ]);
+      // Seqs are contiguous from 1, so a tail that starts later has a head.
+      if (tailFirst && rows.length > 0 && rows[0].seq > 1) {
+        entry.head = { beforeSeq: rows[0].seq, since: [], fetching: false, waiters: [] };
+      }
       for (const row of rows) this.foldRow(entry, row);
     } finally {
       const held = entry.held;
@@ -531,6 +568,58 @@ class SessionStore {
       // The fold drops whatever history already covered.
       for (const row of held ?? []) this.applyPush(entry, row);
     }
+    if (entry.head && !entry.head.fetching) void this.fetchHead(entry);
+  }
+
+  /** Fetch the rows before a tail-first paint and refold the whole log
+   *  from the start, in slices off the main path, then swap it in. Ids
+   *  come from seqs, so the blocks the tail already showed keep theirs. */
+  private async fetchHead(entry: Entry): Promise<void> {
+    const head = entry.head;
+    if (!head || head.fetching || !this.link) return;
+    const id = entry.session.id;
+    head.fetching = true;
+    let rows: EventRow[];
+    try {
+      rows = await this.link.request<EventRow[]>("session.events", {
+        sessionId: id,
+        afterSeq: 0,
+        beforeSeq: head.beforeSeq,
+      });
+    } catch {
+      // The next reconnect replay tries again.
+      head.fetching = false;
+      return;
+    }
+    const live = (): boolean => this.entries.get(id) === entry && entry.head === head;
+    const cwd = entry.session.cwd;
+    let state = emptyFold();
+    for (let i = 0; i < rows.length; i += HEAD_CHUNK) {
+      if (!live()) return;
+      for (const row of rows.slice(i, i + HEAD_CHUNK)) state = foldEvent(state, row, cwd);
+      if (i + HEAD_CHUNK < rows.length) await new Promise((r) => setTimeout(r, 0));
+    }
+    if (!live()) return;
+    // Pushes that landed while the head folded are in `since`, after the tail.
+    for (const row of head.since) state = foldEvent(state, row, cwd);
+    const pending = entry.session.blocks.filter((b) => b.pending);
+    entry.lastSeq = Math.max(state.lastSeq, entry.lastSeq);
+    entry.nextId = Math.max(state.nextId, entry.nextId);
+    entry.session = {
+      ...entry.session,
+      blocks: pending.length ? [...state.blocks, ...pending] : state.blocks,
+      thread: state.thread,
+      ...(state.context ? { context: state.context } : {}),
+    };
+    this.settleHead(entry);
+    this.bump();
+  }
+
+  private settleHead(entry: Entry): void {
+    const head = entry.head;
+    if (!head) return;
+    entry.head = null;
+    for (const w of head.waiters) w();
   }
 
   private applyPush(entry: Entry, row: EventRow): void {
@@ -605,6 +694,7 @@ class SessionStore {
   }
 
   private foldRow(entry: Entry, row: EventRow): boolean {
+    entry.head?.since.push(row);
     const before = foldStateOf(entry);
     const after = foldEvent(before, row, entry.session.cwd);
     if (after === before) return false;
@@ -632,6 +722,7 @@ class SessionStore {
         loading: null,
         subscribed: false,
         held: null,
+        head: null,
       });
       return;
     }
@@ -679,6 +770,8 @@ class SessionStore {
   }
 
   private drop(id: string): void {
+    const entry = this.entries.get(id);
+    if (entry) this.settleHead(entry);
     this.entries.delete(id);
     this.queues.delete(id);
     this.liveEdits.delete(id);
@@ -710,6 +803,7 @@ class SessionStore {
           loading: null,
           subscribed: false,
           held: null,
+          head: null,
         });
       } else if (entry.session !== session) {
         entry.session = session;

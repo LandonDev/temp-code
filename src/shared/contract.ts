@@ -463,7 +463,14 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
   z.object({
     id: z.string(),
     method: z.literal('session.events'),
-    params: z.object({ sessionId: z.string(), afterSeq: z.number().default(0) })
+    // `tail`: only the last N user turns (the renderer paints those first and
+    // asks for the rest with `beforeSeq`); a shorter log comes back whole.
+    params: z.object({
+      sessionId: z.string(),
+      afterSeq: z.number().default(0),
+      beforeSeq: z.number().optional(),
+      tail: z.number().int().positive().optional()
+    })
   }),
   z.object({
     id: z.string(),
