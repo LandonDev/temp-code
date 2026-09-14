@@ -40,7 +40,7 @@ import { playCue } from "../lib/sounds";
 import { displayPath, resolveWorkspacePath } from "../lib/paths";
 import { harnessForTurn } from "../lib/secondOpinion";
 import { Shimmer } from "./Shimmer";
-import { TweenHeight } from "../motion/TweenHeight";
+import { TWEEN_FALLBACK_MS, TweenHeight } from "../motion/TweenHeight";
 import { usePersistedOpen } from "./editOpenState";
 import { TranscriptMinimap } from "./TranscriptMinimap";
 import { TodoListBlock } from "./TodoListBlock";
@@ -733,10 +733,10 @@ export function AgentTranscript({
     >
       <div className="mx-auto flex w-full min-w-0 max-w-4xl flex-col gap-1 px-4 pb-1">
         {shownRows < blocks.length ? (
-          <div className="flex justify-center px-4 py-3">
+          <div className="flex justify-center py-3">
             <button
               type="button"
-              className="rounded-md bg-content/8 px-2.5 py-1.5 font-sans text-[12px] text-content/50 hover:bg-content/12 hover:text-content"
+              className="pressable rounded-md bg-content/8 px-2.5 py-1.5 font-sans text-[12px] text-content/50 hover:bg-content/10 hover:text-content"
               onClick={loadEarlier}
             >
               Load earlier messages
@@ -1012,9 +1012,9 @@ const TurnView = memo(function TurnView({
       {!settled && showsThinkingTail(turn) ? (
         <div
           key="tail"
-          className="z-fade-in flex h-[26px] items-center px-4 font-sans text-sm"
+          className="z-fade-in flex h-[26px] items-center font-sans text-sm"
         >
-          <Shimmer duration={1.4}>Thinking</Shimmer>
+          <Shimmer>Thinking</Shimmer>
         </div>
       ) : null}
       {durationMs != null && settled ? (
@@ -1103,7 +1103,7 @@ function TurnDuration({
       aria-label={
         paused ? "Paused" : waiting ? "Waiting for you" : live ? "Agent is working" : label
       }
-      className="flex items-center gap-3 px-4 pt-1 pb-3 font-sans text-sm text-content/40"
+      className="flex items-center gap-3 pt-1 pb-3 font-sans text-sm tabular-nums text-content/40"
     >
       {done ? (
         <span className="flex items-center gap-2">
@@ -1133,7 +1133,7 @@ function TurnDuration({
       {done ? dot : null}
 
       {live && !done && !paused ? (
-        <Shimmer duration={1}>{label}</Shimmer>
+        <Shimmer>{label}</Shimmer>
       ) : (
         <span>{label}</span>
       )}
@@ -1288,7 +1288,7 @@ const TranscriptBlock = memo(function TranscriptBlock({
 
   if (block.role === "plan") {
     return (
-      <div className="px-4 py-1">
+      <div className="py-1">
         <AgentMarkdown
           text={block.text}
           streaming={block.streaming}
@@ -1322,7 +1322,7 @@ const TranscriptBlock = memo(function TranscriptBlock({
     const actions = passActionsOf(block);
     if (actions) return <PassRow actions={actions} />;
     return (
-      <div className="px-4 py-2 text-content/50">
+      <div className="py-2 text-content/50">
         <pre className="min-w-0 whitespace-pre-wrap break-words">
           {block.text}
         </pre>
@@ -1336,7 +1336,7 @@ const TranscriptBlock = memo(function TranscriptBlock({
     <div
       data-block={block.id}
       data-selectable-agent-response={block.streaming ? undefined : block.id}
-      className={`min-w-0 px-4 pb-1 text-content ${compactTop ? "pt-2" : "pt-3"}`}
+      className={`min-w-0 pb-1 text-content ${compactTop ? "pt-2" : "pt-3"}`}
     >
       <AgentMarkdown
         text={block.text}
@@ -1382,14 +1382,14 @@ function UserMessageBlock({
   return (
     <div
       className={
-        chat ? "flex justify-end pt-1.5 pr-4 pb-4 pl-14" : "p-1.5 pb-3"
+        chat ? "flex justify-end pt-1.5 pl-10" : "pt-1.5"
       }
     >
       <div
         className={`group/message relative min-w-0 bg-content/10 px-3 py-2 font-sans text-content ${
           chat
             ? "w-fit max-w-xl rounded-xl"
-            : "rounded-lg border border-content/10"
+            : "rounded-xl"
         }`}
         style={{ zIndex: stickyIndex }}
         onClick={overflows ? toggle : undefined}
@@ -1515,12 +1515,12 @@ function ActivityGroup({
       setMounted(true);
       return;
     }
-    const timer = window.setTimeout(() => setMounted(false), SPACER_MS + 40);
+    const timer = window.setTimeout(() => setMounted(false), TWEEN_FALLBACK_MS);
     return () => window.clearTimeout(timer);
   }, [showPrevious]);
 
   return (
-    <div className="flex min-w-0 flex-col gap-0.5 px-4">
+    <div className="flex min-w-0 flex-col gap-0.5">
       {hidden.length > 0 ? (
         <button
           type="button"
@@ -1531,10 +1531,10 @@ function ActivityGroup({
               : `Show ${hidden.length} previous tool calls`
           }
           onClick={() => setOverride(!showPrevious)}
-          className={`${DISCLOSURE_ROW} ${ACTIVITY_ROW_HEIGHT} shrink-0 text-content/40 transition-colors duration-200 hover:text-content/70`}
+          className={`${DISCLOSURE_ROW} ${ACTIVITY_ROW_HEIGHT} shrink-0 text-content/40 transition-colors hover:text-content/70`}
         >
           <ChevronRight
-            className={`size-3.5 shrink-0 transition-transform duration-200 ${
+            className={`size-3.5 shrink-0 transition-transform duration-150 ${
               showPrevious ? "rotate-90" : ""
             }`}
             strokeWidth={1.75}
@@ -1613,7 +1613,7 @@ function ActivityPhases({
   const phases = useMemo(() => buildActivityPhases(blocks), [blocks]);
 
   return (
-    <div className="flex min-w-0 flex-col gap-1 px-4">
+    <div className="flex min-w-0 flex-col gap-0.5">
       {phases.map((phase, index) => (
         <ActivityPhaseGroup
           key={phase.id}
@@ -1706,7 +1706,7 @@ function ErrorRowView({ block }: { block: Block }) {
   );
   if (!sessionId) return null;
   return (
-    <div className="px-4 py-1">
+    <div className="py-1">
       <ErrorChip sessionId={sessionId} row={row} busy={session?.busy} />
     </div>
   );
@@ -1715,7 +1715,7 @@ function ErrorRowView({ block }: { block: Block }) {
 /** What the turn-pass did between turns: a compact line, not a system dump. */
 function PassRow({ actions }: { actions: string[] }) {
   return (
-    <div className="flex items-center gap-2 px-4 py-1 font-sans text-[12px] text-content/40">
+    <div className="flex items-center gap-2 py-1 font-sans text-[12px] text-content/40">
       <span className="text-content/40">Pass</span>
       <span className="min-w-0 truncate">{actions.join(" · ")}</span>
     </div>
@@ -1785,14 +1785,13 @@ function ActivityPhaseGroup({
   const label = active ? (
     <Shimmer
       className="min-w-0 flex-1 truncate font-sans text-sm"
-      duration={1.6}
     >
       {title}
     </Shimmer>
   ) : (
     // Dimmed to sit with the icons: the work is chrome around the answer, and
     // only the answer reads at full strength.
-    <span className="min-w-0 flex-1 truncate font-sans text-sm text-content/50 transition-colors duration-200 group-hover:text-content/70">
+    <span className="min-w-0 flex-1 truncate font-sans text-sm text-content/50 transition-colors group-hover:text-content/70">
       {title}
     </span>
   );
@@ -1830,7 +1829,7 @@ function ActivityPhaseGroup({
             className="group-hover:opacity-0"
           />
           <ChevronRight
-            className={`absolute size-3.5 text-content/40 opacity-0 transition-transform duration-200 group-hover:opacity-100 ${
+            className={`absolute size-3.5 text-content/40 opacity-0 transition-transform duration-150 group-hover:opacity-100 ${
               open ? "rotate-90" : ""
             }`}
             strokeWidth={1.75}
@@ -2088,7 +2087,7 @@ function ActivityThinkingRow({
       >
         {icon}
         <span
-          className={`min-w-0 flex-1 truncate font-sans text-sm text-content/50 transition-colors duration-200 group-hover:text-content/70 ${
+          className={`min-w-0 flex-1 truncate font-sans text-sm text-content/50 transition-colors group-hover:text-content/70 ${
             bare ? pulse : ""
           }`}
         >
@@ -2163,7 +2162,7 @@ function ActivityNoteRow({
         className="group flex min-w-0 items-center gap-1.5 py-1 text-left"
       >
         {icon}
-        <span className="min-w-0 flex-1 truncate font-sans text-sm text-content/70 transition-colors duration-200 group-hover:text-content">
+        <span className="min-w-0 flex-1 truncate font-sans text-sm text-content/70 transition-colors group-hover:text-content">
           {text}
         </span>
       </button>
@@ -2257,7 +2256,7 @@ function ActivityToolRow({
 function ToolDisclosure({ open }: { open: boolean }) {
   return (
     <ChevronRight
-      className={`ml-auto size-3.5 shrink-0 text-content/40 transition-transform ${
+      className={`ml-auto size-3.5 shrink-0 text-content/40 transition-transform duration-150 ${
         open ? "rotate-90" : "opacity-0 group-hover/tool:opacity-100"
       }`}
       strokeWidth={1.75}
@@ -2342,7 +2341,7 @@ function ToolCall({
   // Every call opens onto its details; the body mounts only once asked for.
   const expandable = !!block.tool && !needsApproval(block);
 
-  const frame = embedded ? "py-0.5" : "px-4 py-1";
+  const frame = embedded ? "py-0.5" : "py-1";
 
   if (block.question) {
     return (
@@ -2408,7 +2407,7 @@ function ToolCall({
             />
           )}
           <ChevronRight
-            className={`size-3.5 shrink-0 text-content/40 transition-transform ${open ? "rotate-90" : ""}`}
+            className={`size-3.5 shrink-0 text-content/40 transition-transform duration-150 ${open ? "rotate-90" : ""}`}
             strokeWidth={1.75}
           />
         </button>
@@ -2544,7 +2543,7 @@ function ToolCallSummary({
           </button>
         ) : (
           <span
-            className={`flex min-w-0 items-center gap-1 rounded-md px-1 ${
+            className={`-my-0.5 flex min-w-0 items-center gap-1 rounded-md px-1 py-0.5 ${
               chip
                 ? `max-w-full bg-content/6 ${targetTone}`
                 : `flex-1 ${targetTone}`
@@ -2671,9 +2670,9 @@ function HandoffDivider({ block }: { block: Block }) {
   const label = preparing ? "Preparing a handoff" : HARNESS_TITLE[meta.to];
 
   return (
-    <div className="px-4 py-5">
+    <div className="py-3">
       <div className="flex items-center gap-3">
-        <div className="h-px min-w-4 flex-1 bg-content/12" />
+        <div className="h-px min-w-4 flex-1 bg-content/10" />
         <div
           role="separator"
           aria-label={
@@ -2686,7 +2685,7 @@ function HandoffDivider({ block }: { block: Block }) {
           {preparing ? (
             <>
               <TerminalSpinner className="inline-block w-3.5 shrink-0 select-none text-center text-[11px] leading-none text-content/40" />
-              <Shimmer duration={1.4}>{label}</Shimmer>
+              <Shimmer>{label}</Shimmer>
             </>
           ) : (
             <>
@@ -2694,7 +2693,7 @@ function HandoffDivider({ block }: { block: Block }) {
             </>
           )}
         </div>
-        <div className="h-px min-w-4 flex-1 bg-content/12" />
+        <div className="h-px min-w-4 flex-1 bg-content/10" />
       </div>
     </div>
   );
@@ -2735,16 +2734,17 @@ const stampFormat = new Intl.DateTimeFormat(undefined, {
   minute: "2-digit",
 });
 
-/** When the prompt went out, shown under it while the turn is hovered. */
+/** When the prompt went out, shown under it while the turn is hovered.
+ *  The row is reserved even without a time, so every bubble sits the same
+ *  16px above what follows. */
 function TurnStamp({ ts, chat }: { ts?: number; chat: boolean }) {
-  if (ts == null) return null;
   return (
     <div
-      className={`flex h-4 items-center px-4 font-sans text-[11px] text-content/40 opacity-0 transition-opacity duration-150 group-hover/turn:opacity-100 ${
-        chat ? "-mt-4 justify-end" : "-mt-3"
+      className={`flex h-4 items-center font-sans text-[11px] tabular-nums text-content/40 opacity-0 transition-opacity group-hover/turn:opacity-100 ${
+        chat ? "justify-end" : ""
       }`}
     >
-      {stampFormat.format(ts)}
+      {ts == null ? null : stampFormat.format(ts)}
     </div>
   );
 }

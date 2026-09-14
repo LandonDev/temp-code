@@ -301,7 +301,7 @@ export function EditRow({
               className="flex size-[18px] items-center justify-center rounded-[5px] bg-content/8 text-content/50 hover:text-content"
             >
               <ChevronRight
-                className={`size-3 transition-transform duration-200 ${open ? 'rotate-90' : ''}`}
+                className={`size-3 transition-transform duration-150 ${open ? 'rotate-90' : ''}`}
                 strokeWidth={1.75}
               />
             </button>

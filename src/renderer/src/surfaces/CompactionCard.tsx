@@ -1,4 +1,5 @@
 import { motion, useReducedMotion } from "motion/react";
+import { EASE_IN_OUT } from "../lib/ease";
 import type { Block } from "../lib/session";
 import { formatTokens } from "../lib/contextUsage";
 import { useClock } from "../lib/turnClock";
@@ -17,7 +18,7 @@ export function CompactionCard({ block }: { block: Block }) {
   if (meta.phase === "start") return <ActiveCompaction startedAt={meta.startedAt} trigger={meta.trigger} />;
   if (meta.phase === "failed") {
     return (
-      <div className="flex items-center gap-2 px-4 py-1 font-sans text-[12px] text-danger">
+      <div className="flex items-center gap-2 py-3 font-sans text-[12px] text-danger">
         <span>Compaction failed</span>
         {meta.error ? <span className="min-w-0 truncate text-danger/70">{meta.error}</span> : null}
       </div>
@@ -33,18 +34,18 @@ export function CompactionCard({ block }: { block: Block }) {
     meta.trigger,
   ].filter(Boolean);
   return (
-    <div className="px-4 py-3">
+    <div className="py-3">
       <div className="flex items-center gap-3">
-        <div className="h-px min-w-4 flex-1 bg-content/12" />
+        <div className="h-px min-w-4 flex-1 bg-content/10" />
         <div
           role="separator"
           aria-label={`Context compacted ${parts.join(", ")}`}
-          className="flex max-w-[min(100%,24rem)] items-center gap-1.5 px-1.5 font-sans text-[12px] text-content/50"
+          className="flex min-w-0 max-w-[min(100%,24rem)] items-center gap-1.5 px-1.5 font-sans text-[12px] text-content/50"
         >
-          <span>Context compacted</span>
-          {parts.length ? <span className="text-content/40">{parts.join(" · ")}</span> : null}
+          <span className="shrink-0">Context compacted</span>
+          {parts.length ? <span className="min-w-0 truncate text-content/40">{parts.join(" · ")}</span> : null}
         </div>
-        <div className="h-px min-w-4 flex-1 bg-content/12" />
+        <div className="h-px min-w-4 flex-1 bg-content/10" />
       </div>
     </div>
   );
@@ -61,24 +62,22 @@ function ActiveCompaction({ startedAt, trigger }: { startedAt?: number; trigger?
     <div
       role="status"
       aria-label="Compacting context"
-      className="flex flex-col gap-1.5 px-4 py-2 font-sans text-[12px] text-content/50"
+      className="flex items-center gap-2 py-3 font-sans text-[12px] text-content/50"
     >
-      <div className="flex items-center gap-2">
-        <motion.span
-          className="size-1.5 shrink-0 rounded-full bg-violet"
-          animate={reduce ? undefined : { opacity: [1, 0.35, 1] }}
-          transition={{ duration: 1.2, repeat: Infinity, ease: "easeInOut" }}
+      <motion.span
+        className="size-1.5 shrink-0 rounded-full bg-violet"
+        animate={reduce ? undefined : { opacity: [1, 0.35, 1] }}
+        transition={{ duration: 1.2, repeat: Infinity, ease: EASE_IN_OUT }}
+      />
+      <span className="shrink-0 text-content/70">Compacting context</span>
+      {trigger ? <span className="min-w-0 truncate text-content/40">{trigger}</span> : null}
+      <span className="h-0.5 w-16 shrink-0 overflow-hidden rounded-full bg-content/10">
+        <span
+          className="block h-full w-full origin-left rounded-full bg-violet/70 transition-transform duration-1000 ease-linear"
+          style={{ transform: `scaleX(${pct / 100})` }}
         />
-        <span className="text-content/70">Compacting context</span>
-        {trigger ? <span className="text-content/40">{trigger}</span> : null}
-        {startedAt ? <span className="ml-auto tabular-nums text-content/40">{formatDuration(elapsed)}</span> : null}
-      </div>
-      <div className="h-0.5 w-full overflow-hidden rounded-full bg-content/10">
-        <div
-          className="h-full rounded-full bg-violet/70 transition-[width] duration-1000 ease-linear"
-          style={{ width: `${pct}%` }}
-        />
-      </div>
+      </span>
+      {startedAt ? <span className="ml-auto shrink-0 tabular-nums text-content/40">{formatDuration(elapsed)}</span> : null}
     </div>
   );
 }

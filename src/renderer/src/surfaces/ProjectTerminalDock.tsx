@@ -173,7 +173,7 @@ export function ProjectTerminalDock({
     <section
       data-project-terminal-dock=""
       className={`relative flex h-full min-h-0 min-w-0 flex-col ${
-        focused ? "bg-content/3" : "bg-content/2"
+        focused ? "bg-content/5" : ""
       } ${
         dock.side === "top"
           ? "border-b"

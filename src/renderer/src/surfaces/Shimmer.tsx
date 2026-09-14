@@ -13,7 +13,7 @@ function ShimmerComponent({
   children,
   as: Component = "span",
   className = "",
-  duration = 2,
+  duration = 1.4,
   spread = 2,
 }: ShimmerProps) {
   const shown = usePaneVisible();

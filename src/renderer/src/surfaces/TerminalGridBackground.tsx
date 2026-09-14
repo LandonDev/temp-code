@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useReducedMotion } from "motion/react";
 import { HARNESS_ICONS, MONOCHROME_HARNESSES } from "../chrome/HarnessIcon";
 import { useInputIdle } from "../hooks/inputIdle";
 import { usePaneVisible } from "../hooks/paneVisibility";
@@ -176,7 +177,9 @@ export function TerminalGridBackground() {
   const [hovered, setHovered] = useState(false);
   const visible = usePaneVisible();
   const idle = useInputIdle(ARCADE_IDLE_MS, visible);
-  const run = visible && (playing || idle);
+  // The OS setting stops the idle boards; a game you took control of still runs.
+  const reduce = useReducedMotion() === true;
+  const run = visible && (playing || (idle && !reduce));
   const runRef = useRef(run);
   const resumeRef = useRef<() => void>(() => {});
 
@@ -225,6 +228,7 @@ export function TerminalGridBackground() {
     // Canvases take their size (and allocate their bitmaps) on the first
     // frame that draws, not on mount: a pane that never idles never pays.
     let dirty = true;
+    let stamp = new Float32Array(0);
 
     const layout = () => {
       dirty = false;
@@ -248,12 +252,14 @@ export function TerminalGridBackground() {
 
       cols = nextCols;
       rows = nextRows;
+      stamp = new Float32Array(cols * rows);
     };
 
     const paint = (board: Board, width: number, height: number) => {
       const { ctx, arcade } = board;
       const dim = arcade.controlled() ? 1 : board.game.idleDim;
-      const stamp = new Float32Array(cols * rows);
+      if (stamp.length !== cols * rows) stamp = new Float32Array(cols * rows);
+      else stamp.fill(0);
       arcade.stamp(stamp, cols, rows);
 
       const fade = arcade.fade();
@@ -600,13 +606,13 @@ export function TerminalGridBackground() {
         </div>
       ) : (
         <>
-          <div className="pointer-events-none absolute inset-0 z-10 grid place-items-center opacity-0 transition-opacity duration-200 group-hover:opacity-100">
+          <div className="pointer-events-none absolute inset-0 z-10 grid place-items-center opacity-0 transition-opacity group-hover:opacity-100">
             <button
               type="button"
               tabIndex={-1}
               onMouseDown={(event) => event.preventDefault()}
               onClick={takeControl}
-              className="pointer-events-none flex cursor-pointer items-center gap-2 border border-content/20 bg-background-base/80 px-3 py-1.5 font-mono text-[11px] tracking-[0.16em] text-content shadow-lg glass-surface glass-surface--sm group-hover:pointer-events-auto hover:border-content/40 hover:bg-content/10 hover:text-content"
+              className="pressable pointer-events-none flex cursor-pointer items-center gap-2 rounded-xl border border-content/10 bg-content/10 px-3 py-1.5 font-mono text-[11px] tracking-[0.16em] text-content shadow-xl glass-surface glass-surface--xl group-hover:pointer-events-auto hover:bg-content/20"
             >
               <span className="text-content/40">[</span>
               take control
@@ -638,7 +644,7 @@ export function TerminalGridBackground() {
                       className={`block h-1.5 w-1.5 ${
                         on
                           ? "bg-content/40"
-                          : "bg-content/15 hover:bg-content/30"
+                          : "bg-content/20 hover:bg-content/40"
                       }`}
                     />
                   </button>

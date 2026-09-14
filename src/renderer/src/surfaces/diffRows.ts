@@ -33,7 +33,7 @@ export const DIFF_LINE_CAP = 600;
 
 /** How long a settled edit's rows take to pour in. */
 export function revealDuration(rows: number): number {
-  return Math.min(900, 150 + rows * 6);
+  return Math.min(300, 150 + rows * 6);
 }
 
 const str = (v: unknown): string => (typeof v === "string" ? v : "");

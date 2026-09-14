@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { continueSession } from "../lib/tcserver/commands";
 import type { ErrorRow } from "../lib/turnOutcome";
 import { AlertCircle, StopCircle } from "../chrome/icons";
+import { CHIP } from "./chip";
 
 /**
  * The row a turn ends on when it did not finish: a quiet gray Stopped for
@@ -28,7 +29,7 @@ export function ErrorChip({
     return (
       <div
         role="status"
-        className="flex min-h-[34px] items-center gap-2 px-4 py-2 font-sans text-[12px] text-content/40"
+        className="flex min-h-[34px] items-center gap-2 py-2 font-sans text-[12px] text-content/40"
       >
         <StopCircle className="size-3.5 shrink-0" strokeWidth={1.75} />
         <span>Stopped</span>
@@ -39,7 +40,7 @@ export function ErrorChip({
   return (
     <div
       role="alert"
-      className="flex min-h-[34px] min-w-0 items-start gap-2 px-4 py-2 font-sans text-[12px] text-danger"
+      className="flex min-h-[34px] min-w-0 items-start gap-2 py-2 font-sans text-[12px] text-danger"
     >
       <AlertCircle className="mt-0.5 size-3.5 shrink-0" strokeWidth={1.75} />
       <div className="flex min-w-0 flex-1 flex-col gap-1">
@@ -52,7 +53,7 @@ export function ErrorChip({
             <button
               type="button"
               disabled={continuing}
-              className="rounded-md bg-content/10 px-2.5 py-0.5 text-[11px] text-content/70 hover:bg-content/20 disabled:opacity-40"
+              className={CHIP}
               onClick={() => {
                 setContinuing(true);
                 void continueSession(sessionId).catch(() => setContinuing(false));

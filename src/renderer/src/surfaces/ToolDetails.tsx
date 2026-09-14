@@ -2,6 +2,7 @@ import { memo, useState } from "react";
 import type { Block } from "../lib/session";
 import { kindOf } from "../lib/toolPhrase";
 import { storeTitleOf, type TitleOf } from "../lib/threadMentions";
+import { TodoList } from "./TodoListBlock";
 import {
   getRawView,
   invocationBody,
@@ -38,19 +39,25 @@ export const ToolDetails = memo(function ToolDetails({
     setRawState(v);
   };
   const kind = kindOf(block);
-  if (kind === "todo") return <TodoBlock block={block} />;
+  if (kind === "todo") {
+    return (
+      <div className="mt-1">
+        <TodoList items={todoItems(block)} />
+      </div>
+    );
+  }
 
   const out = toolOutput(block);
   const parsedOut = !raw && out && !out.error ? parseJson(out.text) : undefined;
   const input = block.tool?.input;
 
   return (
-    <div className="relative mt-1 rounded-lg bg-content/[0.04]">
+    <div className="relative mt-1 overflow-hidden rounded-[10px] border border-content/10 bg-content/6">
       <button
         type="button"
         onClick={() => setRaw(!raw)}
         title={raw ? "Formatted view" : "Verbatim invocation and output"}
-        className="absolute right-2.5 top-1.5 z-10 text-[10px] font-medium text-content/40 transition-colors hover:text-content/70"
+        className="pressable absolute right-2 top-1 z-10 rounded-[5px] bg-content/8 px-1.5 py-0.5 text-[10px] text-content/50 hover:text-content"
       >
         {raw ? "pretty" : "raw"}
       </button>
@@ -89,7 +96,7 @@ function KVRows({ obj, titleOf }: { obj: Record<string, unknown>; titleOf: Title
     <div className="space-y-px">
       {Object.entries(obj).map(([k, v]) => (
         <div key={k} className="flex gap-2 text-[12px] leading-[18px]">
-          <span className="w-24 shrink-0 truncate text-content/40">{k}</span>
+          <span className="shrink-0 whitespace-nowrap text-content/40">{k}</span>
           <span className="min-w-0 flex-1 whitespace-pre-wrap break-words text-content">
             {kvDisplay(k, v, titleOf)}
           </span>
@@ -131,28 +138,8 @@ function OutputBlock({ text, error }: { text: string; error: boolean }) {
     <div className="px-3 py-1.5">
       <Mono text={shown.join("\n") || "(no output)"} className={error ? "text-danger" : "text-content"} />
       {more > 0 ? (
-        <div className="text-[11px] leading-[18px] text-content/40">… {more} more lines</div>
+        <div className="text-[11px] leading-[18px] tabular-nums text-content/40">… {more} more lines</div>
       ) : null}
-    </div>
-  );
-}
-
-function TodoBlock({ block }: { block: Block }) {
-  return (
-    <div className="mt-1 space-y-0.5 rounded-lg bg-content/[0.04] px-3 py-1.5">
-      {todoItems(block).map((t, n) => (
-        <div
-          key={n}
-          className={`flex items-start gap-2 text-[12px] leading-[18px] ${
-            t.status === "completed" ? "text-content/50" : "text-content"
-          }`}
-        >
-          <span className="w-3 shrink-0 text-center text-content/40">
-            {t.status === "completed" ? "✓" : t.status === "in_progress" ? "›" : "·"}
-          </span>
-          {t.text}
-        </div>
-      ))}
     </div>
   );
 }

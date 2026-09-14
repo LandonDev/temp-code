@@ -118,7 +118,7 @@ export function DiffPane({
       data-diff-pane=""
       style={{ width }}
       className={`relative flex h-full min-h-0 shrink-0 flex-col border-l border-content/10 ${
-        focused ? "bg-content/3" : "bg-content/2"
+        focused ? "bg-content/5" : ""
       }`}
       onMouseDown={onFocus}
     >
@@ -129,7 +129,7 @@ export function DiffPane({
         aria-valuenow={width}
         aria-valuemin={MIN_WIDTH}
         className={`absolute inset-y-0 -left-px z-10 w-1.5 cursor-col-resize touch-none ${
-          dragging ? "bg-content/15" : "hover:bg-content/10"
+          dragging ? "bg-content/20" : "hover:bg-content/10"
         }`}
         onPointerDown={onResizePointerDown}
         onPointerMove={onResizePointerMove}

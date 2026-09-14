@@ -54,7 +54,7 @@ export function ReconnectChip({ reauth }: { reauth: { app: string; url: string }
     <button
       type="button"
       title={`Reconnect ${title} — opens its sign-in page`}
-      className="inline-flex shrink-0 items-center gap-1 rounded-md bg-warning/12 px-1.5 py-0.5 font-sans text-[11px] text-warning hover:bg-warning/20"
+      className="pressable inline-flex shrink-0 items-center gap-1 rounded-md bg-warning/10 px-1.5 py-0.5 font-sans text-[11px] text-warning hover:bg-warning/20"
       onClick={(event) => {
         event.stopPropagation();
         void openUrl(reauth.url);
