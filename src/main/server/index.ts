@@ -735,7 +735,7 @@ export async function startServer(
             sendFrame({
               id: req.id,
               ok: true,
-              result: registry.eventsAfter(req.params.sessionId, req.params.afterSeq)
+              result: registry.events(req.params.sessionId, req.params)
             })
             break
           case 'session.send':

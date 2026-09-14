@@ -600,6 +600,40 @@ export class Store {
     return this.eventsRange(sessionId, afterSeq, -1)
   }
 
+  /** Events in (`afterSeq`, `beforeSeq`). With `tail`, only from the
+   *  `tail`-th most recent user turn on; a log with fewer turns comes back whole. The walk back stops at
+   *  that turn, so a huge log costs only the rows it returns. */
+  events(
+    sessionId: string,
+    opts: { afterSeq?: number; beforeSeq?: number; tail?: number } = {}
+  ): EventRow[] {
+    const afterSeq = opts.afterSeq ?? 0
+    const beforeSeq = opts.beforeSeq ?? Number.MAX_SAFE_INTEGER
+    let fromSeq = afterSeq + 1
+    if (opts.tail && opts.tail > 0) {
+      const starts = this
+        .stmt(
+          `SELECT seq FROM events
+             WHERE session_id = ? AND seq > ? AND seq < ?
+               AND json_extract(payload, '$.type') = 'user-text'
+             ORDER BY seq DESC LIMIT ?`
+        )
+        .all(sessionId, afterSeq, beforeSeq, opts.tail) as unknown as { seq: number }[]
+      if (starts.length === opts.tail) fromSeq = starts[starts.length - 1].seq
+    }
+    const rows = this
+      .stmt(
+        `SELECT seq, ts, payload FROM events WHERE session_id = ? AND seq >= ? AND seq < ? ORDER BY seq`
+      )
+      .all(sessionId, fromSeq, beforeSeq) as unknown as { seq: number; ts: number; payload: string }[]
+    return rows.map((r) => ({
+      sessionId,
+      seq: r.seq,
+      ts: r.ts,
+      event: JSON.parse(r.payload) as AgentEvent
+    }))
+  }
+
   /** Up to `limit` events after `afterSeq` (-1 for all) — the chunked
    *  read the fold sweep walks big logs with, yielding between chunks. */
   eventsRange(sessionId: string, afterSeq: number, limit: number): EventRow[] {

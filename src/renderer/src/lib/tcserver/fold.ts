@@ -182,7 +182,11 @@ export function foldEvent(
   if (persisted && row.seq <= state.lastSeq) return state;
   let { blocks, busy, context, nextId, thread } = state;
   const lastSeq = persisted ? Math.max(state.lastSeq, row.seq) : state.lastSeq;
-  const fresh = (prefix: string): string => `${prefix}:${nextId++}`;
+  // A persisted row mints ids from its seq, so a block gets the same id
+  // whether it folded from a tail-first paint or from the whole log.
+  let minted = 0;
+  const fresh = (prefix: string): string =>
+    persisted ? `${prefix}:${row.seq}${minted++ ? `.${minted}` : ""}` : `${prefix}:${nextId++}`;
   /** Copy-on-write view of the thread state. */
   const th = (): ThreadState => {
     if (thread === state.thread) thread = { ...state.thread };

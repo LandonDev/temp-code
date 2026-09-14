@@ -677,3 +677,29 @@ describe("M6c: compaction, agent and nested-step metadata", () => {
     expect(s.blocks.find((b) => b.tool?.callId === "c1")?.tool?.parentCallId).toBe("task1");
   });
 });
+
+describe("block ids from persisted rows", () => {
+  it("a persisted row mints the same id whatever came before it", () => {
+    const status = (seq: number): EventRow => ({
+      sessionId: "s",
+      seq,
+      ts: seq,
+      event: { type: "status", detail: `note ${seq}` } as AgentEvent,
+    });
+    const unkeyed = (seq: number): EventRow => ({
+      sessionId: "s",
+      seq,
+      ts: seq,
+      event: { type: "assistant-text", text: "t", delta: false },
+    });
+    const idsAfter = (prefix: EventRow[], rows: EventRow[]): string[] => {
+      const state = foldAll([...prefix, ...rows], "/tmp");
+      return state.blocks.slice(-rows.length).map((b) => b.id);
+    };
+    const rows = [status(41), unkeyed(42)];
+    const cold = idsAfter([], rows);
+    const warm = idsAfter([status(1), status(2), unkeyed(3)], rows);
+    expect(warm).toEqual(cold);
+    expect(cold).toEqual(["s:41", "a:42"]);
+  });
+});
