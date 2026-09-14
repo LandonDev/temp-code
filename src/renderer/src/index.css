@@ -142,7 +142,7 @@ html:not(.is-mac) ::-webkit-scrollbar-corner {
 html.is-mac,
 html.is-mac body,
 html.is-mac #root {
-  background: transparent;
+  background: var(--color-background-base);
 }
 
 .sidebar-glass {

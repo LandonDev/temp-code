@@ -422,7 +422,10 @@ export function registerWindows(hooks: { dropSnapshot?: (slot: string) => void }
   })
 
   ipcMain.handle('window:enable-glass', (e) => {
-    if (process.platform !== 'darwin') return
+    // Vibrancy is off unless TEMP_CODE_GLASS=1: a transparent window hands
+    // every repaint to WindowServer, whose memory does not come back when
+    // the app quits. Twice that froze the whole machine on the prod data.
+    if (process.platform !== 'darwin' || process.env.TEMP_CODE_GLASS !== '1') return
     const win = windowOf(e)
     if (!win) return
     win.setBackgroundColor('#00000000')
