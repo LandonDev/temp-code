@@ -132,7 +132,7 @@ export function BuildPanel({ projectId }: { projectId: string }) {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex shrink-0 items-center gap-2 px-4 pb-1">
+      <div className="flex h-9 shrink-0 items-center gap-2 border-b border-content/10 px-2 pr-1.5">
         <RailSelect
           value={chosen}
           groups={groups}
@@ -165,7 +165,7 @@ export function BuildPanel({ projectId }: { projectId: string }) {
         disabled={running}
         onPull={() => void pull()}
       />
-      <div className="shrink-0 px-4 pb-2 text-[11px] leading-4">
+      <div className="shrink-0 px-3 pb-2 text-[11px] leading-4">
         {effective ? (
           <div className="truncate font-mono text-content/50" title={effective.command}>
             {effective.command}
@@ -186,7 +186,7 @@ export function BuildPanel({ projectId }: { projectId: string }) {
           <span className="invisible">…</span>
         )}
       </div>
-      {error ? <p className="shrink-0 break-words px-4 pb-2 text-[11px] leading-snug text-danger">{error}</p> : null}
+      {error ? <p className="shrink-0 break-words px-3 pb-2 text-[11px] leading-snug text-danger">{error}</p> : null}
       <Log lines={lines} runId={run?.id ?? null} />
       {run && run.status !== "running" ? <StatusLine run={run} own={own} /> : null}
       {run && run.outputs.length > 0 ? <Outputs outputs={run.outputs} /> : null}
@@ -196,7 +196,9 @@ export function BuildPanel({ projectId }: { projectId: string }) {
 
 /** The chosen branch against origin, and the way to catch it up. Quiet
  *  when current; a count and a Fetch button when origin is ahead; git's
- *  own progress while fetching. */
+ *  own progress while fetching. The line keeps its height while the
+ *  status loads or when there is nothing to say, so the command under it
+ *  never jumps. */
 function RemoteLine({
   remote,
   pulling,
@@ -212,7 +214,6 @@ function RemoteLine({
   disabled: boolean;
   onPull: () => void;
 }) {
-  if (remote === undefined && !pulling) return <div className="h-6 shrink-0" />;
   const needs = !!remote && (remote.behind > 0 || remote.stale === true);
   const text = pulling
     ? (progress?.line ?? "Fetching…")
@@ -227,16 +228,15 @@ function RemoteLine({
             : remote.ahead > 0
               ? `↑${remote.ahead} ahead of origin`
               : "Up to date with origin";
-  if (text === null) return null;
   return (
-    <div className="shrink-0 px-4 pb-2">
+    <div className="shrink-0 px-3 pt-2 pb-1">
       <div className="flex h-6 items-center gap-2 text-[11px]">
         <span
           className={cn(
             "min-w-0 flex-1 truncate tabular-nums",
-            pulling ? "font-mono text-[10.5px] text-content/50" : needs ? "text-content" : "text-content/50",
+            pulling ? "font-mono text-content/50" : needs ? "text-content" : "text-content/50",
           )}
-          title={text}
+          title={text ?? undefined}
         >
           {text}
         </span>
@@ -255,13 +255,13 @@ function RemoteLine({
         ) : null}
       </div>
       {pulling ? (
-        <div className="mt-1 h-0.5 w-full overflow-hidden rounded-full bg-content/10">
+        <div className="mt-1 h-1 w-full overflow-hidden rounded-full bg-content/10">
           <div
             className={cn(
-              "h-full bg-content/50 transition-[width] duration-200",
-              progress?.percent == null && "w-1/4 motion-safe:animate-pulse",
+              "h-full origin-left bg-content/50 transition-transform",
+              progress?.percent == null ? "w-1/4 motion-safe:animate-pulse" : "w-full",
             )}
-            style={progress?.percent != null ? { width: `${progress.percent}%` } : undefined}
+            style={progress?.percent != null ? { transform: `scaleX(${progress.percent / 100})` } : undefined}
           />
         </div>
       ) : null}
@@ -285,10 +285,13 @@ function Log({ lines, runId }: { lines: string[]; runId: string | null }) {
         const el = ref.current;
         if (el) stick.current = el.scrollTop + el.clientHeight >= el.scrollHeight - 12;
       }}
-      className="min-h-0 flex-1 overflow-y-auto px-3 py-2 font-mono text-[11px] leading-relaxed text-content/50"
+      className={cn(
+        "min-h-0 flex-1 overflow-y-auto border-t border-content/10 font-mono text-[11px] leading-relaxed text-content/50",
+        (lines.length > 0 || runId) && "px-3 py-2",
+      )}
     >
       {lines.length === 0 && !runId ? (
-        <p className="py-6 text-center font-sans text-[11px] text-content/40">No builds yet</p>
+        <p className="px-3 py-2 font-sans text-[12px] text-content/50">No builds yet</p>
       ) : (
         lines.map((line, i) => (
           <div key={i} className="whitespace-pre-wrap break-words">
@@ -306,7 +309,7 @@ function StatusLine({ run, own }: { run: BuildRun; own: string | null }) {
   return (
     <p
       className={cn(
-        "shrink-0 border-t border-content/10 px-4 py-2 text-[11px] tabular-nums",
+        "shrink-0 border-t border-content/10 px-3 py-2 text-[11px] tabular-nums",
         run.status === "ok" && "text-content/50",
         run.status === "failed" && "text-danger",
         run.status === "cancelled" && "text-content/40",
@@ -326,16 +329,16 @@ const fmtSize = (n: number): string =>
 
 function Outputs({ outputs }: { outputs: BuildRun["outputs"] }) {
   return (
-    <div className="max-h-40 shrink-0 overflow-y-auto border-t border-content/10 px-2 py-1.5">
+    <div className="max-h-40 shrink-0 overflow-y-auto border-t border-content/10 p-2">
       {outputs.map((o) => (
         <FileRefMenu key={o.abs} target={o.abs}>
           <button
             type="button"
             onClick={() => void window.api.revealInFinder(o.abs)}
             title={o.abs}
-            className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-content/5 active:scale-[0.99]"
+            className="flex h-7 w-full items-center gap-2 rounded-md px-2 text-left transition-colors hover:bg-content/5 active:bg-content/10"
           >
-            <span className={cn("min-w-0 flex-1 truncate text-xs text-content", !o.fresh && "text-content/50")}>
+            <span className={cn("min-w-0 flex-1 truncate text-[13px] font-medium text-content", !o.fresh && "text-content/50")}>
               {o.path.split("/").pop()}
               <span className="ml-1.5 text-[11px] text-content/40">
                 {o.path.includes("/") ? o.path.slice(0, o.path.lastIndexOf("/")) : ""}

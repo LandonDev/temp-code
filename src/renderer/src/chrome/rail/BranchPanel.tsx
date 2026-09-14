@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { motion, useReducedMotion } from "motion/react";
+import { ENTER, SPRING_LAYOUT } from "../../lib/ease";
+import { GLIDE_MAX_ROWS } from "../../lib/listGlide";
 import type { CommitInfo, MergeResult } from "@server/shared/domain";
 import { ChevronRight, GitCompare, RefreshCw } from "../icons";
 import { cn } from "../../motion/cn";
@@ -40,7 +42,7 @@ type Outcome =
 const targetKey = (projectId: string): string => `compare-target:${projectId}`;
 const MODE_KEY = "compare-mode";
 
-/** Button labels roll letter by letter, so they cannot truncate: clip by hand. */
+/** Button labels sit in a fixed footprint and cannot truncate: clip by hand. */
 const short = (b: string): string => {
   const name = b.replace(/^origin\//, "");
   return name.length > 14 ? `${name.slice(0, 13)}…` : name;
@@ -48,9 +50,12 @@ const short = (b: string): string => {
 
 export function BranchPanel({
   projectId,
+  selectedPath,
   onOpenDiff,
 }: {
   projectId: string;
+  /** the review file the focused tab shows, relative to the git root */
+  selectedPath?: string;
   /** opens the file as a review tab; the base ref is parked beforehand */
   onOpenDiff: (path: string) => void;
 }) {
@@ -196,23 +201,24 @@ export function BranchPanel({
   const busy = updateState === "loading" || landState === "loading" || buildRunning;
   const ahead = compare?.ahead ?? 0;
   const behind = compare?.behind ?? 0;
+  const glide = !reduce && (compare?.files.length ?? 0) <= GLIDE_MAX_ROWS;
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex shrink-0 items-center gap-1.5 px-4 pb-2 text-[11px]">
-        <span className="min-w-0 max-w-[45%] truncate font-medium text-content" title={current ?? undefined}>
+      <div className="flex h-9 shrink-0 items-center gap-1.5 border-b border-content/10 px-2">
+        <span className="min-w-0 max-w-[45%] truncate px-1 text-[12px] font-medium text-content" title={current ?? undefined}>
           {current ?? "—"}
         </span>
-        <GitCompare className="size-3 shrink-0 text-content/40" strokeWidth={1.75} />
+        <GitCompare className="size-3.5 shrink-0 text-content/40" strokeWidth={1.75} />
         <RailSelect value={target} placeholder="target" groups={groups} ariaLabel="Compare target" onChange={pick} />
         {compare ? (
-          <span className="shrink-0 tabular-nums text-content/50">
+          <span className="shrink-0 text-[11px] tabular-nums text-content/50">
             ↑{ahead} ↓{behind}
           </span>
         ) : null}
       </div>
 
-      <div className="flex shrink-0 items-center gap-1.5 px-3 pb-2">
+      <div className="flex shrink-0 items-center gap-2 p-2">
         <StatefulButton
           size="sm"
           variant="secondary"
@@ -239,7 +245,7 @@ export function BranchPanel({
           disabled={busy}
           title={mode === "merge" ? "Switch to rebase" : "Switch to merge"}
           aria-label={mode === "merge" ? "Switch to rebase" : "Switch to merge"}
-          className="flex size-7 shrink-0 items-center justify-center rounded-md text-content/50 transition-colors hover:bg-content/8 hover:text-content disabled:opacity-40"
+          className="pressable grid size-7 shrink-0 place-items-center rounded-md text-content/50 hover:bg-content/8 hover:text-content disabled:opacity-40"
         >
           <RefreshCw className="size-3.5" strokeWidth={1.75} />
         </button>
@@ -266,15 +272,15 @@ export function BranchPanel({
       </div>
 
       {outcome || error ? (
-        <div className="shrink-0 px-4 pb-2 text-[11px] leading-snug">
-          {outcome?.kind === "ok" ? <p className="text-content/50">{outcome.text}</p> : null}
+        <div className="shrink-0 px-2 pb-2 text-[11px] leading-snug">
+          {outcome?.kind === "ok" ? <p className="px-1 text-content/50">{outcome.text}</p> : null}
           {outcome?.kind === "conflicts" ? (
-            <div className="rounded-md border border-danger/30 bg-danger/5 px-2.5 py-2">
+            <div className="rounded-md bg-danger/10 px-2 py-2">
               <p className="text-danger">
                 Conflicts in {outcome.files.length} {outcome.files.length === 1 ? "file" : "files"} · nothing
                 changed
               </p>
-              <ul className="mt-1 max-h-32 overflow-y-auto font-mono text-[10.5px] text-danger/80">
+              <ul className="mt-1 max-h-32 overflow-y-auto font-mono text-[11px] text-danger/70">
                 {outcome.files.map((f) => (
                   <li key={f} className="truncate" title={f}>
                     {f}
@@ -283,37 +289,43 @@ export function BranchPanel({
               </ul>
             </div>
           ) : null}
-          {outcome?.kind === "error" ? <p className="break-words text-danger">{outcome.text}</p> : null}
-          {!outcome && error ? <p className="break-words text-danger">{error}</p> : null}
+          {outcome?.kind === "error" ? <p className="break-words px-1 text-danger">{outcome.text}</p> : null}
+          {!outcome && error ? <p className="break-words px-1 text-danger">{error}</p> : null}
         </div>
       ) : null}
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-2">
+      <div className="min-h-0 flex-1 overflow-y-auto">
         {!compare && !error ? (
           <div className="flex h-16 items-center justify-center">
             <Spinner className="size-3.5 text-content/50" />
           </div>
         ) : compare && compare.files.length === 0 ? (
-          <p className="px-2 py-6 text-center text-[11px] text-content/40">
+          <p className="px-3 py-2 text-[12px] text-content/50">
             {ahead === 0 && behind === 0
               ? `Up to date with ${compare.target}`
               : `No file differs from ${compare.target}`}
           </p>
         ) : (
-          compare?.files.map((c) => (
+          <div className="p-2 pt-0">
+          {compare?.files.map((c) => (
             <motion.button
               key={c.path}
               type="button"
-              layout={!reduce}
-              initial={reduce ? false : { opacity: 0, y: 4 }}
-              animate={{ opacity: 1, y: 0 }}
+              layout={glide}
+              layoutDependency={c.path}
+              initial={reduce ? false : ENTER.initial}
+              animate={ENTER.animate}
+              transition={{ ...ENTER.transition, layout: SPRING_LAYOUT }}
               disabled={c.status === "deleted"}
               onClick={() => openAgainstBase(c.path)}
-              className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-content/5 active:scale-[0.99] disabled:active:scale-100"
+              className={cn(
+                "flex h-7 w-full items-center gap-2 rounded-md px-2 text-left transition-colors",
+                selectedPath === c.path ? "bg-content/10 text-content" : "hover:bg-content/5 active:bg-content/10",
+              )}
             >
               <span
                 className={cn(
-                  "min-w-0 flex-1 truncate text-xs text-content",
+                  "min-w-0 flex-1 truncate text-[13px] font-medium text-content",
                   c.status === "deleted" && "text-content/50 line-through",
                 )}
                 title={c.path}
@@ -334,12 +346,13 @@ export function BranchPanel({
                 )}
               </span>
             </motion.button>
-          ))
+          ))}
+          </div>
         )}
       </div>
 
       {compare && (ahead > 0 || behind > 0) ? (
-        <div className="max-h-56 shrink-0 overflow-y-auto border-t border-content/10 px-4 py-1.5">
+        <div className="max-h-56 shrink-0 overflow-y-auto border-t border-content/10 p-2">
           <CommitList
             label={`${ahead} ahead`}
             commits={compare.ours}
@@ -375,16 +388,16 @@ function CommitList({
       <button
         type="button"
         onClick={onToggle}
-        className="flex h-6 w-full items-center gap-1 text-[11px] text-content/50 transition-colors hover:text-content"
+        className="flex h-6 w-full items-center gap-1 rounded-md px-2 text-[11px] font-semibold tracking-[0.08em] text-content/50 uppercase transition-colors hover:text-content"
       >
-        <ChevronRight className={cn("size-3 shrink-0 transition-transform", open && "rotate-90")} strokeWidth={1.75} />
+        <ChevronRight className={cn("size-3.5 shrink-0 transition-transform", open && "rotate-90")} strokeWidth={1.75} />
         <span className="tabular-nums">{label}</span>
       </button>
       {open
         ? commits.map((c) => (
-            <div key={c.sha} className="flex items-baseline gap-2 py-1 pl-4">
+            <div key={c.sha} className="flex h-6 items-center gap-2 pr-2" style={{ paddingLeft: 8 + 12 }}>
               <span className="shrink-0 font-mono text-[10.5px] text-content/40">{c.sha.slice(0, 7)}</span>
-              <span className="min-w-0 flex-1 truncate text-[11px] text-content" title={c.subject}>
+              <span className="min-w-0 flex-1 truncate text-[12px] text-content" title={c.subject}>
                 {c.subject}
               </span>
               <span className="shrink-0 text-[11px] tabular-nums text-content/40">{timeAgo(c.authoredAt)}</span>

@@ -2,6 +2,8 @@ import { Chunk } from "@codemirror/merge";
 import { Text } from "@codemirror/state";
 import { useEffect, useState, type ReactNode } from "react";
 import { motion, useReducedMotion } from "motion/react";
+import { ENTER, SPRING_LAYOUT } from "../../lib/ease";
+import { GLIDE_MAX_ROWS } from "../../lib/listGlide";
 import { ArrowDownCircle, Archive, ChevronRight, CloudUpload, Minus, Plus, Undo2 } from "../icons";
 import { cn } from "../../motion/cn";
 import { StatefulButton, type ButtonState } from "../../motion/StatefulButton";
@@ -39,6 +41,8 @@ import { requestReview } from "../../lib/reviewRequest";
  */
 
 const DIFF_CONFIG = { scanLimit: 5_000, timeout: 100 };
+/** Hunks sit one tree level under their file: the tree's 8 + depth * 12. */
+const HUNK_INDENT = 8 + 12;
 
 interface Hunk {
   /** 1-based line span in the working copy */
@@ -79,9 +83,12 @@ function syncLabel(index: GitDiffIndex): string {
 
 export function ChangesPanel({
   cwd,
+  selectedPath,
   onOpenDiff,
 }: {
   cwd: string;
+  /** the review file the focused tab shows, relative to the git root */
+  selectedPath?: string;
   /** opens the file as a review tab; HEAD is parked as its base first */
   onOpenDiff: (path: string) => void;
 }) {
@@ -100,6 +107,9 @@ export function ChangesPanel({
   const hasRemote = Boolean(index?.remote);
   const hasUpstream = Boolean(index?.upstream);
   const canCommit = staged.length > 0 && message.trim().length > 0 && !busy;
+  // Rows glide on stage/unstage while the list is short; past the cap
+  // (a big rebase) they just re-sort.
+  const glide = !reduce && files.length <= GLIDE_MAX_ROWS;
 
   // Unfolded files keep their hunks current as the index moves.
   useEffect(() => {
@@ -201,12 +211,12 @@ export function ChangesPanel({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex h-8 shrink-0 items-center gap-1.5 px-4 text-[11px]">
-        <span className="min-w-0 truncate font-medium text-content" title={index?.branch ?? undefined}>
+      <div className="flex h-9 shrink-0 items-center gap-2 border-b border-content/10 px-2 pr-1.5">
+        <span className="min-w-0 truncate px-1 text-[12px] font-medium text-content" title={index?.branch ?? undefined}>
           {index?.branch ?? "—"}
         </span>
         {index && (index.ahead > 0 || index.behind > 0) ? (
-          <span className="shrink-0 tabular-nums text-content/50">
+          <span className="shrink-0 text-[11px] tabular-nums text-content/50">
             {index.ahead > 0 ? `↑${index.ahead}` : ""}
             {index.ahead > 0 && index.behind > 0 ? " " : ""}
             {index.behind > 0 ? `↓${index.behind}` : ""}
@@ -239,17 +249,17 @@ export function ChangesPanel({
         </IconAction>
       </div>
 
-      {error ? <p className="shrink-0 break-words px-4 pb-2 text-[11px] leading-snug text-danger">{error}</p> : null}
+      {error ? <p className="shrink-0 break-words px-2 py-2 text-[11px] leading-snug text-danger">{error}</p> : null}
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-2">
+      <div className="min-h-0 flex-1 overflow-y-auto">
         {!index ? (
           <div className="flex h-16 items-center justify-center">
             <Spinner className="size-3.5 text-content/50" />
           </div>
         ) : files.length === 0 ? (
-          <p className="px-2 py-6 text-center text-[11px] text-content/40">{syncLabel(index)}</p>
+          <p className="px-3 py-2 text-[12px] text-content/50">{syncLabel(index)}</p>
         ) : (
-          <>
+          <div className="p-2 pt-0">
             {staged.length > 0 ? (
               <Section
                 label={`Staged · ${staged.length}`}
@@ -264,6 +274,8 @@ export function ChangesPanel({
                     key={`s:${file.relative}`}
                     file={file}
                     reduce={!!reduce}
+                    glide={glide}
+                    active={selectedPath === file.relative}
                     busy={busy === file.relative}
                     onOpen={() => open(file)}
                     actions={
@@ -296,6 +308,8 @@ export function ChangesPanel({
                       <Row
                         file={file}
                         reduce={!!reduce}
+                        glide={glide}
+                        active={selectedPath === file.relative}
                         busy={busy === file.relative}
                         onOpen={() => open(file)}
                         fold={foldable ? { open: set !== undefined, onToggle: () => toggleHunks(file) } : undefined}
@@ -315,17 +329,20 @@ export function ChangesPanel({
                         }
                       />
                       {set === "loading" ? (
-                        <div className="flex h-7 items-center pl-9">
+                        <div className="flex h-7 items-center" style={{ paddingLeft: HUNK_INDENT }}>
                           <Spinner className="size-3 text-content/40" />
                         </div>
                       ) : set ? (
                         set.hunks.length === 0 ? (
-                          <p className="py-1 pl-9 text-[11px] text-content/40">Nothing to stage line by line</p>
+                          <p className="flex h-7 items-center text-[12px] text-content/50" style={{ paddingLeft: HUNK_INDENT }}>
+                            Nothing to stage line by line
+                          </p>
                         ) : (
                           set.hunks.map((h) => (
                             <div
                               key={h.from}
-                              className="group flex h-7 items-center gap-2 rounded-md pl-9 pr-2 text-[11px] transition-colors hover:bg-content/5"
+                              className="flex h-7 items-center gap-2 rounded-md pr-2 text-[11px] transition-colors hover:bg-content/5"
+                              style={{ paddingLeft: HUNK_INDENT }}
                             >
                               <span className="tabular-nums text-content/50">
                                 {h.from === h.to ? `L${h.from}` : `L${h.from}–${h.to}`}
@@ -336,14 +353,14 @@ export function ChangesPanel({
                                 {h.deletions > 0 ? <span className="text-danger">−{h.deletions}</span> : null}
                               </span>
                               <span className="flex-1" />
-                              <button
-                                type="button"
+                              <IconAction
+                                title="Stage hunk"
                                 disabled={!!busy}
+                                busy={busy === `${file.relative}#${h.from}`}
                                 onClick={() => stageHunk(file, set, h)}
-                                className="rounded-md px-1.5 py-0.5 text-[11px] text-content/50 opacity-0 transition-colors hover:bg-content/10 hover:text-content group-hover:opacity-100 focus-visible:opacity-100 disabled:opacity-40"
                               >
-                                {busy === `${file.relative}#${h.from}` ? "Staging…" : "Stage"}
-                              </button>
+                                <Plus className="size-3.5" strokeWidth={1.75} />
+                              </IconAction>
                             </div>
                           ))
                         )
@@ -353,17 +370,19 @@ export function ChangesPanel({
                 })}
               </Section>
             ) : null}
-          </>
+          </div>
         )}
       </div>
 
       {log && log.length > 0 ? (
-        <div className="max-h-44 shrink-0 overflow-y-auto border-t border-content/10 px-4 py-1.5">
-          <p className="h-6 text-[11px] leading-6 text-content/50">Recent</p>
+        <div className="max-h-44 shrink-0 overflow-y-auto border-t border-content/10 p-2">
+          <p className="flex h-6 items-center px-2 text-[11px] font-semibold tracking-[0.08em] text-content/50 uppercase">
+            Recent
+          </p>
           {log.map((c) => (
-            <div key={c.hash} className="flex items-baseline gap-2 py-1">
+            <div key={c.hash} className="flex h-6 items-center gap-2 px-2">
               <span className="shrink-0 font-mono text-[10.5px] text-content/40">{c.short}</span>
-              <span className="min-w-0 flex-1 truncate text-[11px] text-content" title={c.subject}>
+              <span className="min-w-0 flex-1 truncate text-[12px] text-content" title={c.subject}>
                 {c.subject}
               </span>
               <span className="shrink-0 text-[11px] tabular-nums text-content/40">{timeAgo(Date.parse(c.date))}</span>
@@ -373,7 +392,7 @@ export function ChangesPanel({
       ) : null}
 
       {index && files.length > 0 ? (
-        <div className="shrink-0 border-t border-content/10 p-3">
+        <div className="shrink-0 border-t border-content/10 p-2">
           <input
             value={message}
             onChange={(e) => setMessage(e.target.value)}
@@ -385,9 +404,9 @@ export function ChangesPanel({
             placeholder={staged.length > 0 ? "Commit message" : "Stage something to commit"}
             disabled={staged.length === 0 || committing}
             aria-label="Commit message"
-            className="w-full rounded-md bg-content/10 px-2.5 py-1.5 text-xs text-content outline-none placeholder:text-content/40 disabled:opacity-40"
+            className="w-full rounded-md bg-content/10 px-2 py-1 text-[13px] leading-5 text-content outline-none placeholder:text-content/40 disabled:opacity-40"
           />
-          <div className="mt-2 flex gap-1.5">
+          <div className="mt-2 flex gap-2">
             <StatefulButton
               size="sm"
               variant="secondary"
@@ -435,7 +454,7 @@ function Section({
   return (
     <div className="pb-1">
       <div className="group flex h-6 items-center px-2">
-        <span className="text-[11px] text-content/50">{label}</span>
+        <span className="text-[11px] font-semibold tracking-[0.08em] text-content/50 uppercase">{label}</span>
         <span className="flex-1" />
         <span className="opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
           <IconAction title={action.title} onClick={action.onClick}>
@@ -451,6 +470,8 @@ function Section({
 function Row({
   file,
   reduce,
+  glide,
+  active,
   busy,
   fold,
   actions,
@@ -458,6 +479,8 @@ function Row({
 }: {
   file: GitChangedFile;
   reduce: boolean;
+  glide: boolean;
+  active: boolean;
   busy: boolean;
   fold?: { open: boolean; onToggle: () => void };
   actions: ReactNode;
@@ -468,10 +491,15 @@ function Row({
   const deleted = file.status === "deleted";
   return (
     <motion.div
-      layout={!reduce}
-      initial={reduce ? false : { opacity: 0, y: 4 }}
-      animate={{ opacity: 1, y: 0 }}
-      className="group flex h-7 w-full items-center gap-1 rounded-md pl-1 pr-2 transition-colors hover:bg-content/5"
+      layout={glide}
+      layoutDependency={file.relative}
+      initial={reduce ? false : ENTER.initial}
+      animate={ENTER.animate}
+      transition={{ ...ENTER.transition, layout: SPRING_LAYOUT }}
+      className={cn(
+        "group flex h-7 w-full items-center gap-1 rounded-md px-2 transition-colors",
+        active ? "bg-content/10 text-content" : "hover:bg-content/5 active:bg-content/10",
+      )}
     >
       <span className="grid size-4 shrink-0 place-items-center">
         {fold ? (
@@ -494,9 +522,9 @@ function Row({
         disabled={deleted}
         onClick={onOpen}
         title={file.relative}
-        className="flex min-w-0 flex-1 items-center gap-1.5 text-left active:scale-[0.99] disabled:active:scale-100"
+        className="flex min-w-0 flex-1 items-center gap-1.5 text-left"
       >
-        <span className={cn("min-w-0 flex-1 truncate text-xs text-content", deleted && "text-content/50 line-through")}>
+        <span className={cn("min-w-0 flex-1 truncate text-[13px] font-medium text-content", deleted && "text-content/50 line-through")}>
           {name}
           {dir ? <span className="ml-1.5 text-[11px] text-content/40">{dir}</span> : null}
         </span>
@@ -504,7 +532,9 @@ function Row({
       {busy ? (
         <Spinner className="size-3 shrink-0 text-content/50" />
       ) : (
-        <span className="hidden shrink-0 items-center group-hover:flex group-focus-within:flex">{actions}</span>
+        <span className={cn("shrink-0 items-center", active ? "flex" : "hidden group-hover:flex group-focus-within:flex")}>
+          {actions}
+        </span>
       )}
       <span className="shrink-0 text-[11px] tabular-nums">
         {file.status === "untracked" ? (
@@ -540,7 +570,7 @@ function IconAction({
       aria-label={title}
       disabled={disabled}
       onClick={onClick}
-      className="grid size-5 place-items-center rounded-md text-content/50 transition-colors hover:bg-content/10 hover:text-content disabled:opacity-40 disabled:hover:bg-transparent"
+      className="pressable grid size-5 place-items-center rounded-md text-content/50 hover:bg-content/10 hover:text-content disabled:opacity-40 disabled:hover:bg-transparent"
     >
       {busy ? <Spinner className="size-3" /> : children}
     </button>
