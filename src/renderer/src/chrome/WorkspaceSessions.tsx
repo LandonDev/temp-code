@@ -63,6 +63,7 @@ import {
   deleteProject,
   renameProject,
 } from "../lib/tcserver/projects";
+import { sessionPrefetch } from "../lib/sessionPrefetch";
 import { useSessionMetas } from "../lib/tcserver/store";
 import { useClock, useSlowClock } from "../lib/turnClock";
 import type { ProjectMeta, WorkspaceMeta } from "../lib/tcserver/types";
@@ -336,6 +337,8 @@ const ChatRow = memo(function ChatRow({
       tabIndex={0}
       aria-current={selected || undefined}
       onClick={() => !renaming && actions.onOpen(thread.id)}
+      onPointerEnter={() => sessionPrefetch.enter(thread.id)}
+      onPointerLeave={() => sessionPrefetch.leave(thread.id)}
       onDoubleClick={() => setRenaming(true)}
       onKeyDown={(e) =>
         e.key === "Enter" && !renaming && actions.onOpen(thread.id)
@@ -422,6 +425,8 @@ const ChildRow = memo(function ChildRow({
       tabIndex={0}
       aria-current={selected || undefined}
       onClick={() => actions.onOpen(thread.id)}
+      onPointerEnter={() => sessionPrefetch.enter(thread.id)}
+      onPointerLeave={() => sessionPrefetch.leave(thread.id)}
       onKeyDown={(e) => e.key === "Enter" && actions.onOpen(thread.id)}
       className={`relative isolate flex h-6 w-full cursor-default items-center gap-1.5 rounded-md py-0 pr-2 pl-6 text-left text-[12px] ${
         selected ? "text-content" : "text-content/70 hover:bg-content/5 hover:text-content"

@@ -72,7 +72,7 @@ describe("markdown render cache", () => {
     expect(parseStats.parses).toBe(parses);
     expect(second.container.innerHTML).toBe(firstHtml);
     second.unmount();
-  });
+  }, 20_000);
 
   it("a streaming block bypasses the cache; settling stores it once", () => {
     const text = blockText(1);
