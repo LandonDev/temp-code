@@ -1,3 +1,4 @@
+import { collapseBlankTabs, isBlankSession } from "./blankTabs";
 import { markTurnInterrupted, type ResumedWorkspace } from "./inFlight";
 import {
   isTerminalTab,
@@ -127,6 +128,7 @@ export function hydrateWorkspaceSnapshot(
 
   const stubs = new Map(parsed.sessions.map((stub) => [stub.id, stub]));
   const sessions = new Map<string, Session>();
+  const serverKnown = new Set<string>();
 
   const take = (id: string): Session | null => {
     const existing = sessions.get(id);
@@ -135,6 +137,7 @@ export function hydrateWorkspaceSnapshot(
     const stub = stubs.get(id);
     const base = record ?? (stub ? sessionFromStub(stub) : null);
     if (!base) return null;
+    if (record) serverKnown.add(id);
     const next = interruptedIds.has(id) ? markTurnInterrupted(base) : { ...base, busy: false };
     sessions.set(id, next);
     return next;
@@ -161,6 +164,19 @@ export function hydrateWorkspaceSnapshot(
     }
     tabs.push(tab);
   }
+
+  // One blank tab per project: a workspace that grew a fresh tab per visit
+  // restores dozens of empty panes otherwise. The threads stay on the server.
+  const blankIds = new Set(
+    [...sessions].filter(([id, s]) => isBlankSession(s, serverKnown.has(id))).map(([id]) => id),
+  );
+  const projectOf = (id: string): string => {
+    const s = sessions.get(id);
+    return s?.projectId ?? s?.cwd ?? parsed.projectCwd;
+  };
+  const kept = [...collapseBlankTabs(tabs, blankIds, projectOf, parsed.activeTabId)];
+  tabs.length = 0;
+  tabs.push(...kept);
 
   for (const id of interruptedIds) {
     if (!take(id)) continue;

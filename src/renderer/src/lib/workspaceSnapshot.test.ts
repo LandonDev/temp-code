@@ -230,6 +230,21 @@ describe("hydrateWorkspaceSnapshot", () => {
     ).toBe(true);
   });
 
+  it("restores one blank tab per project, the newest, and keeps the chat tabs", () => {
+    const blank = (id: string): Session => ({ ...newSession("claude", "/tmp/a"), id, title: "New chat" });
+    const other = { ...blank("b1"), cwd: "/tmp/b" };
+    const tabs = ["s1", "a1", "a2", "b1", "a3"].map((id) => ({ ...newTab(id), id: `t-${id}` }));
+    const snapshot = collectWorkspaceSnapshot(
+      tabs,
+      [chat("s1", "/tmp/a"), blank("a1"), blank("a2"), other, blank("a3")],
+      "t-s1",
+      "/tmp/a",
+    );
+    const workspace = hydrateWorkspaceSnapshot(snapshot, new Map([["s1", chat("s1", "/tmp/a")]]));
+    expect(workspace?.tabs.map((tab) => tab.id)).toEqual(["t-s1", "t-b1", "t-a3"]);
+    expect(workspace?.activeTabId).toBe("t-s1");
+  });
+
   it("keeps terminal-only tabs", () => {
     const term = newTerminalFile("/tmp/a");
     const tab = {
