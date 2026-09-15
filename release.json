@@ -1,5 +1,5 @@
 {
-  "n": 136,
-  "notes": "The sidebar's project list and the left rail's project list start 8px below their headers (pt-2 on both scrollers), so the first card and the Pinned label no longer sit flush against the seam; Chats, Archived and the pinned block ride the same scroller and take the same inset",
-  "ts": 1789442221935
+  "n": 137,
+  "notes": "The live lines under a working project card get their hairlines back: a line above the first thread, one between each pair and one below the last (divide-y and border-y at content/10), as before the dialog pass dropped them",
+  "ts": 1789442293156
 }
