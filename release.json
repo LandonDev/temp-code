@@ -1,5 +1,5 @@
 {
-  "n": 137,
-  "notes": "The live lines under a working project card get their hairlines back: a line above the first thread, one between each pair and one below the last (divide-y and border-y at content/10), as before the dialog pass dropped them",
-  "ts": 1789442293156
+  "n": 138,
+  "notes": "Coming back to a workspace lands on the thread it was last on: the open tab holding that thread wins over the first open tab, then the most recently visited tab of the workspace, then the remembered thread opens, then a blank one; a blank draft is never remembered, so a workspace never seen lands on a new thread",
+  "ts": 1789442622139
 }
