@@ -1,5 +1,5 @@
 {
-  "n": 159,
-  "notes": "Claude and Codex threads route through Aliax's shim or our own gateway: endpointFor(service) picks the shim when it answers /__shim, else the gateway, else leaves the CLI default; the claude driver sets ANTHROPIC_BASE_URL, the codex driver sets chatgpt_base_url on thread/start, listens for account/rateLimits/updated and asks account/rateLimits/read once the thread is up, feeding the pinned Codex account's 5h and week windows into the shared usage cache and the footer",
-  "ts": 1789503467539
+  "n": 160,
+  "notes": "The gateway fails over on a usage-limit 429 by itself: aliax-core 6add708 classifies the refusal (unified headers and Claude/Codex bodies), marks the pinned account's window full with the provider's reset, asks AccountsService.pickNext for the next account with room in every window the refused and every live model spend (soonest reset first, confirmed by a forced poll), pins it and replays the buffered request under its token at most three times; onFailedOver signs the CLIs in behind the new pin and any failure shows as a footer note. One reset timer per build re-polls the accounts whose full windows just reset, only while Aliax is not the owner. scripts/e2e-gateway-failover.ts covers it end to end against a fake upstream",
+  "ts": 1789505579237
 }
