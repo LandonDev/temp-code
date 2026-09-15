@@ -1,6 +1,6 @@
 import { appendFileSync, mkdirSync } from 'node:fs'
 import { join } from 'node:path'
-import { accounts, parseUnifiedHeaders, pinnedProfile, type ForwardHooks } from 'aliax-core'
+import { accounts, codexSnapshotToWindows, parseUnifiedHeaders, pinnedProfile, type ForwardHooks } from 'aliax-core'
 
 /**
  * What the gateway learns from traffic it forwards: Claude's unified headers
@@ -8,7 +8,10 @@ import { accounts, parseUnifiedHeaders, pinnedProfile, type ForwardHooks } from 
  * 429 goes to a log (status, limit headers, body; never credentials) so the
  * failover classifier can be built from real refusals.
  */
+let observed: (() => void) | null = null
+
 export function observeHooks({ logDir, onObserved }: { logDir: string; onObserved?: () => void }): ForwardHooks {
+  observed = onObserved ?? null
   return {
     onResponse: ({ service, path, status, headers, body }) => {
       if (status === 429) logLimit(logDir, { service, path, status, headers, body })
@@ -19,6 +22,17 @@ export function observeHooks({ logDir, onObserved }: { logDir: string; onObserve
       if (accounts.observeWindows('claude-code', pinned, limits.windows)) onObserved?.()
     }
   }
+}
+
+/**
+ * Codex has no limit headers; its app-server pushes `account/rateLimits/updated`
+ * (and answers `account/rateLimits/read`). The codex driver hands those here.
+ */
+export function observeCodexSnapshot(snapshot: unknown): void {
+  const pinned = pinnedProfile('codex')
+  const windows = codexSnapshotToWindows(snapshot)
+  if (!pinned || windows.length === 0) return
+  if (accounts.observeWindows('codex', pinned, windows)) observed?.()
 }
 
 const KEPT_HEADERS = new Set(['retry-after', 'request-id', 'content-type'])

@@ -7,6 +7,8 @@ import { harnessEnv, resolveBinary } from './binaries'
 import { expandSlashRefs } from '../slash'
 import { toolDisplay } from './display'
 import { bridgeMcpConfig } from '../apptools'
+import { endpointFor } from '../endpoint'
+import { observeCodexSnapshot } from '../gatewayObserve'
 
 /**
  * Codex driver — `codex app-server`, protocol v2 (verified live against
@@ -483,6 +485,9 @@ export const codexDriver: HarnessDriver = {
         case 'error':
           emit({ type: 'error', message: String(params.message ?? 'codex error') })
           break
+        case 'account/rateLimits/updated':
+          observeCodexSnapshot(params)
+          break
       }
     }
 
@@ -615,6 +620,9 @@ export const codexDriver: HarnessDriver = {
       // app_list_threads / app_read_thread / app_start_thread back to the
       // app's WS server, so codex threads can operate the app like claude.
       const bridgeEntry = bridgeMcpConfig(session.id)
+      // Provider traffic goes through Aliax's shim or our own gateway, which
+      // swap in the pinned account's token.
+      const endpoint = await endpointFor('codex')
       const threadParams = {
         cwd: session.cwd,
         model: session.model,
@@ -637,7 +645,8 @@ export const codexDriver: HarnessDriver = {
           // Fast = OpenAI's priority service tier. Only sent when on, so
           // off keeps whatever the user's own codex config chooses.
           ...(session.fast ? { service_tier: 'priority' } : {}),
-          ...(bridgeEntry ? { mcp_servers: { app: bridgeEntry } } : {})
+          ...(bridgeEntry ? { mcp_servers: { app: bridgeEntry } } : {}),
+          ...(endpoint ? { chatgpt_base_url: endpoint } : {})
         }
       }
       const startFresh = async (): Promise<void> => {
@@ -662,6 +671,8 @@ export const codexDriver: HarnessDriver = {
       } else {
         await startFresh()
       }
+      // The first usage numbers for the footer; updates arrive as notifications.
+      conn.request('account/rateLimits/read', {}).then(observeCodexSnapshot, () => {})
     } catch (err) {
       disposed = true // expected exit, don't also report it as a crash
       conn.kill()
