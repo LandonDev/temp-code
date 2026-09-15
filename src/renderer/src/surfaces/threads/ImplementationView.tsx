@@ -1264,7 +1264,7 @@ function TaskMeta({
           {/* The popup floats over the bar at the mark — nothing reflows. */}
           {hovered ? (
             <div
-              className="pointer-events-none absolute bottom-full z-20 mb-1.5 -translate-x-1/2 rounded-xl border border-content/10 bg-content/10 px-2 py-1 text-[11px] whitespace-nowrap shadow-xl glass-surface glass-surface--xl"
+              className="pointer-events-none absolute bottom-full z-20 mb-1.5 -translate-x-1/2 rounded-xl px-2 py-1 text-[11px] whitespace-nowrap shadow-xl glass-surface floating-surface"
               style={{ left: `${Math.min(92, Math.max(8, hovered.at * 100))}%` }}
             >
               <span className={`mr-1.5 inline-block size-1.5 rounded-full align-middle ${TICK_COLOR[hovered.k]}`} />

@@ -157,7 +157,7 @@ export const TranscriptMinimap = memo(function TranscriptMinimap({
       })}
       {hover ? (
         <div
-          className="z-fade-quick pointer-events-none absolute left-7 w-64 rounded-xl border border-content/10 bg-content/10 px-2.5 py-1.5 font-sans text-[12px] shadow-xl glass-surface glass-surface--xl"
+          className="z-fade-quick pointer-events-none absolute left-7 w-64 rounded-xl px-2.5 py-1.5 font-sans text-[12px] shadow-xl glass-surface floating-surface"
           style={{
             top: Math.min(
               railH - 24,
