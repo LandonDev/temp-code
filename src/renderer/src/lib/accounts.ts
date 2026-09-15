@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 import type { ProfileView, UsageReport, UsageWindow } from "aliax-core/shared/types";
-import { healthOf, onPaceLeft, percentLeft, type Health } from "aliax-core/shared/health";
+import { cycleMs, healthOf, onPaceLeft, percentLeft, type Health } from "aliax-core/shared/health";
 
-export { healthOf, onPaceLeft, percentLeft, type Health };
+export { cycleMs, healthOf, onPaceLeft, percentLeft, type Health };
 
 export const displayName = (p: ProfileView): string => p.nickname ?? p.email ?? p.name;
 
@@ -34,6 +34,10 @@ export function untilLabel(resetsAt: number, now: number): string {
   if (hours > 0) return minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`;
   return `${minutes}m`;
 }
+
+/** The refill moment in full: "Wed 5:30 PM". */
+export const resetLabel = (at: number): string =>
+  new Date(at).toLocaleString(undefined, { weekday: "short", hour: "numeric", minute: "2-digit" });
 
 /** The reset moment, as short as the distance allows: "5:30 PM", "Wed 5:30 PM", "Aug 22". */
 export function resetPoint(at: number, now: number): string {

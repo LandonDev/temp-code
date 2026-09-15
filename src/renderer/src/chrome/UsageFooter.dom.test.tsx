@@ -37,7 +37,7 @@ function snapshot(): AccountsSnapshot {
     owner: 'aliax',
     profiles: [profile('a@x.com', { active: true, nickname: 'Main' }), profile('b@x.com'), profile('c@x.com'), profile('d@x.com')],
     reports: [
-      report('a@x.com', 30, 60),
+      report('a@x.com', 30, 60, { plan: { name: 'Max 20x', monthlyUsd: 200 } }),
       report('b@x.com', 10, 20),
       report('c@x.com', 100, 50),
       report('d@x.com', 0, 0, { expired: true })
@@ -125,6 +125,15 @@ describe('UsageFooter', () => {
       expect.stringContaining('sign in again in Aliax')
     ])
     expect((rows[0] as HTMLButtonElement).disabled).toBe(true)
+    // Each row carries Aliax's cells: exact percent left, and when the window refills.
+    expect(rows[0].textContent).toContain('Max 20x · $200/mo')
+    const b = rows[1]
+    expect(b.querySelector('[data-window="5h"]')?.textContent).toBe('5h90%')
+    expect(b.querySelector('[data-cell="5h"]')?.textContent).toContain('in 2h 30m')
+    expect(b.querySelector('[data-window="Weekly"]')?.textContent).toBe('Weekly80%')
+    expect(b.querySelectorAll('[data-window="5h"] [role="progressbar"]')).toHaveLength(1)
+    const listbox = screen.getByRole('listbox')
+    expect(parseInt(listbox.style.width, 10)).toBeGreaterThanOrEqual(560)
     await probe!.act(async () => {
       fireEvent.click(rows[1])
       await flush()
