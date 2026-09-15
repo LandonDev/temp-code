@@ -1,3 +1,4 @@
+import { invoke } from "./native";
 import { IS_MAC } from "./platform";
 
 const THEME_HUE_KEY = "monocode.themeHue";
@@ -6,6 +7,7 @@ const OPACITY_KEY = "monocode.sidebarOpacity";
 const OPEN_KEY = "monocode.sidebarOpen";
 const PROJECT_RAIL_OPEN_KEY = "monocode.projectRailOpen";
 const BODY_KEY = "monocode.bodyGlass";
+const GLASS_KEY = "monocode.glass";
 const SCHEME_KEY = "monocode.colorScheme";
 const SIDEBAR_TAB_ORDER_KEY = "monocode.sidebarTabOrder";
 const PROJECT_RAIL_WIDTH_KEY = "monocode.projectRailWidth";
@@ -70,7 +72,12 @@ export const PROJECT_RAIL_WIDTH_MIN = 180;
 export const PROJECT_RAIL_WIDTH_MAX = 360;
 export const PROJECT_RAIL_WIDTH_DEFAULT = 200;
 
-export const BODY_GLASS_DEFAULT = true;
+export const BODY_GLASS_DEFAULT = false;
+
+export const GLASS_DEFAULT = true;
+
+/** Fired on `window` whenever the effective glass state flips (detail: boolean). */
+export const GLASS_CHANGE_EVENT = "monocode:glasschange";
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
@@ -169,6 +176,13 @@ export function initAppearance() {
   watchSystemColorScheme();
   applySidebarOpacity(loadSidebarOpacity());
   applyBodyGlass(loadBodyGlass());
+  // The window itself stays opaque until the first paint: main.tsx calls
+  // syncWindowGlass() when it dismisses the boot splash.
+  applyGlassClass(effectiveGlass(loadGlass()));
+  watchReducedTransparency();
+  window.addEventListener(SCHEME_CHANGE_EVENT, () => {
+    if (windowGlassSynced && !isGlassOn()) syncWindowGlass();
+  });
 }
 
 function isThemePreference(value: unknown): value is ThemePreference {
@@ -247,6 +261,84 @@ export function applySidebarOpacity(value: number) {
   const next = clamp(value, SIDEBAR_OPACITY_MIN, SIDEBAR_OPACITY_MAX);
   document.documentElement.style.setProperty("--sidebar-opacity", String(next));
   return next;
+}
+
+export function loadGlass(): boolean {
+  return readFlag(GLASS_KEY) ?? GLASS_DEFAULT;
+}
+
+export function saveGlass(value: boolean) {
+  writeFlag(GLASS_KEY, value);
+}
+
+/** Toggles the translucent chrome and the window's vibrancy together. */
+export function applyGlass(value: boolean) {
+  applyGlassClass(effectiveGlass(value));
+  syncWindowGlass(value);
+  return value;
+}
+
+/** True when the sidebar chrome shows the desktop through: the setting is on
+ *  and the OS is not asking for reduced transparency. */
+export function isGlassOn(): boolean {
+  return effectiveGlass(loadGlass());
+}
+
+let windowGlassSynced = false;
+
+/** Applies or removes the window's vibrancy to match the effective glass
+ *  state. Call once after the first paint, then on every flip. */
+export function syncWindowGlass(setting = loadGlass()) {
+  windowGlassSynced = true;
+  if (!IS_MAC) return;
+  if (effectiveGlass(setting)) {
+    void invoke("enable_window_glass");
+  } else {
+    void invoke("disable_window_glass", { color: themeBackgroundHex() });
+  }
+}
+
+function reducedTransparencyQuery(): MediaQueryList | null {
+  return typeof window.matchMedia === "function"
+    ? window.matchMedia("(prefers-reduced-transparency: reduce)")
+    : null;
+}
+
+function effectiveGlass(setting: boolean): boolean {
+  return setting && !reducedTransparencyQuery()?.matches;
+}
+
+function applyGlassClass(on: boolean) {
+  document.documentElement.classList.toggle("glass", on);
+  window.dispatchEvent(new CustomEvent<boolean>(GLASS_CHANGE_EVENT, { detail: on }));
+}
+
+function watchReducedTransparency() {
+  reducedTransparencyQuery()?.addEventListener("change", () => {
+    applyGlassClass(effectiveGlass(loadGlass()));
+    if (windowGlassSynced) syncWindowGlass();
+  });
+}
+
+/** The theme's base background as a hex colour, for the opaque window. */
+function themeBackgroundHex(): string {
+  const style = getComputedStyle(document.documentElement);
+  const hue = Number.parseFloat(style.getPropertyValue("--theme-hue")) || 0;
+  const sat =
+    (Number.parseFloat(style.getPropertyValue("--theme-saturation")) || 0) /
+    100;
+  const light =
+    (Number.parseFloat(style.getPropertyValue("--background-lightness")) ||
+      9) / 100;
+  const k = (n: number) => (n + hue / 30) % 12;
+  const a = sat * Math.min(light, 1 - light);
+  const channel = (n: number) =>
+    Math.round(
+      255 * (light - a * Math.max(-1, Math.min(k(n) - 3, 9 - k(n), 1))),
+    )
+      .toString(16)
+      .padStart(2, "0");
+  return `#${channel(0)}${channel(8)}${channel(4)}`;
 }
 
 export function loadBodyGlass(): boolean {

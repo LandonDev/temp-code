@@ -172,10 +172,14 @@ html:not(.is-mac) ::-webkit-scrollbar-corner {
   background: transparent;
 }
 
-html.is-mac,
-html.is-mac body,
-html.is-mac #root {
-  background: var(--color-background-base);
+/* Glass: `html.glass` is set by lib/appearance.ts while the Glass setting is
+ * on and the OS is not asking for reduced transparency; the window's
+ * vibrancy follows the same flag. Only the sidebar chrome lets the desktop
+ * through; the content pane stays opaque unless "Main pane glass" is on. */
+html.is-mac.glass,
+html.is-mac.glass body,
+html.is-mac.glass #root {
+  background: transparent;
 }
 
 .sidebar-glass {
@@ -186,7 +190,7 @@ html.theme-light .sidebar-glass {
   background: color-mix(in srgb, var(--color-background-base) 93%, black 7%);
 }
 
-html.is-mac .sidebar-glass {
+html.is-mac.glass .sidebar-glass {
   background: hsl(
     var(--theme-hue) var(--theme-saturation) var(--background-lightness) /
       var(--sidebar-opacity)
@@ -224,7 +228,7 @@ html.is-mac .sidebar-glass {
 }
 
 
-html.is-mac.glass-body .body-glass {
+html.is-mac.glass.glass-body .body-glass {
   background: color-mix(
     in srgb,
     var(--color-background-base) calc(var(--sidebar-opacity) * 100%),
@@ -271,6 +275,19 @@ html.is-mac.glass-body .body-glass {
 .glass-surface--xl {
   backdrop-filter: blur(24px);
   -webkit-backdrop-filter: blur(24px);
+}
+
+/* Solid chrome when the OS asks for it: no blur anywhere, and the tinted
+ * surfaces fall back to the theme background. */
+@media (prefers-reduced-transparency: reduce) {
+  .glass-surface,
+  .glass-surface--xs,
+  .glass-surface--sm,
+  .glass-surface--md,
+  .glass-surface--xl {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
 }
 
 textarea,

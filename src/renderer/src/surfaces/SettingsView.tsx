@@ -19,12 +19,15 @@ import { WindowControls } from "../chrome/WindowControls";
 import { useLockOverscroll } from "../hooks/useLockOverscroll";
 import {
   applyBodyGlass,
+  applyGlass,
   applyThemePreference,
   applySidebarOpacity,
   applyThemeTint,
   BODY_GLASS_DEFAULT,
+  GLASS_DEFAULT,
   THEME_PREFERENCE_DEFAULT,
   loadBodyGlass,
+  loadGlass,
   loadThemePreference,
   loadSidebarLayout,
   loadSidebarOpacity,
@@ -34,6 +37,7 @@ import {
   loadTranscriptZen,
   loadTranscriptAnchor,
   saveBodyGlass,
+  saveGlass,
   saveThemePreference,
   saveSidebarLayout,
   saveSidebarOpacity,
@@ -762,6 +766,7 @@ function useAppearanceSettings() {
   const [themeHue, setThemeHue] = useState(loadThemeHue);
   const [themeSaturation, setThemeSaturation] = useState(loadThemeSaturation);
   const [bodyGlass, setBodyGlass] = useState(loadBodyGlass);
+  const [glass, setGlass] = useState(loadGlass);
 
   const onThemePreference = useCallback((next: ThemePreference) => {
     applyThemePreference(next);
@@ -789,20 +794,29 @@ function useAppearanceSettings() {
     setBodyGlass(next);
   }, []);
 
+  const onGlass = useCallback((next: boolean) => {
+    applyGlass(next);
+    saveGlass(next);
+    setGlass(next);
+  }, []);
+
   const restoreDefaults = useCallback(() => {
     onThemePreference(THEME_PREFERENCE_DEFAULT);
+    onGlass(GLASS_DEFAULT);
     onOpacity(Math.round(SIDEBAR_OPACITY_DEFAULT * 100));
     onTint(THEME_HUE_DEFAULT, THEME_SATURATION_DEFAULT);
     onBodyGlass(BODY_GLASS_DEFAULT);
-  }, [onBodyGlass, onThemePreference, onOpacity, onTint]);
+  }, [onBodyGlass, onGlass, onThemePreference, onOpacity, onTint]);
 
   return {
     themePreference,
+    glass,
     opacity,
     themeHue,
     themeSaturation,
     bodyGlass,
     onThemePreference,
+    onGlass,
     onOpacity,
     onTint,
     onBodyGlass,
@@ -829,6 +843,12 @@ function AppearancePage({ appearance }: { appearance: AppearanceSettings }) {
           ]}
           onChange={appearance.onThemePreference}
         />
+      </Row>
+      <Row
+        label="Glass"
+        description="Let the desktop show through the sidebar and the project rail."
+      >
+        <Toggle label="Glass" on={appearance.glass} onChange={appearance.onGlass} />
       </Row>
       <Row
         label="Sidebar opacity"
