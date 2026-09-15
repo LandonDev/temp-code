@@ -1,146 +1,62 @@
 import { RefreshCw } from "./icons";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
+import type { UsageWindow } from "aliax-core/shared/types";
+import { AccountsPopover, Bar } from "./AccountsPopover";
 import { HarnessIcon } from "./HarnessIcon";
 import { Popover } from "./Popover";
 import {
-  fetchClaudeRateLimits,
-  fetchCodexRateLimits,
-} from "../lib/rateLimitsFetch";
-import {
-  clampUsedPercent,
-  fetchingRateLimits,
-  formatRateLimitWindowChipLabel,
-  formatUsagePercent,
-  idleRateLimits,
-  RATE_LIMIT_POLL_MS,
-  rateLimitWindowTooltip,
-  shouldFetchProvider,
-  type ProviderRateLimits,
-  type RateLimitProvider,
-  type RateLimitWindow,
-} from "../lib/rateLimits";
+  displayName,
+  othersWithRoom,
+  percentLeft,
+  reportOf,
+  resetPoint,
+  toneFor,
+  untilLabel,
+  useNow,
+  windowLabel,
+} from "../lib/accounts";
 import { HARNESS_LABEL, HARNESS_TITLE, type HarnessId } from "../lib/session";
 import {
   runningTerminalChipLabel,
   type RunningTerminal,
 } from "../lib/terminalTab";
-
-const CLOCK_MS = 30_000;
-
-export type UsageFooterSession = {
-  harness: HarnessId;
-};
+import { accountsStore, useAccounts } from "../stores/accounts";
+import { isAccountProvider, type AccountProvider, type ProviderAccounts } from "@server/shared/accounts";
 
 export function UsageFooter({
-  providers,
-  session,
+  harness,
   terminals = [],
   terminalOpen = false,
   onToggleTerminal,
 }: {
-  providers: RateLimitProvider[];
-  session?: UsageFooterSession;
+  /** The active thread's harness; accounts show for claude, codex and cursor. */
+  harness?: HarnessId;
   terminals?: RunningTerminal[];
   terminalOpen?: boolean;
   onToggleTerminal?: (fileId: string) => void;
 }) {
-  const wantClaude = providers.includes("claude");
-  const wantCodex = providers.includes("codex");
-  const [claude, setClaude] = useState<ProviderRateLimits>(() =>
-    idleRateLimits("claude"),
-  );
-  const [codex, setCodex] = useState<ProviderRateLimits>(() =>
-    idleRateLimits("codex"),
-  );
-  const [now, setNow] = useState(() => Date.now());
-  const [refreshing, setRefreshing] = useState(false);
-  const inflight = useRef<Promise<void> | null>(null);
-  const claudeRef = useRef(claude);
-  const codexRef = useRef(codex);
-  claudeRef.current = claude;
-  codexRef.current = codex;
-
-  const refresh = useCallback((force = false) => {
-    if (inflight.current) return inflight.current;
-    const visible = document.visibilityState === "visible";
-    const fetchClaude =
-      wantClaude &&
-      shouldFetchProvider(claudeRef.current, { force, visible });
-    const fetchCodex =
-      wantCodex &&
-      shouldFetchProvider(codexRef.current, { force, visible });
-    if (!fetchClaude && !fetchCodex) return;
-    if (force) setRefreshing(true);
-    const jobs: Promise<void>[] = [];
-    if (fetchClaude) {
-      setClaude((current) => fetchingRateLimits("claude", current));
-      jobs.push(
-        fetchClaudeRateLimits().then((value) => {
-          setClaude(value);
-        }),
-      );
-    }
-    if (fetchCodex) {
-      setCodex((current) => fetchingRateLimits("codex", current));
-      jobs.push(
-        fetchCodexRateLimits().then((value) => {
-          setCodex(value);
-        }),
-      );
-    }
-    const run = Promise.allSettled(jobs)
-      .then(() => undefined)
-      .finally(() => {
-        inflight.current = null;
-        setRefreshing(false);
-      });
-    inflight.current = run;
-    return run;
-  }, [wantClaude, wantCodex]);
-
-  useEffect(() => {
-    void refresh();
-    const poll = window.setInterval(() => void refresh(), RATE_LIMIT_POLL_MS);
-    const onVisible = () => {
-      if (document.visibilityState === "visible") void refresh();
-    };
-    document.addEventListener("visibilitychange", onVisible);
-    return () => {
-      window.clearInterval(poll);
-      document.removeEventListener("visibilitychange", onVisible);
-    };
-  }, [refresh]);
-
-  useEffect(() => {
-    const timer = window.setInterval(() => setNow(Date.now()), CLOCK_MS);
-    return () => window.clearInterval(timer);
-  }, []);
-
-  const showUsage = wantClaude || wantCodex;
+  const { snapshot, loaded, busy } = useAccounts();
+  const now = useNow();
+  const provider = harness && isAccountProvider(harness) ? harness : null;
+  const accounts = provider ? snapshot.providers[provider] : null;
   const showTerminals = terminals.length > 0;
-  const showRight = showUsage || showTerminals;
-  const ariaLabel = showUsage
-    ? "Provider usage"
-    : showTerminals
-      ? "Terminals"
-      : session
-        ? "Session"
-        : undefined;
+  const showRight = provider !== null || showTerminals;
 
   return (
     <footer
-      aria-label={ariaLabel}
-      className="flex h-7 shrink-0 items-center gap-3 overflow-x-auto border-t border-content/10 px-3 text-[11px] text-content/50"
+      aria-label={provider ? "Provider usage" : showTerminals ? "Terminals" : harness ? "Session" : undefined}
+      className="flex h-10 shrink-0 items-center gap-4 overflow-x-auto border-t border-content/10 px-3 text-[11px] text-content/50"
     >
-      {showUsage ? (
-        <>
-          {wantClaude ? <ProviderChip limits={claude} now={now} /> : null}
-          {wantCodex && codex.status !== "unavailable" ? (
-            <ProviderChip limits={codex} now={now} />
-          ) : null}
-        </>
-      ) : session ? (
-        <SessionChip session={session} />
+      {provider && accounts ? (
+        <AccountCells
+          provider={provider}
+          accounts={accounts}
+          loaded={loaded}
+          busy={busy === provider}
+          now={now}
+        />
+      ) : harness ? (
+        <SessionChip harness={harness} />
       ) : null}
       {showRight ? (
         <div className="ml-auto flex shrink-0 items-center gap-2">
@@ -151,17 +67,17 @@ export function UsageFooter({
               onToggle={onToggleTerminal}
             />
           ) : null}
-          {showUsage ? (
+          {provider ? (
             <button
               type="button"
               className="pressable grid size-6 shrink-0 place-items-center rounded-md text-content/40 hover:bg-content/10 hover:text-content disabled:opacity-40"
               aria-label="Refresh usage"
               title="Refresh usage"
-              disabled={refreshing}
-              onClick={() => void refresh(true)}
+              disabled={busy !== null}
+              onClick={() => void accountsStore.refresh(provider)}
             >
               <RefreshCw
-                className={`size-3.5 ${refreshing ? "motion-safe:animate-spin" : ""}`}
+                className={`size-3.5 ${busy === provider ? "motion-safe:animate-spin" : ""}`}
                 strokeWidth={1.75}
                 aria-hidden
               />
@@ -170,6 +86,111 @@ export function UsageFooter({
         </div>
       ) : null}
     </footer>
+  );
+}
+
+/**
+ * The pinned account and one cell per usage window. The name opens the
+ * account list for Claude and Codex; Cursor has no switch, so it stays text.
+ */
+function AccountCells({
+  provider,
+  accounts,
+  loaded,
+  busy,
+  now,
+}: {
+  provider: AccountProvider;
+  accounts: ProviderAccounts;
+  loaded: boolean;
+  busy: boolean;
+  now: number;
+}) {
+  const anchor = useRef<HTMLButtonElement>(null);
+  const [open, setOpen] = useState(false);
+  const pinned = accounts.profiles.find((p) => p.name === accounts.pinned) ?? null;
+  const report = reportOf(accounts.reports, accounts.pinned);
+  const switchable = provider !== "cursor" && accounts.profiles.length > 0;
+  const name = pinned ? displayName(pinned) : null;
+  const nameClass = "inline-flex h-6 min-w-0 max-w-[14rem] items-center gap-1.5 whitespace-nowrap rounded-md px-1 -mx-1";
+
+  return (
+    <>
+      {switchable ? (
+        <button
+          ref={anchor}
+          type="button"
+          className={`pressable ${nameClass} hover:bg-content/5 hover:text-content`}
+          aria-haspopup="listbox"
+          aria-expanded={open}
+          title={HARNESS_TITLE[provider]}
+          onClick={() => setOpen((v) => !v)}
+        >
+          <HarnessIcon harness={provider} className="size-3.5 shrink-0" />
+          <span className="truncate text-content/70">{name ?? "no account"}</span>
+        </button>
+      ) : (
+        <span className={nameClass} title={HARNESS_TITLE[provider]}>
+          <HarnessIcon harness={provider} className="size-3.5 shrink-0" />
+          <span className="truncate text-content/70">{name ?? HARNESS_LABEL[provider]}</span>
+        </span>
+      )}
+      {!loaded ? (
+        <span className="motion-safe:animate-pulse text-content/40">···</span>
+      ) : report?.expired ? (
+        <span className="text-content/40">sign in again in Aliax</span>
+      ) : report ? (
+        report.windows.map((w) => (
+          <WindowCell
+            key={w.label}
+            w={w}
+            now={now}
+            others={othersWithRoom(accounts.reports, accounts.pinned, w.label)}
+          />
+        ))
+      ) : (
+        <span className="text-content/40" title={accounts.note}>
+          {accounts.note ?? "—"}
+        </span>
+      )}
+      {open && switchable ? (
+        <AccountsPopover
+          anchor={anchor}
+          provider={provider}
+          accounts={accounts}
+          busy={busy}
+          now={now}
+          onSwitch={(p, n) => {
+            void accountsStore.switch(p, n).then((r) => {
+              if (r.ok) setOpen(false);
+            });
+          }}
+          onDismiss={() => setOpen(false)}
+        />
+      ) : null}
+    </>
+  );
+}
+
+function WindowCell({ w, now, others }: { w: UsageWindow; now: number; others: number }) {
+  const left = Math.round(percentLeft(w));
+  const sub = [
+    w.resetsAt ? `resets in ${untilLabel(w.resetsAt, now)}` : null,
+    others > 0 ? `${others} more with room` : null,
+  ].filter(Boolean).join(" · ");
+  return (
+    <span
+      data-window={w.label}
+      className="flex min-w-[7rem] shrink-0 flex-col gap-1 whitespace-nowrap"
+      title={w.resetsAt ? `${w.label} refills ${resetPoint(w.resetsAt, now)}` : w.label}
+    >
+      <span className="flex items-baseline justify-between leading-none">
+        <span>{windowLabel(w.label)}</span>
+        <span className={`tabular-nums ${toneFor(w, now)}`}>{left}%</span>
+      </span>
+      <Bar w={w} now={now} height="h-1.5" />
+      {sub ? <span className="text-[10px] leading-none text-content/40">{sub}</span> : null}
+    </span>
   );
 }
 
@@ -183,18 +204,17 @@ function TerminalLiveMark() {
   );
 }
 
-function SessionChip({ session }: { session: UsageFooterSession }) {
+function SessionChip({ harness }: { harness: HarnessId }) {
   return (
     <span
       className="inline-flex min-w-0 items-center gap-1.5 whitespace-nowrap"
-      title={HARNESS_TITLE[session.harness]}
+      title={HARNESS_TITLE[harness]}
     >
-      <HarnessIcon harness={session.harness} className="size-3.5 shrink-0" />
-      <span>{HARNESS_LABEL[session.harness]}</span>
+      <HarnessIcon harness={harness} className="size-3.5 shrink-0" />
+      <span>{HARNESS_LABEL[harness]}</span>
     </span>
   );
 }
-
 function RunningTerminalChip({
   terminals,
   open: panelOpen,
@@ -280,85 +300,4 @@ function RunningTerminalChip({
       ) : null}
     </>
   );
-}
-
-function ProviderChip({
-  limits,
-  now,
-}: {
-  limits: ProviderRateLimits;
-  now: number;
-}) {
-  const loading =
-    limits.status === "idle" ||
-    (limits.status === "fetching" && !limits.session && !limits.weekly);
-  const disconnected = limits.status === "unavailable";
-  const windows = [
-    limits.session ? { key: "session", window: limits.session } : null,
-    limits.weekly ? { key: "weekly", window: limits.weekly } : null,
-  ].filter((entry): entry is { key: string; window: RateLimitWindow } => {
-    return entry != null;
-  });
-  const tightest = windows.reduce<RateLimitWindow | null>((best, entry) => {
-    if (!best || entry.window.usedPercent > best.usedPercent) {
-      return entry.window;
-    }
-    return best;
-  }, null);
-  const tooltip = windows
-    .map((entry) => rateLimitWindowTooltip(entry.window, now))
-    .join(" · ");
-
-  return (
-    <span
-      className="inline-flex min-w-0 items-center gap-1.5 whitespace-nowrap"
-      title={
-        tooltip ||
-        limits.error ||
-        (disconnected
-          ? "Not connected"
-          : loading
-            ? "Loading usage…"
-            : undefined)
-      }
-    >
-      <HarnessIcon harness={limits.provider} className="size-3.5 shrink-0" />
-      {loading ? (
-        <span className="motion-safe:animate-pulse text-content/40">···</span>
-      ) : disconnected ? (
-        <span className="text-content/40">not connected</span>
-      ) : windows.length === 0 ? (
-        <span className="text-content/40">{emptyUsageLabel(limits)}</span>
-      ) : (
-        <>
-          <span className={`flex min-w-0 items-center gap-1 tabular-nums ${usageTone(tightest)}`}>
-            {windows.map((entry, index) => (
-              <span key={entry.key} className="inline-flex items-center gap-1">
-                {index > 0 ? <span className="text-content/40">·</span> : null}
-                <span>
-                  {formatUsagePercent(entry.window.usedPercent)}{" "}
-                  {formatRateLimitWindowChipLabel(entry.window, now)}
-                </span>
-              </span>
-            ))}
-          </span>
-        </>
-      )}
-    </span>
-  );
-}
-
-/** The tightest window colours the whole readout once it nears its cap. */
-function usageTone(tightest: RateLimitWindow | null): string {
-  const pct = tightest ? clampUsedPercent(tightest.usedPercent) : 0;
-  if (pct >= 90) return "text-danger";
-  if (pct >= 80) return "text-warning";
-  return "";
-}
-
-function emptyUsageLabel(limits: ProviderRateLimits): string {
-  if (limits.status !== "error") return "—";
-  const text = limits.error?.toLowerCase() ?? "";
-  if (text.includes("expired") || text.includes("sign-in")) return "expired";
-  return "—";
 }

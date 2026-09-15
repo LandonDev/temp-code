@@ -55,12 +55,19 @@ const searchSchema = z.object({
   ),
   truncated: z.boolean()
 })
-const usageSchema = z
+const providerAccountsSchema = z
   .object({
-    status: z.enum(['ok', 'error', 'unavailable']),
-    httpStatus: z.number().nullable(),
-    body: z.string().nullable(),
-    error: z.string().nullable()
+    pinned: z.string().nullable(),
+    profiles: z.array(z.object({ name: z.string() }).passthrough()),
+    reports: z.array(z.object({ profileName: z.string(), windows: z.array(z.unknown()) }).passthrough()),
+    owner: z.enum(['aliax', 'temp-code']).nullable(),
+    note: z.string().optional()
+  })
+  .strict()
+const accountsSchema = z
+  .object({
+    updatedAt: z.number(),
+    providers: z.object({ claude: providerAccountsSchema, codex: providerAccountsSchema, cursor: providerAccountsSchema }).strict()
   })
   .strict()
 
@@ -263,12 +270,18 @@ try {
     )
   console.log(`REAL  text.generate ${JSON.stringify(text)}`)
   pass('text.generate real call result shape')
-  const usage = usageSchema.parse(await client.request('rateLimits.claudeUsage'))
-  // Report response shape/status without copying account data or credentials.
+  const accountsSnap = accountsSchema.parse(await client.request('accounts.list'))
+  // Report shape and counts without copying account names or credentials.
   console.log(
-    `REAL  rateLimits.claudeUsage ${JSON.stringify({ ...usage, body: usage.body === null ? null : `<string: ${Buffer.byteLength(usage.body)} bytes>` })}`
+    `REAL  accounts.list ${JSON.stringify(Object.fromEntries(Object.entries(accountsSnap.providers).map(([k, v]) => [k, { pinned: v.pinned !== null, profiles: v.profiles.length, reports: v.reports.length, owner: v.owner }])))}`
   )
-  pass('rateLimits.claudeUsage real call result shape')
+  pass('accounts.list real call result shape')
+  const pinnedClaude = accountsSnap.providers.claude.pinned
+  if (pinnedClaude !== null) {
+    const rejected = await client.request('accounts.switch', { provider: 'claude', name: pinnedClaude }) as { ok: boolean }
+    assert.equal(rejected.ok, false)
+    pass('accounts.switch to the pinned name is rejected')
+  }
   await Promise.all(clients.map((c) => c.close()))
   clients.length = 0
   await server.close()

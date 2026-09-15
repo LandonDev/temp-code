@@ -3,7 +3,7 @@ import type { Store } from './db'
 import type { SessionRegistry } from './sessions'
 import type { Notes } from './notes'
 import type { ProjectLogos } from './projectLogos'
-import type { ClaudeUsage, CodexUsage } from './rateLimits'
+import type { AccountsService } from './accounts'
 import { searchProject } from './search'
 import { generateText } from './drivers/title'
 
@@ -12,8 +12,7 @@ interface Context {
   registry: SessionRegistry
   notes: Notes
   logos: ProjectLogos
-  usage: ClaudeUsage
-  codexUsage: CodexUsage
+  accounts: AccountsService
 }
 export async function handleM3a(
   req: ClientRequest,
@@ -52,10 +51,12 @@ export async function handleM3a(
     case 'projectLogo.remove':
       await ctx.logos.remove(req.params.projectPath)
       return done()
-    case 'rateLimits.claudeUsage':
-      return done(await ctx.usage.fetch())
-    case 'rateLimits.codexUsage':
-      return done(await ctx.codexUsage.fetch())
+    case 'accounts.list':
+      return done(await ctx.accounts.list())
+    case 'accounts.switch':
+      return done(await ctx.accounts.switch(req.params.provider, req.params.name))
+    case 'accounts.refresh':
+      return done(await ctx.accounts.refresh(req.params.provider))
     default:
       return { handled: false }
   }

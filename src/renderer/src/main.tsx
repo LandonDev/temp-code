@@ -14,6 +14,7 @@ import { handleQuitRequested, loadBootWorkspace, persistLiveWorkspace } from "./
 import { consumeInstalledUpdate } from "./lib/updateNotice";
 import { bootstrapWorkspace } from "./stores/bootstrap";
 import { installSubscriptions } from "./stores/subscriptions";
+import { accountsStore } from "./stores/accounts";
 import { warmRecentTabsAtBoot } from "./lib/sessionPrefetch";
 import { updateStore } from "./lib/updateStore";
 import { initAppshots } from "./lib/appshots";
@@ -28,6 +29,7 @@ sessionStore.connect();
 workspaceStore.connect();
 rulesStore.connect();
 slashCommandStore.connect();
+accountsStore.connect();
 updateStore.start();
 initAppshots();
 

@@ -34,7 +34,7 @@ function appshotHelper(): Plugin {
 
 export default defineConfig({
   main: {
-    plugins: [externalizeDepsPlugin(), appshotHelper()],
+    plugins: [externalizeDepsPlugin({ exclude: ['aliax-core'] }), appshotHelper()],
     resolve: {
       alias: {
         '@shared': resolve('src/shared')

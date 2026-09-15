@@ -3,6 +3,7 @@ import { homedir } from 'os'
 import { join } from 'path'
 import { copyFileSync, existsSync, mkdirSync } from 'fs'
 import { registerUpdates } from './update'
+import { configureAliax } from './aliax'
 import { registerAppshots } from './appshots'
 import { electronApp, optimizer } from '@electron-toolkit/utils'
 import { startServer, type RunningServer } from './server'
@@ -84,6 +85,7 @@ app.whenReady().then(async () => {
     }
   }
   registerAssetProtocol()
+  configureAliax()
   server = await startServer(join(app.getPath('userData'), 'temp-code.db'), {
     appPath: app.getAppPath()
   })

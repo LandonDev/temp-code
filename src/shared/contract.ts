@@ -777,6 +777,8 @@ export type ServerPush =
   | { push: 'session'; session: SessionMeta }
   | { push: 'queue'; sessionId: string; items: QueuedMessage[] }
   | { push: 'session-removed'; sessionIds: string[] }
+  // Aliax accounts: the whole snapshot, whenever it is rebuilt.
+  | { push: 'accounts'; snapshot: import('./accounts').AccountsSnapshot }
   // Watcher spine (M11): project-relative path, debounced ~100 ms.
   | { push: 'file-event'; projectId: string; path: string; kind: 'changed' | 'created' | 'deleted' }
   // Build rail: run state plus any new log lines (batched ~50 ms). A new

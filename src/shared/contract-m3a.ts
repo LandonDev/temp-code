@@ -1,5 +1,7 @@
 import { z } from 'zod'
 
+export const AccountProviderSchema = z.enum(['claude', 'codex', 'cursor'])
+
 export const NoteIdSchema = z.string().regex(/^[A-Za-z0-9_-]+$/, 'Invalid note id')
 export const NoteUpsertSchema = z.object({
   id: NoteIdSchema,
@@ -49,12 +51,6 @@ export interface SessionSearchResult {
 }
 export const WorkspaceSnapshotSchema = z.record(z.string(), z.json())
 export type WorkspaceSnapshot = z.infer<typeof WorkspaceSnapshotSchema>
-export interface ClaudeUsageFetch {
-  status: 'ok' | 'error' | 'unavailable'
-  httpStatus: number | null
-  body: string | null
-  error: string | null
-}
 export interface TextGenerateResult {
   text: string | null
 }
@@ -120,6 +116,15 @@ export const M3aRequestSchemas = [
     method: z.literal('projectLogo.remove'),
     params: z.object({ projectPath: z.string() })
   }),
-  z.object({ id: z.string(), method: z.literal('rateLimits.claudeUsage') }),
-  z.object({ id: z.string(), method: z.literal('rateLimits.codexUsage') })
+  z.object({ id: z.string(), method: z.literal('accounts.list') }),
+  z.object({
+    id: z.string(),
+    method: z.literal('accounts.switch'),
+    params: z.object({ provider: AccountProviderSchema, name: z.string().min(1) })
+  }),
+  z.object({
+    id: z.string(),
+    method: z.literal('accounts.refresh'),
+    params: z.object({ provider: AccountProviderSchema })
+  })
 ] as const
