@@ -1,5 +1,5 @@
 {
-  "n": 157,
-  "notes": "A working workspace names itself, no dot: the rail's busy-state chip — a pulsing dot that opened a popover — is gone; instead the row's own running thread (or the loudest one, +N more) sits as one indented line underneath, spinner and title, click to jump straight to it, no menu to open. Paused, needs-you and unread keep their chip and popover unchanged",
-  "ts": 1789502984916
+  "n": 158,
+  "notes": "The paused and errored banners span every workspace: Continue and Continue all now gather every paused or stopped-on-error thread across all projects, not just the one open, since resuming acts on a thread by id and needs no project switch first. Needs-you keeps its per-project scope",
+  "ts": 1789503238264
 }
