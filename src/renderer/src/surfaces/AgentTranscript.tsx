@@ -1348,6 +1348,9 @@ const TranscriptBlock = memo(function TranscriptBlock({
   );
 });
 
+/** The send-in entrance's length (index.css `bubble-send-in`). */
+const SEND_IN_MS = 320;
+
 function UserMessageBlock({
   block,
   layout,
@@ -1360,6 +1363,12 @@ function UserMessageBlock({
   const [expanded, setExpanded] = useState(false);
   const [overflows, setOverflows] = useState(false);
   const textRef = useRef<HTMLPreElement>(null);
+  // How far into its entrance this bubble is at mount; null once it is
+  // over (or was never this window's send). A negative delay resumes it.
+  const [entering, setEntering] = useState<number | null>(() => {
+    const age = block.born == null ? Infinity : Date.now() - block.born;
+    return age < SEND_IN_MS ? age : null;
+  });
   const card = block.secondOpinion;
   const note = block.noteCard;
   const text = card && card.kind !== "handoff" ? "" : block.text;
@@ -1390,8 +1399,13 @@ function UserMessageBlock({
           chat
             ? "w-fit max-w-xl rounded-xl"
             : "rounded-xl"
-        }`}
-        style={{ zIndex: stickyIndex }}
+        }${entering == null ? "" : " bubble-send-in"}`}
+        style={
+          entering == null
+            ? { zIndex: stickyIndex }
+            : { zIndex: stickyIndex, animationDelay: `${-entering}ms` }
+        }
+        onAnimationEnd={entering == null ? undefined : () => setEntering(null)}
         onClick={overflows ? toggle : undefined}
       >
         {text || block.attachments?.length ? (

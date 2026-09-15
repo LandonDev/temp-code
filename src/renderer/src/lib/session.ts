@@ -160,6 +160,10 @@ export type Block = {
   question?: QuestionMeta;
   /** Optimistic user turn the server has not echoed yet. */
   pending?: boolean;
+  /** When this window sent it (ms): the bubble plays its entrance from
+   *  here, so the echo's remount resumes mid-flight and a later remount
+   *  finds the entrance long over. Blocks loaded from the server have none. */
+  born?: number;
   /** An error row the user's own Stop produced: reads Stopped, never Failed. */
   stopped?: boolean;
   handoff?: HandoffMeta;
