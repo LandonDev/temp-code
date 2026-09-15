@@ -1,5 +1,5 @@
 {
-  "n": 132,
-  "notes": "Prod moves onto master: the IntelliJ engine spawns headless on both sites so an expired build no longer bounces a Java icon in the Dock, and CLAUDE.md drops the two-line split and the temporary no-dev-instances rule now that the user has confirmed the new shell's performance",
-  "ts": 1789440024561
+  "n": 133,
+  "notes": "The updater swaps the installed bundle atomically: copy beside it, two renames, then open — a swap script that dies mid rm -rf can no longer leave a half bundle macOS calls damaged",
+  "ts": 1789440647951
 }
