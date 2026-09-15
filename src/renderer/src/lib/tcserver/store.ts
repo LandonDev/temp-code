@@ -5,6 +5,7 @@ import { resolveModel } from "../models";
 import { client } from "./client";
 import { modeForPolicy } from "./access";
 import { emptyFold, foldEvent, foldOptimisticUser, type FoldState } from "./fold";
+import type { ContextUsage } from "../contextUsage";
 import { emptyThread } from "./todos";
 import type { EventRow, QueuedMessage, ServerPush, SessionMeta, SessionStatus } from "./types";
 
@@ -274,6 +275,22 @@ function sameTasks(a: SessionMeta["tasks"], b: SessionMeta["tasks"]): boolean {
 function sameGoal(a: SessionMeta["goal"], b: SessionMeta["goal"]): boolean {
   if (!a || !b) return !a && !b;
   return a.condition === b.condition && a.iterations === b.iterations && a.setAt === b.setAt;
+}
+
+/**
+ * The meta's reading wins over the fold's. The server keeps `context`
+ * events out of the log, so all the fold ever sees is a compaction's
+ * post-token count — the number a relaunch used to show as the level
+ * (4.4K on a thread that had long since refilled). The meta carries the
+ * last real reading, persisted on the row; the fold's only fills a
+ * thread that has none.
+ */
+function contextAfterFold(
+  current: ContextUsage | undefined,
+  folded: ContextUsage | undefined,
+): { context?: ContextUsage } {
+  const context = current ?? folded;
+  return context ? { context } : {};
 }
 
 function foldStateOf(entry: Entry): FoldState {
@@ -611,7 +628,7 @@ class SessionStore {
       ...entry.session,
       blocks: pending.length ? [...state.blocks, ...pending] : state.blocks,
       thread: state.thread,
-      ...(state.context ? { context: state.context } : {}),
+      ...contextAfterFold(entry.session.context, state.context),
     };
     this.settleHead(entry);
     this.bump();
@@ -707,7 +724,7 @@ class SessionStore {
       blocks: after.blocks,
       busy: after.busy,
       thread: after.thread,
-      ...(after.context ? { context: after.context } : {}),
+      ...contextAfterFold(entry.session.context, after.context),
     };
     return true;
   }

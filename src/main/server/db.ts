@@ -94,6 +94,8 @@ export function openDb(path: string): DatabaseSync {
     `ALTER TABLE sessions ADD COLUMN frozen_active_elapsed INTEGER`,
     `ALTER TABLE sessions ADD COLUMN retyped INTEGER NOT NULL DEFAULT 0`,
     `ALTER TABLE sessions ADD COLUMN thread_rules TEXT`,
+    `ALTER TABLE sessions ADD COLUMN context_tokens INTEGER`,
+    `ALTER TABLE sessions ADD COLUMN context_window INTEGER`,
     `ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0`
   ]) {
     try {
@@ -177,6 +179,8 @@ interface SessionRowRaw {
   paused_at: number | null
   frozen_active_elapsed: number | null
   thread_rules: string | null
+  context_tokens: number | null
+  context_window: number | null
   native_id: string | null
   created_at: number
   updated_at: number
@@ -205,6 +209,7 @@ function toMeta(r: SessionRowRaw): SessionMeta {
     pausedAt: r.paused_at,
     frozenActiveElapsed: r.frozen_active_elapsed,
     threadRules: parseThreadRules(r.thread_rules),
+    context: r.context_tokens == null ? null : { tokens: r.context_tokens, window: r.context_window },
     permission: r.permission as SessionMeta['permission'],
     nativeId: r.native_id,
     createdAt: r.created_at,
@@ -387,6 +392,18 @@ export class Store {
         id
       )
     return next
+  }
+
+  /** The last context reading off the harness stream, kept so a relaunch
+   *  shows the real level instead of whatever the log's last compaction
+   *  left. Its own statement: a reading is not an edit, so updated_at
+   *  stays put and the list keeps its order. */
+  setSessionContext(id: string, context: { tokens: number; window: number | null } | null): void {
+    this.stmt(`UPDATE sessions SET context_tokens = ?, context_window = ? WHERE id = ?`).run(
+      context?.tokens ?? null,
+      context?.window ?? null,
+      id
+    )
   }
 
   /** Thread type changed mid-conversation; the next send re-instructs.
