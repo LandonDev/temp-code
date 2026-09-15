@@ -241,16 +241,24 @@ async function apply(): Promise<void> {
     if (!built || !existsSync(built)) throw new Error('build produced no TempCode.app')
 
     // The swap has to outlive this process: a detached script waits for
-    // us to exit, replaces the installed app, and reopens it.
+    // us to exit, replaces the installed app, and reopens it. The copy
+    // lands beside the installed app and moves into place with two
+    // renames, so the bundle is always either the old app or the new one
+    // — a v96→v132 swap once died mid `rm -rf` and left a half bundle
+    // macOS reported as damaged. HUP/TERM are ignored for the same reason.
     setStatus({ phase: 'restarting', step: undefined, detail: undefined })
     const script = join(mkdtempSync(join(tmpdir(), 'tempcode-update-')), 'swap.sh')
     writeFileSync(
       script,
       `#!/bin/bash
+trap '' HUP TERM
 while kill -0 ${process.pid} 2>/dev/null; do sleep 0.3; done
-rm -rf "${APP_DEST}"
-ditto "${built}" "${APP_DEST}"
+rm -rf "${APP_DEST}.new" "${APP_DEST}.old"
+ditto "${built}" "${APP_DEST}.new" || exit 1
+mv "${APP_DEST}" "${APP_DEST}.old"
+mv "${APP_DEST}.new" "${APP_DEST}"
 open "${APP_DEST}"
+rm -rf "${APP_DEST}.old"
 `,
       { mode: 0o755 }
     )
