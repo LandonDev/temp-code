@@ -1,7 +1,7 @@
-import { AnimatePresence, LayoutGroup, MotionConfig, motion } from "motion/react";
+import { AnimatePresence, LayoutGroup, MotionConfig } from "motion/react";
 import { useId } from "react";
 import type { OpenFileFn } from "../../../lib/search";
-import { EASE_OUT } from "../../../lib/ease";
+import { Drawer } from "../../../chrome/Drawer";
 import { ChevronRight, Users } from "../../../chrome/icons";
 import { fleetCounts, isLiveStatus, useAgents, useMetaById } from "../../../lib/threads/agents";
 import { GLIDE_MAX_ROWS } from "../../../lib/listGlide";
@@ -16,10 +16,10 @@ const PANEL_W = 340;
  * The subagent panel on a thread's right edge: rows while open, a slim
  * tab with a status dot while folded. It opens itself while any child
  * works or waits on the user; a manual toggle wins until that state
- * flips. Nothing renders when the thread has no children.
- *
- * Row and detail share a layout id scoped to this mount, so two panes on
- * the same thread never morph into each other.
+ * flips. Nothing renders when the thread has no children. It is a push
+ * drawer: the shell widens from the 32px tab and the rows slide in at
+ * their final width. The layout group is scoped to this mount so rows in
+ * two panes on the same thread never glide into each other.
  */
 export function FleetPanel({
   sessionId,
@@ -42,54 +42,46 @@ export function FleetPanel({
   return (
     <MotionConfig reducedMotion="user">
       <LayoutGroup id={scope}>
-        <AnimatePresence initial={false}>
-          {open ? (
-            <motion.div
-              key="fleet"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0, transition: { duration: 0 } }}
-              transition={{ duration: 0.12, ease: EASE_OUT }}
-              style={{ width: PANEL_W }}
-              className="flex min-h-0 shrink-0 flex-col overflow-hidden border-l border-content/10"
+        <Drawer
+          open={open}
+          width={PANEL_W}
+          closedWidth={32}
+          className="border-l border-content/10"
+          closed={
+            <button
+              type="button"
+              onClick={() => fleet.setOpen(true)}
+              title="Subagents"
+              aria-label="Show subagents"
+              className="group flex h-full w-8 flex-col items-center gap-2 pt-4 transition-colors hover:bg-content/5"
             >
-              <PaneHeader label="Subagents" detail={String(agents.length)}>
-                <button
-                  type="button"
-                  onClick={() => fleet.setOpen(false)}
-                  aria-label="Hide subagents"
-                  className="pressable grid size-6 place-items-center rounded-md text-content/50 hover:bg-content/5 hover:text-content"
-                >
-                  <ChevronRight className="size-3.5" strokeWidth={1.75} />
-                </button>
-              </PaneHeader>
-              <div className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto p-2 pt-0">
-                {agents.map((agent) => (
-                  <AgentRow
-                    key={agent.id}
-                    agent={agent}
-                    now={now}
-                    glide={agents.length <= GLIDE_MAX_ROWS}
-                    hidden={agent.id === detailId}
-                    onOpen={() => fleet.setDetailId(agent.id)}
-                  />
-                ))}
-              </div>
-            </motion.div>
-          ) : null}
-        </AnimatePresence>
-        {!open ? (
-          <button
-            type="button"
-            onClick={() => fleet.setOpen(true)}
-            title="Subagents"
-            aria-label="Show subagents"
-            className="group flex w-8 shrink-0 flex-col items-center gap-2 border-l border-content/10 pt-4 transition-colors hover:bg-content/5"
-          >
-            <Users className="size-3.5 text-content/50 transition-colors group-hover:text-content" />
-            <StatusDot status={anyWaiting ? "waiting" : active ? "running" : "idle"} />
-          </button>
-        ) : null}
+              <Users className="size-3.5 text-content/50 transition-colors group-hover:text-content" />
+              <StatusDot status={anyWaiting ? "waiting" : active ? "running" : "idle"} />
+            </button>
+          }
+        >
+          <PaneHeader label="Subagents" detail={String(agents.length)}>
+            <button
+              type="button"
+              onClick={() => fleet.setOpen(false)}
+              aria-label="Hide subagents"
+              className="pressable grid size-6 place-items-center rounded-md text-content/50 hover:bg-content/5 hover:text-content"
+            >
+              <ChevronRight className="size-3.5" strokeWidth={1.75} />
+            </button>
+          </PaneHeader>
+          <div className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto p-2 pt-0">
+            {agents.map((agent) => (
+              <AgentRow
+                key={agent.id}
+                agent={agent}
+                now={now}
+                glide={agents.length <= GLIDE_MAX_ROWS}
+                onOpen={() => fleet.setDetailId(agent.id)}
+              />
+            ))}
+          </div>
+        </Drawer>
         <AnimatePresence>
           {detailId ? (
             <AgentDetail

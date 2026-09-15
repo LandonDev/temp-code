@@ -72,21 +72,17 @@ export function AgentStatsLine({ stats, className = "" }: { stats: FleetStats; c
 }
 
 /**
- * `hidden` while the detail is open: the row keeps its slot but yields the
- * shared `agent-${id}` layoutId, so the detail morphs out of and back into it.
- * `glide` lets the row animate reorders; parents pass it only while the
- * list is at or under GLIDE_MAX_ROWS.
+ * One subagent's row. `glide` lets the row animate reorders; parents pass
+ * it only while the list is at or under GLIDE_MAX_ROWS.
  */
 export function AgentRow({
   agent,
   now,
-  hidden = false,
   glide = false,
   onOpen,
 }: {
   agent: SessionMeta;
   now: number;
-  hidden?: boolean;
   glide?: boolean;
   onOpen: () => void;
 }) {
@@ -98,10 +94,9 @@ export function AgentRow({
     <motion.button
       type="button"
       layout={glide && !reduce}
-      layoutId={`agent-${agent.id}`}
       transition={{ ...SPRING_PANEL, opacity: ENTER.transition, y: ENTER.transition }}
       initial={reduce ? false : ENTER.initial}
-      animate={{ ...ENTER.animate, opacity: hidden ? 0 : 1 }}
+      animate={ENTER.animate}
       onClick={onOpen}
       className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left transition-colors hover:bg-content/5 active:bg-content/10"
     >

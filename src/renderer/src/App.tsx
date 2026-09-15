@@ -3515,7 +3515,7 @@ export default function App() {
               );
             })}
             <div
-              className="relative flex min-h-0 min-w-0 flex-row"
+              className="relative flex min-h-0 min-w-0 flex-row [contain:layout_style]"
               style={{ gridArea: "main" }}
             >
               {classicInbox ? (

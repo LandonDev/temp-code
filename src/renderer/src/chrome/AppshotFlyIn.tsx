@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { motion, useReducedMotion } from 'motion/react'
 import { EASE_DRAWER, EASE_OUT } from '../lib/ease'
 import { LAYER } from '../lib/layers'
@@ -89,7 +90,9 @@ function Flight({ flash }: { flash: AppshotFlash }) {
 
   if (done) return null
 
-  return (
+  // Portaled: the pane sits under columns that contain layout, which would
+  // box a fixed overlay into the pane.
+  return createPortal(
     <div className="pointer-events-none fixed inset-0" style={{ zIndex: LAYER.dialog }}>
       {reduce ? null : (
         <motion.div
@@ -132,6 +135,7 @@ function Flight({ flash }: { flash: AppshotFlash }) {
           }}
         />
       ) : null}
-    </div>
+    </div>,
+    document.body
   )
 }

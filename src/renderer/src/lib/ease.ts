@@ -64,6 +64,9 @@ export const EASE_DRAWER = [0.32, 0.72, 0, 1] as const;
 /** EASE_OUT as a CSS timing function, for keyframes and transitions. */
 export const EASE_OUT_CSS = "cubic-bezier(0.16, 1, 0.3, 1)";
 
+/** EASE_DRAWER as a CSS timing function, for the push panels' width transitions. */
+export const EASE_DRAWER_CSS = "cubic-bezier(0.32, 0.72, 0, 1)";
+
 /** The one entrance: fade up 4px over 150 ms. Spread onto a motion element. */
 export const ENTER = {
   initial: { opacity: 0, y: 4 },

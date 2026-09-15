@@ -1,7 +1,6 @@
 import { lazy, memo, Suspense } from "react";
-import { motion, useReducedMotion } from "motion/react";
+import { Drawer } from "../Drawer";
 import { useGitFileStatuses } from "../../hooks/useGitFileStatuses";
-import { EASE_OUT } from "../../lib/ease";
 import { useEditorState } from "../../lib/monaco/editorState";
 import { useBuild } from "../../lib/projectRailStore";
 import { setRailPanel, useRailPanel, type RailPanel } from "../../lib/railPanel";
@@ -47,41 +46,34 @@ type Props = {
 export const ProjectRail = memo(function ProjectRail({ cwd, selectedPath, onOpenFile, onOpenDiff }: Props) {
   const open = useRightRailOpen();
   const projectId = useProject((s) => s.selectedProjectId);
-  const reduce = useReducedMotion();
   const projects = useProjects();
   const project =
     (cwd && cwd !== "~" ? projectForCwd(cwd, projects) : undefined) ??
     projects.find((p) => p.id === projectId);
-  if (!open) return null;
-  // The drawer opens at full width at once; only its content fades in, and
-  // nothing animates on close (the width tween re-laid out the pane tree
-  // every frame).
+  // A push drawer: the shell widens while the body sits at its full width
+  // and slides in, so the pane tree sees a width change and the rail's own
+  // content never re-lays out. The body unmounts once the close has played.
   return (
-    <aside
-      style={{ width: WIDTH }}
-      className="flex h-full shrink-0 flex-col overflow-hidden border-l border-content/10 bg-background-base"
+    <Drawer
+      as="aside"
       aria-label="Project rail"
+      open={open}
+      width={WIDTH}
+      className="border-l border-content/10 bg-background-base"
     >
-      <motion.div
-        initial={reduce ? false : { opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ duration: 0.12, ease: EASE_OUT }}
-        className="flex h-full min-h-0 flex-col"
-      >
-        {project ? (
-          <RailBody
-            key={project.id}
-            projectId={project.id}
-            cwd={project.cwd}
-            selectedPath={selectedPath}
-            onOpenFile={onOpenFile}
-            onOpenDiff={onOpenDiff}
-          />
-        ) : (
-          <p className="px-3 py-2 text-[12px] text-content/50">No project</p>
-        )}
-      </motion.div>
-    </aside>
+      {project ? (
+        <RailBody
+          key={project.id}
+          projectId={project.id}
+          cwd={project.cwd}
+          selectedPath={selectedPath}
+          onOpenFile={onOpenFile}
+          onOpenDiff={onOpenDiff}
+        />
+      ) : (
+        <p className="px-3 py-2 text-[12px] text-content/50">No project</p>
+      )}
+    </Drawer>
   );
 });
 

@@ -1,4 +1,5 @@
 import { useEffect, useState, useSyncExternalStore } from 'react'
+import { createPortal } from 'react-dom'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { ChevronLeft, ChevronRight, X } from './icons'
 import { EASE_OUT, SPRING_PANEL } from '../lib/ease'
@@ -126,7 +127,9 @@ export function Lightbox() {
 
   if (!primary) return null
   const many = (snap?.items.length ?? 0) > 1
-  return (
+  // Portaled: it lives inside the composer, under columns that contain
+  // layout, and a fixed overlay there would be boxed into its column.
+  return createPortal(
     <AnimatePresence>
       {snap ? (
         <motion.div
@@ -188,6 +191,7 @@ export function Lightbox() {
           ) : null}
         </motion.div>
       ) : null}
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body
   )
 }

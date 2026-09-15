@@ -58,7 +58,7 @@ export function OrchestrationView(props: ThreadViewProps) {
     <MotionConfig reducedMotion="user">
       <LayoutGroup id={scope}>
         <div className="relative flex min-h-0 min-w-0 flex-1">
-          <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col [contain:layout_style]">
             <div className="min-h-0 flex-1 overflow-y-auto select-text">
               <div className="mx-auto w-full max-w-3xl px-6 py-5">
                 <FleetHeader goal={goal} agents={agents} />
@@ -69,7 +69,6 @@ export function OrchestrationView(props: ThreadViewProps) {
                       agent={agent}
                       now={now}
                       glide={agents.length <= GLIDE_MAX_ROWS}
-                      hidden={agent.id === detailId}
                       onOpen={() => fleet.setDetailId(agent.id)}
                     />
                   ))}
