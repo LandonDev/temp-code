@@ -36,6 +36,7 @@ import {
 import { APP_TOOLS, appToolsMcp } from '../apptools'
 import { expandSlashRefs } from '../slash'
 import { resolveClaude } from './binaries'
+import { endpointFor } from '../endpoint'
 
 // Dev override: a small window (e.g. 45_000 → compaction arms at ~12k)
 // makes a real compaction reachable in one short thread for UI work.
@@ -797,6 +798,9 @@ export const claudeDriver: HarnessDriver = {
     // install is newer, spawn that one instead (Settings → provider row
     // updates it in place); the bundled CLI stays the fallback.
     const claudeCli = await resolveClaude()
+    // Provider traffic goes through Aliax's shim or our own gateway, which
+    // swap in the pinned account's token and read the limit headers.
+    const endpoint = await endpointFor('claude')
 
     const options: Options = {
       abortController: abort,
@@ -806,7 +810,7 @@ export const claudeDriver: HarnessDriver = {
       // default). The task board, tab tallies and the orchestrator's
       // supervision all fold those tool calls, so a thread without them is
       // invisible — the CLI's own env override switches them back on.
-      env: { ...process.env, CLAUDE_CODE_ENABLE_TODO_TOOLS: '1' },
+      env: { ...process.env, CLAUDE_CODE_ENABLE_TODO_TOOLS: '1', ...(endpoint ? { ANTHROPIC_BASE_URL: endpoint } : {}) },
       // 1M rides the CLI's `[1m]` model suffix — the same lever as Claude
       // Code's own 1M picker: it sets the client-side window to 1M and the
       // CLI adds the API-side signaling itself. The `betas` Option is a

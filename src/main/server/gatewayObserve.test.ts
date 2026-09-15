@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { configure, pinProfile } from 'aliax-core'
-import { observeHooks } from './gatewayObserve'
+import { observeCodexSnapshot, observeHooks } from './gatewayObserve'
 
 const H = 'anthropic-ratelimit-unified'
 let dir = ''
@@ -76,5 +76,30 @@ describe('observeHooks', () => {
     expect(lines[0].headers['set-cookie']).toBeUndefined()
     expect(lines[0].body).toContain('session limit')
     expect(typeof lines[0].ts).toBe('number')
+  })
+})
+
+describe('observeCodexSnapshot', () => {
+  it('feeds the pinned Codex account from an app-server rate-limit snapshot and nudges', () => {
+    const { logDir, onObserved } = setup()
+    vi.useFakeTimers() // the shared cache persists at most every 5 s
+    observeHooks({ logDir, onObserved })
+    observeCodexSnapshot({ rateLimits: { primary: { usedPercent: 12, windowDurationMins: 300, resetsAt: 1786147200 } } })
+    expect(onObserved).not.toHaveBeenCalled() // no pin yet
+    pinProfile('codex', 'personal')
+    observeCodexSnapshot({
+      rateLimits: {
+        primary: { usedPercent: 12, windowDurationMins: 300, resetsAt: 1786147200 },
+        secondary: { usedPercent: 40, windowDurationMins: 10080 }
+      }
+    })
+    vi.advanceTimersByTime(5_000)
+    vi.useRealTimers()
+    const cache = JSON.parse(readFileSync(join(dir, 'aliax', 'usage-cache.json'), 'utf8'))
+    expect(cache['codex:personal'].report.windows).toEqual([
+      { label: '5h', usedPercent: 12, periodMs: 300 * 60_000, resetsAt: 1786147200_000 },
+      { label: 'week', usedPercent: 40, periodMs: 10080 * 60_000 }
+    ])
+    expect(onObserved).toHaveBeenCalledTimes(1)
   })
 })
