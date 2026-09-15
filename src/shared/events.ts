@@ -357,7 +357,8 @@ export interface SessionMeta {
   /** The active goal, folded from goal events; null/absent when none. */
   goal?: { condition: string; iterations: number; setAt: number } | null
   /** Live context footprint from the harness stream — current the moment
-   *  a reply lands, for every thread, selected or not. Server-memory. */
+   *  a reply lands, for every thread, selected or not. The last reading
+   *  is kept on the session row so a relaunch starts from it. */
   context?: { tokens: number; window: number | null } | null
   /** Stored-log fold: the latest failed turn has not been cleared or
    *  superseded by later conversation work. */

@@ -408,6 +408,40 @@ describe("M4 store fixes", () => {
   });
 });
 
+describe("context reading", () => {
+  const compacted = (seq: number): EventRow =>
+    row("s1", seq, { type: "compaction", phase: "done", trigger: "auto", preTokens: 180_000, postTokens: 4_400 });
+
+  it("the meta's persisted reading beats the log's last compaction", async () => {
+    link.metas = [meta({ context: { tokens: 120_000, window: 200_000 } })];
+    link.events.set("s1", [
+      row("s1", 1, { type: "user-text", text: "q" }),
+      compacted(2),
+      row("s1", 3, { type: "assistant-text", text: "a", delta: false, msgId: "m", blockIndex: 0 }),
+      row("s1", 4, { type: "turn-complete" }),
+    ]);
+    sessionStore.connect(link);
+    await sessionStore.ready();
+    expect(sessionStore.get("s1")?.context).toEqual({ used: 120_000, window: 200_000 });
+    await sessionStore.ensureComplete("s1");
+    expect(sessionStore.get("s1")?.context).toEqual({ used: 120_000, window: 200_000 });
+    // A live compaction is reported through the meta too; the fold's number does not jump the queue.
+    link.push({ push: "event", row: compacted(5) });
+    expect(sessionStore.get("s1")?.context).toEqual({ used: 120_000, window: 200_000 });
+    link.push({ push: "session", session: meta({ context: { tokens: 4_400, window: 200_000 } }) });
+    expect(sessionStore.get("s1")?.context).toEqual({ used: 4_400, window: 200_000 });
+  });
+
+  it("without a meta reading the fold's compaction count fills in", async () => {
+    link.metas = [meta()];
+    link.events.set("s1", [row("s1", 1, { type: "user-text", text: "q" }), compacted(2), row("s1", 3, { type: "turn-complete" })]);
+    sessionStore.connect(link);
+    await sessionStore.ready();
+    await sessionStore.ensureComplete("s1");
+    expect(sessionStore.get("s1")?.context).toEqual({ used: 4_400 });
+  });
+});
+
 describe("M4b projections", () => {
   it("keeps the id list and shells stable through event pushes and busy flips", async () => {
     link.metas = [meta({ title: "one" }), meta({ id: "s2", title: "two" })];

@@ -295,9 +295,10 @@ export class SessionRegistry {
    *  live event by event. A warm entry means append() owns that
    *  session's fold row. */
   private todoFolds = new Map<string, TodoFold>()
-  /** Live context footprint per thread, straight off each harness stream —
-   *  transient like activities; rides every meta push so all rings stay
-   *  current without any thread being subscribed. */
+  /** Live context footprint per thread, straight off each harness stream;
+   *  rides every meta push so all rings stay current without any thread
+   *  being subscribed. Seeded from the session rows at boot and written
+   *  back on every reading, so a relaunch starts from the last one. */
   private liveContexts = new Map<string, { tokens: number; window: number | null }>()
   /** create()-with-goal: applied on the kickoff send, ahead of the
    *  message, so the goal precedes the work on both providers. */
@@ -321,6 +322,7 @@ export class SessionRegistry {
 
   constructor(private store: Store) {
     for (const fold of store.listFolds()) this.folds.set(fold.sessionId, fold)
+    for (const s of store.listSessions()) if (s.context) this.liveContexts.set(s.id, s.context)
   }
 
   // ── folds ───────────────────────────────────────────────────────────
@@ -931,6 +933,7 @@ export class SessionRegistry {
       await this.dropHandle(sessionId)
       // The old engine's accounting means nothing to the new one.
       this.liveContexts.delete(sessionId)
+      this.store.setSessionContext(sessionId, null)
       const next = this.store.updateSession(sessionId, {
         provider,
         model: routed.model ?? CATALOG[provider].defaultModel,
@@ -1812,7 +1815,9 @@ export class SessionRegistry {
       const prev = this.liveContexts.get(sessionId)
       const window = event.window ?? prev?.window ?? null
       if (prev?.tokens === event.tokens && prev?.window === window) return
-      this.liveContexts.set(sessionId, { tokens: event.tokens, window })
+      const context = { tokens: event.tokens, window }
+      this.liveContexts.set(sessionId, context)
+      this.store.setSessionContext(sessionId, context)
       const meta = this.store.getSession(sessionId)
       if (meta) this.notifyMeta(meta)
       return
