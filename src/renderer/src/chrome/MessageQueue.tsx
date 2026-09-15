@@ -63,7 +63,7 @@ export function MessageQueue({
               exit={reduce ? undefined : { opacity: 0, scale: 0.98, transition: { duration: 0.1 } }}
               className="group/q relative"
             >
-              <div className="flex items-start gap-1.5 rounded-lg border border-content/10 bg-content/3 py-1.5 pr-1.5 pl-1">
+              <div className="flex items-start gap-1.5 rounded-lg border border-content/10 bg-content/5 py-1.5 pr-1.5 pl-1">
                 <span className="mt-[3px] cursor-grab text-content/30 active:cursor-grabbing">
                   <GripVertical className="size-3.5" />
                 </span>

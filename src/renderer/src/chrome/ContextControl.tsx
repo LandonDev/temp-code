@@ -116,7 +116,7 @@ function Breakdown({
   const max = Math.max(sum, reading?.maxTokens ?? 0);
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex h-1.5 w-full overflow-hidden rounded-full bg-content/10">
+      <div className="flex h-1 w-full overflow-hidden rounded-full bg-content/10">
         {categories.map((c, i) => (
           <div
             key={c.name}

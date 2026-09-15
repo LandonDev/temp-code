@@ -400,7 +400,7 @@ export function ChangesPanel({
           </p>
           {log.map((c) => (
             <div key={c.hash} className="flex h-6 items-center gap-2 px-2">
-              <span className="shrink-0 font-mono text-[10.5px] text-content/40">{c.short}</span>
+              <span className="shrink-0 font-mono text-[11px] tabular-nums text-content/40">{c.short}</span>
               <span className="min-w-0 flex-1 truncate text-[12px] text-content" title={c.subject}>
                 {c.subject}
               </span>

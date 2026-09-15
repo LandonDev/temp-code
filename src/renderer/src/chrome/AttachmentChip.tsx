@@ -91,7 +91,7 @@ export function AttachmentChip({ attachment, onRemove, onOpen }: Props) {
           }}
           className={`grid shrink-0 place-items-center rounded-full text-content/70 hover:bg-content/15 hover:text-content ${
             image
-              ? 'absolute -right-1 -top-1 size-5 bg-content/20 opacity-100 shadow-sm glass-surface glass-surface--sm'
+              ? 'absolute -right-1 -top-1 size-5 bg-content/20 opacity-100'
               : 'size-4 text-content/40'
           }`}
         >
