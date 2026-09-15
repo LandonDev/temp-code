@@ -187,7 +187,7 @@ import {
   workspace,
   workspaceTabsStore,
 } from "./stores/workspace";
-import { projectTabTarget, workspaceActions } from "./stores/workspaceActions";
+import { projectTabTarget, workspaceActions, workspaceTabTarget } from "./stores/workspaceActions";
 import { refreshHistory, skipForgetSessionIds } from "./stores/subscriptions";
 import { editors, useEditors } from "./stores/editors";
 import { headerStore, tabProjectOf } from "./stores/header";
@@ -205,7 +205,6 @@ import {
 import {
   applyDeletedSessionToWorkspace,
   filterTabsForProject,
-  findTabForProject,
   planWorkspaceTabClose,
   selectedChangePath,
   tabProjectKey,
@@ -2249,23 +2248,25 @@ export default function App() {
         (activeWorkspace ? focusedFileTab(activeWorkspace)?.cwd : undefined);
       if (currentCwd && sameProjectPath(currentCwd, normalized)) return;
 
-      const match = findTabForProject(
-        workspaceTabsStore.getState().tabs,
-        rebaseToWorkspace(sessionStore.getSnapshot(), workspaceStore.getSnapshot()),
-        normalized,
-      );
-      if (match) {
-        project.enterWorkspace(normalized);
-        activateTab(match.id);
-        return;
-      }
-
-      // The thread this workspace was last on comes back before a blank one.
+      // The thread this workspace was last on comes back before any other
+      // open tab of it, and an open tab before a blank one.
       const landing = resolveLanding(
         { workspacePath: normalized },
         sessionStore.metas(),
         workspaceStore.getSnapshot(),
       );
+      const match = workspaceTabTarget(
+        workspaceTabsStore.getState(),
+        rebaseToWorkspace(sessionStore.getSnapshot(), workspaceStore.getSnapshot()),
+        normalized,
+        landing,
+      );
+      if (match) {
+        project.enterWorkspace(normalized);
+        if (landing && leafIds(match.layout).includes(landing)) focusOpenSession(landing);
+        else activateTab(match.id);
+        return;
+      }
       if (landing) {
         project.enterWorkspace(normalized);
         void openLanding(landing, normalized);
@@ -2286,7 +2287,7 @@ export default function App() {
       setActiveTabId(tab.id);
       setComposerFocused(true);
     },
-    [activateTab, appendTab, cwdContext, onCwdChange, openLanding, seededSession],
+    [activateTab, appendTab, cwdContext, focusOpenSession, onCwdChange, openLanding, seededSession],
   );
 
   const newWorkspacePath = useShell((s) => s.newWorkspacePath);
