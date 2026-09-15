@@ -213,10 +213,12 @@ export function savePinnedProjects(pinned: string[]) {
   savePathList(RAIL_PINNED_KEY, pinned.map(normalize));
 }
 
-/** All projects for the rail, keyed by normalized path. */
+/** All projects for the rail, keyed by normalized path. The rail itself
+ *  passes no `currentCwd`: it lists workspaces only, and the folder a
+ *  thread runs in (a project inside a workspace) is not one of them. */
 export function collectRailProjects(
   recents: RecentProject[],
-  currentCwd: string,
+  currentCwd: string | null,
 ): Map<string, RecentProject> {
   const map = new Map<string, RecentProject>();
   for (const item of recents) {
@@ -258,7 +260,7 @@ export function syncProjectRailOrder(
 
 export function projectRailSections(
   recents: RecentProject[],
-  currentCwd: string,
+  currentCwd: string | null,
   order: string[],
   pinnedPaths: string[],
 ): ProjectRailSections {
