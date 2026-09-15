@@ -37,7 +37,7 @@ import {
 import { useSessionMetas } from "../lib/tcserver/store";
 import { archive } from "../lib/tcserver/commands";
 import { useLastSeen, useSeenFloor } from "../lib/sessionSeen";
-import { dormantThreads, focusedTree } from "../lib/threadStripModel";
+import { dormantByType, dormantThreads, focusedTree } from "../lib/threadStripModel";
 import { loadNotesEnabled, openWorkspaceSettings, subscribeNotesEnabled } from "../lib/settings";
 import { pickTextHarness } from "../lib/harness/textHarness";
 import { canTabVisitBack, canTabVisitForward } from "../lib/tabVisitHistory";
@@ -273,6 +273,7 @@ function SidebarComponent({
     );
     return dormantThreads(roots, lastSeen, seenFloor, focusedTree(metas, activeSessionId));
   }, [activeSessionId, catalogProjects, catalogWorkspaces, lastSeen, metas, seenFloor, workspaceId]);
+  const dormantGroups = useMemo(() => dormantByType(dormant), [dormant]);
   const workspaceSessions =
     workspaceId && onSelectProjectCard && onNewChat ? (
       <WorkspaceSessions
@@ -619,6 +620,14 @@ function SidebarComponent({
           dormantCount={dormant.length}
           onArchiveDormant={() =>
             void Promise.allSettled(dormant.map((t) => archive(t.id, true)))
+          }
+          dormantGroups={dormantGroups}
+          onArchiveDormantType={(type) =>
+            void Promise.allSettled(
+              (dormantGroups.find((g) => g.type === type)?.threads ?? []).map((t) =>
+                archive(t.id, true),
+              ),
+            )
           }
           onThreadDefaults={workspace ? () => setThreadDefaultsOpen(true) : undefined}
           onOrchestration={workspace ? () => openOrchestrationSettings(workspace.id) : undefined}

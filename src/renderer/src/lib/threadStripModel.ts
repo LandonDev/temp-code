@@ -1,4 +1,4 @@
-import type { SessionMeta, SessionStatus } from "./tcserver/types";
+import type { SessionMeta, SessionStatus, ThreadType } from "./tcserver/types";
 
 /**
  * temp-code's thread strip rules, as pure functions over server metas.
@@ -138,6 +138,40 @@ export function focusedTree(
       }
   }
   return tree;
+}
+
+/** One "Archive N dormant …" row per thread type present. */
+export type DormantGroup<T> = { type: ThreadType; threads: T[]; label: string };
+
+const DORMANT_TYPE_ORDER: readonly ThreadType[] = [
+  "chat",
+  "planning",
+  "implementation",
+  "orchestration",
+  "research",
+];
+
+const DORMANT_NOUNS: Record<ThreadType, readonly [one: string, many: string]> = {
+  chat: ["chat", "chats"],
+  planning: ["plan", "plans"],
+  implementation: ["implementation thread", "implementation threads"],
+  orchestration: ["orchestration", "orchestrations"],
+  research: ["research thread", "research threads"],
+};
+
+/** The per-type slices of `dormantThreads`, in chooser order, only for types
+ *  present. One type alone is left out: its row would repeat the all-types
+ *  row above it. A root with no type counts as a chat. */
+export function dormantByType<T extends { threadType?: ThreadType | null }>(
+  dormant: readonly T[],
+): DormantGroup<T>[] {
+  const groups = DORMANT_TYPE_ORDER.flatMap((type) => {
+    const threads = dormant.filter((t) => (t.threadType ?? "chat") === type);
+    if (threads.length === 0) return [];
+    const noun = DORMANT_NOUNS[type][threads.length === 1 ? 0 : 1];
+    return [{ type, threads, label: `Archive ${threads.length} dormant ${noun}` }];
+  });
+  return groups.length > 1 ? groups : [];
 }
 
 /** What the chip wears: a paused descendant reads as paused, a recoverable

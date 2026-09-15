@@ -55,7 +55,7 @@ import {
   type SidebarItem,
 } from "../lib/sidebarRows";
 import { archive as archiveThread, interrupt, pause, resume } from "../lib/tcserver/commands";
-import { dormantThreads, focusedTree } from "../lib/threadStripModel";
+import { dormantByType, dormantThreads, focusedTree } from "../lib/threadStripModel";
 import {
   archiveProject,
   deleteProject,
@@ -707,6 +707,7 @@ const ProjectCard = memo(function ProjectCard({
   const stoppable = stoppableThreads(status);
   const teardown = project.mode === "worktree" && Boolean(project.branch);
   const dormant = dormantThreads(threads, lastSeen, seenFloor, rows.focusedTree);
+  const dormantGroups = dormantByType(dormant);
   const showSummary =
     status.waiting > 0 ||
     status.failed > 0 ||
@@ -740,6 +741,9 @@ const ProjectCard = memo(function ProjectCard({
             : "Archive dormant threads",
         disabled: dormant.length === 0,
       },
+      ...dormantGroups.map(
+        (g): ExplorerMenuItem => ({ kind: "item", id: `archive-dormant:${g.type}`, label: g.label }),
+      ),
       {
         kind: "item",
         id: "archive",
@@ -763,6 +767,11 @@ const ProjectCard = memo(function ProjectCard({
           void Promise.allSettled(stoppable.map((t) => interrupt(t.id)));
         else if (id === "archive-dormant")
           void Promise.allSettled(dormant.map((t) => archiveThread(t.id, true)));
+        else if (id.startsWith("archive-dormant:"))
+          void Promise.allSettled(
+            (dormantGroups.find((g) => g.type === id.slice("archive-dormant:".length))?.threads ?? [])
+              .map((t) => archiveThread(t.id, true)),
+          );
         else if (id === "archive") onArchive();
         else if (id === "delete") onDelete();
       },
