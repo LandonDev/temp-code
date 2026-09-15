@@ -532,7 +532,7 @@ async function spawnIdea(server: PoolServer): Promise<void> {
       env: {
         ...(await harnessEnv()),
         INTELLIJ_DATA_SHARING: 'none',
-        IJ_JAVA_OPTIONS: '-Xmx3g'
+        IJ_JAVA_OPTIONS: '-Xmx3g -Djava.awt.headless=true'
       }
     }
   )
@@ -897,7 +897,7 @@ async function warmOne(job: WarmJob): Promise<void> {
 
   const proc = spawn(nice ? '/usr/sbin/taskpolicy' : bin, nice ? ['-b', bin, ...args] : args, {
     cwd: job.cwd,
-    env: { ...(await harnessEnv()), INTELLIJ_DATA_SHARING: 'none', IJ_JAVA_OPTIONS: '-Xmx3g' }
+    env: { ...(await harnessEnv()), INTELLIJ_DATA_SHARING: 'none', IJ_JAVA_OPTIONS: '-Xmx3g -Djava.awt.headless=true' }
   })
   job.proc = proc
   const stderr = new StderrTail()
