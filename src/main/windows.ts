@@ -42,6 +42,10 @@ interface WindowState {
 interface StateFile {
   windows: Record<string, WindowState>
   focused?: string
+  /** The renderer's Glass setting, mirrored here so the next window is
+   *  created with vibrancy (an alpha background only takes on a window
+   *  created for it). Absent means on. */
+  glass?: boolean
 }
 
 const DEFAULT_STATE: WindowState = { width: 1280, height: 800, maximized: false }
@@ -62,6 +66,14 @@ function readWindowState(raw: Partial<WindowState>): WindowState {
 
 let stateFile: StateFile | null = null
 
+const OPAQUE_BACKGROUND = '#171717'
+
+/** Whether the next window is created with vibrancy: darwin and the mirrored
+ *  Glass setting on (its default). */
+function glassAtLaunch(): boolean {
+  return process.platform === 'darwin' && loadStateFile().glass !== false
+}
+
 /** The file before M12 held one window's bounds; that window is `main`. */
 function loadStateFile(): StateFile {
   if (stateFile) return stateFile
@@ -75,7 +87,11 @@ function loadStateFile(): StateFile {
     } else if (typeof raw.width === 'number') {
       windows[MAIN_SLOT] = readWindowState(raw as never)
     }
-    stateFile = { windows, focused: typeof raw.focused === 'string' ? raw.focused : undefined }
+    stateFile = {
+      windows,
+      focused: typeof raw.focused === 'string' ? raw.focused : undefined,
+      ...(typeof raw.glass === 'boolean' ? { glass: raw.glass } : {})
+    }
   } catch {
     stateFile = { windows: {} }
   }
@@ -196,10 +212,14 @@ export function createWindow(opts: { slot?: string; from?: number } = {}): Brows
     ...(process.platform === 'darwin'
       ? { trafficLightPosition: TRAFFIC_LIGHT, visualEffectState: 'active' as const }
       : {}),
-    // Opaque until the renderer has painted once. Vibrancy behind an empty
-    // window shows the desktop through it, which reads as a broken launch;
-    // `window:enable-glass` swaps it in after the first frame.
-    backgroundColor: '#171717',
+    // Vibrancy has to be there from creation: Electron only honours an alpha
+    // background on a window created with one, so the runtime swap in
+    // `window:enable-glass` never let the desktop through. The renderer
+    // keeps html/body/#root opaque until its first paint (`html.ready`), so
+    // an empty window never shows the desktop blur.
+    ...(glassAtLaunch()
+      ? { vibrancy: 'under-window' as const, backgroundColor: '#00000000' }
+      : { backgroundColor: OPAQUE_BACKGROUND }),
     ...(process.platform === 'linux' ? { icon } : {}),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
@@ -438,7 +458,15 @@ export function registerWindows(hooks: { dropSnapshot?: (slot: string) => void }
     const win = windowOf(e)
     if (!win) return
     win.setVibrancy(null)
-    win.setBackgroundColor(typeof color === 'string' && /^#[0-9a-f]{6}$/i.test(color) ? color : '#171717')
+    win.setBackgroundColor(
+      typeof color === 'string' && /^#[0-9a-f]{6}$/i.test(color) ? color : OPAQUE_BACKGROUND
+    )
+  })
+
+  // The renderer's Glass setting, mirrored for the next createWindow.
+  ipcMain.handle('window:set-glass-pref', (_e, on: boolean) => {
+    loadStateFile().glass = on !== false
+    saveStateNow()
   })
 
   ipcMain.handle('window:set-zoom', (e, factor: number) => {

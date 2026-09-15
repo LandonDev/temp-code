@@ -3376,10 +3376,7 @@ export default function App() {
 
   return (
     <div
-      className={`flex h-full text-content ${
-        IS_MAC ? "bg-background-base/40" : "bg-background-base"
-      }`}
-    >
+      className="app-shell flex h-full bg-background-base text-content">
       <Sidebar
         onOpenFilesSearch={onFindInProject}
         onSelectSession={onSelectHistorySession}

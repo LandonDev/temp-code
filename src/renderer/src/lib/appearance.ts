@@ -65,7 +65,7 @@ export const THEME_SATURATION_DEFAULT = 0;
 
 export const SIDEBAR_OPACITY_MIN = 0.15;
 export const SIDEBAR_OPACITY_MAX = 1;
-export const SIDEBAR_OPACITY_DEFAULT = 0.85;
+export const SIDEBAR_OPACITY_DEFAULT = 0.8;
 
 
 export const PROJECT_RAIL_WIDTH_MIN = 180;
@@ -176,8 +176,8 @@ export function initAppearance() {
   watchSystemColorScheme();
   applySidebarOpacity(loadSidebarOpacity());
   applyBodyGlass(loadBodyGlass());
-  // The window itself stays opaque until the first paint: main.tsx calls
-  // syncWindowGlass() when it dismisses the boot splash.
+  // html/body/#root stay opaque until the first paint: main.tsx adds
+  // `html.ready` and calls syncWindowGlass() when it dismisses the splash.
   applyGlassClass(effectiveGlass(loadGlass()));
   watchReducedTransparency();
   window.addEventListener(SCHEME_CHANGE_EVENT, () => {
@@ -269,6 +269,9 @@ export function loadGlass(): boolean {
 
 export function saveGlass(value: boolean) {
   writeFlag(GLASS_KEY, value);
+  // Main mirrors it: the next window is created with vibrancy only if it
+  // is on, and an alpha background cannot be added to a window later.
+  if (IS_MAC) void invoke("set_window_glass_pref", { on: value });
 }
 
 /** Toggles the translucent chrome and the window's vibrancy together. */

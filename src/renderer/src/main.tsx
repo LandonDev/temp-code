@@ -36,6 +36,9 @@ function dismissBootSplash() {
   if (!splash || splash.dataset.dismissed === "1") return;
   splash.dataset.dismissed = "1";
   const fade = () => {
+    // The window was created with vibrancy; only now may the page go
+    // transparent over it (index.css `html.is-mac.glass.ready`).
+    document.documentElement.classList.add("ready");
     syncWindowGlass();
     splash.classList.add("boot-splash-out");
     window.setTimeout(() => splash.remove(), 180);
