@@ -13,8 +13,9 @@ class NoopObserver {
 (globalThis as unknown as { ResizeObserver: unknown }).ResizeObserver ??= NoopObserver;
 (globalThis as unknown as { IntersectionObserver: unknown }).IntersectionObserver ??= NoopObserver;
 
-import { AgentTranscript, windowTurns } from "./AgentTranscript";
+import { AgentTranscript, shouldRestoreScroll, windowTurns } from "./AgentTranscript";
 import type { Block } from "../lib/session";
+import type { TranscriptScrollMemory } from "../lib/transcriptScrollMemory";
 
 /** Two user turns of `perTurn` rows: prompt then completed tool calls. */
 function agentLog(perTurn: number): Block[] {
@@ -36,6 +37,24 @@ function agentLog(perTurn: number): Block[] {
 afterEach(cleanup);
 
 const rows = (container: HTMLElement) => container.querySelectorAll("[data-block]").length;
+
+describe("shouldRestoreScroll", () => {
+  const memory: TranscriptScrollMemory = { fromBottom: 400, rowCount: 100 };
+
+  it("puts the reader back where they scrolled up from while the run is still going", () => {
+    expect(shouldRestoreScroll(memory, true)).toBe(true);
+  });
+
+  it("sends a settled thread to the bottom, discarding a scroll-up from before it finished", () => {
+    expect(shouldRestoreScroll(memory, false)).toBe(false);
+    expect(shouldRestoreScroll(memory, undefined)).toBe(false);
+  });
+
+  it("has nothing to restore when the thread never left the bottom", () => {
+    expect(shouldRestoreScroll(undefined, true)).toBe(false);
+    expect(shouldRestoreScroll(undefined, false)).toBe(false);
+  });
+});
 
 describe("windowTurns", () => {
   it("cuts the last rows out of the turns, part-way through a big turn", () => {
