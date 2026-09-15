@@ -3,6 +3,7 @@ import {
   archivedRootThreads,
   chipTone,
   displayStatus,
+  dormantByType,
   dormantThreads,
   focusedTree,
   isLiveThread,
@@ -158,6 +159,28 @@ describe("dormantThreads", () => {
     const seen = { a: 100, b: 100 };
     const all = [thread("a"), thread("b")];
     expect(dormantThreads(all, seen, 0, new Set(["a"])).map((t) => t.id)).toEqual(["b"]);
+  });
+});
+
+describe("dormantByType", () => {
+  it("slices by type in chooser order with singular and plural nouns", () => {
+    const groups = dormantByType([
+      { ...thread("r"), threadType: "research" as const },
+      { ...thread("c1"), threadType: "chat" as const },
+      { ...thread("c2"), threadType: "chat" as const },
+      { ...thread("i"), threadType: "implementation" as const },
+      thread("untyped"),
+    ]);
+    expect(groups.map((g) => [g.type, g.label, g.threads.map((t) => t.id)])).toEqual([
+      ["chat", "Archive 3 dormant chats", ["c1", "c2", "untyped"]],
+      ["implementation", "Archive 1 dormant implementation thread", ["i"]],
+      ["research", "Archive 1 dormant research thread", ["r"]],
+    ]);
+  });
+
+  it("offers nothing when one type covers every dormant thread", () => {
+    expect(dormantByType([thread("a"), thread("b")])).toEqual([]);
+    expect(dormantByType([])).toEqual([]);
   });
 });
 

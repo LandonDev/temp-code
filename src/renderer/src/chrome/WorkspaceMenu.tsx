@@ -10,6 +10,9 @@ type Props = {
   /** Settled, seen, unpinned roots across the workspace; 0 greys the item. */
   dormantCount: number;
   onArchiveDormant: () => void;
+  /** Per-type rows under the all-types one; empty when one type covers them. */
+  dormantGroups?: readonly { type: string; label: string }[];
+  onArchiveDormantType?: (type: string) => void;
   /** Absent when the rail that owns the appearance menu is not on screen. */
   onWorkspaceSettings?: () => void;
   onThreadDefaults?: () => void;
@@ -34,6 +37,8 @@ export function WorkspaceMenu({
   onNewChat,
   dormantCount,
   onArchiveDormant,
+  dormantGroups = [],
+  onArchiveDormantType,
   onWorkspaceSettings,
   onThreadDefaults,
   onOrchestration,
@@ -60,6 +65,11 @@ export function WorkspaceMenu({
         disabled: dormantCount === 0,
         run: onArchiveDormant,
       },
+      ...dormantGroups.map((g) => ({
+        id: `archive-dormant:${g.type}`,
+        label: g.label,
+        run: () => onArchiveDormantType?.(g.type),
+      })),
     ],
     [
       ...(onThreadDefaults
