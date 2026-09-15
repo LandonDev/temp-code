@@ -1,5 +1,5 @@
 {
-  "n": 150,
-  "notes": "Archive dormant threads by type: the workspace menu and each project card menu add one row per thread type present under the all-types row (chats, plans, implementation threads, orchestrations, research threads, with counts), sparing the focused thread's tree like the all-types row; one type alone adds no row since it would repeat the row above",
-  "ts": 1789449361944
+  "n": 151,
+  "notes": "Fix appshot fly-in replaying every time you return to its thread",
+  "ts": 1789493179690
 }
