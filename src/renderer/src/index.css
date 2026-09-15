@@ -43,9 +43,10 @@
   --color-violet: var(--thread-violet);
   --color-cyan: var(--thread-cyan);
   --color-busy: var(--thread-busy);
-  /* Every floating layer's fill (see .floating-surface): near-opaque so a
-     busy transcript never reads through a menu or a dialog. */
-  --color-overlay: color-mix(in srgb, var(--color-background-base) 88%, transparent);
+  /* Every floating layer's fill (see .floating-surface): a lifted, near-opaque
+     plane a step above the base so a busy transcript never reads through a
+     menu or a dialog. */
+  --color-overlay: hsl(var(--theme-hue) var(--theme-saturation) 15% / 0.96);
   /* Motion bar: one duration and one curve for every utility transition.
      The same curve is EASE_OUT in lib/ease.ts. */
   --default-transition-duration: 120ms;
@@ -124,7 +125,7 @@ html.theme-light {
   --thread-violet: #7c3aed;
   --thread-cyan: #0891b2;
   --thread-busy: #db2777;
-  --color-overlay: color-mix(in srgb, var(--color-background-base) 92%, transparent);
+  --color-overlay: hsl(var(--theme-hue) var(--theme-saturation) 100% / 0.97);
   color-scheme: light;
 }
 
@@ -322,20 +323,14 @@ html.is-mac.glass.glass-body .body-glass {
 }
 
 /* Every popover, menu, dialog, toast and tooltip: one fill (`--color-overlay`,
- * near-opaque) over a blur, plus the hairline. `.floating-surface--motion` is
- * the 12px cap for surfaces that animate in; the bare class is the 24px blur
- * for static overlays. Pair it with `.glass-surface` for the layer promotion.
+ * near-opaque) over one 20px blur, plus the hairline, so they all lift the
+ * same amount. Pair it with `.glass-surface` for the layer promotion.
  * `bg-content/10` stays for the highlighted row inside, never for the surface. */
 .floating-surface {
   background: var(--color-overlay);
   border: 1px solid color-mix(in srgb, var(--color-content) 10%, transparent);
-  backdrop-filter: blur(24px) saturate(1.4);
-  -webkit-backdrop-filter: blur(24px) saturate(1.4);
-}
-
-.floating-surface--motion {
-  backdrop-filter: blur(12px) saturate(1.4);
-  -webkit-backdrop-filter: blur(12px) saturate(1.4);
+  backdrop-filter: blur(20px) saturate(1.4);
+  -webkit-backdrop-filter: blur(20px) saturate(1.4);
 }
 
 /* Solid chrome when the OS asks for it: no blur anywhere, and the tinted
@@ -346,8 +341,7 @@ html.is-mac.glass.glass-body .body-glass {
   .glass-surface--sm,
   .glass-surface--md,
   .glass-surface--xl,
-  .floating-surface,
-  .floating-surface--motion {
+  .floating-surface {
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
   }

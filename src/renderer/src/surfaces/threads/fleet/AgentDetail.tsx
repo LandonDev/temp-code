@@ -127,7 +127,7 @@ export function AgentDetail({
         onAnimationComplete={(definition) => {
           if (definition === motionProps.animate) setSettled(true);
         }}
-        className="relative flex h-full w-full max-w-2xl flex-col overflow-hidden border-l border-content/10 shadow-2xl glass-surface floating-surface floating-surface--motion"
+        className="relative flex h-full w-full max-w-2xl flex-col overflow-hidden border-l border-content/10 shadow-2xl glass-surface floating-surface"
       >
         <div className="flex shrink-0 items-start gap-3 border-b border-content/10 px-4 py-3">
           <div className="flex min-w-0 flex-1 flex-col gap-1">
