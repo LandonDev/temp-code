@@ -4,6 +4,7 @@ import {
   chipTone,
   displayStatus,
   dormantThreads,
+  focusedTree,
   isLiveThread,
   projectRootThreads,
   runningRoots,
@@ -151,5 +152,31 @@ describe("dormantThreads", () => {
     expect(dormantThreads([thread("old", { updatedAt: 50 }), thread("new")], {}, 60)).toEqual([
       thread("old", { updatedAt: 50 }),
     ]);
+  });
+
+  it("spares every id in the exclude set", () => {
+    const seen = { a: 100, b: 100 };
+    const all = [thread("a"), thread("b")];
+    expect(dormantThreads(all, seen, 0, new Set(["a"])).map((t) => t.id)).toEqual(["b"]);
+  });
+});
+
+describe("focusedTree", () => {
+  const metas = [
+    thread("root"),
+    thread("kid", { parentId: "root" }),
+    thread("grandkid", { parentId: "kid" }),
+    thread("other"),
+    thread("other-kid", { parentId: "other" }),
+  ];
+
+  it("is the focused session's root and every descendant", () => {
+    expect([...focusedTree(metas, "kid")].sort()).toEqual(["grandkid", "kid", "root"]);
+    expect([...focusedTree(metas, "root")].sort()).toEqual(["grandkid", "kid", "root"]);
+  });
+
+  it("is empty with no focus and just the id for an unknown session", () => {
+    expect(focusedTree(metas, null).size).toBe(0);
+    expect([...focusedTree(metas, "gone")]).toEqual(["gone"]);
   });
 });

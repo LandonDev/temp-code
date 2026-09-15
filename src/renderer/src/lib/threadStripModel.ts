@@ -99,13 +99,45 @@ export function splitThreads<T extends StripThread>(
  *  roots are never touched. */
 export function dormantThreads<
   T extends LiveInput & Partial<Pick<SessionMeta, "pinned" | "threadType" | "planPath">>,
->(threads: readonly T[], lastSeen: SeenMap, floor = 0): T[] {
+>(
+  threads: readonly T[],
+  lastSeen: SeenMap,
+  floor = 0,
+  exclude: ReadonlySet<string> = NONE,
+): T[] {
   return threads.filter(
     (t) =>
+      !exclude.has(t.id) &&
       !t.pinned &&
       !(t.threadType === "planning" && t.planPath) &&
       !isLiveThread(t, lastSeen, {}, floor),
   );
+}
+
+const NONE: ReadonlySet<string> = new Set();
+
+/** The focused session's whole thread — its root and every descendant —
+ *  which "Archive dormant threads" spares: the thread on screen is in use
+ *  however settled it looks. Empty when nothing is focused. */
+export function focusedTree(
+  metas: readonly Pick<SessionMeta, "id" | "parentId">[],
+  focusedId: string | null | undefined,
+): Set<string> {
+  const tree = new Set<string>();
+  if (!focusedId) return tree;
+  const byId = new Map(metas.map((m) => [m.id, m]));
+  let root = byId.get(focusedId);
+  while (root?.parentId && byId.has(root.parentId)) root = byId.get(root.parentId);
+  tree.add(root?.id ?? focusedId);
+  for (let grew = true; grew; ) {
+    grew = false;
+    for (const m of metas)
+      if (m.parentId && tree.has(m.parentId) && !tree.has(m.id)) {
+        tree.add(m.id);
+        grew = true;
+      }
+  }
+  return tree;
 }
 
 /** What the chip wears: a paused descendant reads as paused, a recoverable
