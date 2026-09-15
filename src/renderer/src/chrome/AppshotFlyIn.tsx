@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 import { motion, useReducedMotion } from 'motion/react'
 import { EASE_DRAWER, EASE_OUT } from '../lib/ease'
 import { LAYER } from '../lib/layers'
-import { useAppshotFlash, type AppshotFlash } from '../lib/appshots'
+import { clearAppshotFlash, useAppshotFlash, type AppshotFlash } from '../lib/appshots'
 import { readAttachment } from '../lib/tcserver/commands'
 
 /** How long the capture holds centered before it flies to its chip. */
@@ -87,6 +87,10 @@ function Flight({ flash }: { flash: AppshotFlash }) {
     )
     return () => window.clearTimeout(timer)
   }, [src, rect, path, reduce])
+
+  useEffect(() => {
+    if (done) clearAppshotFlash(flash.key)
+  }, [done, flash.key])
 
   if (done) return null
 
