@@ -396,6 +396,7 @@ function StartButton({ session, tasks }: { session: Session; tasks: string[] }) 
             provider: choice.harness,
             model: nativeModelId(choice.model),
             reasoning: settings.effort,
+            context1m: settings.context === "1m",
             permission: policyForMode(mode),
             projectId: session.projectId ?? null,
             workspaceId: session.workspaceId ?? null,
