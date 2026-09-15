@@ -1242,11 +1242,10 @@ html.theme-light .agent-markdown .shiki span {
   animation: z-plan-wash 1.4s var(--ease-out);
 }
 
-/* The board grows in from zero width once it has something to show. */
+/* The board takes its width at once and fades in; a width tween relays
+   out the transcript beside it on every frame. */
 .z-board {
-  transition:
-    flex-basis 200ms var(--ease-out),
-    opacity 200ms var(--ease-out);
+  transition: opacity 200ms var(--ease-out);
 }
 
 .z-board[data-dragging="true"] {

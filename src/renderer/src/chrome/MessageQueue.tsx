@@ -113,14 +113,14 @@ export function MessageQueue({
                 )}
                 <span className="flex shrink-0 items-center gap-0.5">
                   {sessionId ? <QueueTuneButton sessionId={sessionId} item={m} /> : null}
-                  <span className="flex items-center gap-0.5 opacity-0 transition-opacity duration-150 group-hover/q:opacity-100 focus-within:opacity-100">
+                  <span className="flex items-center gap-0.5 opacity-0 transition-opacity group-hover/q:opacity-100 focus-within:opacity-100">
                     {paused ? null : (
                       <button
                         type="button"
                         onClick={() => onSteer(m.id)}
                         aria-label="Send now"
                         title="Send now, into the running turn"
-                        className="flex size-5 items-center justify-center rounded-md text-content/50 transition hover:bg-content/10 hover:text-content active:scale-[0.96]"
+                        className="pressable flex size-5 items-center justify-center rounded-md text-content/50 hover:bg-content/10 hover:text-content"
                       >
                         <ArrowUp className="size-3" strokeWidth={2.25} />
                       </button>
@@ -129,7 +129,7 @@ export function MessageQueue({
                       type="button"
                       onClick={() => onRemove(m.id)}
                       aria-label="Remove from queue"
-                      className="flex size-5 items-center justify-center rounded-md text-content/50 transition hover:bg-content/10 hover:text-content active:scale-[0.96]"
+                      className="pressable flex size-5 items-center justify-center rounded-md text-content/50 hover:bg-content/10 hover:text-content"
                     >
                       <X className="size-3" />
                     </button>

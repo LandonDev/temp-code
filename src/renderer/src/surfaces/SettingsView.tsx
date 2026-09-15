@@ -744,7 +744,7 @@ function StepProgress({
       className="mt-2 block h-1 w-64 overflow-hidden rounded-full bg-content/10"
     >
       <span
-        className={`block h-full origin-left rounded-full bg-accent transition-transform duration-300 ${
+        className={`block h-full origin-left rounded-full bg-accent transition-transform duration-200 ${
           fraction == null ? "w-1/3 motion-safe:animate-pulse" : ""
         }`}
         style={fraction == null ? undefined : { transform: `scaleX(${fraction})` }}

@@ -1,13 +1,12 @@
 import { useEffect, useState } from 'react'
 import { motion, useReducedMotion } from 'motion/react'
-import { EASE_OUT } from '../lib/ease'
+import { EASE_DRAWER, EASE_OUT } from '../lib/ease'
 import { LAYER } from '../lib/layers'
 import { useAppshotFlash, type AppshotFlash } from '../lib/appshots'
 import { readAttachment } from '../lib/tcserver/commands'
 
 /** How long the capture holds centered before it flies to its chip. */
 const HOLD_MS = 620
-const FLIGHT_EASE = [0.32, 0.72, 0, 1] as const
 
 /**
  * A capture's arrival: a flash, the image held mid-screen, then a flight
@@ -97,7 +96,7 @@ function Flight({ flash }: { flash: AppshotFlash }) {
           className="absolute inset-0 bg-white"
           initial={{ opacity: 0 }}
           animate={{ opacity: [0, 0.3, 0] }}
-          transition={{ duration: 0.4, times: [0, 0.12, 1], ease: 'easeOut' }}
+          transition={{ duration: 0.32, times: [0, 0.12, 1], ease: EASE_OUT }}
         />
       )}
       {src && rect ? (
@@ -122,9 +121,9 @@ function Flight({ flash }: { flash: AppshotFlash }) {
               ? reduce
                 ? { duration: 0 }
                 : {
-                    duration: 0.5,
-                    ease: FLIGHT_EASE,
-                    opacity: { times: [0, 0.65, 1], duration: 0.5 }
+                    duration: 0.32,
+                    ease: EASE_DRAWER,
+                    opacity: { times: [0, 0.65, 1], duration: 0.32 }
                   }
               : { duration: 0.22, ease: EASE_OUT }
           }

@@ -7,7 +7,7 @@ import {
   type WheelEvent as ReactWheelEvent,
 } from "react";
 import type { ThreadRules } from "@server/shared/rules";
-import { SPRING_LAYOUT } from "../lib/ease";
+import { EASE_OUT, SPRING_LAYOUT } from "../lib/ease";
 import { GLIDE_MAX_ROWS, useListGlide } from "../lib/listGlide";
 import { HARNESSES, sessionDisplayTitle, type HarnessId } from "../lib/session";
 import type { ThreadType } from "../lib/tcserver/types";
@@ -25,7 +25,7 @@ import { TabIndicator, type TabThread } from "./TabIndicator";
  * root threads as soft chips, live ones on the top row, the dormant shelf a
  * line below, each row freshest first. A chip is a thread, open in a tab
  * or not; nothing here closes one. Selection commits on pointer-down and
- * the active wash glides between chips; chips scale in and slide closed on
+ * the active wash swaps in 120 ms; chips fade in and slide closed on
  * archive. Right-click for the thread's menu, double-click to rename, the
  * shelf at the row's end brings archived threads back. A project switch
  * swaps every chip: that render animates nothing and measures nothing, and
@@ -114,10 +114,10 @@ export function ThreadHeaderStrip({
           // Only a chip's own row moves it; a re-render that leaves the row
           // alone takes no snapshot.
           layoutDependency={rowDependency(chips)}
-          initial={reduce ? false : { opacity: 0, scale: shelf ? 0.92 : 0.9 }}
-          animate={{ opacity: 1, scale: 1 }}
-          exit={reduce ? undefined : { opacity: 0, scale: shelf ? 0.92 : 0.9 }}
-          transition={SPRING_LAYOUT}
+          initial={reduce ? false : { opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={reduce ? undefined : { opacity: 0 }}
+          transition={{ duration: 0.12, ease: EASE_OUT, layout: SPRING_LAYOUT }}
           className="shrink-0"
           data-tauri-drag-region="false"
           ref={chip.id === activeId ? events.activeRef : undefined}
@@ -402,7 +402,7 @@ function ArchivedShelf({
                       </span>
                       <span className="block text-[11px] text-content/40">{timeAgo(thread.updatedAt)}</span>
                     </span>
-                    <span className="flex shrink-0 items-center gap-1 text-[11px] text-content/50 opacity-0 transition-opacity duration-150 group-hover/arch:opacity-100">
+                    <span className="flex shrink-0 items-center gap-1 text-[11px] text-content/50 opacity-0 transition-opacity group-hover/arch:opacity-100">
                       <ArchiveRestore className="size-3.5" strokeWidth={1.75} />
                       Restore
                     </span>

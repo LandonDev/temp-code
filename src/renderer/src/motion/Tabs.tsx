@@ -141,18 +141,11 @@ export function TabsTrigger({
   }
 
   if (variant === "soft") {
-    // Quiet chip tabs: the active one carries a soft wash that glides
-    // between chips. Pointer taps commit on down; click is keyboard-only.
+    // Quiet chip tabs: the active one carries a soft wash that swaps in
+    // 120 ms, never a measured glide, so ⌘1..9 and ⌘] cost no layout.
+    // Pointer taps commit on down; click is keyboard-only.
     return (
       <div className="relative">
-        {active ? (
-          <motion.span
-            key={layoutId}
-            layoutId={layoutId}
-            style={{ borderRadius: 6 }}
-            className={cn("absolute inset-0 bg-content/10", indicatorClassName)}
-          />
-        ) : null}
         <button
           type="button"
           role="tab"
@@ -162,8 +155,10 @@ export function TabsTrigger({
             if (current !== value) setValue(value);
           }}
           className={cn(
-            "relative z-10 inline-flex items-center justify-center whitespace-nowrap rounded-md bg-transparent px-2.5 py-1 text-[13px] outline-none transition-colors duration-150",
-            active ? "text-content" : "text-content/50 hover:bg-content/6 hover:text-content",
+            "relative inline-flex items-center justify-center whitespace-nowrap rounded-md px-2.5 py-1 text-[13px] outline-none transition-colors",
+            active
+              ? cn("bg-content/10 text-content", indicatorClassName)
+              : "text-content/50 hover:bg-content/5 hover:text-content active:bg-content/10",
             className,
           )}
         >
