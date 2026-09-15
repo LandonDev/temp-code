@@ -1,5 +1,5 @@
 {
-  "n": 155,
-  "notes": "Usage footer reads Aliax's accounts: the footer shows the pinned account with a bar per usage window (percent left, on-pace tick, refill countdown, how many other accounts still have room) and its name opens a list of every saved account to switch with one click; the server builds the snapshot from Aliax's shared vault through aliax-core, follows Aliax's settings and usage cache, and falls back to the CLI's own sign-in when there is no vault. The old per-provider usage fetch is gone.",
-  "ts": 1789500345029
+  "n": 156,
+  "notes": "Gateway takes over the Aliax shim marker while temp-code runs and hands it back on quit; the accounts popover shows Aliax-level detail: exact percent per window, refill countdown and clock, plan and rate-limit lines",
+  "ts": 1789502809437
 }
