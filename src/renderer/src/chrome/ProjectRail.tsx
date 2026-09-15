@@ -438,7 +438,7 @@ export function ProjectRail({
               lockOverscroll(el);
               scrollRef.current = el;
             }}
-            className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-none pb-2"
+            className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-none pt-2 pb-2"
           >
             {sections.pinned.length > 0 ? (
               <ProjectSection
