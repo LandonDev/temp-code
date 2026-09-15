@@ -5,11 +5,13 @@ import {
   accounts,
   adapter,
   isLive,
+  pickNext,
   pinProfile,
   pinnedProfile,
   readMarker,
   vault,
   type ActionResult,
+  type LimitInfo,
   type Owner,
   type ProfileView,
   type ServiceId,
@@ -19,6 +21,7 @@ import {
 import { dataDir } from 'aliax-core/config'
 import {
   ACCOUNT_PROVIDERS,
+  PROVIDER_OF,
   SERVICE_OF,
   emptyAccounts,
   type AccountProvider,
@@ -37,9 +40,21 @@ export interface AccountsDeps {
   locked: () => boolean
   /** The live sign-in of a service, for a machine without an Aliax vault. */
   live: (id: ServiceId, force: boolean) => Promise<{ profile: ProfileView; report: UsageReport } | null>
+  /** Forced poll of one account, for choosing a failover target. */
+  usageOf: (id: ServiceId, name: string) => Promise<UsageReport | null>
+  /** Make the next poll of one account skip its TTL. */
+  markStale: (id: ServiceId, name: string) => void
+  /** Models of the threads running on a provider right now: every one must fit the next account. */
+  liveModels: (provider: AccountProvider) => string[]
   dataDir: () => string
   pollMs: number
+  now: () => number
 }
+
+/** How long after a window's reset before the next poll believes it. */
+export const RESET_GRACE_MS = 15_000
+/** A reset further away than this re-arms on the next build instead. */
+const RESET_HORIZON_MS = 24 * 3_600_000
 
 const LIVE_TTL: Partial<Record<ServiceId, number>> = { 'claude-code': 10 * 60_000 }
 const liveCache = new Map<ServiceId, { at: number; value: { profile: ProfileView; report: UsageReport } | null }>()
@@ -90,8 +105,12 @@ const defaults = (): AccountsDeps => ({
   vaultPresent: () => existsSync(join(dataDir(), 'profiles.json')),
   locked: vault.vaultLocked,
   live: liveAccount,
+  usageOf: (id, name) => accounts.usageOf(id, name, true),
+  markStale: accounts.markUsageStale,
+  liveModels: () => [],
   dataDir,
-  pollMs: 60_000
+  pollMs: 60_000,
+  now: Date.now
 })
 
 /**
@@ -108,7 +127,10 @@ export class AccountsService {
   private watcher: FSWatcher | null = null
   private debounce: NodeJS.Timeout | null = null
   private poll: NodeJS.Timeout | null = null
+  private reset: NodeJS.Timeout | null = null
   private chain: Promise<unknown> = Promise.resolve()
+  /** Why the last failover's sign-in did not land, per provider, until the next switch. */
+  private failoverNotes: Partial<Record<AccountProvider, string>> = {}
 
   constructor(deps: Partial<AccountsDeps> = {}) {
     this.deps = { ...defaults(), ...deps }
@@ -157,6 +179,90 @@ export class AccountsService {
     if (this.debounce) clearTimeout(this.debounce)
     if (this.poll) clearInterval(this.poll)
     this.poll = null
+    if (this.reset) clearTimeout(this.reset)
+    this.reset = null
+  }
+
+  /** When the earliest full window resets, from the reports we hold. */
+  nextReset(): { at: number; stale: { id: ServiceId; name: string }[] } | null {
+    const now = this.deps.now()
+    let at = Infinity
+    const due: { id: ServiceId; name: string; at: number }[] = []
+    for (const p of ACCOUNT_PROVIDERS) {
+      for (const r of this.snap.providers[p].reports) {
+        for (const w of r.windows) {
+          if (w.usedPercent < 100 || w.resetsAt === undefined || w.resetsAt <= now) continue
+          due.push({ id: SERVICE_OF[p], name: r.profileName, at: w.resetsAt })
+          at = Math.min(at, w.resetsAt)
+        }
+      }
+    }
+    if (at === Infinity) return null
+    // Everything resetting within the grace of the earliest goes stale together.
+    const stale = due.filter((d) => d.at <= at + RESET_GRACE_MS).map(({ id, name }) => ({ id, name }))
+    return { at: at + RESET_GRACE_MS, stale: stale.filter((s, i) => stale.findIndex((o) => o.id === s.id && o.name === s.name) === i) }
+  }
+
+  /**
+   * Re-armed after every build: one timer for the soonest reset, owner-only
+   * (Aliax polls on its own when it holds the gateway, and we follow its
+   * cache). Firing marks those accounts stale and rebuilds, which polls them
+   * in turn through the chain, so a slow poll never overlaps the next.
+   */
+  private armReset(): void {
+    if (this.reset) clearTimeout(this.reset)
+    this.reset = null
+    if (!this.poll) return
+    const next = this.nextReset()
+    if (!next) return
+    const delay = next.at - this.deps.now()
+    if (delay > RESET_HORIZON_MS) return
+    this.reset = setTimeout(() => {
+      this.reset = null
+      if (this.deps.owner() === 'aliax') return
+      for (const s of next.stale) this.deps.markStale(s.id, s.name)
+      void this.rebuild(false)
+    }, Math.max(delay, 0))
+  }
+
+  /**
+   * The gateway's 429 handler asks for the next account: one with room in
+   * every window the refused model and every live model spend, ordered by
+   * soonest reset, confirmed by a forced poll. Null passes the 429 through.
+   */
+  async pickNext(info: LimitInfo): Promise<string | null> {
+    const provider = PROVIDER_OF[info.serviceId]
+    const snap = (await this.list()).providers[provider]
+    return pickNext({
+      serviceId: info.serviceId,
+      model: info.model,
+      liveModels: this.deps.liveModels(provider),
+      window: info.limit.window,
+      profiles: snap.profiles,
+      reports: snap.reports,
+      tried: info.tried,
+      poll: (name) => this.deps.usageOf(info.serviceId, name).catch(() => null),
+      now: this.deps.now()
+    })
+  }
+
+  /**
+   * Core moved the pin and the request landed. Sign the CLIs in to match, in
+   * the background: a failure leaves the pin where it is (the gateway routes
+   * by pin, not by sign-in) and says so in the footer until the next switch.
+   */
+  failedOver({ serviceId, to }: { serviceId: ServiceId; to: string }): void {
+    const provider = PROVIDER_OF[serviceId]
+    delete this.failoverNotes[provider]
+    void this.deps
+      .activate(serviceId, to)
+      .then((r) => {
+        if (!r.ok) this.failoverNotes[provider] = `switched to ${to}; sign-in failed: ${r.error}`
+      })
+      .catch((e) => {
+        this.failoverNotes[provider] = `switched to ${to}; sign-in failed: ${(e as Error).message}`
+      })
+      .then(() => this.rebuild(false))
   }
 
   async list(): Promise<AccountsSnapshot> {
@@ -174,7 +280,10 @@ export class AccountsService {
     const id = SERVICE_OF[provider]
     if (this.deps.pinned(id) === name) return { ok: false, error: `${name} is already the pinned account` }
     const result = await this.deps.activate(id, name)
-    if (result.ok) this.deps.pin(id, name)
+    if (result.ok) {
+      this.deps.pin(id, name)
+      delete this.failoverNotes[provider]
+    }
     await this.rebuild(false)
     return result
   }
@@ -184,6 +293,7 @@ export class AccountsService {
     const run = this.chain.then(() => this.build(force, only)).then((snap) => {
       this.snap = snap
       this.built = true
+      this.armReset()
       for (const l of this.listeners) l(snap)
     })
     this.chain = run.catch(() => {})
@@ -227,7 +337,7 @@ export class AccountsService {
         profiles,
         reports,
         owner,
-        note: note ?? view?.notice
+        note: note ?? this.failoverNotes[p] ?? view?.notice
       }
     }
     return { updatedAt: Date.now(), providers }

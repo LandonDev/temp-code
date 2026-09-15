@@ -20,6 +20,7 @@ import { resolveAppBridgeLaunch, runDoctor, updateProvider } from './drivers/bin
 import { probeCatalogs } from './drivers/catalogProbe'
 import { backfillMirrors } from './mirror'
 import { bootMark } from './boot'
+import { LIVE_STATUSES } from '@shared/session-lifecycle'
 import { sweepFolds } from './folds'
 import {
   orchAnswerAgent,
@@ -158,11 +159,25 @@ export async function startServer(
   const checkpoints = new CheckpointStore(join(options.dataDir ?? dirname(dbPath), 'checkpoints'))
   const registry = new SessionRegistry(store)
   registry.checkpoints = checkpoints
-  const m3a = { store, registry, notes: new Notes(db), logos: new ProjectLogos(options.dataDir ?? dirname(dbPath)), accounts: new AccountsService() }
-  m3a.accounts.start()
+  const accounts = new AccountsService({
+    liveModels: (provider) =>
+      registry
+        .list()
+        .filter((s) => s.provider === provider && LIVE_STATUSES.has(s.status) && s.model)
+        .map((s) => s.model as string)
+  })
+  const m3a = { store, registry, notes: new Notes(db), logos: new ProjectLogos(options.dataDir ?? dirname(dbPath)), accounts }
+  accounts.start()
   const gateway = await startGateway({
     claimShim: options.claimShim ?? false,
-    hooks: observeHooks({ logDir: join(options.dataDir ?? dirname(dbPath), 'logs'), onObserved: () => m3a.accounts.nudge() })
+    hooks: {
+      ...observeHooks({ logDir: join(options.dataDir ?? dirname(dbPath), 'logs'), onObserved: () => accounts.nudge() }),
+      pickNext: (info) => accounts.pickNext(info),
+      onFailedOver: (info) => {
+        console.log(`[gateway] ${info.service}: ${info.from} hit a limit, switched to ${info.to}`)
+        accounts.failedOver(info)
+      }
+    }
   })
   const linear = new Linear(options.dataDir ?? dirname(dbPath))
   registry.resetStaleStatuses()
