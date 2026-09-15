@@ -5,7 +5,9 @@ import type { SessionMeta } from "../lib/tcserver/types";
 import { CircleAlert, MessageSquare, Pause } from "./icons";
 
 type Props = {
-  /** Only this project's threads raise banners; null shows every root. */
+  /** Scopes the needs-you banner to one project; null shows every root.
+   *  Paused and errored trees always span every workspace — Continue acts
+   *  on a thread by id, so it needs no project of its own to run in. */
   projectId: string | null;
   /** The thread on screen: its own question rides the transcript, not a banner. */
   activeSessionId?: string;
@@ -14,29 +16,56 @@ type Props = {
 
 type Kind = "recovery" | "paused" | "needs-you";
 
+const GLOBAL_ROOT = (m: SessionMeta): boolean => !m.parentId && !m.archived;
+
 const ROOT = (m: SessionMeta, projectId: string | null): boolean =>
-  !m.parentId && !m.archived && (projectId === null || m.projectId === projectId);
+  GLOBAL_ROOT(m) && (projectId === null || m.projectId === projectId);
+
+export type BannerThreads = {
+  paused: SessionMeta[];
+  recovery: SessionMeta[];
+  needsYou: SessionMeta[];
+};
+
+/**
+ * Paused and recovery span every workspace — a resume or a continue acts on
+ * a thread by id, so switching to its project first buys nothing. Needs-you
+ * stays scoped to `projectId` (null for every root), and never counts the
+ * thread already on screen: its own question rides the transcript.
+ */
+export function bannerThreads(
+  metas: readonly SessionMeta[],
+  projectId: string | null,
+  activeSessionId: string | undefined,
+): BannerThreads {
+  const paused: SessionMeta[] = [];
+  const recovery: SessionMeta[] = [];
+  const needsYou: SessionMeta[] = [];
+  for (const m of metas) {
+    if (GLOBAL_ROOT(m)) {
+      if (m.treeHasPaused) paused.push(m);
+      if (m.treeCanContinue) recovery.push(m);
+    }
+    if (ROOT(m, projectId) && m.status === "waiting" && m.id !== activeSessionId) {
+      needsYou.push(m);
+    }
+  }
+  return { paused, recovery, needsYou };
+}
 
 /**
  * One line under the title bar per thread state the user must act on:
- * paused trees (Continue / Stop), trees whose last turn failed (Continue)
- * and threads waiting on an answer that are not the one on screen (Open).
+ * paused trees (Continue / Stop) and trees whose last turn failed (Continue)
+ * across every workspace, plus threads waiting on an answer in the open
+ * project that are not the one on screen (Open).
  */
 export function ThreadBanners({ projectId, activeSessionId, onOpen }: Props) {
   const metas = useSessionMetas();
   // One pass per meta change, never per render: the lists feed the buttons below.
-  const { paused, recovery, needsYou } = useMemo(() => {
-    const paused: SessionMeta[] = [];
-    const recovery: SessionMeta[] = [];
-    const needsYou: SessionMeta[] = [];
-    for (const m of metas) {
-      if (!ROOT(m, projectId)) continue;
-      if (m.treeHasPaused) paused.push(m);
-      if (m.treeCanContinue) recovery.push(m);
-      if (m.status === "waiting" && m.id !== activeSessionId) needsYou.push(m);
-    }
-    return { paused, recovery, needsYou };
-  }, [activeSessionId, metas, projectId]);
+  const { paused, recovery, needsYou } = useMemo(
+    () => bannerThreads(metas, projectId, activeSessionId),
+    [activeSessionId, metas, projectId],
+  );
   const [busy, setBusy] = useState<Kind | "stop" | null>(null);
   const [failed, setFailed] = useState<Record<Kind, number>>({ recovery: 0, paused: 0, "needs-you": 0 });
 
