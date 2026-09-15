@@ -1,5 +1,5 @@
 {
-  "n": 160,
-  "notes": "The gateway fails over on a usage-limit 429 by itself: aliax-core 6add708 classifies the refusal (unified headers and Claude/Codex bodies), marks the pinned account's window full with the provider's reset, asks AccountsService.pickNext for the next account with room in every window the refused and every live model spend (soonest reset first, confirmed by a forced poll), pins it and replays the buffered request under its token at most three times; onFailedOver signs the CLIs in behind the new pin and any failure shows as a footer note. One reset timer per build re-polls the accounts whose full windows just reset, only while Aliax is not the owner. scripts/e2e-gateway-failover.ts covers it end to end against a fake upstream",
-  "ts": 1789505579237
+  "n": 161,
+  "notes": "A usage limit that only shows up as error text fails over and continues the thread by itself: aliax-core 95fb2ef classifies Claude and Codex limit messages (5h, weekly, credits, per-model, transient); the drivers tag error events with limit.window and log unclassified limit text to logs/limit-text-misses.log; AccountsService.failover charges the pinned account's window, picks the next account with room (the limited model counts as live during the pick), pins it and signs the CLIs in, sharing one switch between threads that hit the limit together; SessionRegistry waits for the thread to settle and sends one continue-run naming the switch, or leaves the Continue button when no account has room. scripts/e2e-limit-continue.ts covers an orchestrator and child limited at once, a weekly limit with no room, and a transient error. docs/PLAN.md's Aliax section now points at the plan outcome",
+  "ts": 1789506629374
 }
