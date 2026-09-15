@@ -4,7 +4,8 @@ import type { OpenFileFn } from "../../../lib/search";
 import { EASE_OUT } from "../../../lib/ease";
 import { ChevronRight, Users } from "../../../chrome/icons";
 import { fleetCounts, isLiveStatus, useAgents, useMetaById } from "../../../lib/threads/agents";
-import { MatrixSpinner } from "../bits";
+import { GLIDE_MAX_ROWS } from "../../../lib/listGlide";
+import { MatrixSpinner, PaneHeader, StatusDot } from "../bits";
 import { AgentDetail } from "./AgentDetail";
 import { AgentRow } from "./AgentRow";
 import { useFleetModel } from "./useFleetModel";
@@ -45,33 +46,30 @@ export function FleetPanel({
           {open ? (
             <motion.div
               key="fleet"
-              initial={{ width: 0, opacity: 0 }}
-              animate={{ width: PANEL_W, opacity: 1 }}
-              exit={{ width: 0, opacity: 0 }}
-              transition={{ duration: 0.28, ease: EASE_OUT }}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0, transition: { duration: 0 } }}
+              transition={{ duration: 0.12, ease: EASE_OUT }}
+              style={{ width: PANEL_W }}
               className="flex min-h-0 shrink-0 flex-col overflow-hidden border-l border-content/10"
             >
-              <div className="flex h-9 shrink-0 items-center gap-2 pr-1.5 pl-3" style={{ width: PANEL_W }}>
-                <span className="text-[11px] font-medium tracking-[0.08em] text-content/50 uppercase">Subagents</span>
-                <span className="text-[11px] tabular-nums text-content/40">{agents.length}</span>
+              <PaneHeader label="Subagents" detail={String(agents.length)}>
                 <button
                   type="button"
                   onClick={() => fleet.setOpen(false)}
                   aria-label="Hide subagents"
-                  className="ml-auto flex size-6 items-center justify-center rounded-md text-content/40 transition-colors hover:bg-content/5 hover:text-content"
+                  className="pressable grid size-6 place-items-center rounded-md text-content/50 hover:bg-content/5 hover:text-content"
                 >
-                  <ChevronRight className="size-3.5" />
+                  <ChevronRight className="size-3.5" strokeWidth={1.75} />
                 </button>
-              </div>
-              <div
-                className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-1.5 pb-3"
-                style={{ width: PANEL_W }}
-              >
+              </PaneHeader>
+              <div className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto p-2 pt-0">
                 {agents.map((agent) => (
                   <AgentRow
                     key={agent.id}
                     agent={agent}
                     now={now}
+                    glide={agents.length <= GLIDE_MAX_ROWS}
                     hidden={agent.id === detailId}
                     onOpen={() => fleet.setDetailId(agent.id)}
                   />
@@ -89,11 +87,7 @@ export function FleetPanel({
             className="group flex w-8 shrink-0 flex-col items-center gap-2 border-l border-content/10 pt-4 transition-colors hover:bg-content/5"
           >
             <Users className="size-3.5 text-content/50 transition-colors group-hover:text-content" />
-            <span
-              className={`size-1.5 rounded-full ${
-                anyWaiting ? "bg-warning" : active ? "motion-safe:animate-pulse bg-success" : "bg-content/20"
-              }`}
-            />
+            <StatusDot status={anyWaiting ? "waiting" : active ? "running" : "idle"} />
           </button>
         ) : null}
         <AnimatePresence>
@@ -127,11 +121,11 @@ export function FleetPulseLine({ sessionId }: { sessionId: string }) {
       ? `${n} subagent${n === 1 ? "" : "s"} working`
       : `${n} subagent${n === 1 ? "" : "s"} waiting on approval`;
   return (
-    <div className="mx-auto flex w-full max-w-[688px] items-center gap-2 px-6 pb-1 text-[12px] text-content/50">
+    <div className="mx-auto flex w-full max-w-4xl items-center gap-2 px-4 pb-1 text-xs text-content/50">
       {counts.working > 0 ? (
         <MatrixSpinner cell={2} />
       ) : (
-        <span className="size-1.5 motion-safe:animate-pulse rounded-full bg-warning" />
+        <StatusDot status="waiting" />
       )}
       {label}
     </div>

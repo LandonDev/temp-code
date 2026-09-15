@@ -1,11 +1,11 @@
 import { motion, useReducedMotion } from "motion/react";
-import { SPRING_PANEL } from "../../../lib/ease";
+import { ENTER, SPRING_PANEL } from "../../../lib/ease";
 import { HarnessIcon } from "../../../chrome/HarnessIcon";
-import { Check, X } from "../../../chrome/icons";
+import { Check } from "../../../chrome/icons";
 import { TONE_CLASS, hasStats, isLiveStatus, modelLabel } from "../../../lib/threads/agents";
 import { asHarness } from "../../../lib/tcserver/store";
 import type { SessionMeta } from "../../../lib/tcserver/types";
-import { Spinner, duration } from "../bits";
+import { MatrixSpinner, StatusDot, duration } from "../bits";
 import { statsParts, useAgentModel, type FleetStats } from "./useFleetModel";
 
 /**
@@ -14,10 +14,9 @@ import { statsParts, useAgentModel, type FleetStats } from "./useFleetModel";
  */
 
 export function StatusGlyph({ status }: { status: SessionMeta["status"] }) {
-  if (isLiveStatus(status)) return <Spinner className="size-3.5 text-content/40" />;
-  if (status === "waiting") return <span className="size-2 motion-safe:animate-pulse rounded-full bg-warning" />;
-  if (status === "error") return <X className="size-3.5 text-danger" />;
-  return <Check className="size-3.5 text-success" />;
+  if (isLiveStatus(status)) return <MatrixSpinner cell={2} />;
+  if (status === "waiting" || status === "error") return <StatusDot status={status} />;
+  return <Check className="size-3.5 text-success" strokeWidth={2} />;
 }
 
 function CtxRing({ pct }: { pct: number }) {
@@ -46,7 +45,7 @@ export function AgentStatsLine({ stats, className = "" }: { stats: FleetStats; c
   if (!hasStats(stats) && !stats.compacting) return null;
   const parts = statsParts(stats);
   return (
-    <span className={`inline-flex items-center gap-1.5 text-[11px] tabular-nums text-content/40 ${className}`}>
+    <span className={`inline-flex items-center gap-1.5 text-xs tabular-nums text-content/40 ${className}`}>
       {parts.map((p, i) => (
         <span key={p.key} className="inline-flex items-center gap-1.5">
           {i > 0 && <span className="text-content/20">·</span>}
@@ -75,16 +74,20 @@ export function AgentStatsLine({ stats, className = "" }: { stats: FleetStats; c
 /**
  * `hidden` while the detail is open: the row keeps its slot but yields the
  * shared `agent-${id}` layoutId, so the detail morphs out of and back into it.
+ * `glide` lets the row animate reorders; parents pass it only while the
+ * list is at or under GLIDE_MAX_ROWS.
  */
 export function AgentRow({
   agent,
   now,
   hidden = false,
+  glide = false,
   onOpen,
 }: {
   agent: SessionMeta;
   now: number;
   hidden?: boolean;
+  glide?: boolean;
   onOpen: () => void;
 }) {
   const reduce = useReducedMotion();
@@ -94,13 +97,13 @@ export function AgentRow({
   return (
     <motion.button
       type="button"
-      layout
+      layout={glide && !reduce}
       layoutId={`agent-${agent.id}`}
-      transition={SPRING_PANEL}
-      initial={reduce ? false : { opacity: 0, y: 4 }}
-      animate={{ opacity: hidden ? 0 : 1, y: 0 }}
+      transition={{ ...SPRING_PANEL, opacity: ENTER.transition, y: ENTER.transition }}
+      initial={reduce ? false : ENTER.initial}
+      animate={{ ...ENTER.animate, opacity: hidden ? 0 : 1 }}
       onClick={onOpen}
-      className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left transition-colors hover:bg-content/5"
+      className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left transition-colors hover:bg-content/5 active:bg-content/10"
     >
       <span className="flex size-4 shrink-0 items-center justify-center">
         <StatusGlyph status={agent.status} />
@@ -110,15 +113,15 @@ export function AgentRow({
           {agent.title || "Subagent"}
         </span>
         {line.text ? (
-          <span className={`truncate text-[11px] leading-4 ${TONE_CLASS[line.tone]}`}>{line.text}</span>
+          <span className={`truncate text-xs leading-4 ${TONE_CLASS[line.tone]}`}>{line.text}</span>
         ) : live ? (
-          <span className="text-[11px] leading-4 text-content/40 italic">starting up</span>
+          <span className="text-xs leading-4 text-content/40 italic">starting up</span>
         ) : null}
         <AgentStatsLine stats={stats} />
       </span>
-      <span className="flex shrink-0 flex-col items-end gap-0.5 text-[11px] tabular-nums text-content/40">
+      <span className="flex shrink-0 flex-col items-end gap-0.5 text-xs tabular-nums text-content/40">
         <span className="inline-flex items-center gap-1">
-          <HarnessIcon harness={asHarness(agent.provider)} className="size-3" />
+          <HarnessIcon harness={asHarness(agent.provider)} className="size-3.5" />
           {modelLabel(agent.provider, agent.model)}
         </span>
         {(elapsed > 2000 || cost !== undefined) && (

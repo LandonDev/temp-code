@@ -3,6 +3,7 @@ import { usePaneVisible } from "../../hooks/paneVisibility";
 import { Pause } from "../../chrome/icons";
 import type { Session } from "../../lib/session";
 import { MatrixSpinner, duration } from "./bits";
+import { CHIP } from "../chip";
 
 /**
  * The working indicator, in a permanently reserved 24px strip above the
@@ -100,24 +101,24 @@ export const WorkingStrip = memo(function WorkingStrip({
   return (
     <div
       className={`mx-auto flex h-6 w-full max-w-4xl shrink-0 items-center gap-2 px-4 ${
-        paused ? "border-y border-warning/15 bg-warning/8" : ""
+        paused ? "bg-warning/8" : ""
       }`}
     >
       <div
-        className={`flex items-center gap-2 text-xs text-content/50 transition-opacity duration-150 ${
+        className={`flex items-center gap-2 text-xs text-content/50 transition-opacity ${
           visible ? "opacity-100" : "opacity-0"
         } ${paused ? "w-full text-warning" : ""}`}
         aria-live="polite"
       >
         {paused ? (
           <>
-            <Pause className="size-3 shrink-0 fill-current" strokeWidth={1.75} />
+            <Pause className="size-3.5 shrink-0 fill-current" strokeWidth={1.75} />
             <span className="font-medium">Paused</span>
             <span className="tabular-nums text-current/70">{duration(elapsed)}</span>
             <button
               type="button"
               onClick={onStop}
-              className="ml-auto rounded-md border border-danger/25 bg-danger/10 px-2 py-0.5 text-[11px] font-medium text-danger transition-colors hover:bg-danger/20 focus-visible:ring-2 focus-visible:ring-accent focus-visible:outline-none"
+              className="pressable ml-auto rounded-md bg-danger/10 px-2 py-0.5 text-[11px] font-medium text-danger hover:bg-danger/20"
             >
               Stop
             </button>
@@ -125,7 +126,7 @@ export const WorkingStrip = memo(function WorkingStrip({
               type="button"
               onClick={resume}
               disabled={resumeBusy}
-              className="rounded-md border border-warning/25 bg-warning/10 px-2 py-0.5 text-[11px] font-medium transition-colors hover:bg-warning/20 focus-visible:ring-2 focus-visible:ring-accent focus-visible:outline-none disabled:opacity-60"
+              className={CHIP}
             >
               {resumeBusy ? "Continuing…" : "Continue"}
             </button>
