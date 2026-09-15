@@ -25,7 +25,43 @@ export type AgentModel = {
   contextWindow?: number;
 };
 
+/** Reasoning ladder and the 1M context choice for the frontier Claude
+ *  models, matching what the live catalog overlay builds for them. */
+const CLAUDE_FRONTIER_SETTINGS: ModelSetting[] = [
+  {
+    id: "effort",
+    label: "Reasoning",
+    kind: "select",
+    value: "medium",
+    options: [
+      { value: "low", label: "Low" },
+      { value: "medium", label: "Medium" },
+      { value: "high", label: "High" },
+      { value: "xhigh", label: "Extra High" },
+      { value: "max", label: "Max" },
+    ],
+  },
+  {
+    id: "context",
+    label: "Context",
+    kind: "select",
+    value: "200k",
+    options: [
+      { value: "200k", label: "200k" },
+      { value: "1m", label: "1M" },
+    ],
+  },
+];
+
 export const MODELS: AgentModel[] = [
+  {
+    id: "claude:fable-5.1",
+    harness: "claude",
+    name: "Claude Fable 5.1",
+    nativeId: "claude-fable-5-1",
+    contextWindow: 1_000_000,
+    settings: CLAUDE_FRONTIER_SETTINGS,
+  },
   {
     id: "claude:sonnet-5",
     harness: "claude",
@@ -43,6 +79,8 @@ export const MODELS: AgentModel[] = [
     harness: "claude",
     name: "Claude Fable 5",
     nativeId: "claude-fable-5",
+    contextWindow: 1_000_000,
+    settings: CLAUDE_FRONTIER_SETTINGS,
   },
   {
     id: "claude:opus-4.6",
@@ -314,7 +352,9 @@ export function resolveModel(harness: HarnessId, id?: string): AgentModel {
   if (id) {
     const exact = findModel(id);
     if (exact && exact.harness === harness) return exact;
-    const slug = nativeIdFrom(id);
+    // A built-in id (`claude:fable-5.1`) still names its native model once
+    // the live catalog has replaced the built-in list.
+    const slug = MODELS.find((model) => model.id === id)?.nativeId ?? nativeIdFrom(id);
     const byNative = available.find(
       (model) => (model.nativeId ?? nativeIdFrom(model.id)) === slug,
     );
