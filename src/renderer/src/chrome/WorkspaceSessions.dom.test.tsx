@@ -9,6 +9,7 @@ import { mountProbe } from '../test/renderProbe'
 import { threadRow, type ThreadRow } from '../lib/workspaceSessions'
 import { nextPage } from '../lib/sidebarRows'
 import { Fold, LiveLines, ThreadList } from './WorkspaceSessions'
+import { subagentRowsStore } from '../stores/subagentRows'
 
 /** The root owns each list's page count; this stands in for it. */
 function Paged({
@@ -184,6 +185,56 @@ describe('ThreadList window', () => {
     )
     expect(rowCount(probe.container)).toBe(61)
     expect(probe.container.querySelector('[aria-current="true"]')?.textContent).toContain('t60')
+    probe.unmount()
+  })
+})
+
+describe('ThreadRows fold', () => {
+  const withKids = (extra: Partial<SessionMeta> = {}, kidExtra: Partial<SessionMeta> = {}): ThreadRow => ({
+    ...threadRow(meta('root', extra), {}),
+    children: [
+      threadRow(meta('kid1', { parentId: 'root', ...kidExtra }), {}),
+      threadRow(meta('kid2', { parentId: 'root', ...kidExtra }), {})
+    ]
+  })
+  const foldButton = (root: HTMLElement) =>
+    root.querySelector<HTMLButtonElement>('button[aria-expanded]')!
+
+  beforeEach(() => subagentRowsStore.setState({ pinned: {} }))
+
+  it('a settled root folds its subagents behind a count, and a click unfolds them', () => {
+    const probe = mountProbe(<ThreadList threads={[withKids()]} actions={actions} className="" />)
+    expect(rowCount(probe.container)).toBe(1)
+    expect(foldButton(probe.container).textContent).toBe('2')
+    expect(foldButton(probe.container).getAttribute('aria-label')).toBe('Show 2 subagents')
+    act(() => {
+      fireEvent.click(foldButton(probe.container))
+    })
+    expect(rowCount(probe.container)).toBe(3)
+    expect(foldButton(probe.container).getAttribute('aria-expanded')).toBe('true')
+    expect(subagentRowsStore.getState().pinned).toEqual({ root: true })
+    probe.unmount()
+  })
+
+  it('a working root or subagent shows the rows on its own', () => {
+    const probe = mountProbe(
+      <ThreadList threads={[withKids({ status: 'running', busySince: 5 })]} actions={actions} className="" />
+    )
+    expect(rowCount(probe.container)).toBe(3)
+    probe.unmount()
+    const kid = mountProbe(
+      <ThreadList threads={[withKids({}, { status: 'running', busySince: 5 })]} actions={actions} className="" />
+    )
+    expect(rowCount(kid.container)).toBe(3)
+    kid.unmount()
+  })
+
+  it('the open subagent keeps its row on screen', () => {
+    const probe = mountProbe(
+      <ThreadList threads={[withKids()]} actions={{ ...actions, activeSessionId: 'kid2' }} className="" />
+    )
+    expect(rowCount(probe.container)).toBe(3)
+    expect(probe.container.querySelector('[aria-current="true"]')?.textContent).toContain('kid2')
     probe.unmount()
   })
 })
