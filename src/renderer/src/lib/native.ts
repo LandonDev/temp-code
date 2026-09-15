@@ -20,6 +20,7 @@ export type NativeCommand =
   | "default_cwd"
   | "delete_path"
   | "destroy_window"
+  | "disable_window_glass"
   | "enable_window_glass"
   | "fetch_claude_usage"
   | "fetch_codex_usage"
@@ -250,6 +251,8 @@ const backed: Record<NativeCommand, Backed> = {
   set_traffic_lights_visible: (args) =>
     window.api.win.setButtonsVisible(arg<boolean>(args, "visible")),
   enable_window_glass: () => window.api.win.enableGlass(),
+  disable_window_glass: (args) =>
+    window.api.win.disableGlass(arg<string | undefined>(args, "color")),
   set_zoom: (args) => window.api.win.setZoom(arg<number>(args, "level")),
   pty_spawn: (args) =>
     window.api.pty.spawn({

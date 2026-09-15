@@ -421,15 +421,24 @@ export function registerWindows(hooks: { dropSnapshot?: (slot: string) => void }
     windowOf(e)?.setWindowButtonVisibility(visible !== false)
   })
 
+  // Vibrancy is applied after the renderer's first paint (see main.tsx) and
+  // only while its Glass setting is on. The renderer keeps the content pane
+  // opaque and blurs only floating layers, so the desktop shows through the
+  // sidebar chrome alone.
   ipcMain.handle('window:enable-glass', (e) => {
-    // Vibrancy is off unless TEMP_CODE_GLASS=1: a transparent window hands
-    // every repaint to WindowServer, whose memory does not come back when
-    // the app quits. Twice that froze the whole machine on the prod data.
-    if (process.platform !== 'darwin' || process.env.TEMP_CODE_GLASS !== '1') return
+    if (process.platform !== 'darwin') return
     const win = windowOf(e)
     if (!win) return
     win.setBackgroundColor('#00000000')
     win.setVibrancy('under-window')
+  })
+
+  ipcMain.handle('window:disable-glass', (e, color?: string) => {
+    if (process.platform !== 'darwin') return
+    const win = windowOf(e)
+    if (!win) return
+    win.setVibrancy(null)
+    win.setBackgroundColor(typeof color === 'string' && /^#[0-9a-f]{6}$/i.test(color) ? color : '#171717')
   })
 
   ipcMain.handle('window:set-zoom', (e, factor: number) => {

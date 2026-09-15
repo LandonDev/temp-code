@@ -138,6 +138,8 @@ const api = {
     setButtonsVisible: (visible: boolean): Promise<void> =>
       ipcRenderer.invoke('window:buttons-visible', visible),
     enableGlass: (): Promise<void> => ipcRenderer.invoke('window:enable-glass'),
+    disableGlass: (color?: string): Promise<void> =>
+      ipcRenderer.invoke('window:disable-glass', color),
     setZoom: (factor: number): Promise<void> => ipcRenderer.invoke('window:set-zoom', factor),
     onResized: (cb: () => void): (() => void) => on('window:resized', cb),
     /** Subscribing makes main defer the close to you: answer with hide() or

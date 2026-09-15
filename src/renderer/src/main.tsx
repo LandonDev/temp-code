@@ -1,9 +1,9 @@
 import React, { useLayoutEffect } from "react";
 import ReactDOM from "react-dom/client";
-import { invoke, listen } from "./lib/native";
+import { listen } from "./lib/native";
 import { installEditorKeys } from "./lib/editorKeys";
 import App from "./App";
-import { initAppearance } from "./lib/appearance";
+import { initAppearance, syncWindowGlass } from "./lib/appearance";
 import { initSounds } from "./lib/sounds";
 import { initServerLink } from "./lib/tcserver/link";
 import { sessionStore } from "./lib/tcserver/store";
@@ -36,7 +36,7 @@ function dismissBootSplash() {
   if (!splash || splash.dataset.dismissed === "1") return;
   splash.dataset.dismissed = "1";
   const fade = () => {
-    void invoke("enable_window_glass");
+    syncWindowGlass();
     splash.classList.add("boot-splash-out");
     window.setTimeout(() => splash.remove(), 180);
   };
