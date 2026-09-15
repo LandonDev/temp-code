@@ -20,6 +20,7 @@ import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { nativeImage } from 'electron'
 import type { Attachment, PermissionPolicy } from '@shared/events'
+import { limitField } from '../limitText'
 import type { DriverCtx, DriverHandle, HarnessDriver } from './types'
 import { parsePartialJson } from './partial-json'
 import { toolDisplay } from './display'
@@ -360,7 +361,7 @@ function handleMessage(ctx: DriverCtx, state: StreamState, msg: SDKMessage): voi
             message: 'the conversation outgrew its context window — compacting to make room'
           })
         } else if (text) {
-          emit({ type: 'error', message: text })
+          emit({ type: 'error', message: text, ...limitField('claude', text) })
         }
         break
       }

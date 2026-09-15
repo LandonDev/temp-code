@@ -11,6 +11,7 @@ import {
   readMarker,
   vault,
   type ActionResult,
+  type Limit,
   type LimitInfo,
   type Owner,
   type ProfileView,
@@ -44,11 +45,19 @@ export interface AccountsDeps {
   usageOf: (id: ServiceId, name: string) => Promise<UsageReport | null>
   /** Make the next poll of one account skip its TTL. */
   markStale: (id: ServiceId, name: string) => void
+  /** Charge a window an error message named, so the pin is not picked again before its report refreshes. */
+  observeLimit: (id: ServiceId, name: string, limit: Limit) => void
   /** Models of the threads running on a provider right now: every one must fit the next account. */
   liveModels: (provider: AccountProvider) => string[]
   dataDir: () => string
   pollMs: number
   now: () => number
+}
+
+/** The accounts a failover moved between. */
+export interface Switched {
+  from: string
+  to: string
 }
 
 /** How long after a window's reset before the next poll believes it. */
@@ -107,6 +116,7 @@ const defaults = (): AccountsDeps => ({
   live: liveAccount,
   usageOf: (id, name) => accounts.usageOf(id, name, true),
   markStale: accounts.markUsageStale,
+  observeLimit: (id, name, limit) => void accounts.observeLimit(id, name, limit),
   liveModels: () => [],
   dataDir,
   pollMs: 60_000,
@@ -131,6 +141,8 @@ export class AccountsService {
   private chain: Promise<unknown> = Promise.resolve()
   /** Why the last failover's sign-in did not land, per provider, until the next switch. */
   private failoverNotes: Partial<Record<AccountProvider, string>> = {}
+  /** One failover in flight per provider: a tree whose members all hit the limit asks once. */
+  private failovers: Partial<Record<AccountProvider, Promise<Switched | null>>> = {}
 
   constructor(deps: Partial<AccountsDeps> = {}) {
     this.deps = { ...defaults(), ...deps }
@@ -263,6 +275,40 @@ export class AccountsService {
         this.failoverNotes[provider] = `switched to ${to}; sign-in failed: ${(e as Error).message}`
       })
       .then(() => this.rebuild(false))
+  }
+
+  /**
+   * A thread's error named a usage limit the gateway never saw (the CLI
+   * spoke to the provider directly, or the limit came back as text): charge
+   * the pinned account's window, pick the next account with room for this
+   * model and every live one, and switch to it. Null leaves the pin and the
+   * thread's Continue button alone.
+   */
+  failover(provider: AccountProvider, info: { model: string | null; window: Limit['window'] }): Promise<Switched | null> {
+    const inflight = this.failovers[provider]
+    if (inflight) return inflight
+    const run = this.runFailover(provider, info).finally(() => {
+      delete this.failovers[provider]
+    })
+    this.failovers[provider] = run
+    return run
+  }
+
+  private async runFailover(provider: AccountProvider, info: { model: string | null; window: Limit['window'] }): Promise<Switched | null> {
+    if (info.window === 'transient') return null
+    const id = SERVICE_OF[provider]
+    const from = this.deps.pinned(id)
+    if (!from) return null
+    this.deps.observeLimit(id, from, { window: info.window })
+    const to = await this.pickNext({ service: provider, serviceId: id, model: info.model, limit: { window: info.window }, tried: [from] })
+    if (!to) return null
+    const result = await this.switch(provider, to)
+    if (!result.ok) {
+      this.failoverNotes[provider] = `could not switch to ${to}: ${result.error}`
+      await this.rebuild(false)
+      return null
+    }
+    return { from, to }
   }
 
   async list(): Promise<AccountsSnapshot> {

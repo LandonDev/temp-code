@@ -1,6 +1,7 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { createInterface } from 'node:readline'
 import type { Attachment, PermissionPolicy, SessionStatus } from '@shared/events'
+import { limitField } from '../limitText'
 import type { Reasoning } from '@shared/catalog'
 import type { DriverCtx, DriverHandle, HarnessDriver } from './types'
 import { harnessEnv, resolveBinary } from './binaries'
@@ -477,14 +478,18 @@ export const codexDriver: HarnessDriver = {
         case 'turn/completed': {
           currentTurnId = null
           const turn = params.turn as { status?: string; error?: { message?: string } | null }
-          if (turn?.error?.message) emit({ type: 'error', message: turn.error.message })
+          if (turn?.error?.message) {
+            emit({ type: 'error', message: turn.error.message, ...limitField('codex', turn.error.message) })
+          }
           emit({ type: 'turn-complete', ...lastUsage })
           setStatus('idle')
           break
         }
-        case 'error':
-          emit({ type: 'error', message: String(params.message ?? 'codex error') })
+        case 'error': {
+          const message = String(params.message ?? 'codex error')
+          emit({ type: 'error', message, ...limitField('codex', message) })
           break
+        }
         case 'account/rateLimits/updated':
           observeCodexSnapshot(params)
           break

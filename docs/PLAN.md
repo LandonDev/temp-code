@@ -150,52 +150,23 @@ Held to the design agreed earlier; build after 1–5:
 
 ## Aliax integration
 
-Aliax (`~/IdeaProjects/Aliax`) is a menu-bar account manager for the same
-three CLIs. Survey conclusions:
+Done, in five phases; the plan and its outcomes live in
+`.temp-code/plan-IYPliBJD-LKW.md` and `.temp-code/PROJECT.md`. The
+survey that once sat here said "do not copy proxy.ts"; the shared package
+made that moot. What stands now:
 
-**Copy in now (Milestone 5 support):**
-
-- `src/main/procs.ts` — process discovery: pgrep/tty/cwd classification,
-  ancestor exclusion, headless-vs-terminal detection (headless == exactly
-  what our drivers spawn), `killAndWait`. Use it for the doctor checks and
-  orphan cleanup after crashes.
-- `src/main/sessions.ts:14-56` — newest-session-id-for-cwd resolvers for
-  `~/.claude/projects` and `~/.codex/sessions`; fallback when we lack a
-  `nativeId`.
-- The spawn lessons above (PATH, shell-function shadowing, and never launch
-  dev/packaged builds from a Claude shell without
-  `env -u ELECTRON_RUN_AS_NODE` — already bitten us once in setup).
-
-**Copy when we store anything secret (not yet needed):**
-
-- `src/main/vault.ts` — safeStorage vault including `decryptWithPastKey`
-  (survives app renames; we WILL rename temp-code, so if we ever store
-  secrets, take this file first).
-- `src/main/keychain.ts` — 12-line dependency-free Keychain shim.
-
-**Later, if we want usage/stats:** `src/main/stats/` — incremental JSONL
-indexer keyed by (path, mtime, size, offset); right shape for mining harness
-transcripts into per-session token/cost stats.
-
-**Do not copy:** proxy.ts / shim.ts / shell-integration (~900 lines solving
-instant account switching for terminals we don't own — we spawn our
-children and can set env per child).
-
-**Running both apps (conflicts to handle in Milestone 5):**
-
-1. Aliax's instant switching writes `env.ANTHROPIC_BASE_URL` into
-   `~/.claude/settings.json`, which beats exported env. Our Claude sessions
-   would silently route through Aliax's proxy. Either accept it (it works,
-   and multi-account is a feature) or pin per-child env explicitly.
-2. An account switch in Aliax swaps credentials under our live sessions.
-   Detect via its `~/.aliax/proxy.json` liveness marker and surface a
-   banner ("accounts switched — session may need restart") rather than
-   fight it.
-3. Long term: Aliax has no control API today, but `accounts.listServices()`
-   / `accounts.activate()` are clean functions and its gateway is an
-   existing http server — a ~50-line localhost control endpoint would let
-   temp-code show and switch accounts per session. Worth a PR to Aliax
-   when multi-account orchestration matters.
+- `aliax-core` (github LandonDev/aliax-core) holds the vault, usage
+  polling, the gateway (`forward`, marker, control) and the limit
+  classifiers. Aliax and temp-code both depend on it by commit sha;
+  `configure()` runs at boot with `net.fetch` and chromiumKey secrets.
+- `src/main/server/accounts.ts` builds the footer's snapshot from the
+  shared vault and usage cache, and moves the pin on `switch`, on the
+  gateway's `pickNext`, and on `failover` from a thread's error.
+- `src/main/server/gateway.ts` claims `~/.aliax/proxy.json` when Aliax is
+  not running; the drivers point the CLIs at whichever shim owns it.
+- A usage-limit 429 fails over inside the gateway; a limit that only
+  shows up as error text (`src/main/server/limitText.ts`) fails over in
+  `SessionRegistry` and continues the tree by itself.
 
 ## Order and size
 

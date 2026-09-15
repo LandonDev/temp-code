@@ -7,6 +7,7 @@ import type { SessionBatchResult } from '@shared/contract'
 import { CATALOG, resolveModel, type ProviderId } from '@shared/catalog'
 import type { AgentEvent, Attachment, EventRow, SessionMeta, SessionStatus } from '@shared/events'
 import {
+  LIVE_STATUSES,
   foldContinuableError,
   foldGoal,
   indexByParent,
@@ -14,6 +15,8 @@ import {
   type GoalState,
   type ParentIndex
 } from '@shared/session-lifecycle'
+import { isAccountProvider, type AccountProvider } from '@shared/accounts'
+import type { LimitWindow } from '@shared/events'
 import { foldEvent, newFoldState, toFoldRow } from './folds'
 import { FOLD_VERSION, type FoldRow } from './db'
 import type {
@@ -224,6 +227,16 @@ export function isPlaceholderTitle(meta: SessionMeta): boolean {
     meta.title === `${meta.provider} · ${meta.agentType}`
 }
 
+export interface Switched {
+  from: string
+  to: string
+}
+export interface LimitFailover {
+  failover(provider: AccountProvider, info: { model: string | null; window: LimitWindow }): Promise<Switched | null>
+}
+/** How long after the limited session settles before its tree continues: siblings that hit the same limit settle in this window. */
+export const LIMIT_CONTINUE_DELAY_MS = 250
+
 export class SessionRegistry {
   private catalogListeners = new Set<(kind: 'workspaces' | 'projects') => void>()
 
@@ -319,6 +332,16 @@ export class SessionRegistry {
   /** Undo checkpoints; armed before every harness send so the baseline
    *  is snapshotted before the provider can write. Set by the server. */
   checkpoints: CheckpointStore | null = null
+  /** Switches accounts when a thread's error names a usage limit. Set by
+   *  the server; null leaves such errors to the Continue button. */
+  limits: LimitFailover | null = null
+  /** Sessions whose turn a usage limit cut off, until they continue: their
+   *  models count as live when the next account is chosen, and the
+   *  pending switch continues the root tree once the session settles. */
+  private limited = new Map<string, { model: string | null; switching: Promise<Switched | null> }>()
+  /** Per root: the switch to continue on, and the short timer that lets
+   *  every member of the tree settle so the tree continues once. */
+  private limitContinues = new Map<string, { switched: Switched; timer: ReturnType<typeof setTimeout> }>()
 
   constructor(private store: Store) {
     for (const fold of store.listFolds()) this.folds.set(fold.sessionId, fold)
@@ -501,6 +524,60 @@ export class SessionRegistry {
     const status = meta.status
     if (status === 'starting' || status === 'running' || status === 'waiting') return false
     return this.storedContinuableError(meta.id)
+  }
+
+  /** Models of sessions a usage limit cut off that have not continued yet. */
+  limitedModels(provider: AccountProvider): string[] {
+    const out: string[] = []
+    for (const [id, { model }] of this.limited) {
+      if (model && this.store.getSession(id)?.provider === provider) out.push(model)
+    }
+    return out
+  }
+
+  /** A thread's error named a usage limit: ask for the next account now
+   *  (the poll runs while the turn winds down) and continue the root tree
+   *  once this session settles. One switch per session per limit event. */
+  private onLimitError(sessionId: string, window: LimitWindow): void {
+    if (window === 'transient' || !this.limits || this.limited.has(sessionId)) return
+    const meta = this.store.getSession(sessionId)
+    if (!meta || !isAccountProvider(meta.provider)) return
+    const model = meta.model ?? null
+    // Registered before the ask so the switch counts this model as live.
+    const entry = { model, switching: Promise.resolve<Switched | null>(null) }
+    this.limited.set(sessionId, entry)
+    entry.switching = this.limits.failover(meta.provider, { model, window }).catch((err) => {
+      console.warn(`[limits] failover for ${sessionId} failed:`, err)
+      return null
+    })
+    if (!LIVE_STATUSES.has(meta.status)) this.continueAfterLimit(sessionId)
+  }
+
+  /** The limited session has settled: once the switch lands, continue its
+   *  root tree after a short delay so siblings on the same limit join. */
+  private continueAfterLimit(sessionId: string): void {
+    const entry = this.limited.get(sessionId)
+    if (!entry) return
+    void entry.switching.then((switched) => {
+      if (this.limited.get(sessionId) !== entry) return
+      if (!switched) {
+        // No account has room: the error stays and the Continue button waits.
+        this.limited.delete(sessionId)
+        return
+      }
+      const rootId = this.rootSessionOf(sessionId)
+      const pending = this.limitContinues.get(rootId)
+      if (pending) clearTimeout(pending.timer)
+      const timer = setTimeout(() => {
+        this.limitContinues.delete(rootId)
+        void this.continueRun(rootId, `a usage limit on ${switched.from}; the app switched to ${switched.to}`).catch((err) => {
+          console.warn(`[limits] automatic continue of ${rootId} failed:`, err)
+        })
+      }, LIMIT_CONTINUE_DELAY_MS)
+      this.limitContinues.set(rootId, { switched, timer })
+    }).catch((err) => {
+      console.warn(`[limits] continue after limit for ${sessionId} failed:`, err)
+    })
   }
 
   /** When the session last produced or received anything (drives
@@ -1592,7 +1669,7 @@ export class SessionRegistry {
    *  errors, reboot the harness (resume keeps the conversation), and tell
    *  it to pick the work back up. Errored subagents continue first, so an
    *  orchestrator wakes to a fleet that is already moving again. */
-  async continueRun(sessionId: string): Promise<void> {
+  async continueRun(sessionId: string, reason?: string): Promise<void> {
     const tree = this.sessionTree(sessionId)
     if (tree.length === 0) return
     const affected = tree.filter((session) => this.canContinueError(session))
@@ -1622,7 +1699,8 @@ export class SessionRegistry {
       try {
         await this.continueErroredSession(
           target.id,
-          affected.some((session) => session.parentId === target.id)
+          affected.some((session) => session.parentId === target.id),
+          reason
         )
       } catch (error) {
         failures.push(error)
@@ -1680,7 +1758,8 @@ export class SessionRegistry {
 
   private async continueErroredSession(
     sessionId: string,
-    restartedDescendants: boolean
+    restartedDescendants: boolean,
+    reason = 'a harness error (a session limit or similar) that the user has since fixed'
   ): Promise<void> {
     const meta = this.store.getSession(sessionId)
     if (
@@ -1698,13 +1777,15 @@ export class SessionRegistry {
       this.lastActivity.set(sessionId, Date.now())
       await this.armCheckpoint(sessionId)
       await handle.send(
-        `<continue-run>\nThe previous turn was cut off by a harness error (a session limit or similar) that the user has since fixed. ${restartedDescendants ? 'Your failed subagents were restarted first and are picking their work back up. ' : ''}Continue exactly where you left off: check your task list and your last few actions, finish anything half-done, and keep going. If the work was already complete, say so in one short line.\n</continue-run>`
+        `<continue-run>\nThe previous turn was cut off by ${reason}. ${restartedDescendants ? 'Your failed subagents were restarted first and are picking their work back up. ' : ''}Continue exactly where you left off: check your task list and your last few actions, finish anything half-done, and keep going. If the work was already complete, say so in one short line.\n</continue-run>`
       )
       // The replacement accepted the work. Only now settle the old chips;
       // a boot or send failure leaves the fold true for another retry.
       if (this.storedContinuableError(sessionId)) this.append(sessionId, { type: 'errors-cleared' })
       this.erroredTurns.delete(sessionId)
+      this.limited.delete(sessionId)
     } catch (error) {
+      this.limited.delete(sessionId)
       const current = this.store.getSession(sessionId)
       if (current && current.status !== 'paused') {
         this.append(sessionId, { type: 'status', status: 'error' })
@@ -1957,6 +2038,13 @@ export class SessionRegistry {
     if (event.type === 'error') {
       this.erroredTurns.add(sessionId)
       this.passPending.delete(sessionId)
+      if (event.limit && !event.stopped) this.onLimitError(sessionId, event.limit.window)
+    }
+    // A limited session settling lets its pending switch continue the tree;
+    // one moving again by other means no longer waits on it.
+    if (event.type === 'status' && this.limited.has(sessionId)) {
+      if (event.status === 'idle' || event.status === 'error') this.continueAfterLimit(sessionId)
+      else if (event.status === 'running') this.limited.delete(sessionId)
     }
     // Shared context (M8): a finished turn refreshes the thread's mirror.
     if (event.type === 'turn-complete' && persisted?.status !== 'paused') {
