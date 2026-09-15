@@ -201,7 +201,7 @@ function SelectSetting({
           {current?.label ?? setting.label}
         </span>
         <ChevronDown
-          className={`size-3 shrink-0 text-content/50 ${open ? "rotate-180" : ""}`}
+          className={`size-3 shrink-0 text-content/50 transition-transform duration-150 ${open ? "rotate-180" : ""}`}
           strokeWidth={1.75}
         />
       </button>

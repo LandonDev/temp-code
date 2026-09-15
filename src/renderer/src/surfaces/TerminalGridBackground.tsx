@@ -539,7 +539,7 @@ export function TerminalGridBackground() {
       >
         <div
           className={`flex h-full motion-reduce:transition-none ${
-            playing ? "" : "transition-transform duration-700 ease-in-out"
+            playing ? "" : "transition-transform duration-300"
           }`}
           style={{ transform: `translateX(-${slide.index * 100}%)` }}
         >

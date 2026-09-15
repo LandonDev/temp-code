@@ -1,6 +1,6 @@
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import type { MouseEvent } from "react";
-import { EASE_OUT, SPRING_SWAP } from "../lib/ease";
+import { EASE_OUT } from "../lib/ease";
 import {
   composerActionHint,
   composerActionLabel,
@@ -40,24 +40,16 @@ export function ComposerAction({ intent, midTurnDefault, disabled, onSubmit, onP
       aria-label={label}
       disabled={disabled}
       onClick={onClick}
-      className="relative grid size-6.5 place-items-center overflow-hidden rounded-md bg-white text-black transition hover:bg-white/90 active:scale-95 disabled:cursor-default disabled:bg-white/30 disabled:text-black/40 disabled:hover:bg-white/30"
+      className="pressable relative grid size-6.5 place-items-center overflow-hidden rounded-md bg-white text-black hover:bg-white/90 disabled:cursor-default disabled:bg-white/30 disabled:text-black/40 disabled:hover:bg-white/30"
     >
-      <AnimatePresence mode="wait" initial={false}>
+      <AnimatePresence initial={false}>
         <motion.span
           key={glyph}
-          initial={reduce ? false : { opacity: 0, scale: 0.5, filter: "blur(4px)" }}
-          animate={{ opacity: 1, scale: 1, filter: "blur(0px)", transition: SPRING_SWAP }}
-          exit={
-            reduce
-              ? undefined
-              : {
-                  opacity: 0,
-                  scale: 0.5,
-                  filter: "blur(4px)",
-                  transition: { duration: 0.12, ease: EASE_OUT },
-                }
-          }
-          className="grid place-items-center"
+          initial={reduce ? false : { opacity: 0, scale: 0.9 }}
+          animate={{ opacity: 1, scale: 1 }}
+          exit={reduce ? undefined : { opacity: 0, scale: 0.9 }}
+          transition={{ duration: 0.1, ease: EASE_OUT }}
+          className="absolute inset-0 grid place-items-center"
         >
           {glyph === "pause" ? (
             <Pause className="size-3.5 fill-warning text-warning" strokeWidth={0} />

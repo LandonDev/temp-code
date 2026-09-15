@@ -831,17 +831,15 @@ function WorkItems({ blocks, cwd, stopped, onNeedsUser, onOpenFile }: WorkHandle
 function ErrorChip({ text, stopped }: { text: string; stopped: boolean }) {
   if (stopped) {
     return (
-      <div className="flex h-[34px] items-center gap-2 rounded-lg border border-content/10 bg-content/5 px-2.5">
-        <span className="size-1.5 shrink-0 rounded-full bg-content/40" />
-        <span className="shrink-0 text-xs font-medium text-content/50">Stopped</span>
+      <div className="flex h-7 items-center gap-2 rounded-md bg-content/5 px-2 text-xs text-content/50">
+        Stopped
       </div>
     );
   }
   return (
-    <div className="flex h-[34px] items-center gap-2 rounded-lg border border-danger/15 bg-danger/5 px-2.5">
-      <span className="size-1.5 shrink-0 rounded-full bg-danger/80" />
-      <span className="shrink-0 text-xs font-medium text-danger/80">Error</span>
-      <span className="min-w-0 flex-1 truncate text-xs text-content/70">{text}</span>
+    <div className="flex h-7 items-center gap-2 rounded-md bg-danger/8 px-2 text-xs">
+      <span className="shrink-0 font-medium text-danger">Failed</span>
+      <span className="min-w-0 flex-1 truncate text-content/70">{text}</span>
     </div>
   );
 }

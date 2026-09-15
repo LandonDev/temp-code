@@ -1,6 +1,7 @@
 import { useEffect, useState, useSyncExternalStore } from 'react'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { ChevronLeft, ChevronRight, X } from './icons'
+import { EASE_OUT, SPRING_PANEL } from '../lib/ease'
 import { LAYER } from '../lib/layers'
 import { readAttachment } from '../lib/tcserver/commands'
 import { Spinner } from '../surfaces/threads/bits'
@@ -132,7 +133,7 @@ export function Lightbox() {
           data-lightbox
           initial={reduce ? false : { opacity: 0 }}
           animate={{ opacity: 1 }}
-          exit={reduce ? undefined : { opacity: 0, transition: { duration: 0.12 } }}
+          exit={reduce ? undefined : { opacity: 0, transition: { duration: 0.1, ease: EASE_OUT } }}
           className="fixed inset-0 flex items-center justify-center bg-black/40"
           style={{ zIndex: LAYER.dialog + 5 }}
           onClick={close}
@@ -140,7 +141,7 @@ export function Lightbox() {
           <motion.div
             key={snap.index}
             initial={reduce ? false : { opacity: 0, scale: 0.97 }}
-            animate={{ opacity: 1, scale: 1, transition: { duration: 0.15 } }}
+            animate={{ opacity: 1, scale: 1, transition: SPRING_PANEL }}
             className="flex items-center justify-center"
             onClick={(e) => e.stopPropagation()}
           >

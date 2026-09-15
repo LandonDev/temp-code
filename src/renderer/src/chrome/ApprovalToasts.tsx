@@ -1,5 +1,7 @@
 import { CircleAlert } from "./icons";
 import { createPortal } from "react-dom";
+import { motion, useReducedMotion } from "motion/react";
+import { SPRING_LAYOUT } from "../lib/ease";
 import type { ApprovalDecision } from "../lib/harness";
 import { useMemo } from "react";
 import { hiddenApprovalNotices, type PendingApprovalNotice } from "../lib/approvalToast";
@@ -76,9 +78,14 @@ function ApprovalToastCard({
   const harness = HARNESS_TITLE[session.harness];
 
   const openSession = () => onFocusSession(session.id);
+  const reduce = useReducedMotion();
 
   return (
-    <article
+    <motion.article
+      // The stack is a handful of cards, so the rest may glide up when one
+      // is answered.
+      layout={!reduce}
+      transition={SPRING_LAYOUT}
       className="approval-toast pointer-events-auto overflow-hidden rounded-xl border border-content/20 border-dashed bg-content/10 shadow-xl glass-surface glass-surface--md"
       role="status"
     >
@@ -105,19 +112,19 @@ function ApprovalToastCard({
       <div className="flex gap-2 border-t border-content/10 px-3.5 py-2.5">
         <button
           type="button"
-          className="flex-1 rounded-md bg-content px-2.5 py-1 text-[11px] font-medium text-background-base hover:bg-content/70"
+          className="pressable flex-1 rounded-md bg-content px-2.5 py-1 text-[11px] font-medium text-background-base hover:bg-content/70"
           onClick={() => onApproval(session.id, requestId, "allow")}
         >
           Allow
         </button>
         <button
           type="button"
-          className="flex-1 rounded-md bg-content/10 px-2.5 py-1 text-[11px] font-medium text-content/70 hover:bg-content/20"
+          className="pressable flex-1 rounded-md bg-content/10 px-2.5 py-1 text-[11px] font-medium text-content/70 hover:bg-content/20"
           onClick={() => onApproval(session.id, requestId, "deny")}
         >
           Deny
         </button>
       </div>
-    </article>
+    </motion.article>
   );
 }
