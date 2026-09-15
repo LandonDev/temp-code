@@ -1,5 +1,5 @@
 {
-  "n": 140,
-  "notes": "Subagent rows fold under their root unless the root or one of them is working, or the open thread is one of them: the root's tail shows a chevron and count that unfolds them, a click pins either state per root in localStorage under monocode.tc.subagentRows, a pin that matches what the work would show is dropped so a root un-pins itself by settling, there is no height tween and the section re-measures itself so the virtualizer follows",
-  "ts": 1789443100596
+  "n": 141,
+  "notes": "The workspace kebab and each project card kebab gain \"Archive N dormant threads\", greyed with no count when there are none: it archives at once, no confirm, every settled, seen, unpinned root with nothing working, paused or recoverable in its tree (the strip's live rule), sparing working, needs-you, unread and pinned roots and any planning thread that holds a plan; the workspace item covers project threads and loose chats alike, the card item its own threads",
+  "ts": 1789443402380
 }
