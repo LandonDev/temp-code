@@ -205,6 +205,43 @@ html.is-mac.glass .sidebar-glass {
   background: var(--color-background-base);
 }
 
+/*
+ * A bubble born from this window's send rises out of the composer: transform
+ * and opacity only, so the row's box is final from its first frame and the
+ * follow scroll lands where the bubble will rest. The class comes off at
+ * animationend, which is also when will-change lets go.
+ */
+@keyframes bubble-send-in {
+  from {
+    transform: translateY(18px) scale(0.96);
+    opacity: 0;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+.bubble-send-in {
+  animation: bubble-send-in 320ms var(--ease-out) both;
+  transform-origin: bottom right;
+  will-change: transform;
+}
+@media (prefers-reduced-motion: reduce) {
+  @keyframes bubble-send-in {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+  .bubble-send-in {
+    animation-duration: 120ms;
+    animation-timing-function: linear;
+    will-change: auto;
+  }
+}
+
 .transcript-turn {
   content-visibility: auto;
   contain-intrinsic-block-size: auto 240px;

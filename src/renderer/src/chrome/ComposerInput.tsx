@@ -53,7 +53,9 @@ export interface ComposerInputHandle {
   ) => void
   /** type plain text at the caret (or the end) as one edit — ⌘Z takes it back whole */
   insertText: (text: string) => void
-  clear: () => void
+  /** `fade`: the text fades out over 80 ms first (a send), the box holding
+   *  its height until the wipe; reduced motion and an empty box wipe at once. */
+  clear: (fade?: boolean) => void
   /** current content as segments, chips intact — for saving a draft */
   snapshot: () => ComposerSegment[]
   /** replace all content from segments, caret at the end */
@@ -193,6 +195,8 @@ export const ComposerInput = forwardRef<
   const reportedThisFrame = useRef(false)
   /** programmatic insertions the browser's own undo stack never saw */
   const undo = useRef<Insertion[]>([])
+  /** A fading clear is under way: the box reads as empty already. */
+  const clearing = useRef<Animation | null>(null)
   const paintedTokens = useRef(tokens)
 
   const report = (): void => {
@@ -263,7 +267,8 @@ export const ComposerInput = forwardRef<
       if (selectionIn(root)) root.focus()
       else caretToEnd(root)
     },
-    value: () => (rootRef.current ? serializeComposer(rootRef.current) : ''),
+    value: () =>
+      rootRef.current && !clearing.current ? serializeComposer(rootRef.current) : '',
     replaceRange: (from, to, insert) => {
       const root = rootRef.current
       if (!root) return
@@ -290,13 +295,34 @@ export const ComposerInput = forwardRef<
       report()
     },
     insertText,
-    clear: () => {
+    clear: (fade = false) => {
       const root = rootRef.current
       if (!root) return
-      root.innerHTML = ''
-      root.style.height = 'auto'
-      undo.current = []
-      report()
+      const wipe = () => {
+        clearing.current?.cancel()
+        clearing.current = null
+        root.innerHTML = ''
+        root.style.height = 'auto'
+        undo.current = []
+        report()
+      }
+      if (
+        !fade ||
+        clearing.current ||
+        !root.textContent ||
+        typeof root.animate !== 'function' ||
+        window.matchMedia('(prefers-reduced-motion: reduce)').matches
+      ) {
+        wipe()
+        return
+      }
+      const anim = root.animate([{ opacity: 1 }, { opacity: 0 }], {
+        duration: 80,
+        easing: 'ease-out',
+        fill: 'forwards'
+      })
+      clearing.current = anim
+      anim.finished.then(wipe, wipe)
     },
     snapshot: () => (rootRef.current ? snapshotSegments(rootRef.current) : []),
     restore: (segments) => {

@@ -129,6 +129,7 @@ export function foldOptimisticUser(
     text,
     startedAt: now,
     pending: true,
+    born: now,
     ...(attachments.length > 0 ? { attachments } : {}),
     ...(extra?.secondOpinion ? { secondOpinion: extra.secondOpinion } : {}),
     ...(extra?.noteCard ? { noteCard: extra.noteCard } : {}),

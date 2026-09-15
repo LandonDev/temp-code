@@ -632,7 +632,7 @@ export function Composer({
       midTurnDefault
     })
     onSubmit(text, files, intent === 'pause' ? 'send' : intent)
-    inputRef.current?.clear()
+    inputRef.current?.clear(true)
     setAttachments([])
     setTrigger(null)
     syncHasValue('', [])
