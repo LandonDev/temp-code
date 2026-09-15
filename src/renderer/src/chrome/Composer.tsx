@@ -2,6 +2,7 @@ import { Plus } from './icons'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { EASE_OUT, SPRING_SWAP } from '../lib/ease'
 import { GLIDE_MAX_ROWS } from '../lib/listGlide'
+import { recordSendOrigin } from '../lib/sendOrigin'
 import {
   useCallback,
   useEffect,
@@ -631,8 +632,12 @@ export function Composer({
       invert,
       midTurnDefault
     })
+    // The bubble slides in from where the prompt sat; the field clears on
+    // the same frame so the text is never in two places at once.
+    const field = boxRef.current?.querySelector('.composer-field')
+    if (field) recordSendOrigin(field.getBoundingClientRect())
     onSubmit(text, files, intent === 'pause' ? 'send' : intent)
-    inputRef.current?.clear(true)
+    inputRef.current?.clear()
     setAttachments([])
     setTrigger(null)
     syncHasValue('', [])

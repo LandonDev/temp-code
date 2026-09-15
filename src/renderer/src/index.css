@@ -230,6 +230,23 @@ html.is-mac.glass .sidebar-glass {
   transform-origin: bottom right;
   will-change: transform;
 }
+/* The FLIP entrance: the bubble starts where the composer field was
+   (--send-dx/--send-dy, set from the two boxes at mount) and settles on
+   the drawer curve. Transform only, opacity 1 throughout, so the text
+   reads as the same text moving. */
+@keyframes bubble-send-flip {
+  from {
+    transform: translate(var(--send-dx, 0px), var(--send-dy, 18px)) scale(0.98);
+  }
+  to {
+    transform: none;
+  }
+}
+.bubble-send-flip {
+  animation: bubble-send-flip 420ms cubic-bezier(0.32, 0.72, 0, 1) both;
+  transform-origin: bottom right;
+  will-change: transform;
+}
 @media (prefers-reduced-motion: reduce) {
   @keyframes bubble-send-in {
     from {
@@ -239,9 +256,9 @@ html.is-mac.glass .sidebar-glass {
       opacity: 1;
     }
   }
-  .bubble-send-in {
-    animation-duration: 120ms;
-    animation-timing-function: linear;
+  .bubble-send-in,
+  .bubble-send-flip {
+    animation: bubble-send-in 120ms linear both;
     will-change: auto;
   }
 }
