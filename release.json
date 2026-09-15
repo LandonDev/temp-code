@@ -1,5 +1,5 @@
 {
-  "n": 158,
-  "notes": "The paused and errored banners span every workspace: Continue and Continue all now gather every paused or stopped-on-error thread across all projects, not just the one open, since resuming acts on a thread by id and needs no project switch first. Needs-you keeps its per-project scope",
-  "ts": 1789503238264
+  "n": 159,
+  "notes": "Claude and Codex threads route through Aliax's shim or our own gateway: endpointFor(service) picks the shim when it answers /__shim, else the gateway, else leaves the CLI default; the claude driver sets ANTHROPIC_BASE_URL, the codex driver sets chatgpt_base_url on thread/start, listens for account/rateLimits/updated and asks account/rateLimits/read once the thread is up, feeding the pinned Codex account's 5h and week windows into the shared usage cache and the footer",
+  "ts": 1789503467539
 }
