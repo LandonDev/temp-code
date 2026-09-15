@@ -1,28 +1,19 @@
 # temp-code — instructions for AI sessions
 
-## Two lines: prod on `stable`, the new shell on `master`
-- `stable` is the last pre-MonoCode release (v96 plus one commit that
-  points its updater at `stable`). It is what /Applications/TempCode.app
-  runs, with its data in `~/Library/Application Support/temp-code/`.
-- `master` is the new app (MonoCode's shell on our server). All work
-  happens here. Prod does not see master's releases until `stable` is
-  moved onto master (see "Moving prod over").
+## One line: prod runs master's releases
+- `/Applications/TempCode.app` runs the newest `release-N` tag on `master`
+  (its data lives in `~/Library/Application Support/temp-code/`). Every
+  green commit on master is offered to the installed app on its next
+  check, so commit only finished, verified slices.
+- `stable` is a pointer the updater no longer reads; it is moved onto
+  master at each cutover (`git branch -f stable master`) and otherwise
+  left alone. The pre-MonoCode line (v96) lives on in the reflog only.
 
 ## The user lives in the installed app — never touch it
 Do not launch anything against the prod userData (that means never
 `bun run dev` without TEMP_CODE_USER_DATA, and never `bun run dev:prod`
 from an AI session), do not send messages into the user's threads, and
 do not kill or restart the installed app.
-
-## TEMPORARY: no dev instances from AI sessions (until the user lifts it)
-On 2026-09-10 three implementation threads each ran their own dev
-instance on a copy of the 1.2 GB prod database. Three Electron apps
-parsing the event log at once stalled the whole machine. Until the user
-confirms performance is fixed, AI sessions do NOT launch Electron at all:
-no `bun run dev`, no packaged builds run, no CDP. Verify with vitest,
-typecheck, headless node scripts (the e2e pattern under scripts/ with
-electron-shim.mjs) and review. The user tests with `bun run dev:prod`.
-The section below stays for when the ban is lifted.
 
 ## Testing: spawn an isolated dev instance
 ```bash
@@ -69,13 +60,8 @@ typecheck + tests + build, bumps release.json, commits and tags
 - Never build into or swap /Applications/TempCode.app yourself, and never
   commit with a broken typecheck "to fix later" — that blocks the train.
 
-## Moving prod over (the user's call)
-```bash
-git branch -f stable master   # at a release commit
-```
-The installed app then offers the newest release on its next check and
-rebuilds itself from the tag. A fix on the old line instead: commit on
-`stable`, then in ~/IdeaProjects/temp-code-prod check it out and run
-`bun install && bunx electron-vite build && bunx electron-builder --dir`,
-and swap dist/mac-arm64/TempCode.app into /Applications by hand. Do not
-run scripts/release.ts on `stable`; release numbers belong to master.
+## The prod worktree
+~/IdeaProjects/temp-code-prod is the updater's build checkout: it detaches
+onto the target tag, installs and builds there, then swaps or syncs the
+bundle. Leave it detached; never keep a branch checked out in it, and never
+build into or swap /Applications/TempCode.app yourself.
