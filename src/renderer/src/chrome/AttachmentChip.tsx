@@ -95,7 +95,7 @@ export function AttachmentChip({ attachment, onRemove, onOpen }: Props) {
               : 'size-4 text-content/40'
           }`}
         >
-          <X className={image ? 'size-3' : 'size-3'} strokeWidth={2} />
+          <X className="size-3" strokeWidth={2} />
         </button>
       ) : null}
     </div>
