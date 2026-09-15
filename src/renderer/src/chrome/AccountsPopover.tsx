@@ -1,22 +1,34 @@
 import type { RefObject } from "react";
-import type { ProfileView, UsageReport, UsageWindow } from "aliax-core/shared/types";
+import type { PlanInfo, ProfileView, UsageReport, UsageWindow } from "aliax-core/shared/types";
 import { Check, Loader } from "./icons";
 import { Popover } from "./Popover";
 import {
+  cycleMs,
   displayName,
   fillFor,
   onPaceLeft,
   percentLeft,
   reportOf,
+  resetLabel,
+  resetPoint,
+  toneFor,
   untilLabel,
-  windowLabel,
 } from "../lib/accounts";
 import type { AccountProvider, ProviderAccounts } from "@server/shared/accounts";
 
+/** A usage column is 10rem plus a 1.5rem gutter; the name column takes 13rem. */
+const CELL_REM = 10;
+const GUTTER_REM = 1.5;
+const NAME_REM = 13;
+const MIN_SLOTS = 2;
+const MAX_SLOTS = 4;
+const REM = 16;
+
 /**
- * Every saved account of one provider, in Aliax's own row order. Clicking a
- * row that is not the pinned one switches to it; nothing here adds, edits or
- * removes an account — that stays in Aliax.
+ * Every saved account of one provider, in Aliax's own row order, each with
+ * the same usage cells Aliax draws: percent left, a bar with the on-pace
+ * tick, and when the window refills. Clicking a row that is not the pinned
+ * one switches to it; adding, editing or removing stays in Aliax.
  */
 export function AccountsPopover({
   anchor,
@@ -35,17 +47,23 @@ export function AccountsPopover({
   onSwitch: (provider: AccountProvider, name: string) => void;
   onDismiss: () => void;
 }) {
+  // Every row reserves the same columns so bars line up down the list.
+  const slots = Math.min(
+    MAX_SLOTS,
+    Math.max(MIN_SLOTS, ...accounts.reports.map((r) => groupWindows(r.windows).length)),
+  );
+  const width = (NAME_REM + slots * CELL_REM + slots * GUTTER_REM + 1) * REM;
   return (
     <Popover
       anchor={anchor}
       side="top"
       align="start"
-      width={416}
+      width={width}
       autoFocus
       onDismiss={onDismiss}
       role="listbox"
       aria-label={`${provider} accounts`}
-      className="p-1"
+      className="overflow-y-auto p-1.5"
     >
       {accounts.profiles.map((profile) => (
         <AccountRow
@@ -55,11 +73,12 @@ export function AccountsPopover({
           pinned={profile.name === accounts.pinned}
           busy={busy}
           now={now}
+          slots={slots}
           onPick={() => onSwitch(provider, profile.name)}
         />
       ))}
       {accounts.note ? (
-        <p className="px-2 pb-1 pt-1.5 text-[11px] text-content/50">{accounts.note}</p>
+        <p className="px-2.5 pb-1 pt-2 text-[11px] text-content/50">{accounts.note}</p>
       ) : null}
     </Popover>
   );
@@ -71,6 +90,7 @@ function AccountRow({
   pinned,
   busy,
   now,
+  slots,
   onPick,
 }: {
   profile: ProfileView;
@@ -78,66 +98,226 @@ function AccountRow({
   pinned: boolean;
   busy: boolean;
   now: number;
+  slots: number;
   onPick: () => void;
 }) {
-  const sub = subline(report, now);
+  const status = statusLine(report, now);
   return (
     <button
       type="button"
       role="option"
       aria-selected={pinned}
       disabled={pinned || busy}
-      className="flex w-full items-center gap-3 rounded-lg px-2 py-1.5 text-left text-[12px] leading-none text-content hover:bg-content/5 active:bg-content/10 disabled:hover:bg-transparent"
+      className="flex w-full items-center gap-6 rounded-lg px-2.5 py-2.5 text-left text-[12px] leading-none text-content hover:bg-content/5 active:bg-content/10 disabled:hover:bg-transparent"
       onMouseDown={(event) => event.preventDefault()}
       onClick={onPick}
     >
-      <span
-        aria-hidden
-        className={`size-2 shrink-0 rounded-full ${profile.color ? "" : "bg-content/30"}`}
-        style={profile.color ? { background: profile.color } : undefined}
-      />
-      <span className="flex min-w-0 flex-1 flex-col gap-1">
-        <span className="flex items-center gap-1.5">
-          <span className="truncate">{displayName(profile)}</span>
-          {pinned ? (
-            busy ? (
-              <Loader className="size-3 shrink-0 motion-safe:animate-spin text-content/50" aria-label="Switching" />
-            ) : (
-              <Check className="size-3 shrink-0 text-content/50" aria-label="Active" />
-            )
+      <span className="flex min-w-0 flex-1 items-start gap-2.5">
+        <span
+          aria-hidden
+          className={`mt-0.5 size-2 shrink-0 rounded-full ${profile.color ? "" : "bg-content/30"}`}
+          style={profile.color ? { background: profile.color } : undefined}
+        />
+        <span className="flex min-w-0 flex-1 flex-col gap-1.5">
+          <span className="flex items-center gap-1.5">
+            <span className={`truncate ${pinned ? "font-medium" : ""}`}>{displayName(profile)}</span>
+            {profile.duplicate ? <span className="shrink-0 text-[10px] text-warning">duplicate</span> : null}
+            {pinned ? (
+              busy ? (
+                <Loader className="size-3 shrink-0 motion-safe:animate-spin text-content/50" aria-label="Switching" />
+              ) : (
+                <Check className="size-3 shrink-0 text-content/50" aria-label="Active" />
+              )
+            ) : null}
+          </span>
+          {report?.plan ? <PlanLine plan={report.plan} now={now} /> : null}
+          {status ? <span className={`truncate text-[11px] ${status.tone}`}>{status.text}</span> : null}
+          {report?.banked ? (
+            <span className="text-[11px] text-content/50">
+              {report.banked} banked reset{report.banked === 1 ? "" : "s"}
+            </span>
           ) : null}
         </span>
-        {sub ? <span className="text-[11px] text-content/50">{sub}</span> : null}
       </span>
-      <span className="flex shrink-0 items-center gap-2">
-        {(report?.windows ?? []).map((w) => (
-          <MiniBar key={w.label} w={w} now={now} />
-        ))}
-      </span>
+      <UsageBlock report={report} now={now} slots={slots} />
     </button>
   );
 }
 
-function subline(report: UsageReport | undefined, now: number): string | null {
+function statusLine(report: UsageReport | undefined, now: number): { text: string; tone: string } | null {
   if (!report) return null;
-  if (report.expired) return "sign in again in Aliax";
+  if (report.expired) return { text: "Session expired · sign in again in Aliax", tone: "text-warning" };
   if (report.rateLimit) {
     const until = report.rateLimit.until;
-    return until ? `rate limited · ${untilLabel(until, now)} left` : "rate limited";
+    const text =
+      until === undefined
+        ? "Usage rate limited"
+        : until <= now
+          ? "Usage rate limited · retrying"
+          : `Usage rate limited · ${untilLabel(until, now)} left`;
+    return { text, tone: "text-warning" };
   }
   return null;
 }
 
-function MiniBar({ w, now }: { w: UsageWindow; now: number }) {
+const STATUS_TEXT: Record<string, string> = {
+  canceled: "canceled · won't renew",
+  cancelled: "canceled · won't renew",
+  past_due: "payment past due",
+  unpaid: "payment failed",
+  incomplete: "payment incomplete",
+  incomplete_expired: "payment expired",
+  paused: "paused",
+  trialing: "trial",
+  lapsed: "ended",
+};
+const STATUS_OK = new Set(["active", "trialing"]);
+
+const shortDate = (at: number): string =>
+  new Date(at).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+
+/** "Max 20x · $200/mo · renews Oct 3", with a warning when the plan is ending. */
+function PlanLine({ plan, now }: { plan: PlanInfo; now: number }) {
+  const parts = [plan.name];
+  if (plan.monthlyUsd !== undefined) parts.push(`$${plan.monthlyUsd}/mo`);
+  let tail: { text: string; warn: boolean } | null = null;
+  if (plan.cancelsAt !== undefined) tail = { text: `canceled · ends ${shortDate(plan.cancelsAt)}`, warn: true };
+  else if (plan.status && !STATUS_OK.has(plan.status))
+    tail = { text: STATUS_TEXT[plan.status] ?? plan.status.replace(/_/g, " "), warn: true };
+  else if (plan.renewsAt !== undefined && plan.renewsAt > now)
+    tail = { text: `renews ${shortDate(plan.renewsAt)}`, warn: false };
+  return (
+    <span className="truncate text-[11px] text-content/50">
+      {parts.join(" · ")}
+      {tail ? (
+        <>
+          {" · "}
+          <span className={tail.warn ? "text-warning" : ""}>{tail.text}</span>
+        </>
+      ) : null}
+    </span>
+  );
+}
+
+/** Group windows by the moment they refill, to the minute. */
+export function groupWindows(windows: UsageWindow[]): UsageWindow[][] {
+  const groups: UsageWindow[][] = [];
+  for (const w of windows) {
+    const key = w.resetsAt ? Math.round(w.resetsAt / 60_000) : null;
+    const found =
+      key === null
+        ? undefined
+        : groups.find((g) => g[0].resetsAt && Math.round(g[0].resetsAt / 60_000) === key);
+    if (found) found.push(w);
+    else groups.push([w]);
+  }
+  return groups;
+}
+
+function UsageBlock({ report, now, slots }: { report: UsageReport | undefined; now: number; slots: number }) {
+  const style = {
+    width: `${slots * CELL_REM + (slots - 1) * GUTTER_REM}rem`,
+    gridTemplateColumns: `repeat(${slots}, minmax(0, 1fr))`,
+  };
+  if (!report) {
+    return (
+      <span className="flex shrink-0 items-center text-content/40" style={style}>
+        <span className="motion-safe:animate-pulse">···</span>
+      </span>
+    );
+  }
+  if (report.windows.length === 0) {
+    return (
+      <span className="flex shrink-0 items-center text-[11px] text-content/40" style={style}>
+        {report.rateLimit ? "No usage recorded yet" : (report.note ?? report.extra ?? "Usage unavailable")}
+      </span>
+    );
+  }
+  const groups = groupWindows(report.windows).slice(0, slots);
+  return (
+    <span className="grid shrink-0 gap-6" style={style}>
+      {groups.map((g, i) => (
+        // Fill from the right, so a single monthly cycle lines up with the weeklies.
+        <span key={g[0].label} style={i === 0 ? { gridColumnStart: slots - groups.length + 1 } : undefined}>
+          <UsageCell group={g} now={now} />
+        </span>
+      ))}
+    </span>
+  );
+}
+
+/**
+ * One refill clock and every limit that shares it: a per-model cap that
+ * resets with the weekly window stacks under it instead of repeating the
+ * same countdown in a column of its own.
+ */
+function UsageCell({ group, now }: { group: UsageWindow[]; now: number }) {
+  const head = group[0];
+  const refills = head.resetsAt !== undefined && head.resetsAt > now;
+  const period = head.periodMs ?? cycleMs(head.label);
+  const pace = onPaceLeft(head, now);
+  const title = refills
+    ? `Refills ${resetLabel(head.resetsAt as number)}${pace !== null ? `\nAn even burn leaves ${Math.round(pace)}% by now` : ""}`
+    : undefined;
+  return (
+    <span className="flex flex-col gap-2" title={title} data-cell={head.label}>
+      {group.map((w) => (
+        <WindowLine key={w.label} w={w} now={now} />
+      ))}
+      <span className="flex h-3 items-center gap-1.5 text-[11px] text-content/50">
+        {refills ? (
+          <>
+            {period ? <CycleRing fraction={cycleFraction(head.resetsAt as number, period, now)} /> : null}
+            <span className="truncate">
+              in {untilLabel(head.resetsAt as number, now)}
+              <span className="text-content/35"> · {resetPoint(head.resetsAt as number, now)}</span>
+            </span>
+          </>
+        ) : null}
+      </span>
+    </span>
+  );
+}
+
+function WindowLine({ w, now }: { w: UsageWindow; now: number }) {
   const left = percentLeft(w);
   return (
-    <span
-      className="flex w-12 flex-col gap-0.5"
-      title={`${w.label}: ${Math.round(left)}% left`}
-    >
-      <span className="text-[9px] leading-none text-content/40">{windowLabel(w.label)}</span>
-      <Bar w={w} now={now} height="h-1" />
+    <span className="flex flex-col gap-1.5" data-window={w.label}>
+      <span className="flex items-baseline justify-between gap-2">
+        <span className="truncate text-[11px] text-content/50">{w.label}</span>
+        <span className={`text-[12px] font-medium tabular-nums ${toneFor(w, now)}`}>{formatPercent(left)}</span>
+      </span>
+      <Bar w={w} now={now} height="h-1.5" />
     </span>
+  );
+}
+
+/** Whole numbers stay whole; a fractional report keeps one decimal so nothing is hidden. */
+export const formatPercent = (n: number): string =>
+  `${Number.isInteger(n) ? n : Math.round(n * 10) / 10}%`;
+
+/** How far into the current cycle we are, 0 at refill and 1 just before the next. */
+export const cycleFraction = (resetsAt: number, period: number, now: number): number =>
+  Math.min(1, Math.max(0, 1 - (resetsAt - now) / period));
+
+function CycleRing({ fraction }: { fraction: number }) {
+  const r = 5;
+  const c = 2 * Math.PI * r;
+  return (
+    <svg viewBox="0 0 14 14" aria-hidden className="size-3.5 shrink-0 -rotate-90">
+      <circle cx="7" cy="7" r={r} fill="none" strokeWidth="2.5" className="stroke-content/15" />
+      <circle
+        cx="7"
+        cy="7"
+        r={r}
+        fill="none"
+        strokeWidth="2.5"
+        strokeLinecap="round"
+        strokeDasharray={c}
+        strokeDashoffset={c * (1 - Math.max(0.04, fraction))}
+        className="stroke-content/70"
+      />
+    </svg>
   );
 }
 
