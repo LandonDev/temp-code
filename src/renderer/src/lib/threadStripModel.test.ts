@@ -3,6 +3,7 @@ import {
   archivedRootThreads,
   chipTone,
   displayStatus,
+  dormantThreads,
   isLiveThread,
   projectRootThreads,
   runningRoots,
@@ -123,5 +124,32 @@ describe("runningRoots", () => {
       thread("d", { status: "running" }),
     ];
     expect(runningRoots(all).map((t) => t.id)).toEqual(["a"]);
+  });
+});
+
+describe("dormantThreads", () => {
+  it("takes only settled, seen, unpinned roots with nothing live in the tree", () => {
+    const seen = { seen: 100, pinned: 100, plan: 100, "seen-done": 100 };
+    const all = [
+      thread("seen"),
+      thread("seen-done", { status: "done" }),
+      thread("unread"),
+      thread("working", { status: "running" }),
+      thread("starting", { status: "starting" }),
+      thread("needs-you", { status: "waiting" }),
+      thread("paused-kid", { treeHasPaused: true }),
+      thread("busy-kid", { treeHasLiveWork: true }),
+      thread("failed-kid", { treeCanContinue: true }),
+      thread("draft", { draft: true }),
+      { ...thread("pinned"), pinned: true },
+      { ...thread("plan"), threadType: "planning" as const, planPath: "/p/plan.md" },
+    ];
+    expect(dormantThreads(all, seen).map((t) => t.id)).toEqual(["seen", "seen-done"]);
+  });
+
+  it("counts a thread with no seen entry as seen up to the floor", () => {
+    expect(dormantThreads([thread("old", { updatedAt: 50 }), thread("new")], {}, 60)).toEqual([
+      thread("old", { updatedAt: 50 }),
+    ]);
   });
 });

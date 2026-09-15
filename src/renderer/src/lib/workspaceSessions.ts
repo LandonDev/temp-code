@@ -29,6 +29,9 @@ export type ThreadRow = {
   treeHasPaused?: boolean;
   treeCanContinue?: boolean;
   treeFrozenActiveElapsed?: number | null;
+  /** What "Archive dormant threads" spares (see threadStripModel). */
+  pinned?: boolean;
+  planPath?: string | null;
   /** Subagents of this root, ranked: waiting, failed, working, done. */
   children?: ThreadRow[];
   /** Set on child rows; drives the row glyph. */
@@ -148,6 +151,8 @@ export function threadRow(
     treeHasPaused: meta.treeHasPaused,
     treeCanContinue: meta.treeCanContinue,
     treeFrozenActiveElapsed: meta.treeFrozenActiveElapsed,
+    pinned: meta.pinned,
+    planPath: meta.planPath,
     createdAt: meta.createdAt,
     ...(meta.parentId
       ? { agentType: meta.agentType, provider: meta.provider, model: meta.model }
