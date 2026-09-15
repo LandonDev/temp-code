@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   archiveProject,
+  collectRailProjects,
   forgetProject,
   loadArchivedProjects,
   loadPinnedProjects,
@@ -108,6 +109,20 @@ describe("projectRailSections", () => {
     expect(syncProjectRailOrder(["/tmp/older"], projects)).toEqual([
       "/tmp/older",
       "/tmp/new",
+    ]);
+  });
+});
+
+describe("projectRailSections without a current folder", () => {
+  it("lists the given rows only, so a thread's project folder adds no row", () => {
+    const recents = [{ path: "/tmp/ws", openedAt: 1 }];
+    const { pinned, projects } = projectRailSections(recents, null, [], []);
+    expect(pinned).toEqual([]);
+    expect(projects.map((item) => item.path)).toEqual(["/tmp/ws"]);
+    expect([...collectRailProjects(recents, null).keys()]).toEqual(["/tmp/ws"]);
+    expect([...collectRailProjects(recents, "/tmp/ws/app").keys()]).toEqual([
+      "/tmp/ws",
+      "/tmp/ws/app",
     ]);
   });
 });

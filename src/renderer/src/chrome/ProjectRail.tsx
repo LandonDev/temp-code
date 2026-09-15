@@ -92,8 +92,8 @@ function projectMenuExtraItems(
 ): TabGroupMenuExtraItem[] {
   const items: TabGroupMenuExtraItem[] = [
     pinned
-      ? { id: "unpin", label: "Unpin project", icon: PinOff }
-      : { id: "pin", label: "Pin project", icon: Pin },
+      ? { id: "unpin", label: "Unpin workspace", icon: PinOff }
+      : { id: "pin", label: "Pin workspace", icon: Pin },
     { id: "reveal", label: REVEAL_LABEL, icon: FolderOpen },
   ];
   if (canRemove) {
@@ -195,13 +195,11 @@ export function ProjectRail({
   const lockOverscroll = useLockOverscroll<HTMLDivElement>();
   const scrollRef = useRef<HTMLDivElement>(null);
   const groupLogos = useTabGroupLogos();
-  const allProjects = useMemo(
-    () => collectRailProjects(recents, cwd),
-    [cwd, recents],
-  );
+  // Workspaces only: a thread's project folder never earns a row of its own.
+  const allProjects = useMemo(() => collectRailProjects(recents, null), [recents]);
   const sections = useMemo(
-    () => projectRailSections(recents, cwd, railOrder, pinnedPaths),
-    [cwd, pinnedPaths, railOrder, recents],
+    () => projectRailSections(recents, null, railOrder, pinnedPaths),
+    [pinnedPaths, railOrder, recents],
   );
   const busy = useMemo(() => {
     const set = new Set<string>();
@@ -378,7 +376,7 @@ export function ProjectRail({
   return (
     <nav
       ref={resize.setPaneRef}
-      aria-label="Projects"
+      aria-label="Workspaces"
       className="sidebar-glass relative flex shrink-0 flex-col border-r border-content/10"
     >
       <div
@@ -394,6 +392,7 @@ export function ProjectRail({
           onGoForward={onGoForward}
           onTogglePanel={settingsOpen ? undefined : shell.toggleProjectRail}
           panelActive
+          panelLabel="Toggle workspaces"
         />
       </div>
 
@@ -463,9 +462,9 @@ export function ProjectRail({
             ) : null}
 
             <ProjectSection
-              label="Projects"
+              label="Workspaces"
               items={sections.projects}
-              emptyLabel="No projects yet"
+              emptyLabel="No workspaces yet"
               onAdd={onOpenProject}
               cwd={cwd}
               busy={busy}
@@ -569,7 +568,7 @@ export function ProjectRail({
       <div
         role="separator"
         aria-orientation="vertical"
-        aria-label="Resize project sidebar"
+        aria-label="Resize workspace rail"
         aria-valuenow={resize.width}
         aria-valuemin={PROJECT_RAIL_WIDTH_MIN}
         aria-valuemax={PROJECT_RAIL_WIDTH_MAX}
@@ -824,8 +823,8 @@ function ProjectSection({
         {onAdd ? (
           <button
             type="button"
-            title="Open project"
-            aria-label="Open project"
+            title="Add workspace"
+            aria-label="Add workspace"
             onClick={onAdd}
             className="pressable grid size-6 shrink-0 place-items-center rounded-md text-content/50 hover:bg-content/10 hover:text-content"
           >
@@ -1009,8 +1008,8 @@ function ProjectCard({
       <button
         type="button"
         data-no-drag
-        title="Project options"
-        aria-label="Project options"
+        title="Workspace options"
+        aria-label="Workspace options"
         aria-haspopup="menu"
         onPointerDown={(event) => event.stopPropagation()}
         onClick={(event) => {
@@ -1024,8 +1023,8 @@ function ProjectCard({
       <button
         type="button"
         data-no-drag
-        title={pinned ? "Unpin project" : "Pin project"}
-        aria-label={pinned ? "Unpin project" : "Pin project"}
+        title={pinned ? "Unpin workspace" : "Pin workspace"}
+        aria-label={pinned ? "Unpin workspace" : "Pin workspace"}
         onPointerDown={(event) => event.stopPropagation()}
         onClick={(event) => {
           event.stopPropagation();

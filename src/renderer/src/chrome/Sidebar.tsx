@@ -180,6 +180,9 @@ function SidebarComponent({
   const notesEnabled = useSyncExternalStore(subscribeNotesEnabled, loadNotesEnabled, () => true);
   const recents = useRailRecents();
   const selectedProjectId = useProject((s) => s.selectedProjectId);
+  /** The workspace folder the app is in: the rail highlights this row, not
+   *  the focused thread's project folder. */
+  const workspaceCwd = useProject((s) => s.projectCwd);
   /** Server workspace shown in the Sessions tab (null before the catalog loads). */
   const workspaceId = useSelectedWorkspaceId();
   const { busy: busyProjectPaths, needsYou: needsYouProjectPaths } =
@@ -636,7 +639,7 @@ function SidebarComponent({
     >
       {railVisible && onSelectProject && onOpenProject ? (
         <ProjectRail
-          cwd={cwd}
+          cwd={workspaceCwd}
           recents={recents}
           inboxUnseen={inboxUnseen}
           busyPaths={busyProjectPaths}
