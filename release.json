@@ -1,5 +1,5 @@
 {
-  "n": 151,
-  "notes": "Fix appshot fly-in replaying every time you return to its thread",
-  "ts": 1789493179690
+  "n": 152,
+  "notes": "Left rail: click a workspace's status chip to see each chat, not just a shimmer",
+  "ts": 1789495380503
 }
