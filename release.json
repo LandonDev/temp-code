@@ -1,5 +1,5 @@
 {
-  "n": 131,
-  "notes": "Close the design-system pass: AttachmentChip's remove glyph drops its dead size ternary",
-  "ts": 1789439858259
+  "n": 132,
+  "notes": "Prod moves onto master: the IntelliJ engine spawns headless on both sites so an expired build no longer bounces a Java icon in the Dock, and CLAUDE.md drops the two-line split and the temporary no-dev-instances rule now that the user has confirmed the new shell's performance",
+  "ts": 1789440024561
 }
