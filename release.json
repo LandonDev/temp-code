@@ -1,5 +1,5 @@
 {
-  "n": 139,
-  "notes": "The left rail lists workspaces only and says so: it no longer adds the focused thread's project folder as a row of its own, so sending in a project thread no longer conjures a row that vanishes on leaving; the highlighted row is the workspace the app is in, and the rail's labels read Workspaces, Add workspace, Pin workspace and Workspace options",
-  "ts": 1789442830520
+  "n": 140,
+  "notes": "Subagent rows fold under their root unless the root or one of them is working, or the open thread is one of them: the root's tail shows a chevron and count that unfolds them, a click pins either state per root in localStorage under monocode.tc.subagentRows, a pin that matches what the work would show is dropped so a root un-pins itself by settling, there is no height tween and the section re-measures itself so the virtualizer follows",
+  "ts": 1789443100596
 }
