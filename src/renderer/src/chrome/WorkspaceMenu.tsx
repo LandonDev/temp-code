@@ -7,6 +7,9 @@ type Props = {
   onDismiss: () => void;
   onNewProject: () => void;
   onNewChat: () => void;
+  /** Settled, seen, unpinned roots across the workspace; 0 greys the item. */
+  dormantCount: number;
+  onArchiveDormant: () => void;
   /** Absent when the rail that owns the appearance menu is not on screen. */
   onWorkspaceSettings?: () => void;
   onThreadDefaults?: () => void;
@@ -29,6 +32,8 @@ export function WorkspaceMenu({
   onDismiss,
   onNewProject,
   onNewChat,
+  dormantCount,
+  onArchiveDormant,
   onWorkspaceSettings,
   onThreadDefaults,
   onOrchestration,
@@ -44,6 +49,17 @@ export function WorkspaceMenu({
         run: onNewProject,
       },
       { id: "new-chat", label: "New chat", run: onNewChat },
+    ],
+    [
+      {
+        id: "archive-dormant",
+        label:
+          dormantCount > 0
+            ? `Archive ${dormantCount} dormant thread${dormantCount === 1 ? "" : "s"}`
+            : "Archive dormant threads",
+        disabled: dormantCount === 0,
+        run: onArchiveDormant,
+      },
     ],
     [
       ...(onThreadDefaults

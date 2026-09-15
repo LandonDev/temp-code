@@ -58,8 +58,12 @@ export function isUnread(
 
 /** temp-code's live rule: anything not settled-and-seen. `done` settles
  *  like `idle` (the server's terminal status for a finished run). */
+/** What the live rule reads; every StripThread and ThreadRow has it. */
+export type LiveInput = Pick<StripThread, "id" | "status" | "updatedAt"> &
+  Partial<Pick<StripThread, "treeHasLiveWork" | "treeHasPaused" | "treeCanContinue" | "draft">>;
+
 export function isLiveThread(
-  t: StripThread,
+  t: LiveInput,
   lastSeen: SeenMap,
   planReady: ReadyMap,
   floor = 0,
@@ -86,6 +90,22 @@ export function splitThreads<T extends StripThread>(
   for (const t of [...threads].sort(freshestFirst))
     (isLiveThread(t, lastSeen, planReady, floor) ? live : dormant).push(t);
   return { live, dormant };
+}
+
+/** The roots "Archive dormant threads" takes: settled, seen, nothing live
+ *  or paused or recoverable in the tree, not pinned, and not a planning
+ *  thread holding a plan (its readiness is polled elsewhere, so it is
+ *  spared rather than guessed at). Working, needs-you, unread and pinned
+ *  roots are never touched. */
+export function dormantThreads<
+  T extends LiveInput & Partial<Pick<SessionMeta, "pinned" | "threadType" | "planPath">>,
+>(threads: readonly T[], lastSeen: SeenMap, floor = 0): T[] {
+  return threads.filter(
+    (t) =>
+      !t.pinned &&
+      !(t.threadType === "planning" && t.planPath) &&
+      !isLiveThread(t, lastSeen, {}, floor),
+  );
 }
 
 /** What the chip wears: a paused descendant reads as paused, a recoverable

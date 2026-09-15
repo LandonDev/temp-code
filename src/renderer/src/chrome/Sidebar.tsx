@@ -9,6 +9,7 @@ import {
 import {
   memo,
   useEffect,
+  useMemo,
   useRef,
   useState,
   useSyncExternalStore,
@@ -27,7 +28,16 @@ import { EASE_OUT } from "../lib/ease";
 import { IS_MAC, MOD } from "../lib/platform";
 import { projectName } from "../lib/paths";
 import type { ProjectMeta } from "../lib/tcserver/types";
-import { useWorkspaces, workspaceLabelKey } from "../lib/tcserver/workspaces";
+import {
+  useWorkspaceCatalog,
+  useWorkspaces,
+  workspaceIdOf,
+  workspaceLabelKey,
+} from "../lib/tcserver/workspaces";
+import { useSessionMetas } from "../lib/tcserver/store";
+import { archive } from "../lib/tcserver/commands";
+import { useLastSeen, useSeenFloor } from "../lib/sessionSeen";
+import { dormantThreads } from "../lib/threadStripModel";
 import { loadNotesEnabled, openWorkspaceSettings, subscribeNotesEnabled } from "../lib/settings";
 import { pickTextHarness } from "../lib/harness/textHarness";
 import { canTabVisitBack, canTabVisitForward } from "../lib/tabVisitHistory";
@@ -246,6 +256,23 @@ function SidebarComponent({
   const [threadDefaultsOpen, setThreadDefaultsOpen] = useState(false);
   const openWorkspaceMenu = (event: ReactMouseEvent<HTMLButtonElement>) =>
     setWorkspaceMenu(event.currentTarget);
+  // The workspace menu's "Archive dormant threads": every settled, seen,
+  // unpinned root the Sessions list shows for this workspace, project
+  // threads and loose chats alike.
+  const metas = useSessionMetas();
+  const { projects: catalogProjects, workspaces: catalogWorkspaces } = useWorkspaceCatalog();
+  const lastSeen = useLastSeen();
+  const seenFloor = useSeenFloor();
+  const dormant = useMemo(() => {
+    if (!workspaceId) return [];
+    const roots = metas.filter(
+      (m) =>
+        !m.parentId &&
+        !m.archived &&
+        workspaceIdOf(m, catalogProjects, catalogWorkspaces) === workspaceId,
+    );
+    return dormantThreads(roots, lastSeen, seenFloor);
+  }, [catalogProjects, catalogWorkspaces, lastSeen, metas, seenFloor, workspaceId]);
   const workspaceSessions =
     workspaceId && onSelectProjectCard && onNewChat ? (
       <WorkspaceSessions
@@ -589,6 +616,10 @@ function SidebarComponent({
           canNewProject={!!workspace}
           onNewProject={() => setNewProjectOpen(true)}
           onNewChat={() => onNewChat?.(null)}
+          dormantCount={dormant.length}
+          onArchiveDormant={() =>
+            void Promise.allSettled(dormant.map((t) => archive(t.id, true)))
+          }
           onThreadDefaults={workspace ? () => setThreadDefaultsOpen(true) : undefined}
           onOrchestration={workspace ? () => openOrchestrationSettings(workspace.id) : undefined}
           onWorkspaceSettings={workspace ? () => openWorkspaceSettings(workspace.id) : undefined}
