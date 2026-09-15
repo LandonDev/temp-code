@@ -7,6 +7,7 @@ import {
   FolderOpen,
   Inbox,
   MoreHorizontal,
+  Pause,
   Pin,
   PinOff,
   File,
@@ -15,7 +16,7 @@ import {
   Settings,
   Trash2,
 } from "./icons";
-import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type MouseEvent, type RefObject } from "react";
 import { useDragResize } from "../hooks/useDragResize";
 import { useLockOverscroll } from "../hooks/useLockOverscroll";
 import { useProjectDiffStats } from "../hooks/useProjectDiffStats";
@@ -60,8 +61,10 @@ import {
   saveTabGroupMascot,
 } from "../lib/tabGroups";
 import { formatLiveElapsed, type LiveAgent } from "../lib/liveAgents";
+import { useWorkspaceRailStatuses, type WorkspaceRailStatus } from "../hooks/useProjectSignals";
 import { HarnessIcon } from "./HarnessIcon";
 import { ProjectLogoIcon } from "./ProjectLogoIcon";
+import { WorkspaceThreadsPopover } from "./WorkspaceThreadsPopover";
 import { subscribeProjectRailActions } from "../lib/projectRailActions";
 import {
   useWorkspaceIcon,
@@ -211,6 +214,7 @@ export function ProjectRail({
     for (const path of needsYouPaths ?? []) set.add(path);
     return set;
   }, [needsYouPaths]);
+  const railStatuses = useWorkspaceRailStatuses();
 
   useEffect(() => {
     setRailOrder((prev) => {
@@ -446,6 +450,9 @@ export function ProjectRail({
                 cwd={cwd}
                 busy={busy}
                 needsYou={needsYou}
+                railStatuses={railStatuses}
+                activeSessionId={activeSessionId ?? null}
+                onSelectAgent={onSelectAgent}
                 sortable={pinnedSortable}
                 pinned
                 searchActive={searchActive || inboxActive || notesActive}
@@ -469,6 +476,9 @@ export function ProjectRail({
               cwd={cwd}
               busy={busy}
               needsYou={needsYou}
+              railStatuses={railStatuses}
+              activeSessionId={activeSessionId ?? null}
+              onSelectAgent={onSelectAgent}
               sortable={projectSortable}
               pinned={false}
               searchActive={searchActive || inboxActive || notesActive}
@@ -781,6 +791,9 @@ function ProjectSection({
   cwd,
   busy,
   needsYou,
+  railStatuses,
+  activeSessionId,
+  onSelectAgent,
   sortable,
   pinned,
   searchActive,
@@ -801,6 +814,9 @@ function ProjectSection({
   cwd: string;
   busy: Set<string>;
   needsYou: Set<string>;
+  railStatuses: Map<string, WorkspaceRailStatus>;
+  activeSessionId: string | null;
+  onSelectAgent?: (sessionId: string) => void;
   sortable: SortableHandle;
   pinned: boolean;
   searchActive: boolean;
@@ -843,6 +859,9 @@ function ProjectSection({
             selected={!searchActive && sameProjectPath(item.path, cwd)}
             busy={pathIn(item.path, busy)}
             needsYou={pathIn(item.path, needsYou)}
+            railStatus={railStatuses.get(item.path)}
+            activeSessionId={activeSessionId}
+            onSelectAgent={onSelectAgent}
             pinned={pinned}
             sortable={sortable}
             index={index}
@@ -864,11 +883,74 @@ function ProjectSection({
 
 const nameClassName = "min-w-0 flex-1 truncate text-[12px] leading-none";
 
+/** The chip's word for each dominant workspace state, plural-aware. */
+const RAIL_CHIP_LABEL: Record<NonNullable<WorkspaceRailStatus["kind"]>, string> = {
+  paused: "Paused",
+  needsYou: "Needs you",
+  busy: "Working",
+  unread: "Done",
+};
+
+function railChipTitle(status: WorkspaceRailStatus): string {
+  if (!status.kind) return "";
+  const word = status.count === 1 ? "thread" : "threads";
+  return `${RAIL_CHIP_LABEL[status.kind]} — ${status.count} ${word}`;
+}
+
+/** One small always-visible indicator per workspace row, replacing the
+ *  plain shimmer/tint as the only signal something is happening: click
+ *  opens the compact per-thread breakdown. */
+function RailStatusChip({
+  status,
+  open,
+  onToggle,
+  chipRef,
+}: {
+  status: WorkspaceRailStatus;
+  open: boolean;
+  onToggle: () => void;
+  chipRef: RefObject<HTMLButtonElement | null>;
+}) {
+  if (!status.kind) return null;
+  return (
+    <button
+      ref={chipRef}
+      type="button"
+      data-no-drag
+      title={railChipTitle(status)}
+      aria-label={railChipTitle(status)}
+      aria-haspopup="menu"
+      aria-expanded={open}
+      onPointerDown={(event) => event.stopPropagation()}
+      onClick={(event) => {
+        event.stopPropagation();
+        onToggle();
+      }}
+      className={`pressable grid size-4 shrink-0 place-items-center rounded ${
+        open ? "bg-content/10" : "hover:bg-content/10"
+      }`}
+    >
+      {status.kind === "paused" ? (
+        <Pause className="size-2.5 fill-current text-warning" strokeWidth={1.75} />
+      ) : status.kind === "needsYou" ? (
+        <span className="size-1.5 rounded-full bg-warning" />
+      ) : status.kind === "busy" ? (
+        <span className="size-1.5 animate-pulse rounded-full bg-accent" />
+      ) : (
+        <span className="size-1.5 rounded-full bg-info" />
+      )}
+    </button>
+  );
+}
+
 function ProjectCard({
   item,
   selected,
   busy,
   needsYou,
+  railStatus,
+  activeSessionId,
+  onSelectAgent,
   pinned,
   sortable,
   index,
@@ -886,6 +968,9 @@ function ProjectCard({
   selected: boolean;
   busy: boolean;
   needsYou: boolean;
+  railStatus: WorkspaceRailStatus | undefined;
+  activeSessionId: string | null;
+  onSelectAgent?: (sessionId: string) => void;
   pinned: boolean;
   sortable: SortableHandle;
   index: number;
@@ -936,8 +1021,11 @@ function ProjectCard({
   const hasChanges = files > 0 || additions > 0 || deletions > 0;
   const cardTitle = projectCardTitle(item.path, name, stats, busy, needsYou);
   const cardAriaLabel = projectCardAriaLabel(name, stats, busy, needsYou);
+  const [threadsOpen, setThreadsOpen] = useState(false);
+  const chipRef = useRef<HTMLButtonElement>(null);
 
   return (
+    <>
     <div
       ref={(el) => sortable.setItemRef(item.path, el)}
       className={`group relative flex h-7 touch-none items-stretch rounded-md px-2 ${
@@ -972,7 +1060,7 @@ function ProjectCard({
         title={cardTitle}
         aria-label={cardAriaLabel}
         aria-current={selected ? "true" : undefined}
-        className="flex min-w-0 flex-1 cursor-default items-center gap-2 pr-6 text-left"
+        className="flex min-w-0 flex-1 cursor-default items-center gap-2 pr-1 text-left"
       >
         <div className="grid size-4 shrink-0 place-items-center transition-opacity group-hover:opacity-0">
           {showLogo && !busy && !needsYou ? (
@@ -1005,6 +1093,14 @@ function ProjectCard({
           </span>
         ) : null}
       </button>
+      {railStatus?.kind ? (
+        <RailStatusChip
+          status={railStatus}
+          open={threadsOpen}
+          onToggle={() => setThreadsOpen((v) => !v)}
+          chipRef={chipRef}
+        />
+      ) : null}
       <button
         type="button"
         data-no-drag
@@ -1039,6 +1135,19 @@ function ProjectCard({
         )}
       </button>
     </div>
+    {threadsOpen && workspaceId ? (
+      <WorkspaceThreadsPopover
+        anchor={chipRef}
+        workspaceId={workspaceId}
+        activeSessionId={activeSessionId}
+        onDismiss={() => setThreadsOpen(false)}
+        onSelectThread={(sessionId) => {
+          setThreadsOpen(false);
+          onSelectAgent?.(sessionId);
+        }}
+      />
+    ) : null}
+    </>
   );
 }
 

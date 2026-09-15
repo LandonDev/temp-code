@@ -81,6 +81,30 @@ export function projectCardStatus<T extends CardThread>(
   };
 }
 
+export type BlockedThread<T extends CardThread> = {
+  kind: "waiting" | "failed";
+  thread: T;
+};
+
+/**
+ * The threads `projectCardStatus()` only counts (`waiting`, `failed`), as
+ * the thread objects themselves — same predicates, so a view that needs to
+ * show WHICH thread is blocked never disagrees with the card's tally.
+ */
+export function blockedThreads<T extends CardThread>(threads: readonly T[]): BlockedThread<T>[] {
+  const isPaused = new Set(threads.filter((t) => t.status === "paused" || !!t.treeHasPaused));
+  const out: BlockedThread<T>[] = [];
+  for (const t of threads) {
+    if (isPaused.has(t)) continue;
+    if (!t.treeCanContinue && t.status === "waiting") {
+      out.push({ kind: "waiting", thread: t });
+    } else if (!t.treeHasLiveWork && (t.status === "error" || !!t.treeCanContinue)) {
+      out.push({ kind: "failed", thread: t });
+    }
+  }
+  return out;
+}
+
 /** The whole-card tooltip: every non-zero state, then the open-tab count. */
 export function cardTooltip(status: ProjectCardStatus, archivedCount: number): string {
   return [
