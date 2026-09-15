@@ -4,6 +4,7 @@ import { handleM3a } from './m3a'
 import { Notes } from './notes'
 import { ProjectLogos } from './projectLogos'
 import { AccountsService } from './accounts'
+import { startGateway, type Gateway } from './gateway'
 import { WebSocketServer, type WebSocket } from 'ws'
 import { CATALOG } from '@shared/catalog'
 import { ClientRequestSchema, type ServerFrame } from '@shared/contract'
@@ -137,6 +138,7 @@ export interface RunningServer {
   port: number
   registry: SessionRegistry
   store: Store
+  gateway: Gateway
   close: () => Promise<void>
 }
 
@@ -146,7 +148,7 @@ const SLOW_REQUEST_MS = 500
 
 export async function startServer(
   dbPath: string,
-  options: { dataDir?: string; appPath?: string } = {}
+  options: { dataDir?: string; appPath?: string; claimShim?: boolean } = {}
 ): Promise<RunningServer> {
   bootMark('server-start')
   const db = openDb(dbPath)
@@ -157,6 +159,7 @@ export async function startServer(
   registry.checkpoints = checkpoints
   const m3a = { store, registry, notes: new Notes(db), logos: new ProjectLogos(options.dataDir ?? dirname(dbPath)), accounts: new AccountsService() }
   m3a.accounts.start()
+  const gateway = await startGateway({ claimShim: options.claimShim ?? false })
   const linear = new Linear(options.dataDir ?? dirname(dbPath))
   registry.resetStaleStatuses()
   registry.startIdleSweep()
@@ -1026,10 +1029,12 @@ export async function startServer(
     port,
     registry,
     store,
+    gateway,
     close: async () => {
       clearTimeout(warmKickoff)
       clearInterval(warmTimer)
       builder.disposeAll()
+      await gateway.stop()
       m3a.accounts.stop()
       await registry.disposeAll()
       await closeAllWatchers()
