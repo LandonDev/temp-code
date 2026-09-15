@@ -5,6 +5,7 @@ import { Notes } from './notes'
 import { ProjectLogos } from './projectLogos'
 import { AccountsService } from './accounts'
 import { startGateway, type Gateway } from './gateway'
+import { observeHooks } from './gatewayObserve'
 import { WebSocketServer, type WebSocket } from 'ws'
 import { CATALOG } from '@shared/catalog'
 import { ClientRequestSchema, type ServerFrame } from '@shared/contract'
@@ -159,7 +160,10 @@ export async function startServer(
   registry.checkpoints = checkpoints
   const m3a = { store, registry, notes: new Notes(db), logos: new ProjectLogos(options.dataDir ?? dirname(dbPath)), accounts: new AccountsService() }
   m3a.accounts.start()
-  const gateway = await startGateway({ claimShim: options.claimShim ?? false })
+  const gateway = await startGateway({
+    claimShim: options.claimShim ?? false,
+    hooks: observeHooks({ logDir: join(options.dataDir ?? dirname(dbPath), 'logs'), onObserved: () => m3a.accounts.nudge() })
+  })
   const linear = new Linear(options.dataDir ?? dirname(dbPath))
   registry.resetStaleStatuses()
   registry.startIdleSweep()

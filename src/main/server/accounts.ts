@@ -130,8 +130,7 @@ export class AccountsService {
       try {
         this.watcher = watch(dir, (_event, file) => {
           if (file !== 'settings.json' && file !== 'usage-cache.json') return
-          if (this.debounce) clearTimeout(this.debounce)
-          this.debounce = setTimeout(() => void this.rebuild(false), 200)
+          this.nudge()
         })
         this.watcher.on('error', () => {})
       } catch {
@@ -144,6 +143,12 @@ export class AccountsService {
       if (this.deps.owner() !== 'aliax') void this.rebuild(false)
     }, this.deps.pollMs)
     void this.rebuild(false)
+  }
+
+  /** Something changed under us (a file, an observed window): rebuild soon, once. */
+  nudge(): void {
+    if (this.debounce) clearTimeout(this.debounce)
+    this.debounce = setTimeout(() => void this.rebuild(false), 200)
   }
 
   stop(): void {
