@@ -1173,7 +1173,7 @@ export default function WorkspaceSessions({
   };
 
   return (
-    <div ref={scroller} className="min-h-0 flex-1 overflow-y-auto px-2 pb-2">
+    <div ref={scroller} className="min-h-0 flex-1 overflow-y-auto px-2 pt-2 pb-2">
         <div className="relative w-full" style={{ height: virtualizer.getTotalSize() }}>
           {virtualizer.getVirtualItems().map((row) => (
             <div
