@@ -92,7 +92,7 @@ export function GoalControl({
             rows={3}
             value={draft}
             placeholder="Keep working until…"
-            className="w-full resize-none rounded-md border border-content/12 bg-transparent px-2 py-1.5 text-[13px] leading-5 text-content outline-none placeholder:text-content/40 focus:border-content/30"
+            className="w-full resize-none rounded-md border border-content/10 bg-transparent px-2 py-1.5 text-[13px] leading-5 text-content outline-none placeholder:text-content/40 focus:border-content/30"
             onChange={(e) => setDraft(e.target.value)}
             onKeyDown={(e) => {
               if (goalEnterSubmits(state, e.key, e.shiftKey)) {

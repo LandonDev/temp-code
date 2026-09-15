@@ -9,7 +9,7 @@ import { Modal } from "./Modal";
 import { ChevronRight } from "./icons";
 import { BUILD_EMPTY, BuildFields, buildOrNull } from "./rail/buildSettings";
 import { ConfirmDialog, DialogFooter as Footer, ErrorLine, GHOST, errorText } from "./ConfirmDialog";
-import { Toggle } from "../surfaces/settingsBits";
+import { INPUT_CLASS, Toggle } from "../surfaces/settingsBits";
 import { TurnPassFields, loadTurnPass, saveTurnPass } from "./TurnPassFields";
 import { client } from "../lib/tcserver/client";
 import type { BuildConfig } from "@server/shared/build";
@@ -32,8 +32,7 @@ import type {
   WorkspaceMeta,
 } from "../lib/tcserver/types";
 
-const INPUT =
-  "w-full rounded-lg border border-content/10 bg-content/5 px-2 py-1.5 text-[12px] text-content outline-none placeholder:text-content/40 focus:border-content/20 disabled:cursor-default disabled:opacity-40";
+const INPUT = `w-full ${INPUT_CLASS}`;
 const LABEL = "text-[11px] font-medium text-content/50";
 function Field({ label, children }: { label: string; children: ReactNode }) {
   return (

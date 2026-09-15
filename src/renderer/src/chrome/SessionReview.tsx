@@ -107,7 +107,7 @@ export function SessionReview({
   return (
     <div className="px-2">
       <div
-        className="relative z-0 rounded-t-[10px] border border-b-0 border-content/10 bg-content/3 px-2 py-1"
+        className="relative z-0 rounded-t-[10px] border border-b-0 border-content/10 bg-content/5 px-2 py-1"
         data-session-review
       >
         <div className="flex min-w-0 items-center gap-2">
@@ -138,24 +138,24 @@ export function SessionReview({
               title="Undo all session changes"
               disabled={disabled}
               onClick={() => run("undo")}
-              className="h-6 rounded-md px-1.5  text-[11px] text-content/50 hover:bg-content/10 hover:text-content disabled:opacity-40"
+              className="pressable h-6 rounded-md px-1.5 text-[11px] text-content/50 hover:bg-content/10 hover:text-content disabled:cursor-default disabled:opacity-40"
             >
-              Undo All
+              Undo all
             </button>
             <button
               type="button"
               title="Keep all session changes"
               disabled={disabled}
               onClick={() => run("keep")}
-              className="h-6 rounded-md px-1.5  text-[11px] text-content/50 hover:bg-content/10 hover:text-content disabled:opacity-40"
+              className="pressable h-6 rounded-md px-1.5 text-[11px] text-content/50 hover:bg-content/10 hover:text-content disabled:cursor-default disabled:opacity-40"
             >
-              Keep All
+              Keep all
             </button>
             <button
               type="button"
               title="Review changes"
               onClick={() => onOpenDiff()}
-              className="h-6 rounded-md bg-content/15 px-2 text-[11px] text-content/70 hover:bg-content/20 hover:text-content"
+              className="pressable h-6 rounded-md bg-content/10 px-2 text-[11px] text-content/70 hover:bg-content/20 hover:text-content"
             >
               Review
             </button>

@@ -86,7 +86,7 @@ function ApprovalToastCard({
       // is answered.
       layout={!reduce}
       transition={SPRING_LAYOUT}
-      className="approval-toast pointer-events-auto overflow-hidden rounded-xl border border-content/20 border-dashed bg-content/10 shadow-xl glass-surface glass-surface--md"
+      className="approval-toast pointer-events-auto overflow-hidden rounded-xl border border-content/10 bg-content/10 shadow-xl glass-surface glass-surface--md"
       role="status"
     >
       <button

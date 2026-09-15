@@ -415,7 +415,7 @@ export function FileEditor({
           onStageGit={showDiff ? stageGit : undefined}
         />
       )}
-      <footer className="flex h-6 shrink-0 items-center border-t border-content/10 px-2.5 font-mono text-[10.5px] text-content/40">
+      <footer className="flex h-6 shrink-0 items-center border-t border-content/10 px-2.5 font-mono text-[11px] text-content/40">
         <span className="min-w-0 flex-1 truncate" title={path}>
           {relativePath}
         </span>
@@ -870,7 +870,7 @@ function DiffChunkNav({
         >
           <ChevronUp className="size-3.5" strokeWidth={1.75} />
         </button>
-        <span className="min-w-10 px-0.5 text-center font-mono text-[10.5px] font-medium tabular-nums text-content/50 select-none">
+        <span className="min-w-10 px-0.5 text-center font-mono text-[11px] font-medium tabular-nums text-content/50 select-none">
           {total === 0 ? "0/0" : `${index + 1}/${total}`}
         </span>
         <button

@@ -396,7 +396,7 @@ function CommitList({
       {open
         ? commits.map((c) => (
             <div key={c.sha} className="flex h-6 items-center gap-2 pr-2" style={{ paddingLeft: 8 + 12 }}>
-              <span className="shrink-0 font-mono text-[10.5px] text-content/40">{c.sha.slice(0, 7)}</span>
+              <span className="shrink-0 font-mono text-[11px] tabular-nums text-content/40">{c.sha.slice(0, 7)}</span>
               <span className="min-w-0 flex-1 truncate text-[12px] text-content" title={c.subject}>
                 {c.subject}
               </span>
