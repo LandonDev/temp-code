@@ -37,7 +37,7 @@ import {
 import { useSessionMetas } from "../lib/tcserver/store";
 import { archive } from "../lib/tcserver/commands";
 import { useLastSeen, useSeenFloor } from "../lib/sessionSeen";
-import { dormantThreads } from "../lib/threadStripModel";
+import { dormantThreads, focusedTree } from "../lib/threadStripModel";
 import { loadNotesEnabled, openWorkspaceSettings, subscribeNotesEnabled } from "../lib/settings";
 import { pickTextHarness } from "../lib/harness/textHarness";
 import { canTabVisitBack, canTabVisitForward } from "../lib/tabVisitHistory";
@@ -258,7 +258,7 @@ function SidebarComponent({
     setWorkspaceMenu(event.currentTarget);
   // The workspace menu's "Archive dormant threads": every settled, seen,
   // unpinned root the Sessions list shows for this workspace, project
-  // threads and loose chats alike.
+  // threads and loose chats alike, sparing the focused session's tree.
   const metas = useSessionMetas();
   const { projects: catalogProjects, workspaces: catalogWorkspaces } = useWorkspaceCatalog();
   const lastSeen = useLastSeen();
@@ -271,8 +271,8 @@ function SidebarComponent({
         !m.archived &&
         workspaceIdOf(m, catalogProjects, catalogWorkspaces) === workspaceId,
     );
-    return dormantThreads(roots, lastSeen, seenFloor);
-  }, [catalogProjects, catalogWorkspaces, lastSeen, metas, seenFloor, workspaceId]);
+    return dormantThreads(roots, lastSeen, seenFloor, focusedTree(metas, activeSessionId));
+  }, [activeSessionId, catalogProjects, catalogWorkspaces, lastSeen, metas, seenFloor, workspaceId]);
   const workspaceSessions =
     workspaceId && onSelectProjectCard && onNewChat ? (
       <WorkspaceSessions

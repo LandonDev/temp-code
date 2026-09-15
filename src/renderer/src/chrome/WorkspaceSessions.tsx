@@ -55,7 +55,7 @@ import {
   type SidebarItem,
 } from "../lib/sidebarRows";
 import { archive as archiveThread, interrupt, pause, resume } from "../lib/tcserver/commands";
-import { dormantThreads } from "../lib/threadStripModel";
+import { dormantThreads, focusedTree } from "../lib/threadStripModel";
 import {
   archiveProject,
   deleteProject,
@@ -269,6 +269,8 @@ const menuAt = (anchor: HTMLElement) => {
 
 type RowActions = {
   activeSessionId?: string;
+  /** The focused session's root and children: "Archive dormant" spares them. */
+  focusedTree: ReadonlySet<string>;
   onOpen: (id: string) => void;
   onRename: (id: string, title: string) => void;
   onDelete: (thread: ThreadRow) => void;
@@ -704,7 +706,7 @@ const ProjectCard = memo(function ProjectCard({
   const runAction = projectRunAction(status);
   const stoppable = stoppableThreads(status);
   const teardown = project.mode === "worktree" && Boolean(project.branch);
-  const dormant = dormantThreads(threads, lastSeen, seenFloor);
+  const dormant = dormantThreads(threads, lastSeen, seenFloor, rows.focusedTree);
   const showSummary =
     status.waiting > 0 ||
     status.failed > 0 ||
@@ -1113,15 +1115,17 @@ export default function WorkspaceSessions({
   );
   const moreChats = useCallback(() => morePages("chats"), [morePages]);
 
+  const focused = useMemo(() => focusedTree(metas, activeSessionId), [activeSessionId, metas]);
   const rows = useMemo<RowActions>(
     () => ({
       activeSessionId,
+      focusedTree: focused,
       onOpen: openSession,
       onRename: renameSession,
       onDelete: (thread) => setDialog({ kind: "delete-chat", thread }),
       openMenu: setMenu,
     }),
-    [activeSessionId, openSession, renameSession],
+    [activeSessionId, focused, openSession, renameSession],
   );
 
   // Cards are the virtual unit: each roots its own border and hover group,
