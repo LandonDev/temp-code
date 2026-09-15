@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { GHOST } from "./ConfirmDialog";
 import { Modal } from "./Modal";
 import {
   BUILT_IN_SCOPE,
@@ -29,7 +30,6 @@ import { Heading, Row, SecondaryButton, Select } from "../surfaces/settingsBits"
 const INPUT =
   "w-full rounded-md border border-content/10 bg-content/5 px-2 py-1.5 text-[12px] text-content outline-none hover:border-content/20 focus:border-accent/60";
 const LABEL = "text-[11px] font-medium text-content/50";
-const GHOST = "rounded-md px-3 py-1.5 text-[12px] text-content/70 hover:bg-content/8 hover:text-content";
 const PRIMARY =
   "rounded-md bg-content px-3 py-1.5 text-[12px] font-medium text-background-base hover:bg-content/70 disabled:cursor-default disabled:opacity-50";
 
@@ -224,7 +224,7 @@ export function ThreadDefaultsDialog({
           if (value) void save(value);
         }}
       >
-        <div className="flex flex-col gap-3 px-4 py-4">
+        <div className="flex flex-col gap-3 px-4 py-3">
           {value ? <DialogFields value={value} onChange={setValue} /> : null}
           <p className="text-[11px] leading-4 text-content/40">
             {scopeHint(workspace.id, scope ?? BUILT_IN_SCOPE)}

@@ -1,4 +1,5 @@
 import { LoaderCircle, Plus, Search, File, Trash2 } from "../chrome/icons";
+import { ConfirmDialog } from "../chrome/ConfirmDialog";
 import {
   Fragment,
   useCallback,
@@ -502,6 +503,7 @@ function NoteEditor({
   const [title, setTitle] = useState(note.title);
   const [body, setBody] = useState(note.body);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const titleRef = useRef(title);
   const bodyRef = useRef(body);
   const noteRef = useRef(note);
@@ -628,18 +630,27 @@ function NoteEditor({
             </button>
             <button
               type="button"
-              onClick={() => {
-                skipSave.current = true;
-                if (saveTimer.current != null)
-                  window.clearTimeout(saveTimer.current);
-                void onDelete(note.id);
-              }}
-              className="inline-flex items-center gap-1.5 rounded-md px-3 h-7 text-[12px] text-content/70 hover:bg-content/10 hover:text-danger"
+              onClick={() => setConfirmDelete(true)}
+              className="pressable inline-flex items-center gap-1.5 rounded-md px-3 h-7 text-[12px] text-content/70 hover:bg-content/10 hover:text-danger"
             >
               <Trash2 className="size-3.5" strokeWidth={1.75} />
               Delete
             </button>
           </div>
+          {confirmDelete ? (
+            <ConfirmDialog
+              title="Delete note?"
+              body="The note is gone for good."
+              confirmLabel="Delete"
+              danger
+              onCancel={() => setConfirmDelete(false)}
+              onConfirm={async () => {
+                skipSave.current = true;
+                if (saveTimer.current != null) window.clearTimeout(saveTimer.current);
+                await onDelete(note.id);
+              }}
+            />
+          ) : null}
           {saveError ? (
             <p className="text-[12px] text-danger">{saveError}</p>
           ) : null}

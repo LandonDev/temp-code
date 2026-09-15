@@ -1,5 +1,5 @@
 import { Check, CircleDot, GitPullRequest } from "./icons";
-import { type ReactNode } from "react";
+import { useState, type KeyboardEvent, type ReactNode } from "react";
 import type { InboxKind } from "../lib/githubTasks";
 import {
   DEFAULT_INBOX_FILTERS,
@@ -53,6 +53,11 @@ const KIND_OPTIONS: {
   },
 ];
 
+type Item =
+  | { kind: "label"; text: string }
+  | { kind: "separator" }
+  | { kind: "item"; key: string; label: string; checked: boolean; icon?: ReactNode; onClick: () => void };
+
 export function InboxFiltersMenu({
   x,
   y,
@@ -64,10 +69,7 @@ export function InboxFiltersMenu({
 }: Props) {
   const hiddenProjects = new Set(filters.hiddenProjects);
   const hiddenKinds = new Set(filters.hiddenKinds);
-
-  const toggleAssigned = () => {
-    onChange({ ...filters, assignedToMe: !filters.assignedToMe });
-  };
+  const [active, setActive] = useState(-1);
 
   const toggleKind = (kind: InboxKind) => {
     const next = new Set(hiddenKinds);
@@ -83,15 +85,103 @@ export function InboxFiltersMenu({
     onChange({ ...filters, hiddenProjects: [...next] });
   };
 
-  const setTime = (time: InboxTimeFilter) => {
-    onChange({ ...filters, time });
-  };
-
   const toggleStatus = (key: keyof InboxFilters["status"]) => {
     onChange({
       ...filters,
       status: { ...filters.status, [key]: !filters.status[key] },
     });
+  };
+
+  const github = source === "github";
+  const items: Item[] = [
+    {
+      kind: "item",
+      key: "assigned",
+      label: "Assigned to me",
+      checked: filters.assignedToMe,
+      onClick: () => onChange({ ...filters, assignedToMe: !filters.assignedToMe }),
+    },
+    { kind: "label", text: "Status" },
+    { kind: "item", key: "open", label: "Open", checked: filters.status.open, onClick: () => toggleStatus("open") },
+    ...(github
+      ? [{ kind: "item", key: "draft", label: "Draft", checked: filters.status.draft, onClick: () => toggleStatus("draft") } as Item]
+      : []),
+    { kind: "item", key: "closed", label: "Closed", checked: filters.status.closed, onClick: () => toggleStatus("closed") },
+    ...(github
+      ? [{ kind: "item", key: "merged", label: "Merged", checked: filters.status.merged, onClick: () => toggleStatus("merged") } as Item]
+      : []),
+    { kind: "label", text: "Time" },
+    ...TIME_OPTIONS.map<Item>((option) => ({
+      kind: "item",
+      key: `time:${option.id}`,
+      label: option.label,
+      checked: filters.time === option.id,
+      onClick: () => onChange({ ...filters, time: option.id }),
+    })),
+    ...(github
+      ? [
+          { kind: "label", text: "Type" } as Item,
+          ...KIND_OPTIONS.map<Item>((option) => ({
+            kind: "item",
+            key: `kind:${option.id}`,
+            label: option.label,
+            checked: !hiddenKinds.has(option.id),
+            icon: option.icon,
+            onClick: () => toggleKind(option.id),
+          })),
+        ]
+      : []),
+    ...(github && projects.length > 0
+      ? [
+          { kind: "label", text: "Projects" } as Item,
+          ...projects.map<Item>((project) => ({
+            kind: "item",
+            key: `project:${project.path}`,
+            label: project.name,
+            checked: !hiddenProjects.has(project.path),
+            icon: project.logoPath ? (
+              <ProjectLogoIcon
+                path={project.logoPath}
+                className="size-3.5 shrink-0 rounded-md"
+                imageClassName="size-3.5"
+              />
+            ) : undefined,
+            onClick: () => toggleProject(project.path),
+          })),
+        ]
+      : []),
+    ...(hasActiveInboxFilters(filters, source)
+      ? [
+          { kind: "separator" } as Item,
+          {
+            kind: "item",
+            key: "clear",
+            label: "Clear filters",
+            checked: false,
+            onClick: () => onChange(DEFAULT_INBOX_FILTERS),
+          } as Item,
+        ]
+      : []),
+  ];
+  const rows = items.map((item, i) => (item.kind === "item" ? i : -1)).filter((i) => i >= 0);
+
+  const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (rows.length === 0) return;
+    const at = rows.indexOf(active);
+    const step = (next: number) => {
+      event.preventDefault();
+      setActive(rows[(next + rows.length) % rows.length]);
+    };
+    if (event.key === "ArrowDown") step(at + 1);
+    else if (event.key === "ArrowUp") step(at < 0 ? rows.length - 1 : at - 1);
+    else if (event.key === "Home") step(0);
+    else if (event.key === "End") step(rows.length - 1);
+    else if (event.key === "Enter" || event.key === " ") {
+      const item = items[active];
+      if (item?.kind !== "item") return;
+      event.preventDefault();
+      item.onClick();
+    }
   };
 
   return (
@@ -100,113 +190,38 @@ export function InboxFiltersMenu({
       gap={0}
       width={INBOX_FILTER_MENU_WIDTH}
       maxHeight={480}
+      autoFocus
       onDismiss={onClose}
       role="menu"
       aria-label="Filter inbox"
+      tabIndex={-1}
+      onKeyDown={onKeyDown}
       onContextMenu={(event) => event.preventDefault()}
       className="overflow-y-auto overscroll-none p-1"
     >
-      <FilterItem
-        label="Assigned to me"
-        checked={filters.assignedToMe}
-        onClick={toggleAssigned}
-      />
-
-      <SectionLabel>Status</SectionLabel>
-      <FilterItem
-        label="Open"
-        checked={filters.status.open}
-        onClick={() => toggleStatus("open")}
-      />
-      {source === "github" ? (
-        <FilterItem
-          label="Draft"
-          checked={filters.status.draft}
-          onClick={() => toggleStatus("draft")}
-        />
-      ) : null}
-      <FilterItem
-        label="Closed"
-        checked={filters.status.closed}
-        onClick={() => toggleStatus("closed")}
-      />
-      {source === "github" ? (
-        <FilterItem
-          label="Merged"
-          checked={filters.status.merged}
-          onClick={() => toggleStatus("merged")}
-        />
-      ) : null}
-
-      <SectionLabel>Time</SectionLabel>
-      {TIME_OPTIONS.map((option) => (
-        <FilterItem
-          key={option.id}
-          label={option.label}
-          checked={filters.time === option.id}
-          onClick={() => setTime(option.id)}
-        />
-      ))}
-
-      {source === "github" ? (
-        <>
-          <SectionLabel>Type</SectionLabel>
-          {KIND_OPTIONS.map((option) => (
-            <FilterItem
-              key={option.id}
-              label={option.label}
-              checked={!hiddenKinds.has(option.id)}
-              icon={option.icon}
-              onClick={() => toggleKind(option.id)}
-            />
-          ))}
-        </>
-      ) : null}
-
-      {source === "github" && projects.length > 0 ? (
-        <>
-          <SectionLabel>Projects</SectionLabel>
-          {projects.map((project) => (
-            <FilterItem
-              key={project.path}
-              label={project.name}
-              checked={!hiddenProjects.has(project.path)}
-              icon={
-                project.logoPath ? (
-                  <ProjectLogoIcon
-                    path={project.logoPath}
-                    className="size-3.5 shrink-0 rounded-md"
-                    imageClassName="size-3.5"
-                  />
-                ) : undefined
-              }
-              onClick={() => toggleProject(project.path)}
-            />
-          ))}
-        </>
-      ) : null}
-
-      {hasActiveInboxFilters(filters, source) ? (
-        <>
-          <div role="separator" className="my-1 h-px bg-content/10" />
-          <button
-            type="button"
-            role="menuitem"
-            onMouseDown={(event) => event.preventDefault()}
-            onClick={() => onChange(DEFAULT_INBOX_FILTERS)}
-            className="flex h-7 w-full items-center rounded-lg px-2 text-left text-[13px] leading-none text-content/70 hover:bg-content/5 hover:text-content"
-          >
-            Clear filters
-          </button>
-        </>
-      ) : null}
+      {items.map((item, index) => {
+        if (item.kind === "label") return <SectionLabel key={`label:${item.text}`}>{item.text}</SectionLabel>;
+        if (item.kind === "separator")
+          return <div key="separator" role="separator" className="my-1 h-px bg-content/10" />;
+        return (
+          <FilterItem
+            key={item.key}
+            label={item.label}
+            checked={item.checked}
+            icon={item.icon}
+            highlighted={active === index}
+            onHover={() => setActive(index)}
+            onClick={item.onClick}
+          />
+        );
+      })}
     </Popover>
   );
 }
 
 function SectionLabel({ children }: { children: string }) {
   return (
-    <div className="px-2 pb-0.5 pt-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-content/40">
+    <div className="px-2 pb-1 pt-2 text-[11px] font-semibold tracking-[0.08em] text-content/50 uppercase">
       {children}
     </div>
   );
@@ -216,11 +231,15 @@ function FilterItem({
   label,
   checked,
   icon,
+  highlighted,
+  onHover,
   onClick,
 }: {
   label: string;
   checked: boolean;
   icon?: ReactNode;
+  highlighted: boolean;
+  onHover: () => void;
   onClick: () => void;
 }) {
   return (
@@ -229,14 +248,15 @@ function FilterItem({
       role="menuitemcheckbox"
       aria-checked={checked}
       onMouseDown={(event) => event.preventDefault()}
+      onMouseEnter={onHover}
       onClick={onClick}
-      className="flex h-7 w-full items-center gap-2 rounded-lg px-2 text-left text-[13px] leading-none text-content hover:bg-content/5"
+      className={`flex h-7 w-full items-center gap-3 rounded-lg px-2 text-left text-[13px] leading-none active:bg-content/10 ${
+        highlighted ? "bg-content/10 text-content" : "text-content hover:bg-content/5"
+      }`}
     >
-      {icon}
+      <span className="grid size-3.5 shrink-0 place-items-center">{icon}</span>
       <span className="min-w-0 flex-1 truncate">{label}</span>
-      {checked ? (
-        <Check className="size-3.5 shrink-0" strokeWidth={2.25} />
-      ) : null}
+      {checked ? <Check className="size-3.5 shrink-0" strokeWidth={2.25} /> : null}
     </button>
   );
 }

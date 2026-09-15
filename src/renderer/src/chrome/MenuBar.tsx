@@ -86,7 +86,7 @@ export function MenuBar({
   const openDropdown = useCallback((key: MenuKey, target: HTMLElement) => {
     const rect = target.getBoundingClientRect();
     setActiveMenu(key);
-    setMenuAnchor({ x: rect.left, y: rect.bottom + 2 });
+    setMenuAnchor({ x: rect.left, y: rect.bottom + 4 });
   }, []);
 
   const closeMenu = useCallback(() => {

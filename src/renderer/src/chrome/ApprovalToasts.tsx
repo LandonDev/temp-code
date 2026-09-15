@@ -79,7 +79,7 @@ function ApprovalToastCard({
 
   return (
     <article
-      className="approval-toast pointer-events-auto overflow-hidden rounded-xl border border-content/20 border-dashed bg-content/10 shadow-xl glass-surface glass-surface--xl"
+      className="approval-toast pointer-events-auto overflow-hidden rounded-xl border border-content/20 border-dashed bg-content/10 shadow-xl glass-surface glass-surface--md"
       role="status"
     >
       <button

@@ -54,6 +54,7 @@ import {
   type TabGroupSegment,
 } from "../lib/tabGroups";
 import { TabGroupMenu, type TabGroupMenuAction } from "./TabGroupMenu";
+import { ConfirmDialog } from "./ConfirmDialog";
 import { CwdPicker } from "./CwdPicker";
 import { ExplorerMenu, type ExplorerMenuItem } from "./ExplorerMenu";
 import { ProjectLogoIcon } from "./ProjectLogoIcon";
@@ -1007,6 +1008,10 @@ function TitleBarComponent({
   }, []);
   const [groupLogos, setGroupLogos] = useState(loadTabGroupLogos);
   const [groupMascots, setGroupMascots] = useState(loadTabGroupMascots);
+  const [confirmGroupClose, setConfirmGroupClose] = useState<{
+    label: string;
+    tabIds: string[];
+  } | null>(null);
   const [groupMenu, setGroupMenu] = useState<{
     x: number;
     y: number;
@@ -1078,13 +1083,10 @@ function TitleBarComponent({
       else if (action === "delete-group") {
         const shared =
           tabs.find((tab) => tab.groupId === groupId)?.project ?? "Group";
-        if (
-          window.confirm(
-            `Delete “${resolveTabGroupLabel(groupId, groupLabels, shared)}” and close ${tabIds.length} tabs?`,
-          )
-        ) {
-          onGroupClose?.(tabIds);
-        }
+        setConfirmGroupClose({
+          label: resolveTabGroupLabel(groupId, groupLabels, shared),
+          tabIds,
+        });
       }
     },
     [
@@ -1574,6 +1576,20 @@ function TitleBarComponent({
               if (id.startsWith("new:")) onGroupNewTab?.(groupId, id.slice(4) as ThreadType);
             }}
             onClose={() => setGroupMenu(null)}
+          />
+        ) : null}
+
+        {confirmGroupClose ? (
+          <ConfirmDialog
+            title={`Delete “${confirmGroupClose.label}”?`}
+            body={`Its ${confirmGroupClose.tabIds.length} tabs close.`}
+            confirmLabel="Delete"
+            danger
+            onCancel={() => setConfirmGroupClose(null)}
+            onConfirm={() => {
+              onGroupClose?.(confirmGroupClose.tabIds);
+              setConfirmGroupClose(null);
+            }}
           />
         ) : null}
 

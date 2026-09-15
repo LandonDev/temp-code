@@ -354,7 +354,7 @@ export function BranchPicker({
                 autoCorrect="off"
                 autoCapitalize="off"
                 disabled={busy}
-                className="min-w-0 flex-1 bg-transparent text-[12px] text-content outline-none placeholder:text-content/40 disabled:opacity-60"
+                className="min-w-0 flex-1 bg-transparent text-[12px] text-content outline-none placeholder:text-content/40 disabled:cursor-default disabled:opacity-40"
                 onChange={(e) => {
                   setQuery(e.target.value);
                   setActive(0);
@@ -438,15 +438,11 @@ function BranchList({
             onClick={() => onPick(row)}
             className={
               row.kind === "create"
-                ? `mb-1 flex h-8 w-full min-w-0 items-center gap-2 rounded-md px-2 text-left disabled:opacity-60 ${
-                    highlighted
-                      ? "bg-content/15 text-content"
-                      : "bg-content/10 text-content hover:bg-content/15"
+                ? `mb-1 flex h-7 w-full min-w-0 items-center gap-3 rounded-lg px-2 text-left disabled:cursor-default disabled:opacity-40 ${
+                    highlighted ? "bg-content/10 text-content" : "text-content hover:bg-content/5"
                   }`
-                : `flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left disabled:opacity-60 ${
-                    highlighted || selected
-                      ? "bg-content/10 text-content"
-                      : "text-content hover:bg-content/5"
+                : `flex h-7 w-full items-center gap-3 rounded-lg px-2 text-left disabled:cursor-default disabled:opacity-40 ${
+                    highlighted ? "bg-content/10 text-content" : "text-content hover:bg-content/5"
                   }`
             }
           >
@@ -459,21 +455,20 @@ function BranchList({
               </>
             ) : (
               <>
-                {selected ? (
-                  <Check className="size-3.5 shrink-0" strokeWidth={1.75} />
-                ) : (
-                  <GitBranch
-                    className="size-3.5 shrink-0 text-content/50"
-                    strokeWidth={1.75}
-                  />
-                )}
+                <GitBranch
+                  className="size-3.5 shrink-0 text-content/50"
+                  strokeWidth={1.75}
+                />
                 <span className="min-w-0 flex-1 truncate font-mono text-[12px]">
                   {row.branch.name}
                 </span>
                 {row.branch.remote ? (
-                  <span className="shrink-0 text-[10px] text-content/40">
+                  <span className="shrink-0 text-[11px] text-content/40">
                     {row.branch.remote}
                   </span>
+                ) : null}
+                {selected ? (
+                  <Check className="size-3.5 shrink-0" strokeWidth={2.25} />
                 ) : null}
               </>
             )}

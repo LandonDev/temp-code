@@ -89,7 +89,7 @@ export function ColorPickerPopover({ value, onChange }: Props) {
   const hueColor = hsvToHex(hsv.h, 100, 100);
 
   return (
-    <div className="mt-2 rounded-lg border border-content/10 bg-content/5 p-2">
+    <div className="mt-2">
       <div
         ref={svRef}
         role="slider"
@@ -104,7 +104,7 @@ export function ColorPickerPopover({ value, onChange }: Props) {
         onPointerDown={onSvPointer}
       >
         <span
-          className="pointer-events-none absolute size-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white shadow-md"
+          className="pointer-events-none absolute size-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white shadow-sm"
           style={{
             left: `${hsv.s}%`,
             top: `${100 - hsv.v}%`,
@@ -128,7 +128,7 @@ export function ColorPickerPopover({ value, onChange }: Props) {
         onPointerDown={onHuePointer}
       >
         <span
-          className="pointer-events-none absolute top-1/2 size-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white shadow-md"
+          className="pointer-events-none absolute top-1/2 size-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white shadow-sm"
           style={{
             left: `${(hsv.h / 360) * 100}%`,
             background: hueColor,
@@ -148,7 +148,7 @@ export function ColorPickerPopover({ value, onChange }: Props) {
           spellCheck={false}
           aria-label="Hex color"
           onChange={(e) => onHexInput(e.target.value)}
-          className="min-w-0 flex-1 rounded-md border border-content/10 bg-content/5 px-2 py-1 font-mono text-[12px] text-content outline-none ring-accent/40 focus:ring-1"
+          className="min-w-0 flex-1 rounded-lg border border-content/10 bg-content/5 px-2 py-1.5 font-mono text-[12px] text-content outline-none focus:border-content/20"
         />
       </div>
     </div>

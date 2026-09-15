@@ -1,4 +1,4 @@
-import { ChevronDown, Search, Star } from "./icons";
+import { Check, ChevronDown, Search, Star } from "./icons";
 import {
   useEffect,
   useMemo,
@@ -562,11 +562,7 @@ function ModelList({
             ref={highlighted ? activeRef : undefined}
             onMouseEnter={() => onActive(index)}
             className={`flex w-full items-center gap-1 rounded-lg px-1 ${
-              disabled
-                ? ""
-                : highlighted || selected
-                  ? "bg-content/10"
-                  : "hover:bg-content/5"
+              disabled ? "" : highlighted ? "bg-content/10" : "hover:bg-content/5"
             }`}
           >
             <button
@@ -602,10 +598,11 @@ function ModelList({
                   </span>
                 </span>
               </span>
+              {selected ? (
+                <Check className="size-3.5 shrink-0" strokeWidth={2.25} />
+              ) : null}
               {shortcut ? (
-                <span className="shrink-0 rounded-md bg-content/10 px-1.5 py-0.5 font-mono text-[10px] text-content/50">
-                  {shortcut}
-                </span>
+                <span className="shrink-0 font-mono text-[11px] text-content/40">{shortcut}</span>
               ) : null}
             </button>
             <button

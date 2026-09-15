@@ -44,7 +44,7 @@ export function WhatsNewBody({
   const title = releaseNotesTitle(version);
 
   return (
-    <article aria-label={title} className="px-5 py-4">
+    <article aria-label={title} className="px-4 py-3">
       {notes?.markdown ? (
         <AgentMarkdown
           className="whats-new-md"

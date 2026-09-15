@@ -21,7 +21,10 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { ConfirmDialog, errorText } from "./ConfirmDialog";
 import { FileTypeIcon } from "./FileTypeIcon";
+import { Popover } from "./Popover";
+import { MatrixSpinner } from "../surfaces/threads/bits";
 import {
   basename,
   gitCommit,
@@ -147,11 +150,19 @@ function ChangedFiles({
   onMutated: (paths?: string[]) => void;
 }) {
   const lockOverscroll = useLockOverscroll<HTMLDivElement>();
-  const menuRef = useRef<HTMLDivElement>(null);
+  const menuButton = useRef<HTMLButtonElement>(null);
   const messageRef = useRef<HTMLTextAreaElement>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState("");
   const [menuOpen, setMenuOpen] = useState(false);
+  const [confirm, setConfirm] = useState<{
+    title: string;
+    body: string;
+    label: string;
+    danger?: boolean;
+    resolve: (ok: boolean) => void;
+  } | null>(null);
   const [stagedExpanded, setStagedExpanded] = useState(stagedOpen);
   const [changesExpanded, setChangesExpanded] = useState(changesOpen);
   const { pr, reload: reloadPr } = usePrStatus(cwd, index?.branch);
@@ -192,27 +203,33 @@ function ChangedFiles({
     el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
   }, [message, enabled]);
 
-  useEffect(() => {
-    if (!menuOpen) return;
-    const onPointer = (event: PointerEvent) => {
-      if (!menuRef.current?.contains(event.target as Node)) setMenuOpen(false);
-    };
-    window.addEventListener("pointerdown", onPointer);
-    return () => window.removeEventListener("pointerdown", onPointer);
-  }, [menuOpen]);
-
-  const fail = (error: unknown) => {
-    window.alert(error instanceof Error ? error.message : String(error));
+  const fail = (e: unknown) => setError(errorText(e));
+  const begin = (key: string) => {
+    setError(null);
+    begin(key);
   };
 
+  /** One-clause confirmation; resolves once the dialog closes. */
+  const ask = (title: string, body: string, label: string, danger = false) =>
+    new Promise<boolean>((resolve) => {
+      setConfirm({
+        title,
+        body,
+        label,
+        danger,
+        resolve: (ok) => {
+          setConfirm(null);
+          resolve(ok);
+        },
+      });
+    });
+
   const confirmDefault = (kind: "push" | "pr") => {
-    if (!onDefault || !index?.branch) return true;
+    if (!onDefault || !index?.branch) return Promise.resolve(true);
     const branch = index.branch;
-    return window.confirm(
-      kind === "pr"
-        ? `Create a pull request from default branch "${branch}"?`
-        : `Push to default branch "${branch}"?`,
-    );
+    return kind === "pr"
+      ? ask(`Create a pull request from ${branch}?`, "This is the default branch.", "Create PR")
+      : ask(`Push to ${branch}?`, "This is the default branch.", "Push");
   };
 
   const run = async (
@@ -222,14 +239,13 @@ function ChangedFiles({
     if (busy) return;
     if (action === "discard") {
       const name = basename(file.relative);
-      const ok = window.confirm(
+      const ok =
         file.status === "untracked"
-          ? `Delete untracked file ${name}?`
-          : `Discard changes in ${name}? This cannot be undone.`,
-      );
+          ? await ask(`Delete ${name}?`, "The untracked file is deleted for good.", "Delete", true)
+          : await ask(`Discard changes in ${name}?`, "The edits are gone for good.", "Discard", true);
       if (!ok) return;
     }
-    setBusy(file.relative);
+    begin(file.relative);
     try {
       if (action === "stage") await gitStageFile(cwd, file.relative);
       else if (action === "unstage") await gitUnstageFile(cwd, file.relative);
@@ -244,7 +260,7 @@ function ChangedFiles({
 
   const runAll = async (action: "stage" | "unstage") => {
     if (busy) return;
-    setBusy(action);
+    begin(action);
     try {
       if (action === "stage") await gitStageAll(cwd);
       else await gitUnstageAll(cwd);
@@ -258,7 +274,7 @@ function ChangedFiles({
 
   const generate = async () => {
     if (!canGenerate) return;
-    setBusy("generate");
+    begin("generate");
     try {
       setMessage(await generateCommitMessage(cwd, textHarness));
     } catch (error) {
@@ -270,9 +286,9 @@ function ChangedFiles({
 
   const commit = async (push: boolean, createPr = false) => {
     if (!canCommit) return;
-    if ((push || createPr) && !confirmDefault(createPr ? "pr" : "push")) return;
-    setBusy(createPr ? "pr" : "commit");
+    if ((push || createPr) && !(await confirmDefault(createPr ? "pr" : "push"))) return;
     setMenuOpen(false);
+    begin(createPr ? "pr" : "commit");
     try {
       await gitCommit(cwd, message);
       if (push || createPr) await gitPush(cwd);
@@ -293,8 +309,8 @@ function ChangedFiles({
   const sync = async () => {
     if (!index || !(canSync || canPublish)) return;
     const willPush = !index.upstream || index.ahead > 0;
-    if (willPush && !confirmDefault("push")) return;
-    setBusy("sync");
+    if (willPush && !(await confirmDefault("push"))) return;
+    begin("sync");
     try {
       await gitSync(cwd);
       onMutated();
@@ -322,8 +338,8 @@ function ChangedFiles({
 
   const createPr = async () => {
     if (!canCreatePr) return;
-    if (!confirmDefault("pr")) return;
-    setBusy("pr");
+    if (!(await confirmDefault("pr"))) return;
+    begin("pr");
     try {
       if ((index?.ahead ?? 0) > 0) await gitPush(cwd);
       await openCreatedPr();
@@ -358,7 +374,7 @@ function ChangedFiles({
                 void commit(false);
               }
             }}
-            className="max-h-40 w-full resize-none overflow-y-auto rounded-md bg-content/10 py-1 pr-8 pl-2 text-[13px] leading-5 text-content outline-none placeholder:text-content/40 disabled:opacity-40"
+            className="max-h-40 w-full resize-none overflow-y-auto rounded-lg border border-content/10 bg-content/5 py-1.5 pr-8 pl-2 text-[12px] leading-5 text-content outline-none placeholder:text-content/40 focus:border-content/20 disabled:cursor-default disabled:opacity-40"
           />
           <button
             type="button"
@@ -366,55 +382,73 @@ function ChangedFiles({
             aria-label="Generate commit message"
             disabled={!canGenerate}
             onClick={() => void generate()}
-            className="absolute top-1 right-1 grid size-5 place-items-center rounded-md text-content bg-content/10 hover:bg-content/20 hover:text-content disabled:opacity-40"
+            className="pressable absolute top-1.5 right-1.5 grid size-5 place-items-center rounded-sm text-content/50 hover:bg-content/10 hover:text-content disabled:cursor-default disabled:opacity-40"
           >
             {busy === "generate" ? (
-              <Loader className="size-3.5 motion-safe:animate-spin" strokeWidth={1.75} />
+              <MatrixSpinner cell={1.5} />
             ) : (
-              <WandSparkles className="size-3" strokeWidth={1.75} />
+              <WandSparkles className="size-3.5" strokeWidth={1.75} />
             )}
           </button>
         </div>
-        <div ref={menuRef} className="relative mt-1.5 flex">
+        {error ? (
+          <p className="mt-1 whitespace-pre-wrap text-[11px] leading-4 text-danger">{error}</p>
+        ) : null}
+        <div className="mt-1.5 flex">
           <button
             type="button"
             disabled={!canCommit}
             onClick={() => void commit(false)}
-            className="flex h-7 min-w-0 flex-1 items-center justify-center gap-1.5 rounded-l-md bg-content text-[12px] font-medium text-background-base disabled:opacity-40"
+            className="pressable flex h-7 min-w-0 flex-1 items-center justify-center gap-1.5 rounded-l-md bg-content text-[12px] font-medium text-background-base disabled:cursor-default disabled:opacity-40"
           >
             <Check className="size-3.5" strokeWidth={2} />
             Commit
           </button>
-
           <button
+            ref={menuButton}
             type="button"
             title="Commit options"
             aria-label="Commit options"
+            aria-haspopup="menu"
+            aria-expanded={menuOpen}
             disabled={!canCommit}
             onClick={() => setMenuOpen((open) => !open)}
-            className="grid h-7 w-7 shrink-0 place-items-center rounded-r-md border-l border-background-base/10 bg-content text-background-base disabled:opacity-40"
+            className="pressable grid h-7 w-7 shrink-0 place-items-center rounded-r-md border-l border-background-base/10 bg-content text-background-base disabled:cursor-default disabled:opacity-40"
           >
             <ChevronDown className="size-3.5" strokeWidth={2} />
           </button>
           {menuOpen ? (
-            <div className="absolute top-full right-0 z-30 mt-1 min-w-48 rounded-md border border-content/10 bg-background-base py-1 shadow-lg">
+            <Popover
+              anchor={menuButton}
+              side="bottom"
+              align="end"
+              gap={4}
+              width={200}
+              autoFocus
+              onDismiss={() => setMenuOpen(false)}
+              role="menu"
+              tabIndex={-1}
+              className="p-1"
+            >
               <button
                 type="button"
+                role="menuitem"
                 disabled={!canCommitPush}
                 onClick={() => void commit(true)}
-                className="flex h-7 w-full items-center px-3 text-left text-[12px] text-content hover:bg-content/10 disabled:opacity-40"
+                className="flex h-7 w-full items-center gap-3 rounded-lg px-2 text-left text-[13px] leading-none text-content hover:bg-content/5 active:bg-content/10 disabled:cursor-default disabled:opacity-40"
               >
-                Commit & Push
+                Commit & push
               </button>
               <button
                 type="button"
+                role="menuitem"
                 disabled={!canCommitPushPr}
                 onClick={() => void commit(true, true)}
-                className="flex h-7 w-full items-center px-3 text-left text-[12px] text-content hover:bg-content/10 disabled:opacity-40"
+                className="flex h-7 w-full items-center gap-3 rounded-lg px-2 text-left text-[13px] leading-none text-content hover:bg-content/5 active:bg-content/10 disabled:cursor-default disabled:opacity-40"
               >
-                Commit, Push & Create PR
+                Commit, push & create PR
               </button>
-            </div>
+            </Popover>
           ) : null}
         </div>
         {index ? (
@@ -510,6 +544,16 @@ function ChangedFiles({
           </>
         )}
       </div>
+      {confirm ? (
+        <ConfirmDialog
+          title={confirm.title}
+          body={confirm.body}
+          confirmLabel={confirm.label}
+          danger={confirm.danger}
+          onCancel={() => confirm.resolve(false)}
+          onConfirm={() => confirm.resolve(true)}
+        />
+      ) : null}
     </aside>
   );
 }
