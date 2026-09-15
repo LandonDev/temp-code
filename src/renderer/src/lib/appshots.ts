@@ -170,6 +170,16 @@ export function useAppshotFlash(sessionId: string): AppshotFlash | null {
   return current?.sessionId === sessionId ? current : null
 }
 
+/** The fly-in calls this once it has played, so leaving and returning to
+ *  the thread never replays it. `key` guards against clearing a newer
+ *  flash that arrived while the old one's flight was still finishing. */
+export function clearAppshotFlash(key: number): void {
+  if (flash?.key === key) {
+    flash = null
+    emit()
+  }
+}
+
 function playShutter(): void {
   try {
     const audio = new Audio(shutterUrl)
