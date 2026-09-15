@@ -3,7 +3,7 @@ import { dirname, join, resolve } from 'node:path'
 import { handleM3a } from './m3a'
 import { Notes } from './notes'
 import { ProjectLogos } from './projectLogos'
-import { ClaudeUsage, CodexUsage } from './rateLimits'
+import { AccountsService } from './accounts'
 import { WebSocketServer, type WebSocket } from 'ws'
 import { CATALOG } from '@shared/catalog'
 import { ClientRequestSchema, type ServerFrame } from '@shared/contract'
@@ -155,7 +155,8 @@ export async function startServer(
   const checkpoints = new CheckpointStore(join(options.dataDir ?? dirname(dbPath), 'checkpoints'))
   const registry = new SessionRegistry(store)
   registry.checkpoints = checkpoints
-  const m3a = { store, registry, notes: new Notes(db), logos: new ProjectLogos(options.dataDir ?? dirname(dbPath)), usage: new ClaudeUsage(), codexUsage: new CodexUsage() }
+  const m3a = { store, registry, notes: new Notes(db), logos: new ProjectLogos(options.dataDir ?? dirname(dbPath)), accounts: new AccountsService() }
+  m3a.accounts.start()
   const linear = new Linear(options.dataDir ?? dirname(dbPath))
   registry.resetStaleStatuses()
   registry.startIdleSweep()
@@ -232,6 +233,7 @@ export async function startServer(
       : { push: 'projects', projects: registry.listProjects() }))
     const offLive = onLiveEdit((p) => sendFrame(p))
     const offBuild = builder.onPush((p) => sendFrame(p))
+    const offAccounts = m3a.accounts.onChange((snapshot) => sendFrame({ push: 'accounts', snapshot }))
     const offQueue = registry.onQueue((sessionId, items) =>
       sendFrame({ push: 'queue', sessionId, items })
     )
@@ -991,6 +993,7 @@ export async function startServer(
       offQueue()
       offLive()
       offBuild()
+      offAccounts()
       offRemoved()
       for (const off of unsubs.values()) off()
       unsubs.clear()
@@ -1027,6 +1030,7 @@ export async function startServer(
       clearTimeout(warmKickoff)
       clearInterval(warmTimer)
       builder.disposeAll()
+      m3a.accounts.stop()
       await registry.disposeAll()
       await closeAllWatchers()
       await closeAllLiveWatchers()

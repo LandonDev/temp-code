@@ -53,6 +53,7 @@
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "0.3.227",
+    "aliax-core": "github:LandonDev/aliax-core#5863fbf384a8cf98d32a2144c2763b422155834f",
     "@codemirror/autocomplete": "^6.20.3",
     "@codemirror/commands": "^6.10.4",
     "@codemirror/lang-css": "^6.3.1",

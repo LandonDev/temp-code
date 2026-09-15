@@ -529,16 +529,6 @@ export default function App() {
   const sidebarCwd = sidebarCwdOf({ projectCwd, selectedProjectId }, projects, active, activeTab);
   const gitCwd = gitCwdOf(active, sidebarCwd);
 
-  const usageProviders = useMemo(() => {
-    if (active?.harness === "claude" || active?.harness === "codex") {
-      return [active.harness];
-    }
-    return [];
-  }, [active?.harness]);
-  const usageSession = useMemo(() => {
-    if (!active) return undefined;
-    return { harness: active.harness };
-  }, [active?.harness]);
   const runningTerminals = useMemo(() => {
     const files: FilePaneTab[] = [];
     const dock = findProjectTerminal(projectTerminals, dockCwd);
@@ -3640,8 +3630,7 @@ export default function App() {
         ) : null}
         {searchViewOpen || inboxViewOpen || notesViewOpen || settingsOpen ? null : (
           <UsageFooter
-            providers={usageProviders}
-            session={usageSession}
+            harness={active?.harness}
             terminals={runningTerminals}
             terminalOpen={runningTerminalOpen}
             onToggleTerminal={onToggleRunningTerminal}
