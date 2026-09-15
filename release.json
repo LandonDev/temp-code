@@ -1,5 +1,5 @@
 {
-  "n": 134,
-  "notes": "Glass is back: the window takes vibrancy after the first paint while the new Settings > Appearance \"Glass\" toggle is on, the content pane stays opaque (main-pane glass now defaults off), reduced transparency and the toggle both go solid through a window:disable-glass IPC, and the TEMP_CODE_GLASS gate from the fork-storm days is gone",
-  "ts": 1789441670627
+  "n": 135,
+  "notes": "Floating layers get a real fill: one --color-overlay token (base background at 88% dark, 92% light) and one .floating-surface class (overlay fill, hairline, 24px blur, 12px on the animating popover/modal/toast/picker/command variants) replace the bg-content/10 washes on Popover, Modal, ApprovalToasts, AgentDetail, FilePicker, SymbolPicker, CommandPopover and both tooltips, so a model picker or dialog over a long transcript reads at full contrast in both themes; reduced transparency drops the blur and goes solid",
+  "ts": 1789442129373
 }
