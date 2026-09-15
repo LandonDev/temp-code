@@ -15,6 +15,7 @@ import {
   X,
 } from "../chrome/icons";
 import {
+  type AnimationEvent,
   memo,
   useCallback,
   useContext,
@@ -34,6 +35,7 @@ import { NoteMiniCard } from "../chrome/NoteMiniCard";
 import { TerminalSpinner } from "../chrome/TerminalSpinner";
 import type { ApprovalDecision } from "../lib/harness";
 import { perfMark } from "../lib/perfMarks";
+import { sendOffset, sendOrigin } from "../lib/sendOrigin";
 import { isEditTool, stubFilePreview } from "../lib/harness/preview";
 import { copyText } from "../lib/clipboard";
 import { playCue } from "../lib/sounds";
@@ -1348,8 +1350,9 @@ const TranscriptBlock = memo(function TranscriptBlock({
   );
 });
 
-/** The send-in entrance's length (index.css `bubble-send-in`). */
-const SEND_IN_MS = 320;
+/** The send-in entrance's length (index.css `bubble-send-flip`, the
+ *  longer of the two entrances). */
+const SEND_IN_MS = 420;
 
 function UserMessageBlock({
   block,
@@ -1369,6 +1372,40 @@ function UserMessageBlock({
     const age = block.born == null ? Infinity : Date.now() - block.born;
     return age < SEND_IN_MS ? age : null;
   });
+  // The entrance, decided once from the bubble's rest box on the frame
+  // before its first paint — after the scroll engine has parked the turn,
+  // whose layout effects run after this child's: a transform-only slide
+  // from the composer field (`bubble-send-flip`), else the plain 18px
+  // rise. Applied straight to the element so no React render sits between
+  // the measurement and the first frame; the class comes off at
+  // animationend, and `entrance` stays "" so re-renders leave it alone.
+  const bubbleRef = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    if (entering == null) return;
+    const el = bubbleRef.current;
+    if (!el) return;
+    const frame = requestAnimationFrame(() => {
+      // One screen of travel at most: the turn parks at the top of the
+      // transcript, so the flight from the field is about the window's
+      // height. Both boxes are on screen, so it can never be more.
+      const cap = Math.max(600, window.innerHeight);
+      const offset = sendOffset(sendOrigin(), el.getBoundingClientRect(), cap);
+      if (offset) {
+        el.style.setProperty("--send-dx", `${offset.dx}px`);
+        el.style.setProperty("--send-dy", `${offset.dy}px`);
+      }
+      el.classList.add(offset ? "bubble-send-flip" : "bubble-send-in");
+    });
+    return () => cancelAnimationFrame(frame);
+    // Mount only: the entrance is decided once.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const settleEntrance = (e: AnimationEvent<HTMLDivElement>) => {
+    e.currentTarget.classList.remove("bubble-send-flip", "bubble-send-in");
+    e.currentTarget.style.removeProperty("--send-dx");
+    e.currentTarget.style.removeProperty("--send-dy");
+    setEntering(null);
+  };
   const card = block.secondOpinion;
   const note = block.noteCard;
   const text = card && card.kind !== "handoff" ? "" : block.text;
@@ -1395,17 +1432,18 @@ function UserMessageBlock({
       }
     >
       <div
+        ref={bubbleRef}
         className={`group/message relative min-w-0 bg-content/10 px-3 py-2 font-sans text-content ${
           chat
             ? "w-fit max-w-xl rounded-xl"
             : "rounded-xl"
-        }${entering == null ? "" : " bubble-send-in"}`}
+        }`}
         style={
           entering == null
             ? { zIndex: stickyIndex }
             : { zIndex: stickyIndex, animationDelay: `${-entering}ms` }
         }
-        onAnimationEnd={entering == null ? undefined : () => setEntering(null)}
+        onAnimationEnd={entering == null ? undefined : settleEntrance}
         onClick={overflows ? toggle : undefined}
       >
         {text || block.attachments?.length ? (
