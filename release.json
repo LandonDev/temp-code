@@ -1,5 +1,5 @@
 {
-  "n": 149,
-  "notes": "The context meter survives a relaunch: every context reading off the harness stream is written to context_tokens/context_window on the session row through its own statement (a reading is not an edit, so updated_at and the list order stay put), the row seeds liveContexts at boot and rides every meta, and the renderer lets the meta's reading win over the fold's, because the server keeps context events out of the log so all the fold ever had was the last compaction's post-token count — the stale 4.4K a relaunch used to show; a provider switch clears the row with the live map, and a server test covers the reopen while a store test pins meta over fold",
-  "ts": 1789448853227
+  "n": 150,
+  "notes": "Archive dormant threads by type: the workspace menu and each project card menu add one row per thread type present under the all-types row (chats, plans, implementation threads, orchestrations, research threads, with counts), sparing the focused thread's tree like the all-types row; one type alone adds no row since it would repeat the row above",
+  "ts": 1789449361944
 }
