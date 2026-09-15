@@ -61,6 +61,7 @@ import {
   saveTabGroupMascot,
 } from "../lib/tabGroups";
 import { formatLiveElapsed, type LiveAgent } from "../lib/liveAgents";
+import type { CardThread } from "../lib/projectCardModel";
 import { useWorkspaceRailStatuses, type WorkspaceRailStatus } from "../hooks/useProjectSignals";
 import { HarnessIcon } from "./HarnessIcon";
 import { ProjectLogoIcon } from "./ProjectLogoIcon";
@@ -943,6 +944,38 @@ function RailStatusChip({
   );
 }
 
+/** What a busy workspace is doing, indented under its row: no chip, no
+ *  popover to open — the running thread's own name says it. Several
+ *  threads working name the loudest one and count the rest. */
+function WorkspaceWorkingLine({
+  running,
+  onSelect,
+}: {
+  running: CardThread[];
+  onSelect?: (sessionId: string) => void;
+}) {
+  const [first, ...rest] = running;
+  if (!first) return null;
+  return (
+    <button
+      type="button"
+      data-no-drag
+      title={running.map((t) => t.title || "Untitled").join("\n")}
+      onClick={(event) => {
+        event.stopPropagation();
+        onSelect?.(first.id);
+      }}
+      className="pressable flex h-6 w-full items-center gap-1.5 rounded-md py-0.5 pr-2 pl-8 text-left text-[11px] leading-tight text-content/50 hover:bg-content/5 hover:text-content"
+    >
+      <TerminalSpinner />
+      <span className="min-w-0 flex-1 truncate">{first.title || "Untitled"}</span>
+      {rest.length > 0 ? (
+        <span className="shrink-0 tabular-nums text-content/40">+{rest.length}</span>
+      ) : null}
+    </button>
+  );
+}
+
 function ProjectCard({
   item,
   selected,
@@ -1093,7 +1126,7 @@ function ProjectCard({
           </span>
         ) : null}
       </button>
-      {railStatus?.kind ? (
+      {railStatus?.kind && railStatus.kind !== "busy" ? (
         <RailStatusChip
           status={railStatus}
           open={threadsOpen}
@@ -1135,6 +1168,9 @@ function ProjectCard({
         )}
       </button>
     </div>
+    {railStatus?.kind === "busy" && railStatus.running?.length ? (
+      <WorkspaceWorkingLine running={railStatus.running} onSelect={onSelectAgent} />
+    ) : null}
     {threadsOpen && workspaceId ? (
       <WorkspaceThreadsPopover
         anchor={chipRef}
