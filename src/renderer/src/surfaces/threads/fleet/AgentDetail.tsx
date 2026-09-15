@@ -98,16 +98,16 @@ export function AgentDetail({
       <motion.div
         initial={reduce ? false : { opacity: 0 }}
         animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-        transition={{ duration: 0.16 }}
-        className="absolute inset-0 bg-black/10 glass-surface glass-surface--xs"
+        exit={{ opacity: 0, transition: { duration: 0.1, ease: EASE_OUT } }}
+        transition={{ duration: 0.12, ease: EASE_OUT }}
+        className="absolute inset-0 bg-black/40 glass-surface glass-surface--md"
         onClick={close}
       />
       <motion.div
         layoutId={`agent-${agentId}`}
         transition={SPRING_PANEL}
         onLayoutAnimationComplete={() => setSettled(true)}
-        className="relative flex h-full max-h-[640px] w-full max-w-2xl flex-col overflow-hidden rounded-xl border border-content/10 bg-background-base shadow-2xl"
+        className="relative flex h-full max-h-[640px] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-content/10 bg-background-base/55 shadow-2xl glass-surface glass-surface--md"
       >
         <div className="flex shrink-0 items-start gap-3 border-b border-content/10 px-4 py-3">
           <div className="flex min-w-0 flex-1 flex-col gap-1">
@@ -115,14 +115,14 @@ export function AgentDetail({
               <StatusDot status={meta.status} />
               <span className="truncate text-[13px] font-medium text-content">{meta.title || "Subagent"}</span>
             </div>
-            <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-content/40">
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-content/40">
               <span className="inline-flex items-center gap-1">
-                <HarnessIcon harness={harness} className="size-3" />
+                <HarnessIcon harness={harness} className="size-3.5" />
                 {meta.agentType} · {modelLabel(meta.provider, meta.model)} · {meta.reasoning}
               </span>
               {branch && (
                 <span className="inline-flex items-center gap-1">
-                  <GitBranch className="size-3" />
+                  <GitBranch className="size-3.5" strokeWidth={1.75} />
                   {branch}
                 </span>
               )}
@@ -137,7 +137,7 @@ export function AgentDetail({
                 close();
                 onOpenSession(agentId);
               }}
-              className="h-6 shrink-0 rounded-md px-2 text-[11px] font-medium text-content/50 transition-colors hover:bg-content/5 hover:text-content"
+              className="pressable h-7 shrink-0 rounded-md px-2 text-xs font-medium text-content/50 hover:bg-content/5 hover:text-content"
             >
               Open
             </button>
@@ -146,9 +146,9 @@ export function AgentDetail({
             type="button"
             onClick={close}
             aria-label="Close"
-            className="flex size-6 shrink-0 items-center justify-center rounded-md text-content/40 transition-colors hover:bg-content/5 hover:text-content"
+            className="pressable grid size-7 shrink-0 place-items-center rounded-md text-content/50 hover:bg-content/5 hover:text-content"
           >
-            <X className="size-3.5" />
+            <X className="size-3.5" strokeWidth={1.75} />
           </button>
         </div>
         <div className="relative min-h-0 flex-1" style={{ minHeight: 240 }}>
@@ -156,7 +156,7 @@ export function AgentDetail({
             <motion.div
               initial={reduce ? false : { opacity: 0 }}
               animate={{ opacity: 1 }}
-              transition={{ duration: 0.15, ease: EASE_OUT }}
+              transition={{ duration: 0.12, ease: EASE_OUT }}
               className="absolute inset-0"
             >
               <AgentTranscript
@@ -174,7 +174,7 @@ export function AgentDetail({
           ) : null}
         </div>
         <form
-          className="flex shrink-0 items-center gap-2 border-t border-content/10 px-3 py-2"
+          className="flex shrink-0 items-center gap-2 border-t border-content/10 px-4 py-2"
           onSubmit={(e) => {
             e.preventDefault();
             void submit();
@@ -186,15 +186,15 @@ export function AgentDetail({
             onChange={(e) => setText(e.target.value)}
             placeholder={live ? "Steer this agent…" : "Send to this agent…"}
             disabled={!session}
-            className="h-7 min-w-0 flex-1 rounded-md bg-content/5 px-2.5 text-[13px] text-content outline-none placeholder:text-content/40"
+            className="h-7 min-w-0 flex-1 rounded-lg border border-content/10 bg-content/5 px-2 text-[12px] text-content outline-none placeholder:text-content/40 disabled:cursor-default"
           />
           <button
             type="submit"
             disabled={!text.trim() || !session || sending}
             aria-label="Send"
-            className="flex size-6 shrink-0 items-center justify-center rounded-full bg-content text-background-base transition-opacity disabled:opacity-30"
+            className="pressable grid size-7 shrink-0 place-items-center rounded-md bg-content text-background-base disabled:opacity-40"
           >
-            <ArrowUp className="size-3.5" />
+            <ArrowUp className="size-3.5" strokeWidth={2} />
           </button>
         </form>
       </motion.div>

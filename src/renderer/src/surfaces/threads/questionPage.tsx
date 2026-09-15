@@ -1,6 +1,6 @@
 import { motion, useReducedMotion } from "motion/react";
 import type { ReactNode } from "react";
-import { EASE_OUT } from "../../lib/ease";
+import { ENTER } from "../../lib/ease";
 
 /**
  * The keyed page slide for a stepped question card: each step's body rides
@@ -16,9 +16,9 @@ export function QuestionPageSlide({ children }: { children: ReactNode }) {
   const reduce = useReducedMotion();
   return (
     <motion.div
-      initial={reduce ? false : { opacity: 0, x: 10 }}
-      animate={{ opacity: 1, x: 0 }}
-      transition={{ duration: 0.18, ease: EASE_OUT }}
+      initial={reduce ? false : ENTER.initial}
+      animate={ENTER.animate}
+      transition={ENTER.transition}
     >
       {children}
     </motion.div>

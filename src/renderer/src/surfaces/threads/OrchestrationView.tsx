@@ -1,3 +1,4 @@
+import { GLIDE_MAX_ROWS } from "../../lib/listGlide";
 import { AnimatePresence, LayoutGroup, MotionConfig } from "motion/react";
 import { useId, useMemo } from "react";
 import { taskTitle } from "../../lib/threads/agents";
@@ -26,12 +27,6 @@ export function OrchestrationView(props: ThreadViewProps) {
     const last = [...session.blocks].reverse().find((b) => b.role === "user" && b.text.trim());
     return last ? last.text.trim().split("\n")[0].trim() : taskTitle(session.blocks);
   }, [session.blocks]);
-  const empty = session.blocks.length === 0 && !hasBoard && !session.busy;
-  const topSlot = empty ? (
-    <p className="mx-auto w-full max-w-[688px] px-6 pb-2 text-[13px] text-content/40">
-      Describe the goal. The orchestrator splits it across subagents and picks a model for each.
-    </p>
-  ) : undefined;
 
   const detail = (
     <AnimatePresence>
@@ -52,7 +47,7 @@ export function OrchestrationView(props: ThreadViewProps) {
   if (!hasBoard) {
     return (
       <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
-        <OpenAgentDetailContext.Provider value={fleet.setDetailId}>{chatOf(props, { topSlot })}</OpenAgentDetailContext.Provider>
+        <OpenAgentDetailContext.Provider value={fleet.setDetailId}>{chatOf(props)}</OpenAgentDetailContext.Provider>
         {detail}
       </div>
     );
@@ -73,6 +68,7 @@ export function OrchestrationView(props: ThreadViewProps) {
                       key={agent.id}
                       agent={agent}
                       now={now}
+                      glide={agents.length <= GLIDE_MAX_ROWS}
                       hidden={agent.id === detailId}
                       onOpen={() => fleet.setDetailId(agent.id)}
                     />

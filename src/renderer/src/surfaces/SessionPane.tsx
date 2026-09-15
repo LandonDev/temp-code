@@ -16,7 +16,7 @@ import { Composer } from "../chrome/Composer";
 import { AppshotFlyIn } from "../chrome/AppshotFlyIn";
 import { noteActiveSession } from "../lib/appshots";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import { EASE_OUT, SPRING_PRESS } from "../lib/ease";
+import { ENTER, EASE_OUT, SPRING_PRESS } from "../lib/ease";
 import { MessageQueue } from "../chrome/MessageQueue";
 import type { ComposerIntent } from "../lib/composerAction";
 import { useQueue } from "../lib/tcserver/store";
@@ -409,9 +409,9 @@ export const SessionPane = memo(function SessionPane({
       key={session.id}
       ref={rootRef}
       data-session-drop={session.id}
-      initial={reduceMotion ? false : { opacity: 0 }}
-      animate={{ opacity: 1 }}
-      transition={{ duration: 0.12, ease: EASE_OUT }}
+      initial={reduceMotion ? false : ENTER.initial}
+      animate={ENTER.animate}
+      transition={ENTER.transition}
       className="flex h-full min-h-0 min-w-0 flex-1 flex-col"
       onMouseDown={focusPane}
     >

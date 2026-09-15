@@ -39,9 +39,8 @@ import {
 import { usePlanFile } from "../../hooks/usePlanFile";
 import { AgentMarkdown } from "../AgentMarkdown";
 import {
+  MatrixSpinner,
   PaneHeader,
-  Spinner,
-  StatusDot,
   THREAD_GLYPHS,
   THREAD_LABELS,
   THREAD_TINTS,
@@ -205,7 +204,7 @@ export function PlanView(props: ThreadViewProps) {
           ref={scrollRef}
           className="min-h-0 flex-1 overflow-y-auto select-text"
         >
-          <div className="mx-auto w-full max-w-3xl px-6 py-6">
+          <div className="mx-auto w-full max-w-3xl px-6 py-5">
             {sections.map((s, i) => (
               <div
                 key={`${i}:${flash[i] ?? 0}`}
@@ -241,7 +240,7 @@ export function PlanView(props: ThreadViewProps) {
             onClick={() => setChatOpen(false)}
             title="Hide conversation"
             aria-label="Hide conversation"
-            className="flex size-6 items-center justify-center rounded-md text-content/50 transition-colors hover:bg-content/5 hover:text-content"
+            className="pressable grid size-6 place-items-center rounded-md text-content/50 hover:bg-content/5 hover:text-content"
           >
             <ChevronRight className="size-3.5" strokeWidth={1.75} />
           </button>
@@ -293,7 +292,7 @@ function Outline({
               key={i}
               type="button"
               onClick={() => onJump(i)}
-              className={`truncate rounded-md px-1.5 py-1 text-left text-[11px] leading-4 transition-colors ${
+              className={`truncate rounded-md px-1.5 py-1 text-left text-xs leading-4 transition-colors ${
                 s.level >= 3 ? "pl-4" : s.level === 2 ? "pl-2.5" : ""
               } ${i === active ? "text-content" : "text-content/40 hover:text-content/50"}`}
             >
@@ -321,14 +320,13 @@ function HandoffChip({
     <button
       type="button"
       onClick={onOpen}
-      className="group flex items-center gap-1.5 rounded-md px-2 py-1 text-[11px] text-content/50 transition-colors hover:bg-content/5 hover:text-content"
+      className="pressable group flex items-center gap-1.5 rounded-md px-2 py-1 text-xs text-content/50 hover:bg-content/5 hover:text-content"
     >
-      <Glyph className={`size-3 ${THREAD_TINTS[type]}`} strokeWidth={1.75} />
+      <Glyph className={`size-3.5 ${THREAD_TINTS[type]}`} strokeWidth={1.75} />
       {THREAD_LABELS[type]} {live ? "running" : "finished"} ·{" "}
       {timeAgo(spawned.updatedAt)}
-      <StatusDot status={spawned.status} />
       <ChevronRight
-        className="size-3 opacity-0 transition-opacity group-hover:opacity-100"
+        className="size-3.5 opacity-0 transition-opacity group-hover:opacity-100"
         strokeWidth={1.75}
       />
     </button>
@@ -347,9 +345,9 @@ const ORCHESTRATION_BRIEF =
 type BuildType = "implementation" | "orchestration";
 
 const ACTION_ROW =
-  "group/act flex w-full cursor-pointer items-center gap-3 rounded-lg px-2 py-2 text-left transition-colors duration-150 hover:bg-content/5 active:scale-[0.99]";
+  "group/act flex w-full cursor-pointer items-center gap-3 rounded-lg px-2 py-2 text-left transition-colors hover:bg-content/5 active:bg-content/10";
 const ACTION_TILE =
-  "flex size-8 shrink-0 items-center justify-center rounded-lg border border-content/10 bg-content/5 transition-transform duration-150 group-hover/act:scale-105";
+  "flex size-8 shrink-0 items-center justify-center rounded-lg bg-content/5";
 
 /** The plan pane's one action: hand the approved plan to builders — who
  *  (model + effort), how many, or an orchestrator that splits it itself. */
@@ -430,9 +428,9 @@ function StartButton({ session, tasks }: { session: Session; tasks: string[] }) 
         aria-expanded={open}
         aria-haspopup="dialog"
         onClick={() => setOpen((o) => !o)}
-        className="flex items-center gap-1.5 rounded-full bg-content px-3 py-1 text-[12px] font-medium text-background-base shadow-[0_1px_6px_rgb(0_0_0/0.12)] transition-transform hover:bg-content/90 active:scale-[0.96]"
+        className="pressable flex items-center gap-1.5 rounded-md bg-content px-3 py-1 text-[12px] font-medium text-background-base hover:bg-content/90"
       >
-        <Play className="size-3 fill-current" strokeWidth={1.75} />
+        <Play className="size-3.5 fill-current" strokeWidth={1.75} />
         Start
       </button>
       {open ? (
@@ -455,9 +453,9 @@ function StartButton({ session, tasks }: { session: Session; tasks: string[] }) 
                   type="button"
                   onClick={() => setView("main")}
                   aria-label="Back"
-                  className="flex size-6 items-center justify-center rounded-md text-content/50 transition hover:bg-content/5 hover:text-content active:scale-95"
+                  className="pressable grid size-6 place-items-center rounded-md text-content/50 hover:bg-content/5 hover:text-content"
                 >
-                  <ChevronLeft className="size-4" strokeWidth={1.75} />
+                  <ChevronLeft className="size-3.5" strokeWidth={1.75} />
                 </button>
                 <span className="text-[13px] font-medium">Orchestration options</span>
               </div>
@@ -467,9 +465,9 @@ function StartButton({ session, tasks }: { session: Session; tasks: string[] }) 
                   type="button"
                   disabled={busy !== null}
                   onClick={() => void start("orchestration")}
-                  className="mt-1 flex h-8 w-full items-center justify-center gap-1.5 rounded-lg bg-content text-[13px] font-medium text-background-base transition hover:bg-content/90 active:scale-[0.99] disabled:opacity-60"
+                  className="pressable mt-1 flex h-8 w-full items-center justify-center gap-1.5 rounded-lg bg-content text-[13px] font-medium text-background-base hover:bg-content/90 disabled:opacity-40"
                 >
-                  {busy === "orchestration" ? <Spinner className="size-3.5" /> : "Orchestrate"}
+                  {busy === "orchestration" ? <MatrixSpinner cell={2} /> : "Orchestrate"}
                 </button>
               </div>
             </div>
@@ -478,12 +476,7 @@ function StartButton({ session, tasks }: { session: Session; tasks: string[] }) 
               {/* Who builds it, and under what rules — the same knobs a new
               chat gets: model, effort, access. */}
               <div className="border-b border-content/10 px-3 pt-2.5 pb-2">
-                <p className="text-[13px] font-medium">
-                  Start building
-                  {tasks.length > 0 ? (
-                    <span className="ml-1.5 font-normal text-content/50">{tasks.length} tasks</span>
-                  ) : null}
-                </p>
+                <p className="text-[13px] font-medium">Start building</p>
                 <div className="mt-1.5 -ml-1 flex flex-wrap items-center gap-1">
                   <ModelPicker
                     harness={choice.harness}
@@ -522,9 +515,9 @@ function StartButton({ session, tasks }: { session: Session; tasks: string[] }) 
                     type="button"
                     onClick={() => setGoal("")}
                     aria-label="Clear goal"
-                    className="flex size-5 shrink-0 items-center justify-center rounded-md text-content/40 transition hover:text-content active:scale-[0.96]"
+                    className="pressable grid size-5 shrink-0 place-items-center rounded-md text-content/40 hover:text-content"
                   >
-                    <X className="size-3" strokeWidth={1.75} />
+                    <X className="size-3.5" strokeWidth={1.75} />
                   </button>
                 ) : null}
               </div>
@@ -539,21 +532,19 @@ function StartButton({ session, tasks }: { session: Session; tasks: string[] }) 
                 >
                   <span className={ACTION_TILE}>
                     {busy === "implementation" ? (
-                      <Spinner className="size-3.5 text-content/50" />
+                      <MatrixSpinner cell={2} />
                     ) : (
-                      <ListChecks className="size-4 text-success/80" strokeWidth={1.75} />
+                      <ListChecks className="size-4 text-success" strokeWidth={1.75} />
                     )}
                   </span>
                   <span className="min-w-0 flex-1">
-                    <span className="block text-[13px] font-medium">Implement{workers > 1 ? ` × ${workers}` : ""}</span>
-                    <span className="block text-[11px] text-content/50">
-                      {workers > 1 ? `${workers} threads split the plan's tasks` : "One agent works the plan's tasks"}
-                    </span>
+                    <span className="block text-[13px] font-medium">Implement</span>
+                    <span className="block text-xs text-content/50">Work the plan's tasks</span>
                   </span>
                   {/* How many parallel implementation threads. */}
                   <span
                     onClick={(e) => e.stopPropagation()}
-                    className="flex shrink-0 gap-0.5 rounded-md bg-content/8 p-0.5"
+                    className="flex shrink-0 gap-0.5 rounded-md bg-content/5 p-0.5"
                   >
                     {[1, 2, 3].map((n) => (
                       <button
@@ -561,9 +552,9 @@ function StartButton({ session, tasks }: { session: Session; tasks: string[] }) 
                         type="button"
                         onClick={() => setWorkers(n)}
                         aria-label={`${n} thread${n > 1 ? "s" : ""}`}
-                        className={`flex size-5 items-center justify-center rounded-md text-[11px] transition-colors ${
+                        className={`flex size-5 items-center justify-center rounded-md text-xs transition-colors ${
                           workers === n
-                            ? "bg-background-base text-content shadow-sm"
+                            ? "bg-content/10 text-content"
                             : "text-content/50 hover:text-content"
                         }`}
                       >
@@ -581,14 +572,14 @@ function StartButton({ session, tasks }: { session: Session; tasks: string[] }) 
                 >
                   <span className={ACTION_TILE}>
                     {busy === "orchestration" ? (
-                      <Spinner className="size-3.5 text-content/50" />
+                      <MatrixSpinner cell={2} />
                     ) : (
-                      <GitFork className="size-4 text-violet/80" strokeWidth={1.75} />
+                      <GitFork className="size-4 text-violet" strokeWidth={1.75} />
                     )}
                   </span>
                   <span className="min-w-0 flex-1">
                     <span className="block text-[13px] font-medium">Orchestrate</span>
-                    <span className="block text-[11px] text-content/50">
+                    <span className="block text-xs text-content/50">
                       {tuneSummary(tune) ?? "Split across subagents in parallel"}
                     </span>
                   </span>
@@ -600,7 +591,7 @@ function StartButton({ session, tasks }: { session: Session; tasks: string[] }) 
                     }}
                     title="Instructions & rule overrides"
                     aria-label="Orchestration options"
-                    className={`flex size-6 shrink-0 items-center justify-center rounded-md text-content/50 transition hover:bg-content/8 hover:text-content active:scale-95 ${
+                    className={`pressable grid size-6 shrink-0 place-items-center rounded-md text-content/50 hover:bg-content/5 hover:text-content ${
                       tuneSummary(tune) ? "opacity-100" : "opacity-0 group-hover/act:opacity-100"
                     }`}
                   >
@@ -610,14 +601,14 @@ function StartButton({ session, tasks }: { session: Session; tasks: string[] }) 
               </div>
 
               {tasks.length > 0 ? (
-                <div className="rounded-b-xl border-t border-content/10 bg-content/5 px-3 pt-1.5 pb-2">
+                <div className="rounded-b-xl border-t border-content/10 bg-content/5 px-3 py-2">
                   {tasks.slice(0, 3).map((t, i) => (
-                    <p key={i} className="truncate text-[11px] leading-[18px] text-content/50">
+                    <p key={i} className="truncate text-xs leading-[18px] text-content/50">
                       {i + 1}. {t}
                     </p>
                   ))}
                   {tasks.length > 3 ? (
-                    <p className="text-[11px] leading-[18px] text-content/40">+{tasks.length - 3} more</p>
+                    <p className="text-xs leading-[18px] text-content/40">+{tasks.length - 3} more</p>
                   ) : null}
                 </div>
               ) : null}

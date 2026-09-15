@@ -1,7 +1,7 @@
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { OpenFileFn } from "../../lib/search";
-import { EASE_OUT } from "../../lib/ease";
+import { ENTER } from "../../lib/ease";
 import { ChevronRight, Search } from "../../chrome/icons";
 import { usePlanFile } from "../../hooks/usePlanFile";
 import type { Block, Session } from "../../lib/session";
@@ -16,7 +16,7 @@ import {
   type SourceRow,
 } from "../../lib/threads/researchBoard";
 import { AgentMarkdown } from "../AgentMarkdown";
-import { PaneHeader, Spinner } from "./bits";
+import { MatrixSpinner, PaneHeader } from "./bits";
 import { AgentDetail } from "./fleet/AgentDetail";
 import { OpenAgentDetailContext } from "../agentDetailContext";
 import { FleetPulseLine } from "./fleet/FleetPanel";
@@ -59,7 +59,7 @@ export function Favicon({ url }: { url: string }) {
   const [failed, setFailed] = useState(false);
   if (!host || failed) {
     return (
-      <span className="flex size-4 shrink-0 items-center justify-center rounded-md bg-content/8 text-[9px] font-semibold text-content/50 uppercase">
+      <span className="flex size-4 shrink-0 items-center justify-center rounded-md bg-content/8 text-[11px] leading-none font-semibold text-content/50 uppercase">
         {host[0] ?? "?"}
       </span>
     );
@@ -168,7 +168,7 @@ export function ResearchView(props: ThreadViewProps) {
             onClick={() => setChatOpen(false)}
             title="Hide conversation"
             aria-label="Hide conversation"
-            className="flex size-6 items-center justify-center rounded-md text-content/50 transition-colors hover:bg-content/5 hover:text-content"
+            className="pressable grid size-6 place-items-center rounded-md text-content/50 hover:bg-content/5 hover:text-content"
           >
             <ChevronRight className="size-3.5" strokeWidth={1.75} />
           </button>
@@ -227,28 +227,28 @@ function ReportPane({
   };
   return (
     <motion.div
-      initial={reduce ? false : { opacity: 0, y: 6 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.25, ease: EASE_OUT }}
+      initial={reduce ? false : ENTER.initial}
+      animate={ENTER.animate}
+      transition={ENTER.transition}
     >
       <button
         type="button"
         onClick={onOpen}
         title="Open the report file"
-        className="group flex w-full items-baseline gap-2 text-left"
+        className="group flex w-full items-baseline gap-2 px-2 text-left"
       >
         <p className="min-w-0 truncate text-sm leading-snug font-medium tracking-[-0.01em] group-hover:underline">
           {report.title ?? session.title}
         </p>
         {!complete ? (
-          <span className="flex shrink-0 items-center gap-1.5 text-[11px] text-content/50">
-            {running ? <Spinner className="size-3" /> : null}
+          <span className="flex shrink-0 items-center gap-1.5 text-xs text-content/50">
+            {running ? <MatrixSpinner cell={2} /> : null}
             in progress
           </span>
         ) : null}
       </button>
       {complete ? (
-        <div className="mt-2 text-[13px]">
+        <div className="mt-2 px-2 text-[13px]">
           <AgentMarkdown
             text={report.body}
             streaming={false}
@@ -257,7 +257,7 @@ function ReportPane({
           />
         </div>
       ) : report.summary ? (
-        <p className="mt-1 text-[12px] leading-snug text-content/50">{report.summary}</p>
+        <p className="mt-1 px-2 text-xs leading-snug text-content/50">{report.summary}</p>
       ) : null}
     </motion.div>
   );
@@ -298,19 +298,19 @@ function AngleGroup({
         onClick={onOpen}
         disabled={self}
         className={`group flex w-full items-center gap-2 rounded-md px-2 py-1 text-left ${
-          self ? "" : "transition-colors hover:bg-content/5"
+          self ? "" : "transition-colors hover:bg-content/5 active:bg-content/10"
         }`}
       >
         <span className="min-w-0 truncate text-[12px] font-medium">{label}</span>
         {live ? (
-          <span className="flex shrink-0 items-center gap-1.5 text-[11px] text-content/50">
-            <Spinner className="size-3" />
+          <span className="flex shrink-0 items-center gap-1.5 text-xs text-content/50">
+            <MatrixSpinner cell={2} />
             {angleStatus(agent.blocks)}…
           </span>
         ) : null}
         {!self ? (
           <ChevronRight
-            className="ml-auto size-3 shrink-0 text-content/40 opacity-0 transition-opacity group-hover:opacity-100"
+            className="ml-auto size-3.5 shrink-0 text-content/40 opacity-0 transition-opacity group-hover:opacity-100"
             strokeWidth={1.75}
           />
         ) : null}
@@ -318,8 +318,8 @@ function AngleGroup({
       {angle.queries.map((q, i) => (
         <div key={i}>
           {q.query ? (
-            <div className="mt-1.5 flex items-center gap-1.5 px-2 text-[11px] text-content/50">
-              <Search className="size-3 shrink-0" strokeWidth={1.75} />
+            <div className="mt-1.5 flex items-center gap-1.5 px-2 text-xs text-content/50">
+              <Search className="size-3.5 shrink-0" strokeWidth={1.75} />
               <span className="truncate">{q.query}</span>
             </div>
           ) : null}
@@ -339,11 +339,11 @@ function SourceLink({ src }: { src: SourceRow }) {
       type="button"
       onClick={() => window.open(src.url, "_blank")}
       title={src.url}
-      className="flex w-full items-center gap-2 rounded-md py-1 pr-2 pl-6 text-left transition-colors hover:bg-content/5"
+      className="flex w-full items-center gap-2 rounded-md py-1 pr-2 pl-6 text-left transition-colors hover:bg-content/5 active:bg-content/10"
     >
       <Favicon url={src.url} />
       <span className="min-w-0 flex-1 truncate text-[12px]">{src.title ?? hostOf(src.url)}</span>
-      <span className="max-w-[45%] shrink-0 truncate text-[11px] text-content/40">
+      <span className="max-w-[45%] shrink-0 truncate text-xs text-content/40">
         {src.title ? src.url.replace(/^https?:\/\/(www\.)?/, "") : ""}
       </span>
     </button>

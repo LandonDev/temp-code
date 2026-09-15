@@ -105,10 +105,13 @@ export function SplitShell({
           onPointerDown={startDrag}
           onDoubleClick={() => setSplit(50)}
           title="Drag to resize · double-click to reset"
-          className={`w-[3px] shrink-0 cursor-col-resize transition-colors hover:bg-content/20 ${
+          className={`relative w-px shrink-0 cursor-col-resize transition-colors hover:bg-content/20 ${
             dragging ? "bg-content/20" : "bg-content/10"
           }`}
-        />
+        >
+          {/* The hairline is the sash; this widens the grab to 8px. */}
+          <span className="absolute inset-y-0 -inset-x-1" />
+        </div>
       ) : null}
       {hasBoard && collapsed ? (
         <button

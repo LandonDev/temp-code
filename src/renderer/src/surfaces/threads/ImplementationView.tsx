@@ -10,7 +10,8 @@ import {
 } from "react";
 import { AnimatePresence, LayoutGroup, motion, useReducedMotion } from "motion/react";
 import type { OpenFileFn } from "../../lib/search";
-import { EASE_OUT, SPRING_PANEL } from "../../lib/ease";
+import { EASE_OUT, ENTER, SPRING_PANEL } from "../../lib/ease";
+import { GLIDE_MAX_ROWS } from "../../lib/listGlide";
 import { TweenHeight } from "../../motion";
 import { FilePreview } from "../../chrome/FilePreview";
 import { Check, ChevronRight, Circle } from "../../chrome/icons";
@@ -22,7 +23,7 @@ import type { Block, Session } from "../../lib/session";
 import { useLiveEdits, type LiveEditState } from "../../lib/tcserver/store";
 import { emptyThread, type TodoItem, type TodoStatus, type UsageMark } from "../../lib/tcserver/todos";
 import { isLiveStatus, useAgents } from "../../lib/threads/agents";
-import { planHeading, planProgress } from "../../lib/threads/planDoc";
+import { planHeading } from "../../lib/threads/planDoc";
 import {
   ACT_KINDS,
   actKind,
@@ -34,7 +35,7 @@ import {
   wholeChange,
 } from "../../lib/threads/rounds";
 import { AgentMarkdown } from "../AgentMarkdown";
-import { duration, Spinner, useNow } from "./bits";
+import { duration, MatrixSpinner, PaneHeader, useNow } from "./bits";
 import { AgentDetail } from "./fleet/AgentDetail";
 import { OpenAgentDetailContext } from "../agentDetailContext";
 import { AgentRow } from "./fleet/AgentRow";
@@ -284,6 +285,7 @@ export function ImplementationView(props: ThreadViewProps) {
                   key={agent.id}
                   agent={agent}
                   now={agentNow}
+                  glide={agents.length <= GLIDE_MAX_ROWS}
                   hidden={agent.id === openAgentId}
                   onOpen={() => setOpenAgentId(agent.id)}
                 />
@@ -350,16 +352,16 @@ export function ImplementationView(props: ThreadViewProps) {
 
         {running && cur.work.length === 0 ? (
           <div className="flex items-center gap-2 py-1 text-[13px] text-content/50">
-            <Spinner className="size-3.5" />
+            <MatrixSpinner cell={2} />
             {cur.todos.length === 0 ? "Breaking the task down…" : "Working…"}
           </div>
         ) : null}
 
         {closing ? (
           <motion.div
-            initial={reduce ? false : { opacity: 0, y: 6 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.25, ease: EASE_OUT }}
+            initial={reduce ? false : ENTER.initial}
+            animate={ENTER.animate}
+            transition={ENTER.transition}
             className="mt-6 border-t border-content/10 pt-4"
           >
             <AgentMarkdown text={closing.text} cwd={session.cwd} onOpenFile={props.onOpenFile} />
@@ -373,7 +375,7 @@ export function ImplementationView(props: ThreadViewProps) {
             <button
               type="button"
               onClick={startNextPass}
-              className="rounded-lg px-3.5 py-1.5 text-[12px] font-medium text-white transition-[filter,transform] hover:brightness-110 active:scale-[0.96]"
+              className="pressable rounded-md px-3 py-1 text-[12px] font-medium text-white transition-[filter] hover:brightness-110"
               style={{ background: nextColor }}
             >
               Start pass {passNum + 1}
@@ -387,20 +389,17 @@ export function ImplementationView(props: ThreadViewProps) {
   const chat = (
     <>
       {hasBoard ? (
-        <div className="flex h-9 shrink-0 items-center justify-between border-b border-content/10 pr-1.5 pl-4">
-          <span className="text-[11px] font-medium tracking-[0.08em] text-content/50 uppercase">
-            Conversation
-          </span>
+        <PaneHeader label="Conversation">
           <button
             type="button"
             onClick={() => (composing ? props.onArmNewPass(false) : setChatOpen(false))}
             title={composing ? "Show the board" : "Hide conversation"}
             aria-label={composing ? "Show the board" : "Hide conversation"}
-            className="flex size-6 items-center justify-center rounded-md text-content/50 transition-colors hover:bg-content/8 hover:text-content"
+            className="pressable grid size-6 place-items-center rounded-md text-content/50 hover:bg-content/5 hover:text-content"
           >
             <ChevronRight className={`size-3.5 ${composing ? "rotate-180" : ""}`} strokeWidth={1.75} />
           </button>
-        </div>
+        </PaneHeader>
       ) : null}
       {/* The composer stays open — typing keeps working in the CURRENT
           pass. The banner is the door to the next one. */}
@@ -572,7 +571,7 @@ function RoundSection({
       {preWork.length > 0 ? (
         <div className="mb-4">
           {round === 0 ? (
-            <p className="mb-1.5 text-[11px] font-medium tracking-[0.08em] text-content/50 uppercase">
+            <p className="mb-1 text-[11px] font-medium tracking-[0.08em] text-content/50 uppercase">
               Setup
             </p>
           ) : null}
@@ -595,15 +594,13 @@ function RoundSection({
             return (
               <div
                 key={key}
-                className={`mb-2 overflow-hidden rounded-lg transition-colors duration-150 ${
-                  live ? "bg-accent/10 hover:bg-accent/15" : "bg-content/5 hover:bg-content/8"
-                }`}
+                className={`mb-2 rounded-[10px] border border-content/10 ${live ? "bg-accent/10" : "bg-content/6"}`}
               >
                 <div
                   role="button"
                   tabIndex={0}
                   onClick={() => setToggled((prev) => toggleIn(prev, key))}
-                  className="cursor-pointer px-2 pt-0.5"
+                  className={`cursor-pointer px-2 pt-0.5 transition-colors hover:bg-content/5 ${bodyOpen ? "rounded-t-[10px]" : "rounded-[10px]"}`}
                 >
                   <TodoRow
                     content={todo.content}
@@ -635,7 +632,7 @@ function RoundSection({
                           onOpenDiff={handlers.onOpenDiff}
                         />
                       ) : (
-                        <div className="px-3 pt-1 pb-2">
+                        <div className="px-4 pb-2">
                           <WorkItems blocks={items} cwd={session.cwd} {...handlers} />
                         </div>
                       )
@@ -705,7 +702,7 @@ function RoundSection({
           className="group/round flex w-full items-start gap-2.5 py-2 text-left"
         >
           <ChevronRight
-            className={`mt-[3px] size-3.5 shrink-0 text-content/40 transition-transform duration-200 ${
+            className={`mt-[3px] size-3.5 shrink-0 text-content/40 transition-transform duration-150 ${
               expanded ? "rotate-90" : ""
             }`}
             strokeWidth={1.75}
@@ -806,22 +803,21 @@ function WorkItems({ blocks, cwd, stopped, onNeedsUser, onOpenFile }: WorkHandle
             key={b.id}
             type="button"
             onClick={onNeedsUser}
-            className="flex h-[34px] items-center gap-2 rounded-lg border border-warning/20 bg-warning/5 px-2.5 text-left transition-colors hover:bg-warning/10"
+            className="pressable flex h-7 items-center gap-2 rounded-md bg-warning/8 px-2 text-left hover:bg-warning/10"
           >
-            <span className="size-1.5 shrink-0 rounded-full bg-warning" />
             <span className="min-w-0 flex-1 truncate text-xs text-content/70">
               {b.question ? b.question.questions[0]?.question : b.tool?.title || b.text || "Approval"}
             </span>
-            <span className="shrink-0 text-[11px] font-medium text-warning">needs you</span>
+            <span className="shrink-0 text-xs font-medium text-warning">needs you</span>
           </button>
         ) : isError(b) ? (
           <ErrorChip key={b.id} text={b.text} stopped={stopped && b === lastError} />
         ) : b.tool?.preview ? (
           <motion.div
             key={b.id}
-            initial={reduce ? false : { opacity: 0, y: 6 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.25, ease: EASE_OUT }}
+            initial={reduce ? false : ENTER.initial}
+            animate={ENTER.animate}
+            transition={ENTER.transition}
           >
             <FilePreview preview={b.tool.preview} status="accepted" cwd={cwd} onOpenFile={onOpenFile} />
           </motion.div>
@@ -855,19 +851,19 @@ function ProgressSegments({ todos }: { todos: { status: TodoStatus }[] }) {
   const done = todos.filter((t) => t.status === "completed").length;
   return (
     <div
-      className="mt-2.5 flex h-[3px] max-w-72 gap-[3px]"
+      className="mt-2 flex h-[3px] max-w-72 gap-[3px]"
       role="img"
       aria-label={`${done} of ${todos.length} tasks done`}
     >
       {todos.map((t, i) => (
         <span
           key={i}
-          className={`min-w-0 flex-1 rounded-full transition-colors duration-300 ${
+          className={`min-w-0 flex-1 rounded-full transition-colors ${
             t.status === "completed"
               ? "bg-success"
               : t.status === "in_progress"
                 ? "motion-safe:animate-pulse bg-success/35"
-                : "bg-content/15"
+                : "bg-content/10"
           }`}
         />
       ))}
@@ -932,11 +928,11 @@ function TodoRow({
     >
       <span className="flex size-4 shrink-0 items-center justify-center">
         {live ? (
-          <Spinner className="size-3.5" />
+          <MatrixSpinner cell={2} />
         ) : status === "completed" ? (
           <Check className="size-3.5 text-success" strokeWidth={2} />
         ) : (
-          <Circle className="size-3 text-content/40" strokeWidth={1.75} />
+          <Circle className="size-3.5 text-content/40" strokeWidth={1.75} />
         )}
       </span>
       <span
@@ -1104,7 +1100,7 @@ function TaskGrid({
             initial={{ height: 0 }}
             animate={{ height: "auto" }}
             exit={{ height: 0 }}
-            transition={{ duration: 0.22, ease: EASE_OUT }}
+            transition={{ duration: 0.2, ease: EASE_OUT }}
             className="overflow-hidden px-3"
           >
             <motion.div layoutId={`chg-${openPath}`} layoutDependency={openPath} transition={SPRING_PANEL}>
@@ -1270,7 +1266,7 @@ function TaskMeta({
           {/* The popup floats over the bar at the mark — nothing reflows. */}
           {hovered ? (
             <div
-              className="pointer-events-none absolute bottom-full z-20 mb-1.5 -translate-x-1/2 rounded-lg border border-content/15 bg-background-base px-2.5 py-1 text-[11px] whitespace-nowrap shadow-[0_4px_16px_rgb(0_0_0/0.12)]"
+              className="pointer-events-none absolute bottom-full z-20 mb-1.5 -translate-x-1/2 rounded-xl border border-content/10 bg-content/10 px-2 py-1 text-[11px] whitespace-nowrap shadow-xl glass-surface glass-surface--xl"
               style={{ left: `${Math.min(92, Math.max(8, hovered.at * 100))}%` }}
             >
               <span className={`mr-1.5 inline-block size-1.5 rounded-full align-middle ${TICK_COLOR[hovered.k]}`} />
@@ -1311,17 +1307,17 @@ function DiskCards({
               type="button"
               disabled={!expandable}
               onClick={() => setOpen((prev) => toggleIn(prev, e.path))}
-              className="flex h-7 w-full items-center gap-2 px-2.5 text-left text-[12px]"
+              title={e.path}
+              className="flex h-7 w-full items-center gap-2 rounded-md px-2 text-left text-[12px]"
             >
-              {e.state === "editing" ? <Spinner className="size-3" /> : null}
+              {e.state === "editing" ? <MatrixSpinner cell={2} /> : null}
               <span className="min-w-0 truncate font-medium">{e.path.split("/").pop()}</span>
-              <span className="truncate text-[11px] text-content/40">{e.path}</span>
               <span className="ml-auto flex shrink-0 items-center gap-1.5">
-                <span className="text-[11px] text-content/40">via shell</span>
+                <span className="text-[11px] text-content/40">shell</span>
                 <Stat adds={e.adds ?? 0} dels={e.dels ?? 0} className="text-[11px] font-semibold" />
                 {expandable ? (
                   <ChevronRight
-                    className={`size-3 text-content/40 transition-transform duration-200 ${isOpen ? "rotate-90" : ""}`}
+                    className={`size-3.5 text-content/40 transition-transform duration-150 ${isOpen ? "rotate-90" : ""}`}
                     strokeWidth={1.75}
                   />
                 ) : null}
@@ -1356,7 +1352,6 @@ function PlanPin({
 }) {
   const doc = usePlanFile(planPath, running, PIN_CADENCE) ?? "";
   const title = planHeading(doc) ?? session.title;
-  const { done, total } = planProgress(doc);
   return (
     <button
       type="button"
@@ -1367,11 +1362,6 @@ function PlanPin({
       <p className="min-w-0 truncate text-sm leading-snug font-medium tracking-[-0.01em] group-hover:underline">
         {title}
       </p>
-      {total > 0 ? (
-        <span className="shrink-0 text-[11px] tabular-nums text-content/50">
-          {done}/{total} ticked
-        </span>
-      ) : null}
     </button>
   );
 }

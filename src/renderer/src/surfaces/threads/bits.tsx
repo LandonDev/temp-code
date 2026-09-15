@@ -1,3 +1,4 @@
+import { useReducedMotion } from "motion/react";
 import { useEffect, useState } from "react";
 import { usePaneVisible } from "../../hooks/paneVisibility";
 import { GitFork, ListChecks, MapIcon, MessageSquare, Search, Telescope, Users, Wrench } from "../../chrome/icons";
@@ -124,6 +125,7 @@ export function MatrixSpinner({
 }) {
   const tintClass =
     tint === "investigate" ? "bg-busy" : tint === "edit" ? "bg-success" : "bg-busy";
+  const reduce = useReducedMotion();
   return (
     <span className="grid shrink-0 grid-cols-3" style={{ gap: cell * 0.6 }}>
       {Array.from({ length: 9 }, (_, n) => {
@@ -131,11 +133,11 @@ export function MatrixSpinner({
         return (
           <span
             key={n}
-            className={`z-matrix-cell rounded-[0.5px] transition-colors duration-300 ${tintClass}`}
+            className={`z-matrix-cell rounded-[0.5px] transition-colors ${tintClass}`}
             style={{
               width: cell,
               height: cell,
-              animation: "z-matrix 750ms linear infinite",
+              animation: reduce ? "none" : "z-matrix 750ms linear infinite",
               animationDelay: `${diag * -150}ms`,
             }}
           />
