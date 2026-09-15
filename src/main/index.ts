@@ -7,6 +7,7 @@ import { configureAliax } from './aliax'
 import { registerAppshots } from './appshots'
 import { electronApp, optimizer } from '@electron-toolkit/utils'
 import { startServer, type RunningServer } from './server'
+import { mayClaimShim, releaseGateway } from './server/gateway'
 import { killTrackedChildren } from './server/spawnBudget'
 import { registerAssetProtocol, registerAssetScheme } from './assets'
 import { killAllPtys, listPtys, ptyFlowCounters, registerPty } from './pty'
@@ -87,7 +88,8 @@ app.whenReady().then(async () => {
   registerAssetProtocol()
   configureAliax()
   server = await startServer(join(app.getPath('userData'), 'temp-code.db'), {
-    appPath: app.getAppPath()
+    appPath: app.getAppPath(),
+    claimShim: mayClaimShim({ isPackaged: app.isPackaged })
   })
   registerUpdates()
   registerPty()
@@ -159,6 +161,8 @@ app.on('before-quit', (e) => {
   }
   // The server outlives every window and dies only here, with the PTYs
   // and every helper process it started.
+  // The shim marker goes back to Aliax first: the async close may not finish.
+  releaseGateway()
   killAllPtys()
   void server?.close()
   killTrackedChildren()
@@ -168,10 +172,12 @@ app.on('before-quit', (e) => {
 // takes the helpers (git, gh, language servers) with it. Children stay in
 // our process group, so a group kill from outside gets them as well.
 process.on('exit', () => {
+  releaseGateway()
   killTrackedChildren()
 })
 for (const signal of ['SIGTERM', 'SIGINT', 'SIGHUP'] as const) {
   process.on(signal, () => {
+    releaseGateway()
     killAllPtys()
     killTrackedChildren()
     process.exit(0)
