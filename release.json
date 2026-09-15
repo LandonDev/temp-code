@@ -1,5 +1,5 @@
 {
-  "n": 147,
-  "notes": "Claude Fable 5.1 (claude-fable-5-1) leads the built-in Claude list with the same reasoning ladder (low, medium, high, xhigh, max) and a 200k/1M context setting the live catalog offers, so the picker, modelsFor, resolveModel and spawn agree on one entry; a built-in id still resolves through its native id once the live catalog replaces the list, and a unit test pins both paths",
-  "ts": 1789448633813
+  "n": 148,
+  "notes": "Sending a message flies the bubble from the composer field to its resting place as a transform-only FLIP: the field's rect is recorded at submit and the new user turn measures its rest after the transcript parks it, then translates in over 420ms on cubic-bezier(0.32, 0.72, 0, 1) at full opacity with will-change only for the flight, while the composer clears on the same frame; the flight cap is max(600px, window height) because the turn parks at the top so the hop is about a window tall on every display, a missing or stale origin or a longer hop falls back to the 18px rise, and reduced motion takes a 120ms fade",
+  "ts": 1789448682127
 }
