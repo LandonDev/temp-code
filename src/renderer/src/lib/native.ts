@@ -22,6 +22,7 @@ export type NativeCommand =
   | "destroy_window"
   | "disable_window_glass"
   | "enable_window_glass"
+  | "set_window_glass_pref"
   | "fetch_claude_usage"
   | "fetch_codex_usage"
   | "git_branches"
@@ -253,6 +254,8 @@ const backed: Record<NativeCommand, Backed> = {
   enable_window_glass: () => window.api.win.enableGlass(),
   disable_window_glass: (args) =>
     window.api.win.disableGlass(arg<string | undefined>(args, "color")),
+  set_window_glass_pref: (args) =>
+    window.api.win.setGlassPref(arg<boolean>(args, "on")),
   set_zoom: (args) => window.api.win.setZoom(arg<number>(args, "level")),
   pty_spawn: (args) =>
     window.api.pty.spawn({

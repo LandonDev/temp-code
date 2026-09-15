@@ -846,7 +846,7 @@ function AppearancePage({ appearance }: { appearance: AppearanceSettings }) {
       </Row>
       <Row
         label="Glass"
-        description="Let the desktop show through the sidebar and the project rail."
+        description="Let the desktop show through the sidebar and the project rail. Turning it on takes effect after a relaunch."
       >
         <Toggle label="Glass" on={appearance.glass} onChange={appearance.onGlass} />
       </Row>

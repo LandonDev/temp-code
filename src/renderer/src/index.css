@@ -61,7 +61,7 @@
 :root {
   --theme-hue: 240;
   --theme-saturation: 0%;
-  --sidebar-opacity: 0.85;
+  --sidebar-opacity: 0.8;
   --background-lightness: 9%;
   --content-lightness: 92%;
   --link-color: #7dd3fc;
@@ -177,12 +177,15 @@ html:not(.is-mac) ::-webkit-scrollbar-corner {
 }
 
 /* Glass: `html.glass` is set by lib/appearance.ts while the Glass setting is
- * on and the OS is not asking for reduced transparency; the window's
- * vibrancy follows the same flag. Only the sidebar chrome lets the desktop
- * through; the content pane stays opaque unless "Main pane glass" is on. */
-html.is-mac.glass,
-html.is-mac.glass body,
-html.is-mac.glass #root {
+ * on and the OS is not asking for reduced transparency; the window is
+ * created with vibrancy under the same flag. The page stays opaque until
+ * `html.ready` (added after the first paint) so an empty window never shows
+ * the desktop blur. Only the sidebar chrome lets the desktop through; the
+ * content pane stays opaque unless "Main pane glass" is on. */
+html.is-mac.glass.ready,
+html.is-mac.glass.ready body,
+html.is-mac.glass.ready #root,
+html.is-mac.glass.ready .app-shell {
   background: transparent;
 }
 
