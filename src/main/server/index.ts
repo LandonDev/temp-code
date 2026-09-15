@@ -21,6 +21,7 @@ import { probeCatalogs } from './drivers/catalogProbe'
 import { backfillMirrors } from './mirror'
 import { bootMark } from './boot'
 import { LIVE_STATUSES } from '@shared/session-lifecycle'
+import { setLimitMissLog } from './limitText'
 import { sweepFolds } from './folds'
 import {
   orchAnswerAgent,
@@ -158,14 +159,18 @@ export async function startServer(
   const store = new Store(db)
   const checkpoints = new CheckpointStore(join(options.dataDir ?? dirname(dbPath), 'checkpoints'))
   const registry = new SessionRegistry(store)
+  setLimitMissLog(join(options.dataDir ?? dirname(dbPath), 'logs'))
   registry.checkpoints = checkpoints
   const accounts = new AccountsService({
-    liveModels: (provider) =>
-      registry
+    liveModels: (provider) => [
+      ...registry
         .list()
         .filter((s) => s.provider === provider && LIVE_STATUSES.has(s.status) && s.model)
-        .map((s) => s.model as string)
+        .map((s) => s.model as string),
+      ...registry.limitedModels(provider)
+    ]
   })
+  registry.limits = accounts
   const m3a = { store, registry, notes: new Notes(db), logos: new ProjectLogos(options.dataDir ?? dirname(dbPath)), accounts }
   accounts.start()
   const gateway = await startGateway({

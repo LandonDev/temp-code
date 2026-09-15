@@ -50,11 +50,12 @@
     "script:e2e-m3b": "esbuild scripts/e2e-m3b.ts --bundle --platform=node --format=esm --packages=external --alias:@shared=./src/shared --alias:electron=./scripts/electron-shim.mjs --outfile=scripts/.out/e2e-m3b.mjs && node scripts/.out/e2e-m3b.mjs",
     "script:e2e-m9": "esbuild scripts/e2e-m9.ts --bundle --platform=node --format=esm --packages=external --alias:@shared=./src/shared --alias:electron=./scripts/electron-shim.mjs --outfile=scripts/.out/e2e-m9.mjs && node scripts/.out/e2e-m9.mjs",
     "script:e2e-gateway-failover": "esbuild scripts/e2e-gateway-failover.ts --bundle --platform=node --format=esm --alias:@shared=./src/shared --alias:electron=./scripts/electron-shim.mjs --outfile=scripts/.out/e2e-gateway-failover.mjs && node scripts/.out/e2e-gateway-failover.mjs",
+    "script:e2e-limit-continue": "esbuild scripts/e2e-limit-continue.ts --bundle --platform=node --format=esm --alias:@shared=./src/shared --alias:electron=./scripts/electron-shim.mjs --outfile=scripts/.out/e2e-limit-continue.mjs && node scripts/.out/e2e-limit-continue.mjs",
     "script:e2e-m11": "esbuild scripts/e2e-m11.ts --bundle --platform=node --format=esm --packages=external --alias:@shared=./src/shared --alias:electron=./scripts/electron-shim.mjs --outfile=scripts/.out/e2e-m11.mjs && node scripts/.out/e2e-m11.mjs"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "0.3.227",
-    "aliax-core": "github:LandonDev/aliax-core#6add708342bd1711ce94502311c77b206c5e2042",
+    "aliax-core": "github:LandonDev/aliax-core#95fb2efad7da4ca5163b0e20f18df2d14e101b8c",
     "@codemirror/autocomplete": "^6.20.3",
     "@codemirror/commands": "^6.10.4",
     "@codemirror/lang-css": "^6.3.1",

@@ -86,6 +86,13 @@ export const ToolPreviewSchema = z.object({
 })
 export type ToolPreview = z.infer<typeof ToolPreviewSchema>
 
+/** Which bucket a usage limit hit: the rolling 5h or weekly window, credits, a per-model cap, or a per-minute limiter that lifts by itself. */
+export const LimitWindowSchema = z.union([
+  z.enum(['5h', 'weekly', 'credits', 'transient']),
+  z.object({ model: z.string() })
+])
+export type LimitWindow = z.infer<typeof LimitWindowSchema>
+
 export const AgentEventSchema = z.discriminatedUnion('type', [
   // A message the user (or the orchestrator, for subagents) sent in.
   z.object({
@@ -288,7 +295,15 @@ export const AgentEventSchema = z.discriminatedUnion('type', [
 
   // stopped: the turn ended because the user hit Stop — shown as a quiet
   // "Stopped" note, never as a failure, and it never arms recovery.
-  z.object({ type: z.literal('error'), message: z.string(), stopped: z.boolean().optional() }),
+  // limit: the message named a usage limit (a CLI synthetic message or a
+  // Codex turn error) — the registry switches accounts and continues by
+  // itself; 'transient' names a per-minute limiter the harness retries.
+  z.object({
+    type: z.literal('error'),
+    message: z.string(),
+    stopped: z.boolean().optional(),
+    limit: z.object({ window: LimitWindowSchema }).optional()
+  }),
 
   // The user hit Continue after fixing what killed the turn (e.g. switched
   // accounts on a session limit): every error shown so far is settled —
