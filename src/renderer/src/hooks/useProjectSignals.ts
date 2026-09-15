@@ -1,5 +1,5 @@
 import { useMemo, useSyncExternalStore } from "react";
-import { projectCardStatus } from "../lib/projectCardModel";
+import { projectCardStatus, type CardThread } from "../lib/projectCardModel";
 import type { Catalog } from "../lib/projectContext";
 import { workspacePathOfSession } from "../lib/projectContext";
 import type { Session } from "../lib/session";
@@ -83,6 +83,10 @@ export type WorkspaceRailStatus = {
   kind: WorkspaceRailStatusKind | null;
   /** Threads in the dominant bucket, for the chip's title. */
   count: number;
+  /** The busy bucket's own running threads. Only "busy" carries them: the
+   *  rail shows these inline as a line under the workspace, no chip or
+   *  popover needed to say what a workspace is doing. */
+  running?: CardThread[];
 };
 
 const RAIL_STATUS_NONE: WorkspaceRailStatus = { kind: null, count: 0 };
@@ -127,7 +131,7 @@ export function workspaceRailStatuses(
         : needsYouCount > 0
           ? { kind: "needsYou", count: needsYouCount }
           : status.running.length > 0
-            ? { kind: "busy", count: status.running.length }
+            ? { kind: "busy", count: status.running.length, running: status.running }
             : status.unread.length > 0
               ? { kind: "unread", count: status.unread.length }
               : RAIL_STATUS_NONE;

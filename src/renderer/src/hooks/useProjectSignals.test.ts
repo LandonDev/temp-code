@@ -159,13 +159,14 @@ describe("workspaceRailStatuses", () => {
     expect(statuses.get("/a")).toEqual({ kind: "needsYou", count: 1 });
   });
 
-  it("ranks busy over unread", () => {
+  it("ranks busy over unread, and carries the running thread for the rail's inline line", () => {
+    const running = meta("t1", { status: "running" });
     const statuses = workspaceRailStatuses(
-      [meta("t1", { status: "running" }), meta("t2", { status: "done" })],
+      [running, meta("t2", { status: "done" })],
       catalog,
       { t2: 50 },
     );
-    expect(statuses.get("/a")).toEqual({ kind: "busy", count: 1 });
+    expect(statuses.get("/a")).toEqual({ kind: "busy", count: 1, running: [running] });
   });
 
   it("counts every thread in the dominant bucket, not just one", () => {
@@ -178,13 +179,21 @@ describe("workspaceRailStatuses", () => {
   });
 
   it("keeps two workspaces apart", () => {
+    const running = meta("t1", { status: "running", cwd: "/a" });
     const statuses = workspaceRailStatuses(
-      [meta("t1", { status: "running", cwd: "/a" }), meta("t2", { status: "waiting", cwd: "/b" })],
+      [running, meta("t2", { status: "waiting", cwd: "/b" })],
       catalog,
       {},
     );
-    expect(statuses.get("/a")).toEqual({ kind: "busy", count: 1 });
+    expect(statuses.get("/a")).toEqual({ kind: "busy", count: 1, running: [running] });
     expect(statuses.get("/b")).toEqual({ kind: "needsYou", count: 1 });
+  });
+
+  it("names every running thread, loudest first, for a workspace with several", () => {
+    const t1 = meta("t1", { status: "running" });
+    const t2 = meta("t2", { status: "starting" });
+    const statuses = workspaceRailStatuses([t1, t2], catalog, {});
+    expect(statuses.get("/a")).toEqual({ kind: "busy", count: 2, running: [t1, t2] });
   });
 
   it("skips a thread whose project is archived, even if the thread itself is not", () => {
