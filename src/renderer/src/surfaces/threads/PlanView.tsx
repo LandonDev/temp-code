@@ -253,6 +253,7 @@ export function PlanView(props: ThreadViewProps) {
   return (
     <div className="relative flex min-h-0 flex-1">
       <SplitShell
+        className="[contain:layout_style]"
         board={board}
         chat={chat}
         hasBoard={hasDoc}

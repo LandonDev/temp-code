@@ -19,10 +19,12 @@ import { fleetStats } from "./useFleetModel";
  * identity and tallies, the live transcript, and a one-line footer that
  * sends when idle or steers while it runs. "Open" splits it beside the parent.
  *
- * The panel shares `agent-${id}` with its fleet row and morphs out of it.
+ * The panel is a sheet at the pane's right edge: it slides in from off the
+ * right on the panel spring (no bounce) at its final width from the first
+ * frame, and slides back out over 160ms; under reduced motion it fades.
  * The transcript is a heavy, live-streaming subtree: mounted inside the
- * morphing element it re-layouts on every chunk and wrecks the spring, so
- * it mounts once the morph settles and unmounts before the close morph.
+ * moving element it re-layouts on every chunk and wrecks the spring, so
+ * it mounts once the slide settles and unmounts before the close.
  */
 export function AgentDetail({
   agentId,
@@ -51,11 +53,27 @@ export function AgentDetail({
   const [settled, setSettled] = useState(false);
 
   useEffect(() => {
-    // onLayoutAnimationComplete can miss (reduced motion, no paired row);
-    // never leave the body empty past the morph's length.
+    // onAnimationComplete can miss (an interrupted slide); never leave the
+    // body empty past the slide's length.
     const t = setTimeout(() => setSettled(true), 450);
     return () => clearTimeout(t);
   }, []);
+
+  const motionProps = useMemo(
+    () =>
+      reduce
+        ? {
+            initial: { opacity: 0 },
+            animate: { opacity: 1 },
+            exit: { opacity: 0, transition: { duration: 0.12, ease: EASE_OUT } },
+          }
+        : {
+            initial: { x: "100%" },
+            animate: { x: 0 },
+            exit: { x: "100%", transition: { duration: 0.16, ease: EASE_OUT } },
+          },
+    [reduce],
+  );
 
   const close = () => {
     setSettled(false);
@@ -94,7 +112,7 @@ export function AgentDetail({
   };
 
   return (
-    <div className="absolute inset-0 z-40 flex items-center justify-center p-6">
+    <div className="absolute inset-0 z-40 flex justify-end overflow-hidden">
       <motion.div
         initial={reduce ? false : { opacity: 0 }}
         animate={{ opacity: 1 }}
@@ -104,10 +122,12 @@ export function AgentDetail({
         onClick={close}
       />
       <motion.div
-        layoutId={`agent-${agentId}`}
+        {...motionProps}
         transition={SPRING_PANEL}
-        onLayoutAnimationComplete={() => setSettled(true)}
-        className="relative flex h-full max-h-[640px] w-full max-w-2xl flex-col overflow-hidden rounded-2xl shadow-2xl glass-surface floating-surface floating-surface--motion"
+        onAnimationComplete={(definition) => {
+          if (definition === motionProps.animate) setSettled(true);
+        }}
+        className="relative flex h-full w-full max-w-2xl flex-col overflow-hidden border-l border-content/10 shadow-2xl glass-surface floating-surface floating-surface--motion"
       >
         <div className="flex shrink-0 items-start gap-3 border-b border-content/10 px-4 py-3">
           <div className="flex min-w-0 flex-1 flex-col gap-1">

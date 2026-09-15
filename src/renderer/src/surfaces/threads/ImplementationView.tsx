@@ -286,7 +286,6 @@ export function ImplementationView(props: ThreadViewProps) {
                   agent={agent}
                   now={agentNow}
                   glide={agents.length <= GLIDE_MAX_ROWS}
-                  hidden={agent.id === openAgentId}
                   onOpen={() => setOpenAgentId(agent.id)}
                 />
               ))}

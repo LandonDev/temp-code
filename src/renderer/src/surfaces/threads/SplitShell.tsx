@@ -1,16 +1,25 @@
+import { useReducedMotion } from "motion/react";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { MessageSquare } from "../../chrome/icons";
+import { EASE_DRAWER_CSS, EASE_OUT_CSS } from "../../lib/ease";
 import type { SessionStatus } from "../../lib/tcserver/types";
 import { StatusDot } from "./bits";
 
 /**
  * The board | sash | chat recipe every thread view with a board shares.
  * The board sits left at `split%` (30–70, double-click resets to 50);
- * the chat column sits right and folds to a 32px edge tab. The chat stays
- * mounted while folded (`inert` + `invisible absolute`) so the transcript
+ * the chat column sits right and folds to a 32px edge tab. The fold is a
+ * push: the board's basis tweens (280ms out, 200ms back, the drawer curve)
+ * while the chat sits in a clipping shell at its pre-fold width, so it
+ * slides off to the right and never re-lays out; it fades over 120ms. The
+ * chat stays mounted while folded (`inert` + `invisible`) so the transcript
  * virtualizer keeps its measurements. The board grows in from zero on
  * its first appearance unless it was already there on mount.
  */
+
+const FOLD_MS = 200;
+const UNFOLD_MS = 280;
+const FADE_MS = 120;
 
 export function useSplit(initial = 50): {
   split: number;
@@ -63,6 +72,38 @@ function useLiveEntry(has: boolean): boolean {
   return has && entered;
 }
 
+type Fold = {
+  /** The chat is fully folded away: invisible, out of the way. */
+  parked: boolean;
+  /** A fold or unfold is in flight. */
+  moving: boolean;
+  /** The chat's width in px, frozen at the flip so it slides as one piece. */
+  width: number;
+  /** The fold this state was derived for. */
+  folded: boolean;
+};
+
+/** Tracks a fold flip: freezes the chat's width, then parks it (or not)
+ *  once the tween has played. A flip mid-flight restarts the clock. The
+ *  flip is derived during render so the very first frame already slides;
+ *  flipping in a layout effect let the measurement's forced layout commit
+ *  a frame with no inline opacity, which snapped the fade. */
+function useFold(folded: boolean, measure: () => number, reduce: boolean): Fold {
+  const [fold, setFold] = useState<Fold>({ parked: folded, moving: false, width: 0, folded });
+  if (fold.folded !== folded) {
+    setFold({ parked: false, moving: true, width: measure(), folded });
+  }
+  useEffect(() => {
+    if (!fold.moving) return;
+    const t = setTimeout(
+      () => setFold((f) => ({ ...f, parked: f.folded, moving: false })),
+      reduce ? FADE_MS : fold.folded ? FOLD_MS : UNFOLD_MS,
+    );
+    return () => clearTimeout(t);
+  }, [fold.moving, fold.folded, reduce]);
+  return fold;
+}
+
 export function SplitShell({
   board,
   chat,
@@ -85,20 +126,37 @@ export function SplitShell({
   edgeTitle?: string;
 }) {
   const { split, setSplit, dragging, rootRef, startDrag } = useSplit(50);
+  const reduce = useReducedMotion() ?? false;
   const entered = useLiveEntry(hasBoard);
-  const boardBasis = !hasBoard || !entered ? "0%" : collapsed ? "100%" : `${split}%`;
+  const folded = hasBoard && collapsed;
+  const splitRef = useRef(split);
+  splitRef.current = split;
+  const measure = useCallback(
+    () => ((rootRef.current?.clientWidth ?? 0) * (100 - splitRef.current)) / 100 - 1,
+    [rootRef],
+  );
+  const fold = useFold(folded, measure, reduce);
+  const boardBasis = !hasBoard || !entered ? "0%" : folded ? "100%" : `${split}%`;
+  const sliding = hasBoard && (folded || fold.moving);
   return (
     <div ref={rootRef} className={`relative flex min-h-0 min-w-0 flex-1 ${className}`}>
       {hasBoard ? (
         <div
-          className="z-board flex min-h-0 min-w-0 flex-col overflow-hidden"
+          className="z-board flex min-h-0 min-w-0 flex-col overflow-hidden [contain:layout_style]"
           data-dragging={dragging}
-          style={{ flexBasis: boardBasis, flexGrow: 0, flexShrink: 1, opacity: entered ? 1 : 0 }}
+          style={{
+            flexBasis: boardBasis,
+            flexGrow: 0,
+            flexShrink: 1,
+            opacity: entered ? 1 : 0,
+            transition:
+              dragging || reduce ? "none" : `flex-basis ${folded ? FOLD_MS : UNFOLD_MS}ms ${EASE_DRAWER_CSS}`,
+          }}
         >
           {board}
         </div>
       ) : null}
-      {hasBoard && !collapsed ? (
+      {hasBoard && !folded ? (
         <div
           role="separator"
           aria-orientation="vertical"
@@ -113,7 +171,7 @@ export function SplitShell({
           <span className="absolute inset-y-0 -inset-x-1" />
         </div>
       ) : null}
-      {hasBoard && collapsed ? (
+      {folded ? (
         <button
           type="button"
           onClick={onOpenChat}
@@ -125,13 +183,27 @@ export function SplitShell({
         </button>
       ) : null}
       <div
-        inert={hasBoard && collapsed}
-        style={hasBoard && collapsed ? { width: `${100 - split}%` } : undefined}
-        className={`flex min-h-0 min-w-0 flex-col ${
-          hasBoard && collapsed ? "invisible absolute inset-y-0 right-0" : "flex-1"
+        className={`relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden${
+          hasBoard ? " [contain:layout_style]" : ""
         }`}
       >
-        {chat}
+        <div
+          inert={folded}
+          style={
+            sliding
+              ? {
+                  width: fold.width,
+                  opacity: folded ? 0 : 1,
+                  transition: `opacity ${FADE_MS}ms ${EASE_OUT_CSS}`,
+                }
+              : undefined
+          }
+          className={`flex min-h-0 flex-col ${sliding ? "absolute inset-y-0 left-0" : "flex-1"}${
+            fold.parked && folded ? " invisible" : ""
+          }`}
+        >
+          {chat}
+        </div>
       </div>
     </div>
   );
