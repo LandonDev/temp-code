@@ -1,5 +1,5 @@
 {
-  "n": 135,
-  "notes": "Floating layers get a real fill: one --color-overlay token (base background at 88% dark, 92% light) and one .floating-surface class (overlay fill, hairline, 24px blur, 12px on the animating popover/modal/toast/picker/command variants) replace the bg-content/10 washes on Popover, Modal, ApprovalToasts, AgentDetail, FilePicker, SymbolPicker, CommandPopover and both tooltips, so a model picker or dialog over a long transcript reads at full contrast in both themes; reduced transparency drops the blur and goes solid",
-  "ts": 1789442129373
+  "n": 136,
+  "notes": "The sidebar's project list and the left rail's project list start 8px below their headers (pt-2 on both scrollers), so the first card and the Pinned label no longer sit flush against the seam; Chats, Archived and the pinned block ride the same scroller and take the same inset",
+  "ts": 1789442221935
 }
