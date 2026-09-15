@@ -1,5 +1,5 @@
 {
-  "n": 156,
-  "notes": "Gateway takes over the Aliax shim marker while temp-code runs and hands it back on quit; the accounts popover shows Aliax-level detail: exact percent per window, refill countdown and clock, plan and rate-limit lines",
-  "ts": 1789502809437
+  "n": 157,
+  "notes": "A working workspace names itself, no dot: the rail's busy-state chip — a pulsing dot that opened a popover — is gone; instead the row's own running thread (or the loudest one, +N more) sits as one indented line underneath, spinner and title, click to jump straight to it, no menu to open. Paused, needs-you and unread keep their chip and popover unchanged",
+  "ts": 1789502984916
 }
