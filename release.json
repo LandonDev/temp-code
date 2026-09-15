@@ -1,5 +1,5 @@
 {
-  "n": 148,
-  "notes": "Sending a message flies the bubble from the composer field to its resting place as a transform-only FLIP: the field's rect is recorded at submit and the new user turn measures its rest after the transcript parks it, then translates in over 420ms on cubic-bezier(0.32, 0.72, 0, 1) at full opacity with will-change only for the flight, while the composer clears on the same frame; the flight cap is max(600px, window height) because the turn parks at the top so the hop is about a window tall on every display, a missing or stale origin or a longer hop falls back to the 18px rise, and reduced motion takes a 120ms fade",
-  "ts": 1789448682127
+  "n": 149,
+  "notes": "The context meter survives a relaunch: every context reading off the harness stream is written to context_tokens/context_window on the session row through its own statement (a reading is not an edit, so updated_at and the list order stay put), the row seeds liveContexts at boot and rides every meta, and the renderer lets the meta's reading win over the fold's, because the server keeps context events out of the log so all the fold ever had was the last compaction's post-token count — the stale 4.4K a relaunch used to show; a provider switch clears the row with the live map, and a server test covers the reopen while a store test pins meta over fold",
+  "ts": 1789448853227
 }
