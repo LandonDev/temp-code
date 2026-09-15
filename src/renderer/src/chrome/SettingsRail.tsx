@@ -63,7 +63,7 @@ export function SettingsNav({ section, onSelect, onClose }: Props) {
           />
         ))}
         {workspaces.length ? (
-          <div className="px-2 pb-1 pt-4 text-[11px] font-medium uppercase tracking-wide text-content/40">
+          <div className="px-2 pb-1 pt-4 text-[11px] font-semibold tracking-[0.08em] text-content/50 uppercase">
             Workspaces
           </div>
         ) : null}

@@ -278,7 +278,7 @@ function TabHarnesses({
       ))}
       {extra > 0 ? (
         <span
-          className={`pl-0.5 text-[10px] leading-none ${dimmed ? "text-content/50" : "text-content"}`}
+          className={`pl-0.5 text-[11px] leading-none tabular-nums ${dimmed ? "text-content/50" : "text-content"}`}
         >
           +{extra}
         </span>
@@ -406,8 +406,8 @@ function TitleTabItem({
           if (sortable.consumeClick()) return;
           onSelect(tab.id);
         }}
-        className={`relative flex h-7.5 min-w-0 flex-1 cursor-default items-center gap-1.5 self-center rounded-md px-2.5 text-left ${
-          closable ? "pr-7" : "pr-2.5"
+        className={`relative flex h-7 min-w-0 flex-1 cursor-default items-center gap-1.5 self-center rounded-md px-2 text-left ${
+          closable ? "pr-8" : "pr-2"
         } ${
           active
             ? "bg-content/10 text-content"
@@ -417,7 +417,7 @@ function TitleTabItem({
         {TypeGlyph ? (
           <TypeGlyph
             className={`size-3.5 shrink-0 ${THREAD_TINTS[tab.thread!.type as ThreadType]} ${
-              active ? "" : "opacity-55"
+              active ? "" : "opacity-50"
             }`}
             strokeWidth={1.75}
           />
@@ -431,7 +431,7 @@ function TitleTabItem({
             strokeWidth={1.75}
           />
         ) : (
-          <span className={!active ? "opacity-55" : undefined}>
+          <span className={!active ? "opacity-50" : undefined}>
             <FileTypeIcon name={fileIcon} isDir={false} size={14} />
           </span>
         )}
@@ -440,7 +440,7 @@ function TitleTabItem({
             <span
               className={`min-w-0 truncate leading-none ${
                 meta
-                  ? "text-[13px] @min-[11rem]:text-[10px] @min-[11rem]:font-medium"
+                  ? "text-[13px] @min-[11rem]:text-[11px] @min-[11rem]:font-medium"
                   : "text-[13px]"
               }`}
             >
@@ -456,7 +456,7 @@ function TitleTabItem({
             {tab.thread ? <TabIndicator thread={tab.thread} /> : null}
           </span>
           {meta ? (
-            <span className="hidden min-w-0 truncate text-[10px] leading-none text-content/40 @min-[11rem]:block">
+            <span className="hidden min-w-0 truncate text-[11px] leading-none text-content/40 @min-[11rem]:block">
               {meta}
             </span>
           ) : null}
@@ -474,9 +474,9 @@ function TitleTabItem({
             e.stopPropagation();
             onClose(tab.id);
           }}
-          className="absolute right-1 top-1/2 grid size-5 -translate-y-1/2 place-items-center rounded-md text-content/50 opacity-0 hover:bg-content/10 hover:text-content group-hover:opacity-100"
+          className="pressable absolute right-1 top-1/2 grid size-6 -translate-y-1/2 place-items-center rounded-md text-content/50 opacity-0 hover:bg-content/10 hover:text-content group-hover:opacity-100"
         >
-          <X className="size-3" strokeWidth={1.75} />
+          <X className="size-3.5" strokeWidth={1.75} />
         </button>
       ) : null}
     </div>
@@ -521,9 +521,7 @@ function GroupLabel({
       ref={labelRef}
       type="button"
       title={
-        collapsed
-          ? `Expand ${project} · ${count} tabs`
-          : `Drag to reorder · Click to collapse ${project}`
+        collapsed ? `Expand ${project}` : `Collapse ${project}`
       }
       aria-label={collapsed ? `Expand ${project}` : `Collapse ${project}`}
       aria-expanded={!collapsed}
@@ -534,7 +532,7 @@ function GroupLabel({
       }}
       onContextMenu={onContextMenu}
       onPointerDown={onPointerDown}
-      className={`relative sticky left-0 z-20 flex h-7.5 max-w-36 shrink-0 cursor-default items-center gap-1.5 self-center rounded-md px-2.5 pr-3 text-[11px] font-medium hover:brightness-110 ${
+      className={`relative sticky left-0 z-20 flex h-7 max-w-36 shrink-0 cursor-default items-center gap-1.5 self-center rounded-md px-2 pr-3 text-[11px] font-medium hover:brightness-110 ${
         canDrag ? "touch-none" : ""
       }`}
       style={{
@@ -563,7 +561,7 @@ function GroupLabel({
       )}
       <span className="text-[13px] truncate">{project}</span>
       {collapsed ? (
-        <span className="text-content shrink-0 tabular-nums opacity-70 pl-1">
+        <span className="shrink-0 pl-1 text-content/70 tabular-nums">
           {count}
         </span>
       ) : null}
@@ -752,7 +750,7 @@ function TabStripChevron({
       data-tauri-drag-region="false"
       onPointerDown={(event) => event.stopPropagation()}
       onClick={onClick}
-      className={`absolute top-5 z-40 grid size-6.5 -translate-y-1/2 place-items-center rounded-md bg-content/10 glass-surface glass-surface--xl text-content/70 hover:bg-content/15 hover:text-content ${
+      className={`pressable absolute top-5 z-40 grid size-6 -translate-y-1/2 place-items-center rounded-md border border-content/10 bg-background-base text-content/70 hover:text-content ${
         side === "left" ? "left-1" : "right-1"
       }`}
     >
@@ -788,9 +786,9 @@ export function IconButton({
         if (disabled) return;
         onClick?.();
       }}
-      className={`grid size-6.5 place-items-center rounded-md ${
+      className={`pressable grid size-6 place-items-center rounded-md ${
         disabled
-          ? "text-content/20"
+          ? "text-content/50 opacity-40"
           : accent
             ? "text-accent hover:bg-content/10"
             : active
@@ -808,7 +806,7 @@ export function DevModeLabel() {
   return (
     <span
       title="Development build"
-      className="mr-1 min-w-0 truncate rounded-md bg-skill/15 px-1.5 py-0.5 text-[10px] font-medium tracking-wide text-skill"
+      className="mr-1 min-w-0 truncate rounded-md bg-skill/15 px-1.5 py-0.5 text-[11px] font-medium tracking-wide text-skill"
     >
       Development
     </span>
@@ -880,7 +878,7 @@ export function OverlayNav({
 }) {
   if (!onBack && !onToggleSidebar) return null;
   return (
-    <div className="flex shrink-0 items-center px-1.5">
+    <div className="flex shrink-0 items-center px-2">
       {onBack ? (
         <IconButton label={`Back (${MOD}[)`} onClick={onBack}>
           <ChevronLeft className="size-3.5" strokeWidth={1.75} />
@@ -1323,7 +1321,7 @@ function TitleBarComponent({
         <div className="w-[78px] shrink-0" />
       ) : null}
       {projectless && railClosed ? (
-        <div className="flex h-10 shrink-0 items-center px-1.5">
+        <div className="flex h-10 shrink-0 items-center px-2">
           <IconButton
             label={`Toggle Sidebar (${MOD}B)`}
             onClick={onToggleSidebar}
@@ -1364,7 +1362,7 @@ function TitleBarComponent({
           placement="below"
           onCwdChange={onSelectProject}
           onNewTerminal={onNewTerminal}
-          buttonClassName="flex h-full min-w-0 max-w-64 shrink items-center gap-2 px-6 text-left text-sm font-medium leading-tight"
+          buttonClassName="flex h-full min-w-0 max-w-64 shrink items-center gap-2 px-4 text-left text-[13px] font-medium leading-tight"
         >
           <span className="min-w-0 truncate text-content/50">No project</span>
         </CwdPicker>
@@ -1412,7 +1410,7 @@ function TitleBarComponent({
           ) : (
             <div
               ref={setTabStripRef}
-              className="scrollbar-none flex h-full min-w-0 cursor-default items-center gap-0.5 overflow-x-auto overflow-y-hidden overscroll-none px-1.5"
+              className="scrollbar-none flex h-full min-w-0 cursor-default items-center gap-0.5 overflow-x-auto overflow-y-hidden overscroll-none px-2"
             >
             {segments.map((segment, segmentIndex) => {
               const showSegmentStart =
@@ -1607,7 +1605,7 @@ function TitleBarComponent({
         {/* Deck mode keeps New in the sidebar and Terminal in the title bar,
             so the strip carries no trailing actions. */}
         {deckLayout ? null : (
-          <div className="flex shrink-0 items-center gap-0.5 border-l border-content/10 px-1.5">
+          <div className="flex shrink-0 items-center gap-0.5 border-l border-content/10 px-2">
             <IconButton label={`New Tab (${MOD}N)`} onClick={onNew}>
               <Plus className="size-3.5" strokeWidth={1.75} />
             </IconButton>
@@ -1660,7 +1658,7 @@ function ProjectDiffStats({
     ? [
         `${files} ${files === 1 ? "file" : "files"} changed`,
         additions > 0 ? `+${additions}` : "",
-        deletions > 0 ? `-${deletions}` : "",
+        deletions > 0 ? `−${deletions}` : "",
       ]
         .filter(Boolean)
         .join(" ")
@@ -1676,10 +1674,10 @@ function ProjectDiffStats({
       aria-pressed={active}
       data-tauri-drag-region="false"
       onClick={onClick}
-      className={`flex h-6.5 items-center gap-1 rounded-md ${
+      className={`pressable flex h-6 items-center gap-1 rounded-md ${
         hasStats
           ? "px-1.5 font-mono text-[11px] font-semibold tabular-nums"
-          : "w-6.5 justify-center"
+          : "w-6 justify-center"
       } ${
         active
           ? "bg-content/10 text-content"
@@ -1693,7 +1691,7 @@ function ProjectDiffStats({
         <span className="text-success">+{additions}</span>
       ) : null}
       {deletions > 0 ? (
-        <span className="text-danger">-{deletions}</span>
+        <span className="text-danger">−{deletions}</span>
       ) : null}
     </button>
   );

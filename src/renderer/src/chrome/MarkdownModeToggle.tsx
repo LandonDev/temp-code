@@ -34,7 +34,7 @@ export function MarkdownModeToggle({ mode, onChange }: ToggleProps) {
     <div
       role="tablist"
       aria-label="Markdown view"
-      className="flex rounded-md border border-content/10 bg-content/10 p-0.5 glass-surface glass-surface--md"
+      className="flex gap-0.5 rounded-md border border-content/10 bg-background-base/80 p-0.5"
     >
       <ModeTab
         label="Preview"
@@ -64,10 +64,10 @@ function ModeTab({
       type="button"
       role="tab"
       aria-selected={selected}
-      className={`rounded-md px-2 py-0.5 font-mono text-[11px] ${
+      className={`pressable rounded-[4px] px-2 py-0.5 text-[11px] transition-colors ${
         selected
-          ? "bg-content/12 text-content"
-          : "text-content/40 hover:text-content/70"
+          ? "bg-content/10 text-content"
+          : "text-content/50 hover:text-content"
       }`}
       onClick={onSelect}
     >

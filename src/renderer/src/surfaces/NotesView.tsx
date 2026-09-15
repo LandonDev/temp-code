@@ -1,4 +1,5 @@
-import { LoaderCircle, Plus, Search, File, Trash2 } from "../chrome/icons";
+import { Plus, Search, File, Trash2 } from "../chrome/icons";
+import { MatrixSpinner } from "./threads/bits";
 import { ConfirmDialog } from "../chrome/ConfirmDialog";
 import {
   Fragment,
@@ -196,7 +197,7 @@ export function NotesView({
     >
       <div className="flex h-9 shrink-0 items-center gap-1 border-b border-content/10 px-2">
         <div className="relative flex h-7 min-w-0 flex-1 items-center">
-          <Search className="pointer-events-none absolute left-2 size-3 shrink-0 opacity-50" />
+          <Search className="pointer-events-none absolute left-2 size-3.5 shrink-0 text-content/50" strokeWidth={1.75} />
           <input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
@@ -213,13 +214,10 @@ export function NotesView({
           aria-label="New note"
           disabled={creating}
           onClick={() => void onCreate()}
-          className="grid size-6 shrink-0 place-items-center rounded-md text-content/40 hover:bg-content/10 hover:text-content disabled:opacity-40"
+          className="pressable grid size-6 shrink-0 place-items-center rounded-md text-content/40 hover:bg-content/10 hover:text-content disabled:cursor-default disabled:opacity-40"
         >
           {creating ? (
-            <LoaderCircle
-              className="size-3.5 motion-safe:animate-spin"
-              strokeWidth={1.75}
-            />
+            <MatrixSpinner cell={1.5} />
           ) : (
             <Plus className="size-3.5" strokeWidth={1.75} />
           )}
@@ -230,16 +228,16 @@ export function NotesView({
         className="min-h-0 flex-1 overflow-y-auto overscroll-none"
       >
         {error && notes.length === 0 ? (
-          <p className="px-3 py-2 text-[12px] text-content/50">{error}</p>
+          <p className="px-3 py-2 text-[12px] text-danger">{error}</p>
         ) : loading && notes.length === 0 ? (
-          <div className="flex justify-center py-10 text-content/40">
-            <LoaderCircle className="size-4 motion-safe:animate-spin" strokeWidth={1.75} />
+          <div className="flex justify-center py-10">
+            <MatrixSpinner />
           </div>
         ) : visible.length === 0 ? (
           <p className="px-3 py-2 text-[12px] text-content/50">
             {query.trim()
               ? "No matching notes"
-              : "No notes yet. Save a turn from the transcript, or create one here."}
+              : "No notes yet"}
           </p>
         ) : (
           <ul className="flex flex-col gap-0.5 p-1.5">
@@ -371,13 +369,13 @@ function NoteDetailTab({
       role="tab"
       aria-selected={selected}
       onClick={onSelect}
-      className={`relative flex h-9 items-center text-[12px] leading-none ${
+      className={`relative -mb-px flex h-9 items-center text-[13px] font-medium leading-none transition-colors ${
         selected ? "text-content" : "text-content/50 hover:text-content"
       }`}
     >
       {label}
       {selected ? (
-        <span className="absolute inset-x-0 bottom-0 h-0.5 bg-content" />
+        <span className="absolute inset-x-0 -bottom-px h-px bg-content" />
       ) : null}
     </button>
   );
@@ -584,22 +582,22 @@ function NoteEditor({
     >
       <div className="mx-auto flex w-full max-w-5xl flex-col gap-5 px-8 py-8">
         <header className="flex flex-col gap-3">
-          <div className="flex min-w-0 items-center gap-2 text-[12px] text-content/50">
-            <File className="size-3.5 shrink-0" strokeWidth={1.75} />
-            <span>Note</span>
-            {note.slug ? (
-              <span className="min-w-0 truncate">{note.slug}</span>
-            ) : null}
-            {project ? (
-              <NoteProjectMark
-                project={project}
-                logos={logos}
-                mascots={mascots}
-                colors={colors}
-                customColors={customColors}
-              />
-            ) : null}
-          </div>
+          {note.slug || project ? (
+            <div className="flex min-w-0 items-center gap-2 text-[12px] text-content/50">
+              {note.slug ? (
+                <span className="min-w-0 truncate">{note.slug}</span>
+              ) : null}
+              {project ? (
+                <NoteProjectMark
+                  project={project}
+                  logos={logos}
+                  mascots={mascots}
+                  colors={colors}
+                  customColors={customColors}
+                />
+              ) : null}
+            </div>
+          ) : null}
           <input
             value={title}
             onChange={(event) => {
@@ -613,25 +611,25 @@ function NoteEditor({
             }}
             onKeyDown={onTitleKeyDown}
             aria-label="Note title"
-            className="w-full border-0 bg-transparent p-0 text-[20px] font-semibold leading-tight text-content outline-none placeholder:text-content/40"
+            className="w-full border-0 bg-transparent p-0 text-2xl font-semibold leading-tight tracking-[-0.02em] text-content outline-none placeholder:text-content/40"
             placeholder="Untitled"
           />
           {time ? (
-            <div className="text-[12px] text-content/50">Updated {time}</div>
+            <div className="text-[12px] text-content/50 tabular-nums">Updated {time}</div>
           ) : null}
           <div className="flex flex-wrap items-center gap-2 pt-1">
             <button
               type="button"
               disabled={!canAddToChat}
               onClick={() => onAddToChat(draft)}
-              className="inline-flex items-center gap-1 rounded-md bg-content px-3 h-6.5 text-[12px] text-background-base hover:bg-content/70 disabled:cursor-default disabled:opacity-40"
+              className="pressable inline-flex h-7 items-center gap-2 rounded-md bg-content px-3 text-[12px] font-medium text-background-base hover:bg-content/70 disabled:cursor-default disabled:opacity-50"
             >
               Add to chat
             </button>
             <button
               type="button"
               onClick={() => setConfirmDelete(true)}
-              className="pressable inline-flex items-center gap-1.5 rounded-md px-3 h-7 text-[12px] text-content/70 hover:bg-content/10 hover:text-danger"
+              className="pressable inline-flex h-7 items-center gap-1.5 rounded-md px-3 text-[12px] text-content/70 hover:bg-content/8 hover:text-danger"
             >
               <Trash2 className="size-3.5" strokeWidth={1.75} />
               Delete

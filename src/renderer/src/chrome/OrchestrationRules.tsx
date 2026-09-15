@@ -1,8 +1,9 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowUp, Plus } from "./icons";
 import { HarnessIcon } from "./HarnessIcon";
+import { GHOST, PRIMARY } from "./ConfirmDialog";
 import { Modal } from "./Modal";
-import { Heading, Row, Segmented, SecondaryButton, Select, Toggle } from "../surfaces/settingsBits";
+import { Heading, Input, Row, Segmented, SecondaryButton, Select, Toggle } from "../surfaces/settingsBits";
 import {
   approvedLadder,
   modelApproved,
@@ -90,7 +91,7 @@ export function OrchestrationRulesEditor({ workspaceId }: { workspaceId: string 
     ? overridden
       ? "This workspace overrides the global rules."
       : "Using the global rules; any change creates a workspace override."
-    : "The defaults for every thread that spawns subagents — orchestration and research fan-out alike; each thread can override them when you start it. Denied abilities are enforced, not suggested.";
+    : "Defaults for every thread that spawns subagents.";
 
   return (
     <>
@@ -175,12 +176,12 @@ export function OrchestrationRulesEditor({ workspaceId }: { workspaceId: string 
 
       <Section
         title="Models"
-        hint="Unapproved models are refused when threads spawn subagents; efforts clamp into each range."
+        hint="Unapproved models are refused when threads spawn subagents."
       >
         {providersOf(catalog).map((p) => (
           <div key={p} className="pt-3 first:pt-0">
-            <div className="flex items-center gap-2 pb-1 text-[11px] font-medium uppercase tracking-[0.08em] text-content/40">
-              <HarnessIcon harness={p as HarnessId} className="size-3 shrink-0" />
+            <div className="flex items-center gap-2 pb-1 text-[11px] font-semibold tracking-[0.08em] text-content/50 uppercase">
+              <HarnessIcon harness={p as HarnessId} className="size-3.5 shrink-0" />
               {catalog?.[p]?.label ?? p}
             </div>
             {(catalog?.[p]?.models ?? []).map((m) => (
@@ -198,7 +199,7 @@ export function OrchestrationRulesEditor({ workspaceId }: { workspaceId: string 
 
       <Section
         title="Routing"
-        hint="The first matching rule decides provider, model, and effort. Click a rule to edit it."
+        hint="The first matching rule decides provider, model and effort."
         action={
           <SecondaryButton onClick={() => setEditing("new")}>
             <Plus className="size-3.5" strokeWidth={1.75} />
@@ -256,7 +257,7 @@ function Section({
         <Heading title={title} first={first} />
         {action ? <div className="pb-1">{action}</div> : null}
       </div>
-      <p className="max-w-xl pb-2 text-[12px] leading-relaxed text-content/40">{hint}</p>
+      <p className="pb-2 text-[12px] text-content/40">{hint}</p>
       {children}
     </>
   );
@@ -323,8 +324,8 @@ function ModelRow({
   const max = range[range.length - 1];
   return (
     <div
-      className={`flex items-center gap-6 border-b border-content/5 py-2.5 last:border-b-0 ${
-        approved ? "" : "opacity-50"
+      className={`flex items-center gap-6 border-b border-content/5 py-3 last:border-b-0 ${
+        approved ? "" : "opacity-40"
       }`}
     >
       <span className="min-w-0 flex-1 truncate text-[13px] text-content">{model.label}</span>
@@ -373,21 +374,21 @@ function RuleRow({
   const approved = modelApproved(rules, rule.provider, modelId);
   return (
     <div
-      className={`group/rule flex items-center gap-4 border-b border-content/5 py-2.5 last:border-b-0 ${
-        rule.enabled ? "" : "opacity-50"
+      className={`group/rule flex items-center gap-4 border-b border-content/5 py-3 last:border-b-0 ${
+        rule.enabled ? "" : "opacity-40"
       }`}
     >
       <Toggle label={`Enable rule: ${rule.task}`} on={rule.enabled} onChange={onToggle} />
       <button
         type="button"
         onClick={onEdit}
-        className="flex min-w-0 flex-1 items-center gap-4 rounded-md text-left hover:text-content"
+        className="pressable flex min-w-0 flex-1 items-center gap-4 rounded-md text-left hover:text-content"
       >
         <span className="min-w-0 flex-1 truncate text-[13px] text-content">{rule.task}</span>
         <span className="flex shrink-0 items-center gap-1.5 text-[12px] text-content/40">
-          <HarnessIcon harness={rule.provider as HarnessId} className="size-3 shrink-0" />
+          <HarnessIcon harness={rule.provider as HarnessId} className="size-3.5 shrink-0" />
           {model?.label ?? modelId}
-          {model?.reasoning.length ? <span className="text-content/30">· {EFFORT_LABELS[rule.reasoning]}</span> : null}
+          {model?.reasoning.length ? <span>· {EFFORT_LABELS[rule.reasoning]}</span> : null}
           {!approved ? <span className="text-danger">· not approved</span> : null}
         </span>
       </button>
@@ -396,25 +397,18 @@ function RuleRow({
         onClick={onMoveUp}
         aria-label="Move rule up"
         disabled={first}
-        className="grid size-6 shrink-0 place-items-center rounded-md text-content/40 opacity-0 transition-opacity hover:bg-content/10 hover:text-content focus-visible:opacity-100 group-hover/rule:opacity-100 disabled:invisible"
+        className="pressable grid size-6 shrink-0 place-items-center rounded-md text-content/40 opacity-0 transition-opacity hover:bg-content/10 hover:text-content focus-visible:opacity-100 group-hover/rule:opacity-100 disabled:invisible"
       >
-        <ArrowUp className="size-3" strokeWidth={1.75} />
+        <ArrowUp className="size-3.5" strokeWidth={1.75} />
       </button>
     </div>
   );
 }
 
-const INPUT =
-  "w-full rounded-md border border-content/10 bg-content/5 px-2 py-1.5 text-[12px] text-content outline-none hover:border-content/20 focus:border-accent/60";
-const LABEL = "text-[11px] font-medium text-content/50";
-const GHOST = "rounded-md px-3 py-1.5 text-[12px] text-content/70 hover:bg-content/8 hover:text-content";
-const PRIMARY =
-  "rounded-md bg-content px-3 py-1.5 text-[12px] font-medium text-background-base hover:bg-content/70 disabled:cursor-default disabled:opacity-50";
-
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label className="flex min-w-0 flex-1 flex-col gap-1">
-      <span className={LABEL}>{label}</span>
+      <span className="text-[11px] font-semibold tracking-[0.08em] text-content/50 uppercase">{label}</span>
       {children}
     </label>
   );
@@ -442,6 +436,14 @@ function RuleDialog({
   );
   const [model, setModel] = useState(rule?.model ?? "");
   const [reasoning, setReasoning] = useState<Reasoning>(rule?.reasoning ?? "medium");
+  const taskRef = useRef<HTMLInputElement>(null);
+
+  // The modal focuses its close button on mount; the task field wins on
+  // the next frame.
+  useEffect(() => {
+    const id = requestAnimationFrame(() => taskRef.current?.focus());
+    return () => cancelAnimationFrame(id);
+  }, []);
 
   const models = useMemo(
     () => (catalog?.[provider]?.models ?? []).filter((m) => modelApproved(rules, provider, m.id)),
@@ -475,56 +477,50 @@ function RuleDialog({
           save();
         }}
       >
-        <div className="flex flex-col gap-3 px-4 py-4">
+        <div className="flex flex-col gap-3 px-4 py-3">
           <Field label="When the task is…">
-            <input
-              autoFocus
+            <Input
+              ref={taskRef}
               value={task}
               onChange={(e) => setTask(e.target.value)}
               placeholder="Bulk or mechanical work with a clear spec"
-              className={INPUT}
+              className="w-full"
             />
           </Field>
           <div className="flex gap-3">
             <Field label="Provider">
-              <select
+              <Select
+                label="Provider"
+                className="w-full"
                 value={provider}
-                onChange={(e) => {
-                  setProvider(e.target.value as SpawnProviderId);
+                onChange={(v) => {
+                  setProvider(v as SpawnProviderId);
                   setModel("");
                 }}
-                className={INPUT}
-              >
-                {providers.map((p) => (
-                  <option key={p} value={p}>
-                    {catalog?.[p]?.label ?? p}
-                  </option>
-                ))}
-              </select>
+                options={providers.map((p) => ({ value: p, label: catalog?.[p]?.label ?? p }))}
+              />
             </Field>
             <Field label="Model">
-              <select value={model} onChange={(e) => setModel(e.target.value)} className={INPUT}>
-                <option value="">Provider default</option>
-                {models.map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.label}
-                  </option>
-                ))}
-              </select>
+              <Select
+                label="Model"
+                className="w-full"
+                value={model}
+                onChange={setModel}
+                options={[
+                  { value: "", label: "Provider default" },
+                  ...models.map((m) => ({ value: m.id, label: m.label })),
+                ]}
+              />
             </Field>
             {ladder.length > 1 ? (
               <Field label="Effort">
-                <select
+                <Select
+                  label="Effort"
+                  className="w-full"
                   value={reasoning}
-                  onChange={(e) => setReasoning(e.target.value as Reasoning)}
-                  className={INPUT}
-                >
-                  {ladder.map((r) => (
-                    <option key={r} value={r}>
-                      {EFFORT_LABELS[r]}
-                    </option>
-                  ))}
-                </select>
+                  onChange={(v) => setReasoning(v as Reasoning)}
+                  options={ladder.map((r) => ({ value: r, label: EFFORT_LABELS[r] }))}
+                />
               </Field>
             ) : null}
           </div>

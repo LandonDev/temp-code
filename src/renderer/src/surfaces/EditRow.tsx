@@ -243,7 +243,7 @@ export function EditRow({
       <div className="flex h-9 min-w-0 items-center gap-2.5 px-2">
         <span className="flex size-5 shrink-0 items-center justify-center rounded-[6px] bg-content/10 text-content/70">
           {running ? (
-            <TerminalSpinner className="inline-block w-3.5 select-none text-center text-[11px] leading-none text-content/70" />
+            <TerminalSpinner className="text-content/70" />
           ) : (
             <Icon className="size-3.5" strokeWidth={1.75} />
           )}

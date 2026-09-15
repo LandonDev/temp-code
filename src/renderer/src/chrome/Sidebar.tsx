@@ -23,7 +23,7 @@ import {
 } from "../lib/appearance";
 import { basename } from "../lib/fs";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import { SPRING_LAYOUT } from "../lib/ease";
+import { EASE_OUT } from "../lib/ease";
 import { IS_MAC, MOD } from "../lib/platform";
 import { projectName } from "../lib/paths";
 import type { ProjectMeta } from "../lib/tcserver/types";
@@ -312,10 +312,10 @@ function SidebarComponent({
         }}
       >
         {showStart ? (
-          <div className="pointer-events-none absolute inset-y-0 left-0 z-20 w-0.5 bg-accent" />
+          <div className="pointer-events-none absolute inset-y-1.5 left-0 z-20 w-0.5 rounded-full bg-accent" />
         ) : null}
         {showEnd ? (
-          <div className="pointer-events-none absolute inset-y-0 right-0 z-20 w-0.5 bg-accent" />
+          <div className="pointer-events-none absolute inset-y-1.5 right-0 z-20 w-0.5 rounded-full bg-accent" />
         ) : null}
         <button
           type="button"
@@ -662,11 +662,11 @@ function SidebarComponent({
         {sidebarVisible ? (
           <motion.div
             key="sidebar"
-            initial={{ width: 0 }}
-            animate={{ width: "auto" }}
-            exit={{ width: 0 }}
-            transition={reduceMotion ? { duration: 0 } : SPRING_LAYOUT}
-            className="flex h-full shrink-0 overflow-hidden"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={reduceMotion ? { duration: 0 } : { duration: 0.12, ease: EASE_OUT }}
+            className="flex h-full shrink-0"
           >
             {sidebarContent}
           </motion.div>

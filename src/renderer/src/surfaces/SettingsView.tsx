@@ -1,7 +1,6 @@
 import {
   ArrowDownCircle,
   Check,
-  Loader,
   RefreshCw,
   RotateCcw,
   Search,
@@ -13,7 +12,6 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
-import { motion, useReducedMotion } from "motion/react";
 import { HarnessIcon } from "../chrome/HarnessIcon";
 import { InboxProviderMark } from "../chrome/InboxProviderMark";
 import { RemoveProjectDialog } from "../chrome/RemoveProjectDialog";
@@ -135,7 +133,6 @@ import {
   settingsSectionLabel,
   type MidTurnDefault,
 } from "../lib/settings";
-import { SPRING_LAYOUT } from "../lib/ease";
 import { loadSoundsEnabled, saveSoundsEnabled } from "../lib/sounds";
 import {
   loadAutoSave,
@@ -156,7 +153,7 @@ import { TurnPassEditor } from "../chrome/TurnPassFields";
 import { openOrchestrationSettings, takeRequestedScope } from "../lib/tcserver/rules";
 import { useWorkspaces, workspaceLabelKey } from "../lib/tcserver/workspaces";
 import { workspaceOfSection } from "../lib/settings";
-import { Heading, Row, Segmented, Select, SecondaryButton, Toggle } from "./settingsBits";
+import { Heading, Input, Row, Segmented, Select, SecondaryButton, Toggle } from "./settingsBits";
 import { DANGER, GHOST, PRIMARY } from "../chrome/ConfirmDialog";
 import { AppshotsPage } from "./AppshotsSettings";
 import { MatrixSpinner } from "./threads/bits";
@@ -226,7 +223,7 @@ export function SettingsView({
             type="button"
             data-tauri-drag-region="false"
             onClick={appearance.restoreDefaults}
-            className="mr-2 flex shrink-0 items-center gap-1.5 rounded-md px-2 py-1 text-[12px] text-content/50 hover:bg-content/10 hover:text-content"
+            className="pressable mr-2 flex shrink-0 items-center gap-1.5 rounded-md px-2 py-1 text-[12px] text-content/50 hover:bg-content/10 hover:text-content"
           >
             <RotateCcw className="size-3.5" strokeWidth={1.75} />
             Restore defaults
@@ -370,7 +367,7 @@ function GeneralPage({
     <>
       <Row
         label="Workspace layout"
-        description="Classic keeps a single sidebar. Deck adds the project rail, the workspace panel, and the project terminal dock."
+        description="Deck adds the project rail, workspace panel and terminal dock."
       >
         <Segmented
           label="Workspace layout"
@@ -384,7 +381,7 @@ function GeneralPage({
       </Row>
       <Row
         label="Transcript layout"
-        description="Full width keeps user prompts as a spanning card. Chat aligns them to the right with a max width, like a messaging app."
+        description="Chat aligns your prompts to the right."
       >
         <Segmented
           label="Transcript layout"
@@ -398,7 +395,7 @@ function GeneralPage({
       </Row>
       <Row
         label="Anchor prompts to top"
-        description="When you send, the new prompt sits at the top of the transcript and the reply grows into the space below. Turn this off to keep the classic layout, with the latest message resting on the composer."
+        description="A sent prompt sits at the top and the reply grows below it."
       >
         <Toggle
           label="Anchor prompts to top"
@@ -408,7 +405,7 @@ function GeneralPage({
       </Row>
       <Row
         label="Zen mode"
-        description={`The agent's work reads as groups: a run of related tool calls under the line the agent wrote to introduce it. The group it is in stays open and grows a step at a time — tool calls, thinking, the notes it drops between them — and folds back to its header the moment it moves on, leaving a labelled outline above the final answer. Click any group to read it back. Edits waiting on approval still show their diff. ${MOD}${ALT}Z toggles it.`}
+        description={`Folds each run of tool calls under its heading (${MOD}${ALT}Z).`}
       >
         <Toggle
           label="Zen mode"
@@ -418,7 +415,7 @@ function GeneralPage({
       </Row>
       <Row
         label="Composer mascot"
-        description="When a turn is running, the project mascot runs along the composer, bonks the scroll-to-latest button the first time, then jumps it, and sometimes grabs a coin."
+        description="The project mascot runs along the composer during a turn."
       >
         <Toggle
           label="Composer mascot"
@@ -428,13 +425,13 @@ function GeneralPage({
       </Row>
       <Row
         label="Enter while a turn runs"
-        description={`Queue waits for the turn to settle; Steer sends into the running turn. ${MOD}Enter does the other one.`}
+        description={`Queue waits for the turn, Steer sends into it (${MOD}Enter does the other).`}
       >
         <MidTurnSwitch />
       </Row>
       <Row
         label="Empty session games"
-        description="Pac-man and snake idle on the empty-session grid. Hover the band to take control of whichever is on screen. Turn this off to keep the pane still."
+        description="Pac-man and snake idle on the empty-session grid."
       >
         <Toggle
           label="Empty session games"
@@ -444,13 +441,13 @@ function GeneralPage({
       </Row>
       <Row
         label="Notes"
-        description="A global markdown notebook on the project rail. Save a finished turn from the transcript, then mention it later with @note or add it to chat. Turn this off to hide Notes from the UI."
+        description="A markdown notebook on the project rail."
       >
         <Toggle label="Notes" on={notesEnabled} onChange={onNotesEnabled} />
       </Row>
       <Row
         label="Working agents"
-        description="When two or more chats are in flight, a card on the project rail lists them so you can jump across projects. Finished turns stay until you open that session. Turn this off to hide the card."
+        description="A rail card lists chats in flight across projects."
       >
         <Toggle
           label="Working agents"
@@ -460,13 +457,13 @@ function GeneralPage({
       </Row>
       <Row
         label="Sounds"
-        description="Short cues when a turn finishes, a new inbox item appears on the project rail, or an update is available. Switches and Copy on a finished turn also play."
+        description="Short cues for finished turns, inbox items and updates."
       >
         <Toggle label="Sounds" on={soundsEnabled} onChange={onSoundsEnabled} />
       </Row>
       <Row
         label="Claude Code hooks"
-        description="Run the hooks configured in your settings.json files — PreToolUse command rewrites, blocks, notifications, and the rest — just as the Claude Code CLI would. Turn this off if a hook is misbehaving and you need the session back. Takes effect on the next turn."
+        description="Run the hooks from your settings.json files on the next turn."
       >
         <Toggle
           label="Claude Code hooks"
@@ -568,7 +565,7 @@ function LinearSettings() {
             API key
           </span>
         }
-        description="Create a personal API key in Linear → Settings → Security & Access. Disconnect deletes it."
+        description="Create a personal API key in Linear → Settings → Security & Access."
       >
         {connected ? (
           <SecondaryButton onClick={() => void onDisconnect()} disabled={busy}>
@@ -576,26 +573,25 @@ function LinearSettings() {
           </SecondaryButton>
         ) : (
           <div className="flex items-center gap-2">
-            <label className="flex h-7 w-52 shrink-0 items-center rounded-md border border-content/10 px-2 focus-within:border-content/20">
-              <input
-                type="password"
-                value={token}
-                onChange={(event) => setToken(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter") void onSave();
-                }}
-                placeholder="lin_api_…"
-                aria-label="Linear API key"
-                autoComplete="off"
-                spellCheck={false}
-                className="min-w-0 flex-1 bg-transparent text-[12px] text-content outline-none placeholder:text-content/40"
-              />
-            </label>
+            <Input
+              type="password"
+              value={token}
+              onChange={(event) => setToken(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") void onSave();
+              }}
+              placeholder="lin_api_…"
+              aria-label="Linear API key"
+              autoComplete="off"
+              spellCheck={false}
+              className="w-52 shrink-0"
+            />
             <SecondaryButton
               onClick={() => void onSave()}
               disabled={busy || !token.trim()}
             >
-              {busy ? "Saving" : "Connect"}
+              {busy ? <MatrixSpinner cell={1.5} /> : null}
+              Connect
             </SecondaryButton>
           </div>
         )}
@@ -611,7 +607,7 @@ function LinearSettings() {
           <p className="mt-1 text-[12px] leading-relaxed text-content/40">
             Unchecked teams stay out of the inbox.
           </p>
-          <div className="mt-3 flex flex-col gap-0.5 -mx-2">
+          <div className="mt-3 flex flex-col gap-0.5">
             {teams.map((team) => {
               const checked = !hiddenTeamIds.includes(team.id);
               return (
@@ -619,7 +615,7 @@ function LinearSettings() {
                   key={team.id}
                   type="button"
                   onClick={() => toggleTeam(team.id)}
-                  className="flex h-7 items-center gap-2 rounded-md px-2 text-left text-[13px] text-content hover:bg-content/5"
+                  className="flex h-7 items-center gap-3 rounded-lg px-2 text-left text-[13px] text-content hover:bg-content/5 active:bg-content/10"
                 >
                   <span className="min-w-0 flex-1 truncate">
                     {team.name}
@@ -680,7 +676,7 @@ function UpdateRow({
       label={
         <span className="flex items-baseline gap-2">
           Release
-          <span className="font-mono text-[12px] text-content/40">
+          <span className="font-mono text-[12px] text-content/40 tabular-nums">
             {snapshot.currentVersion}
           </span>
         </span>
@@ -708,17 +704,13 @@ function UpdateRow({
           disabled={busy}
         >
           {busy ? (
-            <Loader className="size-3.5 motion-safe:animate-spin" aria-hidden />
+            <MatrixSpinner cell={1.5} />
           ) : hasUpdate && canApply ? (
-            <ArrowDownCircle className="size-3.5 text-accent" aria-hidden />
+            <ArrowDownCircle className="size-3.5 text-accent" strokeWidth={1.75} aria-hidden />
           ) : (
             <RefreshCw className="size-3.5" strokeWidth={1.75} aria-hidden />
           )}
-          {building && snapshot.step
-            ? `${snapshot.step}…`
-            : hasUpdate && canApply
-              ? `Update to ${snapshot.availableVersion}`
-              : "Check for updates"}
+          {hasUpdate && canApply ? "Update" : "Check for updates"}
         </SecondaryButton>
       </div>
     </Row>
@@ -752,10 +744,10 @@ function StepProgress({
       className="mt-2 block h-1 w-64 overflow-hidden rounded-full bg-content/10"
     >
       <span
-        className={`block h-full rounded-full bg-accent transition-[width] duration-300 ${
+        className={`block h-full origin-left rounded-full bg-accent transition-transform duration-300 ${
           fraction == null ? "w-1/3 motion-safe:animate-pulse" : ""
         }`}
-        style={fraction == null ? undefined : { width: `${fraction * 100}%` }}
+        style={fraction == null ? undefined : { transform: `scaleX(${fraction})` }}
       />
     </span>
   );
@@ -900,7 +892,7 @@ function KeybindingsPage() {
         <span className="shrink-0 text-[12px] text-content/40 tabular-nums">
           {rows.length} {rows.length === 1 ? "binding" : "bindings"}
         </span>
-        <label className="flex h-7 w-52 shrink-0 items-center gap-2 rounded-md border border-content/10 px-2 text-content/40 focus-within:border-content/20">
+        <label className="flex h-7 w-52 shrink-0 items-center gap-2 rounded-lg border border-content/10 bg-content/5 px-2 text-content/40 focus-within:border-content/20">
           <Search className="size-3.5 shrink-0" strokeWidth={1.75} />
           <input
             value={query}
@@ -915,7 +907,7 @@ function KeybindingsPage() {
       </div>
 
       <div className="overflow-hidden rounded-lg border border-content/10">
-        <div className="flex items-center border-b border-content/10 bg-content/5 px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-content/40">
+        <div className="flex items-center border-b border-content/10 bg-content/5 px-3 py-2 text-[11px] font-semibold tracking-[0.08em] text-content/50 uppercase">
           <span className="min-w-0 flex-1">Command</span>
           <span className="w-40 shrink-0">Keybinding</span>
           <span className="w-28 shrink-0">When</span>
@@ -931,7 +923,7 @@ function KeybindingsPage() {
               className="flex items-center border-b border-content/5 px-3 py-2 text-[12px] last:border-b-0"
             >
               <span className="min-w-0 flex-1 truncate">{row.command}</span>
-              <span className="w-40 shrink-0 font-mono text-[12px] text-content/70">
+              <span className="w-40 shrink-0 font-mono text-[12px] text-content/70 tabular-nums">
                 {row.keys}
               </span>
               <span className="w-28 shrink-0 font-mono text-[11px] text-content/40">
@@ -989,11 +981,6 @@ function ProvidersPage() {
 
   return (
     <>
-      <p className="pb-2 text-[12px] leading-relaxed text-content/40">
-        A provider is listed as installed once its CLI is found on your PATH;
-        uninstalled ones are left out of the model picker. The model beside
-        each provider is what new threads use when that provider is selected.
-      </p>
       {HARNESSES.map((harness) => (
         <ProviderRow
           key={harness}
@@ -1093,7 +1080,7 @@ function ProviderRow({
           />
           {doctor.version ? versionLabel(doctor.version) : "Installed"}
           {models.length > 0 ? (
-            <span className="text-content/40">
+            <span className="text-content/40 tabular-nums">
               · {models.length} {models.length === 1 ? "model" : "models"}
             </span>
           ) : null}
@@ -1120,11 +1107,6 @@ function ProviderRow({
         <span className="flex items-center gap-2">
           <HarnessIcon harness={harness} className="size-4 shrink-0" />
           {HARNESS_TITLE[harness]}
-          {isDefault ? (
-            <span className="rounded-full bg-content/10 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-content/50">
-              Default
-            </span>
-          ) : null}
         </span>
       }
       description={
@@ -1140,10 +1122,8 @@ function ProviderRow({
     >
       {doctor?.found && UPDATABLE.has(harness) ? (
         <SecondaryButton onClick={() => void onUpdate()} disabled={updating}>
-          {updating ? (
-            <Loader className="size-3.5 motion-safe:animate-spin" aria-hidden />
-          ) : null}
-          {updating ? "Updating…" : "Update"}
+          {updating ? <MatrixSpinner cell={1.5} /> : null}
+          Update
         </SecondaryButton>
       ) : null}
       {current ? (
@@ -1341,8 +1321,7 @@ function ArchivePage({
       <Heading title="Archived projects" first />
       {archivedProjects.length === 0 ? (
         <p className="py-3 text-[12px] text-content/40">
-          Archive a project from the rail to keep its chats without listing it
-          in the sidebar.
+          Archive a project from the rail to keep its chats out of the sidebar.
         </p>
       ) : (
         <div className="overflow-hidden rounded-lg border border-content/10">
@@ -1365,9 +1344,9 @@ function ArchivePage({
                 </SecondaryButton>
               ) : null}
               {onDeleteProject ? (
-                <SecondaryButton danger onClick={() => setDeleting(project)}>
+                <button type="button" onClick={() => setDeleting(project)} className={DANGER}>
                   Delete
-                </SecondaryButton>
+                </button>
               ) : null}
             </div>
           ))}
@@ -1393,13 +1372,13 @@ function ArchivePage({
         </p>
       ) : (
         <>
-          <label className="mb-3 flex items-center gap-2 rounded-md border border-content/10 px-2.5 py-1.5 text-[12px] text-content/50 focus-within:border-content/20">
+          <label className="mb-3 flex h-7 items-center gap-2 rounded-lg border border-content/10 bg-content/5 px-2 text-[12px] text-content/40 focus-within:border-content/20">
             <Search className="size-3.5 shrink-0" strokeWidth={1.75} />
             <input
               type="search"
               value={query}
               onChange={(event) => setQuery(event.target.value)}
-              placeholder={`Search ${archived.length} archived…`}
+              placeholder="Search…"
               aria-label="Search archived threads"
               className="min-w-0 flex-1 bg-transparent text-content outline-none placeholder:text-content/40"
             />
@@ -1419,11 +1398,7 @@ function ArchivePage({
                     harness={meta.provider}
                     className="size-3.5 shrink-0"
                   />
-                  <button
-                    type="button"
-                    onClick={() => restore(meta)}
-                    className="min-w-0 flex-1 text-left hover:text-content"
-                  >
+                  <div className="min-w-0 flex-1">
                     <span className="block truncate text-[13px]">
                       {sessionDisplayTitle(meta.title, meta.provider)}
                     </span>
@@ -1432,19 +1407,16 @@ function ArchivePage({
                         {nameOf(meta)}
                       </span>
                     ) : null}
-                  </button>
+                  </div>
                   <span className="shrink-0 text-[11px] text-content/40 tabular-nums">
                     {formatDate(meta.updatedAt)}
                   </span>
                   <SecondaryButton onClick={() => restore(meta)}>
                     Restore
                   </SecondaryButton>
-                  <SecondaryButton
-                    danger
-                    onClick={() => setDeletingThread(meta)}
-                  >
+                  <button type="button" onClick={() => setDeletingThread(meta)} className={DANGER}>
                     Delete
-                  </SecondaryButton>
+                  </button>
                 </div>
               ))}
             </div>
@@ -1519,11 +1491,11 @@ function PageHeader({
 }) {
   return (
     <header className="pb-4">
-      <h1 className="text-[20px] font-semibold leading-tight text-content">
+      <h1 className="text-2xl font-semibold leading-tight tracking-[-0.02em] text-content">
         {title}
       </h1>
       {description ? (
-        <p className="mt-1.5 max-w-xl text-[13px] leading-relaxed text-content/40">
+        <p className="mt-1 max-w-xl text-[13px] text-content/40">
           {description}
         </p>
       ) : null}
@@ -1533,39 +1505,19 @@ function PageHeader({
 
 function MidTurnSwitch() {
   const [value, setValue] = useState<MidTurnDefault>(loadMidTurnDefault);
-  const reduce = useReducedMotion();
-  const pick = (next: MidTurnDefault) => {
-    saveMidTurnDefault(next);
-    setValue(next);
-  };
   return (
-    <div
-      role="radiogroup"
-      aria-label="Enter while a turn runs"
-      className="flex gap-0.5 rounded-md border border-content/10 p-0.5 text-[12px]"
-    >
-      {(["queue", "steer"] as const).map((option) => (
-        <button
-          key={option}
-          type="button"
-          role="radio"
-          aria-checked={value === option}
-          onClick={() => pick(option)}
-          className={`relative rounded-[5px] px-3 py-1 transition-colors ${
-            value === option ? "text-content" : "text-content/50 hover:text-content"
-          }`}
-        >
-          {value === option ? (
-            <motion.span
-              layoutId="mid-turn-pill"
-              transition={reduce ? { duration: 0 } : SPRING_LAYOUT}
-              className="absolute inset-0 rounded-[5px] bg-content/10"
-            />
-          ) : null}
-          <span className="relative">{option === "queue" ? "Queue" : "Steer"}</span>
-        </button>
-      ))}
-    </div>
+    <Segmented
+      label="Enter while a turn runs"
+      value={value}
+      options={[
+        { value: "queue", label: "Queue" },
+        { value: "steer", label: "Steer" },
+      ]}
+      onChange={(next) => {
+        saveMidTurnDefault(next);
+        setValue(next);
+      }}
+    />
   );
 }
 
@@ -1667,11 +1619,11 @@ function LanguageServersRow() {
     <Row
       label="Language servers"
       description={
-        rows === null
-          ? "…"
-          : rows.length === 0
-            ? "None running. A server starts when a file that needs it opens."
-            : undefined
+        rows === null ? (
+          <MatrixSpinner cell={1.5} />
+        ) : rows.length === 0 ? (
+          "None running."
+        ) : undefined
       }
     >
       {rows && rows.length > 0 ? (
@@ -1763,7 +1715,7 @@ function EditorPage() {
 
   const jdkState =
     java === undefined
-      ? "…"
+      ? null
       : !java || !java.found
         ? (java?.error ?? "No JDK found. Install JDK 21 or newer for Java.")
         : java.error
@@ -1772,7 +1724,7 @@ function EditorPage() {
 
   const engineState =
     engine === undefined
-      ? "…"
+      ? null
       : !engine || !engine.dist
         ? "Not downloaded"
         : engine.accepted
@@ -1781,7 +1733,7 @@ function EditorPage() {
 
   return (
     <>
-      <Row label="Auto save" description="Write 800 ms after the last keystroke. ⌘S still writes at once.">
+      <Row label="Auto save" description={`Write 800 ms after the last keystroke (${MOD}S writes at once).`}>
         <Toggle
           label="Auto save"
           on={autoSave}
@@ -1792,10 +1744,14 @@ function EditorPage() {
         />
       </Row>
       <Row label="Format on save">
-        <span className="text-[12px] text-content/50">Java</span>
-        <Toggle label="Format Java on save" on={formatOnSave.java} onChange={(on) => onFormat({ java: on })} />
-        <span className="ml-3 text-[12px] text-content/50">Web</span>
-        <Toggle label="Format TypeScript and JavaScript on save" on={formatOnSave.web} onChange={(on) => onFormat({ web: on })} />
+        <span className="flex items-center gap-2">
+          <span className="text-[12px] text-content/50">Java</span>
+          <Toggle label="Format Java on save" on={formatOnSave.java} onChange={(on) => onFormat({ java: on })} />
+        </span>
+        <span className="ml-2 flex items-center gap-2">
+          <span className="text-[12px] text-content/50">Web</span>
+          <Toggle label="Format TypeScript and JavaScript on save" on={formatOnSave.web} onChange={(on) => onFormat({ web: on })} />
+        </span>
       </Row>
       <Row label="Ghost text" description="Inline completions from Claude on your existing login.">
         <Toggle
@@ -1812,7 +1768,7 @@ function EditorPage() {
         description={
           <>
             <span className={`block ${java && java.error ? "text-warning" : ""}`}>
-              {jdkState}
+              {jdkState ?? <MatrixSpinner cell={1.5} />}
             </span>
             {java?.path ? (
               <span className="block truncate font-mono text-[11px] text-content/40">
@@ -1822,7 +1778,7 @@ function EditorPage() {
           </>
         }
       />
-      <Row label="IntelliJ engine" description={note ?? engineState}>
+      <Row label="IntelliJ engine" description={note ?? engineState ?? <MatrixSpinner cell={1.5} />}>
         {engine?.accepted ? (
           <SecondaryButton onClick={checkUpdate}>Check for update</SecondaryButton>
         ) : (

@@ -4,7 +4,7 @@ import { client } from "../../lib/tcserver/client";
 import { OPEN_SETTINGS_EVENT } from "../../lib/monaco/debugTab";
 import { useWorkspaces } from "../../lib/tcserver/workspaces";
 import { Input, Row } from "../../surfaces/settingsBits";
-import { Spinner } from "../../surfaces/threads/bits";
+import { MatrixSpinner } from "../../surfaces/threads/bits";
 
 /**
  * The workspace's build command (Build rail tab, and what the completed-turn
@@ -108,7 +108,7 @@ export function BuildEditor({ workspaceId }: { workspaceId: string }) {
   if (config === undefined) {
     return (
       <div className="flex h-16 items-center justify-center">
-        <Spinner className="size-4 text-content/50" />
+        <MatrixSpinner />
       </div>
     );
   }
