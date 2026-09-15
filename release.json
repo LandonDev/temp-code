@@ -1,5 +1,5 @@
 {
-  "n": 138,
-  "notes": "Coming back to a workspace lands on the thread it was last on: the open tab holding that thread wins over the first open tab, then the most recently visited tab of the workspace, then the remembered thread opens, then a blank one; a blank draft is never remembered, so a workspace never seen lands on a new thread",
-  "ts": 1789442622139
+  "n": 139,
+  "notes": "The left rail lists workspaces only and says so: it no longer adds the focused thread's project folder as a row of its own, so sending in a project thread no longer conjures a row that vanishes on leaving; the highlighted row is the workspace the app is in, and the rail's labels read Workspaces, Add workspace, Pin workspace and Workspace options",
+  "ts": 1789442830520
 }
