@@ -43,7 +43,7 @@ export interface RootTreeSummary {
   frozenActiveElapsed: number | null
 }
 
-const LIVE_STATUSES = new Set<SessionMeta['status']>(['starting', 'running', 'waiting'])
+export const LIVE_STATUSES = new Set<SessionMeta['status']>(['starting', 'running', 'waiting'])
 
 export type ParentIndex = Map<string, SessionMeta[]>
 

@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { configure, pinProfile, pinnedProfile, vault, type ServiceView, type UsageReport } from 'aliax-core'
-import { AccountsService, type AccountsDeps } from './accounts'
+import { AccountsService, RESET_GRACE_MS, type AccountsDeps } from './accounts'
 
 /**
  * A throwaway Aliax data dir with two Claude accounts and one Codex account,
@@ -164,5 +164,104 @@ describe('AccountsService', () => {
     expect(snap.providers.claude.profiles).toHaveLength(1)
     expect(snap.providers.codex.profiles).toHaveLength(0)
     expect(snap.providers.claude.note).toBeUndefined()
+  })
+
+  it('pickNext takes the account with room in every live model\'s window, confirmed by a forced poll', async () => {
+    ;({ cleanup } = fixture())
+    const polled: string[] = []
+    const { svc } = service({
+      usage: async () => [
+        { profileName: 'a@x.com', windows: [{ label: '5h', usedPercent: 100, resetsAt: Date.now() + 60_000 }] },
+        { profileName: 'b@x.com', windows: [{ label: '5h', usedPercent: 30 }, { label: 'Fable', usedPercent: 100, resetsAt: Date.now() + 9e6 }] }
+      ],
+      usageOf: async (_id, name) => {
+        polled.push(name)
+        return null
+      },
+      liveModels: () => ['claude-fable-5-1']
+    })
+    const info = { service: 'claude', serviceId: 'claude-code' as const, model: 'claude-sonnet-5', limit: { window: '5h' as const }, tried: ['a@x.com'] }
+    // A Fable thread is live: b's closed Fable cap rules it out.
+    expect(await svc.pickNext(info)).toBeNull()
+    expect(polled).toEqual([])
+  })
+
+  it('pickNext ignores a closed cap no live model spends', async () => {
+    ;({ cleanup } = fixture())
+    const polled: string[] = []
+    const { svc } = service({
+      usage: async () => [
+        { profileName: 'a@x.com', windows: [{ label: '5h', usedPercent: 100, resetsAt: Date.now() + 60_000 }] },
+        { profileName: 'b@x.com', windows: [{ label: '5h', usedPercent: 30 }, { label: 'Fable', usedPercent: 100, resetsAt: Date.now() + 9e6 }] }
+      ],
+      usageOf: async (_id, name) => {
+        polled.push(name)
+        return null
+      }
+    })
+    const info = { service: 'claude', serviceId: 'claude-code' as const, model: 'claude-sonnet-5', limit: { window: '5h' as const }, tried: ['a@x.com'] }
+    expect(await svc.pickNext(info)).toBe('b@x.com')
+    expect(polled).toEqual(['b@x.com'])
+  })
+
+  it('failedOver signs the CLIs in behind the pin core moved, and a failure shows as a note', async () => {
+    ;({ cleanup } = fixture())
+    const { svc, activate } = service()
+    await svc.list()
+    pinProfile('claude-code', 'b@x.com')
+    activate.mockResolvedValueOnce({ ok: false, error: 'no browser session' } as never)
+    const snaps: string[] = []
+    svc.onChange((s) => snaps.push(s.providers.claude.note ?? ''))
+    svc.failedOver({ serviceId: 'claude-code', to: 'b@x.com' })
+    await vi.waitFor(() => expect(snaps.length).toBe(1))
+    expect(activate).toHaveBeenCalledWith('claude-code', 'b@x.com')
+    expect(snaps[0]).toBe('switched to b@x.com; sign-in failed: no browser session')
+    expect((await svc.list()).providers.claude.pinned).toBe('b@x.com')
+    // The next successful switch clears it.
+    await svc.switch('claude', 'a@x.com')
+    expect((await svc.list()).providers.claude.note).toBeUndefined()
+  })
+
+  it('re-arms one reset timer per build and polls the reset accounts, only while Aliax is not the owner', async () => {
+    ;({ cleanup } = fixture())
+    vi.useFakeTimers()
+    vi.setSystemTime(1_000_000)
+    const stale: string[] = []
+    let owner: 'aliax' | 'temp-code' = 'temp-code'
+    let reset = Date.now() + 60_000
+    const usage = vi.fn<AccountsDeps['usage']>(async (id) =>
+      id !== 'claude-code'
+        ? []
+        : [
+            { profileName: 'a@x.com', windows: [{ label: '5h', usedPercent: 100, resetsAt: reset }] },
+            { profileName: 'b@x.com', windows: [{ label: '5h', usedPercent: 100, resetsAt: reset + 5_000 }] }
+          ]
+    )
+    const { svc } = service({
+      usage,
+      now: Date.now,
+      owner: () => owner,
+      markStale: (_id, name) => {
+        stale.push(name)
+        // The poll after a reset learns the next one.
+        reset = Date.now() + 600_000
+      },
+      pollMs: 3_600_000
+    })
+    svc.start()
+    await vi.waitFor(() => expect(usage).toHaveBeenCalledTimes(2))
+    expect(svc.nextReset()).toEqual({ at: reset + RESET_GRACE_MS, stale: [{ id: 'claude-code', name: 'a@x.com' }, { id: 'claude-code', name: 'b@x.com' }] })
+    // The timer fires once, after the grace, and the rebuild it starts re-arms for the next reset.
+    await vi.advanceTimersByTimeAsync(60_000 + RESET_GRACE_MS)
+    expect(stale).toEqual(['a@x.com', 'b@x.com'])
+    await vi.waitFor(() => expect(usage).toHaveBeenCalledTimes(4))
+    expect(svc.nextReset()?.at).toBe(reset + RESET_GRACE_MS)
+    // Aliax took the gateway: its poll feeds the cache we watch, so ours stays quiet.
+    owner = 'aliax'
+    await vi.advanceTimersByTimeAsync(600_000 + RESET_GRACE_MS)
+    expect(stale).toHaveLength(2)
+    expect(usage).toHaveBeenCalledTimes(4)
+    svc.stop()
+    vi.useRealTimers()
   })
 })
