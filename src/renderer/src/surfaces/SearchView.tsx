@@ -1,4 +1,5 @@
-import { Folder, LoaderCircle, MessageSquare, Search } from "../chrome/icons";
+import { Folder, MessageSquare, Search } from "../chrome/icons";
+import { MatrixSpinner } from "./threads/bits";
 import {
   useEffect,
   useMemo,
@@ -333,7 +334,7 @@ export function SearchView({
         {besideRail ? null : (
           <OverlayNav onBack={onClose} onToggleSidebar={onToggleSidebar} />
         )}
-        <label className="flex min-w-0 flex-1 items-center gap-2 px-3 text-content/50">
+        <label className="flex min-w-0 flex-1 items-center gap-2 px-3.5 text-content/50">
           <Search className="size-3.5 shrink-0" strokeWidth={1.75} />
           <input
             ref={inputRef}
@@ -349,12 +350,7 @@ export function SearchView({
             data-tauri-drag-region="false"
             className="min-w-0 flex-1 bg-transparent text-[13px] text-content outline-none select-text placeholder:text-content/40"
           />
-          {loading ? (
-            <LoaderCircle
-              className="size-3.5 shrink-0 motion-safe:animate-spin text-content/40"
-              strokeWidth={1.75}
-            />
-          ) : null}
+          {loading ? <MatrixSpinner cell={1.5} /> : null}
         </label>
         {!IS_MAC ? <WindowControls /> : null}
       </div>
@@ -368,7 +364,7 @@ export function SearchView({
               type="button"
               aria-pressed={selected}
               onClick={() => setScope(item.id)}
-              className={`rounded-md px-2 py-1 text-[12px] ${
+              className={`pressable rounded-md px-2 py-1 text-[12px] transition-colors ${
                 selected
                   ? "bg-content/10 text-content"
                   : "text-content/50 hover:bg-content/5 hover:text-content"
@@ -408,36 +404,12 @@ export function SearchView({
   );
 }
 
-const EMPTY_DOT_COLS = 27;
-const EMPTY_DOT_ROWS = 19;
-
 function EmptyState() {
   return (
-    <div className="flex flex-col items-center justify-center px-6 pb-24">
-      <div className="relative mb-2 grid h-48 w-72 place-items-center">
-        <div
-          className="grid gap-[7px] opacity-[0.14] [mask-image:radial-gradient(ellipse_72%_68%_at_50%_50%,#000_18%,transparent_76%)]"
-          style={{
-            gridTemplateColumns: `repeat(${EMPTY_DOT_COLS}, minmax(0, 1fr))`,
-          }}
-        >
-          {Array.from(
-            { length: EMPTY_DOT_COLS * EMPTY_DOT_ROWS },
-            (_, index) => (
-              <span
-                key={index}
-                className="mx-auto size-[3px] rounded-full bg-content"
-              />
-            ),
-          )}
-        </div>
-        <div className="absolute grid size-14 place-items-center rounded-2xl bg-content/6 glass-surface glass-surface--sm">
-          <Search className="size-6 text-content/50" strokeWidth={1.75} />
-        </div>
-      </div>
-
-      <p className="max-w-xs text-center text-[13px] text-content/40">
-        Find files, conversations, messages, and projects.
+    <div className="flex flex-col items-center justify-center px-4 pb-24 text-center">
+      <Search className="mb-3 size-6 text-content/30" strokeWidth={1.75} />
+      <p className="text-[13px] text-content/40">
+        Find files, chats, messages and projects
       </p>
     </div>
   );

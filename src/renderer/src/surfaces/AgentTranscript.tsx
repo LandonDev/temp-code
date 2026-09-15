@@ -2684,7 +2684,7 @@ function HandoffDivider({ block }: { block: Block }) {
         >
           {preparing ? (
             <>
-              <TerminalSpinner className="inline-block w-3.5 shrink-0 select-none text-center text-[11px] leading-none text-content/40" />
+              <TerminalSpinner className="text-content/40" />
               <Shimmer>{label}</Shimmer>
             </>
           ) : (

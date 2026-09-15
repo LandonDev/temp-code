@@ -243,10 +243,10 @@ export function MenuBar({
                 openDropdown(key, e.currentTarget);
               }
             }}
-            className={`rounded-md px-2 py-0.5 transition-colors ${
+            className={`pressable rounded-md px-2 py-0.5 transition-colors ${
               isActive
-                ? "bg-content/15 text-content"
-                : "text-content/70 hover:bg-content/10 hover:text-content"
+                ? "bg-content/10 text-content"
+                : "text-content/70 hover:bg-content/5 hover:text-content"
             }`}
           >
             {label}

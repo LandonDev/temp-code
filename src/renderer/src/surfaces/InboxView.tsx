@@ -8,10 +8,10 @@ import {
   GitPullRequest,
   Inbox,
   ListFilter,
-  LoaderCircle,
   RefreshCw,
   Search,
 } from "../chrome/icons";
+import { MatrixSpinner } from "./threads/bits";
 import {
   useEffect,
   useMemo,
@@ -234,13 +234,13 @@ function InboxDetailTab({
       role="tab"
       aria-selected={selected}
       onClick={onSelect}
-      className={`relative flex h-9 items-center text-[12px] leading-none ${
+      className={`relative -mb-px flex h-9 items-center text-[13px] font-medium leading-none transition-colors ${
         selected ? "text-content" : "text-content/50 hover:text-content"
       }`}
     >
       {label}
       {selected ? (
-        <span className="absolute inset-x-0 bottom-0 h-0.5 bg-content" />
+        <span className="absolute inset-x-0 -bottom-px h-px bg-content" />
       ) : null}
     </button>
   );
@@ -495,7 +495,7 @@ export function InboxView({
       </div>
       <div className="flex h-9 shrink-0 items-center gap-1 border-b border-content/10 px-2">
         <div className="relative flex h-7 min-w-0 flex-1 items-center">
-          <Search className="pointer-events-none absolute left-2 size-3 shrink-0 opacity-50" />
+          <Search className="pointer-events-none absolute left-2 size-3.5 shrink-0 text-content/50" strokeWidth={1.75} />
           <input
             value={searchInput}
             onChange={(event) => setSearchInput(event.target.value)}
@@ -513,23 +513,20 @@ export function InboxView({
           aria-expanded={!!filterMenu}
           aria-haspopup="menu"
           onClick={onFilterButtonClick}
-          className={`grid size-6 shrink-0 place-items-center rounded-md text-content/40 hover:bg-content/10 hover:text-content ${
+          className={`pressable grid size-6 shrink-0 place-items-center rounded-md text-content/40 hover:bg-content/10 hover:text-content ${
             filterMenu || filtersActive ? "bg-content/10 text-content" : ""
           }`}
         >
-          <ListFilter className="size-3" strokeWidth={1.75} />
+          <ListFilter className="size-3.5" strokeWidth={1.75} />
         </button>
         <button
           type="button"
           aria-label="Refresh"
           onClick={() => setRefresh((value) => value + 1)}
-          className="grid size-6 shrink-0 place-items-center rounded-md text-content/40 hover:bg-content/10 hover:text-content"
+          className="pressable grid size-6 shrink-0 place-items-center rounded-md text-content/40 hover:bg-content/10 hover:text-content"
         >
           {loading || revalidating ? (
-            <LoaderCircle
-              className="size-3.5 motion-safe:animate-spin"
-              strokeWidth={1.75}
-            />
+            <MatrixSpinner cell={1.5} />
           ) : (
             <RefreshCw className="size-3.5" strokeWidth={1.75} />
           )}
@@ -540,10 +537,10 @@ export function InboxView({
         className="min-h-0 flex-1 overflow-y-auto overscroll-none"
       >
         {sourceError && visibleItems.length === 0 ? (
-          <p className="px-3 py-2 text-[12px] text-content/50">{sourceError}</p>
+          <p className="px-3 py-2 text-[12px] text-danger">{sourceError}</p>
         ) : loading && items.length === 0 ? (
-          <div className="flex justify-center py-10 text-content/40">
-            <LoaderCircle className="size-4 motion-safe:animate-spin" strokeWidth={1.75} />
+          <div className="flex justify-center py-10">
+            <MatrixSpinner />
           </div>
         ) : visibleItems.length === 0 ? (
           <p className="px-3 py-2 text-[12px] text-content/50">
@@ -559,7 +556,7 @@ export function InboxView({
                 ? "No Linear issues"
                 : fetchProjects.length === 0
                   ? "Open a project to fill the inbox"
-                  : "No matching issues or pull requests"}
+                  : "No issues or pull requests"}
           </p>
         ) : (
           <ul className="flex flex-col gap-0.5 p-1.5">
@@ -1141,12 +1138,11 @@ function InboxDetail({
       <header className="flex flex-col gap-3">
         <div className="flex items-center gap-2 text-[12px] text-content/50">
           <InboxProviderMark provider={item.provider} className="size-3.5" />
-          <span>{item.kind === "pr" ? "Pull request" : "Issue"}</span>
           <span className="tabular-nums">{inboxItemRef(item)}</span>
           <span className={statusClass}>{status}</span>
           {source ? <span className="truncate">{source}</span> : null}
         </div>
-        <h1 className="text-[20px] font-semibold leading-tight text-content">
+        <h1 className="text-2xl font-semibold leading-tight tracking-[-0.02em] text-content">
           {item.title}
         </h1>
         <div className="flex flex-wrap items-center gap-2 text-[12px] text-content/50">
@@ -1184,16 +1180,10 @@ function InboxDetail({
               )}
             </>
           ) : null}
-          {linear ? null : (
-            <>
-              <span aria-hidden>·</span>
-              <span>{projectName(item.projectPath)}</span>
-            </>
-          )}
           {formatRelativeTime(item.updatedAt) ? (
             <>
               <span aria-hidden>·</span>
-              <span>Updated {formatRelativeTime(item.updatedAt)}</span>
+              <span className="tabular-nums">Updated {formatRelativeTime(item.updatedAt)}</span>
             </>
           ) : null}
           {baseRef && headRef ? (
@@ -1246,9 +1236,10 @@ function InboxDetail({
                     })
                     .finally(() => setStarting(false));
                 }}
-                className="inline-flex items-center gap-1 rounded-md bg-content px-3 h-6.5 text-[12px] text-background-base hover:bg-content/70 disabled:cursor-default disabled:opacity-40"
+                className="pressable inline-flex h-7 items-center gap-2 rounded-md bg-content px-3 text-[12px] font-medium text-background-base hover:bg-content/70 disabled:cursor-default disabled:opacity-50"
               >
-                {starting ? "Sending..." : "Send to agent"}
+                {starting ? <MatrixSpinner cell={1.5} /> : null}
+                Send to agent
               </button>
               {linear ? (
                 <InboxProjectPicker
@@ -1264,8 +1255,8 @@ function InboxDetail({
             onClick={() => void openUrl(item.url)}
             className={
               item.kind === "pr"
-                ? "inline-flex items-center gap-1.5 rounded-md bg-content px-3 h-7 text-[12px] text-background-base hover:bg-content/70"
-                : "inline-flex items-center gap-1.5 rounded-md px-3 h-7 text-[12px] text-content/70 hover:bg-content/10 hover:text-content"
+                ? "pressable inline-flex h-7 items-center gap-1.5 rounded-md bg-content px-3 text-[12px] font-medium text-background-base hover:bg-content/70"
+                : "pressable inline-flex h-7 items-center gap-1.5 rounded-md px-3 text-[12px] text-content/70 hover:bg-content/8 hover:text-content"
             }
           >
             <ExternalLink className="size-3.5" strokeWidth={1.75} />
@@ -1284,7 +1275,7 @@ function InboxDetail({
         <div
           role="tablist"
           aria-label="Pull request sections"
-          className="flex h-9 gap-4 items-stretch border-b border-content/10"
+          className="flex h-9 items-stretch gap-4 border-b border-content/10"
         >
           <InboxDetailTab
             label="Summary"
@@ -1302,11 +1293,11 @@ function InboxDetail({
       )}
       {isPr && tab === "code" ? (
         diffLoading ? (
-          <div className="flex justify-center py-10 text-content/40">
-            <LoaderCircle className="size-4 motion-safe:animate-spin" strokeWidth={1.75} />
+          <div className="flex justify-center py-10">
+            <MatrixSpinner />
           </div>
         ) : diffError ? (
-          <p className="text-[13px] text-content/50">{diffError}</p>
+          <p className="text-[12px] text-danger">{diffError}</p>
         ) : prDiff ? (
           <InboxPrDiff
             key={`${item.projectPath}:${item.number}:${revision}`}
@@ -1316,11 +1307,11 @@ function InboxDetail({
           <p className="text-[13px] text-content/40">No file changes</p>
         )
       ) : loading ? (
-        <div className="flex justify-center py-10 text-content/40">
-          <LoaderCircle className="size-4 motion-safe:animate-spin" strokeWidth={1.75} />
+        <div className="flex justify-center py-10">
+          <MatrixSpinner />
         </div>
       ) : error ? (
-        <p className="text-[13px] text-content/50">{error}</p>
+        <p className="text-[12px] text-danger">{error}</p>
       ) : (
         <>
           {details?.body.trim() ? (
@@ -1428,14 +1419,14 @@ function InboxProjectPicker({
         aria-expanded={open}
         disabled={projects.length === 0}
         onClick={() => setOpen((next) => !next)}
-        className="inline-flex h-7 max-w-48 items-center gap-1.5 rounded-md border border-content/10 bg-content/5 px-2 text-[12px] text-content/70 hover:bg-content/10 hover:text-content disabled:cursor-default disabled:opacity-40"
+        className="pressable inline-flex h-7 max-w-48 items-center gap-1.5 rounded-md border border-content/10 bg-content/5 px-2 text-[12px] text-content/70 hover:bg-content/10 hover:text-content disabled:cursor-default disabled:opacity-40"
       >
         {selected ? <InboxProjectMark project={selected} /> : null}
         <span className="min-w-0 truncate">
           {selected?.name ?? "Choose project"}
         </span>
         <ChevronDown
-          className="size-3 shrink-0 text-content/40"
+          className="size-3.5 shrink-0 text-content/40"
           strokeWidth={1.75}
         />
       </button>
@@ -1494,7 +1485,7 @@ function InboxLabel({
   return (
     <span
       className={`inline-flex min-w-0 items-center gap-1 rounded-md px-1.5 py-px text-content/50 bg-content/8 ${
-        compact ? "max-w-20 text-[10px]" : "text-[11px]"
+        compact ? "max-w-20 text-[11px]" : "text-[11px]"
       }`}
     >
       {color ? (

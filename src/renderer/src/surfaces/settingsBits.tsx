@@ -1,4 +1,4 @@
-import type { InputHTMLAttributes, ReactNode } from "react";
+import type { ComponentProps, ReactNode } from "react";
 import { playCue } from "../lib/sounds";
 
 /** The row, switch and picker primitives every settings page is built from. */
@@ -65,7 +65,7 @@ export function Segmented<T extends string>({
           role="radio"
           aria-checked={value === option.value}
           onClick={() => onChange(option.value)}
-          className={`rounded-[5px] px-3 py-1 ${
+          className={`pressable rounded-[4px] px-3 py-1 ${
             value === option.value
               ? "bg-content/10 text-content"
               : "text-content/50 hover:text-content"
@@ -97,13 +97,13 @@ export function Toggle({
         playCue("switch");
         onChange(!on);
       }}
-      className={`relative h-5 w-9 shrink-0 rounded-full transition-colors ${
+      className={`pressable relative h-5 w-9 shrink-0 rounded-full transition-colors ${
         on ? "bg-accent" : "bg-content/20"
       }`}
     >
       <span
-        className={`absolute top-0.5 size-4 rounded-full bg-white transition-[left] ${
-          on ? "left-4.5" : "left-0.5"
+        className={`absolute top-0.5 left-0.5 size-4 rounded-full bg-white transition-transform ${
+          on ? "translate-x-4" : "translate-x-0"
         }`}
       />
     </button>
@@ -115,18 +115,23 @@ export function Select({
   value,
   options,
   onChange,
+  disabled = false,
+  className,
 }: {
   label: string;
   value: string;
   options: { value: string; label: string }[];
   onChange: (value: string) => void;
+  disabled?: boolean;
+  className?: string;
 }) {
   return (
     <select
       aria-label={label}
       value={value}
+      disabled={disabled}
       onChange={(event) => onChange(event.target.value)}
-      className="max-w-52 rounded-md border border-content/10 bg-content/5 px-2 py-1 text-[12px] text-content outline-none hover:border-content/20"
+      className={`${INPUT_CLASS} hover:border-content/20 ${className ?? "max-w-52"}`}
     >
       {options.map((option) => (
         <option key={option.value} value={option.value}>
@@ -153,7 +158,7 @@ export function SecondaryButton({
       type="button"
       onClick={onClick}
       disabled={disabled}
-      className={`flex shrink-0 items-center gap-1.5 rounded-md border border-content/10 px-2.5 py-1 text-[12px] ${
+      className={`pressable flex shrink-0 items-center gap-1.5 rounded-md border border-content/10 px-2.5 py-1 text-[12px] ${
         danger
           ? "text-danger hover:border-danger/40 hover:bg-danger/10"
           : "text-content/70 hover:bg-content/10 hover:text-content"
@@ -168,9 +173,6 @@ export const INPUT_CLASS =
   "rounded-lg border border-content/10 bg-content/5 px-2 py-1.5 text-[12px] text-content outline-none placeholder:text-content/40 focus:border-content/20 disabled:cursor-default disabled:opacity-40";
 
 /** The kit's text input: every settings form and dialog field takes this shape. */
-export function Input({
-  className,
-  ...props
-}: InputHTMLAttributes<HTMLInputElement>) {
+export function Input({ className, ...props }: ComponentProps<"input">) {
   return <input {...props} className={className ? `${INPUT_CLASS} ${className}` : INPUT_CLASS} />;
 }

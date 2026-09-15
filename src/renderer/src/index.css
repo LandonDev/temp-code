@@ -814,7 +814,7 @@ html.theme-light .agent-markdown .shiki span {
   box-sizing: border-box;
   overflow: hidden;
   /* Shell padding; full-screen TUIs use the alt buffer and drop to 0. */
-  padding: 8px 10px;
+  padding: 8px 12px;
 }
 
 .monocode-terminal--alt-screen {

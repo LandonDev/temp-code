@@ -10,9 +10,6 @@ import {
   type TransitionEvent,
 } from "react";
 import { measureElement, useVirtualizer, type VirtualizerOptions } from "@tanstack/react-virtual";
-import { MotionConfig, motion } from "motion/react";
-import { SPRING_LAYOUT } from "../lib/ease";
-import { useListGlide } from "../lib/listGlide";
 import { ExplorerMenu, type ExplorerMenuItem } from "./ExplorerMenu";
 import {
   ArchiveRestore,
@@ -28,7 +25,6 @@ import {
   ProjectSettingsDialog,
   ProjectTeardownDialog,
 } from "./ProjectDialogs";
-import { TerminalSpinner } from "./TerminalSpinner";
 import { duration, timeAgo } from "../lib/format";
 import { modelLabel } from "../lib/threads/agents";
 import {
@@ -119,9 +115,9 @@ function Elapsed({ since }: { since: number }) {
 
 // --- small parts -----------------------------------------------------------
 
-/** The grid transition in index.css runs 320 ms; a closed fold with no
+/** The grid transition in index.css runs 200 ms; a closed fold with no
  *  transition (reduced motion) still empties itself after this long. */
-const FOLD_MS = 360;
+const FOLD_MS = 240;
 
 /** A collapsing section. Its children mount when it opens and unmount once
  *  the closing transition has run, so a closed fold holds no DOM at all. */
@@ -150,7 +146,7 @@ function MoreRow({ hidden, onMore }: { hidden: number; onMore: () => void }) {
     <button
       type="button"
       onClick={onMore}
-      className="flex h-6 w-full items-center rounded-md px-2 text-[11px] text-content/40 hover:bg-content/5 hover:text-content/70"
+      className="pressable flex h-6 w-full items-center rounded-md px-2 text-[11px] text-content/40 hover:bg-content/5 hover:text-content"
     >
       {hidden} more
     </button>
@@ -158,9 +154,7 @@ function MoreRow({ hidden, onMore }: { hidden: number; onMore: () => void }) {
 }
 
 function Spinner() {
-  return (
-    <TerminalSpinner className="inline-block w-3 shrink-0 select-none text-center text-[11px] leading-none text-accent" />
-  );
+  return <MatrixSpinner cell={1.5} />;
 }
 
 function Stat({
@@ -216,9 +210,9 @@ function Kebab({
         onOpen(e.currentTarget);
       }}
       onDoubleClick={(e) => e.stopPropagation()}
-      className={`flex size-5 shrink-0 items-center justify-center rounded-md text-content/50 hover:bg-content/10 hover:text-content ${className}`}
+      className={`pressable flex size-6 shrink-0 items-center justify-center rounded-md text-content/50 hover:bg-content/10 hover:text-content ${className}`}
     >
-      <MoreHorizontal className="size-3.5" />
+      <MoreHorizontal className="size-3.5" strokeWidth={1.75} />
     </button>
   );
 }
@@ -273,8 +267,6 @@ const menuAt = (anchor: HTMLElement) => {
 
 type RowActions = {
   activeSessionId?: string;
-  /** The row wash's shared layout id; unset while the list is mid-swap. */
-  pill: string | undefined;
   onOpen: (id: string) => void;
   onRename: (id: string, title: string) => void;
   onDelete: (thread: ThreadRow) => void;
@@ -364,19 +356,18 @@ const ChatRow = memo(function ChatRow({
         e.preventDefault();
         menu({ x: e.clientX, y: e.clientY });
       }}
-      className={`group/row relative isolate flex h-7 w-full cursor-default items-center gap-1.5 rounded-md px-2 text-left text-[13px] ${
+      className={`group/row relative flex h-7 w-full cursor-default items-center gap-1.5 rounded-md px-2 text-left text-[13px] transition-colors ${
         selected
-          ? "text-content"
+          ? "bg-content/10 text-content"
           : thread.paused
-            ? "bg-warning/8 text-content/70 hover:bg-warning/12"
-            : "text-content/70 hover:bg-content/5 hover:text-content"
+            ? "bg-warning/8 text-content/70 hover:bg-warning/12 active:bg-warning/12"
+            : "text-content/70 hover:bg-content/5 hover:text-content active:bg-content/10"
       }`}
     >
-      {selected ? <ActivePill layoutId={actions.pill} /> : null}
       {thread.running ? (
         <Spinner />
       ) : thread.paused ? (
-        <Pause className="size-3 shrink-0 text-warning" />
+        <Pause className="size-3.5 shrink-0 text-warning" strokeWidth={1.75} />
       ) : thread.unread ? (
         <span className="size-1.5 shrink-0 rounded-full bg-accent" />
       ) : null}
@@ -413,19 +404,6 @@ const ChatRow = memo(function ChatRow({
   );
 });
 
-/** The selected item's wash. Rows share one layoutId so it glides between
- *  rows; the selected card has its own, since the virtualizer mounts and
- *  unmounts cards under a scroll and a shared pill would slide with them.
- *  With no id (a project switch still settling) it is a plain div: no
- *  projection, no measuring. */
-const PILL_CLASS = "absolute inset-0 -z-10 rounded-md bg-content/10";
-function ActivePill({ layoutId }: { layoutId: string | undefined }) {
-  if (!layoutId) return <div className={PILL_CLASS} />;
-  return (
-    <motion.div key={layoutId} layoutId={layoutId} transition={SPRING_LAYOUT} className={PILL_CLASS} />
-  );
-}
-
 /** A subagent under its root: one step in, status, role glyph, title, model. */
 const ChildRow = memo(function ChildRow({
   thread,
@@ -445,13 +423,14 @@ const ChildRow = memo(function ChildRow({
       onPointerEnter={() => sessionPrefetch.enter(thread.id)}
       onPointerLeave={() => sessionPrefetch.leave(thread.id)}
       onKeyDown={(e) => e.key === "Enter" && actions.onOpen(thread.id)}
-      className={`relative isolate flex h-6 w-full cursor-default items-center gap-1.5 rounded-md py-0 pr-2 pl-6 text-left text-[12px] ${
-        selected ? "text-content" : "text-content/70 hover:bg-content/5 hover:text-content"
+      className={`relative flex h-6 w-full cursor-default items-center gap-1.5 rounded-md py-0 pr-2 pl-6 text-left text-[12px] transition-colors ${
+        selected
+          ? "bg-content/10 text-content"
+          : "text-content/70 hover:bg-content/5 hover:text-content active:bg-content/10"
       }`}
     >
-      {selected ? <ActivePill layoutId={actions.pill} /> : null}
       {thread.running ? <Spinner /> : <StatusDot status={thread.status} />}
-      {Glyph ? <Glyph className="size-3 shrink-0 text-content/40" /> : null}
+      {Glyph ? <Glyph className="size-3 shrink-0 text-content/40" strokeWidth={1.75} /> : null}
       <span className="min-w-0 flex-1 truncate">{thread.title || "Subagent"}</span>
       {thread.provider && thread.model ? (
         <span className="shrink-0 text-[11px] text-content/40">
@@ -516,7 +495,7 @@ type Tasks = NonNullable<CardThread["tasks"]>;
 /** An implementation thread's tally and current task, one step in. */
 function TaskLine({ tasks, paused }: { tasks: Tasks; paused?: boolean }) {
   const tally = paused
-    ? "text-warning/80"
+    ? "text-warning"
     : tasks.done === tasks.total
       ? "text-success"
       : "text-content/70";
@@ -540,7 +519,7 @@ function TaskLine({ tasks, paused }: { tasks: Tasks; paused?: boolean }) {
 function ThreadGlyph({ thread }: { thread: ThreadRow }) {
   const type = thread.threadType ?? "chat";
   const Glyph = THREAD_GLYPHS[type];
-  return <Glyph className={`size-3 shrink-0 opacity-80 ${THREAD_TINTS[type]}`} />;
+  return <Glyph className={`size-3 shrink-0 ${THREAD_TINTS[type]}`} strokeWidth={1.75} />;
 }
 
 type LiveStatus = ReturnType<typeof projectCardStatus<ThreadRow>>;
@@ -549,7 +528,7 @@ function RunningLine({ thread: t, now }: { thread: ThreadRow; now: number }) {
   const ms = runningElapsed(t, now);
   const tasks = cardTasks(t);
   return (
-    <div className="w-full py-[3px]" title={t.activity ?? undefined}>
+    <div className="w-full py-1" title={t.activity ?? undefined}>
       <div className="flex w-full items-center gap-1.5 text-[11px] leading-4">
         <MatrixSpinner cell={1.8} tint={t.activityKind} />
         <ThreadGlyph thread={t} />
@@ -570,7 +549,7 @@ function RunningLine({ thread: t, now }: { thread: ThreadRow; now: number }) {
 function PausedLine({ thread: t }: { thread: ThreadRow }) {
   const tasks = cardTasks(t);
   return (
-    <div className="w-full bg-warning/5 py-[3px]">
+    <div className="w-full bg-warning/5 py-1">
       <div className="flex w-full items-center gap-1.5 text-[11px] leading-4 text-warning">
         <Pause className="size-3 shrink-0 fill-current" strokeWidth={1.75} />
         <ThreadGlyph thread={t} />
@@ -587,7 +566,7 @@ function PausedLine({ thread: t }: { thread: ThreadRow }) {
 
 function UnreadLine({ thread: t }: { thread: ThreadRow }) {
   return (
-    <div className="flex w-full items-center gap-1.5 py-[3px] text-[11px] leading-4">
+    <div className="flex w-full items-center gap-1.5 py-1 text-[11px] leading-4">
       <span className="size-1.5 shrink-0 rounded-full bg-info" />
       <ThreadGlyph thread={t} />
       <span className="min-w-0 flex-1 truncate font-medium text-content">
@@ -628,7 +607,7 @@ export function LiveLines({
         ),
       )}
       {hidden > 0 && onMore ? (
-        <div className="py-[3px]">
+        <div className="py-1">
           <MoreRow hidden={hidden} onMore={onMore} />
         </div>
       ) : null}
@@ -743,9 +722,8 @@ const ProjectCard = memo(function ProjectCard({
         e.preventDefault();
         menu({ x: e.clientX, y: e.clientY });
       }}
-      className="group/card relative isolate rounded-md border border-content/10"
+      className="group/card relative rounded-md border border-content/10"
     >
-      {selected ? <ActivePill layoutId="sidebar-active-card" /> : null}
       <div
         role="button"
         tabIndex={0}
@@ -753,8 +731,8 @@ const ProjectCard = memo(function ProjectCard({
         onPointerDown={() => !renaming && !selected && onSelect()}
         onKeyDown={(e) => e.key === "Enter" && !renaming && onSelect()}
         onDoubleClick={() => setRenaming(true)}
-        className={`relative flex w-full cursor-default flex-col gap-[3px] rounded-md px-2 py-2 text-left ${
-          selected ? "" : "hover:bg-content/5"
+        className={`relative flex w-full cursor-default flex-col gap-1 rounded-md px-2 py-2 text-left transition-colors ${
+          selected ? "bg-content/10" : "hover:bg-content/5"
         }`}
       >
         <div className="flex w-full items-center gap-2">
@@ -787,8 +765,8 @@ const ProjectCard = memo(function ProjectCard({
         </div>
 
         <div className="flex w-full items-center gap-1 text-[11px] leading-4 text-content/50">
-          <GitBranch className="size-2.5 shrink-0" />
-          <span className="truncate">{project.branch ?? "local checkout"}</span>
+          <GitBranch className="size-3 shrink-0" strokeWidth={1.75} />
+          <span className="min-w-0 truncate">{project.branch ?? "local checkout"}</span>
           <span className="shrink-0 text-content/40">
             · {project.mode === "worktree" ? "worktree" : "local"}
           </span>
@@ -823,7 +801,7 @@ const ProjectCard = memo(function ProjectCard({
       </div>
       {!renaming ? (
         <Kebab
-          className="absolute top-2 right-1.5 opacity-0 group-hover/card:opacity-100 focus:opacity-100"
+          className="absolute top-1.5 right-1 opacity-0 group-hover/card:opacity-100 focus:opacity-100"
           onOpen={(el) => menu(menuAt(el))}
         />
       ) : null}
@@ -865,10 +843,11 @@ const ArchivedProjects = memo(function ArchivedProjects({
         type="button"
         onClick={() => setOpen((o) => !o)}
         aria-expanded={open}
-        className="flex h-6 w-full items-center gap-1.5 rounded-md px-2 text-[11px] text-content/40 hover:text-content/70"
+        className="pressable flex h-7 w-full items-center gap-1.5 rounded-md px-2 text-[11px] font-semibold tracking-[0.08em] text-content/50 uppercase tabular-nums hover:text-content"
       >
         <ChevronRight
-          className={`size-3 transition-transform duration-200 ${open ? "rotate-90" : ""}`}
+          className={`size-3.5 transition-transform duration-150 ${open ? "rotate-90" : ""}`}
+          strokeWidth={2}
         />
         Archived · {groups.length}
       </button>
@@ -876,7 +855,7 @@ const ArchivedProjects = memo(function ArchivedProjects({
         <div className="flex flex-col gap-px">
           {groups.map(({ project, threads }) => (
             <div key={project.id}>
-              <div className="group/arch flex h-7 items-center gap-2 rounded-md px-2 hover:bg-content/5">
+              <div className="group/arch relative flex h-7 items-center gap-2 rounded-md px-2 transition-colors hover:bg-content/5">
                 <button
                   type="button"
                   onClick={() =>
@@ -886,25 +865,25 @@ const ArchivedProjects = memo(function ArchivedProjects({
                 >
                   {project.name}
                 </button>
-                <span className="text-[11px] tabular-nums text-content/40 group-hover/arch:hidden">
+                <span className="text-[11px] tabular-nums text-content/40 group-hover/arch:opacity-0">
                   {threads.length}
                 </span>
-                <div className="hidden items-center gap-0.5 group-hover/arch:flex">
+                <div className="absolute inset-y-0 right-0.5 flex items-center gap-0.5 opacity-0 group-hover/arch:opacity-100 focus-within:opacity-100">
                   <button
                     type="button"
                     aria-label="Restore"
                     onClick={() => onRestore(project)}
-                    className="flex size-5 items-center justify-center rounded-md text-content/50 hover:bg-content/10 hover:text-content"
+                    className="pressable flex size-6 items-center justify-center rounded-md text-content/50 hover:bg-content/10 hover:text-content"
                   >
-                    <ArchiveRestore className="size-3.5" />
+                    <ArchiveRestore className="size-3.5" strokeWidth={1.75} />
                   </button>
                   <button
                     type="button"
                     aria-label="Delete"
                     onClick={() => onDelete(project)}
-                    className="flex size-5 items-center justify-center rounded-md text-content/50 hover:bg-danger/15 hover:text-danger"
+                    className="pressable flex size-6 items-center justify-center rounded-md text-content/50 hover:bg-danger/15 hover:text-danger"
                   >
-                    <Trash2 className="size-3.5" />
+                    <Trash2 className="size-3.5" strokeWidth={1.75} />
                   </button>
                 </div>
               </div>
@@ -945,15 +924,16 @@ const ChatsSection = memo(function ChatsSection({
 }) {
   return (
     <div>
-      <div className="group/chats flex h-6 items-center gap-1 px-2">
+      <div className="group/chats flex h-7 items-center gap-1 pl-2 pr-1">
         <button
           type="button"
           onClick={onToggle}
           aria-expanded={open}
-          className="flex min-w-0 flex-1 items-center gap-1 text-[12px] font-medium text-content/50 hover:text-content"
+          className="pressable flex h-7 min-w-0 flex-1 items-center gap-1.5 text-[11px] font-semibold tracking-[0.08em] text-content/50 uppercase hover:text-content"
         >
           <ChevronRight
-            className={`size-3 transition-transform duration-200 ${open ? "rotate-90" : ""}`}
+            className={`size-3.5 transition-transform duration-150 ${open ? "rotate-90" : ""}`}
+            strokeWidth={2}
           />
           Chats
         </button>
@@ -961,9 +941,9 @@ const ChatsSection = memo(function ChatsSection({
           type="button"
           aria-label="New chat"
           onClick={() => onNewChat(null)}
-          className="flex size-5 items-center justify-center rounded-md text-content/50 opacity-0 group-hover/chats:opacity-100 hover:bg-content/10 hover:text-content focus:opacity-100"
+          className="pressable flex size-6 items-center justify-center rounded-md text-content/50 opacity-0 group-hover/chats:opacity-100 hover:bg-content/10 hover:text-content focus:opacity-100"
         >
-          <Plus className="size-3.5" />
+          <Plus className="size-3.5" strokeWidth={1.75} />
         </button>
       </div>
       <Fold open={open}>
@@ -1081,20 +1061,15 @@ export default function WorkspaceSessions({
   );
   const moreChats = useCallback(() => morePages("chats"), [morePages]);
 
-  // A project switch swaps every row: that render glides nothing, and the
-  // pill takes a fresh id once the list settles so it never resumes from a
-  // snapshot of a row that is gone.
-  const { generation, glide } = useListGlide(selectedProjectId ? [selectedProjectId] : []);
   const rows = useMemo<RowActions>(
     () => ({
       activeSessionId,
-      pill: glide ? `sidebar-active-row-${generation}` : undefined,
       onOpen: openSession,
       onRename: renameSession,
       onDelete: (thread) => setDialog({ kind: "delete-chat", thread }),
       openMenu: setMenu,
     }),
-    [activeSessionId, generation, glide, openSession, renameSession],
+    [activeSessionId, openSession, renameSession],
   );
 
   // Cards are the virtual unit: each roots its own border and hover group,
@@ -1198,12 +1173,7 @@ export default function WorkspaceSessions({
   };
 
   return (
-    <MotionConfig reducedMotion="user">
-      <motion.div
-        ref={scroller}
-        layoutScroll
-        className="min-h-0 flex-1 overflow-y-auto px-2 pb-2"
-      >
+    <div ref={scroller} className="min-h-0 flex-1 overflow-y-auto px-2 pb-2">
         <div className="relative w-full" style={{ height: virtualizer.getTotalSize() }}>
           {virtualizer.getVirtualItems().map((row) => (
             <div
@@ -1273,7 +1243,6 @@ export default function WorkspaceSessions({
           }}
         />
       ) : null}
-      </motion.div>
-    </MotionConfig>
+    </div>
   );
 }

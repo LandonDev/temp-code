@@ -210,7 +210,7 @@ export function ProjectTerminalDock({
         onCloseFile={onCloseTerminal}
         onReorder={onReorderTerminals}
         trailing={
-          <div className="flex shrink-0 items-center gap-0.5 border-l border-content/10 px-1">
+          <div className="flex shrink-0 items-center gap-0.5 border-l border-content/10 px-2">
             <IconButton
               label={`New Terminal (${MOD}\`)`}
               onClick={onAddTerminal}

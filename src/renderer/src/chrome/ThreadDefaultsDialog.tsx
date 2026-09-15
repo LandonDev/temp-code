@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { GHOST } from "./ConfirmDialog";
+import { GHOST, PRIMARY } from "./ConfirmDialog";
+import { MatrixSpinner } from "../surfaces/threads/bits";
 import { Modal } from "./Modal";
 import {
   BUILT_IN_SCOPE,
@@ -26,12 +27,6 @@ import { Heading, Row, SecondaryButton, Select } from "../surfaces/settingsBits"
  * app_start_thread — resolves the same answer. A workspace without an
  * override of its own follows the global set.
  */
-
-const INPUT =
-  "w-full rounded-md border border-content/10 bg-content/5 px-2 py-1.5 text-[12px] text-content outline-none hover:border-content/20 focus:border-accent/60";
-const LABEL = "text-[11px] font-medium text-content/50";
-const PRIMARY =
-  "rounded-md bg-content px-3 py-1.5 text-[12px] font-medium text-background-base hover:bg-content/70 disabled:cursor-default disabled:opacity-50";
 
 const PERMISSIONS: ThreadDefaults["permission"][] = ["safe", "edits", "auto"];
 
@@ -128,7 +123,7 @@ export function ThreadDefaultsEditor({
       </p>
       {workspaceId === null ? <OverridingWorkspaces /> : null}
       {scope ? <ThreadDefaultsFields value={scope.defaults} onChange={save} /> : null}
-      {error ? <p className="pt-2 text-[11px] text-danger">{error}</p> : null}
+      {error ? <p className="pt-2 text-[12px] text-danger">{error}</p> : null}
     </section>
   );
 }
@@ -159,32 +154,20 @@ function OverridingWorkspaces() {
   );
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <label className="flex flex-col gap-1">
-      <span className={LABEL}>{label}</span>
-      {children}
-    </label>
-  );
-}
-
-function Picker({
-  value,
-  options,
-  onChange,
+function Field({
+  label,
+  ...picker
 }: {
+  label: string;
   value: string;
   options: { value: string; label: string }[];
   onChange: (value: string) => void;
 }) {
   return (
-    <select value={value} onChange={(e) => onChange(e.target.value)} className={INPUT}>
-      {options.map((o) => (
-        <option key={o.value} value={o.value}>
-          {o.label}
-        </option>
-      ))}
-    </select>
+    <label className="flex flex-col gap-1">
+      <span className="text-[11px] font-semibold tracking-[0.08em] text-content/50 uppercase">{label}</span>
+      <Select label={label} className="w-full" {...picker} />
+    </label>
   );
 }
 
@@ -226,10 +209,10 @@ export function ThreadDefaultsDialog({
       >
         <div className="flex flex-col gap-3 px-4 py-3">
           {value ? <DialogFields value={value} onChange={setValue} /> : null}
-          <p className="text-[11px] leading-4 text-content/40">
+          <p className="text-[12px] text-content/40">
             {scopeHint(workspace.id, scope ?? BUILT_IN_SCOPE)}
           </p>
-          {error ? <p className="text-[11px] leading-4 text-danger">{error}</p> : null}
+          {error ? <p className="text-[12px] text-danger">{error}</p> : null}
         </div>
         <div className="flex items-center gap-2 border-t border-content/10 px-4 py-3">
           {scope?.overridden ? (
@@ -242,7 +225,8 @@ export function ThreadDefaultsDialog({
             Cancel
           </button>
           <button type="submit" disabled={pending || !value} className={PRIMARY}>
-            {pending ? "Saving…" : "Save"}
+            {pending ? <MatrixSpinner cell={1.5} /> : null}
+            Save
           </button>
         </div>
       </form>
@@ -254,20 +238,10 @@ function DialogFields({ value, onChange }: { value: ThreadDefaults; onChange: Ch
   const rows = useDefaultsRows(value, onChange);
   return (
     <>
-      <Field label="Provider">
-        <Picker {...rows.provider} />
-      </Field>
-      <Field label="Model">
-        <Picker {...rows.model} />
-      </Field>
-      {rows.ladder.length > 1 ? (
-        <Field label="Reasoning">
-          <Picker {...rows.reasoning} />
-        </Field>
-      ) : null}
-      <Field label="Security">
-        <Picker {...rows.permission} />
-      </Field>
+      <Field label="Provider" {...rows.provider} />
+      <Field label="Model" {...rows.model} />
+      {rows.ladder.length > 1 ? <Field label="Reasoning" {...rows.reasoning} /> : null}
+      <Field label="Security" {...rows.permission} />
     </>
   );
 }

@@ -359,16 +359,22 @@ export function NewProjectDialog({
           </Field>
           <div className="flex flex-col gap-1">
             <span className={LABEL}>Mode</span>
-            <div className="grid grid-cols-2 gap-0.5 rounded-lg bg-content/5 p-0.5">
+            <div
+              role="radiogroup"
+              aria-label="Mode"
+              className="grid grid-cols-2 gap-0.5 rounded-md border border-content/10 p-0.5"
+            >
               {(["worktree", "local"] as const).map((m) => {
                 const disabled = m === "worktree" && !workspace.git;
                 return (
                   <button
                     key={m}
                     type="button"
+                    role="radio"
+                    aria-checked={mode === m}
                     disabled={disabled}
                     onClick={() => setMode(m)}
-                    className={`h-7 rounded-md text-[12px] font-medium capitalize ${
+                    className={`pressable h-7 rounded-[4px] text-[12px] font-medium capitalize ${
                       mode === m
                         ? "bg-content/10 text-content"
                         : "text-content/50 hover:text-content"
