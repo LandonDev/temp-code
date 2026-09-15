@@ -12,9 +12,11 @@ import {
   loadLastModelSettings,
   mergeModelSettings,
   modelPickerTabs,
+  modelsFor,
   preferredModelId,
   preferredModelSettings,
   resetHarnessModelOverlays,
+  resolveModel,
   saveDefaultModel,
   saveLastModelChoice,
   saveLastModelSettings,
@@ -24,6 +26,8 @@ import {
   stepModelPickerTab,
   type AgentModel,
 } from "./models";
+import { CATALOG } from "../../../shared/catalog";
+import { agentModelsFor } from "./tcserver/catalog";
 
 const opus: AgentModel = {
   id: "claude:opus-5",
@@ -302,5 +306,42 @@ describe("live catalog overlays", () => {
     ]);
     expect(hasLiveCatalog("pi")).toBe(true);
     expect(hasLiveCatalog("omp")).toBe(false);
+  });
+});
+
+describe("Claude Fable 5.1", () => {
+  afterEach(() => {
+    resetHarnessModelOverlays();
+  });
+
+  it("leads the built-in Claude list and resolves from its native id", () => {
+    expect(hasLiveCatalog("claude")).toBe(false);
+    expect(modelsFor("claude")[0]?.id).toBe("claude:fable-5.1");
+    const model = resolveModel("claude", "claude-fable-5-1");
+    expect(model.id).toBe("claude:fable-5.1");
+    expect(model.name).toBe("Claude Fable 5.1");
+    expect(model.contextWindow).toBe(1_000_000);
+    expect(model.settings?.find((s) => s.id === "effort")?.options.map((o) => o.value)).toEqual([
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max",
+    ]);
+    expect(model.settings?.find((s) => s.id === "context")?.options.map((o) => o.value)).toEqual([
+      "200k",
+      "1m",
+    ]);
+  });
+
+  it("is the same entry once the live catalog overlays Claude", () => {
+    setHarnessModels("claude", agentModelsFor(CATALOG.claude), CATALOG.claude.defaultModel);
+    expect(hasLiveCatalog("claude")).toBe(true);
+    const live = modelsFor("claude")[0];
+    expect(live?.nativeId).toBe("claude-fable-5-1");
+    expect(live?.name).toBe("Fable 5.1");
+    expect(resolveModel("claude", "claude-fable-5-1")).toBe(live);
+    expect(resolveModel("claude", "claude:fable-5.1")).toBe(live);
+    expect(live?.settings?.find((s) => s.id === "context")).toBeTruthy();
   });
 });
