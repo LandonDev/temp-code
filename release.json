@@ -1,5 +1,5 @@
 {
-  "n": 154,
-  "notes": "Start building carries the 1M context choice: the plan's Start popover read effort out of its model settings for reasoning but never read context, so an implementation or orchestration thread spawned from a plan always opened at 200k regardless of the toggle shown",
-  "ts": 1789498506584
+  "n": 155,
+  "notes": "Usage footer reads Aliax's accounts: the footer shows the pinned account with a bar per usage window (percent left, on-pace tick, refill countdown, how many other accounts still have room) and its name opens a list of every saved account to switch with one click; the server builds the snapshot from Aliax's shared vault through aliax-core, follows Aliax's settings and usage cache, and falls back to the CLI's own sign-in when there is no vault. The old per-provider usage fetch is gone.",
+  "ts": 1789500345029
 }
