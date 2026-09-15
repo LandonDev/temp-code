@@ -1,5 +1,5 @@
 {
-  "n": 146,
-  "notes": "\"Archive dormant threads\" spares the thread on screen: dormantThreads takes an exclude set, and the workspace menu and every project card pass the focused session's whole tree — its root and every descendant, from the same store the strip reads its active id — so the thread you are looking at never archives under you however settled it looks",
-  "ts": 1789447735319
+  "n": 147,
+  "notes": "Claude Fable 5.1 (claude-fable-5-1) leads the built-in Claude list with the same reasoning ladder (low, medium, high, xhigh, max) and a 200k/1M context setting the live catalog offers, so the picker, modelsFor, resolveModel and spawn agree on one entry; a built-in id still resolves through its native id once the live catalog replaces the list, and a unit test pins both paths",
+  "ts": 1789448633813
 }
