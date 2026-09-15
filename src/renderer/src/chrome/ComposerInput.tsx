@@ -73,7 +73,9 @@ function chipElement(chip: ComposerChip): HTMLElement {
   el.className =
     'inline-flex select-none items-center gap-1 rounded-[5px] bg-accent/20 px-1 align-baseline font-medium text-content'
   const brand = brandOf(chip.name)
-  if (brand) {
+  if (brand && 'img' in brand) {
+    el.innerHTML = `<img src="${brand.img}" alt="" draggable="false" width="11" height="11" class="shrink-0 object-contain">`
+  } else if (brand) {
     el.innerHTML = `<svg viewBox="0 0 24 24" width="11" height="11" aria-hidden="true" class="shrink-0"><path d="${brand.path}" fill="currentColor"></path></svg>`
   }
   el.append(document.createTextNode(addonTitle(chip.name)))

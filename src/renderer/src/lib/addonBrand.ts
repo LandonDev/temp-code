@@ -16,9 +16,11 @@ import {
   siVercel,
   siWebflow,
 } from "simple-icons";
+import cosmicAdminMark from "../assets/mcp/cosmic-admin.png";
 
-/** Brand marks for addon names (simple-icons: one path per brand). */
-export type BrandIcon = { path: string; hex: string };
+/** Brand marks for addon names: a simple-icons vector, or a raster mark for
+ *  a brand simple-icons doesn't carry. */
+export type BrandIcon = { path: string; hex: string } | { img: string };
 
 const BRANDS: Record<string, BrandIcon | undefined> = {
   linear: siLinear,
@@ -37,6 +39,7 @@ const BRANDS: Record<string, BrandIcon | undefined> = {
   cloudflare: siCloudflare,
   supabase: siSupabase,
   postgres: siPostgresql,
+  "cosmic-admin": { img: cosmicAdminMark },
 };
 
 export function brandOf(name: string): BrandIcon | undefined {

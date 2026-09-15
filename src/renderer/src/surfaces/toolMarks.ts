@@ -13,6 +13,16 @@ import { AGENT_TOOLS } from "./appTool";
 
 const shortName = (name: string): string => name.replace(/^mcp__[^_]+(?:__)?/, "").replace(/^.*\./, "");
 
+/** "mcp__linear__create_issue" → "linear". The tool is the last "__"
+ *  segment, so a server whose own name carries an underscore (e.g.
+ *  "claude_ai_Gmail") still resolves whole. Not an MCP call → null. */
+export function mcpServerOf(name: string): string | null {
+  if (!name.startsWith("mcp__")) return null;
+  const rest = name.slice("mcp__".length);
+  const cut = rest.lastIndexOf("__");
+  return cut > 0 ? rest.slice(0, cut) : null;
+}
+
 export function isAgentCall(block: Block): boolean {
   const short = shortName(block.tool?.name ?? "");
   return AGENT_TOOLS.has(short) || short === "Agent" || short === "Task";

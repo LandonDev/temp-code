@@ -16,6 +16,18 @@ export function AddonMark({
   className?: string;
 }) {
   const brand = brandOf(command.name);
+  if (brand && "img" in brand) {
+    return (
+      <img
+        src={brand.img}
+        alt=""
+        draggable={false}
+        width={size}
+        height={size}
+        className={`shrink-0 object-contain ${className}`}
+      />
+    );
+  }
   if (brand) {
     return (
       <svg
