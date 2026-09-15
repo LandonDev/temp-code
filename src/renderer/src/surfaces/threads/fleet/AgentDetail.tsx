@@ -107,7 +107,7 @@ export function AgentDetail({
         layoutId={`agent-${agentId}`}
         transition={SPRING_PANEL}
         onLayoutAnimationComplete={() => setSettled(true)}
-        className="relative flex h-full max-h-[640px] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-content/10 bg-background-base/55 shadow-2xl glass-surface glass-surface--md"
+        className="relative flex h-full max-h-[640px] w-full max-w-2xl flex-col overflow-hidden rounded-2xl shadow-2xl glass-surface floating-surface floating-surface--motion"
       >
         <div className="flex shrink-0 items-start gap-3 border-b border-content/10 px-4 py-3">
           <div className="flex min-w-0 flex-1 flex-col gap-1">

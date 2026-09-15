@@ -124,7 +124,7 @@ export function ModalPanel({
         aria-labelledby={titleId}
         aria-describedby={descriptionId}
         onMouseDown={(event) => event.stopPropagation()}
-        className={`modal-panel flex flex-col overflow-hidden rounded-2xl border border-content/10 bg-background-base/55 shadow-2xl glass-surface glass-surface--md ${className ?? ""}`}
+        className={`modal-panel flex flex-col overflow-hidden rounded-2xl shadow-2xl glass-surface floating-surface floating-surface--motion ${className ?? ""}`}
       >
         <header className="flex shrink-0 items-start gap-2 px-4 pt-3">
           <div className="min-w-0 flex-1 pt-0.5">
