@@ -1,5 +1,5 @@
 {
-  "n": 144,
-  "notes": "Glass is real again: the window is created with under-window vibrancy and a clear background when the mirrored Glass setting is on, the renderer keeps html, body, root and the shell opaque until its first paint, then the sidebar's own 0.8 tint is the only layer over the material, the 40% shell wash is gone under glass, and the setting says turning it on takes a relaunch",
-  "ts": 1789447302149
+  "n": 145,
+  "notes": "Every floating surface lifts to one plane: the overlay fill is a 15% lightness at 0.96 alpha in dark and white at 0.97 in light, drawn over a single 20px saturate(1.4) blur with the hairline, so the model picker, modals, approval toasts, the agent sheet, tooltips and menus rise together and a dense transcript never reads through them",
+  "ts": 1789447649299
 }
