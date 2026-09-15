@@ -1,5 +1,5 @@
 {
-  "n": 133,
-  "notes": "The updater swaps the installed bundle atomically: copy beside it, two renames, then open — a swap script that dies mid rm -rf can no longer leave a half bundle macOS calls damaged",
-  "ts": 1789440647951
+  "n": 134,
+  "notes": "Glass is back: the window takes vibrancy after the first paint while the new Settings > Appearance \"Glass\" toggle is on, the content pane stays opaque (main-pane glass now defaults off), reduced transparency and the toggle both go solid through a window:disable-glass IPC, and the TEMP_CODE_GLASS gate from the fork-storm days is gone",
+  "ts": 1789441670627
 }
