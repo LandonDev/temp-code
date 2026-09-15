@@ -131,7 +131,7 @@ export function SymbolPicker({ projectId, onOpen, onClose }: Props) {
         aria-label="Go to Symbol"
         data-symbol-picker
         onMouseDown={(e) => e.stopPropagation()}
-        className="absolute left-1/2 top-[12%] flex w-[min(560px,calc(100vw-24px))] -translate-x-1/2 flex-col overflow-hidden rounded-2xl shadow-2xl glass-surface floating-surface floating-surface--motion"
+        className="absolute left-1/2 top-[12%] flex w-[min(560px,calc(100vw-24px))] -translate-x-1/2 flex-col overflow-hidden rounded-2xl shadow-2xl glass-surface floating-surface"
       >
         <div className="pb-1">
           <label className="flex h-9 items-center gap-2 border-b border-content/10 px-3 text-content/50">

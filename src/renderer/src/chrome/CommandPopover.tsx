@@ -78,7 +78,7 @@ export function CommandPopover({
               : { opacity: 0, y: 6, scale: 0.98, transition: { duration: 0.1, ease: EASE_OUT } }
           }
           style={{ transformOrigin: "bottom left" }}
-          className="absolute right-0 bottom-full left-0 z-30 mb-2 rounded-xl shadow-[0_4px_24px_rgb(0_0_0/0.24)] glass-surface floating-surface floating-surface--motion"
+          className="absolute right-0 bottom-full left-0 z-30 mb-2 rounded-xl shadow-[0_4px_24px_rgb(0_0_0/0.24)] glass-surface floating-surface"
         >
           <div
             ref={listRef}
