@@ -1,4 +1,4 @@
-import { ChevronDown, Lock, LockOpen, Pencil, Sparkles } from "./icons";
+import { Check, ChevronDown, Lock, LockOpen, Pencil, Sparkles } from "./icons";
 import {
   useEffect,
   useRef,
@@ -129,17 +129,15 @@ export function AccessPicker({ value, onChange, onClose }: Props) {
                 onMouseDown={(e) => e.preventDefault()}
                 onMouseEnter={() => setActive(index)}
                 onClick={() => pick(mode)}
-                className={`flex w-full items-start gap-2.5 rounded-lg px-2 py-2 text-left ${
-                  highlighted || selected
-                    ? "bg-content/10 text-content"
-                    : "text-content hover:bg-content/5"
+                className={`flex w-full items-start gap-3 rounded-lg px-2 py-2 text-left ${
+                  highlighted ? "bg-content/10 text-content" : "text-content hover:bg-content/5"
                 }`}
               >
                 <ModeIcon
                   className="mt-0.5 size-3.5 shrink-0 text-content/70"
                   strokeWidth={1.75}
                 />
-                <span className="min-w-0">
+                <span className="min-w-0 flex-1">
                   <span className="block text-[13px] font-medium leading-5">
                     {RUNTIME_MODE_LABEL[mode]}
                   </span>
@@ -147,6 +145,9 @@ export function AccessPicker({ value, onChange, onClose }: Props) {
                     {RUNTIME_MODE_HINT[mode]}
                   </span>
                 </span>
+                {selected ? (
+                  <Check className="mt-1 size-3.5 shrink-0" strokeWidth={2.25} />
+                ) : null}
               </button>
             );
           })}

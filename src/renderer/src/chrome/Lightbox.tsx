@@ -100,7 +100,7 @@ function Slide({ item }: { item: LightboxItem }) {
       alive = false
     }
   }, [item])
-  if (!src) return <Spinner className="size-6 text-white/60" />
+  if (!src) return <Spinner className="size-6 text-content/50" />
   return (
     <img
       src={src}
@@ -112,7 +112,7 @@ function Slide({ item }: { item: LightboxItem }) {
 }
 
 const ARROW =
-  'absolute flex size-9 items-center justify-center rounded-full text-white/70 transition hover:bg-white/10 hover:text-white'
+  'pressable absolute grid size-7 place-items-center rounded-md text-content/70 hover:bg-content/10 hover:text-content'
 
 /**
  * Full-window image viewer. Click-away, Escape, or the corner X closes;
@@ -133,7 +133,7 @@ export function Lightbox() {
           initial={reduce ? false : { opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={reduce ? undefined : { opacity: 0, transition: { duration: 0.12 } }}
-          className="fixed inset-0 flex items-center justify-center bg-black/75 glass-surface glass-surface--sm"
+          className="fixed inset-0 flex items-center justify-center bg-black/40"
           style={{ zIndex: LAYER.dialog + 5 }}
           onClick={close}
         >
@@ -151,9 +151,9 @@ export function Lightbox() {
             type="button"
             onClick={close}
             aria-label="Close preview"
-            className="absolute right-4 top-4 flex size-8 items-center justify-center rounded-full text-white/70 transition hover:bg-white/10 hover:text-white"
+            className="pressable absolute right-4 top-4 grid size-7 place-items-center rounded-md text-content/70 hover:bg-content/10 hover:text-content"
           >
-            <X className="size-5" />
+            <X className="size-3.5" strokeWidth={1.75} />
           </button>
 
           {many ? (
@@ -167,7 +167,7 @@ export function Lightbox() {
                 aria-label="Previous image"
                 className={`${ARROW} left-4`}
               >
-                <ChevronLeft className="size-6" />
+                <ChevronLeft className="size-5" strokeWidth={1.75} />
               </button>
               <button
                 type="button"
@@ -178,9 +178,9 @@ export function Lightbox() {
                 aria-label="Next image"
                 className={`${ARROW} right-4`}
               >
-                <ChevronRight className="size-6" />
+                <ChevronRight className="size-5" strokeWidth={1.75} />
               </button>
-              <span className="absolute bottom-4 text-[12px] tabular-nums text-white/60">
+              <span className="absolute bottom-4 text-[12px] tabular-nums text-content/50">
                 {snap.index + 1} / {snap.items.length}
               </span>
             </>

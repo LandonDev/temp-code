@@ -157,6 +157,7 @@ import { openOrchestrationSettings, takeRequestedScope } from "../lib/tcserver/r
 import { useWorkspaces, workspaceLabelKey } from "../lib/tcserver/workspaces";
 import { workspaceOfSection } from "../lib/settings";
 import { Heading, Row, Segmented, Select, SecondaryButton, Toggle } from "./settingsBits";
+import { DANGER, GHOST, PRIMARY } from "../chrome/ConfirmDialog";
 import { AppshotsPage } from "./AppshotsSettings";
 import { MatrixSpinner } from "./threads/bits";
 import { installing, updateStore, useUpdateSnapshot } from "../lib/updateStore";
@@ -1471,19 +1472,20 @@ function ArchivePage({
           description="The thread and its whole transcript are gone for good."
           size="sm"
         >
-          <div className="flex justify-end gap-2 px-5 pb-4">
-            <SecondaryButton onClick={() => setDeletingThread(null)}>
+          <div className="flex items-center justify-end gap-2 border-t border-content/10 px-4 py-3">
+            <button type="button" onClick={() => setDeletingThread(null)} className={GHOST}>
               Cancel
-            </SecondaryButton>
-            <SecondaryButton
-              danger
+            </button>
+            <button
+              type="button"
               onClick={() => {
                 onDeleteSession(deletingThread.id, { confirmed: true });
                 setDeletingThread(null);
               }}
+              className={DANGER}
             >
               Delete thread
-            </SecondaryButton>
+            </button>
           </div>
         </Modal>
       ) : null}
@@ -1835,22 +1837,26 @@ function EditorPage() {
           description={`intellij-server ${eula?.build ?? ""}`.trim()}
           size="md"
         >
-          {eula ? (
-            <pre className="max-h-80 overflow-y-auto rounded-md border border-content/10 p-3 text-[11px] leading-relaxed whitespace-pre-wrap text-content/70">
-              {eula.text}
-            </pre>
-          ) : note ? (
-            <p className="text-[12px] text-danger">{note}</p>
-          ) : (
-            <p className="flex items-center gap-2 text-[12px] text-content/50">
-              <MatrixSpinner cell={1.8} /> Downloading the engine to read its license…
-            </p>
-          )}
-          <div className="mt-4 flex justify-end gap-2">
-            <SecondaryButton onClick={() => setGateOpen(false)}>Cancel</SecondaryButton>
-            <SecondaryButton disabled={!eula} onClick={accept}>
+          <div className="px-4 py-3">
+            {eula ? (
+              <pre className="max-h-80 overflow-y-auto rounded-[10px] border border-content/10 p-3 text-[11px] leading-relaxed whitespace-pre-wrap text-content/70">
+                {eula.text}
+              </pre>
+            ) : note ? (
+              <p className="text-[12px] text-danger">{note}</p>
+            ) : (
+              <p className="flex items-center gap-2 text-[12px] text-content/50">
+                <MatrixSpinner cell={1.5} /> Downloading the engine to read its license…
+              </p>
+            )}
+          </div>
+          <div className="flex items-center justify-end gap-2 border-t border-content/10 px-4 py-3">
+            <button type="button" onClick={() => setGateOpen(false)} className={GHOST}>
+              Cancel
+            </button>
+            <button type="button" disabled={!eula} onClick={accept} className={PRIMARY}>
               Accept and enable
-            </SecondaryButton>
+            </button>
           </div>
         </Modal>
       ) : null}

@@ -8,7 +8,8 @@ import {
 import { Modal } from "./Modal";
 import { ChevronRight } from "./icons";
 import { BUILD_EMPTY, BuildFields, buildOrNull } from "./rail/buildSettings";
-import { TerminalSpinner } from "./TerminalSpinner";
+import { ConfirmDialog, DialogFooter as Footer, ErrorLine, GHOST, errorText } from "./ConfirmDialog";
+import { Toggle } from "../surfaces/settingsBits";
 import { TurnPassFields, loadTurnPass, saveTurnPass } from "./TurnPassFields";
 import { client } from "../lib/tcserver/client";
 import type { BuildConfig } from "@server/shared/build";
@@ -32,52 +33,8 @@ import type {
 } from "../lib/tcserver/types";
 
 const INPUT =
-  "w-full rounded-md border border-content/10 bg-content/5 px-2 py-1.5 text-[12px] text-content outline-none placeholder:text-content/40 hover:border-content/20 focus:border-accent/60";
+  "w-full rounded-lg border border-content/10 bg-content/5 px-2 py-1.5 text-[12px] text-content outline-none placeholder:text-content/40 focus:border-content/20 disabled:cursor-default disabled:opacity-40";
 const LABEL = "text-[11px] font-medium text-content/50";
-const GHOST =
-  "rounded-md px-3 py-1.5 text-[12px] text-content/70 hover:bg-content/8 hover:text-content";
-const PRIMARY =
-  "flex items-center gap-2 rounded-md bg-content px-3 py-1.5 text-[12px] font-medium text-background-base hover:bg-content/70 disabled:cursor-default disabled:opacity-50";
-const DANGER =
-  "flex items-center gap-2 rounded-md bg-danger/20 px-3 py-1.5 text-[12px] font-medium text-danger hover:bg-danger/30 disabled:cursor-default disabled:opacity-50";
-
-const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e));
-
-function Footer({
-  onCancel,
-  confirmLabel,
-  danger,
-  pending,
-  disabled,
-  onConfirm,
-}: {
-  onCancel: () => void;
-  confirmLabel: string;
-  danger?: boolean;
-  pending?: boolean;
-  disabled?: boolean;
-  onConfirm?: () => void;
-}) {
-  return (
-    <div className="flex items-center justify-end gap-2 border-t border-content/10 px-4 py-3">
-      <button type="button" onClick={onCancel} className={GHOST}>
-        Cancel
-      </button>
-      <button
-        type={onConfirm ? "button" : "submit"}
-        onClick={onConfirm}
-        disabled={pending || disabled}
-        className={danger ? DANGER : PRIMARY}
-      >
-        {pending ? (
-          <TerminalSpinner className="inline-block w-3 text-center text-[11px] leading-none" />
-        ) : null}
-        {confirmLabel}
-      </button>
-    </div>
-  );
-}
-
 function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
     <label className="flex flex-col gap-1">
@@ -85,12 +42,6 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
       {children}
     </label>
   );
-}
-
-function ErrorLine({ error }: { error: string | null }) {
-  return error ? (
-    <p className="text-[11px] leading-4 text-danger">{error}</p>
-  ) : null;
 }
 
 function Hint({ children }: { children: ReactNode }) {
@@ -688,6 +639,7 @@ export function ProjectTeardownDialog({
     ? [
         {
           key: "worktree",
+          text: "Remove the worktree folder",
           label: "Remove the worktree folder",
           checked: worktree || localBranch,
           disabled: localBranch,
@@ -695,12 +647,14 @@ export function ProjectTeardownDialog({
         },
         {
           key: "local",
+          text: `Delete branch ${project.branch ?? ""}`,
           label: <>Delete branch {mono(project.branch ?? "")}</>,
           checked: localBranch,
           set: setLocalBranch,
         },
         {
           key: "remote",
+          text: `Delete origin/${project.branch ?? ""}`,
           label: <>Delete {mono(`origin/${project.branch ?? ""}`)}</>,
           checked: remoteBranch,
           set: setRemoteBranch,
@@ -722,23 +676,17 @@ export function ProjectTeardownDialog({
             : "The project leaves the sidebar. Its threads stay; restore it anytime."}
         </p>
         {boxes.length ? (
-        <div className="flex flex-col gap-1.5">
+        <div className="flex flex-col">
           {boxes.map((b) => (
-            <label
+            <div
               key={b.key}
-              className={`flex items-center gap-2 text-[12px] ${
-                b.disabled ? "text-content/40" : "text-content/70"
+              className={`flex h-7 items-center justify-between gap-3 text-[12px] text-content/70 ${
+                b.disabled ? "pointer-events-none opacity-40" : ""
               }`}
             >
-              <input
-                type="checkbox"
-                className="size-3.5 accent-accent"
-                checked={b.checked}
-                disabled={b.disabled}
-                onChange={(e) => b.set(e.target.checked)}
-              />
-              {b.label}
-            </label>
+              <span className="min-w-0 truncate">{b.label}</span>
+              <Toggle label={b.text} on={b.checked} onChange={b.set} />
+            </div>
           ))}
         </div>
         ) : null}
@@ -755,46 +703,4 @@ export function ProjectTeardownDialog({
   );
 }
 
-export function ConfirmDialog({
-  title,
-  body,
-  confirmLabel,
-  danger,
-  onCancel,
-  onConfirm,
-}: {
-  title: string;
-  body: string;
-  confirmLabel: string;
-  danger?: boolean;
-  onCancel: () => void;
-  onConfirm: () => void | Promise<void>;
-}) {
-  const [pending, setPending] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const confirm = async () => {
-    setPending(true);
-    setError(null);
-    try {
-      await onConfirm();
-    } catch (err) {
-      setError(errorText(err));
-      setPending(false);
-    }
-  };
-  return (
-    <Modal onClose={onCancel} busy={pending} title={title} size="sm">
-      <div className="flex flex-col gap-2 px-4 py-3">
-        <p className="text-[12px] leading-snug text-content/50">{body}</p>
-        <ErrorLine error={error} />
-      </div>
-      <Footer
-        onCancel={onCancel}
-        onConfirm={confirm}
-        confirmLabel={confirmLabel}
-        danger={danger}
-        pending={pending}
-      />
-    </Modal>
-  );
-}
+export { ConfirmDialog };

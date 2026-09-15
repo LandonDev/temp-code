@@ -1,5 +1,6 @@
 import { openUrl } from "../lib/native";
 import {
+  Check,
   ChevronDown,
   CircleDot,
   ExternalLink,
@@ -23,6 +24,7 @@ import {
   INBOX_FILTER_MENU_WIDTH,
 } from "../chrome/InboxFiltersMenu";
 import { InboxProviderMark } from "../chrome/InboxProviderMark";
+import { Popover } from "../chrome/Popover";
 import { ProjectLogoIcon } from "../chrome/ProjectLogoIcon";
 import { ProjectMascot } from "../chrome/ProjectMascot";
 import { OverlayNav } from "../chrome/TitleBar";
@@ -462,7 +464,7 @@ export function InboxView({
     const rect = event.currentTarget.getBoundingClientRect();
     setFilterMenu({
       x: rect.right - INBOX_FILTER_MENU_WIDTH,
-      y: rect.bottom + 2,
+      y: rect.bottom + 4,
     });
   };
 
@@ -596,7 +598,7 @@ export function InboxView({
             onClick={() =>
               setScope((value) => (value === "all" ? "current" : "all"))
             }
-            className="mx-1.5 mb-1.5 h-7 w-[calc(100%-0.75rem)] rounded-md px-2 text-left text-[12px] text-content/50 hover:bg-content/5 hover:text-content"
+            className="mx-1 mb-1 h-7 w-[calc(100%-0.5rem)] rounded-md px-2 text-left text-[12px] text-content/50 hover:bg-content/5 hover:text-content active:bg-content/10"
           >
             {scope === "all" ? "This project only" : "Show all projects"}
           </button>
@@ -1412,39 +1414,18 @@ function InboxProjectPicker({
 }) {
   const [open, setOpen] = useState(false);
   const button = useRef<HTMLButtonElement>(null);
-  const menu = useRef<HTMLDivElement>(null);
   const selected =
     projects.find((project) => sameProjectPath(project.path, value)) ??
     projects[0] ??
     null;
-
-  useEffect(() => {
-    if (!open) return;
-    const onPointerDown = (event: PointerEvent) => {
-      const target = event.target as Node;
-      if (button.current?.contains(target) || menu.current?.contains(target)) {
-        return;
-      }
-      setOpen(false);
-    };
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
-      event.preventDefault();
-      setOpen(false);
-    };
-    window.addEventListener("pointerdown", onPointerDown);
-    window.addEventListener("keydown", onKey, true);
-    return () => {
-      window.removeEventListener("pointerdown", onPointerDown);
-      window.removeEventListener("keydown", onKey, true);
-    };
-  }, [open]);
 
   return (
     <div className="relative">
       <button
         ref={button}
         type="button"
+        aria-haspopup="listbox"
+        aria-expanded={open}
         disabled={projects.length === 0}
         onClick={() => setOpen((next) => !next)}
         className="inline-flex h-7 max-w-48 items-center gap-1.5 rounded-md border border-content/10 bg-content/5 px-2 text-[12px] text-content/70 hover:bg-content/10 hover:text-content disabled:cursor-default disabled:opacity-40"
@@ -1459,10 +1440,18 @@ function InboxProjectPicker({
         />
       </button>
       {open ? (
-        <div
-          ref={menu}
+        <Popover
+          anchor={button}
+          side="bottom"
+          align="start"
+          gap={4}
+          width={256}
+          maxHeight={256}
+          autoFocus
+          onDismiss={() => setOpen(false)}
           role="listbox"
-          className="absolute left-0 top-full z-30 mt-1 max-h-64 min-w-full max-w-64 overflow-y-auto rounded-lg border border-content/10 bg-content/10 p-1 shadow-xl glass-surface glass-surface--xl outline-none"
+          tabIndex={-1}
+          className="overflow-y-auto overscroll-none p-1"
         >
           {projects.map((project) => {
             const active = selected
@@ -1478,18 +1467,17 @@ function InboxProjectPicker({
                   onChange(project.path);
                   setOpen(false);
                 }}
-                className={`flex h-7 w-full items-center gap-1.5 rounded-md px-2 text-left text-[12px] ${
-                  active
-                    ? "bg-content/10 text-content"
-                    : "text-content/70 hover:bg-content/5 hover:text-content"
-                }`}
+                className="flex h-7 w-full items-center gap-3 rounded-lg px-2 text-left text-[13px] leading-none text-content hover:bg-content/5 active:bg-content/10"
               >
                 <InboxProjectMark project={project} />
-                <span className="min-w-0 truncate">{project.name}</span>
+                <span className="min-w-0 flex-1 truncate">{project.name}</span>
+                {active ? (
+                  <Check className="size-3.5 shrink-0" strokeWidth={2.25} />
+                ) : null}
               </button>
             );
           })}
-        </div>
+        </Popover>
       ) : null}
     </div>
   );

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { motion, useReducedMotion } from 'motion/react'
 import { EASE_OUT } from '../lib/ease'
+import { LAYER } from '../lib/layers'
 import { useAppshotFlash, type AppshotFlash } from '../lib/appshots'
 import { readAttachment } from '../lib/tcserver/commands'
 
@@ -90,7 +91,7 @@ function Flight({ flash }: { flash: AppshotFlash }) {
   if (done) return null
 
   return (
-    <div className="pointer-events-none fixed inset-0 z-[90]">
+    <div className="pointer-events-none fixed inset-0" style={{ zIndex: LAYER.dialog }}>
       {reduce ? null : (
         <motion.div
           className="absolute inset-0 bg-white"

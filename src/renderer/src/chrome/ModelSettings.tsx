@@ -1,4 +1,4 @@
-import { Brain, ChevronDown, Gauge, Maximize2, Zap } from "./icons";
+import { Brain, Check, ChevronDown, Gauge, Maximize2, Zap } from "./icons";
 import {
   useEffect,
   useMemo,
@@ -193,9 +193,7 @@ function SelectSetting({
           setOpen(true);
         }}
         className={`flex h-6.5 max-w-36 items-center gap-1 rounded-md px-1.5 ${
-          open
-            ? "bg-content/10 text-content"
-            : "bg-content/10 text-content hover:bg-content/15"
+          open ? "bg-content/10 text-content" : "bg-content/5 text-content hover:bg-content/10"
         }`}
       >
         <Icon className="size-3.5 shrink-0" strokeWidth={1.75} />
@@ -233,13 +231,14 @@ function SelectSetting({
                 onMouseDown={(e) => e.preventDefault()}
                 onMouseEnter={() => setActive(index)}
                 onClick={() => pick(option.value)}
-                className={`flex w-full items-center rounded-lg px-2 py-1.5 text-left text-[13px] ${
-                  highlighted || selected
-                    ? "bg-content/10 text-content"
-                    : "text-content hover:bg-content/5"
+                className={`flex h-7 w-full items-center gap-3 rounded-lg px-2 text-left text-[13px] leading-none ${
+                  highlighted ? "bg-content/10 text-content" : "text-content hover:bg-content/5"
                 }`}
               >
-                {option.label}
+                <span className="min-w-0 flex-1 truncate">{option.label}</span>
+                {selected ? (
+                  <Check className="size-3.5 shrink-0" strokeWidth={2.25} />
+                ) : null}
               </button>
             );
           })}

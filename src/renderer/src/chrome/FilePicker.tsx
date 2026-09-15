@@ -158,16 +158,16 @@ export function FilePicker({
 
   return createPortal(
     <div className="fixed inset-0" style={{ zIndex: LAYER.dialog }}>
-      <div className="absolute inset-0" onMouseDown={onClose} />
+      <div className="modal-backdrop absolute inset-0 bg-black/40" onMouseDown={onClose} />
       <div
         role="dialog"
         aria-label="Go to File"
         data-file-picker
         onMouseDown={(e) => e.stopPropagation()}
-        className="absolute left-1/2 top-[12%] flex w-[min(560px,calc(100vw-24px))] -translate-x-1/2 flex-col overflow-hidden rounded-lg border border-content/10 bg-content/5 glass-surface glass-surface--xl"
+        className="absolute left-1/2 top-[12%] flex w-[min(560px,calc(100vw-24px))] -translate-x-1/2 flex-col overflow-hidden rounded-2xl border border-content/10 bg-background-base/55 shadow-2xl glass-surface glass-surface--md"
       >
-        <div className="pb-1.5">
-          <label className="flex items-center gap-2 border-b border-content/10 px-2 py-2.5 text-content/50">
+        <div className="pb-1">
+          <label className="flex h-9 items-center gap-2 border-b border-content/10 px-3 text-content/50">
             <Search className="size-3.5 shrink-0" strokeWidth={1.75} />
             <input
               ref={search}
@@ -189,7 +189,7 @@ export function FilePicker({
           </label>
         </div>
         {empty ? (
-          <p className="px-3 pb-3 pt-1 text-[12px] text-content/50">{empty}</p>
+          <p className="px-3 py-3 text-[12px] text-content/50">{empty}</p>
         ) : (
           <FileList
             files={results}
@@ -280,7 +280,7 @@ function FileList({
       role="listbox"
       aria-label="Files"
       onMouseMove={onListMouseMove}
-      className="max-h-[min(380px,50vh)] overflow-y-auto overscroll-none px-1.5 pb-1.5"
+      className="max-h-[min(380px,50vh)] overflow-y-auto overscroll-none p-1 pt-0"
     >
       {files.map((file, index) => {
         const highlighted = index === active;
@@ -297,8 +297,8 @@ function FileList({
             onMouseDown={(e) => e.preventDefault()}
             onMouseEnter={() => onRowEnter(index)}
             onClick={() => onPick(file)}
-            className={`flex h-8 w-full items-center gap-2 rounded-md px-2 text-left text-sm leading-none ${
-              highlighted ? "bg-content/10 text-content" : "text-content"
+            className={`flex h-7 w-full items-center gap-3 rounded-lg px-2 text-left text-[13px] leading-none ${
+              highlighted ? "bg-content/10 text-content" : "text-content hover:bg-content/5"
             }`}
           >
             <span className="shrink-0">

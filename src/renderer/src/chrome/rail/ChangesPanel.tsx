@@ -8,6 +8,7 @@ import { ArrowDownCircle, Archive, ChevronRight, CloudUpload, Minus, Plus, Undo2
 import { cn } from "../../motion/cn";
 import { StatefulButton, type ButtonState } from "../../motion/StatefulButton";
 import { Spinner } from "../../surfaces/threads/bits";
+import { ConfirmDialog } from "../ConfirmDialog";
 import { diffLineStats, stageChunkText } from "../../surfaces/editorGit";
 import { invalidateWatchedFiles } from "../../lib/fileWatch";
 import { timeAgo } from "../../lib/format";
@@ -149,12 +150,12 @@ export function ChangesPanel({
     }
   };
 
-  const discard = (file: GitChangedFile) => {
-    const name = basename(file.relative);
-    const ok = window.confirm(
-      file.status === "untracked" ? `Delete untracked file ${name}?` : `Discard changes in ${name}? This cannot be undone.`,
-    );
-    if (!ok) return;
+  const [pendingDiscard, setPendingDiscard] = useState<GitChangedFile | null>(null);
+  const discard = (file: GitChangedFile) => setPendingDiscard(file);
+  const confirmDiscard = () => {
+    const file = pendingDiscard;
+    setPendingDiscard(null);
+    if (!file) return;
     void mutate(file.relative, () => gitDiscardFile(cwd, file.relative), [file.path]);
   };
 
@@ -211,6 +212,24 @@ export function ChangesPanel({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
+      {pendingDiscard ? (
+        <ConfirmDialog
+          title={
+            pendingDiscard.status === "untracked"
+              ? `Delete ${basename(pendingDiscard.relative)}?`
+              : `Discard changes in ${basename(pendingDiscard.relative)}?`
+          }
+          body={
+            pendingDiscard.status === "untracked"
+              ? "The untracked file is deleted for good."
+              : "The edits are gone for good."
+          }
+          confirmLabel={pendingDiscard.status === "untracked" ? "Delete" : "Discard"}
+          danger
+          onCancel={() => setPendingDiscard(null)}
+          onConfirm={confirmDiscard}
+        />
+      ) : null}
       <div className="flex h-9 shrink-0 items-center gap-2 border-b border-content/10 px-2 pr-1.5">
         <span className="min-w-0 truncate px-1 text-[12px] font-medium text-content" title={index?.branch ?? undefined}>
           {index?.branch ?? "—"}

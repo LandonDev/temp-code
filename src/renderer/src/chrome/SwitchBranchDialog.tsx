@@ -1,9 +1,10 @@
-import { Loader, WandSparkles } from "./icons";
+import { WandSparkles } from "./icons";
 import { useEffect, useRef, useState } from "react";
-import { createPortal } from "react-dom";
+import { GHOST, PRIMARY, errorText } from "./ConfirmDialog";
+import { Modal } from "./Modal";
 import { generateCommitMessage } from "../lib/harness";
-import { LAYER } from "../lib/layers";
 import { MOD } from "../lib/platform";
+import { MatrixSpinner } from "../surfaces/threads/bits";
 
 type Busy = "stash" | "commit" | null;
 
@@ -30,12 +31,17 @@ export function SwitchBranchDialog({
 }: Props) {
   const [message, setMessage] = useState("");
   const [generating, setGenerating] = useState(false);
+  const [generateError, setGenerateError] = useState<string | null>(null);
   const messageRef = useRef<HTMLTextAreaElement>(null);
   const trimmed = message.trim();
-  const canCommit = trimmed.length > 0 && !busy && !generating;
+  const waiting = Boolean(busy) || generating;
+  const canCommit = trimmed.length > 0 && !waiting;
 
+  // The modal focuses its close button on mount; the message field wins
+  // on the next frame.
   useEffect(() => {
-    messageRef.current?.focus();
+    const id = requestAnimationFrame(() => messageRef.current?.focus());
+    return () => cancelAnimationFrame(id);
   }, []);
 
   useEffect(() => {
@@ -45,73 +51,43 @@ export function SwitchBranchDialog({
     el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
   }, [message]);
 
-  useEffect(() => {
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
-      event.preventDefault();
-      event.stopPropagation();
-      if (!busy && !generating) onCancel();
-    };
-    window.addEventListener("keydown", onKey, true);
-    return () => window.removeEventListener("keydown", onKey, true);
-  }, [busy, generating, onCancel]);
-
   const generate = async () => {
-    if (busy || generating) return;
+    if (waiting) return;
     setGenerating(true);
+    setGenerateError(null);
     try {
       setMessage(await generateCommitMessage(cwd));
     } catch (err) {
-      window.alert(err instanceof Error ? err.message : String(err));
+      setGenerateError(errorText(err));
     } finally {
       setGenerating(false);
       messageRef.current?.focus();
     }
   };
 
-  return createPortal(
-    <div className="fixed inset-0" style={{ zIndex: LAYER.dialog }}>
-      <div
-        className="absolute inset-0 bg-black/30"
-        onMouseDown={() => {
-          if (!busy && !generating) onCancel();
-        }}
-      />
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-busy={Boolean(busy) || generating}
-        aria-label={creating ? `Create ${branch}` : `Switch to ${branch}`}
-        onMouseDown={(event) => event.stopPropagation()}
-        className="absolute left-1/2 top-[22%] flex w-[min(420px,calc(100vw-24px))] -translate-x-1/2 flex-col gap-3 rounded-lg border border-content/10 bg-content/5 p-4 shadow-xl glass-surface glass-surface--xl"
-      >
-        <div className="flex flex-col gap-1">
-          <h2 className="text-[13px] font-medium leading-tight text-content">
-            Uncommitted changes
-          </h2>
-          <p className="text-[12px] leading-snug text-content/50">
-            {creating
-              ? `Creating “${branch}” would overwrite your local changes. Stash them for later, or commit them on this branch first.`
-              : `Switching to “${branch}” would overwrite your local changes. Stash them for later, or commit them on this branch first.`}
-          </p>
-        </div>
+  const shown = error || generateError;
 
+  return (
+    <Modal
+      onClose={onCancel}
+      busy={waiting}
+      title="Uncommitted changes"
+      description={`Stash or commit them before ${creating ? "creating" : "switching to"} “${branch}”.`}
+      size="sm"
+    >
+      <div className="flex flex-col gap-2 px-4 py-3">
         <div className="relative">
           <textarea
             ref={messageRef}
             rows={1}
             value={message}
             placeholder={`Message (${MOD}↩ to commit)`}
-            disabled={Boolean(busy) || generating}
+            disabled={waiting}
             aria-label="Commit message"
-            className="max-h-40 w-full resize-none overflow-y-auto rounded-md bg-content/10 py-1 pr-8 pl-2 text-[13px] leading-5 text-content outline-none placeholder:text-content/40 disabled:opacity-40"
+            className="max-h-40 w-full resize-none overflow-y-auto rounded-lg border border-content/10 bg-content/5 py-1.5 pr-8 pl-2 text-[12px] leading-5 text-content outline-none placeholder:text-content/40 focus:border-content/20 disabled:cursor-default disabled:opacity-40"
             onChange={(event) => setMessage(event.target.value)}
             onKeyDown={(event) => {
-              if (
-                (event.metaKey || event.ctrlKey) &&
-                event.key === "Enter" &&
-                canCommit
-              ) {
+              if ((event.metaKey || event.ctrlKey) && event.key === "Enter" && canCommit) {
                 event.preventDefault();
                 onCommit(trimmed);
               }
@@ -121,58 +97,39 @@ export function SwitchBranchDialog({
             type="button"
             title="Generate commit message"
             aria-label="Generate commit message"
-            disabled={Boolean(busy) || generating}
+            disabled={waiting}
             onClick={() => void generate()}
-            className="absolute top-1 right-1 grid size-5 place-items-center rounded-md bg-content/10 text-content hover:bg-content/20 hover:text-content disabled:opacity-40"
+            className="pressable absolute top-1.5 right-1.5 grid size-5 place-items-center rounded-sm text-content/50 hover:bg-content/10 hover:text-content disabled:cursor-default disabled:opacity-40"
           >
             {generating ? (
-              <Loader className="size-3.5 motion-safe:animate-spin" strokeWidth={1.75} />
+              <MatrixSpinner cell={1.5} />
             ) : (
-              <WandSparkles className="size-3" strokeWidth={1.75} />
+              <WandSparkles className="size-3.5" strokeWidth={1.75} />
             )}
           </button>
         </div>
-
-        {error ? (
-          <p className="whitespace-pre-wrap text-[11px] leading-4 text-danger">
-            {error}
-          </p>
+        {shown ? (
+          <p className="whitespace-pre-wrap text-[11px] leading-4 text-danger">{shown}</p>
         ) : null}
-
-        <div className="flex flex-wrap justify-end gap-2">
-          <button
-            type="button"
-            disabled={Boolean(busy) || generating}
-            onClick={onCancel}
-            className="rounded-md px-3 py-1.5 text-[12px] text-content/70 hover:bg-content/8 hover:text-content disabled:opacity-40"
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            disabled={!canCommit}
-            onClick={() => onCommit(trimmed)}
-            className="inline-flex items-center gap-1.5 rounded-md bg-content/10 px-3 py-1.5 text-[12px] font-medium text-content hover:bg-content/15 disabled:opacity-40"
-          >
-            {busy === "commit" ? (
-              <Loader className="size-3.5 motion-safe:animate-spin" strokeWidth={1.75} />
-            ) : null}
-            Commit & switch
-          </button>
-          <button
-            type="button"
-            disabled={Boolean(busy) || generating}
-            onClick={onStash}
-            className="inline-flex items-center gap-1.5 rounded-md bg-content px-3 py-1.5 text-[12px] font-medium text-background-base hover:bg-content/70 disabled:opacity-40"
-          >
-            {busy === "stash" ? (
-              <Loader className="size-3.5 motion-safe:animate-spin" strokeWidth={1.75} />
-            ) : null}
-            Stash & switch
-          </button>
-        </div>
       </div>
-    </div>,
-    document.body,
+      <div className="flex items-center justify-end gap-2 border-t border-content/10 px-4 py-3">
+        <button type="button" disabled={waiting} onClick={onCancel} className={GHOST}>
+          Cancel
+        </button>
+        <button
+          type="button"
+          disabled={!canCommit}
+          onClick={() => onCommit(trimmed)}
+          className={`${GHOST} flex items-center gap-2`}
+        >
+          {busy === "commit" ? <MatrixSpinner cell={1.5} /> : null}
+          Commit & switch
+        </button>
+        <button type="button" disabled={waiting} onClick={onStash} className={PRIMARY}>
+          {busy === "stash" ? <MatrixSpinner cell={1.5} /> : null}
+          Stash & switch
+        </button>
+      </div>
+    </Modal>
   );
 }

@@ -71,7 +71,7 @@ export function NewThreadChooser({
                   type="button"
                   aria-label="Back"
                   onClick={() => setTuning(null)}
-                  className="grid size-6 place-items-center rounded-md text-content/50 hover:bg-content/8 hover:text-content"
+                  className="pressable grid size-6 place-items-center rounded-md text-content/50 hover:bg-content/5 hover:text-content"
                 >
                   <ChevronLeft className="size-3.5" strokeWidth={1.75} />
                 </button>
@@ -80,7 +80,7 @@ export function NewThreadChooser({
                 </span>
               </div>
               <ThreadTune tune={tune} onChange={setTune} workspaceId={workspaceId} />
-              <div className="flex justify-end px-3 pb-2">
+              <div className="flex justify-end px-1 pb-1 pt-2">
                 <button
                   type="button"
                   onClick={() => start(tuning, normalizeTune(tune))}
@@ -94,7 +94,7 @@ export function NewThreadChooser({
             THREAD_TYPES.map((type) => {
               const Glyph = THREAD_GLYPHS[type];
               return (
-                <div key={type} className="group flex items-center rounded-md hover:bg-content/6">
+                <div key={type} className="group flex items-center rounded-lg hover:bg-content/5">
                   <button
                     type="button"
                     onClick={() => start(type)}
@@ -114,7 +114,7 @@ export function NewThreadChooser({
                       title={`${THREAD_LABELS[type]} options`}
                       aria-label={`${THREAD_LABELS[type]} options`}
                       onClick={() => setTuning(type)}
-                      className="mr-1 grid size-6 shrink-0 place-items-center rounded-md text-content/40 opacity-0 hover:bg-content/8 hover:text-content group-hover:opacity-100 focus-visible:opacity-100"
+                      className="mr-1 grid size-6 shrink-0 place-items-center rounded-md text-content/40 opacity-0 hover:bg-content/10 hover:text-content group-hover:opacity-100 focus-visible:opacity-100"
                     >
                       <SlidersHorizontal className="size-3.5" strokeWidth={1.75} />
                     </button>

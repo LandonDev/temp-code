@@ -125,16 +125,16 @@ export function SymbolPicker({ projectId, onOpen, onClose }: Props) {
 
   return createPortal(
     <div className="fixed inset-0" style={{ zIndex: LAYER.dialog }}>
-      <div className="absolute inset-0" onMouseDown={onClose} />
+      <div className="modal-backdrop absolute inset-0 bg-black/40" onMouseDown={onClose} />
       <div
         role="dialog"
         aria-label="Go to Symbol"
         data-symbol-picker
         onMouseDown={(e) => e.stopPropagation()}
-        className="absolute left-1/2 top-[12%] flex w-[min(560px,calc(100vw-24px))] -translate-x-1/2 flex-col overflow-hidden rounded-lg border border-content/10 bg-content/5 glass-surface glass-surface--xl"
+        className="absolute left-1/2 top-[12%] flex w-[min(560px,calc(100vw-24px))] -translate-x-1/2 flex-col overflow-hidden rounded-2xl border border-content/10 bg-background-base/55 shadow-2xl glass-surface glass-surface--md"
       >
-        <div className="pb-1.5">
-          <label className="flex items-center gap-2 border-b border-content/10 px-2 py-2.5 text-content/50">
+        <div className="pb-1">
+          <label className="flex h-9 items-center gap-2 border-b border-content/10 px-3 text-content/50">
             <Search className="size-3.5 shrink-0" strokeWidth={1.75} />
             <input
               ref={search}
@@ -156,7 +156,7 @@ export function SymbolPicker({ projectId, onOpen, onClose }: Props) {
           </label>
         </div>
         {empty ? (
-          <p className="px-3 pb-3 pt-1 text-[12px] text-content/50">{empty}</p>
+          <p className="px-3 py-3 text-[12px] text-content/50">{empty}</p>
         ) : (
           <SymbolList rows={rows} active={active} onActive={setActive} onPick={pick} />
         )}
@@ -189,7 +189,7 @@ function SymbolList({
       ref={lockOverscroll}
       role="listbox"
       aria-label="Symbols"
-      className="max-h-[min(380px,50vh)] overflow-y-auto overscroll-none px-1.5 pb-1.5"
+      className="max-h-[min(380px,50vh)] overflow-y-auto overscroll-none p-1 pt-0"
     >
       {rows.map((row, index) => {
         const highlighted = index === active;
@@ -205,11 +205,11 @@ function SymbolList({
             onMouseDown={(e) => e.preventDefault()}
             onMouseEnter={() => onActive(index)}
             onClick={() => onPick(row)}
-            className={`flex h-8 w-full items-center gap-2 rounded-md px-2 text-left text-sm leading-none ${
-              highlighted ? "bg-content/10 text-content" : "text-content"
+            className={`flex h-7 w-full items-center gap-3 rounded-lg px-2 text-left text-[13px] leading-none ${
+              highlighted ? "bg-content/10 text-content" : "text-content hover:bg-content/5"
             }`}
           >
-            <span className="w-16 shrink-0 truncate font-mono text-[10px] uppercase tracking-wide text-content/40">
+            <span className="w-16 shrink-0 truncate font-mono text-[11px] uppercase tracking-wide text-content/40">
               {KIND_LABELS[row.kind] ?? "symbol"}
             </span>
             <span className="min-w-0 flex-1 truncate">

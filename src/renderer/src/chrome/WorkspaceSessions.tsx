@@ -266,7 +266,7 @@ function InlineRename({
 
 const menuAt = (anchor: HTMLElement) => {
   const rect = anchor.getBoundingClientRect();
-  return { x: Math.max(8, rect.right - MENU_WIDTH), y: rect.bottom + 2 };
+  return { x: Math.max(8, rect.right - MENU_WIDTH), y: rect.bottom + 4 };
 };
 
 // --- rows ------------------------------------------------------------------
@@ -617,7 +617,7 @@ export function LiveLines({
   const { shown, hidden } = windowRows(liveLines(status), requested, activeId);
   if (!shown.length) return null;
   return (
-    <div className="w-full divide-y divide-content/10 border-y border-content/10">
+    <div className="w-full">
       {shown.map(({ kind, thread }) =>
         kind === "running" ? (
           <RunningLine key={thread.id} thread={thread} now={now} />
