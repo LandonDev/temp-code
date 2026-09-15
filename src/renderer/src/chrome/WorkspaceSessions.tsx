@@ -65,6 +65,7 @@ import { useSessionMetas } from "../lib/tcserver/store";
 import { useClock, useSlowClock } from "../lib/turnClock";
 import type { ProjectMeta, WorkspaceMeta } from "../lib/tcserver/types";
 import { useWorkspaceCatalog } from "../lib/tcserver/workspaces";
+import { subagentRows, subagentRowsOpen, useSubagentRows } from "../stores/subagentRows";
 import {
   groupWorkspaceSessions,
   rowCache,
@@ -303,12 +304,17 @@ function useRevealActive(activeSessionId: string | undefined) {
   return ref;
 }
 
+/** The subagent fold in a root row's tail: how many, whether they show, the flip. */
+type Fold = { count: number; open: boolean; onToggle: () => void };
+
 const ChatRow = memo(function ChatRow({
   thread,
   actions,
+  fold,
 }: {
   thread: ThreadRow;
   actions: RowActions;
+  fold?: Fold;
 }) {
   const [renaming, setRenaming] = useState(false);
   const selected = thread.id === actions.activeSessionId;
@@ -391,6 +397,26 @@ const ChatRow = memo(function ChatRow({
       {!renaming ? (
         <>
           <StatusDot status={thread.status} />
+          {fold ? (
+            <button
+              type="button"
+              aria-expanded={fold.open}
+              aria-label={`${fold.open ? "Hide" : "Show"} ${fold.count} subagent${fold.count === 1 ? "" : "s"}`}
+              onClick={(e) => {
+                e.stopPropagation();
+                fold.onToggle();
+              }}
+              onDoubleClick={(e) => e.stopPropagation()}
+              onKeyDown={(e) => e.stopPropagation()}
+              className="pressable flex shrink-0 items-center gap-0.5 rounded px-0.5 text-[11px] tabular-nums text-content/40 hover:text-content/70"
+            >
+              <ChevronRight
+                className={`size-3 transition-transform duration-150 ease-(--ease-out) ${fold.open ? "rotate-90" : ""}`}
+                strokeWidth={1.75}
+              />
+              {fold.count}
+            </button>
+          ) : null}
           <span className="shrink-0 text-[11px] tabular-nums text-content/40 group-hover/row:opacity-0">
             {trailing}
           </span>
@@ -441,7 +467,9 @@ const ChildRow = memo(function ChildRow({
   );
 });
 
-/** A root row and its subagents beneath it. */
+/** A root row and its subagents beneath it. The subagents show while the
+ *  root or one of them works, or while one is the open thread; otherwise
+ *  the root's tail counts them and a click unfolds them (see subagentRows). */
 const ThreadRows = memo(function ThreadRows({
   thread,
   actions,
@@ -449,12 +477,23 @@ const ThreadRows = memo(function ThreadRows({
   thread: ThreadRow;
   actions: RowActions;
 }) {
+  const kids = thread.children;
+  const count = kids?.length ?? 0;
+  const auto =
+    thread.running ||
+    (kids?.some((c) => c.running || c.id === actions.activeSessionId) ?? false);
+  const open = useSubagentRows((s) => count > 0 && subagentRowsOpen(s, thread.id, auto));
+  const fold = useMemo<Fold | undefined>(
+    () =>
+      count > 0
+        ? { count, open, onToggle: () => subagentRows.toggle(thread.id, auto) }
+        : undefined,
+    [auto, count, open, thread.id],
+  );
   return (
     <>
-      <ChatRow thread={thread} actions={actions} />
-      {thread.children?.map((c) => (
-        <ChildRow key={c.id} thread={c} actions={actions} />
-      ))}
+      <ChatRow thread={thread} actions={actions} fold={fold} />
+      {open ? kids?.map((c) => <ChildRow key={c.id} thread={c} actions={actions} />) : null}
     </>
   );
 });
