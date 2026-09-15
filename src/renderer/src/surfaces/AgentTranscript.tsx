@@ -70,6 +70,7 @@ import {
   peekTranscriptScroll,
   saveTranscriptScroll,
   takeTranscriptScroll,
+  type TranscriptScrollMemory,
 } from "../lib/transcriptScrollMemory";
 import {
   blockForSeq,
@@ -173,6 +174,19 @@ type ScrollMode = "follow" | "parked" | "free";
 const easeInOut = (t: number) =>
   t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
 const easeOut = (t: number) => 1 - Math.pow(1 - t, 3);
+
+/**
+ * Whether a scroll-up left behind by an earlier mount — the reader's own,
+ * or memory from a cold remount — is worth putting back on open. Only
+ * while the run is still going: a settled thread has nothing left to watch
+ * from up there, so it opens at the bottom regardless of where it was left.
+ */
+export function shouldRestoreScroll(
+  saved: TranscriptScrollMemory | undefined,
+  busy: boolean | undefined,
+): boolean {
+  return !!saved && !!busy;
+}
 
 type Props = {
   blocks: Block[];
@@ -579,11 +593,20 @@ export function AgentTranscript({
     const el = scroller.current;
     if (!el) return;
     const saved = takeTranscriptScroll(sessionId ?? "");
-    if (saved) {
-      // The pane was unmounted while parked: put the reader back.
+    if (shouldRestoreScroll(saved, busy)) {
+      // The pane was unmounted while parked and the run is still going: put
+      // the reader back where they were watching from.
       pinBottom.current = false;
       setMode("free");
-      scrollTo(el, el.scrollHeight - el.clientHeight - saved.fromBottom);
+      scrollTo(el, el.scrollHeight - el.clientHeight - (saved as TranscriptScrollMemory).fromBottom);
+    } else if (!busy) {
+      // A settled thread always opens at the bottom. A scroll-up from
+      // earlier — the reader's own, or restored memory from a cold
+      // remount — only makes sense while there is still something to
+      // watch; once the run is over there is nothing to come back to.
+      pinBottom.current = true;
+      setMode("follow");
+      scrollTo(el, el.scrollHeight);
     } else if (mode.current === "follow") scrollTo(el, el.scrollHeight);
     else if (mode.current === "parked") layoutRunway();
     syncPill(el);
