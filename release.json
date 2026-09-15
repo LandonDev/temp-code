@@ -1,5 +1,5 @@
 {
-  "n": 129,
-  "notes": "Motion remainder on the ease bar: the thread strip's active wash no longer glides on a layoutId (a 120 ms colour swap, so ⌘1..9 and ⌘] measure no layout) and chips fade in and out over 120 ms with the reorder glide still capped at GLIDE_MAX_ROWS; ComposerAction crossfades its glyph in 100 ms without mode=\"wait\", blur or a half-scale, and presses through .pressable; approval toasts glide up on SPRING_LAYOUT when a sibling is answered and their Allow and Deny press; the split board fades in without a flex-basis tween; AppshotFlyIn's flash and flight run 320 ms on EASE_OUT and EASE_DRAWER instead of a retyped curve and the 'easeOut' string; Lightbox enters on SPRING_PANEL and leaves in 100 ms EASE_OUT; MessageQueue's row buttons and ModelSettings' chevron take .pressable and the 150 ms chevron turn; ImplementationView's local ErrorChip is an h-7 chip beside needs-you; the settings step bar tweens in 200 ms and the idle slide in 300 ms",
-  "ts": 1789439313415
+  "n": 130,
+  "notes": "Leftover audit-A values off the rail and composer: SessionReview's box washes /5 with sentence-case Undo all / Keep all and a /10 pressable Review, ContextControl's meter is h-1, commit shas in ChangesPanel and BranchPanel and the FileEditor footer sit at 11px tabular, the composer box and queued rows wash /5, GoalControl's textarea hairline is /10, ProjectDialogs takes the kit INPUT_CLASS, the image attachment's remove button loses its shadow and glass, and approval toasts keep a solid /10 hairline",
+  "ts": 1789439625300
 }
