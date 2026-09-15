@@ -1,5 +1,5 @@
 {
-  "n": 145,
-  "notes": "Every floating surface lifts to one plane: the overlay fill is a 15% lightness at 0.96 alpha in dark and white at 0.97 in light, drawn over a single 20px saturate(1.4) blur with the hairline, so the model picker, modals, approval toasts, the agent sheet, tooltips and menus rise together and a dense transcript never reads through them",
-  "ts": 1789447649299
+  "n": 146,
+  "notes": "\"Archive dormant threads\" spares the thread on screen: dormantThreads takes an exclude set, and the workspace menu and every project card pass the focused session's whole tree — its root and every descendant, from the same store the strip reads its active id — so the thread you are looking at never archives under you however settled it looks",
+  "ts": 1789447735319
 }
