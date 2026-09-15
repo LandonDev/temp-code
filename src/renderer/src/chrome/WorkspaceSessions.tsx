@@ -535,7 +535,7 @@ export const ThreadList = memo(function ThreadList({
 type Tasks = NonNullable<CardThread["tasks"]>;
 
 /** An implementation thread's tally and current task, one step in. */
-function TaskLine({ tasks, paused }: { tasks: Tasks; paused?: boolean }) {
+export function TaskLine({ tasks, paused }: { tasks: Tasks; paused?: boolean }) {
   const tally = paused
     ? "text-warning"
     : tasks.done === tasks.total
@@ -558,7 +558,7 @@ function TaskLine({ tasks, paused }: { tasks: Tasks; paused?: boolean }) {
   );
 }
 
-function ThreadGlyph({ thread }: { thread: ThreadRow }) {
+export function ThreadGlyph({ thread }: { thread: ThreadRow }) {
   const type = thread.threadType ?? "chat";
   const Glyph = THREAD_GLYPHS[type];
   return <Glyph className={`size-3 shrink-0 ${THREAD_TINTS[type]}`} strokeWidth={1.75} />;
@@ -566,11 +566,57 @@ function ThreadGlyph({ thread }: { thread: ThreadRow }) {
 
 type LiveStatus = ReturnType<typeof projectCardStatus<ThreadRow>>;
 
-function RunningLine({ thread: t, now }: { thread: ThreadRow; now: number }) {
+/** The Sessions tab's card reads these lines, never clicks them ("the
+ *  strip above the pane is where the threads live"). A caller that wants
+ *  a row to jump straight to its thread (the rail's popover) passes
+ *  `onSelect`; the row becomes a button instead of a div, same layout. */
+export function RowShell({
+  onSelect,
+  className,
+  title,
+  children,
+}: {
+  onSelect?: () => void;
+  className: string;
+  title?: string;
+  children: ReactNode;
+}) {
+  if (onSelect) {
+    return (
+      <button
+        type="button"
+        title={title}
+        onClick={onSelect}
+        className={`${className} cursor-default text-left hover:bg-content/5`}
+      >
+        {children}
+      </button>
+    );
+  }
+  return (
+    <div className={className} title={title}>
+      {children}
+    </div>
+  );
+}
+
+function RunningLine({
+  thread: t,
+  now,
+  onSelect,
+}: {
+  thread: ThreadRow;
+  now: number;
+  onSelect?: (id: string) => void;
+}) {
   const ms = runningElapsed(t, now);
   const tasks = cardTasks(t);
   return (
-    <div className="w-full py-1" title={t.activity ?? undefined}>
+    <RowShell
+      className="w-full py-1"
+      title={t.activity ?? undefined}
+      onSelect={onSelect ? () => onSelect(t.id) : undefined}
+    >
       <div className="flex w-full items-center gap-1.5 text-[11px] leading-4">
         <MatrixSpinner cell={1.8} tint={t.activityKind} />
         <ThreadGlyph thread={t} />
@@ -584,14 +630,23 @@ function RunningLine({ thread: t, now }: { thread: ThreadRow; now: number }) {
         </span>
       </div>
       {tasks ? <TaskLine tasks={tasks} /> : null}
-    </div>
+    </RowShell>
   );
 }
 
-function PausedLine({ thread: t }: { thread: ThreadRow }) {
+function PausedLine({
+  thread: t,
+  onSelect,
+}: {
+  thread: ThreadRow;
+  onSelect?: (id: string) => void;
+}) {
   const tasks = cardTasks(t);
   return (
-    <div className="w-full bg-warning/5 py-1">
+    <RowShell
+      className="w-full bg-warning/5 py-1"
+      onSelect={onSelect ? () => onSelect(t.id) : undefined}
+    >
       <div className="flex w-full items-center gap-1.5 text-[11px] leading-4 text-warning">
         <Pause className="size-3 shrink-0 fill-current" strokeWidth={1.75} />
         <ThreadGlyph thread={t} />
@@ -602,19 +657,28 @@ function PausedLine({ thread: t }: { thread: ThreadRow }) {
         </span>
       </div>
       {tasks ? <TaskLine tasks={tasks} paused /> : null}
-    </div>
+    </RowShell>
   );
 }
 
-function UnreadLine({ thread: t }: { thread: ThreadRow }) {
+function UnreadLine({
+  thread: t,
+  onSelect,
+}: {
+  thread: ThreadRow;
+  onSelect?: (id: string) => void;
+}) {
   return (
-    <div className="flex w-full items-center gap-1.5 py-1 text-[11px] leading-4">
+    <RowShell
+      className="flex w-full items-center gap-1.5 py-1 text-[11px] leading-4"
+      onSelect={onSelect ? () => onSelect(t.id) : undefined}
+    >
       <span className="size-1.5 shrink-0 rounded-full bg-info" />
       <ThreadGlyph thread={t} />
       <span className="min-w-0 flex-1 truncate font-medium text-content">
         {t.title || "Untitled"}
       </span>
-    </div>
+    </RowShell>
   );
 }
 
@@ -622,17 +686,21 @@ function UnreadLine({ thread: t }: { thread: ThreadRow }) {
  *  spinner (or the blue unread dot) up front, title, elapsed at the end.
  *  A paused line freezes its elapsed where the pause left it. Only a card
  *  with a running line subscribes to the second hand. A card prints one
- *  page of lines (`sessionListWindow`) and a "more" row for the rest. */
+ *  page of lines (`sessionListWindow`) and a "more" row for the rest.
+ *  `onSelectThread`: opt a caller's rows into jumping to their thread on
+ *  click (the Sessions tab's own card leaves this unset by design). */
 export function LiveLines({
   status,
   activeId,
   requested = SESSION_LIST_PAGE,
   onMore,
+  onSelectThread,
 }: {
   status: LiveStatus;
   activeId: string | null;
   requested?: number;
   onMore?: () => void;
+  onSelectThread?: (id: string) => void;
 }) {
   const now = useClock(status.running.length > 0);
   const { shown, hidden } = windowRows(liveLines(status), requested, activeId);
@@ -641,11 +709,11 @@ export function LiveLines({
     <div className="w-full divide-y divide-content/10 border-y border-content/10">
       {shown.map(({ kind, thread }) =>
         kind === "running" ? (
-          <RunningLine key={thread.id} thread={thread} now={now} />
+          <RunningLine key={thread.id} thread={thread} now={now} onSelect={onSelectThread} />
         ) : kind === "paused" ? (
-          <PausedLine key={thread.id} thread={thread} />
+          <PausedLine key={thread.id} thread={thread} onSelect={onSelectThread} />
         ) : (
-          <UnreadLine key={thread.id} thread={thread} />
+          <UnreadLine key={thread.id} thread={thread} onSelect={onSelectThread} />
         ),
       )}
       {hidden > 0 && onMore ? (
