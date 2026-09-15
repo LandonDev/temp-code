@@ -61,7 +61,7 @@ import { ErrorChip } from "./ErrorChip";
 import { CompactionCard } from "./CompactionCard";
 import { AgentSpawnRow } from "./AgentSpawnRow";
 import { CommandChip, ConnectorMark, ConnectorSummary, ReconnectChip, SubagentMark, SubagentSteps, reauthOf } from "./ToolChips";
-import { commandParts, isAgentCall, useKnownCommands, type CommandPart } from "./toolMarks";
+import { commandParts, isAgentCall, mcpServerOf, useKnownCommands, type CommandPart } from "./toolMarks";
 import { TurnStateContext, useTurnState, type TurnSession } from "./turnState";
 import { HarnessIcon } from "../chrome/HarnessIcon";
 import { useLockOverscroll } from "../hooks/useLockOverscroll";
@@ -2283,6 +2283,11 @@ function ActivityToolRow({
   const app = useAppView(block);
   // Every call opens onto its details; the body mounts only once asked for.
   const expandable = !!block.tool && !pending && !block.question;
+  // The app's own tools (mcp__app__*) are the app itself, not a connector —
+  // no brand reads on them. Everything else that went through MCP gets the
+  // connector's mark: a real logo where we have one, a plug glyph otherwise.
+  const mcpServer = mcpServerOf(block.tool?.name ?? "");
+  const connector = mcpServer && mcpServer !== "app" ? mcpServer : null;
 
   return (
     <div data-block={block.id} className={`flex min-w-0 flex-col ${fresh ? "z-fade-in" : ""}`}>
@@ -2297,6 +2302,8 @@ function ActivityToolRow({
           <ConnectorMark app={block.tool.display.app} />
         ) : isAgentCall(block) ? (
           <SubagentMark block={block} />
+        ) : connector ? (
+          <ConnectorMark app={connector} />
         ) : (
           <ActivityToolIcon state={state} live={live} />
         )}
