@@ -1,5 +1,5 @@
 {
-  "n": 162,
-  "notes": "Tool calls into a connector show its logo again: mcpServerOf() reads the server name out of any mcp__server__tool call, and the transcript row's icon now wears that connector's brand (Linear, Convex, GitHub, ...) for any call that isn't the app's own or a subagent spawn — a plug glyph where we have no logo, exactly as before. cosmic-admin gets its own mark (Downloads/cosmicgames-mark.png) since it has no simple-icons entry; AddonMark and the composer's slash-chip renderer both now handle a raster brand alongside the existing vector ones.",
-  "ts": 1789508837713
+  "n": 163,
+  "notes": "Auto account switching picks the account whose weekly window resets soonest, not whichever 5h clock is nearest: aliax-core d2a867e orders failover candidates by weeklyLabel(serviceId) (Weekly for Claude, week for Codex) whatever window just closed, since the week is the budget that actually runs out",
+  "ts": 1789525827060
 }
