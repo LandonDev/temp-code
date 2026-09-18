@@ -1,5 +1,5 @@
 {
-  "n": 163,
-  "notes": "Auto account switching picks the account whose weekly window resets soonest, not whichever 5h clock is nearest: aliax-core d2a867e orders failover candidates by weeklyLabel(serviceId) (Weekly for Claude, week for Codex) whatever window just closed, since the week is the budget that actually runs out",
-  "ts": 1789525827060
+  "n": 164,
+  "notes": "Parked session tabs no longer reconcile a transcript nobody can see",
+  "ts": 1789706325281
 }
