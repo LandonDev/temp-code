@@ -39,11 +39,12 @@ import type {
   Block,
   HarnessId,
   RuntimeMode,
+  Session,
 } from "../lib/session";
 import { sessionStore, useSession } from "../lib/tcserver/store";
 import type { ThreadType } from "../lib/tcserver/types";
 import { FilePane } from "./FilePane";
-import { paneTreePropsEqual } from "./paneTreeProps";
+import { holdWhileHidden, paneTreePropsEqual } from "./paneTreeProps";
 import { SessionPane } from "./SessionPane";
 
 type Props = {
@@ -113,16 +114,30 @@ const DRAG_THRESHOLD = 5;
 type SessionLeafProps = Omit<ComponentProps<typeof SessionPane>, "session"> & { id: string };
 
 /** One conversation pane, subscribed to its own session so a change in any
- *  other session (or a streamed turn elsewhere) never reaches this subtree. */
-function SessionLeaf({ id, ...props }: SessionLeafProps) {
-  const session = useSession(id);
+ *  other session (or a streamed turn elsewhere) never reaches this subtree.
+ *
+ *  That subscription bypasses `PaneTree`'s own `paneTreePropsEqual` memo
+ *  (a store notification re-renders this leaf directly, not through a
+ *  parent prop), so a parked tab whose session is busy would otherwise
+ *  hand `SessionPane` a fresh object on every streamed token and force it
+ *  to reconcile a transcript nobody can see — the cost scales with how
+ *  many mounted-but-hidden tabs are streaming at once. `holdWhileHidden`
+ *  closes that gap the same way `paneTreePropsEqual` does for props: while
+ *  `visible` is false, this keeps handing `SessionPane` the same frozen
+ *  reference, so its memo bails out and the subtree does nothing until
+ *  the tab is shown again. */
+function SessionLeaf({ id, visible, ...props }: SessionLeafProps) {
+  const live = useSession(id);
+  const frozen = useRef<Session | undefined>(undefined);
+  const session = holdWhileHidden(visible, live, frozen.current);
+  if (visible) frozen.current = live;
   // A tab restored at launch carries its meta only; the transcript arrives
   // once the pane is on the page (only the warm set of tabs mounts).
   useEffect(() => {
     void sessionStore.ensureLoaded(id);
   }, [id]);
   if (!session) return null;
-  return <SessionPane session={session} {...props} />;
+  return <SessionPane session={session} visible={visible} {...props} />;
 }
 
 const NO_DIRTY = new Set<string>();
