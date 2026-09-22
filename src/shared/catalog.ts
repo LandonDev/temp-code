@@ -85,6 +85,13 @@ export const CATALOG: Record<ProviderId, ProviderInfo> = {
         context: 1_000_000
       },
       {
+        id: 'claude-opus-5-5',
+        label: 'Opus 5.5',
+        reasoning: CLAUDE_EFFORTS,
+        defaultReasoning: 'medium',
+        context: 1_000_000
+      },
+      {
         id: 'claude-opus-5',
         label: 'Opus 5',
         reasoning: CLAUDE_EFFORTS,

@@ -69,6 +69,14 @@ export const MODELS: AgentModel[] = [
     nativeId: "claude-sonnet-5",
   },
   {
+    id: "claude:opus-5.5",
+    harness: "claude",
+    name: "Claude Opus 5.5",
+    nativeId: "claude-opus-5-5",
+    contextWindow: 1_000_000,
+    settings: CLAUDE_FRONTIER_SETTINGS,
+  },
+  {
     id: "claude:opus-5",
     harness: "claude",
     name: "Claude Opus 5",
