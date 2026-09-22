@@ -1,5 +1,5 @@
 {
-  "n": 164,
-  "notes": "Parked session tabs no longer reconcile a transcript nobody can see",
-  "ts": 1789706325281
+  "n": 165,
+  "notes": "Add Claude Opus 5.5 (claude-opus-5-5) to the model catalog and bump the bundled Agent SDK to 0.3.280 (CLI 2.1.280, the first build that accepts the new model). No banked resets for Claude: api/oauth/usage carries no reset-credit field, so the accounts popover has nothing to show.",
+  "ts": 1790100147624
 }
