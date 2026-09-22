@@ -54,7 +54,7 @@
     "script:e2e-m11": "esbuild scripts/e2e-m11.ts --bundle --platform=node --format=esm --packages=external --alias:@shared=./src/shared --alias:electron=./scripts/electron-shim.mjs --outfile=scripts/.out/e2e-m11.mjs && node scripts/.out/e2e-m11.mjs"
   },
   "dependencies": {
-    "@anthropic-ai/claude-agent-sdk": "0.3.227",
+    "@anthropic-ai/claude-agent-sdk": "0.3.280",
     "aliax-core": "github:LandonDev/aliax-core#d2a867ec1a489da58bc58df1ff064f56da9a9cf0",
     "@codemirror/autocomplete": "^6.20.3",
     "@codemirror/commands": "^6.10.4",
