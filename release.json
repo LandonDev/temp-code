@@ -1,5 +1,5 @@
 {
-  "n": 165,
-  "notes": "Add Claude Opus 5.5 (claude-opus-5-5) to the model catalog and bump the bundled Agent SDK to 0.3.280 (CLI 2.1.280, the first build that accepts the new model). No banked resets for Claude: api/oauth/usage carries no reset-credit field, so the accounts popover has nothing to show.",
-  "ts": 1790100147624
+  "n": 166,
+  "notes": "Chats outside a workspace are back: a fixed \"Chats\" entry in the rail opens the home, where the sidebar lists the loose chats (no project, no workspace) with New chat running in the home directory, the tab strip shows only those chats, and a loose thread opened from search or the inbox brings the home forward. Rail signals, last-thread landings and the strip key loose threads under \"~\"; with no project selected the strip now shows only the current workspace's own chats instead of every workspace's.",
+  "ts": 1790266771706
 }
