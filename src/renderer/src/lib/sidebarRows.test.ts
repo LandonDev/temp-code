@@ -69,6 +69,10 @@ describe("sidebarItems", () => {
     expect(items.map((i) => i.key)).toEqual(["a", "b", "chats", "archived"]);
   });
 
+  it("the home always shows its chats section, never the empty hint", () => {
+    expect(sidebarItems(groups(), true).map((i) => i.kind)).toEqual(["chats"]);
+  });
+
   it("leaves out empty sections and shows the empty hint when there is nothing", () => {
     expect(sidebarItems(groups({ projects: [group("a")] })).map((i) => i.kind)).toEqual([
       "project",

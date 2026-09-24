@@ -13,7 +13,9 @@ import {
 } from "./layout";
 import { displayPath, projectName } from "./paths";
 import { sameProjectPath } from "./recents";
+import type { Catalog } from "./projectContext";
 import type { Session } from "./session";
+import { workspaceIdOf } from "./tcserver/workspaces";
 
 export function workspaceTabCwd(
   tab: WorkspaceTab,
@@ -83,6 +85,26 @@ export function filterTabsForProjectId(
   projectId: string | null,
 ): WorkspaceTab[] {
   return tabs.filter((tab) => tabProjectKey(tab, sessions) === projectId);
+}
+
+/**
+ * With no project selected the strip shows the workspace's own loose chats
+ * (`workspaceId` null: the home's chats, outside every workspace). A tab
+ * with no session leaf (files only) stays.
+ */
+export function filterTabsForWorkspace(
+  tabs: WorkspaceTab[],
+  sessions: readonly Pick<Session, "id" | "projectId" | "workspaceId" | "cwd">[],
+  catalog: Catalog,
+  workspaceId: string | null,
+): WorkspaceTab[] {
+  return tabs.filter((tab) => {
+    for (const id of leafIds(tab.layout)) {
+      const session = sessions.find((entry) => entry.id === id);
+      if (session) return workspaceIdOf(session, catalog.projects, catalog.workspaces) === workspaceId;
+    }
+    return true;
+  });
 }
 
 export type WorkspaceTabCloseScope = "project" | "workspace";

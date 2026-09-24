@@ -76,6 +76,21 @@ describe("groupWorkspaceSessions", () => {
     expect(out.archived).toEqual([]);
   });
 
+  it("the home holds the chats outside every workspace and no cards", () => {
+    const metas = [
+      meta("t-project", { projectId: "p1", cwd: "/wt/p1" }),
+      meta("t-loose", { workspaceId: "wa" }),
+      meta("t-legacy", { cwd: "/repo/a/" }),
+      meta("t-home", { cwd: "/home/me" }),
+      meta("t-elsewhere", { cwd: "/tmp/scratch" }),
+      meta("t-home-child", { parentId: "t-home", cwd: "/home/me" }),
+    ];
+    const out = groupWorkspaceSessions(metas, projects, workspaces, null, {});
+    expect(out.projects).toEqual([]);
+    expect(out.archived).toEqual([]);
+    expect(out.chats.map((t) => t.id).sort()).toEqual(["t-elsewhere", "t-home"]);
+  });
+
   it("nests children under their root, ranked, and skips archived ones", () => {
     const metas = [
       meta("root", { projectId: "p1", cwd: "/wt/p1" }),

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { projectCardAriaLabel, projectCardTitle } from "./ProjectRail";
+import { chatsAriaLabel, projectCardAriaLabel, projectCardTitle } from "./ProjectRail";
 
 const stats = { files: 2, additions: 3, deletions: 1 };
 
@@ -40,5 +40,13 @@ describe("projectCardAriaLabel", () => {
     expect(projectCardAriaLabel("Repo", stats, false, true)).toBe(
       "Repo, needs you, 2 files changed, +3, -1",
     );
+  });
+});
+
+describe("chatsAriaLabel", () => {
+  it("names the loose chats' state, needs-you first", () => {
+    expect(chatsAriaLabel(false, false)).toBe("Chats");
+    expect(chatsAriaLabel(true, false)).toBe("Chats, working");
+    expect(chatsAriaLabel(true, true)).toBe("Chats, needs you");
   });
 });

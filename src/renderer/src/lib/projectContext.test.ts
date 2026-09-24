@@ -3,6 +3,7 @@ import {
   contextForCwd,
   contextOfSession,
   forgetLastSession,
+  homeOrWorkspacePath,
   loadLastSession,
   loadSelectedProject,
   rebaseToWorkspace,
@@ -170,5 +171,25 @@ describe("last thread per project / workspace", () => {
     const loose = meta("s2", { projectId: null, workspaceId: "w1", cwd: "/home/me/repo" });
     saveLastSession({ workspacePath: "/home/me/elsewhere" }, "s2");
     expect(resolveLanding({ workspacePath: "/home/me/elsewhere" }, [loose], moved)).toBe("s2");
+  });
+
+  it("lands the home on its last loose chat, whatever home directory the server wrote", () => {
+    const loose = meta("s3", { projectId: null, workspaceId: null, cwd: "/home/me" });
+    saveLastSession({ workspacePath: "/home/me" }, "s3");
+    expect(loadLastSession({ workspacePath: "~" })).toBe("s3");
+    expect(resolveLanding({ workspacePath: "~" }, [loose], catalog)).toBe("s3");
+    // A workspace chat never lands the home.
+    const ws = meta("s4", { projectId: null, workspaceId: "w1", cwd: "/home/me/repo" });
+    saveLastSession({ workspacePath: "~" }, "s4");
+    expect(resolveLanding({ workspacePath: "~" }, [ws], catalog)).toBeNull();
+  });
+});
+
+describe("homeOrWorkspacePath", () => {
+  it("keeps a workspace folder and folds everything else into the home", () => {
+    expect(homeOrWorkspacePath("/home/me/repo/")).toBe("/home/me/repo");
+    expect(homeOrWorkspacePath("~")).toBe("~");
+    expect(homeOrWorkspacePath("/")).toBe("~");
+    expect(homeOrWorkspacePath("")).toBe("~");
   });
 });

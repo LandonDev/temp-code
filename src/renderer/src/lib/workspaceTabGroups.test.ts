@@ -8,6 +8,7 @@ import {
   filterTabsForProject,
   findTabForProject,
   filterTabsForProjectId,
+  filterTabsForWorkspace,
   planWorkspaceTabClose,
   replaceGroupInTabOrder,
   tabProjectKey,
@@ -228,6 +229,36 @@ describe("tabProjectKey", () => {
     expect(filterTabsForProjectId(tabs, sessions, null).map((t) => t.id)).toEqual([
       "b",
       "c",
+    ]);
+  });
+});
+
+describe("filterTabsForWorkspace", () => {
+  const catalog = {
+    workspaces: [{ id: "w1", name: "repo", path: "/repo", git: true, createdAt: 1 }],
+    projects: [],
+  };
+  const sessions: Session[] = [
+    { ...session("ws", "/repo", null), workspaceId: "w1" },
+    { ...session("byPath", "/repo", null), workspaceId: null },
+    { ...session("home", "/home/me", null), workspaceId: null },
+    session("blank", "~"),
+  ];
+  const tabs = [tab("a", "ws"), tab("b", "byPath"), tab("c", "home"), tab("d", "blank"), tab("e", "missing")];
+
+  it("keeps the workspace's own chats and file-only tabs", () => {
+    expect(filterTabsForWorkspace(tabs, sessions, catalog, "w1").map((t) => t.id)).toEqual([
+      "a",
+      "b",
+      "e",
+    ]);
+  });
+
+  it("the home keeps the chats outside every workspace", () => {
+    expect(filterTabsForWorkspace(tabs, sessions, catalog, null).map((t) => t.id)).toEqual([
+      "c",
+      "d",
+      "e",
     ]);
   });
 });

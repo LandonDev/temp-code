@@ -1,4 +1,4 @@
-import { normalizeProjectPath } from "./recents";
+import { looksLikeProject, normalizeProjectPath } from "./recents";
 import type { Session } from "./session";
 import type { ProjectMeta, SessionMeta, WorkspaceMeta } from "./tcserver/types";
 import { workspaceByPath } from "./tcserver/workspaces";
@@ -75,6 +75,13 @@ export function contextOfSession(
 
 /** The workspace folder a session's tab belongs to on the rail: a
  *  worktree thread lists under its workspace, not its worktree dir. */
+/** The rail key for a folder: a workspace path as itself, anything else
+ *  (the home directory, a stray folder) as the "~" home where loose chats
+ *  live. */
+export function homeOrWorkspacePath(path: string): string {
+  return looksLikeProject(path) ? normalizeProjectPath(path) : "~";
+}
+
 export function workspacePathOfSession(
   session: Pick<Session, "cwd" | "projectId" | "workspaceId">,
   catalog: Catalog,
@@ -149,7 +156,7 @@ export type LandingScope = { projectId: string } | { workspacePath: string };
 const scopeKey = (scope: LandingScope): string =>
   "projectId" in scope
     ? `proj:${scope.projectId}`
-    : `ws:${normalizeProjectPath(scope.workspacePath)}`;
+    : `ws:${homeOrWorkspacePath(scope.workspacePath)}`;
 
 export function loadLastSession(scope: LandingScope): string | null {
   const id = readMap(LAST_SESSION_KEY)[scopeKey(scope)];
@@ -187,6 +194,6 @@ export function resolveLanding(
   // A subagent renders on its parent's board and is never a landing.
   if (!meta || meta.archived || meta.parentId) return null;
   if ("projectId" in scope) return meta.projectId === scope.projectId ? id : null;
-  const here = normalizeProjectPath(scope.workspacePath);
-  return normalizeProjectPath(workspacePathOfSession(meta, catalog)) === here ? id : null;
+  const here = homeOrWorkspacePath(scope.workspacePath);
+  return homeOrWorkspacePath(workspacePathOfSession(meta, catalog)) === here ? id : null;
 }

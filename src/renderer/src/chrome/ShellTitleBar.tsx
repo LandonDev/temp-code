@@ -4,7 +4,11 @@ import { resolveSessionContext } from "../lib/projectContext";
 import { useRightRailOpen } from "../lib/rightRail";
 import { canTabVisitBack, canTabVisitForward } from "../lib/tabVisitHistory";
 import { useWorkspaceCatalog } from "../lib/tcserver/workspaces";
-import { filterTabsForProjectId, tabArchived } from "../lib/workspaceTabGroups";
+import {
+  filterTabsForProjectId,
+  filterTabsForWorkspace,
+  tabArchived,
+} from "../lib/workspaceTabGroups";
 import { useEditors } from "../stores/editors";
 import { header } from "../stores/header";
 import { dockCwdOf, useProject, useProjectCwds } from "../stores/project";
@@ -122,16 +126,17 @@ function ShellTitleBarComponent({ headerEvents, ...titleBar }: Props) {
       }).workspaceId ?? null
     : null;
   // Deck mode shows the selected project's tabs, keyed by server project id.
-  // Loose chats and projectless drafts only show while no project is selected.
-  const deckTabs = useMemo(
-    () =>
-      deckLayout
-        ? filterTabsForProjectId(tabs, shells, selectedProjectId).filter(
-            (tab) => !tabArchived(tab, shells),
-          )
-        : tabs,
-    [deckLayout, tabs, shells, selectedProjectId],
-  );
+  // With no project selected it shows this workspace's own loose chats, or
+  // on the home the chats outside every workspace.
+  const deckTabs = useMemo(() => {
+    if (!deckLayout) return tabs;
+    const open = filterTabsForProjectId(tabs, shells, selectedProjectId).filter(
+      (tab) => !tabArchived(tab, shells),
+    );
+    return selectedProjectId || !catalog.loaded
+      ? open
+      : filterTabsForWorkspace(open, shells, catalog, headerWorkspaceId);
+  }, [catalog, deckLayout, headerWorkspaceId, tabs, shells, selectedProjectId]);
   const sessions = useServerSessions();
   const sessionMetas = useSessionMetas();
   const planReady = usePlanReady(sessions);
