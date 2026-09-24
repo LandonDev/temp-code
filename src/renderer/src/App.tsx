@@ -161,7 +161,12 @@ import {
 } from "./lib/projectContext";
 import { deleteWorkspace, projectForCwd } from "./lib/tcserver/projects";
 import type { ProjectMeta } from "./lib/tcserver/types";
-import { useWorkspaceCatalog, workspaceByPath, workspaceStore } from "./lib/tcserver/workspaces";
+import {
+  useWorkspaceCatalog,
+  workspaceByPath,
+  workspaceIdOf,
+  workspaceStore,
+} from "./lib/tcserver/workspaces";
 import { draftFromDefaults } from "./lib/tcserver/defaults";
 import type { ThreadType } from "./lib/tcserver/types";
 import { historyStore } from "./lib/historyStore";
@@ -205,6 +210,7 @@ import {
 import {
   applyDeletedSessionToWorkspace,
   filterTabsForProject,
+  filterTabsForWorkspace,
   planWorkspaceTabClose,
   selectedChangePath,
   tabProjectKey,
@@ -1844,8 +1850,16 @@ export default function App() {
   // are about to open and the rail and sessions list would disagree.
   const selectWorkspaceOfSession = useCallback(
     (session: Pick<Session, "cwd" | "projectId" | "workspaceId">) => {
-      const path = normalizeProjectPath(workspacePathOfSession(session, workspaceStore.getSnapshot()));
-      if (looksLikeProject(path) && !sameProjectPath(projectStore.getState().projectCwd, path)) {
+      const catalog = workspaceStore.getSnapshot();
+      const projectCwd = projectStore.getState().projectCwd;
+      // A thread outside every workspace lives on the home, whatever folder
+      // it runs in.
+      if (catalog.loaded && workspaceIdOf(session, catalog.projects, catalog.workspaces) === null) {
+        if (projectCwd !== "~") project.setProjectCwd("~");
+        return;
+      }
+      const path = normalizeProjectPath(workspacePathOfSession(session, catalog));
+      if (looksLikeProject(path) && !sameProjectPath(projectCwd, path)) {
         project.enterWorkspace(path);
       }
     },
@@ -2279,6 +2293,33 @@ export default function App() {
     },
     [activateTab, appendTab, cwdContext, focusOpenSession, onCwdChange, openLanding, seededSession],
   );
+
+  /** Rail: the home, the chats outside every workspace. Its open tab stays
+   *  put; else the thread it was last on comes back, else a blank chat. */
+  const onOpenChats = useCallback(() => {
+    shell.closeViews();
+    project.setProjectCwd("~");
+    const state = workspaceTabsStore.getState();
+    const catalog = workspaceStore.getSnapshot();
+    const landing = resolveLanding({ workspacePath: "~" }, sessionStore.metas(), catalog);
+    if (landing && focusOpenSession(landing)) return;
+    const open = filterTabsForWorkspace(state.tabs, sessionStore.getSnapshot(), catalog, null);
+    if (open.some((tab) => tab.id === state.activeTabId)) return;
+    const recent = [...state.visits.back]
+      .reverse()
+      .map((id) => open.find((tab) => tab.id === id))
+      .find((tab) => tab !== undefined);
+    const target = recent ?? open[0];
+    if (target) {
+      activateTab(target.id);
+      return;
+    }
+    if (landing) {
+      void openLanding(landing, "~");
+      return;
+    }
+    onNewChat(null);
+  }, [activateTab, focusOpenSession, onNewChat, openLanding]);
 
   const newWorkspacePath = useShell((s) => s.newWorkspacePath);
   const pickProject = useCallback(async () => {
@@ -3392,6 +3433,7 @@ export default function App() {
         onSearch={onOpenSearch}
         onOpenInbox={onOpenInbox}
         onOpenNotes={onOpenNotes}
+        onOpenChats={deckLayout ? onOpenChats : undefined}
         onGoToFile={deckLayout ? onGoToFile : undefined}
         onOpenWhatsNew={onOpenWhatsNew}
       />

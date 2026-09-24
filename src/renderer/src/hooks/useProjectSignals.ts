@@ -1,7 +1,7 @@
 import { useMemo, useSyncExternalStore } from "react";
 import { projectCardStatus, type CardThread } from "../lib/projectCardModel";
 import type { Catalog } from "../lib/projectContext";
-import { workspacePathOfSession } from "../lib/projectContext";
+import { homeOrWorkspacePath, workspacePathOfSession } from "../lib/projectContext";
 import type { Session } from "../lib/session";
 import { useLastSeen, useSeenFloor } from "../lib/sessionSeen";
 import { sessionStore, useSessionMetas } from "../lib/tcserver/store";
@@ -43,7 +43,8 @@ export function projectSignals(
     if (!needs && !session.busy) continue;
     const path = workspacePathOfSession(session, catalog);
     if (!path) continue;
-    (needs ? needsYou : busy).add(path);
+    // A loose chat signals on the rail's Chats entry, keyed "~".
+    (needs ? needsYou : busy).add(homeOrWorkspacePath(path));
   }
   // Needs-you outranks working, per folder as well as per thread.
   for (const path of needsYou) busy.delete(path);

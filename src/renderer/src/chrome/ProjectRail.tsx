@@ -6,6 +6,7 @@ import {
   CircleAlert,
   FolderOpen,
   Inbox,
+  MessageSquare,
   MoreHorizontal,
   Pause,
   Pin,
@@ -124,6 +125,8 @@ type Props = {
   onOpenInbox?: () => void;
   notesEnabled?: boolean;
   onOpenNotes?: () => void;
+  /** The home: the chats outside every workspace. */
+  onOpenChats?: () => void;
   onSelectProject: (path: string) => void;
   onOpenProject: () => void;
   onRemoveProject?: (path: string, options: { purgeData: boolean }) => void;
@@ -147,6 +150,7 @@ export function ProjectRail({
   onOpenInbox,
   notesEnabled = true,
   onOpenNotes,
+  onOpenChats,
   onSelectProject,
   onOpenProject,
   onRemoveProject,
@@ -433,6 +437,16 @@ export function ProjectRail({
                 onClick={onOpenNotes}
                 active={notesActive}
                 ariaLabel="Notes"
+              />
+            ) : null}
+            {onOpenChats ? (
+              <RailAction
+                label="Chats"
+                icon={MessageSquare}
+                onClick={onOpenChats}
+                active={!searchActive && !inboxActive && !notesActive && cwd === "~"}
+                dot={needsYou.has("~") || busy.has("~")}
+                ariaLabel={chatsAriaLabel(busy.has("~"), needsYou.has("~"))}
               />
             ) : null}
           </div>
@@ -1223,6 +1237,13 @@ function ProjectDiffStat({
       ) : null}
     </span>
   );
+}
+
+/** The rail's Chats entry: loose chats signal like a workspace card does. */
+export function chatsAriaLabel(busy: boolean, needsYou: boolean): string {
+  if (needsYou) return "Chats, needs you";
+  if (busy) return "Chats, working";
+  return "Chats";
 }
 
 export function projectCardTitle(

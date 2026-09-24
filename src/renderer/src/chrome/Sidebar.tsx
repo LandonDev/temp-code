@@ -1,5 +1,6 @@
 import {
   Inbox,
+  MessageSquare,
   MoreHorizontal,
   Plus,
   Search,
@@ -143,6 +144,7 @@ type Props = {
   onSearch?: () => void;
   onOpenInbox?: () => void;
   onOpenNotes?: () => void;
+  onOpenChats?: () => void;
   onGoToFile?: () => void;
   onSelectProjectCard?: (projectId: string | null) => void;
   onNewChat?: (projectId: string | null) => void;
@@ -172,6 +174,7 @@ function SidebarComponent({
   onSearch,
   onOpenInbox,
   onOpenNotes,
+  onOpenChats,
   onGoToFile,
   onSelectProjectCard,
   onNewChat,
@@ -202,9 +205,10 @@ function SidebarComponent({
   const gitRoot = gitCwd || cwd;
   // Focus boot: start the JVM engine for a build-file project as soon as
   // it is selected, so the first Java tab opens warm.
+  const inProject = looksLikeProject(cwd);
   useEffect(() => {
-    if (cwd && cwd !== "~") void warmProjectForCwd(gitRoot);
-  }, [cwd, gitRoot]);
+    if (inProject) void warmProjectForCwd(gitRoot);
+  }, [gitRoot, inProject]);
   const inboxUnseen = useInboxUnseen();
   const resize = useDragResize({
     min: MIN_WIDTH,
@@ -219,7 +223,11 @@ function SidebarComponent({
   const sessionsLock = useLockOverscroll<HTMLDivElement>();
   const sessionsScrollRef = useRef<HTMLDivElement>(null);
   const deckLayout = layout === "deck";
-  const tab = useShell((s) => s.sidebarTab);
+  /** The home: no workspace folder, the chats outside every workspace. It
+   *  has one tab, Sessions, and nothing to browse or diff. */
+  const atHome = deckLayout && workspaceCwd === "~";
+  const shellTab = useShell((s) => s.sidebarTab);
+  const tab: SidebarTab = atHome ? "sessions" : shellTab;
   const filesSearchOpen = useShell((s) => s.filesSearchOpen);
   const searchFocusToken = useShell((s) => s.searchFocusToken);
   const searchActive = useShell((s) => s.searchViewOpen);
@@ -240,9 +248,11 @@ function SidebarComponent({
     saveSidebarTabOrder(next);
     if (next[0]) shell.setSidebarTab(next[0]);
   });
-  const visibleTabs = deckLayout
-    ? tabOrder.filter((itemId) => itemId !== "inbox")
-    : tabOrder.filter((itemId) => itemId !== "changes");
+  const visibleTabs: SidebarTab[] = atHome
+    ? ["sessions"]
+    : deckLayout
+      ? tabOrder.filter((itemId) => itemId !== "inbox")
+      : tabOrder.filter((itemId) => itemId !== "changes");
   const canDragTabs = visibleTabs.length > 1;
   const showProjectRail =
     deckLayout && Boolean(onSelectProject && onOpenProject);
@@ -251,6 +261,8 @@ function SidebarComponent({
   const railVisible = showProjectRail && (projectRailOpen || settingsOpen);
   const workspace = useWorkspaces().find((w) => w.id === workspaceId);
   const workspacePath = workspace?.path ?? cwd;
+  /** What the Sessions list shows: a workspace, the home (null), or nothing. */
+  const sessionsScope: string | null | undefined = workspaceId ?? (atHome ? null : undefined);
   const [workspaceMenu, setWorkspaceMenu] = useState<HTMLElement | null>(null);
   const [newProjectOpen, setNewProjectOpen] = useState(false);
   const [threadDefaultsOpen, setThreadDefaultsOpen] = useState(false);
@@ -264,20 +276,20 @@ function SidebarComponent({
   const lastSeen = useLastSeen();
   const seenFloor = useSeenFloor();
   const dormant = useMemo(() => {
-    if (!workspaceId) return [];
+    if (sessionsScope === undefined) return [];
     const roots = metas.filter(
       (m) =>
         !m.parentId &&
         !m.archived &&
-        workspaceIdOf(m, catalogProjects, catalogWorkspaces) === workspaceId,
+        workspaceIdOf(m, catalogProjects, catalogWorkspaces) === sessionsScope,
     );
     return dormantThreads(roots, lastSeen, seenFloor, focusedTree(metas, activeSessionId));
-  }, [activeSessionId, catalogProjects, catalogWorkspaces, lastSeen, metas, seenFloor, workspaceId]);
+  }, [activeSessionId, catalogProjects, catalogWorkspaces, lastSeen, metas, seenFloor, sessionsScope]);
   const dormantGroups = useMemo(() => dormantByType(dormant), [dormant]);
   const workspaceSessions =
-    workspaceId && onSelectProjectCard && onNewChat ? (
+    sessionsScope !== undefined && onSelectProjectCard && onNewChat ? (
       <WorkspaceSessions
-        workspaceId={workspaceId}
+        workspaceId={sessionsScope}
         selectedProjectId={selectedProjectId}
         activeSessionId={activeSessionId}
         onSelectProject={onSelectProjectCard}
@@ -288,7 +300,6 @@ function SidebarComponent({
         onDeleteSession={(id) => onDeleteSession?.(id, { confirmed: true })}
       />
     ) : null;
-  const inProject = looksLikeProject(cwd);
   const classicSettings = settingsOpen && !deckLayout;
   const showSidebarFooter = !deckLayout || !projectRailOpen;
   // A blank session has no project to browse, so the shell stands alone until
@@ -299,9 +310,9 @@ function SidebarComponent({
     !searchActive &&
     !inboxActive &&
     !notesActive &&
-    (classicSettings || (!settingsOpen && !(deckLayout && !inProject)));
+    (classicSettings || (!settingsOpen && !(deckLayout && !inProject && !atHome)));
   const gitStatuses = useGitFileStatuses(gitRoot, open && tab === "files");
-  const changeStats = useProjectDiffStats(gitRoot, open);
+  const changeStats = useProjectDiffStats(gitRoot, open && inProject);
   const groupLogos = useTabGroupLogos();
   const projectLogoPath = resolveTabGroupLogo(projectName(cwd), groupLogos);
 
@@ -398,10 +409,10 @@ function SidebarComponent({
             data-tauri-drag-region="deep"
           >
             <span className="min-w-0 flex-1 truncate text-sm font-medium leading-tight">
-              Workspace
+              {atHome ? "Chats" : "Workspace"}
             </span>
             <WorkspaceTitleActions
-              onSearch={onGoToFile}
+              onSearch={atHome ? undefined : onGoToFile}
               onNew={onNew}
               onMenu={workspaceSessions ? openWorkspaceMenu : undefined}
               menuOpen={!!workspaceMenu}
@@ -449,10 +460,10 @@ function SidebarComponent({
           )}
           {deckLayout && onSelectProject ? (
             <SidebarProjectPicker
-              cwd={cwd}
+              cwd={atHome ? "~" : cwd}
               recents={recents}
-              busy={projectPathIn(busyProjectPaths, cwd)}
-              needsYou={projectPathIn(needsYouProjectPaths, cwd)}
+              busy={projectPathIn(busyProjectPaths, atHome ? "~" : cwd)}
+              needsYou={projectPathIn(needsYouProjectPaths, atHome ? "~" : cwd)}
               onSelectProject={onSelectProject}
               onNewTerminal={onNewTerminal}
               onSearch={onSearch}
@@ -566,12 +577,10 @@ function SidebarComponent({
               tab === "sessions" ? "" : "hidden"
             }`}
           >
-            {!cwd || cwd === "~" ? (
+            {workspaceSessions ?? (
               <p className="px-3 py-2 text-[12px] text-content/50">
                 No project folder
               </p>
-            ) : (
-              workspaceSessions
             )}
           </div>
           {deckLayout && tab === "changes" ? (
@@ -633,7 +642,7 @@ function SidebarComponent({
           onOrchestration={workspace ? () => openOrchestrationSettings(workspace.id) : undefined}
           onWorkspaceSettings={workspace ? () => openWorkspaceSettings(workspace.id) : undefined}
           onRemoveWorkspace={
-            railVisible
+            railVisible && !atHome
               ? () => requestProjectRailAction({ kind: "remove", path: workspacePath })
               : undefined
           }
@@ -695,6 +704,7 @@ function SidebarComponent({
           onOpenInbox={onOpenInbox}
           notesEnabled={notesEnabled}
           onOpenNotes={onOpenNotes}
+          onOpenChats={onOpenChats}
           onSelectProject={onSelectProject}
           onOpenProject={onOpenProject}
           onRemoveProject={onRemoveProject}
@@ -755,12 +765,11 @@ function SidebarProjectPicker({
   const [groupCustomColors] = useState(loadTabGroupCustomColors);
   const [groupMascots] = useState(loadTabGroupMascots);
   const groupLogos = useTabGroupLogos();
+  const atHome = cwd === "~";
   const projectKey = workspaceLabelKey(useWorkspaces(), cwd, projectName(cwd));
-  const label = resolveTabGroupLabel(
-    projectKey,
-    groupLabels,
-    basename(cwd) || projectKey,
-  );
+  const label = atHome
+    ? "Chats"
+    : resolveTabGroupLabel(projectKey, groupLabels, basename(cwd) || projectKey);
   const logoPath = resolveTabGroupLogo(projectKey, groupLogos);
   const color = resolveTabGroupColor(
     projectKey,
@@ -784,7 +793,9 @@ function SidebarProjectPicker({
         className="min-w-0 items-center"
         buttonClassName="flex h-6.5 w-full items-center gap-1.5 rounded-md px-2 text-[12px] leading-none text-content/50 hover:text-content"
       >
-        {logoPath ? (
+        {atHome ? (
+          <MessageSquare className="size-3.5 shrink-0" strokeWidth={1.75} />
+        ) : logoPath ? (
           <ProjectLogoIcon
             path={logoPath}
             className="size-3.5 shrink-0 rounded-md"

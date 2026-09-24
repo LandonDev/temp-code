@@ -75,7 +75,8 @@ import {
 } from "../lib/workspaceSessions";
 
 type Props = {
-  workspaceId: string;
+  /** Null: the home, the chats outside every workspace. */
+  workspaceId: string | null;
   selectedProjectId: string | null;
   activeSessionId?: string;
   onSelectProject: (projectId: string | null) => void;
@@ -1210,7 +1211,7 @@ export default function WorkspaceSessions({
   // a card that grows a live line pushes the ones below it. (A fold's
   // height animation is measured too: the root re-renders per frame while
   // a section opens or closes, and the memoized cards sit that out.)
-  const items = useMemo(() => sidebarItems(groups), [groups]);
+  const items = useMemo(() => sidebarItems(groups, workspaceId === null), [groups, workspaceId]);
   const scroller = useRef<HTMLDivElement>(null);
   const estimateSize = useCallback((i: number) => estimateItem(items[i]), [items]);
   const getItemKey = useCallback((i: number) => items[i].key, [items]);

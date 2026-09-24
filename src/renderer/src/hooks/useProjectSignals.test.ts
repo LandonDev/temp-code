@@ -64,6 +64,18 @@ describe("projectSignals", () => {
     expect(signals.needsYou).toEqual(["/a"]);
   });
 
+  it("keys a loose chat under the home, beside the workspaces", () => {
+    const signals = projectSignals(
+      [
+        session({ cwd: "~", status: "running", busy: true }),
+        session({ cwd: "/a", status: "waiting" }),
+      ],
+      catalog,
+    );
+    expect(signals.busy).toEqual(["~"]);
+    expect(signals.needsYou).toEqual(["/a"]);
+  });
+
   it("ignores idle threads", () => {
     expect(projectSignals([session({ cwd: "/a" })], catalog)).toEqual({
       busy: [],

@@ -5,6 +5,7 @@ import { sortAgents } from "./threads/agents";
 /**
  * What the Sessions tab shows for one workspace: its project cards, its
  * archived projects, and the loose chats that hang off the workspace itself.
+ * A null workspace is the home: the chats outside every workspace, no cards.
  * Pure; the component feeds it the store snapshots and the lastSeen map.
  */
 
@@ -191,7 +192,7 @@ export function groupWorkspaceSessions(
   metas: readonly SessionMeta[],
   projects: readonly ProjectMeta[],
   workspaces: readonly WorkspaceMeta[],
-  workspaceId: string,
+  workspaceId: string | null,
   lastSeen: Record<string, number>,
   floor = 0,
   cache?: RowCache,

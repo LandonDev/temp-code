@@ -18,14 +18,15 @@ export type SidebarItem =
   | { kind: "archived"; key: "archived"; groups: ProjectGroup[] }
   | { kind: "empty"; key: "empty" };
 
-/** Cards first, then chats and archived when there are any, else the empty hint. */
-export function sidebarItems(groups: WorkspaceSessionGroups): SidebarItem[] {
+/** Cards first, then chats and archived when there are any, else the empty
+ *  hint. The home has no cards to offer, so its chats section always shows. */
+export function sidebarItems(groups: WorkspaceSessionGroups, home = false): SidebarItem[] {
   const items: SidebarItem[] = groups.projects.map((group) => ({
     kind: "project",
     key: group.project.id,
     group,
   }));
-  if (groups.chats.length)
+  if (groups.chats.length || home)
     items.push({ kind: "chats", key: "chats", threads: groups.chats });
   if (groups.archived.length)
     items.push({ kind: "archived", key: "archived", groups: groups.archived });
