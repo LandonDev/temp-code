@@ -398,7 +398,7 @@ export async function permission(sessionId: string, mode: RuntimeMode, link = cl
 
 export async function tune(
   sessionId: string,
-  patch: { fast?: boolean; context1m?: boolean },
+  patch: { fast?: boolean; context1m?: boolean; model?: string },
   link = client,
 ): Promise<void> {
   if (sessionStore.isDraft(sessionId)) return;

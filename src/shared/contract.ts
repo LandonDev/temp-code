@@ -635,15 +635,17 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
     method: z.literal('session.permission'),
     params: z.object({ sessionId: z.string(), permission: PermissionPolicySchema })
   }),
-  // Session tuning: fast mode / 1M context. Harness restarts with resume
-  // on the next send, same as a model change.
+  // Session tuning: fast mode / 1M context / model. Harness restarts with
+  // resume on the next send. A model of another provider is ignored here
+  // (send() switches the harness); the same provider's model lands at once.
   z.object({
     id: z.string(),
     method: z.literal('session.tune'),
     params: z.object({
       sessionId: z.string(),
       fast: z.boolean().optional(),
-      context1m: z.boolean().optional()
+      context1m: z.boolean().optional(),
+      model: z.string().min(1).optional()
     })
   }),
   // Change the thread's type mid-conversation. The harness restarts with

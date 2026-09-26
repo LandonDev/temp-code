@@ -902,7 +902,8 @@ export async function startServer(
           case 'session.tune':
             await registry.tune(req.params.sessionId, {
               fast: req.params.fast,
-              context1m: req.params.context1m
+              context1m: req.params.context1m,
+              model: req.params.model
             })
             sendFrame({ id: req.id, ok: true, result: null })
             break

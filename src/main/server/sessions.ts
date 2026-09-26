@@ -234,8 +234,9 @@ export interface Switched {
 }
 /** Where a thread's account comes from: the accounts service, set by the server. */
 export interface AccountRouter {
-  /** The account a thread's child should spend from at spawn, and the account its row should show. */
-  routeFor(meta: SessionMeta, pin: ResolvedPin | null): { route: AccountRoute | null; current: string | null }
+  /** The account a thread's child should spend from at spawn, and the account its row should show.
+   *  `fresh` ignores the thread's sticky account: the best pick for its model, as after a model change. */
+  routeFor(meta: SessionMeta, pin: ResolvedPin | null, opts?: { fresh?: boolean }): { route: AccountRoute | null; current: string | null }
   /** A thread's error named a usage limit: move that thread to another account with room, or null. */
   failover(
     sessionId: string,
@@ -559,11 +560,14 @@ export class SessionRegistry {
    *  sticky current account while it has room, else the best account for
    *  its model. The same pick the spawn makes; it becomes the sticky input
    *  to that spawn, and the gateway corrects the row when traffic lands
-   *  elsewhere. An empty snapshot (no accounts known yet) changes nothing. */
-  expectAccount(sessionId: string): void {
+   *  elsewhere. `fresh` drops the sticky account (a model change: the
+   *  prompt cache is per model, so nothing is kept by staying) and takes
+   *  the best pick for the model. An empty snapshot (no accounts known
+   *  yet) changes nothing. */
+  expectAccount(sessionId: string, opts?: { fresh?: boolean }): void {
     const meta = this.store.getSession(sessionId)
     if (!meta || !this.limits || !isRoutedProvider(meta.provider)) return
-    const { current } = this.limits.routeFor(meta, this.pinOf(meta))
+    const { current } = this.limits.routeFor(meta, this.pinOf(meta), opts)
     if (current) this.setAccount(sessionId, current)
   }
 
@@ -1094,7 +1098,7 @@ export class SessionRegistry {
         this.notifyMeta(next)
         // Another harness, another provider's accounts.
         this.setAccount(sessionId, null)
-        this.expectAccount(sessionId)
+        this.expectAccount(sessionId, { fresh: true })
         meta = this.store.getSession(sessionId) ?? meta
       }
     } else {
@@ -1111,7 +1115,7 @@ export class SessionRegistry {
           this.notifyMeta(next)
           // The pick depends on the model's windows (a Fable cap, say).
           if (modelChanged) {
-            this.expectAccount(sessionId)
+            this.expectAccount(sessionId, { fresh: true })
             meta = this.store.getSession(sessionId) ?? meta
           }
         }
@@ -1604,12 +1608,24 @@ export class SessionRegistry {
     })
   }
 
-  /** Fast mode / context window: persist and drop the handle — the next
-   *  send boots the harness fresh (resume keeps the conversation). */
-  async tune(sessionId: string, patch: { fast?: boolean; context1m?: boolean }): Promise<void> {
-    await this.dropHandle(sessionId)
-    const next = this.store.updateSession(sessionId, patch)
+  /** Fast mode / context window / model: persist and drop the handle — the
+   *  next send boots the harness fresh (resume keeps the conversation).
+   *  Mid-turn the drop waits for the turn to settle, so the stream is not
+   *  cut. A model of another provider is left to send(), which switches
+   *  the harness with a transcript handoff; the same provider's model
+   *  lands now, so the thread's account re-picks for it at once. */
+  async tune(sessionId: string, patch: { fast?: boolean; context1m?: boolean; model?: string }): Promise<void> {
+    const meta = this.store.getSession(sessionId)
+    if (!meta) throw new Error(`unknown session: ${sessionId}`)
+    const { model: requested, ...rest } = patch
+    const routed = requested ? resolveModel(meta.provider, requested) : null
+    const model = routed && routed.provider === meta.provider ? routed.model : undefined
+    const modelChanged = model !== undefined && model !== meta.model
+    if (LIVE_STATUSES.has(meta.status)) this.pendingReboot.add(sessionId)
+    else await this.dropHandle(sessionId)
+    const next = this.store.updateSession(sessionId, modelChanged ? { ...rest, model } : rest)
     if (next) this.notifyMeta(next)
+    if (modelChanged) this.expectAccount(sessionId, { fresh: true })
   }
 
   /** Edit a live orchestration thread's per-run tune. The handle drops so
