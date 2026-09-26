@@ -160,13 +160,20 @@ made that moot. What stands now:
   classifiers. Aliax and temp-code both depend on it by commit sha;
   `configure()` runs at boot with `net.fetch` and chromiumKey secrets.
 - `src/main/server/accounts.ts` builds the footer's snapshot from the
-  shared vault and usage cache, and moves the pin on `switch`, on the
-  gateway's `pickNext`, and on `failover` from a thread's error.
+  shared vault and usage cache and chooses each thread's account
+  (`routeFor`); nothing in temp-code moves Aliax's global pin any more.
 - `src/main/server/gateway.ts` claims `~/.aliax/proxy.json` when Aliax is
   not running; the drivers point the CLIs at whichever shim owns it.
+- Per-scope accounts (plan `.temp-code/plan-luJSOyfVnpDV.md`): each
+  thread's child gets `~t=<thread>;a=<account>[;pin=1]` in its base URL
+  when the owner lists `scoped-routes` (`src/main/server/endpoint.ts`),
+  resolved thread > project > workspace pin, else auto by model
+  (`src/main/server/accountRouting.ts`); the gateway moves only that
+  thread on a limit and brings a pinned thread back once its pin has
+  room. Unscoped terminal traffic still follows the global pin.
 - A usage-limit 429 fails over inside the gateway; a limit that only
   shows up as error text (`src/main/server/limitText.ts`) fails over in
-  `SessionRegistry` and continues the tree by itself.
+  `SessionRegistry` per thread and continues the tree by itself.
 
 ## Order and size
 
