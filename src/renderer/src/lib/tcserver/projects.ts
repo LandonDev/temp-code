@@ -1,3 +1,4 @@
+import type { AccountPins } from "@server/shared/accounts";
 import { client } from "./client";
 import type { Link } from "./store";
 import type {
@@ -47,6 +48,24 @@ export async function renameProject(
   link: Link = client,
 ): Promise<void> {
   await link.request("project.rename", { projectId, name: name.trim() });
+  await workspaceStore.refresh();
+}
+
+export async function setProjectAccounts(
+  projectId: string,
+  pins: AccountPins,
+  link: Link = client,
+): Promise<void> {
+  await link.request("project.setAccounts", { projectId, pins });
+  await workspaceStore.refresh();
+}
+
+export async function setWorkspaceAccounts(
+  workspaceId: string,
+  pins: AccountPins,
+  link: Link = client,
+): Promise<void> {
+  await link.request("workspace.setAccounts", { workspaceId, pins });
   await workspaceStore.refresh();
 }
 

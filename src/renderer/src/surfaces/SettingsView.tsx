@@ -95,6 +95,7 @@ import {
   HARNESS_TITLE,
   sessionDisplayTitle,
   type HarnessId,
+  HARNESS_LABEL,
 } from "../lib/session";
 import {
   loadSessionSidebarFilters,
@@ -156,6 +157,10 @@ import { ThreadDefaultsEditor } from "../chrome/ThreadDefaultsDialog";
 import { TurnPassEditor } from "../chrome/TurnPassFields";
 import { openOrchestrationSettings, takeRequestedScope } from "../lib/tcserver/rules";
 import { useWorkspaces, workspaceLabelKey } from "../lib/tcserver/workspaces";
+import { setWorkspaceAccounts } from "../lib/tcserver/projects";
+import { useAccounts } from "../stores/accounts";
+import { shortName } from "../lib/accountScope";
+import { ROUTED_PROVIDERS } from "@server/shared/accounts";
 import { workspaceOfSection } from "../lib/settings";
 import { Heading, Input, Row, Segmented, Select, SecondaryButton, Toggle } from "./settingsBits";
 import { DANGER, GHOST, PRIMARY } from "../chrome/ConfirmDialog";
@@ -1188,6 +1193,8 @@ function WorkspacePage({ workspaceId }: { workspaceId: string }) {
     <>
       <ThreadDefaultsEditor workspaceId={workspaceId} first />
       <TurnPassEditor workspaceId={workspaceId} />
+      <Heading title="Accounts" />
+      <WorkspaceAccountsEditor workspaceId={workspaceId} />
       <Heading title="Build" />
       <BuildEditor workspaceId={workspaceId} />
       <Heading title="Orchestration" />
@@ -1199,6 +1206,55 @@ function WorkspacePage({ workspaceId }: { workspaceId: string }) {
           Edit rules
         </SecondaryButton>
       </Row>
+    </>
+  );
+}
+
+/**
+ * The Aliax account this workspace's threads spend from, per provider.
+ * Auto picks by model and moves a thread when its account runs out; a
+ * project or a thread can still pin its own.
+ */
+function WorkspaceAccountsEditor({ workspaceId }: { workspaceId: string }) {
+  const workspace = useWorkspaces().find((w) => w.id === workspaceId);
+  const { snapshot } = useAccounts();
+  if (!workspace) return null;
+  const pins = workspace.accountPins ?? {};
+  return (
+    <>
+      {ROUTED_PROVIDERS.map((provider) => {
+        const profiles = snapshot.providers[provider].profiles;
+        const current = pins[provider] ?? "";
+        const known = current === "" || profiles.some((p) => p.name === current);
+        return (
+          <Row
+            key={provider}
+            label={HARNESS_LABEL[provider]}
+            description={
+              provider === "claude"
+                ? "Which Aliax account threads here spend from. Auto picks by model and moves a thread when its account runs out."
+                : undefined
+            }
+          >
+            <Select
+              label={`${HARNESS_LABEL[provider]} account`}
+              value={known ? current : ""}
+              disabled={profiles.length === 0 && current === ""}
+              onChange={(next) => {
+                const updated = { ...pins };
+                if (next) updated[provider] = next;
+                else delete updated[provider];
+                void setWorkspaceAccounts(workspaceId, updated).catch(() => {});
+              }}
+              options={[
+                { value: "", label: "Auto" },
+                ...profiles.map((p) => ({ value: p.name, label: shortName(p) })),
+                ...(known ? [] : [{ value: current, label: `${current} (not in Aliax)` }]),
+              ]}
+            />
+          </Row>
+        );
+      })}
     </>
   );
 }
