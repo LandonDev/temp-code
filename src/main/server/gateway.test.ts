@@ -76,7 +76,7 @@ describe('Gateway marker', () => {
     expect(g.status().owner).toBe(true)
     expect(readMarker()).toMatchObject({ owner: 'temp-code', pid: process.pid, port: g.status().port })
     const res = await fetch(`http://127.0.0.1:${g.status().port}/__aliax`)
-    expect(await res.json()).toEqual({ ok: true, pid: process.pid, owner: 'temp-code' })
+    expect(await res.json()).toEqual({ ok: true, pid: process.pid, owner: 'temp-code', features: ['scoped-routes'] })
     await g.stop()
     expect(readMarker()).toBeNull()
   })

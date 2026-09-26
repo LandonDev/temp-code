@@ -180,7 +180,7 @@ describe('AccountsService', () => {
       },
       liveModels: () => ['claude-fable-5-1']
     })
-    const info = { service: 'claude', serviceId: 'claude-code' as const, model: 'claude-sonnet-5', limit: { window: '5h' as const }, tried: ['a@x.com'] }
+    const info = { service: 'claude', serviceId: 'claude-code' as const, model: 'claude-sonnet-5', limit: { window: '5h' as const }, tried: ['a@x.com'], account: 'a@x.com' }
     // A Fable thread is live: b's closed Fable cap rules it out.
     expect(await svc.pickNext(info)).toBeNull()
     expect(polled).toEqual([])
@@ -199,7 +199,7 @@ describe('AccountsService', () => {
         return null
       }
     })
-    const info = { service: 'claude', serviceId: 'claude-code' as const, model: 'claude-sonnet-5', limit: { window: '5h' as const }, tried: ['a@x.com'] }
+    const info = { service: 'claude', serviceId: 'claude-code' as const, model: 'claude-sonnet-5', limit: { window: '5h' as const }, tried: ['a@x.com'], account: 'a@x.com' }
     expect(await svc.pickNext(info)).toBe('b@x.com')
     expect(polled).toEqual(['b@x.com'])
   })

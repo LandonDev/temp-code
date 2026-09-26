@@ -25,32 +25,33 @@ function setup(): { logDir: string; onObserved: ReturnType<typeof vi.fn> } {
 }
 
 describe('observeHooks', () => {
-  it('feeds the pinned Claude account from unified headers and nudges the service', () => {
+  it('feeds the answering Claude account from unified headers and nudges the service', () => {
     const { logDir, onObserved } = setup()
-    pinProfile('claude-code', 'work')
+    pinProfile('claude-code', 'pinned')
     const hooks = observeHooks({ logDir, onObserved })
     hooks.onResponse!({
       service: 'claude',
       path: '/v1/messages',
       status: 200,
-      headers: new Headers({ [`${H}-status`]: 'allowed', [`${H}-5h-utilization`]: '0.25', [`${H}-5h-reset`]: '1786147200', [`${H}-7d-utilization`]: '0.6' })
+      headers: new Headers({ [`${H}-status`]: 'allowed', [`${H}-5h-utilization`]: '0.25', [`${H}-5h-reset`]: '1786147200', [`${H}-7d-utilization`]: '0.6' }),
+      account: 'work'
     })
     const cache = JSON.parse(readFileSync(join(dir, 'aliax', 'usage-cache.json'), 'utf8'))
     expect(cache['claude-code:work'].report.windows).toEqual([
       { label: '5h', usedPercent: 25, periodMs: 5 * 3_600_000, resetsAt: 1786147200_000 },
       { label: 'Weekly', usedPercent: 60, periodMs: 7 * 86_400_000 }
     ])
+    expect(cache['claude-code:pinned']).toBeUndefined()
     expect(onObserved).toHaveBeenCalledTimes(1)
     expect(existsSync(join(logDir, 'gateway-limits.jsonl'))).toBe(false)
   })
 
-  it('ignores answers without windows, other services, and no pin', () => {
+  it('ignores answers without windows, other services, and no account', () => {
     const { logDir, onObserved } = setup()
     const hooks = observeHooks({ logDir, onObserved })
-    hooks.onResponse!({ service: 'claude', path: '/v1/messages', status: 200, headers: new Headers({ [`${H}-5h-utilization`]: '0.25' }) })
-    pinProfile('claude-code', 'work')
-    hooks.onResponse!({ service: 'codex', path: '/v1/responses', status: 200, headers: new Headers({ [`${H}-5h-utilization`]: '0.25' }) })
-    hooks.onResponse!({ service: 'claude', path: '/v1/messages', status: 200, headers: new Headers({ 'request-id': 'r' }) })
+    hooks.onResponse!({ service: 'claude', path: '/v1/messages', status: 200, headers: new Headers({ [`${H}-5h-utilization`]: '0.25' }), account: null })
+    hooks.onResponse!({ service: 'codex', path: '/v1/responses', status: 200, headers: new Headers({ [`${H}-5h-utilization`]: '0.25' }), account: 'work' })
+    hooks.onResponse!({ service: 'claude', path: '/v1/messages', status: 200, headers: new Headers({ 'request-id': 'r' }), account: 'work' })
     expect(onObserved).not.toHaveBeenCalled()
     expect(existsSync(join(dir, 'aliax', 'usage-cache.json'))).toBe(false)
   })
@@ -63,7 +64,8 @@ describe('observeHooks', () => {
       path: '/v1/messages',
       status: 429,
       headers: new Headers({ [`${H}-status`]: 'rejected', [`${H}-reset`]: '1786147200', 'retry-after': '30', 'request-id': 'req_1', 'set-cookie': 'secret=1' }),
-      body: '{"type":"error","error":{"type":"rate_limit_error","message":"You have hit your session limit"}}'
+      body: '{"type":"error","error":{"type":"rate_limit_error","message":"You have hit your session limit"}}',
+      account: 'work'
     })
     const lines = readFileSync(join(logDir, 'gateway-limits.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l))
     expect(lines).toHaveLength(1)
@@ -80,7 +82,7 @@ describe('observeHooks', () => {
 })
 
 describe('observeCodexSnapshot', () => {
-  it('feeds the pinned Codex account from an app-server rate-limit snapshot and nudges', () => {
+  it('feeds the Codex account (the pin by default) from an app-server rate-limit snapshot and nudges', () => {
     const { logDir, onObserved } = setup()
     vi.useFakeTimers() // the shared cache persists at most every 5 s
     observeHooks({ logDir, onObserved })
@@ -93,6 +95,7 @@ describe('observeCodexSnapshot', () => {
         secondary: { usedPercent: 40, windowDurationMins: 10080 }
       }
     })
+    observeCodexSnapshot({ rateLimits: { primary: { usedPercent: 99, windowDurationMins: 300 } } }, 'work')
     vi.advanceTimersByTime(5_000)
     vi.useRealTimers()
     const cache = JSON.parse(readFileSync(join(dir, 'aliax', 'usage-cache.json'), 'utf8'))
@@ -100,6 +103,7 @@ describe('observeCodexSnapshot', () => {
       { label: '5h', usedPercent: 12, periodMs: 300 * 60_000, resetsAt: 1786147200_000 },
       { label: 'week', usedPercent: 40, periodMs: 10080 * 60_000 }
     ])
-    expect(onObserved).toHaveBeenCalledTimes(1)
+    expect(cache['codex:work'].report.windows).toEqual([{ label: '5h', usedPercent: 99, periodMs: 300 * 60_000 }])
+    expect(onObserved).toHaveBeenCalledTimes(2)
   })
 })

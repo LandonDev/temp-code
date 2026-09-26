@@ -4,35 +4,34 @@ import { accounts, codexSnapshotToWindows, parseUnifiedHeaders, pinnedProfile, t
 
 /**
  * What the gateway learns from traffic it forwards: Claude's unified headers
- * move the pinned account's 5h and Weekly windows on every answer, and every
- * 429 goes to a log (status, limit headers, body; never credentials) so the
- * failover classifier can be built from real refusals.
+ * move the answering account's 5h and Weekly windows on every answer, and
+ * every 429 goes to a log (status, limit headers, body; never credentials) so
+ * the failover classifier can be built from real refusals.
  */
 let observed: (() => void) | null = null
 
 export function observeHooks({ logDir, onObserved }: { logDir: string; onObserved?: () => void }): ForwardHooks {
   observed = onObserved ?? null
   return {
-    onResponse: ({ service, path, status, headers, body }) => {
+    onResponse: ({ service, path, status, headers, body, account }) => {
       if (status === 429) logLimit(logDir, { service, path, status, headers, body })
       if (service !== 'claude') return
       const limits = parseUnifiedHeaders(headers)
-      const pinned = pinnedProfile('claude-code')
-      if (!limits || !pinned || limits.windows.length === 0) return
-      if (accounts.observeWindows('claude-code', pinned, limits.windows)) onObserved?.()
+      if (!limits || !account || limits.windows.length === 0) return
+      if (accounts.observeWindows('claude-code', account, limits.windows)) onObserved?.()
     }
   }
 }
 
 /**
  * Codex has no limit headers; its app-server pushes `account/rateLimits/updated`
- * (and answers `account/rateLimits/read`). The codex driver hands those here.
+ * (and answers `account/rateLimits/read`). The codex driver hands those here
+ * with the account its process spends from; without one they describe the pin.
  */
-export function observeCodexSnapshot(snapshot: unknown): void {
-  const pinned = pinnedProfile('codex')
+export function observeCodexSnapshot(snapshot: unknown, account: string | null = pinnedProfile('codex')): void {
   const windows = codexSnapshotToWindows(snapshot)
-  if (!pinned || windows.length === 0) return
-  if (accounts.observeWindows('codex', pinned, windows)) observed?.()
+  if (!account || windows.length === 0) return
+  if (accounts.observeWindows('codex', account, windows)) observed?.()
 }
 
 const KEPT_HEADERS = new Set(['retry-after', 'request-id', 'content-type'])
