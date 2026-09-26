@@ -11,7 +11,7 @@ import {
 } from "../lib/harness";
 import { historyStore } from "../lib/historyStore";
 import { liveAgentTracker } from "../lib/liveAgentTracker";
-import { mergeModelSettings, resolveModel } from "../lib/models";
+import { mergeModelSettings, nativeModelId, resolveModel } from "../lib/models";
 import { invoke } from "../lib/native";
 import { saveLastSession, workspacePathOfSession } from "../lib/projectContext";
 import { lastProjectPath, looksLikeProject } from "../lib/recents";
@@ -463,6 +463,10 @@ export function installBootTasks(): Teardown {
       prev.map((session) => {
         if (!isLiveHarness(session.harness)) return session;
         const resolved = resolveModel(session.harness, session.model);
+        // Only an id normalization: a model the live catalog does not list
+        // keeps its id. resolveModel's fallback is the default model, and
+        // writing that here silently moved threads onto it.
+        if (nativeModelId(resolved) !== nativeModelId(session.model)) return session;
         const modelSettings = mergeModelSettings(resolved, session.modelSettings);
         if (resolved.id === session.model && sameSettings(modelSettings, session.modelSettings)) {
           return session;

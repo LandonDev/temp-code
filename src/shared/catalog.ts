@@ -113,7 +113,7 @@ export const CATALOG: Record<ProviderId, ProviderInfo> = {
         context: 1_000_000
       }
     ],
-    defaultModel: 'claude-sonnet-5'
+    defaultModel: 'claude-fable-5-1'
   },
   codex: {
     id: 'codex',
@@ -242,7 +242,7 @@ export function supportsContext1m(provider: ProviderId, modelId: string): boolea
  * A model id names its harness. If the requested provider doesn't serve
  * the model, route to the one that does (claude asked to run gpt-5.6-sol
  * → codex) instead of handing a foreign id to a harness that will error.
- * A model no provider knows falls back to the requested provider's default.
+ * A model no provider knows stays as asked, under the requested provider.
  */
 export function resolveModel(
   provider: ProviderId,
@@ -253,5 +253,8 @@ export function resolveModel(
   for (const p of Object.keys(CATALOG) as ProviderId[]) {
     if (modelInfo(p, model)) return { provider: p, model }
   }
-  return { provider, model: CATALOG[provider].defaultModel }
+  // Unknown to the catalog (a model newer than this file, or a typo): keep
+  // it under the provider asked for and let the harness judge it. Swapping
+  // in the default here silently moved threads onto another model.
+  return { provider, model }
 }

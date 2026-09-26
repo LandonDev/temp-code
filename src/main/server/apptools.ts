@@ -138,7 +138,7 @@ export async function appStartThread(
   // "claude" routes to codex. Only a model NO provider serves is refused.
   const requested = args.model || CATALOG[args.provider].defaultModel
   const { provider, model } = resolveModel(args.provider, requested)
-  if (model !== requested) {
+  if (!modelInfo(provider, model)) {
     return `refused: no provider serves model "${requested}". Valid: ${(Object.keys(CATALOG) as ProviderId[]).map((p) => `${p}: ${CATALOG[p].models.map((m) => m.id).join(', ')}`).join('; ')}`
   }
   const info = modelInfo(provider, model)!

@@ -219,7 +219,7 @@ export const MODELS: AgentModel[] = [
 ];
 
 export const DEFAULT_MODEL_ID: Record<HarnessId, string> = {
-  claude: "claude:sonnet-5",
+  claude: "claude:fable-5.1",
   codex: "",
   cursor: "cursor:composer-2.5",
   grok: "grok:grok-4.6",
@@ -722,9 +722,9 @@ function nativeIdFrom(id: string): string {
 function pickDefaultId(harness: HarnessId, models: AgentModel[]): string {
   if (harness === "claude") {
     return (
-      models.find((model) => model.nativeId === "claude-sonnet-5")?.id ??
-      models.find((model) => model.nativeId === "sonnet")?.id ??
+      models.find((model) => model.nativeId === "claude-fable-5-1")?.id ??
       models.find((model) => model.id === DEFAULT_MODEL_ID.claude)?.id ??
+      models.find((model) => model.nativeId === "claude-sonnet-5")?.id ??
       models[0]?.id ??
       DEFAULT_MODEL_ID.claude
     );

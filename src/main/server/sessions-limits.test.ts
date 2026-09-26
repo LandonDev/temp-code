@@ -199,13 +199,13 @@ it('a tune mid-turn keeps the stream and reboots once the turn settles', async (
   expect(routes.at(-1)).toEqual({ id, route: { account: 'o@x.com', pin: false } })
 })
 
-it('a scope pin change recomputes idle threads under it; the boot fill covers threads with no account', async () => {
+it('a scope pin change recomputes threads under it; a refresh re-picks threads with no account', async () => {
   registry.limits = byModel()
   const ws = await registry.createWorkspace(root)
   const idle = await registry.create({ cwd: root, provider: 'claude', model: 'claude-opus-5-5', workspaceId: ws.id })
   // A thread outside the workspace: its cwd is elsewhere (a cwd inside a workspace's path joins it).
   const elsewhere = await mkdtemp(join(tmpdir(), 'tc-loose-'))
-  const loose = await registry.create({ cwd: elsewhere, provider: 'claude', model: 'claude-opus-5-5' })
+  const loose = await running({ cwd: elsewhere, model: 'claude-opus-5-5' })
   expect(registry.get(idle.id)?.account).toBe('o@x.com')
   registry.setWorkspaceAccounts(ws.id, { claude: 'ws@x.com' })
   expect(registry.get(idle.id)?.account).toBe('ws@x.com')
@@ -214,10 +214,40 @@ it('a scope pin change recomputes idle threads under it; the boot fill covers th
   // Rows from before the pick existed (or made while no account was known).
   registry.setAccount(idle.id, null)
   registry.setAccount(loose.id, null)
-  registry.fillAccounts()
+  registry.refreshAccounts()
   expect(registry.get(idle.id)?.account).toBe('ws@x.com')
   expect(registry.get(loose.id)?.account).toBe('o@x.com')
   await rm(elsewhere, { recursive: true, force: true })
+})
+
+it('a refresh re-picks a thread with no live process fresh, keeps a live one sticky, and drops a live one whose pick moved', async () => {
+  registry.limits = byModel()
+  // Live: the gateway moved it; a refresh keeps that (sticky) while it has room.
+  const { id: live } = await running({ model: 'claude-opus-5-5' })
+  registry.setAccount(live, 'moved@x.com')
+  registry.refreshAccount(live)
+  expect(registry.get(live)?.account).toBe('moved@x.com')
+  // No process (a thread from before this boot): the stale account gives way to the best pick for its model.
+  const cold = await running({ model: 'claude-opus-5-5' })
+  await registry.disposeAll()
+  registry.setAccount(cold.id, 'stale@x.com')
+  registry.refreshAccount(cold.id)
+  expect(registry.get(cold.id)?.account).toBe('o@x.com')
+  // A live process whose pick moved (here: a workspace pin) is dropped so the next send respawns under it.
+  const ws = await registry.createWorkspace(root)
+  const { id: pinned } = await running({ model: 'claude-opus-5-5', workspaceId: ws.id })
+  const spawns = routes.length
+  registry.setWorkspaceAccounts(ws.id, { claude: 'ws@x.com' })
+  expect(registry.get(pinned)?.account).toBe('ws@x.com')
+  await registry.send(pinned, 'again')
+  expect(routes).toHaveLength(spawns + 1)
+  expect(routes.at(-1)).toEqual({ id: pinned, route: { account: 'ws@x.com', pin: true } })
+  // Mid-turn: untouched.
+  const { id: busy, emit } = await running({ model: 'claude-opus-5-5' })
+  emit({ type: 'status', status: 'running' })
+  registry.setAccount(busy, 'gateway@x.com')
+  registry.refreshAccount(busy)
+  expect(registry.get(busy)?.account).toBe('gateway@x.com')
 })
 
 it('an empty snapshot leaves the account unknown rather than clearing it', async () => {
