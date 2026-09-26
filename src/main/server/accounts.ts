@@ -235,10 +235,10 @@ export class AccountsService {
    * The account a thread's child spends from at spawn, from the cached
    * snapshot (many subagents may spawn at once; nobody polls here).
    */
-  routeFor(meta: SessionMeta, pin: ResolvedPin | null): { route: AccountRoute | null; current: string | null } {
+  routeFor(meta: SessionMeta, pin: ResolvedPin | null, opts?: { fresh?: boolean }): { route: AccountRoute | null; current: string | null } {
     return chooseAccount({
       pin: pin?.name ?? null,
-      current: meta.account ?? null,
+      current: opts?.fresh ? null : (meta.account ?? null),
       model: meta.model ?? null,
       provider: meta.provider,
       snapshot: this.snap,

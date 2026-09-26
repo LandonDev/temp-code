@@ -137,11 +137,13 @@ it('the spawn names the resolved pin, a child spawns under the same scope pin, a
   expect(registry.get(child.id)?.account).toBe('me@x.com')
 })
 
-/** A router whose pick depends on the model: Fable threads land on `f@x.com`, everything else on `o@x.com`; a pin wins. */
+/** A router whose pick depends on the model: Fable threads land on `f@x.com`, everything else on `o@x.com`;
+ *  a pin wins, and the thread's sticky account is kept unless the pick is fresh. */
 function byModel(): AccountRouter {
   return {
-    routeFor: (meta, pin) => {
-      const picked = pin?.name ?? (meta.model?.includes('fable') ? 'f@x.com' : 'o@x.com')
+    routeFor: (meta, pin, opts) => {
+      const best = meta.model?.includes('fable') ? 'f@x.com' : 'o@x.com'
+      const picked = pin?.name ?? (opts?.fresh ? best : (meta.account ?? best))
       return { route: { account: picked, pin: pin !== null }, current: picked }
     },
     failover: async () => null
@@ -153,9 +155,48 @@ it('a thread shows its expected account from creation, and again when its model 
   const created = await registry.create({ cwd: root, provider: 'claude', model: 'claude-opus-5-5' })
   expect(created.account).toBe('o@x.com')
   expect(registry.get(created.id)?.account).toBe('o@x.com')
+  // The gateway moved the thread meanwhile: the same model keeps that (sticky) account.
+  registry.setAccount(created.id, 'moved@x.com')
+  await registry.send(created.id, 'same model')
+  expect(registry.get(created.id)?.account).toBe('moved@x.com')
+  // A model change re-picks for the new model; the sticky account does not carry over.
   await registry.send(created.id, 'switch', { model: 'claude-fable-5-1' })
   expect(registry.get(created.id)?.account).toBe('f@x.com')
   expect(routes.at(-1)).toEqual({ id: created.id, route: { account: 'f@x.com', pin: false } })
+})
+
+it('a model pick through tune lands before any send: the model persists and the account re-picks fresh', async () => {
+  registry.limits = byModel()
+  const { id } = await running({ model: 'claude-fable-5-1' })
+  expect(registry.get(id)?.account).toBe('f@x.com')
+  registry.setAccount(id, 'moved@x.com')
+  await registry.tune(id, { model: 'claude-opus-5-5' })
+  expect(registry.get(id)).toMatchObject({ model: 'claude-opus-5-5', account: 'o@x.com' })
+  // The next send finds the model already in place and spawns under the new pick.
+  const spawns = routes.length
+  await registry.send(id, 'go')
+  expect(routes).toHaveLength(spawns + 1)
+  expect(routes.at(-1)).toEqual({ id, route: { account: 'o@x.com', pin: false } })
+  // The same model again changes nothing; another provider's model is left to send().
+  await registry.tune(id, { model: 'claude-opus-5-5', fast: true })
+  expect(registry.get(id)).toMatchObject({ model: 'claude-opus-5-5', account: 'o@x.com', fast: true })
+  await registry.tune(id, { model: 'gpt-6-astra' })
+  expect(registry.get(id)?.model).toBe('claude-opus-5-5')
+})
+
+it('a tune mid-turn keeps the stream and reboots once the turn settles', async () => {
+  registry.limits = byModel()
+  const { id, emit } = await running({ model: 'claude-fable-5-1' })
+  emit({ type: 'status', status: 'running' })
+  const spawns = routes.length
+  await registry.tune(id, { model: 'claude-opus-5-5' })
+  expect(registry.get(id)).toMatchObject({ model: 'claude-opus-5-5', account: 'o@x.com', status: 'running' })
+  expect(emits.get(id)).toBeDefined()
+  emit({ type: 'status', status: 'idle' })
+  await settle()
+  await registry.send(id, 'go')
+  expect(routes).toHaveLength(spawns + 1)
+  expect(routes.at(-1)).toEqual({ id, route: { account: 'o@x.com', pin: false } })
 })
 
 it('a scope pin change recomputes idle threads under it; the boot fill covers threads with no account', async () => {

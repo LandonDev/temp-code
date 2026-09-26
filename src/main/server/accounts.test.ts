@@ -172,6 +172,8 @@ describe('AccountsService', () => {
     const meta = { provider: 'claude', model: 'claude-opus-5-5', account: null } as never
     expect(svc.routeFor(meta, { name: 'a@x.com', level: 'project' })).toEqual({ route: { account: 'a@x.com', pin: true }, current: 'a@x.com' })
     expect(svc.routeFor({ ...(meta as object), account: 'a@x.com' } as never, null)).toEqual({ route: { account: 'a@x.com', pin: false }, current: 'a@x.com' })
+    // fresh: the sticky account is ignored and the best pick for the model wins (soonest reset).
+    expect(svc.routeFor({ ...(meta as object), account: 'a@x.com' } as never, null, { fresh: true })).toEqual({ route: { account: 'b@x.com', pin: false }, current: 'b@x.com' })
     expect(svc.routeFor(meta, null)).toEqual({ route: { account: 'b@x.com', pin: false }, current: 'b@x.com' })
     expect(svc.routeFor({ provider: 'cursor', model: 'x', account: null } as never, null)).toEqual({ route: null, current: null })
   })

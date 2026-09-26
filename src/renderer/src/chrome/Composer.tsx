@@ -89,6 +89,7 @@ import { useSlashCommands } from '../lib/tcserver/slashCommands'
 import { readCopiedMessage } from '../lib/copyMessage'
 import { useSessionMeta, useSessionMetasWhen } from '../lib/tcserver/store'
 import { tune as tuneSession } from '../lib/tcserver/commands'
+import { nativeModelId } from '../lib/models'
 import type { ThreadType } from '../lib/tcserver/types'
 import { useProjects } from '../lib/tcserver/workspaces'
 
@@ -360,21 +361,26 @@ export function Composer({
   }
 
   /** A model pick rebuilds the settings from the last-used ones (App owns
-   *  that), so once they land, tell the live thread what Fast and 1M now
-   *  are; otherwise the server keeps running the old tune behind the UI. */
+   *  that), so once they land, tell the live thread what Fast, 1M and the
+   *  model now are; otherwise the server keeps running the old tune behind
+   *  the UI. The model lands at once so the thread's account re-picks for
+   *  it before any send; a pick of another provider's model waits for the
+   *  send, which switches the harness. */
   const retuneAfterPick = useRef(false)
   const changeModel = (nextHarness: HarnessId, nextModel: string) => {
     onModelChange(nextHarness, nextModel)
     retuneAfterPick.current = !!sessionId
   }
+  const threadProvider = sessionMeta?.provider
   useEffect(() => {
     if (!retuneAfterPick.current || !sessionId) return
     retuneAfterPick.current = false
     void tuneSession(sessionId, {
       fast: modelSettings.fast === 'true',
       context1m: modelSettings.context === '1m',
+      ...(harness === threadProvider ? { model: nativeModelId(model) } : {}),
     }).catch(() => undefined)
-  }, [model, modelSettings, sessionId])
+  }, [model, modelSettings, sessionId, harness, threadProvider])
 
   const syncHasValue = useCallback(
     (text: string, files: Attachment[]) => {
