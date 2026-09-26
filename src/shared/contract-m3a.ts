@@ -1,6 +1,8 @@
 import { z } from 'zod'
 
 export const AccountProviderSchema = z.enum(['claude', 'codex', 'cursor'])
+/** One explicit account per gateway provider; a missing key inherits. */
+export const AccountPinsSchema = z.object({ claude: z.string().min(1).optional(), codex: z.string().min(1).optional() })
 
 export const NoteIdSchema = z.string().regex(/^[A-Za-z0-9_-]+$/, 'Invalid note id')
 export const NoteUpsertSchema = z.object({

@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import type { AccountPins } from './accounts'
 
 /**
  * The workspace → project → thread hierarchy (docs/LAYOUT.md).
@@ -25,6 +26,8 @@ export interface WorkspaceMeta {
   path: string
   /** whether the folder is a git repository (decides worktree availability) */
   git: boolean
+  /** Aliax account per provider for threads under this workspace; unset means auto. */
+  accountPins?: AccountPins
   createdAt: number
 }
 
@@ -39,6 +42,8 @@ export interface ProjectMeta {
   cwd: string
   /** hidden from the sidebar's main list; restorable, threads kept */
   archived: boolean
+  /** Aliax account per provider for this project's threads; unset inherits the workspace's. */
+  accountPins?: AccountPins
   createdAt: number
 }
 

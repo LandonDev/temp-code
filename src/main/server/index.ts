@@ -356,6 +356,14 @@ export async function startServer(
             registry.renameProject(req.params.projectId, req.params.name)
             sendFrame({ id: req.id, ok: true, result: null })
             break
+          case 'project.setAccounts':
+            registry.setProjectAccounts(req.params.projectId, req.params.pins)
+            sendFrame({ id: req.id, ok: true, result: null })
+            break
+          case 'workspace.setAccounts':
+            registry.setWorkspaceAccounts(req.params.workspaceId, req.params.pins)
+            sendFrame({ id: req.id, ok: true, result: null })
+            break
           case 'project.setBranch':
             await registry.setProjectBranch(
               req.params.projectId,
@@ -816,6 +824,10 @@ export async function startServer(
             break
           case 'session.rename':
             await registry.rename(req.params.sessionId, req.params.title)
+            sendFrame({ id: req.id, ok: true, result: null })
+            break
+          case 'session.account.pin':
+            registry.setAccountPin(req.params.sessionId, req.params.account)
             sendFrame({ id: req.id, ok: true, result: null })
             break
           case 'session.setThreadRules':

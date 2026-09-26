@@ -10,6 +10,7 @@ import { mkdirSync } from 'node:fs'
 import { dirname } from 'node:path'
 import type { AgentEvent, EventRow, SessionMeta, SessionStatus } from '@shared/events'
 import type { ProjectMeta, WorkspaceMeta } from '@shared/domain'
+import { ACCOUNT_PROVIDERS, type AccountPins } from '@shared/accounts'
 import { parseThreadRules } from '@shared/rules'
 
 /**
@@ -96,7 +97,11 @@ export function openDb(path: string): DatabaseSync {
     `ALTER TABLE sessions ADD COLUMN thread_rules TEXT`,
     `ALTER TABLE sessions ADD COLUMN context_tokens INTEGER`,
     `ALTER TABLE sessions ADD COLUMN context_window INTEGER`,
-    `ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0`
+    `ALTER TABLE projects ADD COLUMN archived INTEGER NOT NULL DEFAULT 0`,
+    `ALTER TABLE sessions ADD COLUMN account_pin TEXT`,
+    `ALTER TABLE sessions ADD COLUMN account_current TEXT`,
+    `ALTER TABLE projects ADD COLUMN account_pins TEXT`,
+    `ALTER TABLE workspaces ADD COLUMN account_pins TEXT`
   ]) {
     try {
       db.exec(stmt)
@@ -182,8 +187,28 @@ interface SessionRowRaw {
   context_tokens: number | null
   context_window: number | null
   native_id: string | null
+  account_pin: string | null
+  account_current: string | null
   created_at: number
   updated_at: number
+}
+
+/** The per-provider account pins a project or workspace row stores as JSON. */
+function parseAccountPins(raw: string | null): AccountPins {
+  if (!raw) return {}
+  try {
+    const parsed = JSON.parse(raw) as Record<string, unknown>
+    const out: AccountPins = {}
+    for (const p of ACCOUNT_PROVIDERS) if (typeof parsed[p] === 'string' && parsed[p]) out[p] = parsed[p] as string
+    return out
+  } catch {
+    return {}
+  }
+}
+
+const serializeAccountPins = (pins: AccountPins): string | null => {
+  const kept = Object.fromEntries(Object.entries(pins).filter(([, v]) => typeof v === 'string' && v))
+  return Object.keys(kept).length === 0 ? null : JSON.stringify(kept)
 }
 
 function toMeta(r: SessionRowRaw): SessionMeta {
@@ -212,6 +237,8 @@ function toMeta(r: SessionRowRaw): SessionMeta {
     context: r.context_tokens == null ? null : { tokens: r.context_tokens, window: r.context_window },
     permission: r.permission as SessionMeta['permission'],
     nativeId: r.native_id,
+    accountPin: r.account_pin,
+    account: r.account_current,
     createdAt: r.created_at,
     updatedAt: r.updated_at
   }
@@ -300,8 +327,8 @@ export class Store {
   insertSession(meta: SessionMeta): void {
     this
       .stmt(
-        `INSERT INTO sessions (id, parent_id, project_id, workspace_id, thread_type, plan_path, provider, model, reasoning, agent_type, title, cwd, status, archived, pinned, permission, fast, context_1m, busy_since, paused_at, frozen_active_elapsed, thread_rules, native_id, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        `INSERT INTO sessions (id, parent_id, project_id, workspace_id, thread_type, plan_path, provider, model, reasoning, agent_type, title, cwd, status, archived, pinned, permission, fast, context_1m, busy_since, paused_at, frozen_active_elapsed, thread_rules, native_id, account_pin, account_current, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         meta.id,
@@ -327,6 +354,8 @@ export class Store {
         meta.frozenActiveElapsed,
         meta.threadRules ? JSON.stringify(meta.threadRules) : null,
         meta.nativeId,
+        meta.accountPin ?? null,
+        meta.account ?? null,
         meta.createdAt,
         meta.updatedAt
       )
@@ -355,6 +384,8 @@ export class Store {
         | 'planPath'
         | 'agentType'
         | 'threadRules'
+        | 'accountPin'
+        | 'account'
       >
     >
   ): SessionMeta | null {
@@ -367,7 +398,7 @@ export class Store {
     const next = { ...cur, ...defined, updatedAt: Date.now() }
     this
       .stmt(
-        `UPDATE sessions SET status = ?, title = ?, native_id = ?, archived = ?, pinned = ?, provider = ?, model = ?, reasoning = ?, permission = ?, fast = ?, context_1m = ?, busy_since = ?, paused_at = ?, frozen_active_elapsed = ?, thread_type = ?, plan_path = ?, agent_type = ?, thread_rules = ?, updated_at = ? WHERE id = ?`
+        `UPDATE sessions SET status = ?, title = ?, native_id = ?, archived = ?, pinned = ?, provider = ?, model = ?, reasoning = ?, permission = ?, fast = ?, context_1m = ?, busy_since = ?, paused_at = ?, frozen_active_elapsed = ?, thread_type = ?, plan_path = ?, agent_type = ?, thread_rules = ?, account_pin = ?, account_current = ?, updated_at = ? WHERE id = ?`
       )
       .run(
         next.status,
@@ -388,10 +419,19 @@ export class Store {
         next.planPath,
         next.agentType,
         next.threadRules ? JSON.stringify(next.threadRules) : null,
+        next.accountPin ?? null,
+        next.account ?? null,
         next.updatedAt,
         id
       )
     return next
+  }
+
+  /** The account a thread spends from now, as the gateway reports it. Not
+   *  an edit: updated_at stays put so the list keeps its order. */
+  setSessionAccount(id: string, account: string | null): SessionMeta | null {
+    this.stmt(`UPDATE sessions SET account_current = ? WHERE id = ?`).run(account, id)
+    return this.getSession(id)
   }
 
   /** The last context reading off the harness stream, kept so a relaunch
@@ -488,6 +528,7 @@ export class Store {
       name: string
       path: string
       git: number
+      account_pins: string | null
       created_at: number
     }[]
     return rows.map((r) => ({
@@ -495,8 +536,13 @@ export class Store {
       name: r.name,
       path: r.path,
       git: !!r.git,
+      accountPins: parseAccountPins(r.account_pins),
       createdAt: r.created_at
     }))
+  }
+
+  setWorkspaceAccounts(id: string, pins: AccountPins): void {
+    this.stmt(`UPDATE workspaces SET account_pins = ? WHERE id = ?`).run(serializeAccountPins(pins), id)
   }
 
   deleteWorkspace(id: string): string[] {
@@ -527,6 +573,7 @@ export class Store {
       branch: string | null
       cwd: string
       archived: number
+      account_pins: string | null
       created_at: number
     }[]
     return rows.map((r) => ({
@@ -537,8 +584,13 @@ export class Store {
       branch: r.branch,
       cwd: r.cwd,
       archived: !!r.archived,
+      accountPins: parseAccountPins(r.account_pins),
       createdAt: r.created_at
     }))
+  }
+
+  setProjectAccounts(id: string, pins: AccountPins): void {
+    this.stmt(`UPDATE projects SET account_pins = ? WHERE id = ?`).run(serializeAccountPins(pins), id)
   }
 
   getProject(id: string): ProjectMeta | null {

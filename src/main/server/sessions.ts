@@ -15,7 +15,7 @@ import {
   type GoalState,
   type ParentIndex
 } from '@shared/session-lifecycle'
-import { isAccountProvider, type AccountProvider } from '@shared/accounts'
+import { isAccountProvider, type AccountPins, type AccountProvider } from '@shared/accounts'
 import type { LimitWindow } from '@shared/events'
 import { foldEvent, newFoldState, toFoldRow } from './folds'
 import { FOLD_VERSION, type FoldRow } from './db'
@@ -672,6 +672,18 @@ export class SessionRegistry {
     if (!t) return
     this.store.renameProject(projectId, t)
     this.notifyCatalog('projects')
+  }
+
+  setProjectAccounts(projectId: string, pins: AccountPins): void {
+    if (!this.store.getProject(projectId)) throw new Error(`unknown project: ${projectId}`)
+    this.store.setProjectAccounts(projectId, pins)
+    this.notifyCatalog('projects')
+  }
+
+  setWorkspaceAccounts(workspaceId: string, pins: AccountPins): void {
+    if (!this.store.listWorkspaces().some((w) => w.id === workspaceId)) throw new Error(`unknown workspace: ${workspaceId}`)
+    this.store.setWorkspaceAccounts(workspaceId, pins)
+    this.notifyCatalog('workspaces')
   }
 
   /** Switch a worktree project's checkout to another branch (existing or
@@ -1515,6 +1527,16 @@ export class SessionRegistry {
       const next = this.store.updateSession(sessionId, { title })
       if (next) this.notifyMeta(next)
     })
+  }
+
+  /** Pin this thread to one Aliax account (null: inherit the project's,
+   *  then the workspace's, else auto). Takes effect on the next send, which
+   *  respawns the harness when the resolved pin differs from the one its
+   *  process was started with. */
+  setAccountPin(sessionId: string, account: string | null): void {
+    const next = this.store.updateSession(sessionId, { accountPin: account?.trim() || null })
+    if (!next) throw new Error(`unknown session: ${sessionId}`)
+    this.notifyMeta(next)
   }
 
   /** Fast mode / context window: persist and drop the handle — the next
