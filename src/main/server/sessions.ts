@@ -15,7 +15,8 @@ import {
   type GoalState,
   type ParentIndex
 } from '@shared/session-lifecycle'
-import { isAccountProvider, type AccountPins, type AccountProvider } from '@shared/accounts'
+import { isRoutedProvider, type AccountPins, type AccountProvider, type AccountRoute } from '@shared/accounts'
+import { resolvePin, type ResolvedPin } from './accountRouting'
 import type { LimitWindow } from '@shared/events'
 import { foldEvent, newFoldState, toFoldRow } from './folds'
 import { FOLD_VERSION, type FoldRow } from './db'
@@ -231,9 +232,18 @@ export interface Switched {
   from: string
   to: string
 }
-export interface LimitFailover {
-  failover(provider: AccountProvider, info: { model: string | null; window: LimitWindow }): Promise<Switched | null>
+/** Where a thread's account comes from: the accounts service, set by the server. */
+export interface AccountRouter {
+  /** The account a thread's child should spend from at spawn, and the account its row should show. */
+  routeFor(meta: SessionMeta, pin: ResolvedPin | null): { route: AccountRoute | null; current: string | null }
+  /** A thread's error named a usage limit: move that thread to another account with room, or null. */
+  failover(
+    sessionId: string,
+    info: { provider: AccountProvider; model: string | null; window: LimitWindow; account: string | null }
+  ): Promise<Switched | null>
 }
+/** @deprecated use AccountRouter */
+export type LimitFailover = AccountRouter
 /** How long after the limited session settles before its tree continues: siblings that hit the same limit settle in this window. */
 export const LIMIT_CONTINUE_DELAY_MS = 250
 
@@ -332,13 +342,15 @@ export class SessionRegistry {
   /** Undo checkpoints; armed before every harness send so the baseline
    *  is snapshotted before the provider can write. Set by the server. */
   checkpoints: CheckpointStore | null = null
-  /** Switches accounts when a thread's error names a usage limit. Set by
-   *  the server; null leaves such errors to the Continue button. */
-  limits: LimitFailover | null = null
-  /** Sessions whose turn a usage limit cut off, until they continue: their
-   *  models count as live when the next account is chosen, and the
+  /** Chooses each thread's Aliax account and moves a thread when its error
+   *  names a usage limit. Set by the server; null sends unscoped and leaves
+   *  such errors to the Continue button. */
+  limits: AccountRouter | null = null
+  /** Sessions whose turn a usage limit cut off, until they continue: the
    *  pending switch continues the root tree once the session settles. */
-  private limited = new Map<string, { model: string | null; switching: Promise<Switched | null> }>()
+  private limited = new Map<string, { switching: Promise<Switched | null> }>()
+  /** The pin each live handle was spawned under, so a pin change respawns on the next send. */
+  private spawnedPin = new Map<string, string | null>()
   /** Per root: the switch to continue on, and the short timer that lets
    *  every member of the tree settle so the tree continues once. */
   private limitContinues = new Map<string, { switched: Switched; timer: ReturnType<typeof setTimeout> }>()
@@ -526,13 +538,20 @@ export class SessionRegistry {
     return this.storedContinuableError(meta.id)
   }
 
-  /** Models of sessions a usage limit cut off that have not continued yet. */
-  limitedModels(provider: AccountProvider): string[] {
-    const out: string[] = []
-    for (const [id, { model }] of this.limited) {
-      if (model && this.store.getSession(id)?.provider === provider) out.push(model)
-    }
-    return out
+  /** The explicit pin that applies to a thread (its own, its project's, its workspace's). */
+  pinOf(meta: SessionMeta): ResolvedPin | null {
+    const project = meta.projectId ? this.store.getProject(meta.projectId) : null
+    const workspaceId = project?.workspaceId ?? meta.workspaceId
+    const workspace = workspaceId ? (this.store.listWorkspaces().find((w) => w.id === workspaceId) ?? null) : null
+    return resolvePin(meta, project, workspace)
+  }
+
+  /** The gateway (or a text-path failover) moved a thread: its row follows. */
+  setAccount(sessionId: string, account: string | null): void {
+    const meta = this.store.getSession(sessionId)
+    if (!meta || (meta.account ?? null) === account) return
+    const next = this.store.setSessionAccount(sessionId, account)
+    if (next) this.notifyMeta(next)
   }
 
   /** A thread's error named a usage limit: ask for the next account now
@@ -541,15 +560,18 @@ export class SessionRegistry {
   private onLimitError(sessionId: string, window: LimitWindow): void {
     if (window === 'transient' || !this.limits || this.limited.has(sessionId)) return
     const meta = this.store.getSession(sessionId)
-    if (!meta || !isAccountProvider(meta.provider)) return
-    const model = meta.model ?? null
-    // Registered before the ask so the switch counts this model as live.
-    const entry = { model, switching: Promise.resolve<Switched | null>(null) }
-    this.limited.set(sessionId, entry)
-    entry.switching = this.limits.failover(meta.provider, { model, window }).catch((err) => {
-      console.warn(`[limits] failover for ${sessionId} failed:`, err)
-      return null
-    })
+    if (!meta || !isRoutedProvider(meta.provider)) return
+    const switching = this.limits
+      .failover(sessionId, { provider: meta.provider, model: meta.model ?? null, window, account: meta.account ?? null })
+      .then((switched) => {
+        if (switched) this.setAccount(sessionId, switched.to)
+        return switched
+      })
+      .catch((err) => {
+        console.warn(`[limits] failover for ${sessionId} failed:`, err)
+        return null
+      })
+    this.limited.set(sessionId, { switching })
     if (!LIVE_STATUSES.has(meta.status)) this.continueAfterLimit(sessionId)
   }
 
@@ -1046,6 +1068,11 @@ export class SessionRegistry {
           this.notifyMeta(next)
         }
       }
+    }
+    // A pin change (thread, project or workspace) since the harness was
+    // spawned: its URL names the old account, so boot fresh under the new one.
+    if (this.handles.has(sessionId) && this.spawnedPin.get(sessionId) !== (this.pinOf(meta)?.name ?? null)) {
+      await this.dropHandle(sessionId)
     }
     let handle: DriverHandle
     try {
@@ -1858,12 +1885,20 @@ export class SessionRegistry {
     const meta = this.store.getSession(sessionId)
     if (!meta) throw new Error(`unknown session: ${sessionId}`)
     const driver = BUILT_IN_DRIVERS[meta.provider]
+    // The account this process spends from: the thread's pin (its own, its
+    // project's, its workspace's) or the best account for its model. The
+    // row shows the expected account at once; the gateway corrects it.
+    const pin = this.pinOf(meta)
+    const { route, current } = this.limits?.routeFor(meta, pin) ?? { route: null, current: null }
+    this.spawnedPin.set(sessionId, pin?.name ?? null)
+    this.setAccount(sessionId, current)
 
     const startP = this.ensureCwd(meta)
       .then(() =>
         driver.start({
           // Drivers seed goal state from here (resume dedup, watcher init).
           session: { ...meta, goal: this.goalOf(sessionId) },
+          route,
           emit: (event) => this.append(sessionId, event),
           requestApproval: (req) => this.requestApproval(sessionId, req),
           setNativeId: (nativeId) => {

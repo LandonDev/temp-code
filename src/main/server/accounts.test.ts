@@ -166,27 +166,7 @@ describe('AccountsService', () => {
     expect(snap.providers.claude.note).toBeUndefined()
   })
 
-  it('pickNext takes the account with room in every live model\'s window, confirmed by a forced poll', async () => {
-    ;({ cleanup } = fixture())
-    const polled: string[] = []
-    const { svc } = service({
-      usage: async () => [
-        { profileName: 'a@x.com', windows: [{ label: '5h', usedPercent: 100, resetsAt: Date.now() + 60_000 }] },
-        { profileName: 'b@x.com', windows: [{ label: '5h', usedPercent: 30 }, { label: 'Fable', usedPercent: 100, resetsAt: Date.now() + 9e6 }] }
-      ],
-      usageOf: async (_id, name) => {
-        polled.push(name)
-        return null
-      },
-      liveModels: () => ['claude-fable-5-1']
-    })
-    const info = { service: 'claude', serviceId: 'claude-code' as const, model: 'claude-sonnet-5', limit: { window: '5h' as const }, tried: ['a@x.com'], account: 'a@x.com' }
-    // A Fable thread is live: b's closed Fable cap rules it out.
-    expect(await svc.pickNext(info)).toBeNull()
-    expect(polled).toEqual([])
-  })
-
-  it('pickNext ignores a closed cap no live model spends', async () => {
+  it('pickNext for a thread ignores other models and reads the model\'s own window, confirmed by a forced poll', async () => {
     ;({ cleanup } = fixture())
     const polled: string[] = []
     const { svc } = service({
@@ -199,12 +179,36 @@ describe('AccountsService', () => {
         return null
       }
     })
-    const info = { service: 'claude', serviceId: 'claude-code' as const, model: 'claude-sonnet-5', limit: { window: '5h' as const }, tried: ['a@x.com'], account: 'a@x.com' }
-    expect(await svc.pickNext(info)).toBe('b@x.com')
+    const info = { service: 'claude', serviceId: 'claude-code' as const, limit: { window: '5h' as const }, tried: ['a@x.com'], account: 'a@x.com', thread: 'T' }
+    // A Sonnet thread: b's closed Fable cap is not its business.
+    expect(await svc.pickNext({ ...info, model: 'claude-sonnet-5' })).toBe('b@x.com')
     expect(polled).toEqual(['b@x.com'])
+    // A Fable thread: b is out for it.
+    expect(await svc.pickNext({ ...info, model: 'claude-fable-5-1' })).toBeNull()
+    // The pin (unscoped): the same rule on the weekly clock.
+    expect(await svc.pickNext({ ...info, model: 'claude-sonnet-5', thread: undefined })).toBe('b@x.com')
   })
 
-  it('failover charges the pin, picks the next account with room, pins it and reports the move', async () => {
+  it('routeFor names the pin, else the sticky account, else the best pick for the model, from the cached snapshot', async () => {
+    ;({ cleanup } = fixture())
+    const { svc } = service({
+      usage: async (id) =>
+        id !== 'claude-code'
+          ? []
+          : [
+              { profileName: 'a@x.com', windows: [{ label: 'Weekly', usedPercent: 10, resetsAt: Date.now() + 9e6 }] },
+              { profileName: 'b@x.com', windows: [{ label: 'Weekly', usedPercent: 60, resetsAt: Date.now() + 1e6 }] }
+            ]
+    })
+    await svc.list()
+    const meta = { provider: 'claude', model: 'claude-opus-5-5', account: null } as never
+    expect(svc.routeFor(meta, { name: 'a@x.com', level: 'project' })).toEqual({ route: { account: 'a@x.com', pin: true }, current: 'a@x.com' })
+    expect(svc.routeFor({ ...(meta as object), account: 'a@x.com' } as never, null)).toEqual({ route: { account: 'a@x.com', pin: false }, current: 'a@x.com' })
+    expect(svc.routeFor(meta, null)).toEqual({ route: { account: 'b@x.com', pin: false }, current: 'b@x.com' })
+    expect(svc.routeFor({ provider: 'cursor', model: 'x', account: null } as never, null)).toEqual({ route: null, current: null })
+  })
+
+  it('failover charges the thread\'s account, picks the next with room for its model, and never touches the pin', async () => {
     ;({ cleanup } = fixture())
     const observed: unknown[] = []
     const { svc, activate } = service({
@@ -215,16 +219,20 @@ describe('AccountsService', () => {
       usageOf: async () => null,
       observeLimit: (id, name, limit) => observed.push([id, name, limit])
     })
-    expect(await svc.failover('claude', { model: 'claude-sonnet-5', window: '5h' })).toEqual({ from: 'a@x.com', to: 'b@x.com' })
+    expect(await svc.failover('T', { provider: 'claude', model: 'claude-sonnet-5', window: '5h', account: 'a@x.com' })).toEqual({ from: 'a@x.com', to: 'b@x.com' })
     expect(observed).toEqual([['claude-code', 'a@x.com', { window: '5h' }]])
-    expect(pinnedProfile('claude-code')).toBe('b@x.com')
-    expect(activate).toHaveBeenCalledWith('claude-code', 'b@x.com')
+    expect(pinnedProfile('claude-code')).toBe('a@x.com')
+    expect(activate).not.toHaveBeenCalled()
+    // A thread on b (say, pinned) that hits its limit moves to a; the pin still stands.
+    expect(await svc.failover('U', { provider: 'claude', model: 'claude-sonnet-5', window: '5h', account: 'b@x.com' })).toEqual({ from: 'b@x.com', to: 'a@x.com' })
+    // An unscoped thread (older owner) spent from the pin.
+    expect(await svc.failover('V', { provider: 'claude', model: null, window: '5h', account: null })).toEqual({ from: 'a@x.com', to: 'b@x.com' })
   })
 
-  it('failover leaves the pin alone when no account has room, and ignores transient limits', async () => {
+  it('failover returns null when no account has room, and ignores transient limits', async () => {
     ;({ cleanup } = fixture())
     const observed: string[] = []
-    const { svc, activate } = service({
+    const { svc } = service({
       usage: async () => [
         { profileName: 'a@x.com', windows: [{ label: '5h', usedPercent: 100, resetsAt: Date.now() + 60_000 }] },
         { profileName: 'b@x.com', windows: [{ label: '5h', usedPercent: 100, resetsAt: Date.now() + 60_000 }] }
@@ -232,63 +240,32 @@ describe('AccountsService', () => {
       usageOf: async () => null,
       observeLimit: (_id, name) => observed.push(name)
     })
-    expect(await svc.failover('claude', { model: null, window: '5h' })).toBeNull()
+    expect(await svc.failover('T', { provider: 'claude', model: null, window: '5h', account: 'a@x.com' })).toBeNull()
     expect(observed).toEqual(['a@x.com'])
-    expect(await svc.failover('claude', { model: null, window: 'transient' })).toBeNull()
+    expect(await svc.failover('T', { provider: 'claude', model: null, window: 'transient', account: 'a@x.com' })).toBeNull()
     expect(observed).toEqual(['a@x.com'])
-    expect(pinnedProfile('claude-code')).toBe('a@x.com')
-    expect(activate).not.toHaveBeenCalled()
   })
 
-  it('failover shares one switch between callers that hit the limit together', async () => {
+  it('failover dedupes per thread, not per provider', async () => {
     ;({ cleanup } = fixture())
-    const { svc, activate } = service({
+    const polled: string[] = []
+    const { svc } = service({
       usage: async () => [
         { profileName: 'a@x.com', windows: [{ label: '5h', usedPercent: 10 }] },
         { profileName: 'b@x.com', windows: [{ label: '5h', usedPercent: 30 }] }
       ],
-      usageOf: async () => null
+      usageOf: async (_id, name) => {
+        polled.push(name)
+        return null
+      }
     })
-    const [first, second] = await Promise.all([
-      svc.failover('claude', { model: 'claude-sonnet-5', window: '5h' }),
-      svc.failover('claude', { model: 'claude-fable-5-1', window: '5h' })
-    ])
+    const info = { provider: 'claude' as const, model: 'claude-sonnet-5', window: '5h' as const, account: 'a@x.com' }
+    const [first, again, other] = await Promise.all([svc.failover('T', info), svc.failover('T', info), svc.failover('U', info)])
     expect(first).toEqual({ from: 'a@x.com', to: 'b@x.com' })
-    expect(second).toBe(first)
-    expect(activate).toHaveBeenCalledTimes(1)
-  })
-
-  it('failover that cannot sign the CLIs in returns null and leaves a note', async () => {
-    ;({ cleanup } = fixture())
-    const { svc, activate } = service({
-      usage: async () => [
-        { profileName: 'a@x.com', windows: [{ label: '5h', usedPercent: 10 }] },
-        { profileName: 'b@x.com', windows: [{ label: '5h', usedPercent: 30 }] }
-      ],
-      usageOf: async () => null
-    })
-    activate.mockResolvedValueOnce({ ok: false, error: 'no browser session' } as never)
-    expect(await svc.failover('claude', { model: null, window: 'weekly' })).toBeNull()
-    const snap = await svc.list()
-    expect(snap.providers.claude.note).toBe('could not switch to b@x.com: no browser session')
-  })
-
-  it('failedOver signs the CLIs in behind the pin core moved, and a failure shows as a note', async () => {
-    ;({ cleanup } = fixture())
-    const { svc, activate } = service()
-    await svc.list()
-    pinProfile('claude-code', 'b@x.com')
-    activate.mockResolvedValueOnce({ ok: false, error: 'no browser session' } as never)
-    const snaps: string[] = []
-    svc.onChange((s) => snaps.push(s.providers.claude.note ?? ''))
-    svc.failedOver({ serviceId: 'claude-code', to: 'b@x.com' })
-    await vi.waitFor(() => expect(snaps.length).toBe(1))
-    expect(activate).toHaveBeenCalledWith('claude-code', 'b@x.com')
-    expect(snaps[0]).toBe('switched to b@x.com; sign-in failed: no browser session')
-    expect((await svc.list()).providers.claude.pinned).toBe('b@x.com')
-    // The next successful switch clears it.
-    await svc.switch('claude', 'a@x.com')
-    expect((await svc.list()).providers.claude.note).toBeUndefined()
+    expect(again).toBe(first)
+    expect(other).toEqual({ from: 'a@x.com', to: 'b@x.com' })
+    expect(other).not.toBe(first)
+    expect(polled).toEqual(['b@x.com', 'b@x.com'])
   })
 
   it('re-arms one reset timer per build and polls the reset accounts, only while Aliax is not the owner', async () => {

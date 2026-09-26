@@ -1,6 +1,7 @@
 import { existsSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
+import type { AccountRoute } from '@shared/accounts'
 import { gateway } from './gateway'
 
 export type Service = 'claude' | 'codex'
@@ -25,6 +26,8 @@ const defaults: EndpointDeps = {
 }
 
 let last: { at: number; ok: boolean } | null = null
+/** Whether the gateway behind each origin understands scoped routes, per origin. */
+const features = new Map<string, { at: number; ok: boolean }>()
 
 async function shimAnswers(d: EndpointDeps): Promise<boolean> {
   if (!d.shimInstalled()) return false
@@ -51,6 +54,59 @@ export async function endpointFor(service: Service, deps: Partial<EndpointDeps> 
   return d.gatewayUrl(service)
 }
 
+/**
+ * The per-thread scope segment, appended to the service base:
+ *   <endpoint>/~t=<thread>;a=<account>[;pin=1]
+ * Only a gateway that lists `scoped-routes` honours it; anything older would
+ * pass the segment upstream as part of the path.
+ */
+export function routeUrl(endpoint: string, thread: string, route: AccountRoute): string {
+  return `${endpoint}/~t=${encodeURIComponent(thread)};a=${encodeURIComponent(route.account)}${route.pin ? ';pin=1' : ''}`
+}
+
+async function scopedRoutesAt(endpoint: string, d: EndpointDeps): Promise<boolean> {
+  const origin = new URL(endpoint).origin
+  const known = features.get(origin)
+  if (known && d.now() - known.at < RECHECK_MS) return known.ok
+  let ok = false
+  try {
+    const res = await d.fetch(`${origin}/__aliax`, { signal: AbortSignal.timeout(1500) })
+    const body = res.ok ? ((await res.json()) as { features?: unknown }) : null
+    ok = Array.isArray(body?.features) && body.features.includes('scoped-routes')
+  } catch {
+    ok = false
+  }
+  features.set(origin, { at: d.now(), ok })
+  return ok
+}
+
+export interface RoutedEndpoint {
+  url: string | null
+  /** The account the URL names; null when it is unscoped (no route, or an owner too old to read one). */
+  account: string | null
+}
+
+/**
+ * The base URL for one thread's child: `endpointFor`, plus the thread's
+ * account when it has one and the owner behind the endpoint can read it.
+ */
+export async function routedEndpointFor(
+  service: Service,
+  scope: { thread: string; route: AccountRoute | null },
+  deps: Partial<EndpointDeps> = {}
+): Promise<RoutedEndpoint> {
+  const d = { ...defaults, ...deps }
+  const endpoint = await endpointFor(service, d)
+  if (!endpoint || !scope.route) return { url: endpoint, account: null }
+  if (!(await scopedRoutesAt(endpoint, d))) {
+    console.log(`[gateway] ${service} ${scope.thread}: owner has no scoped routes, sending unscoped`)
+    return { url: endpoint, account: null }
+  }
+  console.log(`[gateway] ${service} ${scope.thread}: ${scope.route.account}${scope.route.pin ? ' (pinned)' : ''}`)
+  return { url: routeUrl(endpoint, scope.thread, scope.route), account: scope.route.account }
+}
+
 export const forgetShimAnswer = (): void => {
   last = null
+  features.clear()
 }

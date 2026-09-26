@@ -37,7 +37,7 @@ import {
 import { APP_TOOLS, appToolsMcp } from '../apptools'
 import { expandSlashRefs } from '../slash'
 import { resolveClaude } from './binaries'
-import { endpointFor } from '../endpoint'
+import { routedEndpointFor } from '../endpoint'
 
 // Dev override: a small window (e.g. 45_000 → compaction arms at ~12k)
 // makes a real compaction reachable in one short thread for UI work.
@@ -800,8 +800,8 @@ export const claudeDriver: HarnessDriver = {
     // updates it in place); the bundled CLI stays the fallback.
     const claudeCli = await resolveClaude()
     // Provider traffic goes through Aliax's shim or our own gateway, which
-    // swap in the pinned account's token and read the limit headers.
-    const endpoint = await endpointFor('claude')
+    // swap in this thread's account's token and read the limit headers.
+    const { url: endpoint } = await routedEndpointFor('claude', { thread: session.id, route: ctx.route ?? null })
 
     const options: Options = {
       abortController: abort,

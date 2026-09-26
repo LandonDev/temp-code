@@ -28,10 +28,11 @@ export function observeHooks({ logDir, onObserved }: { logDir: string; onObserve
  * (and answers `account/rateLimits/read`). The codex driver hands those here
  * with the account its process spends from; without one they describe the pin.
  */
-export function observeCodexSnapshot(snapshot: unknown, account: string | null = pinnedProfile('codex')): void {
+export function observeCodexSnapshot(snapshot: unknown, account: string | null = null): void {
+  const name = account ?? pinnedProfile('codex')
   const windows = codexSnapshotToWindows(snapshot)
-  if (!account || windows.length === 0) return
-  if (accounts.observeWindows('codex', account, windows)) observed?.()
+  if (!name || windows.length === 0) return
+  if (accounts.observeWindows('codex', name, windows)) observed?.()
 }
 
 const KEPT_HEADERS = new Set(['retry-after', 'request-id', 'content-type'])

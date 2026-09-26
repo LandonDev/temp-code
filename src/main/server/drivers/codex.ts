@@ -8,7 +8,7 @@ import { harnessEnv, resolveBinary } from './binaries'
 import { expandSlashRefs } from '../slash'
 import { toolDisplay } from './display'
 import { bridgeMcpConfig } from '../apptools'
-import { endpointFor } from '../endpoint'
+import { routedEndpointFor } from '../endpoint'
 import { observeCodexSnapshot } from '../gatewayObserve'
 
 /**
@@ -181,6 +181,9 @@ export const codexDriver: HarnessDriver = {
 
   async start(ctx: DriverCtx): Promise<DriverHandle> {
     const { session, emit } = ctx
+    // The account this process spends from once its base URL is resolved;
+    // its rate-limit snapshots describe that account (the pin when unscoped).
+    let account: string | null = null
 
     const binPath = await resolveBinary('codex')
     if (!binPath) throw new Error('codex CLI not found — install it and log in (`codex login`)')
@@ -491,7 +494,7 @@ export const codexDriver: HarnessDriver = {
           break
         }
         case 'account/rateLimits/updated':
-          observeCodexSnapshot(params)
+          observeCodexSnapshot(params, account)
           break
       }
     }
@@ -626,8 +629,10 @@ export const codexDriver: HarnessDriver = {
       // app's WS server, so codex threads can operate the app like claude.
       const bridgeEntry = bridgeMcpConfig(session.id)
       // Provider traffic goes through Aliax's shim or our own gateway, which
-      // swap in the pinned account's token.
-      const endpoint = await endpointFor('codex')
+      // swap in this thread's account's token.
+      const routed = await routedEndpointFor('codex', { thread: session.id, route: ctx.route ?? null })
+      const endpoint = routed.url
+      account = routed.account
       const threadParams = {
         cwd: session.cwd,
         model: session.model,
@@ -677,7 +682,7 @@ export const codexDriver: HarnessDriver = {
         await startFresh()
       }
       // The first usage numbers for the footer; updates arrive as notifications.
-      conn.request('account/rateLimits/read', {}).then(observeCodexSnapshot, () => {})
+      conn.request('account/rateLimits/read', {}).then((snapshot) => observeCodexSnapshot(snapshot, account), () => {})
     } catch (err) {
       disposed = true // expected exit, don't also report it as a crash
       conn.kill()
