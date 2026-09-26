@@ -44,7 +44,12 @@ vi.mock("../lib/harness", () => ({
 }));
 vi.mock("../lib/models", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../lib/models")>()),
-  resolveModel: (_harness: string, model: string) => ({ id: model === "old" ? "new" : model }),
+  // "old" normalizes to "new" (same native model); "unknown" is not in the catalog, so it falls back to the default.
+  resolveModel: (_harness: string, model: string) => ({ id: model === "old" ? "new" : model === "unknown" ? "default" : model }),
+  nativeModelId: (model: { id: string } | string) => {
+    const id = typeof model === "string" ? model : model.id;
+    return id === "old" || id === "new" ? "native" : id;
+  },
   mergeModelSettings: (_resolved: unknown, settings?: Record<string, string>) => settings ?? {},
 }));
 vi.mock("../lib/checkpointBridge", () => ({ installCheckpointBridge: () => () => {} }));
@@ -395,17 +400,20 @@ describe("installBootTasks", () => {
     sessionStore.mutate([
       session("s-a", { cwd: "~", model: "old" }),
       session("s-b", { model: "kept" }),
+      session("s-c", { model: "unknown" }),
     ]);
     teardown = installBootTasks();
     await flush();
     expect(projectStore.getState().projectCwd).toBe("/home/me/code");
     expect(createWorkspace).toHaveBeenCalledWith("/home/me/code");
     expect(refreshHarnessCatalogs).toHaveBeenCalledWith(["claude"]);
-    const [a, b] = sessionStore.getSnapshot();
+    const [a, b, c] = sessionStore.getSnapshot();
     expect(a.cwd).toBe("/home/me/code");
     expect(a.model).toBe("new");
     expect(b.cwd).toBe("/repo");
     expect(b.model).toBe("kept");
+    // A model the catalog does not list is never swapped for the default.
+    expect(c.model).toBe("unknown");
   });
 
   it("leaves a remembered folder alone and ignores late answers after teardown", async () => {

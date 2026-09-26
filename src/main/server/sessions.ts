@@ -571,22 +571,34 @@ export class SessionRegistry {
     if (current) this.setAccount(sessionId, current)
   }
 
-  /** Every open thread of a routed provider that shows no account yet: at
-   *  boot, once the accounts service has its first snapshot. */
-  fillAccounts(): void {
-    for (const s of this.store.listSessions()) {
-      if (!s.archived && s.account == null && isRoutedProvider(s.provider)) this.expectAccount(s.id)
+  /** Keep a thread's shown account the one its next send will use. With
+   *  no live process nothing is warm on its account, so it re-picks fresh:
+   *  the best account for its model now. With a process the sticky pick
+   *  stands while it has room; when it moved (out of room, or a pin
+   *  changed) the process is dropped so the next send respawns under the
+   *  new account (resume keeps the conversation). A thread mid-turn is
+   *  left alone: the gateway moves that one itself. */
+  refreshAccount(sessionId: string): void {
+    const meta = this.store.getSession(sessionId)
+    if (!meta || meta.archived || !isRoutedProvider(meta.provider)) return
+    if (LIVE_STATUSES.has(meta.status) || this.starting.has(sessionId)) return
+    const live = this.handles.has(sessionId)
+    this.expectAccount(sessionId, { fresh: !live })
+    if (live && (this.store.getSession(sessionId)?.account ?? null) !== (meta.account ?? null)) {
+      void this.dropHandle(sessionId)
     }
   }
 
-  /** A scope pin changed: threads under it that are not mid-turn show
-   *  their new pick now; the next send respawns a live process under the
-   *  new pin (spawnedPin). A thread mid-turn still spends where it is and
-   *  recomputes at that respawn. */
+  /** Every open thread: at boot (once the accounts service knows any
+   *  account) and whenever the snapshot changes, so coming back to a
+   *  thread never shows a stale pick. */
+  refreshAccounts(): void {
+    for (const s of this.store.listSessions()) if (!s.archived) this.refreshAccount(s.id)
+  }
+
+  /** A scope pin changed: threads under it show their new pick now. */
   private expectAccountsUnder(match: (meta: SessionMeta) => boolean): void {
-    for (const s of this.store.listSessions()) {
-      if (!s.archived && !LIVE_STATUSES.has(s.status) && match(s)) this.expectAccount(s.id)
-    }
+    for (const s of this.store.listSessions()) if (!s.archived && match(s)) this.refreshAccount(s.id)
   }
 
   /** A thread's error named a usage limit: ask for the next account now

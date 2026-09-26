@@ -163,12 +163,10 @@ export async function startServer(
   const accounts = new AccountsService()
   registry.limits = accounts
   const m3a = { store, registry, notes: new Notes(db), logos: new ProjectLogos(options.dataDir ?? dirname(dbPath)), accounts }
-  // Threads that show no account yet learn their expected one from the
-  // first snapshot that knows any accounts; an empty one would pick nothing.
-  const offFill = accounts.onChange((snapshot) => {
-    if (!Object.values(snapshot.providers).some((p) => p.profiles.length > 0)) return
-    offFill()
-    registry.fillAccounts()
+  // Every snapshot that knows any account re-picks the open threads'
+  // accounts (an empty one would pick nothing): the first covers boot.
+  accounts.onChange((snapshot) => {
+    if (Object.values(snapshot.providers).some((p) => p.profiles.length > 0)) registry.refreshAccounts()
   })
   accounts.start()
   const gateway = await startGateway({
@@ -812,6 +810,8 @@ export async function startServer(
             break
           case 'session.subscribe': {
             const { sessionId } = req.params
+            // Opening a thread: its shown account is the one its next send uses.
+            registry.refreshAccount(sessionId)
             if (!unsubs.has(sessionId)) {
               unsubs.set(
                 sessionId,
