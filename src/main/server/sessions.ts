@@ -538,7 +538,7 @@ export class SessionRegistry {
     return this.storedContinuableError(meta.id)
   }
 
-  /** The explicit pin that applies to a thread (its own, its project's, its workspace's). */
+  /** The explicit pin that applies to a thread (its project's, else its workspace's). */
   pinOf(meta: SessionMeta): ResolvedPin | null {
     const project = meta.projectId ? this.store.getProject(meta.projectId) : null
     const workspaceId = project?.workspaceId ?? meta.workspaceId
@@ -552,6 +552,37 @@ export class SessionRegistry {
     if (!meta || (meta.account ?? null) === account) return
     const next = this.store.setSessionAccount(sessionId, account)
     if (next) this.notifyMeta(next)
+  }
+
+  /** The account a thread is expected to spend from, computed ahead of its
+   *  spawn so its row shows it at once: the pin that applies, else the
+   *  sticky current account while it has room, else the best account for
+   *  its model. The same pick the spawn makes; it becomes the sticky input
+   *  to that spawn, and the gateway corrects the row when traffic lands
+   *  elsewhere. An empty snapshot (no accounts known yet) changes nothing. */
+  expectAccount(sessionId: string): void {
+    const meta = this.store.getSession(sessionId)
+    if (!meta || !this.limits || !isRoutedProvider(meta.provider)) return
+    const { current } = this.limits.routeFor(meta, this.pinOf(meta))
+    if (current) this.setAccount(sessionId, current)
+  }
+
+  /** Every open thread of a routed provider that shows no account yet: at
+   *  boot, once the accounts service has its first snapshot. */
+  fillAccounts(): void {
+    for (const s of this.store.listSessions()) {
+      if (!s.archived && s.account == null && isRoutedProvider(s.provider)) this.expectAccount(s.id)
+    }
+  }
+
+  /** A scope pin changed: threads under it that are not mid-turn show
+   *  their new pick now; the next send respawns a live process under the
+   *  new pin (spawnedPin). A thread mid-turn still spends where it is and
+   *  recomputes at that respawn. */
+  private expectAccountsUnder(match: (meta: SessionMeta) => boolean): void {
+    for (const s of this.store.listSessions()) {
+      if (!s.archived && !LIVE_STATUSES.has(s.status) && match(s)) this.expectAccount(s.id)
+    }
   }
 
   /** A thread's error named a usage limit: ask for the next account now
@@ -700,12 +731,15 @@ export class SessionRegistry {
     if (!this.store.getProject(projectId)) throw new Error(`unknown project: ${projectId}`)
     this.store.setProjectAccounts(projectId, pins)
     this.notifyCatalog('projects')
+    this.expectAccountsUnder((s) => s.projectId === projectId)
   }
 
   setWorkspaceAccounts(workspaceId: string, pins: AccountPins): void {
     if (!this.store.listWorkspaces().some((w) => w.id === workspaceId)) throw new Error(`unknown workspace: ${workspaceId}`)
     this.store.setWorkspaceAccounts(workspaceId, pins)
     this.notifyCatalog('workspaces')
+    const projects = new Set(this.store.listProjects().filter((p) => p.workspaceId === workspaceId).map((p) => p.id))
+    this.expectAccountsUnder((s) => (s.projectId ? projects.has(s.projectId) : s.workspaceId === workspaceId))
   }
 
   /** Switch a worktree project's checkout to another branch (existing or
@@ -944,8 +978,6 @@ export class SessionRegistry {
       permission: params.permission ?? d.permission,
       fast: false,
       context1m: params.context1m ?? false,
-      // A pin is the thread's own; a child never inherits its parent's.
-      accountPin: params.parentId ? null : (params.accountPin ?? null),
       account: null,
       busySince: null,
       pausedAt: null,
@@ -961,28 +993,31 @@ export class SessionRegistry {
     this.putFold(toFoldRow(id, newFoldState()))
     this.todoFolds.set(id, newTodoFold())
     this.notifyMeta(meta)
+    // The account the thread will spend from, shown before its first spawn.
+    this.expectAccount(id)
+    const created = this.store.getSession(id) ?? meta
     if (params.parentId) {
-      this.append(params.parentId, { type: 'agent-spawned', childSessionId: meta.id })
+      this.append(params.parentId, { type: 'agent-spawned', childSessionId: created.id })
     }
     // A build starting from a plan auto-archives its planning thread: the
     // conversation is over, the plan file carries the context. Archiving
     // touches nothing the models use — mirrors and the plan doc stay, and
     // any send into the thread revives it.
     if (
-      meta.planPath &&
-      (meta.threadType === 'implementation' || meta.threadType === 'orchestration')
+      created.planPath &&
+      (created.threadType === 'implementation' || created.threadType === 'orchestration')
     ) {
       const planThread = this.store
         .listSessions()
-        .find((s) => s.threadType === 'planning' && s.planPath === meta.planPath && !s.archived)
+        .find((s) => s.threadType === 'planning' && s.planPath === created.planPath && !s.archived)
       if (planThread) void this.setArchived(planThread.id, true)
     }
     // A requested goal waits for the kickoff message (send() applies it
     // just before the text), so goal and work arrive in order.
     if (params.goal?.trim()) this.pendingGoals.set(id, params.goal.trim())
     // Start the harness eagerly so status/errors surface immediately.
-    void this.handleFor(meta.id).catch(() => {})
-    return meta
+    void this.handleFor(created.id).catch(() => {})
+    return created
   }
 
   async send(
@@ -1057,22 +1092,32 @@ export class SessionRegistry {
       if (next) {
         meta = next
         this.notifyMeta(next)
+        // Another harness, another provider's accounts.
+        this.setAccount(sessionId, null)
+        this.expectAccount(sessionId)
+        meta = this.store.getSession(sessionId) ?? meta
       }
     } else {
       // Per-message model/reasoning: persist the change and drop the live
       // handle — the next handleFor() boots the harness fresh (resume keeps
       // the conversation) with the new settings.
       const model = routed.model ?? meta.model
-      if (model !== meta.model || reasoning !== meta.reasoning) {
+      const modelChanged = model !== meta.model
+      if (modelChanged || reasoning !== meta.reasoning) {
         await this.dropHandle(sessionId)
         const next = this.store.updateSession(sessionId, { model, reasoning })
         if (next) {
           meta = next
           this.notifyMeta(next)
+          // The pick depends on the model's windows (a Fable cap, say).
+          if (modelChanged) {
+            this.expectAccount(sessionId)
+            meta = this.store.getSession(sessionId) ?? meta
+          }
         }
       }
     }
-    // A pin change (thread, project or workspace) since the harness was
+    // A pin change (project or workspace) since the harness was
     // spawned: its URL names the old account, so boot fresh under the new one.
     if (this.handles.has(sessionId) && this.spawnedPin.get(sessionId) !== (this.pinOf(meta)?.name ?? null)) {
       await this.dropHandle(sessionId)
@@ -1559,16 +1604,6 @@ export class SessionRegistry {
     })
   }
 
-  /** Pin this thread to one Aliax account (null: inherit the project's,
-   *  then the workspace's, else auto). Takes effect on the next send, which
-   *  respawns the harness when the resolved pin differs from the one its
-   *  process was started with. */
-  setAccountPin(sessionId: string, account: string | null): void {
-    const next = this.store.updateSession(sessionId, { accountPin: account?.trim() || null })
-    if (!next) throw new Error(`unknown session: ${sessionId}`)
-    this.notifyMeta(next)
-  }
-
   /** Fast mode / context window: persist and drop the handle — the next
    *  send boots the harness fresh (resume keeps the conversation). */
   async tune(sessionId: string, patch: { fast?: boolean; context1m?: boolean }): Promise<void> {
@@ -1888,9 +1923,10 @@ export class SessionRegistry {
     const meta = this.store.getSession(sessionId)
     if (!meta) throw new Error(`unknown session: ${sessionId}`)
     const driver = BUILT_IN_DRIVERS[meta.provider]
-    // The account this process spends from: the thread's pin (its own, its
-    // project's, its workspace's) or the best account for its model. The
-    // row shows the expected account at once; the gateway corrects it.
+    // The account this process spends from: the pin that applies (its
+    // project's, its workspace's), else the sticky expected account while
+    // it has room, else the best account for its model. The row shows the
+    // pick at once; the gateway corrects it.
     const pin = this.pinOf(meta)
     const { route, current } = this.limits?.routeFor(meta, pin) ?? { route: null, current: null }
     this.spawnedPin.set(sessionId, pin?.name ?? null)

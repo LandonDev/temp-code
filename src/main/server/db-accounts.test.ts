@@ -40,18 +40,17 @@ const meta = (id: string, extra: Partial<SessionMeta> = {}): SessionMeta => ({
 })
 
 describe('account columns', () => {
-  it('a session has no pin and no account until set; both survive an update', () => {
+  it('a session has no account until set; it survives an update and never touches updatedAt', () => {
     store.insertSession(meta('s'))
-    expect(store.getSession('s')).toMatchObject({ accountPin: null, account: null })
-    store.updateSession('s', { accountPin: 'me@x.com' })
-    expect(store.getSession('s')).toMatchObject({ accountPin: 'me@x.com', account: null })
+    expect(store.getSession('s')).toMatchObject({ account: null })
+    expect(store.getSession('s')).not.toHaveProperty('accountPin')
     const before = store.getSession('s')!.updatedAt
     store.setSessionAccount('s', 'other@x.com')
-    expect(store.getSession('s')).toMatchObject({ accountPin: 'me@x.com', account: 'other@x.com', updatedAt: before })
+    expect(store.getSession('s')).toMatchObject({ account: 'other@x.com', updatedAt: before })
     store.updateSession('s', { title: 't' })
-    expect(store.getSession('s')).toMatchObject({ accountPin: 'me@x.com', account: 'other@x.com' })
-    store.updateSession('s', { accountPin: null })
-    expect(store.getSession('s')!.accountPin).toBeNull()
+    expect(store.getSession('s')).toMatchObject({ account: 'other@x.com' })
+    store.setSessionAccount('s', null)
+    expect(store.getSession('s')!.account).toBeNull()
   })
   it('projects and workspaces default to no pins, keep one per provider, and drop empty ones', () => {
     store.insertWorkspace({ id: 'w', name: 'w', path: '/w', git: false, createdAt: 1 })

@@ -187,6 +187,7 @@ interface SessionRowRaw {
   context_tokens: number | null
   context_window: number | null
   native_id: string | null
+  /** Unused since the thread pin went; the column stays (master only adds). */
   account_pin: string | null
   account_current: string | null
   created_at: number
@@ -237,7 +238,6 @@ function toMeta(r: SessionRowRaw): SessionMeta {
     context: r.context_tokens == null ? null : { tokens: r.context_tokens, window: r.context_window },
     permission: r.permission as SessionMeta['permission'],
     nativeId: r.native_id,
-    accountPin: r.account_pin,
     account: r.account_current,
     createdAt: r.created_at,
     updatedAt: r.updated_at
@@ -327,8 +327,8 @@ export class Store {
   insertSession(meta: SessionMeta): void {
     this
       .stmt(
-        `INSERT INTO sessions (id, parent_id, project_id, workspace_id, thread_type, plan_path, provider, model, reasoning, agent_type, title, cwd, status, archived, pinned, permission, fast, context_1m, busy_since, paused_at, frozen_active_elapsed, thread_rules, native_id, account_pin, account_current, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        `INSERT INTO sessions (id, parent_id, project_id, workspace_id, thread_type, plan_path, provider, model, reasoning, agent_type, title, cwd, status, archived, pinned, permission, fast, context_1m, busy_since, paused_at, frozen_active_elapsed, thread_rules, native_id, account_current, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         meta.id,
@@ -354,7 +354,6 @@ export class Store {
         meta.frozenActiveElapsed,
         meta.threadRules ? JSON.stringify(meta.threadRules) : null,
         meta.nativeId,
-        meta.accountPin ?? null,
         meta.account ?? null,
         meta.createdAt,
         meta.updatedAt
@@ -384,7 +383,6 @@ export class Store {
         | 'planPath'
         | 'agentType'
         | 'threadRules'
-        | 'accountPin'
         | 'account'
       >
     >
@@ -398,7 +396,7 @@ export class Store {
     const next = { ...cur, ...defined, updatedAt: Date.now() }
     this
       .stmt(
-        `UPDATE sessions SET status = ?, title = ?, native_id = ?, archived = ?, pinned = ?, provider = ?, model = ?, reasoning = ?, permission = ?, fast = ?, context_1m = ?, busy_since = ?, paused_at = ?, frozen_active_elapsed = ?, thread_type = ?, plan_path = ?, agent_type = ?, thread_rules = ?, account_pin = ?, account_current = ?, updated_at = ? WHERE id = ?`
+        `UPDATE sessions SET status = ?, title = ?, native_id = ?, archived = ?, pinned = ?, provider = ?, model = ?, reasoning = ?, permission = ?, fast = ?, context_1m = ?, busy_since = ?, paused_at = ?, frozen_active_elapsed = ?, thread_type = ?, plan_path = ?, agent_type = ?, thread_rules = ?, account_current = ?, updated_at = ? WHERE id = ?`
       )
       .run(
         next.status,
@@ -419,7 +417,6 @@ export class Store {
         next.planPath,
         next.agentType,
         next.threadRules ? JSON.stringify(next.threadRules) : null,
-        next.accountPin ?? null,
         next.account ?? null,
         next.updatedAt,
         id

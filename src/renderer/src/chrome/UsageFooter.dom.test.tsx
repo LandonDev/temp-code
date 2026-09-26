@@ -7,6 +7,7 @@ import type { ServerPush, SessionMeta } from '../lib/tcserver/types'
 import { accountsStore } from '../stores/accounts'
 import { client } from '../lib/tcserver/client'
 import { sessionStore } from '../lib/tcserver/store'
+import { workspaceStore } from '../lib/tcserver/workspaces'
 import { mountProbe } from '../test/renderProbe'
 import { UsageFooter } from './UsageFooter'
 
@@ -60,7 +61,9 @@ class FakeLink implements Link {
   request<T>(method: string, params?: unknown): Promise<T> {
     this.calls.push({ method, params })
     if (method === 'accounts.list') return Promise.resolve(snapshot() as T)
-    if (method === 'session.account.pin') return Promise.resolve(null as T)
+    if (method === 'workspace.list') return Promise.resolve([{ id: 'w', name: 'Site', path: '/s', git: true, accountPins: { claude: 'c@x.com' }, createdAt: 1 }] as T)
+    if (method === 'project.list') return Promise.resolve([] as T)
+    if (method === 'defaults.get') return Promise.resolve(null as T)
     if (method === 'session.subscribe') return Promise.resolve(null as T)
     return Promise.reject(new Error(`unexpected ${method}`))
   }
@@ -80,6 +83,7 @@ afterEach(() => {
   probe = null
   accountsStore.reset()
   sessionStore.reset()
+  workspaceStore.reset()
   vi.restoreAllMocks()
 })
 
@@ -106,17 +110,17 @@ const meta = (extra: Partial<SessionMeta> = {}): SessionMeta => ({
   pausedAt: null,
   frozenActiveElapsed: null,
   nativeId: null,
-  accountPin: null,
   account: null,
   createdAt: 1,
   updatedAt: 1,
   ...extra
 })
 
-async function mount(harness: 'claude' | 'cursor', thread?: Partial<SessionMeta>) {
+async function mount(harness: 'claude' | 'cursor', thread?: Partial<SessionMeta>, withWorkspaces = false) {
   vi.spyOn(Date, 'now').mockReturnValue(now)
   const link = new FakeLink()
   accountsStore.connect(link)
+  if (withWorkspaces) workspaceStore.connect(link)
   if (thread) sessionStore.adopt(meta(thread))
   await flush()
   probe = mountProbe(<UsageFooter harness={harness} sessionId={thread ? 'thread-1' : undefined} />)
@@ -160,7 +164,7 @@ describe('UsageFooter', () => {
       expect.stringContaining('sign in again in Aliax')
     ])
     expect(rows.map((r) => r.getAttribute('aria-selected'))).toEqual(['true', 'false', 'false', 'false'])
-    expect(rows.every((r) => (r as HTMLButtonElement).disabled)).toBe(true)
+    expect(rows.every((r) => r.getAttribute('aria-disabled') === 'true')).toBe(true)
     // Each row carries Aliax's cells: exact percent left, and when the window refills.
     expect(rows[0].textContent).toContain('Max 20x · $200/mo')
     const b = rows[1]
@@ -173,8 +177,8 @@ describe('UsageFooter', () => {
     expect(link.calls.some((c) => c.method === 'session.account.pin')).toBe(false)
   })
 
-  it("with a thread it shows that thread's account, and a row click pins the thread", async () => {
-    const pinned = vi.spyOn(client, 'request').mockResolvedValue(null)
+  it("with a thread it shows that thread's account; the list is read-only with a check on it", async () => {
+    const request = vi.spyOn(client, 'request').mockResolvedValue(null)
     const { root } = await mount('claude', { account: 'b@x.com' })
     // The thread spends from b, whatever the global pin says.
     expect(root.textContent).toContain('b@x.com')
@@ -186,35 +190,35 @@ describe('UsageFooter', () => {
       fireEvent.click(name)
     })
     const rows = screen.getAllByRole('option')
-    expect(rows[0].textContent).toContain('Auto')
-    expect(rows[0].textContent).toContain('Picked by model')
-    expect(rows.map((r) => r.getAttribute('aria-selected'))).toEqual(['true', 'false', 'true', 'false', 'false'])
-    expect(rows[2].querySelector('[aria-label="In use"]')).not.toBeNull()
+    expect(rows.map((r) => r.textContent)).toEqual([
+      expect.stringContaining('Main'),
+      expect.stringContaining('b@x.com'),
+      expect.stringContaining('c@x.com'),
+      expect.stringContaining('sign in again in Aliax')
+    ])
+    expect(rows.map((r) => r.getAttribute('aria-selected'))).toEqual(['false', 'true', 'false', 'false'])
+    expect(rows[1].querySelector('[aria-label="In use"]')).not.toBeNull()
     expect(screen.getByRole('listbox').textContent).toContain('Auto · picked by model')
+    expect(screen.getByRole('listbox').textContent).not.toContain('Picked by model, moved')
     await probe!.act(async () => {
-      fireEvent.click(rows[3])
+      fireEvent.click(rows[2])
       await flush()
     })
-    expect(pinned).toHaveBeenCalledWith('session.account.pin', { sessionId: 'thread-1', account: 'c@x.com' })
+    expect(request).not.toHaveBeenCalledWith('session.account.pin', expect.anything())
+    expect(rows[1].getAttribute('aria-selected')).toBe('true')
   })
 
-  it('a pinned thread shows the pin mark, and Auto clears the pin', async () => {
-    const pinned = vi.spyOn(client, 'request').mockResolvedValue(null)
-    const { root } = await mount('claude', { accountPin: 'c@x.com', account: 'c@x.com' })
+  it('a thread under a workspace pin names the source and marks the pin; the account in use wins when the gateway moved it', async () => {
+    const { root } = await mount('claude', { workspaceId: 'w', account: 'b@x.com' }, true)
     const name = root.querySelector('button[aria-haspopup="listbox"]') as HTMLButtonElement
-    expect(name.title).toContain('Pinned to this thread')
+    expect(name.title).toContain('From workspace Site')
     await probe!.act(async () => {
       fireEvent.click(name)
     })
     const rows = screen.getAllByRole('option')
-    expect(rows[0].getAttribute('aria-selected')).toBe('false')
-    expect(rows[3].querySelector('[aria-label="Pinned to this thread"]')).not.toBeNull()
-    expect((rows[3] as HTMLButtonElement).disabled).toBe(true)
-    await probe!.act(async () => {
-      fireEvent.click(rows[0])
-      await flush()
-    })
-    expect(pinned).toHaveBeenCalledWith('session.account.pin', { sessionId: 'thread-1', account: null })
+    expect(rows[2].querySelector('[aria-label="Pinned by the workspace"]')).not.toBeNull()
+    expect(rows[1].querySelector('[aria-label="In use"]')).not.toBeNull()
+    expect(rows.map((r) => r.getAttribute('aria-selected'))).toEqual(['false', 'true', 'false', 'false'])
   })
 
   it('keeps Cursor to bars only: plain name, no popover', async () => {

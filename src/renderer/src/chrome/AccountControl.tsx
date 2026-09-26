@@ -8,21 +8,19 @@ import { useAccounts } from "../stores/accounts";
 import { isRoutedProvider } from "@server/shared/accounts";
 
 /**
- * The composer's account: which Aliax account this thread spends from.
- * Reads as the account in use (or "Auto" before the first spawn), opens
- * the same account list the footer shows, and pins or clears the thread's
- * pin. Nothing renders for a provider without a gateway or a machine
+ * The composer's account: which Aliax account this thread spends from. A
+ * thread is always auto (its project's or workspace's pin, else the best
+ * account for its model), so this only reads: the account in use, and on
+ * click the same account list the footer shows, with a check on that
+ * account. Nothing renders for a provider without a gateway or a machine
  * without saved accounts.
  */
 export function AccountControl({
   meta,
-  onPin,
   onClose,
 }: {
-  /** The thread (or the thread about to be created) whose account this is. */
+  /** The thread whose account this is. */
   meta: ScopeMeta | null;
-  /** Pin the thread to an account, or null for Auto. */
-  onPin: (name: string | null) => void;
   onClose?: () => void;
 }) {
   const root = useRef<HTMLDivElement>(null);
@@ -36,8 +34,8 @@ export function AccountControl({
   const accounts = snapshot.providers[scope.provider];
   if (accounts.profiles.length === 0) return null;
   const label = controlLabel(scope, accounts);
-  const title = `${sourceLine(scope)} · ${label}`;
-  const Icon = scope.pin || scope.inherited ? Pin : Users;
+  const title = label ? `${sourceLine(scope)} · ${label}` : sourceLine(scope);
+  const Icon = scope.inherited ? Pin : Users;
 
   const dismiss = (refocus: boolean) => {
     setOpen(false);
@@ -49,7 +47,7 @@ export function AccountControl({
       <button
         type="button"
         title={title}
-        aria-label={`Account: ${label}`}
+        aria-label={`Account: ${label ?? "unknown"}`}
         aria-expanded={open}
         aria-haspopup="listbox"
         data-account-picker
@@ -60,7 +58,7 @@ export function AccountControl({
         }`}
       >
         <Icon className="size-3.5 shrink-0" strokeWidth={1.75} />
-        <span className="min-w-0 truncate text-[11px]">{label}</span>
+        <span className={`min-w-0 truncate text-[11px] ${label ? "" : "text-content/50"}`}>{label ?? "Account"}</span>
         <ChevronDown
           className={`size-3 shrink-0 text-content/50 ${open ? "rotate-180" : ""}`}
           strokeWidth={1.75}
@@ -73,7 +71,6 @@ export function AccountControl({
           accounts={accounts}
           scope={scope}
           now={now}
-          onPick={onPin}
           onDismiss={() => dismiss(true)}
         />
       ) : null}

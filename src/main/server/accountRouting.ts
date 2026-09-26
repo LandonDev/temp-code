@@ -9,7 +9,7 @@ import type { SessionMeta } from '@shared/events'
  * is baked into the child's gateway URL at spawn.
  */
 
-export type PinLevel = 'thread' | 'project' | 'workspace'
+export type PinLevel = 'project' | 'workspace'
 
 export interface ResolvedPin {
   name: string
@@ -17,17 +17,16 @@ export interface ResolvedPin {
 }
 
 /**
- * The explicit pin that applies to a thread: its own, else its project's for
- * its provider, else its workspace's. A subagent has no pin of its own unless
- * set on it, so a parent's thread pin never reaches its children.
+ * The explicit pin that applies to a thread: its project's for its provider,
+ * else its workspace's. A thread has no pin of its own: it is always auto
+ * under whatever scope pin applies.
  */
 export function resolvePin(
-  meta: Pick<SessionMeta, 'provider' | 'accountPin'>,
+  meta: Pick<SessionMeta, 'provider'>,
   project: Pick<ProjectMeta, 'accountPins'> | null,
   workspace: Pick<WorkspaceMeta, 'accountPins'> | null
 ): ResolvedPin | null {
   if (!isRoutedProvider(meta.provider)) return null
-  if (meta.accountPin) return { name: meta.accountPin, level: 'thread' }
   const fromProject = project?.accountPins?.[meta.provider]
   if (fromProject) return { name: fromProject, level: 'project' }
   const fromWorkspace = workspace?.accountPins?.[meta.provider]

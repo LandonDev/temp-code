@@ -20,22 +20,15 @@ function snapshot(reports: Record<string, { label: string; usedPercent: number; 
 describe('resolvePin', () => {
   const project = { accountPins: { claude: 'proj@x.com' } }
   const workspace = { accountPins: { claude: 'ws@x.com', codex: 'ws-codex' } }
-  it('thread beats project beats workspace; unset levels inherit', () => {
-    expect(resolvePin({ provider: 'claude', accountPin: 'me@x.com' }, project, workspace)).toEqual({ name: 'me@x.com', level: 'thread' })
-    expect(resolvePin({ provider: 'claude', accountPin: null }, project, workspace)).toEqual({ name: 'proj@x.com', level: 'project' })
-    expect(resolvePin({ provider: 'claude', accountPin: null }, { accountPins: {} }, workspace)).toEqual({ name: 'ws@x.com', level: 'workspace' })
-    expect(resolvePin({ provider: 'claude', accountPin: null }, null, workspace)).toEqual({ name: 'ws@x.com', level: 'workspace' })
-    expect(resolvePin({ provider: 'claude', accountPin: null }, null, null)).toBeNull()
+  it('project beats workspace; unset levels inherit; a thread has no pin of its own', () => {
+    expect(resolvePin({ provider: 'claude' }, project, workspace)).toEqual({ name: 'proj@x.com', level: 'project' })
+    expect(resolvePin({ provider: 'claude' }, { accountPins: {} }, workspace)).toEqual({ name: 'ws@x.com', level: 'workspace' })
+    expect(resolvePin({ provider: 'claude' }, null, workspace)).toEqual({ name: 'ws@x.com', level: 'workspace' })
+    expect(resolvePin({ provider: 'claude' }, null, null)).toBeNull()
   })
   it('pins are per provider: a codex thread ignores the claude pins', () => {
-    expect(resolvePin({ provider: 'codex', accountPin: null }, project, workspace)).toEqual({ name: 'ws-codex', level: 'workspace' })
-    expect(resolvePin({ provider: 'cursor', accountPin: 'x' }, project, workspace)).toBeNull()
-  })
-  it('a child of a pinned parent has no pin of its own: the parent pin never cascades', () => {
-    // The child row carries accountPin null (create never copies it); only project and workspace apply.
-    const child = { provider: 'claude' as const, accountPin: null }
-    expect(resolvePin(child, null, null)).toBeNull()
-    expect(resolvePin(child, project, null)?.level).toBe('project')
+    expect(resolvePin({ provider: 'codex' }, project, workspace)).toEqual({ name: 'ws-codex', level: 'workspace' })
+    expect(resolvePin({ provider: 'cursor' }, project, workspace)).toBeNull()
   })
 })
 

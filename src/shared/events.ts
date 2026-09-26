@@ -359,9 +359,9 @@ export interface SessionMeta {
   frozenActiveElapsed: number | null
   /** Provider-native session/thread id, once known (for resume). */
   nativeId: string | null
-  /** The Aliax account this thread is pinned to; null inherits the project's, then the workspace's, else auto. */
-  accountPin?: string | null
-  /** The account the thread spends from now (what the gateway last routed it to); null before its first spawn. */
+  /** The Aliax account this thread spends from: the expected pick (its project's or
+   *  workspace's pin, else the best account for its model) until the gateway routes it
+   *  elsewhere; null when no account is known yet. */
   account?: string | null
   /** What a working thread is doing right now ("Editing PromptBar.tsx") —
    *  transient, server-memory only, null the moment the turn settles. */
