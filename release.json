@@ -1,5 +1,5 @@
 {
-  "n": 171,
-  "notes": "docs: the Aliax section of docs/PLAN.md points at the per-scope accounts plan (scope segment, accountRouting, per-thread failover; the global pin is Aliax's)",
-  "ts": 1790460194704
+  "n": 172,
+  "notes": "A thread is always auto: the per-thread account pin is gone and the composer's AccountControl is a read-only indicator of the account the thread spends from (click opens the account list read-only with a check on that account; a project or workspace pin shows its pin glyph and \"From project X\" / \"From workspace Y\"). The expected account is computed ahead of the spawn (SessionRegistry.expectAccount): at create, on a model change, at boot for open threads with no account once the accounts service has a snapshot with profiles (fillAccounts), and for threads not mid-turn under a project or workspace whose pin changed. Removed session.account.pin, setAccountPin, SessionMeta.accountPin, the create param, resolvePin's thread level, the popover's Auto row and pick-to-pin, and the Start-popover control; sessions.account_pin stays in place unused.",
+  "ts": 1790465685338
 }
