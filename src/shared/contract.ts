@@ -9,6 +9,7 @@ import { ProjectModeSchema, ThreadTypeSchema } from './domain'
 import { OrchestrationRulesSchema, ThreadRulesSchema } from './rules'
 import { ThreadDefaultsSchema } from './defaults'
 import { AppshotSettingsSchema } from './appshots'
+import { AccountPinsSchema } from './contract-m3a'
 import { TurnPassSchema } from './turnpass'
 import { BuildConfigSchema } from './build'
 import type { BuildRun } from './build'
@@ -126,6 +127,16 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
     id: z.string(),
     method: z.literal('project.rename'),
     params: z.object({ projectId: z.string(), name: z.string() })
+  }),
+  z.object({
+    id: z.string(),
+    method: z.literal('project.setAccounts'),
+    params: z.object({ projectId: z.string(), pins: AccountPinsSchema })
+  }),
+  z.object({
+    id: z.string(),
+    method: z.literal('workspace.setAccounts'),
+    params: z.object({ workspaceId: z.string(), pins: AccountPinsSchema })
   }),
   z.object({
     id: z.string(),
@@ -522,6 +533,11 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
     id: z.string(),
     method: z.literal('session.rename'),
     params: z.object({ sessionId: z.string(), title: z.string().min(1).max(120) })
+  }),
+  z.object({
+    id: z.string(),
+    method: z.literal('session.account.pin'),
+    params: z.object({ sessionId: z.string(), account: z.string().min(1).nullable() })
   }),
   z.object({
     id: z.string(),
