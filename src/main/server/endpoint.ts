@@ -64,13 +64,17 @@ export function routeUrl(endpoint: string, thread: string, route: AccountRoute):
   return `${endpoint}/~t=${encodeURIComponent(thread)};a=${encodeURIComponent(route.account)}${route.pin ? ';pin=1' : ''}`
 }
 
+/**
+ * Whether the owner behind `endpoint` reads scope segments. Probed under the
+ * service prefix (`/claude/__aliax`): the shim forwards only service paths.
+ */
 async function scopedRoutesAt(endpoint: string, d: EndpointDeps): Promise<boolean> {
   const origin = new URL(endpoint).origin
   const known = features.get(origin)
   if (known && d.now() - known.at < RECHECK_MS) return known.ok
   let ok = false
   try {
-    const res = await d.fetch(`${origin}/__aliax`, { signal: AbortSignal.timeout(1500) })
+    const res = await d.fetch(`${endpoint}/__aliax`, { signal: AbortSignal.timeout(1500) })
     const body = res.ok ? ((await res.json()) as { features?: unknown }) : null
     ok = Array.isArray(body?.features) && body.features.includes('scoped-routes')
   } catch {

@@ -40,7 +40,7 @@ describe('endpointFor', () => {
     const deps = { shimInstalled: () => false, fetch, gatewayUrl, now: () => now }
     const route = { account: 'me@x.com', pin: false }
     expect(await routedEndpointFor('claude', { thread: 'T', route }, deps)).toEqual({ url: 'http://127.0.0.1:5/claude/~t=T;a=me%40x.com', account: 'me@x.com' })
-    expect(fetch).toHaveBeenCalledWith('http://127.0.0.1:5/__aliax', expect.anything())
+    expect(fetch).toHaveBeenCalledWith('http://127.0.0.1:5/claude/__aliax', expect.anything())
     now += 10_000
     expect((await routedEndpointFor('codex', { thread: 'T', route }, deps)).url).toBe('http://127.0.0.1:5/codex/~t=T;a=me%40x.com')
     expect(fetch).toHaveBeenCalledTimes(1)
