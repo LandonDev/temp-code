@@ -1,5 +1,5 @@
 {
-  "n": 170,
-  "notes": "Bump aliax-core to 3524294: the scoped-routes probe goes to <endpoint>/__aliax (the service-prefixed control path the shim forwards), so a thread routed through the shim learns whether the owner reads its scope segment; the bare /__aliax never left the shim.",
-  "ts": 1790459240380
+  "n": 171,
+  "notes": "docs: the Aliax section of docs/PLAN.md points at the per-scope accounts plan (scope segment, accountRouting, per-thread failover; the global pin is Aliax's)",
+  "ts": 1790460194704
 }
