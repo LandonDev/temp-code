@@ -347,6 +347,8 @@ export type StartThreadParams = {
   reasoning?: string;
   permission?: PermissionPolicy;
   context1m?: boolean;
+  /** pin the new thread to one Aliax account; absent inherits the project's, then the workspace's, else auto */
+  accountPin?: string;
   projectId?: string | null;
   workspaceId?: string | null;
   cwd?: string;

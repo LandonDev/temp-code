@@ -3673,6 +3673,7 @@ export default function App() {
         {searchViewOpen || inboxViewOpen || notesViewOpen || settingsOpen ? null : (
           <UsageFooter
             harness={active?.harness}
+            sessionId={active?.id}
             terminals={runningTerminals}
             terminalOpen={runningTerminalOpen}
             onToggleTerminal={onToggleRunningTerminal}

@@ -3,8 +3,10 @@ import { fireEvent, screen } from '@testing-library/react'
 import type { ProfileView, UsageReport } from 'aliax-core/shared/types'
 import { emptyAccounts, type AccountsSnapshot } from '@server/shared/accounts'
 import type { Link } from '../lib/tcserver/store'
-import type { ServerPush } from '../lib/tcserver/types'
+import type { ServerPush, SessionMeta } from '../lib/tcserver/types'
 import { accountsStore } from '../stores/accounts'
+import { client } from '../lib/tcserver/client'
+import { sessionStore } from '../lib/tcserver/store'
 import { mountProbe } from '../test/renderProbe'
 import { UsageFooter } from './UsageFooter'
 
@@ -58,7 +60,8 @@ class FakeLink implements Link {
   request<T>(method: string, params?: unknown): Promise<T> {
     this.calls.push({ method, params })
     if (method === 'accounts.list') return Promise.resolve(snapshot() as T)
-    if (method === 'accounts.switch') return Promise.resolve({ ok: true, notes: [] } as T)
+    if (method === 'session.account.pin') return Promise.resolve(null as T)
+    if (method === 'session.subscribe') return Promise.resolve(null as T)
     return Promise.reject(new Error(`unexpected ${method}`))
   }
   onPush(_listener: (push: ServerPush) => void): () => void {
@@ -76,15 +79,47 @@ afterEach(() => {
   probe?.unmount()
   probe = null
   accountsStore.reset()
+  sessionStore.reset()
   vi.restoreAllMocks()
 })
 
-async function mount(harness: 'claude' | 'cursor') {
+const meta = (extra: Partial<SessionMeta> = {}): SessionMeta => ({
+  id: 'thread-1',
+  parentId: null,
+  projectId: null,
+  workspaceId: null,
+  threadType: 'chat',
+  planPath: null,
+  provider: 'claude',
+  model: 'claude-opus-5-5',
+  reasoning: 'medium',
+  agentType: 'implementer',
+  title: 't',
+  cwd: '/tmp',
+  status: 'idle',
+  pinned: false,
+  archived: false,
+  permission: 'edits',
+  fast: false,
+  context1m: false,
+  busySince: null,
+  pausedAt: null,
+  frozenActiveElapsed: null,
+  nativeId: null,
+  accountPin: null,
+  account: null,
+  createdAt: 1,
+  updatedAt: 1,
+  ...extra
+})
+
+async function mount(harness: 'claude' | 'cursor', thread?: Partial<SessionMeta>) {
   vi.spyOn(Date, 'now').mockReturnValue(now)
   const link = new FakeLink()
   accountsStore.connect(link)
+  if (thread) sessionStore.adopt(meta(thread))
   await flush()
-  probe = mountProbe(<UsageFooter harness={harness} />)
+  probe = mountProbe(<UsageFooter harness={harness} sessionId={thread ? 'thread-1' : undefined} />)
   await probe.act(flush)
   return { link, root: probe.container }
 }
@@ -111,7 +146,7 @@ describe('UsageFooter', () => {
     expect(root.querySelector('[data-window="Weekly"]')?.textContent).toContain('2 more with room')
   })
 
-  it('opens the account list from the name and switches on a row click', async () => {
+  it('without a thread the list is read-only and the check is the global pin', async () => {
     const { link, root } = await mount('claude')
     const name = root.querySelector('button[aria-haspopup="listbox"]') as HTMLButtonElement
     await probe!.act(async () => {
@@ -124,7 +159,8 @@ describe('UsageFooter', () => {
       expect.stringContaining('c@x.com'),
       expect.stringContaining('sign in again in Aliax')
     ])
-    expect((rows[0] as HTMLButtonElement).disabled).toBe(true)
+    expect(rows.map((r) => r.getAttribute('aria-selected'))).toEqual(['true', 'false', 'false', 'false'])
+    expect(rows.every((r) => (r as HTMLButtonElement).disabled)).toBe(true)
     // Each row carries Aliax's cells: exact percent left, and when the window refills.
     expect(rows[0].textContent).toContain('Max 20x · $200/mo')
     const b = rows[1]
@@ -134,11 +170,51 @@ describe('UsageFooter', () => {
     expect(b.querySelectorAll('[data-window="5h"] [role="progressbar"]')).toHaveLength(1)
     const listbox = screen.getByRole('listbox')
     expect(parseInt(listbox.style.width, 10)).toBeGreaterThanOrEqual(560)
+    expect(link.calls.some((c) => c.method === 'session.account.pin')).toBe(false)
+  })
+
+  it("with a thread it shows that thread's account, and a row click pins the thread", async () => {
+    const pinned = vi.spyOn(client, 'request').mockResolvedValue(null)
+    const { root } = await mount('claude', { account: 'b@x.com' })
+    // The thread spends from b, whatever the global pin says.
+    expect(root.textContent).toContain('b@x.com')
+    expect(root.textContent).not.toContain('Main')
+    expect(root.querySelector('[data-window="5h"]')?.textContent).toContain('90%')
+    const name = root.querySelector('button[aria-haspopup="listbox"]') as HTMLButtonElement
+    expect(name.title).toContain('Auto · picked by model')
     await probe!.act(async () => {
-      fireEvent.click(rows[1])
+      fireEvent.click(name)
+    })
+    const rows = screen.getAllByRole('option')
+    expect(rows[0].textContent).toContain('Auto')
+    expect(rows[0].textContent).toContain('Picked by model')
+    expect(rows.map((r) => r.getAttribute('aria-selected'))).toEqual(['true', 'false', 'true', 'false', 'false'])
+    expect(rows[2].querySelector('[aria-label="In use"]')).not.toBeNull()
+    expect(screen.getByRole('listbox').textContent).toContain('Auto · picked by model')
+    await probe!.act(async () => {
+      fireEvent.click(rows[3])
       await flush()
     })
-    expect(link.calls.at(-1)).toEqual({ method: 'accounts.switch', params: { provider: 'claude', name: 'b@x.com' } })
+    expect(pinned).toHaveBeenCalledWith('session.account.pin', { sessionId: 'thread-1', account: 'c@x.com' })
+  })
+
+  it('a pinned thread shows the pin mark, and Auto clears the pin', async () => {
+    const pinned = vi.spyOn(client, 'request').mockResolvedValue(null)
+    const { root } = await mount('claude', { accountPin: 'c@x.com', account: 'c@x.com' })
+    const name = root.querySelector('button[aria-haspopup="listbox"]') as HTMLButtonElement
+    expect(name.title).toContain('Pinned to this thread')
+    await probe!.act(async () => {
+      fireEvent.click(name)
+    })
+    const rows = screen.getAllByRole('option')
+    expect(rows[0].getAttribute('aria-selected')).toBe('false')
+    expect(rows[3].querySelector('[aria-label="Pinned to this thread"]')).not.toBeNull()
+    expect((rows[3] as HTMLButtonElement).disabled).toBe(true)
+    await probe!.act(async () => {
+      fireEvent.click(rows[0])
+      await flush()
+    })
+    expect(pinned).toHaveBeenCalledWith('session.account.pin', { sessionId: 'thread-1', account: null })
   })
 
   it('keeps Cursor to bars only: plain name, no popover', async () => {

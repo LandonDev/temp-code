@@ -15,7 +15,11 @@ import {
   useNow,
   windowLabel,
 } from "../lib/accounts";
+import { scopeOf, sourceLine, type AccountScope } from "../lib/accountScope";
 import { HARNESS_LABEL, HARNESS_TITLE, type HarnessId } from "../lib/session";
+import { client } from "../lib/tcserver/client";
+import { useSessionMeta } from "../lib/tcserver/store";
+import { useProjects, useWorkspaces } from "../lib/tcserver/workspaces";
 import {
   runningTerminalChipLabel,
   type RunningTerminal,
@@ -25,20 +29,27 @@ import { isAccountProvider, type AccountProvider, type ProviderAccounts } from "
 
 export function UsageFooter({
   harness,
+  sessionId,
   terminals = [],
   terminalOpen = false,
   onToggleTerminal,
 }: {
   /** The active thread's harness; accounts show for claude, codex and cursor. */
   harness?: HarnessId;
+  /** The active thread: the footer shows its account, not the global pin. */
+  sessionId?: string;
   terminals?: RunningTerminal[];
   terminalOpen?: boolean;
   onToggleTerminal?: (fileId: string) => void;
 }) {
   const { snapshot, loaded, busy } = useAccounts();
   const now = useNow();
+  const meta = useSessionMeta(sessionId);
+  const projects = useProjects();
+  const workspaces = useWorkspaces();
   const provider = harness && isAccountProvider(harness) ? harness : null;
   const accounts = provider ? snapshot.providers[provider] : null;
+  const scope = meta && meta.provider === provider ? scopeOf(meta, projects, workspaces) : null;
   const showTerminals = terminals.length > 0;
   const showRight = provider !== null || showTerminals;
 
@@ -51,8 +62,9 @@ export function UsageFooter({
         <AccountCells
           provider={provider}
           accounts={accounts}
+          scope={scope}
+          sessionId={sessionId}
           loaded={loaded}
-          busy={busy === provider}
           now={now}
         />
       ) : harness ? (
@@ -90,29 +102,38 @@ export function UsageFooter({
 }
 
 /**
- * The pinned account and one cell per usage window. The name opens the
- * account list for Claude and Codex; Cursor has no switch, so it stays text.
+ * The thread's account (the global pin when no thread is in scope) and one
+ * cell per usage window. The name opens the account list for Claude and
+ * Codex, where a row pins the thread; Cursor has no accounts to pick, so it
+ * stays text.
  */
 function AccountCells({
   provider,
   accounts,
+  scope,
+  sessionId,
   loaded,
-  busy,
   now,
 }: {
   provider: AccountProvider;
   accounts: ProviderAccounts;
+  scope: AccountScope | null;
+  sessionId: string | undefined;
   loaded: boolean;
-  busy: boolean;
   now: number;
 }) {
   const anchor = useRef<HTMLButtonElement>(null);
   const [open, setOpen] = useState(false);
-  const pinned = accounts.profiles.find((p) => p.name === accounts.pinned) ?? null;
-  const report = reportOf(accounts.reports, accounts.pinned);
+  const shownName = scope ? scope.shown : accounts.pinned;
+  const shown = accounts.profiles.find((p) => p.name === shownName) ?? null;
+  const report = reportOf(accounts.reports, shownName);
   const switchable = provider !== "cursor" && accounts.profiles.length > 0;
-  const name = pinned ? displayName(pinned) : null;
+  const name = shown ? displayName(shown) : scope && !shownName ? "Auto" : null;
   const nameClass = "inline-flex h-6 min-w-0 max-w-[14rem] items-center gap-1.5 whitespace-nowrap rounded-md px-1 -mx-1";
+  const pin = (account: string | null) => {
+    if (!sessionId) return;
+    void client.request("session.account.pin", { sessionId, account }).catch(() => {});
+  };
 
   return (
     <>
@@ -123,7 +144,7 @@ function AccountCells({
           className={`pressable ${nameClass} hover:bg-content/5 hover:text-content`}
           aria-haspopup="listbox"
           aria-expanded={open}
-          title={HARNESS_TITLE[provider]}
+          title={scope ? `${HARNESS_TITLE[provider]} · ${sourceLine(scope)}` : HARNESS_TITLE[provider]}
           onClick={() => setOpen((v) => !v)}
         >
           <HarnessIcon harness={provider} className="size-3.5 shrink-0" />
@@ -145,7 +166,7 @@ function AccountCells({
             key={w.label}
             w={w}
             now={now}
-            others={othersWithRoom(accounts.reports, accounts.pinned, w.label)}
+            others={othersWithRoom(accounts.reports, shownName, w.label)}
           />
         ))
       ) : (
@@ -158,13 +179,9 @@ function AccountCells({
           anchor={anchor}
           provider={provider}
           accounts={accounts}
-          busy={busy}
+          scope={scope}
           now={now}
-          onSwitch={(p, n) => {
-            void accountsStore.switch(p, n).then((r) => {
-              if (r.ok) setOpen(false);
-            });
-          }}
+          onPick={scope && sessionId ? pin : undefined}
           onDismiss={() => setOpen(false)}
         />
       ) : null}

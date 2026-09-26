@@ -6,11 +6,9 @@ import {
   adapter,
   isLive,
   pickNext,
-  pinProfile,
   pinnedProfile,
   readMarker,
   vault,
-  type ActionResult,
   type Limit,
   type LimitInfo,
   type Owner,
@@ -36,9 +34,8 @@ import { chooseAccount, type ResolvedPin } from './accountRouting'
 export interface AccountsDeps {
   listServices: () => Promise<ServiceView[]>
   usage: (id: ServiceId, force?: boolean) => Promise<UsageReport[]>
-  activate: (id: ServiceId, name: string) => Promise<ActionResult>
+  /** Aliax's global pin: what unscoped (terminal) traffic spends from. */
   pinned: (id: ServiceId) => string | null
-  pin: (id: ServiceId, name: string) => void
   owner: () => Owner | null
   vaultPresent: () => boolean
   locked: () => boolean
@@ -105,9 +102,7 @@ export async function liveAccount(
 const defaults = (): AccountsDeps => ({
   listServices: accounts.listServices,
   usage: accounts.usage,
-  activate: accounts.activate,
   pinned: pinnedProfile,
-  pin: (id, name) => pinProfile(id, name),
   owner: () => {
     const m = readMarker()
     return isLive(m) ? m.owner : null
@@ -124,10 +119,11 @@ const defaults = (): AccountsDeps => ({
 })
 
 /**
- * The server's view of Aliax's accounts: who is pinned per provider, every
- * saved profile and its usage. Rebuilt on demand, on a poll, and whenever
- * Aliax rewrites its settings or usage cache; every rebuild goes to the
- * listeners, which push it to each window.
+ * The server's view of Aliax's accounts: every saved profile and its usage,
+ * plus Aliax's global pin. Rebuilt on demand, on a poll, and whenever Aliax
+ * rewrites its settings or usage cache; every rebuild goes to the
+ * listeners, which push it to each window. Threads pick their own account
+ * from it (routeFor); nothing here moves the global pin.
  */
 export class AccountsService {
   private deps: AccountsDeps
@@ -139,8 +135,6 @@ export class AccountsService {
   private poll: NodeJS.Timeout | null = null
   private reset: NodeJS.Timeout | null = null
   private chain: Promise<unknown> = Promise.resolve()
-  /** Why the last switch did not land, per provider, until the next switch. */
-  private failoverNotes: Partial<Record<AccountProvider, string>> = {}
   /** One failover in flight per thread: a limit that fires twice on one turn asks once. */
   private failovers = new Map<string, Promise<Switched | null>>()
 
@@ -329,18 +323,6 @@ export class AccountsService {
     return this.snap
   }
 
-  async switch(provider: AccountProvider, name: string): Promise<ActionResult> {
-    const id = SERVICE_OF[provider]
-    if (this.deps.pinned(id) === name) return { ok: false, error: `${name} is already the pinned account` }
-    const result = await this.deps.activate(id, name)
-    if (result.ok) {
-      this.deps.pin(id, name)
-      delete this.failoverNotes[provider]
-    }
-    await this.rebuild(false)
-    return result
-  }
-
   /** Rebuilds run one at a time; a forced one only forces its provider. */
   private rebuild(force: boolean, only?: AccountProvider): Promise<void> {
     const run = this.chain.then(() => this.build(force, only)).then((snap) => {
@@ -390,7 +372,7 @@ export class AccountsService {
         profiles,
         reports,
         owner,
-        note: note ?? this.failoverNotes[p] ?? view?.notice
+        note: note ?? view?.notice
       }
     }
     return { updatedAt: Date.now(), providers }

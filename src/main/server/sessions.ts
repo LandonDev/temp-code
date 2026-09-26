@@ -944,6 +944,9 @@ export class SessionRegistry {
       permission: params.permission ?? d.permission,
       fast: false,
       context1m: params.context1m ?? false,
+      // A pin is the thread's own; a child never inherits its parent's.
+      accountPin: params.parentId ? null : (params.accountPin ?? null),
+      account: null,
       busySince: null,
       pausedAt: null,
       frozenActiveElapsed: null,

@@ -21,7 +21,6 @@ class FakeLink implements Link {
     this.calls.push({ method, params });
     if (method === "accounts.list") return Promise.resolve(this.listed as T);
     if (method === "accounts.refresh") return Promise.resolve(snap(30, "a") as T);
-    if (method === "accounts.switch") return Promise.resolve({ ok: true, notes: ["moved"] } as T);
     return Promise.reject(new Error(`unexpected ${method}`));
   }
   onPush(listener: (push: ServerPush) => void): () => void {
@@ -63,17 +62,6 @@ describe("accounts store", () => {
     expect(accountsStore.get().snapshot.providers.claude.pinned).toBe("b");
   });
 
-  it("marks the provider busy through a switch and clears it after", async () => {
-    const link = new FakeLink();
-    accountsStore.connect(link);
-    await tick();
-    const done = accountsStore.switch("claude", "b");
-    expect(accountsStore.get().busy).toBe("claude");
-    expect(await accountsStore.switch("codex", "x")).toEqual({ ok: false, error: "busy" });
-    expect(await done).toEqual({ ok: true, notes: ["moved"] });
-    expect(accountsStore.get().busy).toBeNull();
-    expect(link.calls.at(-1)).toEqual({ method: "accounts.switch", params: { provider: "claude", name: "b" } });
-  });
 
   it("refresh takes the returned snapshot", async () => {
     const link = new FakeLink();
