@@ -1,5 +1,5 @@
 {
-  "n": 166,
-  "notes": "Chats outside a workspace are back: a fixed \"Chats\" entry in the rail opens the home, where the sidebar lists the loose chats (no project, no workspace) with New chat running in the home directory, the tab strip shows only those chats, and a loose thread opened from search or the inbox brings the home forward. Rail signals, last-thread landings and the strip key loose threads under \"~\"; with no project selected the strip now shows only the current workspace's own chats instead of every workspace's.",
-  "ts": 1790266771706
+  "n": 167,
+  "notes": "Bump aliax-core to 4f5f8ab (gateway scoped routes): unified rate-limit headers and Codex snapshots are now attributed to the account the answer came from (onResponse.account, observeCodexSnapshot(snapshot, account)) instead of the global pin, and pickNext passes scoped for a per-thread limit so the pick ignores other live models. No user-visible change yet: drivers still send unscoped URLs.",
+  "ts": 1790457821455
 }
