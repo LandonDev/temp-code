@@ -12,6 +12,10 @@ import { ConfirmDialog, DialogFooter as Footer, ErrorLine, GHOST, errorText } fr
 import { INPUT_CLASS, Toggle } from "../surfaces/settingsBits";
 import { TurnPassFields, loadTurnPass, saveTurnPass } from "./TurnPassFields";
 import { client } from "../lib/tcserver/client";
+import { useAccounts } from "../stores/accounts";
+import { shortName } from "../lib/accountScope";
+import { HARNESS_LABEL } from "../lib/session";
+import { ROUTED_PROVIDERS, type AccountPins } from "@server/shared/accounts";
 import type { BuildConfig } from "@server/shared/build";
 import { TURN_PASS_OFF, passActions, passEnabled, type TurnPass } from "@server/shared/turnpass";
 import { prettyCwd } from "../lib/paths";
@@ -22,6 +26,7 @@ import {
   deleteProject,
   listBranches,
   renameProject,
+  setProjectAccounts,
   setProjectBranch,
 } from "../lib/tcserver/projects";
 import type {
@@ -53,6 +58,71 @@ const samePass = (a: TurnPass | null, b: TurnPass | null) =>
   a === b || (!!a && !!b && a.verify === b.verify && a.build === b.build && a.commit === b.commit);
 
 const passSummary = (pass: TurnPass) => passActions(pass).join(", ") || "Off";
+
+const samePins = (a: AccountPins, b: AccountPins) =>
+  ROUTED_PROVIDERS.every((p) => (a[p] ?? "") === (b[p] ?? ""));
+
+/**
+ * One select per gateway provider: the project's own account, or inherit
+ * (the workspace's pin when it has one, else auto). Shared by the project
+ * dialog and the workspace page, which differ only in what "inherit" means.
+ */
+export function AccountPinFields({
+  value,
+  onChange,
+  inheritLabel,
+  compact = false,
+}: {
+  value: AccountPins;
+  onChange: (next: AccountPins) => void;
+  /** What an unset provider falls back to, e.g. "Inherit (workspace: a@x)". */
+  inheritLabel: (provider: (typeof ROUTED_PROVIDERS)[number]) => string;
+  compact?: boolean;
+}) {
+  const { snapshot } = useAccounts();
+  return (
+    <>
+      {ROUTED_PROVIDERS.map((provider) => {
+        const profiles = snapshot.providers[provider].profiles;
+        const current = value[provider] ?? "";
+        const known = current === "" || profiles.some((p) => p.name === current);
+        return (
+          <Field key={provider} label={HARNESS_LABEL[provider]}>
+            <select
+              value={current}
+              disabled={profiles.length === 0 && current === ""}
+              onChange={(e) => {
+                const next = { ...value };
+                if (e.target.value) next[provider] = e.target.value;
+                else delete next[provider];
+                onChange(next);
+              }}
+              className={compact ? INPUT : INPUT}
+            >
+              <option value="">{inheritLabel(provider)}</option>
+              {profiles.map((p) => (
+                <option key={p.name} value={p.name}>
+                  {shortName(p)}
+                </option>
+              ))}
+              {known ? null : <option value={current}>{current} (not in Aliax)</option>}
+            </select>
+          </Field>
+        );
+      })}
+    </>
+  );
+}
+
+/** "Inherit (workspace: a@x)" / "Inherit (auto)" for a project under `workspace`. */
+export function projectInheritLabel(workspace: WorkspaceMeta, profiles: { name: string; email?: string; nickname?: string; createdAt: number; active: boolean }[]) {
+  return (provider: (typeof ROUTED_PROVIDERS)[number]): string => {
+    const name = workspace.accountPins?.[provider];
+    if (!name) return "Inherit (auto)";
+    const profile = profiles.find((p) => p.name === name);
+    return `Inherit (workspace: ${profile ? shortName(profile) : name})`;
+  };
+}
 
 /** A collapsed section with a one-line summary; opens in place. */
 function Disclosure({
@@ -469,6 +539,8 @@ export function ProjectSettingsDialog({
       live = false;
     };
   }, [workspace.id, project.id, project.cwd]);
+  const [pins, setPins] = useState<AccountPins>(project.accountPins ?? {});
+  const { snapshot } = useAccounts();
   const { pass, setPass, inherited } = useTurnPass(workspace.id, project.id);
   const [savedPass, setSavedPass] = useState<TurnPass | null | undefined>(undefined);
   useEffect(() => {
@@ -485,7 +557,17 @@ export function ProjectSettingsDialog({
     ((nextBuild?.command ?? "") !== (savedBuild?.command ?? "") ||
       (nextBuild?.outputs ?? "") !== (savedBuild?.outputs ?? ""));
   const passDirty = savedPass !== undefined && !samePass(pass ?? null, savedPass);
-  const dirty = nameDirty || branchDirty || buildDirty || passDirty;
+  const pinsDirty = !samePins(pins, project.accountPins ?? {});
+  const dirty = nameDirty || branchDirty || buildDirty || passDirty || pinsDirty;
+  const pinsSummary =
+    ROUTED_PROVIDERS.map((p) => {
+      const name = pins[p];
+      if (!name) return null;
+      const profile = snapshot.providers[p].profiles.find((x) => x.name === name);
+      return `${HARNESS_LABEL[p]} ${profile ? shortName(profile) : name}`;
+    })
+      .filter(Boolean)
+      .join(" · ") || "Inherit";
   const buildSummary = buildOverride
     ? buildOverride.command || "Custom"
     : wsBuild
@@ -509,6 +591,7 @@ export function ProjectSettingsDialog({
       }
       if (nameDirty) await renameProject(project.id, name.trim());
       if (passDirty) await saveTurnPass(workspace.id, pass ?? null, project.id);
+      if (pinsDirty) await setProjectAccounts(project.id, pins);
       if (buildDirty) {
         await client.request("build.set", {
           workspaceId: workspace.id,
@@ -571,6 +654,14 @@ export function ProjectSettingsDialog({
                 Use workspace setting
               </button>
             ) : null}
+          </Disclosure>
+          <Disclosure label="Accounts" summary={pinsSummary}>
+            <AccountPinFields
+              value={pins}
+              onChange={setPins}
+              inheritLabel={projectInheritLabel(workspace, [...snapshot.providers.claude.profiles, ...snapshot.providers.codex.profiles])}
+              compact
+            />
           </Disclosure>
           <Disclosure label="Build" summary={buildSummary}>
             <BuildFields
