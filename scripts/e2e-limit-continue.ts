@@ -172,17 +172,17 @@ try {
   await sleep(LIMIT_CONTINUE_DELAY_MS * 3)
   check('transient: no switch, no continue', continues().length === 0 && polled.length === polls && canContinue(brief.id) === true)
 
-  // 4. A workspace pin: the spawn names it as a pin; a thread pin overrides it and respawns on the next send.
+  // 4. A workspace pin: the spawn names it as a pin; a pin change respawns on the next send.
   mkdirSync(join(dataDir, 'ws'))
   const ws = await registry.createWorkspace(join(dataDir, 'ws'))
   registry.setWorkspaceAccounts(ws.id, { claude: 'b@x.com' })
   const pinned = await registry.create({ ...base, title: 'pinned', workspaceId: ws.id, cwd: join(dataDir, 'ws') })
   await registry.send(pinned.id, 'go')
   check('a workspace pin is named as a pin', JSON.stringify(spawns.at(-1)?.route) === '{"account":"b@x.com","pin":true}' && account(pinned.id) === 'b@x.com', JSON.stringify(spawns.at(-1)?.route))
-  registry.setAccountPin(pinned.id, 'a@x.com')
+  registry.setWorkspaceAccounts(ws.id, { claude: 'a@x.com' })
   const spawnsBefore = spawns.length
   await registry.send(pinned.id, 'again')
-  check('a thread pin change respawns under the new pin on the next send', spawns.length === spawnsBefore + 1 && JSON.stringify(spawns.at(-1)?.route) === '{"account":"a@x.com","pin":true}', JSON.stringify(spawns.at(-1)?.route))
+  check('a workspace pin change respawns under the new pin on the next send', spawns.length === spawnsBefore + 1 && JSON.stringify(spawns.at(-1)?.route) === '{"account":"a@x.com","pin":true}', JSON.stringify(spawns.at(-1)?.route))
 } finally {
   await registry.disposeAll()
   rmSync(dataDir, { recursive: true, force: true })

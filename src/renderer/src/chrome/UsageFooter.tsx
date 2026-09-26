@@ -17,7 +17,6 @@ import {
 } from "../lib/accounts";
 import { scopeOf, sourceLine, type AccountScope } from "../lib/accountScope";
 import { HARNESS_LABEL, HARNESS_TITLE, type HarnessId } from "../lib/session";
-import { client } from "../lib/tcserver/client";
 import { useSessionMeta } from "../lib/tcserver/store";
 import { useProjects, useWorkspaces } from "../lib/tcserver/workspaces";
 import {
@@ -63,7 +62,6 @@ export function UsageFooter({
           provider={provider}
           accounts={accounts}
           scope={scope}
-          sessionId={sessionId}
           loaded={loaded}
           now={now}
         />
@@ -103,22 +101,19 @@ export function UsageFooter({
 
 /**
  * The thread's account (the global pin when no thread is in scope) and one
- * cell per usage window. The name opens the account list for Claude and
- * Codex, where a row pins the thread; Cursor has no accounts to pick, so it
- * stays text.
+ * cell per usage window. The name opens the read-only account list for
+ * Claude and Codex; Cursor has no accounts, so it stays text.
  */
 function AccountCells({
   provider,
   accounts,
   scope,
-  sessionId,
   loaded,
   now,
 }: {
   provider: AccountProvider;
   accounts: ProviderAccounts;
   scope: AccountScope | null;
-  sessionId: string | undefined;
   loaded: boolean;
   now: number;
 }) {
@@ -128,12 +123,8 @@ function AccountCells({
   const shown = accounts.profiles.find((p) => p.name === shownName) ?? null;
   const report = reportOf(accounts.reports, shownName);
   const switchable = provider !== "cursor" && accounts.profiles.length > 0;
-  const name = shown ? displayName(shown) : scope && !shownName ? "Auto" : null;
+  const name = shown ? displayName(shown) : null;
   const nameClass = "inline-flex h-6 min-w-0 max-w-[14rem] items-center gap-1.5 whitespace-nowrap rounded-md px-1 -mx-1";
-  const pin = (account: string | null) => {
-    if (!sessionId) return;
-    void client.request("session.account.pin", { sessionId, account }).catch(() => {});
-  };
 
   return (
     <>
@@ -181,7 +172,6 @@ function AccountCells({
           accounts={accounts}
           scope={scope}
           now={now}
-          onPick={scope && sessionId ? pin : undefined}
           onDismiss={() => setOpen(false)}
         />
       ) : null}

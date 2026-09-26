@@ -111,7 +111,7 @@ it('no account with room leaves the error, the Continue button and the account i
   expect(registry.get(id)?.account).toBe('a@x.com')
 })
 
-it('the spawn names the resolved pin, a child never inherits the parent\'s, and a pin change respawns on the next send', async () => {
+it('the spawn names the resolved pin, a child spawns under the same scope pin, and a pin change respawns on the next send', async () => {
   registry.limits = limits(null)
   const ws = await registry.createWorkspace(root)
   registry.setWorkspaceAccounts(ws.id, { claude: 'ws@x.com' })
@@ -119,8 +119,7 @@ it('the spawn names the resolved pin, a child never inherits the parent\'s, and 
   expect(routes.at(-1)).toEqual({ id, route: { account: 'ws@x.com', pin: true } })
   expect(registry.get(id)?.account).toBe('ws@x.com')
 
-  registry.setAccountPin(id, 'me@x.com')
-  expect(registry.get(id)?.accountPin).toBe('me@x.com')
+  registry.setWorkspaceAccounts(ws.id, { claude: 'me@x.com' })
   expect(routes).toHaveLength(1)
   await registry.send(id, 'again')
   expect(routes.at(-1)).toEqual({ id, route: { account: 'me@x.com', pin: true } })
@@ -129,14 +128,64 @@ it('the spawn names the resolved pin, a child never inherits the parent\'s, and 
   expect(routes).toHaveLength(2)
 
   const child = await registry.create({ cwd: root, provider: 'claude', model: 'claude-sonnet-5', parentId: id, workspaceId: ws.id })
-  expect(child.accountPin ?? null).toBeNull()
   await registry.send(child.id, 'go')
-  expect(routes.at(-1)).toEqual({ id: child.id, route: { account: 'ws@x.com', pin: true } })
+  expect(routes.at(-1)).toEqual({ id: child.id, route: { account: 'me@x.com', pin: true } })
 
   // The gateway moved the thread: its row follows, nothing else changes.
   registry.setAccount(id, 'other@x.com')
   expect(registry.get(id)?.account).toBe('other@x.com')
-  expect(registry.get(child.id)?.account).toBe('ws@x.com')
+  expect(registry.get(child.id)?.account).toBe('me@x.com')
+})
+
+/** A router whose pick depends on the model: Fable threads land on `f@x.com`, everything else on `o@x.com`; a pin wins. */
+function byModel(): AccountRouter {
+  return {
+    routeFor: (meta, pin) => {
+      const picked = pin?.name ?? (meta.model?.includes('fable') ? 'f@x.com' : 'o@x.com')
+      return { route: { account: picked, pin: pin !== null }, current: picked }
+    },
+    failover: async () => null
+  }
+}
+
+it('a thread shows its expected account from creation, and again when its model changes', async () => {
+  registry.limits = byModel()
+  const created = await registry.create({ cwd: root, provider: 'claude', model: 'claude-opus-5-5' })
+  expect(created.account).toBe('o@x.com')
+  expect(registry.get(created.id)?.account).toBe('o@x.com')
+  await registry.send(created.id, 'switch', { model: 'claude-fable-5-1' })
+  expect(registry.get(created.id)?.account).toBe('f@x.com')
+  expect(routes.at(-1)).toEqual({ id: created.id, route: { account: 'f@x.com', pin: false } })
+})
+
+it('a scope pin change recomputes idle threads under it; the boot fill covers threads with no account', async () => {
+  registry.limits = byModel()
+  const ws = await registry.createWorkspace(root)
+  const idle = await registry.create({ cwd: root, provider: 'claude', model: 'claude-opus-5-5', workspaceId: ws.id })
+  // A thread outside the workspace: its cwd is elsewhere (a cwd inside a workspace's path joins it).
+  const elsewhere = await mkdtemp(join(tmpdir(), 'tc-loose-'))
+  const loose = await registry.create({ cwd: elsewhere, provider: 'claude', model: 'claude-opus-5-5' })
+  expect(registry.get(idle.id)?.account).toBe('o@x.com')
+  registry.setWorkspaceAccounts(ws.id, { claude: 'ws@x.com' })
+  expect(registry.get(idle.id)?.account).toBe('ws@x.com')
+  expect(registry.get(loose.id)?.account).toBe('o@x.com')
+
+  // Rows from before the pick existed (or made while no account was known).
+  registry.setAccount(idle.id, null)
+  registry.setAccount(loose.id, null)
+  registry.fillAccounts()
+  expect(registry.get(idle.id)?.account).toBe('ws@x.com')
+  expect(registry.get(loose.id)?.account).toBe('o@x.com')
+  await rm(elsewhere, { recursive: true, force: true })
+})
+
+it('an empty snapshot leaves the account unknown rather than clearing it', async () => {
+  registry.limits = { routeFor: () => ({ route: null, current: null }), failover: async () => null }
+  const created = await registry.create({ cwd: root, provider: 'claude', model: 'claude-opus-5-5' })
+  expect(created.account).toBeNull()
+  registry.setAccount(created.id, 'kept@x.com')
+  registry.expectAccount(created.id)
+  expect(registry.get(created.id)?.account).toBe('kept@x.com')
 })
 
 it('transient limits, stops and errors without a limit never ask for a switch', async () => {

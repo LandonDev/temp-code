@@ -163,6 +163,13 @@ export async function startServer(
   const accounts = new AccountsService()
   registry.limits = accounts
   const m3a = { store, registry, notes: new Notes(db), logos: new ProjectLogos(options.dataDir ?? dirname(dbPath)), accounts }
+  // Threads that show no account yet learn their expected one from the
+  // first snapshot that knows any accounts; an empty one would pick nothing.
+  const offFill = accounts.onChange((snapshot) => {
+    if (!Object.values(snapshot.providers).some((p) => p.profiles.length > 0)) return
+    offFill()
+    registry.fillAccounts()
+  })
   accounts.start()
   const gateway = await startGateway({
     claimShim: options.claimShim ?? false,
@@ -821,10 +828,6 @@ export async function startServer(
             break
           case 'session.rename':
             await registry.rename(req.params.sessionId, req.params.title)
-            sendFrame({ id: req.id, ok: true, result: null })
-            break
-          case 'session.account.pin':
-            registry.setAccountPin(req.params.sessionId, req.params.account)
             sendFrame({ id: req.id, ok: true, result: null })
             break
           case 'session.setThreadRules':

@@ -88,7 +88,6 @@ import { ThreadTypeChip } from './ThreadTypeChip'
 import { useSlashCommands } from '../lib/tcserver/slashCommands'
 import { readCopiedMessage } from '../lib/copyMessage'
 import { useSessionMeta, useSessionMetasWhen } from '../lib/tcserver/store'
-import { client } from '../lib/tcserver/client'
 import { tune as tuneSession } from '../lib/tcserver/commands'
 import type { ThreadType } from '../lib/tcserver/types'
 import { useProjects } from '../lib/tcserver/workspaces'
@@ -884,9 +883,6 @@ export function Composer({
                 {sessionId ? (
                   <AccountControl
                     meta={sessionMeta}
-                    onPin={(account) => {
-                      void client.request('session.account.pin', { sessionId, account }).catch(() => undefined)
-                    }}
                     onClose={() => inputRef.current?.focus()}
                   />
                 ) : null}

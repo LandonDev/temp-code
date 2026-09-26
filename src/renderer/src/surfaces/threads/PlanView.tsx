@@ -2,7 +2,6 @@ import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { ThreadRules } from "@server/shared/rules";
 import { AccessPicker } from "../../chrome/AccessPicker";
-import { AccountControl } from "../../chrome/AccountControl";
 import {
   ChevronLeft,
   ChevronRight,
@@ -379,7 +378,6 @@ function StartButton({ session, tasks }: { session: Session; tasks: string[] }) 
   // this one thread, over the Settings defaults.
   const [view, setView] = useState<"main" | "tune">("main");
   const [tune, setTune] = useState<ThreadRules>({});
-  const [accountPin, setAccountPin] = useState<string | null>(null);
 
   const start = async (type: BuildType): Promise<void> => {
     if (busy) return;
@@ -400,7 +398,6 @@ function StartButton({ session, tasks }: { session: Session; tasks: string[] }) 
             reasoning: settings.effort,
             context1m: settings.context === "1m",
             permission: policyForMode(mode),
-            accountPin: accountPin ?? undefined,
             projectId: session.projectId ?? null,
             workspaceId: session.workspaceId ?? null,
             cwd: session.cwd,
@@ -498,16 +495,6 @@ function StartButton({ session, tasks }: { session: Session; tasks: string[] }) 
                     onChange={setSettings}
                   />
                   <AccessPicker value={mode} onChange={setMode} />
-                  <AccountControl
-                    meta={{
-                      provider: choice.harness,
-                      accountPin,
-                      account: null,
-                      projectId: session.projectId ?? null,
-                      workspaceId: session.workspaceId ?? null,
-                    }}
-                    onPin={setAccountPin}
-                  />
                 </div>
               </div>
 
