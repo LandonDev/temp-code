@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -57,17 +57,15 @@ const reportsFor = (id: string): UsageReport[] =>
 
 function service(over: Partial<AccountsDeps> = {}) {
   const usage = vi.fn<AccountsDeps["usage"]>(async (id) => reportsFor(id))
-  const activate = vi.fn(async () => ({ ok: true as const, notes: ['switched'] }))
   const svc = new AccountsService({
     listServices: listFromVault,
     usage,
-    activate,
     owner: () => 'aliax',
     live: async () => null,
     pollMs: 60_000,
     ...over
   })
-  return { svc, usage, activate }
+  return { svc, usage }
 }
 
 let cleanup = (): void => {}
@@ -90,36 +88,6 @@ describe('AccountsService', () => {
     expect(snap.providers.codex.profiles.map((p) => p.name)).toEqual(['c@x.com'])
     expect(snap.providers.cursor).toMatchObject({ pinned: null, profiles: [], reports: [] })
     expect(snap.updatedAt).toBeGreaterThan(0)
-  })
-
-  it('rejects a switch to the name already pinned', async () => {
-    ;({ cleanup } = fixture())
-    const { svc, activate } = service()
-    const r = await svc.switch('claude', 'a@x.com')
-    expect(r).toEqual({ ok: false, error: 'a@x.com is already the pinned account' })
-    expect(activate).not.toHaveBeenCalled()
-  })
-
-  it('a switch activates in core, then pins, then pushes the new snapshot', async () => {
-    const { dir, cleanup: c } = fixture()
-    cleanup = c
-    const { svc, activate } = service()
-    const seen: string[] = []
-    svc.onChange((s) => seen.push(String(s.providers.claude.pinned)))
-    const r = await svc.switch('claude', 'b@x.com')
-    expect(r.ok).toBe(true)
-    expect(activate).toHaveBeenCalledWith('claude-code', 'b@x.com')
-    const settings = JSON.parse(readFileSync(join(dir, 'settings.json'), 'utf8'))
-    expect(settings.proxyAccounts['claude-code']).toBe('b@x.com')
-    expect(seen).toEqual(['b@x.com'])
-  })
-
-  it('a failed switch leaves the pin alone', async () => {
-    ;({ cleanup } = fixture())
-    const { svc } = service({ activate: async () => ({ ok: false, error: 'switch did not land' }) })
-    const r = await svc.switch('claude', 'b@x.com')
-    expect(r.ok).toBe(false)
-    expect(pinnedProfile('claude-code')).toBe('a@x.com')
   })
 
   it('refresh forces only the asked provider, which core forwards when standby', async () => {
@@ -211,7 +179,7 @@ describe('AccountsService', () => {
   it('failover charges the thread\'s account, picks the next with room for its model, and never touches the pin', async () => {
     ;({ cleanup } = fixture())
     const observed: unknown[] = []
-    const { svc, activate } = service({
+    const { svc } = service({
       usage: async () => [
         { profileName: 'a@x.com', windows: [{ label: '5h', usedPercent: 10 }] },
         { profileName: 'b@x.com', windows: [{ label: '5h', usedPercent: 30 }] }
@@ -222,7 +190,6 @@ describe('AccountsService', () => {
     expect(await svc.failover('T', { provider: 'claude', model: 'claude-sonnet-5', window: '5h', account: 'a@x.com' })).toEqual({ from: 'a@x.com', to: 'b@x.com' })
     expect(observed).toEqual([['claude-code', 'a@x.com', { window: '5h' }]])
     expect(pinnedProfile('claude-code')).toBe('a@x.com')
-    expect(activate).not.toHaveBeenCalled()
     // A thread on b (say, pinned) that hits its limit moves to a; the pin still stands.
     expect(await svc.failover('U', { provider: 'claude', model: 'claude-sonnet-5', window: '5h', account: 'b@x.com' })).toEqual({ from: 'b@x.com', to: 'a@x.com' })
     // An unscoped thread (older owner) spent from the pin.

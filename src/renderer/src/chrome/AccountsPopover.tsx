@@ -1,6 +1,6 @@
-import type { RefObject } from "react";
+import { useEffect, useState, type KeyboardEvent as ReactKeyboardEvent, type RefObject } from "react";
 import type { PlanInfo, ProfileView, UsageReport, UsageWindow } from "aliax-core/shared/types";
-import { Check, Loader } from "./icons";
+import { Check, Pin } from "./icons";
 import { Popover } from "./Popover";
 import {
   cycleMs,
@@ -14,6 +14,7 @@ import {
   toneFor,
   untilLabel,
 } from "../lib/accounts";
+import { autoLine, sourceLine, type AccountScope } from "../lib/accountScope";
 import type { AccountProvider, ProviderAccounts } from "@server/shared/accounts";
 
 /** A usage column is 10rem plus a 1.5rem gutter; the name column takes 13rem. */
@@ -27,24 +28,32 @@ const REM = 16;
 /**
  * Every saved account of one provider, in Aliax's own row order, each with
  * the same usage cells Aliax draws: percent left, a bar with the on-pace
- * tick, and when the window refills. Clicking a row that is not the pinned
- * one switches to it; adding, editing or removing stays in Aliax.
+ * tick, and when the window refills.
+ *
+ * With a thread in scope the list is that thread's account picker: a line
+ * says where its account comes from, an Auto row clears the thread pin, a
+ * check marks the account the thread spends from now and a pin marks the
+ * explicit pin. Clicking a row pins the thread to it. Without a scope
+ * (Cursor, or no thread) the rows are read-only and the check is Aliax's
+ * global pin. Adding, editing or removing accounts stays in Aliax.
  */
 export function AccountsPopover({
   anchor,
   provider,
   accounts,
-  busy,
+  scope,
   now,
-  onSwitch,
+  onPick,
   onDismiss,
 }: {
   anchor: RefObject<HTMLElement | null>;
   provider: AccountProvider;
   accounts: ProviderAccounts;
-  busy: boolean;
+  /** The thread whose account the rows pick; null shows the global pin, read-only. */
+  scope: AccountScope | null;
   now: number;
-  onSwitch: (provider: AccountProvider, name: string) => void;
+  /** Pin the thread to an account, or null for Auto. */
+  onPick?: (name: string | null) => void;
   onDismiss: () => void;
 }) {
   // Every row reserves the same columns so bars line up down the list.
@@ -53,6 +62,35 @@ export function AccountsPopover({
     Math.max(MIN_SLOTS, ...accounts.reports.map((r) => groupWindows(r.windows).length)),
   );
   const width = (NAME_REM + slots * CELL_REM + slots * GUTTER_REM + 1) * REM;
+  const pickable = scope !== null && onPick !== undefined;
+  // Option order for the keyboard: Auto first, then the accounts.
+  const options: (string | null)[] = [...(pickable ? [null] : []), ...accounts.profiles.map((p) => p.name)];
+  const checked = scope ? scope.shown : accounts.pinned;
+  const [active, setActive] = useState(() => Math.max(0, options.indexOf(scope?.pin ?? checked)));
+  useEffect(() => {
+    setActive(Math.max(0, options.indexOf(scope?.pin ?? checked)));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scope?.pin, checked]);
+
+  const pick = (name: string | null) => {
+    if (!pickable) return;
+    onPick(name);
+    onDismiss();
+  };
+  const onKey = (e: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (!pickable) return;
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setActive((i) => Math.min(options.length - 1, i + 1));
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setActive((i) => Math.max(0, i - 1));
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      if (active < options.length) pick(options[active]);
+    }
+  };
+
   return (
     <Popover
       anchor={anchor}
@@ -63,20 +101,49 @@ export function AccountsPopover({
       onDismiss={onDismiss}
       role="listbox"
       aria-label={`${provider} accounts`}
+      data-account-picker
+      tabIndex={-1}
+      onKeyDown={onKey}
       className="overflow-y-auto p-1.5"
     >
-      {accounts.profiles.map((profile) => (
-        <AccountRow
-          key={profile.name}
-          profile={profile}
-          report={reportOf(accounts.reports, profile.name)}
-          pinned={profile.name === accounts.pinned}
-          busy={busy}
-          now={now}
-          slots={slots}
-          onPick={() => onSwitch(provider, profile.name)}
-        />
-      ))}
+      {scope ? (
+        <p className="px-2.5 pb-1.5 pt-1 text-[11px] text-content/50">{sourceLine(scope)}</p>
+      ) : null}
+      {pickable && scope ? (
+        <button
+          type="button"
+          role="option"
+          aria-selected={scope.pin === null}
+          onMouseDown={(event) => event.preventDefault()}
+          onMouseEnter={() => setActive(0)}
+          onClick={() => pick(null)}
+          className={`flex w-full flex-col gap-1 rounded-lg px-2.5 py-2 text-left text-[12px] leading-none text-content ${
+            active === 0 ? "bg-content/10" : "hover:bg-content/5"
+          }`}
+        >
+          <span className={scope.pin === null ? "font-medium" : ""}>Auto</span>
+          <span className="text-[11px] text-content/50">{autoLine(scope, accounts.profiles)}</span>
+        </button>
+      ) : null}
+      {accounts.profiles.map((profile, i) => {
+        const index = i + (pickable ? 1 : 0);
+        return (
+          <AccountRow
+            key={profile.name}
+            profile={profile}
+            report={reportOf(accounts.reports, profile.name)}
+            checked={profile.name === checked}
+            pinned={scope ? profile.name === scope.pin : false}
+            inherited={scope && !scope.pin && profile.name === scope.inherited?.name ? scope.inherited.level : null}
+            highlighted={pickable && index === active}
+            pickable={pickable}
+            now={now}
+            slots={slots}
+            onHover={() => setActive(index)}
+            onPick={() => pick(profile.name)}
+          />
+        );
+      })}
       {accounts.note ? (
         <p className="px-2.5 pb-1 pt-2 text-[11px] text-content/50">{accounts.note}</p>
       ) : null}
@@ -87,18 +154,29 @@ export function AccountsPopover({
 function AccountRow({
   profile,
   report,
+  checked,
   pinned,
-  busy,
+  inherited,
+  highlighted,
+  pickable,
   now,
   slots,
+  onHover,
   onPick,
 }: {
   profile: ProfileView;
   report: UsageReport | undefined;
+  /** The account the thread spends from now (or the global pin without a thread). */
+  checked: boolean;
+  /** The thread's explicit pin. */
   pinned: boolean;
-  busy: boolean;
+  /** The project or workspace pin that applies while the thread has none. */
+  inherited: "project" | "workspace" | null;
+  highlighted: boolean;
+  pickable: boolean;
   now: number;
   slots: number;
+  onHover: () => void;
   onPick: () => void;
 }) {
   const status = statusLine(report, now);
@@ -106,10 +184,13 @@ function AccountRow({
     <button
       type="button"
       role="option"
-      aria-selected={pinned}
-      disabled={pinned || busy}
-      className="flex w-full items-center gap-6 rounded-lg px-2.5 py-2.5 text-left text-[12px] leading-none text-content hover:bg-content/5 active:bg-content/10 disabled:hover:bg-transparent"
+      aria-selected={checked}
+      disabled={!pickable || pinned}
+      className={`flex w-full items-center gap-6 rounded-lg px-2.5 py-2.5 text-left text-[12px] leading-none text-content ${
+        highlighted ? "bg-content/10" : pickable ? "hover:bg-content/5 active:bg-content/10" : ""
+      } disabled:hover:bg-transparent`}
       onMouseDown={(event) => event.preventDefault()}
+      onMouseEnter={onHover}
       onClick={onPick}
     >
       <span className="flex min-w-0 flex-1 items-start gap-2.5">
@@ -120,14 +201,14 @@ function AccountRow({
         />
         <span className="flex min-w-0 flex-1 flex-col gap-1.5">
           <span className="flex items-center gap-1.5">
-            <span className={`truncate ${pinned ? "font-medium" : ""}`}>{displayName(profile)}</span>
+            <span className={`truncate ${checked ? "font-medium" : ""}`}>{displayName(profile)}</span>
             {profile.duplicate ? <span className="shrink-0 text-[10px] text-warning">duplicate</span> : null}
-            {pinned ? (
-              busy ? (
-                <Loader className="size-3 shrink-0 motion-safe:animate-spin text-content/50" aria-label="Switching" />
-              ) : (
-                <Check className="size-3 shrink-0 text-content/50" aria-label="Active" />
-              )
+            {checked ? <Check className="size-3 shrink-0 text-content/50" aria-label="In use" /> : null}
+            {pinned || inherited ? (
+              <Pin
+                className="size-3 shrink-0 text-content/50"
+                aria-label={pinned ? "Pinned to this thread" : `Pinned by the ${inherited}`}
+              />
             ) : null}
           </span>
           {report?.plan ? <PlanLine plan={report.plan} now={now} /> : null}

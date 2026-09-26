@@ -53,8 +53,6 @@ export async function handleM3a(
       return done()
     case 'accounts.list':
       return done(await ctx.accounts.list())
-    case 'accounts.switch':
-      return done(await ctx.accounts.switch(req.params.provider, req.params.name))
     case 'accounts.refresh':
       return done(await ctx.accounts.refresh(req.params.provider))
     default:

@@ -16,7 +16,7 @@ import type { ServerPush } from "../lib/tcserver/types";
 export type AccountsState = {
   snapshot: AccountsSnapshot;
   loaded: boolean;
-  /** The provider whose refresh or switch is running, if any. */
+  /** The provider whose refresh is running, if any. */
   busy: AccountProvider | null;
 };
 
@@ -71,22 +71,6 @@ class AccountsStore {
     try {
       const snapshot = await this.link.request<AccountsSnapshot>("accounts.refresh", { provider });
       this.set(foldPush(this.state, { push: "accounts", snapshot }));
-    } finally {
-      this.set({ ...this.state, busy: null });
-    }
-  }
-
-  /** Make `name` the pinned account; the result's notes are Aliax's own wording. */
-  async switch(
-    provider: AccountProvider,
-    name: string,
-  ): Promise<{ ok: true; notes?: string[] } | { ok: false; error: string }> {
-    if (this.state.busy) return { ok: false, error: "busy" };
-    this.set({ ...this.state, busy: provider });
-    try {
-      return await this.link.request("accounts.switch", { provider, name });
-    } catch (e) {
-      return { ok: false, error: (e as Error).message };
     } finally {
       this.set({ ...this.state, busy: null });
     }

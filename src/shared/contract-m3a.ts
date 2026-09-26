@@ -121,11 +121,6 @@ export const M3aRequestSchemas = [
   z.object({ id: z.string(), method: z.literal('accounts.list') }),
   z.object({
     id: z.string(),
-    method: z.literal('accounts.switch'),
-    params: z.object({ provider: AccountProviderSchema, name: z.string().min(1) })
-  }),
-  z.object({
-    id: z.string(),
     method: z.literal('accounts.refresh'),
     params: z.object({ provider: AccountProviderSchema })
   })

@@ -276,12 +276,6 @@ try {
     `REAL  accounts.list ${JSON.stringify(Object.fromEntries(Object.entries(accountsSnap.providers).map(([k, v]) => [k, { pinned: v.pinned !== null, profiles: v.profiles.length, reports: v.reports.length, owner: v.owner }])))}`
   )
   pass('accounts.list real call result shape')
-  const pinnedClaude = accountsSnap.providers.claude.pinned
-  if (pinnedClaude !== null) {
-    const rejected = await client.request('accounts.switch', { provider: 'claude', name: pinnedClaude }) as { ok: boolean }
-    assert.equal(rejected.ok, false)
-    pass('accounts.switch to the pinned name is rejected')
-  }
   await Promise.all(clients.map((c) => c.close()))
   clients.length = 0
   await server.close()

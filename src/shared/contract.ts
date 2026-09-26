@@ -57,6 +57,8 @@ export const CreateSessionParams = z.object({
   permission: PermissionPolicySchema.optional(),
   /** claude models with a 1M-capable window: start on the full window */
   context1m: z.boolean().optional(),
+  /** pin the thread to one Aliax account; absent inherits the project's, then the workspace's, else auto */
+  accountPin: z.string().min(1).optional(),
   /** orchestration: per-run conduct overrides + custom instructions */
   threadRules: ThreadRulesSchema.optional(),
   /** set this goal on the harness before the kickoff message (plan Start) */

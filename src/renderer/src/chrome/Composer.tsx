@@ -39,6 +39,7 @@ import { looksLikeProject, type RecentProject } from '../lib/recents'
 import type { Attachment, HarnessId, RuntimeMode, ThreadGoal } from '../lib/session'
 import { harnessSupportsAttachments } from '../lib/session'
 import { AccessPicker } from './AccessPicker'
+import { AccountControl } from './AccountControl'
 import { GoalControl } from './GoalControl'
 import { CommandPopover, type AtMatch, type PopoverMatches } from './CommandPopover'
 import { ComposerRunner } from './ComposerRunner'
@@ -86,7 +87,8 @@ import { resolveTabGroupLogo } from '../lib/tabGroups'
 import { ThreadTypeChip } from './ThreadTypeChip'
 import { useSlashCommands } from '../lib/tcserver/slashCommands'
 import { readCopiedMessage } from '../lib/copyMessage'
-import { useSessionMetasWhen } from '../lib/tcserver/store'
+import { useSessionMeta, useSessionMetasWhen } from '../lib/tcserver/store'
+import { client } from '../lib/tcserver/client'
 import { tune as tuneSession } from '../lib/tcserver/commands'
 import type { ThreadType } from '../lib/tcserver/types'
 import { useProjects } from '../lib/tcserver/workspaces'
@@ -263,6 +265,7 @@ export function Composer({
   const mentionOpen = live?.mode === 'file'
   const commands = useSlashCommands(harness, executionCwd, commandOpen)
   const metas = useSessionMetasWhen(!!live)
+  const sessionMeta = useSessionMeta(sessionId)
   const projects = useProjects()
   const attachmentsSupported = harnessSupportsAttachments(harness)
   const commandsByName = useMemo(
@@ -846,7 +849,7 @@ export function Composer({
                 if (
                   e.target instanceof Element &&
                   e.target.closest(
-                    '[data-model-picker], [data-access-picker], [data-model-settings], [data-thread-type-picker], [data-goal-control], [data-context-control]'
+                    '[data-model-picker], [data-access-picker], [data-account-picker], [data-model-settings], [data-thread-type-picker], [data-goal-control], [data-context-control]'
                   )
                 ) {
                   return
@@ -875,6 +878,15 @@ export function Composer({
                   <AccessPicker
                     value={runtimeMode}
                     onChange={onRuntimeModeChange}
+                    onClose={() => inputRef.current?.focus()}
+                  />
+                ) : null}
+                {sessionId ? (
+                  <AccountControl
+                    meta={sessionMeta}
+                    onPin={(account) => {
+                      void client.request('session.account.pin', { sessionId, account }).catch(() => undefined)
+                    }}
                     onClose={() => inputRef.current?.focus()}
                   />
                 ) : null}
