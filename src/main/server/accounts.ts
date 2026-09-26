@@ -238,9 +238,10 @@ export class AccountsService {
   }
 
   /**
-   * The gateway's 429 handler asks for the next account: one with room in
-   * every window the refused model and every live model spend, ordered by
-   * soonest reset, confirmed by a forced poll. Null passes the 429 through.
+   * The gateway's 429 handler asks for the next account, confirmed by a
+   * forced poll. For a thread (`info.thread`) that is one with room in the
+   * refused model's windows, soonest reset of the model's own window first;
+   * for the pin it must fit every live model too. Null passes the 429 through.
    */
   async pickNext(info: LimitInfo): Promise<string | null> {
     const provider = PROVIDER_OF[info.serviceId]
@@ -248,6 +249,7 @@ export class AccountsService {
     return pickNext({
       serviceId: info.serviceId,
       model: info.model,
+      scoped: info.thread !== undefined,
       liveModels: this.deps.liveModels(provider),
       window: info.limit.window,
       profiles: snap.profiles,
@@ -300,7 +302,7 @@ export class AccountsService {
     const from = this.deps.pinned(id)
     if (!from) return null
     this.deps.observeLimit(id, from, { window: info.window })
-    const to = await this.pickNext({ service: provider, serviceId: id, model: info.model, limit: { window: info.window }, tried: [from] })
+    const to = await this.pickNext({ service: provider, serviceId: id, model: info.model, limit: { window: info.window }, tried: [from], account: from })
     if (!to) return null
     const result = await this.switch(provider, to)
     if (!result.ok) {
