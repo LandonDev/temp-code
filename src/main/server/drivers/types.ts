@@ -1,3 +1,4 @@
+import type { AccountRoute } from '@shared/accounts'
 import type { ProviderId } from '@shared/catalog'
 import type { AgentEvent, Attachment, SessionMeta } from '@shared/events'
 
@@ -28,6 +29,8 @@ export interface ApprovalRequest {
 
 export interface DriverCtx {
   session: SessionMeta
+  /** The Aliax account this process spends from, baked into its gateway URL; absent or null sends unscoped. */
+  route?: AccountRoute | null
   emit: (event: AgentEvent) => void
   /** Persist the provider-native session/thread id once known (resume). */
   setNativeId: (nativeId: string) => void

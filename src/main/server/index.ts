@@ -20,7 +20,6 @@ import { resolveAppBridgeLaunch, runDoctor, updateProvider } from './drivers/bin
 import { probeCatalogs } from './drivers/catalogProbe'
 import { backfillMirrors } from './mirror'
 import { bootMark } from './boot'
-import { LIVE_STATUSES } from '@shared/session-lifecycle'
 import { setLimitMissLog } from './limitText'
 import { sweepFolds } from './folds'
 import {
@@ -161,15 +160,7 @@ export async function startServer(
   const registry = new SessionRegistry(store)
   setLimitMissLog(join(options.dataDir ?? dirname(dbPath), 'logs'))
   registry.checkpoints = checkpoints
-  const accounts = new AccountsService({
-    liveModels: (provider) => [
-      ...registry
-        .list()
-        .filter((s) => s.provider === provider && LIVE_STATUSES.has(s.status) && s.model)
-        .map((s) => s.model as string),
-      ...registry.limitedModels(provider)
-    ]
-  })
+  const accounts = new AccountsService()
   registry.limits = accounts
   const m3a = { store, registry, notes: new Notes(db), logos: new ProjectLogos(options.dataDir ?? dirname(dbPath)), accounts }
   accounts.start()
@@ -178,9 +169,15 @@ export async function startServer(
     hooks: {
       ...observeHooks({ logDir: join(options.dataDir ?? dirname(dbPath), 'logs'), onObserved: () => accounts.nudge() }),
       pickNext: (info) => accounts.pickNext(info),
+      // Unscoped (terminal) traffic moved the global pin: the footer follows.
       onFailedOver: (info) => {
-        console.log(`[gateway] ${info.service}: ${info.from} hit a limit, switched to ${info.to}`)
-        accounts.failedOver(info)
+        console.log(`[gateway] ${info.service}: ${info.from} hit a limit, the pin moved to ${info.to}`)
+        accounts.nudge()
+      },
+      // One thread moved (or came back to its pin): only its row follows.
+      onRouted: (info) => {
+        console.log(`[gateway] ${info.service} ${info.thread}: now on ${info.account}`)
+        registry.setAccount(info.thread, info.account)
       }
     }
   })

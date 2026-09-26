@@ -26,9 +26,12 @@ import {
   SERVICE_OF,
   emptyAccounts,
   type AccountProvider,
+  type AccountRoute,
   type AccountsSnapshot,
   type ProviderAccounts
 } from '@shared/accounts'
+import type { SessionMeta } from '@shared/events'
+import { chooseAccount, type ResolvedPin } from './accountRouting'
 
 export interface AccountsDeps {
   listServices: () => Promise<ServiceView[]>
@@ -45,10 +48,8 @@ export interface AccountsDeps {
   usageOf: (id: ServiceId, name: string) => Promise<UsageReport | null>
   /** Make the next poll of one account skip its TTL. */
   markStale: (id: ServiceId, name: string) => void
-  /** Charge a window an error message named, so the pin is not picked again before its report refreshes. */
+  /** Charge a window an error message named, so the account is not picked again before its report refreshes. */
   observeLimit: (id: ServiceId, name: string, limit: Limit) => void
-  /** Models of the threads running on a provider right now: every one must fit the next account. */
-  liveModels: (provider: AccountProvider) => string[]
   dataDir: () => string
   pollMs: number
   now: () => number
@@ -117,7 +118,6 @@ const defaults = (): AccountsDeps => ({
   usageOf: (id, name) => accounts.usageOf(id, name, true),
   markStale: accounts.markUsageStale,
   observeLimit: (id, name, limit) => void accounts.observeLimit(id, name, limit),
-  liveModels: () => [],
   dataDir,
   pollMs: 60_000,
   now: Date.now
@@ -139,10 +139,10 @@ export class AccountsService {
   private poll: NodeJS.Timeout | null = null
   private reset: NodeJS.Timeout | null = null
   private chain: Promise<unknown> = Promise.resolve()
-  /** Why the last failover's sign-in did not land, per provider, until the next switch. */
+  /** Why the last switch did not land, per provider, until the next switch. */
   private failoverNotes: Partial<Record<AccountProvider, string>> = {}
-  /** One failover in flight per provider: a tree whose members all hit the limit asks once. */
-  private failovers: Partial<Record<AccountProvider, Promise<Switched | null>>> = {}
+  /** One failover in flight per thread: a limit that fires twice on one turn asks once. */
+  private failovers = new Map<string, Promise<Switched | null>>()
 
   constructor(deps: Partial<AccountsDeps> = {}) {
     this.deps = { ...defaults(), ...deps }
@@ -238,10 +238,26 @@ export class AccountsService {
   }
 
   /**
+   * The account a thread's child spends from at spawn, from the cached
+   * snapshot (many subagents may spawn at once; nobody polls here).
+   */
+  routeFor(meta: SessionMeta, pin: ResolvedPin | null): { route: AccountRoute | null; current: string | null } {
+    return chooseAccount({
+      pin: pin?.name ?? null,
+      current: meta.account ?? null,
+      model: meta.model ?? null,
+      provider: meta.provider,
+      snapshot: this.snap,
+      now: this.deps.now()
+    })
+  }
+
+  /**
    * The gateway's 429 handler asks for the next account, confirmed by a
    * forced poll. For a thread (`info.thread`) that is one with room in the
-   * refused model's windows, soonest reset of the model's own window first;
-   * for the pin it must fit every live model too. Null passes the 429 through.
+   * refused model's windows, soonest reset of the model's own window first.
+   * For the pin (unscoped terminal traffic) the same, on the weekly clock.
+   * Null passes the 429 through.
    */
   async pickNext(info: LimitInfo): Promise<string | null> {
     const provider = PROVIDER_OF[info.serviceId]
@@ -250,7 +266,6 @@ export class AccountsService {
       serviceId: info.serviceId,
       model: info.model,
       scoped: info.thread !== undefined,
-      liveModels: this.deps.liveModels(provider),
       window: info.limit.window,
       profiles: snap.profiles,
       reports: snap.reports,
@@ -261,56 +276,46 @@ export class AccountsService {
   }
 
   /**
-   * Core moved the pin and the request landed. Sign the CLIs in to match, in
-   * the background: a failure leaves the pin where it is (the gateway routes
-   * by pin, not by sign-in) and says so in the footer until the next switch.
-   */
-  failedOver({ serviceId, to }: { serviceId: ServiceId; to: string }): void {
-    const provider = PROVIDER_OF[serviceId]
-    delete this.failoverNotes[provider]
-    void this.deps
-      .activate(serviceId, to)
-      .then((r) => {
-        if (!r.ok) this.failoverNotes[provider] = `switched to ${to}; sign-in failed: ${r.error}`
-      })
-      .catch((e) => {
-        this.failoverNotes[provider] = `switched to ${to}; sign-in failed: ${(e as Error).message}`
-      })
-      .then(() => this.rebuild(false))
-  }
-
-  /**
-   * A thread's error named a usage limit the gateway never saw (the CLI
-   * spoke to the provider directly, or the limit came back as text): charge
-   * the pinned account's window, pick the next account with room for this
-   * model and every live one, and switch to it. Null leaves the pin and the
+   * A thread's error named a usage limit the gateway did not replay (no
+   * candidate at the time, or the limit came back as text): charge the
+   * thread's account, and pick the next account with room for its model.
+   * Only that thread moves; the gateway's own pick on its next request
+   * reads the same cache and lands on the same account. Null leaves the
    * thread's Continue button alone.
    */
-  failover(provider: AccountProvider, info: { model: string | null; window: Limit['window'] }): Promise<Switched | null> {
-    const inflight = this.failovers[provider]
+  failover(
+    sessionId: string,
+    info: { provider: AccountProvider; model: string | null; window: Limit['window']; account: string | null }
+  ): Promise<Switched | null> {
+    const inflight = this.failovers.get(sessionId)
     if (inflight) return inflight
-    const run = this.runFailover(provider, info).finally(() => {
-      delete this.failovers[provider]
+    const run = this.runFailover(sessionId, info).finally(() => {
+      this.failovers.delete(sessionId)
     })
-    this.failovers[provider] = run
+    this.failovers.set(sessionId, run)
     return run
   }
 
-  private async runFailover(provider: AccountProvider, info: { model: string | null; window: Limit['window'] }): Promise<Switched | null> {
+  private async runFailover(
+    sessionId: string,
+    info: { provider: AccountProvider; model: string | null; window: Limit['window']; account: string | null }
+  ): Promise<Switched | null> {
     if (info.window === 'transient') return null
-    const id = SERVICE_OF[provider]
-    const from = this.deps.pinned(id)
+    const id = SERVICE_OF[info.provider]
+    // An unscoped thread (an owner too old for scoped routes) spent from the pin.
+    const from = info.account ?? this.deps.pinned(id)
     if (!from) return null
     this.deps.observeLimit(id, from, { window: info.window })
-    const to = await this.pickNext({ service: provider, serviceId: id, model: info.model, limit: { window: info.window }, tried: [from], account: from })
-    if (!to) return null
-    const result = await this.switch(provider, to)
-    if (!result.ok) {
-      this.failoverNotes[provider] = `could not switch to ${to}: ${result.error}`
-      await this.rebuild(false)
-      return null
-    }
-    return { from, to }
+    const to = await this.pickNext({
+      service: info.provider,
+      serviceId: id,
+      model: info.model,
+      limit: { window: info.window },
+      tried: [from],
+      account: from,
+      thread: sessionId
+    })
+    return to ? { from, to } : null
   }
 
   async list(): Promise<AccountsSnapshot> {

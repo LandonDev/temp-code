@@ -1,8 +1,9 @@
 /**
  * Headless gateway failover: a fake upstream refuses account A with a
- * usage-limit 429 and answers account B; the gateway must mark A's window
- * full, move the pin to B, replay the request under B's token, hand the
- * client B's 200, and send the next request straight to B.
+ * usage-limit 429 and answers account B. A request scoped to thread T under
+ * A must be replayed under B with only T moved (the global pin untouched,
+ * onRouted fired once), T's next request must go straight to B, and an
+ * unscoped request must still move the pin as before.
  *
  * Nothing here touches the real Aliax data: core runs on a temp dir sealed
  * with a throwaway key, and its fetch is rewritten onto the fake upstream.
@@ -15,6 +16,7 @@ import { configure, pinProfile, pinnedProfile, vault } from 'aliax-core'
 import { AccountsService } from '../src/main/server/accounts'
 import { Gateway } from '../src/main/server/gateway'
 import { observeHooks } from '../src/main/server/gatewayObserve'
+import { routeUrl } from '../src/main/server/endpoint'
 
 let failures = 0
 const check = (name: string, ok: boolean, detail = ''): void => {
@@ -79,58 +81,70 @@ pinProfile('codex', 'A')
 
 // --- temp-code's service and gateway, wired as the server does --------------
 const pushes: string[] = []
-const accounts = new AccountsService({
-  owner: () => 'temp-code',
-  activate: async () => ({ ok: true, notes: [] }),
-  liveModels: () => ['gpt-6-astra'],
-  pollMs: 3_600_000
-})
+const accounts = new AccountsService({ owner: () => 'temp-code', pollMs: 3_600_000 })
 accounts.onChange((s) => pushes.push(`${s.providers.codex.pinned}:${s.providers.codex.note ?? ''}`))
 await accounts.list()
 const switched: string[] = []
+const routed: string[] = []
 const gateway = new Gateway({
   claimShim: false,
   hooks: {
     ...observeHooks({ logDir: join(dataDir, 'logs') }),
     pickNext: (info) => accounts.pickNext(info),
-    onFailedOver: (info) => {
-      switched.push(`${info.from}->${info.to}`)
-      accounts.failedOver(info)
-    }
+    onFailedOver: (info) => switched.push(`${info.from}->${info.to}`),
+    onRouted: (info) => routed.push(`${info.thread}:${info.account}`)
   }
 })
 await gateway.start()
 const base = gateway.url('codex')!
+const scoped = routeUrl(base, 'T', { account: 'A', pin: false })
 
 try {
   const body = JSON.stringify({ model: 'gpt-6-astra', input: [{ role: 'user', content: 'hi' }], stream: true })
-  const res = await fetch(`${base}/v1/responses`, { method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer cli-token' }, body })
+  const res = await fetch(`${scoped}/v1/responses`, { method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer cli-token' }, body })
   const text = await res.text()
   check('client gets the replayed 200', res.status === 200, String(res.status))
   check('the answer came from account B', text.includes('"auth":"Bearer token-B"'), text.trim())
   const turns = upstreamCalls.filter((c) => c.path.endsWith('/v1/responses'))
   check('A was tried once, then B once', turns.map((c) => c.auth).join(',') === 'Bearer token-A,Bearer token-B', turns.map((c) => c.auth).join(','))
+  check('the scope segment never reached upstream', turns.every((c) => c.path === '/v1/responses'), turns.map((c) => c.path).join(','))
   check('the replay carried the same body', turns[1]?.body === body)
   check('B was polled before the pick', upstreamCalls.some((c) => c.path === '/usage' && c.auth === 'Bearer token-B'))
-  check('the pin moved to B', pinnedProfile('codex') === 'B', String(pinnedProfile('codex')))
-  check('onFailedOver reported A->B once', switched.join(',') === 'A->B')
+  check('the pin stayed on A', pinnedProfile('codex') === 'A', String(pinnedProfile('codex')))
+  check('onRouted reported T on B once, onFailedOver nothing', routed.join(',') === 'T:B' && switched.length === 0, `${routed.join(',')} / ${switched.join(',')}`)
   const cache = JSON.parse(readFileSync(join(dataDir, 'usage-cache.json'), 'utf8'))
   const aWindows = cache['codex:A']?.report?.windows ?? []
   check("A's 5h window reads full with the provider's reset", aWindows.some((w: { label: string; usedPercent: number; resetsAt?: number }) => w.label === '5h' && w.usedPercent === 100 && w.resetsAt === RESET_AT * 1000), JSON.stringify(aWindows))
-  await waitFor(() => pushes.some((p) => p.startsWith('B:')), 'footer push with the new pin')
+  // The server's watcher would nudge on the cache write; here we nudge by hand.
+  const pushesBefore = pushes.length
+  accounts.nudge()
+  await waitFor(() => pushes.length > pushesBefore, 'a snapshot push after the observed limit')
   const snap = accounts.snapshot()
-  // core's listServices still reads this machine's real CLI sign-in and may
-  // note it as unsaved; only a failed sign-in after the switch would say so.
-  check('the snapshot pins B and the sign-in landed', snap.providers.codex.pinned === 'B' && !snap.providers.codex.note?.startsWith('switched to'), JSON.stringify(snap.providers.codex.note))
-  check("the snapshot shows A's window full", snap.providers.codex.reports.find((r) => r.profileName === 'A')?.windows.some((w) => w.label === '5h' && w.usedPercent === 100) === true)
+  check("the snapshot shows A's window full and the pin on A", snap.providers.codex.pinned === 'A' && snap.providers.codex.reports.find((r) => r.profileName === 'A')?.windows.some((w) => w.label === '5h' && w.usedPercent === 100) === true)
   check('the next reset is A\'s, after the grace', accounts.nextReset()?.at === RESET_AT * 1000 + 15_000 && accounts.nextReset()?.stale[0]?.name === 'A')
 
-  const before = upstreamCalls.length
-  const res2 = await fetch(`${base}/v1/responses`, { method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer cli-token' }, body })
+  let before = upstreamCalls.length
+  const res2 = await fetch(`${scoped}/v1/responses`, { method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer cli-token' }, body })
   await res2.text()
-  const after = upstreamCalls.slice(before).filter((c) => c.path.endsWith('/v1/responses'))
-  check('the second request goes straight to B', res2.status === 200 && after.length === 1 && after[0].auth === 'Bearer token-B', after.map((c) => c.auth).join(','))
-  check('gateway counted two routed codex requests', gateway.status().routed.codex === 2, JSON.stringify(gateway.status().routed))
+  let after = upstreamCalls.slice(before).filter((c) => c.path.endsWith('/v1/responses'))
+  check("T's second request goes straight to B", res2.status === 200 && after.length === 1 && after[0].auth === 'Bearer token-B', after.map((c) => c.auth).join(','))
+  check('no second onRouted', routed.length === 1)
+
+  // A sibling thread on B is untouched by any of this.
+  before = upstreamCalls.length
+  const res3 = await fetch(`${routeUrl(base, 'U', { account: 'B', pin: true })}/v1/responses`, { method: 'POST', headers: { 'content-type': 'application/json' }, body })
+  await res3.text()
+  after = upstreamCalls.slice(before).filter((c) => c.path.endsWith('/v1/responses'))
+  check('a pinned sibling on B spends from B in one try', res3.status === 200 && after.length === 1 && after[0].auth === 'Bearer token-B' && routed.length === 1)
+
+  // Unscoped (terminal) traffic still follows the pin and still moves it.
+  before = upstreamCalls.length
+  const res4 = await fetch(`${base}/v1/responses`, { method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer cli-token' }, body })
+  await res4.text()
+  after = upstreamCalls.slice(before).filter((c) => c.path.endsWith('/v1/responses'))
+  check('an unscoped request tries the pin (A), then B, and moves the pin', res4.status === 200 && after.map((c) => c.auth).join(',') === 'Bearer token-A,Bearer token-B' && pinnedProfile('codex') === 'B', after.map((c) => c.auth).join(','))
+  check('onFailedOver reported A->B once for it', switched.join(',') === 'A->B')
+  check('gateway counted four routed codex requests', gateway.status().routed.codex === 4, JSON.stringify(gateway.status().routed))
 } finally {
   accounts.stop()
   await gateway.stop()
