@@ -1,5 +1,5 @@
 {
-  "n": 168,
-  "notes": "Per-scope Aliax accounts, storage and resolution: sessions.account_pin / account_current and projects/workspaces.account_pins (JSON, one per provider) with SessionMeta.accountPin/account and ProjectMeta/WorkspaceMeta.accountPins; accountRouting.ts resolves a thread's pin (thread > project > workspace, per provider; a child never inherits its parent's thread pin) and chooses the account a spawn names (a pin is always named with pin=1 so the gateway brings the thread back once it has room; otherwise the sticky current account while it has room, else the best pick for the model from the cache); WS methods session.account.pin, project.setAccounts and workspace.setAccounts. No driver or UI change yet.",
-  "ts": 1790458060742
+  "n": 169,
+  "notes": "Per-thread account UI: an AccountControl beside the model picker (composer and plan Start) shows the account the thread spends from (nickname, else the email's local part; Auto before the first spawn) and opens the account list; the list now describes a thread (where its account comes from, an Auto row that clears the thread pin, a check on the account in use, a pin on the explicit pin) and a row click pins the thread through session.account.pin; the usage footer shows the active thread's account and its bars, and the global pin only without a thread. session.create takes accountPin (never inherited by a child). The switch path is gone: accounts.switch, the store's switch, AccountsService.switch and the activate dep; temp-code no longer moves Aliax's global pin or signs the CLIs in.",
+  "ts": 1790458975607
 }
