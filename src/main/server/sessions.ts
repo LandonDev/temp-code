@@ -574,9 +574,11 @@ export class SessionRegistry {
   /** Keep a thread's shown account the one its next send will use. With
    *  no live process nothing is warm on its account, so it re-picks fresh:
    *  the best account for its model now. With a process the sticky pick
-   *  stands while it has room; when it moved (out of room, or a pin
-   *  changed) the process is dropped so the next send respawns under the
-   *  new account (resume keeps the conversation). A thread mid-turn is
+   *  stands while it has room and is not outclassed (an Opus thread on an
+   *  account whose Fable window came back leaves it for one whose Fable
+   *  window is spent — chooseAccount); when it moved the process is
+   *  dropped so the next send respawns under the new account (resume keeps
+   *  the conversation; the prompt cache is lost). A thread mid-turn is
    *  left alone: the gateway moves that one itself. */
   refreshAccount(sessionId: string): void {
     const meta = this.store.getSession(sessionId)

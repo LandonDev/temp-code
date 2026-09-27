@@ -1,4 +1,4 @@
-import { hasRoom, pickFromCache, tiersFor } from 'aliax-core'
+import { hasRoom, pickFromCache, scopedSpent, tiersFor } from 'aliax-core'
 import { isRoutedProvider, SERVICE_OF, type AccountRoute, type AccountsSnapshot } from '@shared/accounts'
 import type { ProjectMeta, WorkspaceMeta } from '@shared/domain'
 import type { SessionMeta } from '@shared/events'
@@ -62,6 +62,14 @@ export interface Choice {
  * the moment the cache shows room, with no restart. Without a pin the URL
  * names the sticky current account while it has room, else the best pick
  * for the model, else whatever we had (the gateway's 429 then surfaces).
+ *
+ * One exception to sticky: a model without a scoped cap (Opus) should
+ * spend the accounts whose Fable window is gone and leave the fresh ones
+ * to Fable threads. So when its current account's Fable window has room
+ * (it reset) and the best pick is one whose Fable window is spent, the
+ * thread moves there. Only that class change moves it — never a smaller
+ * usedPercent shift between two accounts of the same class — so a thread
+ * does not churn between accounts on every snapshot.
  */
 export function chooseAccount({ pin, current, model, provider, snapshot, now = Date.now() }: ChooseInput): Choice {
   if (!isRoutedProvider(provider)) return { route: null, current: null }
@@ -77,7 +85,17 @@ export function chooseAccount({ pin, current, model, provider, snapshot, now = D
     const expected = room(pin) ? pin : known(current) && room(current) ? current : (pick([pin]) ?? pin)
     return { route: { account: pin, pin: true }, current: expected }
   }
-  if (known(current) && room(current)) return { route: { account: current, pin: false }, current }
+  if (known(current) && room(current)) {
+    const report = (name: string) => snap.reports.find((r) => r.profileName === name)
+    const best = pick([])
+    const outclassed =
+      best !== null &&
+      best !== current &&
+      scopedSpent(serviceId, model, report(current), now) === false &&
+      scopedSpent(serviceId, model, report(best), now) === true
+    const kept = outclassed ? best : current
+    return { route: { account: kept, pin: false }, current: kept }
+  }
   const picked = pick([]) ?? (known(current) ? current : null)
   return { route: picked ? { account: picked, pin: false } : null, current: picked }
 }
