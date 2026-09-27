@@ -61,6 +61,23 @@ describe('chooseAccount', () => {
     expect(chooseAccount({ ...base, model: 'claude-fable-5-1', pin: null, current: 'a@x.com', snapshot: snap }).route).toEqual({ account: 'b@x.com', pin: false })
     expect(chooseAccount({ ...base, model: 'claude-opus-5-5', pin: null, current: 'a@x.com', snapshot: snap }).route).toEqual({ account: 'a@x.com', pin: false })
   })
+  it('an Opus thread leaves a Fable-fresh account for a Fable-spent one; a Fable thread and a thread on a spent account stay', () => {
+    const spentB = { 'a@x.com': [fine('Weekly', 10, NOW + 1), fine('Fable', 0, NOW + 9)], 'b@x.com': [fine('Weekly', 20, NOW + 9), full('Fable')] }
+    expect(chooseAccount({ ...base, model: 'claude-opus-5-5', pin: null, current: 'a@x.com', snapshot: snapshot(spentB) })).toEqual({
+      route: { account: 'b@x.com', pin: false },
+      current: 'b@x.com'
+    })
+    expect(chooseAccount({ ...base, model: 'claude-fable-5-1', pin: null, current: 'a@x.com', snapshot: snapshot(spentB) }).route).toEqual({ account: 'a@x.com', pin: false })
+    expect(chooseAccount({ ...base, model: 'claude-opus-5-5', pin: null, current: 'b@x.com', snapshot: snapshot(spentB) }).route).toEqual({ account: 'b@x.com', pin: false })
+    // Two Fable-fresh accounts: the fuller one ranks first, but the thread stays where it is.
+    const bothFresh = { 'a@x.com': [fine('Weekly', 10, NOW + 1), fine('Fable', 20, NOW + 9)], 'b@x.com': [fine('Weekly', 10, NOW + 1), fine('Fable', 60, NOW + 9)] }
+    expect(chooseAccount({ ...base, model: 'claude-opus-5-5', pin: null, current: 'a@x.com', snapshot: snapshot(bothFresh) }).route).toEqual({ account: 'a@x.com', pin: false })
+    // The spent account has no weekly room: nothing outranks the current one.
+    const spentOut = { 'a@x.com': [fine('Weekly', 10, NOW + 1), fine('Fable', 0, NOW + 9)], 'b@x.com': [full('Weekly'), full('Fable')] }
+    expect(chooseAccount({ ...base, model: 'claude-opus-5-5', pin: null, current: 'a@x.com', snapshot: snapshot(spentOut) }).route).toEqual({ account: 'a@x.com', pin: false })
+    // A pin holds whatever the classes say.
+    expect(chooseAccount({ ...base, model: 'claude-opus-5-5', pin: 'a@x.com', current: 'a@x.com', snapshot: snapshot(spentB) }).route).toEqual({ account: 'a@x.com', pin: true })
+  })
   it('an unpinned first spawn picks by soonest reset of the model\'s window, ties to the fuller account', () => {
     const snap = snapshot({
       'late@x.com': [fine('Weekly', 10, NOW + 9)],

@@ -2,7 +2,9 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
+import { emptyAccounts, type AccountsSnapshot } from '@shared/accounts'
 import type { AgentEvent } from '@shared/events'
+import { chooseAccount } from './accountRouting'
 import { openDb, Store } from './db'
 import { LIMIT_CONTINUE_DELAY_MS, SessionRegistry, type AccountRouter } from './sessions'
 
@@ -248,6 +250,59 @@ it('a refresh re-picks a thread with no live process fresh, keeps a live one sti
   registry.setAccount(busy, 'gateway@x.com')
   registry.refreshAccount(busy)
   expect(registry.get(busy)?.account).toBe('gateway@x.com')
+})
+
+type Windows = { label: string; usedPercent: number; resetsAt?: number }[]
+const NOW = 1_800_000_000_000
+
+/** The real pick over a snapshot the test edits in place. */
+function snapshotRouter(reports: Record<string, Windows>): AccountRouter {
+  const snapshot: AccountsSnapshot = emptyAccounts()
+  const provider = snapshot.providers.claude
+  provider.owner = 'temp-code'
+  provider.profiles = Object.keys(reports).map((name) => ({ name, createdAt: 1, active: false }))
+  provider.reports = Object.entries(reports).map(([profileName, windows]) => ({ profileName, windows }))
+  return {
+    routeFor: (meta, pin, opts) =>
+      chooseAccount({ pin: pin?.name ?? null, current: opts?.fresh ? null : (meta.account ?? null), model: meta.model ?? null, provider: meta.provider, snapshot, now: NOW }),
+    failover: async () => null
+  }
+}
+
+it('an idle Opus thread leaves an account whose Fable window came back for one whose Fable window is spent', async () => {
+  const a: Windows = [{ label: 'Weekly', usedPercent: 10, resetsAt: NOW + 1 }, { label: 'Fable', usedPercent: 100, resetsAt: NOW + 9 }]
+  const b: Windows = [{ label: 'Weekly', usedPercent: 20, resetsAt: NOW + 9 }, { label: 'Fable', usedPercent: 100, resetsAt: NOW + 9 }]
+  registry.limits = snapshotRouter({ 'a@x.com': a, 'b@x.com': b })
+  // Both Fable windows spent: the Opus thread takes the soonest weekly reset, a.
+  const { id: opus } = await running({ model: 'claude-opus-5-5' })
+  expect(registry.get(opus)?.account).toBe('a@x.com')
+  // a's Fable window reset: the idle Opus thread moves to b and its process is dropped, so the next send respawns there.
+  a[1] = { label: 'Fable', usedPercent: 0, resetsAt: NOW + 9 }
+  const spawns = routes.length
+  registry.refreshAccount(opus)
+  expect(registry.get(opus)?.account).toBe('b@x.com')
+  await registry.send(opus, 'again')
+  expect(routes).toHaveLength(spawns + 1)
+  expect(routes.at(-1)).toEqual({ id: opus, route: { account: 'b@x.com', pin: false } })
+  // A Fable thread on a stays: a is the only account with Fable room.
+  const { id: fable } = await running({ model: 'claude-fable-5-1' })
+  expect(registry.get(fable)?.account).toBe('a@x.com')
+  registry.refreshAccount(fable)
+  expect(registry.get(fable)?.account).toBe('a@x.com')
+  // b's week is gone: the Opus thread falls back to a (out of room, as before)…
+  b[0] = { label: 'Weekly', usedPercent: 100, resetsAt: NOW + 9 }
+  registry.refreshAccount(opus)
+  expect(registry.get(opus)?.account).toBe('a@x.com')
+  // …and stays there while no other account has room, however its own Fable window looks.
+  registry.refreshAccount(opus)
+  expect(registry.get(opus)?.account).toBe('a@x.com')
+  // Mid-turn: untouched even when a spent account with room appears.
+  b[0] = { label: 'Weekly', usedPercent: 20, resetsAt: NOW + 9 }
+  const { id: busy, emit } = await running({ model: 'claude-opus-5-5' })
+  registry.setAccount(busy, 'a@x.com')
+  emit({ type: 'status', status: 'running' })
+  registry.refreshAccount(busy)
+  expect(registry.get(busy)?.account).toBe('a@x.com')
 })
 
 it('an empty snapshot leaves the account unknown rather than clearing it', async () => {
