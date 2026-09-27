@@ -21,6 +21,7 @@ import { probeCatalogs } from './drivers/catalogProbe'
 import { backfillMirrors } from './mirror'
 import { bootMark } from './boot'
 import { setLimitMissLog } from './limitText'
+import { setCodexBootFailureLog } from './drivers/codex'
 import { sweepFolds } from './folds'
 import {
   orchAnswerAgent,
@@ -159,6 +160,7 @@ export async function startServer(
   const checkpoints = new CheckpointStore(join(options.dataDir ?? dirname(dbPath), 'checkpoints'))
   const registry = new SessionRegistry(store)
   setLimitMissLog(join(options.dataDir ?? dirname(dbPath), 'logs'))
+  setCodexBootFailureLog(join(options.dataDir ?? dirname(dbPath), 'logs'))
   registry.checkpoints = checkpoints
   const accounts = new AccountsService()
   registry.limits = accounts
