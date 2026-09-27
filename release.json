@@ -1,5 +1,5 @@
 {
-  "n": 175,
-  "notes": "Codex app-server boot keeps its stderr and retries a boot that dies in the handshake. AppServerConn reads stderr line by line into a bounded tail (40 lines / 4 KB, rmcp transport spam dropped) and rejects pending requests with AppServerExit, which carries the exit code and that tail, so \"codex app-server handshake failed\" now says why (tonight: codex's own logs_2.sqlite locked by its prune, exit 1 before any logger). Each boot death is appended to <userData>/logs/codex-boot-failures.log with time, session, attempt, cwd and routed account. codexDriver.start boots (spawn → initialize → thread/start|resume) up to three times with 1.5 s then 4 s between, only while booting: an exit after the thread is up is reported as a crash as before and never retried; a retry that succeeds logs one app line. Tests in drivers/codex.test.ts over a fake process: the tail in the error and the log, retry-then-succeed, post-boot crash not retried.",
-  "ts": 1790476485067
+  "n": 176,
+  "notes": "The Claude usage summary now classifies as a limit, so failover runs on it. aliax-core f2233a7: classifyLimitText reads \"Current session: 100% used · resets …\" / \"Current week (all models): N%\" / \"Current week (Fable): N%\" lines, naming the window at 100% (session → 5h, week (all models) → weekly, week (<Model>) → that model's window; several at 100% name the most specific), lines under 100% are not limits, no reset time (the usage poll supplies it). The text from 2026-09-26 23:38Z in limit-text-misses.log went untagged and no failover ran. limitText.test.ts pins that limitField tags it.",
+  "ts": 1790476601362
 }
