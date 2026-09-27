@@ -1,4 +1,6 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
+import { appendFile, mkdir } from 'node:fs/promises'
+import { join } from 'node:path'
 import { createInterface } from 'node:readline'
 import type { Attachment, PermissionPolicy, SessionStatus } from '@shared/events'
 import { limitField } from '../limitText'
@@ -56,6 +58,39 @@ const EFFORT: Record<Reasoning, string> = {
   ultra: 'ultra'
 }
 
+/** Backoff before each boot retry; a test shortens it. */
+export const bootOptions = { backoffMs: [1500, 4000] }
+
+let bootFailureLog: string | null = null
+
+/** Where a boot that died with its stderr tail is kept; set once at boot. */
+export function setCodexBootFailureLog(logDir: string | null): void {
+  bootFailureLog = logDir ? join(logDir, 'codex-boot-failures.log') : null
+}
+
+function logBootFailure(entry: { session: string; cwd: string; account: string | null; attempt: number; err: AppServerExit }): void {
+  const file = bootFailureLog
+  if (!file) return
+  const head = `${new Date().toISOString()} session=${entry.session} attempt=${entry.attempt} exit=${entry.err.code} cwd=${entry.cwd} account=${entry.account ?? '-'}`
+  const body = entry.err.tail.map((l) => `  ${l}`).join('\n')
+  void mkdir(join(file, '..'), { recursive: true })
+    .then(() => appendFile(file, `${head}\n${body}\n`))
+    .catch(() => {})
+}
+
+/** Lines from app-server's stderr that say nothing about why it died. */
+const STDERR_NOISE = /rmcp::|rmcp_|^\s*$/
+
+/** The process ended while requests were pending: the exit code and what it said on stderr. */
+export class AppServerExit extends Error {
+  constructor(
+    public code: number | null,
+    public tail: string[]
+  ) {
+    super(`codex app-server exited (${code})${tail.length ? `: ${tail.join(' | ')}` : ''}`)
+  }
+}
+
 interface RpcFrame {
   id?: number | string
   method?: string
@@ -64,9 +99,15 @@ interface RpcFrame {
   error?: { message?: string }
 }
 
+const STDERR_LINES = 40
+const STDERR_BYTES = 4096
+
 class AppServerConn {
   private proc: ChildProcessWithoutNullStreams
   private nextId = 1
+  /** The last lines app-server wrote to stderr, bounded by count and bytes. */
+  private stderrTail: string[] = []
+  private stderrBytes = 0
   private pending = new Map<
     number | string,
     { resolve: (v: unknown) => void; reject: (e: Error) => void }
@@ -85,6 +126,17 @@ class AppServerConn {
     onExit: (code: number | null) => void
   ) {
     this.proc = spawn(binPath, ['app-server'], { cwd, env, stdio: ['pipe', 'pipe', 'pipe'] })
+    // stderr is read even when nobody wants it: an unread pipe stalls a
+    // chatty child, and its tail is the only account of a boot that died.
+    createInterface({ input: this.proc.stderr }).on('line', (line) => {
+      const trimmed = line.trim()
+      if (STDERR_NOISE.test(trimmed)) return
+      this.stderrTail.push(trimmed)
+      this.stderrBytes += trimmed.length
+      while (this.stderrTail.length > STDERR_LINES || (this.stderrBytes > STDERR_BYTES && this.stderrTail.length > 1)) {
+        this.stderrBytes -= this.stderrTail.shift()!.length
+      }
+    })
     createInterface({ input: this.proc.stdout }).on('line', (line) => {
       let msg: RpcFrame
       try {
@@ -106,13 +158,18 @@ class AppServerConn {
         this.onNotify(msg.method, msg.params ?? {})
       }
     })
-    this.proc.on('exit', (code) => {
-      for (const p of this.pending.values())
-        p.reject(new Error(`codex app-server exited (${code})`))
-      this.pending.clear()
-      onExit(code)
-    })
-    this.proc.on('error', () => onExit(-1))
+    this.proc.on('exit', (code) => this.settle(code, onExit))
+    this.proc.on('error', () => this.settle(-1, onExit))
+  }
+
+  private settled = false
+
+  private settle(code: number | null, onExit: (code: number | null) => void): void {
+    if (this.settled) return
+    this.settled = true
+    for (const p of this.pending.values()) p.reject(new AppServerExit(code, this.stderrTail))
+    this.pending.clear()
+    onExit(code)
   }
 
   request(method: string, params?: unknown): Promise<unknown> {
@@ -613,83 +670,104 @@ export const codexDriver: HarnessDriver = {
       })
     }
 
-    const conn = new AppServerConn(binPath, env, session.cwd, onNotify, onRequest, (code) => {
-      if (disposed) return
-      emit({ type: 'error', message: `codex app-server exited unexpectedly (${code})` })
-      setStatus('error')
-    })
-
     let threadId = session.nativeId
-    try {
-      await conn.request('initialize', {
-        clientInfo: { name: 'temp-code', title: 'temp-code', version: '0.1.0' }
+    // Boot: spawn → initialize → thread/start|resume. An app-server that
+    // dies in here (codex's own log database held by its prune for
+    // minutes, say) is booted again a couple of times; an exit after the
+    // thread is up is a crash and is reported, never retried.
+    let conn!: AppServerConn
+    const boot = async (attempt: number): Promise<void> => {
+      let booted = false
+      conn = new AppServerConn(binPath, env, session.cwd, onNotify, onRequest, (code) => {
+        if (disposed || !booted) return
+        emit({ type: 'error', message: `codex app-server exited unexpectedly (${code})` })
+        setStatus('error')
       })
-      // App tools (docs/PLAN-2.md M10): the stdio bridge forwards
-      // app_list_threads / app_read_thread / app_start_thread back to the
-      // app's WS server, so codex threads can operate the app like claude.
-      const bridgeEntry = bridgeMcpConfig(session.id)
-      // Provider traffic goes through Aliax's shim or our own gateway, which
-      // swap in this thread's account's token.
-      const routed = await routedEndpointFor('codex', { thread: session.id, route: ctx.route ?? null })
-      const endpoint = routed.url
-      account = routed.account
-      const threadParams = {
-        cwd: session.cwd,
-        model: session.model,
-        approvalPolicy: APPROVAL_POLICY[session.permission],
-        sandbox: SANDBOX[session.permission],
-        config: {
-          // The structured-question tool (request_user_input) is
-          // feature-gated off by default — without it the model dumps
-          // "reply 1A/2B" menus as plain text instead of asking in the UI.
-          features: {
-            default_mode_request_user_input: true,
-            // Codex's native multi-agent tools are literally named
-            // spawn_agent/wait_agent/list_agents, serve ONLY OpenAI
-            // models, and shadow the app's cross-provider spawn toolset
-            // by bare name — models call them and conclude "only OpenAI
-            // workers exist". Off, so spawn_agent always means the app's.
-            multi_agent: false,
-            multi_agent_v2: false
-          },
-          // Fast = OpenAI's priority service tier. Only sent when on, so
-          // off keeps whatever the user's own codex config chooses.
-          ...(session.fast ? { service_tier: 'priority' } : {}),
-          ...(bridgeEntry ? { mcp_servers: { app: bridgeEntry } } : {}),
-          ...(endpoint ? { chatgpt_base_url: endpoint } : {})
+      try {
+        await conn.request('initialize', {
+          clientInfo: { name: 'temp-code', title: 'temp-code', version: '0.1.0' }
+        })
+        // App tools (docs/PLAN-2.md M10): the stdio bridge forwards
+        // app_list_threads / app_read_thread / app_start_thread back to the
+        // app's WS server, so codex threads can operate the app like claude.
+        const bridgeEntry = bridgeMcpConfig(session.id)
+        // Provider traffic goes through Aliax's shim or our own gateway, which
+        // swap in this thread's account's token.
+        const routed = await routedEndpointFor('codex', { thread: session.id, route: ctx.route ?? null })
+        const endpoint = routed.url
+        account = routed.account
+        const threadParams = {
+          cwd: session.cwd,
+          model: session.model,
+          approvalPolicy: APPROVAL_POLICY[session.permission],
+          sandbox: SANDBOX[session.permission],
+          config: {
+            // The structured-question tool (request_user_input) is
+            // feature-gated off by default — without it the model dumps
+            // "reply 1A/2B" menus as plain text instead of asking in the UI.
+            features: {
+              default_mode_request_user_input: true,
+              // Codex's native multi-agent tools are literally named
+              // spawn_agent/wait_agent/list_agents, serve ONLY OpenAI
+              // models, and shadow the app's cross-provider spawn toolset
+              // by bare name — models call them and conclude "only OpenAI
+              // workers exist". Off, so spawn_agent always means the app's.
+              multi_agent: false,
+              multi_agent_v2: false
+            },
+            // Fast = OpenAI's priority service tier. Only sent when on, so
+            // off keeps whatever the user's own codex config chooses.
+            ...(session.fast ? { service_tier: 'priority' } : {}),
+            ...(bridgeEntry ? { mcp_servers: { app: bridgeEntry } } : {}),
+            ...(endpoint ? { chatgpt_base_url: endpoint } : {})
+          }
         }
+        const startFresh = async (): Promise<void> => {
+          const res = (await conn.request('thread/start', threadParams)) as {
+            thread?: { id?: string }
+          }
+          if (res.thread?.id) {
+            threadId = res.thread.id
+            ctx.setNativeId(threadId)
+          }
+        }
+        if (threadId) {
+          try {
+            await conn.request('thread/resume', { threadId, ...threadParams })
+          } catch (err) {
+            // A thread that never ran a turn has no rollout file on disk, so
+            // it can't be resumed by a new app-server process. Nothing is
+            // lost — start fresh.
+            if (String(err).includes('no rollout')) await startFresh()
+            else throw err
+          }
+        } else {
+          await startFresh()
+        }
+        booted = true
+      } catch (err) {
+        conn.kill()
+        if (err instanceof AppServerExit) logBootFailure({ session: session.id, cwd: session.cwd, account, attempt, err })
+        throw err
       }
-      const startFresh = async (): Promise<void> => {
-        const res = (await conn.request('thread/start', threadParams)) as {
-          thread?: { id?: string }
-        }
-        if (res.thread?.id) {
-          threadId = res.thread.id
-          ctx.setNativeId(threadId)
-        }
-      }
-      if (threadId) {
-        try {
-          await conn.request('thread/resume', { threadId, ...threadParams })
-        } catch (err) {
-          // A thread that never ran a turn has no rollout file on disk, so
-          // it can't be resumed by a new app-server process. Nothing is
-          // lost — start fresh.
-          if (String(err).includes('no rollout')) await startFresh()
-          else throw err
-        }
-      } else {
-        await startFresh()
-      }
-      // The first usage numbers for the footer; updates arrive as notifications.
-      conn.request('account/rateLimits/read', {}).then((snapshot) => observeCodexSnapshot(snapshot, account), () => {})
-    } catch (err) {
-      disposed = true // expected exit, don't also report it as a crash
-      conn.kill()
-      throw new Error(
-        `codex app-server handshake failed: ${err instanceof Error ? err.message : String(err)}`
-      )
     }
+    for (let attempt = 1; ; attempt++) {
+      try {
+        await boot(attempt)
+        if (attempt > 1) console.log(`[codex] ${session.id}: app-server boot succeeded on attempt ${attempt}`)
+        break
+      } catch (err) {
+        const backoff = bootOptions.backoffMs[attempt - 1]
+        if (!(err instanceof AppServerExit) || backoff === undefined) {
+          disposed = true // expected exit, don't also report it as a crash
+          throw new Error(`codex app-server handshake failed: ${err instanceof Error ? err.message : String(err)}`)
+        }
+        console.log(`[codex] ${session.id}: app-server boot attempt ${attempt} died (${(err as Error).message}); retrying in ${backoff}ms`)
+        await new Promise((r) => setTimeout(r, backoff))
+      }
+    }
+    // The first usage numbers for the footer; updates arrive as notifications.
+    conn.request('account/rateLimits/read', {}).then((snapshot) => observeCodexSnapshot(snapshot, account), () => {})
 
     // Rehydrate the persisted goal (goals live in ~/.codex/goals_1.sqlite
     // and survive resume). Emit only when the log disagrees — a resume of
