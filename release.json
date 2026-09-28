@@ -1,5 +1,5 @@
 {
-  "n": 178,
-  "notes": "An account whose usage poll was throttled no longer drops behind the rest of the auto pick order. aliax-core 2df7622: orderByReset (failover.ts) demotes an account for a live report.rateLimit mark only when it has no windows on file, since that mark comes from GET /api/oauth/usage answering 429 and says nothing about the model API, while the cached windows still show the room; and a usage() sweep (accounts.ts) stops knocking after its first 429 with a retry-after, serving the remaining accounts from cache unmarked, because the throttle is on the host and one restart had marked eight of eleven accounts within a second. On 2026-09-28 that mark made a Fable thread pick Company (week resets in four days) over landon@firegames.gg (room left, resets in ten hours). Test in accountRouting.test.ts: chooseAccount with no current account picks the marked soonest-reset account with room.",
-  "ts": 1790622141871
+  "n": 179,
+  "notes": "Claude subagents spawn with the 1M context window by default. orchSpawnAgent (orchestration.ts) sets context1m when the target supportsContext1m and the caller did not pass context1m: false; true on a model without 1M is still refused. The +1m legend and the spawn_agent descriptions (orchestration.ts, app-mcp-bridge.mjs) say so; app_start_thread is unchanged. Tests in orchestration.test.ts.",
+  "ts": 1790629814019
 }
