@@ -86,6 +86,18 @@ describe('chooseAccount', () => {
     })
     expect(chooseAccount({ ...base, pin: null, current: null, snapshot: snap })).toEqual({ route: { account: 'soon-full@x.com', pin: false }, current: 'soon-full@x.com' })
   })
+  it('a usage-poll throttle on the soonest-reset account does not push it behind the rest', () => {
+    const snap = snapshot({
+      'late@x.com': [fine('Weekly', 30, NOW + 9_000), fine('Fable', 30, NOW + 9_000)],
+      'soon-marked@x.com': [fine('Weekly', 32, NOW + 1_000), fine('Fable', 45, NOW + 1_000)]
+    })
+    const marked = snap.providers.claude!.reports.find((r) => r.profileName === 'soon-marked@x.com')!
+    marked.rateLimit = { provider: 'Claude', until: NOW + 180_000 }
+    expect(chooseAccount({ ...base, model: 'claude-fable-5-1', pin: null, current: null, snapshot: snap })).toEqual({
+      route: { account: 'soon-marked@x.com', pin: false },
+      current: 'soon-marked@x.com'
+    })
+  })
   it('nothing with room keeps the current account; with nothing at all the URL goes unscoped', () => {
     const snap = snapshot({ 'a@x.com': [full('5h')], 'b@x.com': [full('5h')] })
     expect(chooseAccount({ ...base, pin: null, current: 'b@x.com', snapshot: snap })).toEqual({ route: { account: 'b@x.com', pin: false }, current: 'b@x.com' })
