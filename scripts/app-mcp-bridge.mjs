@@ -186,7 +186,7 @@ const TOOLS = [
         context1m: {
           type: 'boolean',
           description:
-            'Claude models only: run the agent with the 1M context window. Rejected for models that do not offer it.'
+            'Claude models only: the 1M context window, on by default for models that offer it. Pass false for 200k. true is rejected for models that do not offer it.'
         }
       },
       required: ['task']
