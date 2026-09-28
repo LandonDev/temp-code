@@ -61,7 +61,7 @@ it('the spawnable table marks the claude rows +1m and explains the marker once',
   for (const model of CATALOG.codex.models) {
     expect(table).not.toContain(`${model.id} (low|medium|high|xhigh|max|ultra) +1m`)
   }
-  expect(table.match(/pass context1m: true/g)).toHaveLength(1)
+  expect(table.match(/context1m: false/g)).toHaveLength(1)
 })
 
 it('spawn_agent with context1m on a claude model reaches create with the flag', async () => {
@@ -77,8 +77,18 @@ it('spawn_agent with context1m on a claude model reaches create with the flag', 
   expect(sent).toEqual(['do the thing'])
 })
 
-it('spawn_agent without context1m does not set it', async () => {
+it('spawn_agent without context1m defaults a claude model to 1M', async () => {
   await orchSpawnAgent(parent, { model: 'claude-opus-5', task: 'do the thing' })
+  expect(created[0].context1m).toBe(true)
+})
+
+it('spawn_agent with context1m: false keeps a claude model at 200k', async () => {
+  await orchSpawnAgent(parent, { model: 'claude-opus-5', task: 'do the thing', context1m: false })
+  expect(created[0].context1m).toBeUndefined()
+})
+
+it('spawn_agent without context1m leaves a codex model unset', async () => {
+  await orchSpawnAgent(parent, { model: 'gpt-6-astra', task: 'do the thing' })
   expect(created[0].context1m).toBeUndefined()
 })
 
