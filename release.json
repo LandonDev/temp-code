@@ -1,5 +1,5 @@
 {
-  "n": 190,
-  "notes": "An account refresh pass no longer holds the loop ~2.2 s every snapshot. After v189, each snapshot still re-picked 224 idle Claude threads between two accounts with near-equal headroom, and every moved row bumped the sessions version, so notifyMeta rebuilt the whole 3,190-row session index once per row. expectAccountsUnder (refreshAccounts and scope-pin changes) now holds the pass's meta pushes in deferredMeta, latest per session, and sends them after the writes: one index rebuild per pass. Tests: sessions-limits.test.ts (a pass that moves every thread reads the table twice and pushes each moved thread once).",
-  "ts": 1790713840951
+  "n": 191,
+  "notes": "Zen transcripts read like the Claude app: the model's prose never folds. Every paragraph renders full size where it streamed, and each run of tool calls between paragraphs folds into one row titled by the calls (\"Read 3 files · Searched for tokens\", \"Ran the tests (1 failed)\"); expanding it lists each call as a step, thinking stays a step, a thinking-only group reads Thought. groupTurnItems keeps prose out of every group, buildActivityPhases drops the prose headline, TurnView folds a group once the turn moves past it. Non-zen unchanged.",
+  "ts": 1790714658697
 }
