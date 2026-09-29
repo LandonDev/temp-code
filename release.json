@@ -1,5 +1,5 @@
 {
-  "n": 189,
-  "notes": "The app no longer freezes for ~16 s at a time (beachball, window unresponsive) since v185. Every accounts snapshot change (the gateway nudges one on each observed response) runs refreshAccounts over every open thread, and each thread's routeFor asked registry.liveLoad, which read the whole sessions table: 1,778 threads x 3,190 rows per pass, back to back while threads stream, all on the main loop the gateway and the window's requests share. liveLoad now walks only the threads holding a process (a live status never outlives its handle), and refreshAccounts / expectAccountsUnder read it once per provider per pass and hand it to the router through RouteOptions.load (accountRouting.ts; AccountsService.routeFor uses it before deps.load). A pass over 1,800 threads that all hold a process drops from 18 s to 52 ms. Tests: sessions-limits.test.ts (a refresh pass reads the sessions table and the live load once).",
-  "ts": 1790713430587
+  "n": 190,
+  "notes": "An account refresh pass no longer holds the loop ~2.2 s every snapshot. After v189, each snapshot still re-picked 224 idle Claude threads between two accounts with near-equal headroom, and every moved row bumped the sessions version, so notifyMeta rebuilt the whole 3,190-row session index once per row. expectAccountsUnder (refreshAccounts and scope-pin changes) now holds the pass's meta pushes in deferredMeta, latest per session, and sends them after the writes: one index rebuild per pass. Tests: sessions-limits.test.ts (a pass that moves every thread reads the table twice and pushes each moved thread once).",
+  "ts": 1790713840951
 }
