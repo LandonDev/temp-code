@@ -322,6 +322,81 @@ describe("zen mode grouping", () => {
   });
 });
 
+describe("zen mode around a question", () => {
+  const question = (id: string, answers?: string[][]): Block => ({
+    id,
+    role: "tool",
+    text: "Pick",
+    tool: { kind: "question", title: "Pick", status: answers ? "completed" : "running" },
+    question: { sessionId: "s", requestId: id, questions: [], ...(answers ? { answers } : {}) },
+  });
+  const wall = "The answer the user was asked to read. ".repeat(60);
+  const shape = (items: ReturnType<typeof groupTurnItems>) =>
+    items.map((item) =>
+      item.type === "activity"
+        ? `activity(${item.blocks.map((b) => b.id).join(",")})`
+        : `block(${item.block.id})`,
+    );
+
+  it("keeps the prose before an unanswered question out of the fold", () => {
+    expect(wall.length).toBeGreaterThan(2000);
+    const items = groupTurnItems(
+      [shell("a"), read("b"), note("c", wall), question("q")],
+      true,
+    );
+    expect(shape(items)).toEqual(["activity(a,b)", "block(c)", "block(q)"]);
+  });
+
+  it("leaves that prose where it was once the question is answered and the agent moved on", () => {
+    const items = groupTurnItems(
+      [
+        shell("a"),
+        note("c", wall),
+        question("q", [["yes"]]),
+        shell("d"),
+        read("e"),
+        note("f", "Done."),
+      ],
+      true,
+    );
+    expect(shape(items)).toEqual([
+      "activity(a)",
+      "block(c)",
+      "block(q)",
+      "activity(d,e)",
+      "block(f)",
+    ]);
+    expect(lastActivityIndex(items)).toBe(3);
+  });
+
+  it("still folds prose between the question and the trailing answer", () => {
+    const items = groupTurnItems(
+      [
+        note("c", wall),
+        question("q", [["yes"]]),
+        note("d", "On it."),
+        shell("e"),
+        note("f", "Done."),
+      ],
+      true,
+    );
+    expect(shape(items)).toEqual(["block(c)", "block(q)", "activity(d,e)", "block(f)"]);
+  });
+
+  it("changes nothing for a turn without a question", () => {
+    const items = groupTurnItems([shell("a"), read("b"), note("c", wall)], true);
+    expect(shape(items)).toEqual(["activity(a,b)", "block(c)"]);
+  });
+
+  it("treats an approval still waiting on the user like a question", () => {
+    const items = groupTurnItems(
+      [shell("a"), note("c", wall), shell("p", "pending", { requestId: 1 })],
+      true,
+    );
+    expect(shape(items)).toEqual(["activity(a)", "block(c)", "block(p)"]);
+  });
+});
+
 describe("activityPreviousLabel", () => {
   it("counts what is waiting behind the disclosure", () => {
     expect(activityPreviousLabel(1)).toBe("+1 previous tool call");

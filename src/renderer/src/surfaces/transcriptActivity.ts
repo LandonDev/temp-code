@@ -153,9 +153,42 @@ export function isProseBlock(block: Block): boolean {
  * text renders in full as it arrives and only folds once the next tool starts.
  */
 export function finalResponseStart(blocks: Block[]): number {
-  let index = blocks.length;
+  return proseRunStart(blocks, blocks.length);
+}
+
+/** Start of the run of assistant prose that ends right before `end`. */
+function proseRunStart(blocks: Block[], end: number): number {
+  let index = end;
   while (index > 0 && isProseBlock(blocks[index - 1])) index -= 1;
   return index;
+}
+
+/**
+ * A block that hands the turn to the user ends the work: a question, answered
+ * or not, and an approval still undecided. The prose the agent wrote leading
+ * into it is what the user was asked to read, so it is answer, not activity,
+ * and it stays that way once the user has replied and the agent moved on.
+ */
+export function endsWork(block: Block): boolean {
+  return block.question != null || needsApproval(block);
+}
+
+/**
+ * Indices of the prose blocks zen renders full size: every trailing run of
+ * prose, and the run leading into each block that hands the turn to the user.
+ */
+export function answerIndices(blocks: Block[]): Set<number> {
+  const answer = new Set<number>();
+  const mark = (end: number) => {
+    for (let index = proseRunStart(blocks, end); index < end; index += 1) {
+      answer.add(index);
+    }
+  };
+  blocks.forEach((block, index) => {
+    if (endsWork(block)) mark(index);
+  });
+  mark(blocks.length);
+  return answer;
 }
 
 /** First paragraph of a folded prose block, stripped to one plain line. */
@@ -221,8 +254,8 @@ export function groupTurnItems(blocks: Block[], zen = false): TurnItem[] {
       !isIgnoredTurnBlock(block, zen) &&
       (isTodoBlock(block) || !isHiddenTool(block)),
   );
-  // Zen off: nothing folds, so every prose block counts as final.
-  const finalStart = zen ? finalResponseStart(visible) : 0;
+  // Zen off: nothing folds, so every prose block stands on its own.
+  const answer = zen ? answerIndices(visible) : null;
   const items: TurnItem[] = [];
   let activity: Block[] = [];
   const flush = () => {
@@ -232,10 +265,21 @@ export function groupTurnItems(blocks: Block[], zen = false): TurnItem[] {
     activity = [];
   };
   visible.forEach((block, index) => {
+    if (isTodoBlock(block)) {
+      flush();
+      items.push({ type: "block", block });
+      return;
+    }
+    // A question card renders full size under the prose it followed, even
+    // once answered: a step inside a phase would fold the text away again.
+    if (zen && endsWork(block)) {
+      flush();
+      items.push({ type: "block", block });
+      return;
+    }
     if (
-      !isTodoBlock(block) &&
-      (isActivityBlock(block, zen) ||
-        (index < finalStart && isProseBlock(block)))
+      isActivityBlock(block, zen) ||
+      (answer && !answer.has(index) && isProseBlock(block))
     ) {
       activity.push(block);
       return;
