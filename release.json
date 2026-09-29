@@ -1,5 +1,5 @@
 {
-  "n": 186,
-  "notes": "The sidebar, title bar, rail and Archive page do less work per session push: O(1) workspace lookups, a title bar that ignores streamed frames, one seen-mark a second, a dock badge on meta change only, and archived threads a page at a time.",
-  "ts": 1790708776839
+  "n": 187,
+  "notes": "The server no longer re-reads and re-indexes every session row on each meta push: the session index is cached per sessions-table version.",
+  "ts": 1790708939444
 }
