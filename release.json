@@ -1,5 +1,5 @@
 {
-  "n": 179,
-  "notes": "Claude subagents spawn with the 1M context window by default. orchSpawnAgent (orchestration.ts) sets context1m when the target supportsContext1m and the caller did not pass context1m: false; true on a model without 1M is still refused. The +1m legend and the spawn_agent descriptions (orchestration.ts, app-mcp-bridge.mjs) say so; app_start_thread is unchanged. Tests in orchestration.test.ts.",
-  "ts": 1790629814019
+  "n": 180,
+  "notes": "Follow-ups on threads opened before the model catalog loaded no longer fail with \"issue with the selected model (fable-5.1[1m])\". A thread hydrated at boot before the live Claude catalog lands carries the built-in picker id (claude:fable-5.1); once the catalog replaced the built-in list, nativeModelId (lib/models.ts) no longer found that id and stripped its prefix to fable-5.1, which the boot normalization guard (stores/subscriptions.ts) then compared against the live native id and left the thread on the stale id, so the next send launched the CLI with --model fable-5.1[1m] (also opus-5.5[1m]). nativeModelId now consults the built-in MODELS list through builtinNativeId, shared with resolveModel, before falling back to the prefix strip, so the send path yields claude-fable-5-1 and the boot guard moves stale threads onto the live id while still leaving a model absent from the catalog alone. Tests: models.test.ts (built-in id after the overlay), subscriptions.test.ts (boot rewrites the stale id, keeps an absent one).",
+  "ts": 1790647488251
 }
