@@ -49,9 +49,14 @@ describe("projectRootThreads", () => {
 
 describe("isLiveThread", () => {
   const seen = { x: 100 };
-  it("keeps working, waiting, failed and paused roots live", () => {
-    for (const status of ["running", "starting", "waiting", "error", "paused"] as const)
+  it("keeps working, waiting, failed, paused and watching roots live", () => {
+    for (const status of ["running", "starting", "waiting", "error", "paused", "watching"] as const)
       expect(isLiveThread(thread("x", { status }), seen, {})).toBe(true);
+  });
+
+  it("keeps a plan-ready root live whether it settled idle or on a background wait", () => {
+    expect(isLiveThread(thread("x"), seen, { x: true })).toBe(true);
+    expect(isLiveThread(thread("x", { status: "watching" }), seen, { x: true })).toBe(true);
   });
 
   it("keeps a settled root live while its tree works, is paused or can continue", () => {
