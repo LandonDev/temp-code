@@ -372,6 +372,28 @@ it('refreshAccounts reads the sessions table and the live load once per pass, ho
   expect(load).toHaveBeenCalledTimes(1)
 })
 
+it('a refresh pass that moves every thread rebuilds the session index once and pushes each moved thread once', async () => {
+  let account = 'a@x.com'
+  registry.limits = {
+    routeFor: () => ({ route: { account, pin: false }, current: account }),
+    failover: async () => null
+  }
+  const ids: string[] = []
+  for (let i = 0; i < 20; i++) ids.push((await registry.create({ cwd: root, provider: 'claude', model: 'claude-sonnet-5' })).id)
+  registry.refreshAccounts()
+  account = 'b@x.com'
+  const pushed: string[] = []
+  registry.onMeta((meta) => pushed.push(`${meta.id}:${meta.account}`))
+  const list = vi.spyOn(store, 'listSessions')
+  registry.refreshAccounts()
+  // One read for the pass, one index rebuild for all twenty pushes.
+  expect(list).toHaveBeenCalledTimes(2)
+  // Threads still starting keep their pick; every moved one is pushed once.
+  const moved = ids.filter((id) => registry.get(id)?.account === 'b@x.com')
+  expect(moved.length).toBeGreaterThan(10)
+  expect(pushed.sort()).toEqual(moved.map((id) => `${id}:b@x.com`).sort())
+})
+
 it('a spawn picks fresh: the sticky account is ignored so a resume spreads by the live load', async () => {
   const opts: unknown[] = []
   registry.limits = {
