@@ -118,7 +118,7 @@ function threadActionItems(status: TabThread["status"] | undefined): ExplorerMen
 export function tabThreadActions(status: TabThread["status"] | undefined): TabThreadAction[] {
   if (status === "running" || status === "starting") return ["pause", "stop"];
   if (status === "paused") return ["resume", "stop"];
-  if (status === "waiting") return ["stop"];
+  if (status === "waiting" || status === "watching") return ["stop"];
   return [];
 }
 

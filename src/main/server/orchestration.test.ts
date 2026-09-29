@@ -3,7 +3,7 @@ import { CATALOG, supportsContext1m, type ProviderId } from '@shared/catalog'
 import { DEFAULT_RULES } from '@shared/rules'
 import type { SessionMeta } from '@shared/events'
 import type { SessionRegistry } from './sessions'
-import { orchSpawnAgent, setOrchestrationRegistry, spawnableModels } from './orchestration'
+import { orchSpawnAgent, setOrchestrationRegistry, spawnableModels, waitForSettled } from './orchestration'
 
 /** A registry stub: enough for a spawn to reach create(), nothing more.
  *  The real one starts a driver, which a unit test has no business doing. */
@@ -103,4 +103,34 @@ it('spawn_agent refuses context1m on a codex model and creates nothing', async (
   expect(reply).toContain('Approved models:')
   expect(created).toHaveLength(0)
   expect(sent).toHaveLength(0)
+})
+
+it('waitForSettled sleeps through watching and resolves on the idle that follows', async () => {
+  let status: SessionMeta['status'] = 'running'
+  const listeners: ((row: { event: { type: string; status: string } }) => void)[] = []
+  const reg = {
+    get: () => ({ id: 'c', status }) as SessionMeta,
+    subscribe: (_id: string, l: (row: { event: { type: string; status: string } }) => void) => {
+      listeners.push(l)
+      return () => {}
+    }
+  } as unknown as SessionRegistry
+  let settled: SessionMeta | null | undefined
+  void waitForSettled(reg, 'c', 0).then((m) => (settled = m))
+  await Promise.resolve()
+  status = 'watching'
+  for (const l of listeners) l({ event: { type: 'status', status: 'watching' } })
+  await Promise.resolve()
+  expect(settled).toBeUndefined()
+  status = 'idle'
+  for (const l of listeners) l({ event: { type: 'status', status: 'idle' } })
+  await Promise.resolve()
+  await Promise.resolve()
+  expect(settled?.status).toBe('idle')
+  // Already watching when asked: still not settled.
+  status = 'watching'
+  let early: SessionMeta | null | undefined
+  void waitForSettled(reg, 'c', 0).then((m) => (early = m))
+  await Promise.resolve()
+  expect(early).toBeUndefined()
 })

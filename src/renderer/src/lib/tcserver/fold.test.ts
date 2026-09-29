@@ -285,6 +285,20 @@ describe("foldEvent", () => {
     expect(s.busy).toBe(false);
   });
 
+  it("watching closes the turn without busy, and a settled task lands as a system line", () => {
+    let s = foldAll(rows([{ type: "user-text", text: "run it in the background" }]), CWD);
+    expect(s.busy).toBe(true);
+    s = step(s, { type: "background-tasks", tasks: ["upload the build"] });
+    expect(s.blocks).toHaveLength(1);
+    s = step(s, { type: "status", status: "watching" });
+    expect(s.busy).toBe(false);
+    expect(s.thread.turnOpen).toBe(false);
+    s = step(s, { type: "background-task", taskId: "t1", description: "upload the build", status: "completed" });
+    expect(s.blocks.at(-1)).toMatchObject({ role: "system", text: "Background task completed: upload the build" });
+    s = step(s, { type: "status", status: "running" });
+    expect(s.busy).toBe(true);
+  });
+
   it("errors append a system line, stopped clears busy, errors-cleared drops them", () => {
     let s = foldAll(
       rows([

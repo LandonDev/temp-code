@@ -91,11 +91,18 @@ export function isTurnPaused(session: ClockSession): boolean {
   return session.status === "paused";
 }
 
-/** Work is in flight (starting, running or waiting on the user). */
+/** Work is in flight (starting, running, waiting on the user, or
+ *  watching background work — the clock runs through the wait). */
 export function isTurnActive(session: ClockSession): boolean {
   const status = session.status ?? (session.busy ? "running" : "idle");
   if (status === "paused") return false;
-  return status === "running" || status === "starting" || status === "waiting" || !!session.busy;
+  return (
+    status === "running" ||
+    status === "starting" ||
+    status === "waiting" ||
+    status === "watching" ||
+    !!session.busy
+  );
 }
 
 /** When the current stretch of work began: the server's stamp, else the last user turn. */

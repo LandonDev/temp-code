@@ -45,6 +45,7 @@ describe("turnElapsed", () => {
   it("is null once the turn settled", () => {
     expect(turnElapsed(session({ status: "idle", busySince: 1000 }), 4200)).toBeNull();
     expect(isTurnActive(session({ status: "error" }))).toBe(false);
+    expect(isTurnActive(session({ status: "watching" }))).toBe(true);
   });
 
   it("never runs backwards", () => {

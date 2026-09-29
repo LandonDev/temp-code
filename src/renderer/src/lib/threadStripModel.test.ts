@@ -114,6 +114,7 @@ describe("displayStatus and chipTone", () => {
     expect(chipTone("done", true)).toBe("info");
     expect(chipTone("idle", false)).toBeNull();
     expect(chipTone("running", true)).toBeNull();
+    expect(chipTone("watching", true)).toBeNull();
   });
 });
 

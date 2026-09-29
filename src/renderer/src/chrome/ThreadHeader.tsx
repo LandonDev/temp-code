@@ -54,7 +54,7 @@ export function chipMenuItems(chip: StripChip): ExplorerMenuItem[] {
     items.push({ kind: "item", id: "tune", label: `${THREAD_LABELS[t.threadType]} options…` });
   const paused = chip.status === "paused";
   const working = !!t.treeHasLiveWork || chip.status === "running" || chip.status === "starting";
-  const live = working || paused || chip.status === "waiting";
+  const live = working || paused || chip.status === "waiting" || chip.status === "watching";
   if (paused) items.push({ kind: "item", id: "resume", label: "Continue" });
   else if (working) items.push({ kind: "item", id: "pause", label: "Pause" });
   if (live) items.push({ kind: "item", id: "stop", label: "Stop", danger: true });

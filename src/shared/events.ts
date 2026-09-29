@@ -14,6 +14,9 @@ export const SessionStatusSchema = z.enum([
   'idle',
   'running',
   'waiting',
+  // Harness idle, but non-ambient background tasks or session crons are
+  // live: the process stays up and the thread wakes itself when they land.
+  'watching',
   'paused',
   'error',
   'done'
@@ -189,6 +192,20 @@ export const AgentEventSchema = z.discriminatedUnion('type', [
     agentId: z.string(),
     title: z.string(),
     status: z.string()
+  }),
+
+  // Background work the harness is waiting on (descriptions of live
+  // non-ambient tasks and session crons; replace semantics, empty = none).
+  // Folded by the registry into the 'Waiting on …' header line; no block.
+  z.object({ type: z.literal('background-tasks'), tasks: z.array(z.string()) }),
+
+  // One background task settled — the transcript's record of why the
+  // thread woke.
+  z.object({
+    type: z.literal('background-task'),
+    taskId: z.string(),
+    description: z.string(),
+    status: z.enum(['completed', 'failed', 'stopped'])
   }),
 
   // End of a turn, with whatever accounting the provider reports.

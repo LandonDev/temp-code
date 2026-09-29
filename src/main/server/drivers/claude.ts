@@ -1,6 +1,7 @@
 import {
   query,
   type CanUseTool,
+  type HookInput,
   type HookJSONOutput,
   type Options,
   type PermissionMode,
@@ -166,6 +167,124 @@ interface StreamState {
   contextTokens: number
   /** one recovery compact per overflow; a compact that lands re-arms */
   compactRecoveryTried: boolean
+  /** live non-ambient background tasks, id → description: the last
+   *  background_tasks_changed level (replace semantics) */
+  tasks: Map<string, string>
+  /** every non-ambient task id → description ever seen (task_started or
+   *  the level), so a task_notification can be named after the level
+   *  already dropped the task; deleted on notification */
+  known: Map<string, string>
+  /** session crons (CronCreate, ScheduleWakeup, /loop) from the last Stop
+   *  hook input — they never appear in the task level */
+  crons: string[]
+  /** armed when the task set empties while idle: settles idle unless a
+   *  wake turn starts first */
+  settleTimer: NodeJS.Timeout | null
+  /** the last status this driver emitted was 'watching' */
+  watching: boolean
+}
+
+export function newStreamState(): StreamState {
+  return {
+    currentMsgId: new Map(),
+    toolInput: new Map(),
+    working: false,
+    armedAt: null,
+    nudged: false,
+    overflowed: false,
+    compactRecoveryTried: false,
+    contextTokens: 0,
+    tasks: new Map(),
+    known: new Map(),
+    crons: [],
+    settleTimer: null,
+    watching: false
+  }
+}
+
+// ── background work ───────────────────────────────────────────────────
+// A thread whose turn ended with a run_in_background Bash, a Monitor, a
+// CI poll or a cron still live is not done: the CLI wakes itself when the
+// work lands. The driver reports that stretch as status 'watching' (the
+// registry keeps the process alive through it) and settles idle only when
+// the live set empties.
+
+/** After an empty task level while idle, how long to wait for the CLI's
+ *  own wake turn before settling idle (covers a task stopped by hand). */
+const SETTLE_AFTER_MS = 5_000
+
+/** Everything the thread is waiting on, for the header line. */
+function liveDescriptions(state: StreamState): string[] {
+  return [...state.tasks.values(), ...state.crons]
+}
+
+function clearSettle(state: StreamState): void {
+  if (state.settleTimer) clearTimeout(state.settleTimer)
+  state.settleTimer = null
+}
+
+function emitWatching(ctx: DriverCtx, state: StreamState): void {
+  clearSettle(state)
+  state.watching = true
+  ctx.emit({ type: 'status', status: 'watching' })
+}
+
+/** The turn is over: watch when work is still live, else idle. */
+function settleTurn(ctx: DriverCtx, state: StreamState): void {
+  if (liveDescriptions(state).length > 0) {
+    emitWatching(ctx, state)
+  } else {
+    clearSettle(state)
+    state.watching = false
+    ctx.emit({ type: 'status', status: 'idle' })
+  }
+}
+
+/** A turn the CLI started on its own (a background task or cron woke it):
+ *  flip to running so the spinner, busy clock and overdue watchdog behave
+ *  as for a sent turn. */
+function wakeTurn(ctx: DriverCtx, state: StreamState): void {
+  clearSettle(state)
+  state.working = true
+  state.watching = false
+  ctx.emit({ type: 'status', status: 'running' })
+}
+
+/** The live set changed (task level or cron list). Publishes the new
+ *  descriptions and, while idle, moves between watching and idle. */
+function liveSetChanged(ctx: DriverCtx, state: StreamState, before: string): void {
+  const live = liveDescriptions(state)
+  if (live.join('\n') !== before) ctx.emit({ type: 'background-tasks', tasks: live })
+  if (state.working) return
+  if (live.length > 0) {
+    if (!state.watching) emitWatching(ctx, state)
+  } else if (state.watching) {
+    clearSettle(state)
+    state.settleTimer = setTimeout(() => {
+      state.settleTimer = null
+      if (state.working || !state.watching) return
+      state.watching = false
+      ctx.emit({ type: 'status', status: 'idle' })
+    }, SETTLE_AFTER_MS)
+  }
+}
+
+/** The Stop hook is the only place session crons surface. It lands before
+ *  the result message, so the result settles on fresh cron state; should a
+ *  CLI run it after, the transition is applied here instead. */
+export function stopHookFor(
+  ctx: DriverCtx,
+  state: StreamState
+): (input: HookInput) => Promise<HookJSONOutput> {
+  return async (input) => {
+    const crons = input.hook_event_name === 'Stop' ? (input.session_crons ?? []) : []
+    const before = liveDescriptions(state).join('\n')
+    state.crons = crons.map(
+      (c) => `${c.recurring ? 'scheduled' : 'one-shot'} wake-up (${c.schedule})`
+    )
+    liveSetChanged(ctx, state, before)
+    return { continue: true }
+  }
 }
 
 /** How often a growing tool input is re-parsed and forwarded to the UI. */
@@ -187,8 +306,19 @@ function footprintOf(usage: {
   )
 }
 
-function handleMessage(ctx: DriverCtx, state: StreamState, msg: SDKMessage): void {
+export function handleMessage(ctx: DriverCtx, state: StreamState, msg: SDKMessage): void {
   const { emit } = ctx
+  // A turn arriving while none is open is the CLI waking itself (a
+  // background task or cron landed): init only ever arrives lazily — on
+  // the first send, mid-turn, or at a self-wake.
+  if (
+    !state.working &&
+    (msg.type === 'assistant' ||
+      msg.type === 'stream_event' ||
+      (msg.type === 'system' && msg.subtype === 'init'))
+  ) {
+    wakeTurn(ctx, state)
+  }
   // Live context accounting, straight off the stream: each TOP-LANE API
   // message reports what the request occupied (subagent lanes have their
   // own windows and must not bleed in). Forwarded the moment it moves so
@@ -243,7 +373,32 @@ function handleMessage(ctx: DriverCtx, state: StreamState, msg: SDKMessage): voi
             window: ctx.session.context1m ? 1_000_000 : 200_000
           })
         }
+      } else if (msg.subtype === 'background_tasks_changed') {
+        // The level signal: the whole live set, ambient housekeeping
+        // excluded. Names are remembered so a later notification can be
+        // labelled after the level dropped its task.
+        const before = liveDescriptions(state).join('\n')
+        state.tasks = new Map(
+          msg.tasks.filter((t) => !t.ambient).map((t) => [t.task_id, t.description])
+        )
+        for (const [id, description] of state.tasks) state.known.set(id, description)
+        liveSetChanged(ctx, state, before)
+      } else if (msg.subtype === 'task_started') {
+        if (!msg.ambient) state.known.set(msg.task_id, msg.description)
+      } else if (msg.subtype === 'task_notification') {
+        // One settled task — the transcript's record of why the thread
+        // woke. The wake turn itself shows what the model made of it.
+        if (!msg.ambient) {
+          emit({
+            type: 'background-task',
+            taskId: msg.task_id,
+            description: state.known.get(msg.task_id) ?? 'background task',
+            status: msg.status
+          })
+          state.known.delete(msg.task_id)
+        }
       }
+      // task_updated / task_progress: chatter; the level carries the set.
       break
     case 'stream_event': {
       const ev = msg.event
@@ -444,7 +599,7 @@ function handleMessage(ctx: DriverCtx, state: StreamState, msg: SDKMessage): voi
         // so this is an error event but an idle status.
         emit({ type: 'error', message: `turn ended: ${msg.subtype}` })
       }
-      emit({ type: 'status', status: 'idle' })
+      settleTurn(ctx, state)
       break
   }
 }
@@ -658,16 +813,7 @@ export const claudeDriver: HarnessDriver = {
   async start(ctx: DriverCtx): Promise<DriverHandle> {
     const { session, emit } = ctx
     const input = new InputQueue()
-    const state: StreamState = {
-      currentMsgId: new Map(),
-      toolInput: new Map(),
-      working: false,
-      armedAt: null,
-      nudged: false,
-      overflowed: false,
-      compactRecoveryTried: false,
-      contextTokens: 0
-    }
+    const state = newStreamState()
     const pendingApprovals = new Map<string, (allow: boolean, auto?: boolean) => void>()
     const pendingQuestions = new Map<string, (answers: string[][] | null) => void>()
 
@@ -827,7 +973,11 @@ export const claudeDriver: HarnessDriver = {
       permissionMode: PERMISSION_MODE[session.permission],
       ...(session.permission === 'auto' ? { allowDangerouslySkipPermissions: true } : {}),
       canUseTool,
-      hooks: { PreToolUse: [{ matcher: 'AskUserQuestion', hooks: [askUserQuestionHook] }] },
+      hooks: {
+        PreToolUse: [{ matcher: 'AskUserQuestion', hooks: [askUserQuestionHook] }],
+        // Session crons only surface here (see stopHookFor).
+        Stop: [{ hooks: [stopHookFor(watchedCtx, state)] }]
+      },
       // Claude settings keys (not Options) ride a per-session --settings
       // override: fast mode, and the context mode — Standard keeps the
       // thread under 200k via the CLI's own auto-compact (also dodging the
@@ -938,6 +1088,7 @@ export const claudeDriver: HarnessDriver = {
       const quiet = Date.now() - state.armedAt
       if (quiet >= RECOVER_AFTER_MS) {
         state.working = false
+        state.watching = false
         state.armedAt = null
         emit({ type: 'error', message: 'the harness never reported the turn done — recovered' })
         emit({ type: 'status', status: 'idle' })
@@ -987,16 +1138,23 @@ export const claudeDriver: HarnessDriver = {
         }
         // Stream over with a turn still open: the result message is never
         // coming (process died, or the SDK dropped it). Settle the status
-        // or the thread shows "working" forever.
-        if (state.working && !disposed) {
+        // or the thread shows "working" forever. A watching thread's
+        // tasks died with the process — settle it too, without an error.
+        if ((state.working || state.watching) && !disposed) {
+          const midTurn = state.working
           state.working = false
-          emit({ type: 'error', message: 'harness stream ended mid-turn' })
+          state.watching = false
+          clearSettle(state)
+          if (midTurn) emit({ type: 'error', message: 'harness stream ended mid-turn' })
+          else emit({ type: 'background-tasks', tasks: [] })
           emit({ type: 'status', status: 'idle' })
         }
       } catch (err) {
         // A watchdog abort already settled the status — swallow its throw.
         if (disposed || abort.signal.aborted) return
         state.working = false
+        state.watching = false
+        clearSettle(state)
         // emit persists to SQLite; if THAT is what threw (a locked
         // database), a bare retry here would kill the drain loop entirely
         // and freeze the thread on "Working…" with nothing logged.
@@ -1076,6 +1234,7 @@ export const claudeDriver: HarnessDriver = {
       },
       async dispose(): Promise<void> {
         disposed = true
+        clearSettle(state)
         for (const finish of [...pendingApprovals.values()]) finish(false, true)
         for (const finish of [...pendingQuestions.values()]) finish(null)
         input.close()

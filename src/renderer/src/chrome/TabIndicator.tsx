@@ -83,6 +83,17 @@ export function TabIndicator({ thread }: { thread: TabThread }) {
         </span>
       );
     }
+    if (status === "watching") {
+      return (
+        <span
+          className="flex shrink-0 items-center gap-1 text-[11px] text-content/50"
+          title={thread.activity ?? undefined}
+        >
+          <span className="size-1.5 motion-safe:animate-pulse rounded-full bg-content/40" />
+          Watching
+        </span>
+      );
+    }
     if (status === "error") {
       return <span className="shrink-0 text-[11px] font-medium text-danger">Failed</span>;
     }
