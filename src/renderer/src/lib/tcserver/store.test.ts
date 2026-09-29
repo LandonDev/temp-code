@@ -443,6 +443,7 @@ describe("context reading", () => {
 });
 
 describe("M4b projections", () => {
+  const tick = () => new Promise((r) => setTimeout(r, 0));
   it("keeps the id list and shells stable through event pushes and busy flips", async () => {
     link.metas = [meta({ title: "one" }), meta({ id: "s2", title: "two" })];
     sessionStore.connect(link);
@@ -459,12 +460,14 @@ describe("M4b projections", () => {
     link.push({ push: "event", row: row("s1", 1, { type: "user-text", text: "q" }) });
     await new Promise((r) => setTimeout(r, 30));
     link.push({ push: "session", session: meta({ title: "one", status: "running" }) });
+    await tick();
     expect(sessionStore.get("s1")!.busy).toBe(true);
     expect(sessionStore.getIds()).toBe(ids);
     expect(sessionStore.getShells()).toBe(shells);
 
     // A shell field changing swaps only that shell.
     link.push({ push: "session", session: meta({ title: "renamed", status: "running" }) });
+    await tick();
     const next = sessionStore.getShells();
     expect(next).not.toBe(shells);
     expect(next[0].title).toBe("renamed");
@@ -473,6 +476,7 @@ describe("M4b projections", () => {
 
     // A change further down keeps every shell before it.
     link.push({ push: "session", session: meta({ id: "s2", title: "two again" }) });
+    await tick();
     const later = sessionStore.getShells();
     expect(later).not.toBe(next);
     expect(later[0]).toBe(next[0]);
@@ -564,5 +568,75 @@ describe("tail-first load", () => {
     expect(sessionStore.get("s1")!.blocks).toHaveLength(10);
     await sessionStore.ensureComplete("s1");
     expect(link.method("session.events")).toBe(1);
+  });
+});
+
+describe("meta push coalescing", () => {
+  const flush = () => new Promise((r) => setTimeout(r, 0));
+
+  it("many session pushes in one tick reach meta listeners once, after the flush", async () => {
+    link.metas = [meta()];
+    sessionStore.connect(link);
+    await sessionStore.ready();
+    let metaCalls = 0;
+    let storeCalls = 0;
+    sessionStore.onMetaChange(() => metaCalls++);
+    sessionStore.subscribe(() => storeCalls++);
+    for (let i = 1; i <= 50; i++) {
+      link.push({ push: "session", session: meta({ title: `t${i}`, updatedAt: i }) });
+    }
+    expect(metaCalls).toBe(0);
+    expect(storeCalls).toBe(0);
+    await flush();
+    expect(metaCalls).toBe(1);
+    expect(storeCalls).toBe(1);
+  });
+
+  it("metaOf and metas() read the newest push at once, and metas() is stable between changes", async () => {
+    link.metas = [meta()];
+    sessionStore.connect(link);
+    await sessionStore.ready();
+    const before = sessionStore.metas();
+    expect(sessionStore.metas()).toBe(before);
+    link.push({ push: "session", session: meta({ title: "fresh", updatedAt: 9 }) });
+    expect(sessionStore.metaOf("s1")?.title).toBe("fresh");
+    const after = sessionStore.metas();
+    expect(after).not.toBe(before);
+    expect(after[0].title).toBe("fresh");
+    expect(sessionStore.metas()).toBe(after);
+    link.push({ push: "session-removed", sessionIds: ["s1"] });
+    expect(sessionStore.metaOf("s1")).toBeNull();
+    expect(sessionStore.metas()).toEqual([]);
+  });
+
+  it("a synchronous bump from a local action delivers the pending meta notification with it", async () => {
+    link.metas = [meta()];
+    sessionStore.connect(link);
+    await sessionStore.ready();
+    let metaCalls = 0;
+    sessionStore.onMetaChange(() => metaCalls++);
+    link.push({ push: "session", session: meta({ title: "pushed" }) });
+    expect(metaCalls).toBe(0);
+    sessionStore.mutate([sessionStore.get("s1")!]);
+    expect(metaCalls).toBe(1);
+    await flush();
+    expect(metaCalls).toBe(1);
+  });
+
+  it("event pushes are no longer flushed early by a meta push", async () => {
+    link.metas = [meta()];
+    sessionStore.connect(link);
+    await sessionStore.ready();
+    await sessionStore.ensureLoaded("s1");
+    sessionStore.mutate([sessionStore.get("s1")!]);
+    let storeCalls = 0;
+    sessionStore.subscribe(() => storeCalls++);
+    link.push({ push: "event", row: row("s1", 1, { type: "user-text", text: "q" }) });
+    link.push({ push: "session", session: meta({ status: "running" }) });
+    link.push({ push: "event", row: row("s1", 2, { type: "assistant-text", text: "a", delta: true, msgId: "m", blockIndex: 0 }) });
+    expect(storeCalls).toBe(0);
+    await flush();
+    expect(storeCalls).toBe(1);
+    expect(sessionStore.get("s1")!.blocks).toHaveLength(2);
   });
 });

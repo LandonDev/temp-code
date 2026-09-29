@@ -323,6 +323,9 @@ class SessionStore {
   private shells: SessionShell[] = [];
   private version = 0;
   private pushed = { session: 0, event: 0 };
+  /** `metas()` as of the last meta change; the metas hooks' stable snapshot. */
+  private metasSnapshot: SessionMeta[] | null = null;
+  private metaPending = false;
   private link: Link | null = null;
   private detach: (() => void)[] = [];
   private listed: Promise<void> | null = null;
@@ -443,11 +446,12 @@ class SessionStore {
     return { session: this.pushed.session, event: this.pushed.event };
   }
 
-  /** Every server-known meta (drafts excluded). */
+  /** Every server-known meta (drafts excluded). The same array until a meta changes. */
   metas(): SessionMeta[] {
+    if (this.metasSnapshot) return this.metasSnapshot;
     const out: SessionMeta[] = [];
     for (const entry of this.entries.values()) if (entry.meta) out.push(entry.meta);
-    return out;
+    return (this.metasSnapshot = out);
   }
 
   isDraft(id: string): boolean {
@@ -664,8 +668,11 @@ class SessionStore {
         this.pushed.session += 1;
         const fresh = !this.entries.has(push.session.id);
         this.mergeMeta(push.session);
-        this.bump();
-        this.bumpMeta();
+        // The view is current at once; listeners hear once per frame, so a
+        // fleet pushing many times a second costs one reconcile per frame
+        // and never interrupts a render in progress.
+        this.bumpSoon();
+        this.bumpMetaSoon();
         if (fresh) this.noteAdded(push.session);
         break;
       }
@@ -709,8 +716,8 @@ class SessionStore {
       }
       case "session-removed":
         for (const id of push.sessionIds) this.drop(id);
-        this.bump();
-        this.bumpMeta();
+        this.bumpSoon();
+        this.bumpMetaSoon();
         break;
       case "queue":
         this.setQueue(push.sessionId, push.items);
@@ -738,6 +745,7 @@ class SessionStore {
   }
 
   private mergeMeta(meta: SessionMeta): void {
+    this.metasSnapshot = null;
     const entry = this.entries.get(meta.id);
     if (!entry) {
       this.entries.set(meta.id, {
@@ -797,6 +805,7 @@ class SessionStore {
   }
 
   private drop(id: string): void {
+    this.metasSnapshot = null;
     const entry = this.entries.get(id);
     if (entry) this.settleHead(entry);
     this.entries.delete(id);
@@ -888,7 +897,14 @@ class SessionStore {
   }
 
   private bumpMeta(): void {
+    this.metaPending = false;
     for (const listener of this.metaListeners) listener();
+  }
+
+  /** Meta listeners hear with the next flush (or the next sync bump, whichever is first). */
+  private bumpMetaSoon(): void {
+    this.metaPending = true;
+    this.bumpSoon();
   }
 
   private notifyPending: number | null = null;
@@ -955,6 +971,7 @@ class SessionStore {
     this.snapshot = this.buildSnapshot();
     this.refreshProjections();
     for (const listener of this.listeners) listener();
+    if (this.metaPending) this.bumpMeta();
     for (const [id, waiters] of this.idleWaiters) {
       const entry = this.entries.get(id);
       if (!entry || !entry.session.busy) {
@@ -1006,11 +1023,7 @@ export function useSessionBusy(id: string | null | undefined): boolean {
   );
 }
 
-let metasCache: SessionMeta[] | null = null;
-sessionStore.onMetaChange(() => {
-  metasCache = null;
-});
-const readMetas = (): SessionMeta[] => (metasCache ??= sessionStore.metas());
+const readMetas = (): SessionMeta[] => sessionStore.metas();
 const subscribeMetas = (l: () => void): (() => void) => sessionStore.onMetaChange(l);
 
 /** Every server-known meta as React state, open or not. */
