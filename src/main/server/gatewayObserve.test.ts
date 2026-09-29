@@ -2,7 +2,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { configure, pinProfile } from 'aliax-core'
+import { accounts, configure, pinProfile } from 'aliax-core'
 import { observeCodexSnapshot, observeHooks } from './gatewayObserve'
 
 const H = 'anthropic-ratelimit-unified'
@@ -34,7 +34,8 @@ describe('observeHooks', () => {
       path: '/v1/messages',
       status: 200,
       headers: new Headers({ [`${H}-status`]: 'allowed', [`${H}-5h-utilization`]: '0.25', [`${H}-5h-reset`]: '1786147200', [`${H}-7d-utilization`]: '0.6' }),
-      account: 'work'
+      account: 'work',
+      model: 'claude-opus-5-5'
     })
     const cache = JSON.parse(readFileSync(join(dir, 'aliax', 'usage-cache.json'), 'utf8'))
     expect(cache['claude-code:work'].report.windows).toEqual([
@@ -49,9 +50,9 @@ describe('observeHooks', () => {
   it('ignores answers without windows, other services, and no account', () => {
     const { logDir, onObserved } = setup()
     const hooks = observeHooks({ logDir, onObserved })
-    hooks.onResponse!({ service: 'claude', path: '/v1/messages', status: 200, headers: new Headers({ [`${H}-5h-utilization`]: '0.25' }), account: null })
-    hooks.onResponse!({ service: 'codex', path: '/v1/responses', status: 200, headers: new Headers({ [`${H}-5h-utilization`]: '0.25' }), account: 'work' })
-    hooks.onResponse!({ service: 'claude', path: '/v1/messages', status: 200, headers: new Headers({ 'request-id': 'r' }), account: 'work' })
+    hooks.onResponse!({ service: 'claude', path: '/v1/messages', status: 200, headers: new Headers({ [`${H}-5h-utilization`]: '0.25' }), account: null, model: null })
+    hooks.onResponse!({ service: 'codex', path: '/v1/responses', status: 200, headers: new Headers({ [`${H}-5h-utilization`]: '0.25' }), account: 'work', model: null })
+    hooks.onResponse!({ service: 'claude', path: '/v1/messages', status: 200, headers: new Headers({ 'request-id': 'r' }), account: 'work', model: null })
     expect(onObserved).not.toHaveBeenCalled()
     expect(existsSync(join(dir, 'aliax', 'usage-cache.json'))).toBe(false)
   })
@@ -65,7 +66,8 @@ describe('observeHooks', () => {
       status: 429,
       headers: new Headers({ [`${H}-status`]: 'rejected', [`${H}-reset`]: '1786147200', 'retry-after': '30', 'request-id': 'req_1', 'set-cookie': 'secret=1' }),
       body: '{"type":"error","error":{"type":"rate_limit_error","message":"You have hit your session limit"}}',
-      account: 'work'
+      account: 'work',
+      model: 'claude-fable-5-1'
     })
     const lines = readFileSync(join(logDir, 'gateway-limits.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l))
     expect(lines).toHaveLength(1)
@@ -73,11 +75,40 @@ describe('observeHooks', () => {
       service: 'claude',
       path: '/v1/messages',
       status: 429,
+      account: 'work',
+      model: 'claude-fable-5-1',
       headers: { [`${H}-status`]: 'rejected', [`${H}-reset`]: '1786147200', 'retry-after': '30', 'request-id': 'req_1' }
     })
     expect(lines[0].headers['set-cookie']).toBeUndefined()
     expect(lines[0].body).toContain('session limit')
     expect(typeof lines[0].ts).toBe('number')
+  })
+})
+
+describe('observeHooks scoped window', () => {
+  const answer = (model: string | null, account = 'work') => ({
+    service: 'claude',
+    path: '/v1/messages',
+    status: 200,
+    headers: new Headers({ [`${H}-status`]: 'allowed', [`${H}-5h-utilization`]: '0.1', [`${H}-7d-utilization`]: '0.2', [`${H}-7d_oi-utilization`]: '0.7', [`${H}-7d_oi-reset`]: '1786500000' }),
+    account,
+    model
+  })
+  it("a Fable answer's 7d_oi header lands as the Fable window; an Opus answer's does not add one", () => {
+    const { logDir, onObserved } = setup()
+    vi.useFakeTimers() // the shared cache persists at most every 5 s; flush so no real timer leaks into the next test
+    const hooks = observeHooks({ logDir, onObserved })
+    hooks.onResponse!(answer('claude-fable-5-1'))
+    hooks.onResponse!(answer('claude-opus-5-5', 'other'))
+    vi.advanceTimersByTime(10_000)
+    vi.useRealTimers()
+    expect(accounts.cachedReport('claude-code', 'work')?.windows).toEqual([
+      { label: '5h', usedPercent: 10, periodMs: 5 * 3_600_000 },
+      { label: 'Weekly', usedPercent: 20, periodMs: 7 * 86_400_000 },
+      { label: 'Fable', usedPercent: 70, periodMs: 7 * 86_400_000, resetsAt: 1786500000_000 }
+    ])
+    expect(accounts.cachedReport('claude-code', 'other')?.windows.map((w: { label: string }) => w.label)).toEqual(['5h', 'Weekly'])
+    expect(existsSync(join(logDir, 'gateway-limits.jsonl'))).toBe(false)
   })
 })
 
@@ -96,7 +127,7 @@ describe('observeCodexSnapshot', () => {
       }
     })
     observeCodexSnapshot({ rateLimits: { primary: { usedPercent: 99, windowDurationMins: 300 } } }, 'work')
-    vi.advanceTimersByTime(5_000)
+    vi.advanceTimersByTime(10_000) // past the throttle even when an earlier test just persisted
     vi.useRealTimers()
     const cache = JSON.parse(readFileSync(join(dir, 'aliax', 'usage-cache.json'), 'utf8'))
     expect(cache['codex:personal'].report.windows).toEqual([

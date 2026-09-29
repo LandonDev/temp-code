@@ -178,6 +178,36 @@ describe('AccountsService', () => {
     expect(svc.routeFor({ provider: 'cursor', model: 'x', account: null } as never, null)).toEqual({ route: null, current: null })
   })
 
+  it('routeFor and pickNext read the live load: the emptiest account with room wins', async () => {
+    ;({ cleanup } = fixture())
+    const asked: string[] = []
+    let load: Record<string, number> = { 'a@x.com': 2 }
+    const { svc } = service({
+      usage: async (id) =>
+        id !== 'claude-code'
+          ? []
+          : [
+              { profileName: 'a@x.com', windows: [{ label: '5h', usedPercent: 10 }] },
+              { profileName: 'b@x.com', windows: [{ label: '5h', usedPercent: 12 }] }
+            ],
+      usageOf: async () => null,
+      load: (provider) => {
+        asked.push(provider)
+        return load
+      }
+    })
+    await svc.list()
+    const meta = { provider: 'claude', model: 'claude-fable-5-1', account: null } as never
+    // Same 5h bucket: a carries two threads plus the pin (a is pinned in the fixture), b none.
+    expect(svc.routeFor(meta, null).current).toBe('b@x.com')
+    load = { 'b@x.com': 2 }
+    expect(svc.routeFor(meta, null).current).toBe('a@x.com')
+    load = { 'a@x.com': 3 }
+    const info = { service: 'claude', serviceId: 'claude-code' as const, model: 'claude-fable-5-1', limit: { window: '5h' as const }, tried: [], account: 'a@x.com', thread: 'T' }
+    expect(await svc.pickNext(info)).toBe('b@x.com')
+    expect(asked).toEqual(['claude', 'claude', 'claude'])
+  })
+
   it('failover charges the thread\'s account, picks the next with room for its model, and never touches the pin', async () => {
     ;({ cleanup } = fixture())
     const observed: unknown[] = []

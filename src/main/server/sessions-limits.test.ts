@@ -326,3 +326,51 @@ it('transient limits, stops and errors without a limit never ask for a switch', 
   expect(fake.calls).toEqual([])
   expect(sends.some((t) => t.startsWith('<continue-run>'))).toBe(false)
 })
+
+it('liveLoad counts running, watching and starting threads per account; idle and archived ones do not count', async () => {
+  registry.limits = limits(null)
+  const { id: a, emit: emitA } = await running()
+  const { id: b, emit: emitB } = await running()
+  const { emit: emitC } = await running()
+  // The mocked driver never reports a status: nothing is live yet.
+  expect(registry.liveLoad('claude')).toEqual({})
+  emitA({ type: 'status', status: 'running' })
+  emitB({ type: 'status', status: 'watching' })
+  emitC({ type: 'status', status: 'running' })
+  expect(registry.liveLoad('claude')).toEqual({ 'a@x.com': 3 })
+  registry.setAccount(b, 'b@x.com')
+  emitC({ type: 'status', status: 'idle' })
+  expect(registry.liveLoad('claude')).toEqual({ 'a@x.com': 1, 'b@x.com': 1 })
+  await registry.setArchived(a, true)
+  expect(registry.liveLoad('claude')).toEqual({ 'b@x.com': 1 })
+  expect(registry.liveLoad('codex')).toEqual({})
+  // A spawn in flight counts before its driver says anything.
+  const d = await registry.create({ cwd: root, provider: 'claude', model: 'claude-sonnet-5' })
+  const privy = registry as unknown as { starting: Map<string, Promise<unknown>>; dropHandle: (id: string) => Promise<void> }
+  await privy.dropHandle(d.id)
+  privy.starting.set(d.id, new Promise(() => {}))
+  expect(registry.liveLoad('claude')).toEqual({ 'a@x.com': 1, 'b@x.com': 1 })
+  privy.starting.delete(d.id)
+})
+
+it('a spawn picks fresh: the sticky account is ignored so a resume spreads by the live load', async () => {
+  const opts: unknown[] = []
+  registry.limits = {
+    routeFor: (meta, _pin, o) => {
+      const account = o?.fresh ? 'fresh@x.com' : (meta.account ?? 'sticky@x.com')
+      opts.push(o)
+      return { route: { account, pin: false }, current: account }
+    },
+    failover: async () => null
+  }
+  const session = await registry.create({ cwd: root, provider: 'claude', model: 'claude-sonnet-5' })
+  // The row showed the sticky pick; the process that spawned with it is gone (idle sweep, say).
+  await (registry as unknown as { dropHandle: (id: string) => Promise<void> }).dropHandle(session.id)
+  registry.setAccount(session.id, 'sticky@x.com')
+  const spawns = routes.length
+  await registry.send(session.id, 'hello')
+  expect(routes).toHaveLength(spawns + 1)
+  expect(opts.at(-1)).toEqual({ fresh: true })
+  expect(routes.at(-1)).toEqual({ id: session.id, route: { account: 'fresh@x.com', pin: false } })
+  expect(registry.get(session.id)?.account).toBe('fresh@x.com')
+})

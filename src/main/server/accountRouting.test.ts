@@ -105,4 +105,34 @@ describe('chooseAccount', () => {
     expect(chooseAccount({ ...base, pin: null, current: null, snapshot: emptyAccounts() })).toEqual({ route: null, current: null })
     expect(chooseAccount({ ...base, provider: 'cursor', pin: 'x', current: null, snapshot: snap })).toEqual({ route: null, current: null })
   })
+
+  it('a new thread lands on the account with the most 5h headroom, then the fewest live threads', () => {
+    const snap = snapshot({
+      'soon-busy@x.com': [fine('5h', 60), fine('Weekly', 10, NOW + 1)],
+      'fresh@x.com': [fine('5h', 5), fine('Weekly', 10, NOW + 9)],
+      'fresh-loaded@x.com': [fine('5h', 8), fine('Weekly', 10, NOW + 2)]
+    })
+    const fable = { ...base, model: 'claude-fable-5-1', pin: null, current: null, snapshot: snap }
+    // Same headroom bucket for the two fresh accounts: the reset used to decide, now the load does.
+    expect(chooseAccount({ ...fable, load: { 'fresh@x.com': 1 } }).current).toBe('fresh-loaded@x.com')
+    expect(chooseAccount({ ...fable, load: { 'fresh-loaded@x.com': 1 } }).current).toBe('fresh@x.com')
+    expect(chooseAccount(fable).current).toBe('fresh-loaded@x.com')
+  })
+  it('an account at the cap is picked last; the pinned account counts as one thread', () => {
+    const snap = snapshot({ 'a@x.com': [fine('5h', 5)], 'b@x.com': [fine('5h', 50)] })
+    const input = { ...base, model: 'claude-fable-5-1', pin: null, current: null, snapshot: snap }
+    expect(chooseAccount({ ...input, load: { 'a@x.com': 3 } }).current).toBe('b@x.com')
+    expect(chooseAccount({ ...input, load: { 'a@x.com': 2 } }).current).toBe('a@x.com')
+    // The global pin carries the terminals: two threads plus the pin reach the cap.
+    snap.providers.claude!.pinned = 'a@x.com'
+    expect(chooseAccount({ ...input, load: { 'a@x.com': 2 } }).current).toBe('b@x.com')
+    // Everything at cap: the cap is soft and the emptiest still wins.
+    expect(chooseAccount({ ...input, load: { 'a@x.com': 3, 'b@x.com': 3 } }).current).toBe('a@x.com')
+  })
+  it('a sticky current account with room stays even when another is emptier; the pin fallback uses the same order', () => {
+    const snap = snapshot({ 'a@x.com': [fine('5h', 80)], 'b@x.com': [fine('5h', 5)], 'c@x.com': [full('5h')] })
+    expect(chooseAccount({ ...base, pin: null, current: 'a@x.com', snapshot: snap, load: { 'a@x.com': 3 } }).route).toEqual({ account: 'a@x.com', pin: false })
+    expect(chooseAccount({ ...base, pin: 'c@x.com', current: null, snapshot: snap, load: { 'b@x.com': 3 } })).toEqual({ route: { account: 'c@x.com', pin: true }, current: 'a@x.com' })
+    expect(chooseAccount({ ...base, pin: 'c@x.com', current: null, snapshot: snap })).toEqual({ route: { account: 'c@x.com', pin: true }, current: 'b@x.com' })
+  })
 })
