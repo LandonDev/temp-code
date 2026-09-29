@@ -507,9 +507,19 @@ export class SessionRegistry {
     return this.store.childrenOf(parentId).map((s) => this.decorate(s, index))
   }
 
-  /** The two lookups decorate() needs, built once per list. */
-  private indexOf(sessions: SessionMeta[] = this.store.listSessions()): SessionIndex {
-    return { byId: new Map(sessions.map((s) => [s.id, s])), byParent: indexByParent(sessions) }
+  /** The two lookups decorate() needs, built once per sessions-table
+   *  version. notifyMeta, get() and childrenOf() used to re-read and
+   *  re-index every row per call: 3-4 ms on a 3k-session table, tens of
+   *  times a second under a running fleet, all on the loop the sidebar's
+   *  open round trips wait on. */
+  private indexCache: { version: number; index: SessionIndex } | null = null
+  private indexOf(sessions?: SessionMeta[]): SessionIndex {
+    const version = this.store.sessionsVersion
+    if (this.indexCache?.version === version) return this.indexCache.index
+    const rows = sessions ?? this.store.listSessions()
+    const index = { byId: new Map(rows.map((s) => [s.id, s])), byParent: indexByParent(rows) }
+    this.indexCache = { version, index }
+    return index
   }
 
   /** Was this session running a disk-writing tool at ts (with grace for
@@ -597,7 +607,7 @@ export class SessionRegistry {
   /** Threads with a live status right now (the stall log's `running=`). */
   runningCount(): number {
     let n = 0
-    for (const s of this.store.listSessions()) if (LIVE_STATUSES.has(s.status)) n++
+    for (const s of this.indexOf().byId.values()) if (LIVE_STATUSES.has(s.status)) n++
     return n
   }
 

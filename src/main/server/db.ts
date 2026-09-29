@@ -307,6 +307,9 @@ export class Store {
   /** Statements are prepared once per SQL string: preparing dominated a
    *  boot profile where getSession() ran once per session per list(). */
   private stmts = new Map<string, StatementSync>()
+
+  /** Bumped by every sessions-table write; the registry's index cache keys on it. */
+  sessionsVersion = 0
   private stmt(sql: string): StatementSync {
     let st = this.stmts.get(sql)
     if (!st) {
@@ -341,9 +344,11 @@ export class Store {
 
   setSessionWorkspace(id: string, workspaceId: string): void {
     this.stmt('UPDATE sessions SET workspace_id = ? WHERE id = ?').run(workspaceId, id)
+    this.sessionsVersion += 1
   }
 
   insertSession(meta: SessionMeta): void {
+    this.sessionsVersion += 1
     this
       .stmt(
         `INSERT INTO sessions (id, parent_id, project_id, workspace_id, thread_type, plan_path, provider, model, reasoning, agent_type, title, cwd, status, archived, pinned, permission, fast, context_1m, busy_since, paused_at, frozen_active_elapsed, thread_rules, native_id, account_current, created_at, updated_at)
@@ -413,6 +418,7 @@ export class Store {
     // `undefined ? 1 : 0` below would zero the other.
     const defined = Object.fromEntries(Object.entries(patch).filter(([, v]) => v !== undefined))
     const next = { ...cur, ...defined, updatedAt: Date.now() }
+    this.sessionsVersion += 1
     this
       .stmt(
         `UPDATE sessions SET status = ?, title = ?, native_id = ?, archived = ?, pinned = ?, provider = ?, model = ?, reasoning = ?, permission = ?, fast = ?, context_1m = ?, busy_since = ?, paused_at = ?, frozen_active_elapsed = ?, thread_type = ?, plan_path = ?, agent_type = ?, thread_rules = ?, account_current = ?, updated_at = ? WHERE id = ?`
@@ -447,6 +453,7 @@ export class Store {
    *  an edit: updated_at stays put so the list keeps its order. */
   setSessionAccount(id: string, account: string | null): SessionMeta | null {
     this.stmt(`UPDATE sessions SET account_current = ? WHERE id = ?`).run(account, id)
+    this.sessionsVersion += 1
     return this.getSession(id)
   }
 
@@ -455,6 +462,7 @@ export class Store {
    *  left. Its own statement: a reading is not an edit, so updated_at
    *  stays put and the list keeps its order. */
   setSessionContext(id: string, context: { tokens: number; window: number | null } | null): void {
+    this.sessionsVersion += 1
     this.stmt(`UPDATE sessions SET context_tokens = ?, context_window = ? WHERE id = ?`).run(
       context?.tokens ?? null,
       context?.window ?? null,
@@ -472,6 +480,7 @@ export class Store {
 
   setRetyped(id: string, on: boolean): void {
     this.stmt(`UPDATE sessions SET retyped = ? WHERE id = ?`).run(on ? 1 : 0, id)
+    this.sessionsVersion += 1
   }
 
   /** Delete a session and all of its descendants (log included). */
@@ -485,6 +494,7 @@ export class Store {
       for (const k of kids) collect(k.id)
     }
     collect(id)
+    this.sessionsVersion += 1
     const del = this.stmt(`DELETE FROM sessions WHERE id = ?`)
     const delEvents = this.stmt(`DELETE FROM events WHERE session_id = ?`)
     const delFold = this.stmt(`DELETE FROM session_folds WHERE session_id = ?`)
