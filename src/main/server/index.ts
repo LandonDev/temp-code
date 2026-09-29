@@ -29,6 +29,7 @@ import {
   setRunningCount,
   setStallLog,
   startStallMonitor,
+  timed,
   trackRequest,
   untrackRequest
 } from './stalls'
@@ -793,7 +794,10 @@ export async function startServer(
               firstListMarked = true
               bootMark('first-session-list', `${sessions.length} sessions`)
             }
-            sendFrame({ id: req.id, ok: true, result: sessions })
+            const frame = timed('session.list stringify', () =>
+              JSON.stringify({ id: req.id, ok: true, result: sessions } satisfies ServerFrame)
+            )
+            if (ws.readyState === ws.OPEN) ws.send(frame)
             break
           }
           case 'session.events':

@@ -58,6 +58,7 @@ import { planPathFor, planSeed, projectContext, reportPathFor, threadPreamble } 
 import { notifyParentOfSettle } from './orchestration'
 import { foldTodo, newTodoFold, tallyOf, type TaskTally, type TodoFold } from './todos'
 import { liveDiffOnStatus } from './livediff'
+import { timed } from './stalls'
 import {
   appendJournal,
   INLINE_DIGEST_MAX_CHARS,
@@ -413,7 +414,9 @@ export class SessionRegistry {
     const warm = this.todoFolds.get(sessionId)
     if (warm) return warm
     const state = newFoldState()
-    for (const row of this.store.eventsAfter(sessionId, 0)) foldEvent(state, row)
+    timed('warmTodoFold', () => {
+      for (const row of this.store.eventsAfter(sessionId, 0)) foldEvent(state, row)
+    })
     this.todoFolds.set(sessionId, state.todo)
     const fold = this.folds.get(sessionId)
     if (!fold || fold.foldedSeq < state.seq || fold.foldVersion !== FOLD_VERSION) {
@@ -489,9 +492,11 @@ export class SessionRegistry {
   }
 
   list(): SessionMeta[] {
-    const sessions = this.store.listSessions()
-    const index = this.indexOf(sessions)
-    return sessions.map((s) => this.decorate(s, index))
+    return timed('registry.list', () => {
+      const sessions = this.store.listSessions()
+      const index = this.indexOf(sessions)
+      return sessions.map((s) => this.decorate(s, index))
+    })
   }
 
   /** One decorated session — the lookup-by-id every caller used to do

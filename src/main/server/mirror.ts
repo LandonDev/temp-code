@@ -1,13 +1,17 @@
 import {
+  closeSync,
   existsSync,
   mkdirSync,
+  openSync,
   readdirSync,
   readFileSync,
+  readSync,
   renameSync,
   rmSync,
   statSync,
   writeFileSync
 } from 'node:fs'
+import { timed } from './stalls'
 import { appendFile, readFile } from 'node:fs/promises'
 import { bootMark } from './boot'
 import { basename, join, relative, isAbsolute } from 'node:path'
@@ -189,12 +193,30 @@ function frontmatterOf(head: string): Record<string, string> {
  *  it is always current and costs no model tokens; regenerating from the
  *  directory makes last-writer-wins correct across parallel sessions. */
 export function writeThreadsIndex(dir: string): void {
+  timed('writeThreadsIndex', () => writeThreadsIndexNow(dir))
+}
+
+/** The frontmatter lives in the first bytes; a mirror can be megabytes. */
+const FRONT_BYTES = 4_096
+
+function readHead(path: string): string {
+  const fd = openSync(path, 'r')
+  try {
+    const buf = Buffer.alloc(FRONT_BYTES)
+    const n = readSync(fd, buf, 0, FRONT_BYTES, 0)
+    return buf.toString('utf8', 0, n)
+  } finally {
+    closeSync(fd)
+  }
+}
+
+function writeThreadsIndexNow(dir: string): void {
   const entries: { updated: string; line: string }[] = []
   for (const file of readdirSync(dir)) {
     if (!file.endsWith('.md') || file === INDEX_NAME) continue
     let front: Record<string, string>
     try {
-      front = frontmatterOf(readFileSync(join(dir, file), 'utf8').slice(0, 4_000))
+      front = frontmatterOf(readHead(join(dir, file)))
     } catch {
       continue
     }
@@ -229,6 +251,14 @@ export function mirrorSession(
   reg: SessionRegistry,
   sessionId: string,
   opts: { index?: boolean } = {}
+): void {
+  timed('mirrorSession', () => mirrorSessionNow(reg, sessionId, opts))
+}
+
+function mirrorSessionNow(
+  reg: SessionRegistry,
+  sessionId: string,
+  opts: { index?: boolean }
 ): void {
   const meta = reg.get(sessionId)
   const cwd = meta && contextCwd(reg, meta)
