@@ -966,7 +966,9 @@ const TurnView = memo(function TurnView({
   const startedAt = userBlock?.startedAt;
   // The agent starting its answer is the end of the work: fold the
   // groups then, not when the turn finally settles, so the collapse
-  // never lands under the text you have already started reading.
+  // never lands under the text you have already started reading. A
+  // question splits a turn into several groups; every group but the last
+  // ended when the agent wrote the text that led into its question.
   const answering =
     foldedAt >= 0 &&
     items
@@ -987,7 +989,7 @@ const TurnView = memo(function TurnView({
               key={item.blocks[0].id}
               blocks={item.blocks}
               cwd={cwd}
-              done={settled || answering}
+              done={settled || answering || itemIndex < foldedAt}
               onApproval={onApproval}
               onOpenFile={onOpenFile}
               onOpenDiff={onOpenDiff}
