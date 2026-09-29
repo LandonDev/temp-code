@@ -1,5 +1,5 @@
 {
-  "n": 187,
-  "notes": "The server no longer re-reads and re-indexes every session row on each meta push: the session index is cached per sessions-table version.",
-  "ts": 1790708939444
+  "n": 188,
+  "notes": "Streamed events cost less main-thread time: SQLite commits at synchronous=NORMAL, the threads index reads 4 KB per mirror instead of whole files, and every known synchronous section reports itself to stalls.log when it runs long.",
+  "ts": 1790709068303
 }
