@@ -360,9 +360,7 @@ export function resolveModel(harness: HarnessId, id?: string): AgentModel {
   if (id) {
     const exact = findModel(id);
     if (exact && exact.harness === harness) return exact;
-    // A built-in id (`claude:fable-5.1`) still names its native model once
-    // the live catalog has replaced the built-in list.
-    const slug = MODELS.find((model) => model.id === id)?.nativeId ?? nativeIdFrom(id);
+    const slug = builtinNativeId(id);
     const byNative = available.find(
       (model) => (model.nativeId ?? nativeIdFrom(model.id)) === slug,
     );
@@ -392,7 +390,17 @@ export function nativeModelId(model: AgentModel | string): string {
   if (typeof model !== "string") {
     return model.nativeId ?? nativeIdFrom(model.id);
   }
-  return findModel(model)?.nativeId ?? nativeIdFrom(model);
+  return findModel(model)?.nativeId ?? builtinNativeId(model);
+}
+
+/**
+ * Native id of a picker id that the live index no longer knows. A built-in
+ * id (`claude:fable-5.1`) still names its native model (`claude-fable-5-1`)
+ * once the live catalog has replaced the built-in list; only an unknown id
+ * falls back to stripping the prefix.
+ */
+function builtinNativeId(id: string): string {
+  return MODELS.find((model) => model.id === id)?.nativeId ?? nativeIdFrom(id);
 }
 
 export function defaultModelSettings(

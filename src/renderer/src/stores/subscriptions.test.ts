@@ -16,6 +16,10 @@ import { workspaceStore } from "../lib/tcserver/workspaces";
 import { PARK_MS } from "../lib/warmTabs";
 import { migrateWorkspaces } from "../lib/workspaceMigration";
 import { forgetHarnessSession, refreshHarnessCatalogs } from "../lib/harness";
+import { nativeModelId, resetHarnessModelOverlays, setHarnessModels } from "../lib/models";
+import { pickerModelId } from "../lib/tcserver/store";
+import { agentModelsFor } from "../lib/tcserver/catalog";
+import { CATALOG } from "../../../shared/catalog";
 import { lastProjectPath } from "../lib/recents";
 import { invoke } from "../lib/native";
 import { initialProjectState, project, projectStore } from "./project";
@@ -42,16 +46,27 @@ vi.mock("../lib/harness", () => ({
   probeHarnessAvailability: vi.fn(() => Promise.resolve()),
   refreshHarnessCatalogs: vi.fn(() => Promise.resolve()),
 }));
-vi.mock("../lib/models", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../lib/models")>()),
-  // "old" normalizes to "new" (same native model); "unknown" is not in the catalog, so it falls back to the default.
-  resolveModel: (_harness: string, model: string) => ({ id: model === "old" ? "new" : model === "unknown" ? "default" : model }),
-  nativeModelId: (model: { id: string } | string) => {
-    const id = typeof model === "string" ? model : model.id;
-    return id === "old" || id === "new" ? "native" : id;
-  },
-  mergeModelSettings: (_resolved: unknown, settings?: Record<string, string>) => settings ?? {},
-}));
+vi.mock("../lib/models", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../lib/models")>();
+  // The bare stand-ins model the shape: "old" normalizes to "new" (same
+  // native model), "unknown" is not in the catalog, so it falls back to the
+  // default. Every other id goes through the real resolver.
+  const standIns = new Set(["old", "new", "unknown", "default", "kept"]);
+  const isReal = (id: string) => !standIns.has(id);
+  return {
+    ...actual,
+    resolveModel: (harness: string, model: string) =>
+      isReal(model)
+        ? actual.resolveModel(harness as "claude", model)
+        : { id: model === "old" ? "new" : model === "unknown" ? "default" : model },
+    nativeModelId: (model: { id: string } | string) => {
+      const id = typeof model === "string" ? model : model.id;
+      if (isReal(id)) return actual.nativeModelId(model as never);
+      return id === "old" || id === "new" ? "native" : id;
+    },
+    mergeModelSettings: (_resolved: unknown, settings?: Record<string, string>) => settings ?? {},
+  };
+});
 vi.mock("../lib/checkpointBridge", () => ({ installCheckpointBridge: () => () => {} }));
 vi.mock("../lib/native", () => ({ invoke: vi.fn(() => Promise.resolve()) }));
 vi.mock("../lib/appLifecycle", () => ({ isAppQuitting: () => false }));
@@ -414,6 +429,31 @@ describe("installBootTasks", () => {
     expect(b.model).toBe("kept");
     // A model the catalog does not list is never swapped for the default.
     expect(c.model).toBe("unknown");
+  });
+
+  it("moves a thread hydrated before the live catalog onto the live id, and leaves an absent model alone", async () => {
+    vi.mocked(invoke).mockResolvedValue("/home/me/code");
+    // Hydrated before the catalog landed: the built-in picker id.
+    resetHarnessModelOverlays();
+    const stale = pickerModelId("claude", "claude-fable-5-1");
+    expect(stale).toBe("claude:fable-5.1");
+    sessionStore.mutate([
+      session("s-a", { model: stale }),
+      session("s-b", { model: "claude:claude-opus-4-1" }),
+    ]);
+    // The catalog lands (refreshHarnessCatalogs is mocked, so overlay it here).
+    setHarnessModels("claude", agentModelsFor(CATALOG.claude), CATALOG.claude.defaultModel);
+    try {
+      teardown = installBootTasks();
+      await flush();
+      const [a, b] = sessionStore.getSnapshot();
+      expect(a.model).toBe("claude:claude-fable-5-1");
+      expect(nativeModelId(a.model)).toBe("claude-fable-5-1");
+      // Not in the live catalog: never swapped for the default.
+      expect(b.model).toBe("claude:claude-opus-4-1");
+    } finally {
+      resetHarnessModelOverlays();
+    }
   });
 
   it("leaves a remembered folder alone and ignores late answers after teardown", async () => {
