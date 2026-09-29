@@ -1,5 +1,5 @@
 {
-  "n": 182,
-  "notes": "Chat threads stop asking whether to start a thread, what to do next, or whether a reading is right: the chat preamble (threads.ts) asks only for information it cannot get itself, starts the named thread type on go-ahead without confirmation, asks which type only when none is named, and drops the batch-every-decision nudge for chats. Zen mode no longer hides the answer before a question: a question (answered or not) or a pending approval ends the work, so the prose leading into it renders full size with the card under it (transcriptActivity.ts, AgentTranscript.tsx).",
-  "ts": 1790705883399
+  "n": 183,
+  "notes": "Signing in to ChatGPT with Codex through Aliax no longer fails with \"workspace routing discovery failed\": aliax-core 0359612 maps Codex's /api/codex/accounts/check onto chatgpt.com/backend-api/wham/*.",
+  "ts": 1790706593621
 }
