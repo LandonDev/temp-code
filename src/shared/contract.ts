@@ -471,6 +471,8 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
   }),
   z.object({ id: z.string(), method: z.literal('session.create'), params: CreateSessionParams }),
   z.object({ id: z.string(), method: z.literal('session.list') }),
+  // One renderer-measured stall line for <userData>/logs/stalls.log.
+  z.object({ id: z.string(), method: z.literal('stall.report'), params: z.object({ line: z.string() }) }),
   z.object({
     id: z.string(),
     method: z.literal('session.events'),

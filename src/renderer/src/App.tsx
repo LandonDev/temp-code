@@ -608,6 +608,7 @@ export default function App() {
   );
 
   const activateTab = useCallback((id: string) => {
+    perfMark("tab-switch", id);
     workspaceActions.activateTab(id);
     const tab = workspaceTabsStore.getState().tabs.find((entry) => entry.id === id);
     if (deckLayout && tab) {

@@ -37,6 +37,7 @@ import { migrateWorkspaces } from "../lib/workspaceMigration";
 import { collectWorkspaceSnapshot, workspaceSnapshotKey } from "../lib/workspaceSnapshot";
 import { focus } from "./focus";
 import { currentDockCwd, currentSidebarCwd, project, projectStore } from "./project";
+import { installStallRecorder } from "../lib/stallRecorder";
 import { shell, shellStore } from "./shell";
 import { currentDock, terminalsStore } from "./terminals";
 import { activeSessionOf, workspace, workspaceTabsStore } from "./workspace";
@@ -437,6 +438,7 @@ export function installBootTasks(): Teardown {
     sessionStore.subscribe(syncDockBadge),
     sessionStore.onMetaChange(syncDockBadge),
     installCheckpointBridge(),
+    installStallRecorder(),
     () => {
       live = false;
     },
