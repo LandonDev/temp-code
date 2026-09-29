@@ -215,9 +215,10 @@ export function groupTurns(blocks: Block[]): Block[][] {
  */
 export function groupTurnItems(blocks: Block[], zen = false): TurnItem[] {
   const visible = blocks.filter(
-    (block) =>
+    (block, index) =>
       !isIgnoredTurnBlock(block, zen) &&
-      (isTodoBlock(block) || !isHiddenTool(block)),
+      (isTodoBlock(block) || !isHiddenTool(block)) &&
+      !(zen && repeatsNextProse(blocks, index)),
   );
   const items: TurnItem[] = [];
   let activity: Block[] = [];
@@ -253,6 +254,26 @@ function isIgnoredTurnBlock(block: Block, zen: boolean): boolean {
   // as the agent having stalled. Everywhere else it stays out of the transcript.
   if (block.role === "reasoning") return !zen || !block.text.trim();
   return block.role === "assistant" && !block.text.trim();
+}
+
+/**
+ * A thought the harness then says again as the next paragraph, word for
+ * word. The paragraph shows it in full, so the dimmed step would only
+ * repeat it.
+ */
+function repeatsNextProse(blocks: Block[], index: number): boolean {
+  const block = blocks[index];
+  if (block.role !== "reasoning") return false;
+  const next = blocks
+    .slice(index + 1)
+    .find((b) => b.role !== "assistant" || b.text.trim());
+  return (
+    next?.role === "assistant" && plainText(next.text) === plainText(block.text)
+  );
+}
+
+function plainText(text: string): string {
+  return text.replace(/\s+/g, " ").trim();
 }
 
 /** Markdown the user actually reads: assistant prose plus any plan, not tool chrome. */
