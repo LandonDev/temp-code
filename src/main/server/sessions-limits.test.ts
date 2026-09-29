@@ -353,6 +353,25 @@ it('liveLoad counts running, watching and starting threads per account; idle and
   privy.starting.delete(d.id)
 })
 
+it('refreshAccounts reads the sessions table and the live load once per pass, however many threads it re-picks', async () => {
+  // Like AccountsService: the live load comes in the options, else it is read.
+  // Read per thread (a table scan, then a walk of every handle), a snapshot
+  // cost threads × rows: 16 s of blocked loop on 1.8k threads × 3.2k rows.
+  registry.limits = {
+    routeFor: (meta, _pin, opts) => {
+      if (!opts?.load) registry.liveLoad(meta.provider)
+      return { route: { account: 'a@x.com', pin: false }, current: 'a@x.com' }
+    },
+    failover: async () => null
+  }
+  for (let i = 0; i < 20; i++) await registry.create({ cwd: root, provider: 'claude', model: 'claude-sonnet-5' })
+  const list = vi.spyOn(store, 'listSessions')
+  const load = vi.spyOn(registry, 'liveLoad')
+  registry.refreshAccounts()
+  expect(list).toHaveBeenCalledTimes(1)
+  expect(load).toHaveBeenCalledTimes(1)
+})
+
 it('a spawn picks fresh: the sticky account is ignored so a resume spreads by the live load', async () => {
   const opts: unknown[] = []
   registry.limits = {

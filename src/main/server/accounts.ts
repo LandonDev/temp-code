@@ -30,7 +30,7 @@ import {
   type ProviderAccounts
 } from '@shared/accounts'
 import type { SessionMeta } from '@shared/events'
-import { chooseAccount, type ResolvedPin } from './accountRouting'
+import { chooseAccount, type ResolvedPin, type RouteOptions } from './accountRouting'
 
 export interface AccountsDeps {
   listServices: () => Promise<ServiceView[]>
@@ -239,14 +239,14 @@ export class AccountsService {
    * The account a thread's child spends from at spawn, from the cached
    * snapshot (many subagents may spawn at once; nobody polls here).
    */
-  routeFor(meta: SessionMeta, pin: ResolvedPin | null, opts?: { fresh?: boolean }): { route: AccountRoute | null; current: string | null } {
+  routeFor(meta: SessionMeta, pin: ResolvedPin | null, opts?: RouteOptions): { route: AccountRoute | null; current: string | null } {
     return chooseAccount({
       pin: pin?.name ?? null,
       current: opts?.fresh ? null : (meta.account ?? null),
       model: meta.model ?? null,
       provider: meta.provider,
       snapshot: this.snap,
-      load: isRoutedProvider(meta.provider) ? this.deps.load(meta.provider) : {},
+      load: isRoutedProvider(meta.provider) ? (opts?.load ?? this.deps.load(meta.provider)) : {},
       now: this.deps.now()
     })
   }

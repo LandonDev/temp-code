@@ -11,6 +11,13 @@ import type { SessionMeta } from '@shared/events'
 
 export type PinLevel = 'project' | 'workspace'
 
+/** How a thread's account is picked: `fresh` ignores its sticky account;
+ *  `load` is the live load when the caller already read it. */
+export interface RouteOptions {
+  fresh?: boolean
+  load?: Record<string, number>
+}
+
 export interface ResolvedPin {
   name: string
   level: PinLevel
