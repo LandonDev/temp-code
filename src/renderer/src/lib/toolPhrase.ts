@@ -637,6 +637,6 @@ export function groupPhrase(blocks: Block[], cwd?: string, live?: boolean): stri
   let line = phrases.slice(0, 2).map((p) => trim(p, 48)).join(" · ");
   if (!line) line = running ? "Working" : `Ran ${tools.length} ${tools.length === 1 ? "tool" : "tools"}`;
   if (extra > 0) line += ` +${extra} more`;
-  if (failed) line += ` · ${failed} failed`;
+  if (failed) line += ` (${failed} failed)`;
   return line;
 }
