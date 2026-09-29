@@ -189,7 +189,7 @@ function StatusDot({ status }: { status: ThreadRow["status"] }) {
       ? "bg-warning motion-safe:animate-pulse"
       : status === "error"
         ? "bg-danger"
-        : status === "starting"
+        : status === "starting" || status === "watching"
           ? "bg-content/40 motion-safe:animate-pulse"
           : null;
   return cls ? (

@@ -43,7 +43,14 @@ export interface RootTreeSummary {
   frozenActiveElapsed: number | null
 }
 
-export const LIVE_STATUSES = new Set<SessionMeta['status']>(['starting', 'running', 'waiting'])
+/** Statuses with a live harness process doing or awaiting work — a
+ *  watching thread's background tasks die with its process, so it is live. */
+export const LIVE_STATUSES = new Set<SessionMeta['status']>([
+  'starting',
+  'running',
+  'waiting',
+  'watching'
+])
 
 export type ParentIndex = Map<string, SessionMeta[]>
 

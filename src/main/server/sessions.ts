@@ -143,6 +143,18 @@ const IDLE_DISPOSE_MS = 10 * 60 * 1000
  *  opinion (deltas, results, and other chatter never churn the tabs). */
 type Activity = { text: string; kind: NonNullable<SessionMeta['activityKind']> }
 
+/** The header line of a watching thread: what it waits on. */
+const WATCH_LINE_MAX = 120
+export function watchLine(tasks: string[] | undefined): string {
+  const line =
+    !tasks?.length
+      ? 'Waiting on background work'
+      : tasks.length === 1
+        ? `Waiting on ${tasks[0]}`
+        : `Waiting on ${tasks.length} tasks: ${tasks.join(', ')}`
+  return line.length > WATCH_LINE_MAX ? `${line.slice(0, WATCH_LINE_MAX - 1)}…` : line
+}
+
 function activityOf(event: AgentEvent): Activity | null | undefined {
   if (event.type === 'status') {
     return event.status === 'running' ? { text: 'Thinking', kind: 'think' } : null
@@ -309,6 +321,10 @@ export class SessionRegistry {
    *  transient by design: server memory only, cleared when the turn
    *  settles, attached to every meta push for the tab strip. */
   private activities = new Map<string, Activity>()
+  /** What a watching thread waits on (background task and cron
+   *  descriptions from the driver's background-tasks event) — transient
+   *  like activities; decorate() turns it into the "Waiting on …" line. */
+  private watching = new Map<string, string[]>()
   /** Per-session derived folds (task tally, goal, trailing error) — the
    *  persisted session_folds rows, loaded once at construction and kept
    *  current by append(). list() reads these and never the event log. */
@@ -433,6 +449,9 @@ export class SessionRegistry {
    * Idle disposal — what keeps dozens of sessions cheap. A handle whose
    * session has sat idle past the threshold is dropped; the session stays
    * listed and the next send lazily restarts the harness via resume.
+   * A 'watching' session is never swept, with no cap: its background
+   * tasks and crons live in the harness process and resume cannot bring
+   * them back. It settles idle on its own when the work lands.
    */
   startIdleSweep(idleMs = IDLE_DISPOSE_MS): void {
     this.sweepTimer = setInterval(() => {
@@ -457,7 +476,12 @@ export class SessionRegistry {
    *  — queue drain, parent supervision — belong at boot). */
   resetStaleStatuses(): void {
     for (const s of this.store.listSessions()) {
-      if (s.status === 'running' || s.status === 'waiting' || s.status === 'starting') {
+      if (
+        s.status === 'running' ||
+        s.status === 'waiting' ||
+        s.status === 'starting' ||
+        s.status === 'watching'
+      ) {
         this.appendStatus(s.id, 'idle')
         this.store.updateSession(s.id, { status: 'idle', busySince: null })
       }
@@ -534,8 +558,7 @@ export class SessionRegistry {
    *  stored fold is untouched, so an error nothing superseded comes back
    *  if the session settles without producing anything. */
   private canContinueError(meta: SessionMeta): boolean {
-    const status = meta.status
-    if (status === 'starting' || status === 'running' || status === 'waiting') return false
+    if (LIVE_STATUSES.has(meta.status)) return false
     return this.storedContinuableError(meta.id)
   }
 
@@ -1319,6 +1342,13 @@ export class SessionRegistry {
       await this.dropHandle(sessionId)
       return
     }
+    // Watching: the harness is idle behind its background tasks, so there
+    // is no turn to interrupt. Stop means drop the process, tasks and all;
+    // dropHandle settles the row idle.
+    if (meta?.status === 'watching') {
+      await this.dropHandle(sessionId)
+      return
+    }
     const handle = this.handles.get(sessionId)
     if (handle) {
       this.stopping.add(sessionId)
@@ -1344,11 +1374,7 @@ export class SessionRegistry {
    *  visible root. */
   private async stopTree(rootId: string): Promise<void> {
     const tree = this.sessionTree(rootId).filter(
-      (session) =>
-        session.status === 'paused' ||
-        session.status === 'starting' ||
-        session.status === 'running' ||
-        session.status === 'waiting'
+      (session) => session.status === 'paused' || LIVE_STATUSES.has(session.status)
     )
     await Promise.allSettled(tree.map((session) => this.interrupt(session.id)))
   }
@@ -1652,7 +1678,7 @@ export class SessionRegistry {
     threadRules: SessionMeta['threadRules'] | null
   ): Promise<void> {
     const status = this.store.getSession(sessionId)?.status
-    if (status === 'running' || status === 'starting' || status === 'waiting') {
+    if (status && LIVE_STATUSES.has(status)) {
       this.pendingReboot.add(sessionId)
     } else {
       await this.dropHandle(sessionId)
@@ -1919,6 +1945,13 @@ export class SessionRegistry {
     this.handles.delete(sessionId)
     this.starting.delete(sessionId)
     if (handle) await handle.dispose().catch(() => {})
+    // The process took its background tasks with it: a watching row has
+    // nothing left to wait on (the disposed handle stays mute, so this is
+    // the only idle it will get).
+    this.watching.delete(sessionId)
+    if (this.store.getSession(sessionId)?.status === 'watching') {
+      this.append(sessionId, { type: 'status', status: 'idle' })
+    }
   }
 
   /** A harness spawned into a missing cwd dies with the SDK's misleading
@@ -2088,7 +2121,21 @@ export class SessionRegistry {
       if (act === null) this.activities.delete(sessionId)
       else this.activities.set(sessionId, act)
     }
-    if ((actMoved || tasksMoved || goalMoved || recoveryMoved) && event.type !== 'status') {
+    // What a watching thread waits on, for the header line. Any settle
+    // (idle, error, done) ends the wait whatever the driver last listed.
+    let watchMoved = false
+    if (event.type === 'background-tasks') {
+      const prevList = this.watching.get(sessionId) ?? []
+      watchMoved = prevList.join('\n') !== event.tasks.join('\n')
+      if (event.tasks.length) this.watching.set(sessionId, event.tasks)
+      else this.watching.delete(sessionId)
+    } else if (
+      event.type === 'status' &&
+      (event.status === 'idle' || event.status === 'error' || event.status === 'done')
+    ) {
+      this.watching.delete(sessionId)
+    }
+    if ((actMoved || tasksMoved || goalMoved || recoveryMoved || watchMoved) && event.type !== 'status') {
       const meta = this.store.getSession(sessionId)
       if (meta) this.notifyMeta(meta)
     }
@@ -2126,13 +2173,18 @@ export class SessionRegistry {
         this.passPending.delete(sessionId)
         this.passActive.delete(sessionId)
       }
+      // Watching: the harness is idle, so parked subagent reports can go
+      // in now. Queued user messages and the completed-turn pass wait for
+      // idle — the turn is not over until the awaited work reports.
+      if (event.status === 'watching') this.drainReports(sessionId)
       // Dormant supervision: a subagent leaving "running" wakes its parent
       // with an automatic report — immediately when the parent is idle,
       // queued behind its current work otherwise. Skipped when a
-      // wait_for_agent already covers this child.
+      // wait_for_agent already covers this child. running → watching is
+      // no settle (the child still has work in flight); watching → idle is.
       if (
         next?.parentId &&
-        cur?.status === 'running' &&
+        (cur?.status === 'running' || cur?.status === 'watching') &&
         (event.status === 'idle' || event.status === 'error' || event.status === 'waiting')
       ) {
         settleToReport = next
@@ -2484,37 +2536,42 @@ export class SessionRegistry {
     const list = this.pendingReports.get(sessionId) ?? []
     list.push(report)
     this.pendingReports.set(sessionId, list)
-    if (this.store.getSession(sessionId)?.status === 'idle' && !this.isTreePaused(sessionId)) {
+    const status = this.store.getSession(sessionId)?.status
+    if ((status === 'idle' || status === 'watching') && !this.isTreePaused(sessionId)) {
       this.drainReports(sessionId)
     }
   }
 
-  /** On idle: send one parked report straight to the harness. Returns
-   *  whether a report took this settle (the queue then waits its turn). */
+  /** On settle: send every parked report to the harness in ONE turn (one
+   *  agent-report row each) — several children settling behind a busy
+   *  parent used to cost a wake turn apiece. Returns whether reports took
+   *  this settle (the queue then waits its turn). */
   private drainReports(sessionId: string): boolean {
     if (this.isTreePaused(sessionId)) return false
     if (this.draining.has(sessionId)) return false
     const list = this.pendingReports.get(sessionId)
     if (!list?.length) return false
-    const item = list.shift()!
-    if (!list.length) this.pendingReports.delete(sessionId)
+    const items = list.splice(0)
+    this.pendingReports.delete(sessionId)
     this.draining.add(sessionId)
     void (async () => {
       const handle = await this.handleFor(sessionId)
-      this.append(sessionId, {
-        type: 'agent-report',
-        agentId: item.agentId,
-        title: item.title,
-        status: item.status
-      })
+      for (const item of items) {
+        this.append(sessionId, {
+          type: 'agent-report',
+          agentId: item.agentId,
+          title: item.title,
+          status: item.status
+        })
+      }
       this.lastActivity.set(sessionId, Date.now())
       await this.armCheckpoint(sessionId)
-      await handle.send(item.text)
+      await handle.send(items.map((item) => item.text).join('\n\n'))
     })()
       .catch(() => {
-        // Harness refused (gone, mid-restart) — park it for the next settle.
+        // Harness refused (gone, mid-restart) — park them for the next settle.
         const q = this.pendingReports.get(sessionId) ?? []
-        q.unshift(item)
+        q.unshift(...items)
         this.pendingReports.set(sessionId, q)
       })
       .finally(() => this.draining.delete(sessionId))
@@ -2565,7 +2622,10 @@ export class SessionRegistry {
     })
     return {
       ...session,
-      activity: act?.text ?? null,
+      activity:
+        session.status === 'watching'
+          ? watchLine(this.watching.get(session.id))
+          : (act?.text ?? null),
       activityKind: act?.kind ?? null,
       tasks: this.tasksOf(session.id),
       goal: this.goalOf(session.id),

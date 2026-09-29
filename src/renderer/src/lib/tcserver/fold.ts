@@ -466,7 +466,12 @@ export function foldEvent(
       }
       // Logged end-of-turn signals close the turn even when the
       // turn-complete event itself was lost (crash between the two).
-      if ((e.status === "idle" || e.status === "error") && (thread.turnOpen || thread.inPass)) {
+      // 'watching' ends the turn too: the harness is idle behind its
+      // background work, and the wake turn opens a fresh one.
+      if (
+        (e.status === "idle" || e.status === "error" || e.status === "watching") &&
+        (thread.turnOpen || thread.inPass)
+      ) {
         const t = th();
         t.turnOpen = false;
         t.inPass = false;
@@ -554,6 +559,13 @@ export function foldEvent(
     case "agent-report":
       blocks = appendStatusBlock(blocks, `Agent ${e.title}: ${e.status}`, fresh("s"));
       blocks = withAgent(blocks, { id: e.agentId, title: e.title, status: e.status });
+      break;
+    case "background-task":
+      // Why the thread woke; the wake turn shows what it made of it.
+      blocks = appendStatusBlock(blocks, `Background task ${e.status}: ${e.description}`, fresh("s"));
+      break;
+    case "background-tasks":
+      // The live set rides the session's activity line, not the transcript.
       break;
     case "agent-spawned":
       blocks = appendStatusBlock(blocks, `Spawned agent ${e.childSessionId}`, fresh("s"));

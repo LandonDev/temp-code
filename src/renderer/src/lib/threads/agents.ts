@@ -45,7 +45,7 @@ export type FleetCounts = { working: number; waiting: number; failed: number; do
 export function fleetCounts(agents: { status: SessionStatus }[]): FleetCounts {
   const out: FleetCounts = { working: 0, waiting: 0, failed: 0, done: 0 };
   for (const a of agents) {
-    if (isLiveStatus(a.status)) out.working++;
+    if (isLiveStatus(a.status) || a.status === "watching") out.working++;
     else if (a.status === "waiting") out.waiting++;
     else if (a.status === "error") out.failed++;
     else out.done++;
@@ -132,6 +132,7 @@ export function agentLine(status: SessionStatus | undefined, blocks: Block[]): {
     return { text: title ? `waiting for approval — ${title}` : "waiting for approval", tone: "warning" };
   }
   if (status === "error") return { text: lastErrorLine(blocks) || "failed", tone: "danger" };
+  if (status === "watching") return { text: "waiting on background work", tone: "muted" };
   if (isLiveStatus(status)) return { text: activityLine(blocks), tone: "muted" };
   return { text: lastAssistantLine(blocks), tone: "muted" };
 }

@@ -167,7 +167,7 @@ export function useAgentModel(agent: SessionMeta, now: number): AgentModel {
   return {
     session,
     live,
-    idle: !live && agent.status !== "waiting" && agent.status !== "error",
+    idle: !live && agent.status !== "waiting" && agent.status !== "error" && agent.status !== "watching",
     line,
     stats,
     elapsed: live ? now - agent.createdAt : agent.updatedAt - agent.createdAt,

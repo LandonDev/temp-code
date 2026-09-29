@@ -78,8 +78,9 @@ describe("fleetCounts", () => {
         { status: "error" },
         { status: "idle" },
         { status: "paused" },
+        { status: "watching" },
       ]),
-    ).toEqual({ working: 2, waiting: 1, failed: 1, done: 2 });
+    ).toEqual({ working: 3, waiting: 1, failed: 1, done: 2 });
   });
 });
 
@@ -116,6 +117,10 @@ describe("transcript lines", () => {
 });
 
 describe("agentLine", () => {
+  it("says a watching agent waits on background work", () => {
+    expect(agentLine("watching", [])).toEqual({ text: "waiting on background work", tone: "muted" });
+  });
+
   it("shows the question while waiting", () => {
     const q = block("assistant", "", {
       question: {

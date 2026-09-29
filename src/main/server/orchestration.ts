@@ -169,8 +169,13 @@ function tokensOf(
 }
 
 /** Wait until the child finishes its current turn (idle/error/waiting).
- *  timeoutMs <= 0 waits indefinitely — dormant, no polling. */
-function waitForSettled(
+ *  'watching' is not settled: the child is idle only until its background
+ *  work (a CI poll, a Monitor) wakes it. timeoutMs <= 0 waits
+ *  indefinitely — dormant, no polling. */
+const unsettled = (status: SessionMeta['status']): boolean =>
+  status === 'running' || status === 'watching'
+
+export function waitForSettled(
   reg: SessionRegistry,
   sessionId: string,
   timeoutMs: number
@@ -178,7 +183,7 @@ function waitForSettled(
   return new Promise((resolve) => {
     const check = (): SessionMeta | null => {
       const meta = reg.get(sessionId)
-      return meta && meta.status !== 'running' ? meta : null
+      return meta && !unsettled(meta.status) ? meta : null
     }
     const now = check()
     if (now) return resolve(now)
@@ -190,7 +195,7 @@ function waitForSettled(
           }, timeoutMs)
         : null
     const off = reg.subscribe(sessionId, (row) => {
-      if (row.event.type === 'status' && row.event.status !== 'running') {
+      if (row.event.type === 'status' && !unsettled(row.event.status)) {
         if (timer) clearTimeout(timer)
         off()
         resolve(check())
