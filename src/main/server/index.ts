@@ -22,6 +22,16 @@ import { backfillMirrors } from './mirror'
 import { bootMark } from './boot'
 import { setLimitMissLog } from './limitText'
 import { setCodexBootFailureLog } from './drivers/codex'
+import {
+  countPush,
+  recordSlowRequest,
+  reportRendererStall,
+  setRunningCount,
+  setStallLog,
+  startStallMonitor,
+  trackRequest,
+  untrackRequest
+} from './stalls'
 import { sweepFolds } from './folds'
 import {
   orchAnswerAgent,
@@ -161,6 +171,9 @@ export async function startServer(
   const registry = new SessionRegistry(store)
   setLimitMissLog(join(options.dataDir ?? dirname(dbPath), 'logs'))
   setCodexBootFailureLog(join(options.dataDir ?? dirname(dbPath), 'logs'))
+  setStallLog(join(options.dataDir ?? dirname(dbPath), 'logs'))
+  setRunningCount(() => registry.runningCount())
+  const stopStallMonitor = startStallMonitor()
   registry.checkpoints = checkpoints
   const accounts = new AccountsService()
   registry.limits = accounts
@@ -230,6 +243,7 @@ export async function startServer(
   const builder = new BuildRunner()
 
   const wss = new WebSocketServer({ host: '127.0.0.1', port: 0 })
+  let connections = 0
 
   wss.on('connection', (ws: WebSocket, req) => {
     // LSP tunnel (docs/PLAN-3.md M13): raw JSON-RPC, no contract schema in
@@ -244,6 +258,7 @@ export async function startServer(
       attachDapSocket(url.slice('/dap/'.length), ws)
       return
     }
+    const connection = ++connections
     const unsubs = new Map<string, () => void>()
     /** per-connection file watchers (fs.watch), keyed by projectId */
     const fsWatches = new Map<string, () => void>()
@@ -258,7 +273,10 @@ export async function startServer(
     }
 
     // Every client gets session-meta updates (cheap, drives the sidebar).
-    const offMeta = registry.onMeta((session) => sendFrame({ push: 'session', session }))
+    const offMeta = registry.onMeta((session) => {
+      countPush('meta')
+      sendFrame({ push: 'session', session })
+    })
     const offCatalog = registry.onCatalog((kind) => sendFrame(kind === 'workspaces'
       ? { push: 'workspaces', workspaces: registry.listWorkspaces() }
       : { push: 'projects', projects: registry.listProjects() }))
@@ -291,6 +309,8 @@ export async function startServer(
       }
       const req = parsed.data
       const startedAt = Date.now()
+      const requestKey = `${connection}:${req.id}`
+      trackRequest(requestKey, req.method)
       try {
         const extension = await handleM3a(req, m3a)
         if (extension.handled) { sendFrame({ id: req.id, ok: true, result: extension.result }); return }
@@ -763,6 +783,10 @@ export async function startServer(
             sendFrame({ id: req.id, ok: true, result: session })
             break
           }
+          case 'stall.report':
+            reportRendererStall(req.params.line)
+            sendFrame({ id: req.id, ok: true, result: null })
+            break
           case 'session.list': {
             const sessions = registry.list()
             if (!firstListMarked) {
@@ -817,7 +841,10 @@ export async function startServer(
             if (!unsubs.has(sessionId)) {
               unsubs.set(
                 sessionId,
-                registry.subscribe(sessionId, (row) => sendFrame({ push: 'event', row }))
+                registry.subscribe(sessionId, (row) => {
+                  countPush('event')
+                  sendFrame({ push: 'event', row })
+                })
               )
             }
             sendFrame({ id: req.id, ok: true, result: null })
@@ -1024,8 +1051,12 @@ export async function startServer(
       } finally {
         // A request this slow held the main thread or waited behind
         // something that did; either way the boot log should say which.
+        untrackRequest(requestKey)
         const ms = Date.now() - startedAt
-        if (ms > SLOW_REQUEST_MS) bootMark('slow-request', `${req.method} ${ms}ms`)
+        if (ms > SLOW_REQUEST_MS) {
+          bootMark('slow-request', `${req.method} ${ms}ms`)
+          recordSlowRequest(req.method, ms)
+        }
       }
     })
 
@@ -1070,6 +1101,7 @@ export async function startServer(
     store,
     gateway,
     close: async () => {
+      stopStallMonitor()
       clearTimeout(warmKickoff)
       clearInterval(warmTimer)
       builder.disposeAll()

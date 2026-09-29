@@ -322,6 +322,7 @@ class SessionStore {
   private ids: readonly string[] = NO_IDS;
   private shells: SessionShell[] = [];
   private version = 0;
+  private pushed = { session: 0, event: 0 };
   private link: Link | null = null;
   private detach: (() => void)[] = [];
   private listed: Promise<void> | null = null;
@@ -435,6 +436,11 @@ class SessionStore {
 
   metaOf(id: string): SessionMeta | null {
     return this.entries.get(id)?.meta ?? null;
+  }
+
+  /** Cumulative `session` and `event` pushes received; the stall recorder differences them. */
+  pushCounts(): { session: number; event: number } {
+    return { session: this.pushed.session, event: this.pushed.event };
   }
 
   /** Every server-known meta (drafts excluded). */
@@ -655,6 +661,7 @@ class SessionStore {
   private onPush(push: ServerPush): void {
     switch (push.push) {
       case "session": {
+        this.pushed.session += 1;
         const fresh = !this.entries.has(push.session.id);
         this.mergeMeta(push.session);
         this.bump();
@@ -695,6 +702,7 @@ class SessionStore {
         break;
       }
       case "event": {
+        this.pushed.event += 1;
         const entry = this.entries.get(push.row.sessionId);
         if (entry) this.applyPush(entry, push.row);
         break;

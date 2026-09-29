@@ -594,6 +594,13 @@ export class SessionRegistry {
     if (current) this.setAccount(sessionId, current)
   }
 
+  /** Threads with a live status right now (the stall log's `running=`). */
+  runningCount(): number {
+    let n = 0
+    for (const s of this.store.listSessions()) if (LIVE_STATUSES.has(s.status)) n++
+    return n
+  }
+
   /** Keep a thread's shown account the one its next send will use. With
    *  no live process nothing is warm on its account, so it re-picks fresh:
    *  the best account for its model now. With a process the sticky pick

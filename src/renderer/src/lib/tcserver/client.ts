@@ -15,7 +15,7 @@ export class WsClient {
   private nextId = 1;
   private pending = new Map<
     string,
-    { resolve: (v: unknown) => void; reject: (e: Error) => void }
+    { method: string; resolve: (v: unknown) => void; reject: (e: Error) => void }
   >();
   private pushListeners = new Set<(push: ServerPush) => void>();
   private openListeners = new Set<() => void>();
@@ -89,11 +89,19 @@ export class WsClient {
         return;
       }
       this.pending.set(id, {
+        method,
         resolve: resolve as (v: unknown) => void,
         reject,
       });
       this.ws.send(JSON.stringify({ id, method, params }));
     });
+  }
+
+  /** Methods still waiting on a reply, oldest first (the stall log's `pending=`). */
+  pendingMethods(): string[] {
+    const out: string[] = [];
+    for (const p of this.pending.values()) out.push(p.method);
+    return out;
   }
 
   onPush(listener: (push: ServerPush) => void): () => void {

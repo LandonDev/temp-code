@@ -1,6 +1,7 @@
 import { useStore } from "zustand";
 import { subscribeWithSelector } from "zustand/middleware";
 import { createStore } from "zustand/vanilla";
+import { perfMark } from "../lib/perfMarks";
 import {
   loadProjectRailOpen,
   loadSidebarOpen,
@@ -263,16 +264,25 @@ export const shell = {
   openSymbolPicker: () => update(openSymbolPicker),
   closeSymbolPicker: () => update((s) => patch(s, { symbolPickerOpen: false })),
   openFilesSearch: () => update(openFilesSearch),
-  openSearchView: () => update(openSearchView),
+  openSearchView: () => {
+    perfMark("page-switch", "search");
+    update(openSearchView);
+  },
   closeSearchView: () => update((s) => patch(s, { searchViewOpen: false })),
-  openInbox: (layout: SidebarLayout) => update((s) => openInbox(s, layout)),
+  openInbox: (layout: SidebarLayout) => {
+    perfMark("page-switch", "inbox");
+    update((s) => openInbox(s, layout));
+  },
   closeInbox: () => update((s) => patch(s, { inboxViewOpen: false })),
   openNotes: () => {
     if (!loadNotesEnabled()) return;
     update(openNotes);
   },
   closeNotes: () => update((s) => patch(s, { notesViewOpen: false })),
-  openSettings: (section?: SettingsSectionId) => update((s) => openSettings(s, section)),
+  openSettings: (section?: SettingsSectionId) => {
+    perfMark("page-switch", "settings");
+    update((s) => openSettings(s, section));
+  },
   closeSettings: () => update((s) => patch(s, { settingsOpen: false })),
   selectSettingsSection: (section: SettingsSectionId) =>
     update((s) => patch(s, { settingsSection: section })),
