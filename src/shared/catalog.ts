@@ -253,6 +253,15 @@ export function resolveModel(
   for (const p of Object.keys(CATALOG) as ProviderId[]) {
     if (modelInfo(p, model)) return { provider: p, model }
   }
+  // A bare display slug (fable-5.1, opus-5.5): the renderer's built-in
+  // picker ids are `claude:fable-5.1` and a stripped one once reached the
+  // driver as `--model fable-5.1[1m]`. The catalog id is the provider name
+  // plus the slug with dots as dashes; only that exact shape matches, so
+  // gpt-5.5 / cursor-grok-4.6 cannot be mis-hit.
+  const slug = model.toLowerCase().replace(/\./g, '-')
+  for (const p of [provider, ...(Object.keys(CATALOG) as ProviderId[])]) {
+    if (modelInfo(p, `${p}-${slug}`)) return { provider: p, model: `${p}-${slug}` }
+  }
   // Unknown to the catalog (a model newer than this file, or a typo): keep
   // it under the provider asked for and let the harness judge it. Swapping
   // in the default here silently moved threads onto another model.

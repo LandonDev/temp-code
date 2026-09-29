@@ -1950,8 +1950,13 @@ export class SessionRegistry {
     const inflight = this.starting.get(sessionId)
     if (inflight) return inflight
 
-    const meta = this.store.getSession(sessionId)
-    if (!meta) throw new Error(`unknown session: ${sessionId}`)
+    const stored = this.store.getSession(sessionId)
+    if (!stored) throw new Error(`unknown session: ${sessionId}`)
+    // Every respawn (continue, account refresh, resume) reads the row, so a
+    // row holding a display slug (`fable-5.1`) must be normalized here too,
+    // not only at send time: the driver launches `--model` from this.
+    const routed = resolveModel(stored.provider, stored.model)
+    const meta = routed.provider === stored.provider ? { ...stored, model: routed.model } : stored
     const driver = BUILT_IN_DRIVERS[meta.provider]
     // The account this process spends from: the pin that applies (its
     // project's, its workspace's), else the sticky expected account while

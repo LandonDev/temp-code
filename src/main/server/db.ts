@@ -12,6 +12,7 @@ import type { AgentEvent, EventRow, SessionMeta, SessionStatus } from '@shared/e
 import type { ProjectMeta, WorkspaceMeta } from '@shared/domain'
 import { ACCOUNT_PROVIDERS, type AccountPins } from '@shared/accounts'
 import { parseThreadRules } from '@shared/rules'
+import { resolveModel, type ProviderId } from '@shared/catalog'
 
 /**
  * node:sqlite, zero native deps (no electron-rebuild pain).
@@ -113,7 +114,25 @@ export function openDb(path: string): DatabaseSync {
   // The model-written tool summaries were removed on 2026-09-14; their
   // permanent cache rows would otherwise sit in the settings table forever.
   db.exec(`DELETE FROM settings WHERE key LIKE 'toolsum:%'`)
+  repairModelIds(db)
   return db
+}
+
+/** Rows that hold a display slug for a model (`fable-5.1`, written by a
+ *  renderer bug before v180) instead of the catalog id: Continue respawns
+ *  the driver from the row, so it launched `--model fable-5.1[1m]` until
+ *  the row was rewritten. Same normalization as resolveModel. */
+function repairModelIds(db: DatabaseSync): void {
+  const rows = db
+    .prepare(`SELECT id, provider, model FROM sessions WHERE archived = 0`)
+    .all() as unknown as { id: string; provider: ProviderId; model: string }[]
+  const update = db.prepare(`UPDATE sessions SET model = ? WHERE id = ?`)
+  for (const r of rows) {
+    const fixed = resolveModel(r.provider, r.model)
+    if (fixed.provider !== r.provider || fixed.model === r.model) continue
+    update.run(fixed.model, r.id)
+    console.log(`[db] session ${r.id}: model ${r.model} -> ${fixed.model}`)
+  }
 }
 
 /**
