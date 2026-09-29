@@ -13,6 +13,7 @@ import {
   mergeModelSettings,
   modelPickerTabs,
   modelsFor,
+  nativeModelId,
   preferredModelId,
   preferredModelSettings,
   resetHarnessModelOverlays,
@@ -343,5 +344,20 @@ describe("Claude Fable 5.1", () => {
     expect(resolveModel("claude", "claude-fable-5-1")).toBe(live);
     expect(resolveModel("claude", "claude:fable-5.1")).toBe(live);
     expect(live?.settings?.find((s) => s.id === "context")).toBeTruthy();
+  });
+
+  it("a built-in picker id still names its native model after the overlay", () => {
+    // A thread hydrated before the catalog landed carries `claude:fable-5.1`;
+    // the send path must not strip that to `fable-5.1`.
+    expect(nativeModelId("claude:fable-5.1")).toBe("claude-fable-5-1");
+    setHarnessModels("claude", agentModelsFor(CATALOG.claude), CATALOG.claude.defaultModel);
+    expect(nativeModelId("claude:fable-5.1")).toBe("claude-fable-5-1");
+    expect(nativeModelId("claude:opus-5.5")).toBe("claude-opus-5-5");
+    // The boot guard compares these two; equal means the thread moves onto the live id.
+    const resolved = resolveModel("claude", "claude:fable-5.1");
+    expect(resolved.id).toBe("claude:claude-fable-5-1");
+    expect(nativeModelId(resolved)).toBe(nativeModelId("claude:fable-5.1"));
+    // An id the catalog does not list still falls back to the prefix strip.
+    expect(nativeModelId("claude:claude-opus-4-1")).toBe("claude-opus-4-1");
   });
 });
