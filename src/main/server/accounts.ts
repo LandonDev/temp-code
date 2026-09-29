@@ -23,6 +23,7 @@ import {
   PROVIDER_OF,
   SERVICE_OF,
   emptyAccounts,
+  isRoutedProvider,
   type AccountProvider,
   type AccountRoute,
   type AccountsSnapshot,
@@ -47,6 +48,8 @@ export interface AccountsDeps {
   markStale: (id: ServiceId, name: string) => void
   /** Charge a window an error message named, so the account is not picked again before its report refreshes. */
   observeLimit: (id: ServiceId, name: string, limit: Limit) => void
+  /** Live threads per account for a provider, from the session registry. */
+  load: (provider: AccountProvider) => Record<string, number>
   dataDir: () => string
   pollMs: number
   now: () => number
@@ -85,7 +88,7 @@ export async function liveAccount(
     if (cap.blob) {
       const name = cap.email ?? cap.accountId
       const profile: ProfileView = { name, email: cap.email, createdAt: 0, active: true, activeOn: ['Active'] }
-      const r = await a.usage(cap.blob, true, force, true)
+      const r = await a.usage(cap.blob, true, force, null)
       const report: UsageReport =
         r.note === 'usage temporarily unavailable'
           ? { profileName: name, windows: [], plan: r.plan, rateLimit: { provider: a.name, until: r.retryAfterMs !== undefined ? Date.now() + r.retryAfterMs : undefined } }
@@ -113,6 +116,7 @@ const defaults = (): AccountsDeps => ({
   usageOf: (id, name) => accounts.usageOf(id, name, true),
   markStale: accounts.markUsageStale,
   observeLimit: (id, name, limit) => void accounts.observeLimit(id, name, limit),
+  load: () => ({}),
   dataDir,
   pollMs: 60_000,
   now: Date.now
@@ -242,6 +246,7 @@ export class AccountsService {
       model: meta.model ?? null,
       provider: meta.provider,
       snapshot: this.snap,
+      load: isRoutedProvider(meta.provider) ? this.deps.load(meta.provider) : {},
       now: this.deps.now()
     })
   }
@@ -251,7 +256,8 @@ export class AccountsService {
    * forced poll. For a thread (`info.thread`) that is one with room in the
    * refused model's windows, soonest reset of the model's own window first.
    * For the pin (unscoped terminal traffic) the same, on the weekly clock.
-   * Null passes the 429 through.
+   * Either way the live load counts, so a failover lands on the emptiest
+   * account with room. Null passes the 429 through.
    */
   async pickNext(info: LimitInfo): Promise<string | null> {
     const provider = PROVIDER_OF[info.serviceId]
@@ -264,6 +270,7 @@ export class AccountsService {
       profiles: snap.profiles,
       reports: snap.reports,
       tried: info.tried,
+      load: this.deps.load(provider),
       poll: (name) => this.deps.usageOf(info.serviceId, name).catch(() => null),
       now: this.deps.now()
     })

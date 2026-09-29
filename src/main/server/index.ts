@@ -175,7 +175,7 @@ export async function startServer(
   setRunningCount(() => registry.runningCount())
   const stopStallMonitor = startStallMonitor()
   registry.checkpoints = checkpoints
-  const accounts = new AccountsService()
+  const accounts = new AccountsService({ load: (provider) => registry.liveLoad(provider) })
   registry.limits = accounts
   const m3a = { store, registry, notes: new Notes(db), logos: new ProjectLogos(options.dataDir ?? dirname(dbPath)), accounts }
   // Every snapshot that knows any account re-picks the open threads'

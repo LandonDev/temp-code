@@ -1,4 +1,4 @@
-import { hasRoom, pickFromCache, scopedSpent, tiersFor } from 'aliax-core'
+import { DEFAULT_THREAD_CAP, hasRoom, pickFromCache, scopedSpent, tiersFor } from 'aliax-core'
 import { isRoutedProvider, SERVICE_OF, type AccountRoute, type AccountsSnapshot } from '@shared/accounts'
 import type { ProjectMeta, WorkspaceMeta } from '@shared/domain'
 import type { SessionMeta } from '@shared/events'
@@ -42,6 +42,8 @@ export interface ChooseInput {
   model: string | null
   provider: SessionMeta['provider']
   snapshot: AccountsSnapshot
+  /** Live threads per account (running, watching, starting), from the registry. */
+  load?: Record<string, number>
   now?: number
 }
 
@@ -70,16 +72,23 @@ export interface Choice {
  * thread moves there. Only that class change moves it — never a smaller
  * usedPercent shift between two accounts of the same class — so a thread
  * does not churn between accounts on every snapshot.
+ *
+ * Among accounts with room the pick prefers the most 5h headroom and the
+ * fewest live threads (DEFAULT_THREAD_CAP is soft), so a burst of new
+ * threads spreads instead of stacking on one account until its 5h fills.
+ * The global pin carries the terminals' traffic, so it counts as one live
+ * thread of its own.
  */
-export function chooseAccount({ pin, current, model, provider, snapshot, now = Date.now() }: ChooseInput): Choice {
+export function chooseAccount({ pin, current, model, provider, snapshot, load = {}, now = Date.now() }: ChooseInput): Choice {
   if (!isRoutedProvider(provider)) return { route: null, current: null }
   const snap = snapshot.providers[provider]
   const serviceId = SERVICE_OF[provider]
   const tiers = tiersFor(serviceId, model)
   const known = (name: string | null): name is string => name !== null && snap.profiles.some((p) => p.name === name)
   const room = (name: string): boolean => hasRoom(snap.reports.find((r) => r.profileName === name), tiers, now)
+  const effectiveLoad = snap.pinned ? { ...load, [snap.pinned]: (load[snap.pinned] ?? 0) + 1 } : load
   const pick = (tried: string[]): string | null =>
-    pickFromCache({ serviceId, model, scoped: true, profiles: snap.profiles, reports: snap.reports, tried, now })
+    pickFromCache({ serviceId, model, scoped: true, profiles: snap.profiles, reports: snap.reports, tried, load: effectiveLoad, cap: DEFAULT_THREAD_CAP, now })
 
   if (known(pin)) {
     const expected = room(pin) ? pin : known(current) && room(current) ? current : (pick([pin]) ?? pin)

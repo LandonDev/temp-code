@@ -601,6 +601,18 @@ export class SessionRegistry {
     return n
   }
 
+  /** Live threads per account for a provider: running, watching, or still
+   *  starting. What the account picker spreads new threads by. */
+  liveLoad(provider: SessionMeta['provider']): Record<string, number> {
+    const load: Record<string, number> = {}
+    for (const s of this.store.listSessions()) {
+      if (s.archived || s.provider !== provider || !s.account) continue
+      if (!LIVE_STATUSES.has(s.status) && !this.starting.has(s.id)) continue
+      load[s.account] = (load[s.account] ?? 0) + 1
+    }
+    return load
+  }
+
   /** Keep a thread's shown account the one its next send will use. With
    *  no live process nothing is warm on its account, so it re-picks fresh:
    *  the best account for its model now. With a process the sticky pick
@@ -1999,11 +2011,14 @@ export class SessionRegistry {
     const meta = routed.provider === stored.provider ? { ...stored, model: routed.model } : stored
     const driver = BUILT_IN_DRIVERS[meta.provider]
     // The account this process spends from: the pin that applies (its
-    // project's, its workspace's), else the sticky expected account while
-    // it has room, else the best account for its model. The row shows the
-    // pick at once; the gateway corrects it.
+    // project's, its workspace's), else the best account for its model by
+    // the live load right now. Nothing is warm at spawn (no process), so
+    // the sticky account is ignored, the same rule refreshAccount applies
+    // to idle threads; a burst of resumes then spreads instead of stacking
+    // on the last snapshot's favourite. The row shows the pick at once; the
+    // gateway corrects it.
     const pin = this.pinOf(meta)
-    const { route, current } = this.limits?.routeFor(meta, pin) ?? { route: null, current: null }
+    const { route, current } = this.limits?.routeFor(meta, pin, { fresh: true }) ?? { route: null, current: null }
     this.spawnedPin.set(sessionId, pin?.name ?? null)
     this.setAccount(sessionId, current)
 
