@@ -316,6 +316,28 @@ describe("zen mode grouping", () => {
     expect(items[0].blocks.map((block) => block.id)).toEqual(["r", "a"]);
   });
 
+  it("drops a thought the next paragraph repeats word for word", () => {
+    const line = "Rejecting now with a short reason, pinning the review.";
+    const items = groupTurnItems(
+      [
+        { id: "r", role: "reasoning", text: `${line}\n` },
+        { id: "gap", role: "assistant", text: "" },
+        { id: "p", role: "assistant", text: line },
+        shell("a"),
+        { id: "r2", role: "reasoning", text: "Another thought." },
+        { id: "p2", role: "assistant", text: "Something else." },
+      ],
+      true,
+    );
+    expect(items.map((item) => (item.type === "block" ? item.block.id : "activity"))).toEqual([
+      "p",
+      "activity",
+      "p2",
+    ]);
+    if (items[1]?.type !== "activity") return;
+    expect(items[1].blocks.map((block) => block.id)).toEqual(["a", "r2"]);
+  });
+
   it("drops thinking entirely when zen is off", () => {
     const items = groupTurnItems([
       { id: "r", role: "reasoning", text: "thinking" },
