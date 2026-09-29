@@ -7,6 +7,7 @@ import {
   type WorkspaceSnapshot
 } from '@shared/contract-m3a'
 import { mkdirSync } from 'node:fs'
+import { timed } from './stalls'
 import { dirname } from 'node:path'
 import type { AgentEvent, EventRow, SessionMeta, SessionStatus } from '@shared/events'
 import type { ProjectMeta, WorkspaceMeta } from '@shared/domain'
@@ -23,8 +24,14 @@ import { resolveModel, type ProviderId } from '@shared/catalog'
 export function openDb(path: string): DatabaseSync {
   mkdirSync(dirname(path), { recursive: true })
   const db = new DatabaseSync(path)
+  // WAL keeps the file consistent at NORMAL; only the last commits before
+  // a power cut can be lost. FULL fsynced the WAL on every one of the two
+  // autocommits each streamed event makes, and a build writing beside it
+  // stretched single commits to 45-150 ms on the loop the sidebar's open
+  // round trips wait on.
   db.exec(`
     PRAGMA journal_mode = WAL;
+    PRAGMA synchronous = NORMAL;
     CREATE TABLE IF NOT EXISTS sessions (
       id         TEXT PRIMARY KEY,
       parent_id  TEXT,
@@ -747,23 +754,25 @@ export class Store {
     const beforeSeq = opts.beforeSeq ?? Number.MAX_SAFE_INTEGER
     let fromSeq = afterSeq + 1
     if (opts.tail && opts.tail > 0) {
-      const scan = this
-        .stmt(
-          `SELECT seq, json_extract(payload, '$.type') AS type,
-                  json_extract(payload, '$.callId') AS callId,
-                  json_extract(payload, '$.msgId') AS msgId,
-                  json_extract(payload, '$.blockIndex') AS blockIndex
-             FROM events
-             WHERE session_id = ? AND seq > ? AND seq < ?
-             ORDER BY seq DESC LIMIT ?`
-        )
-        .all(sessionId, afterSeq, beforeSeq, TAIL_SCAN) as unknown as {
-        seq: number
-        type: string
-        callId: string | null
-        msgId: string | null
-        blockIndex: number | null
-      }[]
+      const scan = timed('events tail scan', () =>
+        this
+          .stmt(
+            `SELECT seq, json_extract(payload, '$.type') AS type,
+                    json_extract(payload, '$.callId') AS callId,
+                    json_extract(payload, '$.msgId') AS msgId,
+                    json_extract(payload, '$.blockIndex') AS blockIndex
+               FROM events
+               WHERE session_id = ? AND seq > ? AND seq < ?
+               ORDER BY seq DESC LIMIT ?`
+          )
+          .all(sessionId, afterSeq, beforeSeq, TAIL_SCAN) as unknown as {
+          seq: number
+          type: string
+          callId: string | null
+          msgId: string | null
+          blockIndex: number | null
+        }[]
+      )
       const start = tailStart(scan, opts.tail)
       if (start !== null) fromSeq = start
     }
