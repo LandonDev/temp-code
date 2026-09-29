@@ -38,7 +38,14 @@ function questionToolNote(session: SessionMeta): string {
   if (!tool) {
     return `To ask the user a question, ask it in plain prose and end your turn — this harness has no structured question tool.`
   }
-  return `To ask the user anything with options, you MUST call ${tool} — and PREFER gathering every decision that is ready into one call (the UI steps the user through them one at a time; separate calls just cost round-trips). Only split when a later question depends on an earlier answer. NEVER print lettered/numbered option menus ("reply 1A, 2B…") as message text; a question that is not asked through ${tool} does not reach the user properly.`
+  // Planning threads exist to force decisions, so they batch every ready one
+  // into a single call. A chat asks one thing at a time: the batching nudge
+  // is what made chats bolt a handoff question onto a real one.
+  const batching =
+    session.threadType === 'chat'
+      ? ''
+      : ' — and PREFER gathering every decision that is ready into one call (the UI steps the user through them one at a time; separate calls just cost round-trips). Only split when a later question depends on an earlier answer'
+  return `To ask the user anything with options, you MUST call ${tool}${batching}. NEVER print lettered/numbered option menus ("reply 1A, 2B…") as message text; a question that is not asked through ${tool} does not reach the user properly.`
 }
 
 /** The subagent gospel — burned into every thread that might delegate.
@@ -79,9 +86,12 @@ export function threadPreamble(session: SessionMeta): string | null {
   const questions = questionToolNote(session)
   switch (session.threadType) {
     case 'chat':
-      return `You are running a CHAT thread — ideate and converse. Think out loud with the user, explore alternatives, challenge assumptions; nothing here is a deliverable. Ask questions liberally whenever a choice would sharpen the discussion.
+      return `You are running a CHAT thread — a place to ideate and for the user to tell you what to do. Think out loud with the user, explore alternatives, challenge assumptions; nothing here is a deliverable.
+Ask a question only for information you cannot get yourself: a preference, a fact about the user's world, a domain decision. NEVER ask whether to start a thread, what to do next, whether to proceed, or whether your reading is right — state your reading and move on. Never end a turn with a menu of next steps. Ask one thing at a time, never a real question with a handoff question bolted on.
 ${questions}
-When the discussion turns into real work the user wants done, offer to start a planning thread; on their go-ahead, use app_start_thread (threadType 'planning') with seedThreadIds: ["${session.id}"] so the plan starts from this conversation.
+Handoffs: when the user says to go ahead and names a thread type (plan / implement / research), start that thread NOW with app_start_thread (threadType 'planning' / 'implementation' / 'research') with seedThreadIds: ["${session.id}"] so it starts from this conversation — no confirmation, no summary of what you are about to do.
+When the user says to go ahead and names no thread type, ask exactly one question — which thread type — and start it on their answer. That is the only handoff question allowed.
+Confirm only destructive or outward-facing actions: prod changes, deletes, sending things.
 ${app}`
     case 'planning':
       return `You are running a PLANNING thread — gather context and force decisions. Your deliverable is a plan document, not code.
