@@ -1,5 +1,5 @@
 {
-  "n": 188,
-  "notes": "Streamed events cost less main-thread time: SQLite commits at synchronous=NORMAL, the threads index reads 4 KB per mirror instead of whole files, and every known synchronous section reports itself to stalls.log when it runs long.",
-  "ts": 1790709068303
+  "n": 189,
+  "notes": "The app no longer freezes for ~16 s at a time (beachball, window unresponsive) since v185. Every accounts snapshot change (the gateway nudges one on each observed response) runs refreshAccounts over every open thread, and each thread's routeFor asked registry.liveLoad, which read the whole sessions table: 1,778 threads x 3,190 rows per pass, back to back while threads stream, all on the main loop the gateway and the window's requests share. liveLoad now walks only the threads holding a process (a live status never outlives its handle), and refreshAccounts / expectAccountsUnder read it once per provider per pass and hand it to the router through RouteOptions.load (accountRouting.ts; AccountsService.routeFor uses it before deps.load). A pass over 1,800 threads that all hold a process drops from 18 s to 52 ms. Tests: sessions-limits.test.ts (a refresh pass reads the sessions table and the live load once).",
+  "ts": 1790713430587
 }
