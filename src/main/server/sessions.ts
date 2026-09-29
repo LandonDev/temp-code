@@ -671,7 +671,19 @@ export class SessionRegistry {
       if (!l) loads.set(provider, (l = this.liveLoad(provider)))
       return l
     }
-    for (const s of this.store.listSessions()) if (!s.archived && match(s)) this.refreshAccount(s.id, load)
+    // Each moved row bumps the sessions version, so notifying as it lands
+    // rebuilt the whole index per row: 224 idle threads re-picked on every
+    // snapshot held the loop 2.2 s. Notify once the pass is written.
+    const outer = this.deferredMeta
+    const deferred = (this.deferredMeta ??= new Map())
+    try {
+      for (const s of this.store.listSessions()) if (!s.archived && match(s)) this.refreshAccount(s.id, load)
+    } finally {
+      if (!outer) {
+        this.deferredMeta = null
+        for (const meta of deferred.values()) this.notifyMeta(meta)
+      }
+    }
   }
 
   /** A thread's error named a usage limit: ask for the next account now
@@ -2689,7 +2701,15 @@ export class SessionRegistry {
     }
   }
 
+  /** Set during an account refresh pass: metas wait here and go out once
+   *  the pass is written (latest per session). */
+  private deferredMeta: Map<string, SessionMeta> | null = null
+
   private notifyMeta(session: SessionMeta): void {
+    if (this.deferredMeta) {
+      this.deferredMeta.set(session.id, session)
+      return
+    }
     const index = this.indexOf()
     const decorated = this.decorate(session, index)
     for (const l of this.metaListeners) l(decorated)
