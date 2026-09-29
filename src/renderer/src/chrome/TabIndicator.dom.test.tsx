@@ -62,3 +62,39 @@ describe('TabIndicator clock', () => {
     probe.unmount()
   })
 })
+
+describe('TabIndicator plan ready vs watching', () => {
+  const text = (over: Partial<TabThread>) => {
+    const probe = mountProbe(<TabIndicator thread={thread(over)} />)
+    const out = probe.container.textContent
+    const title = probe.container.querySelector('[title]')?.getAttribute('title') ?? null
+    probe.unmount()
+    return { out, title }
+  }
+
+  it('a planning thread with a written plan reads Plan ready even while it watches background work', () => {
+    const { out, title } = text({
+      type: 'planning',
+      status: 'watching',
+      planReady: true,
+      activity: 'Wait in the background for the delivery note',
+    })
+    expect(out).toBe('Plan ready')
+    expect(title).toBe('Wait in the background for the delivery note')
+  })
+
+  it('a watching planning thread with no plan yet reads Watching', () => {
+    expect(text({ type: 'planning', status: 'watching' }).out).toBe('Watching')
+  })
+
+  it('a watching non-planning thread reads Watching', () => {
+    expect(text({ type: 'implementation', status: 'watching' }).out).toBe('Watching')
+  })
+
+  it('running, paused, waiting and failed still outrank a written plan', () => {
+    expect(text({ type: 'planning', status: 'running', planReady: true }).out).not.toContain('Plan ready')
+    expect(text({ type: 'planning', status: 'paused', planReady: true }).out).toContain('Paused')
+    expect(text({ type: 'planning', status: 'waiting', planReady: true }).out).toBe('Needs you')
+    expect(text({ type: 'planning', status: 'error', planReady: true }).out).toBe('Failed')
+  })
+})

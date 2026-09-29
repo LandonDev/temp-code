@@ -24,7 +24,8 @@ export type TabThread = {
 /**
  * Tab-edge status, one glance apart: working → matrix spinner + elapsed +
  * the activity verb; needs you → amber, in words; failed → red; plan
- * written, no build started → violet "Plan ready"; finished while you
+ * written, no build started → violet "Plan ready" (even while the thread
+ * still watches background work); watching → dimmed; finished while you
  * were elsewhere → blue dot. An implementation thread's tally sits at
  * the edge in every state. Only a working indicator subscribes to the
  * shared second hand, so idle tabs never re-render on the tick.
@@ -83,6 +84,22 @@ export function TabIndicator({ thread }: { thread: TabThread }) {
         </span>
       );
     }
+    if (status === "error") {
+      return <span className="shrink-0 text-[11px] font-medium text-danger">Failed</span>;
+    }
+    // A written plan outranks a background wait: the plan is what the tab
+    // is for, and the wait (a Monitor, a cron) still shows on hover.
+    if (thread.planReady) {
+      return (
+        <span
+          className="flex shrink-0 items-center gap-1 text-[11px] font-medium text-violet"
+          title={status === "watching" ? (thread.activity ?? "Watching background work") : undefined}
+        >
+          <span className="size-1.5 rounded-full bg-violet" />
+          Plan ready
+        </span>
+      );
+    }
     if (status === "watching") {
       return (
         <span
@@ -91,17 +108,6 @@ export function TabIndicator({ thread }: { thread: TabThread }) {
         >
           <span className="size-1.5 motion-safe:animate-pulse rounded-full bg-content/40" />
           Watching
-        </span>
-      );
-    }
-    if (status === "error") {
-      return <span className="shrink-0 text-[11px] font-medium text-danger">Failed</span>;
-    }
-    if (thread.planReady) {
-      return (
-        <span className="flex shrink-0 items-center gap-1 text-[11px] font-medium text-violet">
-          <span className="size-1.5 rounded-full bg-violet" />
-          Plan ready
         </span>
       );
     }
