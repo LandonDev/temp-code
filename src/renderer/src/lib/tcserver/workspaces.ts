@@ -40,13 +40,51 @@ type SessionLike = {
 
 // ── pure helpers ───────────────────────────────────────────────────────
 
+/**
+ * Lookups over a catalog array, built once per array identity: the
+ * catalog store hands out the same arrays until a push replaces them, so
+ * every consumer that places sessions per meta push pays O(1) per
+ * session instead of a linear scan over the projects and workspaces.
+ */
+type WorkspaceIndex = {
+  byId: ReadonlyMap<string, WorkspaceMeta>;
+  /** keyed by normalized path; the first workspace at a path wins, as find() did */
+  byKey: ReadonlyMap<string, WorkspaceMeta>;
+};
+const projectIndexes = new WeakMap<readonly ProjectMeta[], ReadonlyMap<string, ProjectMeta>>();
+const workspaceIndexes = new WeakMap<readonly WorkspaceMeta[], WorkspaceIndex>();
+
+export function projectIndex(projects: readonly ProjectMeta[]): ReadonlyMap<string, ProjectMeta> {
+  let index = projectIndexes.get(projects);
+  if (!index) {
+    index = new Map(projects.map((p) => [p.id, p]));
+    projectIndexes.set(projects, index);
+  }
+  return index;
+}
+
+export function workspaceIndex(workspaces: readonly WorkspaceMeta[]): WorkspaceIndex {
+  let index = workspaceIndexes.get(workspaces);
+  if (!index) {
+    const byId = new Map<string, WorkspaceMeta>();
+    const byKey = new Map<string, WorkspaceMeta>();
+    for (const w of workspaces) {
+      byId.set(w.id, w);
+      const key = normalizeProjectPath(w.path);
+      if (!byKey.has(key)) byKey.set(key, w);
+    }
+    index = { byId, byKey };
+    workspaceIndexes.set(workspaces, index);
+  }
+  return index;
+}
+
 export function workspaceByPath(
   workspaces: readonly WorkspaceMeta[],
   path: string | null | undefined,
 ): WorkspaceMeta | undefined {
   if (!path || path === "~") return undefined;
-  const key = normalizeProjectPath(path);
-  return workspaces.find((w) => normalizeProjectPath(w.path) === key);
+  return workspaceIndex(workspaces).byKey.get(normalizeProjectPath(path));
 }
 
 /**
@@ -67,7 +105,7 @@ export function projectOf(
   projects: readonly ProjectMeta[],
   session: Pick<SessionLike, "projectId">,
 ): ProjectMeta | undefined {
-  return session.projectId ? projects.find((p) => p.id === session.projectId) : undefined;
+  return session.projectId ? projectIndex(projects).get(session.projectId) : undefined;
 }
 
 /** Where a session belongs: through its project, else its own workspace,

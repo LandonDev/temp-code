@@ -94,6 +94,26 @@ export function markSessionSeen(id: string, at = Date.now()): void {
   for (const listener of listeners) listener();
 }
 
+/** Drops ids the server no longer knows. Once at boot, so the map stops
+ *  growing with every deleted thread and each later write stays small. */
+export function pruneLastSeen(known: ReadonlySet<string>): void {
+  const prev = loadLastSeen();
+  const next: SeenMap = {};
+  let dropped = 0;
+  for (const [id, at] of Object.entries(prev)) {
+    if (known.has(id)) next[id] = at;
+    else dropped += 1;
+  }
+  if (dropped === 0) return;
+  cache = next;
+  try {
+    localStorage.setItem(KEY, JSON.stringify(next));
+  } catch {
+    // private mode / quota
+  }
+  for (const listener of listeners) listener();
+}
+
 /** Fires on writes from this window and, through the storage event, others. */
 export function subscribeLastSeen(listener: () => void): () => void {
   listeners.add(listener);

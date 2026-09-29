@@ -36,10 +36,10 @@ import {
 import { useLastSeen, useSeenFloor } from "../lib/sessionSeen";
 import {
   sessionStore,
-  useServerSessions,
   useSessionMetas,
   useSessionShells,
 } from "../lib/tcserver/store";
+import type { SessionMeta } from "../lib/tcserver/types";
 import { terminalTabLabel } from "../lib/terminalTab";
 import {
   buildHeaderModel,
@@ -137,8 +137,8 @@ function ShellTitleBarComponent({ headerEvents, ...titleBar }: Props) {
       ? open
       : filterTabsForWorkspace(open, shells, catalog, headerWorkspaceId);
   }, [catalog, deckLayout, headerWorkspaceId, tabs, shells, selectedProjectId]);
-  const sessions = useServerSessions();
   const sessionMetas = useSessionMetas();
+  const sessions = useTitleSessions(sessionMetas);
   const planReady = usePlanReady(sessions);
   const lastSeen = useLastSeen();
   const seenFloor = useSeenFloor();
@@ -301,6 +301,19 @@ function titleTabsEqual(a: TitleTab[], b: TitleTab[]): boolean {
       sameTabThread(tab.thread, other.thread)
     );
   });
+}
+
+/**
+ * The open sessions, re-read only when a shell or a meta changes. Every
+ * field the title bar shows (busy, status, activity, tasks, title, cost)
+ * moves with a meta push; the snapshot itself is a new array on every
+ * streamed event, and reading it as state re-ran every derivation here
+ * once per frame while any thread streamed.
+ */
+function useTitleSessions(metas: readonly SessionMeta[]): Session[] {
+  const shells = useSessionShells();
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- shells and metas are the change signal
+  return useMemo(() => sessionStore.getSnapshot(), [shells, metas]);
 }
 
 function conversationTitle(session: Session): string {

@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { Link } from "./store";
 import type { ProjectMeta, ServerPush, ThreadDefaults, WorkspaceMeta } from "./types";
-import { projectOf, workspaceByPath, workspaceIdOf, workspaceStore } from "./workspaces";
+import { projectIndex, projectOf, workspaceByPath, workspaceIdOf, workspaceIndex, workspaceStore } from "./workspaces";
 import { createProject, createWorkspace } from "./projects";
 
 const ws = (over: Partial<WorkspaceMeta> = {}): WorkspaceMeta => ({
@@ -48,6 +48,19 @@ describe("pure helpers", () => {
     const legacy = { cwd: "/home/me/repo" };
     expect(workspaceIdOf(legacy, projects, workspaces)).toBe("w1");
     expect(workspaceIdOf({ cwd: "/nowhere" }, projects, workspaces)).toBeNull();
+  });
+
+  it("indexes a catalog array once and again only for a new array", () => {
+    expect(projectIndex(projects)).toBe(projectIndex(projects));
+    expect(projectIndex([...projects])).not.toBe(projectIndex(projects));
+    expect(projectIndex(projects).get("p1")?.name).toBe("Auth rewrite");
+    const index = workspaceIndex(workspaces);
+    expect(workspaceIndex(workspaces)).toBe(index);
+    expect(index.byId.get("w2")?.path).toBe("/home/me/other/");
+    expect(index.byKey.get("/home/me/repo")?.id).toBe("w1");
+    // Two workspaces at one path: the first listed wins, as find() did.
+    const twice = [...workspaces, { ...workspaces[0], id: "w1-dup" }];
+    expect(workspaceByPath(twice, "/home/me/repo")?.id).toBe("w1");
   });
 });
 

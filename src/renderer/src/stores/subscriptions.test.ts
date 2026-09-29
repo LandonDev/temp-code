@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { leaf, newFileTab, newTab, newTerminalFile, type WorkspaceTab } from "../lib/layout";
 import { saveLastSession } from "../lib/projectContext";
 import { newSession, type Session } from "../lib/session";
-import { markSessionSeen } from "../lib/sessionSeen";
+import { markSessionSeen, pruneLastSeen } from "../lib/sessionSeen";
 import { listSessionsByProject, saveWorkspaceSnapshot } from "../lib/sessionStore";
 import { loadSidebarLayout } from "../lib/appearance";
 import { loadNotesEnabled } from "../lib/settings";
@@ -84,7 +84,7 @@ vi.mock("../lib/settings", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../lib/settings")>()),
   loadNotesEnabled: vi.fn(() => true),
 }));
-vi.mock("../lib/sessionSeen", () => ({ markSessionSeen: vi.fn() }));
+vi.mock("../lib/sessionSeen", () => ({ markSessionSeen: vi.fn(), pruneLastSeen: vi.fn() }));
 vi.mock("../lib/workspaceMigration", () => ({ migrateWorkspaces: vi.fn(() => Promise.resolve()) }));
 vi.mock("../lib/tcserver/projects", () => ({
   createWorkspace: vi.fn(() => Promise.resolve({})),
@@ -347,6 +347,25 @@ describe("installActiveSessionSync", () => {
     expect(createWorkspace).toHaveBeenCalledWith("/repo");
   });
 
+  it("re-marks the streaming active thread at most once a second, and only when it moved", () => {
+    vi.useFakeTimers();
+    setTabs([tab("a")]);
+    sessionStore.mutate([session("s-a")]);
+    sessionStore.adopt(meta({ id: "s-a", updatedAt: 7 }));
+    teardown = installActiveSessionSync();
+    expect(markSessionSeen).toHaveBeenCalledTimes(1);
+    sessionStore.adopt(meta({ id: "s-a", updatedAt: 8 }));
+    sessionStore.adopt(meta({ id: "s-a", updatedAt: 9 }));
+    expect(markSessionSeen).toHaveBeenCalledTimes(1);
+    vi.advanceTimersByTime(1000);
+    expect(markSessionSeen).toHaveBeenCalledTimes(2);
+    expect(markSessionSeen).toHaveBeenLastCalledWith("s-a", 9);
+    sessionStore.adopt(meta({ id: "s-a", updatedAt: 9, title: "renamed" }));
+    vi.advanceTimersByTime(1000);
+    expect(markSessionSeen).toHaveBeenCalledTimes(2);
+    vi.useRealTimers();
+  });
+
   it("leaves a fresh loose draft's selection alone", () => {
     setTabs([tab("a")]);
     sessionStore.mutate([session("s-a")]);
@@ -409,6 +428,16 @@ describe("installActiveSessionSync", () => {
 });
 
 describe("installBootTasks", () => {
+  it("prunes the seen map to the threads the server lists, and not when the list is empty", () => {
+    teardown = installBootTasks();
+    expect(pruneLastSeen).not.toHaveBeenCalled();
+    teardown();
+    sessionStore.adopt(meta({ id: "s-a" }));
+    sessionStore.adopt(meta({ id: "s-b" }));
+    teardown = installBootTasks();
+    expect(pruneLastSeen).toHaveBeenCalledWith(new Set(["s-a", "s-b"]));
+  });
+
   it("adopts the default folder on a first launch and re-resolves live models", async () => {
     vi.mocked(lastProjectPath).mockReturnValue(null);
     vi.mocked(invoke).mockResolvedValue("/home/me/code");

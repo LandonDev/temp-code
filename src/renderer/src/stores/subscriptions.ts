@@ -16,7 +16,7 @@ import { invoke } from "../lib/native";
 import { saveLastSession, workspacePathOfSession } from "../lib/projectContext";
 import { lastProjectPath, looksLikeProject } from "../lib/recents";
 import { replaceProjectHistory } from "../lib/sessionHistory";
-import { markSessionSeen } from "../lib/sessionSeen";
+import { markSessionSeen, pruneLastSeen } from "../lib/sessionSeen";
 import {
   listSessionsByProject,
   saveWorkspaceSnapshot,
@@ -42,6 +42,9 @@ import { shell, shellStore } from "./shell";
 import { currentDock, terminalsStore } from "./terminals";
 import { activeSessionOf, workspace, workspaceTabsStore } from "./workspace";
 import { openSessionIds, workspaceActions } from "./workspaceActions";
+
+/** How often the active thread's streaming updates re-mark it seen. */
+const MARK_SEEN_MS = 1000;
 
 /**
  * The effects App used to run off its renders, wired to the stores instead.
@@ -258,11 +261,26 @@ export function installActiveSessionSync(): Teardown {
   };
 
   // What is on screen counts as read, and the rail knows what is on screen.
+  // A focus change marks at once. The active thread's own meta pushes (many
+  // a second while it streams) mark at most once a second, and only once
+  // its updatedAt moved, so the seen map is not re-serialized per push.
   let focusedId: string | undefined;
+  let marked: { id: string; updatedAt: number } | null = null;
+  let markTimer: ReturnType<typeof setTimeout> | null = null;
   const mark = () => {
     const id = currentActiveSession()?.id;
     const meta = id ? sessionStore.metaOf(id) : null;
-    if (id && meta) markSessionSeen(id, meta.updatedAt);
+    if (!id || !meta) return;
+    if (marked?.id === id && marked.updatedAt === meta.updatedAt) return;
+    marked = { id, updatedAt: meta.updatedAt };
+    markSessionSeen(id, meta.updatedAt);
+  };
+  const markSoon = () => {
+    if (markTimer != null) return;
+    markTimer = setTimeout(() => {
+      markTimer = null;
+      mark();
+    }, MARK_SEEN_MS);
   };
   const syncFocus = () => {
     const id = currentActiveSession()?.id;
@@ -285,9 +303,12 @@ export function installActiveSessionSync(): Teardown {
     workspaceTabsStore.subscribe(scheduled),
     sessionStore.subscribe(scheduled),
     sessionStore.onMetaChange(scheduled),
-    sessionStore.onMetaChange(mark),
+    sessionStore.onMetaChange(markSoon),
     projectStore.subscribe(scheduled),
     workspaceStore.subscribe(scheduled),
+    () => {
+      if (markTimer != null) clearTimeout(markTimer);
+    },
   ]);
 }
 
@@ -434,8 +455,13 @@ export function installLayoutSync(): Teardown {
 export function installBootTasks(): Teardown {
   let live = true;
   syncDockBadge();
+  // The seen map only ever grew: ids of deleted threads stayed in every
+  // write. The server's list is the known set; an empty list (sidecar
+  // down) prunes nothing.
+  const known = sessionStore.metas();
+  if (known.length > 0) pruneLastSeen(new Set(known.map((meta) => meta.id)));
   const offs = [
-    sessionStore.subscribe(syncDockBadge),
+    // The badge counts waiting metas: a meta change is the only thing that moves it.
     sessionStore.onMetaChange(syncDockBadge),
     installCheckpointBridge(),
     installStallRecorder(),
