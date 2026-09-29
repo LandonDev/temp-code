@@ -69,6 +69,24 @@ describe("sessionSeen", () => {
     expect(listener).toHaveBeenCalledTimes(1);
   });
 
+  it("prunes ids the server no longer knows, once, and notifies", async () => {
+    const data = mockLocalStorage({ [KEY]: JSON.stringify({ keep: 5, gone: 6 }) });
+    const mod = await load();
+    const listener = vi.fn();
+    mod.subscribeLastSeen(listener);
+    const before = mod.loadLastSeen();
+    mod.pruneLastSeen(new Set(["keep", "other"]));
+    expect(mod.loadLastSeen()).toEqual({ keep: 5 });
+    expect(mod.loadLastSeen()).not.toBe(before);
+    expect(JSON.parse(data.get(KEY) ?? "{}")).toEqual({ keep: 5 });
+    expect(listener).toHaveBeenCalledTimes(1);
+    // Nothing to drop: no write, no notification.
+    const stable = mod.loadLastSeen();
+    mod.pruneLastSeen(new Set(["keep"]));
+    expect(mod.loadLastSeen()).toBe(stable);
+    expect(listener).toHaveBeenCalledTimes(1);
+  });
+
   it("adopts the old renderer's map when the new key is empty", async () => {
     const data = mockLocalStorage({ [OLD_KEY]: JSON.stringify({ a: 5, b: "x" }) });
     const mod = await load();

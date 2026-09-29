@@ -1,7 +1,7 @@
 import { looksLikeProject, normalizeProjectPath } from "./recents";
 import type { Session } from "./session";
 import type { ProjectMeta, SessionMeta, WorkspaceMeta } from "./tcserver/types";
-import { workspaceByPath } from "./tcserver/workspaces";
+import { projectOf, workspaceByPath, workspaceIndex } from "./tcserver/workspaces";
 
 /**
  * Where a new session runs and which server ids it carries. Every
@@ -86,12 +86,10 @@ export function workspacePathOfSession(
   session: Pick<Session, "cwd" | "projectId" | "workspaceId">,
   catalog: Catalog,
 ): string {
-  const project = session.projectId
-    ? catalog.projects.find((p) => p.id === session.projectId)
-    : undefined;
+  const project = projectOf(catalog.projects, session);
   const workspaceId = project?.workspaceId ?? session.workspaceId;
   const workspace = workspaceId
-    ? catalog.workspaces.find((w) => w.id === workspaceId)
+    ? workspaceIndex(catalog.workspaces).byId.get(workspaceId)
     : undefined;
   return workspace?.path ?? session.cwd;
 }

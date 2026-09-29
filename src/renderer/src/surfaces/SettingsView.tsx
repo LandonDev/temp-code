@@ -1327,6 +1327,9 @@ function useArchivedProjectLabel(): (path: string) => string {
     );
 }
 
+/** Archived threads render a page at a time: thousands of rows in one mount stalled the page switch. */
+const ARCHIVE_PAGE = 100;
+
 function ArchivePage({
   onOpenSession,
   onArchiveSession,
@@ -1350,6 +1353,7 @@ function ArchivePage({
     null,
   );
   const [query, setQuery] = useState("");
+  const [limit, setLimit] = useState(ARCHIVE_PAGE);
   const archivedProjects = useArchivedProjects();
   const metas = useSessionMetas();
   const projects = useProjects();
@@ -1453,7 +1457,10 @@ function ArchivePage({
             <input
               type="search"
               value={query}
-              onChange={(event) => setQuery(event.target.value)}
+              onChange={(event) => {
+                setQuery(event.target.value);
+                setLimit(ARCHIVE_PAGE);
+              }}
               placeholder="Search…"
               aria-label="Search archived threads"
               className="min-w-0 flex-1 bg-transparent text-content outline-none placeholder:text-content/40"
@@ -1465,7 +1472,7 @@ function ArchivePage({
             </p>
           ) : (
             <div className="overflow-hidden rounded-lg border border-content/10">
-              {shown.map((meta) => (
+              {shown.slice(0, limit).map((meta) => (
                 <div
                   key={meta.id}
                   className="flex items-center gap-3 border-b border-content/5 px-3 py-2 last:border-b-0"
@@ -1497,6 +1504,13 @@ function ArchivePage({
               ))}
             </div>
           )}
+          {shown.length > limit ? (
+            <div className="mt-3">
+              <SecondaryButton onClick={() => setLimit((n) => n + ARCHIVE_PAGE)}>
+                Show more
+              </SecondaryButton>
+            </div>
+          ) : null}
         </>
       )}
 
