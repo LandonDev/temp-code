@@ -1,5 +1,5 @@
 {
-  "n": 191,
-  "notes": "Zen transcripts read like the Claude app: the model's prose never folds. Every paragraph renders full size where it streamed, and each run of tool calls between paragraphs folds into one row titled by the calls (\"Read 3 files · Searched for tokens\", \"Ran the tests (1 failed)\"); expanding it lists each call as a step, thinking stays a step, a thinking-only group reads Thought. groupTurnItems keeps prose out of every group, buildActivityPhases drops the prose headline, TurnView folds a group once the turn moves past it. Non-zen unchanged.",
-  "ts": 1790714658697
+  "n": 192,
+  "notes": "A zen turn no longer shows the same line twice, once dimmed as a thought and once in white as the paragraph. Some harnesses mirror a reasoning summary as the very next assistant message word for word; groupTurnItems (transcriptActivity.ts, repeatsNextProse) now drops a reasoning block whose whitespace-normalised text equals the next non-empty assistant block, so only the white paragraph renders. A thought the agent did not repeat still sits as a step in its group. Test: transcriptActivity.test.ts (a repeated thought drops, an unrepeated one stays).",
+  "ts": 1790718111351
 }
