@@ -16,7 +16,7 @@ import {
   type ParentIndex
 } from '@shared/session-lifecycle'
 import { isRoutedProvider, type AccountPins, type AccountProvider, type AccountRoute } from '@shared/accounts'
-import { resolvePin, type ResolvedPin } from './accountRouting'
+import { resolvePin, type ResolvedPin, type RouteOptions } from './accountRouting'
 import type { LimitWindow } from '@shared/events'
 import { foldEvent, newFoldState, toFoldRow } from './folds'
 import { FOLD_VERSION, type FoldRow } from './db'
@@ -248,8 +248,9 @@ export interface Switched {
 /** Where a thread's account comes from: the accounts service, set by the server. */
 export interface AccountRouter {
   /** The account a thread's child should spend from at spawn, and the account its row should show.
-   *  `fresh` ignores the thread's sticky account: the best pick for its model, as after a model change. */
-  routeFor(meta: SessionMeta, pin: ResolvedPin | null, opts?: { fresh?: boolean }): { route: AccountRoute | null; current: string | null }
+   *  `fresh` ignores the thread's sticky account: the best pick for its model, as after a model change.
+   *  `load` is the live load when the caller already has it (a whole-list refresh reads it once). */
+  routeFor(meta: SessionMeta, pin: ResolvedPin | null, opts?: RouteOptions): { route: AccountRoute | null; current: string | null }
   /** A thread's error named a usage limit: move that thread to another account with room, or null. */
   failover(
     sessionId: string,
@@ -602,7 +603,7 @@ export class SessionRegistry {
    *  prompt cache is per model, so nothing is kept by staying) and takes
    *  the best pick for the model. An empty snapshot (no accounts known
    *  yet) changes nothing. */
-  expectAccount(sessionId: string, opts?: { fresh?: boolean }): void {
+  expectAccount(sessionId: string, opts?: RouteOptions): void {
     const meta = this.store.getSession(sessionId)
     if (!meta || !this.limits || !isRoutedProvider(meta.provider)) return
     const { current } = this.limits.routeFor(meta, this.pinOf(meta), opts)
@@ -617,11 +618,15 @@ export class SessionRegistry {
   }
 
   /** Live threads per account for a provider: running, watching, or still
-   *  starting. What the account picker spreads new threads by. */
+   *  starting. What the account picker spreads new threads by. Walks only
+   *  the threads holding a process: a live status never outlives its
+   *  handle, and refreshAccounts asks this once per open thread, so a
+   *  whole-table read here re-read 3k rows 1.8k times per snapshot. */
   liveLoad(provider: SessionMeta['provider']): Record<string, number> {
     const load: Record<string, number> = {}
-    for (const s of this.store.listSessions()) {
-      if (s.archived || s.provider !== provider || !s.account) continue
+    for (const id of new Set([...this.handles.keys(), ...this.starting.keys()])) {
+      const s = this.store.getSession(id)
+      if (!s || s.archived || s.provider !== provider || !s.account) continue
       if (!LIVE_STATUSES.has(s.status) && !this.starting.has(s.id)) continue
       load[s.account] = (load[s.account] ?? 0) + 1
     }
@@ -637,12 +642,12 @@ export class SessionRegistry {
    *  dropped so the next send respawns under the new account (resume keeps
    *  the conversation; the prompt cache is lost). A thread mid-turn is
    *  left alone: the gateway moves that one itself. */
-  refreshAccount(sessionId: string): void {
+  refreshAccount(sessionId: string, load?: (provider: SessionMeta['provider']) => Record<string, number>): void {
     const meta = this.store.getSession(sessionId)
     if (!meta || meta.archived || !isRoutedProvider(meta.provider)) return
     if (LIVE_STATUSES.has(meta.status) || this.starting.has(sessionId)) return
     const live = this.handles.has(sessionId)
-    this.expectAccount(sessionId, { fresh: !live })
+    this.expectAccount(sessionId, { fresh: !live, load: load?.(meta.provider) })
     if (live && (this.store.getSession(sessionId)?.account ?? null) !== (meta.account ?? null)) {
       void this.dropHandle(sessionId)
     }
@@ -652,12 +657,21 @@ export class SessionRegistry {
    *  account) and whenever the snapshot changes, so coming back to a
    *  thread never shows a stale pick. */
   refreshAccounts(): void {
-    for (const s of this.store.listSessions()) if (!s.archived) this.refreshAccount(s.id)
+    this.expectAccountsUnder(() => true)
   }
 
-  /** A scope pin changed: threads under it show their new pick now. */
+  /** A scope pin changed: threads under it show their new pick now. The
+   *  live load is read once per provider for the whole pass: refreshing a
+   *  thread never changes it (live threads are skipped), and reading it per
+   *  thread made a pass cost threads × live threads. */
   private expectAccountsUnder(match: (meta: SessionMeta) => boolean): void {
-    for (const s of this.store.listSessions()) if (!s.archived && match(s)) this.refreshAccount(s.id)
+    const loads = new Map<SessionMeta['provider'], Record<string, number>>()
+    const load = (provider: SessionMeta['provider']): Record<string, number> => {
+      let l = loads.get(provider)
+      if (!l) loads.set(provider, (l = this.liveLoad(provider)))
+      return l
+    }
+    for (const s of this.store.listSessions()) if (!s.archived && match(s)) this.refreshAccount(s.id, load)
   }
 
   /** A thread's error named a usage limit: ask for the next account now
