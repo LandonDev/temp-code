@@ -237,31 +237,37 @@ describe("zen mode grouping", () => {
     expect(items.map((item) => item.type)).toEqual(["activity", "block"]);
   });
 
-  it("folds prose between tool calls in and leaves the final answer out", () => {
+  it("keeps every paragraph full size and folds each run of calls between them", () => {
     const items = groupTurnItems(
       [
         { id: "u", role: "user", text: "cut the release" },
         { id: "a1", role: "assistant", text: "Running the checks first." },
         shell("a"),
-        { id: "a2", role: "assistant", text: "Checks pass. Bumping:" },
+        read("a2"),
+        { id: "a3", role: "assistant", text: "Checks pass. Bumping:" },
         edit("b"),
-        { id: "a3", role: "assistant", text: "Released." },
+        { id: "a4", role: "assistant", text: "Released." },
       ],
       true,
     );
     expect(items.map((item) => item.type)).toEqual([
       "block",
+      "block",
+      "activity",
+      "block",
       "activity",
       "block",
     ]);
-    if (items[1]?.type !== "activity") return;
-    expect(items[1].blocks.map((block) => block.id)).toEqual([
-      "a1",
-      "a",
-      "a2",
-      "b",
-    ]);
-    expect(items[2]).toMatchObject({ type: "block", block: { id: "a3" } });
+    if (items[2]?.type !== "activity" || items[4]?.type !== "activity") return;
+    expect(items[2].blocks.map((block) => block.id)).toEqual(["a", "a2"]);
+    expect(items[4].blocks.map((block) => block.id)).toEqual(["b"]);
+    expect(items[5]).toMatchObject({ type: "block", block: { id: "a4" } });
+  });
+
+  it("folds a turn of nothing but calls into one group", () => {
+    const items = groupTurnItems([shell("a"), read("b"), edit("c")], true);
+    expect(items).toHaveLength(1);
+    expect(items[0]).toMatchObject({ type: "activity" });
   });
 
   it("keeps the trailing run of prose blocks out of the stack", () => {
@@ -280,13 +286,12 @@ describe("zen mode grouping", () => {
     ]);
   });
 
-  it("folds every paragraph when the turn ends on a tool call", () => {
+  it("leaves a paragraph full size when the turn ends on a tool call", () => {
     const items = groupTurnItems(
       [{ id: "a1", role: "assistant", text: "Looking now." }, shell("a")],
       true,
     );
-    expect(items).toHaveLength(1);
-    expect(items[0]).toMatchObject({ type: "activity" });
+    expect(items.map((item) => item.type)).toEqual(["block", "activity"]);
   });
 
   it("leaves prose alone when zen is off", () => {
@@ -369,7 +374,7 @@ describe("zen mode around a question", () => {
     expect(lastActivityIndex(items)).toBe(3);
   });
 
-  it("still folds prose between the question and the trailing answer", () => {
+  it("keeps the prose after the question full size too", () => {
     const items = groupTurnItems(
       [
         note("c", wall),
@@ -380,7 +385,13 @@ describe("zen mode around a question", () => {
       ],
       true,
     );
-    expect(shape(items)).toEqual(["block(c)", "block(q)", "activity(d,e)", "block(f)"]);
+    expect(shape(items)).toEqual([
+      "block(c)",
+      "block(q)",
+      "block(d)",
+      "activity(e)",
+      "block(f)",
+    ]);
   });
 
   it("changes nothing for a turn without a question", () => {
@@ -405,27 +416,22 @@ describe("activityPreviousLabel", () => {
 });
 
 describe("buildActivityPhases", () => {
-  it("groups a run of calls under the line that introduced it", () => {
+  it("groups a run of calls by the kind of work, keyed on its first step", () => {
     const phases = buildActivityPhases([
-      note("n1", "Now I need to find the theme provider."),
       search("s1"),
       read("r1", "src/globals.css"),
       read("r2", "src/layout.tsx"),
-      note("n2", "Updating the dark mode tokens."),
       edit("e1", "src/globals.css"),
       edit("e2", "src/theme.ts"),
     ]);
     expect(phases).toHaveLength(2);
-    expect(phases[0]).toMatchObject({
-      kind: "research",
-      headline: { id: "n1" },
-    });
+    expect(phases[0]).toMatchObject({ id: "s1", kind: "research" });
     expect(phases[0].steps.map((block) => block.id)).toEqual([
       "s1",
       "r1",
       "r2",
     ]);
-    expect(phases[1]).toMatchObject({ kind: "edit", headline: { id: "n2" } });
+    expect(phases[1]).toMatchObject({ id: "e1", kind: "edit" });
     expect(phases[1].steps.map((block) => block.id)).toEqual(["e1", "e2"]);
   });
 
@@ -454,34 +460,10 @@ describe("buildActivityPhases", () => {
     ]);
   });
 
-  it("keeps a group the agent announced out of that fold", () => {
-    const phases = buildActivityPhases([
-      read("r1"),
-      note("n1", "Now the edit."),
-      edit("e1"),
-    ]);
-    expect(phases).toHaveLength(2);
-    expect(phases[1]).toMatchObject({ kind: "edit", headline: { id: "n1" } });
-  });
-
-  it("keeps a second paragraph as a step rather than a group of its own", () => {
-    const phases = buildActivityPhases([
-      note("n1", "First."),
-      note("n2", "Second."),
-      read("r1"),
-    ]);
-    expect(phases).toHaveLength(1);
-    expect(phases[0]).toMatchObject({
-      kind: "research",
-      headline: { id: "n1" },
-    });
-    expect(phases[0].steps.map((block) => block.id)).toEqual(["n2", "r1"]);
-  });
-
   it("gives a turn that only thought a group to sit in", () => {
     const phases = buildActivityPhases([thought("r")]);
     expect(phases).toHaveLength(1);
-    expect(phases[0]).toMatchObject({ kind: "think", headline: undefined });
+    expect(phases[0]).toMatchObject({ id: "r", kind: "think" });
     expect(phases[0].steps.map((block) => block.id)).toEqual(["r"]);
   });
 
@@ -493,7 +475,7 @@ describe("buildActivityPhases", () => {
       search("s2"),
     ]);
     expect(phases).toHaveLength(1);
-    expect(phases[0]).toMatchObject({ kind: "research", headline: undefined });
+    expect(phases[0]).toMatchObject({ id: "t1", kind: "research" });
     expect(phases[0].steps.map((block) => block.id)).toEqual([
       "t1",
       "s1",
@@ -519,19 +501,10 @@ describe("buildActivityPhases", () => {
     ]);
   });
 
-  it("lets the agent's own words title a group that opened on a thought", () => {
-    const phases = buildActivityPhases([
-      thought("t1"),
-      note("n1", "Looking for the theme provider."),
-      search("s1"),
-    ]);
+  it("never carries a headline: prose stands outside every group", () => {
+    const phases = buildActivityPhases([thought("t1"), search("s1")]);
     expect(phases).toHaveLength(1);
-    expect(phases[0]).toMatchObject({
-      kind: "research",
-      headline: { id: "n1" },
-      id: "t1",
-    });
-    expect(phases[0].steps.map((block) => block.id)).toEqual(["t1", "s1"]);
+    expect(phases[0]).not.toHaveProperty("headline");
   });
 });
 
@@ -539,13 +512,15 @@ describe("activityPhaseTitle", () => {
   const title = (blocks: Block[], live = false) =>
     activityPhaseTitle(buildActivityPhases(blocks)[0], live);
 
-  it("uses the agent's own line when it wrote one", () => {
-    expect(
-      title([
-        note("n1", "**Found it** — the tokens live in `globals.css`."),
-        read("r1"),
-      ]),
-    ).toBe("Found it — the tokens live in globals.css.");
+  it("says Thinking or Thought for a group that only reasoned", () => {
+    expect(title([thought("t1"), thought("t2")], true)).toBe("Thinking");
+    expect(title([thought("t1"), thought("t2")])).toBe("Thought");
+  });
+
+  it("counts failures in the line", () => {
+    expect(title([shell("a"), shell("b", "failed")])).toBe(
+      "Listed files (1 failed)",
+    );
   });
 
   it("says what the calls add up to, in the tense of the moment", () => {
@@ -569,7 +544,7 @@ describe("activityPhaseTitle", () => {
 });
 
 describe("lastActivityIndex", () => {
-  it("points at the fold that sits under the final answer", () => {
+  it("points at the last group of the turn", () => {
     const items = groupTurnItems(
       [
         { id: "u", role: "user", text: "go" },

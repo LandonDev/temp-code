@@ -147,48 +147,12 @@ export function isProseBlock(block: Block): boolean {
 }
 
 /**
- * Where the turn's final answer starts: the trailing run of assistant prose.
- * Zen folds everything before it, so the last thing the agent says is the only
- * full-size thing left. A block still streaming sits in that run, which is why
- * text renders in full as it arrives and only folds once the next tool starts.
- */
-export function finalResponseStart(blocks: Block[]): number {
-  return proseRunStart(blocks, blocks.length);
-}
-
-/** Start of the run of assistant prose that ends right before `end`. */
-function proseRunStart(blocks: Block[], end: number): number {
-  let index = end;
-  while (index > 0 && isProseBlock(blocks[index - 1])) index -= 1;
-  return index;
-}
-
-/**
- * A block that hands the turn to the user ends the work: a question, answered
- * or not, and an approval still undecided. The prose the agent wrote leading
- * into it is what the user was asked to read, so it is answer, not activity,
- * and it stays that way once the user has replied and the agent moved on.
+ * A block that hands the turn to the user: a question, answered or not, and
+ * an approval still undecided. Zen renders it full size where it sits, never
+ * as a step inside a folded group, so what it asks stays readable.
  */
 export function endsWork(block: Block): boolean {
   return block.question != null || needsApproval(block);
-}
-
-/**
- * Indices of the prose blocks zen renders full size: every trailing run of
- * prose, and the run leading into each block that hands the turn to the user.
- */
-export function answerIndices(blocks: Block[]): Set<number> {
-  const answer = new Set<number>();
-  const mark = (end: number) => {
-    for (let index = proseRunStart(blocks, end); index < end; index += 1) {
-      answer.add(index);
-    }
-  };
-  blocks.forEach((block, index) => {
-    if (endsWork(block)) mark(index);
-  });
-  mark(blocks.length);
-  return answer;
 }
 
 /** First paragraph of a folded prose block, stripped to one plain line. */
@@ -245,8 +209,9 @@ export function groupTurns(blocks: Block[]): Block[][] {
 }
 
 /**
- * Zen folds a turn's whole working process — tool calls and the prose between
- * them — into one activity group, leaving the final answer standing alone.
+ * Zen never folds what the agent said: every paragraph stands full size where
+ * it streamed, and each run of tool calls between two paragraphs folds into
+ * one activity group. Thinking rides inside the group it precedes.
  */
 export function groupTurnItems(blocks: Block[], zen = false): TurnItem[] {
   const visible = blocks.filter(
@@ -254,8 +219,6 @@ export function groupTurnItems(blocks: Block[], zen = false): TurnItem[] {
       !isIgnoredTurnBlock(block, zen) &&
       (isTodoBlock(block) || !isHiddenTool(block)),
   );
-  // Zen off: nothing folds, so every prose block stands on its own.
-  const answer = zen ? answerIndices(visible) : null;
   const items: TurnItem[] = [];
   let activity: Block[] = [];
   const flush = () => {
@@ -264,29 +227,18 @@ export function groupTurnItems(blocks: Block[], zen = false): TurnItem[] {
     }
     activity = [];
   };
-  visible.forEach((block, index) => {
-    if (isTodoBlock(block)) {
-      flush();
-      items.push({ type: "block", block });
-      return;
-    }
-    // A question card renders full size under the prose it followed, even
-    // once answered: a step inside a phase would fold the text away again.
-    if (zen && endsWork(block)) {
-      flush();
-      items.push({ type: "block", block });
-      return;
-    }
-    if (
-      isActivityBlock(block, zen) ||
-      (answer && !answer.has(index) && isProseBlock(block))
-    ) {
+  for (const block of visible) {
+    const folds =
+      !isTodoBlock(block) &&
+      !(zen && endsWork(block)) &&
+      isActivityBlock(block, zen);
+    if (folds) {
       activity.push(block);
-      return;
+      continue;
     }
     flush();
     items.push({ type: "block", block });
-  });
+  }
   flush();
   return items;
 }
@@ -331,10 +283,7 @@ export function splitActivityRows(blocks: Block[]): {
   };
 }
 
-/**
- * The activity group a settled zen turn hangs its "Worked for" line on: the
- * last one, which sits right above the final answer.
- */
+/** The turn's last activity group: the one still live while the turn runs. */
 export function lastActivityIndex(items: TurnItem[]): number {
   for (let index = items.length - 1; index >= 0; index -= 1) {
     if (items[index].type === "activity") return index;
@@ -352,18 +301,17 @@ export function activityPreviousLabel(count: number): string {
  */
 export type ActivityWorkKind = "research" | "edit" | "run" | "other";
 
-/** A work kind, or a group the agent only narrated: a thought, or a note. */
-export type ActivityPhaseKind = ActivityWorkKind | "think" | "note";
+/** A work kind, or a group the agent only thought in. */
+export type ActivityPhaseKind = ActivityWorkKind | "think";
 
 /**
- * One chunk of a turn: the line the agent wrote before it started ("now I need
- * to find the theme provider"), and the calls that line introduced.
+ * One chunk of a turn: a run of calls of one kind, with the thinking that
+ * led into them. The prose around a group never joins it; it stands full
+ * size in the transcript, before and after.
  */
 export type ActivityPhase = {
   id: string;
   kind: ActivityPhaseKind;
-  /** The agent's own words for this run, when it wrote some. */
-  headline?: Block;
   steps: Block[];
 };
 
@@ -387,55 +335,35 @@ export function toolCategory(block: Block): ActivityWorkKind {
 }
 
 /**
- * Splits a turn's activity into labelled groups. Two things start a new one:
- * the agent saying what it is about to do, and it switching from one kind of
- * work to another. Everything else piles into the group already open.
+ * Splits a turn's activity into groups: one per kind of work, so a run of
+ * reads followed by a run of edits reads as two things. Thinking is a step,
+ * never a header, and a thought at the end of a group moves into the group
+ * it introduced.
  */
 export function buildActivityPhases(blocks: Block[]): ActivityPhase[] {
   const phases: ActivityPhase[] = [];
   let current: ActivityPhase | undefined;
 
-  const open = (kind: ActivityPhaseKind, headline?: Block) => {
-    current = { id: headline?.id ?? "", kind, headline, steps: [] };
+  const open = (kind: ActivityPhaseKind) => {
+    current = { id: "", kind, steps: [] };
     phases.push(current);
     return current;
   };
 
   for (const block of blocks) {
-    // Reasoning is a step, never a header. The agent's own words title a
-    // group; the thinking behind them belongs inside it, where it reads as
-    // working out rather than as another thing the agent said.
     if (isThinkingBlock(block)) {
       if (!current) current = open("think");
       current.steps.push(block);
       if (!current.id) current.id = block.id;
       continue;
     }
-    if (isProseBlock(block)) {
-      const narrating = current?.kind === "think" || current?.kind === "note";
-      // A line after work has started is the title of what comes next, not a
-      // footnote to what just happened.
-      if (!current || !narrating) {
-        current = open("note", block);
-      } else if (!current.headline) {
-        // A group that opened on a thought takes the agent's words as its
-        // title, keeping the id it already has so the group is not remounted.
-        current.headline = block;
-        current.kind = "note";
-      } else {
-        current.steps.push(block);
-      }
-      continue;
-    }
     const kind = toolCategory(block);
     if (!current) {
       current = open(kind);
-    } else if (current.kind === "think" || current.kind === "note") {
-      // The group the agent announced takes the shape of the work it announced.
+    } else if (current.kind === "think") {
+      // A group that opened on a thought takes the shape of the work after it.
       current.kind = kind;
     } else if (current.kind !== kind) {
-      // A thought at the end of a group was about what came next: it moves
-      // into the group it introduced.
       const trailing = takeTrailingNarration(current);
       current = open(kind);
       current.steps.push(...trailing);
@@ -456,16 +384,15 @@ function takeTrailingNarration(phase: ActivityPhase): Block[] {
 }
 
 /**
- * A single call the agent never introduced — the read wedged between two edits,
- * the test run after them — folds back into the group before it rather than
- * taking a header of its own.
+ * A single call of another kind — the read wedged between two edits, the test
+ * run after them — folds back into the group before it rather than taking a
+ * header of its own.
  */
 function absorbStrayPhases(phases: ActivityPhase[]): ActivityPhase[] {
   const kept: ActivityPhase[] = [];
   for (const phase of phases) {
     const previous = kept[kept.length - 1];
-    const stray =
-      !phase.headline && phase.steps.filter(isToolBlock).length === 1;
+    const stray = phase.steps.filter(isToolBlock).length === 1;
     if (previous && stray && previous.steps.length > 0) {
       previous.steps.push(...phase.steps);
       previous.kind = dominantWorkKind(previous.steps) ?? previous.kind;
@@ -492,20 +419,15 @@ function dominantWorkKind(steps: Block[]): ActivityWorkKind | undefined {
 }
 
 /**
- * The group's header. The agent's own line if it wrote one, otherwise what the
- * calls add up to in plain words — "Read 3 files in src/lib · Searched for
- * tokens" — in the present tense while the group is still running.
+ * The group's header: what the calls add up to in plain words — "Read 3 files
+ * in src/lib · Searched for tokens" — in the present tense while the group is
+ * still running. A group that only thought says so.
  */
 export function activityPhaseTitle(
   phase: ActivityPhase,
   live = false,
   cwd?: string,
 ): string {
-  if (phase.headline) {
-    const summary = proseSummary(phase.headline.text);
-    if (summary) return summary;
-    return phase.headline.role === "reasoning" ? "Thinking" : "Working";
-  }
   if (phase.kind === "think") return live ? "Thinking" : "Thought";
   return groupPhrase(phase.steps, cwd, live) || (live ? "Working" : "Worked");
 }

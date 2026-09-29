@@ -960,20 +960,11 @@ const TurnView = memo(function TurnView({
       ? Math.max(0, userBlock.doneTs - userBlock.startedAt)
       : undefined);
   const items = useMemo(() => groupTurnItems(turn, zen), [turn, zen]);
-  // Where the work ends and the answer begins, in zen: the last group
-  // of activity in the turn.
-  const foldedAt = zen ? lastActivityIndex(items) : -1;
   const startedAt = userBlock?.startedAt;
-  // The agent starting its answer is the end of the work: fold the
-  // groups then, not when the turn finally settles, so the collapse
-  // never lands under the text you have already started reading. A
-  // question splits a turn into several groups; every group but the last
-  // ended when the agent wrote the text that led into its question.
-  const answering =
-    foldedAt >= 0 &&
-    items
-      .slice(foldedAt + 1)
-      .some((item) => item.type === "block" && isProseBlock(item.block));
+  // Zen interleaves the agent's paragraphs with its work. A group is done
+  // the moment the turn moves past it, the next paragraph or question, so
+  // the fold never lands under text you have already started reading; only
+  // a group at the end of the turn is still live.
   const lastGroup = lastActivityIndex(items);
   return (
     <div
@@ -989,7 +980,7 @@ const TurnView = memo(function TurnView({
               key={item.blocks[0].id}
               blocks={item.blocks}
               cwd={cwd}
-              done={settled || answering || itemIndex < foldedAt}
+              done={settled || itemIndex < items.length - 1}
               onApproval={onApproval}
               onOpenFile={onOpenFile}
               onOpenDiff={onOpenDiff}
@@ -1025,8 +1016,8 @@ const TurnView = memo(function TurnView({
             layout={layout}
             stickyIndex={stickyIndex}
             compactTop={
-              foldedAt >= 0 &&
-              itemIndex === foldedAt + 1 &&
+              zen &&
+              items[itemIndex - 1]?.type === "activity" &&
               isProseBlock(item.block)
             }
             onApproval={onApproval}
@@ -1824,23 +1815,15 @@ function ActivityPhaseGroup({
   const [liveScroller, setLiveScroller] = useState<HTMLDivElement | null>(null);
   useLivePhaseScroll(liveScroller, active && open, phase.steps);
   const title = activityPhaseTitle(phase, active, cwd);
-  // Opening a group on purpose is also how you read the line that titled it,
-  // whole. The auto-open while it runs is a live view, not a reading one, and
-  // a one-line note the header already shows in full has nothing to add.
-  const headline =
-    override === true && phase.headline && headlineHasMore(phase.headline)
-      ? phase.headline
-      : undefined;
-  const inert = phase.steps.length === 0 && !headlineHasMore(phase.headline);
   // Edits outlive the fold: a closed group still shows what it changed, with
   // the counts, while the reads and searches around them stay tucked away.
   const edits = phase.steps.filter(
     (block) => isEditBlock(block) && !needsApproval(block) && !block.question,
   );
 
-  // A lone call the agent never introduced is not a group: a header repeating
-  // the single row under it says nothing twice.
-  if (!phase.headline && phase.steps.length === 1) {
+  // A lone call is not a group: a header repeating the single row under it
+  // says nothing twice.
+  if (phase.steps.length === 1) {
     return (
       <div className="flex min-w-0 items-start gap-1.5">
         <ActivityPhaseIcon kind={phase.kind} className="mt-[7px]" />
@@ -1872,16 +1855,6 @@ function ActivityPhaseGroup({
       {title}
     </span>
   );
-
-  // A line the agent wrote with nothing under it is just that line.
-  if (inert) {
-    return (
-      <div className="flex min-w-0 items-center gap-1.5 py-1">
-        <ActivityPhaseIcon kind={phase.kind} />
-        {label}
-      </div>
-    );
-  }
 
   const reauth = open ? undefined : reauthOf(phase.steps);
   return (
@@ -1922,20 +1895,6 @@ function ActivityPhaseGroup({
           className={active || !open ? "zen-phase-live" : undefined}
         >
           <div className="flex min-w-0 flex-col">
-            {headline ? (
-              <div className="zen-phase-step py-1">
-                <AgentMarkdown
-                  className={
-                    headline.role === "reasoning"
-                      ? "agent-reasoning"
-                      : undefined
-                  }
-                  text={headline.text}
-                  cwd={cwd}
-                  onOpenFile={onOpenFile}
-                />
-              </div>
-            ) : null}
             {phase.steps.map((block) => (
               <div
                 key={block.id}
@@ -1969,12 +1928,6 @@ function ActivityPhaseGroup({
       ) : null}
     </div>
   );
-}
-
-/** Whether the line that titled a group has more in it than the header shows. */
-function headlineHasMore(block?: Block): boolean {
-  if (!block) return false;
-  return block.role === "reasoning" || /\n\s*\n/.test(block.text.trim());
 }
 
 /** What the group was for, at a glance: look, change, run, think. */

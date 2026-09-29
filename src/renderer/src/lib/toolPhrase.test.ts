@@ -220,7 +220,7 @@ describe("groupPhrase", () => {
     );
     expect(
       groupPhrase([call("Bash", { command: "npm test" }, { status: "failed" })], CWD),
-    ).toBe("Ran the tests · 1 failed");
+    ).toBe("Ran the tests (1 failed)");
   });
 
   it("speaks in the present while any call is still running", () => {
