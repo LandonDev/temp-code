@@ -40,8 +40,17 @@ const result = (): SDKMessage =>
   msg({ type: 'result', subtype: 'success', total_cost_usd: 0, usage: { input_tokens: 0, output_tokens: 0 } })
 const assistant = (): SDKMessage =>
   msg({ type: 'assistant', message: { id: 'm1', model: 'claude', content: [], usage: {} }, parent_tool_use_id: null })
-const stopInput = (crons: { schedule: string; recurring: boolean }[]): HookInput =>
-  ({ hook_event_name: 'Stop', session_crons: crons.map((c, i) => ({ id: String(i), prompt: 'p', ...c })) }) as HookInput
+const stopInput = (
+  crons: { schedule: string; recurring: boolean }[],
+  tasks?: { id: string; description: string; status?: string }[]
+): HookInput =>
+  ({
+    hook_event_name: 'Stop',
+    session_crons: crons.map((c, i) => ({ id: String(i), prompt: 'p', ...c })),
+    ...(tasks ? { background_tasks: tasks.map((t) => ({ type: 'shell', status: 'running', ...t })) } : {})
+  }) as HookInput
+const started = (task_id: string, description: string, is_backgrounded?: boolean): SDKMessage =>
+  msg({ type: 'system', subtype: 'task_started', task_id, description, is_backgrounded })
 
 const statuses = (): string[] => events.flatMap((e) => (e.type === 'status' ? [e.status] : []))
 const taskLists = (): string[][] => events.flatMap((e) => (e.type === 'background-tasks' ? [e.tasks] : []))
@@ -166,4 +175,73 @@ it('tasks and crons share the header list', async () => {
   handleMessage(ctx, state, level([{ task_id: 't1', description: 'upload' }]))
   await hook(stopInput([{ schedule: '*/5 * * * *', recurring: true }]))
   expect(taskLists().at(-1)).toEqual(['upload', 'scheduled wake-up (*/5 * * * *)'])
+})
+
+// ── the level is not the only truth ──────────────────────────────────
+// Seen live: the CLI stopped sending background_tasks_changed mid-session
+// while tasks kept starting and reporting, so two ids from the last level
+// held a finished thread in 'watching' for hours.
+
+it('the Stop hook in-flight list replaces a stale level', async () => {
+  const hook = stopHookFor(ctx, state)
+  startTurn()
+  handleMessage(ctx, state, level([{ task_id: 'a', description: 'A' }, { task_id: 'b', description: 'B' }]))
+  await hook(stopInput([], []))
+  handleMessage(ctx, state, result())
+  expect(taskLists()).toEqual([['A', 'B'], []])
+  expect(statuses()).toEqual(['idle'])
+  // And the other way: the hook names a task the level never listed.
+  startTurn()
+  await hook(stopInput([], [{ id: 'c', description: 'C' }, { id: 'd', description: 'D', status: 'completed' }]))
+  handleMessage(ctx, state, result())
+  expect(taskLists().at(-1)).toEqual(['C'])
+  expect(statuses()).toEqual(['idle', 'watching'])
+})
+
+it('a Stop hook without a task list leaves the level alone', async () => {
+  const hook = stopHookFor(ctx, state)
+  startTurn()
+  handleMessage(ctx, state, level([{ task_id: 'a', description: 'A' }]))
+  await hook(stopInput([]))
+  handleMessage(ctx, state, result())
+  expect(statuses()).toEqual(['watching'])
+})
+
+it('a notification or a terminal task_updated retires its task without a new level', () => {
+  startTurn()
+  handleMessage(ctx, state, level([{ task_id: 'a', description: 'A' }, { task_id: 'b', description: 'B' }]))
+  handleMessage(ctx, state, notification('a', 'completed'))
+  expect(taskLists().at(-1)).toEqual(['B'])
+  handleMessage(ctx, state, msg({ type: 'system', subtype: 'task_updated', task_id: 'b', patch: { status: 'killed' } }))
+  expect(taskLists().at(-1)).toEqual([])
+  handleMessage(ctx, state, result())
+  expect(statuses()).toEqual(['idle'])
+})
+
+it('a foreground command moved to the background by its timeout never holds the thread', async () => {
+  const hook = stopHookFor(ctx, state)
+  startTurn()
+  handleMessage(ctx, state, started('t', 'grep the scheduler', false))
+  handleMessage(ctx, state, started('m', 'poll CI', true))
+  handleMessage(ctx, state, level([{ task_id: 't', description: 'grep the scheduler' }, { task_id: 'm', description: 'poll CI' }]))
+  expect(taskLists()).toEqual([['poll CI']])
+  await hook(stopInput([], [{ id: 't', description: 'grep the scheduler' }]))
+  handleMessage(ctx, state, result())
+  expect(taskLists().at(-1)).toEqual([])
+  expect(statuses()).toEqual(['idle'])
+  // It still gets its transcript row if it ever reports.
+  handleMessage(ctx, state, notification('t', 'completed'))
+  expect(events).toContainEqual({ type: 'background-task', taskId: 't', description: 'grep the scheduler', status: 'completed' })
+})
+
+it('an ambient task in the Stop hook list is ignored too', async () => {
+  const hook = stopHookFor(ctx, state)
+  startTurn()
+  handleMessage(ctx, state, msg({ type: 'system', subtype: 'task_started', task_id: 'h', description: 'housekeeping', ambient: true }))
+  await hook(stopInput([], [{ id: 'h', description: 'housekeeping' }]))
+  handleMessage(ctx, state, result())
+  expect(taskLists()).toEqual([])
+  expect(statuses()).toEqual(['idle'])
+  handleMessage(ctx, state, notification('h', 'completed'))
+  expect(events.some((e) => e.type === 'background-task')).toBe(false)
 })

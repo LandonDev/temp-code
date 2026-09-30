@@ -174,6 +174,14 @@ interface StreamState {
    *  the level), so a task_notification can be named after the level
    *  already dropped the task; deleted on notification */
   known: Map<string, string>
+  /** ids the CLI flagged ambient (housekeeping): never user-visible */
+  ambient: Set<string>
+  /** ids that started in the FOREGROUND (a blocking Bash) and were moved
+   *  to the background by the tool timeout. The model did not choose to
+   *  wait on those, and the CLI's own bookkeeping for them is unreliable
+   *  (most never report; one was listed live for hours after its process
+   *  died), so they never hold the thread in 'watching'. */
+  foreground: Set<string>
   /** session crons (CronCreate, ScheduleWakeup, /loop) from the last Stop
    *  hook input — they never appear in the task level */
   crons: string[]
@@ -196,6 +204,8 @@ export function newStreamState(): StreamState {
     contextTokens: 0,
     tasks: new Map(),
     known: new Map(),
+    ambient: new Set(),
+    foreground: new Set(),
     crons: [],
     settleTimer: null,
     watching: false
@@ -269,17 +279,52 @@ function liveSetChanged(ctx: DriverCtx, state: StreamState, before: string): voi
   }
 }
 
-/** The Stop hook is the only place session crons surface. It lands before
- *  the result message, so the result settles on fresh cron state; should a
- *  CLI run it after, the transition is applied here instead. */
+/** A task ended (edge message): drop it whatever the last level said. */
+function retireTask(ctx: DriverCtx, state: StreamState, id: string): void {
+  state.known.delete(id)
+  if (!state.tasks.has(id)) return
+  const before = liveDescriptions(state).join('\n')
+  state.tasks.delete(id)
+  liveSetChanged(ctx, state, before)
+}
+
+/** Whether a task may hold the thread in 'watching'. */
+function holdsThread(state: StreamState, id: string): boolean {
+  return !state.ambient.has(id) && !state.foreground.has(id)
+}
+
+/** Replace the live set (level semantics) from any source. */
+function replaceTasks(state: StreamState, tasks: { id: string; description: string }[]): void {
+  state.tasks = new Map(
+    tasks.filter((t) => holdsThread(state, t.id)).map((t) => [t.id, t.description])
+  )
+  for (const [id, description] of state.tasks) state.known.set(id, description)
+}
+
+/** The Stop hook lands before the result message and carries the CLI's
+ *  own answer to "done, or waiting on background work": the in-flight
+ *  task list and the session crons (which never appear in the task
+ *  level). The task list is authoritative here — the level message has
+ *  been seen to stop arriving mid-session while tasks kept coming and
+ *  going, which left stale ids holding threads in 'watching' for hours.
+ *  Should a CLI run the hook after the result, the transition is applied
+ *  here instead. */
 export function stopHookFor(
   ctx: DriverCtx,
   state: StreamState
 ): (input: HookInput) => Promise<HookJSONOutput> {
   return async (input) => {
-    const crons = input.hook_event_name === 'Stop' ? (input.session_crons ?? []) : []
+    if (input.hook_event_name !== 'Stop') return { continue: true }
     const before = liveDescriptions(state).join('\n')
-    state.crons = crons.map(
+    if (Array.isArray(input.background_tasks)) {
+      replaceTasks(
+        state,
+        input.background_tasks
+          .filter((t) => t.status === 'running' || t.status === 'pending')
+          .map((t) => ({ id: t.id, description: t.description }))
+      )
+    }
+    state.crons = (input.session_crons ?? []).map(
       (c) => `${c.recurring ? 'scheduled' : 'one-shot'} wake-up (${c.schedule})`
     )
     liveSetChanged(ctx, state, before)
@@ -376,29 +421,39 @@ export function handleMessage(ctx: DriverCtx, state: StreamState, msg: SDKMessag
       } else if (msg.subtype === 'background_tasks_changed') {
         // The level signal: the whole live set, ambient housekeeping
         // excluded. Names are remembered so a later notification can be
-        // labelled after the level dropped its task.
+        // labelled after the level dropped its task. Not the only source:
+        // the Stop hook re-reads the set at every turn end (see
+        // stopHookFor) and the edges below retire tasks one by one.
         const before = liveDescriptions(state).join('\n')
-        state.tasks = new Map(
-          msg.tasks.filter((t) => !t.ambient).map((t) => [t.task_id, t.description])
+        for (const t of msg.tasks) if (t.ambient) state.ambient.add(t.task_id)
+        replaceTasks(
+          state,
+          msg.tasks.map((t) => ({ id: t.task_id, description: t.description }))
         )
-        for (const [id, description] of state.tasks) state.known.set(id, description)
         liveSetChanged(ctx, state, before)
       } else if (msg.subtype === 'task_started') {
-        if (!msg.ambient) state.known.set(msg.task_id, msg.description)
+        if (msg.ambient) state.ambient.add(msg.task_id)
+        else {
+          if (msg.is_backgrounded === false) state.foreground.add(msg.task_id)
+          state.known.set(msg.task_id, msg.description)
+        }
       } else if (msg.subtype === 'task_notification') {
         // One settled task — the transcript's record of why the thread
         // woke. The wake turn itself shows what the model made of it.
-        if (!msg.ambient) {
+        if (!msg.ambient && !state.ambient.has(msg.task_id)) {
           emit({
             type: 'background-task',
             taskId: msg.task_id,
             description: state.known.get(msg.task_id) ?? 'background task',
             status: msg.status
           })
-          state.known.delete(msg.task_id)
         }
+        retireTask(ctx, state, msg.task_id)
+      } else if (msg.subtype === 'task_updated') {
+        const st = msg.patch.status
+        if (st === 'completed' || st === 'failed' || st === 'killed') retireTask(ctx, state, msg.task_id)
       }
-      // task_updated / task_progress: chatter; the level carries the set.
+      // task_progress: chatter.
       break
     case 'stream_event': {
       const ev = msg.event
