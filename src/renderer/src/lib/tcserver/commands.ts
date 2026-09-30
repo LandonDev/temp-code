@@ -262,10 +262,15 @@ export function continueAllErrors(link = client): Promise<SessionBatchResult> {
   return link.request<SessionBatchResult>("session.continueAllErrors");
 }
 
-/** Retry one errored thread's last turn. */
-export async function continueSession(sessionId: string, link = client): Promise<void> {
+/** Retry one errored thread's last turn, optionally on another model or
+ *  effort (every restarted thread in its tree switches first). */
+export async function continueSession(
+  sessionId: string,
+  run: QueueRunSettings = {},
+  link = client,
+): Promise<void> {
   if (sessionStore.isDraft(sessionId)) return;
-  await link.request("session.continue", { sessionId });
+  await link.request("session.continue", { sessionId, ...run });
 }
 
 export async function interrupt(sessionId: string, link = client): Promise<void> {

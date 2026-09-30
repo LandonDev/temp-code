@@ -144,6 +144,13 @@ const IDLE_DISPOSE_MS = 10 * 60 * 1000
  *  opinion (deltas, results, and other chatter never churn the tabs). */
 type Activity = { text: string; kind: NonNullable<SessionMeta['activityKind']> }
 
+/** A send's or a continue's asked-for model; absent fields keep the row's. */
+export type RunSettings = {
+  provider?: ProviderId
+  model?: string
+  reasoning?: SessionMeta['reasoning']
+}
+
 /** The header line of a watching thread: what it waits on. */
 const WATCH_LINE_MAX = 120
 export function watchLine(tasks: string[] | undefined): string {
@@ -1121,55 +1128,17 @@ export class SessionRegistry {
     return created
   }
 
-  async send(
+  /** Point a thread at the run settings a send or a continue asks for.
+   *  A model id names its harness (resolveModel): asking this thread for
+   *  another provider's model switches the thread to that provider rather
+   *  than handing the harness a model it will reject. Returns the updated
+   *  row and, on a provider switch, the transcript handoff the first
+   *  message to the new harness must carry. */
+  private async applyRunSettings(
     sessionId: string,
-    text: string,
-    opts?: {
-      provider?: ProviderId
-      model?: string
-      reasoning?: SessionMeta['reasoning']
-      attachments?: Attachment[]
-      newPass?: boolean
-    }
-  ): Promise<void> {
-    let meta = this.store.getSession(sessionId)
-    if (!meta) throw new Error(`unknown session: ${sessionId}`)
-    // A paused tree accepts no harness input. User work stays ordered in the
-    // same queue and releases only after the resumed turn settles.
-    if (this.isTreePaused(sessionId)) {
-      this.queueAdd(sessionId, text, opts)
-      return
-    }
-    // A real message starts a fresh turn — the error taint belongs to the
-    // one that died. (The pass's own handle.send bypasses this method.)
-    this.erroredTurns.delete(sessionId)
-    // Zeron unarchive-on-send: a message into an archived thread revives it.
-    if (meta.archived) {
-      const next = this.store.updateSession(sessionId, { archived: false })
-      if (next) {
-        meta = next
-        this.notifyMeta(next)
-      }
-    }
-    // Typed goal control: codex parses no slash commands, so `/goal …` on
-    // a codex thread routes to the goal RPCs instead of a turn (claude
-    // runs /goal natively — it passes through as a normal message). The
-    // typed text is not logged; the harness's goal event is the record.
-    if (meta.provider === 'codex') {
-      const goalCmd = /^\/goal(?:\s+([\s\S]+))?$/.exec(text.trim())
-      if (goalCmd) {
-        const condition = goalCmd[1]?.trim()
-        if (condition && condition.toLowerCase() !== 'clear') {
-          await this.setGoal(sessionId, condition)
-        } else {
-          await this.clearGoal(sessionId)
-        }
-        return
-      }
-    }
-    // A model id names its harness (resolveModel): a message asking this
-    // thread for another provider's model switches the thread to that
-    // provider rather than handing the harness a model it will reject.
+    meta: SessionMeta,
+    opts?: RunSettings
+  ): Promise<{ meta: SessionMeta; handoff: string }> {
     const routed = opts?.model
       ? resolveModel(opts?.provider ?? meta.provider, opts.model)
       : { provider: opts?.provider ?? meta.provider, model: undefined }
@@ -1218,6 +1187,52 @@ export class SessionRegistry {
         }
       }
     }
+    return { meta, handoff }
+  }
+
+  async send(
+    sessionId: string,
+    text: string,
+    opts?: RunSettings & { attachments?: Attachment[]; newPass?: boolean }
+  ): Promise<void> {
+    let meta = this.store.getSession(sessionId)
+    if (!meta) throw new Error(`unknown session: ${sessionId}`)
+    // A paused tree accepts no harness input. User work stays ordered in the
+    // same queue and releases only after the resumed turn settles.
+    if (this.isTreePaused(sessionId)) {
+      this.queueAdd(sessionId, text, opts)
+      return
+    }
+    // A real message starts a fresh turn — the error taint belongs to the
+    // one that died. (The pass's own handle.send bypasses this method.)
+    this.erroredTurns.delete(sessionId)
+    // Zeron unarchive-on-send: a message into an archived thread revives it.
+    if (meta.archived) {
+      const next = this.store.updateSession(sessionId, { archived: false })
+      if (next) {
+        meta = next
+        this.notifyMeta(next)
+      }
+    }
+    // Typed goal control: codex parses no slash commands, so `/goal …` on
+    // a codex thread routes to the goal RPCs instead of a turn (claude
+    // runs /goal natively — it passes through as a normal message). The
+    // typed text is not logged; the harness's goal event is the record.
+    if (meta.provider === 'codex') {
+      const goalCmd = /^\/goal(?:\s+([\s\S]+))?$/.exec(text.trim())
+      if (goalCmd) {
+        const condition = goalCmd[1]?.trim()
+        if (condition && condition.toLowerCase() !== 'clear') {
+          await this.setGoal(sessionId, condition)
+        } else {
+          await this.clearGoal(sessionId)
+        }
+        return
+      }
+    }
+    const switched = await this.applyRunSettings(sessionId, meta, opts)
+    meta = switched.meta
+    const handoff = switched.handoff
     // A pin change (project or workspace) since the harness was
     // spawned: its URL names the old account, so boot fresh under the new one.
     if (this.handles.has(sessionId) && this.spawnedPin.get(sessionId) !== (this.pinOf(meta)?.name ?? null)) {
@@ -1871,8 +1886,9 @@ export class SessionRegistry {
    *  the turn (switched accounts on a session limit), so settle the shown
    *  errors, reboot the harness (resume keeps the conversation), and tell
    *  it to pick the work back up. Errored subagents continue first, so an
-   *  orchestrator wakes to a fleet that is already moving again. */
-  async continueRun(sessionId: string, reason?: string): Promise<void> {
+   *  orchestrator wakes to a fleet that is already moving again. `run`
+   *  restarts every one of them on another model or effort first. */
+  async continueRun(sessionId: string, reason?: string, run?: RunSettings): Promise<void> {
     const tree = this.sessionTree(sessionId)
     if (tree.length === 0) return
     const affected = tree.filter((session) => this.canContinueError(session))
@@ -1903,7 +1919,8 @@ export class SessionRegistry {
         await this.continueErroredSession(
           target.id,
           affected.some((session) => session.parentId === target.id),
-          reason
+          reason,
+          run
         )
       } catch (error) {
         failures.push(error)
@@ -1962,7 +1979,8 @@ export class SessionRegistry {
   private async continueErroredSession(
     sessionId: string,
     restartedDescendants: boolean,
-    reason = 'a harness error (a session limit or similar) that the user has since fixed'
+    reason = 'a harness error (a session limit or similar) that the user has since fixed',
+    run?: RunSettings
   ): Promise<void> {
     const meta = this.store.getSession(sessionId)
     if (
@@ -1975,12 +1993,13 @@ export class SessionRegistry {
       return
     }
     await this.dropHandle(sessionId)
+    const { handoff } = run ? await this.applyRunSettings(sessionId, meta, run) : { handoff: '' }
     try {
       const handle = await this.handleFor(sessionId)
       this.lastActivity.set(sessionId, Date.now())
       await this.armCheckpoint(sessionId)
       await handle.send(
-        `<continue-run>\nThe previous turn was cut off by ${reason}. ${restartedDescendants ? 'Your failed subagents were restarted first and are picking their work back up. ' : ''}Continue exactly where you left off: check your task list and your last few actions, finish anything half-done, and keep going. If the work was already complete, say so in one short line.\n</continue-run>`
+        `${handoff ? `${handoff}\n\n` : ''}<continue-run>\nThe previous turn was cut off by ${reason}. ${restartedDescendants ? 'Your failed subagents were restarted first and are picking their work back up. ' : ''}Continue exactly where you left off: check your task list and your last few actions, finish anything half-done, and keep going. If the work was already complete, say so in one short line.\n</continue-run>`
       )
       // The replacement accepted the work. Only now settle the old chips;
       // a boot or send failure leaves the fold true for another retry.

@@ -1,8 +1,13 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState, type ReactNode } from "react";
+import { mergeModelSettings, nativeModelId, resolveModel } from "../lib/models";
+import type { HarnessId } from "../lib/session";
 import * as serverCommands from "../lib/tcserver/commands";
-import { useSessionMetas } from "../lib/tcserver/store";
+import { sessionFromMeta, useSessionMetas } from "../lib/tcserver/store";
 import type { SessionMeta } from "../lib/tcserver/types";
-import { CircleAlert, MessageSquare, Pause } from "./icons";
+import { ChevronDown, CircleAlert, MessageSquare, Pause } from "./icons";
+import { ModelPicker } from "./ModelPicker";
+import { ModelSettings } from "./ModelSettings";
+import { Popover } from "./Popover";
 
 type Props = {
   /** Scopes the needs-you banner to one project; null shows every root.
@@ -92,7 +97,9 @@ export function ThreadBanners({ projectId, activeSessionId, onOpen }: Props) {
     (await Promise.allSettled(list.map((m) => work(m.id)))).filter((r) => r.status === "rejected").length;
   const continuePaused = () => run("paused", () => each(paused, serverCommands.resume));
   const stopPaused = () => run("stop", () => each(paused, serverCommands.interrupt));
-  const continueErrored = () => run("recovery", () => each(recovery, serverCommands.continueSession));
+  const continueErrored = (settings?: serverCommands.QueueRunSettings) =>
+    run("recovery", () => each(recovery, (id) => serverCommands.continueSession(id, settings)));
+  const continueLabel = recovery.length === 1 ? "Continue" : "Continue all";
 
   return (
     <section className="shrink-0" aria-label="Thread alerts" aria-live="polite">
@@ -121,9 +128,17 @@ export function ThreadBanners({ projectId, activeSessionId, onOpen }: Props) {
           failed={failed.recovery}
           disabled={busy !== null}
           primary={{
-            label: busy === "recovery" ? "Continuing…" : recovery.length === 1 ? "Continue" : "Continue all",
+            label: busy === "recovery" ? "Continuing…" : continueLabel,
             onClick: () => void continueErrored(),
           }}
+          menu={
+            <ContinueAs
+              from={recovery[0]}
+              label={continueLabel}
+              disabled={busy !== null}
+              onContinue={(settings) => void continueErrored(settings)}
+            />
+          }
         />
       ) : null}
       {paused.length > 0 ? (
@@ -148,6 +163,102 @@ export function ThreadBanners({ projectId, activeSessionId, onOpen }: Props) {
 
 type Action = { label: string; onClick: () => void };
 
+const DESTRUCTIVE_BUTTON = "border-danger/25 bg-danger/10 hover:bg-danger/20";
+
+/** The split half of the error banner's Continue: restart every errored
+ *  thread on another model or effort. Opens on the first thread's own. */
+function ContinueAs({
+  from,
+  label,
+  disabled,
+  onContinue,
+}: {
+  from: SessionMeta;
+  label: string;
+  disabled: boolean;
+  onContinue: (settings: serverCommands.QueueRunSettings) => void;
+}) {
+  const trigger = useRef<HTMLButtonElement>(null);
+  const [open, setOpen] = useState(false);
+  const [choice, setChoice] = useState<{ harness: HarnessId; model: string }>({ harness: "claude", model: "" });
+  const [settings, setSettings] = useState<Record<string, string>>({});
+
+  const toggle = () => {
+    if (!open) {
+      const session = sessionFromMeta(from);
+      setChoice({ harness: session.harness, model: session.model });
+      setSettings(session.modelSettings);
+    }
+    setOpen(!open);
+  };
+  const submit = () => {
+    setOpen(false);
+    onContinue({
+      provider: choice.harness,
+      model: nativeModelId(choice.model),
+      reasoning: serverCommands.reasoningOf({ modelSettings: settings }),
+    });
+  };
+
+  return (
+    <>
+      <button
+        ref={trigger}
+        type="button"
+        onClick={toggle}
+        disabled={disabled}
+        aria-label="Continue on another model"
+        aria-expanded={open}
+        aria-haspopup="dialog"
+        className={`-ml-px grid h-[22px] place-items-center rounded-l-none rounded-r-md border px-1 transition-colors focus-visible:ring-2 focus-visible:ring-accent focus-visible:outline-none disabled:cursor-default disabled:opacity-60 ${DESTRUCTIVE_BUTTON}`}
+      >
+        <ChevronDown className="size-3" strokeWidth={2} aria-hidden="true" />
+      </button>
+      {open ? (
+        <Popover
+          anchor={trigger}
+          side="bottom"
+          align="end"
+          width={300}
+          autoFocus
+          tabIndex={-1}
+          role="dialog"
+          aria-label="Continue as"
+          ignore="[data-model-picker], [data-model-settings]"
+          onDismiss={() => setOpen(false)}
+        >
+          <div className="px-3 pt-2.5 pb-3 text-content">
+            <p className="text-[13px] font-medium">Continue as</p>
+            <div className="mt-1.5 -ml-1 flex flex-wrap items-center gap-1">
+              <ModelPicker
+                harness={choice.harness}
+                model={choice.model}
+                onChange={(harness, model) => {
+                  setChoice({ harness, model });
+                  setSettings(mergeModelSettings(resolveModel(harness, model), settings));
+                }}
+              />
+              <ModelSettings
+                harness={choice.harness}
+                model={choice.model}
+                values={settings}
+                onChange={setSettings}
+              />
+            </div>
+            <button
+              type="button"
+              onClick={submit}
+              className="pressable mt-2.5 flex h-8 w-full items-center justify-center rounded-lg bg-content text-[13px] font-medium text-background-base hover:bg-content/90"
+            >
+              {label}
+            </button>
+          </div>
+        </Popover>
+      ) : null}
+    </>
+  );
+}
+
 function Banner({
   kind,
   text,
@@ -155,6 +266,7 @@ function Banner({
   disabled = false,
   primary,
   secondary,
+  menu,
 }: {
   kind: Kind;
   text: string;
@@ -162,15 +274,15 @@ function Banner({
   disabled?: boolean;
   primary: Action;
   secondary?: Action;
+  /** Split-button half beside the primary (a chevron and its popover). */
+  menu?: ReactNode;
 }) {
   const destructive = kind === "recovery";
   const Icon = kind === "paused" ? Pause : kind === "recovery" ? CircleAlert : MessageSquare;
   const tint = destructive
     ? "border-danger/20 bg-danger/8 text-danger"
     : "border-warning/20 bg-warning/8 text-warning";
-  const button = destructive
-    ? "border-danger/25 bg-danger/10 hover:bg-danger/20"
-    : "border-warning/25 bg-warning/10 hover:bg-warning/20";
+  const button = destructive ? DESTRUCTIVE_BUTTON : "border-warning/25 bg-warning/10 hover:bg-warning/20";
   return (
     <div
       role={kind === "paused" ? "status" : "alert"}
@@ -190,14 +302,17 @@ function Banner({
             {secondary.label}
           </button>
         ) : null}
-        <button
-          type="button"
-          onClick={primary.onClick}
-          disabled={disabled}
-          className={`rounded-md border px-2 py-0.5 text-[11px] font-medium transition-colors focus-visible:ring-2 focus-visible:ring-accent focus-visible:outline-none disabled:cursor-default disabled:opacity-60 ${button}`}
-        >
-          {primary.label}
-        </button>
+        <span className="flex items-center">
+          <button
+            type="button"
+            onClick={primary.onClick}
+            disabled={disabled}
+            className={`h-[22px] rounded-md border px-2 text-[11px] font-medium transition-colors focus-visible:ring-2 focus-visible:ring-accent focus-visible:outline-none disabled:cursor-default disabled:opacity-60 ${menu ? "rounded-r-none" : ""} ${button}`}
+          >
+            {primary.label}
+          </button>
+          {menu}
+        </span>
       </span>
     </div>
   );
