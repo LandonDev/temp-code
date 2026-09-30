@@ -38,8 +38,8 @@ const notification = (task_id: string, status = 'completed', ambient?: boolean):
   msg({ type: 'system', subtype: 'task_notification', task_id, status, summary: 'done', output_file: '/tmp/x', ambient })
 const result = (): SDKMessage =>
   msg({ type: 'result', subtype: 'success', total_cost_usd: 0, usage: { input_tokens: 0, output_tokens: 0 } })
-const assistant = (): SDKMessage =>
-  msg({ type: 'assistant', message: { id: 'm1', model: 'claude', content: [], usage: {} }, parent_tool_use_id: null })
+const assistant = (content: unknown[] = []): SDKMessage =>
+  msg({ type: 'assistant', message: { id: 'm1', model: 'claude', content, usage: {} }, parent_tool_use_id: null })
 const stopInput = (
   crons: { schedule: string; recurring: boolean }[],
   tasks?: { id: string; description: string; status?: string }[]
@@ -244,4 +244,90 @@ it('an ambient task in the Stop hook list is ignored too', async () => {
   expect(statuses()).toEqual(['idle'])
   handleMessage(ctx, state, notification('h', 'completed'))
   expect(events.some((e) => e.type === 'background-task')).toBe(false)
+})
+
+// ── the forgotten-task check ──────────────────────────────────────────
+
+const MIN = 60_000
+let checks: string[]
+const armChecks = (): void => {
+  checks = []
+  state.sendCheck = (t) => checks.push(t)
+  vi.useFakeTimers({ now: 1_000_000 })
+}
+const userTurn = (): void => {
+  startTurn()
+  handleMessage(ctx, state, assistant())
+  handleMessage(ctx, state, result())
+}
+
+it('an old task a whole turn never used gets one check; the stopped answer retires it', () => {
+  armChecks()
+  startTurn()
+  handleMessage(ctx, state, level([{ task_id: 'zomb', description: 'Rerun PR 3 and wait' }]))
+  handleMessage(ctx, state, result())
+  expect(statuses()).toEqual(['watching'])
+  expect(checks).toEqual([])
+  vi.advanceTimersByTime(11 * MIN)
+  userTurn()
+  expect(checks).toHaveLength(1)
+  expect(checks[0]).toContain('zomb — Rerun PR 3 and wait (started 11 min ago)')
+  expect(checks[0]).toContain('TaskStop')
+  expect(events.at(-1)).toEqual({ type: 'status', status: 'running', detail: 'Checking background tasks' })
+  expect(state.working).toBe(true)
+  // The model stops it; the CLI's stopped notification retires the task.
+  handleMessage(ctx, state, assistant())
+  handleMessage(ctx, state, notification('zomb', 'stopped'))
+  expect(events).toContainEqual({ type: 'background-task', taskId: 'zomb', description: 'Rerun PR 3 and wait', status: 'stopped' })
+  handleMessage(ctx, state, result())
+  expect(statuses().at(-1)).toBe('idle')
+  expect(checks).toHaveLength(1)
+})
+
+it('a young task, or one the turn touched, is never questioned', () => {
+  armChecks()
+  startTurn()
+  handleMessage(ctx, state, level([{ task_id: 'ci', description: 'wait for CI' }]))
+  handleMessage(ctx, state, result())
+  vi.advanceTimersByTime(5 * MIN)
+  userTurn()
+  expect(checks).toEqual([])
+  vi.advanceTimersByTime(10 * MIN)
+  startTurn()
+  handleMessage(ctx, state, assistant([{ type: 'tool_use', id: 'tu1', name: 'TaskOutput', input: { task_id: 'ci' } }]))
+  handleMessage(ctx, state, result())
+  expect(checks).toEqual([])
+  expect(statuses().at(-1)).toBe('watching')
+})
+
+it('a task the model kept is asked about again only after half an hour', () => {
+  armChecks()
+  startTurn()
+  handleMessage(ctx, state, level([{ task_id: 'srv', description: 'dev server' }]))
+  handleMessage(ctx, state, result())
+  vi.advanceTimersByTime(11 * MIN)
+  userTurn()
+  expect(checks).toHaveLength(1)
+  // The check turn: the model keeps it.
+  handleMessage(ctx, state, assistant())
+  handleMessage(ctx, state, result())
+  expect(statuses().at(-1)).toBe('watching')
+  expect(checks).toHaveLength(1)
+  vi.advanceTimersByTime(10 * MIN)
+  userTurn()
+  expect(checks).toHaveLength(1)
+  vi.advanceTimersByTime(25 * MIN)
+  userTurn()
+  expect(checks).toHaveLength(2)
+})
+
+it('no check without a sender or while nothing is watched', () => {
+  vi.useFakeTimers({ now: 1_000_000 })
+  startTurn()
+  handleMessage(ctx, state, level([{ task_id: 'a', description: 'A' }]))
+  handleMessage(ctx, state, result())
+  vi.advanceTimersByTime(11 * MIN)
+  userTurn()
+  expect(statuses().at(-1)).toBe('watching')
+  expect(state.working).toBe(false)
 })
