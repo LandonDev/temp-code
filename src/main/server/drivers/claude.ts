@@ -182,6 +182,15 @@ interface StreamState {
    *  (most never report; one was listed live for hours after its process
    *  died), so they never hold the thread in 'watching'. */
   foreground: Set<string>
+  /** when each live task was first seen (the forgotten-task check) */
+  since: Map<string, number>
+  /** tasks this turn referred to (a tool input naming the id: TaskOutput,
+   *  TaskStop, a Read of its output file) */
+  touched: Set<string>
+  /** when each task was last put to the model by the check */
+  checked: Map<string, number>
+  /** pushes a driver-initiated turn into the harness input (null in tests) */
+  sendCheck: ((text: string) => void) | null
   /** session crons (CronCreate, ScheduleWakeup, /loop) from the last Stop
    *  hook input — they never appear in the task level */
   crons: string[]
@@ -206,6 +215,10 @@ export function newStreamState(): StreamState {
     known: new Map(),
     ambient: new Set(),
     foreground: new Set(),
+    since: new Map(),
+    touched: new Set(),
+    checked: new Map(),
+    sendCheck: null,
     crons: [],
     settleTimer: null,
     watching: false
@@ -282,6 +295,8 @@ function liveSetChanged(ctx: DriverCtx, state: StreamState, before: string): voi
 /** A task ended (edge message): drop it whatever the last level said. */
 function retireTask(ctx: DriverCtx, state: StreamState, id: string): void {
   state.known.delete(id)
+  state.since.delete(id)
+  state.checked.delete(id)
   if (!state.tasks.has(id)) return
   const before = liveDescriptions(state).join('\n')
   state.tasks.delete(id)
@@ -298,7 +313,59 @@ function replaceTasks(state: StreamState, tasks: { id: string; description: stri
   state.tasks = new Map(
     tasks.filter((t) => holdsThread(state, t.id)).map((t) => [t.id, t.description])
   )
-  for (const [id, description] of state.tasks) state.known.set(id, description)
+  const now = Date.now()
+  for (const [id, description] of state.tasks) {
+    state.known.set(id, description)
+    if (!state.since.has(id)) state.since.set(id, now)
+  }
+}
+
+// ── the forgotten-task check ──────────────────────────────────────────
+// A background shell the model started and moved on from (a polling loop
+// in a deleted worktree, a grep the tool timeout backgrounded) holds the
+// thread in 'watching' for as long as the CLI lists it — and the CLI has
+// listed dead processes for hours. Nobody but the model knows whether a
+// task still matters, so once a task is old and a whole turn went by
+// without touching it, the driver asks: one short hidden turn in which
+// the model stops what it no longer needs (TaskStop → the stopped
+// notification retires it here) or says it is still waiting.
+
+/** A task younger than this is never questioned (a normal CI wait). */
+const CHECK_AFTER_MS = 10 * 60 * 1000
+/** A task the model kept is asked about again no sooner than this. */
+const RECHECK_MS = 30 * 60 * 1000
+
+function ago(ms: number): string {
+  const min = Math.round(ms / 60_000)
+  return min < 60 ? `${min} min ago` : `${Math.round(min / 60)} h ago`
+}
+
+/** Called once the turn settled: question the old, untouched tasks. */
+function checkForgottenTasks(ctx: DriverCtx, state: StreamState): void {
+  const touched = new Set(state.touched)
+  state.touched.clear()
+  if (!state.watching || !state.sendCheck) return
+  const now = Date.now()
+  const stale = [...state.tasks].filter(([id]) => {
+    const last = state.checked.get(id)
+    return (
+      now - (state.since.get(id) ?? now) >= CHECK_AFTER_MS &&
+      !touched.has(id) &&
+      (last === undefined || now - last >= RECHECK_MS)
+    )
+  })
+  if (stale.length === 0) return
+  for (const [id] of stale) state.checked.set(id, now)
+  clearSettle(state)
+  state.working = true
+  state.watching = false
+  ctx.emit({ type: 'status', status: 'running', detail: 'Checking background tasks' })
+  const lines = stale.map(
+    ([id, description]) => `- ${id} — ${description} (started ${ago(now - (state.since.get(id) ?? now))})`
+  )
+  state.sendCheck(
+    `<background-check>\nThese background tasks are still registered for this session, but this turn did not use them:\n${lines.join('\n')}\nFor each one: if you no longer need it, or it has already done its job, stop it now with TaskStop. If you still need it running, or are still waiting for it to report back, say so in one short line. Do nothing else and start no new work.\n</background-check>`
+  )
 }
 
 /** The Stop hook lands before the result message and carries the CLI's
@@ -606,6 +673,12 @@ export function handleMessage(ctx: DriverCtx, state: StreamState, msg: SDKMessag
             parentCallId,
             display: toolDisplay(block.name, block.input)
           })
+          // A tool input naming a live task (TaskOutput, TaskStop, a Read
+          // of tasks/<id>.output) is the model still using it.
+          if (state.tasks.size > 0) {
+            const json = JSON.stringify(block.input)
+            for (const id of state.tasks.keys()) if (json.includes(id)) state.touched.add(id)
+          }
         }
       })
       // A top-lane assistant message with no tool calls is the turn's last
@@ -655,6 +728,7 @@ export function handleMessage(ctx: DriverCtx, state: StreamState, msg: SDKMessag
         emit({ type: 'error', message: `turn ended: ${msg.subtype}` })
       }
       settleTurn(ctx, state)
+      checkForgottenTasks(ctx, state)
       break
   }
 }
@@ -869,6 +943,9 @@ export const claudeDriver: HarnessDriver = {
     const { session, emit } = ctx
     const input = new InputQueue()
     const state = newStreamState()
+    state.sendCheck = (text) => {
+      if (!dead && !disposed) input.push(text)
+    }
     const pendingApprovals = new Map<string, (allow: boolean, auto?: boolean) => void>()
     const pendingQuestions = new Map<string, (answers: string[][] | null) => void>()
 
