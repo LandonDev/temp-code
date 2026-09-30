@@ -1,5 +1,5 @@
 {
-  "n": 195,
-  "notes": "A thread no longer sits on \"Watching\" behind a background task the model has forgotten: once a task is ten minutes old and a whole turn went by without the model touching it, the driver asks the model in one short hidden turn (\"Checking background tasks\" in the transcript) to stop what it no longer needs with TaskStop or say it is still waiting; a stopped task retires at once and the thread settles idle. A task the turn used (TaskOutput, TaskStop, a Read of its output file) is never questioned, a task the model kept is asked again no sooner than thirty minutes later, and crons are not part of the check. drivers/claude.ts tracks first-seen, touched and last-checked per task (checkForgottenTasks, fired after settleTurn at result); tests in claude-tasks.test.ts cover the check, the touch exemption, the recheck gap and the no-sender case.",
-  "ts": 1790734571013
+  "n": 196,
+  "notes": "The error banner's Continue can restart every stopped thread on another model: a chevron beside Continue / Continue all opens \"Continue as\" with the model picker and effort control, and Continue there switches each errored thread in the tree (errored subagents too) before its continue turn. The same provider keeps the conversation; another provider gets the transcript handoff a composer switch uses. session.continue takes optional provider/model/reasoning; send()'s switch logic moved into applyRunSettings in sessions.ts so both paths share it. Tests: sessions-limits.test.ts (continue on another model saves model and effort, picks the account again, sends the continue to the new process), commands.test.ts (the RPC carries the run settings).",
+  "ts": 1790791199502
 }
