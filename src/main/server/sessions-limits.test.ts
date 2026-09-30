@@ -327,6 +327,20 @@ it('transient limits, stops and errors without a limit never ask for a switch', 
   expect(sends.some((t) => t.startsWith('<continue-run>'))).toBe(false)
 })
 
+it('Continue on another model switches the errored thread first, then sends the continue to the new process', async () => {
+  registry.limits = byModel()
+  const { id, emit } = await running({ model: 'claude-fable-5-1', reasoning: 'medium' })
+  emit({ type: 'error', message: 'Prompt is too long' })
+  emit({ type: 'status', status: 'error' })
+  expect(registry.get(id)?.canContinue).toBe(true)
+  const spawns = routes.length
+  await registry.continueRun(id, undefined, { provider: 'claude', model: 'claude-opus-5-5', reasoning: 'high' })
+  expect(registry.get(id)).toMatchObject({ model: 'claude-opus-5-5', reasoning: 'high', account: 'o@x.com', canContinue: false })
+  expect(routes).toHaveLength(spawns + 1)
+  expect(routes.at(-1)).toEqual({ id, route: { account: 'o@x.com', pin: false } })
+  expect(sends.at(-1)).toMatch(/^<continue-run>/)
+})
+
 it('liveLoad counts running, watching and starting threads per account; idle and archived ones do not count', async () => {
   registry.limits = limits(null)
   const { id: a, emit: emitA } = await running()

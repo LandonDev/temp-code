@@ -561,7 +561,13 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
   z.object({
     id: z.string(),
     method: z.literal('session.continue'),
-    params: z.object({ sessionId: z.string() })
+    // With a model, every restarted thread in the tree switches to it first.
+    params: z.object({
+      sessionId: z.string(),
+      provider: providerEnum.optional(),
+      model: z.string().optional(),
+      reasoning: reasoningEnum.optional()
+    })
   }),
   z.object({
     id: z.string(),

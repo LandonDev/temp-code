@@ -223,9 +223,13 @@ describe("queue", () => {
   it("batch recovery returns the server tally; continue skips drafts", async () => {
     expect(await resumeAllPaused(link)).toMatchObject({ succeeded: ["s1"] });
     expect(await continueAllErrors(link)).toMatchObject({ succeeded: ["s1"] });
-    await continueSession("s1", link);
-    await continueSession("draft", link);
-    expect(link.of("session.continue")).toEqual([{ sessionId: "s1" }]);
+    await continueSession("s1", {}, link);
+    await continueSession("s1", { model: "claude-opus-5-5", reasoning: "high" }, link);
+    await continueSession("draft", {}, link);
+    expect(link.of("session.continue")).toEqual([
+      { sessionId: "s1" },
+      { sessionId: "s1", model: "claude-opus-5-5", reasoning: "high" },
+    ]);
   });
 });
 

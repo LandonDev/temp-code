@@ -879,10 +879,16 @@ export async function startServer(
             await registry.restart(req.params.sessionId)
             sendFrame({ id: req.id, ok: true, result: null })
             break
-          case 'session.continue':
-            await registry.continueRun(req.params.sessionId)
+          case 'session.continue': {
+            const { sessionId, provider, model, reasoning } = req.params
+            await registry.continueRun(
+              sessionId,
+              undefined,
+              provider || model || reasoning ? { provider, model, reasoning } : undefined
+            )
             sendFrame({ id: req.id, ok: true, result: null })
             break
+          }
           case 'session.approve':
             await registry.approve(req.params.sessionId, req.params.requestId, req.params.allow)
             sendFrame({ id: req.id, ok: true, result: null })
