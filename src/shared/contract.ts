@@ -698,6 +698,26 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
   }),
   z.object({
     id: z.string(),
+    method: z.literal('app.htmlPreview'),
+    params: z.object({
+      sessionId: z.string(),
+      html: z.string().min(1).max(512_000),
+      width: z.number().int().min(240).max(1600).optional(),
+      appearance: z.enum(['dark', 'light']).optional()
+    })
+  }),
+  z.object({
+    id: z.string(),
+    method: z.literal('app.htmlRender'),
+    params: z.object({
+      sessionId: z.string(),
+      html: z.string().min(1).max(512_000),
+      title: z.string().min(1).max(200),
+      height: z.number().int().min(80).max(2000)
+    })
+  }),
+  z.object({
+    id: z.string(),
     method: z.literal('app.startThread'),
     params: z.object({
       sessionId: z.string(),

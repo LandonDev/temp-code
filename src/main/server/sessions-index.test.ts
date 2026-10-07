@@ -91,3 +91,22 @@ it('every sessions-table write bumps the version', async () => {
   bumped()
   expect(registry.get(session.id)).toBeNull()
 })
+
+it('deleting a thread removes its HTML pages along with its children\'s', async () => {
+  const { mkdir, writeFile } = await import('node:fs/promises')
+  const { existsSync } = await import('node:fs')
+  const { setHtmlRenderRoot } = await import('./htmlRender')
+  const pages = join(root, 'html-renders')
+  setHtmlRenderRoot(pages)
+  const parent = await registry.create({ cwd: root })
+  const child = await registry.create({ cwd: root, parentId: parent.id })
+  const other = await registry.create({ cwd: root })
+  for (const id of [parent.id, child.id, other.id]) {
+    await mkdir(join(pages, id), { recursive: true })
+    await writeFile(join(pages, id, 'p.html'), '<p/>')
+  }
+  await registry.delete(parent.id)
+  expect(existsSync(join(pages, parent.id))).toBe(false)
+  expect(existsSync(join(pages, child.id))).toBe(false)
+  expect(existsSync(join(pages, other.id, 'p.html'))).toBe(true)
+})

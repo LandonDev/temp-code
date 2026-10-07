@@ -207,12 +207,37 @@ function mcpDisplay(item: Item): { app?: string; action?: string } {
   return { app: app || undefined, action: action || undefined }
 }
 
+// The bridge's page tools take the renderer's own faces ("Previewed page",
+// "Showed page"), not the generic "app / Html preview" connector face.
+const APP_FACED_TOOLS = new Set(['update_plan', 'html_preview', 'html_render'])
+const bridgeDisplay = (item: Item) =>
+  item.server === 'app' && APP_FACED_TOOLS.has(String(item.tool)) ? undefined : mcpDisplay(item)
+
 /** Bridged app tools keep their MCP "server.tool" name except the task
  *  list: the bridge's update_plan stands in for the native tool Codex no
  *  longer has, and the todo model matches it by bare name. */
 function mcpName(item: Item): string {
   if (item.server === 'app' && item.tool === 'update_plan') return 'update_plan'
   return `${item.server}.${item.tool}`
+}
+
+/**
+ * An MCP result with its image parts reduced to `[image]`, as the Claude
+ * driver stores them: the model saw the bytes (html_preview's screenshot);
+ * the transcript only needs to say one was there.
+ */
+export function withoutImageBytes(result: unknown): unknown {
+  if (typeof result !== 'object' || result === null) return result
+  const { content } = result as { content?: unknown }
+  if (!Array.isArray(content)) return result
+  return {
+    ...(result as Record<string, unknown>),
+    content: content.map((part) =>
+      typeof part === 'object' && part !== null && (part as { type?: unknown }).type === 'image'
+        ? { type: 'text', text: '[image]' }
+        : part
+    )
+  }
 }
 
 /** A connector tool result saying "reauthenticate" carries the ids that
@@ -307,7 +332,7 @@ export const codexDriver: HarnessDriver = {
             callId: String(item.id),
             name: mcpName(item),
             input: item.arguments,
-            display: item.tool === 'update_plan' ? undefined : mcpDisplay(item)
+            display: bridgeDisplay(item)
           })
           break
         case 'webSearch':
@@ -368,13 +393,13 @@ export const codexDriver: HarnessDriver = {
             callId: String(item.id),
             name: mcpName(item),
             input: item.arguments,
-            display: item.tool === 'update_plan' ? undefined : mcpDisplay(item)
+            display: bridgeDisplay(item)
           })
           emit({
             type: 'tool-result',
             callId: String(item.id),
             reauth: connectorReauth(item),
-            output: JSON.stringify(item.result ?? null, null, 2),
+            output: JSON.stringify(withoutImageBytes(item.result ?? null), null, 2),
             isError: item.status === 'failed'
           })
           break

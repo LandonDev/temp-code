@@ -1,4 +1,5 @@
 import { execFileBudgeted as execFileP } from './spawnBudget'
+import { SHOWING_VISUALS } from './threads'
 import { mkdirSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
@@ -847,7 +848,7 @@ export function orchestratorPrompt(session: SessionMeta): string {
   const rules = rulesFor(session)
   const custom = session.threadRules?.instructions?.trim()
   const extra = custom ? `\n\n## This run's instructions (user-defined, binding)\n\n${custom}` : ''
-  return `${orchestratorMechanics(rules)}\n\n${renderRules(rules)}${extra}`
+  return `${orchestratorMechanics(rules)}\n\n${SHOWING_VISUALS}\n\n${renderRules(rules)}${extra}`
 }
 
 /** Mechanics for claude implementation threads: the same spawn toolset

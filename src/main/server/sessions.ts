@@ -68,6 +68,7 @@ import {
   threadDigest,
   writeThreadDigest
 } from './mirror'
+import { removePages } from './htmlRender'
 
 const THREAD_TITLES = {
   chat: 'New chat',
@@ -1856,6 +1857,7 @@ export class SessionRegistry {
       const meta = all.find((s) => s.id === id)
       if (meta) removeMirror(this, meta) // mirrors die with the thread
     }
+    await removePages(ids) // and so do the agent's HTML pages
     // The journal never dangles into a missing plan file.
     if (root?.threadType === 'planning' && root.projectId) {
       const cwd = this.store.getProject(root.projectId)?.cwd

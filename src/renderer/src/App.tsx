@@ -16,6 +16,11 @@ import { MenuBar } from "./chrome/MenuBar";
 import { FilePicker } from "./chrome/FilePicker";
 import { SymbolPicker } from "./chrome/SymbolPicker";
 import { closeLightbox, isLightboxOpen, stepLightbox } from "./chrome/Lightbox";
+import {
+  closeHtmlRenderOverlay,
+  HtmlRenderOverlay,
+  isHtmlRenderOverlayOpen,
+} from "./surfaces/HtmlRenderOverlay";
 import { UsageFooter } from "./chrome/UsageFooter";
 import { useSidebarLayout } from "./hooks/useSidebarLayout";
 import { toggleTranscriptZen } from "./lib/appearance";
@@ -3321,7 +3326,11 @@ export default function App() {
         case "zoom_in": return go(() => void zoomIn().catch(() => {}));
         case "zoom_out": return go(() => void zoomOut().catch(() => {}));
         case "zoom_reset": return go(() => void zoomReset().catch(() => {}));
-        case "lightbox_close": return go(closeLightbox);
+        case "lightbox_close":
+          return go(() => {
+            closeLightbox();
+            closeHtmlRenderOverlay();
+          });
         case "lightbox_prev": return go(() => stepLightbox(-1));
         case "lightbox_next": return go(() => stepLightbox(1));
       }
@@ -3343,7 +3352,7 @@ export default function App() {
   useEffect(() => {
     const keyCommand = createKeyResolver();
     const onKey = (e: KeyboardEvent) => {
-      const lightboxOpen = isLightboxOpen();
+      const lightboxOpen = isLightboxOpen() || isHtmlRenderOverlayOpen();
       if (
         !lightboxOpen &&
         !anyViewOpen(shellStore.getState()) &&
@@ -3365,7 +3374,12 @@ export default function App() {
   useEffect(() => {
     const unlisten = APP_COMMANDS.map((id) =>
       listen(id, () => {
-        if (!menuCommandAllowed(id, { dialogOpen: dialogOpen(), lightboxOpen: isLightboxOpen() })) {
+        if (
+          !menuCommandAllowed(id, {
+            dialogOpen: dialogOpen(),
+            lightboxOpen: isLightboxOpen() || isHtmlRenderOverlayOpen(),
+          })
+        ) {
           return;
         }
         execute({ id });
@@ -3704,6 +3718,7 @@ export default function App() {
         onFocusSession={onOpenApprovalSession}
         onApproval={onApproval}
       />
+      <HtmlRenderOverlay />
       {whatsNew ? (
         <WhatsNewDialog
           version={whatsNew.version}

@@ -9,6 +9,7 @@ import {
 import { displayPath } from "../lib/paths";
 import type { Block } from "../lib/session";
 import { groupPhrase, kindOf, toolPhrase } from "../lib/toolPhrase";
+import { htmlRenderOf } from "./htmlRenderBlock";
 
 export type ToolCallState = "pending" | "accepted" | "rejected";
 
@@ -119,6 +120,7 @@ export function isHiddenTool(block: Block): boolean {
 export function isActivityBlock(block: Block, zen = false): boolean {
   if (zen && isThinkingBlock(block)) return true;
   if (block.role !== "tool" && block.role !== "approval") return false;
+  if (isHtmlRenderBlock(block)) return false;
   if (
     isEditTool(
       block.tool?.kind,
@@ -217,7 +219,7 @@ export function groupTurnItems(blocks: Block[], zen = false): TurnItem[] {
   const visible = blocks.filter(
     (block, index) =>
       !isIgnoredTurnBlock(block, zen) &&
-      (isTodoBlock(block) || !isHiddenTool(block)) &&
+      (isTodoBlock(block) || isHtmlRenderBlock(block) || !isHiddenTool(block)) &&
       !(zen && repeatsNextProse(blocks, index)),
   );
   const items: TurnItem[] = [];
@@ -231,6 +233,7 @@ export function groupTurnItems(blocks: Block[], zen = false): TurnItem[] {
   for (const block of visible) {
     const folds =
       !isTodoBlock(block) &&
+      !isHtmlRenderBlock(block) &&
       !(zen && endsWork(block)) &&
       isActivityBlock(block, zen);
     if (folds) {
@@ -247,6 +250,15 @@ export function groupTurnItems(blocks: Block[], zen = false): TurnItem[] {
 /** The agent's todo list stands as its own row where it was written. */
 export function isTodoBlock(block: Block): boolean {
   return block.role === "tool" && kindOf(block) === "todo";
+}
+
+/**
+ * A published HTML page stands as its own row where the call completed. A
+ * running html_render still folds into the activity group, so the frame
+ * mounts once, when its result lands, and nothing above it moves.
+ */
+export function isHtmlRenderBlock(block: Block): boolean {
+  return htmlRenderOf(block) !== null;
 }
 
 function isIgnoredTurnBlock(block: Block, zen: boolean): boolean {
