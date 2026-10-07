@@ -8,6 +8,7 @@ import {
   editVerb,
   groupTurnItems,
   groupTurns,
+  isActivityBlock,
   lastActivityIndex,
   nestedScrollAbsorbsWheel,
   proseSummary,
@@ -719,5 +720,31 @@ describe("awaitsUser / toolCallState", () => {
     expect(toolCallState(shell("a", "cancelled", { requestId: 1, decided: "deny", auto: true }))).toBe("rejected");
     expect(toolCallState(shell("a", "completed", { requestId: 1, decided: "allow" }))).toBe("accepted");
     expect(toolCallState(shell("a", "pending", { requestId: 1 }))).toBe("pending");
+  });
+});
+
+describe("html_render rows", () => {
+  const page = (status: string): Block => ({
+    id: `page-${status}`,
+    role: "tool",
+    text: "html_render",
+    tool: {
+      callId: "c9",
+      name: "mcp__app__html_render",
+      status,
+      detail:
+        status === "completed"
+          ? JSON.stringify({ htmlRender: { sessionId: "s", pageId: "p1", title: "Chart", height: 300 } })
+          : undefined,
+    },
+  });
+
+  it("keeps a completed page standalone and folds a running call into the activity", () => {
+    const running = groupTurnItems([shell("a"), page("running"), shell("b")]);
+    expect(running.map((item) => item.type)).toEqual(["activity"]);
+    const done = groupTurnItems([shell("a"), page("completed"), shell("b")]);
+    expect(done.map((item) => item.type)).toEqual(["activity", "block", "activity"]);
+    expect(isActivityBlock(page("completed"))).toBe(false);
+    expect(isActivityBlock(page("running"))).toBe(true);
   });
 });

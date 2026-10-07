@@ -110,6 +110,16 @@ export function appView(block: Block, titleOf: TitleOf): AppView | null {
         phrase: title ? `started thread “${trim(title, 24)}”` : "started a thread",
       };
     }
+    case "html_preview":
+      return { label: "Previewed", detail: "page", phrase: "previewed a page" };
+    case "html_render": {
+      const title = str(i.title);
+      return {
+        label: "Showed page",
+        detail: title ? `“${trim(title, 48)}”` : "",
+        phrase: title ? `showed page “${trim(title, 24)}”` : "showed a page",
+      };
+    }
     default:
       return null;
   }

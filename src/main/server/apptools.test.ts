@@ -168,3 +168,79 @@ it('electron-builder ships scripts/app-mcp-bridge.mjs', () => {
   )
   expect(excluded).toEqual([])
 })
+
+// ── html_preview / html_render ───────────────────────────────────────
+
+const { z } = await import('zod')
+const {
+  APP_TOOLS,
+  HTML_PREVIEW_SHAPE,
+  HTML_RENDER_SHAPE,
+  htmlPreviewTool,
+  htmlRenderTool
+} = await import('./apptools')
+const { setHtmlPreviewer, setHtmlRenderRoot } = await import('./htmlRender')
+const { HTML_RENDER_SHOWN_MESSAGE } = await import('@shared/htmlRender')
+const { mkdtempSync, rmSync } = await import('node:fs')
+const { tmpdir } = await import('node:os')
+
+it('APP_TOOLS lists both html tools under the app server prefix', () => {
+  expect(APP_TOOLS).toContain('mcp__app__html_preview')
+  expect(APP_TOOLS).toContain('mcp__app__html_render')
+})
+
+it('the schemas reject a missing title and an out-of-range height or width', () => {
+  expect(z.object(HTML_RENDER_SHAPE).safeParse({ html: '<p/>', height: 300 }).success).toBe(false)
+  expect(z.object(HTML_RENDER_SHAPE).safeParse({ html: '<p/>', title: 'T', height: 5000 }).success).toBe(false)
+  expect(z.object(HTML_RENDER_SHAPE).safeParse({ html: '<p/>', title: 'T', height: 300 }).success).toBe(true)
+  expect(z.object(HTML_PREVIEW_SHAPE).safeParse({ html: '<p/>', width: 100 }).success).toBe(false)
+  expect(z.object(HTML_PREVIEW_SHAPE).safeParse({ html: '<p/>' }).success).toBe(true)
+})
+
+it('html_preview carries the metrics as text and the screenshot as an image part', async () => {
+  setHtmlPreviewer({
+    preview: async () => ({
+      png: 'UE5H',
+      contentHeight: 420,
+      capturedHeight: 420,
+      consoleMessages: [{ level: 'error', text: 'Uncaught Error: boom (page.html:3)' }]
+    }),
+    measure: async () => []
+  })
+  const result = await htmlPreviewTool({ html: '<p>x</p>' })
+  expect(result.isError).toBeUndefined()
+  expect(result.content[1]).toEqual({ type: 'image', data: 'UE5H', mimeType: 'image/png' })
+  const metrics = JSON.parse((result.content[0] as { text: string }).text)
+  expect(metrics).toMatchObject({ width: 864, contentHeight: 420, capturedHeight: 420 })
+  expect(metrics.png).toBeUndefined()
+  expect(metrics.consoleMessages[0].text).toContain('page.html:3')
+  setHtmlPreviewer(null)
+})
+
+it('html_render returns the reference with the no-restate message; an inline error is an isError result', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'tc-apptools-'))
+  setHtmlRenderRoot(root)
+  setHtmlPreviewer({
+    preview: async () => {
+      throw new Error('unused')
+    },
+    measure: async (_html, widths) => widths.map((w) => [w, 200] as const)
+  })
+  const ok = await htmlRenderTool('sess-9', { html: '<p>x</p>', title: 'Chart', height: 300 })
+  expect(ok.isError).toBeUndefined()
+  const parsed = JSON.parse((ok.content[0] as { text: string }).text)
+  expect(parsed.message).toBe(HTML_RENDER_SHOWN_MESSAGE)
+  expect(parsed.htmlRender).toMatchObject({ sessionId: 'sess-9', title: 'Chart', height: 300 })
+  expect(parsed.htmlRender.heights).toHaveLength(8)
+  expect(existsSync(join(root, 'sess-9', `${parsed.htmlRender.pageId}.html`))).toBe(true)
+
+  const bad = await htmlRenderTool('sess-9', {
+    html: '<img src="/definitely/not/here.png">',
+    title: 'Broken',
+    height: 300
+  })
+  expect(bad.isError).toBe(true)
+  expect((bad.content[0] as { text: string }).text).toContain('/definitely/not/here.png')
+  setHtmlPreviewer(null)
+  rmSync(root, { recursive: true, force: true })
+})

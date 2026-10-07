@@ -12,6 +12,20 @@ import {
   type ProviderId
 } from '@shared/catalog'
 import type { SessionMeta } from '@shared/events'
+import {
+  HTML_PREVIEW_TOOL_DESCRIPTION,
+  HTML_PREVIEW_TOOL_NAME,
+  HTML_RENDER_MAX_HEIGHT,
+  HTML_RENDER_MAX_TITLE_LENGTH,
+  HTML_RENDER_MIN_HEIGHT,
+  HTML_RENDER_SHOWN_MESSAGE,
+  HTML_RENDER_TOOL_DESCRIPTION,
+  HTML_RENDER_TOOL_NAME,
+  HTML_TOOL_PARAMS,
+  type HtmlRenderAppearance,
+  type HtmlRenderReference
+} from '@shared/htmlRender'
+import { preview as previewHtml, publish as publishHtml, type HtmlPreview } from './htmlRender'
 import { INLINE_DIGEST_MAX_CHARS, mirrorRelPath, threadDigest } from './mirror'
 import type { SessionRegistry } from './sessions'
 
@@ -197,6 +211,85 @@ export async function appStartThread(
   return { threadId: thread.id, title: created.title }
 }
 
+// ── agent HTML pages (ported from T3 Code) ───────────────────────────
+
+export interface HtmlPreviewArgs {
+  html: string
+  width?: number
+  appearance?: HtmlRenderAppearance
+}
+
+export interface HtmlRenderArgs {
+  html: string
+  title: string
+  height: number
+}
+
+/** Screenshot + metrics of a page; throws with a message the agent can act on. */
+export function appHtmlPreview(args: HtmlPreviewArgs): Promise<HtmlPreview> {
+  return previewHtml(args)
+}
+
+/** Publish a page into the calling thread; throws with a message the agent can act on. */
+export async function appHtmlRender(
+  sessionId: string,
+  args: HtmlRenderArgs
+): Promise<{ htmlRender: HtmlRenderReference; message: string }> {
+  const htmlRender = await publishHtml({ sessionId, ...args })
+  return { htmlRender, message: HTML_RENDER_SHOWN_MESSAGE }
+}
+
+/** The MCP content parts of a preview: the metrics as JSON, then the screenshot. */
+export function htmlPreviewContent(result: HtmlPreview): Array<
+  { type: 'text'; text: string } | { type: 'image'; data: string; mimeType: string }
+> {
+  const { png, ...metrics } = result
+  return [
+    { type: 'text', text: JSON.stringify(metrics) },
+    { type: 'image', data: png, mimeType: 'image/png' }
+  ]
+}
+
+type ToolResult = {
+  content: Array<{ type: 'text'; text: string } | { type: 'image'; data: string; mimeType: string }>
+  isError?: boolean
+}
+
+/** Errors come back as tool results, so the model reads the message and fixes the page. */
+async function htmlTool(run: () => Promise<ToolResult>): Promise<ToolResult> {
+  try {
+    return await run()
+  } catch (err) {
+    return {
+      content: [{ type: 'text', text: err instanceof Error ? err.message : String(err) }],
+      isError: true
+    }
+  }
+}
+
+export const HTML_PREVIEW_SHAPE = {
+  html: z.string().min(1).max(512_000).describe(HTML_TOOL_PARAMS.html),
+  width: z.number().int().min(240).max(1600).optional().describe(HTML_TOOL_PARAMS.width),
+  appearance: z.enum(['dark', 'light']).optional().describe(HTML_TOOL_PARAMS.appearance)
+}
+
+export const HTML_RENDER_SHAPE = {
+  html: z.string().min(1).max(512_000).describe(HTML_TOOL_PARAMS.html),
+  title: z.string().min(1).max(HTML_RENDER_MAX_TITLE_LENGTH).describe(HTML_TOOL_PARAMS.title),
+  height: z
+    .number()
+    .int()
+    .min(HTML_RENDER_MIN_HEIGHT)
+    .max(HTML_RENDER_MAX_HEIGHT)
+    .describe(HTML_TOOL_PARAMS.height)
+}
+
+export const htmlPreviewTool = (args: HtmlPreviewArgs): Promise<ToolResult> =>
+  htmlTool(async () => ({ content: htmlPreviewContent(await appHtmlPreview(args)) }))
+
+export const htmlRenderTool = (sessionId: string, args: HtmlRenderArgs): Promise<ToolResult> =>
+  htmlTool(async () => text(JSON.stringify(await appHtmlRender(sessionId, args))))
+
 // ── the MCP toolset (claude sessions, in-process) ────────────────────
 
 const text = (t: string): { content: [{ type: 'text'; text: string }] } => ({
@@ -284,6 +377,12 @@ export function appToolsMcp(session: SessionMeta): McpSdkServerConfigWithInstanc
             })
           )
         }
+      ),
+      tool(HTML_PREVIEW_TOOL_NAME, HTML_PREVIEW_TOOL_DESCRIPTION, HTML_PREVIEW_SHAPE, (args) =>
+        htmlPreviewTool(args)
+      ),
+      tool(HTML_RENDER_TOOL_NAME, HTML_RENDER_TOOL_DESCRIPTION, HTML_RENDER_SHAPE, (args) =>
+        htmlRenderTool(session.id, args)
       )
     ]
   })
@@ -292,5 +391,7 @@ export function appToolsMcp(session: SessionMeta): McpSdkServerConfigWithInstanc
 export const APP_TOOLS = [
   'mcp__app__app_list_threads',
   'mcp__app__app_read_thread',
-  'mcp__app__app_start_thread'
+  'mcp__app__app_start_thread',
+  `mcp__app__${HTML_PREVIEW_TOOL_NAME}`,
+  `mcp__app__${HTML_RENDER_TOOL_NAME}`
 ]

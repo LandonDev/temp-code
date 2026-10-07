@@ -46,6 +46,8 @@ import { TWEEN_FALLBACK_MS, TweenHeight } from "../motion/TweenHeight";
 import { usePersistedOpen } from "./editOpenState";
 import { TranscriptMinimap } from "./TranscriptMinimap";
 import { TodoListBlock } from "./TodoListBlock";
+import { HtmlRenderRow } from "./HtmlRenderFrame";
+import { htmlRenderOf } from "./htmlRenderBlock";
 import { useReducedMotion } from "motion/react";
 import {
   HARNESS_TITLE,
@@ -1286,6 +1288,11 @@ const TranscriptBlock = memo(function TranscriptBlock({
 
   if (isTodoBlock(block)) {
     return <TodoListBlock block={block} />;
+  }
+
+  const page = htmlRenderOf(block);
+  if (page) {
+    return <HtmlRenderRow reference={page} />;
   }
 
   if (block.role === "tool") {

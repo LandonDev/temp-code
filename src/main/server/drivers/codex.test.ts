@@ -62,7 +62,7 @@ vi.mock('../endpoint', () => ({ routedEndpointFor: async () => ({ url: null, acc
 vi.mock('../apptools', () => ({ bridgeMcpConfig: () => null }))
 vi.mock('../gatewayObserve', () => ({ observeCodexSnapshot: () => undefined }))
 
-const { codexDriver, bootOptions, setCodexBootFailureLog } = await import('./codex')
+const { codexDriver, bootOptions, setCodexBootFailureLog, withoutImageBytes } = await import('./codex')
 
 /** Answers the handshake and every later request; starts thread `t1`. */
 const healthy: Script = (proc, frame) => {
@@ -162,5 +162,27 @@ describe('codex app-server boot', () => {
     expect(events.filter((e) => e.type === 'error').map((e) => (e as { message: string }).message)).toEqual([
       'codex app-server exited unexpectedly (1)'
     ])
+  })
+})
+
+describe('withoutImageBytes', () => {
+  it("replaces an MCP result's image parts with [image] and leaves everything else", () => {
+    const result = {
+      content: [
+        { type: 'text', text: '{"contentHeight":248}' },
+        { type: 'image', data: 'iVBORw0KGgo'.repeat(100), mimeType: 'image/png' }
+      ],
+      structuredContent: { ok: true }
+    }
+    expect(withoutImageBytes(result)).toEqual({
+      content: [
+        { type: 'text', text: '{"contentHeight":248}' },
+        { type: 'text', text: '[image]' }
+      ],
+      structuredContent: { ok: true }
+    })
+    expect(withoutImageBytes('plain')).toBe('plain')
+    expect(withoutImageBytes(null)).toBeNull()
+    expect(withoutImageBytes({ htmlRender: {} })).toEqual({ htmlRender: {} })
   })
 })

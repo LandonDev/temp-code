@@ -45,6 +45,8 @@ import {
   setOrchestrationRegistry
 } from './orchestration'
 import {
+  appHtmlPreview,
+  appHtmlRender,
   appListThreads,
   appReadThread,
   appStartThread,
@@ -991,6 +993,18 @@ export async function startServer(
               ok: true,
               result: await appStartThread(registry, caller, req.params)
             })
+            break
+          }
+          // Agent HTML pages: errors go back as the frame's error string,
+          // which the bridge hands the model as an isError tool result.
+          case 'app.htmlPreview': {
+            callerOf(registry, req.params.sessionId)
+            sendFrame({ id: req.id, ok: true, result: await appHtmlPreview(req.params) })
+            break
+          }
+          case 'app.htmlRender': {
+            const caller = callerOf(registry, req.params.sessionId)
+            sendFrame({ id: req.id, ok: true, result: await appHtmlRender(caller.id, req.params) })
             break
           }
           // Orchestration over WS (the codex bridge's spawn path) — every

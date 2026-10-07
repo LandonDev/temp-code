@@ -36,6 +36,18 @@ describe("appView", () => {
       "Fresh · chat",
     );
   });
+  it("names HTML page calls by what they showed, never by path or JSON", () => {
+    expect(appView(call("mcp__app__html_preview", { html: "<p/>" }), titleOf)).toEqual({
+      label: "Previewed",
+      detail: "page",
+      phrase: "previewed a page",
+    });
+    const shown = appView(
+      call("app.html_render", { html: "<p/>", title: "Q3 revenue", height: 300 }, '{"htmlRender":{}}'),
+      titleOf,
+    );
+    expect(shown).toEqual({ label: "Showed page", detail: "“Q3 revenue”", phrase: "showed page “Q3 revenue”" });
+  });
   it("describes subagent calls by title or task, resolving @thread tags", () => {
     expect(agentIdOf(call("spawn_agent", {}, '{"agentId":"agent1"}'))).toBe("agent1");
     expect(appView(call("mcp__orchestrator__spawn_agent", { task: "x" }, '{"agentId":"agent1"}'), titleOf)).toMatchObject({

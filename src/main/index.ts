@@ -9,7 +9,9 @@ import { electronApp, optimizer } from '@electron-toolkit/utils'
 import { startServer, type RunningServer } from './server'
 import { mayClaimShim, releaseGateway } from './server/gateway'
 import { killTrackedChildren } from './server/spawnBudget'
-import { registerAssetProtocol, registerAssetScheme } from './assets'
+import { pagesRoot, registerAssetProtocol, registerAssetScheme } from './assets'
+import { htmlPreviewer } from './htmlPreview'
+import { setHtmlPreviewer, setHtmlRenderRoot } from './server/htmlRender'
 import { killAllPtys, listPtys, ptyFlowCounters, registerPty } from './pty'
 import { clickMenuItem, registerMenu } from './menu'
 import { queueNextPick, registerDialogs } from './dialogs'
@@ -86,6 +88,9 @@ app.whenReady().then(async () => {
     }
   }
   registerAssetProtocol()
+  // Agent HTML pages: stored under userData, previewed in the hidden window.
+  setHtmlRenderRoot(pagesRoot())
+  setHtmlPreviewer(htmlPreviewer)
   configureAliax()
   server = await startServer(join(app.getPath('userData'), 'temp-code.db'), {
     appPath: app.getAppPath(),

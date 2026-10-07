@@ -71,8 +71,12 @@ function appToolsNote(session: SessionMeta): string {
   if (!available) {
     return `You run inside the temp-code app, but its app tools (listing/reading/starting threads) do not reach this harness — for a handoff to another thread, ask the user to start it.`
   }
-  return `You run inside the temp-code app and can operate it: app_list_threads lists this project's threads (allProjects: true for every project), app_read_thread returns a readable digest of any thread, and app_start_thread creates a new thread and sends its first message (threadType, provider/model/reasoning, optional planPath and seedThreadIds — this thread's id is ${session.id}). Start a thread ONLY when the user asked for it or agreed to the handoff; every new thread appears in the UI immediately.`
+  return `You run inside the temp-code app and can operate it: app_list_threads lists this project's threads (allProjects: true for every project), app_read_thread returns a readable digest of any thread, and app_start_thread creates a new thread and sends its first message (threadType, provider/model/reasoning, optional planPath and seedThreadIds — this thread's id is ${session.id}). Start a thread ONLY when the user asked for it or agreed to the handoff; every new thread appears in the UI immediately.
+${SHOWING_VISUALS}`
 }
+
+/** T3 Code's "Showing visuals" instruction: when a page says more than prose. */
+export const SHOWING_VISUALS = `Showing visuals: when a chart, table, diagram, image collage, or mockup would say more than prose, build a self-contained HTML page, check it with html_preview, then publish it with html_render before your final reply. The reader sees the page above that reply, so don't announce or restate it; add only what it doesn't say.`
 
 /**
  * Thread-type identity (docs/PLAN-2.md M10): what this thread is, how it
