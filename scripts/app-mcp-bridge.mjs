@@ -106,6 +106,15 @@ const HTML_TOOL_PARAMS = {
     "The frame height in CSS pixels, 80-2000. Use html_preview's contentHeight, or less to make long content scroll inside the frame."
 }
 
+// Copies of src/shared/research.ts (the bridge has no imports); app-bridge.test.ts keeps them equal.
+const CITE_TOOL_DESCRIPTION =
+  'Record a citation on the research board: the page or file you read and the one-line claim it supports. Call it after reading a source that supports a finding — that is how the board shows evidence beside each source. Only available inside a research thread and its subagents.'
+const CITE_TOOL_PARAMS = {
+  url: 'The source: a public http(s) URL, or the path of a file in this repository.',
+  claim: 'One line: the finding this source supports, specific enough to stand alone (a figure, a name, a date, a quote).',
+  title: "The page's title, when you know it."
+}
+
 export const TOOLS = [
   {
     // Codex's native update_plan went away with the goal tools; the app's
@@ -163,7 +172,7 @@ export const TOOLS = [
       properties: {
         threadType: {
           type: 'string',
-          enum: ['chat', 'planning', 'implementation', 'orchestration']
+          enum: ['chat', 'planning', 'implementation', 'orchestration', 'research']
         },
         provider: { type: 'string', enum: PROVIDERS },
         model: { type: 'string' },
@@ -176,7 +185,8 @@ export const TOOLS = [
         projectId: { type: 'string', description: "Defaults to this thread's project" },
         planPath: {
           type: 'string',
-          description: 'implementation/orchestration: the plan to work from'
+          description:
+            'implementation/orchestration: the plan to work from (research threads mint their own report path — leave it out)'
         },
         seedThreadIds: { type: 'array', items: { type: 'string' } },
         firstMessage: { type: 'string' },
@@ -306,6 +316,20 @@ export const TOOLS = [
       required: ['html']
     }
   },
+  // ── citations (research threads) ───────────────────────────────────
+  {
+    name: 'cite_source',
+    description: CITE_TOOL_DESCRIPTION,
+    inputSchema: {
+      type: 'object',
+      properties: {
+        url: { type: 'string', minLength: 1, maxLength: 2000, description: CITE_TOOL_PARAMS.url },
+        claim: { type: 'string', minLength: 1, maxLength: 300, description: CITE_TOOL_PARAMS.claim },
+        title: { type: 'string', maxLength: 300, description: CITE_TOOL_PARAMS.title }
+      },
+      required: ['url', 'claim']
+    }
+  },
   {
     name: 'html_render',
     description: HTML_RENDER_TOOL_DESCRIPTION,
@@ -333,7 +357,8 @@ const METHOD_FOR = {
   interrupt_agent: 'app.interruptAgent',
   list_agents: 'app.listAgents',
   html_preview: 'app.htmlPreview',
-  html_render: 'app.htmlRender'
+  html_render: 'app.htmlRender',
+  cite_source: 'app.citeSource'
 }
 
 /** The MCP content parts a tool result turns into (the preview's PNG rides as an image). */

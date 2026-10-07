@@ -25,6 +25,7 @@ import {
   type HtmlRenderAppearance,
   type HtmlRenderReference
 } from '@shared/htmlRender'
+import { CITE_CLAIM_MAX, CITE_TOOL_DESCRIPTION, CITE_TOOL_NAME, CITE_TOOL_PARAMS } from '@shared/research'
 import { preview as previewHtml, publish as publishHtml, type HtmlPreview } from './htmlRender'
 import { INLINE_DIGEST_MAX_CHARS, mirrorRelPath, threadDigest } from './mirror'
 import type { SessionRegistry } from './sessions'
@@ -296,11 +297,27 @@ const text = (t: string): { content: [{ type: 'text'; text: string }] } => ({
   content: [{ type: 'text', text: t }]
 })
 
+export const CITE_SHAPE = {
+  url: z.string().min(1).max(2000).describe(CITE_TOOL_PARAMS.url),
+  claim: z.string().min(1).max(CITE_CLAIM_MAX).describe(CITE_TOOL_PARAMS.claim),
+  title: z.string().max(300).optional().describe(CITE_TOOL_PARAMS.title)
+}
+
 export function appToolsMcp(session: SessionMeta): McpSdkServerConfigWithInstance {
+  // cite_source exists only inside a research tree (the handle reboots on
+  // a retype, so the check at boot is current); elsewhere it would only refuse.
+  const research = registry?.researchRootOf(session.id) !== null
   return createSdkMcpServer({
     name: 'app',
     version: '0.1.0',
     tools: [
+      ...(research
+        ? [
+            tool(CITE_TOOL_NAME, CITE_TOOL_DESCRIPTION, CITE_SHAPE, async (args) =>
+              text(registry ? registry.citeSource(session.id, args) : 'app registry not ready')
+            )
+          ]
+        : []),
       tool(
         'app_list_threads',
         "List this project's threads (the live version of the project-context index): id, title, type, status, model, plan file, transcript path, last activity.",
@@ -393,5 +410,6 @@ export const APP_TOOLS = [
   'mcp__app__app_read_thread',
   'mcp__app__app_start_thread',
   `mcp__app__${HTML_PREVIEW_TOOL_NAME}`,
-  `mcp__app__${HTML_RENDER_TOOL_NAME}`
+  `mcp__app__${HTML_RENDER_TOOL_NAME}`,
+  `mcp__app__${CITE_TOOL_NAME}`
 ]

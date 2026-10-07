@@ -583,10 +583,14 @@ export function foldEvent(
       // the earlier row (a late-arriving title).
       const t = th();
       const i = t.sources.findIndex((src) => src.callId === e.callId);
-      const source = { callId: e.callId, url: e.url, query: e.query, agentId: e.agentId, agentLabel: e.agentLabel, title: e.title, ts: row.ts };
+      const source = { callId: e.callId, url: e.url, query: e.query, agentId: e.agentId, agentLabel: e.agentLabel, title: e.title, claim: e.claim, ts: row.ts };
       t.sources =
         i >= 0
-          ? t.sources.map((src, n) => (n === i ? { ...src, ...(e.title ? { title: e.title } : {}), ...(e.url ? { url: e.url } : {}) } : src))
+          ? t.sources.map((src, n) =>
+              n === i
+                ? { ...src, ...(e.title ? { title: e.title } : {}), ...(e.url ? { url: e.url } : {}), ...(e.claim ? { claim: e.claim } : {}) }
+                : src,
+            )
           : [...t.sources, source];
       break;
     }

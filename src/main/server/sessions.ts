@@ -54,6 +54,7 @@ import {
   DEFAULT_APPSHOT_SETTINGS,
   type AppshotSettings
 } from '@shared/appshots'
+import { CITE_CLAIM_MAX, type CiteSourceArgs } from '@shared/research'
 import {
   isReportPath,
   planPathFor,
@@ -277,6 +278,34 @@ export type LimitFailover = AccountRouter
 /** How long after the limited session settles before its tree continues: siblings that hit the same limit settle in this window. */
 export const LIMIT_CONTINUE_DELAY_MS = 250
 
+/** The public http(s) urls a shell command reads with curl or wget — a
+ *  research agent's page reads outside any fetch tool. Nothing else
+ *  matches (git clone, bun install, gh api), and localhost or private
+ *  hosts never board. */
+export function shellReadUrls(command: string): string[] {
+  if (!/(^|[\s;|&(`])(curl|wget)(\s|$)/.test(command)) return []
+  const out: string[] = []
+  for (const m of command.matchAll(/https?:\/\/[^\s'"`<>()\]]+/g)) {
+    const url = m[0].replace(/[.,;:!?)]+$/, '')
+    let host: string
+    try {
+      host = new URL(url).hostname
+    } catch {
+      continue
+    }
+    if (
+      /^(localhost|0\.0\.0\.0|127\.|10\.|192\.168\.|169\.254\.|\[::1\]$)/.test(host) ||
+      /^172\.(1[6-9]|2\d|3[01])\./.test(host) ||
+      /\.(local|internal|localhost)$/.test(host) ||
+      !host.includes('.')
+    ) {
+      continue
+    }
+    if (!out.includes(url)) out.push(url)
+  }
+  return out
+}
+
 export class SessionRegistry {
   private catalogListeners = new Set<(kind: 'workspaces' | 'projects') => void>()
 
@@ -363,14 +392,16 @@ export class SessionRegistry {
   /** threads titled by slicing their first message, awaiting a real title:
    *  sessionId → the placeholder (to detect a user rename) + the message */
   private pendingTitles = new Map<string, { placeholder: string; text: string }>()
-  /** research boards: WebFetch calls awaiting a title from their result
-   *  (key = the boarded event's callId), and per-root dedupe of already
-   *  boarded queries/urls so repeats never bloat the root's log */
+  /** research boards: fetches (and single-url shell reads) awaiting a
+   *  title from their result (key = the boarded event's callId), and per
+   *  root the boarded queries/urls → their row, so repeats never bloat the
+   *  root's log and a citation of a fetched url lands on the fetch's row.
+   *  In memory only: after a restart dedupe starts over. */
   private researchFetches = new Map<
     string,
     { rootId: string; url: string; agentId: string; agentLabel: string }
   >()
-  private researchSeen = new Map<string, Set<string>>()
+  private researchSeen = new Map<string, Map<string, { callId: string; claimed: boolean }>>()
   private sweepTimer: ReturnType<typeof setInterval> | null = null
 
   /** Undo checkpoints; armed before every harness send so the baseline
@@ -2361,45 +2392,116 @@ export class SessionRegistry {
     return cur?.threadType === 'research' ? cur : null
   }
 
-  /** A final web tool call in a research tree becomes a research-source
-   *  event on the root: WebSearch/web_search board their query, WebFetch
-   *  its url. Deduped per (agent, query/url); callIds are prefixed with
-   *  the calling session so agents' "call_1"s never collide in one log. */
+  private researchSeenOf(rootId: string): Map<string, { callId: string; claimed: boolean }> {
+    let seen = this.researchSeen.get(rootId)
+    if (!seen) {
+      seen = new Map()
+      this.researchSeen.set(rootId, seen)
+    }
+    return seen
+  }
+
+  /** A final tool call in a research tree becomes a research-source event
+   *  on the root: WebSearch/web_search board their query, WebFetch its
+   *  url, and a Bash/shell command that runs curl or wget boards every
+   *  public url it names (codex has no fetch tool; it reads through curl).
+   *  Deduped per (agent, query/url); callIds are prefixed with the calling
+   *  session so agents' "call_1"s never collide in one log. */
   private harvestResearchCall(
     sessionId: string,
     event: Extract<AgentEvent, { type: 'tool-call' }>
   ): void {
     const isSearch = /^(websearch|web_search)$/i.test(event.name)
     const isFetch = /^(webfetch|web_fetch)$/i.test(event.name)
-    if (!isSearch && !isFetch) return
+    const isShell = /^(bash|shell)$/i.test(event.name)
+    if (!isSearch && !isFetch && !isShell) return
     const root = this.researchRootOf(sessionId)
     if (!root) return
     const input = (
       event.input && typeof event.input === 'object' ? event.input : {}
     ) as Record<string, unknown>
     const agentLabel = this.store.getSession(sessionId)?.title ?? 'research'
-    let seen = this.researchSeen.get(root.id)
-    if (!seen) {
-      seen = new Set()
-      this.researchSeen.set(root.id, seen)
-    }
     const callId = `${sessionId}:${event.callId}`
     if (isSearch) {
       const query = typeof input.query === 'string' ? input.query.trim() : ''
+      const seen = this.researchSeenOf(root.id)
       if (!query || seen.has(`q:${sessionId}:${query}`)) return
-      seen.add(`q:${sessionId}:${query}`)
+      seen.set(`q:${sessionId}:${query}`, { callId, claimed: false })
       this.append(root.id, { type: 'research-source', callId, query, agentId: sessionId, agentLabel })
-    } else {
+    } else if (isFetch) {
       const url = typeof input.url === 'string' ? input.url.trim() : ''
-      if (!url || seen.has(`u:${sessionId}:${url}`)) return
-      seen.add(`u:${sessionId}:${url}`)
-      this.researchFetches.set(callId, { rootId: root.id, url, agentId: sessionId, agentLabel })
-      this.append(root.id, { type: 'research-source', callId, url, agentId: sessionId, agentLabel })
+      if (url) this.boardUrl(root.id, sessionId, agentLabel, callId, url, true)
+    } else {
+      const urls = shellReadUrls(typeof input.command === 'string' ? input.command : '')
+      // One url: its result can carry the page title. Several: bare rows.
+      urls.forEach((url, i) =>
+        this.boardUrl(
+          root.id,
+          sessionId,
+          agentLabel,
+          urls.length === 1 ? callId : `${callId}:${i}`,
+          url,
+          urls.length === 1
+        )
+      )
     }
   }
 
-  /** A boarded fetch's result upgrades its row in place (same callId, now
-   *  with a title) when one is recoverable from the processed output. */
+  /** One consulted url on the root's board, once per agent. */
+  private boardUrl(
+    rootId: string,
+    sessionId: string,
+    agentLabel: string,
+    callId: string,
+    url: string,
+    enrichTitle: boolean
+  ): void {
+    const seen = this.researchSeenOf(rootId)
+    const key = `u:${sessionId}:${url}`
+    if (seen.has(key)) return
+    seen.set(key, { callId, claimed: false })
+    if (enrichTitle) this.researchFetches.set(callId, { rootId, url, agentId: sessionId, agentLabel })
+    this.append(rootId, { type: 'research-source', callId, url, agentId: sessionId, agentLabel })
+  }
+
+  /** cite_source: a claim pinned to a source. A url this agent already
+   *  boarded (fetch or shell read) and has not cited yet gets the claim on
+   *  its own row — the same callId, which the fold treats as enrichment;
+   *  anything else is a fresh row with a `cite:` callId that no restart can
+   *  repeat. Refuses outside a research tree. */
+  citeSource(sessionId: string, args: CiteSourceArgs): string {
+    const root = this.researchRootOf(sessionId)
+    if (!root) {
+      return 'refused: cite_source only works inside a research thread or its subagents; this thread is not one.'
+    }
+    const url = args.url.trim()
+    const claim = args.claim.trim().replace(/\s+/g, ' ').slice(0, CITE_CLAIM_MAX)
+    if (!url || !claim) return 'refused: url and a one-line claim are both required.'
+    const title = args.title?.trim() || undefined
+    const agentLabel = this.store.getSession(sessionId)?.title ?? 'research'
+    const seen = this.researchSeenOf(root.id)
+    const key = `u:${sessionId}:${url}`
+    const row = seen.get(key)
+    const merged = row !== undefined && !row.claimed
+    const callId = merged ? row.callId : `cite:${nanoid(8)}`
+    if (merged) row.claimed = true
+    else if (!row) seen.set(key, { callId, claimed: true })
+    this.append(root.id, {
+      type: 'research-source',
+      callId,
+      url,
+      agentId: sessionId,
+      agentLabel,
+      claim,
+      ...(title ? { title } : {})
+    })
+    return `cited ${url}${merged ? ' (on its fetched row)' : ''}`
+  }
+
+  /** A boarded fetch's (or single-url shell read's) result upgrades its
+   *  row in place (same callId, now with a title) when one is recoverable
+   *  from the output — the whole output: raw HTML puts <title> past any
+   *  short head. */
   private harvestResearchTitle(
     sessionId: string,
     event: Extract<AgentEvent, { type: 'tool-result' }>
@@ -2409,11 +2511,11 @@ export class SessionRegistry {
     if (!pending) return
     this.researchFetches.delete(callId)
     if (event.isError) return
-    const head = event.output.slice(0, 4000)
+    const out = event.output
     const m =
-      head.match(/<title[^>]*>\s*([^<]{1,200}?)\s*<\/title>/i) ??
-      head.match(/^#\s+(.{1,200})$/m) ??
-      head.match(/^Title:\s*(.{1,200})$/im)
+      out.match(/<title[^>]*>\s*([^<]{1,200}?)\s*<\/title>/i) ??
+      out.match(/^#\s+(.{1,200})$/m) ??
+      out.match(/^Title:\s*(.{1,200})$/im)
     const title = m?.[1]?.replace(/\s+/g, ' ').trim()
     if (!title) return
     this.append(pending.rootId, {

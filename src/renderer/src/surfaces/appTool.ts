@@ -2,6 +2,7 @@ import type { Block } from "../lib/session";
 import { isAppshotPath, isInternalPath, memoryLabel } from "../lib/internalPath";
 import { threadMentionsToTitles, type TitleOf } from "../lib/threadMentions";
 import { inputOf, toolPathOf } from "../lib/toolDetails";
+import { hostOf } from "../lib/threads/researchBoard";
 import { EDIT_TOOLS } from "./editModel";
 import { editPaths } from "./editCards";
 
@@ -109,6 +110,11 @@ export function appView(block: Block, titleOf: TitleOf): AppView | null {
         detail: [title, type].filter(Boolean).join(" · "),
         phrase: title ? `started thread “${trim(title, 24)}”` : "started a thread",
       };
+    }
+    case "cite_source": {
+      const url = str(i.url);
+      const where = hostOf(url) || url.split("/").filter(Boolean).pop() || "a source";
+      return { label: "Cited", detail: where, phrase: `cited ${where}` };
     }
     case "html_preview":
       return { label: "Previewed", detail: "page", phrase: "previewed a page" };

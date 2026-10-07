@@ -59,7 +59,7 @@ export const THREAD_HINTS: Record<ThreadType, string> = {
   planning: "Produce a plan document to implement from",
   implementation: "Execute a task, todos in focus",
   orchestration: "Spawn and direct subagents",
-  research: "Deep-dive a topic on the web, produce a cited report",
+  research: "Investigate with parallel explorers, produce a cited report",
 };
 
 /** The one place status → colour lives. Dots carry meaning; nothing else is coloured. */

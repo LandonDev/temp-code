@@ -15,6 +15,10 @@ export const isAppshotPath = (p: string): boolean => /-appshot\.(png|jpg|md)$/.t
 export function memoryLabel(paths: string[]): string {
   if (paths.some((p) => p.endsWith("PROJECT.md"))) return "project memory";
   if (paths.some((p) => /plan-[\w-]+\.md$/.test(p))) return "the plan";
+  // A research root's report sits in reports/; an explorer's findings
+  // file one directory down, under the root's id.
+  if (paths.some((p) => /\.temp-code\/reports\/[^/]+\/[^/]+$/.test(p))) return "findings";
+  if (paths.some((p) => /\.temp-code\/reports\/[^/]+$/.test(p))) return "the report";
   if (paths.some((p) => p.includes(".temp-code/threads/"))) return "thread notes";
   return "app files";
 }

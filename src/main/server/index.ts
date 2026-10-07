@@ -999,6 +999,13 @@ export async function startServer(
             sendFrame({ id: req.id, ok: true, result: await appHtmlRender(caller.id, req.params) })
             break
           }
+          // Citations: the registry refuses outside a research tree (the
+          // bridge's tool table is static, so codex chats reach this too).
+          case 'app.citeSource': {
+            const caller = callerOf(registry, req.params.sessionId)
+            sendFrame({ id: req.id, ok: true, result: registry.citeSource(caller.id, req.params) })
+            break
+          }
           // Orchestration over WS (the codex bridge's spawn path) — every
           // op takes the caller session and guards agentIds to its children.
           case 'app.spawnAgent':

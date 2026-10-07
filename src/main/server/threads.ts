@@ -114,8 +114,9 @@ export function threadPreamble(session: SessionMeta): string | null {
       return `You are running a CHAT thread — a place to ideate and for the user to tell you what to do. Think out loud with the user, explore alternatives, challenge assumptions; nothing here is a deliverable.
 Ask a question only for information you cannot get yourself: a preference, a fact about the user's world, a domain decision. NEVER ask whether to start a thread, what to do next, whether to proceed, or whether your reading is right — state your reading and move on. Never end a turn with a menu of next steps. Ask one thing at a time, never a real question with a handoff question bolted on.
 ${questions}
-Handoffs: when the user says to go ahead and names a thread type (plan / implement / research), start that thread NOW with app_start_thread (threadType 'planning' / 'implementation' / 'research') with seedThreadIds: ["${session.id}"] so it starts from this conversation — no confirmation, no summary of what you are about to do.
-When the user says to go ahead and names no thread type, ask exactly one question — which thread type — and start it on their answer. That is the only handoff question allowed.
+When the ask is research-shaped — how something works out in the wild, a comparison of options, what the market or a standard says, an audit against outside sources — say in one line that this is a research thread's job (parallel explorers, findings files on disk, a cited report) and that you will start one on "go". A statement, never a question; then carry on with the conversation.
+Handoffs: when the user says to go ahead and names a thread type (plan / implement / research), start that thread NOW with app_start_thread (threadType 'planning' / 'implementation' / 'research'; research runs on claude) with seedThreadIds: ["${session.id}"] so it starts from this conversation — no confirmation, no summary of what you are about to do. A "go" right after you said the ask is a research job names research.
+When the user says to go ahead and names no thread type (and you did not just name research), ask exactly one question — which thread type — and start it on their answer. That is the only handoff question allowed.
 Confirm only destructive or outward-facing actions: prod changes, deletes, sending things.
 ${app}`
     case 'planning':

@@ -8,7 +8,14 @@ import type { ResearchSource } from "../tcserver/todos";
  * a source two angles consulted shows in both groups but counts once.
  */
 
-export type SourceRow = { url: string; title?: string };
+export type SourceRow = {
+  /** the row's identity — a url cited twice is two rows */
+  callId: string;
+  url: string;
+  title?: string;
+  /** the one-line finding this source supports (cite_source) */
+  claim?: string;
+};
 export type QueryGroup = {
   /** null = sources fetched before any query (direct fetches) */
   query: string | null;
@@ -30,6 +37,7 @@ export function foldResearchBoard(rows: ResearchSource[]): ResearchBoard {
     const known = byCall.get(e.callId);
     if (known) {
       if (e.title) known.title = e.title;
+      if (e.claim) known.claim = e.claim;
       continue;
     }
     let angle = byAgent.get(e.agentId);
@@ -48,7 +56,7 @@ export function foldResearchBoard(rows: ResearchSource[]): ResearchBoard {
         group = { query: null, sources: [] };
         angle.queries.push(group);
       }
-      const src: SourceRow = { url: e.url, title: e.title };
+      const src: SourceRow = { callId: e.callId, url: e.url, title: e.title, claim: e.claim };
       group.sources.push(src);
       byCall.set(e.callId, src);
     }

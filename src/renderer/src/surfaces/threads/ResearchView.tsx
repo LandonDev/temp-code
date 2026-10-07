@@ -382,7 +382,7 @@ function AngleGroup({
             </div>
           ) : null}
           {q.sources.map((src) => (
-            <SourceLink key={src.url} src={src} />
+            <SourceLink key={src.callId} src={src} />
           ))}
         </div>
       ))}
@@ -390,20 +390,26 @@ function AngleGroup({
   );
 }
 
-/** One consulted source: favicon, name, and the address small at right. */
+/** One consulted source: favicon, name, the address small at right, and
+ *  beneath them the claim it supports when the agent cited one. */
 function SourceLink({ src }: { src: SourceRow }) {
   return (
     <button
       type="button"
       onClick={() => window.open(src.url, "_blank")}
       title={src.url}
-      className="flex w-full items-center gap-2 rounded-md py-1 pr-2 pl-6 text-left transition-colors hover:bg-content/5 active:bg-content/10"
+      className="flex w-full flex-col gap-0.5 rounded-md py-1 pr-2 pl-6 text-left transition-colors hover:bg-content/5 active:bg-content/10"
     >
-      <Favicon url={src.url} />
-      <span className="min-w-0 flex-1 truncate text-[12px]">{src.title ?? hostOf(src.url)}</span>
-      <span className="max-w-[45%] shrink-0 truncate text-xs text-content/40">
-        {src.title ? src.url.replace(/^https?:\/\/(www\.)?/, "") : ""}
+      <span className="flex w-full items-center gap-2">
+        <Favicon url={src.url} />
+        <span className="min-w-0 flex-1 truncate text-[12px]">{src.title ?? hostOf(src.url)}</span>
+        <span className="max-w-[45%] shrink-0 truncate text-xs text-content/40">
+          {src.title ? src.url.replace(/^https?:\/\/(www\.)?/, "") : ""}
+        </span>
       </span>
+      {src.claim ? (
+        <span className="line-clamp-2 pl-6 text-xs leading-snug text-content/60">{src.claim}</span>
+      ) : null}
     </button>
   );
 }

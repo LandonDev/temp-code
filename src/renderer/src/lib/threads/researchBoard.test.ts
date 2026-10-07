@@ -27,11 +27,11 @@ describe("foldResearchBoard", () => {
       ["a2", "Angle two"],
     ]);
     expect(board.angles[0].queries).toEqual([
-      { query: "react 19", sources: [{ url: "https://react.dev/blog", title: "React blog" }] },
-      { query: "react compiler", sources: [{ url: "https://react.dev/compiler", title: undefined }] },
+      { query: "react 19", sources: [{ callId: "s1", url: "https://react.dev/blog", title: "React blog", claim: undefined }] },
+      { query: "react compiler", sources: [{ callId: "s2", url: "https://react.dev/compiler", title: undefined, claim: undefined }] },
     ]);
     expect(board.angles[1].queries).toEqual([
-      { query: null, sources: [{ url: "https://www.example.com", title: undefined }] },
+      { query: null, sources: [{ callId: "s3", url: "https://www.example.com", title: undefined, claim: undefined }] },
     ]);
     expect(board.sources).toBe(3);
     expect(board.searches).toBe(2);
@@ -45,9 +45,28 @@ describe("foldResearchBoard", () => {
       row({ callId: "q1b", query: "same", agentId: "a2", agentLabel: "Two" }),
       row({ callId: "s2", url: "https://a.dev", agentId: "a2", agentLabel: "Two" }),
     ]);
-    expect(board.angles[0].queries[0].sources).toEqual([{ url: "https://a.dev", title: "A" }]);
+    expect(board.angles[0].queries[0].sources).toMatchObject([{ url: "https://a.dev", title: "A" }]);
     expect(board.angles[1].queries[0].sources).toHaveLength(1);
     expect(board.sources).toBe(1);
+    expect(board.searches).toBe(1);
+  });
+});
+
+describe("citations on the board", () => {
+  it("a cited fetch stays one row with its claim; a further claim is its own row; totals count urls once", () => {
+    const board = foldResearchBoard([
+      row({ callId: "q1", query: "a pricing" }),
+      row({ callId: "s1", url: "https://a.dev/x" }),
+      row({ callId: "s1", url: "https://a.dev/x", title: "A pricing", claim: "A charges $42 a seat" }),
+      row({ callId: "cite:1", url: "https://a.dev/x", claim: "A has a free tier" }),
+      row({ callId: "cite:2", url: "https://b.org", claim: "B has none" }),
+    ]);
+    expect(board.angles[0].queries[0].sources).toEqual([
+      { callId: "s1", url: "https://a.dev/x", title: "A pricing", claim: "A charges $42 a seat" },
+      { callId: "cite:1", url: "https://a.dev/x", title: undefined, claim: "A has a free tier" },
+      { callId: "cite:2", url: "https://b.org", title: undefined, claim: "B has none" },
+    ]);
+    expect(board.sources).toBe(2);
     expect(board.searches).toBe(1);
   });
 });
@@ -68,7 +87,7 @@ describe("mergeAngles", () => {
     const angles = mergeAngles(board, ["a", "b", "c"]);
     expect(angles.map((a) => a.agentId)).toEqual(["root", "a", "b", "c"]);
     expect(angles[1]).toEqual({ agentId: "a", label: "", queries: [] });
-    expect(angles[2].queries[0].sources).toEqual([{ url: "https://b.dev", title: undefined }]);
+    expect(angles[2].queries[0].sources).toMatchObject([{ url: "https://b.dev" }]);
   });
 
   it("is the board's own angles when nothing was spawned", () => {

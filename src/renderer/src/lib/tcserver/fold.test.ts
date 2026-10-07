@@ -487,13 +487,15 @@ describe("thread state", () => {
         { type: "research-source", callId: "r1", query: "bun sqlite", agentId: "a1", agentLabel: "Explorer 1" },
         { type: "research-source", callId: "r2", url: "https://bun.sh/docs", agentId: "a1", agentLabel: "Explorer 1" },
         { type: "research-source", callId: "r2", url: "https://bun.sh/docs", agentId: "a1", agentLabel: "Explorer 1", title: "Bun docs" },
+        // A cite_source on the boarded fetch pins its claim to the same row.
+        { type: "research-source", callId: "r2", url: "https://bun.sh/docs", agentId: "a1", agentLabel: "Explorer 1", claim: "bun:sqlite ships built in" },
         { type: "agent-spawned", childSessionId: "a1" },
         { type: "agent-spawned", childSessionId: "a1" },
       ]),
       CWD,
     );
     expect(s.thread.sources).toHaveLength(2);
-    expect(s.thread.sources[1]).toMatchObject({ url: "https://bun.sh/docs", title: "Bun docs", ts: 1_100 });
+    expect(s.thread.sources[1]).toMatchObject({ url: "https://bun.sh/docs", title: "Bun docs", claim: "bun:sqlite ships built in", ts: 1_100 });
     expect(s.thread.agents).toEqual(["a1"]);
     expect(s.blocks.filter((b) => b.text.startsWith("Source:"))).toHaveLength(0);
   });
