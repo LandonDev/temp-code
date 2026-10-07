@@ -718,6 +718,16 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
   }),
   z.object({
     id: z.string(),
+    method: z.literal('app.citeSource'),
+    params: z.object({
+      sessionId: z.string(),
+      url: z.string().min(1).max(2000),
+      claim: z.string().min(1).max(300),
+      title: z.string().max(300).optional()
+    })
+  }),
+  z.object({
+    id: z.string(),
     method: z.literal('app.startThread'),
     params: z.object({
       sessionId: z.string(),

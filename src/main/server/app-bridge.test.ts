@@ -5,7 +5,9 @@ import {
   HTML_RENDER_TOOL_DESCRIPTION,
   HTML_TOOL_PARAMS
 } from '@shared/htmlRender'
-import { HTML_PREVIEW_SHAPE, HTML_RENDER_SHAPE } from './apptools'
+import { CITE_TOOL_DESCRIPTION, CITE_TOOL_PARAMS } from '@shared/research'
+import { ThreadTypeSchema } from '@shared/domain'
+import { CITE_SHAPE, HTML_PREVIEW_SHAPE, HTML_RENDER_SHAPE } from './apptools'
 
 const bridgePath = join(import.meta.dirname, '..', '..', '..', 'scripts', 'app-mcp-bridge.mjs')
 
@@ -22,6 +24,24 @@ const bridge = (await import(bridgePath)) as {
   TOOLS: BridgeTool[]
   toolContent: (name: string, result: unknown) => Array<Record<string, unknown>>
 }
+
+describe('app-mcp-bridge cite_source and thread types', () => {
+  it("the bridge's cite_source matches the shared description and params", () => {
+    const cite = bridge.TOOLS.find((t) => t.name === 'cite_source')!
+    expect(cite.description).toBe(CITE_TOOL_DESCRIPTION)
+    expect(Object.keys(cite.inputSchema.properties)).toEqual(Object.keys(CITE_SHAPE))
+    expect(cite.inputSchema.required).toEqual(['url', 'claim'])
+    for (const [name, schema] of Object.entries(cite.inputSchema.properties)) {
+      expect(schema.description).toBe(CITE_TOOL_PARAMS[name as keyof typeof CITE_TOOL_PARAMS])
+    }
+  })
+
+  it('app_start_thread offers every thread type, research included', () => {
+    const start = bridge.TOOLS.find((t) => t.name === 'app_start_thread')!
+    const threadType = start.inputSchema.properties.threadType as { enum?: string[] }
+    expect(threadType.enum).toEqual(ThreadTypeSchema.options)
+  })
+})
 
 describe('app-mcp-bridge html tools', () => {
   it("the bridge's descriptions equal the shared constants and its schemas name the same params", () => {

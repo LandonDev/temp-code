@@ -16,7 +16,7 @@ const session = (threadType: SessionMeta['threadType']): SessionMeta =>
 
 it('a chat asks only for what it cannot find out, and one handoff question at most', () => {
   const text = threadPreamble(session('chat')) ?? ''
-  expect(text).toContain('names no thread type, ask exactly one question — which thread type')
+  expect(text).toContain('names no thread type (and you did not just name research), ask exactly one question — which thread type')
   expect(text).toContain('NEVER ask whether to start a thread')
   expect(text).toContain('seedThreadIds: ["thread-1"]')
   expect(text).not.toContain('liberally')
@@ -24,6 +24,15 @@ it('a chat asks only for what it cannot find out, and one handoff question at mo
   // The batching nudge is what made chats bolt a handoff onto a real question.
   expect(text).not.toContain('gathering every decision')
   expect(text).toContain('AskUserQuestion')
+})
+
+it('a chat names a research-shaped ask as a research job without asking, and a following "go" means research', () => {
+  const text = threadPreamble(session('chat')) ?? ''
+  expect(text).toContain("this is a research thread's job")
+  expect(text).toContain('A statement, never a question')
+  expect(text).toContain('A "go" right after you said the ask is a research job names research')
+  expect(text).toContain('research runs on claude')
+  expect(text).toContain('NEVER ask whether to start a thread')
 })
 
 it('a planning thread still batches every ready decision into one call', () => {

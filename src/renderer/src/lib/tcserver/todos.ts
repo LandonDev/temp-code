@@ -22,6 +22,8 @@ export type ResearchSource = {
   agentId: string;
   agentLabel: string;
   title?: string;
+  /** the one-line finding this source supports (a cite_source call) */
+  claim?: string;
   ts: number;
 };
 

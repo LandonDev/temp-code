@@ -156,7 +156,8 @@ export const AgentEventSchema = z.discriminatedUnion('type', [
   // to the ROOT research session, so the sources board gets persistence,
   // backfill, and live push for free. A query event (no url) opens a
   // query header; url events are the sources beneath it. An event with
-  // the same callId replaces the earlier one (title enrichment).
+  // the same callId replaces the earlier one (title enrichment, or the
+  // claim a cite_source call pins to an already-boarded fetch).
   z.object({
     type: z.literal('research-source'),
     callId: z.string(),
@@ -164,7 +165,9 @@ export const AgentEventSchema = z.discriminatedUnion('type', [
     query: z.string().optional(),
     agentId: z.string(),
     agentLabel: z.string(),
-    title: z.string().optional()
+    title: z.string().optional(),
+    /** the one-line finding this source supports (cite_source) */
+    claim: z.string().optional()
   }),
 
   // Session lifecycle.

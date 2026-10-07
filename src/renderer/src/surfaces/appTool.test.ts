@@ -20,6 +20,22 @@ describe("appView", () => {
     expect(appView(call("Edit", { file_path: "/p/src/a.ts" }), titleOf)).toBeNull();
     expect(appView(call("Read", { file_path: "/tmp/x-appshot.png" }), titleOf)?.detail).toBe("appshot");
   });
+  it("reads report and findings writes as what they are, and a citation by its host", () => {
+    expect(appView(call("Write", { file_path: "/ws/.temp-code/reports/abc123.md", content: "" }), titleOf)).toMatchObject({
+      label: "Updated",
+      detail: "the report",
+    });
+    expect(appView(call("Edit", { file_path: "/ws/.temp-code/reports/abc123/pricing-x1y2z3.md" }), titleOf)).toMatchObject({
+      detail: "findings",
+      phrase: "updated findings",
+    });
+    expect(appView(call("mcp__app__cite_source", { url: "https://www.react.dev/blog", claim: "x" }), titleOf)).toEqual({
+      label: "Cited",
+      detail: "react.dev",
+      phrase: "cited react.dev",
+    });
+    expect(appView(call("cite_source", { url: "src/main/server/sessions.ts", claim: "x" }), titleOf)?.detail).toBe("sessions.ts");
+  });
   it("names threads by title and links them", () => {
     expect(appView(call("mcp__app__app_read_thread", { threadId: "thread1" }), titleOf)).toEqual({
       label: "Read thread",
