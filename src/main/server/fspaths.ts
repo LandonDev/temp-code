@@ -1,5 +1,5 @@
 import { execFileBudgeted as execFileP } from './spawnBudget'
-import { createReadStream } from 'node:fs'
+import { createReadStream, realpathSync } from 'node:fs'
 import {
   access,
   chmod,
@@ -588,4 +588,34 @@ export async function fsWriteText(path: string, content: string): Promise<void> 
     if (handle) await handle.close().catch(() => {})
     if (temporaryPath) await unlink(temporaryPath).catch(() => {})
   }
+}
+
+/** Whether a path sits inside one of the roots — by either spelling (a
+ *  symlinked root such as /tmp vs /private/tmp must not fail), and only on
+ *  a path-segment boundary (/repo must not admit /repo-other). A file that
+ *  does not exist yet still resolves, so a plan or report poll can start
+ *  before the model writes the file. */
+export function withinRoots(path: string, roots: string[]): boolean {
+  // The real spelling of a path whose tail may not exist yet: resolve the
+  // deepest existing ancestor and put the missing tail back.
+  const real = (p: string): string => {
+    const tail: string[] = []
+    let head = p
+    for (;;) {
+      try {
+        return join(realpathSync(head), ...tail.reverse())
+      } catch {
+        const parent = dirname(head)
+        if (parent === head) return p
+        tail.push(basename(head))
+        head = parent
+      }
+    }
+  }
+  const abs = resolve(path)
+  const candidates = [abs, real(abs)]
+  const inside = (p: string, root: string): boolean => p === root || p.startsWith(root + sep)
+  return roots
+    .flatMap((r) => [resolve(r), real(resolve(r))])
+    .some((root) => candidates.some((p) => inside(p, root)))
 }

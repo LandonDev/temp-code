@@ -33,6 +33,7 @@ import {
   ORCHESTRATOR_TOOLS,
   orchestratorMcp,
   orchestratorPrompt,
+  researchWriteRoots,
   rulesFor
 } from '../orchestration'
 import { APP_TOOLS, appToolsMcp } from '../apptools'
@@ -936,6 +937,14 @@ const PERMISSION_MODE: Record<PermissionPolicy, PermissionMode> = {
 /** Unanswered approvals deny themselves after this long. */
 const APPROVAL_TIMEOUT_MS = 5 * 60 * 1000
 
+/** Web tools the session may use without a prompt. Under Auto-edits the
+ *  web is read-only research, so it runs free like an edit (a child's
+ *  unanswered prompt otherwise denies itself and stalls the research);
+ *  Safe keeps asking, Full access never asked. */
+export function permittedWebTools(permission: PermissionPolicy): string[] {
+  return permission === 'edits' ? ['WebSearch', 'WebFetch'] : []
+}
+
 export const claudeDriver: HarnessDriver = {
   id: 'claude',
 
@@ -1081,6 +1090,8 @@ export const claudeDriver: HarnessDriver = {
     // swap in this thread's account's token and read the limit headers.
     const { url: endpoint } = await routedEndpointFor('claude', { thread: session.id, route: ctx.route ?? null })
 
+    const writeRoots = researchWriteRoots(session)
+    const webTools = permittedWebTools(session.permission)
     const options: Options = {
       abortController: abort,
       ...(claudeCli.path ? { pathToClaudeCodeExecutable: claudeCli.path } : {}),
@@ -1104,6 +1115,9 @@ export const claudeDriver: HarnessDriver = {
       includePartialMessages: true,
       permissionMode: PERMISSION_MODE[session.permission],
       ...(session.permission === 'auto' ? { allowDangerouslySkipPermissions: true } : {}),
+      // A research tree in a worktree project writes its report and angle
+      // files at the workspace root, outside this cwd.
+      ...(writeRoots.length ? { additionalDirectories: writeRoots } : {}),
       canUseTool,
       hooks: {
         PreToolUse: [{ matcher: 'AskUserQuestion', hooks: [askUserQuestionHook] }],
@@ -1157,7 +1171,7 @@ export const claudeDriver: HarnessDriver = {
                 orchestrator: orchestratorMcp(session),
                 app: appToolsMcp(session)
               },
-              allowedTools: [...ORCHESTRATOR_TOOLS, ...APP_TOOLS],
+              allowedTools: [...ORCHESTRATOR_TOOLS, ...APP_TOOLS, ...webTools],
               disallowedTools: denied,
               systemPrompt: {
                 type: 'preset' as const,
@@ -1179,7 +1193,7 @@ export const claudeDriver: HarnessDriver = {
                 orchestrator: orchestratorMcp(session),
                 app: appToolsMcp(session)
               },
-              allowedTools: [...ORCHESTRATOR_TOOLS, ...APP_TOOLS],
+              allowedTools: [...ORCHESTRATOR_TOOLS, ...APP_TOOLS, ...webTools],
               // Native subagent lanes are invisible to the user — the whole
               // point of spawn_agent is a visible, steerable session. The
               // tool is Task in older CLIs, Agent in the Fable era.
@@ -1199,7 +1213,7 @@ export const claudeDriver: HarnessDriver = {
             }
           : {
               mcpServers: { app: appToolsMcp(session) },
-              allowedTools: APP_TOOLS
+              allowedTools: [...APP_TOOLS, ...webTools]
             })
     }
 

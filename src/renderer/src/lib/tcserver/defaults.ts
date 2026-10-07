@@ -2,7 +2,7 @@ import { DEFAULT_THREAD_DEFAULTS } from "@server/shared/defaults";
 import { HARNESSES, HARNESS_TITLE, type HarnessId, type RuntimeMode } from "../session";
 import { modelsFor, resolveModel, type AgentModel } from "../models";
 import { modeForPolicy } from "./access";
-import type { ThreadDefaults } from "./types";
+import type { ThreadDefaults, ThreadType } from "./types";
 
 /**
  * Thread defaults: what a NEW thread starts with when nobody picks
@@ -130,14 +130,18 @@ export type DraftSeed = {
   modelSettings: Record<string, string>;
 };
 
-/** What a draft session is built from: harness, picker model id, access mode, effort. */
-export function draftFromDefaults(d: ThreadDefaults): DraftSeed {
-  const harness = d.provider as HarnessId;
-  const model = modelForDefaults(d);
+/** What a draft session is built from: harness, picker model id, access mode, effort.
+ *  A research thread runs on claude whatever the default provider: it has
+ *  both a search and a fetch tool, and its web tools run free under
+ *  Auto-edits (codex has no fetch, and its Auto-edits sandbox has no network). */
+export function draftFromDefaults(d: ThreadDefaults, threadType?: ThreadType | null): DraftSeed {
+  const seed = threadType === "research" && d.provider !== "claude" ? { ...d, provider: "claude" as const, model: "" } : d;
+  const harness = seed.provider as HarnessId;
+  const model = modelForDefaults(seed);
   return {
     harness,
-    model: d.model ? model.id : undefined,
-    runtimeMode: modeForPolicy(d.permission),
-    modelSettings: { effort: clampReasoning(model, d.reasoning) },
+    model: seed.model ? model.id : undefined,
+    runtimeMode: modeForPolicy(seed.permission),
+    modelSettings: { effort: clampReasoning(model, seed.reasoning) },
   };
 }

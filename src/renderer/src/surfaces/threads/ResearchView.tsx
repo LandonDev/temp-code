@@ -12,6 +12,7 @@ import {
   EMPTY_BOARD,
   foldResearchBoard,
   hostOf,
+  mergeAngles,
   type Angle,
   type SourceRow,
 } from "../../lib/threads/researchBoard";
@@ -33,8 +34,20 @@ import type { ThreadViewProps } from "./ThreadView";
  */
 
 const NO_BLOCKS: Block[] = [];
+const NO_AGENTS: string[] = [];
 const subscribeMeta = (listener: () => void): (() => void) =>
   sessionStore.onMetaChange(listener);
+
+/** A child that has settled: not running, starting or waiting. */
+const settled = (status: SessionStatus | undefined): boolean =>
+  status !== "running" && status !== "starting" && status !== "waiting";
+
+/** How many of the spawned angles have settled (a primitive, for useSyncExternalStore). */
+function useSettledCount(agents: string[]): number {
+  return useSyncExternalStore(subscribeMeta, () =>
+    agents.reduce((n, id) => n + (settled(sessionStore.metaOf(id)?.status) ? 1 : 0), 0),
+  );
+}
 
 /** A child angle's live state: its blocks (empty when never opened) and
  *  meta. Primitives and stable references only, for useSyncExternalStore. */
@@ -88,13 +101,18 @@ export function ResearchView(props: ThreadViewProps) {
     () => (sources ? foldResearchBoard(sources) : EMPTY_BOARD),
     [sources],
   );
+  // Angles: every spawned child, boarded or not, plus the root's own research.
+  const agents = session.thread?.agents ?? NO_AGENTS;
+  const angles = useMemo(() => mergeAngles(board, agents), [board, agents]);
+  const done = useSettledCount(agents);
+  const liveAngles = agents.length - done;
 
   // The report file, polled like the plan document.
   const doc = usePlanFile(session.planPath, running) ?? "";
   const report = useMemo(() => parseReport(doc), [doc]);
   const complete = report.status === "complete";
   const hasDoc = doc.trim().length > 0;
-  const hasBoard = board.angles.length > 0 || hasDoc;
+  const hasBoard = angles.length > 0 || hasDoc;
 
   // Chat pane phases (render-time adjusts): a question forces it open, a
   // run starting reopens it, and the run that COMPLETES the report folds
@@ -122,12 +140,18 @@ export function ResearchView(props: ThreadViewProps) {
   // A boarded angle group opens the agent's detail in place.
   const [openAgentId, setOpenAgentId] = useState<string | null>(null);
 
-  const detail =
+  const counts =
     board.sources > 0 || board.searches > 0
       ? `${board.sources} source${board.sources === 1 ? "" : "s"} · ${board.searches} search${
           board.searches === 1 ? "" : "es"
         }`
       : null;
+  // Coverage counts spawned angles only, never the root's own group.
+  const detail = agents.length
+    ? [`${done} of ${agents.length} angle${agents.length === 1 ? "" : "s"} done`, counts]
+        .filter(Boolean)
+        .join(" · ")
+    : counts;
 
   const boardPane = (
     <>
@@ -139,17 +163,19 @@ export function ResearchView(props: ThreadViewProps) {
               session={session}
               report={report}
               running={running}
+              liveAngles={liveAngles}
               onOpenFile={onOpenFile}
             />
           ) : null}
-          {board.angles.length > 0 ? (
+          {angles.length > 0 ? (
             <div className={hasDoc ? "mt-6 border-t border-content/10 pt-5" : undefined}>
-              {board.angles.map((angle) => (
+              {angles.map((angle) => (
                 <AngleGroup
                   key={angle.agentId}
                   angle={angle}
                   self={angle.agentId === session.id}
                   onOpen={() => setOpenAgentId(angle.agentId)}
+                  onOpenFile={onOpenFile}
                 />
               ))}
             </div>
@@ -213,11 +239,14 @@ function ReportPane({
   session,
   report,
   running,
+  liveAngles,
   onOpenFile,
 }: {
   session: Session;
   report: Report;
   running: boolean;
+  /** spawned angles still working — a "complete" report with any is early */
+  liveAngles: number;
   onOpenFile: OpenFileFn;
 }) {
   const complete = report.status === "complete";
@@ -244,6 +273,11 @@ function ReportPane({
           <span className="flex shrink-0 items-center gap-1.5 text-xs text-content/50">
             {running ? <MatrixSpinner cell={2} /> : null}
             in progress
+          </span>
+        ) : liveAngles > 0 ? (
+          <span className="flex shrink-0 items-center gap-1.5 text-xs text-content/50">
+            <MatrixSpinner cell={2} />
+            complete · {liveAngles} angle{liveAngles === 1 ? "" : "s"} still running
           </span>
         ) : null}
       </button>
@@ -278,19 +312,28 @@ function angleStatus(blocks: Block[]): string {
 }
 
 /** One research angle: the agent's label, a live status line while it
- *  works, and its queries with sources streaming in beneath. */
+ *  works, its findings file's state beneath, and its queries with sources
+ *  streaming in under that. */
 function AngleGroup({
   angle,
   self,
   onOpen,
+  onOpenFile,
 }: {
   angle: Angle;
   self: boolean;
   onOpen: () => void;
+  onOpenFile: OpenFileFn;
 }) {
   const agent = useAngleAgent(angle.agentId);
   const live = agent.status === "running" || agent.status === "starting";
   const label = self ? "Direct research" : (agent.title ?? angle.label);
+  // The child's findings file (its planPath), polled like the report.
+  const filePath = useSyncExternalStore(subscribeMeta, () =>
+    self ? null : (sessionStore.metaOf(angle.agentId)?.planPath ?? null),
+  );
+  const fileDoc = usePlanFile(filePath, live);
+  const findings = useMemo(() => (fileDoc ? parseReport(fileDoc) : null), [fileDoc]);
   return (
     <div className="mb-5 last:mb-0">
       <button
@@ -315,6 +358,21 @@ function AngleGroup({
           />
         ) : null}
       </button>
+      {findings && filePath ? (
+        <button
+          type="button"
+          onClick={() => onOpenFile(filePath)}
+          title="Open the findings file"
+          className="flex w-full items-baseline gap-2 rounded-md px-2 py-0.5 text-left text-xs transition-colors hover:bg-content/5"
+        >
+          <span className="shrink-0 text-content/50">
+            {findings.status === "complete" ? "done" : "in progress"}
+          </span>
+          {findings.summary ? (
+            <span className="min-w-0 truncate text-content/70">{findings.summary}</span>
+          ) : null}
+        </button>
+      ) : null}
       {angle.queries.map((q, i) => (
         <div key={i}>
           {q.query ? (

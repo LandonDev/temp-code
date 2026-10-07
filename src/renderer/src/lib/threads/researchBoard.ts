@@ -56,6 +56,23 @@ export function foldResearchBoard(rows: ResearchSource[]): ResearchBoard {
   return { angles, sources: urls.size, searches: queries.size };
 }
 
+/**
+ * The angles the board shows: every child the thread spawned, in spawn
+ * order, whether or not it has boarded a source yet (a codebase-only
+ * explorer never calls a web tool, but it still has a findings file),
+ * plus any other agent that boarded sources — the root's own direct
+ * research — ahead of them. Totals are the board's.
+ */
+export function mergeAngles(board: ResearchBoard, agents: string[]): Angle[] {
+  if (agents.length === 0) return board.angles;
+  const byAgent = new Map(board.angles.map((a) => [a.agentId, a]));
+  const spawned = new Set(agents);
+  return [
+    ...board.angles.filter((a) => !spawned.has(a.agentId)),
+    ...agents.map((agentId) => byAgent.get(agentId) ?? { agentId, label: "", queries: [] }),
+  ];
+}
+
 export function hostOf(url: string): string {
   try {
     return new URL(url).hostname.replace(/^www\./, "");

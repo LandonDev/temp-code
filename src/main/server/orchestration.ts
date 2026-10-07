@@ -1,5 +1,6 @@
 import { execFileBudgeted as execFileP } from './spawnBudget'
-import { SHOWING_VISUALS } from './threads'
+import { nanoid } from 'nanoid'
+import { anglePathFor, SHOWING_VISUALS } from './threads'
 import { mkdirSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
@@ -412,6 +413,20 @@ export interface SpawnAgentArgs {
   context1m?: boolean
 }
 
+/** The findings-file contract appended to every research explorer's task:
+ *  the file is the deliverable, written as the research goes, cited by
+ *  evidence, and read by the root — never the reply. */
+export function findingsContract(anglePath: string): string {
+  return `<findings-file>
+Your findings file is ${anglePath}. The app assigned it; it is your deliverable, and the thread that spawned you reads the FILE, not your reply.
+- Create it FIRST (create parent directories) with frontmatter — title, status: in-progress, summary (one line), sources: 0 — then update it as you go, so a stopped run still leaves what it found.
+- Every finding carries its evidence: the URL or file path, an excerpt or quote, and the date where the page gives one. Named examples, figures and quotes, not characterizations.
+- After reading a page that supports a finding, call cite_source with the URL and the one-line claim it supports — that is how the research board shows evidence.
+- Keep a Limits section: what you could not verify, where sources disagree, what you did not reach.
+- Finish by setting status: complete and sources: N (distinct sources cited). Your final reply is a short summary plus the file path; the detail lives in the file.
+</findings-file>`
+}
+
 export async function orchSpawnAgent(parent: SessionMeta, args: SpawnAgentArgs): Promise<string> {
   if (!registry) return 'orchestration registry not ready'
   // The MCP closure holds a boot-time snapshot of the caller; read it
@@ -434,9 +449,14 @@ export async function orchSpawnAgent(parent: SessionMeta, args: SpawnAgentArgs):
     return `refused: ${target.model} does not offer the 1M context window — only Claude models do. Spawn it without context1m, or pick a model marked +1m. ${approvedTable(rules)}`
   }
   const context1m = args.context1m ?? supportsContext1m(target.provider, target.model)
+  // A research tree's children investigate; they never edit the repo, so
+  // an untyped spawn is an explorer and nobody gets a worktree.
+  const researchRoot = registry.researchRootOf(parent.id)
   const agentType = (AGENT_TYPES as readonly string[]).includes(args.agentType ?? '')
     ? (args.agentType as (typeof AGENT_TYPES)[number])
-    : 'implementer'
+    : researchRoot
+      ? 'explorer'
+      : 'implementer'
   const children = registry.childrenOf(parent.id)
   const live = children.filter(
     (s) => s.status === 'running' || s.status === 'starting' || s.status === 'waiting'
@@ -447,14 +467,24 @@ export async function orchSpawnAgent(parent: SessionMeta, args: SpawnAgentArgs):
   if (rules.conduct.maxParallel > 0 && live.length >= rules.conduct.maxParallel) {
     return `refused: the user capped parallelism at ${rules.conduct.maxParallel} concurrent subagents (${live.length} active). wait_for_agent on one of them first, then retry.`
   }
-  const writer = agentType === 'implementer'
+  const writer = agentType === 'implementer' && !researchRoot
   const cwd =
     (writer && (args.useWorktree ?? true) && rules.conduct.useWorktrees
       ? await worktreeFor(parent.cwd, `${parent.id}-${Date.now() % 100000}`)
       : null) ?? parent.cwd
+  const title = args.task.trim().split('\n')[0].slice(0, 80) || `${target.provider} · ${agentType}`
+  // Every explorer in a research tree gets a findings file the app
+  // assigns, beside the root's report: its deliverable, which survives a
+  // truncated reply and a stopped run, and which the root synthesizes from.
+  const childId = researchRoot ? nanoid(12) : undefined
+  const anglePath = researchRoot
+    ? anglePathFor(registry.reportsRootFor(researchRoot), researchRoot.id, childId!, title)
+    : undefined
   // Children follow the parent's permission policy — the user granted it
   // once, and the fleet works under that grant.
   const child = await registry.create({
+    ...(childId ? { id: childId } : {}),
+    ...(anglePath ? { planPath: anglePath } : {}),
     projectId: parent.projectId,
     provider: target.provider,
     model: target.model,
@@ -465,10 +495,10 @@ export async function orchSpawnAgent(parent: SessionMeta, args: SpawnAgentArgs):
     cwd,
     // The task IS the identity — boards, tabs and the sidebar all
     // lead with it. Provider/type stay visible as metadata.
-    title: args.task.trim().split('\n')[0].slice(0, 80) || `${target.provider} · ${agentType}`,
+    title,
     parentId: parent.id
   })
-  await registry.send(child.id, args.task)
+  await registry.send(child.id, anglePath ? `${args.task}\n\n${findingsContract(anglePath)}` : args.task)
   // Live headroom rides every spawn result: the boot prompt's cap goes
   // stale when the user retunes mid-run, and a model told "at most 4"
   // self-limits — this is how it learns the current ceiling.
@@ -476,6 +506,7 @@ export async function orchSpawnAgent(parent: SessionMeta, args: SpawnAgentArgs):
     agentId: child.id,
     title: child.title,
     cwd,
+    ...(anglePath ? { findingsFile: anglePath } : {}),
     ...(rules.conduct.maxParallel > 0
       ? { parallel: `${live.length + 1} of ${rules.conduct.maxParallel} allowed slots in use` }
       : {}),
@@ -615,7 +646,8 @@ export function orchListAgents(parent: SessionMeta): string {
         agentType: s.agentType,
         status: s.status,
         idleForSeconds: idleSeconds(s.id),
-        cwd: s.cwd
+        cwd: s.cwd,
+        ...(s.parentId && s.planPath ? { findingsFile: s.planPath } : {})
       }))
   )
 }
@@ -643,7 +675,10 @@ export function orchestratorMcp(parent: SessionMeta): McpSdkServerConfigWithInst
             .enum(['low', 'medium', 'high', 'xhigh', 'max', 'ultra'])
             .default('medium')
             .describe('Must be one of the efforts the chosen model supports (see system prompt)'),
-          agentType: z.enum(AGENT_TYPES).default('implementer'),
+          agentType: z
+            .enum(AGENT_TYPES)
+            .optional()
+            .describe('Defaults to implementer — explorer inside a research thread'),
           task: z.string().describe('The complete, self-contained task prompt'),
           context1m: z
             .boolean()
@@ -886,17 +921,36 @@ plan as their reports land.`
 }
 
 /** Mechanics for research threads: the fleet IS the method — parallel
- *  web explorers feeding a cited report. */
+ *  explorers, each writing an app-assigned findings file the root
+ *  synthesizes from. */
 export function researchSpawnPrompt(session: SessionMeta): string {
   return `${orchestratorMechanics(rulesFor(session))}
 
 This is a RESEARCH thread: your deliverable is a cited report, and
 subagents are how you cover ground. Spawn parallel explorers, one per
-research angle, each with a self-contained brief: search the web with
-several query formulations, fetch and read the promising pages deeply,
-chase citations to primary sources, and return findings with a URL for
-every claim. Review coverage as reports land; spawn follow-ups for gaps
-and contradictions. You synthesize — the report is yours to write.`
+angle, each with a self-contained brief (the question, what counts as an
+answer, where to look). The app assigns every explorer a findings file
+beside your report — the spawn result and list_agents name it as
+findingsFile — and appends the file contract to the brief, so never name
+output paths yourself. Explorers run to completion: NEVER interrupt_agent
+an explorer, never tell one to stop or to cut its reply short;
+wait_for_agent until it settles. Then synthesize FROM THE FILES: read
+each findings file, never just the reply (replies are truncated). The
+report is yours to write.`
+}
+
+/** Directories a harness must be allowed to write beyond its cwd: a
+ *  session in a research tree whose reports root is not its cwd (a
+ *  worktree project) writes its report or angle file there. */
+export function extraWriteRoots(cwd: string, reportsRoot: string | null): string[] {
+  return reportsRoot && reportsRoot !== cwd ? [reportsRoot] : []
+}
+
+/** The write roots a driver grants this session (claude's
+ *  additionalDirectories, codex's writable_roots): none outside a research tree. */
+export function researchWriteRoots(session: SessionMeta): string[] {
+  if (!registry?.researchRootOf(session.id)) return []
+  return extraWriteRoots(session.cwd, registry.reportsRootFor(session))
 }
 
 /** The rules governing a session: workspace override → global → defaults,
