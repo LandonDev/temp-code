@@ -5,7 +5,7 @@ import type { DriverCtx } from './types'
 
 vi.mock('electron', () => ({ nativeImage: {} }))
 
-const { handleMessage, newStreamState, stopHookFor } = await import('./claude')
+const { handleMessage, newStreamState, permittedWebTools, stopHookFor } = await import('./claude')
 
 /**
  * Background work over the SDK stream: the task level and edges, the Stop
@@ -330,4 +330,10 @@ it('no check without a sender or while nothing is watched', () => {
   userTurn()
   expect(statuses().at(-1)).toBe('watching')
   expect(state.working).toBe(false)
+})
+
+it('web tools run without a prompt under Auto-edits only', () => {
+  expect(permittedWebTools('edits')).toEqual(['WebSearch', 'WebFetch'])
+  expect(permittedWebTools('safe')).toEqual([])
+  expect(permittedWebTools('auto')).toEqual([])
 })

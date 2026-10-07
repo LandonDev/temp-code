@@ -514,11 +514,15 @@ export default function App() {
       const defaults = workspaceStore.defaultsFor(ctx.workspaceId);
       const seed =
         defaults && (HARNESSES as string[]).includes(defaults.provider)
-          ? draftFromDefaults(defaults)
+          ? draftFromDefaults(defaults, threadType)
           : fallback;
-      return seed
+      const draft = seed
         ? newSession(seed.harness, cwd, seed.model, seed.runtimeMode, seed.modelSettings, context)
         : newDefaultSession(cwd, currentSessionDefaults()?.runtimeMode, context);
+      // Research runs on claude whatever the fallback chose (see draftFromDefaults).
+      return threadType === "research" && draft.harness !== "claude"
+        ? newSession("claude", cwd, undefined, draft.runtimeMode, undefined, context)
+        : draft;
     },
     [],
   );
@@ -2618,14 +2622,24 @@ export default function App() {
   /** The empty session's type picker. A draft becomes a real thread of that
    *  type at once, so its rules and tune have somewhere to live. */
   const onThreadTypeChange = useCallback((sessionId: string, threadType: ThreadType) => {
-    setSessions((prev) =>
-      prev.map((s) => (s.id === sessionId ? { ...s, threadType } : s)),
-    );
     const session = sessionStore.getSnapshot().find((s) => s.id === sessionId);
     if (!session) return;
+    // An untouched draft switched to research moves to claude, where
+    // research runs (the next send carries the provider to the server).
+    const resolved =
+      threadType === "research" && session.harness !== "claude" && session.blocks.length === 0
+        ? resolveModel("claude")
+        : null;
+    const patch = (s: Session): Session => {
+      const next = { ...s, threadType };
+      return resolved
+        ? withHarnessChoice(next, "claude", resolved.id, preferredModelSettings(resolved, s.modelSettings))
+        : next;
+    };
+    setSessions((prev) => prev.map((s) => (s.id === sessionId ? patch(s) : s)));
     const run = sessionStore.metaOf(sessionId)
       ? serverCommands.retype(sessionId, threadType)
-      : serverCommands.ensureCreated({ ...session, threadType });
+      : serverCommands.ensureCreated(patch(session));
     void run.catch(() => undefined);
   }, []);
 

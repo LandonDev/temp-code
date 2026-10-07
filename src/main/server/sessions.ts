@@ -54,7 +54,14 @@ import {
   DEFAULT_APPSHOT_SETTINGS,
   type AppshotSettings
 } from '@shared/appshots'
-import { planPathFor, planSeed, projectContext, reportPathFor, threadPreamble } from './threads'
+import {
+  isReportPath,
+  planPathFor,
+  planSeed,
+  projectContext,
+  reportPathFor,
+  threadPreamble
+} from './threads'
 import { notifyParentOfSettle } from './orchestration'
 import { foldTodo, newTodoFold, tallyOf, type TaskTally, type TodoFold } from './todos'
 import { liveDiffOnStatus } from './livediff'
@@ -586,6 +593,17 @@ export class SessionRegistry {
     return this.storedContinuableError(meta.id)
   }
 
+  /** Where a session's report and angle files live: the workspace root (the
+   *  repo's main checkout), so they outlive a worktree project's teardown and
+   *  every project of the repo can cite them. A loose session uses its
+   *  workspace's path, else its cwd. */
+  reportsRootFor(meta: Pick<SessionMeta, 'projectId' | 'workspaceId' | 'cwd'>): string {
+    const project = meta.projectId ? this.store.getProject(meta.projectId) : null
+    const workspaceId = project?.workspaceId ?? meta.workspaceId
+    const ws = workspaceId ? this.store.listWorkspaces().find((w) => w.id === workspaceId) : null
+    return ws?.path ?? meta.cwd
+  }
+
   /** The explicit pin that applies to a thread (its project's, else its workspace's). */
   pinOf(meta: SessionMeta): ResolvedPin | null {
     const project = meta.projectId ? this.store.getProject(meta.projectId) : null
@@ -1044,6 +1062,11 @@ export class SessionRegistry {
       workspace = this.store.listWorkspaces().find((w) => w.path === params.cwd) ?? null
     }
     const cwd = project?.cwd ?? workspace?.path ?? params.cwd ?? homedir()
+    const reportsRoot = this.reportsRootFor({
+      projectId: params.projectId,
+      workspaceId: workspace?.id ?? null,
+      cwd
+    })
     // Fields the caller left open come from the thread defaults
     // (workspace override → global → built-in).
     const d = this.resolveThreadDefaults(project?.workspaceId ?? workspace?.id ?? null)
@@ -1066,7 +1089,7 @@ export class SessionRegistry {
         params.threadType === 'planning'
           ? planPathFor(cwd, id)
           : params.threadType === 'research'
-            ? reportPathFor(cwd, id)
+            ? reportPathFor(reportsRoot, id)
             : (params.planPath ?? null),
       provider,
       model,
@@ -1303,8 +1326,15 @@ export class SessionRegistry {
     if (first || retyped) {
       const parts = [threadPreamble(meta)]
       // Planning and research threads WRITE their planPath file (plan /
-      // report) — only executing types read it as a brief.
-      if (meta.threadType !== 'planning' && meta.threadType !== 'research' && meta.planPath) {
+      // report) — only executing types read it as a brief. A subagent's
+      // planPath is its findings file (a research explorer's angle file),
+      // which its task already describes — never a plan to work from.
+      if (
+        meta.threadType !== 'planning' &&
+        meta.threadType !== 'research' &&
+        meta.planPath &&
+        !meta.parentId
+      ) {
         parts.push(planSeed(meta.planPath))
       }
       const preamble = parts.filter(Boolean).join('\n\n')
@@ -1324,7 +1354,8 @@ export class SessionRegistry {
             meta,
             project,
             ws?.name ?? null,
-            this.store.sessionsOfProject(meta.projectId)
+            this.store.sessionsOfProject(meta.projectId),
+            this.reportsRootFor(meta)
           )
           out = `${ctx}\n\n${out}`
         }
@@ -1783,10 +1814,9 @@ export class SessionRegistry {
     // Research owns the planPath slot outright — it is the report
     // destination, minted on entry and released on exit (a report path
     // must never masquerade as a plan for the next type).
-    const reportPath = reportPathFor(meta.cwd, sessionId)
     if (threadType === 'research') {
-      patch.planPath = reportPath
-    } else if (meta.planPath === reportPath) {
+      patch.planPath = reportPathFor(this.reportsRootFor(meta), sessionId)
+    } else if (meta.planPath && isReportPath(meta.planPath)) {
       patch.planPath = threadType === 'planning' ? planPathFor(meta.cwd, sessionId) : null
     } else if (threadType === 'planning' && !meta.planPath) {
       patch.planPath = planPathFor(meta.cwd, sessionId)
@@ -2325,7 +2355,7 @@ export class SessionRegistry {
   // ── research boards (sources harvested from the agent tree) ─────────
 
   /** The research thread this session's ancestor chain roots in, if any. */
-  private researchRoot(sessionId: string): SessionMeta | null {
+  researchRootOf(sessionId: string): SessionMeta | null {
     let cur = this.store.getSession(sessionId)
     for (let i = 0; cur?.parentId && i < 16; i++) cur = this.store.getSession(cur.parentId)
     return cur?.threadType === 'research' ? cur : null
@@ -2342,7 +2372,7 @@ export class SessionRegistry {
     const isSearch = /^(websearch|web_search)$/i.test(event.name)
     const isFetch = /^(webfetch|web_fetch)$/i.test(event.name)
     if (!isSearch && !isFetch) return
-    const root = this.researchRoot(sessionId)
+    const root = this.researchRootOf(sessionId)
     if (!root) return
     const input = (
       event.input && typeof event.input === 'object' ? event.input : {}

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ResearchSource } from "../tcserver/todos";
-import { EMPTY_BOARD, foldResearchBoard, hostOf } from "./researchBoard";
+import { EMPTY_BOARD, foldResearchBoard, hostOf, mergeAngles } from "./researchBoard";
 
 const row = (p: Partial<ResearchSource> & { callId: string }): ResearchSource => ({
   agentId: "a1",
@@ -56,5 +56,23 @@ describe("hostOf", () => {
   it("strips www and survives bad urls", () => {
     expect(hostOf("https://www.react.dev/x")).toBe("react.dev");
     expect(hostOf("not a url")).toBe("");
+  });
+});
+
+describe("mergeAngles", () => {
+  it("lists every spawned child in spawn order, boarded or not, after the root's own group", () => {
+    const board = foldResearchBoard([
+      row({ callId: "r1", query: "overview", agentId: "root", agentLabel: "Research" }),
+      row({ callId: "b1", url: "https://b.dev", agentId: "b", agentLabel: "Angle B" }),
+    ]);
+    const angles = mergeAngles(board, ["a", "b", "c"]);
+    expect(angles.map((a) => a.agentId)).toEqual(["root", "a", "b", "c"]);
+    expect(angles[1]).toEqual({ agentId: "a", label: "", queries: [] });
+    expect(angles[2].queries[0].sources).toEqual([{ url: "https://b.dev", title: undefined }]);
+  });
+
+  it("is the board's own angles when nothing was spawned", () => {
+    const board = foldResearchBoard([row({ callId: "s1", url: "https://a.dev" })]);
+    expect(mergeAngles(board, [])).toBe(board.angles);
   });
 });

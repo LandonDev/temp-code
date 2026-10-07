@@ -10,6 +10,7 @@ import { harnessEnv, resolveBinary } from './binaries'
 import { expandSlashRefs } from '../slash'
 import { toolDisplay } from './display'
 import { bridgeMcpConfig } from '../apptools'
+import { researchWriteRoots } from '../orchestration'
 import { routedEndpointFor } from '../endpoint'
 import { observeCodexSnapshot } from '../gatewayObserve'
 
@@ -721,6 +722,7 @@ export const codexDriver: HarnessDriver = {
         const routed = await routedEndpointFor('codex', { thread: session.id, route: ctx.route ?? null })
         const endpoint = routed.url
         account = routed.account
+        const writeRoots = researchWriteRoots(session)
         const threadParams = {
           cwd: session.cwd,
           model: session.model,
@@ -744,6 +746,9 @@ export const codexDriver: HarnessDriver = {
             // off keeps whatever the user's own codex config chooses.
             ...(session.fast ? { service_tier: 'priority' } : {}),
             ...(bridgeEntry ? { mcp_servers: { app: bridgeEntry } } : {}),
+            // A research tree in a worktree project writes its report and
+            // angle files at the workspace root, outside this cwd.
+            ...(writeRoots.length ? { sandbox_workspace_write: { writable_roots: writeRoots } } : {}),
             ...(endpoint ? { chatgpt_base_url: endpoint } : {})
           }
         }

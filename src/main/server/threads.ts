@@ -19,11 +19,32 @@ import { orchestratorPrompt, rulesFor, spawnableModels } from './orchestration'
 export const planPathFor = (cwd: string, sessionId: string): string =>
   join(cwd, '.temp-code', `plan-${sessionId}.md`)
 
-/** Research reports live in their own dir; the path rides the session's
- *  planPath field (untyped TEXT), so the plan-file machinery — live poll,
- *  pin, app_start_thread seeding — works on reports unchanged. */
-export const reportPathFor = (cwd: string, sessionId: string): string =>
-  join(cwd, '.temp-code', 'reports', `${sessionId}.md`)
+/** Research reports live in their own dir under the REPORTS ROOT (the
+ *  workspace path — the repo's main checkout — never a worktree project's
+ *  cwd, so a report outlives the project and every project of the repo can
+ *  cite it); the path rides the session's planPath field (untyped TEXT), so
+ *  the plan-file machinery — live poll, pin, app_start_thread seeding —
+ *  works on reports unchanged. */
+export const reportsDirFor = (reportsRoot: string): string =>
+  join(reportsRoot, '.temp-code', 'reports')
+export const reportPathFor = (reportsRoot: string, sessionId: string): string =>
+  join(reportsDirFor(reportsRoot), `${sessionId}.md`)
+/** A report (or an explorer's angle file) wherever it was rooted — older
+ *  sessions minted theirs under the project cwd. */
+export const isReportPath = (p: string): boolean => p.includes('/.temp-code/reports/')
+
+/** An explorer's findings file: beside the root's report, in a directory
+ *  named for the root, titled by the angle and suffixed by the child's id. */
+export function anglePathFor(reportsRoot: string, rootId: string, childId: string, title: string): string {
+  const slug =
+    title
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 40)
+      .replace(/-+$/, '') || 'angle'
+  return join(reportsDirFor(reportsRoot), rootId, `${slug}-${childId.slice(0, 6)}.md`)
+}
 
 /** The provider's structured-question tool — the ONLY sanctioned way to
  *  put options to the user (the UI renders them as answerable cards).
@@ -127,18 +148,28 @@ A FOLLOW-UP message after your list finished is a NEW round of work, and the UI 
 ${spawnNote(session)}
 ${app}`
     }
-    case 'research':
-      return `You are running a RESEARCH thread — deep research on the live web, distilled into a durable cited report. Your sources are the web (WebSearch/WebFetch and their equivalents), not this codebase. If this configuration has no web tools, say so plainly and stop — never fake research from memory.
-Your deliverable is the report at ${session.planPath}. Create it EARLY (create parent directories) with frontmatter — title, date, status: in-progress, and a one-line summary — and keep it updated as you go; it is rendered live to the user. Set status: complete when the research is done.
+    case 'research': {
+      // Codex searches but cannot fetch, and its Auto-edits sandbox has no
+      // network at all — this is the only research text a codex root sees
+      // (researchSpawnPrompt is a claude system-prompt append).
+      const codex =
+        session.provider === 'codex'
+          ? `\nThis harness searches the web but cannot fetch pages, and under Auto-edits its sandbox has no network at all (even curl fails): spawn claude explorers for every angle that must read pages, and ask the user for Full access if you need the web yourself.`
+          : ''
+      return `You are running a RESEARCH thread — an investigation that ends in a durable, cited report: the live web, this codebase, or both, whatever the question needs. Never fake research from memory; if the question needs the web and this configuration has no web tools, say so plainly and stop.
+Your deliverable is the report at ${session.planPath}. Create it EARLY (create parent directories) with frontmatter — title, date, status: in-progress, and a one-line summary — and keep it updated as you go; it is rendered live to the user.
 Work the loop:
-1. SCOPE — restate the question and break it into the sub-questions and angles worth chasing. Ask the user only if the request is genuinely ambiguous.
-2. FAN OUT — spawn parallel explorer subagents, one per angle, each with a self-contained brief: search broadly (several query formulations, never just one), read the promising results deeply (fetch the pages, not just snippets), chase citations back to primary sources, prefer recent and authoritative material, and return structured findings with a URL for every claim.
-3. ITERATE — review coverage as agents report. Spawn follow-up agents for gaps, contradictions between sources, and intricacies that surfaced mid-research. Cross-check contested claims against independent sources before accepting them.
-4. SYNTHESIZE — write the report, citing as you go. Structure: the TL;DR up top, findings organized by question with inline numbered citations, a full sources list, contested or uncertain points called out as such, open questions at the end. Target breadth AND depth: many sources, primary over secondary, disagreements surfaced rather than averaged away.
-FOLLOW-UP messages are answer-first: answer from the report and the sources already gathered. Only when the answer is not in hand, spawn one or two narrowly-briefed agents for exactly that question — and fold material findings back into the report (edit in place, note what changed).
+1. SCOPE — restate the question and break it into the angles worth chasing. Ask the user only if the request is genuinely ambiguous.
+2. FAN OUT — spawn one explorer per angle, in parallel, each with a self-contained brief: the question, what counts as an answer, where to look (search terms, pages, files). The app assigns every explorer a findings file beside your report (the spawn result names it as findingsFile) and appends the file contract to your brief — never name output paths yourself. Explorers run to completion: NEVER interrupt_agent an explorer, never tell one to stop or to cut its reply short; wait_for_agent until it settles. Its findings file is its deliverable; its reply is only a summary.
+3. SYNTHESIZE FROM THE FILES — read every explorer's findings file, never just the replies (they are truncated). Spawn follow-ups for gaps and for contradictions between sources; cross-check contested claims against independent sources before accepting them.
+4. WRITE — the report: the TL;DR up top; findings by question with numbered inline citations; named examples, figures and quotes, not characterizations; every section filled or deleted — no "in progress" stubs once complete; hedges and caveats in ONE Limits section and nowhere else; a full sources list; open questions at the end.
+Done floor: status: complete needs at least 3 finished angles (findings files at status: complete) and 15 distinct cited sources — for codebase questions, file paths count as sources. Below the floor the report stays in-progress, or its Limits section says why the floor cannot be reached.
+After reading a page that supports a finding, call cite_source with the URL and the one-line claim it supports — that is how the research board shows evidence beside each source.
+FOLLOW-UP messages are answer-first: read the report and the findings files first and answer from them. Only when the answer is not in hand, spawn one or two narrowly-briefed explorers for exactly that question — and fold what they find into the report and into the findings file that owns the angle (edit in place, note what changed).${codex}
 ${questions}
 ${spawnNote(session)}
 ${app}`
+    }
     case 'orchestration':
       // claude orchestrators carry the mechanics + user rules in their
       // system prompt; other harnesses get the same text as a preamble
@@ -174,9 +205,9 @@ const CONTEXT_INDEX_MAX = 8
 /** One line per research report in reports/, from each file's frontmatter
  *  (research threads write it: title, date, status) — newest first, same
  *  cap as threads. Missing dir or unreadable file = no lines. */
-function reportLines(cwd: string): string[] {
+function reportLines(reportsRoot: string): string[] {
   try {
-    const dir = join(cwd, '.temp-code', 'reports')
+    const dir = reportsDirFor(reportsRoot)
     return readdirSync(dir, { withFileTypes: true })
       .filter((f) => f.isFile() && f.name.endsWith('.md'))
       .flatMap((f) => {
@@ -191,7 +222,7 @@ function reportLines(cwd: string): string[] {
           return [
             {
               date: get('date') ?? '',
-              line: `    · "${get('title') ?? f.name}"${meta ? ` (${meta})` : ''} — .temp-code/reports/${f.name}`
+              line: `    · "${get('title') ?? f.name}"${meta ? ` (${meta})` : ''} — ${join(dir, f.name)}`
             }
           ]
         } catch {
@@ -216,7 +247,9 @@ export function projectContext(
   session: SessionMeta,
   project: ProjectMeta,
   workspaceName: string | null,
-  siblings: SessionMeta[]
+  siblings: SessionMeta[],
+  /** where reports live for this session (the workspace root); defaults to the cwd */
+  reportsRoot: string = session.cwd
 ): string {
   const roots = siblings
     .filter((s) => !s.parentId && s.id !== session.id)
@@ -233,7 +266,7 @@ export function projectContext(
   const threads = threadLines.length
     ? `Most recent threads:\n${threadLines.join('\n')}${overflow}`
     : 'No other threads yet.'
-  const reports = reportLines(session.cwd)
+  const reports = reportLines(reportsRoot)
   const where = [
     workspaceName ? `workspace "${workspaceName}"` : null,
     project.branch ? `branch ${project.branch}` : null
@@ -248,7 +281,7 @@ Shared context lives in .temp-code/ — FIND what you need, never bulk-read:
 - threads/<id>-<slug>.md — transcripts. Frontmatter and ## Outcome at the top summarize each one; read just the head (~40 lines) first, and the full body only when the outcome says it is the right thread.
 - PROJECT.md — the journal: one dated line per durable outcome. Skim the tail of ## Log for recent state; PROJECT-archive.md has older entries.
 - plan-*.md — plan documents.
-${reports.length ? `- reports/*.md — research reports, citable by any thread:\n${reports.join('\n')}\n` : ''}${threads}
+${reports.length ? `- ${reportsDirFor(reportsRoot)}/ — research reports (and their angle files under <id>/), citable by any thread:\n${reports.join('\n')}\n` : ''}${threads}
 Every file you open costs context — open transcripts one at a time, only when INDEX.md or the journal points there.
 
 When this thread produces a durable outcome (a decision, a plan written, work merged, an approach abandoned), append ONE line to PROJECT.md under ## Log:

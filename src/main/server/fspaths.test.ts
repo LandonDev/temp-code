@@ -29,7 +29,8 @@ import {
   fsReadText,
   fsRenamePath,
   fsStatFiles,
-  fsWriteText
+  fsWriteText,
+  withinRoots
 } from './fspaths'
 
 const execFileP = promisify(execFile)
@@ -275,5 +276,23 @@ describe('filesystem reads and writes', () => {
     await expect(fsWriteText(created, 'x'.repeat(8 * 1024 * 1024 + 1))).rejects.toThrow(
       'File is too large to save (maximum 8 MB).'
     )
+  })
+})
+
+describe('withinRoots', () => {
+  it('admits a root, its descendants (existing or not), and either spelling of a symlinked root', async () => {
+    const root = await tempRoot('roots')
+    await mkdir(join(root, 'real'))
+    await symlink(join(root, 'real'), join(root, 'link'))
+    expect(withinRoots(join(root, 'real', 'not-yet-written.md'), [join(root, 'real')])).toBe(true)
+    expect(withinRoots(join(root, 'real'), [join(root, 'real')])).toBe(true)
+    expect(withinRoots(join(root, 'link', 'a.md'), [join(root, 'real')])).toBe(true)
+    expect(withinRoots(join(root, 'real', 'a.md'), [join(root, 'link')])).toBe(true)
+    expect(withinRoots(join(root, 'real', 'a.md'), [join(root, 'other'), join(root, 'real')])).toBe(true)
+  })
+  it('refuses a sibling that merely shares the prefix, and anything outside every root', () => {
+    expect(withinRoots('/repo-other/a.md', ['/repo'])).toBe(false)
+    expect(withinRoots('/elsewhere/a.md', ['/repo', '/work'])).toBe(false)
+    expect(withinRoots('/repo/../etc/passwd', ['/repo'])).toBe(false)
   })
 })

@@ -126,4 +126,18 @@ describe("draftFromDefaults", () => {
     expect(seed.runtimeMode).toBe("supervised");
     expect(seed.modelSettings).toEqual({ effort: "medium" });
   });
+
+  it("seeds a research thread on claude when the default provider is another, keeping the access mode", () => {
+    live();
+    const seed = draftFromDefaults({ provider: "cursor", model: "composer-2.5", reasoning: "high", permission: "edits" }, "research");
+    expect(seed.harness).toBe("claude");
+    expect(seed.model).toBeUndefined();
+    expect(seed.runtimeMode).toBe("auto-accept-edits");
+    expect(seed.modelSettings).toEqual({ effort: "high" });
+    // Other thread types keep the default provider; a claude default is untouched.
+    expect(draftFromDefaults({ provider: "cursor", model: "", reasoning: "high", permission: "edits" }, "chat").harness).toBe("cursor");
+    expect(
+      draftFromDefaults({ provider: "claude", model: "claude-opus-5", reasoning: "high", permission: "edits" }, "research").model,
+    ).toBe("claude:claude-opus-5");
+  });
 });

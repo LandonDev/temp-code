@@ -330,7 +330,7 @@ export function appToolsMcp(session: SessionMeta): McpSdkServerConfigWithInstanc
       ),
       tool(
         'app_start_thread',
-        'Create a new thread and send its first message — it starts working immediately, visibly. Use ONLY when the user asked for a handoff or agreed to one (e.g. plan approved → implementation thread; chat crystallized → planning thread seeded from it).',
+        'Create a new thread and send its first message — it starts working immediately, visibly. Use ONLY when the user asked for a handoff or agreed to one (e.g. plan approved → implementation thread; chat crystallized → planning thread seeded from it; a research-shaped ask → research thread, which runs on claude).',
         {
           threadType: z.enum(['chat', 'planning', 'implementation', 'orchestration', 'research']),
           provider: z.enum(providerIds),

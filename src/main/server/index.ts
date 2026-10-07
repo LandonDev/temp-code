@@ -1,6 +1,7 @@
-import { existsSync, readFileSync, realpathSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { handleM3a } from './m3a'
+import { withinRoots } from './fspaths'
 import { Notes } from './notes'
 import { ProjectLogos } from './projectLogos'
 import { AccountsService } from './accounts'
@@ -115,25 +116,16 @@ function callerOf(registry: SessionRegistry, sessionId: string): SessionMeta {
   return caller
 }
 
-/** file.read is fenced to project working trees (plan docs live there). */
+/** file.read is fenced to app-managed directories: project working trees
+ *  (plan docs live there) and workspace roots (reports and angle files live
+ *  there — for a worktree project that is outside its cwd). */
 function readAllowedFile(registry: SessionRegistry, path: string): string | null {
-  // Containment allows either spelling of a root — /tmp vs /private/tmp
-  // (or any symlinked workspace root) must not fail the check, and a file
-  // that doesn't exist yet (plan polls) must still resolve.
-  const real = (p: string): string => {
-    try {
-      return realpathSync(p)
-    } catch {
-      return p
-    }
-  }
   const abs = resolve(path)
-  const absReal = real(abs)
-  const allowed = registry
-    .listProjects()
-    .flatMap((p) => [resolve(p.cwd), real(resolve(p.cwd))])
-    .some((root) => abs.startsWith(root) || absReal.startsWith(root))
-  if (!allowed) throw new Error('path outside app-managed directories')
+  const roots = [
+    ...registry.listProjects().map((p) => p.cwd),
+    ...registry.listWorkspaces().map((w) => w.path)
+  ]
+  if (!withinRoots(abs, roots)) throw new Error('path outside app-managed directories')
   try {
     return readFileSync(abs, 'utf8')
   } catch {
