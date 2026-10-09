@@ -1,66 +1,67 @@
-# temp-code
+# TempCode
 
-Desktop coding-agent interface (working name). A thin Electron/React client
-over a heavy local Node server that drives official agent harnesses — Claude
-(Agent SDK), Codex (`codex app-server`), Cursor (`cursor-agent`) — under the
-user's own logins. Built around cross-provider orchestration.
+[![Download for Mac (Apple silicon)](https://img.shields.io/badge/Download%20for%20Mac-Apple%20silicon-0A84FF?style=for-the-badge&logo=apple&logoColor=white)](https://github.com/LandonDev/temp-code/releases/latest/download/TempCode-arm64.dmg)
+[![All releases](https://img.shields.io/github/v/release/LandonDev/temp-code?style=for-the-badge&label=Releases&color=555)](https://github.com/LandonDev/temp-code/releases)
+
+TempCode is a Mac desktop app for working with coding agents. It runs the
+official agent CLIs under your own logins and gives them one workspace:
+projects, threads, a code editor, terminals, git, and an inbox.
+
+- **Providers.** Claude (Agent SDK), Codex (`codex app-server`) and Cursor
+  (`cursor-agent`), each thread a real harness process on your own account.
+  Grok Build, OpenCode, Pi, omp and fx run as experimental drivers.
+- **Threads.** Chat, planning, implementation, orchestration and research
+  threads per project. An orchestration thread spawns subagents on any
+  provider and watches them in a fleet panel.
+- **Workspace.** File editor with TypeScript and Java language servers,
+  terminals, git changes and branches, a GitHub and Linear inbox, notes and
+  search across every thread.
+- **Accounts.** The Aliax Accounts and Stats pages are built in: capture
+  accounts, switch between them, and see usage over time.
 
 ## Install
 
-Apple silicon Macs only (arm64; an Intel build is out of scope for now),
-macOS 12 or newer.
+Apple silicon Mac on macOS 12 or newer. Download the dmg above, open it,
+and drag TempCode to Applications. The app is signed and notarized.
 
-- Download the latest build:
-  https://github.com/LandonDev/temp-code/releases/latest/download/TempCode-arm64.dmg
-- Open the dmg and drag TempCode to Applications. The app is signed and
-  notarized, so it opens without a Gatekeeper warning.
-- It updates itself from this repo's releases: an update shows up in the
-  sidebar footer and under Settings → General; it downloads when you ask
-  and installs on restart.
+It needs on the machine:
 
-What it needs on the machine: the agent CLIs you want to drive (`claude`,
-`codex`, `cursor-agent`) signed into your own accounts, `git`, and for the
-Java editor a JDK 21 or newer (the Eclipse language server downloads on
-first use). The Accounts and Stats pages come from Aliax and work on their
-own; the Aliax app is optional and shares the same vault when installed.
+- The agent CLIs you want to drive, signed in: `claude`, `codex`,
+  `cursor-agent`.
+- `git`.
+- A JDK 21 or newer for the Java editor. The Eclipse language server
+  downloads on first use.
 
-## Architecture
+The app updates itself from this repo's releases. It checks at launch and
+every half hour, downloads when you ask, and installs on restart.
+
+## How it is built
 
 ```
-Renderer (React, Tailwind v4, zustand)
-    │  one typed WebSocket — request/response + per-session subscriptions
-Server (in Electron main for now)
-    ├─ SQLite (node:sqlite): session tree + append-only event log
-    ├─ SessionRegistry: live driver handles, subscriptions
-    └─ drivers: claude · codex (experimental) · cursor (experimental)
-         each session = an official harness process, user's own auth
+Renderer (React, Tailwind, one typed WebSocket)
+    │
+Server in the Electron main process
+    ├─ SQLite: project and thread tree, append-only event log
+    ├─ drivers: claude · codex · cursor · grok · opencode · pi · omp · fx
+    └─ editor, terminal, git, GitHub, Linear and Aliax services
 ```
 
-- `src/shared/` — catalog, normalized event schema, WS contract (both sides
-  import these; nothing else crosses the wire).
-- `src/main/server/` — server, store, drivers.
-- `src/renderer/` — app shell. UI system: ReUI (base, `components/ui` +
-  `components/reui`), BeUI motion (`components/motion`), Beautiful UI
-  agent primitives (`components/bui`, copy-paste + adapt).
-
-Plan: `docs/PLAN.md`.
+- `src/shared/` holds the model catalog, the event schema and the wire
+  contract. Both sides import it and nothing else crosses the socket.
+- `src/main/` is the Electron main process: the server, the drivers, the
+  updater and the Aliax bridge.
+- `src/renderer/` is the app shell.
 
 ## Develop
 
 ```bash
 bun install
-bun run dev        # from a Claude Code shell: env -u ELECTRON_RUN_AS_NODE bun run dev
+bun run dev          # from an agent shell: env -u ELECTRON_RUN_AS_NODE bun run dev
+bun run test         # vitest
+bun run typecheck
+bun run build        # typecheck + electron-vite build
 ```
 
-Live end-to-end tests (real harnesses, run outside Electron):
-
-```bash
-bun run script:e2e-claude          # driver mapping, tools, interrupt, resume
-bun run script:e2e-lifecycle       # archive/restart/delete (no LLM calls)
-bun run script:e2e-approval        # canUseTool → allow + deny paths
-bun run script:e2e-providers       # claude + codex + cursor side by side
-bun run script:e2e-orchestration   # orchestrator spawns a codex subagent
-```
-
-`REUI_LICENSE_KEY` in `.env.local` (git-ignored) unlocks ReUI Pro installs:
-`bunx --bun shadcn@latest add @reui/<name> --yes`. BeUI: `@beui/<name>`.
+Releases are arm64 only. `bun run release:publish` signs, notarizes and
+publishes the current version to GitHub releases; see CLAUDE.md for the
+release train.
