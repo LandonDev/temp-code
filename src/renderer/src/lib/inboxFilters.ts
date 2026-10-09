@@ -19,8 +19,15 @@ export type InboxStatusFilter = {
   merged: boolean;
 };
 
+/** Which of the viewer's own items to keep; any flag set keeps items matching any set flag. */
+export type InboxMineFilter = {
+  authored: boolean;
+  assigned: boolean;
+  reviewRequested: boolean;
+};
+
 export type InboxFilters = {
-  assignedToMe: boolean;
+  mine: InboxMineFilter;
   /** GitHub workspaces hidden from the list, by workspace id. */
   hiddenWorkspaceIds: string[];
   hiddenKinds: InboxKind[];
@@ -35,8 +42,14 @@ export const DEFAULT_INBOX_STATUS_FILTER: InboxStatusFilter = {
   merged: false,
 };
 
+export const DEFAULT_INBOX_MINE_FILTER: InboxMineFilter = {
+  authored: false,
+  assigned: false,
+  reviewRequested: false,
+};
+
 export const DEFAULT_INBOX_FILTERS: InboxFilters = {
-  assignedToMe: false,
+  mine: DEFAULT_INBOX_MINE_FILTER,
   hiddenWorkspaceIds: [],
   hiddenKinds: [],
   time: "all",
@@ -69,9 +82,14 @@ export function loadInboxFilters(): InboxFilters {
   try {
     const raw = localStorage.getItem(FILTERS_KEY);
     if (!raw) return DEFAULT_INBOX_FILTERS;
-    const parsed = JSON.parse(raw) as Partial<InboxFilters>;
+    const parsed = JSON.parse(raw) as Partial<InboxFilters> & { assignedToMe?: boolean };
     return {
-      assignedToMe: parsed.assignedToMe === true,
+      mine: {
+        authored: parsed.mine?.authored === true,
+        // Older builds stored a single assignedToMe flag.
+        assigned: parsed.mine?.assigned === true || parsed.assignedToMe === true,
+        reviewRequested: parsed.mine?.reviewRequested === true,
+      },
       // Older builds stored hiddenProjects (folder paths); those are ignored.
       hiddenWorkspaceIds: Array.isArray(parsed.hiddenWorkspaceIds)
         ? parsed.hiddenWorkspaceIds.filter(
@@ -124,8 +142,12 @@ export function hasActiveInboxFilters(
         filters.status.draft ||
         filters.status.closed ||
         filters.status.merged;
+  const mineActive =
+    source === "linear"
+      ? filters.mine.assigned
+      : filters.mine.authored || filters.mine.assigned || filters.mine.reviewRequested;
   return (
-    filters.assignedToMe ||
+    mineActive ||
     (source === "linear" ? false : filters.hiddenWorkspaceIds.length > 0) ||
     (source === "linear" ? false : filters.hiddenKinds.length > 0) ||
     filters.time !== "all" ||
@@ -146,6 +168,23 @@ export function filterInboxByWorkspace(
   const hidden = new Set(hiddenWorkspaceIds);
   if (hidden.size === 0) return [...items];
   return items.filter((item) => !item.workspaceId || !hidden.has(item.workspaceId));
+}
+
+/** Keeps items that are the viewer's by any set flag; items without a
+ *  `mine` (Linear, which the fetch already narrowed) stay. */
+export function filterInboxByMine(
+  items: readonly InboxItem[],
+  mine: InboxMineFilter,
+): InboxItem[] {
+  if (!mine.authored && !mine.assigned && !mine.reviewRequested) return [...items];
+  return items.filter((item) => {
+    if (!item.mine) return true;
+    return (
+      (mine.authored && item.mine.authored) ||
+      (mine.assigned && item.mine.assigned) ||
+      (mine.reviewRequested && item.mine.reviewRequested)
+    );
+  });
 }
 
 export function filterInboxByKind(
@@ -207,7 +246,7 @@ export function applyInboxFilters(
     filterInboxByStatus(
       filterInboxByTime(
         filterInboxByKind(
-          filterInboxByWorkspace(scoped, hiddenWorkspaces),
+          filterInboxByMine(filterInboxByWorkspace(scoped, hiddenWorkspaces), filters.mine),
           hiddenKinds,
         ),
         filters.time,
