@@ -77,9 +77,10 @@ bunx electron-builder --mac \
 echo "uploading artifacts"
 cp "dist/TempCode-$VERSION-arm64.dmg" "dist/TempCode-arm64.dmg"
 gh release upload "v$VERSION" --repo "$REPO" --clobber \
-  "dist/TempCode-$VERSION-arm64-mac.zip" \
-  "dist/TempCode-$VERSION-arm64-mac.zip.blockmap" \
+  "dist/TempCode-$VERSION-arm64.zip" \
+  "dist/TempCode-$VERSION-arm64.zip.blockmap" \
   "dist/TempCode-$VERSION-arm64.dmg" \
+  "dist/TempCode-$VERSION-arm64.dmg.blockmap" \
   "dist/TempCode-arm64.dmg" \
   dist/latest-mac.yml
 
