@@ -48,6 +48,9 @@ export default defineConfig({
     resolve: {
       alias: {
         '@renderer': resolve('src/renderer/src'),
+        // The Aliax pages (Accounts, Stats) ported verbatim keep their `@/`
+        // imports under this root, so a future re-port stays a copy.
+        '@aliax': resolve('src/renderer/src/aliax'),
         // The transplanted renderer imports server types as
         // `@server/shared/*` (MonoCode's layout); they live in src/shared.
         '@server/shared': resolve('src/shared'),

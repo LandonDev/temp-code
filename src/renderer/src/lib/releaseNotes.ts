@@ -8,7 +8,9 @@ import release from "../../../../release.json";
  * that are a full changelog section.
  */
 export const BUNDLED_RELEASE = {
-  version: String(release.n),
+  // The same number the app reports (package.json 1.0.N), so the feed's
+  // versions and the bundled one compare like for like.
+  version: `1.0.${release.n}`,
   notes: release.notes,
   date: new Date(release.ts).toISOString().slice(0, 10),
 };

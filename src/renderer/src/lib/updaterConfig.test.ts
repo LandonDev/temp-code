@@ -18,10 +18,11 @@ vi.mock("./sounds", () => ({ announceUpdateAvailable: vi.fn() }));
 import { runUpdateFlow } from "./updater";
 
 const status = (over: Record<string, unknown> = {}) => ({
-  current: 95,
-  latest: null,
+  current: "1.0.95",
+  latest: null as string | null,
   notes: "",
   canApply: true,
+  checked: true,
   phase: "idle",
   ...over,
 });
@@ -39,7 +40,7 @@ describe("runUpdateFlow", () => {
 
     await expect(runUpdateFlow(false)).resolves.toMatchObject({
       phase: "error",
-      currentVersion: "95",
+      currentVersion: "1.0.95",
     });
     expect(message).not.toHaveBeenCalled();
   });
@@ -59,11 +60,11 @@ describe("runUpdateFlow", () => {
   });
 
   it("tells a manual check when it is on the latest release", async () => {
-    check.mockResolvedValue(status({ latest: 95 }));
+    check.mockResolvedValue(status({ latest: null }));
 
     await expect(runUpdateFlow(true)).resolves.toEqual({
       phase: "current",
-      currentVersion: "95",
+      currentVersion: "1.0.95",
       canApply: true,
     });
     expect(message).toHaveBeenCalledWith(
@@ -73,23 +74,23 @@ describe("runUpdateFlow", () => {
   });
 
   it("offers a manual install and starts it on yes", async () => {
-    check.mockResolvedValue(status({ latest: 96, notes: "Hi" }));
-    get.mockResolvedValue(status({ latest: 96, notes: "Hi" }));
+    check.mockResolvedValue(status({ latest: "1.0.96", notes: "Hi" }));
+    get.mockResolvedValue(status({ latest: "1.0.96", notes: "Hi" }));
     ask.mockResolvedValue(true);
-    apply.mockResolvedValue(status({ latest: 96, phase: "building" }));
+    apply.mockResolvedValue(status({ latest: "1.0.96", phase: "downloading" }));
 
     await expect(runUpdateFlow(true)).resolves.toMatchObject({
-      phase: "building",
+      phase: "downloading",
     });
     expect(ask).toHaveBeenCalledOnce();
     expect(apply).toHaveBeenCalledOnce();
   });
 
-  it("leaves a running build alone", async () => {
-    get.mockResolvedValue(status({ latest: 96, phase: "building" }));
+  it("leaves a running download alone", async () => {
+    get.mockResolvedValue(status({ latest: "1.0.96", phase: "downloading" }));
 
     await expect(runUpdateFlow(true)).resolves.toMatchObject({
-      phase: "building",
+      phase: "downloading",
     });
     expect(check).not.toHaveBeenCalled();
   });

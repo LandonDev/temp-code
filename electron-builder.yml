@@ -7,9 +7,16 @@ files:
   - '!**/.vscode/*'
   - '!src/*'
   - '!electron.vite.config.{js,ts,mjs,cjs}'
-  - '!{.eslintcache,eslint.config.mjs,.prettierignore,.prettierrc.yaml,dev-app-update.yml,CHANGELOG.md,README.md}'
+  - '!{.eslintcache,eslint.config.mjs,.prettierignore,.prettierrc.yaml,dev-app-update.yml,CHANGELOG.md,README.md,CLAUDE.md}'
   - '!{.env,.env.*,.npmrc,pnpm-lock.yaml}'
-  - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}'
+  - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json,vitest.config.ts}'
+  - '!{artifacts,build,dist,release,.githooks,.temp-code,.claude}/**'
+  # scripts/app-mcp-bridge.mjs ships (the Codex stdio bridge spawns it);
+  # the TypeScript e2e drivers, their bundles and the release shell do not.
+  - '!scripts/**/*.{ts,sh}'
+  - '!scripts/.out/**'
+  - '!resources/native/*.swift'
+  - '!**/*.map'
 # The app spawns real child processes out of node_modules (claude cli.js,
 # vtsls); asar would hide them behind a virtual path. Size over surprises.
 asar: false
@@ -17,6 +24,44 @@ asar: false
 # `open` — with the fuse off the installed app simply ignores it.
 electronFuses:
   runAsNode: false
+npmRebuild: false
+mac:
+  icon: build/icon.icns
+  category: public.app-category.developer-tools
+  # Apple silicon only for now: the IntelliJ engine and every verified
+  # path are arm64; an Intel build is untested and not offered.
+  target:
+    - target: zip
+      arch: arm64
+    - target: dmg
+      arch: arm64
+  artifactName: ${productName}-${version}-${arch}.${ext}
+  # Signing: electron-builder picks the "Developer ID Application" identity
+  # from the login Keychain; `bun run release:publish` names it explicitly.
+  # Without one (a stranger's clone) the app is built unsigned and macOS
+  # reports it damaged — that is expected, only published builds are signed.
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
+  # Notarized when APPLE_KEYCHAIN_PROFILE (or APPLE_ID + password + team)
+  # is in the environment; skipped with a warning otherwise. The updater
+  # verifies each download's Developer ID signature, so a published build
+  # MUST be signed and notarized — release:publish refuses to run without.
+  notarize: true
+  # Mach-O files outside the Electron frameworks are not signed by default;
+  # the Appshots Swift helper has to carry the same identity or
+  # notarization rejects the bundle.
+  binaries:
+    - Contents/Resources/app/resources/native/appshot-helper
+  extendInfo:
+    - NSCameraUsageDescription: Application requests access to the device's camera.
+    - NSMicrophoneUsageDescription: Application requests access to the device's microphone.
+    - NSDocumentsFolderUsageDescription: Application requests access to the user's Documents folder.
+    - NSDownloadsFolderUsageDescription: Application requests access to the user's Downloads folder.
+    - NSAppleEventsUsageDescription: TempCode restarts your terminal sessions after switching accounts.
+dmg:
+  artifactName: ${productName}-${version}-${arch}.${ext}
 win:
   executableName: temp-code
 nsis:
@@ -24,27 +69,9 @@ nsis:
   shortcutName: ${productName}
   uninstallDisplayName: ${productName}
   createDesktopShortcut: always
-mac:
-  entitlementsInherit: build/entitlements.mac.plist
-  extendInfo:
-    - NSCameraUsageDescription: Application requests access to the device's camera.
-    - NSMicrophoneUsageDescription: Application requests access to the device's microphone.
-    - NSDocumentsFolderUsageDescription: Application requests access to the user's Documents folder.
-    - NSDownloadsFolderUsageDescription: Application requests access to the user's Downloads folder.
-    - NSAppleEventsUsageDescription: temp-code asks Aliax to switch accounts on your behalf.
-  notarize: false
-dmg:
-  artifactName: ${name}-${version}.${ext}
-linux:
-  target:
-    - AppImage
-    - snap
-    - deb
-  maintainer: electronjs.org
-  category: Utility
-appImage:
-  artifactName: ${name}-${version}.${ext}
-npmRebuild: false
+# Update feed: the public source repo's own releases (latest-mac.yml beside
+# the zip), polled unauthenticated by electron-updater.
 publish:
-  provider: generic
-  url: https://example.com/auto-updates
+  provider: github
+  owner: LandonDev
+  repo: temp-code

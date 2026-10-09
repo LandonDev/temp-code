@@ -4,6 +4,7 @@ import { join } from 'path'
 import { copyFileSync, existsSync, mkdirSync } from 'fs'
 import { registerUpdates } from './update'
 import { configureAliax } from './aliax'
+import { aliaxCallCounts, registerAliaxPages } from './aliaxPages'
 import { registerAppshots } from './appshots'
 import { electronApp, optimizer } from '@electron-toolkit/utils'
 import { startServer, type RunningServer } from './server'
@@ -97,6 +98,7 @@ app.whenReady().then(async () => {
     claimShim: mayClaimShim({ isPackaged: app.isPackaged })
   })
   registerUpdates()
+  registerAliaxPages(server)
   registerPty()
   const { store } = server
   registerWindows({ dropSnapshot: (slot) => store.dropWorkspaceSnapshot(slot) })
@@ -134,6 +136,7 @@ function registerDebug(): void {
   ipcMain.handle('debug:pty-flow', () => ptyFlowCounters())
   ipcMain.handle('debug:windows', () => describeWindows())
   ipcMain.handle('debug:ptys', () => listPtys())
+  ipcMain.handle('debug:aliax-calls', () => aliaxCallCounts())
   ipcMain.handle('debug:next-pick', (_e, paths: string[]) => queueNextPick(paths.map(String)))
   // The old renderer's CSP forbids tempcode-asset:, so the scheme is
   // exercised from main instead.

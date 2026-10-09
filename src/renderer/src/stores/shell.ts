@@ -30,6 +30,9 @@ import type { InstalledUpdate } from "../lib/updateNotice";
  */
 export type WhatsNew = { version: string; markdown?: string };
 
+/** The embedded Aliax pages, reached from the rail's Accounts section. */
+export type AliaxPageId = "accounts" | "stats";
+
 export type ShellState = {
   sidebarOpen: boolean;
   projectRailOpen: boolean;
@@ -43,6 +46,8 @@ export type ShellState = {
   searchViewFocusToken: number;
   inboxViewOpen: boolean;
   notesViewOpen: boolean;
+  /** The Aliax page covering the board, if one is open. */
+  accountsPage: AliaxPageId | null;
   settingsOpen: boolean;
   settingsSection: SettingsSectionId;
   updateNotice: InstalledUpdate | null;
@@ -66,6 +71,7 @@ export function initialShellState(
     searchViewFocusToken: 0,
     inboxViewOpen: false,
     notesViewOpen: false,
+    accountsPage: null,
     settingsOpen: false,
     settingsSection: loadSettingsSection(),
     updateNotice: null,
@@ -89,9 +95,10 @@ const VIEWS_CLOSED = {
   searchViewOpen: false,
   inboxViewOpen: false,
   notesViewOpen: false,
+  accountsPage: null,
 } as const;
 
-/** The three full-screen views go away; whatever is under them shows. */
+/** The full-screen views go away; whatever is under them shows. */
 export function closeViews(state: ShellState): ShellState {
   return patch(state, VIEWS_CLOSED);
 }
@@ -148,6 +155,7 @@ export function openSearchView(state: ShellState): ShellState {
     settingsOpen: false,
     inboxViewOpen: false,
     notesViewOpen: false,
+    accountsPage: null,
     searchViewOpen: true,
     searchViewFocusToken: state.searchViewFocusToken + 1,
   };
@@ -160,6 +168,7 @@ export function openInbox(state: ShellState, layout: SidebarLayout): ShellState 
     settingsOpen: false,
     searchViewOpen: false,
     notesViewOpen: false,
+    accountsPage: null,
   };
   return layout === "deck"
     ? patch(state, { ...base, inboxViewOpen: true })
@@ -172,7 +181,18 @@ export function openNotes(state: ShellState): ShellState {
     settingsOpen: false,
     searchViewOpen: false,
     inboxViewOpen: false,
+    accountsPage: null,
     notesViewOpen: true,
+  });
+}
+
+/** One of the Aliax pages covers the board, in either layout. */
+export function openAccountsPage(state: ShellState, page: AliaxPageId): ShellState {
+  return patch(state, {
+    ...VIEWS_CLOSED,
+    filePickerOpen: false,
+    settingsOpen: false,
+    accountsPage: page,
   });
 }
 
@@ -195,6 +215,7 @@ export function leaveTopOverlay(state: ShellState): ShellState {
   if (state.searchViewOpen) return { ...state, searchViewOpen: false };
   if (state.inboxViewOpen) return { ...state, inboxViewOpen: false };
   if (state.notesViewOpen) return { ...state, notesViewOpen: false };
+  if (state.accountsPage) return { ...state, accountsPage: null };
   return state;
 }
 
@@ -237,7 +258,9 @@ export function useShell<T>(selector: (state: ShellState) => T): T {
 
 /** True while a full-screen view covers the board. */
 export function anyViewOpen(state: ShellState): boolean {
-  return state.searchViewOpen || state.inboxViewOpen || state.notesViewOpen;
+  return (
+    state.searchViewOpen || state.inboxViewOpen || state.notesViewOpen || state.accountsPage !== null
+  );
 }
 
 // The panel choices survive a relaunch; the rest is per window.
@@ -279,6 +302,11 @@ export const shell = {
     update(openNotes);
   },
   closeNotes: () => update((s) => patch(s, { notesViewOpen: false })),
+  openAccountsPage: (page: AliaxPageId) => {
+    perfMark("page-switch", page);
+    update((s) => openAccountsPage(s, page));
+  },
+  closeAccountsPage: () => update((s) => patch(s, { accountsPage: null })),
   openSettings: (section?: SettingsSectionId) => {
     perfMark("page-switch", "settings");
     update((s) => openSettings(s, section));

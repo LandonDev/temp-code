@@ -30,10 +30,11 @@ import {
 const fakeWindow = new EventTarget();
 
 const status = (over: Record<string, unknown> = {}) => ({
-  current: 95,
-  latest: 95,
+  current: "1.0.95",
+  latest: null as string | null,
   notes: "",
   canApply: true,
+  checked: true,
   phase: "idle",
   ...over,
 });
@@ -67,7 +68,7 @@ afterEach(() => {
 describe("updateStore", () => {
   it("probes at launch and keeps the release notes on the snapshot", async () => {
     mocks.check.mockResolvedValue(
-      status({ latest: 96, notes: "Build tab shows behind-origin counts\n" }),
+      status({ latest: "1.0.96", notes: "Build tab shows behind-origin counts\n" }),
     );
 
     updateStore.start();
@@ -76,11 +77,11 @@ describe("updateStore", () => {
     expect(mocks.check).toHaveBeenCalledOnce();
     expect(updateStore.getSnapshot()).toMatchObject({
       phase: "available",
-      currentVersion: "95",
-      availableVersion: "96",
+      currentVersion: "1.0.95",
+      availableVersion: "1.0.96",
       notes: expect.stringContaining("behind-origin"),
     });
-    expect(mocks.announce).toHaveBeenCalledWith("96");
+    expect(mocks.announce).toHaveBeenCalledWith("1.0.96");
     expect(mocks.message).not.toHaveBeenCalled();
   });
 
@@ -92,7 +93,7 @@ describe("updateStore", () => {
 
     expect(updateStore.getSnapshot()).toEqual({
       phase: "idle",
-      currentVersion: "95",
+      currentVersion: "1.0.95",
     });
     expect(mocks.message).not.toHaveBeenCalled();
   });
@@ -133,21 +134,21 @@ describe("updateStore", () => {
     expect(seen).toEqual(["checking", "current"]);
   });
 
-  it("mirrors main's build and restart and skips probes meanwhile", async () => {
+  it("mirrors main's download and restart offer and skips probes meanwhile", async () => {
     updateStore.start();
     await flush();
 
-    pushStatus!(status({ latest: 96, phase: "building", step: "bun install" }));
+    pushStatus!(status({ latest: "1.0.96", phase: "downloading", percent: 37 }));
     expect(updateStore.getSnapshot()).toMatchObject({
-      phase: "building",
-      availableVersion: "96",
-      step: "bun install",
+      phase: "downloading",
+      availableVersion: "1.0.96",
+      percent: 37,
     });
 
     await vi.advanceTimersByTimeAsync(CHECK_INTERVAL_MS);
     expect(mocks.check).toHaveBeenCalledTimes(1);
 
-    pushStatus!(status({ latest: 96, phase: "restarting" }));
-    expect(updateStore.getSnapshot().phase).toBe("restarting");
+    pushStatus!(status({ latest: "1.0.96", phase: "ready" }));
+    expect(updateStore.getSnapshot().phase).toBe("ready");
   });
 });

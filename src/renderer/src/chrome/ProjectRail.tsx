@@ -5,6 +5,7 @@ import {
   ChevronUp,
   CircleAlert,
   FolderOpen,
+  ChartBar,
   Inbox,
   MessageSquare,
   MoreHorizontal,
@@ -14,6 +15,7 @@ import {
   File,
   Plus,
   Search,
+  Users,
   Settings,
   Trash2,
 } from "./icons";
@@ -79,7 +81,7 @@ import { RailAction, RailSearch } from "./RailAction";
 import { RemoveProjectDialog } from "./RemoveProjectDialog";
 import { DevModeSlot, TabVisitNav } from "./TitleBar";
 import { SidebarUpdateFooter } from "./SidebarUpdate";
-import { shell, useShell } from "../stores/shell";
+import { shell, useShell, type AliaxPageId } from "../stores/shell";
 import { SettingsNav } from "./SettingsRail";
 import { Shimmer } from "../surfaces/Shimmer";
 import { TabGroupMenu, type TabGroupMenuExtraItem } from "./TabGroupMenu";
@@ -125,6 +127,9 @@ type Props = {
   onOpenInbox?: () => void;
   notesEnabled?: boolean;
   onOpenNotes?: () => void;
+  /** The rail's Accounts section: the embedded Aliax pages. */
+  onOpenAccountsPage?: (page: AliaxPageId) => void;
+  accountsPage?: AliaxPageId | null;
   /** The home: the chats outside every workspace. */
   onOpenChats?: () => void;
   onSelectProject: (path: string) => void;
@@ -150,6 +155,8 @@ export function ProjectRail({
   onOpenInbox,
   notesEnabled = true,
   onOpenNotes,
+  onOpenAccountsPage,
+  accountsPage = null,
   onOpenChats,
   onSelectProject,
   onOpenProject,
@@ -444,12 +451,37 @@ export function ProjectRail({
                 label="Chats"
                 icon={MessageSquare}
                 onClick={onOpenChats}
-                active={!searchActive && !inboxActive && !notesActive && cwd === "~"}
+                active={!searchActive && !inboxActive && !notesActive && !accountsPage && cwd === "~"}
                 dot={needsYou.has("~") || busy.has("~")}
                 ariaLabel={chatsAriaLabel(busy.has("~"), needsYou.has("~"))}
               />
             ) : null}
           </div>
+          {onOpenAccountsPage ? (
+            <div className="shrink-0">
+              <div className="flex h-9 items-center gap-1 px-2 pr-1.5">
+                <span className="min-w-0 flex-1 truncate px-2 text-[11px] font-semibold tracking-[0.08em] text-content/50 uppercase">
+                  Accounts
+                </span>
+              </div>
+              <div className="flex flex-col gap-px p-2 pt-0">
+                <RailAction
+                  label="Accounts"
+                  icon={Users}
+                  onClick={() => onOpenAccountsPage("accounts")}
+                  active={accountsPage === "accounts"}
+                  ariaLabel="Accounts"
+                />
+                <RailAction
+                  label="Stats"
+                  icon={ChartBar}
+                  onClick={() => onOpenAccountsPage("stats")}
+                  active={accountsPage === "stats"}
+                  ariaLabel="Stats"
+                />
+              </div>
+            </div>
+          ) : null}
 
           <div
             ref={(el) => {
@@ -470,7 +502,7 @@ export function ProjectRail({
                 onSelectAgent={onSelectAgent}
                 sortable={pinnedSortable}
                 pinned
-                searchActive={searchActive || inboxActive || notesActive}
+                searchActive={searchActive || inboxActive || notesActive || !!accountsPage}
                 onSelect={onSelectProject}
                 onTogglePin={onTogglePin}
                 onContextMenu={onProjectContextMenu}
@@ -496,7 +528,7 @@ export function ProjectRail({
               onSelectAgent={onSelectAgent}
               sortable={projectSortable}
               pinned={false}
-              searchActive={searchActive || inboxActive || notesActive}
+              searchActive={searchActive || inboxActive || notesActive || !!accountsPage}
               onSelect={onSelectProject}
               onTogglePin={onTogglePin}
               onContextMenu={onProjectContextMenu}

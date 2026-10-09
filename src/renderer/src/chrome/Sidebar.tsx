@@ -85,7 +85,7 @@ import {
   useRailRecents,
   useSelectedWorkspaceId,
 } from "../stores/project";
-import { shell, useShell } from "../stores/shell";
+import { shell, useShell, type AliaxPageId } from "../stores/shell";
 import { RailAction } from "./RailAction";
 import { SettingsNav } from "./SettingsRail";
 import { DevModeLabel, DevModeSlot, IconButton, TabVisitNav } from "./TitleBar";
@@ -144,6 +144,7 @@ type Props = {
   onSearch?: () => void;
   onOpenInbox?: () => void;
   onOpenNotes?: () => void;
+  onOpenAccountsPage?: (page: AliaxPageId) => void;
   onOpenChats?: () => void;
   onGoToFile?: () => void;
   onSelectProjectCard?: (projectId: string | null) => void;
@@ -174,6 +175,7 @@ function SidebarComponent({
   onSearch,
   onOpenInbox,
   onOpenNotes,
+  onOpenAccountsPage,
   onOpenChats,
   onGoToFile,
   onSelectProjectCard,
@@ -233,6 +235,7 @@ function SidebarComponent({
   const searchActive = useShell((s) => s.searchViewOpen);
   const inboxActive = useShell((s) => s.inboxViewOpen);
   const notesActive = useShell((s) => s.notesViewOpen);
+  const accountsPage = useShell((s) => s.accountsPage);
   const sidebarOpen = useShell((s) => s.sidebarOpen);
   const projectRailOpen = useShell((s) => s.projectRailOpen);
   const settingsOpen = useShell((s) => s.settingsOpen);
@@ -241,7 +244,7 @@ function SidebarComponent({
   const open = deckLayout || sidebarOpen || settingsOpen;
   // Back leaves an overlay before it walks tab history.
   const canGoBack =
-    canVisitBack || searchActive || settingsOpen || inboxActive || notesActive;
+    canVisitBack || searchActive || settingsOpen || inboxActive || notesActive || !!accountsPage;
   const sortable = useSortable(tabOrder, (ids) => {
     const next = ids as SidebarTab[];
     setTabOrder(next);
@@ -298,6 +301,8 @@ function SidebarComponent({
         onNewProject={() => setNewProjectOpen(true)}
         onRenameSession={(id, title) => onRenameSession?.(id, title)}
         onDeleteSession={(id) => onDeleteSession?.(id, { confirmed: true })}
+        onOpenAccountsPage={onOpenAccountsPage}
+        accountsPage={accountsPage}
       />
     ) : null;
   const classicSettings = settingsOpen && !deckLayout;
@@ -704,6 +709,8 @@ function SidebarComponent({
           onOpenInbox={onOpenInbox}
           notesEnabled={notesEnabled}
           onOpenNotes={onOpenNotes}
+          onOpenAccountsPage={onOpenAccountsPage}
+          accountsPage={accountsPage}
           onOpenChats={onOpenChats}
           onSelectProject={onSelectProject}
           onOpenProject={onOpenProject}

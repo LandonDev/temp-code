@@ -295,6 +295,7 @@ import { SearchView } from "./surfaces/SearchView";
 import { SettingsView } from "./surfaces/SettingsView";
 import { InboxView, InboxDetailPane } from "./surfaces/InboxView";
 import { NotesView } from "./surfaces/NotesView";
+import { AliaxPagesView } from "./surfaces/AliaxPagesView";
 import { inboxComposerCard, type InboxItem } from "./lib/githubTasks";
 import {
   linearIssueDetails,
@@ -410,6 +411,7 @@ export default function App() {
   const searchViewFocusToken = useShell((s) => s.searchViewFocusToken);
   const inboxViewOpen = useShell((s) => s.inboxViewOpen);
   const notesViewOpen = useShell((s) => s.notesViewOpen);
+  const accountsPage = useShell((s) => s.accountsPage);
   const notesEnabled = useSyncExternalStore(
     subscribeNotesEnabled,
     loadNotesEnabled,
@@ -3167,6 +3169,8 @@ export default function App() {
   const onLeaveInbox = shell.closeInbox;
   const onOpenNotes = shell.openNotes;
   const onLeaveNotes = shell.closeNotes;
+  const onOpenAccountsPage = shell.openAccountsPage;
+  const onLeaveAccountsPage = shell.closeAccountsPage;
   const onOpenSettings = useCallback(() => shell.openSettings(), []);
 
   // The editor chunk asks for a docked debug pane (⌃D) and for the
@@ -3461,6 +3465,7 @@ export default function App() {
         onSearch={onOpenSearch}
         onOpenInbox={onOpenInbox}
         onOpenNotes={onOpenNotes}
+        onOpenAccountsPage={onOpenAccountsPage}
         onOpenChats={deckLayout ? onOpenChats : undefined}
         onGoToFile={deckLayout ? onGoToFile : undefined}
         onOpenWhatsNew={onOpenWhatsNew}
@@ -3469,12 +3474,12 @@ export default function App() {
       <div className="body-glass flex min-h-0 min-w-0 flex-1 flex-col">
         <div
           className={
-            searchViewOpen || settingsOpen || inboxViewOpen || notesViewOpen
+            searchViewOpen || settingsOpen || inboxViewOpen || notesViewOpen || !!accountsPage
               ? "hidden"
               : "flex min-h-0 min-w-0 flex-1 flex-col"
           }
-          aria-hidden={searchViewOpen || settingsOpen || inboxViewOpen || notesViewOpen}
-          inert={searchViewOpen || settingsOpen || inboxViewOpen || notesViewOpen || undefined}
+          aria-hidden={searchViewOpen || settingsOpen || inboxViewOpen || notesViewOpen || !!accountsPage}
+          inert={searchViewOpen || settingsOpen || inboxViewOpen || notesViewOpen || !!accountsPage || undefined}
         >
         {!IS_MAC ? (
           <MenuBar
@@ -3683,6 +3688,14 @@ export default function App() {
             onToggleSidebar={deckLayout ? onToggleSidebar : undefined}
           />
         ) : null}
+        {accountsPage ? (
+          <AliaxPagesView
+            page={accountsPage}
+            besideRail={deckLayout && projectRailOpen}
+            onClose={onLeaveAccountsPage}
+            onToggleSidebar={deckLayout ? onToggleSidebar : undefined}
+          />
+        ) : null}
         {settingsOpen ? (
           <SettingsView
             cwd={sidebarCwd}
@@ -3696,7 +3709,7 @@ export default function App() {
             onOpenWhatsNew={onOpenWhatsNew}
           />
         ) : null}
-        {searchViewOpen || inboxViewOpen || notesViewOpen || settingsOpen ? null : (
+        {searchViewOpen || inboxViewOpen || notesViewOpen || settingsOpen || accountsPage ? null : (
           <UsageFooter
             harness={active?.harness}
             sessionId={active?.id}

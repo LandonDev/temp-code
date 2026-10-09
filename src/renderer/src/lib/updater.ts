@@ -3,9 +3,10 @@ import { announceUpdateAvailable } from "./sounds";
 import { rememberInstalledUpdate } from "./updateNotice";
 
 /**
- * Donor update flow on top of main's self-updater. Releases are numbered,
- * not semver; `apply` builds in main and relaunches the app itself, so the
- * renderer only mirrors status and asks the user.
+ * The update flow on top of main's electron-updater: releases are semver
+ * (1.0.N) on the GitHub feed; `apply` downloads a waiting release, and once
+ * it is downloaded `apply` again restarts into it. The renderer only
+ * mirrors status and asks the user.
  */
 
 export type UpdaterPhase =
@@ -13,8 +14,8 @@ export type UpdaterPhase =
   | "checking"
   | "current"
   | "available"
-  | "building"
-  | "restarting"
+  | "downloading"
+  | "ready"
   | "error";
 
 export type UpdaterSnapshot = {
@@ -23,38 +24,30 @@ export type UpdaterSnapshot = {
   availableVersion?: string;
   /** Release notes for the waiting update, shown before installing. */
   notes?: string;
-  /** While building: main's current step and its latest output line. */
-  step?: string;
-  detail?: string;
-  /** While building: when the step began and how long it took last time. */
-  stepStartedAt?: number;
-  stepEtaMs?: number;
+  /** While downloading: whole percent. */
+  percent?: number;
   /** Dev instances mirror status but only the installed app applies. */
   canApply?: boolean;
   error?: string;
 };
 
 export function snapshotFromStatus(status: UpdateStatus): UpdaterSnapshot {
-  const currentVersion = String(status.current);
-  const hasUpdate = status.latest != null && status.latest > status.current;
-  const availableVersion = hasUpdate ? String(status.latest) : undefined;
+  const currentVersion = status.current;
+  const availableVersion = status.latest ?? undefined;
   const canApply = status.canApply;
   switch (status.phase) {
     case "checking":
       return { phase: "checking", currentVersion, canApply };
-    case "building":
+    case "downloading":
       return {
-        phase: "building",
+        phase: "downloading",
         currentVersion,
         availableVersion,
-        step: status.step,
-        detail: status.detail,
-        stepStartedAt: status.stepStartedAt,
-        stepEtaMs: status.stepEtaMs,
+        percent: status.percent ?? 0,
         canApply,
       };
-    case "restarting":
-      return { phase: "restarting", currentVersion, availableVersion, canApply };
+    case "ready":
+      return { phase: "ready", currentVersion, availableVersion, canApply };
     case "error":
       return {
         phase: "error",
@@ -64,7 +57,7 @@ export function snapshotFromStatus(status: UpdateStatus): UpdaterSnapshot {
         canApply,
       };
     case "idle":
-      if (hasUpdate) {
+      if (availableVersion) {
         return {
           phase: "available",
           currentVersion,
@@ -74,7 +67,7 @@ export function snapshotFromStatus(status: UpdateStatus): UpdaterSnapshot {
         };
       }
       return {
-        phase: status.latest == null ? "idle" : "current",
+        phase: status.checked ? "current" : "idle",
         currentVersion,
         canApply,
       };
@@ -82,19 +75,19 @@ export function snapshotFromStatus(status: UpdateStatus): UpdaterSnapshot {
 }
 
 const busy = (phase: UpdaterPhase) =>
-  phase === "building" || phase === "restarting";
+  phase === "downloading" || phase === "ready";
 
 let remembered: string | undefined;
 
-/** Mirror main's status stream. Once main restarts into the new release,
- *  the next boot shows its notes. */
+/** Mirror main's status stream. Once a download is ready the restart lands
+ *  in the new release, whose first boot shows these notes. */
 export function watchUpdateStatus(
   onSnapshot: (snapshot: UpdaterSnapshot) => void,
 ): () => void {
   return updates.onStatus((status) => {
     const snapshot = snapshotFromStatus(status);
     if (
-      snapshot.phase === "restarting" &&
+      snapshot.phase === "ready" &&
       snapshot.availableVersion &&
       remembered !== snapshot.availableVersion
     ) {
@@ -133,7 +126,7 @@ export async function runUpdateFlow(
     if (!manual) return snapshot;
     const detail = snapshot.notes ? `\n\n${snapshot.notes}` : "";
     const yes = await ask(
-      `Release ${snapshot.availableVersion} is available (you have ${snapshot.currentVersion}).${detail}\n\nInstall now?`,
+      `Release ${snapshot.availableVersion} is available (you have ${snapshot.currentVersion}).${detail}\n\nDownload it now?`,
       { title: "Update available", kind: "info" },
     );
     return yes ? installPendingUpdate(onProgress) : snapshot;
@@ -148,13 +141,19 @@ export async function runUpdateFlow(
   return snapshot;
 }
 
-/** Start main's build of the waiting release. Progress then arrives on
- *  the status stream; the app relaunches itself when it is done. */
+/** Download the waiting release, or restart into one already downloaded.
+ *  Progress then arrives on the status stream. */
 export async function installPendingUpdate(
   onProgress?: (snapshot: UpdaterSnapshot) => void,
 ): Promise<UpdaterSnapshot> {
   const status = await updates.get();
   const snapshot = snapshotFromStatus(status);
+  if (snapshot.phase === "ready") {
+    if (snapshot.availableVersion) rememberInstalledUpdate(snapshot.availableVersion);
+    const restarting = snapshotFromStatus(await updates.apply());
+    onProgress?.(restarting);
+    return restarting;
+  }
   if (snapshot.phase !== "available") {
     onProgress?.(snapshot);
     return snapshot;
@@ -174,10 +173,10 @@ export async function installPendingUpdate(
     ? started
     : started.phase === "error"
       ? started
-      : { ...snapshot, phase: "error", error: "The update did not start." };
+      : { ...snapshot, phase: "error", error: "The download did not start." };
   onProgress?.(result);
   if (result.phase === "error") {
-    await message(`Couldn't install the update.\n\n${result.error}`, {
+    await message(`Couldn't download the update.\n\n${result.error}`, {
       title: "TempCode",
     });
   }
