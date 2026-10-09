@@ -61,7 +61,7 @@ import {
   type InboxScope,
   type LinearInboxQuery,
 } from "../lib/inboxStore";
-import { useWorkspaceCatalog } from "../lib/tcserver/workspaces";
+import { useWorkspaceCatalog, useWorkspaceIcon } from "../lib/tcserver/workspaces";
 import type { WorkspaceMeta } from "../lib/tcserver/types";
 import {
   applyInboxFilters,
@@ -152,18 +152,25 @@ function inboxProjectOptions(
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 
+/** The workspace's mark, the same image the rail shows: the logo override,
+ *  else the server's repo icon unless a mascot was chosen, else the mascot. */
 function InboxProjectMark({
   project,
 }: {
   project: Pick<
     InboxProjectOption,
-    "name" | "logoPath" | "mascotName" | "mascotColor"
+    "id" | "name" | "logoPath" | "mascotName" | "mascotColor"
   >;
 }) {
-  if (project.logoPath) {
+  const serverIcon = useWorkspaceIcon(project.id);
+  const showLogo =
+    !!project.logoPath ||
+    (!project.mascotName && !!(serverIcon?.dataUrl || serverIcon?.host));
+  if (showLogo) {
     return (
       <ProjectLogoIcon
         path={project.logoPath}
+        workspaceId={project.id}
         className="size-3.5 shrink-0 rounded-md"
         imageClassName="size-3.5"
       />
@@ -177,6 +184,21 @@ function InboxProjectMark({
       className="size-3 shrink-0"
     />
   );
+}
+
+/** The one word a pull request row carries when it has news. */
+function prNote(item: InboxItem): { text: string; className: string } | null {
+  if (item.provider !== "github" || item.kind !== "pr") return null;
+  if (item.draft) return { text: "Draft", className: "text-content/50" };
+  if (item.state !== "open") return null;
+  if (item.reviewDecision === "CHANGES_REQUESTED") {
+    return { text: "Changes requested", className: "text-danger" };
+  }
+  if (item.checks === "FAILURE" || item.checks === "ERROR") {
+    return { text: "Checks failed", className: "text-danger" };
+  }
+  if (item.reviewDecision === "APPROVED") return { text: "Approved", className: "text-success" };
+  return null;
 }
 
 function InboxSourceTab({
@@ -327,11 +349,11 @@ export function InboxView({
   const fetchState = inboxFetchState(activeFilters);
   const linearQuery = useMemo<LinearInboxQuery>(
     () => ({
-      assignedToMe: activeFilters.assignedToMe,
+      assignedToMe: activeFilters.mine.assigned,
       state: fetchState,
       hiddenTeamIds: linearHiddenTeamIds,
     }),
-    [activeFilters.assignedToMe, fetchState, linearHiddenTeamIds],
+    [activeFilters.mine.assigned, fetchState, linearHiddenTeamIds],
   );
   const loading =
     source === "github" ? !githubLoaded : linear.loading && linear.fetchedAt === null;
@@ -570,6 +592,8 @@ export function InboxView({
                   <InboxCard
                     item={item}
                     active={selected != null && key === inboxItemKey(selected)}
+                    workspaceId={workspace?.id ?? null}
+                    projectKey={projectKey}
                     logoPath={resolveTabGroupLogo(projectKey, logos)}
                     mascotName={resolveTabGroupMascot(projectKey, groupMascots)}
                     mascotColor={resolveTabGroupColor(
@@ -632,7 +656,7 @@ export function InboxView({
     <InboxFiltersMenu
       x={filterMenu.x}
       y={filterMenu.y}
-      projects={effectiveScope === "all" ? workspaceOptions : []}
+      workspaces={effectiveScope === "all" ? workspaceOptions : []}
       source={source}
       filters={activeFilters}
       onChange={onFiltersChange}
@@ -771,6 +795,8 @@ function InboxDetailBody({
 function InboxCard({
   item,
   active,
+  workspaceId,
+  projectKey,
   logoPath,
   mascotName,
   mascotColor,
@@ -778,6 +804,8 @@ function InboxCard({
 }: {
   item: InboxItem;
   active: boolean;
+  workspaceId: string | null;
+  projectKey: string;
   logoPath: string | null;
   mascotName: string | null;
   mascotColor: string;
@@ -786,9 +814,10 @@ function InboxCard({
   useInboxSeenTick();
   const KindIcon = item.kind === "pr" ? GitPullRequest : CircleDot;
   const time = formatRelativeTime(item.updatedAt);
-  const name = projectName(item.projectPath);
   const linear = item.provider === "linear";
-  const source = linear ? item.teamName || item.repo : item.repo || name;
+  const source = linear ? item.teamName || item.repo : item.repo || projectKey;
+  const author = item.author?.login?.trim() ?? "";
+  const note = prNote(item);
   const unseen = isInboxEntryUnseen({
     key: inboxItemKey(item),
     updatedAt: item.updatedAt,
@@ -840,21 +869,29 @@ function InboxCard({
       </span>
       <span className="mt-1 flex min-w-0 items-center gap-2">
         <span className="flex min-w-0 flex-1 items-center gap-1.5 text-[11px] text-content/40">
-          {linear ? null : logoPath ? (
-            <ProjectLogoIcon
-              path={logoPath}
-              className="size-3.5 shrink-0 rounded-md"
-              imageClassName="size-3.5"
-            />
-          ) : (
-            <ProjectMascot
-              project={name}
-              color={mascotColor}
-              name={mascotName}
-              className="size-3 shrink-0"
+          {linear || !workspaceId ? null : (
+            <InboxProjectMark
+              project={{ id: workspaceId, name: projectKey, logoPath, mascotName, mascotColor }}
             />
           )}
           <span className="min-w-0 truncate">{source}</span>
+          {author ? (
+            <>
+              <span aria-hidden>·</span>
+              <InboxPerson
+                name={author}
+                avatarUrl={inboxPersonAvatarUrl(item.provider, author, item.author?.avatarUrl)}
+                size={14}
+                className="min-w-0 shrink"
+              />
+            </>
+          ) : null}
+          {note ? (
+            <>
+              <span aria-hidden>·</span>
+              <span className={`shrink-0 ${note.className}`}>{note.text}</span>
+            </>
+          ) : null}
         </span>
         {item.labels.length > 0 ? (
           <span className="flex min-w-0 shrink-0 items-center gap-1">
@@ -939,7 +976,9 @@ function InboxDetail({
     ? item.teamName || item.repo
     : item.repo || projectName(item.projectPath);
   const markdownCwd = linear ? startProject || cwd : item.projectPath || cwd;
-  const authorName = details?.author?.trim() ?? "";
+  // The snapshot already knows the author, refs and decision; gh fills the rest.
+  const authorName = item.author?.login?.trim() || details?.author?.trim() || "";
+  const authorAvatar = item.author?.avatarUrl?.trim() || details?.authorAvatarUrl;
   const extraAssignees = item.assignees.filter(
     (person) =>
       !authorName ||
@@ -948,7 +987,10 @@ function InboxDetail({
   const showAssignment =
     extraAssignees.length > 0 || item.assignees.length === 0;
   const reviewDecision =
-    details?.reviewDecision?.trim() || thread?.reviewDecision?.trim() || "";
+    item.reviewDecision?.trim() ||
+    details?.reviewDecision?.trim() ||
+    thread?.reviewDecision?.trim() ||
+    "";
   const reviewLabel = githubReviewDecisionLabel(reviewDecision);
   const reviewClass =
     reviewDecision.toUpperCase() === "APPROVED"
@@ -957,9 +999,9 @@ function InboxDetail({
         ? "text-danger"
         : "text-content/50";
   const baseRef =
-    details?.baseRefName?.trim() || thread?.baseRefName?.trim() || "";
+    item.baseRefName?.trim() || details?.baseRefName?.trim() || thread?.baseRefName?.trim() || "";
   const headRef =
-    details?.headRefName?.trim() || thread?.headRefName?.trim() || "";
+    item.headRefName?.trim() || details?.headRefName?.trim() || thread?.headRefName?.trim() || "";
 
   useEffect(() => {
     let cancelled = false;
@@ -1166,7 +1208,7 @@ function InboxDetail({
               avatarUrl={inboxPersonAvatarUrl(
                 item.provider,
                 authorName,
-                details?.authorAvatarUrl,
+                authorAvatar,
               )}
               size={16}
             />

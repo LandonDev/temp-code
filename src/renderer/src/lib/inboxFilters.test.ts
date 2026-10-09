@@ -3,7 +3,9 @@ import {
   applyInboxFilters,
   DEFAULT_INBOX_FILTERS,
   filterInboxByKind,
+  filterInboxByMine,
   filterInboxByWorkspace,
+  loadInboxFilters,
   filterInboxByProvider,
   filterInboxByStatus,
   filterInboxByTime,
@@ -11,6 +13,7 @@ import {
   inboxFetchState,
   pruneInboxFilters,
 } from "./inboxFilters";
+import type { InboxFilters } from "./inboxFilters";
 import type { InboxItem } from "./githubTasks";
 
 function item(
@@ -56,6 +59,42 @@ describe("filterInboxByWorkspace", () => {
     expect(
       filterInboxByWorkspace(rows, ["web"]).map((row) => row.number),
     ).toEqual([9]);
+  });
+});
+
+describe("filterInboxByMine", () => {
+  const rows = [
+    item({ number: 1, updatedAt: "2026-08-27T10:00:00Z", mine: { authored: true, assigned: false, reviewRequested: false } }),
+    item({ number: 2, updatedAt: "2026-08-27T10:00:00Z", mine: { authored: false, assigned: true, reviewRequested: false } }),
+    item({ number: 3, updatedAt: "2026-08-27T10:00:00Z", mine: { authored: false, assigned: false, reviewRequested: true } }),
+    item({ number: 4, updatedAt: "2026-08-27T10:00:00Z", mine: { authored: false, assigned: false, reviewRequested: false } }),
+    item({ number: 9, kind: "linear", provider: "linear", projectPath: "", updatedAt: "2026-08-27T10:00:00Z" }),
+  ];
+  const mine = (over: Partial<InboxFilters["mine"]>) => ({ ...DEFAULT_INBOX_FILTERS.mine, ...over });
+
+  it("keeps everything when no flag is set", () => {
+    expect(filterInboxByMine(rows, mine({})).map((r) => r.number)).toEqual([1, 2, 3, 4, 9]);
+  });
+
+  it("keeps items matching any set flag, and Linear items always", () => {
+    expect(filterInboxByMine(rows, mine({ authored: true })).map((r) => r.number)).toEqual([1, 9]);
+    expect(filterInboxByMine(rows, mine({ assigned: true, reviewRequested: true })).map((r) => r.number)).toEqual([2, 3, 9]);
+  });
+
+  it("counts as an active filter and clears with the defaults", () => {
+    expect(hasActiveInboxFilters({ ...DEFAULT_INBOX_FILTERS, mine: mine({ reviewRequested: true }) })).toBe(true);
+    expect(hasActiveInboxFilters({ ...DEFAULT_INBOX_FILTERS, mine: mine({ reviewRequested: true }) }, "linear")).toBe(false);
+    expect(hasActiveInboxFilters({ ...DEFAULT_INBOX_FILTERS, mine: mine({ assigned: true }) }, "linear")).toBe(true);
+    expect(hasActiveInboxFilters(DEFAULT_INBOX_FILTERS)).toBe(false);
+  });
+
+  it("reads an older stored assignedToMe flag as mine.assigned", () => {
+    const data = new Map<string, string>([["monocode.inboxFilters", JSON.stringify({ assignedToMe: true })]]);
+    Object.defineProperty(globalThis, "localStorage", {
+      configurable: true,
+      value: { getItem: (k: string) => data.get(k) ?? null, setItem: () => undefined, removeItem: () => undefined },
+    });
+    expect(loadInboxFilters().mine).toEqual({ authored: false, assigned: true, reviewRequested: false });
   });
 });
 
