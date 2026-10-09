@@ -16,6 +16,7 @@ import { handleFsGit } from './fsgit'
 import { CheckpointStore } from './checkpoint'
 import { handleCheckpoint } from './checkpointRpc'
 import { Linear, handleLinear } from './linear'
+import { GithubInbox, handleGithubInbox } from './githubInbox'
 import { SessionRegistry } from './sessions'
 import { resolveAppBridgeLaunch, runDoctor, updateProvider } from './drivers/binaries'
 import { probeCatalogs } from './drivers/catalogProbe'
@@ -147,6 +148,8 @@ export interface RunningServer {
   registry: SessionRegistry
   store: Store
   gateway: Gateway
+  /** The shared Aliax accounts poll; the embedded Aliax pages nudge it after a change. */
+  accounts: AccountsService
   close: () => Promise<void>
 }
 
@@ -197,6 +200,8 @@ export async function startServer(
     }
   })
   const linear = new Linear(options.dataDir ?? dirname(dbPath))
+  // Reads SQLite until the open inbox view asks it to refresh; no timer here.
+  const githubInbox = new GithubInbox(store, registry)
   registry.resetStaleStatuses()
   registry.startIdleSweep()
   // Fold catch-up: sessions whose sidebar folds are missing or behind
@@ -315,6 +320,8 @@ export async function startServer(
         if (checkpoint.handled) return sendFrame({ id: req.id, ok: true, result: checkpoint.result })
         const lin = await handleLinear(req, linear)
         if (lin.handled) return sendFrame({ id: req.id, ok: true, result: lin.result })
+        const gh = await handleGithubInbox(req, githubInbox)
+        if (gh.handled) return sendFrame({ id: req.id, ok: true, result: gh.result })
         switch (req.method) {
           case 'catalog.get':
             if (req.params?.refresh) await probeCatalogs(true)
@@ -1123,6 +1130,7 @@ export async function startServer(
     registry,
     store,
     gateway,
+    accounts: m3a.accounts,
     close: async () => {
       stopStallMonitor()
       clearTimeout(warmKickoff)

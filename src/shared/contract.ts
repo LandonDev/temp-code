@@ -3,6 +3,7 @@ import { M3aRequestSchemas } from './contract-m3a'
 import { FsGitRequestSchemas } from './contract-fsgit'
 import { CheckpointRequestSchemas } from './contract-checkpoint'
 import { LinearRequestSchemas } from './contract-linear'
+import { GithubRequestSchemas } from './contract-github'
 import { AGENT_TYPES } from './catalog'
 import { AttachmentSchema, PermissionPolicySchema } from './events'
 import { ProjectModeSchema, ThreadTypeSchema } from './domain'
@@ -77,6 +78,7 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
   ...FsGitRequestSchemas,
   ...CheckpointRequestSchemas,
   ...LinearRequestSchemas,
+  ...GithubRequestSchemas,
   // refresh: re-probe the installed CLIs of the probed providers first.
   z.object({
     id: z.string(),
