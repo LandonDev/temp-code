@@ -53,6 +53,7 @@ import {
   type InboxItem,
 } from "../lib/githubTasks";
 import {
+  githubInboxLoading,
   githubWorkspaces,
   inboxItemsFromSnapshot,
   inboxStore,
@@ -355,8 +356,20 @@ export function InboxView({
     }),
     [activeFilters.mine.assigned, fetchState, linearHiddenTeamIds],
   );
+  // The open view always asks for a refresh once the stored snapshot is in;
+  // until then that refresh is pending, and a never-fetched list is not a list.
+  const [opened, setOpened] = useState(false);
+  const scopedRepos = useMemo(
+    () =>
+      ghWorkspaces
+        .filter((w) => effectiveScope === "all" || w.id === currentWorkspaceId)
+        .map((w) => w.githubRepo as string),
+    [currentWorkspaceId, effectiveScope, ghWorkspaces],
+  );
   const loading =
-    source === "github" ? !githubLoaded : linear.loading && linear.fetchedAt === null;
+    source === "github"
+      ? githubInboxLoading({ github, githubLoaded, refreshing }, scopedRepos, !opened)
+      : linear.fetchedAt === null && linear.error === null;
   const revalidating = source === "github" ? refreshing : linear.loading;
   const authMessage =
     source === "github" && github && github.auth.state !== "ok" ? github.auth.message : null;
@@ -404,13 +417,12 @@ export function InboxView({
   // GitHub: the list shows the stored snapshot at once; the view asks the
   // server for a fresh one when it opens on a snapshot older than a minute.
   // Nothing fetches while the inbox is closed.
-  const openedRef = useRef(false);
   useEffect(() => {
-    if (!githubLoaded || openedRef.current) return;
-    openedRef.current = true;
+    if (!githubLoaded || opened) return;
+    setOpened(true);
     const age = github?.fetchedAt ? Date.now() - github.fetchedAt : Number.POSITIVE_INFINITY;
     if (age > OPEN_REFRESH_AGE_MS) void inboxStore.refreshGithub("open");
-  }, [github, githubLoaded]);
+  }, [github, githubLoaded, opened]);
 
   // ...and again every three minutes while this view is mounted and the
   // window is visible. The timer dies with the view.

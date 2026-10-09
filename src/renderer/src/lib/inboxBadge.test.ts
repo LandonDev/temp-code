@@ -1,9 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { GithubInboxSnapshot } from "@server/shared/contract-github";
+import type { GithubInboxItem, GithubInboxSnapshot } from "@server/shared/contract-github";
 import type { Link } from "./tcserver/store";
 import { workspaceStore } from "./tcserver/workspaces";
 import { inboxStore } from "./inboxStore";
 import { inboxUnseenFromCache, resetInboxBadge, subscribeInboxBadge } from "./inboxBadge";
+import { DEFAULT_INBOX_FILTERS, saveInboxFilters } from "./inboxFilters";
+import { markInboxItemSeen } from "./inboxSeen";
 
 const invoke = vi.fn();
 vi.mock("./native", () => ({ invoke: (...args: unknown[]) => invoke(...args) }));
@@ -25,7 +27,7 @@ function mockLocalStorage() {
   });
 }
 
-function snapshot(issueUpdatedAt: string): GithubInboxSnapshot {
+function snapshot(issueUpdatedAt: string, over: Partial<GithubInboxItem> = {}): GithubInboxSnapshot {
   return {
     viewer: "me",
     auth: { state: "ok", message: "" },
@@ -54,6 +56,7 @@ function snapshot(issueUpdatedAt: string): GithubInboxSnapshot {
             baseRefName: "",
             checks: null,
             reviewRequested: [],
+            ...over,
           },
         ],
       },
@@ -143,7 +146,68 @@ describe("inbox badge from the stored snapshot", () => {
 
     at = "2026-02-01T00:00:00Z";
     await inboxStore.refreshGithub("open"); // what the open inbox view does
-    expect(inboxUnseenFromCache()).toBe(true);
+    expect(inboxUnseenFromCache()).toBe(false); // changed, but it waits on nobody
     off();
+  });
+});
+
+describe("inbox badge lights only for what waits on the user", () => {
+  const me = { login: "me", avatarUrl: "" };
+  const pat = { login: "pat", avatarUrl: "" };
+  const subscriptions: (() => void)[] = [];
+  afterEach(() => {
+    for (const off of subscriptions.splice(0)) off();
+  });
+
+  /** Seeds "seen" on a first snapshot, then swaps the item in a newer one; returns the dot. */
+  async function dotAfter(first: Partial<GithubInboxItem>, next: Partial<GithubInboxItem>) {
+    let at = "2026-01-01T00:00:00Z";
+    let over = first;
+    const link = fakeLink(() => snapshot(at, over));
+    const off = subscribeInboxBadge(() => undefined);
+    workspaceStore.connect(link);
+    inboxStore.connect(link);
+    link.open();
+    await flush();
+    expect(inboxUnseenFromCache()).toBe(false);
+    at = "2026-02-01T00:00:00Z";
+    over = next;
+    await inboxStore.refreshGithub("open");
+    subscriptions.push(off); // stays live so a seen mark can clear the dot
+    return inboxUnseenFromCache();
+  }
+
+  it("stays off for someone else's PR that changed with nothing asked of the user", async () => {
+    const pr: Partial<GithubInboxItem> = { kind: "pr", author: pat, checks: "FAILURE", reviewDecision: "APPROVED" };
+    expect(await dotAfter(pr, pr)).toBe(false);
+  });
+
+  it("lights for a review asked of the user, and goes out once seen", async () => {
+    const asked: Partial<GithubInboxItem> = { kind: "pr", author: pat, reviewRequested: ["me"] };
+    expect(await dotAfter({ kind: "pr", author: pat }, asked)).toBe(true);
+    markInboxItemSeen({ key: "github:acme/web:pr:1", updatedAt: "2026-02-01T00:00:00Z" });
+    expect(inboxUnseenFromCache()).toBe(false);
+  });
+
+  it("lights for the user's PR with changes requested", async () => {
+    const mine: Partial<GithubInboxItem> = { kind: "pr", author: me, reviewDecision: "REVIEW_REQUIRED" };
+    expect(await dotAfter(mine, { ...mine, reviewDecision: "CHANGES_REQUESTED" })).toBe(true);
+  });
+
+  it("stays off for the user's draft", async () => {
+    const draft: Partial<GithubInboxItem> = { kind: "pr", author: me, draft: true, reviewDecision: "CHANGES_REQUESTED" };
+    expect(await dotAfter({ kind: "pr", author: me, draft: true }, draft)).toBe(false);
+  });
+
+  it("stays off for a workspace the user hid", async () => {
+    saveInboxFilters({ ...DEFAULT_INBOX_FILTERS, hiddenWorkspaceIds: ["w1"] });
+    const asked: Partial<GithubInboxItem> = { kind: "pr", author: pat, reviewRequested: ["me"] };
+    expect(await dotAfter({ kind: "pr", author: pat }, asked)).toBe(false);
+  });
+
+  it("ignores the saved list filters", async () => {
+    saveInboxFilters({ ...DEFAULT_INBOX_FILTERS, hiddenKinds: ["pr"] });
+    const asked: Partial<GithubInboxItem> = { kind: "pr", author: pat, reviewRequested: ["me"] };
+    expect(await dotAfter({ kind: "pr", author: pat }, asked)).toBe(true);
   });
 });

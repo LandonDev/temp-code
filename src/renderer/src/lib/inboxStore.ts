@@ -45,6 +45,8 @@ export type InboxState = {
     fetchedAt: number | null;
     error: string | null;
     loading: boolean;
+    /** Whether the stored list was fetched as "assigned to me". */
+    assignedToMe: boolean;
   };
 };
 
@@ -52,7 +54,7 @@ const EMPTY: InboxState = {
   github: null,
   githubLoaded: false,
   refreshing: false,
-  linear: { items: [], fetchedAt: null, error: null, loading: false },
+  linear: { items: [], fetchedAt: null, error: null, loading: false, assignedToMe: false },
 };
 
 const LINEAR_FRESH_MS = 60_000;
@@ -143,6 +145,57 @@ export function inboxItemsFromSnapshot(
     }
   }
   return sortInboxItems(items);
+}
+
+/**
+ * Whether the GitHub list is still a guess: the stored snapshot came back
+ * but no fetch has ever landed for the repos in view, and one is pending
+ * (the open view has not asked yet) or in flight. A fetched snapshot, even
+ * an empty one, is a list; a failed login is a message, not a wait.
+ */
+export function githubInboxLoading(
+  state: Pick<InboxState, "github" | "githubLoaded" | "refreshing">,
+  repos: readonly string[],
+  refreshPending: boolean,
+): boolean {
+  if (!state.githubLoaded) return true;
+  if (!state.refreshing && !refreshPending) return false;
+  const snapshot = state.github;
+  if (!snapshot) return true;
+  if (snapshot.auth.state !== "ok") return false;
+  if (snapshot.fetchedAt === null) return true;
+  const fetched = new Set(snapshot.repos.map((repo) => repo.repo));
+  return repos.some((repo) => !fetched.has(repo));
+}
+
+const LINEAR_DONE = new Set(["completed", "canceled", "cancelled"]);
+
+/**
+ * Whether an item waits on the viewer: it is open and their review is
+ * asked, or it is assigned to them, or it is their own pull request that
+ * came back (changes requested), is ready to merge (approved), or has
+ * failing checks. Their own drafts never count. Mentions are not in the
+ * snapshot, so a bare @-mention does not count either. Linear items count
+ * when the stored list was fetched as "assigned to me".
+ */
+export function inboxNeedsAttention(
+  item: InboxItem,
+  options: { linearAssignedToMe?: boolean } = {},
+): boolean {
+  if (item.provider === "linear") {
+    return !!options.linearAssignedToMe && !LINEAR_DONE.has(item.stateType ?? "");
+  }
+  if (item.state !== "open" || !item.mine) return false;
+  const { mine } = item;
+  if (mine.authored && item.draft) return false;
+  if (mine.reviewRequested || mine.assigned) return true;
+  if (item.kind !== "pr" || !mine.authored) return false;
+  return (
+    item.reviewDecision === "CHANGES_REQUESTED" ||
+    item.reviewDecision === "APPROVED" ||
+    item.checks === "FAILURE" ||
+    item.checks === "ERROR"
+  );
 }
 
 function linearIssueToInboxItem(issue: LinearIssue): InboxItem {
@@ -261,7 +314,16 @@ class InboxStore {
     const run = fetchLinearItems(query)
       .then((items) => {
         if (this.linearKey !== key) return items;
-        this.set({ ...this.state, linear: { items, fetchedAt: Date.now(), error: null, loading: false } });
+        this.set({
+          ...this.state,
+          linear: {
+            items,
+            fetchedAt: Date.now(),
+            error: null,
+            loading: false,
+            assignedToMe: query.assignedToMe,
+          },
+        });
         return items;
       })
       .catch((err: unknown) => {
