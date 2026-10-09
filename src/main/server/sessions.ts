@@ -43,6 +43,7 @@ import {
   strayWorktrees,
   switchBranch
 } from './git'
+import { gitConfigMtime, githubRepoFromRemote, originRemoteUrl } from './gitRemote'
 import { stopProjectLsp } from './lsp'
 import { parseRules, type OrchestrationRules } from '@shared/rules'
 import { DEFAULT_THREAD_DEFAULTS, parseDefaults, type ThreadDefaults } from '@shared/defaults'
@@ -304,6 +305,12 @@ export function shellReadUrls(command: string): string[] {
     if (!out.includes(url)) out.push(url)
   }
   return out
+}
+
+/** `owner/name` of a checkout's github.com origin, or null (no spawn). */
+async function githubRepoOf(path: string): Promise<string | null> {
+  const url = await originRemoteUrl(path)
+  return url ? githubRepoFromRemote(url) : null
 }
 
 export class SessionRegistry {
@@ -802,11 +809,14 @@ export class SessionRegistry {
   async createWorkspace(path: string, name?: string): Promise<WorkspaceMeta> {
     const existing = this.store.listWorkspaces().find((w) => w.path === path)
     if (existing) return existing
+    const git = await isGitRepo(path)
     const meta: WorkspaceMeta = {
       id: nanoid(12),
       name: name ?? basename(path),
       path,
-      git: await isGitRepo(path),
+      git,
+      githubRepo: git ? await githubRepoOf(path) : null,
+      githubRepoCheckedAt: git ? Date.now() : null,
       createdAt: Date.now()
     }
     this.store.insertWorkspace(meta)
@@ -821,6 +831,27 @@ export class SessionRegistry {
   }
 
   listWorkspaces(): WorkspaceMeta[] {
+    return this.store.listWorkspaces()
+  }
+
+  /** Re-reads the GitHub repo of every git workspace whose git config changed
+   *  since it was last read (or was never read). Reads files only, never
+   *  spawns, and pushes the catalog only when a slug changed. The inbox
+   *  refresh calls this; nothing runs it at boot. */
+  async refreshWorkspaceRepos(): Promise<WorkspaceMeta[]> {
+    let changed = false
+    for (const ws of this.store.listWorkspaces()) {
+      if (!ws.git) continue
+      const checkedAt = ws.githubRepoCheckedAt ?? null
+      if (checkedAt !== null) {
+        const mtime = await gitConfigMtime(ws.path)
+        if (mtime !== null && mtime <= checkedAt) continue
+      }
+      const repo = await githubRepoOf(ws.path)
+      this.store.setWorkspaceGithubRepo(ws.id, repo, Date.now())
+      if (repo !== (ws.githubRepo ?? null)) changed = true
+    }
+    if (changed) this.notifyCatalog('workspaces')
     return this.store.listWorkspaces()
   }
 
