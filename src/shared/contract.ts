@@ -654,6 +654,7 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
     params: z.object({
       sessionId: z.string(),
       fast: z.boolean().optional(),
+      ultrafast: z.boolean().optional(),
       context1m: z.boolean().optional(),
       model: z.string().min(1).optional()
     })

@@ -690,7 +690,8 @@ function RoundSection({
       meta.push(resolveModel(session.harness, turn.model).name);
       if (turn.reasoning) meta.push(turn.reasoning[0].toUpperCase() + turn.reasoning.slice(1));
       meta.push(turn.context1m ? "1M" : "200k");
-      if (turn.fast) meta.push("Fast");
+      if (turn.ultrafast) meta.push("Ultrafast");
+      else if (turn.fast) meta.push("Fast");
     }
     if (cost !== undefined && cost > 0.005) meta.push(`$${cost.toFixed(2)}`);
     return (

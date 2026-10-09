@@ -27,6 +27,7 @@ const meta = (id: string, extra: Partial<SessionMeta> = {}): SessionMeta => ({
   pinned: false,
   archived: false,
   fast: false,
+  ultrafast: false,
   context1m: false,
   busySince: null,
   pausedAt: null,

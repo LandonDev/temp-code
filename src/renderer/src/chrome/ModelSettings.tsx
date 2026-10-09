@@ -36,7 +36,7 @@ export function ModelSettings({
   const settings = useMemo(() => {
     void catalog;
     const list = resolveModel(harness, model).settings ?? [];
-    const order = ["variant", "agent", "effort", "reasoning", "thinking", "fast", "context"];
+    const order = ["variant", "agent", "effort", "reasoning", "thinking", "fast", "ultrafast", "context"];
     return [...list].sort((a, b) => {
       const ai = order.indexOf(a.id);
       const bi = order.indexOf(b.id);
@@ -46,8 +46,11 @@ export function ModelSettings({
 
   if (settings.length === 0) return null;
 
+  // Fast and Ultrafast are two service tiers of one knob: one on turns the other off.
   const setValue = (id: string, value: string) => {
-    onChange({ ...values, [id]: value });
+    const other = id === "fast" ? "ultrafast" : id === "ultrafast" ? "fast" : null;
+    const exclusive = other && value === "true" && values[other] === "true" ? { [other]: "false" } : {};
+    onChange({ ...values, ...exclusive, [id]: value });
   };
 
   return (
@@ -91,7 +94,11 @@ function ToggleSetting({
 }) {
   const on = value === "true";
   const Icon =
-    setting.id === "fast" ? Zap : setting.id === "thinking" ? Brain : Gauge;
+    setting.id === "fast" || setting.id === "ultrafast"
+      ? Zap
+      : setting.id === "thinking"
+        ? Brain
+        : Gauge;
   return (
     <button
       type="button"

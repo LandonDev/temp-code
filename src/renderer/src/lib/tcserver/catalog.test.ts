@@ -62,6 +62,26 @@ describe("agentModelsFor", () => {
   it("a model without reasoning has no effort setting", () => {
     expect(agentModelsFor(cursor)[0].settings).toBeUndefined();
   });
+
+  it("codex gets Ultrafast beside Fast only when the probed tiers list it; unprobed rows just get Fast", () => {
+    const codex: ProviderInfo = {
+      id: "codex",
+      label: "Codex",
+      defaultModel: "gpt-5.6-sol",
+      models: [
+        { id: "gpt-6-astra", label: "Astra", reasoning: [], speedTiers: ["priority", "ultrafast"] },
+        { id: "gpt-5.6-sol", label: "Sol", reasoning: [], speedTiers: ["priority"] },
+        { id: "gpt-6-sol", label: "Sol 6", reasoning: [] },
+      ],
+    };
+    const [astra, sol, sol6] = agentModelsFor(codex);
+    expect(astra.settings?.map((s) => s.id)).toEqual(["fast", "ultrafast"]);
+    expect(astra.settings?.[1]).toMatchObject({ kind: "toggle", value: "false", label: "Ultrafast" });
+    expect(sol.settings?.map((s) => s.id)).toEqual(["fast"]);
+    expect(sol.settings?.[0].description).toContain("Ultrafast is not on this account");
+    expect(sol6.settings?.map((s) => s.id)).toEqual(["fast"]);
+    expect(sol6.settings?.[0].description).toBe("Fast (priority processing)");
+  });
 });
 
 describe("refreshCatalog", () => {

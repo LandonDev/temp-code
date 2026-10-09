@@ -129,6 +129,7 @@ function meta(over: Partial<SessionMeta> = {}): SessionMeta {
     pinned: false,
     permission: "edits",
     fast: false,
+    ultrafast: false,
     busySince: null,
     pausedAt: null,
     frozenActiveElapsed: null,

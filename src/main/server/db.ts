@@ -104,6 +104,7 @@ export function openDb(path: string): DatabaseSync {
     `ALTER TABLE sessions ADD COLUMN thread_type TEXT`,
     `ALTER TABLE sessions ADD COLUMN plan_path TEXT`,
     `ALTER TABLE sessions ADD COLUMN fast INTEGER NOT NULL DEFAULT 0`,
+    `ALTER TABLE sessions ADD COLUMN ultrafast INTEGER NOT NULL DEFAULT 0`,
     `ALTER TABLE sessions ADD COLUMN context_1m INTEGER NOT NULL DEFAULT 0`,
     `ALTER TABLE sessions ADD COLUMN busy_since INTEGER`,
     `ALTER TABLE sessions ADD COLUMN paused_at INTEGER`,
@@ -214,6 +215,7 @@ interface SessionRowRaw {
   archived: number
   permission: string
   fast: number
+  ultrafast: number
   context_1m: number
   busy_since: number | null
   paused_at: number | null
@@ -265,6 +267,7 @@ function toMeta(r: SessionRowRaw): SessionMeta {
     pinned: !!r.pinned,
     archived: !!r.archived,
     fast: !!r.fast,
+    ultrafast: !!r.ultrafast,
     context1m: !!r.context_1m,
     busySince: r.busy_since,
     pausedAt: r.paused_at,
@@ -367,8 +370,8 @@ export class Store {
     this.sessionsVersion += 1
     this
       .stmt(
-        `INSERT INTO sessions (id, parent_id, project_id, workspace_id, thread_type, plan_path, provider, model, reasoning, agent_type, title, cwd, status, archived, pinned, permission, fast, context_1m, busy_since, paused_at, frozen_active_elapsed, thread_rules, native_id, account_current, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        `INSERT INTO sessions (id, parent_id, project_id, workspace_id, thread_type, plan_path, provider, model, reasoning, agent_type, title, cwd, status, archived, pinned, permission, fast, ultrafast, context_1m, busy_since, paused_at, frozen_active_elapsed, thread_rules, native_id, account_current, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         meta.id,
@@ -388,6 +391,7 @@ export class Store {
         meta.pinned ? 1 : 0,
         meta.permission,
         meta.fast ? 1 : 0,
+        meta.ultrafast ? 1 : 0,
         meta.context1m ? 1 : 0,
         meta.busySince,
         meta.pausedAt,
@@ -415,6 +419,7 @@ export class Store {
         | 'reasoning'
         | 'permission'
         | 'fast'
+        | 'ultrafast'
         | 'context1m'
         | 'busySince'
         | 'pausedAt'
@@ -437,7 +442,7 @@ export class Store {
     this.sessionsVersion += 1
     this
       .stmt(
-        `UPDATE sessions SET status = ?, title = ?, native_id = ?, archived = ?, pinned = ?, provider = ?, model = ?, reasoning = ?, permission = ?, fast = ?, context_1m = ?, busy_since = ?, paused_at = ?, frozen_active_elapsed = ?, thread_type = ?, plan_path = ?, agent_type = ?, thread_rules = ?, account_current = ?, updated_at = ? WHERE id = ?`
+        `UPDATE sessions SET status = ?, title = ?, native_id = ?, archived = ?, pinned = ?, provider = ?, model = ?, reasoning = ?, permission = ?, fast = ?, ultrafast = ?, context_1m = ?, busy_since = ?, paused_at = ?, frozen_active_elapsed = ?, thread_type = ?, plan_path = ?, agent_type = ?, thread_rules = ?, account_current = ?, updated_at = ? WHERE id = ?`
       )
       .run(
         next.status,
@@ -450,6 +455,7 @@ export class Store {
         next.reasoning,
         next.permission,
         next.fast ? 1 : 0,
+        next.ultrafast ? 1 : 0,
         next.context1m ? 1 : 0,
         next.busySince,
         next.pausedAt,

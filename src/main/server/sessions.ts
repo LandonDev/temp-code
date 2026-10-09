@@ -1171,6 +1171,7 @@ export class SessionRegistry {
       pinned: false,
       permission: params.permission ?? d.permission,
       fast: false,
+      ultrafast: false,
       context1m: params.context1m ?? false,
       account: null,
       busySince: null,
@@ -1366,6 +1367,7 @@ export class SessionRegistry {
       reasoning: meta.reasoning,
       context1m: meta.context1m,
       fast: meta.fast,
+      ultrafast: meta.ultrafast,
       newPass: opts?.newPass === true
     })
     // Cursor-style: an untitled thread takes its name from the first
@@ -1823,10 +1825,16 @@ export class SessionRegistry {
    *  cut. A model of another provider is left to send(), which switches
    *  the harness with a transcript handoff; the same provider's model
    *  lands now, so the thread's account re-picks for it at once. */
-  async tune(sessionId: string, patch: { fast?: boolean; context1m?: boolean; model?: string }): Promise<void> {
+  async tune(
+    sessionId: string,
+    patch: { fast?: boolean; ultrafast?: boolean; context1m?: boolean; model?: string }
+  ): Promise<void> {
     const meta = this.store.getSession(sessionId)
     if (!meta) throw new Error(`unknown session: ${sessionId}`)
     const { model: requested, ...rest } = patch
+    // One service tier at a time: turning either speed on turns the other off.
+    if (rest.ultrafast) rest.fast = false
+    else if (rest.fast) rest.ultrafast = false
     const routed = requested ? resolveModel(meta.provider, requested) : null
     const model = routed && routed.provider === meta.provider ? routed.model : undefined
     const modelChanged = model !== undefined && model !== meta.model

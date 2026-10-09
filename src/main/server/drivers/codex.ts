@@ -103,7 +103,7 @@ interface RpcFrame {
 const STDERR_LINES = 40
 const STDERR_BYTES = 4096
 
-class AppServerConn {
+export class AppServerConn {
   private proc: ChildProcessWithoutNullStreams
   private nextId = 1
   /** The last lines app-server wrote to stderr, bounded by count and bytes. */
@@ -179,6 +179,10 @@ class AppServerConn {
       this.pending.set(id, { resolve, reject })
       this.proc.stdin.write(JSON.stringify({ jsonrpc: '2.0', id, method, params }) + '\n')
     })
+  }
+
+  notify(method: string, params?: unknown): void {
+    this.proc.stdin.write(JSON.stringify({ jsonrpc: '2.0', method, params }) + '\n')
   }
 
   respond(id: number | string, result: unknown): void {
@@ -742,9 +746,15 @@ export const codexDriver: HarnessDriver = {
               multi_agent: false,
               multi_agent_v2: false
             },
-            // Fast = OpenAI's priority service tier. Only sent when on, so
-            // off keeps whatever the user's own codex config chooses.
-            ...(session.fast ? { service_tier: 'priority' } : {}),
+            // Fast = OpenAI's priority service tier, Ultrafast = its
+            // `ultrafast` tier (offered only when the account's model/list
+            // lists it). Only sent when on, so off keeps whatever the
+            // user's own codex config chooses.
+            ...(session.ultrafast
+              ? { service_tier: 'ultrafast' }
+              : session.fast
+                ? { service_tier: 'priority' }
+                : {}),
             ...(bridgeEntry ? { mcp_servers: { app: bridgeEntry } } : {}),
             // A research tree in a worktree project writes its report and
             // angle files at the workspace root, outside this cwd.

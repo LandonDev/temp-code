@@ -89,6 +89,7 @@ const session = {
   permission: 'auto',
   reasoning: 'medium',
   fast: false,
+  ultrafast: false,
   nativeId: null,
   goal: null
 } as unknown as SessionMeta

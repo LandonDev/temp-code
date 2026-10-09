@@ -352,8 +352,11 @@ export function Composer({
   const changeModelSettings = (next: Record<string, string>) => {
     onModelSettingsChange?.(next)
     if (!sessionId) return
-    const patch: { fast?: boolean; context1m?: boolean } = {}
+    const patch: { fast?: boolean; ultrafast?: boolean; context1m?: boolean } = {}
     if (next.fast != null && next.fast !== modelSettings.fast) patch.fast = next.fast === 'true'
+    if (next.ultrafast != null && next.ultrafast !== modelSettings.ultrafast) {
+      patch.ultrafast = next.ultrafast === 'true'
+    }
     if (next.context != null && next.context !== modelSettings.context) {
       patch.context1m = next.context === '1m'
     }
@@ -377,6 +380,7 @@ export function Composer({
     retuneAfterPick.current = false
     void tuneSession(sessionId, {
       fast: modelSettings.fast === 'true',
+      ultrafast: modelSettings.ultrafast === 'true',
       context1m: modelSettings.context === '1m',
       ...(harness === threadProvider ? { model: nativeModelId(model) } : {}),
     }).catch(() => undefined)
