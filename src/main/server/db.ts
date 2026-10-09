@@ -109,7 +109,9 @@ export function openDb(path: string): DatabaseSync {
     `ALTER TABLE sessions ADD COLUMN account_pin TEXT`,
     `ALTER TABLE sessions ADD COLUMN account_current TEXT`,
     `ALTER TABLE projects ADD COLUMN account_pins TEXT`,
-    `ALTER TABLE workspaces ADD COLUMN account_pins TEXT`
+    `ALTER TABLE workspaces ADD COLUMN account_pins TEXT`,
+    `ALTER TABLE workspaces ADD COLUMN github_repo TEXT`,
+    `ALTER TABLE workspaces ADD COLUMN github_repo_checked_at INTEGER`
   ]) {
     try {
       db.exec(stmt)
@@ -549,8 +551,10 @@ export class Store {
 
   insertWorkspace(w: WorkspaceMeta): void {
     this
-      .stmt(`INSERT INTO workspaces (id, name, path, git, created_at) VALUES (?, ?, ?, ?, ?)`)
-      .run(w.id, w.name, w.path, w.git ? 1 : 0, w.createdAt)
+      .stmt(
+        `INSERT INTO workspaces (id, name, path, git, created_at, github_repo, github_repo_checked_at) VALUES (?, ?, ?, ?, ?, ?, ?)`
+      )
+      .run(w.id, w.name, w.path, w.git ? 1 : 0, w.createdAt, w.githubRepo ?? null, w.githubRepoCheckedAt ?? null)
   }
 
   listWorkspaces(): WorkspaceMeta[] {
@@ -562,6 +566,8 @@ export class Store {
       path: string
       git: number
       account_pins: string | null
+      github_repo: string | null
+      github_repo_checked_at: number | null
       created_at: number
     }[]
     return rows.map((r) => ({
@@ -570,8 +576,17 @@ export class Store {
       path: r.path,
       git: !!r.git,
       accountPins: parseAccountPins(r.account_pins),
+      githubRepo: r.github_repo,
+      githubRepoCheckedAt: r.github_repo_checked_at,
       createdAt: r.created_at
     }))
+  }
+
+  /** Records the workspace's GitHub `owner/name` (null when it has none) and when it was read. */
+  setWorkspaceGithubRepo(id: string, repo: string | null, checkedAt: number): void {
+    this
+      .stmt(`UPDATE workspaces SET github_repo = ?, github_repo_checked_at = ? WHERE id = ?`)
+      .run(repo, checkedAt, id)
   }
 
   setWorkspaceAccounts(id: string, pins: AccountPins): void {

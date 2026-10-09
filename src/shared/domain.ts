@@ -28,6 +28,10 @@ export interface WorkspaceMeta {
   git: boolean
   /** Aliax account per provider for threads under this workspace; unset means auto. */
   accountPins?: AccountPins
+  /** GitHub `owner/name` from the origin remote; null when not GitHub or not yet resolved. */
+  githubRepo?: string | null
+  /** When `githubRepo` was last read from the git config (ms); null until the first read. */
+  githubRepoCheckedAt?: number | null
   createdAt: number
 }
 
