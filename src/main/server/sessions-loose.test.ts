@@ -22,7 +22,7 @@ afterEach(async () => {
 })
 
 it('a chat with no project and no workspace runs in the home directory', async () => {
-  const session = await registry.create({ provider: 'claude', model: 'claude-sonnet-5' })
+  const session = await registry.create({ provider: 'claude', model: 'claude-sonnet-5-5' })
   expect(session.projectId).toBeNull()
   expect(session.workspaceId).toBeNull()
   expect(session.cwd).toBe(homedir())
@@ -30,7 +30,7 @@ it('a chat with no project and no workspace runs in the home directory', async (
 })
 
 it('a chat in a folder the catalog does not know stays outside every workspace', async () => {
-  const session = await registry.create({ cwd: root, provider: 'claude', model: 'claude-sonnet-5' })
+  const session = await registry.create({ cwd: root, provider: 'claude', model: 'claude-sonnet-5-5' })
   expect(session.projectId).toBeNull()
   expect(session.workspaceId).toBeNull()
   expect(session.cwd).toBe(root)

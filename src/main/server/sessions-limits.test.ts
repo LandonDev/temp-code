@@ -55,7 +55,7 @@ afterEach(async () => {
 
 /** A running claude session whose driver emit we hold. */
 async function running(params: Partial<Parameters<SessionRegistry['create']>[0]> = {}): Promise<{ id: string; emit: (event: AgentEvent) => void }> {
-  const session = await registry.create({ cwd: root, provider: 'claude', model: 'claude-sonnet-5', ...params })
+  const session = await registry.create({ cwd: root, provider: 'claude', model: 'claude-sonnet-5-5', ...params })
   await registry.send(session.id, 'hello')
   const emit = emits.get(session.id)
   if (!emit) throw new Error('driver never started')
@@ -83,7 +83,7 @@ it('a limit error moves only that thread and continues the tree once the session
   const { id: sibling, emit: siblingEmit } = await running()
   expect(registry.get(id)?.account).toBe('a@x.com')
   emit({ type: 'error', message: "You've hit your limit", limit: { window: '5h' } })
-  expect(fake.calls).toEqual([[id, { provider: 'claude', model: 'claude-sonnet-5', window: '5h', account: 'a@x.com' }]])
+  expect(fake.calls).toEqual([[id, { provider: 'claude', model: 'claude-sonnet-5-5', window: '5h', account: 'a@x.com' }]])
   emit({ type: 'status', status: 'idle' })
   expect(registry.get(id)?.canContinue).toBe(true)
   await settle()
@@ -129,7 +129,7 @@ it('the spawn names the resolved pin, a child spawns under the same scope pin, a
   await registry.send(id, 'and again')
   expect(routes).toHaveLength(2)
 
-  const child = await registry.create({ cwd: root, provider: 'claude', model: 'claude-sonnet-5', parentId: id, workspaceId: ws.id })
+  const child = await registry.create({ cwd: root, provider: 'claude', model: 'claude-sonnet-5-5', parentId: id, workspaceId: ws.id })
   await registry.send(child.id, 'go')
   expect(routes.at(-1)).toEqual({ id: child.id, route: { account: 'me@x.com', pin: true } })
 
@@ -359,7 +359,7 @@ it('liveLoad counts running, watching and starting threads per account; idle and
   expect(registry.liveLoad('claude')).toEqual({ 'b@x.com': 1 })
   expect(registry.liveLoad('codex')).toEqual({})
   // A spawn in flight counts before its driver says anything.
-  const d = await registry.create({ cwd: root, provider: 'claude', model: 'claude-sonnet-5' })
+  const d = await registry.create({ cwd: root, provider: 'claude', model: 'claude-sonnet-5-5' })
   const privy = registry as unknown as { starting: Map<string, Promise<unknown>>; dropHandle: (id: string) => Promise<void> }
   await privy.dropHandle(d.id)
   privy.starting.set(d.id, new Promise(() => {}))
@@ -389,7 +389,7 @@ it('refreshAccounts reads the sessions table and the live load once per pass, ho
     },
     failover: async () => null
   }
-  for (let i = 0; i < 20; i++) await registry.create({ cwd: root, provider: 'claude', model: 'claude-sonnet-5' })
+  for (let i = 0; i < 20; i++) await registry.create({ cwd: root, provider: 'claude', model: 'claude-sonnet-5-5' })
   const list = vi.spyOn(store, 'listSessions')
   const load = vi.spyOn(registry, 'liveLoad')
   registry.refreshAccounts()
@@ -404,7 +404,7 @@ it('a refresh pass that moves every thread rebuilds the session index once and p
     failover: async () => null
   }
   const ids: string[] = []
-  for (let i = 0; i < 20; i++) ids.push((await registry.create({ cwd: root, provider: 'claude', model: 'claude-sonnet-5' })).id)
+  for (let i = 0; i < 20; i++) ids.push((await registry.create({ cwd: root, provider: 'claude', model: 'claude-sonnet-5-5' })).id)
   registry.refreshAccounts()
   account = 'b@x.com'
   const pushed: string[] = []
@@ -429,7 +429,7 @@ it('a spawn picks fresh: the sticky account is ignored so a resume spreads by th
     },
     failover: async () => null
   }
-  const session = await registry.create({ cwd: root, provider: 'claude', model: 'claude-sonnet-5' })
+  const session = await registry.create({ cwd: root, provider: 'claude', model: 'claude-sonnet-5-5' })
   // The row showed the sticky pick; the process that spawned with it is gone (idle sweep, say).
   await (registry as unknown as { dropHandle: (id: string) => Promise<void> }).dropHandle(session.id)
   registry.setAccount(session.id, 'sticky@x.com')

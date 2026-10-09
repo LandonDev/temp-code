@@ -149,12 +149,12 @@ describe('AccountsService', () => {
     })
     const info = { service: 'claude', serviceId: 'claude-code' as const, limit: { window: '5h' as const }, tried: ['a@x.com'], account: 'a@x.com', thread: 'T' }
     // A Sonnet thread: b's closed Fable cap is not its business.
-    expect(await svc.pickNext({ ...info, model: 'claude-sonnet-5' })).toBe('b@x.com')
+    expect(await svc.pickNext({ ...info, model: 'claude-sonnet-5-5' })).toBe('b@x.com')
     expect(polled).toEqual(['b@x.com'])
     // A Fable thread: b is out for it.
     expect(await svc.pickNext({ ...info, model: 'claude-fable-5-1' })).toBeNull()
     // The pin (unscoped): the same rule on the weekly clock.
-    expect(await svc.pickNext({ ...info, model: 'claude-sonnet-5', thread: undefined })).toBe('b@x.com')
+    expect(await svc.pickNext({ ...info, model: 'claude-sonnet-5-5', thread: undefined })).toBe('b@x.com')
   })
 
   it('routeFor names the pin, else the sticky account, else the best pick for the model, from the cached snapshot', async () => {
@@ -219,11 +219,11 @@ describe('AccountsService', () => {
       usageOf: async () => null,
       observeLimit: (id, name, limit) => observed.push([id, name, limit])
     })
-    expect(await svc.failover('T', { provider: 'claude', model: 'claude-sonnet-5', window: '5h', account: 'a@x.com' })).toEqual({ from: 'a@x.com', to: 'b@x.com' })
+    expect(await svc.failover('T', { provider: 'claude', model: 'claude-sonnet-5-5', window: '5h', account: 'a@x.com' })).toEqual({ from: 'a@x.com', to: 'b@x.com' })
     expect(observed).toEqual([['claude-code', 'a@x.com', { window: '5h' }]])
     expect(pinnedProfile('claude-code')).toBe('a@x.com')
     // A thread on b (say, pinned) that hits its limit moves to a; the pin still stands.
-    expect(await svc.failover('U', { provider: 'claude', model: 'claude-sonnet-5', window: '5h', account: 'b@x.com' })).toEqual({ from: 'b@x.com', to: 'a@x.com' })
+    expect(await svc.failover('U', { provider: 'claude', model: 'claude-sonnet-5-5', window: '5h', account: 'b@x.com' })).toEqual({ from: 'b@x.com', to: 'a@x.com' })
     // An unscoped thread (older owner) spent from the pin.
     expect(await svc.failover('V', { provider: 'claude', model: null, window: '5h', account: null })).toEqual({ from: 'a@x.com', to: 'b@x.com' })
   })
@@ -258,7 +258,7 @@ describe('AccountsService', () => {
         return null
       }
     })
-    const info = { provider: 'claude' as const, model: 'claude-sonnet-5', window: '5h' as const, account: 'a@x.com' }
+    const info = { provider: 'claude' as const, model: 'claude-sonnet-5-5', window: '5h' as const, account: 'a@x.com' }
     const [first, again, other] = await Promise.all([svc.failover('T', info), svc.failover('T', info), svc.failover('U', info)])
     expect(first).toEqual({ from: 'a@x.com', to: 'b@x.com' })
     expect(again).toBe(first)

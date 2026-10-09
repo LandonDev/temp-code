@@ -102,7 +102,7 @@ check(
 // ── planning thread: plan doc + mirror with tool lines ───────────────
 const plan = await registry.create({
   provider: 'claude',
-  model: 'claude-sonnet-5',
+  model: 'claude-sonnet-5-5',
   reasoning: 'low',
   agentType: 'implementer',
   permission: 'edits',
@@ -135,7 +135,7 @@ check(
 // ── chat thread: the <project-context> block arrives ─────────────────
 const chat = await registry.create({
   provider: 'claude',
-  model: 'claude-sonnet-5',
+  model: 'claude-sonnet-5-5',
   reasoning: 'low',
   agentType: 'implementer',
   permission: 'edits',

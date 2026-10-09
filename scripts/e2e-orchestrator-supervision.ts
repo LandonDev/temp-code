@@ -88,7 +88,7 @@ const parent: SessionMeta = {
   threadType: null,
   planPath: null,
   provider: 'claude',
-  model: 'claude-sonnet-5',
+  model: 'claude-sonnet-5-5',
   reasoning: 'low',
   agentType: 'orchestrator',
   title: 'supervisor',
@@ -115,7 +115,7 @@ async function call(name: string, args: Record<string, unknown>): Promise<string
 const spawn = (task: string, provider = 'claude'): Promise<string> =>
   call('spawn_agent', {
     provider,
-    model: provider === 'claude' ? 'claude-sonnet-5' : undefined,
+    model: provider === 'claude' ? 'claude-sonnet-5-5' : undefined,
     reasoning: 'low',
     agentType: 'implementer',
     task,

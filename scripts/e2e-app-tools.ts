@@ -79,7 +79,7 @@ const mk = (
 ): ReturnType<typeof registry.create> =>
   registry.create({
     provider: 'claude',
-    model: 'claude-sonnet-5',
+    model: 'claude-sonnet-5-5',
     reasoning: 'low',
     agentType: 'implementer',
     permission: 'edits',
@@ -159,7 +159,7 @@ await settled(chat3.id)
 const seededRaw = await call(chat1, 'app_start_thread', {
   threadType: 'planning',
   provider: 'claude',
-  model: 'claude-sonnet-5',
+  model: 'claude-sonnet-5-5',
   reasoning: 'low',
   seedThreadIds: [chat2.id, chat3.id],
   firstMessage:

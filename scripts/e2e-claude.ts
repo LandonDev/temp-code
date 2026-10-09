@@ -60,7 +60,7 @@ async function main(): Promise<void> {
   // --- 1. create ------------------------------------------------------------
   const a = await registry.create({
     provider: 'claude',
-    model: 'claude-sonnet-5',
+    model: 'claude-sonnet-5-5',
     reasoning: 'low',
     agentType: 'implementer',
     permission: 'edits',
@@ -73,7 +73,7 @@ async function main(): Promise<void> {
   // --- 2. basic turn + concurrent second session ----------------------------
   const b = await registry.create({
     provider: 'claude',
-    model: 'claude-sonnet-5',
+    model: 'claude-sonnet-5-5',
     reasoning: 'low',
     agentType: 'implementer',
     permission: 'edits',

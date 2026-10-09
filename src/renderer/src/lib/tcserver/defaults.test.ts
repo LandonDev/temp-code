@@ -17,10 +17,10 @@ import {
 const claude: ProviderInfo = {
   id: "claude",
   label: "Claude",
-  defaultModel: "claude-sonnet-5",
+  defaultModel: "claude-sonnet-5-5",
   models: [
     { id: "claude-opus-5", label: "Opus 5", reasoning: ["low", "medium", "high", "xhigh", "max"], defaultReasoning: "high" },
-    { id: "claude-sonnet-5", label: "Sonnet 5", reasoning: ["low", "medium", "high"], defaultReasoning: "medium" },
+    { id: "claude-sonnet-5-5", label: "Sonnet 5.5", reasoning: ["low", "medium", "high"], defaultReasoning: "medium" },
   ],
 };
 const cursor: ProviderInfo = {
@@ -84,14 +84,14 @@ describe("effort ladders", () => {
 
   it("an empty model means the provider default", () => {
     live();
-    expect(modelForDefaults({ provider: "claude", model: "" }).nativeId).toBe("claude-sonnet-5");
+    expect(modelForDefaults({ provider: "claude", model: "" }).nativeId).toBe("claude-sonnet-5-5");
     expect(storedModelId({ provider: "claude", model: "", reasoning: "low", permission: "safe" })).toBe("");
     expect(storedModelId({ provider: "claude", model: "claude-opus-5", reasoning: "low", permission: "safe" })).toBe("claude-opus-5");
   });
 
   it("clamps an effort off the ladder to the model's own default", () => {
     live();
-    const sonnet = modelForDefaults({ provider: "claude", model: "claude-sonnet-5" });
+    const sonnet = modelForDefaults({ provider: "claude", model: "claude-sonnet-5-5" });
     expect(clampReasoning(sonnet, "high")).toBe("high");
     expect(clampReasoning(sonnet, "ultra")).toBe("medium");
     const opus = modelForDefaults({ provider: "claude", model: "claude-opus-5" });
@@ -102,7 +102,7 @@ describe("effort ladders", () => {
 
   it("normalizeDefaults returns the same object when nothing changes", () => {
     live();
-    const d = { provider: "claude" as const, model: "claude-sonnet-5", reasoning: "low" as const, permission: "edits" as const };
+    const d = { provider: "claude" as const, model: "claude-sonnet-5-5", reasoning: "low" as const, permission: "edits" as const };
     expect(normalizeDefaults(d)).toBe(d);
     expect(normalizeDefaults({ ...d, reasoning: "max" }).reasoning).toBe("medium");
   });

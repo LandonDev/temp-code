@@ -37,7 +37,7 @@ describe("runtimeModeToPermission", () => {
 
 describe("normalizeClaudeCliEffort", () => {
   it("drops ultrathink and maps ultracode to xhigh", () => {
-    expect(normalizeClaudeCliEffort("ultrathink", "claude-sonnet-5")).toBeUndefined();
+    expect(normalizeClaudeCliEffort("ultrathink", "claude-sonnet-5-5")).toBeUndefined();
     expect(normalizeClaudeCliEffort("ultracode", "claude-opus-5")).toBe("xhigh");
   });
 
@@ -64,14 +64,14 @@ describe("applyClaudePromptEffortPrefix", () => {
 describe("resolveClaudeApiModelId", () => {
   it("appends [1m] for the 1M context window", () => {
     expect(resolveClaudeApiModelId("claude-opus-5", "1m")).toBe("claude-opus-5[1m]");
-    expect(resolveClaudeApiModelId("claude-sonnet-5", "200k")).toBe("claude-sonnet-5");
+    expect(resolveClaudeApiModelId("claude-sonnet-5-5", "200k")).toBe("claude-sonnet-5-5");
   });
 });
 
 describe("buildClaudeSpawnArgs", () => {
   it("speaks stream-json with stdio permissions like the Agent SDK", () => {
     const args = buildClaudeSpawnArgs({
-      model: "claude-sonnet-5",
+      model: "claude-sonnet-5-5",
       effort: "high",
       permissionMode: "acceptEdits",
       sessionId: "sess-1",
@@ -84,7 +84,7 @@ describe("buildClaudeSpawnArgs", () => {
     expect(args).toContain("--include-partial-messages");
     expect(args).toContain("--setting-sources=user,project,local");
     expect(args).toEqual(
-      expect.arrayContaining(["--model", "claude-sonnet-5", "--effort", "high"]),
+      expect.arrayContaining(["--model", "claude-sonnet-5-5", "--effort", "high"]),
     );
     expect(args).toEqual(
       expect.arrayContaining(["--permission-mode", "acceptEdits"]),
@@ -375,7 +375,7 @@ describe("contextFromResult", () => {
         output_tokens: 13,
       },
       modelUsage: {
-        "claude-sonnet-5": { contextWindow: 1000000, maxOutputTokens: 64000 },
+        "claude-sonnet-5-5": { contextWindow: 1000000, maxOutputTokens: 64000 },
       },
     };
     expect(contextFromResult(rec)).toEqual({ used: 29608, window: 1000000 });

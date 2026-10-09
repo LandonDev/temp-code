@@ -42,7 +42,7 @@ function waitFor(sessionId: string, pred: (e: AgentEvent) => boolean, timeoutMs 
 
 const orch = await registry.create({
   provider: 'claude',
-  model: 'claude-sonnet-5',
+  model: 'claude-sonnet-5-5',
   reasoning: 'low',
   agentType: 'orchestrator',
   permission: 'edits',

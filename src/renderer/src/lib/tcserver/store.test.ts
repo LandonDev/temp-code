@@ -12,7 +12,7 @@ function meta(over: Partial<SessionMeta> = {}): SessionMeta {
     threadType: null,
     planPath: null,
     provider: "claude",
-    model: "claude-sonnet-5",
+    model: "claude-sonnet-5-5",
     reasoning: "medium",
     agentType: "implementer",
     title: "claude · implementer",
@@ -106,7 +106,7 @@ describe("sessionFromMeta / applyMeta", () => {
   it("maps provider, model, policy, status", () => {
     const s = sessionFromMeta(meta({ permission: "auto", status: "running", reasoning: "high" }));
     expect(s.harness).toBe("claude");
-    expect(s.model).toBe("claude:sonnet-5");
+    expect(s.model).toBe("claude:sonnet-5.5");
     expect(s.runtimeMode).toBe("full-access");
     expect(s.busy).toBe(true);
     expect(s.modelSettings.effort).toBe("high");

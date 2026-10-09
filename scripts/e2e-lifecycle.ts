@@ -17,7 +17,7 @@ const check = (name: string, ok: boolean): void => {
 
 const base = {
   provider: 'claude' as const,
-  model: 'claude-sonnet-5',
+  model: 'claude-sonnet-5-5',
   reasoning: 'low' as const,
   agentType: 'implementer' as const,
   permission: 'edits' as const,

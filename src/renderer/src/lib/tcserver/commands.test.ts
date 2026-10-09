@@ -30,7 +30,7 @@ import type { ServerPush, SessionMeta } from "./types";
 function meta(over: Partial<SessionMeta>): SessionMeta {
   return {
     id: "x", parentId: null, projectId: null, workspaceId: null, threadType: null, planPath: null,
-    provider: "claude", model: "claude-sonnet-5", reasoning: "medium", agentType: "implementer",
+    provider: "claude", model: "claude-sonnet-5-5", reasoning: "medium", agentType: "implementer",
     title: "t", cwd: "/repo", status: "idle", archived: false, pinned: false, permission: "edits",
     fast: false, context1m: false, busySince: null, pausedAt: null, frozenActiveElapsed: null,
     nativeId: null, createdAt: 1, updatedAt: 1, ...over,
@@ -84,10 +84,10 @@ afterEach(() => sessionStore.reset());
 
 describe("send", () => {
   it("creates a draft with its own id, then sends, then waits for idle", async () => {
-    const draft = { ...newSession("claude", "/repo", "claude:sonnet-5", "supervised"), modelSettings: { effort: "high" } };
+    const draft = { ...newSession("claude", "/repo", "claude:sonnet-5.5", "supervised"), modelSettings: { effort: "high" } };
     sessionStore.mutate([draft]);
     await send(draft, "hello", [], undefined, undefined, link);
-    expect(link.of("session.create")[0]).toMatchObject({ id: draft.id, provider: "claude", model: "claude-sonnet-5", reasoning: "high", cwd: "/repo", permission: "safe", context1m: false });
+    expect(link.of("session.create")[0]).toMatchObject({ id: draft.id, provider: "claude", model: "claude-sonnet-5-5", reasoning: "high", cwd: "/repo", permission: "safe", context1m: false });
     expect(link.of("session.send")[0]).toEqual({ sessionId: draft.id, text: "hello" });
     expect(sessionStore.isDraft(draft.id)).toBe(false);
     expect(sessionStore.get(draft.id)!.busy).toBe(false);
@@ -95,7 +95,7 @@ describe("send", () => {
   });
 
   it("sends only what differs from the server meta", async () => {
-    link.push({ push: "session", session: meta({ id: "s1", provider: "claude", model: "claude-sonnet-5", reasoning: "medium" }) });
+    link.push({ push: "session", session: meta({ id: "s1", provider: "claude", model: "claude-sonnet-5-5", reasoning: "medium" }) });
     const session = { ...sessionStore.get("s1")!, model: "claude:opus-5", modelSettings: { effort: "max" } };
     sessionStore.mutate([session]);
     await send(session, "again", [], undefined, undefined, link);
@@ -163,7 +163,7 @@ describe("thread commands", () => {
     const added: string[] = [];
     sessionStore.onSessionAdded((m) => added.push(m.id));
     const meta = await startThread(
-      { threadType: "implementation", provider: "claude", model: "claude-sonnet-5", planPath: "/repo/.temp-code/plan.md", title: "Build it", projectId: "p1" },
+      { threadType: "implementation", provider: "claude", model: "claude-sonnet-5-5", planPath: "/repo/.temp-code/plan.md", title: "Build it", projectId: "p1" },
       "Implement the plan.",
       link,
     );

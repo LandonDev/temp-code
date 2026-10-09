@@ -63,7 +63,7 @@ const orch = await registry.create({
   projectId: wt.id,
   threadType: 'orchestration',
   provider: 'claude',
-  model: 'claude-sonnet-5'
+  model: 'claude-sonnet-5-5'
 })
 check(
   'orchestration thread → orchestrator agent, project cwd',
@@ -75,7 +75,7 @@ const impl = await registry.create({
   projectId: wt.id,
   threadType: 'implementation',
   provider: 'claude',
-  model: 'claude-sonnet-5',
+  model: 'claude-sonnet-5-5',
   planPath: '/tmp/some-plan.md'
 })
 check('seeded implementation keeps planPath', impl.planPath === '/tmp/some-plan.md')
@@ -96,7 +96,7 @@ const plan = await registry.create({
   projectId: local.id,
   threadType: 'planning',
   provider: 'claude',
-  model: 'claude-sonnet-5',
+  model: 'claude-sonnet-5-5',
   reasoning: 'low'
 })
 check('planning thread gets a planPath', !!plan.planPath && plan.planPath.includes(plan.id))

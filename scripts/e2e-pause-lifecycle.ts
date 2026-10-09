@@ -58,7 +58,7 @@ const store = new Store(openDb(dbPath))
 let registry = new SessionRegistry(store)
 const base = {
   provider: 'claude' as const,
-  model: 'claude-sonnet-5',
+  model: 'claude-sonnet-5-5',
   reasoning: 'low' as const,
   agentType: 'implementer' as const,
   permission: 'edits' as const,

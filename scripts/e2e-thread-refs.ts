@@ -64,7 +64,7 @@ const projB = await registry.createProject(wsB.id, 'Beta', 'local')
 // has a plan file, so the digest's frontmatter carries the plan path).
 const source = await registry.create({
   provider: 'claude',
-  model: 'claude-sonnet-5',
+  model: 'claude-sonnet-5-5',
   reasoning: 'low',
   agentType: 'implementer',
   permission: 'edits',
@@ -82,7 +82,7 @@ check('source thread produced the fact', finalText(source.id).includes('PELICAN-
 // Reference it from a thread in project B.
 const reader = await registry.create({
   provider: 'claude',
-  model: 'claude-sonnet-5',
+  model: 'claude-sonnet-5-5',
   reasoning: 'low',
   agentType: 'implementer',
   permission: 'edits',
@@ -119,7 +119,7 @@ check(
 // Same-project reference also lands in refs/ (one uniform shape).
 const sibling = await registry.create({
   provider: 'claude',
-  model: 'claude-sonnet-5',
+  model: 'claude-sonnet-5-5',
   reasoning: 'low',
   agentType: 'implementer',
   permission: 'edits',
@@ -141,7 +141,7 @@ await settled(sibling.id)
 // Projectless session: inline fallback, and the reply still proves receipt.
 const loose = await registry.create({
   provider: 'claude',
-  model: 'claude-sonnet-5',
+  model: 'claude-sonnet-5-5',
   reasoning: 'low',
   agentType: 'implementer',
   permission: 'edits',

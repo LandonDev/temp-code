@@ -42,7 +42,7 @@ async function* prompts(): AsyncGenerator<SDKUserMessage> {
 const q = query({
   prompt: prompts(),
   options: {
-    model: 'claude-sonnet-5',
+    model: 'claude-sonnet-5-5',
     cwd,
     effort: 'low',
     includePartialMessages: true,
