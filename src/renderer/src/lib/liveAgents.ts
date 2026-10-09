@@ -27,7 +27,8 @@ export function liveAgentsFromSessions(
   return sessions
     .filter(
       (session) =>
-        isInFlightSession(session) || unseenFinishedIds.has(session.id),
+        !session.archived &&
+        (isInFlightSession(session) || unseenFinishedIds.has(session.id)),
     )
     .map((session) =>
       toLiveAgent(session, unseenFinishedIds.has(session.id)),

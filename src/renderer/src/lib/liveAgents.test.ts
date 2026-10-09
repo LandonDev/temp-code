@@ -32,6 +32,12 @@ describe("liveAgentsFromSessions", () => {
     expect(liveAgentsFromSessions([chat("/tmp/a")])).toEqual([]);
   });
 
+  it("skips an archived session whose row still says busy", () => {
+    const session = chat("/tmp/a", { busy: true, archived: true });
+    expect(liveAgentsFromSessions([session])).toEqual([]);
+    expect(liveAgentsFromSessions([session], new Set([session.id]))).toEqual([]);
+  });
+
   it("maps a busy turn into a live agent", () => {
     const session = chat("/tmp/agent-terminal", {
       busy: true,

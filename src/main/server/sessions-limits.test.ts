@@ -367,6 +367,17 @@ it('liveLoad counts running, watching and starting threads per account; idle and
   privy.starting.delete(d.id)
 })
 
+it('archiving a running thread persists status idle, since the dropped handle never relays its own', async () => {
+  registry.limits = limits(null)
+  const { id, emit } = await running()
+  emit({ type: 'status', status: 'running' })
+  expect(registry.get(id)?.status).toBe('running')
+  await registry.setArchived(id, true)
+  expect(registry.get(id)).toMatchObject({ archived: true, status: 'idle' })
+  const statuses = store.eventsAfter(id, 0).map((row) => row.event).filter((e) => e.type === 'status')
+  expect(statuses.at(-1)).toEqual({ type: 'status', status: 'idle' })
+})
+
 it('refreshAccounts reads the sessions table and the live load once per pass, however many threads it re-picks', async () => {
   // Like AccountsService: the live load comes in the options, else it is read.
   // Read per thread (a table scan, then a walk of every handle), a snapshot
