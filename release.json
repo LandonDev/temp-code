@@ -1,5 +1,5 @@
 {
-  "n": 200,
-  "notes": "The installed app's TypeScript language server ran as Electron-as-node and died: vtsls.js was spawned as process.execPath with ELECTRON_RUN_AS_NODE=1, which only works while the runAsNode fuse is on (dev); the packaged build turns that fuse off on purpose (a leaked ELECTRON_RUN_AS_NODE must not break the app), so the child booted a second TempCode, the single-instance lock killed it, and lsp.status reported \"language server crashed repeatedly\" while dev was fine — the first run of the signed 1.0.199 bundle under scripts/verify caught it. spawnWeb now launches vtsls under the real node (or bun) that resolveAppBridgeLaunch already finds on the login PATH for the Codex app bridge, and in a packaged build (process.defaultApp unset) refuses with a plain message instead of falling back to Electron-as-node; jdtls was never affected (it is Java).",
-  "ts": 1791528337280
+  "n": 201,
+  "notes": "release:publish uploads the artifacts under the names electron-builder actually writes: mac.artifactName is ${productName}-${version}-${arch}.${ext}, so the zip is TempCode-1.0.N-arm64.zip, not the -arm64-mac.zip Aliax's script expected, and the first publish (1.0.200) stopped at \"no matches found\" after a successful build and notarization and had to be finished by hand; the dmg's blockmap now rides along too.",
+  "ts": 1791531738157
 }
