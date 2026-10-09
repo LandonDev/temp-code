@@ -1,0 +1,181 @@
+/*
+ * Aliax's Accounts and Stats pages, themed exactly as in Aliax (its
+ * src/renderer/src/main.css) but scoped to `.aliax-root` so nothing leaks into
+ * temp-code.
+ *
+ * Tailwind v4 compiles every stylesheet as its own root, so this file cannot
+ * add Aliax's colors to index.css's build. It runs its own utilities pass
+ * instead, kept from touching temp-code three ways:
+ *  - the default theme is imported `reference inline`: values are written into
+ *    the utilities and no variable lands on :root;
+ *  - `source(none)` + `@source "./"` scans only this folder;
+ *  - every utility sits inside `@scope (.aliax-root)`, so it matches only the
+ *    pages and their portals (each portal content carries `aliax-root` too).
+ * No preflight: index.css already ships it.
+ */
+/* Tailwind's own layer order, pinned in case this sheet loads first. */
+@layer theme, base, components, utilities;
+
+@import 'tailwindcss/theme.css' theme(reference inline);
+@import 'tw-animate-css';
+
+@source './';
+
+/* Dark-only. Registry components ship `dark:` utilities, so the variant always
+   matches inside the pages and nowhere else. */
+@custom-variant dark (&:where(.aliax-root, .aliax-root *));
+
+@layer base {
+  .aliax-root {
+    --background: oklch(0.152 0 0);
+    --foreground: oklch(0.97 0 0);
+    /* Panels sit one step above the window, rows one step above panels. */
+    --card: oklch(0.222 0 0);
+    --card-foreground: oklch(0.97 0 0);
+    --elevated: oklch(0.268 0 0);
+    --popover: oklch(0.235 0 0);
+    --popover-foreground: oklch(0.97 0 0);
+    --primary: oklch(0.955 0 0);
+    --primary-foreground: oklch(0.19 0 0);
+    --secondary: oklch(0.28 0 0);
+    --secondary-foreground: oklch(0.97 0 0);
+    --muted: oklch(0.28 0 0);
+    --muted-foreground: oklch(0.685 0 0);
+    --accent: oklch(0.29 0 0);
+    --accent-foreground: oklch(0.98 0 0);
+    --destructive: oklch(0.68 0.19 22.5);
+    --destructive-foreground: oklch(0.75 0.17 22.5);
+    --success: oklch(0.72 0.16 155);
+    --success-foreground: oklch(0.78 0.15 155);
+    --warning: oklch(0.8 0.15 78);
+    --warning-foreground: oklch(0.85 0.13 85);
+    --info: oklch(0.7 0.13 245);
+    --info-foreground: oklch(0.78 0.11 245);
+    --focus: oklch(0.7 0.13 245);
+    --focus-foreground: oklch(0.78 0.11 245);
+    --invert: oklch(0.35 0 0);
+    --invert-foreground: oklch(0.97 0 0);
+    --border: oklch(1 0 0 / 9%);
+    --input: oklch(1 0 0 / 14%);
+    --ring: oklch(0.62 0 0);
+    --radius: 0.625rem;
+    --radius-sm: calc(var(--radius) - 4px);
+    --radius-md: calc(var(--radius) - 2px);
+    --radius-lg: var(--radius);
+    --radius-xl: calc(var(--radius) + 4px);
+    --radius-2xl: calc(var(--radius) + 8px);
+  }
+}
+
+/* `reference`: values are inlined into the utilities and no variable is
+   emitted on :root. The radii are also set on .aliax-root above, for the
+   classes that read var(--radius-md) directly. */
+@theme inline reference {
+  --grid-template-columns-24: repeat(24, minmax(0, 1fr));
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-elevated: var(--elevated);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  /* temp-code owns accent/success/warning/info; Aliax's live under ax-. */
+  --color-ax-accent: var(--accent);
+  --color-ax-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-ax-success: var(--success);
+  --color-ax-success-foreground: var(--success-foreground);
+  --color-ax-warning: var(--warning);
+  --color-ax-warning-foreground: var(--warning-foreground);
+  --color-ax-info: var(--info);
+  --color-ax-info-foreground: var(--info-foreground);
+  --color-focus: var(--focus);
+  --color-focus-foreground: var(--focus-foreground);
+  --color-invert: var(--invert);
+  --color-invert-foreground: var(--invert-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 8px);
+}
+
+/* Aliax's body, on the page root and on every portal that carries the class. */
+@layer base {
+  .aliax-root {
+    @apply bg-background text-foreground antialiased;
+    font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+    /* Numbers refresh live all over these pages. Stop them shifting the layout. */
+    font-variant-numeric: tabular-nums;
+  /* Aliax lets you select text; temp-code turns it off on #root. */
+  user-select: text;
+  }
+
+  .aliax-root h1,
+  .aliax-root h2,
+  .aliax-root h3 {
+    text-wrap: balance;
+  }
+
+  .aliax-root p {
+    text-wrap: pretty;
+  }
+}
+
+/* Panels read as raised sheets: a lit top edge, a contact shadow and an
+   ambient one. The shadows carry the depth, so the border stays near-invisible. */
+@utility panel {
+  @apply rounded-xl border border-border bg-card;
+  box-shadow:
+    inset 0 1px 0 0 oklch(1 0 0 / 5%),
+    0 1px 2px 0 oklch(0 0 0 / 35%),
+    0 10px 26px -14px oklch(0 0 0 / 70%);
+}
+
+@layer utilities {
+  @scope (.aliax-root) {
+    @tailwind utilities source(none);
+  }
+}
+
+/* temp-code's global focus ring (index.css) is unlayered, so it would beat the
+   pages' own focus styles. Inside the pages, hand outline back to the layers. */
+:where(.aliax-root, .aliax-root *):is(
+    button,
+    a,
+    [role='button'],
+    [role='option'],
+    [role='menuitem'],
+    [role='tab']
+  ):focus-visible {
+  outline: revert-layer;
+  outline-offset: revert-layer;
+}
+
+.aliax-root ::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+.aliax-root ::-webkit-scrollbar-track {
+  background: transparent;
+}
+.aliax-root ::-webkit-scrollbar-thumb {
+  background: oklch(1 0 0 / 12%);
+  border: 3px solid transparent;
+  background-clip: content-box;
+  border-radius: 999px;
+}
+.aliax-root ::-webkit-scrollbar-thumb:hover {
+  background: oklch(1 0 0 / 22%);
+  background-clip: content-box;
+}

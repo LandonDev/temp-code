@@ -37,21 +37,22 @@ export function SidebarUpdate({
 }) {
   const snapshot = useUpdateSnapshot();
 
-  const busy = snapshot.phase === "checking" || installing(snapshot);
+  const ready = snapshot.phase === "ready";
+  const busy = snapshot.phase === "checking" || (installing(snapshot) && !ready);
   const hasUpdate = snapshot.phase === "available";
   const label = hasUpdate
     ? `Update to ${snapshot.availableVersion}`
-    : snapshot.phase === "building"
-      ? `Updating${snapshot.step ? ` · ${snapshot.step}` : "…"}`
-      : snapshot.phase === "restarting"
-        ? "Restarting…"
+    : snapshot.phase === "downloading"
+      ? `Downloading… ${snapshot.percent ?? 0}%`
+      : ready
+        ? "Restart to update"
         : busy
           ? "Checking…"
           : "Check for updates";
 
   const onClick = () => {
     if (busy) return;
-    void (hasUpdate ? updateStore.install() : updateStore.check(true));
+    void (hasUpdate || ready ? updateStore.install() : updateStore.check(true));
   };
 
   const showNotes =
@@ -64,14 +65,14 @@ export function SidebarUpdate({
         onClick={onClick}
         disabled={busy}
         className={`pressable flex h-7 w-full items-center gap-2 rounded-md px-2 text-left ${
-          hasUpdate
+          hasUpdate || ready
             ? "bg-accent/10 text-content hover:bg-accent/15"
             : "text-content/50 hover:bg-content/5 hover:text-content"
         } disabled:cursor-default disabled:opacity-70`}
       >
         {busy ? (
           <Loader className="size-3.5 shrink-0 motion-safe:animate-spin" strokeWidth={1.75} aria-hidden />
-        ) : hasUpdate ? (
+        ) : hasUpdate || ready ? (
           <ArrowDownCircle className="size-3.5 shrink-0 text-accent" strokeWidth={1.75} aria-hidden />
         ) : (
           <RefreshCw className="size-3.5 shrink-0" strokeWidth={1.75} aria-hidden />

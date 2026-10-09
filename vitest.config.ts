@@ -18,7 +18,8 @@ export default defineConfig({
     alias: {
       '@server/shared': resolve(__dirname, 'src/shared'),
       '@shared': resolve(__dirname, 'src/shared'),
-      '@renderer': renderer
+      '@renderer': renderer,
+      '@aliax': resolve(renderer, 'aliax')
     }
   },
   test: {

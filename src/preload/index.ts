@@ -3,6 +3,7 @@ import { electronAPI } from '@electron-toolkit/preload'
 // Mirrors the main-process asset URL builder so the renderer can turn a
 // logo path into a URL without a round trip.
 import { logoAssetUrl } from '../shared/assets'
+import { aliaxApi } from './aliax'
 
 type DialogKind = 'info' | 'warning' | 'error'
 
@@ -41,15 +42,13 @@ function on<A extends unknown[]>(channel: string, cb: (...args: A) => void): () 
 }
 
 interface UpdateStatus {
-  current: number
-  latest: number | null
+  current: string
+  latest: string | null
   notes: string
   canApply: boolean
-  phase: 'idle' | 'checking' | 'building' | 'restarting' | 'error'
-  step?: string
-  detail?: string
-  stepStartedAt?: number
-  stepEtaMs?: number
+  checked: boolean
+  phase: 'idle' | 'checking' | 'downloading' | 'ready' | 'error'
+  percent?: number
   error?: string
 }
 
@@ -196,6 +195,7 @@ const api = {
       ipcRenderer.invoke('debug:asset-fetch', url),
     windows: (): Promise<unknown[]> => ipcRenderer.invoke('debug:windows'),
     ptys: (): Promise<unknown[]> => ipcRenderer.invoke('debug:ptys'),
+    aliaxCalls: (): Promise<Record<string, number>> => ipcRenderer.invoke('debug:aliax-calls'),
     appshot: (): Promise<number | null> => ipcRenderer.invoke('debug:appshot')
   }
 }
@@ -206,6 +206,7 @@ if (process.contextIsolated) {
   try {
     contextBridge.exposeInMainWorld('electron', electronAPI)
     contextBridge.exposeInMainWorld('api', api)
+    contextBridge.exposeInMainWorld('aliax', aliaxApi)
   } catch (error) {
     console.error(error)
   }

@@ -11,3 +11,9 @@ scripts/.out/
 .claude/settings.local.json
 *.tsbuildinfo
 resources/native/appshot-helper
+
+# Per-machine app state and build output that must never ship with the source.
+.temp-code/
+artifacts/
+src/main/server/media/
+release/

@@ -19,6 +19,7 @@
     "baseUrl": ".",
     "paths": {
       "@renderer/*": ["src/renderer/src/*"],
+      "@aliax/*": ["src/renderer/src/aliax/*"],
       "@server/shared/*": ["src/shared/*"],
       "@shared/*": ["src/shared/*"]
     }

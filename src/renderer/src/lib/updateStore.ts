@@ -92,8 +92,11 @@ class UpdateStore {
     return this.inflight;
   }
 
+  /** Download a waiting release, or restart into a downloaded one. */
   install(): Promise<UpdaterSnapshot> {
-    if (this.state.phase !== "available") return Promise.resolve(this.state);
+    if (this.state.phase !== "available" && this.state.phase !== "ready") {
+      return Promise.resolve(this.state);
+    }
     return installPendingUpdate(this.set);
   }
 
@@ -105,8 +108,9 @@ class UpdateStore {
 
 export const updateStore = new UpdateStore();
 
+/** A download is running or waiting for its restart: no new checks. */
 export function installing(snapshot: UpdaterSnapshot): boolean {
-  return snapshot.phase === "building" || snapshot.phase === "restarting";
+  return snapshot.phase === "downloading" || snapshot.phase === "ready";
 }
 
 export function useUpdateSnapshot(): UpdaterSnapshot {

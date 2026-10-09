@@ -166,7 +166,7 @@ import { Heading, Input, Row, Segmented, Select, SecondaryButton, Toggle } from 
 import { DANGER, GHOST, PRIMARY } from "../chrome/ConfirmDialog";
 import { AppshotsPage } from "./AppshotsSettings";
 import { MatrixSpinner } from "./threads/bits";
-import { installing, updateStore, useUpdateSnapshot } from "../lib/updateStore";
+import { updateStore, useUpdateSnapshot } from "../lib/updateStore";
 import { shell, useShell } from "../stores/shell";
 
 type Props = {
@@ -651,15 +651,16 @@ function UpdateRow({
   onOpenWhatsNew: (version: string, markdown?: string) => void;
 }) {
   const snapshot = useUpdateSnapshot();
-  const building = snapshot.phase === "building";
-  const busy = snapshot.phase === "checking" || installing(snapshot);
+  const downloading = snapshot.phase === "downloading";
+  const ready = snapshot.phase === "ready";
+  const busy = snapshot.phase === "checking" || downloading;
   const hasUpdate = snapshot.phase === "available";
   const canApply = snapshot.canApply === true;
 
-  const status = building
-    ? (snapshot.detail ?? "Starting the build…")
-    : snapshot.phase === "restarting"
-      ? "Restarting…"
+  const status = downloading
+    ? `Downloading ${snapshot.availableVersion ?? "the update"}…`
+    : ready
+      ? `Release ${snapshot.availableVersion} is downloaded. Restart to finish.`
       : snapshot.phase === "checking"
         ? "Checking…"
         : snapshot.phase === "error"
@@ -680,6 +681,8 @@ function UpdateRow({
       ? onOpenWhatsNew(snapshot.availableVersion, snapshot.notes)
       : onOpenWhatsNew(BUNDLED_RELEASE.version, BUNDLED_RELEASE.notes);
 
+  const actionable = (hasUpdate && canApply) || ready;
+
   return (
     <Row
       label={
@@ -693,12 +696,7 @@ function UpdateRow({
       description={
         <>
           <span className="block">{status}</span>
-          {building ? (
-            <StepProgress
-              startedAt={snapshot.stepStartedAt}
-              etaMs={snapshot.stepEtaMs}
-            />
-          ) : null}
+          {downloading ? <DownloadProgress percent={snapshot.percent ?? 0} /> : null}
         </>
       }
     >
@@ -706,57 +704,38 @@ function UpdateRow({
         <SecondaryButton onClick={onWhatsNew}>What's new</SecondaryButton>
         <SecondaryButton
           onClick={() =>
-            void (hasUpdate && canApply
-              ? updateStore.install()
-              : updateStore.check(true))
+            void (actionable ? updateStore.install() : updateStore.check(true))
           }
           disabled={busy}
         >
           {busy ? (
             <MatrixSpinner cell={1.5} />
-          ) : hasUpdate && canApply ? (
+          ) : actionable ? (
             <ArrowDownCircle className="size-3.5 text-accent" strokeWidth={1.75} aria-hidden />
           ) : (
             <RefreshCw className="size-3.5" strokeWidth={1.75} aria-hidden />
           )}
-          {hasUpdate && canApply ? "Update" : "Check for updates"}
+          {ready ? "Restart" : hasUpdate && canApply ? "Update" : "Check for updates"}
         </SecondaryButton>
       </div>
     </Row>
   );
 }
 
-/** A real progress bar while main builds: the ETA is how long this step
- *  took last time. Without one the bar just pulses. */
-function StepProgress({
-  startedAt,
-  etaMs,
-}: {
-  startedAt?: number;
-  etaMs?: number;
-}) {
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    const timer = window.setInterval(() => setNow(Date.now()), 250);
-    return () => window.clearInterval(timer);
-  }, []);
-  const known = startedAt != null && etaMs != null && etaMs > 0;
-  const fraction = known
-    ? Math.min(0.96, Math.max(0.02, (now - startedAt) / etaMs))
-    : null;
+/** The download, as main reports it. */
+function DownloadProgress({ percent }: { percent: number }) {
+  const fraction = Math.min(1, Math.max(0, percent / 100));
   return (
     <span
       role="progressbar"
       aria-valuemin={0}
       aria-valuemax={100}
-      aria-valuenow={fraction == null ? undefined : Math.round(fraction * 100)}
+      aria-valuenow={Math.round(fraction * 100)}
       className="mt-2 block h-1 w-64 overflow-hidden rounded-full bg-content/10"
     >
       <span
-        className={`block h-full origin-left rounded-full bg-accent transition-transform duration-200 ${
-          fraction == null ? "w-1/3 motion-safe:animate-pulse" : ""
-        }`}
-        style={fraction == null ? undefined : { transform: `scaleX(${fraction})` }}
+        className="block h-full origin-left rounded-full bg-accent transition-transform duration-200"
+        style={{ transform: `scaleX(${fraction})` }}
       />
     </span>
   );

@@ -2,6 +2,8 @@ import { app, net } from 'electron'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { configure, isLive, readMarker, type Role } from 'aliax-core'
+import { notifyAccountsChanged } from './aliaxPages'
+import { recordAppEvent, recordUsage } from './aliax/stats/store'
 
 /** Aliax's own userData: the vault, settings and usage cache both apps share. */
 export const ALIAX_DATA_DIR = join(app.getPath('appData'), 'aliax')
@@ -25,6 +27,15 @@ export function configureAliax(): void {
     fetch: (input, init) => net.fetch(input, init),
     secrets: { mode: 'chromiumKey', keychainItem: 'aliax Safe Storage' },
     appName: 'temp-code',
+    // The embedded Stats page reads what Aliax's would: every fresh usage
+    // sample and app event lands in our stats store, and a switch or
+    // failover redraws the Accounts page in every window.
+    hooks: {
+      onUsageSample: (s) =>
+        recordUsage(s.service, s.account, s.label, s.usedPercent, s.resetsAt, s.periodMs),
+      onAppEvent: recordAppEvent,
+      onAccountsChanged: notifyAccountsChanged
+    },
     role: gatewayRole
   })
 }
