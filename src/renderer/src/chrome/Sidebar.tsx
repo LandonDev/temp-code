@@ -47,6 +47,7 @@ import { useSidebarLayout } from "../hooks/useSidebarLayout";
 import { useWorkspaceTabs } from "../stores/workspace";
 import { requestProjectRailAction } from "../lib/projectRailActions";
 import WorkspaceSessions from "./WorkspaceSessions";
+import { sidebarVisible as asideVisible } from "./sidebarVisibility";
 import { WorkspaceMenu } from "./WorkspaceMenu";
 import { NewProjectDialog } from "./ProjectDialogs";
 import { ThreadDefaultsDialog } from "./ThreadDefaultsDialog";
@@ -307,15 +308,17 @@ function SidebarComponent({
     ) : null;
   const classicSettings = settingsOpen && !deckLayout;
   const showSidebarFooter = !deckLayout || !projectRailOpen;
-  // A blank session has no project to browse, so the shell stands alone until
-  // one is picked — whether or not the rail is open. Classic settings keep the
-  // sidebar so it can host the section nav the rail would otherwise carry.
-  const sidebarVisible =
-    open &&
-    !searchActive &&
-    !inboxActive &&
-    !notesActive &&
-    (classicSettings || (!settingsOpen && !(deckLayout && !inProject && !atHome)));
+  const sidebarVisible = asideVisible({
+    open,
+    deckLayout,
+    inProject,
+    atHome,
+    searchActive,
+    inboxActive,
+    notesActive,
+    accountsPage: accountsPage !== null,
+    settingsOpen,
+  });
   const gitStatuses = useGitFileStatuses(gitRoot, open && tab === "files");
   const changeStats = useProjectDiffStats(gitRoot, open && inProject);
   const groupLogos = useTabGroupLogos();
