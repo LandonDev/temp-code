@@ -18,19 +18,6 @@ export interface GitHubAssignee {
   avatarUrl: string
 }
 
-export interface GitHubWorkItem {
-  kind: GitHubTaskKind
-  number: number
-  title: string
-  url: string
-  state: string
-  updatedAt: string
-  labels: GitHubLabel[]
-  assignees: GitHubAssignee[]
-  draft: boolean
-  repo: string
-}
-
 export interface GitHubWorkItemDetails {
   body: string
   author: string
@@ -471,62 +458,25 @@ export async function githubRepo(cwd: string): Promise<string> {
   return slug
 }
 
-export async function githubWorkItems(
-  cwd: string,
-  kindInput: string,
-  assignedToMe: boolean,
-  stateInput: string,
-  searchInput: string,
-  limitInput = 40
-): Promise<GitHubWorkItem[]> {
-  const kind = validKind(kindInput)
-  const state = stateInput.trim().toLowerCase() === 'all' ? 'all' : 'open'
-  const limit = Math.min(100, Math.max(1, Math.trunc(limitInput))).toString()
-  const fields =
-    kind === 'pr'
-      ? 'number,title,url,state,updatedAt,labels,assignees,isDraft'
-      : 'number,title,url,state,updatedAt,labels,assignees'
-  const args = [kind, 'list', '--state', state, '--limit', limit, '--json', fields]
-  if (assignedToMe) args.push('--assignee', '@me')
-  const search = searchInput.trim()
-  if (search) args.push('--search', search)
-  const output = await ghRun(cwd, args)
-  const repo = await githubRepo(cwd).catch(() => '')
-  return array(parseJson(output), 'work items').map((value) => {
-    const row = record(value, 'work item')
-    const labelsValue = row.labels === undefined ? [] : array(row.labels, 'labels')
-    const assigneesValue = row.assignees === undefined ? [] : array(row.assignees, 'assignees')
-    return {
-      kind,
-      number: requiredInteger(row, 'number'),
-      title: requiredString(row, 'title'),
-      url: requiredString(row, 'url'),
-      state: requiredString(row, 'state').toLowerCase(),
-      updatedAt: optionalString(row, 'updatedAt'),
-      labels: labelsValue.map((item) => {
-        const label = record(item, 'label')
-        return { name: requiredString(label, 'name'), color: optionalString(label, 'color') }
-      }),
-      assignees: assigneesValue.map((item) => {
-        const assignee = record(item, 'assignee')
-        const login = requiredString(assignee, 'login')
-        return { login, avatarUrl: avatarUrl(login) }
-      }),
-      draft: optionalBoolean(row, 'isDraft'),
-      repo
-    }
-  })
-}
-
+/** `repo` ("owner/name"), when the caller knows it, spares gh its own lookup. */
 export async function githubDetails(
   cwd: string,
   kindInput: string,
-  number: number
+  number: number,
+  repo?: string
 ): Promise<GitHubWorkItemDetails> {
   const kind = validKind(kindInput)
   const fields =
     kind === 'pr' ? 'body,author,baseRefName,headRefName,reviewDecision' : 'body,author'
-  const output = await ghRun(cwd, [kind, 'view', number.toString(), '--json', fields])
+  const slug = repo?.trim() ? splitRepo(repo).join('/') : null
+  const output = await ghRun(cwd, [
+    kind,
+    'view',
+    number.toString(),
+    '--json',
+    fields,
+    ...(slug ? ['-R', slug] : [])
+  ])
   const row = record(parseJson(output), 'work item details')
   const authorValue = row.author
   const author =
@@ -716,14 +666,16 @@ function parseThread(output: string, kind: GitHubTaskKind): GitHubWorkItemThread
   return { comments, truncated, reviewDecision, baseRefName, headRefName }
 }
 
+/** With `repo` ("owner/name") the `gh repo view` lookup is skipped. */
 export async function githubThread(
   cwd: string,
   kindInput: string,
-  number: number
+  number: number,
+  repo?: string
 ): Promise<GitHubWorkItemThread> {
   const kind = validKind(kindInput)
   validItemNumber(number)
-  const [owner, name] = splitRepo(await githubRepo(cwd))
+  const [owner, name] = splitRepo(repo?.trim() ? repo : await githubRepo(cwd))
   const query = kind === 'pr' ? PR_THREAD_QUERY : ISSUE_THREAD_QUERY
   const output = await ghRun(cwd, [
     'api',

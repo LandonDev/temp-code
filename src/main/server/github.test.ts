@@ -146,72 +146,6 @@ describe('GitHub gh bridge', () => {
     }
   })
 
-  it('lists issues and PRs with filters, a clamped limit, and donor DTOs', async () => {
-    queue(
-      {
-        args: [
-          'pr',
-          'list',
-          '--state',
-          'all',
-          '--limit',
-          '100',
-          '--json',
-          'number,title,url,state,updatedAt,labels,assignees,isDraft',
-          '--assignee',
-          '@me',
-          '--search',
-          'review-requested:@me'
-        ],
-        stdout: JSON.stringify([
-          {
-            number: 17,
-            title: 'Ship it',
-            url: 'https://github.test/acme/web/pull/17',
-            state: 'OPEN',
-            updatedAt: '2026-09-06T12:00:00Z',
-            labels: [{ name: 'ready', color: '00ff00' }],
-            assignees: [{ login: 'dependabot[bot]' }],
-            isDraft: true
-          }
-        ])
-      },
-      {
-        args: ['repo', 'view', '--json', 'nameWithOwner'],
-        stdout: '{"nameWithOwner":"acme/web"}'
-      }
-    )
-
-    await expect(
-      github.githubWorkItems(
-        '/repo',
-        'pr',
-        true,
-        'ALL',
-        '  review-requested:@me  ',
-        400
-      )
-    ).resolves.toEqual([
-      {
-        kind: 'pr',
-        number: 17,
-        title: 'Ship it',
-        url: 'https://github.test/acme/web/pull/17',
-        state: 'open',
-        updatedAt: '2026-09-06T12:00:00Z',
-        labels: [{ name: 'ready', color: '00ff00' }],
-        assignees: [
-          {
-            login: 'dependabot[bot]',
-            avatarUrl: 'https://avatars.githubusercontent.com/dependabot%5Bbot%5D?s=64'
-          }
-        ],
-        draft: true,
-        repo: 'acme/web'
-      }
-    ])
-  })
-
   it('reads issue and PR details with empty donor defaults', async () => {
     queue({
       args: [
@@ -241,6 +175,42 @@ describe('GitHub gh bridge', () => {
     await expect(github.githubDetails('/repo', 'gist', 42)).rejects.toThrow(
       'Unknown GitHub task kind'
     )
+  })
+
+  it('passes a known repo to gh and skips the repo lookup for a thread', async () => {
+    queue({
+      args: ['issue', 'view', '7', '--json', 'body,author', '-R', 'acme/web'],
+      stdout: JSON.stringify({ body: 'B', author: { login: 'octo' } })
+    })
+    await expect(github.githubDetails('/repo', 'issue', 7, ' acme/web ')).resolves.toMatchObject({
+      body: 'B',
+      author: 'octo'
+    })
+    await expect(github.githubDetails('/repo', 'issue', 7, 'nonsense')).rejects.toThrow(
+      'GitHub did not return a repository'
+    )
+
+    queue({
+      args: [
+        'api',
+        'graphql',
+        '-f',
+        expect.stringContaining('query InboxIssueThread') as unknown as string,
+        '-F',
+        'owner=acme',
+        '-F',
+        'name=web',
+        '-F',
+        'number=7'
+      ],
+      stdout: JSON.stringify({
+        data: { repository: { issue: { comments: { totalCount: 0, nodes: [] } } } }
+      })
+    })
+    await expect(github.githubThread('/repo', 'issue', 7, 'acme/web')).resolves.toMatchObject({
+      comments: [],
+      truncated: false
+    })
   })
 
   it('merges PR comments, reviews, and review threads and reports truncation', async () => {

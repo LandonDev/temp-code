@@ -1,18 +1,5 @@
 import { invoke } from "./native";
-import {
-  linearConnected,
-  linearTeamIdsForFetch,
-  listLinearIssues,
-  listLinearTeams,
-  loadHiddenLinearTeamIds,
-  type LinearIssue,
-} from "./linear";
-import {
-  collectRailProjects,
-  normalizeProjectPath,
-  sameProjectPath,
-  type RecentProject,
-} from "./recents";
+import { normalizeProjectPath } from "./recents";
 
 export type GithubTaskKind = "issue" | "pr";
 export type InboxKind = GithubTaskKind | "linear";
@@ -122,143 +109,19 @@ export type GithubPrDiff = {
   truncated: boolean;
 };
 
-export type GithubWorkItemQuery = {
-  kind: GithubTaskKind;
-  assignedToMe: boolean;
-  state: "open" | "all";
-  search: string;
-};
-
-export type InboxQuery = Omit<GithubWorkItemQuery, "kind"> & {
-  linearHiddenTeamIds?: string[];
-};
-
-export type InboxProviderErrors = Partial<Record<InboxProvider, string>>;
-
-export type InboxListResult = {
-  items: InboxItem[];
-  errors: InboxProviderErrors;
-};
-
-const INBOX_CACHE_FRESH_MS = 30_000;
-
-type InboxListCache = InboxListResult & {
-  key: string;
-  fetchedAt: number;
-};
-
-let inboxListCache: InboxListCache | null = null;
-const inboxListInflight = new Map<string, Promise<InboxListResult>>();
-const inboxListListeners = new Set<() => void>();
-/** Every inbox fetch waits for the one before it: one request in flight, ever. */
-let inboxListQueue: Promise<unknown> = Promise.resolve();
-
-function setInboxListCache(next: InboxListCache | null) {
-  inboxListCache = next;
-  for (const listener of inboxListListeners) listener();
-}
-
-/** Fires when a fetched list lands in (or leaves) the cache. */
-export function subscribeInboxList(listener: () => void): () => void {
-  inboxListListeners.add(listener);
-  return () => {
-    inboxListListeners.delete(listener);
-  };
-}
-
-/** The last fetched list, whatever it was for. Never fetches. */
-export function peekLastInboxList(): InboxListResult | null {
-  if (!inboxListCache) return null;
-  return { items: inboxListCache.items, errors: inboxListCache.errors };
-}
-const repoByPath = new Map<string, string>();
 const detailsByKey = new Map<string, GithubWorkItemDetails>();
 const threadByKey = new Map<string, GithubWorkItemThread>();
 const threadInflight = new Map<string, Promise<GithubWorkItemThread>>();
 const prDiffByKey = new Map<string, GithubPrDiff>();
 const prDiffInflight = new Map<string, Promise<GithubPrDiff>>();
 
+/** Forgets every fetched detail, thread and diff (the list lives in inboxStore). */
 export function clearInboxCache() {
-  setInboxListCache(null);
-  inboxListInflight.clear();
-  repoByPath.clear();
   detailsByKey.clear();
   threadByKey.clear();
   threadInflight.clear();
   prDiffByKey.clear();
   prDiffInflight.clear();
-}
-
-export function inboxListCacheKey(
-  projects: readonly { path: string }[],
-  query: InboxQuery,
-): string {
-  const paths = uniqueInboxProjects(projects)
-    .map((project) => normalizeProjectPath(project.path))
-    .sort()
-    .join("|");
-  const teams = [...(query.linearHiddenTeamIds ?? [])].sort().join(",");
-  return `${query.assignedToMe ? 1 : 0}:${query.state}:${paths}:${teams}`;
-}
-
-export function peekInboxList(
-  projects: readonly { path: string }[],
-  query: InboxQuery,
-): InboxListResult | null {
-  const key = inboxListCacheKey(projects, query);
-  if (inboxListCache?.key !== key) return null;
-  return { items: inboxListCache.items, errors: inboxListCache.errors };
-}
-
-export function peekInboxItems(
-  projects: readonly { path: string }[],
-  query: InboxQuery,
-): InboxItem[] | null {
-  return peekInboxList(projects, query)?.items ?? null;
-}
-
-export function inboxListIsFresh(
-  projects: readonly { path: string }[],
-  query: InboxQuery,
-  now = Date.now(),
-): boolean {
-  const key = inboxListCacheKey(projects, query);
-  return (
-    inboxListCache?.key === key &&
-    now - inboxListCache.fetchedAt < INBOX_CACHE_FRESH_MS
-  );
-}
-
-export async function githubRepo(cwd: string): Promise<string> {
-  const key = normalizeProjectPath(cwd);
-  const cached = repoByPath.get(key);
-  if (cached !== undefined) return cached;
-  const repo = await invoke<string>("git_github_repo", { cwd });
-  repoByPath.set(key, repo);
-  return repo;
-}
-
-export function listGithubWorkItems(
-  cwd: string,
-  query: GithubWorkItemQuery,
-): Promise<GithubWorkItem[]> {
-  return invoke<GithubWorkItem[]>("git_github_work_items", {
-    cwd,
-    kind: query.kind,
-    assignedToMe: query.assignedToMe,
-    state: query.state,
-    search: query.search.trim(),
-  });
-}
-
-export function formatGithubQuery(query: GithubWorkItemQuery): string {
-  const parts: string[] = [];
-  if (query.assignedToMe) parts.push("assignee:@me");
-  parts.push(query.kind === "pr" ? "is:pr" : "is:issue");
-  if (query.state === "open") parts.push("is:open");
-  const text = query.search.trim();
-  if (text) parts.push(text);
-  return parts.join(" ");
 }
 
 export function githubAvatarUrl(login: string, size = 64): string {
@@ -335,10 +198,11 @@ export async function githubWorkItemDetails(
   cwd: string,
   kind: GithubTaskKind,
   number: number,
+  repo?: string,
 ): Promise<GithubWorkItemDetails> {
   const details = await invoke<GithubWorkItemDetails>(
     "git_github_work_item_details",
-    { cwd, kind, number },
+    { cwd, kind, number, repo: repo?.trim() || undefined },
   );
   detailsByKey.set(detailsCacheKey(cwd, kind, number), details);
   return details;
@@ -356,7 +220,7 @@ export async function githubWorkItemThread(
   cwd: string,
   kind: GithubTaskKind,
   number: number,
-  options?: { force?: boolean },
+  options?: { force?: boolean; repo?: string },
 ): Promise<GithubWorkItemThread> {
   const key = detailsCacheKey(cwd, kind, number);
   if (options?.force) {
@@ -369,6 +233,7 @@ export async function githubWorkItemThread(
     cwd,
     kind,
     number,
+    repo: options?.repo?.trim() || undefined,
   })
     .then((thread) => {
       threadByKey.set(key, thread);
@@ -457,214 +322,6 @@ export async function githubPrDiff(
     });
   prDiffInflight.set(key, promise);
   return promise;
-}
-
-export async function listInboxItems(
-  projects: readonly { path: string }[],
-  query: InboxQuery,
-  options?: { force?: boolean },
-): Promise<InboxListResult> {
-  const key = inboxListCacheKey(projects, query);
-  if (!options?.force && inboxListIsFresh(projects, query)) {
-    return peekInboxList(projects, query) ?? { items: [], errors: {} };
-  }
-  const pending = inboxListInflight.get(key);
-  if (pending) return pending;
-  const promise = inboxListQueue
-    .then(() => fetchInboxItems(projects, query))
-    .then((result) => {
-      setInboxListCache({ key, ...result, fetchedAt: Date.now() });
-      return result;
-    })
-    .finally(() => {
-      if (inboxListInflight.get(key) === promise) inboxListInflight.delete(key);
-    });
-  inboxListQueue = promise.catch(() => undefined);
-  inboxListInflight.set(key, promise);
-  return promise;
-}
-
-async function fetchInboxItems(
-  projects: readonly { path: string }[],
-  query: InboxQuery,
-): Promise<InboxListResult> {
-  // One gh call at a time: each `gh` is a large process that spawns git,
-  // and a fan-out across the rail once forked the machine into the ground.
-  const unique = uniqueInboxProjects(projects);
-  const preferredPaths = unique.map((project) => project.path);
-  const resolved: { path: string; repo: string }[] = [];
-  for (const project of unique) {
-    try {
-      resolved.push({
-        path: project.path,
-        repo: (await githubRepo(project.path)).trim(),
-      });
-    } catch {
-      resolved.push({ path: project.path, repo: "" });
-    }
-  }
-  const grouped = groupProjectsByRepo(resolved);
-  const settled: PromiseSettledResult<InboxItem[]>[] = [];
-  for (const project of grouped) {
-    for (const kind of ["issue", "pr"] as const) {
-      try {
-        const items = await listGithubWorkItems(project.path, {
-          ...query,
-          kind,
-        });
-        settled.push({
-          status: "fulfilled",
-          value: items.map((item) => ({
-            ...item,
-            projectPath: project.path,
-            provider: "github" as const,
-            repo: item.repo || project.repo,
-          })),
-        });
-      } catch (reason) {
-        settled.push({ status: "rejected", reason });
-      }
-    }
-  }
-  const github = collectInboxResults(settled, preferredPaths);
-  const errors: InboxProviderErrors = {};
-  if (github.error && grouped.length > 0) errors.github = github.error;
-
-  let linearItems: InboxItem[] = [];
-  if ((await linearConnected()).connected) {
-    try {
-      linearItems = await fetchLinearInboxItems(query);
-    } catch (error) {
-      errors.linear = inboxErrorMessage(error);
-    }
-  }
-
-  return {
-    items: dedupeInboxItems([...github.items, ...linearItems], preferredPaths),
-    errors,
-  };
-}
-
-async function fetchLinearInboxItems(query: InboxQuery): Promise<InboxItem[]> {
-  const hiddenIds = query.linearHiddenTeamIds ?? loadHiddenLinearTeamIds();
-  let teamIds: string[] | null = null;
-  if (hiddenIds.length > 0) {
-    teamIds = linearTeamIdsForFetch(await listLinearTeams(), hiddenIds);
-    if (teamIds?.length === 0) return [];
-  }
-  const issues = await listLinearIssues({
-    assignedToMe: query.assignedToMe,
-    state: query.state,
-    teamIds: teamIds ?? [],
-  });
-  const hidden = new Set(hiddenIds);
-  return issues
-    .filter((issue) => hidden.size === 0 || !hidden.has(issue.teamId))
-    .map(linearIssueToInboxItem);
-}
-
-function linearIssueToInboxItem(issue: LinearIssue): InboxItem {
-  return {
-    provider: "linear",
-    kind: "linear",
-    id: issue.id,
-    identifier: issue.identifier,
-    number: issue.number,
-    title: issue.title,
-    url: issue.url,
-    state: issue.state,
-    stateType: issue.stateType,
-    updatedAt: issue.updatedAt,
-    labels: issue.labels,
-    assignees: issue.assignees,
-    draft: false,
-    repo: issue.repo,
-    teamId: issue.teamId,
-    teamName: issue.teamName,
-    projectPath: issue.projectPath || "",
-  };
-}
-
-export function inboxProjectsForRail(
-  recents: RecentProject[],
-  cwd: string,
-): RecentProject[] {
-  const map = collectRailProjects(recents, cwd);
-  const current = cwd ? map.get(normalizeProjectPath(cwd)) : undefined;
-  const rest = [...map.values()].filter(
-    (project) => !current || !sameProjectPath(project.path, current.path),
-  );
-  return current ? [current, ...rest] : rest;
-}
-
-export type InboxScope = "current" | "all";
-
-/**
- * The projects an open inbox fetches: the one the user is looking at, or
- * every rail project once they ask for it. Nothing fetches for a closed inbox.
- */
-export function inboxFetchProjects(
-  projects: readonly RecentProject[],
-  cwd: string,
-  scope: InboxScope,
-): RecentProject[] {
-  if (scope === "all") return [...projects];
-  const current = projects.find((project) =>
-    sameProjectPath(project.path, cwd),
-  );
-  return current ? [current] : [];
-}
-
-export function uniqueInboxProjects(
-  projects: readonly { path: string }[],
-): { path: string }[] {
-  const seen = new Set<string>();
-  const unique: { path: string }[] = [];
-  for (const project of projects) {
-    const path = normalizeProjectPath(project.path);
-    if (!path || seen.has(path)) continue;
-    seen.add(path);
-    unique.push({ path });
-  }
-  return unique;
-}
-
-export function groupProjectsByRepo(
-  resolved: readonly { path: string; repo: string }[],
-): { path: string; repo: string }[] {
-  const seen = new Set<string>();
-  const grouped: { path: string; repo: string }[] = [];
-  for (const project of resolved) {
-    const repo = project.repo.trim().toLowerCase();
-    const key = repo || `path:${normalizeProjectPath(project.path)}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    grouped.push({
-      path: project.path,
-      repo: project.repo.trim(),
-    });
-  }
-  return grouped;
-}
-
-export function collectInboxResults(
-  settled: PromiseSettledResult<InboxItem[]>[],
-  preferredPaths: readonly string[] = [],
-): { items: InboxItem[]; error?: string } {
-  const batches: InboxItem[][] = [];
-  const errors: unknown[] = [];
-  for (const result of settled) {
-    if (result.status === "fulfilled") batches.push(result.value);
-    else errors.push(result.reason);
-  }
-  if (batches.length === 0 && errors.length > 0) {
-    return { items: [], error: inboxErrorMessage(errors[0]) };
-  }
-  return { items: dedupeInboxItems(batches.flat(), preferredPaths) };
-}
-
-function inboxErrorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }
 
 export function inboxIdentityKey(item: {

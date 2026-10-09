@@ -1,24 +1,17 @@
 import { describe, expect, it } from "vitest";
 import {
-  collectInboxResults,
   composeInboxMessage,
   dedupeInboxItems,
   filterInboxItems,
-  formatGithubQuery,
   formatRelativeTime,
   githubAvatarUrl,
   githubReviewDecisionLabel,
   githubReviewStateLabel,
-  groupProjectsByRepo,
   inboxComposerCard,
-  inboxFetchProjects,
   inboxItemKey,
-  inboxListCacheKey,
   inboxPersonAvatarUrl,
-  inboxProjectsForRail,
   inboxStartDraft,
   sortInboxItems,
-  uniqueInboxProjects,
   type InboxItem,
 } from "./githubTasks";
 
@@ -39,30 +32,6 @@ function item(
     ...overrides,
   };
 }
-
-describe("formatGithubQuery", () => {
-  it("builds the assigned-open-issues query", () => {
-    expect(
-      formatGithubQuery({
-        kind: "issue",
-        assignedToMe: true,
-        state: "open",
-        search: "",
-      }),
-    ).toBe("assignee:@me is:issue is:open");
-  });
-
-  it("appends free text after the qualifiers", () => {
-    expect(
-      formatGithubQuery({
-        kind: "pr",
-        assignedToMe: false,
-        state: "open",
-        search: "  checkout  ",
-      }),
-    ).toBe("is:pr is:open checkout");
-  });
-});
 
 describe("githubAvatarUrl", () => {
   it("builds the GitHub avatar URL", () => {
@@ -156,41 +125,6 @@ describe("sortInboxItems", () => {
   });
 });
 
-describe("inboxListCacheKey", () => {
-  it("includes hidden Linear team ids", () => {
-    const projects = [{ path: "/tmp/web" }];
-    const base = {
-      assignedToMe: false,
-      state: "open" as const,
-      search: "",
-    };
-    expect(inboxListCacheKey(projects, base)).not.toBe(
-      inboxListCacheKey(projects, { ...base, linearHiddenTeamIds: ["t2"] }),
-    );
-  });
-});
-
-describe("collectInboxResults", () => {
-  it("keeps items from projects that succeeded", () => {
-    const kept = item({ number: 4, updatedAt: "2026-08-27T11:00:00Z" });
-    expect(
-      collectInboxResults([
-        { status: "fulfilled", value: [kept] },
-        { status: "rejected", reason: new Error("gh missing") },
-      ]),
-    ).toEqual({ items: [kept] });
-  });
-
-  it("reports an error when every project fetch failed", () => {
-    expect(
-      collectInboxResults([
-        { status: "rejected", reason: new Error("not a github repo") },
-        { status: "rejected", reason: "command not found" },
-      ]),
-    ).toEqual({ items: [], error: "not a github repo" });
-  });
-});
-
 describe("dedupeInboxItems", () => {
   it("keeps one card per GitHub issue across local checkouts", () => {
     const rows = [
@@ -213,58 +147,6 @@ describe("dedupeInboxItems", () => {
     expect(inboxItemKey(deduped[0]!)).toBe(
       "github:hardbeat920/monocode:issue:10",
     );
-  });
-});
-
-describe("groupProjectsByRepo", () => {
-  it("fetches each GitHub remote once", () => {
-    expect(
-      groupProjectsByRepo([
-        { path: "/tmp/monocode", repo: "hardbeat920/monocode" },
-        { path: "/tmp/agent-terminal", repo: "HardBeat920/monocode" },
-        { path: "/tmp/docs", repo: "acme/docs" },
-      ]).map((project) => project.path),
-    ).toEqual(["/tmp/monocode", "/tmp/docs"]);
-  });
-});
-
-describe("uniqueInboxProjects", () => {
-  it("drops duplicate paths", () => {
-    expect(
-      uniqueInboxProjects([
-        { path: "/tmp/web/" },
-        { path: "/tmp/web" },
-        { path: "/tmp/docs" },
-      ]),
-    ).toEqual([{ path: "/tmp/web" }, { path: "/tmp/docs" }]);
-  });
-});
-
-describe("inboxFetchProjects", () => {
-  const rail = [
-    { path: "/tmp/web", openedAt: 2 },
-    { path: "/tmp/docs", openedAt: 1 },
-  ];
-  it("fetches the current project only until asked for all", () => {
-    expect(inboxFetchProjects(rail, "/tmp/web/", "current")).toEqual([rail[0]]);
-    expect(inboxFetchProjects(rail, "/tmp/web", "all")).toEqual(rail);
-  });
-  it("fetches nothing when no project is open", () => {
-    expect(inboxFetchProjects(rail, "~", "current")).toEqual([]);
-  });
-});
-
-describe("inboxProjectsForRail", () => {
-  it("puts the current project first", () => {
-    expect(
-      inboxProjectsForRail(
-        [
-          { path: "/tmp/docs", openedAt: 1 },
-          { path: "/tmp/web", openedAt: 2 },
-        ],
-        "/tmp/web",
-      ).map((project) => project.path),
-    ).toEqual(["/tmp/web", "/tmp/docs"]);
   });
 });
 
