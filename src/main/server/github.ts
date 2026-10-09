@@ -309,6 +309,58 @@ async function ghRun(cwd: string, args: readonly string[], allowEmpty = false): 
   throw new Error(result.error.message)
 }
 
+/** Why a token could not be read; the inbox shows one sentence per class. */
+export class GhAuthError extends Error {
+  constructor(
+    readonly state: 'missing-gh' | 'logged-out',
+    message: string
+  ) {
+    super(message)
+  }
+}
+
+let ghTokenPromise: Promise<string> | null = null
+
+/**
+ * The token `gh auth token` prints, read once per process and cached in
+ * memory. The main-process GraphQL fetch sends it as a bearer; it never
+ * enters a log, a push, or a result. `forgetGhToken` drops it after a 401.
+ */
+export function ghAuthToken(): Promise<string> {
+  ghTokenPromise ??= (async () => {
+    const program = await resolveGhBinary()
+    if (!program) {
+      throw new GhAuthError(
+        'missing-gh',
+        'Install the GitHub CLI (gh) and run gh auth login to see pull requests and issues.'
+      )
+    }
+    const result = await runCommand(program, ['auth', 'token'], {
+      env: await ghEnvironment(),
+      maxBuffer: 1024 * 1024
+    })
+    const token = result.stdout.trim()
+    if (result.error?.code === 'ENOENT') {
+      throw new GhAuthError(
+        'missing-gh',
+        'Install the GitHub CLI (gh) and run gh auth login to see pull requests and issues.'
+      )
+    }
+    if (result.error || !token) {
+      throw new GhAuthError('logged-out', 'Run gh auth login to connect GitHub.')
+    }
+    return token
+  })()
+  ghTokenPromise.catch(() => {
+    ghTokenPromise = null // a failed read is retried on the next call
+  })
+  return ghTokenPromise
+}
+
+export function forgetGhToken(): void {
+  ghTokenPromise = null
+}
+
 async function gitStdout(cwd: string, args: readonly string[]): Promise<string | null> {
   const result = await runCommand('git', ['--no-pager', '-C', expandHome(cwd), ...args], {
     env: {

@@ -111,6 +111,23 @@ describe('GitHub gh bridge', () => {
     )
   })
 
+  it('reads the gh token once, forgets it on demand, and classifies failures', async () => {
+    queue({ args: ['auth', 'token'], stdout: 'gho_secret\n' })
+    await expect(github.ghAuthToken()).resolves.toBe('gho_secret')
+    await expect(github.ghAuthToken()).resolves.toBe('gho_secret') // cached: no second spawn
+
+    github.forgetGhToken()
+    queue({ args: ['auth', 'token'], error: failure(), stderr: 'not logged in\n' })
+    await expect(github.ghAuthToken()).rejects.toMatchObject({ state: 'logged-out' })
+    queue({ args: ['auth', 'token'], stdout: '\n' })
+    await expect(github.ghAuthToken()).rejects.toMatchObject({ state: 'logged-out' })
+    queue({ args: ['auth', 'token'], error: failure('spawn gh ENOENT', 'ENOENT') })
+    await expect(github.ghAuthToken()).rejects.toMatchObject({ state: 'missing-gh' })
+
+    queue({ args: ['auth', 'token'], stdout: 'gho_again' })
+    await expect(github.ghAuthToken()).resolves.toBe('gho_again') // a failure is not cached
+  })
+
   it('finds gh on the cached interactive-shell PATH when resolveBinary misses it', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'temp-code-gh-test-'))
     const binary = join(dir, 'gh')

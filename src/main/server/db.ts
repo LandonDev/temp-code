@@ -11,6 +11,7 @@ import { timed } from './stalls'
 import { dirname } from 'node:path'
 import type { AgentEvent, EventRow, SessionMeta, SessionStatus } from '@shared/events'
 import type { ProjectMeta, WorkspaceMeta } from '@shared/domain'
+import type { GithubInboxRepo } from '@shared/contract-github'
 import { ACCOUNT_PROVIDERS, type AccountPins } from '@shared/accounts'
 import { parseThreadRules } from '@shared/rules'
 import { resolveModel, type ProviderId } from '@shared/catalog'
@@ -75,6 +76,12 @@ export function openDb(path: string): DatabaseSync {
     CREATE TABLE IF NOT EXISTS settings (
       key   TEXT PRIMARY KEY,
       value TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS github_inbox_repos (
+      repo       TEXT PRIMARY KEY,
+      fetched_at INTEGER NOT NULL,
+      error      TEXT,
+      items      TEXT NOT NULL
     );
     CREATE TABLE IF NOT EXISTS session_folds (
       session_id    TEXT PRIMARY KEY,
@@ -677,6 +684,39 @@ export class Store {
   }
 
   // ── settings (key/value, e.g. orchestrator policy) ─────────────────
+
+  // ── GitHub inbox snapshot ──────────────────────────────────────────
+
+  listGithubInboxRepos(): GithubInboxRepo[] {
+    const rows = this.stmt(`SELECT repo, fetched_at, error, items FROM github_inbox_repos ORDER BY repo`).all() as unknown as {
+      repo: string
+      fetched_at: number
+      error: string | null
+      items: string
+    }[]
+    return rows.map((r) => ({
+      repo: r.repo,
+      fetchedAt: r.fetched_at,
+      error: r.error,
+      items: JSON.parse(r.items) as GithubInboxRepo['items']
+    }))
+  }
+
+  putGithubInboxRepo(row: GithubInboxRepo): void {
+    this
+      .stmt(
+        `INSERT INTO github_inbox_repos (repo, fetched_at, error, items) VALUES (?, ?, ?, ?)
+         ON CONFLICT(repo) DO UPDATE SET fetched_at = excluded.fetched_at, error = excluded.error, items = excluded.items`
+      )
+      .run(row.repo, row.fetchedAt, row.error, JSON.stringify(row.items))
+  }
+
+  /** Drops every snapshot row whose repo is not in `keep`. */
+  deleteGithubInboxRepos(keep: string[]): void {
+    const rows = this.stmt(`SELECT repo FROM github_inbox_repos`).all() as unknown as { repo: string }[]
+    const del = this.stmt(`DELETE FROM github_inbox_repos WHERE repo = ?`)
+    for (const { repo } of rows) if (!keep.includes(repo)) del.run(repo)
+  }
 
   getSetting(key: string): string | null {
     const r = this.stmt(`SELECT value FROM settings WHERE key = ?`).get(key) as
