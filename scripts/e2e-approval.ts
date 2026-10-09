@@ -47,7 +47,7 @@ function waitFor(
 
 const s = await registry.create({
   provider: 'claude',
-  model: 'claude-sonnet-5',
+  model: 'claude-sonnet-5-5',
   reasoning: 'low',
   agentType: 'implementer',
   permission: 'safe',

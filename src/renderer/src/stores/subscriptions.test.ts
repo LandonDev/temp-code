@@ -119,7 +119,7 @@ function meta(over: Partial<SessionMeta> = {}): SessionMeta {
     threadType: null,
     planPath: null,
     provider: "claude",
-    model: "claude-sonnet-5",
+    model: "claude-sonnet-5-5",
     reasoning: "medium",
     agentType: "implementer",
     title: "claude",

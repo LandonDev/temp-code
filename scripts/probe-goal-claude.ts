@@ -39,7 +39,7 @@ const q = query({
   prompt: input,
   options: {
     cwd,
-    model: 'claude-sonnet-5',
+    model: 'claude-sonnet-5-5',
     permissionMode: 'bypassPermissions',
     allowDangerouslySkipPermissions: true,
     includePartialMessages: false

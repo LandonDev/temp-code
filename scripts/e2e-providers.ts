@@ -75,7 +75,7 @@ async function main(): Promise<void> {
   writeFileSync(join(cwd, 'fruit.txt'), 'the fruit is MANGO\n')
 
   const [claude, codex, cursor] = await Promise.all([
-    mk('claude', 'claude-sonnet-5', cwd),
+    mk('claude', 'claude-sonnet-5-5', cwd),
     mk('codex', 'gpt-5.5', cwd),
     mk('cursor', 'sonnet-4.5', cwd)
   ])

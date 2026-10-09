@@ -4,8 +4,9 @@
  * AND for the enums in the orchestrator's spawn_agent MCP tool.
  *
  * Model lists and reasoning ladders are taken from the CLIs themselves
- * (verified 2026-08-15): `codex app-server` → `model/list` (codex-cli
- * 0.147.0), `cursor-agent models` (2026.07.23), `claude --effort` levels.
+ * (verified 2026-10-09): `codex app-server` → `model/list` (codex-cli
+ * 0.162.1), `cursor-agent models` (2026.07.23), `claude --effort` levels
+ * plus a one-turn SDK probe per Claude id.
  * Reasoning is PER MODEL — ladders differ within one provider.
  */
 
@@ -106,8 +107,15 @@ export const CATALOG: Record<ProviderId, ProviderInfo> = {
         context: 1_000_000
       },
       {
-        id: 'claude-sonnet-5',
-        label: 'Sonnet 5',
+        id: 'claude-sonnet-5-5',
+        label: 'Sonnet 5.5',
+        reasoning: CLAUDE_EFFORTS,
+        defaultReasoning: 'medium',
+        context: 1_000_000
+      },
+      {
+        id: 'claude-haiku-5-5',
+        label: 'Haiku 5.5',
         reasoning: CLAUDE_EFFORTS,
         defaultReasoning: 'medium',
         context: 1_000_000
@@ -118,10 +126,24 @@ export const CATALOG: Record<ProviderId, ProviderInfo> = {
   codex: {
     id: 'codex',
     label: 'Codex',
-    // codex `model/list` (codex-cli 0.153.1 — gpt-6-astra first appears
-    // there), minus the deprecated gpt-5.4 family (each row carries an
-    // upgrade pointer to its 5.6 replacement).
+    // codex `model/list` (codex-cli 0.162.1 — the Sol pair first appears
+    // there; 0.153 still serves astra and the 5.6 family), minus the
+    // deprecated gpt-5.4 family. The default stays on gpt-5.6-sol: 0.162
+    // defaults to gpt-6.1-sol, but the installed 0.153 rejects both Sol
+    // ids with a 400, so the default must be a model every CLI can run.
     models: [
+      {
+        id: 'gpt-6.1-sol',
+        label: 'GPT-6.1 Sol',
+        reasoning: ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'],
+        defaultReasoning: 'low'
+      },
+      {
+        id: 'gpt-6-sol',
+        label: 'GPT-6 Sol',
+        reasoning: ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'],
+        defaultReasoning: 'medium'
+      },
       {
         id: 'gpt-6-astra',
         label: 'GPT-6 Astra',

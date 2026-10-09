@@ -45,7 +45,7 @@ ${tail(prefix, 2000)}<CURSOR>${head(suffix, 1000)}
       prompt,
       options: {
         cwd,
-        model: 'claude-sonnet-5',
+        model: 'claude-sonnet-5-5',
         maxTurns: 1,
         allowedTools: [],
         systemPrompt: 'You are a code completion engine. Output only code.',

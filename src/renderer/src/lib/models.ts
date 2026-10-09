@@ -63,10 +63,16 @@ export const MODELS: AgentModel[] = [
     settings: CLAUDE_FRONTIER_SETTINGS,
   },
   {
-    id: "claude:sonnet-5",
+    id: "claude:sonnet-5.5",
     harness: "claude",
-    name: "Claude Sonnet 5",
-    nativeId: "claude-sonnet-5",
+    name: "Claude Sonnet 5.5",
+    nativeId: "claude-sonnet-5-5",
+  },
+  {
+    id: "claude:haiku-5.5",
+    harness: "claude",
+    name: "Claude Haiku 5.5",
+    nativeId: "claude-haiku-5-5",
   },
   {
     id: "claude:opus-5.5",
@@ -732,7 +738,7 @@ function pickDefaultId(harness: HarnessId, models: AgentModel[]): string {
     return (
       models.find((model) => model.nativeId === "claude-fable-5-1")?.id ??
       models.find((model) => model.id === DEFAULT_MODEL_ID.claude)?.id ??
-      models.find((model) => model.nativeId === "claude-sonnet-5")?.id ??
+      models.find((model) => model.nativeId === "claude-sonnet-5-5")?.id ??
       models[0]?.id ??
       DEFAULT_MODEL_ID.claude
     );

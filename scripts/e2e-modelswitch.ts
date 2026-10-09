@@ -20,7 +20,7 @@ const idle = (id: string): Promise<void> =>
     })
   })
 
-const s = await registry.create({ provider: 'claude', model: 'claude-sonnet-5', reasoning: 'low', cwd, permission: 'safe' })
+const s = await registry.create({ provider: 'claude', model: 'claude-sonnet-5-5', reasoning: 'low', cwd, permission: 'safe' })
 let done = idle(s.id)
 await registry.send(s.id, 'Remember the codeword "pineapple". Reply with just OK.')
 await Promise.race([done, new Promise((r) => setTimeout(r, 120_000))])

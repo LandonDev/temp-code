@@ -63,7 +63,7 @@ export type OrchestrationRules = z.infer<typeof OrchestrationRulesSchema>
 // for bulk work (effectively free), taste ≥ 7 for anything user-facing
 // with intelligence > taste > cost when axes conflict (→ fable-5),
 // reviews by fable-5/opus-4.8 with gpt-5.5 as an optional independent
-// second opinion. Never Haiku (not in the catalog anyway).
+// second opinion. Never Haiku.
 export const DEFAULT_RULES: OrchestrationRules = {
   conduct: {
     delegation: 'strict',

@@ -29,7 +29,7 @@ async function generateNow(
       options: {
         ...(cli.path ? { pathToClaudeCodeExecutable: cli.path } : {}),
         env: await harnessEnv(),
-        model: opts.model ?? 'claude-sonnet-5',
+        model: opts.model ?? 'claude-sonnet-5-5',
         maxTurns: 1,
         tools: [],
         mcpServers: {},

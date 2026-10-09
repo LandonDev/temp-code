@@ -58,7 +58,7 @@ const reportsDir = join(wsPath, '.temp-code', 'reports')
 
 const research = await registry.create({
   provider: 'claude',
-  model: 'claude-sonnet-5',
+  model: 'claude-sonnet-5-5',
   reasoning: 'low',
   threadType: 'research',
   projectId: project.id,
@@ -90,7 +90,7 @@ watch(research.id)
 
 await registry.send(
   research.id,
-  'This is a MECHANICS CHECK: keep it small and do not ask me anything. Spawn exactly two explorers, both on model claude-sonnet-5 with reasoning low, in parallel: (1) WEB — what is the latest stable release of the Bun JavaScript runtime and when did it ship; read at most 3 pages. (2) CODEBASE — in this repository, how does src/threads.ts decide where research reports and angle files live (name the functions and the directory layout); cite file paths. Each explorer must call cite_source for every source it uses. Wait for both to settle, read their findings files, and write the report from the files. Two angles is below the done floor, so leave status: in-progress and say why in Limits. Then stop.'
+  'This is a MECHANICS CHECK: keep it small and do not ask me anything. Spawn exactly two explorers, both on model claude-sonnet-5-5 with reasoning low, in parallel: (1) WEB — what is the latest stable release of the Bun JavaScript runtime and when did it ship; read at most 3 pages. (2) CODEBASE — in this repository, how does src/threads.ts decide where research reports and angle files live (name the functions and the directory layout); cite file paths. Each explorer must call cite_source for every source it uses. Wait for both to settle, read their findings files, and write the report from the files. Two angles is below the done floor, so leave status: in-progress and say why in Limits. Then stop.'
 )
 
 const live = (s: string): boolean => s === 'running' || s === 'starting' || s === 'waiting' || s === 'watching'

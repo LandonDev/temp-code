@@ -109,7 +109,7 @@ const accounts = new AccountsService({
 registry.limits = accounts
 await accounts.list()
 
-const base = { provider: 'claude' as const, model: 'claude-sonnet-5', reasoning: 'low' as const, permission: 'edits' as const, cwd: '/tmp', parentId: null }
+const base = { provider: 'claude' as const, model: 'claude-sonnet-5-5', reasoning: 'low' as const, permission: 'edits' as const, cwd: '/tmp', parentId: null }
 const status = (id: string): string | undefined => store.getSession(id)?.status
 const canContinue = (id: string): boolean | undefined => registry.get(id)?.canContinue
 
