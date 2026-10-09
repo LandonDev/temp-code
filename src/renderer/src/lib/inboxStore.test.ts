@@ -4,7 +4,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { GithubInboxItem, GithubInboxSnapshot } from "@server/shared/contract-github";
 import type { Link } from "./tcserver/store";
 import type { ProjectMeta, WorkspaceMeta } from "./tcserver/types";
-import { githubWorkspaces, inboxItemsFromSnapshot, inboxStore, workspaceIdForCwd } from "./inboxStore";
+import {
+  githubInboxLoading,
+  githubWorkspaces,
+  inboxItemsFromSnapshot,
+  inboxNeedsAttention,
+  inboxStore,
+  workspaceIdForCwd,
+} from "./inboxStore";
 
 const invoke = vi.fn();
 vi.mock("./native", () => ({ invoke: (...args: unknown[]) => invoke(...args) }));
@@ -283,5 +290,111 @@ describe("inbox network paths", () => {
       .map((file) => file.slice(root.length))
       .filter((file) => file !== "lib/inboxStore.ts");
     expect(offenders).toEqual([]);
+  });
+});
+
+describe("githubInboxLoading", () => {
+  const loaded = (github: GithubInboxSnapshot | null, refreshing = false) => ({
+    github,
+    githubLoaded: true,
+    refreshing,
+  });
+
+  it("waits for the stored snapshot", () => {
+    expect(githubInboxLoading({ github: null, githubLoaded: false, refreshing: false }, ["acme/web"], false)).toBe(true);
+  });
+
+  it("spins on a never-fetched snapshot while the open refresh is pending, then in flight", () => {
+    const never = snapshot({ fetchedAt: null, repos: [] });
+    expect(githubInboxLoading(loaded(never), ["acme/web"], true)).toBe(true);
+    expect(githubInboxLoading(loaded(never, true), ["acme/web"], false)).toBe(true);
+    expect(githubInboxLoading(loaded(null, true), ["acme/web"], false)).toBe(true);
+  });
+
+  it("stops once the refresh has settled, even with nothing fetched", () => {
+    expect(githubInboxLoading(loaded(snapshot({ fetchedAt: null, repos: [] })), ["acme/web"], false)).toBe(false);
+  });
+
+  it("shows a fetched empty snapshot as a list, not a wait", () => {
+    const empty = snapshot({ repos: [{ repo: "acme/web", fetchedAt: 100, error: null, items: [] }] });
+    expect(githubInboxLoading(loaded(empty, true), ["acme/web"], false)).toBe(false);
+    expect(githubInboxLoading(loaded(empty), ["acme/web"], true)).toBe(false);
+  });
+
+  it("spins for a workspace whose repo has no stored rows yet, only while fetching", () => {
+    expect(githubInboxLoading(loaded(snapshot(), true), ["acme/api"], false)).toBe(true);
+    expect(githubInboxLoading(loaded(snapshot(), true), ["acme/web"], false)).toBe(false);
+    expect(githubInboxLoading(loaded(snapshot()), ["acme/api"], false)).toBe(false);
+  });
+
+  it("never spins over a login problem", () => {
+    const loggedOut = snapshot({
+      fetchedAt: null,
+      repos: [],
+      auth: { state: "logged-out", message: "Run gh auth login" },
+    });
+    expect(githubInboxLoading(loaded(loggedOut, true), ["acme/web"], true)).toBe(false);
+  });
+});
+
+describe("inboxNeedsAttention", () => {
+  const item = (over: Partial<GithubInboxItem> = {}, viewer: string | null = "me") =>
+    inboxItemsFromSnapshot(
+      snapshot({ viewer, repos: [{ repo: "acme/web", fetchedAt: 1, error: null, items: [ghItem(over)] }] }),
+      [ws()],
+      [],
+      "",
+    )[0];
+  const other = { login: "pat", avatarUrl: "" };
+
+  it("ignores someone else's PR that merely changed", () => {
+    expect(inboxNeedsAttention(item({ author: other, reviewDecision: "", checks: "FAILURE" }))).toBe(false);
+    expect(inboxNeedsAttention(item({ author: other, reviewRequested: ["sam"] }))).toBe(false);
+  });
+
+  it("counts a review asked of the viewer and an item assigned to them", () => {
+    expect(inboxNeedsAttention(item({ author: other, reviewRequested: ["Me"] }))).toBe(true);
+    expect(inboxNeedsAttention(item({ kind: "issue", author: other, assignees: [{ login: "me", avatarUrl: "" }] }))).toBe(true);
+  });
+
+  it("counts the viewer's own PR when it came back, is approved, or fails checks", () => {
+    expect(inboxNeedsAttention(item({ reviewDecision: "CHANGES_REQUESTED", checks: "SUCCESS" }))).toBe(true);
+    expect(inboxNeedsAttention(item({ reviewDecision: "APPROVED", checks: "SUCCESS" }))).toBe(true);
+    expect(inboxNeedsAttention(item({ reviewDecision: "", checks: "FAILURE" }))).toBe(true);
+    expect(inboxNeedsAttention(item({ reviewDecision: "", checks: "ERROR" }))).toBe(true);
+    expect(inboxNeedsAttention(item({ reviewDecision: "REVIEW_REQUIRED", checks: "PENDING" }))).toBe(false);
+    expect(inboxNeedsAttention(item({ kind: "issue", reviewDecision: "", checks: null }))).toBe(false);
+  });
+
+  it("skips the viewer's drafts and anything not open", () => {
+    expect(inboxNeedsAttention(item({ draft: true, reviewDecision: "APPROVED" }))).toBe(false);
+    expect(inboxNeedsAttention(item({ draft: true, assignees: [{ login: "me", avatarUrl: "" }] }))).toBe(false);
+    expect(inboxNeedsAttention(item({ state: "merged", reviewDecision: "APPROVED" }))).toBe(false);
+    expect(inboxNeedsAttention(item({ state: "closed", author: other, reviewRequested: ["me"] }))).toBe(false);
+  });
+
+  it("knows nothing without a viewer", () => {
+    expect(inboxNeedsAttention(item({ reviewDecision: "APPROVED" }, null))).toBe(false);
+  });
+
+  it("counts Linear issues only from an assigned-to-me list, and not finished ones", () => {
+    const linear = {
+      provider: "linear" as const,
+      kind: "linear" as const,
+      number: 7,
+      title: "T",
+      url: "u",
+      state: "Todo",
+      stateType: "unstarted",
+      updatedAt: "2026-10-01T00:00:00Z",
+      labels: [],
+      assignees: [],
+      draft: false,
+      repo: "ENG",
+      projectPath: "",
+    };
+    expect(inboxNeedsAttention(linear)).toBe(false);
+    expect(inboxNeedsAttention(linear, { linearAssignedToMe: true })).toBe(true);
+    expect(inboxNeedsAttention({ ...linear, stateType: "completed" }, { linearAssignedToMe: true })).toBe(false);
   });
 });
