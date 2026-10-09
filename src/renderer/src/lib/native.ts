@@ -32,11 +32,9 @@ export type NativeCommand =
   | "git_discard_file"
   | "git_file_diff"
   | "git_github_pr_diff"
-  | "git_github_repo"
   | "git_github_work_item_comment"
   | "git_github_work_item_details"
   | "git_github_work_item_thread"
-  | "git_github_work_items"
   | "git_log"
   | "git_pr_create"
   | "git_pr_status"
@@ -167,11 +165,9 @@ const serverMethods: Partial<Record<NativeCommand, string>> = {
   git_discard_file: "git.discardFile",
   git_file_diff: "git.fileDiff",
   git_github_pr_diff: "github.prDiff",
-  git_github_repo: "github.repo",
   git_github_work_item_comment: "github.comment",
   git_github_work_item_details: "github.details",
   git_github_work_item_thread: "github.thread",
-  git_github_work_items: "github.workItems",
   git_log: "git.log",
   git_pr_create: "github.createPr",
   git_pr_status: "github.prStatus",

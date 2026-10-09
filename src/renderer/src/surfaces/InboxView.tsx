@@ -1024,7 +1024,7 @@ function InboxDetail({
         ? linearIssueDetails(item.id)
         : Promise.reject(new Error("Missing Linear issue"))
       : githubKind
-        ? githubWorkItemDetails(item.projectPath, githubKind, item.number)
+        ? githubWorkItemDetails(item.projectPath, githubKind, item.number, item.repo)
         : Promise.reject(new Error("Unknown inbox item"));
     void pending
       .then((next) => {
@@ -1092,7 +1092,7 @@ function InboxDetail({
       setThreadError(null);
       setThread(null);
     }
-    void githubWorkItemThread(item.projectPath, githubKind, item.number)
+    void githubWorkItemThread(item.projectPath, githubKind, item.number, { repo: item.repo })
       .then((next) => {
         if (cancelled) return;
         setThread(next);
@@ -1173,9 +1173,7 @@ function InboxDetail({
             item.projectPath,
             githubKind,
             item.number,
-            {
-              force: true,
-            },
+            { force: true, repo: item.repo },
           ),
         );
       } catch (err: unknown) {

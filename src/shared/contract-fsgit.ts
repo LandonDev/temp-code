@@ -8,28 +8,13 @@ const request = <M extends string, P extends z.ZodType>(method: M, params: P) =>
 export const FsGitRequestSchemas = [
   z.object({
     id: z.string(),
-    method: z.literal('github.repo'),
-    params: z.object({ cwd: z.string() })
-  }),
-  z.object({
-    id: z.string(),
-    method: z.literal('github.workItems'),
-    params: z.object({
-      cwd: z.string(),
-      kind: z.enum(['issue', 'pr']),
-      assignedToMe: z.boolean(),
-      state: z.enum(['open', 'all']),
-      search: z.string(),
-      limit: z.number().int().min(1).max(100).optional()
-    })
-  }),
-  z.object({
-    id: z.string(),
     method: z.literal('github.details'),
     params: z.object({
       cwd: z.string(),
       kind: z.enum(['issue', 'pr']),
-      number: z.number().int()
+      number: z.number().int(),
+      /** owner/name when the caller knows it: saves gh a repo lookup */
+      repo: z.string().optional()
     })
   }),
   z.object({
@@ -38,7 +23,8 @@ export const FsGitRequestSchemas = [
     params: z.object({
       cwd: z.string(),
       kind: z.enum(['issue', 'pr']),
-      number: z.number().int().positive()
+      number: z.number().int().positive(),
+      repo: z.string().optional()
     })
   }),
   z.object({
