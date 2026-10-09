@@ -106,7 +106,9 @@ export async function ensureCreated(session: Session, link = client): Promise<Se
         : (workspaceByPath(workspaceStore.workspaces, session.cwd)?.id ?? null)),
   });
   sessionStore.adopt(meta);
-  if (session.modelSettings.fast === "true") {
+  if (session.modelSettings.ultrafast === "true") {
+    await link.request("session.tune", { sessionId: session.id, ultrafast: true });
+  } else if (session.modelSettings.fast === "true") {
     await link.request("session.tune", { sessionId: session.id, fast: true });
   }
   return meta;
@@ -403,7 +405,7 @@ export async function permission(sessionId: string, mode: RuntimeMode, link = cl
 
 export async function tune(
   sessionId: string,
-  patch: { fast?: boolean; context1m?: boolean; model?: string },
+  patch: { fast?: boolean; ultrafast?: boolean; context1m?: boolean; model?: string },
   link = client,
 ): Promise<void> {
   if (sessionStore.isDraft(sessionId)) return;

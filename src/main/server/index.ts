@@ -20,6 +20,7 @@ import { GithubInbox, handleGithubInbox } from './githubInbox'
 import { SessionRegistry } from './sessions'
 import { resolveAppBridgeLaunch, runDoctor, updateProvider } from './drivers/binaries'
 import { probeCatalogs } from './drivers/catalogProbe'
+import { codexTiersReady, probeCodexTiers, startCodexTiers } from './drivers/codexTiers'
 import { backfillMirrors } from './mirror'
 import { bootMark } from './boot'
 import { setLimitMissLog } from './limitText'
@@ -226,6 +227,7 @@ export async function startServer(
   setAppToolsRegistry(registry)
   void runDoctor() // warm the cache so the new-session modal opens ready
   void probeCatalogs() // the five probed harnesses ask their CLIs for models
+  void startCodexTiers(store) // which service tiers the codex account has, per model
 
   // Background IntelliJ index warming: shortly after startup, then every
   // 10 minutes (catches HEAD moves from commits/branch switches). Both
@@ -324,7 +326,8 @@ export async function startServer(
         if (gh.handled) return sendFrame({ id: req.id, ok: true, result: gh.result })
         switch (req.method) {
           case 'catalog.get':
-            if (req.params?.refresh) await probeCatalogs(true)
+            if (req.params?.refresh) await Promise.all([probeCatalogs(true), probeCodexTiers(store)])
+            else await codexTiersReady()
             sendFrame({ id: req.id, ok: true, result: CATALOG })
             break
           case 'doctor.get':

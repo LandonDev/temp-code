@@ -186,6 +186,19 @@ it('a model pick through tune lands before any send: the model persists and the 
   expect(registry.get(id)?.model).toBe('claude-opus-5-5')
 })
 
+it('fast and ultrafast are one service-tier knob: turning either on turns the other off', async () => {
+  registry.limits = byModel()
+  const { id } = await running({ model: 'claude-fable-5-1' })
+  await registry.tune(id, { fast: true })
+  expect(registry.get(id)).toMatchObject({ fast: true, ultrafast: false })
+  await registry.tune(id, { ultrafast: true })
+  expect(registry.get(id)).toMatchObject({ fast: false, ultrafast: true })
+  await registry.tune(id, { fast: true })
+  expect(registry.get(id)).toMatchObject({ fast: true, ultrafast: false })
+  await registry.tune(id, { fast: false })
+  expect(registry.get(id)).toMatchObject({ fast: false, ultrafast: false })
+})
+
 it('a tune mid-turn keeps the stream and reboots once the turn settles', async () => {
   registry.limits = byModel()
   const { id, emit } = await running({ model: 'claude-fable-5-1' })

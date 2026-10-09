@@ -107,6 +107,7 @@ export const AgentEventSchema = z.discriminatedUnion('type', [
     reasoning: z.string().optional(),
     context1m: z.boolean().optional(),
     fast: z.boolean().optional(),
+    ultrafast: z.boolean().optional(),
     /** the user pressed the pass button for this send (true) or typed under
      *  the banner (false) — absent on logs from before the stamp, where the
      *  fold falls back to inferring pass boundaries */
@@ -366,6 +367,9 @@ export interface SessionMeta {
   permission: PermissionPolicy
   /** Claude fast mode (faster output on supported models); harness restarts on change. */
   fast: boolean
+  /** Codex ultrafast service tier; exclusive with fast, only offered when
+   *  the account's `model/list` lists it. Harness restarts on change. */
+  ultrafast: boolean
   /** Opt into the 1M-token context window beta (claude). */
   context1m: boolean
   /** When the current working stretch began (first message of the run);

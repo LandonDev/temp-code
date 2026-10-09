@@ -204,12 +204,13 @@ export function applyMeta(
     const harness = asHarness(meta.provider);
     set({ harness, model: pickerModelId(harness, meta.model) });
   }
-  if (changed("reasoning") || changed("fast") || changed("context1m")) {
+  if (changed("reasoning") || changed("fast") || changed("ultrafast") || changed("context1m")) {
     set({
       modelSettings: {
         ...next.modelSettings,
         ...(changed("reasoning") ? { effort: meta.reasoning } : {}),
         ...(changed("fast") ? { fast: String(meta.fast) } : {}),
+        ...(changed("ultrafast") ? { ultrafast: String(meta.ultrafast) } : {}),
         ...(changed("context1m") ? { context: meta.context1m ? "1m" : "200k" } : {}),
       },
     });

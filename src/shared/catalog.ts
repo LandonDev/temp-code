@@ -51,6 +51,10 @@ export interface ModelInfo {
    *  claude model serves 1M natively (verified live: threads sail past
    *  250k with no beta flag, no compaction, no errors). */
   context?: number
+  /** Service tiers the installed codex CLI reports for this model on the
+   *  logged-in account (`model/list` → serviceTiers), e.g. ['priority',
+   *  'ultrafast']. Absent until probed; never assumed. */
+  speedTiers?: string[]
 }
 
 export interface ProviderInfo {

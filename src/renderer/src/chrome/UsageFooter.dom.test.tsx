@@ -105,6 +105,7 @@ const meta = (extra: Partial<SessionMeta> = {}): SessionMeta => ({
   archived: false,
   permission: 'edits',
   fast: false,
+  ultrafast: false,
   context1m: false,
   busySince: null,
   pausedAt: null,

@@ -21,6 +21,7 @@ function meta(id: string, over: Partial<SessionMeta> = {}): SessionMeta {
     archived: false,
     permission: "supervised",
     fast: false,
+    ultrafast: false,
     context1m: false,
     busySince: null,
     pausedAt: null,

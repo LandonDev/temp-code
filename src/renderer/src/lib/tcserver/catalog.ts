@@ -60,6 +60,27 @@ const PRIORITY_MODE: ModelSetting = {
   description: "Fast (priority processing)",
 };
 
+/** Codex's `ultrafast` service tier: offered only when the installed CLI
+ *  lists it for the model on the logged-in account (speedTiers, probed by
+ *  the server). Exclusive with Fast; the same toggle shape. */
+const ULTRAFAST_MODE: ModelSetting = {
+  id: "ultrafast",
+  label: "Ultrafast",
+  kind: "toggle",
+  value: "false",
+  description: "Ultrafast (fastest service tier)",
+  options: FAST_OPTIONS,
+};
+
+function codexSettings(model: ModelInfo): ModelSetting[] {
+  const tiers = model.speedTiers;
+  if (tiers?.includes("ultrafast")) return [PRIORITY_MODE, ULTRAFAST_MODE];
+  if (tiers) {
+    return [{ ...PRIORITY_MODE, description: `${PRIORITY_MODE.description} · Ultrafast is not on this account` }];
+  }
+  return [PRIORITY_MODE];
+}
+
 /** `claude-…` models get the fast + context toggles (session.tune). */
 function claudeSettings(model: ModelInfo): ModelSetting[] {
   const settings: ModelSetting[] = [];
@@ -82,7 +103,7 @@ export function agentModelsFor(provider: ProviderInfo): AgentModel[] {
     const settings = [
       ...(effortSetting(model) ? [effortSetting(model)!] : []),
       ...(harness === "claude" ? claudeSettings(model) : []),
-      ...(harness === "codex" ? [PRIORITY_MODE] : []),
+      ...(harness === "codex" ? codexSettings(model) : []),
     ];
     return {
       id: `${harness}:${model.id}`,

@@ -208,6 +208,7 @@ export function foldEvent(
         reasoning?: string;
         context1m?: boolean;
         fast?: boolean;
+        ultrafast?: boolean;
         newPass?: boolean;
       };
       const turn =
@@ -218,6 +219,7 @@ export function foldEvent(
                 reasoning: stamp.reasoning,
                 context1m: stamp.context1m,
                 fast: stamp.fast,
+                ultrafast: stamp.ultrafast,
               },
             }
           : {};

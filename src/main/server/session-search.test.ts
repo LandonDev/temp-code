@@ -38,6 +38,7 @@ function meta(id: string, workspaceId: string): SessionMeta {
     pinned: false,
     permission: 'default',
     fast: false,
+    ultrafast: false,
     context1m: false,
     busySince: null,
     pausedAt: null,

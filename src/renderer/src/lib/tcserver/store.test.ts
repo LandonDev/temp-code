@@ -22,6 +22,7 @@ function meta(over: Partial<SessionMeta> = {}): SessionMeta {
     pinned: false,
     permission: "edits",
     fast: false,
+    ultrafast: false,
     context1m: false,
     busySince: null,
     pausedAt: null,
@@ -110,6 +111,15 @@ describe("sessionFromMeta / applyMeta", () => {
     expect(s.runtimeMode).toBe("full-access");
     expect(s.busy).toBe(true);
     expect(s.modelSettings.effort).toBe("high");
+  });
+
+  it("a server-side ultrafast change lands in the model settings like fast does", () => {
+    const prev = meta();
+    const local = sessionFromMeta(prev);
+    const next = applyMeta(local, prev, { ...prev, ultrafast: true });
+    expect(next.modelSettings.ultrafast).toBe("true");
+    const back = applyMeta(next, { ...prev, ultrafast: true }, { ...prev, fast: true });
+    expect(back.modelSettings).toMatchObject({ fast: "true", ultrafast: "false" });
   });
 
   it("only applies the fields that changed, keeping local edits", () => {
