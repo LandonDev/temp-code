@@ -5,7 +5,6 @@ import {
   type InboxKind,
   type InboxProvider,
 } from "./githubTasks";
-import { normalizeProjectPath } from "./recents";
 import {
   timeFilterStart,
   type SessionTimeFilter,
@@ -22,7 +21,8 @@ export type InboxStatusFilter = {
 
 export type InboxFilters = {
   assignedToMe: boolean;
-  hiddenProjects: string[];
+  /** GitHub workspaces hidden from the list, by workspace id. */
+  hiddenWorkspaceIds: string[];
   hiddenKinds: InboxKind[];
   time: InboxTimeFilter;
   status: InboxStatusFilter;
@@ -37,7 +37,7 @@ export const DEFAULT_INBOX_STATUS_FILTER: InboxStatusFilter = {
 
 export const DEFAULT_INBOX_FILTERS: InboxFilters = {
   assignedToMe: false,
-  hiddenProjects: [],
+  hiddenWorkspaceIds: [],
   hiddenKinds: [],
   time: "all",
   status: DEFAULT_INBOX_STATUS_FILTER,
@@ -72,9 +72,10 @@ export function loadInboxFilters(): InboxFilters {
     const parsed = JSON.parse(raw) as Partial<InboxFilters>;
     return {
       assignedToMe: parsed.assignedToMe === true,
-      hiddenProjects: Array.isArray(parsed.hiddenProjects)
-        ? parsed.hiddenProjects.filter(
-            (path): path is string => typeof path === "string" && path.length > 0,
+      // Older builds stored hiddenProjects (folder paths); those are ignored.
+      hiddenWorkspaceIds: Array.isArray(parsed.hiddenWorkspaceIds)
+        ? parsed.hiddenWorkspaceIds.filter(
+            (id): id is string => typeof id === "string" && id.length > 0,
           )
         : [],
       hiddenKinds: Array.isArray(parsed.hiddenKinds)
@@ -101,18 +102,15 @@ export function saveInboxFilters(filters: InboxFilters) {
   }
 }
 
+/** Drops hidden ids of workspaces that no longer exist. */
 export function pruneInboxFilters(
   filters: InboxFilters,
-  projectPaths: Iterable<string>,
+  workspaceIds: Iterable<string>,
 ): InboxFilters {
-  const known = new Set(
-    [...projectPaths].map((path) => normalizeProjectPath(path)),
-  );
-  const hiddenProjects = filters.hiddenProjects.filter((path) =>
-    known.has(normalizeProjectPath(path)),
-  );
-  if (hiddenProjects.length === filters.hiddenProjects.length) return filters;
-  return { ...filters, hiddenProjects };
+  const known = new Set(workspaceIds);
+  const hiddenWorkspaceIds = filters.hiddenWorkspaceIds.filter((id) => known.has(id));
+  if (hiddenWorkspaceIds.length === filters.hiddenWorkspaceIds.length) return filters;
+  return { ...filters, hiddenWorkspaceIds };
 }
 
 export function hasActiveInboxFilters(
@@ -128,7 +126,7 @@ export function hasActiveInboxFilters(
         filters.status.merged;
   return (
     filters.assignedToMe ||
-    (source === "linear" ? false : filters.hiddenProjects.length > 0) ||
+    (source === "linear" ? false : filters.hiddenWorkspaceIds.length > 0) ||
     (source === "linear" ? false : filters.hiddenKinds.length > 0) ||
     filters.time !== "all" ||
     statusActive
@@ -140,19 +138,14 @@ export function inboxFetchState(filters: InboxFilters): "open" | "all" {
   return "open";
 }
 
-export function filterInboxByProject(
+/** Hides items of the given workspaces; items without a workspace (Linear) stay. */
+export function filterInboxByWorkspace(
   items: readonly InboxItem[],
-  hiddenProjects: Iterable<string>,
+  hiddenWorkspaceIds: Iterable<string>,
 ): InboxItem[] {
-  const hidden = new Set(
-    [...hiddenProjects].map((path) => normalizeProjectPath(path)),
-  );
+  const hidden = new Set(hiddenWorkspaceIds);
   if (hidden.size === 0) return [...items];
-  return items.filter((item) => {
-    const path = normalizeProjectPath(item.projectPath);
-    if (!path) return true;
-    return !hidden.has(path);
-  });
+  return items.filter((item) => !item.workspaceId || !hidden.has(item.workspaceId));
 }
 
 export function filterInboxByKind(
@@ -208,13 +201,13 @@ export function applyInboxFilters(
   source?: InboxSource,
 ): InboxItem[] {
   const scoped = source ? filterInboxByProvider(items, source) : [...items];
-  const hiddenProjects = source === "linear" ? [] : filters.hiddenProjects;
+  const hiddenWorkspaces = source === "linear" ? [] : filters.hiddenWorkspaceIds;
   const hiddenKinds = source === "linear" ? [] : filters.hiddenKinds;
   return filterInboxItems(
     filterInboxByStatus(
       filterInboxByTime(
         filterInboxByKind(
-          filterInboxByProject(scoped, hiddenProjects),
+          filterInboxByWorkspace(scoped, hiddenWorkspaces),
           hiddenKinds,
         ),
         filters.time,

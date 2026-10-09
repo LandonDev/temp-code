@@ -373,7 +373,6 @@ function currentSessionDefaults(): Session | undefined {
 export default function App() {
   tallyRender("app");
   const projectCwd = useProject((s) => s.projectCwd);
-  const recents = useProject((s) => s.recents);
   const selectedProjectId = useProject((s) => s.selectedProjectId);
   const catalog = useWorkspaceCatalog();
   const { projects } = catalog;
@@ -3579,7 +3578,6 @@ export default function App() {
               {classicInbox ? (
                 <InboxDetailPane
                   cwd={sidebarCwd}
-                  recents={recents}
                   onStart={onStartInboxItem}
                 />
               ) : (
@@ -3671,7 +3669,6 @@ export default function App() {
         {inboxViewOpen ? (
           <InboxView
             cwd={sidebarCwd}
-            recents={railRecents}
             besideRail={deckLayout && projectRailOpen}
             onClose={onLeaveInbox}
             onToggleSidebar={deckLayout ? onToggleSidebar : undefined}

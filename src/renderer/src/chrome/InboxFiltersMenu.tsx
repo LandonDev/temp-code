@@ -14,7 +14,8 @@ import { ProjectLogoIcon } from "./ProjectLogoIcon";
 export const INBOX_FILTER_MENU_WIDTH = 228;
 
 type ProjectOption = {
-  path: string;
+  /** workspace id */
+  id: string;
   name: string;
   logoPath: string | null;
 };
@@ -67,7 +68,7 @@ export function InboxFiltersMenu({
   onChange,
   onClose,
 }: Props) {
-  const hiddenProjects = new Set(filters.hiddenProjects);
+  const hiddenWorkspaces = new Set(filters.hiddenWorkspaceIds);
   const hiddenKinds = new Set(filters.hiddenKinds);
   const [active, setActive] = useState(-1);
 
@@ -78,11 +79,11 @@ export function InboxFiltersMenu({
     onChange({ ...filters, hiddenKinds: [...next] });
   };
 
-  const toggleProject = (path: string) => {
-    const next = new Set(hiddenProjects);
-    if (next.has(path)) next.delete(path);
-    else next.add(path);
-    onChange({ ...filters, hiddenProjects: [...next] });
+  const toggleWorkspace = (id: string) => {
+    const next = new Set(hiddenWorkspaces);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    onChange({ ...filters, hiddenWorkspaceIds: [...next] });
   };
 
   const toggleStatus = (key: keyof InboxFilters["status"]) => {
@@ -133,20 +134,21 @@ export function InboxFiltersMenu({
       : []),
     ...(github && projects.length > 0
       ? [
-          { kind: "label", text: "Projects" } as Item,
+          { kind: "label", text: "Workspaces" } as Item,
           ...projects.map<Item>((project) => ({
             kind: "item",
-            key: `project:${project.path}`,
+            key: `workspace:${project.id}`,
             label: project.name,
-            checked: !hiddenProjects.has(project.path),
-            icon: project.logoPath ? (
+            checked: !hiddenWorkspaces.has(project.id),
+            icon: (
               <ProjectLogoIcon
-                path={project.logoPath}
+                path={project.logoPath ?? undefined}
+                workspaceId={project.id}
                 className="size-3.5 shrink-0 rounded-md"
                 imageClassName="size-3.5"
               />
-            ) : undefined,
-            onClick: () => toggleProject(project.path),
+            ),
+            onClick: () => toggleWorkspace(project.id),
           })),
         ]
       : []),

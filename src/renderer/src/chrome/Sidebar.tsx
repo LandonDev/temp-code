@@ -596,7 +596,7 @@ function SidebarComponent({
           ) : null}
           {!deckLayout && tab === "inbox" ? (
             <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-              <InboxView cwd={cwd} recents={recents} variant="sidebar" />
+              <InboxView cwd={cwd} variant="sidebar" />
             </div>
           ) : null}
           {showSidebarFooter ? (

@@ -41,14 +41,9 @@ import {
   inboxItemKey,
   inboxItemRef,
   inboxItemStatus,
-  inboxFetchProjects,
-  inboxListIsFresh,
-  inboxProjectsForRail,
-  listInboxItems,
   peekGithubPrDiff,
   peekGithubWorkItemDetails,
   peekGithubWorkItemThread,
-  peekInboxList,
   formatRelativeTime,
   inboxPersonAvatarUrl,
   type GithubLabel,
@@ -56,11 +51,18 @@ import {
   type GithubWorkItemDetails,
   type GithubWorkItemThread,
   type InboxItem,
-  type InboxProviderErrors,
-  type InboxQuery,
-  type InboxScope,
 } from "../lib/githubTasks";
-import { inboxSeenEntries } from "../lib/inboxBadge";
+import {
+  githubWorkspaces,
+  inboxItemsFromSnapshot,
+  inboxStore,
+  useInbox,
+  workspaceIdForCwd,
+  type InboxScope,
+  type LinearInboxQuery,
+} from "../lib/inboxStore";
+import { useWorkspaceCatalog } from "../lib/tcserver/workspaces";
+import type { WorkspaceMeta } from "../lib/tcserver/types";
 import {
   applyInboxFilters,
   hasActiveInboxFilters,
@@ -75,12 +77,11 @@ import {
 } from "../lib/inboxFilters";
 import { projectName } from "../lib/paths";
 import { IS_MAC } from "../lib/platform";
-import { sameProjectPath, type RecentProject } from "../lib/recents";
+import { sameProjectPath } from "../lib/recents";
 import { setInboxSelection, useInboxSelection } from "../lib/inboxSelection";
 import {
   isInboxEntryUnseen,
   markInboxItemSeen,
-  seedInboxSeenIfNeeded,
   useInboxSeenTick,
 } from "../lib/inboxSeen";
 import {
@@ -112,10 +113,16 @@ import { InboxPrDiff } from "./InboxPrDiff";
 const MIN_WIDTH = 240;
 const MAX_WIDTH = 420;
 const DEFAULT_WIDTH = 280;
+/** A stored snapshot older than this is refreshed when the inbox opens. */
+const OPEN_REFRESH_AGE_MS = 60_000;
+/** While the inbox is open and the window visible, GitHub is asked again this often. */
+const INTERVAL_REFRESH_MS = 3 * 60_000;
 
 let rememberedWidth = DEFAULT_WIDTH;
 
 type InboxProjectOption = {
+  /** workspace id */
+  id: string;
   path: string;
   name: string;
   logoPath: string | null;
@@ -124,17 +131,18 @@ type InboxProjectOption = {
 };
 
 function inboxProjectOptions(
-  projects: RecentProject[],
+  workspaces: readonly WorkspaceMeta[],
   logos: ReturnType<typeof useTabGroupLogos>,
 ): InboxProjectOption[] {
   const mascots = loadTabGroupMascots();
   const colors = loadTabGroupColors();
   const custom = loadTabGroupCustomColors();
-  return [...projects]
-    .map((project) => {
-      const key = projectName(project.path);
+  return [...workspaces]
+    .map((workspace) => {
+      const key = projectName(workspace.path);
       return {
-        path: project.path,
+        id: workspace.id,
+        path: workspace.path,
         name: key,
         logoPath: resolveTabGroupLogo(key, logos),
         mascotName: resolveTabGroupMascot(key, mascots),
@@ -169,21 +177,6 @@ function InboxProjectMark({
       className="size-3 shrink-0"
     />
   );
-}
-
-function peekInboxForRail(recents: RecentProject[], cwd: string) {
-  const rail = inboxProjectsForRail(recents, cwd);
-  const projects = inboxFetchProjects(rail, cwd, "current");
-  const filters = pruneInboxFilters(
-    loadInboxFilters(),
-    rail.map((project) => project.path),
-  );
-  return peekInboxList(projects, {
-    assignedToMe: filters.assignedToMe,
-    state: inboxFetchState(filters),
-    search: "",
-    linearHiddenTeamIds: loadHiddenLinearTeamIds(),
-  });
 }
 
 function InboxSourceTab({
@@ -248,7 +241,6 @@ function InboxDetailTab({
 
 type Props = {
   cwd: string;
-  recents: RecentProject[];
   besideRail?: boolean;
   variant?: "overlay" | "sidebar";
   onClose?: () => void;
@@ -258,7 +250,6 @@ type Props = {
 
 export function InboxView({
   cwd,
-  recents,
   besideRail = false,
   variant = "overlay",
   onClose,
@@ -276,19 +267,11 @@ export function InboxView({
   const [groupCustomColors] = useState(loadTabGroupCustomColors);
 
   const [searchInput, setSearchInput] = useState("");
-  const [items, setItems] = useState<InboxItem[]>(
-    () => peekInboxForRail(recents, cwd)?.items ?? [],
-  );
-  const [loading, setLoading] = useState(
-    () => peekInboxForRail(recents, cwd) == null,
-  );
-  const [revalidating, setRevalidating] = useState(false);
-  const [providerErrors, setProviderErrors] = useState<InboxProviderErrors>(
-    () => peekInboxForRail(recents, cwd)?.errors ?? {},
-  );
+  const { github, githubLoaded, refreshing, linear } = useInbox();
+  const catalog = useWorkspaceCatalog();
   const [refresh, setRefresh] = useState(0);
-  // What the open inbox fetches: this project until the user asks for the
-  // rest. Nothing is fetched while the inbox is closed.
+  // What the list shows: this workspace until the user asks for the rest.
+  // Every refresh covers every GitHub workspace, so the toggle is instant.
   const [scope, setScope] = useState<InboxScope>("current");
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [filters, setFilters] = useState(loadInboxFilters);
@@ -301,36 +284,64 @@ export function InboxView({
   );
   const prevRefresh = useRef(refresh);
 
-  const projects = useMemo(
-    () => inboxProjectsForRail(recents, cwd),
-    [cwd, recents],
+  const ghWorkspaces = useMemo(
+    () => githubWorkspaces(catalog.workspaces),
+    [catalog.workspaces],
   );
-  const fetchProjects = useMemo(
-    () => inboxFetchProjects(projects, cwd, scope),
-    [cwd, projects, scope],
+  // The workspace of the folder the user is looking at, when it is on GitHub.
+  const currentWorkspaceId = useMemo(() => {
+    const id = workspaceIdForCwd(catalog, cwd);
+    return id && ghWorkspaces.some((w) => w.id === id) ? id : null;
+  }, [catalog, cwd, ghWorkspaces]);
+  const effectiveScope: InboxScope = currentWorkspaceId ? scope : "all";
+  const githubItems = useMemo(
+    () => inboxItemsFromSnapshot(github, catalog.workspaces, catalog.projects, cwd),
+    [catalog.projects, catalog.workspaces, cwd, github],
+  );
+  const items = useMemo(
+    () =>
+      source === "linear"
+        ? linear.items
+        : effectiveScope === "current"
+          ? githubItems.filter((item) => item.workspaceId === currentWorkspaceId)
+          : githubItems,
+    [currentWorkspaceId, effectiveScope, githubItems, linear.items, source],
   );
   const projectOptions = useMemo(
-    () => inboxProjectOptions(projects, logos),
-    [logos, projects],
+    () => inboxProjectOptions(catalog.workspaces, logos),
+    [catalog.workspaces, logos],
+  );
+  const workspaceOptions = useMemo(
+    () => projectOptions.filter((option) => ghWorkspaces.some((w) => w.id === option.id)),
+    [ghWorkspaces, projectOptions],
   );
   const activeFilters = useMemo(
     () =>
       pruneInboxFilters(
         filters,
-        projects.map((project) => project.path),
+        ghWorkspaces.map((w) => w.id),
       ),
-    [filters, projects],
+    [filters, ghWorkspaces],
   );
   const filtersActive = hasActiveInboxFilters(activeFilters, source);
   const fetchState = inboxFetchState(activeFilters);
-  const fetchQuery = useMemo<InboxQuery>(
+  const linearQuery = useMemo<LinearInboxQuery>(
     () => ({
       assignedToMe: activeFilters.assignedToMe,
       state: fetchState,
-      search: "",
-      linearHiddenTeamIds,
+      hiddenTeamIds: linearHiddenTeamIds,
     }),
     [activeFilters.assignedToMe, fetchState, linearHiddenTeamIds],
+  );
+  const loading =
+    source === "github" ? !githubLoaded : linear.loading && linear.fetchedAt === null;
+  const revalidating = source === "github" ? refreshing : linear.loading;
+  const authMessage =
+    source === "github" && github && github.auth.state !== "ok" ? github.auth.message : null;
+  const sourceError = source === "linear" ? linear.error : authMessage;
+  const repoErrors = useMemo(
+    () => (source === "github" && github ? github.repos.filter((repo) => repo.error) : []),
+    [github, source],
   );
 
   const resize = useDragResize({
@@ -368,51 +379,40 @@ export function InboxView({
     return () => window.removeEventListener(LINEAR_CHANGE_EVENT, onChange);
   }, []);
 
+  // GitHub: the list shows the stored snapshot at once; the view asks the
+  // server for a fresh one when it opens on a snapshot older than a minute.
+  // Nothing fetches while the inbox is closed.
+  const openedRef = useRef(false);
   useEffect(() => {
-    const force = refresh !== prevRefresh.current;
+    if (!githubLoaded || openedRef.current) return;
+    openedRef.current = true;
+    const age = github?.fetchedAt ? Date.now() - github.fetchedAt : Number.POSITIVE_INFINITY;
+    if (age > OPEN_REFRESH_AGE_MS) void inboxStore.refreshGithub("open");
+  }, [github, githubLoaded]);
+
+  // ...and again every three minutes while this view is mounted and the
+  // window is visible. The timer dies with the view.
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      if (document.visibilityState !== "visible") return;
+      void inboxStore.refreshGithub("interval");
+    }, INTERVAL_REFRESH_MS);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  // Linear: only while its tab is open, for the current query.
+  useEffect(() => {
+    if (source !== "linear") return;
+    void inboxStore.refreshLinear(linearQuery);
+  }, [linearQuery, source]);
+
+  // The refresh button and a Linear change: fetch the open tab again now.
+  useEffect(() => {
+    if (refresh === prevRefresh.current) return;
     prevRefresh.current = refresh;
-    const cached = peekInboxList(fetchProjects, fetchQuery);
-    if (cached) {
-      setItems(cached.items);
-      setProviderErrors(cached.errors);
-      setLoading(false);
-    }
-    if (!force && cached && inboxListIsFresh(fetchProjects, fetchQuery)) {
-      return;
-    }
-
-    let cancelled = false;
-    if (cached) setRevalidating(true);
-    else {
-      setLoading(true);
-      setProviderErrors({});
-    }
-    void listInboxItems(fetchProjects, fetchQuery, { force })
-      .then((next) => {
-        seedInboxSeenIfNeeded(
-          inboxSeenEntries(applyInboxFilters(next.items, activeFilters, "")),
-        );
-        if (cancelled) return;
-        setItems(next.items);
-        setProviderErrors(next.errors);
-      })
-      .catch((err: unknown) => {
-        if (cancelled) return;
-        if (cached) return;
-        setItems([]);
-        const message = err instanceof Error ? err.message : String(err);
-        setProviderErrors({ github: message, linear: message });
-      })
-      .finally(() => {
-        if (cancelled) return;
-        setLoading(false);
-        setRevalidating(false);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [activeFilters, fetchProjects, fetchQuery, refresh]);
+    if (source === "linear") void inboxStore.refreshLinear(linearQuery, { force: true });
+    else void inboxStore.refreshGithub("manual");
+  }, [linearQuery, refresh, source]);
 
   const visibleItems = useMemo(
     () =>
@@ -422,7 +422,6 @@ export function InboxView({
 
   const searchNarrowed = searchInput.trim().length > 0;
   const narrowedByUser = searchNarrowed || filtersActive;
-  const sourceError = providerErrors[source] ?? null;
 
   const selected =
     visibleItems.find((item) => inboxItemKey(item) === selectedKey) ??
@@ -445,7 +444,7 @@ export function InboxView({
   const onFiltersChange = (next: InboxFilters) => {
     const pruned = pruneInboxFilters(
       next,
-      projects.map((project) => project.path),
+      ghWorkspaces.map((w) => w.id),
     );
     setFilters(pruned);
     saveInboxFilters(pruned);
@@ -554,15 +553,18 @@ export function InboxView({
                   : "No issues or pull requests match these filters"
               : source === "linear"
                 ? "No Linear issues"
-                : fetchProjects.length === 0
-                  ? "Open a project to fill the inbox"
+                : ghWorkspaces.length === 0
+                  ? "Add a GitHub repository as a workspace to fill the inbox"
                   : "No issues or pull requests"}
           </p>
         ) : (
           <ul className="flex flex-col gap-0.5 p-1.5">
             {visibleItems.map((item) => {
               const key = inboxItemKey(item);
-              const projectKey = projectName(item.projectPath);
+              const workspace = item.workspaceId
+                ? workspaceOptions.find((option) => option.id === item.workspaceId)
+                : undefined;
+              const projectKey = workspace?.name ?? projectName(item.projectPath);
               return (
                 <li key={key}>
                   <InboxCard
@@ -589,7 +591,17 @@ export function InboxView({
             })}
           </ul>
         )}
-        {source === "github" && projects.length > 1 && !loading ? (
+        {authMessage && visibleItems.length > 0 ? (
+          <p className="px-3 py-2 text-[12px] text-danger">{authMessage}</p>
+        ) : null}
+        {repoErrors.length > 0 && !(sourceError && visibleItems.length === 0)
+          ? repoErrors.map((repo) => (
+              <p key={repo.repo} className="px-3 py-1 text-[11px] text-content/50">
+                {repo.repo}: {repo.error}
+              </p>
+            ))
+          : null}
+        {source === "github" && currentWorkspaceId && ghWorkspaces.length > 1 && !loading ? (
           <button
             type="button"
             onClick={() =>
@@ -597,7 +609,7 @@ export function InboxView({
             }
             className="mx-1 mb-1 h-7 w-[calc(100%-0.5rem)] rounded-md px-2 text-left text-[12px] text-content/50 hover:bg-content/5 hover:text-content active:bg-content/10"
           >
-            {scope === "all" ? "This project only" : "Show all projects"}
+            {scope === "all" ? "This workspace only" : "Show all workspaces"}
           </button>
         ) : null}
       </div>
@@ -620,7 +632,7 @@ export function InboxView({
     <InboxFiltersMenu
       x={filterMenu.x}
       y={filterMenu.y}
-      projects={projectOptions}
+      projects={effectiveScope === "all" ? workspaceOptions : []}
       source={source}
       filters={activeFilters}
       onChange={onFiltersChange}
@@ -676,6 +688,7 @@ export function InboxView({
             item={selected}
             cwd={cwd}
             projects={projectOptions}
+            activeWorkspaceId={workspaceIdForCwd(catalog, cwd)}
             revision={refresh}
             onStart={onStart}
           />
@@ -688,22 +701,17 @@ export function InboxView({
 
 export function InboxDetailPane({
   cwd,
-  recents,
   onStart,
 }: {
   cwd: string;
-  recents: RecentProject[];
   onStart?: (item: InboxItem, body?: string) => void | Promise<void>;
 }) {
   const item = useInboxSelection();
   const logos = useTabGroupLogos();
-  const projects = useMemo(
-    () => inboxProjectsForRail(recents, cwd),
-    [cwd, recents],
-  );
+  const catalog = useWorkspaceCatalog();
   const projectOptions = useMemo(
-    () => inboxProjectOptions(projects, logos),
-    [logos, projects],
+    () => inboxProjectOptions(catalog.workspaces, logos),
+    [catalog.workspaces, logos],
   );
   return (
     <div
@@ -715,6 +723,7 @@ export function InboxDetailPane({
         item={item}
         cwd={cwd}
         projects={projectOptions}
+        activeWorkspaceId={workspaceIdForCwd(catalog, cwd)}
         onStart={onStart}
       />
     </div>
@@ -725,12 +734,14 @@ function InboxDetailBody({
   item,
   cwd,
   projects,
+  activeWorkspaceId,
   revision = 0,
   onStart,
 }: {
   item: InboxItem | null;
   cwd: string;
   projects: InboxProjectOption[];
+  activeWorkspaceId: string | null;
   revision?: number;
   onStart?: (item: InboxItem, body?: string) => void | Promise<void>;
 }) {
@@ -750,6 +761,7 @@ function InboxDetailBody({
       item={item}
       cwd={cwd}
       projects={projects}
+      activeWorkspaceId={activeWorkspaceId}
       revision={revision}
       onStart={onStart}
     />
@@ -860,12 +872,14 @@ function InboxDetail({
   item,
   cwd,
   projects,
+  activeWorkspaceId,
   revision,
   onStart,
 }: {
   item: InboxItem;
   cwd: string;
   projects: InboxProjectOption[];
+  activeWorkspaceId: string | null;
   revision: number;
   onStart?: (item: InboxItem, body?: string) => void | Promise<void>;
 }) {
@@ -902,7 +916,7 @@ function InboxDetail({
   const [posting, setPosting] = useState(false);
   const [postError, setPostError] = useState<string | null>(null);
   const defaultProject =
-    projects.find((project) => sameProjectPath(project.path, cwd))?.path ??
+    projects.find((project) => project.id === activeWorkspaceId)?.path ??
     projects[0]?.path ??
     cwd;
   const [startProject, setStartProject] = useState(defaultProject);

@@ -3,7 +3,7 @@ import {
   applyInboxFilters,
   DEFAULT_INBOX_FILTERS,
   filterInboxByKind,
-  filterInboxByProject,
+  filterInboxByWorkspace,
   filterInboxByProvider,
   filterInboxByStatus,
   filterInboxByTime,
@@ -31,20 +31,20 @@ function item(
   };
 }
 
-describe("filterInboxByProject", () => {
-  it("hides selected projects", () => {
+describe("filterInboxByWorkspace", () => {
+  it("hides selected workspaces", () => {
     const rows = [
-      item({ number: 1, updatedAt: "2026-08-27T10:00:00Z", projectPath: "/tmp/web" }),
-      item({ number: 2, updatedAt: "2026-08-27T10:00:00Z", projectPath: "/tmp/docs" }),
+      item({ number: 1, updatedAt: "2026-08-27T10:00:00Z", workspaceId: "web" }),
+      item({ number: 2, updatedAt: "2026-08-27T10:00:00Z", workspaceId: "docs" }),
     ];
     expect(
-      filterInboxByProject(rows, ["/tmp/web/"]).map((row) => row.number),
+      filterInboxByWorkspace(rows, ["web"]).map((row) => row.number),
     ).toEqual([2]);
   });
 
-  it("keeps Linear issues that are not tied to a folder", () => {
+  it("keeps Linear issues that belong to no workspace", () => {
     const rows = [
-      item({ number: 1, updatedAt: "2026-08-27T10:00:00Z", projectPath: "/tmp/web" }),
+      item({ number: 1, updatedAt: "2026-08-27T10:00:00Z", workspaceId: "web" }),
       item({
         number: 9,
         kind: "linear",
@@ -54,7 +54,7 @@ describe("filterInboxByProject", () => {
       }),
     ];
     expect(
-      filterInboxByProject(rows, ["/tmp/web"]).map((row) => row.number),
+      filterInboxByWorkspace(rows, ["web"]).map((row) => row.number),
     ).toEqual([9]);
   });
 });
@@ -166,21 +166,21 @@ describe("applyInboxFilters", () => {
         number: 1,
         title: "Fix checkout",
         kind: "pr",
-        projectPath: "/tmp/web",
+        workspaceId: "web",
         updatedAt: "2026-08-27T10:00:00Z",
       }),
       item({
         number: 2,
         title: "Fix checkout",
         kind: "issue",
-        projectPath: "/tmp/docs",
+        workspaceId: "docs",
         updatedAt: "2026-08-27T10:00:00Z",
       }),
     ];
     expect(
       applyInboxFilters(
         rows,
-        { ...DEFAULT_INBOX_FILTERS, hiddenProjects: ["/tmp/docs"] },
+        { ...DEFAULT_INBOX_FILTERS, hiddenWorkspaceIds: ["docs"] },
         "checkout",
       ).map((row) => row.number),
     ).toEqual([1]);
@@ -242,11 +242,11 @@ describe("hasActiveInboxFilters", () => {
     expect(hasActiveInboxFilters(DEFAULT_INBOX_FILTERS)).toBe(false);
   });
 
-  it("is true when a project is hidden", () => {
+  it("is true when a workspace is hidden", () => {
     expect(
       hasActiveInboxFilters({
         ...DEFAULT_INBOX_FILTERS,
-        hiddenProjects: ["/tmp/web"],
+        hiddenWorkspaceIds: ["web"],
       }),
     ).toBe(true);
   });
@@ -256,7 +256,7 @@ describe("hasActiveInboxFilters", () => {
       hasActiveInboxFilters(
         {
           ...DEFAULT_INBOX_FILTERS,
-          hiddenProjects: ["/tmp/web"],
+          hiddenWorkspaceIds: ["web"],
           hiddenKinds: ["pr"],
         },
         "linear",
@@ -278,11 +278,11 @@ describe("inboxFetchState", () => {
 });
 
 describe("pruneInboxFilters", () => {
-  it("drops hidden projects that are no longer in the rail", () => {
+  it("drops hidden ids of workspaces that no longer exist", () => {
     const pruned = pruneInboxFilters(
-      { ...DEFAULT_INBOX_FILTERS, hiddenProjects: ["/tmp/web", "/tmp/gone"] },
-      ["/tmp/web"],
+      { ...DEFAULT_INBOX_FILTERS, hiddenWorkspaceIds: ["web", "gone"] },
+      ["web"],
     );
-    expect(pruned.hiddenProjects).toEqual(["/tmp/web"]);
+    expect(pruned.hiddenWorkspaceIds).toEqual(["web"]);
   });
 });

@@ -42,10 +42,32 @@ export type GithubWorkItem = {
 
 export type InboxProvider = "github" | "linear";
 
+export type InboxPerson = {
+  login: string;
+  avatarUrl: string;
+};
+
+/** Which of the viewer's own items this is (GitHub snapshot items only). */
+export type InboxMine = {
+  authored: boolean;
+  assigned: boolean;
+  reviewRequested: boolean;
+};
+
 export type InboxItem = Omit<GithubWorkItem, "kind"> & {
   kind: InboxKind;
   projectPath: string;
   provider: InboxProvider;
+  /** The workspace whose repo this is (GitHub snapshot items only). */
+  workspaceId?: string;
+  author?: InboxPerson | null;
+  reviewDecision?: string;
+  headRefName?: string;
+  baseRefName?: string;
+  /** The latest commit's check rollup (PRs only). */
+  checks?: "SUCCESS" | "FAILURE" | "PENDING" | "ERROR" | "EXPECTED" | null;
+  reviewRequested?: string[];
+  mine?: InboxMine;
   id?: string;
   identifier?: string;
   teamId?: string;

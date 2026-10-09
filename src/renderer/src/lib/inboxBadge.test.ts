@@ -1,25 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { GithubInboxSnapshot } from "@server/shared/contract-github";
+import type { Link } from "./tcserver/store";
+import { workspaceStore } from "./tcserver/workspaces";
+import { inboxStore } from "./inboxStore";
+import { inboxUnseenFromCache, resetInboxBadge, subscribeInboxBadge } from "./inboxBadge";
 
 const invoke = vi.fn();
 vi.mock("./native", () => ({ invoke: (...args: unknown[]) => invoke(...args) }));
-
-import {
-  clearInboxCache,
-  listInboxItems,
-  type InboxQuery,
-} from "./githubTasks";
-import {
-  inboxUnseenFromCache,
-  resetInboxBadge,
-  subscribeInboxBadge,
-} from "./inboxBadge";
-
-const query: InboxQuery = {
-  assignedToMe: false,
-  state: "open",
-  search: "",
-  linearHiddenTeamIds: [],
-};
 
 function mockLocalStorage() {
   const data = new Map<string, string>();
@@ -38,114 +25,125 @@ function mockLocalStorage() {
   });
 }
 
-function workItem(number: number, updatedAt: string) {
+function snapshot(issueUpdatedAt: string): GithubInboxSnapshot {
   return {
-    kind: "issue",
-    number,
-    title: `#${number}`,
-    url: `https://github.com/acme/web/issues/${number}`,
-    state: "open",
-    updatedAt,
-    labels: [],
-    assignees: [],
-    draft: false,
-    repo: "acme/web",
+    viewer: "me",
+    auth: { state: "ok", message: "" },
+    fetchedAt: 1,
+    refreshing: false,
+    repos: [
+      {
+        repo: "acme/web",
+        fetchedAt: 1,
+        error: null,
+        items: [
+          {
+            kind: "issue",
+            repo: "acme/web",
+            number: 1,
+            title: "#1",
+            url: "https://github.com/acme/web/issues/1",
+            state: "open",
+            draft: false,
+            updatedAt: issueUpdatedAt,
+            author: null,
+            assignees: [],
+            labels: [],
+            reviewDecision: "",
+            headRefName: "",
+            baseRefName: "",
+            checks: null,
+            reviewRequested: [],
+          },
+        ],
+      },
+    ],
   };
 }
 
-/** Answers the server the way a project with one open issue would. */
-function answerLikeServer(issueUpdatedAt: string) {
-  invoke.mockImplementation((method: string, args?: { kind?: string }) => {
-    if (method === "git_github_repo") return Promise.resolve("acme/web");
-    if (method === "git_github_work_items") {
-      return Promise.resolve(
-        args?.kind === "issue" ? [workItem(1, issueUpdatedAt)] : [],
-      );
-    }
-    if (method === "linear_status") return Promise.resolve({ connected: false });
-    return Promise.reject(new Error(`unexpected ${method}`));
-  });
+/** A link that answers the two catalog reads and the stored snapshot, and counts every request. */
+function fakeLink(answer: () => GithubInboxSnapshot): Link & { calls: string[]; open: () => void } {
+  const openers = new Set<() => void>();
+  const link = {
+    calls: [] as string[],
+    connected: false,
+    request<T>(method: string): Promise<T> {
+      link.calls.push(method);
+      if (method === "github.inbox") return Promise.resolve(answer() as T);
+      if (method === "github.inboxRefresh") return Promise.resolve(answer() as T);
+      if (method === "workspace.list")
+        return Promise.resolve([{ id: "w1", name: "web", path: "/tmp/web", git: true, githubRepo: "acme/web", createdAt: 1 }] as T);
+      if (method === "project.list") return Promise.resolve([] as T);
+      if (method === "defaults.get") return Promise.reject(new Error("none"));
+      return Promise.reject(new Error(`unexpected ${method}`));
+    },
+    onPush: () => () => undefined,
+    onOpen: (listener: () => void) => {
+      openers.add(listener);
+      return () => openers.delete(listener);
+    },
+    open: () => {
+      link.connected = true;
+      for (const l of openers) l();
+    },
+  };
+  return link;
 }
+
+const flush = () => new Promise((r) => setTimeout(r, 0));
 
 beforeEach(() => {
   mockLocalStorage();
-  clearInboxCache();
+  inboxStore.reset();
+  workspaceStore.reset();
   resetInboxBadge();
   invoke.mockReset();
-  vi.useFakeTimers();
 });
 
 afterEach(() => {
-  vi.useRealTimers();
+  inboxStore.reset();
+  workspaceStore.reset();
 });
 
 describe("inbox badge with the inbox closed", () => {
-  it("never issues a request: not on subscribe, not on read, not over time", async () => {
-    const off = subscribeInboxBadge(() => undefined);
-    expect(inboxUnseenFromCache()).toBe(false);
-    await vi.advanceTimersByTimeAsync(10 * 60_000);
-    expect(inboxUnseenFromCache()).toBe(false);
-    off();
-    expect(invoke).not.toHaveBeenCalled();
+  it("never asks the server to fetch: not on subscribe, not on read, not over time", async () => {
+    vi.useFakeTimers();
+    try {
+      const link = fakeLink(() => snapshot("2026-01-01T00:00:00Z"));
+      workspaceStore.connect(link);
+      inboxStore.connect(link);
+      link.open();
+      await vi.advanceTimersByTimeAsync(0);
+      const off = subscribeInboxBadge(() => undefined);
+      expect(inboxUnseenFromCache()).toBe(false);
+      await vi.advanceTimersByTimeAsync(10 * 60_000);
+      expect(inboxUnseenFromCache()).toBe(false);
+      off();
+      expect(link.calls.filter((m) => m === "github.inboxRefresh")).toEqual([]);
+      expect(link.calls.filter((m) => m === "github.inbox")).toHaveLength(1);
+      expect(invoke).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 
-describe("inbox badge after the open inbox fetched", () => {
-  it("seeds seen on the first list, then lights up for a newer item", async () => {
+describe("inbox badge from the stored snapshot", () => {
+  it("seeds seen on the first stored list, then lights up for a newer item", async () => {
+    let at = "2026-01-01T00:00:00Z";
+    const link = fakeLink(() => snapshot(at));
     let ticks = 0;
     const off = subscribeInboxBadge(() => void ticks++);
-
-    answerLikeServer("2026-01-01T00:00:00Z");
-    await listInboxItems([{ path: "/tmp/web" }], query);
+    workspaceStore.connect(link);
+    inboxStore.connect(link);
+    link.open();
+    await flush();
     expect(ticks).toBeGreaterThan(0);
-    expect(inboxUnseenFromCache()).toBe(false);
+    expect(inboxUnseenFromCache()).toBe(false); // the first stored list is "seen"
 
-    answerLikeServer("2026-02-01T00:00:00Z");
-    await listInboxItems([{ path: "/tmp/web" }], query, { force: true });
+    at = "2026-02-01T00:00:00Z";
+    await inboxStore.refreshGithub("open"); // what the open inbox view does
     expect(inboxUnseenFromCache()).toBe(true);
     off();
-  });
-});
-
-describe("listInboxItems", () => {
-  it("runs one fetch at a time and one gh call at a time inside it", async () => {
-    const order: string[] = [];
-    let release: () => void = () => undefined;
-    const gate = new Promise<void>((resolve) => {
-      release = resolve;
-    });
-    invoke.mockImplementation(async (method: string, args?: { cwd?: string; kind?: string }) => {
-      order.push(`${method}:${args?.cwd ?? ""}:${args?.kind ?? ""}`);
-      if (method === "git_github_repo") {
-        if (args?.cwd === "/tmp/a") await gate;
-        return `acme/${args?.cwd?.slice(5)}`;
-      }
-      if (method === "git_github_work_items") return [];
-      if (method === "linear_status") return { connected: false };
-      throw new Error(`unexpected ${method}`);
-    });
-
-    const first = listInboxItems([{ path: "/tmp/a" }, { path: "/tmp/b" }], query);
-    const second = listInboxItems([{ path: "/tmp/c" }], query);
-    await vi.advanceTimersByTimeAsync(0);
-    // Only the first project's repo lookup has started; nothing else fans out.
-    expect(order).toEqual(["git_github_repo:/tmp/a:"]);
-
-    release();
-    await first;
-    await second;
-    expect(order).toEqual([
-      "git_github_repo:/tmp/a:",
-      "git_github_repo:/tmp/b:",
-      "git_github_work_items:/tmp/a:issue",
-      "git_github_work_items:/tmp/a:pr",
-      "git_github_work_items:/tmp/b:issue",
-      "git_github_work_items:/tmp/b:pr",
-      "linear_status::",
-      "git_github_repo:/tmp/c:",
-      "git_github_work_items:/tmp/c:issue",
-      "git_github_work_items:/tmp/c:pr",
-      "linear_status::",
-    ]);
   });
 });

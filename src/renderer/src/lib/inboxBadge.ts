@@ -1,4 +1,4 @@
-import { inboxItemKey, peekLastInboxList, subscribeInboxList } from "./githubTasks";
+import { inboxItemKey, type InboxItem } from "./githubTasks";
 import { applyInboxFilters, loadInboxFilters } from "./inboxFilters";
 import {
   inboxHasUnseenItems,
@@ -6,11 +6,14 @@ import {
   subscribeInboxSeen,
   type InboxSeenEntry,
 } from "./inboxSeen";
+import { inboxItemsFromSnapshot, inboxStore } from "./inboxStore";
+import { workspaceStore } from "./tcserver/workspaces";
 
 /**
- * The rail's inbox dot. It reads the last list the open inbox fetched and
- * never asks the server for anything: a closed inbox costs nothing, and the
- * dot only changes once the user has opened the inbox and a fetch landed.
+ * The rail's inbox dot. It reads the stored GitHub snapshot (loaded from
+ * SQLite when the socket opens) and the Linear list the open inbox last
+ * fetched, and never asks the server to fetch: a closed inbox costs
+ * nothing, and the dot is right at launch from the last stored snapshot.
  */
 
 let badge: boolean | null = null;
@@ -24,10 +27,17 @@ export function inboxSeenEntries(
   }));
 }
 
+function storedItems(): InboxItem[] {
+  const { github, linear } = inboxStore.getSnapshot();
+  const catalog = workspaceStore.getSnapshot();
+  return [
+    ...inboxItemsFromSnapshot(github, catalog.workspaces, catalog.projects, ""),
+    ...linear.items,
+  ];
+}
+
 function cachedEntries(): InboxSeenEntry[] {
-  const listed = peekLastInboxList();
-  if (!listed) return [];
-  return inboxSeenEntries(applyInboxFilters(listed.items, loadInboxFilters(), ""));
+  return inboxSeenEntries(applyInboxFilters(storedItems(), loadInboxFilters(), ""));
 }
 
 export function inboxUnseenFromCache(): boolean {
@@ -35,7 +45,7 @@ export function inboxUnseenFromCache(): boolean {
   return badge;
 }
 
-/** Recomputes on a new list or a seen mark; the first list seeds "seen". */
+/** Recomputes on a new snapshot, a catalog change, or a seen mark; the first stored list seeds "seen". */
 export function subscribeInboxBadge(listener: () => void): () => void {
   const recompute = () => {
     badge = null;
@@ -45,10 +55,12 @@ export function subscribeInboxBadge(listener: () => void): () => void {
     seedInboxSeenIfNeeded(cachedEntries());
     recompute();
   };
-  const offList = subscribeInboxList(onList);
+  const offInbox = inboxStore.subscribe(onList);
+  const offCatalog = workspaceStore.subscribe(onList);
   const offSeen = subscribeInboxSeen(recompute);
   return () => {
-    offList();
+    offInbox();
+    offCatalog();
     offSeen();
   };
 }
