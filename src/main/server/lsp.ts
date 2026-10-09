@@ -19,7 +19,7 @@ import { Readable } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
 import type { WebSocket } from 'ws'
 import type { LspStatusRow } from '@shared/domain'
-import { harnessEnv } from './drivers/binaries'
+import { harnessEnv, resolveAppBridgeLaunch } from './drivers/binaries'
 import { CRASH_WINDOW_MS, StderrTail, erroredEntryHolds, expiredBuildMessage } from './lspHealth'
 
 import { execFileBudgeted as execFileP, spawnTracked as spawn } from './spawnBudget'
@@ -444,11 +444,25 @@ function evictForCap(lang: LspLang): void {
   if (lru) stopServer(lru)
 }
 
+/**
+ * vtsls is a plain Node script. The packaged app ships with the runAsNode
+ * fuse off (a leaked ELECTRON_RUN_AS_NODE must not break it), so running it
+ * as Electron-as-node boots a second TempCode that the single-instance lock
+ * kills — "crashed repeatedly" in the installed app while dev was fine. It
+ * runs under the same real `node` (or `bun`) the app bridge found on the
+ * login PATH; Electron-as-node stays the dev-only last resort.
+ */
 async function spawnWeb(server: PoolServer): Promise<void> {
   const require2 = createRequire(import.meta.url)
   const bin = require2.resolve('@vtsls/language-server/bin/vtsls.js')
-  const env = { ...(await harnessEnv()), ELECTRON_RUN_AS_NODE: '1' }
-  server.proc = spawn(process.execPath, [bin, '--stdio'], { cwd: server.cwd, env })
+  const launch = await resolveAppBridgeLaunch()
+  // Electron sets process.defaultApp only when it runs a dev checkout.
+  const packaged = Boolean(process.versions.electron) && !process.defaultApp
+  if (launch.command === process.execPath && packaged) {
+    throw new Error('the TypeScript language server needs node or bun on the login-shell PATH')
+  }
+  const env = { ...(await harnessEnv()), ...launch.env }
+  server.proc = spawn(launch.command, [bin, '--stdio'], { cwd: server.cwd, env })
 }
 
 async function spawnJava(server: PoolServer): Promise<void> {
