@@ -62,6 +62,12 @@ if gh release view "v$VERSION" --repo "$REPO" >/dev/null 2>&1; then
 fi
 echo "publishing $VERSION signed as $IDENTITY (team $TEAM)"
 
+# Push the source first: GitHub creates the v1.0.N tag at master's remote tip
+# the moment the release leaves draft, so master must already be there or the
+# tag lands on the previous commit and the final tag push is rejected.
+git tag -f "v$VERSION"
+git push -q origin master && git push -q -f origin "v$VERSION"
+
 bun run build
 rm -rf dist
 # electron-builder picks the certificate itself and rejects the full
@@ -105,8 +111,5 @@ FEED_VERSION=$(curl -sL "https://github.com/$REPO/releases/latest/download/lates
   echo "feed still serves '$FEED_VERSION', expected '$VERSION'" >&2
   exit 1
 }
-
-git tag "v$VERSION"
-git push -q origin master "v$VERSION"
 
 echo "published $VERSION — feed verified at github.com/$REPO/releases"
