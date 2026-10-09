@@ -18,7 +18,7 @@ export interface ProjectSignals {
 
 type SignalSession = Pick<
   Session,
-  "cwd" | "projectId" | "workspaceId" | "busy" | "status" | "treeCanContinue"
+  "cwd" | "projectId" | "workspaceId" | "busy" | "status" | "treeCanContinue" | "archived"
 >;
 
 /** The same buckets `projectCardStatus()` calls waiting and failed, so the
@@ -39,6 +39,8 @@ export function projectSignals(
   const busy = new Set<string>();
   const needsYou = new Set<string>();
   for (const session of sessions) {
+    // An archived thread is history, whatever its row still says.
+    if (session.archived) continue;
     const needs = sessionNeedsYou(session);
     if (!needs && !session.busy) continue;
     const path = workspacePathOfSession(session, catalog);

@@ -1886,7 +1886,7 @@ export class SessionRegistry {
     // leaving the turn (and the fleet) working on a shelved thread.
     if (archived) {
       await this.stopTree(sessionId)
-      await this.dropHandle(sessionId)
+      await this.dropHandle(sessionId, { orphan: true })
     }
     const next = this.store.updateSession(sessionId, { archived })
     if (next) this.notifyMeta(next)
@@ -2079,7 +2079,12 @@ export class SessionRegistry {
     }
   }
 
-  private async dropHandle(sessionId: string): Promise<void> {
+  /** Dispose a session's harness. `orphan` says no replacement will boot:
+   *  the row is shelved, so an open status is settled idle here. Without
+   *  it only a watching row settles — a mid-turn drop (harness gone, a
+   *  reboot) hands the live turn to a fresh handle with no status write,
+   *  and marking it idle would show a running turn as finished. */
+  private async dropHandle(sessionId: string, opts: { orphan?: boolean } = {}): Promise<void> {
     const inflight = this.starting.get(sessionId)
     if (inflight) await inflight.catch(() => {})
     this.denyPendingApprovals(sessionId)
@@ -2090,8 +2095,12 @@ export class SessionRegistry {
     // The process took its background tasks with it: a watching row has
     // nothing left to wait on (the disposed handle stays mute, so this is
     // the only idle it will get).
+    // An archived row gets the same: interrupt() only asked the handle to
+    // stop and left the closing idle to its stream, which the disposed
+    // handle never relays — the row would stay running with no process.
     this.watching.delete(sessionId)
-    if (this.store.getSession(sessionId)?.status === 'watching') {
+    const status = this.store.getSession(sessionId)?.status
+    if (status === 'watching' || (opts.orphan && status && LIVE_STATUSES.has(status))) {
       this.append(sessionId, { type: 'status', status: 'idle' })
     }
   }

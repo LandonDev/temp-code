@@ -43,6 +43,17 @@ describe("projectSignals", () => {
     expect(signals.busy).toEqual([]);
   });
 
+  it("ignores an archived thread, busy or waiting", () => {
+    const signals = projectSignals(
+      [
+        session({ cwd: "/a", status: "running", busy: true, archived: true }),
+        session({ cwd: "/b", status: "waiting", busy: true, archived: true }),
+      ],
+      catalog,
+    );
+    expect(signals).toEqual({ busy: [], needsYou: [] });
+  });
+
   it("leaves a running thread busy", () => {
     const signals = projectSignals(
       [session({ cwd: "/a", status: "running", busy: true })],
