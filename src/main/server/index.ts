@@ -13,6 +13,7 @@ import { ClientRequestSchema, type ServerFrame } from '@shared/contract'
 import type { SessionMeta } from '@shared/events'
 import { openDb, Store } from './db'
 import { handleFsGit } from './fsgit'
+import { setMediaRoots } from './media'
 import { CheckpointStore } from './checkpoint'
 import { handleCheckpoint } from './checkpointRpc'
 import { Linear, handleLinear } from './linear'
@@ -168,6 +169,11 @@ export async function startServer(
   const store = new Store(db)
   const checkpoints = new CheckpointStore(join(options.dataDir ?? dirname(dbPath), 'checkpoints'))
   const registry = new SessionRegistry(store)
+  // The file viewer's media host serves only files under these roots.
+  setMediaRoots(() => [
+    ...registry.listProjects().map((p) => p.cwd),
+    ...registry.listWorkspaces().map((w) => w.path)
+  ])
   setLimitMissLog(join(options.dataDir ?? dirname(dbPath), 'logs'))
   setCodexBootFailureLog(join(options.dataDir ?? dirname(dbPath), 'logs'))
   setStallLog(join(options.dataDir ?? dirname(dbPath), 'logs'))

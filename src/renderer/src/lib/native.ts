@@ -20,6 +20,7 @@ export type NativeCommand =
   | "create_path"
   | "default_cwd"
   | "delete_path"
+  | "file_media"
   | "destroy_window"
   | "disable_window_glass"
   | "enable_window_glass"
@@ -32,6 +33,7 @@ export type NativeCommand =
   | "git_diff_stats"
   | "git_discard_file"
   | "git_file_diff"
+  | "git_file_media"
   | "git_github_pr_diff"
   | "git_github_work_item_comment"
   | "git_github_work_item_details"
@@ -165,6 +167,7 @@ const serverMethods: Partial<Record<NativeCommand, string>> = {
   git_diff_stats: "git.diffStats",
   git_discard_file: "git.discardFile",
   git_file_diff: "git.fileDiff",
+  git_file_media: "git.fileMedia",
   git_github_pr_diff: "github.prDiff",
   git_github_work_item_comment: "github.comment",
   git_github_work_item_details: "github.details",
@@ -194,6 +197,7 @@ const serverMethods: Partial<Record<NativeCommand, string>> = {
   read_file_base64: "fs.readBase64",
   read_file_preview: "fs.readPreview",
   read_text_file: "fs.readText",
+  file_media: "fs.media",
   rename_path: "fs.renamePath",
   search_project: "search.project",
   search_sessions: "session.search",

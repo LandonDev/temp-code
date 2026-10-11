@@ -1,9 +1,11 @@
 /**
  * The URL shapes the `tempcode-asset://` protocol serves. Main resolves
  * `logo/<name>` against `<userData>/project-logos` and
- * `page/<sessionId>/<pageId>.html` against `<userData>/html-renders`; the
- * preload bridge builds the same strings synchronously so image `src`
- * attributes need no round trip.
+ * `page/<sessionId>/<pageId>.html` against `<userData>/html-renders`, and
+ * `file/<token>/<name>` against a media file inside an open project or
+ * workspace root (src/main/server/media.ts mints the token). The preload
+ * bridge builds the logo strings synchronously so image `src` attributes
+ * need no round trip.
  */
 export const ASSET_SCHEME = 'tempcode-asset'
 

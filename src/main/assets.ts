@@ -3,6 +3,7 @@ import { join, resolve, sep } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { ASSET_SCHEME, HTML_RENDERS_DIR, logoAssetUrl } from '@shared/assets'
 import { previewPageHtml } from './htmlPreviewPages'
+import { serveMedia } from './server/media'
 
 export { logoAssetUrl }
 
@@ -68,6 +69,9 @@ const PREVIEW_PATH = /^\/preview\/([a-f0-9]+)\.html$/
 /** One handler for every session that serves the scheme (the app's and the preview window's). */
 export async function handleAssetRequest(request: Request): Promise<Response> {
   const url = new URL(request.url)
+  // Media files from the file viewer: token-addressed, fenced to the open
+  // roots, streamed with Range support (server/media.ts).
+  if (url.host === 'file') return serveMedia(request)
   if (url.host === 'page') {
     // A page the hidden preview window is looking at, held in memory.
     const token = PREVIEW_PATH.exec(url.pathname)?.[1]

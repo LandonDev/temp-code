@@ -10,6 +10,7 @@ import type { TerminalMetaPatch } from "../lib/terminalTab";
 import type { EditorNavigationTarget, OpenFileFn } from "../lib/search";
 import { editorPathsEqual } from "../lib/search";
 import { FileEditor } from "./FileEditor";
+import { MediaGate, MediaReview } from "./MediaViewer";
 import { ReleaseNotesSurface } from "./ReleaseNotesSurface";
 import { TerminalView } from "./TerminalView";
 import { MatrixSpinner } from "./threads/bits";
@@ -96,45 +97,68 @@ function FilePaneComponent({
                 active={focused && file.id === pane.activeFileId}
                 onMetaChange={(patch) => onTerminalMetaChange?.(file.id, patch)}
               />
-            ) : file.editor === "monaco" ? (
-              <Suspense fallback={<ChunkSpinner />}>
-                <MonacoPane
-                  path={file.path}
-                  cwd={file.cwd}
-                  showDiff={!!file.review}
-                  diffBase={file.diffBase}
-                  active={focused && file.id === pane.activeFileId}
-                  navigation={
-                    editorNavigation &&
-                    editorPathsEqual(file.path, editorNavigation.path)
-                      ? editorNavigation
-                      : null
-                  }
-                  onDirtyChange={(_path, dirty) => onDirtyChange(file.id, dirty)}
-                  onErrorCountChange={(_path, count) =>
-                    onErrorCountChange(file.id, count)
-                  }
-                  onOpenFile={onOpenFile}
-                />
-              </Suspense>
             ) : (
-              <FileEditor
+              <MediaGate
                 path={file.path}
                 cwd={file.cwd}
-                showDiff={!!file.review}
                 active={focused && file.id === pane.activeFileId}
-                navigation={
-                  editorNavigation &&
-                  editorPathsEqual(file.path, editorNavigation.path)
-                    ? editorNavigation
-                    : null
+                original={
+                  file.review
+                    ? (media) => (
+                        <MediaReview
+                          path={file.path}
+                          cwd={file.cwd}
+                          media={media}
+                          active={focused && file.id === pane.activeFileId}
+                          base={file.diffBase}
+                        />
+                      )
+                    : undefined
                 }
-                onDirtyChange={(_path, dirty) => onDirtyChange(file.id, dirty)}
-                onErrorCountChange={(_path, count) =>
-                  onErrorCountChange(file.id, count)
+              >
+                {() =>
+                  file.editor === "monaco" ? (
+                    <Suspense fallback={<ChunkSpinner />}>
+                      <MonacoPane
+                        path={file.path}
+                        cwd={file.cwd}
+                        showDiff={!!file.review}
+                        diffBase={file.diffBase}
+                        active={focused && file.id === pane.activeFileId}
+                        navigation={
+                          editorNavigation &&
+                          editorPathsEqual(file.path, editorNavigation.path)
+                            ? editorNavigation
+                            : null
+                        }
+                        onDirtyChange={(_path, dirty) => onDirtyChange(file.id, dirty)}
+                        onErrorCountChange={(_path, count) =>
+                          onErrorCountChange(file.id, count)
+                        }
+                        onOpenFile={onOpenFile}
+                      />
+                    </Suspense>
+                  ) : (
+                    <FileEditor
+                      path={file.path}
+                      cwd={file.cwd}
+                      showDiff={!!file.review}
+                      active={focused && file.id === pane.activeFileId}
+                      navigation={
+                        editorNavigation &&
+                        editorPathsEqual(file.path, editorNavigation.path)
+                          ? editorNavigation
+                          : null
+                      }
+                      onDirtyChange={(_path, dirty) => onDirtyChange(file.id, dirty)}
+                      onErrorCountChange={(_path, count) =>
+                        onErrorCountChange(file.id, count)
+                      }
+                      onOpenFile={onOpenFile}
+                    />
+                  )
                 }
-                onOpenFile={onOpenFile}
-              />
+              </MediaGate>
             )}
           </div>
         ))}

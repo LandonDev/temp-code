@@ -1,5 +1,6 @@
 import type { ClientRequest } from '@shared/contract'
 import * as fs from './fspaths'
+import { fsMedia } from './media'
 import * as git from './gitops'
 import * as gh from './github'
 
@@ -21,10 +22,12 @@ export async function handleFsGit(req: ClientRequest): Promise<Handled> {
     case 'fs.inspectPaths': return result(await fs.fsInspectPaths(req.params.paths))
     case 'fs.readBase64': return result(await fs.fsReadBase64(req.params.path))
     case 'fs.readText': return result(await fs.fsReadText(req.params.path))
+    case 'fs.media': return result(await fsMedia(req.params.path))
     case 'fs.writeText': return result(await fs.fsWriteText(req.params.path, req.params.content))
     case 'git.diffStats': return result(await git.gitDiffStats(req.params.cwd))
     case 'git.diffIndex': return result(await git.gitDiffIndex(req.params.cwd))
     case 'git.fileDiff': return result(await git.gitFileDiff(req.params.cwd, req.params.relative, req.params.base))
+    case 'git.fileMedia': return result(await git.gitFileMedia(req.params.cwd, req.params.relative, req.params.base))
     case 'git.stagedContext': return result(await git.gitStagedContext(req.params.cwd))
     case 'git.rangeContext': return result(await git.gitRangeContext(req.params.cwd))
     case 'git.branches': return result(await git.gitBranches(req.params.cwd))

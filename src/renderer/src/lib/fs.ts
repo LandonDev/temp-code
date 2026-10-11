@@ -1,3 +1,4 @@
+import type { FsMedia, GitFileMedia } from "@server/shared/contract-fsgit";
 import { invoke, open } from "./native";
 
 export type FsEntry = {
@@ -328,6 +329,22 @@ export function statFiles(paths: string[]): Promise<FileMtime[]> {
 
 export function readTextFile(path: string): Promise<string> {
   return invoke<string>("read_text_file", { path });
+}
+
+export type FileMedia = FsMedia;
+
+/** What the viewer shows for an image, video or audio file; null for anything else. */
+export function fileMedia(path: string): Promise<FileMedia | null> {
+  return invoke<FileMedia | null>("file_media", { path });
+}
+
+/** Both sides of a changed media file for the review view; `base` is the index or a ref. */
+export function gitFileMedia(
+  cwd: string,
+  relative: string,
+  base?: string,
+): Promise<GitFileMedia> {
+  return invoke<GitFileMedia>("git_file_media", { cwd, relative, base });
 }
 
 export function writeTextFile(path: string, content: string): Promise<void> {

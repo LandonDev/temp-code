@@ -126,6 +126,11 @@ export const FsGitRequestSchemas = [
   }),
   z.object({
     id: z.string(),
+    method: z.literal('fs.media'),
+    params: z.object({ path: z.string() })
+  }),
+  z.object({
+    id: z.string(),
     method: z.literal('fs.writeText'),
     params: z.object({ path: z.string(), content: z.string() })
   })
@@ -133,6 +138,7 @@ export const FsGitRequestSchemas = [
   request('git.diffStats', cwdParams),
   request('git.diffIndex', cwdParams),
   request('git.fileDiff', fileParams.extend({ base: z.enum(['index', 'HEAD']).optional() })),
+  request('git.fileMedia', fileParams.extend({ base: z.string().optional() })),
   request('git.stagedContext', cwdParams),
   request('git.rangeContext', cwdParams),
   request('git.branches', cwdParams),
@@ -180,6 +186,11 @@ export interface GitDiffIndex {
   ahead: number
   behind: number
   aheadOfDefault: number
+}
+/** git.fileMedia: both sides of a changed media file, each servable by the file host. */
+export interface GitFileMedia {
+  original: FsMedia | null
+  current: FsMedia | null
 }
 export interface GitFileDiff {
   path: string
@@ -239,6 +250,17 @@ export interface FsFileMtime {
   mtimeMs: number | null
 }
 
+export type FsMediaKind = 'image' | 'video' | 'audio'
+
+/** fs.media: a file the viewer shows as media, served over tempcode-asset://file. */
+export interface FsMedia {
+  kind: FsMediaKind
+  mime: string
+  url: string
+  size: number
+  mtimeMs: number
+}
+
 export interface FsPathInfo {
   path: string
   name: string
@@ -259,6 +281,7 @@ export interface FsPathResultMap {
   'fs.inspectPaths': FsPathInfo[]
   'fs.readBase64': string
   'fs.readText': string
+  'fs.media': FsMedia | null
   'fs.writeText': null
 }
 

@@ -1,9 +1,10 @@
 import { execFileChildBudgeted } from './spawnBudget'
-import { lstat, open, stat, unlink } from 'node:fs/promises'
+import { lstat, mkdir, open, rename, stat, unlink, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
-import { isAbsolute, join, resolve } from 'node:path'
+import { extname, isAbsolute, join, resolve } from 'node:path'
+import { MEDIA_SCRATCH_DIR, fsMedia } from './media'
 import type {
-  GitBranches, GitChangedFile, GitDiffIndex, GitDiffStats, GitFileDiff,
+  FsMedia, GitBranches, GitChangedFile, GitDiffIndex, GitDiffStats, GitFileDiff, GitFileMedia,
   GitLogEntry, GitRangeContext, GitStagedContext
 } from '@shared/contract-fsgit'
 
@@ -167,6 +168,34 @@ export async function gitFileDiff(cwd: string, relative: string, base: 'index' |
   const binary = original.includes(0) || current.bytes.includes(0)
   const tooLarge = originalTooLarge || current.tooLarge
   return { path, relative, status: !inIndex ? (meta?.isFile() ? 'untracked' : 'deleted') : !meta ? 'deleted' : 'modified', original: binary || tooLarge ? '' : original.toString('utf8'), current: binary || tooLarge ? '' : current.bytes.toString('utf8'), binary, tooLarge }
+}
+/**
+ * The media review: the file's git side (the index by default, or any ref)
+ * materialised under MEDIA_SCRATCH_DIR, named by blob hash so a revisit
+ * costs nothing, and both sides described as media the file host will
+ * serve. `original` is null for an untracked file, `current` for a deleted one.
+ */
+export async function gitFileMedia(cwd: string, relative: string, base = 'index'): Promise<GitFileMedia> {
+  relative = repoPath(relative)
+  if (base.startsWith('-') || base.includes(':') || /\s/.test(base)) throw new Error('Invalid ref')
+  await requireRepo(cwd)
+  const path = join(rootPath(cwd), relative)
+  const prefix = (await value(cwd, ['rev-parse', '--show-prefix'])) ?? ''
+  const spec = `${base === 'index' ? '' : base}:${prefix}${relative}`
+  const hash = await value(cwd, ['rev-parse', '--verify', '--quiet', spec])
+  let original: FsMedia | null = null
+  if (hash) {
+    const scratch = join(MEDIA_SCRATCH_DIR, `${hash}${extname(relative)}`)
+    if (!(await stat(scratch).catch(() => null))) {
+      await mkdir(MEDIA_SCRATCH_DIR, { recursive: true })
+      const bytes = await run(cwd, ['cat-file', '-p', spec])
+      const tmp = `${scratch}.${process.pid}.part`
+      await writeFile(tmp, bytes)
+      await rename(tmp, scratch)
+    }
+    original = await fsMedia(scratch)
+  }
+  return { original, current: await fsMedia(path) }
 }
 export async function gitStageFile(cwd: string, relative: string): Promise<void> { await checked(cwd, ['add', '--', repoPath(relative)]) }
 export async function gitStageContents(cwd: string, relative: string, contents: string): Promise<void> {
