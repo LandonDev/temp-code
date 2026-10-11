@@ -31,6 +31,12 @@ export function queueNextPick(paths: string[]): void {
   nextPick = paths
 }
 
+/** An isolated test instance (harness.ts) can script every ask dialog. */
+export function scriptedAnswer(env: NodeJS.ProcessEnv): boolean | null {
+  if (!env.TEMP_CODE_USER_DATA || !env.TEMP_CODE_DIALOG_ANSWER) return null
+  return env.TEMP_CODE_DIALOG_ANSWER === 'yes'
+}
+
 export function registerDialogs(): void {
   ipcMain.handle('dialog:open', async (e, options: OpenOptions = {}) => {
     if (nextPick) {
@@ -47,6 +53,8 @@ export function registerDialogs(): void {
   })
 
   ipcMain.handle('dialog:ask', async (e, text: string, options: AskOptions = {}) => {
+    const scripted = scriptedAnswer(process.env)
+    if (scripted !== null) return scripted
     const parent = parentOf(e)
     const opts = askBoxOptions(text, options)
     const res = parent

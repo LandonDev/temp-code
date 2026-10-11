@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { applyHarness, pickHarness } from './harness'
 
 describe('harness overrides', () => {
-  it('keeps only the known keys with string values', () => {
+  it('keeps only the known keys, numbers as strings', () => {
     expect(
       pickHarness({
         TEMP_CODE_USER_DATA: '/tmp/x/userData',
@@ -10,7 +10,11 @@ describe('harness overrides', () => {
         TEMP_CODE_UPDATE_FEED: ' http://127.0.0.1:9231/ ',
         OTHER: 'no'
       })
-    ).toEqual({ TEMP_CODE_USER_DATA: '/tmp/x/userData', TEMP_CODE_UPDATE_FEED: 'http://127.0.0.1:9231/' })
+    ).toEqual({
+      TEMP_CODE_USER_DATA: '/tmp/x/userData',
+      TEMP_CODE_DEBUG_PORT: '9230',
+      TEMP_CODE_UPDATE_FEED: 'http://127.0.0.1:9231/'
+    })
     expect(pickHarness(undefined)).toEqual({})
     expect(pickHarness('nope')).toEqual({})
   })
