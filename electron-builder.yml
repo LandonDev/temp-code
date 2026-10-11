@@ -13,7 +13,7 @@ files:
   - '!{artifacts,build,dist,release,.githooks,.temp-code,.claude}/**'
   # scripts/app-mcp-bridge.mjs ships (the Codex stdio bridge spawns it);
   # the TypeScript e2e drivers, their bundles and the release shell do not.
-  - '!scripts/**/*.{ts,sh}'
+  - '!scripts/**/*.{ts,sh,swift}'
   - '!scripts/.out/**'
   - '!resources/native/*.swift'
   - '!**/*.map'

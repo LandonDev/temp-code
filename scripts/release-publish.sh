@@ -76,6 +76,49 @@ bunx electron-builder --mac \
   -c.mac.identity="${IDENTITY#Developer ID Application: }" \
   --publish always
 
+# Before anything reaches the feed: check the zip the way Squirrel's ShipIt
+# will. ShipIt copies the update out of the zip and validates the copy against
+# the installed app's designated requirement with
+# SecStaticCodeCheckValidityWithErrors (nested code, strict, all
+# architectures); the 1.0.205 install on 2026-10-10 failed exactly there. The
+# dmg's app stands in for the installed one (same identity, same identifier,
+# so the same requirement), and /Applications/TempCode.app is read as a second
+# reference when it is there. scripts/sqrlcheck.swift makes the same call;
+# without a Swift toolchain, codesign --verify --deep --strict is the fallback.
+echo "validating the zip the way ShipIt will"
+STAGE=$(mktemp -d "${TMPDIR:-/tmp}/tc-publish-check.XXXXXX")
+cleanup_stage() {
+  hdiutil detach "$STAGE/dmg" -quiet 2>/dev/null || true
+  rm -rf "$STAGE"
+}
+refuse() {
+  echo "REFUSING TO PUBLISH $VERSION: $1" >&2
+  cleanup_stage
+  # Drop the draft electron-builder opened, so a fixed build can run again.
+  gh api "repos/$REPO/releases" \
+    --jq ".[] | select(.draft and .tag_name==\"v$VERSION\") | .id" |
+    while read -r id; do gh api -X DELETE "repos/$REPO/releases/$id" >/dev/null; done
+  exit 1
+}
+ditto -x -k "dist/TempCode-$VERSION-arm64.zip" "$STAGE" || refuse "the zip does not extract"
+[ -d "$STAGE/TempCode.app" ] || refuse "the zip holds no TempCode.app"
+hdiutil attach -nobrowse -readonly -mountpoint "$STAGE/dmg" "dist/TempCode-$VERSION-arm64.dmg" >/dev/null ||
+  refuse "the dmg does not mount"
+if swiftc -O -o "$STAGE/sqrlcheck" scripts/sqrlcheck.swift 2>"$STAGE/swiftc.log"; then
+  "$STAGE/sqrlcheck" "$STAGE/dmg/TempCode.app" "$STAGE/TempCode.app" ||
+    refuse "the extracted zip fails Squirrel's validation against the dmg's app"
+  if [ -d /Applications/TempCode.app ]; then
+    "$STAGE/sqrlcheck" /Applications/TempCode.app "$STAGE/TempCode.app" ||
+      refuse "the extracted zip fails Squirrel's validation against the installed app"
+  fi
+else
+  echo "swiftc unavailable ($(head -1 "$STAGE/swiftc.log")); falling back to codesign --verify --deep --strict" >&2
+  codesign --verify --deep --strict "$STAGE/TempCode.app" ||
+    refuse "the extracted zip fails codesign --verify --deep --strict"
+fi
+cleanup_stage
+echo "zip validates"
+
 # electron-builder leaves the release as a draft and, in practice, uploads only
 # the blockmap — so finish the job here. Without latest-mac.yml and the zip the
 # feed exists but no app can ever see an update. The unversioned dmg copy gives
