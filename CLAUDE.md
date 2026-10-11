@@ -80,6 +80,9 @@ Two separate steps, on purpose.
    - Worker log: /tmp/temp-code-auto-release.log.
    - Never commit with a broken typecheck "to fix later" — that blocks the
      train.
+   - Commit messages carry no `Co-Authored-By` or other AI attribution
+     trailers: GitHub renders them as a second contributor on every commit.
+     `.claude/settings.json` turns the trailer off; do not add one by hand.
 2. **`bun run release:publish` publishes HEAD's 1.0.N** (scripts/
    release-publish.sh, the same shape as Aliax's release): clean tree on
    master, signs with the Developer ID Application identity in the login
