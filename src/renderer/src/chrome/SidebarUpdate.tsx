@@ -1,5 +1,6 @@
 import { ArrowDownCircle, Loader, RefreshCw } from "./icons";
 import { installing, updateStore, useUpdateSnapshot } from "../lib/updateStore";
+import { canRetry } from "../lib/updater";
 import type { InstalledUpdate } from "../lib/updateNotice";
 import { UpdateRailCard } from "./UpdateRailCard";
 
@@ -39,16 +40,19 @@ export function SidebarUpdate({
 
   const ready = snapshot.phase === "ready";
   const busy = snapshot.phase === "checking" || (installing(snapshot) && !ready);
-  const hasUpdate = snapshot.phase === "available";
-  const label = hasUpdate
-    ? `Update to ${snapshot.availableVersion}`
-    : snapshot.phase === "downloading"
-      ? `Downloading… ${snapshot.percent ?? 0}%`
-      : ready
-        ? "Restart to update"
-        : busy
-          ? "Checking…"
-          : "Check for updates";
+  const retry = canRetry(snapshot);
+  const hasUpdate = snapshot.phase === "available" || retry;
+  const label = retry
+    ? `Retry update to ${snapshot.availableVersion}`
+    : hasUpdate
+      ? `Update to ${snapshot.availableVersion}`
+      : snapshot.phase === "downloading"
+        ? `Downloading… ${snapshot.percent ?? 0}%`
+        : ready
+          ? "Restart to update"
+          : busy
+            ? "Checking…"
+            : "Check for updates";
 
   const onClick = () => {
     if (busy) return;
@@ -64,6 +68,7 @@ export function SidebarUpdate({
         type="button"
         onClick={onClick}
         disabled={busy}
+        title={retry ? snapshot.error : undefined}
         className={`pressable flex h-7 w-full items-center gap-2 rounded-md px-2 text-left ${
           hasUpdate || ready
             ? "bg-accent/10 text-content hover:bg-accent/15"

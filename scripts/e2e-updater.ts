@@ -6,6 +6,14 @@
  *   bun run script:e2e-updater            # build both copies, then drive
  *   bun run script:e2e-updater --reuse    # keep the builds under ROOT, redrive
  *   bun run script:e2e-updater --busy     # restart while a thread is running
+ *   bun run script:e2e-updater --still-running  # a second instance blocks ShipIt
+ *
+ * --still-running keeps a second copy of the old app (same bundle, its own
+ * userData) alive across the restart, so ShipIt aborts with "App Still
+ * Running" and relaunches nothing; the run then starts the old app by hand
+ * and expects it to report the failed install (installFailure, "The app was
+ * still running…"), quits the second copy, retries from the failure state
+ * (a fresh full download) and expects that restart to install.
  *
  * --busy starts a real short Claude turn (Haiku 5.5) in the old copy before
  * asking for the restart. The renderer then treats the window as busy: it
@@ -58,6 +66,7 @@ const UPDATER_CACHE = join(homedir(), 'Library', 'Caches', 'temp-code-harness-up
 const SHIPIT_LABEL = `${APP_ID}.ShipIt`
 const reuse = process.argv.includes('--reuse')
 const busy = process.argv.includes('--busy')
+const stillRunning = process.argv.includes('--still-running')
 
 process.env.PATH = `${homedir()}/.bun/bin:/opt/homebrew/bin:${process.env.PATH ?? ''}`
 delete process.env.ELECTRON_RUN_AS_NODE
@@ -108,8 +117,11 @@ const identityLine = (await sh(['security', 'find-identity', '-v', '-p', 'codesi
 const identity = identityLine?.match(/"Developer ID Application: ([^"]+)"/)?.[1]
 if (!identity) throw new Error('no Developer ID Application identity in the Keychain')
 
+/** Main processes of the bundle at `path`, whichever of /tmp and /private/tmp
+ *  LaunchServices spelled it with. */
 async function pidsAt(path: string): Promise<number[]> {
-  const out = await sh(['pgrep', '-f', `${path}/Contents/MacOS/`], { quiet: true }).catch(() => '')
+  const tail = path.replace(/^\/private/, '')
+  const out = await sh(['pgrep', '-f', `${tail}/Contents/MacOS/`], { quiet: true }).catch(() => '')
   return out.split('\n').filter(Boolean).map(Number)
 }
 
@@ -248,6 +260,7 @@ const server = Bun.serve({
     const file = Bun.file(join(FEED_DIR, name))
     if (!name || !(await file.exists())) return new Response('not found', { status: 404 })
     log(`feed: ${req.method} ${name}`)
+    feedLog.push(name)
     return new Response(file)
   }
 })
@@ -261,11 +274,7 @@ const appLog = join(ROOT, 'old-app.log')
 const env: Record<string, string> = {}
 for (const [k, v] of Object.entries(process.env)) if (v !== undefined && k !== 'ELECTRON_RUN_AS_NODE') env[k] = v
 if (busy) env.TEMP_CODE_DIALOG_ANSWER = 'yes'
-const oldProc = Bun.spawn([EXE], {
-  env,
-  stdout: Bun.file(appLog),
-  stderr: Bun.file(appLog)
-})
+const oldProc = launchOld('old-app.log')
 log(`launched ${OLD} as pid ${oldProc.pid}; log ${appLog}`)
 
 // ── CDP ────────────────────────────────────────────────────────────────────
@@ -327,7 +336,37 @@ class Cdp {
   }
 }
 
-type Status = { current: string; latest: string | null; phase: string; percent?: number; error?: string }
+type Status = {
+  current: string
+  latest: string | null
+  phase: string
+  percent?: number
+  error?: string
+  installFailure?: { version: string; reason: string }
+}
+
+function launchOld(logName: string, extraEnv: Record<string, string> = {}): ReturnType<typeof Bun.spawn> {
+  const file = Bun.file(join(ROOT, logName))
+  return Bun.spawn([EXE], { env: { ...env, ...extraEnv }, stdout: file, stderr: file })
+}
+
+async function driveToReady(cdp: Cdp): Promise<Status> {
+  const started = await cdp.eval<Status>('window.api.updates.apply()')
+  check('apply starts the download', started.phase === 'downloading' || started.phase === 'ready', JSON.stringify(started))
+  let status = started
+  const downloadUntil = Date.now() + 300_000
+  while (status.phase !== 'ready' && status.phase !== 'error' && Date.now() < downloadUntil) {
+    await sleep(1000)
+    status = await cdp.eval<Status>('window.api.updates.get()')
+  }
+  check('download reaches ready', status.phase === 'ready', JSON.stringify(status))
+  if (status.phase !== 'ready') throw new Error('download did not reach ready')
+  return status
+}
+
+async function waitExit(proc: ReturnType<typeof Bun.spawn>, ms: number): Promise<boolean> {
+  return Promise.race([proc.exited.then(() => true), sleep(ms).then(() => false)])
+}
 
 async function attach(timeoutMs: number): Promise<Cdp> {
   const page = await pageTarget(timeoutMs)
@@ -341,6 +380,51 @@ async function attach(timeoutMs: number): Promise<Cdp> {
 }
 
 let relaunched: Cdp | null = null
+const feedLog: string[] = []
+
+/** After the app quit: ShipIt copies the staged bundle, verifies the copy
+ *  against the running app's designated requirement, swaps Contents and
+ *  relaunches. Lines of the ShipIt log written before `since` are an earlier
+ *  attempt's and are not held against this one. */
+async function finishInstall(since: number): Promise<void> {
+  const swapUntil = Date.now() + 180_000
+  let plistVersion = ''
+  while (Date.now() < swapUntil) {
+    plistVersion = (await sh(['plutil', '-extract', 'CFBundleShortVersionString', 'raw', join(APP, 'Contents', 'Info.plist')], { quiet: true }).catch(() => '')).trim()
+    if (plistVersion === NEW) break
+    await sleep(1000)
+  }
+  check(`bundle on disk is ${NEW}`, plistVersion === NEW, `Info.plist says "${plistVersion}" ${((Date.now() - since) / 1000).toFixed(0)}s after restart`)
+
+  relaunched = await attach(120_000).catch((e) => {
+    check('ShipIt relaunched the app', false, e.message)
+    return null
+  })
+  if (relaunched) {
+    const version = await relaunched.eval<string>('window.api.app.version()')
+    check(`relaunched app answers ${NEW}`, version === NEW, version)
+    const status2 = await relaunched.eval<Status>('window.api.updates.get()')
+    check(
+      'relaunched app reports no pending update and no failure',
+      status2.current === NEW && status2.phase !== 'error' && !status2.installFailure,
+      JSON.stringify(status2)
+    )
+    const attemptFile = join(USER_DATA, 'update-attempt.json')
+    check('the attempt record was cleared after the install', !existsSync(attemptFile))
+  }
+
+  const shipItLog = existsSync(SHIPIT_LOG) ? readFileSync(SHIPIT_LOG, 'utf8') : ''
+  const recent = shipItLog.split('\n').filter((l) => {
+    const m = /^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2})\.(\d{3}) /.exec(l)
+    return m ? new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6], +m[7]).getTime() >= since - 5000 : false
+  })
+  const bad = recent.filter((l) => /Installation error|did not pass validation|App Still Running|Installation cancelled|Too many attempts/.test(l))
+  check('ShipIt log shows a clean install', recent.length > 0 && bad.length === 0, bad.length ? bad.join(' | ').slice(0, 600) : `${recent.length} lines`)
+  console.log('---- ShipIt_stderr.log')
+  console.log(shipItLog.trim())
+  console.log('----')
+}
+
 try {
   const cdp = await attach(90_000)
   const booted = await cdp.eval<Status>('window.api.updates.get()')
@@ -349,22 +433,58 @@ try {
   const checked = await cdp.eval<Status>('window.api.updates.check()')
   check(`check sees ${NEW} on the feed`, checked.latest === NEW && checked.phase !== 'error', JSON.stringify(checked))
 
-  const started = await cdp.eval<Status>('window.api.updates.apply()')
-  check('apply starts the download', started.phase === 'downloading' || started.phase === 'ready', JSON.stringify(started))
-
-  let status = started
-  const downloadUntil = Date.now() + 300_000
-  while (status.phase !== 'ready' && status.phase !== 'error' && Date.now() < downloadUntil) {
-    await sleep(1000)
-    status = await cdp.eval<Status>('window.api.updates.get()')
-  }
-  check(`download reaches ready`, status.phase === 'ready', JSON.stringify(status))
-  if (status.phase !== 'ready') throw new Error('download did not reach ready')
+  await driveToReady(cdp)
   // Squirrel fetches the zip from electron-updater's proxy and stages it
   // before electron-updater reports ready; a staged update dir proves it.
   await sleep(2000)
   const staged = existsSync(SHIPIT_DIR) ? (await sh(['ls', SHIPIT_DIR], { quiet: true })).trim().split('\n') : []
   check('Squirrel staged the update', staged.some((n) => n.startsWith('update.')), staged.join(', '))
+
+  if (stillRunning) {
+    // Same bundle, other userData: counts as a running instance of the target.
+    const second = launchOld('second-app.log', { TEMP_CODE_USER_DATA: join(ROOT, 'userData2'), TEMP_CODE_DEBUG_PORT: '9232' })
+    log(`second instance pid ${second.pid}`)
+    await sleep(8000)
+    log('apply again: restart to update (second instance alive)')
+    await cdp.eval<Status>('window.api.updates.apply()').catch((e) => log(`apply (restart) threw: ${e.message}`))
+    check('restart quits the app', await waitExit(oldProc, 60_000))
+    // ShipIt copies and verifies (about 9 s), then counts running instances and gives up.
+    const abortUntil = Date.now() + 120_000
+    let shipItText = ''
+    while (Date.now() < abortUntil) {
+      shipItText = existsSync(SHIPIT_LOG) ? readFileSync(SHIPIT_LOG, 'utf8') : ''
+      if (/App Still Running/.test(shipItText)) break
+      await sleep(1000)
+    }
+    check('ShipIt aborted on the running instance', /App Still Running/.test(shipItText))
+    const plistAfter = (await sh(['plutil', '-extract', 'CFBundleShortVersionString', 'raw', join(APP, 'Contents', 'Info.plist')], { quiet: true })).trim()
+    check(`bundle on disk is still ${OLD}`, plistAfter === OLD, plistAfter)
+    await sleep(3000)
+    check('nothing relaunched', (await pidsAt(APP)).length === 1, `${(await pidsAt(APP)).length} process(es) at ${APP}`)
+
+    const again = launchOld('old-app-2.log')
+    log(`relaunched the old app by hand as pid ${again.pid}`)
+    const cdp2 = await attach(90_000)
+    const after = await cdp2.eval<Status>('window.api.updates.get()')
+    check(
+      'the relaunched app reports the failed install',
+      after.installFailure?.version === NEW && /still running/i.test(after.installFailure?.reason ?? ''),
+      JSON.stringify(after)
+    )
+    second.kill('SIGTERM')
+    await waitExit(second, 15_000)
+    log('second instance gone; retrying from the failure')
+    const retried = await driveToReady(cdp2)
+    check('retry cleared the failure', !retried.installFailure, JSON.stringify(retried))
+    const feedHits = feedLog.filter((l) => l.includes(zipName)).length
+    check('retry downloaded the zip again', feedHits >= 2, `${feedHits} zip fetches`)
+    log('apply again: restart to update (retry)')
+    const restartAt2 = Date.now()
+    await cdp2.eval<Status>('window.api.updates.apply()').catch((e) => log(`apply (restart) threw: ${e.message}`))
+    check('restart quits the app', await waitExit(again, 60_000))
+    await finishInstall(restartAt2)
+    return
+  }
 
   if (busy) {
     const cwd = join(ROOT, 'busy-cwd')
@@ -390,7 +510,7 @@ try {
   log(`apply again: restart to update${busy ? ' (busy)' : ''}`)
   const restartAt = Date.now()
   await cdp.eval<Status>('window.api.updates.apply()').catch((e) => log(`apply (restart) threw: ${e.message}`))
-  const exited = await Promise.race([oldProc.exited.then(() => true), sleep(60_000).then(() => false)])
+  const exited = await waitExit(oldProc, 60_000)
   if (!exited) {
     const pages = await fetch(`http://127.0.0.1:${DEBUG_PORT}/json`)
       .then((r) => r.json() as Promise<Target[]>)
@@ -404,35 +524,7 @@ try {
     throw new Error('stall')
   }
   check('restart quits the app', true, `exited ${((Date.now() - restartAt) / 1000).toFixed(1)}s after apply`)
-
-  // ShipIt copies the staged bundle, verifies the copy against the running
-  // app's designated requirement, swaps Contents, and relaunches.
-  const swapUntil = Date.now() + 180_000
-  let plistVersion = ''
-  while (Date.now() < swapUntil) {
-    plistVersion = (await sh(['plutil', '-extract', 'CFBundleShortVersionString', 'raw', join(APP, 'Contents', 'Info.plist')], { quiet: true }).catch(() => '')).trim()
-    if (plistVersion === NEW) break
-    await sleep(1000)
-  }
-  check(`bundle on disk is ${NEW}`, plistVersion === NEW, `Info.plist says "${plistVersion}" ${((Date.now() - restartAt) / 1000).toFixed(0)}s after restart`)
-
-  relaunched = await attach(120_000).catch((e) => {
-    check('ShipIt relaunched the app', false, e.message)
-    return null
-  })
-  if (relaunched) {
-    const version = await relaunched.eval<string>('window.api.app.version()')
-    check(`relaunched app answers ${NEW}`, version === NEW, version)
-    const status2 = await relaunched.eval<Status>('window.api.updates.get()')
-    check('relaunched app reports no pending update', status2.current === NEW && status2.phase !== 'error', JSON.stringify(status2))
-  }
-
-  const shipItLog = existsSync(SHIPIT_LOG) ? readFileSync(SHIPIT_LOG, 'utf8') : ''
-  const bad = shipItLog.split('\n').filter((l) => /Installation error|did not pass validation|App Still Running|Installation cancelled|Too many attempts/.test(l))
-  check('ShipIt log shows a clean install', shipItLog.length > 0 && bad.length === 0, bad.length ? bad.join(' | ').slice(0, 600) : `${shipItLog.split('\n').filter(Boolean).length} lines`)
-  console.log('---- ShipIt_stderr.log')
-  console.log(shipItLog.trim())
-  console.log('----')
+  await finishInstall(restartAt)
 } catch (e) {
   if ((e as Error).message !== 'stall') check('e2e run', false, (e as Error).message)
 } finally {

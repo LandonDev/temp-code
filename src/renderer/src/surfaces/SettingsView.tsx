@@ -167,6 +167,8 @@ import { DANGER, GHOST, PRIMARY } from "../chrome/ConfirmDialog";
 import { AppshotsPage } from "./AppshotsSettings";
 import { MatrixSpinner } from "./threads/bits";
 import { updateStore, useUpdateSnapshot } from "../lib/updateStore";
+import { MANUAL_DOWNLOAD_URL, canRetry } from "../lib/updater";
+import { openUrl } from "../lib/native";
 import { shell, useShell } from "../stores/shell";
 
 type Props = {
@@ -681,7 +683,8 @@ function UpdateRow({
       ? onOpenWhatsNew(snapshot.availableVersion, snapshot.notes)
       : onOpenWhatsNew(BUNDLED_RELEASE.version, BUNDLED_RELEASE.notes);
 
-  const actionable = (hasUpdate && canApply) || ready;
+  const retry = canRetry(snapshot);
+  const actionable = (hasUpdate && canApply) || ready || retry;
 
   return (
     <Row
@@ -701,7 +704,13 @@ function UpdateRow({
       }
     >
       <div className="flex items-center gap-2">
-        <SecondaryButton onClick={onWhatsNew}>What's new</SecondaryButton>
+        {snapshot.phase === "error" && canApply ? (
+          <SecondaryButton onClick={() => void openUrl(MANUAL_DOWNLOAD_URL)}>
+            Download the installer
+          </SecondaryButton>
+        ) : (
+          <SecondaryButton onClick={onWhatsNew}>What's new</SecondaryButton>
+        )}
         <SecondaryButton
           onClick={() =>
             void (actionable ? updateStore.install() : updateStore.check(true))
@@ -715,7 +724,7 @@ function UpdateRow({
           ) : (
             <RefreshCw className="size-3.5" strokeWidth={1.75} aria-hidden />
           )}
-          {ready ? "Restart" : hasUpdate && canApply ? "Update" : "Check for updates"}
+          {ready ? "Restart" : retry ? "Retry" : hasUpdate && canApply ? "Update" : "Check for updates"}
         </SecondaryButton>
       </div>
     </Row>

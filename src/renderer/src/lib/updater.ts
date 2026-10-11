@@ -31,10 +31,37 @@ export type UpdaterSnapshot = {
   error?: string;
 };
 
+/** The hand-built installer, for when the updater cannot finish on its own. */
+export const MANUAL_DOWNLOAD_URL =
+  "https://github.com/LandonDev/temp-code/releases/latest/download/TempCode-arm64.dmg";
+
+/** An error with a version to retry: the button downloads it again. */
+export function canRetry(snapshot: UpdaterSnapshot): boolean {
+  return (
+    snapshot.phase === "error" &&
+    !!snapshot.availableVersion &&
+    snapshot.canApply === true
+  );
+}
+
 export function snapshotFromStatus(status: UpdateStatus): UpdaterSnapshot {
   const currentVersion = status.current;
   const availableVersion = status.latest ?? undefined;
   const canApply = status.canApply;
+  // A release handed to the installer that never landed outranks a quiet
+  // idle: the user sees why and the same button retries.
+  if (
+    status.installFailure &&
+    (status.phase === "idle" || status.phase === "checking")
+  ) {
+    return {
+      phase: "error",
+      currentVersion,
+      availableVersion: availableVersion ?? status.installFailure.version,
+      error: status.installFailure.reason,
+      canApply,
+    };
+  }
   switch (status.phase) {
     case "checking":
       return { phase: "checking", currentVersion, canApply };
@@ -154,7 +181,7 @@ export async function installPendingUpdate(
     onProgress?.(restarting);
     return restarting;
   }
-  if (snapshot.phase !== "available") {
+  if (snapshot.phase !== "available" && !canRetry(snapshot)) {
     onProgress?.(snapshot);
     return snapshot;
   }

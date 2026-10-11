@@ -2,7 +2,7 @@ import { app, shell, dialog, net, BrowserWindow, ipcMain } from 'electron'
 import { homedir } from 'os'
 import { join } from 'path'
 import { copyFileSync, existsSync, mkdirSync } from 'fs'
-import { registerUpdates } from './update'
+import { noteInstallOnQuit, registerUpdates } from './update'
 import { applyHarness, bakedHarness } from './harness'
 import { configureAliax } from './aliax'
 import { aliaxCallCounts, registerAliaxPages } from './aliaxPages'
@@ -170,6 +170,9 @@ app.on('before-quit', (e) => {
     requestQuit()
     return
   }
+  // A downloaded release installs on this quit (Squirrel does that on its
+  // own); remember it so the next boot can tell whether it landed.
+  noteInstallOnQuit()
   // The server outlives every window and dies only here, with the PTYs
   // and every helper process it started.
   // The shim marker goes back to Aliax first: the async close may not finish.

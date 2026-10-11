@@ -50,6 +50,8 @@ interface UpdateStatus {
   phase: 'idle' | 'checking' | 'downloading' | 'ready' | 'error'
   percent?: number
   error?: string
+  /** A release this app handed to Squirrel's installer that did not land. */
+  installFailure?: { version: string; reason: string }
 }
 
 interface AppshotAttachment {

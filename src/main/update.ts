@@ -1,8 +1,22 @@
 import { app, ipcMain } from 'electron'
 import electronUpdater from 'electron-updater'
-import { mkdirSync, writeFileSync } from 'fs'
-import { join } from 'path'
+import { execFileSync } from 'child_process'
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, unlinkSync, writeFileSync } from 'fs'
+import { homedir } from 'os'
+import { dirname, join } from 'path'
 import release from '../../release.json'
+import {
+  bundleIdentifier,
+  bundleShortVersion,
+  compareVersions,
+  judgeAttempt,
+  parseAttempt,
+  serializeAttempt,
+  stagedBundlePath,
+  stalePaths,
+  updaterCacheDirName,
+  type InstallFailure
+} from './updateInstall'
 import { armQuit, cancelQuit, confirmQuit, hasQuitSubscriber, requestQuit, targetWindow } from './windows'
 
 const { autoUpdater } = electronUpdater
@@ -35,6 +49,9 @@ export interface UpdateStatus {
   /** While downloading: whole percent. */
   percent?: number
   error?: string
+  /** A release this app handed to Squirrel's installer that did not land:
+   *  found at boot, shown until the user retries (updateInstall.ts). */
+  installFailure?: InstallFailure
 }
 
 let status: UpdateStatus = {
@@ -115,30 +132,159 @@ async function check(): Promise<UpdateStatus> {
  * the window on a busy session and left Squirrel waiting forever.
  */
 function restartToInstall(): void {
+  if (status.latest) recordAttempt(status.latest)
   armQuit(
     () => autoUpdater.quitAndInstall(),
-    () => undefined
+    () => forgetAttempt()
   )
   if (hasQuitSubscriber()) requestQuit()
   else void confirmQuit(-1)
 }
 
+function startDownload(): UpdateStatus {
+  setStatus({ phase: 'downloading', percent: 0, error: undefined, installFailure: undefined })
+  autoUpdater.downloadUpdate().catch((err: Error) => setStatus({ phase: 'error', error: err.message }))
+  return status
+}
+
 /**
  * One button walks available → downloading → restart. Download starts only
  * when the user asks — an unrequested background download would fight the
- * agents for bandwidth for an update the user may not want yet.
+ * agents for bandwidth for an update the user may not want yet. After a
+ * failed install the same button retries from nothing: the rejected download
+ * and Squirrel's staged copy are removed first and the zip is fetched whole,
+ * not assembled from the differential base.
  */
-function apply(): UpdateStatus {
+async function apply(): Promise<UpdateStatus> {
   if (!app.isPackaged) return status
   if (status.phase === 'ready') {
     restartToInstall()
     return status
   }
-  if (status.phase === 'idle' && status.latest) {
-    setStatus({ phase: 'downloading', percent: 0, error: undefined })
-    autoUpdater.downloadUpdate().catch((err: Error) => setStatus({ phase: 'error', error: err.message }))
+  if (status.installFailure || (status.phase === 'error' && status.latest)) {
+    clearStaleUpdate()
+    autoUpdater.disableDifferentialDownload = true
+    setStatus({ installFailure: undefined, error: undefined })
+    // downloadUpdate needs a check from this process behind it.
+    if (!status.checked || !status.latest) await check()
+    return status.latest ? startDownload() : status
   }
+  if (status.phase === 'idle' && status.latest) return startDownload()
   return status
+}
+
+// ── Installs that did not land ───────────────────────────────────────────────
+// ShipIt runs after the app has quit; no event of ours sees it fail. The app
+// writes what it handed over, and the next boot reads Squirrel's log.
+
+const attemptFile = (): string => join(app.getPath('userData'), 'update-attempt.json')
+
+function recordAttempt(version: string): void {
+  try {
+    writeFileSync(attemptFile(), serializeAttempt(version, Date.now()))
+  } catch {
+    /* a missing record only costs the failure notice */
+  }
+}
+
+function forgetAttempt(): void {
+  try {
+    unlinkSync(attemptFile())
+  } catch {
+    /* none */
+  }
+}
+
+/** before-quit: a downloaded release installs on this quit, with or without a relaunch. */
+export function noteInstallOnQuit(): void {
+  if (app.isPackaged && status.phase === 'ready' && status.latest) recordAttempt(status.latest)
+}
+
+const cachesDir = (): string => join(homedir(), 'Library', 'Caches')
+
+/** Our CFBundleIdentifier, from the bundle's Info.plist (electron-builder.yml appId). */
+function bundleId(): string {
+  try {
+    return bundleIdentifier(readFileSync(join(dirname(process.execPath), '..', 'Info.plist'), 'utf8')) ?? 'dev.landon.tempcode'
+  } catch {
+    return 'dev.landon.tempcode'
+  }
+}
+
+/** electron-updater's cache directory name: app-update.yml's, or the harness one. */
+function cacheDirName(): string {
+  if (process.env.TEMP_CODE_UPDATE_FEED && process.env.TEMP_CODE_USER_DATA) return HARNESS_CACHE_DIR_NAME
+  try {
+    return updaterCacheDirName(readFileSync(join(process.resourcesPath, 'app-update.yml'), 'utf8')) ?? 'temp-code-updater'
+  } catch {
+    return 'temp-code-updater'
+  }
+}
+
+const shipItDir = (): string => join(cachesDir(), `${bundleId()}.ShipIt`)
+
+function readText(file: string): string {
+  try {
+    return readFileSync(file, 'utf8')
+  } catch {
+    return ''
+  }
+}
+
+/** The bundle ShipItState.plist still points at, if any: its version and
+ *  when Squirrel last wrote the state (the hand-over time). */
+function stagedUpdate(): { version: string; at: number } | null {
+  const state = join(shipItDir(), 'ShipItState.plist')
+  if (!existsSync(state)) return null
+  try {
+    const xml = execFileSync('plutil', ['-convert', 'xml1', '-o', '-', state], { encoding: 'utf8' })
+    const bundle = stagedBundlePath(xml)
+    const version = bundle ? bundleShortVersion(readText(join(bundle, 'Contents', 'Info.plist'))) : null
+    return version ? { version, at: statSync(state).mtimeMs } : null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * At boot: did the last hand-over install? The record wins; without one
+ * (an older build wrote none) a staged bundle newer than us in Squirrel's
+ * state means the same thing. A staged bundle no newer than us is left
+ * over from an install that happened and is removed.
+ */
+function detectFailedInstall(): InstallFailure | null {
+  const current = app.getVersion()
+  const log = readText(join(shipItDir(), 'ShipIt_stderr.log'))
+  const attempt = parseAttempt(readText(attemptFile()) || null)
+  if (attempt) {
+    const failure = judgeAttempt(attempt, current, log)
+    if (!failure) forgetAttempt()
+    return failure
+  }
+  const staged = stagedUpdate()
+  if (!staged) return null
+  if (compareVersions(staged.version, current) > 0) return judgeAttempt(staged, current, log)
+  clearStaleUpdate(false)
+  return null
+}
+
+/** Remove Squirrel's hand-over (and, for a retry, the rejected download) so
+ *  the next attempt starts clean. */
+function clearStaleUpdate(download = true): void {
+  const shipIt = shipItDir()
+  let entries: string[] = []
+  try {
+    entries = readdirSync(shipIt)
+  } catch {
+    /* no Squirrel state */
+  }
+  for (const path of stalePaths(cachesDir(), cacheDirName(), bundleId(), entries, download)) {
+    try {
+      rmSync(path, { recursive: true, force: true })
+    } catch {
+      /* best effort; the download overwrites what it can */
+    }
+  }
 }
 
 /**
@@ -170,6 +316,8 @@ function applyFeedOverride(): void {
 export function registerUpdates(): void {
   if (app.isPackaged) {
     applyFeedOverride()
+    const failure = detectFailedInstall()
+    if (failure) status = { ...status, installFailure: failure, latest: failure.version }
     autoUpdater.autoDownload = false
     autoUpdater.autoInstallOnAppQuit = true
     autoUpdater.on('update-available', (info) =>

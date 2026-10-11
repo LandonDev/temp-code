@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from "react";
 import {
+  canRetry,
   installPendingUpdate,
   runUpdateFlow,
   watchUpdateStatus,
@@ -92,9 +93,14 @@ class UpdateStore {
     return this.inflight;
   }
 
-  /** Download a waiting release, or restart into a downloaded one. */
+  /** Download a waiting release, restart into a downloaded one, or retry
+   *  one that failed to install. */
   install(): Promise<UpdaterSnapshot> {
-    if (this.state.phase !== "available" && this.state.phase !== "ready") {
+    if (
+      this.state.phase !== "available" &&
+      this.state.phase !== "ready" &&
+      !canRetry(this.state)
+    ) {
       return Promise.resolve(this.state);
     }
     return installPendingUpdate(this.set);

@@ -63,6 +63,26 @@ describe("snapshotFromStatus", () => {
       error: "offline",
     });
   });
+
+  it("shows an install that never landed as a retryable error", async () => {
+    const { canRetry, snapshotFromStatus } = await import("./updater");
+    const failure = { version: "1.0.199", reason: "The downloaded update failed its signature check." };
+    const snapshot = snapshotFromStatus(status({ installFailure: failure }));
+    expect(snapshot).toMatchObject({
+      phase: "error",
+      availableVersion: "1.0.199",
+      error: failure.reason,
+    });
+    expect(canRetry(snapshot)).toBe(true);
+    // The feed has not answered yet: the attempted version still names the retry.
+    expect(snapshotFromStatus(status({ installFailure: failure, latest: null, checked: false })).availableVersion).toBe(
+      "1.0.199",
+    );
+    // A download in progress or a plain feed error without a version is not a retry.
+    expect(snapshotFromStatus(status({ installFailure: failure, phase: "downloading" })).phase).toBe("downloading");
+    expect(canRetry(snapshotFromStatus(status({ phase: "error", error: "offline", latest: null })))).toBe(false);
+    expect(canRetry(snapshotFromStatus(status({ installFailure: failure, canApply: false })))).toBe(false);
+  });
 });
 
 describe("installPendingUpdate", () => {
@@ -88,6 +108,18 @@ describe("installPendingUpdate", () => {
 
     expect(mocks.remember).toHaveBeenCalledWith("1.0.199");
     expect(mocks.apply).toHaveBeenCalledOnce();
+  });
+
+  it("retries a failed install through apply", async () => {
+    const failure = { version: "1.0.199", reason: "The app was still running when the update tried to install." };
+    mocks.get.mockResolvedValue(status({ installFailure: failure }));
+    mocks.apply.mockResolvedValue(status({ phase: "downloading", percent: 0 }));
+    const { installPendingUpdate } = await import("./updater");
+
+    const result = await installPendingUpdate();
+
+    expect(mocks.apply).toHaveBeenCalledOnce();
+    expect(result.phase).toBe("downloading");
   });
 
   it("refuses in a dev instance that cannot apply", async () => {
