@@ -268,10 +268,21 @@ function detectFailedInstall(): InstallFailure | null {
   return null
 }
 
-/** Remove Squirrel's hand-over (and, for a retry, the rejected download) so
- *  the next attempt starts clean. */
+/**
+ * Remove Squirrel's hand-over (and, for a retry, the rejected download) so
+ * the next attempt starts clean. The launchd job goes first: a ShipIt from
+ * the last hand-over may still be alive, waiting for this very app to quit,
+ * and launchd would respawn it every two seconds once its state file is gone
+ * ("Could not read update request"); removing the job ends both. Squirrel
+ * submits a fresh job at the next hand-over.
+ */
 function clearStaleUpdate(download = true): void {
   const shipIt = shipItDir()
+  try {
+    execFileSync('launchctl', ['remove', `${bundleId()}.ShipIt`], { stdio: 'ignore' })
+  } catch {
+    /* no job */
+  }
   let entries: string[] = []
   try {
     entries = readdirSync(shipIt)

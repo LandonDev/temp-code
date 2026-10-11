@@ -65,15 +65,24 @@ export const SIGNATURE_FAILED = 'The downloaded update failed its signature chec
 export const APP_STILL_RUNNING = 'The app was still running when the update tried to install.'
 export const TOO_MANY_ATTEMPTS = 'The update was tried too many times.'
 export const NEVER_INSTALLED = 'The update never installed.'
+export const WAITING_FOR_QUIT = 'The update is waiting for the app to quit.'
 export const DID_NOT_INSTALL = 'The update did not install.'
 
-/** One line for the user, from ShipIt's log lines since the hand-over. */
+/**
+ * One line for the user, from ShipIt's log lines since the hand-over. On a
+ * first attempt ShipIt waits for every instance of the app to quit before it
+ * begins (it logs only "Detected this as an install request" meanwhile), so
+ * an app relaunched during that wait sees a hand-over with no outcome yet.
+ */
 export function describeInstallFailure(lines: string[]): string {
   const text = lines.join('\n')
   if (/did not pass validation|SQRLCodeSignatureErrorDomain/.test(text)) return SIGNATURE_FAILED
   if (/App Still Running/.test(text)) return APP_STILL_RUNNING
   if (/Too many attempts/.test(text)) return TOO_MANY_ATTEMPTS
   if (lines.length === 0) return NEVER_INSTALLED
+  if (/Detected this as an install request/.test(text) && !/Beginning installation|Installation error|Installation cancelled|Installation completed/.test(text)) {
+    return WAITING_FOR_QUIT
+  }
   return DID_NOT_INSTALL
 }
 

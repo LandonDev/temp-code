@@ -158,6 +158,13 @@ export async function runUpdateFlow(
     );
     return yes ? installPendingUpdate(onProgress) : snapshot;
   }
+  if (manual && canRetry(snapshot)) {
+    const yes = await ask(
+      `Release ${snapshot.availableVersion} did not install. ${snapshot.error}\n\nDownload it again?`,
+      { title: "Update failed", kind: "warning", okLabel: "Download" },
+    );
+    return yes ? installPendingUpdate(onProgress) : snapshot;
+  }
   if (manual && snapshot.phase === "error") {
     await message(`Couldn't check for updates.\n\n${snapshot.error}`, {
       title: "TempCode",

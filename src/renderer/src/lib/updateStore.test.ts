@@ -85,6 +85,19 @@ describe("updateStore", () => {
     expect(mocks.message).not.toHaveBeenCalled();
   });
 
+  it("keeps a failed install on screen after an automatic probe", async () => {
+    const failure = { version: "1.0.96", reason: "The update never installed." };
+    mocks.get.mockResolvedValue(status({ installFailure: failure }));
+    mocks.check.mockResolvedValue(status({ installFailure: failure, latest: "1.0.96" }));
+    updateStore.start();
+    await flush();
+    expect(updateStore.getSnapshot()).toMatchObject({
+      phase: "error",
+      availableVersion: "1.0.96",
+      error: failure.reason,
+    });
+  });
+
   it("leaves a failed automatic probe idle and quiet", async () => {
     mocks.check.mockRejectedValue(new Error("network failed"));
 

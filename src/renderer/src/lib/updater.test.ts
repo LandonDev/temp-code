@@ -169,6 +169,25 @@ describe("runUpdateFlow", () => {
     expect(result.phase).toBe("downloading");
   });
 
+  it("offers to download a release again after a failed install, on a manual check", async () => {
+    const failure = { version: "1.0.199", reason: "The downloaded update failed its signature check." };
+    mocks.check.mockResolvedValue(status({ installFailure: failure }));
+    mocks.ask.mockResolvedValue(true);
+    mocks.get.mockResolvedValue(status({ installFailure: failure }));
+    mocks.apply.mockResolvedValue(status({ phase: "downloading", percent: 0 }));
+    const { runUpdateFlow } = await import("./updater");
+
+    const result = await runUpdateFlow(true);
+
+    expect(mocks.ask.mock.calls[0][0]).toContain("did not install");
+    expect(mocks.apply).toHaveBeenCalledOnce();
+    expect(result.phase).toBe("downloading");
+
+    mocks.apply.mockClear();
+    expect((await runUpdateFlow(false)).phase).toBe("error");
+    expect(mocks.apply).not.toHaveBeenCalled();
+  });
+
   it("says so when current, only on a manual check", async () => {
     mocks.check.mockResolvedValue(status({ latest: null }));
     const { runUpdateFlow } = await import("./updater");

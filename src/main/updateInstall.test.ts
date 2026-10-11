@@ -4,6 +4,7 @@ import {
   DID_NOT_INSTALL,
   NEVER_INSTALLED,
   SIGNATURE_FAILED,
+  WAITING_FOR_QUIT,
   bundleIdentifier,
   bundleShortVersion,
   compareVersions,
@@ -62,6 +63,14 @@ describe('ShipIt log reading', () => {
     expect(describeInstallFailure(shipItLinesSince(LOG, at(2, 17)))).toBe(SIGNATURE_FAILED)
     expect(describeInstallFailure(shipItLinesSince(LOG, at(22, 4)))).toBe(APP_STILL_RUNNING)
     expect(describeInstallFailure([])).toBe(NEVER_INSTALLED)
+    // ShipIt launched and is waiting for every instance to quit (first attempt).
+    expect(describeInstallFailure(['2026-10-10 23:06:13.433 ShipIt[88575:659500] Detected this as an install request'])).toBe(WAITING_FOR_QUIT)
+    expect(
+      describeInstallFailure([
+        '2026-10-10 23:06:13.433 ShipIt[88575:659500] Detected this as an install request',
+        '2026-10-10 23:08:18.521 ShipIt[88575:659503] Beginning installation'
+      ])
+    ).toBe(DID_NOT_INSTALL)
     expect(describeInstallFailure(['2026-10-10 22:05:01.726 ShipIt[1:1] Installation error: something else'])).toBe(DID_NOT_INSTALL)
   })
 

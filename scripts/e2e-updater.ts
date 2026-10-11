@@ -9,11 +9,12 @@
  *   bun run script:e2e-updater --still-running  # a second instance blocks ShipIt
  *
  * --still-running keeps a second copy of the old app (same bundle, its own
- * userData) alive across the restart, so ShipIt aborts with "App Still
- * Running" and relaunches nothing; the run then starts the old app by hand
- * and expects it to report the failed install (installFailure, "The app was
- * still running…"), quits the second copy, retries from the failure state
- * (a fresh full download) and expects that restart to install.
+ * userData) alive across the restart. ShipIt then waits for every instance to
+ * quit before it begins (a first attempt never aborts, it waits); the run
+ * starts the old app by hand, which must report the hand-over as waiting
+ * ("The update is waiting for the app to quit."), quits the second copy,
+ * retries from that state (which dismisses the waiting ShipIt and fetches
+ * the zip again, whole) and expects that restart to install.
  *
  * --busy starts a real short Claude turn (Haiku 5.5) in the old copy before
  * asking for the restart. The renderer then treats the window as busy: it
@@ -45,7 +46,15 @@
  * id; the installed app's paths are never read or written.
  */
 import { createHash } from 'node:crypto'
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync, createReadStream, statSync } from 'node:fs'
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+  createReadStream,
+  statSync
+} from 'node:fs'
 import { homedir } from 'node:os'
 import { join, resolve } from 'node:path'
 
@@ -77,10 +86,14 @@ const check = (name: string, ok: boolean, detail = ''): boolean => {
   if (!ok) failures++
   return ok
 }
-const log = (msg: string): void => console.log(`[e2e-updater ${new Date().toISOString().slice(11, 19)}] ${msg}`)
+const log = (msg: string): void =>
+  console.log(`[e2e-updater ${new Date().toISOString().slice(11, 19)}] ${msg}`)
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms))
 
-async function sh(cmd: string[], opts: { cwd?: string; quiet?: boolean; env?: Record<string, string> } = {}): Promise<string> {
+async function sh(
+  cmd: string[],
+  opts: { cwd?: string; quiet?: boolean; env?: Record<string, string> } = {}
+): Promise<string> {
   const proc = Bun.spawn(cmd, {
     cwd: opts.cwd ?? REPO,
     env: { ...process.env, ...(opts.env ?? {}) },
@@ -111,7 +124,9 @@ const N = Number(versionMatch[1])
 const OLD = `1.0.${N - 1}`
 const NEW = `1.0.${N}`
 
-const identityLine = (await sh(['security', 'find-identity', '-v', '-p', 'codesigning'], { quiet: true }))
+const identityLine = (
+  await sh(['security', 'find-identity', '-v', '-p', 'codesigning'], { quiet: true })
+)
   .split('\n')
   .find((l) => l.includes('"Developer ID Application: '))
 const identity = identityLine?.match(/"Developer ID Application: ([^"]+)"/)?.[1]
@@ -144,7 +159,9 @@ async function killAt(path: string): Promise<void> {
 }
 
 async function portFree(port: number): Promise<boolean> {
-  const out = await sh(['lsof', '-nP', `-iTCP:${port}`, '-sTCP:LISTEN'], { quiet: true }).catch(() => '')
+  const out = await sh(['lsof', '-nP', `-iTCP:${port}`, '-sTCP:LISTEN'], { quiet: true }).catch(
+    () => ''
+  )
   return out.trim() === ''
 }
 
@@ -174,7 +191,8 @@ for (let i = 0; existsSync(join(REPO, '.git', 'auto-release.lock')); i++) {
 // ── Build ──────────────────────────────────────────────────────────────────
 
 const outDir = (which: 'old' | 'new'): string => join(ROOT, `build-${which}`)
-const builtApp = (which: 'old' | 'new'): string => join(outDir(which), 'mac-arm64', `${PRODUCT}.app`)
+const builtApp = (which: 'old' | 'new'): string =>
+  join(outDir(which), 'mac-arm64', `${PRODUCT}.app`)
 const zipName = `${PRODUCT}-${NEW}-arm64.zip`
 
 async function pack(version: string, which: 'old' | 'new'): Promise<void> {
@@ -206,9 +224,26 @@ async function pack(version: string, which: 'old' | 'new'): Promise<void> {
     writeFileSync(pkgPath, pkgText)
   }
   const app = builtApp(which)
-  const built = JSON.parse(readFileSync(join(app, 'Contents', 'Resources', 'app', 'package.json'), 'utf8'))
-  check(`${which} bundle is ${version} with the harness block`, built.version === version && built.tempcodeHarness?.TEMP_CODE_USER_DATA === USER_DATA, JSON.stringify(built.tempcodeHarness))
-  const plistVersion = (await sh(['plutil', '-extract', 'CFBundleShortVersionString', 'raw', join(app, 'Contents', 'Info.plist')], { quiet: true })).trim()
+  const built = JSON.parse(
+    readFileSync(join(app, 'Contents', 'Resources', 'app', 'package.json'), 'utf8')
+  )
+  check(
+    `${which} bundle is ${version} with the harness block`,
+    built.version === version && built.tempcodeHarness?.TEMP_CODE_USER_DATA === USER_DATA,
+    JSON.stringify(built.tempcodeHarness)
+  )
+  const plistVersion = (
+    await sh(
+      [
+        'plutil',
+        '-extract',
+        'CFBundleShortVersionString',
+        'raw',
+        join(app, 'Contents', 'Info.plist')
+      ],
+      { quiet: true }
+    )
+  ).trim()
   check(`${which} Info.plist says ${version}`, plistVersion === version, plistVersion)
   await sh(['codesign', '--verify', '--deep', '--strict', app], { quiet: true })
   check(`${which} bundle passes codesign --verify --deep --strict`, true)
@@ -235,7 +270,10 @@ if (!existsSync(feedZip)) await sh(['cp', newZip, feedZip])
 
 const sha512 = await new Promise<string>((res, rej) => {
   const h = createHash('sha512')
-  createReadStream(feedZip).on('data', (d) => h.update(d)).on('end', () => res(h.digest('base64'))).on('error', rej)
+  createReadStream(feedZip)
+    .on('data', (d) => h.update(d))
+    .on('end', () => res(h.digest('base64')))
+    .on('error', rej)
 })
 const size = statSync(feedZip).size
 writeFileSync(
@@ -272,7 +310,8 @@ await sh(['ditto', builtApp('old'), APP])
 mkdirSync(USER_DATA, { recursive: true })
 const appLog = join(ROOT, 'old-app.log')
 const env: Record<string, string> = {}
-for (const [k, v] of Object.entries(process.env)) if (v !== undefined && k !== 'ELECTRON_RUN_AS_NODE') env[k] = v
+for (const [k, v] of Object.entries(process.env))
+  if (v !== undefined && k !== 'ELECTRON_RUN_AS_NODE') env[k] = v
 if (busy) env.TEMP_CODE_DIALOG_ANSWER = 'yes'
 const oldProc = launchOld('old-app.log')
 log(`launched ${OLD} as pid ${oldProc.pid}; log ${appLog}`)
@@ -286,7 +325,9 @@ async function pageTarget(timeoutMs: number): Promise<Target> {
   while (Date.now() < until) {
     try {
       const list = (await (await fetch(`http://127.0.0.1:${DEBUG_PORT}/json`)).json()) as Target[]
-      const page = list.find((t) => t.type === 'page' && t.webSocketDebuggerUrl && t.url.includes('/renderer/index.html'))
+      const page = list.find(
+        (t) => t.type === 'page' && t.webSocketDebuggerUrl && t.url.includes('/renderer/index.html')
+      )
       if (page) return page
     } catch {
       /* not up yet */
@@ -324,11 +365,16 @@ class Cdp {
     return new Promise((res, rej) => this.pending.set(id, { res, rej }))
   }
   async eval<T>(expression: string): Promise<T> {
-    const r = (await this.send('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true })) as {
+    const r = (await this.send('Runtime.evaluate', {
+      expression,
+      awaitPromise: true,
+      returnByValue: true
+    })) as {
       result: { value?: T }
       exceptionDetails?: { text: string; exception?: { description?: string } }
     }
-    if (r.exceptionDetails) throw new Error(r.exceptionDetails.exception?.description ?? r.exceptionDetails.text)
+    if (r.exceptionDetails)
+      throw new Error(r.exceptionDetails.exception?.description ?? r.exceptionDetails.text)
     return r.result.value as T
   }
   close(): void {
@@ -345,14 +391,21 @@ type Status = {
   installFailure?: { version: string; reason: string }
 }
 
-function launchOld(logName: string, extraEnv: Record<string, string> = {}): ReturnType<typeof Bun.spawn> {
+function launchOld(
+  logName: string,
+  extraEnv: Record<string, string> = {}
+): ReturnType<typeof Bun.spawn> {
   const file = Bun.file(join(ROOT, logName))
   return Bun.spawn([EXE], { env: { ...env, ...extraEnv }, stdout: file, stderr: file })
 }
 
 async function driveToReady(cdp: Cdp): Promise<Status> {
   const started = await cdp.eval<Status>('window.api.updates.apply()')
-  check('apply starts the download', started.phase === 'downloading' || started.phase === 'ready', JSON.stringify(started))
+  check(
+    'apply starts the download',
+    started.phase === 'downloading' || started.phase === 'ready',
+    JSON.stringify(started)
+  )
   let status = started
   const downloadUntil = Date.now() + 300_000
   while (status.phase !== 'ready' && status.phase !== 'error' && Date.now() < downloadUntil) {
@@ -373,7 +426,10 @@ async function attach(timeoutMs: number): Promise<Cdp> {
   const cdp = await Cdp.connect(page.webSocketDebuggerUrl!)
   const until = Date.now() + 60_000
   while (Date.now() < until) {
-    if (await cdp.eval<boolean>('typeof window.api?.updates?.get === "function"').catch(() => false)) return cdp
+    if (
+      await cdp.eval<boolean>('typeof window.api?.updates?.get === "function"').catch(() => false)
+    )
+      return cdp
     await sleep(500)
   }
   throw new Error('renderer never exposed window.api.updates')
@@ -390,11 +446,26 @@ async function finishInstall(since: number): Promise<void> {
   const swapUntil = Date.now() + 180_000
   let plistVersion = ''
   while (Date.now() < swapUntil) {
-    plistVersion = (await sh(['plutil', '-extract', 'CFBundleShortVersionString', 'raw', join(APP, 'Contents', 'Info.plist')], { quiet: true }).catch(() => '')).trim()
+    plistVersion = (
+      await sh(
+        [
+          'plutil',
+          '-extract',
+          'CFBundleShortVersionString',
+          'raw',
+          join(APP, 'Contents', 'Info.plist')
+        ],
+        { quiet: true }
+      ).catch(() => '')
+    ).trim()
     if (plistVersion === NEW) break
     await sleep(1000)
   }
-  check(`bundle on disk is ${NEW}`, plistVersion === NEW, `Info.plist says "${plistVersion}" ${((Date.now() - since) / 1000).toFixed(0)}s after restart`)
+  check(
+    `bundle on disk is ${NEW}`,
+    plistVersion === NEW,
+    `Info.plist says "${plistVersion}" ${((Date.now() - since) / 1000).toFixed(0)}s after restart`
+  )
 
   relaunched = await attach(120_000).catch((e) => {
     check('ShipIt relaunched the app', false, e.message)
@@ -416,123 +487,209 @@ async function finishInstall(since: number): Promise<void> {
   const shipItLog = existsSync(SHIPIT_LOG) ? readFileSync(SHIPIT_LOG, 'utf8') : ''
   const recent = shipItLog.split('\n').filter((l) => {
     const m = /^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2})\.(\d{3}) /.exec(l)
-    return m ? new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6], +m[7]).getTime() >= since - 5000 : false
+    return m
+      ? new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6], +m[7]).getTime() >= since - 5000
+      : false
   })
-  const bad = recent.filter((l) => /Installation error|did not pass validation|App Still Running|Installation cancelled|Too many attempts/.test(l))
-  check('ShipIt log shows a clean install', recent.length > 0 && bad.length === 0, bad.length ? bad.join(' | ').slice(0, 600) : `${recent.length} lines`)
+  const bad = recent.filter((l) =>
+    /Installation error|did not pass validation|App Still Running|Installation cancelled|Too many attempts/.test(
+      l
+    )
+  )
+  check(
+    'ShipIt log shows a clean install',
+    recent.length > 0 && bad.length === 0,
+    bad.length ? bad.join(' | ').slice(0, 600) : `${recent.length} lines`
+  )
   console.log('---- ShipIt_stderr.log')
   console.log(shipItLog.trim())
   console.log('----')
 }
 
-try {
-  const cdp = await attach(90_000)
-  const booted = await cdp.eval<Status>('window.api.updates.get()')
-  check(`old app reports current ${OLD}`, booted.current === OLD, JSON.stringify(booted))
+async function drive(): Promise<void> {
+  try {
+    const cdp = await attach(90_000)
+    const booted = await cdp.eval<Status>('window.api.updates.get()')
+    check(`old app reports current ${OLD}`, booted.current === OLD, JSON.stringify(booted))
 
-  const checked = await cdp.eval<Status>('window.api.updates.check()')
-  check(`check sees ${NEW} on the feed`, checked.latest === NEW && checked.phase !== 'error', JSON.stringify(checked))
-
-  await driveToReady(cdp)
-  // Squirrel fetches the zip from electron-updater's proxy and stages it
-  // before electron-updater reports ready; a staged update dir proves it.
-  await sleep(2000)
-  const staged = existsSync(SHIPIT_DIR) ? (await sh(['ls', SHIPIT_DIR], { quiet: true })).trim().split('\n') : []
-  check('Squirrel staged the update', staged.some((n) => n.startsWith('update.')), staged.join(', '))
-
-  if (stillRunning) {
-    // Same bundle, other userData: counts as a running instance of the target.
-    const second = launchOld('second-app.log', { TEMP_CODE_USER_DATA: join(ROOT, 'userData2'), TEMP_CODE_DEBUG_PORT: '9232' })
-    log(`second instance pid ${second.pid}`)
-    await sleep(8000)
-    log('apply again: restart to update (second instance alive)')
-    await cdp.eval<Status>('window.api.updates.apply()').catch((e) => log(`apply (restart) threw: ${e.message}`))
-    check('restart quits the app', await waitExit(oldProc, 60_000))
-    // ShipIt copies and verifies (about 9 s), then counts running instances and gives up.
-    const abortUntil = Date.now() + 120_000
-    let shipItText = ''
-    while (Date.now() < abortUntil) {
-      shipItText = existsSync(SHIPIT_LOG) ? readFileSync(SHIPIT_LOG, 'utf8') : ''
-      if (/App Still Running/.test(shipItText)) break
-      await sleep(1000)
-    }
-    check('ShipIt aborted on the running instance', /App Still Running/.test(shipItText))
-    const plistAfter = (await sh(['plutil', '-extract', 'CFBundleShortVersionString', 'raw', join(APP, 'Contents', 'Info.plist')], { quiet: true })).trim()
-    check(`bundle on disk is still ${OLD}`, plistAfter === OLD, plistAfter)
-    await sleep(3000)
-    check('nothing relaunched', (await pidsAt(APP)).length === 1, `${(await pidsAt(APP)).length} process(es) at ${APP}`)
-
-    const again = launchOld('old-app-2.log')
-    log(`relaunched the old app by hand as pid ${again.pid}`)
-    const cdp2 = await attach(90_000)
-    const after = await cdp2.eval<Status>('window.api.updates.get()')
+    const checked = await cdp.eval<Status>('window.api.updates.check()')
     check(
-      'the relaunched app reports the failed install',
-      after.installFailure?.version === NEW && /still running/i.test(after.installFailure?.reason ?? ''),
-      JSON.stringify(after)
+      `check sees ${NEW} on the feed`,
+      checked.latest === NEW && checked.phase !== 'error',
+      JSON.stringify(checked)
     )
-    second.kill('SIGTERM')
-    await waitExit(second, 15_000)
-    log('second instance gone; retrying from the failure')
-    const retried = await driveToReady(cdp2)
-    check('retry cleared the failure', !retried.installFailure, JSON.stringify(retried))
-    const feedHits = feedLog.filter((l) => l.includes(zipName)).length
-    check('retry downloaded the zip again', feedHits >= 2, `${feedHits} zip fetches`)
-    log('apply again: restart to update (retry)')
-    const restartAt2 = Date.now()
-    await cdp2.eval<Status>('window.api.updates.apply()').catch((e) => log(`apply (restart) threw: ${e.message}`))
-    check('restart quits the app', await waitExit(again, 60_000))
-    await finishInstall(restartAt2)
-    return
-  }
 
-  if (busy) {
-    const cwd = join(ROOT, 'busy-cwd')
-    mkdirSync(cwd, { recursive: true })
-    const created = await cdp.eval<{ id: string }>(
-      `window.__monocode.server.request('session.create', ${JSON.stringify({ provider: 'claude', model: 'claude-haiku-5-5', reasoning: 'low', cwd, title: 'e2e busy' })})`
+    await driveToReady(cdp)
+    // Squirrel fetches the zip from electron-updater's proxy and stages it
+    // before electron-updater reports ready; a staged update dir proves it.
+    await sleep(2000)
+    const staged = existsSync(SHIPIT_DIR)
+      ? (await sh(['ls', SHIPIT_DIR], { quiet: true })).trim().split('\n')
+      : []
+    check(
+      'Squirrel staged the update',
+      staged.some((n) => n.startsWith('update.')),
+      staged.join(', ')
     )
-    await cdp.eval(
-      `window.__monocode.server.request('session.send', ${JSON.stringify({ sessionId: created.id, text: 'Write a 2500-word essay on the history of the typewriter. Do not stop early and do not ask questions.' })})`
-    )
-    let row: { status?: string } | undefined
-    const busyUntil = Date.now() + 60_000
-    while (Date.now() < busyUntil) {
-      const rows = await cdp.eval<Array<{ id: string; status?: string }>>(`window.__monocode.server.request('session.list')`)
-      row = rows.find((r) => r.id === created.id)
-      if (row?.status === 'running') break
-      await sleep(500)
+
+    if (stillRunning) {
+      // Same bundle, other userData: counts as a running instance of the target.
+      const second = launchOld('second-app.log', {
+        TEMP_CODE_USER_DATA: join(ROOT, 'userData2'),
+        TEMP_CODE_DEBUG_PORT: '9232'
+      })
+      log(`second instance pid ${second.pid}`)
+      await sleep(8000)
+      log('apply again: restart to update (second instance alive)')
+      await cdp
+        .eval<Status>('window.api.updates.apply()')
+        .catch((e) => log(`apply (restart) threw: ${e.message}`))
+      check('restart quits the app', await waitExit(oldProc, 60_000))
+      // A first-attempt ShipIt logs the request and then waits for every
+      // instance to quit; the second copy keeps it waiting.
+      const requestUntil = Date.now() + 30_000
+      let shipItText = ''
+      while (Date.now() < requestUntil) {
+        shipItText = existsSync(SHIPIT_LOG) ? readFileSync(SHIPIT_LOG, 'utf8') : ''
+        if (/Detected this as an install request/.test(shipItText)) break
+        await sleep(1000)
+      }
+      await sleep(10_000)
+      shipItText = existsSync(SHIPIT_LOG) ? readFileSync(SHIPIT_LOG, 'utf8') : ''
+      check(
+        'ShipIt took the request and is waiting on the running instance',
+        /Detected this as an install request/.test(shipItText) &&
+          !/Beginning installation|Installation error/.test(shipItText),
+        shipItText.trim().split('\n').slice(-3).join(' | ').slice(0, 300)
+      )
+      const plistAfter = (
+        await sh(
+          [
+            'plutil',
+            '-extract',
+            'CFBundleShortVersionString',
+            'raw',
+            join(APP, 'Contents', 'Info.plist')
+          ],
+          { quiet: true }
+        )
+      ).trim()
+      check(`bundle on disk is still ${OLD}`, plistAfter === OLD, plistAfter)
+      await sleep(3000)
+      check(
+        'nothing relaunched',
+        (await pidsAt(APP)).length === 1,
+        `${(await pidsAt(APP)).length} process(es) at ${APP}`
+      )
+
+      const again = launchOld('old-app-2.log')
+      log(`relaunched the old app by hand as pid ${again.pid}`)
+      const cdp2 = await attach(90_000)
+      const after = await cdp2.eval<Status>('window.api.updates.get()')
+      check(
+        'the relaunched app reports the hand-over as waiting',
+        after.installFailure?.version === NEW &&
+          /waiting for the app to quit/i.test(after.installFailure?.reason ?? ''),
+        JSON.stringify(after)
+      )
+      second.kill('SIGTERM')
+      await waitExit(second, 15_000)
+      log('second instance gone; retrying from the waiting state')
+      const retried = await driveToReady(cdp2)
+      check('retry cleared the failure', !retried.installFailure, JSON.stringify(retried))
+      const feedHits = feedLog.filter((l) => l.includes(zipName)).length
+      check('retry downloaded the zip again', feedHits >= 2, `${feedHits} zip fetches`)
+      // The retry removed the launchd job: the waiting ShipIt must be gone,
+      // not respawning against a missing state file.
+      await sleep(3000)
+      const jobs = await sh(['launchctl', 'list'], { quiet: true }).catch(() => '')
+      const loop = (existsSync(SHIPIT_LOG) ? readFileSync(SHIPIT_LOG, 'utf8') : '').includes(
+        'Could not read update request'
+      )
+      check(
+        'the waiting ShipIt was dismissed cleanly',
+        !jobs.includes(SHIPIT_LABEL) && !loop,
+        loop
+          ? 'ShipIt respawn loop in the log'
+          : jobs.includes(SHIPIT_LABEL)
+            ? 'job still loaded'
+            : ''
+      )
+      log('apply again: restart to update (retry)')
+      const restartAt2 = Date.now()
+      await cdp2
+        .eval<Status>('window.api.updates.apply()')
+        .catch((e) => log(`apply (restart) threw: ${e.message}`))
+      check('restart quits the app', await waitExit(again, 60_000))
+      await finishInstall(restartAt2)
+      return
     }
-    check('a thread is running before the restart', row?.status === 'running', JSON.stringify(row))
-    await sleep(1500)
-  }
 
-  log(`apply again: restart to update${busy ? ' (busy)' : ''}`)
-  const restartAt = Date.now()
-  await cdp.eval<Status>('window.api.updates.apply()').catch((e) => log(`apply (restart) threw: ${e.message}`))
-  const exited = await waitExit(oldProc, 60_000)
-  if (!exited) {
-    const pages = await fetch(`http://127.0.0.1:${DEBUG_PORT}/json`)
-      .then((r) => r.json() as Promise<Target[]>)
-      .catch(() => [] as Target[])
-    const visible = await cdp.eval<string>('document.visibilityState').catch(() => 'unknown')
-    check('restart quits the app', false, `pid ${oldProc.pid} still alive 60s after restart; renderer ${visible}; pages ${pages.length}; this is the stall`)
-    cdp.close()
-    oldProc.kill('SIGTERM')
-    await Promise.race([oldProc.exited, sleep(10_000)])
-    if (!(await pidsAt(APP)).length) log('old app killed')
-    throw new Error('stall')
+    if (busy) {
+      const cwd = join(ROOT, 'busy-cwd')
+      mkdirSync(cwd, { recursive: true })
+      const created = await cdp.eval<{ id: string }>(
+        `window.__monocode.server.request('session.create', ${JSON.stringify({ provider: 'claude', model: 'claude-haiku-5-5', reasoning: 'low', cwd, title: 'e2e busy' })})`
+      )
+      await cdp.eval(
+        `window.__monocode.server.request('session.send', ${JSON.stringify({ sessionId: created.id, text: 'Write a 2500-word essay on the history of the typewriter. Do not stop early and do not ask questions.' })})`
+      )
+      let row: { status?: string } | undefined
+      const busyUntil = Date.now() + 60_000
+      while (Date.now() < busyUntil) {
+        const rows = await cdp.eval<Array<{ id: string; status?: string }>>(
+          `window.__monocode.server.request('session.list')`
+        )
+        row = rows.find((r) => r.id === created.id)
+        if (row?.status === 'running') break
+        await sleep(500)
+      }
+      check(
+        'a thread is running before the restart',
+        row?.status === 'running',
+        JSON.stringify(row)
+      )
+      await sleep(1500)
+    }
+
+    log(`apply again: restart to update${busy ? ' (busy)' : ''}`)
+    const restartAt = Date.now()
+    await cdp
+      .eval<Status>('window.api.updates.apply()')
+      .catch((e) => log(`apply (restart) threw: ${e.message}`))
+    const exited = await waitExit(oldProc, 60_000)
+    if (!exited) {
+      const pages = await fetch(`http://127.0.0.1:${DEBUG_PORT}/json`)
+        .then((r) => r.json() as Promise<Target[]>)
+        .catch(() => [] as Target[])
+      const visible = await cdp.eval<string>('document.visibilityState').catch(() => 'unknown')
+      check(
+        'restart quits the app',
+        false,
+        `pid ${oldProc.pid} still alive 60s after restart; renderer ${visible}; pages ${pages.length}; this is the stall`
+      )
+      cdp.close()
+      oldProc.kill('SIGTERM')
+      await Promise.race([oldProc.exited, sleep(10_000)])
+      if (!(await pidsAt(APP)).length) log('old app killed')
+      throw new Error('stall')
+    }
+    check(
+      'restart quits the app',
+      true,
+      `exited ${((Date.now() - restartAt) / 1000).toFixed(1)}s after apply`
+    )
+    await finishInstall(restartAt)
+  } catch (e) {
+    if ((e as Error).message !== 'stall') check('e2e run', false, (e as Error).message)
+  } finally {
+    relaunched?.close()
+    await killAt(APP)
+    await tryRun(['launchctl', 'remove', SHIPIT_LABEL])
+    server.stop(true)
   }
-  check('restart quits the app', true, `exited ${((Date.now() - restartAt) / 1000).toFixed(1)}s after apply`)
-  await finishInstall(restartAt)
-} catch (e) {
-  if ((e as Error).message !== 'stall') check('e2e run', false, (e as Error).message)
-} finally {
-  relaunched?.close()
-  await killAt(APP)
-  await tryRun(['launchctl', 'remove', SHIPIT_LABEL])
-  server.stop(true)
 }
+await drive()
 
 log(`artifacts under ${ROOT}; old app log ${appLog}; ShipIt log ${SHIPIT_LOG}`)
 console.log(failures === 0 ? 'E2E UPDATER: PASS' : `E2E UPDATER: ${failures} FAILED`)

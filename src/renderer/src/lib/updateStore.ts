@@ -82,7 +82,9 @@ class UpdateStore {
     if (installing(this.state)) return Promise.resolve(this.state);
     this.lastCheckAt = Date.now();
     const run = runUpdateFlow(manual, this.set).then((result) => {
-      if (!manual && result.phase === "error") {
+      // A failed probe is not worth showing; a failed install is, until the
+      // user retries it.
+      if (!manual && result.phase === "error" && !canRetry(result)) {
         this.set({ phase: "idle", currentVersion: result.currentVersion });
       }
       return this.state;
