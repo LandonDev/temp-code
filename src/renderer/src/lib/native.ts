@@ -15,6 +15,7 @@ export type NativeEvent<T> = { payload: T };
 export type NativeCommand =
   | "clone_repo"
   | "confirm_quit"
+  | "decline_quit"
   | "copy_path"
   | "create_path"
   | "default_cwd"
@@ -234,6 +235,7 @@ const backed: Record<NativeCommand, Backed> = {
   default_cwd: () => window.api.app.defaultCwd(),
   home_dir: () => window.api.app.homeDir(),
   confirm_quit: () => window.api.app.confirmQuit(),
+  decline_quit: async () => window.api.app.declineQuit(),
   set_dock_badge: (args) => window.api.app.dockBadge(arg<number>(args, "count")),
   hide_window: () => window.api.win.hide(),
   destroy_window: () => window.api.win.destroy(),

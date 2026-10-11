@@ -175,6 +175,8 @@ const api = {
     openUrl: (url: string): Promise<void> => ipcRenderer.invoke('shell:open-url', url),
     dockBadge: (count: number): Promise<void> => ipcRenderer.invoke('app:dock-badge', count),
     confirmQuit: (): Promise<void> => ipcRenderer.invoke('app:confirm-quit'),
+    /** The user said no to the quit dialog; a restart armed behind it is dropped. */
+    declineQuit: (): void => ipcRenderer.send('app:quit-declined'),
     /** Subscribing makes main ask you before it exits. */
     onQuitRequested: (cb: () => void): (() => void) => {
       ipcRenderer.send('app:quit-subscribe')

@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import { is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 import { killPtysForOwner } from './pty'
+import { QuitGate } from './quitGate'
 
 /**
  * The window registry. Every window has a *slot*: a stable id that names
@@ -247,7 +248,7 @@ export function createWindow(opts: { slot?: string; from?: number } = {}): Brows
   win.on('unmaximize', saveStateSoon)
 
   win.on('close', (e) => {
-    if (destroying.delete(id) || quitting) return
+    if (destroying.delete(id) || gate.isQuitting()) return
     if (!closeSubscribers.has(id)) return
     // The renderer owns this decision (unsaved work, hide-instead-of-close);
     // it answers with `window:hide` or `window:destroy`.
@@ -267,11 +268,11 @@ export function createWindow(opts: { slot?: string; from?: number } = {}): Brows
     // One of several closed: that layout is gone by the user's choice. The
     // last one keeps its slot so the dock click (or the next launch) brings
     // the same tabs back. Quit keeps every slot.
-    if (!quitting && windows.size > 0) {
+    if (!gate.isQuitting() && windows.size > 0) {
       delete loadStateFile().windows[slot]
       dropSnapshot(slot)
     }
-    if (!quitting) saveStateNow()
+    if (!gate.isQuitting()) saveStateNow()
   })
 
   // A destination that never boots must not hold the payload for the next
@@ -331,11 +332,24 @@ export function requestQuit(): void {
   win.webContents.send('app:quit-requested')
 }
 
-/** True once the user has confirmed; keeps `before-quit` from asking twice. */
-let quitting = false
+/** Open once the user has confirmed; keeps `before-quit` from asking twice
+ *  and lets the window close handler pass. See quitGate.ts. */
+const gate = new QuitGate(() => app.quit())
 
 export function isQuitting(): boolean {
-  return quitting
+  return gate.isQuitting()
+}
+
+/** Make the next confirmed quit end with `finish` (the updater's restart)
+ *  instead of app.quit(); `declined` runs if the user says no to the dialog. */
+export function armQuit(finish: () => void, declined: () => void): void {
+  gate.arm(finish, declined)
+}
+
+/** An armed quit fell through after the gate opened: close it again so the
+ *  windows go back to asking. */
+export function cancelQuit(): void {
+  gate.cancel()
 }
 
 /** The persist acks main is waiting on, by webContents id. */
@@ -368,14 +382,14 @@ function persistOthers(except: number): Promise<void> {
 }
 
 /** The renderer has finished asking the user and persisted; the next
- *  `before-quit` goes straight through instead of bouncing back. */
+ *  `before-quit` goes straight through instead of bouncing back. With no
+ *  renderer to ask (`from` -1) the quit is confirmed on its own. */
 export async function confirmQuit(from: number): Promise<void> {
-  if (quitting) return
-  quitting = true
+  if (!gate.begin()) return
   await persistOthers(from)
   saveStateNow()
   showAllWindows()
-  app.quit()
+  gate.finish()
 }
 
 export function showAllWindows(): void {
@@ -410,6 +424,7 @@ export function registerWindows(hooks: { dropSnapshot?: (slot: string) => void }
     persistWaiters.get(e.sender.id)?.()
   })
   ipcMain.handle('app:confirm-quit', (e) => confirmQuit(e.sender.id))
+  ipcMain.on('app:quit-declined', () => gate.decline())
 
   ipcMain.handle('window:hide', (e) => windowOf(e)?.hide())
   ipcMain.handle('window:destroy', (e) => {

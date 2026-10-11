@@ -3,7 +3,7 @@ import electronUpdater from 'electron-updater'
 import { mkdirSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import release from '../../release.json'
-import { targetWindow } from './windows'
+import { armQuit, cancelQuit, confirmQuit, hasQuitSubscriber, requestQuit, targetWindow } from './windows'
 
 const { autoUpdater } = electronUpdater
 
@@ -104,6 +104,26 @@ async function check(): Promise<UpdateStatus> {
 }
 
 /**
+ * Restart into the downloaded release, down the same path as Cmd-Q: the
+ * window in front asks about busy sessions once and persists its layout,
+ * and its `app:confirm-quit` then ends in quitAndInstall instead of
+ * app.quit(). With no renderer to ask, the quit confirms itself. Either way
+ * the gate is open before Electron starts closing windows, so the close
+ * handler lets them go and before-quit runs its cleanup once; a declined
+ * dialog disarms and leaves the release waiting. quitAndInstall used to be
+ * called cold here, and the close handler asked the renderer, which hid
+ * the window on a busy session and left Squirrel waiting forever.
+ */
+function restartToInstall(): void {
+  armQuit(
+    () => autoUpdater.quitAndInstall(),
+    () => undefined
+  )
+  if (hasQuitSubscriber()) requestQuit()
+  else void confirmQuit(-1)
+}
+
+/**
  * One button walks available → downloading → restart. Download starts only
  * when the user asks — an unrequested background download would fight the
  * agents for bandwidth for an update the user may not want yet.
@@ -111,8 +131,7 @@ async function check(): Promise<UpdateStatus> {
 function apply(): UpdateStatus {
   if (!app.isPackaged) return status
   if (status.phase === 'ready') {
-    // Restart into the downloaded build. before-quit cleanup runs as usual.
-    setImmediate(() => autoUpdater.quitAndInstall())
+    restartToInstall()
     return status
   }
   if (status.phase === 'idle' && status.latest) {
@@ -161,8 +180,13 @@ export function registerUpdates(): void {
     autoUpdater.on('update-downloaded', (info) => setStatus({ phase: 'ready', latest: info.version, percent: 100 }))
     autoUpdater.on('error', (err) => {
       // A failed background check is not worth a banner; only surface errors
-      // after the user has asked for the update.
-      if (status.phase === 'downloading') setStatus({ phase: 'error', error: err.message })
+      // after the user has asked for the update. In 'ready' the error comes
+      // from Squirrel (its own fetch, or a restart it could not start): the
+      // gate may already be open for a quit that is not going to happen.
+      if (status.phase === 'downloading' || status.phase === 'ready') {
+        cancelQuit()
+        setStatus({ phase: 'error', error: err.message })
+      }
     })
     // Also look whenever a window comes forward: on the interval alone a
     // release published minutes after startup stayed invisible for half an

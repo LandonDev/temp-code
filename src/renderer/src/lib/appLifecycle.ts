@@ -124,6 +124,7 @@ export async function handleQuitRequested(): Promise<void> {
       await invoke("confirm_quit");
     } catch {
       quitting = false;
+      await invoke("decline_quit").catch(() => undefined);
     }
     return;
   }
@@ -313,7 +314,11 @@ async function confirmQuitAndExit(
         kind: "warning",
         okLabel: "Quit",
       });
-      if (!ok) return;
+      if (!ok) {
+        // Main may have a restart-to-update waiting on this answer.
+        await invoke("decline_quit");
+        return;
+      }
     }
     quitting = true;
     try {
@@ -321,6 +326,7 @@ async function confirmQuitAndExit(
       await invoke("confirm_quit");
     } catch {
       quitting = false;
+      await invoke("decline_quit").catch(() => undefined);
     }
   } finally {
     quitDialogOpen = false;
