@@ -1,6 +1,6 @@
 import React, { useLayoutEffect } from "react";
 import ReactDOM from "react-dom/client";
-import { listen } from "./lib/native";
+import { getVersion, listen } from "./lib/native";
 import { installEditorKeys } from "./lib/editorKeys";
 import App from "./App";
 import { initAppearance, syncWindowGlass } from "./lib/appearance";
@@ -68,9 +68,13 @@ void listen("persist_requested", () => {
   void persistLiveWorkspace();
 });
 
-void loadBootWorkspace().then(
-  ({ windowTransfer, resumed, history, historyCwd }) => {
-    const installedUpdate = windowTransfer ? null : consumeInstalledUpdate();
+// The running version decides whether the "Updated to X" marker is true;
+// a failed install relaunches the old build with the marker still set.
+const runningVersion = getVersion().catch(() => "");
+
+void Promise.all([loadBootWorkspace(), runningVersion]).then(
+  ([{ windowTransfer, resumed, history, historyCwd }, version]) => {
+    const installedUpdate = windowTransfer ? null : consumeInstalledUpdate(undefined, version);
     bootstrapWorkspace({
       windowTransfer,
       resumed,

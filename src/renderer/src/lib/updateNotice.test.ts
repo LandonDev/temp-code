@@ -38,6 +38,17 @@ describe("installed update marker", () => {
     },
   );
 
+  it("shows only the version that is actually running", () => {
+    const store = memoryStore();
+    rememberInstalledUpdate("1.0.205", store);
+    // The install failed and the old build came back: no notice, marker gone.
+    expect(consumeInstalledUpdate(store, "1.0.200")).toBeNull();
+    expect(store.getItem("monocode.installedUpdate")).toBeNull();
+
+    rememberInstalledUpdate("1.0.205", store);
+    expect(consumeInstalledUpdate(store, "1.0.205")).toEqual({ version: "1.0.205" });
+  });
+
   it("treats missing storage as no marker", () => {
     expect(consumeInstalledUpdate(memoryStore())).toBeNull();
   });
