@@ -3,6 +3,7 @@ import { homedir } from 'os'
 import { join } from 'path'
 import { copyFileSync, existsSync, mkdirSync } from 'fs'
 import { registerUpdates } from './update'
+import { applyHarness, bakedHarness } from './harness'
 import { configureAliax } from './aliax'
 import { aliaxCallCounts, registerAliaxPages } from './aliaxPages'
 import { registerAppshots } from './appshots'
@@ -38,7 +39,9 @@ let server: RunningServer | null = null
 // again, find the leak, don't raise the wall.
 
 // Parallel dev instances (worktrees) get their own userData + database so
-// they never contend with the primary checkout's running app.
+// they never contend with the primary checkout's running app. A packaged
+// test build carries the same overrides in its package.json (harness.ts).
+applyHarness(process.env, bakedHarness(app.getAppPath()))
 if (process.env.TEMP_CODE_USER_DATA) {
   app.setPath('userData', process.env.TEMP_CODE_USER_DATA)
 }

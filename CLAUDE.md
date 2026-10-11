@@ -42,6 +42,20 @@ env -u ELECTRON_RUN_AS_NODE \
   electron-vite`) and relaunch — electron-vite never restarts the main
   process on its own, so main-process changes always need a relaunch.
 - Kill your dev instance when the pass is done.
+- Updater end to end: `bun run script:e2e-updater` (scripts/e2e-updater.ts)
+  builds two signed, un-notarized copies of the tree (1.0.N-1 and 1.0.N) with
+  their own bundle id and product name, serves the newer one from a local
+  feed, and drives the older copy under /private/tmp/tc-updater-e2e through
+  check → download → restart over CDP (port 9230) until the bundle on disk
+  is 1.0.N and the relaunched app answers. The hooks it uses:
+  `TEMP_CODE_UPDATE_FEED=<url>` makes a packaged copy that also has
+  `TEMP_CODE_USER_DATA` read a generic feed (latest-mac.yml + zip) at that
+  URL, with its downloads under `~/Library/Caches/temp-code-harness-updater`;
+  and a `tempcodeHarness` block in the bundled package.json (electron-builder
+  extraMetadata) carries the same three TEMP_CODE_* keys into an app that
+  Squirrel's ShipIt relaunches without our environment (src/main/harness.ts).
+  Its Squirrel state lives in `~/Library/Caches/dev.landon.tempcode.e2e.ShipIt`.
+  Nothing of this touches /Applications/TempCode.app or its caches.
 
 ## The user dogfoods master on the prod data
 `bun run dev:prod` runs master against the prod userData (CDP on 9220).

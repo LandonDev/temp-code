@@ -1,5 +1,7 @@
 import { app, ipcMain } from 'electron'
 import electronUpdater from 'electron-updater'
+import { mkdirSync, writeFileSync } from 'fs'
+import { join } from 'path'
 import release from '../../release.json'
 import { targetWindow } from './windows'
 
@@ -120,8 +122,35 @@ function apply(): UpdateStatus {
   return status
 }
 
+/**
+ * Test feed. An isolated packaged copy (TEMP_CODE_USER_DATA set, see
+ * scripts/e2e-updater.ts) reads TEMP_CODE_UPDATE_FEED, a generic-provider URL
+ * serving latest-mac.yml and the zip. electron-updater takes the provider and
+ * its cache directory name from one yml, so the override writes its own under
+ * userData and points `updateConfigPath` there: the copy's downloads land in
+ * `~/Library/Caches/temp-code-harness-updater`, never in the installed app's
+ * `temp-code-updater` cache. Refused without an isolated userData: a feed
+ * override on the real instance would be a way to install anything.
+ */
+export const HARNESS_CACHE_DIR_NAME = 'temp-code-harness-updater'
+
+export function harnessFeedConfig(feed: string): string {
+  return `provider: generic\nurl: ${feed}\nupdaterCacheDirName: ${HARNESS_CACHE_DIR_NAME}\n`
+}
+
+function applyFeedOverride(): void {
+  const feed = process.env.TEMP_CODE_UPDATE_FEED
+  if (!feed || !process.env.TEMP_CODE_USER_DATA) return
+  const dir = app.getPath('userData')
+  mkdirSync(dir, { recursive: true })
+  const file = join(dir, 'app-update.yml')
+  writeFileSync(file, harnessFeedConfig(feed))
+  autoUpdater.updateConfigPath = file
+}
+
 export function registerUpdates(): void {
   if (app.isPackaged) {
+    applyFeedOverride()
     autoUpdater.autoDownload = false
     autoUpdater.autoInstallOnAppQuit = true
     autoUpdater.on('update-available', (info) =>
