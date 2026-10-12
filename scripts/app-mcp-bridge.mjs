@@ -115,6 +115,34 @@ const CITE_TOOL_PARAMS = {
   title: "The page's title, when you know it."
 }
 
+/** Fields a single spawn_agent and each batch entry share. */
+const SPAWN_SPEC = {
+  provider: {
+    type: 'string',
+    enum: PROVIDERS,
+    description: 'Which harness runs the agent (omit to derive from the model)'
+  },
+  model: {
+    type: 'string',
+    description:
+      'Model id — the full spawnable table is in your thread instructions (defaults: claude=claude-sonnet-5, codex=gpt-5.6-sol, cursor=composer-2.5). Loose names like "opus" resolve; a model of another provider auto-routes to it.'
+  },
+  reasoning: { type: 'string', enum: ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'] },
+  agentType: {
+    type: 'string',
+    enum: ['orchestrator', 'implementer', 'reviewer', 'explorer']
+  },
+  useWorktree: {
+    type: 'boolean',
+    description: 'Isolate a writing agent in its own git worktree (default true)'
+  },
+  context1m: {
+    type: 'boolean',
+    description:
+      'Claude models only: the 1M context window, on by default for models that offer it. Pass false for 200k. true is rejected for models that do not offer it.'
+  }
+}
+
 export const TOOLS = [
   {
     // Codex's native update_plan went away with the goal tools; the app's
@@ -199,37 +227,30 @@ export const TOOLS = [
   {
     name: 'spawn_agent',
     description:
-      'Spawn a subagent session (any provider/model, freely mixed) and send it its task — the ONLY way to run another model; NEVER shell out to `claude`/`codex exec`/`cursor-agent`. The agent works asynchronously as a visible session; use wait_for_agent to collect its result.',
+      'Spawn a subagent session (any provider/model, freely mixed) and send it its task — the ONLY way to run another model; NEVER shell out to `claude`/`codex exec`/`cursor-agent`. The agent works asynchronously as a visible session; use wait_for_agent to collect its result. To fan out, pass `agents` (up to 16 entries, each with its own task) instead of `task`: one call starts the whole batch and returns every agent id; top-level fields are defaults each entry may override.',
     inputSchema: {
       type: 'object',
       properties: {
-        provider: {
+        ...SPAWN_SPEC,
+        task: {
           type: 'string',
-          enum: PROVIDERS,
-          description: 'Which harness runs the agent (omit to derive from the model)'
+          description: 'The complete, self-contained task prompt (one agent; omit when passing agents)'
         },
-        model: {
-          type: 'string',
+        agents: {
+          type: 'array',
+          maxItems: 16,
           description:
-            'Model id — the full spawnable table is in your thread instructions (defaults: claude=claude-sonnet-5, codex=gpt-5.6-sol, cursor=composer-2.5). Loose names like "opus" resolve; a model of another provider auto-routes to it.'
-        },
-        reasoning: { type: 'string', enum: ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'] },
-        agentType: {
-          type: 'string',
-          enum: ['orchestrator', 'implementer', 'reviewer', 'explorer']
-        },
-        task: { type: 'string', description: 'The complete, self-contained task prompt' },
-        useWorktree: {
-          type: 'boolean',
-          description: 'Isolate a writing agent in its own git worktree (default true)'
-        },
-        context1m: {
-          type: 'boolean',
-          description:
-            'Claude models only: the 1M context window, on by default for models that offer it. Pass false for 200k. true is rejected for models that do not offer it.'
+            'A batch of up to 16 agents started by this one call. Each entry takes the same fields as a single spawn; unset ones fall back to the top-level values.',
+          items: {
+            type: 'object',
+            properties: {
+              ...SPAWN_SPEC,
+              task: { type: 'string', description: "This agent's task" }
+            },
+            required: ['task']
+          }
         }
-      },
-      required: ['task']
+      }
     }
   },
   {

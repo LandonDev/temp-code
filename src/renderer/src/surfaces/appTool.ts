@@ -60,6 +60,10 @@ export function appView(block: Block, titleOf: TitleOf): AppView | null {
     return null;
   }
   const short = shortName(name);
+  if (short === "spawn_agent" && Array.isArray(i.agents) && i.agents.length > 1) {
+    const n = i.agents.length;
+    return { label: "Spawned", detail: `${n} agents`, phrase: `spawned ${n} subagents` };
+  }
   if (AGENT_TOOLS.has(short) || short === "Agent" || short === "Task") {
     const id = agentIdOf(block);
     const title = id ? titleOf(id) : undefined;

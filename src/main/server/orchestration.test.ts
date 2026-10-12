@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { CATALOG, supportsContext1m, type ProviderId } from '@shared/catalog'
-import { DEFAULT_RULES } from '@shared/rules'
+import { DEFAULT_RULES, type OrchestrationRules } from '@shared/rules'
 import type { SessionMeta } from '@shared/events'
 import type { SessionRegistry } from './sessions'
 import {
@@ -8,6 +8,7 @@ import {
   findingsContract,
   orchSpawnAgent,
   setOrchestrationRegistry,
+  SPAWN_BATCH_MAX,
   spawnableModels,
   waitForSettled
 } from './orchestration'
@@ -26,16 +27,18 @@ const parent = {
   threadRules: undefined
 } as unknown as SessionMeta
 
+let children: SessionMeta[] = []
+let rules: OrchestrationRules = DEFAULT_RULES
 const stub = {
   get: (id: string) => (id === parent.id ? parent : null),
-  childrenOf: () => [],
+  childrenOf: () => children,
   getProject: () => null,
-  getOrchestrationRules: () => DEFAULT_RULES,
+  getOrchestrationRules: () => rules,
   researchRootOf: () => null,
   reportsRootFor: () => '/tmp/ws',
   create: async (params: Record<string, unknown>) => {
     created.push(params)
-    return { id: String(params.id ?? 'child-1'), title: String(params.title ?? '') }
+    return { id: String(params.id ?? `child-${created.length}`), title: String(params.title ?? '') }
   },
   send: async (_id: string, text: string) => {
     sent.push(text)
@@ -45,6 +48,8 @@ const stub = {
 beforeEach(() => {
   created.length = 0
   sent.length = 0
+  children = []
+  rules = DEFAULT_RULES
   setOrchestrationRegistry(stub as unknown as SessionRegistry)
 })
 
@@ -114,6 +119,112 @@ it('spawn_agent refuses context1m on a codex model and creates nothing', async (
   expect(reply).toContain('Approved models:')
   expect(created).toHaveLength(0)
   expect(sent).toHaveLength(0)
+})
+
+const withConduct = (patch: Partial<OrchestrationRules['conduct']>): OrchestrationRules => ({
+  ...DEFAULT_RULES,
+  conduct: { ...DEFAULT_RULES.conduct, ...patch }
+})
+const live = (n: number): SessionMeta[] =>
+  Array.from({ length: n }, (_, i) => ({ id: `c${i}`, status: 'running' }) as SessionMeta)
+
+it('a batch spawns every entry in order and answers with all the ids', async () => {
+  const reply = JSON.parse(
+    await orchSpawnAgent(parent, {
+      model: 'claude-opus-5',
+      reasoning: 'high',
+      agents: [{ task: 'one' }, { task: 'two', model: 'gpt-6-astra', reasoning: 'low' }, { task: 'three' }]
+    })
+  )
+  expect(reply.agents.map((a: { agentId: string }) => a.agentId)).toEqual(['child-1', 'child-2', 'child-3'])
+  expect(reply.parallel).toBe('3 of 4 allowed slots in use')
+  expect(reply.note).toContain('3 agents')
+  expect(created.map((c) => [c.model, c.reasoning, c.context1m])).toEqual([
+    ['claude-opus-5', 'high', true],
+    ['gpt-6-astra', 'low', undefined],
+    ['claude-opus-5', 'high', true]
+  ])
+  expect(sent).toEqual(['one', 'two', 'three'])
+})
+
+it('a one-entry batch answers in the single-spawn shape', async () => {
+  const reply = JSON.parse(await orchSpawnAgent(parent, { agents: [{ task: 'solo', model: 'claude-opus-5' }] }))
+  expect(reply.agentId).toBe('child-1')
+  expect(reply.agents).toBeUndefined()
+})
+
+it('a batch over the per-call limit is refused before anything starts', async () => {
+  const reply = await orchSpawnAgent(parent, {
+    model: 'claude-opus-5',
+    agents: Array.from({ length: SPAWN_BATCH_MAX + 1 }, (_, i) => ({ task: `t${i}` }))
+  })
+  expect(reply).toMatch(/^refused: one spawn_agent call starts at most 16 agents \(17 given\)/)
+  expect(created).toHaveLength(0)
+})
+
+it('a bad entry anywhere in the batch refuses the whole call, naming the slot', async () => {
+  const reply = await orchSpawnAgent(parent, {
+    model: 'claude-opus-5',
+    agents: [{ task: 'fine' }, { task: 'fine too' }, { task: 'bad', model: 'gpt-6-astra', context1m: true }]
+  })
+  expect(reply).toMatch(/^refused: agents\[2\]: gpt-6-astra does not offer the 1M context window/)
+  expect(created).toHaveLength(0)
+  expect(sent).toHaveLength(0)
+})
+
+it('an unknown model in a batch names its slot after the refusal', async () => {
+  const reply = await orchSpawnAgent(parent, { agents: [{ task: 'a', model: 'claude-opus-5' }, { task: 'b', model: 'no-such-model' }] })
+  expect(reply).toMatch(/^refused: agents\[1\]: no provider serves an approved model matching "no-such-model"/)
+  expect(created).toHaveLength(0)
+})
+
+it('an entry without a task is refused', async () => {
+  expect(await orchSpawnAgent(parent, { model: 'claude-opus-5', agents: [{ task: 'x' }, { task: '  ' }] })).toMatch(
+    /^refused: agents\[1\]: task is empty/
+  )
+  expect(await orchSpawnAgent(parent, { model: 'claude-opus-5' })).toMatch(/^refused: task is empty/)
+  expect(created).toHaveLength(0)
+})
+
+it('the parallel cap counts the whole batch and says how many fit', async () => {
+  rules = withConduct({ maxParallel: 4 })
+  children = live(2)
+  const reply = await orchSpawnAgent(parent, {
+    model: 'claude-opus-5',
+    agents: [{ task: 'a' }, { task: 'b' }, { task: 'c' }]
+  })
+  expect(reply).toBe(
+    'refused: the user capped parallelism at 4 concurrent subagents (2 active): 2 slots free, not 3. Spawn at most 2 now and the rest after wait_for_agent.'
+  )
+  expect(created).toHaveLength(0)
+  expect(JSON.parse(await orchSpawnAgent(parent, { model: 'claude-opus-5', agents: [{ task: 'a' }, { task: 'b' }] })).parallel).toBe(
+    '4 of 4 allowed slots in use'
+  )
+})
+
+it('a cap of 128 admits a full batch on top of a hundred live agents', async () => {
+  rules = withConduct({ maxParallel: 128 })
+  children = live(100)
+  const reply = JSON.parse(
+    await orchSpawnAgent(parent, {
+      model: 'claude-opus-5',
+      agents: Array.from({ length: SPAWN_BATCH_MAX }, (_, i) => ({ task: `t${i}` }))
+    })
+  )
+  expect(reply.agents).toHaveLength(16)
+  expect(reply.parallel).toBe('116 of 128 allowed slots in use')
+})
+
+it('the total cap counts the whole batch too', async () => {
+  rules = withConduct({ maxAgents: 10, maxParallel: 0 })
+  children = live(9)
+  expect(await orchSpawnAgent(parent, { model: 'claude-opus-5', agents: [{ task: 'a' }, { task: 'b' }] })).toBe(
+    'refused: the user capped this thread at 10 subagents total (9 already spawned): room for 1 more, not 2. Spawn at most 1 in this batch.'
+  )
+  children = live(10)
+  expect(await orchSpawnAgent(parent, { model: 'claude-opus-5', task: 'a' })).toMatch(
+    /^refused: the user capped this thread at 10 subagents total \(10 already spawned\)\. Reuse/
+  )
 })
 
 it('waitForSettled sleeps through watching and resolves on the idle that follows', async () => {

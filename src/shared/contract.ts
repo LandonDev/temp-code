@@ -73,6 +73,20 @@ export interface SessionBatchResult {
   failed: { sessionId: string; error: string }[]
 }
 
+/** One spawn_agent entry (single call or batch member). Deliberately
+ *  loose: models mangle enums ("anthropic", agentType "worker"). The op
+ *  aliases, resolves, and clamps instead of failing — a hard schema error
+ *  here reads as "the app rejected the model". */
+const SpawnAgentSpecSchema = z.object({
+  provider: z.string().optional(),
+  model: z.string().optional(),
+  reasoning: z.string().optional(),
+  agentType: z.string().optional(),
+  task: z.string().optional(),
+  useWorktree: z.boolean().optional(),
+  context1m: z.boolean().optional()
+})
+
 export const ClientRequestSchema = z.discriminatedUnion('method', [
   ...M3aRequestSchemas,
   ...FsGitRequestSchemas,
@@ -775,18 +789,11 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
   z.object({
     id: z.string(),
     method: z.literal('app.spawnAgent'),
-    // Deliberately loose: models mangle enums ("anthropic", agentType
-    // "worker"). The op aliases, resolves, and clamps instead of failing —
-    // a hard schema error here reads as "the app rejected the model".
-    params: z.object({
+    params: SpawnAgentSpecSchema.extend({
       sessionId: z.string(),
-      provider: z.string().optional(),
-      model: z.string().optional(),
-      reasoning: z.string().optional(),
-      agentType: z.string().optional(),
-      task: z.string(),
-      useWorktree: z.boolean().optional(),
-      context1m: z.boolean().optional()
+      // A batch: up to 16 entries, each its own task; top-level fields
+      // are defaults. The op refuses an over-long or half-empty batch.
+      agents: z.array(SpawnAgentSpecSchema).optional()
     })
   }),
   z.object({

@@ -399,7 +399,7 @@ function resolveSpawnTarget(
   }
 }
 
-export interface SpawnAgentArgs {
+export interface SpawnAgentSpec {
   /** Loose: aliases like "anthropic"/"openai" accepted; omitted = derived
    *  from the model, else the caller's own provider. */
   provider?: string
@@ -408,12 +408,23 @@ export interface SpawnAgentArgs {
   reasoning?: string
   /** Unknown types coerce to 'implementer' instead of failing. */
   agentType?: string
-  task: string
+  task?: string
   useWorktree?: boolean
   /** Defaults to on for models with a 1M window; asking for it on any
    *  other model is refused. */
   context1m?: boolean
 }
+
+/** One call spawns one agent (`task`) or a batch (`agents`, up to
+ *  SPAWN_BATCH_MAX). In a batch the top-level fields are defaults each
+ *  entry may override. */
+export interface SpawnAgentArgs extends SpawnAgentSpec {
+  agents?: SpawnAgentSpec[]
+}
+
+/** Agents one spawn_agent call may start. Sixteen keeps a fan-out to one
+ *  tool call while the per-call validation and worktree adds stay short. */
+export const SPAWN_BATCH_MAX = 16
 
 /** The findings-file contract appended to every research explorer's task:
  *  the file is the deliverable, written as the research goes, cited by
@@ -429,6 +440,18 @@ Your findings file is ${anglePath}. The app assigned it; it is your deliverable,
 </findings-file>`
 }
 
+/** A batch entry after validation: everything create() needs, nothing
+ *  created yet, so a bad entry anywhere refuses the whole call. */
+interface ResolvedSpawn {
+  provider: ProviderId
+  model: string
+  reasoning: SessionMeta['reasoning']
+  context1m: boolean
+  agentType: (typeof AGENT_TYPES)[number]
+  task: string
+  useWorktree: boolean
+}
+
 export async function orchSpawnAgent(parent: SessionMeta, args: SpawnAgentArgs): Promise<string> {
   if (!registry) return 'orchestration registry not ready'
   // The MCP closure holds a boot-time snapshot of the caller; read it
@@ -439,80 +462,126 @@ export async function orchSpawnAgent(parent: SessionMeta, args: SpawnAgentArgs):
   // refusal text tells the model how to proceed. Model policy gates the
   // target and clamps effort into the approved range.
   const rules = rulesFor(parentNow)
-  const target = resolveSpawnTarget(args.provider, args.model, parent.provider, rules)
-  if ('error' in target) return target.error
-  const reasoning = fitReasoning(
-    rules,
-    target.provider,
-    target.model,
-    args.reasoning
-  ) as SessionMeta['reasoning']
-  if (args.context1m && !supportsContext1m(target.provider, target.model)) {
-    return `refused: ${target.model} does not offer the 1M context window — only Claude models do. Spawn it without context1m, or pick a model marked +1m. ${approvedTable(rules)}`
+  const { agents: batch, ...defaults } = args
+  const specs: SpawnAgentSpec[] = batch?.length ? batch.map((a) => ({ ...defaults, ...a })) : [defaults]
+  if (specs.length > SPAWN_BATCH_MAX) {
+    return `refused: one spawn_agent call starts at most ${SPAWN_BATCH_MAX} agents (${specs.length} given). Split the batch across calls.`
   }
-  const context1m = args.context1m ?? supportsContext1m(target.provider, target.model)
   // A research tree's children investigate; they never edit the repo, so
   // an untyped spawn is an explorer and nobody gets a worktree.
   const researchRoot = registry.researchRootOf(parent.id)
-  const agentType = (AGENT_TYPES as readonly string[]).includes(args.agentType ?? '')
-    ? (args.agentType as (typeof AGENT_TYPES)[number])
-    : researchRoot
-      ? 'explorer'
-      : 'implementer'
+  // Validate every entry before creating any: a bad model in the seventh
+  // slot must not leave six agents running under a refusal.
+  const resolved: ResolvedSpawn[] = []
+  const where = (i: number) => (specs.length > 1 ? `agents[${i}]: ` : '')
+  for (const [i, spec] of specs.entries()) {
+    const task = spec.task?.trim() ?? ''
+    if (!task) {
+      return `refused: ${where(i)}task is empty. Pass \`task\` for one agent, or \`agents\` (each with its own task) for a batch of up to ${SPAWN_BATCH_MAX}.`
+    }
+    const target = resolveSpawnTarget(spec.provider, spec.model, parent.provider, rules)
+    if ('error' in target) return target.error.replace(/^refused: /, `refused: ${where(i)}`)
+    if (spec.context1m && !supportsContext1m(target.provider, target.model)) {
+      return `refused: ${where(i)}${target.model} does not offer the 1M context window — only Claude models do. Spawn it without context1m, or pick a model marked +1m. ${approvedTable(rules)}`
+    }
+    resolved.push({
+      provider: target.provider,
+      model: target.model,
+      reasoning: fitReasoning(
+        rules,
+        target.provider,
+        target.model,
+        spec.reasoning
+      ) as SessionMeta['reasoning'],
+      context1m: spec.context1m ?? supportsContext1m(target.provider, target.model),
+      agentType: (AGENT_TYPES as readonly string[]).includes(spec.agentType ?? '')
+        ? (spec.agentType as (typeof AGENT_TYPES)[number])
+        : researchRoot
+          ? 'explorer'
+          : 'implementer',
+      task,
+      useWorktree: spec.useWorktree ?? true
+    })
+  }
   const children = registry.childrenOf(parent.id)
   const live = children.filter(
     (s) => s.status === 'running' || s.status === 'starting' || s.status === 'waiting'
   )
-  if (rules.conduct.maxAgents > 0 && children.length >= rules.conduct.maxAgents) {
-    return `refused: the user capped this thread at ${rules.conduct.maxAgents} subagents total (${children.length} already spawned). Reuse an existing agent via send_to_agent, or tell the user the cap is reached.`
+  const n = resolved.length
+  const { maxAgents, maxParallel } = rules.conduct
+  if (maxAgents > 0 && children.length + n > maxAgents) {
+    const room = Math.max(0, maxAgents - children.length)
+    return room > 0 && n > 1
+      ? `refused: the user capped this thread at ${maxAgents} subagents total (${children.length} already spawned): room for ${room} more, not ${n}. Spawn at most ${room} in this batch.`
+      : `refused: the user capped this thread at ${maxAgents} subagents total (${children.length} already spawned). Reuse an existing agent via send_to_agent, or tell the user the cap is reached.`
   }
-  if (rules.conduct.maxParallel > 0 && live.length >= rules.conduct.maxParallel) {
-    return `refused: the user capped parallelism at ${rules.conduct.maxParallel} concurrent subagents (${live.length} active). wait_for_agent on one of them first, then retry.`
+  if (maxParallel > 0 && live.length + n > maxParallel) {
+    const room = Math.max(0, maxParallel - live.length)
+    return room > 0 && n > 1
+      ? `refused: the user capped parallelism at ${maxParallel} concurrent subagents (${live.length} active): ${room} slots free, not ${n}. Spawn at most ${room} now and the rest after wait_for_agent.`
+      : `refused: the user capped parallelism at ${maxParallel} concurrent subagents (${live.length} active). wait_for_agent on one of them first, then retry.`
   }
-  const writer = agentType === 'implementer' && !researchRoot
-  const cwd =
-    (writer && (args.useWorktree ?? true) && rules.conduct.useWorktrees
-      ? await worktreeFor(parent.cwd, `${parent.id}-${Date.now() % 100000}`)
-      : null) ?? parent.cwd
-  const title = args.task.trim().split('\n')[0].slice(0, 80) || `${target.provider} · ${agentType}`
-  // Every explorer in a research tree gets a findings file the app
-  // assigns, beside the root's report: its deliverable, which survives a
-  // truncated reply and a stopped run, and which the root synthesizes from.
-  const childId = researchRoot ? nanoid(12) : undefined
-  const anglePath = researchRoot
-    ? anglePathFor(registry.reportsRootFor(researchRoot), researchRoot.id, childId!, title)
-    : undefined
-  // Children follow the parent's permission policy — the user granted it
-  // once, and the fleet works under that grant.
-  const child = await registry.create({
-    ...(childId ? { id: childId } : {}),
-    ...(anglePath ? { planPath: anglePath } : {}),
-    projectId: parent.projectId,
-    provider: target.provider,
-    model: target.model,
-    reasoning,
-    agentType,
-    ...(context1m ? { context1m: true } : {}),
-    permission: parentNow.permission,
-    cwd,
-    // The task IS the identity — boards, tabs and the sidebar all
-    // lead with it. Provider/type stay visible as metadata.
-    title,
-    parentId: parent.id
-  })
-  await registry.send(child.id, anglePath ? `${args.task}\n\n${findingsContract(anglePath)}` : args.task)
+  const stamp = Date.now() % 100000
+  const started: { agentId: string; title: string; cwd: string; findingsFile?: string }[] = []
+  for (const [i, r] of resolved.entries()) {
+    const writer = r.agentType === 'implementer' && !researchRoot
+    // Worktrees are added one after another: parallel `git worktree add`
+    // on one repo races for index.lock, and the tag carries the slot so
+    // a batch's entries never share a path.
+    const cwd =
+      (writer && r.useWorktree && rules.conduct.useWorktrees
+        ? await worktreeFor(parent.cwd, n > 1 ? `${parent.id}-${stamp}-${i}` : `${parent.id}-${stamp}`)
+        : null) ?? parent.cwd
+    const title = r.task.split('\n')[0].slice(0, 80) || `${r.provider} · ${r.agentType}`
+    // Every explorer in a research tree gets a findings file the app
+    // assigns, beside the root's report: its deliverable, which survives a
+    // truncated reply and a stopped run, and which the root synthesizes from.
+    const childId = researchRoot ? nanoid(12) : undefined
+    const anglePath = researchRoot
+      ? anglePathFor(registry.reportsRootFor(researchRoot), researchRoot.id, childId!, title)
+      : undefined
+    // Children follow the parent's permission policy — the user granted it
+    // once, and the fleet works under that grant.
+    const child = await registry.create({
+      ...(childId ? { id: childId } : {}),
+      ...(anglePath ? { planPath: anglePath } : {}),
+      projectId: parent.projectId,
+      provider: r.provider,
+      model: r.model,
+      reasoning: r.reasoning,
+      agentType: r.agentType,
+      ...(r.context1m ? { context1m: true } : {}),
+      permission: parentNow.permission,
+      cwd,
+      // The task IS the identity — boards, tabs and the sidebar all
+      // lead with it. Provider/type stay visible as metadata.
+      title,
+      parentId: parent.id
+    })
+    await registry.send(child.id, anglePath ? `${r.task}\n\n${findingsContract(anglePath)}` : r.task)
+    started.push({
+      agentId: child.id,
+      title: child.title,
+      cwd,
+      ...(anglePath ? { findingsFile: anglePath } : {})
+    })
+  }
   // Live headroom rides every spawn result: the boot prompt's cap goes
   // stale when the user retunes mid-run, and a model told "at most 4"
   // self-limits — this is how it learns the current ceiling.
+  const parallel =
+    maxParallel > 0 ? { parallel: `${live.length + n} of ${maxParallel} allowed slots in use` } : {}
+  if (n === 1) {
+    return JSON.stringify({
+      ...started[0],
+      ...parallel,
+      note: 'working — use wait_for_agent to collect the result'
+    })
+  }
   return JSON.stringify({
-    agentId: child.id,
-    title: child.title,
-    cwd,
-    ...(anglePath ? { findingsFile: anglePath } : {}),
-    ...(rules.conduct.maxParallel > 0
-      ? { parallel: `${live.length + 1} of ${rules.conduct.maxParallel} allowed slots in use` }
-      : {}),
-    note: 'working — use wait_for_agent to collect the result'
+    agents: started,
+    ...parallel,
+    note: `${n} agents working — wait_for_agent with agentIds and mode "any" collects them in completion order`
   })
 }
 
@@ -654,6 +723,40 @@ export function orchListAgents(parent: SessionMeta): string {
   )
 }
 
+/** Fields a single spawn and each batch entry share. */
+const spawnSpecShape = {
+  provider: z
+    .enum(providerIds)
+    .optional()
+    .describe('Which harness runs the agent (omit to derive from the model)'),
+  model: z
+    .string()
+    .optional()
+    .describe(
+      `Model id. Defaults per provider: ${providerIds.map((p) => `${p}=${CATALOG[p].defaultModel}`).join(', ')}`
+    ),
+  reasoning: z
+    .enum(['low', 'medium', 'high', 'xhigh', 'max', 'ultra'])
+    .optional()
+    .describe('Must be one of the efforts the chosen model supports (see system prompt); default medium'),
+  agentType: z
+    .enum(AGENT_TYPES)
+    .optional()
+    .describe('Defaults to implementer — explorer inside a research thread'),
+  context1m: z
+    .boolean()
+    .optional()
+    .describe(
+      'Claude models only: the 1M context window, on by default for models that offer it. Pass false for 200k. true is rejected for models that do not offer it.'
+    ),
+  useWorktree: z
+    .boolean()
+    .optional()
+    .describe(
+      'Isolate a writing agent in its own git worktree (default true; ignored outside a git repo)'
+    )
+}
+
 export function orchestratorMcp(parent: SessionMeta): McpSdkServerConfigWithInstance {
   return createSdkMcpServer({
     name: 'orchestrator',
@@ -661,38 +764,19 @@ export function orchestratorMcp(parent: SessionMeta): McpSdkServerConfigWithInst
     tools: [
       tool(
         'spawn_agent',
-        'Spawn a subagent session and send it its task. Returns the agent id. The agent works asynchronously — use wait_for_agent to collect its result.',
+        `Spawn a subagent session and send it its task. Returns the agent id. The agent works asynchronously — use wait_for_agent to collect its result. To fan out, pass \`agents\` (up to ${SPAWN_BATCH_MAX} entries, each with its own task) instead of \`task\`: one call starts the whole batch and returns every agent id; the top-level fields are defaults each entry may override.`,
         {
-          provider: z
-            .enum(providerIds)
-            .optional()
-            .describe('Which harness runs the agent (omit to derive from the model)'),
-          model: z
+          ...spawnSpecShape,
+          task: z
             .string()
             .optional()
-            .describe(
-              `Model id. Defaults per provider: ${providerIds.map((p) => `${p}=${CATALOG[p].defaultModel}`).join(', ')}`
-            ),
-          reasoning: z
-            .enum(['low', 'medium', 'high', 'xhigh', 'max', 'ultra'])
-            .default('medium')
-            .describe('Must be one of the efforts the chosen model supports (see system prompt)'),
-          agentType: z
-            .enum(AGENT_TYPES)
-            .optional()
-            .describe('Defaults to implementer — explorer inside a research thread'),
-          task: z.string().describe('The complete, self-contained task prompt'),
-          context1m: z
-            .boolean()
+            .describe('The complete, self-contained task prompt (one agent; omit when passing agents)'),
+          agents: z
+            .array(z.object({ ...spawnSpecShape, task: z.string().describe('This agent\'s task') }))
+            .max(SPAWN_BATCH_MAX)
             .optional()
             .describe(
-              'Claude models only: the 1M context window, on by default for models that offer it. Pass false for 200k. true is rejected for models that do not offer it.'
-            ),
-          useWorktree: z
-            .boolean()
-            .default(true)
-            .describe(
-              'Isolate a writing agent in its own git worktree (default true; ignored outside a git repo)'
+              `A batch of up to ${SPAWN_BATCH_MAX} agents started by this one call. Each entry takes the same fields as a single spawn; unset ones fall back to the top-level values.`
             )
         },
         async (args) => text(await orchSpawnAgent(parent, args))
@@ -796,7 +880,9 @@ Agent types: ${AGENT_TYPES.join(', ')} — implementers write code, explorers
 read/investigate, reviewers judge, orchestrators sub-orchestrate.
 
 Give each agent a complete, self-contained task prompt — it cannot see this
-conversation. Parallelize independent work; sequence dependent work.
+conversation. Parallelize independent work; sequence dependent work. A
+fan-out is ONE spawn_agent call with \`agents\` (up to ${SPAWN_BATCH_MAX} entries,
+each its own task and model) — not one call per agent.
 
 Subagents ALWAYS go through spawn_agent — spawned agents are visible,
 steerable sessions in the app's fleet panel with their own transcripts.

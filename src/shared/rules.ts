@@ -49,7 +49,7 @@ export const OrchestrationRulesSchema = z.object({
     /** isolate writing subagents in git worktrees */
     useWorktrees: z.boolean().default(true),
     /** subagents running at once; 0 = unlimited (enforced in spawn_agent) */
-    maxParallel: z.number().int().min(0).max(32).default(4),
+    maxParallel: z.number().int().min(0).max(128).default(4),
     /** total subagents per thread; 0 = unlimited (enforced in spawn_agent) */
     maxAgents: z.number().int().min(0).max(200).default(0)
   }),
@@ -146,7 +146,7 @@ export const ThreadRulesSchema = z.object({
       verifyResults: z.boolean().optional(),
       escalate: z.boolean().optional(),
       useWorktrees: z.boolean().optional(),
-      maxParallel: z.number().int().min(0).max(32).optional(),
+      maxParallel: z.number().int().min(0).max(128).optional(),
       maxAgents: z.number().int().min(0).max(200).optional()
     })
     .optional(),

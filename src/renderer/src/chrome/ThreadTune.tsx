@@ -27,7 +27,7 @@ const SWITCHES: { key: keyof ConductOverride & string; label: string }[] = [
 ];
 
 const CAPS: { key: "maxParallel" | "maxAgents"; label: string; steps: number[] }[] = [
-  { key: "maxParallel", label: "Parallel agents", steps: [1, 2, 4, 8, 16, 0] },
+  { key: "maxParallel", label: "Parallel agents", steps: [1, 2, 4, 8, 16, 32, 64, 128, 0] },
   { key: "maxAgents", label: "Total per thread", steps: [10, 25, 50, 100, 0] },
 ];
 

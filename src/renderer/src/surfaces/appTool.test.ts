@@ -71,6 +71,12 @@ describe("appView", () => {
       detail: "Explorer",
       threadId: "agent1",
     });
+    expect(
+      appView(
+        call("spawn_agent", { agents: [{ task: "a" }, { task: "b" }, { task: "c" }] }, '{"agents":[{"agentId":"agent1"}]}'),
+        titleOf,
+      ),
+    ).toEqual({ label: "Spawned", detail: "3 agents", phrase: "spawned 3 subagents" });
     expect(appView(call("send_to_agent", { agentId: "nope", message: "read @thread:thread1 first" }), titleOf)).toMatchObject({
       label: "Messaged",
       detail: "read @Auth rewrite first",

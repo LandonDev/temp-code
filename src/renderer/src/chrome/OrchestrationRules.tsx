@@ -160,7 +160,7 @@ export function OrchestrationRulesEditor({ workspaceId }: { workspaceId: string 
           <CapSelect
             label="Parallel agents"
             value={rules.conduct.maxParallel}
-            options={[0, 2, 4, 8, 16]}
+            options={[0, 2, 4, 8, 16, 32, 64, 128]}
             onChange={(maxParallel) => patchConduct({ maxParallel })}
           />
         </Row>
