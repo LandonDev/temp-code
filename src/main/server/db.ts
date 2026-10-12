@@ -329,6 +329,17 @@ export class Store {
 
   /** Bumped by every sessions-table write; the registry's index cache keys on it. */
   sessionsVersion = 0
+  /** Next seq per session, seeded from MAX(seq) on first use. The log is
+   *  append-only through this class, so the counter is the truth; a delete
+   *  drops it and a PRIMARY KEY conflict re-seeds it. */
+  private nextSeq = new Map<string, number>()
+  /** Rows appended this tick, landed in one transaction by flushEvents().
+   *  A streamed turn appends hundreds of deltas a second, and each used to
+   *  be its own SELECT MAX + autocommit INSERT on the main thread; every
+   *  reader and deleter of the table flushes first, so nothing observes
+   *  the gap. */
+  private pendingEvents: { sessionId: string; seq: number; ts: number; payload: string }[] = []
+  private flushScheduled = false
   private stmt(sql: string): StatementSync {
     let st = this.stmts.get(sql)
     if (!st) {
@@ -507,6 +518,7 @@ export class Store {
 
   /** Delete a session and all of its descendants (log included). */
   deleteSessionTree(id: string): string[] {
+    this.flushEvents()
     const ids: string[] = []
     const collect = (cur: string): void => {
       ids.push(cur)
@@ -524,6 +536,7 @@ export class Store {
       delEvents.run(sid)
       delFold.run(sid)
       del.run(sid)
+      this.nextSeq.delete(sid)
     }
     return ids
   }
@@ -548,16 +561,60 @@ export class Store {
     return rows.map(toMeta)
   }
 
+  /** Append to the log: the row gets its seq and ts now (subscribers are
+   *  pushed the returned row at once) and lands with the tick's other rows
+   *  in flushEvents(). */
   appendEvent(sessionId: string, event: AgentEvent): EventRow {
     const ts = Date.now()
+    const seq = this.nextSeq.get(sessionId) ?? this.maxSeq(sessionId) + 1
+    this.nextSeq.set(sessionId, seq + 1)
+    this.pendingEvents.push({ sessionId, seq, ts, payload: JSON.stringify(event) })
+    if (!this.flushScheduled) {
+      this.flushScheduled = true
+      setImmediate(() => this.flushEvents())
+    }
+    return { sessionId, seq, ts, event }
+  }
+
+  private maxSeq(sessionId: string): number {
     const r = this
       .stmt(`SELECT COALESCE(MAX(seq), 0) AS max FROM events WHERE session_id = ?`)
       .get(sessionId) as { max: number }
-    const seq = r.max + 1
-    this
-      .stmt(`INSERT INTO events (session_id, seq, ts, payload) VALUES (?, ?, ?, ?)`)
-      .run(sessionId, seq, ts, JSON.stringify(event))
-    return { sessionId, seq, ts, event }
+    return r.max
+  }
+
+  /** Land the rows appended since the last flush in one transaction. */
+  flushEvents(): void {
+    this.flushScheduled = false
+    if (this.pendingEvents.length === 0) return
+    const rows = this.pendingEvents
+    this.pendingEvents = []
+    try {
+      this.db.exec('BEGIN')
+    } catch (error) {
+      // Closed under us: the owner flushed before close(), these are strays.
+      if ((error as NodeJS.ErrnoException).code === 'ERR_INVALID_STATE') return
+      throw error
+    }
+    try {
+      const insert = this.stmt(`INSERT INTO events (session_id, seq, ts, payload) VALUES (?, ?, ?, ?)`)
+      for (const row of rows) {
+        try {
+          insert.run(row.sessionId, row.seq, row.ts, row.payload)
+        } catch (error) {
+          if (!/constraint/i.test(String((error as Error).message))) throw error
+          // Something else wrote this session's log: re-seed from disk once.
+          const seq = this.maxSeq(row.sessionId) + 1
+          insert.run(row.sessionId, seq, row.ts, row.payload)
+          this.nextSeq.set(row.sessionId, seq + 1)
+        }
+      }
+      this.db.exec('COMMIT')
+    } catch (error) {
+      this.db.exec('ROLLBACK')
+      for (const row of rows) this.nextSeq.delete(row.sessionId)
+      console.error('[db] event flush failed, rows dropped:', rows.length, error)
+    }
   }
 
   // ── workspaces & projects ──────────────────────────────────────────
@@ -755,6 +812,7 @@ export class Store {
     const needle = options.query.trim().toLowerCase()
     const limit = Math.min(options.limit ?? SEARCH_CAP, SEARCH_CAP)
     if (!needle) return { hits: [], truncated: false }
+    this.flushEvents()
     const rows = this
       .stmt(
         `SELECT e.session_id AS sessionId, e.seq AS seq, e.ts AS ts,
@@ -787,6 +845,7 @@ export class Store {
   }
 
   hasUserText(sessionId: string): boolean {
+    this.flushEvents()
     const r = this
       .stmt(
         `SELECT 1 AS x FROM events WHERE session_id = ? AND payload LIKE '%"user-text"%' LIMIT 1`
@@ -811,6 +870,7 @@ export class Store {
     sessionId: string,
     opts: { afterSeq?: number; beforeSeq?: number; tail?: number } = {}
   ): EventRow[] {
+    this.flushEvents()
     const afterSeq = opts.afterSeq ?? 0
     const beforeSeq = opts.beforeSeq ?? Number.MAX_SAFE_INTEGER
     let fromSeq = afterSeq + 1
@@ -853,6 +913,7 @@ export class Store {
   /** Up to `limit` events after `afterSeq` (-1 for all) — the chunked
    *  read the fold sweep walks big logs with, yielding between chunks. */
   eventsRange(sessionId: string, afterSeq: number, limit: number): EventRow[] {
+    this.flushEvents()
     const rows = this
       .stmt(
         `SELECT seq, ts, payload FROM events WHERE session_id = ? AND seq > ? ORDER BY seq LIMIT ?`
@@ -868,6 +929,7 @@ export class Store {
 
   /** Highest event seq per session — index-only, no payload read. */
   maxSeqs(): Map<string, number> {
+    this.flushEvents()
     const rows = this
       .stmt(`SELECT session_id, MAX(seq) AS max FROM events GROUP BY session_id`)
       .all() as unknown as { session_id: string; max: number }[]

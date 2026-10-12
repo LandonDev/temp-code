@@ -29,6 +29,8 @@ import { IS_MAC } from "./lib/platform";
 import { updateStore } from "./lib/updateStore";
 import { displayAttachments, prepareAttachments } from "./lib/attachments";
 import { basename, notifyGitChanged, pickFolder, restoreSessionCheckout } from "./lib/fs";
+import { isGitSnapshotHeld } from "./lib/gitIndexStore";
+import { nudgeReachesScreen } from "./lib/nudgeScope";
 import {
   invalidateProjectFiles,
   rememberOpenedFile,
@@ -469,7 +471,8 @@ export default function App() {
         const callId = row.event.callId;
         const block = session.blocks.find((b) => b.tool?.callId === callId);
         if (!block) return;
-        nudgeOpenEditors(block, sessionWorkCwd(session));
+        const cwd = sessionWorkCwd(session);
+        nudgeOpenEditors(block, cwd, onScreen(session.id, cwd));
       }),
     [],
   );
@@ -2866,8 +2869,10 @@ export default function App() {
             prev.map((s) => (s.id === sessionId ? stopStreaming(s) : s)),
           );
           playCue("turnFinished");
-          notifyGitChanged();
-          nudgeWorkspace(workCwd);
+          if (onScreen(sessionId, workCwd)) {
+            notifyGitChanged();
+            nudgeWorkspace(workCwd);
+          }
           nudgeWatchedFiles();
           window.setTimeout(() => nudgeWatchedFiles(), 150);
         }
@@ -3027,8 +3032,11 @@ export default function App() {
         }),
       );
       if (session) {
-        nudgeWorkspace(sessionWorkCwd(session));
-        notifyGitChanged();
+        const cwd = sessionWorkCwd(session);
+        if (onScreen(session.id, cwd)) {
+          nudgeWorkspace(cwd);
+          notifyGitChanged();
+        }
         nudgeWatchedFiles();
         window.setTimeout(() => nudgeWatchedFiles(), 150);
       }
@@ -3826,7 +3834,20 @@ function nudgeWorkspace(cwd?: string) {
   notifyDirsChanged();
 }
 
-function nudgeOpenEditors(block: Block, cwd: string) {
+/** Can a refresh for this session's checkout change anything on screen? */
+function onScreen(sessionId: string, workCwd: string): boolean {
+  return nudgeReachesScreen({
+    sessionId,
+    workCwd,
+    activeTab: currentActiveTab(),
+    projectCwd: projectStore.getState().projectCwd,
+    heldCheckout: isGitSnapshotHeld,
+  });
+}
+
+/** Open editors re-stat after any tool result; the git and file-tree
+ *  refreshes only when the result's checkout is on screen (`screen`). */
+function nudgeOpenEditors(block: Block, cwd: string, screen: boolean) {
   const event = block.tool;
   if (!event) return;
   const completed = event.status === "completed" || event.status === "success";
@@ -3836,6 +3857,7 @@ function nudgeOpenEditors(block: Block, cwd: string) {
     if (!completed) return;
     nudgeWatchedFiles();
     window.setTimeout(() => nudgeWatchedFiles(), 150);
+    if (!screen) return;
     notifyGitChanged();
     nudgeWorkspace(cwd);
     window.setTimeout(() => nudgeWorkspace(cwd), 150);
@@ -3852,6 +3874,7 @@ function nudgeOpenEditors(block: Block, cwd: string) {
   }
   if (completed) {
     window.setTimeout(() => nudgeWatchedFiles(), 150);
+    if (!screen) return;
     notifyGitChanged();
     nudgeWorkspace(cwd);
   }

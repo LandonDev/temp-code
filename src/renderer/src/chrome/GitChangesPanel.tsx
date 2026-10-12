@@ -28,7 +28,6 @@ import { MatrixSpinner } from "../surfaces/threads/bits";
 import {
   basename,
   gitCommit,
-  gitDiffIndex,
   gitDiscardFile,
   gitPrCreate,
   gitPrStatus,
@@ -39,7 +38,6 @@ import {
   gitUnstageAll,
   gitUnstageFile,
   notifyGitChanged,
-  subscribeGitChanged,
   type GitChangedFile,
   type GitDiffIndex,
   type GitPr,
@@ -48,13 +46,11 @@ import type { HarnessId } from "../lib/session";
 import { generateCommitMessage, generatePrContent } from "../lib/harness";
 import { invalidateWatchedFiles } from "../lib/fileWatch";
 import { MOD } from "../lib/platform";
-import { applyProjectDiffStats } from "../hooks/useProjectDiffStats";
+import { refreshGitSnapshot, useGitIndex } from "../lib/gitIndexStore";
 import { useLockOverscroll } from "../hooks/useLockOverscroll";
 
-const GIT_POLL_MS = 2000;
 let stagedOpen = true;
 let changesOpen = true;
-const indexByCwd = new Map<string, GitDiffIndex>();
 const prByCwd = new Map<string, GitPr | null>();
 
 type Props = {
@@ -72,7 +68,8 @@ export function GitChangesPanel({
   selectedPath,
   onOpenFile,
 }: Props) {
-  const { index, reload } = useDiffIndex(cwd, enabled);
+  const index = useGitIndex(cwd, enabled);
+  const reload = () => void refreshGitSnapshot(cwd);
   const files = index?.files ?? [];
 
   if (!cwd || cwd === "~") {
@@ -963,153 +960,4 @@ function statusColor(status: string): string {
   if (status === "added") return "text-success";
   if (status === "deleted") return "text-danger";
   return "text-warning";
-}
-
-function useDiffIndex(
-  cwd: string,
-  enabled: boolean,
-): {
-  index: GitDiffIndex | null;
-  reload: () => void;
-} {
-  const [index, setIndex] = useState<GitDiffIndex | null>(
-    () => cachedIndex(cwd),
-  );
-  const [nonce, setNonce] = useState(0);
-  const reload = useCallback(() => setNonce((value) => value + 1), []);
-  const indexRef = useRef(index);
-  indexRef.current = index;
-
-  useEffect(() => {
-    if (!enabled || !cwd || cwd === "~") {
-      return;
-    }
-    const cached = cachedIndex(cwd);
-    if (cached && !sameIndex(indexRef.current, cached)) {
-      indexRef.current = cached;
-      setIndex(cached);
-    }
-    let cancelled = false;
-    let inFlight = false;
-    let pending = false;
-
-    const load = async () => {
-      if (inFlight) {
-        pending = true;
-        return;
-      }
-      if (document.hidden && nonce === 0) return;
-      inFlight = true;
-      try {
-        const next = await gitDiffIndex(cwd);
-        if (cancelled) return;
-        const prev = indexRef.current;
-        if (sameIndex(prev, next)) return;
-        indexByCwd.set(cwd, next);
-        indexRef.current = next;
-        setIndex(next);
-        applyProjectDiffStats(cwd, {
-          files: next.files.length,
-          additions: next.additions,
-          deletions: next.deletions,
-        });
-        if (prev) {
-          const paths = changedFilePaths(prev, next);
-          invalidateWatchedFiles(paths);
-          notifyGitChanged();
-        }
-      } catch {
-        if (!cancelled) {
-          indexByCwd.delete(cwd);
-          setIndex(null);
-        }
-      } finally {
-        inFlight = false;
-        if (pending && !cancelled) {
-          pending = false;
-          void load();
-        }
-      }
-    };
-
-    void load();
-    const onResume = () => {
-      if (!document.hidden) void load();
-    };
-    const timer = window.setInterval(onResume, GIT_POLL_MS);
-    window.addEventListener("focus", onResume);
-    document.addEventListener("visibilitychange", onResume);
-    const unsubGit = subscribeGitChanged(onResume);
-    return () => {
-      cancelled = true;
-      window.clearInterval(timer);
-      window.removeEventListener("focus", onResume);
-      document.removeEventListener("visibilitychange", onResume);
-      unsubGit();
-    };
-  }, [cwd, enabled, nonce]);
-
-  return { index, reload };
-}
-
-function cachedIndex(cwd: string | undefined): GitDiffIndex | null {
-  if (!cwd || cwd === "~") return null;
-  return indexByCwd.get(cwd) ?? null;
-}
-
-function changedFilePaths(prev: GitDiffIndex, next: GitDiffIndex): string[] {
-  const paths: string[] = [];
-  const seen = new Set<string>();
-  const previous = new Map(prev.files.map((file) => [file.relative, file]));
-  const current = new Set(next.files.map((file) => file.relative));
-  for (const file of next.files) {
-    const before = previous.get(file.relative);
-    if (
-      !before ||
-      before.status !== file.status ||
-      before.additions !== file.additions ||
-      before.deletions !== file.deletions ||
-      before.staged !== file.staged ||
-      before.unstaged !== file.unstaged
-    ) {
-      paths.push(file.path);
-      seen.add(file.path);
-    }
-  }
-  for (const file of prev.files) {
-    if (!current.has(file.relative) && !seen.has(file.path)) {
-      paths.push(file.path);
-    }
-  }
-  return paths;
-}
-
-function sameIndex(prev: GitDiffIndex | null, next: GitDiffIndex): boolean {
-  if (!prev) return false;
-  if (
-    prev.branch !== next.branch ||
-    prev.additions !== next.additions ||
-    prev.deletions !== next.deletions ||
-    prev.files.length !== next.files.length ||
-    prev.remote !== next.remote ||
-    prev.upstream !== next.upstream ||
-    prev.defaultBranch !== next.defaultBranch ||
-    prev.ahead !== next.ahead ||
-    prev.behind !== next.behind ||
-    prev.aheadOfDefault !== next.aheadOfDefault
-  ) {
-    return false;
-  }
-  return prev.files.every((file, i) => {
-    const other = next.files[i];
-    return (
-      other &&
-      file.relative === other.relative &&
-      file.status === other.status &&
-      file.additions === other.additions &&
-      file.deletions === other.deletions &&
-      file.staged === other.staged &&
-      file.unstaged === other.unstaged
-    );
-  });
 }

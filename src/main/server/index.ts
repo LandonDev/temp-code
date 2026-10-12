@@ -1170,6 +1170,7 @@ export async function startServer(
       killTrackedChildren()
       for (const client of wss.clients) client.terminate()
       await new Promise<void>((resolve, reject) => wss.close((error) => error ? reject(error) : resolve()))
+      store.flushEvents()
       db.close()
     }
   }

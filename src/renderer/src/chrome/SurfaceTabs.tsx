@@ -2,7 +2,7 @@ import { GripVertical, Terminal, X } from "./icons";
 import type { PointerEvent as ReactPointerEvent, ReactNode } from "react";
 import { useLayoutEffect, useRef } from "react";
 import { basename } from "../lib/fs";
-import { useGitSnapshot } from "../lib/gitIndexStore";
+import { useGitIndex } from "../lib/gitIndexStore";
 import { useEditorState } from "../lib/monaco/editorState";
 import { projectForCwd } from "../lib/tcserver/projects";
 import {
@@ -89,7 +89,7 @@ export function SurfaceTabs({
   const activeTabRef = useRef<HTMLDivElement | null>(null);
   // Every tab of one pane shares a checkout; the pane's first file names it.
   const cwd = files[0]?.cwd ?? "";
-  const { index } = useGitSnapshot(cwd);
+  const index = useGitIndex(cwd);
   const changed = index?.files ?? [];
   const busy = useEditorState((s) => {
     const project = cwd ? projectForCwd(cwd) : undefined;

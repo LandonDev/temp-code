@@ -1,9 +1,11 @@
+// @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { fileListeners, gitListeners, gitDiffIndex, gitLog, release, watchCwd } = vi.hoisted(() => ({
+const { fileListeners, gitListeners, gitDiffIndex, gitLog, invalidateWatchedFiles, release, watchCwd } = vi.hoisted(() => ({
   fileListeners: [] as ((e: { path: string }) => void)[],
   gitListeners: [] as (() => void)[],
   gitDiffIndex: vi.fn(),
+  invalidateWatchedFiles: vi.fn(),
   gitLog: vi.fn(() => Promise.resolve([{ hash: "a".repeat(40), short: "aaaaaaa", subject: "one", author: "x", date: "2026-01-01T00:00:00Z" }])),
   release: vi.fn(),
   watchCwd: vi.fn(),
@@ -18,6 +20,8 @@ vi.mock("./fs", () => ({
   },
 }));
 
+vi.mock("./fileWatch", () => ({ invalidateWatchedFiles }));
+
 vi.mock("./projectWatch", () => ({
   watchCwd,
   onFileEvent: (l: (e: { path: string }) => void) => {
@@ -26,9 +30,36 @@ vi.mock("./projectWatch", () => ({
   },
 }));
 
-import { getGitSnapshot, holdGitSnapshot, refreshGitSnapshot, resetGitSnapshots } from "./gitIndexStore";
+import {
+  getGitSnapshot,
+  holdGitSnapshot,
+  isGitSnapshotHeld,
+  refreshGitSnapshot,
+  resetGitSnapshots,
+  statsOf,
+} from "./gitIndexStore";
 
-const index = (n: number) => ({ branch: `b${n}`, files: [], additions: 0, deletions: 0, ahead: 0, behind: 0 });
+const file = (relative: string, additions = 1) => ({
+  path: `/w/one/${relative}`,
+  relative,
+  status: "modified",
+  additions,
+  deletions: 0,
+  staged: false,
+  unstaged: true,
+});
+const index = (n: number, files: ReturnType<typeof file>[] = []) => ({
+  branch: `b${n}`,
+  files,
+  additions: files.reduce((s, f) => s + f.additions, 0),
+  deletions: 0,
+  remote: null,
+  upstream: null,
+  defaultBranch: null,
+  ahead: 0,
+  behind: 0,
+  aheadOfDefault: 0,
+});
 
 beforeEach(() => {
   vi.useFakeTimers();
@@ -40,6 +71,8 @@ beforeEach(() => {
 afterEach(() => {
   resetGitSnapshots();
   gitDiffIndex.mockReset();
+  gitLog.mockClear();
+  invalidateWatchedFiles.mockReset();
   watchCwd.mockReset();
   release.mockClear();
   fileListeners.length = 0;
@@ -49,7 +82,7 @@ afterEach(() => {
 
 describe("gitIndexStore", () => {
   it("loads once on hold, through the server watcher, and stops with the last holder", async () => {
-    const a = holdGitSnapshot("/w/one");
+    const a = holdGitSnapshot("/w/one", { log: true });
     const b = holdGitSnapshot("/w/one");
     await vi.advanceTimersByTimeAsync(0);
     expect(watchCwd).toHaveBeenCalledTimes(1);
@@ -91,5 +124,72 @@ describe("gitIndexStore", () => {
     await vi.advanceTimersByTimeAsync(0);
     expect(gitDiffIndex).toHaveBeenCalledTimes(2);
     expect(getGitSnapshot("/w/one").index?.branch).toBe("b1");
+  });
+
+  it("a burst of git-changed signals with four holders costs one index call per checkout", async () => {
+    const stops = [
+      holdGitSnapshot("/w/one"),
+      holdGitSnapshot("/w/one"),
+      holdGitSnapshot("/w/one"),
+      holdGitSnapshot("/w/one", { log: true }),
+    ];
+    await vi.advanceTimersByTimeAsync(0);
+    expect(gitDiffIndex).toHaveBeenCalledTimes(1);
+    expect(gitLog).toHaveBeenCalledTimes(1);
+    for (let i = 0; i < 12; i++) {
+      for (const l of gitListeners) l();
+      await vi.advanceTimersByTimeAsync(20);
+    }
+    expect(gitDiffIndex).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(300);
+    expect(gitDiffIndex).toHaveBeenCalledTimes(2);
+    expect(gitLog).toHaveBeenCalledTimes(2);
+    expect(isGitSnapshotHeld("/w/one")).toBe(true);
+    for (const stop of stops) stop();
+    expect(isGitSnapshotHeld("/w/one")).toBe(false);
+    for (const l of gitListeners) l();
+    await vi.advanceTimersByTimeAsync(300);
+    expect(gitDiffIndex).toHaveBeenCalledTimes(2);
+  });
+
+  it("holders without a log reader never fetch the log; stats derive from the index", async () => {
+    const stop = holdGitSnapshot("/w/one");
+    await vi.advanceTimersByTimeAsync(0);
+    expect(gitLog).not.toHaveBeenCalled();
+    expect(statsOf(getGitSnapshot("/w/one").index)).toEqual({ files: 0, additions: 0, deletions: 0 });
+    expect(statsOf(null)).toBeNull();
+    stop();
+  });
+
+  it("keeps the snapshot object when the index is unchanged and re-stats files whose state moved", async () => {
+    gitDiffIndex.mockReset();
+    gitDiffIndex
+      .mockResolvedValueOnce(index(1, [file("a.ts")]))
+      .mockResolvedValueOnce(index(1, [file("a.ts")]))
+      .mockResolvedValueOnce(index(1, [file("a.ts", 3), file("b.ts")]));
+    const stop = holdGitSnapshot("/w/one");
+    await vi.advanceTimersByTimeAsync(0);
+    const first = getGitSnapshot("/w/one");
+    await refreshGitSnapshot("/w/one");
+    expect(getGitSnapshot("/w/one")).toBe(first);
+    expect(invalidateWatchedFiles).not.toHaveBeenCalled();
+    await refreshGitSnapshot("/w/one");
+    expect(getGitSnapshot("/w/one")).not.toBe(first);
+    expect(invalidateWatchedFiles).toHaveBeenCalledWith(["/w/one/a.ts", "/w/one/b.ts"]);
+    stop();
+  });
+
+  it("defers a refresh while the window is hidden and runs it on focus", async () => {
+    const stop = holdGitSnapshot("/w/one");
+    await vi.advanceTimersByTimeAsync(0);
+    Object.defineProperty(document, "hidden", { configurable: true, value: true });
+    for (const l of gitListeners) l();
+    await vi.advanceTimersByTimeAsync(300);
+    expect(gitDiffIndex).toHaveBeenCalledTimes(1);
+    Object.defineProperty(document, "hidden", { configurable: true, value: false });
+    window.dispatchEvent(new Event("focus"));
+    await vi.advanceTimersByTimeAsync(300);
+    expect(gitDiffIndex).toHaveBeenCalledTimes(2);
+    stop();
   });
 });
