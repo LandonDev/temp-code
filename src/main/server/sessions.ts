@@ -20,6 +20,11 @@ import { resolvePin, type ResolvedPin, type RouteOptions } from './accountRoutin
 import type { LimitWindow } from '@shared/events'
 import { foldEvent, newFoldState, toFoldRow } from './folds'
 import { FOLD_VERSION, type FoldRow } from './db'
+
+/** How long a delta-only stream may run before its fold watermark lands. */
+const FOLD_LAND_MS = 2_000
+const isDelta = (event: AgentEvent): boolean =>
+  (event.type === 'assistant-text' || event.type === 'thinking') && event.delta
 import type {
   ProjectCleanup,
   ProjectMeta,
@@ -382,6 +387,11 @@ export class SessionRegistry {
    *  persisted session_folds rows, loaded once at construction and kept
    *  current by append(). list() reads these and never the event log. */
   private folds = new Map<string, FoldRow>()
+  /** Sessions whose in-memory fold is ahead of its stored row: a streamed
+   *  delta moves only the watermark, so the write waits for the next
+   *  non-delta event or the timer instead of running once per token. */
+  private foldDirty = new Set<string>()
+  private foldTimer: ReturnType<typeof setTimeout> | null = null
   /** The richer in-memory task fold (list, call bookkeeping, turn state)
    *  that the tally is emitted from. Not persisted: seeded from the log
    *  the first time a session is appended to in this process, then kept
@@ -445,6 +455,25 @@ export class SessionRegistry {
   private putFold(fold: FoldRow): void {
     this.store.putFold(fold)
     this.folds.set(fold.sessionId, fold)
+    this.foldDirty.delete(fold.sessionId)
+  }
+
+  /** Keep the fold in memory and land its row later (see foldDirty). */
+  private deferFold(fold: FoldRow): void {
+    this.folds.set(fold.sessionId, fold)
+    this.foldDirty.add(fold.sessionId)
+    if (!this.foldTimer) this.foldTimer = setTimeout(() => this.flushFolds(), FOLD_LAND_MS)
+  }
+
+  /** Write every deferred fold row now. */
+  flushFolds(): void {
+    if (this.foldTimer) clearTimeout(this.foldTimer)
+    this.foldTimer = null
+    for (const id of this.foldDirty) {
+      const fold = this.folds.get(id)
+      if (fold) this.store.putFold(fold)
+    }
+    this.foldDirty.clear()
   }
 
   /** Land swept rows and push each session's meta so its sidebar row
@@ -1952,6 +1981,7 @@ export class SessionRegistry {
       this.activities.delete(id)
       this.todoFolds.delete(id)
       this.folds.delete(id)
+      this.foldDirty.delete(id)
       this.pendingGoals.delete(id)
       this.liveContexts.delete(id)
       const meta = all.find((s) => s.id === id)
@@ -2295,14 +2325,19 @@ export class SessionRegistry {
     // A goal event pushes meta so the prompt-bar indicator flips without
     // a status change.
     const goalMoved = event.type === 'goal'
-    this.putFold({
+    const next: FoldRow = {
       sessionId,
       foldedSeq: row.seq,
       foldVersion: FOLD_VERSION,
       tasks: after,
       goal: foldGoal(prev.goal, event, row.ts),
       canContinue: afterRecovery
-    })
+    }
+    // A streamed delta changes no fold output, only the watermark: it
+    // waits for the next non-delta event (a tool call, a status) or the
+    // timer, so a token stream costs no fold writes.
+    if (tasksMoved || goalMoved || recoveryMoved || !isDelta(event)) this.putFold(next)
+    else this.deferFold(next)
     // A finished first turn upgrades the sliced-first-message title to a
     // generated one (fire-and-forget; the slice stays if the call fails).
     if (event.type === 'turn-complete') this.maybeRetitle(sessionId)
@@ -2925,6 +2960,7 @@ export class SessionRegistry {
 
   async disposeAll(): Promise<void> {
     if (this.sweepTimer) clearInterval(this.sweepTimer)
+    this.flushFolds()
     for (const id of [...this.pendingApprovals.keys()]) this.denyPendingApprovals(id)
     await Promise.allSettled([...this.handles.values()].map((h) => h.dispose()))
     this.handles.clear()
