@@ -8,7 +8,7 @@ import { AccountsService } from './accounts'
 import { startGateway, type Gateway } from './gateway'
 import { observeHooks } from './gatewayObserve'
 import { WebSocketServer, type WebSocket } from 'ws'
-import { CATALOG } from '@shared/catalog'
+import { visibleCatalog } from '@shared/catalog'
 import { ClientRequestSchema, type ServerFrame } from '@shared/contract'
 import type { SessionMeta } from '@shared/events'
 import { openDb, Store } from './db'
@@ -22,6 +22,7 @@ import { SessionRegistry } from './sessions'
 import { resolveAppBridgeLaunch, runDoctor, updateProvider } from './drivers/binaries'
 import { probeCatalogs } from './drivers/catalogProbe'
 import { codexTiersReady, probeCodexTiers, startCodexTiers } from './drivers/codexTiers'
+import { forgetCodexVersion, installedCodexVersion } from './drivers/codexVersion'
 import { backfillMirrors } from './mirror'
 import { bootMark } from './boot'
 import { setLimitMissLog } from './limitText'
@@ -191,6 +192,7 @@ export async function startServer(
   accounts.start()
   const gateway = await startGateway({
     claimShim: options.claimShim ?? false,
+    dataDir: options.dataDir ?? dirname(dbPath),
     hooks: {
       ...observeHooks({ logDir: join(options.dataDir ?? dirname(dbPath), 'logs'), onObserved: () => accounts.nudge() }),
       pickNext: (info) => accounts.pickNext(info),
@@ -234,6 +236,7 @@ export async function startServer(
   void runDoctor() // warm the cache so the new-session modal opens ready
   void probeCatalogs() // the five probed harnesses ask their CLIs for models
   void startCodexTiers(store) // which service tiers the codex account has, per model
+  void installedCodexVersion() // hides catalog rows the installed codex cannot run
 
   // Background IntelliJ index warming: shortly after startup, then every
   // 10 minutes (catches HEAD moves from commits/branch switches). Both
@@ -332,9 +335,11 @@ export async function startServer(
         if (gh.handled) return sendFrame({ id: req.id, ok: true, result: gh.result })
         switch (req.method) {
           case 'catalog.get':
-            if (req.params?.refresh) await Promise.all([probeCatalogs(true), probeCodexTiers(store)])
-            else await codexTiersReady()
-            sendFrame({ id: req.id, ok: true, result: CATALOG })
+            if (req.params?.refresh) {
+              forgetCodexVersion()
+              await Promise.all([probeCatalogs(true), probeCodexTiers(store), installedCodexVersion()])
+            } else await Promise.all([codexTiersReady(), installedCodexVersion()])
+            sendFrame({ id: req.id, ok: true, result: visibleCatalog() })
             break
           case 'doctor.get':
             sendFrame({
@@ -343,13 +348,15 @@ export async function startServer(
               result: { ...(await runDoctor()), java: await javaDoctor() }
             })
             break
-          case 'providers.update':
-            sendFrame({
-              id: req.id,
-              ok: true,
-              result: await updateProvider(req.params.provider)
-            })
+          case 'providers.update': {
+            const updated = await updateProvider(req.params.provider)
+            if (req.params.provider === 'codex') {
+              forgetCodexVersion()
+              await installedCodexVersion()
+            }
+            sendFrame({ id: req.id, ok: true, result: updated })
             break
+          }
           case 'workspace.create':
             sendFrame({
               id: req.id,

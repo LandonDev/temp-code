@@ -15,6 +15,8 @@ export interface EndpointDeps {
   shimInstalled: () => boolean
   fetch: typeof globalThis.fetch
   gatewayUrl: (service: Service) => string | null
+  /** Our gateway's https origin for one codex thread, scoped to its route; null without TLS. */
+  scopedCodexUrl: (thread: string, route: AccountRoute) => Promise<string | null>
   now: () => number
 }
 
@@ -22,6 +24,7 @@ const defaults: EndpointDeps = {
   shimInstalled: () => existsSync(SHIM_PLIST),
   fetch: (input, init) => globalThis.fetch(input, init),
   gatewayUrl: (service) => gateway()?.url(service) ?? null,
+  scopedCodexUrl: (thread, route) => gateway()?.scopedCodexUrl(thread, { thread, ...route }) ?? Promise.resolve(null),
   now: Date.now
 }
 
@@ -93,6 +96,13 @@ export interface RoutedEndpoint {
 /**
  * The base URL for one thread's child: `endpointFor`, plus the thread's
  * account when it has one and the owner behind the endpoint can read it.
+ *
+ * A codex thread with a route goes to our own gateway's https port for that
+ * thread instead: codex 0.158+ refuses an http base and keeps only the
+ * origin of an https one, so neither the shim's path nor its fixed TLS port
+ * can carry a scope. The port is the scope, and only this process allocates
+ * it, so no owner probe is needed. Without a certificate the thread falls
+ * back to the shared path (unscoped on a new codex, scoped on an old one).
  */
 export async function routedEndpointFor(
   service: Service,
@@ -100,6 +110,13 @@ export async function routedEndpointFor(
   deps: Partial<EndpointDeps> = {}
 ): Promise<RoutedEndpoint> {
   const d = { ...defaults, ...deps }
+  if (service === 'codex' && scope.route) {
+    const url = await d.scopedCodexUrl(scope.thread, scope.route)
+    if (url) {
+      console.log(`[gateway] codex ${scope.thread}: ${scope.route.account}${scope.route.pin ? ' (pinned)' : ''} on ${url}`)
+      return { url, account: scope.route.account }
+    }
+  }
   const endpoint = await endpointFor(service, d)
   if (!endpoint || !scope.route) return { url: endpoint, account: null }
   if (!(await scopedRoutesAt(endpoint, d))) {

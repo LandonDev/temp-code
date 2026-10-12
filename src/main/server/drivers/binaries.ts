@@ -72,7 +72,19 @@ export async function harnessEnv(): Promise<NodeJS.ProcessEnv> {
   delete env.NODE_ENV
   delete env.NODE_ENV_ELECTRON_VITE
   delete env.NODE
+  if (codexCa) env.CODEX_CA_CERTIFICATE = codexCa
   return env
+}
+
+let codexCa: string | null = null
+/**
+ * The CA behind the gateway's https ports. Codex reads CODEX_CA_CERTIFICATE
+ * as an extra root, so a child trusts the loopback origin it is given
+ * without any Keychain step; only codex looks at the variable, so every
+ * harness child may carry it. Set by the gateway once its certificate loads.
+ */
+export function setCodexCaCertificate(path: string | null): void {
+  codexCa = path
 }
 
 const binCache = new Map<string, Promise<string | null>>()

@@ -37,7 +37,9 @@ describe('endpointFor', () => {
     let now = 1_000_000
     const gatewayUrl = (s: string) => `http://127.0.0.1:5/${s}`
     const fetch = vi.fn(async (input: URL | RequestInfo) => (String(input).endsWith('/__aliax') ? json({ ok: true, features: ['scoped-routes'] }) : json({ ok: true })))
-    const deps = { shimInstalled: () => false, fetch, gatewayUrl, now: () => now }
+    // No certificate: codex takes the shared path like claude.
+    const scopedCodexUrl = async () => null
+    const deps = { shimInstalled: () => false, fetch, gatewayUrl, scopedCodexUrl, now: () => now }
     const route = { account: 'me@x.com', pin: false }
     expect(await routedEndpointFor('claude', { thread: 'T', route }, deps)).toEqual({ url: 'http://127.0.0.1:5/claude/~t=T;a=me%40x.com', account: 'me@x.com' })
     expect(fetch).toHaveBeenCalledWith('http://127.0.0.1:5/claude/__aliax', expect.anything())
@@ -60,10 +62,27 @@ describe('endpointFor', () => {
     expect(await routedEndpointFor('claude', { thread: 'T', route }, { ...deps, gatewayUrl: () => null })).toEqual({ url: null, account: null })
   })
 
+  it('a codex thread with a route gets its own https origin from the gateway, even when the shim answers', async () => {
+    const fetch = vi.fn(async () => json({ ok: true }))
+    const scopedCodexUrl = vi.fn(async (thread: string, route: { account: string; pin: boolean }) => `https://127.0.0.1:${thread.length}${route.pin ? 1 : 0}/codex`)
+    const deps = { shimInstalled: () => true, fetch, gatewayUrl: () => 'http://127.0.0.1:5/codex', scopedCodexUrl }
+    expect(await routedEndpointFor('codex', { thread: 'abc', route: { account: 'me', pin: true } }, deps)).toEqual({ url: 'https://127.0.0.1:31/codex', account: 'me' })
+    expect(scopedCodexUrl).toHaveBeenCalledWith('abc', { account: 'me', pin: true })
+    // No shim probe, no feature probe: the port is ours.
+    expect(fetch).not.toHaveBeenCalled()
+    // Without a route the thread shares the plain path (and the shim when it answers).
+    expect(await routedEndpointFor('codex', { thread: 'abc', route: null }, deps)).toEqual({ url: `${SHIM_URL}/codex`, account: null })
+    // Claude never takes a codex port.
+    forgetShimAnswer()
+    const claude = await routedEndpointFor('claude', { thread: 'abc', route: { account: 'me', pin: false } }, { ...deps, shimInstalled: () => false, fetch: vi.fn(async () => json({ ok: true, features: ['scoped-routes'] })), gatewayUrl: () => 'http://127.0.0.1:5/claude' })
+    expect(claude.url).toBe('http://127.0.0.1:5/claude/~t=abc;a=me')
+    expect(scopedCodexUrl).toHaveBeenCalledTimes(1)
+  })
+
   it('remembers the shim answer for 30 s', async () => {
     let now = 1_000_000
     const fetch = vi.fn(async () => json({ ok: true }))
-    const deps = { shimInstalled: () => true, fetch, gatewayUrl: () => null, now: () => now }
+    const deps = { shimInstalled: () => true, fetch, gatewayUrl: () => null, scopedCodexUrl: async () => null, now: () => now }
     await endpointFor('claude', deps)
     now += 10_000
     await endpointFor('codex', deps)

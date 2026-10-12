@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest'
-import { CATALOG, resolveModel } from './catalog'
+import { afterEach, describe, expect, it } from 'vitest'
+import { CATALOG, compareVersions, modelInfo, resolveModel, setInstalledCodexVersion, visibleCatalog } from './catalog'
 
 describe('resolveModel', () => {
   it('an empty id is the provider default; a known id stays; another provider\'s id routes there', () => {
@@ -32,5 +32,37 @@ describe('resolveModel', () => {
     expect(claude).toContain('claude-sonnet-5-5')
     expect(claude).toContain('claude-haiku-5-5')
     expect(claude).not.toContain('claude-sonnet-5')
+  })
+})
+
+describe('codex version gate', () => {
+  afterEach(() => setInstalledCodexVersion(null))
+
+  it('compares dotted versions numerically and ignores a pre-release tag', () => {
+    expect(compareVersions('0.162.1', '0.153.4')).toBe(1)
+    expect(compareVersions('0.153.4', '0.162.1')).toBe(-1)
+    expect(compareVersions('0.162.1', '0.162.1')).toBe(0)
+    expect(compareVersions('1.0.0', '0.999.9')).toBe(1)
+    expect(compareVersions('0.162.1-alpha.2', '0.162.1')).toBe(0)
+    expect(compareVersions('0.162', '0.162.0')).toBe(0)
+  })
+
+  it('hides the Sol rows on an old codex, shows them on 0.162.1+, and never hides when the version is unknown', () => {
+    const sol = ['gpt-6.1-sol', 'gpt-6-sol']
+    const ids = () => visibleCatalog().codex.models.map((m) => m.id)
+    expect(ids()).toEqual(expect.arrayContaining(sol))
+    expect(visibleCatalog().codex).toBe(CATALOG.codex)
+    setInstalledCodexVersion('0.153.4')
+    expect(ids()).not.toEqual(expect.arrayContaining(sol))
+    expect(ids()).toContain('gpt-5.6-sol')
+    expect(modelInfo('codex', 'gpt-6.1-sol')).toBeUndefined()
+    expect(modelInfo('codex', 'gpt-5.6-sol')).toBeDefined()
+    // Other providers are untouched, same objects.
+    expect(visibleCatalog().claude).toBe(CATALOG.claude)
+    // An unknown-to-the-catalog request stays as asked rather than being faked as served.
+    expect(resolveModel('codex', 'gpt-6.1-sol')).toEqual({ provider: 'codex', model: 'gpt-6.1-sol' })
+    setInstalledCodexVersion('0.162.1')
+    expect(ids()).toEqual(expect.arrayContaining(sol))
+    expect(modelInfo('codex', 'gpt-6-sol')?.minCodexVersion).toBe('0.162.1')
   })
 })

@@ -6,6 +6,7 @@ import {
 } from '@anthropic-ai/claude-agent-sdk'
 import {
   CATALOG,
+  visibleCatalog,
   modelInfo,
   resolveModel,
   supportsContext1m,
@@ -154,7 +155,8 @@ export async function appStartThread(
   const requested = args.model || CATALOG[args.provider].defaultModel
   const { provider, model } = resolveModel(args.provider, requested)
   if (!modelInfo(provider, model)) {
-    return `refused: no provider serves model "${requested}". Valid: ${(Object.keys(CATALOG) as ProviderId[]).map((p) => `${p}: ${CATALOG[p].models.map((m) => m.id).join(', ')}`).join('; ')}`
+    const visible = visibleCatalog()
+    return `refused: no provider serves model "${requested}". Valid: ${(Object.keys(visible) as ProviderId[]).map((p) => `${p}: ${visible[p].models.map((m) => m.id).join(', ')}`).join('; ')}`
   }
   const info = modelInfo(provider, model)!
   const reasoning = (args.reasoning ??

@@ -12,6 +12,7 @@ import { toolDisplay } from './display'
 import { bridgeMcpConfig } from '../apptools'
 import { researchWriteRoots } from '../orchestration'
 import { routedEndpointFor } from '../endpoint'
+import { gateway } from '../gateway'
 import { observeCodexSnapshot } from '../gatewayObserve'
 
 /**
@@ -576,7 +577,10 @@ export const codexDriver: HarnessDriver = {
           break
         }
         case 'error': {
-          const message = String(params.message ?? 'codex error')
+          // The app-server's `error` payload is either {message} or {error: {message}}.
+          const nested = (params.error as { message?: unknown } | undefined)?.message
+          const message = String(params.message ?? nested ?? 'codex error')
+          if (!params.message && !nested) console.log(`[codex] error notification: ${JSON.stringify(params).slice(0, 500)}`)
           emit({ type: 'error', message, ...limitField('codex', message) })
           break
         }
@@ -910,6 +914,8 @@ export const codexDriver: HarnessDriver = {
       async dispose(): Promise<void> {
         disposed = true
         conn.kill()
+        // The thread's own https port (endpoint.ts) outlives reboots of its child, not the session.
+        await gateway()?.releaseScoped(session.id)
       }
     }
   }

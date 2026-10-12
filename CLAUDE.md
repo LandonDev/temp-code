@@ -96,6 +96,35 @@ Two separate steps, on purpose.
 Never build into or swap /Applications/TempCode.app yourself: the installed
 app replaces itself from the feed, and only from the feed.
 
+## Provider traffic: the gateway, and Codex needs 0.162.1+
+Every Claude and Codex child sends its API traffic to a loopback gateway
+(src/main/server/gateway.ts) that swaps in the account the thread is
+routed to (aliax-core's `forward`). Two listeners:
+- **One plain-http port** is the marker's `url`. Aliax's shim (8787, TLS on
+  8789) forwards terminal traffic here when we own the marker, and Claude
+  children carry their `~t=<thread>;a=<account>[;pin=1]` scope on this
+  port's path (endpoint.ts `routeUrl`), after a `scoped-routes` feature
+  probe of whoever answers.
+- **One https port per codex thread.** Codex 0.158+ refuses an http
+  `chatgpt_base_url` and keeps only the ORIGIN of an https one for the
+  sampling call (`<origin>/backend-api/codex/responses`), so a path scope is
+  lost. Instead `routedEndpointFor('codex')` asks the gateway for a port of
+  the thread's own (`scopedCodexUrl`); the listener rewrites `/backend-api/*`
+  and `/codex/*` into the scoped path core parses (`scopedCodexPath`) and
+  refuses WebSocket upgrades so codex drops to its HTTP stream at once.
+  Codex children never use the shim. The certificate is Aliax's pair in
+  ~/.aliax/tls when present, else an app-owned CA + leaf under
+  `<userData>/tls` (src/main/server/tls.ts); children trust it through
+  `CODEX_CA_CERTIFICATE` (harnessEnv), so no Keychain step is needed.
+  `TEMP_CODE_GATEWAY_TRACE=1` logs one line per forwarded request.
+- The installed codex version is read once at boot (drivers/codexVersion.ts)
+  and catalog rows with `minCodexVersion` above it are hidden everywhere
+  (picker, spawn table, app tools). GPT-6.1 Sol and GPT-6 Sol need 0.162.1.
+- A dev instance is not the marker owner, so core does not refresh codex
+  tokens there: an account whose stored token lapsed answers 401
+  ("token_expired") until the owner uses it. Pin test threads to an account
+  the installed app uses, or expect that failure.
+
 ## The prod worktree is retired
 ~/IdeaProjects/temp-code-prod was the old local updater's build checkout.
 The updater no longer reads it or the source repo at all; it can stay

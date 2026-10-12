@@ -26,8 +26,9 @@ and drag TempCode to Applications. The app is signed and notarized.
 
 It needs on the machine:
 
-- The agent CLIs you want to drive, signed in: `claude`, `codex`,
-  `cursor-agent`.
+- The agent CLIs you want to drive, signed in: `claude`, `codex`
+  (0.162.1 or newer; the GPT-6 Sol models only exist from there, and the
+  app hides them on an older install), `cursor-agent`.
 - `git`.
 - A JDK 21 or newer for the Java editor. The Eclipse language server
   downloads on first use.

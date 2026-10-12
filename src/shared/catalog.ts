@@ -55,6 +55,10 @@ export interface ModelInfo {
    *  logged-in account (`model/list` → serviceTiers), e.g. ['priority',
    *  'ultrafast']. Absent until probed; never assumed. */
   speedTiers?: string[]
+  /** The oldest codex CLI that serves this model. An older install hides
+   *  the row everywhere (picker, spawn table, app tools) instead of
+   *  offering a model that fails with a 400 at first use. */
+  minCodexVersion?: string
 }
 
 export interface ProviderInfo {
@@ -133,20 +137,24 @@ export const CATALOG: Record<ProviderId, ProviderInfo> = {
     // codex `model/list` (codex-cli 0.162.1 — the Sol pair first appears
     // there; 0.153 still serves astra and the 5.6 family), minus the
     // deprecated gpt-5.4 family. The default stays on gpt-5.6-sol: 0.162
-    // defaults to gpt-6.1-sol, but the installed 0.153 rejects both Sol
-    // ids with a 400, so the default must be a model every CLI can run.
+    // defaults to gpt-6.1-sol, but a 0.153 install rejects both Sol ids
+    // with a 400, so the default must be a model every CLI can run; the
+    // Sol rows carry minCodexVersion (0.162.1 is the oldest CLI verified
+    // to run them) and are hidden on an older install.
     models: [
       {
         id: 'gpt-6.1-sol',
         label: 'GPT-6.1 Sol',
         reasoning: ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'],
-        defaultReasoning: 'low'
+        defaultReasoning: 'low',
+        minCodexVersion: '0.162.1'
       },
       {
         id: 'gpt-6-sol',
         label: 'GPT-6 Sol',
         reasoning: ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'],
-        defaultReasoning: 'medium'
+        defaultReasoning: 'medium',
+        minCodexVersion: '0.162.1'
       },
       {
         id: 'gpt-6-astra',
@@ -249,9 +257,56 @@ export const CATALOG: Record<ProviderId, ProviderInfo> = {
   fx: { id: 'fx', label: 'fx', models: [], defaultModel: '', experimental: true }
 }
 
-/** A provider's entry for a model id, if it's in the catalog. */
+/**
+ * The codex CLI version the main process found on the login PATH
+ * (drivers/codexVersion.ts), e.g. "0.162.1"; null while unknown or in the
+ * renderer, which only ever sees the already-filtered `catalog.get` answer.
+ * Unknown never hides a row: a missing CLI shows as such in the doctor.
+ */
+let installedCodexVersion: string | null = null
+export function setInstalledCodexVersion(version: string | null): void {
+  installedCodexVersion = version
+}
+
+/** Dotted numeric versions ("0.162.1" vs "0.153.4"); a pre-release tag after `-` is ignored. */
+export function compareVersions(a: string, b: string): number {
+  const parts = (v: string): number[] => v.split('-')[0].split('.').map((n) => Number(n) || 0)
+  const [pa, pb] = [parts(a), parts(b)]
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const d = (pa[i] ?? 0) - (pb[i] ?? 0)
+    if (d !== 0) return d < 0 ? -1 : 1
+  }
+  return 0
+}
+
+/** Whether the installed CLI can run this row (see minCodexVersion). */
+export function runnableHere(provider: ProviderId, model: ModelInfo): boolean {
+  if (provider !== 'codex' || !model.minCodexVersion || !installedCodexVersion) return true
+  return compareVersions(installedCodexVersion, model.minCodexVersion) >= 0
+}
+
+/** A provider's rows minus the ones the installed CLI cannot run. */
+export function visibleModels(provider: ProviderId): ModelInfo[] {
+  return CATALOG[provider].models.filter((m) => runnableHere(provider, m))
+}
+
+/**
+ * The catalog as offered: every reader that lists models (the picker's
+ * `catalog.get`, the spawn table, the app tools' refusals) goes through
+ * here so none of them can offer a row another would refuse.
+ */
+export function visibleCatalog(): Record<ProviderId, ProviderInfo> {
+  const out = { ...CATALOG }
+  for (const id of Object.keys(CATALOG) as ProviderId[]) {
+    const models = visibleModels(id)
+    if (models.length !== CATALOG[id].models.length) out[id] = { ...CATALOG[id], models }
+  }
+  return out
+}
+
+/** A provider's entry for a model id, if it's in the catalog and the installed CLI runs it. */
 export function modelInfo(provider: ProviderId, modelId: string): ModelInfo | undefined {
-  return CATALOG[provider].models.find((m) => m.id === modelId)
+  return CATALOG[provider].models.find((m) => m.id === modelId && runnableHere(provider, m))
 }
 
 /**

@@ -1,4 +1,5 @@
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { request as httpsRequest } from 'node:https'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
@@ -9,6 +10,7 @@ const home = mkdtempSync(join(tmpdir(), 'temp-code-gateway-home-'))
 const realHome = process.env.HOME
 let core: typeof import('aliax-core')
 let gw: typeof import('./gateway')
+let tls: import('./tls').TlsMaterial
 let markerPath = ''
 
 beforeAll(async () => {
@@ -17,7 +19,10 @@ beforeAll(async () => {
   gw = await import('./gateway')
   markerPath = core.MARKER_PATH
   expect(markerPath.startsWith(home)).toBe(true)
-})
+  const tlsMod = await import('./tls')
+  await tlsMod.makeCertificate(join(home, 'tls'), 'Test CA')
+  tls = tlsMod.readTlsDir(join(home, 'tls'), 'app')!
+}, 30_000)
 afterAll(() => {
   process.env.HOME = realHome
   rmSync(home, { recursive: true, force: true })
@@ -35,7 +40,7 @@ const DEAD_PID = 9_999_999
 
 let running: InstanceType<typeof gw.Gateway>[] = []
 const start = async (options: Partial<import('./gateway').GatewayOptions> = {}) => {
-  const g = new gw.Gateway({ claimShim: true, tickMs: 50, ...options })
+  const g = new gw.Gateway({ claimShim: true, tickMs: 50, tls: null, ...options })
   running.push(g)
   await g.start()
   return g
@@ -161,5 +166,109 @@ describe('Gateway forwarding', () => {
     expect(g.status().routed).toEqual({ codex: 1 })
     expect((await fetch(`http://127.0.0.1:${g.status().port}/other/x`)).status).toBe(404)
     expect(g.status().routed).toEqual({ codex: 1 })
+  })
+
+  it('gives a codex thread its own https port, scopes every request on it, and closes it on release', async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), 'temp-code-gateway-data-'))
+    cleanupData = () => rmSync(dataDir, { recursive: true, force: true })
+    const calls: { url: string; headers: Record<string, string> }[] = []
+    core.configure({
+      dataDir,
+      fetch: async (url, init) => {
+        calls.push({ url: String(url), headers: init?.headers as Record<string, string> })
+        return new Response('{"ok":true}', { status: 200, headers: { 'content-type': 'application/json' } })
+      },
+      secrets: { mode: 'chromiumKey', keychainItem: 'Test Safe Storage' },
+      appName: 'temp-code-test'
+    })
+    core.vault.useFixedChromiumKey('Test Safe Storage', core.vault.randomChromiumKey())
+    for (const [name, acct] of [['pinned', 'acct-pin'], ['mine', 'acct-mine']] as const) {
+      core.vault.upsertProfile('codex', { name, accountId: acct, createdAt: 1 })
+      core.vault.saveSecret('codex', name, JSON.stringify({ tokens: { access_token: `TOKEN-${name}`, account_id: acct } }))
+    }
+    core.pinProfile('codex', 'pinned')
+
+    const g = await start({ claimShim: false, tls })
+    expect(g.status().tls).toEqual({ caPath: tls.caPath, source: 'app' })
+    const url = await g.scopedCodexUrl('thread-1', { thread: 'thread-1', account: 'mine', pin: true })
+    expect(url).toMatch(/^https:\/\/127\.0\.0\.1:\d+\/codex$/)
+    const port = Number(new URL(url!).port)
+    expect(port).not.toBe(g.status().port)
+    expect(g.status().scopedPorts).toEqual({ 'thread-1': port })
+    // The same thread keeps its port; a second thread gets another.
+    expect(await g.scopedCodexUrl('thread-1', { thread: 'thread-1', account: 'mine', pin: false })).toBe(url)
+    const other = await g.scopedCodexUrl('thread-2', { thread: 'thread-2', account: 'pinned', pin: false })
+    expect(other).not.toBe(url)
+
+    const tlsFetch = (path: string, method = 'POST'): Promise<{ status: number; body: string }> =>
+      new Promise((ok, bad) => {
+        const req = httpsRequest(
+          { host: '127.0.0.1', port, path, method, rejectUnauthorized: false, headers: { authorization: 'Bearer CLI', 'content-type': 'application/json' } },
+          (res) => {
+            let body = ''
+            res.on('data', (c) => (body += c))
+            res.on('end', () => ok({ status: res.statusCode ?? 0, body }))
+          }
+        )
+        req.on('error', bad)
+        req.end(method === 'POST' ? '{"model":"gpt-6-sol"}' : undefined)
+      })
+    // Codex 0.158+ addresses the origin: /backend-api/codex/responses and /backend-api/wham/*.
+    expect((await tlsFetch('/backend-api/codex/responses')).status).toBe(200)
+    expect(calls[0].url).toBe('https://chatgpt.com/backend-api/codex/responses')
+    expect(calls[0].headers.authorization).toBe('Bearer TOKEN-mine')
+    expect(calls[0].headers['chatgpt-account-id']).toBe('acct-mine')
+    // The base's own path survives on the account calls: /codex/api/codex/… maps onto /wham.
+    expect((await tlsFetch('/codex/api/codex/accounts/check', 'GET')).status).toBe(200)
+    expect(calls[1].url).toBe('https://chatgpt.com/backend-api/wham/accounts/check')
+    expect(calls[1].headers.authorization).toBe('Bearer TOKEN-mine')
+    expect((await tlsFetch('/backend-api/wham/settings/user', 'GET')).status).toBe(200)
+    expect(calls[2].url).toBe('https://chatgpt.com/backend-api/wham/settings/user')
+    expect(g.status().routed).toEqual({ codex: 3 })
+    // A WebSocket attempt (codex 0.162's first transport) is refused at once.
+    const upgrade = await new Promise<string>((ok, bad) => {
+      const req = httpsRequest({ host: '127.0.0.1', port, path: '/backend-api/codex/responses', method: 'GET', rejectUnauthorized: false, headers: { connection: 'Upgrade', upgrade: 'websocket', 'sec-websocket-version': '13', 'sec-websocket-key': 'dGhlIHNhbXBsZSBub25jZQ==' } })
+      req.on('upgrade', () => bad(new Error('upgraded')))
+      req.on('response', (res) => ok(`${res.statusCode}`))
+      req.on('error', bad)
+      req.end()
+    })
+    expect(upgrade).toBe('426')
+    // Control paths answer on the scoped port too, unscoped.
+    const ctl = await tlsFetch('/__aliax', 'GET')
+    expect(ctl.status).toBe(200)
+    expect(JSON.parse(ctl.body).owner).toBe('temp-code')
+    // The plain port still serves the shim's rewritten path under the pin.
+    const plain = await fetch(`http://127.0.0.1:${g.status().port}/codex/codex/responses`, { method: 'POST', headers: { authorization: 'Bearer CLI' }, body: '{}' })
+    expect(plain.status).toBe(200)
+    expect(calls[3].headers.authorization).toBe('Bearer TOKEN-pinned')
+
+    await g.releaseScoped('thread-1')
+    expect(g.status().scopedPorts).toEqual({ 'thread-2': Number(new URL(other!).port) })
+    await expect(tlsFetch('/backend-api/codex/responses')).rejects.toThrow()
+    await g.releaseScoped('thread-1') // idempotent
+  })
+
+  it('has no https origin without a certificate', async () => {
+    const g = await start({ claimShim: false, tls: null })
+    expect(g.status().tls).toBeNull()
+    expect(await g.scopedCodexUrl('t', { thread: 't', account: 'a', pin: false })).toBeNull()
+  })
+})
+
+describe('scopedCodexPath', () => {
+  const scope = { thread: 'th 1', account: 'me@x.com', pin: true }
+  const seg = '~t=th%201;a=me%40x.com;pin=1'
+  it('rewrites what codex 0.158+ sends an origin into the scoped core path', () => {
+    expect(gw.scopedCodexPath('/backend-api/codex/responses', scope)).toBe(`/codex/${seg}/codex/responses`)
+    expect(gw.scopedCodexPath('/backend-api/wham/accounts/check', scope)).toBe(`/codex/${seg}/wham/accounts/check`)
+    expect(gw.scopedCodexPath('/codex/api/codex/settings/user', scope)).toBe(`/codex/${seg}/api/codex/settings/user`)
+    expect(gw.scopedCodexPath('/codex', { ...scope, pin: false })).toBe('/codex/~t=th%201;a=me%40x.com')
+    expect(gw.scopedCodexPath('/api/codex/ps/mcp', scope)).toBe(`/codex/${seg}/api/codex/ps/mcp`)
+  })
+  it('leaves an existing scope and control paths alone', () => {
+    expect(gw.scopedCodexPath('/codex/~t=T;a=A/codex/responses', scope)).toBe('/codex/~t=T;a=A/codex/responses')
+    expect(gw.scopedCodexPath('/__aliax', scope)).toBe('/__aliax')
+    expect(gw.scopedCodexPath('/__aliax/usage?service=codex', scope)).toBe('/__aliax/usage?service=codex')
   })
 })

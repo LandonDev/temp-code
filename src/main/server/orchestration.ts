@@ -15,6 +15,7 @@ import {
   CATALOG,
   modelInfo,
   supportsContext1m,
+  visibleCatalog,
   type ProviderId
 } from '@shared/catalog'
 import {
@@ -310,7 +311,7 @@ const settledReport = (id: string, meta: SessionMeta): Record<string, unknown> =
  *  refusals. Renders only the models the user approved, each with the
  *  effort range the policy leaves open. */
 export function spawnableModels(rules: OrchestrationRules): string {
-  const blocks = Object.values(CATALOG)
+  const blocks = Object.values(visibleCatalog())
     .map((p) => {
       const models = p.models.filter((m) => modelApproved(rules, p.id, m.id))
       if (models.length === 0) return null
@@ -334,7 +335,7 @@ const approvedTable = (rules: OrchestrationRules): string =>
 /** A provider's spawn default under the policy: the catalog default when
  *  approved, else its first approved model. */
 function approvedDefault(rules: OrchestrationRules, provider: ProviderId): string | null {
-  const p = CATALOG[provider]
+  const p = visibleCatalog()[provider]
   if (modelApproved(rules, provider, p.defaultModel)) return p.defaultModel
   return p.models.find((m) => modelApproved(rules, provider, m.id))?.id ?? null
 }
@@ -385,8 +386,9 @@ function resolveSpawnTarget(
   }
   const q = canon(rawModel)
   const order = [...(provider ? [provider] : []), ...(Object.keys(CATALOG) as ProviderId[])]
+  const visible = visibleCatalog()
   for (const p of order) {
-    const hit = CATALOG[p].models.find(
+    const hit = visible[p].models.find(
       (m) =>
         modelApproved(rules, p, m.id) && (canon(m.id).includes(q) || canon(m.label).includes(q))
     )
