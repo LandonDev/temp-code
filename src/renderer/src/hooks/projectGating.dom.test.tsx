@@ -15,7 +15,13 @@ import type { ServerPush } from "../lib/tcserver/types";
  */
 
 vi.mock("../lib/native", () => ({
-  invoke: vi.fn(() => Promise.resolve({ current: "main", detached: false, branches: [] })),
+  invoke: vi.fn((method: string) =>
+    Promise.resolve(
+      method === "git_diff_index"
+        ? { branch: "main", files: [], additions: 0, deletions: 0, remote: null, upstream: null, defaultBranch: null, ahead: 0, behind: 0, aheadOfDefault: 0 }
+        : { current: "main", detached: false, branches: [] },
+    ),
+  ),
   open: vi.fn(),
 }));
 
@@ -55,12 +61,13 @@ describe("useProjectDiffStats", () => {
     await settle();
     act(() => window.dispatchEvent(new Event("focus")));
     await settle();
-    expect(callsFor("git_diff_stats")).toBe(0);
+    expect(callsFor("git_diff_index")).toBe(0);
     expect(result.current).toBeNull();
 
     rerender({ enabled: true });
     await settle();
-    expect(callsFor("git_diff_stats")).toBe(1);
+    expect(callsFor("git_diff_index")).toBe(1);
+    expect(result.current).toEqual({ files: 0, additions: 0, deletions: 0 });
   });
 });
 

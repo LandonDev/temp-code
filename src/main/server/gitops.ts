@@ -95,28 +95,67 @@ async function limitedFile(path: string, limit: number): Promise<{ bytes: Buffer
     return { bytes: bytes.subarray(0, length), tooLarge: meta.size > limit || length > limit }
   } finally { await file.close() }
 }
-async function untracked(cwd: string, files: Map<string, FileAcc>): Promise<void> {
-  const names = (await optional(cwd, ['ls-files', '-o', '--exclude-standard', '-z', '--', '.'])) ?? ''
-  for (const rel of names.split('\0').filter(Boolean)) {
-    const acc = entry(files, rel)
-    acc.untracked = true
-    if (acc.additions) continue
+/** Line counts of untracked files, reused while a file's size and mtime hold:
+ *  a checkout with hundreds of untracked files is re-indexed after every tool
+ *  result, and almost none of them changed since the last run. */
+const untrackedLines = new Map<string, { size: number; mtimeMs: number; lines: number }>()
+const UNTRACKED_CACHE_MAX = 50_000
+async function untrackedLineCount(path: string): Promise<number> {
+  const meta = await stat(path)
+  if (!meta.isFile()) return 0
+  const hit = untrackedLines.get(path)
+  if (hit && hit.size === meta.size && hit.mtimeMs === meta.mtimeMs) return hit.lines
+  let lines = 0
+  const { bytes, tooLarge } = await limitedFile(path, 1024 * 1024)
+  if (!tooLarge && bytes.length && !bytes.includes(0)) {
+    lines = bytes.reduce((n, b) => n + Number(b === 10), 0) + Number(bytes.at(-1) !== 10)
+  }
+  if (untrackedLines.size >= UNTRACKED_CACHE_MAX) untrackedLines.clear()
+  untrackedLines.set(path, { size: meta.size, mtimeMs: meta.mtimeMs, lines })
+  return lines
+}
+/** `git status --porcelain=v2 --branch` in one spawn: every tracked change
+ *  with its staged/unstaged split and status letter, the untracked list,
+ *  the branch, its upstream and the ahead/behind counts — what took
+ *  ls-files, three diffs, rev-parse, rev-list and symbolic-ref before. */
+interface StatusInfo { head: string | null; upstream: string | null; ab: { ahead: number; behind: number } | null }
+async function status(cwd: string, files: Map<string, FileAcc>, statuses: Map<string, string>): Promise<StatusInfo> {
+  const out = (await optional(cwd, ['status', '--porcelain=v2', '-z', '--branch', '--no-renames', '--untracked-files=all'])) ?? ''
+  const info: StatusInfo = { head: null, upstream: null, ab: null }
+  for (const field of out.split('\0')) {
+    if (field.startsWith('# branch.head ')) info.head = field.slice(14)
+    else if (field.startsWith('# branch.upstream ')) info.upstream = field.slice(18)
+    else if (field.startsWith('# branch.ab ')) {
+      const m = /^\+(\d+) -(\d+)$/.exec(field.slice(12))
+      if (m) info.ab = { ahead: Number(m[1]), behind: Number(m[2]) }
+    } else if (field.startsWith('? ')) entry(files, field.slice(2)).untracked = true
+    else if (field.startsWith('1 ') || field.startsWith('u ')) {
+      const unmerged = field[0] === 'u'
+      const parts = field.split(' ')
+      const [x, y] = parts[1]
+      const rel = parts.slice(unmerged ? 10 : 8).join(' ')
+      const acc = entry(files, rel)
+      acc.staged = unmerged || x !== '.'
+      acc.unstaged = unmerged || y !== '.'
+      statuses.set(rel, y === 'D' || (x === 'D' && y === '.') ? 'deleted' : x === 'A' ? 'added' : 'modified')
+    }
+  }
+  for (const [rel, acc] of files) {
+    if (!acc.untracked || acc.additions) continue
     try {
-      const { bytes, tooLarge } = await limitedFile(join(rootPath(cwd), rel), 1024 * 1024)
-      if (!tooLarge && bytes.length && !bytes.includes(0)) {
-        acc.additions = bytes.reduce((n, b) => n + Number(b === 10), 0) + Number(bytes.at(-1) !== 10)
-      }
+      acc.additions = await untrackedLineCount(join(rootPath(cwd), rel))
     } catch { /* Unreadable untracked files still appear, with zero line counts. */ }
   }
+  return info
 }
-async function changes(cwd: string): Promise<{ files: Map<string, FileAcc>; bases: string[][] }> {
+async function changes(cwd: string): Promise<{ files: Map<string, FileAcc>; statuses: Map<string, string>; info: StatusInfo }> {
   const files = new Map<string, FileAcc>()
+  const statuses = new Map<string, string>()
   const head = await optional(cwd, ['diff', '--no-ext-diff', '--numstat', '-z', 'HEAD', '--', '.'])
-  const bases = head === null ? [[], ['--cached']] : [['HEAD']]
   if (head !== null) addNumstat(head, files)
-  else for (const base of bases) addNumstat((await optional(cwd, ['diff', '--no-ext-diff', '--numstat', '-z', ...base, '--', '.'])) ?? '', files)
-  await untracked(cwd, files)
-  return { files, bases }
+  else for (const base of [[], ['--cached']]) addNumstat((await optional(cwd, ['diff', '--no-ext-diff', '--numstat', '-z', ...base, '--', '.'])) ?? '', files)
+  const info = await status(cwd, files, statuses)
+  return { files, statuses, info }
 }
 export async function gitDiffStats(cwd: string): Promise<GitDiffStats> {
   if (!(await isWorkTree(cwd))) return { files: 0, additions: 0, deletions: 0 }
@@ -124,19 +163,7 @@ export async function gitDiffStats(cwd: string): Promise<GitDiffStats> {
   return { files: files.size, additions: [...files.values()].reduce((n, f) => n + f.additions, 0), deletions: [...files.values()].reduce((n, f) => n + f.deletions, 0) }
 }
 export async function gitDiffIndex(cwd: string): Promise<GitDiffIndex> {
-  const { files, bases } = await changes(cwd)
-  const statuses = new Map<string, string>()
-  for (const base of bases) {
-    const fields = ((await optional(cwd, ['diff', '--no-ext-diff', '--name-status', '--no-renames', '-z', ...base, '--', '.'])) ?? '').split('\0')
-    for (let i = 0; i + 1 < fields.length; i += 2) {
-      const status = ({ A: 'added', D: 'deleted', M: 'modified', T: 'modified' } as Record<string, string>)[fields[i]]
-      if (status) statuses.set(fields[i + 1], status)
-    }
-  }
-  for (const staged of [true, false]) {
-    const names = (await optional(cwd, ['diff', ...(staged ? ['--cached'] : []), '--name-only', '--no-renames', '-z', '--', '.'])) ?? ''
-    for (const name of names.split('\0').filter(Boolean)) entry(files, name)[staged ? 'staged' : 'unstaged'] = true
-  }
+  const { files, statuses, info } = await changes(cwd)
   const out: GitChangedFile[] = []
   for (const [relative, acc] of files) {
     const path = join(rootPath(cwd), relative)
@@ -144,11 +171,13 @@ export async function gitDiffIndex(cwd: string): Promise<GitDiffIndex> {
   }
   out.sort((a, b) => a.relative < b.relative ? -1 : a.relative > b.relative ? 1 : 0)
   const remote = await remoteName(cwd)
-  const upstream = await value(cwd, ['rev-parse', '--abbrev-ref', '@{upstream}'])
+  const upstream = info.upstream
   const defaultName = await defaultBranch(cwd, remote)
   const defaultRef = remote && defaultName ? `${remote}/${defaultName}` : null
-  const counts = upstream || defaultRef ? await aheadBehind(cwd, upstream ?? defaultRef!) : { ahead: 0, behind: 0 }
-  return { branch: await branch(cwd), files: out, additions: out.reduce((n, f) => n + f.additions, 0), deletions: out.reduce((n, f) => n + f.deletions, 0), remote, upstream, defaultBranch: defaultName, ...counts, aheadOfDefault: defaultRef ? (await aheadBehind(cwd, defaultRef)).ahead : counts.ahead }
+  const counts = upstream ? info.ab ?? { ahead: 0, behind: 0 } : defaultRef ? await aheadBehind(cwd, defaultRef) : { ahead: 0, behind: 0 }
+  const aheadOfDefault = defaultRef && defaultRef !== upstream ? (await aheadBehind(cwd, defaultRef)).ahead : counts.ahead
+  const head = info.head && info.head !== '(detached)' ? info.head : await branch(cwd)
+  return { branch: head, files: out, additions: out.reduce((n, f) => n + f.additions, 0), deletions: out.reduce((n, f) => n + f.deletions, 0), remote, upstream, defaultBranch: defaultName, ...counts, aheadOfDefault }
 }
 export async function gitFileDiff(cwd: string, relative: string, base: 'index' | 'HEAD' = 'index'): Promise<GitFileDiff> {
   relative = repoPath(relative)
