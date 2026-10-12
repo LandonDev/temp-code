@@ -489,7 +489,10 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
       sessionId: z.string(),
       afterSeq: z.number().default(0),
       beforeSeq: z.number().optional(),
-      tail: z.number().int().positive().optional()
+      tail: z.number().int().positive().optional(),
+      // At most this many rows from afterSeq on: the renderer walks a long
+      // head in slices so no one call reads a 40k-row log in one go.
+      limit: z.number().int().positive().optional()
     })
   }),
   z.object({

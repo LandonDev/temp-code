@@ -133,9 +133,12 @@ function SessionLeaf({ id, visible, ...props }: SessionLeafProps) {
   if (visible) frozen.current = live;
   // A tab restored at launch carries its meta only; the transcript arrives
   // once the pane is on the page (only the warm set of tabs mounts).
+  // `loaded` is a dep so a transcript the store dropped while this pane
+  // sat parked comes back as soon as the pane is on the page again.
+  const loaded = session?.loaded === true;
   useEffect(() => {
-    void sessionStore.ensureLoaded(id);
-  }, [id]);
+    if (!loaded) void sessionStore.ensureLoaded(id, "pane");
+  }, [id, loaded]);
   if (!session) return null;
   return <SessionPane session={session} visible={visible} {...props} />;
 }

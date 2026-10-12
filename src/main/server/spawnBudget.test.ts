@@ -124,6 +124,34 @@ describe('execFileBudgeted', () => {
   })
 })
 
+describe('withBudget', () => {
+  it('routes every budgeted child inside the scope to the given budget, however deep', async () => {
+    const lane = new budget.ChildBudget(1)
+    const deep = () => budget.execFileBudgeted('git', ['status'])
+    const inLane = budget.withBudget(lane, async () => Promise.all([deep(), deep()]))
+    const outside = budget.execFileBudgeted('git', ['log'])
+    await tick()
+    // the lane holds one; the second waits on it, not on the shared budget
+    expect(lane.running).toBe(1)
+    expect(lane.waiting).toBe(1)
+    expect(budget.childBudget.running).toBe(1)
+    expect(pending.map((p) => p.args[0])).toEqual(['status', 'log'])
+    finish(0)
+    await tick()
+    expect(pending).toHaveLength(3)
+    finish(1)
+    finish(2)
+    await Promise.all([inLane, outside])
+    expect(lane.running).toBe(0)
+    expect(budget.currentBudget()).toBe(budget.childBudget)
+  })
+
+  it('the status lane is its own budget', () => {
+    expect(budget.statusBudget).not.toBe(budget.childBudget)
+    expect(budget.statusBudget).not.toBe(budget.oneShotBudget)
+  })
+})
+
 describe('the child registry', () => {
   it('kills every live helper on demand and forgets the ones that exited', async () => {
     void budget.execFileBudgeted('git', ['a'])

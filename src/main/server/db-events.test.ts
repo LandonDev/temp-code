@@ -138,3 +138,13 @@ describe('Store.events tail window (row budget)', () => {
     expect(store.events('s')).toEqual(store.eventsAfter('s', 0))
   })
 })
+
+describe('events limit', () => {
+  it('caps a head read at `limit` rows from afterSeq, below beforeSeq', () => {
+    seed('lim', 3) // 30 rows
+    expect(seqs(store.events('lim', { afterSeq: 0, beforeSeq: 25, limit: 10 }))).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
+    expect(seqs(store.events('lim', { afterSeq: 10, beforeSeq: 25, limit: 10 }))).toEqual([11, 12, 13, 14, 15, 16, 17, 18, 19, 20])
+    expect(seqs(store.events('lim', { afterSeq: 20, beforeSeq: 25, limit: 10 }))).toEqual([21, 22, 23, 24])
+    expect(store.events('lim', { afterSeq: 0 })).toHaveLength(30)
+  })
+})

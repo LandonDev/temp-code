@@ -197,7 +197,7 @@ export async function loadSession(sessionId: string): Promise<Session | null> {
   await sessionStore.ready();
   if (!sessionStore.get(sessionId)) await sessionStore.ensureMeta(sessionId);
   if (sessionStore.isDraft(sessionId)) return sessionStore.get(sessionId) ?? null;
-  await sessionStore.ensureLoaded(sessionId);
+  await sessionStore.ensureLoaded(sessionId, "load");
   return sessionStore.get(sessionId) ?? null;
 }
 

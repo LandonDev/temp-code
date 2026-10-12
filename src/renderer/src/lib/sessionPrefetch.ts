@@ -10,7 +10,7 @@ import { sessionStore } from "./tcserver/store";
 import { workspaceTabsStore } from "../stores/workspace";
 
 export const sessionPrefetch = new Prefetcher({
-  load: (id) => sessionStore.ensureLoaded(id),
+  load: (id) => sessionStore.ensureLoaded(id, "prefetch"),
   isLoaded: (id) => sessionStore.get(id)?.loaded === true,
   connected: () => client.connected,
 });
@@ -37,7 +37,7 @@ export function warmRecentTabsAtBoot(): void {
   if (warm.length === 0) return;
   void sessionStore
     .ready()
-    .then(() => Promise.all(tabSessionIds(activeTabId).map((id) => sessionStore.ensureLoaded(id))))
+    .then(() => Promise.all(tabSessionIds(activeTabId).map((id) => sessionStore.ensureLoaded(id, "boot"))))
     .catch(() => undefined)
     .then(() => {
       requestAnimationFrame(() =>

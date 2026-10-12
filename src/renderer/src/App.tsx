@@ -619,6 +619,13 @@ export default function App() {
     () => new Set([...warmTabIds, activeTabId]),
     [warmTabIds, activeTabId],
   );
+  // The store keeps only the mounted panes' transcripts loaded (and
+  // replays only those on a reconnect); the rest unload after a pause.
+  useEffect(() => {
+    const ids: string[] = [];
+    for (const tab of tabs) if (mountedTabIds.has(tab.id)) ids.push(...leafIds(tab.layout));
+    sessionStore.setMounted(ids);
+  }, [mountedTabIds, tabs]);
 
   const activateTab = useCallback((id: string) => {
     perfMark("tab-switch", id);

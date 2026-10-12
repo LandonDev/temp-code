@@ -187,9 +187,17 @@ export function useAgents(parentId: string): SessionMeta[] {
     return cache.current;
   });
   const key = agents.map((a) => a.id).join(",");
+  // Which of them the store holds loaded: one the store dropped while the
+  // board was parked is fetched again when it changes.
+  const unloaded = useSyncExternalStore(sessionStore.subscribe, () =>
+    agents
+      .filter((a) => sessionStore.get(a.id)?.loaded !== true)
+      .map((a) => a.id)
+      .join(","),
+  );
   useEffect(() => {
-    for (const id of key ? key.split(",") : []) void sessionStore.ensureLoaded(id);
-  }, [key]);
+    for (const id of unloaded ? unloaded.split(",") : []) void sessionStore.ensureLoaded(id, "agents");
+  }, [key, unloaded]);
   return agents;
 }
 
@@ -198,9 +206,10 @@ export function useSessionById(id: string | null): Session | undefined {
   const session = useSyncExternalStore(sessionStore.subscribe, () =>
     id ? sessionStore.get(id) : undefined,
   );
+  const loaded = session?.loaded === true;
   useEffect(() => {
-    if (id) void sessionStore.ensureLoaded(id);
-  }, [id]);
+    if (id && !loaded) void sessionStore.ensureLoaded(id, "byId");
+  }, [id, loaded]);
   return session;
 }
 

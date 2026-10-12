@@ -6,6 +6,7 @@ import {
   type ExecFileOptions,
   type SpawnOptions
 } from 'node:child_process'
+import { AsyncLocalStorage } from 'node:async_hooks'
 
 /**
  * One budget for every helper process the server starts: git, gh, unzip,
@@ -76,6 +77,27 @@ export const childBudget = new ChildBudget()
  */
 export const oneShotBudget = new ChildBudget(2)
 
+/**
+ * The review panels' `checkpoint.status` diffs. Twenty open panels in a
+ * 49k-file checkout once held all four shared slots for twenty minutes
+ * while the sends' `ensure` and the turns' `capture` queued behind them;
+ * on their own lane a panel can only ever slow another panel.
+ */
+export const statusBudget = new ChildBudget(2)
+
+const budgetScope = new AsyncLocalStorage<ChildBudget>()
+
+/** Run `fn` with every budgeted child it starts (however deep) taking a
+ *  slot from `budget` instead of the shared one. */
+export function withBudget<T>(budget: ChildBudget, fn: () => Promise<T>): Promise<T> {
+  return budgetScope.run(budget, fn)
+}
+
+/** The budget the current async context spends from. */
+export function currentBudget(): ChildBudget {
+  return budgetScope.getStore() ?? childBudget
+}
+
 const children = new Set<ChildProcess>()
 
 /** Remember a child until it exits so quit can kill whatever is left. */
@@ -128,7 +150,7 @@ export function execFileBudgeted(
   args: readonly string[],
   options: ExecOptions = {}
 ): Promise<ExecResult<string | Buffer>> {
-  return childBudget.run(
+  return currentBudget().run(
     () =>
       new Promise((resolve, reject) => {
         const { detached: _detached, ...rest } = options as ExecOptions & { detached?: boolean }
@@ -158,7 +180,7 @@ export function execFileChildBudgeted(
   callback: (error: ExecFileException | null, stdout: string | Buffer, stderr: string | Buffer) => void
 ): Promise<ChildProcess> {
   return new Promise((resolveChild) => {
-    void childBudget.run(
+    void currentBudget().run(
       () =>
         new Promise<void>((done) => {
           const { detached: _detached, ...rest } = options as ExecOptions & { detached?: boolean }
@@ -180,7 +202,7 @@ export async function spawnBudgeted(
   args: readonly string[],
   options: SpawnOptions = {}
 ): Promise<ChildProcess> {
-  const release = await childBudget.acquire()
+  const release = await currentBudget().acquire()
   const { detached: _detached, ...rest } = options
   const child = nodeSpawn(command, [...args], rest)
   trackChild(child)

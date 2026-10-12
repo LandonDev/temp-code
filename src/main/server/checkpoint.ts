@@ -1,4 +1,4 @@
-import { execFileBudgeted } from './spawnBudget'
+import { execFileBudgeted, statusBudget, withBudget } from './spawnBudget'
 import { lstat, mkdir, readdir, readFile, rename, rm, stat, unlink, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { dirname, isAbsolute, join, relative as relativePath, resolve, sep } from 'node:path'
@@ -162,8 +162,22 @@ export class CheckpointStore {
     })
   }
 
+  /** A status already on its way for this session answers every caller
+   *  that asks meanwhile (one review panel per pane, reconnects, the
+   *  git-changed nudges), and its git runs on the panels' own budget. */
+  private readonly statusInFlight = new Map<string, Promise<CheckpointStatus>>()
+
   status(sessionId: string, cwd: string): Promise<CheckpointStatus> {
-    return this.serialized(sessionId, () => this.statusUnlocked(sessionId, cwd))
+    const key = `${sessionId}\0${cwd}`
+    const inFlight = this.statusInFlight.get(key)
+    if (inFlight) return inFlight
+    const run = withBudget(statusBudget, () =>
+      this.serialized(sessionId, () => this.statusUnlocked(sessionId, cwd))
+    ).finally(() => {
+      if (this.statusInFlight.get(key) === run) this.statusInFlight.delete(key)
+    })
+    this.statusInFlight.set(key, run)
+    return run
   }
 
   undo(sessionId: string, cwd: string, relative?: string | null): Promise<CheckpointStatus> {
@@ -204,7 +218,7 @@ export class CheckpointStore {
     const manifest = await this.loadMatching(sessionId, cwd)
     if (!manifest) return empty()
     const root = await projectRoot(cwd)
-    return diffFromManifest(this.sessionDir(sessionId), root, manifest)
+    return diffFromManifest(this.sessionDir(sessionId), root, manifest, sharedDiffIndex)
   }
 
   /** One session's operations run in order; the manifest is never raced. */
@@ -276,8 +290,30 @@ export class CheckpointStore {
 
 // ── status ───────────────────────────────────────────────────────────
 
-async function diffFromManifest(dir: string, root: string, manifest: Manifest): Promise<CheckpointStatus> {
-  const index = (await gitDiffIndex(root)).files
+/** One `git diff` per checkout per moment, shared by every status that
+ *  asks while it runs: ten panels on the same repo cost one child. Only
+ *  statuses share — ensure, capture and sync read the index fresh, since
+ *  they run right after a write and must see it. */
+const indexInFlight = new Map<string, Promise<GitChangedFile[]>>()
+function sharedDiffIndex(root: string): Promise<GitChangedFile[]> {
+  const inFlight = indexInFlight.get(root)
+  if (inFlight) return inFlight
+  const run = gitDiffIndex(root)
+    .then((index) => index.files)
+    .finally(() => {
+      if (indexInFlight.get(root) === run) indexInFlight.delete(root)
+    })
+  indexInFlight.set(root, run)
+  return run
+}
+
+async function diffFromManifest(
+  dir: string,
+  root: string,
+  manifest: Manifest,
+  readIndex: (root: string) => Promise<GitChangedFile[]> = async (r) => (await gitDiffIndex(r)).files
+): Promise<CheckpointStatus> {
+  const index = await readIndex(root)
   const byRelative = new Map(index.map((file) => [file.relative, file]))
   const gitDirty = new Set(byRelative.keys())
   // One git child answers "is it in HEAD" for every path that needs asking

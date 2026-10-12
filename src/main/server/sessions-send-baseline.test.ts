@@ -134,3 +134,34 @@ it('a harness that fails to boot leaves one user row; the retry does not echo it
   expect(rows(s.id).filter((r) => r.type === 'user-text')).toHaveLength(1)
   expect(registry.queueList(s.id)).toEqual([])
 })
+
+it('a send returns in under 100 ms while a 30 s ensure and a 30 s status are both in flight', async () => {
+  // A checkpoint store whose chain is held: ensure() hangs (the baseline the
+  // send arms), and a status() queued behind it hangs with it — the review
+  // panel's request for this same session.
+  let statusCalls = 0
+  registry.checkpoints = {
+    ensure: () => {
+      ensureCalls += 1
+      return new Promise<void>((resolve) => {
+        releaseEnsure = resolve
+      })
+    },
+    status: () => {
+      statusCalls += 1
+      return new Promise<never>(() => {})
+    }
+  } as unknown as CheckpointStore
+  const s = await registry.create({ cwd: root, provider: 'claude' })
+  await registry.send(s.id, 'first')
+  // both in flight now: the armed baseline and a panel's status
+  void registry.checkpoints.status(s.id, root)
+  expect(ensureCalls).toBeGreaterThan(0)
+  expect(statusCalls).toBe(1)
+  const before = performance.now()
+  await registry.send(s.id, 'second')
+  const took = performance.now() - before
+  expect(took).toBeLessThan(100)
+  expect(sends.get(s.id)?.map((x) => x.text)).toEqual(['first', 'second'])
+  expect(rows(s.id).filter((r) => r.type === 'user-text')).toHaveLength(2)
+})

@@ -1048,7 +1048,7 @@ export class SessionRegistry {
   }
 
   /** A window of the log, tail-first when asked (see `Store.events`). */
-  events(sessionId: string, opts: { afterSeq?: number; beforeSeq?: number; tail?: number }): EventRow[] {
+  events(sessionId: string, opts: { afterSeq?: number; beforeSeq?: number; tail?: number; limit?: number }): EventRow[] {
     return this.store.events(sessionId, opts)
   }
 

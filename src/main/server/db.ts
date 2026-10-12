@@ -1023,7 +1023,7 @@ export class Store {
    *  that many rows. */
   events(
     sessionId: string,
-    opts: { afterSeq?: number; beforeSeq?: number; tail?: number } = {}
+    opts: { afterSeq?: number; beforeSeq?: number; tail?: number; limit?: number } = {}
   ): EventRow[] {
     this.flushEvents()
     const table = this.eventsTable(sessionId)
@@ -1055,9 +1055,13 @@ export class Store {
     }
     const rows = this
       .stmt(
-        `SELECT seq, ts, payload FROM ${table} WHERE session_id = ? AND seq >= ? AND seq < ? ORDER BY seq`
+        `SELECT seq, ts, payload FROM ${table} WHERE session_id = ? AND seq >= ? AND seq < ? ORDER BY seq LIMIT ?`
       )
-      .all(sessionId, fromSeq, beforeSeq) as unknown as { seq: number; ts: number; payload: string }[]
+      .all(sessionId, fromSeq, beforeSeq, opts.limit && opts.limit > 0 ? opts.limit : -1) as unknown as {
+      seq: number
+      ts: number
+      payload: string
+    }[]
     return rows.map((r) => ({
       sessionId,
       seq: r.seq,

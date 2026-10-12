@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { newSession } from "../session";
 import { applyMeta, sessionFromMeta, sessionStore, type Link } from "./store";
 import type { EventRow, ServerPush, SessionMeta } from "./types";
@@ -71,6 +71,8 @@ class FakeLink implements Link {
         tail?: number;
       };
       let rows = (this.events.get(sessionId) ?? []).filter((r) => r.seq > afterSeq && r.seq < beforeSeq);
+      const { limit } = params as { limit?: number };
+      if (limit) rows = rows.slice(0, limit);
       if (tail) {
         // Row budget, as the server counts it: a prompt or a message is a row.
         const starts = rows.filter((r) => r.event.type === "user-text" || r.event.type === "assistant-text").slice(-(tail + 1));
@@ -539,7 +541,7 @@ describe("tail-first load", () => {
     const calls = link.calls.filter((c) => c.method === "session.events").map((c) => c.params);
     expect(calls).toEqual([
       { sessionId: "s1", afterSeq: 0, tail: 300 },
-      { sessionId: "s1", afterSeq: 0, beforeSeq: 151 },
+      { sessionId: "s1", afterSeq: 0, beforeSeq: 151, limit: 4000 },
     ]);
     release();
     await sessionStore.ensureComplete("s1");
@@ -701,5 +703,90 @@ describe("archived metas on demand", () => {
     await sessionStore.ensureArchived();
     await sessionStore.resync();
     expect(sessionStore.metaOf("a")).toBeNull();
+  });
+});
+
+describe("the mounted set", () => {
+  const tick = () => new Promise((r) => setTimeout(r, 0));
+  /** `n` settled turns: a prompt and its turn-complete, so the fold leaves the session idle. */
+  const rowsFor = (id: string, n: number): EventRow[] =>
+    Array.from({ length: n }, (_, i) => [
+      row(id, i * 2 + 1, { type: "user-text", text: `q${i}` }),
+      row(id, i * 2 + 2, { type: "turn-complete" }),
+    ]).flat();
+
+  it("a reconnect replays only the mounted transcripts and unloads the rest", async () => {
+    link.metas = [meta({ id: "a" }), meta({ id: "b" }), meta({ id: "kid", parentId: "a" })];
+    for (const id of ["a", "b", "kid"]) link.events.set(id, rowsFor(id, 2));
+    sessionStore.connect(link);
+    await sessionStore.ready();
+    await Promise.all(["a", "b", "kid"].map((id) => sessionStore.ensureLoaded(id, "test")));
+    expect(sessionStore.loadedCount()).toBe(3);
+    sessionStore.setMounted(["a"]);
+    link.calls.length = 0;
+    link.reopen();
+    await tick();
+    await tick();
+    const replayed = link.calls.filter((c) => c.method === "session.events").map((c) => (c.params as { sessionId: string }).sessionId).sort();
+    // a and its child replay; b is dropped
+    expect(replayed).toEqual(["a", "kid"]);
+    expect(sessionStore.get("b")?.loaded).toBe(false);
+    expect(sessionStore.get("b")?.blocks).toEqual([]);
+    expect(sessionStore.get("a")?.loaded).toBe(true);
+    expect(sessionStore.loadedCount()).toBe(2);
+    // and b loads again when asked, from the start
+    await sessionStore.ensureLoaded("b", "test");
+    expect(sessionStore.get("b")?.blocks).toHaveLength(2);
+    expect(link.calls.filter((c) => c.method === "session.events").at(-1)?.params).toMatchObject({ sessionId: "b", afterSeq: 0 });
+  });
+
+  it("a transcript whose tab left the warm set unloads after the grace period, unless busy", async () => {
+    link.metas = [meta({ id: "a" }), meta({ id: "b" }), meta({ id: "busy", status: "running" })];
+    for (const id of ["a", "b"]) link.events.set(id, rowsFor(id, 2));
+    // a prompt with no completion yet: the fold keeps it busy
+    link.events.set("busy", [row("busy", 1, { type: "user-text", text: "go" })]);
+    sessionStore.connect(link);
+    await sessionStore.ready();
+    await Promise.all(["a", "b", "busy"].map((id) => sessionStore.ensureLoaded(id, "test")));
+    expect(sessionStore.loadedCount()).toBe(3);
+    vi.useFakeTimers();
+    try {
+      sessionStore.setMounted(["a"]);
+      await vi.advanceTimersByTimeAsync(3100);
+    } finally {
+      vi.useRealTimers();
+    }
+    expect(sessionStore.get("a")?.loaded).toBe(true);
+    expect(sessionStore.get("b")?.loaded).toBe(false);
+    expect(sessionStore.get("busy")?.loaded).toBe(true);
+    expect(link.calls.filter((c) => c.method === "session.unsubscribe").map((c) => (c.params as { sessionId: string }).sessionId)).toEqual(["b"]);
+  });
+
+  it("a burst of loads reports itself once, naming the callers", async () => {
+    link.metas = Array.from({ length: 30 }, (_, i) => meta({ id: `s${i}` }));
+    sessionStore.connect(link);
+    await sessionStore.ready();
+    for (let i = 0; i < 25; i++) await sessionStore.ensureLoaded(`s${i}`, i < 20 ? "pane" : "agents");
+    const reports = link.calls.filter((c) => c.method === "stall.report").map((c) => (c.params as { line: string }).line);
+    expect(reports).toHaveLength(1);
+    expect(reports[0]).toMatch(/^transcript-burst 21 loads in 10s \(pane=20,agents=1\)/);
+    for (let i = 25; i < 30; i++) await sessionStore.ensureLoaded(`s${i}`, "agents");
+    expect(link.calls.filter((c) => c.method === "stall.report")).toHaveLength(1);
+  });
+
+  it("a long head loads in slices", async () => {
+    link.metas = [meta()];
+    const rows: EventRow[] = [];
+    for (let i = 0; i < 9000; i++) rows.push(row("s1", i + 1, { type: "user-text", text: `q${i}` }));
+    link.events.set("s1", rows);
+    sessionStore.connect(link);
+    await sessionStore.ready();
+    await sessionStore.ensureComplete("s1");
+    const calls = link.calls.filter((c) => c.method === "session.events").map((c) => c.params as Record<string, unknown>);
+    expect(calls[0]).toEqual({ sessionId: "s1", afterSeq: 0, tail: 300 });
+    const head = calls.slice(1);
+    expect(head.map((c) => c.limit)).toEqual([4000, 4000, 4000]);
+    expect(head.map((c) => c.afterSeq)).toEqual([0, 4000, 8000]);
+    expect(sessionStore.get("s1")?.blocks).toHaveLength(9000);
   });
 });

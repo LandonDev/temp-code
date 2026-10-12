@@ -149,6 +149,14 @@ type Head = {
 const TAIL_ROWS = 300;
 /** Rows folded per slice while the head of a long log folds in the background. */
 const HEAD_CHUNK = 2000;
+/** Rows per `session.events` call while a long head loads: the server reads
+ *  one slice per call instead of a 40k-row log in one `.all()`. */
+const HEAD_FETCH = 4000;
+/** A transcript whose tab left the warm set is dropped after this long. */
+const UNLOAD_MS = 3000;
+/** Transcript loads in one window above this many report a burst line. */
+const BURST_WINDOW_MS = 10_000;
+const BURST_LIMIT = 20;
 
 const OPEN_STATUSES = new Set(["starting", "running", "waiting"]);
 const READY_TIMEOUT_MS = 10_000;
@@ -368,6 +376,10 @@ class SessionStore {
     this.readyDone = false;
     this.archivedScopes.clear();
     this.archivedLoads.clear();
+    this.mounted = null;
+    if (this.unloadTimer) clearTimeout(this.unloadTimer);
+    this.unloadTimer = null;
+    this.burst = { since: 0, byWhy: new Map(), reported: false };
     this.bump();
   }
 
@@ -572,12 +584,119 @@ class SessionStore {
       entry.subscribed = false;
     }
     this.bumpMeta();
-    await Promise.all(
-      [...this.entries.values()]
-        .filter((entry) => entry.loaded && entry.meta)
-        .map((entry) => this.replayGap(entry)),
-    );
+    // Only the transcripts on screen replay their gap; a loaded one whose
+    // tab is no longer mounted is dropped and fetched again if it comes
+    // back. A reconnect once replayed every transcript ever opened — 2,560
+    // session.events in ninety seconds, 2.9 GB of main-process RSS.
+    const keep = this.mountedClosure();
+    const replay: Entry[] = [];
+    for (const entry of this.entries.values()) {
+      if (!entry.loaded || !entry.meta) continue;
+      if (!keep || keep.has(entry.meta.id)) replay.push(entry);
+      else this.unload(entry);
+    }
+    await Promise.all(replay.map((entry) => this.replayGap(entry, "resync")));
     this.bump();
+  }
+
+  // ── the mounted set ────────────────────────────────────────────────
+
+  /** Sessions whose panes are mounted (the warm tabs' leaves); null until
+   *  the shell has said, when every loaded transcript counts as mounted. */
+  private mounted: Set<string> | null = null;
+  private unloadTimer: ReturnType<typeof setTimeout> | null = null;
+
+  /** The shell tells the store which sessions have panes on the page; a
+   *  transcript outside that set (and its subagents, which the pane's
+   *  board shows) unloads after a grace period. */
+  setMounted(ids: Iterable<string>): void {
+    this.mounted = new Set(ids);
+    if (this.unloadTimer) clearTimeout(this.unloadTimer);
+    this.unloadTimer = setTimeout(() => {
+      this.unloadTimer = null;
+      this.unloadOutsideMounted();
+    }, UNLOAD_MS);
+  }
+
+  /** Mounted sessions plus their children (the agent boards). */
+  private mountedClosure(): Set<string> | null {
+    if (!this.mounted) return null;
+    const keep = new Set(this.mounted);
+    for (const entry of this.entries.values()) {
+      const parent = entry.meta?.parentId;
+      if (parent && keep.has(parent)) keep.add(entry.meta!.id);
+    }
+    return keep;
+  }
+
+  private unloadOutsideMounted(): void {
+    const keep = this.mountedClosure();
+    if (!keep) return;
+    let dropped = 0;
+    for (const entry of this.entries.values()) {
+      if (!entry.loaded || !entry.meta || keep.has(entry.meta.id)) continue;
+      if (this.unload(entry)) dropped++;
+    }
+    if (dropped) this.bump();
+  }
+
+  /** Forget a transcript: blocks and seq reset, subscription released, so
+   *  the next ensureLoaded fetches it afresh. A busy session or one with a
+   *  send still pending keeps its rows. Returns whether it dropped. */
+  private unload(entry: Entry): boolean {
+    if (!entry.meta || entry.loading) return false;
+    if (entry.session.busy || entry.session.blocks.some((b) => b.pending)) return false;
+    this.settleHead(entry);
+    if (entry.subscribed && this.link) {
+      void this.link.request("session.unsubscribe", { sessionId: entry.meta.id }).catch(() => undefined);
+    }
+    entry.subscribed = false;
+    entry.loaded = false;
+    entry.lastSeq = 0;
+    entry.nextId = 1;
+    entry.held = null;
+    entry.session = { ...sessionFromMeta(entry.meta), loaded: false };
+    return true;
+  }
+
+  /** How many transcripts the store holds loaded (tests, the stall log). */
+  loadedCount(): number {
+    let n = 0;
+    for (const entry of this.entries.values()) if (entry.loaded) n++;
+    return n;
+  }
+
+  // ── load bursts ────────────────────────────────────────────────────
+
+  private burst: { since: number; byWhy: Map<string, number>; reported: boolean } = {
+    since: 0,
+    byWhy: new Map(),
+    reported: false,
+  };
+
+  /** Count a transcript fetch under its caller; past BURST_LIMIT in one
+   *  window the window reports itself once through `stall.report`, naming
+   *  the call sites, so the next storm says where it came from. */
+  private noteLoad(why: string): void {
+    const now = Date.now();
+    if (now - this.burst.since > BURST_WINDOW_MS) {
+      this.burst = { since: now, byWhy: new Map(), reported: false };
+    }
+    this.burst.byWhy.set(why, (this.burst.byWhy.get(why) ?? 0) + 1);
+    let total = 0;
+    for (const n of this.burst.byWhy.values()) total += n;
+    if (total <= BURST_LIMIT || this.burst.reported) return;
+    this.burst.reported = true;
+    const parts = [...this.burst.byWhy.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .map(([k, n]) => `${k}=${n}`)
+      .join(",");
+    const line = `transcript-burst ${total} loads in ${BURST_WINDOW_MS / 1000}s (${parts}) loaded=${this.loadedCount()} mounted=${this.mounted?.size ?? "?"}`;
+    this.reportLine(line);
+  }
+
+  private reportLine(line: string): void {
+    void this.link?.request("stall.report", { line }).catch(() => undefined);
   }
 
   /** The first `session.list` after the socket opens. Boot waits on it, but
@@ -588,13 +707,14 @@ class SessionStore {
     return Promise.race([listed, new Promise<void>((r) => setTimeout(r, timeoutMs))]);
   }
 
-  /** Fetch the transcript once and subscribe to its live pushes. */
-  ensureLoaded(id: string): Promise<void> {
+  /** Fetch the transcript once and subscribe to its live pushes. `why`
+   *  names the caller for the burst report. */
+  ensureLoaded(id: string, why = "unknown"): Promise<void> {
     const entry = this.entries.get(id);
     if (!entry || !entry.meta) return Promise.resolve();
     if (entry.loaded) return Promise.resolve();
     if (entry.loading) return entry.loading;
-    entry.loading = this.replayGap(entry)
+    entry.loading = this.replayGap(entry, why)
       .then(() => {
         entry.loaded = true;
         entry.session = { ...entry.session, loaded: true };
@@ -614,15 +734,16 @@ class SessionStore {
 
   /** `ensureLoaded`, then wait for the head of a tail-first load. */
   async ensureComplete(id: string): Promise<void> {
-    await this.ensureLoaded(id);
+    await this.ensureLoaded(id, "complete");
     const head = this.entries.get(id)?.head;
     if (head) await new Promise<void>((resolve) => head.waiters.push(resolve));
   }
 
-  private async replayGap(entry: Entry): Promise<void> {
+  private async replayGap(entry: Entry, why: string): Promise<void> {
     if (!this.link) return;
     const id = entry.session.id;
     if (entry.held) return;
+    this.noteLoad(why);
     entry.held = [];
     // A first load paints the last turns first; the rest folds behind them.
     const tailFirst = !entry.loaded && entry.lastSeq === 0 && !entry.head;
@@ -666,25 +787,37 @@ class SessionStore {
     if (!head || head.fetching || !this.link) return;
     const id = entry.session.id;
     head.fetching = true;
-    let rows: EventRow[];
-    try {
-      rows = await this.link.request<EventRow[]>("session.events", {
-        sessionId: id,
-        afterSeq: 0,
-        beforeSeq: head.beforeSeq,
-      });
-    } catch {
-      // The next reconnect replay tries again.
-      head.fetching = false;
-      return;
-    }
     const live = (): boolean => this.entries.get(id) === entry && entry.head === head;
     const cwd = entry.session.cwd;
+    const link = this.link;
     let state = emptyFold();
-    for (let i = 0; i < rows.length; i += HEAD_CHUNK) {
+    // The head arrives in slices: each call reads at most HEAD_FETCH rows
+    // on the server and folds here in HEAD_CHUNK pieces with a yield
+    // between, so neither process holds a 40k-row log in one breath.
+    let cursor = 0;
+    for (;;) {
+      let rows: EventRow[];
+      try {
+        rows = await link.request<EventRow[]>("session.events", {
+          sessionId: id,
+          afterSeq: cursor,
+          beforeSeq: head.beforeSeq,
+          limit: HEAD_FETCH,
+        });
+      } catch {
+        // The next reconnect replay tries again.
+        head.fetching = false;
+        return;
+      }
       if (!live()) return;
-      for (const row of rows.slice(i, i + HEAD_CHUNK)) state = foldEvent(state, row, cwd);
-      if (i + HEAD_CHUNK < rows.length) await new Promise((r) => setTimeout(r, 0));
+      for (let i = 0; i < rows.length; i += HEAD_CHUNK) {
+        if (!live()) return;
+        for (const row of rows.slice(i, i + HEAD_CHUNK)) state = foldEvent(state, row, cwd);
+        if (i + HEAD_CHUNK < rows.length) await new Promise((r) => setTimeout(r, 0));
+      }
+      if (rows.length < HEAD_FETCH) break;
+      cursor = rows[rows.length - 1].seq;
+      await new Promise((r) => setTimeout(r, 0));
     }
     if (!live()) return;
     // Pushes that landed while the head folded are in `since`, after the tail.
