@@ -63,6 +63,14 @@ export interface Switched {
 
 /** How long after a window's reset before the next poll believes it. */
 export const RESET_GRACE_MS = 15_000
+/**
+ * How long a 401 keeps an account out of routing. The usage cache cannot
+ * lift the mark (Aliax's poll of the dead account still reads healthy, and a
+ * standby never polls), so the mark lasts this long, one request then tries
+ * the account again, and a second 401 marks it again while the gateway
+ * replays that request elsewhere. A successful answer lifts it at once.
+ */
+export const OUT_RETRY_MS = 10 * 60_000
 /** A reset further away than this re-arms on the next build instead. */
 const RESET_HORIZON_MS = 24 * 3_600_000
 
@@ -141,6 +149,8 @@ export class AccountsService {
   private chain: Promise<unknown> = Promise.resolve()
   /** One failover in flight per thread: a limit that fires twice on one turn asks once. */
   private failovers = new Map<string, Promise<Switched | null>>()
+  /** Accounts a 401 took out of routing, with when: provider → name → marked at. */
+  private out = new Map<AccountProvider, Map<string, number>>()
 
   constructor(deps: Partial<AccountsDeps> = {}) {
     this.deps = { ...defaults(), ...deps }
@@ -247,8 +257,65 @@ export class AccountsService {
       provider: meta.provider,
       snapshot: this.snap,
       load: isRoutedProvider(meta.provider) ? (opts?.load ?? this.deps.load(meta.provider)) : {},
+      out: isRoutedProvider(meta.provider) ? this.outFor(meta.provider) : [],
       now: this.deps.now()
     })
+  }
+
+  /**
+   * An account answered 401: its sign-in is dead (the token lapsed and the
+   * owner's refresh failed) and no thread should route to it. Returns whether
+   * the mark is new, so the caller logs once. The next poll of it skips its
+   * TTL, in case the owner can learn more.
+   */
+  markOut(serviceId: ServiceId, name: string): boolean {
+    const provider = PROVIDER_OF[serviceId]
+    const marks = this.out.get(provider) ?? new Map<string, number>()
+    const fresh = !this.isOut(provider, name)
+    marks.set(name, this.deps.now())
+    this.out.set(provider, marks)
+    if (fresh) this.deps.markStale(serviceId, name)
+    return fresh
+  }
+
+  /** The account answered: the mark lifts. */
+  markAnswered(serviceId: ServiceId, name: string): void {
+    this.out.get(PROVIDER_OF[serviceId])?.delete(name)
+  }
+
+  isOut(provider: AccountProvider, name: string): boolean {
+    const at = this.out.get(provider)?.get(name)
+    return at !== undefined && this.deps.now() - at < OUT_RETRY_MS
+  }
+
+  /** Accounts out of routing for a provider right now, marks and dead sign-ins the snapshot reports alike. */
+  outFor(provider: AccountProvider): string[] {
+    const names = new Set<string>()
+    for (const [name] of this.out.get(provider) ?? []) if (this.isOut(provider, name)) names.add(name)
+    for (const r of this.snap.providers[provider].reports) if (r.expired) names.add(r.profileName)
+    return [...names]
+  }
+
+  /**
+   * The account a scoped request should spend from instead of `account` when
+   * that one is out: the best pick for the model with room, the live load
+   * counted, as a first spawn would get. Null keeps the request where it is
+   * (the account is fine, or nothing else has room: the 401 then surfaces).
+   */
+  substitute(serviceId: ServiceId, account: string, model: string | null): string | null {
+    const provider = PROVIDER_OF[serviceId]
+    if (!this.outFor(provider).includes(account)) return null
+    const { route } = chooseAccount({
+      pin: null,
+      current: null,
+      model,
+      provider,
+      snapshot: this.snap,
+      load: this.deps.load(provider),
+      out: this.outFor(provider),
+      now: this.deps.now()
+    })
+    return route && route.account !== account ? route.account : null
   }
 
   /**

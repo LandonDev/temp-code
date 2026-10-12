@@ -103,6 +103,8 @@ interface RpcFrame {
 
 const STDERR_LINES = 40
 const STDERR_BYTES = 4096
+/** Codex's own retry notice (`error` with willRetry); older builds only say so in the message. */
+const RECONNECTING = /^Reconnecting\.{3}\s*\d+\/\d+/
 
 export class AppServerConn {
   private proc: ChildProcessWithoutNullStreams
@@ -278,6 +280,10 @@ export const codexDriver: HarnessDriver = {
     const env = await harnessEnv()
 
     let currentTurnId: string | null = null
+
+    /** Whether this turn's codex retries were logged already. */
+
+    let retryLogged = false
     // MCP servers (plugins included) take seconds to mount their tools;
     // a turn that starts first snapshots an empty registry. The first
     // send waits for startup to settle (bounded), so /linear-style
@@ -568,6 +574,7 @@ export const codexDriver: HarnessDriver = {
         }
         case 'turn/completed': {
           currentTurnId = null
+          retryLogged = false
           const turn = params.turn as { status?: string; error?: { message?: string } | null }
           if (turn?.error?.message) {
             emit({ type: 'error', message: turn.error.message, ...limitField('codex', turn.error.message) })
@@ -578,9 +585,17 @@ export const codexDriver: HarnessDriver = {
         }
         case 'error': {
           // The app-server's `error` payload is either {message} or {error: {message}}.
-          const nested = (params.error as { message?: unknown } | undefined)?.message
-          const message = String(params.message ?? nested ?? 'codex error')
-          if (!params.message && !nested) console.log(`[codex] error notification: ${JSON.stringify(params).slice(0, 500)}`)
+          const nested = (params.error as { message?: unknown; additionalDetails?: unknown } | undefined)
+          const message = String(params.message ?? nested?.message ?? 'codex error')
+          if (!params.message && !nested?.message) console.log(`[codex] error notification: ${JSON.stringify(params).slice(0, 500)}`)
+          // A retry codex runs itself ("Reconnecting... 2/5", willRetry) is
+          // not an outcome: it either recovers or ends the turn with the
+          // real error. One log line per turn, no row.
+          if (params.willRetry === true || RECONNECTING.test(message)) {
+            if (!retryLogged) console.log(`[codex] ${session.id}: ${message}${nested?.additionalDetails ? ` (${String(nested.additionalDetails)})` : ''}; retrying`)
+            retryLogged = true
+            break
+          }
           emit({ type: 'error', message, ...limitField('codex', message) })
           break
         }

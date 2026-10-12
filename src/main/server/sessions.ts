@@ -21,6 +21,9 @@ import type { LimitWindow } from '@shared/events'
 import { foldEvent, newFoldState, toFoldRow } from './folds'
 import { FOLD_VERSION, type FoldRow } from './db'
 
+/** How a harness words a 401 the gateway could not route around (codex: "workspace routing discovery unauthorized (401)"). */
+const UNAUTHORIZED_WORDING = /unauthorized|\(401\)/i
+
 /** How long a delta-only stream may run before its fold watermark lands. */
 const FOLD_LAND_MS = 2_000
 const isDelta = (event: AgentEvent): boolean =>
@@ -367,6 +370,8 @@ export class SessionRegistry {
    *  stamped stopped:true so a stop never reads as a failure. Cleared when
    *  the turn settles. */
   private stopping = new Set<string>()
+  /** Threads told their account needs sign-in, and which account: one row per account, the harness's 401 wording dropped meanwhile. */
+  private readonly signIns = new Map<string, string>()
   /** Sessions whose harness must reboot once the current turn settles —
    *  a tune saved mid-turn. Disposing a streaming handle mutes the turn
    *  (events drop, the thread wedges on "working"), so the drop waits
@@ -710,10 +715,25 @@ export class SessionRegistry {
 
   /** The gateway (or a text-path failover) moved a thread: its row follows. */
   setAccount(sessionId: string, account: string | null): void {
+    // Landing elsewhere lifts the sign-in row's filter; coming back to the
+    // same dead account (nothing else had room) does not.
+    if (this.signIns.get(sessionId) !== account) this.signIns.delete(sessionId)
     const meta = this.store.getSession(sessionId)
     if (!meta || (meta.account ?? null) === account) return
     const next = this.store.setSessionAccount(sessionId, account)
     if (next) this.notifyMeta(next)
+  }
+
+  /**
+   * The gateway had nothing to route a thread's request under: its account's
+   * sign-in is dead (401) and no other account has room. One row names the
+   * account; the harness's own wording for the same 401 ("workspace routing
+   * discovery unauthorized (401)") is dropped while the thread stays there.
+   */
+  signInNeeded(sessionId: string, account: string): void {
+    if (this.signIns.get(sessionId) === account) return
+    this.signIns.set(sessionId, account)
+    this.append(sessionId, { type: 'error', message: `Aliax account ${account} needs sign-in` })
   }
 
   /** The account a thread is expected to spend from, computed ahead of its
@@ -2359,6 +2379,9 @@ export class SessionRegistry {
       if (meta) this.notifyMeta(meta)
       return
     }
+    // The thread already has its "needs sign-in" row: the harness's own
+    // report of the same 401 adds nothing.
+    if (event.type === 'error' && this.signIns.has(sessionId) && UNAUTHORIZED_WORDING.test(event.message)) return
     // The user hit Stop: the driver reports the cut-off turn as an error
     // ("turn ended: …") — stamp it so it reads as a stop, not a failure.
     if (event.type === 'error' && this.stopping.has(sessionId)) {
@@ -2529,7 +2552,11 @@ export class SessionRegistry {
     // Shared context (M8): a finished turn refreshes the thread's mirror.
     if (event.type === 'turn-complete' && persisted?.status !== 'paused') {
       if (this.store.getSession(sessionId)?.projectId) scheduleMirror(this, sessionId)
-      if (!this.erroredTurns.has(sessionId)) this.armTurnPass(sessionId)
+      if (!this.erroredTurns.has(sessionId)) {
+        this.armTurnPass(sessionId)
+        // A turn went through: the sign-in works again, so a later 401 posts afresh.
+        this.signIns.delete(sessionId)
+      }
     }
     for (const listener of this.subscribers.get(sessionId) ?? []) listener(row)
     if (settleToReport) notifyParentOfSettle(this, settleToReport)

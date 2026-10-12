@@ -155,6 +155,29 @@ describe('codex app-server boot', () => {
     expect(events.filter((e) => e.type === 'error')).toEqual([])
   })
 
+  it("codex's own retries are a log line, not rows; the error that ends the turn is a row", async () => {
+    scripts.push(healthy)
+    await codexDriver.start(ctx())
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {})
+    const notify = (method: string, params: Record<string, unknown>): void => {
+      spawned[0].stdout.write(JSON.stringify({ jsonrpc: '2.0', method, params: { threadId: 't1', ...params } }) + '\n')
+    }
+    const retry = (n: number) => ({ error: { message: `Reconnecting... ${n}/5`, additionalDetails: 'workspace routing discovery unauthorized (401)' }, willRetry: true })
+    notify('error', retry(2))
+    notify('error', retry(3))
+    notify('error', { error: { message: 'workspace routing discovery unauthorized (401)' }, willRetry: false })
+    notify('turn/completed', { turn: { id: 'turn-1', status: 'failed' } })
+    await vi.waitFor(() => expect(events.some((e) => e.type === 'turn-complete')).toBe(true))
+    expect(events.filter((e) => e.type === 'error').map((e) => (e as { message: string }).message)).toEqual(['workspace routing discovery unauthorized (401)'])
+    const retries = log.mock.calls.map((c) => String(c[0])).filter((l) => l.includes('Reconnecting'))
+    expect(retries).toEqual(['[codex] sess-1: Reconnecting... 2/5 (workspace routing discovery unauthorized (401)); retrying'])
+    // The next turn logs again.
+    notify('error', retry(1))
+    expect(log.mock.calls.map((c) => String(c[0])).filter((l) => l.includes('Reconnecting'))).toHaveLength(2)
+    expect(events.filter((e) => e.type === 'error')).toHaveLength(1)
+    log.mockRestore()
+  })
+
   it('an exit after the thread is up is a crash, not a retry', async () => {
     scripts.push(healthy)
     await codexDriver.start(ctx())

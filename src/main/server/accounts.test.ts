@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { configure, pinProfile, pinnedProfile, vault, type ServiceView, type UsageReport } from 'aliax-core'
-import { AccountsService, RESET_GRACE_MS, type AccountsDeps } from './accounts'
+import { AccountsService, OUT_RETRY_MS, RESET_GRACE_MS, type AccountsDeps } from './accounts'
 
 /**
  * A throwaway Aliax data dir with two Claude accounts and one Codex account,
@@ -310,5 +310,44 @@ describe('AccountsService', () => {
     expect(usage).toHaveBeenCalledTimes(4)
     svc.stop()
     vi.useRealTimers()
+  })
+
+  it('a 401 marks an account out until it answers again or the retry window passes', async () => {
+    ;({ cleanup } = fixture())
+    let now = 1_800_000_000_000
+    const markStale = vi.fn()
+    const { svc } = service({ now: () => now, markStale, load: () => ({}) })
+    await svc.list()
+    expect(svc.outFor('claude')).toEqual([])
+    expect(svc.substitute('claude-code', 'a@x.com', 'claude-fable-5-1')).toBeNull()
+    // Newly out: logged once, polled fresh next, and never a pick.
+    expect(svc.markOut('claude-code', 'a@x.com')).toBe(true)
+    expect(svc.markOut('claude-code', 'a@x.com')).toBe(false)
+    expect(markStale).toHaveBeenCalledTimes(1)
+    expect(svc.outFor('claude')).toEqual(['a@x.com'])
+    expect(svc.substitute('claude-code', 'a@x.com', 'claude-fable-5-1')).toBe('b@x.com')
+    expect(svc.substitute('claude-code', 'b@x.com', 'claude-fable-5-1')).toBeNull()
+    const meta = { id: 's', provider: 'claude', model: 'claude-fable-5-1', account: 'a@x.com' } as never
+    expect(svc.routeFor(meta, null)).toEqual({ route: { account: 'b@x.com', pin: false }, current: 'b@x.com' })
+    // The only other account out too: nothing to substitute, the 401 surfaces.
+    svc.markOut('claude-code', 'b@x.com')
+    expect(svc.substitute('claude-code', 'a@x.com', 'claude-fable-5-1')).toBeNull()
+    // It answered: back in at once.
+    svc.markAnswered('claude-code', 'b@x.com')
+    expect(svc.outFor('claude')).toEqual(['a@x.com'])
+    // The window passed: one request may try it again.
+    now += OUT_RETRY_MS
+    expect(svc.outFor('claude')).toEqual([])
+    expect(svc.markOut('claude-code', 'a@x.com')).toBe(true)
+  })
+
+  it('a report the snapshot flags expired is out without a mark', async () => {
+    ;({ cleanup } = fixture())
+    const { svc } = service({
+      usage: async (id) => reportsFor(id).map((r) => (r.profileName === 'a@x.com' ? { ...r, expired: true } : r))
+    })
+    await svc.list()
+    expect(svc.outFor('claude')).toEqual(['a@x.com'])
+    expect(svc.substitute('claude-code', 'a@x.com', null)).toBe('b@x.com')
   })
 })

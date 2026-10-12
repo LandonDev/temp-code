@@ -5,6 +5,7 @@ import { withinRoots } from './fspaths'
 import { Notes } from './notes'
 import { ProjectLogos } from './projectLogos'
 import { AccountsService } from './accounts'
+import { isRoutedProvider, PROVIDER_OF, SERVICE_OF } from '@shared/accounts'
 import { startGateway, type Gateway } from './gateway'
 import { observeHooks } from './gatewayObserve'
 import { WebSocketServer, type WebSocket } from 'ws'
@@ -191,12 +192,30 @@ export async function startServer(
     if (Object.values(snapshot.providers).some((p) => p.profiles.length > 0)) registry.refreshAccounts()
   })
   accounts.start()
+  const observed = observeHooks({ logDir: join(options.dataDir ?? dirname(dbPath), 'logs'), onObserved: () => accounts.nudge() })
   const gateway = await startGateway({
     claimShim: options.claimShim ?? false,
     dataDir: options.dataDir ?? dirname(dbPath),
     hooks: {
-      ...observeHooks({ logDir: join(options.dataDir ?? dirname(dbPath), 'logs'), onObserved: () => accounts.nudge() }),
+      ...observed,
+      onResponse: (info) => {
+        observed.onResponse?.(info)
+        if (info.status < 400 && info.account && isRoutedProvider(info.service)) accounts.markAnswered(SERVICE_OF[info.service], info.account)
+      },
       pickNext: (info) => accounts.pickNext(info),
+      // A dead sign-in answers 401 for good and core only fails over on 429:
+      // the account leaves routing until it answers again, the request
+      // replays under the best account with room, and with none left the
+      // thread gets one row naming the account instead of codex's wording.
+      substitute: (info) => accounts.substitute(info.serviceId, info.account, info.model),
+      onUnauthorized: (info) => {
+        if (accounts.markOut(info.serviceId, info.account)) console.log(`[gateway] ${info.service}: ${info.account} answered 401; out of routing until it answers again`)
+        const next = accounts.substitute(info.serviceId, info.account, info.model)
+        // The thread's own account, when it is the dead one: a substitute
+        // dying later adds nothing the user can act on beyond that.
+        if (!next) registry.signInNeeded(info.thread, accounts.outFor(PROVIDER_OF[info.serviceId]).includes(info.own) ? info.own : info.account)
+        return next
+      },
       // Unscoped (terminal) traffic moved the global pin: the footer follows.
       onFailedOver: (info) => {
         console.log(`[gateway] ${info.service}: ${info.from} hit a limit, the pin moved to ${info.to}`)

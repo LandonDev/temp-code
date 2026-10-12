@@ -51,6 +51,8 @@ export interface ChooseInput {
   snapshot: AccountsSnapshot
   /** Live threads per account (running, watching, starting), from the registry. */
   load?: Record<string, number>
+  /** Accounts whose sign-in is dead (a 401 answered a request): never a pick, never "room". */
+  out?: string[]
   now?: number
 }
 
@@ -85,17 +87,21 @@ export interface Choice {
  * threads spreads instead of stacking on one account until its 5h fills.
  * The global pin carries the terminals' traffic, so it counts as one live
  * thread of its own.
+ *
+ * An account in `out` answered 401: it never spends, so by headroom it would
+ * win every pick. It has no room here, so a pinned thread expects the
+ * fallback, a sticky thread leaves it, and a first spawn never lands on it.
  */
-export function chooseAccount({ pin, current, model, provider, snapshot, load = {}, now = Date.now() }: ChooseInput): Choice {
+export function chooseAccount({ pin, current, model, provider, snapshot, load = {}, out = [], now = Date.now() }: ChooseInput): Choice {
   if (!isRoutedProvider(provider)) return { route: null, current: null }
   const snap = snapshot.providers[provider]
   const serviceId = SERVICE_OF[provider]
   const tiers = tiersFor(serviceId, model)
   const known = (name: string | null): name is string => name !== null && snap.profiles.some((p) => p.name === name)
-  const room = (name: string): boolean => hasRoom(snap.reports.find((r) => r.profileName === name), tiers, now)
+  const room = (name: string): boolean => !out.includes(name) && hasRoom(snap.reports.find((r) => r.profileName === name), tiers, now)
   const effectiveLoad = snap.pinned ? { ...load, [snap.pinned]: (load[snap.pinned] ?? 0) + 1 } : load
   const pick = (tried: string[]): string | null =>
-    pickFromCache({ serviceId, model, scoped: true, profiles: snap.profiles, reports: snap.reports, tried, load: effectiveLoad, cap: DEFAULT_THREAD_CAP, now })
+    pickFromCache({ serviceId, model, scoped: true, profiles: snap.profiles, reports: snap.reports, tried: [...tried, ...out], load: effectiveLoad, cap: DEFAULT_THREAD_CAP, now })
 
   if (known(pin)) {
     const expected = room(pin) ? pin : known(current) && room(current) ? current : (pick([pin]) ?? pin)

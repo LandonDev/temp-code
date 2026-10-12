@@ -249,6 +249,91 @@ describe('Gateway forwarding', () => {
     await g.releaseScoped('thread-1') // idempotent
   })
 
+  it('moves a scoped request off an account that answers 401, replays it once, and keeps the thread there', async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), 'temp-code-gateway-data-'))
+    cleanupData = () => rmSync(dataDir, { recursive: true, force: true })
+    const calls: { url: string; auth: string; body: string }[] = []
+    const dead = new Set(['TOKEN-dead'])
+    core.configure({
+      dataDir,
+      fetch: async (url, init) => {
+        const headers = init?.headers as Record<string, string>
+        calls.push({ url: String(url), auth: headers.authorization, body: init?.body ? Buffer.from(init.body as Uint8Array).toString() : '' })
+        if (dead.has(headers.authorization.replace('Bearer ', ''))) {
+          return new Response('{"detail":{"code":"token_expired"}}', { status: 401, headers: { 'content-type': 'application/json' } })
+        }
+        return new Response('{"ok":true}', { status: 200, headers: { 'content-type': 'application/json' } })
+      },
+      secrets: { mode: 'chromiumKey', keychainItem: 'Test Safe Storage' },
+      appName: 'temp-code-test'
+    })
+    core.vault.useFixedChromiumKey('Test Safe Storage', core.vault.randomChromiumKey())
+    for (const name of ['dead', 'alive', 'spare']) {
+      core.vault.upsertProfile('codex', { name, accountId: `acct-${name}`, createdAt: 1 })
+      core.vault.saveSecret('codex', name, JSON.stringify({ tokens: { access_token: `TOKEN-${name}`, account_id: `acct-${name}` } }))
+    }
+    core.pinProfile('codex', 'alive')
+    core.clearRoutes()
+
+    const out = new Set<string>()
+    const unauthorized: string[] = []
+    const routed: string[] = []
+    const g = await start({
+      claimShim: false,
+      tls,
+      hooks: {
+        substitute: (i) => (out.has(i.account) ? [...['alive', 'spare']].find((n) => !out.has(n)) ?? null : null),
+        onUnauthorized: (i) => {
+          unauthorized.push(`${i.thread}:${i.account}:${i.model}`)
+          out.add(i.account)
+          return ['alive', 'spare'].find((n) => !out.has(n)) ?? null
+        },
+        onRouted: (i) => routed.push(`${i.thread}→${i.account}`)
+      }
+    })
+    const port = Number(new URL((await g.scopedCodexUrl('t1', { thread: 't1', account: 'dead', pin: false }))!).port)
+    const send = (path: string, method = 'POST'): Promise<{ status: number; body: string }> =>
+      new Promise((ok, bad) => {
+        const req = httpsRequest({ host: '127.0.0.1', port, path, method, rejectUnauthorized: false, headers: { authorization: 'Bearer CLI', 'content-type': 'application/json' } }, (res) => {
+          let body = ''
+          res.on('data', (c) => (body += c))
+          res.on('end', () => ok({ status: res.statusCode ?? 0, body }))
+        })
+        req.on('error', bad)
+        req.end(method === 'POST' ? '{"model":"gpt-6-astra","input":"hi"}' : undefined)
+      })
+    // First request: the dead account answers 401, the same bytes replay under the substitute, the client sees 200.
+    expect(await send('/backend-api/codex/responses')).toEqual({ status: 200, body: '{"ok":true}' })
+    expect(calls.map((c) => c.auth)).toEqual(['Bearer TOKEN-dead', 'Bearer TOKEN-alive'])
+    expect(calls[1].body).toBe('{"model":"gpt-6-astra","input":"hi"}')
+    expect(unauthorized).toEqual(['t1:dead:gpt-6-astra'])
+    expect(routed).toEqual(['t1→alive'])
+    // Later requests go straight to the substitute; the row is told once.
+    expect((await send('/codex/api/codex/accounts/check', 'GET')).status).toBe(200)
+    expect(calls[2].auth).toBe('Bearer TOKEN-alive')
+    expect(routed).toEqual(['t1→alive'])
+    // The plain port's claude-style scoped path takes the same route.
+    const plain = await fetch(`http://127.0.0.1:${g.status().port}/codex/~t=t2;a=dead/v1/responses`, { method: 'POST', headers: { authorization: 'Bearer CLI' }, body: '{}' })
+    expect(plain.status).toBe(200)
+    expect(calls[3].auth).toBe('Bearer TOKEN-alive')
+    expect(routed).toEqual(['t1→alive', 't2→alive'])
+    // The account answers again: the thread returns to its own scope, and the row follows.
+    out.clear()
+    dead.delete('TOKEN-dead')
+    expect((await send('/backend-api/codex/responses')).status).toBe(200)
+    expect(calls[4].auth).toBe('Bearer TOKEN-dead')
+    expect(routed).toEqual(['t1→alive', 't2→alive', 't1→dead'])
+    // Nothing left to name: the 401 goes through as it came, once.
+    dead.add('TOKEN-dead').add('TOKEN-alive').add('TOKEN-spare')
+    const last = await send('/backend-api/codex/responses')
+    expect(last.status).toBe(401)
+    expect(JSON.parse(last.body)).toEqual({ detail: { code: 'token_expired' } })
+    expect(calls.slice(5).map((c) => c.auth)).toEqual(['Bearer TOKEN-dead', 'Bearer TOKEN-alive'])
+    expect(unauthorized.slice(1)).toEqual(['t1:dead:gpt-6-astra', 't1:alive:gpt-6-astra'])
+    expect(g.status().routed).toEqual({ codex: 5 })
+    core.clearRoutes()
+  })
+
   it('has no https origin without a certificate', async () => {
     const g = await start({ claimShim: false, tls: null })
     expect(g.status().tls).toBeNull()
@@ -270,5 +355,11 @@ describe('scopedCodexPath', () => {
     expect(gw.scopedCodexPath('/codex/~t=T;a=A/codex/responses', scope)).toBe('/codex/~t=T;a=A/codex/responses')
     expect(gw.scopedCodexPath('/__aliax', scope)).toBe('/__aliax')
     expect(gw.scopedCodexPath('/__aliax/usage?service=codex', scope)).toBe('/__aliax/usage?service=codex')
+  })
+  it('rescope swaps the scope segment and leaves an unscoped path alone', () => {
+    expect(gw.rescope('/codex/~t=T;a=A/codex/responses', scope)).toBe(`/codex/${seg}/codex/responses`)
+    expect(gw.rescope('/claude/~t=T;a=A;pin=1/v1/messages', { ...scope, pin: false })).toBe('/claude/~t=th%201;a=me%40x.com/v1/messages')
+    expect(gw.rescope('/codex/~t=T;a=A', scope)).toBe(`/codex/${seg}`)
+    expect(gw.rescope('/codex/v1/responses', scope)).toBe('/codex/v1/responses')
   })
 })

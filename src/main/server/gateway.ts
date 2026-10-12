@@ -2,19 +2,25 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import { createServer as createTlsServer } from 'node:https'
 import { homedir } from 'node:os'
 import { join, resolve } from 'node:path'
+import { Readable } from 'node:stream'
 import {
   claim,
   fail,
   forward,
   handleControl,
   isLive,
+  readBody,
   readMarker,
   release,
+  routeOf,
+  splitPath,
   watchMarker,
   type ForwardHooks,
   type Owner,
-  type RouteScope
+  type RouteScope,
+  type ServiceId
 } from 'aliax-core'
+import { SERVICE_OF, type AccountProvider } from '@shared/accounts'
 import { setCodexCaCertificate } from './drivers/binaries'
 import { loadTls, trustHint, type TlsMaterial } from './tls'
 
@@ -62,10 +68,35 @@ export function mayClaimShim({
   return env.TEMP_CODE_CLAIM_SHIM === '1'
 }
 
+/** A scoped request and the account it is about to spend from (or just did). */
+export interface ScopedRequest {
+  service: string
+  serviceId: ServiceId
+  thread: string
+  /** The account the request spends from (after any substitution or failover). */
+  account: string
+  /** The account the thread's own scope names. */
+  own: string
+  /** The request body's `model`, when it had one. */
+  model: string | null
+}
+
+/**
+ * The host's say over a scoped request's account, on top of core's 429
+ * failover: core only moves a thread on a limit, and a dead sign-in answers
+ * 401 for good, so the host keeps those accounts out of routing itself.
+ */
+export interface RoutingHooks {
+  /** Before a scoped request goes out: the account to use instead of `account` when that one is out, else null. */
+  substitute?: (info: ScopedRequest) => string | null
+  /** A scoped request answered 401 under `account`: the account to replay it under, or null to pass the 401 through. */
+  onUnauthorized?: (info: ScopedRequest) => string | null
+}
+
 export interface GatewayOptions {
   /** Whether this instance may write the marker at all (rule 2). */
   claimShim: boolean
-  hooks?: ForwardHooks
+  hooks?: ForwardHooks & RoutingHooks
   /** Liveness tick for the marker watcher; tests shorten it. */
   tickMs?: number
   /** Where the app keeps its own certificate when Aliax has none; no TLS without it. */
@@ -99,6 +130,8 @@ export class Gateway {
   private readonly routed: Record<string, number> = {}
   private tls: TlsMaterial | null = null
   private readonly scoped = new Map<string, { server: Server; port: number; scope: RouteScope }>()
+  /** Threads whose scope's account is out, and the account they spend from instead. */
+  private readonly substitutes = new Map<string, string>()
 
   constructor(private readonly options: GatewayOptions) {}
 
@@ -135,9 +168,13 @@ export class Gateway {
     // Codex 0.162 first opens a WebSocket to its origin for the sampling
     // stream. The gateway speaks HTTP only (the account swap, limit replay
     // and routed counters live in core's forward), so the upgrade is refused
-    // at once and codex falls back to its HTTP stream in the same turn. Left
-    // unanswered, the socket hung until codex's connect timeout, four times
-    // over, each surfacing as a "Reconnecting… n/5" error row in the thread.
+    // at once and codex falls back to its HTTP stream in the same turn with
+    // nothing to show for it (one "upgrade refused" trace line, no rows:
+    // measured 2026-10-12 against 0.162.1). Left unanswered, as Aliax's
+    // shim did, the socket hangs until codex's connect timeout. The
+    // "Reconnecting… n/5" rows threads showed were something else: codex
+    // retrying a 401 from its account check (`workspace routing discovery`),
+    // which the scoped replay in forwardScoped now answers elsewhere.
     server.on('upgrade', (req, socket) => {
       if (TRACE) console.log(`[gateway] upgrade refused ${req.url}`)
       socket.end('HTTP/1.1 426 Upgrade Required\r\nconnection: close\r\n\r\n')
@@ -248,16 +285,162 @@ export class Gateway {
   private async handle(req: IncomingMessage, res: ServerResponse, scope?: RouteScope): Promise<void> {
     if (scope) req.url = scopedCodexPath(req.url ?? '/', scope)
     if (await handleControl(req, res, OWNER)) return
-    const out = await forward(req, res, {
+    const parsed = splitPath(req.url ?? '/')
+    const serviceId = SERVICE_OF[parsed.service as AccountProvider] as ServiceId | undefined
+    const out =
+      parsed.scope && serviceId && this.options.hooks?.substitute
+        ? await this.forwardScoped(req, res, parsed.service, serviceId, parsed.scope)
+        : await this.forward(req, res)
+    if (TRACE) console.log(`[gateway] ${req.method} ${req.url} → ${out.status ?? 'no upstream'}`)
+    if (out.status !== null) this.routed[out.service] = (this.routed[out.service] ?? 0) + 1
+  }
+
+  private forward(req: IncomingMessage, res: ServerResponse, onResponse?: ForwardHooks['onResponse']): ReturnType<typeof forward> {
+    return forward(req, res, {
       ...this.options.hooks,
+      onResponse: (info) => {
+        onResponse?.(info)
+        this.options.hooks?.onResponse?.(info)
+      },
       onError: (m) => {
         this.lastError = m
         this.options.hooks?.onError?.(m)
       }
     })
-    if (TRACE) console.log(`[gateway] ${req.method} ${req.url} → ${out.status ?? 'no upstream'}`)
-    if (out.status !== null) this.routed[out.service] = (this.routed[out.service] ?? 0) + 1
   }
+
+  /**
+   * A scoped request spends from the account its scope names (or where core's
+   * 429 failover moved the thread) unless the host says that account is out:
+   * then it goes out under the substitute, as a pin, so core drops any
+   * override it held for the thread. A 401 is held back and the same bytes
+   * replay once under whatever the host names next; with nothing to name the
+   * 401 goes through as it came.
+   */
+  private async forwardScoped(req: IncomingMessage, res: ServerResponse, service: string, serviceId: ServiceId, scope: RouteScope): ReturnType<typeof forward> {
+    const hooks = this.options.hooks!
+    const url = req.url ?? '/'
+    const body = ['GET', 'HEAD'].includes(req.method ?? 'GET') ? undefined : await readBody(req)
+    const model = modelOf(body)
+    const info = (account: string): ScopedRequest => ({ service, serviceId, thread: scope.thread, account, own: scope.account, model })
+    let substitute = hooks.substitute!(info(routeOf(scope.thread) ?? scope.account))
+    for (let attempt = 0; ; attempt++) {
+      const effective: RouteScope = substitute ? { thread: scope.thread, account: substitute, pin: true } : scope
+      this.noteSubstitute(service, serviceId, scope, substitute)
+      let answered: string | null = null
+      const held = new HeldResponse(res)
+      const out = await this.forward(replay(req, rescope(url, effective), body), held as unknown as ServerResponse, (i) => {
+        answered = i.account
+      })
+      if (held.status === 401 && hooks.onUnauthorized) {
+        // Every 401 marks its account; only the first replays.
+        const next = hooks.onUnauthorized(info(answered ?? effective.account))
+        if (attempt === 0 && next && next !== effective.account) {
+          substitute = next
+          continue
+        }
+      }
+      held.flush()
+      return out
+    }
+  }
+
+  /** The thread's row follows the account it spends from, once per change. */
+  private noteSubstitute(service: string, serviceId: ServiceId, scope: RouteScope, substitute: string | null): void {
+    const was = this.substitutes.get(scope.thread) ?? null
+    if (was === substitute) return
+    if (substitute) this.substitutes.set(scope.thread, substitute)
+    else this.substitutes.delete(scope.thread)
+    this.options.hooks?.onRouted?.({ service, serviceId, thread: scope.thread, account: substitute ?? scope.account })
+  }
+}
+
+/**
+ * The response forward writes to while the request may still replay: a 401
+ * is kept whole (it is small) until the caller decides, anything else goes
+ * straight through. Mirrors the surface forward and `fail` use.
+ */
+class HeldResponse {
+  status: number | null = null
+  private held: { headers: Record<string, string>; chunks: Buffer[] } | null = null
+  private through = false
+
+  constructor(private readonly res: ServerResponse) {}
+
+  get headersSent(): boolean {
+    return this.through ? this.res.headersSent : this.held !== null
+  }
+
+  writeHead(status: number, headers: Record<string, string> = {}): this {
+    this.status = status
+    if (status === 401) this.held = { headers, chunks: [] }
+    else {
+      this.through = true
+      this.res.writeHead(status, headers)
+    }
+    return this
+  }
+
+  write(chunk: Buffer | string): boolean {
+    if (this.held) {
+      this.held.chunks.push(Buffer.from(chunk))
+      return true
+    }
+    return this.res.write(chunk)
+  }
+
+  once(event: string, fn: () => void): this {
+    if (this.held) fn()
+    else this.res.once(event, fn)
+    return this
+  }
+
+  end(data?: Buffer | string): this {
+    if (this.held) {
+      if (data) this.held.chunks.push(Buffer.from(data))
+      return this
+    }
+    this.res.end(data)
+    return this
+  }
+
+  /** Send what was held, if anything was. */
+  flush(): void {
+    if (!this.held) return
+    const { headers, chunks } = this.held
+    this.held = null
+    this.through = true
+    this.res.writeHead(401, headers)
+    this.res.end(Buffer.concat(chunks))
+  }
+}
+
+/** A request forward can read again: the original's line and headers over a buffered body. */
+function replay(req: IncomingMessage, url: string, body: Buffer | undefined): IncomingMessage {
+  return Object.assign(Readable.from(body ? [body] : []), { url, method: req.method, headers: req.headers }) as unknown as IncomingMessage
+}
+
+const modelOf = (body: Buffer | undefined): string | null => {
+  if (!body || body.length === 0) return null
+  try {
+    const model = JSON.parse(body.toString('utf8'))?.model
+    return typeof model === 'string' ? model : null
+  } catch {
+    return null
+  }
+}
+
+const scopeSegment = (scope: RouteScope): string =>
+  `~t=${encodeURIComponent(scope.thread)};a=${encodeURIComponent(scope.account)}${scope.pin ? ';pin=1' : ''}`
+
+/** The same scoped path under another scope: `/codex/~t=T;a=A/rest` → `/codex/~t=T;a=B;pin=1/rest`. */
+export function rescope(url: string, scope: RouteScope): string {
+  const slash = url.indexOf('/', 1)
+  const service = url.slice(1, slash === -1 ? undefined : slash)
+  const rest = slash === -1 ? '' : url.slice(slash)
+  if (!rest.startsWith('/~')) return url
+  const end = rest.indexOf('/', 1)
+  return `/${service}/${scopeSegment(scope)}${end === -1 ? '' : rest.slice(end)}`
 }
 
 /**
@@ -276,8 +459,7 @@ export function scopedCodexPath(url: string, scope: RouteScope): string {
   if (rest === '/backend-api' || rest.startsWith('/backend-api/')) rest = rest.slice('/backend-api'.length)
   else if (rest === '/codex' || rest.startsWith('/codex/')) rest = rest.slice('/codex'.length)
   if (rest.startsWith('/~')) return `/codex${rest}`
-  const segment = `~t=${encodeURIComponent(scope.thread)};a=${encodeURIComponent(scope.account)}${scope.pin ? ';pin=1' : ''}`
-  return `/codex/${segment}${rest}`
+  return `/codex/${scopeSegment(scope)}${rest}`
 }
 
 async function listen(server: Server): Promise<number> {

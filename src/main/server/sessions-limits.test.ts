@@ -458,3 +458,27 @@ it('a spawn picks fresh: the sticky account is ignored so a resume spreads by th
   expect(routes.at(-1)).toEqual({ id: session.id, route: { account: 'fresh@x.com', pin: false } })
   expect(registry.get(session.id)?.account).toBe('fresh@x.com')
 })
+
+it('signInNeeded posts one row naming the account and drops the harness\'s own 401 wording until the thread moves', async () => {
+  const { id, emit } = await running()
+  registry.signInNeeded(id, 'dead@x.com')
+  registry.signInNeeded(id, 'dead@x.com')
+  emit({ type: 'error', message: 'workspace routing discovery unauthorized (401)' })
+  emit({ type: 'error', message: 'something else broke' })
+  const errors = () => store.eventsAfter(id, 0).map((row) => row.event).filter((e) => e.type === 'error').map((e) => e.message)
+  expect(errors()).toEqual(['Aliax account dead@x.com needs sign-in', 'something else broke'])
+  // Another dead account names itself; coming back to it keeps the filter, landing elsewhere lifts it.
+  registry.signInNeeded(id, 'also-dead@x.com')
+  registry.setAccount(id, 'also-dead@x.com')
+  emit({ type: 'error', message: 'workspace routing discovery unauthorized (401)' })
+  registry.setAccount(id, 'fine@x.com')
+  emit({ type: 'error', message: 'workspace routing discovery unauthorized (401)' })
+  expect(errors().slice(2)).toEqual(['Aliax account also-dead@x.com needs sign-in', 'workspace routing discovery unauthorized (401)'])
+  // A turn that goes through lifts it too, so the same account dying again posts afresh.
+  registry.signInNeeded(id, 'dead@x.com')
+  await registry.send(id, 'again')
+  emit({ type: 'turn-complete' })
+  emit({ type: 'status', status: 'idle' })
+  registry.signInNeeded(id, 'dead@x.com')
+  expect(errors().slice(4)).toEqual(['Aliax account dead@x.com needs sign-in', 'Aliax account dead@x.com needs sign-in'])
+})

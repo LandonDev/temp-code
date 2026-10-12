@@ -135,4 +135,16 @@ describe('chooseAccount', () => {
     expect(chooseAccount({ ...base, pin: 'c@x.com', current: null, snapshot: snap, load: { 'b@x.com': 3 } })).toEqual({ route: { account: 'c@x.com', pin: true }, current: 'a@x.com' })
     expect(chooseAccount({ ...base, pin: 'c@x.com', current: null, snapshot: snap })).toEqual({ route: { account: 'c@x.com', pin: true }, current: 'b@x.com' })
   })
+  it('an account that answered 401 is out: never a pick, no room for a pin or a sticky current', () => {
+    const snap = snapshot({ 'dead@x.com': [fine('5h', 0)], 'b@x.com': [fine('5h', 50)] })
+    const input = { ...base, model: 'claude-fable-5-1', pin: null, current: null, snapshot: snap, out: ['dead@x.com'] }
+    // By headroom the dead account wins every pick; out, it never lands.
+    expect(chooseAccount({ ...input, out: [] }).current).toBe('dead@x.com')
+    expect(chooseAccount(input)).toEqual({ route: { account: 'b@x.com', pin: false }, current: 'b@x.com' })
+    // A sticky thread leaves it; a pinned one keeps the pin as the route and expects the fallback.
+    expect(chooseAccount({ ...input, current: 'dead@x.com' })).toEqual({ route: { account: 'b@x.com', pin: false }, current: 'b@x.com' })
+    expect(chooseAccount({ ...input, pin: 'dead@x.com' })).toEqual({ route: { account: 'dead@x.com', pin: true }, current: 'b@x.com' })
+    // Nothing else: the thread keeps what it had and the 401 surfaces.
+    expect(chooseAccount({ ...input, current: 'dead@x.com', snapshot: snapshot({ 'dead@x.com': [fine('5h', 0)] }) })).toEqual({ route: { account: 'dead@x.com', pin: false }, current: 'dead@x.com' })
+  })
 })
