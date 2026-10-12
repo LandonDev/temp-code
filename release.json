@@ -1,5 +1,5 @@
 {
-  "n": 213,
-  "notes": "The thread header's right-click menu gains Compact and Kill background tasks. Compact asks the harness to compact the conversation in place (claude: the /compact slash command; codex: thread/compact/start) through the new DriverHandle.compact in drivers/types.ts, implemented in drivers/claude.ts and drivers/codex.ts, behind the session.compact route (contract.ts, server/index.ts, sessions.ts compact()). Kill background tasks appears only for a watching thread: registry.killBackground drops the thread's watching handles and nothing else, behind session.killBackground. The renderer wires both through lib/tcserver/commands.ts and App.tsx's dispatch into ThreadHeader.tsx; tests in sessions-watching.test.ts and ThreadHeader.test.ts.",
-  "ts": 1791767730877
+  "n": 214,
+  "notes": "Main-process performance: one shared, debounced git index per checkout on screen (a tool result costs 4 git spawns instead of 30–60, and none for a background thread in another project) and a batched event log (100 streamed deltas are one transaction and no fold writes instead of 300 autocommitted statements).",
+  "ts": 1791767824036
 }
