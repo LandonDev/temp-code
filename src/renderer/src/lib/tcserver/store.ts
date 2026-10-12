@@ -366,6 +366,8 @@ class SessionStore {
     this.liveEdits.clear();
     this.listed = null;
     this.readyDone = false;
+    this.archivedScopes.clear();
+    this.archivedLoads.clear();
     this.bump();
   }
 
@@ -499,17 +501,72 @@ class SessionStore {
 
   // ── server sync ────────────────────────────────────────────────────
 
-  /** `session.list`, then replay any gap for loaded sessions. */
+  /** Archived scopes already fetched: `proj:<id>` for one project's archived
+   *  threads (the header's shelf), `*` for all of them (search, a deep
+   *  link). The default list carries only unarchived sessions, so the
+   *  thousands of archived metas never ride the boot frame. */
+  private archivedScopes = new Set<string>();
+  private archivedLoads = new Map<string, Promise<void>>();
+
+  private archivedParams(scope: string): Record<string, unknown> {
+    return scope === "*" ? { archived: true } : { archived: true, projectId: scope.slice(5) };
+  }
+
+  /** Fetch the archived metas of one project (or all), once per socket. */
+  ensureArchived(projectId?: string): Promise<void> {
+    const scope = projectId ? `proj:${projectId}` : "*";
+    if (!this.link || this.archivedScopes.has(scope) || this.archivedScopes.has("*"))
+      return Promise.resolve();
+    const inFlight = this.archivedLoads.get(scope);
+    if (inFlight) return inFlight;
+    const load = this.link
+      .request<SessionMeta[]>("session.list", this.archivedParams(scope))
+      .then((metas) => {
+        for (const meta of metas ?? []) this.mergeMeta(meta);
+        this.archivedScopes.add(scope);
+        this.bumpMeta();
+      })
+      .catch(() => undefined)
+      .finally(() => this.archivedLoads.delete(scope));
+    this.archivedLoads.set(scope, load);
+    return load;
+  }
+
+  /** The meta for `id`, fetching the archived set when the live list
+   *  lacks it (a tab or link to a thread archived since). */
+  async ensureMeta(id: string): Promise<SessionMeta | null> {
+    if (!this.metaOf(id)) await this.ensureArchived();
+    return this.metaOf(id);
+  }
+
+  private archivedScopeLoaded(meta: SessionMeta): boolean {
+    return (
+      this.archivedScopes.has("*") ||
+      (!!meta.projectId && this.archivedScopes.has(`proj:${meta.projectId}`))
+    );
+  }
+
+  /** `session.list` (plus the archived scopes already loaded), then replay
+   *  any gap for the sessions whose panes are mounted. */
   async resync(): Promise<void> {
     if (!this.link) return;
-    const metas = await this.link.request<SessionMeta[]>("session.list");
+    const link = this.link;
+    const lists = await Promise.all([
+      link.request<SessionMeta[]>("session.list"),
+      ...[...this.archivedScopes].map((scope) =>
+        link.request<SessionMeta[]>("session.list", this.archivedParams(scope)).catch(() => []),
+      ),
+    ]);
     const seen = new Set<string>();
-    for (const meta of metas) {
+    for (const meta of lists.flat()) {
+      if (!meta) continue;
       seen.add(meta.id);
       this.mergeMeta(meta);
     }
     for (const [id, entry] of this.entries) {
-      if (entry.meta && !seen.has(id)) this.drop(id);
+      // An archived meta that came by push stays until its scope is listed.
+      if (entry.meta && !seen.has(id) && !(entry.meta.archived && !this.archivedScopeLoaded(entry.meta)))
+        this.drop(id);
       // Subscriptions belong to the socket that made them; a new socket
       // starts with none, so every loaded session subscribes again.
       entry.subscribed = false;

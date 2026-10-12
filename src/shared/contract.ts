@@ -472,7 +472,12 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
     params: z.object({ path: z.string() })
   }),
   z.object({ id: z.string(), method: z.literal('session.create'), params: CreateSessionParams }),
-  z.object({ id: z.string(), method: z.literal('session.list') }),
+  // Unarchived sessions by default; `archived: true` lists the archived ones.
+  z.object({
+    id: z.string(),
+    method: z.literal('session.list'),
+    params: z.object({ archived: z.boolean().optional(), projectId: z.string().optional() }).optional()
+  }),
   // One renderer-measured stall line for <userData>/logs/stalls.log.
   z.object({ id: z.string(), method: z.literal('stall.report'), params: z.object({ line: z.string() }) }),
   z.object({

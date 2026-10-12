@@ -80,8 +80,10 @@ export async function sweepFolds(
   const chunk = opts.chunk ?? 5_000
   const batch = opts.batch ?? 50
   const yieldNow = opts.yieldNow ?? yieldToLoop
+  // Archived sessions are skipped outright: their rows are (or are on
+  // their way to) the cold file, and append() re-folds a revived thread.
   const maxSeqs = store.maxSeqs()
-  const sessions = store.listSessions().sort((a, b) => b.updatedAt - a.updatedAt)
+  const sessions = store.listSessions({ archived: false }).sort((a, b) => b.updatedAt - a.updatedAt)
   const stale = sessions.filter(
     (s) => !foldIsCurrent(host.foldOf(s.id), maxSeqs.get(s.id) ?? 0) && !host.isFoldWarm(s.id)
   )

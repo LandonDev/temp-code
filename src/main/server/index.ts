@@ -39,6 +39,7 @@ import {
   untrackRequest
 } from './stalls'
 import { sweepFolds } from './folds'
+import { ColdMover, sweepArchive } from './cold'
 import {
   orchAnswerAgent,
   orchCheckAgent,
@@ -229,8 +230,41 @@ export async function startServer(
       .catch((err) => console.error('[folds] sweep failed', err))
       .then(() => backfillMirrors(registry))
       .catch((err) => console.error('[mirror] backfill failed', err))
+      .then(() => runArchiveSweep())
   }, 2_000)
   foldTimer.unref()
+  // Archived threads' logs move to the cold file in the background (the
+  // first boot after the split moves every already-archived thread), and
+  // idle trees get archived after the window: once after boot, then hourly.
+  const coldMover = new ColdMover(store, {
+    onProgress: ({ sessionId, moved, done }) => {
+      if (done && moved > 0) console.log(`[cold] ${sessionId}: ${moved} rows moved`)
+    }
+  })
+  registry.coldMover = coldMover
+  let sweeping: Promise<void> | null = null
+  const runArchiveSweep = (): Promise<void> =>
+    (sweeping ??= (async () => {
+      bootMark('cold-move start')
+      await coldMover.kick()
+      bootMark('cold-move done')
+      bootMark('archive-sweep start')
+      const ids = await sweepArchive({
+        store,
+        list: () => registry.list({ archived: undefined }),
+        queueList: (id) => registry.queueList(id),
+        setArchived: (id, archived) => registry.setArchived(id, archived),
+        checkpoints
+      })
+      bootMark('archive-sweep done', `${ids.length} archived`)
+      await coldMover.kick()
+    })()
+      .catch((err) => console.error('[archive] sweep failed', err))
+      .finally(() => {
+        sweeping = null
+      }))
+  const archiveTimer = setInterval(() => void runArchiveSweep(), 60 * 60_000)
+  archiveTimer.unref()
   setOrchestrationRegistry(registry)
   setAppToolsRegistry(registry)
   void runDoctor() // warm the cache so the new-session modal opens ready
@@ -806,7 +840,10 @@ export async function startServer(
             sendFrame({ id: req.id, ok: true, result: null })
             break
           case 'session.list': {
-            const sessions = registry.list()
+            const sessions = registry.list({
+              archived: req.params?.archived ?? false,
+              projectId: req.params?.projectId
+            })
             if (!firstListMarked) {
               firstListMarked = true
               bootMark('first-session-list', `${sessions.length} sessions`)

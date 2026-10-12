@@ -215,6 +215,11 @@ function ShellTitleBarComponent({ headerEvents, ...titleBar }: Props) {
     header.publish({ tabProjects, stripTabs, model: headerModel, chipThreads });
   }, [chipThreads, headerModel, stripTabs, tabProjects]);
 
+  // The live list leaves archived threads out; the shelf asks for the
+  // selected project's own when it is shown.
+  useEffect(() => {
+    if (deckLayout && selectedProjectId) void sessionStore.ensureArchived(selectedProjectId);
+  }, [deckLayout, selectedProjectId]);
   /** The selected project's archived roots, freshest first, for the shelf. */
   const archivedThreads = useMemo<ArchivedThread[]>(() => {
     if (!deckLayout || !selectedProjectId) return [];

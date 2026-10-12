@@ -105,7 +105,8 @@ export const M3aRequestSchemas = [
     params: z.object({
       query: z.string(),
       workspaceId: z.string().optional(),
-      limit: z.number().int().positive().max(200).optional()
+      limit: z.number().int().positive().max(200).optional(),
+      archived: z.boolean().optional()
     })
   }),
   z.object({

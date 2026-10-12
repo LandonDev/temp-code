@@ -22,6 +22,19 @@ import { resolveModel, type ProviderId } from '@shared/catalog'
  * source of truth the transcript is rendered from — T3-style).
  */
 
+/** The cold file beside the hot one: `temp-code.db` → `temp-code-cold.db`. */
+export function coldPathFor(path: string): string {
+  return path === ':memory:' ? ':memory:' : path.replace(/\.db$/, '') + '-cold.db'
+}
+
+const EVENTS_COLUMNS = `(
+      session_id TEXT NOT NULL,
+      seq        INTEGER NOT NULL,
+      ts         INTEGER NOT NULL,
+      payload    TEXT NOT NULL,
+      PRIMARY KEY (session_id, seq)
+    )`
+
 export function openDb(path: string): DatabaseSync {
   mkdirSync(dirname(path), { recursive: true })
   const db = new DatabaseSync(path)
@@ -49,13 +62,7 @@ export function openDb(path: string): DatabaseSync {
       created_at INTEGER NOT NULL,
       updated_at INTEGER NOT NULL
     );
-    CREATE TABLE IF NOT EXISTS events (
-      session_id TEXT NOT NULL,
-      seq        INTEGER NOT NULL,
-      ts         INTEGER NOT NULL,
-      payload    TEXT NOT NULL,
-      PRIMARY KEY (session_id, seq)
-    );
+    CREATE TABLE IF NOT EXISTS events ${EVENTS_COLUMNS};
     CREATE TABLE IF NOT EXISTS workspaces (
       id         TEXT PRIMARY KEY,
       name       TEXT NOT NULL,
@@ -119,7 +126,8 @@ export function openDb(path: string): DatabaseSync {
     `ALTER TABLE projects ADD COLUMN account_pins TEXT`,
     `ALTER TABLE workspaces ADD COLUMN account_pins TEXT`,
     `ALTER TABLE workspaces ADD COLUMN github_repo TEXT`,
-    `ALTER TABLE workspaces ADD COLUMN github_repo_checked_at INTEGER`
+    `ALTER TABLE workspaces ADD COLUMN github_repo_checked_at INTEGER`,
+    `ALTER TABLE sessions ADD COLUMN cold INTEGER NOT NULL DEFAULT 0`
   ]) {
     try {
       db.exec(stmt)
@@ -127,6 +135,16 @@ export function openDb(path: string): DatabaseSync {
       // column already exists
     }
   }
+  // The cold file holds the logs of archived threads, same schema, on the
+  // same connection: an archived thread's rows leave the hot file so every
+  // scan of `events` (boot folds, search, the WAL) covers only live work.
+  // `sessions.cold` says which file a session's rows are in.
+  db.prepare(`ATTACH DATABASE ? AS cold`).run(coldPathFor(path))
+  db.exec(`
+    PRAGMA cold.journal_mode = WAL;
+    PRAGMA cold.synchronous = NORMAL;
+    CREATE TABLE IF NOT EXISTS cold.events ${EVENTS_COLUMNS};
+  `)
   ensureNotesTable(db)
   // The model-written tool summaries were removed on 2026-09-14; their
   // permanent cache rows would otherwise sit in the settings table forever.
@@ -321,11 +339,32 @@ export function tailStart(
 }
 
 export class Store {
-  constructor(private db: DatabaseSync) {}
+  constructor(private db: DatabaseSync) {
+    const rows = db.prepare(`SELECT id FROM sessions WHERE cold = 1`).all() as unknown as { id: string }[]
+    for (const r of rows) this.coldIds.add(r.id)
+  }
 
   /** Statements are prepared once per SQL string: preparing dominated a
    *  boot profile where getSession() ran once per session per list(). */
   private stmts = new Map<string, StatementSync>()
+
+  /** Sessions whose rows live in the cold file (`sessions.cold = 1`). */
+  private coldIds = new Set<string>()
+  /** The session a batched hot→cold move is half-way through: its rows are
+   *  split across the two files until the move lands, so a reader asking
+   *  for it finishes the move first. */
+  private moving: string | null = null
+
+  isCold(sessionId: string): boolean {
+    return this.coldIds.has(sessionId)
+  }
+
+  /** The table a session's rows are in. Settles a half-moved session so
+   *  the answer is one table, never two. */
+  private eventsTable(sessionId: string): 'events' | 'cold.events' {
+    if (this.moving === sessionId) this.moveToCold(sessionId)
+    return this.coldIds.has(sessionId) ? 'cold.events' : 'events'
+  }
 
   /** Bumped by every sessions-table write; the registry's index cache keys on it. */
   sessionsVersion = 0
@@ -338,7 +377,13 @@ export class Store {
    *  be its own SELECT MAX + autocommit INSERT on the main thread; every
    *  reader and deleter of the table flushes first, so nothing observes
    *  the gap. */
-  private pendingEvents: { sessionId: string; seq: number; ts: number; payload: string }[] = []
+  private pendingEvents: {
+    sessionId: string
+    seq: number
+    ts: number
+    payload: string
+    table: 'events' | 'cold.events'
+  }[] = []
   private flushScheduled = false
   private stmt(sql: string): StatementSync {
     let st = this.stmts.get(sql)
@@ -479,6 +524,10 @@ export class Store {
         next.updatedAt,
         id
       )
+    // A revived thread reads from the hot file again, so its rows come back
+    // first: every path that unarchives (the archive toggle, a message into
+    // an archived thread) goes through here.
+    if (cur.archived && !next.archived) this.moveToHot(id)
     return next
   }
 
@@ -531,14 +580,102 @@ export class Store {
     this.sessionsVersion += 1
     const del = this.stmt(`DELETE FROM sessions WHERE id = ?`)
     const delEvents = this.stmt(`DELETE FROM events WHERE session_id = ?`)
+    const delCold = this.stmt(`DELETE FROM cold.events WHERE session_id = ?`)
     const delFold = this.stmt(`DELETE FROM session_folds WHERE session_id = ?`)
     for (const sid of ids) {
       delEvents.run(sid)
+      delCold.run(sid)
       delFold.run(sid)
       del.run(sid)
       this.nextSeq.delete(sid)
+      this.coldIds.delete(sid)
+      if (this.moving === sid) this.moving = null
     }
     return ids
+  }
+
+  // ── hot / cold ─────────────────────────────────────────────────────
+
+  /** Archived sessions whose rows are still (partly) in the hot file, and
+   *  unarchived ones left in cold: what the background mover has to do.
+   *  Resumable by construction — a move that quit half-way shows up here
+   *  again, and copying is idempotent (INSERT OR REPLACE on the key). */
+  coldBacklog(): { toCold: string[]; toHot: string[] } {
+    const ids = (sql: string): string[] =>
+      (this.stmt(sql).all() as unknown as { id: string }[]).map((r) => r.id)
+    return {
+      toCold: ids(`SELECT id FROM sessions WHERE archived = 1 AND cold = 0 ORDER BY updated_at`),
+      toHot: ids(`SELECT id FROM sessions WHERE archived = 0 AND cold = 1`)
+    }
+  }
+
+  /** Move up to `limit` of a session's hot rows (lowest seq first) to cold
+   *  in one transaction; with no limit, all of them. Returns how many moved
+   *  and whether the session is now wholly cold. Between partial batches
+   *  the session is `moving`, so readers settle it before reading. */
+  moveToCold(sessionId: string, limit = 0): { moved: number; done: boolean } {
+    this.flushEvents()
+    let upTo = Number.MAX_SAFE_INTEGER
+    if (limit > 0) {
+      const edge = this
+        .stmt(`SELECT seq FROM events WHERE session_id = ? ORDER BY seq LIMIT 1 OFFSET ?`)
+        .get(sessionId, limit) as { seq: number } | undefined
+      if (edge) upTo = edge.seq - 1
+    }
+    const done = upTo === Number.MAX_SAFE_INTEGER
+    this.db.exec('BEGIN')
+    try {
+      const moved = this
+        .stmt(
+          `INSERT OR REPLACE INTO cold.events (session_id, seq, ts, payload)
+           SELECT session_id, seq, ts, payload FROM events WHERE session_id = ? AND seq <= ?`
+        )
+        .run(sessionId, upTo).changes
+      this.stmt(`DELETE FROM events WHERE session_id = ? AND seq <= ?`).run(sessionId, upTo)
+      if (done) this.stmt(`UPDATE sessions SET cold = 1 WHERE id = ?`).run(sessionId)
+      this.db.exec('COMMIT')
+      if (done) {
+        this.coldIds.add(sessionId)
+        if (this.moving === sessionId) this.moving = null
+      } else this.moving = sessionId
+      return { moved: Number(moved), done }
+    } catch (error) {
+      this.db.exec('ROLLBACK')
+      throw error
+    }
+  }
+
+  /** Bring every cold row of a session back to the hot file, in one
+   *  transaction. Idempotent; a session split across the files (a move
+   *  that quit half-way) comes back whole. */
+  moveToHot(sessionId: string): number {
+    this.flushEvents()
+    this.db.exec('BEGIN')
+    try {
+      const moved = this
+        .stmt(
+          `INSERT OR REPLACE INTO events (session_id, seq, ts, payload)
+           SELECT session_id, seq, ts, payload FROM cold.events WHERE session_id = ?`
+        )
+        .run(sessionId).changes
+      this.stmt(`DELETE FROM cold.events WHERE session_id = ?`).run(sessionId)
+      this.stmt(`UPDATE sessions SET cold = 0 WHERE id = ?`).run(sessionId)
+      this.db.exec('COMMIT')
+      this.coldIds.delete(sessionId)
+      if (this.moving === sessionId) this.moving = null
+      return Number(moved)
+    } catch (error) {
+      this.db.exec('ROLLBACK')
+      throw error
+    }
+  }
+
+  /** How many rows a session has in each file (tests, the mover's log). */
+  eventCounts(sessionId: string): { hot: number; cold: number } {
+    this.flushEvents()
+    const count = (table: string): number =>
+      (this.stmt(`SELECT COUNT(*) AS n FROM ${table} WHERE session_id = ?`).get(sessionId) as { n: number }).n
+    return { hot: count('events'), cold: count('cold.events') }
   }
 
   getSession(id: string): SessionMeta | null {
@@ -554,9 +691,11 @@ export class Store {
     return rows.map(toMeta)
   }
 
-  listSessions(): SessionMeta[] {
+  /** Every session, or only the archived / unarchived ones. */
+  listSessions(opts: { archived?: boolean } = {}): SessionMeta[] {
+    const where = opts.archived === undefined ? '' : `WHERE archived = ${opts.archived ? 1 : 0}`
     const rows = this
-      .stmt(`SELECT * FROM sessions ORDER BY created_at DESC`)
+      .stmt(`SELECT * FROM sessions ${where} ORDER BY created_at DESC`)
       .all() as unknown as SessionRowRaw[]
     return rows.map(toMeta)
   }
@@ -568,7 +707,9 @@ export class Store {
     const ts = Date.now()
     const seq = this.nextSeq.get(sessionId) ?? this.maxSeq(sessionId) + 1
     this.nextSeq.set(sessionId, seq + 1)
-    this.pendingEvents.push({ sessionId, seq, ts, payload: JSON.stringify(event) })
+    // A row for a cold session lands in the cold file, where its log is.
+    const table = this.eventsTable(sessionId)
+    this.pendingEvents.push({ sessionId, seq, ts, payload: JSON.stringify(event), table })
     if (!this.flushScheduled) {
       this.flushScheduled = true
       setImmediate(() => this.flushEvents())
@@ -578,7 +719,7 @@ export class Store {
 
   private maxSeq(sessionId: string): number {
     const r = this
-      .stmt(`SELECT COALESCE(MAX(seq), 0) AS max FROM events WHERE session_id = ?`)
+      .stmt(`SELECT COALESCE(MAX(seq), 0) AS max FROM ${this.eventsTable(sessionId)} WHERE session_id = ?`)
       .get(sessionId) as { max: number }
     return r.max
   }
@@ -597,8 +738,8 @@ export class Store {
       throw error
     }
     try {
-      const insert = this.stmt(`INSERT INTO events (session_id, seq, ts, payload) VALUES (?, ?, ?, ?)`)
       for (const row of rows) {
+        const insert = this.stmt(`INSERT INTO ${row.table} (session_id, seq, ts, payload) VALUES (?, ?, ?, ?)`)
         try {
           insert.run(row.sessionId, row.seq, row.ts, row.payload)
         } catch (error) {
@@ -781,6 +922,14 @@ export class Store {
     for (const { repo } of rows) if (!keep.includes(repo)) del.run(repo)
   }
 
+  /** Every setting whose key starts with `prefix`, keyed in full. */
+  settingsWithPrefix(prefix: string): Map<string, string> {
+    const rows = this
+      .stmt(`SELECT key, value FROM settings WHERE key = ? OR key LIKE ?`)
+      .all(prefix, `${prefix}%`) as unknown as { key: string; value: string }[]
+    return new Map(rows.map((r) => [r.key, r.value]))
+  }
+
   getSetting(key: string): string | null {
     const r = this.stmt(`SELECT value FROM settings WHERE key = ?`).get(key) as
       { value: string } | undefined
@@ -808,27 +957,33 @@ export class Store {
     query: string
     workspaceId?: string
     limit?: number
+    /** Also walk the cold file (archived threads' logs). */
+    archived?: boolean
   }): SessionSearchResult {
     const needle = options.query.trim().toLowerCase()
     const limit = Math.min(options.limit ?? SEARCH_CAP, SEARCH_CAP)
     if (!needle) return { hits: [], truncated: false }
     this.flushEvents()
+    const over = (table: string): string =>
+      `SELECT e.session_id AS sessionId, e.seq AS seq, e.ts AS ts,
+              json_extract(e.payload, '$.type') AS type,
+              json_extract(e.payload, '$.text') AS text
+       FROM ${table} e JOIN sessions s ON s.id = e.session_id
+       WHERE json_extract(e.payload, '$.type') IN ('user-text', 'assistant-text')
+         AND COALESCE(json_extract(e.payload, '$.delta'), 0) = 0
+         AND json_extract(e.payload, '$.parentCallId') IS NULL
+         AND instr(lower(json_extract(e.payload, '$.text')), ?) > 0
+         ${options.workspaceId ? 'AND s.workspace_id = ?' : ''}`
+    const args = options.workspaceId ? [needle, options.workspaceId] : [needle]
     const rows = this
       .stmt(
-        `SELECT e.session_id AS sessionId, e.seq AS seq, e.ts AS ts,
-                json_extract(e.payload, '$.type') AS type,
-                json_extract(e.payload, '$.text') AS text
-         FROM events e JOIN sessions s ON s.id = e.session_id
-         WHERE json_extract(e.payload, '$.type') IN ('user-text', 'assistant-text')
-           AND COALESCE(json_extract(e.payload, '$.delta'), 0) = 0
-           AND json_extract(e.payload, '$.parentCallId') IS NULL
-           AND instr(lower(json_extract(e.payload, '$.text')), ?) > 0
-           ${options.workspaceId ? 'AND s.workspace_id = ?' : ''}
-         ORDER BY e.ts DESC, e.seq DESC
+        `${over('events')}
+         ${options.archived ? `UNION ALL ${over('cold.events')}` : ''}
+         ORDER BY ts DESC, seq DESC
          LIMIT ?`
       )
       .all(
-        ...(options.workspaceId ? [needle, options.workspaceId] : [needle]),
+        ...(options.archived ? [...args, ...args] : args),
         limit + 1
       ) as unknown as Array<{ sessionId: string; seq: number; ts: number; type: string; text: string }>
     const hits: SessionSearchHit[] = rows.slice(0, limit).map((row) => {
@@ -848,7 +1003,7 @@ export class Store {
     this.flushEvents()
     const r = this
       .stmt(
-        `SELECT 1 AS x FROM events WHERE session_id = ? AND payload LIKE '%"user-text"%' LIMIT 1`
+        `SELECT 1 AS x FROM ${this.eventsTable(sessionId)} WHERE session_id = ? AND payload LIKE '%"user-text"%' LIMIT 1`
       )
       .get(sessionId)
     return !!r
@@ -871,6 +1026,7 @@ export class Store {
     opts: { afterSeq?: number; beforeSeq?: number; tail?: number } = {}
   ): EventRow[] {
     this.flushEvents()
+    const table = this.eventsTable(sessionId)
     const afterSeq = opts.afterSeq ?? 0
     const beforeSeq = opts.beforeSeq ?? Number.MAX_SAFE_INTEGER
     let fromSeq = afterSeq + 1
@@ -882,7 +1038,7 @@ export class Store {
                     json_extract(payload, '$.callId') AS callId,
                     json_extract(payload, '$.msgId') AS msgId,
                     json_extract(payload, '$.blockIndex') AS blockIndex
-               FROM events
+               FROM ${table}
                WHERE session_id = ? AND seq > ? AND seq < ?
                ORDER BY seq DESC LIMIT ?`
           )
@@ -899,7 +1055,7 @@ export class Store {
     }
     const rows = this
       .stmt(
-        `SELECT seq, ts, payload FROM events WHERE session_id = ? AND seq >= ? AND seq < ? ORDER BY seq`
+        `SELECT seq, ts, payload FROM ${table} WHERE session_id = ? AND seq >= ? AND seq < ? ORDER BY seq`
       )
       .all(sessionId, fromSeq, beforeSeq) as unknown as { seq: number; ts: number; payload: string }[]
     return rows.map((r) => ({
@@ -916,7 +1072,7 @@ export class Store {
     this.flushEvents()
     const rows = this
       .stmt(
-        `SELECT seq, ts, payload FROM events WHERE session_id = ? AND seq > ? ORDER BY seq LIMIT ?`
+        `SELECT seq, ts, payload FROM ${this.eventsTable(sessionId)} WHERE session_id = ? AND seq > ? ORDER BY seq LIMIT ?`
       )
       .all(sessionId, afterSeq, limit) as unknown as { seq: number; ts: number; payload: string }[]
     return rows.map((r) => ({
@@ -927,13 +1083,20 @@ export class Store {
     }))
   }
 
-  /** Highest event seq per session — index-only, no payload read. */
+  /** Highest hot event seq per unarchived session: one index seek per
+   *  session (the MIN/MAX optimisation on the primary key), never a walk
+   *  of the table. The GROUP BY it replaces read every key of a 7.5M-row
+   *  log on each boot. Archived sessions and the cold file are not asked. */
   maxSeqs(): Map<string, number> {
     this.flushEvents()
     const rows = this
-      .stmt(`SELECT session_id, MAX(seq) AS max FROM events GROUP BY session_id`)
-      .all() as unknown as { session_id: string; max: number }[]
-    return new Map(rows.map((r) => [r.session_id, r.max]))
+      .stmt(
+        `SELECT s.id AS session_id,
+                (SELECT MAX(e.seq) FROM events e WHERE e.session_id = s.id) AS max
+           FROM sessions s WHERE s.archived = 0`
+      )
+      .all() as unknown as { session_id: string; max: number | null }[]
+    return new Map(rows.filter((r) => r.max !== null).map((r) => [r.session_id, r.max as number]))
   }
 
   // ── session folds ──────────────────────────────────────────────────

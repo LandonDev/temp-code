@@ -594,11 +594,20 @@ export class SessionRegistry {
     }
   }
 
-  list(): SessionMeta[] {
+  /** Decorated sessions: the unarchived ones by default, the archived ones
+   *  with `archived: true`, all of them with `archived: undefined`. The
+   *  index that decorates is always built over every row, so a child of an
+   *  archived root still decorates right. */
+  list(opts: { archived?: boolean; projectId?: string } = { archived: false }): SessionMeta[] {
     return timed('registry.list', () => {
       const sessions = this.store.listSessions()
       const index = this.indexOf(sessions)
-      return sessions.map((s) => this.decorate(s, index))
+      const wanted = sessions.filter(
+        (s) =>
+          (opts.archived === undefined || s.archived === opts.archived) &&
+          (opts.projectId === undefined || s.projectId === opts.projectId)
+      )
+      return wanted.map((s) => this.decorate(s, index))
     })
   }
 
@@ -2011,7 +2020,13 @@ export class SessionRegistry {
     }
     const next = this.store.updateSession(sessionId, { archived })
     if (next) this.notifyMeta(next)
+    // Its rows leave the hot file in the background; an unarchive moved
+    // them back inside updateSession, before anything reads the thread.
+    if (archived) this.coldMover?.kick()
   }
+
+  /** Moves archived threads' rows to the cold file; set by the server. */
+  coldMover: { kick(): void } | null = null
 
   async delete(sessionId: string): Promise<void> {
     // Same Stop-first rule as archive: interrupt the whole subtree while

@@ -115,6 +115,7 @@ export async function searchSessions(options: {
   const query = options.query.trim().toLowerCase();
   if (!query) return { hits: [], truncated: false };
   await sessionStore.ready();
+  if (options.includeArchived) await sessionStore.ensureArchived();
   const hits: SessionSearchHit[] = [];
   const seen = new Set<string>();
   const metas = sessionStore
@@ -159,7 +160,7 @@ export async function searchSessions(options: {
   const byId = new Map(metas.map((meta) => [meta.id, meta]));
   const remote = await invoke<{ hits: ServerSearchHit[]; truncated: boolean }>(
     "search_sessions",
-    { query: options.query.trim(), limit: SEARCH_LIMIT },
+    { query: options.query.trim(), limit: SEARCH_LIMIT, archived: !!options.includeArchived },
   ).catch(() => ({ hits: [], truncated: false }));
   for (const row of remote.hits) {
     const meta = byId.get(row.sessionId);
@@ -186,6 +187,7 @@ export async function searchSessions(options: {
  *  (blocks empty until `sessionStore.ensureLoaded`). Drafts come back whole. */
 export async function peekSession(sessionId: string): Promise<Session | null> {
   await sessionStore.ready();
+  if (!sessionStore.get(sessionId)) await sessionStore.ensureMeta(sessionId);
   return sessionStore.get(sessionId) ?? null;
 }
 
@@ -193,6 +195,7 @@ export async function peekSession(sessionId: string): Promise<Session | null> {
  *  log lands behind them. Whole already when it is small. */
 export async function loadSession(sessionId: string): Promise<Session | null> {
   await sessionStore.ready();
+  if (!sessionStore.get(sessionId)) await sessionStore.ensureMeta(sessionId);
   if (sessionStore.isDraft(sessionId)) return sessionStore.get(sessionId) ?? null;
   await sessionStore.ensureLoaded(sessionId);
   return sessionStore.get(sessionId) ?? null;
@@ -202,6 +205,7 @@ export async function loadSession(sessionId: string): Promise<Session | null> {
  *  (mirrors, summaries, search: readers that need every row). */
 export async function getSession(sessionId: string): Promise<Session | null> {
   await sessionStore.ready();
+  if (!sessionStore.get(sessionId)) await sessionStore.ensureMeta(sessionId);
   if (sessionStore.isDraft(sessionId)) return sessionStore.get(sessionId) ?? null;
   await sessionStore.ensureComplete(sessionId);
   return sessionStore.get(sessionId) ?? null;

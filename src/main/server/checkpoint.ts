@@ -260,6 +260,14 @@ export class CheckpointStore {
     ;(await this.index()).set(sessionId, indexed(manifest))
   }
 
+  /** Forget a session's snapshot dir: what archiving a thread does, since
+   *  undo means nothing for a thread nobody will send to without reviving
+   *  it first (and the dirs were most of 17 GB on one machine). Runs on
+   *  the session's chain so an in-flight capture cannot recreate it. */
+  discard(sessionId: string): Promise<void> {
+    return this.serialized(sessionId, () => this.drop(sessionId))
+  }
+
   private async drop(sessionId: string): Promise<void> {
     await rm(this.sessionDir(sessionId), { recursive: true, force: true })
     ;(await this.index()).delete(sessionId)

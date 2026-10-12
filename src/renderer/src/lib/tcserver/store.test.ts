@@ -51,9 +51,18 @@ class FakeLink implements Link {
   private pushListeners = new Set<(push: ServerPush) => void>();
   private openListeners = new Set<() => void>();
 
+  /** Archived metas, served only to a `session.list` that asks for them. */
+  archivedMetas: SessionMeta[] = [];
+
   request<T>(method: string, params?: unknown): Promise<T> {
     this.calls.push({ method, params });
-    if (method === "session.list") return Promise.resolve(this.metas as T);
+    if (method === "session.list") {
+      const p = (params ?? {}) as { archived?: boolean; projectId?: string };
+      if (!p.archived) return Promise.resolve(this.metas as T);
+      return Promise.resolve(
+        this.archivedMetas.filter((m) => !p.projectId || m.projectId === p.projectId) as T,
+      );
+    }
     if (method === "session.events") {
       const { sessionId, afterSeq = 0, beforeSeq = Infinity, tail } = params as {
         sessionId: string;
@@ -648,5 +657,49 @@ describe("meta push coalescing", () => {
     await flush();
     expect(storeCalls).toBe(1);
     expect(sessionStore.get("s1")!.blocks).toHaveLength(2);
+  });
+});
+
+describe("archived metas on demand", () => {
+  it("the boot list carries no archived threads; ensureArchived fetches one project's", async () => {
+    link.metas = [meta({ id: "live", projectId: "p1" })];
+    link.archivedMetas = [
+      meta({ id: "old1", projectId: "p1", archived: true }),
+      meta({ id: "old2", projectId: "p2", archived: true }),
+    ];
+    sessionStore.connect(link);
+    await sessionStore.ready();
+    expect(sessionStore.metas().map((m) => m.id)).toEqual(["live"]);
+    expect(link.calls.filter((c) => c.method === "session.list")).toHaveLength(1);
+    await sessionStore.ensureArchived("p1");
+    await sessionStore.ensureArchived("p1");
+    expect(sessionStore.metas().map((m) => m.id).sort()).toEqual(["live", "old1"]);
+    expect(link.calls.filter((c) => c.method === "session.list")).toHaveLength(2);
+    // a resync re-lists the loaded scope and keeps it
+    await sessionStore.resync();
+    expect(sessionStore.metas().map((m) => m.id).sort()).toEqual(["live", "old1"]);
+  });
+
+  it("ensureMeta reaches an archived thread the live list left out", async () => {
+    link.metas = [];
+    link.archivedMetas = [meta({ id: "old", archived: true })];
+    sessionStore.connect(link);
+    await sessionStore.ready();
+    expect(sessionStore.metaOf("old")).toBeNull();
+    expect((await sessionStore.ensureMeta("old"))?.id).toBe("old");
+  });
+
+  it("an archived meta that arrived by push survives a resync", async () => {
+    link.metas = [meta({ id: "a" })];
+    sessionStore.connect(link);
+    await sessionStore.ready();
+    link.push({ push: "session", session: meta({ id: "a", archived: true }) });
+    link.metas = [];
+    await sessionStore.resync();
+    expect(sessionStore.metaOf("a")?.archived).toBe(true);
+    // once its scope is listed and it is gone, it goes
+    await sessionStore.ensureArchived();
+    await sessionStore.resync();
+    expect(sessionStore.metaOf("a")).toBeNull();
   });
 });
