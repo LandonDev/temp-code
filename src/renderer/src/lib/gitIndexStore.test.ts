@@ -11,14 +11,22 @@ const { fileListeners, gitListeners, gitDiffIndex, gitLog, invalidateWatchedFile
   watchCwd: vi.fn(),
 }));
 
-vi.mock("./fs", () => ({
-  gitDiffIndex,
-  gitLog,
-  subscribeGitChanged: (l: () => void) => {
-    gitListeners.push(l);
-    return () => gitListeners.splice(gitListeners.indexOf(l), 1);
-  },
-}));
+vi.mock("./fs", async () => {
+  // The real scoped subscription, plus a hand-fired list for the older cases.
+  const real = await vi.importActual<typeof import("./gitChanged")>("./gitChanged");
+  return {
+    gitDiffIndex,
+    gitLog,
+    subscribeGitChanged: (l: () => void, cwd?: string | null) => {
+      gitListeners.push(l);
+      const stop = real.subscribeGitChanged(l, cwd);
+      return () => {
+        gitListeners.splice(gitListeners.indexOf(l), 1);
+        stop();
+      };
+    },
+  };
+});
 
 vi.mock("./fileWatch", () => ({ invalidateWatchedFiles }));
 
@@ -30,6 +38,7 @@ vi.mock("./projectWatch", () => ({
   },
 }));
 
+import { notifyGitChanged } from "./gitChanged";
 import {
   getGitSnapshot,
   holdGitSnapshot,
@@ -150,6 +159,28 @@ describe("gitIndexStore", () => {
     for (const l of gitListeners) l();
     await vi.advanceTimersByTimeAsync(300);
     expect(gitDiffIndex).toHaveBeenCalledTimes(2);
+  });
+
+  it("a burst of scoped git-changed signals reloads once, and another checkout's signals not at all", async () => {
+    const stop = holdGitSnapshot("/w/one");
+    await vi.advanceTimersByTimeAsync(0);
+    expect(gitDiffIndex).toHaveBeenCalledTimes(1);
+    for (let i = 0; i < 6; i++) {
+      notifyGitChanged("/w/one/src");
+      notifyGitChanged("/w/two");
+      await vi.advanceTimersByTimeAsync(20);
+    }
+    expect(gitDiffIndex).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(300);
+    expect(gitDiffIndex).toHaveBeenCalledTimes(2);
+    for (let i = 0; i < 6; i++) notifyGitChanged("/w/two");
+    await vi.advanceTimersByTimeAsync(300);
+    expect(gitDiffIndex).toHaveBeenCalledTimes(2);
+    // An unscoped signal (a commit from a UI with no cwd) still reaches it.
+    notifyGitChanged();
+    await vi.advanceTimersByTimeAsync(300);
+    expect(gitDiffIndex).toHaveBeenCalledTimes(3);
+    stop();
   });
 
   it("holders without a log reader never fetch the log; stats derive from the index", async () => {

@@ -53,12 +53,15 @@ afterEach(async () => {
   await rm(root, { recursive: true, force: true })
 })
 
-/** A running claude session whose driver emit we hold. */
+/** A booted claude session at rest whose driver emit we hold. send() marks
+ *  the thread starting until the harness reports; the mocked driver never
+ *  does, so the helper settles it idle the way a real turn's end would. */
 async function running(params: Partial<Parameters<SessionRegistry['create']>[0]> = {}): Promise<{ id: string; emit: (event: AgentEvent) => void }> {
   const session = await registry.create({ cwd: root, provider: 'claude', model: 'claude-sonnet-5-5', ...params })
   await registry.send(session.id, 'hello')
   const emit = emits.get(session.id)
   if (!emit) throw new Error('driver never started')
+  emit({ type: 'status', status: 'idle' })
   return { id: session.id, emit }
 }
 
@@ -297,6 +300,8 @@ it('an idle Opus thread leaves an account whose Fable window came back for one w
   await registry.send(opus, 'again')
   expect(routes).toHaveLength(spawns + 1)
   expect(routes.at(-1)).toEqual({ id: opus, route: { account: 'b@x.com', pin: false } })
+  // The send left it starting; settle it so the refreshes below may move it.
+  emits.get(opus)!({ type: 'status', status: 'idle' })
   // A Fable thread on a stays: a is the only account with Fable room.
   const { id: fable } = await running({ model: 'claude-fable-5-1' })
   expect(registry.get(fable)?.account).toBe('a@x.com')

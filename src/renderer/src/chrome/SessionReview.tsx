@@ -12,6 +12,8 @@ import { invalidateWatchedFiles } from "../lib/fileWatch";
 import { basename, notifyGitChanged, subscribeGitChanged } from "../lib/fs";
 import { FileTypeIcon } from "./FileTypeIcon";
 
+export const STATUS_DEBOUNCE_MS = 500;
+
 type Props = {
   sessionId: string;
   cwd: string;
@@ -45,21 +47,24 @@ export function SessionReview({
 
   useEffect(() => {
     if (!enabled || busy) return;
-    load();
+    // One trailing status per burst: a settle, its review nudge and the
+    // git-changed signals it sets off all land within the window, and each
+    // status is a git child on the server's shared budget.
     let timer: number | null = null;
     const schedule = () => {
       if (timer != null) window.clearTimeout(timer);
       timer = window.setTimeout(() => {
         timer = null;
         load();
-      }, 200);
+      }, STATUS_DEBOUNCE_MS);
     };
+    schedule();
     const unsubReview = subscribeReviewChanged((id) => {
       if (!id || id === sessionId) schedule();
     });
     const unsubGit = subscribeGitChanged(() => {
       if (filesRef.current.length > 0) schedule();
-    });
+    }, cwd);
     const onResume = () => {
       if (filesRef.current.length > 0) schedule();
     };

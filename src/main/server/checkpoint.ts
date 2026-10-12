@@ -43,8 +43,23 @@ interface ManifestJson {
 
 const empty = (): CheckpointStatus => ({ files: [] })
 
+/** What sync needs to know about every other session's manifest. */
+interface IndexedManifest {
+  root: string
+  touched: Set<string>
+}
+const indexed = (manifest: Manifest): IndexedManifest => ({
+  root: expandHome(manifest.cwd),
+  touched: new Set(manifest.touched)
+})
+
 export class CheckpointStore {
   private readonly chains = new Map<string, Promise<unknown>>()
+  /** Every manifest under root by session, read once and kept current by
+   *  this store's own saves and drops. sync asks after every turn what the
+   *  other sessions in the project have claimed; reading thousands of
+   *  manifest dirs off disk for each answer was most of its cost. */
+  private manifests: Promise<Map<string, IndexedManifest>> | null = null
   constructor(readonly root: string) {}
 
   ensure(sessionId: string, cwd: string): Promise<void> {
@@ -54,18 +69,22 @@ export class CheckpointStore {
       const existing = await readManifest(dir)
       if (existing) {
         if (await sameCwd(existing.cwd, cwd)) return
-        await rm(dir, { recursive: true, force: true })
+        await this.drop(sessionId)
       }
       await mkdir(join(dir, 'files'), { recursive: true })
       const manifest: Manifest = { cwd: root, files: new Map(), touched: new Set(), tracked: new Set() }
+      const dirtyNow: string[] = []
       for (const file of (await gitDiffIndex(root)).files) {
-        if (manifest.files.size >= MAX_SNAPSHOT_FILES) break
+        if (dirtyNow.length >= MAX_SNAPSHOT_FILES) break
         const relative = tryRepoPath(file.relative)
-        if (relative === null) continue
-        if (await inHead(root, relative)) manifest.tracked.add(relative)
+        if (relative !== null) dirtyNow.push(relative)
+      }
+      const head = await inHeadMany(root, dirtyNow)
+      for (const relative of dirtyNow) {
+        if (head.has(relative)) manifest.tracked.add(relative)
         manifest.files.set(relative, await snapshotFile(dir, root, relative))
       }
-      await writeManifest(dir, manifest)
+      await this.save(sessionId, manifest)
     })
   }
 
@@ -76,16 +95,20 @@ export class CheckpointStore {
       const dir = this.sessionDir(sessionId)
       const manifest = await this.loadMatching(sessionId, cwd)
       if (!manifest) return
-      let dirty = false
+      const relatives: string[] = []
       for (const path of paths) {
-        if (manifest.touched.size >= MAX_SNAPSHOT_FILES) break
         const relative = relativeToRoot(root, path)
-        if (relative === null) continue
+        if (relative !== null && !relatives.includes(relative)) relatives.push(relative)
+      }
+      const head = await inHeadMany(root, relatives)
+      let dirty = false
+      for (const relative of relatives) {
+        if (manifest.touched.size >= MAX_SNAPSHOT_FILES) break
         if (!manifest.touched.has(relative)) {
           manifest.touched.add(relative)
           dirty = true
         }
-        const trackedInHead = await inHead(root, relative)
+        const trackedInHead = head.has(relative)
         if (trackedInHead && !manifest.tracked.has(relative)) {
           manifest.tracked.add(relative)
           dirty = true
@@ -98,7 +121,7 @@ export class CheckpointStore {
         manifest.files.set(relative, await snapshotFile(dir, root, relative))
         dirty = true
       }
-      if (dirty) await writeManifest(dir, manifest)
+      if (dirty) await this.save(sessionId, manifest)
     })
   }
 
@@ -111,15 +134,22 @@ export class CheckpointStore {
       const index = (await gitDiffIndex(root)).files
       const foreign = await this.foreignTouchedPaths(cwd, sessionId)
       const gitDirty = new Set(index.map((file) => file.relative))
-      let dirty = false
+      const candidates: string[] = []
       for (const file of index) {
-        if (manifest.touched.size >= MAX_SNAPSHOT_FILES) break
         const relative = tryRepoPath(file.relative)
-        if (relative === null || foreign.has(relative)) continue
         // Already dirty at ensure(): only capture() may mark these.
-        if (manifest.files.has(relative)) continue
-        if (!(await fileDiffers(dir, root, manifest, relative, gitDirty))) continue
-        if ((await inHead(root, relative)) && !manifest.tracked.has(relative)) {
+        if (relative === null || foreign.has(relative) || manifest.files.has(relative)) continue
+        candidates.push(relative)
+      }
+      const head = await inHeadMany(
+        root,
+        candidates.filter((relative) => !manifest.tracked.has(relative))
+      )
+      let dirty = false
+      for (const relative of candidates) {
+        if (manifest.touched.size >= MAX_SNAPSHOT_FILES) break
+        if (!(await fileDiffers(dir, root, manifest, relative, gitDirty, head))) continue
+        if (head.has(relative) && !manifest.tracked.has(relative)) {
           manifest.tracked.add(relative)
           dirty = true
         }
@@ -128,7 +158,7 @@ export class CheckpointStore {
           dirty = true
         }
       }
-      if (dirty) await writeManifest(dir, manifest)
+      if (dirty) await this.save(sessionId, manifest)
     })
   }
 
@@ -148,7 +178,7 @@ export class CheckpointStore {
       }
       const changed = await diffFromManifest(dir, root, manifest)
       for (const file of changed.files) await restoreOne(dir, root, manifest, file.relative)
-      await rm(dir, { recursive: true, force: true })
+      await this.drop(sessionId)
       return empty()
     })
   }
@@ -160,12 +190,12 @@ export class CheckpointStore {
       const root = await projectRoot(cwd)
       const dir = this.sessionDir(sessionId)
       if (relative == null) {
-        await rm(dir, { recursive: true, force: true })
+        await this.drop(sessionId)
         return empty()
       }
       const rel = repoPath(relative)
       manifest.files.set(rel, await snapshotFile(dir, root, rel))
-      await writeManifest(dir, manifest)
+      await this.save(sessionId, manifest)
       return this.statusUnlocked(sessionId, cwd)
     })
   }
@@ -205,14 +235,34 @@ export class CheckpointStore {
   /** Paths already claimed by another live session in the same project. */
   private async foreignTouchedPaths(cwd: string, exceptSessionId: string): Promise<Set<string>> {
     const paths = new Set<string>()
-    const entries = await readdir(this.root).catch(() => [] as string[])
-    for (const sessionId of entries) {
-      if (sessionId === exceptSessionId) continue
-      const manifest = await readManifest(join(this.root, sessionId)).catch(() => null)
-      if (!manifest || !(await sameCwd(manifest.cwd, cwd))) continue
-      for (const path of manifest.touched) paths.add(path)
+    const root = expandHome(cwd.trim())
+    for (const [sessionId, entry] of await this.index()) {
+      if (sessionId === exceptSessionId || entry.root !== root) continue
+      for (const path of entry.touched) paths.add(path)
     }
     return paths
+  }
+
+  private index(): Promise<Map<string, IndexedManifest>> {
+    this.manifests ??= (async () => {
+      const map = new Map<string, IndexedManifest>()
+      for (const sessionId of await readdir(this.root).catch(() => [] as string[])) {
+        const manifest = await readManifest(join(this.root, sessionId)).catch(() => null)
+        if (manifest) map.set(sessionId, indexed(manifest))
+      }
+      return map
+    })()
+    return this.manifests
+  }
+
+  private async save(sessionId: string, manifest: Manifest): Promise<void> {
+    await writeManifest(this.sessionDir(sessionId), manifest)
+    ;(await this.index()).set(sessionId, indexed(manifest))
+  }
+
+  private async drop(sessionId: string): Promise<void> {
+    await rm(this.sessionDir(sessionId), { recursive: true, force: true })
+    ;(await this.index()).delete(sessionId)
   }
 }
 
@@ -222,29 +272,40 @@ async function diffFromManifest(dir: string, root: string, manifest: Manifest): 
   const index = (await gitDiffIndex(root)).files
   const byRelative = new Map(index.map((file) => [file.relative, file]))
   const gitDirty = new Set(byRelative.keys())
+  // One git child answers "is it in HEAD" for every path that needs asking
+  // (clean against the index, not yet known tracked), not one per file: a
+  // status with sixty touched files used to queue sixty spawns behind the
+  // app's shared child budget.
+  const head = await inHeadMany(
+    root,
+    [...manifest.touched].filter((relative) => !gitDirty.has(relative) && !manifest.tracked.has(relative))
+  )
   const files: CheckpointFile[] = []
   for (const relative of manifest.touched) {
-    if (!(await fileDiffers(dir, root, manifest, relative, gitDirty))) continue
+    if (!(await fileDiffers(dir, root, manifest, relative, gitDirty, head))) continue
     files.push(await describeChange(root, relative, byRelative.get(relative)))
   }
   files.sort((a, b) => (a.relative < b.relative ? -1 : a.relative > b.relative ? 1 : 0))
   return { files }
 }
 
+/** `head` must hold the answer for every path that is clean against the
+ *  index and not in manifest.tracked (inHeadMany over that set). */
 async function fileDiffers(
   dir: string,
   root: string,
   manifest: Manifest,
   relative: string,
-  gitDirty: Set<string>
+  gitDirty: Set<string>,
+  head: Set<string>
 ): Promise<boolean> {
   // Once a tracked path is clean against HEAD, its session change was
   // committed (or otherwise resolved) and no longer needs review.
-  if (!gitDirty.has(relative) && (manifest.tracked.has(relative) || (await inHead(root, relative)))) return false
+  if (!gitDirty.has(relative) && (manifest.tracked.has(relative) || head.has(relative))) return false
   const kind = manifest.files.get(relative)
   if (kind === 'skipped') return false
   if (kind) return !sameState(await readWorktree(root, relative), await readSnapshot(dir, relative, kind))
-  return gitDirty.has(relative) || ((await isFile(join(root, relative))) && !(await inHead(root, relative)))
+  return gitDirty.has(relative) || ((await isFile(join(root, relative))) && !head.has(relative))
 }
 
 async function describeChange(root: string, relative: string, git: GitChangedFile | undefined): Promise<CheckpointFile> {
@@ -437,21 +498,26 @@ const exists = async (path: string): Promise<boolean> => (await stat(path).catch
 const isFile = async (path: string): Promise<boolean> => (await stat(path).catch(() => null))?.isFile() ?? false
 const isDir = async (path: string): Promise<boolean> => (await stat(path).catch(() => null))?.isDirectory() ?? false
 
-async function git(root: string, args: string[]): Promise<void> {
+async function git(root: string, args: string[]): Promise<string> {
   try {
-    await execFileBudgeted('git', ['--no-pager', '-C', root, ...args], {
+    const { stdout } = await execFileBudgeted('git', ['--no-pager', '-C', root, ...args], {
       maxBuffer: 8 * 1024 * 1024,
       timeout: 120_000,
       env: { ...process.env, GIT_OPTIONAL_LOCKS: '0', GIT_TERMINAL_PROMPT: '0', GIT_LITERAL_PATHSPECS: '1' }
     })
+    return stdout
   } catch (error) {
     const e = error as Error & { stdout?: string; stderr?: string }
     throw new Error(String(e.stderr ?? '').trim() || String(e.stdout ?? '').trim() || e.message)
   }
 }
 
+/** Which of `relatives` exist in HEAD, from one git child; none without a HEAD. */
+async function inHeadMany(root: string, relatives: string[]): Promise<Set<string>> {
+  if (relatives.length === 0) return new Set()
+  const out = await git(root, ['ls-tree', '-r', '--name-only', '-z', 'HEAD', '--', ...relatives]).catch(() => '')
+  return new Set(out.split('\0').filter(Boolean))
+}
+
 const inHead = (root: string, relative: string): Promise<boolean> =>
-  git(root, ['cat-file', '-e', `HEAD:${relative}`]).then(
-    () => true,
-    () => false
-  )
+  inHeadMany(root, [relative]).then((head) => head.has(relative))

@@ -134,6 +134,9 @@ interface QueuedSendOpts {
   reasoning?: SessionMeta['reasoning']
   attachments?: Attachment[]
   newPass?: boolean
+  /** A retry of a message whose user row is already on the transcript (the
+   *  harness refused it); `first` is whether it opened the thread. */
+  echoed?: { first: boolean }
 }
 
 export interface QueuedMessage extends QueuedSendOpts {
@@ -421,9 +424,12 @@ export class SessionRegistry {
   private researchSeen = new Map<string, Map<string, { callId: string; claimed: boolean }>>()
   private sweepTimer: ReturnType<typeof setInterval> | null = null
 
-  /** Undo checkpoints; armed before every harness send so the baseline
-   *  is snapshotted before the provider can write. Set by the server. */
+  /** Undo checkpoints; armed at every harness send so the baseline is
+   *  snapshotted before the provider can write. Set by the server. */
   checkpoints: CheckpointStore | null = null
+  /** The baseline snapshot in flight per session (armBaseline). A send
+   *  never waits on it; the harness's first write does (awaitBaseline). */
+  private baselines = new Map<string, Promise<void>>()
   /** Chooses each thread's Aliax account and moves a thread when its error
    *  names a usage limit. Set by the server; null sends unscoped and leaves
    *  such errors to the Continue button. */
@@ -523,12 +529,26 @@ export class SessionRegistry {
     return row
   }
 
-  /** Snapshot the session's already-dirty files once per session and cwd.
-   *  Never blocks a turn: a failure here only costs undo for that turn. */
-  private async armCheckpoint(sessionId: string): Promise<void> {
+  /** Snapshot the session's already-dirty files once per session and cwd,
+   *  off the send path: a message reaches the harness while this runs. The
+   *  store's per-session chain orders every later capture behind this
+   *  ensure, and the claude driver's write tools wait on it (awaitBaseline),
+   *  so the snapshot still precedes the agent's first write. Never throws:
+   *  a failure here only costs undo for that turn. */
+  private armBaseline(sessionId: string): Promise<void> {
     const cwd = this.store.getSession(sessionId)?.cwd?.trim()
-    if (!this.checkpoints || !cwd || cwd === '~') return
-    await this.checkpoints.ensure(sessionId, cwd).catch(() => {})
+    if (!this.checkpoints || !cwd || cwd === '~') return Promise.resolve()
+    const armed = this.checkpoints.ensure(sessionId, cwd).catch(() => {})
+    this.baselines.set(sessionId, armed)
+    void armed.then(() => {
+      if (this.baselines.get(sessionId) === armed) this.baselines.delete(sessionId)
+    })
+    return armed
+  }
+
+  /** Resolves once the session's in-flight baseline (if any) has landed. */
+  awaitBaseline(sessionId: string): Promise<void> {
+    return this.baselines.get(sessionId) ?? Promise.resolve()
   }
 
   /**
@@ -1309,7 +1329,7 @@ export class SessionRegistry {
   async send(
     sessionId: string,
     text: string,
-    opts?: RunSettings & { attachments?: Attachment[]; newPass?: boolean }
+    opts?: RunSettings & { attachments?: Attachment[]; newPass?: boolean; echoed?: QueuedSendOpts['echoed'] }
   ): Promise<void> {
     let meta = this.store.getSession(sessionId)
     if (!meta) throw new Error(`unknown session: ${sessionId}`)
@@ -1354,6 +1374,51 @@ export class SessionRegistry {
     if (this.handles.has(sessionId) && this.spawnedPin.get(sessionId) !== (this.pinOf(meta)?.name ?? null)) {
       await this.dropHandle(sessionId)
     }
+    // The visible transcript carries only what the user typed; thread-type
+    // preambles ride along on the first message, provider-agnostic.
+    const first = opts?.echoed ? opts.echoed.first : !this.store.hasUserText(sessionId)
+    const attachments = opts?.attachments?.length ? opts.attachments : undefined
+    // What the user sees moves NOW: the user row and a 'starting' status
+    // land before the harness boots and before the undo baseline is taken,
+    // so busySince anchors to the send and the header chip goes live at
+    // once. A message that waited minutes here once sat behind a slow
+    // checkpoint status on the store's per-session chain.
+    if (!opts?.echoed) {
+      // Stamp the run settings that will execute this message — the board's
+      // pass history reads them off the round's opening event — and whether
+      // this send opens a NEW pass (the pass button) or continues the
+      // current one (typed under the banner).
+      this.append(sessionId, {
+        type: 'user-text',
+        text,
+        attachments,
+        model: meta.model,
+        reasoning: meta.reasoning,
+        context1m: meta.context1m,
+        fast: meta.fast,
+        ultrafast: meta.ultrafast,
+        newPass: opts?.newPass === true
+      })
+      // Cursor-style: an untitled thread takes its name from the first
+      // message right away; a generated title replaces the raw slice once
+      // the first turn completes (maybeRetitle).
+      if (first && isPlaceholderTitle(meta)) {
+        const title = text.trim().split('\n')[0].slice(0, 60)
+        if (title) {
+          const next = this.store.updateSession(sessionId, { title })
+          if (next) this.notifyMeta(next)
+          this.pendingTitles.set(sessionId, { placeholder: title, text })
+        }
+      }
+    }
+    // A steer into a live turn keeps its running status; everything else
+    // (idle, error, watching) is starting a turn.
+    const status = this.store.getSession(sessionId)?.status
+    if (status !== 'running' && status !== 'starting' && status !== 'waiting') {
+      this.append(sessionId, { type: 'status', status: 'starting' })
+    }
+    void this.armBaseline(sessionId)
+    const retry: QueuedSendOpts = { ...opts, echoed: { first } }
     let handle: DriverHandle
     try {
       handle = await this.handleFor(sessionId)
@@ -1363,7 +1428,7 @@ export class SessionRegistry {
       // message at the front of the queue instead of dropping it, so once
       // the cause is fixed the thread runs what the user actually asked for
       // rather than an empty continue.
-      this.queueAdd(sessionId, text, opts, true)
+      this.queueAdd(sessionId, text, retry, true)
       return
     }
     this.lastActivity.set(sessionId, Date.now())
@@ -1378,36 +1443,6 @@ export class SessionRegistry {
         await handle.setGoal?.(pendingGoal)
       } catch {
         // Goal support is optional; the kickoff still proceeds.
-      }
-    }
-    // The visible transcript carries only what the user typed; thread-type
-    // preambles ride along on the first message, provider-agnostic.
-    const first = !this.store.hasUserText(sessionId)
-    const attachments = opts?.attachments?.length ? opts.attachments : undefined
-    // Stamp the run settings that will execute this message — the board's
-    // pass history reads them off the round's opening event — and whether
-    // this send opens a NEW pass (the pass button) or continues the
-    // current one (typed under the banner).
-    this.append(sessionId, {
-      type: 'user-text',
-      text,
-      attachments,
-      model: meta.model,
-      reasoning: meta.reasoning,
-      context1m: meta.context1m,
-      fast: meta.fast,
-      ultrafast: meta.ultrafast,
-      newPass: opts?.newPass === true
-    })
-    // Cursor-style: an untitled thread takes its name from the first
-    // message right away; a generated title replaces the raw slice once
-    // the first turn completes (maybeRetitle).
-    if (first && isPlaceholderTitle(meta)) {
-      const title = text.trim().split('\n')[0].slice(0, 60)
-      if (title) {
-        const next = this.store.updateSession(sessionId, { title })
-        if (next) this.notifyMeta(next)
-        this.pendingTitles.set(sessionId, { placeholder: title, text })
       }
     }
     let out = text
@@ -1507,13 +1542,12 @@ export class SessionRegistry {
           : [shot]
       })
     try {
-      await this.armCheckpoint(sessionId)
       await handle.send(out, sendAttachments)
     } catch (err) {
       // A steer at a provider that can't take mid-turn input (cursor's
       // process-per-turn) front-queues instead of erroring the composer.
       if (err instanceof Error && err.message.includes('still running')) {
-        this.queueAdd(sessionId, text, opts, true)
+        this.queueAdd(sessionId, text, retry, true)
         return
       }
       // The handle's harness is gone (watchdog recovery, stream death) —
@@ -1659,8 +1693,8 @@ export class SessionRegistry {
     if (!before || before.status !== 'paused') return
     const frozen = Math.max(0, before.frozenActiveElapsed ?? 0)
     await this.dropHandle(sessionId)
+    void this.armBaseline(sessionId)
     const handle = await this.handleFor(sessionId)
-    await this.armCheckpoint(sessionId)
     await handle.send(
       '<continue-paused-run>\nThe user paused this turn and has now continued it. Inspect your task list and your last actions, then continue the interrupted work exactly where you left off. Do not restart completed work.\n</continue-paused-run>'
     )
@@ -2146,9 +2180,9 @@ export class SessionRegistry {
     await this.dropHandle(sessionId)
     const { handoff } = run ? await this.applyRunSettings(sessionId, meta, run) : { handoff: '' }
     try {
+      void this.armBaseline(sessionId)
       const handle = await this.handleFor(sessionId)
       this.lastActivity.set(sessionId, Date.now())
-      await this.armCheckpoint(sessionId)
       await handle.send(
         `${handoff ? `${handoff}\n\n` : ''}<continue-run>\nThe previous turn was cut off by ${reason}. ${restartedDescendants ? 'Your failed subagents were restarted first and are picking their work back up. ' : ''}Continue exactly where you left off: check your task list and your last few actions, finish anything half-done, and keep going. If the work was already complete, say so in one short line.\n</continue-run>`
       )
@@ -2250,6 +2284,7 @@ export class SessionRegistry {
           route,
           emit: (event) => this.append(sessionId, event),
           requestApproval: (req) => this.requestApproval(sessionId, req),
+          awaitBaseline: () => this.awaitBaseline(sessionId),
           setNativeId: (nativeId) => {
             const next = this.store.updateSession(sessionId, { nativeId })
             if (next) this.notifyMeta(next)
@@ -2832,7 +2867,7 @@ export class SessionRegistry {
         tally && tally.done < tally.total
           ? `\nThe task list shows only ${tally.done}/${tally.total} tasks completed — this pass only tidies what exists. End by saying plainly that the work is UNFINISHED and what remains, so the user can resume it.`
           : ''
-      await this.armCheckpoint(sessionId)
+      void this.armBaseline(sessionId)
       await handle.send(
         `<turn-pass>\nThe turn settled. The completed-turn setting now asks you to:\n${steps.map((s, i) => `${i + 1}. ${s}`).join('\n')}\nThese are the project's own completion settings — they OVERRIDE any branch, worktree, PR, or completion convention a skill or other instruction gave earlier in this thread. If the turn changed nothing to verify, build, or commit, say so in one short line and stop. Never start new feature work in this pass.${unfinished}\n</turn-pass>`
       )
@@ -2883,7 +2918,7 @@ export class SessionRegistry {
         })
       }
       this.lastActivity.set(sessionId, Date.now())
-      await this.armCheckpoint(sessionId)
+      void this.armBaseline(sessionId)
       await handle.send(items.map((item) => item.text).join('\n\n'))
     })()
       .catch(() => {

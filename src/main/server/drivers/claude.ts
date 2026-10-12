@@ -1033,6 +1033,16 @@ export const claudeDriver: HarnessDriver = {
       }
     }
 
+    // The undo baseline is taken off the send path (sessions.ts
+    // armBaseline), so the first tool that can write waits for it here:
+    // the snapshot must never freeze the agent's own edit as "before". A
+    // PreToolUse hook, not canUseTool, because hooks fire in every
+    // permission mode. Resolves at once when nothing is in flight.
+    const baselineHook = async (): Promise<HookJSONOutput> => {
+      await ctx.awaitBaseline?.().catch(() => undefined)
+      return { continue: true }
+    }
+
     // Approval flow (docs/PLAN.md M4): the harness asks, we emit an
     // approval-request event, the user answers through session.approve.
     const canUseTool: CanUseTool = (toolName, toolInput, opts) => {
@@ -1120,7 +1130,10 @@ export const claudeDriver: HarnessDriver = {
       ...(writeRoots.length ? { additionalDirectories: writeRoots } : {}),
       canUseTool,
       hooks: {
-        PreToolUse: [{ matcher: 'AskUserQuestion', hooks: [askUserQuestionHook] }],
+        PreToolUse: [
+          { matcher: 'AskUserQuestion', hooks: [askUserQuestionHook] },
+          { matcher: 'Edit|Write|MultiEdit|NotebookEdit|Bash', hooks: [baselineHook] }
+        ],
         // Session crons only surface here (see stopHookFor).
         Stop: [{ hooks: [stopHookFor(watchedCtx, state)] }]
       },

@@ -2870,7 +2870,7 @@ export default function App() {
           );
           playCue("turnFinished");
           if (onScreen(sessionId, workCwd)) {
-            notifyGitChanged();
+            notifyGitChanged(workCwd);
             nudgeWorkspace(workCwd);
           }
           nudgeWatchedFiles();
@@ -3035,7 +3035,7 @@ export default function App() {
         const cwd = sessionWorkCwd(session);
         if (onScreen(session.id, cwd)) {
           nudgeWorkspace(cwd);
-          notifyGitChanged();
+          notifyGitChanged(cwd);
         }
         nudgeWatchedFiles();
         window.setTimeout(() => nudgeWatchedFiles(), 150);
@@ -3858,7 +3858,7 @@ function nudgeOpenEditors(block: Block, cwd: string, screen: boolean) {
     nudgeWatchedFiles();
     window.setTimeout(() => nudgeWatchedFiles(), 150);
     if (!screen) return;
-    notifyGitChanged();
+    notifyGitChanged(cwd);
     nudgeWorkspace(cwd);
     window.setTimeout(() => nudgeWorkspace(cwd), 150);
     return;
@@ -3875,7 +3875,7 @@ function nudgeOpenEditors(block: Block, cwd: string, screen: boolean) {
   if (completed) {
     window.setTimeout(() => nudgeWatchedFiles(), 150);
     if (!screen) return;
-    notifyGitChanged();
+    notifyGitChanged(cwd);
     nudgeWorkspace(cwd);
   }
 }

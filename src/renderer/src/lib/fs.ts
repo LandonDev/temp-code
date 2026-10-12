@@ -234,17 +234,7 @@ export function restoreSessionCheckout<
   };
 }
 
-const GIT_CHANGED = "monocode-git-changed";
-
-/** Tell git UIs (diff pane, branch picker) to reload after a local git mutation. */
-export function notifyGitChanged() {
-  window.dispatchEvent(new Event(GIT_CHANGED));
-}
-
-export function subscribeGitChanged(listener: () => void): () => void {
-  window.addEventListener(GIT_CHANGED, listener);
-  return () => window.removeEventListener(GIT_CHANGED, listener);
-}
+export { notifyGitChanged, subscribeGitChanged } from "./gitChanged";
 
 export function createPath(
   parent: string,

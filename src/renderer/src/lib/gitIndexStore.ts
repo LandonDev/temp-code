@@ -130,7 +130,7 @@ function start(cwd: string, entry: Entry): void {
   const unsubFiles = onFileEvent((e) => {
     if (e.path === cwd || e.path.startsWith(prefix)) schedule();
   });
-  const unsubGit = subscribeGitChanged(schedule);
+  const unsubGit = subscribeGitChanged(schedule, cwd);
   const onFocus = () => {
     if (!hidden()) schedule();
   };

@@ -39,6 +39,9 @@ export interface DriverCtx {
    *  then emits approval-resolved + status running. One path for harness
    *  permission prompts and the app tools' own gate. */
   requestApproval: (req: ApprovalRequest) => Promise<boolean>
+  /** Resolves once the session's undo baseline (taken off the send path)
+   *  has landed; a driver's first write-capable tool waits on it. */
+  awaitBaseline?: () => Promise<void>
 }
 
 export interface DriverHandle {
