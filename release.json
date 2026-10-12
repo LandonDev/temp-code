@@ -1,5 +1,5 @@
 {
-  "n": 212,
-  "notes": "Codex 0.162 runs through the app again: each codex thread gets its own loopback https port from the gateway so per-thread account routing survives the CLI's origin-only base URL; GPT-6.1 Sol and GPT-6 Sol are hidden on a codex older than 0.162.1 instead of failing with a 400; lucide-react, radix-ui and class-variance-authority are declared so a fresh clone builds.",
-  "ts": 1791767120201
+  "n": 213,
+  "notes": "The thread header's right-click menu gains Compact and Kill background tasks. Compact asks the harness to compact the conversation in place (claude: the /compact slash command; codex: thread/compact/start) through the new DriverHandle.compact in drivers/types.ts, implemented in drivers/claude.ts and drivers/codex.ts, behind the session.compact route (contract.ts, server/index.ts, sessions.ts compact()). Kill background tasks appears only for a watching thread: registry.killBackground drops the thread's watching handles and nothing else, behind session.killBackground. The renderer wires both through lib/tcserver/commands.ts and App.tsx's dispatch into ThreadHeader.tsx; tests in sessions-watching.test.ts and ThreadHeader.test.ts.",
+  "ts": 1791767730877
 }
