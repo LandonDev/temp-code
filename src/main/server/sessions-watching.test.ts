@@ -155,3 +155,23 @@ it('Stop on a watching thread drops the handle and lands idle', async () => {
   expect(registry.get(id)).toMatchObject({ status: 'idle', activity: null })
   expect(types(id).at(-1)).toBe('status:idle')
 })
+
+it('Kill background tasks drops a watching handle and lands idle', async () => {
+  const id = await live()
+  emit(id, { type: 'background-tasks', tasks: ['a monitor'] })
+  emit(id, { type: 'status', status: 'watching' })
+  await registry.killBackground(id)
+  expect(disposed).toEqual([id])
+  expect(registry.get(id)).toMatchObject({ status: 'idle', activity: null })
+  expect(types(id).at(-1)).toBe('status:idle')
+})
+
+it('Kill background tasks leaves a running turn alone and reaches a watching child', async () => {
+  const parent = await live()
+  const child = await live(parent)
+  emit(child, { type: 'status', status: 'watching' })
+  await registry.killBackground(parent)
+  expect(disposed).toEqual([child])
+  expect(registry.get(parent)?.status).toBe('running')
+  expect(registry.get(child)?.status).toBe('idle')
+})

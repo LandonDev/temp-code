@@ -59,6 +59,10 @@ export interface DriverHandle {
    *  thread/goal/set). Confirmation arrives as a goal event, never here. */
   setGoal?: (condition: string) => Promise<void>
   clearGoal?: () => Promise<void>
+  /** Squeeze the conversation in place (claude /compact, codex
+   *  thread/compact/start). Progress and the result arrive as compaction
+   *  events; the status settles through the turn, never here. */
+  compact?: () => Promise<void>
   dispose: () => Promise<void>
 }
 

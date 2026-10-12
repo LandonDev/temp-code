@@ -918,6 +918,14 @@ export async function startServer(
             await registry.clearGoal(req.params.sessionId)
             sendFrame({ id: req.id, ok: true, result: null })
             break
+          case 'session.compact':
+            await registry.compact(req.params.sessionId)
+            sendFrame({ id: req.id, ok: true, result: null })
+            break
+          case 'session.killBackground':
+            await registry.killBackground(req.params.sessionId)
+            sendFrame({ id: req.id, ok: true, result: null })
+            break
           case 'queue.list':
             sendFrame({ id: req.id, ok: true, result: registry.queueList(req.params.sessionId) })
             break

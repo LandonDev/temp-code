@@ -1360,6 +1360,14 @@ export const claudeDriver: HarnessDriver = {
         emit({ type: 'status', status: 'running' })
         input.push('/goal clear')
       },
+      async compact(): Promise<void> {
+        if (dead) throw new Error('harness gone')
+        // `/compact` runs as a turn of its own: compaction events mark its
+        // start and end, and the result message settles the status.
+        state.working = true
+        emit({ type: 'status', status: 'running' })
+        input.push('/compact')
+      },
       async contextUsage(): Promise<unknown> {
         // The /context breakdown, straight from the harness — except the
         // window size, which reflects the SESSION'S MODE, not the SDK's

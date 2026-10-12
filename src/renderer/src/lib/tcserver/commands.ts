@@ -292,6 +292,18 @@ export async function context(sessionId: string, link = client): Promise<unknown
   return link.request<unknown>("session.context", { sessionId });
 }
 
+/** Compact the conversation in place; progress arrives as compaction events. */
+export async function compact(sessionId: string, link = client): Promise<void> {
+  if (sessionStore.isDraft(sessionId)) return;
+  await link.request("session.compact", { sessionId });
+}
+
+/** Kill the background tasks a watching thread waits on; the row settles idle. */
+export async function killBackground(sessionId: string, link = client): Promise<void> {
+  if (sessionStore.isDraft(sessionId)) return;
+  await link.request("session.killBackground", { sessionId });
+}
+
 export async function setGoal(sessionId: string, condition: string, link = client): Promise<void> {
   if (sessionStore.isDraft(sessionId)) return;
   await link.request("session.setGoal", { sessionId, condition });

@@ -1686,6 +1686,25 @@ export class SessionRegistry {
     })
   }
 
+  /** Compact the conversation in place. Boots a handle for an idle thread
+   *  (resume keeps the transcript); the harness reports progress as
+   *  compaction events and settles the status through the turn. */
+  async compact(sessionId: string): Promise<void> {
+    await this.goalCall(sessionId, (h) => {
+      if (!h.compact) throw new Error('this provider cannot compact')
+      return h.compact()
+    })
+  }
+
+  /** Kill the background work a watching thread waits on: drop the
+   *  harness of every watching member of the tree (its monitors, crons and
+   *  background shells die with the process) and settle those rows idle.
+   *  A running turn is never touched; Stop is for that. */
+  async killBackground(sessionId: string): Promise<void> {
+    const tree = this.sessionTree(this.rootSessionOf(sessionId)).filter((s) => s.status === 'watching')
+    await Promise.allSettled(tree.map((s) => this.dropHandle(s.id)))
+  }
+
   private async goalCall(sessionId: string, fn: (h: DriverHandle) => Promise<void>): Promise<void> {
     const handle = await this.handleFor(sessionId)
     this.lastActivity.set(sessionId, Date.now())

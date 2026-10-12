@@ -901,6 +901,18 @@ export const codexDriver: HarnessDriver = {
       async clearGoal(): Promise<void> {
         await conn.request('thread/goal/clear', { threadId })
       },
+      async compact(): Promise<void> {
+        // Compaction runs as a turn (turn/started … turn/completed), so
+        // the completion settles the status; a refused request settles it
+        // here, or the row would spin with nothing running.
+        setStatus('running')
+        try {
+          await conn.request('thread/compact/start', { threadId })
+        } catch (err) {
+          setStatus('idle')
+          throw err
+        }
+      },
       async contextUsage(): Promise<unknown> {
         if (!contextTokens) return null
         return {

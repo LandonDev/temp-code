@@ -20,7 +20,7 @@ import { IconButton } from "./TitleBar";
  * back to App by thread id.
  */
 
-export type ThreadAction = "pause" | "resume" | "stop";
+export type ThreadAction = "pause" | "resume" | "stop" | "compact" | "killBackground";
 
 export type ThreadHeaderProps = {
   model: HeaderModel<ChipThread>;
@@ -57,6 +57,14 @@ export function chipMenuItems(chip: StripChip): ExplorerMenuItem[] {
   const live = working || paused || chip.status === "waiting" || chip.status === "watching";
   if (paused) items.push({ kind: "item", id: "resume", label: "Continue" });
   else if (working) items.push({ kind: "item", id: "pause", label: "Pause" });
+  // Compact squeezes the transcript in place; it runs as a turn, so only
+  // a thread with no turn in flight offers it.
+  if (!working && !paused && chip.status !== "waiting")
+    items.push({ kind: "item", id: "compact", label: "Compact" });
+  // A watching thread is idle behind its background tasks: this kills
+  // them (the harness goes with them) and the row settles idle.
+  if (chip.status === "watching")
+    items.push({ kind: "item", id: "killBackground", label: "Kill background tasks", danger: true });
   if (live) items.push({ kind: "item", id: "stop", label: "Stop", danger: true });
   items.push({ kind: "sep" }, { kind: "item", id: "archive", label: "Archive" });
   items.push({ kind: "sep" }, { kind: "item", id: "delete", label: "Delete…", danger: true });

@@ -3087,7 +3087,11 @@ export default function App() {
         ? serverCommands.pause(sessionId)
         : action === "resume"
           ? serverCommands.resume(sessionId)
-          : serverCommands.interrupt(sessionId);
+          : action === "compact"
+            ? serverCommands.compact(sessionId)
+            : action === "killBackground"
+              ? serverCommands.killBackground(sessionId)
+              : serverCommands.interrupt(sessionId);
     void run.catch(() => undefined);
   }, []);
   const onHeaderSetRules = useCallback((sessionId: string, threadRules: ThreadRules | null) => {

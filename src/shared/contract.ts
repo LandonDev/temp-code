@@ -679,6 +679,21 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
     method: z.literal('session.clearGoal'),
     params: z.object({ sessionId: z.string() })
   }),
+  // Compact the conversation in place (claude /compact, codex
+  // thread/compact/start); progress arrives as compaction events.
+  z.object({
+    id: z.string(),
+    method: z.literal('session.compact'),
+    params: z.object({ sessionId: z.string() })
+  }),
+  // Kill the background tasks a watching thread waits on: every watching
+  // member of the tree drops its harness and settles idle. Running turns
+  // are left alone.
+  z.object({
+    id: z.string(),
+    method: z.literal('session.killBackground'),
+    params: z.object({ sessionId: z.string() })
+  }),
   // Live context-window usage breakdown (claude: the /context data);
   // null when the provider has no live handle or no accounting.
   z.object({
