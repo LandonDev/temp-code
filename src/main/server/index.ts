@@ -29,9 +29,12 @@ import { bootMark } from './boot'
 import { setLimitMissLog } from './limitText'
 import { setCodexBootFailureLog } from './drivers/codex'
 import {
+  BACKPRESSURE_BYTES,
   countPush,
+  recordBackpressure,
   recordSlowRequest,
   reportRendererStall,
+  setBufferedBytes,
   setRunningCount,
   setStallLog,
   startStallMonitor,
@@ -308,6 +311,11 @@ export async function startServer(
 
   const wss = new WebSocketServer({ host: '127.0.0.1', port: 0 })
   let connections = 0
+  setBufferedBytes(() => {
+    let most = 0
+    for (const client of wss.clients) most = Math.max(most, client.bufferedAmount)
+    return most
+  })
 
   wss.on('connection', (ws: WebSocket, req) => {
     // LSP tunnel (docs/PLAN-3.md M13): raw JSON-RPC, no contract schema in
@@ -326,8 +334,16 @@ export async function startServer(
     const unsubs = new Map<string, () => void>()
     /** per-connection file watchers (fs.watch), keyed by projectId */
     const fsWatches = new Map<string, () => void>()
+    // One line per connection the first time its unsent bytes pass the mark:
+    // the client is not draining its socket, whatever the request log says.
+    let backpressureLogged = false
     const sendFrame = (frame: ServerFrame): void => {
-      if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(frame))
+      if (ws.readyState !== ws.OPEN) return
+      ws.send(JSON.stringify(frame))
+      if (!backpressureLogged && ws.bufferedAmount > BACKPRESSURE_BYTES) {
+        backpressureLogged = true
+        recordBackpressure(connection, ws.bufferedAmount)
+      }
     }
     /** Project lookup that throws — fs/git methods are meaningless without one. */
     const mustProject = (projectId: string): { id: string; cwd: string } => {

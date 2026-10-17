@@ -26,6 +26,7 @@ const SAMPLE_MS = 1000
 
 let file: string | null = null
 let runningCount: () => number = () => 0
+let bufferedBytes: () => number = () => 0
 const inFlight = new Map<string, { method: string; startedAt: number }>()
 const pushes = { meta: 0, event: 0 }
 
@@ -37,6 +38,21 @@ export function setStallLog(logDir: string | null): void {
 /** How many threads are live right now; asked only when a line is written. */
 export function setRunningCount(fn: () => number): void {
   runningCount = fn
+}
+
+/** The most bytes any client socket holds unsent (`ws.bufferedAmount`);
+ *  the `wsbuf=` field. A renderer that cannot drain its socket shows here
+ *  while every request still reads as served (2026-10-17: a full kernel
+ *  send queue behind an idle server). */
+export function setBufferedBytes(fn: () => number): void {
+  bufferedBytes = fn
+}
+
+/** Unsent bytes past which a socket's connection logs one `backpressure` line. */
+export const BACKPRESSURE_BYTES = 8 * 1024 * 1024
+
+export function recordBackpressure(connection: number, bytes: number): void {
+  write(`backpressure connection=${connection} unsent=${Math.round(bytes / 1024)}KB`)
 }
 
 /** A request the socket handler is working on: `key` is unique per connection + id. */
@@ -115,7 +131,13 @@ export function context(): string {
     // context is best effort
   }
   const rss = Math.round(process.memoryUsage.rss() / 1048576)
-  return `inflight=${requests || '-'} pushes=meta:${pushes.meta},event:${pushes.event} running=${running} load=${loadavg()[0].toFixed(1)} rss=${rss}MB`
+  let wsbuf = 0
+  try {
+    wsbuf = Math.round(bufferedBytes() / 1024)
+  } catch {
+    // context is best effort
+  }
+  return `inflight=${requests || '-'} pushes=meta:${pushes.meta},event:${pushes.event} running=${running} load=${loadavg()[0].toFixed(1)} rss=${rss}MB wsbuf=${wsbuf}KB`
 }
 
 function write(body: string, withContext = true): void {

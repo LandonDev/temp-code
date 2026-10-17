@@ -8,7 +8,9 @@ import {
   agentStats,
   childrenOf,
   fleetCounts,
+  FLEET_EAGER_LOAD,
   lastAssistantLine,
+  loadsTranscript,
   sortAgents,
   taskTitle,
 } from "./agents";
@@ -184,5 +186,23 @@ describe("agentStats", () => {
       ctxPct: null,
       cost: undefined,
     });
+  });
+});
+
+describe("loadsTranscript", () => {
+  it("loads every row of a small fleet", () => {
+    expect(loadsTranscript({ status: "done" }, FLEET_EAGER_LOAD)).toBe(true);
+    expect(loadsTranscript({ status: "idle" }, 1)).toBe(true);
+  });
+
+  it("in a large fleet only rows still working, waiting or failed load; settled rows wait to be opened", () => {
+    const big = FLEET_EAGER_LOAD + 1;
+    expect(loadsTranscript({ status: "running" }, big)).toBe(true);
+    expect(loadsTranscript({ status: "starting" }, big)).toBe(true);
+    expect(loadsTranscript({ status: "waiting" }, big)).toBe(true);
+    expect(loadsTranscript({ status: "error" }, big)).toBe(true);
+    expect(loadsTranscript({ status: "done" }, big)).toBe(false);
+    expect(loadsTranscript({ status: "idle" }, big)).toBe(false);
+    expect(loadsTranscript({ status: "watching" }, big)).toBe(false);
   });
 });

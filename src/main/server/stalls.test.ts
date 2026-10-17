@@ -3,10 +3,13 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import {
+  BACKPRESSURE_BYTES,
   countPush,
   loopLine,
+  recordBackpressure,
   recordSlowRequest,
   reportRendererStall,
+  setBufferedBytes,
   setRunningCount,
   setStallLog,
   STALL_MS,
@@ -51,7 +54,16 @@ describe('stall recorder', () => {
     recordSlowRequest('queue.list', 812)
     untrackRequest('1:7')
     const line = log().trim()
-    expect(line).toMatch(/^\d{4}-\d\d-\d\dT[^ ]+ slow-request queue\.list 812ms inflight=session\.events:\d+ms pushes=meta:2,event:1 running=3 load=\d+\.\d rss=\d+MB$/)
+    expect(line).toMatch(/^\d{4}-\d\d-\d\dT[^ ]+ slow-request queue\.list 812ms inflight=session\.events:\d+ms pushes=meta:2,event:1 running=3 load=\d+\.\d rss=\d+MB wsbuf=0KB$/)
+  })
+
+  it('the context carries the most unsent bytes on any client socket, and a backpressure line names the connection', () => {
+    setBufferedBytes(() => 9 * 1024 * 1024)
+    recordBackpressure(2, 9 * 1024 * 1024)
+    setBufferedBytes(() => 0)
+    const line = log().trim()
+    expect(line).toMatch(/ backpressure connection=2 unsent=9216KB inflight=- pushes=meta:\d+,event:\d+ running=3 load=\d+\.\d rss=\d+MB wsbuf=9216KB$/)
+    expect(BACKPRESSURE_BYTES).toBe(8 * 1024 * 1024)
   })
 
   it('timed logs a section at or over the threshold and returns its value', () => {

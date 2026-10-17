@@ -78,6 +78,11 @@ export class ColdMover {
 
 export const ARCHIVE_IDLE_DAYS_KEY = 'archive.idleDays'
 export const DEFAULT_ARCHIVE_IDLE_DAYS = 7
+/** A settled subagent subtree under a root that stays live archives after
+ *  this long on its own: a root worked on all week otherwise keeps every
+ *  finished child in the live list (6,198 of them under one workspace on
+ *  2026-10-17), and each list and board mount ships them all. */
+export const DEFAULT_SUBAGENT_IDLE_DAYS = 1
 
 /** Statuses that mean a harness (or a person) still holds the thread. */
 const LIVE = new Set<SessionMeta['status']>(['running', 'starting', 'waiting', 'paused', 'watching'])
@@ -86,6 +91,8 @@ export interface SweepInput {
   sessions: readonly SessionMeta[]
   now: number
   idleDays: number
+  /** Window for a settled subagent subtree under a root that stays; default DEFAULT_SUBAGENT_IDLE_DAYS. */
+  subagentIdleDays?: number
   /** sessions with queued messages */
   queued: ReadonlySet<string>
   /** sessions in a saved workspace snapshot's open tabs */
@@ -96,33 +103,56 @@ export interface SweepInput {
  * The sessions to archive: every unarchived member of a tree whose root
  * is idle past the window, where no member is pinned, live, queued or on
  * screen. A tree is judged whole — a subagent touched yesterday keeps its
- * week-old root, and a live root keeps all its descendants.
+ * week-old root, and a live root keeps all its descendants. Under a root
+ * that stays, a subagent subtree settled past the shorter subagent window
+ * (nothing in it pinned, live, queued or on screen) archives on its own.
  */
 export function archivable(input: SweepInput): string[] {
   const cutoff = input.now - input.idleDays * 86_400_000
+  const subCutoff = input.now - (input.subagentIdleDays ?? DEFAULT_SUBAGENT_IDLE_DAYS) * 86_400_000
   const kids = new Map<string | null, SessionMeta[]>()
   for (const s of input.sessions) {
     const list = kids.get(s.parentId) ?? []
     list.push(s)
     kids.set(s.parentId, list)
   }
-  const out: string[] = []
-  for (const root of kids.get(null) ?? []) {
+  const subtree = (top: SessionMeta): SessionMeta[] => {
     const tree: SessionMeta[] = []
-    const stack = [root]
+    const stack = [top]
     while (stack.length) {
       const s = stack.pop()!
       tree.push(s)
       for (const k of kids.get(s.id) ?? []) stack.push(k)
     }
+    return tree
+  }
+  const holds = (s: SessionMeta): boolean =>
+    s.pinned || LIVE.has(s.status) || input.queued.has(s.id) || input.open.has(s.id)
+  const heldBy = (tree: SessionMeta[]): boolean => tree.some(holds)
+  const touched = (tree: SessionMeta[]): number => Math.max(...tree.map((s) => s.updatedAt))
+  const out: string[] = []
+  for (const root of kids.get(null) ?? []) {
+    const tree = subtree(root)
     if (tree.every((s) => s.archived)) continue
-    const held = tree.some(
-      (s) => s.pinned || LIVE.has(s.status) || input.queued.has(s.id) || input.open.has(s.id)
-    )
-    if (held) continue
-    const touched = Math.max(...tree.map((s) => s.updatedAt))
-    if (touched > cutoff) continue
-    for (const s of tree) if (!s.archived) out.push(s.id)
+    if (!heldBy(tree) && touched(tree) <= cutoff) {
+      for (const s of tree) if (!s.archived) out.push(s.id)
+      continue
+    }
+    // A root someone holds (pinned, on screen, queued, still working) keeps
+    // its board whole. A root that merely sat idle this week sheds each
+    // settled child subtree past the subagent window.
+    if (holds(root)) continue
+    const stack = [...(kids.get(root.id) ?? [])]
+    while (stack.length) {
+      const child = stack.pop()!
+      const sub = subtree(child)
+      if (sub.every((s) => s.archived)) continue
+      if (!heldBy(sub) && touched(sub) < subCutoff) {
+        for (const s of sub) if (!s.archived) out.push(s.id)
+        continue
+      }
+      for (const k of kids.get(child.id) ?? []) stack.push(k)
+    }
   }
   return out
 }

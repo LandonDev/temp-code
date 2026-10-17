@@ -57,14 +57,15 @@ const pick = (sessions: SessionMeta[], extra: Partial<Parameters<typeof archivab
   archivable({ sessions, now: NOW, idleDays: 7, queued: none, open: none, ...extra }).sort()
 
 describe('archivable', () => {
-  it('archives an idle tree whole and leaves a fresh one', () => {
+  it('archives an idle tree whole and leaves a fresh root, whose settled old child goes on its own', () => {
     const sessions = [
       meta('old'),
       meta('old-kid', { parentId: 'old' }),
       meta('new', { updatedAt: NOW - DAY }),
-      meta('new-kid', { parentId: 'new' })
+      meta('new-kid', { parentId: 'new' }),
+      meta('new-kid-today', { parentId: 'new', updatedAt: NOW - DAY / 2 })
     ]
-    expect(pick(sessions)).toEqual(['old', 'old-kid'])
+    expect(pick(sessions)).toEqual(['new-kid', 'old', 'old-kid'])
   })
 
   it('a recently touched descendant keeps its old root', () => {
@@ -93,6 +94,37 @@ describe('archivable', () => {
     const sessions = [meta('r', { updatedAt: NOW - 8 * DAY })]
     expect(archivable({ sessions, now: NOW, idleDays: 7, queued: none, open: none })).toEqual(['r'])
     expect(archivable({ sessions, now: NOW, idleDays: 30, queued: none, open: none })).toEqual([])
+  })
+
+  it('archives a settled subagent subtree under a root that stays, after the subagent window', () => {
+    const fresh = NOW - DAY / 2
+    const sessions = [
+      meta('r', { updatedAt: fresh }),
+      meta('done', { parentId: 'r', updatedAt: NOW - 2 * DAY, status: 'done' }),
+      meta('done-kid', { parentId: 'done', updatedAt: NOW - 2 * DAY }),
+      meta('failed', { parentId: 'r', updatedAt: NOW - 2 * DAY, status: 'error' }),
+      meta('today', { parentId: 'r', updatedAt: fresh }),
+      meta('stale-but-busy-kid', { parentId: 'r', updatedAt: NOW - 3 * DAY }),
+      meta('busy', { parentId: 'stale-but-busy-kid', status: 'running', updatedAt: NOW - 3 * DAY })
+    ]
+    expect(pick(sessions)).toEqual(['done', 'done-kid', 'failed'])
+    expect(pick(sessions, { subagentIdleDays: 3 })).toEqual([])
+    expect(pick(sessions, { open: new Set(['done-kid']) })).toEqual(['failed'])
+    expect(pick(sessions, { queued: new Set(['failed']) })).toEqual(['done', 'done-kid'])
+    // A root someone holds keeps its board whole.
+    expect(pick(sessions, { open: new Set(['r']) })).toEqual([])
+    expect(pick(sessions.map((s) => (s.id === 'r' ? { ...s, status: 'running' as const } : s)))).toEqual([])
+    expect(pick(sessions.map((s) => (s.id === 'r' ? { ...s, pinned: true } : s)))).toEqual([])
+  })
+
+  it('a settled grandchild under a fresh child archives on its own', () => {
+    const sessions = [
+      meta('r', { updatedAt: NOW - DAY / 4 }),
+      meta('c', { parentId: 'r', updatedAt: NOW - DAY / 4 }),
+      meta('g', { parentId: 'c', updatedAt: NOW - 2 * DAY, status: 'done' }),
+      meta('g-archived', { parentId: 'c', updatedAt: NOW - 2 * DAY, archived: true })
+    ]
+    expect(pick(sessions)).toEqual(['g'])
   })
 })
 

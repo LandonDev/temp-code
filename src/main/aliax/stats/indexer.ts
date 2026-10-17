@@ -259,8 +259,9 @@ export async function indexAll(): Promise<IndexProgress> {
     } catch {
       db.exec('ROLLBACK')
     }
-    // Let the UI breathe between files on the first, heavy pass.
-    if (progress.filesDone % 200 === 0) await new Promise((r) => setImmediate(r))
+    // Let the loop breathe between files: the first pass over thousands of
+    // rollouts shares the main thread with every request the app serves.
+    if (progress.filesDone % 20 === 0) await new Promise((r) => setImmediate(r))
   }
 
   progress.running = false

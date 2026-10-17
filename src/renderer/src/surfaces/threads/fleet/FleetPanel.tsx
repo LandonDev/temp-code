@@ -77,6 +77,7 @@ export function FleetPanel({
                 agent={agent}
                 now={now}
                 glide={agents.length <= GLIDE_MAX_ROWS}
+                fleetSize={agents.length}
                 onOpen={() => fleet.setDetailId(agent.id)}
               />
             ))}

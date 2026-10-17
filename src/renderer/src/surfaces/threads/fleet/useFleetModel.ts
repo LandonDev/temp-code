@@ -6,8 +6,10 @@ import {
   agentStats,
   fleetCounts,
   isLiveStatus,
+  loadsTranscript,
   useAgents,
   useSessionById,
+  useSessionIfLoaded,
   type AgentStats,
   type AgentTone,
   type FleetCounts,
@@ -157,9 +159,14 @@ export type AgentModel = {
   elapsed: number;
 };
 
-/** One row's derived state: its session, line, stats and the context poll while live. */
-export function useAgentModel(agent: SessionMeta, now: number): AgentModel {
-  const session = useSessionById(agent.id);
+/** One row's derived state: its session, line, stats and the context poll
+ *  while live. `fleetSize` decides whether a settled row fetches its
+ *  transcript (`loadsTranscript`); otherwise it shows what the store holds. */
+export function useAgentModel(agent: SessionMeta, now: number, fleetSize = 1): AgentModel {
+  const wanted = loadsTranscript(agent, fleetSize);
+  const fetched = useSessionById(wanted ? agent.id : null);
+  const held = useSessionIfLoaded(agent.id);
+  const session = wanted ? fetched : held;
   const live = isLiveStatus(agent.status);
   const reading = useContextReading(agent.id, live);
   const line = useMemo(() => fleetLine(agent.status, session), [agent.status, session]);

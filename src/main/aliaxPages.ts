@@ -174,6 +174,9 @@ export interface AliaxPagesHost {
   onChange(listener: (snapshot: AccountsSnapshot) => void): () => void
 }
 
+/** The stats index runs once per process, on the first Stats page ask. */
+let indexKicked = false
+
 export function registerAliaxPages(server: { accounts: AliaxPagesHost }): void {
   nudge = () => server.accounts.nudge()
   server.accounts.onChange(recordSnapshot)
@@ -181,12 +184,10 @@ export function registerAliaxPages(server: { accounts: AliaxPagesHost }): void {
   // Codex rotates its refresh token in place; the vault copy follows every
   // rotation or a later switch would present a revoked one (invariant 18).
   accounts.watchLiveCredentials()
-  // Pull in anything new from the CLIs' own logs. Incremental, so this is cheap
-  // after the first run; a seeded store only reads what grew since. The store
-  // is ours alone (see stats/store.ts), so this never races Aliax's indexer.
-  indexAll()
-    .then(invalidate)
-    .catch(() => {})
+  // The CLIs' own logs are read into the stats store the first time the
+  // Stats page asks, not at boot: the walk covers every Claude and Codex
+  // transcript on disk (33k files, 60 GB on 2026-10-17), and boot has
+  // better things to do with the main thread.
   // Relabel any profile whose stored credentials belong to a different account.
   for (const id of ['claude-code', 'codex', 'cursor'] as ServiceId[]) {
     accounts.repairProfiles(id).catch(() => {})
@@ -235,7 +236,17 @@ export function registerAliaxPages(server: { accounts: AliaxPagesHost }): void {
     // Only ever http(s): never hand an arbitrary scheme to the OS.
     if (/^https?:\/\//.test(String(url))) void shell.openExternal(String(url))
   })
-  handle('aliax:stats:get', () => bundle())
+  handle('aliax:stats:get', () => {
+    // First ask kicks the incremental index; the page polls `aliax:stats:status`
+    // and asks again when it lands. Later asks read what is there.
+    if (!indexKicked) {
+      indexKicked = true
+      indexAll()
+        .then(invalidate)
+        .catch(() => {})
+    }
+    return bundle()
+  })
   handle('aliax:stats:status', () => {
     const p = indexProgress()
     return { indexing: p.running, filesDone: p.filesDone, filesTotal: p.filesTotal, rows: p.rows }

@@ -79,15 +79,18 @@ export function AgentRow({
   agent,
   now,
   glide = false,
+  fleetSize = 1,
   onOpen,
 }: {
   agent: SessionMeta;
   now: number;
   glide?: boolean;
+  /** How many rows the board shows; large fleets load settled rows on open only. */
+  fleetSize?: number;
   onOpen: () => void;
 }) {
   const reduce = useReducedMotion();
-  const { session, live, idle, line, stats, elapsed } = useAgentModel(agent, now);
+  const { session, live, idle, line, stats, elapsed } = useAgentModel(agent, now, fleetSize);
   const cost = session?.thread?.cost;
 
   return (

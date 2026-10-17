@@ -178,27 +178,28 @@ function sameList(a: SessionMeta[], b: SessionMeta[]): boolean {
   return a.length === b.length && a.every((m, i) => m === b[i]);
 }
 
-/** The ranked children of `parentId`, each subscribed so its blocks fold. */
+/** The ranked children of `parentId`: metas only. A row fetches its own
+ *  transcript under `loadsTranscript`; the board never loads them all. On
+ *  2026-10-17 a parent with 833 settled children pulled every transcript
+ *  through the socket on mount. */
 export function useAgents(parentId: string): SessionMeta[] {
   const cache = useRef<SessionMeta[]>([]);
-  const agents = useSyncExternalStore(sessionStore.onMetaChange.bind(sessionStore), () => {
+  return useSyncExternalStore(sessionStore.onMetaChange.bind(sessionStore), () => {
     const next = childrenOf(sessionStore.metas(), parentId);
     if (!sameList(cache.current, next)) cache.current = next;
     return cache.current;
   });
-  const key = agents.map((a) => a.id).join(",");
-  // Which of them the store holds loaded: one the store dropped while the
-  // board was parked is fetched again when it changes.
-  const unloaded = useSyncExternalStore(sessionStore.subscribe, () =>
-    agents
-      .filter((a) => sessionStore.get(a.id)?.loaded !== true)
-      .map((a) => a.id)
-      .join(","),
-  );
-  useEffect(() => {
-    for (const id of unloaded ? unloaded.split(",") : []) void sessionStore.ensureLoaded(id, "agents");
-  }, [key, unloaded]);
-  return agents;
+}
+
+/** Fleets at or under this size load every row's transcript for its line
+ *  and stats; above it only rows still working, waiting or failed do, and
+ *  a settled row loads when opened. */
+export const FLEET_EAGER_LOAD = 24;
+
+/** Whether a fleet row fetches its transcript on mount. */
+export function loadsTranscript(agent: Pick<SessionMeta, "status">, fleetSize: number): boolean {
+  if (fleetSize <= FLEET_EAGER_LOAD) return true;
+  return isLiveStatus(agent.status) || agent.status === "waiting" || agent.status === "error";
 }
 
 /** One session's folded state, loading its transcript on first use. */
@@ -211,6 +212,11 @@ export function useSessionById(id: string | null): Session | undefined {
     if (id && !loaded) void sessionStore.ensureLoaded(id, "byId");
   }, [id, loaded]);
   return session;
+}
+
+/** One session as the store holds it, loaded or not; never fetches. */
+export function useSessionIfLoaded(id: string): Session | undefined {
+  return useSyncExternalStore(sessionStore.subscribe, () => sessionStore.get(id));
 }
 
 const subscribeMeta = (listener: () => void): (() => void) => sessionStore.onMetaChange(listener);
