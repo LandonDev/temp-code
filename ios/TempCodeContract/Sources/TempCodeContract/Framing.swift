@@ -2,7 +2,7 @@ import Foundation
 
 /// One request method of the contract: its wire name, what it takes and
 /// what it answers. The generated `Methods` namespace has one type per method.
-public protocol ContractMethod {
+public protocol ContractMethod: SendableMetatype {
     associatedtype Params: Codable & Hashable & Sendable
     associatedtype Output: Codable & Hashable & Sendable
     static var name: String { get }

@@ -19,5 +19,8 @@ src/main/server/media/
 release/
 
 # SwiftPM build output of the iOS contract package.
-ios/TempCodeContract/.build/
+ios/*/.build/
+ios/*/.swiftpm/
+ios/*.xcodeproj/xcuserdata/
+ios/*.xcodeproj/project.xcworkspace/xcuserdata/
 ios/TempCodeContract/.swiftpm/
