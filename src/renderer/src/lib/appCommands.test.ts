@@ -66,6 +66,24 @@ describe("command map: chords", () => {
   });
 });
 
+describe("command map: environment chords", () => {
+  const resolve = createKeyResolver();
+  const chord = (code: string) =>
+    ({ ...key("x", { meta: true, alt: true }), key: "‘", code }) as unknown as KeyboardEvent;
+  it("⌘⌥] and ⌘⌥[ step environments, ⌘⌥1–9 jump (9 is the last)", () => {
+    expect(resolve(chord("BracketRight"), ctx)).toEqual({ id: "next_environment" });
+    expect(resolve(chord("BracketLeft"), ctx)).toEqual({ id: "prev_environment" });
+    expect(resolve(chord("Digit1"), ctx)).toEqual({ id: "activate_environment", index: 0 });
+    expect(resolve(chord("Digit3"), ctx)).toEqual({ id: "activate_environment", index: 2 });
+    expect(resolve(chord("Digit9"), ctx)).toEqual({ id: "activate_environment", index: -1 });
+    expect(resolve(chord("Digit0"), ctx)).toBeNull();
+  });
+  it("with Shift held, or without Option, they are not ours", () => {
+    expect(resolve({ ...chord("BracketRight"), shiftKey: true } as unknown as KeyboardEvent, ctx)).toBeNull();
+    expect(resolve(key("]", { meta: true }), ctx)).toEqual({ id: "forward_tab" });
+  });
+});
+
 describe("command map: double Shift", () => {
   it("fires on two bare Shifts inside the window", () => {
     let t = 0;

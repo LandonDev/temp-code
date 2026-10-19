@@ -17,3 +17,5 @@ export {
   type RegistryOptions,
 } from "./registry";
 export { useEnvironmentStatus, useEnvironmentStatuses, useEnvironments } from "./status";
+export { lastSeenAt, noteSeen, forgetSeen, trackLastSeen, useLastSeenAt } from "./lastSeen";
+export { DEGRADED_GRACE_MS, degradedFor, degradedText, useEnvironmentDegraded, type Degraded } from "./degraded";

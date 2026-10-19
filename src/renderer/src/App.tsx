@@ -13,6 +13,7 @@ import { Sidebar } from "./chrome/Sidebar";
 import { HiddenApprovalToasts } from "./chrome/ApprovalToasts";
 import { WhatsNewDialog } from "./chrome/WhatsNewDialog";
 import { NewWorkspaceDialog } from "./chrome/ProjectDialogs";
+import { environment, environmentAt, environmentStore, stepEnvironment } from "./stores/environment";
 import { ShellTitleBar, type HeaderEvents } from "./chrome/ShellTitleBar";
 import { MenuBar } from "./chrome/MenuBar";
 import { FilePicker } from "./chrome/FilePicker";
@@ -3278,6 +3279,46 @@ export default function App() {
     );
   }, []);
 
+  /** Move the window to another environment: the workspace it was last on
+   *  there, else its first workspace, else a loose chat on that machine. */
+  const switchToEnvironment = useCallback(
+    (id: string) => {
+      if (!registry.has(id) || id === environmentStore.getState().currentId) return;
+      const { workspaces } = workspaceStore.getSnapshot();
+      const remembered = environmentStore.getState().lastWorkspace[id];
+      const target =
+        workspaces.find((w) => w.environmentId === id && remembered && sameProjectPath(w.path, remembered)) ??
+        workspaces.filter((w) => w.environmentId === id).sort((a, b) => a.createdAt - b.createdAt)[0];
+      environment.follow(id, target?.path ?? null);
+      if (target) {
+        onSelectProject(target.path);
+        return;
+      }
+      shell.closeViews();
+      const session = newDefaultSession(id, "~", currentSessionDefaults()?.runtimeMode);
+      const tab = newTab(session.id);
+      setSessions((prev) => [...prev, session]);
+      appendTab(tab, session.cwd);
+      setActiveTabId(tab.id);
+      setComposerFocused(true);
+    },
+    [appendTab, onSelectProject, setActiveTabId, setSessions],
+  );
+  const onStepEnvironment = useCallback(
+    (delta: number) => {
+      const ids = registry.environments().map((e) => e.id);
+      switchToEnvironment(stepEnvironment(ids, environmentStore.getState().currentId, delta));
+    },
+    [switchToEnvironment],
+  );
+  const onActivateEnvironment = useCallback(
+    (index: number) => {
+      const id = environmentAt(registry.environments().map((e) => e.id), index);
+      if (id) switchToEnvironment(id);
+    },
+    [switchToEnvironment],
+  );
+
   const actions = useRef({
     onNew,
     onClosePane,
@@ -3301,6 +3342,8 @@ export default function App() {
     onNewTerminal,
     onNewTerminalTab,
     onToggleProjectTerminal,
+    onStepEnvironment,
+    onActivateEnvironment,
     openSettings: shell.openSettings,
   });
   actions.current = {
@@ -3326,6 +3369,8 @@ export default function App() {
     onNewTerminal,
     onNewTerminalTab,
     onToggleProjectTerminal,
+    onStepEnvironment,
+    onActivateEnvironment,
     openSettings: shell.openSettings,
   };
 
@@ -3343,7 +3388,7 @@ export default function App() {
     (cmd: AppCommand) => {
       const a = actions.current;
       const go = (fn: () => void) =>
-        run(cmd.id === "activate_tab" ? `activate_tab_${cmd.index}` : cmd.id, fn);
+        run(cmd.index !== undefined ? `${cmd.id}_${cmd.index}` : cmd.id, fn);
       switch (cmd.id) {
         case "new_tab": return go(a.onNew);
         case "close_tab": return go(a.onClosePane);
@@ -3392,6 +3437,9 @@ export default function App() {
           });
         case "lightbox_prev": return go(() => stepLightbox(-1));
         case "lightbox_next": return go(() => stepLightbox(1));
+        case "next_environment": return go(() => a.onStepEnvironment(1));
+        case "prev_environment": return go(() => a.onStepEnvironment(-1));
+        case "activate_environment": return go(() => a.onActivateEnvironment(cmd.index ?? 0));
       }
     },
     [run],

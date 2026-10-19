@@ -28,6 +28,7 @@
  *   ⌘S                    save_all          ⌘N        new_tab
  *   ⌘K open_search  ⌘B toggle_sidebar  ⌘⌥Z toggle_zen  ⌘, open_settings
  *   ⌘⇧F find_in_project  ⌘⇧N new_window  ⌘= / ⌘- / ⌘0 zoom
+ *   ⌘⌥] next_environment  ⌘⌥[ prev_environment  ⌘⌥1–9 activate_environment
  *   Tab and pane chords: lib/tabKeys.ts (⌘W ⌘D ⌘⇧D ⌘J ⌘[ ⌘] ⌘1–9 ⌘` …)
  *   Open Project has no key; it stays in the File menu.
  */
@@ -75,11 +76,14 @@ export const APP_COMMANDS = [
   "lightbox_close",
   "lightbox_prev",
   "lightbox_next",
+  "next_environment",
+  "prev_environment",
+  "activate_environment",
 ] as const;
 
 export type AppCommandId = (typeof APP_COMMANDS)[number];
 
-/** `index` rides along with `activate_tab` (0-based; -1 = last). */
+/** `index` rides along with `activate_tab` and `activate_environment` (0-based; -1 = last). */
 export type AppCommand = { id: AppCommandId; index?: number };
 
 export function isAppCommandId(id: string): id is AppCommandId {
@@ -145,6 +149,16 @@ function fromTabCommand(cmd: TabCommand): AppCommand {
     "toggle-terminal": "toggle_terminal",
   };
   return { id: map[cmd] };
+}
+
+/** ⌘⌥] / ⌘⌥[ step through the environments; ⌘⌥1–9 jump to one (9 is the last). */
+function environmentChord(code: string): AppCommand | null {
+  if (code === "BracketRight") return { id: "next_environment" };
+  if (code === "BracketLeft") return { id: "prev_environment" };
+  const digit = /^Digit([1-9])$/.exec(code);
+  if (!digit) return null;
+  const n = Number(digit[1]);
+  return { id: "activate_environment", index: n === 9 ? -1 : n - 1 };
 }
 
 function zoomChord(e: KeyboardEvent): AppCommandId | null {
@@ -226,6 +240,11 @@ export function createKeyResolver(now: () => number = () => performance.now()) {
     const key = e.key.toLowerCase();
 
     if (e.altKey && !e.shiftKey && e.code === "KeyZ") return { id: "toggle_zen" };
+    if (e.altKey && !e.shiftKey) {
+      // Option changes `key` on macOS ("‘" for ]), so these match the code.
+      const environment = environmentChord(e.code);
+      if (environment) return environment;
+    }
     if (e.altKey) return null;
 
     if (e.shiftKey) {

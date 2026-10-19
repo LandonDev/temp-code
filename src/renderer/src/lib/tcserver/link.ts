@@ -7,6 +7,7 @@ import {
   registry,
   savedEnvironment,
   webEnvironment,
+  trackLastSeen,
   type EnvLink,
 } from "../connection";
 import { smoke } from "./smoke";
@@ -41,6 +42,7 @@ export function initServerLink(): void {
   if (typeof window !== "undefined") {
     window.__monocode = { registry, sessionStore, loadSavedEnvironments, smoke };
     registry.installWindowHooks();
+    trackLastSeen();
   }
   // The bridge dispatches server commands over the environment's link.
   bindServer(registry);

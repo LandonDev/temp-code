@@ -100,6 +100,8 @@ export const MENU_TREE: MenuSection[] = [
       cmd('toggle_zen', 'Toggle Zen Mode', 'CmdOrCtrl+Alt+Z'),
       cmd('open_inbox', 'Inbox'),
       cmd('open_notes', 'Notes'),
+      cmd('next_environment', 'Next Environment', 'CmdOrCtrl+Alt+]'),
+      cmd('prev_environment', 'Previous Environment', 'CmdOrCtrl+Alt+['),
       cmd('toggle_terminal', 'Toggle Terminal', 'CmdOrCtrl+J'),
       cmd('open_model_picker', 'Switch Model…', 'CmdOrCtrl+.'),
       sep,

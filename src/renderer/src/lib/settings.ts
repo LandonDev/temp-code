@@ -344,6 +344,9 @@ export const KEYBINDINGS: KeybindingRow[] = [
   { command: "Tab: Forward", keys: `${MOD}]`, when: "Always" },
   { command: "Tab: Activate 1–8", keys: `${MOD}1 … ${MOD}8`, when: "Always" },
   { command: "Tab: Activate Last", keys: `${MOD}9`, when: "Always" },
+  { command: "Environment: Next", keys: `${MOD}${ALT}]`, when: "Always" },
+  { command: "Environment: Previous", keys: `${MOD}${ALT}[`, when: "Always" },
+  { command: "Environment: Activate 1–9", keys: `${MOD}${ALT}1 … ${MOD}${ALT}9`, when: "Always" },
   { command: "Pane: Close", keys: `${MOD}W`, when: "Always" },
   { command: "Pane: Split Right", keys: `${MOD}D`, when: "!editorFocus" },
   {
