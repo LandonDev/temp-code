@@ -2,6 +2,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from 'node:ht
 import type { Duplex } from 'node:stream'
 import { hostname } from 'node:os'
 import { WebSocketServer, type WebSocket } from 'ws'
+import { remoteDeflateOptions } from '../wire'
 import { ZodError } from 'zod'
 import { CONTRACT_VERSION, allows, type Principal } from '@shared/capabilities'
 import { NewClientSchema, NewPairingSchema, PairBodySchema } from '@shared/contract-remote'
@@ -153,7 +154,9 @@ function readJson(req: IncomingMessage): Promise<unknown> {
 export async function startRemoteListener(options: RemoteListenerOptions): Promise<RemoteListener> {
   const { auth, store, attach } = options
   const sockets = new Map<string, Set<WebSocket>>()
-  const wss = new WebSocketServer({ noServer: true })
+  // Every socket here is a remote client: permessage-deflate as wire.ts
+  // sizes it, and attach() gives the principal the remote profile.
+  const wss = new WebSocketServer({ noServer: true, perMessageDeflate: remoteDeflateOptions() })
   let boundPort = 0
 
   /** The proxy's view of this host, remembered for pairing links. */

@@ -145,6 +145,10 @@ export type Block = {
     parentCallId?: string;
     /** Steps a spawned subagent ran under this call so far. */
     subCount?: number;
+    /** Remote profile: rows of this block whose large bodies stayed on the
+     *  server, fetched when the row opens (`sessionStore.loadRowBodies`)
+     *  and gone once the block is whole. `bytes` is what waits there. */
+    omitted?: { sessionId: string; seqs: number[]; bytes: number; loading?: boolean; failed?: boolean };
   };
   /** A compaction system row: its lifecycle so the card can show progress and outcome. */
   compaction?: CompactionMeta;

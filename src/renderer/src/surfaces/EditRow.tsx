@@ -7,7 +7,7 @@ import { readTextFile } from '../lib/fs'
 import { resolveWorkspacePath } from '../lib/paths'
 import type { OpenFileFn } from '../lib/search'
 import type { Block } from '../lib/session'
-import { useLiveEdits } from '../lib/tcserver/store'
+import { sessionStore, useLiveEdits } from '../lib/tcserver/store'
 import { TweenHeight, useCountUp } from '../motion'
 import { DiffBody } from './DiffBody'
 import {
@@ -24,6 +24,7 @@ import {
 import { RenderCache, cacheKey } from '../lib/renderCache'
 import { editModel, splitPath } from './editModel'
 import { editOpenKey, usePersistedOpen } from './editOpenState'
+import { OmittedNote } from './ToolDetails'
 import { toolCallState } from './transcriptActivity'
 import { useTranscriptSession } from './transcriptSession'
 import { MatrixSpinner } from './threads/bits'
@@ -70,7 +71,7 @@ function useParsedDiff(block: Block): { diff: EditDiff; rows: DiffRow[] } {
   const rows = useMemo(() => {
     if (diff.rows) return diff.rows
     if (diff.hunks.length > 0) return rowsFromHunks(diff.hunks)
-    return previewToRows(preview ?? [])
+    return previewToRows(Array.isArray(preview) ? preview : [])
   }, [diff, preview])
   return { diff, rows }
 }
@@ -165,9 +166,12 @@ export function EditRow({
         : null,
     [liveRec]
   )
-  const hasDiff = (running && liveRows ? liveRows : parsedRows).some(
-    (r) => r.type === 'add' || r.type === 'del'
-  )
+  // Remote profile: the diff's text stayed on the server; the row opens
+  // onto a note and fetches it (the counts above come from the preview).
+  const omitted = block.tool?.omitted
+  const hasDiff =
+    (running && liveRows ? liveRows : parsedRows).some((r) => r.type === 'add' || r.type === 'del') ||
+    !!omitted
 
   // Watched live: the counters tick up and the name fades in once known.
   const [liveAtMount] = useState(running)
@@ -181,6 +185,9 @@ export function EditRow({
   const [holdOpen, setHoldOpen] = useState(running)
   const [revealed, setRevealed] = useState<number | null>(null)
   const open = hasDiff && (editMode || (userOpen ?? (liveAtMount && (running || holdOpen))))
+  useEffect(() => {
+    if (open && omitted && !omitted.loading && !omitted.failed) void sessionStore.loadRowBodies(block)
+  }, [open, omitted, block])
   // The file read that numbers the hunks waits until the body is wanted.
   const located = useLocatedRows(block, diff, filePath, !running, refresh, open)
   const rows = located ?? parsedRows
@@ -225,7 +232,7 @@ export function EditRow({
     filePath && onOpenFile
       ? () => onOpenFile(filePath, startLine ? { line: startLine } : undefined)
       : undefined
-  const canEdit = !!filePath && !!cwd && !running && !m.remove
+  const canEdit = !!filePath && !!cwd && !running && !m.remove && !omitted
   const editHere = (line?: number): void => {
     setEditLine(line ?? startLine)
     setEditMode(true)
@@ -342,11 +349,15 @@ export function EditRow({
                     edit
                   </button>
                 ) : null}
-                <DiffBody
-                  rows={shownRows}
-                  visible={revealed ?? undefined}
-                  onEditAt={canEdit ? editHere : undefined}
-                />
+                {omitted ? (
+                  <OmittedNote bytes={omitted.bytes} failed={!!omitted.failed} />
+                ) : (
+                  <DiffBody
+                    rows={shownRows}
+                    visible={revealed ?? undefined}
+                    onEditAt={canEdit ? editHere : undefined}
+                  />
+                )}
               </>
             )}
           </div>

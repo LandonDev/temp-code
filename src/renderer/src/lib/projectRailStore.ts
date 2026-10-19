@@ -89,7 +89,9 @@ export function clearSync(projectId: string): void {
 
 client.onPush((push) => {
   if (push.push === "build") applyBuildPush(push.projectId, push.run, push.lines);
-  else if (push.push === "sync") {
+  else if (push.push === "builds") {
+    for (const item of push.items) applyBuildPush(item.projectId, item.run, item.lines);
+  } else if (push.push === "sync") {
     applySyncPush(push.projectId, { branch: push.branch, line: push.line, percent: push.percent });
   }
 });

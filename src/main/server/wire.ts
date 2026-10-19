@@ -2,7 +2,7 @@ import { Buffer } from 'node:buffer'
 import type { IncomingHttpHeaders } from 'node:http'
 import type { AgentEvent, EventRow, SessionMeta, ToolPreview } from '@shared/events'
 import type { ServerPush } from '@shared/contract'
-import type { EventsPage, OmittedBody, SessionPage, WireProfile } from '@shared/wire'
+import { isOmittedBody, type EventsPage, type OmittedBody, type SessionPage, type WireProfile } from '@shared/wire'
 import {
   BODY_HEAD_CHARS,
   BODY_OMIT_BYTES,
@@ -126,6 +126,61 @@ function omitPreview(preview: ToolPreview): ToolPreview {
   return out ?? preview
 }
 
+function linesOf(value: unknown): number | null {
+  if (typeof value === 'string') return value.length === 0 ? 0 : countLines(value)
+  if (isOmittedBody(value)) return value.lines
+  return null
+}
+
+const asRecord = (value: unknown): Record<string, unknown> | null =>
+  value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : null
+
+/** The counts of an edit whose text left the wire, for a call that carries
+ *  no preview of its own: the renderer counts lines from the strings, and
+ *  those are what went. Undefined when nothing of the edit was omitted. */
+function editSummary(name: string, input: unknown): ToolPreview | undefined {
+  const rec = asRecord(input)
+  if (!rec) return undefined
+  let additions = 0
+  let deletions = 0
+  switch (name) {
+    case 'Edit':
+      if (!isOmittedBody(rec.old_string) && !isOmittedBody(rec.new_string)) return undefined
+      additions = linesOf(rec.new_string) ?? 0
+      deletions = linesOf(rec.old_string) ?? 0
+      break
+    case 'MultiEdit': {
+      let any = false
+      for (const edit of Array.isArray(rec.edits) ? rec.edits : []) {
+        const r = asRecord(edit)
+        if (!r) continue
+        if (isOmittedBody(r.old_string) || isOmittedBody(r.new_string)) any = true
+        additions += linesOf(r.new_string) ?? 0
+        deletions += linesOf(r.old_string) ?? 0
+      }
+      if (!any) return undefined
+      break
+    }
+    case 'Write':
+      if (!isOmittedBody(rec.content)) return undefined
+      additions = linesOf(rec.content) ?? 0
+      break
+    case 'NotebookEdit':
+      if (!isOmittedBody(rec.new_source)) return undefined
+      additions = linesOf(rec.new_source) ?? 0
+      break
+    default:
+      return undefined
+  }
+  const path = typeof rec.file_path === 'string' ? rec.file_path : typeof rec.path === 'string' ? rec.path : undefined
+  return {
+    kind: 'write',
+    ...(path ? { path, fileName: path.slice(path.lastIndexOf('/') + 1) } : {}),
+    additions,
+    deletions
+  }
+}
+
 /** The event with its large bodies replaced by OmittedBody values; the
  *  same object when it carries none. Conversation text (user, assistant,
  *  thinking, plan) is never a body: it stays whole whatever its size. */
@@ -137,7 +192,7 @@ export function projectEvent(event: AgentEvent): AgentEvent {
     }
     case 'tool-call': {
       const input = omitStrings(event.input)
-      const preview = event.preview ? omitPreview(event.preview) : undefined
+      const preview = event.preview ? omitPreview(event.preview) : editSummary(event.name, input)
       if (input === event.input && preview === event.preview) return event
       return { ...event, input, ...(preview ? { preview } : {}) }
     }

@@ -4,7 +4,9 @@ import { HARNESSES } from "../session";
 import { resolveModel } from "../models";
 import { client } from "./client";
 import { modeForPolicy } from "./access";
-import { emptyFold, foldEvent, foldOptimisticUser, type FoldState } from "./fold";
+import { applyRowBody, emptyFold, foldEvent, foldOptimisticUser, type FoldState } from "./fold";
+import type { EventsPage, SessionPage, WireProfile } from "@server/shared/wire";
+import { HISTORY_PAGE_ROWS } from "@server/shared/wireBudgets";
 import type { ContextUsage } from "../contextUsage";
 import { emptyThread } from "./todos";
 import type { EventRow, QueuedMessage, ServerPush, SessionMeta, SessionStatus } from "./types";
@@ -115,6 +117,8 @@ export type Link = {
   onPush(listener: (push: ServerPush) => void): () => void;
   onOpen(listener: () => void): () => void;
   readonly connected: boolean;
+  /** The wire profile the socket opened with; absent means local. */
+  readonly profile?: WireProfile;
 };
 
 type Entry = {
@@ -134,6 +138,9 @@ type Entry = {
    *  before `beforeSeq` are still to come, and every row folded since the
    *  tail landed waits in `since` so the refold includes it. */
   head: Head | null;
+  /** Remote profile: the persisted rows folded so far, oldest first, so an
+   *  older page can refold the log in front of them; null on a local socket. */
+  rows: EventRow[] | null;
 };
 
 type Head = {
@@ -141,7 +148,25 @@ type Head = {
   since: EventRow[];
   fetching: boolean;
   waiters: (() => void)[];
+  /** Remote profile: the older page on its way, if one is. */
+  page: Promise<boolean> | null;
 };
+
+type EventsResult = EventRow[] | EventsPage;
+
+/** One shape for both profiles: a local socket answers the rows and the
+ *  renderer reads the head off their seqs; a remote one says itself. */
+function asPage(result: EventsResult, tailFirst: boolean): EventsPage {
+  if (Array.isArray(result)) {
+    return {
+      rows: result,
+      moreBefore: tailFirst && result.length > 0 && result[0].seq > 1,
+      moreAfter: false,
+      reset: false,
+    };
+  }
+  return result;
+}
 
 /** A first load asks for about this many transcript rows (prompts, tool
  *  calls, messages); the rest folds behind them. Rows, not turns: an agent
@@ -154,6 +179,8 @@ const HEAD_CHUNK = 2000;
 const HEAD_FETCH = 4000;
 /** A transcript whose tab left the warm set is dropped after this long. */
 const UNLOAD_MS = 3000;
+/** Rows fetched whole for their bodies that stay cached (remote profile). */
+const ROW_BODY_CACHE = 200;
 /** Transcript loads in one window above this many report a burst line. */
 const BURST_WINDOW_MS = 10_000;
 const BURST_LIMIT = 20;
@@ -377,6 +404,8 @@ class SessionStore {
     this.archivedScopes.clear();
     this.archivedLoads.clear();
     this.mounted = null;
+    this.rowBodies.clear();
+    this.rowBodyLoads.clear();
     if (this.unloadTimer) clearTimeout(this.unloadTimer);
     this.unloadTimer = null;
     this.burst = { since: 0, byWhy: new Map(), reported: false };
@@ -538,6 +567,34 @@ class SessionStore {
     return scope === "*" ? { archived: true } : { archived: true, projectId: scope.slice(5) };
   }
 
+  private get remote(): boolean {
+    return this.link?.profile === "remote";
+  }
+
+  /** `session.list`, whole. A local socket answers the array; a remote one
+   *  a page at a time (working threads first), each merged as it lands so
+   *  the shell paints from the first page while the rest walk in. */
+  private async fetchList(params: Record<string, unknown> | undefined): Promise<SessionMeta[]> {
+    const link = this.link;
+    if (!link) return [];
+    const all: SessionMeta[] = [];
+    let cursor: string | null = null;
+    for (;;) {
+      const result: SessionMeta[] | SessionPage = await link.request<SessionMeta[] | SessionPage>(
+        "session.list",
+        cursor ? { ...(params ?? {}), cursor } : params,
+      );
+      if (Array.isArray(result)) return result;
+      for (const meta of result.sessions ?? []) {
+        all.push(meta);
+        this.mergeMeta(meta);
+      }
+      this.bumpMeta();
+      cursor = result.cursor;
+      if (!cursor) return all;
+    }
+  }
+
   /** Fetch the archived metas of one project (or all), once per socket. */
   ensureArchived(projectId?: string): Promise<void> {
     const scope = projectId ? `proj:${projectId}` : "*";
@@ -545,8 +602,7 @@ class SessionStore {
       return Promise.resolve();
     const inFlight = this.archivedLoads.get(scope);
     if (inFlight) return inFlight;
-    const load = this.link
-      .request<SessionMeta[]>("session.list", this.archivedParams(scope))
+    const load = this.fetchList(this.archivedParams(scope))
       .then((metas) => {
         for (const meta of metas ?? []) this.mergeMeta(meta);
         this.archivedScopes.add(scope);
@@ -576,11 +632,10 @@ class SessionStore {
    *  any gap for the sessions whose panes are mounted. */
   async resync(): Promise<void> {
     if (!this.link) return;
-    const link = this.link;
     const lists = await Promise.all([
-      link.request<SessionMeta[]>("session.list"),
+      this.fetchList(undefined),
       ...[...this.archivedScopes].map((scope) =>
-        link.request<SessionMeta[]>("session.list", this.archivedParams(scope)).catch(() => []),
+        this.fetchList(this.archivedParams(scope)).catch(() => [] as SessionMeta[]),
       ),
     ]);
     const seen = new Set<string>();
@@ -669,6 +724,7 @@ class SessionStore {
     entry.lastSeq = 0;
     entry.nextId = 1;
     entry.held = null;
+    entry.rows = null;
     entry.session = { ...sessionFromMeta(entry.meta), loaded: false };
     return true;
   }
@@ -746,10 +802,18 @@ class SessionStore {
     return !!entry && entry.loaded && !entry.head;
   }
 
-  /** `ensureLoaded`, then wait for the head of a tail-first load. */
+  /** `ensureLoaded`, then wait for the head of a tail-first load: a local
+   *  socket's head folds in by itself; a remote one pages it all in here. */
   async ensureComplete(id: string): Promise<void> {
     await this.ensureLoaded(id, "complete");
-    const head = this.entries.get(id)?.head;
+    const entry = this.entries.get(id);
+    if (entry?.rows) {
+      while (this.entries.get(id)?.head) {
+        if (!(await this.loadOlder(id))) break;
+      }
+      return;
+    }
+    const head = entry?.head;
     if (head) await new Promise<void>((resolve) => head.waiters.push(resolve));
   }
 
@@ -766,8 +830,8 @@ class SessionStore {
         await this.link.request("session.subscribe", { sessionId: id });
         entry.subscribed = true;
       }
-      const [rows] = await Promise.all([
-      this.link.request<EventRow[]>("session.events", {
+      const [result] = await Promise.all([
+      this.link.request<EventsResult>("session.events", {
         sessionId: id,
         afterSeq: entry.lastSeq,
         ...(tailFirst ? { tail: TAIL_ROWS } : {}),
@@ -779,18 +843,180 @@ class SessionStore {
         .then((items) => this.setQueue(id, items ?? []))
         .catch(() => undefined),
       ]);
+      const page = asPage(result, tailFirst);
+      // A remote resume whose gap outgrew the budget comes back as a fresh
+      // tail: what was folded is history the next pages bring back.
+      if (page.reset) this.resetFold(entry);
+      if (this.remote && !entry.rows) entry.rows = [];
       // Seqs are contiguous from 1, so a tail that starts later has a head.
-      if (tailFirst && rows.length > 0 && rows[0].seq > 1) {
-        entry.head = { beforeSeq: rows[0].seq, since: [], fetching: false, waiters: [] };
+      if ((tailFirst || page.reset) && page.moreBefore && page.rows.length > 0) {
+        entry.head = { beforeSeq: page.rows[0].seq, since: [], fetching: false, waiters: [], page: null };
       }
-      for (const row of rows) this.foldRow(entry, row);
+      for (const row of page.rows) this.foldRow(entry, row);
     } finally {
       const held = entry.held;
       entry.held = null;
       // The fold drops whatever history already covered.
       for (const row of held ?? []) this.applyPush(entry, row);
     }
-    if (entry.head && !entry.head.fetching) void this.fetchHead(entry);
+    // A local socket folds the whole head behind the tail; a remote one
+    // pages it in on demand (loadOlder), oldest page last.
+    if (entry.head && !entry.head.fetching && !entry.rows) void this.fetchHead(entry);
+  }
+
+  /** Drop a transcript's fold so a fresh tail can take its place; the
+   *  user's own unechoed turns stay. */
+  private resetFold(entry: Entry): void {
+    if (!entry.meta) return;
+    const pending = entry.session.blocks.filter((b) => b.pending);
+    this.settleHead(entry);
+    entry.lastSeq = 0;
+    entry.nextId = 1;
+    if (entry.rows) entry.rows = [];
+    entry.session = { ...sessionFromMeta(entry.meta), loaded: entry.session.loaded, blocks: pending };
+  }
+
+  /** Remote profile: whether rows older than the loaded ones remain on the server. */
+  hasOlderHistory(id: string): boolean {
+    return !!this.entries.get(id)?.head;
+  }
+
+  /** Remote profile: fetch one older page below what is loaded and refold
+   *  the log with it in front. Resolves to whether more remain; a page
+   *  already on its way is awaited, not doubled. */
+  loadOlder(id: string): Promise<boolean> {
+    const entry = this.entries.get(id);
+    const head = entry?.head;
+    if (!entry || !head) return Promise.resolve(false);
+    if (!entry.rows || !this.link) return Promise.resolve(true);
+    if (head.page) return head.page;
+    const link = this.link;
+    const live = (): boolean => this.entries.get(id) === entry && entry.head === head;
+    head.fetching = true;
+    head.page = (async (): Promise<boolean> => {
+      try {
+        const result = await link.request<EventsResult>("session.events", {
+          sessionId: id,
+          afterSeq: 0,
+          beforeSeq: head.beforeSeq,
+          tail: HISTORY_PAGE_ROWS,
+        });
+        if (!live() || !entry.rows) return false;
+        const page = asPage(result, true);
+        // The rows array stays the one pushes append to while this folds,
+        // so a row that lands mid-way is folded by the index loop below.
+        const rows = [...page.rows, ...entry.rows];
+        entry.rows = rows;
+        const cwd = entry.session.cwd;
+        let state = emptyFold();
+        for (let i = 0; i < rows.length; i += HEAD_CHUNK) {
+          for (const row of rows.slice(i, i + HEAD_CHUNK)) state = foldEvent(state, row, cwd);
+          if (i + HEAD_CHUNK < rows.length) await new Promise((r) => setTimeout(r, 0));
+          if (!live()) return false;
+        }
+        const pending = entry.session.blocks.filter((b) => b.pending);
+        entry.lastSeq = Math.max(state.lastSeq, entry.lastSeq);
+        entry.nextId = Math.max(state.nextId, entry.nextId);
+        entry.session = {
+          ...entry.session,
+          blocks: pending.length ? [...state.blocks, ...pending] : state.blocks,
+          thread: state.thread,
+          ...contextAfterFold(entry.session.context, state.context),
+        };
+        if (page.moreBefore && page.rows.length > 0) {
+          head.beforeSeq = page.rows[0].seq;
+          head.fetching = false;
+          head.page = null;
+        } else this.settleHead(entry);
+        this.bump();
+        return !!entry.head;
+      } catch {
+        if (live()) {
+          head.fetching = false;
+          head.page = null;
+        }
+        return true;
+      }
+    })();
+    return head.page;
+  }
+
+  // ── bodies off the wire (remote profile) ───────────────────────────
+
+  /** Rows fetched whole, by `sessionId:seq`, so a block fetched once is
+   *  whole again after a refold without another round trip. */
+  private rowBodies = new Map<string, EventRow>();
+  private rowBodyLoads = new Map<string, Promise<EventRow | null>>();
+
+  private fetchRowBody(sessionId: string, seq: number): Promise<EventRow | null> {
+    const key = `${sessionId}:${seq}`;
+    const cached = this.rowBodies.get(key);
+    if (cached) return Promise.resolve(cached);
+    const inFlight = this.rowBodyLoads.get(key);
+    if (inFlight) return inFlight;
+    const link = this.link;
+    if (!link) return Promise.resolve(null);
+    const load = link
+      .request<{ row: EventRow }>("session.rowBody", { sessionId, seq })
+      .then((result) => {
+        const row = result?.row ?? null;
+        if (row) {
+          if (this.rowBodies.size >= ROW_BODY_CACHE) {
+            const oldest = this.rowBodies.keys().next().value;
+            if (oldest !== undefined) this.rowBodies.delete(oldest);
+          }
+          this.rowBodies.set(key, row);
+        }
+        return row;
+      })
+      .catch(() => null)
+      .finally(() => this.rowBodyLoads.delete(key));
+    this.rowBodyLoads.set(key, load);
+    return load;
+  }
+
+  private patchTool(entry: Entry, blockId: string, patch: Partial<NonNullable<Block["tool"]>>): void {
+    const idx = entry.session.blocks.findIndex((b) => b.id === blockId);
+    if (idx < 0) return;
+    const blocks = entry.session.blocks.slice();
+    const prev = blocks[idx];
+    blocks[idx] = { ...prev, tool: { ...prev.tool, ...patch } };
+    entry.session = { ...entry.session, blocks };
+    this.bump();
+  }
+
+  /** Remote profile: fetch the rows whose bodies stayed on the server for
+   *  this block and fold them over it; the block loses its `omitted` once
+   *  whole, or keeps it marked failed. Safe to call again. */
+  async loadRowBodies(block: Block): Promise<void> {
+    const want = block.tool?.omitted;
+    if (!want || want.loading) return;
+    const entry = this.entries.get(want.sessionId);
+    if (!entry) return;
+    this.patchTool(entry, block.id, { omitted: { ...want, loading: true, failed: false } });
+    const rows = await Promise.all(want.seqs.map((seq) => this.fetchRowBody(want.sessionId, seq)));
+    if (this.entries.get(want.sessionId) !== entry) return;
+    const full = rows.filter((r): r is EventRow => !!r).sort((a, b) => a.seq - b.seq);
+    if (full.length < want.seqs.length) {
+      this.patchTool(entry, block.id, { omitted: { ...want, loading: false, failed: true } });
+      return;
+    }
+    let blocks = entry.session.blocks;
+    for (const row of full) blocks = applyRowBody(blocks, entry.session.cwd, row);
+    const idx = blocks.findIndex((b) => b.id === block.id);
+    if (idx >= 0) {
+      if (blocks === entry.session.blocks) blocks = blocks.slice();
+      blocks[idx] = { ...blocks[idx], tool: { ...blocks[idx].tool, omitted: undefined } };
+    }
+    entry.session = { ...entry.session, blocks };
+    // A refold from the kept rows folds the whole row from now on.
+    if (entry.rows) {
+      for (const row of full) {
+        const at = entry.rows.findIndex((r) => r.seq === row.seq);
+        if (at >= 0) entry.rows[at] = row;
+      }
+    }
+    this.bump();
   }
 
   /** Fetch the rows before a tail-first paint and refold the whole log
@@ -881,6 +1107,20 @@ class SessionStore {
         if (fresh) this.noteAdded(push.session);
         break;
       }
+      case "sessions": {
+        for (const session of push.sessions) this.onPush({ push: "session", session });
+        break;
+      }
+      case "events": {
+        this.pushed.event += push.rows.length;
+        const entry = this.entries.get(push.sessionId);
+        if (entry) for (const row of push.rows) this.applyPush(entry, row);
+        break;
+      }
+      case "live-edits": {
+        for (const item of push.items) this.onPush({ push: "live-edit", ...item });
+        break;
+      }
       case "live-edit": {
         for (const sid of push.sessionIds) {
           const cur = { ...(this.liveEdits.get(sid) ?? {}) };
@@ -937,6 +1177,7 @@ class SessionStore {
     const before = foldStateOf(entry);
     const after = foldEvent(before, row, entry.session.cwd);
     if (after === before) return false;
+    if (entry.rows && !row.ephemeral && row.seq >= 0) entry.rows.push(row);
     entry.lastSeq = after.lastSeq;
     entry.nextId = after.nextId;
     entry.session = {
@@ -963,6 +1204,7 @@ class SessionStore {
         subscribed: false,
         held: null,
         head: null,
+        rows: null,
       });
       return;
     }
@@ -1045,6 +1287,7 @@ class SessionStore {
           subscribed: false,
           held: null,
           head: null,
+          rows: null,
         });
       } else if (entry.session !== session) {
         entry.session = session;

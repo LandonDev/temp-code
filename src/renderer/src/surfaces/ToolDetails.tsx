@@ -1,4 +1,7 @@
-import { memo, useState } from "react";
+import { memo, useEffect, useState } from "react";
+import { TerminalSpinner } from "../chrome/TerminalSpinner";
+import { sessionStore } from "../lib/tcserver/store";
+import { omittedSizeLabel } from "../lib/wireBodies";
 import type { Block } from "../lib/session";
 import { kindOf } from "../lib/toolPhrase";
 import { storeTitleOf, type TitleOf } from "../lib/threadMentions";
@@ -38,6 +41,12 @@ export const ToolDetails = memo(function ToolDetails({
     setRawView(key, v);
     setRawState(v);
   };
+  // Remote profile: a body that stayed on the server comes in once the
+  // row opens; until then the output shows its first line.
+  const omitted = block.tool?.omitted;
+  useEffect(() => {
+    if (omitted && !omitted.loading && !omitted.failed) void sessionStore.loadRowBodies(block);
+  }, [block, omitted]);
   const kind = kindOf(block);
   if (kind === "todo") {
     return (
@@ -81,9 +90,26 @@ export const ToolDetails = memo(function ToolDetails({
           )}
         </div>
       ) : null}
+      {omitted ? <OmittedNote bytes={omitted.bytes} failed={!!omitted.failed} /> : null}
     </div>
   );
 });
+
+/** The line under a row whose body is still on the server. */
+export function OmittedNote({ bytes, failed }: { bytes: number; failed: boolean }) {
+  return (
+    <div className="flex items-center gap-2 border-t border-content/10 px-3 py-1.5 text-[11px] text-content/50">
+      {failed ? (
+        <span>Could not load {omittedSizeLabel(bytes)}</span>
+      ) : (
+        <>
+          <TerminalSpinner className="text-content/50" />
+          <span>Loading {omittedSizeLabel(bytes)}</span>
+        </>
+      )}
+    </div>
+  );
+}
 
 const MONO = "font-mono text-[12px] leading-[18px] whitespace-pre-wrap [overflow-wrap:anywhere]";
 

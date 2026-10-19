@@ -1,5 +1,6 @@
 import { getServerPort } from "../native";
 import type { ServerFrame, ServerPush } from "./types";
+import type { WireProfile } from "@server/shared/wire";
 
 const RECONNECT_MIN_MS = 1000;
 const RECONNECT_MAX_MS = 5000;
@@ -23,8 +24,20 @@ export type ConnectTarget = {
  * onPush for subscription streams. The port comes from preload and is
  * asked for again on every reconnect.
  */
+/** The wire profile the desktop window opens its loopback socket with:
+ *  `?profile=remote` on the page URL asks for the remote shapes (bounded
+ *  pages, bodies off the wire, coalesced pushes); the installed app's
+ *  renderer is local. A client with a ConnectTarget is remote by itself:
+ *  the server answers its principal with the remote profile. */
+function pageProfile(): WireProfile {
+  if (typeof location === "undefined") return "local";
+  return new URLSearchParams(location.search).get("profile") === "remote" ? "remote" : "local";
+}
+
 export class WsClient {
   port: number | null = null;
+  /** Which shapes to expect from the server: set before the first open. */
+  profile: WireProfile = pageProfile();
   private target: ConnectTarget | null = null;
   private ws: WebSocket | null = null;
   private nextId = 1;
@@ -40,12 +53,16 @@ export class WsClient {
 
   async connect(target?: ConnectTarget): Promise<void> {
     this.target = target ?? null;
+    if (target) this.profile = "remote";
     await this.open(await this.askTarget());
   }
 
   /** The URL for the next attempt; re-asked on every reconnect. */
   private async askTarget(): Promise<string> {
-    if (!this.target) return `ws://127.0.0.1:${await askPort()}`;
+    if (!this.target) {
+      const query = this.profile === "remote" ? "?profile=remote" : "";
+      return `ws://127.0.0.1:${await askPort()}${query}`;
+    }
     if (!this.target.ticket) return this.target.url;
     const url = new URL(this.target.url);
     url.searchParams.set("ticket", await this.target.ticket());

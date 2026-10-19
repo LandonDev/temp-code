@@ -16,6 +16,8 @@ import {
   upsertToolBlock,
 } from "../harness/toolBlock";
 import type { EventRow, ServerAttachment } from "./types";
+import { isOmittedBody } from "@server/shared/wire";
+import type { ToolPreview } from "../session";
 import {
   applyTaskResult,
   applyTodoCall,
@@ -172,6 +174,50 @@ function countSubStep(blocks: Block[], parentCallId: string): Block[] {
   return next;
 }
 
+/** Remote profile: bytes of the OmittedBody values inside `value` (0 when none). */
+function omittedBytes(value: unknown, depth = 0): number {
+  if (isOmittedBody(value)) return value.bytes;
+  if (!value || typeof value !== "object" || depth > 8) return 0;
+  let n = 0;
+  for (const v of Object.values(value as Record<string, unknown>)) n += omittedBytes(v, depth + 1);
+  return n;
+}
+
+/** The block's `omitted` record with this row added; nothing when the row
+ *  carries no omitted body, is ephemeral, or is already recorded. */
+function omittedAfter(
+  prev: Block | undefined,
+  row: EventRow,
+  bytes: number,
+): { omitted?: NonNullable<Block["tool"]>["omitted"] } {
+  if (bytes <= 0 || row.ephemeral || row.seq < 0) return {};
+  const before = prev?.tool?.omitted;
+  if (before?.seqs.includes(row.seq)) return {};
+  return {
+    omitted: {
+      sessionId: row.sessionId,
+      seqs: before ? [...before.seqs, row.seq] : [row.seq],
+      bytes: (before?.bytes ?? 0) + bytes,
+    },
+  };
+}
+
+/** A preview as the renderer may hold it: diff lines or an output that
+ *  left the wire become absent; the path and the counts stay. */
+function wirePreview(preview: ToolPreview | undefined): ToolPreview | undefined {
+  if (!preview) return preview;
+  const lines = isOmittedBody(preview.lines) ? undefined : preview.lines;
+  const output = isOmittedBody(preview.output) ? undefined : preview.output;
+  return lines === preview.lines && output === preview.output ? preview : { ...preview, lines, output };
+}
+
+/** The text a tool result carries on the wire: the output, or an omitted
+ *  body's first line until the row is fetched whole. */
+function outputText(output: unknown): string {
+  if (typeof output === "string") return output;
+  return isOmittedBody(output) ? output.head : "";
+}
+
 export function foldEvent(
   state: FoldState,
   row: EventRow,
@@ -308,6 +354,7 @@ export function foldEvent(
       const title = e.display
         ? [e.display.app, e.display.action].filter(Boolean).join(": ")
         : toolTitle(e.name, input);
+      const prevCall = blocks[findLastIndex(blocks, (b) => b.tool?.callId === e.callId)];
       blocks = upsertToolBlock(
         blocks,
         cwd,
@@ -317,7 +364,7 @@ export function foldEvent(
           kind: toolKind(e.name),
           status: "running",
           // The raw input reaches the preview: normalized patches are arrays.
-          preview: e.preview ?? previewFromTool(e.name, e.input),
+          preview: wirePreview(e.preview) ?? previewFromTool(e.name, e.input),
           streaming: true,
           extra: {
             name: e.name,
@@ -326,6 +373,7 @@ export function foldEvent(
               : { input: e.input, partialInput: undefined }),
             ...(e.display ? { display: e.display } : {}),
             ...(e.parentCallId ? { parentCallId: e.parentCallId } : {}),
+            ...omittedAfter(prevCall, row, omittedBytes(e.input) + omittedBytes(e.preview)),
           },
         },
         e.callId,
@@ -350,16 +398,21 @@ export function foldEvent(
       const prev = blocks[findLastIndex(blocks, (b) => b.tool?.callId === e.callId)];
       const name = prev?.tool?.name ?? "tool";
       const input = prev?.tool?.input ?? prev?.tool?.partialInput;
+      const output = outputText(e.output);
+      const extra = {
+        ...(e.reauth ? { reauth: e.reauth } : {}),
+        ...omittedAfter(prev, row, omittedBytes(e.output)),
+      };
       blocks = upsertToolBlock(
         blocks,
         cwd,
         {
           callId: e.callId,
           status: e.isError ? "failed" : "completed",
-          detail: e.output,
-          preview: previewFromTool(name, input, e.output),
+          detail: output,
+          preview: previewFromTool(name, input, output),
           streaming: false,
-          ...(e.reauth ? { extra: { reauth: e.reauth } } : {}),
+          ...(Object.keys(extra).length ? { extra } : {}),
         },
         e.callId,
       );
@@ -388,6 +441,14 @@ export function foldEvent(
         },
         `ap:${e.requestId}`,
       );
+      {
+        const bytes = omittedBytes(e.input);
+        const idx = bytes > 0 ? findLastIndex(blocks, (b) => b.approval?.requestId === e.requestId) : -1;
+        if (idx >= 0 && blocks[idx].tool) {
+          if (blocks === state.blocks) blocks = blocks.slice();
+          blocks[idx] = { ...blocks[idx], tool: { ...blocks[idx].tool, ...omittedAfter(blocks[idx], row, bytes) } };
+        }
+      }
       busy = true;
       break;
     }
@@ -633,4 +694,68 @@ export function fromServerAttachment(a: ServerAttachment): Attachment {
 function findLastIndex<T>(list: T[], pred: (item: T) => boolean): number {
   for (let i = list.length - 1; i >= 0; i--) if (pred(list[i])) return i;
   return -1;
+}
+
+/** Remote profile: fold one row fetched whole (`session.rowBody`) over the
+ *  block it belongs to, the way the live fold did with the projected row;
+ *  the block keeps its id and place. Rows of other kinds change nothing. */
+export function applyRowBody(blocks: Block[], cwd: string, row: EventRow): Block[] {
+  const e = row.event;
+  switch (e.type) {
+    case "tool-call": {
+      const prev = blocks[findLastIndex(blocks, (b) => b.tool?.callId === e.callId)];
+      if (!prev) return blocks;
+      const input = asRecord(e.input) ?? {};
+      const title = e.display
+        ? [e.display.app, e.display.action].filter(Boolean).join(": ")
+        : toolTitle(e.name, input);
+      return upsertToolBlock(
+        blocks,
+        cwd,
+        {
+          callId: e.callId,
+          title: title || e.name,
+          kind: toolKind(e.name),
+          preview: e.preview ?? previewFromTool(e.name, e.input),
+          streaming: !!prev.streaming,
+          extra: { name: e.name, input: e.input, partialInput: undefined },
+        },
+        e.callId,
+      );
+    }
+    case "tool-result": {
+      const prev = blocks[findLastIndex(blocks, (b) => b.tool?.callId === e.callId)];
+      if (!prev) return blocks;
+      const name = prev.tool?.name ?? "tool";
+      return upsertToolBlock(
+        blocks,
+        cwd,
+        {
+          callId: e.callId,
+          status: e.isError ? "failed" : "completed",
+          detail: e.output,
+          preview: previewFromTool(name, prev.tool?.input, e.output),
+          streaming: false,
+        },
+        e.callId,
+      );
+    }
+    case "approval-request": {
+      const idx = findLastIndex(blocks, (b) => b.approval?.requestId === e.requestId);
+      const prev = blocks[idx];
+      if (idx < 0 || !prev.tool) return blocks;
+      const next = blocks.slice();
+      next[idx] = {
+        ...prev,
+        tool: {
+          ...prev.tool,
+          input: e.input,
+          preview: previewFromTool(e.toolName, e.input) ?? prev.tool.preview,
+        },
+      };
+      return next;
+    }
+    default:
+      return blocks;
+  }
 }

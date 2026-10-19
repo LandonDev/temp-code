@@ -146,7 +146,10 @@ export function editModel(block: Block): EditModel {
     case "Edit": {
       const o = lines(str(i.old_string));
       const nw = lines(str(i.new_string));
-      if (!i.old_string && !i.new_string) return withPreview({ ...base, path: str(i.file_path) || base.path });
+      // No strings yet (still streaming), or none on the wire (remote
+      // profile): the server's preview carries the counts.
+      if (typeof i.old_string !== "string" && typeof i.new_string !== "string")
+        return withPreview({ ...base, path: str(i.file_path) || base.path });
       return finish({ ...base, path: str(i.file_path) || base.path, adds: nw.length, dels: o.length });
     }
     case "MultiEdit": {

@@ -108,6 +108,21 @@ describe('projectRow', () => {
     expect(edits[1].y).toBe('ok')
   })
 
+  it('gives an edit whose text left the wire its line counts as a preview', () => {
+    const r = row(1, {
+      type: 'tool-call',
+      callId: 'c',
+      name: 'Edit',
+      input: { file_path: '/src/a.ts', old_string: 'a\nb\nc', new_string: `x\n${'y'.repeat(3000)}\nz\nw` }
+    })
+    const out = projectRow(r).event as { preview?: { additions?: number; deletions?: number; fileName?: string } }
+    expect(out.preview).toMatchObject({ kind: 'write', fileName: 'a.ts', additions: 4, deletions: 3 })
+    const write = row(2, { type: 'tool-call', callId: 'w', name: 'Write', input: { file_path: '/b.ts', content: big(3000) } })
+    expect((projectRow(write).event as { preview?: { additions?: number } }).preview?.additions).toBe(2)
+    const small = row(3, { type: 'tool-call', callId: 's', name: 'Edit', input: { file_path: '/c.ts', old_string: 'a', new_string: 'b' } })
+    expect(projectRow(small)).toBe(small)
+  })
+
   it('omits a preview whose diff lines are large and keeps its counts', () => {
     const lines = Array.from({ length: 200 }, (_, i) => ({ kind: 'add' as const, text: `added line ${i} ${'y'.repeat(40)}` }))
     const r = row(1, {

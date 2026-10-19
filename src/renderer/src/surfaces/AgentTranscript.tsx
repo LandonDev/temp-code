@@ -58,7 +58,7 @@ import {
 import { approvalDetailOf, approvalOutcome } from "../lib/approvalDetail";
 import { isTurnPaused, passActionsOf, turnElapsed, useClock } from "../lib/turnClock";
 import { errorRowOf, isErrorBlock } from "../lib/turnOutcome";
-import { useSessionMeta } from "../lib/tcserver/store";
+import { sessionStore, useSessionMeta } from "../lib/tcserver/store";
 import { ErrorChip } from "./ErrorChip";
 import { CompactionCard } from "./CompactionCard";
 import { AgentSpawnRow } from "./AgentSpawnRow";
@@ -710,10 +710,22 @@ export function AgentTranscript({
     scrollTo(el, el.scrollTop + el.scrollHeight - previousHeight);
   }, [visibleRows]);
 
+  // Remote profile: once the window holds every loaded row, the next page
+  // of history comes from the server and folds in above the window, so
+  // the reader's place does not move until they ask for more.
+  const moreHistory = !!sessionId && sessionStore.hasOlderHistory(sessionId);
   const loadEarlier = () => {
     const el = scroller.current;
-    if (el) prependHeight.current = el.scrollHeight;
     release();
+    if (shownRows >= blocks.length && moreHistory && sessionId) {
+      void sessionStore.loadOlder(sessionId).then(() => {
+        const now = scroller.current;
+        if (now) prependHeight.current = now.scrollHeight;
+        setVisibleRows((rows) => rows + ROW_PAGE_SIZE);
+      });
+      return;
+    }
+    if (el) prependHeight.current = el.scrollHeight;
     setVisibleRows((rows) => Math.min(blocks.length, rows + ROW_PAGE_SIZE));
   };
 
@@ -759,7 +771,7 @@ export function AgentTranscript({
       className="agent-transcript h-full overflow-y-auto overscroll-none [overflow-anchor:none] font-mono text-[13px] leading-5"
     >
       <div className="mx-auto flex w-full min-w-0 max-w-4xl flex-col gap-1 px-4 pb-1">
-        {shownRows < blocks.length ? (
+        {shownRows < blocks.length || moreHistory ? (
           <div className="flex justify-center py-3">
             <button
               type="button"
