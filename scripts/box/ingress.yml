@@ -1,0 +1,4 @@
+ingress:
+  - hostname: tempcode.landonhale.com
+    service: http://127.0.0.1:7677
+  - service: http_status:404
