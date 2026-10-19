@@ -1,3 +1,4 @@
+import { hostOfCwd } from "./tcserver/projects";
 import { projectName } from "./paths";
 import { clearProjectLogo } from "./projectLogos";
 import { normalizeProjectPath } from "./recents";
@@ -19,6 +20,6 @@ export async function removeProjectData(path: string): Promise<void> {
     await deleteSession(session.id).catch(() => undefined);
   }
   // Drops the copied image from app data; the localStorage entry goes with it.
-  await clearProjectLogo(key).catch(() => undefined);
+  await clearProjectLogo(hostOfCwd(normalized), key).catch(() => undefined);
   clearTabGroupSettings(key);
 }

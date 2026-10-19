@@ -10,6 +10,7 @@ import {
 } from "./workspaceSessions";
 
 const ws = (id: string, path: string): WorkspaceMeta => ({
+  environmentId: "local",
   id,
   name: id,
   path,
@@ -22,6 +23,7 @@ const project = (
   workspaceId: string,
   extra: Partial<ProjectMeta> = {},
 ): ProjectMeta => ({
+  environmentId: "local",
   id,
   workspaceId,
   name: id,
@@ -35,6 +37,7 @@ const project = (
 
 const meta = (id: string, extra: Partial<SessionMeta> = {}): SessionMeta =>
   ({
+    environmentId: "local",
     id,
     parentId: null,
     projectId: null,

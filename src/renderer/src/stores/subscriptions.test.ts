@@ -21,6 +21,7 @@ import { pickerModelId } from "../lib/tcserver/store";
 import { agentModelsFor } from "../lib/tcserver/catalog";
 import { CATALOG } from "../../../shared/catalog";
 import { lastProjectPath } from "../lib/recents";
+import { registry } from "../lib/connection";
 import { invoke } from "../lib/native";
 import { initialProjectState, project, projectStore } from "./project";
 import {
@@ -107,11 +108,12 @@ function tab(id: string, over: Partial<WorkspaceTab> = {}): WorkspaceTab {
 }
 
 function session(id: string, over: Partial<Session> = {}): Session {
-  return { ...newSession("claude", "/repo"), id, ...over };
+  return { ...newSession("local", "claude", "/repo"), id, ...over };
 }
 
 function meta(over: Partial<SessionMeta> = {}): SessionMeta {
   return {
+    environmentId: "local",
     id: "s-a",
     parentId: null,
     projectId: null,
@@ -142,6 +144,7 @@ function meta(over: Partial<SessionMeta> = {}): SessionMeta {
 
 function projectMeta(id: string, over: Partial<ProjectMeta> = {}): ProjectMeta {
   return {
+    environmentId: "local",
     id,
     workspaceId: "w1",
     name: id,
@@ -182,6 +185,11 @@ beforeEach(() => {
   setTabs([]);
   skipForgetSessionIds.clear();
   vi.clearAllMocks();
+  vi.spyOn(registry, "primary").mockReturnValue({
+    environmentId: "local", connected: true, profile: "local",
+    request: () => Promise.resolve(null),
+    onPush: () => () => {}, onOpen: () => () => {}, onClose: () => () => {},
+  } as unknown as ReturnType<typeof registry.primary>);
 });
 
 afterEach(() => {
@@ -345,7 +353,7 @@ describe("installActiveSessionSync", () => {
     expect(markSessionSeen).toHaveBeenCalledWith("s-a", 7);
     expect(saveLastSession).toHaveBeenCalledWith({ projectId: "p1" }, "s-a");
     expect(migrateWorkspaces).toHaveBeenCalledTimes(1);
-    expect(createWorkspace).toHaveBeenCalledWith("/repo");
+    expect(createWorkspace).toHaveBeenCalledWith("local", "/repo");
   });
 
   it("re-marks the streaming active thread at most once a second, and only when it moved", () => {
@@ -450,7 +458,7 @@ describe("installBootTasks", () => {
     teardown = installBootTasks();
     await flush();
     expect(projectStore.getState().projectCwd).toBe("/home/me/code");
-    expect(createWorkspace).toHaveBeenCalledWith("/home/me/code");
+    expect(createWorkspace).toHaveBeenCalledWith("local", "/home/me/code");
     expect(refreshHarnessCatalogs).toHaveBeenCalledWith(["claude"]);
     const [a, b, c] = sessionStore.getSnapshot();
     expect(a.cwd).toBe("/home/me/code");

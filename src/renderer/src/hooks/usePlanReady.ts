@@ -1,3 +1,4 @@
+import { hostOfCwd } from "../lib/tcserver/projects";
 import { useEffect, useState } from "react";
 import { readFile } from "../lib/tcserver/commands";
 
@@ -36,7 +37,7 @@ export function usePlanReady(
     let alive = true;
     const poll = async (): Promise<void> => {
       const next = await Promise.all(
-        entries.map(async ([id, path]) => [id, !!(await readFile(path))?.trim()] as const),
+        entries.map(async ([id, path]) => [id, !!(await readFile(hostOfCwd(path), path))?.trim()] as const),
       );
       if (!alive) return;
       setReady((prev) => {

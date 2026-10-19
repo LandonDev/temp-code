@@ -25,7 +25,7 @@ function sessionWith(
   extra?: Partial<Session>,
 ): Session {
   return {
-    ...newSession("cursor", "/tmp/project"),
+    ...newSession("local", "cursor", "/tmp/project"),
     blocks,
     ...extra,
   };
@@ -33,7 +33,7 @@ function sessionWith(
 
 describe("planComposerSwitch", () => {
   it("only updates the composer on an empty session", () => {
-    expect(planComposerSwitch(newSession("cursor", "/tmp"), "claude")).toEqual({
+    expect(planComposerSwitch(newSession("local", "cursor", "/tmp"), "claude")).toEqual({
       kind: "empty",
       forget: "cursor",
     });

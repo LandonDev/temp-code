@@ -1,5 +1,5 @@
 import type { ProjectMeta } from "../../../lib/tcserver/types";
-import { client } from "../../../lib/tcserver/client";
+import { localServerPort, registry } from "../../../lib/connection";
 import { workspaceStore } from "../../../lib/tcserver/workspaces";
 import { registerBlockedRetry } from "../../../lib/monaco/lspGate";
 import { dirPrefix } from "../../../lib/tcserver/projects";
@@ -136,7 +136,7 @@ export class LspConnection {
   }
 
   private async doConnect(): Promise<void> {
-    const port = client.port;
+    const port = localServerPort();
     if (!port) throw new Error("sidecar not connected");
     const ws = new WebSocket(`ws://127.0.0.1:${port}${this.wsPath}`);
     this.ws = ws;
@@ -281,7 +281,7 @@ export class LspConnection {
     // pool's own crash policy bounds retries.
     this.initP = null;
     try {
-      const res = await client.request<EnsureResult>("lsp.ensure", {
+      const res = await registry.linkOf(this.project.environmentId).request<EnsureResult>("lsp.ensure", {
         projectId: this.project.id,
         lang: this.engine === "idea" ? "idea" : this.kind,
       });
@@ -545,7 +545,7 @@ export function ensureConnection(
   if (!p) {
     p = (async () => {
       try {
-        const res = await client.request<EnsureResult>("lsp.ensure", {
+        const res = await registry.linkOf(project.environmentId).request<EnsureResult>("lsp.ensure", {
           projectId: project.id,
           lang: engine === "idea" ? "idea" : kind,
         });

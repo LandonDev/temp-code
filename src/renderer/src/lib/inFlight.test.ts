@@ -18,7 +18,7 @@ function chat(
   cwd: string,
   patch: Partial<Session> = {},
 ): Session {
-  const session = newSession("cursor", cwd);
+  const session = newSession("local", "cursor", cwd);
   session.blocks = [{ id: "u1", role: "user", text: "hello" }];
   return { ...session, ...patch, blocks: patch.blocks ?? session.blocks };
 }
@@ -50,7 +50,7 @@ describe("inFlightRefs", () => {
     const parked = chat("/tmp/parked", { busy: true });
     const openBusy = chat("/tmp/open", { busy: true });
     const idle = chat("/tmp/idle");
-    const blank = newSession("cursor", "/tmp/blank");
+    const blank = newSession("local", "cursor", "/tmp/blank");
     blank.busy = true;
 
     const tabs = [newTab(idle.id), newTab(openBusy.id)];
@@ -63,7 +63,7 @@ describe("inFlightRefs", () => {
   });
 
   it("skips chats that were never persisted", () => {
-    const blank = newSession("cursor", "/tmp/a");
+    const blank = newSession("local", "cursor", "/tmp/a");
     blank.busy = true;
     expect(inFlightRefs([blank], [newTab(blank.id)])).toEqual([]);
     expect(hasInFlightSessions([blank])).toBe(true);

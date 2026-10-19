@@ -1,3 +1,5 @@
+import { registry } from "../../lib/connection";
+import { environmentOfCwd } from "../../lib/tcserver/projects";
 import { Chunk } from "@codemirror/merge";
 import { Text } from "@codemirror/state";
 import { useEffect, useState, type ReactNode } from "react";
@@ -61,8 +63,8 @@ interface HunkSet {
   hunks: Hunk[];
 }
 
-async function loadHunks(cwd: string, relative: string): Promise<HunkSet> {
-  const diff = await gitFileDiff(cwd, relative);
+async function loadHunks(environmentId: string, cwd: string, relative: string): Promise<HunkSet> {
+  const diff = await gitFileDiff(environmentId, cwd, relative);
   if (diff.binary || diff.tooLarge) return { original: "", current: "", hunks: [] };
   const orig = Text.of(diff.original.split("\n"));
   const cur = Text.of(diff.current.split("\n"));
@@ -93,6 +95,7 @@ export function ChangesPanel({
   /** opens the file as a review tab; HEAD is parked as its base first */
   onOpenDiff: (path: string) => void;
 }) {
+  const environmentId = environmentOfCwd(cwd) ?? registry.primary().environmentId;
   const { index, log } = useGitSnapshot(cwd);
   const reduce = useReducedMotion();
   const [message, setMessage] = useState("");
@@ -122,12 +125,12 @@ export function ChangesPanel({
         });
         continue;
       }
-      void loadHunks(cwd, relative).then((set) =>
+      void loadHunks(environmentId, cwd, relative).then((set) =>
         setHunks((prev) => (relative in prev ? { ...prev, [relative]: set } : prev)),
       );
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cwd, index]);
+  }, [environmentId, cwd, index]);
 
   const fail = (e: unknown) => setError(e instanceof Error ? e.message : String(e));
 
@@ -156,7 +159,7 @@ export function ChangesPanel({
     const file = pendingDiscard;
     setPendingDiscard(null);
     if (!file) return;
-    void mutate(file.relative, () => gitDiscardFile(cwd, file.relative), [file.path]);
+    void mutate(file.relative, () => gitDiscardFile(environmentId, cwd, file.relative), [file.path]);
   };
 
   const toggleHunks = (file: GitChangedFile) => {
@@ -168,7 +171,7 @@ export function ChangesPanel({
       return;
     }
     setHunks((prev) => ({ ...prev, [file.relative]: "loading" }));
-    void loadHunks(cwd, file.relative)
+    void loadHunks(environmentId, cwd, file.relative)
       .then((set) => setHunks((prev) => (file.relative in prev ? { ...prev, [file.relative]: set } : prev)))
       .catch(fail);
   };
@@ -176,7 +179,7 @@ export function ChangesPanel({
   const stageHunk = (file: GitChangedFile, set: HunkSet, hunk: Hunk) => {
     const contents = stageChunkText(set.original, set.current, hunk.pos);
     if (contents == null) return;
-    void mutate(`${file.relative}#${hunk.from}`, () => gitStageContents(cwd, file.relative, contents));
+    void mutate(`${file.relative}#${hunk.from}`, () => gitStageContents(environmentId, cwd, file.relative, contents));
   };
 
   const open = (file: GitChangedFile) => {
@@ -192,8 +195,8 @@ export function ChangesPanel({
     setBusy("commit");
     setError(null);
     try {
-      await gitCommit(cwd, message.trim());
-      if (alsoPush) await gitPush(cwd);
+      await gitCommit(environmentId, cwd, message.trim());
+      if (alsoPush) await gitPush(environmentId, cwd);
       setMessage("");
       setState("success");
       window.setTimeout(() => setState("idle"), 1500);
@@ -246,7 +249,7 @@ export function ChangesPanel({
           title={hasUpstream ? "Pull (fast-forward)" : "No upstream to pull from"}
           disabled={!hasUpstream || !!busy}
           busy={busy === "pull"}
-          onClick={() => void mutate("pull", () => gitPull(cwd))}
+          onClick={() => void mutate("pull", () => gitPull(environmentId, cwd))}
         >
           <ArrowDownCircle className="size-3.5" strokeWidth={1.75} />
         </IconAction>
@@ -254,7 +257,7 @@ export function ChangesPanel({
           title={hasRemote ? (hasUpstream ? "Push" : "Publish branch") : "No remote"}
           disabled={!hasRemote || !!busy}
           busy={busy === "push"}
-          onClick={() => void mutate("push", () => gitPush(cwd))}
+          onClick={() => void mutate("push", () => gitPush(environmentId, cwd))}
         >
           <CloudUpload className="size-3.5" strokeWidth={1.75} />
         </IconAction>
@@ -262,7 +265,7 @@ export function ChangesPanel({
           title="Stash changes"
           disabled={files.length === 0 || !!busy}
           busy={busy === "stash"}
-          onClick={() => void mutate("stash", () => gitStash(cwd), files.map((f) => f.path))}
+          onClick={() => void mutate("stash", () => gitStash(environmentId, cwd), files.map((f) => f.path))}
         >
           <Archive className="size-3.5" strokeWidth={1.75} />
         </IconAction>
@@ -285,7 +288,7 @@ export function ChangesPanel({
                 action={{
                   title: "Unstage all",
                   icon: <Minus className="size-3.5" strokeWidth={1.75} />,
-                  onClick: () => void mutate("unstage-all", () => gitUnstageAll(cwd)),
+                  onClick: () => void mutate("unstage-all", () => gitUnstageAll(environmentId, cwd)),
                 }}
               >
                 {staged.map((file) => (
@@ -301,7 +304,7 @@ export function ChangesPanel({
                       <IconAction
                         title="Unstage"
                         disabled={!!busy}
-                        onClick={() => void mutate(file.relative, () => gitUnstageFile(cwd, file.relative))}
+                        onClick={() => void mutate(file.relative, () => gitUnstageFile(environmentId, cwd, file.relative))}
                       >
                         <Minus className="size-3.5" strokeWidth={1.75} />
                       </IconAction>
@@ -316,7 +319,7 @@ export function ChangesPanel({
                 action={{
                   title: "Stage all",
                   icon: <Plus className="size-3.5" strokeWidth={1.75} />,
-                  onClick: () => void mutate("stage-all", () => gitStageAll(cwd)),
+                  onClick: () => void mutate("stage-all", () => gitStageAll(environmentId, cwd)),
                 }}
               >
                 {unstaged.map((file) => {
@@ -340,7 +343,7 @@ export function ChangesPanel({
                             <IconAction
                               title="Stage"
                               disabled={!!busy}
-                              onClick={() => void mutate(file.relative, () => gitStageFile(cwd, file.relative))}
+                              onClick={() => void mutate(file.relative, () => gitStageFile(environmentId, cwd, file.relative))}
                             >
                               <Plus className="size-3.5" strokeWidth={1.75} />
                             </IconAction>

@@ -45,7 +45,7 @@ export function installCheckpointBridge(
     if (!usable(cwd)) return;
     const event = row.event;
     if (event.type === "user-text") {
-      void calls.ensure(sessionId, cwd).catch(() => undefined);
+      void calls.ensure(session.environmentId, sessionId, cwd).catch(() => undefined);
       return;
     }
     const settles =
@@ -53,7 +53,7 @@ export function installCheckpointBridge(
       (event.type === "status" && SETTLING.has(event.status));
     if (!settles) return;
     void calls
-      .sync(sessionId, cwd)
+      .sync(session.environmentId, sessionId, cwd)
       .catch(() => undefined)
       .then(() => calls.changed(sessionId));
   });
@@ -62,10 +62,10 @@ export function installCheckpointBridge(
     for (const sessionId of sessionIds) {
       const session = store.get(sessionId);
       const cwd = session ? sessionWorkCwd(session) : "";
-      if (!usable(cwd)) continue;
+      if (!session || !usable(cwd)) continue;
       const path = edit.path.startsWith("/") ? edit.path : `${edit.cwd}/${edit.path}`;
       void calls
-        .capture(sessionId, cwd, [path])
+        .capture(session.environmentId, sessionId, cwd, [path])
         .catch(() => undefined)
         .then(() => calls.changed(sessionId));
     }

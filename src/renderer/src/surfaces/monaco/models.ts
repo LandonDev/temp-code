@@ -1,4 +1,5 @@
 import { readTextFile, writeTextFile, notifyGitChanged } from "../../lib/fs";
+import { hostOfCwd } from "../../lib/tcserver/projects";
 import { registerBeforeMove } from "../../lib/editorRename";
 import { syncWatchedMtime, watchFile } from "../../lib/fileWatch";
 import { onFileEvent, watchCwd } from "../../lib/projectWatch";
@@ -108,7 +109,7 @@ function applyExternal(entry: Entry, next: string): monaco.IRange | null {
 async function reloadFromDisk(entry: Entry): Promise<void> {
   let content: string;
   try {
-    content = await readTextFile(entry.path);
+    content = await readTextFile(hostOfCwd(entry.path), entry.path);
   } catch {
     if (entries.get(entry.path) === entry) setState(entry, { conflict: "deleted" });
     return;
@@ -164,7 +165,7 @@ async function flush(entry: Entry): Promise<boolean> {
     const altId = entry.model.getAlternativeVersionId();
     const content = entry.model.getValue();
     try {
-      await writeTextFile(entry.path, content);
+      await writeTextFile(hostOfCwd(entry.path), entry.path, content);
       entry.diskText = content;
       entry.savedAltId = altId;
       await syncWatchedMtime(entry.path);
@@ -189,7 +190,7 @@ async function flush(entry: Entry): Promise<boolean> {
     // Re-read; if the disk differs from what we just flushed, a second
     // writer truly raced us: surface the bar instead of silently losing.
     try {
-      const content = await readTextFile(entry.path);
+      const content = await readTextFile(hostOfCwd(entry.path), entry.path);
       if (content !== entry.model.getValue()) {
         entry.diskText = content;
         setState(entry, { conflict: "external" });
@@ -307,7 +308,7 @@ export async function openFile(path: string, cwd: string): Promise<OpenedFile> {
   if (!entry) {
     let content: string;
     try {
-      content = await readTextFile(path);
+      content = await readTextFile(hostOfCwd(path), path);
     } catch (error) {
       return {
         model: null,

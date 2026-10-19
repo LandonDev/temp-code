@@ -54,6 +54,7 @@ import {
 import { registerEditorFlusher } from "../lib/editorFlush";
 import { loadAutoSave } from "../lib/settings";
 import { syncWatchedMtime, watchFile } from "../lib/fileWatch";
+import { hostOfCwd } from "../lib/tcserver/projects";
 import { displayPath } from "../lib/paths";
 import type { EditorNavigation } from "../lib/search";
 import { MarkdownPreview } from "./AgentMarkdown";
@@ -139,7 +140,7 @@ export function FileEditor({
     async (force = false) => {
       const generation = ++loadGeneration.current;
       try {
-        const content = await readTextFile(path);
+        const content = await readTextFile(hostOfCwd(path), path);
         if (generation !== loadGeneration.current) return;
         if (dirtyRef.current && !force) {
           pendingDiskRef.current = true;
@@ -173,7 +174,7 @@ export function FileEditor({
     setLoadState({ status: "loading" });
     setSaveState({ status: "idle" });
     const generation = ++loadGeneration.current;
-    void readTextFile(path)
+    void readTextFile(hostOfCwd(path), path)
       .then((content) => {
         if (cancelled || generation !== loadGeneration.current) return;
         setLoadState({ status: "ready", content });
@@ -205,7 +206,7 @@ export function FileEditor({
     setGitBase({ path, original: null });
 
     const load = () => {
-      void gitFileDiff(cwd, relative)
+      void gitFileDiff(hostOfCwd(path), cwd, relative)
         .then((diff) => {
           if (cancelled) return;
           if (diff.binary || diff.tooLarge) {
@@ -274,7 +275,7 @@ export function FileEditor({
       const generation = ++saveGeneration.current;
       setSaveState({ status: "saving" });
       const operation = saveQueue.current.then(() =>
-        writeTextFile(path, content),
+        writeTextFile(hostOfCwd(path), path, content),
       );
       saveQueue.current = operation.catch(() => {});
       try {
@@ -302,7 +303,7 @@ export function FileEditor({
         throw new Error("Can't stage this file");
       }
       try {
-        await gitStageContents(cwd, relative, contents);
+        await gitStageContents(hostOfCwd(path), cwd, relative, contents);
         notifyGitChanged();
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);

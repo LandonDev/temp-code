@@ -1,5 +1,5 @@
 import { useEffect, useSyncExternalStore } from "react";
-import { client } from "../../../lib/tcserver/client";
+import { sessionStore } from "../../../lib/tcserver/store";
 
 /**
  * A per-session cache of the server's `session.context` reading, polled
@@ -35,7 +35,11 @@ type Timers = {
   clearInterval: (id: number) => void;
 };
 
-const fetchOverWs: Fetcher = (sessionId) => client.request("session.context", { sessionId });
+const fetchOverWs: Fetcher = (sessionId) => {
+  const link = sessionStore.linkFor(sessionId);
+  if (!link) return Promise.reject(new Error(`unknown session: ${sessionId}`));
+  return link.request("session.context", { sessionId });
+};
 const windowTimers: Timers = {
   setInterval: (cb, ms) => window.setInterval(cb, ms),
   clearInterval: (id) => window.clearInterval(id),

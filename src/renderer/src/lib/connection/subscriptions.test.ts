@@ -74,9 +74,10 @@ function owner(cursor = 0) {
 const row = (seq: number) => ({ sessionId: "s1", seq, ts: seq, event: { kind: "status", status: "idle" } }) as never;
 
 describe("asPage", () => {
-  it("wraps a bare row array, resetting only on a cold open", () => {
-    expect(asPage([row(1)], true)).toEqual({ rows: [row(1)], moreBefore: false, moreAfter: false, reset: true });
-    expect(asPage([row(2)], false).reset).toBe(false);
+  it("wraps a bare row array and reads the head off the first seq on a cold open", () => {
+    expect(asPage([row(1)], true)).toEqual({ rows: [row(1)], moreBefore: false, moreAfter: false, reset: false });
+    expect(asPage([row(5), row(6)], true)).toMatchObject({ moreBefore: true, reset: false });
+    expect(asPage([row(5)], false)).toMatchObject({ moreBefore: false, reset: false });
     const page = { rows: [], moreBefore: true, moreAfter: false, reset: true };
     expect(asPage(page, false)).toBe(page);
   });
@@ -106,7 +107,7 @@ describe("Subscriptions", () => {
     expect(link.pendingOf("session.events")).toEqual([{ sessionId: "s1", afterSeq: 12 }]);
   });
 
-  it("a cold open asks for the tail and a bare array answer counts as a reset", async () => {
+  it("a cold open asks for the tail; a bare array answer is history behind the tail, not a reset", async () => {
     const link = new FakeLink();
     const subs = new Subscriptions(link);
     const a = owner(0);
@@ -117,8 +118,9 @@ describe("Subscriptions", () => {
     await flush();
     expect(link.pendingOf("session.events")).toEqual([{ sessionId: "s1", afterSeq: 0, tail: 3 }]);
     link.answer("session.events", [row(5), row(6)]);
-    await p;
-    expect(a.log).toEqual(["begin", "page reset=true rows=5,6", "end"]);
+    const page = await p;
+    expect(page.moreBefore).toBe(true);
+    expect(a.log).toEqual(["begin", "page reset=false rows=5,6", "end"]);
   });
 
   it("passes a reset page through: the owner throws its fold away before folding", async () => {

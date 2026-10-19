@@ -1,3 +1,4 @@
+import { sessionStore } from '../lib/tcserver/store'
 import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { motion, useReducedMotion } from 'motion/react'
@@ -16,13 +17,14 @@ const HOLD_MS = 620
  */
 export function AppshotFlyIn({ sessionId, active }: { sessionId: string; active: boolean }) {
   const flash = useAppshotFlash(sessionId)
-  if (!flash || !active) return null
-  return <Flight key={flash.key} flash={flash} />
+  const environmentId = sessionStore.environmentOf(sessionId)
+  if (!flash || !active || !environmentId) return null
+  return <Flight key={flash.key} flash={flash} environmentId={environmentId} />
 }
 
 type Rect = { x: number; y: number; w: number; h: number }
 
-function Flight({ flash }: { flash: AppshotFlash }) {
+function Flight({ flash, environmentId }: { flash: AppshotFlash; environmentId: string }) {
   const reduce = useReducedMotion()
   const [src, setSrc] = useState<string | null>(null)
   const [rect, setRect] = useState<Rect | null>(null)
@@ -33,7 +35,7 @@ function Flight({ flash }: { flash: AppshotFlash }) {
   useEffect(() => {
     if (!path) return
     let live = true
-    void readAttachment(path)
+    void readAttachment(environmentId, path)
       .then((data) => {
         if (!live) return
         const img = new Image()
@@ -67,7 +69,7 @@ function Flight({ flash }: { flash: AppshotFlash }) {
       live = false
       window.clearTimeout(fallback)
     }
-  }, [path])
+  }, [environmentId, path])
 
   useEffect(() => {
     if (!src || !rect) return

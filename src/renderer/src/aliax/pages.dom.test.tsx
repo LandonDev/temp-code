@@ -6,6 +6,7 @@ import type { StatsBundle } from '@shared/aliaxStats'
 import { emptyAccounts, type AccountsSnapshot } from '@server/shared/accounts'
 import type { Link } from '@renderer/lib/tcserver/store'
 import type { ServerPush } from '@renderer/lib/tcserver/types'
+import { registry } from '@renderer/lib/connection'
 import { accountsStore } from '@renderer/stores/accounts'
 import { AccountsPage, StatsPage } from './pages'
 
@@ -85,6 +86,8 @@ const emptyBundle = (): StatsBundle => ({
 })
 
 class FakeLink implements Link {
+  environmentId = 'local'
+  profile = 'local' as const
   connected = true
   request<T>(method: string): Promise<T> {
     if (method === 'accounts.list') return Promise.resolve(snapshot() as T)
@@ -94,6 +97,9 @@ class FakeLink implements Link {
     return () => {}
   }
   onOpen(): () => void {
+    return () => {}
+  }
+  onClose() {
     return () => {}
   }
 }
@@ -118,7 +124,9 @@ beforeEach(async () => {
     statsReindex: vi.fn(async () => ({ ok: true }))
   }
   ;(window as unknown as { aliax: typeof aliax }).aliax = aliax
-  accountsStore.connect(new FakeLink())
+  const link = new FakeLink()
+  vi.spyOn(registry, 'primary').mockReturnValue(link as unknown as ReturnType<typeof registry.primary>)
+  accountsStore.attach(link)
   await flush()
 })
 

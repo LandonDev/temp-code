@@ -1,3 +1,5 @@
+import { registry } from "../lib/connection";
+import { environmentOfCwd } from "../lib/tcserver/projects";
 import { applyBeforeMove, applyWillRename } from "../lib/editorRename";
 import { onFileEvent, watchCwd } from "../lib/projectWatch";
 import {
@@ -225,6 +227,7 @@ export function FileTree({
   sourceControlActive = false,
   onShowSourceControl,
 }: Props) {
+  const environmentId = environmentOfCwd(cwd) ?? registry.primary().environmentId;
   const [expanded, setExpanded] = useState(() => loadExpanded(cwd));
   const [selectedPath, setSelectedPath] = useState(() => loadSelected(cwd));
   const [children, setChildren] = useState<FsEntry[] | null>(() =>
@@ -320,7 +323,7 @@ export function FileTree({
     if (!session || session.id !== id) return;
     const asFolder = session.isDir || /[/\\]$/.test(raw);
     const fileName = wellFormedFileName(raw);
-    const created = await createPath(session.parent, fileName, asFolder);
+    const created = await createPath(environmentId, session.parent, fileName, asFolder);
     const touched = dirsTouchedByCreate(session.parent, fileName);
     await refreshTouched(touched);
     setCreating((cur) => (cur?.id === id ? null : cur));
@@ -342,7 +345,7 @@ export function FileTree({
       await applyWillRename(cwd, path, `${parentPath(path)}/${fileName}`);
     }
     await applyBeforeMove(path, `${parentPath(path)}/${fileName}`);
-    const next = await renamePath(path, fileName);
+    const next = await renamePath(environmentId, path, fileName);
     const wasDir = isDirAt(cwd, path);
     const parent = parentPath(path);
     await refreshTouched(
@@ -365,7 +368,7 @@ export function FileTree({
         : `Delete “${label}”?`,
     );
     if (!ok) return;
-    await deletePath(path);
+    await deletePath(environmentId, path);
     await refreshTouched([parentPath(path)], isDir ? [path] : []);
     setSelectedPath((prev) => {
       if (!prev || prev === path || prev.startsWith(`${path}/`)) {
@@ -403,8 +406,8 @@ export function FileTree({
     }
     const created =
       mode === "cut"
-        ? await movePath(from, destParent)
-        : await copyPath(from, destParent);
+        ? await movePath(environmentId, from, destParent)
+        : await copyPath(environmentId, from, destParent);
     if (mode === "cut") {
       await refreshTouched(
         dirsTouchedByMove(from, created),
@@ -424,7 +427,7 @@ export function FileTree({
   const duplicateAt = async (path: string) => {
     if (path === cwd) return;
     const destParent = parentPath(path);
-    const created = await copyPath(path, destParent);
+    const created = await copyPath(environmentId, path, destParent);
     await refreshTouched([destParent]);
     setSelectedPath(created);
     saveSelected(cwd, created);

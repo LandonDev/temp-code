@@ -16,7 +16,7 @@ import {
 } from "./workspaceSnapshot";
 
 function chat(id: string, cwd: string): Session {
-  const session = newSession("cursor", cwd);
+  const session = newSession("local", "cursor", cwd);
   session.id = id;
   session.blocks = [{ id: "u1", role: "user", text: "hello" }];
   session.providerSessionId = "p1";
@@ -231,7 +231,7 @@ describe("hydrateWorkspaceSnapshot", () => {
   });
 
   it("restores one blank tab per project, the newest, and keeps the chat tabs", () => {
-    const blank = (id: string): Session => ({ ...newSession("claude", "/tmp/a"), id, title: "New chat" });
+    const blank = (id: string): Session => ({ ...newSession("local", "claude", "/tmp/a"), id, title: "New chat" });
     const other = { ...blank("b1"), cwd: "/tmp/b" };
     const tabs = ["s1", "a1", "a2", "b1", "a3"].map((id) => ({ ...newTab(id), id: `t-${id}` }));
     const snapshot = collectWorkspaceSnapshot(

@@ -162,7 +162,7 @@ export const SessionPane = memo(function SessionPane({
   const saveNote = useCallback(
     (text: string) => {
       const sessionTitle = sessionDisplayTitle(session.title, session.harness);
-      void createNote({
+      void createNote(session.environmentId, {
         title:
           sessionTitle && sessionTitle !== "New session"
             ? sessionTitle
@@ -172,7 +172,7 @@ export const SessionPane = memo(function SessionPane({
         sourceCwd: session.cwd,
       });
     },
-    [session.cwd, session.harness, session.id, session.title],
+    [session.environmentId, session.cwd, session.harness, session.id, session.title],
   );
 
   useLayoutEffect(() => {

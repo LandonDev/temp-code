@@ -1,3 +1,4 @@
+import { registry } from "../lib/connection";
 import { RefreshCw } from "./icons";
 import { useRef, useState } from "react";
 import type { UsageWindow } from "aliax-core/shared/types";
@@ -17,7 +18,7 @@ import {
 import { scopeOf, sourceLine, type AccountScope } from "../lib/accountScope";
 import { useSlowClock } from "../lib/turnClock";
 import { HARNESS_LABEL, HARNESS_TITLE, type HarnessId } from "../lib/session";
-import { useSessionMeta } from "../lib/tcserver/store";
+import { sessionStore, useSessionMeta } from "../lib/tcserver/store";
 import { useProjects, useWorkspaces } from "../lib/tcserver/workspaces";
 import {
   runningTerminalChipLabel,
@@ -41,9 +42,11 @@ export function UsageFooter({
   terminalOpen?: boolean;
   onToggleTerminal?: (fileId: string) => void;
 }) {
-  const { snapshot, loaded, busy } = useAccounts();
   const now = useSlowClock(true);
   const meta = useSessionMeta(sessionId);
+  // Without an active thread, the footer shows this machine's account usage.
+  const environmentId = (sessionId ? sessionStore.environmentOf(sessionId) : undefined) ?? meta?.environmentId ?? registry.primary().environmentId;
+  const { snapshot, loaded, busy } = useAccounts(environmentId);
   const projects = useProjects();
   const workspaces = useWorkspaces();
   const provider = harness && isAccountProvider(harness) ? harness : null;
@@ -84,7 +87,7 @@ export function UsageFooter({
               aria-label="Refresh usage"
               title="Refresh usage"
               disabled={busy !== null}
-              onClick={() => void accountsStore.refresh(provider)}
+              onClick={() => void accountsStore.refresh(environmentId, provider)}
             >
               <RefreshCw
                 className={`size-3.5 ${busy === provider ? "motion-safe:animate-spin" : ""}`}

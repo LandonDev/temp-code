@@ -54,3 +54,8 @@ describe("resolveOpenablePath", () => {
     expect(resolved).toBe(files[2].path);
   });
 });
+
+vi.mock("./tcserver/projects", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./tcserver/projects")>()),
+  hostOfCwd: () => "local",
+}));

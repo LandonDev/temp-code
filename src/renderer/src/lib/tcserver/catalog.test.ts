@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { defaultModelId, modelsFor, resetHarnessModelOverlays, resolveModel } from "../models";
 import {
   agentModelsFor,
@@ -7,6 +7,7 @@ import {
   refreshCatalog,
   resetCatalogProbes,
 } from "./catalog";
+import { registry } from "../connection";
 import type { Link } from "./store";
 import type { ProviderInfo } from "./types";
 
@@ -28,7 +29,10 @@ const cursor: ProviderInfo = {
 
 function fakeLink(responses: Record<string, unknown>): Link & { calls: string[] } {
   const calls: string[] = [];
-  return {
+  const link: Link & { calls: string[] } = {
+    environmentId: "local",
+    profile: "local" as const,
+    onClose: () => () => {},
     calls,
     connected: true,
     request<T>(method: string): Promise<T> {
@@ -38,13 +42,18 @@ function fakeLink(responses: Record<string, unknown>): Link & { calls: string[] 
     onPush: () => () => {},
     onOpen: () => () => {},
   };
+  vi.spyOn(registry, "linkOf").mockReturnValue(link as unknown as ReturnType<typeof registry.linkOf>);
+  return link;
 }
 
 beforeEach(() => {
   resetCatalogProbes();
   resetHarnessModelOverlays();
 });
-afterEach(() => resetHarnessModelOverlays());
+afterEach(() => {
+  resetHarnessModelOverlays();
+  vi.restoreAllMocks();
+});
 
 describe("agentModelsFor", () => {
   it("maps models to picker ids with an effort select and claude toggles", () => {
@@ -87,7 +96,7 @@ describe("agentModelsFor", () => {
 describe("refreshCatalog", () => {
   it("overlays every provider and resolves native ids", async () => {
     const link = fakeLink({ "catalog.get": { claude, cursor } });
-    await Promise.all([refreshCatalog(link), refreshCatalog(link)]);
+    await Promise.all([refreshCatalog("local"), refreshCatalog("local")]);
     expect(link.calls).toEqual(["catalog.get"]);
     expect(modelsFor("claude").map((m) => m.id)).toEqual(["claude:claude-opus-5", "claude:claude-sonnet-5-5"]);
     expect(resolveModel("claude", "claude-opus-5").id).toBe("claude:claude-opus-5");
@@ -98,10 +107,10 @@ describe("refreshCatalog", () => {
 describe("probeDoctor", () => {
   it("caches for the TTL and force bypasses it", async () => {
     const link = fakeLink({ "doctor.get": { claude: { found: true }, codex: { found: false }, cursor: { found: true, error: "x" } } });
-    const first = await probeDoctor(undefined, link);
-    await probeDoctor(undefined, link);
+    const first = await probeDoctor("local");
+    await probeDoctor("local");
     expect(link.calls).toHaveLength(1);
-    await probeDoctor({ force: true }, link);
+    await probeDoctor("local", { force: true });
     expect(link.calls).toHaveLength(2);
     expect(availabilityFromDoctor(first)).toMatchObject({ claude: true, codex: false, cursor: true, fx: false, grok: false });
   });
@@ -118,7 +127,8 @@ describe("provider defaults", () => {
         { id: "gpt-5.6-sol", label: "Sol", reasoning: ["low", "high"] },
       ],
     };
-    await refreshCatalog(fakeLink({ "catalog.get": { codex, claude } }));
+    fakeLink({ "catalog.get": { codex, claude } });
+    await refreshCatalog("local");
     expect(defaultModelId("codex")).toBe("codex:gpt-5.6-sol");
     expect(defaultModelId("claude")).toBe("claude:claude-sonnet-5-5");
   });

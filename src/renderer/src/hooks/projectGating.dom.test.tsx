@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 import { act, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { invoke } from "../lib/native";
+import { registry } from "../lib/connection";
+import { invokeOn } from "../lib/native";
 import { useProjectBranchesState } from "./useProjectBranches";
 import { useProjectDiffStats } from "./useProjectDiffStats";
 import { useSlashCommands, slashCommandStore } from "../lib/tcserver/slashCommands";
@@ -15,7 +16,7 @@ import type { ServerPush } from "../lib/tcserver/types";
  */
 
 vi.mock("../lib/native", () => ({
-  invoke: vi.fn((method: string) =>
+  invokeOn: vi.fn((_environmentId: string, method: string) =>
     Promise.resolve(
       method === "git_diff_index"
         ? { branch: "main", files: [], additions: 0, deletions: 0, remote: null, upstream: null, defaultBranch: null, ahead: 0, behind: 0, aheadOfDefault: 0 }
@@ -27,9 +28,11 @@ vi.mock("../lib/native", () => ({
 
 const settle = () => act(() => new Promise<void>((r) => setTimeout(r, 0)));
 const callsFor = (method: string) =>
-  vi.mocked(invoke).mock.calls.filter(([m]) => m === method).length;
+  vi.mocked(invokeOn).mock.calls.filter(([environmentId, m]) => environmentId === "local" && m === method).length;
 
 class FakeLink implements Link {
+  environmentId = "local";
+  profile = "local" as const;
   connected = true;
   calls: unknown[] = [];
   request<T>(method: string, params?: unknown): Promise<T> {
@@ -42,14 +45,19 @@ class FakeLink implements Link {
   onOpen() {
     return () => {};
   }
+  onClose() {
+    return () => {};
+  }
 }
 
 beforeEach(() => {
-  vi.mocked(invoke).mockClear();
+  vi.spyOn(registry, "primary").mockReturnValue(new FakeLink() as unknown as ReturnType<typeof registry.primary>);
+  vi.mocked(invokeOn).mockClear();
 });
 
 afterEach(() => {
   slashCommandStore.reset();
+  vi.restoreAllMocks();
 });
 
 describe("useProjectDiffStats", () => {
@@ -99,9 +107,9 @@ describe("useProjectBranchesState", () => {
 describe("useSlashCommands", () => {
   it("lists commands only once the `/` menu opens", async () => {
     const link = new FakeLink();
-    slashCommandStore.connect(link);
+    slashCommandStore.attach(link);
     const { rerender } = renderHook(
-      ({ open }) => useSlashCommands("claude", "/repo-d", open),
+      ({ open }) => useSlashCommands("local", "claude", "/repo-d", open),
       { initialProps: { open: false } },
     );
     await settle();

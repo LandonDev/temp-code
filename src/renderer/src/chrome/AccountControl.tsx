@@ -16,16 +16,18 @@ import { isRoutedProvider } from "@server/shared/accounts";
  * without saved accounts.
  */
 export function AccountControl({
+  environmentId,
   meta,
   onClose,
 }: {
+  environmentId: string;
   /** The thread whose account this is. */
   meta: ScopeMeta | null;
   onClose?: () => void;
 }) {
   const root = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
-  const { snapshot } = useAccounts();
+  const { snapshot } = useAccounts(environmentId);
   const projects = useProjects();
   const workspaces = useWorkspaces();
   const now = useSlowClock(true);

@@ -1,4 +1,4 @@
-import { invoke } from "./native";
+import { invokeOn } from "./native";
 import { fuzzyMatch } from "./fuzzy";
 import type { ProjectFile } from "./fs";
 import type { RankedFile } from "./fileIndex";
@@ -55,61 +55,69 @@ const MAX_TITLE = 200;
 const MAX_NOTE_PICKER = 8;
 const NOTE_SLUG_RE = /(^|\s)@note\/([A-Za-z0-9_-]+)/g;
 
-let cache: Note[] | null = null;
-let inflight: Promise<Note[]> | null = null;
+// Notes live on each host: one cache per environment.
+const cache = new Map<string, Note[]>();
+const inflight = new Map<string, Promise<Note[]>>();
 
-export function peekNotes(): Note[] | null {
-  return cache;
+export function peekNotes(environmentId: string): Note[] | null {
+  return cache.get(environmentId) ?? null;
 }
 
-export function invalidateNotes() {
-  cache = null;
+/** Forget one host's notes, or every host's. */
+export function invalidateNotes(environmentId?: string) {
+  if (environmentId === undefined) cache.clear();
+  else cache.delete(environmentId);
 }
 
-export async function loadNotes(refresh = false): Promise<Note[]> {
-  if (!refresh && cache) return cache;
-  if (!refresh && inflight) return inflight;
+export async function loadNotes(environmentId: string, refresh = false): Promise<Note[]> {
+  const cached = cache.get(environmentId);
+  if (!refresh && cached) return cached;
+  const pending = inflight.get(environmentId);
+  if (!refresh && pending) return pending;
 
-  const promise = invoke<Note[]>("notes_list")
+  const promise = invokeOn<Note[]>(environmentId, "notes_list")
     .then((notes) => {
-      cache = notes;
+      cache.set(environmentId, notes);
       return notes;
     })
     .catch(() => {
-      if (!cache) cache = [];
-      return cache;
+      if (!cache.has(environmentId)) cache.set(environmentId, []);
+      return cache.get(environmentId) ?? [];
     })
     .finally(() => {
-      if (inflight === promise) inflight = null;
+      if (inflight.get(environmentId) === promise) inflight.delete(environmentId);
     });
-  inflight = promise;
+  inflight.set(environmentId, promise);
   return promise;
 }
 
-export async function getNote(id: string): Promise<Note | null> {
-  const note = await invoke<Note | null>("notes_get", { id });
+export async function getNote(environmentId: string, id: string): Promise<Note | null> {
+  const note = await invokeOn<Note | null>(environmentId, "notes_get", { id });
   return note;
 }
 
-export async function upsertNote(note: NoteUpsert): Promise<Note> {
-  const saved = await invoke<Note>("notes_upsert", { note });
-  cache = null;
+export async function upsertNote(environmentId: string, note: NoteUpsert): Promise<Note> {
+  const saved = await invokeOn<Note>(environmentId, "notes_upsert", { note });
+  cache.delete(environmentId);
   return saved;
 }
 
-export async function deleteNote(id: string): Promise<void> {
-  await invoke("notes_delete", { id });
-  cache = null;
+export async function deleteNote(environmentId: string, id: string): Promise<void> {
+  await invokeOn(environmentId, "notes_delete", { id });
+  cache.delete(environmentId);
 }
 
-export async function createNote(input: {
-  title?: string;
-  body?: string;
-  sourceSessionId?: string;
-  sourceCwd?: string;
-}): Promise<Note> {
+export async function createNote(
+  environmentId: string,
+  input: {
+    title?: string;
+    body?: string;
+    sourceSessionId?: string;
+    sourceCwd?: string;
+  },
+): Promise<Note> {
   const body = (input.body ?? "").replace(/\r\n?/g, "\n");
-  return upsertNote({
+  return upsertNote(environmentId, {
     id: crypto.randomUUID(),
     title: (input.title ?? noteTitle(body)).slice(0, MAX_TITLE),
     body,
@@ -267,10 +275,10 @@ export function injectNotePrompt(text: string, notes: Note[]): string {
   return [text.trimEnd(), "", "---", ...blocks].join("\n");
 }
 
-export async function applyNotesToTurn(text: string): Promise<string> {
+export async function applyNotesToTurn(environmentId: string, text: string): Promise<string> {
   const slugs = noteSlugsInText(text);
   if (slugs.length === 0) return text;
-  const notes = await loadNotes();
+  const notes = await loadNotes(environmentId);
   const picked: Note[] = [];
   const seen = new Set<string>();
   for (const slug of slugs) {

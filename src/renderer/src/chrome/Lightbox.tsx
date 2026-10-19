@@ -9,16 +9,17 @@ import { Spinner } from '../surfaces/threads/bits'
 
 /** An image the lightbox can show: either an in-memory URL (composer
  *  previews) or an attachment path fetched on demand (transcript thumbs). */
-export type LightboxItem = { name: string; src?: string; path?: string }
+export type LightboxItem = { environmentId: string; name: string; src?: string; path?: string }
 
 /** Image bytes fetched once per attachment path for the app's lifetime,
  *  shared with the transcript thumbs so the lightbox opens from cache. */
 const imageCache = new Map<string, Promise<string | null>>()
-export function imageDataFor(path: string): Promise<string | null> {
-  let pending = imageCache.get(path)
+export function imageDataFor(environmentId: string, path: string): Promise<string | null> {
+  const key = JSON.stringify([environmentId, path])
+  let pending = imageCache.get(key)
   if (!pending) {
-    pending = readAttachment(path).catch(() => null)
-    imageCache.set(path, pending)
+    pending = readAttachment(environmentId, path).catch(() => null)
+    imageCache.set(key, pending)
   }
   return pending
 }
@@ -95,7 +96,7 @@ function Slide({ item }: { item: LightboxItem }) {
     setSrc(null)
     if (!item.path) return
     let alive = true
-    void imageDataFor(item.path).then((url) => {
+    void imageDataFor(item.environmentId, item.path).then((url) => {
       if (alive) setSrc(url)
     })
     return () => {

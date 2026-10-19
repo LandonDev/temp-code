@@ -1,3 +1,5 @@
+import { registry } from "../lib/connection";
+import { hostOfCwd } from "../lib/tcserver/projects";
 import {
   Check,
   ChevronRight,
@@ -1294,6 +1296,7 @@ const TranscriptBlock = memo(function TranscriptBlock({
         block={block}
         layout={layout}
         stickyIndex={stickyIndex}
+        environmentId={cwd ? hostOfCwd(cwd) : registry.primary().environmentId}
       />
     );
   }
@@ -1393,10 +1396,13 @@ function UserMessageBlock({
   block,
   layout,
   stickyIndex,
+  environmentId,
 }: {
   block: Block;
   layout: TranscriptLayout;
   stickyIndex: number;
+  /** The host the turn's attachments live on. */
+  environmentId: string;
 }) {
   const [expanded, setExpanded] = useState(false);
   const [overflows, setOverflows] = useState(false);
@@ -1491,10 +1497,11 @@ function UserMessageBlock({
             {block.attachments.map((file) => (
               <AttachmentChip
                 key={file.id}
+                environmentId={environmentId}
                 attachment={file}
                 onOpen={
                   file.kind === "image"
-                    ? () => openAttachmentImages(block.attachments ?? [], file)
+                    ? () => openAttachmentImages(environmentId, block.attachments ?? [], file)
                     : undefined
                 }
               />

@@ -6,7 +6,9 @@ import type {
   CompareResult,
   MergeResult,
 } from "@server/shared/domain";
-import { client } from "./tcserver/client";
+import { registry } from "./connection";
+import { linkOfProject, linkOfWorkspace } from "./tcserver/projects";
+import { workspaceStore } from "./tcserver/workspaces";
 
 /**
  * Data behind the project right rail (Branch and Build tabs), keyed by
@@ -87,23 +89,40 @@ export function clearSync(projectId: string): void {
   set({ syncs: without(state.syncs, projectId) });
 }
 
-client.onPush((push) => {
-  if (push.push === "build") applyBuildPush(push.projectId, push.run, push.lines);
-  else if (push.push === "builds") {
-    for (const item of push.items) applyBuildPush(item.projectId, item.run, item.lines);
-  } else if (push.push === "sync") {
-    applySyncPush(push.projectId, { branch: push.branch, line: push.line, percent: push.percent });
-  }
-});
+/** Forget what one environment's socket told us: its projects' compares,
+ *  logs, builds and syncs, and its workspaces' branch lists. */
+export function clearEnvironment(environmentId: string): void {
+  const ofEnv = (projectId: string): boolean => workspaceStore.project(projectId)?.environmentId === environmentId;
+  const drop = <T>(record: Record<string, T>, keep: (id: string) => boolean): Record<string, T> =>
+    Object.fromEntries(Object.entries(record).filter(([id]) => keep(id)));
+  set({
+    compares: drop(state.compares, (id) => !ofEnv(id)),
+    logs: drop(state.logs, (id) => !ofEnv(id)),
+    builds: drop(state.builds, (id) => !ofEnv(id)),
+    syncs: drop(state.syncs, (id) => !ofEnv(id)),
+    branches: drop(state.branches, (id) => workspaceStore.workspace(id)?.environmentId !== environmentId),
+  });
+}
 
-// Subscriptions and buffered logs live on the connection; a fresh socket
-// starts from what the server replays.
-client.onOpen(() => set(EMPTY));
+registry.onLink((link, event) => {
+  if (event === "removed") return clearEnvironment(link.environmentId);
+  link.onPush((push) => {
+    if (push.push === "build") applyBuildPush(push.projectId, push.run, push.lines);
+    else if (push.push === "builds") {
+      for (const item of push.items) applyBuildPush(item.projectId, item.run, item.lines);
+    } else if (push.push === "sync") {
+      applySyncPush(push.projectId, { branch: push.branch, line: push.line, percent: push.percent });
+    }
+  });
+  // Subscriptions and buffered logs live on the connection; a fresh socket
+  // starts from what the server replays.
+  link.onOpen(() => clearEnvironment(link.environmentId));
+});
 
 // ── fetches ───────────────────────────────────────────────────────────
 
 export async function fetchCompare(projectId: string, target?: string): Promise<CompareResult> {
-  const compare = (await client.request("project.compare", {
+  const compare = (await linkOfProject(projectId).request("project.compare", {
     projectId,
     ...(target ? { target } : {}),
   })) as CompareResult;
@@ -117,13 +136,13 @@ export function dropCompare(projectId: string): void {
 }
 
 export async function fetchBranches(workspaceId: string): Promise<BranchList> {
-  const list = (await client.request("project.branches", { workspaceId })) as BranchList;
+  const list = (await linkOfWorkspace(workspaceId).request("project.branches", { workspaceId })) as BranchList;
   set({ branches: { ...state.branches, [workspaceId]: list } });
   return list;
 }
 
 export async function fetchLog(projectId: string, limit = 20): Promise<CommitInfo[]> {
-  const log = (await client.request("project.log", { projectId, limit })) as CommitInfo[];
+  const log = (await linkOfProject(projectId).request("project.log", { projectId, limit })) as CommitInfo[];
   set({ logs: { ...state.logs, [projectId]: log } });
   return log;
 }
@@ -133,16 +152,16 @@ export async function mergeFrom(
   target: string,
   mode: "merge" | "rebase",
 ): Promise<MergeResult> {
-  return (await client.request("project.mergeFrom", { projectId, target, mode })) as MergeResult;
+  return (await linkOfProject(projectId).request("project.mergeFrom", { projectId, target, mode })) as MergeResult;
 }
 
 export async function mergeInto(projectId: string, target: string): Promise<MergeResult> {
-  return (await client.request("project.mergeInto", { projectId, target })) as MergeResult;
+  return (await linkOfProject(projectId).request("project.mergeInto", { projectId, target })) as MergeResult;
 }
 
 /** Last run and its buffered log, replayed into the store. */
 export async function fetchBuildStatus(projectId: string): Promise<void> {
-  const status = (await client.request("build.status", { projectId })) as {
+  const status = (await linkOfProject(projectId).request("build.status", { projectId })) as {
     run: BuildRun | null;
     lines: string[];
   } | null;
@@ -155,17 +174,17 @@ export async function fetchBuildStatus(projectId: string): Promise<void> {
 }
 
 export async function runBuild(projectId: string, branch?: string): Promise<void> {
-  await client.request("build.run", { projectId, ...(branch ? { branch } : {}) });
+  await linkOfProject(projectId).request("build.run", { projectId, ...(branch ? { branch } : {}) });
 }
 
 export async function cancelBuild(projectId: string): Promise<void> {
-  await client.request("build.cancel", { projectId });
+  await linkOfProject(projectId).request("build.cancel", { projectId });
 }
 
 /** Fetch origin/<branch> (progress lands in `syncs`) and fast-forward. */
 export async function pullBranch(projectId: string, branch?: string): Promise<RemoteStatus | null> {
   try {
-    return (await client.request("build.pull", {
+    return (await linkOfProject(projectId).request("build.pull", {
       projectId,
       ...(branch ? { branch } : {}),
     })) as RemoteStatus | null;

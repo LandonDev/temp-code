@@ -6,8 +6,11 @@ const { openListeners, pushListeners, request } = vi.hoisted(() => ({
   request: vi.fn(() => Promise.resolve(null)),
 }));
 
-vi.mock("./tcserver/client", () => ({
-  client: {
+vi.mock("./connection", () => {
+  const link = {
+    environmentId: "local",
+    profile: "local" as const,
+    onClose: () => () => {},
     connected: true,
     request,
     onOpen: (l: () => void) => {
@@ -18,12 +21,18 @@ vi.mock("./tcserver/client", () => ({
       pushListeners.push(l);
       return () => {};
     },
-  },
-}));
+  };
+  return { registry: {
+    link: () => link,
+    linkOf: () => link,
+    onLink: (listener: (link: unknown, event: string) => void) => { listener(link, "added"); return () => {}; },
+  } };
+});
 
 vi.mock("./tcserver/workspaces", () => ({
   workspaceStore: {
-    projects: [{ id: "p1", cwd: "/w/one" }],
+    projects: [{ id: "p1", environmentId: "local", cwd: "/w/one" }],
+    project: (id: string) => id === "p1" ? { id, environmentId: "local", cwd: "/w/one" } : undefined,
     subscribe: () => () => {},
     getSnapshot: () => ({ loaded: true }),
   },

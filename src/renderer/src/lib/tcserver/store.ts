@@ -2,14 +2,14 @@ import { useSyncExternalStore } from "react";
 import type { Attachment, Block, HarnessId, Session } from "../session";
 import { HARNESSES } from "../session";
 import { resolveModel } from "../models";
-import { client } from "./client";
+import { Subscriptions, asPage, type Link } from "../connection";
 import { modeForPolicy } from "./access";
 import { applyRowBody, emptyFold, foldEvent, foldOptimisticUser, type FoldState } from "./fold";
-import type { EventsPage, SessionPage, WireProfile } from "@server/shared/wire";
+import type { EventsPage, SessionPage } from "@server/shared/wire";
 import { HISTORY_PAGE_ROWS } from "@server/shared/wireBudgets";
 import type { ContextUsage } from "../contextUsage";
 import { emptyThread } from "./todos";
-import type { EventRow, QueuedMessage, ServerPush, SessionMeta, SessionStatus } from "./types";
+import type { EventRow, QueuedMessage, ServerPush, SessionMeta, SessionStatus, WireSessionMeta } from "./types";
 
 /**
  * The one session store: every server session's meta, the folded
@@ -62,6 +62,7 @@ const NO_IDS: readonly string[] = [];
 export type SessionShell = Pick<
   Session,
   | "id"
+  | "environmentId"
   | "harness"
   | "model"
   | "modelSettings"
@@ -84,6 +85,7 @@ export type SessionShell = Pick<
 
 const SHELL_KEYS: readonly (keyof SessionShell)[] = [
   "id",
+  "environmentId",
   "harness",
   "model",
   "modelSettings",
@@ -112,13 +114,19 @@ function shellOf(session: Session, previous: SessionShell | undefined): SessionS
   return out as SessionShell;
 }
 
-export type Link = {
-  request<T>(method: string, params?: unknown): Promise<T>;
-  onPush(listener: (push: ServerPush) => void): () => void;
-  onOpen(listener: () => void): () => void;
-  readonly connected: boolean;
-  /** The wire profile the socket opened with; absent means local. */
-  readonly profile?: WireProfile;
+export type { Link };
+
+/** `env|*` or `env|proj:<id>`: which environment an archived scope belongs to. */
+function scopeEnvironment(scope: string): string {
+  return scope.slice(0, scope.indexOf("|"));
+}
+
+/** One environment's socket as the store holds it. */
+type Attached = {
+  link: Link;
+  subs: Subscriptions;
+  detach: (() => void)[];
+  listed: Promise<void> | null;
 };
 
 type Entry = {
@@ -130,7 +138,8 @@ type Entry = {
   nextId: number;
   loaded: boolean;
   loading: Promise<void> | null;
-  subscribed: boolean;
+  /** The next resume is a cold open: a tail, with history behind it. */
+  coldOpen: boolean;
   /** Pushes held back while a history fetch is in flight; they fold after
    *  it so a live row never lands ahead of the older rows it follows. */
   held: EventRow[] | null;
@@ -156,18 +165,6 @@ type EventsResult = EventRow[] | EventsPage;
 
 /** One shape for both profiles: a local socket answers the rows and the
  *  renderer reads the head off their seqs; a remote one says itself. */
-function asPage(result: EventsResult, tailFirst: boolean): EventsPage {
-  if (Array.isArray(result)) {
-    return {
-      rows: result,
-      moreBefore: tailFirst && result.length > 0 && result[0].seq > 1,
-      moreAfter: false,
-      reset: false,
-    };
-  }
-  return result;
-}
-
 /** A first load asks for about this many transcript rows (prompts, tool
  *  calls, messages); the rest folds behind them. Rows, not turns: an agent
  *  thread packs tens of thousands of events into two turns. */
@@ -209,6 +206,7 @@ export function sessionFromMeta(meta: SessionMeta): Session {
   const harness = asHarness(meta.provider);
   const base: Session = {
     id: meta.id,
+    environmentId: meta.environmentId,
     harness,
     model: pickerModelId(harness, meta.model),
     modelSettings: {},
@@ -362,37 +360,106 @@ class SessionStore {
   /** `metas()` as of the last meta change; the metas hooks' stable snapshot. */
   private metasSnapshot: SessionMeta[] | null = null;
   private metaPending = false;
-  private link: Link | null = null;
-  private detach: (() => void)[] = [];
+  private attached = new Map<string, Attached>();
+  private offRegistry: (() => void) | null = null;
   private listed: Promise<void> | null = null;
   private opened: Promise<void> = Promise.resolve();
+  private markOpen: () => void = () => {};
 
-  /** Attach to the socket once; safe to call again with the same link. */
-  connect(link: Link = client): void {
-    if (this.link === link) return;
-    for (const off of this.detach) off();
-    this.link = link;
-    let markOpen: () => void = () => {};
-    this.opened = new Promise<void>((resolve) => {
-      markOpen = resolve;
+  /** Follow the registry: every environment's link attaches as it is added
+   *  and its data goes when the environment is removed. */
+  connect(registry: { onLink(listener: (link: Link, event: "added" | "removed") => void): () => void }): void {
+    this.offRegistry?.();
+    this.offRegistry = registry.onLink((link, event) => {
+      if (event === "added") this.attach(link);
+      else this.detach(link.environmentId);
     });
+  }
+
+  /** Attach one environment's link; safe to call again with the same link. */
+  attach(link: Link): void {
+    const current = this.attached.get(link.environmentId);
+    if (current?.link === link) return;
+    if (current) this.detach(link.environmentId);
+    if (this.attached.size === 0) {
+      this.opened = new Promise<void>((resolve) => {
+        this.markOpen = resolve;
+      });
+    }
+    const subs = new Subscriptions(link);
+    const entry: Attached = { link, subs, detach: [], listed: null };
     const list = (): void => {
-      this.listed = this.resync()
+      entry.listed = this.resync(link)
         .catch(() => undefined)
         .then(() => {
           this.readyDone = true;
         });
-      markOpen();
+      // Boot waits on the first environment's first list only.
+      if (!this.listed) this.listed = entry.listed;
+      this.markOpen();
     };
-    this.detach = [link.onPush((push) => this.onPush(push)), link.onOpen(list)];
+    entry.detach = [link.onPush((push) => this.onPush(push, link.environmentId)), link.onOpen(list)];
+    this.attached.set(link.environmentId, entry);
     if (link.connected) list();
+  }
+
+  /** The environment is gone for good: its sessions leave the store. */
+  detach(environmentId: string): void {
+    const entry = this.attached.get(environmentId);
+    if (!entry) return;
+    for (const off of entry.detach) off();
+    entry.subs.dispose();
+    this.attached.delete(environmentId);
+    for (const [id, e] of [...this.entries]) {
+      if (e.meta ? e.meta.environmentId === environmentId : e.session.environmentId === environmentId) this.drop(id);
+    }
+    this.bump();
+    this.bumpMeta();
+  }
+
+  /** The environments attached, in attach order. */
+  environmentIds(): string[] {
+    return [...this.attached.keys()];
+  }
+
+  /** The link a session's requests ride on. */
+  linkFor(sessionId: string): Link | undefined {
+    const environmentId = this.environmentOf(sessionId);
+    return environmentId ? this.attached.get(environmentId)?.link : undefined;
+  }
+
+  environmentOf(sessionId: string): string | undefined {
+    const entry = this.entries.get(sessionId);
+    if (!entry) return undefined;
+    return entry.meta?.environmentId ?? entry.session.environmentId;
+  }
+
+  linkOfEnvironment(environmentId: string): Link | undefined {
+    return this.attached.get(environmentId)?.link;
+  }
+
+  private linkOf(entry: Entry): Link | undefined {
+    return this.attached.get(entry.meta?.environmentId ?? entry.session.environmentId)?.link;
+  }
+
+  private subsOf(entry: Entry): Subscriptions | undefined {
+    return this.attached.get(entry.meta?.environmentId ?? entry.session.environmentId)?.subs;
+  }
+
+  private anyLink(): Link | undefined {
+    for (const a of this.attached.values()) if (a.link.connected) return a.link;
+    return this.attached.values().next().value?.link;
   }
 
   /** Test seam. */
   reset(): void {
-    for (const off of this.detach) off();
-    this.detach = [];
-    this.link = null;
+    this.offRegistry?.();
+    this.offRegistry = null;
+    for (const a of this.attached.values()) {
+      for (const off of a.detach) off();
+      a.subs.dispose();
+    }
+    this.attached.clear();
     this.opened = Promise.resolve();
     for (const entry of this.entries.values()) this.settleHead(entry);
     this.entries.clear();
@@ -493,9 +560,9 @@ class SessionStore {
   /** Dev facade only (`__app.feed`, lib/appFacade.ts): a synthetic push takes
    *  the exact path a server frame takes. An injected session exists nowhere
    *  but here, so a draft it adopts counts as loaded and nothing is fetched. */
-  injectPush(push: ServerPush): void {
+  injectPush(push: ServerPush, environmentId: string): void {
     const draft = push.push === "session" && this.entries.get(push.session.id)?.meta === null;
-    this.onPush(push);
+    this.onPush(push, environmentId);
     if (!draft) return;
     const entry = this.entries.get(push.session.id);
     if (entry) {
@@ -564,28 +631,29 @@ class SessionStore {
   private archivedLoads = new Map<string, Promise<void>>();
 
   private archivedParams(scope: string): Record<string, unknown> {
-    return scope === "*" ? { archived: true } : { archived: true, projectId: scope.slice(5) };
+    const what = scope.slice(scope.indexOf("|") + 1);
+    return what === "*" ? { archived: true } : { archived: true, projectId: what.slice(5) };
   }
 
-  private get remote(): boolean {
-    return this.link?.profile === "remote";
+  private isRemote(entry: Entry): boolean {
+    return this.linkOf(entry)?.profile === "remote";
   }
 
   /** `session.list`, whole. A local socket answers the array; a remote one
    *  a page at a time (working threads first), each merged as it lands so
    *  the shell paints from the first page while the rest walk in. */
-  private async fetchList(params: Record<string, unknown> | undefined): Promise<SessionMeta[]> {
-    const link = this.link;
-    if (!link) return [];
+  private async fetchList(link: Link, params: Record<string, unknown> | undefined): Promise<SessionMeta[]> {
+    const environmentId = link.environmentId;
     const all: SessionMeta[] = [];
     let cursor: string | null = null;
     for (;;) {
-      const result: SessionMeta[] | SessionPage = await link.request<SessionMeta[] | SessionPage>(
+      const result: WireSessionMeta[] | SessionPage = await link.request<WireSessionMeta[] | SessionPage>(
         "session.list",
         cursor ? { ...(params ?? {}), cursor } : params,
       );
-      if (Array.isArray(result)) return result;
-      for (const meta of result.sessions ?? []) {
+      if (Array.isArray(result)) return result.map((meta) => ({ ...meta, environmentId }));
+      for (const wire of result.sessions ?? []) {
+        const meta: SessionMeta = { ...wire, environmentId };
         all.push(meta);
         this.mergeMeta(meta);
       }
@@ -595,14 +663,16 @@ class SessionStore {
     }
   }
 
-  /** Fetch the archived metas of one project (or all), once per socket. */
-  ensureArchived(projectId?: string): Promise<void> {
-    const scope = projectId ? `proj:${projectId}` : "*";
-    if (!this.link || this.archivedScopes.has(scope) || this.archivedScopes.has("*"))
+  /** Fetch the archived metas of one project (or all) on one environment,
+   *  once per socket. */
+  ensureArchived(environmentId: string, projectId?: string): Promise<void> {
+    const link = this.attached.get(environmentId)?.link;
+    const scope = `${environmentId}|${projectId ? `proj:${projectId}` : "*"}`;
+    if (!link || this.archivedScopes.has(scope) || this.archivedScopes.has(`${environmentId}|*`))
       return Promise.resolve();
     const inFlight = this.archivedLoads.get(scope);
     if (inFlight) return inFlight;
-    const load = this.fetchList(this.archivedParams(scope))
+    const load = this.fetchList(link, this.archivedParams(scope))
       .then((metas) => {
         for (const meta of metas ?? []) this.mergeMeta(meta);
         this.archivedScopes.add(scope);
@@ -614,29 +684,32 @@ class SessionStore {
     return load;
   }
 
-  /** The meta for `id`, fetching the archived set when the live list
-   *  lacks it (a tab or link to a thread archived since). */
+  /** The meta for `id`, fetching every environment's archived set when the
+   *  live lists lack it (a tab or link to a thread archived since). */
   async ensureMeta(id: string): Promise<SessionMeta | null> {
-    if (!this.metaOf(id)) await this.ensureArchived();
+    if (!this.metaOf(id))
+      await Promise.all(this.environmentIds().map((environmentId) => this.ensureArchived(environmentId)));
     return this.metaOf(id);
   }
 
   private archivedScopeLoaded(meta: SessionMeta): boolean {
     return (
-      this.archivedScopes.has("*") ||
-      (!!meta.projectId && this.archivedScopes.has(`proj:${meta.projectId}`))
+      this.archivedScopes.has(`${meta.environmentId}|*`) ||
+      (!!meta.projectId && this.archivedScopes.has(`${meta.environmentId}|proj:${meta.projectId}`))
     );
   }
 
-  /** `session.list` (plus the archived scopes already loaded), then replay
-   *  any gap for the sessions whose panes are mounted. */
-  async resync(): Promise<void> {
-    if (!this.link) return;
+  /** `session.list` on one environment (plus the archived scopes already
+   *  loaded there), then replay any gap for the sessions whose panes are
+   *  mounted. Runs once per replacement session of that environment. */
+  async resync(link: Link): Promise<void> {
+    const environmentId = link.environmentId;
+    if (!this.attached.has(environmentId)) return;
     const lists = await Promise.all([
-      this.fetchList(undefined),
-      ...[...this.archivedScopes].map((scope) =>
-        this.fetchList(this.archivedParams(scope)).catch(() => [] as SessionMeta[]),
-      ),
+      this.fetchList(link, undefined),
+      ...[...this.archivedScopes]
+        .filter((scope) => scopeEnvironment(scope) === environmentId)
+        .map((scope) => this.fetchList(link, this.archivedParams(scope)).catch(() => [] as SessionMeta[])),
     ]);
     const seen = new Set<string>();
     for (const meta of lists.flat()) {
@@ -645,12 +718,9 @@ class SessionStore {
       this.mergeMeta(meta);
     }
     for (const [id, entry] of this.entries) {
+      if (!entry.meta || entry.meta.environmentId !== environmentId) continue;
       // An archived meta that came by push stays until its scope is listed.
-      if (entry.meta && !seen.has(id) && !(entry.meta.archived && !this.archivedScopeLoaded(entry.meta)))
-        this.drop(id);
-      // Subscriptions belong to the socket that made them; a new socket
-      // starts with none, so every loaded session subscribes again.
-      entry.subscribed = false;
+      if (!seen.has(id) && !(entry.meta.archived && !this.archivedScopeLoaded(entry.meta))) this.drop(id);
     }
     this.bumpMeta();
     // Only the transcripts on screen replay their gap; a loaded one whose
@@ -660,7 +730,7 @@ class SessionStore {
     const keep = this.mountedClosure();
     const replay: Entry[] = [];
     for (const entry of this.entries.values()) {
-      if (!entry.loaded || !entry.meta) continue;
+      if (!entry.loaded || !entry.meta || entry.meta.environmentId !== environmentId) continue;
       if (!keep || keep.has(entry.meta.id)) replay.push(entry);
       else this.unload(entry);
     }
@@ -716,10 +786,7 @@ class SessionStore {
     if (!entry.meta || entry.loading) return false;
     if (entry.session.busy || entry.session.blocks.some((b) => b.pending)) return false;
     this.settleHead(entry);
-    if (entry.subscribed && this.link) {
-      void this.link.request("session.unsubscribe", { sessionId: entry.meta.id }).catch(() => undefined);
-    }
-    entry.subscribed = false;
+    this.subsOf(entry)?.remove(entry.meta.id);
     entry.loaded = false;
     entry.lastSeq = 0;
     entry.nextId = 1;
@@ -766,7 +833,7 @@ class SessionStore {
   }
 
   private reportLine(line: string): void {
-    void this.link?.request("stall.report", { line }).catch(() => undefined);
+    void this.anyLink()?.request("stall.report", { line }).catch(() => undefined);
   }
 
   /** The first `session.list` after the socket opens. Boot waits on it, but
@@ -817,48 +884,58 @@ class SessionStore {
     if (head) await new Promise<void>((resolve) => head.waiters.push(resolve));
   }
 
+  /** The subscription set's view of one transcript: where its fold is and
+   *  how a page lands. `page.reset` (D2) throws the fold away first. */
+  private handlersFor(entry: Entry) {
+    const id = entry.session.id;
+    return {
+      cursor: () => entry.lastSeq,
+      begin: () => {
+        entry.held = [];
+      },
+      page: (page: EventsPage) => {
+        if (this.entries.get(id) !== entry) return;
+        const coldOpen = entry.coldOpen;
+        entry.coldOpen = false;
+        // A remote resume whose gap outgrew the budget comes back as a fresh
+        // tail: what was folded is history the next pages bring back.
+        if (page.reset) this.resetFold(entry);
+        if (this.isRemote(entry) && !entry.rows) entry.rows = [];
+        // Seqs are contiguous from 1, so a tail that starts later has a head.
+        if ((coldOpen || page.reset) && page.moreBefore && page.rows.length > 0) {
+          entry.head = { beforeSeq: page.rows[0].seq, since: [], fetching: false, waiters: [], page: null };
+        }
+        for (const row of page.rows) this.foldRow(entry, row);
+      },
+      end: () => {
+        const held = entry.held;
+        entry.held = null;
+        // The fold drops whatever history already covered.
+        for (const row of held ?? []) this.applyPush(entry, row);
+      },
+    };
+  }
+
   private async replayGap(entry: Entry, why: string): Promise<void> {
-    if (!this.link) return;
+    const link = this.linkOf(entry);
+    const subs = this.subsOf(entry);
+    if (!link || !subs) return;
     const id = entry.session.id;
     if (entry.held) return;
     this.noteLoad(why);
-    entry.held = [];
     // A first load paints the last turns first; the rest folds behind them.
     const tailFirst = !entry.loaded && entry.lastSeq === 0 && !entry.head;
-    try {
-      if (!entry.subscribed) {
-        await this.link.request("session.subscribe", { sessionId: id });
-        entry.subscribed = true;
-      }
-      const [result] = await Promise.all([
-      this.link.request<EventsResult>("session.events", {
-        sessionId: id,
-        afterSeq: entry.lastSeq,
-        ...(tailFirst ? { tail: TAIL_ROWS } : {}),
-      }),
+    entry.coldOpen = tailFirst;
+    subs.add(id, this.handlersFor(entry));
+    await Promise.all([
+      subs.resume(id, tailFirst ? { tail: TAIL_ROWS } : {}),
       // The queue lives in server memory: a restart empties it, so the
       // strip refills from the list rather than keeping stale rows.
-      this.link
+      link
         .request<QueuedMessage[]>("queue.list", { sessionId: id })
         .then((items) => this.setQueue(id, items ?? []))
         .catch(() => undefined),
-      ]);
-      const page = asPage(result, tailFirst);
-      // A remote resume whose gap outgrew the budget comes back as a fresh
-      // tail: what was folded is history the next pages bring back.
-      if (page.reset) this.resetFold(entry);
-      if (this.remote && !entry.rows) entry.rows = [];
-      // Seqs are contiguous from 1, so a tail that starts later has a head.
-      if ((tailFirst || page.reset) && page.moreBefore && page.rows.length > 0) {
-        entry.head = { beforeSeq: page.rows[0].seq, since: [], fetching: false, waiters: [], page: null };
-      }
-      for (const row of page.rows) this.foldRow(entry, row);
-    } finally {
-      const held = entry.held;
-      entry.held = null;
-      // The fold drops whatever history already covered.
-      for (const row of held ?? []) this.applyPush(entry, row);
-    }
+    ]);
     // A local socket folds the whole head behind the tail; a remote one
     // pages it in on demand (loadOlder), oldest page last.
     if (entry.head && !entry.head.fetching && !entry.rows) void this.fetchHead(entry);
@@ -888,9 +965,9 @@ class SessionStore {
     const entry = this.entries.get(id);
     const head = entry?.head;
     if (!entry || !head) return Promise.resolve(false);
-    if (!entry.rows || !this.link) return Promise.resolve(true);
+    const link = this.linkOf(entry);
+    if (!entry.rows || !link) return Promise.resolve(true);
     if (head.page) return head.page;
-    const link = this.link;
     const live = (): boolean => this.entries.get(id) === entry && entry.head === head;
     head.fetching = true;
     head.page = (async (): Promise<boolean> => {
@@ -954,7 +1031,8 @@ class SessionStore {
     if (cached) return Promise.resolve(cached);
     const inFlight = this.rowBodyLoads.get(key);
     if (inFlight) return inFlight;
-    const link = this.link;
+    const entry = this.entries.get(sessionId);
+    const link = entry ? this.linkOf(entry) : undefined;
     if (!link) return Promise.resolve(null);
     const load = link
       .request<{ row: EventRow }>("session.rowBody", { sessionId, seq })
@@ -1024,12 +1102,12 @@ class SessionStore {
    *  come from seqs, so the blocks the tail already showed keep theirs. */
   private async fetchHead(entry: Entry): Promise<void> {
     const head = entry.head;
-    if (!head || head.fetching || !this.link) return;
+    const link = this.linkOf(entry);
+    if (!head || head.fetching || !link) return;
     const id = entry.session.id;
     head.fetching = true;
     const live = (): boolean => this.entries.get(id) === entry && entry.head === head;
     const cwd = entry.session.cwd;
-    const link = this.link;
     let state = emptyFold();
     // The head arrives in slices: each call reads at most HEAD_FETCH rows
     // on the server and folds here in HEAD_CHUNK pieces with a yield
@@ -1093,22 +1171,23 @@ class SessionStore {
     }
   }
 
-  private onPush(push: ServerPush): void {
+  private onPush(push: ServerPush, environmentId: string): void {
     switch (push.push) {
       case "session": {
         this.pushed.session += 1;
         const fresh = !this.entries.has(push.session.id);
-        this.mergeMeta(push.session);
+        const meta: SessionMeta = { ...push.session, environmentId };
+        this.mergeMeta(meta);
         // The view is current at once; listeners hear once per frame, so a
         // fleet pushing many times a second costs one reconcile per frame
         // and never interrupts a render in progress.
         this.bumpSoon();
         this.bumpMetaSoon();
-        if (fresh) this.noteAdded(push.session);
+        if (fresh) this.noteAdded(meta);
         break;
       }
       case "sessions": {
-        for (const session of push.sessions) this.onPush({ push: "session", session });
+        for (const session of push.sessions) this.onPush({ push: "session", session }, environmentId);
         break;
       }
       case "events": {
@@ -1118,7 +1197,7 @@ class SessionStore {
         break;
       }
       case "live-edits": {
-        for (const item of push.items) this.onPush({ push: "live-edit", ...item });
+        for (const item of push.items) this.onPush({ push: "live-edit", ...item }, environmentId);
         break;
       }
       case "live-edit": {
@@ -1201,7 +1280,7 @@ class SessionStore {
         nextId: 1,
         loaded: false,
         loading: null,
-        subscribed: false,
+        coldOpen: false,
         held: null,
         head: null,
         rows: null,
@@ -1284,7 +1363,7 @@ class SessionStore {
           nextId: 1,
           loaded: true,
           loading: null,
-          subscribed: false,
+          coldOpen: false,
           held: null,
           head: null,
           rows: null,
@@ -1306,11 +1385,10 @@ class SessionStore {
     const entry = this.entries.get(meta.id);
     if (entry) {
       entry.loaded = true;
-      if (!entry.subscribed && this.link) {
-        entry.subscribed = true;
-        void this.link.request("session.subscribe", { sessionId: meta.id }).catch(() => {
-          entry.subscribed = false;
-        });
+      const subs = this.subsOf(entry);
+      if (subs && !subs.isLive(meta.id)) {
+        subs.add(meta.id, this.handlersFor(entry));
+        void subs.subscribe(meta.id).catch(() => undefined);
       }
     } else {
       this.mergeMeta(meta);

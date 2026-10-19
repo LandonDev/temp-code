@@ -1,3 +1,4 @@
+import { hostOfCwd } from "./tcserver/projects";
 import { useEffect, useMemo, useSyncExternalStore } from "react";
 import {
   gitDiffIndex,
@@ -78,12 +79,13 @@ async function load(cwd: string, entry: Entry): Promise<void> {
   entry.inFlight = true;
   entry.stale = false;
   try {
-    const index = await gitDiffIndex(cwd);
+    const host = hostOfCwd(cwd);
+    const index = await gitDiffIndex(host, cwd);
     // Decided after the index lands, so a log reader that mounts mid-load
     // is served by this load instead of a second index call.
     const log =
       entry.logHolds > 0
-        ? await gitLog(cwd, LOG_LIMIT).catch(() => [] as GitLogEntry[])
+        ? await gitLog(host, cwd, LOG_LIMIT).catch(() => [] as GitLogEntry[])
         : entry.snapshot.log;
     const prev = entry.snapshot.index;
     if (prev && sameIndex(prev, index)) {

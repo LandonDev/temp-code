@@ -40,7 +40,7 @@ describe("historyWithLiveSessions", () => {
   });
 
   it("does not inject live sessions from other projects", () => {
-    const session = newSession("cursor", "/tmp/project-b");
+    const session = newSession("local", "cursor", "/tmp/project-b");
     session.blocks = [{ id: "u1", role: "user", text: "hello" }];
     session.busy = true;
 
@@ -49,7 +49,7 @@ describe("historyWithLiveSessions", () => {
   });
 
   it("includes live sessions for the active project", () => {
-    const session = newSession("cursor", "/tmp/project-a");
+    const session = newSession("local", "cursor", "/tmp/project-a");
     session.blocks = [{ id: "u1", role: "user", text: "hello" }];
     session.busy = true;
 
@@ -59,7 +59,7 @@ describe("historyWithLiveSessions", () => {
   });
 
   it("stamps composer git onto a live session that is not persisted yet", () => {
-    const session = newSession("cursor", "/tmp/monocode");
+    const session = newSession("local", "cursor", "/tmp/monocode");
     session.blocks = [{ id: "u1", role: "user", text: "hello" }];
     session.busy = true;
 
@@ -82,7 +82,7 @@ describe("historyWithLiveSessions", () => {
         branch: "main",
       },
     ];
-    const session = newSession("cursor", "/tmp/agent-terminal");
+    const session = newSession("local", "cursor", "/tmp/agent-terminal");
     session.blocks = [{ id: "u1", role: "user", text: "hello" }];
     session.busy = true;
 
@@ -100,7 +100,7 @@ describe("historyWithLiveSessions", () => {
   });
 
   it("keeps a session's own branch instead of the project overlay", () => {
-    const session = newSession("cursor", "/tmp/agent-terminal");
+    const session = newSession("local", "cursor", "/tmp/agent-terminal");
     session.blocks = [{ id: "u1", role: "user", text: "hello" }];
     session.busy = true;
     session.branch = "feat/picker";

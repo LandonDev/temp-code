@@ -32,6 +32,12 @@ export class ConnectionRegistry {
   private entries = new Map<string, Entry>();
   private statusSnapshot: ReadonlyMap<string, EnvironmentStatus> = new Map();
   private environmentList: Environment[] = [];
+  /** The environment machine-level work defaults to: `local` in the desktop window, `web` at /ui. */
+  private primaryId = LOCAL_ENVIRONMENT_ID;
+  /** The primary link handed out before its environment was added (boot
+   *  asks preload for the port first); `add` adopts it, so listeners that
+   *  attached early hear the first open. */
+  private pendingPrimary: EnvLink | null = null;
   private statusListeners = new Set<() => void>();
   private linkListeners = new Set<(link: EnvLink, event: LinkEvent) => void>();
 
@@ -62,22 +68,30 @@ export class ConnectionRegistry {
     return [...this.entries.values()].map((e) => e.link);
   }
 
-  /** The link for `id`, or a thrown error: callers name a known environment. */
+  /** The link for `id`, or a thrown error: callers name a known environment.
+   *  The primary id always answers, with a link that opens once its
+   *  environment is added. */
   linkOf(id: string): EnvLink {
     const link = this.link(id);
-    if (!link) throw new Error(`unknown environment: ${id}`);
-    return link;
+    if (link) return link;
+    if (id === this.primaryId) return (this.pendingPrimary ??= new EnvLink(id, pageProfile()));
+    throw new Error(`unknown environment: ${id}`);
+  }
+
+  /** Name the primary environment before it is added (web mode does, at boot). */
+  setPrimary(id: string): void {
+    if (this.primaryId === id) return;
+    this.primaryId = id;
+    this.pendingPrimary = null;
+  }
+
+  get primaryEnvironmentId(): string {
+    return this.primaryId;
   }
 
   /** This machine's own server in the desktop window, the page's host at /ui. */
   primary(): EnvLink {
-    return this.link(LOCAL_ENVIRONMENT_ID) ?? this.link(WEB_ENVIRONMENT_ID) ?? this.firstLink();
-  }
-
-  private firstLink(): EnvLink {
-    const first = this.entries.values().next().value as Entry | undefined;
-    if (!first) throw new Error("no environments");
-    return first.link;
+    return this.linkOf(this.primaryId);
   }
 
   supervisor(id: string): Supervisor | undefined {
@@ -91,7 +105,11 @@ export class ConnectionRegistry {
       this.update(environment);
       return existing.link;
     }
-    const link = new EnvLink(environment.id, this.defaultProfile(environment));
+    const link =
+      environment.id === this.primaryId && this.pendingPrimary
+        ? this.pendingPrimary
+        : new EnvLink(environment.id, this.defaultProfile(environment));
+    if (link === this.pendingPrimary) this.pendingPrimary = null;
     const supervisor = new Supervisor({
       environment,
       resolveUrl: (route) => this.resolveUrl(environment, route),
@@ -250,6 +268,20 @@ export class ConnectionRegistry {
 
   private emit(): void {
     for (const l of this.statusListeners) l();
+  }
+}
+
+/** The port this machine's server answers on, read off the local link's live
+ *  socket: the LSP and DAP tunnels open their own sockets there. Null while
+ *  the local environment is not connected (or this is the /ui page). */
+export function localServerPort(): number | null {
+  const url = registry.link(LOCAL_ENVIRONMENT_ID)?.transport?.url;
+  if (!url) return null;
+  try {
+    const port = new URL(url).port;
+    return port ? Number(port) : null;
+  } catch {
+    return null;
   }
 }
 

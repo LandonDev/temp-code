@@ -1,3 +1,5 @@
+import { useWorkspaces } from "../lib/tcserver/workspaces";
+import { registry } from "../lib/connection";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowUp, Plus } from "./icons";
 import { HarnessIcon } from "./HarnessIcon";
@@ -61,7 +63,15 @@ const providersOf = (catalog: RulesCatalog | null): SpawnProviderId[] =>
   SPAWN_PROVIDERS.filter((p): p is SpawnProviderId => !!catalog?.[p as SpawnProviderId]);
 
 export function OrchestrationRulesEditor({ workspaceId }: { workspaceId: string | null }) {
-  const { scope, catalog } = useRulesScope(workspaceId);
+  const workspace = useWorkspaces().find((w) => w.id === workspaceId);
+  // Global app settings belong to this machine.
+  const environmentId = workspaceId === null ? registry.primary().environmentId : workspace?.environmentId;
+  if (!environmentId) return <MatrixSpinner />;
+  return <RulesEditor key={environmentId} environmentId={environmentId} workspaceId={workspaceId} />;
+}
+
+function RulesEditor({ environmentId, workspaceId }: { environmentId: string; workspaceId: string | null }) {
+  const { scope, catalog } = useRulesScope(environmentId, workspaceId);
   const [editing, setEditing] = useState<RoutingRule | "new" | null>(null);
 
   if (!scope) {
@@ -74,10 +84,10 @@ export function OrchestrationRulesEditor({ workspaceId }: { workspaceId: string 
   const { rules, overridden } = scope;
 
   // Settings semantics: every change persists immediately.
-  const push = (next: OrchestrationRules) => void rulesStore.save(workspaceId, next);
+  const push = (next: OrchestrationRules) => void rulesStore.save(environmentId, workspaceId, next);
   const patchConduct = (patch: Partial<OrchestrationRules["conduct"]>) =>
     push({ ...rules, conduct: { ...rules.conduct, ...patch } });
-  const clearScope = () => void rulesStore.clear(workspaceId);
+  const clearScope = () => void rulesStore.clear(environmentId, workspaceId);
   const saveRule = (rule: RoutingRule) => {
     push(upsertRoutingRule(rules, rule));
     setEditing(null);

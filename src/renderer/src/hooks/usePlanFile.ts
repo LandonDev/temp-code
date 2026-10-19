@@ -1,3 +1,4 @@
+import { hostOfCwd } from "../lib/tcserver/projects";
 import { useEffect, useState } from "react";
 import { readFile } from "../lib/tcserver/commands";
 import { usePaneVisible } from "./paneVisibility";
@@ -22,7 +23,7 @@ export function usePlanFile(
     if (!path || !shown) return;
     let alive = true;
     const poll = async (): Promise<void> => {
-      const content = await readFile(path);
+      const content = await readFile(hostOfCwd(path), path);
       if (alive && content !== null) setDoc((prev) => (prev === content ? prev : content));
     };
     void poll();

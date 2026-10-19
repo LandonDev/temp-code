@@ -4,7 +4,7 @@ import {
   passEnabled,
   type TurnPass,
 } from "@server/shared/turnpass";
-import { client } from "../lib/tcserver/client";
+import { linkOfWorkspace } from "../lib/tcserver/projects";
 import { Heading, Row, Select, Toggle } from "../surfaces/settingsBits";
 
 /**
@@ -104,7 +104,7 @@ export async function loadTurnPass(
   workspaceId: string,
   projectId?: string,
 ): Promise<TurnPass | null> {
-  const raw = await client.request("turnpass.get", { workspaceId, projectId });
+  const raw = await linkOfWorkspace(workspaceId).request("turnpass.get", { workspaceId, projectId });
   return parseTurnPass(raw);
 }
 
@@ -113,7 +113,7 @@ export async function saveTurnPass(
   pass: TurnPass | null,
   projectId?: string,
 ): Promise<void> {
-  await client.request("turnpass.set", {
+  await linkOfWorkspace(workspaceId).request("turnpass.set", {
     workspaceId,
     projectId,
     pass: pass && passEnabled(pass) ? pass : null,

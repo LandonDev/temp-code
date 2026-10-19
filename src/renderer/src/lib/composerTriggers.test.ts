@@ -122,6 +122,7 @@ describe("rankFiles", () => {
 
 const meta = (over: Partial<SessionMeta>): SessionMeta =>
   ({
+    environmentId: "local",
     id: "s",
     parentId: null,
     projectId: null,

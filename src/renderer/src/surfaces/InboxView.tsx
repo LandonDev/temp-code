@@ -1,3 +1,5 @@
+import { registry } from "../lib/connection";
+import { hostOfCwd } from "../lib/tcserver/projects";
 import { openUrl } from "../lib/native";
 import {
   Check,
@@ -290,7 +292,9 @@ export function InboxView({
   const [groupCustomColors] = useState(loadTabGroupCustomColors);
 
   const [searchInput, setSearchInput] = useState("");
-  const { github, githubLoaded, refreshing, linear } = useInbox();
+  // K2 adds an environment switcher.
+  const environmentId = registry.primary().environmentId;
+  const { github, githubLoaded, refreshing, linear } = useInbox(environmentId);
   const catalog = useWorkspaceCatalog();
   const [refresh, setRefresh] = useState(0);
   // What the list shows: this workspace until the user asks for the rest.
@@ -421,32 +425,32 @@ export function InboxView({
     if (!githubLoaded || opened) return;
     setOpened(true);
     const age = github?.fetchedAt ? Date.now() - github.fetchedAt : Number.POSITIVE_INFINITY;
-    if (age > OPEN_REFRESH_AGE_MS) void inboxStore.refreshGithub("open");
-  }, [github, githubLoaded, opened]);
+    if (age > OPEN_REFRESH_AGE_MS) void inboxStore.refreshGithub(environmentId, "open");
+  }, [environmentId, github, githubLoaded, opened]);
 
   // ...and again every three minutes while this view is mounted and the
   // window is visible. The timer dies with the view.
   useEffect(() => {
     const timer = window.setInterval(() => {
       if (document.visibilityState !== "visible") return;
-      void inboxStore.refreshGithub("interval");
+      void inboxStore.refreshGithub(environmentId, "interval");
     }, INTERVAL_REFRESH_MS);
     return () => window.clearInterval(timer);
-  }, []);
+  }, [environmentId]);
 
   // Linear: only while its tab is open, for the current query.
   useEffect(() => {
     if (source !== "linear") return;
-    void inboxStore.refreshLinear(linearQuery);
-  }, [linearQuery, source]);
+    void inboxStore.refreshLinear(environmentId, linearQuery);
+  }, [environmentId, linearQuery, source]);
 
   // The refresh button and a Linear change: fetch the open tab again now.
   useEffect(() => {
     if (refresh === prevRefresh.current) return;
     prevRefresh.current = refresh;
-    if (source === "linear") void inboxStore.refreshLinear(linearQuery, { force: true });
-    else void inboxStore.refreshGithub("manual");
-  }, [linearQuery, refresh, source]);
+    if (source === "linear") void inboxStore.refreshLinear(environmentId, linearQuery, { force: true });
+    else void inboxStore.refreshGithub(environmentId, "manual");
+  }, [environmentId, linearQuery, refresh, source]);
 
   const visibleItems = useMemo(
     () =>
@@ -932,12 +936,13 @@ function InboxDetail({
   revision: number;
   onStart?: (item: InboxItem, body?: string) => void | Promise<void>;
 }) {
+  const environmentId = hostOfCwd(item.projectPath);
   const linear = item.provider === "linear";
   const isPr = !linear && item.kind === "pr";
   const githubKind =
     item.kind === "issue" || item.kind === "pr" ? item.kind : null;
   const cached = linear
-    ? peekLinearIssueDetails(item.id ?? "")
+    ? peekLinearIssueDetails(registry.primary().environmentId, item.id ?? "")
     : githubKind
       ? peekGithubWorkItemDetails(item.projectPath, githubKind, item.number)
       : null;
@@ -945,7 +950,7 @@ function InboxDetail({
     ? peekGithubPrDiff(item.projectPath, item.number)
     : null;
   const cachedThread = linear
-    ? peekLinearIssueThread(item.id ?? "")
+    ? peekLinearIssueThread(registry.primary().environmentId, item.id ?? "")
     : githubKind
       ? peekGithubWorkItemThread(item.projectPath, githubKind, item.number)
       : null;
@@ -1018,7 +1023,7 @@ function InboxDetail({
   useEffect(() => {
     let cancelled = false;
     const cachedDetails = linear
-      ? peekLinearIssueDetails(item.id ?? "")
+      ? peekLinearIssueDetails(registry.primary().environmentId, item.id ?? "")
       : githubKind
         ? peekGithubWorkItemDetails(item.projectPath, githubKind, item.number)
         : null;
@@ -1033,10 +1038,10 @@ function InboxDetail({
     }
     const pending = linear
       ? item.id
-        ? linearIssueDetails(item.id)
+        ? linearIssueDetails(environmentId, item.id)
         : Promise.reject(new Error("Missing Linear issue"))
       : githubKind
-        ? githubWorkItemDetails(item.projectPath, githubKind, item.number, item.repo)
+        ? githubWorkItemDetails(environmentId, item.projectPath, githubKind, item.number, item.repo)
         : Promise.reject(new Error("Unknown inbox item"));
     void pending
       .then((next) => {
@@ -1055,13 +1060,13 @@ function InboxDetail({
     return () => {
       cancelled = true;
     };
-  }, [githubKind, item.id, item.number, item.projectPath, linear, revision]);
+  }, [environmentId, githubKind, item.id, item.number, item.projectPath, linear, revision]);
 
   useEffect(() => {
     let cancelled = false;
     if (linear) {
       const id = item.id ?? "";
-      const cachedThread = peekLinearIssueThread(id);
+      const cachedThread = peekLinearIssueThread(registry.primary().environmentId, id);
       if (cachedThread) {
         setThread(cachedThread);
         setThreadLoading(false);
@@ -1071,7 +1076,7 @@ function InboxDetail({
         setThreadError(null);
         setThread(null);
       }
-      void linearIssueThread(id)
+      void linearIssueThread(environmentId, id)
         .then((next) => {
           if (cancelled) return;
           setThread(next);
@@ -1104,7 +1109,7 @@ function InboxDetail({
       setThreadError(null);
       setThread(null);
     }
-    void githubWorkItemThread(item.projectPath, githubKind, item.number, { repo: item.repo })
+    void githubWorkItemThread(environmentId, item.projectPath, githubKind, item.number, { repo: item.repo })
       .then((next) => {
         if (cancelled) return;
         setThread(next);
@@ -1121,7 +1126,7 @@ function InboxDetail({
     return () => {
       cancelled = true;
     };
-  }, [githubKind, item.id, item.number, item.projectPath, linear, revision]);
+  }, [environmentId, githubKind, item.id, item.number, item.projectPath, linear, revision]);
 
   useEffect(() => {
     if (!isPr) return;
@@ -1136,7 +1141,7 @@ function InboxDetail({
       setDiffError(null);
       setPrDiff(null);
     }
-    void githubPrDiff(item.projectPath, item.number)
+    void githubPrDiff(environmentId, item.projectPath, item.number)
       .then((next) => {
         if (cancelled) return;
         setPrDiff(next);
@@ -1153,7 +1158,7 @@ function InboxDetail({
     return () => {
       cancelled = true;
     };
-  }, [isPr, item.number, item.projectPath, revision]);
+  }, [environmentId, isPr, item.number, item.projectPath, revision]);
 
   const postComment = async (body: string) => {
     setPosting(true);
@@ -1161,10 +1166,10 @@ function InboxDetail({
     try {
       if (linear) {
         const id = item.id ?? "";
-        await linearIssueComment(id, body, { parentId: replyTo?.id });
+        await linearIssueComment(environmentId, id, body, { parentId: replyTo?.id });
         setReplyTo(null);
         try {
-          setThread(await linearIssueThread(id, { force: true }));
+          setThread(await linearIssueThread(environmentId, id, { force: true }));
         } catch (err: unknown) {
           setPostError(err instanceof Error ? err.message : String(err));
         }
@@ -1172,6 +1177,7 @@ function InboxDetail({
       }
       if (!githubKind) throw new Error("Unknown inbox item");
       await githubWorkItemComment(
+        environmentId,
         item.projectPath,
         githubKind,
         item.number,
@@ -1182,6 +1188,7 @@ function InboxDetail({
       try {
         setThread(
           await githubWorkItemThread(
+            environmentId,
             item.projectPath,
             githubKind,
             item.number,

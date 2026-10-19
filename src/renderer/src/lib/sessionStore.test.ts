@@ -13,17 +13,25 @@ import type { EventRow, ServerPush, SessionMeta } from "./tcserver/types";
 
 function meta(over: Partial<SessionMeta>): SessionMeta {
   return {
+    environmentId: "local",
     id: "s", parentId: null, projectId: null, workspaceId: null, threadType: null, planPath: null,
     provider: "codex", model: "gpt-5.5", reasoning: "medium", agentType: "implementer",
     title: "Fix the build", cwd: "/repo/", status: "idle", archived: false, pinned: true,
-    permission: "safe", fast: false, context1m: false, busySince: null, pausedAt: null,
+    permission: "safe", fast: false, ultrafast: false, context1m: false, busySince: null, pausedAt: null,
     frozenActiveElapsed: null, nativeId: "thread-1", createdAt: 5, updatedAt: 9, ...over,
   };
 }
 
+function wireMeta(over: Partial<SessionMeta> = {}): Omit<SessionMeta, "environmentId"> {
+  const { environmentId: _environmentId, ...wire } = meta(over);
+  return wire;
+}
+
 class FakeLink implements Link {
+  environmentId = "local";
+  profile = "local" as const;
   connected = true;
-  metas: SessionMeta[] = [];
+  metas: Omit<SessionMeta, "environmentId">[] = [];
   events = new Map<string, EventRow[]>();
   /** Resolves before a head (beforeSeq) fetch answers, when set. */
   holdHead: Promise<void> | null = null;
@@ -50,6 +58,7 @@ class FakeLink implements Link {
   }
   onPush(_l: (push: ServerPush) => void) { return () => {}; }
   onOpen() { return () => {}; }
+  onClose() { return () => {}; }
 }
 
 let link: FakeLink;
@@ -72,12 +81,12 @@ describe("summaryFromMeta", () => {
 describe("listSessionsByProject", () => {
   it("filters by project path, newest first, roots only", async () => {
     link.metas = [
-      meta({ id: "a", cwd: "/repo", updatedAt: 1 }),
-      meta({ id: "b", cwd: "/repo/", updatedAt: 3 }),
-      meta({ id: "child", cwd: "/repo", parentId: "b" }),
-      meta({ id: "c", cwd: "/other" }),
+      wireMeta({ id: "a", cwd: "/repo", updatedAt: 1 }),
+      wireMeta({ id: "b", cwd: "/repo/", updatedAt: 3 }),
+      wireMeta({ id: "child", cwd: "/repo", parentId: "b" }),
+      wireMeta({ id: "c", cwd: "/other" }),
     ];
-    sessionStore.connect(link);
+    sessionStore.attach(link);
     expect((await listSessionsByProject("/repo")).map((r) => r.id)).toEqual(["b", "a"]);
     expect(await listSessionsByProject("~")).toEqual([]);
   });
@@ -85,9 +94,9 @@ describe("listSessionsByProject", () => {
 
 describe("searchSessions", () => {
   it("matches titles and loaded transcripts", async () => {
-    link.metas = [meta({ id: "a", title: "Refactor auth" }), meta({ id: "b", title: "Other", archived: true })];
+    link.metas = [wireMeta({ id: "a", title: "Refactor auth" }), wireMeta({ id: "b", title: "Other", archived: true })];
     link.events.set("a", [{ sessionId: "a", seq: 1, ts: 1, event: { type: "user-text", text: "please refactor the login flow" } }]);
-    sessionStore.connect(link);
+    sessionStore.attach(link);
     await getSession("a");
     const { hits } = await searchSessions({ query: "refactor" });
     expect(hits.map((h) => h.kind)).toEqual(["conversation", "message"]);
@@ -99,13 +108,13 @@ describe("searchSessions", () => {
 
 describe("getSession", () => {
   it("returns the folded session and drafts as-is", async () => {
-    link.metas = [meta({ id: "a" })];
+    link.metas = [wireMeta({ id: "a" })];
     link.events.set("a", [{ sessionId: "a", seq: 1, ts: 1, event: { type: "user-text", text: "hi" } }]);
-    sessionStore.connect(link);
+    sessionStore.attach(link);
     const s = await getSession("a");
     expect(s?.blocks).toHaveLength(1);
     expect(s?.runtimeMode).toBe("supervised");
-    const draft = newSession("claude", "/repo");
+    const draft = newSession("local", "claude", "/repo");
     sessionStore.mutate([draft]);
     expect(await getSession(draft.id)).toBe(sessionStore.get(draft.id));
     expect(await getSession("nope")).toBeNull();
@@ -114,7 +123,7 @@ describe("getSession", () => {
 
 describe("loadSession", () => {
   it("returns once the last turns are folded; getSession waits for the whole log", async () => {
-    link.metas = [meta({ id: "a" })];
+    link.metas = [wireMeta({ id: "a" })];
     const rows: EventRow[] = [];
     // 305 one-row turns: the 300-row tail starts at q6.
     for (let turn = 1; turn <= 305; turn++) {
@@ -124,7 +133,7 @@ describe("loadSession", () => {
     link.events.set("a", rows);
     let releaseHead!: () => void;
     link.holdHead = new Promise<void>((r) => (releaseHead = r));
-    sessionStore.connect(link);
+    sessionStore.attach(link);
     const tail = await loadSession("a");
     expect(tail?.loaded).toBe(true);
     expect(tail?.blocks[0]?.text).toBe("q6");
@@ -142,8 +151,8 @@ describe("loadSession", () => {
 
 describe("shouldPersistSession", () => {
   it("needs a project and a user turn", () => {
-    expect(shouldPersistSession(newSession("claude", "~"))).toBe(false);
-    const s = { ...newSession("claude", "/repo"), blocks: [{ id: "1", role: "user" as const, text: "x" }] };
+    expect(shouldPersistSession(newSession("local", "claude", "~"))).toBe(false);
+    const s = { ...newSession("local", "claude", "/repo"), blocks: [{ id: "1", role: "user" as const, text: "x" }] };
     expect(shouldPersistSession(s)).toBe(true);
   });
 });

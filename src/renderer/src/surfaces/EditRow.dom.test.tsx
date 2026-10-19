@@ -2,8 +2,8 @@
 import { act, fireEvent, render } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-const readTextFile = vi.fn((_path: string) => Promise.resolve('a\nb\nc\n'))
-vi.mock('../lib/fs', () => ({ readTextFile: (path: string) => readTextFile(path) }))
+const readTextFile = vi.fn((_environmentId: string, _path: string) => Promise.resolve('a\nb\nc\n'))
+vi.mock('../lib/fs', () => ({ readTextFile: (environmentId: string, path: string) => readTextFile(environmentId, path) }))
 
 import { EditRow } from './EditRow'
 import type { Block } from '../lib/session'
@@ -36,7 +36,7 @@ describe('EditRow', () => {
     })
     expect(readTextFile).toHaveBeenCalledTimes(1)
     expect(container.textContent).toContain('B')
-    expect(readTextFile).toHaveBeenCalledWith('/repo/a.ts')
+    expect(readTextFile).toHaveBeenCalledWith('local', '/repo/a.ts')
     await act(async () => {
       fireEvent.click(getByLabelText('Hide diff'))
     })
@@ -46,3 +46,8 @@ describe('EditRow', () => {
     expect(readTextFile).toHaveBeenCalledTimes(1)
   })
 })
+
+vi.mock('../lib/tcserver/projects', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../lib/tcserver/projects')>()),
+  hostOfCwd: () => 'local',
+}))

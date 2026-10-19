@@ -122,6 +122,27 @@ describe("ConnectionRegistry", () => {
     expect(h.transports).toHaveLength(1);
   });
 
+  it("the primary link exists before its environment is added and is the same object after", async () => {
+    const h = harness();
+    const early = h.registry.primary();
+    expect(early.environmentId).toBe("local");
+    expect(early.connected).toBe(false);
+    let opened = 0;
+    early.onOpen(() => opened++);
+    await expect(early.request("x")).rejects.toThrow("not connected");
+    expect(() => h.registry.linkOf("env_nope")).toThrow("unknown environment");
+    const added = h.registry.add(localEnvironment(4000));
+    expect(added).toBe(early);
+    await flush();
+    h.transports[0].answerHello();
+    await flush();
+    expect(opened).toBe(1);
+    expect(early.connected).toBe(true);
+    h.registry.setPrimary("web");
+    expect(h.registry.primaryEnvironmentId).toBe("web");
+    expect(h.registry.primary().environmentId).toBe("web");
+  });
+
   it("statuses() is one stable map per change", async () => {
     const h = harness();
     h.registry.add(localEnvironment(4000));
@@ -154,9 +175,11 @@ describe("ConnectionRegistry", () => {
     });
   });
 
-  it("the web page's cookie route opens its own origin with no ticket", async () => {
+  it("the web page's cookie route opens its own origin with no ticket, as the one and primary environment", async () => {
     const h = harness();
+    h.registry.setPrimary("web");
     const link = h.registry.add(webEnvironment("wss://tempcode.example/ws"));
+    expect(h.registry.environments().map((e) => e.id)).toEqual(["web"]);
     await flush();
     expect(h.transports[0].url).toBe("wss://tempcode.example/ws");
     expect(h.transports[0].profile).toBe("remote");

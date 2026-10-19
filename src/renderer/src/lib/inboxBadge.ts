@@ -30,20 +30,21 @@ export function inboxSeenEntries(
   }));
 }
 
+/** Every environment's stored inbox, as one list. */
 function storedItems(): InboxItem[] {
-  const { github, linear } = inboxStore.getSnapshot();
   const catalog = workspaceStore.getSnapshot();
-  return [
-    ...inboxItemsFromSnapshot(github, catalog.workspaces, catalog.projects, ""),
-    ...linear.items,
-  ];
+  const out: InboxItem[] = [];
+  for (const { github, linear } of inboxStore.all().values()) {
+    out.push(...inboxItemsFromSnapshot(github, catalog.workspaces, catalog.projects, ""), ...linear.items);
+  }
+  return out;
 }
 
 function attentionEntries(): InboxSeenEntry[] {
-  const { linear } = inboxStore.getSnapshot();
+  const linearAssignedToMe = [...inboxStore.all().values()].some((s) => s.linear.assignedToMe);
   const shown = filterInboxByWorkspace(storedItems(), loadInboxFilters().hiddenWorkspaceIds);
   return inboxSeenEntries(
-    shown.filter((item) => inboxNeedsAttention(item, { linearAssignedToMe: linear.assignedToMe })),
+    shown.filter((item) => inboxNeedsAttention(item, { linearAssignedToMe })),
   );
 }
 

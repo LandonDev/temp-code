@@ -1,3 +1,4 @@
+import { sessionStore } from "../lib/tcserver/store";
 import { ChevronDown, ChevronRight } from "./icons";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
@@ -29,6 +30,7 @@ export function SessionReview({
   busy = false,
   onOpenDiff,
 }: Props) {
+  const environmentId = sessionStore.environmentOf(sessionId);
   const [files, setFiles] = useState<CheckpointFile[]>([]);
   const [expanded, setExpanded] = useState(false);
   const [acting, setActing] = useState<"keep" | "undo" | null>(null);
@@ -36,14 +38,14 @@ export function SessionReview({
   filesRef.current = files;
 
   const load = useCallback(() => {
-    if (!cwd || cwd === "~") {
+    if (!environmentId || !cwd || cwd === "~") {
       setFiles([]);
       return;
     }
-    void sessionCheckpointStatus(sessionId, cwd)
+    void sessionCheckpointStatus(environmentId, sessionId, cwd)
       .then((status) => setFiles(status.files))
       .catch(() => setFiles([]));
-  }, [sessionId, cwd]);
+  }, [environmentId, sessionId, cwd]);
 
   useEffect(() => {
     if (!enabled || busy) return;
@@ -91,12 +93,12 @@ export function SessionReview({
   if (!first) return null;
 
   const run = (action: "keep" | "undo") => {
-    if (disabled) return;
+    if (disabled || !environmentId) return;
     setActing(action);
     const op =
       action === "keep"
-        ? keepSessionChanges(sessionId, cwd)
-        : undoSessionChanges(sessionId, cwd);
+        ? keepSessionChanges(environmentId, sessionId, cwd)
+        : undoSessionChanges(environmentId, sessionId, cwd);
     const previous = filesRef.current.map((file) => file.path);
     void op
       .then((status) => {

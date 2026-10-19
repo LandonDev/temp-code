@@ -9,6 +9,7 @@ import {
 import { assetHref } from "../lib/nativeWeb";
 import { fileMedia, gitFileMedia, type FileMedia } from "../lib/fs";
 import { watchFile } from "../lib/fileWatch";
+import { hostOfCwd } from "../lib/tcserver/projects";
 import { displayPath } from "../lib/paths";
 
 /**
@@ -31,7 +32,7 @@ export function useFileMedia(path: string): MediaState {
     let cancelled = false;
     setState({ status: "pending" });
     const load = () =>
-      fileMedia(path)
+      fileMedia(hostOfCwd(path), path)
         .then((media) => {
           if (cancelled) return;
           setState(media ? { status: "media", media } : { status: "none" });
@@ -97,7 +98,7 @@ export function MediaReview({
     let cancelled = false;
     const relative = displayPath(path, cwd);
     if (!relative || relative === path) return;
-    gitFileMedia(cwd, relative, base)
+    gitFileMedia(hostOfCwd(path), cwd, relative, base)
       .then((sides) => {
         if (!cancelled) setOriginal(sides.original);
       })

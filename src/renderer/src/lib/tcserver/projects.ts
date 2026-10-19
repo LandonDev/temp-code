@@ -1,109 +1,137 @@
 import type { AccountPins } from "@server/shared/accounts";
-import { client } from "./client";
-import type { Link } from "./store";
+import { registry, type Link } from "../connection";
 import type {
   BranchList,
   ProjectCleanup,
   ProjectMeta,
   ProjectMode,
+  WireProjectMeta,
+  WireWorkspaceMeta,
   WorkspaceMeta,
 } from "./types";
-import { workspaceStore } from "./workspaces";
+import { workspaceByPath, workspaceStore } from "./workspaces";
 
 /**
- * Workspace and project actions, one server call each. The server pushes
- * the new lists to every window; the refresh after each call covers a
- * client whose push got lost and lets callers read the result at once.
+ * Workspace and project actions, one server call each, on the environment
+ * the workspace or project lives on. The server pushes the new lists to
+ * every window; the refresh after each call covers a client whose push got
+ * lost and lets callers read the result at once.
  */
 
-export async function createWorkspace(path: string, link: Link = client): Promise<WorkspaceMeta> {
-  const meta = await link.request<WorkspaceMeta>("workspace.create", { path });
-  await workspaceStore.refresh();
-  return meta;
+/** The link of a workspace the catalog knows. */
+export function linkOfWorkspace(workspaceId: string): Link {
+  const workspace = workspaceStore.workspace(workspaceId);
+  if (!workspace) throw new Error(`unknown workspace: ${workspaceId}`);
+  return registry.linkOf(workspace.environmentId);
 }
 
-export async function deleteWorkspace(workspaceId: string, link: Link = client): Promise<void> {
+/** The link of a project the catalog knows. */
+export function linkOfProject(projectId: string): Link {
+  const project = workspaceStore.project(projectId);
+  if (!project) throw new Error(`unknown project: ${projectId}`);
+  return registry.linkOf(project.environmentId);
+}
+
+export async function createWorkspace(environmentId: string, path: string): Promise<WorkspaceMeta> {
+  const link = registry.linkOf(environmentId);
+  const meta = await link.request<WireWorkspaceMeta>("workspace.create", { path });
+  await workspaceStore.refresh(link);
+  return { ...meta, environmentId };
+}
+
+export async function deleteWorkspace(workspaceId: string): Promise<void> {
+  const link = linkOfWorkspace(workspaceId);
   await link.request("workspace.delete", { workspaceId });
-  await workspaceStore.refresh();
+  await workspaceStore.refresh(link);
 }
 
-export async function createProject(
-  params: {
-    workspaceId: string;
-    name: string;
-    mode: ProjectMode;
-    branch?: string;
-    baseRef?: string;
-  },
-  link: Link = client,
-): Promise<ProjectMeta> {
-  const meta = await link.request<ProjectMeta>("project.create", params);
-  await workspaceStore.refresh();
-  return meta;
+export async function createProject(params: {
+  workspaceId: string;
+  name: string;
+  mode: ProjectMode;
+  branch?: string;
+  baseRef?: string;
+}): Promise<ProjectMeta> {
+  const link = linkOfWorkspace(params.workspaceId);
+  const meta = await link.request<WireProjectMeta>("project.create", params);
+  await workspaceStore.refresh(link);
+  return { ...meta, environmentId: link.environmentId };
 }
 
 export async function renameProject(
   projectId: string,
   name: string,
-  link: Link = client,
 ): Promise<void> {
+  const link = linkOfProject(projectId);
   await link.request("project.rename", { projectId, name: name.trim() });
-  await workspaceStore.refresh();
+  await workspaceStore.refresh(link);
 }
 
 export async function setProjectAccounts(
   projectId: string,
   pins: AccountPins,
-  link: Link = client,
 ): Promise<void> {
+  const link = linkOfProject(projectId);
   await link.request("project.setAccounts", { projectId, pins });
-  await workspaceStore.refresh();
+  await workspaceStore.refresh(link);
 }
 
 export async function setWorkspaceAccounts(
   workspaceId: string,
   pins: AccountPins,
-  link: Link = client,
 ): Promise<void> {
+  const link = linkOfWorkspace(workspaceId);
   await link.request("workspace.setAccounts", { workspaceId, pins });
-  await workspaceStore.refresh();
+  await workspaceStore.refresh(link);
 }
 
 export async function setProjectBranch(
   projectId: string,
   branch: string,
   baseRef?: string,
-  link: Link = client,
 ): Promise<void> {
+  const link = linkOfProject(projectId);
   await link.request("project.setBranch", { projectId, branch, ...(baseRef ? { baseRef } : {}) });
-  await workspaceStore.refresh();
+  await workspaceStore.refresh(link);
 }
 
 export async function archiveProject(
   projectId: string,
   archived: boolean,
   cleanup?: ProjectCleanup,
-  link: Link = client,
 ): Promise<void> {
+  const link = linkOfProject(projectId);
   await link.request("project.archive", {
     projectId,
     archived,
     ...(cleanup ? { cleanup } : {}),
   });
-  await workspaceStore.refresh();
+  await workspaceStore.refresh(link);
 }
 
 export async function deleteProject(
   projectId: string,
   cleanup?: ProjectCleanup,
-  link: Link = client,
 ): Promise<void> {
+  const link = linkOfProject(projectId);
   await link.request("project.delete", { projectId, ...(cleanup ? { cleanup } : {}) });
-  await workspaceStore.refresh();
+  await workspaceStore.refresh(link);
 }
 
-export function listBranches(workspaceId: string, link: Link = client): Promise<BranchList> {
-  return link.request<BranchList>("project.branches", { workspaceId });
+export function listBranches(workspaceId: string): Promise<BranchList> {
+  return linkOfWorkspace(workspaceId).request<BranchList>("project.branches", { workspaceId });
+}
+
+/** The environment whose project or workspace holds `cwd`, if the catalog knows one. */
+export function environmentOfCwd(cwd: string): string | undefined {
+  return projectForCwd(cwd)?.environmentId ?? workspaceByPath(workspaceStore.workspaces, cwd)?.environmentId;
+}
+
+/** The host a path lives on when only the path is known: the catalog's
+ *  owner of it, else this machine (a folder no host has told us about is
+ *  one the user opened here). The policy for path-only call sites. */
+export function hostOfCwd(cwd: string): string {
+  return environmentOfCwd(cwd) ?? registry.primary().environmentId;
 }
 
 /** Trailing-slash form of a directory, for prefix tests. */

@@ -1,4 +1,5 @@
-import { invoke, windowSlot } from "./native";
+import { invokeOn, windowSlot } from "./native";
+import { registry } from "./connection";
 import type { HarnessId, RuntimeMode, Session } from "./session";
 import { normalizeProjectPath, sameProjectPath } from "./recents";
 import * as commands from "./tcserver/commands";
@@ -115,7 +116,8 @@ export async function searchSessions(options: {
   const query = options.query.trim().toLowerCase();
   if (!query) return { hits: [], truncated: false };
   await sessionStore.ready();
-  if (options.includeArchived) await sessionStore.ensureArchived();
+  if (options.includeArchived)
+    await Promise.all(sessionStore.environmentIds().map((id) => sessionStore.ensureArchived(id)));
   const hits: SessionSearchHit[] = [];
   const seen = new Set<string>();
   const metas = sessionStore
@@ -158,10 +160,17 @@ export async function searchSessions(options: {
     }
   }
   const byId = new Map(metas.map((meta) => [meta.id, meta]));
-  const remote = await invoke<{ hits: ServerSearchHit[]; truncated: boolean }>(
-    "search_sessions",
-    { query: options.query.trim(), limit: SEARCH_LIMIT, archived: !!options.includeArchived },
-  ).catch(() => ({ hits: [], truncated: false }));
+  // Every host searches its own rows; the hits merge by session id below.
+  const remotes = await Promise.all(
+    sessionStore.environmentIds().map((environmentId) =>
+      invokeOn<{ hits: ServerSearchHit[]; truncated: boolean }>(environmentId, "search_sessions", {
+        query: options.query.trim(),
+        limit: SEARCH_LIMIT,
+        archived: !!options.includeArchived,
+      }).catch(() => ({ hits: [] as ServerSearchHit[], truncated: false })),
+    ),
+  );
+  const remote = { hits: remotes.flatMap((r) => r.hits), truncated: remotes.some((r) => r.truncated) };
   for (const row of remote.hits) {
     const meta = byId.get(row.sessionId);
     if (!meta) continue;
@@ -238,12 +247,15 @@ let workspaceWrite: Promise<unknown> = Promise.resolve();
 export async function saveWorkspaceSnapshot(snapshot: unknown): Promise<void> {
   const run = workspaceWrite
     .catch(() => undefined)
-    .then(() => invoke("workspace_set_snapshot", { snapshot, window: windowSlot() }));
+    // The window's layout lives on this machine's own server.
+    .then(() => invokeOn(registry.primary().environmentId, "workspace_set_snapshot", { snapshot, window: windowSlot() }));
   workspaceWrite = run;
   await run;
 }
 
 export async function loadWorkspaceSnapshot(): Promise<unknown | null> {
-  const raw = await invoke<unknown | null>("workspace_get_snapshot", { window: windowSlot() });
+  const raw = await invokeOn<unknown | null>(registry.primary().environmentId, "workspace_get_snapshot", {
+    window: windowSlot(),
+  });
   return raw ?? null;
 }

@@ -5,14 +5,14 @@
  */
 import { leafIds } from "./layout";
 import { Prefetcher, bootWarmTabs, whenIdle } from "./hoverPrefetch";
-import { client } from "./tcserver/client";
+import { registry } from "./connection";
 import { sessionStore } from "./tcserver/store";
 import { workspaceTabsStore } from "../stores/workspace";
 
 export const sessionPrefetch = new Prefetcher({
   load: (id) => sessionStore.ensureLoaded(id, "prefetch"),
   isLoaded: (id) => sessionStore.get(id)?.loaded === true,
-  connected: () => client.connected,
+  connected: () => registry.links().some((link) => link.connected),
 });
 
 /** The sessions a workspace tab shows; none for a tab that is not open. */

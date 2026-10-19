@@ -24,6 +24,7 @@ const block = (role: Block["role"], text: string, extra: Partial<Block> = {}): B
 
 const meta = (id: string, extra: Partial<SessionMeta> = {}): SessionMeta =>
   ({
+    environmentId: "local",
     id,
     parentId: null,
     status: "idle",
@@ -153,6 +154,7 @@ describe("agentLine", () => {
 describe("agentStats", () => {
   it("sums edit previews and reads tasks, context, and cost", () => {
     const session = {
+      environmentId: "local",
       blocks: [
         block("tool", "", { tool: { preview: { kind: "write", additions: 10, deletions: 4 } } }),
         block("tool", "", { tool: { preview: { kind: "write", additions: 2 } } }),
@@ -174,6 +176,7 @@ describe("agentStats", () => {
 
   it("falls back to the folded todo list and tolerates a missing session", () => {
     const session = {
+      environmentId: "local",
       blocks: [],
       thread: { todos: [{ status: "completed" }, { status: "pending" }] },
     } as unknown as Session;

@@ -392,6 +392,7 @@ function StartButton({ session, tasks }: { session: Session; tasks: string[] }) 
       for (let i = 0; i < n; i++) {
         await startThread(
           {
+            environmentId: session.environmentId,
             threadType: type,
             provider: choice.harness,
             model: nativeModelId(choice.model),
@@ -461,7 +462,12 @@ function StartButton({ session, tasks }: { session: Session; tasks: string[] }) 
                 </button>
                 <span className="text-[13px] font-medium">Orchestration options</span>
               </div>
-              <ThreadTune tune={tune} onChange={setTune} workspaceId={session.workspaceId ?? null} />
+              <ThreadTune
+                tune={tune}
+                onChange={setTune}
+                environmentId={session.environmentId}
+                workspaceId={session.workspaceId ?? null}
+              />
               <div className="px-3">
                 <button
                   type="button"

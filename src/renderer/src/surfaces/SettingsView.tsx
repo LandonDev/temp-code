@@ -148,7 +148,8 @@ import {
   saveGhostText,
   type FormatOnSave,
 } from "../lib/settings";
-import { client } from "../lib/tcserver/client";
+// App settings configure this machine’s host.
+import { registry } from "../lib/connection";
 import { retryBlockedEnsures } from "../lib/monaco/lspGate";
 import { Modal } from "../chrome/Modal";
 import { OrchestrationRulesEditor } from "../chrome/OrchestrationRules";
@@ -157,6 +158,7 @@ import { ThreadDefaultsEditor } from "../chrome/ThreadDefaultsDialog";
 import { TurnPassEditor } from "../chrome/TurnPassFields";
 import { openOrchestrationSettings, takeRequestedScope } from "../lib/tcserver/rules";
 import { useWorkspaces, workspaceLabelKey } from "../lib/tcserver/workspaces";
+import type { WorkspaceMeta } from "../lib/tcserver/types";
 import { setWorkspaceAccounts } from "../lib/tcserver/projects";
 import { useAccounts } from "../stores/accounts";
 import { shortName } from "../lib/accountScope";
@@ -504,7 +506,7 @@ function LinearSettings() {
 
   const loadTeams = useCallback(async () => {
     try {
-      const next = await listLinearTeams();
+      const next = await listLinearTeams(registry.primary().environmentId);
       setTeams(next);
     } catch {
       setTeams([]);
@@ -513,7 +515,7 @@ function LinearSettings() {
 
   useEffect(() => {
     let cancelled = false;
-    void linearConnected().then((status) => {
+    void linearConnected(registry.primary().environmentId).then((status) => {
       if (cancelled) return;
       setConnected(status.connected);
       if (status.connected) void loadTeams();
@@ -528,7 +530,7 @@ function LinearSettings() {
     setBusy(true);
     setError(null);
     try {
-      await saveLinearToken(token);
+      await saveLinearToken(registry.primary().environmentId, token);
       setToken("");
       setConnected(true);
       clearInboxCache();
@@ -547,7 +549,7 @@ function LinearSettings() {
     setBusy(true);
     setError(null);
     try {
-      await disconnectLinear();
+      await disconnectLinear(registry.primary().environmentId);
       setConnected(false);
       setTeams([]);
       clearInboxCache();
@@ -970,7 +972,7 @@ function ProvidersPage() {
 
   const refreshDoctor = useCallback((force = false) => {
     void probeHarnessAvailability({ force });
-    void probeDoctor({ force })
+    void probeDoctor(registry.primary().environmentId, { force })
       .then(setDoctor)
       .catch(() => setDoctor({}));
   }, []);
@@ -1071,7 +1073,7 @@ function ProviderRow({
     setUpdating(true);
     setUpdateError(null);
     try {
-      const row = await client.request<DoctorRow>("providers.update", {
+      const row = await registry.primary().request<DoctorRow>("providers.update", {
         provider: harness,
       });
       onUpdated(row);
@@ -1207,8 +1209,13 @@ function WorkspacePage({ workspaceId }: { workspaceId: string }) {
  */
 function WorkspaceAccountsEditor({ workspaceId }: { workspaceId: string }) {
   const workspace = useWorkspaces().find((w) => w.id === workspaceId);
-  const { snapshot } = useAccounts();
   if (!workspace) return null;
+  return <WorkspaceAccountsForHost workspace={workspace} />;
+}
+
+function WorkspaceAccountsForHost({ workspace }: { workspace: WorkspaceMeta }) {
+  const workspaceId = workspace.id;
+  const { snapshot } = useAccounts(workspace.environmentId);
   const pins = workspace.accountPins ?? {};
   return (
     <>
@@ -1680,7 +1687,7 @@ function LanguageServersRow() {
   useEffect(() => {
     let cancelled = false;
     const tick = () =>
-      void client
+      void registry.primary()
         .request<LspStatusRow[]>("lsp.status")
         .then((next) => {
           if (!cancelled) setRows(next);
@@ -1738,7 +1745,7 @@ function EditorPage() {
   const [note, setNote] = useState<string | null>(null);
 
   const refreshEngine = useCallback(() => {
-    void client
+    void registry.primary()
       .request<{ java?: JavaDoctor }>("doctor.get")
       .then((doctor) => {
         setJava(doctor.java ?? null);
@@ -1765,14 +1772,14 @@ function EditorPage() {
     setNote(null);
     if (eula) return;
     // The first open downloads the dist to read its license.
-    void client
+    void registry.primary()
       .request<{ build: string; text: string }>("idea.eula")
       .then(setEula)
       .catch((error) => setNote(error instanceof Error ? error.message : String(error)));
   };
 
   const accept = () => {
-    void client
+    void registry.primary()
       .request("idea.acceptEula")
       .then(() => {
         setGateOpen(false);
@@ -1784,7 +1791,7 @@ function EditorPage() {
 
   const checkUpdate = () => {
     setNote("Checking…");
-    void client
+    void registry.primary()
       .request<{ current: string; latest: string; updated: boolean }>("idea.checkUpdate")
       .then((r) => {
         setNote(r.updated ? `Updated to ${r.latest}. Accept the EULA again.` : "Up to date.");

@@ -4,6 +4,7 @@ import { ChevronRight, FilePlusCorner, PenLine, Trash2 } from '../chrome/icons'
 import { TerminalSpinner } from '../chrome/TerminalSpinner'
 import { usePaneVisible } from '../hooks/paneVisibility'
 import { readTextFile } from '../lib/fs'
+import { hostOfCwd } from '../lib/tcserver/projects'
 import { resolveWorkspacePath } from '../lib/paths'
 import type { OpenFileFn } from '../lib/search'
 import type { Block } from '../lib/session'
@@ -80,6 +81,7 @@ function useParsedDiff(block: Block): { diff: EditDiff; rows: DiffRow[] } {
  *  the call settles and the body is wanted — a collapsed row never reads
  *  its file — and again after an inline save. Null until located. */
 function useLocatedRows(
+  environmentId: string,
   block: Block,
   diff: EditDiff,
   filePath: string | undefined,
@@ -103,7 +105,7 @@ function useLocatedRows(
   useEffect(() => {
     if (!wantsLocate || !filePath) return
     let alive = true
-    readTextFile(filePath)
+    readTextFile(environmentId, filePath)
       .then((content) => {
         if (!alive) return
         const rows = locateHunks(diff.hunks, content)
@@ -115,7 +117,7 @@ function useLocatedRows(
       alive = false
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [wantsLocate, filePath, refresh, diff])
+  }, [environmentId, wantsLocate, filePath, refresh, diff])
   return useMemo(() => {
     if (located && (refresh > 0 ? located.gen === refresh : true)) {
       if (refresh > 0 || !diff.rows) return located.rows
@@ -140,6 +142,7 @@ export function EditRow({
   const { name, dir } = splitPath(m.path, cwd)
   const filePath = m.path ? resolveWorkspacePath(m.path, cwd) : undefined
   const sessionId = useTranscriptSession()
+  const environmentId = (sessionId ? sessionStore.environmentOf(sessionId) : undefined) ?? hostOfCwd(filePath ?? cwd ?? '')
   const reduce = useReducedMotion()
 
   // Editing in place: which line the editor opens at, and a bump after a
@@ -189,7 +192,7 @@ export function EditRow({
     if (open && omitted && !omitted.loading && !omitted.failed) void sessionStore.loadRowBodies(block)
   }, [open, omitted, block])
   // The file read that numbers the hunks waits until the body is wanted.
-  const located = useLocatedRows(block, diff, filePath, !running, refresh, open)
+  const located = useLocatedRows(environmentId, block, diff, filePath, !running, refresh, open)
   const rows = located ?? parsedRows
   const shownRows = running && liveRows ? liveRows : rows
   // The body mounts the first time the diff opens and stays for the close

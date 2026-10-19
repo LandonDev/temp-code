@@ -10,6 +10,7 @@ export {
   webEnvironment,
   savedEnvironment,
   pageProfile,
+  localServerPort,
   LOCAL_ENVIRONMENT_ID,
   WEB_ENVIRONMENT_ID,
   type LinkEvent,

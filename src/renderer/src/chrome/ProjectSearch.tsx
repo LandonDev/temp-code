@@ -1,3 +1,5 @@
+import { registry } from "../lib/connection";
+import { environmentOfCwd } from "../lib/tcserver/projects";
 import {
   CaseSensitive,
   ChevronLeft,
@@ -40,6 +42,7 @@ export function ProjectSearch({
   onOpenFile,
   onClose,
 }: Props) {
+  const environmentId = environmentOfCwd(cwd) ?? registry.primary().environmentId;
   const inputRef = useRef<HTMLInputElement>(null);
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
@@ -85,7 +88,7 @@ export function ProjectSearch({
     const timer = window.setTimeout(() => {
       setLoading(true);
       setError(null);
-      void searchProject({
+      void searchProject(environmentId, {
         cwd,
         query: trimmed,
         caseSensitive,
@@ -113,7 +116,7 @@ export function ProjectSearch({
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [caseSensitive, cwd, exclude, include, query, regex, wholeWord]);
+  }, [environmentId, caseSensitive, cwd, exclude, include, query, regex, wholeWord]);
 
   const groups = useMemo(() => groupMatches(matches), [matches]);
   const matchCount = matches.length;

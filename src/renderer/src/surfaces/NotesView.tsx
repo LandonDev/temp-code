@@ -30,6 +30,8 @@ import {
   requestAddNoteToChat,
   type Note,
 } from "../lib/notes";
+import { registry } from "../lib/connection";
+import { hostOfCwd } from "../lib/tcserver/projects";
 import { IS_MAC } from "../lib/platform";
 import { looksLikeProject } from "../lib/recents";
 import {
@@ -62,6 +64,8 @@ export function NotesView({
   onClose,
   onToggleSidebar,
 }: Props) {
+  // Notes without a project use this machine’s host.
+  const environmentId = cwd ? hostOfCwd(cwd) : registry.primary().environmentId;
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
   const listLock = useLockOverscroll<HTMLDivElement>();
@@ -87,7 +91,7 @@ export function NotesView({
 
   const refresh = useCallback(async () => {
     try {
-      const next = await loadNotes(true);
+      const next = await loadNotes(environmentId, true);
       setNotes(next);
       setError(null);
       setSelectedId((current) => {
@@ -102,7 +106,7 @@ export function NotesView({
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [environmentId]);
 
   useEffect(() => {
     void refresh();
@@ -146,12 +150,12 @@ export function NotesView({
     if (creating) return;
     setCreating(true);
     try {
-      const note = await createNote({
+      const note = await createNote(environmentId, {
         title: "Untitled",
         body: "",
         ...(cwd && looksLikeProject(cwd) ? { sourceCwd: cwd } : {}),
       });
-      setNotes(await loadNotes(true));
+      setNotes(await loadNotes(environmentId, true));
       setSelectedId(note.id);
       setQuery("");
     } catch (err: unknown) {
@@ -173,8 +177,8 @@ export function NotesView({
 
   const onDelete = async (id: string) => {
     try {
-      await deleteNote(id);
-      const next = await loadNotes(true);
+      await deleteNote(environmentId, id);
+      const next = await loadNotes(environmentId, true);
       setNotes(next);
       setSelectedId((current) => {
         if (current !== id) return current;
@@ -297,6 +301,7 @@ export function NotesView({
       <div className="flex min-h-0 min-w-0 flex-1">
         {list}
         <NoteDetail
+          environmentId={environmentId}
           note={selected}
           logos={logos}
           mascots={groupMascots}
@@ -443,6 +448,7 @@ function NoteCard({
 }
 
 function NoteDetail({
+  environmentId,
   note,
   logos,
   mascots,
@@ -452,6 +458,7 @@ function NoteDetail({
   onDelete,
   onAddToChat,
 }: {
+  environmentId: string;
   note: Note | null;
   onSaved: (note: Note) => void;
   onDelete: (id: string) => void | Promise<void>;
@@ -467,7 +474,8 @@ function NoteDetail({
   }
   return (
     <NoteEditor
-      key={note.id}
+      key={`${environmentId}:${note.id}`}
+      environmentId={environmentId}
       note={note}
       logos={logos}
       mascots={mascots}
@@ -481,6 +489,7 @@ function NoteDetail({
 }
 
 function NoteEditor({
+  environmentId,
   note,
   logos,
   mascots,
@@ -490,6 +499,7 @@ function NoteEditor({
   onDelete,
   onAddToChat,
 }: {
+  environmentId: string;
   note: Note;
   onSaved: (note: Note) => void;
   onDelete: (id: string) => void | Promise<void>;
@@ -529,7 +539,7 @@ function NoteEditor({
     const nextBody = bodyRef.current;
     if (nextTitle === current.title && nextBody === current.body) return;
     try {
-      const saved = await upsertNote({
+      const saved = await upsertNote(environmentId, {
         id: current.id,
         title: nextTitle,
         body: nextBody,
@@ -545,7 +555,7 @@ function NoteEditor({
     } catch (err: unknown) {
       setSaveError(err instanceof Error ? err.message : String(err));
     }
-  }, []);
+  }, [environmentId]);
 
   const scheduleSave = useCallback(() => {
     if (saveTimer.current != null) window.clearTimeout(saveTimer.current);

@@ -1,3 +1,4 @@
+import { registry } from '../lib/connection'
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { motion, useReducedMotion } from 'motion/react'
 import { toast } from 'sonner'
@@ -31,7 +32,8 @@ const NONE: ReadonlySet<ServiceId> = new Set()
  * (the accounts snapshot), never from a second poller.
  */
 function useAliax() {
-  const { snapshot } = useAccounts()
+  // Aliax's pages manage this machine's accounts; remote hosts keep their own.
+  const { snapshot } = useAccounts(registry.primary().environmentId)
   const [views, setViews] = useState<ServiceView[] | null>(null)
   // A manual refresh drops these services' bars to skeletons so the reload is
   // visible; the background snapshot updates in place without the flash.
@@ -63,7 +65,7 @@ function useAliax() {
       // One after another: the store ignores a refresh while one is running.
       for (const s of active) {
         const provider = PROVIDER_OF[s.id]
-        if (provider) await accountsStore.refresh(provider).catch(() => {})
+        if (provider) await accountsStore.refresh(registry.primary().environmentId, provider).catch(() => {})
       }
     } finally {
       setMasked(NONE)

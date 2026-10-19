@@ -9,15 +9,16 @@ import {
   parsePrContent,
   type PrContent,
 } from "../gitText";
-import { client } from "./client";
+import { registry } from "../connection";
+import { hostOfCwd } from "./projects";
 
 /**
  * One-shot text through the server (`text.generate`, a tool-less Claude
  * call): commit messages, PR bodies, branch names. Titles are the
  * server's own job now, so the title hook returns null.
  */
-export async function generateText(prompt: string, cwd?: string): Promise<string | null> {
-  const { text } = await client.request<{ text: string | null }>("text.generate", {
+export async function generateText(environmentId: string, prompt: string, cwd?: string): Promise<string | null> {
+  const { text } = await registry.linkOf(environmentId).request<{ text: string | null }>("text.generate", {
     prompt,
     ...(cwd && cwd !== "~" ? { cwd } : {}),
   });
@@ -25,9 +26,11 @@ export async function generateText(prompt: string, cwd?: string): Promise<string
 }
 
 export async function generateServerCommitMessage(cwd: string): Promise<string> {
-  const context = await gitStagedContext(cwd);
+  const environmentId = hostOfCwd(cwd);
+  const context = await gitStagedContext(environmentId, cwd);
   const output =
     (await generateText(
+      environmentId,
       buildCommitMessagePrompt({
         branch: context.branch,
         stagedSummary: context.summary,
@@ -48,10 +51,12 @@ export async function generateServerCommitMessage(cwd: string): Promise<string> 
 export async function generateServerPrContent(
   cwd: string,
 ): Promise<(PrContent & { base: string; head: string }) | null> {
-  const range = await gitRangeContext(cwd);
+  const environmentId = hostOfCwd(cwd);
+  const range = await gitRangeContext(environmentId, cwd);
   let parsed: PrContent | null = null;
   try {
     const output = await generateText(
+      environmentId,
       buildPrContentPrompt({
         baseBranch: range.base,
         headBranch: range.head,
@@ -80,7 +85,7 @@ export async function generateServerBranchName(
   message: string,
 ): Promise<string | null> {
   try {
-    const output = await generateText(buildBranchNamePrompt(message), cwd);
+    const output = await generateText(hostOfCwd(cwd), buildBranchNamePrompt(message), cwd);
     return output ? parseBranchName(output) : null;
   } catch (error) {
     console.debug("[monocode] branch name", error);

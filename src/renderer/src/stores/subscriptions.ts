@@ -1,3 +1,4 @@
+import { registry } from "../lib/connection";
 import { LAYOUT_CHANGE_EVENT, loadSidebarLayout, type SidebarLayout } from "../lib/appearance";
 import { isAppQuitting } from "../lib/appLifecycle";
 import { installCheckpointBridge } from "../lib/checkpointBridge";
@@ -256,7 +257,8 @@ export function installActiveSessionSync(): Teardown {
     if (!catalog.loaded) return;
     void migrateWorkspaces();
     if (looksLikeProject(projectCwd) && !workspaceByPath(catalog.workspaces, projectCwd)) {
-      void createWorkspace(projectCwd).catch(() => undefined);
+      // The window's folder is on this machine: a local workspace.
+      void createWorkspace(registry.primary().environmentId, projectCwd).catch(() => undefined);
     }
   };
 
@@ -475,7 +477,7 @@ export function installBootTasks(): Teardown {
       .then((cwd) => {
         if (!live || !looksLikeProject(cwd)) return;
         project.adoptDefaultCwd(cwd);
-        void createWorkspace(cwd).catch(() => undefined);
+        void createWorkspace(registry.primary().environmentId, cwd).catch(() => undefined);
         sessionStore.mutate((prev) => prev.map((s) => (s.cwd === "~" ? { ...s, cwd } : s)));
       })
       .catch(() => {});

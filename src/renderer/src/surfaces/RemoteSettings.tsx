@@ -12,7 +12,7 @@ import { DialogFooter, ErrorLine, errorText } from "../chrome/ConfirmDialog";
 import { Check, Copy } from "../chrome/icons";
 import { Modal } from "../chrome/Modal";
 import { timeAgo } from "../lib/format";
-import { client } from "../lib/tcserver/client";
+import { registry } from "../lib/connection";
 import { Heading, INPUT_CLASS, Input, Row, SecondaryButton, Segmented, Toggle } from "./settingsBits";
 import { MatrixSpinner } from "./threads/bits";
 
@@ -36,7 +36,7 @@ const capsText = (caps: Capability[]): string => {
 const kindText = (key: RemoteKey): string =>
   key.audience === "mcp" ? "Bot (MCP)" : key.kind === "browser" ? "Browser" : "Key";
 
-const rpc = <T,>(method: string, params: unknown = {}): Promise<T> => client.request<T>(method, params);
+const rpc = <T,>(method: string, params: unknown = {}): Promise<T> => registry.primary().request<T>(method, params);
 
 export function RemoteSettings() {
   const [status, setStatus] = useState<RemoteStatus | null>(null);

@@ -6,7 +6,7 @@ import {
 import { newSession, type Block, type Session } from "./session";
 
 function chat(cwd: string, patch: Partial<Session> = {}): Session {
-  const session = newSession("claude", cwd);
+  const session = newSession("local", "claude", cwd);
   session.title = "claude · Fix the sidebar";
   session.blocks = [{ id: "u1", role: "user", text: "hello", startedAt: 1_000 }];
   return { ...session, ...patch, blocks: patch.blocks ?? session.blocks };

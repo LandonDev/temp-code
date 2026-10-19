@@ -27,7 +27,7 @@ vi.mock("./fs", async (importOriginal) => {
   const actual = await importOriginal<typeof import("./fs")>();
   return {
     ...actual,
-    listDir: (path: string) => listDir(path),
+    listDir: (environmentId: string, path: string) => { expect(environmentId).toBe("local"); return listDir(path); },
   };
 });
 
@@ -79,3 +79,8 @@ describe("fileTree cache", () => {
     stop();
   });
 });
+
+vi.mock("./tcserver/projects", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./tcserver/projects")>()),
+  hostOfCwd: () => "local",
+}));

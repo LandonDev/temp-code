@@ -1,3 +1,8 @@
+import { leafIds } from "../lib/layout";
+import { sessionStore } from "../lib/tcserver/store";
+import { workspaceTabsStore } from "../stores/workspace";
+import { registry } from "../lib/connection";
+import { environmentOfCwd } from "../lib/tcserver/projects";
 import {
   ChevronLeft,
   ChevronRight,
@@ -1041,6 +1046,16 @@ function TitleBarComponent({
     ? tabs.filter((tab) => tab.groupId === groupMenu.groupId)
     : [];
   const groupMenuShared = sharedGroupProject(groupMenuTabs);
+  const groupMenuWorkspaceTabs = workspaceTabsStore.getState().tabs.filter((tab) =>
+    groupMenuTabs.some((menuTab) => menuTab.id === tab.id),
+  );
+  const groupMenuSession = groupMenuWorkspaceTabs
+    .flatMap((tab) => [tab.focusedId, ...leafIds(tab.layout)])
+    .map((id) => sessionStore.get(id))
+    .find((session) => session !== undefined);
+  const groupMenuCwd = groupMenuSession?.cwd ?? groupMenuWorkspaceTabs
+    .flatMap((tab) => [...tab.editorPanes, ...(tab.terminalPanes ?? [])])
+    .flatMap((pane) => pane.files).find((file) => file.cwd)?.cwd ?? cwd;
 
   const toggleGroupCollapse = useCallback((project: string) => {
     setCollapsedGroups((prev) => {
@@ -1526,6 +1541,7 @@ function TitleBarComponent({
 
         {groupMenu ? (
           <TabGroupMenu
+            environmentId={groupMenuSession?.environmentId ?? environmentOfCwd(groupMenuCwd) ?? registry.primary().environmentId}
             x={groupMenu.x}
             y={groupMenu.y}
             groupId={groupMenu.groupId}

@@ -8,6 +8,7 @@ import { WorkspaceThreadsList, workspaceThreadSections } from "./WorkspaceThread
 
 const meta = (id: string, extra: Partial<SessionMeta> = {}): SessionMeta =>
   ({
+    environmentId: "local",
     id,
     parentId: null,
     projectId: "p1",
@@ -25,6 +26,7 @@ const meta = (id: string, extra: Partial<SessionMeta> = {}): SessionMeta =>
   }) as SessionMeta;
 
 const project = (id: string, over: Partial<ProjectMeta> = {}): ProjectMeta => ({
+  environmentId: "local",
   id,
   workspaceId: "w1",
   name: id,

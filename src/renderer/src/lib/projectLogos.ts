@@ -1,4 +1,4 @@
-import { convertFileSrc, invoke, open } from "./native";
+import { convertFileSrc, invokeOn, open } from "./native";
 import {
   notifyTabGroupLogosChanged,
   saveTabGroupLogo,
@@ -21,10 +21,10 @@ export async function pickImageFile(): Promise<string | null> {
   return null;
 }
 
-export async function pickAndSetProjectLogo(project: string): Promise<string | null> {
+export async function pickAndSetProjectLogo(environmentId: string, project: string): Promise<string | null> {
   const sourcePath = await pickImageFile();
   if (!sourcePath) return null;
-  const path = await invoke<string>("save_project_logo", {
+  const path = await invokeOn<string>(environmentId, "save_project_logo", {
     project,
     sourcePath,
   });
@@ -33,8 +33,8 @@ export async function pickAndSetProjectLogo(project: string): Promise<string | n
   return path;
 }
 
-export async function clearProjectLogo(project: string): Promise<void> {
-  await invoke("remove_project_logo", { project });
+export async function clearProjectLogo(environmentId: string, project: string): Promise<void> {
+  await invokeOn(environmentId, "remove_project_logo", { project });
   saveTabGroupLogo(project, null);
   notifyTabGroupLogosChanged();
 }

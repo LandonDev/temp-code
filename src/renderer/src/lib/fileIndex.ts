@@ -1,3 +1,4 @@
+import { hostOfCwd } from "./tcserver/projects";
 import { listProjectFiles, type ProjectFile } from "./fs";
 import { scorePath, type FuzzyHit } from "./fuzzy";
 import { resolveWorkspacePath } from "./paths";
@@ -8,6 +9,8 @@ const MAX_RECENTS = 30;
 const MAX_RESULTS = 80;
 
 type Cache = {
+  /** The host that answered; the same path may exist on several. */
+  host: string;
   cwd: string;
   files: ProjectFile[];
 };
@@ -22,7 +25,7 @@ function normCwd(cwd: string): string {
 }
 
 export function peekProjectFiles(cwd: string): ProjectFile[] | null {
-  return cache?.cwd === cwd ? cache.files : null;
+  return cache?.cwd === cwd && cache.host === hostOfCwd(cwd) ? cache.files : null;
 }
 
 export function invalidateProjectFiles(cwd?: string) {
@@ -48,13 +51,14 @@ export function loadProjectFiles(
   refresh = false,
 ): Promise<ProjectFile[]> {
   if (!looksLikeProject(cwd)) return Promise.resolve([]);
-  if (!refresh && cache?.cwd === cwd) return Promise.resolve(cache.files);
+  const host = hostOfCwd(cwd);
+  if (!refresh && cache?.cwd === cwd && cache.host === host) return Promise.resolve(cache.files);
   if (inflight?.cwd === cwd) return inflight.promise;
 
   const id = ++epoch;
-  const promise = listProjectFiles(cwd)
+  const promise = listProjectFiles(host, cwd)
     .then((files) => {
-      if (id === epoch) cache = { cwd, files };
+      if (id === epoch) cache = { host, cwd, files };
       return files;
     })
     .finally(() => {

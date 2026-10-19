@@ -108,6 +108,7 @@ describe("projectSignals", () => {
 
 function meta(id: string, over: Partial<SessionMeta> = {}): SessionMeta {
   return {
+    environmentId: "local",
     id,
     parentId: null,
     projectId: null,
@@ -228,6 +229,7 @@ describe("workspaceRailStatuses", () => {
       workspaces: [],
       projects: [
         {
+          environmentId: "local",
           id: "p1",
           workspaceId: "w1",
           name: "Retired",

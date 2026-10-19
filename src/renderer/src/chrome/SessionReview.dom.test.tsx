@@ -25,6 +25,8 @@ vi.mock('../lib/fileWatch', () => ({ invalidateWatchedFiles: vi.fn() }))
 import { mountProbe } from '../test/renderProbe'
 import { SessionReview, STATUS_DEBOUNCE_MS } from './SessionReview'
 
+vi.mock('../lib/tcserver/store', () => ({ sessionStore: { environmentOf: (id: string) => id === 's1' ? 'local' : undefined } }))
+
 const strip = (busy: boolean) => (
   <SessionReview sessionId="s1" cwd="/w/one" busy={busy} onOpenDiff={() => undefined} />
 )
@@ -52,6 +54,7 @@ describe('SessionReview status fetches', () => {
     expect(status).not.toHaveBeenCalled()
     await probe.act(() => vi.advanceTimersByTimeAsync(STATUS_DEBOUNCE_MS))
     expect(status).toHaveBeenCalledTimes(1)
+    expect(status).toHaveBeenCalledWith('local', 's1', '/w/one')
     probe.unmount()
   })
 

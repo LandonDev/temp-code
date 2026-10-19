@@ -2,8 +2,8 @@
 import { act, render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-const readFile = vi.fn<(path: string) => Promise<string | null>>();
-vi.mock("../lib/tcserver/commands", () => ({ readFile: (path: string) => readFile(path) }));
+const readFile = vi.fn<(environmentId: string, path: string) => Promise<string | null>>();
+vi.mock("../lib/tcserver/commands", () => ({ readFile: (environmentId: string, path: string) => readFile(environmentId, path) }));
 
 import { isSettledPlanning, usePlanReady } from "./usePlanReady";
 
@@ -28,7 +28,7 @@ describe("isSettledPlanning", () => {
 
 describe("usePlanReady", () => {
   it("peeks the plan of a planning thread that watches background work", async () => {
-    readFile.mockImplementation(async (path) => (path === "written.md" ? "# plan" : ""));
+    readFile.mockImplementation(async (_environmentId, path) => (path === "written.md" ? "# plan" : ""));
     let ready: Record<string, boolean> = {};
     const threads: Input[] = [
       { id: "w", threadType: "planning", status: "watching", planPath: "written.md" },
@@ -39,7 +39,12 @@ describe("usePlanReady", () => {
     const view = render(<Probe threads={threads} onReady={(r) => (ready = r)} />);
     await act(async () => {});
     expect(ready).toEqual({ w: true, e: false });
-    expect(readFile.mock.calls.map(([p]) => p).sort()).toEqual(["empty.md", "written.md"]);
+    expect(readFile.mock.calls.map(([environmentId, p]) => { expect(environmentId).toBe("local"); return p; }).sort()).toEqual(["empty.md", "written.md"]);
     view.unmount();
   });
 });
+
+vi.mock("../lib/tcserver/projects", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../lib/tcserver/projects")>()),
+  hostOfCwd: () => "local",
+}));

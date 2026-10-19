@@ -1,3 +1,4 @@
+import { registry } from "../lib/connection";
 import { useEffect, useState } from "react";
 import { GHOST, PRIMARY } from "./ConfirmDialog";
 import { MatrixSpinner } from "../surfaces/threads/bits";
@@ -15,7 +16,7 @@ import {
   storedModelId,
   type DefaultsScope,
 } from "../lib/tcserver/defaults";
-import { useThreadDefaults, useWorkspaceCatalog, workspaceStore } from "../lib/tcserver/workspaces";
+import { scopeKey, useThreadDefaults, useWorkspaceCatalog, workspaceStore } from "../lib/tcserver/workspaces";
 import { openWorkspaceSettings } from "../lib/settings";
 import type { ThreadDefaults, WorkspaceMeta } from "../lib/tcserver/types";
 import { Heading, Row, SecondaryButton, Select } from "../surfaces/settingsBits";
@@ -97,12 +98,20 @@ export function ThreadDefaultsEditor({
   workspaceId: string | null;
   first?: boolean;
 }) {
-  const scope = useThreadDefaults(workspaceId);
+  const workspace = useWorkspaceCatalog().workspaces.find((w) => w.id === workspaceId);
+  // Global app settings belong to this machine.
+  const environmentId = workspaceId === null ? registry.primary().environmentId : workspace?.environmentId;
+  if (!environmentId) return <MatrixSpinner />;
+  return <DefaultsEditor key={environmentId} environmentId={environmentId} workspaceId={workspaceId} first={first} />;
+}
+
+function DefaultsEditor({ environmentId, workspaceId, first }: { environmentId: string; workspaceId: string | null; first: boolean }) {
+  const scope = useThreadDefaults(environmentId, workspaceId);
   const [error, setError] = useState<string | null>(null);
   const save = (next: ThreadDefaults | null) => {
     setError(null);
     workspaceStore
-      .saveDefaults(workspaceId, next)
+      .saveDefaults(environmentId, workspaceId, next)
       .catch((err) => setError(err instanceof Error ? err.message : String(err)));
   };
   const resettable = scope ? (workspaceId === null ? true : scope.overridden) : false;
@@ -121,7 +130,7 @@ export function ThreadDefaultsEditor({
       <p className="pb-2 text-[12px] leading-relaxed text-content/40">
         {scopeHint(workspaceId, scope ?? BUILT_IN_SCOPE)}
       </p>
-      {workspaceId === null ? <OverridingWorkspaces /> : null}
+      {workspaceId === null ? <OverridingWorkspaces environmentId={environmentId} /> : null}
       {scope ? <ThreadDefaultsFields value={scope.defaults} onChange={save} /> : null}
       {error ? <p className="pt-2 text-[12px] text-danger">{error}</p> : null}
     </section>
@@ -130,9 +139,9 @@ export function ThreadDefaultsEditor({
 
 /** Under the global editor: which workspaces keep their own set. Each name
  *  opens that workspace's page, where the override lives. */
-function OverridingWorkspaces() {
+function OverridingWorkspaces({ environmentId }: { environmentId: string }) {
   const { workspaces, defaults } = useWorkspaceCatalog();
-  const overriding = workspaces.filter((w) => defaults.get(w.id)?.overridden);
+  const overriding = workspaces.filter((w) => w.environmentId === environmentId && defaults.get(scopeKey(w.environmentId, w.id))?.overridden);
   if (overriding.length === 0) return null;
   return (
     <p className="pb-2 text-[12px] leading-relaxed text-content/40" data-testid="defaults-overrides">
@@ -179,7 +188,7 @@ export function ThreadDefaultsDialog({
   workspace: WorkspaceMeta;
   onClose: () => void;
 }) {
-  const scope = useThreadDefaults(workspace.id);
+  const scope = useThreadDefaults(workspace.environmentId, workspace.id);
   const [value, setValue] = useState<ThreadDefaults | null>(scope?.defaults ?? null);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -191,7 +200,7 @@ export function ThreadDefaultsDialog({
     setPending(true);
     setError(null);
     try {
-      await workspaceStore.saveDefaults(workspace.id, next);
+      await workspaceStore.saveDefaults(workspace.environmentId, workspace.id, next);
       onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));

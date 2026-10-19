@@ -40,7 +40,7 @@ function state(tabs: WorkspaceTab[], activeTabId = tabs[0]?.id ?? ""): Workspace
 }
 
 function session(id: string, projectId: string | null = null): Session {
-  return { ...newSession("claude", "/repo"), id, projectId };
+  return { ...newSession("local", "claude", "/repo"), id, projectId };
 }
 
 function row(...ids: string[]): LayoutNode {
@@ -258,7 +258,7 @@ describe("projectTabTarget", () => {
 });
 
 describe("workspaceTabTarget", () => {
-  const at = (id: string, cwd: string): Session => ({ ...newSession("claude", cwd), id });
+  const at = (id: string, cwd: string): Session => ({ ...newSession("local", "claude", cwd), id });
   const sessions = [at("s-a", "/repo"), at("s-b", "/other"), at("s-c", "/repo")];
 
   it("prefers the tab holding the workspace's last thread", () => {

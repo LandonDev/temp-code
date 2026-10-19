@@ -9,7 +9,7 @@ type EventListener = (sessionId: string, row: EventRow, session: Session) => voi
 function fakeStore(cwd = "/repo") {
   const events = new Set<EventListener>();
   const lives = new Set<LiveEditListener>();
-  const session = { id: "s1", cwd, blocks: [] } as unknown as Session;
+  const session = { id: "s1", environmentId: "local", cwd, blocks: [] } as unknown as Session;
   return {
     onEvent: (l: EventListener) => { events.add(l); return () => events.delete(l); },
     onLiveEdit: (l: LiveEditListener) => { lives.add(l); return () => lives.delete(l); },
@@ -26,9 +26,9 @@ function fakeStore(cwd = "/repo") {
 function recorder() {
   const calls: string[] = [];
   const api: CheckpointCalls = {
-    ensure: async (id, cwd) => { calls.push(`ensure ${id} ${cwd}`); },
-    capture: async (id, cwd, paths) => { calls.push(`capture ${id} ${cwd} ${paths.join(",")}`); },
-    sync: async (id, cwd) => { calls.push(`sync ${id} ${cwd}`); },
+    ensure: async (environmentId, id, cwd) => { calls.push(`ensure ${environmentId} ${id} ${cwd}`); },
+    capture: async (environmentId, id, cwd, paths) => { calls.push(`capture ${environmentId} ${id} ${cwd} ${paths.join(",")}`); },
+    sync: async (environmentId, id, cwd) => { calls.push(`sync ${environmentId} ${id} ${cwd}`); },
     changed: (id) => { calls.push(`changed ${id}`); },
   };
   return { calls, api };
@@ -51,11 +51,11 @@ describe("checkpoint bridge", () => {
     store.event({ type: "status", status: "error" });
     await tick();
     expect(calls).toEqual([
-      "ensure s1 /repo",
-      "sync s1 /repo",
-      "sync s1 /repo",
-      "sync s1 /repo",
-      "sync s1 /repo",
+      "ensure local s1 /repo",
+      "sync local s1 /repo",
+      "sync local s1 /repo",
+      "sync local s1 /repo",
+      "sync local s1 /repo",
       "changed s1",
       "changed s1",
       "changed s1",
@@ -72,8 +72,8 @@ describe("checkpoint bridge", () => {
     store.live("/repo/b.ts", true);
     await tick();
     expect(calls).toEqual([
-      "capture s1 /repo /repo/src/a.ts",
-      "capture s1 /repo /repo/b.ts",
+      "capture local s1 /repo /repo/src/a.ts",
+      "capture local s1 /repo /repo/b.ts",
       "changed s1",
       "changed s1",
     ]);

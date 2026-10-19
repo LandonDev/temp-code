@@ -4,8 +4,8 @@ import type { ProfileView, UsageReport } from 'aliax-core/shared/types'
 import { emptyAccounts, type AccountsSnapshot } from '@server/shared/accounts'
 import type { Link } from '../lib/tcserver/store'
 import type { ServerPush, SessionMeta } from '../lib/tcserver/types'
+import { registry } from '../lib/connection'
 import { accountsStore } from '../stores/accounts'
-import { client } from '../lib/tcserver/client'
 import { sessionStore } from '../lib/tcserver/store'
 import { workspaceStore } from '../lib/tcserver/workspaces'
 import { mountProbe } from '../test/renderProbe'
@@ -56,6 +56,8 @@ function snapshot(): AccountsSnapshot {
 }
 
 class FakeLink implements Link {
+  environmentId = 'local'
+  profile = 'local' as const
   connected = true
   calls: { method: string; params: unknown }[] = []
   request<T>(method: string, params?: unknown): Promise<T> {
@@ -73,6 +75,9 @@ class FakeLink implements Link {
   onOpen(): () => void {
     return () => {}
   }
+  onClose() {
+    return () => {}
+  }
 }
 
 const flush = () => new Promise((r) => setTimeout(r, 0))
@@ -88,6 +93,7 @@ afterEach(() => {
 })
 
 const meta = (extra: Partial<SessionMeta> = {}): SessionMeta => ({
+  environmentId: 'local',
   id: 'thread-1',
   parentId: null,
   projectId: null,
@@ -120,8 +126,10 @@ const meta = (extra: Partial<SessionMeta> = {}): SessionMeta => ({
 async function mount(harness: 'claude' | 'cursor', thread?: Partial<SessionMeta>, withWorkspaces = false) {
   vi.spyOn(Date, 'now').mockReturnValue(now)
   const link = new FakeLink()
-  accountsStore.connect(link)
-  if (withWorkspaces) workspaceStore.connect(link)
+  vi.spyOn(registry, 'primary').mockReturnValue(link as unknown as ReturnType<typeof registry.primary>)
+  accountsStore.attach(link)
+  if (withWorkspaces) workspaceStore.attach(link)
+  sessionStore.attach(link)
   if (thread) sessionStore.adopt(meta(thread))
   await flush()
   probe = mountProbe(<UsageFooter harness={harness} sessionId={thread ? 'thread-1' : undefined} />)
@@ -179,8 +187,8 @@ describe('UsageFooter', () => {
   })
 
   it("with a thread it shows that thread's account; the list is read-only with a check on it", async () => {
-    const request = vi.spyOn(client, 'request').mockResolvedValue(null)
-    const { root } = await mount('claude', { account: 'b@x.com' })
+    const { root, link } = await mount('claude', { account: 'b@x.com' })
+    const request = vi.spyOn(link, 'request')
     // The thread spends from b, whatever the global pin says.
     expect(root.textContent).toContain('b@x.com')
     expect(root.textContent).not.toContain('Main')

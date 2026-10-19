@@ -1,5 +1,5 @@
 import { invoke } from "../native";
-import { client } from "./client";
+import { registry } from "../connection";
 import type { CreateSessionInput, SessionMeta } from "./types";
 
 const SMOKE_TIMEOUT_MS = 90_000;
@@ -14,10 +14,11 @@ export interface SmokeResult {
 /**
  * One scripted Claude turn through the sidecar: create a session, subscribe,
  * send "reply pong", collect the streamed text, resolve on turn-complete.
- * Run from devtools as `await __monocode.smoke()`.
+ * Run from devtools as `await __monocode.smoke("local")`.
  */
-export async function smoke(cwd?: string): Promise<SmokeResult> {
+export async function smoke(environmentId: string, cwd?: string): Promise<SmokeResult> {
   const t0 = performance.now();
+  const client = registry.linkOf(environmentId);
   const dir = cwd ?? (await invoke<string>("default_cwd"));
   const input: CreateSessionInput = {
     provider: "claude",

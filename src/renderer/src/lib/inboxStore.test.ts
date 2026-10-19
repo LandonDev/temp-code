@@ -14,9 +14,10 @@ import {
 } from "./inboxStore";
 
 const invoke = vi.fn();
-vi.mock("./native", () => ({ invoke: (...args: unknown[]) => invoke(...args) }));
+vi.mock("./native", () => ({ invokeOn: (environmentId: string, ...args: unknown[]) => { expect(environmentId).toBe("local"); return invoke(...args); } }));
 
 const ws = (over: Partial<WorkspaceMeta> = {}): WorkspaceMeta => ({
+  environmentId: "local",
   id: "w1",
   name: "web",
   path: "/home/me/web",
@@ -26,6 +27,7 @@ const ws = (over: Partial<WorkspaceMeta> = {}): WorkspaceMeta => ({
   ...over,
 });
 const project = (over: Partial<ProjectMeta> = {}): ProjectMeta => ({
+  environmentId: "local",
   id: "p1",
   workspaceId: "w1",
   name: "Auth",
@@ -155,6 +157,9 @@ type FakeLink = Link & { calls: { method: string; params: unknown }[]; open: () 
 function fakeLink(connected: boolean): FakeLink {
   const openers = new Set<() => void>();
   const link: FakeLink = {
+    environmentId: "local",
+    profile: "local" as const,
+    onClose: () => () => {},
     calls: [],
     answer: snapshot(),
     connected,
@@ -187,12 +192,12 @@ afterEach(() => inboxStore.reset());
 describe("inboxStore", () => {
   it("connect reads the stored snapshot once and never asks for a refresh", async () => {
     const link = fakeLink(false);
-    inboxStore.connect(link);
+    inboxStore.attach(link);
     expect(link.calls).toEqual([]);
     link.open();
     await flush();
     expect(link.calls.map((c) => c.method)).toEqual(["github.inbox"]);
-    expect(inboxStore.getSnapshot()).toMatchObject({ githubLoaded: true, github: { fetchedAt: 100 }, refreshing: false });
+    expect(inboxStore.getSnapshot("local")).toMatchObject({ githubLoaded: true, github: { fetchedAt: 100 }, refreshing: false });
     await flush();
     expect(link.calls.map((c) => c.method)).toEqual(["github.inbox"]);
     expect(invoke).not.toHaveBeenCalled();
@@ -200,29 +205,30 @@ describe("inboxStore", () => {
 
   it("connect on an open socket reads at once", async () => {
     const link = fakeLink(true);
-    inboxStore.connect(link);
+    inboxStore.attach(link);
     await flush();
     expect(link.calls.map((c) => c.method)).toEqual(["github.inbox"]);
   });
 
   it("refreshGithub calls the server once per request, shares a call in flight, and stores the result", async () => {
     const link = fakeLink(true);
-    inboxStore.connect(link);
+    inboxStore.attach(link);
     await flush();
-    const a = inboxStore.refreshGithub("open");
-    const b = inboxStore.refreshGithub("interval");
-    expect(inboxStore.getSnapshot().refreshing).toBe(true);
+    const a = inboxStore.refreshGithub("local", "open");
+    const b = inboxStore.refreshGithub("local", "interval");
+    expect(inboxStore.getSnapshot("local").refreshing).toBe(true);
     expect(await b).toBe(await a);
     expect(link.calls.map((c) => [c.method, c.params])).toEqual([
       ["github.inbox", undefined],
       ["github.inboxRefresh", { reason: "open" }],
     ]);
-    expect(inboxStore.getSnapshot()).toMatchObject({ refreshing: false, github: { fetchedAt: 200 } });
-    await inboxStore.refreshGithub("manual");
+    expect(inboxStore.getSnapshot("local")).toMatchObject({ refreshing: false, github: { fetchedAt: 200 } });
+    await inboxStore.refreshGithub("local", "manual");
     expect(link.calls).toHaveLength(3);
   });
 
   it("refreshLinear runs the Linear fetch for a query, fresh for a minute unless forced", async () => {
+    inboxStore.attach(fakeLink(true));
     invoke.mockImplementation((method: string) => {
       if (method === "linear_status") return Promise.resolve({ connected: true });
       if (method === "linear_list_issues")
@@ -248,14 +254,14 @@ describe("inboxStore", () => {
       return Promise.reject(new Error(`unexpected ${method}`));
     });
     const query = { assignedToMe: false, state: "open" as const, hiddenTeamIds: [] };
-    const items = await inboxStore.refreshLinear(query);
+    const items = await inboxStore.refreshLinear("local", query);
     expect(items.map((i) => [i.provider, i.identifier])).toEqual([["linear", "ENG-1"]]);
-    expect(inboxStore.getSnapshot().linear).toMatchObject({ items, error: null, loading: false });
-    await inboxStore.refreshLinear(query);
+    expect(inboxStore.getSnapshot("local").linear).toMatchObject({ items, error: null, loading: false });
+    await inboxStore.refreshLinear("local", query);
     expect(invoke.mock.calls.filter((c) => c[0] === "linear_list_issues")).toHaveLength(1);
-    await inboxStore.refreshLinear(query, { force: true });
+    await inboxStore.refreshLinear("local", query, { force: true });
     expect(invoke.mock.calls.filter((c) => c[0] === "linear_list_issues")).toHaveLength(2);
-    await inboxStore.refreshLinear({ ...query, assignedToMe: true });
+    await inboxStore.refreshLinear("local", { ...query, assignedToMe: true });
     expect(invoke.mock.calls.filter((c) => c[0] === "linear_list_issues")).toHaveLength(3);
   });
 });

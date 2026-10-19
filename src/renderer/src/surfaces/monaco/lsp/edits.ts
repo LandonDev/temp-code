@@ -6,7 +6,7 @@ import {
   renamePath,
   writeTextFile,
 } from "../../../lib/fs";
-import { dirPrefix } from "../../../lib/tcserver/projects";
+import { dirPrefix, hostOfCwd } from "../../../lib/tcserver/projects";
 import { monaco } from "../monaco";
 import {
   toMonacoRange,
@@ -58,7 +58,7 @@ export function applyEditsToModel(
   );
 }
 
-async function applyEditsToFile(root: string, uri: string, edits: LspTextEdit[]): Promise<void> {
+async function applyEditsToFile(environmentId: string, root: string, uri: string, edits: LspTextEdit[]): Promise<void> {
   const parsed = monaco.Uri.parse(uri);
   const model = monaco.editor.getModel(parsed);
   if (model) {
@@ -68,11 +68,11 @@ async function applyEditsToFile(root: string, uri: string, edits: LspTextEdit[])
   if (parsed.scheme !== "file" || !parsed.path.startsWith(root)) return;
   let text: string;
   try {
-    text = await readTextFile(parsed.path);
+    text = await readTextFile(environmentId, parsed.path);
   } catch {
     return;
   }
-  await writeTextFile(parsed.path, applyEditsToText(text, edits));
+  await writeTextFile(environmentId, parsed.path, applyEditsToText(text, edits));
 }
 
 const parent = (path: string) => path.slice(0, path.lastIndexOf("/"));
@@ -81,6 +81,7 @@ const base = (path: string) => path.slice(path.lastIndexOf("/") + 1);
 /** Apply a workspace edit for the project rooted at `cwd`. */
 export async function applyWorkspaceEdit(cwd: string, edit: LspWorkspaceEdit): Promise<void> {
   const root = dirPrefix(cwd);
+  const environmentId = hostOfCwd(cwd);
   const inside = (uri: string): string | null => {
     const parsed = monaco.Uri.parse(uri);
     return parsed.scheme === "file" && parsed.path.startsWith(root) ? parsed.path : null;
@@ -88,27 +89,27 @@ export async function applyWorkspaceEdit(cwd: string, edit: LspWorkspaceEdit): P
   if (edit.documentChanges) {
     for (const change of edit.documentChanges) {
       if ("textDocument" in change) {
-        await applyEditsToFile(root, change.textDocument.uri, change.edits);
+        await applyEditsToFile(environmentId, root, change.textDocument.uri, change.edits);
       } else if (change.kind === "create" && change.uri) {
         const path = inside(change.uri);
-        if (path) await createPath(parent(path), base(path), false).catch(() => {});
+        if (path) await createPath(environmentId, parent(path), base(path), false).catch(() => {});
       } else if (change.kind === "rename" && change.oldUri && change.newUri) {
         const from = inside(change.oldUri);
         const to = inside(change.newUri);
         if (!from || !to) continue;
-        if (parent(from) === parent(to)) await renamePath(from, base(to));
+        if (parent(from) === parent(to)) await renamePath(environmentId, from, base(to));
         else {
-          const moved = await movePath(from, parent(to));
-          if (base(moved) !== base(to)) await renamePath(moved, base(to));
+          const moved = await movePath(environmentId, from, parent(to));
+          if (base(moved) !== base(to)) await renamePath(environmentId, moved, base(to));
         }
       } else if (change.kind === "delete" && change.uri) {
         const path = inside(change.uri);
-        if (path) await deletePath(path);
+        if (path) await deletePath(environmentId, path);
       }
     }
   } else if (edit.changes) {
     for (const [uri, edits] of Object.entries(edit.changes)) {
-      await applyEditsToFile(root, uri, edits);
+      await applyEditsToFile(environmentId, root, uri, edits);
     }
   }
 }

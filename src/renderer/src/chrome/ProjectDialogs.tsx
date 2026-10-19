@@ -11,7 +11,7 @@ import { BUILD_EMPTY, BuildFields, buildOrNull } from "./rail/buildSettings";
 import { ConfirmDialog, DialogFooter as Footer, ErrorLine, GHOST, errorText } from "./ConfirmDialog";
 import { INPUT_CLASS, Toggle } from "../surfaces/settingsBits";
 import { TurnPassFields, loadTurnPass, saveTurnPass } from "./TurnPassFields";
-import { client } from "../lib/tcserver/client";
+import { registry } from "../lib/connection";
 import { useAccounts } from "../stores/accounts";
 import { shortName } from "../lib/accountScope";
 import { HARNESS_LABEL } from "../lib/session";
@@ -68,18 +68,20 @@ const samePins = (a: AccountPins, b: AccountPins) =>
  * dialog and the workspace page, which differ only in what "inherit" means.
  */
 export function AccountPinFields({
+  environmentId,
   value,
   onChange,
   inheritLabel,
   compact = false,
 }: {
+  environmentId: string;
   value: AccountPins;
   onChange: (next: AccountPins) => void;
   /** What an unset provider falls back to, e.g. "Inherit (workspace: a@x)". */
   inheritLabel: (provider: (typeof ROUTED_PROVIDERS)[number]) => string;
   compact?: boolean;
 }) {
-  const { snapshot } = useAccounts();
+  const { snapshot } = useAccounts(environmentId);
   return (
     <>
       {ROUTED_PROVIDERS.map((provider) => {
@@ -324,7 +326,8 @@ export function NewWorkspaceDialog({
     setPending(true);
     setError(null);
     try {
-      const workspace = await createWorkspace(path);
+      // The folder was picked in this machine's dialog.
+      const workspace = await createWorkspace(registry.primary().environmentId, path);
       if (passEnabled(pass)) await saveTurnPass(workspace.id, pass);
       onCreated(workspace);
     } catch (err) {
@@ -519,7 +522,7 @@ export function ProjectSettingsDialog({
   const [detected, setDetected] = useState<BuildConfig | null>(null);
   useEffect(() => {
     let live = true;
-    void client
+    void registry.linkOf(project.environmentId)
       .request<BuildConfig | null>("build.get", { workspaceId: workspace.id, projectId: project.id })
       .then((c) => {
         if (!live) return;
@@ -527,20 +530,20 @@ export function ProjectSettingsDialog({
         setBuildOverride(c);
       })
       .catch(() => live && setSavedBuild(null));
-    void client
+    void registry.linkOf(project.environmentId)
       .request<BuildConfig | null>("build.get", { workspaceId: workspace.id })
       .then((c) => live && setWsBuild(c))
       .catch(() => {});
-    void client
+    void registry.linkOf(project.environmentId)
       .request<BuildConfig | null>("build.detect", { path: project.cwd })
       .then((d) => live && setDetected(d))
       .catch(() => {});
     return () => {
       live = false;
     };
-  }, [workspace.id, project.id, project.cwd]);
+  }, [workspace.id, project.id, project.cwd, project.environmentId]);
   const [pins, setPins] = useState<AccountPins>(project.accountPins ?? {});
-  const { snapshot } = useAccounts();
+  const { snapshot } = useAccounts(project.environmentId);
   const { pass, setPass, inherited } = useTurnPass(workspace.id, project.id);
   const [savedPass, setSavedPass] = useState<TurnPass | null | undefined>(undefined);
   useEffect(() => {
@@ -593,7 +596,7 @@ export function ProjectSettingsDialog({
       if (passDirty) await saveTurnPass(workspace.id, pass ?? null, project.id);
       if (pinsDirty) await setProjectAccounts(project.id, pins);
       if (buildDirty) {
-        await client.request("build.set", {
+        await registry.linkOf(project.environmentId).request("build.set", {
           workspaceId: workspace.id,
           projectId: project.id,
           config: nextBuild,
@@ -657,6 +660,7 @@ export function ProjectSettingsDialog({
           </Disclosure>
           <Disclosure label="Accounts" summary={pinsSummary}>
             <AccountPinFields
+              environmentId={project.environmentId}
               value={pins}
               onChange={setPins}
               inheritLabel={projectInheritLabel(workspace, [...snapshot.providers.claude.profiles, ...snapshot.providers.codex.profiles])}

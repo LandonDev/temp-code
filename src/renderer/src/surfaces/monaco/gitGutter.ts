@@ -2,6 +2,7 @@ import { Chunk } from "@codemirror/merge";
 import { Text } from "@codemirror/state";
 import { gutterMarks, type GutterMark } from "../../lib/monaco/gutterMarks";
 import { gitFileDiff, subscribeGitChanged } from "../../lib/fs";
+import { hostOfCwd } from "../../lib/tcserver/projects";
 import { displayPath } from "../../lib/paths";
 import { monaco } from "./monaco";
 
@@ -51,7 +52,7 @@ export function attachGitGutter(
 
   const refresh = async () => {
     try {
-      const diff = await gitFileDiff(cwd, relative);
+      const diff = await gitFileDiff(hostOfCwd(path), cwd, relative);
       // Untracked files get no marks; the whole file would be green.
       original = diff.binary || diff.tooLarge || diff.status === "untracked" ? null : diff.original;
     } catch {

@@ -1,3 +1,4 @@
+import { registry } from "./connection";
 import {
   loadArchivedProjects,
   loadRecents,
@@ -31,7 +32,8 @@ let running: Promise<void> | null = null;
 /** One-time: every remembered folder becomes a workspace. Folders the
  *  server refuses are skipped; archived ones stay hidden by the local list. */
 export function migrateWorkspaces(
-  create: (path: string) => Promise<unknown> = createWorkspace,
+  // Remembered folders are on this machine, so they become local workspaces.
+  create: (path: string) => Promise<unknown> = (path) => createWorkspace(registry.primary().environmentId, path),
 ): Promise<void> {
   if (running) return running;
   if (localStorage.getItem(FLAG)) return Promise.resolve();

@@ -10,8 +10,8 @@ import {
   type RoutingRule,
 } from "@server/shared/rules";
 import { OPEN_SETTINGS_EVENT } from "../monaco/debugTab";
-import { client } from "./client";
-import type { Link } from "./store";
+import type { Link } from "../connection";
+import { scopeKey } from "./workspaces";
 import type { ProviderId, ProviderInfo } from "./types";
 
 /**
@@ -51,7 +51,6 @@ export type RulesState = {
   catalog: RulesCatalog | null;
 };
 
-const GLOBAL = "";
 const EMPTY: RulesState = { scopes: new Map(), catalog: null };
 
 // ── pure helpers ───────────────────────────────────────────────────────
@@ -111,16 +110,37 @@ export function newRuleId(): string {
 class RulesStore {
   private state: RulesState = EMPTY;
   private listeners = new Set<() => void>();
-  private link: Link | null = null;
+  private links = new Map<string, Link>();
+  private offRegistry: (() => void) | null = null;
   private inflight = new Map<string, Promise<RulesScope>>();
+  private catalogs = new Map<string, RulesCatalog>();
 
-  connect(link: Link = client): void {
-    this.link = link;
+  /** Follow the registry: rules and the spawn catalog are per environment. */
+  connect(registry: { onLink(listener: (link: Link, event: "added" | "removed") => void): () => void }): void {
+    this.offRegistry?.();
+    this.offRegistry = registry.onLink((link, event) => {
+      if (event === "added") this.attach(link);
+      else this.detach(link.environmentId);
+    });
+  }
+
+  attach(link: Link): void {
+    this.links.set(link.environmentId, link);
+  }
+
+  detach(environmentId: string): void {
+    this.links.delete(environmentId);
+    this.catalogs.delete(environmentId);
+    const scopes = new Map([...this.state.scopes].filter(([key]) => !key.startsWith(`${environmentId}|`)));
+    this.set({ ...this.state, scopes });
   }
 
   /** Test seam. */
   reset(): void {
-    this.link = null;
+    this.offRegistry?.();
+    this.offRegistry = null;
+    this.links.clear();
+    this.catalogs.clear();
     this.inflight.clear();
     this.set(EMPTY);
   }
@@ -134,18 +154,18 @@ class RulesStore {
 
   getSnapshot = (): RulesState => this.state;
 
-  scope(workspaceId: string | null): RulesScope | undefined {
-    return this.state.scopes.get(workspaceId ?? GLOBAL);
+  scope(environmentId: string, workspaceId: string | null): RulesScope | undefined {
+    return this.state.scopes.get(scopeKey(environmentId, workspaceId));
   }
 
-  /** Read a scope from the server once; later reads come from the cache. */
-  load(workspaceId: string | null): Promise<RulesScope> {
-    const key = workspaceId ?? GLOBAL;
+  /** Read a scope from its host once; later reads come from the cache. */
+  load(environmentId: string, workspaceId: string | null): Promise<RulesScope> {
+    const key = scopeKey(environmentId, workspaceId);
     const cached = this.state.scopes.get(key);
     if (cached) return Promise.resolve(cached);
     const pending = this.inflight.get(key);
     if (pending) return pending;
-    const link = this.link;
+    const link = this.links.get(environmentId);
     if (!link) return Promise.resolve({ rules: DEFAULT_RULES, overridden: false });
     const request = link
       .request<RulesScope>("rules.get", { workspaceId })
@@ -158,41 +178,49 @@ class RulesStore {
     return request;
   }
 
-  loadCatalog(): Promise<RulesCatalog> {
-    if (this.state.catalog) return Promise.resolve(this.state.catalog);
-    const link = this.link;
+  /** One environment's spawn catalog (the models its host offers). */
+  loadCatalog(environmentId: string): Promise<RulesCatalog> {
+    const cached = this.catalogs.get(environmentId);
+    if (cached) return Promise.resolve(cached);
+    const link = this.links.get(environmentId);
     if (!link) return Promise.resolve({});
     return link.request<Record<string, ProviderInfo>>("catalog.get").then((raw) => {
       const catalog = spawnCatalog(raw);
+      this.catalogs.set(environmentId, catalog);
       this.set({ ...this.state, catalog });
       return catalog;
     });
   }
 
   /** Persist a scope's rules; the cache updates first so the editor never waits. */
-  save(workspaceId: string | null, rules: OrchestrationRules): Promise<void> {
-    const key = workspaceId ?? GLOBAL;
+  save(environmentId: string, workspaceId: string | null, rules: OrchestrationRules): Promise<void> {
+    const key = scopeKey(environmentId, workspaceId);
     this.setScope(key, { rules, overridden: true });
-    if (workspaceId === null) this.dropInherited();
-    return this.link?.request("rules.set", { workspaceId, rules }).then(() => undefined) ?? Promise.resolve();
+    if (workspaceId === null) this.dropInherited(environmentId);
+    return (
+      this.links.get(environmentId)?.request("rules.set", { workspaceId, rules }).then(() => undefined) ??
+      Promise.resolve()
+    );
   }
 
   /** Clear a scope: global goes back to the defaults, an override goes away. */
-  async clear(workspaceId: string | null): Promise<RulesScope> {
-    const key = workspaceId ?? GLOBAL;
-    await this.link?.request("rules.set", { workspaceId, rules: null });
+  async clear(environmentId: string, workspaceId: string | null): Promise<RulesScope> {
+    const key = scopeKey(environmentId, workspaceId);
+    await this.links.get(environmentId)?.request("rules.set", { workspaceId, rules: null });
     const scopes = new Map(this.state.scopes);
     scopes.delete(key);
     this.set({ ...this.state, scopes });
-    if (workspaceId === null) this.dropInherited();
-    return this.load(workspaceId);
+    if (workspaceId === null) this.dropInherited(environmentId);
+    return this.load(environmentId, workspaceId);
   }
 
-  /** Workspaces without an override mirror the global rules; forget them
-   *  so the next read picks the new global copy up. */
-  private dropInherited(): void {
+  /** Workspaces without an override mirror their host's global rules;
+   *  forget them so the next read picks the new global copy up. */
+  private dropInherited(environmentId: string): void {
+    const globalKey = scopeKey(environmentId, null);
     const scopes = new Map(this.state.scopes);
-    for (const [key, scope] of scopes) if (key !== GLOBAL && !scope.overridden) scopes.delete(key);
+    for (const [key, scope] of scopes)
+      if (key !== globalKey && key.startsWith(`${environmentId}|`) && !scope.overridden) scopes.delete(key);
     this.set({ ...this.state, scopes });
   }
 
@@ -215,16 +243,19 @@ export function useRulesState(): RulesState {
 }
 
 /** The scope's rules and the spawn catalog, loading both on first use. */
-export function useRulesScope(workspaceId: string | null): {
+export function useRulesScope(
+  environmentId: string,
+  workspaceId: string | null,
+): {
   scope: RulesScope | undefined;
   catalog: RulesCatalog | null;
 } {
   const state = useRulesState();
   useEffect(() => {
-    void rulesStore.load(workspaceId);
-    void rulesStore.loadCatalog();
-  }, [workspaceId]);
-  return { scope: state.scopes.get(workspaceId ?? GLOBAL), catalog: state.catalog };
+    void rulesStore.load(environmentId, workspaceId);
+    void rulesStore.loadCatalog(environmentId);
+  }, [environmentId, workspaceId]);
+  return { scope: state.scopes.get(scopeKey(environmentId, workspaceId)), catalog: state.catalog };
 }
 
 // ── deep link from the workspace menu ─────────────────────────────────

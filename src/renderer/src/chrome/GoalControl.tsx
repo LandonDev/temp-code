@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { ThreadGoal } from "../lib/session";
-import { client } from "../lib/tcserver/client";
+import { setGoal, clearGoal } from "../lib/tcserver/commands";
 import { goalEnterSubmits, goalStateOf, goalTriggerLabel } from "../lib/goalControl";
 import { Popover } from "./Popover";
 import { Target } from "./icons";
@@ -48,11 +48,9 @@ export function GoalControl({
       setBusy(false);
     }
   };
-  // Until M4's `setGoal`/`clearGoal` wrappers land in commands.ts, the
-  // server methods are called with the same shape they will use.
   const submit = () =>
-    void run(() => client.request("session.setGoal", { sessionId, condition: state.condition }));
-  const clear = () => void run(() => client.request("session.clearGoal", { sessionId }));
+    void run(() => setGoal(sessionId, state.condition));
+  const clear = () => void run(() => clearGoal(sessionId));
 
   return (
     <div ref={root} className="relative">

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { BuildConfig } from "@server/shared/build";
-import { client } from "../../lib/tcserver/client";
+import { registry } from "../../lib/connection";
 import { OPEN_SETTINGS_EVENT } from "../../lib/monaco/debugTab";
 import { useWorkspaces } from "../../lib/tcserver/workspaces";
 import { Input, Row } from "../../surfaces/settingsBits";
@@ -74,19 +74,22 @@ export function BuildFields({
 
 /** Self-loading editor for the workspace settings page; saves as you type. */
 export function BuildEditor({ workspaceId }: { workspaceId: string }) {
-  const path = useWorkspaces().find((w) => w.id === workspaceId)?.path;
+  const workspace = useWorkspaces().find((w) => w.id === workspaceId);
+  const path = workspace?.path;
+  const environmentId = workspace?.environmentId;
   const [config, setConfig] = useState<BuildConfig | undefined>(undefined);
   const [detected, setDetected] = useState<BuildConfig | null>(null);
   const timer = useRef<number | undefined>(undefined);
 
   useEffect(() => {
+    if (!environmentId) return;
     let live = true;
-    void client
+    void registry.linkOf(environmentId)
       .request<BuildConfig | null>("build.get", { workspaceId })
       .then((c) => live && setConfig(c ?? BUILD_EMPTY))
       .catch(() => live && setConfig(BUILD_EMPTY));
     if (path) {
-      void client
+      void registry.linkOf(environmentId)
         .request<BuildConfig | null>("build.detect", { path })
         .then((d) => live && setDetected(d))
         .catch(() => {});
@@ -95,13 +98,14 @@ export function BuildEditor({ workspaceId }: { workspaceId: string }) {
       live = false;
       window.clearTimeout(timer.current);
     };
-  }, [workspaceId, path]);
+  }, [environmentId, workspaceId, path]);
 
   const push = (next: BuildConfig): void => {
+    if (!environmentId) return;
     setConfig(next);
     window.clearTimeout(timer.current);
     timer.current = window.setTimeout(() => {
-      void client.request("build.set", { workspaceId, config: buildOrNull(next) });
+      void registry.linkOf(environmentId).request("build.set", { workspaceId, config: buildOrNull(next) });
     }, 500);
   };
 

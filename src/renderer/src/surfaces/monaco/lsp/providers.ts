@@ -1,7 +1,7 @@
 import { registerWillRename } from "../../../lib/editorRename";
 import { openFileAt } from "../../../lib/monaco/opener";
 import { onFileEvent } from "../../../lib/projectWatch";
-import { client } from "../../../lib/tcserver/client";
+import { registry } from "../../../lib/connection";
 import { dirPrefix, projectForCwd } from "../../../lib/tcserver/projects";
 import { languageForPath, monaco } from "../monaco";
 import { entryForUri, registerSaveHook } from "../models";
@@ -735,7 +735,7 @@ export function registerProviders(): void {
         );
         const blameP =
           entry && project
-            ? client
+            ? registry.linkOf(project.environmentId)
                 .request<{ author: string | null; others: number }>("project.blame", {
                   projectId: project.id,
                   path: entry.path.slice(dirPrefix(project.cwd).length),

@@ -1,3 +1,5 @@
+import { registry } from "../lib/connection";
+import { environmentOfCwd } from "../lib/tcserver/projects";
 import {
   Archive,
   Check,
@@ -568,6 +570,7 @@ export function ProjectRail({
       )}
       {projectMenu ? (
         <TabGroupMenu
+          environmentId={environmentOfCwd(projectMenu.path) ?? registry.primary().environmentId}
           x={projectMenu.x}
           y={projectMenu.y}
           groupId={projectMenu.projectKey}

@@ -1,8 +1,7 @@
 import type { HarnessId } from "../session";
 import { HARNESSES } from "../session";
 import { setHarnessModels, type AgentModel, type ModelSetting } from "../models";
-import { client } from "./client";
-import type { Link } from "./store";
+import { registry } from "../connection";
 import type { ModelInfo, ProviderId, ProviderInfo } from "./types";
 import { supportsContext1m } from "@server/shared/catalog";
 
@@ -118,10 +117,11 @@ export function agentModelsFor(provider: ProviderInfo): AgentModel[] {
 
 let catalogInflight: Promise<void> | null = null;
 
-/** Pull the catalog once and overlay every provider's models. */
-export function refreshCatalog(link: Link = client): Promise<void> {
+/** Pull one environment's catalog once and overlay every provider's models. */
+export function refreshCatalog(environmentId: string): Promise<void> {
   if (catalogInflight) return catalogInflight;
-  catalogInflight = link
+  catalogInflight = registry
+    .linkOf(environmentId)
     .request<Record<ProviderId, ProviderInfo>>("catalog.get")
     .then((catalog) => {
       for (const provider of Object.values(catalog)) {
@@ -142,14 +142,15 @@ let lastDoctor: Doctor = {};
 
 /** Provider health, cached briefly; `force` bypasses the cache. */
 export function probeDoctor(
+  environmentId: string,
   options?: { force?: boolean },
-  link: Link = client,
 ): Promise<Doctor> {
   if (doctorInflight) return doctorInflight;
   if (!options?.force && doctorAt > 0 && Date.now() - doctorAt < DOCTOR_TTL_MS) {
     return Promise.resolve(lastDoctor);
   }
-  doctorInflight = link
+  doctorInflight = registry
+    .linkOf(environmentId)
     .request<Doctor>("doctor.get")
     .then((doctor) => {
       lastDoctor = doctor;

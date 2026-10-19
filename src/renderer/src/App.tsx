@@ -1,3 +1,5 @@
+import { registry } from "./lib/connection";
+import { environmentOfCwd } from "./lib/tcserver/projects";
 import { invoke, listen, getCurrentWindow, isWebMode, message } from "./lib/native";
 import {
   useCallback,
@@ -373,6 +375,13 @@ function currentSessionDefaults(): Session | undefined {
   return currentActivePane().active ?? sessionStore.getSnapshot()[0];
 }
 
+function environmentForContext(ctx: ResolvedContext): string {
+  const project = workspaceStore.project(ctx.projectId);
+  const workspace = workspaceStore.workspace(ctx.workspaceId);
+  // A loose chat outside the catalog belongs to this window's machine.
+  return project?.environmentId ?? workspace?.environmentId ?? environmentOfCwd(ctx.cwd) ?? registry.primary().environmentId;
+}
+
 export default function App() {
   tallyRender("app");
   const projectCwd = useProject((s) => s.projectCwd);
@@ -515,17 +524,18 @@ export default function App() {
       threadRules: ThreadRules | null = null,
     ) => {
       const context = { ...ctx, threadType, threadRules };
-      const defaults = workspaceStore.defaultsFor(ctx.workspaceId);
+      const environmentId = environmentForContext(ctx);
+      const defaults = workspaceStore.defaultsFor(environmentId, ctx.workspaceId);
       const seed =
         defaults && (HARNESSES as string[]).includes(defaults.provider)
           ? draftFromDefaults(defaults, threadType)
           : fallback;
       const draft = seed
-        ? newSession(seed.harness, cwd, seed.model, seed.runtimeMode, seed.modelSettings, context)
-        : newDefaultSession(cwd, currentSessionDefaults()?.runtimeMode, context);
+        ? newSession(environmentId, seed.harness, cwd, seed.model, seed.runtimeMode, seed.modelSettings, context)
+        : newDefaultSession(environmentId, cwd, currentSessionDefaults()?.runtimeMode, context);
       // Research runs on claude whatever the fallback chose (see draftFromDefaults).
       return threadType === "research" && draft.harness !== "claude"
-        ? newSession("claude", cwd, undefined, draft.runtimeMode, undefined, context)
+        ? newSession(environmentId, "claude", cwd, undefined, draft.runtimeMode, undefined, context)
         : draft;
     },
     [],
@@ -764,7 +774,7 @@ export default function App() {
             ? item.identifier?.trim() || `#${item.number}`
             : `#${item.number}`;
         const session = {
-          ...newDefaultSession(cwd, sessionDefaults?.runtimeMode, ctx),
+          ...newDefaultSession(environmentForContext(ctx), cwd, sessionDefaults?.runtimeMode, ctx),
           title: `${ref} ${item.title}`,
           inboxCard: inboxComposerCard(item, description),
         };
@@ -786,12 +796,13 @@ export default function App() {
         start(body);
         return;
       }
-      const cached = peekLinearIssueDetails(item.id);
+      const cached = peekLinearIssueDetails(registry.primary().environmentId, item.id);
       if (cached) {
         start(cached.body);
         return;
       }
-      const details = await linearIssueDetails(item.id);
+      const ctx = item.projectPath ? cwdContext(item.projectPath) : sessionContext();
+      const details = await linearIssueDetails(environmentForContext(ctx), item.id);
       start(details.body);
     },
     [
@@ -814,7 +825,7 @@ export default function App() {
       const cwd = ctx.cwd;
       const title = card.title.trim();
       const session = {
-        ...newDefaultSession(cwd, sessionDefaults?.runtimeMode, ctx),
+        ...newDefaultSession(environmentForContext(ctx), cwd, sessionDefaults?.runtimeMode, ctx),
         ...(title ? { title } : {}),
         noteCard: card,
       };
@@ -1198,7 +1209,7 @@ export default function App() {
         : sessionContext();
       const session = ctx.projectId
         ? createSessionHere({ projectId: ctx.projectId, threadType })
-        : newDefaultSession(ctx.cwd, sessionDefaults?.runtimeMode, { ...ctx, threadType });
+        : newDefaultSession(sessionInTab?.environmentId ?? environmentForContext(ctx), ctx.cwd, sessionDefaults?.runtimeMode, { ...ctx, threadType });
       const tab = newTab(session.id);
       setSessions((prev) => [...prev, session]);
       if (threadType) void serverCommands.ensureCreated(session).catch(() => undefined);
@@ -1271,6 +1282,7 @@ export default function App() {
           ? contextOfSession(seedSession, workspaceStore.getSnapshot())
           : sessionContext();
         const session = newSession(
+          seedSession?.environmentId ?? environmentForContext(ctx),
           seedSession?.harness ?? "claude",
           ctx.cwd,
           seedSession?.model,
@@ -1352,6 +1364,7 @@ export default function App() {
             const seed = sessionStore.getSnapshot()[0];
             const ctx = cwdContext(file.cwd || projectCwd);
             const session = newSession(
+              environmentForContext(ctx),
               seed?.harness ?? "claude",
               ctx.cwd,
               seed?.model,
@@ -1455,6 +1468,7 @@ export default function App() {
       if (!oldSession) return;
 
       const session = newSession(
+        oldSession.environmentId,
         oldSession.harness,
         oldSession.cwd,
         oldSession.model,
@@ -2067,6 +2081,7 @@ export default function App() {
       const open = sessionStore.getSnapshot().find(
         (session) => session.id === sessionId,
       );
+      const environmentId = sessionStore.environmentOf(sessionId);
       const summary =
         historyStore.get().find((entry) => entry.id === sessionId) ?? open ?? null;
       const label = summary
@@ -2118,6 +2133,7 @@ export default function App() {
         scope: tabCloseScope,
         createReplacement: (seed) =>
           newSession(
+            seed?.environmentId ?? environmentId ?? environmentForContext(cwdContext(summary?.cwd ?? sidebarCwd)),
             seed?.harness ?? harness,
             seed?.cwd ?? summary?.cwd ?? sidebarCwd,
             seed?.model ?? summary?.model,
@@ -2177,6 +2193,7 @@ export default function App() {
       ) {
         project.enterWorkspace(normalized);
         const session = newSession(
+          environmentForContext(cwdContext(normalized)),
           current.harness,
           normalized,
           current.model,
@@ -2192,11 +2209,12 @@ export default function App() {
         return;
       }
       if (
+        current &&
         previous &&
         !sameProjectPath(previous, normalized) &&
         previous !== "~"
       ) {
-        void keepSessionChanges(sessionId, previous).catch(() => undefined);
+        void keepSessionChanges(current.environmentId, sessionId, previous).catch(() => undefined);
       }
       project.enterWorkspace(normalized);
       const moved = cwdContext(normalized);
@@ -2209,6 +2227,7 @@ export default function App() {
                 ...s,
                 ...(fresh
                   ? {
+                      environmentId: fresh.environmentId,
                       harness: fresh.harness,
                       model: fresh.model,
                       runtimeMode: fresh.runtimeMode,
@@ -2411,7 +2430,8 @@ export default function App() {
 
       if (nextTabs.length === 0) {
         const fallback = nextSessions[0];
-        const session = newDefaultSession("~", fallback?.runtimeMode);
+        // The empty window opens a loose chat on this machine.
+        const session = newDefaultSession(registry.primary().environmentId, "~", fallback?.runtimeMode);
         const tab = newTab(session.id);
         nextSessions = [...nextSessions, session];
         nextTabs = [tab];
@@ -2697,13 +2717,13 @@ export default function App() {
       if (midTurn && (options?.intent === "queue" || paused)) {
         void (async () => {
           try {
-            const prepared = await prepareAttachments(attachments);
-            const prompt = await preparePrompt(harnessText);
+            const prepared = await prepareAttachments(current.environmentId, attachments);
+            const prompt = await preparePrompt(current.environmentId, harnessText);
             const derived = await deriveMentionAttachments(text, workCwd);
             await serverCommands.queueAdd(
               sessionId,
               prompt,
-              [...(await serverCommands.toServerAttachments(prepared)), ...derived],
+              [...(await serverCommands.toServerAttachments(current.environmentId, prepared)), ...derived],
               serverCommands.runSettingsFor(current),
             );
           } catch (error: unknown) {
@@ -2732,8 +2752,8 @@ export default function App() {
         );
         void (async () => {
           try {
-            const prepared = await prepareAttachments(attachments);
-            const prompt = await preparePrompt(harnessText);
+            const prepared = await prepareAttachments(current.environmentId, attachments);
+            const prompt = await preparePrompt(current.environmentId, harnessText);
             const derived = await deriveMentionAttachments(text, workCwd);
             await serverCommands.steer(
               sessionStore.get(sessionId) ?? current,
@@ -2846,8 +2866,8 @@ export default function App() {
         }
 
         try {
-          const prepared = await prepareAttachments(attachments);
-          const prompt = await preparePrompt(harnessText);
+          const prepared = await prepareAttachments(current.environmentId, attachments);
+          const prompt = await preparePrompt(current.environmentId, harnessText);
           const derived = await deriveMentionAttachments(text, workCwd);
           await serverCommands.send(
             sessionStore.get(sessionId) ?? current,
@@ -2926,6 +2946,7 @@ export default function App() {
       });
       const session = {
         ...newSession(
+          source.environmentId,
           harness,
           cwd,
           model,
@@ -2962,6 +2983,7 @@ export default function App() {
       const display = sessionDisplayTitle(source.title, source.harness);
       const session = {
         ...newSession(
+          source.environmentId,
           harness,
           cwd,
           model,
@@ -3138,7 +3160,7 @@ export default function App() {
             onSetRules: onHeaderSetRules,
             onRestore: onRestoreThread,
             onNew: onHeaderNew,
-            onPauseAll: () => serverCommands.pauseAllRunning(),
+            onPauseAll: () => Promise.all(registry.environments().map((e) => serverCommands.pauseAllRunning(e.id))).then(() => undefined),
             onToggleRail: toggleRightRail,
           }
         : undefined,

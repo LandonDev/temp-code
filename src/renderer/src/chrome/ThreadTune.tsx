@@ -73,15 +73,17 @@ export function setConduct<K extends keyof ConductOverride>(
 }
 
 export function ThreadTune({
+  environmentId,
   tune,
   onChange,
   workspaceId,
 }: {
   tune: ThreadRules;
   onChange: (tune: ThreadRules) => void;
+  environmentId: string;
   workspaceId: string | null;
 }) {
-  const { scope } = useRulesScope(workspaceId);
+  const { scope } = useRulesScope(environmentId, workspaceId);
   const base = scope?.rules.conduct;
   const conduct = tune.conduct ?? {};
   const set = <K extends keyof ConductOverride>(key: K, value: ConductOverride[K]) =>
@@ -164,6 +166,7 @@ function Label({ text, overridden, onReset }: { text: string; overridden: boolea
 
 /** Right-click → "Research options…" / "Orchestration options…". */
 export function TuneDialog({
+  environmentId,
   title,
   initial,
   workspaceId,
@@ -172,6 +175,7 @@ export function TuneDialog({
 }: {
   title: string;
   initial: ThreadRules | null | undefined;
+  environmentId: string;
   workspaceId: string | null;
   onCancel: () => void;
   onSave: (tune: ThreadRules | null) => void;
@@ -184,7 +188,7 @@ export function TuneDialog({
       description="Changes apply from the next message."
       size="md"
     >
-      <ThreadTune tune={tune} onChange={setTune} workspaceId={workspaceId} />
+      <ThreadTune environmentId={environmentId} tune={tune} onChange={setTune} workspaceId={workspaceId} />
       <div className="flex items-center justify-end gap-2 border-t border-content/10 px-4 py-3">
         <button
           type="button"

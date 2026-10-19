@@ -11,6 +11,7 @@ import {
 } from "./workspaceSessions";
 
 const project = (id: string, archived = false): ProjectMeta => ({
+  environmentId: "local",
   id,
   workspaceId: "wa",
   name: id,
@@ -23,6 +24,7 @@ const project = (id: string, archived = false): ProjectMeta => ({
 
 const meta = (id: string, extra: Partial<SessionMeta> = {}): SessionMeta =>
   ({
+    environmentId: "local",
     id,
     parentId: null,
     projectId: null,

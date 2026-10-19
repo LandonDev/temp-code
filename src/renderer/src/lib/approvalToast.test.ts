@@ -24,7 +24,7 @@ function block(
 
 describe("pendingApprovalForSession", () => {
   it("returns the latest undecided approval", () => {
-    const session = newSession();
+    const session = newSession("local");
     session.blocks = [
       block("tool", { requestId: 1, decided: "allow" }),
       block("tool", { requestId: 2 }),
@@ -37,7 +37,7 @@ describe("pendingApprovalForSession", () => {
 
 describe("isSessionConversationFocused", () => {
   it("is true only when the session pane is focused on the active tab", () => {
-    const session = newSession();
+    const session = newSession("local");
     const tab = newTab(session.id);
     expect(
       isSessionConversationFocused(session.id, tab.id, [tab], true),
@@ -53,9 +53,9 @@ describe("isSessionConversationFocused", () => {
 
 describe("hiddenApprovalNotices", () => {
   it("omits approvals that are already in the focused conversation", () => {
-    const visible = newSession();
+    const visible = newSession("local");
     visible.blocks = [block("tool", { requestId: 1 })];
-    const hidden = newSession();
+    const hidden = newSession("local");
     hidden.blocks = [block("tool", { requestId: 2 })];
 
     const visibleTab = newTab(visible.id);
@@ -72,9 +72,9 @@ describe("hiddenApprovalNotices", () => {
   });
 
   it("shows approvals in another pane on the same tab", () => {
-    const left = newSession();
+    const left = newSession("local");
     left.blocks = [block("tool", { requestId: 1 })];
-    const right = newSession();
+    const right = newSession("local");
     const tab = {
       ...newTab(left.id),
       layout: splitPane(newTab(left.id).layout, left.id, "right", right.id),

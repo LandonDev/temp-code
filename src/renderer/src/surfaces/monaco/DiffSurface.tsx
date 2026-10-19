@@ -3,8 +3,8 @@ import { registerEditorFlusher } from "../../lib/editorFlush";
 import { gitFileDiff } from "../../lib/fs";
 import type { FileState } from "../../lib/monaco/editorState";
 import { displayPath } from "../../lib/paths";
-import { client } from "../../lib/tcserver/client";
-import { projectForCwd } from "../../lib/tcserver/projects";
+import { registry } from "../../lib/connection";
+import { hostOfCwd, projectForCwd } from "../../lib/tcserver/projects";
 import { MatrixSpinner } from "../threads/bits";
 import { ConflictBar } from "./ConflictBar";
 import { trackEditor } from "./keys";
@@ -23,12 +23,12 @@ async function baseText(path: string, cwd: string, base?: string): Promise<strin
   const relative = displayPath(path, cwd);
   const project = projectForCwd(cwd);
   if (project) {
-    const text = await client
+    const text = await registry.linkOf(project.environmentId)
       .request<string | null>("project.show", { projectId: project.id, path: relative, ref: base })
       .catch(() => null);
     return text ?? "";
   }
-  const diff = await gitFileDiff(cwd, relative).catch(() => null);
+  const diff = await gitFileDiff(hostOfCwd(path), cwd, relative).catch(() => null);
   return diff && !diff.binary && !diff.tooLarge ? diff.original : "";
 }
 

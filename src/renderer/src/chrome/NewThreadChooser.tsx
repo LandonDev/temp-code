@@ -1,3 +1,5 @@
+import { registry } from "../lib/connection";
+import { useWorkspaces } from "../lib/tcserver/workspaces";
 import { useRef, useState } from "react";
 import type { ThreadRules } from "@server/shared/rules";
 import type { ThreadType } from "../lib/tcserver/types";
@@ -22,6 +24,9 @@ export function NewThreadChooser({
   empty: boolean;
   onStart: (threadType: ThreadType, tune: ThreadRules | null) => void;
 }) {
+  const workspace = useWorkspaces().find((w) => w.id === workspaceId);
+  // A new loose thread without a workspace belongs to this machine.
+  const environmentId = workspaceId === null ? registry.primary().environmentId : workspace?.environmentId;
   const [open, setOpen] = useState(false);
   const [tuning, setTuning] = useState<ThreadType | null>(null);
   const [tune, setTune] = useState<ThreadRules>({});
@@ -36,6 +41,8 @@ export function NewThreadChooser({
     close();
     onStart(type, rules);
   };
+
+  if (!environmentId) return null;
 
   return (
     <>
@@ -79,7 +86,7 @@ export function NewThreadChooser({
                   {THREAD_LABELS[tuning]} options
                 </span>
               </div>
-              <ThreadTune tune={tune} onChange={setTune} workspaceId={workspaceId} />
+              <ThreadTune environmentId={environmentId} tune={tune} onChange={setTune} workspaceId={workspaceId} />
               <div className="flex justify-end px-1 pb-1 pt-2">
                 <button
                   type="button"

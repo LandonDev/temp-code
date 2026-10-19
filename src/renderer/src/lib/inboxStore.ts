@@ -14,8 +14,7 @@ import {
   type LinearIssue,
 } from "./linear";
 import { contextForCwd, type Catalog } from "./projectContext";
-import { client } from "./tcserver/client";
-import type { Link } from "./tcserver/store";
+import type { Link } from "./connection";
 import type { ProjectMeta, WorkspaceMeta } from "./tcserver/types";
 
 /**
@@ -226,32 +225,59 @@ function linearQueryKey(query: LinearInboxQuery): string {
 
 // ── store ──
 
-class InboxStore {
-  private state: InboxState = EMPTY;
-  private listeners = new Set<() => void>();
-  private link: Link | null = null;
-  private detach: (() => void)[] = [];
-  private githubInflight: Promise<GithubInboxSnapshot | null> | null = null;
-  private linearInflight: Promise<InboxItem[]> | null = null;
-  private linearKey: string | null = null;
+/** Per environment: the host's GitHub inbox snapshot and its Linear list. */
+type Slot = {
+  link: Link;
+  detach: (() => void)[];
+  githubInflight: Promise<GithubInboxSnapshot | null> | null;
+  linearInflight: Promise<InboxItem[]> | null;
+  linearKey: string | null;
+};
 
-  connect(link: Link = client): void {
-    if (this.link === link) return;
-    for (const off of this.detach) off();
-    this.link = link;
-    this.detach = [link.onOpen(() => void this.load())];
-    if (link.connected) void this.load();
+class InboxStore {
+  private states: ReadonlyMap<string, InboxState> = new Map();
+  private listeners = new Set<() => void>();
+  private slots = new Map<string, Slot>();
+  private offRegistry: (() => void) | null = null;
+
+  connect(registry: { onLink(listener: (link: Link, event: "added" | "removed") => void): () => void }): void {
+    this.offRegistry?.();
+    this.offRegistry = registry.onLink((link, event) => {
+      if (event === "added") this.attach(link);
+      else this.detach(link.environmentId);
+    });
+  }
+
+  attach(link: Link): void {
+    const id = link.environmentId;
+    const current = this.slots.get(id);
+    if (current?.link === link) return;
+    if (current) this.detach(id);
+    const slot: Slot = { link, detach: [], githubInflight: null, linearInflight: null, linearKey: null };
+    slot.detach = [link.onOpen(() => void this.load(slot))];
+    this.slots.set(id, slot);
+    if (link.connected) void this.load(slot);
+  }
+
+  detach(environmentId: string): void {
+    const slot = this.slots.get(environmentId);
+    if (!slot) return;
+    for (const off of slot.detach) off();
+    this.slots.delete(environmentId);
+    const next = new Map(this.states);
+    next.delete(environmentId);
+    this.states = next;
+    this.emit();
   }
 
   /** Test seam. */
   reset(): void {
-    for (const off of this.detach) off();
-    this.detach = [];
-    this.link = null;
-    this.githubInflight = null;
-    this.linearInflight = null;
-    this.linearKey = null;
-    this.set(EMPTY);
+    this.offRegistry?.();
+    this.offRegistry = null;
+    for (const slot of this.slots.values()) for (const off of slot.detach) off();
+    this.slots.clear();
+    this.states = new Map();
+    this.emit();
   }
 
   subscribe = (listener: () => void): (() => void) => {
@@ -261,61 +287,71 @@ class InboxStore {
     };
   };
 
-  getSnapshot = (): InboxState => this.state;
+  getSnapshot = (environmentId: string): InboxState => this.states.get(environmentId) ?? EMPTY;
 
-  /** The stored snapshot: SQLite on the server, never GitHub. */
-  private async load(): Promise<void> {
-    if (!this.link) return;
+  /** Every environment's inbox state, one map per change. */
+  all = (): ReadonlyMap<string, InboxState> => this.states;
+
+  /** The stored snapshot: SQLite on the host, never GitHub. */
+  private async load(slot: Slot): Promise<void> {
+    const id = slot.link.environmentId;
     try {
-      const github = await this.link.request<GithubInboxSnapshot>("github.inbox");
-      this.set({ ...this.state, github, githubLoaded: true, refreshing: github.refreshing });
+      const github = await slot.link.request<GithubInboxSnapshot>("github.inbox");
+      this.set(id, { ...this.getSnapshot(id), github, githubLoaded: true, refreshing: github.refreshing });
     } catch {
-      this.set({ ...this.state, githubLoaded: true });
+      this.set(id, { ...this.getSnapshot(id), githubLoaded: true });
     }
   }
 
-  /** Asks the server to fetch GitHub. The only network path for the inbox;
+  /** Asks the host to fetch GitHub. The only network path for the inbox;
    *  only the open inbox view calls it. Concurrent calls share one request. */
-  refreshGithub(reason: GithubInboxRefreshReason): Promise<GithubInboxSnapshot | null> {
-    if (this.githubInflight) return this.githubInflight;
-    if (!this.link) return Promise.resolve(this.state.github);
-    this.set({ ...this.state, refreshing: true });
-    this.githubInflight = this.link
+  refreshGithub(environmentId: string, reason: GithubInboxRefreshReason): Promise<GithubInboxSnapshot | null> {
+    const slot = this.slots.get(environmentId);
+    if (slot?.githubInflight) return slot.githubInflight;
+    if (!slot) return Promise.resolve(this.getSnapshot(environmentId).github);
+    this.set(environmentId, { ...this.getSnapshot(environmentId), refreshing: true });
+    slot.githubInflight = slot.link
       .request<GithubInboxSnapshot>("github.inboxRefresh", { reason })
       .then((github) => {
-        this.set({ ...this.state, github, githubLoaded: true, refreshing: false });
+        this.set(environmentId, { ...this.getSnapshot(environmentId), github, githubLoaded: true, refreshing: false });
         return github;
       })
       .catch(() => {
-        this.set({ ...this.state, refreshing: false });
-        return this.state.github;
+        this.set(environmentId, { ...this.getSnapshot(environmentId), refreshing: false });
+        return this.getSnapshot(environmentId).github;
       })
       .finally(() => {
-        this.githubInflight = null;
+        slot.githubInflight = null;
       });
-    return this.githubInflight;
+    return slot.githubInflight;
   }
 
-  /** The Linear list for a query, fresh for a minute unless forced. */
-  refreshLinear(query: LinearInboxQuery, options: { force?: boolean } = {}): Promise<InboxItem[]> {
+  /** The Linear list for a query on one host, fresh for a minute unless forced. */
+  refreshLinear(
+    environmentId: string,
+    query: LinearInboxQuery,
+    options: { force?: boolean } = {},
+  ): Promise<InboxItem[]> {
+    const slot = this.slots.get(environmentId);
     const key = linearQueryKey(query);
-    const { linear } = this.state;
+    const { linear } = this.getSnapshot(environmentId);
+    if (!slot) return Promise.resolve(linear.items);
     if (
       !options.force &&
-      key === this.linearKey &&
+      key === slot.linearKey &&
       linear.fetchedAt !== null &&
       Date.now() - linear.fetchedAt < LINEAR_FRESH_MS
     ) {
       return Promise.resolve(linear.items);
     }
-    if (this.linearInflight && key === this.linearKey) return this.linearInflight;
-    this.linearKey = key;
-    this.set({ ...this.state, linear: { ...linear, loading: true } });
-    const run = fetchLinearItems(query)
+    if (slot.linearInflight && key === slot.linearKey) return slot.linearInflight;
+    slot.linearKey = key;
+    this.set(environmentId, { ...this.getSnapshot(environmentId), linear: { ...linear, loading: true } });
+    const run = fetchLinearItems(environmentId, query)
       .then((items) => {
-        if (this.linearKey !== key) return items;
-        this.set({
-          ...this.state,
+        if (slot.linearKey !== key) return items;
+        this.set(environmentId, {
+          ...this.getSnapshot(environmentId),
           linear: {
             items,
             fetchedAt: Date.now(),
@@ -327,33 +363,40 @@ class InboxStore {
         return items;
       })
       .catch((err: unknown) => {
-        if (this.linearKey !== key) return [];
+        if (slot.linearKey !== key) return [];
         const message = err instanceof Error ? err.message : String(err);
-        this.set({ ...this.state, linear: { ...this.state.linear, error: message, loading: false } });
-        return this.state.linear.items;
+        const state = this.getSnapshot(environmentId);
+        this.set(environmentId, { ...state, linear: { ...state.linear, error: message, loading: false } });
+        return state.linear.items;
       })
       .finally(() => {
-        if (this.linearInflight === run) this.linearInflight = null;
+        if (slot.linearInflight === run) slot.linearInflight = null;
       });
-    this.linearInflight = run;
+    slot.linearInflight = run;
     return run;
   }
 
-  private set(next: InboxState): void {
-    this.state = next;
+  private set(environmentId: string, next: InboxState): void {
+    const states = new Map(this.states);
+    states.set(environmentId, next);
+    this.states = states;
+    this.emit();
+  }
+
+  private emit(): void {
     for (const l of this.listeners) l();
   }
 }
 
-async function fetchLinearItems(query: LinearInboxQuery): Promise<InboxItem[]> {
-  if (!(await linearConnected()).connected) return [];
+async function fetchLinearItems(environmentId: string, query: LinearInboxQuery): Promise<InboxItem[]> {
+  if (!(await linearConnected(environmentId)).connected) return [];
   const hiddenIds = query.hiddenTeamIds ?? loadHiddenLinearTeamIds();
   let teamIds: string[] | null = null;
   if (hiddenIds.length > 0) {
-    teamIds = linearTeamIdsForFetch(await listLinearTeams(), hiddenIds);
+    teamIds = linearTeamIdsForFetch(await listLinearTeams(environmentId), hiddenIds);
     if (teamIds?.length === 0) return [];
   }
-  const issues = await listLinearIssues({
+  const issues = await listLinearIssues(environmentId, {
     assignedToMe: query.assignedToMe,
     state: query.state,
     teamIds: teamIds ?? [],
@@ -368,6 +411,10 @@ async function fetchLinearItems(query: LinearInboxQuery): Promise<InboxItem[]> {
 
 export const inboxStore = new InboxStore();
 
-export function useInbox(): InboxState {
-  return useSyncExternalStore(inboxStore.subscribe, inboxStore.getSnapshot, inboxStore.getSnapshot);
+export function useInbox(environmentId: string): InboxState {
+  return useSyncExternalStore(
+    inboxStore.subscribe,
+    () => inboxStore.getSnapshot(environmentId),
+    () => inboxStore.getSnapshot(environmentId),
+  );
 }

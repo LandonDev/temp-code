@@ -16,12 +16,12 @@ import {
 import type { ProjectMeta, SessionMeta, WorkspaceMeta } from "./tcserver/types";
 
 const workspaces: WorkspaceMeta[] = [
-  { id: "w1", name: "repo", path: "/home/me/repo", git: true, createdAt: 1 },
+  { environmentId: "local", id: "w1", name: "repo", path: "/home/me/repo", git: true, createdAt: 1 },
 ];
 const projects: ProjectMeta[] = [
-  { id: "p1", workspaceId: "w1", name: "Auth", mode: "worktree", branch: "tc/auth", cwd: "/home/me/.temp-code/worktrees/auth", archived: false, createdAt: 2 },
-  { id: "p2", workspaceId: "w1", name: "Local", mode: "local", branch: "main", cwd: "/home/me/repo", archived: false, createdAt: 3 },
-  { id: "p3", workspaceId: "w1", name: "Old", mode: "worktree", branch: "tc/old", cwd: "/home/me/.temp-code/worktrees/old", archived: true, createdAt: 4 },
+  { environmentId: "local", id: "p1", workspaceId: "w1", name: "Auth", mode: "worktree", branch: "tc/auth", cwd: "/home/me/.temp-code/worktrees/auth", archived: false, createdAt: 2 },
+  { environmentId: "local", id: "p2", workspaceId: "w1", name: "Local", mode: "local", branch: "main", cwd: "/home/me/repo", archived: false, createdAt: 3 },
+  { environmentId: "local", id: "p3", workspaceId: "w1", name: "Old", mode: "worktree", branch: "tc/old", cwd: "/home/me/.temp-code/worktrees/old", archived: true, createdAt: 4 },
 ];
 const catalog = { workspaces, projects };
 
@@ -111,6 +111,7 @@ describe("last thread per project / workspace", () => {
   beforeEach(mockLocalStorage);
   const meta = (id: string, over: Partial<SessionMeta> = {}): SessionMeta =>
     ({
+      environmentId: "local",
       id,
       parentId: null,
       projectId: "p1",

@@ -68,6 +68,9 @@ function snapshot(issueUpdatedAt: string, over: Partial<GithubInboxItem> = {}): 
 function fakeLink(answer: () => GithubInboxSnapshot): Link & { calls: string[]; open: () => void } {
   const openers = new Set<() => void>();
   const link = {
+    environmentId: "local",
+    profile: "local" as const,
+    onClose: () => () => {},
     calls: [] as string[],
     connected: false,
     request<T>(method: string): Promise<T> {
@@ -113,8 +116,8 @@ describe("inbox badge with the inbox closed", () => {
     vi.useFakeTimers();
     try {
       const link = fakeLink(() => snapshot("2026-01-01T00:00:00Z"));
-      workspaceStore.connect(link);
-      inboxStore.connect(link);
+      workspaceStore.attach(link);
+      inboxStore.attach(link);
       link.open();
       await vi.advanceTimersByTimeAsync(0);
       const off = subscribeInboxBadge(() => undefined);
@@ -137,15 +140,15 @@ describe("inbox badge from the stored snapshot", () => {
     const link = fakeLink(() => snapshot(at));
     let ticks = 0;
     const off = subscribeInboxBadge(() => void ticks++);
-    workspaceStore.connect(link);
-    inboxStore.connect(link);
+    workspaceStore.attach(link);
+    inboxStore.attach(link);
     link.open();
     await flush();
     expect(ticks).toBeGreaterThan(0);
     expect(inboxUnseenFromCache()).toBe(false); // the first stored list is "seen"
 
     at = "2026-02-01T00:00:00Z";
-    await inboxStore.refreshGithub("open"); // what the open inbox view does
+    await inboxStore.refreshGithub("local", "open"); // what the open inbox view does
     expect(inboxUnseenFromCache()).toBe(false); // changed, but it waits on nobody
     off();
   });
@@ -165,14 +168,14 @@ describe("inbox badge lights only for what waits on the user", () => {
     let over = first;
     const link = fakeLink(() => snapshot(at, over));
     const off = subscribeInboxBadge(() => undefined);
-    workspaceStore.connect(link);
-    inboxStore.connect(link);
+    workspaceStore.attach(link);
+    inboxStore.attach(link);
     link.open();
     await flush();
     expect(inboxUnseenFromCache()).toBe(false);
     at = "2026-02-01T00:00:00Z";
     over = next;
-    await inboxStore.refreshGithub("open");
+    await inboxStore.refreshGithub("local", "open");
     subscriptions.push(off); // stays live so a seen mark can clear the dot
     return inboxUnseenFromCache();
   }

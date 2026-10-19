@@ -29,6 +29,7 @@
  *   profile.start/read/stop     root-Profiler commit time and long tasks (lib/renderProfile.ts)
  *   commands                    the command id list
  */
+import { LOCAL_ENVIRONMENT_ID } from "./connection";
 import { APP_COMMANDS, type AppCommand, type AppCommandId } from "./appCommands";
 import { devRenders } from "./devRenders";
 import { registeredEditorPaths } from "./editorFlush";
@@ -106,6 +107,7 @@ function feedMeta(sessionId: string, status: SessionMeta["status"], now: number)
   const prev = sessionStore.metaOf(sessionId);
   return {
     id: sessionId,
+    environmentId: LOCAL_ENVIRONMENT_ID,
     parentId: null,
     projectId: s?.projectId ?? null,
     workspaceId: s?.workspaceId ?? null,
@@ -161,7 +163,7 @@ async function feed({
   let tool = 0;
   const push = (event: AgentEvent): void => {
     seq += 1;
-    sessionStore.injectPush({ push: "event", row: { sessionId, seq, ts: Date.now(), event } });
+    sessionStore.injectPush({ push: "event", row: { sessionId, seq, ts: Date.now(), event } }, LOCAL_ENVIRONMENT_ID);
   };
   const words = (): string => {
     const n = 1 + Math.floor(rand() * 4);
@@ -171,7 +173,7 @@ async function feed({
   };
   const msgId = (n: number): string => `feed-${n}`;
 
-  sessionStore.injectPush({ push: "session", session: feedMeta(sessionId, "running", Date.now()) });
+  sessionStore.injectPush({ push: "session", session: feedMeta(sessionId, "running", Date.now()) }, LOCAL_ENVIRONMENT_ID);
   push({ type: "user-text", text: "Synthetic feed: stream a long answer with tool calls." });
 
   await new Promise<void>((done) => {
@@ -210,7 +212,7 @@ async function feed({
   });
 
   push({ type: "turn-complete", inputTokens: 1000, outputTokens: textDeltas * 3 });
-  sessionStore.injectPush({ push: "session", session: feedMeta(sessionId, "idle", Date.now()) });
+  sessionStore.injectPush({ push: "session", session: feedMeta(sessionId, "idle", Date.now()) }, LOCAL_ENVIRONMENT_ID);
   const after = sessionStore.pushCounts();
   return {
     session: after.session - before.session,

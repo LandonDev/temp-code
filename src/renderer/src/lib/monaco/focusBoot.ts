@@ -1,5 +1,6 @@
+import type { ProjectMeta } from "../tcserver/types";
 import { listDir } from "../fs";
-import { client } from "../tcserver/client";
+import { registry } from "../connection";
 import { projectForCwd } from "../tcserver/projects";
 import { workspaceStore } from "../tcserver/workspaces";
 
@@ -23,7 +24,7 @@ const BUILD_FILES = new Set([
 const warmed = new Set<string>();
 
 /** Resolve the server project for a cwd, waiting for the catalog if needed. */
-function resolveProject(cwd: string): Promise<{ id: string; cwd: string } | null> {
+function resolveProject(cwd: string): Promise<ProjectMeta | null> {
   const now = projectForCwd(cwd);
   if (now) return Promise.resolve(now);
   if (workspaceStore.getSnapshot().loaded) return Promise.resolve(null);
@@ -43,10 +44,13 @@ export async function warmProjectForCwd(cwd: string): Promise<void> {
   warmed.add(project.id);
   let jvm = false;
   try {
-    jvm = (await listDir(project.cwd)).some((e) => BUILD_FILES.has(e.name));
+    jvm = (await listDir(project.environmentId, project.cwd)).some((e) => BUILD_FILES.has(e.name));
   } catch {
     jvm = false;
   }
   if (!jvm) return;
-  await client.request("lsp.ensure", { projectId: project.id, lang: "idea" }).catch(() => undefined);
+  await registry
+    .linkOf(project.environmentId)
+    .request("lsp.ensure", { projectId: project.id, lang: "idea" })
+    .catch(() => undefined);
 }

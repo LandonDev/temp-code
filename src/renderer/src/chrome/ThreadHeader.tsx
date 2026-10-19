@@ -1,3 +1,4 @@
+import { sessionStore } from "../lib/tcserver/store";
 import { useCallback, useState, type MouseEvent as ReactMouseEvent } from "react";
 import type { ThreadRules } from "@server/shared/rules";
 import type { ThreadType } from "../lib/tcserver/types";
@@ -98,6 +99,7 @@ export function ThreadHeader({
   const [menu, setMenu] = useState<{ x: number; y: number; chip: StripChip } | null>(null);
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [tuning, setTuning] = useState<StripChip | null>(null);
+  const tuningSession = tuning ? sessionStore.get(tuning.id) : undefined;
   const [deleting, setDeleting] = useState<StripChip | null>(null);
   const [pauseAll, setPauseAll] = useState<PauseAllState>("idle");
 
@@ -186,11 +188,12 @@ export function ThreadHeader({
           onClose={() => setMenu(null)}
         />
       ) : null}
-      {tuning ? (
+      {tuning && tuningSession ? (
         <TuneDialog
+          environmentId={tuningSession.environmentId}
           title={`${THREAD_LABELS[tuning.thread.threadType ?? "chat"]} options · ${chipTitle(tuning)}`}
           initial={tuning.thread.threadRules}
-          workspaceId={workspaceId}
+          workspaceId={tuningSession.workspaceId ?? null}
           onCancel={() => setTuning(null)}
           onSave={(rules) => {
             setTuning(null);

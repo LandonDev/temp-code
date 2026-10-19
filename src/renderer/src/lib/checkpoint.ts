@@ -1,4 +1,4 @@
-import { invoke } from "./native";
+import { invokeOn } from "./native";
 
 export type CheckpointFile = {
   path: string;
@@ -30,72 +30,67 @@ export function subscribeReviewChanged(
   return () => window.removeEventListener(REVIEW_CHANGED, handler);
 }
 
-export function ensureSessionCheckpoint(
-  sessionId: string,
+export function ensureSessionCheckpoint(environmentId: string, sessionId: string,
   cwd: string,
 ): Promise<void> {
-  return invoke<void>("session_checkpoint_ensure", { sessionId, cwd });
+  return invokeOn<void>(environmentId, "session_checkpoint_ensure", { sessionId, cwd });
 }
 
 /** Snapshot the worktree before a live turn so Keep/Undo can target this session. */
 export async function beginSessionTurn(
+  environmentId: string,
   sessionId: string,
   cwd: string,
 ): Promise<void> {
   if (!cwd || cwd === "~") return;
-  await ensureSessionCheckpoint(sessionId, cwd);
+  await ensureSessionCheckpoint(environmentId, sessionId, cwd);
   notifyReviewChanged(sessionId);
 }
 
-export function captureSessionCheckpoint(
-  sessionId: string,
+export function captureSessionCheckpoint(environmentId: string, sessionId: string,
   cwd: string,
   paths: string[],
 ): Promise<void> {
   if (paths.length === 0) return Promise.resolve();
-  return invoke<void>("session_checkpoint_capture", {
+  return invokeOn<void>(environmentId, "session_checkpoint_capture", {
     sessionId,
     cwd,
     paths,
   });
 }
 
-export function syncSessionCheckpoint(
-  sessionId: string,
+export function syncSessionCheckpoint(environmentId: string, sessionId: string,
   cwd: string,
 ): Promise<void> {
   if (!cwd || cwd === "~") return Promise.resolve();
-  return invoke<void>("session_checkpoint_sync", { sessionId, cwd });
+  return invokeOn<void>(environmentId, "session_checkpoint_sync", { sessionId, cwd });
 }
 
-export function sessionCheckpointStatus(
-  sessionId: string,
+export function sessionCheckpointStatus(environmentId: string, sessionId: string,
   cwd: string,
 ): Promise<CheckpointStatus> {
-  return invoke<CheckpointStatus>("session_checkpoint_status", {
+  return invokeOn<CheckpointStatus>(environmentId, "session_checkpoint_status", {
     sessionId,
     cwd,
   });
 }
 
-export function undoSessionChanges(
-  sessionId: string,
+export function undoSessionChanges(environmentId: string, sessionId: string,
   cwd: string,
   relative?: string,
 ): Promise<CheckpointStatus> {
-  return invoke<CheckpointStatus>("session_checkpoint_undo", {
+  return invokeOn<CheckpointStatus>(environmentId, "session_checkpoint_undo", {
     sessionId,
     cwd,
     relative: relative ?? null,
   });
 }
 
-export function keepSessionChanges(
-  sessionId: string,
+export function keepSessionChanges(environmentId: string, sessionId: string,
   cwd: string,
   relative?: string,
 ): Promise<CheckpointStatus> {
-  return invoke<CheckpointStatus>("session_checkpoint_keep", {
+  return invokeOn<CheckpointStatus>(environmentId, "session_checkpoint_keep", {
     sessionId,
     cwd,
     relative: relative ?? null,

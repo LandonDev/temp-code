@@ -6,7 +6,7 @@ import { FileRefMenu } from "../../surfaces/FileRefMenu";
 import { duration } from "../../lib/format";
 import { invoke } from "../../lib/native";
 import { useClock } from "../../lib/turnClock";
-import { client } from "../../lib/tcserver/client";
+import { registry } from "../../lib/connection";
 import { useProjects } from "../../lib/tcserver/workspaces";
 import {
   cancelBuild,
@@ -32,6 +32,7 @@ export function BuildPanel({ projectId }: { projectId: string }) {
   const sync = useSync(projectId);
   const project = useProjects().find((p) => p.id === projectId);
   const workspaceId = project?.workspaceId;
+  const environmentId = project?.environmentId;
   const [effective, setEffective] = useState<EffectiveBuild | null | undefined>(undefined);
   const [error, setError] = useState<string | null>(null);
   // Which branch to build: the project's own by default; another checkout
@@ -54,44 +55,46 @@ export function BuildPanel({ projectId }: { projectId: string }) {
   const branchArg = chosen && chosen !== own ? chosen : undefined;
 
   useEffect(() => {
+    if (!environmentId) return;
     void fetchBuildStatus(projectId).catch(() => undefined);
-    void client
+    void registry.linkOf(environmentId)
       .request("build.targets", { projectId })
       .then((t) => setTargets(t as BuildTarget[]))
       .catch(() => undefined);
-  }, [projectId]);
+  }, [environmentId, projectId]);
 
   useEffect(() => {
+    if (!environmentId) return;
     setEffective(undefined);
-    void client
+    void registry.linkOf(environmentId)
       .request("build.effective", { projectId, ...(branchArg ? { branch: branchArg } : {}) })
       .then((e) => setEffective(e as EffectiveBuild | null))
       .catch(() => setEffective(null));
-  }, [projectId, branchArg]);
+  }, [environmentId, projectId, branchArg]);
 
   useEffect(() => {
-    if (!chosen) return;
+    if (!chosen || !environmentId) return;
     let live = true;
     setRemote(undefined);
     setPullError(null);
-    void client
+    void registry.linkOf(environmentId)
       .request("build.remote", { projectId, ...(branchArg ? { branch: branchArg } : {}) })
       .then((r) => live && setRemote(r as RemoteStatus | null))
       .catch(() => live && setRemote(null));
     return () => {
       live = false;
     };
-  }, [projectId, chosen, branchArg]);
+  }, [environmentId, projectId, chosen, branchArg]);
 
   const pull = async (): Promise<void> => {
-    if (!chosen) return;
+    if (!chosen || !environmentId) return;
     setPulling(true);
     setPullError(null);
     try {
       setRemote(await pullBranch(projectId, branchArg));
     } catch (err) {
       setPullError(err instanceof Error ? err.message : String(err));
-      void client
+      void registry.linkOf(environmentId)
         .request("build.remote", { projectId, ...(branchArg ? { branch: branchArg } : {}) })
         .then((r) => setRemote(r as RemoteStatus | null))
         .catch(() => undefined);

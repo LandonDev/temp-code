@@ -170,7 +170,7 @@ describe("workspace actions", () => {
 
 describe("workspace snapshot round-trip", () => {
   it("restores the store's tabs unchanged through save, parse and hydrate", () => {
-    const session: Session = { ...newSession("cursor", "/repo"), id: "s1" };
+    const session: Session = { ...newSession("local", "cursor", "/repo"), id: "s1" };
     const file = newFileTab("/repo/README.md", "/repo");
     const term = newTerminalFile("/repo", "zsh");
     const rich: WorkspaceTab = {

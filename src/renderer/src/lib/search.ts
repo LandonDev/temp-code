@@ -1,4 +1,4 @@
-import { invoke } from "./native";
+import { invokeOn } from "./native";
 
 export type ProjectSearchMatch = {
   path: string;
@@ -49,8 +49,7 @@ export function editorPathsEqual(a: string, b: string): boolean {
   return normalizeEditorPath(a) === normalizeEditorPath(b);
 }
 
-export function searchProject(
-  options: ProjectSearchOptions,
+export function searchProject(environmentId: string, options: ProjectSearchOptions,
 ): Promise<ProjectSearchResult> {
-  return invoke<ProjectSearchResult>("search_project", { options });
+  return invokeOn<ProjectSearchResult>(environmentId, "search_project", { options });
 }

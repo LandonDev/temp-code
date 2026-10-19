@@ -1,5 +1,5 @@
 import type { FsMedia, GitFileMedia } from "@server/shared/contract-fsgit";
-import { invoke, open } from "./native";
+import { invoke, invokeOn, open } from "./native";
 
 export type FsEntry = {
   name: string;
@@ -15,12 +15,12 @@ export type ProjectFile = {
   isDir?: boolean;
 };
 
-export function listDir(path: string): Promise<FsEntry[]> {
-  return invoke<FsEntry[]>("list_dir", { path });
+export function listDir(environmentId: string, path: string): Promise<FsEntry[]> {
+  return invokeOn<FsEntry[]>(environmentId, "list_dir", { path });
 }
 
-export function listProjectFiles(cwd: string): Promise<ProjectFile[]> {
-  return invoke<ProjectFile[]>("list_project_files", { cwd });
+export function listProjectFiles(environmentId: string, cwd: string): Promise<ProjectFile[]> {
+  return invokeOn<ProjectFile[]>(environmentId, "list_project_files", { cwd });
 }
 
 export type GitDiffStats = {
@@ -29,8 +29,8 @@ export type GitDiffStats = {
   deletions: number;
 };
 
-export function gitDiffStats(cwd: string): Promise<GitDiffStats> {
-  return invoke<GitDiffStats>("git_diff_stats", { cwd });
+export function gitDiffStats(environmentId: string, cwd: string): Promise<GitDiffStats> {
+  return invokeOn<GitDiffStats>(environmentId, "git_diff_stats", { cwd });
 }
 
 export type GitChangedFile = {
@@ -56,8 +56,8 @@ export type GitDiffIndex = {
   aheadOfDefault: number;
 };
 
-export function gitDiffIndex(cwd: string): Promise<GitDiffIndex> {
-  return invoke<GitDiffIndex>("git_diff_index", { cwd });
+export function gitDiffIndex(environmentId: string, cwd: string): Promise<GitDiffIndex> {
+  return invokeOn<GitDiffIndex>(environmentId, "git_diff_index", { cwd });
 }
 
 export type GitFileDiff = {
@@ -71,12 +71,11 @@ export type GitFileDiff = {
 };
 
 /** `base` picks the left side: the index (default) or HEAD. */
-export function gitFileDiff(
-  cwd: string,
+export function gitFileDiff(environmentId: string, cwd: string,
   relative: string,
   base?: "index" | "HEAD",
 ): Promise<GitFileDiff> {
-  return invoke<GitFileDiff>("git_file_diff", { cwd, relative, base });
+  return invokeOn<GitFileDiff>(environmentId, "git_file_diff", { cwd, relative, base });
 }
 
 export type GitLogEntry = {
@@ -88,40 +87,39 @@ export type GitLogEntry = {
   date: string;
 };
 
-export function gitLog(cwd: string, limit = 20): Promise<GitLogEntry[]> {
-  return invoke<GitLogEntry[]>("git_log", { cwd, limit });
+export function gitLog(environmentId: string, cwd: string, limit = 20): Promise<GitLogEntry[]> {
+  return invokeOn<GitLogEntry[]>(environmentId, "git_log", { cwd, limit });
 }
 
-export function gitStageContents(
-  cwd: string,
+export function gitStageContents(environmentId: string, cwd: string,
   relative: string,
   contents: string,
 ): Promise<void> {
-  return invoke<void>("git_stage_contents", { cwd, relative, contents });
+  return invokeOn<void>(environmentId, "git_stage_contents", { cwd, relative, contents });
 }
 
-export function gitStageFile(cwd: string, relative: string): Promise<void> {
-  return invoke<void>("git_stage_file", { cwd, relative });
+export function gitStageFile(environmentId: string, cwd: string, relative: string): Promise<void> {
+  return invokeOn<void>(environmentId, "git_stage_file", { cwd, relative });
 }
 
-export function gitUnstageFile(cwd: string, relative: string): Promise<void> {
-  return invoke<void>("git_unstage_file", { cwd, relative });
+export function gitUnstageFile(environmentId: string, cwd: string, relative: string): Promise<void> {
+  return invokeOn<void>(environmentId, "git_unstage_file", { cwd, relative });
 }
 
-export function gitDiscardFile(cwd: string, relative: string): Promise<void> {
-  return invoke<void>("git_discard_file", { cwd, relative });
+export function gitDiscardFile(environmentId: string, cwd: string, relative: string): Promise<void> {
+  return invokeOn<void>(environmentId, "git_discard_file", { cwd, relative });
 }
 
-export function gitStageAll(cwd: string): Promise<void> {
-  return invoke<void>("git_stage_all", { cwd });
+export function gitStageAll(environmentId: string, cwd: string): Promise<void> {
+  return invokeOn<void>(environmentId, "git_stage_all", { cwd });
 }
 
-export function gitUnstageAll(cwd: string): Promise<void> {
-  return invoke<void>("git_unstage_all", { cwd });
+export function gitUnstageAll(environmentId: string, cwd: string): Promise<void> {
+  return invokeOn<void>(environmentId, "git_unstage_all", { cwd });
 }
 
-export function gitCommit(cwd: string, message: string): Promise<void> {
-  return invoke<void>("git_commit", { cwd, message });
+export function gitCommit(environmentId: string, cwd: string, message: string): Promise<void> {
+  return invokeOn<void>(environmentId, "git_commit", { cwd, message });
 }
 
 export type GitStagedContext = {
@@ -130,20 +128,20 @@ export type GitStagedContext = {
   patch: string;
 };
 
-export function gitStagedContext(cwd: string): Promise<GitStagedContext> {
-  return invoke<GitStagedContext>("git_staged_context", { cwd });
+export function gitStagedContext(environmentId: string, cwd: string): Promise<GitStagedContext> {
+  return invokeOn<GitStagedContext>(environmentId, "git_staged_context", { cwd });
 }
 
-export function gitPush(cwd: string): Promise<void> {
-  return invoke<void>("git_push", { cwd });
+export function gitPush(environmentId: string, cwd: string): Promise<void> {
+  return invokeOn<void>(environmentId, "git_push", { cwd });
 }
 
-export function gitPull(cwd: string): Promise<void> {
-  return invoke<void>("git_pull", { cwd });
+export function gitPull(environmentId: string, cwd: string): Promise<void> {
+  return invokeOn<void>(environmentId, "git_pull", { cwd });
 }
 
-export function gitSync(cwd: string): Promise<void> {
-  return invoke<void>("git_sync", { cwd });
+export function gitSync(environmentId: string, cwd: string): Promise<void> {
+  return invokeOn<void>(environmentId, "git_sync", { cwd });
 }
 
 export type GitRangeContext = {
@@ -154,8 +152,8 @@ export type GitRangeContext = {
   diffPatch: string;
 };
 
-export function gitRangeContext(cwd: string): Promise<GitRangeContext> {
-  return invoke<GitRangeContext>("git_range_context", { cwd });
+export function gitRangeContext(environmentId: string, cwd: string): Promise<GitRangeContext> {
+  return invokeOn<GitRangeContext>(environmentId, "git_range_context", { cwd });
 }
 
 export type GitPr = {
@@ -165,18 +163,17 @@ export type GitPr = {
   state: string;
 };
 
-export function gitPrStatus(cwd: string): Promise<GitPr | null> {
-  return invoke<GitPr | null>("git_pr_status", { cwd });
+export function gitPrStatus(environmentId: string, cwd: string): Promise<GitPr | null> {
+  return invokeOn<GitPr | null>(environmentId, "git_pr_status", { cwd });
 }
 
-export function gitPrCreate(
-  cwd: string,
+export function gitPrCreate(environmentId: string, cwd: string,
   title: string,
   body: string,
   base: string,
   head: string,
 ): Promise<string> {
-  return invoke<string>("git_pr_create", { cwd, title, body, base, head });
+  return invokeOn<string>(environmentId, "git_pr_create", { cwd, title, body, base, head });
 }
 
 export type GitBranchInfo = {
@@ -191,24 +188,23 @@ export type GitBranches = {
   branches: GitBranchInfo[];
 };
 
-export function gitBranches(cwd: string): Promise<GitBranches> {
-  return invoke<GitBranches>("git_branches", { cwd });
+export function gitBranches(environmentId: string, cwd: string): Promise<GitBranches> {
+  return invokeOn<GitBranches>(environmentId, "git_branches", { cwd });
 }
 
-export function gitCheckout(
-  cwd: string,
+export function gitCheckout(environmentId: string, cwd: string,
   name: string,
   remote?: string | null,
 ): Promise<string> {
-  return invoke<string>("git_checkout", { cwd, name, remote: remote ?? null });
+  return invokeOn<string>(environmentId, "git_checkout", { cwd, name, remote: remote ?? null });
 }
 
-export function gitCreateBranch(cwd: string, name: string): Promise<string> {
-  return invoke<string>("git_create_branch", { cwd, name });
+export function gitCreateBranch(environmentId: string, cwd: string, name: string): Promise<string> {
+  return invokeOn<string>(environmentId, "git_create_branch", { cwd, name });
 }
 
-export function gitStash(cwd: string, message?: string): Promise<void> {
-  return invoke<void>("git_stash", { cwd, message: message ?? null });
+export function gitStash(environmentId: string, cwd: string, message?: string): Promise<void> {
+  return invokeOn<void>(environmentId, "git_stash", { cwd, message: message ?? null });
 }
 
 /** Git refused a checkout because the working tree would be overwritten. */
@@ -236,34 +232,35 @@ export function restoreSessionCheckout<
 
 export { notifyGitChanged, subscribeGitChanged } from "./gitChanged";
 
-export function createPath(
-  parent: string,
+export function createPath(environmentId: string, parent: string,
   name: string,
   isDir: boolean,
 ): Promise<string> {
-  return invoke<string>("create_path", { parent, name, isDir });
+  return invokeOn<string>(environmentId, "create_path", { parent, name, isDir });
 }
 
-export function renamePath(path: string, name: string): Promise<string> {
-  return invoke<string>("rename_path", { path, name });
+export function renamePath(environmentId: string, path: string, name: string): Promise<string> {
+  return invokeOn<string>(environmentId, "rename_path", { path, name });
 }
 
-export function deletePath(path: string): Promise<void> {
-  return invoke<void>("delete_path", { path });
+export function deletePath(environmentId: string, path: string): Promise<void> {
+  return invokeOn<void>(environmentId, "delete_path", { path });
 }
 
-export function copyPath(from: string, destParent: string): Promise<string> {
-  return invoke<string>("copy_path", { from, destParent });
+export function copyPath(environmentId: string, from: string, destParent: string): Promise<string> {
+  return invokeOn<string>(environmentId, "copy_path", { from, destParent });
 }
 
-export function movePath(from: string, destParent: string): Promise<string> {
-  return invoke<string>("move_path", { from, destParent });
+export function movePath(environmentId: string, from: string, destParent: string): Promise<string> {
+  return invokeOn<string>(environmentId, "move_path", { from, destParent });
 }
 
+/** Finder on this machine; a remote path has nothing to reveal here. */
 export function revealPath(path: string): Promise<void> {
   return invoke<void>("reveal_path", { path });
 }
 
+/** This machine's home directory (preload), used for the folder picker. */
 export function homeDir(): Promise<string> {
   return invoke<string>("home_dir");
 }
@@ -291,16 +288,15 @@ export async function pickFiles(title = "Attach files"): Promise<string[] | null
   return null;
 }
 
-export function cloneRepo(url: string, parent: string): Promise<string> {
-  return invoke<string>("clone_repo", { url, parent });
+export function cloneRepo(environmentId: string, url: string, parent: string): Promise<string> {
+  return invokeOn<string>(environmentId, "clone_repo", { url, parent });
 }
 
-export function readFilePreview(
-  path: string,
+export function readFilePreview(environmentId: string, path: string,
   maxLines = 6,
   startLine?: number,
 ): Promise<string[]> {
-  return invoke<string[]>("read_file_preview", {
+  return invokeOn<string[]>(environmentId, "read_file_preview", {
     path,
     maxLines,
     startLine,
@@ -312,33 +308,32 @@ export type FileMtime = {
   mtimeMs: number | null;
 };
 
-export function statFiles(paths: string[]): Promise<FileMtime[]> {
+export function statFiles(environmentId: string, paths: string[]): Promise<FileMtime[]> {
   if (paths.length === 0) return Promise.resolve([]);
-  return invoke<FileMtime[]>("stat_files", { paths });
+  return invokeOn<FileMtime[]>(environmentId, "stat_files", { paths });
 }
 
-export function readTextFile(path: string): Promise<string> {
-  return invoke<string>("read_text_file", { path });
+export function readTextFile(environmentId: string, path: string): Promise<string> {
+  return invokeOn<string>(environmentId, "read_text_file", { path });
 }
 
 export type FileMedia = FsMedia;
 
 /** What the viewer shows for an image, video or audio file; null for anything else. */
-export function fileMedia(path: string): Promise<FileMedia | null> {
-  return invoke<FileMedia | null>("file_media", { path });
+export function fileMedia(environmentId: string, path: string): Promise<FileMedia | null> {
+  return invokeOn<FileMedia | null>(environmentId, "file_media", { path });
 }
 
 /** Both sides of a changed media file for the review view; `base` is the index or a ref. */
-export function gitFileMedia(
-  cwd: string,
+export function gitFileMedia(environmentId: string, cwd: string,
   relative: string,
   base?: string,
 ): Promise<GitFileMedia> {
-  return invoke<GitFileMedia>("git_file_media", { cwd, relative, base });
+  return invokeOn<GitFileMedia>(environmentId, "git_file_media", { cwd, relative, base });
 }
 
-export function writeTextFile(path: string, content: string): Promise<void> {
-  return invoke<void>("write_text_file", { path, content });
+export function writeTextFile(environmentId: string, path: string, content: string): Promise<void> {
+  return invokeOn<void>(environmentId, "write_text_file", { path, content });
 }
 
 /** Last path segment, or `/` for the filesystem root. */

@@ -1,5 +1,5 @@
 import { loadGhostText } from "../../lib/settings";
-import { client } from "../../lib/tcserver/client";
+import { registry } from "../../lib/connection";
 import { dirPrefix } from "../../lib/tcserver/projects";
 import { monaco } from "./monaco";
 import { entryForUri } from "./models";
@@ -21,7 +21,7 @@ export function registerGhostText(): void {
         if (token.isCancellationRequested) return { items: [] };
         const offset = model.getOffsetAt(position);
         const text = model.getValue();
-        const completion = await client
+        const completion = await registry.linkOf(project.environmentId)
           .request<string | null>("fim.complete", {
             projectId: project.id,
             path: entry.path.slice(dirPrefix(project.cwd).length),

@@ -1,3 +1,4 @@
+import { hostOfCwd } from "../lib/tcserver/projects";
 import { useCallback, useSyncExternalStore } from "react";
 import { gitBranches, subscribeGitChanged, type GitBranches } from "../lib/fs";
 
@@ -70,7 +71,7 @@ async function load(entry: Entry, force = false) {
   if (entry.inFlight || (!force && document.hidden)) return;
   entry.inFlight = true;
   try {
-    publish(entry, await gitBranches(entry.cwd));
+    publish(entry, await gitBranches(hostOfCwd(entry.cwd), entry.cwd));
   } catch {
     publish(entry, null);
   } finally {

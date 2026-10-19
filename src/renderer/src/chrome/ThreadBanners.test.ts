@@ -4,6 +4,7 @@ import { bannerThreads } from "./ThreadBanners";
 
 function meta(id: string, over: Partial<SessionMeta> = {}): SessionMeta {
   return {
+    environmentId: "local",
     id,
     parentId: null,
     projectId: null,

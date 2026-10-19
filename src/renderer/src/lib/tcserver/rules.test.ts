@@ -64,6 +64,8 @@ describe("pure helpers", () => {
 });
 
 class FakeLink implements Link {
+  environmentId = "local";
+  profile = "local" as const;
   connected = true;
   calls: { method: string; params: unknown }[] = [];
   stored = new Map<string, OrchestrationRules>();
@@ -94,6 +96,9 @@ class FakeLink implements Link {
   onOpen(_l: () => void) {
     return () => {};
   }
+  onClose() {
+    return () => {};
+  }
   of(method: string) {
     return this.calls.filter((c) => c.method === method);
   }
@@ -104,50 +109,50 @@ describe("rulesStore", () => {
   beforeEach(() => {
     link = new FakeLink();
     rulesStore.reset();
-    rulesStore.connect(link);
+    rulesStore.attach(link);
   });
   afterEach(() => rulesStore.reset());
 
   it("loads a scope once and caches it", async () => {
-    const [a, b] = await Promise.all([rulesStore.load(null), rulesStore.load(null)]);
+    const [a, b] = await Promise.all([rulesStore.load("local", null), rulesStore.load("local", null)]);
     expect(a).toBe(b);
     expect(link.of("rules.get")).toHaveLength(1);
-    expect(rulesStore.scope(null)?.overridden).toBe(false);
-    await rulesStore.load(null);
+    expect(rulesStore.scope("local", null)?.overridden).toBe(false);
+    await rulesStore.load("local", null);
     expect(link.of("rules.get")).toHaveLength(1);
   });
 
   it("saves through and marks the scope overridden before the reply", async () => {
-    await rulesStore.load("w1");
+    await rulesStore.load("local", "w1");
     const next = { ...DEFAULT_RULES, conduct: { ...DEFAULT_RULES.conduct, delegation: "free" as const } };
-    const done = rulesStore.save("w1", next);
-    expect(rulesStore.scope("w1")).toEqual({ rules: next, overridden: true });
+    const done = rulesStore.save("local", "w1", next);
+    expect(rulesStore.scope("local", "w1")).toEqual({ rules: next, overridden: true });
     await done;
     expect(link.stored.get("w1")?.conduct.delegation).toBe("free");
   });
 
   it("a global save invalidates workspaces that inherit, not overrides", async () => {
     link.stored.set("w2", { ...DEFAULT_RULES, conduct: { ...DEFAULT_RULES.conduct, maxParallel: 2 } });
-    await Promise.all([rulesStore.load("w1"), rulesStore.load("w2")]);
-    await rulesStore.save(null, { ...DEFAULT_RULES, conduct: { ...DEFAULT_RULES.conduct, maxParallel: 8 } });
-    expect(rulesStore.scope("w1")).toBeUndefined();
-    expect(rulesStore.scope("w2")?.rules.conduct.maxParallel).toBe(2);
-    expect((await rulesStore.load("w1")).rules.conduct.maxParallel).toBe(8);
+    await Promise.all([rulesStore.load("local", "w1"), rulesStore.load("local", "w2")]);
+    await rulesStore.save("local", null, { ...DEFAULT_RULES, conduct: { ...DEFAULT_RULES.conduct, maxParallel: 8 } });
+    expect(rulesStore.scope("local", "w1")).toBeUndefined();
+    expect(rulesStore.scope("local", "w2")?.rules.conduct.maxParallel).toBe(2);
+    expect((await rulesStore.load("local", "w1")).rules.conduct.maxParallel).toBe(8);
   });
 
   it("clear sends null and re-reads what applies", async () => {
-    await rulesStore.save("w1", DEFAULT_RULES);
-    const scope = await rulesStore.clear("w1");
+    await rulesStore.save("local", "w1", DEFAULT_RULES);
+    const scope = await rulesStore.clear("local", "w1");
     const sets = link.of("rules.set");
     expect(sets[sets.length - 1]?.params).toEqual({ workspaceId: "w1", rules: null });
     expect(scope.overridden).toBe(false);
-    expect(rulesStore.scope("w1")?.overridden).toBe(false);
+    expect(rulesStore.scope("local", "w1")?.overridden).toBe(false);
   });
 
   it("keeps only spawn providers from the catalog", async () => {
-    const catalog = await rulesStore.loadCatalog();
+    const catalog = await rulesStore.loadCatalog("local");
     expect(Object.keys(catalog)).toEqual(["claude"]);
-    await rulesStore.loadCatalog();
+    await rulesStore.loadCatalog("local");
     expect(link.of("catalog.get")).toHaveLength(1);
   });
 });

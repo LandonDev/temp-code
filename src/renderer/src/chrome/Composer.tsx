@@ -1,3 +1,5 @@
+import { registry } from '../lib/connection'
+import { environmentOfCwd, hostOfCwd } from '../lib/tcserver/projects'
 import { Plus } from './icons'
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { EASE_OUT, SPRING_SWAP } from '../lib/ease'
@@ -87,7 +89,7 @@ import { resolveTabGroupLogo } from '../lib/tabGroups'
 import { ThreadTypeChip } from './ThreadTypeChip'
 import { useSlashCommands } from '../lib/tcserver/slashCommands'
 import { readCopiedMessage } from '../lib/copyMessage'
-import { useSessionMeta, useSessionMetasWhen } from '../lib/tcserver/store'
+import { sessionStore, useSessionMeta, useSessionMetasWhen } from '../lib/tcserver/store'
 import { tune as tuneSession } from '../lib/tcserver/commands'
 import { nativeModelId } from '../lib/models'
 import type { ThreadType } from '../lib/tcserver/types'
@@ -252,7 +254,7 @@ export function Composer({
   })
   const [files, setFiles] = useState<ProjectFile[]>(() => peekProjectFiles(executionCwd) ?? [])
   const notesEnabled = useSyncExternalStore(subscribeNotesEnabled, loadNotesEnabled, () => true)
-  const [notes, setNotes] = useState<Note[]>(() => peekNotes() ?? [])
+  const [notes, setNotes] = useState<Note[]>(() => peekNotes(hostOfCwd(executionCwd)) ?? [])
   const [runnerEnabled, setRunnerEnabled] = useState(loadComposerRunner)
   const [runnerLive, setRunnerLive] = useState(() => busy && loadComposerRunner())
   const groupLogos = useTabGroupLogos()
@@ -263,10 +265,11 @@ export function Composer({
   const live = trigger && dismissed !== `${trigger.mode}:${trigger.start}` ? trigger : null
   const commandOpen = live?.mode === 'command'
   const mentionOpen = live?.mode === 'file'
-  const commands = useSlashCommands(harness, executionCwd, commandOpen)
   const metas = useSessionMetasWhen(!!live)
   const sessionMeta = useSessionMeta(sessionId)
   const projects = useProjects()
+  const environmentId = (sessionId ? sessionStore.environmentOf(sessionId) : undefined) ?? sessionMeta?.environmentId ?? projects.find((p) => p.id === projectId)?.environmentId ?? environmentOfCwd(executionCwd) ?? registry.primary().environmentId
+  const commands = useSlashCommands(environmentId, harness, executionCwd, commandOpen)
   const attachmentsSupported = harnessSupportsAttachments(harness)
   const commandsByName = useMemo(
     () => new Map(commands.map((c) => [c.name, c] as const)),
@@ -474,13 +477,13 @@ export function Composer({
   useEffect(() => {
     if (!mentionOpen || !notesEnabled) return
     let cancelled = false
-    void loadNotes().then((next) => {
+    void loadNotes(environmentId).then((next) => {
       if (!cancelled) setNotes(next)
     })
     return () => {
       cancelled = true
     }
-  }, [mentionOpen, notesEnabled])
+  }, [environmentId, mentionOpen, notesEnabled])
 
   /** Every input and caret move lands here; the trigger under the caret
    *  drives the popover, and a caret inside a chip never counts as typing. */
@@ -794,11 +797,12 @@ export function Composer({
                     }
                   >
                     <AttachmentChip
+                      environmentId={environmentId}
                       attachment={file}
                       onRemove={() => removeAttachment(file.id)}
                       onOpen={
                         file.kind === 'image'
-                          ? () => openAttachmentImages(attachments, file)
+                          ? () => openAttachmentImages(environmentId, attachments, file)
                           : undefined
                       }
                     />
@@ -892,6 +896,7 @@ export function Composer({
                 ) : null}
                 {sessionId ? (
                   <AccountControl
+                    environmentId={environmentId}
                     meta={sessionMeta}
                     onClose={() => inputRef.current?.focus()}
                   />

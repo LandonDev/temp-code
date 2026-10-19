@@ -5,6 +5,7 @@ import type { EventRow, ServerPush, SessionMeta } from "./types";
 
 function meta(over: Partial<SessionMeta> = {}): SessionMeta {
   return {
+    environmentId: "local",
     id: "s1",
     parentId: null,
     projectId: null,
@@ -34,6 +35,11 @@ function meta(over: Partial<SessionMeta> = {}): SessionMeta {
   };
 }
 
+function wireMeta(over: Partial<SessionMeta> = {}): Omit<SessionMeta, "environmentId"> {
+  const { environmentId: _environmentId, ...wire } = meta(over);
+  return wire;
+}
+
 const row = (sessionId: string, seq: number, event: EventRow["event"]): EventRow => ({
   sessionId,
   seq,
@@ -42,9 +48,11 @@ const row = (sessionId: string, seq: number, event: EventRow["event"]): EventRow
 });
 
 class FakeLink implements Link {
+  environmentId = "local";
+  profile = "local" as const;
   connected = true;
   calls: { method: string; params: unknown }[] = [];
-  metas: SessionMeta[] = [];
+  metas: Omit<SessionMeta, "environmentId">[] = [];
   events = new Map<string, EventRow[]>();
   /** When set, head (beforeSeq) fetches wait on it. */
   holdHead: Promise<void> | null = null;
@@ -52,7 +60,7 @@ class FakeLink implements Link {
   private openListeners = new Set<() => void>();
 
   /** Archived metas, served only to a `session.list` that asks for them. */
-  archivedMetas: SessionMeta[] = [];
+  archivedMetas: Omit<SessionMeta, "environmentId">[] = [];
 
   request<T>(method: string, params?: unknown): Promise<T> {
     this.calls.push({ method, params });
@@ -91,6 +99,9 @@ class FakeLink implements Link {
   onOpen(l: () => void): () => void {
     this.openListeners.add(l);
     return () => this.openListeners.delete(l);
+  }
+  onClose() {
+    return () => {};
   }
   push(push: ServerPush): void {
     for (const l of this.pushListeners) l(push);
@@ -170,9 +181,9 @@ describe("sessionFromMeta / applyMeta", () => {
   });
 
   it("a draft adopts the thread fields the server minted", async () => {
-    sessionStore.connect(link);
+    sessionStore.attach(link);
     await sessionStore.ready();
-    const draft = newSession("claude", "/repo", undefined, undefined, undefined, { threadType: "planning" });
+    const draft = newSession("local", "claude", "/repo", undefined, undefined, undefined, { threadType: "planning" });
     sessionStore.mutate([draft]);
     expect(sessionStore.get(draft.id)?.threadType).toBe("planning");
     sessionStore.adopt(meta({ id: draft.id, threadType: "planning", planPath: "/repo/.temp-code/plan-x.md" }));
@@ -182,8 +193,8 @@ describe("sessionFromMeta / applyMeta", () => {
 
 describe("sessionStore", () => {
   it("lists metas on connect without opening them", async () => {
-    link.metas = [meta(), meta({ id: "s2", title: "two" })];
-    sessionStore.connect(link);
+    link.metas = [wireMeta(), wireMeta({ id: "s2", title: "two" })];
+    sessionStore.attach(link);
     await sessionStore.ready();
     expect(sessionStore.metas().map((m) => m.id)).toEqual(["s1", "s2"]);
     expect(sessionStore.getSnapshot()).toEqual([]);
@@ -192,13 +203,13 @@ describe("sessionStore", () => {
   });
 
   it("loads a transcript lazily, once, and subscribes", async () => {
-    link.metas = [meta()];
+    link.metas = [wireMeta()];
     link.events.set("s1", [
       row("s1", 1, { type: "user-text", text: "hi" }),
       row("s1", 2, { type: "assistant-text", text: "yo", delta: false, msgId: "m", blockIndex: 0 }),
       row("s1", 3, { type: "turn-complete" }),
     ]);
-    sessionStore.connect(link);
+    sessionStore.attach(link);
     await sessionStore.ready();
     await Promise.all([sessionStore.ensureLoaded("s1"), sessionStore.ensureLoaded("s1")]);
     expect(link.method("session.subscribe")).toBe(1);
@@ -209,8 +220,8 @@ describe("sessionStore", () => {
   });
 
   it("folds event pushes into open sessions and notifies", async () => {
-    link.metas = [meta()];
-    sessionStore.connect(link);
+    link.metas = [wireMeta()];
+    sessionStore.attach(link);
     await sessionStore.ready();
     await sessionStore.ensureLoaded("s1");
     sessionStore.mutate((prev) => [...prev, sessionStore.get("s1")!]);
@@ -231,9 +242,9 @@ describe("sessionStore", () => {
   });
 
   it("replays only the gap after a reconnect", async () => {
-    link.metas = [meta()];
+    link.metas = [wireMeta()];
     link.events.set("s1", [row("s1", 1, { type: "user-text", text: "hi" })]);
-    sessionStore.connect(link);
+    sessionStore.attach(link);
     await sessionStore.ready();
     await sessionStore.ensureLoaded("s1");
     link.events.get("s1")!.push(row("s1", 2, { type: "assistant-text", text: "late", delta: false, msgId: "m", blockIndex: 0 }));
@@ -245,11 +256,11 @@ describe("sessionStore", () => {
   });
 
   it("meta pushes update the view and keep local-only fields", async () => {
-    link.metas = [meta()];
-    sessionStore.connect(link);
+    link.metas = [wireMeta()];
+    sessionStore.attach(link);
     await sessionStore.ready();
     sessionStore.mutate([{ ...sessionStore.get("s1")!, composerSeed: "draft text" }]);
-    link.push({ push: "session", session: meta({ title: "Real title", status: "running" }) });
+    link.push({ push: "session", session: wireMeta({ title: "Real title", status: "running" }) });
     const s = sessionStore.getSnapshot()[0];
     expect(s.title).toBe("Real title");
     expect(s.busy).toBe(true);
@@ -257,9 +268,9 @@ describe("sessionStore", () => {
   });
 
   it("drafts open through mutate and adopt their server meta on create", async () => {
-    sessionStore.connect(link);
+    sessionStore.attach(link);
     await sessionStore.ready();
-    const draft = newSession("claude", "/repo");
+    const draft = newSession("local", "claude", "/repo");
     sessionStore.mutate([draft]);
     expect(sessionStore.isDraft(draft.id)).toBe(true);
     expect(sessionStore.metas()).toEqual([]);
@@ -275,23 +286,23 @@ describe("sessionStore", () => {
   });
 
   it("waitIdle resolves when the turn settles", async () => {
-    link.metas = [meta({ status: "running" })];
-    sessionStore.connect(link);
+    link.metas = [wireMeta({ status: "running" })];
+    sessionStore.attach(link);
     await sessionStore.ready();
     sessionStore.mutate([sessionStore.get("s1")!]);
     let settled = false;
     const wait = sessionStore.waitIdle("s1").then(() => (settled = true));
     await Promise.resolve();
     expect(settled).toBe(false);
-    link.push({ push: "session", session: meta({ status: "idle" }) });
+    link.push({ push: "session", session: wireMeta({ status: "idle" }) });
     await wait;
     expect(settled).toBe(true);
   });
 
   it("closing a session in the updater keeps its transcript cached", async () => {
-    link.metas = [meta()];
+    link.metas = [wireMeta()];
     link.events.set("s1", [row("s1", 1, { type: "user-text", text: "hi" })]);
-    sessionStore.connect(link);
+    sessionStore.attach(link);
     await sessionStore.ready();
     await sessionStore.ensureLoaded("s1");
     sessionStore.mutate([sessionStore.get("s1")!]);
@@ -303,8 +314,8 @@ describe("sessionStore", () => {
   });
 
   it("session-removed drops the entry", async () => {
-    link.metas = [meta()];
-    sessionStore.connect(link);
+    link.metas = [wireMeta()];
+    sessionStore.attach(link);
     await sessionStore.ready();
     sessionStore.mutate([sessionStore.get("s1")!]);
     link.push({ push: "session-removed", sessionIds: ["s1"] });
@@ -313,7 +324,7 @@ describe("sessionStore", () => {
   });
 
   it("folds live edits per session and path, keeping the first start", () => {
-    sessionStore.connect(link);
+    sessionStore.attach(link);
     const edit = (over: Record<string, unknown>) =>
       ({ push: "live-edit", cwd: "/repo", sessionIds: ["s1"], edit: { path: "a.ts", kind: "changed", diff: "-a\n+b", adds: 1, dels: 1, ts: 10, ...over } }) as ServerPush;
     link.push(edit({}));
@@ -324,25 +335,25 @@ describe("sessionStore", () => {
   });
 
   it("raises onSessionAdded for new top-level sessions pushed after boot, once", async () => {
-    link.metas = [meta({ id: "boot" })];
-    sessionStore.connect(link);
+    link.metas = [wireMeta({ id: "boot" })];
+    sessionStore.attach(link);
     const added: string[] = [];
     sessionStore.onSessionAdded((m) => added.push(m.id));
     await sessionStore.ready();
     await Promise.resolve();
-    link.push({ push: "session", session: meta({ id: "boot", status: "running" }) });
-    link.push({ push: "session", session: meta({ id: "child", parentId: "boot" }) });
-    link.push({ push: "session", session: meta({ id: "old", archived: true }) });
-    link.push({ push: "session", session: meta({ id: "new", threadType: "implementation" }) });
-    link.push({ push: "session", session: meta({ id: "new", status: "running" }) });
+    link.push({ push: "session", session: wireMeta({ id: "boot", status: "running" }) });
+    link.push({ push: "session", session: wireMeta({ id: "child", parentId: "boot" }) });
+    link.push({ push: "session", session: wireMeta({ id: "old", archived: true }) });
+    link.push({ push: "session", session: wireMeta({ id: "new", threadType: "implementation" }) });
+    link.push({ push: "session", session: wireMeta({ id: "new", status: "running" }) });
     sessionStore.adopt(meta({ id: "new" }));
     sessionStore.adopt(meta({ id: "made" }));
     expect(added).toEqual(["new", "made"]);
   });
 
   it("requestOpen raises onOpenRequested for a known session, never onSessionAdded", async () => {
-    link.metas = [meta({ id: "boot" })];
-    sessionStore.connect(link);
+    link.metas = [wireMeta({ id: "boot" })];
+    sessionStore.attach(link);
     const added: string[] = [];
     const asked: string[] = [];
     sessionStore.onSessionAdded((m) => added.push(m.id));
@@ -355,8 +366,8 @@ describe("sessionStore", () => {
   });
 
   it("requestOpen skips no one: an archived or child thread still comes forward", async () => {
-    link.metas = [meta({ id: "old", archived: true }), meta({ id: "kid", parentId: "old" })];
-    sessionStore.connect(link);
+    link.metas = [wireMeta({ id: "old", archived: true }), wireMeta({ id: "kid", parentId: "old" })];
+    sessionStore.attach(link);
     const asked: string[] = [];
     sessionStore.onOpenRequested((m) => asked.push(m.id));
     await sessionStore.ready();
@@ -367,21 +378,21 @@ describe("sessionStore", () => {
 
   it("adopting a thread the store already holds raises onSessionAdded no second time", async () => {
     link.metas = [];
-    sessionStore.connect(link);
+    sessionStore.attach(link);
     const added: string[] = [];
     sessionStore.onSessionAdded((m) => added.push(m.id));
     await sessionStore.ready();
     sessionStore.adopt(meta({ id: "made" }));
     sessionStore.adopt(meta({ id: "made", status: "running" }));
-    link.push({ push: "session", session: meta({ id: "made", status: "idle" }) });
+    link.push({ push: "session", session: wireMeta({ id: "made", status: "idle" }) });
     expect(added).toEqual(["made"]);
   });
 });
 
 describe("M4 store fixes", () => {
   it("re-subscribes every open session after a reconnect", async () => {
-    link.metas = [meta(), meta({ id: "s2" })];
-    sessionStore.connect(link);
+    link.metas = [wireMeta(), wireMeta({ id: "s2" })];
+    sessionStore.attach(link);
     await sessionStore.ready();
     await sessionStore.ensureLoaded("s1");
     await sessionStore.ensureLoaded("s2");
@@ -392,9 +403,9 @@ describe("M4 store fixes", () => {
   });
 
   it("holds pushes that land during a replay and folds them once", async () => {
-    link.metas = [meta()];
+    link.metas = [wireMeta()];
     link.events.set("s1", [row("s1", 1, { type: "user-text", text: "hi" })]);
-    sessionStore.connect(link);
+    sessionStore.attach(link);
     await sessionStore.ready();
     await sessionStore.ensureLoaded("s1");
     const late = row("s1", 2, { type: "assistant-text", text: "late", delta: false, msgId: "m", blockIndex: 0 });
@@ -410,8 +421,8 @@ describe("M4 store fixes", () => {
   });
 
   it("marks a session loaded once its history is in", async () => {
-    link.metas = [meta()];
-    sessionStore.connect(link);
+    link.metas = [wireMeta()];
+    sessionStore.attach(link);
     await sessionStore.ready();
     expect(sessionStore.get("s1")?.loaded).toBeFalsy();
     await sessionStore.ensureLoaded("s1");
@@ -419,12 +430,12 @@ describe("M4 store fixes", () => {
   });
 
   it("projects the tree flags off the meta", async () => {
-    link.metas = [meta({ treeCanContinue: true, treeHasLiveWork: true, treeHasPaused: false, treeFrozenActiveElapsed: 42 })];
-    sessionStore.connect(link);
+    link.metas = [wireMeta({ treeCanContinue: true, treeHasLiveWork: true, treeHasPaused: false, treeFrozenActiveElapsed: 42 })];
+    sessionStore.attach(link);
     await sessionStore.ready();
     await sessionStore.ensureLoaded("s1");
     expect(sessionStore.get("s1")).toMatchObject({ treeCanContinue: true, treeHasLiveWork: true, treeHasPaused: false, treeFrozenActiveElapsed: 42 });
-    link.push({ push: "session", session: meta({ treeCanContinue: false, treeHasLiveWork: false, treeHasPaused: true, treeFrozenActiveElapsed: null }) });
+    link.push({ push: "session", session: wireMeta({ treeCanContinue: false, treeHasLiveWork: false, treeHasPaused: true, treeFrozenActiveElapsed: null }) });
     expect(sessionStore.get("s1")).toMatchObject({ treeCanContinue: false, treeHasPaused: true, treeFrozenActiveElapsed: null });
   });
 });
@@ -434,14 +445,14 @@ describe("context reading", () => {
     row("s1", seq, { type: "compaction", phase: "done", trigger: "auto", preTokens: 180_000, postTokens: 4_400 });
 
   it("the meta's persisted reading beats the log's last compaction", async () => {
-    link.metas = [meta({ context: { tokens: 120_000, window: 200_000 } })];
+    link.metas = [wireMeta({ context: { tokens: 120_000, window: 200_000 } })];
     link.events.set("s1", [
       row("s1", 1, { type: "user-text", text: "q" }),
       compacted(2),
       row("s1", 3, { type: "assistant-text", text: "a", delta: false, msgId: "m", blockIndex: 0 }),
       row("s1", 4, { type: "turn-complete" }),
     ]);
-    sessionStore.connect(link);
+    sessionStore.attach(link);
     await sessionStore.ready();
     expect(sessionStore.get("s1")?.context).toEqual({ used: 120_000, window: 200_000 });
     await sessionStore.ensureComplete("s1");
@@ -449,14 +460,14 @@ describe("context reading", () => {
     // A live compaction is reported through the meta too; the fold's number does not jump the queue.
     link.push({ push: "event", row: compacted(5) });
     expect(sessionStore.get("s1")?.context).toEqual({ used: 120_000, window: 200_000 });
-    link.push({ push: "session", session: meta({ context: { tokens: 4_400, window: 200_000 } }) });
+    link.push({ push: "session", session: wireMeta({ context: { tokens: 4_400, window: 200_000 } }) });
     expect(sessionStore.get("s1")?.context).toEqual({ used: 4_400, window: 200_000 });
   });
 
   it("without a meta reading the fold's compaction count fills in", async () => {
-    link.metas = [meta()];
+    link.metas = [wireMeta()];
     link.events.set("s1", [row("s1", 1, { type: "user-text", text: "q" }), compacted(2), row("s1", 3, { type: "turn-complete" })]);
-    sessionStore.connect(link);
+    sessionStore.attach(link);
     await sessionStore.ready();
     await sessionStore.ensureComplete("s1");
     expect(sessionStore.get("s1")?.context).toEqual({ used: 4_400 });
@@ -466,8 +477,8 @@ describe("context reading", () => {
 describe("M4b projections", () => {
   const tick = () => new Promise((r) => setTimeout(r, 0));
   it("keeps the id list and shells stable through event pushes and busy flips", async () => {
-    link.metas = [meta({ title: "one" }), meta({ id: "s2", title: "two" })];
-    sessionStore.connect(link);
+    link.metas = [wireMeta({ title: "one" }), wireMeta({ id: "s2", title: "two" })];
+    sessionStore.attach(link);
     await sessionStore.ready();
     await sessionStore.ensureLoaded("s1");
     await sessionStore.ensureLoaded("s2");
@@ -480,14 +491,14 @@ describe("M4b projections", () => {
 
     link.push({ push: "event", row: row("s1", 1, { type: "user-text", text: "q" }) });
     await new Promise((r) => setTimeout(r, 30));
-    link.push({ push: "session", session: meta({ title: "one", status: "running" }) });
+    link.push({ push: "session", session: wireMeta({ title: "one", status: "running" }) });
     await tick();
     expect(sessionStore.get("s1")!.busy).toBe(true);
     expect(sessionStore.getIds()).toBe(ids);
     expect(sessionStore.getShells()).toBe(shells);
 
     // A shell field changing swaps only that shell.
-    link.push({ push: "session", session: meta({ title: "renamed", status: "running" }) });
+    link.push({ push: "session", session: wireMeta({ title: "renamed", status: "running" }) });
     await tick();
     const next = sessionStore.getShells();
     expect(next).not.toBe(shells);
@@ -496,7 +507,7 @@ describe("M4b projections", () => {
     expect(sessionStore.getIds()).toBe(ids);
 
     // A change further down keeps every shell before it.
-    link.push({ push: "session", session: meta({ id: "s2", title: "two again" }) });
+    link.push({ push: "session", session: wireMeta({ id: "s2", title: "two again" }) });
     await tick();
     const later = sessionStore.getShells();
     expect(later).not.toBe(next);
@@ -525,11 +536,11 @@ describe("tail-first load", () => {
   const tick = () => new Promise((r) => setTimeout(r, 0));
 
   it("paints the last 300 rows first and folds the head behind them with stable ids", async () => {
-    link.metas = [meta()];
+    link.metas = [wireMeta()];
     link.events.set("s1", log(200));
     let release: () => void = () => {};
     link.holdHead = new Promise((r) => (release = r));
-    sessionStore.connect(link);
+    sessionStore.attach(link);
     await sessionStore.ready();
     await sessionStore.ensureLoaded("s1");
     const tail = sessionStore.get("s1")!;
@@ -558,11 +569,11 @@ describe("tail-first load", () => {
   });
 
   it("a push during the head fetch survives the refold, in order", async () => {
-    link.metas = [meta()];
+    link.metas = [wireMeta()];
     link.events.set("s1", log(200));
     let release: () => void = () => {};
     link.holdHead = new Promise((r) => (release = r));
-    sessionStore.connect(link);
+    sessionStore.attach(link);
     await sessionStore.ready();
     await sessionStore.ensureLoaded("s1");
     link.push({ push: "event", row: row("s1", 601, { type: "user-text", text: "late" }) });
@@ -580,9 +591,9 @@ describe("tail-first load", () => {
   });
 
   it("a short log arrives whole in one request", async () => {
-    link.metas = [meta()];
+    link.metas = [wireMeta()];
     link.events.set("s1", log(5));
-    sessionStore.connect(link);
+    sessionStore.attach(link);
     await sessionStore.ready();
     await sessionStore.ensureLoaded("s1");
     expect(sessionStore.isComplete("s1")).toBe(true);
@@ -596,15 +607,15 @@ describe("meta push coalescing", () => {
   const flush = () => new Promise((r) => setTimeout(r, 0));
 
   it("many session pushes in one tick reach meta listeners once, after the flush", async () => {
-    link.metas = [meta()];
-    sessionStore.connect(link);
+    link.metas = [wireMeta()];
+    sessionStore.attach(link);
     await sessionStore.ready();
     let metaCalls = 0;
     let storeCalls = 0;
     sessionStore.onMetaChange(() => metaCalls++);
     sessionStore.subscribe(() => storeCalls++);
     for (let i = 1; i <= 50; i++) {
-      link.push({ push: "session", session: meta({ title: `t${i}`, updatedAt: i }) });
+      link.push({ push: "session", session: wireMeta({ title: `t${i}`, updatedAt: i }) });
     }
     expect(metaCalls).toBe(0);
     expect(storeCalls).toBe(0);
@@ -614,12 +625,12 @@ describe("meta push coalescing", () => {
   });
 
   it("metaOf and metas() read the newest push at once, and metas() is stable between changes", async () => {
-    link.metas = [meta()];
-    sessionStore.connect(link);
+    link.metas = [wireMeta()];
+    sessionStore.attach(link);
     await sessionStore.ready();
     const before = sessionStore.metas();
     expect(sessionStore.metas()).toBe(before);
-    link.push({ push: "session", session: meta({ title: "fresh", updatedAt: 9 }) });
+    link.push({ push: "session", session: wireMeta({ title: "fresh", updatedAt: 9 }) });
     expect(sessionStore.metaOf("s1")?.title).toBe("fresh");
     const after = sessionStore.metas();
     expect(after).not.toBe(before);
@@ -631,12 +642,12 @@ describe("meta push coalescing", () => {
   });
 
   it("a synchronous bump from a local action delivers the pending meta notification with it", async () => {
-    link.metas = [meta()];
-    sessionStore.connect(link);
+    link.metas = [wireMeta()];
+    sessionStore.attach(link);
     await sessionStore.ready();
     let metaCalls = 0;
     sessionStore.onMetaChange(() => metaCalls++);
-    link.push({ push: "session", session: meta({ title: "pushed" }) });
+    link.push({ push: "session", session: wireMeta({ title: "pushed" }) });
     expect(metaCalls).toBe(0);
     sessionStore.mutate([sessionStore.get("s1")!]);
     expect(metaCalls).toBe(1);
@@ -645,15 +656,15 @@ describe("meta push coalescing", () => {
   });
 
   it("event pushes are no longer flushed early by a meta push", async () => {
-    link.metas = [meta()];
-    sessionStore.connect(link);
+    link.metas = [wireMeta()];
+    sessionStore.attach(link);
     await sessionStore.ready();
     await sessionStore.ensureLoaded("s1");
     sessionStore.mutate([sessionStore.get("s1")!]);
     let storeCalls = 0;
     sessionStore.subscribe(() => storeCalls++);
     link.push({ push: "event", row: row("s1", 1, { type: "user-text", text: "q" }) });
-    link.push({ push: "session", session: meta({ status: "running" }) });
+    link.push({ push: "session", session: wireMeta({ status: "running" }) });
     link.push({ push: "event", row: row("s1", 2, { type: "assistant-text", text: "a", delta: true, msgId: "m", blockIndex: 0 }) });
     expect(storeCalls).toBe(0);
     await flush();
@@ -664,44 +675,44 @@ describe("meta push coalescing", () => {
 
 describe("archived metas on demand", () => {
   it("the boot list carries no archived threads; ensureArchived fetches one project's", async () => {
-    link.metas = [meta({ id: "live", projectId: "p1" })];
+    link.metas = [wireMeta({ id: "live", projectId: "p1" })];
     link.archivedMetas = [
-      meta({ id: "old1", projectId: "p1", archived: true }),
-      meta({ id: "old2", projectId: "p2", archived: true }),
+      wireMeta({ id: "old1", projectId: "p1", archived: true }),
+      wireMeta({ id: "old2", projectId: "p2", archived: true }),
     ];
-    sessionStore.connect(link);
+    sessionStore.attach(link);
     await sessionStore.ready();
     expect(sessionStore.metas().map((m) => m.id)).toEqual(["live"]);
     expect(link.calls.filter((c) => c.method === "session.list")).toHaveLength(1);
-    await sessionStore.ensureArchived("p1");
-    await sessionStore.ensureArchived("p1");
+    await sessionStore.ensureArchived("local", "p1");
+    await sessionStore.ensureArchived("local", "p1");
     expect(sessionStore.metas().map((m) => m.id).sort()).toEqual(["live", "old1"]);
     expect(link.calls.filter((c) => c.method === "session.list")).toHaveLength(2);
     // a resync re-lists the loaded scope and keeps it
-    await sessionStore.resync();
+    await sessionStore.resync(link);
     expect(sessionStore.metas().map((m) => m.id).sort()).toEqual(["live", "old1"]);
   });
 
   it("ensureMeta reaches an archived thread the live list left out", async () => {
     link.metas = [];
-    link.archivedMetas = [meta({ id: "old", archived: true })];
-    sessionStore.connect(link);
+    link.archivedMetas = [wireMeta({ id: "old", archived: true })];
+    sessionStore.attach(link);
     await sessionStore.ready();
     expect(sessionStore.metaOf("old")).toBeNull();
     expect((await sessionStore.ensureMeta("old"))?.id).toBe("old");
   });
 
   it("an archived meta that arrived by push survives a resync", async () => {
-    link.metas = [meta({ id: "a" })];
-    sessionStore.connect(link);
+    link.metas = [wireMeta({ id: "a" })];
+    sessionStore.attach(link);
     await sessionStore.ready();
-    link.push({ push: "session", session: meta({ id: "a", archived: true }) });
+    link.push({ push: "session", session: wireMeta({ id: "a", archived: true }) });
     link.metas = [];
-    await sessionStore.resync();
+    await sessionStore.resync(link);
     expect(sessionStore.metaOf("a")?.archived).toBe(true);
     // once its scope is listed and it is gone, it goes
-    await sessionStore.ensureArchived();
-    await sessionStore.resync();
+    await sessionStore.ensureArchived("local");
+    await sessionStore.resync(link);
     expect(sessionStore.metaOf("a")).toBeNull();
   });
 });
@@ -716,9 +727,9 @@ describe("the mounted set", () => {
     ]).flat();
 
   it("a reconnect replays only the mounted transcripts and unloads the rest", async () => {
-    link.metas = [meta({ id: "a" }), meta({ id: "b" }), meta({ id: "kid", parentId: "a" })];
+    link.metas = [wireMeta({ id: "a" }), wireMeta({ id: "b" }), wireMeta({ id: "kid", parentId: "a" })];
     for (const id of ["a", "b", "kid"]) link.events.set(id, rowsFor(id, 2));
-    sessionStore.connect(link);
+    sessionStore.attach(link);
     await sessionStore.ready();
     await Promise.all(["a", "b", "kid"].map((id) => sessionStore.ensureLoaded(id, "test")));
     expect(sessionStore.loadedCount()).toBe(3);
@@ -741,11 +752,11 @@ describe("the mounted set", () => {
   });
 
   it("a transcript whose tab left the warm set unloads after the grace period, unless busy", async () => {
-    link.metas = [meta({ id: "a" }), meta({ id: "b" }), meta({ id: "busy", status: "running" })];
+    link.metas = [wireMeta({ id: "a" }), wireMeta({ id: "b" }), wireMeta({ id: "busy", status: "running" })];
     for (const id of ["a", "b"]) link.events.set(id, rowsFor(id, 2));
     // a prompt with no completion yet: the fold keeps it busy
     link.events.set("busy", [row("busy", 1, { type: "user-text", text: "go" })]);
-    sessionStore.connect(link);
+    sessionStore.attach(link);
     await sessionStore.ready();
     await Promise.all(["a", "b", "busy"].map((id) => sessionStore.ensureLoaded(id, "test")));
     expect(sessionStore.loadedCount()).toBe(3);
@@ -763,8 +774,8 @@ describe("the mounted set", () => {
   });
 
   it("a burst of loads reports itself once, naming the callers", async () => {
-    link.metas = Array.from({ length: 30 }, (_, i) => meta({ id: `s${i}` }));
-    sessionStore.connect(link);
+    link.metas = Array.from({ length: 30 }, (_, i) => wireMeta({ id: `s${i}` }));
+    sessionStore.attach(link);
     await sessionStore.ready();
     for (let i = 0; i < 25; i++) await sessionStore.ensureLoaded(`s${i}`, i < 20 ? "pane" : "agents");
     const reports = link.calls.filter((c) => c.method === "stall.report").map((c) => (c.params as { line: string }).line);
@@ -775,11 +786,11 @@ describe("the mounted set", () => {
   });
 
   it("a long head loads in slices", async () => {
-    link.metas = [meta()];
+    link.metas = [wireMeta()];
     const rows: EventRow[] = [];
     for (let i = 0; i < 9000; i++) rows.push(row("s1", i + 1, { type: "user-text", text: `q${i}` }));
     link.events.set("s1", rows);
-    sessionStore.connect(link);
+    sessionStore.attach(link);
     await sessionStore.ready();
     await sessionStore.ensureComplete("s1");
     const calls = link.calls.filter((c) => c.method === "session.events").map((c) => c.params as Record<string, unknown>);

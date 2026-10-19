@@ -11,7 +11,7 @@
  */
 import { LIVE_STATUSES } from "@shared/session-lifecycle";
 import { onPerfMark } from "./perfMarks";
-import { client } from "./tcserver/client";
+import { registry } from "./connection";
 import { sessionStore } from "./tcserver/store";
 
 export const STALL_MS = 150;
@@ -108,7 +108,7 @@ export function liveStallContext(): StallContext {
   });
   return {
     pushes: () => sessionStore.pushCounts(),
-    pendingMethods: () => client.pendingMethods(),
+    pendingMethods: () => registry.links().flatMap((link) => link.pendingMethods()),
     runningCount: () => {
       if (running == null) {
         running = 0;
@@ -124,7 +124,7 @@ export function liveStallContext(): StallContext {
 export function installStallRecorder(): () => void {
   const recorder = createStallRecorder({
     ctx: liveStallContext(),
-    report: (line) => void client.request("stall.report", { line }).catch(() => {}),
+    report: (line) => void registry.primary().request("stall.report", { line }).catch(() => {}),
   });
   const offMark = onPerfMark((name, id) => {
     if (SWITCH_MARKS.has(name)) recorder.switched(name, id);

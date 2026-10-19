@@ -1,3 +1,4 @@
+import { registry } from "../connection";
 import type { HarnessId } from "../session";
 import { HARNESSES } from "../session";
 import { availabilityFromDoctor, probeDoctor } from "../tcserver/catalog";
@@ -70,7 +71,8 @@ export function probeHarnessAvailability(
   options?: { force?: boolean },
 ): Promise<void> {
   if (inflight) return inflight;
-  inflight = probeDoctor(options)
+  // The composer's harness list is this machine's CLIs; remote hosts answer their own doctor.
+  inflight = probeDoctor(registry.primary().environmentId, options)
     .then((doctor) => {
       const found = availabilityFromDoctor(doctor);
       const next = { ...availability };

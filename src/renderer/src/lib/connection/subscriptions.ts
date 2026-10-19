@@ -19,9 +19,18 @@ export type SubscriptionHandlers = {
   gone?(reason: string): void;
 };
 
-/** Older sockets answer `session.events` with the bare row array. */
+/** One shape for both profiles: a local socket answers the bare rows and
+ *  the head is read off their seqs (a tail that starts after 1 has older
+ *  rows behind it); a remote socket says so itself. */
 export function asPage(result: EventRow[] | EventsPage, tailFirst: boolean): EventsPage {
-  if (Array.isArray(result)) return { rows: result, moreBefore: false, moreAfter: false, reset: tailFirst };
+  if (Array.isArray(result)) {
+    return {
+      rows: result,
+      moreBefore: tailFirst && result.length > 0 && result[0].seq > 1,
+      moreAfter: false,
+      reset: false,
+    };
+  }
   return result;
 }
 
@@ -75,6 +84,18 @@ export class Subscriptions {
 
   add(sessionId: string, handlers: SubscriptionHandlers): void {
     this.handlers.set(sessionId, handlers);
+  }
+
+  /**
+   * Subscribe on the current socket without fetching: for a session this
+   * window just created, whose rows arrive as pushes from the start. A later
+   * replacement session resumes it from its cursor like any other member.
+   */
+  async subscribe(sessionId: string): Promise<void> {
+    if (!this.handlers.has(sessionId)) throw new Error(`not subscribed: ${sessionId}`);
+    if (this.live.has(sessionId)) return;
+    await this.link.request("session.subscribe", { sessionId });
+    this.live.add(sessionId);
   }
 
   /** Leave the set; the socket is told when it is up. */

@@ -6,6 +6,7 @@ import App from "./App";
 import { initAppearance, syncWindowGlass } from "./lib/appearance";
 import { initSounds } from "./lib/sounds";
 import { initServerLink } from "./lib/tcserver/link";
+import { registry } from "./lib/connection";
 import { sessionStore } from "./lib/tcserver/store";
 import { workspaceStore } from "./lib/tcserver/workspaces";
 import { inboxStore } from "./lib/inboxStore";
@@ -26,13 +27,15 @@ import "./index.css";
 installEditorKeys();
 initAppearance();
 initSounds();
+// The stores follow the registry: one link per environment, attached as
+// each is added; then boot registers environment zero.
+sessionStore.connect(registry);
+workspaceStore.connect(registry);
+inboxStore.connect(registry);
+rulesStore.connect(registry);
+slashCommandStore.connect(registry);
+accountsStore.connect(registry);
 initServerLink();
-sessionStore.connect();
-workspaceStore.connect();
-inboxStore.connect();
-rulesStore.connect();
-slashCommandStore.connect();
-accountsStore.connect();
 updateStore.start();
 initAppshots();
 

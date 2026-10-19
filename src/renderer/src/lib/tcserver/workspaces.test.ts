@@ -1,10 +1,12 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { registry } from "../connection";
 import type { Link } from "./store";
 import type { ProjectMeta, ServerPush, ThreadDefaults, WorkspaceMeta } from "./types";
 import { projectIndex, projectOf, workspaceByPath, workspaceIdOf, workspaceIndex, workspaceStore } from "./workspaces";
 import { createProject, createWorkspace } from "./projects";
 
 const ws = (over: Partial<WorkspaceMeta> = {}): WorkspaceMeta => ({
+  environmentId: "local",
   id: "w1",
   name: "repo",
   path: "/home/me/repo",
@@ -12,7 +14,14 @@ const ws = (over: Partial<WorkspaceMeta> = {}): WorkspaceMeta => ({
   createdAt: 1,
   ...over,
 });
+
+function wireWorkspace(over: Partial<WorkspaceMeta> = {}): Omit<WorkspaceMeta, "environmentId"> {
+  const { environmentId: _environmentId, ...wire } = ws(over);
+  return wire;
+}
+
 const project = (over: Partial<ProjectMeta> = {}): ProjectMeta => ({
+  environmentId: "local",
   id: "p1",
   workspaceId: "w1",
   name: "Auth rewrite",
@@ -23,6 +32,11 @@ const project = (over: Partial<ProjectMeta> = {}): ProjectMeta => ({
   createdAt: 2,
   ...over,
 });
+
+function wireProject(over: Partial<ProjectMeta> = {}): Omit<ProjectMeta, "environmentId"> {
+  const { environmentId: _environmentId, ...wire } = project(over);
+  return wire;
+}
 
 describe("pure helpers", () => {
   const workspaces = [ws(), ws({ id: "w2", path: "/home/me/other/" })];
@@ -65,10 +79,12 @@ describe("pure helpers", () => {
 });
 
 class FakeLink implements Link {
+  environmentId = "local";
+  profile = "local" as const;
   connected = true;
   calls: { method: string; params: unknown }[] = [];
-  workspaces: WorkspaceMeta[] = [];
-  projects: ProjectMeta[] = [];
+  workspaces: Omit<WorkspaceMeta, "environmentId">[] = [];
+  projects: Omit<ProjectMeta, "environmentId">[] = [];
   private pushListeners = new Set<(push: ServerPush) => void>();
   private openListeners = new Set<() => void>();
   request<T>(method: string, params?: unknown): Promise<T> {
@@ -76,13 +92,13 @@ class FakeLink implements Link {
     if (method === "workspace.list") return Promise.resolve(this.workspaces as T);
     if (method === "project.list") return Promise.resolve(this.projects as T);
     if (method === "workspace.create") {
-      const meta = ws({ id: `w${this.workspaces.length + 1}`, path: (params as { path: string }).path });
+      const meta = wireWorkspace({ id: `w${this.workspaces.length + 1}`, path: (params as { path: string }).path });
       this.workspaces = [...this.workspaces, meta];
       return Promise.resolve(meta as T);
     }
     if (method === "project.create") {
       const p = params as { workspaceId: string; name: string; mode: "worktree" | "local" };
-      const meta = project({ id: `p${this.projects.length + 1}`, ...p });
+      const meta = wireProject({ id: `p${this.projects.length + 1}`, ...p });
       this.projects = [...this.projects, meta];
       return Promise.resolve(meta as T);
     }
@@ -96,6 +112,9 @@ class FakeLink implements Link {
   onOpen(l: () => void) {
     this.openListeners.add(l);
     return () => this.openListeners.delete(l);
+  }
+  onClose() {
+    return () => {};
   }
   push(p: ServerPush) {
     for (const l of this.pushListeners) l(p);
@@ -111,13 +130,17 @@ describe("workspaceStore", () => {
   let link: FakeLink;
   beforeEach(() => {
     link = new FakeLink();
-    link.workspaces = [ws()];
+    vi.spyOn(registry, "linkOf").mockReturnValue(link as unknown as ReturnType<typeof registry.linkOf>);
+    link.workspaces = [wireWorkspace()];
     workspaceStore.reset();
   });
-  afterEach(() => workspaceStore.reset());
+  afterEach(() => {
+  workspaceStore.reset();
+  vi.restoreAllMocks();
+});
 
   it("loads both lists on connect", async () => {
-    workspaceStore.connect(link);
+    workspaceStore.attach(link);
     await tick();
     expect(workspaceStore.getSnapshot().loaded).toBe(true);
     expect(workspaceStore.workspaces.map((w) => w.id)).toEqual(["w1"]);
@@ -125,26 +148,26 @@ describe("workspaceStore", () => {
   });
 
   it("follows the list pushes", async () => {
-    workspaceStore.connect(link);
+    workspaceStore.attach(link);
     await tick();
-    link.push({ push: "projects", projects: [project()] });
+    link.push({ push: "projects", projects: [wireProject()] });
     expect(workspaceStore.project("p1")?.name).toBe("Auth rewrite");
     link.push({ push: "workspaces", workspaces: [] });
     expect(workspaceStore.workspaces).toEqual([]);
   });
 
   it("commands refresh the lists after the call", async () => {
-    workspaceStore.connect(link);
+    workspaceStore.attach(link);
     await tick();
-    const created = await createWorkspace("/home/me/new", link);
+    const created = await createWorkspace("local", "/home/me/new");
     expect(created.path).toBe("/home/me/new");
     expect(workspaceStore.workspace(created.id)).toBeTruthy();
-    const p = await createProject({ workspaceId: "w1", name: "X", mode: "local" }, link);
+    const p = await createProject({ workspaceId: "w1", name: "X", mode: "local" });
     expect(workspaceStore.project(p.id)?.workspaceId).toBe("w1");
   });
 
   it("fetches an icon once", async () => {
-    workspaceStore.connect(link);
+    workspaceStore.attach(link);
     await tick();
     expect(workspaceStore.icon("w1")).toBeUndefined();
     expect(workspaceStore.icon("w1")).toBeUndefined();
@@ -190,75 +213,78 @@ describe("thread defaults", () => {
   let link: DefaultsLink;
   beforeEach(() => {
     link = new DefaultsLink();
-    link.workspaces = [ws(), ws({ id: "w2", path: "/home/me/other" })];
+    link.workspaces = [wireWorkspace(), wireWorkspace({ id: "w2", path: "/home/me/other" })];
     workspaceStore.reset();
   });
-  afterEach(() => workspaceStore.reset());
+  afterEach(() => {
+  workspaceStore.reset();
+  vi.restoreAllMocks();
+});
 
   it("parses the wrapper: an inherited scope carries the global set without the override bit", async () => {
     link.stored.set("", set({ reasoning: "high" }));
     link.stored.set("w2", set({ provider: "codex", model: "gpt-6-astra" }));
-    workspaceStore.connect(link);
+    workspaceStore.attach(link);
     await tick();
     await tick();
-    expect(workspaceStore.defaultsAt(null)).toEqual({ defaults: set({ reasoning: "high" }), overridden: true });
-    expect(workspaceStore.defaultsAt("w1")).toEqual({ defaults: set({ reasoning: "high" }), overridden: false });
-    expect(workspaceStore.defaultsAt("w2")?.overridden).toBe(true);
-    expect(workspaceStore.defaultsFor("w1")?.reasoning).toBe("high");
-    expect(workspaceStore.defaultsFor("w2")?.provider).toBe("codex");
-    expect(workspaceStore.defaultsFor(null)?.reasoning).toBe("high");
+    expect(workspaceStore.defaultsAt("local", null)).toEqual({ defaults: set({ reasoning: "high" }), overridden: true });
+    expect(workspaceStore.defaultsAt("local", "w1")).toEqual({ defaults: set({ reasoning: "high" }), overridden: false });
+    expect(workspaceStore.defaultsAt("local", "w2")?.overridden).toBe(true);
+    expect(workspaceStore.defaultsFor("local", "w1")?.reasoning).toBe("high");
+    expect(workspaceStore.defaultsFor("local", "w2")?.provider).toBe("codex");
+    expect(workspaceStore.defaultsFor("local", null)?.reasoning).toBe("high");
   });
 
   it("is undefined before anything loads, then the built-in set when nothing is stored", async () => {
-    expect(workspaceStore.defaultsFor("w1")).toBeUndefined();
-    workspaceStore.connect(link);
+    expect(workspaceStore.defaultsFor("local", "w1")).toBeUndefined();
+    workspaceStore.attach(link);
     await tick();
     await tick();
-    expect(workspaceStore.defaultsAt(null)).toEqual({ defaults: set(), overridden: false });
-    expect(workspaceStore.defaultsFor("w1")).toEqual(set());
+    expect(workspaceStore.defaultsAt("local", null)).toEqual({ defaults: set(), overridden: false });
+    expect(workspaceStore.defaultsFor("local", "w1")).toEqual(set());
   });
 
   it("a workspace override marks the scope and leaves the global set alone", async () => {
-    workspaceStore.connect(link);
+    workspaceStore.attach(link);
     await tick();
     await tick();
-    await workspaceStore.saveDefaults("w1", set({ permission: "auto" }));
-    expect(workspaceStore.defaultsAt("w1")).toEqual({ defaults: set({ permission: "auto" }), overridden: true });
-    expect(workspaceStore.defaultsAt(null)?.overridden).toBe(false);
-    expect(workspaceStore.defaultsFor("w2")).toEqual(set());
+    await workspaceStore.saveDefaults("local", "w1", set({ permission: "auto" }));
+    expect(workspaceStore.defaultsAt("local", "w1")).toEqual({ defaults: set({ permission: "auto" }), overridden: true });
+    expect(workspaceStore.defaultsAt("local", null)?.overridden).toBe(false);
+    expect(workspaceStore.defaultsFor("local", "w2")).toEqual(set());
   });
 
   it("a global change reaches every workspace without its own override", async () => {
     link.stored.set("w2", set({ provider: "cursor" }));
-    workspaceStore.connect(link);
+    workspaceStore.attach(link);
     await tick();
     await tick();
-    await workspaceStore.saveDefaults(null, set({ reasoning: "max" }));
-    expect(workspaceStore.defaultsAt(null)).toEqual({ defaults: set({ reasoning: "max" }), overridden: true });
-    expect(workspaceStore.defaultsFor("w1")?.reasoning).toBe("max");
-    expect(workspaceStore.defaultsAt("w1")?.overridden).toBe(false);
-    expect(workspaceStore.defaultsFor("w2")).toEqual(set({ provider: "cursor" }));
+    await workspaceStore.saveDefaults("local", null, set({ reasoning: "max" }));
+    expect(workspaceStore.defaultsAt("local", null)).toEqual({ defaults: set({ reasoning: "max" }), overridden: true });
+    expect(workspaceStore.defaultsFor("local", "w1")?.reasoning).toBe("max");
+    expect(workspaceStore.defaultsAt("local", "w1")?.overridden).toBe(false);
+    expect(workspaceStore.defaultsFor("local", "w2")).toEqual(set({ provider: "cursor" }));
   });
 
   it("reset: a workspace falls back to the global set, the global set to the built-in one", async () => {
     link.stored.set("", set({ reasoning: "low" }));
     link.stored.set("w1", set({ provider: "codex" }));
-    workspaceStore.connect(link);
+    workspaceStore.attach(link);
     await tick();
     await tick();
-    await workspaceStore.saveDefaults("w1", null);
+    await workspaceStore.saveDefaults("local", "w1", null);
     expect(link.of("defaults.set").at(-1)?.params).toEqual({ workspaceId: "w1", defaults: null });
-    expect(workspaceStore.defaultsAt("w1")).toEqual({ defaults: set({ reasoning: "low" }), overridden: false });
-    await workspaceStore.saveDefaults(null, null);
-    expect(workspaceStore.defaultsAt(null)).toEqual({ defaults: set(), overridden: false });
-    expect(workspaceStore.defaultsFor("w1")).toEqual(set());
+    expect(workspaceStore.defaultsAt("local", "w1")).toEqual({ defaults: set({ reasoning: "low" }), overridden: false });
+    await workspaceStore.saveDefaults("local", null, null);
+    expect(workspaceStore.defaultsAt("local", null)).toEqual({ defaults: set(), overridden: false });
+    expect(workspaceStore.defaultsFor("local", "w1")).toEqual(set());
   });
 
   it("a failed load keeps what it had", async () => {
-    workspaceStore.connect(link);
+    workspaceStore.attach(link);
     await tick();
     await tick();
     link.request = () => Promise.reject(new Error("down"));
-    expect(await workspaceStore.loadDefaults("w1")).toEqual({ defaults: set(), overridden: false });
+    expect(await workspaceStore.loadDefaults("local", "w1")).toEqual({ defaults: set(), overridden: false });
   });
 });

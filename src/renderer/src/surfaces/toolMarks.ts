@@ -77,6 +77,6 @@ export function useKnownCommands(sessionId: string | undefined): SlashCommand[] 
   return useSyncExternalStore(slashCommandStore.subscribe, () => {
     const meta = sessionId ? sessionStore.metaOf(sessionId) : null;
     if (!meta) return EMPTY;
-    return slashCommandStore.peek(meta.provider, meta.cwd) ?? EMPTY;
+    return slashCommandStore.peek(meta.environmentId, meta.provider, meta.cwd) ?? EMPTY;
   });
 }

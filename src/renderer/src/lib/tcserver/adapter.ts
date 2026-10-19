@@ -1,3 +1,4 @@
+import { registry } from "../connection";
 import type { HarnessAdapter } from "../harness/registry";
 import type { HarnessId, Session } from "../session";
 import { refreshCatalog } from "./catalog";
@@ -25,6 +26,8 @@ export function serverAdapter(id: HarnessId): HarnessAdapter {
   }): Session =>
     sessionStore.get(input.sessionId) ?? {
       id: input.sessionId,
+      // A session the store never saw: the harness bridge is this machine's.
+      environmentId: registry.primary().environmentId,
       harness: id,
       model: input.model,
       modelSettings: input.modelSettings ?? {},
@@ -57,7 +60,8 @@ export function serverAdapter(id: HarnessId): HarnessAdapter {
     stopSession: async () => {},
     forgetSession: async () => {},
     bindSession: () => {},
-    refreshCatalog,
+    // The picker's model list is the primary host's; per-environment pickers are K2's.
+    refreshCatalog: () => refreshCatalog(registry.primary().environmentId),
     generateTitle: async () => null,
     generateCommitMessage: generateServerCommitMessage,
     generatePrContent: generateServerPrContent,

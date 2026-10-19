@@ -1,3 +1,4 @@
+import { hostOfCwd } from "./tcserver/projects";
 import { listDir, type FsEntry } from "./fs";
 import { pathSegments } from "./fileName";
 import { joinPath, parentPath } from "./paths";
@@ -37,7 +38,7 @@ export function peekDir(path: string): FsEntry[] | null {
 export function listCachedDir(path: string): Promise<FsEntry[]> {
   const hit = dirs.get(path);
   if (hit) return Promise.resolve(hit);
-  return listDir(path).then((entries) => {
+  return listDir(hostOfCwd(path), path).then((entries) => {
     dirs.set(path, entries);
     return entries;
   });

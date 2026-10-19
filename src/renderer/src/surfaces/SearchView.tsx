@@ -39,6 +39,7 @@ import {
 import { prettyCwd, projectName } from "../lib/paths";
 import { IS_MAC } from "../lib/platform";
 import { looksLikeProject, sameProjectPath, type RecentProject } from "../lib/recents";
+import { hostOfCwd } from "../lib/tcserver/projects";
 import { searchProject, type OpenFileFn } from "../lib/search";
 import { searchSessions } from "../lib/sessionStore";
 import { useServerSessions } from "../lib/tcserver/store";
@@ -217,7 +218,7 @@ export function SearchView({
       if (wantFiles && looksLikeProject(cwd)) {
         setLoading(true);
         jobs.push(
-          searchProject({ cwd, query: trimmed })
+          searchProject(hostOfCwd(cwd), { cwd, query: trimmed })
             .then((result) => {
               if (!cancelled) {
                 setContentHits(hitsFromContentMatches(result.matches));

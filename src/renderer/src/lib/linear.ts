@@ -1,4 +1,4 @@
-import { invoke } from "./native";
+import { invokeOn } from "./native";
 
 export type LinearTeam = {
   id: string;
@@ -67,20 +67,20 @@ const detailsById = new Map<string, LinearIssueDetails>();
 const threadById = new Map<string, LinearIssueThread>();
 const threadInflight = new Map<string, Promise<LinearIssueThread>>();
 
-export function linearConnected(): Promise<LinearStatus> {
-  return invoke<LinearStatus>("linear_status");
+export function linearConnected(environmentId: string): Promise<LinearStatus> {
+  return invokeOn<LinearStatus>(environmentId, "linear_status");
 }
 
-export function saveLinearToken(token: string): Promise<LinearStatus> {
-  return invoke<LinearStatus>("linear_set_token", { token: token.trim() });
+export function saveLinearToken(environmentId: string, token: string): Promise<LinearStatus> {
+  return invokeOn<LinearStatus>(environmentId, "linear_set_token", { token: token.trim() });
 }
 
-export function disconnectLinear(): Promise<LinearStatus> {
-  return invoke<LinearStatus>("linear_set_token", { token: "" });
+export function disconnectLinear(environmentId: string): Promise<LinearStatus> {
+  return invokeOn<LinearStatus>(environmentId, "linear_set_token", { token: "" });
 }
 
-export function listLinearTeams(): Promise<LinearTeam[]> {
-  return invoke<LinearTeam[]>("linear_list_teams");
+export function listLinearTeams(environmentId: string): Promise<LinearTeam[]> {
+  return invokeOn<LinearTeam[]>(environmentId, "linear_list_teams");
 }
 
 /** `null` means do not filter by team. `[]` means every known team is hidden. */
@@ -97,70 +97,71 @@ export function linearTeamIdsForFetch(
   return visible;
 }
 
-export function listLinearIssues(query: {
+export function listLinearIssues(environmentId: string, query: {
   assignedToMe: boolean;
   state: "open" | "all";
   teamIds: string[];
 }): Promise<LinearIssue[]> {
-  return invoke<LinearIssue[]>("linear_list_issues", {
+  return invokeOn<LinearIssue[]>(environmentId, "linear_list_issues", {
     assignedToMe: query.assignedToMe,
     state: query.state,
     teamIds: query.teamIds,
   });
 }
 
-export function peekLinearIssueDetails(id: string): LinearIssueDetails | null {
-  return detailsById.get(id) ?? null;
+// Caches key by host and id: two hosts may both know an issue.
+const cacheKey = (environmentId: string, id: string): string => `${environmentId}|${id}`;
+
+export function peekLinearIssueDetails(environmentId: string, id: string): LinearIssueDetails | null {
+  return detailsById.get(cacheKey(environmentId, id)) ?? null;
 }
 
-export async function linearIssueDetails(
-  id: string,
+export async function linearIssueDetails(environmentId: string, id: string,
 ): Promise<LinearIssueDetails> {
-  const details = await invoke<LinearIssueDetails>("linear_issue_details", {
+  const details = await invokeOn<LinearIssueDetails>(environmentId, "linear_issue_details", {
     id,
   });
-  detailsById.set(id, details);
+  detailsById.set(cacheKey(environmentId, id), details);
   return details;
 }
 
-export function peekLinearIssueThread(id: string): LinearIssueThread | null {
-  return threadById.get(id) ?? null;
+export function peekLinearIssueThread(environmentId: string, id: string): LinearIssueThread | null {
+  return threadById.get(cacheKey(environmentId, id)) ?? null;
 }
 
-export async function linearIssueThread(
-  id: string,
+export async function linearIssueThread(environmentId: string, id: string,
   options?: { force?: boolean },
 ): Promise<LinearIssueThread> {
+  const key = cacheKey(environmentId, id);
   if (options?.force) {
-    threadById.delete(id);
-    threadInflight.delete(id);
+    threadById.delete(key);
+    threadInflight.delete(key);
   }
-  const pending = threadInflight.get(id);
+  const pending = threadInflight.get(key);
   if (pending) return pending;
-  const promise = invoke<LinearIssueThread>("linear_issue_thread", { id })
+  const promise = invokeOn<LinearIssueThread>(environmentId, "linear_issue_thread", { id })
     .then((thread) => {
-      threadById.set(id, thread);
+      threadById.set(key, thread);
       return thread;
     })
     .finally(() => {
-      if (threadInflight.get(id) === promise) threadInflight.delete(id);
+      if (threadInflight.get(key) === promise) threadInflight.delete(key);
     });
-  threadInflight.set(id, promise);
+  threadInflight.set(key, promise);
   return promise;
 }
 
-export async function linearIssueComment(
-  id: string,
+export async function linearIssueComment(environmentId: string, id: string,
   body: string,
   options?: { parentId?: string },
 ): Promise<string> {
-  const url = await invoke<string>("linear_issue_comment", {
+  const url = await invokeOn<string>(environmentId, "linear_issue_comment", {
     id,
     body: body.trim(),
     parentId: options?.parentId?.trim() ?? "",
   });
-  threadById.delete(id);
-  threadInflight.delete(id);
+  threadById.delete(cacheKey(environmentId, id));
+  threadInflight.delete(cacheKey(environmentId, id));
   return url;
 }
 

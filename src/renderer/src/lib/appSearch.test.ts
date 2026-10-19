@@ -77,7 +77,7 @@ describe("searchConversationTitles", () => {
 
 describe("searchSessionMessages", () => {
   it("finds matching user and assistant text", () => {
-    const session = newSession("cursor", "/tmp/a");
+    const session = newSession("local", "cursor", "/tmp/a");
     session.blocks = [
       { id: "u1", role: "user", text: "Please search the sidebar filter chips" },
       { id: "a1", role: "assistant", text: "Opening the explorer next." },
@@ -235,7 +235,7 @@ describe("hitsFromContentMatches", () => {
 
 describe("conversationRowsFrom", () => {
   it("prefers live session titles over history", () => {
-    const live = newSession("cursor", "/tmp/a");
+    const live = newSession("local", "cursor", "/tmp/a");
     live.id = "s1";
     live.title = "cursor · Live title";
     const rows = conversationRowsFrom(

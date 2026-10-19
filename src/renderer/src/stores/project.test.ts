@@ -30,6 +30,7 @@ vi.mock("../lib/projectContext", async (importOriginal) => ({
 }));
 
 const meta = (id: string, cwd: string, archived = false): ProjectMeta => ({
+  environmentId: "local",
   id,
   workspaceId: "w1",
   name: id,
@@ -41,6 +42,7 @@ const meta = (id: string, cwd: string, archived = false): ProjectMeta => ({
 });
 
 const workspace = (id: string, path: string, createdAt: number): WorkspaceMeta => ({
+  environmentId: "local",
   id,
   name: id,
   path,
@@ -82,7 +84,7 @@ describe("derived cwds", () => {
   });
 
   it("the sidebar prefers the focused chat, then the focused file, then the dock", () => {
-    const session = newDefaultSession("/chat");
+    const session = newDefaultSession("local", "/chat");
     const tab = newTab(session.id);
     expect(sidebarCwdOf(state, projects, session, tab)).toBe("/chat");
     expect(sidebarCwdOf(state, projects, undefined, tab)).toBe("/repo/.worktrees/p1");

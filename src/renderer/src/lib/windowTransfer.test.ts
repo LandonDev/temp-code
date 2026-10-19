@@ -6,6 +6,7 @@ import { collectWindowTransfer } from "./windowTransfer";
 
 function session(id: string, cwd: string): Session {
   return {
+    environmentId: "local",
     id,
     cwd,
     harness: "cursor",

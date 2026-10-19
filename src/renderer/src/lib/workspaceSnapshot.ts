@@ -1,3 +1,4 @@
+import { LOCAL_ENVIRONMENT_ID } from "./connection";
 import { collapseBlankTabs, isBlankSession } from "./blankTabs";
 import { markTurnInterrupted, type ResumedWorkspace } from "./inFlight";
 import {
@@ -28,6 +29,8 @@ import {
 
 export type WorkspaceSessionStub = {
   id: string;
+  /** Absent in layouts saved before environments: a local thread. */
+  environmentId?: string;
   cwd: string;
   harness: HarnessId;
   model: string;
@@ -206,6 +209,7 @@ function sessionStub(session: SessionShell): WorkspaceSessionStub | null {
   if (!session.id) return null;
   return {
     id: session.id,
+    environmentId: session.environmentId,
     cwd: session.cwd || "~",
     harness: session.harness,
     model: session.model,
@@ -224,6 +228,8 @@ function sessionStub(session: SessionShell): WorkspaceSessionStub | null {
 
 function sessionFromStub(stub: WorkspaceSessionStub): Session {
   const session = newSession(
+    // Layouts saved before environments name none: those threads are this machine's.
+    stub.environmentId ?? LOCAL_ENVIRONMENT_ID,
     stub.harness,
     stub.cwd,
     stub.model,

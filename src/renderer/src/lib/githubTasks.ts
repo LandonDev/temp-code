@@ -1,4 +1,4 @@
-import { invoke } from "./native";
+import { invokeOn } from "./native";
 import { normalizeProjectPath } from "./recents";
 
 export type GithubTaskKind = "issue" | "pr";
@@ -194,13 +194,12 @@ export function peekGithubWorkItemDetails(
   return detailsByKey.get(detailsCacheKey(cwd, kind, number)) ?? null;
 }
 
-export async function githubWorkItemDetails(
-  cwd: string,
+export async function githubWorkItemDetails(environmentId: string, cwd: string,
   kind: GithubTaskKind,
   number: number,
   repo?: string,
 ): Promise<GithubWorkItemDetails> {
-  const details = await invoke<GithubWorkItemDetails>(
+  const details = await invokeOn<GithubWorkItemDetails>(environmentId, 
     "git_github_work_item_details",
     { cwd, kind, number, repo: repo?.trim() || undefined },
   );
@@ -216,8 +215,7 @@ export function peekGithubWorkItemThread(
   return threadByKey.get(detailsCacheKey(cwd, kind, number)) ?? null;
 }
 
-export async function githubWorkItemThread(
-  cwd: string,
+export async function githubWorkItemThread(environmentId: string, cwd: string,
   kind: GithubTaskKind,
   number: number,
   options?: { force?: boolean; repo?: string },
@@ -229,7 +227,7 @@ export async function githubWorkItemThread(
   }
   const pending = threadInflight.get(key);
   if (pending) return pending;
-  const promise = invoke<GithubWorkItemThread>("git_github_work_item_thread", {
+  const promise = invokeOn<GithubWorkItemThread>(environmentId, "git_github_work_item_thread", {
     cwd,
     kind,
     number,
@@ -246,14 +244,13 @@ export async function githubWorkItemThread(
   return promise;
 }
 
-export async function githubWorkItemComment(
-  cwd: string,
+export async function githubWorkItemComment(environmentId: string, cwd: string,
   kind: GithubTaskKind,
   number: number,
   body: string,
   options?: { inReplyTo?: string },
 ): Promise<string> {
-  const url = await invoke<string>("git_github_work_item_comment", {
+  const url = await invokeOn<string>(environmentId, "git_github_work_item_comment", {
     cwd,
     kind,
     number,
@@ -305,14 +302,13 @@ export function peekGithubPrDiff(
   return prDiffByKey.get(prDiffCacheKey(cwd, number)) ?? null;
 }
 
-export async function githubPrDiff(
-  cwd: string,
+export async function githubPrDiff(environmentId: string, cwd: string,
   number: number,
 ): Promise<GithubPrDiff> {
   const key = prDiffCacheKey(cwd, number);
   const pending = prDiffInflight.get(key);
   if (pending) return pending;
-  const promise = invoke<GithubPrDiff>("git_github_pr_diff", { cwd, number })
+  const promise = invokeOn<GithubPrDiff>(environmentId, "git_github_pr_diff", { cwd, number })
     .then((diff) => {
       prDiffByKey.set(key, diff);
       return diff;

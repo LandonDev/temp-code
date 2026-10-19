@@ -13,6 +13,8 @@ const snap = (updatedAt: number, pinned: string | null = null): AccountsSnapshot
 };
 
 class FakeLink implements Link {
+  environmentId = "local";
+  profile = "local" as const;
   connected = true;
   calls: { method: string; params: unknown }[] = [];
   listed = snap(10, "a");
@@ -28,6 +30,9 @@ class FakeLink implements Link {
     return () => this.pushes.delete(listener);
   }
   onOpen(): () => void {
+    return () => {};
+  }
+  onClose() {
     return () => {};
   }
   push(snapshot: AccountsSnapshot): void {
@@ -52,23 +57,23 @@ describe("accounts store", () => {
 
   it("seeds from accounts.list on connect and follows pushes", async () => {
     const link = new FakeLink();
-    accountsStore.connect(link);
+    accountsStore.attach(link);
     await tick();
     expect(link.calls.map((c) => c.method)).toEqual(["accounts.list"]);
-    expect(accountsStore.get().snapshot.providers.claude.pinned).toBe("a");
+    expect(accountsStore.get("local").snapshot.providers.claude.pinned).toBe("a");
     link.push(snap(20, "b"));
-    expect(accountsStore.get().snapshot.providers.claude.pinned).toBe("b");
+    expect(accountsStore.get("local").snapshot.providers.claude.pinned).toBe("b");
     link.push(snap(15, "z"));
-    expect(accountsStore.get().snapshot.providers.claude.pinned).toBe("b");
+    expect(accountsStore.get("local").snapshot.providers.claude.pinned).toBe("b");
   });
 
 
   it("refresh takes the returned snapshot", async () => {
     const link = new FakeLink();
-    accountsStore.connect(link);
+    accountsStore.attach(link);
     await tick();
-    await accountsStore.refresh("claude");
-    expect(accountsStore.get().snapshot.updatedAt).toBe(30);
-    expect(accountsStore.get().busy).toBeNull();
+    await accountsStore.refresh("local", "claude");
+    expect(accountsStore.get("local").snapshot.updatedAt).toBe(30);
+    expect(accountsStore.get("local").busy).toBeNull();
   });
 });

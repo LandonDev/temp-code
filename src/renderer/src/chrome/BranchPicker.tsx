@@ -1,3 +1,5 @@
+import { registry } from "../lib/connection";
+import { environmentOfCwd } from "../lib/tcserver/projects";
 import { Check, GitBranch, Plus, Search } from "./icons";
 import {
   useEffect,
@@ -66,6 +68,7 @@ export function BranchPicker({
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
 
+  const environmentId = environmentOfCwd(cwd) ?? registry.primary().environmentId;
   const inProject = Boolean(cwd) && cwd !== "~";
   // A hidden or busy composer keeps the branch it knows and asks git for
   // nothing; only the live one looks up the list.
@@ -144,8 +147,8 @@ export function BranchPicker({
 
   const applySwitch = (pending: PendingSwitch) =>
     pending.kind === "create"
-      ? gitCreateBranch(cwd, pending.name)
-      : gitCheckout(cwd, pending.name, pending.remote);
+      ? gitCreateBranch(environmentId, cwd, pending.name)
+      : gitCheckout(environmentId, cwd, pending.name, pending.remote);
 
   const finishSwitch = () => {
     notifyGitChanged();
@@ -311,13 +314,13 @@ export function BranchPicker({
             error={blockedError}
             onStash={() => {
               void resolveBlocked("stash", () =>
-                gitStash(cwd, `WIP before switching to ${blocked.name}`),
+                gitStash(environmentId, cwd, `WIP before switching to ${blocked.name}`),
               );
             }}
             onCommit={(message) => {
               void resolveBlocked("commit", async () => {
-                await gitStageAll(cwd);
-                await gitCommit(cwd, message);
+                await gitStageAll(environmentId, cwd);
+                await gitCommit(environmentId, cwd, message);
               });
             }}
             onCancel={() => {

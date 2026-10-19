@@ -8,27 +8,28 @@ import { imageDataFor, openLightbox, type LightboxItem } from './Lightbox'
 
 /** A history image carries only its path; the server hands back its bytes
  *  once, asked for when the chip is about to be seen. */
-function useAttachmentSrc(attachment: Attachment, wanted: boolean): string | undefined {
+function useAttachmentSrc(environmentId: string, attachment: Attachment, wanted: boolean): string | undefined {
   const direct = attachmentPreviewSrc(attachment)
   const path = !direct && attachment.kind === 'image' ? attachment.path : undefined
-  const [fetched, setFetched] = useState<string | null>(null)
+  const [fetched, setFetched] = useState<{ environmentId: string; path: string; src: string | null } | null>(null)
   useEffect(() => {
     if (!path || !wanted) return
     let live = true
-    void imageDataFor(path).then((src) => {
-      if (live) setFetched(src)
+    void imageDataFor(environmentId, path).then((src) => {
+      if (live) setFetched({ environmentId, path, src })
     })
     return () => {
       live = false
     }
-  }, [path, wanted])
-  return direct ?? (path ? (fetched ?? undefined) : undefined)
+  }, [environmentId, path, wanted])
+  return direct ?? (fetched?.environmentId === environmentId && fetched.path === path ? fetched.src ?? undefined : undefined)
 }
 
 /** Open the viewer on `files`' images, starting at `at`. */
-export function openAttachmentImages(files: readonly Attachment[], at: Attachment): void {
+export function openAttachmentImages(environmentId: string, files: readonly Attachment[], at: Attachment): void {
   const images = files.filter((file) => file.kind === 'image')
   const items: LightboxItem[] = images.map((file) => ({
+    environmentId,
     name: file.name,
     src: attachmentPreviewSrc(file),
     path: file.path
@@ -37,15 +38,16 @@ export function openAttachmentImages(files: readonly Attachment[], at: Attachmen
 }
 
 type Props = {
+  environmentId: string
   attachment: Attachment
   onRemove?: () => void
   /** Image chips open the viewer when this is given. */
   onOpen?: () => void
 }
 
-export function AttachmentChip({ attachment, onRemove, onOpen }: Props) {
+export function AttachmentChip({ environmentId, attachment, onRemove, onOpen }: Props) {
   const ref = useRef<HTMLDivElement>(null)
-  const preview = useAttachmentSrc(attachment, useNearViewport(ref))
+  const preview = useAttachmentSrc(environmentId, attachment, useNearViewport(ref))
   const image = attachment.kind === 'image' && preview
 
   return (

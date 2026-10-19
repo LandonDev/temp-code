@@ -1,3 +1,5 @@
+import { registry } from "../lib/connection";
+import { environmentOfCwd } from "../lib/tcserver/projects";
 import { openUrl } from "../lib/native";
 import {
   Check,
@@ -146,6 +148,7 @@ function ChangedFiles({
   onOpenFile: (path: string) => void;
   onMutated: (paths?: string[]) => void;
 }) {
+  const environmentId = environmentOfCwd(cwd) ?? registry.primary().environmentId;
   const lockOverscroll = useLockOverscroll<HTMLDivElement>();
   const menuButton = useRef<HTMLButtonElement>(null);
   const messageRef = useRef<HTMLTextAreaElement>(null);
@@ -162,7 +165,7 @@ function ChangedFiles({
   } | null>(null);
   const [stagedExpanded, setStagedExpanded] = useState(stagedOpen);
   const [changesExpanded, setChangesExpanded] = useState(changesOpen);
-  const { pr, reload: reloadPr } = usePrStatus(cwd, index?.branch);
+  const { pr, reload: reloadPr } = usePrStatus(environmentId, cwd, index?.branch);
   const staged = files.filter((file) => file.staged);
   const unstaged = files.filter((file) => file.unstaged);
   const hasRemote = Boolean(index?.remote);
@@ -244,9 +247,9 @@ function ChangedFiles({
     }
     begin(file.relative);
     try {
-      if (action === "stage") await gitStageFile(cwd, file.relative);
-      else if (action === "unstage") await gitUnstageFile(cwd, file.relative);
-      else await gitDiscardFile(cwd, file.relative);
+      if (action === "stage") await gitStageFile(environmentId, cwd, file.relative);
+      else if (action === "unstage") await gitUnstageFile(environmentId, cwd, file.relative);
+      else await gitDiscardFile(environmentId, cwd, file.relative);
       onMutated([file.path]);
     } catch (error) {
       fail(error);
@@ -259,8 +262,8 @@ function ChangedFiles({
     if (busy) return;
     begin(action);
     try {
-      if (action === "stage") await gitStageAll(cwd);
-      else await gitUnstageAll(cwd);
+      if (action === "stage") await gitStageAll(environmentId, cwd);
+      else await gitUnstageAll(environmentId, cwd);
       onMutated();
     } catch (error) {
       fail(error);
@@ -287,8 +290,8 @@ function ChangedFiles({
     setMenuOpen(false);
     begin(createPr ? "pr" : "commit");
     try {
-      await gitCommit(cwd, message);
-      if (push || createPr) await gitPush(cwd);
+      await gitCommit(environmentId, cwd, message);
+      if (push || createPr) await gitPush(environmentId, cwd);
       setMessage("");
       onMutated();
       if (createPr) {
@@ -309,7 +312,7 @@ function ChangedFiles({
     if (willPush && !(await confirmDefault("push"))) return;
     begin("sync");
     try {
-      await gitSync(cwd);
+      await gitSync(environmentId, cwd);
       onMutated();
       reloadPr();
     } catch (error) {
@@ -324,6 +327,7 @@ function ChangedFiles({
     const content = await generatePrContent(cwd, textHarness);
     if (!content) throw new Error("Could not prepare pull request content");
     const url = await gitPrCreate(
+      environmentId,
       cwd,
       content.title,
       content.body,
@@ -338,7 +342,7 @@ function ChangedFiles({
     if (!(await confirmDefault("pr"))) return;
     begin("pr");
     try {
-      if ((index?.ahead ?? 0) > 0) await gitPush(cwd);
+      if ((index?.ahead ?? 0) > 0) await gitPush(environmentId, cwd);
       await openCreatedPr();
       onMutated();
       reloadPr();
@@ -556,10 +560,11 @@ function ChangedFiles({
 }
 
 function usePrStatus(
+  environmentId: string,
   cwd: string,
   branch: string | null | undefined,
 ): { pr: GitPr | null; reload: () => void } {
-  const [pr, setPr] = useState<GitPr | null>(() => cachedPr(cwd, branch));
+  const [pr, setPr] = useState<GitPr | null>(() => cachedPr(environmentId, cwd, branch));
   const [nonce, setNonce] = useState(0);
   const reload = useCallback(() => setNonce((value) => value + 1), []);
 
@@ -570,15 +575,15 @@ function usePrStatus(
     }
     let cancelled = false;
     const load = () => {
-      void gitPrStatus(cwd)
+      void gitPrStatus(environmentId, cwd)
         .then((next) => {
           if (cancelled) return;
-          prByCwd.set(cwd, next);
+          prByCwd.set(JSON.stringify([environmentId, cwd]), next);
           setPr(next);
         })
         .catch(() => {
           if (cancelled) return;
-          prByCwd.set(cwd, null);
+          prByCwd.set(JSON.stringify([environmentId, cwd]), null);
           setPr(null);
         });
     };
@@ -589,17 +594,18 @@ function usePrStatus(
       cancelled = true;
       window.removeEventListener("focus", onResume);
     };
-  }, [branch, cwd, nonce]);
+  }, [environmentId, branch, cwd, nonce]);
 
   return { pr, reload };
 }
 
 function cachedPr(
+  environmentId: string,
   cwd: string,
   branch: string | null | undefined,
 ): GitPr | null {
   if (!cwd || cwd === "~" || !branch) return null;
-  return prByCwd.get(cwd) ?? null;
+  return prByCwd.get(JSON.stringify([environmentId, cwd])) ?? null;
 }
 
 function syncStatusLabel(index: GitDiffIndex): string {

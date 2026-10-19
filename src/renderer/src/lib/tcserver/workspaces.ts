@@ -1,8 +1,7 @@
 import { useEffect, useSyncExternalStore } from "react";
 import { normalizeProjectPath } from "../recents";
-import { client } from "./client";
-import type { Link } from "./store";
-import type { ProjectMeta, ServerPush, ThreadDefaults, WorkspaceIcon, WorkspaceMeta } from "./types";
+import type { Link } from "../connection";
+import type { ProjectMeta, ServerPush, ThreadDefaults, WireProjectMeta, WireWorkspaceMeta, WorkspaceIcon, WorkspaceMeta } from "./types";
 import { BUILT_IN_SCOPE, parseDefaultsScope, type DefaultsScope } from "./defaults";
 
 /**
@@ -31,6 +30,11 @@ const EMPTY: WorkspaceCatalog = {
 };
 
 const GLOBAL = "";
+
+/** Defaults and rules scopes are per environment: `env|workspaceId` or `env|`. */
+export function scopeKey(environmentId: string, workspaceId: string | null | undefined): string {
+  return `${environmentId}|${workspaceId ?? GLOBAL}`;
+}
 
 type SessionLike = {
   cwd: string;
@@ -126,26 +130,65 @@ export function workspaceIdOf(
 class WorkspaceStore {
   private state: WorkspaceCatalog = EMPTY;
   private listeners = new Set<() => void>();
-  private link: Link | null = null;
-  private detach: (() => void)[] = [];
+  private links = new Map<string, { link: Link; detach: (() => void)[] }>();
+  private offRegistry: (() => void) | null = null;
   private iconRequests = new Set<string>();
 
-  connect(link: Link = client): void {
-    if (this.link === link) return;
-    for (const off of this.detach) off();
-    this.link = link;
-    this.detach = [
-      link.onPush((push) => this.onPush(push)),
-      link.onOpen(() => void this.refresh()),
+  /** Follow the registry: one catalog slice per environment. */
+  connect(registry: { onLink(listener: (link: Link, event: "added" | "removed") => void): () => void }): void {
+    this.offRegistry?.();
+    this.offRegistry = registry.onLink((link, event) => {
+      if (event === "added") this.attach(link);
+      else this.detach(link.environmentId);
+    });
+  }
+
+  attach(link: Link): void {
+    const current = this.links.get(link.environmentId);
+    if (current?.link === link) return;
+    if (current) this.detach(link.environmentId);
+    const detach = [
+      link.onPush((push) => this.onPush(push, link.environmentId)),
+      link.onOpen(() => void this.refresh(link)),
     ];
-    if (link.connected) void this.refresh();
+    this.links.set(link.environmentId, { link, detach });
+    if (link.connected) void this.refresh(link);
+  }
+
+  /** The environment is gone: its workspaces, projects, icons and defaults leave. */
+  detach(environmentId: string): void {
+    const current = this.links.get(environmentId);
+    if (!current) return;
+    for (const off of current.detach) off();
+    this.links.delete(environmentId);
+    const gone = new Set(this.state.workspaces.filter((w) => w.environmentId === environmentId).map((w) => w.id));
+    const icons = new Map([...this.state.icons].filter(([id]) => !gone.has(id)));
+    const defaults = new Map([...this.state.defaults].filter(([key]) => !key.startsWith(`${environmentId}|`)));
+    this.set({
+      ...this.state,
+      workspaces: this.state.workspaces.filter((w) => w.environmentId !== environmentId),
+      projects: this.state.projects.filter((p) => p.environmentId !== environmentId),
+      icons,
+      defaults,
+    });
+  }
+
+  linkOf(environmentId: string): Link | undefined {
+    return this.links.get(environmentId)?.link;
+  }
+
+  /** The link a workspace's requests ride on. */
+  linkOfWorkspace(workspaceId: string | null | undefined): Link | undefined {
+    const workspace = this.workspace(workspaceId);
+    return workspace ? this.linkOf(workspace.environmentId) : undefined;
   }
 
   /** Test seam. */
   reset(): void {
-    for (const off of this.detach) off();
-    this.detach = [];
-    this.link = null;
+    this.offRegistry?.();
+    this.offRegistry = null;
+    for (const { detach } of this.links.values()) for (const off of detach) off();
+    this.links.clear();
     this.iconRequests.clear();
     this.set(EMPTY);
   }
@@ -175,56 +218,87 @@ class WorkspaceStore {
     return id ? this.state.workspaces.find((w) => w.id === id) : undefined;
   }
 
-  /** Re-read both lists from the server, then every scope's thread defaults. */
-  async refresh(): Promise<void> {
-    if (!this.link) return;
+  /** Re-read one environment's lists, then every scope's thread defaults there. */
+  async refresh(link: Link): Promise<void> {
+    const environmentId = link.environmentId;
     const [workspaces, projects] = await Promise.all([
-      this.link.request<WorkspaceMeta[]>("workspace.list"),
-      this.link.request<ProjectMeta[]>("project.list"),
+      link.request<WireWorkspaceMeta[]>("workspace.list"),
+      link.request<WireProjectMeta[]>("project.list"),
     ]);
-    this.set({ ...this.state, workspaces, projects, loaded: true });
-    await Promise.all([null, ...workspaces.map((w) => w.id)].map((id) => this.loadDefaults(id)));
+    this.merge(
+      environmentId,
+      workspaces.map((w) => ({ ...w, environmentId })),
+      projects.map((p) => ({ ...p, environmentId })),
+    );
+    await Promise.all([null, ...workspaces.map((w) => w.id)].map((id) => this.loadDefaults(environmentId, id)));
   }
 
-  /** The thread defaults in force for a workspace (its own override, else
-   *  the global set); undefined while nothing has loaded. */
-  defaultsFor(workspaceId: string | null | undefined): ThreadDefaults | undefined {
+  /** Replace one environment's slice of the lists; the other hosts' rows stay. */
+  private merge(environmentId: string, workspaces?: WorkspaceMeta[], projects?: ProjectMeta[]): void {
+    this.set({
+      ...this.state,
+      ...(workspaces
+        ? { workspaces: [...this.state.workspaces.filter((w) => w.environmentId !== environmentId), ...workspaces] }
+        : {}),
+      ...(projects
+        ? { projects: [...this.state.projects.filter((p) => p.environmentId !== environmentId), ...projects] }
+        : {}),
+      loaded: true,
+    });
+  }
+
+  /** The thread defaults in force for a workspace on an environment (its
+   *  own override, else that host's global set); undefined while nothing
+   *  has loaded. */
+  defaultsFor(environmentId: string, workspaceId: string | null | undefined): ThreadDefaults | undefined {
     return (
-      (workspaceId ? this.state.defaults.get(workspaceId) : undefined) ??
-      this.state.defaults.get(GLOBAL)
+      (workspaceId ? this.state.defaults.get(scopeKey(environmentId, workspaceId)) : undefined) ??
+      this.state.defaults.get(scopeKey(environmentId, null))
     )?.defaults;
   }
 
   /** The scope as the server reports it: effective set + override bit. */
-  defaultsAt(workspaceId: string | null): DefaultsScope | undefined {
-    return this.state.defaults.get(workspaceId ?? GLOBAL);
+  defaultsAt(environmentId: string, workspaceId: string | null): DefaultsScope | undefined {
+    return this.state.defaults.get(scopeKey(environmentId, workspaceId));
   }
 
-  async loadDefaults(workspaceId: string | null): Promise<DefaultsScope> {
-    if (!this.link) return BUILT_IN_SCOPE;
-    const scope = await this.link
+  async loadDefaults(environmentId: string, workspaceId: string | null): Promise<DefaultsScope> {
+    const link = this.linkOf(environmentId);
+    if (!link) return BUILT_IN_SCOPE;
+    const key = scopeKey(environmentId, workspaceId);
+    const scope = await link
       .request<unknown>("defaults.get", { workspaceId })
       .then(parseDefaultsScope)
-      .catch(() => this.state.defaults.get(workspaceId ?? GLOBAL) ?? BUILT_IN_SCOPE);
-    this.setDefaults(new Map([[workspaceId ?? GLOBAL, scope]]));
+      .catch(() => this.state.defaults.get(key) ?? BUILT_IN_SCOPE);
+    this.setDefaults(new Map([[key, scope]]));
     return scope;
   }
 
   /** Store a set at the scope, or null to clear it: a workspace falls back
    *  to the global set, the global set to the built-in one. A global change
    *  reaches every workspace without an override of its own. */
-  async saveDefaults(workspaceId: string | null, defaults: ThreadDefaults | null): Promise<void> {
-    if (!this.link) return;
-    await this.link.request("defaults.set", { workspaceId, defaults });
+  async saveDefaults(
+    environmentId: string,
+    workspaceId: string | null,
+    defaults: ThreadDefaults | null,
+  ): Promise<void> {
+    const link = this.linkOf(environmentId);
+    if (!link) return;
+    await link.request("defaults.set", { workspaceId, defaults });
     const next = new Map<string, DefaultsScope>();
+    const globalKey = scopeKey(environmentId, null);
     if (workspaceId) {
-      const inherited = this.state.defaults.get(GLOBAL)?.defaults ?? BUILT_IN_SCOPE.defaults;
-      next.set(workspaceId, defaults ? { defaults, overridden: true } : { defaults: inherited, overridden: false });
+      const inherited = this.state.defaults.get(globalKey)?.defaults ?? BUILT_IN_SCOPE.defaults;
+      next.set(
+        scopeKey(environmentId, workspaceId),
+        defaults ? { defaults, overridden: true } : { defaults: inherited, overridden: false },
+      );
     } else {
       const global = defaults ? { defaults, overridden: true } : BUILT_IN_SCOPE;
-      next.set(GLOBAL, global);
-      for (const [id, scope] of this.state.defaults) {
-        if (id !== GLOBAL && !scope.overridden) next.set(id, { defaults: global.defaults, overridden: false });
+      next.set(globalKey, global);
+      for (const [key, scope] of this.state.defaults) {
+        if (key !== globalKey && key.startsWith(`${environmentId}|`) && !scope.overridden)
+          next.set(key, { defaults: global.defaults, overridden: false });
       }
     }
     this.setDefaults(next);
@@ -239,9 +313,10 @@ class WorkspaceStore {
   /** The cached icon, fetching it the first time it is asked for. */
   icon(workspaceId: string): WorkspaceIcon | undefined {
     const cached = this.state.icons.get(workspaceId);
-    if (cached || !this.link || this.iconRequests.has(workspaceId)) return cached;
+    const link = this.linkOfWorkspace(workspaceId);
+    if (cached || !link || this.iconRequests.has(workspaceId)) return cached;
     this.iconRequests.add(workspaceId);
-    this.link
+    link
       .request<WorkspaceIcon>("workspace.icon", { workspaceId })
       .then((icon) => {
         const icons = new Map(this.state.icons);
@@ -252,11 +327,11 @@ class WorkspaceStore {
     return undefined;
   }
 
-  private onPush(push: ServerPush): void {
+  private onPush(push: ServerPush, environmentId: string): void {
     if (push.push === "workspaces") {
-      this.set({ ...this.state, workspaces: push.workspaces, loaded: true });
+      this.merge(environmentId, push.workspaces.map((w) => ({ ...w, environmentId })));
     } else if (push.push === "projects") {
-      this.set({ ...this.state, projects: push.projects, loaded: true });
+      this.merge(environmentId, undefined, push.projects.map((p) => ({ ...p, environmentId })));
     }
   }
 
@@ -288,13 +363,15 @@ export function useWorkspaceIcon(workspaceId: string | null | undefined): Worksp
   return workspaceId ? icons.get(workspaceId) : undefined;
 }
 
-/** A scope's thread defaults, loading them the first time they are asked for. */
-export function useThreadDefaults(workspaceId: string | null | undefined): DefaultsScope | undefined {
+/** A scope's thread defaults on one environment, loading them the first time they are asked for. */
+export function useThreadDefaults(
+  environmentId: string,
+  workspaceId: string | null | undefined,
+): DefaultsScope | undefined {
   const { defaults } = useWorkspaceCatalog();
-  const key = workspaceId ?? GLOBAL;
-  const scope = defaults.get(key);
+  const scope = defaults.get(scopeKey(environmentId, workspaceId));
   useEffect(() => {
-    if (!scope) void workspaceStore.loadDefaults(workspaceId ?? null);
-  }, [scope, workspaceId]);
+    if (!scope) void workspaceStore.loadDefaults(environmentId, workspaceId ?? null);
+  }, [scope, environmentId, workspaceId]);
   return scope;
 }

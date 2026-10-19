@@ -1,3 +1,4 @@
+import { hostOfCwd } from "./tcserver/projects";
 import { statFiles } from "./fs";
 import { editorPathsEqual } from "./search";
 
@@ -74,7 +75,7 @@ function watchedPaths(paths?: string[]): string[] {
 export async function syncWatchedMtime(path: string): Promise<void> {
   if (!listeners.has(path)) return;
   try {
-    const [stat] = await statFiles([path]);
+    const [stat] = await statFiles(hostOfCwd(path), [path]);
     if (stat && listeners.has(path)) {
       mtimes.set(path, stat.mtimeMs);
     }
@@ -100,9 +101,18 @@ async function poll(paths: string[] | "all") {
 
   inFlight = true;
   try {
-    for (let i = 0; i < list.length; i += MAX_PATHS) {
-      const batch = list.slice(i, i + MAX_PATHS);
-      const stats = await statFiles(batch);
+    // Each host stats its own files.
+    const byHost = new Map<string, string[]>();
+    for (const path of list) {
+      const host = hostOfCwd(path);
+      byHost.set(host, [...(byHost.get(host) ?? []), path]);
+    }
+    const batches: [string, string[]][] = [];
+    for (const [host, paths] of byHost) {
+      for (let i = 0; i < paths.length; i += MAX_PATHS) batches.push([host, paths.slice(i, i + MAX_PATHS)]);
+    }
+    for (const [host, batch] of batches) {
+      const stats = await statFiles(host, batch);
       for (const stat of stats) {
         if (!listeners.has(stat.path)) continue;
         const previous = mtimes.get(stat.path);

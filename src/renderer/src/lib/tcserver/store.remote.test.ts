@@ -11,6 +11,7 @@ import type { EventsPage, OmittedBody, SessionPage } from "@server/shared/wire";
 
 function meta(over: Partial<SessionMeta> = {}): SessionMeta {
   return {
+    environmentId: "local",
     id: "s1",
     parentId: null,
     projectId: null,
@@ -40,6 +41,11 @@ function meta(over: Partial<SessionMeta> = {}): SessionMeta {
   };
 }
 
+function wireMeta(over: Partial<SessionMeta> = {}): Omit<SessionMeta, "environmentId"> {
+  const { environmentId: _environmentId, ...wire } = meta(over);
+  return wire;
+}
+
 const row = (sessionId: string, seq: number, event: EventRow["event"]): EventRow => ({
   sessionId,
   seq,
@@ -55,11 +61,12 @@ const omitted = (text: string): OmittedBody => ({
 });
 
 class RemoteLink implements Link {
+  environmentId = "local";
   connected = true;
   readonly profile = "remote" as const;
   calls: { method: string; params: unknown }[] = [];
   /** session.list answers these pages in order, with a cursor between. */
-  pages: SessionMeta[][] = [];
+  pages: Omit<SessionMeta, "environmentId">[][] = [];
   /** The log per session, as the remote socket would project it. */
   events = new Map<string, EventRow[]>();
   /** Rows whole, by `sessionId:seq`, for session.rowBody. */
@@ -121,6 +128,9 @@ class RemoteLink implements Link {
     this.openListeners.add(l);
     return () => this.openListeners.delete(l);
   }
+  onClose() {
+    return () => {};
+  }
   push(p: ServerPush): void {
     for (const l of this.pushListeners) l(p);
   }
@@ -152,13 +162,13 @@ afterEach(() => sessionStore.reset());
 
 /** A link that reports connected lists on connect; `open()` would list again. */
 async function boot(l: RemoteLink): Promise<void> {
-  sessionStore.connect(l);
+  sessionStore.attach(l);
   await sessionStore.ready();
 }
 
 describe("remote profile: the list", () => {
   it("walks the pages and merges every one", async () => {
-    link.pages = [[meta({ id: "a", status: "running" })], [meta({ id: "b" })], [meta({ id: "c" })]];
+    link.pages = [[wireMeta({ id: "a", status: "running" })], [wireMeta({ id: "b" })], [wireMeta({ id: "c" })]];
     await boot(link);
     expect(sessionStore.metas().map((m) => m.id).sort()).toEqual(["a", "b", "c"]);
     const lists = link.calls.filter((c) => c.method === "session.list" && !(c.params as { archived?: boolean })?.archived);
@@ -168,7 +178,7 @@ describe("remote profile: the list", () => {
 
 describe("remote profile: pushes", () => {
   it("folds a coalesced events frame and merges a sessions frame", async () => {
-    link.pages = [[meta({ id: "s1" })]];
+    link.pages = [[wireMeta({ id: "s1" })]];
     link.events.set("s1", turns("s1", 1));
     await boot(link);
     await sessionStore.ensureLoaded("s1");
@@ -187,7 +197,7 @@ describe("remote profile: pushes", () => {
       "prompt 2",
       "answer 2",
     ]);
-    link.push({ push: "sessions", sessions: [meta({ id: "s1", status: "running" }), meta({ id: "s2" })] });
+    link.push({ push: "sessions", sessions: [wireMeta({ id: "s1", status: "running" }), wireMeta({ id: "s2" })] });
     expect(sessionStore.metaOf("s1")?.status).toBe("running");
     expect(sessionStore.metaOf("s2")).not.toBeNull();
   });
@@ -195,7 +205,7 @@ describe("remote profile: pushes", () => {
 
 describe("remote profile: history", () => {
   it("paints the tail, pages older rows in on demand, and keeps the tail's block ids", async () => {
-    link.pages = [[meta({ id: "s1" })]];
+    link.pages = [[wireMeta({ id: "s1" })]];
     link.events.set("s1", turns("s1"));
     await boot(link);
     await sessionStore.ensureLoaded("s1");
@@ -230,7 +240,7 @@ describe("remote profile: history", () => {
   });
 
   it("ensureComplete pages the whole history in", async () => {
-    link.pages = [[meta({ id: "s1" })]];
+    link.pages = [[wireMeta({ id: "s1" })]];
     link.events.set("s1", turns("s1"));
     await boot(link);
     await sessionStore.ensureComplete("s1");
@@ -239,7 +249,7 @@ describe("remote profile: history", () => {
   });
 
   it("a push that lands while an older page folds is kept", async () => {
-    link.pages = [[meta({ id: "s1" })]];
+    link.pages = [[wireMeta({ id: "s1" })]];
     link.events.set("s1", turns("s1"));
     await boot(link);
     await sessionStore.ensureLoaded("s1");
@@ -252,7 +262,7 @@ describe("remote profile: history", () => {
   });
 
   it("a resume whose gap outgrew the budget takes the fresh tail and drops the old fold", async () => {
-    link.pages = [[meta({ id: "s1" })]];
+    link.pages = [[wireMeta({ id: "s1" })]];
     link.events.set("s1", turns("s1"));
     await boot(link);
     await sessionStore.ensureLoaded("s1");
@@ -263,7 +273,7 @@ describe("remote profile: history", () => {
       moreAfter: false,
       reset: true,
     };
-    await sessionStore.resync();
+    await sessionStore.resync(link);
     const texts = sessionStore.get("s1")!.blocks.map((b) => b.text);
     expect(texts).toEqual(["prompt 1", "answer 1", "prompt 2", "answer 2"]);
     expect(sessionStore.get("s1")!.blocks[0].id).toBe("u:41");
@@ -274,7 +284,7 @@ describe("remote profile: history", () => {
 describe("remote profile: bodies off the wire", () => {
   it("a tool row shows the first line, fetches the body when asked, and is whole after", async () => {
     const output = "first line\nsecond line\nthird line";
-    link.pages = [[meta({ id: "s1" })]];
+    link.pages = [[wireMeta({ id: "s1" })]];
     link.events.set("s1", [
       row("s1", 1, { type: "tool-call", callId: "c1", name: "Bash", input: { command: "ls" } }),
       row("s1", 2, {
@@ -305,7 +315,7 @@ describe("remote profile: bodies off the wire", () => {
   it("an edit whose strings left the wire keeps its counts and comes back whole", async () => {
     const oldText = "a\nb\nc";
     const newText = "x\ny\nz\nw";
-    link.pages = [[meta({ id: "s1" })]];
+    link.pages = [[wireMeta({ id: "s1" })]];
     link.events.set("s1", [
       row("s1", 1, {
         type: "tool-call",
@@ -342,7 +352,7 @@ describe("remote profile: bodies off the wire", () => {
   });
 
   it("a body the server cannot give back marks the block failed, not loading", async () => {
-    link.pages = [[meta({ id: "s1" })]];
+    link.pages = [[wireMeta({ id: "s1" })]];
     link.events.set("s1", [
       row("s1", 1, { type: "tool-call", callId: "c1", name: "Bash", input: { command: "ls" } }),
       row("s1", 2, { type: "tool-result", callId: "c1", output: omitted("gone\nx") as unknown as string, isError: false }),

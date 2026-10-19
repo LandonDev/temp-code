@@ -23,6 +23,7 @@ function Paged({
 
 const meta = (id: string, extra: Partial<SessionMeta> = {}): SessionMeta =>
   ({
+    environmentId: 'local',
     id,
     parentId: null,
     projectId: 'p1',

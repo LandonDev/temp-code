@@ -10,7 +10,7 @@ import {
   breakpointPaths,
   subscribeBreakpoints,
 } from "../../../lib/monaco/breakpoints";
-import { client } from "../../../lib/tcserver/client";
+import { localServerPort, registry } from "../../../lib/connection";
 import { dirPrefix } from "../../../lib/tcserver/projects";
 import type { ProjectMeta } from "../../../lib/tcserver/types";
 import { monaco } from "../monaco";
@@ -42,7 +42,7 @@ export class DapSession {
   onEvent: (event: string, body: unknown) => void = () => {};
 
   async connect(wsPath: string): Promise<void> {
-    const port = client.port;
+    const port = localServerPort();
     if (!port) throw new Error("sidecar not connected");
     const ws = new WebSocket(`ws://127.0.0.1:${port}${wsPath}`);
     this.ws = ws;
@@ -136,7 +136,7 @@ export class DebugController {
     }
     let wsPath: string;
     try {
-      ({ wsPath } = await client.request<{ wsPath: string }>("dap.connect", { port }));
+      ({ wsPath } = await registry.linkOf(this.project.environmentId).request<{ wsPath: string }>("dap.connect", { port }));
     } catch (e) {
       this.fail(e instanceof Error ? e.message : String(e));
       return;

@@ -21,6 +21,7 @@ import type { Session } from "./session";
 
 function chat(id: string, cwd: string): Session {
   return {
+    environmentId: "local",
     id,
     cwd,
     harness: "cursor",

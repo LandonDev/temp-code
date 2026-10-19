@@ -22,6 +22,7 @@ function session(
 ): Session {
   return {
     id,
+    environmentId: "local",
     cwd,
     projectId,
     harness: "cursor",
@@ -235,7 +236,7 @@ describe("tabProjectKey", () => {
 
 describe("filterTabsForWorkspace", () => {
   const catalog = {
-    workspaces: [{ id: "w1", name: "repo", path: "/repo", git: true, createdAt: 1 }],
+    workspaces: [{ environmentId: "local", id: "w1", name: "repo", path: "/repo", git: true, createdAt: 1 }],
     projects: [],
   };
   const sessions: Session[] = [

@@ -224,3 +224,8 @@ describe("gitIndexStore", () => {
     stop();
   });
 });
+
+vi.mock("./tcserver/projects", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./tcserver/projects")>()),
+  hostOfCwd: () => "local",
+}));

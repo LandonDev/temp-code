@@ -3,14 +3,14 @@ import { act, fireEvent, render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { FileMedia } from "../lib/fs";
 
-const fileMedia = vi.fn<(path: string) => Promise<FileMedia | null>>(() =>
+const fileMedia = vi.fn<(environmentId: string, path: string) => Promise<FileMedia | null>>(() =>
   Promise.resolve(null),
 );
 const gitFileMedia = vi.fn(() =>
   Promise.resolve({ original: null as FileMedia | null, current: null }),
 );
 vi.mock("../lib/fs", () => ({
-  fileMedia: (path: string) => fileMedia(path),
+  fileMedia: (environmentId: string, path: string) => fileMedia(environmentId, path),
   gitFileMedia: (...args: unknown[]) => (gitFileMedia as (...a: unknown[]) => unknown)(...args),
 }));
 vi.mock("../lib/fileWatch", () => ({ watchFile: () => () => {} }));
@@ -119,7 +119,7 @@ describe("MediaGate", () => {
   it("falls through to the editor (and its stub) for anything that is not media", async () => {
     const { container } = mount("/repo/a.ts");
     await act(async () => {});
-    expect(fileMedia).toHaveBeenCalledWith("/repo/a.ts");
+    expect(fileMedia).toHaveBeenCalledWith("local", "/repo/a.ts");
     expect(container.querySelector('[data-testid="editor"]')).not.toBeNull();
     expect(container.querySelector("img, video, audio")).toBeNull();
   });
@@ -140,7 +140,7 @@ describe("MediaGate", () => {
     gitFileMedia.mockImplementation(() => Promise.resolve({ original: old, current: image }));
     const { container } = mount("/repo/img/shot.png", true);
     await act(async () => {});
-    expect(gitFileMedia).toHaveBeenCalledWith("/repo", "img/shot.png", undefined);
+    expect(gitFileMedia).toHaveBeenCalledWith("local", "/repo", "img/shot.png", undefined);
     const imgs = container.querySelectorAll("img");
     expect(imgs).toHaveLength(2);
     expect(imgs[0].getAttribute("src")).toBe(old.url);
@@ -165,3 +165,8 @@ describe("formatBytes", () => {
     expect(formatBytes(2.5 * 1024 * 1024 * 1024)).toBe("2.5 GB");
   });
 });
+
+vi.mock("../lib/tcserver/projects", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../lib/tcserver/projects")>()),
+  hostOfCwd: () => "local",
+}));

@@ -3,8 +3,9 @@
  * Tauri names (`invoke`, `listen`, `getCurrentWindow`, `convertFileSrc`,
  * `open`, `ask`, `message`, `getVersion`, …) so call sites change imports
  * only. `invoke` is a closed command map: every command routes to the
- * in-process server (over the shared WebSocket client) or to the main
- * process (over preload); nothing fakes success.
+ * in-process server of one environment (`invokeOn`, over the connection
+ * registry's link) or to the main process (`invoke`, over preload); nothing
+ * fakes success.
  */
 
 import { isWebMode, webApi } from "./nativeWeb";
@@ -18,21 +19,14 @@ export type NativeEvent<T> = { payload: T };
 const api = (): typeof window.api => (isWebMode() ? webApi : window.api);
 export { isWebMode };
 
-/** Every donor command that still has a call site. Retired with their call
- *  sites: `sidecar_restart`, `sidecar_logs`, `set_window_background_blur`. */
-export type NativeCommand =
+/** Server commands: files, git, GitHub, notes, search, checkpoints, Linear.
+ *  Each runs on ONE environment, named by the caller (`invokeOn`). */
+export type ServerCommand =
   | "clone_repo"
-  | "confirm_quit"
-  | "decline_quit"
   | "copy_path"
   | "create_path"
-  | "default_cwd"
   | "delete_path"
   | "file_media"
-  | "destroy_window"
-  | "disable_window_glass"
-  | "enable_window_glass"
-  | "set_window_glass_pref"
   | "git_branches"
   | "git_checkout"
   | "git_commit"
@@ -60,8 +54,6 @@ export type NativeCommand =
   | "git_sync"
   | "git_unstage_all"
   | "git_unstage_file"
-  | "hide_window"
-  | "home_dir"
   | "inspect_paths"
   | "linear_issue_comment"
   | "linear_issue_details"
@@ -77,20 +69,11 @@ export type NativeCommand =
   | "notes_get"
   | "notes_list"
   | "notes_upsert"
-  | "open_new_window"
-  | "pty_ack"
-  | "pty_kill"
-  | "pty_kill_all"
-  | "pty_resize"
-  | "pty_spawn"
-  | "pty_status"
-  | "pty_write"
   | "read_file_base64"
   | "read_file_preview"
   | "read_text_file"
   | "remove_project_logo"
   | "rename_path"
-  | "reveal_path"
   | "save_project_logo"
   | "search_project"
   | "search_sessions"
@@ -100,17 +83,43 @@ export type NativeCommand =
   | "session_checkpoint_status"
   | "session_checkpoint_sync"
   | "session_checkpoint_undo"
-  | "set_dock_badge"
-  | "set_traffic_lights_visible"
-  | "set_zoom"
-  | "sidecar_port"
-  | "stage_window_transfer"
   | "stat_files"
-  | "take_window_transfer"
   | "workspace_get_snapshot"
   | "workspace_set_snapshot"
   | "write_attachment"
   | "write_text_file";
+
+/** Main-process commands: window chrome, dialogs, terminals, the dock.
+ *  These belong to this window, not to any environment (`invoke`). */
+export type LocalCommand =
+  | "confirm_quit"
+  | "decline_quit"
+  | "default_cwd"
+  | "destroy_window"
+  | "disable_window_glass"
+  | "enable_window_glass"
+  | "hide_window"
+  | "home_dir"
+  | "open_new_window"
+  | "pty_ack"
+  | "pty_kill"
+  | "pty_kill_all"
+  | "pty_resize"
+  | "pty_spawn"
+  | "pty_status"
+  | "pty_write"
+  | "reveal_path"
+  | "set_dock_badge"
+  | "set_traffic_lights_visible"
+  | "set_window_glass_pref"
+  | "set_zoom"
+  | "sidecar_port"
+  | "stage_window_transfer"
+  | "take_window_transfer";
+
+/** Every donor command that still has a call site. Retired with their call
+ *  sites: `sidecar_restart`, `sidecar_logs`, `set_window_background_blur`. */
+export type NativeCommand = ServerCommand | LocalCommand;
 
 /** Events the donor listened for: the menu ids, `quit_requested`,
  *  `pty-data` (`{id, data: Uint8Array}`) and `pty-exit` (`{id, code}`). */
@@ -124,20 +133,21 @@ const scope = (args: Args) => ({ sessionId: arg<string>(args, "sessionId"), cwd:
 
 // ── Server dispatch ────────────────────────────────────────────────────────
 
-/** What the bridge needs from the WebSocket client. `tcserver/client.ts`
- *  imports this module for the port, so the client is injected from
- *  `main.tsx` instead of imported here. */
+/** What the bridge needs from one environment's link. The connection
+ *  registry (`lib/connection`) is injected from `tcserver/link.ts` at boot,
+ *  so this module stays free of the runtime's imports. */
 export type ServerLink = {
   readonly connected: boolean;
   request<T>(method: string, params?: unknown): Promise<T>;
   onOpen(listener: () => void): UnlistenFn;
 };
+export type ServerRouter = { linkOf(environmentId: string): ServerLink };
 
 const SERVER_OPEN_TIMEOUT_MS = 15_000;
-let server: ServerLink | null = null;
+let router: ServerRouter | null = null;
 
-export function bindServer(link: ServerLink): void {
-  server = link;
+export function bindServer(next: ServerRouter): void {
+  router = next;
 }
 
 function whenServerOpen(link: ServerLink): Promise<void> {
@@ -155,14 +165,35 @@ function whenServerOpen(link: ServerLink): Promise<void> {
   });
 }
 
-async function rpc<T>(method: string, params?: unknown): Promise<T> {
-  if (!server) throw new Error(`server link not bound (${method})`);
-  await whenServerOpen(server);
-  return server.request<T>(method, params);
+async function rpc<T>(environmentId: string, method: string, params?: unknown): Promise<T> {
+  if (!router) throw new Error(`server router not bound (${method})`);
+  const link = router.linkOf(environmentId);
+  await whenServerOpen(link);
+  return link.request<T>(method, params);
 }
 
+type PassthroughCommand = Exclude<
+  ServerCommand,
+  | "write_attachment"
+  | "save_project_logo"
+  | "remove_project_logo"
+  | "session_checkpoint_capture"
+  | "session_checkpoint_ensure"
+  | "session_checkpoint_keep"
+  | "session_checkpoint_status"
+  | "session_checkpoint_sync"
+  | "session_checkpoint_undo"
+  | "linear_issue_comment"
+  | "linear_issue_details"
+  | "linear_issue_thread"
+  | "linear_list_issues"
+  | "linear_list_teams"
+  | "linear_set_token"
+  | "linear_status"
+>;
+
 /** Commands whose donor args are the server method's params unchanged. */
-const serverMethods: Partial<Record<NativeCommand, string>> = {
+const serverMethods: Record<PassthroughCommand, string> = {
   clone_repo: "git.clone",
   copy_path: "fs.copyPath",
   create_path: "fs.createPath",
@@ -215,33 +246,65 @@ const serverMethods: Partial<Record<NativeCommand, string>> = {
   write_text_file: "fs.writeText",
 };
 
-// ── Command map ────────────────────────────────────────────────────────────
+// ── Command maps ───────────────────────────────────────────────────────────
 
-const backed: Record<NativeCommand, Backed> = {
+type ServerBacked = (environmentId: string, args: Args) => Promise<unknown>;
+
+const serverBacked: Record<ServerCommand, ServerBacked> = {
   ...(Object.fromEntries(
     Object.entries(serverMethods).map(([command, method]) => [
       command,
-      (args: Args) => rpc(method, args),
+      (environmentId: string, args: Args) => rpc(environmentId, method, args),
     ]),
-  ) as Record<NativeCommand, Backed>),
+  ) as Record<ServerCommand, ServerBacked>),
 
   // Server commands whose params or result differ from the donor's.
-  write_attachment: async (args) => {
-    const saved = await rpc<{ path: string }>("attachment.save", {
+  write_attachment: async (env, args) => {
+    const saved = await rpc<{ path: string }>(env, "attachment.save", {
       name: arg<string>(args, "name"),
       dataBase64: arg<string>(args, "data"),
     });
     return saved.path;
   },
-  save_project_logo: (args) =>
-    rpc("projectLogo.save", {
+  save_project_logo: (env, args) =>
+    rpc(env, "projectLogo.save", {
       projectPath: arg<string>(args, "project"),
       sourcePath: arg<string>(args, "sourcePath"),
     }),
-  remove_project_logo: (args) =>
-    rpc("projectLogo.remove", { projectPath: arg<string>(args, "project") }),
+  remove_project_logo: (env, args) =>
+    rpc(env, "projectLogo.remove", { projectPath: arg<string>(args, "project") }),
 
-  // Main process.
+  // Checkpoints (M9) and Linear (M11): params shaped here, not passed through.
+  session_checkpoint_ensure: (env, args) => rpc(env, "checkpoint.ensure", scope(args)),
+  session_checkpoint_capture: (env, args) =>
+    rpc(env, "checkpoint.capture", { ...scope(args), paths: arg<string[]>(args, "paths") ?? [] }),
+  session_checkpoint_sync: (env, args) => rpc(env, "checkpoint.sync", scope(args)),
+  session_checkpoint_status: (env, args) => rpc(env, "checkpoint.status", scope(args)),
+  session_checkpoint_undo: (env, args) =>
+    rpc(env, "checkpoint.undo", { ...scope(args), relative: arg<string | null>(args, "relative") ?? null }),
+  session_checkpoint_keep: (env, args) =>
+    rpc(env, "checkpoint.keep", { ...scope(args), relative: arg<string | null>(args, "relative") ?? null }),
+  // Linear (M11): server-owned token, GraphQL in the server.
+  linear_status: (env) => rpc(env, "linear.status"),
+  linear_set_token: (env, args) => rpc(env, "linear.setToken", { token: arg<string>(args, "token") }),
+  linear_list_teams: (env) => rpc(env, "linear.teams"),
+  linear_list_issues: (env, args) =>
+    rpc(env, "linear.issues", {
+      assignedToMe: arg<boolean>(args, "assignedToMe"),
+      state: arg<string>(args, "state"),
+      teamIds: arg<string[]>(args, "teamIds"),
+    }),
+  linear_issue_details: (env, args) => rpc(env, "linear.details", { id: arg<string>(args, "id") }),
+  linear_issue_thread: (env, args) => rpc(env, "linear.thread", { id: arg<string>(args, "id") }),
+  linear_issue_comment: (env, args) =>
+    rpc(env, "linear.comment", {
+      id: arg<string>(args, "id"),
+      body: arg<string>(args, "body"),
+      parentId: arg<string>(args, "parentId"),
+    }),
+};
+
+const localBacked: Record<LocalCommand, Backed> = {
   sidecar_port: () => getServerPort(),
   reveal_path: (args) => api().revealInFinder(arg<string>(args, "path")),
   default_cwd: () => api().app.defaultCwd(),
@@ -283,51 +346,31 @@ const backed: Record<NativeCommand, Backed> = {
   pty_kill_all: () => api().pty.killAll(),
   pty_ack: async (args) =>
     api().pty.ack(arg<string>(args, "id"), arg<number>(args, "bytes")),
-
-  // Checkpoints (M9) and Linear (M11): params shaped here, not passed through.
-  session_checkpoint_ensure: (args) => rpc("checkpoint.ensure", scope(args)),
-  session_checkpoint_capture: (args) =>
-    rpc("checkpoint.capture", { ...scope(args), paths: arg<string[]>(args, "paths") ?? [] }),
-  session_checkpoint_sync: (args) => rpc("checkpoint.sync", scope(args)),
-  session_checkpoint_status: (args) => rpc("checkpoint.status", scope(args)),
-  session_checkpoint_undo: (args) =>
-    rpc("checkpoint.undo", { ...scope(args), relative: arg<string | null>(args, "relative") ?? null }),
-  session_checkpoint_keep: (args) =>
-    rpc("checkpoint.keep", { ...scope(args), relative: arg<string | null>(args, "relative") ?? null }),
-  // Linear (M11): server-owned token, GraphQL in the server.
-  linear_status: () => rpc("linear.status"),
-  linear_set_token: (args) =>
-    rpc("linear.setToken", { token: arg<string>(args, "token") }),
-  linear_list_teams: () => rpc("linear.teams"),
-  linear_list_issues: (args) =>
-    rpc("linear.issues", {
-      assignedToMe: arg<boolean>(args, "assignedToMe"),
-      state: arg<string>(args, "state"),
-      teamIds: arg<string[]>(args, "teamIds"),
-    }),
-  linear_issue_details: (args) =>
-    rpc("linear.details", { id: arg<string>(args, "id") }),
-  linear_issue_thread: (args) =>
-    rpc("linear.thread", { id: arg<string>(args, "id") }),
-  linear_issue_comment: (args) =>
-    rpc("linear.comment", {
-      id: arg<string>(args, "id"),
-      body: arg<string>(args, "body"),
-      parentId: arg<string>(args, "parentId"),
-    }),
 };
 
 export function notPorted(name: string): Error {
   return new Error(`not ported: ${name}`);
 }
 
+/** A main-process command: this window's chrome, dialogs, terminals, dock. */
 export async function invoke<T = unknown>(
-  command: NativeCommand,
+  command: LocalCommand,
   args?: Record<string, unknown>,
 ): Promise<T> {
-  const impl = backed[command];
+  const impl = localBacked[command];
   if (!impl) throw notPorted(command);
   return (await impl(args)) as T;
+}
+
+/** A server command on one environment: files, git, notes, checkpoints, Linear. */
+export async function invokeOn<T = unknown>(
+  environmentId: string,
+  command: ServerCommand,
+  args?: Record<string, unknown>,
+): Promise<T> {
+  const impl = serverBacked[command];
+  if (!impl) throw notPorted(command);
+  return (await impl(environmentId, args)) as T;
 }
 
 /** The in-process server's port, straight from preload; never opens a socket. */

@@ -1,4 +1,5 @@
-import { getPathForFile, invoke } from "./native";
+import { registry } from "./connection";
+import { getPathForFile, invokeOn } from "./native";
 import { basename, pickFiles as pickFilePaths } from "./fs";
 import type { Attachment, AttachmentKind } from "./session";
 
@@ -211,18 +212,18 @@ function dropMacScreenshotTwins(files: File[]): File[] {
 export async function pickAttachments(): Promise<Attachment[]> {
   const paths = await pickFilePaths();
   if (!paths?.length) return [];
-  return attachmentsFromPaths(paths);
+  // Files picked in this machine's dialog are on this machine.
+  return attachmentsFromPaths(registry.primary().environmentId, paths);
 }
 
-export async function attachmentsFromPaths(
-  paths: string[],
+export async function attachmentsFromPaths(environmentId: string, paths: string[],
 ): Promise<Attachment[]> {
   const unique = [...new Set(paths.filter((path) => path.trim()))];
   if (unique.length === 0) return [];
-  const infos = await invoke<PathInfo[]>("inspect_paths", { paths: unique });
+  const infos = await invokeOn<PathInfo[]>(environmentId, "inspect_paths", { paths: unique });
   const out: Attachment[] = [];
   for (const info of infos) {
-    const file = await attachmentFromPath(info);
+    const file = await attachmentFromPath(environmentId, info);
     if (file) out.push(file);
   }
   return out;
@@ -239,18 +240,19 @@ export async function attachmentsFromFiles(
     if (path) pathFiles.push(path);
     else blobs.push(file);
   }
+  // Dropped and pasted files come from this machine.
+  const local = registry.primary().environmentId;
   if (pathFiles.length) {
-    out.push(...(await attachmentsFromPaths(pathFiles)));
+    out.push(...(await attachmentsFromPaths(local, pathFiles)));
   }
   for (const file of blobs) {
-    const item = await attachmentFromBlob(file);
+    const item = await attachmentFromBlob(local, file);
     if (item) out.push(item);
   }
   return out;
 }
 
-export async function prepareAttachments(
-  files: Attachment[],
+export async function prepareAttachments(environmentId: string, files: Attachment[],
 ): Promise<Attachment[]> {
   return Promise.all(
     files.map(async (file) => {
@@ -259,7 +261,7 @@ export async function prepareAttachments(
         return file;
       }
       try {
-        const data = await invoke<string>("read_file_base64", {
+        const data = await invokeOn<string>(environmentId, "read_file_base64", {
           path: file.path,
         });
         return { ...file, data };
@@ -303,7 +305,7 @@ function contentBlockFor(file: Attachment): PromptContentBlock | null {
   };
 }
 
-async function attachmentFromPath(info: PathInfo): Promise<Attachment | null> {
+async function attachmentFromPath(environmentId: string, info: PathInfo): Promise<Attachment | null> {
   if (info.isDir || skipName(info.name)) return null;
   const mimeType = mimeFromName(info.name);
   const kind = kindFromMime(mimeType);
@@ -321,7 +323,7 @@ async function attachmentFromPath(info: PathInfo): Promise<Attachment | null> {
     info.size <= MAX_EMBED_BYTES
   ) {
     try {
-      file.data = await invoke<string>("read_file_base64", { path: info.path });
+      file.data = await invokeOn<string>(environmentId, "read_file_base64", { path: info.path });
     } catch {
       // Fall back to a resource_link so the agent can still read the file.
     }
@@ -329,7 +331,7 @@ async function attachmentFromPath(info: PathInfo): Promise<Attachment | null> {
   return file;
 }
 
-async function attachmentFromBlob(file: File): Promise<Attachment | null> {
+async function attachmentFromBlob(environmentId: string, file: File): Promise<Attachment | null> {
   if (skipName(file.name) || file.size < 0) return null;
   const mimeType = mimeFromFile(file);
   const kind = kindFromMime(mimeType);
@@ -352,7 +354,7 @@ async function attachmentFromBlob(file: File): Promise<Attachment | null> {
     return null;
   }
   try {
-    const path = await invoke<string>("write_attachment", { name, data });
+    const path = await invokeOn<string>(environmentId, "write_attachment", { name, data });
     return {
       id: crypto.randomUUID(),
       name,

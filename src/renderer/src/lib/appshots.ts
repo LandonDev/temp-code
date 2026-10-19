@@ -15,10 +15,10 @@ import { appshots as bridge, type AppshotCapture, type AppshotPermissions } from
 import { OPEN_SETTINGS_EVENT } from './monaco/debugTab'
 import { lastProjectPath } from './recents'
 import type { Attachment } from './session'
-import { client } from './tcserver/client'
+import { registry } from './connection'
 import { projectForCwd } from './tcserver/projects'
 import { sessionStore } from './tcserver/store'
-import type { SessionMeta } from './tcserver/types'
+import type { SessionMeta, WireSessionMeta } from './tcserver/types'
 import { workspaceStore } from './tcserver/workspaces'
 import shutterUrl from '../assets/shutter.wav?url'
 
@@ -58,12 +58,13 @@ export function useAppshotSettings(): AppshotSettings {
 export function setAppshotSettings(patch: Partial<AppshotSettings>): void {
   settings = { ...settings, ...patch }
   emit()
-  void client.request('appshots.set', { settings }).catch(() => undefined)
+  // Appshots are this Mac's feature: its settings and chats live on the local server.
+  void registry.primary().request('appshots.set', { settings }).catch(() => undefined)
 }
 
 async function loadSettings(): Promise<void> {
   try {
-    settings = await client.request<AppshotSettings>('appshots.get', {})
+    settings = await registry.primary().request<AppshotSettings>('appshots.get', {})
     emit()
   } catch {
     // The server fills in defaults; the page shows them until it answers.
@@ -106,13 +107,14 @@ async function createChat(): Promise<string | null> {
     projects.find((p) => p.id === lastChat()?.projectId) ??
     projects[0]
   if (!project && !selected) return null
-  const meta = await client.request<SessionMeta>('session.create', {
+  const wire = await registry.primary().request<WireSessionMeta>('session.create', {
     threadType: 'chat',
     agentType: 'implementer',
     ...(project ? { projectId: project.id } : { cwd: selected })
   })
   // The push opens the thread behind the user's work; the drop is an
   // explicit ask, so it comes forward too.
+  const meta = { ...wire, environmentId: registry.primary().environmentId }
   sessionStore.adopt(meta)
   sessionStore.requestOpen(meta.id)
   return meta.id

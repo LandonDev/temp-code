@@ -1,7 +1,7 @@
 import { nativeModelId } from "../models";
 import type { Attachment, Block, RuntimeMode, Session } from "../session";
 import { policyForMode } from "./access";
-import { client } from "./client";
+import { registry, type Link } from "../connection";
 import { sessionStore } from "./store";
 import { workspaceByPath, workspaceStore } from "./workspaces";
 import type {
@@ -12,6 +12,7 @@ import type {
   ServerAttachment,
   SessionBatchResult,
   SessionMeta,
+  WireSessionMeta,
   ThreadRules,
   ThreadType,
 } from "./types";
@@ -56,11 +57,24 @@ function serverCwd(cwd: string): string | undefined {
   return cwd && cwd !== "~" ? cwd : undefined;
 }
 
+/** The link of a session the store knows; a draft's is the environment it was minted for. */
+function linkOfSession(session: Pick<Session, "id" | "environmentId">): Link {
+  return sessionStore.linkFor(session.id) ?? registry.linkOf(session.environmentId);
+}
+
+/** The link a known session's requests ride on. */
+function linkFor(sessionId: string): Link {
+  const link = sessionStore.linkFor(sessionId);
+  if (!link) throw new Error(`unknown session: ${sessionId}`);
+  return link;
+}
+
 /** Files by path; pasted bytes are saved server-side first. */
 export async function toServerAttachments(
+  environmentId: string,
   attachments: Attachment[],
-  link = client,
 ): Promise<ServerAttachment[]> {
+  const link = registry.linkOf(environmentId);
   const out = await Promise.all(
     attachments.map(async (a): Promise<ServerAttachment | null> => {
       const kind = a.kind === "image" ? "image" : "file";
@@ -82,10 +96,11 @@ export async function toServerAttachments(
 }
 
 /** Create the draft on the server if needed; returns its meta. */
-export async function ensureCreated(session: Session, link = client): Promise<SessionMeta> {
+export async function ensureCreated(session: Session): Promise<SessionMeta> {
   const existing = sessionStore.metaOf(session.id);
   if (existing) return existing;
-  const meta = await link.request<SessionMeta>("session.create", {
+  const link = linkOfSession(session);
+  const wire = await link.request<WireSessionMeta>("session.create", {
     id: session.id,
     provider: session.harness,
     model: nativeModelId(session.model),
@@ -105,6 +120,7 @@ export async function ensureCreated(session: Session, link = client): Promise<Se
         ? null
         : (workspaceByPath(workspaceStore.workspaces, session.cwd)?.id ?? null)),
   });
+  const meta: SessionMeta = { ...wire, environmentId: link.environmentId };
   sessionStore.adopt(meta);
   if (session.modelSettings.ultrafast === "true") {
     await link.request("session.tune", { sessionId: session.id, ultrafast: true });
@@ -121,7 +137,6 @@ export async function send(
   attachments: Attachment[] = [],
   extra?: UserTurnExtra,
   display?: UserTurnDisplay,
-  link = client,
 ): Promise<void> {
   sessionStore.appendOptimisticUser(
     session.id,
@@ -130,8 +145,9 @@ export async function send(
     extra,
     extra?.newPass,
   );
-  const files = [...(await toServerAttachments(attachments, link)), ...(extra?.attachments ?? [])];
-  const meta = await ensureCreated(session, link);
+  const link = linkOfSession(session);
+  const files = [...(await toServerAttachments(link.environmentId, attachments)), ...(extra?.attachments ?? [])];
+  const meta = await ensureCreated(session);
   const model = nativeModelId(session.model);
   const reasoning = reasoningOf(session);
   await link.request("session.send", {
@@ -153,7 +169,6 @@ export async function steer(
   attachments: Attachment[] = [],
   extra?: UserTurnExtra,
   display?: UserTurnDisplay,
-  link = client,
 ): Promise<void> {
   sessionStore.appendOptimisticUser(
     session.id,
@@ -161,9 +176,9 @@ export async function steer(
     display?.attachments ?? attachments,
     extra,
   );
-  const files = [...(await toServerAttachments(attachments, link)), ...(extra?.attachments ?? [])];
-  const item = await queueAdd(session.id, text, files, runSettingsFor(session), link);
-  await queueSteer(session.id, item.id, link);
+  const files = [...(await toServerAttachments(session.environmentId, attachments)), ...(extra?.attachments ?? [])];
+  const item = await queueAdd(session.id, text, files, runSettingsFor(session));
+  await queueSteer(session.id, item.id);
 }
 
 /** Run settings a queued message carries to its eventual send: the
@@ -185,7 +200,8 @@ export function runSettingsFor(session: Session): QueueRunSettings {
 // The server owns the list and pushes it whole after every change; these
 // return once the RPC lands and let the push update the store.
 
-export async function queueList(sessionId: string, link = client): Promise<QueuedMessage[]> {
+export async function queueList(sessionId: string): Promise<QueuedMessage[]> {
+  const link = linkFor(sessionId);
   if (sessionStore.isDraft(sessionId)) return [];
   const items = await link.request<QueuedMessage[]>("queue.list", { sessionId });
   sessionStore.setQueue(sessionId, items);
@@ -197,8 +213,8 @@ export async function queueAdd(
   text: string,
   attachments: ServerAttachment[] = [],
   settings: QueueRunSettings = {},
-  link = client,
 ): Promise<QueuedMessage> {
+  const link = linkFor(sessionId);
   const item = await link.request<QueuedMessage | null>("queue.add", {
     sessionId,
     text,
@@ -215,7 +231,8 @@ export async function queueAdd(
   throw new Error("The server did not queue the message");
 }
 
-export async function queueRemove(sessionId: string, messageId: string, link = client): Promise<void> {
+export async function queueRemove(sessionId: string, messageId: string): Promise<void> {
+  const link = linkFor(sessionId);
   await link.request("queue.remove", { sessionId, messageId });
 }
 
@@ -223,8 +240,8 @@ export async function queueUpdate(
   sessionId: string,
   messageId: string,
   text: string,
-  link = client,
 ): Promise<void> {
+  const link = linkFor(sessionId);
   await link.request("queue.update", { sessionId, messageId, text });
 }
 
@@ -235,13 +252,14 @@ export async function queueTune(
   sessionId: string,
   messageId: string,
   settings: QueueTune,
-  link = client,
 ): Promise<void> {
+  const link = linkFor(sessionId);
   await link.request("queue.update", { sessionId, messageId, ...settings });
 }
 
 /** Optimistic: the strip keeps the dragged order while the RPC is in flight. */
-export async function queueReorder(sessionId: string, order: string[], link = client): Promise<void> {
+export async function queueReorder(sessionId: string, order: string[]): Promise<void> {
+  const link = linkFor(sessionId);
   const byId = new Map(sessionStore.queueOf(sessionId).map((m) => [m.id, m]));
   const next = order.map((id) => byId.get(id)).filter((m): m is QueuedMessage => !!m);
   for (const m of byId.values()) if (!order.includes(m.id)) next.push(m);
@@ -250,18 +268,19 @@ export async function queueReorder(sessionId: string, order: string[], link = cl
 }
 
 /** Send a queued item into the running turn now (front-queued where the harness cannot steer). */
-export async function queueSteer(sessionId: string, messageId: string, link = client): Promise<void> {
+export async function queueSteer(sessionId: string, messageId: string): Promise<void> {
+  const link = linkFor(sessionId);
   await link.request("queue.steer", { sessionId, messageId });
 }
 
 // ── batch recovery ───────────────────────────────────────────────────
 
-export function resumeAllPaused(link = client): Promise<SessionBatchResult> {
-  return link.request<SessionBatchResult>("session.resumeAllPaused");
+export function resumeAllPaused(environmentId: string): Promise<SessionBatchResult> {
+  return registry.linkOf(environmentId).request<SessionBatchResult>("session.resumeAllPaused");
 }
 
-export function continueAllErrors(link = client): Promise<SessionBatchResult> {
-  return link.request<SessionBatchResult>("session.continueAllErrors");
+export function continueAllErrors(environmentId: string): Promise<SessionBatchResult> {
+  return registry.linkOf(environmentId).request<SessionBatchResult>("session.continueAllErrors");
 }
 
 /** Retry one errored thread's last turn, optionally on another model or
@@ -269,47 +288,53 @@ export function continueAllErrors(link = client): Promise<SessionBatchResult> {
 export async function continueSession(
   sessionId: string,
   run: QueueRunSettings = {},
-  link = client,
 ): Promise<void> {
+  const link = linkFor(sessionId);
   if (sessionStore.isDraft(sessionId)) return;
   await link.request("session.continue", { sessionId, ...run });
 }
 
-export async function interrupt(sessionId: string, link = client): Promise<void> {
+export async function interrupt(sessionId: string): Promise<void> {
+  const link = linkFor(sessionId);
   if (sessionStore.isDraft(sessionId)) return;
   await link.request("session.interrupt", { sessionId });
 }
 
 /** Pause every running thread at once. */
-export function pauseAllRunning(link = client): Promise<SessionBatchResult> {
-  return link.request<SessionBatchResult>("session.pauseAllRunning");
+export function pauseAllRunning(environmentId: string): Promise<SessionBatchResult> {
+  return registry.linkOf(environmentId).request<SessionBatchResult>("session.pauseAllRunning");
 }
 
 /** Context-window breakdown for one thread, as the harness reports it
  *  (claude's /context data); null while it streams or has no accounting. */
-export async function context(sessionId: string, link = client): Promise<unknown> {
+export async function context(sessionId: string): Promise<unknown> {
+  const link = linkFor(sessionId);
   if (sessionStore.isDraft(sessionId)) return null;
   return link.request<unknown>("session.context", { sessionId });
 }
 
 /** Compact the conversation in place; progress arrives as compaction events. */
-export async function compact(sessionId: string, link = client): Promise<void> {
+export async function compact(sessionId: string): Promise<void> {
+  const link = linkFor(sessionId);
   if (sessionStore.isDraft(sessionId)) return;
   await link.request("session.compact", { sessionId });
 }
 
 /** Kill the background tasks a watching thread waits on; the row settles idle. */
-export async function killBackground(sessionId: string, link = client): Promise<void> {
+export async function killBackground(sessionId: string): Promise<void> {
+  const link = linkFor(sessionId);
   if (sessionStore.isDraft(sessionId)) return;
   await link.request("session.killBackground", { sessionId });
 }
 
-export async function setGoal(sessionId: string, condition: string, link = client): Promise<void> {
+export async function setGoal(sessionId: string, condition: string): Promise<void> {
+  const link = linkFor(sessionId);
   if (sessionStore.isDraft(sessionId)) return;
   await link.request("session.setGoal", { sessionId, condition });
 }
 
-export async function clearGoal(sessionId: string, link = client): Promise<void> {
+export async function clearGoal(sessionId: string): Promise<void> {
+  const link = linkFor(sessionId);
   if (sessionStore.isDraft(sessionId)) return;
   await link.request("session.clearGoal", { sessionId });
 }
@@ -317,8 +342,8 @@ export async function clearGoal(sessionId: string, link = client): Promise<void>
 export async function setThreadRules(
   sessionId: string,
   threadRules: ThreadRules | null,
-  link = client,
 ): Promise<void> {
+  const link = linkFor(sessionId);
   // A draft keeps them locally; ensureCreated sends them with the create.
   if (sessionStore.isDraft(sessionId)) {
     sessionStore.patch(sessionId, { threadRules });
@@ -328,38 +353,43 @@ export async function setThreadRules(
 }
 
 /** Data URL for an image the server holds (history attachments). */
-export function readAttachment(path: string, link = client): Promise<string> {
-  return link.request<string>("attachment.read", { path });
+export function readAttachment(environmentId: string, path: string): Promise<string> {
+  return registry.linkOf(environmentId).request<string>("attachment.read", { path });
 }
 
-export async function pause(sessionId: string, link = client): Promise<void> {
+export async function pause(sessionId: string): Promise<void> {
+  const link = linkFor(sessionId);
   if (sessionStore.isDraft(sessionId)) return;
   await link.request("session.pause", { sessionId });
 }
 
-export async function resume(sessionId: string, link = client): Promise<void> {
+export async function resume(sessionId: string): Promise<void> {
+  const link = linkFor(sessionId);
   if (sessionStore.isDraft(sessionId)) return;
   await link.request("session.resume", { sessionId });
 }
 
 /** Change a thread's type. A draft just takes the new type; a created
  *  thread asks the server, which re-instructs the harness on the next send. */
-export async function retype(sessionId: string, threadType: ThreadType, link = client): Promise<void> {
+export async function retype(sessionId: string, threadType: ThreadType): Promise<void> {
+  const link = linkFor(sessionId);
   sessionStore.patch(sessionId, { threadType });
   if (sessionStore.isDraft(sessionId)) return;
   await link.request("session.retype", { sessionId, threadType });
 }
 
 /** A plan or report file, jailed to project trees; null until written. */
-export async function readFile(path: string, link = client): Promise<string | null> {
+export async function readFile(environmentId: string, path: string): Promise<string | null> {
   try {
-    return await link.request<string | null>("file.read", { path });
+    return await registry.linkOf(environmentId).request<string | null>("file.read", { path });
   } catch {
     return null;
   }
 }
 
 export type StartThreadParams = {
+  /** The host the thread is created on. */
+  environmentId: string;
   threadType: ThreadType;
   provider: string;
   model?: string;
@@ -378,15 +408,14 @@ export type StartThreadParams = {
 /** Create a whole thread server-side and send its kickoff brief. The
  *  `session` push (or the adopt here, whichever lands first) raises
  *  `onSessionAdded`, and the UI gives it a tab behind the user's work. */
-export async function startThread(
-  params: StartThreadParams,
-  brief: string,
-  link = client,
-): Promise<SessionMeta> {
-  const meta = await link.request<SessionMeta>("session.create", {
-    ...params,
+export async function startThread(params: StartThreadParams, brief: string): Promise<SessionMeta> {
+  const { environmentId, ...create } = params;
+  const link = registry.linkOf(environmentId);
+  const wire = await link.request<WireSessionMeta>("session.create", {
+    ...create,
     agentType: agentTypeFor(params.threadType),
   });
+  const meta: SessionMeta = { ...wire, environmentId };
   sessionStore.adopt(meta);
   await link.request("session.send", { sessionId: meta.id, text: brief });
   return meta;
@@ -396,8 +425,8 @@ export async function approve(
   sessionId: string,
   requestId: string | number,
   allow: boolean,
-  link = client,
 ): Promise<void> {
+  const link = linkFor(sessionId);
   await link.request("session.approve", { sessionId, requestId: String(requestId), allow });
 }
 
@@ -405,12 +434,13 @@ export async function answer(
   sessionId: string,
   requestId: string,
   answers: string[][] | null,
-  link = client,
 ): Promise<void> {
+  const link = linkFor(sessionId);
   await link.request("session.answer", { sessionId, requestId, answers });
 }
 
-export async function permission(sessionId: string, mode: RuntimeMode, link = client): Promise<void> {
+export async function permission(sessionId: string, mode: RuntimeMode): Promise<void> {
+  const link = linkFor(sessionId);
   if (sessionStore.isDraft(sessionId)) return;
   await link.request("session.permission", { sessionId, permission: policyForMode(mode) });
 }
@@ -418,29 +448,33 @@ export async function permission(sessionId: string, mode: RuntimeMode, link = cl
 export async function tune(
   sessionId: string,
   patch: { fast?: boolean; ultrafast?: boolean; context1m?: boolean; model?: string },
-  link = client,
 ): Promise<void> {
+  const link = linkFor(sessionId);
   if (sessionStore.isDraft(sessionId)) return;
   await link.request("session.tune", { sessionId, ...patch });
 }
 
-export async function rename(sessionId: string, title: string, link = client): Promise<void> {
+export async function rename(sessionId: string, title: string): Promise<void> {
+  const link = linkFor(sessionId);
   sessionStore.patch(sessionId, { title });
   if (sessionStore.isDraft(sessionId)) return;
   await link.request("session.rename", { sessionId, title: title.trim().slice(0, 120) });
 }
 
-export async function archive(sessionId: string, archived: boolean, link = client): Promise<void> {
+export async function archive(sessionId: string, archived: boolean): Promise<void> {
+  const link = linkFor(sessionId);
   if (sessionStore.isDraft(sessionId)) return;
   await link.request("session.archive", { sessionId, archived });
 }
 
-export async function pin(sessionId: string, pinned: boolean, link = client): Promise<void> {
+export async function pin(sessionId: string, pinned: boolean): Promise<void> {
+  const link = linkFor(sessionId);
   if (sessionStore.isDraft(sessionId)) return;
   await link.request("session.pin", { sessionId, pinned });
 }
 
-export async function remove(sessionId: string, link = client): Promise<void> {
+export async function remove(sessionId: string): Promise<void> {
+  const link = linkFor(sessionId);
   if (sessionStore.isDraft(sessionId)) {
     sessionStore.mutate((prev) => prev.filter((s) => s.id !== sessionId));
     return;

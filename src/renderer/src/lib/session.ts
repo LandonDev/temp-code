@@ -233,6 +233,8 @@ export const RUNTIME_MODE_HINT: Record<RuntimeMode, string> = {
 
 export type Session = {
   id: string;
+  /** The environment (host) this thread lives on: `local`, `web`, or a saved host's id. */
+  environmentId: string;
   harness: HarnessId;
   model: string;
   modelSettings: Record<string, string>;
@@ -349,6 +351,7 @@ export type SessionContext = {
 };
 
 export function newSession(
+  environmentId: string,
   harness: HarnessId = "claude",
   cwd = "~",
   model?: string,
@@ -359,6 +362,7 @@ export function newSession(
   const resolved = resolveModel(harness, model ?? preferredModelId(harness));
   return {
     id: crypto.randomUUID(),
+    environmentId,
     harness,
     model: resolved.id,
     modelSettings: preferredModelSettings(resolved, modelSettings),
@@ -376,12 +380,13 @@ export function newSession(
 
 /** New conversation using the Providers defaults. */
 export function newDefaultSession(
+  environmentId: string,
   cwd = "~",
   runtimeMode: RuntimeMode = DEFAULT_RUNTIME_MODE,
   context: SessionContext = {},
 ): Session {
   const choice = defaultSessionChoice();
-  return newSession(choice.harness, cwd, choice.model, runtimeMode, undefined, context);
+  return newSession(environmentId, choice.harness, cwd, choice.model, runtimeMode, undefined, context);
 }
 
 /** First line of a prompt, truncated for the tab strip. */

@@ -42,6 +42,7 @@ export type TabGroupMenuExtraItem = {
 };
 
 type Props = {
+  environmentId: string;
   x: number;
   y: number;
   groupId: string;
@@ -110,6 +111,7 @@ const ITEMS: MenuItem[] = [
 ];
 
 export function TabGroupMenu({
+  environmentId,
   x,
   y,
   groupId,
@@ -187,7 +189,7 @@ export function TabGroupMenu({
             onClick={() => {
               void (async () => {
                 try {
-                  const path = await pickAndSetProjectLogo(logoProject);
+                  const path = await pickAndSetProjectLogo(environmentId, logoProject);
                   if (path) onLogoChange();
                 } catch (error) {
                   console.error("Failed to save project logo:", error);
@@ -219,7 +221,7 @@ export function TabGroupMenu({
               aria-label="Remove project logo"
               onMouseDown={(e) => e.preventDefault()}
               onClick={() => {
-                void clearProjectLogo(logoProject).then(onLogoChange);
+                void clearProjectLogo(environmentId, logoProject).then(onLogoChange);
               }}
               className="grid size-7 shrink-0 place-items-center rounded-md text-content/50 hover:bg-content/10 hover:text-content"
             >

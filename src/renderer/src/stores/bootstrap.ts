@@ -1,3 +1,4 @@
+import { registry } from "../lib/connection";
 import { historyStore } from "../lib/historyStore";
 import type { ResumedWorkspace } from "../lib/inFlight";
 import { newTab, type WorkspaceTab } from "../lib/layout";
@@ -47,7 +48,8 @@ export type BootWorkspace = {
 export type BootSeed = { session: Session; tab: WorkspaceTab };
 
 export function newBootSeed(cwd: string = lastProjectPath() ?? "~"): BootSeed {
-  const session = newDefaultSession(cwd);
+  // The window's own seed chat is on this machine.
+  const session = newDefaultSession(registry.primary().environmentId, cwd);
   return { session, tab: newTab(session.id) };
 }
 

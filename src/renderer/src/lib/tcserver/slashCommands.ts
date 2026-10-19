@@ -1,6 +1,5 @@
 import { useEffect, useSyncExternalStore } from "react";
-import { client } from "./client";
-import type { Link } from "./store";
+import type { Link } from "../connection";
 import type { ProviderId, SlashCommand } from "./types";
 
 /**
@@ -16,29 +15,52 @@ export type CommandEntry = { at: number; commands: SlashCommand[] };
 export const COMMANDS_STALE_MS = 30_000;
 const EMPTY: SlashCommand[] = [];
 
-export function commandKey(provider: string, cwd: string): string {
-  return `${provider}:${cwd}`;
+export function commandKey(environmentId: string, provider: string, cwd: string): string {
+  return `${environmentId}|${provider}:${cwd}`;
+}
+
+function splitKey(key: string): [string, string, string] {
+  const bar = key.indexOf("|");
+  const colon = key.indexOf(":", bar + 1);
+  return [key.slice(0, bar), key.slice(bar + 1, colon), key.slice(colon + 1)];
 }
 
 class SlashCommandStore {
   private state: ReadonlyMap<string, CommandEntry> = new Map();
   private inflight = new Map<string, Promise<SlashCommand[]>>();
   private listeners = new Set<() => void>();
-  private link: Link | null = null;
-  private detach: (() => void)[] = [];
+  private links = new Map<string, { link: Link; detach: (() => void)[] }>();
+  private offRegistry: (() => void) | null = null;
 
-  connect(link: Link = client): void {
-    if (this.link === link) return;
-    for (const off of this.detach) off();
-    this.link = link;
-    this.detach = [link.onOpen(() => this.refreshAll())];
+  connect(registry: { onLink(listener: (link: Link, event: "added" | "removed") => void): () => void }): void {
+    this.offRegistry?.();
+    this.offRegistry = registry.onLink((link, event) => {
+      if (event === "added") this.attach(link);
+      else this.detach(link.environmentId);
+    });
+  }
+
+  attach(link: Link): void {
+    const current = this.links.get(link.environmentId);
+    if (current?.link === link) return;
+    if (current) this.detach(link.environmentId);
+    this.links.set(link.environmentId, { link, detach: [link.onOpen(() => this.refreshAll(link.environmentId))] });
+  }
+
+  detach(environmentId: string): void {
+    const current = this.links.get(environmentId);
+    if (!current) return;
+    for (const off of current.detach) off();
+    this.links.delete(environmentId);
+    this.set(new Map([...this.state].filter(([key]) => !key.startsWith(`${environmentId}|`))));
   }
 
   /** Test seam. */
   reset(): void {
-    for (const off of this.detach) off();
-    this.detach = [];
-    this.link = null;
+    this.offRegistry?.();
+    this.offRegistry = null;
+    for (const { detach } of this.links.values()) for (const off of detach) off();
+    this.links.clear();
     this.inflight.clear();
     this.set(new Map());
   }
@@ -52,22 +74,23 @@ class SlashCommandStore {
 
   getSnapshot = (): ReadonlyMap<string, CommandEntry> => this.state;
 
-  peek(provider: string, cwd: string): SlashCommand[] | undefined {
-    return this.state.get(commandKey(provider, cwd))?.commands;
+  peek(environmentId: string, provider: string, cwd: string): SlashCommand[] | undefined {
+    return this.state.get(commandKey(environmentId, provider, cwd))?.commands;
   }
 
-  isStale(provider: string, cwd: string, now = Date.now()): boolean {
-    const entry = this.state.get(commandKey(provider, cwd));
+  isStale(environmentId: string, provider: string, cwd: string, now = Date.now()): boolean {
+    const entry = this.state.get(commandKey(environmentId, provider, cwd));
     return !entry || now - entry.at >= COMMANDS_STALE_MS;
   }
 
-  /** Re-read one provider's list; concurrent calls share the request. */
-  refresh(provider: string, cwd: string): Promise<SlashCommand[]> {
-    const key = commandKey(provider, cwd);
+  /** Re-read one provider's list on one host; concurrent calls share the request. */
+  refresh(environmentId: string, provider: string, cwd: string): Promise<SlashCommand[]> {
+    const key = commandKey(environmentId, provider, cwd);
     const pending = this.inflight.get(key);
     if (pending) return pending;
-    if (!this.link) return Promise.resolve(this.peek(provider, cwd) ?? EMPTY);
-    const request = this.link
+    const link = this.links.get(environmentId)?.link;
+    if (!link) return Promise.resolve(this.peek(environmentId, provider, cwd) ?? EMPTY);
+    const request = link
       .request<SlashCommand[]>("commands.list", { provider: provider as ProviderId, cwd })
       .then((commands) => (Array.isArray(commands) ? commands : EMPTY))
       .catch(() => EMPTY)
@@ -84,11 +107,11 @@ class SlashCommandStore {
     return request;
   }
 
-  /** After a reconnect every list the composer has seen may be out of date. */
-  private refreshAll(): void {
+  /** After a reconnect every list the composer has seen on that host may be out of date. */
+  private refreshAll(environmentId: string): void {
     for (const key of this.state.keys()) {
-      const i = key.indexOf(":");
-      void this.refresh(key.slice(0, i), key.slice(i + 1));
+      const [env, provider, cwd] = splitKey(key);
+      if (env === environmentId) void this.refresh(env, provider, cwd);
     }
   }
 
@@ -104,12 +127,17 @@ export const slashCommandStore = new SlashCommandStore();
  * The commands for a composer. Fetched only when the `/` trigger opens over
  * a stale entry: a mounted composer costs the server nothing on its own.
  */
-export function useSlashCommands(provider: string, cwd: string, open: boolean): SlashCommand[] {
+export function useSlashCommands(
+  environmentId: string,
+  provider: string,
+  cwd: string,
+  open: boolean,
+): SlashCommand[] {
   const state = useSyncExternalStore(slashCommandStore.subscribe, slashCommandStore.getSnapshot);
   useEffect(() => {
-    if (open && slashCommandStore.isStale(provider, cwd)) {
-      void slashCommandStore.refresh(provider, cwd);
+    if (open && slashCommandStore.isStale(environmentId, provider, cwd)) {
+      void slashCommandStore.refresh(environmentId, provider, cwd);
     }
-  }, [open, provider, cwd]);
-  return state.get(commandKey(provider, cwd))?.commands ?? EMPTY;
+  }, [open, environmentId, provider, cwd]);
+  return state.get(commandKey(environmentId, provider, cwd))?.commands ?? EMPTY;
 }

@@ -1,4 +1,4 @@
-import { client } from "./tcserver/client";
+import { registry } from "./connection";
 import { dirPrefix, projectForCwd } from "./tcserver/projects";
 import { workspaceStore } from "./tcserver/workspaces";
 
@@ -22,8 +22,10 @@ const refs = new Map<string, number>();
 const listeners = new Set<(e: FileEvent) => void>();
 
 function send(projectId: string, subscribe: boolean): void {
-  if (!client.connected) return;
-  void client.request("fs.watch", { projectId, subscribe }).catch(() => undefined);
+  const environmentId = workspaceStore.project(projectId)?.environmentId;
+  const link = environmentId ? registry.link(environmentId) : undefined;
+  if (!link?.connected) return;
+  void link.request("fs.watch", { projectId, subscribe }).catch(() => undefined);
 }
 
 /** Hold the project's watch open; call the result to let go. */
@@ -82,19 +84,23 @@ export function watchedProjectIds(): string[] {
   return [...refs.keys()];
 }
 
-client.onOpen(() => {
-  // Subscriptions live on the connection: a fresh socket knows none.
-  for (const projectId of refs.keys()) send(projectId, true);
-});
-
-client.onPush((push) => {
-  if (push.push !== "file-event") return;
-  const project = workspaceStore.projects.find((p) => p.id === push.projectId);
-  if (!project) return;
-  dispatchFileEvent({
-    projectId: push.projectId,
-    path: `${dirPrefix(project.cwd)}${push.path}`,
-    relative: push.path,
-    kind: push.kind,
+registry.onLink((link, event) => {
+  if (event !== "added") return;
+  link.onOpen(() => {
+    // Subscriptions live on the connection: a fresh socket knows none.
+    for (const projectId of refs.keys()) {
+      if (workspaceStore.project(projectId)?.environmentId === link.environmentId) send(projectId, true);
+    }
+  });
+  link.onPush((push) => {
+    if (push.push !== "file-event") return;
+    const project = workspaceStore.project(push.projectId);
+    if (!project || project.environmentId !== link.environmentId) return;
+    dispatchFileEvent({
+      projectId: push.projectId,
+      path: `${dirPrefix(project.cwd)}${push.path}`,
+      relative: push.path,
+      kind: push.kind,
+    });
   });
 });

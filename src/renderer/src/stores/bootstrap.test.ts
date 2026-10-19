@@ -12,7 +12,7 @@ import { shellStore } from "./shell";
 const seed = newBootSeed("/seed");
 
 function transferOf(cwd: string) {
-  const session = newDefaultSession(cwd);
+  const session = newDefaultSession("local", cwd);
   const tab = newTab(session.id);
   return {
     sessions: [session],
@@ -24,7 +24,7 @@ function transferOf(cwd: string) {
 }
 
 function resumedOf(cwd: string) {
-  const session = newDefaultSession(cwd);
+  const session = newDefaultSession("local", cwd);
   const tab = newTab(session.id);
   return { sessions: [session], tabs: [tab], activeTabId: tab.id, projectCwd: cwd };
 }
@@ -114,7 +114,7 @@ describe("bootstrapWorkspace", () => {
   });
 
   it("leaves stores alone that already hold something", () => {
-    const held = [newDefaultSession("/held")];
+    const held = [newDefaultSession("local", "/held")];
     sessionStore.mutate(held);
     historyStore.set([row("kept")]);
     bootstrapWorkspace({

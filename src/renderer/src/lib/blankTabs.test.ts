@@ -22,20 +22,20 @@ describe("isPlaceholderTitle", () => {
 
 describe("isBlankSession", () => {
   it("is blank for a stub the server never saw", () => {
-    expect(isBlankSession({ ...newSession("claude", "/a"), title: "anything" }, false)).toBe(true);
+    expect(isBlankSession({ ...newSession("local", "claude", "/a"), title: "anything" }, false)).toBe(true);
   });
 
   it("is blank for a loaded transcript with no blocks", () => {
-    expect(isBlankSession({ ...newSession("claude", "/a"), title: "Renamed", loaded: true }, true)).toBe(true);
+    expect(isBlankSession({ ...newSession("local", "claude", "/a"), title: "Renamed", loaded: true }, true)).toBe(true);
   });
 
   it("goes by the title when the history is not fetched yet", () => {
-    expect(isBlankSession({ ...newSession("claude", "/a"), title: "New chat" }, true)).toBe(true);
-    expect(isBlankSession({ ...newSession("claude", "/a"), title: "Fix login" }, true)).toBe(false);
+    expect(isBlankSession({ ...newSession("local", "claude", "/a"), title: "New chat" }, true)).toBe(true);
+    expect(isBlankSession({ ...newSession("local", "claude", "/a"), title: "Fix login" }, true)).toBe(false);
   });
 
   it("is never blank with blocks", () => {
-    const s = { ...newSession("claude", "/a"), title: "New chat", blocks: [{ id: "u1", role: "user" as const, text: "hi" }] };
+    const s = { ...newSession("local", "claude", "/a"), title: "New chat", blocks: [{ id: "u1", role: "user" as const, text: "hi" }] };
     expect(isBlankSession(s, true)).toBe(false);
   });
 });
