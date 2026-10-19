@@ -10,8 +10,10 @@ temp-code threads.
 - Auth: header `x-api-key: tc_…` (or `Authorization: Bearer tc_…`). The key is a
   bot key (audience `mcp`) made in temp-code under Settings → Remote access →
   New key → Bot (MCP). Keys can be revoked there at any time.
-- Limits: 120 calls a minute per key, 256 KiB per request body. A refused call
-  comes back as a tool result starting with `error:` so you can read why.
+- Limits: a bucket of 120 requests per key, refilled at two per second;
+  256 KiB per request body. HTTP rejects bad keys with 401, app-audience
+  keys with 403, large bodies with 413 and rate limits with 429 plus
+  `Retry-After`. A refused tool call is a tool result starting with `error:`.
 - Claude Code: `claude mcp add --transport http temp-code https://tempcode.landonhale.com/mcp --header "x-api-key: tc_…"`.
 
 ## Words
@@ -56,6 +58,16 @@ to tell the user to answer it in temp-code. It also cannot start a session with
 
 ## Webhook
 
+These two onboarding keys have no webhook yet. Once a bot gives you its
+HTTPS callback URL, open the **box host’s** Settings → Remote access → New
+key → Bot (MCP). Existing keys cannot be edited: create a replacement with
+the same bot name, read + operate, its Webhook URL, and Signing secret
+(blank generates one); the default events are all four below. Give the bot
+both the replacement key and the `webhookSecret` shown once, update its Mac
+Keychain item, test delivery, then revoke the old key in that same pane.
+The bot needs `webhookSecret` to verify signatures; the API key is not the
+signing secret. The box must run v236 or later for webhook fields to appear.
+
 If the key was made with a webhook URL, temp-code posts one JSON body per
 transition of a session (roots only; a subagent's prompt is reported on its
 root):
@@ -73,3 +85,9 @@ the exact request bytes with the key's signing secret (shown once when the key
 was made); `x-hub-delivery` is a UUID shared by the one retry. Verify the
 signature in constant time and deduplicate on the delivery id. The same payload
 arrives through the hub at hub.landonhale.com when a subscription exists there.
+
+## Before provider sign-in on the box
+
+Reads work (`list_projects`, `list_sessions`, and existing session reads).
+`start_session` cannot complete a turn until a provider account is signed in;
+expect a sign-in-needed error or a failed session carrying that error.
