@@ -10,14 +10,18 @@ import {
   type EnvLink,
 } from "../connection";
 import { smoke } from "./smoke";
+import { sessionStore } from "./store";
 
 type Doctor = Record<string, { found: boolean; version?: string; error?: string }>;
 type SavedEnvironmentRow = { id: string; name: string; routes: { url: string; kind: "loopback" | "lan" | "tunnel" }[] };
 
 declare global {
   interface Window {
+    /** Devtools and the e2e scripts: the registry, the session store and the boot helpers. */
     __monocode?: {
       registry: typeof registry;
+      sessionStore: typeof sessionStore;
+      loadSavedEnvironments: typeof loadSavedEnvironments;
       smoke: typeof smoke;
     };
   }
@@ -34,10 +38,12 @@ const TAG = "[monocode:server]";
  * hosts come from the main process once the local link is up.
  */
 export function initServerLink(): void {
-  window.__monocode = { registry, smoke };
+  if (typeof window !== "undefined") {
+    window.__monocode = { registry, sessionStore, loadSavedEnvironments, smoke };
+    registry.installWindowHooks();
+  }
   // The bridge dispatches server commands over the environment's link.
   bindServer(registry);
-  registry.installWindowHooks();
   registry.onLink((link, event) => {
     if (event !== "added") return;
     link.onOpen(() => void report(link));
