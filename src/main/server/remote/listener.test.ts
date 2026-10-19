@@ -570,6 +570,26 @@ describe('/asset', () => {
     ).toBe(404)
     expect((await call('GET', '/asset/', { headers: { Cookie: cookie } })).status).toBe(404)
   })
+  it('answers an app key sent as the bearer and refuses a bot key', async () => {
+    const admin = await adminKey()
+    const code = (
+      await call('POST', '/api/pairings', {
+        headers: bearer(admin),
+        body: { name: 'phone', audience: 'client', caps: [] }
+      })
+    ).body.code
+    const phone = (await call('POST', '/api/pair', { body: { code, kind: 'key' } })).body.key as string
+    const logo = await call('GET', '/asset/logo/x.png', { headers: bearer(phone) })
+    expect(logo.status).toBe(200)
+    expect(logo.body).toBe('asset GET tempcode-asset://logo/x.png range=-')
+    const bot = (
+      await server.remoteAuth.createKey({ name: 'bot', audience: 'mcp', caps: ['read'], createdBy: 'local' })
+    ).token
+    expect((await call('GET', '/asset/logo/x.png', { headers: bearer(bot) })).status).toBe(401)
+    expect((await call('GET', '/asset/logo/x.png', { headers: bearer('tc_NOPE.nope') })).status).toBe(401)
+    // The document is still the cookie's alone.
+    expect((await call('GET', '/ui/', { headers: bearer(phone) })).status).toBe(302)
+  })
 })
 
 // Last: it stops the listener every other test talks to.

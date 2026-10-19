@@ -173,7 +173,10 @@ export function createUiHandler(options: UiOptions): UiHandler {
       verified = null
     }
     const isDocument = path === '/ui' || path === '/ui/' || path === '/ui/index.html'
-    if (!verified?.session) {
+    // The asset mirror also answers an app key sent as a bearer: the phone
+    // loads logos and media with its key, never with a cookie. Bot keys stay out.
+    const bearerAsset = isAsset && verified !== null && !verified.session && verified.principal.audience === 'client'
+    if (!verified?.session && !bearerAsset) {
       // The document sends the browser to sign in; an asset without a cookie
       // is a plain 401, so a stale tab fails fast instead of redirecting scripts.
       if (isDocument) {
