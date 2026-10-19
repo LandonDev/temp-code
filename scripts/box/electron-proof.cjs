@@ -8,7 +8,9 @@ app.whenReady().then(async () => {
     width: 800, height: 600, show: false,
     webPreferences: { offscreen: true, sandbox: true, contextIsolation: true, nodeIntegration: false }
   });
+  const painted = new Promise(resolve => window.webContents.once('paint', resolve));
   await window.loadURL('about:blank');
+  await painted;
   assert.equal(window.webContents.getURL(), 'about:blank');
   const image = await window.webContents.capturePage();
   assert(!image.isEmpty(), 'Screenshot is empty');

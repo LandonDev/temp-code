@@ -77,10 +77,45 @@ UFW denies incoming and routed traffic, allows outgoing, and permits only
 use the Cloudflare tunnel. Port 7677 is reserved for thread C's remote listener.
 No public HTTP, HTTPS, Docker API, or app port is allowed.
 
+## Runtimes and Electron
+
+Docker CE comes from Docker's signed apt repo. Node 22 comes from NodeSource's
+signed repo. Bun uses its official installer once for root and agents, in each
+user's `~/.bun`; `/etc/profile.d/box-bun.sh` sets the path for login shells.
+Reapply keeps installed versions; package and Bun upgrades are separate
+maintenance work. Git, gh, jq, ripgrep, compilers, Python 3, restic, rsync,
+htop, ncdu, and the Ubuntu 24.04 Electron/Xvfb libraries are installed through
+apt. Stage 50 checks every Electron package with `apt-cache policy` first.
+
+`/etc/docker/daemon.json` enables live restore, json-file logs capped at three
+10 MB files per container, `/srv/prod/docker` storage, and `prod.slice` as the
+default container cgroup parent. The daemon also runs in `prod.slice`.
+The socket stays `root:docker` mode 660. Agents cannot access it.
+
+Docker published ports bypass UFW's INPUT chain. The Docker service therefore
+runs `/usr/local/sbin/box-docker-fence` after each start. It rejects new
+external forwarded connections through DOCKER-USER on default-route interfaces.
+Established replies and outbound container traffic still work. Keep this hook
+when thread I installs Coolify, and bind every origin to `127.0.0.1`.
+See [Docker's firewall notes](https://docs.docker.com/engine/network/packet-filtering-firewalls/).
+
+Stage 55 installs `electron@latest` once as agents in the scratch directory
+`/srv/agents/home/.local/share/box-electron-proof`, keeping its npm lockfile.
+Every apply then runs both the Electron version check and the offscreen
+BrowserWindow proof under Xvfb as agents in `agents.slice`. The proof loads
+`about:blank`, captures a nonempty PNG as `screenshot.png`, and exits 0.
+`scripts/box/electron-proof.cjs` contains the proof.
+
+Ubuntu 24.04 restricts unprivileged user namespaces. The profile
+`/etc/apparmor.d/box-electron-proof` grants `userns` to that one Electron
+executable. The renderer uses its sandbox; no `--no-sandbox` or global sysctl
+relaxation is used. Thread C must install a matching profile for its own
+Electron executable path. See [Ubuntu's AppArmor docs](https://documentation.ubuntu.com/security/security-features/privilege-restriction/apparmor/).
+
 ## Remaining stages
 
-Runtime, Electron, tunnel, backup, heartbeat, and verification details will be
-recorded after the live checks finish.
+Tunnel, backup, heartbeat, and verification details will be recorded after the
+live checks finish.
 
 ## User steps
 

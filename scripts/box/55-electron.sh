@@ -2,7 +2,12 @@
 set -euo pipefail
 source "$(dirname "$0")/lib.sh"
 proof=/srv/agents/home/.local/share/box-electron-proof
-if [[ ! -d $proof ]]; then install -d -o agents -g agents -m 750 "$proof"; changed 'Electron proof directory'; fi
+for dir in /srv/agents/home/.local /srv/agents/home/.local/share "$proof"; do
+  if [[ ! -d $dir ]] || [[ $(stat -c '%a:%U:%G' "$dir") != 750:agents:agents ]]; then
+    install -d -o agents -g agents -m 750 "$dir"
+    changed "$dir ownership and mode"
+  else skip "$dir ownership and mode"; fi
+done
 if [[ ! -x $proof/node_modules/.bin/electron ]]; then
   runuser -u agents -- env HOME=/srv/agents/home bash -c 'cd "$1"; npm i --save-exact electron@latest' bash "$proof"
   changed 'Electron latest installed in scratch directory (lockfile retained)'
