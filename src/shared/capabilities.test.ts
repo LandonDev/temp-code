@@ -27,7 +27,9 @@ describe('METHOD_CAPABILITY', () => {
         'idea.acceptEula',
         'idea.checkUpdate',
         'providers.update',
-        'fim.complete'
+        'fim.complete',
+        // Saved hosts and their keys never leave this machine (thread K1).
+        ...methods.filter((m) => m.startsWith('remote.environments.'))
       ].sort()
     )
   })
@@ -45,7 +47,7 @@ describe('METHOD_CAPABILITY', () => {
         'project.setAccounts',
         'workspace.setAccounts',
         'linear.setToken',
-        ...methods.filter((m) => m.startsWith('remote.'))
+        ...methods.filter((m) => m.startsWith('remote.') && !m.startsWith('remote.environments.'))
       ].sort()
     )
   })

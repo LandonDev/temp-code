@@ -118,3 +118,52 @@ export interface RemoteSession {
   lastSeenAt: number
   expiresAt: number
 }
+
+// ── Saved environments (thread K1, the connection runtime) ────────────────
+// The desktop keeps the hosts it connects to. The raw key lives in the main
+// process only (settings table, `remote.environments.<id>`); the renderer
+// sees the environment without it and asks the main process for a ticket.
+
+export const RouteKindSchema = z.enum(['loopback', 'lan', 'tunnel'])
+export type RouteKind = z.infer<typeof RouteKindSchema>
+
+/** One way to reach an environment: the WebSocket URL (`wss://host/ws`). */
+export const SavedRouteSchema = z.object({
+  url: z.string().min(1).max(300),
+  kind: RouteKindSchema
+})
+export type SavedRoute = z.infer<typeof SavedRouteSchema>
+
+export interface SavedEnvironment {
+  /** The host's own environment id, read from its `/api/hello` when added. */
+  id: string
+  name: string
+  /** Best first: the driver connects over the first route that works. */
+  routes: SavedRoute[]
+  addedAt: number
+}
+
+export const EnvironmentRequestSchemas = [
+  request('remote.environments.list', z.object({}).optional()),
+  /** → SavedEnvironment. `url` is the host's origin (`https://host`) or socket URL. */
+  request(
+    'remote.environments.add',
+    z.object({
+      url: z.string().min(1).max(300),
+      key: z.string().min(4).max(200),
+      name: z.string().max(80).optional(),
+      kind: RouteKindSchema.optional()
+    })
+  ),
+  request(
+    'remote.environments.update',
+    z.object({
+      id: z.string().min(1),
+      name: z.string().min(1).max(80).optional(),
+      routes: z.array(SavedRouteSchema).min(1).max(8).optional()
+    })
+  ),
+  request('remote.environments.remove', Id),
+  /** → { ticket, expiresIn }: a 30 s single-use ticket for `url`, minted with the saved key. */
+  request('remote.environments.ticket', z.object({ id: z.string().min(1), url: z.string().min(1) }))
+] as const

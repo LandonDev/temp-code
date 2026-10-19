@@ -4,7 +4,7 @@ import { FsGitRequestSchemas } from './contract-fsgit'
 import { CheckpointRequestSchemas } from './contract-checkpoint'
 import { LinearRequestSchemas } from './contract-linear'
 import { GithubRequestSchemas } from './contract-github'
-import { RemoteRequestSchemas } from './contract-remote'
+import { EnvironmentRequestSchemas, RemoteRequestSchemas } from './contract-remote'
 import { AGENT_TYPES } from './catalog'
 import { AttachmentSchema, PermissionPolicySchema } from './events'
 import { ProjectModeSchema, ThreadTypeSchema } from './domain'
@@ -95,6 +95,7 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
   ...LinearRequestSchemas,
   ...GithubRequestSchemas,
   ...RemoteRequestSchemas,
+  ...EnvironmentRequestSchemas,
   // refresh: re-probe the installed CLIs of the probed providers first.
   z.object({
     id: z.string(),

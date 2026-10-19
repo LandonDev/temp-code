@@ -5,6 +5,7 @@ import type { RemoteStatus } from '@shared/contract-remote'
 import type { Store } from '../db'
 import type { RemoteAuth } from './auth'
 import { STUCK_MINUTES_DEFAULT } from './notifier'
+import { addEnvironment, listEnvironments, mintTicket, removeEnvironment, updateEnvironment } from './environments'
 
 /** The remote listener's fixed loopback port behind the Cloudflare tunnel. */
 export const REMOTE_DEFAULT_PORT = 7677
@@ -69,6 +70,8 @@ export interface RemoteContext {
   /** The caller's own caps; a key never widens its creator. Absent for the local socket. */
   ceiling?: Capability[]
   createdBy?: string
+  /** Test seam for the calls to other hosts (hello, ticket). */
+  fetch?: typeof fetch
 }
 
 type Handled = { handled: true; result: unknown } | { handled: false }
@@ -127,7 +130,23 @@ export async function handleRemote(req: ClientRequest, ctx: RemoteContext): Prom
       writeRemoteSettings(ctx.store, req.params)
       ctx.onSettingsChanged?.()
       return result(remoteStatus(ctx))
+    case 'remote.environments.list':
+      return result(listEnvironments(ctx.store))
+    case 'remote.environments.add':
+      return result(await addEnvironment(hostContext(ctx), req.params))
+    case 'remote.environments.update':
+      return result(updateEnvironment(ctx.store, req.params))
+    case 'remote.environments.remove':
+      return result(removeEnvironment(ctx.store, req.params.id))
+    case 'remote.environments.ticket':
+      return result(await mintTicket(hostContext(ctx), req.params.id, req.params.url))
     default:
       return { handled: false }
   }
 }
+
+const hostContext = (ctx: RemoteContext) => ({
+  store: ctx.store,
+  environmentId: ctx.environmentId,
+  ...(ctx.fetch ? { fetch: ctx.fetch } : {})
+})

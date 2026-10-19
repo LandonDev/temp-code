@@ -218,7 +218,13 @@ export const METHOD_CAPABILITY: Record<ClientRequest['method'], MethodCapability
   'remote.pairings.revoke': 'admin',
   'remote.sessions.list': 'admin',
   'remote.sessions.revoke': 'admin',
-  'remote.settings.set': 'admin'
+  'remote.settings.set': 'admin',
+  // Saved hosts and their keys never leave this machine (thread K1).
+  'remote.environments.list': 'local',
+  'remote.environments.add': 'local',
+  'remote.environments.update': 'local',
+  'remote.environments.remove': 'local',
+  'remote.environments.ticket': 'local'
 }
 
 /** The capability one request needs: the table row, plus the one
