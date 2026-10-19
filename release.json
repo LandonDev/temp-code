@@ -1,5 +1,5 @@
 {
-  "n": 230,
-  "notes": "Remote wire profile: bodies off the wire at 2 KiB, bounded tail/resume/history/list pages, coalesced pushes, deflate on remote sockets, session.rowBody, renderer fetch-on-open and lazy history, and bun run test:perf:wire pinning the budgets",
-  "ts": 1792392873561
+  "n": 231,
+  "notes": "/asset/* on the fixed port mirrors tempcode-asset:// so logos, media and agent pages show in the browser",
+  "ts": 1792393168389
 }
