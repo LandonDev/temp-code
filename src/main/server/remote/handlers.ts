@@ -5,7 +5,7 @@ import type { RemoteStatus } from '@shared/contract-remote'
 import type { Store } from '../db'
 import type { RemoteAuth } from './auth'
 import { STUCK_MINUTES_DEFAULT } from './notifier'
-import { addEnvironment, listEnvironments, mintTicket, removeEnvironment, updateEnvironment } from './environments'
+import { addEnvironment, listEnvironments, mintTicket, pairEnvironment, removeEnvironment, updateEnvironment } from './environments'
 
 /** The remote listener's fixed loopback port behind the Cloudflare tunnel. */
 export const REMOTE_DEFAULT_PORT = 7677
@@ -138,6 +138,8 @@ export async function handleRemote(req: ClientRequest, ctx: RemoteContext): Prom
       return result(updateEnvironment(ctx.store, req.params))
     case 'remote.environments.remove':
       return result(removeEnvironment(ctx.store, req.params.id))
+    case 'remote.environments.pair':
+      return result(await pairEnvironment(hostContext(ctx), req.params))
     case 'remote.environments.ticket':
       return result(await mintTicket(hostContext(ctx), req.params.id, req.params.url))
     default:

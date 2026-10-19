@@ -1,4 +1,6 @@
+import { hostname } from 'node:os'
 import type { RouteKind, SavedEnvironment, SavedRoute } from '@shared/contract-remote'
+import { CONTRACT_VERSION, type Capability } from '@shared/capabilities'
 import type { Store } from '../db'
 import { ENVIRONMENT_ID } from './environment'
 
@@ -24,7 +26,15 @@ export interface HostContext {
   timeoutMs?: number
 }
 
-export type HostFailure = 'unauthorized' | 'unavailable' | 'self' | 'unknown-environment' | 'unknown-route' | 'bad-url'
+export type HostFailure =
+  | 'unauthorized'
+  | 'unavailable'
+  | 'self'
+  | 'unknown-environment'
+  | 'unknown-route'
+  | 'bad-url'
+  | 'contract'
+  | 'bad-link'
 
 /** The message is `<reason>: <detail>`, which the renderer reads back. */
 export class HostError extends Error {
@@ -51,6 +61,8 @@ function parseRow(id: string, raw: string | null): Row | null {
       name: typeof value.name === 'string' ? value.name : id,
       routes: value.routes,
       addedAt: typeof value.addedAt === 'number' ? value.addedAt : 0,
+      caps: Array.isArray(value.caps) ? (value.caps as Capability[]) : [],
+      keyName: typeof value.keyName === 'string' ? value.keyName : '',
       key: value.key
     }
   } catch {
@@ -140,7 +152,7 @@ export interface HostHello {
   environmentId: string
   name: string
   contract: number
-  key?: { id: string; name: string }
+  key?: { id: string; name: string; caps: Capability[] }
 }
 
 async function hostFetch(ctx: HostContext, url: string, init: RequestInit): Promise<Response> {
@@ -173,13 +185,20 @@ export async function fetchHello(ctx: HostContext, route: SavedRoute, key: strin
   const hello = (await response.json().catch(() => null)) as Partial<HostHello> | null
   if (!hello || typeof hello.environmentId !== 'string' || !ENVIRONMENT_ID.test(hello.environmentId))
     throw new HostError('unavailable', `${origin} is not a temp-code host`)
+  const contract = typeof hello.contract === 'number' ? hello.contract : 0
+  if (contract !== CONTRACT_VERSION) {
+    throw new HostError(
+      'contract',
+      `${origin} speaks contract v${contract} and this app speaks v${CONTRACT_VERSION}; update the ${contract < CONTRACT_VERSION ? 'host' : 'app'}`
+    )
+  }
   // A rejected key still gets the public answer: no `key` block in it.
   if (!hello.key) throw new HostError('unauthorized', `${origin} rejected this key`)
   return {
     environmentId: hello.environmentId,
     name: typeof hello.name === 'string' && hello.name ? hello.name : hello.environmentId,
-    contract: typeof hello.contract === 'number' ? hello.contract : 0,
-    key: hello.key
+    contract,
+    key: { id: hello.key.id, name: hello.key.name, caps: Array.isArray(hello.key.caps) ? hello.key.caps : [] }
   }
 }
 
@@ -200,10 +219,54 @@ export async function addEnvironment(
     name: input.name?.trim() || existing?.name || hello.name,
     routes,
     addedAt: existing?.addedAt ?? Date.now(),
+    caps: hello.key?.caps ?? [],
+    keyName: hello.key?.name ?? '',
     key
   }
   writeRow(ctx.store, row)
   return withoutKey(row)
+}
+
+/** `https://host/pair#CODE` (what Settings → Remote access hands out) → its parts. */
+export function parsePairingLink(link: string): { origin: string; code: string } {
+  let url: URL
+  try {
+    url = new URL(link.trim())
+  } catch {
+    throw new HostError('bad-link', 'paste the whole pairing link, https://host/pair#code')
+  }
+  const code = (url.hash.replace(/^#/, '') || url.pathname.replace(/^\/pair\/?/, '')).trim()
+  if (!/^[A-Z0-9]{5}-[A-Z0-9]{5}$/i.test(code)) throw new HostError('bad-link', `${link.trim()} carries no pairing code`)
+  return { origin: url.origin, code: code.toUpperCase() }
+}
+
+/**
+ * Exchange a pairing code for a key on the host (`POST /api/pair`, kind
+ * `key`), then save the host like `addEnvironment`. The key is named after
+ * this machine on the host's client list.
+ */
+export async function pairEnvironment(
+  ctx: HostContext,
+  input: { link?: string; origin?: string; code?: string; name?: string; kind?: RouteKind }
+): Promise<SavedEnvironment> {
+  const parsed = input.link ? parsePairingLink(input.link) : input.origin && input.code ? parsePairingLink(`${input.origin}/pair#${input.code}`) : null
+  if (!parsed) throw new HostError('bad-link', 'a pairing link, or an origin and a code, is needed')
+  const response = await hostFetch(ctx, `${parsed.origin}/api/pair`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', accept: 'application/json' },
+    body: JSON.stringify({ code: parsed.code, kind: 'key', name: hostname() })
+  })
+  if (response.status === 401 || response.status === 403 || response.status === 404) {
+    await response.body?.cancel()
+    throw new HostError('unauthorized', `${parsed.origin} refused the pairing code (expired, used, or mistyped)`)
+  }
+  if (!response.ok) {
+    await response.body?.cancel()
+    throw new HostError('unavailable', `${parsed.origin} answered HTTP ${response.status}`)
+  }
+  const body = (await response.json().catch(() => null)) as { key?: unknown } | null
+  if (!body || typeof body.key !== 'string') throw new HostError('unavailable', `${parsed.origin} sent no key`)
+  return addEnvironment(ctx, { url: parsed.origin, key: body.key, name: input.name, kind: input.kind })
 }
 
 /** `POST /api/ticket` on the route's origin with the saved key. */

@@ -45,6 +45,7 @@ export const METHOD_CAPABILITY: Record<ClientRequest['method'], MethodCapability
   'catalog.get': 'read',
   'doctor.get': 'read',
   'workspace.list': 'read',
+  'workspace.root': 'read',
   'workspace.icon': 'read',
   'workspace.getSnapshot': 'read',
   'project.list': 'read',
@@ -224,7 +225,8 @@ export const METHOD_CAPABILITY: Record<ClientRequest['method'], MethodCapability
   'remote.environments.add': 'local',
   'remote.environments.update': 'local',
   'remote.environments.remove': 'local',
-  'remote.environments.ticket': 'local'
+  'remote.environments.ticket': 'local',
+  'remote.environments.pair': 'local'
 }
 
 /** The capability one request needs: the table row, plus the one

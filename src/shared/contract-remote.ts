@@ -141,6 +141,10 @@ export interface SavedEnvironment {
   /** Best first: the driver connects over the first route that works. */
   routes: SavedRoute[]
   addedAt: number
+  /** What the saved key may do on the host, as its `/api/hello` said when added. */
+  caps: z.infer<typeof CapabilitySchema>[]
+  /** The key's name on the host's client list. */
+  keyName: string
 }
 
 export const EnvironmentRequestSchemas = [
@@ -164,6 +168,18 @@ export const EnvironmentRequestSchemas = [
     })
   ),
   request('remote.environments.remove', Id),
+  /** → SavedEnvironment. A pairing link (`https://host/pair#code`), or an origin and a code,
+   *  exchanged for a key on the host (`POST /api/pair`, kind `key`) and saved like `add`. */
+  request(
+    'remote.environments.pair',
+    z.object({
+      link: z.string().min(1).max(400).optional(),
+      origin: z.string().min(1).max(300).optional(),
+      code: z.string().min(1).max(40).optional(),
+      name: z.string().max(80).optional(),
+      kind: RouteKindSchema.optional()
+    })
+  ),
   /** → { ticket, expiresIn }: a 30 s single-use ticket for `url`, minted with the saved key. */
   request('remote.environments.ticket', z.object({ id: z.string().min(1), url: z.string().min(1) }))
 ] as const

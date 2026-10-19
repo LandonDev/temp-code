@@ -116,6 +116,8 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
     params: z.object({ path: z.string(), name: z.string().optional() })
   }),
   z.object({ id: z.string(), method: z.literal('workspace.list') }),
+  /** → WorkRoot: where new workspaces go on this host, for a client with no dialog here. */
+  z.object({ id: z.string(), method: z.literal('workspace.root') }),
   z.object({
     id: z.string(),
     method: z.literal('workspace.delete'),

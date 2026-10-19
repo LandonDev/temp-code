@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
+import { CONTRACT_VERSION } from '@shared/capabilities'
 import {
   addEnvironment,
   HostError,
@@ -7,6 +8,8 @@ import {
   mintTicket,
   normalizeRoute,
   originOf,
+  pairEnvironment,
+  parsePairingLink,
   removeEnvironment,
   updateEnvironment,
   type EnvironmentsStore
@@ -27,7 +30,7 @@ function fakeStore(): EnvironmentsStore & { rows: Map<string, string> } {
 
 const HOST_ID = 'env_' + 'a'.repeat(22)
 const SELF_ID = 'env_' + 'b'.repeat(22)
-const hello = (extra: object = {}) => ({ environmentId: HOST_ID, name: 'box', version: '1.0.1', contract: 3, ...extra })
+const hello = (extra: object = {}) => ({ environmentId: HOST_ID, name: 'box', version: '1.0.1', contract: CONTRACT_VERSION, ...extra })
 const json = (status: number, body: unknown): Response =>
   new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } })
 
@@ -74,7 +77,9 @@ describe('addEnvironment', () => {
       id: HOST_ID,
       name: 'box',
       routes: [{ url: 'wss://tempcode.example.com/ws', kind: 'tunnel' }],
-      addedAt: expect.any(Number)
+      addedAt: expect.any(Number),
+      caps: ['read'],
+      keyName: 'phone'
     })
     expect(listEnvironments(store)).toEqual([saved])
     expect(JSON.stringify(listEnvironments(store))).not.toContain('secret')
@@ -102,6 +107,45 @@ describe('addEnvironment', () => {
     await expect(
       addEnvironment(ctxWith(store, () => Promise.reject(new TypeError('fetch failed'))).ctx, { url: 'https://h', key: 'tc_x.y' })
     ).rejects.toThrow(/^unavailable:.*fetch failed/)
+    expect(listEnvironments(store)).toEqual([])
+  })
+  it('refuses a host on another contract version and says which side to update', async () => {
+    const store = fakeStore()
+    const older = ctxWith(store, () => json(200, hello({ contract: CONTRACT_VERSION - 1, key: { id: 'k', name: 'n' } }))).ctx
+    await expect(addEnvironment(older, { url: 'https://h', key: 'tc_x.y' })).rejects.toThrow(/^contract:.*update the host/)
+    const newer = ctxWith(store, () => json(200, hello({ contract: CONTRACT_VERSION + 1, key: { id: 'k', name: 'n' } }))).ctx
+    await expect(addEnvironment(newer, { url: 'https://h', key: 'tc_x.y' })).rejects.toThrow(/^contract:.*update the app/)
+    expect(listEnvironments(store)).toEqual([])
+  })
+})
+
+describe('pairEnvironment', () => {
+  it('reads the origin and code off a pairing link', () => {
+    expect(parsePairingLink('https://tempcode.example.com/pair#ABCDE-12345')).toEqual({ origin: 'https://tempcode.example.com', code: 'ABCDE-12345' })
+    expect(parsePairingLink(' http://10.0.0.5:7677/pair#abcde-fghij ')).toEqual({ origin: 'http://10.0.0.5:7677', code: 'ABCDE-FGHIJ' })
+    expect(() => parsePairingLink('https://tempcode.example.com/pair')).toThrow(/^bad-link:/)
+    expect(() => parsePairingLink('ABCDE-12345')).toThrow(/^bad-link:/)
+  })
+  it('exchanges the code for a key on the host, then saves the host with that key', async () => {
+    const store = fakeStore()
+    const { ctx, calls } = ctxWith(store, (url) =>
+      url.endsWith('/api/pair')
+        ? json(200, { key: 'tc_k9.fresh', keyId: 'k9', name: 'mac', caps: ['read', 'operate'], audience: 'client', environmentId: HOST_ID })
+        : json(200, hello({ key: { id: 'k9', name: 'mac', caps: ['read', 'operate'], audience: 'client' } }))
+    )
+    const saved = await pairEnvironment(ctx, { link: 'https://tempcode.example.com/pair#ABCDE-12345', name: 'Box' })
+    expect(calls[0].url).toBe('https://tempcode.example.com/api/pair')
+    expect(JSON.parse(String(calls[0].init?.body))).toMatchObject({ code: 'ABCDE-12345', kind: 'key' })
+    expect(calls[1].url).toBe('https://tempcode.example.com/api/hello')
+    expect((calls[1].init?.headers as Record<string, string>).authorization).toBe('Bearer tc_k9.fresh')
+    expect(saved).toMatchObject({ id: HOST_ID, name: 'Box', caps: ['read', 'operate'], keyName: 'mac', routes: [{ url: 'wss://tempcode.example.com/ws', kind: 'tunnel' }] })
+    expect(store.rows.get(`remote.environments.${HOST_ID}`)).toContain('tc_k9.fresh')
+  })
+  it('a refused code is unauthorized and nothing is saved', async () => {
+    const store = fakeStore()
+    await expect(pairEnvironment(ctxWith(store, () => json(401, { error: 'bad code' })).ctx, { origin: 'https://h', code: 'ABCDE-12345' })).rejects.toThrow(/^unauthorized:.*pairing code/)
+    await expect(pairEnvironment(ctxWith(store, () => json(200, {})).ctx, { link: 'https://h/pair#ABCDE-12345' })).rejects.toThrow(/^unavailable:.*no key/)
+    await expect(pairEnvironment(ctxWith(store, () => json(200, {})).ctx, {})).rejects.toThrow(/^bad-link:/)
     expect(listEnvironments(store)).toEqual([])
   })
 })

@@ -36,6 +36,7 @@ import type { SessionMeta } from '@shared/events'
 import { openDb, Store } from './db'
 import { EventReader, startCheckpointWorker } from './dbWorkers'
 import { handleFsGit } from './fsgit'
+import { workRoot } from './workRoot'
 import { setMediaRoots } from './media'
 import { CheckpointStore } from './checkpoint'
 import { handleCheckpoint } from './checkpointRpc'
@@ -565,6 +566,9 @@ export async function startServer(
             break
           case 'workspace.list':
             sendFrame({ id: req.id, ok: true, result: registry.listWorkspaces() })
+            break
+          case 'workspace.root':
+            sendFrame({ id: req.id, ok: true, result: workRoot(store) })
             break
           case 'workspace.delete':
             await registry.deleteWorkspace(req.params.workspaceId)
