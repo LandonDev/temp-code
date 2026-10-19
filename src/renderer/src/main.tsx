@@ -1,4 +1,4 @@
-import React, { useLayoutEffect } from "react";
+import React, { Profiler, useLayoutEffect } from "react";
 import ReactDOM from "react-dom/client";
 import { getVersion, listen } from "./lib/native";
 import { installEditorKeys } from "./lib/editorKeys";
@@ -19,6 +19,7 @@ import { accountsStore } from "./stores/accounts";
 import { warmRecentTabsAtBoot } from "./lib/sessionPrefetch";
 import { updateStore } from "./lib/updateStore";
 import { initAppshots } from "./lib/appshots";
+import { recordCommit } from "./lib/renderProfile";
 import "./index.css";
 
 // Before App mounts its own window listener: the editor claims its chords first.
@@ -61,6 +62,26 @@ function BootGate({ children }: { children: React.ReactNode }) {
   return children;
 }
 
+// Dev and measurement builds (TEMP_CODE_PROFILE=1, where react-dom/client is
+// the profiling reconciler) count every root commit for `__app.profile`; a
+// release build renders the bare tree.
+const PROFILED = import.meta.env.DEV || import.meta.env.TEMP_CODE_PROFILE === "1";
+
+function Root() {
+  const tree = (
+    <BootGate>
+      <App />
+    </BootGate>
+  );
+  return PROFILED ? (
+    <Profiler id="app" onRender={recordCommit}>
+      {tree}
+    </Profiler>
+  ) : (
+    tree
+  );
+}
+
 void listen("quit_requested", () => {
   void handleQuitRequested();
 });
@@ -86,9 +107,7 @@ void Promise.all([loadBootWorkspace(), runningVersion]).then(
     installSubscriptions();
     ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
       <React.StrictMode>
-        <BootGate>
-          <App />
-        </BootGate>
+        <Root />
       </React.StrictMode>,
     );
     warmRecentTabsAtBoot();

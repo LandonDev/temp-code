@@ -461,6 +461,20 @@ class SessionStore {
     return { session: this.pushed.session, event: this.pushed.event };
   }
 
+  /** Dev facade only (`__app.feed`, lib/appFacade.ts): a synthetic push takes
+   *  the exact path a server frame takes. An injected session exists nowhere
+   *  but here, so a draft it adopts counts as loaded and nothing is fetched. */
+  injectPush(push: ServerPush): void {
+    const draft = push.push === "session" && this.entries.get(push.session.id)?.meta === null;
+    this.onPush(push);
+    if (!draft) return;
+    const entry = this.entries.get(push.session.id);
+    if (entry) {
+      entry.loaded = true;
+      entry.session = { ...entry.session, loaded: true };
+    }
+  }
+
   /** Every server-known meta (drafts excluded). The same array until a meta changes. */
   metas(): SessionMeta[] {
     if (this.metasSnapshot) return this.metasSnapshot;
