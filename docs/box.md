@@ -235,8 +235,13 @@ Live checks on 2026-10-19:
 | Mac Cloudflare files | Hashes of all pre-existing files unchanged |
 | Scaffolds | Both timers loaded, disabled and inactive; no live env files or secrets created |
 
-The second full apply and final repository handoff are recorded below once
-complete. No remote repartition, Pro attachment, R2 upload, or hub POST occurred.
+The second full `scripts/box/apply.sh` completed with **zero changes and zero
+errors** after the maintenance reboot. Shell syntax checks, the Electron proof,
+host checks, Mac SSH checks, connector count, HTTPS, and the Docker ingress
+smoke test passed. The commits were made in the `box-baseline` worktree, rebased
+on current master, then fast-forward merged into the project checkout. This
+runbook's final result was committed on master. No remote repartition, Pro
+attachment, R2 upload, or hub POST occurred.
 
 ## User steps
 
