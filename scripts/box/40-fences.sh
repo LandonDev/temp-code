@@ -41,6 +41,14 @@ if ((reload || manager_changed)); then systemctl daemon-reload; changed 'systemd
 for unit in agents.slice prod.slice; do
   if ! systemctl is-active --quiet "$unit"; then systemctl start "$unit"; changed "started $unit"; else skip "$unit active"; fi
 done
+for user in agents prod; do
+  unit=user@$(id -u "$user").service
+  if [[ $(systemctl show "$unit" -p Slice --value) != "$user.slice" ]]; then die "$unit slice override failed"; fi
+  if [[ $(systemctl show "$unit" -p ControlGroup --value) != /$user.slice/* ]]; then
+    systemctl restart "$unit"
+    changed "moved $unit into $user.slice"
+  else skip "$unit in $user.slice"; fi
+done
 put /etc/sysctl.d/60-box-fleet.conf <<'EOF'
 fs.inotify.max_user_watches=1048576
 fs.inotify.max_user_instances=8192

@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 export DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a
+export APT_LISTCHANGES_FRONTEND=none
 export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 BOX_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 STATE=/var/lib/box-baseline
@@ -32,7 +33,7 @@ packages() {
     if [[ $(dpkg-query -W -f='${Status}' "$p" 2>/dev/null || true) != 'install ok installed' ]]; then missing+=("$p"); fi
   done
   if ((${#missing[@]})); then
-    apt-get install -y "${missing[@]}"
+    apt-get -o DPkg::Lock::Timeout=300 install -y "${missing[@]}"
     changed "packages: ${missing[*]}"
   else skip "packages: $*"; fi
 }

@@ -14,8 +14,14 @@ done
 SSH=(ssh -o BatchMode=yes -o PasswordAuthentication=no -o KbdInteractiveAuthentication=no -o ConnectTimeout=15 box)
 "${SSH[@]}" 'test "$(. /etc/os-release; echo "$ID:$VERSION_ID")" = ubuntu:24.04'
 "${SSH[@]}" 'install -d -m 700 /opt/box-baseline'
-rsync -az --chmod=D700,F600 -e 'ssh -o BatchMode=yes' "$HERE/" box:/opt/box-baseline/
-rsync -az --chmod=F600 -e 'ssh -o BatchMode=yes' "$HOME/.ssh/id_ed25519.pub" box:/opt/box-baseline/root-key.pub
+if ! "${SSH[@]}" 'command -v rsync >/dev/null'; then
+  # A minimal image has no rsync: harden SSH and upgrade before bootstrapping it.
+  COPYFILE_DISABLE=1 tar -C "$HERE" -cf - lib.sh 10-access.sh | "${SSH[@]}" 'tar -xf - -C /opt/box-baseline'
+  "${SSH[@]}" 'cat > /opt/box-baseline/root-key.pub' < "$HOME/.ssh/id_ed25519.pub"
+  "${SSH[@]}" 'BOX_KEY_VERIFIED=1 bash /opt/box-baseline/10-access.sh && DEBIAN_FRONTEND=noninteractive apt-get install -y rsync'
+fi
+rsync -az -e 'ssh -o BatchMode=yes' "$HERE/" box:/opt/box-baseline/
+rsync -az -e 'ssh -o BatchMode=yes' "$HOME/.ssh/id_ed25519.pub" box:/opt/box-baseline/root-key.pub
 for file in "$HERE"/[0-9][0-9]-*.sh; do
   name=$(basename "$file"); n=${name%%-*}; n=$((10#$n))
   ((n >= from && n <= through)) || continue
