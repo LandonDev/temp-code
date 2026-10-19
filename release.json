@@ -1,5 +1,5 @@
 {
-  "n": 240,
-  "notes": "Mac backup: scope the live-database excludes to the data dir so the VACUUM INTO snapshots are backed up (the bare *.db pattern dropped them)",
-  "ts": 1792434269995
+  "n": 241,
+  "notes": "box: stage updates with trials and rollback; verify backup restores",
+  "ts": 1792436085647
 }
