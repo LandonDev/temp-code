@@ -31,6 +31,31 @@ public struct CachedTail: Sendable, Hashable {
     }
 }
 
+/// When the user last looked at a thread: the meta's `updatedAt` then and the
+/// newest seq that was on screen. A settled thread whose `updatedAt` is newer
+/// is unseen; L4 lands on `seq` when it opens the thread.
+public struct SeenMark: Sendable, Hashable, Codable {
+    public var at: Int
+    public var seq: Int
+
+    public init(at: Int, seq: Int) {
+        self.at = at
+        self.seq = seq
+    }
+}
+
+/// A workspace icon as the cache holds it: the data URL of a local icon or the
+/// GitHub avatar, and the git host for the mark shown when there is no image.
+public struct CachedIcon: Sendable, Hashable, Codable {
+    public var dataUrl: String?
+    public var host: String?
+
+    public init(dataUrl: String?, host: String?) {
+        self.dataUrl = dataUrl
+        self.host = host
+    }
+}
+
 /// Rows a thread keeps on disk at most; the oldest go first. Rows, not
 /// turns: an agent thread packs tens of thousands of rows into a few turns.
 public let cacheRowsPerThread = 1_000
@@ -77,6 +102,8 @@ public actor SessionCache {
         CREATE TABLE IF NOT EXISTS session_state (env TEXT NOT NULL, session_id TEXT NOT NULL, more_before INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (env, session_id));
         CREATE TABLE IF NOT EXISTS rows (env TEXT NOT NULL, session_id TEXT NOT NULL, seq INTEGER NOT NULL, ts INTEGER NOT NULL, json BLOB NOT NULL, PRIMARY KEY (env, session_id, seq));
         CREATE TABLE IF NOT EXISTS bodies (env TEXT NOT NULL, session_id TEXT NOT NULL, seq INTEGER NOT NULL, json BLOB NOT NULL, PRIMARY KEY (env, session_id, seq));
+        CREATE TABLE IF NOT EXISTS seen (env TEXT NOT NULL, session_id TEXT NOT NULL, seen_at INTEGER NOT NULL, seen_seq INTEGER NOT NULL, PRIMARY KEY (env, session_id));
+        CREATE TABLE IF NOT EXISTS icons (env TEXT NOT NULL, workspace_id TEXT NOT NULL, data_url TEXT, host TEXT, PRIMARY KEY (env, workspace_id));
         """)
     }
 
@@ -116,6 +143,7 @@ public actor SessionCache {
                 try db.run("DELETE FROM rows WHERE env = ? AND session_id = ?", [.text(env), .text(id)])
                 try db.run("DELETE FROM bodies WHERE env = ? AND session_id = ?", [.text(env), .text(id)])
                 try db.run("DELETE FROM session_state WHERE env = ? AND session_id = ?", [.text(env), .text(id)])
+                try db.run("DELETE FROM seen WHERE env = ? AND session_id = ?", [.text(env), .text(id)])
             }
         }
     }
@@ -218,12 +246,43 @@ public actor SessionCache {
         return out
     }
 
+    // MARK: - seen
+
+    /// Writes when the user looked at a thread: the meta's updatedAt and the newest seq on screen.
+    public func markSeen(_ env: String, sessionId: String, at: Int, seq: Int) throws(CacheError) {
+        try db.run("INSERT OR REPLACE INTO seen (env, session_id, seen_at, seen_seq) VALUES (?, ?, ?, ?)", [.text(env), .text(sessionId), .int(at), .int(seq)])
+    }
+
+    /// Every thread the user has looked at, by session id.
+    public func seen(_ env: String) throws(CacheError) -> [String: SeenMark] {
+        var out: [String: SeenMark] = [:]
+        try db.query("SELECT session_id, seen_at, seen_seq FROM seen WHERE env = ?", [.text(env)]) { (row) throws(CacheError) in
+            out[row.text(0)] = SeenMark(at: row.int(1), seq: row.int(2))
+        }
+        return out
+    }
+
+    // MARK: - icons
+
+    /// A workspace's icon as `workspace.icon` answered it, kept so the next launch paints it from disk.
+    public func storeIcon(_ env: String, workspaceId: String, _ icon: CachedIcon) throws(CacheError) {
+        try db.run("INSERT OR REPLACE INTO icons (env, workspace_id, data_url, host) VALUES (?, ?, ?, ?)", [.text(env), .text(workspaceId), icon.dataUrl.map { .text($0) } ?? .null, icon.host.map { .text($0) } ?? .null])
+    }
+
+    public func icons(_ env: String) throws(CacheError) -> [String: CachedIcon] {
+        var out: [String: CachedIcon] = [:]
+        try db.query("SELECT workspace_id, data_url, host FROM icons WHERE env = ?", [.text(env)]) { (row) throws(CacheError) in
+            out[row.text(0)] = CachedIcon(dataUrl: row.isNull(1) ? nil : row.text(1), host: row.isNull(2) ? nil : row.text(2))
+        }
+        return out
+    }
+
     // MARK: - removal
 
     /// The environment was removed: forget everything of it.
     public func clear(_ env: String) throws(CacheError) {
         try db.transaction { () throws(CacheError) in
-            for table in ["workspaces", "projects", "sessions", "session_state", "rows", "bodies"] {
+            for table in ["workspaces", "projects", "sessions", "session_state", "rows", "bodies", "seen", "icons"] {
                 try db.run("DELETE FROM \(table) WHERE env = ?", [.text(env)])
             }
         }

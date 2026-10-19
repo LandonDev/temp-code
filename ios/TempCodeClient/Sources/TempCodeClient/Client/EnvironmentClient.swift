@@ -45,6 +45,11 @@ public final class EnvironmentClient {
     public private(set) var threads: [String: ThreadState] = [:]
     /// The shell has been listed at least once in this process.
     public private(set) var hasShell = false
+    /// When the user last looked at each thread, from the cache; `markSeen` writes it.
+    public private(set) var seen: [String: SeenMark] = [:]
+    /// Workspace icons as the cache holds them; `icon(_:)` asks the host once per launch.
+    public private(set) var icons: [String: CachedIcon] = [:]
+    private var iconRequests: Set<String> = []
 
     public let socket: TempCodeSocket
     public let cache: SessionCache
@@ -72,6 +77,8 @@ public final class EnvironmentClient {
             projects = shell.projects
             sessions = shell.sessions
         }
+        seen = (try? await cache.seen(environment.id)) ?? [:]
+        icons = (try? await cache.icons(environment.id)) ?? [:]
         let socket = self.socket
         loops = [
             Task { [weak self] in
@@ -119,6 +126,30 @@ public final class EnvironmentClient {
 
     public func session(_ id: String) -> SessionMeta? {
         sessions.first { $0.id == id }
+    }
+
+    /// The user is looking at the thread: its newest work counts as seen from here on.
+    public func markSeen(_ id: String) {
+        guard let meta = session(id) else { return }
+        let mark = SeenMark(at: meta.updatedAt, seq: threads[id]?.cursor ?? 0)
+        guard seen[id] != mark else { return }
+        seen[id] = mark
+        let env = environment.id
+        let cache = self.cache
+        Task { try? await cache.markSeen(env, sessionId: id, at: mark.at, seq: mark.seq) }
+    }
+
+    /// The newest rows of a thread the screen has not opened (a needs-you line
+    /// wants the request behind a waiting status): the cache, else one page
+    /// from the host, kept in the cache.
+    public func peekTail(_ id: String, limit: Int = 24) async -> [EventRow] {
+        if let state = threads[id], !state.rows.isEmpty { return state.rows.suffix(limit).map { $0 } }
+        if let tail = try? await cache.tail(environment.id, sessionId: id, limit: limit), !tail.rows.isEmpty { return tail.rows }
+        guard await socket.isOpen,
+              let page = try? await socket.request(Methods.SessionEvents.self, .init(sessionId: id, afterSeq: nil, beforeSeq: nil, tail: limit, limit: nil))
+        else { return [] }
+        try? await cache.store(environment.id, sessionId: id, rows: page.rows, moreBefore: page.moreBefore)
+        return page.rows
     }
 
     /// Shows the thread: its cached tail at once, then a subscribe and a
@@ -227,13 +258,13 @@ public final class EnvironmentClient {
             projects = list
             try? await cache.replaceProjects(environment.id, list)
         }
-        var seen: Set<String> = []
+        var listed: Set<String> = []
         var complete = false
         var page = await firstPage
         for _ in 0..<20 {
             guard let current = page else { break }
             merge(current.sessions)
-            for session in current.sessions { seen.insert(session.id) }
+            for session in current.sessions { listed.insert(session.id) }
             guard let cursor = current.cursor else {
                 complete = true
                 break
@@ -241,7 +272,7 @@ public final class EnvironmentClient {
             page = try? await socket.request(Methods.SessionList.self, .init(archived: nil, projectId: nil, cursor: cursor))
         }
         if complete {
-            let gone = sessions.filter { !seen.contains($0.id) }.map(\.id)
+            let gone = sessions.filter { !listed.contains($0.id) }.map(\.id)
             if !gone.isEmpty { removeSessions(gone) }
         }
         hasShell = true
@@ -289,6 +320,7 @@ public final class EnvironmentClient {
         for id in ids {
             threads[id] = nil
             subscriptions.remove(id)
+            seen[id] = nil
         }
         let env = environment.id
         let cache = self.cache
