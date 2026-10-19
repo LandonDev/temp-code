@@ -262,16 +262,35 @@ const HARNESS_ORDER: HarnessId[] = [
 
 const EMPTY_MODELS: AgentModel[] = [];
 
-let overlays: Partial<Record<HarnessId, AgentModel[]>> = {};
-let overlayDefaults: Partial<Record<HarnessId, string>> = {};
+/**
+ * Live catalogs are kept per environment (thread K2): the box may run
+ * another codex and hide rows this Mac shows. A call that names no
+ * environment reads the window's own machine, set at boot.
+ */
+type Overlay = {
+  models: Partial<Record<HarnessId, AgentModel[]>>;
+  defaults: Partial<Record<HarnessId, string>>;
+};
+let overlaysByEnvironment = new Map<string, Overlay>();
+let defaultEnvironment = "local";
 let catalogVersion = 0;
 const listeners = new Set<() => void>();
+
+/** The environment `modelsFor` and friends read when none is named. */
+export function setDefaultCatalogEnvironment(id: string): void {
+  if (id === defaultEnvironment) return;
+  defaultEnvironment = id;
+  emit();
+}
+
+const overlayOf = (environmentId?: string): Overlay | undefined =>
+  overlaysByEnvironment.get(environmentId ?? defaultEnvironment);
 
 function emit() {
   catalogVersion += 1;
   baseByHarness = null;
   indexById = null;
-  allCache = null;
+  allCache = new Map();
   for (const listener of listeners) listener();
 }
 
@@ -295,39 +314,50 @@ export function setHarnessModels(
   harness: HarnessId,
   models: AgentModel[],
   defaultNativeId?: string,
+  environmentId: string = defaultEnvironment,
 ) {
   if (models.length === 0) return;
-  overlays = { ...overlays, [harness]: models };
-  overlayDefaults = {
-    ...overlayDefaults,
-    [harness]:
-      models.find((model) => model.nativeId === defaultNativeId)?.id ??
-      pickDefaultId(harness, models),
+  const current = overlaysByEnvironment.get(environmentId) ?? { models: {}, defaults: {} };
+  const next: Overlay = {
+    models: { ...current.models, [harness]: models },
+    defaults: {
+      ...current.defaults,
+      [harness]: models.find((model) => model.nativeId === defaultNativeId)?.id ?? pickDefaultId(harness, models),
+    },
   };
+  overlaysByEnvironment = new Map(overlaysByEnvironment).set(environmentId, next);
   emit();
 }
 
 /** True after a live CLI catalog has replaced the built-in fallback list. */
-export function hasLiveCatalog(harness: HarnessId): boolean {
-  return overlays[harness] != null;
+export function hasLiveCatalog(harness: HarnessId, environmentId?: string): boolean {
+  return overlayOf(environmentId)?.models[harness] != null;
+}
+
+/** An environment was forgotten: its catalog goes with it. */
+export function dropHarnessModels(environmentId: string): void {
+  if (!overlaysByEnvironment.has(environmentId)) return;
+  overlaysByEnvironment = new Map(overlaysByEnvironment);
+  overlaysByEnvironment.delete(environmentId);
+  emit();
 }
 
 /** Test seam. */
 export function resetHarnessModelOverlays() {
-  overlays = {};
-  overlayDefaults = {};
+  overlaysByEnvironment = new Map();
+  defaultEnvironment = "local";
   emit();
 }
 
-export function defaultModelId(harness: HarnessId): string {
-  return overlayDefaults[harness] ?? DEFAULT_MODEL_ID[harness];
+export function defaultModelId(harness: HarnessId, environmentId?: string): string {
+  return overlayOf(environmentId)?.defaults[harness] ?? DEFAULT_MODEL_ID[harness];
 }
 
 // `modelsFor`/`findModel` sit in render bodies (every session card, every
 // provider row, the picker itself), so they must not rebuild the catalog on
 // each call. These caches are dropped in `emit()` whenever an overlay lands.
 let baseByHarness: Partial<Record<HarnessId, AgentModel[]>> | null = null;
-let allCache: AgentModel[] | null = null;
+let allCache = new Map<string, AgentModel[]>();
 let indexById: Map<string, AgentModel> | null = null;
 
 function baseModelsFor(harness: HarnessId): AgentModel[] {
@@ -341,31 +371,45 @@ function baseModelsFor(harness: HarnessId): AgentModel[] {
   return baseByHarness[harness] ?? EMPTY_MODELS;
 }
 
-export function modelsFor(harness: HarnessId): AgentModel[] {
-  return overlays[harness] ?? baseModelsFor(harness);
+export function modelsFor(harness: HarnessId, environmentId?: string): AgentModel[] {
+  return overlayOf(environmentId)?.models[harness] ?? baseModelsFor(harness);
 }
 
-export function allModels(): AgentModel[] {
-  return (allCache ??= HARNESS_ORDER.flatMap(modelsFor));
+export function allModels(environmentId?: string): AgentModel[] {
+  const key = environmentId ?? defaultEnvironment;
+  let list = allCache.get(key);
+  if (!list) {
+    list = HARNESS_ORDER.flatMap((harness) => modelsFor(harness, key));
+    allCache.set(key, list);
+  }
+  return list;
 }
 
+/** A model by id across every environment's catalog, then the built-in
+ *  list: ids are the same everywhere, so a label lookup needs no host. */
 export function findModel(id: string): AgentModel | undefined {
   if (!indexById) {
     const index = new Map<string, AgentModel>();
-    // First writer wins, matching the previous `allModels().find(...)` order.
-    for (const model of allModels()) {
-      if (!index.has(model.id)) index.set(model.id, model);
+    // First writer wins: the window's own machine, then the other hosts, then the built-ins.
+    const environments = [defaultEnvironment, ...[...overlaysByEnvironment.keys()].filter((e) => e !== defaultEnvironment)];
+    for (const environment of environments) {
+      for (const model of allModels(environment)) {
+        if (!index.has(model.id)) index.set(model.id, model);
+      }
     }
+    for (const model of MODELS) if (!index.has(model.id)) index.set(model.id, model);
     indexById = index;
   }
   return indexById.get(id);
 }
 
-export function resolveModel(harness: HarnessId, id?: string): AgentModel {
-  const available = modelsFor(harness);
+export function resolveModel(harness: HarnessId, id?: string, environmentId?: string): AgentModel {
+  const available = modelsFor(harness, environmentId);
   if (id) {
-    const exact = findModel(id);
-    if (exact && exact.harness === harness) return exact;
+    // The harness's own list only: with a live catalog in, a built-in picker
+    // id must map to its live entry below, never to the built-in row.
+    const exact = available.find((model) => model.id === id);
+    if (exact) return exact;
     const slug = builtinNativeId(id);
     const byNative = available.find(
       (model) => (model.nativeId ?? nativeIdFrom(model.id)) === slug,
@@ -377,9 +421,9 @@ export function resolveModel(harness: HarnessId, id?: string): AgentModel {
     });
     if (prefix) return prefix;
   }
-  const fallbackId = defaultModelId(harness);
+  const fallbackId = defaultModelId(harness, environmentId);
   return (
-    (fallbackId ? findModel(fallbackId) : undefined) ??
+    (fallbackId ? available.find((model) => model.id === fallbackId) : undefined) ??
     available[0] ??
     MODELS.find((model) => model.harness === harness) ??
     MODELS[0]

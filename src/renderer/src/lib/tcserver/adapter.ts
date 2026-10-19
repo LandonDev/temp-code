@@ -60,7 +60,7 @@ export function serverAdapter(id: HarnessId): HarnessAdapter {
     stopSession: async () => {},
     forgetSession: async () => {},
     bindSession: () => {},
-    // The picker's model list is the primary host's; per-environment pickers are K2's.
+    // This adapter is this machine's CLIs; a remote host's catalog loads over its own link (lib/tcserver/link.ts).
     refreshCatalog: () => refreshCatalog(registry.primary().environmentId),
     generateTitle: async () => null,
     generateCommitMessage: generateServerCommitMessage,

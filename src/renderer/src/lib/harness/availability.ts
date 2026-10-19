@@ -25,12 +25,22 @@ const CLI: Record<HarnessId, { name: string; install?: string }> = {
   fx: { name: "fx CLI", install: "curl -fsSL https://fx.sh/setup.sh | bash" },
 };
 
-let availability: HarnessAvailability = Object.fromEntries(
-  HARNESSES.map((id) => [id, false]),
-) as HarnessAvailability;
+const NONE: HarnessAvailability = Object.fromEntries(HARNESSES.map((id) => [id, false])) as HarnessAvailability;
+
+/** Per environment (thread K2): the box has its own CLIs. */
+type Probe = { availability: HarnessAvailability; inflight: Promise<void> | null; probedAt: number };
+const probes = new Map<string, Probe>();
+const probeOf = (environmentId: string): Probe => {
+  let probe = probes.get(environmentId);
+  if (!probe) {
+    probe = { availability: NONE, inflight: null, probedAt: 0 };
+    probes.set(environmentId, probe);
+  }
+  return probe;
+};
+/** The window's own machine, the environment a call names none for. */
+const here = (): string => registry.primaryEnvironmentId;
 let version = 0;
-let inflight: Promise<void> | null = null;
-let probedAt = 0;
 const listeners = new Set<() => void>();
 
 function emit() {
@@ -49,12 +59,12 @@ export function getHarnessAvailabilitySnapshot(): number {
   return version;
 }
 
-export function hasProbedHarnessAvailability(): boolean {
-  return probedAt > 0;
+export function hasProbedHarnessAvailability(environmentId: string = here()): boolean {
+  return probeOf(environmentId).probedAt > 0;
 }
 
-export function isHarnessAvailable(id: HarnessId): boolean {
-  return availability[id];
+export function isHarnessAvailable(id: HarnessId, environmentId: string = here()): boolean {
+  return probeOf(environmentId).availability[id];
 }
 
 export function harnessUnavailableHint(id: HarnessId): string {
@@ -66,24 +76,30 @@ export function harnessUnavailableHint(id: HarnessId): string {
   return `${name} not found${how}. Install it, or restart TempCode if it is already installed.`;
 }
 
-/** One `doctor.get` per 30 s answers for every harness; `force` refreshes. */
+/** One `doctor.get` per host per 30 s answers for every harness; `force` refreshes. */
 export function probeHarnessAvailability(
-  options?: { force?: boolean },
+  options?: { force?: boolean; environmentId?: string },
 ): Promise<void> {
-  if (inflight) return inflight;
-  // The composer's harness list is this machine's CLIs; remote hosts answer their own doctor.
-  inflight = probeDoctor(registry.primary().environmentId, options)
+  const environmentId = options?.environmentId ?? here();
+  const probe = probeOf(environmentId);
+  if (probe.inflight) return probe.inflight;
+  probe.inflight = probeDoctor(environmentId, options)
     .then((doctor) => {
       const found = availabilityFromDoctor(doctor);
-      const next = { ...availability };
+      const next = { ...probe.availability };
       for (const id of HARNESSES) next[id] = isLiveHarness(id) && found[id];
-      availability = next;
+      probe.availability = next;
       emit();
     })
     .catch(() => undefined)
     .finally(() => {
-      probedAt = Date.now();
-      inflight = null;
+      probe.probedAt = Date.now();
+      probe.inflight = null;
     });
-  return inflight;
+  return probe.inflight;
+}
+
+/** An environment was forgotten: its probe goes with it. */
+export function dropHarnessAvailability(environmentId: string): void {
+  if (probes.delete(environmentId)) emit();
 }

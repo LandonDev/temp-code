@@ -18,6 +18,8 @@ import type { HarnessId } from "../lib/session";
 type Props = {
   harness: HarnessId;
   model: string;
+  /** The host whose catalog names the model's settings; this machine when absent. */
+  environmentId?: string;
   values: Record<string, string>;
   onChange: (settings: Record<string, string>) => void;
   onClose?: () => void;
@@ -28,6 +30,7 @@ const MENU_WIDTH = 220;
 export function ModelSettings({
   harness,
   model,
+  environmentId,
   values,
   onChange,
   onClose,
@@ -35,14 +38,14 @@ export function ModelSettings({
   const catalog = useSyncCatalog();
   const settings = useMemo(() => {
     void catalog;
-    const list = resolveModel(harness, model).settings ?? [];
+    const list = resolveModel(harness, model, environmentId).settings ?? [];
     const order = ["variant", "agent", "effort", "reasoning", "thinking", "fast", "ultrafast", "context"];
     return [...list].sort((a, b) => {
       const ai = order.indexOf(a.id);
       const bi = order.indexOf(b.id);
       return (ai < 0 ? 99 : ai) - (bi < 0 ? 99 : bi);
     });
-  }, [catalog, harness, model]);
+  }, [catalog, environmentId, harness, model]);
 
   if (settings.length === 0) return null;
 

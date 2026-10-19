@@ -876,6 +876,7 @@ export function Composer({
                 <ModelPicker
                   harness={harness}
                   model={model}
+                  environmentId={environmentId}
                   hotkeys={hotkeys && enabled}
                   onChange={changeModel}
                   onClose={() => inputRef.current?.focus()}
@@ -883,6 +884,7 @@ export function Composer({
                 <ModelSettings
                   harness={harness}
                   model={model}
+                  environmentId={environmentId}
                   values={modelSettings}
                   onChange={changeModelSettings}
                   onClose={() => inputRef.current?.focus()}

@@ -233,14 +233,16 @@ function ContinueAs({
               <ModelPicker
                 harness={choice.harness}
                 model={choice.model}
+                environmentId={from.environmentId}
                 onChange={(harness, model) => {
                   setChoice({ harness, model });
-                  setSettings(mergeModelSettings(resolveModel(harness, model), settings));
+                  setSettings(mergeModelSettings(resolveModel(harness, model, from.environmentId), settings));
                 }}
               />
               <ModelSettings
                 harness={choice.harness}
                 model={choice.model}
+                environmentId={from.environmentId}
                 values={settings}
                 onChange={setSettings}
               />

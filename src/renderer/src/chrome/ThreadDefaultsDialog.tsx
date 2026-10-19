@@ -33,10 +33,10 @@ const PERMISSIONS: ThreadDefaults["permission"][] = ["safe", "edits", "auto"];
 
 type Change = (next: ThreadDefaults) => void;
 
-function useDefaultsRows(value: ThreadDefaults, onChange: Change) {
-  const model = modelForDefaults(value);
+function useDefaultsRows(value: ThreadDefaults, onChange: Change, environmentId?: string) {
+  const model = modelForDefaults(value, environmentId);
   const ladder = effortLadder(model);
-  const set = (patch: Partial<ThreadDefaults>) => onChange(normalizeDefaults({ ...value, ...patch }));
+  const set = (patch: Partial<ThreadDefaults>) => onChange(normalizeDefaults({ ...value, ...patch }, environmentId));
   return {
     ladder,
     provider: {
@@ -46,7 +46,7 @@ function useDefaultsRows(value: ThreadDefaults, onChange: Change) {
     },
     model: {
       value: storedModelId(value),
-      options: [{ value: "", label: "Provider default" }, ...modelOptions(value.provider)],
+      options: [{ value: "", label: "Provider default" }, ...modelOptions(value.provider, environmentId)],
       onChange: (model: string) => set({ model }),
     },
     reasoning: {
@@ -63,8 +63,8 @@ function useDefaultsRows(value: ThreadDefaults, onChange: Change) {
 }
 
 /** Settings-page rows; the Reasoning row only when the model has a ladder. */
-export function ThreadDefaultsFields({ value, onChange }: { value: ThreadDefaults; onChange: Change }) {
-  const rows = useDefaultsRows(value, onChange);
+export function ThreadDefaultsFields({ value, onChange, environmentId }: { value: ThreadDefaults; onChange: Change; environmentId?: string }) {
+  const rows = useDefaultsRows(value, onChange, environmentId);
   return (
     <>
       <Row label="Model" description="The provider and model a thread opens on.">
@@ -131,7 +131,7 @@ function DefaultsEditor({ environmentId, workspaceId, first }: { environmentId: 
         {scopeHint(workspaceId, scope ?? BUILT_IN_SCOPE)}
       </p>
       {workspaceId === null ? <OverridingWorkspaces environmentId={environmentId} /> : null}
-      {scope ? <ThreadDefaultsFields value={scope.defaults} onChange={save} /> : null}
+      {scope ? <ThreadDefaultsFields value={scope.defaults} onChange={save} environmentId={environmentId} /> : null}
       {error ? <p className="pt-2 text-[12px] text-danger">{error}</p> : null}
     </section>
   );
@@ -217,7 +217,7 @@ export function ThreadDefaultsDialog({
         }}
       >
         <div className="flex flex-col gap-3 px-4 py-3">
-          {value ? <DialogFields value={value} onChange={setValue} /> : null}
+          {value ? <DialogFields value={value} onChange={setValue} environmentId={workspace.environmentId} /> : null}
           <p className="text-[12px] text-content/40">
             {scopeHint(workspace.id, scope ?? BUILT_IN_SCOPE)}
           </p>
@@ -243,8 +243,8 @@ export function ThreadDefaultsDialog({
   );
 }
 
-function DialogFields({ value, onChange }: { value: ThreadDefaults; onChange: Change }) {
-  const rows = useDefaultsRows(value, onChange);
+function DialogFields({ value, onChange, environmentId }: { value: ThreadDefaults; onChange: Change; environmentId?: string }) {
+  const rows = useDefaultsRows(value, onChange, environmentId);
   return (
     <>
       <Field label="Provider" {...rows.provider} />

@@ -115,60 +115,68 @@ export function agentModelsFor(provider: ProviderInfo): AgentModel[] {
   });
 }
 
-let catalogInflight: Promise<void> | null = null;
+const catalogInflight = new Map<string, Promise<void>>();
 
-/** Pull one environment's catalog once and overlay every provider's models. */
+/** Pull one environment's catalog once and overlay every provider's models for it. */
 export function refreshCatalog(environmentId: string): Promise<void> {
-  if (catalogInflight) return catalogInflight;
-  catalogInflight = registry
+  const inflight = catalogInflight.get(environmentId);
+  if (inflight) return inflight;
+  const run = registry
     .linkOf(environmentId)
     .request<Record<ProviderId, ProviderInfo>>("catalog.get")
     .then((catalog) => {
       for (const provider of Object.values(catalog)) {
         if (!(HARNESSES as string[]).includes(provider.id)) continue;
-        setHarnessModels(provider.id as HarnessId, agentModelsFor(provider), provider.defaultModel);
+        setHarnessModels(provider.id as HarnessId, agentModelsFor(provider), provider.defaultModel, environmentId);
       }
     })
     .finally(() => {
-      catalogInflight = null;
+      catalogInflight.delete(environmentId);
     });
-  return catalogInflight;
+  catalogInflight.set(environmentId, run);
+  return run;
 }
 
 const DOCTOR_TTL_MS = 30_000;
-let doctorAt = 0;
-let doctorInflight: Promise<Doctor> | null = null;
-let lastDoctor: Doctor = {};
+type DoctorProbe = { at: number; inflight: Promise<Doctor> | null; last: Doctor };
+const doctors = new Map<string, DoctorProbe>();
+const doctorOf = (environmentId: string): DoctorProbe => {
+  let probe = doctors.get(environmentId);
+  if (!probe) {
+    probe = { at: 0, inflight: null, last: {} };
+    doctors.set(environmentId, probe);
+  }
+  return probe;
+};
 
-/** Provider health, cached briefly; `force` bypasses the cache. */
+/** One host's provider health, cached briefly; `force` bypasses the cache. */
 export function probeDoctor(
   environmentId: string,
   options?: { force?: boolean },
 ): Promise<Doctor> {
-  if (doctorInflight) return doctorInflight;
-  if (!options?.force && doctorAt > 0 && Date.now() - doctorAt < DOCTOR_TTL_MS) {
-    return Promise.resolve(lastDoctor);
+  const probe = doctorOf(environmentId);
+  if (probe.inflight) return probe.inflight;
+  if (!options?.force && probe.at > 0 && Date.now() - probe.at < DOCTOR_TTL_MS) {
+    return Promise.resolve(probe.last);
   }
-  doctorInflight = registry
+  probe.inflight = registry
     .linkOf(environmentId)
     .request<Doctor>("doctor.get")
     .then((doctor) => {
-      lastDoctor = doctor;
+      probe.last = doctor;
       return doctor;
     })
     .finally(() => {
-      doctorAt = Date.now();
-      doctorInflight = null;
+      probe.at = Date.now();
+      probe.inflight = null;
     });
-  return doctorInflight;
+  return probe.inflight;
 }
 
 /** Test seam. */
 export function resetCatalogProbes(): void {
-  doctorAt = 0;
-  doctorInflight = null;
-  lastDoctor = {};
-  catalogInflight = null;
+  doctors.clear();
+  catalogInflight.clear();
 }
 
 export function availabilityFromDoctor(doctor: Doctor): Record<HarnessId, boolean> {

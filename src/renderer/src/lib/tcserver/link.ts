@@ -12,6 +12,9 @@ import {
 } from "../connection";
 import { smoke } from "./smoke";
 import { sessionStore } from "./store";
+import { refreshCatalog } from "./catalog";
+import { dropHarnessModels, setDefaultCatalogEnvironment } from "../models";
+import { dropHarnessAvailability, probeHarnessAvailability } from "../harness/availability";
 
 type Doctor = Record<string, { found: boolean; version?: string; error?: string }>;
 type SavedEnvironmentRow = { id: string; name: string; routes: { url: string; kind: "loopback" | "lan" | "tunnel" }[] };
@@ -47,11 +50,21 @@ export function initServerLink(): void {
   // The bridge dispatches server commands over the environment's link.
   bindServer(registry);
   registry.onLink((link, event) => {
-    if (event !== "added") return;
+    if (event !== "added") {
+      dropHarnessModels(link.environmentId);
+      dropHarnessAvailability(link.environmentId);
+      return;
+    }
     link.onOpen(() => void report(link));
+    // Each host's model catalog and installed CLIs, so a picker on its thread shows its rows.
+    link.onOpen(() => {
+      void refreshCatalog(link.environmentId).catch(() => undefined);
+      void probeHarnessAvailability({ environmentId: link.environmentId, force: true });
+    });
     if (link.environmentId === LOCAL_ENVIRONMENT_ID) link.onOpen(() => void loadSavedEnvironments(link));
   });
   if (isWebMode()) {
+    setDefaultCatalogEnvironment(WEB_ENVIRONMENT_ID);
     registry.setPrimary(WEB_ENVIRONMENT_ID);
     registry.add(webEnvironment(webSocketUrl(), location.hostname));
     return;
@@ -79,10 +92,7 @@ export async function loadSavedEnvironments(local: EnvLink = registry.linkOf(LOC
 
 async function report(link: EnvLink): Promise<void> {
   try {
-    const [doctor] = await Promise.all([
-      link.request<Doctor>("doctor.get"),
-      link.request("catalog.get"),
-    ]);
+    const doctor = await link.request<Doctor>("doctor.get");
     const providers = Object.entries(doctor)
       .map(([id, r]) => `${id} ${!r.found ? "missing" : r.error ? "error" : "ok"}`)
       .join(", ");

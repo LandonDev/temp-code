@@ -159,15 +159,16 @@ function QueueTuneButton({ sessionId, item }: { sessionId: string; item: QueuedM
   const overridden = !!(item.provider || item.model || item.reasoning)
   const harness = (item.provider ?? meta?.provider ?? 'claude') as HarnessId
   const modelId = item.model ?? meta?.model ?? ''
-  const model = resolveModel(harness, modelId)
+  const environmentId = meta?.environmentId
+  const model = resolveModel(harness, modelId, environmentId)
   const effortOptions = model.settings?.find((setting) => setting.id === 'effort')?.options ?? []
   const reasoning = item.reasoning ?? meta?.reasoning ?? ''
-  const harnesses = HARNESSES.filter((id) => modelsFor(id).length > 0)
+  const harnesses = HARNESSES.filter((id) => modelsFor(id, environmentId).length > 0)
 
   const apply = (patch: QueueTune) =>
     void queueTune(sessionId, item.id, patch).catch(() => undefined)
   const setHarness = (next: HarnessId) => {
-    const first = modelsFor(next)[0]
+    const first = modelsFor(next, environmentId)[0]
     if (!first) return
     const effort = first.settings?.find((setting) => setting.id === 'effort')
     apply({
@@ -181,7 +182,7 @@ function QueueTuneButton({ sessionId, item }: { sessionId: string; item: QueuedM
     })
   }
   const setModel = (nativeId: string) => {
-    const next = resolveModel(harness, nativeId)
+    const next = resolveModel(harness, nativeId, environmentId)
     const effort = next.settings?.find((setting) => setting.id === 'effort')
     apply({
       provider: harness,
@@ -248,7 +249,7 @@ function QueueTuneButton({ sessionId, item }: { sessionId: string; item: QueuedM
             <Select
               label="Model"
               value={model.nativeId ?? modelId}
-              options={modelsFor(harness).map((m) => ({
+              options={modelsFor(harness, environmentId).map((m) => ({
                 value: m.nativeId ?? m.id,
                 label: m.name
               }))}

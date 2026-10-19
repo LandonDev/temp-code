@@ -83,8 +83,8 @@ export const sameDefaults = (a: ThreadDefaults, b: ThreadDefaults): boolean =>
   a.provider === b.provider && a.model === b.model && a.reasoning === b.reasoning && a.permission === b.permission;
 
 /** The catalog model a set names: its own, else the provider's default. */
-export function modelForDefaults(d: Pick<ThreadDefaults, "provider" | "model">): AgentModel {
-  return resolveModel(d.provider as HarnessId, d.model || undefined);
+export function modelForDefaults(d: Pick<ThreadDefaults, "provider" | "model">, environmentId?: string): AgentModel {
+  return resolveModel(d.provider as HarnessId, d.model || undefined, environmentId);
 }
 
 /** The model's effort ladder from the live catalog; empty when it has none. */
@@ -103,8 +103,8 @@ export function clampReasoning(model: AgentModel, reasoning: Reasoning): Reasoni
 }
 
 /** A set with its effort kept valid for the model it names. */
-export function normalizeDefaults(d: ThreadDefaults): ThreadDefaults {
-  const reasoning = clampReasoning(modelForDefaults(d), d.reasoning);
+export function normalizeDefaults(d: ThreadDefaults, environmentId?: string): ThreadDefaults {
+  const reasoning = clampReasoning(modelForDefaults(d, environmentId), d.reasoning);
   return reasoning === d.reasoning ? d : { ...d, reasoning };
 }
 
@@ -112,8 +112,8 @@ export const providerOptions = (): { value: HarnessId; label: string }[] =>
   HARNESSES.map((id) => ({ value: id, label: HARNESS_TITLE[id] }));
 
 /** Catalog models for the provider, keyed by the native id the server stores. */
-export const modelOptions = (provider: string): { value: string; label: string }[] =>
-  modelsFor(provider as HarnessId).map((m) => ({ value: m.nativeId ?? m.id, label: m.name }));
+export const modelOptions = (provider: string, environmentId?: string): { value: string; label: string }[] =>
+  modelsFor(provider as HarnessId, environmentId).map((m) => ({ value: m.nativeId ?? m.id, label: m.name }));
 
 /** The native id of the model a set names, '' when it is the provider default. */
 export function storedModelId(d: ThreadDefaults): string {

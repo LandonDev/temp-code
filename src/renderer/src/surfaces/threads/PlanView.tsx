@@ -489,14 +489,16 @@ function StartButton({ session, tasks }: { session: Session; tasks: string[] }) 
                   <ModelPicker
                     harness={choice.harness}
                     model={choice.model}
+                    environmentId={session.environmentId}
                     onChange={(h, m) => {
                       setChoice({ harness: h, model: m });
-                      setSettings(mergeModelSettings(resolveModel(h, m), settings));
+                      setSettings(mergeModelSettings(resolveModel(h, m, session.environmentId), settings));
                     }}
                   />
                   <ModelSettings
                     harness={choice.harness}
                     model={choice.model}
+                    environmentId={session.environmentId}
                     values={settings}
                     onChange={setSettings}
                   />

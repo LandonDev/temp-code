@@ -36,6 +36,8 @@ import {
   getHarnessAvailabilitySnapshot,
 } from "../lib/harness/availability";
 import { refreshHarnessCatalogs } from "../lib/harness/registry";
+import { refreshCatalog } from "../lib/tcserver/catalog";
+import { registry } from "../lib/connection";
 import {
   HARNESSES,
   HARNESS_LABEL,
@@ -50,6 +52,8 @@ import { MOD } from "../lib/platform";
 type Props = {
   harness: HarnessId;
   model: string;
+  /** The host whose catalog and CLIs the list shows; this machine when absent. */
+  environmentId?: string;
   hotkeys?: boolean;
   onChange: (harness: HarnessId, model: string) => void;
   onClose?: () => void;
@@ -73,6 +77,7 @@ const MENU_MAX_HEIGHT = 340;
 export function ModelPicker({
   harness,
   model,
+  environmentId,
   hotkeys = false,
   onChange,
   onClose,
@@ -101,18 +106,23 @@ export function ModelPicker({
   const search = useRef<HTMLInputElement>(null);
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
-  const current = resolveModel(harness, model);
+  const current = resolveModel(harness, model, environmentId);
   const tabRef = useRef(tab);
   const openRef = useRef(open);
   const lastHotkey = useRef(0);
   const searchRef = useRef(false);
 
+  const available = (id: HarnessId) => isHarnessAvailable(id, environmentId);
   const shownInPicker = (id: HarnessId) =>
     showProviderInModelPicker(
       id,
-      isHarnessAvailable(id),
-      hasProbedHarnessAvailability(),
+      available(id),
+      hasProbedHarnessAvailability(environmentId),
     );
+  // A remote host's lists come over its own link; this machine's through its adapters.
+  const remote = environmentId !== undefined && environmentId !== registry.primaryEnvironmentId;
+  const refreshLists = (ids: HarnessId[]) =>
+    remote ? refreshCatalog(environmentId).catch(() => undefined) : refreshHarnessCatalogs(ids);
   const pickerHarnesses = HARNESSES.filter(shownInPicker);
   const visibleTab = coerceModelPickerTab(tab, shownInPicker);
   if (visibleTab !== tab) {
@@ -149,7 +159,7 @@ export function ModelPicker({
 
   useEffect(() => {
     if (!open) return;
-    void probeHarnessAvailability();
+    void probeHarnessAvailability({ environmentId });
     setTab(coerceModelPickerTab(loadModelPickerTab(), shownInPicker));
     setQuery("");
   }, [open]);
@@ -159,11 +169,11 @@ export function ModelPicker({
   useEffect(() => {
     if (!open) return;
     if (searching) {
-      void refreshHarnessCatalogs(pickerHarnesses);
+      void refreshLists(pickerHarnesses);
       return;
     }
     if (visibleTab === "favorites") return;
-    void refreshHarnessCatalogs([visibleTab]);
+    void refreshLists([visibleTab]);
     // pickerHarnesses is derived from the availability snapshot below.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, visibleTab, searching, availabilityVersion]);
@@ -248,11 +258,11 @@ export function ModelPicker({
               (item): item is AgentModel =>
                 item != null && shownInPicker(item.harness),
             )
-        : modelsFor(visibleTab);
+        : modelsFor(visibleTab, environmentId);
     }
     // Typing searches every shown provider: rank ladder, favorites first
     // within a rank, catalog order last.
-    return allModels()
+    return allModels(environmentId)
       .filter((item) => shownInPicker(item.harness))
       .flatMap((item, order) => {
         const rank = matchRank(
@@ -271,6 +281,7 @@ export function ModelPicker({
     visibleTab,
     query,
     favorites,
+    environmentId,
     catalogVersion,
     availabilityVersion,
     visibilityVersion,
@@ -289,7 +300,7 @@ export function ModelPicker({
   }, [visible.length]);
 
   const pick = (item: AgentModel) => {
-    if (!isHarnessAvailable(item.harness)) return;
+    if (!available(item.harness)) return;
     onChange(item.harness, item.id);
     dismiss(true);
   };
@@ -318,14 +329,14 @@ export function ModelPicker({
     if (e.key === "Enter") {
       e.preventDefault();
       const item = visible[active];
-      if (item && isHarnessAvailable(item.harness)) pick(item);
+      if (item && available(item.harness)) pick(item);
       return;
     }
     const mod = e.metaKey || e.ctrlKey;
     if (mod && !e.altKey && !e.shiftKey && e.key >= "1" && e.key <= "9") {
       e.preventDefault();
       const item = visible[Number(e.key) - 1];
-      if (item && isHarnessAvailable(item.harness)) pick(item);
+      if (item && available(item.harness)) pick(item);
     }
   };
 
@@ -422,6 +433,7 @@ export function ModelPicker({
               </label>
             </div>
             <ModelList
+              available={available}
               models={visible}
               active={active}
               currentId={current.id}
@@ -432,7 +444,7 @@ export function ModelPicker({
                   : visibleTab === "favorites" && !query.trim()
                   ? "No favorite models"
                   : visibleTab !== "favorites" &&
-                      !isHarnessAvailable(visibleTab)
+                      !available(visibleTab)
                     ? harnessUnavailableHint(visibleTab)
                     : visibleTab === "codex" && !query.trim()
                       ? "Loading Codex models…"
@@ -493,6 +505,7 @@ function ProviderTabButton({
 }
 
 function ModelList({
+  available,
   models,
   active,
   currentId,
@@ -502,6 +515,7 @@ function ModelList({
   onPick,
   onToggleFavorite,
 }: {
+  available: (id: HarnessId) => boolean;
   models: AgentModel[];
   active: number;
   currentId: string;
@@ -554,7 +568,7 @@ function ModelList({
         const selected = item.id === currentId;
         const highlighted = index === active;
         const favorited = favorites.includes(item.id);
-        const disabled = !isHarnessAvailable(item.harness);
+        const disabled = !available(item.harness);
         const shortcut = index < 9 && !disabled ? `${MOD}${index + 1}` : null;
         return (
           <div
