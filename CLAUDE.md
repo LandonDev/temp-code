@@ -187,6 +187,22 @@ routed to (aliax-core's `forward`). Two listeners:
   plus a real Chrome profile over CDP through `/pair`, `/ui`, a thread, a
   reply, the cookie and the CSP rewrite).
 
+## The Linux agent host: headless mode on the box
+- `TEMP_CODE_HEADLESS=1` (src/main/headless.ts) runs the main process with no
+  window, menu, dock or updater; the server, gateway, fixed-port listener and
+  html preview's hidden window run as usual. A Linux process with no display
+  is headless on its own. In that mode the local socket's port is published
+  in `<userData>/server.json` and `scripts/box/tc-local.mjs` speaks to it as
+  the implicit admin (`tc-local remote.pairings.create …` on the box).
+- The box (`ssh box`, docs/box.md) runs temp-code from `/srv/agents/temp-code`
+  as `temp-code.service` (agents user, agents.slice, Xvfb, a private D-Bus),
+  data in `/srv/agents/temp-code-data`, env in `/etc/temp-code.env`; the
+  tunnel maps `tempcode.landonhale.com` to its 7677. Deploy a ref with
+  `scripts/box/apply.sh --from 85 --through 90`; proof from the Mac is
+  `bun scripts/e2e-box-remote.ts`. Every "ask the login shell" call goes
+  through src/main/server/loginShell.ts (`$SHELL`, else zsh on macOS, bash
+  elsewhere): never hardcode /bin/zsh.
+
 ## The prod worktree is retired
 ~/IdeaProjects/temp-code-prod was the old local updater's build checkout.
 The updater no longer reads it or the source repo at all; it can stay

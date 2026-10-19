@@ -6,6 +6,7 @@ import { join } from 'node:path'
 import { promisify } from 'node:util'
 import type { ProviderId } from '@shared/catalog'
 import { hasAppBridge } from '../apptools'
+import { loginShell } from '../loginShell'
 
 const execFileP = promisify(execFile)
 
@@ -33,7 +34,7 @@ const EXTRA_BIN_DIRS = [
 
 let loginPathP: Promise<string> | null = null
 export function loginPath(): Promise<string> {
-  loginPathP ??= execFileP('/bin/zsh', ['-lc', 'echo -n "$PATH"'])
+  loginPathP ??= execFileP(loginShell(), ['-lc', 'echo -n "$PATH"'])
     .then((r) => r.stdout.trim())
     .catch(() => process.env.PATH ?? '')
     .then(async (path) => {
@@ -340,7 +341,7 @@ export async function updateProvider(provider: ProviderId): Promise<DoctorReport
         ? 'brew upgrade codex'
         : null
     if (!cmd) throw new Error(`can't tell how codex was installed (${real}) — update it manually`)
-    await execFileP('/bin/zsh', ['-lc', cmd], opts).catch(fail)
+    await execFileP(loginShell(), ['-lc', cmd], opts).catch(fail)
   }
   // paths and versions may have moved — re-resolve everything
   binCache.clear()

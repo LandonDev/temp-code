@@ -192,12 +192,8 @@ minute, with up to 10 seconds of jitter. Reapply preserves the live env file.
 
 ## Next threads
 
-- **C — temp-code under Xvfb:** use agents, home `/srv/agents/home`,
-  `agents.slice`, `LimitNOFILE=1048576`, and the installed Node/Bun/Xvfb stack.
-  The Electron proof and its npm lockfile live in the scratch directory above.
-  Give the shipped executable its own AppArmor userns profile. Bind the remote
-  listener to `127.0.0.1:7677`; the tunnel route already exists. Add consistent
-  SQLite backup output. No temp-code process or listener is installed yet.
+- **C — temp-code under Xvfb:** done; see "temp-code service" below. Still
+  open from it: a consistent SQLite snapshot for the backup timer.
 - **U — launcher:** run app child processes as agents within `agents.slice`;
   use the lingering user manager or an explicit system unit. Do not use root
   or the Docker socket. Preserve the 7677 listener and app data while adding
@@ -256,3 +252,99 @@ attachment, R2 upload, or hub POST occurred.
 ## Heartbeat (live since 2026-10-19)
 
 `box-heartbeat.timer` is enabled and posts to https://hub.landonhale.com/v1/hosts/box/heartbeat every minute with the hub's body shape (environmentId, name, version, startedAt). The token is in `/etc/box-heartbeat.env` (root, 600) and in the Mac Keychain as `tempcode-hub-host-box`. Check: `curl -s https://hub.landonhale.com/v1/hosts -H "x-api-key: $(security find-generic-password -a landon -s tempcode-hub-ADMIN_KEY -w)"`.
+
+## temp-code service (live since 2026-10-19)
+
+The host runs temp-code itself, headless, from a git checkout: no window, no
+menu, no updater, but the server, the gateway, the fixed-port listener and
+html preview's hidden window all run as on a Mac. `TEMP_CODE_HEADLESS=1`
+selects that mode (src/main/headless.ts); a Linux process with no display
+gets it on its own.
+
+| Piece | Where |
+| --- | --- |
+| Checkout | `/srv/agents/temp-code`, owned by agents, detached at the deployed commit |
+| Data (database, environment.json, tls, server.json) | `/srv/agents/temp-code-data`, mode 700 |
+| Unit | `/etc/systemd/system/temp-code.service`: `User=agents`, `Slice=agents.slice`, `Restart=always`, `LimitNOFILE=1048576` |
+| ExecStart | `scripts/box/temp-code-run.sh`: `env -u ELECTRON_RUN_AS_NODE xvfb-run -a … dbus-run-session -- node_modules/electron/dist/electron .` |
+| Environment | `/etc/temp-code.env` (root, 600, managed): `TEMP_CODE_USER_DATA=/srv/agents/temp-code-data`, `TEMP_CODE_HEADLESS=1`, `TEMP_CODE_CLAIM_SHIM=1`, `AGENT_CLI_CREDENTIAL_STORE=file`, `TEMP_CODE_REMOTE_PORT=7677`, `NODE_ENV=production`, `SHELL=/bin/bash` |
+| Secrets | `/etc/temp-code.secrets.env` (root, 600, optional, never written by the scripts); the unit reads it when present |
+| AppArmor | `/etc/apparmor.d/temp-code` grants userns to the checkout's Electron, like the stage 55 proof |
+| Local admin | `tc-local <method> [json]` (`/usr/local/bin`, runs `scripts/box/tc-local.mjs`) over the port in `<data>/server.json` |
+| Logs | `journalctl -u temp-code` |
+
+Stage `85-temp-code.sh` installs all of it and is safe to rerun:
+
+```sh
+scripts/box/apply.sh --from 85 --through 90        # deploy origin/master, verify
+TEMP_CODE_REF=v1.0.240 scripts/box/apply.sh --from 85 --through 85   # a tag or sha
+```
+
+It fetches, checks out the ref detached and resets the tree hard, runs
+`bun install --frozen-lockfile`, fetches Electron's binary and rebuilds
+node-pty against it (bun runs no dependency lifecycle scripts), runs
+`electron-vite build` (the renderer is what `/ui` serves), and restarts the
+unit when the build, the env file or the unit changed. `TEMP_CODE_REF=local`
+builds the tree as it sits, for a tree synced by hand. Stage 90 checks the
+unit, its slice and user, the listener and the AppArmor profile.
+
+Why the private bus: handed the agents user's session bus, Chromium registers
+with that user's systemd and moves the main process into
+`app-org.chromium.Chromium-<pid>.scope`, out of the unit's cgroup and beyond
+`systemctl stop`; its lines then leave `journalctl -u` too. `dbus-run-session`
+gives it a bus with no systemd on it.
+
+The CLIs the drivers spawn are installed as agents, with no account signed
+in: `claude` from the official installer (`~/.local/bin`), `codex` from npm
+(`~/.npm-global/bin`, 0.162.1 or newer), `cursor-agent` from Cursor's installer
+(`~/.local/bin`), `gh` from apt. The host resolves them over the login shell's
+PATH, so `~/.profile` must keep adding `~/.local/bin`. Versions on
+2026-10-19: Electron 39.8.10, Node 22.23.3, Bun 1.4.3, claude 2.1.303,
+codex 0.163.0, cursor-agent 2026.10.16, gh 2.45.0. Rerunning the stage
+upgrades codex when it is below the floor; the others self-update.
+
+Remote access: `remote.publicOrigin` is `https://tempcode.landonhale.com`.
+Cloudflare Access fronts `/ui` only; `/healthz`, `/api/*`, `/pair` and `/ws`
+reach the listener directly, and every one of those routes carries its own
+authentication. To let a device in, mint a pairing on the box and open its
+link within ten minutes:
+
+```sh
+tc-local remote.pairings.create '{"name":"Landon phone","audience":"client","caps":["operate","approve"]}'
+```
+
+Proofs from the Mac: `TC_PAIR_CODES=<code1>,<code2> bun scripts/e2e-box-remote.ts`
+(hello, bearer key, ticket, the socket on the ticket, Chrome on `/pair`, the
+Secure cookie, the socket on the cookie, the Access gate on `/ui`). The
+gateway's own proofs run on the box against fake upstreams:
+`bun run script:e2e-gateway-unauthorized` and `script:e2e-gateway-failover`
+in the checkout as agents. The hidden preview window is proven with
+`tc-local app.htmlPreview` against a live session (see the log entry).
+
+### Signing accounts in (thread G, with the user)
+
+Nothing here copies credentials from the Mac; each CLI signs in on the box,
+as agents, into the plain files aliax-core reads on Linux. The host picks the
+new files up on its own (it owns the Aliax marker, so Claude tokens refresh).
+
+```sh
+ssh box
+runuser -u agents -- env HOME=/srv/agents/home PATH=/srv/agents/home/.local/bin:/srv/agents/home/.npm-global/bin:/usr/bin:/bin bash -l
+claude            # /login inside, pick "Claude account with subscription"; finish the browser step on the Mac; writes ~/.claude/.credentials.json
+codex login --device-auth    # prints a code and a URL to open on the Mac; writes ~/.codex/auth.json
+cursor-agent login           # same shape, if the cursor driver is wanted
+gh auth login --web          # for the GitHub inbox and PR tools
+```
+
+Then prove one turn each from the Mac's browser on `/ui`, or over the socket:
+create a workspace (`workspace.create` with a path under `/srv/agents/work`),
+a thread (`session.create`, provider `claude`, model `claude-haiku-5-5` or the
+cheapest Codex row, reasoning `low`), and `session.send` a one-line prompt;
+the reply row arrives in `/ui`. API keys for the other providers go in
+`/etc/temp-code.secrets.env`, then `systemctl restart temp-code`.
+
+Still darwin-only by design: appshots, the Aliax browser-cookie sign-ins,
+the IntelliJ engine's pinned artifact (`lsp.ts` has only `darwin-arm64`; the
+Linux pin waits for a build that has not expired), and vibrancy. Known gap:
+the local socket is the implicit admin for any process on the box's loopback,
+as on a Mac; the box has only `prod` as another user.

@@ -4,6 +4,7 @@ import { execFile, spawn, type ChildProcess } from 'node:child_process'
 import { createHash, randomBytes, randomUUID } from 'node:crypto'
 import { promisify } from 'node:util'
 import { CLAUDE_CLIENT_ID, CLAUDE_TOKEN_URL, decodeJwtPayload, type Captured } from 'aliax-core'
+import { commandPathProbe, loginShell } from '../server/loginShell'
 
 const exec = promisify(execFile)
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms))
@@ -142,21 +143,22 @@ export function cursorLoginCancel(): void {
 
 let codexChild: ChildProcess | null = null
 
-/** Last stdout line from a login shell, so profile noise can't pollute it. */
-async function loginShell(cmd: string): Promise<string> {
-  const { stdout } = await exec('/bin/zsh', ['-lc', cmd])
+/** Last stdout line from the login shell, so profile noise can't pollute it. */
+async function loginShellLine(cmd: string): Promise<string> {
+  const { stdout } = await exec(loginShell(), ['-lc', cmd])
   return stdout.trim().split('\n').pop() ?? ''
 }
 
 export async function codexLogin(): Promise<void> {
-  // `whence -p`, not `which`: our own shell integration wraps codex in a
-  // function, and `which` prints that function's body instead of a path.
-  const bin = await loginShell('whence -p codex || true')
+  // `whence -p` / `type -P`, not `which`: our own shell integration wraps
+  // codex in a function, and `which` prints that function's body instead
+  // of a path.
+  const bin = await loginShellLine(`${commandPathProbe('codex')} || true`)
   if (!bin) throw new Error('codex CLI not found')
   // The npm/Homebrew `codex` is a node script (`#!/usr/bin/env node`). A GUI
   // app's PATH has no node, so spawning with our own environment made env fail
   // with the bare "exited 127". Hand it the login shell's PATH instead.
-  const PATH = await loginShell('echo "$PATH"')
+  const PATH = await loginShellLine('echo "$PATH"')
   await new Promise<void>((resolve, reject) => {
     codexChild = spawn(bin, ['login'], { stdio: 'ignore', env: { ...process.env, PATH } })
     codexChild.on('error', reject)

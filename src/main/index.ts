@@ -16,6 +16,7 @@ import { killTrackedChildren } from './server/spawnBudget'
 import { handleAssetRequest, pagesRoot, registerAssetProtocol, registerSchemes } from './assets'
 import { registerAppProtocol } from './appScheme'
 import { migrateLocalStorage } from './originMigration'
+import { isHeadless, noDisplay, publishLocalPort, unpublishLocalPort } from './headless'
 import { htmlPreviewer } from './htmlPreview'
 import { setHtmlPreviewer, setHtmlRenderRoot } from './server/htmlRender'
 import { killAllPtys, listPtys, ptyFlowCounters, registerPty } from './pty'
@@ -65,6 +66,15 @@ if (process.env.TEMP_CODE_USER_DATA) {
 if (process.env.TEMP_CODE_DEBUG_PORT) {
   app.commandLine.appendSwitch('remote-debugging-port', process.env.TEMP_CODE_DEBUG_PORT)
 }
+// An agent host with no desktop (headless.ts): no window, menu, dock or
+// updater, and no GPU worth probing. Without any display server at all,
+// Chromium's headless Ozone backend stands in for one so the hidden
+// preview window can still paint.
+const headless = isHeadless()
+if (headless) {
+  app.disableHardwareAcceleration()
+  if (noDisplay()) app.commandLine.appendSwitch('ozone-platform', 'headless')
+}
 
 // Two hard walls against sharing a database. A dev instance without its own
 // userData would open the installed app's database — a second SQLite writer
@@ -96,8 +106,9 @@ app.whenReady().then(async () => {
 
   // The packaged app's userData follows its product name (TempCode); the
   // years of dev-mode data live under the old package-name dir. First
-  // packaged boot copies the database over so nothing is lost.
-  if (app.isPackaged && !process.env.TEMP_CODE_USER_DATA) {
+  // packaged boot copies the database over so nothing is lost. The old dir
+  // is a macOS path, so only a Mac looks.
+  if (process.platform === 'darwin' && app.isPackaged && !process.env.TEMP_CODE_USER_DATA) {
     const dbPath = join(app.getPath('userData'), 'temp-code.db')
     const oldDir = join(homedir(), 'Library', 'Application Support', 'temp-code')
     if (!existsSync(dbPath) && existsSync(join(oldDir, 'temp-code.db'))) {
@@ -119,16 +130,18 @@ app.whenReady().then(async () => {
     claimShim: mayClaimShim({ isPackaged: app.isPackaged }),
     assets: handleAssetRequest
   })
-  registerUpdates()
+  if (!headless) registerUpdates()
   registerAliaxPages(server)
   registerPty()
   const { store } = server
   registerWindows({ dropSnapshot: (slot) => store.dropWorkspaceSnapshot(slot) })
   registerDialogs()
-  registerMenu()
-  registerDock()
+  if (!headless) {
+    registerMenu()
+    registerDock()
+  }
   if (!app.isPackaged) registerDebug()
-  if (process.platform === 'darwin') registerAppshots(server, createWindow)
+  if (process.platform === 'darwin' && !headless) registerAppshots(server, createWindow)
   ipcMain.handle('server-port', () => server?.port ?? null)
   ipcMain.handle('pick-directory', async (_e, defaultPath?: string) => {
     const res = await dialog.showOpenDialog({
@@ -141,17 +154,24 @@ app.whenReady().then(async () => {
     shell.showItemInFolder(path)
   })
 
-  // Before the first window reads localStorage on the app scheme: the
-  // file:// origin's entries move over once (originMigration.ts).
-  await migrateLocalStorage({
-    rendererDir: join(__dirname, '../renderer'),
-    userData: app.getPath('userData')
-  })
-  openSavedWindows()
+  if (headless) {
+    // No window: the local socket's port goes to a file for an operator on
+    // the host (scripts/box/tc-local.mjs); the renderer would get it over IPC.
+    const file = publishLocalPort(app.getPath('userData'), server.port)
+    console.log(`[headless] serving on 127.0.0.1:${server.port} (${file}); remote port ${server.remote?.port ?? 'off'}`)
+  } else {
+    // Before the first window reads localStorage on the app scheme: the
+    // file:// origin's entries move over once (originMigration.ts).
+    await migrateLocalStorage({
+      rendererDir: join(__dirname, '../renderer'),
+      userData: app.getPath('userData')
+    })
+    openSavedWindows()
+  }
   setTimeout(() => flushCompileCache(), FLUSH_AFTER_MS).unref()
 
   app.on('activate', function () {
-    activateWindows()
+    if (!headless) activateWindows()
   })
 })
 
@@ -181,9 +201,11 @@ function registerDebug(): void {
 
 // macOS keeps the app in the dock after the last window closes (the donor
 // does too); the kept slot comes back on the dock click. Elsewhere the last
-// window is the app.
+// window is the app. A headless host has no window to speak of: the only
+// ones it ever opens are html preview's hidden ones, and their going is
+// not a quit.
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') {
+  if (process.platform !== 'darwin' && !headless) {
     app.quit()
   }
 })
@@ -204,6 +226,7 @@ app.on('before-quit', (e) => {
   // and every helper process it started.
   // The shim marker goes back to Aliax first: the async close may not finish.
   releaseGateway()
+  if (headless) unpublishLocalPort(app.getPath('userData'))
   killAllPtys()
   void server?.close()
   killTrackedChildren()

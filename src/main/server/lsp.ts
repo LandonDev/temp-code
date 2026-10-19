@@ -23,6 +23,7 @@ import { harnessEnv, resolveAppBridgeLaunch } from './drivers/binaries'
 import { CRASH_WINDOW_MS, StderrTail, erroredEntryHolds, expiredBuildMessage } from './lspHealth'
 
 import { execFileBudgeted as execFileP, spawnTracked as spawn } from './spawnBudget'
+import { loginShell } from './loginShell'
 
 /**
  * The language-server pool (docs/PLAN-3.md M13). Servers run here as child
@@ -192,7 +193,7 @@ export function discoverJdks(): Promise<JavaRuntime[]> {
     }
     try {
       const env = await harnessEnv()
-      const { stdout } = await execFileP('/bin/zsh', ['-lc', 'command -v java'], { env })
+      const { stdout } = await execFileP(loginShell(), ['-lc', 'command -v java'], { env })
       const bin = stdout.trim().split('\n').at(-1)
       if (bin?.startsWith('/')) {
         const { stdout: real } = await execFileP('readlink', ['-f', bin]).catch(() => ({

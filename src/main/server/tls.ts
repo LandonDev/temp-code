@@ -108,6 +108,9 @@ export async function makeCertificate(dir: string, caName: string): Promise<void
   }
 }
 
-/** The one-time Keychain step, only for a terminal codex pointed at the app's own pair. */
-export const trustHint = (caPath: string): string =>
-  `security add-trusted-cert -d -r trustRoot -k ~/Library/Keychains/login.keychain-db "${caPath}"`
+/** The one-time trust step, only for a terminal codex pointed at the app's own
+ *  pair: the login Keychain on macOS, the CA env var codex reads elsewhere. */
+export const trustHint = (caPath: string, platform: NodeJS.Platform = process.platform): string =>
+  platform === 'darwin'
+    ? `security add-trusted-cert -d -r trustRoot -k ~/Library/Keychains/login.keychain-db "${caPath}"`
+    : `export CODEX_CA_CERTIFICATE="${caPath}"`

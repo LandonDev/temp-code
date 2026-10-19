@@ -3,6 +3,7 @@
  * credits and the foreground-process formatter can be tested directly.
  * Ported from MonoCode's `src-tauri/src/pty.rs`.
  */
+import { loginShell } from './server/loginShell'
 
 /** A busy shell hands us reads far faster than a webview can paint them. */
 export const PTY_CHUNK = 32 * 1024
@@ -70,7 +71,7 @@ export function defaultShell(
   platform: string,
   env: NodeJS.ProcessEnv
 ): { shell: string; args: string[] } {
-  const shell = env.SHELL || (platform === 'darwin' ? '/bin/zsh' : '/bin/bash')
+  const shell = loginShell(env, platform as NodeJS.Platform)
   return { shell, args: loginArgs(shell) }
 }
 

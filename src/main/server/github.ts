@@ -5,6 +5,7 @@ import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { harnessEnv, resolveBinary } from './drivers/binaries'
 import { execFileBudgeted } from './spawnBudget'
+import { loginShell } from './loginShell'
 
 export type GitHubTaskKind = 'issue' | 'pr'
 
@@ -199,8 +200,7 @@ let interactivePathPromise: Promise<string | null> | null = null
 
 function interactiveShellPath(): Promise<string | null> {
   interactivePathPromise ??= (async () => {
-    const shell = process.env.SHELL || (process.platform === 'darwin' ? '/bin/zsh' : '/bin/bash')
-    const result = await runCommand(shell, ['-lic', 'printenv PATH'], {
+    const result = await runCommand(loginShell(), ['-lic', 'printenv PATH'], {
       env: process.env,
       timeout: LOGIN_SHELL_TIMEOUT_MS,
       maxBuffer: 1024 * 1024

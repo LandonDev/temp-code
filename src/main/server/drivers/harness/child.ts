@@ -6,6 +6,7 @@ import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { createInterface } from 'node:readline'
 import { harnessEnv as baseHarnessEnv, loginPath, resolveBinary } from '../binaries'
+import { loginShell } from '../../loginShell'
 
 /**
  * Child-process bridge for the ported harness engines (fx, grok, pi, omp,
@@ -49,7 +50,7 @@ let loginEnvP: Promise<Record<string, string>> | null = null
 /** The user's interactive-shell exports (`-lic`: .zshrc is where people
  *  put API keys), filtered to LOGIN_ENV_KEYS. Read once. */
 function loginEnv(): Promise<Record<string, string>> {
-  loginEnvP ??= run(process.env.SHELL || '/bin/zsh', ['-lic', 'printenv'], { timeoutMs: 10_000 })
+  loginEnvP ??= run(loginShell(), ['-lic', 'printenv'], { timeoutMs: 10_000 })
     .then(({ stdout }) => {
       const env: Record<string, string> = {}
       for (const line of stdout.split('\n')) {

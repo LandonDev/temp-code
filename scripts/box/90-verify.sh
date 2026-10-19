@@ -53,12 +53,21 @@ su - agents -c 'bun --version'
 fail2ban-client status sshd
 curl -fsS http://127.0.0.1:20241/ready | jq -e '.status==200 and .readyConnections>0' >/dev/null
 [[ ! -f /etc/cloudflared/cert.pem ]] || die 'Origin certificate should stay on Mac'
+systemctl is-active --quiet temp-code || die 'temp-code.service inactive'
+systemctl is-enabled --quiet temp-code || die 'temp-code.service not enabled'
+[[ $(systemctl show temp-code -p Slice --value) == agents.slice ]] || die 'temp-code outside agents.slice'
+[[ $(systemctl show temp-code -p User --value) == agents ]] || die 'temp-code not running as agents'
+curl -fsS --max-time 5 http://127.0.0.1:7677/healthz | grep -qx ok || die 'temp-code listener not answering on 7677'
+[[ $(stat -c '%a:%U:%G' /etc/temp-code.env) == 600:root:root ]] || die '/etc/temp-code.env mode'
+grep -q '^temp-code ' /sys/kernel/security/apparmor/profiles || die 'temp-code AppArmor profile not loaded'
+echo 'PASS: temp-code.service enabled, active, as agents in agents.slice, listener on 7677'
 for timer in box-backup box-heartbeat; do
   [[ $(systemctl show "$timer.timer" -p LoadState --value) == loaded ]] || die "$timer timer not loaded"
   printf 'SCAFFOLD: %s.timer enabled=%s active=%s\n' "$timer" "$(systemctl is-enabled "$timer.timer" || true)" "$(systemctl is-active "$timer.timer" || true)"
 done
 systemd-analyze verify /etc/systemd/system/agents.slice /etc/systemd/system/prod.slice \
   /etc/systemd/system/box-backup.service /etc/systemd/system/box-backup.timer \
-  /etc/systemd/system/box-heartbeat.service /etc/systemd/system/box-heartbeat.timer
+  /etc/systemd/system/box-heartbeat.service /etc/systemd/system/box-heartbeat.timer \
+  /etc/systemd/system/temp-code.service
 [[ -z $(dpkg --audit) ]] || die 'dpkg audit failed'
 echo 'PASS: host baseline verified (Electron proof runs in stage 55)'
