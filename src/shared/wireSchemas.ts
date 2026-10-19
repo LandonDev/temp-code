@@ -11,6 +11,7 @@ import {
 } from './catalog'
 import type { Capability } from './capabilities'
 import type { QueuedMessage, ServerPush } from './contract'
+import type { FsMedia } from './contract-fsgit'
 import {
   AudienceSchema,
   CapabilitySchema,
@@ -400,6 +401,15 @@ export const TicketResponseSchema = z.object({ ticket: z.string(), expiresIn: z.
 /** Any `/api/*` failure body. */
 export const HttpErrorSchema = z.object({ error: z.string() })
 
+/** fs.media: a file the viewer shows as media, served over `tempcode-asset://file` (and `/asset/file` remotely). */
+export const FsMediaSchema = z.object({
+  kind: z.enum(['image', 'video', 'audio']),
+  mime: z.string(),
+  url: z.string(),
+  size: z.number().int(),
+  mtimeMs: z.number()
+})
+
 export type HelloResponse = z.infer<typeof HelloResponseSchema>
 export type PairKeyResponse = z.infer<typeof PairKeyResponseSchema>
 export type TicketResponse = z.infer<typeof TicketResponseSchema>
@@ -515,6 +525,7 @@ export type WireSchemaPins = [
   Expect<Mirror<typeof RemoteKeySchema, RemoteKey>>,
   Expect<Mirror<typeof RemotePairingSchema, RemotePairing>>,
   Expect<Mirror<typeof RemoteSessionSchema, RemoteSession>>,
+  Expect<Mirror<typeof FsMediaSchema, FsMedia>>,
   Expect<Mirror<typeof BuildOutputSchema, BuildOutput>>,
   Expect<Equal<z.infer<typeof BuildRunSchema>['status'], BuildStatus>>,
   Expect<Mirror<typeof BuildRunSchema, BuildRun>>,

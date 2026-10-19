@@ -964,6 +964,48 @@ public struct HttpError: Codable, Hashable, Sendable {
     }
 }
 
+public struct FsMedia: Codable, Hashable, Sendable {
+    public enum Kind: RawRepresentable, Codable, Hashable, Sendable {
+        case image
+        case video
+        case audio
+        /// A value this build does not know; `rawValue` keeps it.
+        case unknown(String)
+
+        public init(rawValue: String) {
+            switch rawValue {
+            case "image": self = .image
+            case "video": self = .video
+            case "audio": self = .audio
+            default: self = .unknown(rawValue)
+            }
+        }
+
+        public var rawValue: String {
+            switch self {
+            case .image: "image"
+            case .video: "video"
+            case .audio: "audio"
+            case .unknown(let value): value
+            }
+        }
+    }
+
+    public let kind: Kind
+    public let mime: String
+    public let url: String
+    public let size: Int
+    public let mtimeMs: Double
+
+    public init(kind: Kind, mime: String, url: String, size: Int, mtimeMs: Double) {
+        self.kind = kind
+        self.mime = mime
+        self.url = url
+        self.size = size
+        self.mtimeMs = mtimeMs
+    }
+}
+
 public struct LiveEdit: Codable, Hashable, Sendable {
     public struct Edit: Codable, Hashable, Sendable {
         public enum Kind: RawRepresentable, Codable, Hashable, Sendable {

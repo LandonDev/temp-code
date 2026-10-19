@@ -65,6 +65,20 @@ public enum Methods {
         public typealias Output = String
     }
 
+    public enum FsMedia: ContractMethod {
+        public static let name = "fs.media"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public let path: String
+
+            public init(path: String) {
+                self.path = path
+            }
+        }
+
+        public typealias Output = TempCodeContract.FsMedia?
+    }
+
     public enum SessionList: ContractMethod {
         public static let name = "session.list"
 

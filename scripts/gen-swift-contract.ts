@@ -120,6 +120,7 @@ export const SUBSET: SubsetEntry[] = [
   type('PairKeyResponse', W.PairKeyResponseSchema),
   type('TicketResponse', W.TicketResponseSchema),
   type('HttpError', W.HttpErrorSchema),
+  type('FsMedia', W.FsMediaSchema),
   // pushes
   type('LiveEdit', W.LiveEditSchema),
   type('BuildOutput', W.BuildOutputSchema),
@@ -132,6 +133,7 @@ export const SUBSET: SubsetEntry[] = [
   method('project.list', z.array(W.ProjectMetaSchema)),
   method('project.changes', z.array(W.FileChangeSchema)),
   method('project.diff', z.string()),
+  method('fs.media', W.FsMediaSchema.nullable()),
   method('session.list', W.SessionPageSchema),
   method('session.events', W.EventsPageSchema),
   method('session.rowBody', z.object({ row: W.EventRowSchema })),
