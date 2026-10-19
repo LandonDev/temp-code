@@ -37,6 +37,7 @@ Unattended-Upgrade::Allowed-Origins {
     "${distro_id}:${distro_codename}-security";
 };
 Unattended-Upgrade::Automatic-Reboot "false";
+Unattended-Upgrade::Automatic-Reboot-WithUsers "false";
 EOF
 service_on unattended-upgrades.service
 service_on apt-daily.timer

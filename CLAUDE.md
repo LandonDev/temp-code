@@ -194,11 +194,13 @@ routed to (aliax-core's `forward`). Two listeners:
   is headless on its own. In that mode the local socket's port is published
   in `<userData>/server.json` and `scripts/box/tc-local.mjs` speaks to it as
   the implicit admin (`tc-local remote.pairings.create …` on the box).
-- The box (`ssh box`, docs/box.md) runs temp-code from `/srv/agents/temp-code`
+- The box (`ssh box`, docs/box.md) runs temp-code from
+  `/srv/agents/temp-code-builds/current`
   as `temp-code.service` (agents user, agents.slice, Xvfb, a private D-Bus),
   data in `/srv/agents/temp-code-data`, env in `/etc/temp-code.env`; the
   tunnel maps `tempcode.landonhale.com` to its 7677. Deploy a ref with
-  `scripts/box/apply.sh --from 85 --through 90`; proof from the Mac is
+  `ssh box 'box-update master'` (build → trial → snapshot → commit, with
+  rollback on failure); stage 85 installs the launcher without restarting. Proof from the Mac is
   `bun scripts/e2e-box-remote.ts`. Every "ask the login shell" call goes
   through src/main/server/loginShell.ts (`$SHELL`, else zsh on macOS, bash
   elsewhere): never hardcode /bin/zsh.

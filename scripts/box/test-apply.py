@@ -20,6 +20,7 @@ with tempfile.TemporaryDirectory(prefix="box-apply-test-") as root:
         p.chmod(0o755)
     env = dict(os.environ, PATH=str(root) + ":" + os.environ["PATH"])
     for start, end, expected in (
+        (75, 85, [75, 80, 85]),
         (100, 190, [100, 110, 120, 130, 140, 150, 190]),
         (120, 130, [120, 130]),
         (190, 190, [190]),

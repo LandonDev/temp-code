@@ -8,9 +8,15 @@ source /etc/box-heartbeat.env
 [[ ${BOX_HEARTBEAT_TOKEN:-} =~ ^[A-Za-z0-9._~-]+$ ]] || { echo 'ERROR: BOX_HEARTBEAT_TOKEN unset' >&2; exit 1; }
 host_id=${BOX_HEARTBEAT_URL#*/v1/hosts/}; host_id=${host_id%/heartbeat}
 url=${BOX_HEARTBEAT_URL%/v1/hosts/*}/v1/notify
-reason=$(journalctl -u box-backup.service -n 8 --no-pager -o cat 2>/dev/null | tail -c 600 | tr -d '\0' || true)
-payload=$(jq -nc --arg host "$host_id" --arg body "${reason:-see journalctl -u box-backup}" --argjson ts "$(date +%s%3N)" \
-  '{event:"failed",hostId:$host,title:"Box backup failed",body:$body,ts:$ts}')
+case ${1:-backup} in
+  backup) unit=box-backup; title='Box backup failed' ;;
+  restore-drill) unit=box-restore-drill; title='Box restore drill failed' ;;
+  restic-check) unit=box-restic-check; title='Box monthly restic check failed' ;;
+  *) exit 2 ;;
+esac
+reason=$(journalctl -u "$unit.service" -n 8 --no-pager -o cat 2>/dev/null | tail -c 600 | tr -d '\0' || true)
+payload=$(jq -nc --arg host "$host_id" --arg body "${reason:-see journalctl -u box-backup}" --arg title "$title" --argjson ts "$(date +%s%3N)" \
+  '{event:"failed",hostId:$host,title:$title,body:$body,ts:$ts}')
 printf 'header = "Authorization: Bearer %s"\n' "$BOX_HEARTBEAT_TOKEN" |
   curl --config - --fail --silent --show-error --output /dev/null \
     --connect-timeout 5 --max-time 15 --retry 2 --proto '=https' \

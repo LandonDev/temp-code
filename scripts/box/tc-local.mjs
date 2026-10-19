@@ -26,9 +26,16 @@ const timer = setTimeout(() => {
   console.error(`tc-local: no answer to ${method} in ${timeoutMs} ms`)
   process.exit(1)
 }, timeoutMs)
-ws.addEventListener('open', () => ws.send(JSON.stringify({ id: 'tc-local', method, params })))
+ws.addEventListener('open', () => {
+  if (method !== '--hello') ws.send(JSON.stringify({ id: 'tc-local', method, params }))
+})
 ws.addEventListener('message', (event) => {
   const frame = JSON.parse(String(event.data))
+  if (method === '--hello' && frame.push === 'hello') {
+    clearTimeout(timer)
+    console.log(JSON.stringify(frame, null, 2))
+    process.exit(0)
+  }
   if (frame.id !== 'tc-local') return
   clearTimeout(timer)
   if (frame.ok) {

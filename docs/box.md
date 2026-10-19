@@ -23,7 +23,13 @@ Scripts report `CHANGED` or `SKIP`. They stop on errors. State markers live in
 `/var/lib/box-baseline`. The first successful full upgrade runs once; daily
 unattended upgrades then install Ubuntu security updates. To run another full
 upgrade, use `ssh box 'apt-get update && apt-get -y full-upgrade'` during a
-maintenance window. Automatic reboot is off. Check `/var/run/reboot-required`.
+maintenance window. Automatic reboot is off: stage 10 and stage 75 write
+`Unattended-Upgrade::Automatic-Reboot "false";` to
+`/etc/apt/apt.conf.d/99-box-security`; stage 90 checks the effective APT value.
+Check `/var/run/reboot-required`. To schedule a reboot, choose a maintenance
+window, let active agent work finish, check backups, then run, for example,
+`ssh box 'shutdown -r 02:00 "Planned maintenance"'` (02:00 New York time).
+Cancel with `ssh box 'shutdown -c'`. The scripts never schedule a reboot.
 
 Root SSH policy lives in `/etc/ssh/sshd_config.d/00-box-baseline.conf`:
 `PasswordAuthentication no`, `KbdInteractiveAuthentication no`, and
@@ -169,16 +175,38 @@ alone cannot read them.
 - Check: `systemctl list-timers box-backup.timer`,
   `journalctl -u box-backup.service`, and as root
   `set -a; source /etc/restic/box.env; set +a; restic snapshots`.
-- Restore drill (done once on 2026-10-19, repeat after any change):
-  `restic restore latest --target /srv/prod/restore-check --include /srv/agents/backups/sqlite`,
-  then `sqlite3 <file> 'PRAGMA quick_check'`, then remove the target.
+- `box-restore-drill.timer` runs Sundays at 06:00 New York, after the daily
+  backup's 04:15 start and 20-minute jitter. `After=box-backup.service` and a
+  shared lock wait for a backup still running at 06:00. It restores only the
+  latest daily SQLite snapshots from R2 into a private scratch directory under
+  `/srv/agents/backups`, runs `PRAGMA quick_check`, and compares both the
+  `sqlite_master` row count and all user-table row counts with the snapshots
+  on disk. Missing files or a mismatch fail the drill. An EXIT trap removes
+  scratch data on success or failure. It never restores over live data.
+- `box-restic-check.timer` runs on the first of each month at 08:00 New York:
+  `restic check --read-data-subset=5%`. Daily checks still check metadata.
+  Restic chooses a random 5% sample; this does not promise full coverage in
+  twenty runs. See [restic's check guide](https://restic.readthedocs.io/en/stable/045_working_with_repos.html#checking-integrity-and-consistency).
+- Both timers are persistent and enabled by `75-backup-maintenance.sh`.
+  Their services run in `agents.slice`, share the backup lock, and fire
+  sibling failure units through the existing hub notification script. The
+  event is `failed`, with title `Box restore drill failed` or
+  `Box monthly restic check failed`. Check or run them now:
+
+```sh
+scripts/box/apply.sh --from 75 --through 75
+ssh box 'systemctl start box-restore-drill.service'
+ssh box 'journalctl -u box-restore-drill.service -n 20 --no-pager'
+ssh box 'systemctl start box-restic-check.service'
+ssh box 'systemctl list-timers box-restore-drill.timer box-restic-check.timer'
+```
 
 The Mac side is scripts/mac/backup.sh installed by scripts/mac/install-backup.sh
 as the launchd agent `dev.landon.tempcode.backup` (03:30 daily, log in
 `~/Library/Logs/tempcode-backup.log`): same snapshot step over
 `~/Library/Application Support/temp-code`, including `checkpoints/`.
 
-## Heartbeat (installed, disabled)
+## Heartbeat scaffold (initial install; live state below)
 
 `/usr/local/bin/box-heartbeat` sends a small JSON POST containing hostname and
 UTC time. `box-heartbeat.timer` is installed but disabled; no hub request was
@@ -193,10 +221,9 @@ minute, with up to 10 seconds of jitter. Reapply preserves the live env file.
 ## Next threads
 
 - **C — temp-code under Xvfb:** done; see "temp-code service" below.
-- **U — launcher:** run app child processes as agents within `agents.slice`;
-  use the lingering user manager or an explicit system unit. Do not use root
-  or the Docker socket. Preserve the 7677 listener and app data while adding
-  update and rollback handling. Bun's path is `/srv/agents/home/.bun/bin/bun`.
+- **U — launcher:** done; use `box-update`, described in "Updating" below.
+  Builds, trials and the service run as agents in `agents.slice`. SQLite
+  snapshots, weekly restore drills and monthly data checks are installed.
 - **I — Coolify:** use prod and Docker, `/srv/prod`, and `prod.slice`.
   Keep the Docker cgroup parent, log limits, socket permissions, and inbound
   fence. Route dashboard and sites through the tunnel to loopback origins;
@@ -212,7 +239,7 @@ nginx container on port 18080 to test loopback access, its production cgroup,
 and the inbound firewall from the Mac; its exit trap removes that container.
 The test never adds a UFW rule. The downloaded test image may remain cached.
 
-Live checks on 2026-10-19:
+Baseline checks on 2026-10-19, before the app and backups went live:
 
 | Check | Result |
 | --- | --- |
@@ -241,12 +268,16 @@ attachment, R2 upload, or hub POST occurred.
 ## User steps
 
 - Rotate the root password in the ReliableSite panel.
-- Optional: attach Ubuntu Pro with your own token and enable Livepatch. No
-  Pro subscription or token was attached by these scripts.
-- Supply R2 bucket credentials and a restic encryption password in the paths
-  above, test a restore, then enable backups.
-- When the hub ships, set its HTTPS URL and token, test a heartbeat, then
-  enable that timer.
+## Ubuntu Pro
+
+This box does not need `ubuntu-pro` attached to run temp-code. Ubuntu 24.04's
+standard Main security support lasts until May 2029; Pro adds Canonical's
+Universe security coverage and Livepatch, which can reduce kernel reboots.
+Those may help this host, but Pro does not cover the Bun/npm app dependencies
+or replace planned reboots and backups. The host remains unattached; no token
+was supplied. Revisit it if broader package coverage or compliance becomes a
+need. See [Ubuntu's support dates](https://ubuntu.com/about/release-cycle) and
+[Pro's services](https://ubuntu.com/pro/docs/services-overview/).
 
 ## Heartbeat (live since 2026-10-19)
 
@@ -262,30 +293,24 @@ gets it on its own.
 
 | Piece | Where |
 | --- | --- |
-| Checkout | `/srv/agents/temp-code`, owned by agents, detached at the deployed commit |
+| Builds | `/srv/agents/temp-code-builds/<sha>-<UTC time>-<suffix>`, owned by agents, detached at the deployed commit |
+| Active and rollback links | `/srv/agents/temp-code-builds/current` and `previous`; their parent directory is root-owned |
+| Original v235 checkout | `/srv/agents/temp-code`, retained while a release link points at it |
 | Data (database, environment.json, tls, server.json) | `/srv/agents/temp-code-data`, mode 700 |
 | Unit | `/etc/systemd/system/temp-code.service`: `User=agents`, `Slice=agents.slice`, `Restart=always`, `LimitNOFILE=1048576` |
-| ExecStart | `scripts/box/temp-code-run.sh`: `env -u ELECTRON_RUN_AS_NODE xvfb-run -a … dbus-run-session -- node_modules/electron/dist/electron .` |
+| ExecStart | `/usr/local/lib/temp-code/run`, with `WorkingDirectory=/srv/agents/temp-code-builds/current`; `env -u ELECTRON_RUN_AS_NODE xvfb-run -a … dbus-run-session -- node_modules/electron/dist/electron .` |
 | Environment | `/etc/temp-code.env` (root, 600, managed): `TEMP_CODE_USER_DATA=/srv/agents/temp-code-data`, `TEMP_CODE_HEADLESS=1`, `TEMP_CODE_CLAIM_SHIM=1`, `AGENT_CLI_CREDENTIAL_STORE=file`, `TEMP_CODE_REMOTE_PORT=7677`, `NODE_ENV=production`, `SHELL=/bin/bash` |
 | Secrets | `/etc/temp-code.secrets.env` (root, 600, optional, never written by the scripts); the unit reads it when present |
-| AppArmor | `/etc/apparmor.d/temp-code` grants userns to the checkout's Electron, like the stage 55 proof |
-| Local admin | `tc-local <method> [json]` (`/usr/local/bin`, runs `scripts/box/tc-local.mjs`) over the port in `<data>/server.json` |
+| AppArmor | `/etc/apparmor.d/temp-code` grants userns to Electron in the original checkout and each release build; the renderer keeps its sandbox |
+| Local admin | `tc-local <method> [json]` or `tc-local --hello` (`/usr/local/bin`, runs the installed copy of `scripts/box/tc-local.mjs`) over the port in `<data>/server.json` |
 | Logs | `journalctl -u temp-code` |
 
-Stage `85-temp-code.sh` installs all of it and is safe to rerun:
-
-```sh
-scripts/box/apply.sh --from 85 --through 90        # deploy origin/master, verify
-TEMP_CODE_REF=v1.0.240 scripts/box/apply.sh --from 85 --through 85   # a tag or sha
-```
-
-It fetches, checks out the ref detached and resets the tree hard, runs
-`bun install --frozen-lockfile`, fetches Electron's binary and rebuilds
-node-pty against it (bun runs no dependency lifecycle scripts), runs
-`electron-vite build` (the renderer is what `/ui` serves), and restarts the
-unit when the build, the env file or the unit changed. `TEMP_CODE_REF=local`
-builds the tree as it sits, for a tree synced by hand. Stage 90 checks the
-unit, its slice and user, the listener and the AppArmor profile.
+Stage `85-temp-code.sh` installs the launcher, runner, local client, unit,
+AppArmor profile and sudo rule. Reapplying it never starts or restarts the
+service. `box-update` owns deployment and the first service start. Builds and
+trials use transient units with `User=agents`, `Slice=agents.slice`; no build,
+package script or app runs as root. Root changes links and restarts only
+`temp-code.service`.
 
 Why the private bus: handed the agents user's session bus, Chromium registers
 with that user's systemd and moves the main process into
@@ -312,9 +337,11 @@ link within ten minutes:
 tc-local remote.pairings.create '{"name":"Landon phone","audience":"client","caps":["operate","approve"]}'
 ```
 
-Proofs from the Mac: `TC_PAIR_CODES=<code1>,<code2> bun scripts/e2e-box-remote.ts`
-(hello, bearer key, ticket, the socket on the ticket, Chrome on `/pair`, the
-Secure cookie, the socket on the cookie, the Access gate on `/ui`). The
+Proof from the Mac: `bun scripts/e2e-box-remote.ts`. It mints two read-only
+pairings over key SSH without printing their codes, checks HTTP hello, bearer
+and cookie sockets (including contract), Chrome's `/pair` flow, the Secure
+cookie and the Access gate on `/ui`, then revokes its test credentials. For
+another origin, supply `TC_ORIGIN` and two `TC_PAIR_CODES` explicitly. The
 gateway's own proofs run on the box against fake upstreams:
 `bun run script:e2e-gateway-unauthorized` and `script:e2e-gateway-failover`
 in the checkout as agents. The hidden preview window is proven with
@@ -340,10 +367,151 @@ create a workspace (`workspace.create` with a path under `/srv/agents/work`),
 a thread (`session.create`, provider `claude`, model `claude-haiku-5-5` or the
 cheapest Codex row, reasoning `low`), and `session.send` a one-line prompt;
 the reply row arrives in `/ui`. API keys for the other providers go in
-`/etc/temp-code.secrets.env`, then `systemctl restart temp-code`.
+`/etc/temp-code.secrets.env`, then redeploy with `sudo box-update <ref>` so
+the service reads them through the checked commit/rollback path.
 
 Still darwin-only by design: appshots, the Aliax browser-cookie sign-ins,
 the IntelliJ engine's pinned artifact (`lsp.ts` has only `darwin-arm64`; the
 Linux pin waits for a build that has not expired), and vibrancy. Known gap:
 the local socket is the implicit admin for any process on the box's loopback,
 as on a Mac; the box has only `prod` as another user.
+
+## Updating
+
+For a ref already on GitHub, run from the Mac:
+
+```sh
+ssh box 'box-update master'
+# Or pin a published tag or commit:
+ssh box 'box-update v1.0.N'   # replace N with a tag published on GitHub
+# As landon on the host:
+sudo /usr/local/sbin/box-update master
+```
+
+`box-update` clones the GitHub repo into a fresh build directory and fetches
+that ref. As agents, it runs `bun install --frozen-lockfile`, installs
+Electron's binary, rebuilds native dependencies, then runs `electron-vite
+build`. It starts a headless trial with a private HOME, userData, TMPDIR,
+Xvfb and free loopback `TEMP_CODE_REMOTE_PORT`. The trial cannot claim the
+live Aliax shim. The check requires `/healthz`, an HTTP hello with the built
+version and contract, a matching local WebSocket hello, `tc-local session.list`,
+and a remote pairing → bearer → ticket → socket `session.list`. Probe keys
+are revoked. A failed build or trial leaves `current` and the live PID alone.
+The launcher also refuses an older version after trial: a stale GitHub master
+cannot silently replace a newer local deployment. Publish the green master
+through the project's normal flow, or use the bundle commands below.
+
+After trial success, the launcher takes `VACUUM INTO` snapshots of every live
+SQLite database as agents, checks them, and keeps the last three complete
+snapshot directories under `/srv/agents/backups/pre-update`. Each database
+has its own consistent read transaction; the daily backup and restore drill
+share the snapshot lock. It atomically points `previous` at the old build,
+then `current` at the new build, and restarts `temp-code.service`. It repeats
+all checks on 7677, including version and contract. This is the on-box check;
+the Mac's public-path proof is a separate required operator check:
+
+```sh
+scripts/box/apply.sh --from 90 --through 90
+bun scripts/e2e-box-remote.ts
+ssh box 'tc-local --hello; tc-local remote.status; curl -fsS http://127.0.0.1:7677/api/hello'
+```
+
+Any failure after the switch restores the old links, restarts the old binary,
+verifies it, and exits nonzero. A root-owned pending record in
+`/var/lib/box-baseline/temp-code-update.pending` lets the next invocation
+recover an interrupted switch before taking another ref. If rollback itself
+fails, the record remains: inspect the service journal and repair the old
+build before rerunning. The launcher keeps the two newest successful builds
+plus any build named by `current` or `previous`; failed candidates are removed.
+No update touches Docker, `/srv/prod`, cloudflared or the tunnel.
+
+Database migrations are forward-only: the app only adds tables and columns
+with defaults. Rolling back a binary therefore needs no database restore.
+If a future change drops, renames or rewrites existing data, stop using this
+assumption: require a migration compatibility check before deployment, drain
+writers, and define and test a database restore or reverse migration before
+allowing the new binary to commit. Never restore SQLite over a running host.
+
+Install or refresh launcher files without deploying:
+
+```sh
+scripts/box/apply.sh --from 75 --through 75
+scripts/box/apply.sh --from 85 --through 85
+```
+
+For green local master commits that are not on GitHub yet, transfer a bundle
+of that same repo instead of pushing from an implementation thread:
+
+```sh
+git bundle create /tmp/temp-code-master.bundle master
+scp /tmp/temp-code-master.bundle box:/var/lib/box-baseline/temp-code-master.bundle
+ssh box 'chmod 644 /var/lib/box-baseline/temp-code-master.bundle; BOX_UPDATE_BUNDLE=/var/lib/box-baseline/temp-code-master.bundle box-update master'
+ssh box 'rm /var/lib/box-baseline/temp-code-master.bundle'
+rm /tmp/temp-code-master.bundle
+```
+
+The bundle must be root-owned and readable by agents. The launcher still
+clones the GitHub repo, then fetches the requested ref from this explicit
+bundle for that invocation only. The usual command continues to fetch GitHub.
+
+Failure proofs (these intentionally return nonzero):
+
+```sh
+# This published pre-headless ref builds but fails the scratch trial:
+ssh box 'box-update v1.0.228'
+# Force a one-shot post-flip verification failure, then verify rollback:
+ssh box 'touch /run/temp-code-update-force-post-flip-failure; box-update master'
+ssh box 'tc-local --hello; curl -fsS http://127.0.0.1:7677/api/hello'
+```
+
+The fault file is root-only and the launcher consumes it after the post-flip
+probe. Remove it manually if a build/trial fails before the switch. Keep full
+launcher output in a private host log when collecting these proofs.
+
+### U verification, 2026-10-19
+
+Full logs are root-only on the box:
+`/var/log/temp-code-update-trial-failure.log`,
+`/var/log/temp-code-update-rollback.log`, and
+`/var/log/temp-code-update-success.log`. These excerpts contain no keys or
+pairing codes. GitHub master was still v235, so the v240 tests fetched a
+bundle of local master `93abb331b19c873892334125bf4efd8093c50a08`.
+
+```text
+BUILD: v1.0.228 ee10b8ec578e8beaa1df93d9d7f50ef0b9a56e33
+ERROR: health/socket check failed on 41521
+ERROR: update of v1.0.228 rejected before switch (exit 1); current unchanged
+exit=1
+MainPID=2320
+
+TRIAL PASS: 1.0.240 1 port=34855 sha=93abb331b19c873892334125bf4efd8093c50a08
+SNAPSHOT PASS: /srv/agents/backups/pre-update/20261019T184650-130124
+COMMIT: current=93abb331b19c873892334125bf4efd8093c50a08-20261019T184615-oHfZAP previous=temp-code
+ERROR: forced post-flip health-check failure
+ERROR: update of master failed after flip (exit 1)
+ROLLBACK: restoring temp-code
+ROLLBACK PASS: 1.0.235 1 current=/srv/agents/temp-code
+exit=1
+
+TRIAL PASS: 1.0.240 1 port=33951 sha=93abb331b19c873892334125bf4efd8093c50a08
+SNAPSHOT PASS: /srv/agents/backups/pre-update/20261019T184743-133705
+COMMIT: current=93abb331b19c873892334125bf4efd8093c50a08-20261019T184707-DEXWRK previous=temp-code
+COMMIT PASS: 1.0.240 1 sha=93abb331b19c873892334125bf4efd8093c50a08
+exit=0
+
+PASS: temp-code-cold.db quick_check=ok sqlite_master=2 table-counts=1 match disk
+PASS: temp-code.db quick_check=ok sqlite_master=24 table-counts=11 match disk
+RESTORE DRILL PASS: snapshot=664579b8387a93ebdea66d1103b225d9e74f299b0c44e1dc62da2c98af699e4b
+MONTHLY CHECK PASS: 5% of repository data read
+```
+
+The live environment remained `env_AXPf_aVGh7kfe4eydhNdVQ`, contract 1.
+`tc-local --hello`, `tc-local session.list`, and
+`tc-local remote.environments.list` passed; the deployed tree contains
+`remote/webhooks.ts`, the connection runtime, and `ios/TempCodeContract`.
+Stage 90 passed through `apply.sh`; the Mac e2e passed HTTP, ticket and cookie
+sockets, Chrome pairing, secure cookie flags, the Access gate, and credential
+cleanup. Local gates passed typecheck, 2,747 Vitest tests, 12 hub tests,
+20 Swift tests, and the production build. The `/ui` renderer remains behind
+Access; this run proved its gate and cookie/socket flow, not a signed-in
+renderer session.

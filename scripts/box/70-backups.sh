@@ -22,6 +22,8 @@ put /etc/restic/excludes 600 <<'EOF'
 **/Code Cache
 **/GPUCache
 /srv/agents/temp-code
+/srv/agents/temp-code-builds
+/srv/agents/.temp-code-trial-*
 /srv/agents/temp-code-data/*.db
 /srv/agents/temp-code-data/*.db-wal
 /srv/agents/temp-code-data/*.db-shm
@@ -32,6 +34,7 @@ put /etc/restic/excludes 600 <<'EOF'
 /srv/agents/home/.bun
 /srv/agents/home/.cache
 EOF
+put /usr/local/sbin/box-sqlite-snapshot 750 < "$BOX_DIR/sqlite-snapshot.sh"
 put /usr/local/sbin/box-backup 750 < "$BOX_DIR/restic-backup.sh"
 put /usr/local/sbin/box-backup-failed 750 < "$BOX_DIR/backup-failed.sh"
 put /etc/systemd/system/box-backup-failed.service <<'EOF'

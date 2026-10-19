@@ -2,15 +2,12 @@
 # temp-code as an always-on agent host (docs/box.md "temp-code service"):
 # the CLIs the drivers spawn, the checkout and its build, an AppArmor
 # userns grant for its Electron, /etc/temp-code.env, and temp-code.service
-# in agents.slice. Re-runnable. TEMP_CODE_REF picks the ref to deploy
-# (default master); TEMP_CODE_REF=local builds the tree as it sits.
+# in agents.slice. Re-runnable; installs only, box-update deploys a ref.
 set -euo pipefail
 source "$(dirname "$0")/lib.sh"
 AGENTS_HOME=/srv/agents/home
 CHECKOUT=/srv/agents/temp-code
 DATA=/srv/agents/temp-code-data
-REPO=${TEMP_CODE_REPO:-https://github.com/LandonDev/temp-code}
-REF=${TEMP_CODE_REF:-master}
 MIN_CODEX=0.162.1
 AGENTS_PATH="$AGENTS_HOME/.local/bin:$AGENTS_HOME/.npm-global/bin:$AGENTS_HOME/.bun/bin:/usr/local/bin:/usr/bin:/bin"
 as_agents() { runuser -u agents -- env HOME="$AGENTS_HOME" PATH="$AGENTS_PATH" "$@"; }
@@ -21,7 +18,7 @@ dir_as() {
     install -d -o agents -g agents -m "$mode" "$dir"; changed "$dir"
   else skip "$dir"; fi
 }
-restart=0 reload=0
+reload=0
 
 dir_as "$AGENTS_HOME/.local" 750
 dir_as "$AGENTS_HOME/.local/bin" 750
@@ -50,48 +47,37 @@ if ! as_agents test -x "$AGENTS_HOME/.local/bin/cursor-agent"; then
   else echo 'WARN: cursor-agent did not install; the cursor driver stays unavailable'; fi
 else skip "cursor-agent $(as_agents cursor-agent --version 2>/dev/null | head -1)"; fi
 
-# -- the checkout: a deploy copy pinned to $REF, reset hard on every change.
-if [[ $REF == local ]]; then
-  [[ -f $CHECKOUT/package.json ]] || die "$CHECKOUT has no tree to build"
-  tree="local-$(date +%s)"
-else
-  if [[ ! -d $CHECKOUT/.git ]]; then
-    [[ ! -e $CHECKOUT ]] || die "$CHECKOUT exists without .git: move it aside, or use TEMP_CODE_REF=local"
-    as_agents git clone -q "$REPO" "$CHECKOUT"
-    changed "cloned $REPO"
-  fi
-  as_agents git -C "$CHECKOUT" fetch -q origin
-  target=$(as_agents git -C "$CHECKOUT" rev-parse --verify -q "origin/$REF" ||
-           as_agents git -C "$CHECKOUT" rev-parse --verify -q "$REF^{commit}") || die "unknown ref $REF"
-  if [[ $(as_agents git -C "$CHECKOUT" rev-parse HEAD) != "$target" ]] || [[ -n $(as_agents git -C "$CHECKOUT" status --porcelain) ]]; then
-    as_agents git -C "$CHECKOUT" -c advice.detachedHead=false checkout -q --detach "$target"
-    as_agents git -C "$CHECKOUT" reset -q --hard "$target"
-    changed "checkout at ${target:0:12}"
-  else skip "checkout at ${target:0:12}"; fi
-  tree=$target
+# Builds are agents-owned; the directory containing current/previous is root-owned
+# so an app process cannot change the next service target.
+install -d -o root -g agents -m 755 /srv/agents/temp-code-builds
+if [[ ! -L /srv/agents/temp-code-builds/current && -d $CHECKOUT/.git ]]; then
+  ln -s "$CHECKOUT" /srv/agents/temp-code-builds/current
+  changed 'adopted existing checkout without restarting it'
 fi
-
-# -- the build: deps, Electron's binary, node-pty against it, main + preload + renderer.
-built=$(cat "$STATE/temp-code-built" 2>/dev/null || true)
-if [[ $tree != "$built" ]] || [[ ! -x $CHECKOUT/node_modules/electron/dist/electron ]] || [[ ! -f $CHECKOUT/out/renderer/index.html ]]; then
-  as_agents bash -c 'set -euo pipefail; cd "$1"
-    bun install --frozen-lockfile
-    # bun runs no dependency lifecycle scripts: Electron fetches its binary
-    # here, and node-pty is rebuilt against that Electron.
-    [[ -x node_modules/electron/dist/electron ]] || node node_modules/electron/install.js
-    [[ -f node_modules/node-pty/build/Release/pty.node ]] || node_modules/.bin/electron-builder install-app-deps
-    node_modules/.bin/electron-vite build' bash "$CHECKOUT"
-  echo "$tree" > "$STATE/temp-code-built"
-  restart=1
-  changed "built $tree"
-else skip "built $tree"; fi
+install -d -m 755 /usr/local/lib/temp-code
+put /usr/local/sbin/box-update 755 < "$BOX_DIR/box-update.sh"
+put /usr/local/sbin/box-sqlite-snapshot 750 < "$BOX_DIR/sqlite-snapshot.sh"
+put /usr/local/lib/temp-code/box-probe.mjs 644 < "$BOX_DIR/box-probe.mjs"
+put /usr/local/lib/temp-code/tc-local.mjs 644 < "$BOX_DIR/tc-local.mjs"
+put /usr/local/lib/temp-code/run 755 <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+cd "${1:-/srv/agents/temp-code-builds/current}"
+exec env -u ELECTRON_RUN_AS_NODE /usr/bin/xvfb-run -a -s '-screen 0 1600x1200x24 -nolisten tcp' \
+  /usr/bin/dbus-run-session -- node_modules/electron/dist/electron .
+EOF
+# landon already has host sudo access; keep an explicit launcher rule too.
+put /etc/sudoers.d/91-box-update 440 <<'EOF'
+landon ALL=(root) NOPASSWD: /usr/local/sbin/box-update
+EOF
+visudo -cf /etc/sudoers.d/91-box-update
 
 # -- Ubuntu restricts user namespaces; this one executable may create them,
 #    the way stage 55 grants the Electron proof. The renderer sandbox stays on.
 put /etc/apparmor.d/temp-code <<EOF
 abi <abi/4.0>,
 include <tunables/global>
-profile temp-code $CHECKOUT/node_modules/electron/dist/electron flags=(unconfined) {
+profile temp-code "/srv/agents/{temp-code,temp-code-builds/*}/node_modules/electron/dist/electron" flags=(unconfined) {
   userns,
   include if exists <local/temp-code>
 }
@@ -115,11 +101,10 @@ TEMP_CODE_REMOTE_PORT=7677
 NODE_ENV=production
 SHELL=/bin/bash
 EOF
-((FILE_CHANGED == 0)) || restart=1
 put /etc/systemd/system/temp-code.service <<EOF
 [Unit]
 Description=temp-code agent host (headless Electron under Xvfb)
-Documentation=file://$CHECKOUT/docs/box.md
+Documentation=file:///srv/agents/temp-code-builds/current/docs/box.md
 After=network-online.target
 Wants=network-online.target
 StartLimitIntervalSec=0
@@ -128,7 +113,7 @@ StartLimitIntervalSec=0
 User=agents
 Group=agents
 Slice=agents.slice
-WorkingDirectory=$CHECKOUT
+WorkingDirectory=/srv/agents/temp-code-builds/current
 EnvironmentFile=/etc/temp-code.env
 EnvironmentFile=-/etc/temp-code.secrets.env
 Environment=HOME=$AGENTS_HOME
@@ -136,7 +121,7 @@ Environment=HOME=$AGENTS_HOME
 # with the user's systemd and moves out of this unit's cgroup (into
 # app-org.chromium.Chromium-<pid>.scope), beyond systemctl's reach. The run
 # script gives it a private bus instead.
-ExecStart=$CHECKOUT/scripts/box/temp-code-run.sh
+ExecStart=/usr/local/lib/temp-code/run
 Restart=always
 RestartSec=5
 TimeoutStopSec=30
@@ -145,32 +130,14 @@ LimitNOFILE=1048576
 [Install]
 WantedBy=multi-user.target
 EOF
-((FILE_CHANGED == 0)) || { reload=1; restart=1; }
+((FILE_CHANGED == 0)) || reload=1
 put /usr/local/bin/tc-local 755 <<EOF
 #!/usr/bin/env bash
 # The headless host's local socket, the implicit admin: tc-local <method> [json]
-exec /usr/bin/node $CHECKOUT/scripts/box/tc-local.mjs "\$@"
+exec /usr/bin/node /usr/local/lib/temp-code/tc-local.mjs "\$@"
 EOF
 if ((reload)); then systemctl daemon-reload; changed 'temp-code unit loaded'; fi
 if ! systemctl is-enabled --quiet temp-code; then systemctl enable --quiet temp-code; changed 'temp-code enabled'; fi
-if ((restart)) && systemctl is-active --quiet temp-code; then systemctl restart temp-code; changed 'temp-code restarted'
-elif ! systemctl is-active --quiet temp-code; then systemctl start temp-code; changed 'temp-code started'
-else skip 'temp-code active'; fi
-for _ in $(seq 1 90); do
-  curl -fsS --max-time 2 http://127.0.0.1:7677/healthz >/dev/null 2>&1 && break
-  sleep 1
-done
-curl -fsS --max-time 2 http://127.0.0.1:7677/healthz | grep -qx ok ||
-  { journalctl -u temp-code -n 60 --no-pager; die 'temp-code listener did not answer on 127.0.0.1:7677'; }
-{
-  echo "node $(node --version)"
-  echo "bun $(as_agents bun --version)"
-  echo "electron $(node -p "require('$CHECKOUT/node_modules/electron/package.json').version")"
-  echo "claude $(as_agents claude --version 2>/dev/null | head -1)"
-  echo "codex $(as_agents codex --version 2>/dev/null)"
-  echo "cursor-agent $(as_agents cursor-agent --version 2>/dev/null | head -1 || echo unavailable)"
-  echo "gh $(gh --version | head -1)"
-  echo "temp-code $tree"
-} | tee "$STATE/temp-code-versions.txt"
-curl -fsS --max-time 5 http://127.0.0.1:7677/api/hello; echo
-echo 'PASS: temp-code.service up on 127.0.0.1:7677'
+# Stage installation never restarts the host. box-update owns every switch,
+# including first start and rollback; env/unit edits take effect at commit.
+echo 'PASS: launcher installed; deploy with sudo box-update master'

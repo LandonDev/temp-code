@@ -18,16 +18,7 @@ flock -n 9 || { echo 'another backup is running' >&2; exit 1; }
 
 data=${BOX_TEMP_CODE_DATA:-/srv/agents/temp-code-data}
 snap=/srv/agents/backups/sqlite
-install -d -m 700 -o agents -g agents /srv/agents/backups "$snap"
-rm -f "$snap"/*.db "$snap"/.tmp-*
-shopt -s nullglob
-for db in "$data"/*.db; do
-  name=$(basename "$db")
-  runuser -u agents -- sqlite3 "$db" "VACUUM INTO '$snap/.tmp-$name'"
-  [[ $(runuser -u agents -- sqlite3 "$snap/.tmp-$name" 'PRAGMA quick_check') == ok ]] || { echo "ERROR: snapshot of $name failed its check" >&2; exit 1; }
-  mv "$snap/.tmp-$name" "$snap/$name"
-  echo "snapshot $name $(du -h "$snap/$name" | cut -f1)"
-done
+/usr/local/sbin/box-sqlite-snapshot "$data" "$snap"
 
 restic backup --host tempcode-box --tag daily --quiet \
   --exclude-file=/etc/restic/excludes /srv/agents /srv/prod /etc
