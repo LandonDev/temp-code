@@ -176,7 +176,7 @@ const rpc = (cdp: Cdp, method: string, params?: unknown): Promise<unknown> =>
 interface Snapshot {
   providers: { claude: { profiles: { name: string; owner?: string; static?: boolean; expiresAt?: number; syncedAt?: number }[]; reports: { profileName: string; expired?: boolean; note?: string }[] } }
   homes?: Record<string, string>
-  peers?: Record<string, { connected: boolean; lastSyncAt: number | null; error: string | null }>
+  peers?: Record<string, { name: string; connected: boolean; lastSyncAt: number | null; error: string | null }>
 }
 const snapshot = (cdp: Cdp): Promise<Snapshot> => rpc(cdp, 'accounts.list') as Promise<Snapshot>
 const profileIn = (s: Snapshot) => s.providers.claude.profiles.find((p) => p.name === ACCOUNT)

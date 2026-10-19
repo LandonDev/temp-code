@@ -29,7 +29,10 @@ describe('METHOD_CAPABILITY', () => {
         'providers.update',
         'fim.complete',
         // Saved hosts and their keys never leave this machine (thread K1).
-        ...methods.filter((m) => m.startsWith('remote.environments.'))
+        ...methods.filter((m) => m.startsWith('remote.environments.')),
+        // Where sign-ins are handed to, and a sync on demand, are this machine's to decide (thread V).
+        'accounts.sync',
+        'accounts.setHome'
       ].sort()
     )
   })
@@ -47,7 +50,10 @@ describe('METHOD_CAPABILITY', () => {
         'project.setAccounts',
         'workspace.setAccounts',
         'linear.setToken',
-        ...methods.filter((m) => m.startsWith('remote.') && !m.startsWith('remote.environments.'))
+        ...methods.filter((m) => m.startsWith('remote.') && !m.startsWith('remote.environments.')),
+        // A credential moves between hosts only under an admin key (thread V).
+        'accounts.push',
+        'accounts.pull'
       ].sort()
     )
   })
