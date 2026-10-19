@@ -226,6 +226,11 @@ routed to (aliax-core's `forward`). Two listeners:
   (the socket actor) builds on it.
 
 ## The iOS client: ios/TempCodeClient and ios/TempCode
+- docs/IOS-DESIGN.md fixes the phone's design: information architecture
+  (Home with Needs you, Running, Workspaces; Inbox; Search), the thread
+  screen per type (board, plan, fleet, sources as the hero with the chat as
+  a second segment), tokens, exact motion values and the performance rules.
+  iOS threads build to it and do not re-decide what it states.
 - `ios/TempCodeClient` (Swift 6 package on the contract package) is the
   phone's connection runtime: `TempCodeSocket` mirrors the desktop supervisor
   (ticket, hello checked against the paired id and contract, jittered backoff
