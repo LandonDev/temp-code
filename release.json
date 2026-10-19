@@ -1,5 +1,5 @@
 {
-  "n": 232,
-  "notes": "CLAUDE.md: the remote access section (fixed port, env override, trace flag, identity, keys and pairing, /ui, proofs)",
-  "ts": 1792393884765
+  "n": 233,
+  "notes": "Hub deployed at hub.landonhale.com and the box heartbeat posts to it: wrangler.toml carries the KV id, workers_dev off and the custom domain; the box scaffold sends the hub's body shape (environmentId, name, version, startedAt) and its env example names the real URL; README and docs/box.md record the deploy, the Keychain item names and the workers.dev subdomain quirk",
+  "ts": 1792394319701
 }
