@@ -146,6 +146,47 @@ routed to (aliax-core's `forward`). Two listeners:
   ("token_expired") until the owner uses it. Pin test threads to an account
   the installed app uses, or expect that failure.
 
+## Remote access: the fixed port behind the tunnel
+- A second listener (src/main/server/remote/listener.ts) binds
+  `127.0.0.1:7677` by default; the Cloudflare tunnel on the box maps
+  `tempcode.landonhale.com` to it, TLS ends at Cloudflare, and
+  `CF-Connecting-IP` / `X-Forwarded-Proto` are believed only from a loopback
+  socket. The renderer's random-port loopback socket is unchanged and stays
+  implicitly admin.
+- `TEMP_CODE_REMOTE_PORT=<n>` overrides the port for a dev instance (so it
+  never fights the installed app for 7677); `0` turns the listener off. The
+  settings `remote.enabled`, `remote.port`, `remote.publicOrigin` live in the
+  settings table and the Settings → Remote access pane edits them. A port in
+  use logs one `[remote]` line and leaves remote off; `remote.status` carries
+  the error. `TEMP_CODE_REMOTE_TRACE=1` logs one line per request.
+- Identity: `<userData>/environment.json` holds `env_<22 chars>`, created
+  once and never copied with the database. Every socket's first frame is
+  `{ push: 'hello', environmentId, contract, caps, key? }`.
+- Keys (remote/auth.ts): `tc_<id>.<secret>`, scrypt at rest, each with an
+  audience (`client` for phones, browsers and desktops on `/ws` and `/api/*`;
+  `mcp` for bots on `/mcp`, capped at read,operate) and a capability set from
+  read | operate | approve | admin. Every RPC has a row in
+  src/shared/capabilities.ts (`local` rows, every `app.*`, lsp, dap, idea,
+  providers.update, fim and stall.report, never run for a remote caller);
+  `session.create` with `permission: 'auto'` and `session.permission` need
+  approve. The gate runs in `attach()` before any handler.
+- Pairing: an admin makes a code (`XXXXX-XXXXX`, 10 minutes, single use) in
+  the pane or over `POST /api/pairings`; the link is `<origin>/pair#<code>`.
+  `POST /api/pair` with `kind: 'key'` answers the raw key once; with
+  `kind: 'session'` it sets the HttpOnly `tc_session` cookie that `/ui` and
+  cookie upgrades of `/ws` use. Bearer clients mint a 30 s ticket at
+  `POST /api/ticket` and upgrade `/ws?ticket=…`; nothing else ever rides in
+  a socket URL. Revoking a key closes its sockets and sessions at once.
+- `/ui` serves the BUILT renderer (out/renderer, so `electron-vite build`
+  first in a dev tree) behind the cookie; the bundle detects a missing
+  `window.api` and runs in web mode (src/renderer/src/lib/nativeWeb.ts: no
+  terminal, no Aliax pages, its own `web` workspace slot). `/asset/<host>/…`
+  mirrors `tempcode-asset://` for logos, media and agent pages.
+- Proof: `bun run script:e2e-remote` (the bearer flow against a temp
+  server) and `bun scripts/e2e-remote-ui.ts` (an isolated preview instance
+  plus a real Chrome profile over CDP through `/pair`, `/ui`, a thread, a
+  reply, the cookie and the CSP rewrite).
+
 ## The prod worktree is retired
 ~/IdeaProjects/temp-code-prod was the old local updater's build checkout.
 The updater no longer reads it or the source repo at all; it can stay
