@@ -25,6 +25,8 @@ import {
 import { loadEnvironmentId } from './remote/environment'
 import { handleRemote, type RemoteContext } from './remote/handlers'
 import { RemoteAuth } from './remote/auth'
+import { startRemoteListener, type RemoteListener } from './remote/listener'
+import { readRemoteSettings } from './remote/handlers'
 import type { SessionMeta } from '@shared/events'
 import { openDb, Store } from './db'
 import { EventReader, startCheckpointWorker } from './dbWorkers'
@@ -174,6 +176,8 @@ export interface RunningServer {
   attach: (ws: WebSocket, principal: Principal) => void
   /** Keys, pairings, sessions and tickets for the fixed port (remote/auth.ts). */
   remoteAuth: RemoteAuth
+  /** The fixed port's listener, or null while remote access is off. */
+  readonly remote: RemoteListener | null
   registry: SessionRegistry
   store: Store
   gateway: Gateway
@@ -190,7 +194,13 @@ const SLOW_REQUEST_MS = 500
 
 export async function startServer(
   dbPath: string,
-  options: { dataDir?: string; appPath?: string; claimShim?: boolean } = {}
+  options: {
+    dataDir?: string
+    appPath?: string
+    claimShim?: boolean
+    /** The fixed port's override (tests: 0 for an ephemeral port). Absent: TEMP_CODE_REMOTE_PORT, else the settings. */
+    remotePort?: number
+  } = {}
 ): Promise<RunningServer> {
   bootMark('server-start')
   const db = openDb(dbPath)
@@ -340,11 +350,42 @@ export async function startServer(
 
   const builder = new BuildRunner()
   const remoteAuth = new RemoteAuth(db)
+  // The fixed port behind the tunnel (remote/listener.ts). An env override
+  // beats the settings so a dev instance never fights the installed app
+  // for 7677; '0' turns it off.
+  let remote: RemoteListener | null = null
+  const remotePortWanted = (): number | null => {
+    if (options.remotePort !== undefined) return options.remotePort
+    const env = process.env.TEMP_CODE_REMOTE_PORT
+    if (env !== undefined) {
+      const n = Number(env)
+      return Number.isInteger(n) && n > 0 && n < 65536 ? n : null
+    }
+    const settings = readRemoteSettings(store)
+    return settings.enabled ? settings.port : null
+  }
+  let remoteRestart: Promise<void> = Promise.resolve()
+  const restartRemote = (): Promise<void> =>
+    (remoteRestart = remoteRestart.then(async () => {
+      await remote?.close()
+      remote = null
+      const port = remotePortWanted()
+      if (port === null) return
+      remote = await startRemoteListener({
+        port,
+        auth: remoteAuth,
+        store,
+        environmentId,
+        version: appVersion,
+        attach: (ws, principal) => attach(ws, principal)
+      })
+    }))
   const remoteContext: RemoteContext = {
     environmentId,
     auth: remoteAuth,
     store,
-    status: () => ({ running: false, port: 0, error: null })
+    status: () => ({ running: remote !== null && remote.port > 0, port: remote?.port ?? 0, error: remote?.error ?? null }),
+    onSettingsChanged: () => void restartRemote()
   }
 
   const wss = new WebSocketServer({ host: '127.0.0.1', port: 0 })
@@ -1269,6 +1310,7 @@ export async function startServer(
   await new Promise<void>((resolve) => wss.on('listening', resolve))
   const address = wss.address()
   const port = typeof address === 'object' && address ? address.port : 0
+  await restartRemote()
 
   // Codex reaches the app tools through the stdio bridge (M10). The app's
   // own location covers dev (repo root) and packaged
@@ -1293,6 +1335,9 @@ export async function startServer(
     environmentId,
     attach,
     remoteAuth,
+    get remote() {
+      return remote
+    },
     hub,
     registry,
     store,
@@ -1300,6 +1345,8 @@ export async function startServer(
     accounts: m3a.accounts,
     close: async () => {
       hub?.stop()
+      await remoteRestart
+      await remote?.close()
       stopStallMonitor()
       clearTimeout(warmKickoff)
       clearInterval(warmTimer)

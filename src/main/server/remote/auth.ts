@@ -71,15 +71,20 @@ const capsFromText = (text: string): Capability[] => normalizeCaps(text.split(',
 const intersect = (a: Capability[], b: Capability[]): Capability[] =>
   normalizeCaps(a.filter((cap) => allows(b, cap)))
 
-/** Caps a key of `audience` may hold; anything over the ceiling is a 400, never a silent narrowing. */
-export function checkCeiling(audience: Audience, caps: Capability[], ceiling?: Capability[]): Capability[] {
+/**
+ * Caps a key of `audience` may hold under `ceiling` (the pairing's or the
+ * creator's own caps, where admin covers all). Anything over either limit
+ * is a 400, never a silent narrowing.
+ */
+export function checkCeiling(audience: Audience, caps: Capability[], ceiling?: Capability[], ceilingName = 'this pairing'): Capability[] {
   const normalized = normalizeCaps(caps)
-  const limit = audience === 'mcp' ? intersect(ceiling ?? [...MCP_CEILING], [...MCP_CEILING]) : ceiling
-  if (!limit) return normalized
-  const over = normalized.filter((cap) => !allows(limit, cap))
-  if (over.length > 0) {
-    const why = audience === 'mcp' && over.some((c) => !allows([...MCP_CEILING], c)) ? 'mcp keys' : 'this pairing'
-    throw new RemoteAuthError(400, `${why} cannot hold ${over.join(', ')}`)
+  if (audience === 'mcp') {
+    const over = normalized.filter((cap) => !allows(MCP_CEILING, cap))
+    if (over.length > 0) throw new RemoteAuthError(400, `mcp keys cannot hold ${over.join(', ')}`)
+  }
+  if (ceiling) {
+    const over = normalized.filter((cap) => !allows(ceiling, cap))
+    if (over.length > 0) throw new RemoteAuthError(400, `${ceilingName} cannot hold ${over.join(', ')}`)
   }
   return normalized
 }
@@ -206,7 +211,7 @@ export class RemoteAuth {
     const name = input.name.trim()
     if (!name) throw new RemoteAuthError(400, 'name is required')
     if (!isAudience(input.audience)) throw new RemoteAuthError(400, 'audience must be client or mcp')
-    const caps = checkCeiling(input.audience, input.caps, input.ceiling)
+    const caps = checkCeiling(input.audience, input.caps, input.ceiling, 'your key')
     const id = this.freshKeyId()
     const secret = randomBytes(32).toString('base64url')
     const salt = randomBytes(16).toString('hex')
@@ -299,7 +304,7 @@ export class RemoteAuth {
     const name = input.name.trim()
     if (!name) throw new RemoteAuthError(400, 'name is required')
     if (!isAudience(input.audience)) throw new RemoteAuthError(400, 'audience must be client or mcp')
-    const caps = checkCeiling(input.audience, input.caps, input.ceiling)
+    const caps = checkCeiling(input.audience, input.caps, input.ceiling, 'your key')
     const ttl = Math.min(Math.max(input.ttlMs ?? PAIRING_TTL_MS, 60_000), 24 * 60 * 60_000)
     const code = crockfordId()
     const id = crockfordId()
