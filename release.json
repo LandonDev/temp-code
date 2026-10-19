@@ -1,5 +1,5 @@
 {
-  "n": 234,
-  "notes": "Remote facade and /mcp: eleven operations over the registry (list_projects, list_sessions, start_session, send_message, get_session, get_transcript, list_pending, respond, stop_session, archive_session, get_diff) with zod inputs and compact outputs over the bounded wire reads, and the MCP streamable-HTTP endpoint on the fixed port for mcp-audience keys (x-api-key or bearer, body cap, per-key rate limit, trace line)",
-  "ts": 1792395459550
+  "n": 235,
+  "notes": "Linux agent host: headless mode, login-shell helper, box stage 85 (temp-code.service), tc-local, tunnel proof, runbook",
+  "ts": 1792396092180
 }
