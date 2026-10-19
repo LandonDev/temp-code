@@ -7,20 +7,29 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		04444F5FCB1893DA6FA280B5 /* SectionHeader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2129548FC89473DA37D3322A /* SectionHeader.swift */; };
 		0E1E99641BDC5DF10E6B7133 /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7BBB53D44FB85BE6A24DDD1F /* AppModel.swift */; };
 		11C808FDB503532F2C055FFC /* EnvironmentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36DFFF979BD8602727DED543 /* EnvironmentView.swift */; };
 		1EBE5570DFDFDB2408C816E0 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BDB568D3893F423F3F8426AB /* RootView.swift */; };
 		2D2B02B0C38EB14D5D732C9A /* StatusLine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A445C153D49BF2624BA6CFA /* StatusLine.swift */; };
+		3794ECBE91855BF0781535F6 /* ModelName.swift in Sources */ = {isa = PBXBuildFile; fileRef = 06928D8DB6DFB8D7586E0646 /* ModelName.swift */; };
 		39A74CE131F601E205716F1B /* Formatting.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE78AA69F7DB6914EAA1DE17 /* Formatting.swift */; };
 		4B09811F9A81080EAED4CCCA /* MediaImage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 35121C37D3AE725035034343 /* MediaImage.swift */; };
 		4E961B0B7CF6B8A1B7B82D51 /* ThreadView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD6F20F12D147497EA3227EB /* ThreadView.swift */; };
+		6314676328C74CBBC9E337DA /* Pressable.swift in Sources */ = {isa = PBXBuildFile; fileRef = 458CA933FF6A32D8B310B3D6 /* Pressable.swift */; };
 		7904C7A1A9BDDACD3EA35658 /* ProofTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7B04777942D936944D56B89 /* ProofTests.swift */; };
 		828CE41BBB691BF110E58226 /* TempCodeApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4CCE13F137D385301840056A /* TempCodeApp.swift */; };
+		872A141255912E0841E4741E /* TimeFormat.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6FF5FCC82CE17EA2110AD891 /* TimeFormat.swift */; };
+		8BA4DAAA0205B3E066819A2C /* Glyphs.swift in Sources */ = {isa = PBXBuildFile; fileRef = 71FD17E331D1A7892718F0B3 /* Glyphs.swift */; };
 		A3E232DD4C6F9E2206FB3AAD /* TempCodeClient in Frameworks */ = {isa = PBXBuildFile; productRef = 56210DA32D24A0E33B6FF70F /* TempCodeClient */; };
 		A53D623985B35C9DCDB6747C /* TranscriptItemView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 95900B59609A738240B2BF32 /* TranscriptItemView.swift */; };
+		AC36760D31F43952A102CAD5 /* StatusDot.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7BDB2F2EDCBB6066FB98164 /* StatusDot.swift */; };
+		B699A65B99A5636451EF8703 /* Motion.swift in Sources */ = {isa = PBXBuildFile; fileRef = 002DFE88A99F9FF59FF9A750 /* Motion.swift */; };
 		BD96950B32B1BED5BC8A2971 /* MarkdownText.swift in Sources */ = {isa = PBXBuildFile; fileRef = A997D9EB5D90E437A52178CE /* MarkdownText.swift */; };
+		C054528FD7118216F3817183 /* ThreadRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = C16775FDA7BDE46AF518AD0D /* ThreadRow.swift */; };
 		C0C5BAD1E4056711CCA68D40 /* EnvironmentsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5B5FBE592FEDA663F4736037 /* EnvironmentsView.swift */; };
 		CF6C0232C960DAC7D39D55B2 /* AddEnvironmentSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 135497B8E50DC06FC42FDA2E /* AddEnvironmentSheet.swift */; };
+		F57B9A272D9C4641C74A0BF6 /* Tokens.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9929B736C3C28B124C2DB5D1 /* Tokens.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -34,21 +43,30 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		002DFE88A99F9FF59FF9A750 /* Motion.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Motion.swift; sourceTree = "<group>"; };
+		06928D8DB6DFB8D7586E0646 /* ModelName.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelName.swift; sourceTree = "<group>"; };
 		135497B8E50DC06FC42FDA2E /* AddEnvironmentSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddEnvironmentSheet.swift; sourceTree = "<group>"; };
+		2129548FC89473DA37D3322A /* SectionHeader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SectionHeader.swift; sourceTree = "<group>"; };
 		35121C37D3AE725035034343 /* MediaImage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaImage.swift; sourceTree = "<group>"; };
 		36B8E9AC0F07929BB084E8FA /* TempCodeClient */ = {isa = PBXFileReference; lastKnownFileType = folder; name = TempCodeClient; path = ../TempCodeClient; sourceTree = SOURCE_ROOT; };
 		36DFFF979BD8602727DED543 /* EnvironmentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EnvironmentView.swift; sourceTree = "<group>"; };
+		458CA933FF6A32D8B310B3D6 /* Pressable.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Pressable.swift; sourceTree = "<group>"; };
 		4A445C153D49BF2624BA6CFA /* StatusLine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusLine.swift; sourceTree = "<group>"; };
 		4CCE13F137D385301840056A /* TempCodeApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TempCodeApp.swift; sourceTree = "<group>"; };
 		508047E81022749520DE4946 /* TempCodeUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = TempCodeUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		5B5FBE592FEDA663F4736037 /* EnvironmentsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EnvironmentsView.swift; sourceTree = "<group>"; };
+		6FF5FCC82CE17EA2110AD891 /* TimeFormat.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimeFormat.swift; sourceTree = "<group>"; };
+		71FD17E331D1A7892718F0B3 /* Glyphs.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Glyphs.swift; sourceTree = "<group>"; };
 		7BBB53D44FB85BE6A24DDD1F /* AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModel.swift; sourceTree = "<group>"; };
 		95900B59609A738240B2BF32 /* TranscriptItemView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptItemView.swift; sourceTree = "<group>"; };
+		9929B736C3C28B124C2DB5D1 /* Tokens.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Tokens.swift; sourceTree = "<group>"; };
 		A997D9EB5D90E437A52178CE /* MarkdownText.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownText.swift; sourceTree = "<group>"; };
 		AD6F20F12D147497EA3227EB /* ThreadView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThreadView.swift; sourceTree = "<group>"; };
 		AE78AA69F7DB6914EAA1DE17 /* Formatting.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Formatting.swift; sourceTree = "<group>"; };
+		B7BDB2F2EDCBB6066FB98164 /* StatusDot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusDot.swift; sourceTree = "<group>"; };
 		BDB568D3893F423F3F8426AB /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
 		BF84715DA2AE178AF987A28C /* TempCode.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = TempCode.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		C16775FDA7BDE46AF518AD0D /* ThreadRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThreadRow.swift; sourceTree = "<group>"; };
 		C7B04777942D936944D56B89 /* ProofTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProofTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -90,6 +108,22 @@
 			name = Packages;
 			sourceTree = "<group>";
 		};
+		316A60D00C7FF13082F442B6 /* Design */ = {
+			isa = PBXGroup;
+			children = (
+				71FD17E331D1A7892718F0B3 /* Glyphs.swift */,
+				06928D8DB6DFB8D7586E0646 /* ModelName.swift */,
+				002DFE88A99F9FF59FF9A750 /* Motion.swift */,
+				458CA933FF6A32D8B310B3D6 /* Pressable.swift */,
+				2129548FC89473DA37D3322A /* SectionHeader.swift */,
+				B7BDB2F2EDCBB6066FB98164 /* StatusDot.swift */,
+				C16775FDA7BDE46AF518AD0D /* ThreadRow.swift */,
+				6FF5FCC82CE17EA2110AD891 /* TimeFormat.swift */,
+				9929B736C3C28B124C2DB5D1 /* Tokens.swift */,
+			);
+			path = Design;
+			sourceTree = "<group>";
+		};
 		39B3290FBAA536CE9942C2FD /* Products */ = {
 			isa = PBXGroup;
 			children = (
@@ -114,6 +148,7 @@
 				4CCE13F137D385301840056A /* TempCodeApp.swift */,
 				AD6F20F12D147497EA3227EB /* ThreadView.swift */,
 				95900B59609A738240B2BF32 /* TranscriptItemView.swift */,
+				316A60D00C7FF13082F442B6 /* Design */,
 			);
 			path = Sources;
 			sourceTree = "<group>";
@@ -217,12 +252,21 @@
 				11C808FDB503532F2C055FFC /* EnvironmentView.swift in Sources */,
 				C0C5BAD1E4056711CCA68D40 /* EnvironmentsView.swift in Sources */,
 				39A74CE131F601E205716F1B /* Formatting.swift in Sources */,
+				8BA4DAAA0205B3E066819A2C /* Glyphs.swift in Sources */,
 				BD96950B32B1BED5BC8A2971 /* MarkdownText.swift in Sources */,
 				4B09811F9A81080EAED4CCCA /* MediaImage.swift in Sources */,
+				3794ECBE91855BF0781535F6 /* ModelName.swift in Sources */,
+				B699A65B99A5636451EF8703 /* Motion.swift in Sources */,
+				6314676328C74CBBC9E337DA /* Pressable.swift in Sources */,
 				1EBE5570DFDFDB2408C816E0 /* RootView.swift in Sources */,
+				04444F5FCB1893DA6FA280B5 /* SectionHeader.swift in Sources */,
+				AC36760D31F43952A102CAD5 /* StatusDot.swift in Sources */,
 				2D2B02B0C38EB14D5D732C9A /* StatusLine.swift in Sources */,
 				828CE41BBB691BF110E58226 /* TempCodeApp.swift in Sources */,
+				C054528FD7118216F3817183 /* ThreadRow.swift in Sources */,
 				4E961B0B7CF6B8A1B7B82D51 /* ThreadView.swift in Sources */,
+				872A141255912E0841E4741E /* TimeFormat.swift in Sources */,
+				F57B9A272D9C4641C74A0BF6 /* Tokens.swift in Sources */,
 				A53D623985B35C9DCDB6747C /* TranscriptItemView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

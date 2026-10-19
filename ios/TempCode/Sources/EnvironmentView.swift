@@ -24,7 +24,7 @@ struct EnvironmentView: View {
                         Section {
                             ForEach(group.sessions, id: \.id) { session in
                                 NavigationLink(value: ThreadRoute(environmentId: client.environment.id, sessionId: session.id)) {
-                                    ThreadRow(session: session)
+                                    LegacyThreadRow(session: session)
                                 }
                                 .accessibilityIdentifier("thread-row")
                             }
@@ -53,7 +53,7 @@ struct ThreadRoute: Hashable {
     let sessionId: String
 }
 
-struct ThreadRow: View {
+struct LegacyThreadRow: View {
     let session: SessionMeta
 
     var body: some View {
