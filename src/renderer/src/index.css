@@ -814,7 +814,7 @@ html.theme-light .agent-markdown .shiki span {
   background-clip: text;
   -webkit-background-clip: text;
   color: transparent;
-  animation: shimmer-text var(--shimmer-duration, 2s) linear infinite;
+  animation: shimmer-text var(--shimmer-duration, 2s) steps(30) infinite;
 }
 
 /* Two-frame mascot loop — a hard swap plus a one-pixel hop, arcade style. */
@@ -1086,7 +1086,7 @@ html.theme-light .agent-markdown .shiki span {
 
 /* The thinking line breathes while reasoning streams in. */
 .zen-thinking-pulse {
-  animation: zen-thinking-pulse 1.8s var(--ease-out) infinite alternate;
+  animation: zen-thinking-pulse 1.8s steps(14) infinite alternate;
 }
 
 @keyframes zen-spin {
@@ -1097,7 +1097,7 @@ html.theme-light .agent-markdown .shiki span {
 
 /* The dashed ring on a running tool turns slowly, so the line reads as live. */
 .zen-tool-spin {
-  animation: zen-spin 3.6s linear infinite;
+  animation: zen-spin 3.6s steps(108) infinite;
 }
 
 @media (prefers-reduced-motion: reduce) {
