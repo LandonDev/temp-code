@@ -34,7 +34,7 @@ for db in "$data"/*.db; do
 done
 
 restic backup --host mac --tag daily --quiet \
-  --exclude '*.db' --exclude '*.db-wal' --exclude '*.db-shm' --exclude '*.db-journal' \
+  --exclude "$data/*.db" --exclude "$data/*.db-wal" --exclude "$data/*.db-shm" --exclude "$data/*.db-journal" \
   --exclude "$data/Cache" --exclude "$data/Code Cache" --exclude "$data/GPUCache" \
   --exclude "$data/DawnCache" --exclude "$data/DawnWebGPUCache" --exclude "$data/DawnGraphiteCache" \
   --exclude "$data/blob_storage" --exclude "$data/Crashpad" --exclude "$data/Service Worker" \
