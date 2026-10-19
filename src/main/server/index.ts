@@ -14,6 +14,16 @@ import { observeHooks } from './gatewayObserve'
 import { WebSocketServer, type WebSocket } from 'ws'
 import { visibleCatalog } from '@shared/catalog'
 import { ClientRequestSchema, type ServerFrame } from '@shared/contract'
+import {
+  CONTRACT_VERSION,
+  LOCAL_PRINCIPAL,
+  allows,
+  principalCaps,
+  requiredCapability,
+  type Principal
+} from '@shared/capabilities'
+import { loadEnvironmentId } from './remote/environment'
+import { handleRemote } from './remote/handlers'
 import type { SessionMeta } from '@shared/events'
 import { openDb, Store } from './db'
 import { EventReader, startCheckpointWorker } from './dbWorkers'
@@ -157,6 +167,10 @@ function readAllowedFile(registry: SessionRegistry, path: string): string | null
 
 export interface RunningServer {
   port: number
+  /** This server's stable identity (<userData>/environment.json). */
+  environmentId: string
+  /** Serve the contract on a socket that already authenticated as `principal`. */
+  attach: (ws: WebSocket, principal: Principal) => void
   registry: SessionRegistry
   store: Store
   gateway: Gateway
@@ -186,6 +200,7 @@ export async function startServer(
   // writer opened WAL first, so the -shm file the read-only open needs is there.
   const reader = new EventReader(dbPath)
   const store = new Store(db, { reader })
+  const environmentId = loadEnvironmentId(options.dataDir ?? dirname(dbPath))
   const checkpoints = new CheckpointStore(join(options.dataDir ?? dirname(dbPath), 'checkpoints'))
   const registry = new SessionRegistry(store)
   // The file viewer's media host serves only files under these roots.
@@ -321,6 +336,7 @@ export async function startServer(
   warmTimer.unref()
 
   const builder = new BuildRunner()
+  const remoteContext = { environmentId }
 
   const wss = new WebSocketServer({ host: '127.0.0.1', port: 0 })
   let connections = 0
@@ -330,19 +346,13 @@ export async function startServer(
     return most
   })
 
-  wss.on('connection', (ws: WebSocket, req) => {
-    // LSP tunnel (docs/PLAN-3.md M13): raw JSON-RPC, no contract schema in
-    // the hot path. Same localhost-only single-user trust as everything
-    // else; the serverId is validated against the pool.
-    const url = req.url ?? ''
-    if (url.startsWith('/lsp/')) {
-      attachLspSocket(url.slice('/lsp/'.length), ws)
-      return
-    }
-    if (url.startsWith('/dap/')) {
-      attachDapSocket(url.slice('/dap/'.length), ws)
-      return
-    }
+  /**
+   * One socket speaking the contract. The local renderer's socket arrives
+   * as LOCAL_PRINCIPAL; the remote listener (remote/listener.ts) calls this
+   * with the key it authenticated. Every request is gated on the
+   * principal's capabilities before any handler runs.
+   */
+  const attach = (ws: WebSocket, principal: Principal): void => {
     const connection = ++connections
     const unsubs = new Map<string, () => void>()
     /** per-connection file watchers (fs.watch), keyed by projectId */
@@ -386,6 +396,13 @@ export async function startServer(
       }
       sendFrame({ push: 'session-removed', sessionIds })
     })
+    sendFrame({
+      push: 'hello',
+      environmentId,
+      contract: CONTRACT_VERSION,
+      caps: principalCaps(principal),
+      ...(principal.kind === 'remote' ? { key: { id: principal.keyId, name: principal.name } } : {})
+    })
 
     ws.on('message', async (data) => {
       let raw: unknown
@@ -401,10 +418,17 @@ export async function startServer(
         return
       }
       const req = parsed.data
+      if (principal.kind !== 'local') {
+        const need = requiredCapability(req)
+        if (need === 'local') return sendFrame({ id: req.id, ok: false, error: `forbidden: ${req.method} is local-only` })
+        if (!allows(principal.caps, need)) return sendFrame({ id: req.id, ok: false, error: `forbidden: ${req.method} needs ${need}` })
+      }
       const startedAt = Date.now()
       const requestKey = `${connection}:${req.id}`
       trackRequest(requestKey, req.method)
       try {
+        const remote = await handleRemote(req, remoteContext)
+        if (remote.handled) return sendFrame({ id: req.id, ok: true, result: remote.result })
         const extension = await handleM3a(req, m3a)
         if (extension.handled) { sendFrame({ id: req.id, ok: true, result: extension.result }); return }
         const fsGit = await handleFsGit(req)
@@ -1212,6 +1236,22 @@ export async function startServer(
       for (const off of fsWatches.values()) off()
       fsWatches.clear()
     })
+  }
+
+  wss.on('connection', (ws: WebSocket, req) => {
+    // LSP tunnel (docs/PLAN-3.md M13): raw JSON-RPC, no contract schema in
+    // the hot path. Same localhost-only single-user trust as everything
+    // else; the serverId is validated against the pool.
+    const url = req.url ?? ''
+    if (url.startsWith('/lsp/')) {
+      attachLspSocket(url.slice('/lsp/'.length), ws)
+      return
+    }
+    if (url.startsWith('/dap/')) {
+      attachDapSocket(url.slice('/dap/'.length), ws)
+      return
+    }
+    attach(ws, LOCAL_PRINCIPAL)
   })
 
   await new Promise<void>((resolve) => wss.on('listening', resolve))
@@ -1238,6 +1278,8 @@ export async function startServer(
 
   return {
     port,
+    environmentId,
+    attach,
     hub,
     registry,
     store,

@@ -4,6 +4,7 @@ import { FsGitRequestSchemas } from './contract-fsgit'
 import { CheckpointRequestSchemas } from './contract-checkpoint'
 import { LinearRequestSchemas } from './contract-linear'
 import { GithubRequestSchemas } from './contract-github'
+import { RemoteRequestSchemas } from './contract-remote'
 import { AGENT_TYPES } from './catalog'
 import { AttachmentSchema, PermissionPolicySchema } from './events'
 import { ProjectModeSchema, ThreadTypeSchema } from './domain'
@@ -93,6 +94,7 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
   ...CheckpointRequestSchemas,
   ...LinearRequestSchemas,
   ...GithubRequestSchemas,
+  ...RemoteRequestSchemas,
   // refresh: re-probe the installed CLIs of the probed providers first.
   z.object({
     id: z.string(),
@@ -855,6 +857,15 @@ export interface QueuedMessage {
 }
 
 export type ServerPush =
+  // First frame on every socket: which environment answered, the contract
+  // it speaks and what this caller may do (plan 5jtfkIC45Cbr).
+  | {
+      push: 'hello'
+      environmentId: string
+      contract: number
+      caps: import('./capabilities').Capability[]
+      key?: { id: string; name: string }
+    }
   | { push: 'workspaces'; workspaces: import('./domain').WorkspaceMeta[] }
   | { push: 'projects'; projects: import('./domain').ProjectMeta[] }
   | { push: 'event'; row: EventRow }
