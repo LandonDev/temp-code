@@ -1,4 +1,5 @@
 import {
+  Globe,
   Archive,
   ArrowLeft,
   Bot,
@@ -32,6 +33,7 @@ const SECTION_ICONS: Record<StaticSettingsSectionId, IconComponent> = {
   orchestration: Users,
   build: Wrench,
   appshots: Camera,
+  remote: Globe,
   archive: Archive,
 };
 

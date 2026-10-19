@@ -355,15 +355,16 @@ export async function startServer(
   // beats the settings so a dev instance never fights the installed app
   // for 7677; '0' turns it off.
   let remote: RemoteListener | null = null
+  /** The port to listen on, or null for off: the option or the env var
+   *  override the PORT (0 in the env turns it off); remote.enabled applies either way. */
   const remotePortWanted = (): number | null => {
+    const settings = readRemoteSettings(store)
+    if (!settings.enabled) return null
     if (options.remotePort !== undefined) return options.remotePort
     const env = process.env.TEMP_CODE_REMOTE_PORT
-    if (env !== undefined) {
-      const n = Number(env)
-      return Number.isInteger(n) && n > 0 && n < 65536 ? n : null
-    }
-    const settings = readRemoteSettings(store)
-    return settings.enabled ? settings.port : null
+    if (env === undefined) return settings.port
+    const n = Number(env)
+    return Number.isInteger(n) && n > 0 && n < 65536 ? n : null
   }
   let remoteRestart: Promise<void> = Promise.resolve()
   const restartRemote = (): Promise<void> =>

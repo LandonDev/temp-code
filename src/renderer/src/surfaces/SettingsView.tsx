@@ -166,6 +166,7 @@ import { Heading, Input, Row, Segmented, Select, SecondaryButton, Toggle } from 
 import { DANGER, GHOST, PRIMARY } from "../chrome/ConfirmDialog";
 import { AppshotsPage } from "./AppshotsSettings";
 import { MatrixSpinner } from "./threads/bits";
+import { RemoteSettings } from "./RemoteSettings";
 import { updateStore, useUpdateSnapshot } from "../lib/updateStore";
 import { MANUAL_DOWNLOAD_URL, canRetry } from "../lib/updater";
 import { openUrl } from "../lib/native";
@@ -272,6 +273,7 @@ export function SettingsView({
           {section === "orchestration" ? <OrchestrationPage /> : null}
           {section === "build" ? <BuildPage /> : null}
           {section === "appshots" ? <AppshotsPage /> : null}
+          {section === "remote" ? <RemoteSettings /> : null}
           {section === "archive" ? (
             <ArchivePage
               onOpenSession={onOpenSession}

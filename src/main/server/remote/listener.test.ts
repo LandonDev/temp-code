@@ -339,3 +339,24 @@ describe('/ui and /pair', () => {
     expect((await call('POST', '/ui/', { headers: { Cookie: cookie }, body: {} })).status).toBe(404)
   })
 })
+
+// Last: it stops the listener every other test talks to.
+describe('remote.settings.set', () => {
+  it('enabled off closes the port; on brings it back', async () => {
+    const local = await open(`ws://127.0.0.1:${server.port}`)
+    const off = await local.request('remote.settings.set', { enabled: false })
+    expect(off.ok).toBe(true)
+    for (let i = 0; i < 50 && server.remote !== null; i++) await sleep(20)
+    expect(server.remote).toBeNull()
+    expect((await local.request('remote.status')).result).toMatchObject({ enabled: false, running: false, port: 0 })
+    await expect(fetch(base + '/healthz')).rejects.toThrow()
+    const on = await local.request('remote.settings.set', { enabled: true })
+    expect(on.ok).toBe(true)
+    for (let i = 0; i < 50 && !(server.remote && server.remote.port > 0); i++) await sleep(20)
+    expect(server.remote!.port).toBeGreaterThan(0)
+    base = `http://127.0.0.1:${server.remote!.port}`
+    expect((await call('GET', '/healthz')).body).toBe('ok')
+    expect((await local.request('remote.status')).result).toMatchObject({ enabled: true, running: true, port: server.remote!.port })
+    local.ws.close()
+  })
+})

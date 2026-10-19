@@ -13,6 +13,7 @@ export type StaticSettingsSectionId =
   | "orchestration"
   | "build"
   | "appshots"
+  | "remote"
   | "archive";
 
 /** A fixed page, or one workspace's own page (`ws:<workspace id>`). */
@@ -73,6 +74,12 @@ export const SETTINGS_SECTIONS: {
     label: "Appshots",
     description:
       "Double-tap ⌘ over another app to drop its window, image and text, into a chat.",
+  },
+  {
+    id: "remote",
+    label: "Remote access",
+    description:
+      "Phones, browsers and bots that may reach this server through the tunnel, and the port they come in on.",
   },
   {
     id: "archive",
