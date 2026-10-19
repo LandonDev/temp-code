@@ -1,0 +1,297 @@
+import type { WireProfile } from "@server/shared/wire";
+import { EnvLink } from "./link";
+import { Supervisor, type Clock, type ProbeTrigger } from "./supervisor";
+import type { Transport } from "./transport";
+import { IDLE_STATUS, type Environment, type EnvironmentStatus, type Route } from "./types";
+
+export const LOCAL_ENVIRONMENT_ID = "local";
+export const WEB_ENVIRONMENT_ID = "web";
+
+export type LinkEvent = "added" | "removed";
+
+export type RegistryOptions = {
+  /** The wire profile a route's socket opens with. */
+  profileFor?: (environment: Environment, route: Route) => WireProfile;
+  /** The URL to open for a route; a key route needs a fresh ticket every time. */
+  resolveUrl?: (environment: Environment, route: Route) => Promise<string>;
+  transport?: (url: string, profile: WireProfile) => Transport;
+  clock?: Clock;
+};
+
+type Entry = { environment: Environment; supervisor: Supervisor; link: EnvLink };
+
+/**
+ * Every environment this window talks to: its supervisor, its link and its
+ * status. Adding an environment starts connecting and hands the stores a
+ * link through `onLink`; an involuntary disconnect changes nothing here
+ * (the registration and every store's data stay, the supervisor retries);
+ * only an explicit `remove` stops the supervisor and tells the stores to
+ * clear that environment. Statuses are one snapshot map for React.
+ */
+export class ConnectionRegistry {
+  private entries = new Map<string, Entry>();
+  private statusSnapshot: ReadonlyMap<string, EnvironmentStatus> = new Map();
+  private environmentList: Environment[] = [];
+  private statusListeners = new Set<() => void>();
+  private linkListeners = new Set<(link: EnvLink, event: LinkEvent) => void>();
+
+  constructor(private readonly options: RegistryOptions = {}) {}
+
+  environments(): Environment[] {
+    return [...this.entries.values()].map((e) => e.environment);
+  }
+
+  /** The same array until an environment is added, updated or removed. */
+  environmentsSnapshot(): Environment[] {
+    return this.environmentList;
+  }
+
+  environment(id: string): Environment | undefined {
+    return this.entries.get(id)?.environment;
+  }
+
+  has(id: string): boolean {
+    return this.entries.has(id);
+  }
+
+  link(id: string): EnvLink | undefined {
+    return this.entries.get(id)?.link;
+  }
+
+  links(): EnvLink[] {
+    return [...this.entries.values()].map((e) => e.link);
+  }
+
+  /** The link for `id`, or a thrown error: callers name a known environment. */
+  linkOf(id: string): EnvLink {
+    const link = this.link(id);
+    if (!link) throw new Error(`unknown environment: ${id}`);
+    return link;
+  }
+
+  /** This machine's own server in the desktop window, the page's host at /ui. */
+  primary(): EnvLink {
+    return this.link(LOCAL_ENVIRONMENT_ID) ?? this.link(WEB_ENVIRONMENT_ID) ?? this.firstLink();
+  }
+
+  private firstLink(): EnvLink {
+    const first = this.entries.values().next().value as Entry | undefined;
+    if (!first) throw new Error("no environments");
+    return first.link;
+  }
+
+  supervisor(id: string): Supervisor | undefined {
+    return this.entries.get(id)?.supervisor;
+  }
+
+  /** Register and start connecting; an existing id takes the new routes and name. */
+  add(environment: Environment): EnvLink {
+    const existing = this.entries.get(environment.id);
+    if (existing) {
+      this.update(environment);
+      return existing.link;
+    }
+    const link = new EnvLink(environment.id, this.defaultProfile(environment));
+    const supervisor = new Supervisor({
+      environment,
+      resolveUrl: (route) => this.resolveUrl(environment, route),
+      profileFor: (route) => this.profileFor(environment, route),
+      transport: this.options.transport,
+      clock: this.options.clock,
+      onStatus: (status) => this.setStatus(environment.id, status),
+      onSession: (session) => link.setSession(session),
+    });
+    const entry: Entry = { environment, supervisor, link };
+    this.entries.set(environment.id, entry);
+    this.environmentList = this.environments();
+    this.setStatus(environment.id, supervisor.status);
+    for (const l of this.linkListeners) l(link, "added");
+    supervisor.start();
+    return link;
+  }
+
+  update(environment: Environment): void {
+    const entry = this.entries.get(environment.id);
+    if (!entry) return;
+    entry.environment = environment;
+    this.environmentList = this.environments();
+    entry.supervisor.update(environment);
+    this.emit();
+  }
+
+  /** Forget an environment: its socket closes and the stores drop its data. */
+  remove(id: string): void {
+    const entry = this.entries.get(id);
+    if (!entry) return;
+    entry.supervisor.stop();
+    this.entries.delete(id);
+    this.environmentList = this.environments();
+    const next = new Map(this.statusSnapshot);
+    next.delete(id);
+    this.statusSnapshot = next;
+    for (const l of this.linkListeners) l(entry.link, "removed");
+    this.emit();
+  }
+
+  retry(id: string): void {
+    this.entries.get(id)?.supervisor.retry();
+  }
+
+  retryAll(): void {
+    for (const e of this.entries.values()) e.supervisor.retry();
+  }
+
+  /** Foreground, online: every supervisor probes its session. */
+  probeAll(trigger: ProbeTrigger): void {
+    for (const e of this.entries.values()) void e.supervisor.probe(trigger);
+  }
+
+  setOnline(online: boolean): void {
+    for (const e of this.entries.values()) e.supervisor.setOnline(online);
+  }
+
+  markFresh(id: string, fresh: boolean): void {
+    this.entries.get(id)?.supervisor.markFresh(fresh);
+  }
+
+  // ── status for React ───────────────────────────────────────────────
+
+  statusOf(id: string): EnvironmentStatus {
+    return this.statusSnapshot.get(id) ?? IDLE_STATUS;
+  }
+
+  /** One stable map per change, for useSyncExternalStore. */
+  statuses(): ReadonlyMap<string, EnvironmentStatus> {
+    return this.statusSnapshot;
+  }
+
+  subscribe(listener: () => void): () => void {
+    this.statusListeners.add(listener);
+    return () => {
+      this.statusListeners.delete(listener);
+    };
+  }
+
+  /** The stores' hook: a link to attach to, or one to clear out. Fires for
+   *  every existing link at once so a late subscriber catches up. */
+  onLink(listener: (link: EnvLink, event: LinkEvent) => void): () => void {
+    this.linkListeners.add(listener);
+    for (const e of this.entries.values()) listener(e.link, "added");
+    return () => {
+      this.linkListeners.delete(listener);
+    };
+  }
+
+  /** Window hooks: a window coming forward or the network returning probes
+   *  every session; the network leaving pauses retries. */
+  installWindowHooks(win: Window = window): () => void {
+    const onVisible = (): void => {
+      if (win.document.visibilityState === "visible") this.probeAll("foreground");
+    };
+    const onFocus = (): void => this.probeAll("foreground");
+    const onOnline = (): void => this.setOnline(true);
+    const onOffline = (): void => this.setOnline(false);
+    win.document.addEventListener("visibilitychange", onVisible);
+    win.addEventListener("focus", onFocus);
+    win.addEventListener("online", onOnline);
+    win.addEventListener("offline", onOffline);
+    if (win.navigator && win.navigator.onLine === false) this.setOnline(false);
+    return () => {
+      win.document.removeEventListener("visibilitychange", onVisible);
+      win.removeEventListener("focus", onFocus);
+      win.removeEventListener("online", onOnline);
+      win.removeEventListener("offline", onOffline);
+    };
+  }
+
+  /** Test seam: stop every supervisor and forget everything. */
+  reset(): void {
+    for (const id of [...this.entries.keys()]) this.remove(id);
+  }
+
+  // ── defaults ───────────────────────────────────────────────────────
+
+  private profileFor(environment: Environment, route: Route): WireProfile {
+    if (this.options.profileFor) return this.options.profileFor(environment, route);
+    return route.kind === "loopback" && route.credential === "implicit" ? pageProfile() : "remote";
+  }
+
+  private defaultProfile(environment: Environment): WireProfile {
+    const first = environment.routes[0];
+    return first ? this.profileFor(environment, first) : "remote";
+  }
+
+  private async resolveUrl(environment: Environment, route: Route): Promise<string> {
+    if (this.options.resolveUrl) return this.options.resolveUrl(environment, route);
+    if (route.credential === "key") {
+      if (!environment.credentialRef) throw new Error(`unauthorized: ${environment.name} has no saved key`);
+      const minted = await this.primary().request<{ ticket: string }>("remote.environments.ticket", {
+        id: environment.credentialRef,
+        url: route.url,
+      });
+      const url = new URL(route.url);
+      url.searchParams.set("ticket", minted.ticket);
+      return url.toString();
+    }
+    if (route.credential === "implicit" && this.profileFor(environment, route) === "remote") {
+      const url = new URL(route.url);
+      url.searchParams.set("profile", "remote");
+      return url.toString();
+    }
+    return route.url;
+  }
+
+  private setStatus(id: string, status: EnvironmentStatus): void {
+    const next = new Map(this.statusSnapshot);
+    next.set(id, status);
+    this.statusSnapshot = next;
+    this.emit();
+  }
+
+  private emit(): void {
+    for (const l of this.statusListeners) l();
+  }
+}
+
+/** `?profile=remote` on the page URL asks the loopback socket for the remote shapes. */
+export function pageProfile(): WireProfile {
+  if (typeof location === "undefined") return "local";
+  return new URLSearchParams(location.search).get("profile") === "remote" ? "remote" : "local";
+}
+
+/** Environment zero: this machine's server on its loopback port. */
+export function localEnvironment(port: number): Environment {
+  return {
+    id: LOCAL_ENVIRONMENT_ID,
+    name: "This Mac",
+    routes: [{ url: `ws://127.0.0.1:${port}`, kind: "loopback", credential: "implicit" }],
+    credentialRef: null,
+  };
+}
+
+/** The page at /ui: exactly one environment, its own origin, the cookie on the upgrade. */
+export function webEnvironment(socketUrl: string, name = "This host"): Environment {
+  return {
+    id: WEB_ENVIRONMENT_ID,
+    name,
+    routes: [{ url: socketUrl, kind: "tunnel", credential: "cookie" }],
+    credentialRef: null,
+  };
+}
+
+/** A saved remote host as the main process lists it. */
+export function savedEnvironment(saved: {
+  id: string;
+  name: string;
+  routes: { url: string; kind: Route["kind"] }[];
+}): Environment {
+  return {
+    id: saved.id,
+    name: saved.name,
+    routes: saved.routes.map((r) => ({ url: r.url, kind: r.kind, credential: "key" })),
+    credentialRef: saved.id,
+  };
+}
+
+/** The one registry of the window. */
+export const registry = new ConnectionRegistry();
