@@ -13,6 +13,7 @@ import {
   useLayoutEffect,
 } from "react";
 import { Composer } from "../chrome/Composer";
+import { ConnectionLine, useEnvironmentBlock } from "../chrome/ConnectionLine";
 import { AppshotFlyIn } from "../chrome/AppshotFlyIn";
 import { noteActiveSession } from "../lib/appshots";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
@@ -273,11 +274,14 @@ export const SessionPane = memo(function SessionPane({
     if (focused && composerFocused) return;
     onFocus(session.id);
   }, [composerFocused, focused, onFocus, session.id]);
+  // The thread's host, when it is not reachable: rows stay, sending waits.
+  const block = useEnvironmentBlock(session.environmentId);
   const composerOf = (opts?: ChatOpts) => (
     <>
       <AppshotFlyIn sessionId={session.id} active={focused && visible} />
       <Composer
       enabled={visible}
+      blocked={block.text}
       focused={focused && composerFocused}
       hotkeys={focused}
       shell={!dockComposer}
@@ -324,10 +328,11 @@ export const SessionPane = memo(function SessionPane({
       paused={paused}
       goal={session.goal}
       topSlot={
-        opts?.topSlot || queueStrip ? (
+        opts?.topSlot || queueStrip || block.degraded ? (
           <>
             {opts?.topSlot}
             {queueStrip}
+            {block.degraded ? <ConnectionLine environmentId={session.environmentId} /> : null}
           </>
         ) : undefined
       }

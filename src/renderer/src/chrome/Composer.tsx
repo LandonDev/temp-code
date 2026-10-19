@@ -139,6 +139,8 @@ type Props = {
   onPause?: () => void
   /** Rides on the box's top edge (the implementation board's pass banner). */
   topSlot?: ReactNode
+  /** Why a message cannot go right now (the thread's host is unreachable): shown in place of the placeholder, send waits. */
+  blocked?: string | null
   /** What kind of thread this is; absent hides the chip (subagent children). */
   threadType?: ThreadType | null
   onThreadTypeChange?: (type: ThreadType) => void
@@ -178,6 +180,7 @@ function ToolButton({
 
 export function Composer({
   enabled = true,
+  blocked = null,
   focused,
   hotkeys = false,
   shell = false,
@@ -637,6 +640,7 @@ export function Composer({
   }, [addAttachments, attachmentsSupported, enabled])
 
   const submit = (value: string, invert = false) => {
+    if (blocked) return
     const text = composeInboxMessage(inboxCard, value)
     const files = attachments
     if (!text && files.length === 0 && !noteCard && !handoffCard) return
@@ -823,7 +827,9 @@ export function Composer({
           <ComposerInput
             ref={inputRef}
             placeholder={
-              inboxCard
+              blocked
+                ? blocked
+                : inboxCard
                 ? 'Add a note, or send to start…'
                 : noteCard
                   ? 'Add a message, or send…'
@@ -925,7 +931,7 @@ export function Composer({
               <ComposerAction
                 intent={intent}
                 midTurnDefault={midTurnDefault}
-                disabled={intent !== 'pause' && !hasValue}
+                disabled={!!blocked || (intent !== 'pause' && !hasValue)}
                 onSubmit={(invert) => submit(inputRef.current?.value() ?? '', invert)}
                 onPause={() => onPause?.()}
               />
