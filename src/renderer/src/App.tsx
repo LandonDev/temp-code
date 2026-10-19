@@ -14,6 +14,7 @@ import { HiddenApprovalToasts } from "./chrome/ApprovalToasts";
 import { WhatsNewDialog } from "./chrome/WhatsNewDialog";
 import { NewWorkspaceDialog } from "./chrome/ProjectDialogs";
 import { environment, environmentAt, environmentStore, stepEnvironment } from "./stores/environment";
+import { subscribeEnvironmentSwitch } from "./lib/environmentSwitch";
 import { ShellTitleBar, type HeaderEvents } from "./chrome/ShellTitleBar";
 import { MenuBar } from "./chrome/MenuBar";
 import { FilePicker } from "./chrome/FilePicker";
@@ -488,6 +489,13 @@ export default function App() {
   );
 
   const { activeTab, active } = activeSessionOf(tabs, activeTabId, sessions);
+  // The window's environment: the thread on screen's, else the workspace's, else this machine.
+  const activeEnvironmentId =
+    active?.environmentId ?? (projectCwd !== "~" ? environmentOfCwd(projectCwd) : undefined) ?? registry.primaryEnvironmentId;
+  useEffect(() => {
+    const here = projectCwd !== "~" && (environmentOfCwd(projectCwd) ?? registry.primaryEnvironmentId) === activeEnvironmentId;
+    environment.follow(activeEnvironmentId, here ? projectCwd : null);
+  }, [activeEnvironmentId, projectCwd]);
   // The strip, sidebar, pane header and composer all move on the click;
   // only the transcript body, the heavy render, follows in a deferred pass
   // (SessionPane's DeferredMount), so the click paints at once.
@@ -3304,6 +3312,7 @@ export default function App() {
     },
     [appendTab, onSelectProject, setActiveTabId, setSessions],
   );
+  useEffect(() => subscribeEnvironmentSwitch(switchToEnvironment), [switchToEnvironment]);
   const onStepEnvironment = useCallback(
     (delta: number) => {
       const ids = registry.environments().map((e) => e.id);

@@ -1,5 +1,7 @@
-import { registry } from "../lib/connection";
+import { registry, useEnvironments, useEnvironmentStatuses } from "../lib/connection";
 import { environmentOfCwd } from "../lib/tcserver/projects";
+import { groupByEnvironment } from "../lib/environmentGroups";
+import { EnvironmentSwitcher, toneOf } from "./EnvironmentSwitcher";
 import {
   Archive,
   Check,
@@ -21,7 +23,7 @@ import {
   Settings,
   Trash2,
 } from "./icons";
-import { useEffect, useMemo, useRef, useState, type MouseEvent, type RefObject } from "react";
+import { useEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode, type RefObject } from "react";
 import { useDragResize } from "../hooks/useDragResize";
 import { useLockOverscroll } from "../hooks/useLockOverscroll";
 import { useProjectDiffStats } from "../hooks/useProjectDiffStats";
@@ -136,7 +138,8 @@ type Props = {
   /** The home: the chats outside every workspace. */
   onOpenChats?: () => void;
   onSelectProject: (path: string) => void;
-  onOpenProject: () => void;
+  /** Add a workspace: this machine's folder dialog, or a host's folders when `environmentId` is another machine. */
+  onOpenProject: (environmentId?: string) => void;
   onRemoveProject?: (path: string, options: { purgeData: boolean }) => void;
   liveAgents?: LiveAgent[];
   activeSessionId?: string;
@@ -218,6 +221,14 @@ export function ProjectRail({
   const sections = useMemo(
     () => projectRailSections(recents, null, railOrder, pinnedPaths),
     [pinnedPaths, railOrder, recents],
+  );
+  // With another machine paired, the workspace rows split by machine so a
+  // row always says where its threads run; one machine keeps one list.
+  const environments = useEnvironments();
+  const environmentStatuses = useEnvironmentStatuses();
+  const groups = useMemo(
+    () => (environments.length > 1 ? groupByEnvironment(sections.projects, environments, environmentOfCwd) : null),
+    [environments, sections.projects, workspaces],
   );
   const busy = useMemo(() => {
     const set = new Set<string>();
@@ -459,6 +470,7 @@ export function ProjectRail({
                 ariaLabel={chatsAriaLabel(busy.has("~"), needsYou.has("~"))}
               />
             ) : null}
+            <EnvironmentSwitcher variant="rail" />
           </div>
           {onOpenAccountsPage ? (
             <div className="shrink-0">
@@ -518,30 +530,42 @@ export function ProjectRail({
               />
             ) : null}
 
-            <ProjectSection
-              label="Workspaces"
-              items={sections.projects}
-              emptyLabel="No workspaces yet"
-              onAdd={onOpenProject}
-              cwd={cwd}
-              busy={busy}
-              needsYou={needsYou}
-              railStatuses={railStatuses}
-              activeSessionId={activeSessionId ?? null}
-              onSelectAgent={onSelectAgent}
-              sortable={projectSortable}
-              pinned={false}
-              searchActive={searchActive || inboxActive || notesActive || !!accountsPage}
-              onSelect={onSelectProject}
-              onTogglePin={onTogglePin}
-              onContextMenu={onProjectContextMenu}
-              onOpenMenu={openProjectMenu}
-              groupLabels={groupLabels}
-              groupColors={groupColors}
-              groupCustomColors={groupCustomColors}
-              groupLogos={groupLogos}
-              groupMascots={groupMascots}
-            />
+            {(groups ?? [null]).map((group) => {
+              const status = group ? environmentStatuses.get(group.environment.id) : undefined;
+              return (
+                <ProjectSection
+                  key={group?.environment.id ?? "all"}
+                  label={group ? group.environment.name : "Workspaces"}
+                  leading={
+                    status ? (
+                      <span aria-hidden className={`size-1.5 shrink-0 rounded-full ${toneOf(status, status.transport !== "open")}`} />
+                    ) : undefined
+                  }
+                  items={group ? group.items : sections.projects}
+                  indexOf={(item) => sections.projects.indexOf(item)}
+                  emptyLabel={group ? "No workspaces here yet" : "No workspaces yet"}
+                  onAdd={() => onOpenProject(group?.environment.id)}
+                  cwd={cwd}
+                  busy={busy}
+                  needsYou={needsYou}
+                  railStatuses={railStatuses}
+                  activeSessionId={activeSessionId ?? null}
+                  onSelectAgent={onSelectAgent}
+                  sortable={projectSortable}
+                  pinned={false}
+                  searchActive={searchActive || inboxActive || notesActive || !!accountsPage}
+                  onSelect={onSelectProject}
+                  onTogglePin={onTogglePin}
+                  onContextMenu={onProjectContextMenu}
+                  onOpenMenu={openProjectMenu}
+                  groupLabels={groupLabels}
+                  groupColors={groupColors}
+                  groupCustomColors={groupCustomColors}
+                  groupLogos={groupLogos}
+                  groupMascots={groupMascots}
+                />
+              );
+            })}
           </div>
           <LiveAgentsPreview
             agents={liveAgents}
@@ -831,7 +855,9 @@ function LiveAgentCard({
 
 function ProjectSection({
   label,
+  leading,
   items,
+  indexOf,
   emptyLabel,
   onAdd,
   cwd,
@@ -854,7 +880,11 @@ function ProjectSection({
   groupMascots,
 }: {
   label: string;
+  /** A mark before the label: the environment's connection dot. */
+  leading?: ReactNode;
   items: RecentProject[];
+  /** The row's place in the sortable's whole list; defaults to its place in `items`. */
+  indexOf?: (item: RecentProject) => number;
   emptyLabel?: string;
   onAdd?: () => void;
   cwd: string;
@@ -879,8 +909,9 @@ function ProjectSection({
   return (
     <div className="shrink-0">
       <div className="flex h-9 items-center gap-1 px-2 pr-1.5">
-        <span className="min-w-0 flex-1 truncate px-2 text-[11px] font-semibold tracking-[0.08em] text-content/50 uppercase">
-          {label}
+        <span className="flex min-w-0 flex-1 items-center gap-1.5 truncate px-2 text-[11px] font-semibold tracking-[0.08em] text-content/50 uppercase">
+          {leading}
+          <span className="min-w-0 truncate">{label}</span>
         </span>
         {onAdd ? (
           <button
@@ -910,7 +941,7 @@ function ProjectSection({
             onSelectAgent={onSelectAgent}
             pinned={pinned}
             sortable={sortable}
-            index={index}
+            index={indexOf ? indexOf(item) : index}
             onSelect={onSelect}
             onTogglePin={onTogglePin}
             onContextMenu={onContextMenu}
