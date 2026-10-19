@@ -1,0 +1,16 @@
+{
+  "id": "1",
+  "ok": true,
+  "result": [
+    {
+      "id": "GVeVXQSGh5Su",
+      "name": "fixture-workspace",
+      "path": "/var/folders/5x/1mkrv6rj06j5m57nmzgm97n80000gn/T/tc-swift-fixtures-repo-IAyMHr",
+      "git": true,
+      "accountPins": {},
+      "githubRepo": null,
+      "githubRepoCheckedAt": 1792400019634,
+      "createdAt": 1792400019634
+    }
+  ]
+}

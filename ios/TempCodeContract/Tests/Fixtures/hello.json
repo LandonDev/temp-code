@@ -1,0 +1,13 @@
+{
+  "push": "hello",
+  "environmentId": "env_BXtWA-9fBtOxQk14U7KJ8w",
+  "contract": 1,
+  "caps": [
+    "operate",
+    "read"
+  ],
+  "key": {
+    "id": "CRJHPK8MHM",
+    "name": "iphone"
+  }
+}

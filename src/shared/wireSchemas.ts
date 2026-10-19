@@ -1,0 +1,537 @@
+import { z } from 'zod'
+import type { AccountPins, AccountProvider } from './accounts'
+import type { BuildOutput, BuildRun, BuildStatus } from './build'
+import {
+  AGENT_TYPES,
+  type AgentType,
+  type ModelInfo,
+  type ProviderId,
+  type ProviderInfo,
+  type Reasoning
+} from './catalog'
+import type { Capability } from './capabilities'
+import type { QueuedMessage, ServerPush } from './contract'
+import {
+  AudienceSchema,
+  CapabilitySchema,
+  WebhookEventSchema,
+  type RemoteKey,
+  type RemotePairing,
+  type RemoteSession,
+  type RemoteStatus
+} from './contract-remote'
+import {
+  ProjectModeSchema,
+  ThreadTypeSchema,
+  type FileChange,
+  type ProjectMeta,
+  type WorkspaceMeta
+} from './domain'
+import {
+  AgentEventSchema,
+  AttachmentSchema,
+  PermissionPolicySchema,
+  SessionStatusSchema,
+  ToolPreviewSchema,
+  type AgentEvent,
+  type EventRow,
+  type SessionMeta,
+  type ToolPreview
+} from './events'
+import type { EventsPage, OmittedBody, SessionPage } from './wire'
+
+/**
+ * The server → client shapes as zod, for clients that are not this
+ * renderer: scripts/gen-swift-contract.ts turns them (and the request
+ * params of src/shared/contract.ts) into the Swift package under
+ * ios/TempCodeContract, and scripts/capture-swift-fixtures.ts parses every
+ * captured frame with them before it becomes a fixture.
+ *
+ * The interfaces in events.ts, domain.ts, contract.ts, contract-remote.ts
+ * and wire.ts stay the source of truth. Each schema here is pinned to its
+ * interface by a type-level `Mirror` check at the bottom of the file: a
+ * field added to SessionMeta without a line here fails the typecheck, and
+ * so fails the release gate, before any Swift could drift.
+ *
+ * Numbers: a field is `.int()` only where the server computes an integer
+ * (`Date.now()`, sequence numbers, counts); the Swift side maps integer to
+ * Int and number to Double. Bodies: the remote profile (wire.ts) widens a
+ * tool result's `output`, a preview's `lines` and `output` to
+ * `string | OmittedBody`; the `Wire*` schemas carry that widening.
+ */
+
+// ── type pins ───────────────────────────────────────────────────────────
+
+type Flat<T> = { [K in keyof T]: T[K] }
+type Equal<A, B> =
+  (<T>() => T extends A ? 1 : 2) extends <T>() => T extends B ? 1 : 2 ? true : false
+type IsObject<T> = [T] extends [object]
+  ? [T] extends [(...args: never) => unknown]
+    ? false
+    : true
+  : false
+type AllTrue<T> = T[keyof T] extends true ? true : false
+/** `A` and `B` are mutually assignable and, at every object level, have the
+ *  same keys, so an optional field added to one side is a difference too.
+ *  Arrays compare by element. (The usual identity trick is not used: it
+ *  gives up on deep types and answered both ways here.) */
+type Pin<A, B> = [A] extends [B] ? ([B] extends [A] ? PinKeys<A, B> : false) : false
+type PinKeys<A, B> = [NonNullable<A>] extends [(infer AU)[]]
+  ? [NonNullable<B>] extends [(infer BU)[]]
+    ? Pin<AU, BU>
+    : false
+  : IsObject<NonNullable<A>> extends true
+    ? Equal<keyof NonNullable<A>, keyof NonNullable<B>> extends true
+      ? AllTrue<{
+          [K in keyof NonNullable<A>]-?: Pin<
+            NonNullable<A>[K],
+            NonNullable<B>[K & keyof NonNullable<B>]
+          >
+        }>
+      : false
+    : true
+/** The schema's output type is the interface: the same keys at every level, the same types. */
+type Mirror<S extends z.ZodType, T> = Pin<z.infer<S>, T>
+type Expect<T extends true> = T
+/** `K` of `T` kept opaque on the wire: a client never reads inside it. */
+type Opaque<T, K extends keyof T> = Flat<Omit<T, K> & { [P in K]?: unknown }>
+
+// ── catalog ─────────────────────────────────────────────────────────────
+
+export const ProviderIdSchema = z.enum([
+  'claude',
+  'codex',
+  'cursor',
+  'grok',
+  'opencode',
+  'pi',
+  'omp',
+  'fx'
+])
+export const ReasoningSchema = z.enum(['low', 'medium', 'high', 'xhigh', 'max', 'ultra'])
+export const AgentTypeSchema = z.enum(AGENT_TYPES)
+export const AccountProviderSchema = z.enum(['claude', 'codex', 'cursor'])
+export const AccountPinsSchema = z.partialRecord(AccountProviderSchema, z.string())
+
+export const ModelInfoSchema = z.object({
+  id: z.string(),
+  label: z.string(),
+  reasoning: z.array(ReasoningSchema),
+  defaultReasoning: ReasoningSchema.optional(),
+  context: z.number().int().optional(),
+  speedTiers: z.array(z.string()).optional(),
+  minCodexVersion: z.string().optional()
+})
+export const ProviderInfoSchema = z.object({
+  id: ProviderIdSchema,
+  label: z.string(),
+  models: z.array(ModelInfoSchema),
+  defaultModel: z.string(),
+  experimental: z.boolean().optional()
+})
+/** `catalog.get` → one entry per provider. */
+export const CatalogSchema = z.record(ProviderIdSchema, ProviderInfoSchema)
+
+// ── bodies off the wire (wire.ts) ───────────────────────────────────────
+
+export const OmittedBodySchema = z.object({
+  omitted: z.literal(true),
+  bytes: z.number().int(),
+  lines: z.number().int(),
+  head: z.string()
+})
+/** A body slot on the remote profile: the text, or its OmittedBody. */
+export const BodySchema = z.union([z.string(), OmittedBodySchema])
+
+const previewLines = ToolPreviewSchema.shape.lines.unwrap()
+export const WireToolPreviewSchema = ToolPreviewSchema.extend({
+  lines: z.union([previewLines, OmittedBodySchema]).optional(),
+  output: BodySchema.optional()
+})
+
+type ToolCallEvent = Extract<AgentEvent, { type: 'tool-call' }>
+type ToolResultEvent = Extract<AgentEvent, { type: 'tool-result' }>
+export type WireToolPreview = Flat<
+  Omit<ToolPreview, 'lines' | 'output'> & {
+    lines?: NonNullable<ToolPreview['lines']> | OmittedBody
+    output?: string | OmittedBody
+  }
+>
+/** An AgentEvent as a remote connection sees it (wire.ts projectEvent). */
+export type WireAgentEvent =
+  | Exclude<AgentEvent, ToolCallEvent | ToolResultEvent>
+  | Flat<Omit<ToolCallEvent, 'preview'> & { preview?: WireToolPreview }>
+  | Flat<Omit<ToolResultEvent, 'output'> & { output: string | OmittedBody }>
+
+type EventBranch = z.ZodObject<{ type: z.ZodLiteral<string> }>
+const eventBranches = AgentEventSchema.options as unknown as readonly EventBranch[]
+const wireEventBranches = eventBranches.map((branch) => {
+  switch (branch.shape.type.value) {
+    case 'tool-result':
+      return branch.extend({ output: BodySchema })
+    case 'tool-call':
+      return branch.extend({ preview: WireToolPreviewSchema.optional() })
+    default:
+      return branch
+  }
+})
+/** Every row kind of events.ts, with the remote profile's body slots widened. */
+export const WireAgentEventSchema = z.discriminatedUnion(
+  'type',
+  wireEventBranches as unknown as [EventBranch, ...EventBranch[]]
+) as unknown as z.ZodType<WireAgentEvent>
+
+export const EventRowSchema = z.object({
+  sessionId: z.string(),
+  seq: z.number().int(),
+  ts: z.number().int(),
+  event: WireAgentEventSchema,
+  ephemeral: z.boolean().optional()
+})
+export type WireEventRow = Flat<Omit<EventRow, 'event'> & { event: WireAgentEvent }>
+
+export const EventsPageSchema = z.object({
+  rows: z.array(EventRowSchema),
+  moreBefore: z.boolean(),
+  moreAfter: z.boolean(),
+  reset: z.boolean()
+})
+export type WireEventsPage = Flat<Omit<EventsPage, 'rows'> & { rows: WireEventRow[] }>
+
+// ── sessions, projects, workspaces ──────────────────────────────────────
+
+export const SessionMetaSchema = z.object({
+  id: z.string(),
+  parentId: z.string().nullable(),
+  projectId: z.string().nullable(),
+  workspaceId: z.string().nullable(),
+  threadType: ThreadTypeSchema.nullable(),
+  planPath: z.string().nullable(),
+  provider: ProviderIdSchema,
+  model: z.string(),
+  reasoning: ReasoningSchema,
+  agentType: AgentTypeSchema,
+  title: z.string(),
+  cwd: z.string(),
+  status: SessionStatusSchema,
+  pinned: z.boolean(),
+  archived: z.boolean(),
+  permission: PermissionPolicySchema,
+  fast: z.boolean(),
+  ultrafast: z.boolean(),
+  context1m: z.boolean(),
+  busySince: z.number().int().nullable(),
+  pausedAt: z.number().int().nullable(),
+  frozenActiveElapsed: z.number().int().nullable(),
+  nativeId: z.string().nullable(),
+  account: z.string().nullable().optional(),
+  activity: z.string().nullable().optional(),
+  activityKind: z.enum(['think', 'investigate', 'edit']).nullable().optional(),
+  tasks: z
+    .object({
+      done: z.number().int(),
+      total: z.number().int(),
+      current: z.string().nullable().optional()
+    })
+    .nullable()
+    .optional(),
+  goal: z
+    .object({ condition: z.string(), iterations: z.number().int(), setAt: z.number().int() })
+    .nullable()
+    .optional(),
+  context: z
+    .object({ tokens: z.number().int(), window: z.number().int().nullable() })
+    .nullable()
+    .optional(),
+  canContinue: z.boolean().optional(),
+  treeCanContinue: z.boolean().optional(),
+  treeHasLiveWork: z.boolean().optional(),
+  treeHasPaused: z.boolean().optional(),
+  treeFrozenActiveElapsed: z.number().int().nullable().optional(),
+  /** An orchestration run's tune (rules.ts): a large settings object no remote client reads. */
+  threadRules: z.unknown().optional(),
+  createdAt: z.number().int(),
+  updatedAt: z.number().int()
+})
+
+/** SessionMeta as a remote client reads it: `threadRules` opaque. */
+export type WireSessionMeta = Opaque<SessionMeta, 'threadRules'>
+
+export const SessionPageSchema = z.object({
+  sessions: z.array(SessionMetaSchema),
+  cursor: z.string().nullable()
+})
+export type WireSessionPage = Flat<Omit<SessionPage, 'sessions'> & { sessions: WireSessionMeta[] }>
+
+export const WorkspaceMetaSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  path: z.string(),
+  git: z.boolean(),
+  accountPins: AccountPinsSchema.optional(),
+  githubRepo: z.string().nullable().optional(),
+  githubRepoCheckedAt: z.number().int().nullable().optional(),
+  createdAt: z.number().int()
+})
+
+export const ProjectMetaSchema = z.object({
+  id: z.string(),
+  workspaceId: z.string(),
+  name: z.string(),
+  mode: ProjectModeSchema,
+  branch: z.string().nullable(),
+  cwd: z.string(),
+  archived: z.boolean(),
+  accountPins: AccountPinsSchema.optional(),
+  createdAt: z.number().int()
+})
+
+export const FileChangeSchema = z.object({
+  path: z.string(),
+  adds: z.number().int(),
+  dels: z.number().int(),
+  status: z.enum(['modified', 'added', 'deleted', 'untracked', 'renamed'])
+})
+
+export const QueuedMessageSchema = z.object({
+  id: z.string(),
+  text: z.string(),
+  ts: z.number().int(),
+  provider: z.string().optional(),
+  model: z.string().optional(),
+  reasoning: z.string().optional(),
+  attachments: z.array(AttachmentSchema).optional()
+})
+
+// ── remote access ───────────────────────────────────────────────────────
+
+export const RemoteStatusSchema = z.object({
+  environmentId: z.string(),
+  name: z.string(),
+  enabled: z.boolean(),
+  port: z.number().int(),
+  configuredPort: z.number().int(),
+  running: z.boolean(),
+  error: z.string().nullable(),
+  origin: z.string(),
+  publicOrigin: z.string(),
+  learnedOrigin: z.string().nullable(),
+  contract: z.number().int(),
+  stuckMinutes: z.number().int()
+})
+
+export const RemoteKeySchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  audience: AudienceSchema,
+  caps: z.array(CapabilitySchema),
+  kind: z.enum(['bearer', 'browser']),
+  createdAt: z.number().int(),
+  lastUsedAt: z.number().int().nullable(),
+  revokedAt: z.number().int().nullable(),
+  createdBy: z.string(),
+  webhookUrl: z.string().nullable(),
+  events: z.array(WebhookEventSchema).nullable()
+})
+
+export const RemotePairingSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  audience: AudienceSchema,
+  caps: z.array(CapabilitySchema),
+  createdAt: z.number().int(),
+  expiresAt: z.number().int(),
+  consumedAt: z.number().int().nullable(),
+  consumedBy: z.string().nullable()
+})
+
+export const RemoteSessionSchema = z.object({
+  id: z.string(),
+  keyId: z.string(),
+  keyName: z.string(),
+  caps: z.array(CapabilitySchema),
+  userAgent: z.string().nullable(),
+  createdAt: z.number().int(),
+  lastSeenAt: z.number().int(),
+  expiresAt: z.number().int()
+})
+
+/** `remote.keys.create` → the key and, once only, its token. */
+export const CreatedKeySchema = z.object({
+  key: RemoteKeySchema,
+  token: z.string(),
+  webhookSecret: z.string().optional()
+})
+/** `remote.pairings.create` → the pairing, its code and the link. */
+export const CreatedPairingSchema = z.object({
+  pairing: RemotePairingSchema,
+  code: z.string(),
+  url: z.string()
+})
+
+// ── the HTTP side of pairing (remote/listener.ts) ───────────────────────
+
+/** `GET /api/hello`: public, with `key` when the bearer was accepted. */
+export const HelloResponseSchema = z.object({
+  environmentId: z.string(),
+  name: z.string(),
+  version: z.string(),
+  contract: z.number().int(),
+  key: z
+    .object({
+      id: z.string(),
+      name: z.string(),
+      caps: z.array(CapabilitySchema),
+      audience: AudienceSchema
+    })
+    .optional()
+})
+/** `POST /api/pair` with `kind: 'key'`: the raw key, readable once. */
+export const PairKeyResponseSchema = z.object({
+  key: z.string(),
+  keyId: z.string(),
+  name: z.string(),
+  caps: z.array(CapabilitySchema),
+  audience: AudienceSchema,
+  environmentId: z.string()
+})
+/** `POST /api/ticket`: a single-use ticket for `/ws?ticket=…`. */
+export const TicketResponseSchema = z.object({ ticket: z.string(), expiresIn: z.number().int() })
+/** Any `/api/*` failure body. */
+export const HttpErrorSchema = z.object({ error: z.string() })
+
+export type HelloResponse = z.infer<typeof HelloResponseSchema>
+export type PairKeyResponse = z.infer<typeof PairKeyResponseSchema>
+export type TicketResponse = z.infer<typeof TicketResponseSchema>
+
+// ── pushes a remote socket receives ─────────────────────────────────────
+
+const push = <P extends string, S extends z.ZodRawShape>(
+  name: P,
+  shape: S
+): z.ZodObject<{ push: z.ZodLiteral<P> } & S> => z.object({ push: z.literal(name), ...shape })
+
+export const HelloPushSchema = push('hello', {
+  environmentId: z.string(),
+  contract: z.number().int(),
+  caps: z.array(CapabilitySchema),
+  key: z.object({ id: z.string(), name: z.string() }).optional()
+})
+export const WorkspacesPushSchema = push('workspaces', { workspaces: z.array(WorkspaceMetaSchema) })
+export const ProjectsPushSchema = push('projects', { projects: z.array(ProjectMetaSchema) })
+export const EventsPushSchema = push('events', {
+  sessionId: z.string(),
+  rows: z.array(EventRowSchema)
+})
+export const SessionsPushSchema = push('sessions', { sessions: z.array(SessionMetaSchema) })
+
+export const LiveEditSchema = z.object({
+  cwd: z.string(),
+  sessionIds: z.array(z.string()),
+  edit: z.object({
+    path: z.string(),
+    kind: z.enum(['changed', 'created', 'deleted']),
+    adds: z.number().int().optional(),
+    dels: z.number().int().optional(),
+    diff: z.string().nullable(),
+    bytes: z.number().int().optional(),
+    burst: z.boolean().optional(),
+    settled: z.boolean().optional(),
+    ts: z.number().int()
+  })
+})
+export const LiveEditsPushSchema = push('live-edits', { items: z.array(LiveEditSchema) })
+
+export const BuildOutputSchema = z.object({
+  path: z.string(),
+  abs: z.string(),
+  size: z.number().int(),
+  mtimeMs: z.number(),
+  fresh: z.boolean()
+})
+export const BuildRunSchema = z.object({
+  id: z.string(),
+  status: z.enum(['running', 'ok', 'failed', 'cancelled']),
+  command: z.string(),
+  cwd: z.string(),
+  branch: z.string().nullable(),
+  startedAt: z.number().int(),
+  endedAt: z.number().int().optional(),
+  exitCode: z.number().int().optional(),
+  outputs: z.array(BuildOutputSchema)
+})
+export const BuildUpdateSchema = z.object({
+  projectId: z.string(),
+  run: BuildRunSchema,
+  lines: z.array(z.string()).optional()
+})
+export const BuildsPushSchema = push('builds', { items: z.array(BuildUpdateSchema) })
+export const QueuePushSchema = push('queue', {
+  sessionId: z.string(),
+  items: z.array(QueuedMessageSchema)
+})
+export const SessionRemovedPushSchema = push('session-removed', { sessionIds: z.array(z.string()) })
+
+/** Every push a remote connection can receive; the singular `event`,
+ *  `session`, `live-edit` and `build` frames stay local. */
+export const RemotePushSchema = z.discriminatedUnion('push', [
+  HelloPushSchema,
+  WorkspacesPushSchema,
+  ProjectsPushSchema,
+  EventsPushSchema,
+  SessionsPushSchema,
+  LiveEditsPushSchema,
+  BuildsPushSchema,
+  QueuePushSchema,
+  SessionRemovedPushSchema
+])
+
+// ── the pins ────────────────────────────────────────────────────────────
+// Each line fails the typecheck when the interface and the schema part.
+
+type PushOf<P extends ServerPush['push']> = Extract<ServerPush, { push: P }>
+export type WireSchemaPins = [
+  Expect<Equal<z.infer<typeof ProviderIdSchema>, ProviderId>>,
+  Expect<Equal<z.infer<typeof ReasoningSchema>, Reasoning>>,
+  Expect<Equal<z.infer<typeof AgentTypeSchema>, AgentType>>,
+  Expect<Equal<z.infer<typeof AccountProviderSchema>, AccountProvider>>,
+  Expect<Mirror<typeof AccountPinsSchema, AccountPins>>,
+  Expect<Mirror<typeof ModelInfoSchema, ModelInfo>>,
+  Expect<Mirror<typeof ProviderInfoSchema, ProviderInfo>>,
+  Expect<Equal<z.infer<typeof CapabilitySchema>, Capability>>,
+  Expect<Mirror<typeof OmittedBodySchema, OmittedBody>>,
+  Expect<Mirror<typeof WireToolPreviewSchema, WireToolPreview>>,
+  Expect<Equal<WireAgentEvent['type'], AgentEvent['type']>>,
+  Expect<AgentEvent extends WireAgentEvent ? true : false>,
+  Expect<Mirror<typeof EventRowSchema, WireEventRow>>,
+  Expect<Mirror<typeof EventsPageSchema, WireEventsPage>>,
+  Expect<Mirror<typeof SessionMetaSchema, WireSessionMeta>>,
+  Expect<Mirror<typeof SessionPageSchema, WireSessionPage>>,
+  Expect<Mirror<typeof WorkspaceMetaSchema, WorkspaceMeta>>,
+  Expect<Mirror<typeof ProjectMetaSchema, ProjectMeta>>,
+  Expect<Mirror<typeof FileChangeSchema, FileChange>>,
+  Expect<Mirror<typeof QueuedMessageSchema, QueuedMessage>>,
+  Expect<Mirror<typeof RemoteStatusSchema, RemoteStatus>>,
+  Expect<Mirror<typeof RemoteKeySchema, RemoteKey>>,
+  Expect<Mirror<typeof RemotePairingSchema, RemotePairing>>,
+  Expect<Mirror<typeof RemoteSessionSchema, RemoteSession>>,
+  Expect<Mirror<typeof BuildOutputSchema, BuildOutput>>,
+  Expect<Equal<z.infer<typeof BuildRunSchema>['status'], BuildStatus>>,
+  Expect<Mirror<typeof BuildRunSchema, BuildRun>>,
+  Expect<Mirror<typeof HelloPushSchema, PushOf<'hello'>>>,
+  Expect<Mirror<typeof WorkspacesPushSchema, PushOf<'workspaces'>>>,
+  Expect<Mirror<typeof ProjectsPushSchema, PushOf<'projects'>>>,
+  Expect<
+    Mirror<typeof EventsPushSchema, Flat<Omit<PushOf<'events'>, 'rows'> & { rows: WireEventRow[] }>>
+  >,
+  Expect<
+    Mirror<
+      typeof SessionsPushSchema,
+      Flat<Omit<PushOf<'sessions'>, 'sessions'> & { sessions: WireSessionMeta[] }>
+    >
+  >,
+  Expect<Mirror<typeof LiveEditsPushSchema, PushOf<'live-edits'>>>,
+  Expect<Mirror<typeof BuildsPushSchema, PushOf<'builds'>>>,
+  Expect<Mirror<typeof QueuePushSchema, PushOf<'queue'>>>,
+  Expect<Mirror<typeof SessionRemovedPushSchema, PushOf<'session-removed'>>>
+]

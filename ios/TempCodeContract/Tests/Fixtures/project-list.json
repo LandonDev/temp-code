@@ -1,0 +1,17 @@
+{
+  "id": "2",
+  "ok": true,
+  "result": [
+    {
+      "id": "DfnSbtrsWbWE",
+      "workspaceId": "GVeVXQSGh5Su",
+      "name": "fixture-project",
+      "mode": "local",
+      "branch": "master",
+      "cwd": "/var/folders/5x/1mkrv6rj06j5m57nmzgm97n80000gn/T/tc-swift-fixtures-repo-IAyMHr",
+      "archived": false,
+      "accountPins": {},
+      "createdAt": 1792400019643
+    }
+  ]
+}

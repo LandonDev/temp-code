@@ -203,6 +203,21 @@ routed to (aliax-core's `forward`). Two listeners:
   through src/main/server/loginShell.ts (`$SHELL`, else zsh on macOS, bash
   elsewhere): never hardcode /bin/zsh.
 
+## The iOS contract package is generated
+- `ios/TempCodeContract` holds the Swift `Codable` types of the remote wire,
+  generated from zod by `scripts/gen-swift-contract.ts` (`bun run gen:swift`).
+  `src/shared/wireSchemas.ts` is the zod for every server → client shape,
+  pinned to its interface by type-level checks that the typecheck runs; the
+  generator's `SUBSET` array is the one list of what the phone speaks.
+- Never edit `Sources/TempCodeContract/Generated/`. Change the contract,
+  run `bun run gen:swift`, commit the output: `bun run check:swift-contract`
+  (inside `bun run typecheck`) fails the gate when it is stale, and
+  `bun run ios:test` (in the gate too) builds and tests the package.
+  Fixtures under `Tests/Fixtures` come from a real server through
+  `bun run script:capture-swift-fixtures`; re-record them when a captured
+  shape changes. The package README has the subset policy and what L2
+  (the socket actor) builds on it.
+
 ## The prod worktree is retired
 ~/IdeaProjects/temp-code-prod was the old local updater's build checkout.
 The updater no longer reads it or the source repo at all; it can stay

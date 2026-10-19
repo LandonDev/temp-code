@@ -512,8 +512,8 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
     // asks for the rest with `beforeSeq`); a shorter log comes back whole.
     params: z.object({
       sessionId: z.string(),
-      afterSeq: z.number().default(0),
-      beforeSeq: z.number().optional(),
+      afterSeq: z.number().int().default(0),
+      beforeSeq: z.number().int().optional(),
       tail: z.number().int().positive().optional(),
       // At most this many rows from afterSeq on: the renderer walks a long
       // head in slices so no one call reads a 40k-row log in one go.

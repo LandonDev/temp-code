@@ -1,0 +1,48 @@
+{
+  "id": "4",
+  "ok": true,
+  "result": {
+    "sessions": [
+      {
+        "id": "fixture-thread",
+        "parentId": null,
+        "projectId": "DfnSbtrsWbWE",
+        "workspaceId": null,
+        "threadType": "implementation",
+        "planPath": null,
+        "provider": "claude",
+        "model": "claude-sonnet-5-5",
+        "reasoning": "low",
+        "agentType": "implementer",
+        "title": "Fixture thread",
+        "cwd": "/var/folders/5x/1mkrv6rj06j5m57nmzgm97n80000gn/T/tc-swift-fixtures-repo-IAyMHr",
+        "status": "running",
+        "pinned": false,
+        "archived": false,
+        "fast": false,
+        "ultrafast": false,
+        "context1m": false,
+        "busySince": 1792400019649,
+        "pausedAt": null,
+        "frozenActiveElapsed": null,
+        "threadRules": null,
+        "context": null,
+        "permission": "edits",
+        "nativeId": null,
+        "account": null,
+        "createdAt": 1792400019646,
+        "updatedAt": 1792400019649,
+        "activity": "Editing fixture.ts",
+        "activityKind": "edit",
+        "tasks": null,
+        "goal": null,
+        "canContinue": false,
+        "treeCanContinue": false,
+        "treeHasLiveWork": true,
+        "treeHasPaused": false,
+        "treeFrozenActiveElapsed": null
+      }
+    ],
+    "cursor": null
+  }
+}

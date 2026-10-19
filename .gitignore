@@ -17,3 +17,7 @@ resources/native/appshot-helper
 artifacts/
 src/main/server/media/
 release/
+
+# SwiftPM build output of the iOS contract package.
+ios/TempCodeContract/.build/
+ios/TempCodeContract/.swiftpm/

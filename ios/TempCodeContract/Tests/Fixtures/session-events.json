@@ -1,0 +1,162 @@
+{
+  "id": "8",
+  "ok": true,
+  "result": {
+    "rows": [
+      {
+        "sessionId": "fixture-thread",
+        "seq": 7,
+        "ts": 1792400019648,
+        "event": {
+          "type": "tool-call",
+          "callId": "c1",
+          "name": "Bash",
+          "input": {
+            "command": "seq 1 100",
+            "description": "Count to one hundred"
+          }
+        }
+      },
+      {
+        "sessionId": "fixture-thread",
+        "seq": 8,
+        "ts": 1792400019648,
+        "event": {
+          "type": "tool-result",
+          "callId": "c1",
+          "output": {
+            "omitted": true,
+            "bytes": 6000,
+            "lines": 100,
+            "head": "line 000: xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+          },
+          "isError": false
+        }
+      },
+      {
+        "sessionId": "fixture-thread",
+        "seq": 9,
+        "ts": 1792400019648,
+        "event": {
+          "type": "tool-call",
+          "callId": "c2",
+          "name": "Edit",
+          "input": {
+            "file_path": "/src/fixture.ts",
+            "old_string": {
+              "omitted": true,
+              "bytes": 3819,
+              "lines": 80,
+              "head": "const value0 = 0 // a line of the edited file"
+            },
+            "new_string": {
+              "omitted": true,
+              "bytes": 4299,
+              "lines": 90,
+              "head": "const value0 = 0 // a line of the edited file"
+            }
+          },
+          "preview": {
+            "kind": "write",
+            "path": "/src/fixture.ts",
+            "fileName": "fixture.ts",
+            "additions": 90,
+            "deletions": 80,
+            "lines": {
+              "omitted": true,
+              "bytes": 9533,
+              "lines": 170,
+              "head": "const value0 = 0"
+            }
+          }
+        }
+      },
+      {
+        "sessionId": "fixture-thread",
+        "seq": 10,
+        "ts": 1792400019648,
+        "event": {
+          "type": "tool-result",
+          "callId": "c2",
+          "output": "ok",
+          "isError": false
+        }
+      },
+      {
+        "sessionId": "fixture-thread",
+        "seq": 11,
+        "ts": 1792400019648,
+        "event": {
+          "type": "assistant-text",
+          "text": "Done: the command ran and the file is edited.",
+          "delta": false,
+          "msgId": "m2",
+          "blockIndex": 0
+        }
+      },
+      {
+        "sessionId": "fixture-thread",
+        "seq": 12,
+        "ts": 1792400019648,
+        "event": {
+          "type": "usage",
+          "inputTokens": 900,
+          "outputTokens": 140
+        }
+      },
+      {
+        "sessionId": "fixture-thread",
+        "seq": 13,
+        "ts": 1792400019648,
+        "event": {
+          "type": "turn-complete",
+          "costUsd": 0.05,
+          "inputTokens": 900,
+          "outputTokens": 140
+        }
+      },
+      {
+        "sessionId": "fixture-thread",
+        "seq": 14,
+        "ts": 1792400019649,
+        "event": {
+          "type": "user-text",
+          "text": "Turn 3: anything else?",
+          "attachments": [
+            {
+              "path": "/tmp/shot.png",
+              "name": "shot.png",
+              "mime": "image/png",
+              "kind": "image"
+            }
+          ]
+        }
+      },
+      {
+        "sessionId": "fixture-thread",
+        "seq": 15,
+        "ts": 1792400019649,
+        "event": {
+          "type": "assistant-text",
+          "text": "Nothing else.",
+          "delta": false,
+          "msgId": "m3",
+          "blockIndex": 0
+        }
+      },
+      {
+        "sessionId": "fixture-thread",
+        "seq": 16,
+        "ts": 1792400019649,
+        "event": {
+          "type": "turn-complete",
+          "inputTokens": 40,
+          "outputTokens": 4
+        }
+      }
+    ],
+    "moreBefore": true,
+    "moreAfter": false,
+    "reset": false
+  }
+}

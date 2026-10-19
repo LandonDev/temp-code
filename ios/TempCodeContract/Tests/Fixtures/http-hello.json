@@ -1,0 +1,15 @@
+{
+  "environmentId": "env_BXtWA-9fBtOxQk14U7KJ8w",
+  "name": "Landons-MBP.attlocal.net",
+  "version": "1.0.237",
+  "contract": 1,
+  "key": {
+    "id": "CRJHPK8MHM",
+    "name": "iphone",
+    "caps": [
+      "operate",
+      "read"
+    ],
+    "audience": "client"
+  }
+}

@@ -1,7 +1,8 @@
 /**
  * Cut a local release: `bun scripts/release.ts "one-line notes"`.
  *
- * Gates on a clean tree, typecheck, vitest, and a real build, then bumps
+ * Gates on a clean tree, typecheck (with the Swift contract check), vitest,
+ * the hub and iOS package tests, and a real build, then bumps
  * release.json to N and package.json to 1.0.N, commits both, and tags
  * `release-N`. That is the whole of the local train: nothing here reaches
  * users. The installed app updates from GitHub releases only, which
@@ -41,6 +42,9 @@ console.log('› vitest')
 run('bunx', ['vitest', 'run'])
 console.log('› hub')
 run('bun', ['run', 'hub:test'])
+// The iOS contract package: 12 s cold, 2 s warm on this Mac (scripts/ios-test.sh).
+console.log('› ios')
+run('bun', ['run', 'ios:test'])
 console.log('› build')
 run('bunx', ['electron-vite', 'build'])
 

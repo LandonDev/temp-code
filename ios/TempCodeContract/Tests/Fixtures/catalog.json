@@ -1,0 +1,356 @@
+{
+  "id": "3",
+  "ok": true,
+  "result": {
+    "claude": {
+      "id": "claude",
+      "label": "Claude",
+      "models": [
+        {
+          "id": "claude-fable-5-1",
+          "label": "Fable 5.1",
+          "reasoning": [
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max"
+          ],
+          "defaultReasoning": "medium",
+          "context": 1000000
+        },
+        {
+          "id": "claude-fable-5",
+          "label": "Fable 5",
+          "reasoning": [
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max"
+          ],
+          "defaultReasoning": "medium",
+          "context": 1000000
+        },
+        {
+          "id": "claude-opus-5-5",
+          "label": "Opus 5.5",
+          "reasoning": [
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max"
+          ],
+          "defaultReasoning": "medium",
+          "context": 1000000
+        },
+        {
+          "id": "claude-opus-5",
+          "label": "Opus 5",
+          "reasoning": [
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max"
+          ],
+          "defaultReasoning": "medium",
+          "context": 1000000
+        },
+        {
+          "id": "claude-opus-4-8",
+          "label": "Opus 4.8",
+          "reasoning": [
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max"
+          ],
+          "defaultReasoning": "medium",
+          "context": 1000000
+        },
+        {
+          "id": "claude-sonnet-5-5",
+          "label": "Sonnet 5.5",
+          "reasoning": [
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max"
+          ],
+          "defaultReasoning": "medium",
+          "context": 1000000
+        },
+        {
+          "id": "claude-haiku-5-5",
+          "label": "Haiku 5.5",
+          "reasoning": [
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max"
+          ],
+          "defaultReasoning": "medium",
+          "context": 1000000
+        }
+      ],
+      "defaultModel": "claude-fable-5-1"
+    },
+    "codex": {
+      "id": "codex",
+      "label": "Codex",
+      "models": [
+        {
+          "id": "gpt-6.1-sol",
+          "label": "GPT-6.1 Sol",
+          "reasoning": [
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max",
+            "ultra"
+          ],
+          "defaultReasoning": "low",
+          "minCodexVersion": "0.162.1",
+          "speedTiers": [
+            "priority",
+            "ultrafast"
+          ]
+        },
+        {
+          "id": "gpt-6-sol",
+          "label": "GPT-6 Sol",
+          "reasoning": [
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max",
+            "ultra"
+          ],
+          "defaultReasoning": "medium",
+          "minCodexVersion": "0.162.1",
+          "speedTiers": [
+            "priority"
+          ]
+        },
+        {
+          "id": "gpt-6-astra",
+          "label": "GPT-6 Astra",
+          "reasoning": [
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max",
+            "ultra"
+          ],
+          "defaultReasoning": "medium",
+          "speedTiers": [
+            "priority",
+            "ultrafast"
+          ]
+        },
+        {
+          "id": "gpt-5.6-sol",
+          "label": "GPT-5.6 Sol",
+          "reasoning": [
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max",
+            "ultra"
+          ],
+          "defaultReasoning": "low",
+          "speedTiers": [
+            "priority"
+          ]
+        },
+        {
+          "id": "gpt-5.6-terra",
+          "label": "GPT-5.6 Terra",
+          "reasoning": [
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max",
+            "ultra"
+          ],
+          "defaultReasoning": "medium",
+          "speedTiers": [
+            "priority"
+          ]
+        },
+        {
+          "id": "gpt-5.6-luna",
+          "label": "GPT-5.6 Luna",
+          "reasoning": [
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max"
+          ],
+          "defaultReasoning": "medium",
+          "speedTiers": [
+            "priority"
+          ]
+        },
+        {
+          "id": "gpt-5.5",
+          "label": "GPT-5.5",
+          "reasoning": [
+            "low",
+            "medium",
+            "high",
+            "xhigh"
+          ],
+          "defaultReasoning": "medium"
+        },
+        {
+          "id": "gpt-5.3-codex-spark",
+          "label": "GPT-5.3 Codex Spark",
+          "reasoning": [
+            "low",
+            "medium",
+            "high",
+            "xhigh"
+          ],
+          "defaultReasoning": "high"
+        }
+      ],
+      "defaultModel": "gpt-5.6-sol"
+    },
+    "cursor": {
+      "id": "cursor",
+      "label": "Cursor",
+      "models": [
+        {
+          "id": "auto",
+          "label": "Auto",
+          "reasoning": []
+        },
+        {
+          "id": "composer-2.5",
+          "label": "Composer 2.5",
+          "reasoning": []
+        },
+        {
+          "id": "cursor-grok-4.6",
+          "label": "Cursor Grok 4.6",
+          "reasoning": [
+            "low",
+            "medium",
+            "high",
+            "xhigh"
+          ],
+          "defaultReasoning": "high"
+        },
+        {
+          "id": "gpt-5.3-codex",
+          "label": "Codex 5.3",
+          "reasoning": [
+            "low",
+            "medium",
+            "high",
+            "xhigh"
+          ],
+          "defaultReasoning": "medium"
+        },
+        {
+          "id": "gpt-5.6-sol",
+          "label": "GPT-5.6 Sol",
+          "reasoning": [
+            "high",
+            "xhigh"
+          ],
+          "defaultReasoning": "high"
+        },
+        {
+          "id": "gpt-5.6-luna",
+          "label": "GPT-5.6 Luna",
+          "reasoning": [
+            "medium",
+            "high",
+            "xhigh",
+            "max"
+          ],
+          "defaultReasoning": "medium"
+        },
+        {
+          "id": "claude-fable-5-thinking",
+          "label": "Fable 5 Thinking",
+          "reasoning": [
+            "high",
+            "xhigh"
+          ],
+          "defaultReasoning": "high"
+        },
+        {
+          "id": "claude-opus-5-thinking",
+          "label": "Opus 5 Thinking",
+          "reasoning": [
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max"
+          ],
+          "defaultReasoning": "high"
+        },
+        {
+          "id": "claude-sonnet-5-thinking",
+          "label": "Sonnet 5 Thinking",
+          "reasoning": [
+            "high",
+            "xhigh"
+          ],
+          "defaultReasoning": "high"
+        }
+      ],
+      "defaultModel": "composer-2.5"
+    },
+    "grok": {
+      "id": "grok",
+      "label": "Grok Build",
+      "models": [],
+      "defaultModel": "",
+      "experimental": true
+    },
+    "opencode": {
+      "id": "opencode",
+      "label": "OpenCode",
+      "models": [],
+      "defaultModel": "",
+      "experimental": true
+    },
+    "pi": {
+      "id": "pi",
+      "label": "Pi",
+      "models": [],
+      "defaultModel": "",
+      "experimental": true
+    },
+    "omp": {
+      "id": "omp",
+      "label": "omp",
+      "models": [],
+      "defaultModel": "",
+      "experimental": true
+    },
+    "fx": {
+      "id": "fx",
+      "label": "fx",
+      "models": [],
+      "defaultModel": "",
+      "experimental": true
+    }
+  }
+}
