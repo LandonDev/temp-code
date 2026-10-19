@@ -1,0 +1,404 @@
+import { Buffer } from 'node:buffer'
+import type { IncomingHttpHeaders } from 'node:http'
+import type { AgentEvent, EventRow, SessionMeta, ToolPreview } from '@shared/events'
+import type { ServerPush } from '@shared/contract'
+import type { EventsPage, OmittedBody, SessionPage, WireProfile } from '@shared/wire'
+import {
+  BODY_HEAD_CHARS,
+  BODY_OMIT_BYTES,
+  DEFLATE_THRESHOLD,
+  HISTORY_PAGE_BYTES,
+  HISTORY_PAGE_ROWS,
+  PUSH_COALESCE_MS,
+  RESUME_BYTES,
+  RESUME_ROWS,
+  SHELL_PAGE_BYTES,
+  SHELL_PAGE_ROWS,
+  TAIL_BYTES,
+  TAIL_ROWS
+} from '@shared/wireBudgets'
+
+/**
+ * The remote wire profile, server side: which profile a connection asked
+ * for, the projection that keeps large bodies off the wire, the bounded
+ * pages of the log and the session list, and the per-connection coalescer
+ * that turns a burst of pushes into one frame per kind. Every function is
+ * pure over its inputs so wire.perf.test.ts can run the real path over a
+ * synthetic workload; index.ts calls the same functions per connection.
+ */
+
+/** Which wire profile a connection gets: the one seam between this
+ *  module and the auth work. A socket that authenticated as a remote
+ *  principal (shared/capabilities.ts) is remote; the local renderer's
+ *  socket is local unless its URL asks for `?profile=remote` (the test
+ *  path, and what a client on the loopback port uses to try the shapes). */
+export function profileFor(connection: {
+  principal?: { kind: string } | null
+  url?: string | null
+  headers?: IncomingHttpHeaders
+}): WireProfile {
+  if (connection.principal && connection.principal.kind !== 'local') return 'remote'
+  const url = connection.url ?? ''
+  const q = url.indexOf('?')
+  if (q < 0) return 'local'
+  return new URLSearchParams(url.slice(q + 1)).get('profile') === 'remote' ? 'remote' : 'local'
+}
+
+/** permessage-deflate as a remote WebSocketServer should enable it: frames
+ *  under DEFLATE_THRESHOLD go as they are, a few deflates run at once. */
+export function remoteDeflateOptions(): { threshold: number; concurrencyLimit: number } {
+  return { threshold: DEFLATE_THRESHOLD, concurrencyLimit: 4 }
+}
+
+/** The encoded size of a frame or a row, as the socket sends it. */
+export function encodedBytes(value: unknown): number {
+  return Buffer.byteLength(JSON.stringify(value))
+}
+
+// ── bodies ───────────────────────────────────────────────────────────
+
+function countLines(text: string): number {
+  let n = 1
+  for (let i = text.indexOf('\n'); i >= 0; i = text.indexOf('\n', i + 1)) n++
+  return n
+}
+
+function omittedString(text: string): OmittedBody {
+  const nl = text.indexOf('\n')
+  const first = nl < 0 ? text : text.slice(0, nl)
+  return { omitted: true, bytes: Buffer.byteLength(text), lines: countLines(text), head: first.slice(0, BODY_HEAD_CHARS) }
+}
+
+/** A string at or past the line: the length check first, since UTF-8 bytes never undercount code units. */
+function isLarge(text: string): boolean {
+  return text.length >= BODY_OMIT_BYTES && Buffer.byteLength(text) >= BODY_OMIT_BYTES
+}
+
+const WALK_DEPTH = 8
+
+/** `value` with every large string replaced by its OmittedBody, the same
+ *  object when nothing was large. Walks arrays and plain objects (a tool
+ *  input is one, a normalized patch is an array of them). */
+function omitStrings(value: unknown, depth = 0): unknown {
+  if (typeof value === 'string') return isLarge(value) ? omittedString(value) : value
+  if (depth >= WALK_DEPTH || typeof value !== 'object' || value === null) return value
+  if (Array.isArray(value)) {
+    let out: unknown[] | null = null
+    for (let i = 0; i < value.length; i++) {
+      const next = omitStrings(value[i], depth + 1)
+      if (next !== value[i]) {
+        out ??= value.slice()
+        out[i] = next
+      }
+    }
+    return out ?? value
+  }
+  let out: Record<string, unknown> | null = null
+  const record = value as Record<string, unknown>
+  for (const key of Object.keys(record)) {
+    const next = omitStrings(record[key], depth + 1)
+    if (next !== record[key]) {
+      out ??= { ...record }
+      out[key] = next
+    }
+  }
+  return out ?? value
+}
+
+function omitPreview(preview: ToolPreview): ToolPreview {
+  let out: ToolPreview | null = null
+  if (preview.lines && preview.lines.length > 0) {
+    const bytes = encodedBytes(preview.lines)
+    if (bytes >= BODY_OMIT_BYTES) {
+      out = { ...preview }
+      ;(out as { lines: unknown }).lines = {
+        omitted: true,
+        bytes,
+        lines: preview.lines.length,
+        head: preview.lines[0].text.slice(0, BODY_HEAD_CHARS)
+      } satisfies OmittedBody
+    }
+  }
+  if (preview.output && isLarge(preview.output)) {
+    out ??= { ...preview }
+    ;(out as { output: unknown }).output = omittedString(preview.output)
+  }
+  return out ?? preview
+}
+
+/** The event with its large bodies replaced by OmittedBody values; the
+ *  same object when it carries none. Conversation text (user, assistant,
+ *  thinking, plan) is never a body: it stays whole whatever its size. */
+export function projectEvent(event: AgentEvent): AgentEvent {
+  switch (event.type) {
+    case 'tool-result': {
+      if (!isLarge(event.output)) return event
+      return { ...event, output: omittedString(event.output) as unknown as string }
+    }
+    case 'tool-call': {
+      const input = omitStrings(event.input)
+      const preview = event.preview ? omitPreview(event.preview) : undefined
+      if (input === event.input && preview === event.preview) return event
+      return { ...event, input, ...(preview ? { preview } : {}) }
+    }
+    case 'approval-request': {
+      const input = omitStrings(event.input)
+      return input === event.input ? event : { ...event, input }
+    }
+    default:
+      return event
+  }
+}
+
+/** The row as a remote connection sees it: the same object when nothing is large. */
+export function projectRow(row: EventRow): EventRow {
+  const event = projectEvent(row.event)
+  return event === row.event ? row : { ...row, event }
+}
+
+type LiveEdit = Extract<ServerPush, { push: 'live-edit' }>
+
+/** A live-edit push for a remote connection: a unified diff past the line
+ *  degrades to `diff: null` (the shape a binary or burst edit already
+ *  takes), the counts and bytes stay. */
+export function projectLiveEdit(push: LiveEdit): LiveEdit {
+  if (!push.edit.diff || !isLarge(push.edit.diff)) return push
+  return { ...push, edit: { ...push.edit, diff: null } }
+}
+
+// ── bounded pages of the log ─────────────────────────────────────────
+
+/** `rows` cut to the ones that fit `maxBytes` encoded, kept from the
+ *  newest end (a tail or history page) or the oldest (a forward walk).
+ *  The first kept row always fits by definition: one row is the floor. */
+export function boundRows(
+  rows: EventRow[],
+  maxBytes: number,
+  keep: 'newest' | 'oldest'
+): { rows: EventRow[]; bytes: number; cut: boolean } {
+  let bytes = 0
+  let count = 0
+  const step = keep === 'newest' ? -1 : 1
+  for (let i = keep === 'newest' ? rows.length - 1 : 0; i >= 0 && i < rows.length; i += step) {
+    const size = encodedBytes(rows[i]) + 1
+    if (count > 0 && bytes + size > maxBytes) break
+    bytes += size
+    count++
+  }
+  const kept = keep === 'newest' ? rows.slice(rows.length - count) : rows.slice(0, count)
+  return { rows: kept, bytes, cut: count < rows.length }
+}
+
+/** What the page builder reads: the registry's two log reads. */
+export interface EventSource {
+  events(sessionId: string, opts: { afterSeq?: number; beforeSeq?: number; tail?: number; limit?: number }): EventRow[]
+  eventsRange(sessionId: string, afterSeq: number, limit: number): EventRow[]
+}
+
+export interface EventsParams {
+  sessionId: string
+  afterSeq?: number
+  beforeSeq?: number
+  tail?: number
+  limit?: number
+}
+
+/** One bounded page of a session's log for a remote connection, from the
+ *  same request shape the local profile answers with the raw rows:
+ *   - `tail` (cold open, or an older page with `beforeSeq`): the newest
+ *     rows of the range, cut at TAIL_BYTES or HISTORY_PAGE_BYTES;
+ *   - `afterSeq` alone (resume): the gap, or a fresh tail with `reset`
+ *     when the gap passes RESUME_ROWS or RESUME_BYTES;
+ *   - otherwise (a forward walk): from `afterSeq` up, cut at the page budget. */
+export function eventsPage(source: EventSource, params: EventsParams): EventsPage {
+  const { sessionId } = params
+  const afterSeq = params.afterSeq ?? 0
+  if (params.tail && params.tail > 0) {
+    const older = params.beforeSeq !== undefined
+    const raw = source.events(sessionId, {
+      afterSeq,
+      beforeSeq: params.beforeSeq,
+      tail: Math.min(params.tail, older ? HISTORY_PAGE_ROWS : TAIL_ROWS)
+    })
+    const { rows } = boundRows(raw.map(projectRow), older ? HISTORY_PAGE_BYTES : TAIL_BYTES, 'newest')
+    return { rows, moreBefore: rows.length > 0 && rows[0].seq > afterSeq + 1, moreAfter: false, reset: false }
+  }
+  if (afterSeq > 0 && params.beforeSeq === undefined && !params.limit) {
+    const raw = source.eventsRange(sessionId, afterSeq, RESUME_ROWS + 1)
+    if (raw.length <= RESUME_ROWS) {
+      const { rows, cut } = boundRows(raw.map(projectRow), RESUME_BYTES, 'oldest')
+      if (!cut) return { rows, moreBefore: false, moreAfter: false, reset: false }
+    }
+    const { rows } = boundRows(source.events(sessionId, { tail: TAIL_ROWS }).map(projectRow), TAIL_BYTES, 'newest')
+    return { rows, moreBefore: rows.length > 0 && rows[0].seq > 1, moreAfter: false, reset: true }
+  }
+  const limit = Math.min(params.limit ?? HISTORY_PAGE_ROWS, HISTORY_PAGE_ROWS)
+  const raw = source.events(sessionId, { afterSeq, beforeSeq: params.beforeSeq, limit: limit + 1 })
+  const { rows, cut } = boundRows(raw.slice(0, limit).map(projectRow), HISTORY_PAGE_BYTES, 'oldest')
+  return { rows, moreBefore: false, moreAfter: cut || raw.length > limit, reset: false }
+}
+
+// ── the session list ─────────────────────────────────────────────────
+
+const WORKING = new Set<SessionMeta['status']>(['starting', 'running', 'waiting'])
+
+/** Where a meta sorts in a remote shell: working roots, then working
+ *  subagents (their parents' boards show them live), then settled roots,
+ *  then settled subagents; newest first inside a bucket. A settled
+ *  subagent is the bulk of a big workspace (6,198 under 13 idle roots on
+ *  2026-10-17) and nothing paints it until its parent's board opens. */
+function bucketOf(meta: SessionMeta): number {
+  const working = WORKING.has(meta.status)
+  if (!meta.parentId) return working ? 0 : 2
+  return working ? 1 : 3
+}
+
+type ListKey = { bucket: number; updatedAt: number; id: string }
+
+function compareKeys(a: ListKey, b: ListKey): number {
+  return a.bucket - b.bucket || b.updatedAt - a.updatedAt || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)
+}
+
+function parseCursor(cursor: string): ListKey | null {
+  const m = /^(\d+):(\d+):(.+)$/.exec(cursor)
+  return m ? { bucket: Number(m[1]), updatedAt: Number(m[2]), id: m[3] } : null
+}
+
+/** One page of `sessions` for a remote connection: working rows first,
+ *  cut at SHELL_PAGE_BYTES or SHELL_PAGE_ROWS, with a cursor into the
+ *  stable ordering for the next page. A meta that moves between pages
+ *  shows up on both or neither; the client merges by id and the pushes
+ *  keep it current. */
+export function sessionPage(
+  sessions: SessionMeta[],
+  cursor: string | null | undefined,
+  limits: { maxBytes?: number; maxRows?: number } = {}
+): SessionPage {
+  const maxBytes = limits.maxBytes ?? SHELL_PAGE_BYTES
+  const maxRows = limits.maxRows ?? SHELL_PAGE_ROWS
+  const ordered = sessions
+    .map((meta) => ({ meta, key: { bucket: bucketOf(meta), updatedAt: meta.updatedAt, id: meta.id } }))
+    .sort((a, b) => compareKeys(a.key, b.key))
+  let start = 0
+  if (cursor) {
+    const after = parseCursor(cursor)
+    if (!after) return { sessions: [], cursor: null }
+    start = ordered.findIndex((entry) => compareKeys(entry.key, after) > 0)
+    if (start < 0) return { sessions: [], cursor: null }
+  }
+  const page: SessionMeta[] = []
+  let bytes = 0
+  let last: ListKey | null = null
+  let i = start
+  for (; i < ordered.length; i++) {
+    const size = encodedBytes(ordered[i].meta) + 1
+    if (page.length > 0 && (page.length >= maxRows || bytes + size > maxBytes)) break
+    page.push(ordered[i].meta)
+    bytes += size
+    last = ordered[i].key
+  }
+  const next = i < ordered.length && last ? `${last.bucket}:${last.updatedAt}:${last.id}` : null
+  return { sessions: page, cursor: next }
+}
+
+// ── push coalescing ──────────────────────────────────────────────────
+
+type BuildPush = Extract<ServerPush, { push: 'build' }>
+
+/** Per remote connection: pushes wait PUSH_COALESCE_MS and go out as one
+ *  frame per kind, events grouped by session and in order, the newest
+ *  meta per session, live edits in order, build lines joined per run.
+ *  Any other push flushes what waits first and goes out at once, so the
+ *  order a client sees is the order the server produced. */
+export class PushCoalescer {
+  private events = new Map<string, EventRow[]>()
+  private sessions = new Map<string, SessionMeta>()
+  private liveEdits: Omit<LiveEdit, 'push'>[] = []
+  private builds: Omit<BuildPush, 'push'>[] = []
+  private timer: ReturnType<typeof setTimeout> | null = null
+  private disposed = false
+
+  constructor(
+    private readonly emit: (frame: ServerPush) => void,
+    private readonly delayMs = PUSH_COALESCE_MS
+  ) {}
+
+  push(frame: ServerPush): void {
+    if (this.disposed) return
+    switch (frame.push) {
+      case 'event': {
+        const row = projectRow(frame.row)
+        const rows = this.events.get(row.sessionId)
+        if (rows) rows.push(row)
+        else this.events.set(row.sessionId, [row])
+        break
+      }
+      case 'session':
+        this.sessions.set(frame.session.id, frame.session)
+        break
+      case 'live-edit': {
+        const { push: _push, ...rest } = projectLiveEdit(frame)
+        this.liveEdits.push(rest)
+        break
+      }
+      case 'build': {
+        const { push: _push, ...rest } = frame
+        const prev = this.builds[this.builds.length - 1]
+        if (prev && prev.projectId === rest.projectId && prev.run.id === rest.run.id) {
+          this.builds[this.builds.length - 1] = {
+            ...rest,
+            ...(prev.lines || rest.lines ? { lines: [...(prev.lines ?? []), ...(rest.lines ?? [])] } : {})
+          }
+        } else this.builds.push(rest)
+        break
+      }
+      default:
+        this.flush()
+        this.emit(frame)
+        return
+    }
+    this.timer ??= setTimeout(() => {
+      this.timer = null
+      this.flush()
+    }, this.delayMs)
+  }
+
+  /** Everything waiting goes out now, metas first (a status row's meta lands before the row). */
+  flush(): void {
+    if (this.timer) {
+      clearTimeout(this.timer)
+      this.timer = null
+    }
+    if (this.sessions.size > 0) {
+      const sessions = [...this.sessions.values()]
+      this.sessions.clear()
+      this.emit({ push: 'sessions', sessions })
+    }
+    if (this.events.size > 0) {
+      const events = this.events
+      this.events = new Map()
+      for (const [sessionId, rows] of events) this.emit({ push: 'events', sessionId, rows })
+    }
+    if (this.liveEdits.length > 0) {
+      const items = this.liveEdits
+      this.liveEdits = []
+      this.emit({ push: 'live-edits', items })
+    }
+    if (this.builds.length > 0) {
+      const items = this.builds
+      this.builds = []
+      this.emit({ push: 'builds', items })
+    }
+  }
+
+  /** The socket closed: nothing waiting can be sent. */
+  dispose(): void {
+    this.disposed = true
+    if (this.timer) clearTimeout(this.timer)
+    this.timer = null
+    this.events.clear()
+    this.sessions.clear()
+    this.liveEdits = []
+    this.builds = []
+  }
+}

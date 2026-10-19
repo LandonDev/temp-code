@@ -1067,6 +1067,16 @@ export class SessionRegistry {
     return this.store.eventsAfter(sessionId, afterSeq)
   }
 
+  /** Up to `limit` rows after `afterSeq` (the remote resume probe). */
+  eventsRange(sessionId: string, afterSeq: number, limit: number): EventRow[] {
+    return this.store.eventsRange(sessionId, afterSeq, limit)
+  }
+
+  /** One persisted row whole (`session.rowBody`), or null. */
+  eventAt(sessionId: string, seq: number): EventRow | null {
+    return this.store.eventAt(sessionId, seq)
+  }
+
   /** A window of the log, tail-first when asked (see `Store.events`). */
   events(sessionId: string, opts: { afterSeq?: number; beforeSeq?: number; tail?: number; limit?: number }): EventRow[] {
     return this.store.events(sessionId, opts)

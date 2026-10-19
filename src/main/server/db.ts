@@ -1088,6 +1088,16 @@ export class Store {
     return this.eventsRange(sessionId, afterSeq, -1)
   }
 
+  /** One persisted row by seq, whole (`session.rowBody`); null when the
+   *  session has no such row. */
+  eventAt(sessionId: string, seq: number): EventRow | null {
+    this.flushEvents()
+    const r = this
+      .stmt(`SELECT seq, ts, payload FROM ${this.eventsTable(sessionId)} WHERE session_id = ? AND seq = ?`)
+      .get(sessionId, seq) as unknown as { seq: number; ts: number; payload: string } | undefined
+    return r ? { sessionId, seq: r.seq, ts: r.ts, event: JSON.parse(r.payload) as AgentEvent } : null
+  }
+
   /** Events in (`afterSeq`, `beforeSeq`). With `tail`, only the rows that
    *  fold into about the last `tail` transcript rows (a prompt, a tool call,
    *  or one assistant/thinking message each), cut at a row boundary; a log

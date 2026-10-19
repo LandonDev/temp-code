@@ -12,8 +12,9 @@ import { isRoutedProvider, PROVIDER_OF, SERVICE_OF } from '@shared/accounts'
 import { startGateway, type Gateway } from './gateway'
 import { observeHooks } from './gatewayObserve'
 import { WebSocketServer, type WebSocket } from 'ws'
+import { createServer } from 'node:http'
 import { visibleCatalog } from '@shared/catalog'
-import { ClientRequestSchema, type ServerFrame } from '@shared/contract'
+import { ClientRequestSchema, type ServerFrame, type ServerPush } from '@shared/contract'
 import {
   CONTRACT_VERSION,
   LOCAL_PRINCIPAL,
@@ -135,6 +136,8 @@ import {
   resolveBuildDir
 } from './build'
 import { closeAllLiveWatchers, onLiveEdit } from './livediff'
+import { eventsPage, profileFor, PushCoalescer, remoteDeflateOptions, sessionPage } from './wire'
+import type { WireProfile } from '@shared/wire'
 
 /** The session an app.* call claims to be from — must actually exist. */
 function callerOf(registry: SessionRegistry, sessionId: string): SessionMeta {
@@ -392,11 +395,23 @@ export async function startServer(
     onSettingsChanged: () => void restartRemote()
   }
 
-  const wss = new WebSocketServer({ host: '127.0.0.1', port: 0 })
+  // One loopback listener, two WebSocket servers: an upgrade routes by wire
+  // profile (wire.ts profileFor) and only the remote server negotiates
+  // permessage-deflate, so the local renderer's frames stay as they were.
+  // A remote listener of its own should build its WebSocketServer with
+  // remoteDeflateOptions() and call attach() with its principal.
+  const httpServer = createServer((_req, res) => {
+    res.statusCode = 426
+    res.setHeader('Upgrade', 'websocket')
+    res.end()
+  })
+  const wssLocal = new WebSocketServer({ noServer: true })
+  const wssRemote = new WebSocketServer({ noServer: true, perMessageDeflate: remoteDeflateOptions() })
+  const servers = [wssLocal, wssRemote]
   let connections = 0
   setBufferedBytes(() => {
     let most = 0
-    for (const client of wss.clients) most = Math.max(most, client.bufferedAmount)
+    for (const wss of servers) for (const client of wss.clients) most = Math.max(most, client.bufferedAmount)
     return most
   })
 
@@ -406,7 +421,7 @@ export async function startServer(
    * with the key it authenticated. Every request is gated on the
    * principal's capabilities before any handler runs.
    */
-  const attach = (ws: WebSocket, principal: Principal): void => {
+  const attach = (ws: WebSocket, principal: Principal, profile: WireProfile = profileFor({ principal })): void => {
     const connection = ++connections
     const unsubs = new Map<string, () => void>()
     /** per-connection file watchers (fs.watch), keyed by projectId */
@@ -422,6 +437,14 @@ export async function startServer(
         recordBackpressure(connection, ws.bufferedAmount)
       }
     }
+    // A remote connection's pushes wait in the coalescer and leave as one
+    // frame per kind with large bodies off; a local connection's go out one
+    // by one, as before.
+    const coalescer = profile === 'remote' ? new PushCoalescer(sendFrame) : null
+    const emitPush = (frame: ServerPush): void => {
+      if (coalescer) coalescer.push(frame)
+      else sendFrame(frame)
+    }
     /** Project lookup that throws — fs/git methods are meaningless without one. */
     const mustProject = (projectId: string): { id: string; cwd: string } => {
       const project = registry.getProject(projectId)
@@ -432,23 +455,23 @@ export async function startServer(
     // Every client gets session-meta updates (cheap, drives the sidebar).
     const offMeta = registry.onMeta((session) => {
       countPush('meta')
-      sendFrame({ push: 'session', session })
+      emitPush({ push: 'session', session })
     })
-    const offCatalog = registry.onCatalog((kind) => sendFrame(kind === 'workspaces'
+    const offCatalog = registry.onCatalog((kind) => emitPush(kind === 'workspaces'
       ? { push: 'workspaces', workspaces: registry.listWorkspaces() }
       : { push: 'projects', projects: registry.listProjects() }))
-    const offLive = onLiveEdit((p) => sendFrame(p))
-    const offBuild = builder.onPush((p) => sendFrame(p))
-    const offAccounts = m3a.accounts.onChange((snapshot) => sendFrame({ push: 'accounts', snapshot }))
+    const offLive = onLiveEdit((p) => emitPush(p))
+    const offBuild = builder.onPush((p) => emitPush(p))
+    const offAccounts = m3a.accounts.onChange((snapshot) => emitPush({ push: 'accounts', snapshot }))
     const offQueue = registry.onQueue((sessionId, items) =>
-      sendFrame({ push: 'queue', sessionId, items })
+      emitPush({ push: 'queue', sessionId, items })
     )
     const offRemoved = registry.onRemoved((sessionIds) => {
       for (const id of sessionIds) {
         unsubs.get(id)?.()
         unsubs.delete(id)
       }
-      sendFrame({ push: 'session-removed', sessionIds })
+      emitPush({ push: 'session-removed', sessionIds })
     })
     sendFrame({
       push: 'hello',
@@ -660,7 +683,7 @@ export async function startServer(
               fsWatches.set(
                 projectId,
                 subscribeFileEvents(projectId, project.cwd, (e) =>
-                  sendFrame({ push: 'file-event', ...e })
+                  emitPush({ push: 'file-event', ...e })
                 )
               )
             } else if (!subscribe) {
@@ -899,7 +922,7 @@ export async function startServer(
               id: req.id,
               ok: true,
               result: await pullBranch(project, req.params.branch, (p) =>
-                sendFrame({ push: 'sync', projectId: project.id, branch, ...p })
+                emitPush({ push: 'sync', projectId: project.id, branch, ...p })
               )
             })
             break
@@ -977,8 +1000,9 @@ export async function startServer(
               firstListMarked = true
               bootMark('first-session-list', `${sessions.length} sessions`)
             }
+            const result = profile === 'remote' ? sessionPage(sessions, req.params?.cursor) : sessions
             const frame = timed('session.list stringify', () =>
-              JSON.stringify({ id: req.id, ok: true, result: sessions } satisfies ServerFrame)
+              JSON.stringify({ id: req.id, ok: true, result } satisfies ServerFrame)
             )
             if (ws.readyState === ws.OPEN) ws.send(frame)
             break
@@ -987,9 +1011,18 @@ export async function startServer(
             sendFrame({
               id: req.id,
               ok: true,
-              result: registry.events(req.params.sessionId, req.params)
+              result:
+                profile === 'remote'
+                  ? eventsPage(registry, req.params)
+                  : registry.events(req.params.sessionId, req.params)
             })
             break
+          case 'session.rowBody': {
+            const row = registry.eventAt(req.params.sessionId, req.params.seq)
+            if (row) sendFrame({ id: req.id, ok: true, result: { row } })
+            else sendFrame({ id: req.id, ok: false, error: `no row ${req.params.seq} in session ${req.params.sessionId}` })
+            break
+          }
           case 'session.send':
             await registry.send(req.params.sessionId, req.params.text, {
               provider: req.params.provider,
@@ -1030,7 +1063,7 @@ export async function startServer(
                 sessionId,
                 registry.subscribe(sessionId, (row) => {
                   countPush('event')
-                  sendFrame({ push: 'event', row })
+                  emitPush({ push: 'event', row })
                 })
               )
             }
@@ -1281,6 +1314,7 @@ export async function startServer(
     })
 
     ws.on('close', () => {
+      coalescer?.dispose()
       offMeta()
       offCatalog()
       offQueue()
@@ -1295,24 +1329,28 @@ export async function startServer(
     })
   }
 
-  wss.on('connection', (ws: WebSocket, req) => {
+  httpServer.on('upgrade', (req, socket, head) => {
     // LSP tunnel (docs/PLAN-3.md M13): raw JSON-RPC, no contract schema in
     // the hot path. Same localhost-only single-user trust as everything
     // else; the serverId is validated against the pool.
     const url = req.url ?? ''
-    if (url.startsWith('/lsp/')) {
-      attachLspSocket(url.slice('/lsp/'.length), ws)
+    if (url.startsWith('/lsp/') || url.startsWith('/dap/')) {
+      wssLocal.handleUpgrade(req, socket, head, (ws) => {
+        if (url.startsWith('/lsp/')) attachLspSocket(url.slice('/lsp/'.length), ws)
+        else attachDapSocket(url.slice('/dap/'.length), ws)
+      })
       return
     }
-    if (url.startsWith('/dap/')) {
-      attachDapSocket(url.slice('/dap/'.length), ws)
-      return
-    }
-    attach(ws, LOCAL_PRINCIPAL)
+    const profile = profileFor({ principal: LOCAL_PRINCIPAL, url })
+    const wss = profile === 'remote' ? wssRemote : wssLocal
+    wss.handleUpgrade(req, socket, head, (ws) => attach(ws, LOCAL_PRINCIPAL, profile))
   })
 
-  await new Promise<void>((resolve) => wss.on('listening', resolve))
-  const address = wss.address()
+  await new Promise<void>((resolve, reject) => {
+    httpServer.once('error', reject)
+    httpServer.listen(0, '127.0.0.1', () => resolve())
+  })
+  const address = httpServer.address()
   const port = typeof address === 'object' && address ? address.port : 0
   await restartRemote()
 
@@ -1363,8 +1401,11 @@ export async function startServer(
       stopAllLsp()
       stopAllDap()
       killTrackedChildren()
-      for (const client of wss.clients) client.terminate()
-      await new Promise<void>((resolve, reject) => wss.close((error) => error ? reject(error) : resolve()))
+      for (const wss of servers) for (const client of wss.clients) client.terminate()
+      for (const wss of servers) {
+        await new Promise<void>((resolve, reject) => wss.close((error) => (error ? reject(error) : resolve())))
+      }
+      await new Promise<void>((resolve) => httpServer.close(() => resolve()))
       // Workers go first: the writer's close() runs the last checkpoint and
       // deletes the WAL only when it is the last connection.
       await reader.stop()

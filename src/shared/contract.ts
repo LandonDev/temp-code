@@ -489,10 +489,18 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
   }),
   z.object({ id: z.string(), method: z.literal('session.create'), params: CreateSessionParams }),
   // Unarchived sessions by default; `archived: true` lists the archived ones.
+  // A remote connection gets one page (`SessionPage` in wire.ts) and walks
+  // the rest with `cursor`; a local one gets the whole array, as before.
   z.object({
     id: z.string(),
     method: z.literal('session.list'),
-    params: z.object({ archived: z.boolean().optional(), projectId: z.string().optional() }).optional()
+    params: z
+      .object({
+        archived: z.boolean().optional(),
+        projectId: z.string().optional(),
+        cursor: z.string().optional()
+      })
+      .optional()
   }),
   // One renderer-measured stall line for <userData>/logs/stalls.log.
   z.object({ id: z.string(), method: z.literal('stall.report'), params: z.object({ line: z.string() }) }),
@@ -510,6 +518,13 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
       // head in slices so no one call reads a 40k-row log in one go.
       limit: z.number().int().positive().optional()
     })
+  }),
+  // One persisted row whole, bodies and all: what a remote connection asks
+  // for when a row it holds with an OmittedBody opens (wire.ts).
+  z.object({
+    id: z.string(),
+    method: z.literal('session.rowBody'),
+    params: z.object({ sessionId: z.string(), seq: z.number().int().positive() })
   }),
   z.object({
     id: z.string(),
@@ -870,6 +885,15 @@ export type ServerPush =
   | { push: 'projects'; projects: import('./domain').ProjectMeta[] }
   | { push: 'event'; row: EventRow }
   | { push: 'session'; session: SessionMeta }
+  // Remote connections only (wire.ts PushCoalescer): the pushes of about
+  // 100 ms as one frame per kind. `events` holds one session's rows in
+  // order, `sessions` the newest meta per session, `live-edits` the edits
+  // in order, `builds` one entry per run with its lines joined. A local
+  // connection keeps the singular frames above.
+  | { push: 'events'; sessionId: string; rows: EventRow[] }
+  | { push: 'sessions'; sessions: SessionMeta[] }
+  | { push: 'live-edits'; items: Omit<Extract<ServerPush, { push: 'live-edit' }>, 'push'>[] }
+  | { push: 'builds'; items: Omit<Extract<ServerPush, { push: 'build' }>, 'push'>[] }
   | { push: 'queue'; sessionId: string; items: QueuedMessage[] }
   | { push: 'session-removed'; sessionIds: string[] }
   // Aliax accounts: the whole snapshot, whenever it is rebuilt.
