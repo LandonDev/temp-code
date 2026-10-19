@@ -1,5 +1,5 @@
 {
-  "n": 236,
-  "notes": "Remote notifier and per-key webhooks: one notice per thread transition (needs_you, finished, failed, stuck after remote.stuckMinutes) to the hub, each key's own signed webhook and in-process listeners; keys gain webhookUrl/webhookSecret/events in remote.keys.create and the Settings pane; scripts/e2e-mcp.ts proves /mcp with the official SDK client; docs/remote-mcp.md for the bots",
-  "ts": 1792397173740
+  "n": 237,
+  "notes": "Connection runtime: one supervised socket per environment (lib/connection), remote.environments.* RPCs with the key held by the main process, every renderer store and request scoped by environmentId, sidebar connection dots, two-instance proof (script:e2e-connection)",
+  "ts": 1792398425410
 }
