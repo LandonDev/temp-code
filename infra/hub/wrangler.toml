@@ -1,10 +1,11 @@
 name = "temp-code-hub"
 main = "src/index.ts"
 compatibility_date = "2025-10-08"
+workers_dev = false
 
 [[kv_namespaces]]
 binding = "HUB_KV"
-id = "REPLACE_WITH_KV_NAMESPACE_ID"
+id = "05925489b5f946d7a654816415273207"
 
 [[durable_objects.bindings]]
 name = "HOSTS"
@@ -16,3 +17,7 @@ new_sqlite_classes = ["HostState"]
 
 [triggers]
 crons = ["* * * * *"]
+
+[[routes]]
+pattern = "hub.landonhale.com"
+custom_domain = true

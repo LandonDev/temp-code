@@ -3,7 +3,7 @@ set -euo pipefail
 source "$(dirname "$0")/lib.sh"
 put /etc/box-heartbeat.env.example 600 <<'EOF'
 # Copy to /etc/box-heartbeat.env (root:root, 600) when the hub ships.
-BOX_HEARTBEAT_URL=https://REPLACE_HUB_HOST/api/heartbeat
+BOX_HEARTBEAT_URL=https://hub.landonhale.com/v1/hosts/box/heartbeat
 BOX_HEARTBEAT_TOKEN=REPLACE_HUB_BEARER_TOKEN
 EOF
 put /usr/local/bin/box-heartbeat 750 < "$BOX_DIR/heartbeat.sh"

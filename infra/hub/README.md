@@ -26,7 +26,18 @@ requested name, with pinned tools and overrides checked by the suite.
 The root `bun run hub:test` runs the isolated suite. Install this package first;
 it does not share the app's dependencies. The root test glob excludes infra.
 
-## Deploy (not deployed)
+## Deploy
+
+Deployed on 2026-10-19 as `temp-code-hub` at https://hub.landonhale.com (custom
+domain only; `workers_dev = false`). KV namespace `05925489b5f946d7a654816415273207`.
+`ADMIN_KEY`, `WEBHOOK_KEY` and the box's host token live in the Mac login
+Keychain as `tempcode-hub-ADMIN_KEY`, `tempcode-hub-WEBHOOK_KEY` and
+`tempcode-hub-host-box` (`security find-generic-password -a landon -s <name> -w`).
+Host `box` is registered and its scaffold timer (`box-heartbeat.timer`) posts
+every minute from `/etc/box-heartbeat.env`; the app's own heartbeat replaces it
+once the host runs. The account needed a workers.dev subdomain before the first
+deploy even with `workers_dev = false`; it was created through the API
+(`PUT /accounts/<id>/workers/subdomain`).
 
 The one `wrangler whoami` check on 2026-10-19 returned **Not logged in**. No login
 or deploy was attempted. Run these commands yourself when ready:

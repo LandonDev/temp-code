@@ -252,3 +252,7 @@ attachment, R2 upload, or hub POST occurred.
   above, test a restore, then enable backups.
 - When the hub ships, set its HTTPS URL and token, test a heartbeat, then
   enable that timer.
+
+## Heartbeat (live since 2026-10-19)
+
+`box-heartbeat.timer` is enabled and posts to https://hub.landonhale.com/v1/hosts/box/heartbeat every minute with the hub's body shape (environmentId, name, version, startedAt). The token is in `/etc/box-heartbeat.env` (root, 600) and in the Mac Keychain as `tempcode-hub-host-box`. Check: `curl -s https://hub.landonhale.com/v1/hosts -H "x-api-key: $(security find-generic-password -a landon -s tempcode-hub-ADMIN_KEY -w)"`.
