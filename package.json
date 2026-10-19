@@ -1,6 +1,6 @@
 {
   "name": "temp-code",
-  "version": "1.0.223",
+  "version": "1.0.224",
   "description": "An Electron application with React and TypeScript",
   "main": "./out/main/boot.js",
   "author": "example.com",

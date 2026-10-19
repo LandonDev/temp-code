@@ -1,5 +1,5 @@
 {
-  "n": 223,
-  "notes": "Wire the optional host heartbeat client and validate hub tooling",
-  "ts": 1792389673879
+  "n": 224,
+  "notes": "Linux credentials: aliax-core 870290b (CLI sign-ins from ~/.claude/.credentials.json off macOS, fileKey vault), platform appData for the shim claim; box baseline docs and scripts",
+  "ts": 1792390206309
 }
