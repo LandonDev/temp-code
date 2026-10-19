@@ -1,5 +1,5 @@
 {
-  "n": 226,
-  "notes": "Remote auth store: scrypt-hashed keys with capabilities, one-time pairing codes, cookie sessions, tickets",
-  "ts": 1792390666621
+  "n": 227,
+  "notes": "Remote listener on the fixed loopback port: hello, pairing, tickets, cookie upgrades, admin routes",
+  "ts": 1792391014199
 }
