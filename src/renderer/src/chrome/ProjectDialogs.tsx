@@ -309,10 +309,13 @@ function BaseRefField({
 
 export function NewWorkspaceDialog({
   path,
+  environmentId,
   onClose,
   onCreated,
 }: {
   path: string;
+  /** The machine the folder is on; this one when absent. */
+  environmentId?: string | null;
   onClose: () => void;
   onCreated: (workspace: WorkspaceMeta) => void;
 }) {
@@ -326,8 +329,8 @@ export function NewWorkspaceDialog({
     setPending(true);
     setError(null);
     try {
-      // The folder was picked in this machine's dialog.
-      const workspace = await createWorkspace(registry.primary().environmentId, path);
+      // This machine's folder dialog, or another host's folders over its link.
+      const workspace = await createWorkspace(environmentId ?? registry.primary().environmentId, path);
       if (passEnabled(pass)) await saveTurnPass(workspace.id, pass);
       onCreated(workspace);
     } catch (err) {

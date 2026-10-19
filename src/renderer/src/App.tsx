@@ -8,11 +8,13 @@ import {
   useMemo,
   useRef,
   useSyncExternalStore,
+  useState,
 } from "react";
 import { Sidebar } from "./chrome/Sidebar";
 import { HiddenApprovalToasts } from "./chrome/ApprovalToasts";
 import { WhatsNewDialog } from "./chrome/WhatsNewDialog";
 import { NewWorkspaceDialog } from "./chrome/ProjectDialogs";
+import { RemoteFolderDialog } from "./chrome/RemoteFolderDialog";
 import { environment, environmentAt, environmentStore, stepEnvironment } from "./stores/environment";
 import { subscribeEnvironmentSwitch } from "./lib/environmentSwitch";
 import { ShellTitleBar, type HeaderEvents } from "./chrome/ShellTitleBar";
@@ -2371,14 +2373,32 @@ export default function App() {
   }, [activateTab, focusOpenSession, onNewChat, openLanding]);
 
   const newWorkspacePath = useShell((s) => s.newWorkspacePath);
-  const pickProject = useCallback(async () => {
-    const path = await pickFolder();
-    if (!path) return;
-    // A folder the catalog knows just comes forward; a new one gets the
-    // New Workspace dialog (turn pass) before it joins.
-    if (workspaceByPath(workspaceStore.workspaces, path)) onSelectProject(path);
-    else shell.setNewWorkspacePath(path);
-  }, [onSelectProject]);
+  const newWorkspaceEnvironmentId = useShell((s) => s.newWorkspaceEnvironmentId);
+  /** Another host's folders, being browsed for a workspace there. */
+  const [remoteFolderPick, setRemoteFolderPick] = useState<string | null>(null);
+  const adoptFolder = useCallback(
+    (path: string, environmentId: string) => {
+      // A folder the catalog knows just comes forward; a new one gets the
+      // New Workspace dialog (turn pass) before it joins.
+      const known = workspaceStore.workspaces.find((w) => w.environmentId === environmentId && sameProjectPath(w.path, path));
+      if (known) onSelectProject(known.path);
+      else shell.setNewWorkspacePath(path, environmentId === registry.primaryEnvironmentId ? null : environmentId);
+    },
+    [onSelectProject],
+  );
+  const pickProject = useCallback(
+    async (environmentId?: string) => {
+      // Another machine has no dialog here: browse its folders over its link.
+      if (environmentId && environmentId !== registry.primaryEnvironmentId) {
+        setRemoteFolderPick(environmentId);
+        return;
+      }
+      const path = await pickFolder();
+      if (!path) return;
+      adoptFolder(path, registry.primaryEnvironmentId);
+    },
+    [adoptFolder],
+  );
 
   const onRemoveProject = useCallback(
     (path: string, options: { purgeData: boolean }) => {
@@ -3849,9 +3869,21 @@ export default function App() {
           onClose={shell.dismissWhatsNew}
         />
       ) : null}
+      {remoteFolderPick ? (
+        <RemoteFolderDialog
+          environmentId={remoteFolderPick}
+          onClose={() => setRemoteFolderPick(null)}
+          onPick={(path) => {
+            const environmentId = remoteFolderPick;
+            setRemoteFolderPick(null);
+            adoptFolder(path, environmentId);
+          }}
+        />
+      ) : null}
       {newWorkspacePath ? (
         <NewWorkspaceDialog
           path={newWorkspacePath}
+          environmentId={newWorkspaceEnvironmentId}
           onClose={() => shell.setNewWorkspacePath(null)}
           onCreated={(created) => {
             shell.setNewWorkspacePath(null);

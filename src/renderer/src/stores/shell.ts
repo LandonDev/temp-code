@@ -56,6 +56,8 @@ export type ShellState = {
   symbolPickerOpen: boolean;
   /** A folder the catalog does not know yet: the New Workspace dialog shows it. */
   newWorkspacePath: string | null;
+  /** The machine that folder is on; this one when null. */
+  newWorkspaceEnvironmentId: string | null;
 };
 
 export function initialShellState(
@@ -79,6 +81,7 @@ export function initialShellState(
     filePickerOpen: false,
     symbolPickerOpen: false,
     newWorkspacePath: null,
+    newWorkspaceEnvironmentId: null,
     ...overrides,
   };
 }
@@ -327,6 +330,6 @@ export const shell = {
   dismissUpdate: () => update((s) => patch(s, { updateNotice: null })),
   showWhatsNew: (whatsNew: WhatsNew) => update((s) => patch(s, { whatsNew })),
   dismissWhatsNew: () => update((s) => patch(s, { whatsNew: null })),
-  setNewWorkspacePath: (path: string | null) =>
-    update((s) => patch(s, { newWorkspacePath: path })),
+  setNewWorkspacePath: (path: string | null, environmentId: string | null = null) =>
+    update((s) => patch(s, { newWorkspacePath: path, newWorkspaceEnvironmentId: path ? environmentId : null })),
 };
