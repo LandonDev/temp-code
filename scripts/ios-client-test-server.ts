@@ -76,8 +76,9 @@ server.registry.append(THREAD_B, { type: 'user-text', text: 'Only one turn here'
 server.registry.append(THREAD_B, { type: 'assistant-text', text: 'And one short answer.', delta: false, msgId: 'b1', blockIndex: 0 })
 server.registry.append(THREAD_B, { type: 'turn-complete' })
 
-// ── the key ─────────────────────────────────────────────────────────────
+// ── the key, and a pairing link for the simulator rehearsal ─────────────
 const created = await server.remoteAuth.createKey({ name: 'ios-test', audience: 'client', caps: [], createdBy: 'local' })
+const pairing = server.remoteAuth.createPairing({ name: 'ios-sim', audience: 'client', caps: [], createdBy: 'local' })
 
 // ── the auth clock, shiftable for ticket expiry ─────────────────────────
 let clockOffsetMs = 0
@@ -168,6 +169,7 @@ process.stdout.write(
     environmentId: server.environmentId,
     keyId: created.key.id,
     key: created.token,
+    pairingLink: `http://127.0.0.1:${server.remote.port}/pair#${pairing.code}`,
     threadA: THREAD_A,
     threadB: THREAD_B,
     projectId: project.id,

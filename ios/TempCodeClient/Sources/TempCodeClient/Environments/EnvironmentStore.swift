@@ -8,6 +8,8 @@ public enum EnvironmentStoreError: Error, Hashable, Sendable {
     /// The host issued a key for another audience (a bot key cannot drive the app).
     case notAClientKey
     case api(RemoteAPIError)
+    /// The key could not be kept (the Keychain refused it).
+    case keyStore(String)
 
     public var message: String {
         switch self {
@@ -15,6 +17,7 @@ public enum EnvironmentStoreError: Error, Hashable, Sendable {
         case .invalidKey: "a key looks like tc_… followed by a secret"
         case .notAClientKey: "that key is for bots; make an app key"
         case .api(let error): error.message
+        case .keyStore(let detail): "could not keep the key: \(detail)"
         }
     }
 }
@@ -69,7 +72,7 @@ public final class EnvironmentStore {
             keyName: paired.name,
             addedAt: Date().timeIntervalSince1970 * 1000
         )
-        try? keys.set(paired.key, for: environment.id)
+        try keep(paired.key, for: environment.id)
         upsert(environment)
         return environment
     }
@@ -97,9 +100,17 @@ public final class EnvironmentStore {
             keyName: known.name,
             addedAt: Date().timeIntervalSince1970 * 1000
         )
-        try? keys.set(key, for: environment.id)
+        try keep(key, for: environment.id)
         upsert(environment)
         return environment
+    }
+
+    private func keep(_ key: String, for id: String) throws(EnvironmentStoreError) {
+        do {
+            try keys.set(key, for: id)
+        } catch {
+            throw .keyStore(error.localizedDescription)
+        }
     }
 
     public func rename(_ id: String, to name: String) {

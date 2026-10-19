@@ -1,0 +1,77 @@
+# The iOS app, generated into TempCode.xcodeproj by `xcodegen generate`
+# (scripts/ios-sim-proof.sh does it). Simulator-only for now: no team, no
+# signing. The app is a thin SwiftUI shell over ../TempCodeClient.
+name: TempCode
+options:
+  bundleIdPrefix: dev.landon.tempcode
+  deploymentTarget:
+    iOS: "18.0"
+  createIntermediateGroups: true
+  generateEmptyDirectories: true
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    SWIFT_STRICT_CONCURRENCY: complete
+    SWIFT_APPROACHABLE_CONCURRENCY: YES
+    SWIFT_DEFAULT_ACTOR_ISOLATION: MainActor
+    # Ad hoc signing: enough for the simulator, and the Keychain needs the
+    # application identifier the signature carries.
+    CODE_SIGN_STYLE: Manual
+    CODE_SIGN_IDENTITY: "-"
+    CODE_SIGNING_REQUIRED: NO
+    AD_HOC_CODE_SIGNING_ALLOWED: YES
+    TARGETED_DEVICE_FAMILY: "1"
+    IPHONEOS_DEPLOYMENT_TARGET: "18.0"
+packages:
+  TempCodeClient:
+    path: ../TempCodeClient
+targets:
+  TempCode:
+    type: application
+    platform: iOS
+    sources:
+      - path: Sources
+    dependencies:
+      - package: TempCodeClient
+        product: TempCodeClient
+    info:
+      path: Info.plist
+      properties:
+        CFBundleDisplayName: TempCode
+        CFBundleShortVersionString: "0.1"
+        CFBundleVersion: "1"
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+        ITSAppUsesNonExemptEncryption: false
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.landon.tempcode.ios
+        INFOPLIST_KEY_UIUserInterfaceStyle: Automatic
+  TempCodeUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: UITests
+    dependencies:
+      - target: TempCode
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.landon.tempcode.ios.uitests
+        TEST_TARGET_NAME: TempCode
+        # XCTest's overrides are nonisolated; the app's main-actor default would clash.
+        SWIFT_DEFAULT_ACTOR_ISOLATION: nonisolated
+schemes:
+  TempCode:
+    build:
+      targets:
+        TempCode: all
+        TempCodeUITests: [test]
+    run:
+      config: Debug
+    test:
+      config: Debug
+      targets:
+        - TempCodeUITests

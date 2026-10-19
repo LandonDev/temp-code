@@ -17,7 +17,7 @@ const repo = resolve(import.meta.dir, '..')
 const out = resolve(repo, 'scripts/.out/ios-client-test-server.mjs')
 
 const bundle = spawnSync(
-  'esbuild',
+  resolve(repo, 'node_modules/.bin/esbuild'),
   [
     'scripts/ios-client-test-server.ts',
     '--bundle',
@@ -32,7 +32,10 @@ const bundle = spawnSync(
   ],
   { cwd: repo, stdio: 'inherit', env: process.env }
 )
-if (bundle.status !== 0) process.exit(bundle.status ?? 1)
+if (bundle.error || bundle.status !== 0) {
+  console.error(`esbuild failed: ${bundle.error?.message ?? `exit ${bundle.status}`}`)
+  process.exit(bundle.status ?? 1)
+}
 
 const server = spawn('node', [out], { cwd: repo, stdio: ['ignore', 'pipe', 'inherit'], env: process.env })
 type Ready = { ready: true; baseUrl: string; controlUrl: string; environmentId: string; keyId: string; key: string; threadA: string; threadB: string; projectId: string }

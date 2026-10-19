@@ -10,8 +10,16 @@ public protocol KeyStore: Sendable {
     func remove(for environmentId: String) throws
 }
 
-public enum KeyStoreError: Error, Hashable, Sendable {
+public enum KeyStoreError: Error, Hashable, Sendable, LocalizedError {
     case keychain(OSStatus)
+
+    public var errorDescription: String? {
+        switch self {
+        case .keychain(let status):
+            let text = (SecCopyErrorMessageString(status, nil) as String?) ?? "status \(status)"
+            return "Keychain: \(text) (\(status))"
+        }
+    }
 }
 
 /// Generic-password items, one per environment id, readable after the first
