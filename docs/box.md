@@ -347,28 +347,30 @@ gateway's own proofs run on the box against fake upstreams:
 in the checkout as agents. The hidden preview window is proven with
 `tc-local app.htmlPreview` against a live session (see the log entry).
 
-### Signing accounts in (thread G, with the user)
+### Signing accounts in
 
-Nothing here copies credentials from the Mac; each CLI signs in on the box,
-as agents, into the plain files aliax-core reads on Linux. The host picks the
-new files up on its own (it owns the Aliax marker, so Claude tokens refresh).
+Provider accounts (Claude, Codex, Cursor) come over from the Mac; thread V
+covers them. GitHub is the one sign-in done on the box itself, once, as
+agents:
 
 ```sh
 ssh box
 runuser -u agents -- env HOME=/srv/agents/home PATH=/srv/agents/home/.local/bin:/srv/agents/home/.npm-global/bin:/usr/bin:/bin bash -l
-claude            # /login inside, pick "Claude account with subscription"; finish the browser step on the Mac; writes ~/.claude/.credentials.json
-codex login --device-auth    # prints a code and a URL to open on the Mac; writes ~/.codex/auth.json
-cursor-agent login           # same shape, if the cursor driver is wanted
-gh auth login --web          # for the GitHub inbox and PR tools
+gh auth login --hostname github.com --git-protocol https --web -s workflow
+                     # prints a one-time code; enter it at github.com/login/device on the Mac
+gh auth setup-git    # git asks gh for HTTPS clones and pushes; no SSH deploy key
+git config --global user.name LandonDev
+git config --global user.email 71577782+LandonDev@users.noreply.github.com
+git config --global commit.gpgsign false
 ```
 
-Then prove one turn each from the Mac's browser on `/ui`, or over the socket:
-create a workspace (`workspace.create` with a path under `/srv/agents/work`),
-a thread (`session.create`, provider `claude`, model `claude-haiku-5-5` or the
-cheapest Codex row, reasoning `low`), and `session.send` a one-line prompt;
-the reply row arrives in `/ui`. API keys for the other providers go in
-`/etc/temp-code.secrets.env`, then redeploy with `sudo box-update <ref>` so
-the service reads them through the checked commit/rollback path.
+The token sits in `~/.config/gh/hosts.yml` (agents, mode 600) with the scopes
+repo, read:org, gist and workflow; `gh auth status` checks it and
+`gh auth logout` removes it. The host's inbox and PR tools (the `github.*`
+RPCs) run the same `gh`, so they need nothing more:
+`tc-local github.inboxRefresh '{"reason":"manual"}'` answers
+`auth.state: "ok"`, and the inbox polls only the repos of workspaces that have
+a GitHub remote. Agent commits carry no AI attribution trailers.
 
 Still darwin-only by design: appshots, the Aliax browser-cookie sign-ins,
 the IntelliJ engine's pinned artifact (`lsp.ts` has only `darwin-arm64`; the
