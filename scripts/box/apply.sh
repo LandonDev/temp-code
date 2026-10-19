@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 HERE=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
-from=0 through=90
+from=0 through=190
 while (($#)); do
   case $1 in
     --from) from=$2; shift 2 ;;
@@ -23,10 +23,11 @@ fi
 rsync -rltz -e 'ssh -o BatchMode=yes' "$HERE/" box:/opt/box-baseline/
 rsync -rltz -e 'ssh -o BatchMode=yes' "$HOME/.ssh/id_ed25519.pub" box:/opt/box-baseline/root-key.pub
 "${SSH[@]}" 'find /opt/box-baseline ! -user root -exec chown root:root {} +'
-for file in "$HERE"/[0-9][0-9]-*.sh; do
-  name=$(basename "$file"); n=${name%%-*}; n=$((10#$n))
+while IFS= read -r name; do
+  n=${name%%-*}; n=$((10#$n))
   ((n >= from && n <= through)) || continue
-  if ((n == 60)); then bash "$HERE/tunnel.sh"; fi
+  if ((n == 60)); then bash "$HERE/tunnel.sh" < /dev/null; fi
+  if ((n == 150)); then bash "$HERE/prod-tunnel.sh" < /dev/null; fi
   printf '\n== %s ==\n' "$name"
-  "${SSH[@]}" "BOX_KEY_VERIFIED=1 bash /opt/box-baseline/$name"
-done
+  "${SSH[@]}" "unset HISTFILE; BOX_KEY_VERIFIED=1 bash /opt/box-baseline/$name" < /dev/null
+done < <(cd "$HERE" && printf '%s\n' [0-9]*-*.sh | sort -n)

@@ -17,7 +17,14 @@ id=$(cat "$STATE/tunnel-id")
 [[ $(jq -r .TunnelID "/etc/cloudflared/$id.json") == "$id" ]] || die 'Tunnel credential ID mismatch'
 {
   printf 'tunnel: %s\ncredentials-file: /etc/cloudflared/%s.json\nmetrics: 127.0.0.1:20241\n' "$id" "$id"
-  cat "$BOX_DIR/ingress.yml"
+  # Production routes become eligible only after the first admin exists.
+  if [[ -f $STATE/prod-ingress-ready ]]; then
+    sed '/  - service: http_status:404/d' "$BOX_DIR/ingress.yml"
+    cat "$BOX_DIR/prod-ingress.yml"
+    printf '  - service: http_status:404\n'
+  else
+    cat "$BOX_DIR/ingress.yml"
+  fi
 } | put /etc/cloudflared/config.yml 600
 # put runs in the pipe subshell; compare service's running config by hash below.
 cloudflared --config /etc/cloudflared/config.yml tunnel ingress validate

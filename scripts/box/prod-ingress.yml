@@ -1,0 +1,12 @@
+  - hostname: coolify.landonhale.com
+    path: ^/apps?(/|$)
+    service: http://127.0.0.1:6001
+  - hostname: coolify.landonhale.com
+    path: ^/terminal/ws(/|$)
+    service: http://127.0.0.1:6002
+  - hostname: coolify.landonhale.com
+    service: http://127.0.0.1:8000
+  - hostname: convex-template.landonhale.com
+    service: http://127.0.0.1:3210
+  - hostname: convex-template-dash.landonhale.com
+    service: http://127.0.0.1:6791

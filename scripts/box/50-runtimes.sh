@@ -38,7 +38,8 @@ EOF
 ((FILE_CHANGED == 0)) || repos_changed=1
 if ((repos_changed)) || ! apt-cache show docker-ce >/dev/null 2>&1; then apt-get update; fi
 # A later repo check must not overwrite unrelated daemon settings silently.
-put /etc/docker/daemon.json <<'EOF'
+daemon_tmp=$(mktemp)
+cat > "$daemon_tmp" <<'EOF'
 {
   "live-restore": true,
   "log-driver": "json-file",
@@ -49,6 +50,12 @@ put /etc/docker/daemon.json <<'EOF'
   "userland-proxy": false
 }
 EOF
+# Keep production address pools and other reviewed settings across baseline applies.
+if [[ -s /etc/docker/daemon.json ]]; then
+  jq -s '.[0] * .[1]' /etc/docker/daemon.json "$daemon_tmp" > "$daemon_tmp.merged"
+else cp "$daemon_tmp" "$daemon_tmp.merged"; fi
+put /etc/docker/daemon.json < "$daemon_tmp.merged"
+rm -f "$daemon_tmp" "$daemon_tmp.merged"
 docker_changed=$FILE_CHANGED
 put /usr/local/sbin/box-docker-fence 755 < "$BOX_DIR/docker-fence.sh"
 ((FILE_CHANGED == 0)) || docker_changed=1

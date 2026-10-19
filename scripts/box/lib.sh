@@ -14,13 +14,16 @@ skip() { printf 'SKIP: %s\n' "$*"; }
 die() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
 # Atomic files; callers can use FILE_CHANGED to reload only when needed.
 put() {
-  local path=$1 mode=${2:-644} owner=${3:-root} group=${4:-root} tmp staged
+  local path=$1 mode=${2:-644} owner=${3:-root} group=${4:-root} tmp staged uid gid
+  uid=$owner; gid=$group
+  [[ $owner =~ ^[0-9]+$ ]] || uid=$(id -u "$owner")
+  [[ $group =~ ^[0-9]+$ ]] || gid=$(getent group "$group" | cut -d: -f3)
   FILE_CHANGED=0
   mkdir -p "$(dirname "$path")"
   tmp=$(mktemp)
   cat > "$tmp"
   if [[ ! -f $path ]] || ! cmp -s "$tmp" "$path" ||
-     [[ $(stat -c '%a:%U:%G' "$path") != "$mode:$owner:$group" ]]; then
+     [[ $(stat -c '%a:%u:%g' "$path") != "$mode:$uid:$gid" ]]; then
     staged=$(mktemp "${path}.tmp.XXXXXX")
     install -o "$owner" -g "$group" -m "$mode" "$tmp" "$staged"
     mv -f "$staged" "$path"

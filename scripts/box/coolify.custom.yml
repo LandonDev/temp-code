@@ -1,0 +1,12 @@
+# Compose's !override replaces (rather than appends to) upstream port bindings.
+services:
+  coolify:
+    cgroup_parent: prod.slice
+    ports: !override
+      - "127.0.0.1:8000:8080"
+      - "127.0.0.1:6001:6001"
+      - "127.0.0.1:6002:6002"
+  postgres:
+    cgroup_parent: prod.slice
+  redis:
+    cgroup_parent: prod.slice

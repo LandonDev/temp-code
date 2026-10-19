@@ -1,0 +1,38 @@
+name: prod-managed
+services:
+  postgres:
+    image: postgres:16@sha256:ca0bd484cb98bf4b24eb1010e73fb3fcbd6714d240fbc1a10eea5b7dbecb641d
+    container_name: prod-postgres
+    cgroup_parent: prod.slice
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: prod_admin
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?}
+      POSTGRES_DB: postgres
+    ports: ["127.0.0.1:5432:5432"]
+    volumes: ["/srv/prod/data/postgres:/var/lib/postgresql/data"]
+    networks: [prod-data]
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U prod_admin -d postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+  redis:
+    image: redis:7@sha256:4fa24486b8bcca8eec45ee0eb166edc674795e53a2b53d1a9ef263eecebaac85
+    container_name: prod-redis
+    cgroup_parent: prod.slice
+    restart: unless-stopped
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?}
+    command: [sh, -c, 'exec redis-server --appendonly yes --requirepass "$$REDIS_PASSWORD"']
+    ports: ["127.0.0.1:6379:6379"]
+    volumes: ["/srv/prod/data/redis:/data"]
+    networks: [prod-data]
+    healthcheck:
+      test: [CMD-SHELL, 'REDISCLI_AUTH="$$REDIS_PASSWORD" redis-cli ping | grep -qx PONG']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+networks:
+  prod-data:
+    name: prod-data
