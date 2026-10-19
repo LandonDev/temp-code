@@ -4,7 +4,9 @@ source "$(dirname "$0")/lib.sh"
 packages ufw fail2ban
 # Refuse to erase someone else's rules on a later run.
 if ufw show added | grep '^ufw ' | grep -vE '^ufw allow 22/tcp$' >/dev/null; then die 'Unexpected UFW rules; inspect before changing policy'; fi
-if ! ufw status verbose | grep -q 'Default: deny (incoming), allow (outgoing), deny (routed)'; then
+if ! grep -qx 'DEFAULT_INPUT_POLICY="DROP"' /etc/default/ufw ||
+   ! grep -qx 'DEFAULT_OUTPUT_POLICY="ACCEPT"' /etc/default/ufw ||
+   ! grep -qx 'DEFAULT_FORWARD_POLICY="DROP"' /etc/default/ufw; then
   ufw default deny incoming; ufw default allow outgoing; ufw default deny routed
   changed 'UFW defaults'
 else skip 'UFW defaults'; fi

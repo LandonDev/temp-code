@@ -144,10 +144,73 @@ even when a different tunnel name follows `info`. The clean config avoids
 that override without editing the Mac's config.
 See [Cloudflare's local tunnel guide](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/do-more-with-tunnels/local-management/create-local-tunnel/).
 
-## Remaining stages
+## Backups (installed, disabled)
 
-Backup, heartbeat, and final verification details will be recorded after the
-live checks finish.
+Restic is installed. `box-backup.timer` is installed but disabled. No bucket
+was created, repository initialized, or backup uploaded: R2 credentials are
+not available yet.
+
+On the box, as root:
+
+1. Copy `/etc/restic/box.env.example` to `/etc/restic/box.env`, mode 600.
+   Fill in the R2 account ID, bucket, bucket-scoped access key ID, and secret
+   key. Keep `AWS_DEFAULT_REGION=auto`. Values use shell syntax; quote secrets.
+2. Create `/etc/restic/password`, mode 600, containing a strong restic encryption
+   password. Store a second copy off the box; R2 credentials cannot decrypt
+   backups without it. Never put either file in this repo.
+3. In a root shell, run `set -a; source /etc/restic/box.env; set +a`, then
+   `restic init` once for a new repository. Use `restic snapshots` for an
+   existing repository rather than reinitializing it.
+4. Run `systemctl start box-backup.service`, inspect
+   `journalctl -u box-backup.service`, and run `restic check`.
+5. Test a restore to a scratch directory, for example
+   `restic restore latest --target /srv/prod/restore-check --include /etc/hostname`.
+   Compare the restored file, remove the scratch copy, then run
+   `systemctl enable --now box-backup.timer`.
+
+The timer runs daily at 04:15 New York time, with up to 20 minutes of jitter.
+`/usr/local/sbin/box-backup` backs up `/srv/agents`, `/srv/prod`, and `/etc`.
+`/etc/restic/excludes` omits caches, node_modules, the restic secrets, and
+`/srv/prod/docker`. Thread C must provide a consistent SQLite snapshot; thread I
+must provide database dumps and named-volume backup paths before these backups
+can protect live apps. A file copy of a running database is insufficient.
+There is no automatic deletion or retention rule. Reapply preserves live env
+files and any timer state the owner later chooses.
+See [restic's repository setup](https://restic.readthedocs.io/en/stable/030_preparing_a_new_repo.html).
+
+## Heartbeat (installed, disabled)
+
+`/usr/local/bin/box-heartbeat` sends a small JSON POST containing hostname and
+UTC time. `box-heartbeat.timer` is installed but disabled; no hub request was
+sent. When the hub ships, copy `/etc/box-heartbeat.env.example` to
+`/etc/box-heartbeat.env`, mode 600, fill in its HTTPS URL and bearer token, and
+run `systemctl start box-heartbeat.service`. Check the hub and
+`journalctl -u box-heartbeat.service`, then enable the timer with
+`systemctl enable --now box-heartbeat.timer`. The hub must accept the documented
+`host` and `time` fields or the script must change to match it. It runs once per
+minute, with up to 10 seconds of jitter. Reapply preserves the live env file.
+
+## Next threads
+
+- **C — temp-code under Xvfb:** use agents, home `/srv/agents/home`,
+  `agents.slice`, `LimitNOFILE=1048576`, and the installed Node/Bun/Xvfb stack.
+  The Electron proof and its npm lockfile live in the scratch directory above.
+  Give the shipped executable its own AppArmor userns profile. Bind the remote
+  listener to `127.0.0.1:7677`; the tunnel route already exists. Add consistent
+  SQLite backup output. No temp-code process or listener is installed yet.
+- **U — launcher:** run app child processes as agents within `agents.slice`;
+  use the lingering user manager or an explicit system unit. Do not use root
+  or the Docker socket. Preserve the 7677 listener and app data while adding
+  update and rollback handling. Bun's path is `/srv/agents/home/.bun/bin/bun`.
+- **I — Coolify:** use prod and Docker, `/srv/prod`, and `prod.slice`.
+  Keep the Docker cgroup parent, log limits, socket permissions, and inbound
+  fence. Route dashboard and sites through the tunnel to loopback origins;
+  do not open 80/443 or dashboard ports. Add hostname entries to the repo file.
+  Supply database and named-volume backups before enabling the restic timer.
+
+## Verification
+
+Final live results will be recorded after the second full apply.
 
 ## User steps
 

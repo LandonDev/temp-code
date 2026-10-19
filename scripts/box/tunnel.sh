@@ -24,7 +24,7 @@ printf '%s\n' "$route"
 if [[ $route == *'Added CNAME'* ]]; then echo 'CHANGED: tunnel DNS route'; else echo 'SKIP: tunnel DNS route'; fi
 ssh -o BatchMode=yes box 'test -d /etc/cloudflared || install -d -m 700 /etc/cloudflared'
 # This is the only private Cloudflare file sent to the server.
-copied=$(rsync -aic -e 'ssh -o BatchMode=yes' "$credential" "box:/etc/cloudflared/$id.json")
+copied=$(rsync -rltzic -e 'ssh -o BatchMode=yes' "$credential" "box:/etc/cloudflared/$id.json")
 if [[ -n $copied ]]; then echo 'CHANGED: tunnel credentials copied'; else echo 'SKIP: tunnel credentials'; fi
 ssh -o BatchMode=yes box "test \"\$(cat /var/lib/box-baseline/tunnel-id 2>/dev/null)\" = '$id' || { printf '%s\\n' '$id' > /var/lib/box-baseline/tunnel-id; echo 'CHANGED: tunnel ID'; }"
 ssh -o BatchMode=yes box "test \"\$(stat -c '%a:%U:%G' /etc/cloudflared/$id.json)\" = '600:root:root' || { chmod 600 /etc/cloudflared/$id.json; chown root:root /etc/cloudflared/$id.json; echo 'CHANGED: credential permissions'; }"

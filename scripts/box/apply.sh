@@ -20,8 +20,9 @@ if ! "${SSH[@]}" 'command -v rsync >/dev/null'; then
   "${SSH[@]}" 'cat > /opt/box-baseline/root-key.pub' < "$HOME/.ssh/id_ed25519.pub"
   "${SSH[@]}" 'BOX_KEY_VERIFIED=1 bash /opt/box-baseline/10-access.sh && DEBIAN_FRONTEND=noninteractive apt-get install -y rsync'
 fi
-rsync -az -e 'ssh -o BatchMode=yes' "$HERE/" box:/opt/box-baseline/
-rsync -az -e 'ssh -o BatchMode=yes' "$HOME/.ssh/id_ed25519.pub" box:/opt/box-baseline/root-key.pub
+rsync -rltz -e 'ssh -o BatchMode=yes' "$HERE/" box:/opt/box-baseline/
+rsync -rltz -e 'ssh -o BatchMode=yes' "$HOME/.ssh/id_ed25519.pub" box:/opt/box-baseline/root-key.pub
+"${SSH[@]}" 'find /opt/box-baseline ! -user root -exec chown root:root {} +'
 for file in "$HERE"/[0-9][0-9]-*.sh; do
   name=$(basename "$file"); n=${name%%-*}; n=$((10#$n))
   ((n >= from && n <= through)) || continue
