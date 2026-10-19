@@ -3,14 +3,14 @@
   "ok": true,
   "result": [
     {
-      "id": "GVeVXQSGh5Su",
+      "id": "nCGWdmBlQnM9",
       "name": "fixture-workspace",
-      "path": "/var/folders/5x/1mkrv6rj06j5m57nmzgm97n80000gn/T/tc-swift-fixtures-repo-IAyMHr",
+      "path": "/var/folders/5x/1mkrv6rj06j5m57nmzgm97n80000gn/T/tc-swift-fixtures-repo-9UI5NF",
       "git": true,
       "accountPins": {},
       "githubRepo": null,
-      "githubRepoCheckedAt": 1792400019634,
-      "createdAt": 1792400019634
+      "githubRepoCheckedAt": 1792443772809,
+      "createdAt": 1792443772809
     }
   ]
 }

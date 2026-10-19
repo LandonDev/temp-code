@@ -1,0 +1,16 @@
+{
+  "id": "17",
+  "ok": true,
+  "result": {
+    "matches": [
+      {
+        "path": "/var/folders/5x/1mkrv6rj06j5m57nmzgm97n80000gn/T/tc-swift-fixtures-repo-9UI5NF/fixture-search.txt",
+        "relative": "fixture-search.txt",
+        "line": 2,
+        "column": 7,
+        "preview": "const fixtureNeedle = true"
+      }
+    ],
+    "truncated": false
+  }
+}

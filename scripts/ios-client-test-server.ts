@@ -76,6 +76,90 @@ server.registry.append(THREAD_B, { type: 'user-text', text: 'Only one turn here'
 server.registry.append(THREAD_B, { type: 'assistant-text', text: 'And one short answer.', delta: false, msgId: 'b1', blockIndex: 0 })
 server.registry.append(THREAD_B, { type: 'turn-complete' })
 
+// ── a fuller shell for the simulator proof ──────────────────────────────
+// Two workspaces, a project with live and archived threads, chats without a
+// project, a pinned thread, a running thread with tasks, a subagent fleet,
+// threads waiting on an approval and on a question, a failed one, a paused
+// one, and an archived project. The live tests rely on THREAD_A and THREAD_B
+// only, so everything here is extra.
+const repo2 = mkdtempSync(join(tmpdir(), 'tc-ios-client-repo2-'))
+execFileSync('git', ['-C', repo2, 'init', '-q'])
+execFileSync('git', ['-C', repo2, '-c', 'user.name=fixture', '-c', 'user.email=fixture@example.com', 'commit', '-q', '--allow-empty', '-m', 'init'])
+const workspace2 = await server.registry.createWorkspace(repo2, 'cosmic-web')
+const project2 = await server.registry.createProject(workspace2.id, 'billing-page', 'local')
+const retired = await server.registry.createProject(workspace.id, 'old-migration', 'local')
+type CreateInput = Parameters<typeof server.registry.create>[0]
+const base = { provider: 'claude', model: 'claude-sonnet-5-5', reasoning: 'low', agentType: 'implementer', permission: 'edits' } as const
+const make = (id: string, extra: Partial<CreateInput>): Promise<unknown> => server.registry.create({ ...base, ...extra, id } as CreateInput)
+const say = (id: string, user: string, assistant: string): void => {
+  server.registry.append(id, { type: 'user-text', text: user })
+  server.registry.append(id, { type: 'assistant-text', text: assistant, delta: false, msgId: `${id}-m1`, blockIndex: 0 })
+  server.registry.append(id, { type: 'turn-complete' })
+}
+
+// Settled roots in the first project: one pinned, two archived.
+await make('ios-pinned', { projectId: project.id, threadType: 'research', title: 'Compare vector databases' })
+say('ios-pinned', 'Which vector database fits a 10M-row corpus?', 'Three candidates stand out.')
+server.registry.setPinned('ios-pinned', true)
+for (const [id, title] of [['ios-archived-1', 'Rename the config keys'], ['ios-archived-2', 'Drop the legacy importer']] as const) {
+  await make(id, { projectId: project.id, threadType: 'implementation', title })
+  say(id, 'Do it.', 'Done.')
+  await server.registry.setArchived(id, true)
+}
+
+// A failed planning thread and a paused orchestration.
+await make('ios-failed', { projectId: project.id, threadType: 'planning', title: 'Plan the move to passkeys' })
+server.registry.append('ios-failed', { type: 'user-text', text: 'Plan the move to passkeys' })
+server.registry.append('ios-failed', { type: 'status', status: 'running' })
+server.registry.append('ios-failed', { type: 'error', message: 'The provider answered 429: rate limited\nRetry in a minute.' })
+server.registry.append('ios-failed', { type: 'status', status: 'error' })
+await make('ios-paused', { projectId: project.id, threadType: 'orchestration', agentType: 'orchestrator', title: 'Migrate the stats pipeline' })
+server.registry.append('ios-paused', { type: 'user-text', text: 'Migrate every stats job to ClickHouse' })
+server.registry.append('ios-paused', { type: 'status', status: 'running' })
+server.registry.append('ios-paused', { type: 'status', status: 'paused' })
+
+// A chat waiting on an approval, and in the other project one waiting on a question.
+await make('ios-waiting', { projectId: project.id, threadType: 'chat', title: 'Run the test suite' })
+server.registry.append('ios-waiting', { type: 'user-text', text: 'Run the tests and fix what fails' })
+server.registry.append('ios-waiting', { type: 'status', status: 'running' })
+server.registry.append('ios-waiting', { type: 'approval-request', requestId: 'seed-approval', toolName: 'Bash', input: { command: 'bun test' }, title: 'run bun test', callId: 'c7' })
+server.registry.append('ios-waiting', { type: 'status', status: 'waiting', detail: 'awaiting approval' })
+await make('ios-question', { projectId: project2.id, threadType: 'implementation', title: 'Fix the invoice totals' })
+server.registry.append('ios-question', { type: 'user-text', text: 'Invoices round the wrong way', newPass: true })
+server.registry.append('ios-question', { type: 'status', status: 'running' })
+server.registry.append('ios-question', { type: 'question-request', requestId: 'seed-question', questions: [{ question: 'Round half up or to even?', header: 'Rounding', options: [{ label: 'Half up' }, { label: 'To even' }] }] })
+server.registry.append('ios-question', { type: 'status', status: 'waiting', detail: 'awaiting an answer' })
+
+// A running implementation with tasks, and an orchestration fleet with a working explorer and a settled reviewer.
+await make('ios-running', { projectId: project.id, threadType: 'implementation', title: 'Add the billing export' })
+server.registry.append('ios-running', { type: 'user-text', text: 'Add a CSV export to the billing page', newPass: true })
+server.registry.append('ios-running', { type: 'status', status: 'running' })
+server.registry.append('ios-running', { type: 'tool-call', callId: 't1', name: 'TodoWrite', input: { todos: [
+  { content: 'Read the billing page', status: 'completed', activeForm: 'Reading the billing page' },
+  { content: 'Write the export endpoint', status: 'in_progress', activeForm: 'Writing the export endpoint' },
+  { content: 'Add tests', status: 'pending', activeForm: 'Adding tests' }
+] } })
+server.registry.append('ios-running', { type: 'tool-result', callId: 't1', output: 'ok', isError: false })
+server.registry.append('ios-running', { type: 'tool-call', callId: 't2', name: 'Edit', input: { file_path: 'src/billing/export.ts' } })
+await make('ios-fleet', { projectId: project.id, threadType: 'orchestration', agentType: 'orchestrator', title: 'Port the sky plugins' })
+server.registry.append('ios-fleet', { type: 'user-text', text: 'Port every sky plugin to the new core' })
+server.registry.append('ios-fleet', { type: 'status', status: 'running' })
+await make('ios-fleet-explorer', { parentId: 'ios-fleet', projectId: project.id, agentType: 'explorer', title: 'Map the plugin boundaries' })
+server.registry.append('ios-fleet-explorer', { type: 'user-text', text: 'Map the plugin boundaries' })
+server.registry.append('ios-fleet-explorer', { type: 'status', status: 'running' })
+server.registry.append('ios-fleet-explorer', { type: 'tool-call', callId: 'e1', name: 'Read', input: { file_path: 'plugins/README.md' } })
+await make('ios-fleet-reviewer', { parentId: 'ios-fleet', projectId: project.id, agentType: 'reviewer', model: 'claude-opus-5-5', title: 'Review the first port' })
+say('ios-fleet-reviewer', 'Review the first port', 'Two findings, both minor.')
+
+// Chats: one in the workspace with no project, one outside every workspace; a thread in the archived project.
+await make('ios-chat-workspace', { workspaceId: workspace.id, threadType: 'chat', title: 'Why is the build slow?' })
+say('ios-chat-workspace', 'Why is the build slow today?', 'The cache was cold.')
+await make('ios-chat-loose', { cwd: tmpdir(), threadType: 'chat', title: 'Regex for ISO dates' })
+say('ios-chat-loose', 'A regex for ISO dates?', 'Use a date parser instead.')
+await make('ios-retired', { projectId: retired.id, threadType: 'chat', title: 'Old migration notes' })
+say('ios-retired', 'Keep these notes.', 'Kept.')
+await server.registry.archiveProject(retired.id, true)
+
 // ── the key, and a pairing link for the simulator rehearsal ─────────────
 const created = await server.remoteAuth.createKey({ name: 'ios-test', audience: 'client', caps: [], createdBy: 'local' })
 const pairing = server.remoteAuth.createPairing({ name: 'ios-sim', audience: 'client', caps: [], createdBy: 'local' })

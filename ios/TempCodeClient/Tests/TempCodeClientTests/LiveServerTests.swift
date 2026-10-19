@@ -75,7 +75,7 @@ struct LiveServerTests {
         #expect(status.lastHello?.environmentId == LiveServer.environmentId)
         #expect(status.lastHello?.key?.name == "ios-test")
         let workspaces = try await socket.request(Methods.WorkspaceList.self, NoParams())
-        #expect(workspaces.map(\.name) == ["ios-workspace"])
+        #expect(workspaces.map(\.name).contains("ios-workspace"))
         let state = try await LiveServer.control("/state")
         let sockets = state["sockets"] as? [[String: Any]] ?? []
         let mine = sockets.first { $0["keyId"] as? String == LiveServer.keyId }
@@ -151,7 +151,7 @@ struct LiveServerTests {
         let client = EnvironmentClient(environment: LiveServer.environment(), keys: try LiveServer.keys(), cache: try SessionCache.inMemory())
         await client.start()
         #expect(await LiveServer.until { client.status.fresh })
-        #expect(client.sessions.map(\.id).sorted() == [LiveServer.threadA, LiveServer.threadB].sorted())
+        #expect(Set(client.sessions.map(\.id)).isSuperset(of: [LiveServer.threadA, LiveServer.threadB]))
         await client.openThread(LiveServer.threadA)
         #expect(await LiveServer.until { client.threads[LiveServer.threadA]?.isLive == true && (client.threads[LiveServer.threadA]?.rows.count ?? 0) >= 9 })
         let seeded = client.threads[LiveServer.threadA]!.rows

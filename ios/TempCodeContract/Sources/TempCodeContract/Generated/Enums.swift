@@ -337,3 +337,64 @@ public enum LimitBucket: RawRepresentable, Codable, Hashable, Sendable {
         }
     }
 }
+
+public enum GithubInboxChecks: RawRepresentable, Codable, Hashable, Sendable {
+    case success
+    case failure
+    case pending
+    case error
+    case expected
+    /// A value this build does not know; `rawValue` keeps it.
+    case unknown(String)
+
+    public init(rawValue: String) {
+        switch rawValue {
+        case "SUCCESS": self = .success
+        case "FAILURE": self = .failure
+        case "PENDING": self = .pending
+        case "ERROR": self = .error
+        case "EXPECTED": self = .expected
+        default: self = .unknown(rawValue)
+        }
+    }
+
+    public var rawValue: String {
+        switch self {
+        case .success: "SUCCESS"
+        case .failure: "FAILURE"
+        case .pending: "PENDING"
+        case .error: "ERROR"
+        case .expected: "EXPECTED"
+        case .unknown(let value): value
+        }
+    }
+}
+
+public enum GithubInboxReviewDecision: RawRepresentable, Codable, Hashable, Sendable {
+    case none
+    case approved
+    case changesRequested
+    case reviewRequired
+    /// A value this build does not know; `rawValue` keeps it.
+    case unknown(String)
+
+    public init(rawValue: String) {
+        switch rawValue {
+        case "": self = .none
+        case "APPROVED": self = .approved
+        case "CHANGES_REQUESTED": self = .changesRequested
+        case "REVIEW_REQUIRED": self = .reviewRequired
+        default: self = .unknown(rawValue)
+        }
+    }
+
+    public var rawValue: String {
+        switch self {
+        case .none: ""
+        case .approved: "APPROVED"
+        case .changesRequested: "CHANGES_REQUESTED"
+        case .reviewRequired: "REVIEW_REQUIRED"
+        case .unknown(let value): value
+        }
+    }
+}

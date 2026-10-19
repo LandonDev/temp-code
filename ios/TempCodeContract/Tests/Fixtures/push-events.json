@@ -5,7 +5,7 @@
     {
       "sessionId": "fixture-thread",
       "seq": 17,
-      "ts": 1792400020143,
+      "ts": 1792443773442,
       "event": {
         "type": "assistant-text",
         "text": "A live ",
@@ -17,7 +17,7 @@
     {
       "sessionId": "fixture-thread",
       "seq": 18,
-      "ts": 1792400020143,
+      "ts": 1792443773442,
       "event": {
         "type": "assistant-text",
         "text": "A live row after subscribe.",

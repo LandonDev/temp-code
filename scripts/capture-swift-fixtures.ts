@@ -11,8 +11,9 @@
  * tail with moreBefore, a session.rowBody answer, a coalesced `events`
  * frame, a `sessions` frame, a `queue` push and an error response, plus
  * the HTTP bodies of /api/hello, /api/pair and /api/ticket and a few
- * list answers. Every frame is parsed with src/shared/wireSchemas.ts and
- * compared key for key with what the server sent before it is written,
+ * list, icon, search and stored GitHub inbox answers. Every frame is
+ * parsed with src/shared/wireSchemas.ts and compared key for key with
+ * what the server sent before it is written,
  * so a mirror that disagrees with the server stops here, not in Swift.
  * Files land in ios/TempCodeContract/Tests/Fixtures/; FixtureTests.swift
  * asserts the numbers below.
@@ -86,19 +87,8 @@ const failed = z.object({ id: z.string(), ok: z.literal(false), error: z.string(
 // ── seed: a workspace, a project, one thread with three turns ──────────
 const repo = mkdtempSync(join(tmpdir(), 'tc-swift-fixtures-repo-'))
 execFileSync('git', ['-C', repo, 'init', '-q'])
-execFileSync('git', [
-  '-C',
-  repo,
-  '-c',
-  'user.name=fixture',
-  '-c',
-  'user.email=fixture@example.com',
-  'commit',
-  '-q',
-  '--allow-empty',
-  '-m',
-  'init'
-])
+execFileSync('git', ['-C', repo, '-c', 'user.name=fixture', '-c', 'user.email=fixture@example.com', 'commit', '-q', '--allow-empty', '-m', 'init'])
+writeFileSync(join(repo, 'fixture-search.txt'), '// Search fixture\nconst fixtureNeedle = true\n')
 const workspace = await server.registry.createWorkspace(repo, 'fixture-workspace')
 const project = await server.registry.createProject(workspace.id, 'fixture-project', 'local')
 await server.registry.create({
@@ -392,6 +382,45 @@ record(
   failed,
   await request('session.approve', { sessionId: SESSION_ID, requestId: 'none', allow: true })
 )
+
+record(
+  'workspace-icon',
+  ok(W.WorkspaceIconSchema),
+  await request('workspace.icon', { workspaceId: workspace.id })
+)
+const search = record(
+  'session-search',
+  ok(W.SessionSearchResultSchema),
+  await request('session.search', { query: 'hello' })
+)
+if (
+  !search.result.hits.some((hit) => hit.sessionId === SESSION_ID && hit.role === 'user') ||
+  !search.result.hits.some((hit) => hit.sessionId === SESSION_ID && hit.role === 'assistant')
+)
+  throw new Error('session.search did not find both seeded hello rows')
+const emptySearch = record(
+  'session-search-empty',
+  ok(W.SessionSearchResultSchema),
+  await request('session.search', { query: 'fixture-no-match-9e71c0' })
+)
+if (emptySearch.result.hits.length !== 0) throw new Error('session.search unexpectedly found a row')
+const projectSearch = record(
+  'search-project',
+  ok(W.ProjectSearchResultSchema),
+  await request('search.project', { options: { cwd: project.cwd, query: 'fixtureNeedle' } })
+)
+if (
+  projectSearch.result.matches.length !== 1 ||
+  projectSearch.result.matches[0].relative !== 'fixture-search.txt'
+)
+  throw new Error('search.project did not find the seeded file')
+const inbox = record(
+  'github-inbox',
+  ok(W.GithubInboxSnapshotSchema),
+  await request('github.inbox', {})
+)
+if (inbox.result.repos.length !== 0 || inbox.result.auth.state !== 'ok')
+  throw new Error('github.inbox did not return the empty stored snapshot')
 
 // ── write ───────────────────────────────────────────────────────────────
 mkdirSync(FIXTURES_DIR, { recursive: true })

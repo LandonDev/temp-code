@@ -6,7 +6,7 @@
       {
         "sessionId": "fixture-thread",
         "seq": 7,
-        "ts": 1792400019648,
+        "ts": 1792443772823,
         "event": {
           "type": "tool-call",
           "callId": "c1",
@@ -20,7 +20,7 @@
       {
         "sessionId": "fixture-thread",
         "seq": 8,
-        "ts": 1792400019648,
+        "ts": 1792443772823,
         "event": {
           "type": "tool-result",
           "callId": "c1",
@@ -36,7 +36,7 @@
       {
         "sessionId": "fixture-thread",
         "seq": 9,
-        "ts": 1792400019648,
+        "ts": 1792443772823,
         "event": {
           "type": "tool-call",
           "callId": "c2",
@@ -74,7 +74,7 @@
       {
         "sessionId": "fixture-thread",
         "seq": 10,
-        "ts": 1792400019648,
+        "ts": 1792443772823,
         "event": {
           "type": "tool-result",
           "callId": "c2",
@@ -85,7 +85,7 @@
       {
         "sessionId": "fixture-thread",
         "seq": 11,
-        "ts": 1792400019648,
+        "ts": 1792443772823,
         "event": {
           "type": "assistant-text",
           "text": "Done: the command ran and the file is edited.",
@@ -97,7 +97,7 @@
       {
         "sessionId": "fixture-thread",
         "seq": 12,
-        "ts": 1792400019648,
+        "ts": 1792443772824,
         "event": {
           "type": "usage",
           "inputTokens": 900,
@@ -107,7 +107,7 @@
       {
         "sessionId": "fixture-thread",
         "seq": 13,
-        "ts": 1792400019648,
+        "ts": 1792443772824,
         "event": {
           "type": "turn-complete",
           "costUsd": 0.05,
@@ -118,7 +118,7 @@
       {
         "sessionId": "fixture-thread",
         "seq": 14,
-        "ts": 1792400019649,
+        "ts": 1792443772824,
         "event": {
           "type": "user-text",
           "text": "Turn 3: anything else?",
@@ -135,7 +135,7 @@
       {
         "sessionId": "fixture-thread",
         "seq": 15,
-        "ts": 1792400019649,
+        "ts": 1792443772824,
         "event": {
           "type": "assistant-text",
           "text": "Nothing else.",
@@ -147,7 +147,7 @@
       {
         "sessionId": "fixture-thread",
         "seq": 16,
-        "ts": 1792400019649,
+        "ts": 1792443772824,
         "event": {
           "type": "turn-complete",
           "inputTokens": 40,

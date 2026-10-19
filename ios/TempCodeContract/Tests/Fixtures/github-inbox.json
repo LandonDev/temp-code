@@ -1,0 +1,14 @@
+{
+  "id": "18",
+  "ok": true,
+  "result": {
+    "viewer": null,
+    "auth": {
+      "state": "ok",
+      "message": ""
+    },
+    "fetchedAt": null,
+    "refreshing": false,
+    "repos": []
+  }
+}

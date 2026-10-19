@@ -11,7 +11,29 @@ import {
 } from './catalog'
 import type { Capability } from './capabilities'
 import type { QueuedMessage, ServerPush } from './contract'
-import type { FsMedia } from './contract-fsgit'
+import type {
+  FsMedia,
+  GitHubPrDiff,
+  GitHubPrFile,
+  GitHubWorkItemComment,
+  GitHubWorkItemDetails,
+  GitHubWorkItemThread
+} from './contract-fsgit'
+import type {
+  GithubInboxAuth,
+  GithubInboxChecks,
+  GithubInboxItem,
+  GithubInboxPerson,
+  GithubInboxRepo,
+  GithubInboxReviewDecision,
+  GithubInboxSnapshot
+} from './contract-github'
+import type {
+  ProjectSearchMatch,
+  ProjectSearchResult,
+  SessionSearchHit,
+  SessionSearchResult
+} from './contract-m3a'
 import {
   AudienceSchema,
   CapabilitySchema,
@@ -26,6 +48,7 @@ import {
   ThreadTypeSchema,
   type FileChange,
   type ProjectMeta,
+  type WorkspaceIcon,
   type WorkspaceMeta
 } from './domain'
 import {
@@ -75,18 +98,31 @@ type AllTrue<T> = T[keyof T] extends true ? true : false
 /** `A` and `B` are mutually assignable and, at every object level, have the
  *  same keys, so an optional field added to one side is a difference too.
  *  Arrays compare by element. (The usual identity trick is not used: it
- *  gives up on deep types and answered both ways here.) */
-type Pin<A, B> = [A] extends [B] ? ([B] extends [A] ? PinKeys<A, B> : false) : false
-type PinKeys<A, B> = [NonNullable<A>] extends [(infer AU)[]]
+ *  gives up on deep types and answered both ways here.) Already checked
+ *  pairs stop recursive types from walking the same fields forever. */
+type SeenPair<A, B, Seen> = Seen extends [infer SA, infer SB]
+  ? Equal<A, SA> extends true
+    ? Equal<B, SB>
+    : false
+  : false
+type Pin<A, B, Seen = never> = [A] extends [B]
+  ? [B] extends [A]
+    ? true extends SeenPair<A, B, Seen>
+      ? true
+      : PinKeys<A, B, Seen | [A, B]>
+    : false
+  : false
+type PinKeys<A, B, Seen> = [NonNullable<A>] extends [(infer AU)[]]
   ? [NonNullable<B>] extends [(infer BU)[]]
-    ? Pin<AU, BU>
+    ? Pin<AU, BU, Seen>
     : false
   : IsObject<NonNullable<A>> extends true
     ? Equal<keyof NonNullable<A>, keyof NonNullable<B>> extends true
       ? AllTrue<{
           [K in keyof NonNullable<A>]-?: Pin<
             NonNullable<A>[K],
-            NonNullable<B>[K & keyof NonNullable<B>]
+            NonNullable<B>[K & keyof NonNullable<B>],
+            Seen
           >
         }>
       : false
@@ -275,6 +311,11 @@ export const WorkspaceMetaSchema = z.object({
   createdAt: z.number().int()
 })
 
+export const WorkspaceIconSchema = z.object({
+  dataUrl: z.string().nullable(),
+  host: z.enum(['github', 'gitlab', 'bitbucket']).nullable()
+})
+
 export const ProjectMetaSchema = z.object({
   id: z.string(),
   workspaceId: z.string(),
@@ -302,6 +343,127 @@ export const QueuedMessageSchema = z.object({
   model: z.string().optional(),
   reasoning: z.string().optional(),
   attachments: z.array(AttachmentSchema).optional()
+})
+
+// ── search ─────────────────────────────────────────────────────────────
+
+export const SessionSearchHitSchema = z.object({
+  sessionId: z.string(),
+  seq: z.number().int(),
+  role: z.enum(['user', 'assistant']),
+  snippet: z.string(),
+  ts: z.number().int()
+})
+export const SessionSearchResultSchema = z.object({
+  hits: z.array(SessionSearchHitSchema),
+  truncated: z.boolean()
+})
+export const ProjectSearchMatchSchema = z.object({
+  path: z.string(),
+  relative: z.string(),
+  line: z.number().int(),
+  column: z.number().int(),
+  preview: z.string()
+})
+export const ProjectSearchResultSchema = z.object({
+  matches: z.array(ProjectSearchMatchSchema),
+  truncated: z.boolean()
+})
+
+// ── GitHub ─────────────────────────────────────────────────────────────
+
+export const GithubInboxAuthSchema = z.object({
+  state: z.enum(['ok', 'missing-gh', 'logged-out', 'error']),
+  message: z.string()
+})
+export const GithubInboxPersonSchema = z.object({
+  login: z.string(),
+  avatarUrl: z.string()
+})
+export const GithubInboxChecksSchema = z
+  .enum(['SUCCESS', 'FAILURE', 'PENDING', 'ERROR', 'EXPECTED'])
+  .nullable()
+export const GithubInboxReviewDecisionSchema = z.enum([
+  '',
+  'APPROVED',
+  'CHANGES_REQUESTED',
+  'REVIEW_REQUIRED'
+])
+export const GithubInboxItemSchema = z.object({
+  kind: z.enum(['issue', 'pr']),
+  repo: z.string(),
+  number: z.number().int(),
+  title: z.string(),
+  url: z.string(),
+  state: z.enum(['open', 'closed', 'merged']),
+  draft: z.boolean(),
+  updatedAt: z.string(),
+  author: GithubInboxPersonSchema.nullable(),
+  assignees: z.array(GithubInboxPersonSchema),
+  labels: z.array(z.object({ name: z.string(), color: z.string() })),
+  reviewDecision: GithubInboxReviewDecisionSchema,
+  headRefName: z.string(),
+  baseRefName: z.string(),
+  checks: GithubInboxChecksSchema,
+  reviewRequested: z.array(z.string())
+})
+export const GithubInboxRepoSchema = z.object({
+  repo: z.string(),
+  fetchedAt: z.number().int(),
+  error: z.string().nullable(),
+  items: z.array(GithubInboxItemSchema)
+})
+export const GithubInboxSnapshotSchema = z.object({
+  viewer: z.string().nullable(),
+  auth: GithubInboxAuthSchema,
+  fetchedAt: z.number().int().nullable(),
+  refreshing: z.boolean(),
+  repos: z.array(GithubInboxRepoSchema)
+})
+
+export const GitHubWorkItemDetailsSchema = z.object({
+  body: z.string(),
+  author: z.string(),
+  authorAvatarUrl: z.string(),
+  baseRefName: z.string(),
+  headRefName: z.string(),
+  reviewDecision: z.string()
+})
+export const GitHubWorkItemCommentSchema = z.object({
+  id: z.string(),
+  kind: z.string(),
+  author: z.string(),
+  authorAvatarUrl: z.string(),
+  body: z.string(),
+  createdAt: z.string(),
+  url: z.string(),
+  state: z.string(),
+  path: z.string(),
+  line: z.number().int().nullable(),
+  resolved: z.boolean(),
+  threadId: z.string(),
+  get replies(): z.ZodArray<z.ZodLazy<typeof GitHubWorkItemCommentSchema>> {
+    return z.array(z.lazy(() => GitHubWorkItemCommentSchema))
+  }
+})
+export const GitHubWorkItemThreadSchema = z.object({
+  comments: z.array(GitHubWorkItemCommentSchema),
+  truncated: z.boolean(),
+  reviewDecision: z.string(),
+  baseRefName: z.string(),
+  headRefName: z.string()
+})
+export const GitHubPrFileSchema = z.object({
+  path: z.string(),
+  additions: z.number().int(),
+  deletions: z.number().int()
+})
+export const GitHubPrDiffSchema = z.object({
+  additions: z.number().int(),
+  deletions: z.number().int(),
+  files: z.array(GitHubPrFileSchema),
+  patch: z.string(),
+  truncated: z.boolean()
 })
 
 // ── remote access ───────────────────────────────────────────────────────
@@ -519,6 +681,23 @@ export type WireSchemaPins = [
   Expect<Mirror<typeof SessionPageSchema, WireSessionPage>>,
   Expect<Mirror<typeof WorkspaceMetaSchema, WorkspaceMeta>>,
   Expect<Mirror<typeof ProjectMetaSchema, ProjectMeta>>,
+  Expect<Mirror<typeof WorkspaceIconSchema, WorkspaceIcon>>,
+  Expect<Mirror<typeof SessionSearchHitSchema, SessionSearchHit>>,
+  Expect<Mirror<typeof SessionSearchResultSchema, SessionSearchResult>>,
+  Expect<Mirror<typeof ProjectSearchMatchSchema, ProjectSearchMatch>>,
+  Expect<Mirror<typeof ProjectSearchResultSchema, ProjectSearchResult>>,
+  Expect<Mirror<typeof GithubInboxAuthSchema, GithubInboxAuth>>,
+  Expect<Mirror<typeof GithubInboxPersonSchema, GithubInboxPerson>>,
+  Expect<Mirror<typeof GithubInboxItemSchema, GithubInboxItem>>,
+  Expect<Mirror<typeof GithubInboxRepoSchema, GithubInboxRepo>>,
+  Expect<Mirror<typeof GithubInboxSnapshotSchema, GithubInboxSnapshot>>,
+  Expect<Mirror<typeof GitHubWorkItemDetailsSchema, GitHubWorkItemDetails>>,
+  Expect<Mirror<typeof GitHubWorkItemCommentSchema, GitHubWorkItemComment>>,
+  Expect<Mirror<typeof GitHubWorkItemThreadSchema, GitHubWorkItemThread>>,
+  Expect<Mirror<typeof GitHubPrFileSchema, GitHubPrFile>>,
+  Expect<Mirror<typeof GitHubPrDiffSchema, GitHubPrDiff>>,
+  Expect<Equal<z.infer<typeof GithubInboxChecksSchema>, GithubInboxChecks>>,
+  Expect<Equal<z.infer<typeof GithubInboxReviewDecisionSchema>, GithubInboxReviewDecision>>,
   Expect<Mirror<typeof FileChangeSchema, FileChange>>,
   Expect<Mirror<typeof QueuedMessageSchema, QueuedMessage>>,
   Expect<Mirror<typeof RemoteStatusSchema, RemoteStatus>>,

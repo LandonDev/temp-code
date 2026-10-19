@@ -54,7 +54,8 @@ enum Fixtures {
 struct FixtureTests {
     @Test("every socket frame survives decode and encode", arguments: [
         "hello", "workspace-list", "project-list", "catalog", "session-list", "session-events",
-        "session-row-body", "push-events", "push-sessions", "push-queue", "queue-list", "response-error"
+        "session-row-body", "push-events", "push-sessions", "push-queue", "queue-list", "response-error",
+        "workspace-icon", "session-search", "session-search-empty", "search-project", "github-inbox"
     ])
     func frameRoundTrip(name: String) throws {
         try Fixtures.roundTrip(ServerFrame.self, name)
@@ -89,6 +90,46 @@ struct FixtureTests {
         #expect(meta.threadType == .implementation)
         #expect(meta.permission == .edits)
         #expect(meta.busySince != nil)
+    }
+
+    @Test func workspaceIcon() throws {
+        let icon = try Fixtures.output(Methods.WorkspaceIcon.self, "workspace-icon")
+        #expect(icon.dataUrl == nil)
+        #expect(icon.host == nil)
+    }
+
+    @Test func sessionSearch() throws {
+        let found = try Fixtures.output(Methods.SessionSearch.self, "session-search")
+        #expect(!found.truncated)
+        #expect(found.hits.count == 2)
+        #expect(found.hits.allSatisfy { $0.sessionId == Captured.sessionId })
+        #expect(Set(found.hits.map(\.role)) == [.user, .assistant])
+        #expect(found.hits.allSatisfy { $0.snippet.lowercased().contains("hello") })
+        let empty = try Fixtures.output(Methods.SessionSearch.self, "session-search-empty")
+        #expect(empty.hits.isEmpty)
+        #expect(!empty.truncated)
+    }
+
+    @Test func projectSearch() throws {
+        let found = try Fixtures.output(Methods.SearchProject.self, "search-project")
+        #expect(!found.truncated)
+        let match = try #require(found.matches.first)
+        #expect(found.matches.count == 1)
+        #expect(match.relative == "fixture-search.txt")
+        #expect(match.path.hasSuffix("/fixture-search.txt"))
+        #expect(match.line == 2)
+        #expect(match.column == 7)
+        #expect(match.preview == "const fixtureNeedle = true")
+    }
+
+    @Test func storedGithubInbox() throws {
+        let inbox = try Fixtures.output(Methods.GithubInbox.self, "github-inbox")
+        #expect(inbox.repos.isEmpty)
+        #expect(inbox.viewer == nil)
+        #expect(inbox.fetchedAt == nil)
+        #expect(!inbox.refreshing)
+        #expect(inbox.auth.state == .ok)
+        #expect(inbox.auth.message.isEmpty)
     }
 
     @Test func eventsTailKeepsLargeBodiesOffTheWire() throws {

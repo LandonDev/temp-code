@@ -3,6 +3,8 @@ import TempCodeClient
 
 /// Pair a host from its link, or add one from a key made on the desktop.
 struct AddEnvironmentSheet: View {
+    /// Pairing again: the host whose key is replaced; the sheet keeps its name and address.
+    var replacing: PairedEnvironment? = nil
     private enum Method: String, CaseIterable, Identifiable {
         case link = "Pairing link"
         case key = "Key"
@@ -53,7 +55,7 @@ struct AddEnvironmentSheet: View {
                     }
                 }
             }
-            .navigationTitle("Add a host")
+            .navigationTitle(replacing == nil ? "Add a host" : "Pair again")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -71,6 +73,12 @@ struct AddEnvironmentSheet: View {
             .interactiveDismissDisabled(busy)
         }
         .presentationDetents([.medium, .large])
+        .presentationCornerRadius(Radius.sheet)
+        .onAppear {
+            guard let replacing else { return }
+            name = replacing.name
+            origin = replacing.origin.absoluteString
+        }
     }
 
     private var canAdd: Bool {

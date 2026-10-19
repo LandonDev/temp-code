@@ -533,4 +533,224 @@ public enum Methods {
 
         public typealias Output = TempCodeContract.RemoteStatus
     }
+
+    public enum WorkspaceIcon: ContractMethod {
+        public static let name = "workspace.icon"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public let workspaceId: String
+
+            public init(workspaceId: String) {
+                self.workspaceId = workspaceId
+            }
+        }
+
+        public typealias Output = TempCodeContract.WorkspaceIcon
+    }
+
+    public enum GithubInbox: ContractMethod {
+        public static let name = "github.inbox"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public init() {}
+        }
+
+        public typealias Output = GithubInboxSnapshot
+    }
+
+    public enum GithubInboxRefresh: ContractMethod {
+        public static let name = "github.inboxRefresh"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public enum Reason: RawRepresentable, Codable, Hashable, Sendable {
+                case open
+                case manual
+                case interval
+                /// A value this build does not know; `rawValue` keeps it.
+                case unknown(String)
+
+                public init(rawValue: String) {
+                    switch rawValue {
+                    case "open": self = .open
+                    case "manual": self = .manual
+                    case "interval": self = .interval
+                    default: self = .unknown(rawValue)
+                    }
+                }
+
+                public var rawValue: String {
+                    switch self {
+                    case .open: "open"
+                    case .manual: "manual"
+                    case .interval: "interval"
+                    case .unknown(let value): value
+                    }
+                }
+            }
+
+            public let reason: Reason
+
+            public init(reason: Reason) {
+                self.reason = reason
+            }
+        }
+
+        public typealias Output = GithubInboxSnapshot
+    }
+
+    public enum GithubDetails: ContractMethod {
+        public static let name = "github.details"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public enum Kind: RawRepresentable, Codable, Hashable, Sendable {
+                case issue
+                case pr
+                /// A value this build does not know; `rawValue` keeps it.
+                case unknown(String)
+
+                public init(rawValue: String) {
+                    switch rawValue {
+                    case "issue": self = .issue
+                    case "pr": self = .pr
+                    default: self = .unknown(rawValue)
+                    }
+                }
+
+                public var rawValue: String {
+                    switch self {
+                    case .issue: "issue"
+                    case .pr: "pr"
+                    case .unknown(let value): value
+                    }
+                }
+            }
+
+            public let cwd: String
+            public let kind: Kind
+            public let number: Int
+            public let repo: String?
+
+            public init(cwd: String, kind: Kind, number: Int, repo: String? = nil) {
+                self.cwd = cwd
+                self.kind = kind
+                self.number = number
+                self.repo = repo
+            }
+        }
+
+        public typealias Output = GitHubWorkItemDetails
+    }
+
+    public enum GithubThread: ContractMethod {
+        public static let name = "github.thread"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public enum Kind: RawRepresentable, Codable, Hashable, Sendable {
+                case issue
+                case pr
+                /// A value this build does not know; `rawValue` keeps it.
+                case unknown(String)
+
+                public init(rawValue: String) {
+                    switch rawValue {
+                    case "issue": self = .issue
+                    case "pr": self = .pr
+                    default: self = .unknown(rawValue)
+                    }
+                }
+
+                public var rawValue: String {
+                    switch self {
+                    case .issue: "issue"
+                    case .pr: "pr"
+                    case .unknown(let value): value
+                    }
+                }
+            }
+
+            public let cwd: String
+            public let kind: Kind
+            public let number: Int
+            public let repo: String?
+
+            public init(cwd: String, kind: Kind, number: Int, repo: String? = nil) {
+                self.cwd = cwd
+                self.kind = kind
+                self.number = number
+                self.repo = repo
+            }
+        }
+
+        public typealias Output = GitHubWorkItemThread
+    }
+
+    public enum GithubPrDiff: ContractMethod {
+        public static let name = "github.prDiff"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public let cwd: String
+            public let number: Int
+
+            public init(cwd: String, number: Int) {
+                self.cwd = cwd
+                self.number = number
+            }
+        }
+
+        public typealias Output = GitHubPrDiff
+    }
+
+    public enum SessionSearch: ContractMethod {
+        public static let name = "session.search"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public let query: String
+            public let workspaceId: String?
+            public let limit: Int?
+            public let archived: Bool?
+
+            public init(query: String, workspaceId: String? = nil, limit: Int? = nil, archived: Bool? = nil) {
+                self.query = query
+                self.workspaceId = workspaceId
+                self.limit = limit
+                self.archived = archived
+            }
+        }
+
+        public typealias Output = SessionSearchResult
+    }
+
+    public enum SearchProject: ContractMethod {
+        public static let name = "search.project"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public struct Options: Codable, Hashable, Sendable {
+                public let cwd: String
+                public let query: String
+                public let caseSensitive: Bool?
+                public let wholeWord: Bool?
+                public let regex: Bool?
+                public let include: String?
+                public let exclude: String?
+
+                public init(cwd: String, query: String, caseSensitive: Bool? = nil, wholeWord: Bool? = nil, regex: Bool? = nil, include: String? = nil, exclude: String? = nil) {
+                    self.cwd = cwd
+                    self.query = query
+                    self.caseSensitive = caseSensitive
+                    self.wholeWord = wholeWord
+                    self.regex = regex
+                    self.include = include
+                    self.exclude = exclude
+                }
+            }
+
+            public let options: Options
+
+            public init(options: Options) {
+                self.options = options
+            }
+        }
+
+        public typealias Output = ProjectSearchResult
+    }
 }

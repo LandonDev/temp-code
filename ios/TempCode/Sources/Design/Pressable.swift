@@ -18,3 +18,26 @@ struct PressableStyle: ButtonStyle {
 extension ButtonStyle where Self == PressableStyle {
     static var pressable: PressableStyle { PressableStyle() }
 }
+
+/// A small action inside a row (Retry, Pair again): a capsule on the fill
+/// step, with the same press feedback as everything else.
+struct PillButton: View {
+    let title: String
+    let action: () -> Void
+
+    init(_ title: String, action: @escaping () -> Void) {
+        self.title = title
+        self.action = action
+    }
+
+    var body: some View {
+        Button(action: action) {
+            Text(title)
+                .font(.footnote.weight(.medium))
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .background(Color(.tertiarySystemFill), in: Capsule())
+        }
+        .buttonStyle(.pressable)
+    }
+}

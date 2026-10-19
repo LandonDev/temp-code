@@ -496,6 +496,52 @@ public struct WorkspaceMeta: Codable, Hashable, Sendable {
     }
 }
 
+public struct WorkspaceIcon: Codable, Hashable, Sendable {
+    public enum Host: RawRepresentable, Codable, Hashable, Sendable {
+        case github
+        case gitlab
+        case bitbucket
+        /// A value this build does not know; `rawValue` keeps it.
+        case unknown(String)
+
+        public init(rawValue: String) {
+            switch rawValue {
+            case "github": self = .github
+            case "gitlab": self = .gitlab
+            case "bitbucket": self = .bitbucket
+            default: self = .unknown(rawValue)
+            }
+        }
+
+        public var rawValue: String {
+            switch self {
+            case .github: "github"
+            case .gitlab: "gitlab"
+            case .bitbucket: "bitbucket"
+            case .unknown(let value): value
+            }
+        }
+    }
+
+    public let dataUrl: String?
+    public let host: Host?
+
+    public init(dataUrl: String?, host: Host?) {
+        self.dataUrl = dataUrl
+        self.host = host
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case dataUrl, host
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(dataUrl, forKey: .dataUrl)
+        try container.encode(host, forKey: .host)
+    }
+}
+
 public struct ProjectMeta: Codable, Hashable, Sendable {
     public let id: String
     public let workspaceId: String
@@ -638,6 +684,419 @@ public struct ProviderInfo: Codable, Hashable, Sendable {
         self.models = models
         self.defaultModel = defaultModel
         self.experimental = experimental
+    }
+}
+
+public struct SessionSearchHit: Codable, Hashable, Sendable {
+    public enum Role: RawRepresentable, Codable, Hashable, Sendable {
+        case user
+        case assistant
+        /// A value this build does not know; `rawValue` keeps it.
+        case unknown(String)
+
+        public init(rawValue: String) {
+            switch rawValue {
+            case "user": self = .user
+            case "assistant": self = .assistant
+            default: self = .unknown(rawValue)
+            }
+        }
+
+        public var rawValue: String {
+            switch self {
+            case .user: "user"
+            case .assistant: "assistant"
+            case .unknown(let value): value
+            }
+        }
+    }
+
+    public let sessionId: String
+    public let seq: Int
+    public let role: Role
+    public let snippet: String
+    public let ts: Int
+
+    public init(sessionId: String, seq: Int, role: Role, snippet: String, ts: Int) {
+        self.sessionId = sessionId
+        self.seq = seq
+        self.role = role
+        self.snippet = snippet
+        self.ts = ts
+    }
+}
+
+public struct SessionSearchResult: Codable, Hashable, Sendable {
+    public let hits: [SessionSearchHit]
+    public let truncated: Bool
+
+    public init(hits: [SessionSearchHit], truncated: Bool) {
+        self.hits = hits
+        self.truncated = truncated
+    }
+}
+
+public struct ProjectSearchMatch: Codable, Hashable, Sendable {
+    public let path: String
+    public let relative: String
+    public let line: Int
+    public let column: Int
+    public let preview: String
+
+    public init(path: String, relative: String, line: Int, column: Int, preview: String) {
+        self.path = path
+        self.relative = relative
+        self.line = line
+        self.column = column
+        self.preview = preview
+    }
+}
+
+public struct ProjectSearchResult: Codable, Hashable, Sendable {
+    public let matches: [ProjectSearchMatch]
+    public let truncated: Bool
+
+    public init(matches: [ProjectSearchMatch], truncated: Bool) {
+        self.matches = matches
+        self.truncated = truncated
+    }
+}
+
+public struct GithubInboxAuth: Codable, Hashable, Sendable {
+    public enum State: RawRepresentable, Codable, Hashable, Sendable {
+        case ok
+        case missingGh
+        case loggedOut
+        case error
+        /// A value this build does not know; `rawValue` keeps it.
+        case unknown(String)
+
+        public init(rawValue: String) {
+            switch rawValue {
+            case "ok": self = .ok
+            case "missing-gh": self = .missingGh
+            case "logged-out": self = .loggedOut
+            case "error": self = .error
+            default: self = .unknown(rawValue)
+            }
+        }
+
+        public var rawValue: String {
+            switch self {
+            case .ok: "ok"
+            case .missingGh: "missing-gh"
+            case .loggedOut: "logged-out"
+            case .error: "error"
+            case .unknown(let value): value
+            }
+        }
+    }
+
+    public let state: State
+    public let message: String
+
+    public init(state: State, message: String) {
+        self.state = state
+        self.message = message
+    }
+}
+
+public struct GithubInboxPerson: Codable, Hashable, Sendable {
+    public let login: String
+    public let avatarUrl: String
+
+    public init(login: String, avatarUrl: String) {
+        self.login = login
+        self.avatarUrl = avatarUrl
+    }
+}
+
+public struct GithubInboxItem: Codable, Hashable, Sendable {
+    public enum Kind: RawRepresentable, Codable, Hashable, Sendable {
+        case issue
+        case pr
+        /// A value this build does not know; `rawValue` keeps it.
+        case unknown(String)
+
+        public init(rawValue: String) {
+            switch rawValue {
+            case "issue": self = .issue
+            case "pr": self = .pr
+            default: self = .unknown(rawValue)
+            }
+        }
+
+        public var rawValue: String {
+            switch self {
+            case .issue: "issue"
+            case .pr: "pr"
+            case .unknown(let value): value
+            }
+        }
+    }
+    public enum State: RawRepresentable, Codable, Hashable, Sendable {
+        case open
+        case closed
+        case merged
+        /// A value this build does not know; `rawValue` keeps it.
+        case unknown(String)
+
+        public init(rawValue: String) {
+            switch rawValue {
+            case "open": self = .open
+            case "closed": self = .closed
+            case "merged": self = .merged
+            default: self = .unknown(rawValue)
+            }
+        }
+
+        public var rawValue: String {
+            switch self {
+            case .open: "open"
+            case .closed: "closed"
+            case .merged: "merged"
+            case .unknown(let value): value
+            }
+        }
+    }
+    public struct Label: Codable, Hashable, Sendable {
+        public let name: String
+        public let color: String
+
+        public init(name: String, color: String) {
+            self.name = name
+            self.color = color
+        }
+    }
+
+    public let kind: Kind
+    public let repo: String
+    public let number: Int
+    public let title: String
+    public let url: String
+    public let state: State
+    public let draft: Bool
+    public let updatedAt: String
+    public let author: GithubInboxPerson?
+    public let assignees: [GithubInboxPerson]
+    public let labels: [Label]
+    public let reviewDecision: GithubInboxReviewDecision
+    public let headRefName: String
+    public let baseRefName: String
+    public let checks: GithubInboxChecks?
+    public let reviewRequested: [String]
+
+    public init(kind: Kind, repo: String, number: Int, title: String, url: String, state: State, draft: Bool, updatedAt: String, author: GithubInboxPerson?, assignees: [GithubInboxPerson], labels: [Label], reviewDecision: GithubInboxReviewDecision, headRefName: String, baseRefName: String, checks: GithubInboxChecks?, reviewRequested: [String]) {
+        self.kind = kind
+        self.repo = repo
+        self.number = number
+        self.title = title
+        self.url = url
+        self.state = state
+        self.draft = draft
+        self.updatedAt = updatedAt
+        self.author = author
+        self.assignees = assignees
+        self.labels = labels
+        self.reviewDecision = reviewDecision
+        self.headRefName = headRefName
+        self.baseRefName = baseRefName
+        self.checks = checks
+        self.reviewRequested = reviewRequested
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case kind, repo, number, title, url, state, draft, updatedAt, author, assignees, labels, reviewDecision, headRefName, baseRefName, checks, reviewRequested
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(kind, forKey: .kind)
+        try container.encode(repo, forKey: .repo)
+        try container.encode(number, forKey: .number)
+        try container.encode(title, forKey: .title)
+        try container.encode(url, forKey: .url)
+        try container.encode(state, forKey: .state)
+        try container.encode(draft, forKey: .draft)
+        try container.encode(updatedAt, forKey: .updatedAt)
+        try container.encode(author, forKey: .author)
+        try container.encode(assignees, forKey: .assignees)
+        try container.encode(labels, forKey: .labels)
+        try container.encode(reviewDecision, forKey: .reviewDecision)
+        try container.encode(headRefName, forKey: .headRefName)
+        try container.encode(baseRefName, forKey: .baseRefName)
+        try container.encode(checks, forKey: .checks)
+        try container.encode(reviewRequested, forKey: .reviewRequested)
+    }
+}
+
+public struct GithubInboxRepo: Codable, Hashable, Sendable {
+    public let repo: String
+    public let fetchedAt: Int
+    public let error: String?
+    public let items: [GithubInboxItem]
+
+    public init(repo: String, fetchedAt: Int, error: String?, items: [GithubInboxItem]) {
+        self.repo = repo
+        self.fetchedAt = fetchedAt
+        self.error = error
+        self.items = items
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case repo, fetchedAt, error, items
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(repo, forKey: .repo)
+        try container.encode(fetchedAt, forKey: .fetchedAt)
+        try container.encode(error, forKey: .error)
+        try container.encode(items, forKey: .items)
+    }
+}
+
+public struct GithubInboxSnapshot: Codable, Hashable, Sendable {
+    public let viewer: String?
+    public let auth: GithubInboxAuth
+    public let fetchedAt: Int?
+    public let refreshing: Bool
+    public let repos: [GithubInboxRepo]
+
+    public init(viewer: String?, auth: GithubInboxAuth, fetchedAt: Int?, refreshing: Bool, repos: [GithubInboxRepo]) {
+        self.viewer = viewer
+        self.auth = auth
+        self.fetchedAt = fetchedAt
+        self.refreshing = refreshing
+        self.repos = repos
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case viewer, auth, fetchedAt, refreshing, repos
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(viewer, forKey: .viewer)
+        try container.encode(auth, forKey: .auth)
+        try container.encode(fetchedAt, forKey: .fetchedAt)
+        try container.encode(refreshing, forKey: .refreshing)
+        try container.encode(repos, forKey: .repos)
+    }
+}
+
+public struct GitHubWorkItemDetails: Codable, Hashable, Sendable {
+    public let body: String
+    public let author: String
+    public let authorAvatarUrl: String
+    public let baseRefName: String
+    public let headRefName: String
+    public let reviewDecision: String
+
+    public init(body: String, author: String, authorAvatarUrl: String, baseRefName: String, headRefName: String, reviewDecision: String) {
+        self.body = body
+        self.author = author
+        self.authorAvatarUrl = authorAvatarUrl
+        self.baseRefName = baseRefName
+        self.headRefName = headRefName
+        self.reviewDecision = reviewDecision
+    }
+}
+
+public struct GitHubWorkItemComment: Codable, Hashable, Sendable {
+    public let id: String
+    public let kind: String
+    public let author: String
+    public let authorAvatarUrl: String
+    public let body: String
+    public let createdAt: String
+    public let url: String
+    public let state: String
+    public let path: String
+    public let line: Int?
+    public let resolved: Bool
+    public let threadId: String
+    public let replies: [GitHubWorkItemComment]
+
+    public init(id: String, kind: String, author: String, authorAvatarUrl: String, body: String, createdAt: String, url: String, state: String, path: String, line: Int?, resolved: Bool, threadId: String, replies: [GitHubWorkItemComment]) {
+        self.id = id
+        self.kind = kind
+        self.author = author
+        self.authorAvatarUrl = authorAvatarUrl
+        self.body = body
+        self.createdAt = createdAt
+        self.url = url
+        self.state = state
+        self.path = path
+        self.line = line
+        self.resolved = resolved
+        self.threadId = threadId
+        self.replies = replies
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, kind, author, authorAvatarUrl, body, createdAt, url, state, path, line, resolved, threadId, replies
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(kind, forKey: .kind)
+        try container.encode(author, forKey: .author)
+        try container.encode(authorAvatarUrl, forKey: .authorAvatarUrl)
+        try container.encode(body, forKey: .body)
+        try container.encode(createdAt, forKey: .createdAt)
+        try container.encode(url, forKey: .url)
+        try container.encode(state, forKey: .state)
+        try container.encode(path, forKey: .path)
+        try container.encode(line, forKey: .line)
+        try container.encode(resolved, forKey: .resolved)
+        try container.encode(threadId, forKey: .threadId)
+        try container.encode(replies, forKey: .replies)
+    }
+}
+
+public struct GitHubWorkItemThread: Codable, Hashable, Sendable {
+    public let comments: [GitHubWorkItemComment]
+    public let truncated: Bool
+    public let reviewDecision: String
+    public let baseRefName: String
+    public let headRefName: String
+
+    public init(comments: [GitHubWorkItemComment], truncated: Bool, reviewDecision: String, baseRefName: String, headRefName: String) {
+        self.comments = comments
+        self.truncated = truncated
+        self.reviewDecision = reviewDecision
+        self.baseRefName = baseRefName
+        self.headRefName = headRefName
+    }
+}
+
+public struct GitHubPrFile: Codable, Hashable, Sendable {
+    public let path: String
+    public let additions: Int
+    public let deletions: Int
+
+    public init(path: String, additions: Int, deletions: Int) {
+        self.path = path
+        self.additions = additions
+        self.deletions = deletions
+    }
+}
+
+public struct GitHubPrDiff: Codable, Hashable, Sendable {
+    public let additions: Int
+    public let deletions: Int
+    public let files: [GitHubPrFile]
+    public let patch: String
+    public let truncated: Bool
+
+    public init(additions: Int, deletions: Int, files: [GitHubPrFile], patch: String, truncated: Bool) {
+        self.additions = additions
+        self.deletions = deletions
+        self.files = files
+        self.patch = patch
+        self.truncated = truncated
     }
 }
 

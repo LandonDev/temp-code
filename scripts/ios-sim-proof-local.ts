@@ -18,7 +18,7 @@ if (bundle.error || bundle.status !== 0) {
 }
 
 const server = spawn('node', [out], { cwd: repo, stdio: ['ignore', 'pipe', 'inherit'] })
-const ready = await new Promise<{ baseUrl: string; pairingLink: string }>((ok, bad) => {
+const ready = await new Promise<{ baseUrl: string; controlUrl: string; pairingLink: string }>((ok, bad) => {
   let buffer = ''
   const timer = setTimeout(() => bad(new Error('the test server did not come up in 60 s')), 60_000)
   server.stdout.on('data', (chunk: Buffer) => {
@@ -38,7 +38,15 @@ console.log(`ios-sim-proof-local: server on ${ready.baseUrl}`)
 const proof = spawnSync('sh', [resolve(repo, 'scripts/ios-sim-proof.sh')], {
   cwd: repo,
   stdio: 'inherit',
-  env: { ...process.env, TC_TEST_PAIR_LINK: ready.pairingLink, TC_TEST_PAIR_NAME: 'Local test server', TC_TEST_THREAD: process.env.TC_TEST_THREAD ?? 'Thread A' }
+  env: {
+    ...process.env,
+    TC_TEST_PAIR_LINK: ready.pairingLink,
+    TC_TEST_PAIR_NAME: 'Local test server',
+    TC_TEST_THREAD: process.env.TC_TEST_THREAD ?? 'Thread A',
+    TC_TEST_SEARCH: process.env.TC_TEST_SEARCH ?? 'hello',
+    // The last shot wants the host gone: the proof asks the control server to quit.
+    TC_PROOF_KILL_CMD: `curl -s -X POST ${ready.controlUrl}/quit`
+  }
 })
 server.kill('SIGTERM')
 process.exit(proof.status ?? 1)

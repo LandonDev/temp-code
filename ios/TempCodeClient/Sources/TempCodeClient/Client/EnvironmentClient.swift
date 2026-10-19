@@ -215,6 +215,21 @@ public final class EnvironmentClient {
         return answer.row
     }
 
+    /// The workspace's icon, asked of the host once per launch and kept in the
+    /// cache; the screen paints whatever the cache held meanwhile.
+    public func loadIcon(_ workspaceId: String) async {
+        guard !iconRequests.contains(workspaceId), await socket.isOpen else { return }
+        iconRequests.insert(workspaceId)
+        guard let answer = try? await socket.request(Methods.WorkspaceIcon.self, .init(workspaceId: workspaceId)) else {
+            iconRequests.remove(workspaceId)
+            return
+        }
+        let icon = CachedIcon(dataUrl: answer.dataUrl, host: answer.host?.rawValue)
+        guard icons[workspaceId] != icon else { return }
+        icons[workspaceId] = icon
+        try? await cache.storeIcon(environment.id, workspaceId: workspaceId, icon)
+    }
+
     /// A `GET` the host answers for `tempcode-asset://<host>/<path>` content
     /// (logos, media, agent pages), with the key as the bearer.
     public func assetRequest(host: String, path: String) -> URLRequest? {

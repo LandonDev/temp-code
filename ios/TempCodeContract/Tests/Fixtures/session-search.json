@@ -1,0 +1,23 @@
+{
+  "id": "15",
+  "ok": true,
+  "result": {
+    "hits": [
+      {
+        "sessionId": "fixture-thread",
+        "seq": 4,
+        "role": "assistant",
+        "snippet": "Hello from the fixture thread.",
+        "ts": 1792443772823
+      },
+      {
+        "sessionId": "fixture-thread",
+        "seq": 1,
+        "role": "user",
+        "snippet": "Turn 1: say hello",
+        "ts": 1792443772822
+      }
+    ],
+    "truncated": false
+  }
+}

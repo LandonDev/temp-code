@@ -88,6 +88,8 @@ export const SUBSET: SubsetEntry[] = [
   type('Audience', AudienceSchema),
   type('WebhookEvent', WebhookEventSchema),
   type('LimitBucket', (LimitWindowSchema as z.ZodUnion<[z.ZodType, z.ZodType]>).options[0]),
+  type('GithubInboxChecks', W.GithubInboxChecksSchema.unwrap()),
+  type('GithubInboxReviewDecision', W.GithubInboxReviewDecisionSchema),
   // bodies and rows
   type('OmittedBody', W.OmittedBodySchema),
   type('Body', W.BodySchema),
@@ -102,12 +104,28 @@ export const SUBSET: SubsetEntry[] = [
   type('SessionMeta', W.SessionMetaSchema),
   type('SessionPage', W.SessionPageSchema),
   type('WorkspaceMeta', W.WorkspaceMetaSchema),
+  type('WorkspaceIcon', W.WorkspaceIconSchema),
   type('ProjectMeta', W.ProjectMetaSchema),
   type('FileChange', W.FileChangeSchema),
   type('QueuedMessage', W.QueuedMessageSchema),
   type('AccountPins', W.AccountPinsSchema),
   type('ModelInfo', W.ModelInfoSchema),
   type('ProviderInfo', W.ProviderInfoSchema),
+  type('SessionSearchHit', W.SessionSearchHitSchema),
+  type('SessionSearchResult', W.SessionSearchResultSchema),
+  type('ProjectSearchMatch', W.ProjectSearchMatchSchema),
+  type('ProjectSearchResult', W.ProjectSearchResultSchema),
+  // GitHub inbox and work items
+  type('GithubInboxAuth', W.GithubInboxAuthSchema),
+  type('GithubInboxPerson', W.GithubInboxPersonSchema),
+  type('GithubInboxItem', W.GithubInboxItemSchema),
+  type('GithubInboxRepo', W.GithubInboxRepoSchema),
+  type('GithubInboxSnapshot', W.GithubInboxSnapshotSchema),
+  type('GitHubWorkItemDetails', W.GitHubWorkItemDetailsSchema),
+  type('GitHubWorkItemComment', W.GitHubWorkItemCommentSchema),
+  type('GitHubWorkItemThread', W.GitHubWorkItemThreadSchema),
+  type('GitHubPrFile', W.GitHubPrFileSchema),
+  type('GitHubPrDiff', W.GitHubPrDiffSchema),
   // remote access, over the socket and over HTTP
   type('RemoteStatus', W.RemoteStatusSchema),
   type('RemoteKey', W.RemoteKeySchema),
@@ -159,11 +177,30 @@ export const SUBSET: SubsetEntry[] = [
   method('remote.pairings.revoke', z.boolean()),
   method('remote.sessions.list', z.array(W.RemoteSessionSchema)),
   method('remote.sessions.revoke', z.boolean()),
-  method('remote.settings.set', W.RemoteStatusSchema)
+  method('remote.settings.set', W.RemoteStatusSchema),
+  method('workspace.icon', W.WorkspaceIconSchema),
+  method('github.inbox', W.GithubInboxSnapshotSchema),
+  method('github.inboxRefresh', W.GithubInboxSnapshotSchema),
+  method('github.details', W.GitHubWorkItemDetailsSchema),
+  method('github.thread', W.GitHubWorkItemThreadSchema),
+  method('github.prDiff', W.GitHubPrDiffSchema),
+  method('session.search', W.SessionSearchResultSchema),
+  method('search.project', W.ProjectSearchResultSchema)
 ]
 
-/** Enum values whose camelCase would not be a Swift identifier. */
-const CASE_NAMES: Record<string, string> = { '5h': 'fiveHours' }
+/** Enum values that need an explicit Swift case name. */
+const CASE_NAMES: Record<string, string> = {
+  '5h': 'fiveHours',
+  '': 'none',
+  SUCCESS: 'success',
+  FAILURE: 'failure',
+  PENDING: 'pending',
+  ERROR: 'error',
+  EXPECTED: 'expected',
+  APPROVED: 'approved',
+  CHANGES_REQUESTED: 'changesRequested',
+  REVIEW_REQUIRED: 'reviewRequired'
+}
 
 // ── zod → JSON Schema ───────────────────────────────────────────────────
 

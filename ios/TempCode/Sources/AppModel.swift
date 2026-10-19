@@ -10,10 +10,14 @@ import TempCodeClient
 final class AppModel {
     let registry: ClientRegistry
     private(set) var started = false
+    /// The stored hosts have their clients: the shell can tell "no hosts" from "not loaded yet".
+    private(set) var ready = false
     /// The simulator proof asks for a screen at launch: `hosts`, `threads` or `thread`.
     let launchRoute: String?
     /// With `thread`: part of the title of the thread to open; else the newest.
     let launchThread: String?
+    /// With `search`: the query to run at launch.
+    let launchSearch: String?
     private let monitor = NWPathMonitor()
 
     init() {
@@ -23,9 +27,11 @@ final class AppModel {
         #if DEBUG
         launchRoute = ProcessInfo.processInfo.environment["TC_TEST_ROUTE"]
         launchThread = ProcessInfo.processInfo.environment["TC_TEST_THREAD"].flatMap { $0.isEmpty ? nil : $0 }
+        launchSearch = ProcessInfo.processInfo.environment["TC_TEST_SEARCH"].flatMap { $0.isEmpty ? nil : $0 }
         #else
         launchRoute = nil
         launchThread = nil
+        launchSearch = nil
         #endif
     }
 
@@ -34,6 +40,7 @@ final class AppModel {
         started = true
         await applyLaunchPairing()
         await registry.sync()
+        ready = true
         let registry = self.registry
         monitor.pathUpdateHandler = { path in
             let online = path.status == .satisfied
