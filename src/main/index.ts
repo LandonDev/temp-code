@@ -13,7 +13,9 @@ import { electronApp, optimizer } from '@electron-toolkit/utils'
 import { startServer, type RunningServer } from './server'
 import { mayClaimShim, releaseGateway } from './server/gateway'
 import { killTrackedChildren } from './server/spawnBudget'
-import { pagesRoot, registerAssetProtocol, registerAssetScheme } from './assets'
+import { pagesRoot, registerAssetProtocol, registerSchemes } from './assets'
+import { registerAppProtocol } from './appScheme'
+import { migrateLocalStorage } from './originMigration'
 import { htmlPreviewer } from './htmlPreview'
 import { setHtmlPreviewer, setHtmlRenderRoot } from './server/htmlRender'
 import { killAllPtys, listPtys, ptyFlowCounters, registerPty } from './pty'
@@ -83,7 +85,7 @@ if (!app.requestSingleInstanceLock()) {
 }
 
 // Privileged scheme registration only takes effect before the app is ready.
-registerAssetScheme()
+registerSchemes()
 
 app.whenReady().then(async () => {
   electronApp.setAppUserModelId('dev.landon.temp-code')
@@ -107,6 +109,7 @@ app.whenReady().then(async () => {
     }
   }
   registerAssetProtocol()
+  registerAppProtocol()
   // Agent HTML pages: stored under userData, previewed in the hidden window.
   setHtmlRenderRoot(pagesRoot())
   setHtmlPreviewer(htmlPreviewer)
@@ -137,6 +140,12 @@ app.whenReady().then(async () => {
     shell.showItemInFolder(path)
   })
 
+  // Before the first window reads localStorage on the app scheme: the
+  // file:// origin's entries move over once (originMigration.ts).
+  await migrateLocalStorage({
+    rendererDir: join(__dirname, '../renderer'),
+    userData: app.getPath('userData')
+  })
   openSavedWindows()
   setTimeout(() => flushCompileCache(), FLUSH_AFTER_MS).unref()
 

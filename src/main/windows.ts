@@ -4,6 +4,7 @@ import { readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
+import { appIndexUrl } from './appScheme'
 import { killPtysForOwner } from './pty'
 import { QuitGate } from './quitGate'
 import { bootMark } from './server/boot'
@@ -292,7 +293,9 @@ export function createWindow(opts: { slot?: string; from?: number } = {}): Brows
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
     win.loadURL(process.env['ELECTRON_RENDERER_URL'])
   } else {
-    win.loadFile(join(__dirname, '../renderer/index.html'))
+    // The app scheme, not file://: Chromium keeps a V8 code cache for the
+    // bundle only on a scheme registered with codeCache (appScheme.ts).
+    win.loadURL(appIndexUrl())
   }
 
   if (transfer && transfer.to === null && (opts.from === undefined || transfer.from === opts.from)) {

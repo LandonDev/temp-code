@@ -2,13 +2,15 @@ import { app, net, protocol } from 'electron'
 import { join, resolve, sep } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { ASSET_SCHEME, HTML_RENDERS_DIR, logoAssetUrl } from '@shared/assets'
+import { APP_SCHEME } from './appScheme'
 import { previewPageHtml } from './htmlPreviewPages'
 import { serveMedia } from './server/media'
 
 export { logoAssetUrl }
 
-/** Must run before app ready, or the scheme is a plain opaque one. */
-export function registerAssetScheme(): void {
+/** Must run before app ready, or the schemes are plain opaque ones; and
+ *  only once per process, so both schemes share this one call. */
+export function registerSchemes(): void {
   protocol.registerSchemesAsPrivileged([
     {
       scheme: ASSET_SCHEME,
@@ -20,6 +22,19 @@ export function registerAssetScheme(): void {
         supportFetchAPI: true,
         stream: true,
         corsEnabled: true
+      }
+    },
+    {
+      // The renderer's own origin (appScheme.ts). codeCache needs standard;
+      // the rest is what T3 Code and VS Code give their app schemes.
+      scheme: APP_SCHEME,
+      privileges: {
+        standard: true,
+        secure: true,
+        supportFetchAPI: true,
+        stream: true,
+        corsEnabled: true,
+        codeCache: true
       }
     }
   ])
@@ -35,7 +50,7 @@ export function pagesRoot(): string {
 }
 
 /** A path under `root`, or null when the URL's path escapes it. */
-function fenced(root: string, pathname: string): string | null {
+export function fenced(root: string, pathname: string): string | null {
   let relative: string
   try {
     relative = decodeURIComponent(pathname.replace(/^\/+/, ''))

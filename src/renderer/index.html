@@ -3,10 +3,13 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <!-- Ported from MonoCode's Tauri CSP. tempcode-asset: serves project
-         logos and agent HTML pages (frame-src) through a scoped custom
-         protocol; blob:/data: cover previews
-         and the shiki/Monaco workers; connect-src allows the local server's
+    <!-- Ported from MonoCode's Tauri CSP. The packaged page lives on
+         tempcode-app://renderer (src/main/appScheme.ts), so 'self' is that
+         origin, stricter than the file:// it replaced; loopback ws:// to the
+         local server stays allowed from a secure origin. tempcode-asset:
+         serves project logos and agent HTML pages (frame-src) through a
+         scoped custom protocol; blob:/data: cover previews and the
+         shiki/Monaco workers; connect-src allows the local server's
          WebSocket (dynamic port) and, in dev, vite's HMR origin. -->
     <meta
       http-equiv="Content-Security-Policy"
