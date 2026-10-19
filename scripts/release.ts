@@ -45,6 +45,8 @@ run('bun', ['run', 'hub:test'])
 // The iOS contract package: 12 s cold, 2 s warm on this Mac (scripts/ios-test.sh).
 console.log('› ios')
 run('bun', ['run', 'ios:test'])
+console.log('› ios:test:client')
+run('bun', ['run', 'ios:test:client'])
 console.log('› build')
 run('bunx', ['electron-vite', 'build'])
 

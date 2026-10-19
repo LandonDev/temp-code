@@ -14,6 +14,7 @@
     "gen:swift": "bun scripts/gen-swift-contract.ts",
     "check:swift-contract": "bun scripts/gen-swift-contract.ts --check",
     "ios:test": "./scripts/ios-test.sh",
+    "ios:test:client": "bun scripts/ios-client-test.ts",
     "start": "electron-vite preview",
     "release": "bun scripts/release.ts",
     "release:publish": "./scripts/release-publish.sh",

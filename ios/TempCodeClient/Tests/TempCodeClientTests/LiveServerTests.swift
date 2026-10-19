@@ -1,0 +1,205 @@
+import Foundation
+import Synchronization
+import Testing
+import TempCodeContract
+@testable import TempCodeClient
+
+/// The real pieces against a real server (scripts/ios-client-test-server.ts,
+/// started by `bun run ios:test:client`): URLSession sockets, the http
+/// client, the system clock. The server's address and key arrive in the
+/// process environment; without them this suite is skipped.
+enum LiveServer {
+    static let environment = ProcessInfo.processInfo.environment
+    static var isConfigured: Bool { environment["TC_TEST_BASE_URL"] != nil && environment["TC_TEST_KEY"] != nil }
+    static var baseURL: URL { URL(string: environment["TC_TEST_BASE_URL"]!)! }
+    static var controlURL: URL { URL(string: environment["TC_TEST_CONTROL_URL"]!)! }
+    static var environmentId: String { environment["TC_TEST_ENVIRONMENT_ID"]! }
+    static var key: String { environment["TC_TEST_KEY"]! }
+    static var keyId: String { environment["TC_TEST_KEY_ID"]! }
+    static var threadA: String { environment["TC_TEST_THREAD_A"]! }
+    static var threadB: String { environment["TC_TEST_THREAD_B"]! }
+
+    /// One control call; answers the JSON object.
+    static func control(_ path: String, _ body: [String: Any]? = nil) async throws -> [String: Any] {
+        var request = URLRequest(url: controlURL.appending(path: path))
+        request.httpMethod = body == nil ? "GET" : "POST"
+        if let body {
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        }
+        let (data, _) = try await URLSession.shared.data(for: request)
+        return (try JSONSerialization.jsonObject(with: data) as? [String: Any]) ?? [:]
+    }
+
+    static func environment(expectedId: String? = nil) -> Environment {
+        Environment(id: expectedId ?? environmentId, name: "test host", origin: baseURL, caps: [.read], keyId: keyId, keyName: "ios-test", addedAt: 0)
+    }
+
+    static func keys() throws -> InMemoryKeyStore {
+        let keys = InMemoryKeyStore()
+        try keys.set(key, for: environmentId)
+        return keys
+    }
+
+    /// Waits up to `seconds` for the predicate.
+    static func until(_ seconds: Double = 10, _ predicate: () async -> Bool) async -> Bool {
+        let deadline = Date().addingTimeInterval(seconds)
+        while Date() < deadline {
+            if await predicate() { return true }
+            try? await Task.sleep(for: .milliseconds(25))
+        }
+        return false
+    }
+}
+
+@Suite(.enabled(if: LiveServer.isConfigured, "needs the live server: bun run ios:test:client"), .serialized)
+struct LiveServerTests {
+    @Test func `hello over http names the environment and what the key may do`() async throws {
+        let api = RemoteAPI()
+        let hello = try await api.hello(origin: LiveServer.baseURL, key: LiveServer.key)
+        #expect(hello.environmentId == LiveServer.environmentId)
+        #expect(hello.contract == contractVersion)
+        #expect(hello.key?.caps == [.read])
+        #expect(hello.key?.audience == .client)
+        await #expect(throws: RemoteAPIError.unauthorized("invalid key")) {
+            _ = try await api.ticket(origin: LiveServer.baseURL, key: "tc_NOPE.nope")
+        }
+    }
+
+    @Test func `the socket opens on a fresh ticket, the hello is first, and the server negotiated deflate`() async throws {
+        let keys = try LiveServer.keys()
+        let socket = TempCodeSocket(environment: LiveServer.environment(), keys: keys)
+        await socket.start()
+        #expect(await LiveServer.until { await socket.status.transport == .open })
+        let status = await socket.status
+        #expect(status.lastHello?.environmentId == LiveServer.environmentId)
+        #expect(status.lastHello?.key?.name == "ios-test")
+        let workspaces = try await socket.request(Methods.WorkspaceList.self, NoParams())
+        #expect(workspaces.map(\.name) == ["ios-workspace"])
+        let state = try await LiveServer.control("/state")
+        let sockets = state["sockets"] as? [[String: Any]] ?? []
+        let mine = sockets.first { $0["keyId"] as? String == LiveServer.keyId }
+        #expect(mine != nil)
+        #expect((mine?["extensions"] as? String)?.contains("permessage-deflate") == true, "extensions: \(mine?["extensions"] ?? "none")")
+        // A read key is refused an operate call with a typed error.
+        do {
+            _ = try await socket.request(Methods.SessionInterrupt.self, .init(sessionId: LiveServer.threadA))
+            Issue.record("interrupt went through on a read key")
+        } catch let error as TransportError {
+            #expect(error.isForbidden)
+        }
+        await socket.stop()
+    }
+
+    @Test func `a hello from another environment halts the socket`() async throws {
+        let keys = try LiveServer.keys()
+        let other = Environment(id: "env_someone_else", name: "x", origin: LiveServer.baseURL, caps: [.read], keyId: LiveServer.keyId, keyName: "k", addedAt: 0)
+        try keys.set(LiveServer.key, for: other.id)
+        let socket = TempCodeSocket(environment: other, keys: keys)
+        await socket.start()
+        #expect(await LiveServer.until { await socket.status.halt != nil })
+        let status = await socket.status
+        #expect(status.transport == .offline)
+        #expect(status.halt == .identityChanged(expected: "env_someone_else", got: LiveServer.environmentId))
+        await socket.stop()
+    }
+
+    @Test func `a contract the app does not speak halts the socket`() async throws {
+        var config = SocketConfiguration()
+        config.expectedContract = contractVersion + 7
+        let socket = TempCodeSocket(environment: LiveServer.environment(), keys: try LiveServer.keys(), configuration: config)
+        await socket.start()
+        #expect(await LiveServer.until { await socket.status.halt != nil })
+        #expect(await socket.status.halt == .contractMismatch(app: contractVersion + 7, host: contractVersion))
+        await socket.stop()
+    }
+
+    @Test func `an expired or used ticket is refused as unauthorized and a fresh one opens`() async throws {
+        let api = RemoteAPI()
+        let ticket = try await api.ticket(origin: LiveServer.baseURL, key: LiveServer.key)
+        #expect(ticket.expiresIn == 30)
+        _ = try await LiveServer.control("/clock", ["offsetMs": 31_000])
+        defer { Task { _ = try? await LiveServer.control("/clock", ["offsetMs": 0]) } }
+        let url = LiveServer.environment().socketURL.appending(queryItems: [URLQueryItem(name: "ticket", value: ticket.ticket)])
+        let expired = Transport(url: url, connect: URLSessionWebSocket.factory())
+        do {
+            _ = try await expired.open()
+            Issue.record("an expired ticket opened a socket")
+        } catch let error as TransportError {
+            guard case .closed(let reason) = error else {
+                Issue.record("wrong error \(error)")
+                return
+            }
+            #expect(reason.kind == .unauthorized)
+            #expect(reason.code == 401)
+        }
+        _ = try await LiveServer.control("/clock", ["offsetMs": 0])
+        // A ticket is single use: the second upgrade with the same one is refused.
+        let fresh = try await api.ticket(origin: LiveServer.baseURL, key: LiveServer.key)
+        let freshURL = LiveServer.environment().socketURL.appending(queryItems: [URLQueryItem(name: "ticket", value: fresh.ticket)])
+        let first = Transport(url: freshURL, connect: URLSessionWebSocket.factory())
+        let hello = try await first.open()
+        #expect(hello.environmentId == LiveServer.environmentId)
+        let again = Transport(url: freshURL, connect: URLSessionWebSocket.factory())
+        await #expect(throws: TransportError.self) { _ = try await again.open() }
+        #expect(await again.closeReason?.kind == .unauthorized)
+        await first.close()
+    }
+
+    @MainActor
+    @Test func `a dropped link resumes from the last seq without duplicating or losing rows`() async throws {
+        let client = EnvironmentClient(environment: LiveServer.environment(), keys: try LiveServer.keys(), cache: try SessionCache.inMemory())
+        await client.start()
+        #expect(await LiveServer.until { client.status.fresh })
+        #expect(client.sessions.map(\.id).sorted() == [LiveServer.threadA, LiveServer.threadB].sorted())
+        await client.openThread(LiveServer.threadA)
+        #expect(await LiveServer.until { client.threads[LiveServer.threadA]?.isLive == true && (client.threads[LiveServer.threadA]?.rows.count ?? 0) >= 9 })
+        let seeded = client.threads[LiveServer.threadA]!.rows
+        // The long tool output came as an omitted body on the remote profile; the whole row is one request away.
+        let omitted = seeded.first { if case .toolResult(let result) = $0.event, case .omittedBody = result.output { return true } else { return false } }
+        let omittedRow = try #require(omitted)
+        let whole = try #require(await client.body(sessionId: LiveServer.threadA, seq: omittedRow.seq))
+        if case .toolResult(let result) = whole.event, case .string(let text) = result.output { #expect(text.hasPrefix("line 000")) } else { Issue.record("the body did not come back whole") }
+
+        let before = seeded.count
+        _ = try await LiveServer.control("/append", ["sessionId": LiveServer.threadA, "count": 3])
+        #expect(await LiveServer.until { (client.threads[LiveServer.threadA]?.rows.count ?? 0) == before + 3 })
+
+        let dropped = try await LiveServer.control("/drop", [:])
+        #expect((dropped["dropped"] as? Int ?? 0) >= 1, "\(dropped)")
+        #expect(await LiveServer.until { client.status.transport == .reconnecting })
+        // Rows written while the link is down.
+        _ = try await LiveServer.control("/append", ["sessionId": LiveServer.threadA, "count": 4])
+        #expect(await LiveServer.until(15) { client.status.transport == .open && client.threads[LiveServer.threadA]?.isLive == true })
+        #expect(await LiveServer.until { (client.threads[LiveServer.threadA]?.rows.count ?? 0) == before + 7 })
+        let rows = client.threads[LiveServer.threadA]!.rows
+        let seqs = rows.map(\.seq)
+        #expect(seqs == seqs.sorted())
+        #expect(Set(seqs).count == seqs.count)
+        #expect(seqs.last! - seqs.first! + 1 == seqs.count, "no gap in \(seqs)")
+        // The newest rows carry the text appended after the drop.
+        let texts = rows.suffix(4).compactMap { if case .assistantText(let t) = $0.event { return t.text } else { return nil } }
+        #expect(texts.count == 4 && texts.allSatisfy { $0.hasPrefix("appended") })
+        await client.stop()
+    }
+
+    @Test func `revoking the key closes the socket as unauthorized and nothing retries`() async throws {
+        // A second key so the suite's own key survives.
+        let api = RemoteAPI()
+        let hello = try await api.hello(origin: LiveServer.baseURL, key: LiveServer.key)
+        #expect(hello.key != nil)
+        let state = try await LiveServer.control("/state")
+        _ = state
+        let keys = try LiveServer.keys()
+        let socket = TempCodeSocket(environment: LiveServer.environment(), keys: keys)
+        await socket.start()
+        #expect(await LiveServer.until { await socket.status.transport == .open })
+        // Revoke through the control panel; this is the suite's only key, so run last.
+        _ = try await LiveServer.control("/revoke", ["keyId": LiveServer.keyId])
+        #expect(await LiveServer.until { await socket.status.transport == .unauthorized })
+        let status = await socket.status
+        #expect(status.lastError == "the key was revoked" || status.lastError?.contains("credential") == true, "\(status.lastError ?? "")")
+        #expect(status.nextRetryAt == nil)
+        await socket.stop()
+    }
+}
