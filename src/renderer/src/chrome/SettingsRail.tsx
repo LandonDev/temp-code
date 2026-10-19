@@ -1,5 +1,6 @@
 import {
   Globe,
+  Laptop,
   Archive,
   ArrowLeft,
   Bot,
@@ -22,6 +23,10 @@ import {
   type StaticSettingsSectionId,
 } from "../lib/settings";
 import { useWorkspaces } from "../lib/tcserver/workspaces";
+import { isWebMode } from "../lib/nativeWeb";
+
+/** The page at /ui sees one environment and cannot add another; the section would be dead there. */
+const sections = () => SETTINGS_SECTIONS.filter((item) => item.id !== "environments" || !isWebMode());
 
 const SECTION_ICONS: Record<StaticSettingsSectionId, IconComponent> = {
   general: SlidersHorizontal,
@@ -34,6 +39,7 @@ const SECTION_ICONS: Record<StaticSettingsSectionId, IconComponent> = {
   build: Wrench,
   appshots: Camera,
   remote: Globe,
+  environments: Laptop,
   archive: Archive,
 };
 
@@ -55,7 +61,7 @@ export function SettingsNav({ section, onSelect, onClose }: Props) {
         aria-label="Settings"
         className="flex min-h-0 flex-1 flex-col gap-px overflow-y-auto overscroll-none px-2 pb-2"
       >
-        {SETTINGS_SECTIONS.map((item) => (
+        {sections().map((item) => (
           <NavRow
             key={item.id}
             label={item.label}

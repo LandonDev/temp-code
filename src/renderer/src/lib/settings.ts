@@ -14,6 +14,7 @@ export type StaticSettingsSectionId =
   | "build"
   | "appshots"
   | "remote"
+  | "environments"
   | "archive";
 
 /** A fixed page, or one workspace's own page (`ws:<workspace id>`). */
@@ -80,6 +81,12 @@ export const SETTINGS_SECTIONS: {
     label: "Remote access",
     description:
       "Phones, browsers and bots that may reach this server through the tunnel, and the port they come in on.",
+  },
+  {
+    id: "environments",
+    label: "Environments",
+    description:
+      "The machines this window can run threads on: this one, and every host it is paired with.",
   },
   {
     id: "archive",
