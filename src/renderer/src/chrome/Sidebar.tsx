@@ -24,6 +24,7 @@ import {
   type SidebarTabId,
 } from "../lib/appearance";
 import { basename } from "../lib/fs";
+import { ConnectionIndicator } from "./ConnectionIndicator";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { EASE_OUT } from "../lib/ease";
 import { IS_MAC, MOD } from "../lib/platform";
@@ -562,6 +563,7 @@ function SidebarComponent({
                   </span>
                 </div>
                 <div className="flex shrink-0 items-center gap-px">
+                  <ConnectionIndicator />
                   {workspaceSessions ? (
                     <SessionsHeaderButton
                       label="Workspace actions"
