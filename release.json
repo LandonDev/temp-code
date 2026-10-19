@@ -1,5 +1,5 @@
 {
-  "n": 228,
-  "notes": "/ui serves the built renderer behind the session cookie; the bundle runs in web mode in a browser",
-  "ts": 1792391980818
+  "n": 229,
+  "notes": "Settings → Remote access: environment id, listener, public origin, clients, pairing with a QR, browser sessions",
+  "ts": 1792392717710
 }
