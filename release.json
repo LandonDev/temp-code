@@ -1,5 +1,5 @@
 {
-  "n": 227,
-  "notes": "Remote listener on the fixed loopback port: hello, pairing, tickets, cookie upgrades, admin routes",
-  "ts": 1792391014199
+  "n": 228,
+  "notes": "/ui serves the built renderer behind the session cookie; the bundle runs in web mode in a browser",
+  "ts": 1792391980818
 }
