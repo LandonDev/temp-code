@@ -1,5 +1,5 @@
 {
-  "n": 238,
-  "notes": "Swift contract package: zod → JSON Schema → Swift generator with a drift gate, fixtures from a real server, Swift Testing round trips (ios/TempCodeContract)",
-  "ts": 1792400353829
+  "n": 239,
+  "notes": "Backups: restic to R2 from both hosts. Box: VACUUM INTO snapshots of temp-code's SQLite as agents, live db files excluded, retention + prune + check, OnFailure hook posts a failed notice to the hub, restic cache dir under systemd; Mac: scripts/mac/backup.sh + launchd agent dev.landon.tempcode.backup with the same snapshot step; docs/box.md Backups section rewritten",
+  "ts": 1792434027485
 }
