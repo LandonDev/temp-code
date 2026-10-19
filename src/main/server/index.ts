@@ -27,8 +27,9 @@ import { loadEnvironmentId } from './remote/environment'
 import { handleRemote, type RemoteContext } from './remote/handlers'
 import { RemoteAuth } from './remote/auth'
 import { startRemoteListener, type RemoteListener } from './remote/listener'
+import { createMcpHandler } from './remote/mcp'
 import { createUiHandler } from './remote/ui'
-import { readRemoteSettings } from './remote/handlers'
+import { pairingOrigin, readRemoteSettings } from './remote/handlers'
 import type { SessionMeta } from '@shared/events'
 import { openDb, Store } from './db'
 import { EventReader, startCheckpointWorker } from './dbWorkers'
@@ -385,6 +386,12 @@ export async function startServer(
         environmentId,
         version: appVersion,
         attach: (ws, principal) => attach(ws, principal),
+        mcp: createMcpHandler({
+          auth: remoteAuth,
+          registry,
+          version: appVersion,
+          origin: () => pairingOrigin(readRemoteSettings(store), remote?.port ?? 0)
+        }),
         // The built renderer (electron-vite build); a dev tree without it answers 503.
         ui: createUiHandler({ rendererDir: join(options.appPath ?? process.cwd(), 'out', 'renderer'), assets: options.assets })
       })

@@ -1172,6 +1172,23 @@ export class Store {
     }))
   }
 
+  /** The newest `limit` rows of a session, oldest first: the window a
+   *  pending prompt or the last words sit in (remote/facade.ts). */
+  lastEvents(sessionId: string, limit: number): EventRow[] {
+    this.flushEvents()
+    const rows = this
+      .stmt(
+        `SELECT seq, ts, payload FROM ${this.eventsTable(sessionId)} WHERE session_id = ? ORDER BY seq DESC LIMIT ?`
+      )
+      .all(sessionId, limit) as unknown as { seq: number; ts: number; payload: string }[]
+    return rows.reverse().map((r) => ({
+      sessionId,
+      seq: r.seq,
+      ts: r.ts,
+      event: JSON.parse(r.payload) as AgentEvent
+    }))
+  }
+
   /** Highest hot event seq per unarchived session: one index seek per
    *  session (the MIN/MAX optimisation on the primary key), never a walk
    *  of the table. The GROUP BY it replaces read every key of a 7.5M-row

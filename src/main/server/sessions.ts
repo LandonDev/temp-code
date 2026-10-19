@@ -349,6 +349,8 @@ export class SessionRegistry {
   private starting = new Map<string, Promise<DriverHandle>>()
   private subscribers = new Map<string, Set<SessionListener>>()
   private metaListeners = new Set<MetaListener>()
+  /** Every persisted row of every session (the remote notifier). */
+  private eventListeners = new Set<SessionListener>()
   private removedListeners = new Set<RemovedListener>()
   /** Per-session message queue: composed mid-turn, drained on idle. */
   private queues = new Map<string, QueuedMessage[]>()
@@ -1080,6 +1082,11 @@ export class SessionRegistry {
   /** A window of the log, tail-first when asked (see `Store.events`). */
   events(sessionId: string, opts: { afterSeq?: number; beforeSeq?: number; tail?: number; limit?: number }): EventRow[] {
     return this.store.events(sessionId, opts)
+  }
+
+  /** The newest `limit` rows, oldest first (a pending prompt sits here). */
+  lastEvents(sessionId: string, limit: number): EventRow[] {
+    return this.store.lastEvents(sessionId, limit)
   }
 
   // ── orchestration rules & thread defaults (global + workspace) ─────
@@ -2569,6 +2576,7 @@ export class SessionRegistry {
       }
     }
     for (const listener of this.subscribers.get(sessionId) ?? []) listener(row)
+    for (const listener of this.eventListeners) listener(row)
     if (settleToReport) notifyParentOfSettle(this, settleToReport)
   }
 
@@ -2725,6 +2733,12 @@ export class SessionRegistry {
     }
     set.add(listener)
     return () => set.delete(listener)
+  }
+
+  /** Every persisted row, any session: one listener for the whole registry. */
+  onEvent(listener: SessionListener): () => void {
+    this.eventListeners.add(listener)
+    return () => this.eventListeners.delete(listener)
   }
 
   onMeta(listener: MetaListener): () => void {

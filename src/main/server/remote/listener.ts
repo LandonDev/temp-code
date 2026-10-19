@@ -59,6 +59,8 @@ export interface RemoteListenerOptions {
   version: string
   attach: (ws: WebSocket, principal: Principal) => void
   ui?: UiHandler
+  /** The MCP endpoint (mcp.ts): answers `/mcp` for bot keys. */
+  mcp?: UiHandler
 }
 
 export interface RemoteListener {
@@ -279,6 +281,7 @@ export async function startRemoteListener(options: RemoteListenerOptions): Promi
       if (path === '/api/sessions' && method === 'GET') return json(res, 200, auth.listSessions())
       if (id && method === 'DELETE') return json(res, 200, { ok: auth.revokeSession(id) })
     }
+    if (path === '/mcp' && options.mcp) return void (await options.mcp(ctx))
     if (options.ui && (await options.ui(ctx))) return
     notFound(res)
   }
