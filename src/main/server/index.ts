@@ -1,3 +1,6 @@
+import { hostname } from 'node:os'
+import { version as appVersion } from '../../../package.json'
+import { hubFromEnv, type HubClient } from './hub'
 import { existsSync, readFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { handleM3a } from './m3a'
@@ -157,6 +160,8 @@ export interface RunningServer {
   registry: SessionRegistry
   store: Store
   gateway: Gateway
+  /** Optional off-host relay; thread E sends notices through this client. */
+  hub: HubClient | null
   /** The shared Aliax accounts poll; the embedded Aliax pages nudge it after a change. */
   accounts: AccountsService
   close: () => Promise<void>
@@ -1229,13 +1234,17 @@ export async function startServer(
     setAppBridge(null)
   }
 
+  const hub = hubFromEnv({ name: hostname(), version: appVersion })
+
   return {
     port,
+    hub,
     registry,
     store,
     gateway,
     accounts: m3a.accounts,
     close: async () => {
+      hub?.stop()
       stopStallMonitor()
       clearTimeout(warmKickoff)
       clearInterval(warmTimer)

@@ -39,6 +39,8 @@ console.log('› typecheck')
 run('bun', ['run', 'typecheck'])
 console.log('› vitest')
 run('bunx', ['vitest', 'run'])
+console.log('› hub')
+run('bun', ['run', 'hub:test'])
 console.log('› build')
 run('bunx', ['electron-vite', 'build'])
 

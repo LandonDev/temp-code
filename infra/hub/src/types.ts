@@ -1,5 +1,5 @@
 export const events = ['needs_you', 'finished', 'failed', 'stuck', 'host_down', 'host_up'] as const
-export type EventKind = typeof events[number]
+export type EventKind = (typeof events)[number]
 export interface Notice {
   event: EventKind
   hostId: string
@@ -30,8 +30,10 @@ export type Subscription = {
   hosts?: string[]
   failureCount: number
   lastError: string | null
-} & ({ kind: 'webhook'; url: string; encryptedSecret: string } |
-  { kind: 'apns' /* TODO: APNs registration, signing and delivery in the iOS push thread. */ })
+} & (
+  | { kind: 'webhook'; url: string; encryptedSecret: string }
+  | { kind: 'apns' /* TODO: APNs registration, signing and delivery in the iOS push thread. */ }
+)
 export interface Env {
   ADMIN_KEY: string
   WEBHOOK_KEY: string

@@ -1,10 +1,10 @@
-import { defineWorkersConfig } from '@cloudflare/vitest-pool-workers/config'
-export default defineWorkersConfig({
-  test: {
-    poolOptions: { workers: {
-      isolatedStorage: false,
+import { defineConfig } from 'vitest/config'
+import { cloudflareTest } from '@cloudflare/vitest-pool-workers'
+export default defineConfig({
+  plugins: [
+    cloudflareTest({
       wrangler: { configPath: './wrangler.toml' },
       miniflare: { bindings: { ADMIN_KEY: 'test-admin', WEBHOOK_KEY: 'test-encryption-key' } }
-    } }
-  }
+    })
+  ]
 })

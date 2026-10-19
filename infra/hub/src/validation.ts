@@ -1,11 +1,13 @@
 import { events, type Heartbeat, type Notice } from './types'
 export class Invalid extends Error {}
 export function object(value: unknown): Record<string, unknown> {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Invalid('Expected an object')
+  if (!value || typeof value !== 'object' || Array.isArray(value))
+    throw new Invalid('Expected an object')
   return value as Record<string, unknown>
 }
 export function str(value: unknown, field: string, max = 200): string {
-  if (typeof value !== 'string' || !value.trim() || value.length > max) throw new Invalid('Invalid ' + field)
+  if (typeof value !== 'string' || !value.trim() || value.length > max)
+    throw new Invalid('Invalid ' + field)
   return value
 }
 export function id(value: unknown): string {
@@ -14,18 +16,25 @@ export function id(value: unknown): string {
   return result
 }
 function timestamp(value: unknown): number {
-  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) throw new Invalid('Invalid timestamp (expected Unix milliseconds)')
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0)
+    throw new Invalid('Invalid timestamp (expected Unix milliseconds)')
   return value
 }
 export function url(value: unknown): string {
   const result = str(value, 'url', 2048)
   let parsed: URL
-  try { parsed = new URL(result) } catch { throw new Invalid('Invalid url') }
-  if (parsed.protocol !== 'https:' || parsed.username || parsed.password) throw new Invalid('Expected HTTPS url without credentials')
+  try {
+    parsed = new URL(result)
+  } catch {
+    throw new Invalid('Invalid url')
+  }
+  if (parsed.protocol !== 'https:' || parsed.username || parsed.password)
+    throw new Invalid('Expected HTTPS url without credentials')
   return result
 }
 export function kinds(value: unknown): Notice['event'][] {
-  if (!Array.isArray(value) || !value.length || value.some(v => !events.includes(v))) throw new Invalid('Invalid events')
+  if (!Array.isArray(value) || !value.length || value.some((v) => !events.includes(v)))
+    throw new Invalid('Invalid events')
   return [...new Set(value)]
 }
 export function heartbeat(value: unknown): Heartbeat {
@@ -33,14 +42,37 @@ export function heartbeat(value: unknown): Heartbeat {
   let load: Heartbeat['load']
   if (v.load !== undefined) {
     const raw = object(v.load)
-    if (JSON.stringify(raw).length > 1024 || Object.keys(raw).length > 16 || Object.values(raw).some(x => !['string', 'number', 'boolean'].includes(typeof x) || (typeof x === 'number' && !Number.isFinite(x)))) throw new Invalid('Invalid load')
+    if (
+      JSON.stringify(raw).length > 1024 ||
+      Object.keys(raw).length > 16 ||
+      Object.values(raw).some(
+        (x) =>
+          !['string', 'number', 'boolean'].includes(typeof x) ||
+          (typeof x === 'number' && !Number.isFinite(x))
+      )
+    )
+      throw new Invalid('Invalid load')
     load = raw as Heartbeat['load']
   }
-  return { environmentId: str(v.environmentId, 'environmentId'), name: str(v.name, 'name'), version: str(v.version, 'version'), startedAt: timestamp(v.startedAt), ...(load ? { load } : {}) }
+  return {
+    environmentId: str(v.environmentId, 'environmentId'),
+    name: str(v.name, 'name'),
+    version: str(v.version, 'version'),
+    startedAt: timestamp(v.startedAt),
+    ...(load ? { load } : {})
+  }
 }
 export function notice(value: unknown): Notice {
   const v = object(value)
-  return { event: kinds([v.event])[0], hostId: id(v.hostId), title: str(v.title, 'title'), body: str(v.body, 'body', 4096), ts: timestamp(v.ts), ...(v.threadId === undefined ? {} : { threadId: str(v.threadId, 'threadId') }), ...(v.url === undefined ? {} : { url: url(v.url) }) }
+  return {
+    event: kinds([v.event])[0],
+    hostId: id(v.hostId),
+    title: str(v.title, 'title'),
+    body: str(v.body, 'body', 4096),
+    ts: timestamp(v.ts),
+    ...(v.threadId === undefined ? {} : { threadId: str(v.threadId, 'threadId') }),
+    ...(v.url === undefined ? {} : { url: url(v.url) })
+  }
 }
 export async function readJson(request: Request): Promise<unknown> {
   // Bound streamed bodies too; Content-Length alone is not trustworthy.
@@ -52,11 +84,21 @@ export async function readJson(request: Request): Promise<unknown> {
     const { value, done } = await reader.read()
     if (done) break
     length += value.byteLength
-    if (length > 16_384) { await reader.cancel(); throw new Invalid('Body exceeds 16 KiB') }
+    if (length > 16_384) {
+      await reader.cancel()
+      throw new Invalid('Body exceeds 16 KiB')
+    }
     chunks.push(value)
   }
   const bytes = new Uint8Array(length)
   let offset = 0
-  for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.length }
-  try { return JSON.parse(new TextDecoder().decode(bytes)) } catch { throw new Invalid('Invalid JSON') }
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset)
+    offset += chunk.length
+  }
+  try {
+    return JSON.parse(new TextDecoder().decode(bytes))
+  } catch {
+    throw new Invalid('Invalid JSON')
+  }
 }

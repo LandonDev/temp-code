@@ -17,9 +17,11 @@ npx wrangler dev
 ```
 
 For local dev, put `ADMIN_KEY` and `WEBHOOK_KEY` in an untracked `.dev.vars`.
-The Workers Vitest pool runs against real local KV and Durable Objects. Its
-SQLite storage snapshot mode has a macOS shared-memory-file bug, so tests use
-one runtime and clear KV/object storage explicitly before each test.
+The Workers Vitest pool runs against real local KV and Durable Objects. Tests
+clear KV/object storage before each test. The Worker suite uses its own Vitest
+version and does not change the app's test tools. The requested pool package has
+been renamed upstream to `@cloudflare/vitest-plugin`; this package keeps the
+requested name, with pinned tools and overrides checked by the suite.
 
 The root `bun run hub:test` runs the isolated suite. Install this package first;
 it does not share the app's dependencies. The root test glob excludes infra.

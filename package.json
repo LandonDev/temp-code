@@ -51,6 +51,7 @@
     "script:bench-db-workers": "esbuild scripts/bench-db-workers.ts --bundle --platform=node --format=esm --packages=external --alias:@shared=./src/shared --outfile=scripts/.out/bench-db-workers.mjs && ELECTRON_RUN_AS_NODE=1 ./node_modules/electron/dist/Electron.app/Contents/MacOS/Electron scripts/.out/bench-db-workers.mjs",
     "script:bench-boot": "esbuild scripts/bench-boot.ts --bundle --platform=node --format=esm --packages=external --alias:@shared=./src/shared --alias:electron=./scripts/electron-shim.mjs --outfile=scripts/.out/bench-boot.mjs && node scripts/.out/bench-boot.mjs",
     "test": "vitest run",
+    "hub:test": "npm --prefix infra/hub test",
     "test:watch": "vitest",
     "script:e2e-m3a": "esbuild scripts/e2e-m3a.ts --bundle --platform=node --format=esm --packages=external --alias:@shared=./src/shared --alias:electron=./scripts/electron-shim.mjs --outfile=scripts/.out/e2e-m3a.mjs && node scripts/.out/e2e-m3a.mjs",
     "script:e2e-m3b": "esbuild scripts/e2e-m3b.ts --bundle --platform=node --format=esm --packages=external --alias:@shared=./src/shared --alias:electron=./scripts/electron-shim.mjs --outfile=scripts/.out/e2e-m3b.mjs && node scripts/.out/e2e-m3b.mjs",
