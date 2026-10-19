@@ -47,6 +47,7 @@
     "script:e2e-mirror-index": "esbuild scripts/e2e-mirror-index.ts --bundle --platform=node --format=esm --packages=external --alias:@shared=./src/shared --alias:electron=./scripts/electron-shim.mjs --outfile=scripts/.out/e2e-mirror-index.mjs && node scripts/.out/e2e-mirror-index.mjs",
     "script:measure-context": "esbuild scripts/measure-context.ts --bundle --platform=node --format=esm --packages=external --alias:@shared=./src/shared --alias:electron=./scripts/electron-shim.mjs --outfile=scripts/.out/measure-context.mjs && node scripts/.out/measure-context.mjs",
     "script:e2e-editor-finish": "esbuild scripts/e2e-editor-finish.ts --bundle --platform=node --format=esm --packages=external --alias:@shared=./src/shared --outfile=scripts/.out/e2e-editor-finish.mjs && node scripts/.out/e2e-editor-finish.mjs",
+    "script:bench-db-workers": "esbuild scripts/bench-db-workers.ts --bundle --platform=node --format=esm --packages=external --alias:@shared=./src/shared --outfile=scripts/.out/bench-db-workers.mjs && ELECTRON_RUN_AS_NODE=1 ./node_modules/electron/dist/Electron.app/Contents/MacOS/Electron scripts/.out/bench-db-workers.mjs",
     "script:bench-boot": "esbuild scripts/bench-boot.ts --bundle --platform=node --format=esm --packages=external --alias:@shared=./src/shared --alias:electron=./scripts/electron-shim.mjs --outfile=scripts/.out/bench-boot.mjs && node scripts/.out/bench-boot.mjs",
     "test": "vitest run",
     "test:watch": "vitest",

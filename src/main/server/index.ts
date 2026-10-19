@@ -13,6 +13,7 @@ import { visibleCatalog } from '@shared/catalog'
 import { ClientRequestSchema, type ServerFrame } from '@shared/contract'
 import type { SessionMeta } from '@shared/events'
 import { openDb, Store } from './db'
+import { startCheckpointWorker } from './dbWorkers'
 import { handleFsGit } from './fsgit'
 import { setMediaRoots } from './media'
 import { CheckpointStore } from './checkpoint'
@@ -172,6 +173,10 @@ export async function startServer(
   bootMark('server-start')
   const db = openDb(dbPath)
   bootMark('db-open')
+  // WAL checkpoints of both files run on a worker's own connection; the
+  // writer keeps a 10,000-frame backstop and takes the work back if the
+  // worker dies (dbWorkers.ts).
+  const checkpointWorker = startCheckpointWorker(db, dbPath)
   const store = new Store(db)
   const checkpoints = new CheckpointStore(join(options.dataDir ?? dirname(dbPath), 'checkpoints'))
   const registry = new SessionRegistry(store)
@@ -1242,6 +1247,9 @@ export async function startServer(
       killTrackedChildren()
       for (const client of wss.clients) client.terminate()
       await new Promise<void>((resolve, reject) => wss.close((error) => error ? reject(error) : resolve()))
+      // Workers go first: the writer's close() runs the last checkpoint and
+      // deletes the WAL only when it is the last connection.
+      await checkpointWorker.stop()
       store.flushEvents()
       db.close()
     }

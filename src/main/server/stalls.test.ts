@@ -7,6 +7,7 @@ import {
   countPush,
   loopLine,
   recordBackpressure,
+  recordCheckpoint,
   recordSlowRequest,
   reportRendererStall,
   setBufferedBytes,
@@ -64,6 +65,13 @@ describe('stall recorder', () => {
     const line = log().trim()
     expect(line).toMatch(/ backpressure connection=2 unsent=9216KB inflight=- pushes=meta:\d+,event:\d+ running=3 load=\d+\.\d rss=\d+MB wsbuf=9216KB$/)
     expect(BACKPRESSURE_BYTES).toBe(8 * 1024 * 1024)
+  })
+
+  it('a worker checkpoint at or over the threshold writes a checkpoint line with the context', () => {
+    recordCheckpoint('main', 40, TIMED_MS - 1)
+    expect(existsSync(join(dir, 'stalls.log'))).toBe(false)
+    recordCheckpoint('cold', 1547, 81.6)
+    expect(log().trim()).toMatch(/ checkpoint schema=cold frames=1547 ms=82 inflight=- pushes=meta:\d+,event:\d+ running=3 load=/)
   })
 
   it('timed logs a section at or over the threshold and returns its value', () => {

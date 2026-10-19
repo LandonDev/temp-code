@@ -738,19 +738,23 @@ export class Store {
       throw error
     }
     try {
-      for (const row of rows) {
-        const insert = this.stmt(`INSERT INTO ${row.table} (session_id, seq, ts, payload) VALUES (?, ?, ?, ?)`)
-        try {
-          insert.run(row.sessionId, row.seq, row.ts, row.payload)
-        } catch (error) {
-          if (!/constraint/i.test(String((error as Error).message))) throw error
-          // Something else wrote this session's log: re-seed from disk once.
-          const seq = this.maxSeq(row.sessionId) + 1
-          insert.run(row.sessionId, seq, row.ts, row.payload)
-          this.nextSeq.set(row.sessionId, seq + 1)
+      // Named in stalls.log: a long commit here is the WAL checkpoint the
+      // writer ran inline (dbWorkers.ts moves it off the loop) or the disk.
+      timed('event flush', () => {
+        for (const row of rows) {
+          const insert = this.stmt(`INSERT INTO ${row.table} (session_id, seq, ts, payload) VALUES (?, ?, ?, ?)`)
+          try {
+            insert.run(row.sessionId, row.seq, row.ts, row.payload)
+          } catch (error) {
+            if (!/constraint/i.test(String((error as Error).message))) throw error
+            // Something else wrote this session's log: re-seed from disk once.
+            const seq = this.maxSeq(row.sessionId) + 1
+            insert.run(row.sessionId, seq, row.ts, row.payload)
+            this.nextSeq.set(row.sessionId, seq + 1)
+          }
         }
-      }
-      this.db.exec('COMMIT')
+        this.db.exec('COMMIT')
+      })
     } catch (error) {
       this.db.exec('ROLLBACK')
       for (const row of rows) this.nextSeq.delete(row.sessionId)

@@ -6,6 +6,8 @@
  *   - `loop`: the event loop was blocked ≥ STALL_MS in the last second
  *     (monitorEventLoopDelay, sampled once a second)
  *   - `timed`: a known synchronous section ran ≥ TIMED_MS
+ *   - `checkpoint`: the checkpoint worker (dbWorkers.ts) copied a WAL into
+ *     its file for ≥ TIMED_MS; off the loop, but the disk time shows here
  *   - `slow-request`: a WS request took longer than the boot log's cap
  *   - `[renderer] …`: a line the renderer sent through `stall.report`
  *
@@ -78,6 +80,11 @@ export function timed<T>(label: string, fn: () => T): T {
     const ms = performance.now() - startedAt
     if (ms >= TIMED_MS) write(`timed ${label} ${Math.round(ms)}ms`)
   }
+}
+
+/** A WAL checkpoint the worker ran: logged when it took TIMED_MS or more. */
+export function recordCheckpoint(schema: string, frames: number, ms: number): void {
+  if (ms >= TIMED_MS) write(`checkpoint schema=${schema} frames=${frames} ms=${Math.round(ms)}`)
 }
 
 export function recordSlowRequest(method: string, ms: number): void {
