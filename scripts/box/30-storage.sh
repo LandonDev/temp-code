@@ -4,11 +4,22 @@ source "$(dirname "$0")/lib.sh"
 lsblk -f; df -h; pvs; vgs; lvs
 # Only unused LVM extents are eligible. Never shrink root or repartition remotely.
 if [[ ! -f $STATE/storage-layout ]]; then
-  vg=$(vgs --noheadings --units b --nosuffix -o vg_name,vg_free | awk '$2>=1800000000000 {print $1; exit}')
+  if [[ -f $STATE/storage-vg ]]; then
+    vg=$(cat "$STATE/storage-vg")
+    vgs "$vg" >/dev/null || die 'Recorded storage VG is missing'
+  else
+    vg=$(vgs --noheadings --units b --nosuffix -o vg_name,vg_free | awk '$2>=1800000000000 {print $1; exit}')
+    if [[ -n $vg ]]; then printf '%s\n' "$vg" > "$STATE/storage-vg"; fi
+  fi
   if [[ -n $vg ]]; then
     for spec in agents:1210G prod:466G; do
       name=${spec%:*}; size=${spec#*:}; dev=/dev/$vg/$name
-      if ! lvs "$dev" >/dev/null 2>&1; then lvcreate -L "$size" -n "$name" "$vg"; changed "LV $name"; fi
+      if ! lvs "$dev" >/dev/null 2>&1; then
+        lvcreate -L "$size" -n "$name" --addtag tempcode-box-baseline "$vg"
+        changed "LV $name"
+      elif ! lvs --noheadings -o lv_tags "$dev" | tr ', ' '\n' | grep -qx tempcode-box-baseline; then
+        die "Refusing to use an LV not created by this baseline: $dev"
+      fi
       fs=$(blkid -s TYPE -o value "$dev" || true)
       if [[ -z $fs ]]; then mkfs.ext4 "$dev"; changed "ext4 $dev"; elif [[ $fs != ext4 ]]; then die "Unexpected filesystem on $dev"; fi
       mkdir -p "/srv/$name"

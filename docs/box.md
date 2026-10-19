@@ -210,10 +210,40 @@ minute, with up to 10 seconds of jitter. Reapply preserves the live env file.
 
 ## Verification
 
-Final live results will be recorded after the second full apply.
+Run `scripts/box/verify.sh` from the Mac for key/password checks, remote host
+checks, the Cloudflare connector count, and HTTPS. Run the full apply to repeat
+the Electron screenshot proof. `scripts/box/smoke-docker.sh` uses a temporary
+nginx container on port 18080 to test loopback access, its production cgroup,
+and the inbound firewall from the Mac; its exit trap removes that container.
+The test never adds a UFW rule. The downloaded test image may remain cached.
+
+Live checks on 2026-10-19:
+
+| Check | Result |
+| --- | --- |
+| OS and hardware | Ubuntu 24.04, EPYC 4545P, 16 cores / 32 threads, 123 GiB usable RAM |
+| Upgrade and reboot | Full upgrade complete; rebooted into `6.8.0-147-generic`; no failed units |
+| SSH | Fresh key login passes; password-only attempt refused with only publickey offered |
+| Host services | Docker, cloudflared, fail2ban, UFW and unattended-upgrades enabled and active after reboot |
+| Firewall | Only 22/tcp, IPv4 and IPv6; Docker's temporary published port blocked from the Mac |
+| Fences | Both slices and weights match; lingering user managers in their slices; login nofile 1048576/1048576 |
+| Storage | Directory fallback; no free extents; 8 GiB swapfile plus existing 4 GiB swap LV; swappiness 10 |
+| Runtimes | Docker 29.9.1; Node 22.23.3; Bun 1.4.3 for root and agents |
+| Docker access | Agents cannot read/write socket; prod can use Docker; test container uses `prod.slice` |
+| Electron | 44.9.0 as uid 999 (agents), sandbox enabled, Xvfb, 800×600 PNG (2727 bytes), exit 0 |
+| Tunnel | One linux_amd64 connector from 104.194.11.2, four edge connections; Cloudflare 502 as expected |
+| Mac Cloudflare files | Hashes of all pre-existing files unchanged |
+| Scaffolds | Both timers loaded, disabled and inactive; no live env files or secrets created |
+
+The second full apply and final repository handoff are recorded below once
+complete. No remote repartition, Pro attachment, R2 upload, or hub POST occurred.
 
 ## User steps
 
 - Rotate the root password in the ReliableSite panel.
 - Optional: attach Ubuntu Pro with your own token and enable Livepatch. No
   Pro subscription or token was attached by these scripts.
+- Supply R2 bucket credentials and a restic encryption password in the paths
+  above, test a restore, then enable backups.
+- When the hub ships, set its HTTPS URL and token, test a heartbeat, then
+  enable that timer.

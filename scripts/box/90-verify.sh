@@ -33,7 +33,8 @@ for file in /etc/sysctl.d/60-box-swap.conf /etc/sysctl.d/60-box-fleet.conf; do
 done
 [[ $(stat -c '%s:%a' /swapfile) == 8589934592:600 ]] || die 'Swapfile mismatch'
 swapon --show=NAME --noheadings | grep -qx /swapfile || die 'Swapfile inactive'
-findmnt --verify --tab-file /etc/fstab
+# Swap entries legitimately share the "none" target; check mounts and swap separately.
+findmnt --verify --types noswap --tab-file /etc/fstab
 if id -nG agents | tr ' ' '\n' | grep -qx docker; then die 'agents in docker group'; fi
 runuser -u agents -- test ! -r /var/run/docker.sock || die 'agents can read Docker socket'
 runuser -u agents -- test ! -w /var/run/docker.sock || die 'agents can write Docker socket'
