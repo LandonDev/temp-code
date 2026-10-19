@@ -49,13 +49,18 @@ public actor SessionCache {
 
     public init(path: URL) throws(CacheError) {
         try? FileManager.default.createDirectory(at: path.deletingLastPathComponent(), withIntermediateDirectories: true)
-        db = try Database(path: path.path(percentEncoded: false))
+        try self.init(databasePath: path.path(percentEncoded: false))
+    }
+
+    /// `path` as SQLite reads it: a file, or `:memory:` for a private in-memory database.
+    init(databasePath: String) throws(CacheError) {
+        db = try Database(path: databasePath)
         try SessionCache.migrate(db)
     }
 
-    /// A cache that lives only as long as the process: tests and previews.
+    /// A cache that lives only as long as its connection: tests and previews.
     public static func inMemory() throws(CacheError) -> SessionCache {
-        try SessionCache(path: URL(filePath: ":memory:"))
+        try SessionCache(databasePath: ":memory:")
     }
 
     public static func defaultPath() -> URL {
