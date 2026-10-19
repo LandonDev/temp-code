@@ -302,6 +302,14 @@ function toMeta(r: SessionRowRaw): SessionMeta {
 }
 
 const SEARCH_CAP = 200
+/** A cached StatementSync keeps its last bound string alive until the
+ *  next bind (measured on Node 22 / SQLite 3.51: a 64 MB bind held 66 MB
+ *  of RSS on the cached statement and was freed on rebind; a throwaway
+ *  statement freed it at once). Binds this long or longer run on a
+ *  statement of their own. The workspace snapshot (setSetting, up to 2 MB)
+ *  was pinned for good; payloads over the line are rare (none in 50k
+ *  recent rows) but a transcript can carry one. */
+export const LARGE_BINDING = 64 * 1024
 
 /** How many events a tail walks back over at most, whatever the budget. */
 const TAIL_SCAN = 6000
@@ -396,6 +404,17 @@ export class Store {
       this.stmts.set(sql, st)
     }
     return st
+  }
+
+  /** The cached statement, unless a param is a string or blob of
+   *  LARGE_BINDING or more: that gets a throwaway so the cache never pins it. */
+  private stmtFor(sql: string, params: unknown[]): StatementSync {
+    for (const p of params) {
+      if (typeof p === 'string' ? p.length >= LARGE_BINDING : p instanceof Uint8Array && p.byteLength >= LARGE_BINDING) {
+        return this.db.prepare(sql)
+      }
+    }
+    return this.stmt(sql)
   }
 
   /** One snapshot per window slot. The first window keeps the pre-M12 key
@@ -746,7 +765,7 @@ export class Store {
       // writer ran inline (dbWorkers.ts moves it off the loop) or the disk.
       timed('event flush', () => {
         for (const row of rows) {
-          const insert = this.stmt(`INSERT INTO ${row.table} (session_id, seq, ts, payload) VALUES (?, ?, ?, ?)`)
+          const insert = this.stmtFor(`INSERT INTO ${row.table} (session_id, seq, ts, payload) VALUES (?, ?, ?, ?)`, [row.payload])
           try {
             insert.run(row.sessionId, row.seq, row.ts, row.payload)
           } catch (error) {
@@ -915,12 +934,14 @@ export class Store {
   }
 
   putGithubInboxRepo(row: GithubInboxRepo): void {
+    const items = JSON.stringify(row.items)
     this
-      .stmt(
+      .stmtFor(
         `INSERT INTO github_inbox_repos (repo, fetched_at, error, items) VALUES (?, ?, ?, ?)
-         ON CONFLICT(repo) DO UPDATE SET fetched_at = excluded.fetched_at, error = excluded.error, items = excluded.items`
+         ON CONFLICT(repo) DO UPDATE SET fetched_at = excluded.fetched_at, error = excluded.error, items = excluded.items`,
+        [items]
       )
-      .run(row.repo, row.fetchedAt, row.error, JSON.stringify(row.items))
+      .run(row.repo, row.fetchedAt, row.error, items)
   }
 
   /** Drops every snapshot row whose repo is not in `keep`. */
@@ -948,9 +969,10 @@ export class Store {
     if (value === null) this.stmt(`DELETE FROM settings WHERE key = ?`).run(key)
     else
       this
-        .stmt(
+        .stmtFor(
           `INSERT INTO settings (key, value) VALUES (?, ?)
-           ON CONFLICT(key) DO UPDATE SET value = excluded.value`
+           ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+          [value]
         )
         .run(key, value)
   }
