@@ -1,5 +1,5 @@
 {
-  "n": 233,
-  "notes": "Hub deployed at hub.landonhale.com and the box heartbeat posts to it: wrangler.toml carries the KV id, workers_dev off and the custom domain; the box scaffold sends the hub's body shape (environmentId, name, version, startedAt) and its env example names the real URL; README and docs/box.md record the deploy, the Keychain item names and the workers.dev subdomain quirk",
-  "ts": 1792394319701
+  "n": 234,
+  "notes": "Remote facade and /mcp: eleven operations over the registry (list_projects, list_sessions, start_session, send_message, get_session, get_transcript, list_pending, respond, stop_session, archive_session, get_diff) with zod inputs and compact outputs over the bounded wire reads, and the MCP streamable-HTTP endpoint on the fixed port for mcp-audience keys (x-api-key or bearer, body cap, per-key rate limit, trace line)",
+  "ts": 1792395459550
 }
