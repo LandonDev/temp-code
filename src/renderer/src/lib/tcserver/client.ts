@@ -5,12 +5,27 @@ const RECONNECT_MIN_MS = 1000;
 const RECONNECT_MAX_MS = 5000;
 
 /**
+ * Where a client connects. No target is the desktop window's case: the
+ * in-process server's loopback port, asked of preload again on every
+ * reconnect. The browser at `/ui` passes its own origin's `/ws`; a bearer
+ * client (thread K1) passes `ticket`, which is asked again on every
+ * reconnect so a 30-second single-use ticket is never reused.
+ */
+export type ConnectTarget = {
+  /** `ws://127.0.0.1:1234` or `wss://host/ws`. */
+  url: string;
+  /** Mint a fresh ticket; it rides as `?ticket=` on the upgrade. */
+  ticket?: () => Promise<string>;
+};
+
+/**
  * Typed WebSocket client for the in-process server. request() for RPC,
  * onPush for subscription streams. The port comes from preload and is
  * asked for again on every reconnect.
  */
 export class WsClient {
   port: number | null = null;
+  private target: ConnectTarget | null = null;
   private ws: WebSocket | null = null;
   private nextId = 1;
   private pending = new Map<
@@ -23,8 +38,18 @@ export class WsClient {
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private reconnectDelay = RECONNECT_MIN_MS;
 
-  async connect(): Promise<void> {
-    await this.open(await askPort());
+  async connect(target?: ConnectTarget): Promise<void> {
+    this.target = target ?? null;
+    await this.open(await this.askTarget());
+  }
+
+  /** The URL for the next attempt; re-asked on every reconnect. */
+  private async askTarget(): Promise<string> {
+    if (!this.target) return `ws://127.0.0.1:${await askPort()}`;
+    if (!this.target.ticket) return this.target.url;
+    const url = new URL(this.target.url);
+    url.searchParams.set("ticket", await this.target.ticket());
+    return url.toString();
   }
 
 
@@ -32,12 +57,12 @@ export class WsClient {
     return this.ws?.readyState === WebSocket.OPEN;
   }
 
-  private open(port: number): Promise<void> {
+  private open(url: string): Promise<void> {
     return new Promise((resolve, reject) => {
-      const ws = new WebSocket(`ws://127.0.0.1:${port}`);
+      const ws = new WebSocket(url);
       this.ws = ws;
       ws.onopen = () => {
-        this.port = port;
+        this.port = portOf(url);
         this.reconnectDelay = RECONNECT_MIN_MS;
         for (const l of this.openListeners) l();
         resolve();
@@ -74,8 +99,8 @@ export class WsClient {
     this.reconnectDelay = Math.min(delay * 2, RECONNECT_MAX_MS);
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null;
-      askPort().then(
-        (port) => this.open(port).catch(() => {}),
+      this.askTarget().then(
+        (url) => this.open(url).catch(() => {}),
         () => this.scheduleReconnect(),
       );
     }, delay);
@@ -122,6 +147,16 @@ export class WsClient {
 
 function askPort(): Promise<number> {
   return getServerPort();
+}
+
+function portOf(url: string): number | null {
+  try {
+    const parsed = new URL(url);
+    if (parsed.port) return Number(parsed.port);
+    return parsed.protocol === "wss:" ? 443 : parsed.protocol === "ws:" ? 80 : null;
+  } catch {
+    return null;
+  }
 }
 
 export const client = new WsClient();

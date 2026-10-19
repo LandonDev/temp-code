@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
@@ -30,8 +30,16 @@ beforeAll(async () => {
     secrets: { mode: 'chromiumKey', keychainItem: 'Test Safe Storage' },
     appName: 'temp-code-test'
   })
+  // A stand-in for the built renderer: the ui handler serves <appPath>/out/renderer.
+  mkdirSync(join(root, 'out', 'renderer', 'assets'), { recursive: true })
+  writeFileSync(
+    join(root, 'out', 'renderer', 'index.html'),
+    `<!doctype html><html><head><meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src 'self' ws://127.0.0.1:*" /></head><body><script src="./assets/app.js"></script></body></html>`
+  )
+  writeFileSync(join(root, 'out', 'renderer', 'assets', 'app.js'), 'console.log(1)')
+  writeFileSync(join(root, 'out', 'renderer', 'boot.js'), 'void 0')
   const { startServer } = await import('../index')
-  server = await startServer(join(root, 'app.db'), { claimShim: false, remotePort: 0 })
+  server = await startServer(join(root, 'app.db'), { claimShim: false, remotePort: 0, appPath: root })
   base = `http://127.0.0.1:${server.remote!.port}`
 }, 60_000)
 afterAll(async () => {
@@ -182,6 +190,8 @@ describe('bearer keys', () => {
     const admin = await adminKey()
     expect((await call('DELETE', `/api/keys/${key.id}`, { headers: bearer(admin) })).body).toEqual({ ok: true })
     expect(await sock.closed).toMatchObject({ code: 4001 })
+    // The server's close handler runs a tick after the client sees the close frame.
+    for (let i = 0; i < 20 && server.remote!.sockets.has(key.id); i++) await sleep(10)
     expect(server.remote!.sockets.has(key.id)).toBe(false)
     expect((await call('POST', '/api/ticket', { headers: bearer(token) })).status).toBe(401)
   })
@@ -281,5 +291,51 @@ describe('limits', () => {
     expect(await upgradeStatus(base.replace('http', 'ws') + '/ws?ticket=zzz', ip)).toBe(429)
     // Another address is unaffected.
     expect((await call('POST', '/api/pair', { headers: { 'CF-Connecting-IP': '203.0.113.10' }, body: { code: 'AAAAA-AAAAA', kind: 'key' } })).status).toBe(401)
+  })
+})
+
+describe('/ui and /pair', () => {
+  const cookieFor = async (caps: string[] = ['operate']): Promise<string> => {
+    const admin = await adminKey()
+    const code = (await call('POST', '/api/pairings', { headers: bearer(admin), body: { name: 'Browser', audience: 'client', caps } })).body.code
+    return (await call('POST', '/api/pair', { body: { code, kind: 'session' } })).headers.get('set-cookie')!.split(';')[0]
+  }
+  it('the sign-in page is public; the document redirects there and assets are 401 without a cookie', async () => {
+    const page = await call('GET', '/pair')
+    expect(page.status).toBe(200)
+    expect(page.headers.get('content-type')).toMatch(/text\/html/)
+    expect(String(page.body)).toContain('Pair this browser')
+    const doc = await call('GET', '/ui')
+    expect(doc.status).toBe(302)
+    expect(doc.headers.get('location')).toBe('/pair')
+    expect((await call('GET', '/ui/')).status).toBe(302)
+    expect((await call('GET', '/ui/assets/app.js')).status).toBe(401)
+    // A bearer key is not a browser session.
+    const admin = await adminKey()
+    expect((await call('GET', '/ui/', { headers: bearer(admin) })).status).toBe(302)
+  })
+  it('with a cookie: /ui → /ui/, index is no-store with the host in connect-src, assets are immutable', async () => {
+    const cookie = await cookieFor()
+    const bare = await call('GET', '/ui', { headers: { Cookie: cookie } })
+    expect(bare.status).toBe(302)
+    expect(bare.headers.get('location')).toBe('/ui/')
+    const index = await call('GET', '/ui/', { headers: { Cookie: cookie } })
+    expect(index.status).toBe(200)
+    expect(index.headers.get('cache-control')).toBe('no-store')
+    expect(String(index.body)).toContain(`connect-src 'self' ws://127.0.0.1:* ws://127.0.0.1:${server.remote!.port} http://127.0.0.1:${server.remote!.port}`)
+    const proxied = await call('GET', '/ui/index.html', { headers: { Cookie: cookie, 'X-Forwarded-Proto': 'https', Host: 'tempcode.example.com' } })
+    expect(String(proxied.body)).toContain('wss://tempcode.example.com https://tempcode.example.com')
+    const asset = await call('GET', '/ui/assets/app.js', { headers: { Cookie: cookie } })
+    expect(asset.status).toBe(200)
+    expect(asset.headers.get('content-type')).toBe('text/javascript; charset=utf-8')
+    expect(asset.headers.get('cache-control')).toBe('public, max-age=31536000, immutable')
+    expect((await call('GET', '/ui/boot.js', { headers: { Cookie: cookie } })).headers.get('cache-control')).toBe('no-cache')
+  })
+  it('traversal and missing files are 404; other methods fall through', async () => {
+    const cookie = await cookieFor()
+    for (const path of ['/ui/%2e%2e/renderer/index.html', '/ui/../out/renderer/index.html', '/ui/assets/../../../etc/passwd', '/ui/nope.js', '/ui/assets/']) {
+      expect((await call('GET', path, { headers: { Cookie: cookie } })).status, path).toBe(404)
+    }
+    expect((await call('POST', '/ui/', { headers: { Cookie: cookie }, body: {} })).status).toBe(404)
   })
 })

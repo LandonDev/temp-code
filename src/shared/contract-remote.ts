@@ -6,9 +6,11 @@ import { z } from 'zod'
 export interface RemoteStatus {
   environmentId: string
   name: string
-  /** The remote listener's state; `port` is 0 while it is off. */
   enabled: boolean
+  /** The port the listener is on now (0 while off): the setting, or TEMP_CODE_REMOTE_PORT's override. */
   port: number
+  /** The remote.port setting the pane edits. */
+  configuredPort: number
   running: boolean
   /** Why the listener is not running, when it should be. */
   error: string | null

@@ -1,4 +1,4 @@
-import { invoke, listen, getCurrentWindow, message } from "./lib/native";
+import { invoke, listen, getCurrentWindow, isWebMode, message } from "./lib/native";
 import {
   useCallback,
   useEffect,
@@ -3188,7 +3188,8 @@ export default function App() {
   const onLeaveInbox = shell.closeInbox;
   const onOpenNotes = shell.openNotes;
   const onLeaveNotes = shell.closeNotes;
-  const onOpenAccountsPage = shell.openAccountsPage;
+  // The Aliax pages read window.aliax, which only the desktop window has.
+  const onOpenAccountsPage = isWebMode() ? undefined : shell.openAccountsPage;
   const onLeaveAccountsPage = shell.closeAccountsPage;
   const onOpenSettings = useCallback(() => shell.openSettings(), []);
 

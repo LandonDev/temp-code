@@ -2,6 +2,7 @@ import { ChartBar, Users } from "../chrome/icons";
 import { OverlayNav } from "../chrome/TitleBar";
 import { WindowControls } from "../chrome/WindowControls";
 import { IS_MAC } from "../lib/platform";
+import { isWebMode } from "../lib/native";
 import type { AliaxPageId } from "../stores/shell";
 import { AccountsPage, StatsPage } from "@aliax/pages";
 
@@ -44,7 +45,15 @@ export function AliaxPagesView({ page, besideRail = false, onClose, onToggleSide
         {IS_MAC ? null : <WindowControls />}
       </div>
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-        {page === "accounts" ? <AccountsPage /> : <StatsPage />}
+        {isWebMode() ? (
+          <div className="flex flex-1 items-center justify-center text-[13px] text-content/40">
+            Available in the desktop app
+          </div>
+        ) : page === "accounts" ? (
+          <AccountsPage />
+        ) : (
+          <StatsPage />
+        )}
       </div>
     </div>
   );

@@ -1,7 +1,8 @@
 import { net, protocol } from 'electron'
-import { extname, join, resolve } from 'node:path'
+import { join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { fenced } from './assets'
+import { mimeFor } from './server/remote/ui'
 
 /**
  * `tempcode-app://renderer/` serves the built renderer (out/renderer) in the
@@ -36,27 +37,7 @@ export function resolveAppPath(url: string, root: string): string | null {
   return fenced(resolve(root), parsed.pathname)
 }
 
-/** Module scripts and workers need a JavaScript type; a file:// fetch would
- *  sniff one, but spelling it keeps the renderer's loads deterministic. */
-const MIME: Record<string, string> = {
-  '.js': 'text/javascript; charset=utf-8',
-  '.mjs': 'text/javascript; charset=utf-8',
-  '.css': 'text/css; charset=utf-8',
-  '.html': 'text/html; charset=utf-8',
-  '.json': 'application/json; charset=utf-8',
-  '.map': 'application/json; charset=utf-8',
-  '.svg': 'image/svg+xml',
-  '.png': 'image/png',
-  '.ico': 'image/x-icon',
-  '.ttf': 'font/ttf',
-  '.woff': 'font/woff',
-  '.woff2': 'font/woff2',
-  '.wasm': 'application/wasm'
-}
-
-export function mimeFor(path: string): string | undefined {
-  return MIME[extname(path).toLowerCase()]
-}
+export { mimeFor }
 
 export async function handleAppRequest(request: Request): Promise<Response> {
   const path = resolveAppPath(request.url, rendererRoot())

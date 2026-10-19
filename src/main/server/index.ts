@@ -26,6 +26,7 @@ import { loadEnvironmentId } from './remote/environment'
 import { handleRemote, type RemoteContext } from './remote/handlers'
 import { RemoteAuth } from './remote/auth'
 import { startRemoteListener, type RemoteListener } from './remote/listener'
+import { createUiHandler } from './remote/ui'
 import { readRemoteSettings } from './remote/handlers'
 import type { SessionMeta } from '@shared/events'
 import { openDb, Store } from './db'
@@ -377,7 +378,9 @@ export async function startServer(
         store,
         environmentId,
         version: appVersion,
-        attach: (ws, principal) => attach(ws, principal)
+        attach: (ws, principal) => attach(ws, principal),
+        // The built renderer (electron-vite build); a dev tree without it answers 503.
+        ui: createUiHandler({ rendererDir: join(options.appPath ?? process.cwd(), 'out', 'renderer') })
       })
     }))
   const remoteContext: RemoteContext = {

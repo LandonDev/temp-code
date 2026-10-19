@@ -7,8 +7,16 @@
  * process (over preload); nothing fakes success.
  */
 
+import { isWebMode, webApi } from "./nativeWeb";
+
 export type UnlistenFn = () => void;
 export type NativeEvent<T> = { payload: T };
+
+/** Preload's bridge in the desktop window; the browser stand-in at `/ui`
+ *  (nativeWeb.ts). Looked up per call so a test may install `window.api`
+ *  after this module loads. */
+const api = (): typeof window.api => (isWebMode() ? webApi : window.api);
+export { isWebMode };
 
 /** Every donor command that still has a call site. Retired with their call
  *  sites: `sidecar_restart`, `sidecar_logs`, `set_window_background_blur`. */
@@ -235,46 +243,46 @@ const backed: Record<NativeCommand, Backed> = {
 
   // Main process.
   sidecar_port: () => getServerPort(),
-  reveal_path: (args) => window.api.revealInFinder(arg<string>(args, "path")),
-  default_cwd: () => window.api.app.defaultCwd(),
-  home_dir: () => window.api.app.homeDir(),
-  confirm_quit: () => window.api.app.confirmQuit(),
-  decline_quit: async () => window.api.app.declineQuit(),
-  set_dock_badge: (args) => window.api.app.dockBadge(arg<number>(args, "count")),
-  hide_window: () => window.api.win.hide(),
-  destroy_window: () => window.api.win.destroy(),
-  open_new_window: () => window.api.win.create(),
+  reveal_path: (args) => api().revealInFinder(arg<string>(args, "path")),
+  default_cwd: () => api().app.defaultCwd(),
+  home_dir: () => api().app.homeDir(),
+  confirm_quit: () => api().app.confirmQuit(),
+  decline_quit: async () => api().app.declineQuit(),
+  set_dock_badge: (args) => api().app.dockBadge(arg<number>(args, "count")),
+  hide_window: () => api().win.hide(),
+  destroy_window: () => api().win.destroy(),
+  open_new_window: () => api().win.create(),
   stage_window_transfer: (args) =>
-    window.api.win.stageTransfer(arg<unknown>(args, "payload")),
-  take_window_transfer: () => window.api.win.takeTransfer<string>(),
+    api().win.stageTransfer(arg<unknown>(args, "payload")),
+  take_window_transfer: () => api().win.takeTransfer<string>(),
   set_traffic_lights_visible: (args) =>
-    window.api.win.setButtonsVisible(arg<boolean>(args, "visible")),
-  enable_window_glass: () => window.api.win.enableGlass(),
+    api().win.setButtonsVisible(arg<boolean>(args, "visible")),
+  enable_window_glass: () => api().win.enableGlass(),
   disable_window_glass: (args) =>
-    window.api.win.disableGlass(arg<string | undefined>(args, "color")),
+    api().win.disableGlass(arg<string | undefined>(args, "color")),
   set_window_glass_pref: (args) =>
-    window.api.win.setGlassPref(arg<boolean>(args, "on")),
-  set_zoom: (args) => window.api.win.setZoom(arg<number>(args, "level")),
+    api().win.setGlassPref(arg<boolean>(args, "on")),
+  set_zoom: (args) => api().win.setZoom(arg<number>(args, "level")),
   pty_spawn: (args) =>
-    window.api.pty.spawn({
+    api().pty.spawn({
       id: arg<string>(args, "id"),
       cwd: arg<string>(args, "cwd"),
       cols: arg<number>(args, "cols"),
       rows: arg<number>(args, "rows"),
     }),
   pty_write: (args) =>
-    window.api.pty.write(arg<string>(args, "id"), arg<string>(args, "data")),
+    api().pty.write(arg<string>(args, "id"), arg<string>(args, "data")),
   pty_resize: (args) =>
-    window.api.pty.resize(
+    api().pty.resize(
       arg<string>(args, "id"),
       arg<number>(args, "cols"),
       arg<number>(args, "rows"),
     ),
-  pty_status: (args) => window.api.pty.status(arg<string>(args, "id")),
-  pty_kill: (args) => window.api.pty.kill(arg<string>(args, "id")),
-  pty_kill_all: () => window.api.pty.killAll(),
+  pty_status: (args) => api().pty.status(arg<string>(args, "id")),
+  pty_kill: (args) => api().pty.kill(arg<string>(args, "id")),
+  pty_kill_all: () => api().pty.killAll(),
   pty_ack: async (args) =>
-    window.api.pty.ack(arg<string>(args, "id"), arg<number>(args, "bytes")),
+    api().pty.ack(arg<string>(args, "id"), arg<number>(args, "bytes")),
 
   // Checkpoints (M9) and Linear (M11): params shaped here, not passed through.
   session_checkpoint_ensure: (args) => rpc("checkpoint.ensure", scope(args)),
@@ -324,7 +332,7 @@ export async function invoke<T = unknown>(
 
 /** The in-process server's port, straight from preload; never opens a socket. */
 export async function getServerPort(): Promise<number> {
-  const port = await window.api.getServerPort();
+  const port = await api().getServerPort();
   if (port == null) throw new Error("server port unavailable");
   return port;
 }
@@ -346,7 +354,7 @@ function listenMenu(
     menuHandlers.set(id, set);
   }
   set.add(handler);
-  menuOff ??= window.api.menu.onCommand((command) => {
+  menuOff ??= api().menu.onCommand((command) => {
     const handlers = menuHandlers.get(command);
     if (!handlers) return;
     for (const h of [...handlers]) h({ payload: command });
@@ -371,16 +379,16 @@ export function listen<T = unknown>(
   const emit = (payload: unknown) => handler({ payload: payload as T });
   switch (event) {
     case "quit_requested":
-      return Promise.resolve(window.api.app.onQuitRequested(() => emit(null)));
+      return Promise.resolve(api().app.onQuitRequested(() => emit(null)));
     case "persist_requested":
-      return Promise.resolve(window.api.win.onPersistRequested(() => emit(null)));
+      return Promise.resolve(api().win.onPersistRequested(() => emit(null)));
     case "pty-data":
       return Promise.resolve(
-        window.api.pty.onData((id, data) => emit({ id, data })),
+        api().pty.onData((id, data) => emit({ id, data })),
       );
     case "pty-exit":
       return Promise.resolve(
-        window.api.pty.onExit((id, code) => emit({ id, code })),
+        api().pty.onExit((id, code) => emit({ id, code })),
       );
     default:
       return Promise.resolve(
@@ -393,12 +401,12 @@ export function listen<T = unknown>(
 
 /** The slot this window lives in; its workspace snapshot is keyed by it. */
 export function windowSlot(): string {
-  return window.api.win.slot;
+  return api().win.slot;
 }
 
 /** Tell main this window's snapshot is on disk (after `persist_requested`). */
 export function windowPersisted(): void {
-  window.api.win.persisted();
+  api().win.persisted();
 }
 
 export type NativeWindow = {
@@ -415,7 +423,7 @@ export type NativeWindow = {
 };
 
 export function getCurrentWindow(): NativeWindow {
-  const win = window.api.win;
+  const win = api().win;
   return {
     minimize: () => win.minimize(),
     toggleMaximize: () => win.toggleMaximize(),
@@ -441,12 +449,12 @@ export function getCurrentWindow(): NativeWindow {
 
 /** URL a saved project logo is served from (scoped custom protocol). */
 export function convertFileSrc(path: string): string {
-  return window.api.app.logoUrl(path);
+  return api().app.logoUrl(path);
 }
 
 /** Disk path of a dropped File (File.path is gone in Electron ≥32). */
 export function getPathForFile(file: File): string {
-  return window.api.getPathForFile(file);
+  return api().getPathForFile(file);
 }
 
 export type OpenDialogOptions = {
@@ -458,7 +466,7 @@ export type OpenDialogOptions = {
 };
 
 export function open(options: OpenDialogOptions): Promise<string | string[] | null> {
-  return window.api.dialog.open(options);
+  return api().dialog.open(options);
 }
 
 export type DialogKind = "info" | "warning" | "error";
@@ -471,19 +479,19 @@ export type AskOptions = {
 export type MessageOptions = { title?: string; kind?: DialogKind };
 
 export function ask(text: string, options?: AskOptions): Promise<boolean> {
-  return window.api.dialog.ask(text, options);
+  return api().dialog.ask(text, options);
 }
 
 export function message(text: string, options?: MessageOptions): Promise<void> {
-  return window.api.dialog.message(text, options);
+  return api().dialog.message(text, options);
 }
 
 export function getVersion(): Promise<string> {
-  return window.api.app.version();
+  return api().app.version();
 }
 
 export function openUrl(url: string): Promise<void> {
-  return window.api.app.openUrl(url);
+  return api().app.openUrl(url);
 }
 
 // ── Updates ────────────────────────────────────────────────────────────────
@@ -493,11 +501,11 @@ export function openUrl(url: string): Promise<void> {
 export type UpdateStatus = Awaited<ReturnType<typeof window.api.updates.get>>;
 
 export const updates = {
-  get: (): Promise<UpdateStatus> => window.api.updates.get(),
-  check: (): Promise<UpdateStatus> => window.api.updates.check(),
-  apply: (): Promise<UpdateStatus> => window.api.updates.apply(),
+  get: (): Promise<UpdateStatus> => api().updates.get(),
+  check: (): Promise<UpdateStatus> => api().updates.check(),
+  apply: (): Promise<UpdateStatus> => api().updates.apply(),
   onStatus: (cb: (status: UpdateStatus) => void): UnlistenFn =>
-    window.api.updates.onStatus(cb),
+    api().updates.onStatus(cb),
 };
 
 /** Main's appshot push: the capture it wrote to disk, and the permission
@@ -507,9 +515,9 @@ export type AppshotPermissions = Awaited<ReturnType<typeof window.api.appshots.p
 
 export const appshots = {
   onCapture: (cb: (capture: AppshotCapture) => void): UnlistenFn =>
-    window.api.appshots.onCapture(cb),
+    api().appshots.onCapture(cb),
   onError: (cb: (error: { code: string }) => void): UnlistenFn =>
-    window.api.appshots.onError(cb),
+    api().appshots.onError(cb),
   permissions: (prompt?: boolean): Promise<AppshotPermissions> =>
-    window.api.appshots.permissions(prompt),
+    api().appshots.permissions(prompt),
 };

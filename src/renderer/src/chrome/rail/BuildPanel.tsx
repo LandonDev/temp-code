@@ -4,6 +4,7 @@ import { cn } from "../../motion/cn";
 import { StatefulButton } from "../../motion/StatefulButton";
 import { FileRefMenu } from "../../surfaces/FileRefMenu";
 import { duration } from "../../lib/format";
+import { invoke } from "../../lib/native";
 import { useClock } from "../../lib/turnClock";
 import { client } from "../../lib/tcserver/client";
 import { useProjects } from "../../lib/tcserver/workspaces";
@@ -324,7 +325,7 @@ function Outputs({ outputs }: { outputs: BuildRun["outputs"] }) {
         <FileRefMenu key={o.abs} target={o.abs}>
           <button
             type="button"
-            onClick={() => void window.api.revealInFinder(o.abs)}
+            onClick={() => void invoke("reveal_path", { path: o.abs })}
             title={o.abs}
             className="flex h-7 w-full items-center gap-2 rounded-md px-2 text-left transition-colors hover:bg-content/5 active:bg-content/10"
           >

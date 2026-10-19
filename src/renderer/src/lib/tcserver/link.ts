@@ -1,4 +1,5 @@
-import { bindServer } from "../native";
+import { bindServer, isWebMode } from "../native";
+import { webSocketUrl } from "../nativeWeb";
 import { client } from "./client";
 import { smoke } from "./smoke";
 
@@ -21,7 +22,11 @@ export function initServerLink(): void {
   // The bridge dispatches server commands over this one shared client.
   bindServer(client);
   client.onOpen(() => void report());
-  client.connect().catch((e) => console.error(`${TAG} connect failed:`, e));
+  // The desktop window asks preload for the loopback port; the page served
+  // at /ui by the fixed port speaks to its own origin, cookie on the upgrade.
+  client
+    .connect(isWebMode() ? { url: webSocketUrl() } : undefined)
+    .catch((e) => console.error(`${TAG} connect failed:`, e));
 }
 
 async function report(): Promise<void> {
