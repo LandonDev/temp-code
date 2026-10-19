@@ -12,6 +12,7 @@ import {
 } from "../connection";
 import { smoke } from "./smoke";
 import { sessionStore } from "./store";
+import { environmentStore } from "../../stores/environment";
 import { refreshCatalog } from "./catalog";
 import { dropHarnessModels, setDefaultCatalogEnvironment } from "../models";
 import { dropHarnessAvailability, probeHarnessAvailability } from "../harness/availability";
@@ -25,6 +26,8 @@ declare global {
     __monocode?: {
       registry: typeof registry;
       sessionStore: typeof sessionStore;
+      /** The window's current environment and the workspace last used per environment (thread K2). */
+      environment: typeof environmentStore;
       loadSavedEnvironments: typeof loadSavedEnvironments;
       smoke: typeof smoke;
     };
@@ -43,7 +46,7 @@ const TAG = "[monocode:server]";
  */
 export function initServerLink(): void {
   if (typeof window !== "undefined") {
-    window.__monocode = { registry, sessionStore, loadSavedEnvironments, smoke };
+    window.__monocode = { registry, sessionStore, environment: environmentStore, loadSavedEnvironments, smoke };
     registry.installWindowHooks();
     trackLastSeen();
   }

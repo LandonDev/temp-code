@@ -3314,10 +3314,17 @@ export default function App() {
       if (!registry.has(id) || id === environmentStore.getState().currentId) return;
       const { workspaces } = workspaceStore.getSnapshot();
       const remembered = environmentStore.getState().lastWorkspace[id];
+      // The window is keyed by folder, and the catalog's path policy hands a
+      // folder two hosts share to the first of them; so prefer a workspace
+      // whose path answers to this host alone, else any of its workspaces.
+      const own = workspaces.filter((w) => w.environmentId === id);
+      const unshared = own.filter((w) => environmentOfCwd(w.path) === id);
+      const pool = unshared.length > 0 ? unshared : own;
       const target =
-        workspaces.find((w) => w.environmentId === id && remembered && sameProjectPath(w.path, remembered)) ??
-        workspaces.filter((w) => w.environmentId === id).sort((a, b) => a.createdAt - b.createdAt)[0];
+        pool.find((w) => remembered && sameProjectPath(w.path, remembered)) ??
+        [...pool].sort((a, b) => a.createdAt - b.createdAt)[0];
       environment.follow(id, target?.path ?? null);
+      console.info(`[monocode:environment] switch to ${id}${target ? ` at ${target.path}` : " (no workspace there: a loose chat)"}`);
       if (target) {
         onSelectProject(target.path);
         return;

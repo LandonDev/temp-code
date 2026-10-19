@@ -24,6 +24,7 @@ import {
 } from "../lib/settings";
 import { useWorkspaces } from "../lib/tcserver/workspaces";
 import { isWebMode } from "../lib/nativeWeb";
+import { registry, useEnvironments } from "../lib/connection";
 
 /** The page at /ui sees one environment and cannot add another; the section would be dead there. */
 const sections = () => SETTINGS_SECTIONS.filter((item) => item.id !== "environments" || !isWebMode());
@@ -53,6 +54,12 @@ type Props = {
 export function SettingsNav({ section, onSelect, onClose }: Props) {
   const lockOverscroll = useLockOverscroll<HTMLDivElement>();
   const workspaces = useWorkspaces();
+  // With another host paired, a workspace on it says so: two hosts can hold a folder of the same name.
+  const environments = useEnvironments();
+  const hostOf = (environmentId: string): string | null =>
+    environments.length > 1 && environmentId !== registry.primaryEnvironmentId
+      ? (environments.find((e) => e.id === environmentId)?.name ?? environmentId)
+      : null;
 
   return (
     <>
@@ -80,7 +87,7 @@ export function SettingsNav({ section, onSelect, onClose }: Props) {
           return (
             <NavRow
               key={id}
-              label={workspace.name}
+              label={hostOf(workspace.environmentId) ? `${workspace.name} · ${hostOf(workspace.environmentId)}` : workspace.name}
               icon={Folder}
               active={id === section}
               onClick={() => onSelect(id)}
