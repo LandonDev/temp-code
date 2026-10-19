@@ -6,7 +6,12 @@
     "/Users/landon/Desktop/Websites/cosmicweb": "/srv/agents/work/cosmicweb",
     "/Users/landon/Desktop/Websites/NorthCentralRefs": "/srv/agents/work/NorthCentralRefs",
     "/Users/landon/Desktop/Websites/groupgames": "/srv/agents/work/groupgames",
-    "/Users/landon/Desktop/Websites/baseheroui": "/srv/agents/work/baseheroui"
+    "/Users/landon/Desktop/Websites/baseheroui": "/srv/agents/work/baseheroui",
+    "/Users/landon/Desktop/Websites/HSSports": "/srv/agents/work/HSSports",
+    "/Users/landon/Desktop/Websites/SeeTheReaction": "/srv/agents/work/SeeTheReaction",
+    "/Users/landon/Desktop/Websites/SchedUni": "/srv/agents/work/SchedUni",
+    "/Users/landon/Desktop/Websites/UnifyLeagues-v2": "/srv/agents/work/UnifyLeagues-v2",
+    "/Users/landon/IdeaProjects/CosmicClient": "/srv/agents/work/CosmicClient"
   },
   "prefixes": {
     "/Users/landon/.temp-code/worktrees": "/srv/agents/home/.temp-code/worktrees",

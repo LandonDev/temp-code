@@ -33,12 +33,21 @@ for db in "$data"/*.db; do
   echo "snapshot $name $(du -h "$staging/sqlite/$name" | cut -f1)"
 done
 
+# A data dir the history move left behind (temp-code.moved-<date>, see
+# docs/history-move.md) has no writer, so its database files go up as they
+# are; it stays covered until the user removes it.
+moved=()
+for dir in "$(dirname "$data")"/temp-code.moved-*; do [[ -d $dir ]] && moved+=("$dir"); done
+excludes=()
+for dir in "$data" "${moved[@]}"; do
+  excludes+=(--exclude "$dir/Cache" --exclude "$dir/Code Cache" --exclude "$dir/GPUCache"
+    --exclude "$dir/DawnCache" --exclude "$dir/DawnWebGPUCache" --exclude "$dir/DawnGraphiteCache"
+    --exclude "$dir/blob_storage" --exclude "$dir/Crashpad" --exclude "$dir/Service Worker")
+done
 restic backup --host mac --tag daily --quiet \
   --exclude "$data/*.db" --exclude "$data/*.db-wal" --exclude "$data/*.db-shm" --exclude "$data/*.db-journal" \
-  --exclude "$data/Cache" --exclude "$data/Code Cache" --exclude "$data/GPUCache" \
-  --exclude "$data/DawnCache" --exclude "$data/DawnWebGPUCache" --exclude "$data/DawnGraphiteCache" \
-  --exclude "$data/blob_storage" --exclude "$data/Crashpad" --exclude "$data/Service Worker" \
-  "$data" "$staging/sqlite"
+  "${excludes[@]}" \
+  "$data" "${moved[@]}" "$staging/sqlite"
 restic forget --host mac --keep-daily 7 --keep-weekly 4 --keep-monthly 6 --prune --quiet
 restic check --quiet
 echo "[$(date '+%F %T')] backup done: $(restic snapshots --host mac --latest 1 --compact 2>/dev/null | tail -1)"

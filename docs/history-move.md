@@ -73,20 +73,39 @@ are remade from the clone on the first turn (sessions.ts `ensureCwd`).
 | cosmicweb | Desktop/Websites/cosmicweb | LandonDev/cosmicprisons-web | 760 (56) | 600 MB | 5.3 GB | 494 MB | clone |
 | temp-code | IdeaProjects/temp-code | LandonDev/temp-code | 249 (16) | 173 MB | 20 MB | 42 MB | clone; iOS work stays on the Mac |
 | NorthCentralRefs | Desktop/Websites/NorthCentralRefs | LandonDev/NorthCentralRefs | 184 (3) | 68 MB | small | 3.7 MB | clone |
-| HSSports | Desktop/Websites/HSSports | none (local git, 95 MB .git) | 119 (25) | 91 MB | 1.2 GB | 56 MB | push to GitHub first, else Mac-only |
+| HSSports | Desktop/Websites/HSSports | LandonDev/HSSports (created 2026-10-19) | 119 (25) | 91 MB | 1.2 GB | 56 MB | clone |
 | groupgames | Desktop/Websites/groupgames | LandonDev/group-games | 95 (73) | 43 MB | 30 MB | 1.6 MB | clone |
 | monocode | IdeaProjects/monocode | LandonDev/monocode | 53 (0) | 26 MB | 0 | 7.4 MB | clone |
 | (home) | /Users/landon | | 40 (13) | 36 MB | small | | map to /srv/agents/home |
-| SeeTheReaction | Desktop/Websites/SeeTheReaction | none (local git, 3.4 GB .git) | 30 (3) | 28 MB | 290 MB | 0.8 MB | push first, else Mac-only |
+| SeeTheReaction | Desktop/Websites/SeeTheReaction | LandonDev/SeeTheReaction (created 2026-10-19, build output filtered) | 30 (3) | 28 MB | 290 MB | 0.8 MB | clone |
 | baseheroui | Desktop/Websites/baseheroui | LandonDev/tst | 24 (19) | 19 MB | 10 MB | 0.7 MB | clone |
-| CosmicClient | IdeaProjects/CosmicClient | none (no git, 12 GB) | 18 (1) | 10 MB | 0 | 312 MB | Mac-only |
-| UnifyLeagues-v2 | Desktop/Websites/UnifyLeagues-v2 | none (local git) | 14 (4) | 14 MB | small | 1.7 MB | push first, else Mac-only |
-| SchedUni | Desktop/Websites/SchedUni | none (local git) | 7 (3) | 4 MB | 20 MB | 0.2 MB | push first, else Mac-only |
+| CosmicClient | IdeaProjects/CosmicClient | a dir of five repos, see below | 18 (1) | 10 MB | 0 | 312 MB | assemble from clones |
+| UnifyLeagues-v2 | Desktop/Websites/UnifyLeagues-v2 | LandonDev/UnifyLeagues-v2 (created 2026-10-19) | 14 (4) | 14 MB | small | 1.7 MB | clone |
+| SchedUni | Desktop/Websites/SchedUni | LandonDev/SchedUni (created 2026-10-19) | 7 (3) | 4 MB | 20 MB | 0.2 MB | clone |
 
-A Mac-only root's threads still move to the box, archived and readable, with
-their Mac paths kept (see "Unmappable roots"). The same importer can instead
-put them into the Mac's fresh database (`--roots` filter, identity mapping)
-if the user wants them live there.
+The user chose to keep every root live, so on 2026-10-19 the five roots
+without a GitHub remote got one, all private under LandonDev, pushed from the
+Mac (`gh repo create --source --push`) and cloned on the box:
+
+- HSSports (branch `backend-base-data`, 29 uncommitted files stay on the
+  Mac), SchedUni and UnifyLeagues-v2: pushed as they were.
+- SeeTheReaction: its two commits carried 300–460 MB tvOS build products,
+  which GitHub refuses, so a temp clone was filtered (`apps/tvos/build/` and
+  `packages/apple-core/.build/` removed from both commits, a `.gitignore`
+  commit added) and that history is what `LandonDev/SeeTheReaction` holds.
+  The Mac checkout still has the old history and the build files; to align
+  it: `git -C ~/Desktop/Websites/SeeTheReaction checkout -B main origin/main`
+  (the tracked build output under those two dirs leaves the working tree).
+- CosmicClient is not a repo but a dir of five: CosmicClient-1.8.9,
+  CosmicClient-Bootstrap, CosmicClient-Launcher and ClientComms already live
+  under github.com/CompilexLLC; CosmicClient-1.21 had no remote and is now
+  `LandonDev/CosmicClient-1.21`. The box's `/srv/agents/work/CosmicClient/`
+  is assembled from the five clones (Launcher on its default `master`; the
+  Mac has `1.21` checked out) plus the plan documents, launch scripts and
+  `.temp-code/` from the Mac; `dist/` (2.2 GB of zips) is not copied.
+
+Nothing is left unmappable, so the archive path below is not exercised by
+this move; it stays for a future host.
 
 ## Path remap
 
