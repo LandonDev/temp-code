@@ -1,5 +1,5 @@
 {
-  "n": 239,
-  "notes": "Backups: restic to R2 from both hosts. Box: VACUUM INTO snapshots of temp-code's SQLite as agents, live db files excluded, retention + prune + check, OnFailure hook posts a failed notice to the hub, restic cache dir under systemd; Mac: scripts/mac/backup.sh + launchd agent dev.landon.tempcode.backup with the same snapshot step; docs/box.md Backups section rewritten",
-  "ts": 1792434027485
+  "n": 240,
+  "notes": "Mac backup: scope the live-database excludes to the data dir so the VACUUM INTO snapshots are backed up (the bare *.db pattern dropped them)",
+  "ts": 1792434269995
 }
