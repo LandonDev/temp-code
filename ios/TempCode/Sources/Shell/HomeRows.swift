@@ -44,11 +44,13 @@ enum HomeRows {
         "\(client.environment.id):\(workspace.id)"
     }
 
-    /// A host that gets a status row: refused, offline, or between retries.
+    /// A host that gets a status row: refused, offline, between retries, or
+    /// one that could not be reached since launch (connecting with a retry pending).
     static func troubled(_ status: EnvironmentStatus) -> Bool {
         switch status.transport {
         case .unauthorized, .offline, .reconnecting: true
-        case .connecting, .open, .suspended: false
+        case .connecting: status.nextRetryAt != nil && status.attempts > 0
+        case .open, .suspended: false
         }
     }
 

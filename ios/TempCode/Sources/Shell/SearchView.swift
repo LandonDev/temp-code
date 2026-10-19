@@ -80,7 +80,7 @@ struct SearchView: View {
         }
         .listStyle(.plain)
         .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always), prompt: "Threads and files")
-        .searchScopes($scope, activation: .onSearchPresentation) {
+        .searchScopes($scope, activation: .onTextEntry) {
             Text("Threads").tag(SearchScope.threads)
             Text("Files").tag(SearchScope.files)
         }

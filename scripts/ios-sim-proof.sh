@@ -11,6 +11,7 @@
 #   TC_TEST_THREAD="part of a title" picks the thread for the thread shot (else the newest).
 #   TC_TEST_SEARCH="hello" is the query the Search shot runs.
 #   TC_PROOF_KILL_CMD="curl -s -X POST http://127.0.0.1:NNNN/quit" stops the host before the last shot.
+#   TC_SIM="TempCode L3" picks a device by name (default iPhone 17 Pro); TC_SIM_UDID one by id.
 #
 # simctl drives it rather than XCUITest: with the Command Line Tools selected
 # as the developer directory, xcodebuild's test runner cannot reach the
@@ -42,8 +43,13 @@ found.sort()
 print(found[-1][1] if found else "")' "$SIM")
 fi
 [ -n "$TC_SIM_UDID" ] || { echo "ios-sim-proof: no simulator named $SIM" >&2; exit 2; }
-xcrun simctl boot "$TC_SIM_UDID" 2>/dev/null || true
-xcrun simctl bootstatus "$TC_SIM_UDID" -b >/dev/null
+if xcrun simctl boot "$TC_SIM_UDID" 2>/dev/null; then
+  # A cold boot: the network and keychain daemons settle a little after bootstatus answers.
+  xcrun simctl bootstatus "$TC_SIM_UDID" -b >/dev/null
+  sleep 8
+else
+  xcrun simctl bootstatus "$TC_SIM_UDID" -b >/dev/null
+fi
 open -g -a "$DEVELOPER_DIR/Applications/Simulator.app" --args -CurrentDeviceUDID "$TC_SIM_UDID" 2>/dev/null || true
 
 xcodegen generate --quiet
@@ -82,6 +88,31 @@ shot() {
   echo "ios-sim-proof: $name"
 }
 appearance() { xcrun simctl ui "$TC_SIM_UDID" appearance "$1" >/dev/null; }
+
+# The first launch pairs. The app logs the outcome under its subsystem (never
+# the code or a key); read it back, try once more if nothing landed, and stop
+# early rather than shoot sixteen empty screens.
+pairing_log() {
+  xcrun simctl spawn "$TC_SIM_UDID" log show --last 3m \
+    --predicate 'subsystem == "dev.landon.tempcode" AND category == "pairing"' --style compact 2>/dev/null | scrub
+}
+pair() {
+  local attempt
+  for attempt in 1 2; do
+    shot home 00-pairing >/dev/null
+    if pairing_log | /usr/bin/grep -q "pairing done"; then return 0; fi
+    if pairing_log | /usr/bin/grep -q "pairing failed"; then
+      echo "ios-sim-proof: $(pairing_log | /usr/bin/grep 'pairing failed' | tail -n 1 | sed -E 's/^.*\] //')" >&2
+      return 3
+    fi
+    echo "ios-sim-proof: no pairing outcome after launch $attempt" >&2
+  done
+  return 3
+}
+if [ -n "${TC_TEST_PAIR_LINK:-}" ]; then
+  pair || { echo "ios-sim-proof: the app did not pair" >&2; exit 3; }
+  rm -f "$OUT/shots/00-pairing.png"
+fi
 
 appearance light
 xcrun simctl ui "$TC_SIM_UDID" content_size large >/dev/null

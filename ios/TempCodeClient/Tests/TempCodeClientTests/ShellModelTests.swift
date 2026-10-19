@@ -183,7 +183,8 @@ private let projects = [project("p1", "wa"), project("p2", "wa"), project("pb", 
             meta("c", status: .idle, updatedAt: 200, treeHasLiveWork: true),
             meta("kid", parentId: "c", status: .running, updatedAt: 250),
             meta("d", status: .running, archived: true, updatedAt: 900),
-            meta("e", status: .waiting, updatedAt: 800)
+            meta("e", status: .waiting, updatedAt: 800, treeHasLiveWork: true),
+            meta("f", status: .paused, updatedAt: 700, treeHasLiveWork: true)
         ]
         #expect(HomeModel.running(metas).map(\.id) == ["b", "c", "a"])
     }
@@ -197,6 +198,8 @@ private let projects = [project("p1", "wa"), project("p2", "wa"), project("pb", 
         let settled = row(4, .approvalResolved(ApprovalResolvedEvent(requestId: "r1", allow: true, auto: nil)))
         let question = row(5, .questionRequest(QuestionRequestEvent(requestId: "q1", questions: [QuestionRequestEvent.Question(question: "Which email?", header: nil, multiSelect: nil, allowFreeform: nil, options: [])])))
         #expect(HomeModel.line(for: .waiting, rows: [approval]) == "Approve: run bun test")
+        #expect(HomeModel.cue(for: .waiting, rows: [approval]).seq == 3)
+        #expect(HomeModel.cue(for: .waiting, rows: [approval, settled]).seq == nil)
         #expect(HomeModel.line(for: .waiting, rows: [approval, settled]) == "Waiting for you")
         #expect(HomeModel.line(for: .waiting, rows: [approval, settled, question]) == "Question: Which email?")
         #expect(HomeModel.line(for: .waiting, rows: []) == "Waiting for you")

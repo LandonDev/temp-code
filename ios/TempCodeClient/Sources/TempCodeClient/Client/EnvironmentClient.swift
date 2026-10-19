@@ -273,24 +273,40 @@ public final class EnvironmentClient {
             projects = list
             try? await cache.replaceProjects(environment.id, list)
         }
-        var listed: Set<String> = []
-        var complete = false
-        var page = await firstPage
-        for _ in 0..<20 {
-            guard let current = page else { break }
-            merge(current.sessions)
-            for session in current.sessions { listed.insert(session.id) }
-            guard let cursor = current.cursor else {
-                complete = true
-                break
-            }
-            page = try? await socket.request(Methods.SessionList.self, .init(archived: nil, projectId: nil, cursor: cursor))
-        }
+        let (listed, complete) = await walk(pages: await firstPage, archived: false)
         if complete {
-            let gone = sessions.filter { !listed.contains($0.id) }.map(\.id)
+            let gone = sessions.filter { !$0.archived && !listed.contains($0.id) }.map(\.id)
             if !gone.isEmpty { removeSessions(gone) }
         }
         hasShell = true
+        // The archived threads come after the live shell is up, off the open
+        // handler, so a long archive never delays the subscriptions.
+        Task { [weak self] in await self?.refreshArchived() }
+    }
+
+    /// `session.list` answers live or archived threads, never both; the shell
+    /// needs the archived ones for its "n archived" rows.
+    private func refreshArchived() async {
+        let first = try? await socket.request(Methods.SessionList.self, .init(archived: true, projectId: nil, cursor: nil))
+        let (listed, complete) = await walk(pages: first, archived: true)
+        if complete {
+            let gone = sessions.filter { $0.archived && !listed.contains($0.id) }.map(\.id)
+            if !gone.isEmpty { removeSessions(gone) }
+        }
+    }
+
+    /// Merges every page from `first` on; `complete` says the walk reached the end.
+    private func walk(pages first: SessionPage?, archived: Bool) async -> (listed: Set<String>, complete: Bool) {
+        var listed: Set<String> = []
+        var page = first
+        for _ in 0..<40 {
+            guard let current = page else { return (listed, false) }
+            merge(current.sessions)
+            for session in current.sessions { listed.insert(session.id) }
+            guard let cursor = current.cursor else { return (listed, true) }
+            page = try? await socket.request(Methods.SessionList.self, .init(archived: archived, projectId: nil, cursor: cursor))
+        }
+        return (listed, false)
     }
 
     private func apply(_ push: ServerPush) async {

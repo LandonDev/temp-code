@@ -1,4 +1,5 @@
 import SwiftUI
+import TempCodeClient
 import TempCodeContract
 
 /// What one thread row reads. The shell builds it from a `SessionMeta` and
@@ -32,7 +33,7 @@ extension ThreadRowModel {
         detail = Self.detail(of: session)
         updatedAt = session.updatedAt
         busySince = session.busySince
-        running = session.status == .running || session.status == .starting || session.treeHasLiveWork == true
+        running = HomeModel.isLive(session)
         pinned = session.pinned
         agent = child ? session.agentType : nil
     }
@@ -56,6 +57,7 @@ extension ThreadRowModel {
 /// chevron: every row pushes.
 struct ThreadRow: View {
     let row: ThreadRowModel
+    @Environment(\.dynamicTypeSize) private var typeSize
 
     var body: some View {
         HStack(spacing: 10) {
@@ -68,7 +70,7 @@ struct ThreadRow: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(row.title)
                     .font(.subheadline.weight(row.unseen ? .semibold : .regular))
-                    .lineLimit(1)
+                    .lineLimit(typeSize.isAccessibilitySize ? 2 : 1)
                 SecondLine(model: row.model, detail: row.detail)
             }
             Spacer(minLength: 8)

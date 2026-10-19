@@ -46,29 +46,51 @@ public enum HomeModel {
         .sorted { ($0.since, $0.meta.id) < ($1.since, $1.meta.id) }
     }
 
+    /// Running or starting, or settled while a subagent still works. A thread
+    /// that waits, failed or paused is not live, whatever its subagents do:
+    /// it belongs to Needs you.
+    public static func isLive(_ meta: SessionMeta) -> Bool {
+        switch meta.status {
+        case .running, .starting: true
+        case .idle, .done: meta.treeHasLiveWork == true
+        default: false
+        }
+    }
+
     /// Live roots: running or starting, or settled with a subagent still at
     /// work. Most recently moved first. Subagents fold under their root.
     public static func running(_ metas: [SessionMeta]) -> [SessionMeta] {
         metas
-            .filter { $0.parentId == nil && !$0.archived && ($0.status == .running || $0.status == .starting || $0.treeHasLiveWork == true) }
+            .filter { $0.parentId == nil && !$0.archived && isLive($0) }
             .sorted { ($0.updatedAt, $0.id) > ($1.updatedAt, $1.id) }
     }
 
-    /// The one line a needs-you row says, from the thread's newest rows: the
-    /// undecided approval ("Approve: run bun test"), the unanswered question
-    /// ("Question: which email?"), or the error. Without rows, the kind alone.
-    public static func line(for kind: NeedsYouItem.Kind, rows: [EventRow]) -> String {
+    /// What a needs-you row says and where it points: the undecided approval
+    /// ("Approve: run bun test"), the unanswered question ("Question: which
+    /// email?"), or the error, with the seq of that row so the thread screen
+    /// lands on the card. Without rows, the kind alone.
+    public struct Cue: Sendable, Hashable {
+        public var text: String
+        public var seq: Int?
+
+        public init(text: String, seq: Int? = nil) {
+            self.text = text
+            self.seq = seq
+        }
+    }
+
+    public static func cue(for kind: NeedsYouItem.Kind, rows: [EventRow]) -> Cue {
         switch kind {
         case .paused:
-            return "Paused"
+            return Cue(text: "Paused")
         case .error:
             for row in rows.reversed() {
                 if case .error(let error) = row.event {
-                    if error.stopped == true { return "Stopped" }
-                    return "Error: \(firstLine(error.message))"
+                    if error.stopped == true { return Cue(text: "Stopped", seq: row.seq) }
+                    return Cue(text: "Error: \(firstLine(error.message))", seq: row.seq)
                 }
             }
-            return "Failed"
+            return Cue(text: "Failed")
         case .waiting:
             var resolved: Set<String> = []
             for row in rows.reversed() {
@@ -78,16 +100,21 @@ public enum HomeModel {
                 case .questionResolved(let done):
                     resolved.insert(done.requestId)
                 case .approvalRequest(let request) where !resolved.contains(request.requestId):
-                    return "Approve: \(firstLine(request.title ?? request.toolName))"
+                    return Cue(text: "Approve: \(firstLine(request.title ?? request.toolName))", seq: row.seq)
                 case .questionRequest(let request) where !resolved.contains(request.requestId):
-                    if let question = request.questions.first?.question { return "Question: \(firstLine(question))" }
-                    return "Question"
+                    if let question = request.questions.first?.question { return Cue(text: "Question: \(firstLine(question))", seq: row.seq) }
+                    return Cue(text: "Question", seq: row.seq)
                 default:
                     continue
                 }
             }
-            return "Waiting for you"
+            return Cue(text: "Waiting for you")
         }
+    }
+
+    /// The cue's text alone.
+    public static func line(for kind: NeedsYouItem.Kind, rows: [EventRow]) -> String {
+        cue(for: kind, rows: rows).text
     }
 
     static func firstLine(_ text: String) -> String {

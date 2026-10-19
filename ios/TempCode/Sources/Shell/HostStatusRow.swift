@@ -12,7 +12,7 @@ struct HostStatusRow: View {
         let status = client.status
         HStack(spacing: 10) {
             Circle()
-                .fill(status.transport == .reconnecting ? Tint.warning : Tint.destructive)
+                .fill(status.transport == .reconnecting || status.transport == .connecting ? Tint.warning : Tint.destructive)
                 .frame(width: 7, height: 7)
                 .frame(width: 14)
             VStack(alignment: .leading, spacing: 1) {
@@ -42,7 +42,7 @@ struct StatusText: View {
     let status: EnvironmentStatus
 
     var body: some View {
-        if status.transport == .reconnecting, status.nextRetryAt != nil {
+        if status.transport == .reconnecting || status.transport == .connecting, status.nextRetryAt != nil {
             TimelineView(.periodic(from: .now, by: 1)) { context in
                 Text(Self.text(for: status, now: context.date))
                     .monospacedDigit()
@@ -57,7 +57,9 @@ struct StatusText: View {
         case .open:
             return "Connected"
         case .connecting:
-            return "Connecting…"
+            guard let at = status.nextRetryAt, status.attempts > 0 else { return "Connecting…" }
+            let seconds = max(0, Int((at / 1000 - now.timeIntervalSince1970).rounded()))
+            return seconds > 0 ? "Could not reach the host. Retrying in \(seconds) s" : "Could not reach the host. Retrying…"
         case .reconnecting:
             guard let at = status.nextRetryAt else { return "Reconnecting…" }
             let seconds = max(0, Int((at / 1000 - now.timeIntervalSince1970).rounded()))

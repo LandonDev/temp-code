@@ -10,6 +10,7 @@ struct WorkspaceIconView: View {
     let client: EnvironmentClient
     let workspace: WorkspaceMeta
     var size: CGFloat = 20
+    @Environment(\.displayScale) private var scale
 
     var body: some View {
         let icon = client.icons[workspace.id]
@@ -20,6 +21,7 @@ struct WorkspaceIconView: View {
                     .scaledToFill()
                     .frame(width: size, height: size)
                     .clipShape(RoundedRectangle(cornerRadius: size / 4, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: size / 4, style: .continuous).strokeBorder(Color.primary.opacity(0.1), lineWidth: 1 / scale))
             } else if let host = icon?.host.flatMap(GitHost.init(rawValue:)) {
                 HostMark(host: host)
                     .frame(width: size, height: size)

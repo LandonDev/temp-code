@@ -9,8 +9,8 @@ struct HomeView: View {
     @Binding var path: NavigationPath
     /// Folded workspace keys, one per line, remembered across launches.
     @AppStorage("home.folded") private var foldedRaw = ""
-    /// The needs-you line per thread, from its newest rows.
-    @State private var lines: [String: String] = [:]
+    /// The needs-you cue per thread (its line and the row to land on), from its newest rows.
+    @State private var cues: [String: HomeModel.Cue] = [:]
     @State private var adding = false
     @State private var pairingAgain: PairedEnvironment?
 
@@ -29,7 +29,7 @@ struct HomeView: View {
             } else {
                 List {
                     ForEach(rows) { row in
-                        HomeRowView(row: row, line: line(for: row), path: $path, fold: toggleFold, pairAgain: { pairingAgain = $0 })
+                        HomeRowView(row: row, cue: cue(for: row), path: $path, fold: toggleFold, pairAgain: { pairingAgain = $0 })
                     }
                 }
                 .listStyle(.plain)
@@ -54,8 +54,8 @@ struct HomeView: View {
         foldedRaw = keys.sorted().joined(separator: "\n")
     }
 
-    private func line(for row: HomeRow) -> String? {
-        if case .needsYou(_, let item) = row { return lines[item.id] }
+    private func cue(for row: HomeRow) -> HomeModel.Cue? {
+        if case .needsYou(_, let item) = row { return cues[item.id] }
         return nil
     }
 
@@ -71,8 +71,8 @@ struct HomeView: View {
         for row in rows {
             guard case .needsYou(let client, let item) = row else { continue }
             let tail = item.kind == .paused ? [] : await client.peekTail(item.id)
-            let line = HomeModel.line(for: item.kind, rows: tail)
-            if lines[item.id] != line { lines[item.id] = line }
+            let cue = HomeModel.cue(for: item.kind, rows: tail)
+            if cues[item.id] != cue { cues[item.id] = cue }
         }
     }
 }
@@ -80,7 +80,7 @@ struct HomeView: View {
 /// One row of Home. Headers sit flush; content rows share the text edge.
 private struct HomeRowView: View {
     let row: HomeRow
-    let line: String?
+    let cue: HomeModel.Cue?
     @Binding var path: NavigationPath
     let fold: (EnvironmentClient, WorkspaceMeta) -> Void
     let pairAgain: (PairedEnvironment) -> Void
@@ -97,8 +97,8 @@ private struct HomeRowView: View {
                 .listRowInsets(EdgeInsets())
                 .listRowSeparator(.hidden)
         case .needsYou(let client, let item):
-            Button { open(client, item.meta.id) } label: {
-                NeedsYouRow(item: item, line: line)
+            Button { open(client, item.meta.id, seq: cue?.seq) } label: {
+                NeedsYouRow(item: item, line: cue?.text)
             }
             .buttonStyle(.pressable)
             .listRowInsets(rowInsets)
@@ -149,8 +149,8 @@ private struct HomeRowView: View {
         }
     }
 
-    private func open(_ client: EnvironmentClient, _ sessionId: String) {
-        path.append(Route.thread(environmentId: client.environment.id, sessionId: sessionId, seq: nil))
+    private func open(_ client: EnvironmentClient, _ sessionId: String, seq: Int? = nil) {
+        path.append(Route.thread(environmentId: client.environment.id, sessionId: sessionId, seq: seq))
     }
 
     private func threadButton(_ client: EnvironmentClient, _ sessionId: String, _ model: ThreadRowModel) -> some View {
@@ -167,6 +167,7 @@ private struct HomeRowView: View {
 private struct NeedsYouRow: View {
     let item: NeedsYouItem
     let line: String?
+    @Environment(\.dynamicTypeSize) private var typeSize
 
     var body: some View {
         HStack(spacing: 10) {
@@ -175,7 +176,7 @@ private struct NeedsYouRow: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(item.meta.title.isEmpty ? "Untitled" : item.meta.title)
                     .font(.subheadline)
-                    .lineLimit(1)
+                    .lineLimit(typeSize.isAccessibilitySize ? 2 : 1)
                 Text(line ?? HomeModel.line(for: item.kind, rows: []))
                     .font(.footnote)
                     .foregroundStyle(.secondary)
