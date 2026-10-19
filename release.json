@@ -1,5 +1,5 @@
 {
-  "n": 248,
-  "notes": "iOS shell (L3): Home with needs-you, running and workspaces per host, archived lists, Inbox over github.inbox with pull to refresh and a read-only detail, Search over session.search and search.project, Settings and Hosts with pairing by link or key; workspace icons through workspace.icon with the git host marks; the contract subset grows workspace.icon, the GitHub inbox, details, thread and PR diff, session.search and search.project with re-recorded fixtures; the test server seeds two workspaces, archived rows, chats, a pinned, a running, a waiting, a failed, a paused thread and a fleet; the simulator proof walks every screen in light, dark and an accessibility size",
-  "ts": 1792444482786
+  "n": 249,
+  "notes": "capabilities.test.ts lists the account sync rows (accounts.push/pull admin, accounts.sync/setHome local); e2e-accounts-sync types the peer's name",
+  "ts": 1792445025567
 }
