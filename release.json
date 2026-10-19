@@ -1,5 +1,5 @@
 {
-  "n": 241,
-  "notes": "box: stage updates with trials and rollback; verify backup restores",
-  "ts": 1792436085647
+  "n": 242,
+  "notes": "Environments UI (thread K2): Settings → Environments pane, environment switcher and grouped rail, per-host inbox and model catalog, remote workspace folders over the link, degraded thread line; proof scripts/e2e-environments-ui.ts",
+  "ts": 1792440043928
 }
