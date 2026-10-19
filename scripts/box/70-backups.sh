@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 source "$(dirname "$0")/lib.sh"
-packages restic
+packages restic sqlite3
 if [[ ! -d /etc/restic ]] || [[ $(stat -c %a /etc/restic) != 700 ]]; then install -d -m 700 /etc/restic; changed '/etc/restic'; else skip '/etc/restic'; fi
 put /etc/restic/box.env.example 600 <<'EOF'
 # Copy to /etc/restic/box.env (root:root, 600) and replace all placeholders.
@@ -21,16 +21,40 @@ put /etc/restic/excludes 600 <<'EOF'
 **/Cache
 **/Code Cache
 **/GPUCache
+/srv/agents/temp-code
+/srv/agents/temp-code-data/*.db
+/srv/agents/temp-code-data/*.db-wal
+/srv/agents/temp-code-data/*.db-shm
+/srv/agents/temp-code-data/blob_storage
+/srv/agents/temp-code-data/Crashpad
+/srv/agents/home/.npm-global
+/srv/agents/home/.npm
+/srv/agents/home/.bun
+/srv/agents/home/.cache
 EOF
 put /usr/local/sbin/box-backup 750 < "$BOX_DIR/restic-backup.sh"
+put /usr/local/sbin/box-backup-failed 750 < "$BOX_DIR/backup-failed.sh"
+put /etc/systemd/system/box-backup-failed.service <<'EOF'
+[Unit]
+Description=Report a failed box backup to the hub
+ConditionPathExists=/etc/box-heartbeat.env
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/box-backup-failed
+UMask=0077
+TimeoutStartSec=60
+EOF
 put /etc/systemd/system/box-backup.service <<'EOF'
 [Unit]
 Description=Back up box data to the configured R2 restic repository
 ConditionPathExists=/etc/restic/box.env
 ConditionPathExists=/etc/restic/password
+OnFailure=box-backup-failed.service
 [Service]
 Type=oneshot
 ExecStart=/usr/local/sbin/box-backup
+Environment=RESTIC_CACHE_DIR=/var/cache/restic
+CacheDirectory=restic
 Slice=prod.slice
 Nice=10
 IOSchedulingClass=best-effort

@@ -144,39 +144,39 @@ even when a different tunnel name follows `info`. The clean config avoids
 that override without editing the Mac's config.
 See [Cloudflare's local tunnel guide](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/do-more-with-tunnels/local-management/create-local-tunnel/).
 
-## Backups (installed, disabled)
+## Backups (live since 2026-10-19)
 
-Restic is installed. `box-backup.timer` is installed but disabled. No bucket
-was created, repository initialized, or backup uploaded: R2 credentials are
-not available yet.
+Restic, to the Cloudflare R2 bucket `tempcode-backups` (account
+landonhale123@gmail.com), two repositories: `box` for this machine and `mac`
+for the Mac. One restic password covers both; it lives in the Mac login
+Keychain as `tempcode-restic` (account `landon`) and on the box in
+`/etc/restic/password`. The bucket-scoped R2 key is Keychain item
+`tempcode-r2-backups` (account = access key id, password = secret) and
+`/etc/restic/box.env`. Losing the password loses every backup; the R2 key
+alone cannot read them.
 
-On the box, as root:
+- `box-backup.timer` runs `/usr/local/sbin/box-backup` (scripts/box/
+  restic-backup.sh) daily at 04:15 New York plus up to 20 minutes, in
+  prod.slice. It snapshots every `*.db` in `/srv/agents/temp-code-data` with
+  `VACUUM INTO` as the agents user into `/srv/agents/backups/sqlite` (the live
+  database files are excluded; a mid-write copy is worthless), backs up
+  `/srv/agents`, `/srv/prod` and `/etc` with `/etc/restic/excludes`, keeps
+  7 daily / 4 weekly / 6 monthly, prunes, and runs `restic check`.
+- Postgres dumps come from `prod-postgres-backup.timer` (03:20) into
+  `/srv/prod/backups/postgres`; the restic run picks them up.
+- A failed run fires `box-backup-failed.service`, which POSTs a `failed`
+  notification to the hub with the heartbeat token.
+- Check: `systemctl list-timers box-backup.timer`,
+  `journalctl -u box-backup.service`, and as root
+  `set -a; source /etc/restic/box.env; set +a; restic snapshots`.
+- Restore drill (done once on 2026-10-19, repeat after any change):
+  `restic restore latest --target /srv/prod/restore-check --include /srv/agents/backups/sqlite`,
+  then `sqlite3 <file> 'PRAGMA quick_check'`, then remove the target.
 
-1. Copy `/etc/restic/box.env.example` to `/etc/restic/box.env`, mode 600.
-   Fill in the R2 account ID, bucket, bucket-scoped access key ID, and secret
-   key. Keep `AWS_DEFAULT_REGION=auto`. Values use shell syntax; quote secrets.
-2. Create `/etc/restic/password`, mode 600, containing a strong restic encryption
-   password. Store a second copy off the box; R2 credentials cannot decrypt
-   backups without it. Never put either file in this repo.
-3. In a root shell, run `set -a; source /etc/restic/box.env; set +a`, then
-   `restic init` once for a new repository. Use `restic snapshots` for an
-   existing repository rather than reinitializing it.
-4. Run `systemctl start box-backup.service`, inspect
-   `journalctl -u box-backup.service`, and run `restic check`.
-5. Test a restore to a scratch directory, for example
-   `restic restore latest --target /srv/prod/restore-check --include /etc/hostname`.
-   Compare the restored file, remove the scratch copy, then run
-   `systemctl enable --now box-backup.timer`.
-
-The timer runs daily at 04:15 New York time, with up to 20 minutes of jitter.
-`/usr/local/sbin/box-backup` backs up `/srv/agents`, `/srv/prod`, and `/etc`.
-`/etc/restic/excludes` omits caches, node_modules, the restic secrets, and
-`/srv/prod/docker`. Thread C must provide a consistent SQLite snapshot; thread I
-must provide database dumps and named-volume backup paths before these backups
-can protect live apps. A file copy of a running database is insufficient.
-There is no automatic deletion or retention rule. Reapply preserves live env
-files and any timer state the owner later chooses.
-See [restic's repository setup](https://restic.readthedocs.io/en/stable/030_preparing_a_new_repo.html).
+The Mac side is scripts/mac/backup.sh installed by scripts/mac/install-backup.sh
+as the launchd agent `dev.landon.tempcode.backup` (03:30 daily, log in
+`~/Library/Logs/tempcode-backup.log`): same snapshot step over
+`~/Library/Application Support/temp-code`, including `checkpoints/`.
 
 ## Heartbeat (installed, disabled)
 
@@ -192,8 +192,7 @@ minute, with up to 10 seconds of jitter. Reapply preserves the live env file.
 
 ## Next threads
 
-- **C — temp-code under Xvfb:** done; see "temp-code service" below. Still
-  open from it: a consistent SQLite snapshot for the backup timer.
+- **C — temp-code under Xvfb:** done; see "temp-code service" below.
 - **U — launcher:** run app child processes as agents within `agents.slice`;
   use the lingering user manager or an explicit system unit. Do not use root
   or the Docker socket. Preserve the 7677 listener and app data while adding

@@ -202,6 +202,11 @@ routed to (aliax-core's `forward`). Two listeners:
   `bun scripts/e2e-box-remote.ts`. Every "ask the login shell" call goes
   through src/main/server/loginShell.ts (`$SHELL`, else zsh on macOS, bash
   elsewhere): never hardcode /bin/zsh.
+- Backups: restic to R2 bucket `tempcode-backups`, repo `box` from
+  `box-backup.timer` (SQLite snapshotted with VACUUM INTO, never the live
+  files) and repo `mac` from the launchd agent `dev.landon.tempcode.backup`
+  (scripts/mac/backup.sh). Secrets are Keychain items `tempcode-restic` and
+  `tempcode-r2-backups`, never files in this repo. docs/box.md "Backups".
 
 ## The iOS contract package is generated
 - `ios/TempCodeContract` holds the Swift `Codable` types of the remote wire,
