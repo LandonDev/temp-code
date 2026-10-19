@@ -112,9 +112,41 @@ executable. The renderer uses its sandbox; no `--no-sandbox` or global sysctl
 relaxation is used. Thread C must install a matching profile for its own
 Electron executable path. See [Ubuntu's AppArmor docs](https://documentation.ubuntu.com/security/security-features/privilege-restriction/apparmor/).
 
+## Cloudflare tunnel
+
+Tunnel `tempcode-box` has ID `8ec0ebc3-db38-44f7-8193-19b9be6e08b6`.
+The Mac's origin certificate stays on the Mac. Only this tunnel's credentials
+JSON is copied to `/etc/cloudflared/`, root-only mode 600, in a mode 700
+directory. The Mac's existing config and other tunnel files stay untouched.
+`tunnel.sh` uses a temporary empty config for its own commands and refuses to
+recreate a tunnel if its credentials are missing.
+
+Cloudflared comes from Cloudflare's signed apt repo and runs as a systemd
+service. `/etc/cloudflared/config.yml` maps `tempcode.landonhale.com` to
+`http://127.0.0.1:7677`, then returns 404 for unmatched hosts. Metrics bind only
+to `127.0.0.1:20241`. The connector opens outbound connections; UFW needs no
+extra inbound rule. Until thread C starts the listener, HTTPS returns the
+expected Cloudflare 502.
+
+To add a production hostname:
+
+1. Add a hostname and its loopback origin to `scripts/box/ingress.yml`, before
+   the final `http_status:404` entry. Commit the edit.
+2. On the Mac, run `cloudflared --config scripts/box/cloudflared-local.yml tunnel route dns tempcode-box SITE.landonhale.com`.
+3. Run `scripts/box/apply.sh --from 60 --through 60`. It validates ingress and
+   restarts the connector only when its config changes.
+4. Check `cloudflared --config scripts/box/cloudflared-local.yml tunnel info tempcode-box`, the local origin, and HTTPS.
+
+Do not edit only the server config: a reapply will restore the repo version.
+Do not copy the origin certificate or another tunnel's JSON to the box.
+The explicit CLI config matters: this Mac's default config selects `devspace`
+even when a different tunnel name follows `info`. The clean config avoids
+that override without editing the Mac's config.
+See [Cloudflare's local tunnel guide](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/do-more-with-tunnels/local-management/create-local-tunnel/).
+
 ## Remaining stages
 
-Tunnel, backup, heartbeat, and verification details will be recorded after the
+Backup, heartbeat, and final verification details will be recorded after the
 live checks finish.
 
 ## User steps

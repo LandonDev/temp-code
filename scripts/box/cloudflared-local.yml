@@ -1,0 +1,2 @@
+# Mac CLI config only: avoid selecting a tunnel from ~/.cloudflared/config.yml.
+{}
