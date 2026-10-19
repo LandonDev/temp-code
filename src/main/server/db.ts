@@ -8,6 +8,7 @@ import {
 } from '@shared/contract-m3a'
 import { mkdirSync } from 'node:fs'
 import { timed } from './stalls'
+import type { EventReader } from './dbWorkers'
 import { dirname } from 'node:path'
 import type { AgentEvent, EventRow, SessionMeta, SessionStatus } from '@shared/events'
 import type { ProjectMeta, WorkspaceMeta } from '@shared/domain'
@@ -339,7 +340,10 @@ export function tailStart(
 }
 
 export class Store {
-  constructor(private db: DatabaseSync) {
+  /** Session search runs on the reader worker while it is up (dbWorkers.ts). */
+  private reader: EventReader | undefined
+  constructor(private db: DatabaseSync, options: { reader?: EventReader } = {}) {
+    this.reader = options.reader
     const rows = db.prepare(`SELECT id FROM sessions WHERE cold = 1`).all() as unknown as { id: string }[]
     for (const r of rows) this.coldIds.add(r.id)
   }
@@ -957,13 +961,18 @@ export class Store {
    *  Deltas and in-harness subagent prose are skipped: the full block that
    *  follows a delta stream repeats its text, and nested output has no row
    *  of its own in the transcript. Capped at 200 hits. */
-  searchEvents(options: {
+  /** Full-text walk of the log. Runs on the reader worker while it is up
+   *  (the writer's loop stays free for 0.2–9 s per call on a 4 GB file),
+   *  else on the writer; the same SQL either way. The SELECT cuts the
+   *  snippet, so at most 201 short rows cross the thread boundary and no
+   *  whole message is lowercased or sliced here. */
+  async searchEvents(options: {
     query: string
     workspaceId?: string
     limit?: number
     /** Also walk the cold file (archived threads' logs). */
     archived?: boolean
-  }): SessionSearchResult {
+  }): Promise<SessionSearchResult> {
     const needle = options.query.trim().toLowerCase()
     const limit = Math.min(options.limit ?? SEARCH_CAP, SEARCH_CAP)
     if (!needle) return { hits: [], truncated: false }
@@ -971,35 +980,39 @@ export class Store {
     const over = (table: string): string =>
       `SELECT e.session_id AS sessionId, e.seq AS seq, e.ts AS ts,
               json_extract(e.payload, '$.type') AS type,
-              json_extract(e.payload, '$.text') AS text
+              substr(json_extract(e.payload, '$.text'),
+                     max(1, instr(lower(json_extract(e.payload, '$.text')), ?) - 60), 180) AS snippet
        FROM ${table} e JOIN sessions s ON s.id = e.session_id
        WHERE json_extract(e.payload, '$.type') IN ('user-text', 'assistant-text')
          AND COALESCE(json_extract(e.payload, '$.delta'), 0) = 0
          AND json_extract(e.payload, '$.parentCallId') IS NULL
          AND instr(lower(json_extract(e.payload, '$.text')), ?) > 0
          ${options.workspaceId ? 'AND s.workspace_id = ?' : ''}`
-    const args = options.workspaceId ? [needle, options.workspaceId] : [needle]
-    const rows = this
-      .stmt(
-        `${over('events')}
+    const args = options.workspaceId ? [needle, needle, options.workspaceId] : [needle, needle]
+    const sql = `${over('events')}
          ${options.archived ? `UNION ALL ${over('cold.events')}` : ''}
          ORDER BY ts DESC, seq DESC
          LIMIT ?`
-      )
-      .all(
-        ...(options.archived ? [...args, ...args] : args),
-        limit + 1
-      ) as unknown as Array<{ sessionId: string; seq: number; ts: number; type: string; text: string }>
-    const hits: SessionSearchHit[] = rows.slice(0, limit).map((row) => {
-      const at = row.text.toLowerCase().indexOf(needle)
-      return {
-        sessionId: row.sessionId,
-        seq: row.seq,
-        role: row.type === 'user-text' ? 'user' : 'assistant',
-        snippet: row.text.slice(Math.max(0, at - 60), at + 120).trim(),
-        ts: row.ts
+    const params = [...(options.archived ? [...args, ...args] : args), limit + 1]
+    type Row = { sessionId: string; seq: number; ts: number; type: string; snippet: string }
+    let rows: Row[] | null = null
+    if (this.reader?.available) {
+      try {
+        rows = await this.reader.query<Row>(sql, params)
+      } catch {
+        // The worker ended under this call: answer from the writer, as
+        // every later call will.
+        rows = null
       }
-    })
+    }
+    rows ??= this.stmt(sql).all(...params) as unknown as Row[]
+    const hits: SessionSearchHit[] = rows.slice(0, limit).map((row) => ({
+      sessionId: row.sessionId,
+      seq: row.seq,
+      role: row.type === 'user-text' ? 'user' : 'assistant',
+      snippet: row.snippet.trim(),
+      ts: row.ts
+    }))
     return { hits, truncated: rows.length > limit }
   }
 

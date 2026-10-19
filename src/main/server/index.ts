@@ -13,7 +13,7 @@ import { visibleCatalog } from '@shared/catalog'
 import { ClientRequestSchema, type ServerFrame } from '@shared/contract'
 import type { SessionMeta } from '@shared/events'
 import { openDb, Store } from './db'
-import { startCheckpointWorker } from './dbWorkers'
+import { EventReader, startCheckpointWorker } from './dbWorkers'
 import { handleFsGit } from './fsgit'
 import { setMediaRoots } from './media'
 import { CheckpointStore } from './checkpoint'
@@ -177,7 +177,10 @@ export async function startServer(
   // writer keeps a 10,000-frame backstop and takes the work back if the
   // worker dies (dbWorkers.ts).
   const checkpointWorker = startCheckpointWorker(db, dbPath)
-  const store = new Store(db)
+  // Session search runs on a read-only connection in a second worker; the
+  // writer opened WAL first, so the -shm file the read-only open needs is there.
+  const reader = new EventReader(dbPath)
+  const store = new Store(db, { reader })
   const checkpoints = new CheckpointStore(join(options.dataDir ?? dirname(dbPath), 'checkpoints'))
   const registry = new SessionRegistry(store)
   // The file viewer's media host serves only files under these roots.
@@ -1249,6 +1252,7 @@ export async function startServer(
       await new Promise<void>((resolve, reject) => wss.close((error) => error ? reject(error) : resolve()))
       // Workers go first: the writer's close() runs the last checkpoint and
       // deletes the WAL only when it is the last connection.
+      await reader.stop()
       await checkpointWorker.stop()
       store.flushEvents()
       db.close()

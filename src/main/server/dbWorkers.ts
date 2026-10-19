@@ -7,6 +7,11 @@
  *   this inline every 1000 frames: copy up to 4 MB of pages into a 4 GB
  *   file and fsync it, on the loop that serves every renderer request.
  *   With the worker up the writer keeps a 10,000-frame backstop only.
+ * - The reader worker (EventReader) owns a read-only connection on both
+ *   files and answers session search, a json_extract walk of `events`
+ *   that held the loop for 0.2–9 s on a 4 GB file. The protocol is a plain
+ *   SQL executor, so other reads can follow; the writer runs the same SQL
+ *   itself when the reader is not up.
  *
  * Both workers are inline source strings started with `eval: true`: no
  * bundler worker entry, nothing for vitest to resolve, the same bytes in
@@ -208,3 +213,184 @@ export function startCheckpointWorker(
       })())
   }
 }
+
+// ── reader ──────────────────────────────────────────────────────────────
+
+/**
+ * Runs in the worker: a read-only connection on the hot file with cold
+ * attached, answering `{ id, sql, params }` with `{ id, rows }` or
+ * `{ id, error }`. Statements are cached by SQL in a small LRU (search has
+ * four shapes). A non-WAL reader's shared lock would block the writer's
+ * commits, so anything but WAL reports unavailable.
+ */
+const READER_WORKER_SOURCE = `
+const { parentPort, workerData } = require('node:worker_threads')
+const { DatabaseSync } = require('node:sqlite')
+const { file, cold, cacheSize } = workerData
+const post = (m) => parentPort.postMessage(m)
+try {
+  const db = new DatabaseSync(file, { readOnly: true })
+  db.exec('PRAGMA busy_timeout = 5000')
+  db.prepare('ATTACH DATABASE ? AS cold').run(cold)
+  const mode = db.prepare('PRAGMA journal_mode').get().journal_mode
+  if (mode !== 'wal') {
+    post({ type: 'unavailable', reason: 'journal_mode is ' + mode })
+    db.close()
+  } else {
+    const cache = new Map()
+    const statement = (sql) => {
+      let st = cache.get(sql)
+      if (st) {
+        cache.delete(sql)
+      } else {
+        st = db.prepare(sql)
+        if (cache.size >= cacheSize) cache.delete(cache.keys().next().value)
+      }
+      cache.set(sql, st)
+      return st
+    }
+    parentPort.on('message', ({ id, sql, params }) => {
+      try {
+        post({ id, rows: statement(sql).all(...params) })
+      } catch (e) {
+        post({ id, error: { message: String(e && e.message || e), code: e && e.code } })
+      }
+    })
+    post({ type: 'ready' })
+  }
+} catch (e) {
+  post({ type: 'error', message: String(e && e.message || e) })
+}
+`
+
+type ReaderMessage =
+  | { type: 'ready' }
+  | { type: 'unavailable'; reason: string }
+  | { type: 'error'; message: string }
+  | { id: number; rows: unknown[] }
+  | { id: number; error: { message: string; code?: string } }
+
+export type SqlParam = string | number | bigint | null | Uint8Array
+
+export interface ReaderOptions {
+  cacheSize?: number
+  log?: (line: string) => void
+}
+
+/**
+ * The host side of the reader worker. `available` is false until the
+ * worker is ready and for good once it ends: every pending query rejects
+ * then, and the Store runs that query and every later one on the writer.
+ * No restart. Start it after the writer opened WAL: the read-only open
+ * needs the `-shm` file the writer creates.
+ */
+export class EventReader {
+  private worker: Worker | null = null
+  private pending = new Map<number, { resolve: (rows: unknown[]) => void; reject: (error: Error) => void }>()
+  private nextId = 1
+  private up = false
+  private stopped: Promise<void> | null = null
+  readonly ready: Promise<boolean>
+
+  constructor(path: string, options: ReaderOptions = {}) {
+    const log = options.log ?? ((line) => console.log(line))
+    if (path === ':memory:') {
+      this.ready = Promise.resolve(false)
+      return
+    }
+    let resolveReady!: (ok: boolean) => void
+    this.ready = new Promise<boolean>((resolve) => {
+      resolveReady = resolve
+    })
+    let worker: Worker
+    try {
+      worker = new Worker(READER_WORKER_SOURCE, {
+        eval: true,
+        workerData: { file: path, cold: coldPathFor(path), cacheSize: options.cacheSize ?? 20 }
+      })
+    } catch (error) {
+      log(`[db] reader worker not started: ${(error as Error).message}`)
+      resolveReady(false)
+      return
+    }
+    this.worker = worker
+    const gone = (why: string): void => {
+      const was = this.up
+      this.up = false
+      resolveReady(false)
+      for (const [id, p] of this.pending) {
+        this.pending.delete(id)
+        p.reject(new Error(`reader worker ${why}`))
+      }
+      if (was && !this.stopped) log(`[db] reader worker ${why}; search runs on the writer`)
+    }
+    worker.on('message', (message: ReaderMessage) => {
+      if ('id' in message) {
+        const p = this.pending.get(message.id)
+        if (!p) return
+        this.pending.delete(message.id)
+        if ('rows' in message) p.resolve(message.rows)
+        else {
+          const error = new Error(message.error.message) as Error & { code?: string }
+          error.code = message.error.code
+          p.reject(error)
+        }
+        return
+      }
+      switch (message.type) {
+        case 'ready':
+          this.up = true
+          resolveReady(true)
+          return
+        case 'unavailable':
+          log(`[db] reader worker unavailable: ${message.reason}; search runs on the writer`)
+          resolveReady(false)
+          return
+        case 'error':
+          gone(`failed: ${message.message}`)
+          return
+      }
+    })
+    worker.on('error', (error) => gone(`crashed: ${error.message}`))
+    worker.on('exit', () => gone('exited'))
+    worker.unref()
+  }
+
+  /** True while the worker answers; a caller with other means checks this first. */
+  get available(): boolean {
+    return this.up
+  }
+
+  /** Runs `sql` with `params` on the reader; rejects when the worker is
+   *  gone or the statement fails (a write: "attempt to write a readonly database"). */
+  query<T>(sql: string, params: SqlParam[]): Promise<T[]> {
+    if (!this.up || !this.worker) return Promise.reject(new Error('reader worker not available'))
+    const id = this.nextId++
+    return new Promise<T[]>((resolve, reject) => {
+      this.pending.set(id, { resolve: resolve as (rows: unknown[]) => void, reject })
+      this.worker!.postMessage({ id, sql, params })
+    })
+  }
+
+  /** Rejects what is in flight (the Store answers those from the writer)
+   *  and terminates the worker. terminate() cannot interrupt a statement
+   *  running in SQLite, so the wait is capped: a search over the cold file
+   *  can run for seconds, and shutdown does not sit behind it. */
+  stop(): Promise<void> {
+    return (this.stopped ??= (async () => {
+      const worker = this.worker
+      this.worker = null
+      this.up = false
+      for (const [id, p] of this.pending) {
+        this.pending.delete(id)
+        p.reject(new Error('reader worker stopped'))
+      }
+      if (worker) {
+        await Promise.race([worker.terminate(), new Promise((r) => setTimeout(r, STOP_WAIT_MS).unref())])
+      }
+    })())
+  }
+}
+
+/** How long stop() waits for the reader's current statement to end. */
+export const STOP_WAIT_MS = 2000

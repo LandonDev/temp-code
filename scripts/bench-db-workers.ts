@@ -16,7 +16,7 @@ import { existsSync, readFileSync, rmSync, statSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { openDb, Store } from '../src/main/server/db'
 import { ColdMover } from '../src/main/server/cold'
-import { startCheckpointWorker } from '../src/main/server/dbWorkers'
+import { EventReader, startCheckpointWorker } from '../src/main/server/dbWorkers'
 import { setStallLog, startStallMonitor, STALL_MS } from '../src/main/server/stalls'
 import type { SessionMeta } from '../src/shared/events'
 
@@ -75,7 +75,9 @@ const checkpointWorker =
     : null
 if (checkpointWorker) console.log(`worker   ready=${await checkpointWorker.ready}`)
 console.log(`writer   wal_autocheckpoint=${autocheckpoint()} sqlite=${(db.prepare('SELECT sqlite_version() AS v').get() as { v: string }).v}`)
-const store = new Store(db)
+const reader = workers === 'on' ? new EventReader(dbPath) : undefined
+if (reader) console.log(`reader   ready=${await reader.ready}`)
+const store = new Store(db, { reader })
 
 // Every flush that had rows to land, timed from the outside.
 const flushes: number[] = []
@@ -117,7 +119,12 @@ async function loopHeld<T>(run: () => Promise<T>): Promise<{ result: T; heldMs: 
   }
 }
 
-// ── write load: 200k deltas, 8 sessions, 50 per tick ────────────────────
+// ── write load: 200k deltas, 8 sessions, 50 every 2 ms ──────────────────
+// About 500 commits/s and 5k WAL frames/s, above a heavy streaming load.
+// Unpaced (50 per setImmediate tick, 42k frames/s) the burst outruns the
+// worker's ~70k frames/s copy rate at its duty cycle, the WAL passes the
+// writer's 10,000-frame backstop and that checkpoint runs inline for
+// 150–250 ms: a rate no stream of events reaches, so it is not the bar.
 {
   const sessions = Array.from({ length: 8 }, (_, i) => `${RUN}-w${i}`)
   for (const id of sessions) store.insertSession(meta(id))
@@ -130,7 +137,7 @@ async function loopHeld<T>(run: () => Promise<T>): Promise<{ result: T; heldMs: 
         type: 'assistant-text', text: payload(i + j), delta: true, msgId: 'm', blockIndex: 0
       })
     }
-    await tick()
+    await sleep(2)
     if (i % 1000 === 0) {
       const { log, checkpointed } = noop('main')
       peakWal = Math.max(peakWal, log - checkpointed)
@@ -212,6 +219,7 @@ if (checkpointWorker) {
   if (bySchema.size === 0) console.log('  none')
   await checkpointWorker.stop()
 }
+await reader?.stop()
 console.log(`\nstalls.log (${logDir}):`)
 try {
   const lines = readFileSync(join(logDir, 'stalls.log'), 'utf8')

@@ -50,7 +50,7 @@ function meta(id: string, workspaceId: string): SessionMeta {
   } as unknown as SessionMeta
 }
 
-it('finds user and assistant text rows, skipping deltas and nested output', () => {
+it('finds user and assistant text rows, skipping deltas and nested output', async () => {
   store.insertSession(meta('a', 'w1'))
   store.insertSession(meta('b', 'w2'))
   store.appendEvent('a', { type: 'user-text', text: 'Please rename the Zebra widget' })
@@ -66,7 +66,7 @@ it('finds user and assistant text rows, skipping deltas and nested output', () =
   store.appendEvent('b', { type: 'user-text', text: 'nothing here' })
   store.appendEvent('b', { type: 'assistant-text', text: 'ZEBRA in another workspace', delta: false })
 
-  const all = store.searchEvents({ query: 'zebra' })
+  const all = await store.searchEvents({ query: 'zebra' })
   expect(all.truncated).toBe(false)
   expect(all.hits.map((h) => `${h.sessionId}:${h.seq}:${h.role}`).sort()).toEqual([
     'a:1:user',
@@ -77,18 +77,18 @@ it('finds user and assistant text rows, skipping deltas and nested output', () =
     'Please rename the Zebra widget'
   )
 
-  const scoped = store.searchEvents({ query: 'zebra', workspaceId: 'w2' })
+  const scoped = await store.searchEvents({ query: 'zebra', workspaceId: 'w2' })
   expect(scoped.hits).toHaveLength(1)
   expect(scoped.hits[0].sessionId).toBe('b')
 
-  expect(store.searchEvents({ query: '   ' }).hits).toEqual([])
+  expect((await store.searchEvents({ query: '   ' })).hits).toEqual([])
 })
 
-it('caps results and reports truncation', () => {
+it('caps results and reports truncation', async () => {
   store.insertSession(meta('a', 'w1'))
   for (let i = 0; i < 5; i++) store.appendEvent('a', { type: 'user-text', text: `needle ${i}` })
-  const capped = store.searchEvents({ query: 'needle', limit: 3 })
+  const capped = await store.searchEvents({ query: 'needle', limit: 3 })
   expect(capped.hits).toHaveLength(3)
   expect(capped.truncated).toBe(true)
-  expect(store.searchEvents({ query: 'needle' }).truncated).toBe(false)
+  expect((await store.searchEvents({ query: 'needle' })).truncated).toBe(false)
 })

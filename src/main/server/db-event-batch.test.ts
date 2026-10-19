@@ -109,7 +109,7 @@ describe('batched event log', () => {
     expect(store.eventsAfter('a', 0).map((r) => [r.seq, (r.event as { text: string }).text])).toEqual([[1, 'fresh']])
   })
 
-  it('a delta stream followed by the full block replays exactly as before', () => {
+  it('a delta stream followed by the full block replays exactly as before', async () => {
     store.insertSession(meta('a'))
     const events: AgentEvent[] = [
       { type: 'user-text', text: 'go' },
@@ -122,6 +122,6 @@ describe('batched event log', () => {
     expect(store.events('a', { tail: 1 }).map((r) => r.seq)).toEqual([2, 3, 4, 5])
     expect(store.hasUserText('a')).toBe(true)
     expect(store.maxSeqs().get('a')).toBe(5)
-    expect(store.searchEvents({ query: 'hello' }).hits.map((h) => h.seq)).toEqual([4])
+    expect((await store.searchEvents({ query: 'hello' })).hits.map((h) => h.seq)).toEqual([4])
   })
 })

@@ -93,17 +93,17 @@ describe('hot / cold event files', () => {
     expect(seqs(store.eventsAfter('a', 0))).toHaveLength(12)
   })
 
-  it('every reader falls through to cold', () => {
+  it('every reader falls through to cold', async () => {
     seed('a', 12, { archived: true })
     store.moveToCold('a')
     expect(store.hasUserText('a')).toBe(true)
     expect(seqs(store.eventsRange('a', 10, 5))).toEqual([11, 12])
     expect(seqs(store.events('a', { afterSeq: 2, beforeSeq: 5 }))).toEqual([3, 4])
     expect(seqs(store.events('a', { tail: 2 })).length).toBeGreaterThan(0)
-    const hits = store.searchEvents({ query: 't11', archived: true }).hits
+    const hits = (await store.searchEvents({ query: 't11', archived: true })).hits
     expect(hits.map((h) => h.sessionId)).toEqual(['a'])
     // hot-only search does not walk the cold file
-    expect(store.searchEvents({ query: 't11' }).hits).toEqual([])
+    expect((await store.searchEvents({ query: 't11' })).hits).toEqual([])
   })
 
   it('appends to a cold session land in the cold file with the next seq', () => {
