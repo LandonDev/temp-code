@@ -34,10 +34,20 @@ struct ThreadView: View {
                             .padding(.top, 4)
                             .onAppear { Task { await client.loadOlder(sessionId) } }
                         }
-                        if items.isEmpty && thread.isLoading {
+                        if items.isEmpty {
                             HStack {
                                 Spacer()
-                                ProgressView()
+                                if thread.isLoading {
+                                    ProgressView()
+                                } else if let gone = thread.goneReason {
+                                    Text(gone)
+                                        .font(.footnote)
+                                        .foregroundStyle(.secondary)
+                                } else if thread.isLive || !thread.rows.isEmpty {
+                                    Text("Nothing here yet")
+                                        .font(.footnote)
+                                        .foregroundStyle(.secondary)
+                                }
                                 Spacer()
                             }
                             .padding(.top, 40)

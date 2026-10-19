@@ -1,0 +1,223 @@
+# TempCodeClient
+
+The phone's half of temp-code's remote wire: a Swift 6 package that pairs
+with a host, keeps one supervised WebSocket per host, mirrors what it has
+seen into an on-disk cache, and hands SwiftUI an observable model. It sits
+on `../TempCodeContract` (the generated wire types) and under `../TempCode`
+(the SwiftUI app). Thread L2 built it; L3 (actions) and L4 (push, Live
+Activity) build on the extension points at the end.
+
+Platforms: iOS 18, macOS 15 (the tests run on the Mac). Toolchain on this
+Mac: Xcode 27 beta (Swift 6.4) through `DEVELOPER_DIR`; the Command Line
+Tools stay selected.
+
+## Layout
+
+```
+Sources/TempCodeClient
+  Connection/   Backoff, Status (TransportState, EnvironmentStatus, CloseReason, HaltReason),
+                WebSocketConnection (+ URLSessionWebSocket), Transport, TempCodeSocket
+  Environments/ PairedEnvironment + PairingLink, KeyStore (Keychain, in-memory), RemoteAPI, EnvironmentStore
+  Cache/        Database (sqlite3), SessionCache
+  Client/       Subscriptions, EnvironmentClient, ClientRegistry
+  Rendering/    Transcript (rows → items), MarkdownBlocks
+  Support/      SocketClock (SystemClock, ManualClock)
+Tests/TempCodeClientTests
+  fake-socket and manual-clock suites, cache and client suites, LiveServerTests (a real server)
+```
+
+## The pieces
+
+**PairedEnvironment** is one host: the environment id its `hello` reports,
+a name, the origin (`https://tempcode.landonhale.com`, or
+`http://127.0.0.1:7677` for a dev instance), the key's capabilities. The key
+itself lives only in the **KeyStore** under the environment id: the Keychain
+on the phone (`KeychainKeyStore`, after first unlock, this device only), memory
+in tests and proof runs.
+
+**RemoteAPI** is the http side: `GET /api/hello`, `POST /api/pair { code,
+kind: 'key' }`, `POST /api/ticket`. Its errors say what to do next:
+`unauthorized` (never retried by itself), `forbidden`, `rateLimited(retryAfter)`,
+`rejected`, `unavailable`.
+
+**EnvironmentStore** (`@MainActor @Observable`) holds the paired
+environments as a JSON file in Application Support. Add by pairing link
+(`<origin>/pair#XXXXX-XXXXX`) or by a key made on the desktop; pairing the
+same host again replaces its key; remove deletes the key.
+
+**Transport** is one socket to one host, the desktop's `Transport`
+(src/renderer/src/lib/connection/transport.ts) as an actor. `open()` resolves
+on the `hello` frame, which the server sends first, with a 10 s timeout;
+requests correlate by id and come back typed (`TransportError.server` for
+`ok: false`, `.isForbidden` when the key lacks the capability); pushes
+stream from `pushes`; every close reaches `closed()` once with a
+`CloseReason`. Close codes 4401, 4403 and 4001 (revoked), and a refused
+upgrade (401/403), are `unauthorized`. The socket is a `WebSocketConnection`
+behind a factory, so the unit tests script it; `URLSessionWebSocket` is the
+real one, and URLSession negotiates `permessage-deflate` with the server
+(the live suite checks the negotiated extension).
+
+**TempCodeSocket** is the supervisor, one per environment, the desktop's
+`Supervisor` as an actor: mint a ticket, open, check the hello, keep the
+session, retry, probe. The policy is the desktop's, plus one state for the
+phone:
+
+| State | Meaning | Leaves it |
+|---|---|---|
+| `connecting` | no session yet since start or retry | hello → `open`; failure → retry timer (stays `connecting`) |
+| `open` | a session is up | loss → `reconnecting`; unauthorized close → `unauthorized`; background grace → `suspended` |
+| `reconnecting` | a session was lost; `nextRetryAt` says when | timer → attempt; `retry()`/foreground/online → attempt now |
+| `offline` | the OS says no network, or the socket **halted** (`halt`: identity changed, contract mismatch) | online → probe/attempt; `retry()` lifts a halt |
+| `unauthorized` | the key was refused (ticket 401/403, close 4401/4403/4001) | only `retry()` |
+| `suspended` | in the background, closed after the grace | foreground → attempt now |
+
+Backoff: 1 s doubling to 5 min, ±25 % jitter, the attempt count resets only
+after a session has stayed up 30 s; a rate-limited mint waits at least its
+`Retry-After`. Probes: foreground, online and `retry()` send `workspace.list`
+over the live session with a 5 s limit; a good probe marks `fresh`, a failed
+one closes the session and reconnects at once. Background: `setForeground(false)`
+starts a 10 s grace, then closes the socket and waits; coming forward before
+the grace ends only probes. A hello whose `environmentId` is not the paired
+one, or whose `contract` is not `contractVersion`, halts with a `HaltReason`
+the status line can explain ("update the app" vs "update the host").
+
+**Subscriptions** is the durable `session.subscribe` set (the desktop's
+`Subscriptions`). On every replacement session it forgets what was subscribed
+and `resumeAll` re-subscribes each open thread and resumes it with
+`session.events { afterSeq }` from the owner's cursor, four at a time. The
+reset rule: a page with `reset: true` means the gap outgrew the host's replay
+budget and the rows are a fresh tail, so the owner drops its fold first.
+
+**SessionCache** is the on-disk mirror: SQLite through the system `SQLite3`
+module, one file at `Application Support/TempCodeClient/cache.sqlite`, WAL.
+Tables, all keyed by environment: `workspaces`, `projects`, `sessions`
+(`updated_at` for the newest-first list), `rows` (`session_id, seq, ts, json`,
+primary key on session and seq so a replayed row can never duplicate),
+`bodies` (whole rows from `session.rowBody`, kept for good because persisted
+rows never change), `session_state` (`more_before`). Values are the wire's
+JSON, which the contract re-encodes byte for byte, so an older build can hold
+what a newer host sent. A thread keeps its newest 1,000 rows (pruned past
+1,300); the app paints the newest 300 and pages older ones 200 at a time,
+from the cache while it has them, then from the host with `beforeSeq`.
+
+Why raw sqlite3 and not GRDB: the schema is six tables of JSON blobs behind
+primary keys, the wrapper (`Database.swift`) is shorter than GRDB's record
+protocols would be, and the release gate builds this package on every
+commit: no dependency to resolve, nothing to fetch.
+
+**EnvironmentClient** (`@MainActor @Observable`) is one environment as the
+app sees it: `status`, `workspaces`, `projects`, `sessions` (newest first),
+`threads[id]` (`ThreadState`: rows oldest first and unique by seq,
+`moreBefore`, `isLoading`, `isLoadingOlder`, `isLive`, `goneReason`).
+`start()` paints from the cache, then connects; on each new session it lists
+the shell in one round trip (workspaces, projects, the first `session.list`
+page, then the cursor), resumes the open threads and marks `fresh`. Pushes:
+`events` append to an open thread (ephemeral rows stay out of the cache),
+`sessions` merge newest-first, `session-removed` drops the thread,
+`projects`/`workspaces` replace. `openThread` paints the cached tail at once
+and resumes without blocking the caller; `closeThread` leaves the set so a
+reconnect never replays what nobody looks at; `body(sessionId:seq:)` answers
+an omitted body from the cache or one `session.rowBody`; `assetRequest(host:
+path:)` is a `GET` for `/asset/<host>/<path>` with the key as the bearer
+(logos, media, agent pages; the server accepts an app key there since L2).
+
+**ClientRegistry** holds one client per stored environment, starts new ones,
+tears down removed ones (socket stopped, cache cleared), and fans
+foreground/online out to every socket.
+
+**Transcript.fold** turns rows into what the screen shows, by the desktop's
+rules: assistant text and thinking merge by `(msgId, blockIndex)` with deltas
+appended until the final row replaces them; a tool call and its result pair
+by `callId` (an omitted output keeps the seq that fetches it); questions and
+approvals resolve in place by `requestId`; a compaction's `done` updates its
+`start`; `turn-complete` closes the user turn before it; `errors-cleared`
+drops the error lines; `usage`, `context` and `research-source` fold away;
+an unknown row kind becomes a quiet "this version does not show" line.
+
+## Tests
+
+```sh
+bun run ios:test            # ../TempCodeContract: swift build + swift test (about 10 s warm)
+bun run ios:test:client     # this package, every suite: boots scripts/ios-client-test-server.ts
+                            # (a real server on a temp database with seeded threads, a read key,
+                            # control hooks for drop / append / clock / revoke), runs `swift test`
+                            # with the address and key in the test process environment only (about 4 s warm)
+bun scripts/ios-sim-proof-local.ts     # the simulator proof against that local server
+TC_TEST_PAIR_LINK=… TC_TEST_PAIR_NAME=… scripts/ios-sim-proof.sh   # the proof against a real host
+```
+
+Both `ios:test` and `ios:test:client` run in the release gate
+(scripts/release.ts). Without the live environment the `LiveServerTests`
+suite is skipped and `swift test` in this directory still runs the 56 unit
+tests: backoff bounds, the manual clock, pairing links, the store on a fake
+host, the transport on a scripted socket (hello first, timeout, correlation,
+pushes, close mapping), the supervisor on a manual clock (identity and
+contract halts, backoff and reset after 30 s up, the 5 min cap, unauthorized
+stops, rate limit, probes, background grace, offline/online, stop,
+replacement sessions), the cache (cold paint from disk, duplicates, reset,
+pruning, removal), the client (cold paint, shell listing, tail, pushes, drop
+and resume without duplicates, reset, older pages, bodies), the fold and the
+markdown splitter. The live suite adds: hello over http, a socket on a fresh
+ticket with the negotiated deflate extension and a forbidden call, identity
+and contract halts against the real hello, an expired and a reused ticket,
+a dropped link resumed from the last seq with no duplicate and no gap, and
+a revoked key.
+
+The simulator proof uses `simctl` (build, install, launch with the pairing
+link and a debug route in the app's environment, `simctl io screenshot`),
+not XCUITest: with the Command Line Tools selected as the developer
+directory, xcodebuild's test runner cannot reach the simulator's service
+hub ("failed to bless service hub", "the test runner hung before
+establishing connection") on either installed runtime. `UITests/ProofTests.swift`
+is the XCUITest version for a Mac with an Xcode selected. The simulator
+build is signed ad hoc on purpose: an unsigned simulator app has no
+application identifier and the Keychain refuses its items, which the app
+would have shown as "Key refused".
+
+## What L3 builds on (send, approve, stop, create)
+
+- Every action is one `EnvironmentClient.request(Methods.X.self, params)`;
+  the methods already in the contract subset: `SessionSend`, `SessionInterrupt`,
+  `SessionApprove`, `SessionAnswer`, `SessionPermission`, `Queue*`.
+  `session.create` is not in the subset yet: add `method('session.create', …)`
+  in scripts/gen-swift-contract.ts, `bun run gen:swift`, commit `Generated/`.
+- Gate the UI on the key: `PairedEnvironment.allows(.operate)` /
+  `.allows(.approve)`; a refused call still comes back as
+  `TransportError.server` with `isForbidden`, so a stale key degrades to a
+  message rather than a crash.
+- Optimistic sends: `ThreadState` is the place for a `pending` list of user
+  turns this device sent and the host has not echoed; the echo arrives as an
+  `events` push with the row's real seq, so match by text and clear.
+  `EnvironmentClient.apply` is where `.queue` pushes are currently dropped;
+  keep `QueuedMessage`s per session there for the queue UI.
+- Approvals and questions: the fold already yields `ApprovalItem`
+  (`request.requestId`, `allowed`, `auto`) and `QuestionItem`
+  (`request.questions`, `answers`, `resolved`); the buttons call
+  `session.approve` / `session.answer` with those ids and the item resolves
+  itself when the `approval-resolved` / `question-resolved` row lands.
+- Stop is `session.interrupt`; the `error` row with `stopped: true` is what
+  the transcript shows afterwards (`SystemLine.stopped`).
+- Reading state while acting: `status.fresh` says the shell was re-listed on
+  the live session; `threads[id].isLive` says the socket carries that thread's
+  pushes right now (false while reconnecting, so a send button can wait).
+
+## What L4 builds on (APNs through the hub, Live Activity)
+
+- Identity: `PairedEnvironment.id` is the host's environment id and
+  `SessionMeta.id` is global, so a push payload of `{ environmentId,
+  sessionId }` routes with `ClientRegistry.client(environmentId)` and
+  `openThread(sessionId)`; the host's notifier (src/main/server/remote/
+  notifier.ts) already emits `needs_you`, `finished`, `failed`, `stuck` to
+  the hub, which is where the device token and the fan-out belong.
+- Foreground state: `TempCodeSocket.statuses` and `sessions` are
+  `AsyncStream`s; `EnvironmentClient.sessions` carries `status`, `activity`,
+  `activityKind`, `tasks` (done/total/current) and `goal` per thread, which is
+  the Live Activity's content while the app is up. In the background the
+  socket closes after `SocketConfiguration.backgroundGraceMs` (10 s), so the
+  activity must be updated from APNs after that; `setForeground(true)` probes
+  and reconnects at once when the activity is tapped.
+- Registering the token with the hub needs the key: `KeyStore.key(for:)`
+  signs the request like `assetRequest` does; keep it out of the payload.
+- Background fetch for the cache: `EnvironmentClient.start()` paints from
+  `SessionCache` before any socket, so a short background session that
+  resumes open threads leaves the next cold launch current.
