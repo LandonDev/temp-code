@@ -1,5 +1,5 @@
 {
-  "n": 225,
-  "notes": "Gate every RPC on a principal's capabilities and give the server an environment id",
-  "ts": 1792390222670
+  "n": 226,
+  "notes": "Remote auth store: scrypt-hashed keys with capabilities, one-time pairing codes, cookie sessions, tickets",
+  "ts": 1792390666621
 }
