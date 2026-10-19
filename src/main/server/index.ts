@@ -23,7 +23,8 @@ import {
   type Principal
 } from '@shared/capabilities'
 import { loadEnvironmentId } from './remote/environment'
-import { handleRemote } from './remote/handlers'
+import { handleRemote, type RemoteContext } from './remote/handlers'
+import { RemoteAuth } from './remote/auth'
 import type { SessionMeta } from '@shared/events'
 import { openDb, Store } from './db'
 import { EventReader, startCheckpointWorker } from './dbWorkers'
@@ -171,6 +172,8 @@ export interface RunningServer {
   environmentId: string
   /** Serve the contract on a socket that already authenticated as `principal`. */
   attach: (ws: WebSocket, principal: Principal) => void
+  /** Keys, pairings, sessions and tickets for the fixed port (remote/auth.ts). */
+  remoteAuth: RemoteAuth
   registry: SessionRegistry
   store: Store
   gateway: Gateway
@@ -336,7 +339,13 @@ export async function startServer(
   warmTimer.unref()
 
   const builder = new BuildRunner()
-  const remoteContext = { environmentId }
+  const remoteAuth = new RemoteAuth(db)
+  const remoteContext: RemoteContext = {
+    environmentId,
+    auth: remoteAuth,
+    store,
+    status: () => ({ running: false, port: 0, error: null })
+  }
 
   const wss = new WebSocketServer({ host: '127.0.0.1', port: 0 })
   let connections = 0
@@ -427,7 +436,10 @@ export async function startServer(
       const requestKey = `${connection}:${req.id}`
       trackRequest(requestKey, req.method)
       try {
-        const remote = await handleRemote(req, remoteContext)
+        const remote = await handleRemote(
+          req,
+          principal.kind === 'local' ? remoteContext : { ...remoteContext, ceiling: principal.caps, createdBy: principal.keyId }
+        )
         if (remote.handled) return sendFrame({ id: req.id, ok: true, result: remote.result })
         const extension = await handleM3a(req, m3a)
         if (extension.handled) { sendFrame({ id: req.id, ok: true, result: extension.result }); return }
@@ -1280,6 +1292,7 @@ export async function startServer(
     port,
     environmentId,
     attach,
+    remoteAuth,
     hub,
     registry,
     store,

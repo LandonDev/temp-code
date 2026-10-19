@@ -101,6 +101,42 @@ export function openDb(path: string): DatabaseSync {
       goal          TEXT,
       can_continue  INTEGER NOT NULL DEFAULT 0
     );
+    -- Remote access (server/remote/auth.ts): named keys hashed at rest,
+    -- one-time pairing codes, and the browser sessions hanging off keys.
+    CREATE TABLE IF NOT EXISTS remote_keys (
+      id           TEXT PRIMARY KEY,
+      name         TEXT NOT NULL,
+      audience     TEXT NOT NULL,
+      caps         TEXT NOT NULL,
+      hash         TEXT,
+      salt         TEXT,
+      created_at   INTEGER NOT NULL,
+      last_used_at INTEGER,
+      revoked_at   INTEGER,
+      created_by   TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS remote_pairings (
+      id          TEXT PRIMARY KEY,
+      code_hash   TEXT NOT NULL,
+      name        TEXT NOT NULL,
+      audience    TEXT NOT NULL,
+      caps        TEXT NOT NULL,
+      created_at  INTEGER NOT NULL,
+      expires_at  INTEGER NOT NULL,
+      consumed_at INTEGER,
+      consumed_by TEXT
+    );
+    CREATE TABLE IF NOT EXISTS remote_sessions (
+      id           TEXT PRIMARY KEY,
+      key_id       TEXT NOT NULL,
+      secret_hash  TEXT NOT NULL,
+      caps         TEXT NOT NULL,
+      user_agent   TEXT,
+      created_at   INTEGER NOT NULL,
+      last_seen_at INTEGER NOT NULL,
+      expires_at   INTEGER NOT NULL,
+      revoked_at   INTEGER
+    );
   `)
   // Migrations for databases created before these columns existed.
   for (const stmt of [

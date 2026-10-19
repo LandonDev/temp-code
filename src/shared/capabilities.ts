@@ -208,7 +208,16 @@ export const METHOD_CAPABILITY: Record<ClientRequest['method'], MethodCapability
   'project.setAccounts': 'admin',
   'workspace.setAccounts': 'admin',
   'linear.setToken': 'admin',
-  'remote.status': 'admin'
+  'remote.status': 'admin',
+  'remote.keys.list': 'admin',
+  'remote.keys.create': 'admin',
+  'remote.keys.revoke': 'admin',
+  'remote.pairings.create': 'admin',
+  'remote.pairings.list': 'admin',
+  'remote.pairings.revoke': 'admin',
+  'remote.sessions.list': 'admin',
+  'remote.sessions.revoke': 'admin',
+  'remote.settings.set': 'admin'
 }
 
 /** The capability one request needs: the table row, plus the one
