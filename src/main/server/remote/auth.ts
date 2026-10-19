@@ -7,7 +7,14 @@ import {
   type Capability,
   type Principal
 } from '@shared/capabilities'
-import type { RemoteKey, RemotePairing, RemoteSession } from '@shared/contract-remote'
+import {
+  WEBHOOK_EVENTS,
+  type RemoteKey,
+  type RemotePairing,
+  type RemoteSession,
+  type WebhookEvent
+} from '@shared/contract-remote'
+import { checkWebhookUrl, type WebhookTarget } from './webhooks'
 
 /**
  * Who may reach the fixed port, and how (plan 5jtfkIC45Cbr). Pure logic
@@ -100,6 +107,9 @@ interface KeyRow {
   last_used_at: number | null
   revoked_at: number | null
   created_by: string
+  webhook_url: string | null
+  webhook_secret: string | null
+  events: string | null
 }
 interface PairingRow {
   id: string
@@ -133,7 +143,9 @@ const keyOf = (r: KeyRow): RemoteKey => ({
   createdAt: r.created_at,
   lastUsedAt: r.last_used_at,
   revokedAt: r.revoked_at,
-  createdBy: r.created_by
+  createdBy: r.created_by,
+  webhookUrl: r.webhook_url,
+  events: r.events ? (r.events.split(',') as WebhookEvent[]) : null
 })
 const pairingOf = (r: PairingRow): RemotePairing => ({
   id: r.id,
@@ -161,6 +173,34 @@ export interface RemoteAuthOptions {
   now?: () => number
 }
 
+/** The webhook columns a new key gets, and the secret made for it when the caller gave none. */
+function checkWebhook(input: { webhookUrl?: string; webhookSecret?: string; events?: WebhookEvent[] }): {
+  row: { webhook_url: string | null; webhook_secret: string | null; events: string | null }
+  generated: string | null
+} {
+  const url = input.webhookUrl?.trim()
+  if (!url) {
+    if (input.webhookSecret || input.events) throw new RemoteAuthError(400, 'a webhook secret or events need a webhookUrl')
+    return { row: { webhook_url: null, webhook_secret: null, events: null }, generated: null }
+  }
+  let checked: string
+  try {
+    checked = checkWebhookUrl(url)
+  } catch (err) {
+    throw new RemoteAuthError(400, (err as Error).message)
+  }
+  const events = input.events?.length ? input.events : [...WEBHOOK_EVENTS]
+  for (const event of events) {
+    if (!WEBHOOK_EVENTS.includes(event)) throw new RemoteAuthError(400, `unknown event "${event}"; events are ${WEBHOOK_EVENTS.join(', ')}`)
+  }
+  if (input.webhookSecret !== undefined && input.webhookSecret.length < 8) throw new RemoteAuthError(400, 'webhookSecret needs at least 8 characters')
+  const generated = input.webhookSecret ? null : randomBytes(32).toString('hex')
+  return {
+    row: { webhook_url: checked, webhook_secret: input.webhookSecret ?? generated, events: [...new Set(events)].join(',') },
+    generated
+  }
+}
+
 export class RemoteAuth {
   private readonly now: () => number
   /** sha256(token) → key id, so a key pays scrypt once per process; dropped on revoke. */
@@ -184,12 +224,15 @@ export class RemoteAuth {
     return (this.db.prepare(`SELECT * FROM remote_keys WHERE id = ?`).get(id) as KeyRow | undefined) ?? null
   }
 
-  private insertKey(row: Omit<KeyRow, 'last_used_at' | 'revoked_at'>): void {
+  private insertKey(
+    row: Omit<KeyRow, 'last_used_at' | 'revoked_at' | 'webhook_url' | 'webhook_secret' | 'events'> &
+      Partial<Pick<KeyRow, 'webhook_url' | 'webhook_secret' | 'events'>>
+  ): void {
     this.db
       .prepare(
-        `INSERT INTO remote_keys (id, name, audience, caps, hash, salt, created_at, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+        `INSERT INTO remote_keys (id, name, audience, caps, hash, salt, created_at, created_by, webhook_url, webhook_secret, events) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
-      .run(row.id, row.name, row.audience, row.caps, row.hash, row.salt, row.created_at, row.created_by)
+      .run(row.id, row.name, row.audience, row.caps, row.hash, row.salt, row.created_at, row.created_by, row.webhook_url ?? null, row.webhook_secret ?? null, row.events ?? null)
   }
 
   private freshKeyId(): string {
@@ -205,9 +248,13 @@ export class RemoteAuth {
     audience: Audience
     caps: Capability[]
     createdBy: string
+    /** A webhook of the key's own (remote/webhooks.ts); the secret is generated when absent and returned once. */
+    webhookUrl?: string
+    webhookSecret?: string
+    events?: WebhookEvent[]
     /** The creator's own caps when it is not local: a key never widens its creator. */
     ceiling?: Capability[]
-  }): Promise<{ key: RemoteKey; token: string }> {
+  }): Promise<{ key: RemoteKey; token: string; webhookSecret?: string }> {
     const name = input.name.trim()
     if (!name) throw new RemoteAuthError(400, 'name is required')
     if (!isAudience(input.audience)) throw new RemoteAuthError(400, 'audience must be client or mcp')
@@ -216,8 +263,13 @@ export class RemoteAuth {
     const secret = randomBytes(32).toString('base64url')
     const salt = randomBytes(16).toString('hex')
     const hash = (await scryptHash(secret, salt)).toString('hex')
-    this.insertKey({ id, name, audience: input.audience, caps: capsToText(caps), hash, salt, created_at: this.now(), created_by: input.createdBy })
-    return { key: keyOf(this.keyRow(id)!), token: `${KEY_PREFIX}${id}.${secret}` }
+    const webhook = checkWebhook(input)
+    this.insertKey({ id, name, audience: input.audience, caps: capsToText(caps), hash, salt, created_at: this.now(), created_by: input.createdBy, ...webhook.row })
+    return {
+      key: keyOf(this.keyRow(id)!),
+      token: `${KEY_PREFIX}${id}.${secret}`,
+      ...(webhook.generated ? { webhookSecret: webhook.generated } : {})
+    }
   }
 
   /** The key row a browser session hangs off: no secret, shown as kind `browser`. */
@@ -237,6 +289,16 @@ export class RemoteAuth {
   getKey(id: string): RemoteKey | null {
     const row = this.keyRow(id)
     return row ? keyOf(row) : null
+  }
+
+  /** The live keys whose webhook wants `event`, with the secrets the notifier signs with. */
+  webhookTargets(event: WebhookEvent): WebhookTarget[] {
+    const rows = this.db
+      .prepare(`SELECT * FROM remote_keys WHERE revoked_at IS NULL AND webhook_url IS NOT NULL AND webhook_secret IS NOT NULL`)
+      .all() as unknown as KeyRow[]
+    return rows
+      .filter((r) => (r.events ?? '').split(',').includes(event))
+      .map((r) => ({ keyId: r.id, name: r.name, url: r.webhook_url!, secret: r.webhook_secret! }))
   }
 
   /** Revokes the key, every session on it and every memo entry; listeners close its sockets. */

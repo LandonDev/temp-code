@@ -113,7 +113,11 @@ export function openDb(path: string): DatabaseSync {
       created_at   INTEGER NOT NULL,
       last_used_at INTEGER,
       revoked_at   INTEGER,
-      created_by   TEXT NOT NULL
+      created_by   TEXT NOT NULL,
+      -- A bot key may carry its own webhook: the hub payload, signed with the secret.
+      webhook_url    TEXT,
+      webhook_secret TEXT,
+      events         TEXT
     );
     CREATE TABLE IF NOT EXISTS remote_pairings (
       id          TEXT PRIMARY KEY,
@@ -164,7 +168,10 @@ export function openDb(path: string): DatabaseSync {
     `ALTER TABLE workspaces ADD COLUMN account_pins TEXT`,
     `ALTER TABLE workspaces ADD COLUMN github_repo TEXT`,
     `ALTER TABLE workspaces ADD COLUMN github_repo_checked_at INTEGER`,
-    `ALTER TABLE sessions ADD COLUMN cold INTEGER NOT NULL DEFAULT 0`
+    `ALTER TABLE sessions ADD COLUMN cold INTEGER NOT NULL DEFAULT 0`,
+    `ALTER TABLE remote_keys ADD COLUMN webhook_url TEXT`,
+    `ALTER TABLE remote_keys ADD COLUMN webhook_secret TEXT`,
+    `ALTER TABLE remote_keys ADD COLUMN events TEXT`
   ]) {
     try {
       db.exec(stmt)

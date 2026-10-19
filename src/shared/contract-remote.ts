@@ -19,6 +19,8 @@ export interface RemoteStatus {
   publicOrigin: string
   learnedOrigin: string | null
   contract: number
+  /** Minutes a working thread may stay silent before the notifier calls it stuck. */
+  stuckMinutes: number
 }
 
 const request = <M extends string, P extends z.ZodType>(method: M, params: P) =>
@@ -28,10 +30,19 @@ export const CapabilitySchema = z.enum(['read', 'operate', 'approve', 'admin'])
 export const AudienceSchema = z.enum(['client', 'mcp'])
 const Id = z.object({ id: z.string().min(1) })
 /** `POST /api/keys`, `remote.keys.create`, and (with ttlMinutes) pairings. */
+/** The notices a key's webhook may subscribe to (remote/notifier.ts). */
+export const WebhookEventSchema = z.enum(['needs_you', 'finished', 'failed', 'stuck'])
+export type WebhookEvent = z.infer<typeof WebhookEventSchema>
+export const WEBHOOK_EVENTS: readonly WebhookEvent[] = WebhookEventSchema.options
+
 export const NewClientSchema = z.object({
   name: z.string().min(1).max(80),
   audience: AudienceSchema,
-  caps: z.array(CapabilitySchema)
+  caps: z.array(CapabilitySchema),
+  /** A webhook of the key's own: the hub payload, signed with the secret (generated when absent). */
+  webhookUrl: z.string().min(1).max(500).optional(),
+  webhookSecret: z.string().min(8).max(200).optional(),
+  events: z.array(WebhookEventSchema).min(1).optional()
 })
 const NewClient = NewClientSchema
 export const NewPairingSchema = NewClientSchema.extend({ ttlMinutes: z.number().int().min(1).max(1440).optional() })
@@ -60,7 +71,9 @@ export const RemoteRequestSchemas = [
     z.object({
       enabled: z.boolean().optional(),
       port: z.number().int().min(1).max(65535).optional(),
-      publicOrigin: z.string().max(200).optional()
+      publicOrigin: z.string().max(200).optional(),
+      /** Minutes a working thread may stay silent before the notifier calls it stuck. */
+      stuckMinutes: z.number().int().min(1).max(1440).optional()
     })
   )
 ] as const
@@ -79,6 +92,9 @@ export interface RemoteKey {
   lastUsedAt: number | null
   revokedAt: number | null
   createdBy: string
+  /** The key's own webhook, if it has one; the secret is never listed. */
+  webhookUrl: string | null
+  events: WebhookEvent[] | null
 }
 
 export interface RemotePairing {

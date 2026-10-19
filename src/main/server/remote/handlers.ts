@@ -4,6 +4,7 @@ import { CONTRACT_VERSION, type Capability } from '@shared/capabilities'
 import type { RemoteStatus } from '@shared/contract-remote'
 import type { Store } from '../db'
 import type { RemoteAuth } from './auth'
+import { STUCK_MINUTES_DEFAULT } from './notifier'
 
 /** The remote listener's fixed loopback port behind the Cloudflare tunnel. */
 export const REMOTE_DEFAULT_PORT = 7677
@@ -16,29 +17,35 @@ export interface RemoteSettings {
   publicOrigin: string
   /** The last `X-Forwarded-Proto` + `Host` the proxy sent. */
   learnedOrigin: string | null
+  /** Minutes a working thread may stay silent before the notifier calls it stuck. */
+  stuckMinutes: number
 }
 
 const KEYS = {
   enabled: 'remote.enabled',
   port: 'remote.port',
   publicOrigin: 'remote.publicOrigin',
-  learnedOrigin: 'remote.learnedOrigin'
+  learnedOrigin: 'remote.learnedOrigin',
+  stuckMinutes: 'remote.stuckMinutes'
 } as const
 
 export function readRemoteSettings(store: Pick<Store, 'getSetting'>): RemoteSettings {
   const port = Number(store.getSetting(KEYS.port))
+  const stuck = Number(store.getSetting(KEYS.stuckMinutes))
   return {
     enabled: store.getSetting(KEYS.enabled) !== '0',
     port: Number.isInteger(port) && port > 0 && port < 65536 ? port : REMOTE_DEFAULT_PORT,
     publicOrigin: store.getSetting(KEYS.publicOrigin) ?? '',
-    learnedOrigin: store.getSetting(KEYS.learnedOrigin)
+    learnedOrigin: store.getSetting(KEYS.learnedOrigin),
+    stuckMinutes: Number.isInteger(stuck) && stuck > 0 ? stuck : STUCK_MINUTES_DEFAULT
   }
 }
 
 export function writeRemoteSettings(
   store: Pick<Store, 'setSetting'>,
-  patch: Partial<Pick<RemoteSettings, 'enabled' | 'port' | 'publicOrigin' | 'learnedOrigin'>>
+  patch: Partial<Pick<RemoteSettings, 'enabled' | 'port' | 'publicOrigin' | 'learnedOrigin' | 'stuckMinutes'>>
 ): void {
+  if (patch.stuckMinutes !== undefined) store.setSetting(KEYS.stuckMinutes, String(patch.stuckMinutes))
   if (patch.enabled !== undefined) store.setSetting(KEYS.enabled, patch.enabled ? '1' : '0')
   if (patch.port !== undefined) store.setSetting(KEYS.port, String(patch.port))
   if (patch.publicOrigin !== undefined) store.setSetting(KEYS.publicOrigin, patch.publicOrigin.trim().replace(/\/+$/, '') || null)
@@ -81,7 +88,8 @@ export function remoteStatus(ctx: RemoteContext): RemoteStatus {
     origin: pairingOrigin(settings, live.port),
     publicOrigin: settings.publicOrigin,
     learnedOrigin: settings.learnedOrigin,
-    contract: CONTRACT_VERSION
+    contract: CONTRACT_VERSION,
+    stuckMinutes: settings.stuckMinutes
   }
 }
 

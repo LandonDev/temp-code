@@ -28,6 +28,8 @@ import { handleRemote, type RemoteContext } from './remote/handlers'
 import { RemoteAuth } from './remote/auth'
 import { startRemoteListener, type RemoteListener } from './remote/listener'
 import { createMcpHandler } from './remote/mcp'
+import { Notifier } from './remote/notifier'
+import { deliverWebhooks, webhookPayload } from './remote/webhooks'
 import { createUiHandler } from './remote/ui'
 import { pairingOrigin, readRemoteSettings } from './remote/handlers'
 import type { SessionMeta } from '@shared/events'
@@ -186,8 +188,10 @@ export interface RunningServer {
   registry: SessionRegistry
   store: Store
   gateway: Gateway
-  /** Optional off-host relay; thread E sends notices through this client. */
+  /** Optional off-host relay; the notifier sends notices through this client. */
   hub: HubClient | null
+  /** Thread transitions as notices (needs_you, finished, failed, stuck); subscribe with onNotice. */
+  notifier: Notifier
   /** The shared Aliax accounts poll; the embedded Aliax pages nudge it after a change. */
   accounts: AccountsService
   close: () => Promise<void>
@@ -1380,6 +1384,23 @@ export async function startServer(
   }
 
   const hub = hubFromEnv({ name: hostname(), version: appVersion })
+  // Thread transitions → the hub, each key's own webhook, and in-process
+  // listeners (remote/notifier.ts). The hub's host id names this host in
+  // both payloads so a receiver sees one id whichever way a notice came.
+  const notifier = new Notifier({
+    registry,
+    stuckMinutes: () => readRemoteSettings(store).stuckMinutes,
+    origin: () => pairingOrigin(readRemoteSettings(store), remote?.port ?? 0)
+  })
+  if (hub) {
+    notifier.onNotice((n) => void hub.notify({ event: n.event, threadId: n.threadId, title: n.title, body: n.body, url: n.url, ts: n.ts }))
+  }
+  notifier.onNotice((n) => {
+    const targets = remoteAuth.webhookTargets(n.event)
+    if (targets.length === 0) return
+    return deliverWebhooks(targets, webhookPayload(n, process.env.TEMP_CODE_HUB_HOST_ID || environmentId)).then(() => undefined)
+  })
+  notifier.start()
 
   return {
     port,
@@ -1390,11 +1411,13 @@ export async function startServer(
       return remote
     },
     hub,
+    notifier,
     registry,
     store,
     gateway,
     accounts: m3a.accounts,
     close: async () => {
+      notifier.stop()
       hub?.stop()
       await remoteRestart
       await remote?.close()

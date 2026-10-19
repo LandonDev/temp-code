@@ -223,3 +223,33 @@ describe('principalFor', () => {
     expect(readCookie(undefined, 'b')).toBeNull()
   }, 20_000)
 })
+
+describe('webhooks on keys', () => {
+  it('stores a webhook with a generated secret shown once, lists it without the secret, and targets by event', async () => {
+    const made = await auth.createKey({ name: 'grok', audience: 'mcp', caps: ['operate'], createdBy: 'local', webhookUrl: 'https://bot.example/hook' })
+    expect(made.webhookSecret).toMatch(/^[0-9a-f]{64}$/)
+    expect(made.key).toMatchObject({ webhookUrl: 'https://bot.example/hook', events: ['needs_you', 'finished', 'failed', 'stuck'] })
+    const listed = auth.listKeys().find((k) => k.id === made.key.id)!
+    expect(listed.webhookUrl).toBe('https://bot.example/hook')
+    expect(JSON.stringify(listed)).not.toContain(made.webhookSecret)
+    const own = await auth.createKey({ name: 'gpt', audience: 'mcp', caps: [], createdBy: 'local', webhookUrl: 'https://other.example/x', webhookSecret: 'my-own-secret', events: ['finished', 'stuck'] })
+    expect(own.webhookSecret).toBeUndefined()
+    expect(own.key.events).toEqual(['finished', 'stuck'])
+    const plain = await auth.createKey({ name: 'phone', audience: 'client', caps: ['operate'], createdBy: 'local' })
+    expect(plain.key).toMatchObject({ webhookUrl: null, events: null })
+    expect(auth.webhookTargets('finished').map((t) => [t.keyId, t.url, t.secret])).toEqual(
+      expect.arrayContaining([
+        [made.key.id, 'https://bot.example/hook', made.webhookSecret],
+        [own.key.id, 'https://other.example/x', 'my-own-secret']
+      ])
+    )
+    expect(auth.webhookTargets('needs_you').map((t) => t.keyId)).toEqual([made.key.id])
+    auth.revokeKey(made.key.id)
+    expect(auth.webhookTargets('needs_you')).toEqual([])
+  })
+  it('refuses a bad URL, a short secret, events without a URL', async () => {
+    await expectStatus(() => auth.createKey({ name: 'x', audience: 'mcp', caps: [], createdBy: 'local', webhookUrl: 'http://bot.example/hook' }), 400, 'must be https')
+    await expectStatus(() => auth.createKey({ name: 'x', audience: 'mcp', caps: [], createdBy: 'local', webhookUrl: 'https://bot.example/hook', webhookSecret: 'short' }), 400, 'at least 8')
+    await expectStatus(() => auth.createKey({ name: 'x', audience: 'mcp', caps: [], createdBy: 'local', events: ['finished'] }), 400, 'need a webhookUrl')
+  })
+})

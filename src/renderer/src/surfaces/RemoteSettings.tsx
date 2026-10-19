@@ -81,7 +81,7 @@ export function RemoteSettings() {
     },
     [refresh],
   );
-  const setSettings = (patch: { enabled?: boolean; port?: number; publicOrigin?: string }) =>
+  const setSettings = (patch: { enabled?: boolean; port?: number; publicOrigin?: string; stuckMinutes?: number }) =>
     act("remote.settings.set", patch);
 
   if (!status) {
@@ -126,6 +126,9 @@ export function RemoteSettings() {
           onCommit={(publicOrigin) => void setSettings({ publicOrigin })}
         />
       </Row>
+      <Row label="Stuck after" description="Minutes a working thread may stay silent before bots and the hub hear it is stuck.">
+        <MinutesField value={status.stuckMinutes} onCommit={(stuckMinutes) => void setSettings({ stuckMinutes })} />
+      </Row>
       <ErrorLine error={error} />
 
       <Heading title="Clients" />
@@ -146,7 +149,7 @@ export function RemoteSettings() {
           <Item
             key={k.id}
             title={k.name}
-            meta={`${kindText(k)} · ${capsText(k.caps)} · ${k.lastUsedAt ? `used ${timeAgo(k.lastUsedAt)}` : "never used"}`}
+            meta={`${kindText(k)} · ${capsText(k.caps)}${k.webhookUrl ? ` · webhook ${hostOf(k.webhookUrl)}` : ""} · ${k.lastUsedAt ? `used ${timeAgo(k.lastUsedAt)}` : "never used"}`}
             action={
               <SecondaryButton danger onClick={() => void act("remote.keys.revoke", { id: k.id })}>
                 Revoke
@@ -220,6 +223,37 @@ function CopyButton({ text, label }: { text: string; label: string }) {
     >
       {copied ? <Check className="size-3.5" strokeWidth={2.25} /> : <Copy className="size-3.5" strokeWidth={1.75} />}
     </button>
+  );
+}
+
+function hostOf(url: string): string {
+  try {
+    return new URL(url).host;
+  } catch {
+    return url;
+  }
+}
+
+function MinutesField({ value, onCommit }: { value: number; onCommit: (minutes: number) => void }) {
+  const [text, setText] = useState(String(value));
+  useEffect(() => setText(String(value)), [value]);
+  const commit = () => {
+    const minutes = Number(text);
+    if (Number.isInteger(minutes) && minutes > 0 && minutes <= 1440 && minutes !== value) onCommit(minutes);
+    else setText(String(value));
+  };
+  return (
+    <Input
+      aria-label="Stuck after minutes"
+      inputMode="numeric"
+      value={text}
+      onChange={(e) => setText(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+      }}
+      className="w-20 text-right"
+    />
   );
 }
 
@@ -345,15 +379,27 @@ function NewKeyDialog({ onClose, onChanged }: { onClose: () => void; onChanged: 
   const [name, setName] = useState("");
   const [audience, setAudience] = useState<RemoteAudience>("client");
   const [caps, setCaps] = useState<Capability[]>(["operate"]);
+  const [webhookUrl, setWebhookUrl] = useState("");
+  const [webhookSecret, setWebhookSecret] = useState("");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [created, setCreated] = useState<{ key: RemoteKey; token: string } | null>(null);
+  const [created, setCreated] = useState<{ key: RemoteKey; token: string; webhookSecret?: string } | null>(null);
 
   const create = async () => {
     setPending(true);
     setError(null);
     try {
-      setCreated(await rpc<{ key: RemoteKey; token: string }>("remote.keys.create", { name: name.trim(), audience, caps }));
+      const url = webhookUrl.trim();
+      const secret = webhookSecret.trim();
+      setCreated(
+        await rpc<{ key: RemoteKey; token: string; webhookSecret?: string }>("remote.keys.create", {
+          name: name.trim(),
+          audience,
+          caps,
+          ...(url ? { webhookUrl: url } : {}),
+          ...(url && secret ? { webhookSecret: secret } : {}),
+        }),
+      );
       await onChanged();
     } catch (err) {
       setError(errorText(err));
@@ -375,6 +421,7 @@ function NewKeyDialog({ onClose, onChanged }: { onClose: () => void; onChanged: 
               Copy it now. It is not shown again.
             </p>
             <Secret label="Key" value={created.token} />
+            {created.webhookSecret ? <Secret label="Webhook signing secret" value={created.webhookSecret} /> : null}
           </div>
           <DialogFooter onCancel={onClose} confirmLabel="Done" onConfirm={onClose} />
         </>
@@ -406,6 +453,28 @@ function NewKeyDialog({ onClose, onChanged }: { onClose: () => void; onChanged: 
               May
               <CapsPicker value={caps} audience={audience} onChange={setCaps} />
             </div>
+            <label className={FIELD}>
+              Webhook URL
+              <Input
+                value={webhookUrl}
+                onChange={(e) => setWebhookUrl(e.target.value)}
+                placeholder="https://bot.example.com/hook (optional)"
+                spellCheck={false}
+                autoComplete="off"
+              />
+            </label>
+            {webhookUrl.trim() ? (
+              <label className={FIELD}>
+                Signing secret
+                <Input
+                  value={webhookSecret}
+                  onChange={(e) => setWebhookSecret(e.target.value)}
+                  placeholder="generated when empty"
+                  spellCheck={false}
+                  autoComplete="off"
+                />
+              </label>
+            ) : null}
             <ErrorLine error={error} />
           </div>
           <DialogFooter onCancel={onClose} confirmLabel="Create" pending={pending} disabled={!name.trim()} />
