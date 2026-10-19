@@ -23,18 +23,18 @@ import TempCodeContract
 
 @Suite struct EnvironmentTests {
     @Test func `the socket url is wss at /ws, or ws behind plain http`() {
-        let https = Environment(id: "env_1", name: "box", origin: URL(string: "https://tempcode.landonhale.com")!, caps: [.read], keyId: "k", keyName: "phone", addedAt: 0)
+        let https = PairedEnvironment(id: "env_1", name: "box", origin: URL(string: "https://tempcode.landonhale.com")!, caps: [.read], keyId: "k", keyName: "phone", addedAt: 0)
         #expect(https.socketURL.absoluteString == "wss://tempcode.landonhale.com/ws")
-        let http = Environment(id: "env_2", name: "dev", origin: URL(string: "http://127.0.0.1:7677")!, caps: [.read], keyId: "k", keyName: "phone", addedAt: 0)
+        let http = PairedEnvironment(id: "env_2", name: "dev", origin: URL(string: "http://127.0.0.1:7677")!, caps: [.read], keyId: "k", keyName: "phone", addedAt: 0)
         #expect(http.socketURL.absoluteString == "ws://127.0.0.1:7677/ws")
         #expect(http.host == "127.0.0.1:7677")
     }
 
     @Test func `read is implied and admin implies everything`() {
-        let reader = Environment(id: "e", name: "n", origin: URL(string: "https://h")!, caps: [], keyId: "k", keyName: "p", addedAt: 0)
+        let reader = PairedEnvironment(id: "e", name: "n", origin: URL(string: "https://h")!, caps: [], keyId: "k", keyName: "p", addedAt: 0)
         #expect(reader.allows(.read))
         #expect(!reader.allows(.operate))
-        let admin = Environment(id: "e", name: "n", origin: URL(string: "https://h")!, caps: [.admin], keyId: "k", keyName: "p", addedAt: 0)
+        let admin = PairedEnvironment(id: "e", name: "n", origin: URL(string: "https://h")!, caps: [.admin], keyId: "k", keyName: "p", addedAt: 0)
         #expect(admin.allows(.approve))
     }
 }

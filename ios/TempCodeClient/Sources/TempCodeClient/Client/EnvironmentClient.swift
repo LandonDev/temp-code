@@ -36,7 +36,7 @@ public let olderPage = 200
 /// launch starts where this one left off.
 @MainActor @Observable
 public final class EnvironmentClient {
-    public let environment: Environment
+    public let environment: PairedEnvironment
     public private(set) var status: EnvironmentStatus = .idle
     public private(set) var workspaces: [WorkspaceMeta] = []
     public private(set) var projects: [ProjectMeta] = []
@@ -53,7 +53,7 @@ public final class EnvironmentClient {
     private var loops: [Task<Void, Never>] = []
     private var started = false
 
-    public init(environment: Environment, keys: any KeyStore, cache: SessionCache, api: RemoteAPI = RemoteAPI(), connect: @escaping WebSocketFactory = URLSessionWebSocket.factory(), clock: any SocketClock = SystemClock(), configuration: SocketConfiguration = SocketConfiguration()) {
+    public init(environment: PairedEnvironment, keys: any KeyStore, cache: SessionCache, api: RemoteAPI = RemoteAPI(), connect: @escaping WebSocketFactory = URLSessionWebSocket.factory(), clock: any SocketClock = SystemClock(), configuration: SocketConfiguration = SocketConfiguration()) {
         self.environment = environment
         self.keys = keys
         self.cache = cache

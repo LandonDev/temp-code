@@ -4,7 +4,7 @@ import TempCodeContract
 /// One paired temp-code host. The id is the host's own environment id (from
 /// `hello`), kept across restarts and endpoint changes; the key lives in the
 /// `KeyStore` under that id and never in this value.
-public struct Environment: Sendable, Hashable, Codable, Identifiable {
+public struct PairedEnvironment: Sendable, Hashable, Codable, Identifiable {
     public let id: String
     public var name: String
     /// `https://tempcode.landonhale.com`, or `http://127.0.0.1:7677` for a dev instance.

@@ -31,8 +31,8 @@ enum LiveServer {
         return (try JSONSerialization.jsonObject(with: data) as? [String: Any]) ?? [:]
     }
 
-    static func environment(expectedId: String? = nil) -> Environment {
-        Environment(id: expectedId ?? environmentId, name: "test host", origin: baseURL, caps: [.read], keyId: keyId, keyName: "ios-test", addedAt: 0)
+    static func environment(expectedId: String? = nil) -> PairedEnvironment {
+        PairedEnvironment(id: expectedId ?? environmentId, name: "test host", origin: baseURL, caps: [.read], keyId: keyId, keyName: "ios-test", addedAt: 0)
     }
 
     static func keys() throws -> InMemoryKeyStore {
@@ -93,7 +93,7 @@ struct LiveServerTests {
 
     @Test func `a hello from another environment halts the socket`() async throws {
         let keys = try LiveServer.keys()
-        let other = Environment(id: "env_someone_else", name: "x", origin: LiveServer.baseURL, caps: [.read], keyId: LiveServer.keyId, keyName: "k", addedAt: 0)
+        let other = PairedEnvironment(id: "env_someone_else", name: "x", origin: LiveServer.baseURL, caps: [.read], keyId: LiveServer.keyId, keyName: "k", addedAt: 0)
         try keys.set(LiveServer.key, for: other.id)
         let socket = TempCodeSocket(environment: other, keys: keys)
         await socket.start()

@@ -9,11 +9,11 @@ public final class ClientRegistry {
     public let store: EnvironmentStore
     public private(set) var clients: [String: EnvironmentClient] = [:]
     private let cache: SessionCache
-    private let make: @MainActor (Environment) -> EnvironmentClient
+    private let make: @MainActor (PairedEnvironment) -> EnvironmentClient
 
     /// - Parameter make: how a client is built for an environment; tests
     ///   inject fake sockets here. The default speaks to the real host.
-    public init(store: EnvironmentStore, cache: SessionCache, make: (@MainActor (Environment) -> EnvironmentClient)? = nil) {
+    public init(store: EnvironmentStore, cache: SessionCache, make: (@MainActor (PairedEnvironment) -> EnvironmentClient)? = nil) {
         self.store = store
         self.cache = cache
         let keys = store.keys

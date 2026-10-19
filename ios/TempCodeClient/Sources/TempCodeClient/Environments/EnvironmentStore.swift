@@ -25,7 +25,7 @@ public enum EnvironmentStoreError: Error, Hashable, Sendable {
 /// keeps its place.
 @MainActor @Observable
 public final class EnvironmentStore {
-    public private(set) var environments: [Environment]
+    public private(set) var environments: [PairedEnvironment]
     public let keys: any KeyStore
     private let api: RemoteAPI
     private let file: URL
@@ -43,14 +43,14 @@ public final class EnvironmentStore {
         return base.appending(path: "TempCodeClient", directoryHint: .isDirectory)
     }
 
-    public func environment(_ id: String) -> Environment? {
+    public func environment(_ id: String) -> PairedEnvironment? {
         environments.first { $0.id == id }
     }
 
     /// Pairs with `<origin>/pair#<code>`: the code becomes a key, the key is
     /// kept, and the host's name and capabilities become the environment.
     @discardableResult
-    public func add(pairingLink text: String, name: String? = nil) async throws(EnvironmentStoreError) -> Environment {
+    public func add(pairingLink text: String, name: String? = nil) async throws(EnvironmentStoreError) -> PairedEnvironment {
         guard let link = PairingLink(text) else { throw .invalidPairingLink }
         let paired: PairKeyResponse
         do {
@@ -60,7 +60,7 @@ public final class EnvironmentStore {
         }
         guard paired.audience == .client else { throw .notAClientKey }
         let hello = try? await api.hello(origin: link.origin, key: paired.key)
-        let environment = Environment(
+        let environment = PairedEnvironment(
             id: paired.environmentId,
             name: name ?? hello?.name ?? link.origin.host ?? paired.environmentId,
             origin: link.origin,
@@ -77,7 +77,7 @@ public final class EnvironmentStore {
     /// Adds a host from a key made on the desktop: `/api/hello` with the key
     /// tells which environment it is and what it may do.
     @discardableResult
-    public func add(origin: URL, key rawKey: String, name: String? = nil) async throws(EnvironmentStoreError) -> Environment {
+    public func add(origin: URL, key rawKey: String, name: String? = nil) async throws(EnvironmentStoreError) -> PairedEnvironment {
         let key = rawKey.trimmingCharacters(in: .whitespacesAndNewlines)
         guard key.hasPrefix("tc_"), key.contains(".") else { throw .invalidKey }
         let hello: HelloResponse
@@ -88,7 +88,7 @@ public final class EnvironmentStore {
         }
         guard let known = hello.key else { throw .api(.unauthorized("the host does not know this key")) }
         guard known.audience == .client else { throw .notAClientKey }
-        let environment = Environment(
+        let environment = PairedEnvironment(
             id: hello.environmentId,
             name: name ?? hello.name,
             origin: origin,
@@ -115,7 +115,7 @@ public final class EnvironmentStore {
         save()
     }
 
-    private func upsert(_ environment: Environment) {
+    private func upsert(_ environment: PairedEnvironment) {
         if let index = environments.firstIndex(where: { $0.id == environment.id }) {
             var kept = environment
             kept.addedAt = environments[index].addedAt
@@ -126,9 +126,9 @@ public final class EnvironmentStore {
         save()
     }
 
-    private static func load(_ file: URL) -> [Environment] {
+    private static func load(_ file: URL) -> [PairedEnvironment] {
         guard let data = try? Data(contentsOf: file) else { return [] }
-        return (try? JSONDecoder().decode([Environment].self, from: data)) ?? []
+        return (try? JSONDecoder().decode([PairedEnvironment].self, from: data)) ?? []
     }
 
     private func save() {

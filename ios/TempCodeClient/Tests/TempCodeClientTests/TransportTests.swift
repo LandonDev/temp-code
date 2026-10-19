@@ -49,12 +49,14 @@ import TempCodeContract
         let first = Task { try await transport.request(Methods.WorkspaceList.self, NoParams()) }
         let second = Task { try await transport.request(Methods.ProjectList.self, NoParams()) }
         await socket.waitForSent(2)
+        // Two tasks send in whichever order they run; each answer finds its request by id.
         let sent = socket.sentRequests
-        #expect(sent.map(\.method) == ["workspace.list", "project.list"])
-        #expect(await transport.pendingMethods == ["workspace.list", "project.list"])
+        let workspaces = try #require(sent.first { $0.method == "workspace.list" })
+        let projects = try #require(sent.first { $0.method == "project.list" })
+        #expect(Set(await transport.pendingMethods) == ["workspace.list", "project.list"])
 
-        socket.answer(id: sent[1].id, result: "[]")
-        socket.refuse(id: sent[0].id, error: "forbidden: workspace.list needs read")
+        socket.answer(id: projects.id, result: "[]")
+        socket.refuse(id: workspaces.id, error: "forbidden: workspace.list needs read")
         #expect(try await second.value.isEmpty)
         await #expect(throws: TransportError.server(method: "workspace.list", message: "forbidden: workspace.list needs read")) {
             try await first.value

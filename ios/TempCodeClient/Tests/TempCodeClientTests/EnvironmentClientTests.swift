@@ -15,7 +15,7 @@ private final class ClientRig {
     let sockets = FakeSocketFactory()
     let keys = InMemoryKeyStore()
     let cache: SessionCache
-    let environment = Environment(id: "env_test", name: "box", origin: URL(string: "https://box.example")!, caps: [.read], keyId: "K1", keyName: "iphone", addedAt: 0)
+    let environment = PairedEnvironment(id: "env_test", name: "box", origin: URL(string: "https://box.example")!, caps: [.read], keyId: "K1", keyName: "iphone", addedAt: 0)
     let client: EnvironmentClient
 
     init(cache: SessionCache? = nil) throws {

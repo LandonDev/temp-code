@@ -89,7 +89,7 @@ public actor TempCodeSocket {
     }
 
     /// The paired environment's own socket: `wss://host/ws`, tickets from its key.
-    public init(environment: Environment, keys: any KeyStore, api: RemoteAPI = RemoteAPI(), connect: @escaping WebSocketFactory = URLSessionWebSocket.factory(), clock: any SocketClock = SystemClock(), configuration: SocketConfiguration = SocketConfiguration()) {
+    public init(environment: PairedEnvironment, keys: any KeyStore, api: RemoteAPI = RemoteAPI(), connect: @escaping WebSocketFactory = URLSessionWebSocket.factory(), clock: any SocketClock = SystemClock(), configuration: SocketConfiguration = SocketConfiguration()) {
         let origin = environment.origin
         let id = environment.id
         self.init(environmentId: id, socketURL: environment.socketURL, mint: { () throws(RemoteAPIError) -> String in
