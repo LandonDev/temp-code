@@ -1,5 +1,5 @@
 {
-  "n": 237,
-  "notes": "Connection runtime: one supervised socket per environment (lib/connection), remote.environments.* RPCs with the key held by the main process, every renderer store and request scoped by environmentId, sidebar connection dots, two-instance proof (script:e2e-connection)",
-  "ts": 1792398425410
+  "n": 238,
+  "notes": "Swift contract package: zod → JSON Schema → Swift generator with a drift gate, fixtures from a real server, Swift Testing round trips (ios/TempCodeContract)",
+  "ts": 1792400353829
 }
