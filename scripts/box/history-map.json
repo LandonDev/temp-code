@@ -1,0 +1,15 @@
+{
+  "roots": {
+    "/Users/landon/IdeaProjects/temp-code": "/srv/agents/work/temp-code",
+    "/Users/landon/IdeaProjects/CosmicPrisons-Shredded": "/srv/agents/work/CosmicPrisons-Shredded",
+    "/Users/landon/IdeaProjects/monocode": "/srv/agents/work/monocode",
+    "/Users/landon/Desktop/Websites/cosmicweb": "/srv/agents/work/cosmicweb",
+    "/Users/landon/Desktop/Websites/NorthCentralRefs": "/srv/agents/work/NorthCentralRefs",
+    "/Users/landon/Desktop/Websites/groupgames": "/srv/agents/work/groupgames",
+    "/Users/landon/Desktop/Websites/baseheroui": "/srv/agents/work/baseheroui"
+  },
+  "prefixes": {
+    "/Users/landon/.temp-code/worktrees": "/srv/agents/home/.temp-code/worktrees",
+    "/Users/landon": "/srv/agents/home"
+  }
+}

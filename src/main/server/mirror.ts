@@ -244,7 +244,11 @@ function writeThreadsIndexNow(dir: string): void {
 /** The project cwd a session's context files live in. Subagents may run in
  *  throwaway worktrees — their context belongs to the project. */
 function contextCwd(reg: SessionRegistry, meta: SessionMeta): string | null {
-  return meta.projectId ? (reg.getProject(meta.projectId)?.cwd ?? null) : null
+  const cwd = meta.projectId ? (reg.getProject(meta.projectId)?.cwd ?? null) : null
+  // A checkout that is not on this machine (a worktree the app remakes on
+  // the first turn, a root not cloned yet) gets no mirror: creating its dir
+  // would make sessions.ts ensureCwd take the checkout for present.
+  return cwd && existsSync(cwd) ? cwd : null
 }
 
 export function mirrorSession(
