@@ -36,8 +36,10 @@
  * /Applications, the installed app's userData or its caches is touched.
  */
 import {
+  closeSync,
   existsSync,
   mkdirSync,
+  openSync,
   readFileSync,
   readdirSync,
   rmSync,
@@ -69,7 +71,9 @@ const PRODUCT = 'TempCodeE2E'
 const DEBUG_PORT = 9234
 const USER_DATA = join(ROOT, 'userData')
 const COMPILE_CACHE = join(ROOT, 'compile-cache')
-const BUILD_DIR = join(ROOT, 'build')
+/** One pack per label, so a later run never replaces an earlier bundle
+ *  (the scheme run seeds from the baseline's). */
+const buildDir = (label: string): string => join(ROOT, `build-${label.replace(/[^\w.-]+/g, '_')}`)
 /** A dead loopback port: the copy's updater never reaches GitHub. */
 const FEED_URL = 'http://127.0.0.1:9/'
 const TRACE_SECONDS = 8
@@ -114,18 +118,19 @@ let APP: string
 if (appArg) {
   APP = appArg
 } else if (reuse) {
-  APP = builtApp(BUILD_DIR, PRODUCT)
+  APP = builtApp(buildDir(label), PRODUCT)
   if (!existsSync(APP)) throw new Error(`--reuse: ${APP} missing`)
 } else {
   const identity = await findIdentity()
-  const version = `1.0.${readPackage().n}`
+  // After the train: it bumps package.json's version with every release.
   await waitForReleaseTrain(log)
-  rmSync(BUILD_DIR, { recursive: true, force: true })
+  const version = `1.0.${readPackage().n}`
+  rmSync(buildDir(label), { recursive: true, force: true })
   log('bun run build (typecheck + electron-vite)')
   await sh(['bun', 'run', 'build'], { quiet: true })
   APP = await pack({
     version,
-    outDir: BUILD_DIR,
+    outDir: buildDir(label),
     appId: APP_ID,
     product: PRODUCT,
     identity,
@@ -172,9 +177,13 @@ const env = launchEnv({
 
 type Proc = ReturnType<typeof Bun.spawn>
 
+/** stdout and stderr share one open file description, so the lines interleave
+ *  instead of overwriting each other from two offsets. */
 function spawnApp(exe: string, logName: string, extraArgs: string[]): Proc {
-  const file = Bun.file(join(ROOT, logName))
-  return Bun.spawn([exe, ...extraArgs], { env, stdout: file, stderr: file })
+  const fd = openSync(join(ROOT, logName), 'w')
+  const proc = Bun.spawn([exe, ...extraArgs], { env, stdout: fd, stderr: fd })
+  void proc.exited.finally(() => closeSync(fd))
+  return proc
 }
 
 async function waitExit(proc: Proc, ms: number): Promise<boolean> {
@@ -268,7 +277,12 @@ interface TraceEvent {
 }
 
 interface IndexCompile {
+  /** The v8.compile / v8.compileModule event's own duration (finalisation
+   *  when streamed; the whole compile when a code cache is consumed). */
   dur?: number
+  /** The streaming parse off the main thread, which a consumed cache skips. */
+  parseOnBackgroundMs?: number
+  compileEvent?: string
   consumedCacheSize?: number
   cacheRejected?: boolean
   cacheKind?: string
@@ -299,9 +313,13 @@ function parseTrace(text: string): TraceSummary {
     }
     const url = ev.args?.data?.url
     if (typeof url !== 'string' || !INDEX_BUNDLE.test(url)) continue
-    if (ev.name === 'v8.compile') {
+    if (ev.name === 'v8.parseOnBackground') {
+      indexBundle.parseOnBackgroundMs =
+        (indexBundle.parseOnBackgroundMs ?? 0) + (ev.dur ?? 0) / 1000
+    } else if (ev.name === 'v8.compile' || ev.name === 'v8.compileModule') {
       const d = ev.args!.data!
       indexBundle.url = url
+      indexBundle.compileEvent = ev.name
       indexBundle.dur = (ev.dur ?? 0) / 1000
       if (typeof d.consumedCacheSize === 'number')
         indexBundle.consumedCacheSize = d.consumedCacheSize
@@ -310,7 +328,7 @@ function parseTrace(text: string): TraceSummary {
       if (typeof d.notStreamedReason === 'string')
         indexBundle.notStreamedReason = d.notStreamedReason
       if (typeof d.streamed === 'boolean') indexBundle.streamed = d.streamed
-    } else if (ev.name === 'v8.produceCache') {
+    } else if (ev.name.startsWith('v8.produce')) {
       indexBundle.producedCache = true
     }
   }
@@ -503,6 +521,7 @@ const cols = [
   'ready-to-show',
   'tc:ready',
   'spawn→ready',
+  'bundle parse',
   'bundle compile',
   'consumed',
   'rejected',
@@ -519,6 +538,7 @@ const rows = results.map((r) => [
   fmt(r.marks.readyToShow),
   fmt(r.readyMs),
   fmt(r.spawnToReadyMs),
+  fmt(r.trace?.indexBundle.parseOnBackgroundMs, 1),
   fmt(r.trace?.indexBundle.dur, 1),
   r.trace?.indexBundle.consumedCacheSize === undefined
     ? '-'
@@ -544,7 +564,7 @@ for (const r of results) {
   const b = r.trace?.indexBundle
   if (b)
     console.log(
-      `launch ${r.i}: ${b.url ?? 'index bundle not in trace'} kind=${b.cacheKind ?? '-'} streamed=${b.streamed ?? '-'} ${b.notStreamedReason ?? ''}`
+      `launch ${r.i}: ${b.url ? `${b.compileEvent} ${b.url.split('/').pop()}` : 'index bundle not in trace'} kind=${b.cacheKind ?? '-'} streamed=${b.streamed ?? '-'} ${b.notStreamedReason ?? ''}`
     )
   if (r.marks.compileCacheLine) console.log(`launch ${r.i}: ${r.marks.compileCacheLine}`)
   if (r.marks.localstorageMigrated)

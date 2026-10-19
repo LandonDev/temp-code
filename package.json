@@ -2,7 +2,7 @@
   "name": "temp-code",
   "version": "1.0.221",
   "description": "An Electron application with React and TypeScript",
-  "main": "./out/main/index.js",
+  "main": "./out/main/boot.js",
   "author": "example.com",
   "homepage": "https://electron-vite.org",
   "scripts": {

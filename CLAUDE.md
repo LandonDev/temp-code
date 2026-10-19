@@ -96,6 +96,27 @@ Two separate steps, on purpose.
 Never build into or swap /Applications/TempCode.app yourself: the installed
 app replaces itself from the feed, and only from the feed.
 
+## Launch-time code caches: boot.js, the compile cache, the app scheme
+- `package.json` `main` is `out/main/boot.js` (src/main/boot.ts), a second
+  main entry that in a packaged app enables Node's compile cache at
+  `$TMPDIR/temp-code/compile-cache` (macOS purges it after three idle days)
+  and then requires `out/main/index.js` through it; index.ts flushes the
+  cache 10 s after boot and in `before-quit`, because Electron's quit never
+  reaches Node's exit-time write. `TEMP_CODE_COMPILE_CACHE` points an
+  isolated copy elsewhere. The first `[boot]` line of a launch reads
+  `index <ms> start=<epoch> compile-cache=on|off`; dev runs say `off`.
+- The packaged renderer loads from `tempcode-app://renderer/index.html`
+  (src/main/appScheme.ts), a privileged scheme with `codeCache: true`, so
+  Chromium keeps a V8 code cache for the 8 MB index bundle; `file://` never
+  gets one. Both schemes register in one `registerSchemes()` call
+  (assets.ts). First boot on the new origin copies the `file://`
+  localStorage over once (src/main/originMigration.ts, marker
+  `<userData>/localstorage-migrated`).
+- Proof: `bun run script:e2e-launch-timing` (scripts/e2e-launch-timing.ts)
+  packs an isolated copy under /private/tmp/tc-launch-timing and launches it
+  four times with Chromium's startup trace on; the report shows the `index`
+  mark, `tc:ready`, and the index bundle's `consumedCacheSize`.
+
 ## Provider traffic: the gateway, and Codex needs 0.162.1+
 Every Claude and Codex child sends its API traffic to a loopback gateway
 (src/main/server/gateway.ts) that swaps in the account the thread is

@@ -55,6 +55,14 @@ export default defineConfig({
       alias: {
         '@shared': resolve('src/shared')
       }
+    },
+    // Two entries: boot.js (package.json `main`) enables Node's compile cache
+    // and requires index.js, the real bundle, through it. boot.ts shares no
+    // module with index.ts, so Rollup emits no chunks/ between them.
+    build: {
+      rollupOptions: {
+        input: { index: resolve('src/main/index.ts'), boot: resolve('src/main/boot.ts') }
+      }
     }
   },
   preload: {

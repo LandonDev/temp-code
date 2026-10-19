@@ -2,7 +2,7 @@ import { app, shell, dialog, net, BrowserWindow, ipcMain } from 'electron'
 import { homedir } from 'os'
 import { join } from 'path'
 import { copyFileSync, existsSync, mkdirSync } from 'fs'
-import { getCompileCacheDir } from 'node:module'
+import { flushCompileCache, getCompileCacheDir } from 'node:module'
 import { bootMark } from './server/boot'
 import { noteInstallOnQuit, registerUpdates } from './update'
 import { applyHarness, bakedHarness } from './harness'
@@ -40,6 +40,11 @@ bootMark(
 )
 
 let server: RunningServer | null = null
+
+/** Node writes the compile cache (boot.ts) to disk only at its own exit, which
+ *  Electron's quit never reaches: flush once boot has settled, and again in
+ *  before-quit for modules required lazily since. No-ops when the cache is off. */
+const FLUSH_AFTER_MS = 10_000
 
 // Deliberately NOT raising the fd soft limit: Chromium's 8192 default is
 // the containment wall that keeps a runaway fd consumer an app problem
@@ -133,6 +138,7 @@ app.whenReady().then(async () => {
   })
 
   openSavedWindows()
+  setTimeout(() => flushCompileCache(), FLUSH_AFTER_MS).unref()
 
   app.on('activate', function () {
     activateWindows()
@@ -180,6 +186,7 @@ app.on('before-quit', (e) => {
     requestQuit()
     return
   }
+  flushCompileCache()
   // A downloaded release installs on this quit (Squirrel does that on its
   // own); remember it so the next boot can tell whether it landed.
   noteInstallOnQuit()
