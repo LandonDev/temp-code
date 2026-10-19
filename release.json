@@ -1,5 +1,5 @@
 {
-  "n": 224,
-  "notes": "Linux credentials: aliax-core 870290b (CLI sign-ins from ~/.claude/.credentials.json off macOS, fileKey vault), platform appData for the shim claim; box baseline docs and scripts",
-  "ts": 1792390206309
+  "n": 225,
+  "notes": "Gate every RPC on a principal's capabilities and give the server an environment id",
+  "ts": 1792390222670
 }
