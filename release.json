@@ -1,5 +1,5 @@
 {
-  "n": 249,
-  "notes": "capabilities.test.ts lists the account sync rows (accounts.push/pull admin, accounts.sync/setHome local); e2e-accounts-sync types the peer's name",
-  "ts": 1792445025567
+  "n": 250,
+  "notes": "History move: every root maps and the Mac backup covers the moved dir",
+  "ts": 1792446327621
 }
