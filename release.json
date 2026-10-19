@@ -1,5 +1,5 @@
 {
-  "n": 231,
-  "notes": "/asset/* on the fixed port mirrors tempcode-asset:// so logos, media and agent pages show in the browser",
-  "ts": 1792393168389
+  "n": 232,
+  "notes": "CLAUDE.md: the remote access section (fixed port, env override, trace flag, identity, keys and pairing, /ui, proofs)",
+  "ts": 1792393884765
 }
