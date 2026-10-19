@@ -27,6 +27,7 @@ import {
   type AccountProvider,
   type AccountRoute,
   type AccountsSnapshot,
+  type PeerState,
   type ProviderAccounts
 } from '@shared/accounts'
 import type { SessionMeta } from '@shared/events'
@@ -50,6 +51,10 @@ export interface AccountsDeps {
   observeLimit: (id: ServiceId, name: string, limit: Limit) => void
   /** Live threads per account for a provider, from the session registry. */
   load: (provider: AccountProvider) => Record<string, number>
+  /** Per provider, the environment new sign-ins are handed to (remote/accountSync.ts). */
+  homes: () => Partial<Record<AccountProvider, string>>
+  /** The account-sync links to other hosts, by environment id. */
+  peers: () => Record<string, PeerState>
   dataDir: () => string
   pollMs: number
   now: () => number
@@ -125,6 +130,8 @@ const defaults = (): AccountsDeps => ({
   markStale: accounts.markUsageStale,
   observeLimit: (id, name, limit) => void accounts.observeLimit(id, name, limit),
   load: () => ({}),
+  homes: () => ({}),
+  peers: () => ({}),
   dataDir,
   pollMs: 60_000,
   now: Date.now
@@ -425,7 +432,7 @@ export class AccountsService {
           note
         }
       }
-      return { updatedAt: Date.now(), providers }
+      return { updatedAt: Date.now(), providers, homes: d.homes(), peers: d.peers() }
     }
     const services = await d.listServices().catch(() => [] as ServiceView[])
     for (const p of ACCOUNT_PROVIDERS) {
@@ -449,6 +456,6 @@ export class AccountsService {
         note: note ?? view?.notice
       }
     }
-    return { updatedAt: Date.now(), providers }
+    return { updatedAt: Date.now(), providers, homes: d.homes(), peers: d.peers() }
   }
 }

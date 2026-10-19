@@ -901,6 +901,9 @@ export type ServerPush =
   | { push: 'session-removed'; sessionIds: string[] }
   // Aliax accounts: the whole snapshot, whenever it is rebuilt.
   | { push: 'accounts'; snapshot: import('./accounts').AccountsSnapshot }
+  // Account sync (thread V): an owner rotated a grant; only sockets that
+  // pulled (another host's main process) get these, never a renderer.
+  | { push: 'account'; from: string; transfer: import('aliax-core/sync').Transfer }
   // Watcher spine (M11): project-relative path, debounced ~100 ms.
   | { push: 'file-event'; projectId: string; path: string; kind: 'changed' | 'created' | 'deleted' }
   // Build rail: run state plus any new log lines (batched ~50 ms). A new

@@ -21,6 +21,10 @@ export const aliaxApi = {
     ipcRenderer.invoke('aliax:login:start', serviceId, loginHint),
   loginCancel: (serviceId: ServiceId): Promise<void> =>
     ipcRenderer.invoke('aliax:login:cancel', serviceId),
+  /** `claude setup-token` for the user: a one-year, inference-only bearer filed under the account named. */
+  setupToken: (identity?: { name?: string; email?: string }): Promise<ActionResult> =>
+    ipcRenderer.invoke('aliax:login:setupToken', identity),
+  setupTokenCancel: (): Promise<void> => ipcRenderer.invoke('aliax:login:setupTokenCancel'),
   updateProfile: (
     serviceId: ServiceId,
     name: string,

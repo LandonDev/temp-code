@@ -25,6 +25,8 @@ import {
 } from '@shared/capabilities'
 import { loadEnvironmentId } from './remote/environment'
 import { handleRemote, type RemoteContext } from './remote/handlers'
+import { AccountSync, accountSyncHooks } from './remote/accountSync'
+import { Peers } from './remote/peers'
 import { RemoteAuth } from './remote/auth'
 import { startRemoteListener, type RemoteListener } from './remote/listener'
 import { createMcpHandler } from './remote/mcp'
@@ -195,6 +197,8 @@ export interface RunningServer {
   notifier: Notifier
   /** The shared Aliax accounts poll; the embedded Aliax pages nudge it after a change. */
   accounts: AccountsService
+  /** Account ownership and sync with the hosts this machine holds admin keys for (remote/accountSync.ts). */
+  accountSync: AccountSync
   close: () => Promise<void>
 }
 
@@ -239,9 +243,32 @@ export async function startServer(
   setRunningCount(() => registry.runningCount())
   const stopStallMonitor = startStallMonitor()
   registry.checkpoints = checkpoints
-  const accounts = new AccountsService({ load: (provider) => registry.liveLoad(provider) })
+  const accounts = new AccountsService({
+    load: (provider) => registry.liveLoad(provider),
+    homes: () => accountSync.homes(),
+    peers: () => peers.states()
+  })
   registry.limits = accounts
-  const m3a = { store, registry, notes: new Notes(db), logos: new ProjectLogos(options.dataDir ?? dirname(dbPath)), accounts }
+  // The main process's own links to the hosts this machine shares accounts
+  // with, and the sync over them (thread V). The core's vault hooks reach the
+  // sync through accountSyncHooks (aliax.ts configured the core before this).
+  const peers = new Peers(
+    { store, environmentId },
+    {
+      onOpen: (id) => {
+        void accountSync.syncWith(id)
+        accounts.nudge()
+      },
+      onClose: () => accounts.nudge(),
+      onPush: (from, push) => accountSync.onPeerPush(from, push)
+    }
+  )
+  const accountSync = new AccountSync({ environmentId, store, peers, nudge: () => accounts.nudge() })
+  accountSyncHooks.current = accountSync
+  peers.refresh()
+  const syncTimer = setInterval(() => void accountSync.syncAll(), 15 * 60_000)
+  syncTimer.unref()
+  const m3a = { store, registry, notes: new Notes(db), logos: new ProjectLogos(options.dataDir ?? dirname(dbPath)), accounts, accountSync }
   // Every snapshot that knows any account re-picks the open threads'
   // accounts (an empty one would pick nothing): the first covers boot.
   accounts.onChange((snapshot) => {
@@ -438,6 +465,7 @@ export async function startServer(
   const attach = (ws: WebSocket, principal: Principal, profile: WireProfile = profileFor({ principal })): void => {
     const connection = ++connections
     const unsubs = new Map<string, () => void>()
+    let unsubscribeAccounts: (() => void) | null = null
     /** per-connection file watchers (fs.watch), keyed by projectId */
     const fsWatches = new Map<string, () => void>()
     // One line per connection the first time its unsent bytes pass the mark:
@@ -518,11 +546,21 @@ export async function startServer(
       const requestKey = `${connection}:${req.id}`
       trackRequest(requestKey, req.method)
       try {
+        // A pull marks the socket as another host's main process: it hears
+        // every later rotation (never a renderer, which never pulls).
+        if (req.method === 'accounts.pull') {
+          const answer = accountSync.handlePull(req.params.from, req.params)
+          if (principal.kind === 'remote') unsubscribeAccounts ??= accountSync.subscribe(sendFrame)
+          return sendFrame({ id: req.id, ok: true, result: answer })
+        }
         const remote = await handleRemote(
           req,
           principal.kind === 'local' ? remoteContext : { ...remoteContext, ceiling: principal.caps, createdBy: principal.keyId }
         )
-        if (remote.handled) return sendFrame({ id: req.id, ok: true, result: remote.result })
+        if (remote.handled) {
+          if (req.method.startsWith('remote.environments.')) peers.refresh()
+          return sendFrame({ id: req.id, ok: true, result: remote.result })
+        }
         const extension = await handleM3a(req, m3a)
         if (extension.handled) { sendFrame({ id: req.id, ok: true, result: extension.result }); return }
         const fsGit = await handleFsGit(req)
@@ -1339,6 +1377,7 @@ export async function startServer(
       offBuild()
       offAccounts()
       offRemoved()
+      unsubscribeAccounts?.()
       for (const off of unsubs.values()) off()
       unsubs.clear()
       for (const off of fsWatches.values()) off()
@@ -1409,6 +1448,7 @@ export async function startServer(
   return {
     port,
     environmentId,
+    accountSync,
     attach,
     remoteAuth,
     get remote() {
@@ -1430,6 +1470,9 @@ export async function startServer(
       clearInterval(warmTimer)
       builder.disposeAll()
       await gateway.stop()
+      clearInterval(syncTimer)
+      accountSync.close()
+      peers.close()
       m3a.accounts.stop()
       await registry.disposeAll()
       await closeAllWatchers()

@@ -145,6 +145,18 @@ routed to (aliax-core's `forward`). Two listeners:
   tokens there: an account whose stored token lapsed answers 401
   ("token_expired") until the owner uses it. Pin test threads to an account
   the installed app uses, or expect that failure.
+- Accounts across hosts (thread V): every profile in Aliax's `profiles.json`
+  has an owner environment (absent = this machine) and only the owner ever
+  presents a refresh token; other hosts hold access-only copies kept fresh
+  over the main process's own peer links (`src/main/server/remote/peers.ts`,
+  `accountSync.ts`; RPCs `accounts.push`/`accounts.pull`, admin only). A
+  Claude "one-year token" (`claude setup-token`, inference-only, no refresh)
+  is a static profile every host holds. Sign in on the Mac; the box never
+  does (docs/box.md "Accounts: sign in on the Mac once"). Test seams for
+  isolated instances: `TEMP_CODE_ALIAX_DATA_DIR` (own vault, key-file mode),
+  `TEMP_CODE_FAKE_PROVIDERS=<origin>` (every provider call goes there),
+  `TEMP_CODE_GATEWAY_ROLE=owner` (refresh without the marker); proof is
+  `bun run script:e2e-accounts-sync`.
 
 ## Remote access: the fixed port behind the tunnel
 - A second listener (src/main/server/remote/listener.ts) binds

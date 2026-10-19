@@ -347,11 +347,44 @@ gateway's own proofs run on the box against fake upstreams:
 in the checkout as agents. The hidden preview window is proven with
 `tc-local app.htmlPreview` against a live session (see the log entry).
 
-### Signing accounts in
+### Accounts: sign in on the Mac once
 
-Provider accounts (Claude, Codex, Cursor) come over from the Mac; thread V
-covers them. GitHub is the one sign-in done on the box itself, once, as
-agents:
+Provider accounts never sign in on the box. The Mac's Accounts page is the
+one place a Claude or Codex sign-in happens, and the box gets what it needs
+over the Mac's admin link to it (thread V; aliax-core `src/sync.ts`,
+temp-code `src/main/server/remote/{peers,accountSync}.ts`):
+
+- Every saved account has one owner, the environment that refreshes its
+  grant. A refresh token rotates on every use at both providers and the
+  rotation revokes its predecessor, so a grant can have exactly one
+  refresher; every other host holds an access-only copy that follows the
+  owner's pushes (`accounts.push`, `accounts.pull`, both admin-only on the
+  remote wire) and asks the owner for a fresh one near its end. A copy whose
+  owner is unreachable runs out, and the Accounts page says so on the row.
+- **Claude on the box is a one-year token.** "One-year token" on the Mac's
+  Accounts page runs `claude setup-token` (the CLI mints an inference-only
+  bearer in the browser, valid a year, nothing refreshes it) and files it
+  under the account you name; the row shows when it lapses and turns amber
+  30 days before. It is pushed to every admin host and becomes the box's
+  live Claude sign-in (`~/.claude/.credentials.json` for agents) if the box
+  has none, so claude children can start; the gateway swaps the bearer per
+  thread as always.
+- **Codex is owned by the box.** Set "Refreshed by: box" on the Codex panel,
+  then Add account: the fresh grant is handed to the box (the box confirms
+  ownership before the Mac strips its own refresh token), becomes the box's
+  live `~/.codex/auth.json`, and the Mac keeps an access-only copy that the
+  box pushes on every rotation. The Mac's own terminal Codex keeps the grant
+  it had; a grant the CLI here is signed in with is never handed off.
+- Moving "Refreshed by" back to the Mac takes the grants back the same way.
+  The Mac's main process keeps one socket per admin host (backoff to 5 min)
+  and syncs on connect, on every local vault write, and every 15 minutes;
+  `accounts.sync` and the row's Retry do it now. The box's own vault is
+  `/srv/agents/home/.config/aliax/` in key-file mode.
+
+Proof without a real account: `bun run script:e2e-accounts-sync` (two
+isolated instances, a fake provider, a handoff, a rotation, the owner down).
+
+GitHub is the one sign-in done on the box itself, once, as agents:
 
 ```sh
 ssh box

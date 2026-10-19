@@ -164,6 +164,9 @@ export const METHOD_CAPABILITY: Record<ClientRequest['method'], MethodCapability
   'build.cancel': 'operate',
   'attachment.save': 'operate',
   'accounts.refresh': 'operate',
+  // Account sync between hosts (thread V): only an admin key moves a credential, local only decides where sign-ins go.
+  'accounts.sync': 'local',
+  'accounts.setHome': 'local',
   'notes.upsert': 'operate',
   'notes.delete': 'operate',
   'projectLogo.save': 'operate',
@@ -220,6 +223,8 @@ export const METHOD_CAPABILITY: Record<ClientRequest['method'], MethodCapability
   'remote.sessions.list': 'admin',
   'remote.sessions.revoke': 'admin',
   'remote.settings.set': 'admin',
+  'accounts.push': 'admin',
+  'accounts.pull': 'admin',
   // Saved hosts and their keys never leave this machine (thread K1).
   'remote.environments.list': 'local',
   'remote.environments.add': 'local',

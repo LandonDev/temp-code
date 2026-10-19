@@ -7,6 +7,7 @@ import { bootMark } from './server/boot'
 import { noteInstallOnQuit, registerUpdates } from './update'
 import { applyHarness, bakedHarness } from './harness'
 import { configureAliax } from './aliax'
+import { loadEnvironmentId } from './server/remote/environment'
 import { aliaxCallCounts, registerAliaxPages } from './aliaxPages'
 import { registerAppshots } from './appshots'
 import { electronApp, optimizer } from '@electron-toolkit/utils'
@@ -124,7 +125,8 @@ app.whenReady().then(async () => {
   // Agent HTML pages: stored under userData, previewed in the hidden window.
   setHtmlRenderRoot(pagesRoot())
   setHtmlPreviewer(htmlPreviewer)
-  configureAliax()
+  // The core compares every profile's owner to this id (aliax-core sync.ts).
+  configureAliax(loadEnvironmentId(app.getPath('userData')))
   server = await startServer(join(app.getPath('userData'), 'temp-code.db'), {
     appPath: app.getAppPath(),
     claimShim: mayClaimShim({ isPackaged: app.isPackaged }),

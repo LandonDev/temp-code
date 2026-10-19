@@ -4,6 +4,7 @@ import type { SessionRegistry } from './sessions'
 import type { Notes } from './notes'
 import type { ProjectLogos } from './projectLogos'
 import type { AccountsService } from './accounts'
+import type { AccountSync } from './remote/accountSync'
 import { searchProject } from './search'
 import { generateText } from './drivers/title'
 
@@ -13,6 +14,7 @@ interface Context {
   notes: Notes
   logos: ProjectLogos
   accounts: AccountsService
+  accountSync: AccountSync
 }
 export async function handleM3a(
   req: ClientRequest,
@@ -55,6 +57,15 @@ export async function handleM3a(
       return done(await ctx.accounts.list())
     case 'accounts.refresh':
       return done(await ctx.accounts.refresh(req.params.provider))
+    case 'accounts.push':
+      return done(ctx.accountSync.handlePush(req.params.from, req.params.transfer))
+    case 'accounts.sync':
+      if (req.params?.environmentId) await ctx.accountSync.syncWith(req.params.environmentId)
+      else await ctx.accountSync.syncAll()
+      return done(await ctx.accounts.list())
+    case 'accounts.setHome':
+      await ctx.accountSync.setHome(req.params.provider, req.params.environmentId)
+      return done(await ctx.accounts.list())
     default:
       return { handled: false }
   }

@@ -55,6 +55,10 @@ export interface ProviderAccounts {
 export interface AccountsSnapshot {
   updatedAt: number
   providers: Record<AccountProvider, ProviderAccounts>
+  /** Per provider, the environment that refreshes new sign-ins (they are handed to it); absent means this machine. */
+  homes?: Partial<Record<AccountProvider, string>>
+  /** The account-sync links this host holds to other hosts, by environment id. */
+  peers?: Record<string, PeerState>
 }
 
 export const emptyAccounts = (): AccountsSnapshot => ({
@@ -65,3 +69,13 @@ export const emptyAccounts = (): AccountsSnapshot => ({
     cursor: { pinned: null, profiles: [], reports: [], owner: null }
   }
 })
+
+/** The main process's own link to a host that shares accounts (server/remote/peers.ts). */
+export interface PeerState {
+  /** The host's name as saved here, so a row can name it without the renderer's registry. */
+  name: string
+  connected: boolean
+  /** The last completed sync with that host, either way. */
+  lastSyncAt: number | null
+  error: string | null
+}

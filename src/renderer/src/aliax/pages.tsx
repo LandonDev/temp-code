@@ -1,9 +1,9 @@
-import { registry } from '../lib/connection'
+import { registry, useEnvironments } from '../lib/connection'
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { motion, useReducedMotion } from 'motion/react'
 import { toast } from 'sonner'
 import type { ServiceId, ServiceView, UsageReport } from 'aliax-core/shared/types'
-import { ACCOUNT_PROVIDERS, PROVIDER_OF, SERVICE_OF } from '@shared/accounts'
+import { ACCOUNT_PROVIDERS, PROVIDER_OF, SERVICE_OF, type AccountProvider } from '@shared/accounts'
 import { accountsStore, useAccounts } from '@renderer/stores/accounts'
 import { Loader } from '@aliax/components/motion/loader'
 import { Button } from '@aliax/components/ui/button'
@@ -15,6 +15,7 @@ import {
   DialogHeader,
   DialogTitle
 } from '@aliax/components/ui/dialog'
+import { Input } from '@aliax/components/ui/input'
 import { Toaster } from '@aliax/components/ui/sonner'
 import { TooltipProvider } from '@aliax/components/ui/tooltip'
 import { EASE_OUT } from '@aliax/lib/ease'
@@ -127,7 +128,7 @@ function useAliax() {
     if (!refreshing.current) void loadViews()
   }, [identity, loadViews])
 
-  return { views, usage, refresh }
+  return { views, usage, refresh, snapshot }
 }
 
 function AliaxRoot({ page, children }: { page: 'accounts' | 'stats'; children: ReactNode }) {
@@ -163,9 +164,44 @@ function Loading() {
 }
 
 export function AccountsPage(): React.JSX.Element {
-  const { views, usage, refresh } = useAliax()
+  const { views, usage, refresh, snapshot } = useAliax()
   const [busy, setBusy] = useState<string | null>(null)
   const [loginService, setLoginService] = useState<ServiceId | null>(null)
+  // The hosts this machine shares accounts with: the snapshot's peers, named by the registry.
+  const environments = useEnvironments()
+  const peers = snapshot.peers ?? {}
+  const peerList = useMemo(
+    () => Object.entries(peers).map(([id, p]) => ({ id, name: environments.find((e) => e.id === id)?.name ?? p.name ?? id })),
+    [peers, environments]
+  )
+  const localName = environments.find((e) => e.id === registry.primary().environmentId)?.name ?? 'this machine'
+  const [tokenEmail, setTokenEmail] = useState<string | null>(null)
+  const [minting, setMinting] = useState(false)
+
+  /** `claude setup-token` for an account: the row's, or the address typed. */
+  const mintToken = async (identity: { name: string; email?: string }) => {
+    setTokenEmail(null)
+    setMinting(true)
+    const result = await window.aliax.setupToken(identity)
+    setMinting(false)
+    if (!result.ok) toast.error(result.error ?? 'No token was made')
+    else toast.success(result.notes?.length ? `${result.name} · ${result.notes.join(' · ')}` : `Token saved for ${result.name}`)
+    await refresh(true)
+  }
+  const cancelMint = () => {
+    void window.aliax.setupTokenCancel()
+    setMinting(false)
+  }
+  const typed = tokenEmail?.trim() ?? ''
+  const local = () => registry.primary()
+  const onSetHome = async (provider: AccountProvider, environmentId: string | null) => {
+    await local().request('accounts.setHome', { provider, environmentId })
+    await refresh(true)
+  }
+  const onSync = async (environmentId: string) => {
+    await local().request('accounts.sync', { environmentId })
+    await refresh(true)
+  }
 
   const run = async (
     key: string,
@@ -223,6 +259,10 @@ export function AccountsPage(): React.JSX.Element {
             views={views}
             usage={usage}
             busy={busy}
+            homes={snapshot.homes ?? {}}
+            peers={peers}
+            environments={peerList}
+            localName={localName}
             onCapture={(id) => run(`capture:${id}`, () => window.aliax.capture(id), 'Saved')}
             onAdd={addAccount}
             onReauth={(id, email) => addAccount(id, email)}
@@ -231,9 +271,59 @@ export function AccountsPage(): React.JSX.Element {
               run(`use:${id}:${name}`, () => window.aliax.remove(id, name), 'Removed')
             }
             onRefresh={() => refresh(true)}
+            onSetupToken={(_id, identity) => (identity ? void mintToken(identity) : setTokenEmail(''))}
+            onSetHome={(provider, id) => void onSetHome(provider, id)}
+            onSync={(id) => void onSync(id)}
           />
         </div>
       )}
+
+      <Dialog open={tokenEmail !== null} onOpenChange={(open) => !open && setTokenEmail(null)}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>One-year token</DialogTitle>
+            <DialogDescription>
+              The browser opens for a Claude sign-in. The token lasts a year, never refreshes and only runs inference. Which
+              account will you sign in as?
+            </DialogDescription>
+          </DialogHeader>
+          <Input
+            autoFocus
+            placeholder="email"
+            value={tokenEmail ?? ''}
+            onChange={(e) => setTokenEmail(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && typed) void mintToken({ name: typed, email: typed })
+            }}
+          />
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setTokenEmail(null)}>
+              Cancel
+            </Button>
+            <Button disabled={!typed} onClick={() => void mintToken({ name: typed, email: typed })}>
+              Continue
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={minting} onOpenChange={(open) => !open && cancelMint()}>
+        <DialogContent className="sm:max-w-sm" showCloseButton={false}>
+          <DialogHeader>
+            <DialogTitle>Making a one-year token</DialogTitle>
+            <DialogDescription>Approve Claude Code in the browser that opened, signed in as that account.</DialogDescription>
+          </DialogHeader>
+          <div className="flex items-center gap-3 py-2 text-muted-foreground">
+            <Loader variant="dots" size={20} />
+            <span className="text-sm">Waiting for the browser</span>
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={cancelMint}>
+              Cancel
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={loginService !== null} onOpenChange={(open) => !open && cancelLogin()}>
         <DialogContent className="sm:max-w-sm" showCloseButton={false}>

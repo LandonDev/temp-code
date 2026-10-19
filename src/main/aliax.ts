@@ -4,43 +4,65 @@ import { join } from 'node:path'
 import { configure, isLive, readMarker, type Role } from 'aliax-core'
 import { notifyAccountsChanged } from './aliaxPages'
 import { recordAppEvent, recordUsage } from './aliax/stats/store'
+import { accountSyncHooks } from './server/remote/accountSync'
+
+/** An isolated instance (TEMP_CODE_USER_DATA) may keep its own vault, so a test never reads the real one. */
+const ISOLATED_VAULT = process.env.TEMP_CODE_USER_DATA ? process.env.TEMP_CODE_ALIAX_DATA_DIR : undefined
 
 /** Aliax's own userData: the vault, settings and usage cache both apps share. */
-export const ALIAX_DATA_DIR = join(app.getPath('appData'), 'aliax')
+export const ALIAX_DATA_DIR = ISOLATED_VAULT || join(app.getPath('appData'), 'aliax')
 
 export const aliaxInstalled = (): boolean => existsSync(join(ALIAX_DATA_DIR, 'profiles.json'))
 
-/** Owner only while this very process holds the gateway marker. */
+/**
+ * Owner only while this very process holds the gateway marker. An isolated
+ * instance may say TEMP_CODE_GATEWAY_ROLE=owner to refresh its own vault's
+ * tokens without claiming the marker (the e2e's fake provider needs that).
+ */
 export function gatewayRole(): Role {
+  if (process.env.TEMP_CODE_USER_DATA && process.env.TEMP_CODE_GATEWAY_ROLE === 'owner') return 'owner'
   const m = readMarker()
   return isLive(m) && m.owner === 'temp-code' && m.pid === process.pid ? 'owner' : 'standby'
 }
 
 /**
+ * TEMP_CODE_FAKE_PROVIDERS=<origin>, isolated instances only: every call the
+ * core makes to a provider goes to that origin instead, so an e2e can rotate
+ * tokens and answer usage without a real account.
+ */
+const FAKE_PROVIDERS = process.env.TEMP_CODE_USER_DATA ? process.env.TEMP_CODE_FAKE_PROVIDERS : undefined
+const PROVIDER_ORIGIN = /^https:\/\/(api\.anthropic\.com|platform\.claude\.com|claude\.ai|chatgpt\.com|auth\.openai\.com|cursor\.com)/
+
+/**
  * Point aliax-core at Aliax's data. On macOS secrets open with the same
  * Keychain item Electron's safeStorage made for Aliax, so the first read
  * prompts once for "aliax Safe Storage"; a denied prompt leaves the vault
- * locked, never broken. A Linux host has no Keychain and no Aliax app: the
- * vault seals with its own key file (<dataDir>/vault.key, mode 0600), the
- * same bytes under a different lock.
+ * locked, never broken. A Linux host has no Keychain and no Aliax app, and
+ * an isolated vault has no Keychain item: both seal with their own key file
+ * (<dataDir>/vault.key, mode 0600), the same bytes under a different lock.
+ * `environmentId` is what every profile's owner is compared to (sync.ts).
  */
-export function configureAliax(): void {
+export function configureAliax(environmentId?: string): void {
   configure({
     dataDir: ALIAX_DATA_DIR,
-    fetch: (input, init) => net.fetch(input, init),
+    fetch: (input, init) => net.fetch(FAKE_PROVIDERS ? input.replace(PROVIDER_ORIGIN, FAKE_PROVIDERS) : input, init),
     secrets:
-      process.platform === 'darwin'
+      process.platform === 'darwin' && !ISOLATED_VAULT
         ? { mode: 'chromiumKey', keychainItem: 'aliax Safe Storage' }
         : { mode: 'fileKey' },
     appName: 'temp-code',
+    environmentId,
     // The embedded Stats page reads what Aliax's would: every fresh usage
     // sample and app event lands in our stats store, and a switch or
-    // failover redraws the Accounts page in every window.
+    // failover redraws the Accounts page in every window. Vault writes and
+    // a consumer's ask go to the account sync once the server made it.
     hooks: {
       onUsageSample: (s) =>
         recordUsage(s.service, s.account, s.label, s.usedPercent, s.resetsAt, s.periodMs),
       onAppEvent: recordAppEvent,
-      onAccountsChanged: notifyAccountsChanged
+      onAccountsChanged: notifyAccountsChanged,
+      onSecretSaved: (service, name, origin) => accountSyncHooks.current?.onSecretSaved(service, name, origin),
+      askOwner: (service, name, owner) => accountSyncHooks.current?.askOwner(service, name, owner) ?? Promise.resolve(null)
     },
     role: gatewayRole
   })

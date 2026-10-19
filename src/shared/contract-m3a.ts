@@ -1,6 +1,25 @@
 import { z } from 'zod'
 
 export const AccountProviderSchema = z.enum(['claude', 'codex', 'cursor'])
+export const ServiceIdSchema = z.enum(['claude-code', 'codex', 'cursor'])
+
+/** aliax-core sync.ts Transfer, as it crosses the wire. */
+export const AccountTransferSchema = z.object({
+  service: ServiceIdSchema,
+  mode: z.enum(['handoff', 'access']),
+  profile: z.object({
+    name: z.string(),
+    accountId: z.string(),
+    email: z.string().optional(),
+    nickname: z.string().optional(),
+    color: z.string().optional(),
+    createdAt: z.number(),
+    static: z.boolean(),
+    owner: z.string().nullable()
+  }),
+  blob: z.string(),
+  expiresAt: z.number().nullable()
+})
 /** One explicit account per gateway provider; a missing key inherits. */
 export const AccountPinsSchema = z.object({ claude: z.string().min(1).optional(), codex: z.string().min(1).optional() })
 
@@ -124,5 +143,30 @@ export const M3aRequestSchemas = [
     id: z.string(),
     method: z.literal('accounts.refresh'),
     params: z.object({ provider: AccountProviderSchema })
+  }),
+  // One account crossing to another host (aliax-core sync.ts Transfer): a
+  // handoff carries the refresh token for the host it names as owner, an
+  // access copy carries none. `from` is the sender's environment id.
+  z.object({
+    id: z.string(),
+    method: z.literal('accounts.push'),
+    params: z.object({ from: z.string(), transfer: AccountTransferSchema })
+  }),
+  z.object({
+    id: z.string(),
+    method: z.literal('accounts.pull'),
+    params: z.object({
+      from: z.string(),
+      service: ServiceIdSchema.optional(),
+      name: z.string().optional(),
+      /** The caller becomes the owner: the answer carries the refresh token and this host keeps an access-only copy. */
+      takeOver: z.boolean().optional()
+    })
+  }),
+  z.object({ id: z.string(), method: z.literal('accounts.sync'), params: z.object({ environmentId: z.string().optional() }).optional() }),
+  z.object({
+    id: z.string(),
+    method: z.literal('accounts.setHome'),
+    params: z.object({ provider: AccountProviderSchema, environmentId: z.string().nullable() })
   })
 ] as const

@@ -1,15 +1,19 @@
 import { useState } from 'react'
 import {
+  ChevronDown,
   CircleAlert,
   Clock,
   CreditCard,
   Download,
+  KeyRound,
   LogIn,
   MoreHorizontal,
   Pencil,
   Plus,
+  RefreshCw,
   Trash2
 } from 'lucide-react'
+import { PROVIDER_OF, type AccountProvider, type PeerState } from '@shared/accounts'
 import { motion, useReducedMotion } from 'motion/react'
 import type {
   PlanInfo,
@@ -224,6 +228,130 @@ function ExpiredLine({ onReauth }: { onReauth: () => void }) {
   )
 }
 
+const DAY_MS = 86_400_000
+/** The last 30 days of a one-year token: time to make a new one. */
+export const STATIC_WARN_MS = 30 * DAY_MS
+
+const daysUntil = (t: number, now: number): number => Math.ceil((t - now) / DAY_MS)
+const shortDay = (t: number): string => new Date(t).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+const agoLabel = (t: number, now: number): string => {
+  const mins = Math.max(0, Math.round((now - t) / 60_000))
+  if (mins < 1) return 'just now'
+  if (mins < 60) return `${mins}m ago`
+  const hours = Math.round(mins / 60)
+  return hours < 48 ? `${hours}h ago` : `${Math.round(hours / 24)}d ago`
+}
+
+/** The host that refreshes an account, as a row sees it. */
+export interface OwnerView {
+  name: string
+  connected: boolean
+}
+
+const stop = (fn: () => void) => (e: React.MouseEvent) => {
+  e.stopPropagation()
+  fn()
+}
+
+/**
+ * Where this account's sign-in lives and how long it lasts. A one-year token
+ * says when it lapses: amber inside its last 30 days, a button once it has.
+ * A copy another host refreshes names that host and the last sync, and says
+ * plainly when the host is out of reach and the copy has run out.
+ */
+function OwnerLine({
+  profile,
+  report,
+  owner,
+  now,
+  onSetupToken,
+  onSync
+}: {
+  profile: ProfileView
+  report?: UsageReport
+  owner: OwnerView | null
+  now: number
+  onSetupToken: () => void
+  onSync: () => void
+}) {
+  const lapsed = report?.expired === true || (profile.expiresAt !== undefined && profile.expiresAt <= now)
+  const amber = 'flex items-center gap-1.5 text-[11px] text-ax-warning transition-colors hover:text-ax-warning/80'
+  const quiet = 'flex items-center gap-1.5 text-[11px] text-muted-foreground'
+  if (profile.static) {
+    const days = profile.expiresAt !== undefined ? daysUntil(profile.expiresAt, now) : null
+    if (lapsed || (days !== null && days * DAY_MS <= STATIC_WARN_MS)) {
+      return (
+        <button type="button" onClick={stop(onSetupToken)} className={amber}>
+          <KeyRound className="size-3 shrink-0" />
+          <span>
+            {lapsed ? 'One-year token lapsed' : `One-year token lapses in ${days} day${days === 1 ? '' : 's'}`} ·{' '}
+            <span className="underline underline-offset-2">Make a new one</span>
+          </span>
+        </button>
+      )
+    }
+    return (
+      <span className={quiet}>
+        <KeyRound className="size-3 shrink-0" />
+        One-year token{profile.expiresAt !== undefined && ` · lapses ${shortDay(profile.expiresAt)}`}
+      </span>
+    )
+  }
+  if (!owner) return null
+  if (lapsed) {
+    const since = profile.expiresAt !== undefined ? ` ${agoLabel(profile.expiresAt, now)}` : ''
+    return (
+      <button type="button" onClick={stop(onSync)} className={amber}>
+        <CircleAlert className="size-3 shrink-0" />
+        <span>
+          {owner.connected ? `Waiting for a fresh token from ${owner.name}` : `${owner.name} is unreachable · token lapsed${since}`} ·{' '}
+          <span className="underline underline-offset-2">Retry</span>
+        </span>
+      </button>
+    )
+  }
+  return (
+    <span className={quiet}>
+      <RefreshCw className="size-3 shrink-0" />
+      Refreshed by {owner.name}
+      {profile.syncedAt !== undefined && ` · synced ${agoLabel(profile.syncedAt, now)}`}
+    </span>
+  )
+}
+
+/** Which host refreshes new sign-ins of a service: this machine, or one it holds an admin key for. */
+function HomeControl({
+  home,
+  environments,
+  localName,
+  onSetHome
+}: {
+  home: string | undefined
+  environments: { id: string; name: string }[]
+  localName: string
+  onSetHome: (id: string | null) => void
+}) {
+  const current = home ? (environments.find((e) => e.id === home)?.name ?? home) : localName
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="ghost" size="sm" className="text-muted-foreground">
+          Refreshed by {current}
+          <ChevronDown />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuItem onSelect={() => onSetHome(null)}>{localName}</DropdownMenuItem>
+        {environments.map((e) => (
+          <DropdownMenuItem key={e.id} onSelect={() => onSetHome(e.id)}>
+            {e.name}
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
+}
+
 function UsageBlock({
   report,
   now,
@@ -424,10 +552,13 @@ function ProfileRow({
   now,
   slots,
   billingUrl,
+  owner,
   onUse,
   onReauth,
   onDelete,
-  onEdited
+  onEdited,
+  onSetupToken,
+  onSync
 }: {
   serviceId: ServiceId
   profile: ProfileView
@@ -437,10 +568,14 @@ function ProfileRow({
   now: number
   slots: number
   billingUrl?: string
+  /** The host that refreshes this account when it is not this machine. */
+  owner: OwnerView | null
   onUse: () => void
   onReauth: () => void
   onDelete: () => void
   onEdited: () => void
+  onSetupToken: () => void
+  onSync: () => void
 }) {
   const [editing, setEditing] = useState(false)
   const reduce = useReducedMotion()
@@ -516,6 +651,12 @@ function ProfileRow({
               <Pencil />
               Edit account
             </DropdownMenuItem>
+            {serviceId === 'claude-code' && (
+              <DropdownMenuItem onSelect={onSetupToken}>
+                <KeyRound />
+                {profile.static ? 'New one-year token' : 'Replace with a one-year token'}
+              </DropdownMenuItem>
+            )}
             {billingUrl && (
               <DropdownMenuItem onSelect={() => window.aliax.openExternal(billingUrl)}>
                 <CreditCard />
@@ -530,11 +671,12 @@ function ProfileRow({
         </DropdownMenu>
         </div>
         {report?.plan && <PlanLine plan={report.plan} now={now} />}
-        {report?.expired ? (
-          <ExpiredLine onReauth={onReauth} />
+        {profile.static || owner ? (
+          <OwnerLine profile={profile} report={report} owner={owner} now={now} onSetupToken={onSetupToken} onSync={onSync} />
         ) : (
-          report?.rateLimit && <RateLimitLine rl={report.rateLimit} now={now} />
+          report?.expired && <ExpiredLine onReauth={onReauth} />
         )}
+        {!report?.expired && report?.rateLimit && <RateLimitLine rl={report.rateLimit} now={now} />}
       </div>
 
       <BankedResets count={report?.banked} />
@@ -559,24 +701,44 @@ function ServicePanel({
   usage,
   busy,
   now,
+  home,
+  peers,
+  environments,
+  localName,
   onCapture,
   onAdd,
   onUse,
   onReauth,
   onDelete,
-  onRefresh
+  onRefresh,
+  onSetupToken,
+  onSetHome,
+  onSync
 }: {
   service: ServiceView
   usage?: UsageReport[]
   busy: string | null
   now: number
+  /** The environment new sign-ins of this service are handed to; undefined means this machine. */
+  home: string | undefined
+  peers: Record<string, PeerState>
+  environments: { id: string; name: string }[]
+  localName: string
   onCapture: () => void
   onAdd: () => void
   onUse: (name: string) => void
   onReauth: (name: string, email?: string) => void
   onDelete: (name: string) => void
   onRefresh: () => void
+  onSetupToken: (identity?: { name: string; email?: string }) => void
+  onSetHome: (environmentId: string | null) => void
+  onSync: (environmentId: string) => void
 }) {
+  const ownerFor = (p: ProfileView): OwnerView | null => {
+    if (!p.owner || p.static) return null
+    const env = environments.find((e) => e.id === p.owner)
+    return { name: env?.name ?? p.owner, connected: peers[p.owner]?.connected ?? false }
+  }
   // Widen only as far as the busiest row in this service needs.
   const slots = Math.min(
     MAX_SLOTS,
@@ -604,6 +766,15 @@ function ServicePanel({
 
         {service.installed && (
           <div className="ml-auto flex items-center gap-1.5">
+            {environments.length > 0 && service.id !== 'cursor' && (
+              <HomeControl home={home} environments={environments} localName={localName} onSetHome={onSetHome} />
+            )}
+            {service.id === 'claude-code' && (
+              <Button variant="outline" size="sm" onClick={() => onSetupToken()}>
+                <KeyRound />
+                One-year token
+              </Button>
+            )}
             {service.canSaveCurrent && (
               <Button size="sm" disabled={busy === 'capture'} onClick={onCapture}>
                 <Download />
@@ -640,12 +811,15 @@ function ServicePanel({
               now={now}
               slots={slots}
               billingUrl={service.billingUrl}
+              owner={ownerFor(p)}
               report={usage?.find((r) => r.profileName === p.name)}
               busy={busy === `use:${p.name}`}
               onUse={() => onUse(p.name)}
               onReauth={() => onReauth(p.name, p.email)}
               onDelete={() => onDelete(p.name)}
               onEdited={onRefresh}
+              onSetupToken={() => onSetupToken({ name: p.name, email: p.email })}
+              onSync={() => p.owner && onSync(p.owner)}
             />
           ))}
         </ul>
@@ -691,7 +865,14 @@ export function AccountsView({
   onReauth,
   onUse,
   onDelete,
-  onRefresh
+  onRefresh,
+  homes,
+  peers,
+  environments,
+  localName,
+  onSetupToken,
+  onSetHome,
+  onSync
 }: {
   views: ServiceView[]
   usage: Partial<Record<ServiceId, UsageReport[]>>
@@ -702,6 +883,16 @@ export function AccountsView({
   onUse: (serviceId: ServiceId, name: string) => void
   onDelete: (serviceId: ServiceId, name: string) => void
   onRefresh: () => void
+  /** Per provider, the host new sign-ins are handed to (accounts snapshot `homes`). */
+  homes: Partial<Record<AccountProvider, string>>
+  /** The account-sync links this machine holds, by environment id. */
+  peers: Record<string, PeerState>
+  /** Those hosts, named. */
+  environments: { id: string; name: string }[]
+  localName: string
+  onSetupToken: (serviceId: ServiceId, identity?: { name: string; email?: string }) => void
+  onSetHome: (provider: AccountProvider, environmentId: string | null) => void
+  onSync: (environmentId: string) => void
 }) {
   const now = useNow()
   return (
@@ -725,6 +916,13 @@ export function AccountsView({
           onReauth={(_name, email) => onReauth(s.id, email)}
           onDelete={(name) => onDelete(s.id, name)}
           onRefresh={onRefresh}
+          home={homes[PROVIDER_OF[s.id]]}
+          peers={peers}
+          environments={environments}
+          localName={localName}
+          onSetupToken={(identity) => onSetupToken(s.id, identity)}
+          onSetHome={(id) => onSetHome(PROVIDER_OF[s.id], id)}
+          onSync={onSync}
         />
       ))}
     </div>

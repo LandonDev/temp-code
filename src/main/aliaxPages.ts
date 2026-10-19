@@ -2,8 +2,10 @@ import { BrowserWindow, ipcMain, shell } from 'electron'
 import { existsSync, renameSync, rmSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
-import { accounts, adapter, vault, type ActionResult, type ServiceId } from 'aliax-core'
+import { accounts, adapter, saveStaticClaude, vault, type ActionResult, type ServiceId } from 'aliax-core'
 import * as login from './aliax/login'
+import { cancelSetupToken, runSetupToken } from './aliax/setupToken'
+import type { AccountSync } from './server/remote/accountSync'
 import { indexAll, indexProgress } from './aliax/stats/indexer'
 import { bundle, invalidate } from './aliax/stats/queries'
 import { recordUsage } from './aliax/stats/store'
@@ -34,6 +36,8 @@ const asResult = async (fn: () => Promise<ActionResult>): Promise<ActionResult> 
 }
 
 let nudge: (() => void) | null = null
+/** The account sync, so a sign-in or a new token reaches the other hosts at once. */
+let sync: AccountSync | null = null
 
 /** Per-channel call counts, for the dev-only CDP check that the pages never poll in a storm. */
 const calls: Record<string, number> = {}
@@ -92,8 +96,11 @@ async function loginStart(serviceId: ServiceId, loginHint?: string): Promise<Act
       // stranded, because the active row offers no Switch button.
       const a = adapter(serviceId)
       const liveId = await a.liveAccountId().catch(() => null)
+      // Not when Claude sign-ins are handed to another host: the grant just
+      // minted goes there, and the CLI here keeps refreshing its own.
       if (
         name &&
+        !sync?.homes().claude &&
         liveId === captured.accountId &&
         (wasExpired || (await a.liveCredentialExpired?.().catch(() => false)))
       ) {
@@ -130,7 +137,10 @@ async function loginStart(serviceId: ServiceId, loginHint?: string): Promise<Act
         return await accounts.capture(serviceId)
       } finally {
         const liveId = await a.liveAccountId().catch(() => null)
-        if (previous?.blob && liveId && liveId !== previous.accountId) {
+        // With Codex sign-ins handed to another host, the fresh grant is for
+        // that host: the CLI here goes back to its own, even for the same
+        // account, so two refreshers never share one grant.
+        if (previous?.blob && liveId && (liveId !== previous.accountId || sync?.homes().codex)) {
           // Empty target set: write the old credentials back, restart nothing.
           await a
             .activate(previous.blob, accounts.extra(serviceId, 'pre-login'), new Set())
@@ -177,8 +187,9 @@ export interface AliaxPagesHost {
 /** The stats index runs once per process, on the first Stats page ask. */
 let indexKicked = false
 
-export function registerAliaxPages(server: { accounts: AliaxPagesHost }): void {
+export function registerAliaxPages(server: { accounts: AliaxPagesHost; accountSync: AccountSync }): void {
   nudge = () => server.accounts.nudge()
+  sync = server.accountSync
   server.accounts.onChange(recordSnapshot)
   vault.ensureColors()
   // Codex rotates its refresh token in place; the vault copy follows every
@@ -198,6 +209,7 @@ export function registerAliaxPages(server: { accounts: AliaxPagesHost }): void {
     asResult(async () => {
       const result = await accounts.capture(serviceId)
       notifyAccountsChanged()
+      void sync?.syncAll()
       return result
     })
   )
@@ -228,10 +240,36 @@ export function registerAliaxPages(server: { accounts: AliaxPagesHost }): void {
     asResult(async () => {
       const result = await loginStart(serviceId, loginHint)
       notifyAccountsChanged()
+      void sync?.syncAll()
       return result
     })
   )
   handle('aliax:login:cancel', (_e, serviceId: ServiceId) => loginCancel(serviceId))
+  // A one-year token (claude setup-token) for an account: the CLI mints it
+  // in the browser, we store it as a static profile that nothing refreshes.
+  // The token is inference-only, so the account is whatever the caller
+  // named (the row it started from), checked against the API when it can be.
+  handle('aliax:login:setupToken', (_e, identity?: { name?: string; email?: string }) =>
+    asResult(async () => {
+      const { token, expiresAt, validFor } = await runSetupToken()
+      const truth = await adapter('claude-code')
+        .identify?.(JSON.stringify({ keychain: JSON.stringify({ claudeAiOauth: { accessToken: token } }) }))
+        .catch(() => null)
+      const row = identity?.name ? vault.profiles('claude-code').find((p) => p.name === identity.name) : undefined
+      const accountId = truth?.accountId ?? row?.accountId ?? identity?.email
+      if (!accountId) return { ok: false, error: 'token made, but no account to file it under. Start from the account row, or type its email' }
+      const name = saveStaticClaude({ token, expiresAt, accountId, email: truth?.email ?? identity?.email })
+      accounts.clearUsageCache('claude-code', name)
+      notifyAccountsChanged()
+      void sync?.syncAll()
+      return {
+        ok: true,
+        name,
+        notes: [`one-year token saved${validFor ? ` (valid for ${validFor})` : ''}`, truth ? '' : `filed under ${name} as you said; the token cannot name its account`].filter(Boolean)
+      }
+    })
+  )
+  handle('aliax:login:setupTokenCancel', () => cancelSetupToken())
   handle('aliax:open:external', (_e, url: string) => {
     // Only ever http(s): never hand an arbitrary scheme to the OS.
     if (/^https?:\/\//.test(String(url))) void shell.openExternal(String(url))
