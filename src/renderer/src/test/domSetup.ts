@@ -87,3 +87,11 @@ const css = (globalThis.CSS ?? (globalThis.CSS = {} as typeof CSS)) as unknown a
   highlights?: Map<string, Highlight>
 }
 if (!css.highlights) css.highlights = new Map()
+
+// The dom suite is the desktop window: preload has set `window.api` there,
+// and lib/native.ts switches to the browser stand-in (lib/nativeWeb.ts)
+// only when it is absent. Tests that need the bridge mock its members
+// themselves; web mode is covered by lib/nativeWeb.test.ts.
+if (!("api" in window)) {
+  Object.defineProperty(window, "api", { value: {}, configurable: true, writable: true });
+}

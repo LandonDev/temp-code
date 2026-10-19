@@ -39,7 +39,17 @@ beforeAll(async () => {
   writeFileSync(join(root, 'out', 'renderer', 'assets', 'app.js'), 'console.log(1)')
   writeFileSync(join(root, 'out', 'renderer', 'boot.js'), 'void 0')
   const { startServer } = await import('../index')
-  server = await startServer(join(root, 'app.db'), { claimShim: false, remotePort: 0, appPath: root })
+  server = await startServer(join(root, 'app.db'), {
+    claimShim: false,
+    remotePort: 0,
+    appPath: root,
+    // A stand-in for the asset protocol handler: echoes what it was asked.
+    assets: async (request) =>
+      new Response(`asset ${request.method} ${request.url} range=${request.headers.get('range') ?? '-'}`, {
+        status: request.url.includes('missing') ? 404 : 200,
+        headers: { 'Content-Type': 'image/png', 'Cache-Control': 'no-cache' }
+      })
+  })
   base = `http://127.0.0.1:${server.remote!.port}`
 }, 60_000)
 afterAll(async () => {
@@ -337,6 +347,23 @@ describe('/ui and /pair', () => {
       expect((await call('GET', path, { headers: { Cookie: cookie } })).status, path).toBe(404)
     }
     expect((await call('POST', '/ui/', { headers: { Cookie: cookie }, body: {} })).status).toBe(404)
+  })
+})
+
+describe('/asset', () => {
+  it('mirrors the asset scheme behind the cookie', async () => {
+    expect((await call('GET', '/asset/logo/x.png')).status).toBe(401)
+    const admin = await adminKey()
+    const code = (await call('POST', '/api/pairings', { headers: bearer(admin), body: { name: 'B', audience: 'client', caps: [] } })).body.code
+    const cookie = (await call('POST', '/api/pair', { body: { code, kind: 'session' } })).headers.get('set-cookie')!.split(';')[0]
+    const logo = await call('GET', '/asset/logo/x.png', { headers: { Cookie: cookie } })
+    expect(logo.status).toBe(200)
+    expect(logo.headers.get('content-type')).toBe('image/png')
+    expect(logo.body).toBe('asset GET tempcode-asset://logo/x.png range=-')
+    const clip = await call('GET', '/asset/file/abc/clip.mp4?v=1', { headers: { Cookie: cookie, Range: 'bytes=0-9' } })
+    expect(clip.body).toBe('asset GET tempcode-asset://file/abc/clip.mp4?v=1 range=bytes=0-9')
+    expect((await call('GET', '/asset/page/s/missing.html', { headers: { Cookie: cookie } })).status).toBe(404)
+    expect((await call('GET', '/asset/', { headers: { Cookie: cookie } })).status).toBe(404)
   })
 })
 

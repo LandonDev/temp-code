@@ -21,6 +21,7 @@ describe("web mode", () => {
     expect(web.isWebMode()).toBe(true);
     vi.stubGlobal("window", { api: {} });
     expect(web.isWebMode()).toBe(false);
+    expect(web.assetHref("tempcode-asset://logo/a.png")).toBe("tempcode-asset://logo/a.png");
   });
   it("routes native.ts through webApi: slot web, terminal refused, confirm for ask", async () => {
     const confirm = vi.fn(() => true);
@@ -32,8 +33,12 @@ describe("web mode", () => {
     await expect(native.ask("sure?")).resolves.toBe(true);
     expect(confirm).toHaveBeenCalledWith("sure?");
     await expect(native.getServerPort()).rejects.toThrow(/unavailable/);
-    const { webSocketUrl } = await import("./nativeWeb");
+    const { webSocketUrl, assetHref } = await import("./nativeWeb");
     expect(webSocketUrl()).toBe("wss://tc.example/ws");
+    expect(assetHref("tempcode-asset://logo/a%20b.png")).toBe("/asset/logo/a%20b.png");
+    expect(assetHref("tempcode-asset://file/tok/clip.mp4?v=1")).toBe("/asset/file/tok/clip.mp4?v=1");
+    expect(assetHref("https://example.com/x.png")).toBe("https://example.com/x.png");
+    expect(native.convertFileSrc("/Users/x/project-logos/acme.png")).toBe("/asset/logo/acme.png");
   });
 });
 

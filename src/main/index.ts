@@ -13,7 +13,7 @@ import { electronApp, optimizer } from '@electron-toolkit/utils'
 import { startServer, type RunningServer } from './server'
 import { mayClaimShim, releaseGateway } from './server/gateway'
 import { killTrackedChildren } from './server/spawnBudget'
-import { pagesRoot, registerAssetProtocol, registerSchemes } from './assets'
+import { handleAssetRequest, pagesRoot, registerAssetProtocol, registerSchemes } from './assets'
 import { registerAppProtocol } from './appScheme'
 import { migrateLocalStorage } from './originMigration'
 import { htmlPreviewer } from './htmlPreview'
@@ -116,7 +116,8 @@ app.whenReady().then(async () => {
   configureAliax()
   server = await startServer(join(app.getPath('userData'), 'temp-code.db'), {
     appPath: app.getAppPath(),
-    claimShim: mayClaimShim({ isPackaged: app.isPackaged })
+    claimShim: mayClaimShim({ isPackaged: app.isPackaged }),
+    assets: handleAssetRequest
   })
   registerUpdates()
   registerAliaxPages(server)

@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from "react";
+import { assetHref } from "../lib/nativeWeb";
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { htmlRenderPageUrl, type HtmlRenderReference } from "@shared/htmlRender";
@@ -73,7 +74,7 @@ export function HtmlRenderOverlay() {
               </button>
             </div>
             <HtmlRenderDocument
-              src={htmlRenderPageUrl(snap)}
+              src={assetHref(htmlRenderPageUrl(snap))}
               title={snap.title}
               className="min-h-0 w-full flex-1"
             />

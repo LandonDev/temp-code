@@ -1,5 +1,7 @@
 import { createReadStream, existsSync, readFileSync, statSync } from 'node:fs'
 import { extname, join, resolve, sep } from 'node:path'
+import { Readable } from 'node:stream'
+import { ASSET_SCHEME } from '@shared/assets'
 import type { RequestContext, UiHandler } from './listener'
 import { notFound } from './listener'
 import type { Verified } from './auth'
@@ -59,9 +61,11 @@ export function rewriteCsp(html: string, host: string, proto: 'http' | 'https'):
   const ws = proto === 'https' ? 'wss' : 'ws'
   return html.replace(/(<meta\s+http-equiv="Content-Security-Policy"\s+content=")([^"]*)(")/i, (_m, open: string, policy: string, close: string) => {
     const extra = `${ws}://${host} ${proto}://${host}`
-    const rewritten = policy.includes('connect-src')
+    let rewritten = policy.includes('connect-src')
       ? policy.replace(/connect-src([^;]*)/, (_c, rest: string) => `connect-src${rest} ${extra}`)
       : `${policy}; connect-src 'self' ${extra}`
+    // Agent pages come from /asset/page on this origin here, not from the asset scheme.
+    if (/frame-src(?![^;]*'self')/.test(rewritten)) rewritten = rewritten.replace(/frame-src/, "frame-src 'self'")
     return `${open}${rewritten}${close}`
   })
 }
@@ -69,6 +73,19 @@ export function rewriteCsp(html: string, host: string, proto: 'http' | 'https'):
 export interface UiOptions {
   /** The built renderer: out/renderer under the app path. */
   rendererDir: string
+  /** The tempcode-asset:// handler (src/main/assets.ts), when the host has one; `/asset/*` mirrors it. */
+  assets?: (request: Request) => Promise<Response>
+}
+
+/** `/asset/<host>/<path>?q` → the `tempcode-asset://<host>/<path>?q` request the protocol handler takes. */
+export function assetRequestFor(url: string, req: { method?: string; headers: Record<string, string | string[] | undefined> }): Request | null {
+  const m = /^\/asset\/([a-z]+)(\/[^?]*)?(\?.*)?$/.exec(url)
+  if (!m) return null
+  const range = req.headers.range
+  return new Request(`${ASSET_SCHEME}://${m[1]}${m[2] ?? '/'}${m[3] ?? ''}`, {
+    method: req.method === 'HEAD' ? 'HEAD' : 'GET',
+    headers: typeof range === 'string' ? { range } : {}
+  })
 }
 
 /** The sign-in page: the code comes in the fragment (never sent to the server by the link itself). */
@@ -146,7 +163,8 @@ export function createUiHandler(options: UiOptions): UiHandler {
       send(res, 200, pairPageHtml(), 'text/html; charset=utf-8', { 'Cache-Control': 'no-store' })
       return true
     }
-    if (path !== '/ui' && !path.startsWith('/ui/')) return false
+    const isAsset = path.startsWith('/asset/')
+    if (path !== '/ui' && !path.startsWith('/ui/') && !isAsset) return false
 
     let verified: Verified | null = null
     try {
@@ -162,6 +180,19 @@ export function createUiHandler(options: UiOptions): UiHandler {
         res.writeHead(302, { Location: '/pair', 'Cache-Control': 'no-store' })
         res.end()
       } else send(res, 401, 'sign in at /pair', 'text/plain; charset=utf-8', { 'Cache-Control': 'no-store' })
+      return true
+    }
+    if (isAsset) {
+      const request = options.assets ? assetRequestFor(req.url ?? '', req) : null
+      if (!request) return void notFound(res), true
+      const out = await options.assets!(request)
+      const headers: Record<string, string> = {}
+      out.headers.forEach((value, name) => {
+        headers[name] = value
+      })
+      res.writeHead(out.status, headers)
+      if (!out.body || req.method === 'HEAD') return void res.end(), true
+      Readable.fromWeb(out.body as import('node:stream/web').ReadableStream).pipe(res)
       return true
     }
     if (!existsSync(indexPath)) {

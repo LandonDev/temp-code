@@ -26,6 +26,14 @@ export function webSocketUrl(): string {
   return `${location.origin.replace(/^http/, "ws")}/ws`;
 }
 
+/** A `tempcode-asset://host/path` URL as this page can load it: unchanged in
+ *  Electron, `/asset/host/path` on the fixed port's origin in a browser. */
+export function assetHref(url: string): string {
+  if (!isWebMode()) return url;
+  const m = /^tempcode-asset:\/\/([^/?#]+)(.*)$/.exec(url);
+  return m ? `/asset/${m[1]}${m[2].startsWith("/") ? "" : "/"}${m[2]}` : url;
+}
+
 let version: Promise<string> | null = null;
 
 export const webApi: Api = {
@@ -114,7 +122,7 @@ export const webApi: Api = {
     confirmQuit: done,
     declineQuit: noop,
     onQuitRequested: () => noop,
-    logoUrl: (absolutePath) => logoAssetUrl(absolutePath),
+    logoUrl: (absolutePath) => assetHref(logoAssetUrl(absolutePath)),
   },
   debug: {
     menuClick: () => needsDesktop("Debug"),

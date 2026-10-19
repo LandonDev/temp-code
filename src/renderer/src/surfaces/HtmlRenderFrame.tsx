@@ -1,4 +1,5 @@
 import { memo, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { assetHref } from "../lib/nativeWeb";
 import {
   HTML_RENDER_COLUMN_WIDTH,
   htmlRenderFrameHeight,
@@ -46,7 +47,7 @@ export const HtmlRenderRow = memo(function HtmlRenderRow({
   return (
     <div ref={boxRef} className="group/html-render relative my-1" style={{ height }}>
       <HtmlRenderDocument
-        src={htmlRenderPageUrl(reference)}
+        src={assetHref(htmlRenderPageUrl(reference))}
         title={reference.title}
         className="block size-full"
         onContentHeight={setContentHeight}

@@ -6,6 +6,7 @@ import {
   type ReactNode,
   type SyntheticEvent,
 } from "react";
+import { assetHref } from "../lib/nativeWeb";
 import { fileMedia, gitFileMedia, type FileMedia } from "../lib/fs";
 import { watchFile } from "../lib/fileWatch";
 import { displayPath } from "../lib/paths";
@@ -267,7 +268,7 @@ function MediaBody({
           }
         >
           <img
-            src={media.url}
+            src={assetHref(media.url)}
             alt=""
             draggable={false}
             loading="lazy"
@@ -291,7 +292,7 @@ function MediaBody({
       <div className="grid h-full min-h-0 place-items-center bg-content/[0.03] p-4">
         <video
           ref={ref}
-          src={media.url}
+          src={assetHref(media.url)}
           controls
           preload="metadata"
           tabIndex={0}
@@ -312,7 +313,7 @@ function MediaBody({
     <div className="grid h-full min-h-0 place-items-center p-4">
       <audio
         ref={ref}
-        src={media.url}
+        src={assetHref(media.url)}
         controls
         preload="metadata"
         tabIndex={0}

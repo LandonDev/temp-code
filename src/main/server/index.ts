@@ -204,6 +204,8 @@ export async function startServer(
     claimShim?: boolean
     /** The fixed port's override (tests: 0 for an ephemeral port). Absent: TEMP_CODE_REMOTE_PORT, else the settings. */
     remotePort?: number
+    /** The tempcode-asset:// handler, so `/asset/*` on the fixed port can mirror logos, media and agent pages. */
+    assets?: (request: Request) => Promise<Response>
   } = {}
 ): Promise<RunningServer> {
   bootMark('server-start')
@@ -384,7 +386,7 @@ export async function startServer(
         version: appVersion,
         attach: (ws, principal) => attach(ws, principal),
         // The built renderer (electron-vite build); a dev tree without it answers 503.
-        ui: createUiHandler({ rendererDir: join(options.appPath ?? process.cwd(), 'out', 'renderer') })
+        ui: createUiHandler({ rendererDir: join(options.appPath ?? process.cwd(), 'out', 'renderer'), assets: options.assets })
       })
     }))
   const remoteContext: RemoteContext = {

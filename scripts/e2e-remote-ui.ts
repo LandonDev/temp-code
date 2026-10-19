@@ -202,6 +202,40 @@ try {
   // The sign-in page names the browser from its user agent; curl's exchange kept the pairing's name.
   check('the desktop lists the browser sessions', sessions.some((s) => /^Chrome/.test(s.keyName)) && sessions.some((s) => s.keyName === 'Safari (e2e)'), sessions.map((s) => s.keyName).join(', '))
 
+  // ── /asset: logos, media and agent pages through the mirror ──────────
+  // A 1×1 png in the workspace: a logo source and a media file at once.
+  const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg==', 'base64')
+  const pngPath = join(wsDir, 'dot.png')
+  writeFileSync(pngPath, png)
+  const probe = (expr: string): Promise<unknown> => page.eval(`(async () => { ${expr} })()`)
+  const logoPath = (await probe(`return (await window.__monocode.server.request('projectLogo.save', ${JSON.stringify({ projectPath: wsDir, sourcePath: pngPath })}))`)) as string | { path?: string }
+  const logoName = encodeURIComponent(String(typeof logoPath === 'string' ? logoPath : logoPath?.path ?? '').split('/').pop() ?? '')
+  const logo = (await probe(`const r = await fetch('/asset/logo/${logoName}'); const img = new Image(); const loaded = new Promise((ok) => { img.onload = () => ok(img.naturalWidth); img.onerror = () => ok(0) }); img.src = '/asset/logo/${logoName}'; return { status: r.status, type: r.headers.get('content-type'), width: await loaded }`)) as { status: number; type: string; width: number }
+  check('a project logo loads from /asset/logo in Chrome', logo.status === 200 && logo.type === 'image/png' && logo.width === 1, JSON.stringify(logo))
+  const media = (await probe(`const m = await window.__monocode.server.request('fs.media', { path: ${JSON.stringify(pngPath)} }); const href = m.url.replace(/^tempcode-asset:\\/\\//, '/asset/'); const r = await fetch(href, { headers: { Range: 'bytes=0-7' } }); const img = new Image(); const loaded = new Promise((ok) => { img.onload = () => ok(img.naturalWidth); img.onerror = () => ok(0) }); img.src = href; return { url: m.url, status: r.status, range: r.headers.get('content-range'), width: await loaded }`)) as { url: string; status: number; range: string | null; width: number }
+  check('a media file streams from /asset/file with Range in Chrome', media.url.startsWith('tempcode-asset://file/') && media.status === 206 && media.range === `bytes 0-7/${png.length}` && media.width === 1, JSON.stringify(media))
+  // A page published for the thread is served through the mirror.
+  const published = (await desktopRequest('app.htmlRender', { sessionId: created.id, html: '<!doctype html><html><body style="margin:0;background:#123"><h1 style="color:#fff;font:20px sans-serif">REMOTE-PAGE</h1></body></html>', title: 'remote page', height: 120 })) as { htmlRender: { sessionId: string; pageId: string } }
+  const pageHref = `/asset/page/${published.htmlRender.sessionId}/${published.htmlRender.pageId}.html`
+  const served = (await probe(`const r = await fetch(${JSON.stringify(pageHref)}); return { status: r.status, type: r.headers.get('content-type'), ok: (await r.text()).includes('REMOTE-PAGE') }`)) as { status: number; type: string; ok: boolean }
+  check('a published agent page is served from /asset/page in Chrome', served.status === 200 && /text\/html/.test(served.type) && served.ok, JSON.stringify(served))
+  // The transcript shows a page only as the result of the agent's html_render tool call: ask for one.
+  await page.eval(`window.__monocode.server.request('session.send', ${JSON.stringify({ sessionId: created.id, text: 'Call your html_render tool once with title "remote page", height 120, and html <!doctype html><html><body style="margin:0;background:#123"><h1 style="color:#fff;font:20px sans-serif">REMOTE-PAGE</h1></body></html>. Then reply with exactly: PAGE-SHOWN' })})`)
+  try {
+    await until(`!!document.querySelector('iframe[src^="/asset/page/"]')`, 240_000, 'the page iframe in Chrome')
+  } catch (err) {
+    const shotFail = (await page.send('Page.captureScreenshot', { format: 'png' })) as { data: string }
+    writeFileSync('/tmp/tc-remote-ui-assets-fail.png', Buffer.from(shotFail.data, 'base64'))
+    throw err
+  }
+  const frame = (await probe(`const f = document.querySelector('iframe[src^="/asset/page/"]'); const r = await fetch(f.src); const text = await r.text(); return { src: f.src, status: r.status, type: r.headers.get('content-type'), ok: text.includes('REMOTE-PAGE'), sandbox: f.getAttribute('sandbox') }`)) as { src: string; status: number; type: string; ok: boolean; sandbox: string }
+  check('the agent page iframe in the transcript points at /asset/page and serves the html', frame.status === 200 && /text\/html/.test(frame.type) && frame.ok, frame.src)
+  check('the iframe stays sandboxed without allow-same-origin', !frame.sandbox.includes('allow-same-origin'), frame.sandbox)
+  await sleep(1500)
+  const shot2 = (await page.send('Page.captureScreenshot', { format: 'png' })) as { data: string }
+  writeFileSync('/tmp/tc-remote-ui-assets.png', Buffer.from(shot2.data, 'base64'))
+  check('asset screenshot written', true, '/tmp/tc-remote-ui-assets.png')
+
   page.close()
   desk.close()
 } catch (err) {
