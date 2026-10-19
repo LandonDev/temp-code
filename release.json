@@ -1,5 +1,5 @@
 {
-  "n": 235,
-  "notes": "Linux agent host: headless mode, login-shell helper, box stage 85 (temp-code.service), tc-local, tunnel proof, runbook",
-  "ts": 1792396092180
+  "n": 236,
+  "notes": "Remote notifier and per-key webhooks: one notice per thread transition (needs_you, finished, failed, stuck after remote.stuckMinutes) to the hub, each key's own signed webhook and in-process listeners; keys gain webhookUrl/webhookSecret/events in remote.keys.create and the Settings pane; scripts/e2e-mcp.ts proves /mcp with the official SDK client; docs/remote-mcp.md for the bots",
+  "ts": 1792397173740
 }
