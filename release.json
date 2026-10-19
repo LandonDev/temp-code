@@ -1,5 +1,5 @@
 {
-  "n": 246,
-  "notes": "iOS client (L3): seen marks and workspace icons in the cache, markSeen and peekTail on the client, and the shell models (ThreadGroups with the desktop's grouping rules plus pinned first, HomeModel's needs-you and running derivations and the needs-you line) with the desktop's grouping cases ported as tests",
-  "ts": 1792443140360
+  "n": 247,
+  "notes": "History move Mac → box: server/historyImport.ts (merge a host's threads into another's database: root remap, identity rows kept, missing roots archived, cold rows to the cold file, per-session dirs, dry run, idempotent) with tests; scripts/box/import-history.sh (snapshot, stop, import, probe) and history-map.json; scripts/mac/split-data-dir.sh (copy, split); mirror.ts writes nothing into a cwd that is not on disk; docs/history-move.md inventory, plan and rehearsal",
+  "ts": 1792443851619
 }
