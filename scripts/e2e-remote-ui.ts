@@ -84,13 +84,13 @@ const cleanup = async (): Promise<void> => {
 try {
   // ── the desktop side ──────────────────────────────────────────────────
   const desk = await attach(DEBUG_PORT, 120_000)
-  for (let i = 0; i < 120 && !(await desk.eval<boolean>('!!window.__monocode?.server?.connected').catch(() => false)); i++) await sleep(500)
+  for (let i = 0; i < 120 && !(await desk.eval<boolean>('!!window.__monocode?.registry?.primary()?.connected').catch(() => false)); i++) await sleep(500)
   log('desktop window up and connected')
   const wsDir = mkdtempSync(join(tmpdir(), 'tc-remote-ui-ws-'))
   writeFileSync(join(wsDir, 'README.md'), '# remote ui\n')
   await sh(['git', 'init', '-q', wsDir], { quiet: true })
   const desktopRequest = (method: string, params: unknown): Promise<unknown> =>
-    desk.eval(`window.__monocode.server.request(${JSON.stringify(method)}, ${JSON.stringify(params)})`)
+    desk.eval(`window.__monocode.registry.primary().request(${JSON.stringify(method)}, ${JSON.stringify(params)})`)
   const workspace = (await desktopRequest('workspace.create', { path: wsDir, name: 'remote-ui-ws' })) as { id: string }
   check('desktop creates a workspace over its local socket', typeof workspace?.id === 'string')
   const status = (await desktopRequest('remote.status', {})) as { running: boolean; port: number }
@@ -135,12 +135,12 @@ try {
   await page.eval(`document.getElementById('f').requestSubmit()`)
   await until(`location.pathname === '/ui/'`, 15_000, 'landing on /ui/')
   check('sign-in lands on /ui/', true)
-  await until(`!!window.__monocode?.server?.connected`, 30_000, 'the browser socket to open')
+  await until(`!!window.__monocode?.registry?.primary()?.connected`, 30_000, 'the browser socket to open')
   check('the browser bundle opened its WebSocket on the cookie', true)
   await until(`document.body.innerText.includes('remote-ui-ws')`, 30_000, 'the workspace list to show the workspace')
   check('the workspace list renders in Chrome', true)
 
-  const created = (await page.eval(`window.__monocode.server.request('session.create', ${JSON.stringify({ provider: 'claude', model: 'claude-sonnet-5-5', reasoning: 'low', agentType: 'implementer', permission: 'edits', workspaceId: workspace.id, threadType: 'chat', title: 'remote browser chat' })})`)) as { id: string }
+  const created = (await page.eval(`window.__monocode.registry.primary().request('session.create', ${JSON.stringify({ provider: 'claude', model: 'claude-sonnet-5-5', reasoning: 'low', agentType: 'implementer', permission: 'edits', workspaceId: workspace.id, threadType: 'chat', title: 'remote browser chat' })})`)) as { id: string }
   check('the browser creates a thread over its cookie socket', typeof created?.id === 'string', created?.id)
   // The sidebar lists the selected workspace's threads: pick the workspace in the rail, then the thread row.
   const clickText = (text: string, prefix = false): Promise<boolean> =>
@@ -170,7 +170,7 @@ try {
       return 'composer'
     } catch (err) {
       log(`composer path failed (${(err as Error).message}); sending over the socket`)
-      await page.eval(`window.__monocode.server.request('session.send', ${JSON.stringify({ sessionId: created.id, text: 'Reply with exactly: REMOTE-OK' })})`)
+      await page.eval(`window.__monocode.registry.primary().request('session.send', ${JSON.stringify({ sessionId: created.id, text: 'Reply with exactly: REMOTE-OK' })})`)
       return 'socket'
     }
   })()
@@ -208,11 +208,11 @@ try {
   const pngPath = join(wsDir, 'dot.png')
   writeFileSync(pngPath, png)
   const probe = (expr: string): Promise<unknown> => page.eval(`(async () => { ${expr} })()`)
-  const logoPath = (await probe(`return (await window.__monocode.server.request('projectLogo.save', ${JSON.stringify({ projectPath: wsDir, sourcePath: pngPath })}))`)) as string | { path?: string }
+  const logoPath = (await probe(`return (await window.__monocode.registry.primary().request('projectLogo.save', ${JSON.stringify({ projectPath: wsDir, sourcePath: pngPath })}))`)) as string | { path?: string }
   const logoName = encodeURIComponent(String(typeof logoPath === 'string' ? logoPath : logoPath?.path ?? '').split('/').pop() ?? '')
   const logo = (await probe(`const r = await fetch('/asset/logo/${logoName}'); const img = new Image(); const loaded = new Promise((ok) => { img.onload = () => ok(img.naturalWidth); img.onerror = () => ok(0) }); img.src = '/asset/logo/${logoName}'; return { status: r.status, type: r.headers.get('content-type'), width: await loaded }`)) as { status: number; type: string; width: number }
   check('a project logo loads from /asset/logo in Chrome', logo.status === 200 && logo.type === 'image/png' && logo.width === 1, JSON.stringify(logo))
-  const media = (await probe(`const m = await window.__monocode.server.request('fs.media', { path: ${JSON.stringify(pngPath)} }); const href = m.url.replace(/^tempcode-asset:\\/\\//, '/asset/'); const r = await fetch(href, { headers: { Range: 'bytes=0-7' } }); const img = new Image(); const loaded = new Promise((ok) => { img.onload = () => ok(img.naturalWidth); img.onerror = () => ok(0) }); img.src = href; return { url: m.url, status: r.status, range: r.headers.get('content-range'), width: await loaded }`)) as { url: string; status: number; range: string | null; width: number }
+  const media = (await probe(`const m = await window.__monocode.registry.primary().request('fs.media', { path: ${JSON.stringify(pngPath)} }); const href = m.url.replace(/^tempcode-asset:\\/\\//, '/asset/'); const r = await fetch(href, { headers: { Range: 'bytes=0-7' } }); const img = new Image(); const loaded = new Promise((ok) => { img.onload = () => ok(img.naturalWidth); img.onerror = () => ok(0) }); img.src = href; return { url: m.url, status: r.status, range: r.headers.get('content-range'), width: await loaded }`)) as { url: string; status: number; range: string | null; width: number }
   check('a media file streams from /asset/file with Range in Chrome', media.url.startsWith('tempcode-asset://file/') && media.status === 206 && media.range === `bytes 0-7/${png.length}` && media.width === 1, JSON.stringify(media))
   // A page published for the thread is served through the mirror.
   const published = (await desktopRequest('app.htmlRender', { sessionId: created.id, html: '<!doctype html><html><body style="margin:0;background:#123"><h1 style="color:#fff;font:20px sans-serif">REMOTE-PAGE</h1></body></html>', title: 'remote page', height: 120 })) as { htmlRender: { sessionId: string; pageId: string } }
@@ -220,7 +220,7 @@ try {
   const served = (await probe(`const r = await fetch(${JSON.stringify(pageHref)}); return { status: r.status, type: r.headers.get('content-type'), ok: (await r.text()).includes('REMOTE-PAGE') }`)) as { status: number; type: string; ok: boolean }
   check('a published agent page is served from /asset/page in Chrome', served.status === 200 && /text\/html/.test(served.type) && served.ok, JSON.stringify(served))
   // The transcript shows a page only as the result of the agent's html_render tool call: ask for one.
-  await page.eval(`window.__monocode.server.request('session.send', ${JSON.stringify({ sessionId: created.id, text: 'Call your html_render tool once with title "remote page", height 120, and html <!doctype html><html><body style="margin:0;background:#123"><h1 style="color:#fff;font:20px sans-serif">REMOTE-PAGE</h1></body></html>. Then reply with exactly: PAGE-SHOWN' })})`)
+  await page.eval(`window.__monocode.registry.primary().request('session.send', ${JSON.stringify({ sessionId: created.id, text: 'Call your html_render tool once with title "remote page", height 120, and html <!doctype html><html><body style="margin:0;background:#123"><h1 style="color:#fff;font:20px sans-serif">REMOTE-PAGE</h1></body></html>. Then reply with exactly: PAGE-SHOWN' })})`)
   try {
     await until(`!!document.querySelector('iframe[src^="/asset/page/"]')`, 240_000, 'the page iframe in Chrome')
   } catch (err) {

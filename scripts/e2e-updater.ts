@@ -430,16 +430,16 @@ async function drive(): Promise<void> {
       const cwd = join(ROOT, 'busy-cwd')
       mkdirSync(cwd, { recursive: true })
       const created = await cdp.eval<{ id: string }>(
-        `window.__monocode.server.request('session.create', ${JSON.stringify({ provider: 'claude', model: 'claude-haiku-5-5', reasoning: 'low', cwd, title: 'e2e busy' })})`
+        `window.__monocode.registry.primary().request('session.create', ${JSON.stringify({ provider: 'claude', model: 'claude-haiku-5-5', reasoning: 'low', cwd, title: 'e2e busy' })})`
       )
       await cdp.eval(
-        `window.__monocode.server.request('session.send', ${JSON.stringify({ sessionId: created.id, text: 'Write a 2500-word essay on the history of the typewriter. Do not stop early and do not ask questions.' })})`
+        `window.__monocode.registry.primary().request('session.send', ${JSON.stringify({ sessionId: created.id, text: 'Write a 2500-word essay on the history of the typewriter. Do not stop early and do not ask questions.' })})`
       )
       let row: { status?: string } | undefined
       const busyUntil = Date.now() + 60_000
       while (Date.now() < busyUntil) {
         const rows = await cdp.eval<Array<{ id: string; status?: string }>>(
-          `window.__monocode.server.request('session.list')`
+          `window.__monocode.registry.primary().request('session.list')`
         )
         row = rows.find((r) => r.id === created.id)
         if (row?.status === 'running') break

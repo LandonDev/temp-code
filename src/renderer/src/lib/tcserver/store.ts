@@ -366,10 +366,18 @@ class SessionStore {
   private opened: Promise<void> = Promise.resolve();
   private markOpen: () => void = () => {};
 
+  /** The registry, for the freshness word: data is fresh once the first
+   *  list on a replacement session has landed. */
+  private registryRef: { markFresh?(environmentId: string, fresh: boolean): void } | null = null;
+
   /** Follow the registry: every environment's link attaches as it is added
    *  and its data goes when the environment is removed. */
-  connect(registry: { onLink(listener: (link: Link, event: "added" | "removed") => void): () => void }): void {
+  connect(registry: {
+    onLink(listener: (link: Link, event: "added" | "removed") => void): () => void;
+    markFresh?(environmentId: string, fresh: boolean): void;
+  }): void {
     this.offRegistry?.();
+    this.registryRef = registry;
     this.offRegistry = registry.onLink((link, event) => {
       if (event === "added") this.attach(link);
       else this.detach(link.environmentId);
@@ -390,6 +398,7 @@ class SessionStore {
     const entry: Attached = { link, subs, detach: [], listed: null };
     const list = (): void => {
       entry.listed = this.resync(link)
+        .then(() => this.registryRef?.markFresh?.(link.environmentId, true))
         .catch(() => undefined)
         .then(() => {
           this.readyDone = true;

@@ -4,7 +4,7 @@
  * Installed by App.tsx in dev builds (`import.meta.env.DEV`) and in
  * measurement builds (`TEMP_CODE_PROFILE=1`, electron.vite.config.ts), next to
  * `window.__monocode` (the raw server client, lib/tcserver/link.ts). Where
- * `__monocode.server` talks to the server directly, `__app` goes through the
+ * `__monocode.registry.primary()` talks to the server directly, `__app` goes through the
  * renderer's own paths — the same store, command map and actions the UI
  * uses — so a script exercises what a user would.
  *
