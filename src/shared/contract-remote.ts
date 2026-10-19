@@ -29,12 +29,12 @@ const request = <M extends string, P extends z.ZodType>(method: M, params: P) =>
 export const CapabilitySchema = z.enum(['read', 'operate', 'approve', 'admin'])
 export const AudienceSchema = z.enum(['client', 'mcp'])
 const Id = z.object({ id: z.string().min(1) })
-/** `POST /api/keys`, `remote.keys.create`, and (with ttlMinutes) pairings. */
 /** The notices a key's webhook may subscribe to (remote/notifier.ts). */
 export const WebhookEventSchema = z.enum(['needs_you', 'finished', 'failed', 'stuck'])
 export type WebhookEvent = z.infer<typeof WebhookEventSchema>
 export const WEBHOOK_EVENTS: readonly WebhookEvent[] = WebhookEventSchema.options
 
+/** `POST /api/keys`, `remote.keys.create`, and (with ttlMinutes) pairings. */
 export const NewClientSchema = z.object({
   name: z.string().min(1).max(80),
   audience: AudienceSchema,
