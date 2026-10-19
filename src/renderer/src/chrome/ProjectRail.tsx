@@ -64,6 +64,7 @@ import {
   saveTabGroupMascot,
 } from "../lib/tabGroups";
 import { formatLiveElapsed, type LiveAgent } from "../lib/liveAgents";
+import { useClock } from "../lib/turnClock";
 import type { CardThread } from "../lib/projectCardModel";
 import { useWorkspaceRailStatuses, type WorkspaceRailStatus } from "../hooks/useProjectSignals";
 import { HarnessIcon } from "./HarnessIcon";
@@ -662,17 +663,12 @@ function LiveAgentsPreview({
   groupMascots: Record<string, string>;
 }) {
   const [expanded, setExpanded] = useState(false);
-  const [now, setNow] = useState(() => Date.now());
   const lockList = useLockOverscroll<HTMLDivElement>();
   const ticking =
     agents.length >= LIVE_AGENT_MIN &&
     agents.some((agent) => !agent.done && agent.startedAt != null);
-
-  useEffect(() => {
-    if (!ticking) return;
-    const id = window.setInterval(() => setNow(Date.now()), 1000);
-    return () => window.clearInterval(id);
-  }, [ticking]);
+  // The shared second hand; only live rows read it, and `ticking` is true exactly then.
+  const now = useClock(ticking);
 
   if (agents.length < LIVE_AGENT_MIN) return null;
 

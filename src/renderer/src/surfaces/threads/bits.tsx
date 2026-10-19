@@ -1,8 +1,8 @@
 import { useReducedMotion } from "motion/react";
-import { useEffect, useState } from "react";
 import { usePaneVisible } from "../../hooks/paneVisibility";
 import { GitFork, ListChecks, MapIcon, MessageSquare, Search, Telescope, Users, Wrench } from "../../chrome/icons";
 import type { ActivityKind } from "../../lib/session";
+import { useClock } from "../../lib/turnClock";
 import type { AgentType, SessionStatus, ThreadType } from "../../lib/tcserver/types";
 
 /**
@@ -100,17 +100,9 @@ export function duration(ms: number): string {
   return `${d}d${h % 24 ? ` ${h % 24}h` : ""}`;
 }
 
-/** Re-render every `ms` while `active` — drives live elapsed labels. */
-export function useNow(active: boolean, ms = 1000): number {
-  const [now, setNow] = useState(() => Date.now());
-  const shown = usePaneVisible();
-  useEffect(() => {
-    if (!active || !shown) return;
-    setNow(Date.now());
-    const t = setInterval(() => setNow(Date.now()), ms);
-    return () => clearInterval(t);
-  }, [active, shown, ms]);
-  return now;
+/** Epoch ms on the shared second hand while `active` and the pane is on screen; a still 0 otherwise. */
+export function useNow(active: boolean): number {
+  return useClock(active && usePaneVisible());
 }
 
 /** 750ms diagonal wave over a 3×3 matrix of cells. `tint` recolours the

@@ -12,10 +12,10 @@ import {
   resetPoint,
   toneFor,
   untilLabel,
-  useNow,
   windowLabel,
 } from "../lib/accounts";
 import { scopeOf, sourceLine, type AccountScope } from "../lib/accountScope";
+import { useSlowClock } from "../lib/turnClock";
 import { HARNESS_LABEL, HARNESS_TITLE, type HarnessId } from "../lib/session";
 import { useSessionMeta } from "../lib/tcserver/store";
 import { useProjects, useWorkspaces } from "../lib/tcserver/workspaces";
@@ -42,7 +42,7 @@ export function UsageFooter({
   onToggleTerminal?: (fileId: string) => void;
 }) {
   const { snapshot, loaded, busy } = useAccounts();
-  const now = useNow();
+  const now = useSlowClock(true);
   const meta = useSessionMeta(sessionId);
   const projects = useProjects();
   const workspaces = useWorkspaces();

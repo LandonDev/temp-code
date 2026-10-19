@@ -95,6 +95,52 @@ describe("half-minute clock", () => {
   });
 });
 
+describe("aligned second hand", () => {
+  it("first ticks on the next wall-clock second, then once a second, and leaves no timer behind", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-10-18T12:00:00.400Z"));
+    try {
+      let ticks = 0;
+      const stop = clockForTest.subscribe(() => ticks++);
+      vi.advanceTimersByTime(599);
+      expect(ticks).toBe(0);
+      vi.advanceTimersByTime(1);
+      expect(ticks).toBe(1);
+      expect(clockForTest.current() % 1000).toBe(0);
+      vi.advanceTimersByTime(999);
+      expect(ticks).toBe(1);
+      vi.advanceTimersByTime(1);
+      expect(ticks).toBe(2);
+      stop();
+      expect(clockForTest.listeners()).toBe(0);
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("the half-minute hand lands on :00 and :30", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-10-18T12:00:12.000Z"));
+    try {
+      let ticks = 0;
+      const stop = clockForTest.slowSubscribe(() => ticks++);
+      vi.advanceTimersByTime(17_999);
+      expect(ticks).toBe(0);
+      vi.advanceTimersByTime(1);
+      expect(ticks).toBe(1);
+      expect(new Date().getUTCSeconds()).toBe(30);
+      vi.advanceTimersByTime(30_000);
+      expect(ticks).toBe(2);
+      expect(new Date().getUTCSeconds()).toBe(0);
+      stop();
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
 describe("stopped clock", () => {
   it("refreshes on a read after a long gap, and holds within one period", () => {
     vi.useFakeTimers();

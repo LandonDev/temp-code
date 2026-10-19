@@ -4,9 +4,9 @@ import type { Block, Session } from "./session";
 /**
  * One clock for every timer in a thread. The server stamps `busySince`
  * when work starts and freezes the active span on pause; the renderer only
- * reads. The second hand is a single shared interval that subscribed rows
- * pick up through `useClock` — a row that is not live never subscribes
- * and never re-renders on the tick.
+ * reads. The second hand is a single shared timer, aligned to the wall-clock
+ * second, that subscribed rows pick up through `useClock` — a row that is
+ * not live never subscribes and never re-renders on the tick.
  */
 
 type Clock = {
@@ -16,25 +16,36 @@ type Clock = {
   listeners: Set<() => void>;
 };
 
-/** One interval shared by every subscriber; it starts with the first and stops with the last. */
+/** One timer shared by every subscriber; it starts with the first and stops with the last. */
 function makeClock(periodMs: number): Clock {
   let now = Date.now();
-  let timer: ReturnType<typeof setInterval> | null = null;
+  let timer: ReturnType<typeof setTimeout> | null = null;
   const listeners = new Set<() => void>();
   const tick = (): void => {
     now = Date.now();
     for (const l of listeners) l();
   };
+  // A timeout chain aimed at the next wall-clock multiple of the period, not
+  // an interval: every tick lands on a boundary, so both clocks and all their
+  // subscribers commit in the same frame, and a tick that runs late never
+  // pushes the ones after it.
+  const schedule = (): void => {
+    timer = setTimeout(() => {
+      tick();
+      if (listeners.size > 0) schedule();
+      else timer = null;
+    }, periodMs - (Date.now() % periodMs));
+  };
   const subscribe = (l: () => void): (() => void) => {
     listeners.add(l);
     if (!timer) {
       now = Date.now();
-      timer = setInterval(tick, periodMs);
+      schedule();
     }
     return () => {
       listeners.delete(l);
       if (listeners.size === 0 && timer) {
-        clearInterval(timer);
+        clearTimeout(timer);
         timer = null;
       }
     };
@@ -79,6 +90,7 @@ export const clockForTest = {
   tick: seconds.tick,
   current: seconds.current,
   slowListeners: (): number => halfMinutes.listeners.size,
+  slowSubscribe: halfMinutes.subscribe,
   slowTick: halfMinutes.tick,
 };
 

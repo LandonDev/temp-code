@@ -1,4 +1,3 @@
-import { useEffect, useState } from "react";
 import type { ProfileView, UsageReport, UsageWindow } from "aliax-core/shared/types";
 import { cycleMs, healthOf, onPaceLeft, percentLeft, type Health } from "aliax-core/shared/health";
 
@@ -68,14 +67,4 @@ export function othersWithRoom(reports: UsageReport[], except: string | null, la
     if (w && w.usedPercent < 100) n += 1;
   }
   return n;
-}
-
-/** The current time, refreshed on an interval, so countdowns stay honest. */
-export function useNow(everyMs = 30_000): number {
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    const t = setInterval(() => setNow(Date.now()), everyMs);
-    return () => clearInterval(t);
-  }, [everyMs]);
-  return now;
 }

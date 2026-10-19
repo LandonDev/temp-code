@@ -19,19 +19,19 @@ describe("pane visibility gate", () => {
   });
 
   it("useNow ticks in a shown pane", () => {
-    const { result } = renderHook(() => useNow(true, 100));
+    const { result } = renderHook(() => useNow(true));
     const first = result.current;
     act(() => {
-      vi.advanceTimersByTime(350);
+      vi.advanceTimersByTime(1000);
     });
     expect(result.current).toBeGreaterThan(first);
   });
 
   it("useNow schedules nothing in a parked pane", () => {
-    const { result } = renderHook(() => useNow(true, 100), { wrapper: parked });
+    const { result } = renderHook(() => useNow(true), { wrapper: parked });
     const first = result.current;
     act(() => {
-      vi.advanceTimersByTime(350);
+      vi.advanceTimersByTime(2500);
     });
     expect(result.current).toBe(first);
     expect(vi.getTimerCount()).toBe(0);

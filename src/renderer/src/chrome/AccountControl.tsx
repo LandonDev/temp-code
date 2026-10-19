@@ -1,8 +1,8 @@
 import { useRef, useState } from "react";
 import { ChevronDown, Pin, Users } from "./icons";
 import { AccountsPopover } from "./AccountsPopover";
-import { useNow } from "../lib/accounts";
 import { controlLabel, scopeOf, sourceLine, type ScopeMeta } from "../lib/accountScope";
+import { useSlowClock } from "../lib/turnClock";
 import { useProjects, useWorkspaces } from "../lib/tcserver/workspaces";
 import { useAccounts } from "../stores/accounts";
 import { isRoutedProvider } from "@server/shared/accounts";
@@ -28,7 +28,7 @@ export function AccountControl({
   const { snapshot } = useAccounts();
   const projects = useProjects();
   const workspaces = useWorkspaces();
-  const now = useNow();
+  const now = useSlowClock(true);
   const scope = scopeOf(meta, projects, workspaces);
   if (!scope || !meta || !isRoutedProvider(meta.provider)) return null;
   const accounts = snapshot.providers[scope.provider];

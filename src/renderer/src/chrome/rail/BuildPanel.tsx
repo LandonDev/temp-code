@@ -4,6 +4,7 @@ import { cn } from "../../motion/cn";
 import { StatefulButton } from "../../motion/StatefulButton";
 import { FileRefMenu } from "../../surfaces/FileRefMenu";
 import { duration } from "../../lib/format";
+import { useClock } from "../../lib/turnClock";
 import { client } from "../../lib/tcserver/client";
 import { useProjects } from "../../lib/tcserver/workspaces";
 import {
@@ -18,18 +19,6 @@ import { openBuildSettings } from "./buildSettings";
 import { RailSelect } from "./RailSelect";
 
 const targetKey = (projectId: string): string => `build-target:${projectId}`;
-
-/** Re-render every `ms` while `active` — drives the live elapsed label. */
-function useNow(active: boolean, ms = 1000): number {
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    if (!active) return;
-    setNow(Date.now());
-    const t = setInterval(() => setNow(Date.now()), ms);
-    return () => clearInterval(t);
-  }, [active, ms]);
-  return now;
-}
 
 /**
  * The Build tab: one button that runs the project's build command in
@@ -57,7 +46,8 @@ export function BuildPanel({ projectId }: { projectId: string }) {
   const run = build?.run ?? null;
   const lines = build?.lines ?? [];
   const running = run?.status === "running";
-  const now = useNow(running);
+  // The shared second hand drives the live elapsed label, which renders only while running.
+  const now = useClock(running);
   const own = targets[0]?.branch ?? project?.branch ?? null;
   const chosen = target && targets.some((t) => t.branch === target) ? target : own;
   const branchArg = chosen && chosen !== own ? chosen : undefined;

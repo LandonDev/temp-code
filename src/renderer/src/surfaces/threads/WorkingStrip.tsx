@@ -1,7 +1,8 @@
-import { memo, useEffect, useMemo, useState } from "react";
+import { memo, useMemo, useState } from "react";
 import { usePaneVisible } from "../../hooks/paneVisibility";
 import { Pause } from "../../chrome/icons";
 import type { Session } from "../../lib/session";
+import { useClock } from "../../lib/turnClock";
 import { MatrixSpinner, duration } from "./bits";
 
 /**
@@ -71,13 +72,9 @@ export const WorkingStrip = memo(function WorkingStrip({
   const turnStart = turnStartOf(session);
 
   const shown = usePaneVisible();
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    if (!active || !shown) return;
-    setNow(Date.now());
-    const t = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(t);
-  }, [active, shown]);
+  // The shared second hand, only while the strip is live and on screen; a
+  // parked pane reads 0 and catches up on its first visible tick.
+  const now = useClock(active && shown);
   const elapsed = paused
     ? Math.max(0, session.frozenActiveElapsed ?? 0)
     : active
@@ -85,13 +82,8 @@ export const WorkingStrip = memo(function WorkingStrip({
       : 0;
 
   const seed = useMemo(() => seedOf(session.id), [session.id]);
-  const [tick, setTick] = useState(0);
-  useEffect(() => {
-    if (!running || !shown) return;
-    const t = setInterval(() => setTick((n) => n + 1), 7000);
-    return () => clearInterval(t);
-  }, [running, shown]);
-  const word = FLAVOUR_WORDS[(seed + tick) % FLAVOUR_WORDS.length];
+  // The word turns every seven seconds on the same clock as the elapsed label.
+  const word = FLAVOUR_WORDS[(seed + Math.floor(now / 7000)) % FLAVOUR_WORDS.length];
   const [resumeBusy, setResumeBusy] = useState(false);
   const resume = (): void => {
     if (resumeBusy) return;
