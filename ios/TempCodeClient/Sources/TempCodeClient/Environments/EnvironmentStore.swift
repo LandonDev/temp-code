@@ -38,7 +38,7 @@ public final class EnvironmentStore {
         self.environments = EnvironmentStore.load(file)
     }
 
-    public static func defaultDirectory() -> URL {
+    nonisolated public static func defaultDirectory() -> URL {
         let base = (try? FileManager.default.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true)) ?? FileManager.default.temporaryDirectory
         return base.appending(path: "TempCodeClient", directoryHint: .isDirectory)
     }
