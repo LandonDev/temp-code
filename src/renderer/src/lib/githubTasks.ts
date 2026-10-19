@@ -47,6 +47,8 @@ export type InboxItem = Omit<GithubWorkItem, "kind"> & {
   provider: InboxProvider;
   /** The workspace whose repo this is (GitHub snapshot items only). */
   workspaceId?: string;
+  /** The host the item came from; absent for rows made before environments. */
+  environmentId?: string;
   author?: InboxPerson | null;
   reviewDecision?: string;
   headRefName?: string;

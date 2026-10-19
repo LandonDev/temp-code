@@ -1,4 +1,4 @@
-import { registry } from "../lib/connection";
+import { useEnvironments } from "../lib/connection";
 import { hostOfCwd } from "../lib/tcserver/projects";
 import { openUrl } from "../lib/native";
 import {
@@ -53,13 +53,15 @@ import {
   type GithubWorkItemDetails,
   type GithubWorkItemThread,
   type InboxItem,
+  sortInboxItems,
 } from "../lib/githubTasks";
 import {
   githubInboxLoading,
   githubWorkspaces,
   inboxItemsFromSnapshot,
   inboxStore,
-  useInbox,
+  useInboxAll,
+  mergeInboxStates,
   workspaceIdForCwd,
   type InboxScope,
   type LinearInboxQuery,
@@ -292,9 +294,15 @@ export function InboxView({
   const [groupCustomColors] = useState(loadTabGroupCustomColors);
 
   const [searchInput, setSearchInput] = useState("");
-  // K2 adds an environment switcher.
-  const environmentId = registry.primary().environmentId;
-  const { github, githubLoaded, refreshing, linear } = useInbox(environmentId);
+  // Every paired host's inbox, merged; rows name the host when there is more than one.
+  const environments = useEnvironments();
+  const environmentIds = useMemo(() => environments.map((e) => e.id), [environments]);
+  const environmentNames = useMemo(() => new Map(environments.map((e) => [e.id, e.name] as const)), [environments]);
+  const inboxStates = useInboxAll();
+  const { githubLoaded, refreshing, githubAuthMessage, linear } = useMemo(
+    () => mergeInboxStates(inboxStates, environmentIds),
+    [environmentIds, inboxStates],
+  );
   const catalog = useWorkspaceCatalog();
   const [refresh, setRefresh] = useState(0);
   // What the list shows: this workspace until the user asks for the rest.
@@ -321,9 +329,21 @@ export function InboxView({
     return id && ghWorkspaces.some((w) => w.id === id) ? id : null;
   }, [catalog, cwd, ghWorkspaces]);
   const effectiveScope: InboxScope = currentWorkspaceId ? scope : "all";
+  // Each host's snapshot against that host's own workspaces: a repo checked
+  // out on two machines lists once per machine, and each row says which.
   const githubItems = useMemo(
-    () => inboxItemsFromSnapshot(github, catalog.workspaces, catalog.projects, cwd),
-    [catalog.projects, catalog.workspaces, cwd, github],
+    () =>
+      sortInboxItems(
+        environmentIds.flatMap((id) =>
+          inboxItemsFromSnapshot(
+            inboxStates.get(id)?.github ?? null,
+            catalog.workspaces.filter((w) => w.environmentId === id),
+            catalog.projects.filter((p) => p.environmentId === id),
+            cwd,
+          ),
+        ),
+      ),
+    [catalog.projects, catalog.workspaces, cwd, environmentIds, inboxStates],
   );
   const items = useMemo(
     () =>
@@ -372,15 +392,27 @@ export function InboxView({
   );
   const loading =
     source === "github"
-      ? githubInboxLoading({ github, githubLoaded, refreshing }, scopedRepos, !opened)
+      ? environmentIds.some((id) => {
+          const state = inboxStates.get(id);
+          const repos = scopedRepos.filter((repo) =>
+            ghWorkspaces.some((w) => w.environmentId === id && w.githubRepo === repo),
+          );
+          return state ? githubInboxLoading(state, repos, !opened) : repos.length > 0;
+        })
       : linear.fetchedAt === null && linear.error === null;
   const revalidating = source === "github" ? refreshing : linear.loading;
-  const authMessage =
-    source === "github" && github && github.auth.state !== "ok" ? github.auth.message : null;
+  const authMessage = source === "github" ? githubAuthMessage : null;
   const sourceError = source === "linear" ? linear.error : authMessage;
   const repoErrors = useMemo(
-    () => (source === "github" && github ? github.repos.filter((repo) => repo.error) : []),
-    [github, source],
+    () =>
+      source === "github"
+        ? environmentIds.flatMap((id) => (inboxStates.get(id)?.github?.repos ?? []).filter((repo) => repo.error))
+        : [],
+    [environmentIds, inboxStates, source],
+  );
+  const newestSnapshotAt = useMemo(
+    () => Math.max(0, ...environmentIds.map((id) => inboxStates.get(id)?.github?.fetchedAt ?? 0)),
+    [environmentIds, inboxStates],
   );
 
   const resize = useDragResize({
@@ -424,33 +456,33 @@ export function InboxView({
   useEffect(() => {
     if (!githubLoaded || opened) return;
     setOpened(true);
-    const age = github?.fetchedAt ? Date.now() - github.fetchedAt : Number.POSITIVE_INFINITY;
-    if (age > OPEN_REFRESH_AGE_MS) void inboxStore.refreshGithub(environmentId, "open");
-  }, [environmentId, github, githubLoaded, opened]);
+    const age = newestSnapshotAt ? Date.now() - newestSnapshotAt : Number.POSITIVE_INFINITY;
+    if (age > OPEN_REFRESH_AGE_MS) void inboxStore.refreshGithubAll("open");
+  }, [githubLoaded, newestSnapshotAt, opened]);
 
   // ...and again every three minutes while this view is mounted and the
   // window is visible. The timer dies with the view.
   useEffect(() => {
     const timer = window.setInterval(() => {
       if (document.visibilityState !== "visible") return;
-      void inboxStore.refreshGithub(environmentId, "interval");
+      void inboxStore.refreshGithubAll("interval");
     }, INTERVAL_REFRESH_MS);
     return () => window.clearInterval(timer);
-  }, [environmentId]);
+  }, []);
 
   // Linear: only while its tab is open, for the current query.
   useEffect(() => {
     if (source !== "linear") return;
-    void inboxStore.refreshLinear(environmentId, linearQuery);
-  }, [environmentId, linearQuery, source]);
+    void inboxStore.refreshLinearAll(linearQuery);
+  }, [environmentIds, linearQuery, source]);
 
   // The refresh button and a Linear change: fetch the open tab again now.
   useEffect(() => {
     if (refresh === prevRefresh.current) return;
     prevRefresh.current = refresh;
-    if (source === "linear") void inboxStore.refreshLinear(environmentId, linearQuery, { force: true });
-    else void inboxStore.refreshGithub(environmentId, "manual");
-  }, [environmentId, linearQuery, refresh, source]);
+    if (source === "linear") void inboxStore.refreshLinearAll(linearQuery, { force: true });
+    else void inboxStore.refreshGithubAll("manual");
+  }, [linearQuery, refresh, source]);
 
   const visibleItems = useMemo(
     () =>
@@ -609,6 +641,7 @@ export function InboxView({
                     item={item}
                     active={selected != null && key === inboxItemKey(selected)}
                     workspaceId={workspace?.id ?? null}
+                    environmentName={environments.length > 1 && item.environmentId ? (environmentNames.get(item.environmentId) ?? null) : null}
                     projectKey={projectKey}
                     logoPath={resolveTabGroupLogo(projectKey, logos)}
                     mascotName={resolveTabGroupMascot(projectKey, groupMascots)}
@@ -812,6 +845,7 @@ function InboxCard({
   item,
   active,
   workspaceId,
+  environmentName,
   projectKey,
   logoPath,
   mascotName,
@@ -821,6 +855,8 @@ function InboxCard({
   item: InboxItem;
   active: boolean;
   workspaceId: string | null;
+  /** The host the row came from, when more than one is paired. */
+  environmentName?: string | null;
   projectKey: string;
   logoPath: string | null;
   mascotName: string | null;
@@ -891,6 +927,12 @@ function InboxCard({
             />
           )}
           <span className="min-w-0 truncate">{source}</span>
+          {environmentName ? (
+            <>
+              <span aria-hidden>·</span>
+              <span className="shrink-0" data-inbox-environment>{environmentName}</span>
+            </>
+          ) : null}
           {author ? (
             <>
               <span aria-hidden>·</span>
@@ -936,13 +978,13 @@ function InboxDetail({
   revision: number;
   onStart?: (item: InboxItem, body?: string) => void | Promise<void>;
 }) {
-  const environmentId = hostOfCwd(item.projectPath);
+  const environmentId = item.environmentId ?? hostOfCwd(item.projectPath);
   const linear = item.provider === "linear";
   const isPr = !linear && item.kind === "pr";
   const githubKind =
     item.kind === "issue" || item.kind === "pr" ? item.kind : null;
   const cached = linear
-    ? peekLinearIssueDetails(registry.primary().environmentId, item.id ?? "")
+    ? peekLinearIssueDetails(environmentId, item.id ?? "")
     : githubKind
       ? peekGithubWorkItemDetails(item.projectPath, githubKind, item.number)
       : null;
@@ -950,7 +992,7 @@ function InboxDetail({
     ? peekGithubPrDiff(item.projectPath, item.number)
     : null;
   const cachedThread = linear
-    ? peekLinearIssueThread(registry.primary().environmentId, item.id ?? "")
+    ? peekLinearIssueThread(environmentId, item.id ?? "")
     : githubKind
       ? peekGithubWorkItemThread(item.projectPath, githubKind, item.number)
       : null;
@@ -1023,7 +1065,7 @@ function InboxDetail({
   useEffect(() => {
     let cancelled = false;
     const cachedDetails = linear
-      ? peekLinearIssueDetails(registry.primary().environmentId, item.id ?? "")
+      ? peekLinearIssueDetails(environmentId, item.id ?? "")
       : githubKind
         ? peekGithubWorkItemDetails(item.projectPath, githubKind, item.number)
         : null;
@@ -1066,7 +1108,7 @@ function InboxDetail({
     let cancelled = false;
     if (linear) {
       const id = item.id ?? "";
-      const cachedThread = peekLinearIssueThread(registry.primary().environmentId, id);
+      const cachedThread = peekLinearIssueThread(environmentId, id);
       if (cachedThread) {
         setThread(cachedThread);
         setThreadLoading(false);

@@ -104,6 +104,7 @@ function toInboxItem(
     repo: item.repo,
     projectPath,
     workspaceId: workspace.id,
+    environmentId: workspace.environmentId,
     author: item.author,
     reviewDecision: item.reviewDecision,
     headRefName: item.headRefName,
@@ -292,6 +293,18 @@ class InboxStore {
   /** Every environment's inbox state, one map per change. */
   all = (): ReadonlyMap<string, InboxState> => this.states;
 
+  /** The hosts with a link right now, in registration order. */
+  environmentIds = (): string[] => [...this.slots.keys()];
+
+  /** One refresh per connected host; the merged view calls these. */
+  refreshGithubAll(reason: GithubInboxRefreshReason): Promise<void> {
+    return Promise.all(this.environmentIds().map((id) => this.refreshGithub(id, reason))).then(() => undefined);
+  }
+
+  refreshLinearAll(query: LinearInboxQuery, options: { force?: boolean } = {}): Promise<void> {
+    return Promise.all(this.environmentIds().map((id) => this.refreshLinear(id, query, options))).then(() => undefined);
+  }
+
   /** The stored snapshot: SQLite on the host, never GitHub. */
   private async load(slot: Slot): Promise<void> {
     const id = slot.link.environmentId;
@@ -348,6 +361,7 @@ class InboxStore {
     slot.linearKey = key;
     this.set(environmentId, { ...this.getSnapshot(environmentId), linear: { ...linear, loading: true } });
     const run = fetchLinearItems(environmentId, query)
+      .then((fetched) => fetched.map((item) => ({ ...item, environmentId })))
       .then((items) => {
         if (slot.linearKey !== key) return items;
         this.set(environmentId, {
@@ -417,4 +431,43 @@ export function useInbox(environmentId: string): InboxState {
     () => inboxStore.getSnapshot(environmentId),
     () => inboxStore.getSnapshot(environmentId),
   );
+}
+
+/** Every host's inbox state, one map per change (thread K2: the merged inbox). */
+export function useInboxAll(): ReadonlyMap<string, InboxState> {
+  return useSyncExternalStore(inboxStore.subscribe, inboxStore.all, inboxStore.all);
+}
+
+export type MergedInbox = {
+  /** Loaded once every host has answered with its stored snapshot. */
+  githubLoaded: boolean;
+  refreshing: boolean;
+  /** The first host whose token is not usable, for the one-line notice. */
+  githubAuthMessage: string | null;
+  linear: InboxState["linear"];
+};
+
+/**
+ * One inbox over several hosts. Items are joined per host in the view
+ * (each host's snapshot against that host's own workspaces, so a repo
+ * checked out on two machines lists once per machine, named); this folds
+ * the flags: loading waits for every host, refreshing follows any, and the
+ * Linear list is every host's rows together.
+ */
+export function mergeInboxStates(states: ReadonlyMap<string, InboxState>, ids: readonly string[]): MergedInbox {
+  const picked = ids.map((id) => states.get(id) ?? EMPTY);
+  const fetchedAts = picked.map((s) => s.linear.fetchedAt).filter((t): t is number => t !== null);
+  const auth = picked.find((s) => s.github && s.github.auth.state !== "ok")?.github?.auth;
+  return {
+    githubLoaded: picked.length > 0 && picked.every((s) => s.githubLoaded),
+    refreshing: picked.some((s) => s.refreshing),
+    githubAuthMessage: auth && auth.state !== "ok" ? auth.message : null,
+    linear: {
+      items: sortInboxItems(picked.flatMap((s) => s.linear.items)),
+      fetchedAt: fetchedAts.length === picked.length && fetchedAts.length > 0 ? Math.min(...fetchedAts) : null,
+      error: picked.find((s) => s.linear.error)?.linear.error ?? null,
+      loading: picked.some((s) => s.linear.loading),
+      assignedToMe: picked[0]?.linear.assignedToMe ?? false,
+    },
+  };
 }

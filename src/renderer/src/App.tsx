@@ -805,7 +805,7 @@ export default function App() {
         start(body);
         return;
       }
-      const cached = peekLinearIssueDetails(registry.primary().environmentId, item.id);
+      const cached = peekLinearIssueDetails(item.environmentId ?? environmentForContext(cwdContext(item.projectPath)), item.id);
       if (cached) {
         start(cached.body);
         return;
