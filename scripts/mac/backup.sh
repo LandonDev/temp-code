@@ -39,7 +39,7 @@ done
 moved=()
 for dir in "$(dirname "$data")"/temp-code.moved-*; do [[ -d $dir ]] && moved+=("$dir"); done
 excludes=()
-for dir in "$data" "${moved[@]}"; do
+for dir in "$data" ${moved[@]+"${moved[@]}"}; do
   excludes+=(--exclude "$dir/Cache" --exclude "$dir/Code Cache" --exclude "$dir/GPUCache"
     --exclude "$dir/DawnCache" --exclude "$dir/DawnWebGPUCache" --exclude "$dir/DawnGraphiteCache"
     --exclude "$dir/blob_storage" --exclude "$dir/Crashpad" --exclude "$dir/Service Worker")
@@ -47,7 +47,7 @@ done
 restic backup --host mac --tag daily --quiet \
   --exclude "$data/*.db" --exclude "$data/*.db-wal" --exclude "$data/*.db-shm" --exclude "$data/*.db-journal" \
   "${excludes[@]}" \
-  "$data" "${moved[@]}" "$staging/sqlite"
+  "$data" ${moved[@]+"${moved[@]}"} "$staging/sqlite"
 restic forget --host mac --keep-daily 7 --keep-weekly 4 --keep-monthly 6 --prune --quiet
 restic check --quiet
 echo "[$(date '+%F %T')] backup done: $(restic snapshots --host mac --latest 1 --compact 2>/dev/null | tail -1)"
