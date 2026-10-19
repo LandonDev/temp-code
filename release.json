@@ -1,5 +1,5 @@
 {
-  "n": 245,
-  "notes": "release: v244 — docs/box.md: Signing accounts in covers gh and git only (gh device login as agents, setup-git, noreply identity, gpgsign off); providers move to thread V",
-  "ts": 1792441866301
+  "n": 246,
+  "notes": "iOS client (L3): seen marks and workspace icons in the cache, markSeen and peekTail on the client, and the shell models (ThreadGroups with the desktop's grouping rules plus pinned first, HomeModel's needs-you and running derivations and the needs-you line) with the desktop's grouping cases ported as tests",
+  "ts": 1792443140360
 }
