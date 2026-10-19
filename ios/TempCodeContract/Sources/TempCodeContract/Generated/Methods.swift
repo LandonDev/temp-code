@@ -79,6 +79,20 @@ public enum Methods {
         public typealias Output = TempCodeContract.FsMedia?
     }
 
+    public enum FileRead: ContractMethod {
+        public static let name = "file.read"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public let path: String
+
+            public init(path: String) {
+                self.path = path
+            }
+        }
+
+        public typealias Output = String?
+    }
+
     public enum SessionList: ContractMethod {
         public static let name = "session.list"
 

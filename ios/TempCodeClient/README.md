@@ -20,7 +20,8 @@ Sources/TempCodeClient
   Environments/ PairedEnvironment + PairingLink, KeyStore (Keychain, in-memory), RemoteAPI, EnvironmentStore
   Cache/        Database (sqlite3), SessionCache
   Client/       Subscriptions, EnvironmentClient, ClientRegistry
-  Rendering/    Transcript (rows → items), MarkdownBlocks
+  Rendering/    ThreadFold (rows → stamped items + BoardState), Transcript (item types), Board,
+                ResearchBoard, Fleet, PlanDoc, MarkdownBlocks, MarkdownCache
   Support/      SocketClock (SystemClock, ManualClock)
 Tests/TempCodeClientTests
   fake-socket and manual-clock suites, cache and client suites, LiveServerTests (a real server)
@@ -125,14 +126,53 @@ path:)` is a `GET` for `/asset/<host>/<path>` with the key as the bearer
 tears down removed ones (socket stopped, cache cleared), and fans
 foreground/online out to every socket.
 
-**Transcript.fold** turns rows into what the screen shows, by the desktop's
-rules: assistant text and thinking merge by `(msgId, blockIndex)` with deltas
-appended until the final row replaces them; a tool call and its result pair
-by `callId` (an omitted output keeps the seq that fetches it); questions and
-approvals resolve in place by `requestId`; a compaction's `done` updates its
-`start`; `turn-complete` closes the user turn before it; `errors-cleared`
-drops the error lines; `usage`, `context` and `research-source` fold away;
-an unknown row kind becomes a quiet "this version does not show" line.
+**ThreadFold** turns rows into what the screen shows and what the board
+counts, one row at a time (`apply`) or whole (`fold`), by the desktop's
+rules (fold.ts, todos.ts): assistant text and thinking merge by `(msgId,
+blockIndex)` with deltas appended until the final row replaces them (the
+final row's time is the block's `doneTs`); a tool call and its result pair
+by `callId` (an omitted output keeps the seq that fetches it; the result's
+time is `doneTs`); questions and approvals resolve in place by `requestId`;
+a compaction's `done` updates its `start`; `turn-complete` (or an idle,
+error or watching status) closes the open user turns; `errors-cleared`
+drops the error lines; an unknown row kind becomes a quiet "this version
+does not show" line. Every item is a `ThreadEntry` stamped with the
+`round` it answers, the `todo` in progress when it was born (-1 before any
+list) and whether it landed in a completed-turn `pass`. `Transcript.fold`
+is the items alone.
+
+**BoardState** is the desktop's todo model: `todos`, `activeTodo`, the
+`round` and the archived `rounds` with their `costs`, `usage` marks, `cost`,
+`stopped`, `compacting`, the `sources` (research-source rows kept whole) and
+the spawned `agents`. A user message on a closed turn opens a new round
+(`beginTurn`: explicit `newPass` wins; else "unfinished and warm within 30
+min means resume"; a turn silent 10 min is dead); TodoWrite and update_plan
+replace the list, TaskCreate and TaskUpdate build it up by the "#3" the
+create's result reported; a plan-tool call moves the model before its own
+row lands, so it and everything after belong to the new todo.
+
+`EnvironmentClient` keeps `threads[id].fold` current: rows that extend the
+tail apply incrementally, anything else (a replacement, an older page, a
+reset, a trim) folds again. A partial tool call (ephemeral, seq -1) is one
+row per call replaced in place and retired by its final row; `cursor` skips
+it.
+
+The selectors the screens read: **Board** (rounds.ts: `groupByTodo`,
+`activeMs`, `actKind`, `editPath`, `changeStat`, `wholeChange` →
+`ChangeCard`, `diffLines`) and **ImplementationBoard.build** (one
+`RoundData` per request with its todos, items, work and header; passes
+numbered by what the board shows and coloured from the desktop's wheel; the
+closing report once every todo completed, or the answer when a follow-up
+made none); **ResearchBoard** (researchBoard.ts: angles with their queries
+and sources, unique totals, `mergeAngles` with the spawned children,
+`host(of:)`); **Fleet** (agents.ts: rank and sort, `children(of:in:)`,
+`counts`, the activity and status `line`, `stats`, `loadsTranscript`);
+**PlanDoc** (planDoc.ts: sections, the task checklist, progress, the H1,
+report frontmatter). **MarkdownCache** (`@MainActor @Observable`) parses a
+row's markdown into `RenderedBlock`s with inline `AttributedString`s off
+the main actor (`@concurrent`), keyed by seq and text hash: a read is
+synchronous, a miss parses and lands as an observable change, a streaming
+row keeps its last parse until the next lands.
 
 ## Tests
 
@@ -157,7 +197,7 @@ stops, rate limit, probes, background grace, offline/online, stop,
 replacement sessions), the cache (cold paint from disk, duplicates, reset,
 pruning, removal), the client (cold paint, shell listing, tail, pushes, drop
 and resume without duplicates, reset, older pages, bodies), the fold and the
-markdown splitter. The live suite adds: hello over http, a socket on a fresh
+markdown splitter, the fold's stamps and board (todos per round, TaskCreate ids, warm resume versus an explicit new pass, the pass flag, sources and agents), the board selectors and the implementation board, the research board, the fleet lines and stats, the plan document readers and the markdown cache. The live suite adds: hello over http, a socket on a fresh
 ticket with the negotiated deflate extension and a forbidden call, identity
 and contract halts against the real hello, an expired and a reused ticket,
 a dropped link resumed from the last seq with no duplicate and no gap, and

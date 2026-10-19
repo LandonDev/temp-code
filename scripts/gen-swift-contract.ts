@@ -152,6 +152,7 @@ export const SUBSET: SubsetEntry[] = [
   method('project.changes', z.array(W.FileChangeSchema)),
   method('project.diff', z.string()),
   method('fs.media', W.FsMediaSchema.nullable()),
+  method('file.read', z.string().nullable()),
   method('session.list', W.SessionPageSchema),
   method('session.events', W.EventsPageSchema),
   method('session.rowBody', z.object({ row: W.EventRowSchema })),

@@ -11,6 +11,8 @@ struct MediaImage: View {
     let name: String
     @State private var image: UIImage?
     @State private var failed = false
+    /// Thumbnails decode at the size they show (the width of a phone, 3× for the densest screen), never the original.
+    static let displaySize = CGSize(width: 1_200, height: 960)
 
     var body: some View {
         Group {
@@ -18,17 +20,14 @@ struct MediaImage: View {
                 Image(uiImage: image)
                     .resizable()
                     .scaledToFit()
-                    .frame(maxHeight: 320)
-                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .frame(maxHeight: 240)
+                    .clipShape(RoundedRectangle(cornerRadius: Radius.row, style: .continuous))
             } else if failed || path == nil {
                 Label(name, systemImage: "photo")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
             } else {
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .fill(Color(.tertiarySystemFill))
-                    .frame(height: 120)
-                    .overlay { ProgressView() }
+                Shimmer(height: 120)
             }
         }
         .task(id: path) { await load() }
@@ -45,11 +44,15 @@ struct MediaImage: View {
               let request = client.assetRequest(host: host, path: String(url.path.dropFirst())),
               let (data, response) = try? await URLSession.shared.data(for: request),
               (response as? HTTPURLResponse)?.statusCode == 200,
-              let decoded = UIImage(data: data)
+              let original = UIImage(data: data)
         else {
             failed = true
             return
         }
+        // Decode at display size; a small image stays as it is.
+        var prepared = await original.byPreparingThumbnail(ofSize: MediaImage.displaySize)
+        if prepared == nil { prepared = await original.byPreparingForDisplay() }
+        let decoded = prepared ?? original
         ImageCache.shared.store(decoded, for: path)
         image = decoded
     }

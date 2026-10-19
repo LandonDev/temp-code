@@ -6,6 +6,9 @@ import TempCodeContract
 public struct ThreadState: Sendable, Hashable {
     /// Oldest first, unique by seq. Ephemeral rows ride along in memory only.
     public var rows: [EventRow] = []
+    /// The rows folded: transcript items with their round and todo stamps,
+    /// and the board state (todos, passes, sources, agents).
+    public var fold = ThreadFold()
     /// Older rows exist on the host (or in the cache) beyond `rows.first`.
     public var moreBefore = false
     /// The first page since the thread opened is still on its way.
@@ -18,7 +21,8 @@ public struct ThreadState: Sendable, Hashable {
 
     public init() {}
 
-    public var cursor: Int { rows.last?.seq ?? 0 }
+    /// The last persisted seq held; a streaming preview at the tail never moves it.
+    public var cursor: Int { rows.last(where: { $0.ephemeral != true })?.seq ?? 0 }
 }
 
 /// Rows a thread keeps in memory at most; older ones drop off the top and
@@ -57,6 +61,8 @@ public final class EnvironmentClient {
     private let keys: any KeyStore
     private var loops: [Task<Void, Never>] = []
     private var started = false
+    /// Screens showing each thread right now; the subscription lives while any does.
+    private var opens: [String: Int] = [:]
 
     public init(environment: PairedEnvironment, keys: any KeyStore, cache: SessionCache, api: RemoteAPI = RemoteAPI(), connect: @escaping WebSocketFactory = URLSessionWebSocket.factory(), clock: any SocketClock = SystemClock(), configuration: SocketConfiguration = SocketConfiguration()) {
         self.environment = environment
@@ -155,12 +161,14 @@ public final class EnvironmentClient {
     /// Shows the thread: its cached tail at once, then a subscribe and a
     /// resume from the cache's cursor when the socket is up.
     public func openThread(_ id: String) async {
+        opens[id, default: 0] += 1
         if threads[id] == nil {
             var state = ThreadState()
             state.isLoading = true
             if let tail = try? await cache.tail(environment.id, sessionId: id, limit: coldOpenTail) {
                 state.rows = tail.rows
                 state.moreBefore = tail.moreBefore
+                state.fold = ThreadFold.fold(tail.rows)
             }
             threads[id] = state
         }
@@ -184,8 +192,13 @@ public final class EnvironmentClient {
         }
     }
 
-    /// The thread left the screen: leave the set so a reconnect does not replay it.
+    /// The thread left a screen: once no screen shows it, leave the set so
+    /// a reconnect does not replay it. A fleet row and the agent screen it
+    /// pushed both hold the same thread; the push outlives the row.
     public func closeThread(_ id: String) {
+        let remaining = max(0, (opens[id] ?? 1) - 1)
+        opens[id] = remaining == 0 ? nil : remaining
+        guard remaining == 0 else { return }
         subscriptions.remove(id)
         threads[id]?.isLive = false
     }
@@ -363,6 +376,7 @@ public final class EnvironmentClient {
         if page.reset || tailFirst {
             state.rows = page.rows
             state.moreBefore = page.moreBefore
+            state.fold = ThreadFold.fold(page.rows)
             state.isLoading = false
             state.isLive = true
             threads[id] = state
@@ -377,29 +391,58 @@ public final class EnvironmentClient {
     }
 
     /// Adds rows after the fold, never a seq twice; a replayed row with a
-    /// known seq replaces the one held (a tool result completing a partial call).
+    /// known seq replaces the one held. A streaming preview (a partial tool
+    /// call, seq -1, ephemeral) carries the whole input so far: one row per
+    /// call, replaced in place and retired by its final call row. Rows that
+    /// only extend the tail fold incrementally; anything else (a
+    /// replacement, an out-of-order page, a trim) folds again.
     private func append(_ id: String, rows: [EventRow]) {
         guard var state = threads[id], !rows.isEmpty else { return }
-        var index: [Int: Int] = [:]
-        for (offset, row) in state.rows.enumerated() { index[row.seq] = offset }
-        var appended = false
+        var incremental = true
+        var needsSort = false
         for row in rows {
-            if let at = index[row.seq] {
-                state.rows[at] = row
-            } else {
-                index[row.seq] = state.rows.count
-                state.rows.append(row)
-                appended = true
+            if let callId = Self.partialCallId(row) {
+                if let at = state.rows.lastIndex(where: { Self.partialCallId($0) == callId }) {
+                    state.rows[at] = row
+                    if incremental, at == state.rows.count - 1 { state.fold.apply(row) } else { incremental = false }
+                } else {
+                    state.rows.append(row)
+                    if incremental { state.fold.apply(row) }
+                }
+                continue
             }
+            if let at = state.rows.firstIndex(where: { $0.ephemeral != true && $0.seq == row.seq }) {
+                state.rows[at] = row
+                incremental = false
+                continue
+            }
+            if case .toolCall(let call) = row.event, let at = state.rows.lastIndex(where: { Self.partialCallId($0) == call.callId }) {
+                state.rows.remove(at: at)
+                incremental = false
+            }
+            if let last = state.rows.last(where: { $0.ephemeral != true }), row.seq < last.seq {
+                needsSort = true
+                incremental = false
+            }
+            state.rows.append(row)
+            if incremental { state.fold.apply(row) }
         }
-        if appended, let last = state.rows.last, rows.contains(where: { $0.seq < last.seq }) {
-            state.rows.sort { $0.seq < $1.seq }
+        if needsSort {
+            // Persisted rows by seq; a streaming preview stays at the tail.
+            state.rows.sort { ($0.ephemeral == true ? Int.max : $0.seq) < ($1.ephemeral == true ? Int.max : $1.seq) }
         }
         if state.rows.count > threadRowsInMemory {
             state.rows.removeFirst(state.rows.count - threadRowsInMemory)
             state.moreBefore = true
+            incremental = false
         }
+        if !incremental { state.fold = ThreadFold.fold(state.rows) }
         threads[id] = state
+    }
+
+    private static func partialCallId(_ row: EventRow) -> String? {
+        guard row.ephemeral == true, case .toolCall(let call) = row.event else { return nil }
+        return call.callId
     }
 
     private func prepend(_ id: String, rows: [EventRow], moreBefore: Bool?) {
@@ -407,6 +450,7 @@ public final class EnvironmentClient {
         let known = Set(state.rows.map(\.seq))
         let fresh = rows.filter { !known.contains($0.seq) }
         state.rows = (fresh + state.rows).sorted { $0.seq < $1.seq }
+        state.fold = ThreadFold.fold(state.rows)
         if let moreBefore {
             state.moreBefore = moreBefore
         } else if fresh.isEmpty {

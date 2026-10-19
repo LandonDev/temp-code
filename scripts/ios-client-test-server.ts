@@ -18,11 +18,13 @@
  */
 import { createServer } from 'node:http'
 import { execFileSync } from 'node:child_process'
-import { mkdtempSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
+import { deflateSync } from 'node:zlib'
 import { configure } from 'aliax-core'
 import { startServer } from '../src/main/server/index'
+import { serveMedia } from '../src/main/server/media'
 import type { AgentEvent } from '../src/shared/events'
 
 const root = mkdtempSync(join(tmpdir(), 'tc-ios-client-'))
@@ -34,7 +36,11 @@ configure({
   secrets: { mode: 'chromiumKey', keychainItem: 'Test Safe Storage' },
   appName: 'temp-code-e2e'
 })
-const server = await startServer(join(root, 'app.db'), { claimShim: false, remotePort: 0 })
+// The `/asset/file/*` mirror the phone loads attachments through: the media
+// server alone (the Electron asset handler has no place under plain node).
+const assets = async (request: Request): Promise<Response> =>
+  new URL(request.url).host === 'file' ? serveMedia(request) : new Response('not found', { status: 404 })
+const server = await startServer(join(root, 'app.db'), { claimShim: false, remotePort: 0, assets })
 if (!server.remote || server.remote.port === 0) throw new Error('the remote listener did not bind')
 
 // ── seed ────────────────────────────────────────────────────────────────
@@ -159,6 +165,266 @@ say('ios-chat-loose', 'A regex for ISO dates?', 'Use a date parser instead.')
 await make('ios-retired', { projectId: retired.id, threadType: 'chat', title: 'Old migration notes' })
 say('ios-retired', 'Keep these notes.', 'Kept.')
 await server.registry.archiveProject(retired.id, true)
+// ── one thread per type, with realistic rows (the thread screens' proof) ──
+const at = (id: string, events: AgentEvent[]): void => {
+  for (const event of events) server.registry.append(id, event)
+}
+const todos = (callId: string, list: [string, 'pending' | 'in_progress' | 'completed'][]): AgentEvent => ({
+  type: 'tool-call',
+  callId,
+  name: 'TodoWrite',
+  input: { todos: list.map(([content, status]) => ({ content, status })) }
+})
+const edit = (callId: string, path: string, additions: number, deletions: number, lines: { kind: 'add' | 'del' | 'context'; text: string; number?: number }[]): AgentEvent[] => [
+  {
+    type: 'tool-call',
+    callId,
+    name: 'Edit',
+    input: { file_path: path, old_string: lines.filter((l) => l.kind !== 'add').map((l) => l.text).join('\n'), new_string: lines.filter((l) => l.kind !== 'del').map((l) => l.text).join('\n') },
+    preview: { kind: 'write', path, fileName: path.split('/').pop(), additions, deletions, lines }
+  },
+  { type: 'tool-result', callId, output: `The file ${path} has been updated.`, isError: false }
+]
+const read = (callId: string, path: string, output = 'export const theme = "light"\n'): AgentEvent[] => [
+  { type: 'tool-call', callId, name: 'Read', input: { file_path: path }, preview: { kind: 'read', path, fileName: path.split('/').pop() } },
+  { type: 'tool-result', callId, output, isError: false }
+]
+const shell = (callId: string, command: string, output: string, isError = false): AgentEvent[] => [
+  { type: 'tool-call', callId, name: 'Bash', input: { command, description: command }, preview: { kind: 'shell', title: command } },
+  { type: 'tool-result', callId, output, isError }
+]
+const answer = (msgId: string, text: string): AgentEvent => ({ type: 'assistant-text', text, delta: false, msgId, blockIndex: 0 })
+const think = (msgId: string, text: string): AgentEvent[] => [
+  { type: 'thinking', text: text.slice(0, 12), delta: true, msgId, blockIndex: 0 },
+  { type: 'thinking', text, delta: false, msgId, blockIndex: 0 }
+]
+const status = (s: 'idle' | 'running' | 'waiting'): AgentEvent => ({ type: 'status', status: s })
+
+const makeTyped = async (id: string, threadType: 'chat' | 'planning' | 'implementation' | 'orchestration' | 'research', title: string, extra: Record<string, unknown> = {}) =>
+  server.registry.create({ id, provider: 'claude', model: 'claude-sonnet-5-5', reasoning: 'medium', agentType: 'implementer', permission: 'edits', projectId: project.id, threadType, title, ...extra })
+
+// Implementation: two passes, todos in every status, edits with stats, an undecided approval, a closing report.
+export const THREAD_IMPL = 'ios-impl'
+await makeTyped(THREAD_IMPL, 'implementation', 'Add dark mode to the settings screen')
+at(THREAD_IMPL, [
+  { type: 'user-text', text: 'Add dark mode to the settings screen. Follow the theme tokens in src/settings/Theme.ts.', model: 'claude-sonnet-5-5', reasoning: 'medium', newPass: true },
+  ...think('i1', 'The theme file holds the tokens; the view reads them through a hook. Three steps: tokens, the toggle, tests.'),
+  todos('t1', [['Add the dark palette to Theme.ts', 'in_progress'], ['Wire the toggle in SettingsView', 'pending'], ['Run the settings tests', 'pending']]),
+  ...read('r1', 'src/settings/Theme.ts', 'export const light = { bg: "#fff", fg: "#111" }\nexport const theme = light\n'),
+  ...edit('e1', 'src/settings/Theme.ts', 12, 3, [
+    { kind: 'context', number: 1, text: 'export const light = { bg: "#fff", fg: "#111" }' },
+    { kind: 'add', number: 2, text: 'export const dark = { bg: "#000", fg: "#eee" }' },
+    { kind: 'del', number: 3, text: 'export const theme = light' },
+    { kind: 'add', number: 3, text: 'export const theme = (mode: "light" | "dark") => (mode === "dark" ? dark : light)' }
+  ]),
+  answer('i2', 'The palette is in. Now the toggle.'),
+  todos('t2', [['Add the dark palette to Theme.ts', 'completed'], ['Wire the toggle in SettingsView', 'in_progress'], ['Run the settings tests', 'pending']]),
+  ...read('r2', 'src/settings/SettingsView.tsx'),
+  ...edit('e2', 'src/settings/SettingsView.tsx', 24, 8, [
+    { kind: 'context', number: 40, text: '  return (' },
+    { kind: 'del', number: 41, text: '    <Section title="Appearance" />' },
+    { kind: 'add', number: 41, text: '    <Section title="Appearance">' },
+    { kind: 'add', number: 42, text: '      <Toggle label="Dark mode" value={mode === "dark"} onChange={toggle} />' },
+    { kind: 'add', number: 43, text: '    </Section>' }
+  ]),
+  ...edit('e3', 'src/settings/SettingsView.tsx', 2, 0, [
+    { kind: 'add', number: 1, text: 'import { Toggle } from "../ui/Toggle"' },
+    { kind: 'add', number: 2, text: 'import { useTheme } from "./useTheme"' }
+  ]),
+  todos('t3', [['Add the dark palette to Theme.ts', 'completed'], ['Wire the toggle in SettingsView', 'completed'], ['Run the settings tests', 'in_progress']]),
+  ...shell('s1', 'bun test src/settings', ' ✓ settings (4 tests) 120ms\n\n 4 pass\n 0 fail\n'),
+  todos('t4', [['Add the dark palette to Theme.ts', 'completed'], ['Wire the toggle in SettingsView', 'completed'], ['Run the settings tests', 'completed']]),
+  answer('i3', 'Dark mode is in.\n\n- `Theme.ts` exports a `dark` palette and `theme(mode)`\n- `SettingsView` shows the toggle under **Appearance**\n- the four settings tests pass\n\nNothing else changed.'),
+  { type: 'turn-complete', costUsd: 0.42, inputTokens: 18_400, outputTokens: 2_100 },
+  status('idle'),
+  { type: 'user-text', text: 'Also add a "System" option that follows the OS.', newPass: true },
+  todos('t5', [['Add the system option to the theme hook', 'in_progress'], ['Cover it in the settings tests', 'pending']]),
+  ...edit('e4', 'src/settings/useTheme.ts', 6, 1, [
+    { kind: 'del', number: 3, text: 'type Mode = "light" | "dark"' },
+    { kind: 'add', number: 3, text: 'type Mode = "light" | "dark" | "system"' },
+    { kind: 'add', number: 4, text: 'const system = () => (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light")' }
+  ]),
+  { type: 'approval-request', requestId: 'ap1', toolName: 'Bash', title: 'bun run build', input: { command: 'bun run build' } },
+  status('waiting')
+])
+
+// Planning: a plan file on disk.
+export const THREAD_PLAN = 'ios-plan'
+const plan = await makeTyped(THREAD_PLAN, 'planning', 'Move the thread history onto the box')
+at(THREAD_PLAN, [
+  { type: 'user-text', text: 'Plan the move of the Mac\'s thread history onto the box, so the Mac becomes the Apple-only host.', newPass: true },
+  ...think('p1', 'The history is one SQLite file plus checkpoints; the box already runs the server. Snapshot, copy, verify, cut over.'),
+  answer('p2', 'The plan is written. Four tasks, with a rehearsal before the cutover.'),
+  { type: 'turn-complete', costUsd: 0.11 },
+  status('idle')
+])
+if (plan.planPath) {
+  mkdirSync(dirname(plan.planPath), { recursive: true })
+  writeFileSync(
+    plan.planPath,
+    [
+      '# Move the thread history onto the box',
+      '',
+      'The Mac keeps the Apple-only work (signing, the simulator, Xcode). Everything else, the 4 GB database and the 17 GB of checkpoints, moves to the box, which already runs the server headless.',
+      '',
+      '## Overview',
+      '',
+      '1. Snapshot the database with `VACUUM INTO` so the live file is never copied.',
+      '2. Copy the snapshot and the checkpoints over the tunnel with `restic`.',
+      '3. Point the box at the restored data and run the remote proofs.',
+      '',
+      '## Tasks',
+      '',
+      '- [x] Snapshot the database with VACUUM INTO',
+      '- [ ] Copy the snapshot and checkpoints to the box',
+      '- [ ] Rehearse the cutover on a copy',
+      '- [ ] Cut over and retire the Mac as a host',
+      '',
+      '## Risks',
+      '',
+      '- A checkpoint written during the copy: the rehearsal catches it.',
+      '- The tunnel dropping mid-copy: restic resumes.',
+      ''
+    ].join('\n')
+  )
+}
+
+// Orchestration: three agents in different states.
+export const THREAD_ORCH = 'ios-orch'
+await makeTyped(THREAD_ORCH, 'orchestration', 'Ship the iOS thread screens')
+at(THREAD_ORCH, [
+  { type: 'user-text', text: 'Build the shell and the thread screens in parallel, then have a reviewer read both.', newPass: true },
+  answer('o1', 'Spawning three agents: the shell, the screens, and a reviewer once both land.'),
+  { type: 'tool-call', callId: 'sp1', name: 'mcp__orchestrator__spawn_agent', input: { agents: [{ task: 'Build the shell' }, { task: 'Build the thread screens' }, { task: 'Review both' }] } }
+])
+const agent = async (id: string, agentType: 'implementer' | 'reviewer' | 'explorer', title: string, events: AgentEvent[]) => {
+  await server.registry.create({ id, parentId: THREAD_ORCH, provider: agentType === 'reviewer' ? 'codex' : 'claude', model: agentType === 'reviewer' ? 'gpt-6-astra' : 'claude-opus-5-5', reasoning: 'high', agentType, permission: 'edits', projectId: project.id, title })
+  at(id, events)
+}
+await agent('ios-orch-a1', 'implementer', 'Build the shell', [
+  { type: 'user-text', text: 'Build the shell: Home, Inbox, Search, Settings.' },
+  todos('a1t', [['Design tokens', 'completed'], ['Home', 'in_progress'], ['Inbox and Search', 'pending']]),
+  ...edit('a1e', 'ios/TempCode/Sources/Shell/HomeView.swift', 140, 0, [{ kind: 'add', number: 1, text: 'import SwiftUI' }]),
+  { type: 'tool-call', callId: 'a1b', name: 'Bash', input: { command: 'xcodebuild build -scheme TempCode' }, preview: { kind: 'shell', title: 'xcodebuild build -scheme TempCode' } },
+  status('running')
+])
+await agent('ios-orch-a2', 'reviewer', 'Review the fold', [
+  { type: 'user-text', text: 'Review the fold against the desktop rules.' },
+  ...read('a2r', 'ios/TempCodeClient/Sources/TempCodeClient/Rendering/ThreadFold.swift'),
+  { type: 'approval-request', requestId: 'a2ap', toolName: 'Bash', title: 'rm -rf ios/TempCodeClient/.build', input: { command: 'rm -rf ios/TempCodeClient/.build' } },
+  status('waiting')
+])
+await agent('ios-orch-a3', 'explorer', 'Find the row sizes', [
+  { type: 'user-text', text: 'Find the row sizes the desktop uses.' },
+  ...read('a3r', 'src/renderer/src/surfaces/threads/bits.tsx'),
+  answer('a3s', 'Rows are 44 pt minimum; the status dot is 6 px.'),
+  { type: 'turn-complete', costUsd: 0.03 },
+  status('idle')
+])
+at(THREAD_ORCH, [
+  { type: 'tool-result', callId: 'sp1', output: 'Spawned 3 agents', isError: false },
+  { type: 'tool-call', callId: 'w1', name: 'mcp__orchestrator__wait_for_agent', input: { agentIds: ['ios-orch-a1', 'ios-orch-a2', 'ios-orch-a3'], mode: 'all' } },
+  status('running')
+])
+
+// Research: a report with two angles.
+export const THREAD_RESEARCH = 'ios-research'
+const research = await makeTyped(THREAD_RESEARCH, 'research', 'SQLite on the phone: bun:sqlite or GRDB')
+for (const [id, title] of [['ios-research-a1', 'Angle: bun:sqlite'], ['ios-research-a2', 'Angle: GRDB']] as const) {
+  await server.registry.create({ id, parentId: THREAD_RESEARCH, provider: 'claude', model: 'claude-sonnet-5-5', reasoning: 'low', agentType: 'explorer', permission: 'safe', projectId: project.id, title })
+  at(id, [{ type: 'user-text', text: `Research ${title.slice(7)}` }, answer(`${id}s`, 'Findings written.'), { type: 'turn-complete' }, status('idle')])
+}
+at(THREAD_RESEARCH, [
+  { type: 'user-text', text: 'Compare bun:sqlite and GRDB for the phone\'s cache: write speed, migrations, and Swift ergonomics.', newPass: true },
+  answer('r1', 'Two angles: the Bun side and the Swift side.'),
+  { type: 'research-source', callId: 'q1', query: 'bun sqlite write performance', agentId: 'ios-research-a1', agentLabel: 'Angle: bun:sqlite' },
+  { type: 'research-source', callId: 's1', url: 'https://bun.sh/docs/api/sqlite', agentId: 'ios-research-a1', agentLabel: 'Angle: bun:sqlite', title: 'SQLite – Bun Docs' },
+  { type: 'research-source', callId: 's1', url: 'https://bun.sh/docs/api/sqlite', agentId: 'ios-research-a1', agentLabel: 'Angle: bun:sqlite', claim: 'bun:sqlite ships built in and binds synchronously' },
+  { type: 'research-source', callId: 'q2', query: 'GRDB swift sqlite value types', agentId: 'ios-research-a2', agentLabel: 'Angle: GRDB' },
+  { type: 'research-source', callId: 's2', url: 'https://github.com/groue/GRDB.swift', agentId: 'ios-research-a2', agentLabel: 'Angle: GRDB', title: 'GRDB.swift: a toolkit for SQLite databases' },
+  { type: 'research-source', callId: 'cite:1', url: 'https://github.com/groue/GRDB.swift', agentId: 'ios-research-a2', agentLabel: 'Angle: GRDB', claim: 'GRDB maps rows to Codable value types with no ORM layer' },
+  { type: 'research-source', callId: 's3', url: 'https://www.sqlite.org/wal.html', agentId: 'ios-research-a2', agentLabel: 'Angle: GRDB', title: 'Write-Ahead Logging', claim: 'WAL lets one writer and many readers share the file' },
+  answer('r2', 'The report is written: GRDB for the phone, bun:sqlite on the host.'),
+  { type: 'turn-complete', costUsd: 0.27 },
+  status('idle')
+])
+if (research.planPath) {
+  mkdirSync(dirname(research.planPath), { recursive: true })
+  writeFileSync(
+    research.planPath,
+    ['---', 'title: SQLite on the phone', 'status: complete', 'summary: GRDB on the phone, bun:sqlite on the host', '---', '# SQLite on the phone', '', 'Both wrap the same engine. The phone wants value types and a migration story; the host wants a synchronous binding with no build step.', '', '## Findings', '', '- GRDB maps rows to Codable value types [1].', '- bun:sqlite binds synchronously and ships with Bun [2].', '- WAL lets one writer and many readers share the file [3].', ''].join('\n')
+  )
+}
+
+// A real PNG for the chat's attachment: 8-bit RGB, one unfiltered IDAT.
+const crc32 = (buf: Buffer): number => {
+  let c = ~0
+  for (const b of buf) {
+    c ^= b
+    for (let k = 0; k < 8; k++) c = (c >>> 1) ^ (0xedb88320 & -(c & 1))
+  }
+  return ~c >>> 0
+}
+const pngChunk = (type: string, data: Buffer): Buffer => {
+  const len = Buffer.alloc(4)
+  len.writeUInt32BE(data.length)
+  const body = Buffer.concat([Buffer.from(type, 'ascii'), data])
+  const crc = Buffer.alloc(4)
+  crc.writeUInt32BE(crc32(body))
+  return Buffer.concat([len, body, crc])
+}
+const pngOf = (w: number, h: number, pixel: (x: number, y: number) => [number, number, number]): Buffer => {
+  const ihdr = Buffer.alloc(13)
+  ihdr.writeUInt32BE(w, 0)
+  ihdr.writeUInt32BE(h, 4)
+  ihdr[8] = 8
+  ihdr[9] = 2
+  const stride = w * 3 + 1
+  const raw = Buffer.alloc(stride * h)
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const [r, g, b] = pixel(x, y)
+      const o = y * stride + 1 + x * 3
+      raw[o] = r
+      raw[o + 1] = g
+      raw[o + 2] = b
+    }
+  }
+  return Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), pngChunk('IHDR', ihdr), pngChunk('IDAT', deflateSync(raw)), pngChunk('IEND', Buffer.alloc(0))])
+}
+
+// A chat: thinking, a long omitted tool output, a failed tool, an image, a compaction, an error.
+export const THREAD_CHAT = 'ios-chat'
+await makeTyped(THREAD_CHAT, 'chat', 'Why does the gateway refuse http for Codex?')
+const shot = join(repo, 'shot.png')
+writeFileSync(shot, pngOf(320, 200, (x, y) => [40 + Math.round((x / 320) * 120), 90 + Math.round((y / 200) * 80), 200 - Math.round((x / 320) * 60)]))
+at(THREAD_CHAT, [
+  { type: 'user-text', text: 'Why does the gateway refuse http for Codex? Here is what I see.', attachments: [{ name: 'shot.png', mime: 'image/png', kind: 'image', path: shot }] },
+  ...think('c1', 'Codex 0.158 keeps only the origin of an https base url, so a path scope is lost; the gateway gives each codex thread its own https port instead.'),
+  answer('c2', 'Codex 0.158 and later refuse an `http` base url and keep only the **origin** of an `https` one, so the `~t=` path scope is dropped.\n\nThe gateway answers with one https port per thread:\n\n```ts\nconst url = await gateway.scopedCodexUrl(threadId)\n```\n\n1. the listener rewrites `/backend-api/*` into the scoped path\n2. WebSocket upgrades get a 426 so codex falls back to its HTTP stream\n3. the certificate is trusted through `CODEX_CA_CERTIFICATE`'),
+  ...shell('c3', 'TEMP_CODE_GATEWAY_TRACE=1 bun run dev 2>&1 | head -100', bigOutput),
+  { type: 'tool-call', callId: 'c4', name: 'Read', input: { file_path: 'src/main/server/gateway.md' }, preview: { kind: 'read', path: 'src/main/server/gateway.md', fileName: 'gateway.md' } },
+  { type: 'tool-result', callId: 'c4', output: 'ENOENT: no such file or directory', isError: true },
+  { type: 'compaction', phase: 'start', trigger: 'auto', preTokens: 142_000 },
+  { type: 'compaction', phase: 'done', trigger: 'auto', preTokens: 142_000, postTokens: 38_000, durationMs: 2_400 },
+  { type: 'error', message: 'The provider answered 429: rate limited for 20 s' },
+  answer('c5', 'So the fix lives in the gateway, not in codex: see `routedEndpointFor` in endpoint.ts.'),
+  { type: 'turn-complete', costUsd: 0.09, inputTokens: 9_000, outputTokens: 800 },
+  status('idle')
+])
+
+// A chat with 2,000 rows, for the scroll proof.
+export const THREAD_LONG = 'ios-long'
+await makeTyped(THREAD_LONG, 'chat', '2,000 rows')
+for (let i = 0; i < 500; i++) {
+  at(THREAD_LONG, [
+    { type: 'user-text', text: `Turn ${i + 1}: what does row ${i * 4 + 1} say?` },
+    { type: 'tool-call', callId: `l${i}`, name: 'Read', input: { file_path: `src/row-${i}.ts` }, preview: { kind: 'read', path: `src/row-${i}.ts`, fileName: `row-${i}.ts` } },
+    { type: 'tool-result', callId: `l${i}`, output: `row ${i}`, isError: false },
+    answer(`lm${i}`, i % 7 === 0 ? `Row ${i} holds a **bold** claim and a list:\n\n- one\n- two\n\n\`\`\`ts\nconst row = ${i}\n\`\`\`` : `Row ${i} says \`${i * 4 + 1}\` and nothing more.`)
+  ])
+}
+at(THREAD_LONG, [{ type: 'turn-complete' }, status('idle')])
 
 // ── the key, and a pairing link for the simulator rehearsal ─────────────
 const created = await server.remoteAuth.createKey({ name: 'ios-test', audience: 'client', caps: [], createdBy: 'local' })
@@ -256,6 +522,9 @@ process.stdout.write(
     pairingLink: `http://127.0.0.1:${server.remote.port}/pair#${pairing.code}`,
     threadA: THREAD_A,
     threadB: THREAD_B,
+    localPort: server.port,
+    shot,
+    threads: { implementation: THREAD_IMPL, planning: THREAD_PLAN, orchestration: THREAD_ORCH, research: THREAD_RESEARCH, chat: THREAD_CHAT, long: THREAD_LONG },
     projectId: project.id,
     workspaceId: workspace.id
   }) + '\n'
