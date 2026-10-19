@@ -47,8 +47,20 @@ const OWNER: Owner = 'temp-code'
 /** TEMP_CODE_GATEWAY_TRACE=1: one log line per forwarded request (dev diagnosis). */
 const TRACE = process.env.TEMP_CODE_GATEWAY_TRACE === '1'
 
+/** Electron's appData for a platform, without importing electron (tests and scripts load this module). */
+export function appDataDir(
+  platform: NodeJS.Platform = process.platform,
+  env: NodeJS.ProcessEnv = process.env,
+  home = homedir()
+): string {
+  if (platform === 'darwin') return join(home, 'Library', 'Application Support')
+  if (platform === 'win32') return env.APPDATA || join(home, 'AppData', 'Roaming')
+  return env.XDG_CONFIG_HOME || join(home, '.config')
+}
+
 /** Where the installed app's userData lived before the product rename, and where `dev:prod` still runs. */
-const PROD_USER_DATA = join(homedir(), 'Library', 'Application Support', 'temp-code')
+const prodUserData = (platform: NodeJS.Platform, env: NodeJS.ProcessEnv): string =>
+  join(appDataDir(platform, env), 'temp-code')
 
 /**
  * Rule 2: only the app the user lives in may take the shim. The packaged app
@@ -57,14 +69,16 @@ const PROD_USER_DATA = join(homedir(), 'Library', 'Application Support', 'temp-c
  */
 export function mayClaimShim({
   isPackaged,
-  env = process.env
+  env = process.env,
+  platform = process.platform
 }: {
   isPackaged: boolean
   env?: NodeJS.ProcessEnv
+  platform?: NodeJS.Platform
 }): boolean {
   const userData = env.TEMP_CODE_USER_DATA
   if (!userData) return isPackaged
-  if (resolve(userData) === PROD_USER_DATA) return true
+  if (resolve(userData) === prodUserData(platform, env)) return true
   return env.TEMP_CODE_CLAIM_SHIM === '1'
 }
 

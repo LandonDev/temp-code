@@ -17,15 +17,21 @@ export function gatewayRole(): Role {
 }
 
 /**
- * Point aliax-core at Aliax's data. Secrets open with the same Keychain item
- * Electron's safeStorage made for Aliax, so the first read prompts once for
- * "aliax Safe Storage"; a denied prompt leaves the vault locked, never broken.
+ * Point aliax-core at Aliax's data. On macOS secrets open with the same
+ * Keychain item Electron's safeStorage made for Aliax, so the first read
+ * prompts once for "aliax Safe Storage"; a denied prompt leaves the vault
+ * locked, never broken. A Linux host has no Keychain and no Aliax app: the
+ * vault seals with its own key file (<dataDir>/vault.key, mode 0600), the
+ * same bytes under a different lock.
  */
 export function configureAliax(): void {
   configure({
     dataDir: ALIAX_DATA_DIR,
     fetch: (input, init) => net.fetch(input, init),
-    secrets: { mode: 'chromiumKey', keychainItem: 'aliax Safe Storage' },
+    secrets:
+      process.platform === 'darwin'
+        ? { mode: 'chromiumKey', keychainItem: 'aliax Safe Storage' }
+        : { mode: 'fileKey' },
     appName: 'temp-code',
     // The embedded Stats page reads what Aliax's would: every fresh usage
     // sample and app event lands in our stats store, and a switch or

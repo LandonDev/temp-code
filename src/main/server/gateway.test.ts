@@ -63,6 +63,25 @@ describe('mayClaimShim', () => {
     ).toBe(true)
     expect(gw.mayClaimShim({ isPackaged: true, env: { TEMP_CODE_USER_DATA: `${prod}-dev` } })).toBe(false)
   })
+
+  it('off macOS the prod dir follows the platform appData', () => {
+    const linux = { TEMP_CODE_USER_DATA: join(home, '.config', 'temp-code') }
+    expect(gw.mayClaimShim({ isPackaged: false, platform: 'linux', env: linux })).toBe(true)
+    expect(gw.mayClaimShim({ isPackaged: false, platform: 'linux', env: { ...linux, XDG_CONFIG_HOME: '/srv/cfg' } })).toBe(false)
+    expect(
+      gw.mayClaimShim({
+        isPackaged: false,
+        platform: 'linux',
+        env: { TEMP_CODE_USER_DATA: '/srv/cfg/temp-code', XDG_CONFIG_HOME: '/srv/cfg' }
+      })
+    ).toBe(true)
+    expect(gw.mayClaimShim({ isPackaged: false, platform: 'linux', env: { TEMP_CODE_USER_DATA: prod } })).toBe(false)
+    expect(gw.appDataDir('darwin', {}, '/Users/x')).toBe('/Users/x/Library/Application Support')
+    expect(gw.appDataDir('linux', {}, '/home/x')).toBe('/home/x/.config')
+    expect(gw.appDataDir('win32', { APPDATA: 'C:\\Users\\x\\AppData\\Roaming' }, 'C:\\Users\\x')).toBe(
+      'C:\\Users\\x\\AppData\\Roaming'
+    )
+  })
 })
 
 describe('Gateway marker', () => {
