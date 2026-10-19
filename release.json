@@ -1,5 +1,5 @@
 {
-  "n": 243,
-  "notes": "iOS client (L2): ios/TempCodeClient socket actor, cache, subscriptions and environment store; ios/TempCode read-only SwiftUI app; live test server and ios:test:client in the gate; /asset answers app keys; fs.media joins the contract subset",
-  "ts": 1792440248001
+  "n": 244,
+  "notes": "docs/box.md: Signing accounts in covers gh and git only (gh device login as agents, setup-git, noreply identity, gpgsign off); providers move to thread V",
+  "ts": 1792441798355
 }
