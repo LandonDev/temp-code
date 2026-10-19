@@ -44,6 +44,8 @@ function dismissBootSplash() {
     // The window was created with vibrancy; only now may the page go
     // transparent over it (index.css `html.is-mac.glass.ready`).
     document.documentElement.classList.add("ready");
+    // Launch-timing probe (scripts/e2e-launch-timing.ts): the UI is on screen.
+    performance.mark("tc:ready");
     syncWindowGlass();
     splash.classList.add("boot-splash-out");
     window.setTimeout(() => splash.remove(), 180);

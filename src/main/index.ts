@@ -2,6 +2,8 @@ import { app, shell, dialog, net, BrowserWindow, ipcMain } from 'electron'
 import { homedir } from 'os'
 import { join } from 'path'
 import { copyFileSync, existsSync, mkdirSync } from 'fs'
+import { getCompileCacheDir } from 'node:module'
+import { bootMark } from './server/boot'
 import { noteInstallOnQuit, registerUpdates } from './update'
 import { applyHarness, bakedHarness } from './harness'
 import { configureAliax } from './aliax'
@@ -28,6 +30,14 @@ import {
   registerWindows,
   requestQuit
 } from './windows'
+
+// First statement of the bundle: everything before this mark is Electron's
+// own init plus the compile of out/main/index.js (through boot.js). `start=`
+// is the process start as an epoch, so renderer marks can be aligned to it.
+bootMark(
+  'index',
+  `start=${Date.now() - Math.round(process.uptime() * 1000)} compile-cache=${getCompileCacheDir() ? 'on' : 'off'}`
+)
 
 let server: RunningServer | null = null
 

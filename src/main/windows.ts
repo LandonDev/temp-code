@@ -6,6 +6,7 @@ import { is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 import { killPtysForOwner } from './pty'
 import { QuitGate } from './quitGate'
+import { bootMark } from './server/boot'
 
 /**
  * The window registry. Every window has a *slot*: a stable id that names
@@ -234,7 +235,10 @@ export function createWindow(opts: { slot?: string; from?: number } = {}): Brows
 
   if (state.maximized) win.maximize()
 
-  win.on('ready-to-show', () => win.show())
+  win.on('ready-to-show', () => {
+    bootMark('ready-to-show', slot)
+    win.show()
+  })
   win.on('focus', () => {
     lastFocusedId = id
     saveStateSoon()

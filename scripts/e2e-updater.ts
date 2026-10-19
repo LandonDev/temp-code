@@ -56,9 +56,27 @@ import {
   statSync
 } from 'node:fs'
 import { homedir } from 'node:os'
-import { join, resolve } from 'node:path'
+import { join } from 'node:path'
+import {
+  attach as attachTo,
+  builtApp as builtAppAt,
+  type Cdp,
+  findIdentity,
+  killAt,
+  launchEnv,
+  pack as packApp,
+  pidsAt,
+  plistVersionOf,
+  portFree,
+  prepareEnv,
+  readPackage,
+  sh,
+  sleep,
+  type Target,
+  tryRun,
+  waitForReleaseTrain
+} from './lib/packagedApp'
 
-const REPO = resolve(import.meta.dir, '..')
 const ROOT = '/private/tmp/tc-updater-e2e'
 const APP_ID = 'dev.landon.tempcode.e2e'
 const PRODUCT = 'TempCodeE2E'
@@ -77,8 +95,7 @@ const reuse = process.argv.includes('--reuse')
 const busy = process.argv.includes('--busy')
 const stillRunning = process.argv.includes('--still-running')
 
-process.env.PATH = `${homedir()}/.bun/bin:/opt/homebrew/bin:${process.env.PATH ?? ''}`
-delete process.env.ELECTRON_RUN_AS_NODE
+prepareEnv()
 
 let failures = 0
 const check = (name: string, ok: boolean, detail = ''): boolean => {
@@ -88,82 +105,12 @@ const check = (name: string, ok: boolean, detail = ''): boolean => {
 }
 const log = (msg: string): void =>
   console.log(`[e2e-updater ${new Date().toISOString().slice(11, 19)}] ${msg}`)
-const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms))
-
-async function sh(
-  cmd: string[],
-  opts: { cwd?: string; quiet?: boolean; env?: Record<string, string> } = {}
-): Promise<string> {
-  const proc = Bun.spawn(cmd, {
-    cwd: opts.cwd ?? REPO,
-    env: { ...process.env, ...(opts.env ?? {}) },
-    stdout: 'pipe',
-    stderr: 'pipe'
-  })
-  const [out, err, code] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-    proc.exited
-  ])
-  if (code !== 0) throw new Error(`${cmd.join(' ')} exited ${code}\n${out}\n${err}`)
-  if (!opts.quiet && err.trim()) console.error(err.trim())
-  return out
-}
-
-async function tryRun(cmd: string[]): Promise<void> {
-  await sh(cmd, { quiet: true }).catch(() => undefined)
-}
-
 // ── Preflight ──────────────────────────────────────────────────────────────
 
-const pkgPath = join(REPO, 'package.json')
-const pkgText = readFileSync(pkgPath, 'utf8')
-const versionMatch = pkgText.match(/^  "version": "1\.0\.(\d+)",$/m)
-if (!versionMatch) throw new Error('package.json version is not 1.0.N')
-const N = Number(versionMatch[1])
+const N = readPackage().n
 const OLD = `1.0.${N - 1}`
 const NEW = `1.0.${N}`
-
-const identityLine = (
-  await sh(['security', 'find-identity', '-v', '-p', 'codesigning'], { quiet: true })
-)
-  .split('\n')
-  .find((l) => l.includes('"Developer ID Application: '))
-const identity = identityLine?.match(/"Developer ID Application: ([^"]+)"/)?.[1]
-if (!identity) throw new Error('no Developer ID Application identity in the Keychain')
-
-/** Main processes of the bundle at `path`, whichever of /tmp and /private/tmp
- *  LaunchServices spelled it with. */
-async function pidsAt(path: string): Promise<number[]> {
-  const tail = path.replace(/^\/private/, '')
-  const out = await sh(['pgrep', '-f', `${tail}/Contents/MacOS/`], { quiet: true }).catch(() => '')
-  return out.split('\n').filter(Boolean).map(Number)
-}
-
-async function killAt(path: string): Promise<void> {
-  for (const pid of await pidsAt(path)) {
-    try {
-      process.kill(pid, 'SIGTERM')
-    } catch {
-      /* gone */
-    }
-  }
-  for (let i = 0; i < 50 && (await pidsAt(path)).length > 0; i++) await sleep(200)
-  for (const pid of await pidsAt(path)) {
-    try {
-      process.kill(pid, 'SIGKILL')
-    } catch {
-      /* gone */
-    }
-  }
-}
-
-async function portFree(port: number): Promise<boolean> {
-  const out = await sh(['lsof', '-nP', `-iTCP:${port}`, '-sTCP:LISTEN'], { quiet: true }).catch(
-    () => ''
-  )
-  return out.trim() === ''
-}
+const identity = await findIdentity()
 
 log(`old ${OLD} → new ${NEW}, identity "${identity}", root ${ROOT}`)
 await killAt(APP)
@@ -180,73 +127,30 @@ for (const port of [DEBUG_PORT, FEED_PORT]) {
   if (!(await portFree(port))) throw new Error(`port ${port} is in use`)
 }
 
-// The release train builds in this checkout after every commit; two builds
-// in one `out/` would corrupt each other.
-for (let i = 0; existsSync(join(REPO, '.git', 'auto-release.lock')); i++) {
-  if (i === 0) log('waiting for the release train to finish')
-  if (i > 120) throw new Error('release train still running after 10 minutes')
-  await sleep(5000)
-}
+await waitForReleaseTrain(log)
 
 // ── Build ──────────────────────────────────────────────────────────────────
 
 const outDir = (which: 'old' | 'new'): string => join(ROOT, `build-${which}`)
-const builtApp = (which: 'old' | 'new'): string =>
-  join(outDir(which), 'mac-arm64', `${PRODUCT}.app`)
+const builtApp = (which: 'old' | 'new'): string => builtAppAt(outDir(which), PRODUCT)
 const zipName = `${PRODUCT}-${NEW}-arm64.zip`
 
 async function pack(version: string, which: 'old' | 'new'): Promise<void> {
-  log(`packing ${version} → ${outDir(which)}`)
-  const patched = pkgText.replace(/^  "version": "1\.0\.\d+",$/m, `  "version": "${version}",`)
-  writeFileSync(pkgPath, patched)
-  try {
-    await sh(
-      [
-        'bunx',
-        'electron-builder',
-        '--mac',
-        'zip',
-        '--arm64',
-        '--publish',
-        'never',
-        `-c.appId=${APP_ID}`,
-        `-c.productName=${PRODUCT}`,
-        '-c.mac.notarize=false',
-        `-c.mac.identity=${identity}`,
-        `-c.directories.output=${outDir(which)}`,
-        `-c.extraMetadata.tempcodeHarness.TEMP_CODE_USER_DATA=${USER_DATA}`,
-        `-c.extraMetadata.tempcodeHarness.TEMP_CODE_DEBUG_PORT=${DEBUG_PORT}`,
-        `-c.extraMetadata.tempcodeHarness.TEMP_CODE_UPDATE_FEED=${FEED_URL}`
-      ],
-      { quiet: true }
-    )
-  } finally {
-    writeFileSync(pkgPath, pkgText)
-  }
-  const app = builtApp(which)
-  const built = JSON.parse(
-    readFileSync(join(app, 'Contents', 'Resources', 'app', 'package.json'), 'utf8')
-  )
-  check(
-    `${which} bundle is ${version} with the harness block`,
-    built.version === version && built.tempcodeHarness?.TEMP_CODE_USER_DATA === USER_DATA,
-    JSON.stringify(built.tempcodeHarness)
-  )
-  const plistVersion = (
-    await sh(
-      [
-        'plutil',
-        '-extract',
-        'CFBundleShortVersionString',
-        'raw',
-        join(app, 'Contents', 'Info.plist')
-      ],
-      { quiet: true }
-    )
-  ).trim()
-  check(`${which} Info.plist says ${version}`, plistVersion === version, plistVersion)
-  await sh(['codesign', '--verify', '--deep', '--strict', app], { quiet: true })
-  check(`${which} bundle passes codesign --verify --deep --strict`, true)
+  await packApp({
+    version,
+    which,
+    outDir: outDir(which),
+    appId: APP_ID,
+    product: PRODUCT,
+    identity,
+    check,
+    log,
+    harness: {
+      TEMP_CODE_USER_DATA: USER_DATA,
+      TEMP_CODE_DEBUG_PORT: DEBUG_PORT,
+      TEMP_CODE_UPDATE_FEED: FEED_URL
+    }
+  })
 }
 
 if (!reuse) {
@@ -309,78 +213,9 @@ log(`feed at ${FEED_URL} serving ${zipName} (${size} bytes)`)
 await sh(['ditto', builtApp('old'), APP])
 mkdirSync(USER_DATA, { recursive: true })
 const appLog = join(ROOT, 'old-app.log')
-const env: Record<string, string> = {}
-for (const [k, v] of Object.entries(process.env))
-  if (v !== undefined && k !== 'ELECTRON_RUN_AS_NODE') env[k] = v
-if (busy) env.TEMP_CODE_DIALOG_ANSWER = 'yes'
+const env = launchEnv(busy ? { TEMP_CODE_DIALOG_ANSWER: 'yes' } : {})
 const oldProc = launchOld('old-app.log')
 log(`launched ${OLD} as pid ${oldProc.pid}; log ${appLog}`)
-
-// ── CDP ────────────────────────────────────────────────────────────────────
-
-type Target = { type: string; url: string; webSocketDebuggerUrl?: string }
-
-async function pageTarget(timeoutMs: number): Promise<Target> {
-  const until = Date.now() + timeoutMs
-  while (Date.now() < until) {
-    try {
-      const list = (await (await fetch(`http://127.0.0.1:${DEBUG_PORT}/json`)).json()) as Target[]
-      const page = list.find(
-        (t) => t.type === 'page' && t.webSocketDebuggerUrl && t.url.includes('/renderer/index.html')
-      )
-      if (page) return page
-    } catch {
-      /* not up yet */
-    }
-    await sleep(500)
-  }
-  throw new Error(`no CDP page on ${DEBUG_PORT} within ${timeoutMs}ms`)
-}
-
-class Cdp {
-  private ws: WebSocket
-  private next = 1
-  private pending = new Map<number, { res: (v: unknown) => void; rej: (e: Error) => void }>()
-  private constructor(ws: WebSocket) {
-    this.ws = ws
-    ws.addEventListener('message', (ev) => {
-      const msg = JSON.parse(String(ev.data))
-      const p = msg.id !== undefined ? this.pending.get(msg.id) : undefined
-      if (!p) return
-      this.pending.delete(msg.id)
-      if (msg.error) p.rej(new Error(msg.error.message))
-      else p.res(msg.result)
-    })
-  }
-  static connect(url: string): Promise<Cdp> {
-    return new Promise((res, rej) => {
-      const ws = new WebSocket(url)
-      ws.addEventListener('open', () => res(new Cdp(ws)))
-      ws.addEventListener('error', () => rej(new Error('CDP socket failed')))
-    })
-  }
-  send(method: string, params: Record<string, unknown> = {}): Promise<unknown> {
-    const id = this.next++
-    this.ws.send(JSON.stringify({ id, method, params }))
-    return new Promise((res, rej) => this.pending.set(id, { res, rej }))
-  }
-  async eval<T>(expression: string): Promise<T> {
-    const r = (await this.send('Runtime.evaluate', {
-      expression,
-      awaitPromise: true,
-      returnByValue: true
-    })) as {
-      result: { value?: T }
-      exceptionDetails?: { text: string; exception?: { description?: string } }
-    }
-    if (r.exceptionDetails)
-      throw new Error(r.exceptionDetails.exception?.description ?? r.exceptionDetails.text)
-    return r.result.value as T
-  }
-  close(): void {
-    this.ws.close()
-  }
-}
 
 type Status = {
   current: string
@@ -421,19 +256,7 @@ async function waitExit(proc: ReturnType<typeof Bun.spawn>, ms: number): Promise
   return Promise.race([proc.exited.then(() => true), sleep(ms).then(() => false)])
 }
 
-async function attach(timeoutMs: number): Promise<Cdp> {
-  const page = await pageTarget(timeoutMs)
-  const cdp = await Cdp.connect(page.webSocketDebuggerUrl!)
-  const until = Date.now() + 60_000
-  while (Date.now() < until) {
-    if (
-      await cdp.eval<boolean>('typeof window.api?.updates?.get === "function"').catch(() => false)
-    )
-      return cdp
-    await sleep(500)
-  }
-  throw new Error('renderer never exposed window.api.updates')
-}
+const attach = (timeoutMs: number): Promise<Cdp> => attachTo(DEBUG_PORT, timeoutMs)
 
 let relaunched: Cdp | null = null
 const feedLog: string[] = []
@@ -446,18 +269,7 @@ async function finishInstall(since: number): Promise<void> {
   const swapUntil = Date.now() + 180_000
   let plistVersion = ''
   while (Date.now() < swapUntil) {
-    plistVersion = (
-      await sh(
-        [
-          'plutil',
-          '-extract',
-          'CFBundleShortVersionString',
-          'raw',
-          join(APP, 'Contents', 'Info.plist')
-        ],
-        { quiet: true }
-      ).catch(() => '')
-    ).trim()
+    plistVersion = await plistVersionOf(APP)
     if (plistVersion === NEW) break
     await sleep(1000)
   }
@@ -562,18 +374,7 @@ async function drive(): Promise<void> {
           !/Beginning installation|Installation error/.test(shipItText),
         shipItText.trim().split('\n').slice(-3).join(' | ').slice(0, 300)
       )
-      const plistAfter = (
-        await sh(
-          [
-            'plutil',
-            '-extract',
-            'CFBundleShortVersionString',
-            'raw',
-            join(APP, 'Contents', 'Info.plist')
-          ],
-          { quiet: true }
-        )
-      ).trim()
+      const plistAfter = await plistVersionOf(APP)
       check(`bundle on disk is still ${OLD}`, plistAfter === OLD, plistAfter)
       await sleep(3000)
       check(
