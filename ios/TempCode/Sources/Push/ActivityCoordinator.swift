@@ -69,6 +69,8 @@ final class ActivityCoordinator {
 
     private func adopt(_ activity: Activity<ThreadActivityAttributes>, key: ThreadKey, client: EnvironmentClient, registry: ClientRegistry) {
         activities[key] = activity.id
+        log.notice("activity \(activity.id, privacy: .public) running for a thread")
+        report()
         tokenTasks[key]?.cancel()
         tokenTasks[key] = Task { [weak self, weak registry] in
             // Every token Apple hands out for the activity goes to the host; it relays updates through the hub.
@@ -98,10 +100,24 @@ final class ActivityCoordinator {
         tokenTasks[key]?.cancel()
         tokenTasks[key] = nil
         activities[key] = nil
+        ended += 1
+        log.notice("activity \(id, privacy: .public) ended as \(final.phase.rawValue, privacy: .public)")
+        report()
         Task {
             await Self.end(id: id, final: final, linger: Self.lingerSeconds)
             await registry.push.setActivityToken(client, sessionId: key.sessionId, token: nil)
         }
+    }
+
+    private var ended = 0
+
+    /// DEBUG: the proof reads how many activities ran and ended (Documents/activity-report.json).
+    private func report() {
+        #if DEBUG
+        guard let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first,
+              let data = try? JSONEncoder().encode(["active": activities.count, "ended": ended, "system": Activity<ThreadActivityAttributes>.activities.count]) else { return }
+        try? data.write(to: documents.appending(path: "activity-report.json"), options: .atomic)
+        #endif
     }
 
     // ActivityKit's calls take the activity found by id here, off the main actor.

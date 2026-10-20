@@ -1473,7 +1473,8 @@ export async function startServer(
     setAppBridge(null)
   }
 
-  const hub = hubFromEnv({ name: hostname(), version: appVersion })
+  // The hub names this host by its environment id: what a phone's saved host is keyed by (thread L6).
+  const hub = hubFromEnv({ environmentId, name: hostname(), version: appVersion })
   // Thread transitions → the hub, each key's own webhook, and in-process
   // listeners (remote/notifier.ts). The hub's host id names this host in
   // both payloads so a receiver sees one id whichever way a notice came.
