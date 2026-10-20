@@ -1336,12 +1336,12 @@ public struct HelloResponse: Codable, Hashable, Sendable {
     }
 
     public let environmentId: String
-    public let name: String
-    public let version: String
+    public let name: String?
+    public let version: String?
     public let contract: Int
     public let key: Key?
 
-    public init(environmentId: String, name: String, version: String, contract: Int, key: Key? = nil) {
+    public init(environmentId: String, name: String? = nil, version: String? = nil, contract: Int, key: Key? = nil) {
         self.environmentId = environmentId
         self.name = name
         self.version = version

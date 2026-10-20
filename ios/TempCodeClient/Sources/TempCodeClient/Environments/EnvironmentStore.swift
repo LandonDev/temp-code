@@ -93,7 +93,7 @@ public final class EnvironmentStore {
         guard known.audience == .client else { throw .notAClientKey }
         let environment = PairedEnvironment(
             id: hello.environmentId,
-            name: name ?? hello.name,
+            name: name ?? hello.name ?? hello.environmentId,
             origin: origin,
             caps: known.caps,
             keyId: known.id,

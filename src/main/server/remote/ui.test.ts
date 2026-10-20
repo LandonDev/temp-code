@@ -46,11 +46,18 @@ describe('fencedUnder', () => {
 
 describe('pairPageHtml', () => {
   it('posts a session exchange and never inlines a code', () => {
-    const html = pairPageHtml()
+    const html = pairPageHtml('n0nce+Abc/==')
     expect(html).toContain("kind: 'session'")
     expect(html).toContain('location.hash')
     expect(html).toContain("location.replace('/ui/')")
     expect(html).not.toMatch(/tc_[A-Z0-9]{10}/)
+  })
+  it('allows its script by nonce only, never inline (R2 L3)', () => {
+    const html = pairPageHtml('n0nce+Abc/==')
+    expect(html).toMatch(/script-src 'nonce-n0nce\+Abc\/=='; /)
+    expect(html).toContain('<script nonce="n0nce+Abc/==">')
+    expect(html).not.toMatch(/script-src[^;]*unsafe-inline/)
+    expect(html.match(/<script/g)).toHaveLength(1)
   })
 })
 

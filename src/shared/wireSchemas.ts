@@ -537,8 +537,9 @@ export const CreatedPairingSchema = z.object({
 /** `GET /api/hello`: public, with `key` when the bearer was accepted. */
 export const HelloResponseSchema = z.object({
   environmentId: z.string(),
-  name: z.string(),
-  version: z.string(),
+  /** The hostname and version come only with a credential the host accepted. */
+  name: z.string().optional(),
+  version: z.string().optional(),
   contract: z.number().int(),
   key: z
     .object({

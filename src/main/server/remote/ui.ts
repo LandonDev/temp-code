@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto'
 import { createReadStream, existsSync, readFileSync, statSync } from 'node:fs'
 import { extname, join, resolve, sep } from 'node:path'
 import { Readable } from 'node:stream'
@@ -88,11 +89,12 @@ export function assetRequestFor(url: string, req: { method?: string; headers: Re
   })
 }
 
-/** The sign-in page: the code comes in the fragment (never sent to the server by the link itself). */
-export function pairPageHtml(): string {
+/** The sign-in page: the code comes in the fragment (never sent to the server by the link itself).
+ *  Its one script runs under a per-response nonce, so the policy allows no inline script at all (R2 L3). */
+export function pairPageHtml(nonce: string): string {
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'self'; form-action 'none'; base-uri 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}'; connect-src 'self'; form-action 'none'; base-uri 'none'">
 <title>Pair this browser</title>
 <style>
   :root { color-scheme: dark; }
@@ -117,7 +119,7 @@ export function pairPageHtml(): string {
   <div id="error" role="alert"></div>
   <button id="go" type="submit">Sign in</button>
 </form>
-<script>
+<script nonce="${nonce}">
 (function () {
   var code = document.getElementById('code'), name = document.getElementById('name'), err = document.getElementById('error'), go = document.getElementById('go');
   var fromHash = decodeURIComponent(location.hash.slice(1));
@@ -160,7 +162,7 @@ export function createUiHandler(options: UiOptions): UiHandler {
     const { req, res, path } = ctx
     if (req.method !== 'GET' && req.method !== 'HEAD') return false
     if (path === '/pair') {
-      send(res, 200, pairPageHtml(), 'text/html; charset=utf-8', { 'Cache-Control': 'no-store' })
+      send(res, 200, pairPageHtml(randomBytes(16).toString('base64')), 'text/html; charset=utf-8', { 'Cache-Control': 'no-store' })
       return true
     }
     const isAsset = path.startsWith('/asset/')

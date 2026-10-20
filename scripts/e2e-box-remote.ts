@@ -99,8 +99,8 @@ try {
   )
   const hello = (await (await fetch(`${ORIGIN}/api/hello`)).json()) as {
     environmentId: string
-    name: string
-    version: string
+    name?: string
+    version?: string
     contract: number
   }
   check(

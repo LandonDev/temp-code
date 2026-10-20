@@ -161,7 +161,9 @@ export async function startRemoteListener(options: RemoteListenerOptions): Promi
   const wss = new WebSocketServer({ noServer: true, perMessageDeflate: remoteDeflateOptions() })
   let boundPort = 0
 
-  /** The proxy's view of this host, remembered for pairing links. */
+  /** The proxy's view of this host, remembered for pairing links. Taught
+   *  only by an admin's own authenticated request (R2 L1): the Host of an
+   *  unauthenticated loopback request is anyone's to choose. */
   const learnOrigin = (ctx: Pick<RequestContext, 'host' | 'origin' | 'req'>): void => {
     if (!LOOPBACK.has(ctx.req.socket.remoteAddress ?? '') || isLoopbackHost(ctx.host)) return
     if (!header(ctx.req, 'x-forwarded-proto')) return
@@ -208,12 +210,11 @@ export async function startRemoteListener(options: RemoteListenerOptions): Promi
         /* a bad credential still gets the public answer */
       }
       const p = verified?.principal
+      // The hostname and version are for a caller the host knows (R2 L2).
       return json(res, 200, {
         environmentId: options.environmentId,
-        name: hostname(),
-        version: options.version,
         contract: CONTRACT_VERSION,
-        ...(p ? { key: { id: p.keyId, name: p.name, caps: p.caps, audience: p.audience } } : {})
+        ...(p ? { name: hostname(), version: options.version, key: { id: p.keyId, name: p.name, caps: p.caps, audience: p.audience } } : {})
       })
     }
     if (path === '/api/pair' && method === 'POST') {
@@ -292,10 +293,15 @@ export async function startRemoteListener(options: RemoteListenerOptions): Promi
     const ctx: RequestContext = {
       ...base,
       res,
-      principal: () => (verified ??= auth.principalFor({ authorization: header(req, 'authorization'), cookie: header(req, 'cookie') }, base.ip)),
+      principal: () =>
+        (verified ??= auth
+          .principalFor({ authorization: header(req, 'authorization'), cookie: header(req, 'cookie') }, base.ip)
+          .then((v) => {
+            if (v && v.principal.audience === 'client' && allows(v.principal.caps, 'admin')) learnOrigin(ctx)
+            return v
+          })),
       setCookie: (value) => res.setHeader('Set-Cookie', sessionCookie(value, base.proto === 'https'))
     }
-    learnOrigin(ctx)
     if (TRACE) log(`${req.method} ${base.path} from ${base.ip} (${base.origin})`)
     void route(ctx)
       .then(async () => {

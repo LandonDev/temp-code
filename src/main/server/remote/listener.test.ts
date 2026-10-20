@@ -187,6 +187,12 @@ describe('public routes', () => {
     expect(hello.body.environmentId).toBe(server.environmentId)
     expect(hello.body.contract).toBe(1)
     expect(hello.body.key).toBeUndefined()
+    // The hostname and version are not for an anonymous caller (R2 L2).
+    expect(hello.body.name).toBeUndefined()
+    expect(hello.body.version).toBeUndefined()
+    const known = await call('GET', '/api/hello', { headers: bearer(await adminKey()) })
+    expect(typeof known.body.name).toBe('string')
+    expect(known.body.version).toMatch(/^\d+\.\d+\.\d+/)
   })
   it('unknown paths and /lsp/ are bare 404s; /mcp without a key is a bare 401', async () => {
     const mcp = await call('GET', '/mcp')
@@ -385,15 +391,19 @@ describe('pairing', () => {
     expect(sessions.find((s: { keyName: string }) => s.keyName === 'Chrome').userAgent).toBe(
       'TestBrowser/1'
     )
-    // The learned origin is the proxy's, for pairing links.
-    expect(
-      (
-        await call('POST', '/api/pairings', {
-          headers: bearer(admin),
-          body: { name: 'x', audience: 'client', caps: [] }
-        })
-      ).body.url
-    ).toMatch(/^https:\/\/tempcode\.example\.com\/pair#/)
+    // The learned origin comes only from an admin's own request (R2 L1): the
+    // session exchange above, unauthenticated behind a chosen Host, taught nothing.
+    const link = async (): Promise<string> =>
+      (await call('POST', '/api/pairings', { headers: bearer(admin), body: { name: 'x', audience: 'client', caps: [] } })).body.url
+    expect(await link()).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/pair#/)
+    await call('GET', '/api/keys', { headers: { ...bearer(admin), 'X-Forwarded-Proto': 'https', Host: 'tempcode.example.com' } })
+    expect(await link()).toMatch(/^https:\/\/tempcode\.example\.com\/pair#/)
+    // A spoofed Host on an anonymous or non-admin loopback request cannot move it.
+    await call('GET', '/api/hello', { headers: { 'X-Forwarded-Proto': 'https', Host: 'evil.example' } })
+    const { token: nonAdmin } = await server.remoteAuth.createKey({ name: 'plain', audience: 'client', caps: ['operate'], createdBy: 'local' })
+    await call('GET', '/api/hello', { headers: { ...bearer(nonAdmin), 'X-Forwarded-Proto': 'https', Host: 'evil.example' } })
+    await call('POST', '/api/pair', { body: { code: 'AAAAA-AAAAA', kind: 'key' }, headers: { 'X-Forwarded-Proto': 'https', Host: 'evil.example' } })
+    expect(await link()).toMatch(/^https:\/\/tempcode\.example\.com\/pair#/)
   })
   it('the cookie upgrades /ws only from its own origin; logout ends it', async () => {
     const admin = await adminKey()
@@ -531,6 +541,12 @@ describe('/ui and /pair', () => {
       .split(';')[0]
   }
   it('the sign-in page is public; the document redirects there and assets are 401 without a cookie', async () => {
+    const pairPage = await call('GET', '/pair')
+    const nonce = /script-src 'nonce-([^']+)'/.exec(pairPage.body)?.[1]
+    expect(nonce).toBeTruthy()
+    expect(pairPage.body).toContain(`<script nonce="${nonce}">`)
+    expect(pairPage.body).not.toMatch(/script-src[^;]*unsafe-inline/)
+    expect(/script-src 'nonce-([^']+)'/.exec((await call('GET', '/pair')).body)?.[1]).not.toBe(nonce)
     const page = await call('GET', '/pair')
     expect(page.status).toBe(200)
     expect(page.headers.get('content-type')).toMatch(/text\/html/)
