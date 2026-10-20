@@ -182,8 +182,25 @@ routed to (aliax-core's `forward`). Two listeners:
   providers.update, fim and stall.report, never run for a remote caller);
   `session.create` with `permission: 'auto'` and `session.permission` need
   approve. The gate runs in `attach()` before any handler.
+- The path fence (remote/fence.ts, R2 H1/H2): for every remote principal,
+  each method that names a path or cwd (`fs.*`, `git.*`, `github.*`,
+  `search.project`, `workspace.create`, `session.create`'s cwd, logo and
+  command-list paths) must point, by real path, under a project cwd, a
+  workspace path or the configured/box work root (never the bare home
+  directory); the refusal is `forbidden: <method> is outside app-managed
+  roots` and never logs the path. The loopback socket is unfenced. Nothing
+  was demoted to `local`: the /ui bundle and the desktop's remote-host
+  flows call the whole donor family, and the phone calls `fs.readPreview`,
+  `search.project` and `github.*`. `fence.test.ts` asserts every
+  path-taking contract method has a row.
 - Pairing: an admin makes a code (`XXXXX-XXXXX`, 10 minutes, single use) in
   the pane or over `POST /api/pairings`; the link is `<origin>/pair#<code>`.
+  Redemption claims the row in one conditional UPDATE before minting, so
+  concurrent redeems answer one key (R2 M1). The link's origin is learned
+  only from an admin's own authenticated request, never from the Host of an
+  anonymous loopback request (L1); `/api/hello` without a key answers only
+  the environment id and contract (L2); the `/pair` page's script runs under
+  a per-response nonce, no `'unsafe-inline'` for scripts (L3).
   `POST /api/pair` with `kind: 'key'` answers the raw key once; with
   `kind: 'session'` it sets the HttpOnly `tc_session` cookie that `/ui` and
   cookie upgrades of `/ws` use. Bearer clients mint a 30 s ticket at
@@ -194,10 +211,20 @@ routed to (aliax-core's `forward`). Two listeners:
   `window.api` and runs in web mode (src/renderer/src/lib/nativeWeb.ts: no
   terminal, no Aliax pages, its own `web` workspace slot). `/asset/<host>/…`
   mirrors `tempcode-asset://` for logos, media and agent pages.
+- Webhook targets (remote/addressGuard.ts, R2 M3): a key's webhook URL and
+  a hub subscription URL must be https to a public host; loopback, RFC 1918,
+  CGNAT, link-local (169.254.169.254), v6 unique-local/link-local, `.internal`,
+  `.local` and bare names are refused when made, the host is resolved then,
+  and each delivery pins the socket's lookup to re-checked addresses (the hub
+  resolves over DNS-over-HTTPS before every POST). `TEMP_CODE_WEBHOOK_ALLOW_LOOPBACK=1`
+  admits a 127.0.0.1 receiver for a proof script; nothing else private, ever.
 - Proof: `bun run script:e2e-remote` (the bearer flow against a temp
-  server) and `bun scripts/e2e-remote-ui.ts` (an isolated preview instance
-  plus a real Chrome profile over CDP through `/pair`, `/ui`, a thread, a
-  reply, the cookie and the CSP rewrite).
+  server), `bun run script:e2e-remote-fence` (in the release gate: the fence
+  for a read and an operate key on every path-taking method, the concurrent
+  pairing redeem, refused webhook targets, the learned origin, the anonymous
+  hello and the pair page CSP) and `bun scripts/e2e-remote-ui.ts` (an
+  isolated preview instance plus a real Chrome profile over CDP through
+  `/pair`, `/ui`, a thread, a reply, the cookie and the CSP rewrite).
 
 ## The Linux agent host: headless mode on the box
 - `TEMP_CODE_HEADLESS=1` (src/main/headless.ts) runs the main process with no

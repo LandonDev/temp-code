@@ -47,6 +47,16 @@ size). Page older with `before: firstSeq`, newer with `after: lastSeq`; a page
 reports `moreBefore` / `moreAfter`, and `reset: true` means the gap was too
 large and you got a fresh tail. Pages are capped at `chars` (16 000 default).
 
+## What a key may reach on disk
+
+Every method that names a path or a working directory (`fs.*`, `git.*`,
+`github.*`, `search.project`, `workspace.create`, `session.create` with a
+`cwd`) is fenced for any key, whatever its capabilities: the real path must
+sit under one of the host's workspaces, project working trees or its
+configured work root. A path outside, or a symlink inside pointing out, is
+refused with `forbidden: <method> is outside app-managed roots` and nothing
+about the path is logged. Only the desktop's own loopback socket is unfenced.
+
 ## What the key cannot do
 
 A bot key is capped at read + operate. It can start, message, stop and archive
@@ -75,6 +85,13 @@ root):
 ```json
 { "event": "finished", "hostId": "box", "threadId": "VHgjJIsQkQEz", "title": "Ship it", "body": "Finished its turn", "url": "https://tempcode.landonhale.com/ui#thread=VHgjJIsQkQEz", "ts": 1792386000000 }
 ```
+
+The URL must be https to a public host. Loopback, private (10/8, 172.16/12,
+192.168/16, CGNAT), link-local (169.254/16, where cloud metadata lives),
+unique-local v6, `.internal`/`.local` and bare names are refused when the key is
+made; the host is resolved then and again inside the socket's lookup at each
+delivery, so a name that later points inside the network gets nothing.
+Redirects are never followed.
 
 Events: `needs_you` (a permission or question appeared; the body names it),
 `finished` (the turn ended with nothing pending), `failed` (an error ended the

@@ -40,6 +40,9 @@ console.log('› typecheck')
 run('bun', ['run', 'typecheck'])
 console.log('› vitest')
 run('bunx', ['vitest', 'run'])
+// The remote fence, pairing, webhook and hello rules against a real server (R2).
+console.log('› e2e-remote-fence')
+run('bun', ['run', 'script:e2e-remote-fence'])
 console.log('› hub')
 run('bun', ['run', 'hub:test'])
 // The iOS contract package: 12 s cold, 2 s warm on this Mac (scripts/ios-test.sh).
