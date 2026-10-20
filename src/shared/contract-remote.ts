@@ -54,7 +54,61 @@ export const PairBodySchema = z.object({
   caps: z.array(CapabilitySchema).optional()
 })
 
+// ── Push (thread L6): the phone registers its APNs token with the host ──
+// The host keeps one registration per key and forwards it to the hub as an
+// `apns` subscription; the hub does the APNs delivery. Revoking the key or
+// rotating the token replaces or removes the subscription.
+
+/** Which APNs gateway the token belongs to: what the app's provisioning profile says. */
+export const PushEnvironmentSchema = z.enum(['sandbox', 'production'])
+export type PushEnvironment = z.infer<typeof PushEnvironmentSchema>
+/** The hub's events a phone may ask for: the notifier's four plus the host's liveness. */
+export const PushEventSchema = z.enum(['needs_you', 'finished', 'failed', 'stuck', 'host_down', 'host_up'])
+export type PushEvent = z.infer<typeof PushEventSchema>
+export const PUSH_EVENTS: readonly PushEvent[] = PushEventSchema.options
+/** An APNs token: 32 bytes as hex (Apple's current size; longer stays legal). */
+const PushToken = z.string().regex(/^[0-9a-fA-F]{64,400}$/, 'an APNs token is hex')
+const BundleId = z.string().min(1).max(160).regex(/^[A-Za-z0-9.-]+$/)
+
+/** What a key's registration is in, as the phone's Settings row shows it. */
+export interface PushStatus {
+  /** The host holds a token for this key. */
+  registered: boolean
+  /** `ok`: the hub holds the subscription; `none`: this host has no hub; `failed`: the hub refused (see error). */
+  relay: 'ok' | 'none' | 'failed'
+  error: string | null
+  events: PushEvent[]
+  updatedAt: number | null
+}
+
+export const PushRequestSchemas = [
+  /** → PushStatus. Replaces this key's registration (a rotated token lands here too). */
+  request(
+    'remote.push.register',
+    z.object({
+      token: PushToken,
+      bundleId: BundleId,
+      environment: PushEnvironmentSchema,
+      events: z.array(PushEventSchema).min(1).optional()
+    })
+  ),
+  /** → PushStatus. Drops this key's registration and its hub subscription. */
+  request('remote.push.unregister', z.object({}).optional()),
+  request('remote.push.status', z.object({}).optional()),
+  /** → null. The Live Activity push token for a thread; `token: null` ends it. */
+  request(
+    'remote.push.activity',
+    z.object({
+      sessionId: z.string().min(1),
+      token: PushToken.nullable(),
+      bundleId: BundleId.optional(),
+      environment: PushEnvironmentSchema.optional()
+    })
+  )
+] as const
+
 export const RemoteRequestSchemas = [
+  ...PushRequestSchemas,
   request('remote.status', z.object({}).optional()),
   request('remote.keys.list', z.object({}).optional()),
   /** → { key, token }: the only time the secret is readable. */

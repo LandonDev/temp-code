@@ -130,6 +130,29 @@ export function openDb(path: string): DatabaseSync {
       consumed_at INTEGER,
       consumed_by TEXT
     );
+    -- Push (server/remote/push.ts): one APNs registration per key, mirrored
+    -- to the hub as an apns subscription, and the Live Activity tokens a
+    -- phone registered per thread. Tokens are not secrets; they are dropped
+    -- with the key.
+    CREATE TABLE IF NOT EXISTS remote_push (
+      key_id      TEXT PRIMARY KEY,
+      token       TEXT NOT NULL,
+      bundle_id   TEXT NOT NULL,
+      environment TEXT NOT NULL,
+      events      TEXT NOT NULL,
+      relay       TEXT NOT NULL,
+      error       TEXT,
+      updated_at  INTEGER NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS remote_push_activities (
+      key_id      TEXT NOT NULL,
+      session_id  TEXT NOT NULL,
+      token       TEXT NOT NULL,
+      bundle_id   TEXT NOT NULL,
+      environment TEXT NOT NULL,
+      updated_at  INTEGER NOT NULL,
+      PRIMARY KEY (key_id, session_id)
+    );
     CREATE TABLE IF NOT EXISTS remote_sessions (
       id           TEXT PRIMARY KEY,
       key_id       TEXT NOT NULL,

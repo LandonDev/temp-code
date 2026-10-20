@@ -1296,6 +1296,61 @@ public struct RemoteSession: Codable, Hashable, Sendable {
     }
 }
 
+public struct PushStatus: Codable, Hashable, Sendable {
+    public enum Relay: RawRepresentable, Codable, Hashable, Sendable {
+        case ok
+        case none
+        case failed
+        /// A value this build does not know; `rawValue` keeps it.
+        case unknown(String)
+
+        public init(rawValue: String) {
+            switch rawValue {
+            case "ok": self = .ok
+            case "none": self = .none
+            case "failed": self = .failed
+            default: self = .unknown(rawValue)
+            }
+        }
+
+        public var rawValue: String {
+            switch self {
+            case .ok: "ok"
+            case .none: "none"
+            case .failed: "failed"
+            case .unknown(let value): value
+            }
+        }
+    }
+
+    public let registered: Bool
+    public let relay: Relay
+    public let error: String?
+    public let events: [PushEvent]
+    public let updatedAt: Int?
+
+    public init(registered: Bool, relay: Relay, error: String?, events: [PushEvent], updatedAt: Int?) {
+        self.registered = registered
+        self.relay = relay
+        self.error = error
+        self.events = events
+        self.updatedAt = updatedAt
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case registered, relay, error, events, updatedAt
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(registered, forKey: .registered)
+        try container.encode(relay, forKey: .relay)
+        try container.encode(error, forKey: .error)
+        try container.encode(events, forKey: .events)
+        try container.encode(updatedAt, forKey: .updatedAt)
+    }
+}
+
 public struct CreatedKey: Codable, Hashable, Sendable {
     public let key: RemoteKey
     public let token: String

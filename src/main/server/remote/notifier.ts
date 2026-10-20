@@ -29,6 +29,8 @@ export interface Notice {
   body: string
   url?: string
   ts: number
+  /** The root's row to land on: the prompt, the error, else the last row seen. */
+  seq: number
 }
 
 export type NoticeSink = (notice: Notice) => void | Promise<void>
@@ -71,6 +73,8 @@ interface Pending {
   face: string
   /** The subagent that asked, when it was not the root itself. */
   by: string | null
+  /** The root's row the prompt sits at (a subagent's prompt lands on the root's latest row). */
+  seq: number
 }
 
 interface ThreadState {
@@ -213,7 +217,8 @@ export class Notifier {
           face: plan
             ? ''
             : `${event.toolName} — ${event.title ? oneLine(event.title) : toolFace(event.input)}`,
-          by: own ? null : (reg.get(row.sessionId)?.title ?? row.sessionId)
+          by: own ? null : (reg.get(row.sessionId)?.title ?? row.sessionId),
+          seq: own ? row.seq : state.lastRowSeq
         }
         this.arm(rootId)
         return
@@ -224,7 +229,8 @@ export class Notifier {
           requestId: event.requestId,
           kind: 'question',
           face: event.questions.map((q) => oneLine(q.question)).join(' · '),
-          by: own ? null : (reg.get(row.sessionId)?.title ?? row.sessionId)
+          by: own ? null : (reg.get(row.sessionId)?.title ?? row.sessionId),
+          seq: own ? row.seq : state.lastRowSeq
         }
         this.arm(rootId)
         return
@@ -259,7 +265,7 @@ export class Notifier {
   private decide(
     id: string,
     state: ThreadState
-  ): { event: NoticeEvent; key: string; body: string } | null {
+  ): { event: NoticeEvent; key: string; body: string; seq: number } | null {
     const meta = this.options.registry.get(id)
     if (!meta || meta.archived) return null
     state.status = meta.status
@@ -278,7 +284,8 @@ export class Notifier {
         return {
           event: 'needs_you',
           key: `waiting:${state.lastRowSeq}`,
-          body: `Waiting for you${who}`
+          body: `Waiting for you${who}`,
+          seq: state.lastRowSeq
         }
       const body =
         p.kind === 'plan'
@@ -286,21 +293,23 @@ export class Notifier {
           : p.kind === 'question'
             ? `Question${who}: ${p.face}`
             : `Permission${who}: ${p.face}`
-      return { event: 'needs_you', key: `prompt:${p.requestId}`, body: cut(body, BODY_CHARS) }
+      return { event: 'needs_you', key: `prompt:${p.requestId}`, body: cut(body, BODY_CHARS), seq: p.seq }
     }
     if (meta.status === 'error') {
       const e = state.lastError
       return {
         event: 'failed',
         key: `error:${e?.seq ?? state.lastRowSeq}`,
-        body: cut(e && !e.stopped ? oneLine(e.message) : 'The turn failed', BODY_CHARS)
+        body: cut(e && !e.stopped ? oneLine(e.message) : 'The turn failed', BODY_CHARS),
+        seq: e?.seq ?? state.lastRowSeq
       }
     }
     if (signIn && WORKING.has(meta.status)) {
       return {
         event: 'failed',
         key: `error:${signIn.seq}`,
-        body: cut(oneLine(signIn.message), BODY_CHARS)
+        body: cut(oneLine(signIn.message), BODY_CHARS),
+        seq: signIn.seq
       }
     }
     if (WORKING.has(meta.status)) {
@@ -308,7 +317,8 @@ export class Notifier {
         return {
           event: 'stuck',
           key: `stuck:${state.lastRowSeq}`,
-          body: 'A stall was reported while it was working'
+          body: 'A stall was reported while it was working',
+          seq: state.lastRowSeq
         }
       return null
     }
@@ -316,7 +326,7 @@ export class Notifier {
       // A stop by the user is not a finish, and a thread that never worked since we looked has nothing to report.
       if (state.lastError?.stopped && state.lastError.seq >= state.lastRowSeq - 2) return null
       if (state.sent === null && state.lastRowSeq === 0) return null
-      return { event: 'finished', key: `finished:${state.lastRowSeq}`, body: 'Finished its turn' }
+      return { event: 'finished', key: `finished:${state.lastRowSeq}`, body: 'Finished its turn', seq: state.lastRowSeq }
     }
     return null
   }
@@ -329,7 +339,7 @@ export class Notifier {
     if (state.sent && state.sent.event === decision.event && state.sent.key === decision.key) return
     if (decision.event === 'stuck') state.stuckSent = true
     state.sent = { event: decision.event, key: decision.key }
-    this.emit(id, decision.event, decision.body)
+    this.emit(id, decision.event, decision.body, decision.seq)
   }
 
   /** Working threads silent past the limit (and nothing told us since) get one `stuck`. */
@@ -348,12 +358,13 @@ export class Notifier {
       this.emit(
         id,
         'stuck',
-        `No activity for ${Math.round((now - state.lastRowAt) / 60_000)} min while working`
+        `No activity for ${Math.round((now - state.lastRowAt) / 60_000)} min while working`,
+        state.lastRowSeq
       )
     }
   }
 
-  private emit(id: string, event: NoticeEvent, body: string): void {
+  private emit(id: string, event: NoticeEvent, body: string, seq: number): void {
     const meta = this.options.registry.get(id)
     if (!meta) return
     const origin = this.options.origin?.() ?? null
@@ -363,7 +374,8 @@ export class Notifier {
       title: cut(meta.title, 120),
       body,
       ...(origin ? { url: `${origin}/ui#thread=${id}` } : {}),
-      ts: this.now()
+      ts: this.now(),
+      seq
     }
     this.log(`${event} ${id} "${notice.title}": ${body}`)
     for (const sink of this.sinks) {

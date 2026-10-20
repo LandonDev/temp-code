@@ -7,7 +7,26 @@ export interface HubEvent {
   body: string
   url?: string
   ts?: number
+  /** The row a phone lands on when the notification is tapped (thread L6). */
+  seq?: number
 }
+/** A phone's APNs registration, forwarded as the hub's `apns` subscription for this host. */
+export interface HubDevice {
+  /** The key id on this host: one subscription per key, replaced on a rotated token. */
+  deviceId: string
+  token: string
+  bundleId: string
+  environment: 'sandbox' | 'production'
+  events: HubEventKind[]
+}
+/** The Live Activity's `content-state`; keys match the phone's ContentState. */
+export interface HubActivityState {
+  phase: 'working' | 'paused' | 'waiting' | 'finished' | 'failed'
+  since: number
+  ts: number
+  seq?: number
+}
+export type HubAck = { ok: true } | { ok: false; error: string }
 export interface HubOptions {
   url: string
   hostToken: string
@@ -22,6 +41,14 @@ export interface HubResult {
 }
 export interface HubClient {
   notify(event: HubEvent): Promise<HubResult | null>
+  /** `PUT /v1/hosts/:id/devices/:deviceId`: the hub holds one apns subscription per device. */
+  registerDevice(device: HubDevice): Promise<HubAck>
+  removeDevice(deviceId: string): Promise<HubAck>
+  /** The Live Activity token a phone holds for a thread; the hub pushes `liveactivity` updates to it. */
+  setActivity(activity: { deviceId: string; threadId: string; token: string; bundleId: string; environment: 'sandbox' | 'production' }): Promise<HubAck>
+  removeActivity(deviceId: string, threadId: string): Promise<HubAck>
+  /** `POST /v1/activity`: one state for every device watching the thread; `end` drops them on the hub. */
+  pushActivity(activity: { threadId: string; event: 'update' | 'end'; state: HubActivityState; title?: string; threadType?: string }): Promise<HubResult | null>
   stop(): void
 }
 interface Dependencies {
@@ -73,6 +100,17 @@ export function startHub(options: HubOptions, dependencies: Dependencies = {}): 
     channel: string,
     timeout: number
   ): Promise<unknown | null> {
+    return send('POST', path, payload, channel, timeout)
+  }
+  /** The last failure of a channel, as the device calls report it ("HTTP 404", "timeout", "unavailable"). */
+  const failures = new Map<string, string>()
+  async function send(
+    method: 'POST' | 'PUT' | 'DELETE',
+    path: string,
+    payload: object | null,
+    channel: string,
+    timeout: number
+  ): Promise<unknown | null> {
     if (stopped) return null
     const controller = new AbortController()
     pending.add(controller)
@@ -80,17 +118,18 @@ export function startHub(options: HubOptions, dependencies: Dependencies = {}): 
     deadline.unref?.()
     try {
       const response = await fetch(base + path, {
-        method: 'POST',
+        method,
         redirect: 'error',
         signal: controller.signal,
         headers: {
           authorization: 'Bearer ' + options.hostToken,
-          'content-type': 'application/json'
+          ...(payload === null ? {} : { 'content-type': 'application/json' })
         },
-        body: JSON.stringify(payload)
+        ...(payload === null ? {} : { body: JSON.stringify(payload) })
       })
       if (!response.ok) {
         await response.body?.cancel()
+        failures.set(channel, 'HTTP ' + response.status)
         state(channel, 'HTTP ' + response.status)
         return null
       }
@@ -102,12 +141,42 @@ export function startHub(options: HubOptions, dependencies: Dependencies = {}): 
       }
       return result
     } catch {
+      failures.set(channel, controller.signal.aborted ? 'timeout' : 'unavailable')
       state(channel, controller.signal.aborted ? 'timeout' : 'unavailable')
       return null
     } finally {
       clearTimeout(deadline)
       pending.delete(controller)
     }
+  }
+  const hostPath = '/v1/hosts/' + encodeURIComponent(options.hostId)
+  /** A device call: the hub's `{ ok: true }`, or the channel's last failure. */
+  async function ack(method: 'PUT' | 'DELETE', path: string, payload: object | null, channel: string): Promise<HubAck> {
+    failures.delete(channel)
+    const result = await send(method, path, payload, channel, 10_000)
+    if (result !== null && (result as { ok?: boolean }).ok === true) {
+      state(channel, 'ok')
+      return { ok: true }
+    }
+    // A delete of what the hub no longer has is done.
+    if (method === 'DELETE' && failures.get(channel) === 'HTTP 404') return { ok: true }
+    if (result !== null) state(channel, 'invalid response')
+    return { ok: false, error: failures.get(channel) ?? (stopped ? 'stopped' : 'invalid response') }
+  }
+  const counts = (channel: string, result: unknown | null): HubResult | null => {
+    if (result === null) return null
+    const value = result as HubResult
+    if (
+      !Number.isSafeInteger(value.delivered) ||
+      value.delivered < 0 ||
+      !Number.isSafeInteger(value.failed) ||
+      value.failed < 0
+    ) {
+      state(channel, 'invalid response')
+      return null
+    }
+    state(channel, value.failed ? 'delivery failed' : 'ok')
+    return { delivered: value.delivered, failed: value.failed }
   }
   async function beat(): Promise<void> {
     const result = await post(
@@ -145,25 +214,55 @@ export function startHub(options: HubOptions, dependencies: Dependencies = {}): 
           title: event.title,
           body: event.body,
           ts: event.ts ?? Date.now(),
+          environmentId: options.environmentId,
           ...(event.threadId === undefined ? {} : { threadId: event.threadId }),
-          ...(event.url === undefined ? {} : { url: event.url })
+          ...(event.url === undefined ? {} : { url: event.url }),
+          ...(event.seq === undefined ? {} : { seq: event.seq })
         },
         'notify',
         25_000
       )
-      if (result === null) return null
-      const value = result as HubResult
-      if (
-        !Number.isSafeInteger(value.delivered) ||
-        value.delivered < 0 ||
-        !Number.isSafeInteger(value.failed) ||
-        value.failed < 0
-      ) {
-        state('notify', 'invalid response')
-        return null
-      }
-      state('notify', value.failed ? 'delivery failed' : 'ok')
-      return { delivered: value.delivered, failed: value.failed }
+      return counts('notify', result)
+    },
+    registerDevice(device) {
+      return ack(
+        'PUT',
+        `${hostPath}/devices/${encodeURIComponent(device.deviceId)}`,
+        { token: device.token, bundleId: device.bundleId, environment: device.environment, events: device.events },
+        'devices'
+      )
+    },
+    removeDevice(deviceId) {
+      return ack('DELETE', `${hostPath}/devices/${encodeURIComponent(deviceId)}`, null, 'devices')
+    },
+    setActivity(activity) {
+      return ack(
+        'PUT',
+        `${hostPath}/activities/${encodeURIComponent(activity.threadId)}/${encodeURIComponent(activity.deviceId)}`,
+        { token: activity.token, bundleId: activity.bundleId, environment: activity.environment },
+        'activities'
+      )
+    },
+    removeActivity(deviceId, threadId) {
+      return ack('DELETE', `${hostPath}/activities/${encodeURIComponent(threadId)}/${encodeURIComponent(deviceId)}`, null, 'activities')
+    },
+    async pushActivity(activity) {
+      const result = await post(
+        '/v1/activity',
+        {
+          hostId: options.hostId,
+          environmentId: options.environmentId,
+          threadId: activity.threadId,
+          event: activity.event,
+          state: activity.state,
+          ts: Date.now(),
+          ...(activity.title === undefined ? {} : { title: activity.title }),
+          ...(activity.threadType === undefined ? {} : { threadType: activity.threadType })
+        },
+        'activity',
+        15_000
+      )
+      return counts('activity', result)
     },
     stop() {
       stopped = true

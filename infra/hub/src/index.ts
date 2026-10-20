@@ -1,6 +1,6 @@
 import { hash, matches, seal, token } from './crypto'
-import { directory, fanOut, json } from './delivery'
-import { id, Invalid, kinds, notice, object, readJson, secret as secretOf, str, webhookUrl } from './validation'
+import { directory, fanOut, fanOutActivity, json } from './delivery'
+import { activity, device, id, Invalid, kinds, notice, object, readJson, secret as secretOf, str, webhookUrl } from './validation'
 import type { Env, Notice, Subscription } from './types'
 export { HostState } from './host'
 export { Directory } from './directory'
@@ -34,7 +34,11 @@ export default {
       const method = request.method
       if (path === '/healthz' && method === 'GET') return json({ ok: true })
       const hb = path.match(/^\/v1\/hosts\/([^/]+)\/heartbeat$/)
-      const isHost = (hb && method === 'POST') || (path === '/v1/notify' && method === 'POST')
+      // A host's own devices and their Live Activity tokens (thread L6): the host bearer, scoped to the path's host.
+      const dev = path.match(/^\/v1\/hosts\/([^/]+)\/devices\/([^/]+)$/)
+      const act = path.match(/^\/v1\/hosts\/([^/]+)\/activities\/([^/]+)\/([^/]+)$/)
+      const hostOwned = ((dev || act) && (method === 'PUT' || method === 'DELETE')) || (path === '/v1/activity' && method === 'POST')
+      const isHost = (hb && method === 'POST') || (path === '/v1/notify' && method === 'POST') || hostOwned
       // Missing credentials return immediately, before parsing or accessing storage.
       if (isHost) {
         if (!/^Bearer [^\s]+$/.test(request.headers.get('authorization') ?? ''))
@@ -42,16 +46,59 @@ export default {
       } else if (!(await admin(request, env))) return json({ error: 'Unauthorized' }, 401)
       if (hb && method === 'POST')
         return transition(await hostCall(env, id(hb[1]), 'heartbeat', request), env, ctx)
+      const hostAuth = (hostId: string) =>
+        hostCall(env, hostId, 'auth', new Request(request.url, { headers: request.headers }))
       if (path === '/v1/notify' && method === 'POST') {
         const payload = notice(await readJson(request))
-        const auth = await hostCall(
-          env,
-          payload.hostId,
-          'auth',
-          new Request(request.url, { headers: request.headers })
-        )
+        const auth = await hostAuth(payload.hostId)
         if (!auth.ok) return auth
         return json(await fanOut(env, payload))
+      }
+      if (path === '/v1/activity' && method === 'POST') {
+        const payload = activity(await readJson(request))
+        const auth = await hostAuth(payload.hostId)
+        if (!auth.ok) return auth
+        return json(await fanOutActivity(env, payload))
+      }
+      if (dev && (method === 'PUT' || method === 'DELETE')) {
+        const hostId = id(dev[1])
+        const deviceId = id(dev[2])
+        const auth = await hostAuth(hostId)
+        if (!auth.ok) return auth
+        const subId = `apns-${hostId}-${deviceId}`
+        if (method === 'DELETE') {
+          if (!(await directory(env).deleteSubscription(subId))) return json({ error: 'Subscription not found' }, 404)
+          return json({ ok: true })
+        }
+        const v = object(await readJson(request))
+        const registered = device(v, deviceId)
+        const sub: Subscription = {
+          id: subId,
+          name: `Phone ${deviceId} on ${hostId}`,
+          kind: 'apns',
+          ...registered,
+          events: kinds(v.events),
+          hosts: [hostId],
+          failureCount: 0,
+          lastError: null
+        }
+        // A fresh registration (a rotated token) starts with clean counters.
+        await directory(env).clearFailure(subId)
+        await directory(env).putSubscription(sub)
+        return json({ ok: true, id: subId })
+      }
+      if (act && (method === 'PUT' || method === 'DELETE')) {
+        const hostId = id(act[1])
+        const threadId = id(act[2])
+        const deviceId = id(act[3])
+        const auth = await hostAuth(hostId)
+        if (!auth.ok) return auth
+        if (method === 'DELETE') {
+          await directory(env).deleteActivity(hostId, threadId, deviceId)
+          return json({ ok: true })
+        }
+        await directory(env).putActivity(hostId, threadId, device(await readJson(request), deviceId))
+        return json({ ok: true })
       }
       if (path === '/v1/hosts') {
         if (method === 'POST') {
@@ -80,8 +127,10 @@ export default {
         if (method === 'GET')
           return json(
             (await directory(env).subscriptions()).map((sub) => {
-              const { encryptedSecret: _secret, ...safe } = sub as Subscription & {
+              // Neither a webhook's ciphertext nor a phone's token is listed.
+              const { encryptedSecret: _secret, token: _token, ...safe } = sub as Subscription & {
                 encryptedSecret?: string
+                token?: string
               }
               return safe
             })

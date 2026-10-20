@@ -37,7 +37,9 @@ import type {
 import {
   AudienceSchema,
   CapabilitySchema,
+  PushEventSchema,
   WebhookEventSchema,
+  type PushStatus,
   type RemoteKey,
   type RemotePairing,
   type RemoteSession,
@@ -483,6 +485,14 @@ export const RemoteStatusSchema = z.object({
   stuckMinutes: z.number().int()
 })
 
+export const PushStatusSchema = z.object({
+  registered: z.boolean(),
+  relay: z.enum(['ok', 'none', 'failed']),
+  error: z.string().nullable(),
+  events: z.array(PushEventSchema),
+  updatedAt: z.number().int().nullable()
+})
+
 export const RemoteKeySchema = z.object({
   id: z.string(),
   name: z.string(),
@@ -702,6 +712,7 @@ export type WireSchemaPins = [
   Expect<Mirror<typeof FileChangeSchema, FileChange>>,
   Expect<Mirror<typeof QueuedMessageSchema, QueuedMessage>>,
   Expect<Mirror<typeof RemoteStatusSchema, RemoteStatus>>,
+  Expect<Mirror<typeof PushStatusSchema, PushStatus>>,
   Expect<Mirror<typeof RemoteKeySchema, RemoteKey>>,
   Expect<Mirror<typeof RemotePairingSchema, RemotePairing>>,
   Expect<Mirror<typeof RemoteSessionSchema, RemoteSession>>,

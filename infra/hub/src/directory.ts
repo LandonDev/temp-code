@@ -1,5 +1,5 @@
 import { DurableObject } from 'cloudflare:workers'
-import type { Env, Subscription } from './types'
+import type { Activities, ApnsDevice, Env, Subscription } from './types'
 
 interface Failure {
   failureCount: number
@@ -58,6 +58,35 @@ export class Directory extends DurableObject<Env> {
       const existed = (await this.ctx.storage.delete(['sub:' + id, 'failure:' + id])) > 0
       if (existed) await this.mirror(() => this.env.HUB_KV.delete('sub:' + id))
       return existed
+    })
+  }
+  /** Forgets a subscription's counters: a device registered afresh starts clean. */
+  async clearFailure(id: string): Promise<void> {
+    await this.ctx.storage.delete('failure:' + id)
+  }
+  // Live Activities: the tokens held for a thread, by device, never mirrored
+  // (a phone registers again at the next thread it watches).
+  async activities(hostId: string, threadId: string): Promise<Activities> {
+    return (await this.ctx.storage.get<Activities>(`act:${hostId}:${threadId}`)) ?? {}
+  }
+  async putActivity(hostId: string, threadId: string, device: ApnsDevice): Promise<void> {
+    await this.ctx.blockConcurrencyWhile(async () => {
+      const key = `act:${hostId}:${threadId}`
+      const current = (await this.ctx.storage.get<Activities>(key)) ?? {}
+      await this.ctx.storage.put(key, { ...current, [device.deviceId]: device })
+    })
+  }
+  /** Drops one device's token for the thread, or every token when `deviceId` is absent. */
+  async deleteActivity(hostId: string, threadId: string, deviceId?: string): Promise<boolean> {
+    return this.ctx.blockConcurrencyWhile(async () => {
+      const key = `act:${hostId}:${threadId}`
+      if (deviceId === undefined) return (await this.ctx.storage.delete(key)) === true
+      const current = (await this.ctx.storage.get<Activities>(key)) ?? {}
+      if (!(deviceId in current)) return false
+      const { [deviceId]: _gone, ...rest } = current
+      if (Object.keys(rest).length) await this.ctx.storage.put(key, rest)
+      else await this.ctx.storage.delete(key)
+      return true
     })
   }
   async recordFailure(id: string, lastError: string): Promise<void> {

@@ -1,5 +1,5 @@
 import { guardTarget } from './target'
-import { events, type Heartbeat, type Notice } from './types'
+import { activityPhases, events, pushEnvironments, type ActivityUpdate, type ApnsDevice, type Heartbeat, type Notice } from './types'
 export class Invalid extends Error {}
 export function object(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value))
@@ -74,6 +74,10 @@ export function heartbeat(value: unknown): Heartbeat {
     ...(load ? { load } : {})
   }
 }
+function seq(value: unknown): number {
+  if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 0) throw new Invalid('Invalid seq')
+  return value
+}
 export function notice(value: unknown): Notice {
   const v = object(value)
   return {
@@ -82,8 +86,42 @@ export function notice(value: unknown): Notice {
     title: str(v.title, 'title'),
     body: str(v.body, 'body', 4096),
     ts: timestamp(v.ts),
+    ...(v.environmentId === undefined ? {} : { environmentId: str(v.environmentId, 'environmentId') }),
     ...(v.threadId === undefined ? {} : { threadId: str(v.threadId, 'threadId') }),
+    ...(v.seq === undefined ? {} : { seq: seq(v.seq) }),
     ...(v.url === undefined ? {} : { url: url(v.url) })
+  }
+}
+/** An APNs device token: hex, 32 bytes today; the bundle id names the topic. */
+export function device(value: unknown, deviceId: string): ApnsDevice {
+  const v = object(value)
+  const token = str(v.token, 'token', 400)
+  if (!/^[0-9a-fA-F]{64,400}$/.test(token)) throw new Invalid('Invalid token')
+  const bundleId = str(v.bundleId, 'bundleId', 160)
+  if (!/^[A-Za-z0-9.-]+$/.test(bundleId)) throw new Invalid('Invalid bundleId')
+  if (!pushEnvironments.includes(v.environment as never)) throw new Invalid('Invalid environment')
+  return { deviceId, token: token.toLowerCase(), bundleId, environment: v.environment as ApnsDevice['environment'] }
+}
+/** `POST /v1/activity`: the thread's state for its Live Activities. */
+export function activity(value: unknown): ActivityUpdate {
+  const v = object(value)
+  if (v.event !== 'update' && v.event !== 'end') throw new Invalid('Invalid event')
+  const state = object(v.state)
+  if (!activityPhases.includes(state.phase as never)) throw new Invalid('Invalid phase')
+  return {
+    hostId: id(v.hostId),
+    threadId: id(v.threadId),
+    event: v.event,
+    state: {
+      phase: state.phase as ActivityUpdate['state']['phase'],
+      since: timestamp(state.since),
+      ts: timestamp(state.ts),
+      ...(state.seq === undefined ? {} : { seq: seq(state.seq) })
+    },
+    ts: timestamp(v.ts),
+    ...(v.environmentId === undefined ? {} : { environmentId: str(v.environmentId, 'environmentId') }),
+    ...(v.title === undefined ? {} : { title: str(v.title, 'title') }),
+    ...(v.threadType === undefined ? {} : { threadType: str(v.threadType, 'threadType', 40) })
   }
 }
 export async function readJson(request: Request): Promise<unknown> {

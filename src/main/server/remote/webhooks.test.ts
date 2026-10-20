@@ -20,7 +20,8 @@ const notice: Notice = {
   title: 'Ship it',
   body: 'Finished its turn',
   url: 'https://tc.example/ui#thread=t1',
-  ts: 1_760_000_000_000
+  ts: 1_760_000_000_000,
+  seq: 12
 }
 
 describe('payload and signature', () => {
@@ -33,7 +34,8 @@ describe('payload and signature', () => {
       title: 'Ship it',
       body: 'Finished its turn',
       url: 'https://tc.example/ui#thread=t1',
-      ts: 1_760_000_000_000
+      ts: 1_760_000_000_000,
+      seq: notice.seq
     })
     expect(webhookPayload({ ...notice, url: undefined }, 'box')).not.toHaveProperty('url')
     const body = JSON.stringify(payload)

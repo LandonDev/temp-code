@@ -726,6 +726,78 @@ public enum Methods {
         public typealias Output = TempCodeContract.RemoteStatus
     }
 
+    public enum RemotePushRegister: ContractMethod {
+        public static let name = "remote.push.register"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public let token: String
+            public let bundleId: String
+            public let environment: PushEnvironment
+            public let events: [PushEvent]?
+
+            public init(token: String, bundleId: String, environment: PushEnvironment, events: [PushEvent]? = nil) {
+                self.token = token
+                self.bundleId = bundleId
+                self.environment = environment
+                self.events = events
+            }
+        }
+
+        public typealias Output = PushStatus
+    }
+
+    public enum RemotePushUnregister: ContractMethod {
+        public static let name = "remote.push.unregister"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public init() {}
+        }
+
+        public typealias Output = PushStatus
+    }
+
+    public enum RemotePushStatus: ContractMethod {
+        public static let name = "remote.push.status"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public init() {}
+        }
+
+        public typealias Output = PushStatus
+    }
+
+    public enum RemotePushActivity: ContractMethod {
+        public static let name = "remote.push.activity"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public let sessionId: String
+            public let token: String?
+            public let bundleId: String?
+            public let environment: PushEnvironment?
+
+            public init(sessionId: String, token: String?, bundleId: String? = nil, environment: PushEnvironment? = nil) {
+                self.sessionId = sessionId
+                self.token = token
+                self.bundleId = bundleId
+                self.environment = environment
+            }
+
+            private enum CodingKeys: String, CodingKey {
+                case sessionId, token, bundleId, environment
+            }
+
+            public func encode(to encoder: any Encoder) throws {
+                var container = encoder.container(keyedBy: CodingKeys.self)
+                try container.encode(sessionId, forKey: .sessionId)
+                try container.encode(token, forKey: .token)
+                try container.encodeIfPresent(bundleId, forKey: .bundleId)
+                try container.encodeIfPresent(environment, forKey: .environment)
+            }
+        }
+
+        public typealias Output = NoOutput
+    }
+
     public enum WorkspaceIcon: ContractMethod {
         public static let name = "workspace.icon"
 

@@ -31,6 +31,8 @@ import {
   AudienceSchema,
   CapabilitySchema,
   PairBodySchema,
+  PushEnvironmentSchema,
+  PushEventSchema,
   WebhookEventSchema
 } from '../src/shared/contract-remote'
 import { ProjectModeSchema, ThreadTypeSchema } from '../src/shared/domain'
@@ -87,6 +89,8 @@ export const SUBSET: SubsetEntry[] = [
   type('Capability', CapabilitySchema),
   type('Audience', AudienceSchema),
   type('WebhookEvent', WebhookEventSchema),
+  type('PushEnvironment', PushEnvironmentSchema),
+  type('PushEvent', PushEventSchema),
   type('LimitBucket', (LimitWindowSchema as z.ZodUnion<[z.ZodType, z.ZodType]>).options[0]),
   type('GithubInboxChecks', W.GithubInboxChecksSchema.unwrap()),
   type('GithubInboxReviewDecision', W.GithubInboxReviewDecisionSchema),
@@ -131,6 +135,7 @@ export const SUBSET: SubsetEntry[] = [
   type('RemoteKey', W.RemoteKeySchema),
   type('RemotePairing', W.RemotePairingSchema),
   type('RemoteSession', W.RemoteSessionSchema),
+  type('PushStatus', W.PushStatusSchema),
   type('CreatedKey', W.CreatedKeySchema),
   type('CreatedPairing', W.CreatedPairingSchema),
   type('HelloResponse', W.HelloResponseSchema),
@@ -185,6 +190,11 @@ export const SUBSET: SubsetEntry[] = [
   method('remote.sessions.list', z.array(W.RemoteSessionSchema)),
   method('remote.sessions.revoke', z.boolean()),
   method('remote.settings.set', W.RemoteStatusSchema),
+  // push (thread L6)
+  method('remote.push.register', W.PushStatusSchema),
+  method('remote.push.unregister', W.PushStatusSchema),
+  method('remote.push.status', W.PushStatusSchema),
+  method('remote.push.activity', z.null()),
   method('workspace.icon', W.WorkspaceIconSchema),
   method('github.inbox', W.GithubInboxSnapshotSchema),
   method('github.inboxRefresh', W.GithubInboxSnapshotSchema),

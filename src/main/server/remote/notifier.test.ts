@@ -140,7 +140,8 @@ describe('needs_you', () => {
         title: 'Ship it',
         body: 'Permission: Bash — git push --force',
         url: 'https://tc.example/ui#thread=t1',
-        ts: Date.now()
+        ts: Date.now(),
+        seq: 2
       }
     ])
     reg.push('t1', { activity: 'thinking' })

@@ -35,6 +35,8 @@ export interface WebhookPayload {
   body: string
   url?: string
   ts: number
+  /** The row the notice is about (the prompt, the error, the last row). */
+  seq: number
 }
 
 export const WEBHOOK_TIMEOUT_MS = 5_000
@@ -54,7 +56,8 @@ export function webhookPayload(notice: Notice, hostId: string): WebhookPayload {
     title: notice.title,
     body: notice.body,
     ...(notice.url ? { url: notice.url } : {}),
-    ts: notice.ts
+    ts: notice.ts,
+    seq: notice.seq
   }
 }
 

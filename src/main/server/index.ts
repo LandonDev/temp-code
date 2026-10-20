@@ -32,6 +32,7 @@ import { startRemoteListener, type RemoteListener } from './remote/listener'
 import { fenceRequest } from './remote/fence'
 import { createMcpHandler } from './remote/mcp'
 import { Notifier } from './remote/notifier'
+import { ActivityFeed, PushRegistry } from './remote/push'
 import { deliverWebhooks, webhookPayload } from './remote/webhooks'
 import { createUiHandler } from './remote/ui'
 import { pairingOrigin, readRemoteSettings } from './remote/handlers'
@@ -460,10 +461,15 @@ export async function startServer(
         ui: createUiHandler({ rendererDir: join(options.appPath ?? process.cwd(), 'out', 'renderer'), assets: options.assets })
       })
     }))
+  // The phones' push registrations forward to the hub (made below); a
+  // revoked key takes its registration and activities with it.
+  const pushRegistry = new PushRegistry(db, { hub: () => hub })
+  remoteAuth.onRevoke((keyId) => void pushRegistry.dropKey(keyId))
   const remoteContext: RemoteContext = {
     environmentId,
     auth: remoteAuth,
     store,
+    push: pushRegistry,
     status: () => ({ running: remote !== null && remote.port > 0, port: remote?.port ?? 0, error: remote?.error ?? null }),
     onSettingsChanged: () => void restartRemote()
   }
@@ -1477,8 +1483,13 @@ export async function startServer(
     origin: () => pairingOrigin(readRemoteSettings(store), remote?.port ?? 0)
   })
   if (hub) {
-    notifier.onNotice((n) => void hub.notify({ event: n.event, threadId: n.threadId, title: n.title, body: n.body, url: n.url, ts: n.ts }))
+    notifier.onNotice((n) => void hub.notify({ event: n.event, threadId: n.threadId, title: n.title, body: n.body, url: n.url, ts: n.ts, seq: n.seq }))
   }
+  // Threads with a Live Activity on a phone: status transitions go out as
+  // liveactivity pushes; registrations the hub never took are offered again.
+  const activityFeed = new ActivityFeed({ registry, push: pushRegistry, hub: () => hub })
+  activityFeed.start()
+  void pushRegistry.resync()
   notifier.onNotice((n) => {
     const targets = remoteAuth.webhookTargets(n.event)
     if (targets.length === 0) return
@@ -1503,6 +1514,7 @@ export async function startServer(
     accounts: m3a.accounts,
     close: async () => {
       notifier.stop()
+      activityFeed.stop()
       hub?.stop()
       await remoteRestart
       await remote?.close()

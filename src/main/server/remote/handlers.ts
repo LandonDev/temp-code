@@ -4,6 +4,7 @@ import { CONTRACT_VERSION, type Capability } from '@shared/capabilities'
 import type { RemoteStatus } from '@shared/contract-remote'
 import type { Store } from '../db'
 import type { RemoteAuth } from './auth'
+import type { PushRegistry } from './push'
 import { STUCK_MINUTES_DEFAULT } from './notifier'
 import { addEnvironment, listEnvironments, mintTicket, pairEnvironment, removeEnvironment, updateEnvironment } from './environments'
 
@@ -63,6 +64,8 @@ export interface RemoteContext {
   environmentId: string
   auth: RemoteAuth
   store: Store
+  /** The phones' push registrations (thread L6). */
+  push: PushRegistry
   /** The live listener's state; `port` is 0 while it is off. */
   status: () => { running: boolean; port: number; error: string | null }
   /** Settings changed: start, stop or move the listener. */
@@ -96,9 +99,24 @@ export function remoteStatus(ctx: RemoteContext): RemoteStatus {
   }
 }
 
+/** The key a push call is for: the caller's own. The local socket has none. */
+function pushKey(ctx: RemoteContext): string {
+  if (!ctx.createdBy) throw new Error('push registration needs a paired key')
+  return ctx.createdBy
+}
+
 export async function handleRemote(req: ClientRequest, ctx: RemoteContext): Promise<Handled> {
   const createdBy = ctx.createdBy ?? 'local'
   switch (req.method) {
+    case 'remote.push.register':
+      return result(await ctx.push.register(pushKey(ctx), req.params))
+    case 'remote.push.unregister':
+      return result(await ctx.push.unregister(pushKey(ctx)))
+    case 'remote.push.status':
+      return result(ctx.push.status(pushKey(ctx)))
+    case 'remote.push.activity':
+      await ctx.push.setActivity(pushKey(ctx), req.params)
+      return result(null)
     case 'remote.status':
       return result(remoteStatus(ctx))
     case 'remote.keys.list':

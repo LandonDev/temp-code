@@ -8,6 +8,8 @@ import {
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import worker from '../src/index'
 import { hash, seal, signature } from '../src/crypto'
+import { apnsReset, JWT_LIFETIME_MS, providerToken } from '../src/apns'
+import { ACTIVITY_DISMISS_S } from '../src/delivery'
 import { dohResolve, guardTarget, isPrivateAddress, setResolver } from '../src/target'
 import type { Env as HubEnv, Host, Subscription } from '../src/types'
 declare global {
@@ -494,5 +496,200 @@ describe('hub', () => {
     await env.HUB_KV.put('sub:legacy-sub', JSON.stringify(sub))
     expect((await directory().subscriptions()).map((s) => s.id)).toEqual(['legacy-sub'])
     expect(await directory().hostIds()).toEqual(['box'])
+  })
+})
+
+// ── APNs (thread L6) ────────────────────────────────────────────────────
+
+/** A throwaway P-256 pair: the private half as the .p8 PEM a Worker secret holds, the public half to check signatures. */
+async function apnsKeys(): Promise<{ pem: string; publicKey: CryptoKey }> {
+  const pair = await crypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, true, ['sign', 'verify'])
+  const der = new Uint8Array(await crypto.subtle.exportKey('pkcs8', pair.privateKey))
+  let bin = ''
+  for (const b of der) bin += String.fromCharCode(b)
+  const body = btoa(bin).match(/.{1,64}/g)!.join('\n')
+  return { pem: `-----BEGIN PRIVATE KEY-----\n${body}\n-----END PRIVATE KEY-----\n`, publicKey: pair.publicKey }
+}
+const b64url = (text: string): Uint8Array => Uint8Array.from(atob(text.replace(/-/g, '+').replace(/_/g, '/')), (c) => c.charCodeAt(0))
+const decodeJwt = (jwt: string): { header: Record<string, string>; claims: Record<string, unknown>; signingInput: string; signature: Uint8Array } => {
+  const [h, c, sig] = jwt.split('.')
+  return {
+    header: JSON.parse(new TextDecoder().decode(b64url(h))),
+    claims: JSON.parse(new TextDecoder().decode(b64url(c))),
+    signingInput: `${h}.${c}`,
+    signature: b64url(sig)
+  }
+}
+const TOKEN = 'ab'.repeat(32)
+const apnsNotice = { ...notice, event: 'needs_you', environmentId: 'env_box', seq: 42, body: 'Permission: Bash — git push' }
+/** The Worker with APNs configured for a test gateway; a fresh key id per call keeps the provider token cache honest. */
+let keyN = 0
+async function apnsEnv(): Promise<{ env: HubEnv; publicKey: CryptoKey }> {
+  const { pem, publicKey } = await apnsKeys()
+  keyN += 1
+  return { env: { ...env, APNS_KEY: pem, APNS_KEY_ID: `KEY${keyN}`, APNS_TEAM_ID: 'TEAM123456', APNS_URL: 'https://apns.test' }, publicKey }
+}
+async function callWith(hubEnv: HubEnv, path: string, method: string, body?: unknown, headers: Record<string, string> = admin): Promise<Response> {
+  const ctx = createExecutionContext()
+  const response = await worker.fetch(
+    new Request('https://hub' + path, { method, headers, ...(body === undefined ? {} : { body: JSON.stringify(body) }) }),
+    hubEnv,
+    ctx
+  )
+  await waitOnExecutionContext(ctx)
+  return response
+}
+const registerDevice = (hubEnv: HubEnv, auth: Record<string, string>, extra: object = {}) =>
+  callWith(hubEnv, '/v1/hosts/box/devices/k1', 'PUT', { token: TOKEN, bundleId: 'dev.landon.tempcode.ios', environment: 'sandbox', events: ['needs_you', 'finished'], ...extra }, auth)
+
+describe('APNs delivery', () => {
+  beforeEach(() => apnsReset())
+  it('mints an ES256 provider token once per lifetime, signed with the key and naming the team and key id', async () => {
+    const { env: hubEnv, publicKey } = await apnsEnv()
+    const jwt = await providerToken(hubEnv, 1_760_000_000_000)
+    const { header, claims, signingInput, signature: sig } = decodeJwt(jwt)
+    expect(header).toEqual({ alg: 'ES256', kid: hubEnv.APNS_KEY_ID })
+    expect(claims).toEqual({ iss: 'TEAM123456', iat: 1_760_000_000 })
+    expect(await crypto.subtle.verify({ name: 'ECDSA', hash: 'SHA-256' }, publicKey, sig, new TextEncoder().encode(signingInput))).toBe(true)
+    expect(await providerToken(hubEnv, 1_760_000_000_000 + JWT_LIFETIME_MS - 1)).toBe(jwt)
+    expect(await providerToken(hubEnv, 1_760_000_000_000 + JWT_LIFETIME_MS)).not.toBe(jwt)
+    await expect(providerToken({ ...hubEnv, APNS_KEY_ID: undefined })).rejects.toThrow(/not configured/)
+  })
+  it('takes a device only from its own host, lists it without the token, and replaces it on a rotated token', async () => {
+    const { env: hubEnv } = await apnsEnv()
+    const auth = await register()
+    const other = await register('mac')
+    expect((await registerDevice(hubEnv, other)).status).toBe(401)
+    expect((await callWith(hubEnv, '/v1/hosts/box/devices/k1', 'PUT', { token: 'nothex', bundleId: 'b', environment: 'sandbox', events: ['needs_you'] }, auth)).status).toBe(400)
+    expect((await callWith(hubEnv, '/v1/hosts/box/devices/k1', 'PUT', { token: TOKEN, bundleId: 'b', environment: 'staging', events: ['needs_you'] }, auth)).status).toBe(400)
+    expect(await (await registerDevice(hubEnv, auth)).json()).toEqual({ ok: true, id: 'apns-box-k1' })
+    const listed = await (await callWith(hubEnv, '/v1/subscriptions', 'GET')).text()
+    expect(listed).not.toContain(TOKEN)
+    expect(JSON.parse(listed)).toEqual([expect.objectContaining({ id: 'apns-box-k1', kind: 'apns', deviceId: 'k1', hosts: ['box'], events: ['needs_you', 'finished'], failureCount: 0 })])
+    await directory().recordFailure('apns-box-k1', 'APNs 500')
+    expect(await (await registerDevice(hubEnv, auth, { token: 'cd'.repeat(32) })).json()).toEqual({ ok: true, id: 'apns-box-k1' })
+    const subs = await directory().subscriptions()
+    expect(subs).toHaveLength(1)
+    expect(subs[0]).toMatchObject({ kind: 'apns', token: 'cd'.repeat(32), failureCount: 0, lastError: null })
+    expect((await callWith(hubEnv, '/v1/hosts/box/devices/k1', 'DELETE', undefined, other)).status).toBe(401)
+    expect((await callWith(hubEnv, '/v1/hosts/box/devices/k1', 'DELETE', undefined, auth)).status).toBe(200)
+    expect((await callWith(hubEnv, '/v1/hosts/box/devices/k1', 'DELETE', undefined, auth)).status).toBe(404)
+    expect(await directory().subscriptions()).toEqual([])
+  })
+  it('posts an alert to the sandbox gateway with the provider token, the topic and the thread to land on', async () => {
+    const { env: hubEnv, publicKey } = await apnsEnv()
+    const auth = await register()
+    await registerDevice(hubEnv, auth)
+    const fetch = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(''))
+    expect(await (await callWith(hubEnv, '/v1/notify', 'POST', apnsNotice, auth)).json()).toEqual({ delivered: 1, failed: 0 })
+    expect(fetch).toHaveBeenCalledTimes(1)
+    expect(String(fetch.mock.calls[0][0])).toBe(`https://apns.test/3/device/${TOKEN}`)
+    const init = fetch.mock.calls[0][1]!
+    const headers = init.headers as Record<string, string>
+    expect(headers['apns-topic']).toBe('dev.landon.tempcode.ios')
+    expect(headers['apns-push-type']).toBe('alert')
+    expect(headers['apns-priority']).toBe('10')
+    expect(headers['apns-collapse-id']).toBe('thread-1:needs_you')
+    expect(Number(headers['apns-expiration'])).toBe(Math.floor(apnsNotice.ts / 1000) + 3600)
+    expect(headers['apns-id']).toMatch(/^[\da-f-]{36}$/)
+    const jwt = headers.authorization.replace(/^bearer /, '')
+    const { signingInput, signature: sig } = decodeJwt(jwt)
+    expect(await crypto.subtle.verify({ name: 'ECDSA', hash: 'SHA-256' }, publicKey, sig, new TextEncoder().encode(signingInput))).toBe(true)
+    expect(JSON.parse(init.body as string)).toEqual({
+      aps: {
+        alert: { title: 'Done', body: 'Permission: Bash — git push' },
+        sound: 'default',
+        'thread-id': 'thread-1',
+        'interruption-level': 'time-sensitive'
+      },
+      tc: { event: 'needs_you', hostId: 'box', environmentId: 'env_box', threadId: 'thread-1', seq: 42, ts: 2000 }
+    })
+    // A finished notice is not time-sensitive and the subscription did not ask for stuck.
+    fetch.mockClear()
+    expect(await (await callWith(hubEnv, '/v1/notify', 'POST', { ...apnsNotice, event: 'stuck' }, auth)).json()).toEqual({ delivered: 0, failed: 0 })
+    expect(await (await callWith(hubEnv, '/v1/notify', 'POST', { ...apnsNotice, event: 'finished', seq: undefined }, auth)).json()).toEqual({ delivered: 1, failed: 0 })
+    const body = JSON.parse(fetch.mock.calls[0][1]!.body as string)
+    expect(body.aps['interruption-level']).toBe('active')
+    expect(body.tc).not.toHaveProperty('seq')
+  })
+  it('drops a subscription Apple calls gone, counts other failures, re-mints on a refused provider token, and fails cleanly unconfigured', async () => {
+    const { env: hubEnv } = await apnsEnv()
+    const auth = await register()
+    await registerDevice(hubEnv, auth)
+    // A fresh Response per attempt: a body reads once.
+    const fetch = vi.spyOn(globalThis, 'fetch').mockImplementation(async () => Response.json({ reason: 'InternalServerError' }, { status: 500 }))
+    vi.spyOn(globalThis, 'setTimeout').mockImplementation(((fn: () => void) => { fn(); return 0 }) as never)
+    expect(await (await callWith(hubEnv, '/v1/notify', 'POST', apnsNotice, auth)).json()).toEqual({ delivered: 0, failed: 1 })
+    expect(fetch).toHaveBeenCalledTimes(3)
+    expect((await directory().subscriptions())[0]).toMatchObject({ failureCount: 1, lastError: 'APNs 500 InternalServerError' })
+    // 403 ExpiredProviderToken: one fresh token, then success.
+    fetch.mockClear()
+    const first = (await directory().subscriptions())[0]
+    fetch.mockResolvedValueOnce(Response.json({ reason: 'ExpiredProviderToken' }, { status: 403 })).mockResolvedValueOnce(new Response(''))
+    expect(await (await callWith(hubEnv, '/v1/notify', 'POST', apnsNotice, auth)).json()).toEqual({ delivered: 1, failed: 0 })
+    expect(fetch).toHaveBeenCalledTimes(2)
+    const tokens = fetch.mock.calls.map((c) => (c[1]!.headers as Record<string, string>).authorization)
+    expect(tokens[0]).not.toBe(tokens[1])
+    expect((await directory().subscriptions())[0]).toMatchObject({ failureCount: first.failureCount })
+    // 410 Unregistered: the subscription is gone, its KV mirror with it.
+    fetch.mockClear()
+    fetch.mockImplementation(async () => Response.json({ reason: 'Unregistered' }, { status: 410 }))
+    expect(await (await callWith(hubEnv, '/v1/notify', 'POST', apnsNotice, auth)).json()).toEqual({ delivered: 0, failed: 1 })
+    expect(fetch).toHaveBeenCalledTimes(1)
+    expect(await directory().subscriptions()).toEqual([])
+    expect((await env.HUB_KV.list({ prefix: 'sub:' })).keys).toEqual([])
+    // Without the secrets nothing is posted and the row says so.
+    await registerDevice(hubEnv, auth)
+    fetch.mockClear()
+    expect(await (await callWith({ ...env }, '/v1/notify', 'POST', apnsNotice, auth)).json()).toEqual({ delivered: 0, failed: 1 })
+    expect(fetch).not.toHaveBeenCalled()
+    expect((await directory().subscriptions())[0]).toMatchObject({ failureCount: 1, lastError: 'APNs not configured' })
+  })
+  it('pushes Live Activity states to the thread\'s devices and ends them with a dismissal date', async () => {
+    const { env: hubEnv } = await apnsEnv()
+    const auth = await register()
+    const other = await register('mac')
+    const put = (headers: Record<string, string>, deviceId = 'k1', token = TOKEN) =>
+      callWith(hubEnv, `/v1/hosts/box/activities/thread-1/${deviceId}`, 'PUT', { token, bundleId: 'dev.landon.tempcode.ios', environment: 'production' }, headers)
+    expect((await put(other)).status).toBe(401)
+    expect((await put(auth)).status).toBe(200)
+    expect((await put(auth, 'k2', 'cd'.repeat(32))).status).toBe(200)
+    expect(Object.keys(await directory().activities('box', 'thread-1')).sort()).toEqual(['k1', 'k2'])
+    const fetch = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(''))
+    const update = { hostId: 'box', environmentId: 'env_box', threadId: 'thread-1', event: 'update', state: { phase: 'working', since: 1000, ts: 5000 }, title: 'Done', threadType: 'implementation', ts: 5000 }
+    expect((await callWith(hubEnv, '/v1/activity', 'POST', update, other)).status).toBe(401)
+    expect(await (await callWith(hubEnv, '/v1/activity', 'POST', update, auth)).json()).toEqual({ delivered: 2, failed: 0 })
+    expect(fetch).toHaveBeenCalledTimes(2)
+    const urls = fetch.mock.calls.map((c) => String(c[0])).sort()
+    expect(urls).toEqual([`https://apns.test/3/device/${TOKEN}`, `https://apns.test/3/device/${'cd'.repeat(32)}`])
+    const init = fetch.mock.calls[0][1]!
+    const headers = init.headers as Record<string, string>
+    expect(headers['apns-topic']).toBe('dev.landon.tempcode.ios.push-type.liveactivity')
+    expect(headers['apns-push-type']).toBe('liveactivity')
+    expect(headers['apns-collapse-id']).toBe('thread-1')
+    const body = JSON.parse(init.body as string)
+    expect(body.aps).toMatchObject({ event: 'update', 'content-state': { phase: 'working', since: 1000, ts: 5000 }, 'relevance-score': 50 })
+    expect(body.aps).not.toHaveProperty('dismissal-date')
+    expect(typeof body.aps.timestamp).toBe('number')
+    // A device Apple no longer knows is dropped from the thread; the other stays.
+    fetch.mockClear()
+    fetch.mockImplementation(async (input) => (String(input).endsWith(TOKEN) ? Response.json({ reason: 'BadDeviceToken' }, { status: 400 }) : new Response('')))
+    expect(await (await callWith(hubEnv, '/v1/activity', 'POST', { ...update, state: { phase: 'paused', since: 1000, ts: 6000 } }, auth)).json()).toEqual({ delivered: 1, failed: 1 })
+    expect(Object.keys(await directory().activities('box', 'thread-1'))).toEqual(['k2'])
+    // The end carries the final state and a dismissal date, and the thread's tokens are gone after it.
+    fetch.mockClear()
+    fetch.mockResolvedValue(new Response(''))
+    const end = { ...update, event: 'end', state: { phase: 'waiting', since: 1000, ts: 7000, seq: 42 }, ts: 7000 }
+    expect(await (await callWith(hubEnv, '/v1/activity', 'POST', end, auth)).json()).toEqual({ delivered: 1, failed: 0 })
+    const ended = JSON.parse(fetch.mock.calls[0][1]!.body as string)
+    expect(ended.aps).toMatchObject({ event: 'end', 'content-state': { phase: 'waiting', seq: 42 }, 'relevance-score': 100 })
+    expect(ended.aps['dismissal-date']).toBe(ended.aps.timestamp + ACTIVITY_DISMISS_S)
+    expect(await directory().activities('box', 'thread-1')).toEqual({})
+    // A phone that ended its activity itself removes its token; an unknown one is a 400.
+    await put(auth)
+    expect((await callWith(hubEnv, '/v1/hosts/box/activities/thread-1/k1', 'DELETE', undefined, auth)).status).toBe(200)
+    expect(await directory().activities('box', 'thread-1')).toEqual({})
+    expect((await callWith(hubEnv, '/v1/activity', 'POST', { ...update, state: { phase: 'resting', since: 1, ts: 2 } }, auth)).status).toBe(400)
+    expect((await env.HUB_KV.list({ prefix: 'act:' })).keys).toEqual([])
   })
 })

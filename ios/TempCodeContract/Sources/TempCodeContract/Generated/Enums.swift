@@ -309,6 +309,64 @@ public enum WebhookEvent: RawRepresentable, Codable, Hashable, Sendable {
     }
 }
 
+public enum PushEnvironment: RawRepresentable, Codable, Hashable, Sendable {
+    case sandbox
+    case production
+    /// A value this build does not know; `rawValue` keeps it.
+    case unknown(String)
+
+    public init(rawValue: String) {
+        switch rawValue {
+        case "sandbox": self = .sandbox
+        case "production": self = .production
+        default: self = .unknown(rawValue)
+        }
+    }
+
+    public var rawValue: String {
+        switch self {
+        case .sandbox: "sandbox"
+        case .production: "production"
+        case .unknown(let value): value
+        }
+    }
+}
+
+public enum PushEvent: RawRepresentable, Codable, Hashable, Sendable {
+    case needsYou
+    case finished
+    case failed
+    case stuck
+    case hostDown
+    case hostUp
+    /// A value this build does not know; `rawValue` keeps it.
+    case unknown(String)
+
+    public init(rawValue: String) {
+        switch rawValue {
+        case "needs_you": self = .needsYou
+        case "finished": self = .finished
+        case "failed": self = .failed
+        case "stuck": self = .stuck
+        case "host_down": self = .hostDown
+        case "host_up": self = .hostUp
+        default: self = .unknown(rawValue)
+        }
+    }
+
+    public var rawValue: String {
+        switch self {
+        case .needsYou: "needs_you"
+        case .finished: "finished"
+        case .failed: "failed"
+        case .stuck: "stuck"
+        case .hostDown: "host_down"
+        case .hostUp: "host_up"
+        case .unknown(let value): value
+        }
+    }
+}
+
 public enum LimitBucket: RawRepresentable, Codable, Hashable, Sendable {
     case fiveHours
     case weekly

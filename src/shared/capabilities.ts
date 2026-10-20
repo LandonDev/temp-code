@@ -213,6 +213,11 @@ export const METHOD_CAPABILITY: Record<ClientRequest['method'], MethodCapability
   'project.setAccounts': 'admin',
   'workspace.setAccounts': 'admin',
   'linear.setToken': 'admin',
+  // A paired phone registers its own push token (thread L6): the key's own row, read suffices.
+  'remote.push.register': 'read',
+  'remote.push.unregister': 'read',
+  'remote.push.status': 'read',
+  'remote.push.activity': 'read',
   'remote.status': 'admin',
   'remote.keys.list': 'admin',
   'remote.keys.create': 'admin',
