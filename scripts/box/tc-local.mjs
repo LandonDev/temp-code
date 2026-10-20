@@ -22,6 +22,14 @@ try {
 const params = raw ? JSON.parse(raw) : {}
 const timeoutMs = Number(process.env.TC_LOCAL_TIMEOUT_MS || 120_000)
 const ws = new WebSocket(`ws://127.0.0.1:${port}/`)
+// stdout is a pipe under box-probe and shell pipelines, where Node writes
+// asynchronously: process.exit() right after console.log() drops whatever
+// has not been flushed yet (a session.list of thousands of threads was cut
+// off at ~140 KB). Exit from the write's callback instead.
+const finish = (text, code) => {
+  ws.close()
+  process.stdout.write(`${text}\n`, () => process.exit(code))
+}
 const timer = setTimeout(() => {
   console.error(`tc-local: no answer to ${method} in ${timeoutMs} ms`)
   process.exit(1)
@@ -33,14 +41,13 @@ ws.addEventListener('message', (event) => {
   const frame = JSON.parse(String(event.data))
   if (method === '--hello' && frame.push === 'hello') {
     clearTimeout(timer)
-    console.log(JSON.stringify(frame, null, 2))
-    process.exit(0)
+    finish(JSON.stringify(frame, null, 2), 0)
   }
   if (frame.id !== 'tc-local') return
   clearTimeout(timer)
   if (frame.ok) {
-    console.log(JSON.stringify(frame.result ?? null, null, 2))
-    process.exit(0)
+    finish(JSON.stringify(frame.result ?? null, null, 2), 0)
+    return
   }
   console.error(`tc-local: ${frame.error}`)
   process.exit(1)

@@ -10,7 +10,10 @@ const local = (method, params = {}) =>
   JSON.parse(
     execFileSync('/usr/local/bin/tc-local', [method, JSON.stringify(params)], {
       encoding: 'utf8',
-      timeout: 15000
+      timeout: 15000,
+      // session.list of the whole history is several MB pretty-printed;
+      // the 1 MB default throws ENOBUFS.
+      maxBuffer: 256 * 1024 * 1024
     })
   )
 const assert = (ok, label) => {
