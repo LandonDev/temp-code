@@ -13,7 +13,11 @@
 # Connect API key with TC_AUTH_KEY_PATH, TC_AUTH_KEY_ID, TC_AUTH_ISSUER_ID).
 # The toolchain is the newest Xcode's through DEVELOPER_DIR; xcode-select is
 # never changed. The device is TC_DEVICE_UDID, else the first connected or
-# Wi-Fi-paired iPhone devicectl lists; TC_DEVICE_SKIP_INSTALL=1 builds only.
+# Wi-Fi-paired iPhone devicectl lists, and the build targets it so the
+# profiles carry it; TC_DEVICE_SKIP_INSTALL=1 builds for the generic device
+# and installs nothing. The phone needs Developer Mode on (Settings →
+# Privacy & Security; `idevicedevmodectl reveal` from libimobiledevice makes
+# the item appear when it is hidden).
 set -euo pipefail
 cd "$(dirname "$0")/../ios/TempCode"
 if [ -z "${DEVELOPER_DIR:-}" ]; then
@@ -36,25 +40,16 @@ if [ -n "${TC_AUTH_KEY_PATH:-}" ]; then
   auth=(-authenticationKeyPath "$TC_AUTH_KEY_PATH" -authenticationKeyID "${TC_AUTH_KEY_ID:?}" -authenticationKeyIssuerID "${TC_AUTH_ISSUER_ID:?}")
 fi
 
-xcodegen generate --quiet
-echo "ios-device: building $CONFIG for a device with $(basename "$(dirname "$(dirname "$DEVELOPER_DIR")")")"
-# The build is for the generic device so it needs no phone; the install does.
-xcodebuild build -project TempCode.xcodeproj -scheme TempCode -configuration "$CONFIG" \
-  -destination 'generic/platform=iOS' -derivedDataPath "$DERIVED" \
-  -allowProvisioningUpdates -allowProvisioningDeviceRegistration "${auth[@]}" \
-  DEVELOPMENT_TEAM="$TEAM" CODE_SIGN_STYLE=Automatic CODE_SIGN_IDENTITY="Apple Development" \
-  CODE_SIGNING_REQUIRED=YES CODE_SIGNING_ALLOWED=YES AD_HOC_CODE_SIGNING_ALLOWED=NO \
-  -quiet 2>&1 | sed -E "s/$TEAM/<team>/g"
-APP="$DERIVED/Build/Products/$CONFIG-iphoneos/TempCode.app"
-[ -d "$APP" ] || { echo "ios-device: no app at $APP" >&2; exit 1; }
-echo "ios-device: built $APP"
-[ "${TC_DEVICE_SKIP_INSTALL:-}" = 1 ] && exit 0
-
-UDID=${TC_DEVICE_UDID:-}
-if [ -z "$UDID" ]; then
+# The device: TC_DEVICE_UDID, else the first iPhone devicectl lists as paired
+# or reachable. Found before the build, because the build must target it:
+# -allowProvisioningDeviceRegistration registers the destination device in
+# the profiles, and a generic build registers nothing.
+find_device() {
+  [ -n "${TC_DEVICE_UDID:-}" ] && { echo "$TC_DEVICE_UDID"; return; }
+  local listing
   listing=$(mktemp)
   xcrun devicectl list devices --json-output "$listing" >/dev/null 2>&1 || true
-  UDID=$(python3 -c '
+  python3 -c '
 import json, sys
 try:
     rows = json.load(open(sys.argv[1]))["result"]["devices"]
@@ -63,9 +58,25 @@ except Exception:
 phones = [r for r in rows if r.get("hardwareProperties", {}).get("deviceType") == "iPhone"]
 ready = [r for r in phones if "available" in r.get("connectionProperties", {}).get("tunnelState", "") or r.get("connectionProperties", {}).get("pairingState") == "paired"]
 rows = ready or phones
-print(rows[0]["identifier"] if rows else "")' "$listing")
+print(rows[0]["identifier"] if rows else "")' "$listing"
   rm -f "$listing"
-fi
+}
+UDID=""
+[ "${TC_DEVICE_SKIP_INSTALL:-}" = 1 ] || UDID=$(find_device)
+if [ -n "$UDID" ]; then destination="id=$UDID"; else destination="generic/platform=iOS"; fi
+
+xcodegen generate --quiet
+echo "ios-device: building $CONFIG for ${UDID:+the connected iPhone}${UDID:-the generic device} with $(basename "$(dirname "$(dirname "$DEVELOPER_DIR")")")"
+xcodebuild build -project TempCode.xcodeproj -scheme TempCode -configuration "$CONFIG" \
+  -destination "$destination" -derivedDataPath "$DERIVED" \
+  -allowProvisioningUpdates -allowProvisioningDeviceRegistration ${auth[@]+"${auth[@]}"} \
+  DEVELOPMENT_TEAM="$TEAM" CODE_SIGN_STYLE=Automatic CODE_SIGN_IDENTITY="Apple Development" \
+  CODE_SIGNING_REQUIRED=YES CODE_SIGNING_ALLOWED=YES AD_HOC_CODE_SIGNING_ALLOWED=NO \
+  -quiet 2>&1 | sed -E "s/$TEAM/<team>/g"
+APP="$DERIVED/Build/Products/$CONFIG-iphoneos/TempCode.app"
+[ -d "$APP" ] || { echo "ios-device: no app at $APP" >&2; exit 1; }
+echo "ios-device: built $APP"
+[ "${TC_DEVICE_SKIP_INSTALL:-}" = 1 ] && exit 0
 [ -n "$UDID" ] || { echo "ios-device: no iPhone is connected or paired (plug it in or set TC_DEVICE_UDID; xcrun devicectl list devices)" >&2; exit 3; }
 echo "ios-device: installing on $UDID"
 xcrun devicectl device install app --device "$UDID" "$APP"
