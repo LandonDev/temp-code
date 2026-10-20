@@ -2,6 +2,9 @@ import { BrowserWindow, session } from 'electron'
 import { createHash, randomBytes } from 'node:crypto'
 import { CLAUDE_AUTHORIZE_URL, CLAUDE_CLIENT_ID, CLAUDE_REDIRECT_URL, STATIC_SCOPES, type PlainCookie } from 'aliax-core'
 import { providerUrl } from '../aliax'
+import { consentScript } from './consentScript'
+
+export { CONSENT_SCRIPT } from './consentScript'
 
 /**
  * The browser half of a one-year token mint, in-app (T1). What `claude
@@ -46,16 +49,6 @@ const SESSION_COOKIES = ['sessionKey', 'sessionKeyLC', 'lastActiveOrg', 'anthrop
 const BROWSER_UA =
   'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36'
 
-/** The consent page's approve button, by its label; nothing is guessed when no label matches. */
-export const CONSENT_SCRIPT = `(() => {
-  const labels = /^(authori[sz]e|allow|approve|accept|continue)$/i
-  const buttons = Array.from(document.querySelectorAll('button, [role="button"], input[type="submit"]'))
-  const hit = buttons.find((b) => labels.test((b.innerText || b.value || '').trim()))
-  if (!hit) return false
-  hit.click()
-  return true
-})()`
-
 export function codeFrom(target: string): { code: string; state: string | null } | null {
   let url: URL
   try {
@@ -90,7 +83,9 @@ export interface AuthorizeRequest {
 export function authorizeRequest(scopes: string[] = STATIC_SCOPES, loginHint?: string): AuthorizeRequest {
   const verifier = randomBytes(32).toString('base64url')
   const challenge = createHash('sha256').update(verifier).digest('base64url')
-  const state = randomBytes(16).toString('base64url')
+  // 32 random bytes, the state `claude setup-token` and the sign-in send: claude.ai's consent
+  // endpoint refused a 16-byte one with "Invalid request format" (2026-10-20).
+  const state = randomBytes(32).toString('base64url')
   const url = new URL(providerUrl(CLAUDE_AUTHORIZE_URL))
   url.searchParams.set('code', 'true')
   url.searchParams.set('client_id', CLAUDE_CLIENT_ID)
@@ -145,7 +140,10 @@ export async function mintInWindow(input: SessionMintInput): Promise<SessionMint
     show: input.visible,
     title: 'Sign in to Claude',
     autoHideMenuBar: true,
-    webPreferences: { partition, nodeIntegration: false, contextIsolation: true }
+    // A window never shown is backgrounded by Chromium: the page reports itself hidden, animation
+    // frames stop and timers crawl, and claude.ai's consent page then never renders its button (a
+    // hidden run waited out its 45 s, 2026-10-20). Throttling off, the page runs as if shown.
+    webPreferences: { partition, nodeIntegration: false, contextIsolation: true, backgroundThrottling: false }
   })
   win.webContents.setUserAgent(BROWSER_UA)
   if (input.visible) open = win
@@ -191,16 +189,25 @@ export async function mintInWindow(input: SessionMintInput): Promise<SessionMint
       // A hidden run that lands on a sign-in page has no session to approve with.
       if (!input.visible && isLoginPage(target)) done({ kind: 'needs-sign-in', detail: 'the stored claude.ai session has lapsed' })
     }
+    // The consent page: approve it, the way the user would. The page renders
+    // its button after its own requests answer, so the script waits for it
+    // (consentScript.ts); only a button whose label says so is clicked, once
+    // per page. A sign-in that ends in a client-side route to the consent
+    // page (the Google popup flow) is approved the same way.
+    const approve = (here: string): void => {
+      if (settled || codeFrom(here) || isLoginPage(here)) return
+      void win.webContents.executeJavaScript(consentScript(input.consentSelector), true).catch(() => undefined)
+    }
     win.webContents.on('will-redirect', (_e, target) => void onNavigate(target))
     win.webContents.on('did-navigate', (_e, target) => void onNavigate(target))
-    win.webContents.on('did-navigate-in-page', (_e, target) => void onNavigate(target))
+    win.webContents.on('did-navigate-in-page', (_e, target) => {
+      void onNavigate(target)
+      approve(target)
+    })
     win.webContents.on('did-finish-load', () => {
       const here = win.webContents.getURL()
       void onNavigate(here)
-      if (settled || codeFrom(here) || isLoginPage(here)) return
-      // The consent page: approve it, the way the user would. Only a button
-      // whose label says so is clicked, and only once per page.
-      void win.webContents.executeJavaScript(input.consentSelector ? `(() => { const b = document.querySelector(${JSON.stringify(input.consentSelector)}); if (!b) return false; b.click(); return true })()` : CONSENT_SCRIPT, true).catch(() => false)
+      approve(here)
     })
     win.on('closed', () => {
       if (settled) return
@@ -210,5 +217,26 @@ export async function mintInWindow(input: SessionMintInput): Promise<SessionMint
       resolve(input.visible ? { kind: 'closed' } : { kind: 'needs-sign-in', detail: 'the window closed before a code arrived' })
     })
     win.loadURL(req.url).catch((err: Error) => done({ kind: 'needs-sign-in', detail: `the consent page did not load (${err.message})` }))
+    if (!input.visible) void emulateFocus(win)
   })
+}
+
+/**
+ * The consent page enables Authorize only once hcaptcha's passive check has
+ * answered, and that check waits for a focused page: a window never shown has
+ * no focus to give, so the button stayed disabled for a whole hidden run
+ * (2026-10-20). Chromium's focus emulation, the switch headless browsers use,
+ * makes the page focused with no window on screen. Sent once the load is under
+ * way (before a navigation the command never answers) and never awaited by the
+ * mint: the run's own timer is what bounds it, and a page that stays unfocused
+ * only means the run ends in `needs-sign-in` as before.
+ */
+async function emulateFocus(win: BrowserWindow): Promise<void> {
+  try {
+    win.webContents.debugger.attach('1.3')
+    const answer = win.webContents.debugger.sendCommand('Emulation.setFocusEmulationEnabled', { enabled: true })
+    await Promise.race([answer, new Promise((_, reject) => setTimeout(() => reject(new Error('no answer in 5 s')), 5_000).unref())])
+  } catch (err) {
+    if (!win.isDestroyed()) console.log(`[static-mint] focus emulation unavailable (${(err as Error).message}); the hidden run may not approve`)
+  }
 }

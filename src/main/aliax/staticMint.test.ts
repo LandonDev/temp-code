@@ -8,6 +8,7 @@ vi.mock('electron', () => ({
 }))
 
 import { authorizeRequest, codeFrom, CONSENT_SCRIPT, cookieRecords, isLoginPage } from './staticMint'
+import { consentScript } from './consentScript'
 
 describe('authorizeRequest', () => {
   it("is Claude Code's consent URL with PKCE, the static scopes and a random state; nothing but the scope differs from a sign-in", () => {
@@ -21,6 +22,9 @@ describe('authorizeRequest', () => {
     expect(url.searchParams.get('scope')).toBe('user:profile user:inference')
     expect(url.searchParams.get('code_challenge_method')).toBe('S256')
     expect(url.searchParams.get('state')).toBe(req.state)
+    // 32 random bytes, what `claude setup-token` and the sign-in send: the consent endpoint
+    // refused a 16-byte state with "Invalid request format" (2026-10-20).
+    expect(req.state).toMatch(/^[A-Za-z0-9_-]{43}$/)
     expect(url.searchParams.has('login_hint')).toBe(false)
     // S256: the challenge is the base64url sha256 of the verifier.
     const { createHash } = require('node:crypto') as typeof import('node:crypto')
@@ -55,9 +59,13 @@ describe('codeFrom and isLoginPage', () => {
     expect(isLoginPage('https://claude.ai/oauth/consent')).toBe(false)
     expect(isLoginPage('nope')).toBe(false)
   })
-  it('the consent script clicks only a button whose label says approve', () => {
+  it('the consent script waits for a button whose label says approve and clicks it once; a test seam names the element instead', () => {
     expect(CONSENT_SCRIPT).toMatch(/authori\[sz\]e\|allow\|approve\|accept\|continue/)
-    expect(CONSENT_SCRIPT).toMatch(/if \(!hit\) return false/)
+    expect(CONSENT_SCRIPT).toMatch(/setInterval\(click, 250\)/)
+    expect(CONSENT_SCRIPT).toMatch(/clearInterval\(window\.__tcConsent\)/)
+    expect(CONSENT_SCRIPT).toMatch(/if \(window\.__tcConsent\) return 'armed'/)
+    expect(consentScript('#approve')).toContain('document.querySelector("#approve")')
+    expect(consentScript('#approve')).not.toMatch(/authori\[sz\]e/)
   })
 })
 

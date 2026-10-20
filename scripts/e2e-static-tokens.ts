@@ -69,7 +69,7 @@ for (const port of [A.debug, A.remote, B.debug, B.remote]) {
   }
 }
 
-// ── the fake provider: accounts with grants and sessions; a token endpoint that honours expires_in per account; a consent page that approves a known session ──
+// ── the fake provider: accounts with grants and sessions; a token endpoint that honours expires_in per account; a consent page shaped like claude.ai's (a late-rendered Authorize button that POSTs the request and refuses a short state) ──
 interface Account {
   uuid: string
   email: string
@@ -150,18 +150,59 @@ const provider = createServer(async (req, res) => {
     const cookie = req.headers.cookie ?? null
     const sid = /sessionKey=([^;]+)/.exec(cookie ?? '')?.[1] ?? null
     const entry = sid ? Object.entries(accounts).find(([, a]) => a.session === sid) : undefined
-    const scope = url.searchParams.get('scope')
-    const state = url.searchParams.get('state')
-    fake.authorizes.push({ name: entry?.[0] ?? null, cookie: sid, scope, state })
     if (!entry) {
+      // Not signed in: the bounce is what the window sees; the asked scope is recorded here since no POST follows.
+      fake.authorizes.push({ name: null, cookie: sid, scope: url.searchParams.get('scope'), state: url.searchParams.get('state') })
       res.writeHead(302, { location: `${providerOrigin}/login?returnTo=${encodeURIComponent(url.pathname + url.search)}` })
       return res.end()
     }
+    // claude.ai's consent page, in shape: the Authorize button is rendered by script after the page's own
+    // requests answer (so a click at load finds nothing) and only once an animation frame has run (a window
+    // Chromium backgrounds never gets one), disabled until the document has focus (hcaptcha's passive check,
+    // which enables the real button, waits for that; a window never shown has none): the two ways the hidden
+    // run failed on 2026-10-20. It POSTs the request as JSON to the org's authorize endpoint, then navigates
+    // to the redirect the answer names; a refusal is shown on the page.
+    res.writeHead(200, { 'content-type': 'text/html' })
+    return res.end(`<!doctype html><title>Authorize Claude Code</title><main><p id="who">Claude Code wants access</p></main><script>
+      const q = new URLSearchParams(location.search)
+      requestAnimationFrame(() => setTimeout(() => {
+        const b = document.createElement('button')
+        b.textContent = 'Authorize'
+        b.disabled = true
+        const enable = () => (document.hasFocus() ? (b.disabled = false) : setTimeout(enable, 100))
+        enable()
+        b.onclick = async () => {
+          b.disabled = true
+          const res = await fetch('/v1/oauth/org-fake/authorize', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({
+            response_type: 'code', client_id: q.get('client_id'), organization_uuid: 'org-fake', redirect_uri: q.get('redirect_uri'), scope: q.get('scope'),
+            state: q.get('state'), code_challenge: q.get('code_challenge'), code_challenge_method: q.get('code_challenge_method') }) })
+          const data = await res.json()
+          if (!res.ok) { document.body.innerHTML = '<h1>Authorization failed</h1><p>' + data.error.message + '</p>'; return }
+          location.href = data.redirect_uri
+        }
+        document.querySelector('main').appendChild(b)
+      }, 400))
+    </script>`)
+  }
+  if (/^\/v1\/oauth\/[^/]+\/authorize$/.test(url.pathname) && req.method === 'POST') {
+    const body = JSON.parse(await readBody(req)) as Record<string, unknown>
+    const sid = /sessionKey=([^;]+)/.exec(req.headers.cookie ?? '')?.[1] ?? null
+    const entry = sid ? Object.entries(accounts).find(([, a]) => a.session === sid) : undefined
+    const scope = typeof body.scope === 'string' ? body.scope : null
+    const state = typeof body.state === 'string' ? body.state : null
+    fake.authorizes.push({ name: entry?.[0] ?? null, cookie: sid, scope, state })
+    if (!entry) return json(401, { type: 'error', error: { type: 'authentication_error', message: 'not signed in' } })
+    // What claude.ai's endpoint required on 2026-10-20: the CLI's shape, with a state of 32 random bytes
+    // (a 16-byte one was refused with exactly this answer), PKCE S256 and the Claude Code redirect.
+    const b64 = /^[A-Za-z0-9_-]{43}$/
+    const shaped =
+      body.response_type === 'code' && typeof body.client_id === 'string' && body.redirect_uri === 'https://platform.claude.com/oauth/code/callback' &&
+      !!scope && !!state && b64.test(state) && typeof body.code_challenge === 'string' && b64.test(body.code_challenge) && body.code_challenge_method === 'S256'
+    if (!shaped) return json(400, { type: 'error', error: { type: 'invalid_request_error', message: 'Invalid request format' } })
     const code = `CODE-${entry[0]}-${++fake.n}`
-    fake.codes.set(code, { name: entry[0], scopes: (scope ?? 'user:inference').split(/\s+/).filter(Boolean) })
+    fake.codes.set(code, { name: entry[0], scopes: scope!.split(/\s+/).filter(Boolean) })
     // The landing page is matched by path, whatever the host (staticMint.ts codeFrom).
-    res.writeHead(302, { location: `${providerOrigin}/oauth/code/callback?code=${code}&state=${encodeURIComponent(state ?? '')}` })
-    return res.end()
+    return json(200, { redirect_uri: `${providerOrigin}/oauth/code/callback?code=${code}&state=${encodeURIComponent(state!)}` })
   }
   if (url.pathname === '/login' || url.pathname === '/oauth/code/callback') {
     res.writeHead(200, { 'content-type': 'text/html' })
@@ -399,6 +440,7 @@ try {
   check('A: every row keeps its identity and its claude.ai session', ['one', 'two', 'three'].every((n) => readBlob(A, n)?.oauthAccount?.accountUuid === accounts[n].uuid && readBlob(A, n)?.appSession?.[0]?.value === accounts[n].session))
   const consents = fake.authorizes.slice(authorizesBefore)
   check('fake: `old` was renewed through the consent page with its stored session and the static scopes, in a hidden window', consents.length === 1 && consents[0].name === 'old' && consents[0].cookie === 'SID-old' && consents[0].scope === 'user:profile user:inference', JSON.stringify(consents))
+  check('fake: the hidden window clicked the Authorize button the page rendered after load, and its POST carried a 43-character state (claude.ai refuses a 16-byte one with "Invalid request format")', consents.every((c) => /^[A-Za-z0-9_-]{43}$/.test(c.state ?? '')), JSON.stringify(consents.map((c) => c.state?.length)))
   const exchange = fake.tokenBodies.slice(bodiesBefore).find((g) => g.grant_type === 'authorization_code')
   check('fake: its code was exchanged with a one-year expires_in, the ordinary body otherwise', exchange !== undefined && exchange.expires_in === YEAR_S && typeof exchange.code_verifier === 'string' && exchange.client_id === '9d1c250a-e61b-44d9-88ed-5944d1962f5e' && typeof exchange.state === 'string', JSON.stringify(exchange))
   const newOld = readTokens(A, 'old')?.accessToken

@@ -33,7 +33,7 @@ import type { SessionMintInput, SessionMintResult } from './staticMint'
  *  2. the account's stored claude.ai session in a hidden window
  *     (staticMint.ts): the consent page approves without a sign-in. When
  *     the session has lapsed, a run the user started opens the ordinary
- *     in-app sign-in with the address pre-filled; a renewal says
+ *     in-app sign-in with the address pre-filled and the stored cookies; a renewal says
  *     `needs-sign-in` instead and the row carries that word.
  * The token response names its account (uuid, email): a token is filed only
  * under the row it belongs to, or refused by name. A token that did not get
@@ -255,7 +255,8 @@ export class StaticTokens {
     if (result.kind === 'needs-sign-in') {
       if (!interactive) return { state: 'needs-sign-in', detail: why(result.detail) }
       this.log(`${name}: ${result.detail}; asking for a sign-in`)
-      result = await this.deps.mintInWindow({ cookies: null, scopes: STATIC_SCOPES, loginHint: profile.email, visible: true })
+      // The stored cookies ride along: a live session that did not approve in time needs the click, not a sign-in; a lapsed one lands on the login page as before.
+      result = await this.deps.mintInWindow({ cookies, scopes: STATIC_SCOPES, loginHint: profile.email, visible: true })
       if (result.kind === 'closed') return { state: 'cancelled' }
       if (result.kind === 'needs-sign-in') return { state: 'needs-sign-in', detail: why(result.detail) }
     }

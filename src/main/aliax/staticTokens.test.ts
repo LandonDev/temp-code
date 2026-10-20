@@ -110,7 +110,7 @@ describe('StaticTokens.convert', () => {
     expect(deps.log).toHaveBeenCalledWith(expect.stringContaining('trying the stored claude.ai session'))
   })
 
-  it('a lapsed session opens the in-app sign-in with the address pre-filled when the user asked, and keeps the fresher cookies', async () => {
+  it('a lapsed session opens the in-app sign-in with the address pre-filled and the stored cookies when the user asked, and keeps the fresher cookies', async () => {
     seed('one', grantBlob())
     const fresh = [{ ...session[0], value: 'sk-ant-sid01-fresh' }]
     const { tokens, windows } = make({
@@ -120,7 +120,8 @@ describe('StaticTokens.convert', () => {
       })
     })
     expect((await tokens.convert('one', true)).ok).toBe(true)
-    expect(windows.map((w) => [w.visible, w.loginHint, w.cookies === null])).toEqual([[false, undefined, false], [true, 'one@x.test', true]])
+    // The visible window carries the stored cookies too: a session that only failed to approve in time needs the click, not a sign-in.
+    expect(windows.map((w) => [w.visible, w.loginHint, w.cookies])).toEqual([[false, undefined, session], [true, 'one@x.test', session]])
     expect(JSON.parse(vault.readSecret('claude-code', 'one')!).appSession).toEqual(fresh)
   })
 
