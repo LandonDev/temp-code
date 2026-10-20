@@ -68,8 +68,17 @@ copy() {
 
 split() {
   quit_check
-  [[ -n ${TC_BOX_KEY:-} && -n ${TC_BOX_ENV_ID:-} ]] || die 'TC_BOX_KEY and TC_BOX_ENV_ID are required (mint the key on the box)'
+  [[ -n ${TC_BOX_ENV_ID:-} ]] || die 'TC_BOX_ENV_ID is required'
   [[ $TC_BOX_ENV_ID =~ ^env_[A-Za-z0-9_-]{22}$ ]] || die 'TC_BOX_ENV_ID is not an environment id'
+  # The box is already a saved environment when the Mac paired it in the app
+  # (its remote.* rows are copied below); only a Mac that never did needs a
+  # key minted on the box to add it here.
+  if [[ $(sqlite3 -readonly "$data/temp-code.db" "SELECT count(*) FROM settings WHERE key='remote.environments.$TC_BOX_ENV_ID'") == 1 ]]; then
+    have_box=1
+  else
+    have_box=0
+    [[ -n ${TC_BOX_KEY:-} ]] || die 'TC_BOX_KEY is required: the box is not a saved environment here yet (mint the key on the box)'
+  fi
   origin=${TC_BOX_ORIGIN:-https://tempcode.landonhale.com}
   moved="$data.moved-$today"
   [[ -e $moved ]] && die "$moved already exists"
@@ -111,6 +120,7 @@ with sqlite3.connect('file:' + source + '?mode=ro', uri=True) as old, sqlite3.co
     if new.execute('PRAGMA quick_check').fetchall() != [('ok',)]:
         raise RuntimeError('fresh identity database failed quick_check')
 PY_IDENTITY
+  if ((have_box)); then echo "box already saved as environment $TC_BOX_ENV_ID (kept with its key)"; else
   python3 - "$fresh/temp-code.db" "$TC_BOX_ENV_ID" "$origin" <<'PY'
 import json, os, sqlite3, sys, time
 db, env_id, origin = sys.argv[1:4]
@@ -122,6 +132,7 @@ with sqlite3.connect(db) as c:
     c.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", (f"remote.environments.{env_id}", json.dumps(row)))
 print("box saved as environment", env_id)
 PY
+  fi
   mv "$data" "$moved"
   if ! mv "$fresh" "$data"; then
     mv "$moved" "$data"
