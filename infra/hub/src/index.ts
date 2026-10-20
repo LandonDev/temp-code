@@ -1,6 +1,6 @@
 import { hash, matches, seal, token } from './crypto'
 import { fanOut, json, list } from './delivery'
-import { id, Invalid, kinds, notice, object, readJson, str, url } from './validation'
+import { id, Invalid, kinds, notice, object, readJson, secret as secretOf, str, webhookUrl } from './validation'
 import type { Env, Host, Notice, Subscription } from './types'
 export { HostState } from './host'
 
@@ -102,12 +102,12 @@ export default {
                     throw new Invalid('Invalid hosts')
                   return v.hosts.map(id)
                 })()
-          const secret = v.secret === undefined ? token() : str(v.secret, 'secret', 512)
+          const secret = v.secret === undefined ? token() : secretOf(v.secret)
           const sub: Subscription = {
             id: crypto.randomUUID(),
             name: str(v.name, 'name'),
             kind: 'webhook',
-            url: url(v.url),
+            url: await webhookUrl(v.url),
             encryptedSecret: await seal(secret, env.WEBHOOK_KEY),
             events: kinds(v.events),
             ...(hosts ? { hosts } : {}),

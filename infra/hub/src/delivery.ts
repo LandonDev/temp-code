@@ -1,4 +1,5 @@
 import { signature, unseal } from './crypto'
+import { guardTarget } from './target'
 import type { Env, Notice, Subscription } from './types'
 export const json = (value: unknown, status = 200): Response =>
   Response.json(value, { status, headers: { 'cache-control': 'no-store' } })
@@ -28,8 +29,17 @@ export async function fanOut(
       if (sub.kind === 'webhook') {
         try {
           const signed = await signature(body, await unseal(sub.encryptedSecret, env.WEBHOOK_KEY))
+          // The host is checked again now: a name that moved inside the
+          // network since the subscription was made gets nothing (R2 M3).
+          let allowed = true
+          try {
+            await guardTarget(new URL(sub.url).hostname)
+          } catch {
+            allowed = false
+            error = 'Webhook target refused'
+          }
           // One initial attempt plus three retries; the ID stays fixed.
-          for (let attempt = 0; attempt < 4; attempt++) {
+          for (let attempt = 0; allowed && attempt < 4; attempt++) {
             if (attempt)
               await new Promise((resolve) => setTimeout(resolve, 100 * 2 ** (attempt - 1)))
             const controller = new AbortController()

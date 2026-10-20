@@ -8,6 +8,7 @@ import {
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import worker from '../src/index'
 import { hash, signature } from '../src/crypto'
+import { dohResolve, guardTarget, isPrivateAddress, setResolver } from '../src/target'
 import type { Env as HubEnv, Host } from '../src/types'
 declare global {
   namespace Cloudflare {
@@ -74,6 +75,8 @@ async function ageHost(): Promise<void> {
 }
 beforeEach(async () => {
   vi.restoreAllMocks()
+  // Webhook hosts resolve to a public address unless a test says otherwise.
+  setResolver(async () => ['93.184.216.34'])
   for (const name of ['box', 'mac'])
     await runInDurableObject(
       env.HOSTS.get(env.HOSTS.idFromName(name)),
@@ -145,6 +148,76 @@ describe('hub', () => {
     )
     expect((await call('/v1/subscriptions', 'POST', { kind: 'apns' })).status).toBe(400)
     expect((await call('/v1/hosts', 'POST', { hostId: '../bad' })).status).toBe(400)
+  })
+  it('refuses private, loopback and metadata targets, a host that resolves to one, and a short secret (R2 M3)', async () => {
+    for (const url of [
+      'https://127.0.0.1/hook',
+      'https://10.0.0.1/hook',
+      'https://172.16.5.5/hook',
+      'https://192.168.0.10/hook',
+      'https://169.254.169.254/latest/meta-data/',
+      'https://100.100.100.200/latest/meta-data/',
+      'https://[::1]/hook',
+      'https://[fe80::1]/hook',
+      'https://[fd00:ec2::254]/hook',
+      'https://[::ffff:10.0.0.1]/hook',
+      'https://localhost/hook',
+      'https://metadata.google.internal/computeMetadata/v1/',
+      'https://metadata/x',
+      'https://2130706433/hook'
+    ]) {
+      const res = await call('/v1/subscriptions', 'POST', { name: 'Bot', kind: 'webhook', url, secret: 'signing-secret', events: ['finished'] })
+      expect(res.status, url).toBe(400)
+      expect(((await res.json()) as { error: string }).error).toMatch(/private or local/)
+    }
+    setResolver(async () => ['93.184.216.34', '10.0.0.5'])
+    const mixed = await call('/v1/subscriptions', 'POST', { name: 'Bot', kind: 'webhook', url: 'https://bot.example/hook', secret: 'signing-secret', events: ['finished'] })
+    expect(mixed.status).toBe(400)
+    setResolver(async () => [])
+    expect((await call('/v1/subscriptions', 'POST', { name: 'Bot', kind: 'webhook', url: 'https://bot.example/hook', secret: 'signing-secret', events: ['finished'] })).status).toBe(400)
+    setResolver(async () => ['93.184.216.34'])
+    const short = await call('/v1/subscriptions', 'POST', { name: 'Bot', kind: 'webhook', url: 'https://bot.example/hook', secret: 'short', events: ['finished'] })
+    expect(short.status).toBe(400)
+    expect(((await short.json()) as { error: string }).error).toMatch(/at least 8/)
+    expect((await env.HUB_KV.list({ prefix: 'sub:' })).keys).toHaveLength(0)
+    // The notice's own deep link is only relayed, never fetched: it is not held to the target rule.
+    const auth = await register()
+    expect((await call('/v1/notify', 'POST', { ...notice, url: 'https://10.0.0.1/ui' }, auth)).status).toBe(200)
+  })
+  it('re-checks the target at delivery and posts nothing to a host that moved inside the network', async () => {
+    const auth = await register()
+    await subscribe()
+    setResolver(async () => ['10.0.0.5'])
+    const fetch = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('ok'))
+    expect(await (await call('/v1/notify', 'POST', notice, auth)).json()).toEqual({ delivered: 0, failed: 1 })
+    expect(fetch).not.toHaveBeenCalled()
+    expect(((await (await call('/v1/subscriptions')).json()) as object[])[0]).toMatchObject({
+      failureCount: 1,
+      lastError: 'Webhook target refused'
+    })
+  })
+  it('resolves over DNS-over-HTTPS by default and judges every answer', async () => {
+    const answers: Record<string, { type: number; data: string }[]> = {
+      A: [{ type: 5, data: 'edge.example.' }, { type: 1, data: '93.184.216.34' }],
+      AAAA: [{ type: 28, data: '2606:4700::1111' }]
+    }
+    const fetch = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const url = new URL(String(input))
+      expect(url.origin + url.pathname).toBe('https://cloudflare-dns.com/dns-query')
+      expect((init?.headers as Record<string, string>).accept).toBe('application/dns-json')
+      return Response.json({ Answer: answers[url.searchParams.get('type')!] })
+    })
+    expect((await dohResolve('bot.example')).sort()).toEqual(['2606:4700::1111', '93.184.216.34'])
+    expect(fetch).toHaveBeenCalledTimes(2)
+    setResolver(null)
+    await expect(guardTarget('bot.example')).resolves.toBeUndefined()
+    answers.AAAA = [{ type: 28, data: 'fd00:ec2::254' }]
+    await expect(guardTarget('bot.example')).rejects.toThrow(/private or local/)
+    fetch.mockImplementation(async () => new Response('', { status: 503 }))
+    await expect(guardTarget('bot.example')).rejects.toThrow(/does not resolve/)
+    for (const ip of ['127.0.0.1', '169.254.169.254', '100.100.100.200', '192.0.0.192', '::1', 'fe80::1', 'fc00::1', '::ffff:127.0.0.1', '64:ff9b::7f00:1', '', 'x'])
+      expect(isPrivateAddress(ip), ip).toBe(true)
+    for (const ip of ['93.184.216.34', '2606:4700::1111', '::ffff:93.184.216.34', '172.32.0.1']) expect(isPrivateAddress(ip), ip).toBe(false)
   })
   it('fans out in parallel, filters, signs exact bytes, and hides encrypted secrets', async () => {
     const auth = await register()

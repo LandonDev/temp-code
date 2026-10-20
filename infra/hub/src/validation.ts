@@ -1,3 +1,4 @@
+import { guardTarget } from './target'
 import { events, type Heartbeat, type Notice } from './types'
 export class Invalid extends Error {}
 export function object(value: unknown): Record<string, unknown> {
@@ -30,6 +31,17 @@ export function url(value: unknown): string {
   }
   if (parsed.protocol !== 'https:' || parsed.username || parsed.password)
     throw new Invalid('Expected HTTPS url without credentials')
+  return result
+}
+/** A subscription's target: `url()` plus the host check of target.ts, resolved now and again at delivery. */
+export async function webhookUrl(value: unknown): Promise<string> {
+  const result = url(value)
+  await guardTarget(new URL(result).hostname)
+  return result
+}
+export function secret(value: unknown): string {
+  const result = str(value, 'secret', 512)
+  if (result.length < 8) throw new Invalid('Secret needs at least 8 characters')
   return result
 }
 export function kinds(value: unknown): Notice['event'][] {
