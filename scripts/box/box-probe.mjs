@@ -53,8 +53,11 @@ assert(health.ok && (await health.text()) === 'ok', 'healthz')
 const hello = await (
   await fetch(`${origin}/api/hello`, { signal: AbortSignal.timeout(5000) })
 ).json()
-assert(hello.version === version && hello.contract === contract, 'version or contract mismatch')
+// An anonymous hello carries the id and the contract only (R2 L2); the
+// version comes with an accepted key and is checked once the probe has one.
+assert(hello.contract === contract, 'contract mismatch')
 assert(/^env_[\w-]{22}$/.test(hello.environmentId), 'environment id')
+let known
 const marker = JSON.parse(readFileSync(`${data}/server.json`))
 const localResult = await socket(`ws://127.0.0.1:${marker.port}/`, 'workspace.list', {}, hello)
 assert(localResult.hello.caps.includes('admin'), 'local socket must be admin')
@@ -78,6 +81,10 @@ try {
   const key = await response.json()
   keyId = key.keyId
   assert(response.ok && typeof key.key === 'string', 'pairing')
+  known = await (
+    await fetch(`${origin}/api/hello`, { headers: { authorization: `Bearer ${key.key}` }, signal: AbortSignal.timeout(5000) })
+  ).json()
+  assert(known.version === version && known.contract === contract && known.key?.id === keyId, 'version or contract mismatch')
   const ticketResponse = await fetch(`${origin}/api/ticket`, {
     method: 'POST',
     headers: { authorization: `Bearer ${key.key}` },
@@ -91,5 +98,5 @@ try {
   local('remote.pairings.revoke', { id: pairing.pairing.id })
 }
 console.log(
-  `PROBE PASS: hello=${JSON.stringify(hello)} socket.contract=${contract} tc-local.session.list=${sessions.length} remote.ticket.session.list=ok`
+  `PROBE PASS: hello=${JSON.stringify(hello)} version=${known.version} socket.contract=${contract} tc-local.session.list=${sessions.length} remote.ticket.session.list=ok`
 )
