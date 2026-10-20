@@ -58,7 +58,11 @@ export async function handleM3a(
     case 'accounts.refresh':
       return done(await ctx.accounts.refresh(req.params.provider))
     case 'accounts.push':
-      return done(ctx.accountSync.handlePush(req.params.from, req.params.transfer))
+      return done(await ctx.accountSync.handlePush(req.params.from, req.params.transfer))
+    case 'accounts.confirm':
+      return done(ctx.accountSync.handleConfirm(req.params.from, req.params))
+    case 'accounts.released':
+      return done(ctx.accountSync.handleReleased(req.params.from, req.params))
     case 'accounts.sync':
       if (req.params?.environmentId) await ctx.accountSync.syncWith(req.params.environmentId)
       else await ctx.accountSync.syncAll()

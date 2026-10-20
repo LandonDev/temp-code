@@ -375,12 +375,37 @@ temp-code `src/main/server/remote/{peers,accountSync}.ts`):
   has none, so claude children can start; the gateway swaps the bearer per
   thread as always.
 - **Codex is owned by the box.** Set "Refreshed by: box" on the Codex panel,
-  then Add account: the fresh grant is handed to the box (the box confirms
-  ownership before the Mac strips its own refresh token), becomes the box's
+  then Add account: the fresh grant is handed to the box, becomes the box's
   live `~/.codex/auth.json`, and the Mac keeps an access-only copy that the
   box pushes on every rotation. The Mac's own terminal Codex keeps the grant
-  it had; a grant the CLI here is signed in with is never handed off.
-- Moving "Refreshed by" back to the Mac takes the grants back the same way.
+  it had; a grant the CLI here is signed in with (the refresh token in
+  `auth.json`, the same check Claude's Keychain item gets) is never handed
+  off, and Cursor's never is, since its IDE keeps its own tokens.
+- **A handoff is two-phase, and the grant has one refresher throughout.**
+  The sender exports under the profile's lock (aliax-core `src/lock.ts`, the
+  one its token refresh holds too, so a refresh in flight finishes first and
+  the handoff carries the rotated token); the receiver saves the grant
+  provisionally (the row still names the sender, so nothing there refreshes
+  it) and answers with a digest of the refresh token it saved; the sender
+  strips its own copy only on an answer that echoes what it sent, then
+  `accounts.released` makes the receiver the owner. An older handoff onto a
+  host with no refresh token is refused as stale. A lost answer leaves the
+  sender refreshing and the receiver with an inert copy; a lost notice
+  leaves the receiver inert; the next sync settles both (`accounts.confirm`
+  from the holder of a provisional copy, `accounts.released` told again).
+- Moving "Refreshed by" back to the Mac takes the grants back the same way:
+  the pull with `takeOver` hands the grant out under the lock and the box
+  keeps refreshing it until the Mac's `accounts.confirm` arrives with the
+  digest (30 s, else the box keeps it); the Mac's copy stays provisional
+  until then.
+- **A host accepts account state only for accounts it already has.** What
+  the box sends the Mac unasked (an `account` rotation push) or in answer to
+  a pull lands only on a row already on file, matched by account id or
+  email, and only from the owner it names; a peer cannot plant an account.
+  A new account reaches a host only over `accounts.push` from a holder of
+  its admin key (the Mac, to the box). A re-pair that kept the routes but
+  changed the key rebuilds the Mac's link (remote/peers.ts), so sync comes
+  back after a revoked key.
   The Mac's main process keeps one socket per admin host (backoff to 5 min)
   and syncs on connect, on every local vault write, and every 15 minutes;
   `accounts.sync` and the row's Retry do it now. The box's own vault is

@@ -152,10 +152,21 @@ routed to (aliax-core's `forward`). Two listeners:
   `accountSync.ts`; RPCs `accounts.push`/`accounts.pull`, admin only). A
   Claude "one-year token" (`claude setup-token`, inference-only, no refresh)
   is a static profile every host holds. Sign in on the Mac; the box never
-  does (docs/box.md "Accounts: sign in on the Mac once"). Test seams for
-  isolated instances: `TEMP_CODE_ALIAX_DATA_DIR` (own vault, key-file mode),
-  `TEMP_CODE_FAKE_PROVIDERS=<origin>` (every provider call goes there),
-  `TEMP_CODE_GATEWAY_ROLE=owner` (refresh without the marker); proof is
+  does (docs/box.md "Accounts: sign in on the Mac once"). A handoff is
+  two-phase under aliax-core's per-profile lock (`src/lock.ts`, shared with
+  the token refresh): the receiver saves provisionally and echoes a digest
+  of the refresh token, the sender strips only on that echo, then
+  `accounts.released` makes the receiver the owner; a takeOver pull holds
+  the grant out until `accounts.confirm` (30 s, else the owner keeps it);
+  the next sync settles anything a lost message left half done. A peer's
+  pushes and pull answers land only on accounts already on file here
+  (`applyTransfer(..., 'peer')`); a grant the local CLI is signed in with
+  (Claude's Keychain item, Codex's auth.json) is never handed off. Test
+  seams for isolated instances: `TEMP_CODE_ALIAX_DATA_DIR` (own vault,
+  key-file mode), `TEMP_CODE_FAKE_PROVIDERS=<origin>` (every provider call
+  goes there), `TEMP_CODE_GATEWAY_ROLE=owner` (refresh without the marker),
+  `TEMP_CODE_DROP_ANSWERS=method:count` (swallow answers, for a dropped
+  response), `CODEX_HOME` (the adapter's auth.json); proof is
   `bun run script:e2e-accounts-sync`.
 
 ## Remote access: the fixed port behind the tunnel

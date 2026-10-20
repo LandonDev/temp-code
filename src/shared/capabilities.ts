@@ -225,6 +225,8 @@ export const METHOD_CAPABILITY: Record<ClientRequest['method'], MethodCapability
   'remote.settings.set': 'admin',
   'accounts.push': 'admin',
   'accounts.pull': 'admin',
+  'accounts.confirm': 'admin',
+  'accounts.released': 'admin',
   // Saved hosts and their keys never leave this machine (thread K1).
   'remote.environments.list': 'local',
   'remote.environments.add': 'local',

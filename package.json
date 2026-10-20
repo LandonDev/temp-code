@@ -106,7 +106,7 @@
     "@tanstack/react-virtual": "^3.14.9",
     "@vtsls/language-server": "^0.3.0",
     "@xterm/xterm": "^6.0.0",
-    "aliax-core": "github:LandonDev/aliax-core#980665120391d2a21cc6cd7fe3989990070a924e",
+    "aliax-core": "github:LandonDev/aliax-core#be4d1ab19a1a7a7535e28b0400c76a3642f1d4d9",
     "chokidar": "^5.0.0",
     "class-variance-authority": "0.7.1",
     "clsx": "^2.1.1",

@@ -163,6 +163,23 @@ export const M3aRequestSchemas = [
       takeOver: z.boolean().optional()
     })
   }),
+  // The taker of a handed-out grant (accounts.pull with takeOver, or a
+  // provisional copy from an earlier handoff) says it saved the grant whose
+  // refresh token has this fingerprint: the owner strips its own copy and
+  // answers ok; a release it already made answers ok too; anything else is
+  // refused and the taker drops its provisional copy.
+  z.object({
+    id: z.string(),
+    method: z.literal('accounts.confirm'),
+    params: z.object({ from: z.string(), service: ServiceIdSchema, accountId: z.string(), refreshFingerprint: z.string() })
+  }),
+  // The sender of a handoff stripped its copy: the receiver, holding the
+  // grant provisionally, makes itself the owner.
+  z.object({
+    id: z.string(),
+    method: z.literal('accounts.released'),
+    params: z.object({ from: z.string(), service: ServiceIdSchema, accountId: z.string() })
+  }),
   z.object({ id: z.string(), method: z.literal('accounts.sync'), params: z.object({ environmentId: z.string().optional() }).optional() }),
   z.object({
     id: z.string(),

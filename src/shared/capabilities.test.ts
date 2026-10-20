@@ -53,7 +53,9 @@ describe('METHOD_CAPABILITY', () => {
         ...methods.filter((m) => m.startsWith('remote.') && !m.startsWith('remote.environments.')),
         // A credential moves between hosts only under an admin key (thread V).
         'accounts.push',
-        'accounts.pull'
+        'accounts.pull',
+        'accounts.confirm',
+        'accounts.released'
       ].sort()
     )
   })

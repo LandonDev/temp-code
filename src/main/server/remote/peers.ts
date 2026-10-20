@@ -1,9 +1,10 @@
+import { createHash } from 'node:crypto'
 import { WebSocket } from 'ws'
 import type { PeerState } from '@shared/accounts'
 import { allows } from '@shared/capabilities'
 import type { ServerFrame, ServerPush } from '@shared/contract'
 import type { SavedEnvironment } from '@shared/contract-remote'
-import { listEnvironments, mintTicket, type HostContext } from './environments'
+import { ENVIRONMENTS_PREFIX, listEnvironments, mintTicket, type HostContext } from './environments'
 
 /**
  * The main process's own sockets to the hosts it shares accounts with
@@ -29,6 +30,18 @@ const KEY_REVOKED = 4001
 
 type Pending = { resolve: (value: unknown) => void; reject: (err: Error) => void; timer: NodeJS.Timeout }
 
+/** A digest of the environment's saved key, never the key: a re-pair that kept the routes still reads as a change. */
+function keyFingerprint(store: HostContext['store'], id: string): string | null {
+  const raw = store.getSetting(`${ENVIRONMENTS_PREFIX}${id}`)
+  if (!raw) return null
+  try {
+    const key = (JSON.parse(raw) as { key?: unknown }).key
+    return typeof key === 'string' ? createHash('sha256').update(key).digest('hex').slice(0, 16) : null
+  } catch {
+    return null
+  }
+}
+
 export class PeerLink {
   private ws: WebSocket | null = null
   private readonly pending = new Map<string, Pending>()
@@ -40,12 +53,17 @@ export class PeerLink {
   lastError: string | null = null
   lastSyncAt: number | null = null
 
+  /** Of the key the link was made with (keyFingerprint); a new key means a new link. */
+  readonly credential: string | null
+
   constructor(
     readonly env: SavedEnvironment,
     private readonly ctx: HostContext,
     private readonly events: PeerEvents,
     private readonly log: (line: string) => void = () => {}
-  ) {}
+  ) {
+    this.credential = keyFingerprint(ctx.store, env.id)
+  }
 
   get id(): string {
     return this.env.id
@@ -214,7 +232,12 @@ export class Peers {
     private readonly log: (line: string) => void = (line) => console.log(`[peers] ${line}`)
   ) {}
 
-  /** Match the saved environments: a link per admin host, closed when the host is removed or its routes change. */
+  /**
+   * Match the saved environments: a link per admin host, closed when the host
+   * is removed, and rebuilt when its routes or its key change. A re-pair
+   * after a revoked key keeps the routes, so the key counts too: the old
+   * link stopped retrying on the 4001 close and would stay down for good.
+   */
   refresh(): void {
     const wanted = new Map(
       listEnvironments(this.ctx.store)
@@ -228,7 +251,8 @@ export class Peers {
     }
     for (const [id, env] of wanted) {
       const live = this.links.get(id)
-      if (live && JSON.stringify(live.env.routes) === JSON.stringify(env.routes)) continue
+      if (live && JSON.stringify(live.env.routes) === JSON.stringify(env.routes) && live.credential === keyFingerprint(this.ctx.store, id)) continue
+      if (live) this.log(`${env.name}: ${live.credential === keyFingerprint(this.ctx.store, id) ? 'routes' : 'key'} changed, reconnecting`)
       live?.close()
       const link = new PeerLink(env, this.ctx, this.events, this.log)
       this.links.set(id, link)

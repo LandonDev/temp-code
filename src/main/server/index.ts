@@ -207,6 +207,26 @@ let firstListMarked = false
 /** WS requests slower than this land in the boot log. */
 const SLOW_REQUEST_MS = 500
 
+/**
+ * TEMP_CODE_DROP_ANSWERS=method:count[,method:count], isolated instances
+ * only (TEMP_CODE_USER_DATA): the first `count` answers to `method` are
+ * never sent, so a proof can drive a client through a lost response
+ * (scripts/e2e-accounts-sync.ts, the takeover whose confirm answer drops).
+ */
+const dropAnswers = new Map<string, number>()
+if (process.env.TEMP_CODE_USER_DATA && process.env.TEMP_CODE_DROP_ANSWERS) {
+  for (const part of process.env.TEMP_CODE_DROP_ANSWERS.split(',')) {
+    const [method, count] = part.split(':')
+    if (method?.trim()) dropAnswers.set(method.trim(), Number(count) || 1)
+  }
+}
+const dropAnswer = (method: string): boolean => {
+  const left = dropAnswers.get(method) ?? 0
+  if (left <= 0) return false
+  dropAnswers.set(method, left - 1)
+  return true
+}
+
 export async function startServer(
   dbPath: string,
   options: {
@@ -483,8 +503,13 @@ export async function startServer(
     // One line per connection the first time its unsent bytes pass the mark:
     // the client is not draining its socket, whatever the request log says.
     let backpressureLogged = false
+    const dropped = new Set<string>()
     const sendFrame = (frame: ServerFrame): void => {
       if (ws.readyState !== ws.OPEN) return
+      if ('id' in frame && dropped.delete(frame.id)) {
+        console.log(`[server] dropped the answer to ${frame.id} (TEMP_CODE_DROP_ANSWERS)`)
+        return
+      }
       ws.send(JSON.stringify(frame))
       if (!backpressureLogged && ws.bufferedAmount > BACKPRESSURE_BYTES) {
         backpressureLogged = true
@@ -549,6 +574,7 @@ export async function startServer(
         return
       }
       const req = parsed.data
+      if (dropAnswer(req.method)) dropped.add(req.id)
       if (principal.kind !== 'local') {
         const need = requiredCapability(req)
         if (need === 'local') return sendFrame({ id: req.id, ok: false, error: `forbidden: ${req.method} is local-only` })
@@ -564,7 +590,7 @@ export async function startServer(
         // A pull marks the socket as another host's main process: it hears
         // every later rotation (never a renderer, which never pulls).
         if (req.method === 'accounts.pull') {
-          const answer = accountSync.handlePull(req.params.from, req.params)
+          const answer = await accountSync.handlePull(req.params.from, req.params)
           if (principal.kind === 'remote') unsubscribeAccounts ??= accountSync.subscribe(sendFrame)
           return sendFrame({ id: req.id, ok: true, result: answer })
         }

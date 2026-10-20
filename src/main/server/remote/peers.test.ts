@@ -34,6 +34,9 @@ async function fakeHost(environmentId: string) {
     dropAll: () => {
       for (const ws of sockets) ws.close(1012, 'restart')
     },
+    closeAll: (code: number, reason: string) => {
+      for (const ws of sockets) ws.close(code, reason)
+    },
     close: async () => {
       for (const ws of sockets) ws.terminate()
       wss.close()
@@ -124,5 +127,38 @@ describe('Peers', () => {
     peers.refresh()
     expect(peers.all()).toEqual([])
     expect(peers.states()).toEqual({})
+  })
+
+  it('a re-pair that kept the routes but changed the key rebuilds the link', async () => {
+    const hostA = await fakeHost('env_a')
+    cleanup.push(hostA.close)
+    const row = (key: string) => JSON.stringify({ name: 'A', routes: [{ url: `ws://127.0.0.1:${hostA.port}/ws`, kind: 'loopback' }], addedAt: 1, caps: ['read', 'admin'], keyName: 'k', key })
+    const rows: Record<string, string> = { [`${ENVIRONMENTS_PREFIX}env_a`]: row('tc_old.secret') }
+    const store = storeWith(rows)
+    const lines: string[] = []
+    const peers = new Peers({ store, environmentId: 'env_me', fetch: ticketFetch as unknown as typeof fetch }, {}, (l) => lines.push(l))
+    cleanup.push(async () => peers.close())
+    peers.refresh()
+    const first = peers.get('env_a')!
+    await vi.waitFor(() => expect(first.connected).toBe(true))
+    expect(first.credential).toMatch(/^[0-9a-f]{16}$/)
+    expect(first.credential).not.toContain('secret')
+    // The key was revoked on the host: the link stops retrying for good.
+    hostA.closeAll(4001, 'revoked')
+    await vi.waitFor(() => expect(first.connected).toBe(false))
+    expect(first.lastError).toBe('key revoked')
+    peers.refresh()
+    expect(peers.get('env_a')).toBe(first)
+    // Paired again: same routes, new key. The stopped link gives way to a fresh one.
+    rows[`${ENVIRONMENTS_PREFIX}env_a`] = row('tc_new.secret2')
+    peers.refresh()
+    const second = peers.get('env_a')!
+    expect(second).not.toBe(first)
+    expect(second.credential).not.toBe(first.credential)
+    await vi.waitFor(() => expect(second.connected).toBe(true))
+    expect(hostA.tickets).toEqual(['t-1', 't-2'])
+    expect(lines).toContain('A: key changed, reconnecting')
+    peers.refresh()
+    expect(peers.get('env_a')).toBe(second)
   })
 })
