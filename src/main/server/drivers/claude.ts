@@ -757,6 +757,13 @@ interface GoalWatch {
   close: () => void
 }
 
+/** The CLI's answer to a resume id its transcript store does not hold: the
+ *  thread's history moved here from another machine (the Mac → box move
+ *  carried the database, not ~/.claude/projects), or the store was purged.
+ *  It arrives as the error result's `errors` text and again as the SDK's
+ *  thrown "Claude Code returned an error result: …" when the process exits. */
+export const LOST_NATIVE_SESSION = /No conversation found with session ID/i
+
 /** How much transcript tail to scan when attaching to a resumed session. */
 const GOAL_TAIL_BYTES = 256 * 1024
 
@@ -1273,12 +1280,33 @@ export const claudeDriver: HarnessDriver = {
     // the resumed turn is streaming. A disposed handle stays mute.
     let disposed = false
 
+    // The resume id names a transcript this host does not have. Tell the
+    // registry: it forgets the id and reboots fresh with the thread's own
+    // transcript as context once this turn has settled. Once per handle.
+    let nativeLost = false
+    const markNativeLost = (): void => {
+      if (nativeLost || !session.nativeId) return
+      nativeLost = true
+      emit({
+        type: 'error',
+        message: `this host has no transcript for the thread's native session ${session.nativeId}; a fresh one starts with the thread's own history as context`
+      })
+      ctx.nativeSessionLost?.()
+    }
+
     // Drain the harness stream for the life of the session.
     void (async () => {
       try {
         for await (const msg of q) {
           if (disposed) continue
           handleMessage(watchedCtx, state, msg)
+          if (
+            msg.type === 'result' &&
+            msg.subtype === 'error_during_execution' &&
+            msg.errors?.some((text) => LOST_NATIVE_SESSION.test(text))
+          ) {
+            markNativeLost()
+          }
           // Overflow self-heal: the API refused the transcript ("Prompt is
           // too long" — seen when a Standard-mode thread outruns compaction
           // in a single turn). Once the turn settles, compact in place so
@@ -1320,6 +1348,7 @@ export const claudeDriver: HarnessDriver = {
         try {
           emit({ type: 'error', message: err instanceof Error ? err.message : String(err) })
           emit({ type: 'status', status: 'error' })
+          if (err instanceof Error && LOST_NATIVE_SESSION.test(err.message)) markNativeLost()
         } catch {
           setTimeout(() => {
             try {

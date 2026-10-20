@@ -34,6 +34,11 @@ export interface DriverCtx {
   emit: (event: AgentEvent) => void
   /** Persist the provider-native session/thread id once known (resume). */
   setNativeId: (nativeId: string) => void
+  /** The harness answered the resume with "no such session": its transcript
+   *  store never had the id (the thread's history came here from another
+   *  host) or lost it. The registry forgets the id, reboots fresh once the
+   *  turn settles, seeded with the thread's own transcript, and continues. */
+  nativeSessionLost?: () => void
   /** Ask the user: emits approval-request + status waiting, resolves on
    *  session.approve (false after the timeout, on abort, or on dispose),
    *  then emits approval-resolved + status running. One path for harness

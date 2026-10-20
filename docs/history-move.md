@@ -324,3 +324,36 @@ rehearsal must preserve keys, pairings and browser sessions.
   (`scripts/mac/backup.sh` takes `TEMP_CODE_DATA`; the agent plist gains the
   moved dir as a second path, or the script gets the one-line default).
 - docs/box.md "Where the history lives"; CLAUDE.md's prod-data line.
+
+## Harness transcripts (2026-10-20): the resume ids moved, their files did not
+
+After the cutover every Claude thread on the box failed its next message
+with `No conversation found with session ID: <id>`. The database carries
+each thread's native session id (`sessions.native_id`, 555 active claude
+rows, 92 codex), and the driver passes it to the CLI as the resume target,
+but the files those ids name live outside the data dir: Claude Code's
+`~/.claude/projects/<cwd slug>/<id>.jsonl` and Codex's
+`~/.codex/sessions/<date>/rollout-*.jsonl`. The importer moved neither, and
+nothing forgot the id on failure, so every send retried the same resume.
+
+Two fixes, both landed:
+
+- **The driver forgets a lost native session and the registry reseeds.**
+  `drivers/claude.ts` matches the CLI's text (`LOST_NATIVE_SESSION`) on the
+  error result's `errors` and on the SDK's thrown "returned an error result"
+  and calls `ctx.nativeSessionLost()`; the registry nulls `nativeId`, waits
+  for the turn to settle, and continues the thread on a fresh process with
+  the same transcript handoff a provider switch uses (`lostNativeHandoff`:
+  a native-resume provider, no native id, assistant text in the log, no live
+  handle), followed by a continue-run that answers the last user message.
+  The same rule seeds a later plain send if the recovery itself failed.
+  `sessions-native-lost.test.ts` covers both.
+- **`scripts/mac/copy-claude-projects.sh` copies the files.** Run on the Mac
+  (`--dry-run` first): every `~/.claude/projects` dir lands under the slug of
+  its cwd mapped through `scripts/box/history-map.json` (cwd read from the
+  first transcript line; slug rule `[^A-Za-z0-9_-]` → `-`, so
+  `/Users/landon/IdeaProjects/temp-code` becomes `-srv-agents-work-temp-code`),
+  and `~/.codex/sessions` copies as it is. Re-runnable, newer files win,
+  nothing on the box is deleted. After it, a thread resumes natively with
+  its full context; before it, the handoff keeps the thread usable with the
+  dialogue replayed as text.

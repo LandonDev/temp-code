@@ -1114,6 +1114,18 @@ export class Store {
     return !!r
   }
 
+  /** Whether the assistant has ever answered in this session — a thread
+   *  with history worth replaying to a harness that cannot resume it. */
+  hasAssistantText(sessionId: string): boolean {
+    this.flushEvents()
+    const r = this
+      .stmt(
+        `SELECT 1 AS x FROM ${this.eventsTable(sessionId)} WHERE session_id = ? AND payload LIKE '%"assistant-text"%' LIMIT 1`
+      )
+      .get(sessionId)
+    return !!r
+  }
+
   eventsAfter(sessionId: string, afterSeq: number): EventRow[] {
     return this.eventsRange(sessionId, afterSeq, -1)
   }

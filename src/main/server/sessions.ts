@@ -103,6 +103,11 @@ type SessionIndex = { byId: Map<string, SessionMeta>; byParent: ParentIndex }
 /** Cap for the transcript handoff sent to a new harness on provider switch. */
 const HANDOFF_MAX_CHARS = 24_000
 
+/** Providers whose harness resumes a thread by the native id the driver
+ *  persists on every boot. One of their threads with history but no id has
+ *  lost its native session (see recoverLostNativeSession). */
+const NATIVE_RESUME_PROVIDERS = new Set<string>(['claude', 'codex', 'cursor'])
+
 /**
  * Serialize the dialogue for a cross-provider switch: the new harness has no
  * native session to resume, so the conversation replays as context. Text
@@ -1414,7 +1419,7 @@ export class SessionRegistry {
     }
     const switched = await this.applyRunSettings(sessionId, meta, opts)
     meta = switched.meta
-    const handoff = switched.handoff
+    const handoff = switched.handoff || this.lostNativeHandoff(meta)
     // A pin change (project or workspace) since the harness was
     // spawned: its URL names the old account, so boot fresh under the new one.
     if (this.handles.has(sessionId) && this.spawnedPin.get(sessionId) !== (this.pinOf(meta)?.name ?? null)) {
@@ -2213,6 +2218,44 @@ export class SessionRegistry {
     return { attempted, succeeded, failed }
   }
 
+  /** The transcript a native-resume provider's harness needs when the
+   *  thread has history but no native id to resume: the driver forgot one
+   *  its harness had no transcript for (recoverLostNativeSession), so the
+   *  fresh process gets the thread's own dialogue as context, the way a
+   *  provider switch seeds the new harness. A new thread has no assistant
+   *  text yet and a live handle already holds the context: both get nothing. */
+  private lostNativeHandoff(meta: SessionMeta): string {
+    if (meta.nativeId !== null || !NATIVE_RESUME_PROVIDERS.has(meta.provider)) return ''
+    if (this.handles.has(meta.id) || !this.store.hasAssistantText(meta.id)) return ''
+    return transcriptHandoff(this.store.eventsAfter(meta.id, 0))
+  }
+
+  /** The driver's harness had no transcript for the native id it was asked
+   *  to resume (the thread's history moved here from another machine, or
+   *  the CLI's store was purged); the id is forgotten. The failed turn
+   *  is still settling (its result, then the stream's own error); once the
+   *  status is at rest, boot fresh and continue — lostNativeHandoff replays
+   *  the thread's transcript, so the last user message gets its answer. */
+  private async recoverLostNativeSession(sessionId: string): Promise<void> {
+    for (let i = 0; i < 40; i++) {
+      const meta = this.store.getSession(sessionId)
+      if (!meta) return
+      if (!LIVE_STATUSES.has(meta.status)) break
+      await new Promise<void>((resolve): void => void setTimeout(resolve, 250))
+    }
+    try {
+      await this.continueErroredSession(
+        sessionId,
+        false,
+        "this host having no transcript for the thread's native session (its history moved here from another machine); the conversation so far is replayed above, so answer its last user message"
+      )
+    } catch (err) {
+      console.error(
+        `[sessions] lost native session: recovery failed for ${sessionId}: ${err instanceof Error ? err.message : String(err)}`
+      )
+    }
+  }
+
   private async continueErroredSession(
     sessionId: string,
     restartedDescendants: boolean,
@@ -2230,7 +2273,8 @@ export class SessionRegistry {
       return
     }
     await this.dropHandle(sessionId)
-    const { handoff } = run ? await this.applyRunSettings(sessionId, meta, run) : { handoff: '' }
+    const switched = run ? await this.applyRunSettings(sessionId, meta, run) : { handoff: '' }
+    const handoff = switched.handoff || this.lostNativeHandoff(this.store.getSession(sessionId) ?? meta)
     try {
       void this.armBaseline(sessionId)
       const handle = await this.handleFor(sessionId)
@@ -2340,6 +2384,11 @@ export class SessionRegistry {
           setNativeId: (nativeId) => {
             const next = this.store.updateSession(sessionId, { nativeId })
             if (next) this.notifyMeta(next)
+          },
+          nativeSessionLost: () => {
+            const next = this.store.updateSession(sessionId, { nativeId: null })
+            if (next) this.notifyMeta(next)
+            void this.recoverLostNativeSession(sessionId)
           }
         })
       )
