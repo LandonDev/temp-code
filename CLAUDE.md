@@ -150,9 +150,18 @@ routed to (aliax-core's `forward`). Two listeners:
   presents a refresh token; other hosts hold access-only copies kept fresh
   over the main process's own peer links (`src/main/server/remote/peers.ts`,
   `accountSync.ts`; RPCs `accounts.push`/`accounts.pull`, admin only). A
-  Claude "one-year token" (`claude setup-token`, inference-only, no refresh)
-  is a static profile every host holds. Sign in on the Mac; the box never
-  does (docs/box.md "Accounts: sign in on the Mac once"). A handoff is
+  Claude "one-year token" is a static profile every host holds, with no
+  owner: what `claude setup-token` makes, minted in-app (T1; aliax-core
+  `src/mint.ts`, `src/main/aliax/{staticMint,staticTokens}.ts`) by adding
+  `expires_in: 31536000` to the ordinary code exchange or to a refresh_token
+  grant; the token response names its account and a token is filed only
+  under that account. "Convert all to one-year tokens" on the Claude panel
+  converts every account; tokens inside their last 30 days renew on their
+  own through the stored claude.ai session (6 h cadence, row + footer say
+  "Sign in to renew" when the session is gone); the box's live sign-in is
+  the first static token it got and follows that account's renewals. Sign
+  in on the Mac; the box never does (docs/box.md "Accounts: sign in on the
+  Mac once"). A handoff is
   two-phase under aliax-core's per-profile lock (`src/lock.ts`, shared with
   the token refresh): the receiver saves provisionally and echoes a digest
   of the refresh token, the sender strips only on that echo, then
@@ -166,8 +175,11 @@ routed to (aliax-core's `forward`). Two listeners:
   key-file mode), `TEMP_CODE_FAKE_PROVIDERS=<origin>` (every provider call
   goes there), `TEMP_CODE_GATEWAY_ROLE=owner` (refresh without the marker),
   `TEMP_CODE_DROP_ANSWERS=method:count` (swallow answers, for a dropped
-  response), `CODEX_HOME` (the adapter's auth.json); proof is
-  `bun run script:e2e-accounts-sync`.
+  response), `CODEX_HOME` (the adapter's auth.json), `ALIAX_CREDENTIAL_BACKEND=file`
+  + `CLAUDE_CONFIG_DIR` (the Claude CLI's credentials in a file inside the
+  instance's data, never the Keychain), `TEMP_CODE_STATIC_RENEW_FIRST_MS` /
+  `_EVERY_MS` (the renewal cadence); proofs are `bun run script:e2e-accounts-sync`
+  and `bun run script:e2e-static-tokens`.
 
 ## Remote access: the fixed port behind the tunnel
 - A second listener (src/main/server/remote/listener.ts) binds

@@ -28,8 +28,7 @@ import {
   type AccountRoute,
   type AccountsSnapshot,
   type PeerState,
-  type ProviderAccounts
-} from '@shared/accounts'
+  type ProviderAccounts, type MintProgress } from '@shared/accounts'
 import type { SessionMeta } from '@shared/events'
 import { chooseAccount, type ResolvedPin, type RouteOptions } from './accountRouting'
 
@@ -145,6 +144,8 @@ const defaults = (): AccountsDeps => ({
  * from it (routeFor); nothing here moves the global pin.
  */
 export class AccountsService {
+  /** One-year token mints under way, for the Claude rows (set by aliaxPages.ts; null until then). */
+  mint: (() => MintProgress | null) | null = null
   private deps: AccountsDeps
   private snap: AccountsSnapshot = emptyAccounts()
   private built = false
@@ -453,7 +454,8 @@ export class AccountsService {
         profiles,
         reports,
         owner,
-        note: note ?? view?.notice
+        note: note ?? view?.notice,
+        ...(p === 'claude' ? { mint: this.mint?.() ?? undefined } : {})
       }
     }
     return { updatedAt: Date.now(), providers, homes: d.homes(), peers: d.peers() }

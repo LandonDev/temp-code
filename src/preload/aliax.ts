@@ -21,10 +21,15 @@ export const aliaxApi = {
     ipcRenderer.invoke('aliax:login:start', serviceId, loginHint),
   loginCancel: (serviceId: ServiceId): Promise<void> =>
     ipcRenderer.invoke('aliax:login:cancel', serviceId),
-  /** `claude setup-token` for the user: a one-year, inference-only bearer filed under the account named. */
-  setupToken: (identity?: { name?: string; email?: string }): Promise<ActionResult> =>
-    ipcRenderer.invoke('aliax:login:setupToken', identity),
-  setupTokenCancel: (): Promise<void> => ipcRenderer.invoke('aliax:login:setupTokenCancel'),
+  /**
+   * A one-year token for one Claude account (its row's name), or for every
+   * Claude account not yet holding one when no name is given: minted in-app
+   * from the account's grant or its stored claude.ai session, with the
+   * in-app sign-in as the fallback. Progress rides the accounts snapshot.
+   */
+  convertStatic: (name?: string): Promise<ActionResult> => ipcRenderer.invoke('aliax:static:convert', name),
+  /** Run the one-year token renewal pass now (what the scheduler does every six hours). */
+  renewStaticNow: (): Promise<ActionResult> => ipcRenderer.invoke('aliax:static:renewNow'),
   updateProfile: (
     serviceId: ServiceId,
     name: string,

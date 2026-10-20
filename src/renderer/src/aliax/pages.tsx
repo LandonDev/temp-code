@@ -15,7 +15,6 @@ import {
   DialogHeader,
   DialogTitle
 } from '@aliax/components/ui/dialog'
-import { Input } from '@aliax/components/ui/input'
 import { Toaster } from '@aliax/components/ui/sonner'
 import { TooltipProvider } from '@aliax/components/ui/tooltip'
 import { EASE_OUT } from '@aliax/lib/ease'
@@ -175,24 +174,18 @@ export function AccountsPage(): React.JSX.Element {
     [peers, environments]
   )
   const localName = environments.find((e) => e.id === registry.primary().environmentId)?.name ?? 'this machine'
-  const [tokenEmail, setTokenEmail] = useState<string | null>(null)
-  const [minting, setMinting] = useState(false)
-
-  /** `claude setup-token` for an account: the row's, or the address typed. */
-  const mintToken = async (identity: { name: string; email?: string }) => {
-    setTokenEmail(null)
-    setMinting(true)
-    const result = await window.aliax.setupToken(identity)
-    setMinting(false)
+  /**
+   * A one-year token for one account, or for every Claude account at once:
+   * minted in the main process, with each row showing its own progress from
+   * the snapshot; a sign-in window opens only for a row whose stored session
+   * has lapsed. The toast carries the summary.
+   */
+  const convert = async (name?: string) => {
+    const result = await window.aliax.convertStatic(name)
     if (!result.ok) toast.error(result.error ?? 'No token was made')
-    else toast.success(result.notes?.length ? `${result.name} · ${result.notes.join(' · ')}` : `Token saved for ${result.name}`)
+    else toast.success(result.notes?.length ? result.notes.join(' · ') : `Token saved for ${result.name}`)
     await refresh(true)
   }
-  const cancelMint = () => {
-    void window.aliax.setupTokenCancel()
-    setMinting(false)
-  }
-  const typed = tokenEmail?.trim() ?? ''
   const local = () => registry.primary()
   const onSetHome = async (provider: AccountProvider, environmentId: string | null) => {
     await local().request('accounts.setHome', { provider, environmentId })
@@ -271,59 +264,14 @@ export function AccountsPage(): React.JSX.Element {
               run(`use:${id}:${name}`, () => window.aliax.remove(id, name), 'Removed')
             }
             onRefresh={() => refresh(true)}
-            onSetupToken={(_id, identity) => (identity ? void mintToken(identity) : setTokenEmail(''))}
+            onSetupToken={(_id, identity) => void convert(identity.name)}
+            onConvertAll={() => void convert()}
+            mint={snapshot.providers.claude.mint}
             onSetHome={(provider, id) => void onSetHome(provider, id)}
             onSync={(id) => void onSync(id)}
           />
         </div>
       )}
-
-      <Dialog open={tokenEmail !== null} onOpenChange={(open) => !open && setTokenEmail(null)}>
-        <DialogContent className="sm:max-w-sm">
-          <DialogHeader>
-            <DialogTitle>One-year token</DialogTitle>
-            <DialogDescription>
-              The browser opens for a Claude sign-in. The token lasts a year, never refreshes and only runs inference. Which
-              account will you sign in as?
-            </DialogDescription>
-          </DialogHeader>
-          <Input
-            autoFocus
-            placeholder="email"
-            value={tokenEmail ?? ''}
-            onChange={(e) => setTokenEmail(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && typed) void mintToken({ name: typed, email: typed })
-            }}
-          />
-          <DialogFooter>
-            <Button variant="ghost" onClick={() => setTokenEmail(null)}>
-              Cancel
-            </Button>
-            <Button disabled={!typed} onClick={() => void mintToken({ name: typed, email: typed })}>
-              Continue
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={minting} onOpenChange={(open) => !open && cancelMint()}>
-        <DialogContent className="sm:max-w-sm" showCloseButton={false}>
-          <DialogHeader>
-            <DialogTitle>Making a one-year token</DialogTitle>
-            <DialogDescription>Approve Claude Code in the browser that opened, signed in as that account.</DialogDescription>
-          </DialogHeader>
-          <div className="flex items-center gap-3 py-2 text-muted-foreground">
-            <Loader variant="dots" size={20} />
-            <span className="text-sm">Waiting for the browser</span>
-          </div>
-          <DialogFooter>
-            <Button variant="ghost" onClick={cancelMint}>
-              Cancel
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
 
       <Dialog open={loginService !== null} onOpenChange={(open) => !open && cancelLogin()}>
         <DialogContent className="sm:max-w-sm" showCloseButton={false}>

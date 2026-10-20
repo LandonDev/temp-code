@@ -444,3 +444,57 @@ describe('AccountSync as a client', () => {
     expect(box.request.mock.calls.filter((c) => c[0] === 'accounts.confirm')).toHaveLength(4)
   })
 })
+
+describe('a static token as the live sign-in on a host (the box)', () => {
+  const YEAR = 365 * 86_400_000
+  const staticBlob = (token: string, exp: number, account = { uuid: 'u1', email: 'a@x' }): string =>
+    JSON.stringify({ keychain: JSON.stringify({ claudeAiOauth: { accessToken: token, expiresAt: exp, scopes: ['user:profile', 'user:inference'] } }), oauthAccount: { accountUuid: account.uuid, emailAddress: account.email }, tokenKind: 'static' })
+  const staticTransfer = (blob: string, profile: Partial<Transfer['profile']> = {}): Transfer => transfer('access', null, blob, { static: true, owner: null, ...profile })
+
+  it('replaces the access copy that is live, follows its own renewal, and leaves another static token alone', async () => {
+    const activate = vi.fn(async () => {})
+    let liveId: string | null = null
+    let liveExp: number | null = null
+    const { sync } = host('env_box', [], { activate, liveAccountId: async () => liveId, liveExpiry: async () => liveExp })
+    const now = Date.now()
+    // The box holds a@x as an access copy refreshed by the Mac, and that copy is the live sign-in.
+    expect((await sync.handlePush('env_mac', transfer('access', 'env_mac', claudeBlob(now + HOUR, null)))).ok).toBe(true)
+    // Nothing was live, so the copy became the sign-in; wait for that install before the clock moves on.
+    await vi.waitFor(() => expect(activate).toHaveBeenCalledTimes(1))
+    liveId = 'u1'
+    liveExp = now + HOUR
+    activate.mockClear()
+    // The Mac converted a@x: the static token lands over the copy (no owner left) and becomes the live sign-in.
+    const first = await sync.handlePush('env_mac', staticTransfer(staticBlob('OAT1', now + YEAR)))
+    expect(first).toMatchObject({ ok: true, saved: true, owner: null })
+    await vi.waitFor(() => expect(activate).toHaveBeenCalledWith('claude-code', 'a@x', expect.stringContaining('OAT1')))
+    expect(vault.profiles('claude-code').find((p) => p.name === 'a@x')).toMatchObject({ static: true })
+    expect(vault.profiles('claude-code').find((p) => p.name === 'a@x')?.owner).toBeUndefined()
+    liveExp = now + YEAR
+    activate.mockClear()
+    // Another account's static token: filed, not made live.
+    expect((await sync.handlePush('env_mac', staticTransfer(staticBlob('OAT-B', now + YEAR, { uuid: 'u2', email: 'b@x' }), { name: 'b@x', accountId: 'u2', email: 'b@x' }))).ok).toBe(true)
+    await new Promise((r) => setTimeout(r, 20))
+    expect(activate).not.toHaveBeenCalled()
+    // The same token again (re-saved, as any copy no older than the one held): nothing to install.
+    expect(await sync.handlePush('env_mac', staticTransfer(staticBlob('OAT1', now + YEAR)))).toMatchObject({ ok: true })
+    await new Promise((r) => setTimeout(r, 20))
+    expect(activate).not.toHaveBeenCalled()
+    // Its renewal, a year on: installed over the live one.
+    const renewed = await sync.handlePush('env_mac', staticTransfer(staticBlob('OAT2', now + 2 * YEAR)))
+    expect(renewed).toMatchObject({ ok: true, saved: true })
+    await vi.waitFor(() => expect(activate).toHaveBeenCalledWith('claude-code', 'a@x', expect.stringContaining('OAT2')))
+  })
+
+  it('never replaces a sign-in this host refreshes itself', async () => {
+    const activate = vi.fn(async () => {})
+    const { sync } = host('env_mac', [], { activate, liveAccountId: async () => 'u1' })
+    const now = Date.now()
+    vault.upsertProfile('claude-code', { name: 'a@x', accountId: 'u1', email: 'a@x', createdAt: 1 })
+    vault.saveSecret('claude-code', 'a@x', claudeBlob(now + HOUR))
+    // A peer cannot land a static token over a grant this host owns ('static' refusal path is for the reverse); push one for another row.
+    expect((await sync.handlePush('env_box', staticTransfer(staticBlob('OAT-B', now + YEAR, { uuid: 'u2', email: 'b@x' }), { name: 'b@x', accountId: 'u2', email: 'b@x' }))).ok).toBe(true)
+    await new Promise((r) => setTimeout(r, 20))
+    expect(activate).not.toHaveBeenCalled()
+  })
+})

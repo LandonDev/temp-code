@@ -366,14 +366,44 @@ temp-code `src/main/server/remote/{peers,accountSync}.ts`):
   owner's pushes (`accounts.push`, `accounts.pull`, both admin-only on the
   remote wire) and asks the owner for a fresh one near its end. A copy whose
   owner is unreachable runs out, and the Accounts page says so on the row.
-- **Claude on the box is a one-year token.** "One-year token" on the Mac's
-  Accounts page runs `claude setup-token` (the CLI mints an inference-only
-  bearer in the browser, valid a year, nothing refreshes it) and files it
-  under the account you name; the row shows when it lapses and turns amber
-  30 days before. It is pushed to every admin host and becomes the box's
-  live Claude sign-in (`~/.claude/.credentials.json` for agents) if the box
-  has none, so claude children can start; the gateway swaps the bearer per
-  thread as always.
+- **Every Claude account is a one-year token, held by every host (T1).** A
+  one-year token is what `claude setup-token` makes: the Claude CLI (2.1.301,
+  read off its binary) runs the ordinary OAuth code exchange for the Claude
+  Code client and adds `expires_in: 31536000` to the token-exchange body;
+  nothing in the consent URL differs but the scope (`user:inference` alone
+  for the CLI's setup-token). The same field rides a refresh_token grant
+  (`claude auth login` with `CLAUDE_CODE_OAUTH_REFRESH_TOKEN` mints a
+  one-year token that way, no browser), and both grants answer with
+  `account` (uuid, email) and `organization`, so the token names its own
+  account. temp-code mints in-app (aliax-core `src/mint.ts`, temp-code
+  `src/main/aliax/{staticMint,staticTokens}.ts`), one account at a time:
+  first through the refresh grant the Mac holds (`user:profile
+  user:inference` asked for, so the token can read usage and name itself;
+  `user:inference` alone when the server grants that pair only hours), and
+  otherwise through the account's stored claude.ai session in a hidden
+  window, where the consent page approves without a sign-in. The token is
+  filed only under the account the response names (a mismatch is refused by
+  name, nothing filed), and the refresh grant is dropped only after the
+  token is verified and saved; a refusal leaves the account a healthy owned
+  profile holding the rotated grant. "Convert all to one-year tokens" on the
+  Claude panel walks every account not yet converted (and every token inside
+  its last 30 days), each row showing its progress; a row whose session has
+  lapsed opens the ordinary in-app sign-in with the address pre-filled. The
+  row menu keeps the single-account action. Renewal needs no clicks: on
+  boot and every six hours each token inside its last 30 days is minted
+  again through its stored session (once a day at most while that fails);
+  when the session is gone the row says "Sign in to renew its one-year
+  token" and the footer says the same for the account it shows. A token with
+  `user:profile` reports usage and its plan like any account; one minted
+  with `user:inference` alone says "usage is not reported" and is never
+  taken for a sign-out. Static profiles are pushed to every admin host with
+  no owner (the box's access copies of the former grants become the static
+  tokens); the first static token the box receives becomes its live Claude
+  sign-in (`~/.claude/.credentials.json` for agents) when nothing is live
+  there, and a renewed token of the account that is live replaces the older
+  one (`accountSync.ts activateIfNothingLive`), so the box follows renewals
+  with no sign-in of its own. The Aliax app shows a static row's lapse and
+  never refreshes it; renewing is temp-code's.
 - **Codex is owned by the box.** Set "Refreshed by: box" on the Codex panel,
   then Add account: the fresh grant is handed to the box, becomes the box's
   live `~/.codex/auth.json`, and the Mac keeps an access-only copy that the
@@ -412,7 +442,14 @@ temp-code `src/main/server/remote/{peers,accountSync}.ts`):
   `/srv/agents/home/.config/aliax/` in key-file mode.
 
 Proof without a real account: `bun run script:e2e-accounts-sync` (two
-isolated instances, a fake provider, a handoff, a rotation, the owner down).
+isolated instances, a fake provider, a handoff, a rotation, the owner down)
+and `bun run script:e2e-static-tokens` (three accounts converted through
+their grants, one of them falling back to `user:inference`, the usage poll
+on both kinds of token, a renewal through the stored session against the
+fake consent page, a lapsed session marked needs-sign-in, and the peer's
+live sign-in following the renewal; the CLI's credentials live in a file
+inside each instance's data through `ALIAX_CREDENTIAL_BACKEND=file` and
+`CLAUDE_CONFIG_DIR`, so the Keychain is never touched).
 
 GitHub is the one sign-in done on the box itself, once, as agents:
 

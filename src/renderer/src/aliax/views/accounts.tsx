@@ -13,7 +13,7 @@ import {
   RefreshCw,
   Trash2
 } from 'lucide-react'
-import { PROVIDER_OF, type AccountProvider, type PeerState } from '@shared/accounts'
+import { PROVIDER_OF, type AccountProvider, type MintProgress, type MintState, type PeerState } from '@shared/accounts'
 import { motion, useReducedMotion } from 'motion/react'
 import type {
   PlanInfo,
@@ -263,6 +263,7 @@ function OwnerLine({
   profile,
   report,
   owner,
+  mint,
   now,
   onSetupToken,
   onSync
@@ -270,6 +271,8 @@ function OwnerLine({
   profile: ProfileView
   report?: UsageReport
   owner: OwnerView | null
+  /** A one-year token mint under way or waiting on the user, for this row. */
+  mint?: MintState
   now: number
   onSetupToken: () => void
   onSync: () => void
@@ -277,6 +280,26 @@ function OwnerLine({
   const lapsed = report?.expired === true || (profile.expiresAt !== undefined && profile.expiresAt <= now)
   const amber = 'flex items-center gap-1.5 text-[11px] text-ax-warning transition-colors hover:text-ax-warning/80'
   const quiet = 'flex items-center gap-1.5 text-[11px] text-muted-foreground'
+  if (mint?.state === 'minting') {
+    return (
+      <span className={quiet}>
+        <Loader variant="dots" size={12} />
+        Making a one-year token
+      </span>
+    )
+  }
+  if (mint) {
+    const verb = profile.static ? 'renew its one-year token' : 'make its one-year token'
+    return (
+      <button type="button" onClick={stop(onSetupToken)} className={amber}>
+        <KeyRound className="size-3 shrink-0" />
+        <span>
+          {mint.state === 'needs-sign-in' ? `Sign in to ${verb}` : `Could not ${verb}${mint.detail ? `: ${mint.detail}` : ''}`} ·{' '}
+          <span className="underline underline-offset-2">{mint.state === 'needs-sign-in' ? 'Sign in' : 'Retry'}</span>
+        </span>
+      </button>
+    )
+  }
   if (profile.static) {
     const days = profile.expiresAt !== undefined ? daysUntil(profile.expiresAt, now) : null
     if (lapsed || (days !== null && days * DAY_MS <= STATIC_WARN_MS)) {
@@ -553,6 +576,7 @@ function ProfileRow({
   slots,
   billingUrl,
   owner,
+  mint,
   onUse,
   onReauth,
   onDelete,
@@ -570,6 +594,7 @@ function ProfileRow({
   billingUrl?: string
   /** The host that refreshes this account when it is not this machine. */
   owner: OwnerView | null
+  mint?: MintState
   onUse: () => void
   onReauth: () => void
   onDelete: () => void
@@ -652,7 +677,7 @@ function ProfileRow({
               Edit account
             </DropdownMenuItem>
             {serviceId === 'claude-code' && (
-              <DropdownMenuItem onSelect={onSetupToken}>
+              <DropdownMenuItem onSelect={onSetupToken} disabled={mint?.state === 'minting'}>
                 <KeyRound />
                 {profile.static ? 'New one-year token' : 'Replace with a one-year token'}
               </DropdownMenuItem>
@@ -671,8 +696,8 @@ function ProfileRow({
         </DropdownMenu>
         </div>
         {report?.plan && <PlanLine plan={report.plan} now={now} />}
-        {profile.static || owner ? (
-          <OwnerLine profile={profile} report={report} owner={owner} now={now} onSetupToken={onSetupToken} onSync={onSync} />
+        {profile.static || owner || mint ? (
+          <OwnerLine profile={profile} report={report} owner={owner} mint={mint} now={now} onSetupToken={onSetupToken} onSync={onSync} />
         ) : (
           report?.expired && <ExpiredLine onReauth={onReauth} />
         )}
@@ -712,6 +737,8 @@ function ServicePanel({
   onDelete,
   onRefresh,
   onSetupToken,
+  onConvertAll,
+  mint,
   onSetHome,
   onSync
 }: {
@@ -730,7 +757,10 @@ function ServicePanel({
   onReauth: (name: string, email?: string) => void
   onDelete: (name: string) => void
   onRefresh: () => void
-  onSetupToken: (identity?: { name: string; email?: string }) => void
+  onSetupToken: (identity: { name: string; email?: string }) => void
+  onConvertAll: () => void
+  /** One-year token mints under way (Claude only). */
+  mint?: MintProgress
   onSetHome: (environmentId: string | null) => void
   onSync: (environmentId: string) => void
 }) {
@@ -739,6 +769,9 @@ function ServicePanel({
     const env = environments.find((e) => e.id === p.owner)
     return { name: env?.name ?? p.owner, connected: peers[p.owner]?.connected ?? false }
   }
+  // Rows a Convert all would touch: not yet a one-year token, or one inside its last 30 days.
+  const convertible = service.profiles.filter((p) => !p.static || (p.expiresAt !== undefined && p.expiresAt - now <= STATIC_WARN_MS)).length
+  const run = mint?.run ?? null
   // Widen only as far as the busiest row in this service needs.
   const slots = Math.min(
     MAX_SLOTS,
@@ -769,10 +802,10 @@ function ServicePanel({
             {environments.length > 0 && service.id !== 'cursor' && (
               <HomeControl home={home} environments={environments} localName={localName} onSetHome={onSetHome} />
             )}
-            {service.id === 'claude-code' && (
-              <Button variant="outline" size="sm" onClick={() => onSetupToken()}>
-                <KeyRound />
-                One-year token
+            {service.id === 'claude-code' && (run || convertible > 0) && (
+              <Button variant="outline" size="sm" disabled={run !== null} onClick={onConvertAll}>
+                {run ? <Loader variant="dots" size={14} /> : <KeyRound />}
+                {run ? `Converting ${Math.min(run.done + 1, run.total)} of ${run.total}` : convertible === service.profiles.length ? 'Convert all to one-year tokens' : `Convert ${convertible} to one-year tokens`}
               </Button>
             )}
             {service.canSaveCurrent && (
@@ -812,6 +845,7 @@ function ServicePanel({
               slots={slots}
               billingUrl={service.billingUrl}
               owner={ownerFor(p)}
+              mint={mint?.rows[p.name]}
               report={usage?.find((r) => r.profileName === p.name)}
               busy={busy === `use:${p.name}`}
               onUse={() => onUse(p.name)}
@@ -871,6 +905,8 @@ export function AccountsView({
   environments,
   localName,
   onSetupToken,
+  onConvertAll,
+  mint,
   onSetHome,
   onSync
 }: {
@@ -890,7 +926,11 @@ export function AccountsView({
   /** Those hosts, named. */
   environments: { id: string; name: string }[]
   localName: string
-  onSetupToken: (serviceId: ServiceId, identity?: { name: string; email?: string }) => void
+  onSetupToken: (serviceId: ServiceId, identity: { name: string; email?: string }) => void
+  /** Every Claude account not yet holding a one-year token, in one go. */
+  onConvertAll: () => void
+  /** One-year token mints under way (the Claude snapshot's `mint`). */
+  mint?: MintProgress
   onSetHome: (provider: AccountProvider, environmentId: string | null) => void
   onSync: (environmentId: string) => void
 }) {
@@ -921,6 +961,8 @@ export function AccountsView({
           environments={environments}
           localName={localName}
           onSetupToken={(identity) => onSetupToken(s.id, identity)}
+          onConvertAll={onConvertAll}
+          mint={s.id === 'claude-code' ? mint : undefined}
           onSetHome={(id) => onSetHome(PROVIDER_OF[s.id], id)}
           onSync={onSync}
         />

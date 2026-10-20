@@ -154,6 +154,8 @@ function AccountCells({
         <span className="motion-safe:animate-pulse text-content/40">···</span>
       ) : report?.expired ? (
         <span className="text-content/40">sign in again in Aliax</span>
+      ) : shownName && accounts.mint?.rows[shownName]?.state === "needs-sign-in" ? (
+        <span className="text-content/40">sign in again in Aliax to renew its one-year token</span>
       ) : report ? (
         report.windows.map((w) => (
           <WindowCell

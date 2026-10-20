@@ -1,6 +1,8 @@
 import { accounts as coreAccounts, adapter, pinProfile, vault, withLock, type Hooks, type ServiceId } from 'aliax-core'
 import type { SaveOrigin } from 'aliax-core/config'
+import { liveKeychain } from 'aliax-core/adapters/claude'
 import {
+  accessExpiry,
   applyTransfer,
   beginHandoff,
   claimHandoff,
@@ -67,8 +69,9 @@ export interface AccountSyncDeps {
   nudge: () => void
   log?: (line: string) => void
   now?: () => number
-  /** Test seams for the live sign-in: who the CLI here is signed in as, and installing a blob as that sign-in. */
+  /** Test seams for the live sign-in: who the CLI here is signed in as, when its credential lapses, and installing a blob as that sign-in. */
   liveAccountId?: (service: ServiceId) => Promise<string | null>
+  liveExpiry?: (service: ServiceId) => Promise<number | null>
   activate?: (service: ServiceId, name: string, blob: string) => Promise<void>
   /** Test seam: the release timeout. */
   releaseTimeoutMs?: number
@@ -535,17 +538,15 @@ export class AccountSync {
    * A host with no live sign-in for a service (the box) makes what it was
    * given the live one, so its CLI children can start; a static token
    * replaces a live copy that is only a consumer's (it lapses when the owner
-   * is away). A sign-in this machine refreshes itself is never replaced.
+   * is away), and a renewed static token replaces the older one of the same
+   * account that is live, so the sign-in follows the renewal. A sign-in this
+   * machine refreshes itself, and a static token of another account, are
+   * never replaced.
    */
   private async activateIfNothingLive(service: ServiceId, name: string, isStatic: boolean): Promise<void> {
     const a = adapter(service)
     if (!a.detect()) return
     const liveId = await (this.deps.liveAccountId ?? ((s: ServiceId) => adapter(s).liveAccountId()))(service).catch(() => null)
-    if (liveId) {
-      if (!isStatic) return
-      const live = vault.profiles(service).find((p) => p.accountId === liveId)
-      if (!live || live.static || ownsProfile(live)) return
-    }
     let blob: string | null
     try {
       blob = vault.readSecret(service, name)
@@ -553,6 +554,18 @@ export class AccountSync {
       return
     }
     if (!blob) return
+    if (liveId) {
+      if (!isStatic) return
+      const live = vault.profiles(service).find((p) => p.accountId === liveId)
+      if (!live || ownsProfile(live)) return
+      if (live.static) {
+        if (live.name !== name) return
+        // The live token's own renewal: install only what outlasts it.
+        const liveExp = await (this.deps.liveExpiry ?? liveExpiryOf)(service).catch(() => null)
+        const next = accessExpiry(service, blob)
+        if (liveExp !== null && (next === null || next <= liveExp)) return
+      }
+    }
     try {
       await (this.deps.activate ?? installLive)(service, name, blob)
       pinProfile(service, name)
@@ -568,6 +581,19 @@ export class AccountSync {
     for (const t of this.timers.values()) clearTimeout(t)
     this.timers.clear()
     for (const key of [...this.pending.keys()]) this.dropPending(key, 'closing')
+  }
+}
+
+/** When the CLI's own credential on this host lapses (Claude only; the one service with static tokens). */
+const liveExpiryOf = async (service: ServiceId): Promise<number | null> => {
+  if (service !== 'claude-code') return null
+  const keychain = await liveKeychain()
+  if (!keychain) return null
+  try {
+    const exp = JSON.parse(keychain)?.claudeAiOauth?.expiresAt
+    return typeof exp === 'number' ? exp : null
+  } catch {
+    return null
   }
 }
 

@@ -50,6 +50,22 @@ export interface ProviderAccounts {
   owner: 'aliax' | 'temp-code' | null
   /** Why the numbers are thin, when they are ("vault locked", …). */
   note?: string
+  /** One-year token mints under way or waiting on the user (Claude only; main/aliax/staticTokens.ts). */
+  mint?: MintProgress
+}
+
+/** One account's one-year token mint, as a row shows it. */
+export interface MintState {
+  state: 'minting' | 'needs-sign-in' | 'failed'
+  at: number
+  /** Why, for `needs-sign-in` and `failed`. */
+  detail?: string
+}
+
+export interface MintProgress {
+  rows: Record<string, MintState>
+  /** A Convert all under way: how far along. */
+  run: { total: number; done: number } | null
 }
 
 export interface AccountsSnapshot {

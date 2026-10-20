@@ -33,6 +33,9 @@ export function gatewayRole(): Role {
 const FAKE_PROVIDERS = process.env.TEMP_CODE_USER_DATA ? process.env.TEMP_CODE_FAKE_PROVIDERS : undefined
 const PROVIDER_ORIGIN = /^https:\/\/(api\.anthropic\.com|platform\.claude\.com|claude\.ai|chatgpt\.com|auth\.openai\.com|cursor\.com)/
 
+/** A provider URL as this instance reaches it: itself, or the fake provider's when one stands in. */
+export const providerUrl = (url: string): string => (FAKE_PROVIDERS ? url.replace(PROVIDER_ORIGIN, FAKE_PROVIDERS) : url)
+
 /**
  * Point aliax-core at Aliax's data. On macOS secrets open with the same
  * Keychain item Electron's safeStorage made for Aliax, so the first read
@@ -45,7 +48,7 @@ const PROVIDER_ORIGIN = /^https:\/\/(api\.anthropic\.com|platform\.claude\.com|c
 export function configureAliax(environmentId?: string): void {
   configure({
     dataDir: ALIAX_DATA_DIR,
-    fetch: (input, init) => net.fetch(FAKE_PROVIDERS ? input.replace(PROVIDER_ORIGIN, FAKE_PROVIDERS) : input, init),
+    fetch: (input, init) => net.fetch(providerUrl(input), init),
     secrets:
       process.platform === 'darwin' && !ISOLATED_VAULT
         ? { mode: 'chromiumKey', keychainItem: 'aliax Safe Storage' }

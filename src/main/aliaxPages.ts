@@ -2,14 +2,16 @@ import { BrowserWindow, ipcMain, shell } from 'electron'
 import { existsSync, renameSync, rmSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
-import { accounts, adapter, saveStaticClaude, vault, type ActionResult, type ServiceId } from 'aliax-core'
+import { accounts, adapter, vault, type ActionResult, type ServiceId } from 'aliax-core'
+import { appSessionEmail } from 'aliax-core/adapters/claude'
 import * as login from './aliax/login'
-import { cancelSetupToken, runSetupToken } from './aliax/setupToken'
+import { mintInWindow } from './aliax/staticMint'
+import { StaticTokens } from './aliax/staticTokens'
 import type { AccountSync } from './server/remote/accountSync'
 import { indexAll, indexProgress } from './aliax/stats/indexer'
 import { bundle, invalidate } from './aliax/stats/queries'
 import { recordUsage } from './aliax/stats/store'
-import { ACCOUNT_PROVIDERS, SERVICE_OF, type AccountsSnapshot } from '@shared/accounts'
+import { ACCOUNT_PROVIDERS, SERVICE_OF, type AccountsSnapshot, type MintProgress } from '@shared/accounts'
 
 /**
  * The main-process half of the embedded Aliax pages (Accounts, Stats): the
@@ -182,7 +184,13 @@ function recordSnapshot(snapshot: AccountsSnapshot): void {
 export interface AliaxPagesHost {
   nudge(): void
   onChange(listener: (snapshot: AccountsSnapshot) => void): () => void
+  /** Where the Claude rows read their one-year token mint state from. */
+  mint: (() => MintProgress | null) | null
 }
+
+/** The one-year token conversions and renewals (aliax/staticTokens.ts), made with the pages. */
+let staticTokens: StaticTokens | null = null
+export const staticTokensFor = (): StaticTokens | null => staticTokens
 
 /** The stats index runs once per process, on the first Stats page ask. */
 let indexKicked = false
@@ -191,6 +199,20 @@ export function registerAliaxPages(server: { accounts: AliaxPagesHost; accountSy
   nudge = () => server.accounts.nudge()
   sync = server.accountSync
   server.accounts.onChange(recordSnapshot)
+  // An isolated instance (TEMP_CODE_USER_DATA) may set the renewal cadence, so a proof can run the pass on its own clock.
+  const isolated = !!process.env.TEMP_CODE_USER_DATA
+  const cadence = (key: string): number | undefined => (isolated && process.env[key] ? Number(process.env[key]) : undefined)
+  staticTokens = new StaticTokens({
+    mintInWindow,
+    nudge: () => server.accounts.nudge(),
+    changed: notifyAccountsChanged,
+    syncAll: () => server.accountSync.syncAll(),
+    sessionEmail: appSessionEmail,
+    firstRenewDelayMs: cadence('TEMP_CODE_STATIC_RENEW_FIRST_MS'),
+    renewEveryMs: cadence('TEMP_CODE_STATIC_RENEW_EVERY_MS')
+  })
+  server.accounts.mint = () => staticTokens?.progress() ?? null
+  staticTokens.start()
   vault.ensureColors()
   // Codex rotates its refresh token in place; the vault copy follows every
   // rotation or a later switch would present a revoked one (invariant 18).
@@ -245,31 +267,24 @@ export function registerAliaxPages(server: { accounts: AliaxPagesHost; accountSy
     })
   )
   handle('aliax:login:cancel', (_e, serviceId: ServiceId) => loginCancel(serviceId))
-  // A one-year token (claude setup-token) for an account: the CLI mints it
-  // in the browser, we store it as a static profile that nothing refreshes.
-  // The token is inference-only, so the account is whatever the caller
-  // named (the row it started from), checked against the API when it can be.
-  handle('aliax:login:setupToken', (_e, identity?: { name?: string; email?: string }) =>
+  // A one-year token for one Claude account, or for every one not yet
+  // holding one (aliax/staticTokens.ts): minted in-app from the grant or the
+  // stored claude.ai session, the in-app sign-in as the fallback; the token
+  // response names the account it is filed under. Rows show the progress.
+  handle('aliax:static:convert', (_e, name?: string) =>
     asResult(async () => {
-      const { token, expiresAt, validFor } = await runSetupToken()
-      const truth = await adapter('claude-code')
-        .identify?.(JSON.stringify({ keychain: JSON.stringify({ claudeAiOauth: { accessToken: token } }) }))
-        .catch(() => null)
-      const row = identity?.name ? vault.profiles('claude-code').find((p) => p.name === identity.name) : undefined
-      const accountId = truth?.accountId ?? row?.accountId ?? identity?.email
-      if (!accountId) return { ok: false, error: 'token made, but no account to file it under. Start from the account row, or type its email' }
-      const name = saveStaticClaude({ token, expiresAt, accountId, email: truth?.email ?? identity?.email })
-      accounts.clearUsageCache('claude-code', name)
-      notifyAccountsChanged()
-      void sync?.syncAll()
-      return {
-        ok: true,
-        name,
-        notes: [`one-year token saved${validFor ? ` (valid for ${validFor})` : ''}`, truth ? '' : `filed under ${name} as you said; the token cannot name its account`].filter(Boolean)
-      }
+      if (!staticTokens) return { ok: false, error: 'the Accounts page is not ready yet' }
+      return name ? staticTokens.convert(name, true) : staticTokens.convertAll(true)
     })
   )
-  handle('aliax:login:setupTokenCancel', () => cancelSetupToken())
+  // The renewal pass the scheduler runs on its own, run now: what it did is in the rows.
+  handle('aliax:static:renewNow', () =>
+    asResult(async () => {
+      if (!staticTokens) return { ok: false, error: 'the Accounts page is not ready yet' }
+      await staticTokens.renewDue()
+      return { ok: true }
+    })
+  )
   handle('aliax:open:external', (_e, url: string) => {
     // Only ever http(s): never hand an arbitrary scheme to the OS.
     if (/^https?:\/\//.test(String(url))) void shell.openExternal(String(url))
