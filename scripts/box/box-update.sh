@@ -16,7 +16,7 @@ pending=$state/temp-code-update.pending
 trial= scratch= candidate= old= old_previous= flipped=0
 mkdir -p "$state"
 exec 8>/run/lock/temp-code-update.lock
-flock -n 8 || { echo 'ERROR: another update is running' >&2; exit 1; }
+flock -n 8 || { echo 'ERROR: a box update or history import holds the maintenance lock; try again after it finishes' >&2; exit 1; }
 as_agents() { runuser -u agents -- env HOME="$home" PATH="$path" "$@"; }
 link_to() {
   rm -f "$builds/.$1.next"
@@ -45,6 +45,13 @@ wait_ready() {
 }
 rollback() {
   echo "ROLLBACK: restoring $(basename "$old")"
+  if [[ -z $old ]]; then
+    systemctl stop temp-code.service || { echo 'ERROR: initial rollback could not stop the service; pending record retained' >&2; return 1; }
+    rm -f "$builds/current" "$builds/previous" "$pending"
+    flipped=0
+    echo 'ROLLBACK PASS: initial deployment stopped; no previous build'
+    return 0
+  fi
   link_to current "$old"
   if [[ -n $old_previous ]]; then link_to previous "$old_previous"; else rm -f "$builds/previous"; fi
   systemctl restart temp-code.service
@@ -78,12 +85,23 @@ trap 'exit 143' TERM HUP
 # A hard power loss cannot run a trap. Recover the recorded switch before
 # accepting another ref. The record is root-owned, outside the build trees.
 if [[ -f $pending ]]; then
+  exec 9>/run/lock/box-backup.lock
+  flock -w 21600 9
   mapfile -t recovery < "$pending"
   old=${recovery[0]}; old_previous=${recovery[1]:-}; flipped=1
   rollback
+  flock -u 9
+  exec 9>&-
 fi
-[[ -L $builds/current ]] || { echo 'ERROR: install stage 85 first' >&2; exit 1; }
-old=$(readlink -f "$builds/current")
+[[ -d $builds ]] || { echo 'ERROR: install stage 85 first' >&2; exit 1; }
+if [[ -L $builds/current ]]; then
+  old=$(readlink -f "$builds/current")
+  [[ -d $old ]] || { echo 'ERROR: current points to a missing build' >&2; exit 1; }
+elif [[ -e $builds/current ]]; then
+  echo 'ERROR: current must be a symlink or absent' >&2; exit 1
+else
+  echo "BOOTSTRAP: no current build; deploying $ref"
+fi
 old_previous=
 if [[ -L $builds/previous ]]; then old_previous=$(readlink -f "$builds/previous"); fi
 # Keep all clone, package lifecycle, compilation and metadata reads unprivileged.
@@ -134,26 +152,32 @@ echo "TRIAL PASS: $(expected "$candidate") port=$port sha=$sha"
 systemctl stop "$trial.service"; trial=
 rm -rf -- "$scratch"; scratch=
 read -r new_version _ < <(expected "$candidate")
-read -r old_version _ < <(expected "$old")
-if dpkg --compare-versions "$new_version" lt "$old_version"; then
-  echo "ERROR: refusing older $new_version over $old_version; publish master or supply its green bundle" >&2
-  exit 1
+if [[ -n $old ]]; then
+  read -r old_version _ < <(expected "$old")
+  if dpkg --compare-versions "$new_version" lt "$old_version"; then
+    echo "ERROR: refusing older $new_version over $old_version; publish master or supply its green bundle" >&2
+    exit 1
+  fi
 fi
 # The backup lock also prevents the daily snapshot/upload and restore drill
 # from racing this snapshot. Only complete, checked generations survive.
-(
-  flock -w 21600 9
+exec 9>/run/lock/box-backup.lock
+flock -w 21600 9
+if compgen -G "$data/*.db" >/dev/null; then
   snapshots=/srv/agents/backups/pre-update
   install -d -m 700 -o agents -g agents "$snapshots"
   snap="$snapshots/$(date -u +%Y%m%dT%H%M%S)-$$"
   /usr/local/sbin/box-sqlite-snapshot "$data" "$snap"
   echo "SNAPSHOT PASS: $snap"
   while IFS= read -r stale; do rm -rf -- "$snapshots/$stale"; done < <(find "$snapshots" -mindepth 1 -maxdepth 1 -type d ! -name '.tmp-*' -printf '%f\n' | sort -r | tail -n +4)
-) 9>/run/lock/box-backup.lock
+else
+  [[ -z $old ]] || { echo 'ERROR: existing deployment has no databases to snapshot' >&2; exit 1; }
+  echo 'SNAPSHOT: initial deployment has no SQLite files; skipped'
+fi
 printf '%s\n%s\n' "$old" "$old_previous" > "$pending.tmp"
 mv "$pending.tmp" "$pending"
 flipped=1
-link_to previous "$old"
+if [[ -n $old ]]; then link_to previous "$old"; else rm -f "$builds/previous"; fi
 link_to current "$candidate"
 echo "COMMIT: current=$(basename "$candidate") previous=$(basename "$old")"
 systemctl restart temp-code.service

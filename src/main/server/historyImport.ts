@@ -1,6 +1,6 @@
 import { cpSync, existsSync, mkdirSync, readFileSync, readlinkSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { hostname } from 'node:os'
-import { isAbsolute, join } from 'node:path'
+import { isAbsolute, join, normalize } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 
 /**
@@ -70,7 +70,7 @@ type Row = Record<string, string | number | null>
 /** `temp-code.db` → `temp-code-cold.db`, the same rule as db.ts. */
 export const coldPathFor = (path: string): string => path.replace(/\.db$/, '') + '-cold.db'
 
-const stripSlash = (path: string): string => (path.length > 1 ? path.replace(/\/+$/, '') : path)
+const stripSlash = (path: string): string => normalize(path).replace(/\/+$/, '') || '/'
 
 export function parseMapping(raw: string): HistoryMapping {
   const parsed = JSON.parse(raw) as Partial<HistoryMapping>
@@ -96,16 +96,19 @@ export interface Remapper {
 
 export function remapper(mapping: HistoryMapping): Remapper {
   const byLength = (table: Record<string, string>): [string, string][] =>
-    Object.entries(table).sort((a, b) => b[0].length - a[0].length)
+    Object.entries(table)
+      .map(([from, to]): [string, string] => [stripSlash(from), stripSlash(to)])
+      .sort((a, b) => b[0].length - a[0].length)
   const roots = byLength(mapping.roots)
   const prefixes = byLength(mapping.prefixes)
-  const under = (path: string, from: string): boolean => path === from || path.startsWith(from + '/')
+  const under = (path: string, from: string): boolean =>
+    path === from || path.startsWith(from === '/' ? '/' : from + '/')
   const apply = (path: string, table: [string, string][]): string | null => {
-    for (const [from, to] of table) if (under(path, from)) return to + path.slice(from.length)
+    for (const [from, to] of table) if (under(path, from)) return join(to, path.slice(from.length))
     return null
   }
   return {
-    isRoot: (path) => stripSlash(path) in mapping.roots,
+    isRoot: (path) => roots.some(([from]) => from === stripSlash(path)),
     path: (path) => {
       if (!isAbsolute(path)) return path
       const clean = stripSlash(path)
@@ -114,7 +117,7 @@ export function remapper(mapping: HistoryMapping): Remapper {
   }
 }
 
-/** A description of the process still writing the destination, or null when none is. */
+/** A description of the process still writing this data dir, or null when none is. */
 export function writerAlive(userData: string): string | null {
   const alive = (pid: number): boolean => {
     try {
@@ -125,15 +128,19 @@ export function writerAlive(userData: string): string | null {
     }
   }
   try {
-    const { pid } = JSON.parse(readFileSync(join(userData, 'server.json'), 'utf8')) as { pid?: number }
-    if (typeof pid === 'number' && alive(pid)) return `server.json names pid ${pid}, which is running`
+    const { pid } = JSON.parse(readFileSync(join(userData, 'server.json'), 'utf8')) as {
+      pid?: number
+    }
+    if (typeof pid === 'number' && alive(pid))
+      return `server.json names pid ${pid}, which is running`
   } catch {
     /* no headless host record */
   }
   try {
     const target = readlinkSync(join(userData, 'SingletonLock'))
     const match = /^(.*)-(\d+)$/.exec(target)
-    if (match && match[1] === hostname() && alive(Number(match[2]))) return `SingletonLock is held by pid ${match[2]}`
+    if (match && match[1] === hostname() && alive(Number(match[2])))
+      return `SingletonLock is held by pid ${match[2]}`
   } catch {
     /* no lock */
   }
@@ -141,16 +148,21 @@ export function writerAlive(userData: string): string | null {
 }
 
 function columns(db: DatabaseSync, schema: string, table: string): string[] {
-  return (db.prepare(`PRAGMA ${schema}.table_info(${table})`).all() as { name: string }[]).map((c) => c.name)
+  return (db.prepare(`PRAGMA ${schema}.table_info(${table})`).all() as { name: string }[]).map(
+    (c) => c.name
+  )
 }
 
 function tableExists(db: DatabaseSync, schema: string, table: string): boolean {
   return (
-    db.prepare(`SELECT 1 FROM ${schema}.sqlite_master WHERE type = 'table' AND name = ?`).get(table) !== undefined
+    db
+      .prepare(`SELECT 1 FROM ${schema}.sqlite_master WHERE type = 'table' AND name = ?`)
+      .get(table) !== undefined
   )
 }
 
-const count = (db: DatabaseSync, sql: string): number => Number((db.prepare(sql).get() as { n: number }).n)
+const count = (db: DatabaseSync, sql: string): number =>
+  Number((db.prepare(sql).get() as { n: number }).n)
 
 export function importHistory(opts: ImportOptions): ImportReport {
   const log = opts.log ?? (() => {})
@@ -162,33 +174,57 @@ export function importHistory(opts: ImportOptions): ImportReport {
   for (const file of [srcHot, coldPathFor(srcHot), dstHot]) {
     if (!existsSync(file)) throw new Error(`${file}: no such database`)
   }
-  const live = writerAlive(opts.into)
-  if (live) throw new Error(`${opts.into} is still open by a writer (${live}); stop it first`)
+  for (const dir of [opts.from, opts.into]) {
+    const live = writerAlive(dir)
+    if (live)
+      throw new Error(
+        `${dir} is still open by a writer (${live}); stop it first; use offline source snapshots`
+      )
+  }
 
   const db = new DatabaseSync(dstHot)
+  const source = new DatabaseSync(srcHot, { readOnly: true })
   try {
+    source.prepare('ATTACH DATABASE ? AS scold').run(coldPathFor(srcHot))
+    source.exec('PRAGMA busy_timeout = 60000; PRAGMA query_only = ON; BEGIN')
+    // Pin both source snapshots before reading metadata. Keep them through
+    // every destination batch commit; never follow a moving hot/cold source.
+    source.prepare('SELECT count(*) FROM main.sqlite_master').get()
+    source.prepare('SELECT count(*) FROM scold.sqlite_master').get()
     db.prepare('ATTACH DATABASE ? AS dcold').run(coldPathFor(dstHot))
-    db.prepare('ATTACH DATABASE ? AS shot').run(srcHot)
-    db.prepare('ATTACH DATABASE ? AS scold').run(coldPathFor(srcHot))
-    for (const table of ['workspaces', 'projects', 'sessions', 'events', 'session_folds', 'settings']) {
-      if (!tableExists(db, 'main', table)) throw new Error(`${dstHot} has no ${table} table; start the app on it once`)
+    for (const table of [
+      'workspaces',
+      'projects',
+      'sessions',
+      'events',
+      'session_folds',
+      'settings'
+    ]) {
+      if (!tableExists(db, 'main', table))
+        throw new Error(`${dstHot} has no ${table} table; start the app on it once`)
     }
     db.exec(`CREATE TABLE IF NOT EXISTS dcold.events (
       session_id TEXT NOT NULL, seq INTEGER NOT NULL, ts INTEGER NOT NULL, payload TEXT NOT NULL,
       PRIMARY KEY (session_id, seq))`)
     db.exec('PRAGMA main.busy_timeout = 60000')
-    return run(db, { ...opts, dryRun, files, log }, remap)
+    return run(db, source, { ...opts, dryRun, files, log }, remap)
   } finally {
+    source.close()
     db.close()
   }
 }
 
-function run(db: DatabaseSync, opts: Required<Pick<ImportOptions, 'from' | 'into' | 'dryRun' | 'files' | 'log'>> & ImportOptions, remap: Remapper): ImportReport {
+function run(
+  db: DatabaseSync,
+  source: DatabaseSync,
+  opts: Required<Pick<ImportOptions, 'from' | 'into' | 'dryRun' | 'files' | 'log'>> & ImportOptions,
+  remap: Remapper
+): ImportReport {
   const { from, into, dryRun, files, log } = opts
   const label = opts.label ?? 'mac'
   const counts: TableCount[] = []
   const have = (table: string, schema = 'main'): number => count(db, `SELECT count(*) AS n FROM ${schema}.${table}`)
-  const srcRows = (table: string): Row[] => db.prepare(`SELECT * FROM shot.${table}`).all() as Row[]
+  const srcRows = (table: string): Row[] => source.prepare(`SELECT * FROM main.${table}`).all() as Row[]
   const insert = (table: string, rows: Row[]): void => {
     if (rows.length === 0) return
     const cols = columns(db, 'main', table).filter((c) => c in rows[0])
@@ -269,46 +305,64 @@ function run(db: DatabaseSync, opts: Required<Pick<ImportOptions, 'from' | 'into
   }
   counts.push({ table: 'sessions', have: have('sessions'), add: sessionRows.length })
 
-  // Events: rows of known sessions, hot file to hot file and cold to cold.
-  const hotAdd = count(
-    db,
-    `SELECT count(*) AS n FROM shot.events e
-       WHERE e.session_id IN (SELECT id FROM shot.sessions)
-         AND NOT EXISTS (SELECT 1 FROM main.events d WHERE d.session_id = e.session_id AND d.seq = e.seq)`
-  )
-  counts.push({ table: 'events', have: have('events'), add: hotAdd })
-  const perSession = (schema: string): Map<string, number> =>
-    new Map(
-      (db.prepare(`SELECT session_id AS id, count(*) AS n FROM ${schema}.events GROUP BY session_id`).all() as {
-        id: string
-        n: number
-      }[]).map((r) => [r.id, Number(r.n)])
-    )
-  const srcCold = perSession('scold')
-  const dstCold = perSession('dcold')
+  // Compare seq sets across both destination tiers. Counts alone cannot
+  // tell a complete session from one with holes and unrelated extra rows.
   const srcSessionIds = new Set(srcSessions.map((s) => String(s.id)))
+  const existingSeqs = db.prepare(`SELECT seq FROM main.events WHERE session_id = ?
+    UNION SELECT seq FROM dcold.events WHERE session_id = ?`)
+  const seqs = (id: string): Set<number> =>
+    new Set((existingSeqs.all(id, id) as { seq: number }[]).map((r) => r.seq))
+  const hotPending: string[] = []
   const coldPending: string[] = []
-  let coldAdd = 0
-  for (const [id, n] of srcCold) {
-    if (!srcSessionIds.has(id)) continue
-    const missing = n - (dstCold.get(id) ?? 0)
-    if (missing > 0) {
-      coldAdd += missing
-      coldPending.push(id)
+  const pending = (schema: 'main' | 'scold', ids: string[]): number => {
+    let add = 0
+    const rows = source.prepare(
+      `SELECT seq FROM ${schema}.events WHERE session_id = ?` +
+        (schema === 'scold'
+          ? ` AND NOT EXISTS (SELECT 1 FROM main.events h
+        WHERE h.session_id = scold.events.session_id AND h.seq = scold.events.seq)`
+          : '')
+    )
+    for (const id of srcSessionIds) {
+      const have = seqs(id)
+      let missing = 0
+      for (const row of rows.iterate(id)) if (!have.has(Number(row.seq))) missing++
+      if (missing) {
+        add += missing
+        ids.push(id)
+      }
+    }
+    return add
+  }
+  counts.push({ table: 'events', have: have('events'), add: pending('main', hotPending) })
+  counts.push({
+    table: 'cold.events',
+    have: have('events', 'dcold'),
+    add: pending('scold', coldPending)
+  })
+
+  const dstFoldIds = dstIds('session_folds', 'session_id')
+  const foldRows = srcRows('session_folds').filter(
+    (f) => srcSessionIds.has(String(f.session_id)) && !dstFoldIds.has(String(f.session_id))
+  )
+  counts.push({ table: 'session_folds', have: have('session_folds'), add: foldRows.length })
+
+  const copyEvents = (schema: 'main' | 'scold', ids: string[]): void => {
+    const rows = source.prepare(
+      `SELECT seq, ts, payload FROM ${schema}.events WHERE session_id = ?`
+    )
+    const stmt = db.prepare(`INSERT OR IGNORE INTO ${schema === 'main' ? 'main' : 'dcold'}.events
+      (session_id, seq, ts, payload) VALUES (?, ?, ?, ?)`)
+    for (const id of ids) {
+      const have = seqs(id)
+      for (const row of rows.iterate(id)) {
+        if (!have.has(Number(row.seq))) stmt.run(id, row.seq, row.ts, row.payload)
+      }
     }
   }
-  counts.push({ table: 'cold.events', have: have('events', 'dcold'), add: coldAdd })
-
-  const foldsAdd = count(
-    db,
-    `SELECT count(*) AS n FROM shot.session_folds f
-       WHERE f.session_id IN (SELECT id FROM shot.sessions)
-         AND NOT EXISTS (SELECT 1 FROM main.session_folds d WHERE d.session_id = f.session_id)`
-  )
-  counts.push({ table: 'session_folds', have: have('session_folds'), add: foldsAdd })
 
   const noteRows: Row[] = []
-  if (tableExists(db, 'shot', 'notes') && tableExists(db, 'main', 'notes')) {
+  if (tableExists(source, 'main', 'notes') && tableExists(db, 'main', 'notes')) {
     const dstNoteIds = dstIds('notes')
     for (const n of srcRows('notes')) {
       if (dstNoteIds.has(String(n.id))) continue
@@ -358,11 +412,8 @@ function run(db: DatabaseSync, opts: Required<Pick<ImportOptions, 'from' | 'into
     insert('workspaces', workspaceRows)
     insert('projects', projectRows)
     insert('sessions', sessionRows)
-    db.exec(`INSERT OR IGNORE INTO main.events (session_id, seq, ts, payload)
-      SELECT session_id, seq, ts, payload FROM shot.events WHERE session_id IN (SELECT id FROM main.sessions)`)
-    const foldCols = columns(db, 'main', 'session_folds').filter((c) => columns(db, 'shot', 'session_folds').includes(c))
-    db.exec(`INSERT OR IGNORE INTO main.session_folds (${foldCols.join(', ')})
-      SELECT ${foldCols.join(', ')} FROM shot.session_folds WHERE session_id IN (SELECT id FROM main.sessions)`)
+    copyEvents('main', hotPending)
+    insert('session_folds', foldRows)
     insert('notes', noteRows)
     insert('settings', settingRows)
     db.prepare('INSERT OR REPLACE INTO main.settings (key, value) VALUES (?, ?)').run(
@@ -389,10 +440,7 @@ function run(db: DatabaseSync, opts: Required<Pick<ImportOptions, 'from' | 'into
     const ids = coldPending.slice(i, i + batch)
     db.exec('BEGIN IMMEDIATE')
     try {
-      db.prepare(
-        `INSERT OR IGNORE INTO dcold.events (session_id, seq, ts, payload)
-           SELECT session_id, seq, ts, payload FROM scold.events WHERE session_id IN (${ids.map(() => '?').join(', ')})`
-      ).run(...ids)
+      copyEvents('scold', ids)
       db.exec('COMMIT')
     } catch (err) {
       db.exec('ROLLBACK')
@@ -404,10 +452,15 @@ function run(db: DatabaseSync, opts: Required<Pick<ImportOptions, 'from' | 'into
 
   for (const id of checkpointDirs) {
     copyDir(join(from, 'checkpoints', id), join(into, 'checkpoints', id))
-    if (sessionMapped.get(id)) rewriteManifest(join(into, 'checkpoints', id, 'manifest.json'), remap)
+    if (sessionMapped.get(id))
+      rewriteManifest(join(into, 'checkpoints', id, 'manifest.json'), remap)
   }
-  for (const id of renderDirs) copyDir(join(from, 'html-renders', id), join(into, 'html-renders', id))
-  if (files) log(`files: ${checkpointDirs.length} checkpoint dirs, ${renderDirs.length} html-render dirs copied`)
+  for (const id of renderDirs)
+    copyDir(join(from, 'html-renders', id), join(into, 'html-renders', id))
+  if (files)
+    log(
+      `files: ${checkpointDirs.length} checkpoint dirs, ${renderDirs.length} html-render dirs copied`
+    )
 
   // The real counts, now that the rows are in.
   for (const c of counts) {

@@ -1,6 +1,6 @@
 # Moving the thread history from the Mac to the box
 
-Status: 2026-10-19, inventory done, importer written and rehearsed on the box; cutover waits for the user's window. The box's
+Status: 2026-10-20 UTC, F3 fixes and rehearsals complete; the history is still staged on both hosts. Cutover has NOT run and waits for the user's go. The box's
 database becomes the one every client attaches to; the Mac keeps a small
 local database for Apple-only work and shows the box's threads through its
 environment link (Settings → Environments).
@@ -133,20 +133,23 @@ them; the importer writes one settings row, `history.import`, whose JSON
 names each missing root with its thread count. Nothing is dropped and
 nothing is left pointing at a path that looks valid but is not.
 
-## The importer: scripts/box/import-history.ts
+## The importer: src/main/server/historyImport.ts
 
-Runs under node 22 (`node:sqlite`) on the box as agents, against a stopped
-writer (it refuses a data dir whose `server.json` pid is alive).
+Runs under node 22 (`node:sqlite`) on the box as agents. Both source and
+destination must be offline: it refuses either dir if `server.json` or a
+local `SingletonLock` names a live process. Use offline snapshots as the
+source. Source read transactions stay open on both databases through all
+destination commits, so later batches read the same source generation.
 
 ```
-node scripts/box/import-history.ts --from <dir> --into <userData> \
-  --map scripts/box/history-map.json [--dry-run] [--roots a,b] [--no-files]
+node src/main/server/historyImport.ts --from <dir> --into <userData> \
+  --map scripts/box/history-map.json [--dry-run] [--no-files]
 ```
 
 `<dir>` holds `temp-code.db`, `temp-code-cold.db`, `checkpoints/`,
 `html-renders/` (the VACUUM INTO copies plus rsynced dirs). One transaction
-over the destination hot file with the source files and destination cold
-file attached:
+for metadata and hot events, then batches of cold events in the destination
+cold file:
 
 1. workspaces: insert when the id is new; a destination workspace that
    already owns the remapped path (say the box already registered
@@ -155,7 +158,9 @@ file attached:
 2. projects, sessions: insert when new, paths remapped, `archived` forced to
    1 under an unmappable root.
 3. events: hot rows to the hot file, cold rows to the cold file, by
-   `(session_id, seq)`; rows of unknown sessions skipped.
+   `(session_id, seq)`; rows of unknown sessions skipped. Compare seq sets,
+   including both destination tiers, rather than row counts: a session with
+   extra rows can still have holes. Rows already in either tier stay there.
 4. folds, notes, allowlisted settings: insert when new.
 5. files: `checkpoints/<id>` (manifest cwd remapped) and `html-renders/<id>`
    copied when the destination lacks them.
@@ -228,35 +233,90 @@ cutover (rsync, Mac wins).
 ## Cutover (needs the user for a few minutes)
 
 Scripts: `scripts/mac/split-data-dir.sh copy|split` on the Mac and
-`scripts/box/import-history.sh <from-dir> [--dry-run]` on the box (as root,
-from the deployed build: snapshot under the backup lock, stop the service,
-dry run, import, `quick_check`, start, probe).
+`scripts/box/import-history.sh <from-dir> [--dry-run]` on the box as root.
+The wrapper takes `/run/lock/temp-code-update.lock` first, then
+`box-backup.lock`, and holds both through snapshot, stop, import, restart
+and health checks. `box-update` uses the same order and keeps the locks
+through its switch, restart and rollback. Either refuses at once with a
+maintenance-lock message while the other runs. Do not restart the service
+by hand during this work.
 
-1. User quits TempCode.app (and runs no `dev:prod`). Check: no process holds
-   the data dir, no `SingletonLock`.
-2. Final `VACUUM INTO` copies of both databases; rsync the delta of copies,
-   `checkpoints/`, `html-renders/`, `.temp-code/` dirs to the box.
-3. On the box, as root: take the launcher's pre-update snapshot of the live
-   databases, stop `temp-code.service`, run the importer for real as agents,
-   start the service, wait for `/healthz` and the hello (the launcher's own
-   probe), `tc-local session.list` counts, open a handful of threads on
-   tempcode.landonhale.com/ui.
-4. Clone the mapped roots under `/srv/agents/work` (needs G's gh login;
-   `git init` + `remote add` + `fetch` + `checkout` works in a dir that
-   already holds `.temp-code/`). Roots whose clone is not ready are listed
-   in the report.
-5. On the Mac: rename the data dir to `temp-code.moved-2026-10-19`; create a
-   fresh `temp-code` with the Mac's identity (`environment.json`), `Local
-   Storage/`, `window-state.json`, `update-times.json`, `.updaterId`, an
-   APFS clone of `stats.db`, and a database holding only the Mac's own
-   settings (`github.inbox.*`, `codex.speedTiers`, `appshots*`,
-   `thread-defaults`, `orchestration-rules`) plus the box as a saved
-   environment (a client key minted on the box, stored the way pairing
-   stores it). Nothing is deleted.
-6. User reopens TempCode.app: the Mac host is empty, the box's threads show
-   under its environment.
-7. Prove the box's keys still work: `bun scripts/e2e-box-remote.ts`, and the
-   MCP keys through `scripts/e2e-mcp-remote.ts`.
+Before the window, install the fixed maintenance helpers through stages 75
+and 85 (see docs/box.md Updating), then deploy the green ref containing F3
+through `box-update`. The deployed importer and wrapper must include these
+fixes. A rehearsal only, with no live snapshot or service changes:
+
+```sh
+ssh box 'bash /srv/agents/temp-code-builds/current/scripts/box/import-history.sh /srv/agents/history-move/mac --dry-run --into /srv/agents/history-move/rehearsal/data'
+```
+
+`--into` is allowed only with `--dry-run` and refuses the live data path.
+It still takes both locks. Check its row report and identity counts; the
+rehearsal must preserve keys, pairings and browser sessions.
+
+1. Wait for the user's go. User quits TempCode.app and runs no `dev:prod`.
+   Check no process holds the data dir and no live `SingletonLock` remains.
+   Confirm fresh restic backups on both hosts before changing either.
+2. Run `scripts/mac/split-data-dir.sh copy`: final `VACUUM INTO` copies of
+   both offline databases; rsync the delta of copies, `checkpoints/`,
+   `html-renders/` and `.temp-code/` dirs to the box. Never use a running
+   Mac data dir as the import source, even with `--dry-run`.
+3. Run the deployed `scripts/box/import-history.sh /srv/agents/history-move/mac`
+   as root. It snapshots the box, stops its writer, prints identity counts,
+   runs a dry run and the import, checks both databases and identity counts,
+   then starts and probes the host under both locks. Check thread counts,
+   a few threads on tempcode.landonhale.com/ui and the box's existing keys.
+4. Confirm all mapped clones and worktrees under `/srv/agents/work` are
+   ready. Rsync the final `.temp-code/` dirs into them; list any missing roots.
+5. Run `scripts/mac/split-data-dir.sh split` with `TC_BOX_KEY` and
+   `TC_BOX_ENV_ID` supplied through the environment. It builds and checks
+   the fresh dir before renaming anything. It copies the exact Mac
+   `remote_keys`, `remote_pairings` and `remote_sessions` tables and indexes,
+   every `remote.*` setting (including saved environments), machine settings,
+   `environment.json`, `tls/`, `Local Storage/`, window and updater state,
+   and an APFS clone of `stats.db`. It adds the box environment and leaves
+   history in `<data-dir>.moved-<current-date>`; nothing is deleted.
+   Check `remote_keys before=N after=N` and the pairing/session counts.
+   The script compares every copied identity row before it swaps dirs.
+6. User reopens TempCode.app: the Mac host has no local history, and the
+   box's threads show under its saved environment. Existing Mac keys and
+   browser sessions must still authenticate to the same Mac environment id.
+7. Prove the box's keys still work with `bun scripts/e2e-box-remote.ts` and
+   `scripts/e2e-mcp-remote.ts`. Keep keys and pairing links out of logs.
+
+## F3 verification (2026-10-20 UTC, cutover still pending)
+
+- Unit gate: 2,798 tests across 328 files; hub 12 tests; Swift contract 29;
+  Swift client 141; typecheck, generated contract check and production build
+  passed. The existing Swift probe freshness test at
+  `TempCodeSocketTests.swift:226` failed once, then the full client suite passed.
+  A later JS run hit three `HtmlRenderFrame.dom.test.tsx` teardown errors
+  after all assertions passed; the full JS rerun passed without those errors.
+- `historyImport.test.ts` covers equal/larger cold row counts with a missing
+  seq, cross-tier duplicates, a live source, source reads across commits,
+  both root mapping directions and slash normalization.
+- `historySplit.test.ts` ran the real split on an offline copy of the small
+  Mac `temp-code-dev-empty` database, with test identity rows added only to
+  that copy: keys 2 → 2, cookies and pending pairing still work, revoked key
+  stays revoked, saved environments survive, old history stays in the renamed
+  dir and fresh history is empty. No live Mac data dir changed.
+- Box wrapper dry run on `/srv/agents/history-move/rehearsal/data`: workspaces
+  13, projects 41, sessions 5,168, hot events 668,561, cold events 7,685,694,
+  folds 5,168, settings 22; every add was zero. Keys 28 → 28, pairings
+  26 → 26, browser sessions 6 → 6.
+- Direct box lock test: importer dry run blocked `box-update`; an updater
+  forced to reject an absent source bundle before building blocked the
+  importer. Both returned the maintenance-lock message. The live PID,
+  start time and `current` link stayed unchanged.
+- `scripts/box/test-history-maintenance.py` ran on the box in private mounts
+  with fake build/service commands and a local restic repo. Both lock
+  directions, first deploy with no `current` or databases, failed first
+  deploy, rollback with both locks held, and restore of uploaded generation
+  A after local generation B replaced it all passed.
+- Full R2 backup uploaded the existing offline SQLite backup generation with
+  its new manifest (no live database reads). The fixed restore-drill script
+  restored snapshot `fb39aa0b`, checked both files and all table counts against
+  that uploaded manifest, and passed. Generation: `3543b0d6`.
 
 ## After
 

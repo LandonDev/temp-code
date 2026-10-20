@@ -15,6 +15,7 @@
 # (mint it on the box: tc-local remote.keys.create) and lands in the new
 # database the way pairing stores it. Secrets never touch a file here.
 set -euo pipefail
+umask 077
 export PATH=/opt/homebrew/bin:/usr/bin:/bin
 phase=${1:-}
 support="$HOME/Library/Application Support"
@@ -26,7 +27,9 @@ today=$(date +%Y-%m-%d)
 
 die() { echo "ERROR: $*" >&2; exit 1; }
 quit_check() {
-  pgrep -fq '/Applications/TempCode.app/Contents/MacOS/TempCode' && die 'TempCode.app is running; quit it first'
+  if [[ $data -ef "$support/temp-code" || $data -ef "$support/TempCode" ]]; then
+    pgrep -fq '/Applications/TempCode.app/Contents/MacOS/TempCode' && die 'TempCode.app is running; quit it first'
+  fi
   pgrep -fq 'electron-vite|out/main/boot.js' && echo 'warning: a dev instance is running; make sure it is not on the prod data dir' >&2
   if [[ -L $data/SingletonLock ]]; then
     lock=$(readlink "$data/SingletonLock"); pid=${lock##*-}
@@ -68,31 +71,47 @@ split() {
   [[ -n ${TC_BOX_KEY:-} && -n ${TC_BOX_ENV_ID:-} ]] || die 'TC_BOX_KEY and TC_BOX_ENV_ID are required (mint the key on the box)'
   [[ $TC_BOX_ENV_ID =~ ^env_[A-Za-z0-9_-]{22}$ ]] || die 'TC_BOX_ENV_ID is not an environment id'
   origin=${TC_BOX_ORIGIN:-https://tempcode.landonhale.com}
-  moved="$support/temp-code.moved-$today"
+  moved="$data.moved-$today"
   [[ -e $moved ]] && die "$moved already exists"
-  mv "$data" "$moved"
-  mkdir -p "$data"
+  fresh=$(mktemp -d "$data.split-XXXXXX")
+  trap 'rm -rf -- "$fresh"' EXIT
   for f in environment.json window-state.json update-times.json .updaterId localstorage-migrated; do
-    [[ -f $moved/$f ]] && cp -p "$moved/$f" "$data/$f"
+    [[ -f $data/$f ]] && cp -p "$data/$f" "$fresh/$f"
   done
-  [[ -d "$moved/Local Storage" ]] && cp -Rp "$moved/Local Storage" "$data/"
-  [[ -d $moved/tls ]] && cp -Rp "$moved/tls" "$data/"
+  [[ -d "$data/Local Storage" ]] && cp -Rp "$data/Local Storage" "$fresh/"
+  [[ -d $data/tls ]] && cp -Rp "$data/tls" "$fresh/"
   # Aliax usage stats stay Mac-side: an APFS clone costs no space.
-  [[ -f $moved/stats.db ]] && cp -c "$moved/stats.db" "$data/stats.db"
-  # The new database: the app adds every table on launch; settings first,
-  # with the Mac's own rows and the box as a saved environment.
-  sqlite3 "$data/temp-code.db" <<SQL
-PRAGMA journal_mode = WAL;
-CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
-ATTACH DATABASE '$moved/temp-code.db' AS old;
-INSERT OR IGNORE INTO settings (key, value)
-  SELECT key, value FROM old.settings
-  WHERE key IN ('github.inbox.auth', 'github.inbox.viewer', 'github.inbox.fetchedAt', 'codex.speedTiers',
-                'appshots', 'appshots-prompted', 'thread-defaults', 'orchestration-rules')
-     OR key LIKE 'remote.%';
-DETACH DATABASE old;
-SQL
-  python3 - "$data/temp-code.db" "$TC_BOX_ENV_ID" "$origin" <<'PY'
+  [[ -f $data/stats.db ]] && cp -c "$data/stats.db" "$fresh/stats.db"
+  # Copy exact table definitions and rows, including revoked/expired rows.
+  # Keep salts, hashes and browser cookies paired with this host's identity.
+  python3 - "$data/temp-code.db" "$fresh/temp-code.db" <<'PY_IDENTITY'
+import sqlite3, sys
+source, target = sys.argv[1:]
+with sqlite3.connect('file:' + source + '?mode=ro', uri=True) as old, sqlite3.connect(target) as new:
+    old.execute('BEGIN')
+    new.execute('CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)')
+    new.executemany('INSERT INTO settings VALUES (?, ?)', old.execute(
+        """SELECT key, value FROM settings WHERE key IN
+        ('github.inbox.auth', 'github.inbox.viewer', 'github.inbox.fetchedAt', 'codex.speedTiers',
+         'thread-defaults', 'orchestration-rules') OR key LIKE 'appshots%' OR key LIKE 'remote.%'"""))
+    for table in ('remote_keys', 'remote_pairings', 'remote_sessions'):
+        schema = old.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name=?", (table,)).fetchone()
+        if schema is None:
+            if table == 'remote_keys': print('remote_keys before=0 after=0 (no table)')
+            continue
+        new.execute(schema[0])
+        rows = old.execute(f'SELECT * FROM {table} ORDER BY id').fetchall()
+        if rows:
+            new.executemany(f'INSERT INTO {table} VALUES (' + ','.join('?' for _ in rows[0]) + ')', rows)
+        for (sql,) in old.execute("SELECT sql FROM sqlite_master WHERE type='index' AND tbl_name=? AND sql IS NOT NULL", (table,)):
+            new.execute(sql)
+        copied = new.execute(f'SELECT * FROM {table} ORDER BY id').fetchall()
+        if rows != copied: raise RuntimeError(f'{table}: identity rows differ')
+        print(f'{table} before={len(rows)} after={len(copied)}')
+    if new.execute('PRAGMA quick_check').fetchall() != [('ok',)]:
+        raise RuntimeError('fresh identity database failed quick_check')
+PY_IDENTITY
+  python3 - "$fresh/temp-code.db" "$TC_BOX_ENV_ID" "$origin" <<'PY'
 import json, os, sqlite3, sys, time
 db, env_id, origin = sys.argv[1:4]
 route = origin.replace('https://', 'wss://').replace('http://', 'ws://').rstrip('/') + '/ws'
@@ -103,6 +122,12 @@ with sqlite3.connect(db) as c:
     c.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", (f"remote.environments.{env_id}", json.dumps(row)))
 print("box saved as environment", env_id)
 PY
+  mv "$data" "$moved"
+  if ! mv "$fresh" "$data"; then
+    mv "$moved" "$data"
+    die 'could not install the fresh data dir; restored the original'
+  fi
+  trap - EXIT
   echo "SPLIT DONE: history at $moved, fresh dir at $data ($(sqlite3 "$data/temp-code.db" 'SELECT count(*) FROM settings') settings rows)"
 }
 

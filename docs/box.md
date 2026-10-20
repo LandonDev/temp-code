@@ -165,8 +165,9 @@ alone cannot read them.
   restic-backup.sh) daily at 04:15 New York plus up to 20 minutes, in
   prod.slice. It snapshots every `*.db` in `/srv/agents/temp-code-data` with
   `VACUUM INTO` as the agents user into `/srv/agents/backups/sqlite` (the live
-  database files are excluded; a mid-write copy is worthless), backs up
-  `/srv/agents`, `/srv/prod` and `/etc` with `/etc/restic/excludes`, keeps
+  database files are excluded; a mid-write copy is worthless), writes a
+  `manifest.json` alongside them with a generation id, schema counts and all
+  table counts, backs up `/srv/agents`, `/srv/prod` and `/etc` with `/etc/restic/excludes`, keeps
   7 daily / 4 weekly / 6 monthly, prunes, and runs `restic check`.
 - Postgres dumps come from `prod-postgres-backup.timer` (03:20) into
   `/srv/prod/backups/postgres`; the restic run picks them up.
@@ -180,9 +181,13 @@ alone cannot read them.
   shared lock wait for a backup still running at 06:00. It restores only the
   latest daily SQLite snapshots from R2 into a private scratch directory under
   `/srv/agents/backups`, runs `PRAGMA quick_check`, and compares both the
-  `sqlite_master` row count and all user-table row counts with the snapshots
-  on disk. Missing files or a mismatch fail the drill. An EXIT trap removes
-  scratch data on success or failure. It never restores over live data.
+  `sqlite_master` row count and all user-table row counts against the
+  `manifest.json` restored from that same uploaded snapshot. The backup
+  uploads this manifest with its databases. A failed upload can leave a newer
+  local generation; the drill never compares against that local dir. Missing
+  files, a missing manifest or a mismatch fail the drill. After installing
+  this format, upload one new daily backup before running the drill. An EXIT
+  trap removes scratch data on success or failure. It never restores over live data.
 - `box-restic-check.timer` runs on the first of each month at 08:00 New York:
   `restic check --read-data-subset=5%`. Daily checks still check metadata.
   Restic chooses a random 5% sample; this does not promise full coverage in
@@ -423,6 +428,22 @@ ssh box 'box-update v1.0.N'   # replace N with a tag published on GitHub
 sudo /usr/local/sbin/box-update master
 ```
 
+On a fresh box, stage 85 creates the build/data directories and service
+without needing an existing `current`. Run `box-update <ref>` to bootstrap:
+it builds and trials the ref, skips the pre-update snapshot only when there
+are no SQLite files yet, creates `current` and starts the host. There is no
+`previous` on this first deploy. If it fails after switching, the launcher
+stops the service and clears the links; it keeps any created data and has
+no older binary to restart. The pending record also supports recovery of
+an interrupted first deploy.
+
+`box-update` takes `/run/lock/temp-code-update.lock` before doing any work.
+The history-import wrapper uses the same lock; either refuses at once with
+a maintenance-lock message if the other holds it. Both acquire
+`box-backup.lock` second and keep it through the live switch/import,
+restart, health checks and any rollback. A daily backup can run during the
+build/trial, but cannot race the switch or restart.
+
 `box-update` clones the GitHub repo into a fresh build directory and fetches
 that ref. As agents, it runs `bun install --frozen-lockfile`, installs
 Electron's binary, rebuilds native dependencies, then runs `electron-vite
@@ -440,7 +461,7 @@ After trial success, the launcher takes `VACUUM INTO` snapshots of every live
 SQLite database as agents, checks them, and keeps the last three complete
 snapshot directories under `/srv/agents/backups/pre-update`. Each database
 has its own consistent read transaction; the daily backup and restore drill
-share the snapshot lock. It atomically points `previous` at the old build,
+share the backup lock, held through the restart and health checks. It atomically points `previous` at the old build,
 then `current` at the new build, and restarts `temp-code.service`. It repeats
 all checks on 7677, including version and contract. This is the on-box check;
 the Mac's public-path proof is a separate required operator check:

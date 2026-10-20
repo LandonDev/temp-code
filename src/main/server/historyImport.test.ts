@@ -131,6 +131,16 @@ describe('remapper', () => {
     expect(r.isRoot('/Users/me/Sites/web/')).toBe(true)
     expect(r.isRoot('/Users/me/Sites/web/sub')).toBe(false)
   })
+  it('maps from and to filesystem roots and normalizes slashes', () => {
+    const fromRoot = remapper(parseMapping(JSON.stringify({ roots: { '//': '/srv//' } })))
+    expect(fromRoot.path('/')).toBe('/srv')
+    expect(fromRoot.path('/a//b/')).toBe('/srv/a/b')
+    expect(fromRoot.isRoot('//')).toBe(true)
+    const toRoot = remapper({ roots: { '/src/': '/' }, prefixes: {} })
+    expect(toRoot.path('/src')).toBe('/')
+    expect(toRoot.path('/src/a//b')).toBe('/a/b')
+    expect(toRoot.path('/src-other')).toBe('/src-other')
+  })
   it('parses a mapping file and refuses relative paths', () => {
     const m = parseMapping(JSON.stringify({ roots: { '/a/': '/b' }, prefixes: {} }))
     expect(m.roots).toEqual({ '/a': '/b' })
@@ -239,6 +249,84 @@ describe('importHistory', () => {
     expect(one<{ workspace_id: string }>(dst, 'SELECT workspace_id FROM projects WHERE id = ?', 'p-app').workspace_id).toBe('box-app')
     expect(one<{ workspace_id: string }>(dst, 'SELECT workspace_id FROM projects WHERE id = ?', 'p-wt').workspace_id).toBe('box-app')
     expect(one<{ value: string }>(dst, 'SELECT value FROM settings WHERE key = ?', 'orchestration-rules:box-app').value).toBe('{"max":1}')
+    dst.close()
+  })
+
+  it.each([5, 7])('fills cold seq holes even with %i destination rows', (size) => {
+    seedSource()
+    const dst = open(into)
+    session(dst, 's-web-cold', '/srv/work/web', { cold: 1 })
+    events(dst, 's-web-cold', size, 'cold')
+    dst.exec("UPDATE cold.events SET seq = 99 WHERE session_id = 's-web-cold' AND seq = 3")
+    dst.close()
+    const dry = importHistory({ from, into, mapping: MAPPING, dryRun: true })
+    expect(dry.counts.find((c) => c.table === 'cold.events')?.add).toBe(1)
+    const real = importHistory({ from, into, mapping: MAPPING })
+    expect(real.counts.find((c) => c.table === 'cold.events')?.add).toBe(1)
+    const result = open(into)
+    expect(
+      n(
+        result,
+        "SELECT count(*) AS n FROM cold.events WHERE session_id = 's-web-cold' AND seq BETWEEN 1 AND 5"
+      )
+    ).toBe(5)
+    result.close()
+    expect(
+      importHistory({ from, into, mapping: MAPPING, dryRun: true }).counts.every((c) => c.add === 0)
+    ).toBe(true)
+  })
+
+  it('checks both destination tiers before adding an event', () => {
+    seedSource()
+    const dst = open(into)
+    session(dst, 's-app', '/srv/work/app', { cold: 1 })
+    events(dst, 's-app', 3, 'cold')
+    session(dst, 's-web-cold', '/srv/work/web')
+    events(dst, 's-web-cold', 5, 'main')
+    dst.close()
+    const report = importHistory({ from, into, mapping: MAPPING })
+    expect(report.counts.find((c) => c.table === 'events')?.add).toBe(4)
+    expect(report.counts.find((c) => c.table === 'cold.events')?.add).toBe(0)
+    const result = open(into)
+    expect(n(result, "SELECT count(*) AS n FROM main.events WHERE session_id = 's-app'")).toBe(0)
+    expect(n(result, "SELECT count(*) AS n FROM cold.events WHERE session_id = 's-web-cold'")).toBe(
+      0
+    )
+    result.close()
+  })
+
+  it('pins the source cold snapshot across destination commits', () => {
+    seedSource()
+    let changed = false
+    importHistory({
+      from,
+      into,
+      mapping: MAPPING,
+      log: (line) => {
+        if (!line.startsWith('metadata')) return
+        const src = open(from)
+        src.exec("DELETE FROM cold.events WHERE session_id = 's-web-cold' AND seq = 3")
+        src.close()
+        changed = true
+      }
+    })
+    expect(changed).toBe(true)
+    const dst = open(into)
+    expect(n(dst, "SELECT count(*) AS n FROM cold.events WHERE session_id = 's-web-cold'")).toBe(5)
+    dst.close()
+  })
+
+  it.each(['server.json', 'SingletonLock'])('refuses a live source with %s', (marker) => {
+    seedSource()
+    if (marker === 'server.json')
+      writeFileSync(join(from, marker), JSON.stringify({ pid: process.pid }))
+    else symlinkSync(`${hostname()}-${process.pid}`, join(from, marker))
+    expect(() => importHistory({ from, into, mapping: MAPPING, dryRun: true })).toThrow(
+      /offline source snapshots/
+    )
+    expect(() => importHistory({ from, into, mapping: MAPPING })).toThrow(/still open by a writer/)
+    const dst = open(into)
+    expect(n(dst, 'SELECT count(*) AS n FROM sessions')).toBe(0)
     dst.close()
   })
 
