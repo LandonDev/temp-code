@@ -8,14 +8,17 @@ import Observation
 public final class ClientRegistry {
     public let store: EnvironmentStore
     public private(set) var clients: [String: EnvironmentClient] = [:]
+    /// The phone's APNs token and what each host knows of it (thread L6).
+    public let push: PushRegistrar
     private let cache: SessionCache
     private let make: @MainActor (PairedEnvironment) -> EnvironmentClient
 
     /// - Parameter make: how a client is built for an environment; tests
     ///   inject fake sockets here. The default speaks to the real host.
-    public init(store: EnvironmentStore, cache: SessionCache, make: (@MainActor (PairedEnvironment) -> EnvironmentClient)? = nil) {
+    public init(store: EnvironmentStore, cache: SessionCache, push: PushRegistrar? = nil, make: (@MainActor (PairedEnvironment) -> EnvironmentClient)? = nil) {
         self.store = store
         self.cache = cache
+        self.push = push ?? PushRegistrar()
         let keys = store.keys
         self.make = make ?? { environment in EnvironmentClient(environment: environment, keys: keys, cache: cache) }
     }
@@ -24,6 +27,7 @@ public final class ClientRegistry {
     public func sync() async {
         for environment in store.environments where clients[environment.id] == nil {
             let client = make(environment)
+            client.push = push
             clients[environment.id] = client
             await client.start()
         }

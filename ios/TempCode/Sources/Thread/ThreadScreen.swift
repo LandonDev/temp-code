@@ -12,6 +12,7 @@ struct ThreadScreen: View {
     var targetSeq: Int?
     /// DEBUG proof: only the screen the launch route opened performs `TC_TEST_ACTION`; a screen this one pushed never does.
     var performsLaunchAction = true
+    @Environment(NavigationRouter.self) private var router
     @State private var model: ThreadScreenModel
     @State private var page: Segment?
     @State private var launchPush: LaunchPush?
@@ -102,11 +103,13 @@ struct ThreadScreen: View {
         }
         .onAppear {
             model.visible = true
+            router.visible = ThreadKey(environmentId: client.environment.id, sessionId: sessionId)
             Task { await client.openThread(sessionId) }
             client.markSeen(sessionId)
         }
         .onDisappear {
             model.visible = false
+            if router.visible == ThreadKey(environmentId: client.environment.id, sessionId: sessionId) { router.visible = nil }
             client.markSeen(sessionId)
             client.closeThread(sessionId)
         }

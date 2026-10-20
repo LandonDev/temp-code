@@ -26,6 +26,8 @@ enum TestHooks {
     static let action = env["TC_TEST_ACTION"].flatMap { $0.isEmpty ? nil : $0 }
     /// A sheet to open for the shot: `start` on a planning thread, `new` on Home.
     static let sheet = env["TC_TEST_SHEET"].flatMap { $0.isEmpty ? nil : $0 }
+    /// With `TC_TEST_ROUTE=notification`: "title part|seq", a payload the delegate routes like a tap.
+    static let notification = env["TC_TEST_NOTIFICATION"].flatMap { $0.isEmpty ? nil : $0 }
     #else
     static let segment: Segment? = nil
     static let open: String? = nil
@@ -34,10 +36,11 @@ enum TestHooks {
     static let history = false
     static let action: String? = nil
     static let sheet: String? = nil
+    static let notification: String? = nil
     #endif
     static func recordNavigation(target: Int, item: Int?, oldest: Int?) {
         #if DEBUG
-        guard targetSeq != nil else { return }
+        guard targetSeq != nil || notification != nil else { return }
         writeReport("navigation-report", ["target": target, "item": item ?? -1, "oldest": oldest ?? -1])
         #endif
     }

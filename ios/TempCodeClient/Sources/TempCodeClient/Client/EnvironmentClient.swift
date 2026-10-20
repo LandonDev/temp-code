@@ -78,6 +78,8 @@ public final class EnvironmentClient {
     public let socket: TempCodeSocket
     public let cache: SessionCache
     public let subscriptions: Subscriptions
+    /// The phone's push registrar, when the registry gave it one: told at every open (thread L6).
+    public internal(set) var push: PushRegistrar?
     private let keys: any KeyStore
     private var loops: [Task<Void, Never>] = []
     private var started = false
@@ -135,6 +137,7 @@ public final class EnvironmentClient {
     /// The environment was removed: stop and forget its cache.
     public func remove() async {
         await stop()
+        push?.forget(environment.id)
         try? await cache.clear(environment.id)
         workspaces = []
         projects = []
@@ -385,6 +388,7 @@ public final class EnvironmentClient {
                 threads[id]?.isLive = subscriptions.isLive(id)
             }
             await socket.markFresh(true)
+            await push?.sync(self)
         case .closed:
             subscriptions.sessionChanged()
             for id in Array(historyLoads.keys) { cancelHistory(id) }

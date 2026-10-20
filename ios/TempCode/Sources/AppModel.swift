@@ -4,12 +4,16 @@ import os
 import Observation
 import SwiftUI
 import TempCodeClient
+import UIKit
+import UserNotifications
 
-/// The app's root: the registry of paired hosts, the network monitor, and
-/// the foreground/background signal every socket follows.
+/// The app's root: the registry of paired hosts, the network monitor, the
+/// foreground/background signal every socket follows, and the push glue
+/// (the token to the registrar, a tap to the router).
 @Observable
-final class AppModel {
+final class AppModel: PushHandler {
     let registry: ClientRegistry
+    let router = NavigationRouter()
     private(set) var started = false
     /// The stored hosts have their clients: the shell can tell "no hosts" from "not loaded yet".
     private(set) var ready = false
@@ -39,9 +43,12 @@ final class AppModel {
     func start() async {
         guard !started else { return }
         started = true
+        PushDelegate.handler = self
         await applyLaunchPairing()
         await registry.sync()
         ready = true
+        await refreshPushPermission()
+        if registry.push.enabled, registry.push.permission == .granted { UIApplication.shared.registerForRemoteNotifications() }
         let registry = self.registry
         monitor.pathUpdateHandler = { path in
             let online = path.status == .satisfied
@@ -52,10 +59,57 @@ final class AppModel {
 
     func scenePhaseChanged(_ phase: ScenePhase) async {
         switch phase {
-        case .active: await registry.setForeground(true)
+        case .active:
+            await registry.setForeground(true)
+            await refreshPushPermission()
         case .background: await registry.setForeground(false)
         default: break
         }
+    }
+
+    // MARK: - push
+
+    /// The Settings row: on asks the system once, then registers for a token; off unregisters on every host.
+    func setPushEnabled(_ on: Bool) async {
+        if on {
+            let center = UNUserNotificationCenter.current()
+            let settings = await center.notificationSettings()
+            var granted = settings.authorizationStatus == .authorized || settings.authorizationStatus == .provisional || settings.authorizationStatus == .ephemeral
+            if settings.authorizationStatus == .notDetermined {
+                granted = (try? await center.requestAuthorization(options: [.alert, .sound, .badge])) ?? false
+            }
+            registry.push.setPermission(granted ? .granted : .denied)
+            await registry.push.setEnabled(true, clients: registry.ordered)
+            if granted { UIApplication.shared.registerForRemoteNotifications() }
+        } else {
+            await registry.push.setEnabled(false, clients: registry.ordered)
+        }
+    }
+
+    private func refreshPushPermission() async {
+        let status = await UNUserNotificationCenter.current().notificationSettings().authorizationStatus
+        switch status {
+        case .authorized, .provisional, .ephemeral: registry.push.setPermission(.granted)
+        case .denied: registry.push.setPermission(.denied)
+        default: registry.push.setPermission(.unknown)
+        }
+    }
+
+    func pushToken(_ hex: String) {
+        let device = PushRegistrar.Device(token: hex, bundleId: Bundle.main.bundleIdentifier ?? "dev.landon.tempcode.ios", environment: ProvisioningProfile.apsEnvironment())
+        Task { await registry.push.setDevice(device, clients: registry.ordered) }
+    }
+
+    func pushTokenFailed(_ message: String) {
+        registry.push.setTokenError(message)
+    }
+
+    func pushTapped(_ target: PushTarget) {
+        router.open(target)
+    }
+
+    func pushIsOnScreen(_ target: PushTarget) -> Bool {
+        router.isVisible(target)
     }
 
     /// The simulator proof pairs through the process environment: a link in

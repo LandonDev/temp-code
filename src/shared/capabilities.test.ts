@@ -50,7 +50,8 @@ describe('METHOD_CAPABILITY', () => {
         'project.setAccounts',
         'workspace.setAccounts',
         'linear.setToken',
-        ...methods.filter((m) => m.startsWith('remote.') && !m.startsWith('remote.environments.')),
+        // A phone's own push registration (remote.push.*) is the key's row: read.
+        ...methods.filter((m) => m.startsWith('remote.') && !m.startsWith('remote.environments.') && !m.startsWith('remote.push.')),
         // A credential moves between hosts only under an admin key (thread V).
         'accounts.push',
         'accounts.pull',
@@ -58,6 +59,13 @@ describe('METHOD_CAPABILITY', () => {
         'accounts.released'
       ].sort()
     )
+  })
+})
+
+describe('push registration (thread L6)', () => {
+  it('is read: any paired key registers its own device', () => {
+    expect(methods.filter((m) => m.startsWith('remote.push.')).sort()).toEqual(['remote.push.activity', 'remote.push.register', 'remote.push.status', 'remote.push.unregister'])
+    for (const m of methods.filter((m) => m.startsWith('remote.push.'))) expect(METHOD_CAPABILITY[m as keyof typeof METHOD_CAPABILITY]).toBe('read')
   })
 })
 

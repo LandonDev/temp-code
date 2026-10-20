@@ -4,6 +4,7 @@ import TempCodeClient
 /// Three tabs: Home, Inbox, Search. Settings is a button in the Home bar.
 struct RootView: View {
     @Environment(AppModel.self) private var model
+    @Environment(NavigationRouter.self) private var router
     @AppStorage("appearance") private var appearance = Appearance.system
     @State private var tab = AppTab.home
     @State private var homePath = NavigationPath()
@@ -34,6 +35,17 @@ struct RootView: View {
         }
         .preferredColorScheme(appearance.scheme)
         .task(id: model.ready) { await followLaunchRoute() }
+        // A notification or Live Activity tap: the Home stack becomes the thread, on its card.
+        .onChange(of: router.pending) { _, route in
+            guard let route else { return }
+            tab = .home
+            homePath = NavigationPath()
+            homePath.append(route)
+            router.pending = nil
+        }
+        .onOpenURL { url in
+            if let target = PushTarget(url: url) { router.open(target) }
+        }
     }
 
     @ViewBuilder
@@ -107,6 +119,15 @@ struct RootView: View {
             if let session = wanted.first ?? candidates.first {
                 homePath.append(Route.thread(environmentId: environmentId, sessionId: session.id, seq: TestHooks.targetSeq))
             }
+        case "notification":
+            // The proof's tap: a payload shaped like the hub's, through the delegate's one route.
+            guard let hook = TestHooks.notification else { return }
+            let parts = hook.split(separator: "|", maxSplits: 1).map(String.init)
+            let candidates = client.sessions.filter { $0.parentId == nil }
+            guard let session = candidates.first(where: { $0.title.localizedCaseInsensitiveContains(parts[0]) }) else { return }
+            var tc: [AnyHashable: Any] = ["event": "needs_you", "hostId": "box", "environmentId": environmentId, "threadId": session.id, "ts": 0]
+            if parts.count > 1, let seq = Int(parts[1]) { tc["seq"] = seq }
+            PushDelegate.route(["aps": ["alert": ["title": session.title]], "tc": tc])
         default:
             break
         }

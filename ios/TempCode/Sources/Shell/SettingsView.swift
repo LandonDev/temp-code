@@ -24,14 +24,15 @@ enum Appearance: String, CaseIterable {
     }
 }
 
-/// Settings, from the Home navigation bar: the hosts and the appearance.
-/// Notifications arrive with L6.
+/// Settings, from the Home navigation bar: the hosts, notifications and the appearance.
 struct SettingsView: View {
     @Environment(AppModel.self) private var model
     @AppStorage("appearance") private var appearance = Appearance.system
+    @State private var pushBusy = false
 
     var body: some View {
         let clients = model.registry.ordered
+        let push = model.registry.push
         List {
             Section {
                 NavigationLink(value: Route.hosts) {
@@ -45,6 +46,23 @@ struct SettingsView: View {
                         }
                     }
                 }
+                // One row: the switch, and the registration's state beside it.
+                Toggle(isOn: Binding(get: { push.enabled }, set: { on in
+                    pushBusy = true
+                    Task {
+                        await model.setPushEnabled(on)
+                        pushBusy = false
+                    }
+                })) {
+                    LabeledContent("Notifications") {
+                        Text(push.summary)
+                            .foregroundStyle(.secondary)
+                            .contentTransition(.opacity)
+                            .animation(Motion.crossFade, value: push.summary)
+                    }
+                }
+                .disabled(pushBusy)
+                .accessibilityIdentifier("push-row")
             }
             Section("Appearance") {
                 Picker("Appearance", selection: $appearance) {

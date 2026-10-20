@@ -29,7 +29,10 @@
 #           the key shots in dark too. TC_TEST_CONTROL_URL is the test server's
 #           control panel; the set reads back what landed.
 #   f4      Old and missing search hits, full board history, then the scroll budget.
-#   all     shell, threads, scroll and actions (the default).
+#   push    A notification tap (L6): a payload shaped like the hub's, routed
+#           through the delegate at launch, lands on the named thread's row;
+#           the navigation report proves the seq; Settings shows the row.
+#   all     shell, threads, scroll, actions and push (the default).
 # TC_SIM="TempCode L3" picks a device by name (default iPhone 17 Pro); TC_SIM_UDID one by id.
 #
 # simctl drives it rather than XCUITest: with the Command Line Tools selected
@@ -114,6 +117,7 @@ shot() {
   SIMCTL_CHILD_TC_TEST_SCROLL="${TC_SCROLL_RUN:-}" \
   SIMCTL_CHILD_TC_TEST_ACTION="${TC_ACTION:-}" \
   SIMCTL_CHILD_TC_TEST_SHEET="${TC_SHEET:-}" \
+  SIMCTL_CHILD_TC_TEST_NOTIFICATION="${TC_NOTIFY:-}" \
     xcrun simctl launch --terminate-running-process "$TC_SIM_UDID" "$BUNDLE" >/dev/null
   if [ "${TC_PROOF_PROFILE:-}" = 1 ] && [ "$name" = long-scrolled ]; then
     proof_pid=$(pgrep -f "/CoreSimulator/Devices/$TC_SIM_UDID/data/Containers/Bundle/Application/.*/TempCode.app/TempCode" | head -1)
@@ -345,6 +349,28 @@ if missing:
 PY
 }
 
+# A notification tap lands on the card: the launch feeds the delegate a
+# hub-shaped payload for the named thread and row, the transcript's
+# navigation report says which row it opened on.
+push_set() {
+  appearance light
+  container=$(xcrun simctl get_app_container "$TC_SIM_UDID" "$BUNDLE" data)
+  rm -f "$container/Documents/navigation-report.json"
+  TC_NOTIFY="2,000 rows|41" shot "push-tap-old-row" notification "" "" "" 14
+  cp "$container/Documents/navigation-report.json" "$OUT/push-navigation.json"
+  rm -f "$container/Documents/navigation-report.json"
+  TC_NOTIFY="Run the test suite|0" shot "push-tap-approval" notification "" "" "" 14
+  cp "$container/Documents/navigation-report.json" "$OUT/push-navigation-approval.json" 2>/dev/null || echo '{}' > "$OUT/push-navigation-approval.json"
+  shot "push-settings-row" settings
+  python3 - "$OUT" <<'CHECK'
+import json, pathlib, sys
+out = pathlib.Path(sys.argv[1])
+old = json.loads((out / 'push-navigation.json').read_text())
+assert old['target'] == old['item'] == 41 and old['oldest'] <= 41, old
+print('ios-sim-proof: notification tap landed on row 41 PASS')
+CHECK
+}
+
 # The live steering pass against a real host (scripts/ios-sim-proof-box.ts
 # mints the pairings and the threads): one cheap real turn sent from the
 # phone and its reply, then the app re-paired with a key that may approve,
@@ -375,7 +401,8 @@ case "$SET" in
   box) box_set ;;
   actions) actions_set ;;
   box-actions) box_actions_set ;;
-  all) shell_set; threads_set; scroll_set; actions_set; host_gone_set ;;
+  push) push_set ;;
+  all) shell_set; threads_set; scroll_set; actions_set; push_set; host_gone_set ;;
   *) echo "ios-sim-proof: unknown TC_PROOF_SET $SET" >&2; exit 2 ;;
 esac
 
