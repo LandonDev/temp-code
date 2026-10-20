@@ -1,5 +1,5 @@
 {
-  "n": 254,
-  "notes": "Account sync hardened (F2), iOS replay, search, board and pairing fixes (F4), box-update probe for the key-gated hello",
-  "ts": 1792519253372
+  "n": 255,
+  "notes": "Hub: a Directory Durable Object replaces the KV scans and the per-heartbeat KV mirror; KV lists and writes drop to zero in steady state",
+  "ts": 1792520793895
 }
