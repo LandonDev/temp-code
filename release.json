@@ -1,5 +1,5 @@
 {
-  "n": 261,
-  "notes": "The hub client carries the host's environment id (the box reported 'box' before, and a phone routes a notification tap by the id its saved host is keyed by); the Live Activity coordinator logs each start and end under the activity category and writes a DEBUG activity report for the proofs.",
-  "ts": 1792534771167
+  "n": 262,
+  "notes": "ios-device.sh builds against the connected iPhone's destination so -allowProvisioningDeviceRegistration registers it (a generic build registered nothing and the profiles lacked the phone), finds the device before the build, and survives an empty authentication array under bash 3.2's set -u. The header says the phone needs Developer Mode and how to reveal the hidden item.",
+  "ts": 1792535954782
 }
