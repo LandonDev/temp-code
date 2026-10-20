@@ -29,6 +29,7 @@ import { AccountSync, accountSyncHooks } from './remote/accountSync'
 import { Peers } from './remote/peers'
 import { RemoteAuth } from './remote/auth'
 import { startRemoteListener, type RemoteListener } from './remote/listener'
+import { fenceRequest } from './remote/fence'
 import { createMcpHandler } from './remote/mcp'
 import { Notifier } from './remote/notifier'
 import { deliverWebhooks, webhookPayload } from './remote/webhooks'
@@ -237,6 +238,17 @@ export async function startServer(
     ...registry.listProjects().map((p) => p.cwd),
     ...registry.listWorkspaces().map((w) => w.path)
   ])
+  /** What a remote key may name by path (remote/fence.ts): the media
+   *  roots plus the work root new workspaces go under — unless that is the
+   *  bare home directory, which no key gets to browse. */
+  const managedRoots = (): string[] => {
+    const work = workRoot(store)
+    return [
+      ...registry.listProjects().map((p) => p.cwd),
+      ...registry.listWorkspaces().map((w) => w.path),
+      ...(work.root !== work.home ? [work.root] : [])
+    ]
+  }
   setLimitMissLog(join(options.dataDir ?? dirname(dbPath), 'logs'))
   setCodexBootFailureLog(join(options.dataDir ?? dirname(dbPath), 'logs'))
   setStallLog(join(options.dataDir ?? dirname(dbPath), 'logs'))
@@ -546,6 +558,9 @@ export async function startServer(
       const requestKey = `${connection}:${req.id}`
       trackRequest(requestKey, req.method)
       try {
+        // A remote key names paths only inside the app-managed roots; the
+        // refusal is one typed error that never carries the path.
+        if (principal.kind !== 'local') fenceRequest(req, managedRoots())
         // A pull marks the socket as another host's main process: it hears
         // every later rotation (never a renderer, which never pulls).
         if (req.method === 'accounts.pull') {

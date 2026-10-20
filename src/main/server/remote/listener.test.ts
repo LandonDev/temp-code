@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
@@ -173,6 +173,11 @@ const upgradeStatus = async (
   }
 }
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms))
+/** The hello frame, however loaded the test worker is. */
+const firstFrame = async (sock: Socket): Promise<any> => {
+  for (let i = 0; i < 200 && sock.frames.length === 0; i++) await sleep(25)
+  return sock.frames[0]
+}
 
 describe('public routes', () => {
   it('healthz and hello answer without a credential; hello names the environment', async () => {
@@ -220,8 +225,7 @@ describe('bearer keys', () => {
     expect(minted.status).toBe(200)
     expect(minted.body.expiresIn).toBe(30)
     const sock = await open(`${base.replace('http', 'ws')}/ws?ticket=${minted.body.ticket}`)
-    await sleep(100)
-    expect(sock.frames[0]).toMatchObject({
+    expect(await firstFrame(sock)).toMatchObject({
       push: 'hello',
       environmentId: server.environmentId,
       contract: 1,
@@ -248,6 +252,44 @@ describe('bearer keys', () => {
     ).toBe(401)
     expect(await upgradeStatus(`${base.replace('http', 'ws')}/ws`)).toBe(401)
     sock.ws.close()
+  })
+  it('a key names paths only inside the app-managed roots; the local socket is not fenced (R2 H1/H2)', async () => {
+    const ws = mkdtempSync(join(tmpdir(), 'tc-fence-ws-'))
+    const outside = mkdtempSync(join(tmpdir(), 'tc-fence-out-'))
+    writeFileSync(join(ws, 'inside.txt'), 'inside')
+    writeFileSync(join(outside, 'secret.txt'), 'secret')
+    symlinkSync(join(outside, 'secret.txt'), join(ws, 'link'))
+    await server.registry.createWorkspace(ws, 'fenced')
+    const socketFor = async (caps: string[]): Promise<Socket> => {
+      const { token } = await server.remoteAuth.createKey({ name: 'k', audience: 'client', caps: caps as never, createdBy: 'local' })
+      const minted = await call('POST', '/api/ticket', { headers: bearer(token) })
+      return open(`${base.replace('http', 'ws')}/ws?ticket=${minted.body.ticket}`)
+    }
+    const refused = (method: string): string => `forbidden: ${method} is outside app-managed roots`
+    const reader = await socketFor([])
+    expect((await reader.request('fs.readText', { path: join(ws, 'inside.txt') })).result).toBe('inside')
+    expect((await reader.request('fs.readText', { path: join(outside, 'secret.txt') })).error).toBe(refused('fs.readText'))
+    expect((await reader.request('fs.readText', { path: join(ws, 'link') })).error).toBe(refused('fs.readText'))
+    expect((await reader.request('fs.listPath', { path: outside })).error).toBe(refused('fs.listPath'))
+    expect((await reader.request('fs.statFiles', { paths: [join(ws, 'inside.txt'), join(outside, 'secret.txt')] })).error).toBe(refused('fs.statFiles'))
+    expect((await reader.request('git.log', { cwd: outside })).error).toBe(refused('git.log'))
+    expect((await reader.request('search.project', { options: { cwd: outside, query: 'secret' } })).error).toBe(refused('search.project'))
+    expect((await reader.request('search.project', { options: { cwd: ws, query: 'inside' } })).result.matches).toHaveLength(1)
+    // The capability gate still runs first.
+    expect((await reader.request('fs.writeText', { path: join(ws, 'x.txt'), content: 'x' })).error).toBe('forbidden: fs.writeText needs operate')
+    const operator = await socketFor(['operate'])
+    expect((await operator.request('fs.writeText', { path: join(outside, 'x.txt'), content: 'x' })).error).toBe(refused('fs.writeText'))
+    expect((await operator.request('fs.createPath', { parent: ws, name: '../escape', isDir: true })).error).toBe(refused('fs.createPath'))
+    expect((await operator.request('workspace.create', { path: outside })).error).toBe(refused('workspace.create'))
+    expect((await operator.request('git.clone', { url: 'https://example.invalid/r.git', parent: outside })).error).toBe(refused('git.clone'))
+    expect((await operator.request('fs.writeText', { path: join(ws, 'x.txt'), content: 'x' })).ok).toBe(true)
+    expect(readFileSync(join(ws, 'x.txt'), 'utf8')).toBe('x')
+    // The desktop renderer's loopback socket keeps the whole disk.
+    const local = await open(`ws://127.0.0.1:${server.port}/`)
+    expect((await local.request('fs.readText', { path: join(outside, 'secret.txt') })).result).toBe('secret')
+    for (const s of [reader, operator, local]) s.ws.close()
+    rmSync(ws, { recursive: true, force: true })
+    rmSync(outside, { recursive: true, force: true })
   })
   it('revoking the key closes its live socket', async () => {
     const { key, token } = await server.remoteAuth.createKey({
@@ -366,9 +408,9 @@ describe('pairing', () => {
     const wsUrl = base.replace('http', 'ws') + '/ws'
     expect(await upgradeStatus(wsUrl, { Cookie: cookie, Origin: 'https://evil.example' })).toBe(403)
     const sock = await open(wsUrl, { Cookie: cookie, Origin: base })
-    await sleep(50)
-    expect(sock.frames[0].push).toBe('hello')
-    expect(sock.frames[0].caps).toEqual(['operate', 'read'])
+    const hello = await firstFrame(sock)
+    expect(hello.push).toBe('hello')
+    expect(hello.caps).toEqual(['operate', 'read'])
     expect((await sock.request('session.list', {})).ok).toBe(true)
     // A cookie caller cannot mint tickets, and a cross-site POST is refused.
     expect((await call('POST', '/api/ticket', { headers: { Cookie: cookie } })).status).toBe(400)
