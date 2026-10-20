@@ -27,6 +27,18 @@ extension ThreadType {
         }
     }
 
+    /// The desktop's one-line hint per type (THREAD_HINTS in bits.tsx).
+    nonisolated var hint: String {
+        switch self {
+        case .chat: "Ask questions, explore the code"
+        case .planning: "Produce a plan document to implement from"
+        case .implementation: "Execute a task, todos in focus"
+        case .orchestration: "Spawn and direct subagents"
+        case .research: "Investigate with parallel explorers, produce a cited report"
+        case .unknown: ""
+        }
+    }
+
     var tint: Color {
         switch self {
         case .chat: Tint.info

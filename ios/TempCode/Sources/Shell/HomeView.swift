@@ -13,6 +13,9 @@ struct HomeView: View {
     @State private var cues: [String: HomeModel.Cue] = [:]
     @State private var adding = false
     @State private var pairingAgain: PairedEnvironment?
+    /// The workspace (and project) a new thread is being composed for.
+    @State private var composing: NewThreadTarget?
+    @State private var launched = false
 
     private var folded: Set<String> {
         Set(foldedRaw.split(separator: "\n").map(String.init))
@@ -29,12 +32,13 @@ struct HomeView: View {
             } else {
                 List {
                     ForEach(rows) { row in
-                        HomeRowView(row: row, cue: cue(for: row), path: $path, fold: toggleFold, pairAgain: { pairingAgain = $0 })
+                        HomeRowView(row: row, cue: cue(for: row), path: $path, fold: toggleFold, pairAgain: { pairingAgain = $0 }, newThread: { composing = NewThreadTarget(client: $0, workspace: $1, project: $2) })
                     }
                 }
                 .listStyle(.plain)
                 .animation(Motion.rowAppear, value: rows.map(\.id))
                 .task(id: needsKey(rows)) { await loadLines(rows) }
+                .task(id: clients.first?.hasShell) { await performLaunch(clients) }
             }
         }
         .navigationTitle("Home")
@@ -45,6 +49,26 @@ struct HomeView: View {
         }
         .sheet(isPresented: $adding) { AddEnvironmentSheet() }
         .sheet(item: $pairingAgain) { AddEnvironmentSheet(replacing: $0) }
+        .sheet(item: $composing) { target in
+            NewThreadSheet(client: target.client, workspace: target.workspace, project: target.project) { created in
+                path.append(Route.thread(environmentId: target.client.environment.id, sessionId: created.id, seq: nil))
+            }
+        }
+    }
+
+    /// DEBUG only: the proof opens the new-thread sheet, or creates a chat in the first workspace and opens it.
+    private func performLaunch(_ clients: [EnvironmentClient]) async {
+        guard let client = clients.first, client.hasShell, let workspace = client.workspaces.first else { return }
+        if TestHooks.sheet == "new", composing == nil {
+            composing = NewThreadTarget(client: client, workspace: workspace, project: nil)
+        } else if TestHooks.action == "new-chat", !launched {
+            launched = true
+            guard let catalog = await client.loadCatalog(), let provider = CatalogChoice.providerOrder.compactMap({ catalog[$0.rawValue] }).first else { return }
+            let draft = ThreadDraft.thread(type: .chat, workspaceId: workspace.id, projectId: nil, provider: provider.id, model: provider.defaultModel, reasoning: nil, permission: nil)
+            if let created = try? await client.createThread(draft) {
+                path.append(Route.thread(environmentId: client.environment.id, sessionId: created.id, seq: nil))
+            }
+        }
     }
 
     private func toggleFold(_ client: EnvironmentClient, _ workspace: WorkspaceMeta) {
@@ -84,6 +108,7 @@ private struct HomeRowView: View {
     @Binding var path: NavigationPath
     let fold: (EnvironmentClient, WorkspaceMeta) -> Void
     let pairAgain: (PairedEnvironment) -> Void
+    let newThread: (EnvironmentClient, WorkspaceMeta, ProjectMeta?) -> Void
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
@@ -105,24 +130,31 @@ private struct HomeRowView: View {
             .listRowBackground(Surface.needsYou)
             .transition(Motion.appear(reduced: reduceMotion))
         case .running(let client, let meta):
-            threadButton(client, meta.id, ThreadRowModel(session: meta))
+            threadButton(client, meta, ThreadRowModel(session: meta))
         case .host(let client):
             HostHeader(client: client)
                 .listRowInsets(EdgeInsets())
                 .listRowSeparator(.hidden)
         case .workspace(let client, let workspace, let collapsed):
-            Button { fold(client, workspace) } label: {
-                WorkspaceHeaderRow(client: client, workspace: workspace, collapsed: collapsed)
+            HStack(spacing: 0) {
+                Button { fold(client, workspace) } label: {
+                    WorkspaceHeaderRow(client: client, workspace: workspace, collapsed: collapsed)
+                }
+                .buttonStyle(.pressable)
+                NewThreadButton { newThread(client, workspace, nil) }
             }
-            .buttonStyle(.pressable)
             .listRowInsets(rowInsets)
             .listRowSeparator(.hidden)
-        case .project(_, let group):
-            SectionHeader(group.project.name, branch: group.project.branch, worktree: group.project.mode == .worktree)
-                .listRowInsets(EdgeInsets())
-                .listRowSeparator(.hidden)
+        case .project(let client, let group):
+            SectionHeader(group.project.name, branch: group.project.branch, worktree: group.project.mode == .worktree) {
+                if let workspace = client.workspaces.first(where: { $0.id == group.project.workspaceId }) {
+                    NewThreadButton { newThread(client, workspace, group.project) }
+                }
+            }
+            .listRowInsets(EdgeInsets())
+            .listRowSeparator(.hidden)
         case .thread(let client, let item):
-            threadButton(client, item.id, ThreadRowModel(session: item.meta, unseen: item.unseen))
+            threadButton(client, item.meta, ThreadRowModel(session: item.meta, unseen: item.unseen))
         case .moreAgents(let client, let root, let hidden):
             Button { open(client, root.id) } label: {
                 DimRow(hidden == 1 ? "1 more subagent" : "\(hidden) more subagents")
@@ -153,12 +185,39 @@ private struct HomeRowView: View {
         path.append(Route.thread(environmentId: client.environment.id, sessionId: sessionId, seq: seq))
     }
 
-    private func threadButton(_ client: EnvironmentClient, _ sessionId: String, _ model: ThreadRowModel) -> some View {
-        Button { open(client, sessionId) } label: {
+    private func threadButton(_ client: EnvironmentClient, _ meta: SessionMeta, _ model: ThreadRowModel) -> some View {
+        Button { open(client, meta.id) } label: {
             ThreadRow(row: model)
         }
         .buttonStyle(.pressable)
         .listRowInsets(rowInsets)
+        .threadRowActions(client: client, meta: meta)
+    }
+}
+
+/// Where a new thread goes: the workspace, and the project when one was chosen.
+struct NewThreadTarget: Identifiable {
+    let client: EnvironmentClient
+    let workspace: WorkspaceMeta
+    let project: ProjectMeta?
+
+    var id: String { "\(client.environment.id):\(workspace.id):\(project?.id ?? "")" }
+}
+
+/// The plus at the end of a workspace or project header: a new thread there.
+struct NewThreadButton: View {
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: "plus")
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .frame(width: 32, height: 30)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.pressable)
+        .accessibilityLabel("New thread")
     }
 }
 

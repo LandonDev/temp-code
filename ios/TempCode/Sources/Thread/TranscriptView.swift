@@ -20,7 +20,7 @@ struct TranscriptView: View {
     static let page = 75
 
     var body: some View {
-        let entries = thread.fold.items
+        let entries = thread.entries
         let shown = entries.count > window ? Array(entries.suffix(window)) : entries
         let moreAbove = entries.count > window || thread.moreBefore
         ScrollViewReader { proxy in

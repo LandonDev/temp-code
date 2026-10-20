@@ -17,10 +17,18 @@ enum TestHooks {
     /// Scrolls the whole transcript top and back while a display link
     /// records every frame; the report lands in Documents/scroll-report.json.
     static let scroll = env["TC_TEST_SCROLL"] == "1"
+    /// An action the thread screen performs once its rows are in, through the
+    /// same calls the buttons make: `send:<text>`, `stop`, `approve`, `deny`,
+    /// `answer:<label>`, `start-build`, `rename:<title>`, `pin`, `archive`.
+    static let action = env["TC_TEST_ACTION"].flatMap { $0.isEmpty ? nil : $0 }
+    /// A sheet to open for the shot: `start` on a planning thread, `new` on Home.
+    static let sheet = env["TC_TEST_SHEET"].flatMap { $0.isEmpty ? nil : $0 }
     #else
     static let segment: Segment? = nil
     static let open: String? = nil
     static let scroll = false
+    static let action: String? = nil
+    static let sheet: String? = nil
     #endif
 }
 

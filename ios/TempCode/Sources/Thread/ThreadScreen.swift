@@ -5,7 +5,7 @@ import TempCodeContract
 /// Where every thread opens. One header for every type; below it the type
 /// decides the body: a transcript for chats and subagents, two swipeable
 /// segments for the four board types. At the bottom the 28 pt working strip
-/// over the composer bar, both reserved for L5 so nothing shifts when they land.
+/// over the composer bar (Composer.swift, WorkingStrip.swift).
 struct ThreadScreen: View {
     let client: EnvironmentClient
     let sessionId: String
@@ -13,6 +13,10 @@ struct ThreadScreen: View {
     @State private var model: ThreadScreenModel
     @State private var page: Segment?
     @State private var launchPush: LaunchPush?
+    /// A thread this screen created (a build from the plan), pushed over it.
+    @State private var pushed: ThreadScreenRoute?
+    @State private var starting = false
+    @State private var acted = false
 
     init(client: EnvironmentClient, sessionId: String, targetSeq: Int? = nil) {
         self.client = client
@@ -37,8 +41,26 @@ struct ThreadScreen: View {
             }
         }
         .background(Surface.background)
-        .safeAreaInset(edge: .bottom, spacing: 0) { BottomDock(session: session) }
-        .toolbar { ToolbarItem(placement: .principal) { ThreadHeader(session: session) } }
+        .safeAreaInset(edge: .bottom, spacing: 0) { BottomDock(client: client, sessionId: sessionId, session: session, thread: thread) }
+        .toolbar {
+            ToolbarItem(placement: .principal) { ThreadHeader(session: session) }
+            if let session, session.threadType == .planning, session.parentId == nil, phase.planHasContent, !phase.running, session.status != .waiting {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Start") { starting = true }
+                        .font(.subheadline.weight(.semibold))
+                        .disabled(client.operateBlock != nil)
+                        .accessibilityHint(client.operateBlock.map { $0.text(now: Date().timeIntervalSince1970 * 1000) } ?? "Start building this plan")
+                }
+            }
+        }
+        .sheet(isPresented: $starting) {
+            if let session {
+                StartBuildSheet(client: client, plan: session, document: model.document) { built in
+                    pushed = ThreadScreenRoute(sessionId: built.id)
+                }
+            }
+        }
+        .navigationDestination(item: $pushed) { route in ThreadScreen(client: client, sessionId: route.sessionId) }
         // The composer docks where the tab bar would float: the tabs wait behind the back button.
         .toolbar(.hidden, for: .tabBar)
         .navigationBarTitleDisplayMode(.inline)
@@ -82,6 +104,51 @@ struct ThreadScreen: View {
         }
         .task(id: "\(session?.planPath ?? "")|\(phase.running)") {
             await model.poll(client: client, path: session?.planPath, running: phase.running)
+        }
+        .task(id: thread.isLoading) {
+            // DEBUG only: the proof asks for one action once the rows are in.
+            guard let action = TestHooks.action, !thread.isLoading, !thread.rows.isEmpty, !acted, let session else { return }
+            acted = true
+            await perform(action, session: session, thread: thread)
+        }
+        .onChange(of: thread.isLoading, initial: true) {
+            if TestHooks.sheet == "start", session?.threadType == .planning, !thread.isLoading, !starting { starting = true }
+        }
+    }
+
+    /// The proof's action through the same calls the buttons make.
+    private func perform(_ action: String, session: SessionMeta, thread: ThreadState) async {
+        let parts = action.split(separator: ":", maxSplits: 1).map(String.init)
+        let argument = parts.count > 1 ? parts[1] : ""
+        switch parts[0] {
+        case "send":
+            try? await client.send(sessionId, text: argument)
+        case "stop":
+            try? await client.stop(sessionId)
+        case "approve", "deny":
+            if let approval = thread.fold.items.lazy.compactMap({ entry -> ApprovalItem? in
+                if case .approval(let a) = entry.item, a.allowed == nil { return a } else { return nil }
+            }).last {
+                try? await client.approve(sessionId, requestId: approval.request.requestId, allow: parts[0] == "approve")
+            }
+        case "answer":
+            if let question = thread.fold.items.lazy.compactMap({ entry -> QuestionItem? in
+                if case .question(let q) = entry.item, !q.resolved { return q } else { return nil }
+            }).last {
+                try? await client.answer(sessionId, requestId: question.request.requestId, answers: question.request.questions.map { _ in [argument] })
+            }
+        case "start-build":
+            let tasks = PlanDoc.tasks(PlanDoc.sections(model.document ?? "")).count
+            let draft = ThreadDraft.build(from: session, type: .implementation, provider: session.provider, model: session.model, reasoning: session.reasoning, tasks: tasks)
+            if let built = try? await client.createThread(draft) { pushed = ThreadScreenRoute(sessionId: built.id) }
+        case "rename":
+            try? await client.rename(sessionId, title: argument)
+        case "pin":
+            try? await client.setPinned(sessionId, true)
+        case "archive":
+            try? await client.setArchived(sessionId, true)
+        default:
+            break
         }
     }
 
@@ -359,90 +426,5 @@ private struct ThreadHeader: View {
         guard let session else { return "Thread" }
         if session.title.isEmpty { return session.parentId == nil ? "Untitled" : "Subagent" }
         return session.title
-    }
-}
-
-// MARK: - the bottom dock, reserved for L5
-
-/// The 28 pt working strip over the composer bar. The strip never changes
-/// height; the bar is a placeholder the composer replaces in place.
-private struct BottomDock: View {
-    let session: SessionMeta?
-
-    var body: some View {
-        VStack(spacing: 0) {
-            WorkingStrip(session: session)
-            ComposerPlaceholder()
-        }
-        .background(.bar)
-    }
-}
-
-private struct WorkingStrip: View {
-    let session: SessionMeta?
-
-    var body: some View {
-        HStack(spacing: 8) {
-            switch session?.status {
-            case .running?, .starting?:
-                ProgressView()
-                    .controlSize(.mini)
-                Text(flavour)
-                    .foregroundStyle(.secondary)
-                Spacer(minLength: 0)
-                TimelineView(.periodic(from: .now, by: 1)) { context in
-                    Text(TimeFormat.elapsed(since: session?.busySince ?? session?.updatedAt ?? 0, now: context.date))
-                        .monospacedDigit()
-                        .foregroundStyle(.tertiary)
-                        .contentTransition(.numericText())
-                }
-            case .waiting?:
-                Image(systemName: "exclamationmark.circle.fill")
-                    .foregroundStyle(Tint.warning)
-                Text("Needs you")
-                    .foregroundStyle(Tint.warning)
-                Spacer(minLength: 0)
-            case .paused?:
-                Image(systemName: "pause.fill")
-                    .foregroundStyle(Tint.warning)
-                Text("Paused")
-                    .foregroundStyle(Tint.warning)
-                Spacer(minLength: 0)
-            default:
-                Spacer(minLength: 0)
-            }
-        }
-        .font(.footnote)
-        .padding(.horizontal, 16)
-        .frame(height: 28)
-    }
-
-    private var flavour: String {
-        switch session?.activityKind {
-        case .think?: "Thinking"
-        case .investigate?: "Looking"
-        case .edit?: "Editing"
-        default: session?.status == .starting ? "Starting" : "Working"
-        }
-    }
-}
-
-private struct ComposerPlaceholder: View {
-    @Environment(\.displayScale) private var scale
-
-    var body: some View {
-        HStack {
-            Text("Message")
-                .foregroundStyle(.tertiary)
-            Spacer(minLength: 0)
-        }
-        .font(.body)
-        .padding(.horizontal, 12)
-        .frame(height: 40)
-        .background(Surface.chrome, in: RoundedRectangle(cornerRadius: Radius.field, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: Radius.field, style: .continuous).strokeBorder(Surface.hairline, lineWidth: 1 / scale))
-        .padding(.horizontal, 12)
-        .padding(.bottom, 8)
-        .accessibilityHidden(true)
     }
 }

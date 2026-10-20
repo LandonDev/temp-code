@@ -82,5 +82,20 @@ struct ThreadButton: View {
         }
         .buttonStyle(.pressable)
         .listRowInsets(rowInsets)
+        .modifier(RowActionsIfKnown(client: client, sessionId: sessionId))
+    }
+}
+
+/// The row actions when the client still lists the thread.
+private struct RowActionsIfKnown: ViewModifier {
+    let client: EnvironmentClient
+    let sessionId: String
+
+    func body(content: Content) -> some View {
+        if let meta = client.session(sessionId) {
+            content.threadRowActions(client: client, meta: meta)
+        } else {
+            content
+        }
     }
 }

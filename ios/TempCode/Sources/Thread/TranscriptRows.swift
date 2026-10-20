@@ -28,9 +28,9 @@ struct TranscriptRow: View {
                 ToolChip(tool: tool, client: client, sessionId: sessionId)
             }
         case .question(let question):
-            QuestionCard(question: question)
+            QuestionCard(question: question, client: client, sessionId: sessionId)
         case .approval(let approval):
-            ApprovalCard(approval: approval)
+            ApprovalCard(approval: approval, client: client, sessionId: sessionId)
         case .compaction(let compaction):
             CompactionLine(compaction: compaction)
         case .system(let line):
@@ -207,20 +207,34 @@ struct ThreadCard<Content: View>: View {
     }
 }
 
-/// An approval with its decided state. The buttons are L5's; here they say what will be asked.
+/// An approval with its decided state. Undecided, it asks with Deny and
+/// Allow; a decision shows at once and reverts if the host refuses. A key
+/// that cannot approve sees the card read-only with one line saying why.
 struct ApprovalCard: View {
     let approval: ApprovalItem
+    let client: EnvironmentClient
+    let sessionId: String
+    @State private var busy = false
+    @State private var failure: String?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    /// The host's decision, else this device's until the host confirms.
+    private var decided: Bool? {
+        approval.allowed ?? client.threads[sessionId]?.decisions[approval.request.requestId]
+    }
 
     var body: some View {
-        ThreadCard(tinted: approval.allowed == nil) {
+        let decided = decided
+        let block = client.approveBlock
+        ThreadCard(tinted: decided == nil) {
             VStack(alignment: .leading, spacing: 10) {
                 HStack(spacing: 8) {
-                    Image(systemName: symbol)
+                    Image(systemName: symbol(decided))
                         .font(.footnote)
-                        .foregroundStyle(tint)
-                    Text(heading)
+                        .foregroundStyle(tint(decided))
+                    Text(heading(decided))
                         .font(.subheadline.weight(.medium))
-                        .foregroundStyle(approval.allowed == nil ? .primary : .secondary)
+                        .foregroundStyle(decided == nil ? .primary : .secondary)
                     Spacer(minLength: 0)
                 }
                 Text(approval.request.title ?? approval.request.toolName)
@@ -232,43 +246,75 @@ struct ApprovalCard: View {
                         .foregroundStyle(.secondary)
                         .lineLimit(4)
                 }
-                if approval.allowed == nil {
-                    HStack(spacing: 8) {
-                        Button {} label: {
-                            Text("Deny").frame(maxWidth: .infinity)
+                if decided == nil {
+                    if let block, !block.isTransient {
+                        Text(block.text(now: Date().timeIntervalSince1970 * 1000))
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        HStack(spacing: 8) {
+                            Button { decide(false) } label: {
+                                Text("Deny").frame(maxWidth: .infinity)
+                            }
+                            .buttonStyle(.bordered)
+                            Button { decide(true) } label: {
+                                Text("Allow").frame(maxWidth: .infinity)
+                            }
+                            .buttonStyle(.borderedProminent)
                         }
-                        .buttonStyle(.bordered)
-                        Button {} label: {
-                            Text("Allow").frame(maxWidth: .infinity)
+                        .controlSize(.regular)
+                        .disabled(busy || block != nil)
+                        if let block {
+                            Text(block.text(now: Date().timeIntervalSince1970 * 1000))
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
                         }
-                        .buttonStyle(.borderedProminent)
                     }
-                    .controlSize(.regular)
-                    .disabled(true)
+                }
+                if let failure {
+                    Text(failure)
+                        .font(.footnote)
+                        .foregroundStyle(Tint.destructive)
                 }
             }
         }
-        .accessibilityElement(children: .combine)
+        .animation(reduceMotion ? nil : Motion.collapse, value: decided == nil)
+        .animation(Motion.crossFade, value: failure)
+        .accessibilityElement(children: .contain)
     }
 
-    private var heading: String {
-        switch approval.allowed {
+    private func decide(_ allow: Bool) {
+        guard !busy else { return }
+        busy = true
+        failure = nil
+        Task {
+            defer { busy = false }
+            do {
+                try await client.approve(sessionId, requestId: approval.request.requestId, allow: allow)
+            } catch {
+                failure = (error as? ActionError)?.message ?? String(describing: error)
+            }
+        }
+    }
+
+    private func heading(_ decided: Bool?) -> String {
+        switch decided {
         case nil: "Approve"
         case true?: approval.auto ? "Allowed by policy" : "Allowed"
         case false?: approval.auto ? "Denied by policy" : "Denied"
         }
     }
 
-    private var symbol: String {
-        switch approval.allowed {
+    private func symbol(_ decided: Bool?) -> String {
+        switch decided {
         case nil: "shield"
         case true?: "checkmark.shield"
         case false?: "xmark.shield"
         }
     }
 
-    private var tint: Color {
-        switch approval.allowed {
+    private func tint(_ decided: Bool?) -> Color {
+        switch decided {
         case nil: Tint.warning
         case true?: Tint.success
         case false?: Tint.destructive
@@ -285,12 +331,33 @@ struct ApprovalCard: View {
     }
 }
 
-/// A question with its options; the chosen ones once answered.
+/// A question with its options: tap to choose (one, or several when the
+/// question allows), type when it takes free text, then Answer sends the
+/// whole set. Once answered, the chosen ones stay marked. A key that
+/// cannot act sees the card read-only with one line saying why.
 struct QuestionCard: View {
     let question: QuestionItem
+    let client: EnvironmentClient
+    let sessionId: String
+    @State private var picks: [Int: [String]] = [:]
+    @State private var typed: [Int: String] = [:]
+    @State private var busy = false
+    @State private var failure: String?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    /// The host's answers, else this device's until the host confirms.
+    private var answers: [[String]]? {
+        question.answers ?? client.threads[sessionId]?.answers[question.request.requestId]
+    }
+
+    private var resolved: Bool { question.resolved || answers != nil }
 
     var body: some View {
-        ThreadCard(tinted: !question.resolved) {
+        let answers = answers
+        let resolved = resolved
+        let block = client.operateBlock
+        let readOnly = resolved || block != nil
+        ThreadCard(tinted: !resolved) {
             VStack(alignment: .leading, spacing: 12) {
                 ForEach(Array(question.request.questions.enumerated()), id: \.offset) { index, spec in
                     VStack(alignment: .leading, spacing: 8) {
@@ -301,34 +368,118 @@ struct QuestionCard: View {
                         }
                         Text(spec.question)
                             .font(.subheadline.weight(.medium))
-                        let chosen = Set(question.answers?[safe: index] ?? [])
+                        let chosen = Set(answers?[safe: index] ?? picks[index] ?? [])
                         ForEach(Array(spec.options.enumerated()), id: \.offset) { _, option in
                             let picked = chosen.contains(option.label)
-                            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                                Image(systemName: picked ? "checkmark.circle.fill" : "circle")
-                                    .font(.footnote)
-                                    .foregroundStyle(picked ? Tint.success : Color(.tertiaryLabel))
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(option.label)
-                                        .font(.subheadline)
-                                        .foregroundStyle(question.resolved && !picked ? .secondary : .primary)
-                                    if let description = option.description, !description.isEmpty {
-                                        Text(description)
-                                            .font(.footnote)
-                                            .foregroundStyle(.secondary)
+                            Button {
+                                pick(option.label, in: index, multi: spec.multiSelect == true)
+                            } label: {
+                                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                                    Image(systemName: picked ? "checkmark.circle.fill" : "circle")
+                                        .font(.footnote)
+                                        .foregroundStyle(picked ? Tint.success : Color(.tertiaryLabel))
+                                        .contentTransition(.symbolEffect(.replace))
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(option.label)
+                                            .font(.subheadline)
+                                            .foregroundStyle(resolved && !picked ? .secondary : .primary)
+                                        if let description = option.description, !description.isEmpty {
+                                            Text(description)
+                                                .font(.footnote)
+                                                .foregroundStyle(.secondary)
+                                        }
                                     }
+                                    Spacer(minLength: 0)
                                 }
+                                .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.pressable)
+                            .disabled(readOnly)
+                            .accessibilityAddTraits(picked ? .isSelected : [])
+                        }
+                        if spec.allowFreeform == true, !resolved {
+                            TextField("Other", text: Binding(get: { typed[index] ?? "" }, set: { typed[index] = $0 }), axis: .vertical)
+                                .font(.subheadline)
+                                .lineLimit(1...4)
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 7)
+                                .background(Surface.background, in: RoundedRectangle(cornerRadius: Radius.row, style: .continuous))
+                                .disabled(readOnly)
+                        } else if resolved, let free = answers?[safe: index]?.first(where: { label in !spec.options.contains { $0.label == label } }) {
+                            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                                Image(systemName: "checkmark.circle.fill")
+                                    .font(.footnote)
+                                    .foregroundStyle(Tint.success)
+                                Text(free)
+                                    .font(.subheadline)
                             }
                         }
                     }
                 }
-                if !question.resolved {
-                    Button {} label: {
-                        Text("Answer").frame(maxWidth: .infinity)
+                if !resolved {
+                    if let block, !block.isTransient {
+                        Text(block.text(now: Date().timeIntervalSince1970 * 1000))
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        Button { submit() } label: {
+                            Text("Answer").frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.regular)
+                        .disabled(busy || block != nil || !complete)
+                        if let block {
+                            Text(block.text(now: Date().timeIntervalSince1970 * 1000))
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                        }
                     }
-                    .buttonStyle(.borderedProminent)
-                    .disabled(true)
                 }
+                if let failure {
+                    Text(failure)
+                        .font(.footnote)
+                        .foregroundStyle(Tint.destructive)
+                }
+            }
+        }
+        .animation(reduceMotion ? nil : Motion.collapse, value: resolved)
+        .animation(Motion.crossFade, value: failure)
+    }
+
+    /// Every question has a choice or typed text.
+    private var complete: Bool {
+        question.request.questions.indices.allSatisfy { index in
+            !(picks[index] ?? []).isEmpty || !(typed[index] ?? "").trimmingCharacters(in: .whitespaces).isEmpty
+        }
+    }
+
+    private func pick(_ label: String, in index: Int, multi: Bool) {
+        var current = picks[index] ?? []
+        if let at = current.firstIndex(of: label) {
+            current.remove(at: at)
+        } else if multi {
+            current.append(label)
+        } else {
+            current = [label]
+        }
+        picks[index] = current
+    }
+
+    private func submit() {
+        guard !busy else { return }
+        let set = question.request.questions.indices.map { index -> [String] in
+            let chosen = picks[index] ?? []
+            let text = (typed[index] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            return chosen.isEmpty ? [text] : chosen
+        }
+        busy = true
+        failure = nil
+        Task {
+            defer { busy = false }
+            do {
+                try await client.answer(sessionId, requestId: question.request.requestId, answers: set)
+            } catch {
+                failure = (error as? ActionError)?.message ?? String(describing: error)
             }
         }
     }
