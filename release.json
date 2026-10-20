@@ -1,5 +1,5 @@
 {
-  "n": 259,
-  "notes": "Live Activity for a running thread (thread L6): started on the phone, pushed by the host, ended when the thread settles. ios/TempCode/Sources/Push/ActivityCoordinator.swift starts the TempCodeActivity extension's activity when the person sends a turn (ComposerBar) or watches a running root thread (ThreadScreen), hands every push token Apple issues to the host over remote.push.activity, follows the host's session metas while the socket is up (the strip's phase, busySince and the state's time), ends the activity with the final state kept two minutes when the thread goes idle, waiting or errored, tells the host the token is gone, and on launch adopts the activities an earlier run left for threads that still run and ends the rest. ActivityKit's update and end run through nonisolated helpers that find the activity by id; the shared attributes and content state are nonisolated. ios/TempCodeClient: EnvironmentClient.sessionObserver hears every session meta a host sends and ClientRegistry.setSessionObserver fans it to every client, now and for hosts paired later. Package tests 152, the app builds for the simulator with the extension embedded.",
-  "ts": 1792533633377
+  "n": 260,
+  "notes": "Docs for L6: CLAUDE.md's iOS section (push, the Live Activity, the device build, the DEBUG hook), ios/TempCodeClient/README.md's Push section in place of the L4 placeholder, infra/hub/README.md's APNs section and the device and activity routes, and docs/IOS-DESIGN.md's L6 row marked landed.",
+  "ts": 1792533728481
 }
