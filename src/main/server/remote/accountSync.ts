@@ -535,6 +535,26 @@ export class AccountSync {
   }
 
   /**
+   * For the one-year token mint (aliax/staticTokens.ts): the grant back from
+   * the host that refreshes it, over the takeOver pull above. Null once this
+   * host holds it; otherwise why not, naming the host, for the row.
+   */
+  async takeBack(service: ServiceId, name: string, owner: string): Promise<string | null> {
+    const link = this.deps.peers.get(owner)
+    const host = link?.env.name ?? owner
+    if (!link?.connected) return `${host}, which refreshes the grant, is not connected`
+    try {
+      const out = await this.takeOver(service, name, owner)
+      const p = vault.profiles(service).find((x) => x.name === name)
+      if (p && ownsProfile(p) && this.holdsRefresh(service, name)) return null
+      if (p && !p.static && this.holdsRefresh(service, name)) return `${host} has not released the grant yet`
+      return `${host} kept the grant${out && !out.ok ? ` (${out.reason})` : ''}`
+    } catch (err) {
+      return `${host} did not hand the grant back (${(err as Error).message})`
+    }
+  }
+
+  /**
    * A host with no live sign-in for a service (the box) makes what it was
    * given the live one, so its CLI children can start; a static token
    * replaces a live copy that is only a consumer's (it lapses when the owner

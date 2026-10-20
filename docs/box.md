@@ -388,7 +388,14 @@ temp-code `src/main/server/remote/{peers,accountSync}.ts`):
   profile holding the rotated grant. "Convert all to one-year tokens" on the
   Claude panel walks every account not yet converted (and every token inside
   its last 30 days), each row showing its progress; a row whose session has
-  lapsed opens the ordinary in-app sign-in with the address pre-filled. The
+  lapsed opens the ordinary in-app sign-in with the address pre-filled. An
+  account whose grant the box refreshes (handed over before the conversion)
+  is taken back first over the Mac's link, the same takeOver pull as moving
+  Refreshed by to the Mac (provisional landing, confirm, the box strips),
+  and minted from the grant; with the box out of reach the stored session
+  and the sign-in window mint instead, and the row names the box when those
+  fail too. The box has no page to convert on, so nothing ever says to
+  convert it there. The
   row menu keeps the single-account action. Renewal needs no clicks: on
   boot and every six hours each token inside its last 30 days is minted
   again through its stored session (once a day at most while that fails);

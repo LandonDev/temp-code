@@ -156,7 +156,13 @@ routed to (aliax-core's `forward`). Two listeners:
   `expires_in: 31536000` to the ordinary code exchange or to a refresh_token
   grant; the token response names its account and a token is filed only
   under that account. "Convert all to one-year tokens" on the Claude panel
-  converts every account; tokens inside their last 30 days renew on their
+  converts every account; a grant another host refreshes (the box, from an
+  earlier handoff) is taken back first over the peer link (`AccountSync.
+  takeBack`: the takeOver pull `accounts.setHome` uses, provisional
+  landing, `accounts.confirm`, the owner strips) and minted from here, a
+  host out of reach leaves the session and the sign-in window to mint, and
+  the row names that host when those fail too (never "convert it there");
+  tokens inside their last 30 days renew on their
   own through the stored claude.ai session (6 h cadence, row + footer say
   "Sign in to renew" when the session is gone); the box's live sign-in is
   the first static token it got and follows that account's renewals. Sign

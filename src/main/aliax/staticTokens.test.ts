@@ -69,6 +69,8 @@ function make(over: Partial<ConstructorParameters<typeof StaticTokens>[0]> = {})
     nudge: vi.fn(),
     changed: vi.fn(),
     syncAll: vi.fn(async () => {}),
+    // The owner host is out of reach unless a test says otherwise.
+    takeBack: vi.fn(async (): Promise<string | null> => 'env_box, which refreshes the grant, is not connected'),
     log: vi.fn(),
     now: () => NOW,
     exchange: vi.fn(async () => minted()),
@@ -165,11 +167,46 @@ describe('StaticTokens.convert', () => {
     expect(vault.profiles('claude-code')[0]).toMatchObject({ accountId: 'u1', email: 'one@x.test', static: true })
   })
 
-  it('a copy another host refreshes is not converted here, and a refresh-route identity mismatch stops the attempt', async () => {
+  it('a grant another host refreshes is taken back over the peer link first, then minted from here', async () => {
     seed('one', grantBlob('A1', null), { owner: 'env_box' })
-    const { tokens, deps } = make()
-    expect(await tokens.convert('one')).toEqual({ ok: false, error: 'the grant is refreshed by another host (env_box); convert it there' })
+    const { tokens, deps } = make({
+      takeBack: vi.fn(async (name: string): Promise<string | null> => {
+        // What AccountSync.takeOver leaves once the owner confirmed: the grant on file, owned here.
+        vault.saveSecret('claude-code', name, grantBlob('A1', 'R1'), 'sync')
+        vault.upsertProfile('claude-code', { ...vault.profiles('claude-code').find((p) => p.name === name)!, owner: 'env_mac' })
+        return null
+      }),
+      mintFromRefresh: vi.fn(async () => ({ ok: true as const, name: 'one', minted: { expiresAt: NOW + YEAR_S * 1000, scopes: ['user:profile', 'user:inference'], account: { uuid: 'u1', email: 'one@x.test' } } }))
+    })
+    expect(await tokens.convert('one')).toMatchObject({ ok: true, name: 'one' })
+    expect(deps.takeBack).toHaveBeenCalledWith('one', 'env_box')
+    expect(deps.mintFromRefresh).toHaveBeenCalledWith('one', expect.anything())
     expect(deps.mintInWindow).not.toHaveBeenCalled()
+    expect(deps.log).toHaveBeenCalledWith('one: took the grant back; minting from it')
+  })
+
+  it('an owner out of reach leaves the stored session to mint; when that fails too the row names the host and what to do here', async () => {
+    seed('one', grantBlob('A1', null), { owner: 'env_box' })
+    const reached = make()
+    expect((await reached.tokens.convert('one')).ok).toBe(true)
+    expect(reached.deps.mintFromRefresh).not.toHaveBeenCalled()
+    expect(reached.windows).toEqual([{ cookies: session, scopes: ['user:profile', 'user:inference'], visible: false }])
+    expect(vault.profiles('claude-code')[0]).toMatchObject({ name: 'one', static: true })
+    expect(reached.deps.log).toHaveBeenCalledWith('one: env_box, which refreshes the grant, is not connected; trying the stored claude.ai session')
+    // No session either, and nobody asked: the row says to sign in here, and why.
+    seed('two', grantBlob('A2', null, null), { accountId: 'u2', email: 'two@x.test', owner: 'env_box' })
+    const quiet = make()
+    expect(await quiet.tokens.convert('two', false)).toEqual({ ok: false, error: 'env_box, which refreshes the grant, is not connected; no claude.ai session is stored for this account' })
+    expect(quiet.tokens.progress()?.rows.two).toEqual({ state: 'needs-sign-in', at: NOW, detail: 'env_box, which refreshes the grant, is not connected; no claude.ai session is stored for this account' })
+    // The user signed in here, as another account: the failure names the host and the account, never the other host's UI.
+    const wrong = make({ exchange: vi.fn(async () => minted({ account: { uuid: 'u9', email: 'nine@x.test' } })) })
+    expect(await wrong.tokens.convert('two', true)).toEqual({ ok: false, error: 'env_box, which refreshes the grant, is not connected; the token belongs to nine@x.test, not two@x.test' })
+    expect(wrong.tokens.progress()?.rows.two).toMatchObject({ state: 'failed' })
+    expect(wrong.windows.map((w) => [w.visible, w.loginHint])).toEqual([[true, 'two@x.test']])
+    expect(vault.profiles('claude-code').find((p) => p.name === 'two')).toMatchObject({ owner: 'env_box' })
+  })
+
+  it('a refresh-route identity mismatch stops the attempt', async () => {
     seed('two', grantBlob(), { accountId: 'u2', email: 'two@x.test' })
     const mismatch = make({ mintFromRefresh: vi.fn(async () => ({ ok: false as const, reason: 'wrong-account' as const, detail: 'the token belongs to nine@x.test, not two@x.test' })) })
     expect(await mismatch.tokens.convert('two')).toEqual({ ok: false, error: 'the token belongs to nine@x.test, not two@x.test' })

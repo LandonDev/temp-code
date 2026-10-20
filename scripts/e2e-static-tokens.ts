@@ -17,6 +17,11 @@
  *    static tokens over the existing sync, its live sign-in untouched
  *  - the usage poll: a token with user:profile reports windows, the
  *    inference-only one says so
+ *  - `four`, a grant B refreshes (handed to the box before Convert all
+ *    existed) with an access copy on A: Convert all on A takes the grant
+ *    back over the peer link (the takeOver pull, confirmed, B strips), mints
+ *    from it without a consent page, and B lands the token; nothing owned
+ *    remains for the account on either host
  *  - a renewal pass: `old` is minted again through its stored session in a
  *    hidden window against the fake consent page (the code lands on the
  *    callback, the exchange carries expires_in for a year), B lands the new
@@ -80,6 +85,7 @@ const accounts: Record<string, Account> = {
   one: { uuid: 'u-one', email: 'one@example.com', refresh: 'R-one-1', session: 'SID-one', yearWithProfile: true, minted: [{ token: 'A-one', scopes: FULL }] },
   two: { uuid: 'u-two', email: 'two@example.com', refresh: 'R-two-1', session: 'SID-two', yearWithProfile: true, minted: [{ token: 'A-two', scopes: FULL }] },
   three: { uuid: 'u-three', email: 'three@example.com', refresh: 'R-three-1', session: 'SID-three', yearWithProfile: false, minted: [{ token: 'A-three', scopes: FULL }] },
+  four: { uuid: 'u-four', email: 'four@example.com', refresh: 'R-four-1', session: 'SID-four', yearWithProfile: true, minted: [{ token: 'A-four', scopes: FULL }] },
   old: { uuid: 'u-old', email: 'old@example.com', refresh: null, session: 'SID-old', yearWithProfile: true, minted: [{ token: 'OAT-old-1', scopes: STATIC }] },
   late: { uuid: 'u-late', email: 'late@example.com', refresh: null, session: 'SID-late', yearWithProfile: true, minted: [{ token: 'OAT-late-1', scopes: STATIC }] },
   gone: { uuid: 'u-gone', email: 'gone@example.com', refresh: null, session: null, yearWithProfile: true, minted: [{ token: 'OAT-gone-1', scopes: STATIC }] }
@@ -234,6 +240,13 @@ const grantBlob = (name: string, access: string, exp: number): string =>
     oauthAccount: { accountUuid: accounts[name].uuid, emailAddress: accounts[name].email },
     appSession: accounts[name].session ? session(accounts[name].session!) : null
   })
+/** The access-only copy a host keeps of a grant another host refreshes: the same blob with no refresh token. */
+const accessBlob = (name: string, access: string, exp: number): string => {
+  const blob = JSON.parse(grantBlob(name, access, exp)) as { keychain: string }
+  const oauth = JSON.parse(blob.keychain).claudeAiOauth as Record<string, unknown>
+  delete oauth.refreshToken
+  return JSON.stringify({ ...blob, keychain: JSON.stringify({ claudeAiOauth: oauth }) })
+}
 const staticBlob = (name: string, token: string, exp: number, sid: string | null): string =>
   JSON.stringify({
     keychain: JSON.stringify({ claudeAiOauth: { accessToken: token, expiresAt: exp, scopes: ['user:profile', 'user:inference'] } }),
@@ -413,7 +426,26 @@ try {
   check('B: the live Claude sign-in is the renewed `old` token, installed a second time; the other static tokens were filed, not made live', liveToken(B) === newOld && logCount(B, 'claude-code: old is the live sign-in here now') === 2 && logCount(B, 'is the live sign-in here now') === 2, `live=${liveToken(B)}`)
   check('B: said so for each token', ['one', 'two', 'three', 'old'].every((n) => logHas(B, `claude-code ${n}: static token from ${aEnv} landed`)))
 
-  // ── 6. the renewal pass on A, the one the scheduler runs: `late` through its stored session, `gone` needs a sign-in ──
+  // ── 6. a grant B refreshes (handed to the box before Convert all existed): Convert all on A takes it back over the peer link, mints, B lands the token ──
+  addProfile(B, row('four'), grantBlob('four', 'A-four', now + 3_600_000))
+  addProfile(A, row('four', { owner: bEnv, syncedAt: now }), accessBlob('four', 'A-four', now + 3_600_000))
+  const beforeFour = { bodies: fake.tokenBodies.length, consents: fake.authorizes.length }
+  // Rows written straight into the vault files reach the snapshot on the next rebuild; the refresh is one.
+  const fourBefore = (await rpc(a, 'accounts.refresh', { provider: 'claude' })) as Snapshot
+  check('A: `four` is an access copy refreshed by B, no refresh token here, the grant on B', profileIn(fourBefore, 'four')?.owner === bEnv && !profileIn(fourBefore, 'four')?.static && readTokens(A, 'four')?.refreshToken === undefined && readTokens(B, 'four')?.refreshToken === 'R-four-1', JSON.stringify(profileIn(fourBefore, 'four')))
+  const resultFour = (await a.eval(`window.aliax.convertStatic()`)) as { ok: boolean; notes?: string[]; error?: string }
+  check('A: Convert all converted `four`, the one candidate left', resultFour.ok === true && resultFour.notes?.[0] === '1 of 1 converted', JSON.stringify(resultFour))
+  const fourGrants = fake.tokenBodies.slice(beforeFour.bodies).filter((g) => g.grant_type === 'refresh_token')
+  check('fake: B\'s grant was presented from A with a one-year expires_in, and no consent page was asked', fourGrants.length === 1 && fourGrants[0].refresh_token === 'R-four-1' && fourGrants[0].expires_in === YEAR_S && fake.authorizes.length === beforeFour.consents, JSON.stringify(fourGrants))
+  check('B: handed the grant out on A\'s pull and stripped its copy on A\'s confirm', logHas(B, `claude-code four: handed out to ${aEnv}, waiting for its word`) && logHas(B, `claude-code four: now refreshed by ${aEnv}, access-only here`))
+  check('A: took the grant back, minted from it, and said so', logHas(A, 'claude-code four: refreshed here now') && logHas(A, '[static-tokens] four: took the grant back; minting from it') && logHas(A, '[static-tokens] four: one-year token filed'))
+  await until('A\'s `four` row settles', 15_000, async () => profileIn(await snapshot(a), 'four')?.static === true)
+  check('A: `four` is a one-year token with no owner and no refresh token', isStatic(A, 'four') && readTokens(A, 'four')?.refreshToken === undefined && aboutAYear(readTokens(A, 'four')?.expiresAt, Date.now()) && profileIn(await snapshot(a), 'four')?.owner === undefined, JSON.stringify(readTokens(A, 'four')))
+  await until('B lands `four` as a static token', 30_000, () => isStatic(B, 'four') && readTokens(B, 'four')?.accessToken === readTokens(A, 'four')?.accessToken)
+  const bFour = profileIn(await snapshot(b), 'four')
+  check('B: the same token landed, nothing owned remains for the account on either host, its live sign-in untouched', bFour?.static === true && bFour?.owner === undefined && readTokens(B, 'four')?.refreshToken === undefined && liveToken(B) === newOld, JSON.stringify(bFour))
+
+  // ── 7. the renewal pass on A, the one the scheduler runs: `late` through its stored session, `gone` needs a sign-in ──
   addProfile(A, row('late', { static: true }), staticBlob('late', 'OAT-late-1', now + 12 * DAY, 'SID-late'))
   addProfile(A, row('gone', { static: true }), staticBlob('gone', 'OAT-gone-1', now + 5 * DAY, 'SID-dead'))
   const authorizesBeforePass = fake.authorizes.length
@@ -427,11 +459,11 @@ try {
   check('A: `gone` is marked needs-sign-in with the reason, and its token is unchanged', afterRenew.providers.claude.mint?.rows.gone?.state === 'needs-sign-in' && afterRenew.providers.claude.mint?.rows.gone?.detail === 'the stored claude.ai session has lapsed' && readTokens(A, 'gone')?.accessToken === 'OAT-gone-1', JSON.stringify(afterRenew.providers.claude.mint))
   check('A: logged both', logHas(A, '[static-tokens] late: renewal done') && logHas(A, '[static-tokens] gone: renewal needs-sign-in (the stored claude.ai session has lapsed)'))
 
-  // ── 7. B lands the renewed and the stranded token alike; nothing on B presents a refresh token; its live sign-in stays `old` ──
+  // ── 8. B lands the renewed and the stranded token alike; nothing on B presents a refresh token; its live sign-in stays `old` ──
   await until('B lands `late` and `gone`', 30_000, () => readTokens(B, 'late')?.accessToken === readTokens(A, 'late')?.accessToken && isStatic(B, 'gone'))
-  check('B: holds every static token, none with a refresh token, and its live sign-in is still `old`', ['old', 'one', 'two', 'three', 'late', 'gone'].every((n) => isStatic(B, n) && readTokens(B, n)?.refreshToken === undefined) && liveToken(B) === newOld)
+  check('B: holds every static token, none with a refresh token, and its live sign-in is still `old`', ['old', 'one', 'two', 'three', 'four', 'late', 'gone'].every((n) => isStatic(B, n) && readTokens(B, n)?.refreshToken === undefined) && liveToken(B) === newOld)
 
-  // ── 8. the renderer on A: the `gone` row says what to do ────────────
+  // ── 9. the renderer on A: the `gone` row says what to do ────────────
   const opened = (await a.eval(`(() => { const el = [...document.querySelectorAll('button,[role=menuitem],[role=button],a')].find((e) => (e.textContent ?? '').trim() === 'Accounts'); if (!el) return false; el.click(); return true })()`)) as boolean
   await sleep(2_000)
   const text = (await a.eval(`document.body.innerText`)) as string

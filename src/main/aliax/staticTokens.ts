@@ -25,7 +25,11 @@ import type { SessionMintInput, SessionMintResult } from './staticMint'
  * One account at a time, two routes:
  *  1. the refresh grant this host holds (aliax-core mintStaticFromRefresh):
  *     a refresh_token grant with `expires_in` for a year, no browser, the
- *     grant dropped only once the token is verified and filed;
+ *     grant dropped only once the token is verified and filed. A grant
+ *     another host refreshes is taken back first over the peer link (the
+ *     takeOver pull `accounts.setHome` uses: provisional landing, confirm,
+ *     the owner strips); a host out of reach leaves route 2 to run, and the
+ *     row's reason names the host when that fails too;
  *  2. the account's stored claude.ai session in a hidden window
  *     (staticMint.ts): the consent page approves without a sign-in. When
  *     the session has lapsed, a run the user started opens the ordinary
@@ -51,6 +55,8 @@ export interface StaticTokenDeps {
   changed: () => void
   /** The account sync: a new token reaches the other hosts at once. */
   syncAll: () => Promise<void>
+  /** The account sync: the grant back from the host that refreshes it (AccountSync.takeBack). Null once this host holds it, else why not, naming the host. */
+  takeBack: (name: string, owner: string) => Promise<string | null>
   log?: (line: string) => void
   now?: () => number
   /** Who a claude.ai session belongs to, for a token response that named no account. */
@@ -224,32 +230,34 @@ export class StaticTokens {
   }
 
   private async mint(name: string, interactive: boolean): Promise<Outcome> {
-    const profile = vault.profiles('claude-code').find((p) => p.name === name)
+    let profile = this.profileOf(name)
     if (!profile) return { state: 'failed', detail: `no account named ${name}` }
-    let blob: string | null = null
-    try {
-      blob = vault.readSecret('claude-code', name)
-    } catch {
-      blob = null
-    }
+    let blob = this.blobOf(name)
     const expected = { accountId: profile.accountId, email: profile.email }
+    // Another host refreshes the grant: take it back first. Out of reach, the other routes run and the row says why the grant route was out.
+    let elsewhere: string | null = null
+    if (!profile.static && profile.owner && !ownsProfile(profile)) {
+      elsewhere = await this.deps.takeBack(name, profile.owner)
+      profile = this.profileOf(name) ?? profile
+      blob = this.blobOf(name)
+      this.log(elsewhere ? `${name}: ${elsewhere}; trying the stored claude.ai session` : `${name}: took the grant back; minting from it`)
+    }
     if (!profile.static && blob && hasRefresh('claude-code', blob) && ownsProfile(profile)) {
       const out = await (this.deps.mintFromRefresh ?? mintStaticFromRefresh)(name, { now: () => this.now() })
       if (out.ok) return { state: 'done', expiresAt: out.minted.expiresAt }
       if (out.reason === 'wrong-account' || out.reason === 'no-account') return { state: 'failed', detail: out.detail }
       this.log(`${name}: the refresh grant did not yield a year (${out.detail}); trying the stored claude.ai session`)
-    } else if (!profile.static && profile.owner && !ownsProfile(profile)) {
-      return { state: 'failed', detail: `the grant is refreshed by another host (${profile.owner}); convert it there` }
     }
+    const why = (detail: string): string => (elsewhere ? `${elsewhere}; ${detail}` : detail)
 
     const cookies = this.cookiesOf(blob)
     let result = cookies ? await this.deps.mintInWindow({ cookies, scopes: STATIC_SCOPES, visible: false }) : ({ kind: 'needs-sign-in', detail: 'no claude.ai session is stored for this account' } as SessionMintResult)
     if (result.kind === 'needs-sign-in') {
-      if (!interactive) return { state: 'needs-sign-in', detail: result.detail }
+      if (!interactive) return { state: 'needs-sign-in', detail: why(result.detail) }
       this.log(`${name}: ${result.detail}; asking for a sign-in`)
       result = await this.deps.mintInWindow({ cookies: null, scopes: STATIC_SCOPES, loginHint: profile.email, visible: true })
       if (result.kind === 'closed') return { state: 'cancelled' }
-      if (result.kind === 'needs-sign-in') return { state: 'needs-sign-in', detail: result.detail }
+      if (result.kind === 'needs-sign-in') return { state: 'needs-sign-in', detail: why(result.detail) }
     }
     if (result.kind !== 'code') return { state: 'cancelled' }
 
@@ -273,9 +281,21 @@ export class StaticTokens {
       if (who && expected.email && who.toLowerCase() === expected.email.toLowerCase()) check = { ok: true }
       else check = { ok: false, reason: 'no-account', detail: who ? `the session belongs to ${who}, not ${expected.email ?? expected.accountId}` : 'the token response named no account and the session could not say whose it is' }
     }
-    if (!check.ok) return { state: 'failed', detail: check.detail }
+    if (!check.ok) return { state: 'failed', detail: why(check.detail) }
     saveStaticClaude({ ...staticTokenOf(minted, expected), appSession: session.length ? session : undefined })
     return { state: 'done', expiresAt: minted.expiresAt }
+  }
+
+  private profileOf(name: string) {
+    return vault.profiles('claude-code').find((p) => p.name === name)
+  }
+
+  private blobOf(name: string): string | null {
+    try {
+      return vault.readSecret('claude-code', name)
+    } catch {
+      return null
+    }
   }
 
   private cookiesOf(blob: string | null): PlainCookie[] | null {

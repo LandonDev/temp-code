@@ -443,6 +443,36 @@ describe('AccountSync as a client', () => {
     // The takeOver's own confirm, the one setHome's sync retried, then one per sync above.
     expect(box.request.mock.calls.filter((c) => c[0] === 'accounts.confirm')).toHaveLength(4)
   })
+  it('takeBack, for the one-year token mint: the grant comes back from a reachable owner; one out of reach, or one that keeps it, is named', async () => {
+    const box = fakeLink('env_box', 'box')
+    const { sync } = host('env_mac', [box])
+    const later = Date.now() + 2 * HOUR
+    vault.upsertProfile('claude-code', { name: 'a@x', accountId: 'u1', createdAt: 1, owner: 'env_box' })
+    vault.saveSecret('claude-code', 'a@x', claudeBlob(later, null), 'sync')
+    const handed = transfer('handoff', 'env_mac', claudeBlob(later))
+    let answer: Transfer[] = [handed]
+    box.request.mockImplementation(async (method: string, params?: unknown) => {
+      if (method === 'accounts.pull' && (params as { takeOver?: boolean }).takeOver) return { transfers: answer }
+      if (method === 'accounts.confirm') return { ok: true } satisfies ConfirmAnswer
+      throw new Error(`unexpected ${method}`)
+    })
+    expect(await sync.takeBack('claude-code', 'a@x', 'env_box')).toBeNull()
+    expect(vault.profiles('claude-code')[0]).toMatchObject({ owner: 'env_mac' })
+    expect(hasRefresh('claude-code', vault.readSecret('claude-code', 'a@x')!)).toBe(true)
+    // The owner has nothing to hand out (it no longer refreshes the grant): named, nothing changes here.
+    vault.upsertProfile('claude-code', { name: 'a@x', accountId: 'u1', createdAt: 1, owner: 'env_box' })
+    vault.saveSecret('claude-code', 'a@x', claudeBlob(later, null), 'sync')
+    answer = []
+    expect(await sync.takeBack('claude-code', 'a@x', 'env_box')).toBe('box kept the grant')
+    expect(vault.profiles('claude-code')[0]).toMatchObject({ owner: 'env_box' })
+    expect(hasRefresh('claude-code', vault.readSecret('claude-code', 'a@x')!)).toBe(false)
+    // Out of reach, or a host this machine holds no link to: named by what is known, nothing asked.
+    const asked = box.request.mock.calls.length
+    box.connected = false
+    expect(await sync.takeBack('claude-code', 'a@x', 'env_box')).toBe('box, which refreshes the grant, is not connected')
+    expect(await sync.takeBack('claude-code', 'a@x', 'env_nowhere')).toBe('env_nowhere, which refreshes the grant, is not connected')
+    expect(box.request.mock.calls.length).toBe(asked)
+  })
 })
 
 describe('a static token as the live sign-in on a host (the box)', () => {

@@ -207,6 +207,7 @@ export function registerAliaxPages(server: { accounts: AliaxPagesHost; accountSy
     nudge: () => server.accounts.nudge(),
     changed: notifyAccountsChanged,
     syncAll: () => server.accountSync.syncAll(),
+    takeBack: (name, owner) => server.accountSync.takeBack('claude-code', name, owner),
     sessionEmail: appSessionEmail,
     firstRenewDelayMs: cadence('TEMP_CODE_STATIC_RENEW_FIRST_MS'),
     renewEveryMs: cadence('TEMP_CODE_STATIC_RENEW_EVERY_MS')
