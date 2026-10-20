@@ -74,6 +74,8 @@ await new Promise<void>((ok) => receiver.listen(0, '127.0.0.1', ok))
 const receiverPort = (receiver.address() as { port: number }).port
 
 // ── the server, the repo, the bot key ──────────────────────────────────────
+// The receiver sits on the loopback, which webhook targets refuse by default (R2 M3).
+process.env.TEMP_CODE_WEBHOOK_ALLOW_LOOPBACK = '1'
 const server = await startServer(join(root, 'app.db'), { claimShim: false, remotePort: 0 })
 const base = `http://127.0.0.1:${server.remote!.port}`
 const ws = await server.registry.createWorkspace(repo, 'scratch')

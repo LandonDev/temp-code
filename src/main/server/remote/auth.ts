@@ -14,7 +14,8 @@ import {
   type RemoteSession,
   type WebhookEvent
 } from '@shared/contract-remote'
-import { checkWebhookUrl, type WebhookTarget } from './webhooks'
+import { checkWebhookUrl, loopbackWebhooksAllowed, type WebhookTarget } from './webhooks'
+import type { GuardOptions } from './addressGuard'
 
 /**
  * Who may reach the fixed port, and how (plan 5jtfkIC45Cbr). Pure logic
@@ -171,13 +172,18 @@ export interface Verified {
 
 export interface RemoteAuthOptions {
   now?: () => number
+  /** Test seam for the webhook target lookup (addressGuard.ts). */
+  resolveHost?: GuardOptions['resolve']
 }
 
 /** The webhook columns a new key gets, and the secret made for it when the caller gave none. */
-function checkWebhook(input: { webhookUrl?: string; webhookSecret?: string; events?: WebhookEvent[] }): {
+async function checkWebhook(
+  input: { webhookUrl?: string; webhookSecret?: string; events?: WebhookEvent[] },
+  resolve: GuardOptions['resolve']
+): Promise<{
   row: { webhook_url: string | null; webhook_secret: string | null; events: string | null }
   generated: string | null
-} {
+}> {
   const url = input.webhookUrl?.trim()
   if (!url) {
     if (input.webhookSecret || input.events) throw new RemoteAuthError(400, 'a webhook secret or events need a webhookUrl')
@@ -185,7 +191,7 @@ function checkWebhook(input: { webhookUrl?: string; webhookSecret?: string; even
   }
   let checked: string
   try {
-    checked = checkWebhookUrl(url)
+    checked = await checkWebhookUrl(url, { allowLoopback: loopbackWebhooksAllowed(), ...(resolve ? { resolve } : {}) })
   } catch (err) {
     throw new RemoteAuthError(400, (err as Error).message)
   }
@@ -216,7 +222,9 @@ export class RemoteAuth {
     options: RemoteAuthOptions = {}
   ) {
     this.now = options.now ?? Date.now
+    this.resolveHost = options.resolveHost
   }
+  private readonly resolveHost: GuardOptions['resolve']
 
   // ── keys ──────────────────────────────────────────────────────────────
 
@@ -263,7 +271,7 @@ export class RemoteAuth {
     const secret = randomBytes(32).toString('base64url')
     const salt = randomBytes(16).toString('hex')
     const hash = (await scryptHash(secret, salt)).toString('hex')
-    const webhook = checkWebhook(input)
+    const webhook = await checkWebhook(input, this.resolveHost)
     this.insertKey({ id, name, audience: input.audience, caps: capsToText(caps), hash, salt, created_at: this.now(), created_by: input.createdBy, ...webhook.row })
     return {
       key: keyOf(this.keyRow(id)!),

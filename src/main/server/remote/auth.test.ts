@@ -24,7 +24,8 @@ beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), 'tc-auth-'))
   db = openDb(join(dir, 'app.db'))
   clock = 1_700_000_000_000
-  auth = new RemoteAuth(db, { now: () => clock })
+  // Webhook hosts resolve to a public address unless a test says otherwise.
+  auth = new RemoteAuth(db, { now: () => clock, resolveHost: async () => [{ address: '93.184.216.34', family: 4 }] })
 })
 afterEach(() => {
   db.close()
@@ -269,6 +270,12 @@ describe('webhooks on keys', () => {
     expect(auth.webhookTargets('needs_you').map((t) => t.keyId)).toEqual([made.key.id])
     auth.revokeKey(made.key.id)
     expect(auth.webhookTargets('needs_you')).toEqual([])
+  })
+  it('refuses a private, loopback or metadata target, and a host that resolves to one (R2 M3)', async () => {
+    for (const url of ['https://127.0.0.1/hook', 'http://127.0.0.1:9/hook', 'https://10.1.2.3/hook', 'https://169.254.169.254/latest/meta-data/', 'https://[fd00:ec2::254]/', 'https://metadata.google.internal/computeMetadata/v1/'])
+      await expectStatus(() => auth.createKey({ name: 'x', audience: 'mcp', caps: [], createdBy: 'local', webhookUrl: url }), 400, 'private or local')
+    const rebinding = new RemoteAuth(db, { now: () => clock, resolveHost: async () => [{ address: '93.184.216.34', family: 4 }, { address: '10.0.0.5', family: 4 }] })
+    await expectStatus(() => rebinding.createKey({ name: 'x', audience: 'mcp', caps: [], createdBy: 'local', webhookUrl: 'https://bot.example/hook' }), 400, 'private or local')
   })
   it('refuses a bad URL, a short secret, events without a URL', async () => {
     await expectStatus(() => auth.createKey({ name: 'x', audience: 'mcp', caps: [], createdBy: 'local', webhookUrl: 'http://bot.example/hook' }), 400, 'must be https')
