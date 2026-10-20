@@ -286,6 +286,184 @@ public enum Methods {
         public typealias Output = NoOutput
     }
 
+    public enum SessionCreate: ContractMethod {
+        public static let name = "session.create"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public struct ThreadRules: Codable, Hashable, Sendable {
+                public struct Conduct: Codable, Hashable, Sendable {
+                    public enum Delegation: RawRepresentable, Codable, Hashable, Sendable {
+                        case strict
+                        case balanced
+                        case free
+                        /// A value this build does not know; `rawValue` keeps it.
+                        case unknown(String)
+
+                        public init(rawValue: String) {
+                            switch rawValue {
+                            case "strict": self = .strict
+                            case "balanced": self = .balanced
+                            case "free": self = .free
+                            default: self = .unknown(rawValue)
+                            }
+                        }
+
+                        public var rawValue: String {
+                            switch self {
+                            case .strict: "strict"
+                            case .balanced: "balanced"
+                            case .free: "free"
+                            case .unknown(let value): value
+                            }
+                        }
+                    }
+
+                    public let delegation: Delegation?
+                    public let selfEdit: Bool?
+                    public let selfShell: Bool?
+                    public let verifyResults: Bool?
+                    public let escalate: Bool?
+                    public let useWorktrees: Bool?
+                    public let maxParallel: Int?
+                    public let maxAgents: Int?
+
+                    public init(delegation: Delegation? = nil, selfEdit: Bool? = nil, selfShell: Bool? = nil, verifyResults: Bool? = nil, escalate: Bool? = nil, useWorktrees: Bool? = nil, maxParallel: Int? = nil, maxAgents: Int? = nil) {
+                        self.delegation = delegation
+                        self.selfEdit = selfEdit
+                        self.selfShell = selfShell
+                        self.verifyResults = verifyResults
+                        self.escalate = escalate
+                        self.useWorktrees = useWorktrees
+                        self.maxParallel = maxParallel
+                        self.maxAgents = maxAgents
+                    }
+                }
+
+                public let conduct: Conduct?
+                public let instructions: String?
+
+                public init(conduct: Conduct? = nil, instructions: String? = nil) {
+                    self.conduct = conduct
+                    self.instructions = instructions
+                }
+            }
+
+            public let id: String?
+            public let provider: ProviderId?
+            public let model: String?
+            public let reasoning: Reasoning?
+            public let agentType: AgentType?
+            public let cwd: String?
+            public let title: String?
+            public let parentId: Patch<String>?
+            public let projectId: Patch<String>?
+            public let workspaceId: Patch<String>?
+            public let threadType: Patch<ThreadType>?
+            public let planPath: String?
+            public let permission: PermissionPolicy?
+            public let context1m: Bool?
+            public let threadRules: ThreadRules?
+            public let goal: String?
+
+            public init(id: String? = nil, provider: ProviderId? = nil, model: String? = nil, reasoning: Reasoning? = nil, agentType: AgentType? = nil, cwd: String? = nil, title: String? = nil, parentId: Patch<String>? = nil, projectId: Patch<String>? = nil, workspaceId: Patch<String>? = nil, threadType: Patch<ThreadType>? = nil, planPath: String? = nil, permission: PermissionPolicy? = nil, context1m: Bool? = nil, threadRules: ThreadRules? = nil, goal: String? = nil) {
+                self.id = id
+                self.provider = provider
+                self.model = model
+                self.reasoning = reasoning
+                self.agentType = agentType
+                self.cwd = cwd
+                self.title = title
+                self.parentId = parentId
+                self.projectId = projectId
+                self.workspaceId = workspaceId
+                self.threadType = threadType
+                self.planPath = planPath
+                self.permission = permission
+                self.context1m = context1m
+                self.threadRules = threadRules
+                self.goal = goal
+            }
+        }
+
+        public typealias Output = SessionMeta
+    }
+
+    public enum SessionRename: ContractMethod {
+        public static let name = "session.rename"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public let sessionId: String
+            public let title: String
+
+            public init(sessionId: String, title: String) {
+                self.sessionId = sessionId
+                self.title = title
+            }
+        }
+
+        public typealias Output = NoOutput
+    }
+
+    public enum SessionArchive: ContractMethod {
+        public static let name = "session.archive"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public let sessionId: String
+            public let archived: Bool
+
+            public init(sessionId: String, archived: Bool) {
+                self.sessionId = sessionId
+                self.archived = archived
+            }
+        }
+
+        public typealias Output = NoOutput
+    }
+
+    public enum SessionPin: ContractMethod {
+        public static let name = "session.pin"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public let sessionId: String
+            public let pinned: Bool
+
+            public init(sessionId: String, pinned: Bool) {
+                self.sessionId = sessionId
+                self.pinned = pinned
+            }
+        }
+
+        public typealias Output = NoOutput
+    }
+
+    public enum SessionPause: ContractMethod {
+        public static let name = "session.pause"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public let sessionId: String
+
+            public init(sessionId: String) {
+                self.sessionId = sessionId
+            }
+        }
+
+        public typealias Output = NoOutput
+    }
+
+    public enum SessionResume: ContractMethod {
+        public static let name = "session.resume"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public let sessionId: String
+
+            public init(sessionId: String) {
+                self.sessionId = sessionId
+            }
+        }
+
+        public typealias Output = NoOutput
+    }
+
     public enum QueueList: ContractMethod {
         public static let name = "queue.list"
 
