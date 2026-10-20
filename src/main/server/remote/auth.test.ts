@@ -105,6 +105,29 @@ describe('pairings', () => {
     expect(auth.listPairings()).toEqual([])
     await expectStatus(() => auth.exchange(code, { kind: 'key' }), 401)
   }, 20_000)
+  it('concurrent redeems of one code mint one key; the loser is a 401 (R2 M1)', async () => {
+    const { pairing, code } = auth.createPairing({ name: 'c', audience: 'client', caps: ['operate'], createdBy: 'local' })
+    const before = auth.listKeys().length
+    const results = await Promise.allSettled(Array.from({ length: 5 }, () => auth.exchange(code, { kind: 'key' })))
+    const won = results.filter((r) => r.status === 'fulfilled')
+    expect(won).toHaveLength(1)
+    expect(results.filter((r) => r.status === 'rejected' && (r.reason as RemoteAuthError).status === 401)).toHaveLength(4)
+    expect(auth.listKeys().length).toBe(before + 1)
+    const key = (won[0] as PromiseFulfilledResult<{ key: { id: string } }>).value.key
+    expect(auth.consumedBy(pairing.id)).toBe(key.id)
+    expect(auth.listPairings()).toEqual([])
+  })
+  it('a code whose minting failed is not consumed', async () => {
+    const { pairing, code } = auth.createPairing({ name: 'c', audience: 'client', caps: [], createdBy: 'local' })
+    const original = auth.createKey.bind(auth)
+    auth.createKey = async () => {
+      throw new Error('scrypt failed')
+    }
+    await expect(auth.exchange(code, { kind: 'key' })).rejects.toThrow('scrypt failed')
+    auth.createKey = original
+    expect(auth.consumedBy(pairing.id)).toBeNull()
+    expect((await auth.exchange(code, { kind: 'key' })).key.name).toBe('c')
+  })
   it('asking for more than the pairing grants fails before the code is consumed', async () => {
     const { code } = auth.createPairing({ name: 'bot', audience: 'client', caps: ['operate'], createdBy: 'local' })
     await expectStatus(() => auth.exchange(code, { kind: 'key', caps: ['approve'] }), 400, 'this pairing cannot hold approve')

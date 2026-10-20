@@ -440,18 +440,38 @@ export class RemoteAuth {
     const createdBy = `pairing:${row.id}`
     if (request.kind === 'session' && row.audience !== 'client')
       throw new RemoteAuthError(400, 'only client pairings open a browser session')
-    const consume = (keyId: string): void => {
-      this.db.prepare(`UPDATE remote_pairings SET consumed_at = ?, consumed_by = ? WHERE id = ? AND consumed_at IS NULL`).run(this.now(), keyId, row.id)
+    // One compare-and-consume claims the code before anything is minted, so
+    // N concurrent redeems answer one key and N-1 refusals (R2 M1); the
+    // claim is released if minting throws.
+    const claim = `claim:${randomBytes(8).toString('hex')}`
+    const now = this.now()
+    const claimed =
+      this.db
+        .prepare(`UPDATE remote_pairings SET consumed_at = ?, consumed_by = ? WHERE id = ? AND consumed_at IS NULL AND expires_at > ?`)
+        .run(now, claim, row.id, now).changes === 1
+    if (!claimed) throw new RemoteAuthError(401, 'invalid or expired pairing code')
+    const stamp = (keyId: string): void => {
+      this.db.prepare(`UPDATE remote_pairings SET consumed_by = ? WHERE id = ? AND consumed_by = ?`).run(keyId, row.id, claim)
     }
-    if (request.kind === 'key') {
-      const created = await this.createKey({ name, audience: row.audience, caps, createdBy })
-      consume(created.key.id)
-      return { kind: 'key', ...created }
+    try {
+      if (request.kind === 'key') {
+        const created = await this.createKey({ name, audience: row.audience, caps, createdBy })
+        stamp(created.key.id)
+        return { kind: 'key', ...created }
+      }
+      const key = this.createBrowserKey({ name, audience: row.audience, caps, createdBy })
+      stamp(key.id)
+      const session = this.createSession(key.id, caps, request.userAgent ?? null)
+      return { kind: 'session', key, ...session }
+    } catch (err) {
+      this.db.prepare(`UPDATE remote_pairings SET consumed_at = NULL, consumed_by = NULL WHERE id = ? AND consumed_by = ?`).run(row.id, claim)
+      throw err
     }
-    const key = this.createBrowserKey({ name, audience: row.audience, caps, createdBy })
-    consume(key.id)
-    const session = this.createSession(key.id, caps, request.userAgent ?? null)
-    return { kind: 'session', key, ...session }
+  }
+
+  /** The key a consumed pairing became, for the proof that a code mints once. */
+  consumedBy(pairingId: string): string | null {
+    return this.pairingRow(pairingId)?.consumed_by ?? null
   }
 
   // ── sessions ──────────────────────────────────────────────────────────
