@@ -36,8 +36,8 @@ function local(method: string, params: unknown = {}): unknown {
 type Meta = { id: string; title: string; status: string }
 type Row = { seq: number; event: { type: string; text?: string; allow?: boolean; requestId?: string; isError?: boolean; output?: unknown; name?: string } }
 
-// The scratch workspace: a bare git repo under the agents' work dir, once.
-ssh(`mkdir -p ${SCRATCH} && cd ${SCRATCH} && ([ -d .git ] || (git init -q && git -c user.name=l5 -c user.email=l5@example.com commit -q --allow-empty -m init))`)
+// The scratch workspace: a git repo under the agents' work dir, made as the agents user (ssh lands as root), once.
+ssh(`sudo -u agents sh -c 'mkdir -p ${SCRATCH} && cd ${SCRATCH} && ([ -d .git ] || (git init -q && git -c user.name=l5 -c user.email=l5@example.com commit -q --allow-empty -m init))'`)
 const workspaces = local('workspace.list') as { id: string; path: string }[]
 const workspace = workspaces.find((w) => w.path === SCRATCH) ?? (local('workspace.create', { path: SCRATCH, name: 'l5-phone-scratch' }) as { id: string })
 const base = { provider: 'claude', model: 'claude-haiku-5-5', reasoning: 'low', threadType: 'chat', workspaceId: workspace.id, cwd: SCRATCH }

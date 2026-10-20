@@ -262,8 +262,22 @@ routed to (aliax-core's `forward`). Two listeners:
   stays current incrementally. The plan or report file is read with
   `file.read` (in the subset since L4), polled 1.5 s running / 8 s idle
   while the screen shows. DEBUG launch hooks (`TC_TEST_SEGMENT`,
-  `TC_TEST_OPEN=chip|diff|agent`, `TC_TEST_SCROLL=1`) exist for the proof
-  only; the working strip and composer bar are placeholders L5 replaces.
+  `TC_TEST_OPEN=chip|diff|agent`, `TC_TEST_SCROLL=1`, and L5's
+  `TC_TEST_ACTION=send:<text>|stop|approve|deny|answer:<label>|start-build|
+  rename:<title>|pin|archive|new-chat` and `TC_TEST_SHEET=start|new`) exist
+  for the proof only; an action runs once, on the screen the launch route
+  opened, through the same calls the buttons make.
+- Steering (L5): `ios/TempCode/Sources/Thread/Composer.swift` (the bar on
+  every segment, Send ↔ Stop) and `WorkingStrip.swift` (the fixed 28 pt
+  row: Sending…, spinner + flavour word + elapsed, the paused row with Stop
+  and Continue); live approval and question cards in `TranscriptRows.swift`;
+  `Shell/ThreadSheets.swift` (Start a build from a plan, New thread from a
+  workspace or project header's `+`, both over the host's `catalog.get`);
+  `Design/ThreadRowActions.swift` (swipe to pin and archive, context menu
+  with rename). All of it sits on the client package's `Client/Actions.swift`
+  (the gate on the key and the socket, pending turns, optimistic decisions,
+  `ThreadDraft`); the README there has the rules. A read key hides nothing:
+  the field and the cards carry the reason instead.
 - Tests: `bun run ios:test` (contract) and `bun run ios:test:client` (the
   package, pure suites plus a live suite against scripts/ios-client-test-server.ts,
   a real server with a read key that lives only in the test process
@@ -275,8 +289,15 @@ routed to (aliax-core's `forward`). Two listeners:
   `TC_PROOF_SET=box TC_TEST_THREADS="a|b" scripts/ios-sim-proof.sh` with
   `TC_TEST_PAIR_LINK` from `tc-local remote.pairings.create` on the box; it
   drives the simulator with `simctl` because XCUITest cannot run while the
-  Command Line Tools are the selected developer directory. Never put a
-  pairing link or a key in a file or a log; the scripts scrub their output.
+  Command Line Tools are the selected developer directory. The `actions` set
+  (in `all`) re-pairs with the test server's acting key and performs every
+  steering action, then reads back what landed from the control panel;
+  `bun scripts/ios-sim-proof-box-actions.ts` is the live pass against the
+  box: two pairings minted over `tc-local`, two claude-haiku-5-5 threads in
+  /srv/agents/work/l5-phone-scratch, one real turn sent and answered, one
+  approval decided on the card, then everything archived and revoked. Never
+  put a pairing link or a key in a file or a log; the scripts scrub their
+  output.
 
 ## The prod worktree is retired
 ~/IdeaProjects/temp-code-prod was the old local updater's build checkout.

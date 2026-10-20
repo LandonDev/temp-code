@@ -197,11 +197,11 @@ stops, rate limit, probes, background grace, offline/online, stop,
 replacement sessions), the cache (cold paint from disk, duplicates, reset,
 pruning, removal), the client (cold paint, shell listing, tail, pushes, drop
 and resume without duplicates, reset, older pages, bodies), the fold and the
-markdown splitter, the fold's stamps and board (todos per round, TaskCreate ids, warm resume versus an explicit new pass, the pass flag, sources and agents), the board selectors and the implementation board, the research board, the fleet lines and stats, the plan document readers and the markdown cache. The live suite adds: hello over http, a socket on a fresh
+markdown splitter, the fold's stamps and board (todos per round, TaskCreate ids, warm resume versus an explicit new pass, the pass flag, sources and agents), the board selectors and the implementation board, the research board, the fleet lines and stats, the plan document readers and the markdown cache. The action tests add the gate by key and socket, the draft payloads, and on the fake socket: a pending turn retired by its echo, a refused send, a send while the link is down, a read key refused before the wire, an approval's optimistic decision and its revert, an answer, a create that adopts and briefs, the row RPCs, and the catalog fetched once. The live suite adds: hello over http, a socket on a fresh
 ticket with the negotiated deflate extension and a forbidden call, identity
 and contract halts against the real hello, an expired and a reused ticket,
 a dropped link resumed from the last seq with no duplicate and no gap, and
-a revoked key.
+a revoked key. Nested in it, the action suite runs against the stubs with the acting key: a send echoed and stopped, an approval resolved (and refused on an operate-only key), an answer, a build from the plan, a chat with rename, pin and archive, a full-access draft refused without `approve`, and the catalog.
 
 The simulator proof uses `simctl` (build, install, launch with the pairing
 link and a debug route in the app's environment, `simctl io screenshot`),
@@ -214,32 +214,52 @@ build is signed ad hoc on purpose: an unsigned simulator app has no
 application identifier and the Keychain refuses its items, which the app
 would have shown as "Key refused".
 
-## What L3 builds on (send, approve, stop, create)
+## Actions (L5): send, stop, approve, answer, create, rename, archive, pin
 
-- Every action is one `EnvironmentClient.request(Methods.X.self, params)`;
-  the methods already in the contract subset: `SessionSend`, `SessionInterrupt`,
-  `SessionApprove`, `SessionAnswer`, `SessionPermission`, `Queue*`.
-  `session.create` is not in the subset yet: add `method('session.create', …)`
-  in scripts/gen-swift-contract.ts, `bun run gen:swift`, commit `Generated/`.
-- Gate the UI on the key: `PairedEnvironment.allows(.operate)` /
-  `.allows(.approve)`; a refused call still comes back as
-  `TransportError.server` with `isForbidden`, so a stale key degrades to a
-  message rather than a crash.
-- Optimistic sends: `ThreadState` is the place for a `pending` list of user
-  turns this device sent and the host has not echoed; the echo arrives as an
-  `events` push with the row's real seq, so match by text and clear.
-  `EnvironmentClient.apply` is where `.queue` pushes are currently dropped;
-  keep `QueuedMessage`s per session there for the queue UI.
-- Approvals and questions: the fold already yields `ApprovalItem`
-  (`request.requestId`, `allowed`, `auto`) and `QuestionItem`
-  (`request.questions`, `answers`, `resolved`); the buttons call
-  `session.approve` / `session.answer` with those ids and the item resolves
-  itself when the `approval-resolved` / `question-resolved` row lands.
-- Stop is `session.interrupt`; the `error` row with `stopped: true` is what
-  the transcript shows afterwards (`SystemLine.stopped`).
-- Reading state while acting: `status.fresh` says the shell was re-listed on
-  the live session; `threads[id].isLive` says the socket carries that thread's
-  pushes right now (false while reconnecting, so a send button can wait).
+`Client/Actions.swift` is the phone's steering layer on `EnvironmentClient`:
+
+- **The gate.** `Actions.block(status:environment:needs:)` answers an
+  `ActionBlock` or nil before anything touches the wire: the key's standing
+  first (`readOnly` when it lacks `operate`, `noApprove` when it lacks
+  `approve`; these never change by themselves), then the socket
+  (`connecting`, `reconnecting(retryAt:)`, `offline(reason:)`,
+  `halted(HaltReason)`, `unauthorized`, `suspended`). `operateBlock` and
+  `approveBlock` are the two the screens read; `ActionBlock.text(now:)` is
+  the one line the composer field or a card carries, with the retry
+  countdown. A host refusal comes back as `ActionError.refused(message:
+  forbidden:)`, a `forbidden:` answer rewritten into what the key lacks.
+- **Send.** `send(_:text:newPass:)` appends a `PendingTurn` to
+  `ThreadState.pending` and sets `sending`; `ThreadState.entries` is the
+  fold's items with the pending turns at the end (negative seqs), which is
+  what the transcript shows. The host's `user-text` echo with the same text
+  retires the pending turn (`settle`), and a `sessions` push with
+  `starting`/`running` clears `sending`; a refusal drops the turn and throws.
+- **Stop and Continue.** `stop(_:)` is `session.interrupt`; `resume(_:)` is
+  `session.resume`.
+- **Approve and answer.** `approve(_:requestId:allow:)` and
+  `answer(_:requestId:answers:)` write `ThreadState.decisions` /
+  `ThreadState.answers` first (the card reads them over the fold), send,
+  and revert the overlay when the host refuses; the `approval-resolved` /
+  `question-resolved` row retires the overlay.
+- **Create.** `createThread(_ draft: ThreadDraft)` runs `session.create`,
+  adopts the meta into `sessions` so the screen can open before the push,
+  and sends the draft's `brief` when it has one. `ThreadDraft.build(from:
+  plan …)` is the desktop's PlanView Start (the plan's project, cwd and
+  file, the default goal by the checklist, the implement/orchestrate brief,
+  `agentType` by thread type); `ThreadDraft.thread(…)` is a fresh thread in
+  a project, or a chat hung off the workspace. `needs` is `approve` for a
+  full-access draft, as the host's gate has it.
+- **Rows.** `rename`, `setArchived`, `setPinned` go out as their RPCs; the
+  `sessions` push brings the row's new state. `loadCatalog()` keeps the
+  host's `catalog.get` on the client for the sheets.
+
+The test server (scripts/ios-client-test-server.ts) stands in for the
+registry's action methods: each is recorded (`GET /actions`, `POST
+/actions/clear`) and plays out the rows a real run pushes; `POST /finish`
+ends a simulated turn and `POST /ask` raises a fresh approval or question.
+It mints three keys: read-only, read+operate+approve, and operate-only
+(the approval card's forbidden path), and two pairings for the simulator
+proof's `actions` set.
 
 ## What L4 builds on (APNs through the hub, Live Activity)
 
