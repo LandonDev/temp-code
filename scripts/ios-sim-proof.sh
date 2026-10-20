@@ -284,7 +284,8 @@ PY
 # a turn that asks for a tool, the approval decided, and the tool's result.
 box_actions_set() {
   appearance light
-  TC_ACTION="send:Reply with exactly one word: pong" shot "box-act-send" thread "${TC_BOX_THREAD:-L5 phone pass}" "" "" 8
+  # Over a real tunnel the thread takes a few seconds to load and go live; the action fires only then.
+  TC_ACTION="send:Reply with exactly one word: pong" shot "box-act-send" thread "${TC_BOX_THREAD:-L5 phone pass}" "" "" "${TC_BOX_ACT_WAIT:-25}"
   shot "box-act-reply" thread "${TC_BOX_THREAD:-L5 phone pass}" "" "" "${TC_BOX_REPLY_WAIT:-40}"
   if [ -n "${TC_TEST_PAIR_LINK_OPERATE:-}" ]; then
     xcrun simctl terminate "$TC_SIM_UDID" "$BUNDLE" >/dev/null 2>&1 || true
@@ -293,7 +294,7 @@ box_actions_set() {
     TC_TEST_PAIR_LINK="$TC_TEST_PAIR_LINK_OPERATE" TC_TEST_PAIR_NAME="${TC_TEST_PAIR_NAME:-} (approving)" pair || { echo "ios-sim-proof: the app did not pair with the approving key" >&2; return 3; }
     rm -f "$OUT/shots/00-pairing.png"
     TC_ACTION="send:Use the Bash tool to run exactly this command and then tell me its output: echo approved-from-the-phone" shot "box-act-ask" thread "${TC_BOX_APPROVE_THREAD:-L5 approval pass}" "" "" "${TC_BOX_REPLY_WAIT:-40}"
-    TC_ACTION="approve" shot "box-act-approve" thread "${TC_BOX_APPROVE_THREAD:-L5 approval pass}" "" "" 8
+    TC_ACTION="approve" shot "box-act-approve" thread "${TC_BOX_APPROVE_THREAD:-L5 approval pass}" "" "" "${TC_BOX_ACT_WAIT:-25}"
     shot "box-act-approved" thread "${TC_BOX_APPROVE_THREAD:-L5 approval pass}" "" "" "${TC_BOX_REPLY_WAIT:-40}"
   fi
 }

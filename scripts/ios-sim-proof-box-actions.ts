@@ -68,7 +68,10 @@ try {
   status = proof.status ?? 1
 
   // What landed on the host, read back the admin way.
-  const rows = (id: string): Row[] => (local('session.events', { sessionId: id, tail: 40 }) as { rows: Row[] }).rows
+  const rows = (id: string): Row[] => {
+    const answer = local('session.events', { sessionId: id, tail: 40 }) as Row[] | { rows?: Row[] }
+    return Array.isArray(answer) ? answer : (answer.rows ?? [])
+  }
   const chatRows = rows(chat.id)
   const pong = chatRows.some((r) => r.event.type === 'assistant-text' && /pong/i.test(r.event.text ?? ''))
   const sent = chatRows.some((r) => r.event.type === 'user-text' && /pong/.test(r.event.text ?? ''))

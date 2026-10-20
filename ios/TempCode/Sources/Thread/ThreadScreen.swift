@@ -108,9 +108,9 @@ struct ThreadScreen: View {
         .task(id: "\(session?.planPath ?? "")|\(phase.running)") {
             await model.poll(client: client, path: session?.planPath, running: phase.running)
         }
-        .task(id: thread.isLoading) {
-            // DEBUG only: the proof asks for one action once the rows are in.
-            guard performsLaunchAction, let action = TestHooks.action, !thread.isLoading, !thread.rows.isEmpty, !acted, let session else { return }
+        .task(id: "\(thread.isLoading)|\(thread.isLive)") {
+            // DEBUG only: the proof asks for one action once the thread is loaded and live (a fresh thread has no rows yet).
+            guard performsLaunchAction, let action = TestHooks.action, !thread.isLoading, thread.isLive, !acted, let session else { return }
             // With the agent detail pushed, the action is the agent's, not the root's.
             guard TestHooks.open != "agent" || session.parentId != nil else { return }
             acted = true
