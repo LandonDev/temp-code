@@ -213,7 +213,7 @@ struct NewThreadButton: View {
             Image(systemName: "plus")
                 .font(.footnote.weight(.semibold))
                 .foregroundStyle(.secondary)
-                .frame(width: 32, height: 30)
+                .frame(minWidth: 44, minHeight: 30)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.pressable)

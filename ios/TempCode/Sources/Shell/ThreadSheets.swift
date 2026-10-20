@@ -200,7 +200,7 @@ struct StartBuildSheet: View {
                         Button { type = candidate } label: {
                             ThreadTypeRow(type: candidate, selected: candidate == type)
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(.pressable)
                     }
                 }
                 Section {
@@ -290,7 +290,7 @@ struct NewThreadSheet: View {
                         Button { type = candidate } label: {
                             ThreadTypeRow(type: candidate, selected: candidate == type)
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(.pressable)
                     }
                 }
                 Section {

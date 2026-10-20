@@ -56,6 +56,9 @@ struct ComposerBar: View {
 
     private var trimmed: String { text.trimmingCharacters(in: .whitespacesAndNewlines) }
 
+    /// A steering thread's bar sits lower until the user types; the font never changes.
+    private var idlesSmall: Bool { compact && !focused && text.isEmpty }
+
     /// What the button does: Stop while a turn runs and the box is empty, Send otherwise.
     private var stops: Bool { running && trimmed.isEmpty }
 
@@ -63,13 +66,13 @@ struct ComposerBar: View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(alignment: .bottom, spacing: 8) {
                 TextField(placeholder, text: $text, axis: .vertical)
-                    .font(compact && !focused && text.isEmpty ? .subheadline : .body)
+                    .font(.body)
                     .lineLimit(1...6)
                     .focused($focused)
                     .disabled(block != nil)
                     .padding(.horizontal, 12)
-                    .padding(.vertical, compact && !focused && text.isEmpty ? 7 : 9)
-                    .frame(minHeight: compact && !focused && text.isEmpty ? 34 : 40)
+                    .padding(.vertical, idlesSmall ? 6 : 9)
+                    .frame(minHeight: idlesSmall ? 34 : 40)
                     .background(Surface.chrome, in: RoundedRectangle(cornerRadius: Radius.field, style: .continuous))
                     .overlay(RoundedRectangle(cornerRadius: Radius.field, style: .continuous).strokeBorder(Surface.hairline, lineWidth: 1 / scale))
                     .onChange(of: text) { failure = nil }
@@ -77,7 +80,7 @@ struct ComposerBar: View {
                 ActionSwap(stops: stops, enabled: block == nil && !busy && (stops || !trimmed.isEmpty), reduced: reduceMotion) {
                     if stops { stop() } else { send() }
                 }
-                .padding(.bottom, compact && !focused && text.isEmpty ? 3 : 6)
+                .padding(.bottom, idlesSmall ? 3 : 6)
             }
             if let failure {
                 Text(failure)

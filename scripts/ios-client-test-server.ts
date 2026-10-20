@@ -18,6 +18,7 @@
  *                                 answers, creates, renames, archives and pins the stubs recorded
  *   POST /actions/clear         → forgets them
  *   POST /finish { sessionId, text? }  → ends a simulated turn: the reply, turn-complete, idle
+ *   POST /ask { sessionId, kind: 'approval' | 'question' }  → a fresh card on a thread, which waits
  *   POST /quit                  → closes everything
  */
 import { createServer } from 'node:http'
@@ -572,6 +573,20 @@ const control = createServer((req, res) => {
           server.registry.append(sessionId, { type: 'assistant-text', text, delta: false, msgId: `a${appended}`, blockIndex: 0 })
         }
         return answer(200, { appended: count })
+      }
+      case '/ask': {
+        // A fresh card to decide: an approval or a question on a thread, which then waits.
+        const sessionId = String(body.sessionId ?? THREAD_A)
+        appended++
+        const requestId = `ask-${appended}`
+        if (body.kind === 'question') {
+          registry.append(sessionId, { type: 'question-request', requestId, questions: [{ question: String(body.question ?? 'Which way?'), header: 'Choice', allowFreeform: true, options: [{ label: 'This way', description: 'The short road' }, { label: 'That way', description: 'The scenic one' }] }] })
+          registry.append(sessionId, { type: 'status', status: 'waiting', detail: 'awaiting an answer' })
+        } else {
+          registry.append(sessionId, { type: 'approval-request', requestId, toolName: 'Bash', input: { command: String(body.command ?? 'rm -rf node_modules') }, title: String(body.title ?? 'remove node_modules'), callId: requestId })
+          registry.append(sessionId, { type: 'status', status: 'waiting', detail: 'awaiting approval' })
+        }
+        return answer(200, { requestId })
       }
       case '/actions/clear':
         actions.length = 0

@@ -10,6 +10,8 @@ struct ThreadScreen: View {
     let client: EnvironmentClient
     let sessionId: String
     var targetSeq: Int?
+    /// DEBUG proof: only the screen the launch route opened performs `TC_TEST_ACTION`; a screen this one pushed never does.
+    var performsLaunchAction = true
     @State private var model: ThreadScreenModel
     @State private var page: Segment?
     @State private var launchPush: LaunchPush?
@@ -18,10 +20,11 @@ struct ThreadScreen: View {
     @State private var starting = false
     @State private var acted = false
 
-    init(client: EnvironmentClient, sessionId: String, targetSeq: Int? = nil) {
+    init(client: EnvironmentClient, sessionId: String, targetSeq: Int? = nil, performsLaunchAction: Bool = true) {
         self.client = client
         self.sessionId = sessionId
         self.targetSeq = targetSeq
+        self.performsLaunchAction = performsLaunchAction
         _model = State(initialValue: ThreadScreenModel(sessionId: sessionId))
     }
 
@@ -60,7 +63,7 @@ struct ThreadScreen: View {
                 }
             }
         }
-        .navigationDestination(item: $pushed) { route in ThreadScreen(client: client, sessionId: route.sessionId) }
+        .navigationDestination(item: $pushed) { route in ThreadScreen(client: client, sessionId: route.sessionId, performsLaunchAction: false) }
         // The composer docks where the tab bar would float: the tabs wait behind the back button.
         .toolbar(.hidden, for: .tabBar)
         .navigationBarTitleDisplayMode(.inline)
@@ -107,7 +110,9 @@ struct ThreadScreen: View {
         }
         .task(id: thread.isLoading) {
             // DEBUG only: the proof asks for one action once the rows are in.
-            guard let action = TestHooks.action, !thread.isLoading, !thread.rows.isEmpty, !acted, let session else { return }
+            guard performsLaunchAction, let action = TestHooks.action, !thread.isLoading, !thread.rows.isEmpty, !acted, let session else { return }
+            // With the agent detail pushed, the action is the agent's, not the root's.
+            guard TestHooks.open != "agent" || session.parentId != nil else { return }
             acted = true
             await perform(action, session: session, thread: thread)
         }
@@ -137,7 +142,7 @@ struct ThreadScreen: View {
             }).last {
                 try? await client.answer(sessionId, requestId: question.request.requestId, answers: question.request.questions.map { _ in [argument] })
             }
-        case "start-build":
+        case "start-build" where session.threadType == .planning:
             let tasks = PlanDoc.tasks(PlanDoc.sections(model.document ?? "")).count
             let draft = ThreadDraft.build(from: session, type: .implementation, provider: session.provider, model: session.model, reasoning: session.reasoning, tasks: tasks)
             if let built = try? await client.createThread(draft) { pushed = ThreadScreenRoute(sessionId: built.id) }

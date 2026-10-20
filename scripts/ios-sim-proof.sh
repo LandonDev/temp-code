@@ -21,7 +21,14 @@
 #           the report is copied out as scroll-report.json.
 #   box     TC_TEST_THREADS ("title part|title part|…", else TC_TEST_THREAD):
 #           both segments of each named thread, light only, for a real host.
-#   all     shell, threads and scroll (the default).
+#   actions The steering shots: a read key's disabled composer and card, then
+#           the app re-paired with TC_TEST_PAIR_LINK_OPERATE (a key that may act):
+#           a send landing as the user row, Stop mid-turn, approve and deny,
+#           a question answered, Start from the plan into a build, a new chat
+#           from the workspace, a message to an agent, pin, archive and rename;
+#           the key shots in dark too. TC_TEST_CONTROL_URL is the test server's
+#           control panel; the set reads back what landed.
+#   all     shell, threads, scroll and actions (the default).
 # TC_SIM="TempCode L3" picks a device by name (default iPhone 17 Pro); TC_SIM_UDID one by id.
 #
 # simctl drives it rather than XCUITest: with the Command Line Tools selected
@@ -98,6 +105,8 @@ shot() {
   SIMCTL_CHILD_TC_TEST_SEGMENT="$segment" \
   SIMCTL_CHILD_TC_TEST_OPEN="$open" \
   SIMCTL_CHILD_TC_TEST_SCROLL="${TC_SCROLL_RUN:-}" \
+  SIMCTL_CHILD_TC_TEST_ACTION="${TC_ACTION:-}" \
+  SIMCTL_CHILD_TC_TEST_SHEET="${TC_SHEET:-}" \
     xcrun simctl launch --terminate-running-process "$TC_SIM_UDID" "$BUNDLE" >/dev/null
   sleep "$settle"
   xcrun simctl io "$TC_SIM_UDID" screenshot --type png "$OUT/shots/$name.png" >/dev/null 2>&1
@@ -108,12 +117,14 @@ appearance() { xcrun simctl ui "$TC_SIM_UDID" appearance "$1" >/dev/null 2>&1 ||
 # The first launch pairs. The app logs the outcome under its subsystem (never
 # the code or a key); read it back, try once more if nothing landed, and stop
 # early rather than shoot a matrix of empty screens.
+PAIR_SINCE=$(date '+%Y-%m-%d %H:%M:%S')
 pairing_log() {
-  xcrun simctl spawn "$TC_SIM_UDID" log show --last 3m \
+  xcrun simctl spawn "$TC_SIM_UDID" log show --start "$PAIR_SINCE" \
     --predicate 'subsystem == "dev.landon.tempcode" AND category == "pairing"' --style compact 2>/dev/null | scrub
 }
 pair() {
   local attempt
+  PAIR_SINCE=$(date '+%Y-%m-%d %H:%M:%S')
   for attempt in 1 2; do
     shot 00-pairing home >/dev/null
     if pairing_log | /usr/bin/grep -q "pairing done"; then return 0; fi
@@ -207,12 +218,94 @@ box_set() {
   done
 }
 
+# The steering shots. Each launch performs one action through the same calls
+# the buttons make (TC_TEST_ACTION), or opens a sheet (TC_TEST_SHEET); the
+# screen is read back off the simulator and the control panel says what landed.
+control() { curl -s -X POST "$TC_TEST_CONTROL_URL$1" -H 'Content-Type: application/json' -d "${2:-{\}}"; }
+actions_set() {
+  [ -n "${TC_TEST_PAIR_LINK_OPERATE:-}" ] && [ -n "${TC_TEST_CONTROL_URL:-}" ] || { echo "ios-sim-proof: the actions set needs TC_TEST_PAIR_LINK_OPERATE and TC_TEST_CONTROL_URL" >&2; return 2; }
+  appearance light
+  # The read key first: nothing hidden, everything disabled with the reason.
+  shot "ro-composer-light" thread "gateway refuse"
+  shot "ro-approval-light" thread "Run the test suite"
+  appearance dark
+  shot "ro-composer-dark" thread "gateway refuse"
+  appearance light
+  # Then a key that may act: the app starts over and pairs again.
+  xcrun simctl terminate "$TC_SIM_UDID" "$BUNDLE" >/dev/null 2>&1 || true
+  xcrun simctl uninstall "$TC_SIM_UDID" "$BUNDLE" >/dev/null 2>&1 || true
+  xcrun simctl install "$TC_SIM_UDID" "$APP"
+  TC_TEST_PAIR_LINK="$TC_TEST_PAIR_LINK_OPERATE" TC_TEST_PAIR_NAME="${TC_TEST_PAIR_NAME:-} (acting)" pair || { echo "ios-sim-proof: the app did not pair with the acting key" >&2; return 3; }
+  rm -f "$OUT/shots/00-pairing.png"
+  control /actions/clear >/dev/null
+  TC_ACTION="send:Hello from the phone" shot "act-send-light" thread "Thread B"
+  TC_ACTION="stop" shot "act-stop-light" thread "Thread B"
+  TC_ACTION="approve" shot "act-approve-light" thread "Run the test suite"
+  control /ask '{"sessionId":"ios-waiting","kind":"approval"}' >/dev/null
+  TC_ACTION="deny" shot "act-deny-light" thread "Run the test suite"
+  TC_ACTION="answer:Half up" shot "act-answer-light" thread "Fix the invoice totals"
+  control /ask '{"sessionId":"ios-question","kind":"question"}' >/dev/null
+  shot "act-question-open-light" thread "Fix the invoice totals"
+  TC_SHEET="start" shot "act-start-sheet-light" thread "history onto the box"
+  TC_ACTION="start-build" shot "act-start-light" thread "history onto the box" "" "" 20
+  TC_SHEET="new" shot "act-new-sheet-light" home
+  TC_ACTION="new-chat" shot "act-new-chat-light" home "" "" "" 20
+  TC_ACTION="send:Check the tests too" shot "act-agent-light" thread "thread screens" fleet agent
+  TC_ACTION="pin" shot "act-pin-thread-light" thread "gateway refuse"
+  shot "act-pin-home-light" home
+  TC_ACTION="rename:Renamed from the phone" shot "act-rename-light" thread "gateway refuse"
+  TC_ACTION="archive" shot "act-archive-thread-light" thread "Renamed from the phone"
+  shot "act-archive-home-light" home
+  shot "act-archived-list-light" archived
+  appearance dark
+  TC_ACTION="send:And in the dark" shot "act-send-dark" thread "Thread B"
+  control /ask '{"sessionId":"ios-waiting","kind":"approval"}' >/dev/null
+  shot "act-approval-dark" thread "Run the test suite"
+  TC_SHEET="start" shot "act-start-sheet-dark" thread "history onto the box"
+  TC_SHEET="new" shot "act-new-sheet-dark" home
+  appearance light
+  # What landed, by kind: the proof's own check of every action above.
+  python3 - "$(control /actions)" <<'PY'
+import json, sys
+kinds = [a["kind"] for a in json.loads(sys.argv[1])["actions"]]
+want = {"send": 4, "stop": 1, "approve": 2, "answer": 1, "create": 2, "pin": 1, "rename": 1, "archive": 1}
+counts = {k: kinds.count(k) for k in want}
+missing = {k: v for k, v in want.items() if counts[k] < v}
+print("ios-sim-proof: actions landed " + json.dumps(counts))
+if missing:
+    print("ios-sim-proof: MISSING " + json.dumps(missing), file=sys.stderr)
+    sys.exit(4)
+PY
+}
+
+# The live steering pass against a real host (scripts/ios-sim-proof-box.ts
+# mints the pairings and the threads): one cheap real turn sent from the
+# phone and its reply, then the app re-paired with a key that may approve,
+# a turn that asks for a tool, the approval decided, and the tool's result.
+box_actions_set() {
+  appearance light
+  TC_ACTION="send:Reply with exactly one word: pong" shot "box-act-send" thread "${TC_BOX_THREAD:-L5 phone pass}" "" "" 8
+  shot "box-act-reply" thread "${TC_BOX_THREAD:-L5 phone pass}" "" "" "${TC_BOX_REPLY_WAIT:-40}"
+  if [ -n "${TC_TEST_PAIR_LINK_OPERATE:-}" ]; then
+    xcrun simctl terminate "$TC_SIM_UDID" "$BUNDLE" >/dev/null 2>&1 || true
+    xcrun simctl uninstall "$TC_SIM_UDID" "$BUNDLE" >/dev/null 2>&1 || true
+    xcrun simctl install "$TC_SIM_UDID" "$APP"
+    TC_TEST_PAIR_LINK="$TC_TEST_PAIR_LINK_OPERATE" TC_TEST_PAIR_NAME="${TC_TEST_PAIR_NAME:-} (approving)" pair || { echo "ios-sim-proof: the app did not pair with the approving key" >&2; return 3; }
+    rm -f "$OUT/shots/00-pairing.png"
+    TC_ACTION="send:Use the Bash tool to run exactly this command and then tell me its output: echo approved-from-the-phone" shot "box-act-ask" thread "${TC_BOX_APPROVE_THREAD:-L5 approval pass}" "" "" "${TC_BOX_REPLY_WAIT:-40}"
+    TC_ACTION="approve" shot "box-act-approve" thread "${TC_BOX_APPROVE_THREAD:-L5 approval pass}" "" "" 8
+    shot "box-act-approved" thread "${TC_BOX_APPROVE_THREAD:-L5 approval pass}" "" "" "${TC_BOX_REPLY_WAIT:-40}"
+  fi
+}
+
 case "$SET" in
   shell) shell_set; host_gone_set ;;
   threads) threads_set ;;
   scroll) scroll_set ;;
   box) box_set ;;
-  all) shell_set; threads_set; scroll_set; host_gone_set ;;
+  actions) actions_set ;;
+  box-actions) box_actions_set ;;
+  all) shell_set; threads_set; scroll_set; actions_set; host_gone_set ;;
   *) echo "ios-sim-proof: unknown TC_PROOF_SET $SET" >&2; exit 2 ;;
 esac
 

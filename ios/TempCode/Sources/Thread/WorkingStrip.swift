@@ -23,15 +23,16 @@ struct WorkingStripView: View {
     static let flavourWords = ["Thinking", "Pondering", "Scheming", "Brewing", "Weaving", "Tinkering", "Musing", "Composing", "Sifting", "Untangling", "Distilling", "Sketching", "Plotting", "Riffing", "Combobulating", "Percolating", "Marinating", "Noodling", "Puzzling", "Conjuring"]
 
     enum Phase: Hashable {
-        case idle, sending, working, waiting, paused
+        case idle, sending, working, paused
     }
 
+    /// A waiting thread shows nothing here: its card, the segment dot and
+    /// Home's needs-you row already say so, and the row says nothing twice.
     private var phase: Phase {
         switch session?.status {
         case .paused?: return .paused
         case .running?: return .working
         case .starting?: return thread.sending ? .sending : .working
-        case .waiting?: return .waiting
         default: return thread.sending ? .sending : .idle
         }
     }
@@ -65,14 +66,6 @@ struct WorkingStripView: View {
                         }
                         .animation(Motion.crossFade, value: Self.flavour(seed: sessionId, now: now))
                     }
-                    Spacer(minLength: 0)
-                }
-            case .waiting:
-                line {
-                    Image(systemName: "exclamationmark.circle.fill")
-                        .foregroundStyle(Tint.warning)
-                    Text("Needs you")
-                        .foregroundStyle(Tint.warning)
                     Spacer(minLength: 0)
                 }
             case .paused:
