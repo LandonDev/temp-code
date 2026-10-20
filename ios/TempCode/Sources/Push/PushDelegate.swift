@@ -37,18 +37,31 @@ final class PushDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCen
         Task { @MainActor in PushDelegate.handler?.pushTokenFailed(message) }
     }
 
+    // The completion-handler forms, finished on the main actor: UIKit updates
+    // the scene's snapshot and state restoration inside the completion and
+    // asserts the main thread there (the async forms returned on a
+    // cooperative thread and aborted the app on the first real tap).
+
     /// A tap on a notification: the thread and its card, through the router.
-    nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse) async {
+    nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse, withCompletionHandler completionHandler: @escaping () -> Void) {
         // The payload is read here; only the Sendable target crosses to the main actor.
-        guard let target = PushTarget(userInfo: response.notification.request.content.userInfo) else { return }
-        await MainActor.run { PushDelegate.route(target) }
+        let target = PushTarget(userInfo: response.notification.request.content.userInfo)
+        // UIKit's handler is not Sendable in this SDK; it is made to be called once, on the main thread, which is where this lands.
+        nonisolated(unsafe) let finish = completionHandler
+        Task { @MainActor in
+            if let target { PushDelegate.route(target) }
+            finish()
+        }
     }
 
     /// Delivery in the foreground: nothing for the thread on screen, the banner otherwise.
-    nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification) async -> UNNotificationPresentationOptions {
+    nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification, withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
         let target = PushTarget(userInfo: notification.request.content.userInfo)
-        let onScreen = await MainActor.run { target.map { PushDelegate.handler?.pushIsOnScreen($0) ?? false } ?? false }
-        return onScreen ? [] : [.banner, .sound, .list]
+        nonisolated(unsafe) let finish = completionHandler
+        Task { @MainActor in
+            let onScreen = target.map { PushDelegate.handler?.pushIsOnScreen($0) ?? false } ?? false
+            finish(onScreen ? [] : [.banner, .sound, .list])
+        }
     }
 
     /// The one route a tapped payload takes; the DEBUG proof feeds a payload here too.

@@ -362,6 +362,20 @@ push_set() {
   TC_NOTIFY="Run the test suite|0" shot "push-tap-approval" notification "" "" "" 14
   cp "$container/Documents/navigation-report.json" "$OUT/push-navigation-approval.json" 2>/dev/null || echo '{}' > "$OUT/push-navigation-approval.json"
   shot "push-settings-row" settings
+  # A real delivery through the notification centre's delegate while the app
+  # is in the foreground (simctl push): the delegate must answer on the main
+  # thread, else UIKit aborts the app; the process is still there afterwards.
+  shot "push-foreground-before" home
+  printf '{"aps":{"alert":{"title":"L6 proof","body":"Permission: Bash"},"sound":"default"},"tc":{"event":"needs_you","hostId":"box","environmentId":"env_proof","threadId":"nope","seq":1,"ts":1}}' > "$OUT/push-payload.json"
+  xcrun simctl push "$TC_SIM_UDID" "$BUNDLE" "$OUT/push-payload.json" >/dev/null
+  sleep 3
+  xcrun simctl io "$TC_SIM_UDID" screenshot --type png "$OUT/shots/push-foreground-after.png" >/dev/null 2>&1
+  if pgrep -f "/CoreSimulator/Devices/$TC_SIM_UDID/data/Containers/Bundle/Application/.*/TempCode.app/TempCode" >/dev/null; then
+    echo "ios-sim-proof: foreground delivery through the delegate kept the app alive PASS"
+  else
+    echo "ios-sim-proof: the app died on a foreground delivery" >&2
+    exit 4
+  fi
   python3 - "$OUT" <<'CHECK'
 import json, pathlib, sys
 out = pathlib.Path(sys.argv[1])
