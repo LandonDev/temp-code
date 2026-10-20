@@ -7,9 +7,9 @@ import TempCodeContract
 /// on the lock screen and in the Dynamic Island. The app starts it; the host
 /// updates it by push through the hub (`liveactivity`) and ends it when the
 /// thread settles. Compiled into the app and the extension.
-struct ThreadActivityAttributes: ActivityAttributes {
+nonisolated struct ThreadActivityAttributes: ActivityAttributes {
     /// What the host pushes as `content-state`; keys match the hub's payload.
-    struct ContentState: Codable, Hashable {
+    nonisolated struct ContentState: Codable, Hashable {
         var phase: Phase
         /// Clock milliseconds when the current stretch of work began (`busySince`).
         var since: Int
@@ -26,7 +26,7 @@ struct ThreadActivityAttributes: ActivityAttributes {
         }
     }
 
-    enum Phase: String, Codable, Hashable {
+    nonisolated enum Phase: String, Codable, Hashable {
         case working, paused, waiting, finished, failed
 
         /// The strip's word for a settled phase; a working one shows the flavour word.

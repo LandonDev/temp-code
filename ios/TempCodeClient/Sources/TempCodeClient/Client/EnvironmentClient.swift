@@ -80,6 +80,8 @@ public final class EnvironmentClient {
     public let subscriptions: Subscriptions
     /// The phone's push registrar, when the registry gave it one: told at every open (thread L6).
     public internal(set) var push: PushRegistrar?
+    /// Called with every session meta the host sent (the Live Activity follows a thread's status through it).
+    public var sessionObserver: (@MainActor (EnvironmentClient, [SessionMeta]) -> Void)?
     private let keys: any KeyStore
     private var loops: [Task<Void, Never>] = []
     private var started = false
@@ -488,6 +490,7 @@ public final class EnvironmentClient {
             if meta.status == .starting || meta.status == .running { threads[meta.id]?.sending = false }
         }
         sessions = byId.values.sorted { ($0.updatedAt, $0.id) > ($1.updatedAt, $1.id) }
+        sessionObserver?(self, metas)
         let env = environment.id
         let cache = self.cache
         Task { try? await cache.upsertSessions(env, metas) }

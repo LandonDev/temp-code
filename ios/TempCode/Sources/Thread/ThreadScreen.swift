@@ -13,6 +13,7 @@ struct ThreadScreen: View {
     /// DEBUG proof: only the screen the launch route opened performs `TC_TEST_ACTION`; a screen this one pushed never does.
     var performsLaunchAction = true
     @Environment(NavigationRouter.self) private var router
+    @Environment(AppModel.self) private var app
     @State private var model: ThreadScreenModel
     @State private var page: Segment?
     @State private var launchPush: LaunchPush?
@@ -114,6 +115,10 @@ struct ThreadScreen: View {
             client.closeThread(sessionId)
         }
         .onChange(of: thread.fold.lastSeq) { client.markSeen(sessionId) }
+        // A running thread the person is watching gets the Live Activity.
+        .onChange(of: session?.status, initial: true) {
+            if let session, session.parentId == nil { app.activities.watch(client, session, registry: app.registry) }
+        }
         .task(id: "\(thread.isLoading)|\(thread.isLoadingHistory)|\(thread.moreBefore)|\(thread.rows.count)") {
             TestHooks.recordHistory(thread)
         }

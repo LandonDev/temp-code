@@ -15,6 +15,7 @@
 		185C9CFF9FF2ED0FE3BF260A /* SearchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3B3B09FA95C9406F6DB3C428 /* SearchView.swift */; };
 		1B397DAFBA99F301139211C4 /* WorkingStrip.swift in Sources */ = {isa = PBXBuildFile; fileRef = ECE31D51E7B8B8D6510DE175 /* WorkingStrip.swift */; };
 		1FB0FF3F2BA329BD97D44344 /* TranscriptRows.swift in Sources */ = {isa = PBXBuildFile; fileRef = 67182306E6D12A2B115CC644 /* TranscriptRows.swift */; };
+		223FC5CC35CD814B2FBC0E89 /* ActivityCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 387DBAC71502B6ED41C9A864 /* ActivityCoordinator.swift */; };
 		23614D8185C5D979DC52454E /* DiffScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = A24AC0457A2C05A169F1C11C /* DiffScreen.swift */; };
 		2AD4C0EEE3EDB9E757479616 /* AddEnvironmentSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 62C74571D102E72FCC26E83C /* AddEnvironmentSheet.swift */; };
 		2D2B02B0C38EB14D5D732C9A /* StatusLine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A445C153D49BF2624BA6CFA /* StatusLine.swift */; };
@@ -105,6 +106,7 @@
 		35121C37D3AE725035034343 /* MediaImage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MediaImage.swift; sourceTree = "<group>"; };
 		36B8E9AC0F07929BB084E8FA /* TempCodeClient */ = {isa = PBXFileReference; lastKnownFileType = folder; name = TempCodeClient; path = ../TempCodeClient; sourceTree = SOURCE_ROOT; };
 		38091D4AA307C8AE81C19643 /* ThreadActivity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThreadActivity.swift; sourceTree = "<group>"; };
+		387DBAC71502B6ED41C9A864 /* ActivityCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActivityCoordinator.swift; sourceTree = "<group>"; };
 		3B3B09FA95C9406F6DB3C428 /* SearchView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchView.swift; sourceTree = "<group>"; };
 		458CA933FF6A32D8B310B3D6 /* Pressable.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Pressable.swift; sourceTree = "<group>"; };
 		4A445C153D49BF2624BA6CFA /* StatusLine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusLine.swift; sourceTree = "<group>"; };
@@ -268,6 +270,7 @@
 		A18676EA9CB7A00EA594676A /* Push */ = {
 			isa = PBXGroup;
 			children = (
+				387DBAC71502B6ED41C9A864 /* ActivityCoordinator.swift */,
 				A35D3337968B0A77BDF419BF /* NavigationRouter.swift */,
 				0569978934342B78AA271564 /* PushDelegate.swift */,
 			);
@@ -442,6 +445,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				223FC5CC35CD814B2FBC0E89 /* ActivityCoordinator.swift in Sources */,
 				2AD4C0EEE3EDB9E757479616 /* AddEnvironmentSheet.swift in Sources */,
 				0E1E99641BDC5DF10E6B7133 /* AppModel.swift in Sources */,
 				FB079AEF0FD1CC9C96A437DB /* ArchivedViews.swift in Sources */,

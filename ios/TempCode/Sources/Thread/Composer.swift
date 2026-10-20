@@ -40,6 +40,7 @@ struct ComposerBar: View {
     /// The block after its grace: a short drop never flashes the field.
     @State private var block: ActionBlock?
     @State private var sentCount = 0
+    @Environment(AppModel.self) private var app
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.displayScale) private var scale
 
@@ -134,6 +135,8 @@ struct ComposerBar: View {
             defer { busy = false }
             do {
                 try await client.send(sessionId, text: body)
+                // The person started this turn: it goes on the lock screen.
+                if let session, session.parentId == nil { app.activities.sent(client, session, registry: app.registry) }
             } catch {
                 // The text comes back so nothing typed is lost.
                 text = body

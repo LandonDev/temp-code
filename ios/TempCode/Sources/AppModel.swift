@@ -14,6 +14,7 @@ import UserNotifications
 final class AppModel: PushHandler {
     let registry: ClientRegistry
     let router = NavigationRouter()
+    let activities = ActivityCoordinator()
     private(set) var started = false
     /// The stored hosts have their clients: the shell can tell "no hosts" from "not loaded yet".
     private(set) var ready = false
@@ -44,9 +45,14 @@ final class AppModel: PushHandler {
         guard !started else { return }
         started = true
         PushDelegate.handler = self
+        registry.setSessionObserver { [weak self] client, metas in
+            guard let self else { return }
+            activities.apply(client, metas, registry: registry)
+        }
         await applyLaunchPairing()
         await registry.sync()
         ready = true
+        activities.reconcile(registry)
         await refreshPushPermission()
         if registry.push.enabled, registry.push.permission == .granted { UIApplication.shared.registerForRemoteNotifications() }
         let registry = self.registry

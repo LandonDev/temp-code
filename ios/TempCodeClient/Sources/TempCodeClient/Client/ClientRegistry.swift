@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import TempCodeContract
 
 /// The environments the app holds open: one client per paired environment,
 /// created from the store and torn down when a host is removed. Foreground
@@ -23,11 +24,19 @@ public final class ClientRegistry {
         self.make = make ?? { environment in EnvironmentClient(environment: environment, keys: keys, cache: cache) }
     }
 
+    /// Hears every session meta of every host, now and for hosts paired later.
+    public func setSessionObserver(_ observer: (@MainActor (EnvironmentClient, [SessionMeta]) -> Void)?) {
+        sessionObserver = observer
+        for client in clients.values { client.sessionObserver = observer }
+    }
+    private var sessionObserver: (@MainActor (EnvironmentClient, [SessionMeta]) -> Void)?
+
     /// Clients for every stored environment, started; newest additions started too.
     public func sync() async {
         for environment in store.environments where clients[environment.id] == nil {
             let client = make(environment)
             client.push = push
+            client.sessionObserver = sessionObserver
             clients[environment.id] = client
             await client.start()
         }
