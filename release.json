@@ -1,5 +1,5 @@
 {
-  "n": 260,
-  "notes": "Docs for L6: CLAUDE.md's iOS section (push, the Live Activity, the device build, the DEBUG hook), ios/TempCodeClient/README.md's Push section in place of the L4 placeholder, infra/hub/README.md's APNs section and the device and activity routes, and docs/IOS-DESIGN.md's L6 row marked landed.",
-  "ts": 1792533728481
+  "n": 261,
+  "notes": "The hub client carries the host's environment id (the box reported 'box' before, and a phone routes a notification tap by the id its saved host is keyed by); the Live Activity coordinator logs each start and end under the activity category and writes a DEBUG activity report for the proofs.",
+  "ts": 1792534771167
 }
