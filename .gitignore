@@ -24,3 +24,6 @@ ios/*/.swiftpm/
 ios/*.xcodeproj/xcuserdata/
 ios/*.xcodeproj/project.xcworkspace/xcuserdata/
 ios/TempCodeContract/.swiftpm/
+
+# The device build's team id (scripts/ios-device.sh): never committed.
+ios/TempCode/Local.xcconfig

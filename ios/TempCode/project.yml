@@ -1,6 +1,12 @@
 # The iOS app, generated into TempCode.xcodeproj by `xcodegen generate`
-# (scripts/ios-sim-proof.sh does it). Simulator-only for now: no team, no
-# signing. The app is a thin SwiftUI shell over ../TempCodeClient.
+# (scripts/ios-sim-proof.sh and scripts/ios-device.sh do it). The app is a
+# thin SwiftUI shell over ../TempCodeClient plus the Live Activity extension.
+#
+# Signing: the simulator build is ad hoc (no team, these base settings). A
+# device build overrides them on the xcodebuild command line with the team
+# id scripts/ios-device.sh reads from TEMP_CODE_APPLE_TEAM or the untracked
+# ios/TempCode/Local.xcconfig (`DEVELOPMENT_TEAM = XXXXXXXXXX`), automatic
+# signing and -allowProvisioningUpdates; nothing about the team lives here.
 name: TempCode
 options:
   bundleIdPrefix: dev.landon.tempcode
@@ -25,15 +31,26 @@ settings:
 packages:
   TempCodeClient:
     path: ../TempCodeClient
+  TempCodeContract:
+    path: ../TempCodeContract
 targets:
   TempCode:
     type: application
     platform: iOS
     sources:
       - path: Sources
+      # The Live Activity's attributes, compiled into the app and the extension.
+      - path: Activity/Shared
     dependencies:
       - package: TempCodeClient
         product: TempCodeClient
+      - target: TempCodeActivity
+    entitlements:
+      path: TempCode.entitlements
+      properties:
+        # APNs. A development-signed build registers with the sandbox gateway;
+        # the app reads the value off its provisioning profile and tells the host.
+        aps-environment: development
     info:
       path: Info.plist
       properties:
@@ -43,6 +60,9 @@ targets:
         UILaunchScreen: {}
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
+        UIBackgroundModes:
+          - remote-notification
+        NSSupportsLiveActivities: true
         ITSAppUsesNonExemptEncryption: false
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
@@ -50,6 +70,31 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: dev.landon.tempcode.ios
         INFOPLIST_KEY_UIUserInterfaceStyle: Automatic
+  # The Live Activity (lock screen and Dynamic Island) for a running thread:
+  # a WidgetKit extension with the activity configuration alone.
+  TempCodeActivity:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: Activity
+      # The app's tokens and type glyphs, so the banner is the strip's.
+      - path: Sources/Design/Tokens.swift
+      - path: Sources/Design/Glyphs.swift
+    dependencies:
+      - package: TempCodeContract
+        product: TempCodeContract
+    info:
+      path: Activity/Info.plist
+      properties:
+        CFBundleDisplayName: TempCode
+        CFBundleShortVersionString: "0.1"
+        CFBundleVersion: "1"
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.landon.tempcode.ios.activity
+        INFOPLIST_KEY_CFBundleDisplayName: TempCode
   TempCodeUITests:
     type: bundle.ui-testing
     platform: iOS
@@ -68,6 +113,7 @@ schemes:
     build:
       targets:
         TempCode: all
+        TempCodeActivity: all
         TempCodeUITests: [test]
     run:
       config: Debug

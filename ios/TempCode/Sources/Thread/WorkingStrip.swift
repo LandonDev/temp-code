@@ -19,9 +19,6 @@ struct WorkingStripView: View {
     static let height: CGFloat = 28
     static let fade: Animation = .easeOut(duration: 0.12)
 
-    /// The desktop's words, in its order; the seed is the thread's id.
-    static let flavourWords = ["Thinking", "Pondering", "Scheming", "Brewing", "Weaving", "Tinkering", "Musing", "Composing", "Sifting", "Untangling", "Distilling", "Sketching", "Plotting", "Riffing", "Combobulating", "Percolating", "Marinating", "Noodling", "Puzzling", "Conjuring"]
-
     enum Phase: Hashable {
         case idle, sending, working, paused
     }
@@ -138,12 +135,6 @@ struct WorkingStripView: View {
         }
     }
 
-    /// The word for this second: the desktop's seed over the id, turning every seven seconds.
-    static func flavour(seed id: String, now: TimeInterval) -> String {
-        var hash: Int32 = 0
-        for scalar in id.unicodeScalars { hash = hash &* 31 &+ Int32(truncatingIfNeeded: scalar.value) }
-        let seed = Int(abs(hash))
-        let turn = Int(now * 1000 / 7000)
-        return flavourWords[(seed + turn) % flavourWords.count]
-    }
+    /// The word for this second (Flavour.word, shared with the Live Activity).
+    static func flavour(seed id: String, now: TimeInterval) -> String { Flavour.word(seed: id, now: now) }
 }
