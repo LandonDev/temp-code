@@ -1,5 +1,5 @@
 {
-  "n": 253,
-  "notes": "R2 security fixes (F1): remote path fence for every fs/git/github/search method, atomic pairing redeem, private-range webhook guard in the app and the hub, admin-only learned origin, trimmed anonymous hello, nonced /pair page; proof scripts/e2e-remote-fence.ts in the gate",
-  "ts": 1792471737383
+  "n": 254,
+  "notes": "Account sync hardened (F2), iOS replay, search, board and pairing fixes (F4), box-update probe for the key-gated hello",
+  "ts": 1792519253372
 }
