@@ -14,6 +14,10 @@
  *   POST /append { sessionId, count, big? }  → appends rows to a thread; answers { appended }
  *   POST /clock  { offsetMs }   → shifts the auth clock (31_000 expires every ticket)
  *   POST /revoke { keyId }      → revokes a key (the listener closes its sockets with 4001)
+ *   GET  /actions               → { actions: [{ kind, sessionId, at, … }] } the sends, stops, approvals,
+ *                                 answers, creates, renames, archives and pins the stubs recorded
+ *   POST /actions/clear         → forgets them
+ *   POST /finish { sessionId, text? }  → ends a simulated turn: the reply, turn-complete, idle
  *   POST /quit                  → closes everything
  */
 import { createServer } from 'node:http'
@@ -429,10 +433,96 @@ at(THREAD_LONG, [{ type: 'turn-complete' }, status('idle')])
 // ── the key, and a pairing link for the simulator rehearsal ─────────────
 const created = await server.remoteAuth.createKey({ name: 'ios-test', audience: 'client', caps: [], createdBy: 'local' })
 const pairing = server.remoteAuth.createPairing({ name: 'ios-sim', audience: 'client', caps: [], createdBy: 'local' })
+// A second key and pairing that may act: the action tests and the proof's
+// steering shots use these; the read-only ones show the disabled states.
+const operate = await server.remoteAuth.createKey({ name: 'ios-test-operate', audience: 'client', caps: ['operate', 'approve'], createdBy: 'local' })
+const operatePairing = server.remoteAuth.createPairing({ name: 'ios-sim-operate', audience: 'client', caps: ['operate', 'approve'], createdBy: 'local' })
+// A key that operates but never approves: the forbidden path of the approval card.
+const operateOnly = await server.remoteAuth.createKey({ name: 'ios-test-operate-only', audience: 'client', caps: ['operate'], createdBy: 'local' })
 
 // ── the auth clock, shiftable for ticket expiry ─────────────────────────
 let clockOffsetMs = 0
 ;(server.remoteAuth as unknown as { now: () => number }).now = () => Date.now() + clockOffsetMs
+
+// ── actions: recorded, and acted out without a harness ──────────────────
+// The seeded threads have no harness behind them, so the registry's action
+// methods are stood in for: each one is recorded for the tests and the proof
+// to read back (GET /actions), and plays out the rows a real run would push
+// (the user turn and a running status, the resolved card, the stopped line).
+// A simulated turn runs until /stop or POST /finish ends it. Creates,
+// renames, archives and pins are the real thing, recorded on the way.
+type Recorded = { kind: string; sessionId: string; at: number } & Record<string, unknown>
+const actions: Recorded[] = []
+const record = (kind: string, sessionId: string, extra: Record<string, unknown> = {}): void => {
+  actions.push({ kind, sessionId, at: Date.now(), ...extra })
+}
+type Registry = typeof server.registry
+const registry = server.registry
+const stub = <K extends keyof Registry>(key: K, fn: Registry[K]): void => {
+  ;(registry as unknown as Record<K, Registry[K]>)[key] = fn
+}
+const realCreate = registry.create.bind(registry)
+const realRename = registry.rename.bind(registry)
+const realSetArchived = registry.setArchived.bind(registry)
+const realSetPinned = registry.setPinned.bind(registry)
+stub('send', async (sessionId, text, opts) => {
+  record('send', sessionId, { text, newPass: opts?.newPass ?? null, provider: opts?.provider ?? null, model: opts?.model ?? null, reasoning: opts?.reasoning ?? null })
+  registry.append(sessionId, { type: 'user-text', text, model: opts?.model, reasoning: opts?.reasoning, newPass: opts?.newPass })
+  registry.append(sessionId, { type: 'status', status: 'running' })
+})
+stub('stopRun', async (sessionId) => {
+  record('stop', sessionId)
+  registry.append(sessionId, { type: 'error', message: 'Stopped', stopped: true })
+  registry.append(sessionId, { type: 'status', status: 'idle' })
+})
+stub('approve', async (sessionId, requestId, allow) => {
+  record('approve', sessionId, { requestId, allow })
+  registry.append(sessionId, { type: 'approval-resolved', requestId, allow })
+  registry.append(sessionId, { type: 'status', status: 'running' })
+})
+stub('answer', async (sessionId, requestId, answers) => {
+  record('answer', sessionId, { requestId, answers })
+  registry.append(sessionId, { type: 'question-resolved', requestId, answers })
+  registry.append(sessionId, { type: 'status', status: 'running' })
+})
+stub('pauseRun', async (sessionId) => {
+  record('pause', sessionId)
+  registry.append(sessionId, { type: 'status', status: 'paused' })
+})
+stub('resumePausedRun', async (sessionId) => {
+  record('resume', sessionId)
+  registry.append(sessionId, { type: 'status', status: 'running' })
+})
+stub('create', async (raw) => {
+  const meta = await realCreate(raw)
+  record('create', meta.id, {
+    threadType: raw.threadType ?? null,
+    agentType: raw.agentType ?? null,
+    provider: raw.provider ?? null,
+    model: raw.model ?? null,
+    reasoning: raw.reasoning ?? null,
+    projectId: raw.projectId ?? null,
+    workspaceId: raw.workspaceId ?? null,
+    cwd: raw.cwd ?? null,
+    planPath: raw.planPath ?? null,
+    goal: raw.goal ?? null,
+    title: raw.title ?? null,
+    permission: raw.permission ?? null
+  })
+  return meta
+})
+stub('rename', async (sessionId, title) => {
+  record('rename', sessionId, { title })
+  await realRename(sessionId, title)
+})
+stub('setArchived', async (sessionId, archived) => {
+  record('archive', sessionId, { archived })
+  await realSetArchived(sessionId, archived)
+})
+stub('setPinned', (sessionId, pinned) => {
+  record('pin', sessionId, { pinned })
+  realSetPinned(sessionId, pinned)
+})
 
 // ── control ─────────────────────────────────────────────────────────────
 const readJson = (req: import('node:http').IncomingMessage): Promise<Record<string, unknown>> =>
@@ -461,6 +551,7 @@ const control = createServer((req, res) => {
       for (const [keyId, set] of server.remote?.sockets ?? []) for (const ws of set) sockets.push({ keyId, extensions: ws.extensions })
       return answer(200, { sockets, clockOffsetMs })
     }
+    if (url.pathname === '/actions') return answer(200, { actions })
     if (req.method !== 'POST') return answer(404, { error: 'not found' })
     const body = await readJson(req)
     switch (url.pathname) {
@@ -481,6 +572,18 @@ const control = createServer((req, res) => {
           server.registry.append(sessionId, { type: 'assistant-text', text, delta: false, msgId: `a${appended}`, blockIndex: 0 })
         }
         return answer(200, { appended: count })
+      }
+      case '/actions/clear':
+        actions.length = 0
+        return answer(200, { ok: true })
+      case '/finish': {
+        // Ends a simulated turn the way a real one ends: the reply, turn-complete, idle.
+        const sessionId = String(body.sessionId ?? THREAD_A)
+        appended++
+        registry.append(sessionId, { type: 'assistant-text', text: String(body.text ?? 'Done.'), delta: false, msgId: `f${appended}`, blockIndex: 0 })
+        registry.append(sessionId, { type: 'turn-complete' })
+        registry.append(sessionId, { type: 'status', status: 'idle' })
+        return answer(200, { finished: sessionId })
       }
       case '/clock':
         clockOffsetMs = Number(body.offsetMs ?? 0)
@@ -519,6 +622,12 @@ process.stdout.write(
     environmentId: server.environmentId,
     keyId: created.key.id,
     key: created.token,
+    operateKeyId: operate.key.id,
+    operateKey: operate.token,
+    operateOnlyKeyId: operateOnly.key.id,
+    operateOnlyKey: operateOnly.token,
+    pairingLinkOperate: `http://127.0.0.1:${server.remote.port}/pair#${operatePairing.code}`,
+    planPath: plan.planPath ?? null,
     pairingLink: `http://127.0.0.1:${server.remote.port}/pair#${pairing.code}`,
     threadA: THREAD_A,
     threadB: THREAD_B,

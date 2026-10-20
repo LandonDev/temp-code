@@ -18,7 +18,7 @@ if (bundle.error || bundle.status !== 0) {
 }
 
 const server = spawn('node', [out], { cwd: repo, stdio: ['ignore', 'pipe', 'inherit'] })
-const ready = await new Promise<{ baseUrl: string; controlUrl: string; pairingLink: string }>((ok, bad) => {
+const ready = await new Promise<{ baseUrl: string; controlUrl: string; pairingLink: string; pairingLinkOperate: string }>((ok, bad) => {
   let buffer = ''
   const timer = setTimeout(() => bad(new Error('the test server did not come up in 60 s')), 60_000)
   server.stdout.on('data', (chunk: Buffer) => {
@@ -41,6 +41,9 @@ const proof = spawnSync('sh', [resolve(repo, 'scripts/ios-sim-proof.sh')], {
   env: {
     ...process.env,
     TC_TEST_PAIR_LINK: ready.pairingLink,
+    // The steering shots pair with a key that may act; the control panel tells the script what landed.
+    TC_TEST_PAIR_LINK_OPERATE: ready.pairingLinkOperate,
+    TC_TEST_CONTROL_URL: ready.controlUrl,
     TC_TEST_PAIR_NAME: 'Local test server',
     TC_TEST_THREAD: process.env.TC_TEST_THREAD ?? 'Thread A',
     TC_TEST_SEARCH: process.env.TC_TEST_SEARCH ?? 'hello',

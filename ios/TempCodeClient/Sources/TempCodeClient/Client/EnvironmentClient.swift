@@ -18,8 +18,21 @@ public struct ThreadState: Sendable, Hashable {
     public var isLive = false
     /// `session.subscribe` was refused: the thread is gone from the host.
     public var goneReason: String?
+    /// User turns this device sent that the host has not echoed yet; the echo clears them by text.
+    public var pending: [PendingTurn] = []
+    /// A send is on its way: from the call until the host starts the turn or echoes the text.
+    public var sending = false
+    /// Approval decisions this device gave that the host has not confirmed yet, by request id.
+    public var decisions: [String: Bool] = [:]
+    /// Question answers this device gave that the host has not confirmed yet, by request id.
+    public var answers: [String: [[String]]] = [:]
 
     public init() {}
+
+    /// The fold's items with the pending turns at the end: what the transcript shows.
+    public var entries: [ThreadEntry] {
+        pending.isEmpty ? fold.items : fold.items + pending.enumerated().map { $1.entry(index: $0) }
+    }
 
     /// The last persisted seq held; a streaming preview at the tail never moves it.
     public var cursor: Int { rows.last(where: { $0.ephemeral != true })?.seq ?? 0 }
@@ -46,7 +59,9 @@ public final class EnvironmentClient {
     public private(set) var projects: [ProjectMeta] = []
     /// Newest first.
     public private(set) var sessions: [SessionMeta] = []
-    public private(set) var threads: [String: ThreadState] = [:]
+    public internal(set) var threads: [String: ThreadState] = [:]
+    /// The host's catalog once `loadCatalog` fetched it.
+    public internal(set) var catalog: Catalog?
     /// The shell has been listed at least once in this process.
     public private(set) var hasShell = false
     /// When the user last looked at each thread, from the cache; `markSeen` writes it.
@@ -348,10 +363,19 @@ public final class EnvironmentClient {
 
     // MARK: - folding
 
+    /// A thread this device just created: in the list before the `sessions` push lands.
+    func adopt(_ meta: SessionMeta) {
+        merge([meta])
+    }
+
     private func merge(_ metas: [SessionMeta]) {
         guard !metas.isEmpty else { return }
         var byId = Dictionary(uniqueKeysWithValues: sessions.map { ($0.id, $0) })
-        for meta in metas { byId[meta.id] = meta }
+        for meta in metas {
+            byId[meta.id] = meta
+            // The host started the turn: the strip moves from Sending… to the spinner.
+            if meta.status == .starting || meta.status == .running { threads[meta.id]?.sending = false }
+        }
         sessions = byId.values.sorted { ($0.updatedAt, $0.id) > ($1.updatedAt, $1.id) }
         let env = environment.id
         let cache = self.cache
@@ -377,6 +401,7 @@ public final class EnvironmentClient {
             state.rows = page.rows
             state.moreBefore = page.moreBefore
             state.fold = ThreadFold.fold(page.rows)
+            Self.settle(&state, rows: page.rows)
             state.isLoading = false
             state.isLive = true
             threads[id] = state
@@ -437,7 +462,27 @@ public final class EnvironmentClient {
             incremental = false
         }
         if !incremental { state.fold = ThreadFold.fold(state.rows) }
+        Self.settle(&state, rows: rows)
         threads[id] = state
+    }
+
+    /// What this device did optimistically, confirmed by the host's rows: the
+    /// echo of a sent text retires its pending turn (and Sending… once none
+    /// remain); a resolved approval or question retires its overlay.
+    private static func settle(_ state: inout ThreadState, rows: [EventRow]) {
+        for row in rows where row.ephemeral != true {
+            switch row.event {
+            case .userText(let event):
+                if let at = state.pending.firstIndex(where: { $0.text == event.text }) { state.pending.remove(at: at) }
+                if state.pending.isEmpty { state.sending = false }
+            case .approvalResolved(let event):
+                state.decisions[event.requestId] = nil
+            case .questionResolved(let event):
+                state.answers[event.requestId] = nil
+            default:
+                break
+            }
+        }
     }
 
     private static func partialCallId(_ row: EventRow) -> String? {

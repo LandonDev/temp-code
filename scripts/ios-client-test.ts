@@ -38,7 +38,7 @@ if (bundle.error || bundle.status !== 0) {
 }
 
 const server = spawn('node', [out], { cwd: repo, stdio: ['ignore', 'pipe', 'inherit'], env: process.env })
-type Ready = { ready: true; baseUrl: string; controlUrl: string; environmentId: string; keyId: string; key: string; threadA: string; threadB: string; projectId: string }
+type Ready = { ready: true; baseUrl: string; controlUrl: string; environmentId: string; keyId: string; key: string; operateKeyId: string; operateKey: string; operateOnlyKeyId: string; operateOnlyKey: string; threadA: string; threadB: string; projectId: string; workspaceId: string; planPath: string | null; threads: { planning: string; chat: string } }
 const ready = await new Promise<Ready>((resolveReady, reject) => {
   let buffer = ''
   const timer = setTimeout(() => reject(new Error('the test server did not come up in 60 s')), 60_000)
@@ -67,7 +67,15 @@ const env: NodeJS.ProcessEnv = {
   TC_TEST_KEY: ready.key,
   TC_TEST_THREAD_A: ready.threadA,
   TC_TEST_THREAD_B: ready.threadB,
-  TC_TEST_PROJECT_ID: ready.projectId
+  TC_TEST_PROJECT_ID: ready.projectId,
+  TC_TEST_WORKSPACE_ID: ready.workspaceId,
+  TC_TEST_OPERATE_KEY_ID: ready.operateKeyId,
+  TC_TEST_OPERATE_KEY: ready.operateKey,
+  TC_TEST_OPERATE_ONLY_KEY_ID: ready.operateOnlyKeyId,
+  TC_TEST_OPERATE_ONLY_KEY: ready.operateOnlyKey,
+  TC_TEST_THREAD_PLAN: ready.threads.planning,
+  TC_TEST_THREAD_CHAT: ready.threads.chat,
+  TC_TEST_PLAN_PATH: ready.planPath ?? ''
 }
 if (!env.DEVELOPER_DIR) {
   const selected = spawnSync('xcode-select', ['-p'], { encoding: 'utf8' }).stdout.trim()
