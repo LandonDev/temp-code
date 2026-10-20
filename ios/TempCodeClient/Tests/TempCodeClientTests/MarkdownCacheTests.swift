@@ -30,7 +30,7 @@ import Testing
         #expect(cache.parses == 2)
     }
 
-    @MainActor @Test func `a long row misses once, then hits, and a changed row serves its last parse until the next lands`() async {
+    @MainActor @Test func `a long row misses once, then hits, and a changed row waits for its own parse`() async {
         let cache = MarkdownCache(syncLimit: 0)
         #expect(cache.document(seq: 1, text: "**a**") == nil)
         let first = await cache.render(seq: 1, text: "**a**")
@@ -39,14 +39,27 @@ import Testing
         #expect(parsesAfterFirst >= 1)
         #expect(cache.document(seq: 1, text: "**a**") == first)
         #expect(cache.parses == parsesAfterFirst)
-        // A streaming row: the stale document shows while the new text parses.
-        #expect(cache.document(seq: 1, text: "**a** b") == first)
+        // Each text version waits for its own parse.
+        #expect(cache.document(seq: 1, text: "**a** b") == nil)
         let second = await cache.render(seq: 1, text: "**a** b")
         #expect(second.textHash == "**a** b".hashValue)
         #expect(cache.document(seq: 1, text: "**a** b") == second)
         #expect(cache.document(seq: 2, text: "other") == nil)
         cache.clear()
         #expect(cache.document(seq: 1, text: "**a** b") == nil)
+    }
+
+    @MainActor @Test func `equal seqs on two threads and two hosts never share long markdown`() async {
+        let cache = MarkdownCache(syncLimit: 0)
+        let scopes = [MarkdownScope(environmentId: "mac", sessionId: "a"), MarkdownScope(environmentId: "box", sessionId: "a"), MarkdownScope(environmentId: "mac", sessionId: "b")]
+        for (index, scope) in scopes.enumerated() {
+            #expect(cache.document(scope: scope, seq: 9, text: "text \(index)") == nil)
+            let document = await cache.render(scope: scope, seq: 9, text: "text \(index)")
+            #expect(document.textHash == "text \(index)".hashValue)
+        }
+        for (index, scope) in scopes.enumerated() {
+            #expect(cache.document(scope: scope, seq: 9, text: "text \(index)")?.textHash == "text \(index)".hashValue)
+        }
     }
 
     @MainActor @Test func `the cache stays bounded`() async {

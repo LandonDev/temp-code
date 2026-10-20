@@ -28,6 +28,7 @@
 #           from the workspace, a message to an agent, pin, archive and rename;
 #           the key shots in dark too. TC_TEST_CONTROL_URL is the test server's
 #           control panel; the set reads back what landed.
+#   f4      Old and missing search hits, full board history, then the scroll budget.
 #   all     shell, threads, scroll and actions (the default).
 # TC_SIM="TempCode L3" picks a device by name (default iPhone 17 Pro); TC_SIM_UDID one by id.
 #
@@ -46,8 +47,12 @@ OUT=${TC_PROOF_DIR:-/tmp/tc-ios-proof}
 SETTLE=${TC_PROOF_SETTLE:-10}
 A11Y_SIZE=${TC_PROOF_A11Y_SIZE:-accessibility-large}
 SET=${TC_PROOF_SET:-all}
+DERIVED=${TC_PROOF_DERIVED_DATA:-$OUT/DerivedData}
 BUNDLE=dev.landon.tempcode.ios
-rm -rf "$OUT"
+mkdir -p "$OUT"
+# Rebuild incrementally, but never carry a report or screenshot into a new pass.
+rm -rf "$OUT/shots"
+rm -f "$OUT"/*.json "$OUT/scroll-sample.txt"
 mkdir -p "$OUT/shots"
 scrub() { sed -E -e 's#pair\#[A-Za-z0-9-]+#pair\#<code>#g' -e 's#tc_[A-Za-z0-9]+\.[A-Za-z0-9_-]+#tc_<key>#g'; }
 
@@ -75,8 +80,8 @@ xcodegen generate --quiet
 echo "ios-sim-proof: building for $SIM ($TC_SIM_UDID)"
 xcodebuild build -project TempCode.xcodeproj -scheme TempCode \
   -destination "platform=iOS Simulator,id=$TC_SIM_UDID" \
-  -derivedDataPath "$OUT/DerivedData" -quiet 2>&1 | scrub
-APP="$OUT/DerivedData/Build/Products/Debug-iphonesimulator/TempCode.app"
+  -derivedDataPath "$DERIVED" -quiet 2>&1 | scrub
+APP="$DERIVED/Build/Products/Debug-iphonesimulator/TempCode.app"
 [ -d "$APP" ] || { echo "ios-sim-proof: no app at $APP" >&2; exit 1; }
 
 xcrun simctl uninstall "$TC_SIM_UDID" "$BUNDLE" >/dev/null 2>&1 || true
@@ -104,10 +109,18 @@ shot() {
   SIMCTL_CHILD_TC_TEST_SEARCH="${TC_TEST_SEARCH:-}" \
   SIMCTL_CHILD_TC_TEST_SEGMENT="$segment" \
   SIMCTL_CHILD_TC_TEST_OPEN="$open" \
+  SIMCTL_CHILD_TC_TEST_TARGET_SEQ="${TC_TARGET_SEQ:-}" \
+  SIMCTL_CHILD_TC_TEST_HISTORY="${TC_HISTORY_RUN:-}" \
   SIMCTL_CHILD_TC_TEST_SCROLL="${TC_SCROLL_RUN:-}" \
   SIMCTL_CHILD_TC_TEST_ACTION="${TC_ACTION:-}" \
   SIMCTL_CHILD_TC_TEST_SHEET="${TC_SHEET:-}" \
     xcrun simctl launch --terminate-running-process "$TC_SIM_UDID" "$BUNDLE" >/dev/null
+  if [ "${TC_PROOF_PROFILE:-}" = 1 ] && [ "$name" = long-scrolled ]; then
+    proof_pid=$(pgrep -f "/CoreSimulator/Devices/$TC_SIM_UDID/data/Containers/Bundle/Application/.*/TempCode.app/TempCode" | head -1)
+    if [ -n "$proof_pid" ]; then
+      sample "$proof_pid" 56 1 -mayDie -file "$OUT/scroll-sample.txt" >/dev/null 2>&1 &
+    fi
+  fi
   sleep "$settle"
   xcrun simctl io "$TC_SIM_UDID" screenshot --type png "$OUT/shots/$name.png" >/dev/null 2>&1
   echo "ios-sim-proof: $name"
@@ -196,7 +209,7 @@ threads_set() {
 
 scroll_set() {
   appearance light
-  TC_SCROLL_RUN=1 shot "long-scrolled" thread "2,000 rows" "" "" 58
+  TC_SCROLL_RUN=1 shot "long-scrolled" thread "2,000 rows" "" "" 62
   container=$(xcrun simctl get_app_container "$TC_SIM_UDID" "$BUNDLE" data 2>/dev/null || true)
   if [ -n "$container" ] && [ -f "$container/Documents/scroll-report.json" ]; then
     cp "$container/Documents/scroll-report.json" "$OUT/scroll-report.json"
@@ -204,6 +217,60 @@ scroll_set() {
   else
     echo "ios-sim-proof: no scroll report" >&2
   fi
+}
+
+# Exact old-row navigation and complete boards, read back from DEBUG reports.
+f4_set() {
+  appearance light
+  TC_TARGET_SEQ=41 shot "search-old-hit" thread "2,000 rows" chat
+  container=$(xcrun simctl get_app_container "$TC_SIM_UDID" "$BUNDLE" data)
+  cp "$container/Documents/navigation-report.json" "$OUT/navigation-found.json"
+  TC_TARGET_SEQ=1 shot "search-board-hit" thread "dark mode"
+  cp "$container/Documents/navigation-report.json" "$OUT/navigation-board.json"
+  TC_TARGET_SEQ=0 shot "search-missing-hit" thread "2,000 rows" chat
+  cp "$container/Documents/navigation-report.json" "$OUT/navigation-missing.json"
+  rm -f "$container/Documents/board-history-report.json"
+  TC_HISTORY_RUN=1 shot "history-implementation" thread "dark mode" board
+  cp "$container/Documents/board-history-report.json" "$OUT/history-implementation.json"
+  rm -f "$container/Documents/board-history-report.json"
+  TC_HISTORY_RUN=1 shot "history-research" thread "SQLite on the phone" sources
+  cp "$container/Documents/board-history-report.json" "$OUT/history-research.json"
+  python3 - "$OUT" <<'CHECK'
+import json, pathlib, sys
+out = pathlib.Path(sys.argv[1])
+found = json.loads((out / 'navigation-found.json').read_text())
+missing = json.loads((out / 'navigation-missing.json').read_text())
+board = json.loads((out / 'navigation-board.json').read_text())
+impl = json.loads((out / 'history-implementation.json').read_text())
+research = json.loads((out / 'history-research.json').read_text())
+assert found['target'] == found['item'] == 41 and found['oldest'] <= 41, found
+assert board['target'] == board['item'] == 1 and board['oldest'] == 1, board
+assert missing['target'] == 0 and missing['item'] == -1, missing
+assert impl['complete'] == 1 and impl['oldest'] == 1 and impl['rounds'] >= 1 and impl['todos'] >= 2, impl
+assert research['complete'] == 1 and research['oldest'] == 1 and research['sources'] >= 4, research
+print('ios-sim-proof: old and missing search hits and both complete boards PASS')
+CHECK
+  scroll_set
+  python3 - "$OUT/scroll-report.json" <<'CHECK'
+import json, sys
+r = json.load(open(sys.argv[1]))
+assert r['sourceRows'] >= 2000 and r['items'] >= 1500, r
+assert r['initialOffset'] >= r['travelPt'] * 0.9, r
+assert r['frames'] > 1000 and r['travelPt'] > 1000 and r['scrollFrames'] > 2000, r
+assert r['hitches'] == 0 and r['worstMs'] < r['expectedMs'] + 8, r
+print('ios-sim-proof: scroll budget PASS')
+CHECK
+}
+
+f4_ui_set() {
+  appearance light
+  shot "cold-tail" thread "2,000 rows"
+  shot "chat-chip" thread "gateway refuse" "" chip
+  shot "impl-diff" thread "dark mode" board diff
+  shot "agent-detail" thread "thread screens" fleet agent
+  appearance dark
+  shot "cold-tail-dark" thread "2,000 rows"
+  appearance light
 }
 
 box_set() {
@@ -300,6 +367,8 @@ box_actions_set() {
 }
 
 case "$SET" in
+  f4) f4_set ;;
+  f4-ui) f4_ui_set ;;
   shell) shell_set; host_gone_set ;;
   threads) threads_set ;;
   scroll) scroll_set ;;

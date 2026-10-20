@@ -79,7 +79,8 @@ describe('addEnvironment', () => {
       routes: [{ url: 'wss://tempcode.example.com/ws', kind: 'tunnel' }],
       addedAt: expect.any(Number),
       caps: ['read'],
-      keyName: 'phone'
+      keyName: 'phone',
+      keyId: 'k1'
     })
     expect(listEnvironments(store)).toEqual([saved])
     expect(JSON.stringify(listEnvironments(store))).not.toContain('secret')

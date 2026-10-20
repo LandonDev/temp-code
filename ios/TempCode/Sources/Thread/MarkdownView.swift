@@ -6,15 +6,27 @@ enum ThreadCaches {
     static let markdown = MarkdownCache()
 }
 
+private struct MarkdownScopeKey: EnvironmentKey {
+    static let defaultValue = MarkdownScope()
+}
+
+extension EnvironmentValues {
+    var markdownScope: MarkdownScope {
+        get { self[MarkdownScopeKey.self] }
+        set { self[MarkdownScopeKey.self] = newValue }
+    }
+}
+
 /// The agent's prose as the page: body size, no container, parsed off the
 /// main actor once per text version. Until the parse lands the row shows
 /// its plain text at the same size, so nothing shifts but the styling.
 struct MarkdownView: View {
+    @Environment(\.markdownScope) private var scope
     let seq: Int
     let text: String
 
     var body: some View {
-        if let document = ThreadCaches.markdown.document(seq: seq, text: text) {
+        if let document = ThreadCaches.markdown.document(scope: scope, seq: seq, text: text) {
             MarkdownBlocksView(document: document)
         } else {
             Text(text)

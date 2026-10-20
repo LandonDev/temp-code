@@ -1,4 +1,6 @@
 import SwiftUI
+import UIKit
+import Observation
 import TempCodeClient
 import TempCodeContract
 
@@ -12,9 +14,8 @@ struct TranscriptView: View {
     let thread: ThreadState
     var targetSeq: Int?
     @State private var window = TranscriptView.page
-    @State private var atBottom = true
-    @State private var landedOnTarget = false
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var scrollState = TranscriptScrollState()
+    @State private var targetStatus: String?
 
     /// Rows a cold open shows, and one page back.
     static let page = 75
@@ -24,94 +25,176 @@ struct TranscriptView: View {
         let shown = entries.count > window ? Array(entries.suffix(window)) : entries
         let moreAbove = entries.count > window || thread.moreBefore
         ScrollViewReader { proxy in
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 12) {
-                    if moreAbove {
-                        TopSentinel(loading: thread.isLoadingOlder) {
-                            await extend(proxy: proxy, entries: entries, shown: shown)
-                        }
-                    } else if entries.isEmpty {
-                        EmptyTranscript(thread: thread)
+            List {
+                if moreAbove {
+                    TopSentinel(loading: thread.isLoadingOlder) {
+                        await extend(proxy: proxy, entries: entries, shown: shown)
                     }
-                    ForEach(shown) { entry in
-                        TranscriptRow(entry: entry, client: client, sessionId: sessionId)
-                            .id(entry.id)
-                            .accessibilityIdentifier("transcript-item")
-                    }
-                    Color.clear
-                        .frame(height: 1)
-                        .id(TranscriptAnchor.bottom)
+                    .listRowInsets(rowInsets)
+                    .listRowSeparator(.hidden)
+                    .listRowBackground(Color.clear)
+                } else if entries.isEmpty {
+                    EmptyTranscript(thread: thread)
+                        .listRowInsets(rowInsets)
+                        .listRowSeparator(.hidden)
+                        .listRowBackground(Color.clear)
                 }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 12)
-                .frame(maxWidth: .infinity, alignment: .leading)
+                ForEach(shown) { entry in
+                    VStack(alignment: .leading, spacing: 0) {
+                        TranscriptRow(entry: entry, client: client, sessionId: sessionId)
+                            .equatable()
+                    }
+                    .id(entry.id)
+                    .accessibilityIdentifier("transcript-item")
+                }
+                .listRowInsets(rowInsets)
+                .listRowSeparator(.hidden)
+                .listRowBackground(Color.clear)
+                Color.clear
+                    .frame(height: 1)
+                    .id(TranscriptAnchor.bottom)
+                    .background {
+                        if TestHooks.scroll {
+                            ScrollProofProbe { scroll in if proofScrollView !== scroll { proofScrollView = scroll } }
+                        }
+                    }
+                    .listRowInsets(EdgeInsets())
+                    .listRowSeparator(.hidden)
+                    .listRowBackground(Color.clear)
             }
+            .listStyle(.plain)
+            .scrollContentBackground(.hidden)
+            .environment(\.defaultMinListRowHeight, 0)
+            .contentMargins(.vertical, 6, for: .scrollContent)
+            .navigationLinkIndicatorVisibility(.hidden)
+            .buttonStyle(.plain)
             .scrollBounceBehavior(.basedOnSize)
-            .defaultScrollAnchor(.bottom)
-            .defaultScrollAnchor(.bottom, for: .sizeChanges)
+            .defaultScrollAnchor(.bottom, for: .initialOffset)
+            .defaultScrollAnchor(.bottom, for: .alignment)
             .scrollDismissesKeyboard(.interactively)
             .onScrollGeometryChange(for: Bool.self) { geometry in
                 // Content shorter than the screen is "at the bottom" too.
                 geometry.contentSize.height <= geometry.containerSize.height || geometry.visibleRect.maxY >= geometry.contentSize.height - 64
             } action: { _, now in
-                atBottom = now
+                scrollState.atBottom = now
             }
             .onScrollGeometryChange(for: CGFloat.self) { $0.contentOffset.y } action: { _, y in
                 recorder?.noteOffset(y)
             }
             .overlay(alignment: .bottom) {
-                if !atBottom {
-                    JumpPill {
-                        withAnimation(.easeOut(duration: 0.25)) { proxy.scrollTo(TranscriptAnchor.bottom, anchor: .bottom) }
-                    }
-                    .padding(.bottom, 12)
-                    .transition(Motion.appear(reduced: reduceMotion))
+                TranscriptScrollControls(state: scrollState) {
+                    withAnimation(.easeOut(duration: 0.25)) { proxy.scrollTo(TranscriptAnchor.bottom, anchor: .bottom) }
                 }
             }
-            .animation(Motion.crossFade, value: atBottom)
-            .onAppear { land(proxy: proxy, entries: entries) }
-            .onChange(of: entries.count) { land(proxy: proxy, entries: entries) }
+            .overlay(alignment: .top) {
+                if let targetStatus {
+                    Text(targetStatus)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .padding(8)
+                        .background(Surface.raised)
+                        .accessibilityIdentifier("search-target-status")
+                }
+            }
+            .onChange(of: thread.fold.lastSeq) { pinTail(proxy: proxy) }
+            .onChange(of: entries.count, initial: true) {
+                if !entries.isEmpty, !initializedScroll, targetSeq == nil {
+                    initializedScroll = true
+                    Task { @MainActor in
+                        await Task.yield()
+                        proxy.scrollTo(TranscriptAnchor.bottom, anchor: .bottom)
+                    }
+                } else { pinTail(proxy: proxy) }
+            }
+            .task(id: thread.isLoading) {
+                guard !thread.isLoading, client.threads[sessionId] != nil else { return }
+                await land(proxy: proxy)
+            }
             .task(id: thread.isLoading) {
                 guard TestHooks.scroll, !thread.isLoading, !entries.isEmpty, !scrollRan else { return }
                 scrollRan = true
-                await scrollProof(proxy: proxy, entries: entries)
+                await scrollProof(proxy: proxy)
             }
         }
     }
 
+    private var rowInsets: EdgeInsets { EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16) }
+
+    @State private var initializedScroll = false
+    @State private var proofScrollView: UIScrollView?
     @State private var scrollRan = false
     @State private var recorder: FrameRecorder?
 
     /// Every row in the window, then a 25 s glide to the top and back while
     /// the frames are recorded.
-    private func scrollProof(proxy: ScrollViewProxy, entries: [ThreadEntry]) async {
+    private func scrollProof(proxy: ScrollViewProxy) async {
+        // Load the fixture before timing: hitting the top must not fetch a
+        // page and refold while the display link measures the scroll.
+        for _ in 0..<100 {
+            guard !Task.isCancelled, let state = client.threads[sessionId], state.moreBefore,
+                  let first = state.rows.first?.seq else { break }
+            if state.isLoadingOlder {
+                try? await Task.sleep(for: .milliseconds(20))
+                continue
+            }
+            await client.loadOlder(sessionId)
+            guard let now = client.threads[sessionId]?.rows.first?.seq, now < first else { break }
+        }
+        guard let state = client.threads[sessionId], !state.moreBefore, !state.entries.isEmpty else { return }
+        let entries = state.entries
         window = entries.count
         try? await Task.sleep(for: .seconds(2))
+        var setup = Transaction()
+        setup.disablesAnimations = true
+        withTransaction(setup) { proxy.scrollTo(TranscriptAnchor.bottom, anchor: .bottom) }
+        try? await Task.sleep(for: .seconds(2))
+        guard let proofScrollView else { return }
         let recorder = FrameRecorder()
         self.recorder = recorder
-        recorder.start()
-        withAnimation(.linear(duration: 25)) { proxy.scrollTo(entries[0].id, anchor: .top) }
-        try? await Task.sleep(for: .seconds(26))
-        withAnimation(.linear(duration: 25)) { proxy.scrollTo(TranscriptAnchor.bottom, anchor: .bottom) }
-        try? await Task.sleep(for: .seconds(26))
+        recorder.start(sourceRows: state.rows.count, items: entries.count, scrollView: proofScrollView)
+        // List uses UIKit's fixed-duration scrollTo animation. Drive its
+        // native offset continuously for two measured 25-second glides.
+        try? await Task.sleep(for: .seconds(52))
         _ = recorder.stop()
         self.recorder = nil
     }
 
-    /// Opens on the asked row once it is in the loaded rows: the window
-    /// widens to hold it and the row lands centred.
-    private func land(proxy: ScrollViewProxy, entries: [ThreadEntry]) {
-        guard !landedOnTarget, let targetSeq, let index = entries.firstIndex(where: { $0.seq >= targetSeq }) else { return }
-        landedOnTarget = true
-        let needed = entries.count - index + 8
-        if needed > window { window = needed }
-        let id = entries[index].id
-        Task {
-            try? await Task.sleep(for: .milliseconds(60))
+    /// Pin on data changes, not on scroll geometry changes. Replacing the
+    /// scroll view's size anchor at an edge forces a full layout pass.
+    private func pinTail(proxy: ScrollViewProxy) {
+        guard scrollState.atBottom, targetStatus == nil else { return }
+        Task { @MainActor in
+            await Task.yield()
+            guard scrollState.atBottom, targetStatus == nil else { return }
             var transaction = Transaction()
             transaction.disablesAnimations = true
-            withTransaction(transaction) { proxy.scrollTo(id, anchor: .center) }
+            withTransaction(transaction) { proxy.scrollTo(TranscriptAnchor.bottom, anchor: .bottom) }
         }
+    }
+
+    /// Opens on the asked row once it is in the loaded rows: the window
+    /// widens to hold it and the row lands centred.
+    private func land(proxy: ScrollViewProxy) async {
+        guard let targetSeq else { return }
+        targetStatus = "Loading search result…"
+        guard let id = await client.reveal(sessionId, seq: targetSeq),
+              let entries = client.threads[sessionId]?.entries,
+              let index = entries.firstIndex(where: { $0.id == id }) else {
+            if !Task.isCancelled {
+                targetStatus = "Search result could not be found."
+                TestHooks.recordNavigation(target: targetSeq, item: nil, oldest: client.threads[sessionId]?.rows.first?.seq)
+            }
+            return
+        }
+        guard !Task.isCancelled else { return }
+        targetStatus = nil
+        TestHooks.recordNavigation(target: targetSeq, item: id, oldest: client.threads[sessionId]?.rows.first?.seq)
+        window = max(window, entries.count - index + 8)
+        try? await Task.sleep(for: .milliseconds(60))
+        guard !Task.isCancelled else { return }
+        var transaction = Transaction()
+        transaction.disablesAnimations = true
+        withTransaction(transaction) { proxy.scrollTo(id, anchor: .center) }
     }
 
     /// One page back: rows already held, then older ones from the cache or
@@ -129,6 +212,29 @@ struct TranscriptView: View {
         var transaction = Transaction()
         transaction.disablesAnimations = true
         withTransaction(transaction) { proxy.scrollTo(anchor, anchor: .top) }
+    }
+}
+
+@MainActor @Observable
+private final class TranscriptScrollState {
+    var atBottom = true
+}
+
+/// Only this control reads the position flag. Reaching an edge must not
+/// rebuild the scroll view and its lazy layout.
+private struct TranscriptScrollControls: View {
+    let state: TranscriptScrollState
+    let jump: () -> Void
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        JumpPill(jump: jump)
+            .padding(.bottom, 12)
+            .opacity(state.atBottom ? 0 : 1)
+            .offset(y: state.atBottom && !reduceMotion ? 8 : 0)
+            .allowsHitTesting(!state.atBottom)
+            .accessibilityHidden(state.atBottom)
+            .animation(Motion.crossFade, value: state.atBottom)
     }
 }
 

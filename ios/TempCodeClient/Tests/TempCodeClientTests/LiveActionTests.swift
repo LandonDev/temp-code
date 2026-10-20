@@ -39,7 +39,7 @@ extension LiveServer {
     static func actingClient(claimedCaps: [Capability] = [.read, .operate, .approve]) async throws -> EnvironmentClient {
         let client = EnvironmentClient(environment: operateEnvironment(claimedCaps: claimedCaps), keys: try operateKeys(), cache: try SessionCache.inMemory())
         await client.start()
-        #expect(await until { client.status.fresh })
+        #expect(await until { client.status.fresh && client.session(threadPlan) != nil })
         return client
     }
 
@@ -74,8 +74,9 @@ struct ActionTests {
         try await client.stop(id)
         #expect(try await LiveServer.actions().contains { $0["kind"] as? String == "stop" && $0["sessionId"] as? String == id })
         #expect(await LiveServer.until { client.session(id)?.status == .idle })
-        let stopped = client.threads[id]?.fold.items.last { if case .system(let line) = $0.item { line.stopped } else { false } }
-        #expect(stopped != nil, "the stopped line shows")
+        #expect(await LiveServer.until {
+            client.threads[id]?.fold.items.contains { if case .system(let line) = $0.item { line.stopped } else { false } } == true
+        }, "the stopped line shows")
         await client.stop()
     }
 

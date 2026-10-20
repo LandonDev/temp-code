@@ -431,6 +431,16 @@ for (let i = 0; i < 500; i++) {
 }
 at(THREAD_LONG, [{ type: 'turn-complete' }, status('idle')])
 
+// Keep board tasks, rounds and sources outside a cold tail for the phone's
+// history proof. A single merged block keeps the board itself readable.
+for (const id of [THREAD_IMPL, THREAD_RESEARCH]) {
+  at(id, [
+    ...Array.from({ length: 650 }, (_, i): AgentEvent => ({ type: 'thinking', msgId: 'history-padding', blockIndex: 0, delta: true, text: ` ${i}` })),
+    { type: 'thinking', msgId: 'history-padding', blockIndex: 0, delta: false, text: 'Earlier history replayed.' },
+    status(id === THREAD_IMPL ? 'waiting' : 'idle')
+  ])
+}
+
 // ── the key, and a pairing link for the simulator rehearsal ─────────────
 const created = await server.remoteAuth.createKey({ name: 'ios-test', audience: 'client', caps: [], createdBy: 'local' })
 const pairing = server.remoteAuth.createPairing({ name: 'ios-sim', audience: 'client', caps: [], createdBy: 'local' })

@@ -3,8 +3,8 @@ import Testing
 import TempCodeContract
 @testable import TempCodeClient
 
-func sampleSession(_ id: String, projectId: String = "p1", title: String = "A thread", updatedAt: Int = 1) -> SessionMeta {
-    SessionMeta(id: id, parentId: nil, projectId: projectId, workspaceId: nil, threadType: .implementation, planPath: nil, provider: .claude, model: "claude-sonnet-5-5", reasoning: .low, agentType: .implementer, title: title, cwd: "/tmp/repo", status: .idle, pinned: false, archived: false, permission: .edits, fast: false, ultrafast: false, context1m: false, busySince: nil, pausedAt: nil, frozenActiveElapsed: nil, nativeId: nil, account: nil, activity: nil, activityKind: nil, tasks: nil, goal: nil, context: nil, canContinue: nil, treeCanContinue: nil, treeHasLiveWork: nil, treeHasPaused: nil, treeFrozenActiveElapsed: nil, threadRules: nil, createdAt: 1, updatedAt: updatedAt)
+func sampleSession(_ id: String, projectId: String = "p1", title: String = "A thread", updatedAt: Int = 1, threadType: ThreadType? = .implementation) -> SessionMeta {
+    SessionMeta(id: id, parentId: nil, projectId: projectId, workspaceId: nil, threadType: threadType, planPath: nil, provider: .claude, model: "claude-sonnet-5-5", reasoning: .low, agentType: .implementer, title: title, cwd: "/tmp/repo", status: .idle, pinned: false, archived: false, permission: .edits, fast: false, ultrafast: false, context1m: false, busySince: nil, pausedAt: nil, frozenActiveElapsed: nil, nativeId: nil, account: nil, activity: nil, activityKind: nil, tasks: nil, goal: nil, context: nil, canContinue: nil, treeCanContinue: nil, treeHasLiveWork: nil, treeHasPaused: nil, treeFrozenActiveElapsed: nil, threadRules: nil, createdAt: 1, updatedAt: updatedAt)
 }
 
 func sampleProject(_ id: String, workspaceId: String = "w1", name: String = "A project") -> ProjectMeta {

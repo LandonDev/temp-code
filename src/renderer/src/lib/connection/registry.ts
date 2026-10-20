@@ -110,15 +110,7 @@ export class ConnectionRegistry {
         ? this.pendingPrimary
         : new EnvLink(environment.id, this.defaultProfile(environment));
     if (link === this.pendingPrimary) this.pendingPrimary = null;
-    const supervisor = new Supervisor({
-      environment,
-      resolveUrl: (route) => this.resolveUrl(environment, route),
-      profileFor: (route) => this.profileFor(environment, route),
-      transport: this.options.transport,
-      clock: this.options.clock,
-      onStatus: (status) => this.setStatus(environment.id, status),
-      onSession: (session) => link.setSession(session),
-    });
+    const supervisor = this.createSupervisor(environment, link);
     const entry: Entry = { environment, supervisor, link };
     this.entries.set(environment.id, entry);
     this.environmentList = this.environments();
@@ -128,12 +120,33 @@ export class ConnectionRegistry {
     return link;
   }
 
+  private createSupervisor(environment: Environment, link: EnvLink): Supervisor {
+    return new Supervisor({
+      environment,
+      resolveUrl: (route) => this.resolveUrl(environment, route),
+      profileFor: (route) => this.profileFor(environment, route),
+      transport: this.options.transport,
+      clock: this.options.clock,
+      onStatus: (status) => this.setStatus(environment.id, status),
+      onSession: (session) => link.setSession(session),
+    });
+  }
+
   update(environment: Environment): void {
     const entry = this.entries.get(environment.id);
     if (!entry) return;
+    const keyChanged = entry.environment.keyId !== environment.keyId || entry.environment.credentialRef !== environment.credentialRef;
     entry.environment = environment;
     this.environmentList = this.environments();
-    entry.supervisor.update(environment);
+    if (keyChanged) {
+      // Keep the stores' link and data, but discard the old supervisor's
+      // unauthorized state and any ticket request still in flight.
+      entry.supervisor.stop();
+      entry.supervisor = this.createSupervisor(environment, entry.link);
+      entry.supervisor.start();
+    } else {
+      entry.supervisor.update(environment);
+    }
     this.emit();
   }
 
@@ -313,6 +326,7 @@ export function webEnvironment(socketUrl: string, name = "This host"): Environme
 
 /** A saved remote host as the main process lists it. */
 export function savedEnvironment(saved: {
+  keyId?: string;
   id: string;
   name: string;
   routes: { url: string; kind: Route["kind"] }[];
@@ -322,6 +336,7 @@ export function savedEnvironment(saved: {
     name: saved.name,
     routes: saved.routes.map((r) => ({ url: r.url, kind: r.kind, credential: "key" })),
     credentialRef: saved.id,
+    ...(saved.keyId !== undefined ? { keyId: saved.keyId } : {}),
   };
 }
 

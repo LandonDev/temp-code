@@ -35,6 +35,9 @@ public final class Subscriptions {
     private var handlers: [String: SubscriptionHandlers] = [:]
     /// Session ids subscribed on the CURRENT socket.
     private var live: Set<String> = []
+    private var held: [String: [EventRow]] = [:]
+    private var generation = 0
+    private var resumeTokens: [String: UUID] = [:]
     private var inFlight: [String: Task<EventsPage, any Error>] = [:]
 
     public init(socket: TempCodeSocket) {
@@ -50,7 +53,12 @@ public final class Subscriptions {
 
     /// The socket was replaced or lost: nothing is subscribed any more.
     public func sessionChanged() {
+        generation += 1
         live.removeAll()
+        for task in inFlight.values { task.cancel() }
+        inFlight = [:]
+        held = [:]
+        resumeTokens = [:]
     }
 
     public func add(_ sessionId: String, _ handlers: SubscriptionHandlers) {
@@ -60,11 +68,21 @@ public final class Subscriptions {
     /// Leaves the set; the socket is told when it is up.
     public func remove(_ sessionId: String) {
         handlers[sessionId] = nil
+        held[sessionId] = nil
+        resumeTokens[sessionId] = nil
         inFlight[sessionId]?.cancel()
         inFlight[sessionId] = nil
         guard live.remove(sessionId) != nil else { return }
         let socket = self.socket
         Task { _ = try? await socket.request(Methods.SessionUnsubscribe.self, .init(sessionId: sessionId)) }
+    }
+
+    /// A resume owns these pushes until its gap page lands. On failure they
+    /// are discarded so the next resume still starts before the missing gap.
+    public func hold(_ sessionId: String, rows: [EventRow]) -> Bool {
+        guard held[sessionId] != nil else { return false }
+        if resumeTokens[sessionId] != nil { held[sessionId]?.append(contentsOf: rows) }
+        return true
     }
 
     /// Subscribes on the current socket if not yet, then fetches what follows
@@ -74,8 +92,22 @@ public final class Subscriptions {
     public func resume(_ sessionId: String, tail: Int? = nil) -> Task<EventsPage, any Error> {
         if let pending = inFlight[sessionId] { return pending }
         let socket = self.socket
+        let afterSeq = handlers[sessionId]?.cursor() ?? 0
+        let generation = self.generation
+        let token = UUID()
+        resumeTokens[sessionId] = token
+        held[sessionId] = []
         let task = Task<EventsPage, any Error> { [weak self] in
             guard let self, let handlers = self.handlers[sessionId] else { throw TransportError.notConnected }
+            var completed = false
+            defer {
+                if self.resumeTokens[sessionId] == token {
+                    // Keep the gate closed after a failed gap fetch. Later
+                    // pushes must not move the cursor before the next replay.
+                    self.held[sessionId] = completed ? nil : []
+                    self.resumeTokens[sessionId] = nil
+                }
+            }
             if !self.live.contains(sessionId) {
                 do {
                     _ = try await socket.request(Methods.SessionSubscribe.self, .init(sessionId: sessionId))
@@ -85,12 +117,39 @@ public final class Subscriptions {
                     }
                     throw error
                 }
+                try Task.checkCancellation()
+                guard self.generation == generation, self.resumeTokens[sessionId] == token else { throw TransportError.notConnected }
                 self.live.insert(sessionId)
             }
-            let afterSeq = handlers.cursor()
             let tailFirst = tail != nil && afterSeq == 0
             let page = try await socket.request(Methods.SessionEvents.self, .init(sessionId: sessionId, afterSeq: tailFirst ? nil : afterSeq, beforeSeq: nil, tail: tailFirst ? tail : nil, limit: nil))
-            if self.handlers[sessionId] != nil { handlers.page(page, tailFirst) }
+            try Task.checkCancellation()
+            guard self.generation == generation, self.resumeTokens[sessionId] == token, self.handlers[sessionId] != nil else { throw TransportError.notConnected }
+            handlers.page(page, tailFirst)
+            let cursor = handlers.cursor()
+            var unique: [Int: EventRow] = [:]
+            var ephemeral: [EventRow] = []
+            for row in self.held.removeValue(forKey: sessionId) ?? [] {
+                if row.ephemeral == true { ephemeral.append(row) }
+                else if row.seq > cursor { unique[row.seq] = row }
+            }
+            let persisted = unique.values.sorted { $0.seq < $1.seq }
+            let finishedCalls = Set((page.rows + persisted).compactMap { row -> String? in
+                switch row.event {
+                case .toolCall(let call) where call.partial != true: call.callId
+                case .toolResult(let result): result.callId
+                default: nil
+                }
+            })
+            let previews = ephemeral.filter { row in
+                if case .toolCall(let call) = row.event { return !finishedCalls.contains(call.callId) }
+                return true
+            }
+            let rows = persisted + previews
+            if !rows.isEmpty {
+                handlers.page(EventsPage(rows: rows, moreBefore: false, moreAfter: false, reset: false), false)
+            }
+            completed = true
             return page
         }
         inFlight[sessionId] = task

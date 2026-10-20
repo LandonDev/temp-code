@@ -7,17 +7,6 @@ enum SearchScope: String, CaseIterable {
     case files
 }
 
-/// The hits of one thread.
-struct ThreadHits: Identifiable {
-    let environmentId: String
-    let sessionId: String
-    let title: String
-    let type: ThreadType?
-    var hits: [SessionSearchHit]
-
-    var id: String { sessionId }
-}
-
 /// The file matches of one project.
 struct ProjectMatches: Identifiable {
     let environmentId: String
@@ -25,7 +14,7 @@ struct ProjectMatches: Identifiable {
     let matches: [ProjectSearchMatch]
     let truncated: Bool
 
-    var id: String { project.id }
+    var id: EnvironmentResourceID { EnvironmentResourceID(environmentId: environmentId, resourceId: project.id) }
 }
 
 /// Search every host: thread rows that mention the query (`session.search`),
@@ -129,20 +118,11 @@ struct SearchView: View {
         switch scope {
         case .threads:
             var groups: [ThreadHits] = []
-            var index: [String: Int] = [:]
             var cut = false
             for client in clients {
                 guard let result = try? await client.request(Methods.SessionSearch.self, .init(query: text, limit: 60)) else { continue }
                 cut = cut || result.truncated
-                for hit in result.hits {
-                    if let at = index[hit.sessionId] {
-                        groups[at].hits.append(hit)
-                    } else {
-                        let session = client.session(hit.sessionId)
-                        index[hit.sessionId] = groups.count
-                        groups.append(ThreadHits(environmentId: client.environment.id, sessionId: hit.sessionId, title: session?.title ?? "Thread", type: session?.threadType, hits: [hit]))
-                    }
-                }
+                groups += ThreadHits.group(environmentId: client.environment.id, hits: result.hits, sessions: client.sessions)
             }
             guard !Task.isCancelled else { return }
             threads = groups

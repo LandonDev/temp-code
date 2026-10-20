@@ -36,6 +36,13 @@ struct ThreadScreen: View {
         let segment = model.segment(in: segments, phase: phase)
         VStack(spacing: 0) {
             StatusLine(client: client)
+            if thread.isLoadingHistory || thread.historyError != nil {
+                Text(thread.historyError ?? "Loading earlier board history…")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .padding(8)
+                    .accessibilityIdentifier("board-history-status")
+            }
             if segments.count > 1 {
                 SegmentControl(segments: segments, selected: segment, dot: model.dot(in: segments, phase: phase, thread: thread)) { model.choose($0) }
                 pager(segments: segments, session: session, thread: thread, phase: phase)
@@ -65,10 +72,16 @@ struct ThreadScreen: View {
         }
         .navigationDestination(item: $pushed) { route in ThreadScreen(client: client, sessionId: route.sessionId, performsLaunchAction: false) }
         // The composer docks where the tab bar would float: the tabs wait behind the back button.
+        .environment(\.markdownScope, MarkdownScope(environmentId: client.environment.id, sessionId: sessionId))
         .toolbar(.hidden, for: .tabBar)
         .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(Surface.background, for: .navigationBar)
+        .toolbarBackground(.visible, for: .navigationBar)
         .navigationDestination(for: DiffRoute.self) { route in DiffScreen(client: client, route: route) }
-        .navigationDestination(for: ReportRoute.self) { route in ReportScreen(route: route) }
+        .navigationDestination(for: ReportRoute.self) { route in
+            ReportScreen(route: route)
+                .environment(\.markdownScope, MarkdownScope(environmentId: client.environment.id, sessionId: route.sessionId))
+        }
         .navigationDestination(for: ThreadScreenRoute.self) { route in ThreadScreen(client: client, sessionId: route.sessionId, targetSeq: route.targetSeq) }
         .navigationDestination(item: $launchPush) { push in
             switch push {
@@ -76,7 +89,7 @@ struct ThreadScreen: View {
             case .agent(let route): ThreadScreen(client: client, sessionId: route.sessionId, targetSeq: route.targetSeq)
             }
         }
-        .onChange(of: thread.fold.lastSeq, initial: true) {
+        .onChange(of: TestHooks.open == nil ? "" : "\(thread.fold.lastSeq)|\(thread.rows.count)", initial: true) {
             guard launchPush == nil, let open = TestHooks.open, targetSeq == nil else { return }
             if open == "diff", let edit = thread.fold.items.lazy.compactMap({ entry -> ChangeCard? in
                 guard case .tool(let tool) = entry.item, let path = Board.editPath(tool) else { return nil }
@@ -98,9 +111,15 @@ struct ThreadScreen: View {
             client.closeThread(sessionId)
         }
         .onChange(of: thread.fold.lastSeq) { client.markSeen(sessionId) }
+        .task(id: "\(thread.isLoading)|\(thread.isLoadingHistory)|\(thread.moreBefore)|\(thread.rows.count)") {
+            TestHooks.recordHistory(thread)
+        }
         .onChange(of: segment, initial: true) { _, now in
             model.saw(now, thread: thread)
             if page != now { withAnimation(Motion.drawer) { page = now } }
+        }
+        .onChange(of: segments, initial: true) {
+            if targetSeq != nil { model.choose(segments.contains(.log) ? .log : .chat) }
         }
         .onChange(of: page) { _, now in
             if let now, now != segment { model.choose(now) }

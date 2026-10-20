@@ -105,7 +105,7 @@ struct RootView: View {
             let candidates = client.sessions.filter { $0.parentId == nil }
             let wanted = model.launchThread.map { needle in candidates.filter { $0.title.localizedCaseInsensitiveContains(needle) } } ?? candidates
             if let session = wanted.first ?? candidates.first {
-                homePath.append(Route.thread(environmentId: environmentId, sessionId: session.id, seq: nil))
+                homePath.append(Route.thread(environmentId: environmentId, sessionId: session.id, seq: TestHooks.targetSeq))
             }
         default:
             break

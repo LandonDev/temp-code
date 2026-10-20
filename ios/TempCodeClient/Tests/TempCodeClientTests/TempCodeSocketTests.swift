@@ -67,9 +67,10 @@ private final class Rig: Sendable {
 
     /// Waits until the status satisfies `predicate`.
     func wait(until predicate: @Sendable (EnvironmentStatus) -> Bool) async -> Bool {
-        for _ in 0..<2000 {
+        let deadline = ContinuousClock.now.advanced(by: .seconds(3))
+        while ContinuousClock.now < deadline {
             if predicate(await socket.status) { return true }
-            await Task.yield()
+            try? await Task.sleep(for: .milliseconds(1))
         }
         return false
     }
@@ -222,8 +223,7 @@ private final class Rig: Sendable {
         await fake.waitForSent(1)
         #expect(fake.sentRequests[0].method == "workspace.list")
         fake.answer(id: fake.sentRequests[0].id, result: "[]")
-        for _ in 0..<50 where await !rig.status().fresh { await Task.yield() }
-        #expect(await rig.status().fresh)
+        #expect(await rig.wait { $0.fresh })
 
         await rig.socket.probe(.foreground)
         await fake.waitForSent(2)
@@ -285,7 +285,8 @@ private final class Rig: Sendable {
         await rig.socket.start()
         let fake = await rig.sockets.socket(0)
         fake.drop()
-        #expect(await rig.wait(for: .connecting))
+        // Wait for the failed attempt, rather than the initial connecting state.
+        #expect(await rig.wait { $0.attempts == 1 })
         await rig.socket.setOnline(false)
         #expect(await rig.wait(for: .offline))
         await rig.clock.advance(ms: 600_000)

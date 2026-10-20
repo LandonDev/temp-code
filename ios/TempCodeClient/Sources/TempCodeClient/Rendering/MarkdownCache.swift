@@ -51,100 +51,91 @@ public final class MarkdownRow {
     public internal(set) var document: MarkdownDocument?
 }
 
-/// Parsed markdown per row, keyed by seq and text hash. Reads are
-/// synchronous on the main actor. Text under `syncLimit` bytes parses on the
-/// spot into an unobserved side table (most rows: a line or two); longer
-/// text parses off the main actor and lands in the row's observable slot, so
-/// the row paints plain text once and then its styling, and a streaming row
-/// keeps its last parse until the next lands.
+/// A row's host and thread, also used for synthetic plan and report rows.
+public struct MarkdownScope: Sendable, Hashable {
+    public var environmentId: String
+    public var sessionId: String
+
+    public init(environmentId: String = "", sessionId: String = "") {
+        self.environmentId = environmentId
+        self.sessionId = sessionId
+    }
+}
+
+/// Parsed markdown by host, thread, seq and text hash. Each text version
+/// has its own slot, so a miss never serves another consumer's document.
 @MainActor @Observable
 public final class MarkdownCache {
-    // Nothing here is observed: a read from a view body writes these, and an
-    // observed write there would invalidate the body that made it.
-    @ObservationIgnored private var rows: [Int: MarkdownRow] = [:]
-    @ObservationIgnored private var short: [Int: MarkdownDocument] = [:]
-    @ObservationIgnored private var inflight: Set<Int> = []
-    @ObservationIgnored private var pending: [Int: String] = [:]
+    private struct Key: Hashable {
+        var scope: MarkdownScope
+        var seq: Int
+        var textHash: Int
+    }
+    @ObservationIgnored private var rows: [Key: MarkdownRow] = [:]
+    @ObservationIgnored private var short: [Key: MarkdownDocument] = [:]
+    @ObservationIgnored private var inflight: Set<Key> = []
+    @ObservationIgnored private var generation = 0
     @ObservationIgnored private let limit: Int
-    /// Text this long or shorter parses synchronously.
     @ObservationIgnored public let syncLimit: Int
-    /// Parses run so far (tests).
     @ObservationIgnored public private(set) var parses = 0
 
     public init(limit: Int = 400, syncLimit: Int = 256) {
-        self.limit = limit
+        self.limit = max(4, limit)
         self.syncLimit = syncLimit
     }
 
-    /// The row's document when its text is the one parsed; else the stale
-    /// one while a parse runs, or nil for a long row never seen.
-    public func document(seq: Int, text: String) -> MarkdownDocument? {
-        let hash = text.hashValue
-        if let ready = short[seq], ready.textHash == hash { return ready }
+    public func document(scope: MarkdownScope = MarkdownScope(), seq: Int, text: String) -> MarkdownDocument? {
+        let key = Key(scope: scope, seq: seq, textHash: text.hashValue)
+        if let ready = short[key] { return ready }
         if text.utf8.count <= syncLimit {
             let document = MarkdownDocument.parse(text)
             parses += 1
-            if short[seq] == nil { trim(&short) }
-            short[seq] = document
+            trim(&short)
+            short[key] = document
             return document
         }
-        let row = slot(seq)
-        if let document = row.document, document.textHash == hash { return document }
-        if inflight.contains(seq) {
-            // The newest text wins once the running parse lands.
-            pending[seq] = text
-        } else {
-            inflight.insert(seq)
-            Task { await self.parse(seq: seq, text: text) }
+        let row = slot(key)
+        if let document = row.document { return document }
+        if inflight.insert(key).inserted {
+            let generation = self.generation
+            Task {
+                self.parses += 1
+                let document = await MarkdownDocument.render(text)
+                guard self.generation == generation else { return }
+                row.document = document
+                self.inflight.remove(key)
+            }
         }
-        return row.document
+        return nil
     }
 
-    /// Parses and stores, awaitable; the document for `text` once it is in.
     @discardableResult
-    public func render(seq: Int, text: String) async -> MarkdownDocument {
-        if let ready = document(seq: seq, text: text), ready.textHash == text.hashValue { return ready }
-        if !inflight.contains(seq) {
-            inflight.insert(seq)
-            await parse(seq: seq, text: text)
-        } else {
-            pending[seq] = text
-            while inflight.contains(seq) { try? await Task.sleep(for: .milliseconds(5)) }
-        }
-        return slot(seq).document ?? MarkdownDocument.parse(text)
+    public func render(scope: MarkdownScope = MarkdownScope(), seq: Int, text: String) async -> MarkdownDocument {
+        if let ready = document(scope: scope, seq: seq, text: text) { return ready }
+        let key = Key(scope: scope, seq: seq, textHash: text.hashValue)
+        let row = slot(key)
+        while inflight.contains(key) { try? await Task.sleep(for: .milliseconds(5)) }
+        return row.document ?? MarkdownDocument.parse(text)
     }
 
-    /// Drops every entry; the next read parses again.
     public func clear() {
+        generation += 1
         for row in rows.values { row.document = nil }
         rows = [:]
         short = [:]
-        pending = [:]
+        inflight = []
     }
 
-    private func slot(_ seq: Int) -> MarkdownRow {
-        if let row = rows[seq] { return row }
+    private func slot(_ key: Key) -> MarkdownRow {
+        if let row = rows[key] { return row }
         trim(&rows)
         let row = MarkdownRow()
-        rows[seq] = row
+        rows[key] = row
         return row
     }
 
-    private func parse(seq: Int, text: String) async {
-        var text = text
-        while true {
-            parses += 1
-            let document = await MarkdownDocument.render(text)
-            slot(seq).document = document
-            guard let next = pending.removeValue(forKey: seq), next.hashValue != document.textHash else { break }
-            text = next
-        }
-        inflight.remove(seq)
-    }
-
-    /// Rows far from the tail are the ones scrolled away from.
-    private func trim<Value>(_ table: inout [Int: Value]) {
+    private func trim<Value>(_ table: inout [Key: Value]) {
         guard table.count >= limit else { return }
-        for key in table.keys.sorted().prefix(limit / 4) { table[key] = nil }
+        for key in table.keys.sorted(by: { $0.seq < $1.seq }).prefix(limit / 4) { table[key] = nil }
     }
 }

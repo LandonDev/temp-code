@@ -14,6 +14,11 @@ public struct ThreadState: Sendable, Hashable {
     /// The first page since the thread opened is still on its way.
     public var isLoading = false
     public var isLoadingOlder = false
+    /// Board history loads after the transcript's tail has painted.
+    public var isLoadingHistory = false
+    public var historyError: String?
+    /// Row version for off-actor fold checks.
+    internal var revision = 0
     /// The live socket carries this thread's pushes right now.
     public var isLive = false
     /// `session.subscribe` was refused: the thread is gone from the host.
@@ -38,8 +43,8 @@ public struct ThreadState: Sendable, Hashable {
     public var cursor: Int { rows.last(where: { $0.ephemeral != true })?.seq ?? 0 }
 }
 
-/// Rows a thread keeps in memory at most; older ones drop off the top and
-/// come back through `loadOlder`.
+/// Tail retained after live appends for transcript-only threads. Board
+/// threads keep the history their complete fold needs.
 public let threadRowsInMemory = 2_000
 /// Rows a cold open asks for (the wire's TAIL_ROWS); its byte target may cut it shorter.
 public let coldOpenTail = 300
@@ -76,6 +81,8 @@ public final class EnvironmentClient {
     private let keys: any KeyStore
     private var loops: [Task<Void, Never>] = []
     private var started = false
+    private var historyLoads: [String: Task<Void, Never>] = [:]
+    private var historyTokens: [String: UUID] = [:]
     /// Screens showing each thread right now; the subscription lives while any does.
     private var opens: [String: Int] = [:]
 
@@ -118,6 +125,7 @@ public final class EnvironmentClient {
     /// Stops the socket and the loops; the cache stays for the next launch.
     public func stop() async {
         started = false
+        for id in Array(historyLoads.keys) { cancelHistory(id) }
         for loop in loops { loop.cancel() }
         loops = []
         await socket.stop()
@@ -215,12 +223,13 @@ public final class EnvironmentClient {
         opens[id] = remaining == 0 ? nil : remaining
         guard remaining == 0 else { return }
         subscriptions.remove(id)
+        cancelHistory(id)
         threads[id]?.isLive = false
     }
 
     /// Older rows: from the cache while it has them, then from the host.
     public func loadOlder(_ id: String) async {
-        guard var state = threads[id], !state.isLoadingOlder, state.moreBefore, let first = state.rows.first else { return }
+        guard var state = threads[id], !state.isLoadingOlder, state.moreBefore, let first = state.rows.first(where: { $0.ephemeral != true }) else { return }
         state.isLoadingOlder = true
         threads[id] = state
         defer { threads[id]?.isLoadingOlder = false }
@@ -233,6 +242,102 @@ public final class EnvironmentClient {
         guard let page = try? await socket.request(Methods.SessionEvents.self, .init(sessionId: id, afterSeq: nil, beforeSeq: first.seq, tail: olderPage, limit: nil)) else { return }
         try? await cache.store(environment.id, sessionId: id, rows: page.rows, moreBefore: page.moreBefore)
         prepend(id, rows: page.rows, moreBefore: page.moreBefore)
+    }
+
+    /// Fetches backwards until the exact search row is held. The bound and
+    /// progress check keep a missing row or a broken host from looping.
+    public func reveal(_ id: String, seq: Int, maxPages: Int = 100) async -> Int? {
+        while threads[id]?.isLoading == true || threads[id]?.isLoadingOlder == true {
+            guard !Task.isCancelled else { return nil }
+            try? await Task.sleep(for: .milliseconds(20))
+        }
+        for page in 0...max(0, maxPages) {
+            guard !Task.isCancelled, let state = threads[id] else { return nil }
+            if let row = state.rows.first(where: { $0.seq == seq && $0.ephemeral != true }) {
+                return state.fold.entryID(for: row)
+            }
+            guard page < maxPages, state.moreBefore,
+                  let first = state.rows.first(where: { $0.ephemeral != true })?.seq, seq < first else { return nil }
+            await loadOlder(id)
+            guard let now = threads[id]?.rows.first(where: { $0.ephemeral != true })?.seq, now < first else { return nil }
+        }
+        return nil
+    }
+
+    private func needsBoardHistory(_ id: String) -> Bool {
+        switch session(id)?.threadType {
+        case .implementation?, .research?, .orchestration?, .planning?: true
+        default: false
+        }
+    }
+
+    private func cancelHistory(_ id: String) {
+        historyTokens[id] = nil
+        historyLoads.removeValue(forKey: id)?.cancel()
+        threads[id]?.isLoadingHistory = false
+    }
+
+    /// Fetch pages without publishing each intermediate fold. The transcript
+    /// keeps painting its tail; the complete fold is built off the main actor.
+    private func loadBoardHistory(_ id: String) {
+        guard needsBoardHistory(id), historyLoads[id] == nil,
+              let state = threads[id], state.moreBefore,
+              let first = state.rows.first(where: { $0.ephemeral != true })?.seq else { return }
+        let token = UUID()
+        historyTokens[id] = token
+        threads[id]?.isLoadingHistory = true
+        threads[id]?.historyError = nil
+        historyLoads[id] = Task { [weak self] in
+            guard let self else { return }
+            defer {
+                if self.historyTokens[id] == token {
+                    self.historyLoads[id] = nil
+                    self.historyTokens[id] = nil
+                    self.threads[id]?.isLoadingHistory = false
+                }
+            }
+            var before = first
+            var older: [EventRow] = []
+            do {
+                while before > 1 {
+                    try Task.checkCancellation()
+                    let page = try await self.socket.request(Methods.SessionEvents.self, .init(sessionId: id, afterSeq: nil, beforeSeq: before, tail: olderPage, limit: nil))
+                    guard self.historyTokens[id] == token else { return }
+                    let rows = page.rows.filter { $0.ephemeral != true && $0.seq < before }
+                    older.append(contentsOf: rows)
+                    if !page.moreBefore { break }
+                    guard let next = rows.map(\.seq).min(), next < before else { throw TransportError.notConnected }
+                    before = next
+                }
+                // A live push or an older transcript page can land during the
+                // off-actor fold. Rebuild against that revision before publishing.
+                while let current = self.threads[id], self.historyTokens[id] == token {
+                    try Task.checkCancellation()
+                    let revision = current.revision
+                    let complete = await Self.foldHistory(older: older, current: current.rows)
+                    guard self.historyTokens[id] == token, var latest = self.threads[id] else { return }
+                    if latest.revision != revision { continue }
+                    latest.rows = complete.rows
+                    latest.fold = complete.fold
+                    latest.moreBefore = false
+                    latest.revision += 1
+                    self.threads[id] = latest
+                    break
+                }
+            } catch {
+                if self.historyTokens[id] == token, !Task.isCancelled {
+                    self.threads[id]?.historyError = "Earlier board history could not be loaded. Reconnect to try again."
+                }
+            }
+        }
+    }
+
+    @concurrent
+    private static func foldHistory(older: [EventRow], current: [EventRow]) async -> (rows: [EventRow], fold: ThreadFold) {
+        var bySeq: [Int: EventRow] = [:]
+        for row in older + current where row.ephemeral != true { bySeq[row.seq] = row }
+        let rows = bySeq.values.sorted { $0.seq < $1.seq } + current.filter { $0.ephemeral == true }
+        return (rows, ThreadFold.fold(rows))
     }
 
     /// The whole row behind an omitted body: the cache, else `session.rowBody`.
@@ -282,6 +387,7 @@ public final class EnvironmentClient {
             await socket.markFresh(true)
         case .closed:
             subscriptions.sessionChanged()
+            for id in Array(historyLoads.keys) { cancelHistory(id) }
             for id in threads.keys { threads[id]?.isLive = false }
         }
     }
@@ -353,6 +459,7 @@ public final class EnvironmentClient {
             removeSessions(value.sessionIds)
         case .events(let value):
             guard threads[value.sessionId] != nil else { return }
+            if subscriptions.hold(value.sessionId, rows: value.rows) { return }
             append(value.sessionId, rows: value.rows)
             threads[value.sessionId]?.isLive = true
             try? await cache.store(environment.id, sessionId: value.sessionId, rows: value.rows)
@@ -388,6 +495,7 @@ public final class EnvironmentClient {
         for id in ids {
             threads[id] = nil
             subscriptions.remove(id)
+            cancelHistory(id)
             seen[id] = nil
         }
         let env = environment.id
@@ -398,6 +506,10 @@ public final class EnvironmentClient {
     private func fold(_ id: String, page: EventsPage, tailFirst: Bool) {
         guard var state = threads[id] else { return }
         if page.reset || tailFirst {
+            cancelHistory(id)
+            state.revision += 1
+            state.isLoadingHistory = false
+            state.historyError = nil
             state.rows = page.rows
             state.moreBefore = page.moreBefore
             state.fold = ThreadFold.fold(page.rows)
@@ -413,6 +525,7 @@ public final class EnvironmentClient {
         let env = environment.id
         let cache = self.cache
         Task { try? await cache.store(env, sessionId: id, rows: page.rows, moreBefore: page.reset || tailFirst ? page.moreBefore : nil, reset: page.reset) }
+        loadBoardHistory(id)
     }
 
     /// Adds rows after the fold, never a seq twice; a replayed row with a
@@ -423,6 +536,7 @@ public final class EnvironmentClient {
     /// replacement, an out-of-order page, a trim) folds again.
     private func append(_ id: String, rows: [EventRow]) {
         guard var state = threads[id], !rows.isEmpty else { return }
+        state.revision += 1
         var incremental = true
         var needsSort = false
         for row in rows {
@@ -456,7 +570,7 @@ public final class EnvironmentClient {
             // Persisted rows by seq; a streaming preview stays at the tail.
             state.rows.sort { ($0.ephemeral == true ? Int.max : $0.seq) < ($1.ephemeral == true ? Int.max : $1.seq) }
         }
-        if state.rows.count > threadRowsInMemory {
+        if state.rows.count > threadRowsInMemory && !needsBoardHistory(id) {
             state.rows.removeFirst(state.rows.count - threadRowsInMemory)
             state.moreBefore = true
             incremental = false
@@ -492,9 +606,10 @@ public final class EnvironmentClient {
 
     private func prepend(_ id: String, rows: [EventRow], moreBefore: Bool?) {
         guard var state = threads[id] else { return }
+        state.revision += 1
         let known = Set(state.rows.map(\.seq))
         let fresh = rows.filter { !known.contains($0.seq) }
-        state.rows = (fresh + state.rows).sorted { $0.seq < $1.seq }
+        state.rows = (fresh + state.rows).sorted { ($0.ephemeral == true ? Int.max : $0.seq) < ($1.ephemeral == true ? Int.max : $1.seq) }
         state.fold = ThreadFold.fold(state.rows)
         if let moreBefore {
             state.moreBefore = moreBefore

@@ -86,6 +86,7 @@ const until = async (cdp: Cdp, expr: string, ms: number, label: string): Promise
   }
   // A timeout explains itself: the page as it was, and what it said.
   try {
+    await cdp.eval(`document.querySelectorAll('[data-environment-field=key], [data-environment-field=link]').forEach(el => el.style.visibility = 'hidden')`)
     const png = (await cdp.send('Page.captureScreenshot', { format: 'png' })) as { data: string }
     writeFileSync('/tmp/tc-k2-fail.png', Buffer.from(png.data, 'base64'))
     const text = (await cdp.eval<string>('document.body.innerText')).slice(0, 1200)
@@ -336,6 +337,23 @@ try {
     await closeSettings(a)
   }
 
+  // Revoke A's saved key, then repair it through the same Pair again form.
+  const oldKeys = await rpc(b2, 'local', 'remote.keys.list', {}) as { id: string }[]
+  await rpc(b2, 'local', 'remote.keys.revoke', { id: oldKeys[0].id })
+  await until(a, `window.__monocode.registry.statusOf(${JSON.stringify(bHello)}).transport === 'unauthorized'`, 15_000, 'revoked saved key')
+  await openEnvironmentsPane(a)
+  check('A: a revoked key offers Pair again', await a.eval<boolean>(`(() => { const row = document.querySelector('[data-environment-row="${bHello}"]'); const button = [...(row?.querySelectorAll('button') ?? [])].find(e => e.textContent.trim() === 'Pair again'); button?.click(); return !!button })()`))
+  await until(a, `!!document.querySelector('[data-environment-field="link"]')`, 5_000, 'repair dialog')
+  const replacement = await rpc(b2, 'local', 'remote.pairings.create', { name: 'K2 repair', audience: 'client', caps: ['read', 'operate', 'approve'] }) as { url: string }
+  await typeInto(a, '[data-environment-field="link"]', replacement.url)
+  await clickText(a, 'Pair')
+  await until(a, `window.__monocode.registry.statusOf(${JSON.stringify(bHello)}).transport === 'open' && window.__monocode.registry.statusOf(${JSON.stringify(bHello)}).fresh`, 30_000, 'repaired host reconnects without Retry')
+  check('A: Pair again reconnects the unauthorized host on the same route', (await statusOf(a, bHello)).fresh)
+  const repaired = await rpc(a, bHello, 'session.list', {}) as { sessions: { id: string }[] }
+  check('A: the repaired host serves its own threads', repaired.sessions.some(s => s.id === bSession.id))
+  await closeSettings(a)
+
+  const keysBeforeRemoval = await rpc(b2, 'local', 'remote.keys.list', {}) as { id: string }[]
   // ── remove B through the pane ─────────────────────────────────────
   await openEnvironmentsPane(a)
   check("A: B's row menu opens", await clickSelector(a, '[aria-label="B actions"]'))
@@ -346,8 +364,8 @@ try {
   await until(a, `!document.querySelector('[data-environment-row=${JSON.stringify(bHello)}]')`, 15_000, "B's row gone")
   const envsAfter = (await a.eval(`window.__monocode.registry.environments().map(e => e.id)`)) as string[]
   check('A: removal forgets B and the window falls back to this machine', envsAfter.length === 1 && envsAfter[0] === 'local' && (await currentEnvironment(a)) === 'local', envsAfter.join(','))
-  const bKeys = (await rpc(b2, 'local', 'remote.keys.list', {})) as unknown[]
-  check("B: its key is untouched by A's removal (nothing revoked remotely)", Array.isArray(bKeys) && bKeys.length === 1)
+  const bKeys = (await rpc(b2, 'local', 'remote.keys.list', {})) as { id: string }[]
+  check("B: its key is untouched by A's removal (nothing revoked remotely)", Array.isArray(bKeys) && JSON.stringify(bKeys.map(k => k.id).sort()) === JSON.stringify(keysBeforeRemoval.map(k => k.id).sort()))
   a.close()
   b2.close()
 } catch (err) {

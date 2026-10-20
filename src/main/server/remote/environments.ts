@@ -77,7 +77,10 @@ function writeRow(store: EnvironmentsStore, row: Row): void {
   store.setSetting(rowKey(id), JSON.stringify(rest))
 }
 
-const withoutKey = ({ key: _key, ...env }: Row): SavedEnvironment => env
+const withoutKey = ({ key, ...env }: Row): SavedEnvironment => ({
+  ...env,
+  keyId: /^tc_([A-Za-z0-9_-]+)\./.exec(key)?.[1]
+})
 
 /** Every saved environment without its key, oldest first. */
 export function listEnvironments(store: EnvironmentsStore): SavedEnvironment[] {

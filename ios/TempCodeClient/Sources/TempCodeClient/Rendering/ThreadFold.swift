@@ -279,6 +279,25 @@ public struct ThreadFold: Sendable, Hashable {
         return fold
     }
 
+    /// A persisted row can fold into an earlier item (a text delta or a
+    /// tool result). Resolve its identity without landing on a newer row.
+    public func entryID(for row: EventRow) -> Int? {
+        let index: Int?
+        switch row.event {
+        case .assistantText(let event):
+            index = event.msgId.flatMap { textIndex["\($0)/\(event.blockIndex ?? 0)/a"] }
+        case .thinking(let event):
+            index = event.msgId.flatMap { textIndex["\($0)/\(event.blockIndex ?? 0)/t"] }
+        case .toolCall(let event): index = toolIndex[event.callId]
+        case .toolResult(let event): index = toolIndex[event.callId]
+        case .questionResolved(let event): index = questionIndex[event.requestId]
+        case .approvalResolved(let event): index = approvalIndex[event.requestId]
+        default: index = nil
+        }
+        if let index, items.indices.contains(index) { return items[index].id }
+        return items.first { $0.seq == row.seq }?.id
+    }
+
     public mutating func apply(_ row: EventRow) {
         switch row.event {
         case .userText(let event):

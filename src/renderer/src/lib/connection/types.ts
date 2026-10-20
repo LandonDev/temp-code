@@ -31,6 +31,8 @@ export type Environment = {
   /** The saved-environment id the main process holds the key under; null
    *  for implicit and cookie credentials. */
   credentialRef: string | null;
+  /** Public id of the saved key; no bearer material crosses here. */
+  keyId?: string;
 };
 
 /** The first frame on every socket. */

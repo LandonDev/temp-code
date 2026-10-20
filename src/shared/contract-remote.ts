@@ -145,6 +145,8 @@ export interface SavedEnvironment {
   caps: z.infer<typeof CapabilitySchema>[]
   /** The key's name on the host's client list. */
   keyName: string
+  /** Public key id; lets clients notice a saved credential replacement. */
+  keyId?: string
 }
 
 export const EnvironmentRequestSchemas = [

@@ -88,6 +88,8 @@ and `resumeAll` re-subscribes each open thread and resumes it with
 `session.events { afterSeq }` from the owner's cursor, four at a time. The
 reset rule: a page with `reset: true` means the gap outgrew the host's replay
 budget and the rows are a fresh tail, so the owner drops its fold first.
+Pushes received during subscribe and gap fetch wait behind the captured
+cursor, then merge in seq order without duplicates.
 
 **SessionCache** is the on-disk mirror: SQLite through the system `SQLite3`
 module, one file at `Application Support/TempCodeClient/cache.sqlite`, WAL.
@@ -100,6 +102,12 @@ JSON, which the contract re-encodes byte for byte, so an older build can hold
 what a newer host sent. A thread keeps its newest 1,000 rows (pruned past
 1,300); the app paints the newest 300 and pages older ones 200 at a time,
 from the cache while it has them, then from the host with `beforeSeq`.
+Board threads paint that tail first, then page to the first row and build
+the full fold off the main actor. They retain that history in memory while
+open so later pushes preserve old todos, rounds and sources. A loading or
+error line marks an incomplete board. Search navigation pages back up to
+100 times and resolves the exact row to its folded item; a missing row
+shows a status message.
 
 Why raw sqlite3 and not GRDB: the schema is six tables of JSON blobs behind
 primary keys, the wrapper (`Database.swift`) is shorter than GRDB's record
@@ -170,9 +178,9 @@ and sources, unique totals, `mergeAngles` with the spawned children,
 **PlanDoc** (planDoc.ts: sections, the task checklist, progress, the H1,
 report frontmatter). **MarkdownCache** (`@MainActor @Observable`) parses a
 row's markdown into `RenderedBlock`s with inline `AttributedString`s off
-the main actor (`@concurrent`), keyed by seq and text hash: a read is
-synchronous, a miss parses and lands as an observable change, a streaming
-row keeps its last parse until the next lands.
+the main actor (`@concurrent`), keyed by environment, session, seq and text hash: a read is
+synchronous, a miss parses and lands as an observable change, a changed
+row shows plain text until its own parse lands.
 
 ## Tests
 
@@ -202,6 +210,16 @@ ticket with the negotiated deflate extension and a forbidden call, identity
 and contract halts against the real hello, an expired and a reused ticket,
 a dropped link resumed from the last seq with no duplicate and no gap, and
 a revoked key. Nested in it, the action suite runs against the stubs with the acting key: a send echoed and stopped, an approval resolved (and refused on an operate-only key), an answer, a build from the plan, a chat with rename, pin and archive, a full-access draft refused without `approve`, and the catalog.
+
+`TC_PROOF_SET=f4 bun scripts/ios-sim-proof-local.ts` checks an old search
+hit, a missing hit and complete implementation/research boards, then gates
+scrolling on zero frames more than 8 ms late. It loads all 2,002 source rows
+before recording and positions the full transcript at the bottom. A display
+link drives the native list offset through two 25-second glides and records
+every interval, including pauses. Search hits use SwiftUI's scroll-to-row
+path separately. The report includes row counts and
+the simulator's actual maximum refresh rate. A 60 Hz simulator cannot
+prove 120 Hz device performance.
 
 The simulator proof uses `simctl` (build, install, launch with the pairing
 link and a debug route in the app's environment, `simctl io screenshot`),
@@ -264,7 +282,7 @@ proof's `actions` set.
 ## What L4 builds on (APNs through the hub, Live Activity)
 
 - Identity: `PairedEnvironment.id` is the host's environment id and
-  `SessionMeta.id` is global, so a push payload of `{ environmentId,
+  `SessionMeta.id` is stable on its host (imports may share ids), so a push payload of `{ environmentId,
   sessionId }` routes with `ClientRegistry.client(environmentId)` and
   `openThread(sessionId)`; the host's notifier (src/main/server/remote/
   notifier.ts) already emits `needs_you`, `finished`, `failed`, `stuck` to

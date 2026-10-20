@@ -5,10 +5,14 @@ import TempCodeContract
 /// Every row kind in its mobile form: the user's words in a bordered field,
 /// the agent's answer as the page, thinking folded, tools as one-line chips,
 /// edits as file rows, cards for what needs the user, quiet lines for the rest.
-struct TranscriptRow: View {
+struct TranscriptRow: View, Equatable {
     let entry: ThreadEntry
     let client: EnvironmentClient
     let sessionId: String
+
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.entry == rhs.entry && lhs.client === rhs.client && lhs.sessionId == rhs.sessionId
+    }
 
     var body: some View {
         switch entry.item {

@@ -122,6 +122,56 @@ describe("ConnectionRegistry", () => {
     expect(h.transports).toHaveLength(1);
   });
 
+  it("a replacement key restarts an unauthorized supervisor without clearing the link or stores", async () => {
+    const h = harness();
+    h.registry.add(localEnvironment(4000));
+    await flush();
+    h.transports[0].answerHello();
+    await flush();
+    const original = { ...SAVED, keyId: "old-id" };
+    const link = h.registry.add(original);
+    await flush();
+    h.transports[0].requests[0].reject(new Error("unauthorized: revoked"));
+    await flush();
+    const stopped = h.registry.supervisor(SAVED.id);
+    expect(h.registry.statusOf(SAVED.id).transport).toBe("unauthorized");
+    h.registry.update({ ...original, name: "Renamed" });
+    await flush();
+    expect(h.transports[0].requests).toHaveLength(1);
+    h.registry.update({ ...original, keyId: "new-id" });
+    await flush();
+    expect(h.registry.supervisor(SAVED.id)).not.toBe(stopped);
+    expect(h.registry.link(SAVED.id)).toBe(link);
+    expect(h.events).toEqual([["local", "added"], [SAVED.id, "added"]]);
+    expect(h.transports[0].requests).toHaveLength(2);
+    h.transports[0].requests[1].resolve({ ticket: "new-ticket", expiresIn: 30000 });
+    await flush();
+    h.transports[1].answerHello({ ...HELLO, environmentId: SAVED.id });
+    await flush();
+    expect(link.connected).toBe(true);
+    expect(h.registry.statusOf(SAVED.id).transport).toBe("open");
+  });
+
+  it("a key change retires a pending ticket and ignores its late refusal", async () => {
+    const h = harness();
+    h.registry.add(localEnvironment(4000));
+    await flush();
+    h.transports[0].answerHello();
+    await flush();
+    const link = h.registry.add({ ...SAVED, keyId: "old-id" });
+    await flush();
+    h.registry.update({ ...SAVED, keyId: "new-id" });
+    await flush();
+    h.transports[0].requests[1].resolve({ ticket: "new-ticket", expiresIn: 30000 });
+    await flush();
+    h.transports[1].answerHello({ ...HELLO, environmentId: SAVED.id });
+    await flush();
+    h.transports[0].requests[0].reject(new Error("unauthorized: old key"));
+    await flush();
+    expect(link.connected).toBe(true);
+    expect(h.registry.statusOf(SAVED.id).transport).toBe("open");
+  });
+
   it("the primary link exists before its environment is added and is the same object after", async () => {
     const h = harness();
     const early = h.registry.primary();
