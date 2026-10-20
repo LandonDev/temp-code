@@ -279,23 +279,32 @@ It mints three keys: read-only, read+operate+approve, and operate-only
 (the approval card's forbidden path), and two pairings for the simulator
 proof's `actions` set.
 
-## What L4 builds on (APNs through the hub, Live Activity)
+## Push (L6): the token to every host, taps to the card, the Live Activity
 
-- Identity: `PairedEnvironment.id` is the host's environment id and
-  `SessionMeta.id` is stable on its host (imports may share ids), so a push payload of `{ environmentId,
-  sessionId }` routes with `ClientRegistry.client(environmentId)` and
-  `openThread(sessionId)`; the host's notifier (src/main/server/remote/
-  notifier.ts) already emits `needs_you`, `finished`, `failed`, `stuck` to
-  the hub, which is where the device token and the fan-out belong.
-- Foreground state: `TempCodeSocket.statuses` and `sessions` are
-  `AsyncStream`s; `EnvironmentClient.sessions` carries `status`, `activity`,
-  `activityKind`, `tasks` (done/total/current) and `goal` per thread, which is
-  the Live Activity's content while the app is up. In the background the
-  socket closes after `SocketConfiguration.backgroundGraceMs` (10 s), so the
-  activity must be updated from APNs after that; `setForeground(true)` probes
-  and reconnects at once when the activity is tapped.
-- Registering the token with the hub needs the key: `KeyStore.key(for:)`
-  signs the request like `assetRequest` does; keep it out of the payload.
-- Background fetch for the cache: `EnvironmentClient.start()` paints from
-  `SessionCache` before any socket, so a short background session that
-  resumes open threads leaves the next cold launch current.
+- `Push/PushRegistrar.swift` holds the APNs token (`Device`: token, bundle
+  id, `sandbox` or `production` as the provisioning profile says), the
+  Notifications switch (`push.enabled` in UserDefaults, off until the person
+  turns it on) and what each host holds (`push.held`). `EnvironmentClient`
+  calls `sync` at every socket open: a host without this token gets
+  `remote.push.register`, a host with it gets `remote.push.status`, and with
+  the switch off `remote.push.unregister`; `setDevice` re-syncs every open
+  host when the token changes and `forget` drops a removed host. The host
+  keeps one row per key and forwards it to the hub as an `apns`
+  subscription; nothing here speaks to Apple or the hub. `summary` is the
+  row's one word: Off, Not allowed, Registering…, On, No relay, Failed.
+- `PushTarget` is where a tap lands: the `tc` object of a hub notification
+  (`environmentId`, `threadId`, `seq`) or the Live Activity's
+  `tempcode://thread/<environment>/<session>?seq=<n>`. The app's
+  `NavigationRouter` turns it into `Route.thread(environmentId:sessionId:seq:)`,
+  the same route a search hit takes, so the transcript lands on the row.
+- `EnvironmentClient.sessionObserver` (set for every client through
+  `ClientRegistry.setSessionObserver`) hears each session meta a host
+  sends; the app's `ActivityCoordinator` follows a thread's status through
+  it and ends the Live Activity when the thread settles. The activity's
+  push token goes to the host over `remote.push.activity` (`setActivityToken`;
+  `nil` ends it), and the host relays `liveactivity` pushes through the hub
+  while the phone is away (the socket closes after
+  `SocketConfiguration.backgroundGraceMs`).
+- Tests: `PushRegistrarTests` (the payload and URL parsing, the row's word,
+  a register at open, a status read for the same token, a second register
+  for a rotated one, the unregister on the switch, the activity token).

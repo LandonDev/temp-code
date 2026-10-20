@@ -135,6 +135,11 @@ Bodies are capped at 16 KiB. No CORS access is granted by default.
 | DELETE | `/v1/hosts/:hostId` | admin | `{ ok: true }` |
 | POST | `/v1/hosts/:hostId/heartbeat` | host Bearer token | `{ ok: true, serverTime }` |
 | POST | `/v1/notify` | host Bearer token scoped to body hostId | `{ delivered, failed }` |
+| PUT | `/v1/hosts/:hostId/devices/:deviceId` | host Bearer token scoped to the path's host | `{ ok, id }`: the device's `apns` subscription, replaced whole |
+| DELETE | `/v1/hosts/:hostId/devices/:deviceId` | host Bearer token | `{ ok: true }` (404 when absent) |
+| PUT | `/v1/hosts/:hostId/activities/:threadId/:deviceId` | host Bearer token | `{ ok: true }`: the Live Activity token a device holds for the thread |
+| DELETE | `/v1/hosts/:hostId/activities/:threadId/:deviceId` | host Bearer token | `{ ok: true }` |
+| POST | `/v1/activity` | host Bearer token scoped to body hostId | `{ delivered, failed }`: one `liveactivity` push per device on the thread |
 | POST | `/v1/subscriptions` | admin | subscription (201) |
 | GET | `/v1/subscriptions` | admin | subscriptions with lastError and failureCount |
 | DELETE | `/v1/subscriptions/:id` | admin | `{ ok: true }` |
@@ -170,8 +175,8 @@ Only HTTPS endpoints without embedded credentials are accepted. Redirects fail.
 Webhook keys are encrypted with AES-GCM using `WEBHOOK_KEY`, as agreed for this
 thread; HMAC cannot use a one-way hash in place of the supplied signing key.
 If `secret` is omitted, the API generates one and returns it once at creation.
-Lists never return signing secrets or ciphertext. The `apns` union member is a
-TODO; registration currently rejects it.
+Lists never return signing secrets, ciphertext or device tokens. `apns`
+subscriptions are made by hosts, not admins: see "APNs" below.
 
 Each matching subscription runs in parallel. Deliveries have a 5-second timeout
 per attempt, one initial attempt plus **three retries**, with 100/200/400 ms
@@ -184,6 +189,51 @@ Receivers must verify `x-hub-signature-256: sha256=<hex>` as HMAC-SHA256 over th
 constant-time comparison. `x-hub-delivery` is a UUID shared by all retries of
 that delivery. Deduplicate it before acting. The body is the validated notify
 payload, with no wrapper. No outbound payload is persisted.
+
+## APNs (thread L6)
+
+A phone registers its token with the host it is paired to; the host puts it
+here as the `apns` subscription `apns-<hostId>-<deviceId>` (`deviceId` is the
+phone's key id on that host) with `PUT /v1/hosts/:hostId/devices/:deviceId`
+and the body `{ token, bundleId, environment: "sandbox" | "production",
+events }`. A rotated token replaces the subscription under the same id with
+clean counters; revoking the key on the host or turning the phone's switch
+off deletes it. The notify body may carry `environmentId` (the host's own
+id, what the phone's saved host is keyed by) and `seq` (the row to land on).
+
+Delivery (`src/apns.ts`, `src/delivery.ts`) uses token-based auth: the
+provider token is an ES256 JWT over `{ iss: APNS_TEAM_ID, iat }` with the
+`.p8` in `APNS_KEY` and `kid: APNS_KEY_ID`, kept per isolate for 50 minutes
+and minted afresh on a 403. Set the three with `wrangler secret put` from
+the Keys section of the developer account (the .p8 file's contents, its key
+id, the team id); nothing of them goes in wrangler.toml or the repo. Without
+them an `apns` subscription records `APNs not configured` and nothing is
+posted. Each notice is one POST to `https://api.push.apple.com` or the
+sandbox gateway per the token's environment (`APNS_URL` overrides both for a
+test receiver), `apns-push-type: alert`, priority 10, an hour's expiration,
+`apns-collapse-id: <threadId>:<event>`, with the payload
+
+```json
+{ "aps": { "alert": { "title": "…", "body": "…" }, "sound": "default", "thread-id": "<threadId>", "interruption-level": "time-sensitive" },
+  "tc": { "event": "needs_you", "hostId": "box", "environmentId": "env_…", "threadId": "…", "seq": 42, "ts": 1792386000000 } }
+```
+
+`needs_you`, `failed` and `host_down` are time-sensitive, the rest active. A
+410, `BadDeviceToken`, `Unregistered` or `DeviceTokenNotForTopic` answer
+drops the subscription (the phone re-registers at its next open); a 5xx,
+timeout or network error is tried three times and then counted like a
+webhook failure, with the status and Apple's reason as `lastError`.
+
+Live Activities: a host stores the token a phone holds for a thread with
+`PUT /v1/hosts/:hostId/activities/:threadId/:deviceId` (`{ token, bundleId,
+environment }`) in the directory object (never KV) and posts the thread's
+state with `POST /v1/activity`: `{ hostId, threadId, event: "update" |
+"end", state: { phase, since, ts, seq? }, title?, threadType?, ts }`. Every
+device on the thread gets one `liveactivity` push to the topic
+`<bundleId>.push-type.liveactivity` with `aps.content-state` = `state`, a
+`dismissal-date` two minutes out on an `end`, and `apns-collapse-id` the
+thread id; an `end` then drops the thread's tokens, and a token Apple calls
+gone drops that device alone. Nothing per push touches KV.
 
 ## Host setup and thread E
 

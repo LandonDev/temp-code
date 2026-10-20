@@ -283,7 +283,7 @@ action. Every animated change has a static cue as well.
 | L3 shell | tokens, type glyphs, Home with Needs you, Running, Workspaces, archived rows, host grouping and status row, Inbox, Search, Settings with Hosts; thread rows; read-only | now |
 | L4 thread screens | the header, segments, Chat transcript rules, Implementation board, Plan document, Fleet, Sources, diff screen; the cache paint, markdown cache and 120 Hz proof; read-only | now, in parallel with L3 |
 | L5 actions | composer and working strip, send and stop, approve and answer, start a build from a plan, new thread sheet, send-to-agent, swipe archive and pin, rename, pairing | L3 and L4 |
-| L6 push | APNs through the hub, Live Activity for a running thread, notification taps landing on the card | L5; needs the APNs key from the developer account |
+| L6 push | APNs through the hub (the phone's token registered with every host, the host's `apns` subscription, the hub's token-auth delivery), Live Activity for a running thread (the strip on the lock screen and in the Dynamic Island, pushed by the host, ended when the thread settles), notification taps landing on the card, one Notifications row in Settings, the device build | landed 2026-10-20; the live pass needs the team id and the APNs key from the developer account |
 
 L3 owns `ios/TempCode/Sources/Design/` and `Sources/Shell/`; L4 owns
 `Sources/Thread/` and the rendering models in `TempCodeClient`. L3 commits

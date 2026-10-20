@@ -334,6 +334,29 @@ routed to (aliax-core's `forward`). Two listeners:
   (the gate on the key and the socket, pending turns, optimistic decisions,
   `ThreadDraft`); the README there has the rules. A read key hides nothing:
   the field and the cards carry the reason instead.
+- Push (L6): the phone registers its APNs token with every paired host
+  (`remote.push.register`/`unregister`/`status`/`activity`, capability read:
+  the key's own row); the host keeps one row per key (`remote_push`,
+  `src/main/server/remote/push.ts`) and forwards it to the hub as an `apns`
+  subscription, which the hub delivers with token auth (infra/hub/src/apns.ts;
+  the .p8, key id and team id are Worker secrets, never files). A notice
+  carries `environmentId` and `seq`, so a tap opens the thread on the card
+  through the same `Route.thread` a search hit takes; delivery while that
+  thread is on screen shows nothing. The Live Activity (`ios/TempCode/Activity`,
+  the TempCodeActivity extension; `Sources/Push/ActivityCoordinator.swift`)
+  starts when the person sends a turn or watches a running thread, hands its
+  push token to the host, and the host's `ActivityFeed` pushes the strip's
+  phase on every transition and ends it (the final state stays two minutes)
+  when the thread goes idle, waiting or errored. Settings has one row:
+  the Notifications switch with its state beside it. Device build:
+  `bun run ios:device` (scripts/ios-device.sh) builds with the newest
+  Xcode's toolchain through DEVELOPER_DIR, automatic signing and
+  `-allowProvisioningUpdates` with the team id from `TEMP_CODE_APPLE_TEAM`
+  or the gitignored `ios/TempCode/Local.xcconfig` (`DEVELOPMENT_TEAM = …`),
+  and installs on the connected or paired iPhone with `xcrun devicectl`;
+  the simulator build stays ad hoc. DEBUG hook: `TC_TEST_ROUTE=notification`
+  with `TC_TEST_NOTIFICATION="title part|seq"` feeds the delegate a
+  hub-shaped payload; the proof's `push` set (in `all`) checks the landing.
 - Tests: `bun run ios:test` (contract) and `bun run ios:test:client` (the
   package, pure suites plus a live suite against scripts/ios-client-test-server.ts,
   a real server with a read key that lives only in the test process
