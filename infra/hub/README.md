@@ -201,6 +201,14 @@ clean counters; revoking the key on the host or turning the phone's switch
 off deletes it. The notify body may carry `environmentId` (the host's own
 id, what the phone's saved host is keyed by) and `seq` (the row to land on).
 
+Known limit, found live on 2026-10-20: a Worker's `fetch` reaches origins
+over HTTP/1.1 and Apple's gateway refuses it, so every push from here ends
+as `APNs network error`. A host that holds the key sends itself
+(temp-code's `src/main/server/remote/apns.ts`, node http2, the same payloads)
+and takes its devices back from this directory at boot; the code here stays
+for the day Workers negotiate HTTP/2 to origins, and the host-bearer routes
+still hold the registrations of hosts without a key.
+
 Delivery (`src/apns.ts`, `src/delivery.ts`) uses token-based auth: the
 provider token is an ES256 JWT over `{ iss: APNS_TEAM_ID, iat }` with the
 `.p8` in `APNS_KEY` and `kid: APNS_KEY_ID`, kept per isolate for 50 minutes

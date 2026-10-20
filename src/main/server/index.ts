@@ -32,6 +32,7 @@ import { startRemoteListener, type RemoteListener } from './remote/listener'
 import { fenceRequest } from './remote/fence'
 import { createMcpHandler } from './remote/mcp'
 import { Notifier } from './remote/notifier'
+import { apnsFromEnv } from './remote/apns'
 import { ActivityFeed, PushRegistry } from './remote/push'
 import { deliverWebhooks, webhookPayload } from './remote/webhooks'
 import { createUiHandler } from './remote/ui'
@@ -461,9 +462,16 @@ export async function startServer(
         ui: createUiHandler({ rendererDir: join(options.appPath ?? process.cwd(), 'out', 'renderer'), assets: options.assets })
       })
     }))
-  // The phones' push registrations forward to the hub (made below); a
+  // The phones' push registrations forward to the hub (made below), or go
+  // out from here when this host holds the APNs key (remote/apns.ts); a
   // revoked key takes its registration and activities with it.
-  const pushRegistry = new PushRegistry(db, { hub: () => hub })
+  const apns = apnsFromEnv()
+  const pushRegistry = new PushRegistry(db, {
+    hub: () => hub,
+    apns: () => apns,
+    hostId: () => process.env.TEMP_CODE_HUB_HOST_ID || environmentId,
+    environmentId: () => environmentId
+  })
   remoteAuth.onRevoke((keyId) => void pushRegistry.dropKey(keyId))
   const remoteContext: RemoteContext = {
     environmentId,
@@ -1486,9 +1494,11 @@ export async function startServer(
   if (hub) {
     notifier.onNotice((n) => void hub.notify({ event: n.event, threadId: n.threadId, title: n.title, body: n.body, url: n.url, ts: n.ts, seq: n.seq }))
   }
+  // A host with the key posts every notice to its phones itself.
+  if (apns) notifier.onNotice((n) => pushRegistry.deliver({ event: n.event, threadId: n.threadId, seq: n.seq, title: n.title, body: n.body, ts: n.ts }).then(() => undefined))
   // Threads with a Live Activity on a phone: status transitions go out as
   // liveactivity pushes; registrations the hub never took are offered again.
-  const activityFeed = new ActivityFeed({ registry, push: pushRegistry, hub: () => hub })
+  const activityFeed = new ActivityFeed({ registry, push: pushRegistry, hub: () => hub, local: () => apns !== null })
   activityFeed.start()
   void pushRegistry.resync()
   notifier.onNotice((n) => {
@@ -1516,6 +1526,7 @@ export async function startServer(
     close: async () => {
       notifier.stop()
       activityFeed.stop()
+      apns?.close()
       hub?.stop()
       await remoteRestart
       await remote?.close()

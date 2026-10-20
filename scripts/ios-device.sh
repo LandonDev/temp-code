@@ -11,6 +11,12 @@
 # connected device, and fetches development profiles through the Apple ID
 # signed in to Xcode (Xcode → Settings → Accounts; or pass an App Store
 # Connect API key with TC_AUTH_KEY_PATH, TC_AUTH_KEY_ID, TC_AUTH_ISSUER_ID).
+# TC_DEVICE_METHOD=ad-hoc archives a Release build and exports it with
+# automatic distribution signing (Xcode makes the Apple Distribution
+# certificate and the Ad Hoc profile with the phone in it): the app then
+# holds a production APNs token (aps-environment production), which the
+# owner's Production-only APNs key needs; a Release build has no DEBUG hooks,
+# and a pairing from an earlier Debug install carries over in the keychain.
 # The toolchain is the newest Xcode's through DEVELOPER_DIR; xcode-select is
 # never changed. The device is TC_DEVICE_UDID, else the first connected or
 # Wi-Fi-paired iPhone devicectl lists, and the build targets it so the
@@ -66,6 +72,41 @@ UDID=""
 if [ -n "$UDID" ]; then destination="id=$UDID"; else destination="generic/platform=iOS"; fi
 
 xcodegen generate --quiet
+if [ "${TC_DEVICE_METHOD:-}" = ad-hoc ]; then
+  OUT=${TC_DEVICE_EXPORT:-/tmp/tc-ios-device/export}
+  ARCHIVE=/tmp/tc-ios-device/TempCode.xcarchive
+  rm -rf "$ARCHIVE" "$OUT"
+  mkdir -p "$OUT"
+  cat > "$OUT/exportOptions.plist" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>method</key><string>release-testing</string>
+  <key>teamID</key><string>$TEAM</string>
+  <key>signingStyle</key><string>automatic</string>
+  <key>destination</key><string>export</string>
+  <key>thinning</key><string>&lt;none&gt;</string>
+</dict></plist>
+PLIST
+  echo "ios-device: archiving Release for the Ad Hoc export with $(basename "$(dirname "$(dirname "$DEVELOPER_DIR")")")"
+  xcodebuild archive -project TempCode.xcodeproj -scheme TempCode -configuration Release \
+    -destination 'generic/platform=iOS' -archivePath "$ARCHIVE" -derivedDataPath "$DERIVED" \
+    -allowProvisioningUpdates -allowProvisioningDeviceRegistration ${auth[@]+"${auth[@]}"} \
+    DEVELOPMENT_TEAM="$TEAM" CODE_SIGN_STYLE=Automatic CODE_SIGN_IDENTITY="Apple Development" \
+    CODE_SIGNING_REQUIRED=YES CODE_SIGNING_ALLOWED=YES AD_HOC_CODE_SIGNING_ALLOWED=NO \
+    -quiet 2>&1 | sed -E "s/$TEAM/<team>/g"
+  xcodebuild -exportArchive -archivePath "$ARCHIVE" -exportPath "$OUT" -exportOptionsPlist "$OUT/exportOptions.plist" \
+    -allowProvisioningUpdates -allowProvisioningDeviceRegistration ${auth[@]+"${auth[@]}"} -quiet 2>&1 | sed -E "s/$TEAM/<team>/g"
+  IPA="$OUT/TempCode.ipa"
+  [ -f "$IPA" ] || { echo "ios-device: no ipa at $IPA" >&2; exit 1; }
+  echo "ios-device: exported $IPA"
+  [ "${TC_DEVICE_SKIP_INSTALL:-}" = 1 ] && exit 0
+  [ -n "$UDID" ] || { echo "ios-device: no iPhone is connected or paired (plug it in or set TC_DEVICE_UDID)" >&2; exit 3; }
+  xcrun devicectl device install app --device "$UDID" "$IPA"
+  xcrun devicectl device process launch --device "$UDID" --terminate-existing "$BUNDLE" >/dev/null 2>&1 || true
+  echo "ios-device: installed and launched $BUNDLE (Ad Hoc)"
+  exit 0
+fi
 echo "ios-device: building $CONFIG for ${UDID:+the connected iPhone}${UDID:-the generic device} with $(basename "$(dirname "$(dirname "$DEVELOPER_DIR")")")"
 xcodebuild build -project TempCode.xcodeproj -scheme TempCode -configuration "$CONFIG" \
   -destination "$destination" -derivedDataPath "$DERIVED" \

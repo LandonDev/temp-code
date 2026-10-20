@@ -168,3 +168,61 @@ describe('ActivityFeed', () => {
     feed.stop()
   })
 })
+
+describe('a host with its own APNs sender', () => {
+  /** A sender that records every request and answers what the test set. */
+  function fakeApns(answer: (token: string) => { ok: true } | { ok: false; error: string; gone: boolean } = () => ({ ok: true })) {
+    const sent: { token: string; topic: string; pushType: string; environment: string; payload: unknown; collapseId?: string }[] = []
+    return { sent, apns: { async send(r: { token: string; topic: string; pushType: string; environment: string; payload: unknown; collapseId?: string }) { sent.push(r); return answer(r.token) } } }
+  }
+  it('relays registrations locally, takes its devices back from the hub at boot, and posts notices to the phones that asked', async () => {
+    const { hub, calls } = fakeHub()
+    const { apns, sent } = fakeApns()
+    const push = new PushRegistry(db(), { hub: () => hub, apns: () => apns, hostId: () => 'box', environmentId: () => 'env_box', now: () => 1000, log: () => {} })
+    expect(await push.register('k1', { ...registration, events: ['needs_you'] })).toMatchObject({ relay: 'ok', error: null })
+    await push.register('k2', { ...registration, token: 'cd'.repeat(32), environment: 'production', events: ['finished'] })
+    expect(calls).toEqual([])
+    await push.resync()
+    expect(calls.map((c) => c.method).sort()).toEqual(['removeDevice', 'removeDevice'])
+    expect(await push.deliver({ event: 'needs_you', threadId: 't1', seq: 21, title: 'Ship it', body: 'Permission: Bash', ts: 5000 })).toEqual({ delivered: 1, failed: 0 })
+    expect(sent).toHaveLength(1)
+    expect(sent[0]).toMatchObject({ token: TOKEN.toLowerCase(), topic: 'dev.landon.tempcode.ios', pushType: 'alert', environment: 'sandbox', collapseId: 't1:needs_you' })
+    expect(sent[0].payload).toEqual({
+      aps: { alert: { title: 'Ship it', body: 'Permission: Bash' }, sound: 'default', 'thread-id': 't1', 'interruption-level': 'time-sensitive' },
+      tc: { event: 'needs_you', hostId: 'box', environmentId: 'env_box', threadId: 't1', seq: 21, ts: 5000 }
+    })
+    expect(await push.deliver({ event: 'finished', threadId: 't1', seq: 30, title: 'Ship it', body: 'Finished its turn', ts: 6000 })).toEqual({ delivered: 1, failed: 0 })
+    expect(sent[1]).toMatchObject({ environment: 'production', token: 'cd'.repeat(32) })
+  })
+  it('drops a phone Apple calls gone, records other failures on the row, and pushes activity states to the thread tokens', async () => {
+    const { apns, sent } = fakeApns((token) => (token.startsWith('ab') ? { ok: false, error: 'APNs 410 Unregistered', gone: true } : { ok: false, error: 'APNs 500', gone: false }))
+    const push = new PushRegistry(db(), { hub: () => null, apns: () => apns, log: () => {} })
+    await push.register('k1', registration)
+    await push.register('k2', { ...registration, token: 'cd'.repeat(32) })
+    await push.setActivity('k1', { sessionId: 't1', token: TOKEN })
+    await push.setActivity('k2', { sessionId: 't1', token: 'ef'.repeat(32) })
+    expect(await push.deliver({ event: 'needs_you', threadId: 't1', seq: 1, title: 't', body: 'b', ts: 1000 })).toEqual({ delivered: 0, failed: 2 })
+    expect(push.status('k1').registered).toBe(false)
+    expect(push.status('k2')).toMatchObject({ registered: true, relay: 'failed', error: 'APNs 500' })
+    expect(push.activityTokens('t1').map((r) => r.keyId)).toEqual(['k2'])
+    sent.length = 0
+    expect(await push.deliverActivity({ threadId: 't1', event: 'end', state: { phase: 'waiting', since: 1, ts: 2, seq: 1 }, ts: 2000 })).toEqual({ delivered: 0, failed: 1 })
+    expect(sent[0]).toMatchObject({ token: 'ef'.repeat(32), topic: 'dev.landon.tempcode.ios.push-type.liveactivity', pushType: 'liveactivity', collapseId: 't1' })
+    expect((sent[0].payload as { aps: Record<string, unknown> }).aps).toMatchObject({ event: 'end', 'content-state': { phase: 'waiting', seq: 1 } })
+  })
+  it('lets the feed deliver locally and end the rows', async () => {
+    const listeners = new Set<(m: SessionMeta) => void>()
+    const { apns, sent } = fakeApns()
+    const push = new PushRegistry(db(), { hub: () => null, apns: () => apns, log: () => {} })
+    await push.setActivity('k1', { sessionId: 't1', token: TOKEN, bundleId: 'b', environment: 'production' })
+    const feed = new ActivityFeed({ registry: { onMeta: (l) => (listeners.add(l), () => listeners.delete(l)) }, push, hub: () => null, local: () => true, now: () => 2000, log: () => {} })
+    feed.start()
+    const base: SessionMeta = { id: 't1', parentId: null, projectId: null, workspaceId: null, threadType: 'chat', planPath: null, provider: 'claude', model: 'm', reasoning: 'low', agentType: 'implementer', title: 'T', cwd: '/', status: 'running', pinned: false, archived: false, permission: 'edits', fast: false, ultrafast: false, context1m: false, busySince: 500, pausedAt: null, frozenActiveElapsed: null, nativeId: null, createdAt: 1, updatedAt: 900 }
+    listeners.forEach((l) => l(base))
+    listeners.forEach((l) => l({ ...base, status: 'idle' }))
+    await new Promise((r) => setTimeout(r, 20))
+    expect(sent.map((s) => [(s.payload as { aps: { event: string } }).aps.event, s.environment])).toEqual([['update', 'production'], ['end', 'production']])
+    expect(push.hasActivities('t1')).toBe(false)
+    feed.stop()
+  })
+})

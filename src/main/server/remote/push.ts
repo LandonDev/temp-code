@@ -2,6 +2,8 @@ import type { DatabaseSync } from 'node:sqlite'
 import type { SessionMeta } from '@shared/events'
 import { PUSH_EVENTS, type PushEnvironment, type PushEvent, type PushStatus } from '@shared/contract-remote'
 import type { HubActivityState, HubClient } from '../hub'
+import type { ApnsSender } from './apns'
+import { ACTIVITY_DISMISS_S, ALERT_TTL_S, activityPayload, notificationPayload, type ApnsNotice } from './apnsPayload'
 
 /**
  * Push registrations (thread L6). A paired phone registers its APNs token
@@ -15,6 +17,13 @@ import type { HubActivityState, HubClient } from '../hub'
  * a thread; `ActivityFeed` turns that thread's status transitions into
  * `liveactivity` pushes through the hub and ends the activity when the
  * thread settles.
+ *
+ * A host that holds the APNs key itself (remote/apns.ts, the box) posts to
+ * Apple directly instead: every registration is relayed locally (`ok`
+ * without a hub subscription, and a hub subscription it once made is
+ * removed at boot), notices and activity states go out over http2, and a
+ * token Apple calls gone drops the row. The hub path stays for hosts
+ * without the key.
  */
 
 export type PushHub = Pick<HubClient, 'registerDevice' | 'removeDevice' | 'setActivity' | 'removeActivity' | 'pushActivity'>
@@ -57,9 +66,16 @@ export interface PushActivityInput {
 export interface PushOptions {
   /** The hub client, when this host has one; null leaves every row at relay `none`. */
   hub: () => PushHub | null
+  /** The host's own APNs sender, when it holds the key: it wins over the hub. */
+  apns?: () => Pick<ApnsSender, 'send'> | null
+  /** What this host is called in a notice's `hostId` (the hub's id, else the environment id). */
+  hostId?: () => string
+  environmentId?: () => string
   now?: () => number
   log?: (line: string) => void
 }
+
+export type PushDelivery = { delivered: number; failed: number }
 
 const NOT_REGISTERED: PushStatus = { registered: false, relay: 'none', error: null, events: [], updatedAt: null }
 
@@ -105,11 +121,20 @@ export class PushRegistry {
     return this.status(keyId)
   }
 
-  /** Forwards the row to the hub and records what it said. */
+  private get apns(): Pick<ApnsSender, 'send'> | null {
+    return this.options.apns?.() ?? null
+  }
+
+  /** Forwards the row to the hub and records what it said; a host with its own sender relays locally. */
   private async relay(keyId: string): Promise<void> {
     const row = this.row(keyId)
+    if (!row) return
+    if (this.apns) {
+      this.db.prepare(`UPDATE remote_push SET relay = 'ok', error = NULL WHERE key_id = ?`).run(keyId)
+      return
+    }
     const hub = this.options.hub()
-    if (!row || !hub) return
+    if (!hub) return
     const ack = await hub.registerDevice({
       deviceId: keyId,
       token: row.token,
@@ -189,13 +214,94 @@ export class PushRegistry {
     this.db.prepare(`DELETE FROM remote_push_activities WHERE session_id = ?`).run(sessionId)
   }
 
-  /** At boot: a row the hub never acknowledged is offered again. */
+  /** At boot: a row the hub never acknowledged is offered again; a host that now sends itself takes its devices back from the hub. */
   async resync(): Promise<void> {
-    if (!this.options.hub()) return
+    const hub = this.options.hub()
+    if (this.apns) {
+      const rows = this.db.prepare(`SELECT key_id FROM remote_push`).all() as unknown as { key_id: string }[]
+      for (const row of rows) {
+        await this.relay(row.key_id)
+        if (hub) void hub.removeDevice(row.key_id)
+      }
+      return
+    }
+    if (!hub) return
     const rows = this.db.prepare(`SELECT key_id FROM remote_push WHERE relay != 'ok'`).all() as unknown as { key_id: string }[]
     for (const row of rows) await this.relay(row.key_id)
   }
+
+  /** The Live Activity tokens held for a thread, for the host's own sender. */
+  activityTokens(sessionId: string): { keyId: string; token: string; bundleId: string; environment: PushEnvironment }[] {
+    const rows = this.db.prepare(`SELECT * FROM remote_push_activities WHERE session_id = ?`).all(sessionId) as unknown as ActivityRow[]
+    return rows.map((r) => ({ keyId: r.key_id, token: r.token, bundleId: r.bundle_id, environment: r.environment }))
+  }
+
+  /** A notifier notice to every registered phone that asked for its event, from this host's own sender (nothing when there is none). */
+  async deliver(notice: Omit<ApnsNotice, 'hostId' | 'environmentId'>): Promise<PushDelivery> {
+    const apns = this.apns
+    if (!apns) return { delivered: 0, failed: 0 }
+    const rows = (this.db.prepare(`SELECT * FROM remote_push`).all() as unknown as PushRow[]).filter((r) => eventsOf(r.events).includes(notice.event))
+    const hostId = this.options.hostId?.() ?? 'host'
+    const environmentId = this.options.environmentId?.()
+    const payload = notificationPayload({ ...notice, hostId, ...(environmentId ? { environmentId } : {}) })
+    let delivered = 0
+    let failed = 0
+    for (const row of rows) {
+      const result = await apns.send({
+        token: row.token,
+        topic: row.bundle_id,
+        pushType: 'alert',
+        environment: row.environment,
+        payload,
+        expiration: Math.floor(notice.ts / 1000) + ALERT_TTL_S,
+        collapseId: `${notice.threadId ?? hostId}:${notice.event}`
+      })
+      if (result.ok) {
+        delivered += 1
+        continue
+      }
+      failed += 1
+      if (result.gone) {
+        // A phone that uninstalled or re-registered: the row goes, with its activities.
+        this.db.prepare(`DELETE FROM remote_push WHERE key_id = ?`).run(row.key_id)
+        this.db.prepare(`DELETE FROM remote_push_activities WHERE key_id = ?`).run(row.key_id)
+        this.log(`dropped the registration of key ${row.key_id}: ${result.error}`)
+      } else {
+        this.db.prepare(`UPDATE remote_push SET relay = 'failed', error = ? WHERE key_id = ?`).run(result.error, row.key_id)
+        this.log(`push to key ${row.key_id} failed: ${result.error}`)
+      }
+    }
+    return { delivered, failed }
+  }
+
+  /** A Live Activity state to every phone holding a token for the thread, from this host's own sender. */
+  async deliverActivity(update: { threadId: string; event: 'update' | 'end'; state: HubActivityState; ts: number }): Promise<PushDelivery> {
+    const apns = this.apns
+    if (!apns) return { delivered: 0, failed: 0 }
+    const payload = activityPayload(update, update.ts)
+    let delivered = 0
+    let failed = 0
+    for (const row of this.activityTokens(update.threadId)) {
+      const result = await apns.send({
+        token: row.token,
+        topic: `${row.bundleId}.push-type.liveactivity`,
+        pushType: 'liveactivity',
+        environment: row.environment,
+        payload,
+        expiration: Math.floor(update.ts / 1000) + (update.event === 'end' ? ALERT_TTL_S : 60),
+        collapseId: update.threadId
+      })
+      if (result.ok) delivered += 1
+      else {
+        failed += 1
+        if (result.gone) this.db.prepare(`DELETE FROM remote_push_activities WHERE key_id = ? AND session_id = ?`).run(row.keyId, update.threadId)
+        this.log(`activity push to key ${row.keyId} failed: ${result.error}`)
+      }
+    }
+    return { delivered, failed }
+  }
 }
+export { ACTIVITY_DISMISS_S }
 
 // ── the Live Activity feed ─────────────────────────────────────────────
 
@@ -206,8 +312,10 @@ export interface ActivityRegistry {
 
 export interface ActivityFeedOptions {
   registry: ActivityRegistry
-  push: Pick<PushRegistry, 'hasActivities' | 'endActivities'>
+  push: Pick<PushRegistry, 'hasActivities' | 'endActivities' | 'deliverActivity'>
   hub: () => Pick<PushHub, 'pushActivity'> | null
+  /** The host sends the activity states itself when this answers true. */
+  local?: () => boolean
   now?: () => number
   log?: (line: string) => void
 }
@@ -278,15 +386,20 @@ export class ActivityFeed {
     if (this.last.get(meta.id) === key) return
     this.last.set(meta.id, key)
     const live = phase === 'working' || phase === 'paused'
-    const hub = this.options.hub()
-    if (hub) {
-      await hub.pushActivity({
-        threadId: meta.id,
-        event: live ? 'update' : 'end',
-        state: { phase, since: meta.busySince ?? meta.updatedAt, ts: this.now() },
-        title: meta.title,
-        ...(meta.threadType ? { threadType: meta.threadType } : {})
-      })
+    const state = { phase, since: meta.busySince ?? meta.updatedAt, ts: this.now() }
+    if (this.options.local?.()) {
+      await this.options.push.deliverActivity({ threadId: meta.id, event: live ? 'update' : 'end', state, ts: this.now() })
+    } else {
+      const hub = this.options.hub()
+      if (hub) {
+        await hub.pushActivity({
+          threadId: meta.id,
+          event: live ? 'update' : 'end',
+          state,
+          title: meta.title,
+          ...(meta.threadType ? { threadType: meta.threadType } : {})
+        })
+      }
     }
     if (!live) {
       this.options.push.endActivities(meta.id)

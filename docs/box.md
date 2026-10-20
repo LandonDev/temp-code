@@ -150,6 +150,26 @@ even when a different tunnel name follows `info`. The clean config avoids
 that override without editing the Mac's config.
 See [Cloudflare's local tunnel guide](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/do-more-with-tunnels/local-management/create-local-tunnel/).
 
+## Push to the phone: the APNs key on the box
+
+The box posts to Apple itself (the hub cannot: Cloudflare's fetch speaks
+HTTP/1.1 and APNs refuses it). The key is `/etc/temp-code/apns/AuthKey_<id>.p8`
+(root:agents, 640, the directory 750) and `/etc/temp-code.secrets.env` names it:
+
+```sh
+TEMP_CODE_APNS_KEY_PATH=/etc/temp-code/apns/AuthKey_<id>.p8
+TEMP_CODE_APNS_KEY_ID=<10 chars>
+TEMP_CODE_APNS_TEAM_ID=<10 chars>
+```
+
+The same file carries `TEMP_CODE_HUB_URL`, `TEMP_CODE_HUB_HOST_ID` and
+`TEMP_CODE_HUB_TOKEN` (since 2026-10-20 the app's own heartbeat reaches the
+hub; the scaffold timer may stay). The key the owner issued is Production-only,
+so the phone runs the Ad Hoc build and registers a production token; a Debug
+build's sandbox token would be refused by this key. Rotating the key: put the
+new .p8 beside the old one, change the three lines, restart the service, and
+revoke the old key in the developer account. Never copy the key anywhere else.
+
 ## Backups (live since 2026-10-19)
 
 Restic, to the Cloudflare R2 bucket `tempcode-backups` (account

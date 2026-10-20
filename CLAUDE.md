@@ -357,6 +357,17 @@ routed to (aliax-core's `forward`). Two listeners:
   the simulator build stays ad hoc. DEBUG hook: `TC_TEST_ROUTE=notification`
   with `TC_TEST_NOTIFICATION="title part|seq"` feeds the delegate a
   hub-shaped payload; the proof's `push` set (in `all`) checks the landing.
+  Delivery in practice: Cloudflare's fetch speaks HTTP/1.1 to origins and
+  Apple refuses it, so the box sends itself (`src/main/server/remote/apns.ts`,
+  node http2, the same payloads as the hub's) when `TEMP_CODE_APNS_KEY_PATH`,
+  `_KEY_ID` and `_TEAM_ID` name the key (on the box: `/etc/temp-code/apns/`,
+  root:agents 640, env in `/etc/temp-code.secrets.env`); with the key the
+  host relays every registration locally, takes its devices back from the hub
+  at boot and posts notices and Live Activity states over http2. The owner's
+  APNs keys are Production-only, so the phone runs the Ad Hoc build
+  (`TC_DEVICE_METHOD=ad-hoc bun run ios:device`: archive, export with
+  automatic signing, install; `aps-environment` production, no DEBUG hooks,
+  the pairing from an earlier Debug install carries over in the keychain).
 - Tests: `bun run ios:test` (contract) and `bun run ios:test:client` (the
   package, pure suites plus a live suite against scripts/ios-client-test-server.ts,
   a real server with a read key that lives only in the test process
