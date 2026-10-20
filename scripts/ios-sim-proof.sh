@@ -367,13 +367,23 @@ push_set() {
   # thread, else UIKit aborts the app; the process is still there afterwards.
   shot "push-foreground-before" home
   printf '{"aps":{"alert":{"title":"L6 proof","body":"Permission: Bash"},"sound":"default"},"tc":{"event":"needs_you","hostId":"box","environmentId":"env_proof","threadId":"nope","seq":1,"ts":1}}' > "$OUT/push-payload.json"
-  xcrun simctl push "$TC_SIM_UDID" "$BUNDLE" "$OUT/push-payload.json" >/dev/null
-  sleep 3
-  xcrun simctl io "$TC_SIM_UDID" screenshot --type png "$OUT/shots/push-foreground-after.png" >/dev/null 2>&1
-  if pgrep -f "/CoreSimulator/Devices/$TC_SIM_UDID/data/Containers/Bundle/Application/.*/TempCode.app/TempCode" >/dev/null; then
-    echo "ios-sim-proof: foreground delivery through the delegate kept the app alive PASS"
+  # simctl can push only to an app the person has allowed notifications for;
+  # nothing scripts that tap, so a fresh simulator skips this step and the
+  # delegate's real path is the phone's (the owner's tap). A simulator that
+  # was allowed once (TC_PROOF_PUSH=1 to insist) runs it.
+  if pushed=$(xcrun simctl push "$TC_SIM_UDID" "$BUNDLE" "$OUT/push-payload.json" 2>&1); then
+    sleep 3
+    xcrun simctl io "$TC_SIM_UDID" screenshot --type png "$OUT/shots/push-foreground-after.png" >/dev/null 2>&1
+    if pgrep -f "/CoreSimulator/Devices/$TC_SIM_UDID/data/Containers/Bundle/Application/.*/TempCode.app/TempCode" >/dev/null; then
+      echo "ios-sim-proof: foreground delivery through the delegate kept the app alive PASS"
+    else
+      echo "ios-sim-proof: the app died on a foreground delivery" >&2
+      exit 4
+    fi
+  elif echo "$pushed" | /usr/bin/grep -q "not authorized" && [ "${TC_PROOF_PUSH:-}" != 1 ]; then
+    echo "ios-sim-proof: foreground delivery skipped (the simulator has not allowed notifications)"
   else
-    echo "ios-sim-proof: the app died on a foreground delivery" >&2
+    echo "ios-sim-proof: simctl push failed: $pushed" >&2
     exit 4
   fi
   python3 - "$OUT" <<'CHECK'
