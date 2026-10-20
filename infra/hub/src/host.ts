@@ -7,26 +7,12 @@ import type { Env, Host, Notice } from './types'
 export const ALIVE_MS = 180_000
 export class HostState extends DurableObject<Env> {
   async fetch(request: Request): Promise<Response> {
-    // KV has no compare-and-swap. The object serializes all lifecycle changes,
-    // including overlapping cron checks and recovery heartbeats.
+    // The object serializes all lifecycle changes, including overlapping cron
+    // checks and recovery heartbeats. Liveness lives here and nowhere else.
     return this.ctx.blockConcurrencyWhile(async () => {
       try {
         const action = new URL(request.url).pathname
         const hostId = request.headers.get('x-host-id')!
-        if (action === '/failure') {
-          const previous = await this.ctx.storage.get<{ failureCount: number }>('failure')
-          const { lastError } = (await request.json()) as { lastError: string }
-          await this.ctx.storage.put('failure', {
-            lastError,
-            failureCount: (previous?.failureCount ?? 0) + 1
-          })
-          return json({ ok: true })
-        }
-        if (action === '/clear') {
-          await this.ctx.storage.deleteAll()
-          return json({ ok: true })
-        }
-        if (action === '/stats') return json((await this.ctx.storage.get('failure')) ?? {})
         let host = await this.ctx.storage.get<Host>('host')
         if (action === '/register') {
           if (host) return json({ error: 'Host already exists' }, 409)
@@ -36,10 +22,17 @@ export class HostState extends DurableObject<Env> {
             tokenHash: await hash(raw),
             registeredAt: Date.now(),
             lastSeen: null,
-            down: false
+            down: false,
+            listed: true
           }
           await this.ctx.storage.put('host', host)
-          await this.mirror(host)
+          try {
+            await this.directory().addHost(hostId)
+          } catch (e) {
+            // Not in the directory means invisible to the cron and the list: undo, so a retry works.
+            await this.ctx.storage.delete('host')
+            throw e
+          }
           return json({ hostId, hostToken: raw }, 201)
         }
         if (!host)
@@ -60,9 +53,9 @@ export class HostState extends DurableObject<Env> {
             environmentId: host.environmentId ?? null
           })
         if (action === '/delete') {
+          await this.directory().removeHost(hostId)
           await this.ctx.storage.deleteAlarm()
           await this.ctx.storage.delete(['host', 'lastMirror'])
-          await this.env.HUB_KV.delete('host:' + hostId)
           return json({ ok: true })
         }
         if (action === '/auth' || action === '/heartbeat') {
@@ -75,8 +68,10 @@ export class HostState extends DurableObject<Env> {
         let event: Notice | undefined
         if (action === '/heartbeat') {
           const body = heartbeat(await readJson(request))
+          // A host registered before the directory existed joins it once, here.
+          if (!host.listed) await this.directory().addHost(hostId)
           if (host.down) event = this.transition(host, 'host_up', now)
-          host = { ...host, ...body, lastSeen: now, down: false }
+          host = { ...host, ...body, lastSeen: now, down: false, listed: true }
         } else if (action === '/check') {
           if (host.down || now - (host.lastSeen ?? host.registeredAt) <= ALIVE_MS)
             return json({ ok: true })
@@ -84,7 +79,6 @@ export class HostState extends DurableObject<Env> {
           event = this.transition(host, 'host_down', now)
         } else return json({ error: 'Not found' }, 404)
         await this.ctx.storage.put('host', host)
-        await this.mirror(host)
         return json({ ok: true, serverTime: now, ...(event ? { event } : {}) })
       } catch (e) {
         return json(
@@ -94,20 +88,12 @@ export class HostState extends DurableObject<Env> {
       }
     })
   }
+  /** Builds before the directory throttled a KV mirror through an alarm; a live object may still have one pending. */
   async alarm(): Promise<void> {
-    await this.ctx.blockConcurrencyWhile(async () => {
-      const host = await this.ctx.storage.get<Host>('host')
-      if (host) await this.mirror(host)
-    })
+    await this.ctx.storage.delete('lastMirror')
   }
-  private async mirror(host: Host): Promise<void> {
-    const lastWrite = (await this.ctx.storage.get<number>('lastMirror')) ?? 0
-    if (Date.now() - lastWrite < 1100) {
-      await this.ctx.storage.setAlarm(lastWrite + 1100)
-      return
-    }
-    await this.env.HUB_KV.put('host:' + host.hostId, JSON.stringify(host))
-    await this.ctx.storage.put('lastMirror', Date.now())
+  private directory() {
+    return this.env.DIRECTORY.get(this.env.DIRECTORY.idFromName('directory'))
   }
   private transition(host: Host, event: 'host_up' | 'host_down', ts: number): Notice {
     return {

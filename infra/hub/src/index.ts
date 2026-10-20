@@ -1,8 +1,9 @@
 import { hash, matches, seal, token } from './crypto'
-import { fanOut, json, list } from './delivery'
+import { directory, fanOut, json } from './delivery'
 import { id, Invalid, kinds, notice, object, readJson, secret as secretOf, str, webhookUrl } from './validation'
-import type { Env, Host, Notice, Subscription } from './types'
+import type { Env, Notice, Subscription } from './types'
 export { HostState } from './host'
+export { Directory } from './directory'
 
 export function hostCall(
   env: Env,
@@ -62,10 +63,9 @@ export default {
           )
         }
         if (method === 'GET') {
-          const hosts = await list<Host>(env.HUB_KV, 'host:')
           const rows = await Promise.all(
-            hosts.map(async (entry) => {
-              const current = await hostCall(env, entry.hostId, 'view')
+            (await directory(env).hostIds()).map(async (hostId) => {
+              const current = await hostCall(env, hostId, 'view')
               if (current.status === 404) return null
               if (!current.ok) throw new Error('Host state unavailable')
               return current.json()
@@ -77,20 +77,15 @@ export default {
       const host = path.match(/^\/v1\/hosts\/([^/]+)$/)
       if (host && method === 'DELETE') return hostCall(env, id(host[1]), 'delete')
       if (path === '/v1/subscriptions') {
-        if (method === 'GET') {
-          const subs = await list<Subscription>(env.HUB_KV, 'sub:')
+        if (method === 'GET')
           return json(
-            await Promise.all(
-              subs.map(async (sub) => {
-                const { encryptedSecret: _secret, ...safe } = sub as Subscription & {
-                  encryptedSecret?: string
-                }
-                const stats = await hostCall(env, 'subscription:' + sub.id, 'stats')
-                return { ...safe, ...((await stats.json()) as object) }
-              })
-            )
+            (await directory(env).subscriptions()).map((sub) => {
+              const { encryptedSecret: _secret, ...safe } = sub as Subscription & {
+                encryptedSecret?: string
+              }
+              return safe
+            })
           )
-        }
         if (method === 'POST') {
           const v = object(await readJson(request))
           if (v.kind !== 'webhook') throw new Invalid('Only webhook subscriptions are supported')
@@ -114,17 +109,15 @@ export default {
             failureCount: 0,
             lastError: null
           }
-          await env.HUB_KV.put('sub:' + sub.id, JSON.stringify(sub))
+          await directory(env).putSubscription(sub)
           const { encryptedSecret: _secret, ...safe } = sub
           return json({ ...safe, ...(v.secret === undefined ? { secret } : {}) }, 201)
         }
       }
       const sub = path.match(/^\/v1\/subscriptions\/([^/]+)$/)
       if (sub && method === 'DELETE') {
-        const key = 'sub:' + id(sub[1])
-        if (!(await env.HUB_KV.get(key))) return json({ error: 'Subscription not found' }, 404)
-        await env.HUB_KV.delete(key)
-        await hostCall(env, 'subscription:' + sub[1], 'clear')
+        if (!(await directory(env).deleteSubscription(id(sub[1]))))
+          return json({ error: 'Subscription not found' }, 404)
         return json({ ok: true })
       }
       return json({ error: 'Not found' }, 404)
@@ -140,10 +133,10 @@ export default {
     env: Env,
     ctx: ExecutionContext
   ): Promise<void> {
-    const hosts = await list<Host>(env.HUB_KV, 'host:')
+    // One directory call a minute, then one check per host; KV is not on this path.
     await Promise.all(
-      hosts.map(async (h) => {
-        const response = await hostCall(env, h.hostId, 'check')
+      (await directory(env).hostIds()).map(async (hostId) => {
+        const response = await hostCall(env, hostId, 'check')
         if (!response.ok && response.status !== 404) throw new Error('Host check failed')
         if (response.ok) await transition(response, env, ctx)
       })

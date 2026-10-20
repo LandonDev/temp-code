@@ -11,9 +11,17 @@ id = "05925489b5f946d7a654816415273207"
 name = "HOSTS"
 class_name = "HostState"
 
+[[durable_objects.bindings]]
+name = "DIRECTORY"
+class_name = "Directory"
+
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["HostState"]
+
+[[migrations]]
+tag = "v2"
+new_sqlite_classes = ["Directory"]
 
 [triggers]
 crons = ["* * * * *"]

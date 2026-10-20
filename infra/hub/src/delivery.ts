@@ -1,24 +1,15 @@
 import { signature, unseal } from './crypto'
 import { guardTarget } from './target'
-import type { Env, Notice, Subscription } from './types'
+import type { Env, Notice } from './types'
 export const json = (value: unknown, status = 200): Response =>
   Response.json(value, { status, headers: { 'cache-control': 'no-store' } })
-export async function list<T>(kv: KVNamespace, prefix: string): Promise<T[]> {
-  const rows: T[] = []
-  let cursor: string | undefined
-  do {
-    const page = await kv.list({ prefix, cursor })
-    const values = await Promise.all(page.keys.map((k) => kv.get<T>(k.name, 'json')))
-    for (const value of values) if (value !== null) rows.push(value as T)
-    cursor = page.list_complete ? undefined : page.cursor
-  } while (cursor)
-  return rows
-}
+/** The one directory object: host ids and subscriptions, never KV on a hot path. */
+export const directory = (env: Env) => env.DIRECTORY.get(env.DIRECTORY.idFromName('directory'))
 export async function fanOut(
   env: Env,
   notice: Notice
 ): Promise<{ delivered: number; failed: number }> {
-  const subscriptions = (await list<Subscription>(env.HUB_KV, 'sub:')).filter(
+  const subscriptions = (await directory(env).subscriptions()).filter(
     (s) => s.events.includes(notice.event) && (!s.hosts || s.hosts.includes(notice.hostId))
   )
   const body = JSON.stringify(notice)
@@ -70,11 +61,7 @@ export async function fanOut(
           error = 'Webhook signing failed'
         }
       }
-      const response = await env.HOSTS.get(env.HOSTS.idFromName('subscription:' + sub.id)).fetch(
-        'https://host/failure',
-        { method: 'POST', body: JSON.stringify({ lastError: error }) }
-      )
-      if (!response.ok) throw new Error('Failed to record delivery failure')
+      await directory(env).recordFailure(sub.id, error)
       return false
     })
   )

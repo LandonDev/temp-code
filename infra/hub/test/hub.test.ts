@@ -7,9 +7,9 @@ import {
 } from 'cloudflare:test'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import worker from '../src/index'
-import { hash, signature } from '../src/crypto'
+import { hash, seal, signature } from '../src/crypto'
 import { dohResolve, guardTarget, isPrivateAddress, setResolver } from '../src/target'
-import type { Env as HubEnv, Host } from '../src/types'
+import type { Env as HubEnv, Host, Subscription } from '../src/types'
 declare global {
   namespace Cloudflare {
     interface Env extends HubEnv {}
@@ -65,43 +65,52 @@ async function cron(): Promise<void> {
   await worker.scheduled({} as ScheduledController, env, ctx)
   await waitOnExecutionContext(ctx)
 }
+const directory = () => env.DIRECTORY.get(env.DIRECTORY.idFromName('directory'))
+const hostObject = (name: string) => env.HOSTS.get(env.HOSTS.idFromName(name))
+const hostRecord = (name = 'box'): Promise<Host | undefined> =>
+  runInDurableObject(hostObject(name), (_instance, state) => state.storage.get<Host>('host'))
 async function ageHost(): Promise<void> {
-  await runInDurableObject(env.HOSTS.get(env.HOSTS.idFromName('box')), async (_instance, state) => {
+  await runInDurableObject(hostObject('box'), async (_instance, state) => {
     const h = (await state.storage.get<Host>('host'))!
     h.lastSeen = Date.now() - 180_001
     await state.storage.put('host', h)
-    await env.HUB_KV.put('host:box', JSON.stringify(h))
   })
+}
+/** A host and a subscription as the pre-directory hub left them: full records under KV keys. */
+async function legacyLayout(raw: string): Promise<{ host: Host; sub: Subscription }> {
+  const host: Host = {
+    hostId: 'box',
+    tokenHash: await hash(raw),
+    registeredAt: Date.now() - 60_000,
+    lastSeen: Date.now() - 5_000,
+    down: false,
+    name: 'tempcode-box',
+    version: 'box-scaffold',
+    environmentId: 'env_box'
+  }
+  const sub: Subscription = {
+    id: 'legacy-sub',
+    name: 'Bot',
+    kind: 'webhook',
+    url: 'https://bot.example/hook',
+    encryptedSecret: await seal('signing-secret', 'test-encryption-key'),
+    events: ['finished', 'host_down'],
+    failureCount: 0,
+    lastError: null
+  }
+  await runInDurableObject(hostObject('box'), (_instance, state) => state.storage.put('host', host))
+  return { host, sub }
 }
 beforeEach(async () => {
   vi.restoreAllMocks()
   // Webhook hosts resolve to a public address unless a test says otherwise.
   setResolver(async () => ['93.184.216.34'])
-  for (const name of ['box', 'mac'])
-    await runInDurableObject(
-      env.HOSTS.get(env.HOSTS.idFromName(name)),
-      async (_instance, state) => {
-        await state.storage.deleteAll()
-        await state.storage.deleteAlarm()
-      }
-    )
-  const keys = (await env.HUB_KV.list()).keys
-  for (const key of keys) {
-    const name = key.name.startsWith('host:')
-      ? key.name.slice(5)
-      : key.name.startsWith('sub:')
-        ? 'subscription:' + key.name.slice(4)
-        : null
-    if (name)
-      await runInDurableObject(
-        env.HOSTS.get(env.HOSTS.idFromName(name)),
-        async (_instance, state) => {
-          await state.storage.deleteAll()
-          await state.storage.deleteAlarm()
-        }
-      )
-    await env.HUB_KV.delete(key.name)
-  }
+  for (const stub of [hostObject('box'), hostObject('mac'), directory()])
+    await runInDurableObject(stub, async (_instance, state) => {
+      await state.storage.deleteAll()
+      await state.storage.deleteAlarm()
+    })
+  for (const key of (await env.HUB_KV.list()).keys) await env.HUB_KV.delete(key.name)
 })
 afterEach(() => {
   vi.restoreAllMocks()
@@ -122,9 +131,10 @@ describe('hub', () => {
   })
   it('stores only a token hash, enforces host scope, reports liveness, deletes hosts', async () => {
     const auth = await register()
-    const record = (await env.HUB_KV.get<Host>('host:box', 'json'))!
+    const record = (await hostRecord())!
     expect(record.tokenHash).toBe(await hash(auth.authorization.slice(7)))
     expect(JSON.stringify(record)).not.toContain(auth.authorization.slice(7))
+    expect(await env.HUB_KV.get('host:box')).toBe(JSON.stringify({ hostId: 'box' }))
     expect((await call('/v1/hosts', 'POST', { hostId: 'box' })).status).toBe(409)
     expect(((await (await call('/v1/hosts')).json()) as Host[])[0]).toMatchObject({ alive: false })
     expect((await call('/v1/hosts/box/heartbeat', 'POST', hb, auth)).status).toBe(200)
@@ -142,7 +152,7 @@ describe('hub', () => {
       (await call('/v1/hosts/box/heartbeat', 'POST', { ...hb, load: { nested: {} } }, auth)).status
     ).toBe(400)
     await call('/v1/hosts/box/heartbeat', 'POST', { ...hb, transcript: 'private' }, auth)
-    expect(await env.HUB_KV.get('host:box')).not.toContain('private')
+    expect(JSON.stringify(await hostRecord())).not.toContain('private')
     expect((await call('/v1/notify', 'POST', { ...notice, event: 'unknown' }, auth)).status).toBe(
       400
     )
@@ -180,6 +190,7 @@ describe('hub', () => {
     expect(short.status).toBe(400)
     expect(((await short.json()) as { error: string }).error).toMatch(/at least 8/)
     expect((await env.HUB_KV.list({ prefix: 'sub:' })).keys).toHaveLength(0)
+    expect(await directory().subscriptions()).toEqual([])
     // The notice's own deep link is only relayed, never fetched: it is not held to the target rule.
     const auth = await register()
     expect((await call('/v1/notify', 'POST', { ...notice, url: 'https://10.0.0.1/ui' }, auth)).status).toBe(200)
@@ -239,6 +250,7 @@ describe('hub', () => {
     const subs = await (await call('/v1/subscriptions')).text()
     expect(subs).not.toContain('signing-secret')
     expect(subs).not.toContain('encryptedSecret')
+    expect(await directory().subscriptions()).toHaveLength(3)
     expect((await env.HUB_KV.list({ prefix: 'sub:' })).keys).toHaveLength(3)
   })
   it('retries three times, preserves delivery ID, records terminal failure and can delete subscriptions', async () => {
@@ -376,5 +388,111 @@ describe('hub', () => {
     await call('/v1/hosts/box/heartbeat', 'POST', hb, auth)
     expect(fetch).toHaveBeenCalledTimes(2)
     expect(JSON.parse(fetch.mock.calls[1][1]!.body as string).event).toBe('host_up')
+  })
+  it('writes nothing to KV on a heartbeat and lists nothing on the cron or the host list', async () => {
+    const auth = await register()
+    await subscribe()
+    // The first read seeds the directory (two lists, once); steady state starts after it.
+    await call('/v1/hosts')
+    const kv = ['put', 'list', 'get', 'delete'].map((name) =>
+      vi.spyOn(env.HUB_KV, name as 'put')
+    )
+    for (let i = 0; i < 3; i++)
+      expect((await call('/v1/hosts/box/heartbeat', 'POST', hb, auth)).status).toBe(200)
+    await cron()
+    await cron()
+    expect(((await (await call('/v1/hosts')).json()) as object[])[0]).toMatchObject({ alive: true })
+    const fetch = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('ok'))
+    expect(await (await call('/v1/notify', 'POST', notice, auth)).json()).toEqual({
+      delivered: 1,
+      failed: 0
+    })
+    await ageHost()
+    await cron()
+    await call('/v1/hosts/box/heartbeat', 'POST', hb, auth)
+    expect(fetch.mock.calls.map((c) => JSON.parse(c[1]!.body as string).event)).toEqual([
+      'finished',
+      'host_down',
+      'host_up'
+    ])
+    for (const spy of kv) expect(spy).not.toHaveBeenCalled()
+    expect(await env.HUB_KV.get('host:box')).toBe(JSON.stringify({ hostId: 'box' }))
+    // The spies do see the directory's own KV traffic: a registration mirrors one key.
+    await register('mac')
+    expect(kv[0]).toHaveBeenCalledTimes(1)
+  })
+  it('keeps the directory and its KV mirror in step with registration, deletion and subscriptions', async () => {
+    await register()
+    await register('mac')
+    expect(await directory().hostIds()).toEqual(['box', 'mac'])
+    expect((await env.HUB_KV.list({ prefix: 'host:' })).keys.map((k) => k.name)).toEqual([
+      'host:box',
+      'host:mac'
+    ])
+    expect((await call('/v1/hosts/mac', 'DELETE')).status).toBe(200)
+    expect((await call('/v1/hosts/mac', 'DELETE')).status).toBe(404)
+    expect(await directory().hostIds()).toEqual(['box'])
+    expect(await env.HUB_KV.get('host:mac')).toBeNull()
+    expect((await (await call('/v1/hosts')).json()) as object[]).toHaveLength(1)
+    const subId = await subscribe()
+    expect((await directory().subscriptions()).map((s) => s.id)).toEqual([subId])
+    expect(await env.HUB_KV.get('sub:' + subId, 'json')).toMatchObject({ id: subId, kind: 'webhook' })
+    expect((await call('/v1/subscriptions/' + subId, 'DELETE')).status).toBe(200)
+    expect((await call('/v1/subscriptions/' + subId, 'DELETE')).status).toBe(404)
+    expect(await directory().subscriptions()).toEqual([])
+    expect((await env.HUB_KV.list({ prefix: 'sub:' })).keys).toHaveLength(0)
+  })
+  it('seeds the directory once from the pre-directory KV keys and keeps the old token working', async () => {
+    const raw = 'a'.repeat(64)
+    const { host, sub } = await legacyLayout(raw)
+    await env.HUB_KV.put('host:box', JSON.stringify(host))
+    await env.HUB_KV.put('sub:legacy-sub', JSON.stringify(sub))
+    const list = vi.spyOn(env.HUB_KV, 'list')
+    expect(await (await call('/v1/hosts')).json()).toEqual([
+      expect.objectContaining({ hostId: 'box', alive: true, name: 'tempcode-box', environmentId: 'env_box' })
+    ])
+    expect(list).toHaveBeenCalledTimes(2)
+    const auth = { authorization: 'Bearer ' + raw, 'content-type': 'application/json' }
+    expect((await call('/v1/hosts/box/heartbeat', 'POST', hb, auth)).status).toBe(200)
+    const fetch = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('ok'))
+    expect(await (await call('/v1/notify', 'POST', notice, auth)).json()).toEqual({
+      delivered: 1,
+      failed: 0
+    })
+    const init = fetch.mock.calls[0][1]!
+    expect((init.headers as Record<string, string>)['x-hub-signature-256']).toBe(
+      await signature(init.body as string, 'signing-secret')
+    )
+    const subs = await (await call('/v1/subscriptions')).text()
+    expect(JSON.parse(subs)).toEqual([expect.objectContaining({ id: 'legacy-sub', failureCount: 0 })])
+    expect(subs).not.toContain('encryptedSecret')
+    await cron()
+    await call('/v1/hosts')
+    expect(list).toHaveBeenCalledTimes(2)
+    // Nothing was rewritten: the old key is still the old record, untouched by the seed.
+    expect(await env.HUB_KV.get('host:box', 'json')).toEqual(host)
+  })
+  it('lets a pre-directory host join at its first heartbeat while the seed cannot list KV', async () => {
+    const raw = 'b'.repeat(64)
+    const { sub } = await legacyLayout(raw)
+    const list = vi
+      .spyOn(env.HUB_KV, 'list')
+      .mockRejectedValue(new Error('KV LIST failed: 429 Too Many Requests'))
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+    expect(await (await call('/v1/hosts')).json()).toEqual([])
+    const auth = { authorization: 'Bearer ' + raw, 'content-type': 'application/json' }
+    expect((await call('/v1/hosts/box/heartbeat', 'POST', hb, auth)).status).toBe(200)
+    expect(await directory().hostIds()).toEqual(['box'])
+    expect(await (await call('/v1/hosts')).json()).toEqual([
+      expect.objectContaining({ hostId: 'box', alive: true })
+    ])
+    expect((await hostRecord())!.listed).toBe(true)
+    expect(error).toHaveBeenCalled()
+    expect(list.mock.calls.length).toBeGreaterThan(1)
+    // Once KV lists again the seed finishes, bringing in what only KV knew.
+    list.mockRestore()
+    await env.HUB_KV.put('sub:legacy-sub', JSON.stringify(sub))
+    expect((await directory().subscriptions()).map((s) => s.id)).toEqual(['legacy-sub'])
+    expect(await directory().hostIds()).toEqual(['box'])
   })
 })

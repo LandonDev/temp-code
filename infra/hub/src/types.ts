@@ -1,3 +1,4 @@
+import type { Directory } from './directory'
 export const events = ['needs_you', 'finished', 'failed', 'stuck', 'host_down', 'host_up'] as const
 export type EventKind = (typeof events)[number]
 export interface Notice {
@@ -22,6 +23,8 @@ export interface Host extends Partial<Heartbeat> {
   registeredAt: number
   lastSeen: number | null
   down: boolean
+  /** In the directory. Hosts registered before it existed join at their next heartbeat. */
+  listed?: boolean
 }
 export type Subscription = {
   id: string
@@ -39,4 +42,5 @@ export interface Env {
   WEBHOOK_KEY: string
   HUB_KV: KVNamespace
   HOSTS: DurableObjectNamespace
+  DIRECTORY: DurableObjectNamespace<Directory>
 }

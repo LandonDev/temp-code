@@ -1,8 +1,9 @@
 # temp-code hub
 
 A host directory and webhook relay. It stores host metadata, credential hashes,
-subscriptions, and delivery failure counts. It never stores thread records,
-transcripts, or notification payloads. Notification title/body are transient;
+subscriptions, and delivery failure counts in two Durable Object classes, with
+KV as a cold mirror (see "Storage and the KV quota"). It never stores thread
+records, transcripts, or notification payloads. Notification title/body are transient;
 callers should send a short status, not thread content. Timestamps use Unix
 milliseconds.
 
@@ -39,8 +40,10 @@ once the host runs. The account needed a workers.dev subdomain before the first
 deploy even with `workers_dev = false`; it was created through the API
 (`PUT /accounts/<id>/workers/subdomain`).
 
-The one `wrangler whoami` check on 2026-10-19 returned **Not logged in**. No login
-or deploy was attempted. Run these commands yourself when ready:
+Later deploys are `npx wrangler deploy` from `infra/hub` with wrangler logged
+in as the account owner; the secrets stay on the Worker and migrations apply
+on deploy (`v2`, the `Directory` class, went out on 2026-10-20). A fresh
+account needs the namespace and secrets first:
 
 ```sh
 cd infra/hub
@@ -49,8 +52,7 @@ npx wrangler login
 npx wrangler kv namespace create HUB_KV
 ```
 
-Copy the returned namespace ID into `wrangler.toml` in place of
-`REPLACE_WITH_KV_NAMESPACE_ID`, then run:
+Copy the returned namespace ID into `wrangler.toml`, then run:
 
 ```sh
 npx wrangler secret put ADMIN_KEY
@@ -76,13 +78,40 @@ pattern = "hub.landonhale.com"
 custom_domain = true
 ```
 
-The migration creates the SQLite-backed `HostState` Durable Object binding.
-Each host has one object; KV holds the directory mirror. Object storage owns
-liveness and serializes heartbeat/cron transitions. This is needed because
-[KV has no atomic updates](https://developers.cloudflare.com/kv/concepts/how-kv-works/).
-Subscription failure counters also use serialized object storage. KV listing
-can lag after registration/deletion. Host list rows read current object state;
-KV mirror writes coalesce bursts to respect KV's per-key write limit.
+## Storage and the KV quota
+
+Two SQLite-backed Durable Object classes hold the state. Migration `v1` created
+`HostState`, `v2` added `Directory`.
+
+- `HostState`, one object per host: the token hash, the last heartbeat, the
+  down flag, and the host's name, version and environment id. It owns liveness
+  and serializes heartbeat and cron transitions under `blockConcurrencyWhile`,
+  which [KV cannot do](https://developers.cloudflare.com/kv/concepts/how-kv-works/).
+  A heartbeat writes this object and nothing else.
+- `Directory`, one object: the set of host ids, the subscriptions (secrets
+  sealed) and their failure counters. The cron asks it for the host ids once a
+  minute and checks each host's object; the host list and the fan-out read it;
+  registration, deletion and subscription changes update it under
+  `blockConcurrencyWhile`.
+
+KV (`HUB_KV`) is a cold mirror of the directory: `host:<id>` holds the id,
+`sub:<id>` the subscription, written when an entry is added or removed and
+never read in steady state. A failed mirror write is logged and does not fail
+the request. The mirror exists to rebuild the directory: the first read after
+a fresh `Directory` object seeds it from those keys (two lists and one read per
+subscription, once; the `seeded` marker ends it). A seed that cannot list,
+because the day's quota is spent, is logged and retried on the next read, and
+a host also joins the directory at its next heartbeat (`host.listed`), so the
+live host `box` needed no re-registration when the directory shipped.
+
+The account is on Workers Free: KV allows 1,000 list and 1,000 write
+operations a day. Before the directory, the cron listed KV every minute and
+every heartbeat rewrote the host record, which spent both quotas by the
+afternoon (Oct 19: 1,006 lists, 1,004 reads, 849 writes; Oct 20 by 18:00 UTC:
+1,075 lists, 1,074 reads, 910 writes) and then failed the cron and the
+heartbeats for the rest of the UTC day. Expected now, per day: 0 lists, 0
+reads, and one write per host registered or deleted and per subscription
+created or deleted. Heartbeats at 30 s from several hosts cost KV nothing.
 
 Cron runs every minute. A host becomes down after more than 180 seconds since
 its last heartbeat (or registration if it has never sent one). Concurrent cron
@@ -111,9 +140,9 @@ Bodies are capped at 16 KiB. No CORS access is granted by default.
 | DELETE | `/v1/subscriptions/:id` | admin | `{ ok: true }` |
 
 Register with `{ "hostId": "box" }` (or `{}` for a generated ID). The raw
-32-byte host token appears once; only SHA-256 hashes are stored in KV and the
-host object. Admin key material lives in a Worker secret, never KV. Its hash
-is compared in constant time. Host tokens cannot call admin endpoints or act
+32-byte host token appears once; only its SHA-256 hash is stored, in the host
+object (the KV mirror holds the id alone). Admin key material lives in a Worker
+secret, never KV. Its hash is compared in constant time. Host tokens cannot call admin endpoints or act
 for another host. Delete and register again to rotate a host token.
 
 Heartbeat body:
