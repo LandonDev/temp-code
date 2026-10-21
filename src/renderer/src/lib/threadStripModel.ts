@@ -154,6 +154,7 @@ const DORMANT_TYPE_ORDER: readonly ThreadType[] = [
 const DORMANT_NOUNS: Record<ThreadType, readonly [one: string, many: string]> = {
   chat: ["chat", "chats"],
   planning: ["plan", "plans"],
+  "project-plan": ["project plan", "project plans"],
   implementation: ["implementation thread", "implementation threads"],
   orchestration: ["orchestration", "orchestrations"],
   research: ["research thread", "research threads"],

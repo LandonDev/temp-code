@@ -271,7 +271,7 @@ public final class EnvironmentClient {
 
     private func needsBoardHistory(_ id: String) -> Bool {
         switch session(id)?.threadType {
-        case .implementation?, .research?, .orchestration?, .planning?: true
+        case .implementation?, .research?, .orchestration?, .planning?, .projectPlan?: true
         default: false
         }
     }

@@ -109,6 +109,7 @@ public enum AgentType: RawRepresentable, Codable, Hashable, Sendable {
 public enum ThreadType: RawRepresentable, Codable, Hashable, Sendable {
     case chat
     case planning
+    case projectPlan
     case implementation
     case orchestration
     case research
@@ -119,6 +120,7 @@ public enum ThreadType: RawRepresentable, Codable, Hashable, Sendable {
         switch rawValue {
         case "chat": self = .chat
         case "planning": self = .planning
+        case "project-plan": self = .projectPlan
         case "implementation": self = .implementation
         case "orchestration": self = .orchestration
         case "research": self = .research
@@ -130,6 +132,7 @@ public enum ThreadType: RawRepresentable, Codable, Hashable, Sendable {
         switch self {
         case .chat: "chat"
         case .planning: "planning"
+        case .projectPlan: "project-plan"
         case .implementation: "implementation"
         case .orchestration: "orchestration"
         case .research: "research"

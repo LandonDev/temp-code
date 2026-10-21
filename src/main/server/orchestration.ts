@@ -1116,6 +1116,22 @@ no subagent writes anything beyond notes. Fold what they find into the
 plan as their reports land.`
 }
 
+/** Mechanics for project-plan threads: explorers survey the project in
+ *  parallel; nothing is built and nothing is started from here. */
+export function projectPlanSpawnPrompt(session: SessionMeta): string {
+  return `${orchestratorMechanics(rulesFor(session))}
+
+This is a PROJECT PLAN thread: your deliverable is the project plan
+document (Goals, Current state, Milestones, Risks, Open questions), and
+subagents exist to survey the project for it. Spawn explorers to map the
+codebase, the docs and the open work in parallel — one per area, each
+with a self-contained brief — or a reviewer for an independent read on a
+milestone split. Never implementers: nothing gets built from this thread,
+no subagent writes anything beyond notes, and no thread of any type is
+started from here. Fold what they find into the plan as their reports
+land.`
+}
+
 /** Mechanics for research threads: the fleet IS the method — parallel
  *  explorers, each writing an app-assigned findings file the root
  *  synthesizes from. */

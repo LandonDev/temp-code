@@ -6,6 +6,7 @@ import type { SessionRegistry } from './sessions'
 import {
   extraWriteRoots,
   findingsContract,
+  projectPlanSpawnPrompt,
   orchSpawnAgent,
   setOrchestrationRegistry,
   SPAWN_BATCH_MAX,
@@ -300,4 +301,12 @@ it('outside a research tree a spawn is unchanged: implementer, no id, no planPat
   expect(created[0].planPath).toBeUndefined()
   expect(created[0].agentType).toBe('implementer')
   expect(sent).toEqual(['do the thing'])
+})
+
+it('a project-plan thread spawns explorers for the survey and never a builder or another thread', () => {
+  const text = projectPlanSpawnPrompt({ id: 'pp', projectId: null, threadRules: null } as unknown as SessionMeta)
+  expect(text).toContain('PROJECT PLAN thread')
+  expect(text).toContain('Spawn explorers')
+  expect(text).toContain('Never implementers')
+  expect(text).toContain('no thread of any type is\nstarted from here')
 })

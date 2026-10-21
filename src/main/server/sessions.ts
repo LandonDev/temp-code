@@ -98,6 +98,8 @@ import {
   type AppshotSettings
 } from '@shared/appshots'
 import { CITE_CLAIM_MAX, type CiteSourceArgs } from '@shared/research'
+import { isProjectPlanPath, projectPlanPathFor } from '@shared/projectPlan'
+import { inheritMilestoneLink } from './projectPlan'
 import {
   isReportPath,
   planPathFor,
@@ -125,6 +127,7 @@ import { composePreambled, decidePreamble, normalizePreamble } from './projectPr
 const THREAD_TITLES = {
   chat: 'New chat',
   planning: 'New plan',
+  'project-plan': 'Project plan',
   implementation: 'New task',
   orchestration: 'New orchestration',
   research: 'New research'
@@ -1677,9 +1680,11 @@ export class SessionRegistry {
       planPath:
         params.threadType === 'planning'
           ? planPathFor(cwd, id)
-          : params.threadType === 'research'
-            ? reportPathFor(reportsRoot, id)
-            : (params.planPath ?? null),
+          : params.threadType === 'project-plan'
+            ? projectPlanPathFor(cwd)
+            : params.threadType === 'research'
+              ? reportPathFor(reportsRoot, id)
+              : (params.planPath ?? null),
       provider,
       model,
       reasoning: params.reasoning ?? d.reasoning,
@@ -1731,6 +1736,15 @@ export class SessionRegistry {
     // the context. Archiving touches nothing the models use — mirrors and
     // the plan doc stay, and any send into the thread revives it.
     linkPlanHandoff(this.planFlow(), created)
+    // A plan written for one milestone of the project plan hands that
+    // milestone to the build: landing the build ticks it (projectPlan.ts).
+    if (created.planPath && (created.threadType === 'implementation' || created.threadType === 'orchestration')) {
+      inheritMilestoneLink(
+        this.store,
+        created,
+        this.store.listSessions().find((s) => s.threadType === 'planning' && s.planPath === created.planPath)
+      )
+    }
     // A requested goal waits for the kickoff message (send() applies it
     // just before the text), so goal and work arrive in order.
     if (params.goal?.trim()) this.pendingGoals.set(id, params.goal.trim())
@@ -1962,6 +1976,7 @@ export class SessionRegistry {
       // which its task already describes — never a plan to work from.
       if (
         meta.threadType !== 'planning' &&
+        meta.threadType !== 'project-plan' &&
         meta.threadType !== 'research' &&
         meta.planPath &&
         !meta.parentId
@@ -2504,7 +2519,10 @@ export class SessionRegistry {
     // must never masquerade as a plan for the next type).
     if (threadType === 'research') {
       patch.planPath = reportPathFor(this.reportsRootFor(meta), sessionId)
-    } else if (meta.planPath && isReportPath(meta.planPath)) {
+    } else if (threadType === 'project-plan') {
+      // The project plan is one file per project, whatever thread writes it.
+      patch.planPath = projectPlanPathFor(meta.cwd)
+    } else if (meta.planPath && (isReportPath(meta.planPath) || isProjectPlanPath(meta.planPath))) {
       patch.planPath = threadType === 'planning' ? planPathFor(meta.cwd, sessionId) : null
     } else if (threadType === 'planning' && !meta.planPath) {
       patch.planPath = planPathFor(meta.cwd, sessionId)

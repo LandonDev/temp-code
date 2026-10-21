@@ -52,6 +52,7 @@ import { INLINE_DIGEST_MAX_CHARS, mirrorRelPath, threadDigest } from './mirror'
 import type { SessionRegistry } from './sessions'
 import { macToolsHooks } from './macTools'
 import type { CrossHostAgents } from './crossHostAgents'
+import type { ProjectPlans } from './projectPlan'
 import { HOST_PARAM_DESCRIPTION, toolLine } from './orchestration'
 import { CROSS_HOST_EVENTS_MAX, type ThreadEventsResult } from '@shared/contract-crosshost'
 
@@ -199,7 +200,7 @@ export function remoteDigest(threadId: string, r: ThreadEventsResult): string {
 }
 
 export interface StartThreadArgs {
-  threadType: 'chat' | 'planning' | 'implementation' | 'orchestration' | 'research'
+  threadType: 'chat' | 'planning' | 'project-plan' | 'implementation' | 'orchestration' | 'research'
   provider: ProviderId
   model?: string
   reasoning?: string
@@ -433,9 +434,14 @@ export const CITE_SHAPE = {
   title: z.string().max(300).optional().describe(CITE_TOOL_PARAMS.title)
 }
 
+let projectPlans: ProjectPlans | null = null
+export function setProjectPlans(plans: ProjectPlans | null): void {
+  projectPlans = plans
+}
+
 export const PLAN_COMPLETE_TOOL_NAME = 'plan_complete'
 export const PLAN_COMPLETE_TOOL_DESCRIPTION =
-  'Planning threads only: say the plan is COMPLETE — the plan file is fully written and every decision is settled. Call it once, as the last tool call before your closing message; the app then starts the implementation thread itself (when auto-start is on) and tells whoever started this plan. Refused while the plan file is missing or empty.'
+  'Planning and project-plan threads only: say the plan is COMPLETE — the plan file is fully written and every decision is settled. Call it once, as the last tool call before your closing message. For an ordinary plan the app then starts the implementation thread itself (when auto-start is on) and tells whoever started this plan; a project plan gets `status: complete` and the user picks the next milestone from its options — nothing starts on its own. Refused while the plan file is missing or empty.'
 export const PLAN_COMPLETE_SHAPE = {
   summary: z.string().optional().describe('One line on what the plan covers (optional)')
 }
@@ -463,11 +469,15 @@ export const REPORT_FINDINGS_SHAPE = {
   level: z.enum(['low', 'medium', 'high', 'xhigh', 'max']).optional().describe(REPORT_FINDINGS_PARAMS.level)
 }
 
+/** The plan tools a thread gets: plan_complete for the two types that write a plan. */
+function writesPlan(session: SessionMeta): boolean {
+  return (session.threadType === 'planning' || session.threadType === 'project-plan') && !session.parentId
+}
+
 export function appToolsMcp(session: SessionMeta): McpSdkServerConfigWithInstance {
   // cite_source exists only inside a research tree (the handle reboots on
   // a retype, so the check at boot is current); elsewhere it would only refuse.
   const research = registry?.researchRootOf(session.id) !== null
-  const planning = session.threadType === 'planning'
   return createSdkMcpServer({
     name: 'app',
     version: '0.1.0',
@@ -479,10 +489,15 @@ export function appToolsMcp(session: SessionMeta): McpSdkServerConfigWithInstanc
             )
           ]
         : []),
-      ...(planning
+      ...(writesPlan(session)
         ? [
             tool(PLAN_COMPLETE_TOOL_NAME, PLAN_COMPLETE_TOOL_DESCRIPTION, PLAN_COMPLETE_SHAPE, async (args) => {
               if (!registry) return text('app registry not ready')
+              // A project plan completes into its file (projectPlan.ts); an
+              // ordinary plan into the plan flow (planFlow.ts).
+              if (session.threadType === 'project-plan') {
+                return text(projectPlans ? projectPlans.complete(session.id) : 'app registry not ready')
+              }
               const result = await registry.completePlan(session.id, args)
               return text(typeof result === 'string' ? result : JSON.stringify(result))
             })
@@ -519,7 +534,7 @@ export function appToolsMcp(session: SessionMeta): McpSdkServerConfigWithInstanc
         'app_start_thread',
         'Create a new thread and send its first message — it starts working immediately, visibly. Use ONLY when the user asked for a handoff or agreed to one (e.g. plan approved → implementation thread; chat crystallized → planning thread seeded from it; a research-shaped ask → research thread, which runs on claude).',
         {
-          threadType: z.enum(['chat', 'planning', 'implementation', 'orchestration', 'research']),
+          threadType: z.enum(['chat', 'planning', 'project-plan', 'implementation', 'orchestration', 'research']),
           provider: z.enum(providerIds),
           model: z
             .string()
@@ -596,6 +611,7 @@ export function appToolsMcp(session: SessionMeta): McpSdkServerConfigWithInstanc
 }
 
 export const APP_TOOLS = [
+  'mcp__app__plan_complete',
   'mcp__app__app_list_threads',
   'mcp__app__app_read_thread',
   'mcp__app__app_start_thread',

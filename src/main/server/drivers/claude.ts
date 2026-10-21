@@ -29,6 +29,7 @@ import {
   chatSpawnPrompt,
   implementerSpawnPrompt,
   planningSpawnPrompt,
+  projectPlanSpawnPrompt,
   researchSpawnPrompt,
   ORCHESTRATOR_TOOLS,
   orchestratorMcp,
@@ -1204,6 +1205,7 @@ export const claudeDriver: HarnessDriver = {
         : session.threadType === 'implementation' ||
             session.threadType === 'chat' ||
             session.threadType === 'planning' ||
+            session.threadType === 'project-plan' ||
             session.threadType === 'research'
           ? {
               // Implementation, chat, planning AND research threads spawn
@@ -1227,7 +1229,9 @@ export const claudeDriver: HarnessDriver = {
                     ? chatSpawnPrompt(session)
                     : session.threadType === 'planning'
                       ? planningSpawnPrompt(session)
-                      : session.threadType === 'research'
+                      : session.threadType === 'project-plan'
+                        ? projectPlanSpawnPrompt(session)
+                        : session.threadType === 'research'
                         ? researchSpawnPrompt(session)
                         : implementerSpawnPrompt(session)
               }

@@ -96,3 +96,19 @@ it('the project context lists reports from the reports root by absolute path', a
     await rm(root, { recursive: true, force: true })
   }
 })
+
+it('a project-plan thread surveys the whole project, keeps the five sections, and never starts a build', () => {
+  const text = threadPreamble(session('project-plan')) ?? ''
+  expect(text).toContain('PROJECT PLAN thread')
+  expect(text).toContain('survey the WHOLE project')
+  expect(text).toContain('spawn explorers')
+  for (const section of ['## Goals', '## Current state', '## Milestones', '## Risks', '## Open questions']) {
+    expect(text).toContain(section)
+  }
+  expect(text).toContain('### [ ] 1. <title>')
+  expect(text).toContain('- Done when:')
+  expect(text).toContain('Never tick a milestone yourself')
+  expect(text).toContain('call plan_complete once')
+  expect(text).toContain('never start an implementation, planning or orchestration thread from here')
+  expect(text).toContain('AskUserQuestion')
+})

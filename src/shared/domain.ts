@@ -11,6 +11,8 @@ import type { AccountPins } from './accounts'
 export const ThreadTypeSchema = z.enum([
   'chat',
   'planning',
+  /** A project-wide plan: goals, current state, milestones (docs/PROJECT-PLAN.md). Never auto-started into a build. */
+  'project-plan',
   'implementation',
   'orchestration',
   'research'

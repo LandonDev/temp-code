@@ -9,6 +9,7 @@ extension ThreadType {
         switch self {
         case .chat: "bubble.left"
         case .planning: "map"
+        case .projectPlan: "flag.checkered"
         case .implementation: "checklist"
         case .orchestration: "arrow.triangle.branch"
         case .research: "binoculars"
@@ -20,6 +21,7 @@ extension ThreadType {
         switch self {
         case .chat: "Chat"
         case .planning: "Plan"
+        case .projectPlan: "Project plan"
         case .implementation: "Implement"
         case .orchestration: "Orchestrate"
         case .research: "Research"
@@ -32,6 +34,7 @@ extension ThreadType {
         switch self {
         case .chat: "Ask questions, explore the code"
         case .planning: "Produce a plan document to implement from"
+        case .projectPlan: "Survey the whole project, lay out its milestones"
         case .implementation: "Execute a task, todos in focus"
         case .orchestration: "Spawn and direct subagents"
         case .research: "Investigate with parallel explorers, produce a cited report"
@@ -43,6 +46,7 @@ extension ThreadType {
         switch self {
         case .chat: Tint.info
         case .planning: Tint.violet
+        case .projectPlan: Tint.violet
         case .implementation: Tint.success
         case .orchestration: Tint.warning
         case .research: Tint.cyan

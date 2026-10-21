@@ -207,6 +207,12 @@ export const METHOD_CAPABILITY: Record<ClientRequest['method'], MethodCapability
   'session.answer': 'operate',
   'session.tune': 'operate',
   'session.retype': 'operate',
+  // The project plan (contract-projectplan.ts): read the state, operate the rest.
+  'projectPlan.get': 'read',
+  'projectPlan.pin': 'operate',
+  'projectPlan.tick': 'operate',
+  'projectPlan.link': 'operate',
+  'projectPlan.linkOf': 'read',
   'session.setGoal': 'operate',
   'session.clearGoal': 'operate',
   'session.compact': 'operate',

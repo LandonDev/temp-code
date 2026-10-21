@@ -45,6 +45,7 @@ export function ThreadView(props: ThreadViewProps) {
 function typeView(props: ThreadViewProps) {
   switch (props.session.threadType) {
     case "planning":
+    case "project-plan":
       return <PlanView {...props} />;
     case "implementation":
       return <ImplementationView {...props} />;

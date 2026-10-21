@@ -208,7 +208,7 @@ export const TOOLS = [
   {
     name: 'plan_complete',
     description:
-      'Planning threads only: say the plan is COMPLETE — the plan file is fully written and every decision is settled. Call it once, as the last tool call before your closing message; the app then starts the implementation thread itself (when auto-start is on) and tells whoever started this plan. Refused while the plan file is missing or empty.',
+      'Planning and project-plan threads only: say the plan is COMPLETE — the plan file is fully written and every decision is settled. Call it once, as the last tool call before your closing message. For an ordinary plan the app then starts the implementation thread itself (when auto-start is on) and tells whoever started this plan; a project plan gets `status: complete` and the user picks the next milestone from its options — nothing starts on its own. Refused while the plan file is missing or empty.',
     inputSchema: {
       type: 'object',
       properties: {

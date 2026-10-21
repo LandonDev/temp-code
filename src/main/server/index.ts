@@ -122,8 +122,10 @@ import {
   appStartThread,
   setAppBridge,
   setAppCrossHost,
-  setAppToolsRegistry
+  setAppToolsRegistry,
+  setProjectPlans
 } from './apptools'
+import { ProjectPlans, handleProjectPlan } from './projectPlan'
 import { DEFAULT_RULES } from '@shared/rules'
 import { DEFAULT_THREAD_DEFAULTS } from '@shared/defaults'
 import { DEFAULT_PLAN_SETTINGS } from '@shared/plans'
@@ -310,6 +312,13 @@ export async function startServer(
   const registry = new SessionRegistry(store)
   // The temp-code workspace's default preamble, seeded once (projectPreamble.ts).
   seedHousePreamble(store)
+  // The project plan's pin, ticks and milestone links (projectPlan.ts).
+  const projectPlans = new ProjectPlans(store, {
+    getProject: (id) => registry.getProject(id),
+    sessionsOfProject: (id) => store.sessionsOfProject(id),
+    getSession: (id) => registry.get(id)
+  })
+  setProjectPlans(projectPlans)
   // The file viewer's media host serves only files under these roots.
   setMediaRoots(() => [
     ...registry.listProjects().map((p) => p.cwd),
@@ -974,6 +983,8 @@ export async function startServer(
           return sendFrame({ id: req.id, ok: true, result: crossHostAgents.settled(req.params.from, req.params) })
         }
         if (req.method === 'deploy.master') return sendFrame({ id: req.id, ok: true, result: masterRelease.current() })
+        const planned = handleProjectPlan(req, projectPlans)
+        if (planned.handled) return sendFrame({ id: req.id, ok: true, result: planned.result })
         const macBridged = handleMacBridge(req, macBridge)
         if (macBridged.handled) return sendFrame({ id: req.id, ok: true, result: macBridged.result })
         const devices = await handleHostDevices(req, hostDevices, { connection, send: sendFrame })
@@ -1258,11 +1269,11 @@ export async function startServer(
           }
           case 'project.mergeInto': {
             const project = mustProject(req.params.projectId)
-            sendFrame({
-              id: req.id,
-              ok: true,
-              result: await mergeInto(project.cwd, req.params.target)
-            })
+            const merged = await mergeInto(project.cwd, req.params.target)
+            // A build landing on the project's branch ticks the milestone
+            // its thread works in the project plan.
+            if (merged.ok) projectPlans.landed(project.id)
+            sendFrame({ id: req.id, ok: true, result: merged })
             break
           }
           case 'project.blame': {
@@ -1803,7 +1814,15 @@ export async function startServer(
           }
           case 'app.planComplete': {
             const caller = callerOf(registry, req.params.sessionId)
-            sendFrame({ id: req.id, ok: true, result: await registry.completePlan(caller.id, req.params) })
+            // A project plan completes into its file; an ordinary plan into the plan flow.
+            sendFrame({
+              id: req.id,
+              ok: true,
+              result:
+                caller.threadType === 'project-plan'
+                  ? projectPlans.complete(caller.id)
+                  : await registry.completePlan(caller.id, req.params)
+            })
             break
           }
           case 'app.startThread': {

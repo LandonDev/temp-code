@@ -184,6 +184,10 @@ const { HTML_RENDER_SHOWN_MESSAGE } = await import('@shared/htmlRender')
 const { mkdtempSync, rmSync } = await import('node:fs')
 const { tmpdir } = await import('node:os')
 
+it('APP_TOOLS lists plan_complete under the app server prefix', () => {
+  expect(APP_TOOLS).toContain('mcp__app__plan_complete')
+})
+
 it('APP_TOOLS lists both html tools under the app server prefix', () => {
   expect(APP_TOOLS).toContain('mcp__app__html_preview')
   expect(APP_TOOLS).toContain('mcp__app__html_render')

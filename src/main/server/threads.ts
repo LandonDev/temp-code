@@ -147,6 +147,19 @@ Structure the document: # <title>, ## Overview, ## Approach, ## Tasks (a markdow
 You never implement in this thread. When the plan is complete and every decision is settled, call the plan_complete app tool ONCE — your last tool call, after the final Edit of the plan file — then say the plan is ready and STOP. Its result says what happens next: with auto-start on, the app starts the implementation thread itself the moment this turn ends (same model and effort as this thread unless Settings say otherwise) and tells whoever started this plan; with it off, the user starts the build from the plan header in the UI. Do not ask what to do next, and never start the build yourself: only if the user explicitly tells you in this chat to start it do you use app_start_thread (threadType 'implementation', or 'orchestration' when the plan fans out) with this plan file and the model/effort they named. A plan you keep editing after a plan_complete is open again: call plan_complete anew when it is final.
 NEVER shell out to another AI CLI (\`claude\`, \`claude -p\`, \`codex exec\`, \`cursor-agent\`) for anything — global instructions that reach models through CLIs are for a different environment; explore the codebase with your own tools.
 ${app}`
+    case 'project-plan':
+      return `You are running a PROJECT PLAN thread — survey the WHOLE project and write the plan the project works from for a long time: not one task, the whole line of work. Your deliverable is the project plan document, never code.
+Work in this order: read the project context (PROJECT.md, the journal, threads/INDEX.md, the docs) and the codebase FIRST — spawn explorers for the parts you cannot read yourself in one pass, one per area, and fold what they find in; then, BEFORE writing a draft, ask the user the decisions that shape the plan (goals and their priority, what is in and out, the order of milestones — options with trade-offs, a recommended one marked); only then write the plan around their answers.
+${questions}
+Write the plan to ${session.planPath} (create parent directories) as soon as you have a first draft and keep it updated with Edit as the discussion evolves — it is rendered live to the user. Keep EXACTLY these sections, in this order, each a \`##\` heading:
+## Goals — what the project is for, in priority order.
+## Current state — what exists today and how far along it is, with file paths.
+## Milestones — one \`###\` heading per milestone, numbered and unticked: \`### [ ] 1. <title>\`, followed by three lines \`- Scope: …\`, \`- Dependencies: …\` (milestone numbers, or none) and \`- Done when: …\` (a condition someone can check). Each milestone is the size of ONE implementation thread's work; order them so dependencies come first. Never tick a milestone yourself: the app ticks it when its implementation lands.
+## Risks — what could sink the plan and what the plan does about it.
+## Open questions — what is still undecided, and who decides.
+When the plan is complete and every decision is settled, call plan_complete once (it marks the document complete) and STOP — do not ask what to do next, and never start an implementation, planning or orchestration thread from here: the user picks the next milestone from the options the plan shows. A later message in this thread revises the plan: edit the document in place, keep the ticks that are there, and call plan_complete again when the revision is settled.
+NEVER shell out to another AI CLI (\`claude\`, \`claude -p\`, \`codex exec\`, \`cursor-agent\`) for anything — explore the codebase with your own tools and your explorers.
+${app}`
     case 'implementation': {
       // Plan-backed threads execute a finished brief — the research already
       // happened in planning, so the task list is the literal first call.

@@ -12,6 +12,7 @@ import { SessionMoveRequestSchemas } from './contract-session-move'
 import { MacBridgeRequestSchemas } from './contract-macbridge'
 import { CrossHostRequestSchemas } from './contract-crosshost'
 import { MacBridgeRulesRequestSchemas } from './contract-macbridge-rules'
+import { ProjectPlanRequestSchemas } from './contract-projectplan'
 import { MacJobRequestSchemas } from './contract-macjobs'
 import { HostRequestSchemas } from './contract-host'
 import { HostDevicesRequestSchemas } from './contract-hostdevices'
@@ -125,6 +126,8 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
   ...MacBridgeRequestSchemas,
   ...CrossHostRequestSchemas,
   ...MacBridgeRulesRequestSchemas,
+  // The project plan (contract-projectplan.ts): pin, ticks, milestone links.
+  ...ProjectPlanRequestSchemas,
   ...MacJobRequestSchemas,
   ...HostRequestSchemas,
   ...HostDevicesRequestSchemas,

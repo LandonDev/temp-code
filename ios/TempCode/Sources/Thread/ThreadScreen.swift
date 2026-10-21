@@ -266,7 +266,7 @@ enum Segment: String, CaseIterable, Identifiable {
         guard let session, session.parentId == nil else { return [.chat] }
         switch session.threadType {
         case .implementation?: return [.board, .chat]
-        case .planning?: return [.plan, .chat]
+        case .planning?, .projectPlan?: return [.plan, .chat]
         case .orchestration?: return [.fleet, .log]
         case .research?: return [.sources, .chat]
         default: return [.chat]
@@ -306,7 +306,7 @@ struct ThreadPhase: Equatable {
     func defaultSegment(in segments: [Segment]) -> Segment {
         switch type {
         case .implementation?: hasBoard ? .board : .chat
-        case .planning?: planHasContent ? .plan : .chat
+        case .planning?, .projectPlan?: planHasContent ? .plan : .chat
         case .orchestration?: hasAgents ? .fleet : .log
         case .research?: reportComplete ? .sources : .chat
         default: segments.first ?? .chat

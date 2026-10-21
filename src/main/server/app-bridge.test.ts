@@ -44,6 +44,13 @@ describe('app-mcp-bridge cite_source and thread types', () => {
     }
   })
 
+  it('the bridge lists plan_complete for planning and project-plan threads', () => {
+    const tool = bridge.TOOLS.find((t) => t.name === 'plan_complete')!
+    expect(tool).toBeDefined()
+    expect(Object.keys(tool.inputSchema.properties)).toEqual(['summary'])
+    expect(tool.description).toContain('project plan gets `status: complete`')
+  })
+
   it('app_start_thread offers every thread type, research included', () => {
     const start = bridge.TOOLS.find((t) => t.name === 'app_start_thread')!
     const threadType = start.inputSchema.properties.threadType as { enum?: string[] }

@@ -1,6 +1,6 @@
 import { useReducedMotion } from "motion/react";
 import { usePaneVisible } from "../../hooks/paneVisibility";
-import { GitFork, ListChecks, MapIcon, MessageSquare, Search, Telescope, Users, Wrench } from "../../chrome/icons";
+import { GitFork, ListChecks, MapIcon, MessageSquare, Milestone, Search, Telescope, Users, Wrench } from "../../chrome/icons";
 import type { ActivityKind } from "../../lib/session";
 import { useClock } from "../../lib/turnClock";
 import type { AgentType, SessionStatus, ThreadType } from "../../lib/tcserver/types";
@@ -16,6 +16,7 @@ type Glyph = typeof MessageSquare;
 export const THREAD_TYPES: ThreadType[] = [
   "chat",
   "planning",
+  "project-plan",
   "implementation",
   "orchestration",
   "research",
@@ -24,6 +25,7 @@ export const THREAD_TYPES: ThreadType[] = [
 export const THREAD_GLYPHS: Record<ThreadType, Glyph> = {
   chat: MessageSquare,
   planning: MapIcon,
+  "project-plan": Milestone,
   implementation: ListChecks,
   orchestration: GitFork,
   research: Telescope,
@@ -32,6 +34,7 @@ export const THREAD_GLYPHS: Record<ThreadType, Glyph> = {
 export const THREAD_LABELS: Record<ThreadType, string> = {
   chat: "Chat",
   planning: "Plan",
+  "project-plan": "Project plan",
   implementation: "Implement",
   orchestration: "Orchestrate",
   research: "Research",
@@ -41,6 +44,7 @@ export const THREAD_LABELS: Record<ThreadType, string> = {
 export const THREAD_TINTS: Record<ThreadType, string> = {
   chat: "text-info",
   planning: "text-violet",
+  "project-plan": "text-violet",
   implementation: "text-success",
   orchestration: "text-warning",
   research: "text-cyan",
@@ -57,6 +61,7 @@ export const AGENT_GLYPHS: Record<AgentType, Glyph> = {
 export const THREAD_HINTS: Record<ThreadType, string> = {
   chat: "Ask questions, explore the code",
   planning: "Produce a plan document to implement from",
+  "project-plan": "Survey the whole project, lay out its milestones",
   implementation: "Execute a task, todos in focus",
   orchestration: "Spawn and direct subagents",
   research: "Investigate with parallel explorers, produce a cited report",

@@ -280,7 +280,7 @@ struct NewThreadSheet: View {
         client.projects.filter { $0.workspaceId == workspace.id && !$0.archived }
     }
 
-    static let types: [ThreadType] = [.chat, .planning, .implementation, .orchestration, .research]
+    static let types: [ThreadType] = [.chat, .planning, .projectPlan, .implementation, .orchestration, .research]
 
     var body: some View {
         NavigationStack {
