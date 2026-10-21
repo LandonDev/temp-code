@@ -2,7 +2,8 @@ import SwiftUI
 import TempCodeClient
 import TempCodeContract
 
-/// A project's archived roots, newest first, on the same grouped card as Home.
+/// A project's archived roots, newest first, under the project's own
+/// header; the same plain list and rows as Home.
 struct ArchivedThreadsView: View {
     let client: EnvironmentClient
     let projectId: String
@@ -18,17 +19,21 @@ struct ArchivedThreadsView: View {
                 }
             } header: {
                 if let project {
-                    ArchivedHeader(name: project.name, branch: project.branch, worktree: project.mode == .worktree)
+                    ProjectHeaderRow(project: project)
+                        .padding(.leading, 16)
+                        .padding(.trailing, 16)
+                        .textCase(nil)
+                        .listRowInsets(EdgeInsets())
                 }
             }
         }
-        .listStyle(.insetGrouped)
+        .listStyle(.plain)
         .overlay {
             if threads.isEmpty {
                 ContentUnavailableView {
                     Label("Nothing archived", systemImage: "archivebox")
                 } description: {
-                    Text("Threads you archive in \(project?.name ?? "this project") end up here.")
+                    Text("Threads you archive in this project are kept here.")
                 }
             }
         }
@@ -56,54 +61,34 @@ struct ArchivedProjectsView: View {
                             DimRow(group.archivedCount == 1 ? "1 archived" : "\(group.archivedCount) archived")
                         }
                         .buttonStyle(.pressable)
+                        .listRowInsets(rowInsets)
+                    }
+                    if group.threads.isEmpty, group.archivedCount == 0 {
+                        DimRow("No threads")
+                            .listRowInsets(rowInsets)
+                            .listRowSeparator(.hidden)
                     }
                 } header: {
-                    ArchivedHeader(name: group.project.name, branch: group.project.branch, worktree: group.project.mode == .worktree)
+                    ProjectHeaderRow(project: group.project)
+                        .padding(.leading, 16)
+                        .padding(.trailing, 16)
+                        .textCase(nil)
+                        .listRowInsets(EdgeInsets())
                 }
             }
         }
-        .listStyle(.insetGrouped)
+        .listStyle(.plain)
         .overlay {
             if groups.isEmpty {
                 ContentUnavailableView {
                     Label("No archived projects", systemImage: "archivebox")
                 } description: {
-                    Text("Projects you archive in this workspace end up here.")
+                    Text("Projects you archive in this workspace are kept here.")
                 }
             }
         }
         .navigationTitle("Archived projects")
         .navigationBarTitleDisplayMode(.inline)
-    }
-}
-
-/// A project's name as a grouped header: the worktree mark and the branch dim after it.
-private struct ArchivedHeader: View {
-    let name: String
-    let branch: String?
-    let worktree: Bool
-
-    var body: some View {
-        HStack(spacing: 6) {
-            Text(name)
-                .font(.footnote.weight(.semibold))
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-            if worktree {
-                Image(systemName: "arrow.triangle.branch")
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(.tertiary)
-                    .accessibilityLabel("Worktree")
-            }
-            if let branch {
-                Text(branch)
-                    .font(.footnote)
-                    .foregroundStyle(.tertiary)
-                    .lineLimit(1)
-                    .layoutPriority(-1)
-            }
-        }
-        .textCase(nil)
     }
 }
 
@@ -120,6 +105,7 @@ struct ThreadButton: View {
             ThreadRow(row: model)
         }
         .buttonStyle(.pressable)
+        .listRowInsets(rowInsets)
         .modifier(RowActionsIfKnown(client: client, sessionId: sessionId))
     }
 }
