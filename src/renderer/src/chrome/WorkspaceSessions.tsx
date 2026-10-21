@@ -65,12 +65,13 @@ import {
   archiveProject,
   deleteProject,
   renameProject,
+  setProjectMaster,
 } from "../lib/tcserver/projects";
 import { sessionPrefetch } from "../lib/sessionPrefetch";
 import { useSessionMetas } from "../lib/tcserver/store";
 import { useClock, useSlowClock } from "../lib/turnClock";
 import type { ProjectMeta, WorkspaceMeta } from "../lib/tcserver/types";
-import { useWorkspaceCatalog } from "../lib/tcserver/workspaces";
+import { useProjects, useWorkspaceCatalog } from "../lib/tcserver/workspaces";
 import { subagentRows, subagentRowsOpen, useSubagentRows } from "../stores/subagentRows";
 import {
   groupWorkspaceSessions,
@@ -280,6 +281,15 @@ function InlineRename({
   );
 }
 
+/** The ids pinned as a project's master, one set for every row. */
+function useMasterIds(): ReadonlySet<string> {
+  const projects = useProjects();
+  return useMemo(
+    () => new Set(projects.flatMap((p) => (p.masterThreadId ? [p.masterThreadId] : []))),
+    [projects],
+  );
+}
+
 const menuAt = (anchor: HTMLElement) => {
   const rect = anchor.getBoundingClientRect();
   return { x: Math.max(8, rect.right - MENU_WIDTH), y: rect.bottom + 4 };
@@ -295,7 +305,20 @@ type RowActions = {
   onRename: (id: string, title: string) => void;
   onDelete: (thread: ThreadRow) => void;
   openMenu: (state: MenuState) => void;
+  /** Every project's pinned master thread (CLAUDE.md "Master threads"). */
+  masterIds?: ReadonlySet<string>;
 };
+
+/** The rail row's pin item: a root thread in a project may be made the
+ *  project's master, and the master may be unpinned. */
+export function masterMenuItem(
+  thread: Pick<ThreadRow, "id" | "projectId">,
+  masterIds: ReadonlySet<string> | undefined,
+): ExplorerMenuItem | null {
+  if (!thread.projectId) return null;
+  const master = !!masterIds?.has(thread.id);
+  return { kind: "item", id: "master", label: master ? "Not the master" : "Make master thread" };
+}
 
 /** Row sizes come from the ResizeObserver, which reports every row once on
  *  observe and again when it grows: a row mounting under a switch keeps its
@@ -356,6 +379,7 @@ const ChatRow = memo(function ChatRow({
   const title = thread.title || "Untitled";
 
   const menu = (at: { x: number; y: number }) => {
+    const master = masterMenuItem(thread, actions.masterIds);
     const items: ExplorerMenuItem[] = [
       { kind: "item", id: "rename", label: "Rename" },
       ...(thread.running
@@ -363,6 +387,7 @@ const ChatRow = memo(function ChatRow({
         : thread.stopped
           ? [{ kind: "item", id: "resume", label: "Resume" } as const]
           : []),
+      ...(master ? [{ kind: "sep" } as const, master] : []),
       { kind: "sep" },
       { kind: "item", id: "delete", label: "Delete chat", danger: true },
     ];
@@ -373,6 +398,8 @@ const ChatRow = memo(function ChatRow({
         if (id === "rename") setRenaming(true);
         else if (id === "stop") void interrupt(thread.id);
         else if (id === "resume") void resume(thread.id);
+        else if (id === "master" && thread.projectId)
+          void setProjectMaster(thread.projectId, actions.masterIds?.has(thread.id) ? null : thread.id);
         else if (id === "delete") actions.onDelete(thread);
       },
     });
@@ -1295,6 +1322,7 @@ export default function WorkspaceSessions({
   const moreChats = useCallback(() => morePages("chats"), [morePages]);
 
   const focused = useMemo(() => focusedTree(metas, activeSessionId), [activeSessionId, metas]);
+  const masterIds = useMasterIds();
   const rows = useMemo<RowActions>(
     () => ({
       activeSessionId,
@@ -1303,8 +1331,9 @@ export default function WorkspaceSessions({
       onRename: renameSession,
       onDelete: (thread) => setDialog({ kind: "delete-chat", thread }),
       openMenu: setMenu,
+      masterIds,
     }),
-    [activeSessionId, focused, openSession, renameSession],
+    [activeSessionId, focused, openSession, renameSession, masterIds],
   );
 
   // Cards are the virtual unit: each roots its own border and hover group,

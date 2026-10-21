@@ -1024,7 +1024,9 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
       firstMessage: z.string(),
       title: z.string().optional(),
       /** Start it on another host: `mac`, or an environment id (contract-crosshost.ts). */
-      environmentId: z.string().optional()
+      environmentId: z.string().optional(),
+      /** A master only: the sibling batch thread this one waits for. */
+      after: z.string().optional()
     })
   }),
   // Orchestration over WS — the codex bridge's spawn/supervise path. Same

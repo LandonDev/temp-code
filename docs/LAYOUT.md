@@ -181,7 +181,10 @@ implicit "setup" row).
 
 A thread pinned as its project's master (`ProjectMeta.masterThreadId`) routes
 to `MasterView` instead of its type's view; today it paints the chat alone,
-the way an orchestration thread does before its first agent. Wave 1 draws the
+the way an orchestration thread does before its first agent. The pin is a
+context-menu item on the root thread (rail row and tab: "Make master thread",
+"Not the master" on the master); the master's tab carries one muted "Master"
+after its title, same size, dimmer, and no row in the rail is marked. Wave 1 draws the
 board on the left (children grouped Needs you / Running / Queued / Done, the
 batch's three steps under the list) and the chat on the right, the SplitShell
 recipe (CLAUDE.md "Master threads").

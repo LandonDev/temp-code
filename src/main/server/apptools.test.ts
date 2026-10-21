@@ -355,3 +355,44 @@ it('html_render returns the reference with the no-restate message; an inline err
   setHtmlPreviewer(null)
   rmSync(root, { recursive: true, force: true })
 })
+
+// ── app_start_thread from a master (CLAUDE.md "Master threads") ──────
+
+it('app_start_thread from a project\'s master stamps masterId and carries after', async () => {
+  const master = { ...caller, id: 'master-1', projectId: 'p1' } as SessionMeta
+  const registry = {
+    ...fakeRegistry,
+    get: (id: string) => (id === master.id ? master : null),
+    getProject: (id: string) => (id === 'p1' ? { id: 'p1', cwd: '/tmp/p1', masterThreadId: 'master-1' } : null)
+  } as unknown as SessionRegistry
+  const result = await appStartThread(registry, master, {
+    threadType: 'implementation',
+    provider: 'claude',
+    model: 'claude-haiku-5-5',
+    firstMessage: 'build it',
+    after: 'sibling-1'
+  })
+  expect(typeof result).toBe('object')
+  expect(created[0].masterId).toBe('master-1')
+  expect(created[0].after).toBe('sibling-1')
+  expect(created[0].startedBy).toBe('master-1')
+  expect(created[0].parentId).toBeNull()
+})
+
+it('app_start_thread from any other thread stamps no masterId and drops after', async () => {
+  const other = { ...caller, id: 'other-1', projectId: 'p1' } as SessionMeta
+  const registry = {
+    ...fakeRegistry,
+    get: (id: string) => (id === other.id ? other : null),
+    getProject: (id: string) => (id === 'p1' ? { id: 'p1', cwd: '/tmp/p1', masterThreadId: 'master-1' } : null)
+  } as unknown as SessionRegistry
+  await appStartThread(registry, other, {
+    threadType: 'chat',
+    provider: 'claude',
+    model: 'claude-haiku-5-5',
+    firstMessage: 'go',
+    after: 'sibling-1'
+  })
+  expect(created[0].masterId).toBeUndefined()
+  expect(created[0].after).toBeUndefined()
+})

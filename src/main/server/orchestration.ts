@@ -269,28 +269,57 @@ export function suppressSettleReports(fn: (child: SessionMeta) => boolean): void
 }
 export const settleSuppressed = (child: SessionMeta): boolean => settleSuppressors.some((f) => f(child))
 
+/** The questions a waiting child asked, one per line with its options. */
+export function questionLines(questions: unknown): string {
+  if (!Array.isArray(questions)) return ''
+  return questions
+    .map((q) => {
+      const row = q as { question?: string; options?: { label: string }[] }
+      if (!row.question) return null
+      const options = row.options?.map((o) => o.label).filter(Boolean) ?? []
+      return `Q: ${row.question}${options.length ? ` (options: ${options.join(' | ')})` : ''}`
+    })
+    .filter(Boolean)
+    .join('\n')
+}
+
+/** Who hears a session settle: its parent, else (a root thread of a
+ *  batch) its master. Never itself. */
+export const settleTarget = (child: Pick<SessionMeta, 'id' | 'parentId' | 'masterId'>): string | null => {
+  const target = child.parentId ?? child.masterId ?? null
+  return target && target !== child.id ? target : null
+}
+
 /** Called by the registry when a child transitions out of running. Queues
- *  an automatic report to the parent unless a wait already covers it. */
+ *  an automatic report to the parent (or the master, for a batch thread)
+ *  unless a wait already covers it. */
 export function notifyParentOfSettle(reg: SessionRegistry, child: SessionMeta): void {
-  if (!child.parentId || awaited.has(child.id) || settleSuppressed(child)) return
-  const parent = reg.get(child.parentId)
+  const targetId = settleTarget(child)
+  if (!targetId || awaited.has(child.id) || settleSuppressed(child)) return
+  const parent = reg.get(targetId)
   if (!parent || parent.archived) return
+  // Two threads naming each other as master would wake each other forever.
+  if (parent.masterId === child.id) return
+  const batch = !child.parentId
+  const what = batch ? `batch thread "${child.title}" (${child.id}, ${child.threadType ?? 'thread'})` : `subagent "${child.title}" (${child.id})`
   const turn = latestTurnRows(reg.eventsAfter(child.id, 0))
   const pending = child.status === 'waiting' ? pendingOf(turn) : null
   const tail = turnText(turn).slice(-600)
+  const asked = pending?.kind === 'question' ? questionLines(pending.questions) : ''
+  const question = asked ? `\n${asked}` : ''
   const body =
     child.status === 'waiting'
       ? pending?.kind === 'question'
-        ? `It is WAITING on a question — answer it with answer_agent (requestId ${pending.requestId}).`
+        ? `It is WAITING on a question — answer it with answer_agent (requestId ${pending.requestId}).${question}`
         : 'It is WAITING on a permission approval — only the user can grant that.'
       : tail
         ? `Latest reply:\n${tail}`
         : '(no reply text)'
-  reg.deliverAgentReport(child.parentId, {
+  reg.deliverAgentReport(targetId, {
     agentId: child.id,
     title: child.title,
     status: child.status,
-    text: `<subagent-report>\nAutomatic notification: subagent "${child.title}" (${child.id}) settled with status ${child.status}.\n${body}\nUse check_agent for detail, send_to_agent to follow up. Continue your work accordingly — do not reply to this notification itself.\n</subagent-report>`
+    text: `<subagent-report>\nAutomatic notification: ${what} settled with status ${child.status}.\n${body}\nUse check_agent for detail, send_to_agent to follow up. Continue your work accordingly — do not reply to this notification itself.\n</subagent-report>`
   })
 }
 
@@ -304,13 +333,38 @@ const text = (t: string): { content: [{ type: 'text'; text: string }] } => ({
 // both thin wrappers, so every provider spawns and supervises subagents
 // the same way — never by shelling out to another CLI.
 
-/** Every agentId-taking op works only on the caller's own children. */
+/** Is this session its project's master thread (CLAUDE.md "Master
+ *  threads")? The pin lives on the project row. */
+export function isMasterSession(
+  session: Pick<SessionMeta, 'id' | 'projectId'>,
+  reg: Pick<SessionRegistry, 'getProject'> | null = registry
+): boolean {
+  return !!session.projectId && reg?.getProject(session.projectId)?.masterThreadId === session.id
+}
+
+/** May `caller` supervise `session`? Its own subagents (parentId), and, for
+ *  a project's master, every root thread of its batch (masterId). */
+export function supervisedBy(caller: SessionMeta, session: SessionMeta): boolean {
+  if (session.id === caller.id) return false
+  if (session.parentId === caller.id) return true
+  return !session.parentId && session.masterId === caller.id && isMasterSession(caller)
+}
+
+/** The root threads of a master's batch, oldest first. */
+const batchOf = (master: SessionMeta): SessionMeta[] =>
+  isMasterSession(master)
+    ? (registry?.list({ archived: false }) ?? [])
+        .filter((s) => s.masterId === master.id && !s.parentId)
+        .sort((a, b) => a.createdAt - b.createdAt)
+    : []
+
+/** Every agentId-taking op works only on what the caller supervises. */
 const childOf = (parent: SessionMeta, agentId: string): SessionMeta | null => {
   const meta = registry?.get(agentId) ?? null
-  return meta?.parentId === parent.id ? meta : null
+  return meta && supervisedBy(parent, meta) ? meta : null
 }
 const notChild = (agentId: string): string =>
-  `refused: ${agentId} is not a subagent of this session. list_agents shows your agents and their ids.`
+  `refused: ${agentId} is not a subagent or batch thread of this session. list_agents shows your agents and their ids.`
 const idleSeconds = (id: string): number =>
   Math.max(0, Math.round((Date.now() - (registry?.lastActivityAt(id) ?? Date.now())) / 1000))
 /** The settled-agent report wait_for_agent returns. */
@@ -359,9 +413,7 @@ export function spawnableModels(rules: OrchestrationRules, role: PolicyRole = 't
 /** The role a session spawns or starts threads under: an orchestration
  *  thread, an orchestrator agent, or its project's master thread. */
 export function policyRole(session: SessionMeta): PolicyRole {
-  const master =
-    !!session.projectId && registry?.getProject(session.projectId)?.masterThreadId === session.id
-  return policyRoleOf(session, master)
+  return policyRoleOf(session, isMasterSession(session))
 }
 
 /** Every refusal ends with the table, so the caller can self-correct. */
@@ -515,8 +567,9 @@ export function resolveSpawnSpecs(
   // refusal text tells the model how to proceed. Model policy gates the
   // target and clamps effort into the approved range.
   const rules = rulesFor(parentNow)
-  // An orchestration thread or an orchestrator agent may spawn the models
-  // approved for orchestrators only; any other thread sees them refused.
+  // An orchestration thread, an orchestrator agent or a project's master
+  // may spawn the models approved for orchestrators only; any other thread
+  // sees them refused.
   const role = policyRole(parentNow)
   const { agents: batch, ...defaults } = args
   const specs: SpawnAgentSpec[] = batch?.length ? batch.map((a) => ({ ...defaults, ...a })) : [defaults]
@@ -827,6 +880,7 @@ export async function orchListAgents(parent: SessionMeta): Promise<string> {
     .childrenOf(parent.id)
     .map((s) => ({
       agentId: s.id,
+      kind: 'subagent' as const,
       title: s.title,
       provider: s.provider,
       model: s.model,
@@ -836,9 +890,24 @@ export async function orchListAgents(parent: SessionMeta): Promise<string> {
       cwd: s.cwd,
       ...(s.parentId && s.planPath ? { findingsFile: s.planPath } : {})
     }))
+  // A master's batch: root threads on this host carrying its id.
+  const host = registry.hostName()
+  const batch = batchOf(parent).map((s) => ({
+    agentId: s.id,
+    kind: 'thread' as const,
+    title: s.title,
+    threadType: s.threadType,
+    provider: s.provider,
+    model: s.model,
+    reasoning: s.reasoning,
+    host,
+    status: s.status,
+    idleForSeconds: idleSeconds(s.id),
+    cwd: s.cwd
+  }))
   // Threads on other hosts follow: live state over the link, the last seen state with linkDown when it is down.
   const remote = crossHost ? await crossHost.list(parent) : []
-  return JSON.stringify([...local, ...remote])
+  return JSON.stringify([...local, ...batch, ...remote])
 }
 
 /** Fields a single spawn and each batch entry share. */
@@ -1097,6 +1166,29 @@ judgment and user-facing work, low effort for trivial tasks.`
   return `## Conduct (user-defined, binding)\n\n${conduct}\n\n## Routing (user-defined, binding)\n\n${routing}`
 }
 
+/** What a project's master thread is told, on every turn (CLAUDE.md
+ *  "Master threads"). Short: it rides every prompt of the master. */
+export const MASTER_MECHANICS = `## You are this project's master thread
+
+Your batch is the ROOT threads you start with app_start_thread: each one
+its own type, model, effort, context window and host, and \`after\` names
+a sibling it waits for. They carry your id, so the supervision tools
+(check_agent, wait_for_agent, send_to_agent, interrupt_agent, answer_agent,
+list_agents) work on them by id; list_agents marks each row \`thread\`
+(a batch thread) or \`subagent\`. You are woken by a <subagent-report>
+when a batch thread settles, including when it waits on a question you
+can relay or answer with answer_agent. You never edit code yourself: the
+editing tools are off for you; the threads do the work. The batch's
+merges, gate and release are the app's, not yours or the threads': do not
+run the gate or the release from here or ask a thread to.`
+
+/** The mechanics a session is prompted with: the spawn toolset, plus the
+ *  master block when the session is its project's master. */
+export function mechanicsFor(session: SessionMeta): string {
+  const base = orchestratorMechanics(rulesFor(session), policyRole(session))
+  return isMasterSession(session) ? `${base}\n\n${MASTER_MECHANICS}` : base
+}
+
 /** Prompt appended to an orchestrator's system prompt: fixed mechanics
  *  plus the user's structured rules (workspace override or global). */
 export function orchestratorPrompt(session: SessionMeta): string {
@@ -1104,14 +1196,14 @@ export function orchestratorPrompt(session: SessionMeta): string {
   const role = policyRole(session)
   const custom = session.threadRules?.instructions?.trim()
   const extra = custom ? `\n\n## This run's instructions (user-defined, binding)\n\n${custom}` : ''
-  return `${orchestratorMechanics(rules, role)}\n\n${SHOWING_VISUALS}\n\n${renderRules(rules, role)}${extra}`
+  return `${mechanicsFor(session)}\n\n${SHOWING_VISUALS}\n\n${renderRules(rules, role)}${extra}`
 }
 
 /** Mechanics for claude implementation threads: the same spawn toolset
  *  without the conductor rules — the implementer works first, delegates
  *  when it genuinely helps. */
 export function implementerSpawnPrompt(session: SessionMeta): string {
-  return `${orchestratorMechanics(rulesFor(session), policyRole(session))}
+  return `${mechanicsFor(session)}
 
 You are the implementer, not a conductor: do the work yourself by default.
 Spawn subagents when it genuinely helps — parallel mechanical work, an
@@ -1121,7 +1213,7 @@ independent review, a second opinion — and supervise what you spawn.`
 /** Mechanics for chat threads: conversation first, delegation when real
  *  work would help the discussion. */
 export function chatSpawnPrompt(session: SessionMeta): string {
-  return `${orchestratorMechanics(rulesFor(session), policyRole(session))}
+  return `${mechanicsFor(session)}
 
 This is a conversation thread: think with the user by default. Spawn
 subagents when concrete work would sharpen the discussion — mapping
@@ -1131,7 +1223,7 @@ supervise what you spawn while the conversation continues.`
 
 /** Mechanics for planning threads: the fleet feeds the plan document. */
 export function planningSpawnPrompt(session: SessionMeta): string {
-  return `${orchestratorMechanics(rulesFor(session), policyRole(session))}
+  return `${mechanicsFor(session)}
 
 This is a PLANNING thread: your deliverable is the plan document, and
 subagents exist to feed it. Spawn explorers to map code and gather
@@ -1144,7 +1236,7 @@ plan as their reports land.`
 /** Mechanics for project-plan threads: explorers survey the project in
  *  parallel; nothing is built and nothing is started from here. */
 export function projectPlanSpawnPrompt(session: SessionMeta): string {
-  return `${orchestratorMechanics(rulesFor(session), policyRole(session))}
+  return `${mechanicsFor(session)}
 
 This is a PROJECT PLAN thread: your deliverable is the project plan
 document (Goals, Current state, Milestones, Risks, Open questions), and
@@ -1161,7 +1253,7 @@ land.`
  *  explorers, each writing an app-assigned findings file the root
  *  synthesizes from. */
 export function researchSpawnPrompt(session: SessionMeta): string {
-  return `${orchestratorMechanics(rulesFor(session), policyRole(session))}
+  return `${mechanicsFor(session)}
 
 This is a RESEARCH thread: your deliverable is a cited report, and
 subagents are how you cover ground. Spawn parallel explorers, one per

@@ -244,7 +244,11 @@ export const TOOLS = [
         },
         seedThreadIds: { type: 'array', items: { type: 'string' } },
         firstMessage: { type: 'string' },
-        title: { type: 'string' }
+        title: { type: 'string' },
+        after: {
+          type: 'string',
+          description: 'A master thread only: the id of a sibling batch thread this one waits for before it starts'
+        }
       },
       required: ['threadType', 'provider', 'firstMessage']
     }

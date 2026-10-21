@@ -108,7 +108,7 @@ import {
   reportPathFor,
   threadPreamble
 } from './threads'
-import { notifyParentOfSettle } from './orchestration'
+import { notifyParentOfSettle, settleTarget } from './orchestration'
 import { foldTodo, newTodoFold, tallyOf, type TaskTally, type TodoFold } from './todos'
 import { liveDiffOnStatus } from './livediff'
 import { timed } from './stalls'
@@ -3291,8 +3291,12 @@ export class SessionRegistry {
       // queued behind its current work otherwise. Skipped when a
       // wait_for_agent already covers this child. running → watching is
       // no settle (the child still has work in flight); watching → idle is.
+      // A root thread of a master's batch (masterId) wakes the master the
+      // same way; a settle is one report whoever sent the message that
+      // started the turn, the master included.
       if (
-        next?.parentId &&
+        next &&
+        settleTarget(next) &&
         (cur?.status === 'running' || cur?.status === 'watching') &&
         (event.status === 'idle' || event.status === 'error' || event.status === 'waiting')
       ) {
@@ -3300,8 +3304,12 @@ export class SessionRegistry {
       }
       // A planning thread settling with a complete plan (plan_complete was
       // called this turn) runs the plan flow: the build starts when the
-      // settings say so, and whoever started the plan hears of it.
-      if (isPlanSettle(cur?.status, event.status, next)) void settlePlan(this.planFlow(), next!)
+      // settings say so, and whoever started the plan hears of it. A batch
+      // thread's master hears of it through that one report, not two.
+      if (isPlanSettle(cur?.status, event.status, next)) {
+        if (!next!.parentId) settleToReport = null
+        void settlePlan(this.planFlow(), next!)
+      }
     }
     // Track disk-writing tools in flight — the live change stream's
     // ownership source. Partial calls open early (execution starts later,

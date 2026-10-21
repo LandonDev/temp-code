@@ -63,6 +63,8 @@ type ChipEvents = {
   onRename: (id: string, title: string) => void;
   onContextMenu: (chip: StripChip, event: ReactMouseEvent<HTMLDivElement>) => void;
   activeRef: (el: HTMLDivElement | null) => void;
+  /** The threads pinned as their project's master: the chip reads "Master" after the title. */
+  masterIds?: ReadonlySet<string>;
 };
 
 /** Mouse wheels only emit deltaY; turn it sideways. Trackpad swipes keep
@@ -300,6 +302,11 @@ function Chip({
         >
           {chipTitle(chip)}
         </span>
+        {events.masterIds?.has(chip.id) ? (
+          <span className="shrink-0 text-content/45" data-master-word>
+            Master
+          </span>
+        ) : null}
         <TabIndicator thread={thread} />
       </TabsTrigger>
     </span>

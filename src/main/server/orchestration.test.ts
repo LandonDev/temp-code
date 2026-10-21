@@ -6,11 +6,20 @@ import type { SessionRegistry } from './sessions'
 import {
   extraWriteRoots,
   findingsContract,
+  isMasterSession,
+  MASTER_MECHANICS,
+  mechanicsFor,
+  notifyParentOfSettle,
+  orchCheckAgent,
+  orchListAgents,
+  orchSendToAgent,
   projectPlanSpawnPrompt,
   orchSpawnAgent,
   setOrchestrationRegistry,
+  settleTarget,
   SPAWN_BATCH_MAX,
   spawnableModels,
+  supervisedBy,
   waitForSettled
 } from './orchestration'
 
@@ -30,11 +39,23 @@ const parent = {
 
 let children: SessionMeta[] = []
 let rules: OrchestrationRules = DEFAULT_RULES
+/** Other sessions the stub knows (a master's batch, strangers), by id. */
+let sessions: Record<string, SessionMeta> = {}
+/** Projects by id; `masterThreadId` is the pin. */
+let projects: Record<string, { id: string; masterThreadId: string | null }> = {}
+const reports: { to: string; agentId: string; status: string; text: string }[] = []
 const stub = {
-  get: (id: string) => (id === parent.id ? parent : null),
-  childrenOf: () => children,
-  getProject: () => null,
+  get: (id: string) => (id === parent.id ? parent : (sessions[id] ?? null)),
+  childrenOf: (id: string) => (id === parent.id ? children : []),
+  list: () => Object.values(sessions),
+  getProject: (id: string) => projects[id] ?? null,
   getOrchestrationRules: () => rules,
+  eventsAfter: () => [],
+  lastActivityAt: () => Date.now(),
+  hostName: () => 'box',
+  deliverAgentReport: (to: string, r: { agentId: string; status: string; text: string }) => {
+    reports.push({ to, agentId: r.agentId, status: r.status, text: r.text })
+  },
   researchRootOf: () => null,
   reportsRootFor: () => '/tmp/ws',
   create: async (params: Record<string, unknown>) => {
@@ -49,7 +70,10 @@ const stub = {
 beforeEach(() => {
   created.length = 0
   sent.length = 0
+  reports.length = 0
   children = []
+  sessions = {}
+  projects = {}
   rules = DEFAULT_RULES
   setOrchestrationRegistry(stub as unknown as SessionRegistry)
 })
@@ -326,4 +350,152 @@ it('a project-plan thread spawns explorers for the survey and never a builder or
   expect(text).toContain('Spawn explorers')
   expect(text).toContain('Never implementers')
   expect(text).toContain('no thread of any type is\nstarted from here')
+})
+
+// ── master threads (CLAUDE.md "Master threads") ───────────────────────
+
+const session = (id: string, extra: Partial<SessionMeta> = {}): SessionMeta =>
+  ({
+    id,
+    title: `Thread ${id}`,
+    status: 'idle',
+    provider: 'claude',
+    model: 'claude-haiku-5-5',
+    reasoning: 'low',
+    threadType: 'implementation',
+    projectId: 'p1',
+    parentId: null,
+    masterId: null,
+    archived: false,
+    createdAt: 1,
+    cwd: '/tmp',
+    ...extra
+  }) as SessionMeta
+
+/** The parent pinned as project p1's master, with one batch thread and one subagent. */
+const pinParentAsMaster = (): { batch: SessionMeta; sub: SessionMeta; stranger: SessionMeta } => {
+  ;(parent as { projectId: string | null }).projectId = 'p1'
+  projects = { p1: { id: 'p1', masterThreadId: parent.id } }
+  const batch = session('batch-1', { masterId: parent.id, threadType: 'planning', reasoning: 'high' })
+  const sub = session('sub-1', { parentId: parent.id })
+  const stranger = session('other-1')
+  sessions = { [batch.id]: batch, [sub.id]: sub, [stranger.id]: stranger }
+  children = [sub]
+  return { batch, sub, stranger }
+}
+
+afterEach(() => {
+  ;(parent as { projectId: string | null }).projectId = null
+})
+
+it('supervisedBy admits a subagent and, for the master, a batch thread; never a stranger or itself', () => {
+  const { batch, sub, stranger } = pinParentAsMaster()
+  expect(supervisedBy(parent, sub)).toBe(true)
+  expect(supervisedBy(parent, batch)).toBe(true)
+  expect(supervisedBy(parent, stranger)).toBe(false)
+  expect(supervisedBy(parent, parent)).toBe(false)
+  // A subagent of a batch thread is the batch thread's, not the master's.
+  expect(supervisedBy(parent, session('deep', { parentId: batch.id, masterId: parent.id }))).toBe(false)
+  // Unpinned, the same batch thread is no longer the caller's to steer.
+  projects = { p1: { id: 'p1', masterThreadId: null } }
+  expect(supervisedBy(parent, batch)).toBe(false)
+  expect(supervisedBy(parent, sub)).toBe(true)
+})
+
+it('isMasterSession reads the pin on the project row', () => {
+  expect(isMasterSession(parent)).toBe(false)
+  pinParentAsMaster()
+  expect(isMasterSession(parent)).toBe(true)
+  expect(isMasterSession(session('batch-1'))).toBe(false)
+})
+
+it('the supervision tools answer a batch thread and refuse a stranger with the widened text', async () => {
+  const { batch, stranger } = pinParentAsMaster()
+  expect(await orchSendToAgent(parent, batch.id, 'carry on')).toBe('sent')
+  expect(sent).toEqual(['carry on'])
+  expect(JSON.parse(await orchCheckAgent(parent, batch.id)).agentId).toBe(batch.id)
+  const refused = await orchSendToAgent(parent, stranger.id, 'hi')
+  expect(refused).toContain('is not a subagent or batch thread of this session')
+  expect(sent).toHaveLength(1)
+})
+
+it('list_agents marks subagents and batch threads, the batch rows with type, effort and host', async () => {
+  const { batch, sub } = pinParentAsMaster()
+  const rows = JSON.parse(await orchListAgents(parent)) as Record<string, unknown>[]
+  expect(rows.map((r) => [r.agentId, r.kind])).toEqual([
+    [sub.id, 'subagent'],
+    [batch.id, 'thread']
+  ])
+  const row = rows[1]
+  expect(row.threadType).toBe('planning')
+  expect(row.reasoning).toBe('high')
+  expect(row.host).toBe('box')
+  expect(row.status).toBe('idle')
+  // Not the master: the batch rows are gone, the subagent stays.
+  projects = { p1: { id: 'p1', masterThreadId: null } }
+  expect((JSON.parse(await orchListAgents(parent)) as { agentId: string }[]).map((r) => r.agentId)).toEqual([sub.id])
+})
+
+it('settleTarget is the parent, else the master, never the session itself', () => {
+  expect(settleTarget(session('a', { parentId: 'p' }))).toBe('p')
+  expect(settleTarget(session('a', { parentId: 'p', masterId: 'm' }))).toBe('p')
+  expect(settleTarget(session('a', { masterId: 'm' }))).toBe('m')
+  expect(settleTarget(session('a'))).toBeNull()
+  expect(settleTarget(session('a', { masterId: 'a' }))).toBeNull()
+})
+
+it('a batch thread settling reports to its master, with its type; a stranger hears nothing', () => {
+  const { batch } = pinParentAsMaster()
+  notifyParentOfSettle(stub as unknown as SessionRegistry, { ...batch, status: 'idle' })
+  expect(reports).toHaveLength(1)
+  expect(reports[0].to).toBe(parent.id)
+  expect(reports[0].agentId).toBe(batch.id)
+  expect(reports[0].text).toContain('batch thread "Thread batch-1" (batch-1, planning) settled with status idle')
+  // A root thread with no master and no parent settles for no one.
+  notifyParentOfSettle(stub as unknown as SessionRegistry, session('other-1'))
+  expect(reports).toHaveLength(1)
+})
+
+it('a master messaging a batch thread that answers is one settle, one report; the master settling reports to no one', async () => {
+  const { batch } = pinParentAsMaster()
+  expect(await orchSendToAgent(parent, batch.id, 'do the thing')).toBe('sent')
+  notifyParentOfSettle(stub as unknown as SessionRegistry, { ...batch, status: 'idle' })
+  expect(reports).toHaveLength(1)
+  // The report wakes the master; its own settle is nobody's business.
+  notifyParentOfSettle(stub as unknown as SessionRegistry, { ...parent, status: 'idle' })
+  expect(reports).toHaveLength(1)
+  // Two threads naming each other as master would ping-pong forever: refused.
+  sessions['loop-a'] = session('loop-a', { masterId: 'loop-b' })
+  sessions['loop-b'] = session('loop-b', { masterId: 'loop-a' })
+  notifyParentOfSettle(stub as unknown as SessionRegistry, sessions['loop-a'])
+  expect(reports).toHaveLength(1)
+})
+
+it('a waiting batch thread reports the question it asked', () => {
+  const { batch } = pinParentAsMaster()
+  const withQuestion = {
+    ...stub,
+    eventsAfter: () => [
+      {
+        seq: 1,
+        ts: 1,
+        event: {
+          type: 'question-request',
+          requestId: 'q1',
+          questions: [{ question: 'Ship it?', options: [{ label: 'Yes' }, { label: 'No' }] }]
+        }
+      }
+    ]
+  }
+  notifyParentOfSettle(withQuestion as unknown as SessionRegistry, { ...batch, status: 'waiting' })
+  expect(reports).toHaveLength(1)
+  expect(reports[0].text).toContain('answer_agent (requestId q1)')
+  expect(reports[0].text).toContain('Q: Ship it? (options: Yes | No)')
+})
+
+it('the master block rides the mechanics only for the pinned thread', () => {
+  expect(mechanicsFor(parent)).not.toContain(MASTER_MECHANICS)
+  pinParentAsMaster()
+  expect(mechanicsFor(parent)).toContain(MASTER_MECHANICS)
+  expect(MASTER_MECHANICS).toContain('never edit code yourself')
 })

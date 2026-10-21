@@ -8,7 +8,7 @@ import type { SessionMeta } from '../lib/tcserver/types'
 import { mountProbe } from '../test/renderProbe'
 import { threadRow, type ThreadRow } from '../lib/workspaceSessions'
 import { nextPage } from '../lib/sidebarRows'
-import { Fold, LiveLines, ThreadList } from './WorkspaceSessions'
+import { Fold, LiveLines, ThreadList, masterMenuItem } from './WorkspaceSessions'
 import { subagentRowsStore } from '../stores/subagentRows'
 
 /** The root owns each list's page count; this stands in for it. */
@@ -250,5 +250,32 @@ describe('LiveLines window', () => {
     expect(lines).toBe(SESSION_LIST_PAGE + 1)
     expect(moreButton(probe.container)?.textContent).toBe(`${50 - SESSION_LIST_PAGE} more`)
     probe.unmount()
+  })
+})
+
+describe('the rail row menu: the master pin', () => {
+  const openOn = (masterIds?: ReadonlySet<string>, projectId: string | null = 'p1') => {
+    const items: { kind: string; id?: string; label?: string }[][] = []
+    const probe = mountProbe(
+      <ThreadList
+        threads={[threadRow(meta('t0', { projectId }), {})]}
+        actions={{ ...actions, masterIds, openMenu: (state) => items.push(state.items) }}
+        className=""
+      />
+    )
+    fireEvent.contextMenu(probe.container.querySelector('[role="button"]')!)
+    probe.unmount()
+    return items[0]?.flatMap((i) => (i.kind === 'item' && i.id === 'master' ? [i.label] : [])) ?? []
+  }
+
+  it('offers Make master thread to a root in a project, Not the master to the pinned one', () => {
+    expect(openOn()).toEqual(['Make master thread'])
+    expect(openOn(new Set(['t0']))).toEqual(['Not the master'])
+    expect(openOn(new Set(['other']))).toEqual(['Make master thread'])
+  })
+
+  it('offers no pin to a thread outside a project', () => {
+    expect(openOn(undefined, null)).toEqual([])
+    expect(masterMenuItem({ id: 't0', projectId: null }, new Set(['t0']))).toBeNull()
   })
 })

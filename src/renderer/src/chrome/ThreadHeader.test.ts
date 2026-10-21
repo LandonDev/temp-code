@@ -74,3 +74,18 @@ describe("chipMenuItems: Resources", () => {
     expect(labels(2)).toContain("archive=Archive…");
   });
 });
+
+describe("chipMenuItems: the master pin", () => {
+  const label = (c: StripChip, master = false) =>
+    chipMenuItems(c, undefined, 0, master).find((i) => i.kind === "item" && i.id === "master")?.label;
+
+  it("offers Make master thread to a root thread in a project, Not the master to the master", () => {
+    expect(label(chip("idle"))).toBe("Make master thread");
+    expect(label(chip("running"), true)).toBe("Not the master");
+  });
+
+  it("offers nothing to a thread outside a project or to a subagent", () => {
+    expect(label(chip("idle", { projectId: null }))).toBeUndefined();
+    expect(label(chip("idle", { parentId: "root" }))).toBeUndefined();
+  });
+});

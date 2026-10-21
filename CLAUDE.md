@@ -1122,8 +1122,31 @@ renderer turns the Archive done checkbox on. Proof:
   `batch.children`, read), answered by src/main/server/batch.ts. The
   master's view is `MasterView` (surfaces/threads, routed when the session is
   its project's master; the chat alone for now).
-- Waves 1 and 2 fill the shapes: the pin and the supervision tools widened
-  to the master's children with settle reports to the master; the scheduler
+- The master role (wave 1): the pin is "Make master thread" / "Not the
+  master" on a root thread's context menu (the rail row and the tab;
+  `setProjectMaster` in lib/tcserver/projects.ts) and the master's tab reads
+  one muted "Master" after its title; nothing in the rail marks it or its
+  children. `isMasterSession(session)` (orchestration.ts) reads the pin;
+  `policyRoleOf(session, master)` makes a master an `'orchestrator'`.
+  `app_start_thread` from the master stamps `masterId` and carries `after`
+  (the sibling it waits for; the scheduler acts on it, this slice only
+  carries it). `supervisedBy(caller, session)` is the one check every
+  supervision tool runs: the caller's subagents, and for a project's master
+  every root thread carrying its id on this host; the refusal reads "is not
+  a subagent or batch thread of this session". `list_agents` marks each row
+  `subagent` or `thread`, the batch rows with type, model, effort, host and
+  status. A batch thread settling (idle, error, waiting; never a pause)
+  reports to the master through `settleTarget` → `notifyParentOfSettle` as
+  a subagent's does to its parent, "batch thread … settled", a waiting one
+  with its question lines; a `wait_for_agent` in flight takes the settle
+  instead, a plan child's plan-complete report is the one report, and two
+  threads naming each other as master wake neither. `MASTER_MECHANICS`
+  rides every prompt of the master through `mechanicsFor`, and the claude
+  driver denies it Edit, MultiEdit, Write and NotebookEdit as it does an
+  orchestrator without self-edit. Cross-host batch threads are not
+  supervised yet. Tests: orchestration.test.ts (master section),
+  apptools.test.ts, ThreadHeader.test.ts, WorkspaceSessions.dom.test.tsx.
+- Still to come in wave 1: the scheduler
   that queues over a host cap or an unmet `after` and starts a queued thread
   when a slot frees; the gate out
   of the children (merge_branch runs typecheck alone for a batch child, the

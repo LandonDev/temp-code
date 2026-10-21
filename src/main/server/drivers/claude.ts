@@ -33,6 +33,7 @@ import {
   projectPlanSpawnPrompt,
   researchSpawnPrompt,
   ORCHESTRATOR_TOOLS,
+  isMasterSession,
   orchestratorMcp,
   orchestratorPrompt,
   researchWriteRoots,
@@ -48,6 +49,8 @@ import { spawnOrAdoptClaude } from './claudeWarm'
 
 // Dev override: a small window (e.g. 45_000 → compaction arms at ~12k)
 // makes a real compaction reachable in one short thread for UI work.
+/** The editing tools an orchestrator without self-edit, or a master, loses. */
+const EDIT_TOOLS = ['Edit', 'MultiEdit', 'Write', 'NotebookEdit']
 const AUTO_COMPACT_WINDOW = Number(process.env.TEMP_CODE_AUTO_COMPACT_WINDOW) || 190_000
 
 /**
@@ -1114,6 +1117,9 @@ export const claudeDriver: HarnessDriver = {
 
     const writeRoots = researchWriteRoots(session)
     const webTools = permittedWebTools(session.permission)
+    // A project's master thread (CLAUDE.md "Master threads") steers its
+    // batch and never edits code itself, whatever the conduct rules say.
+    const master = isMasterSession(session)
     const options: Options = {
       abortController: abort,
       ...(claudeCli.path ? { pathToClaudeCodeExecutable: claudeCli.path } : {}),
@@ -1188,7 +1194,7 @@ export const claudeDriver: HarnessDriver = {
               // Task → Agent in the Fable-era CLI; deny both spellings.
               'Task',
               'Agent',
-              ...(conduct.selfEdit ? [] : ['Edit', 'MultiEdit', 'Write', 'NotebookEdit']),
+              ...(conduct.selfEdit && !master ? [] : EDIT_TOOLS),
               ...(conduct.selfShell ? [] : ['Bash'])
             ]
             return {
@@ -1222,8 +1228,9 @@ export const claudeDriver: HarnessDriver = {
               allowedTools: [...ORCHESTRATOR_TOOLS, ...APP_TOOLS, ...webTools],
               // Native subagent lanes are invisible to the user — the whole
               // point of spawn_agent is a visible, steerable session. The
-              // tool is Task in older CLIs, Agent in the Fable era.
-              disallowedTools: ['Task', 'Agent'],
+              // tool is Task in older CLIs, Agent in the Fable era. A
+              // project's master never edits code itself: its batch does.
+              disallowedTools: ['Task', 'Agent', ...(master ? EDIT_TOOLS : [])],
               systemPrompt: {
                 type: 'preset' as const,
                 preset: 'claude_code' as const,

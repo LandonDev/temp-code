@@ -1,7 +1,7 @@
 import { sessionStore } from "../lib/tcserver/store";
 import { bridgeableEnvironment, loadThreadBridge, setThreadBridge, useThreadBridge } from "../lib/macBridge";
 import type { MacBridgeThreadState } from "@server/shared/contract-macbridge";
-import { useCallback, useEffect, useState, type MouseEvent as ReactMouseEvent } from "react";
+import { useCallback, useEffect, useMemo, useState, type MouseEvent as ReactMouseEvent } from "react";
 import type { ThreadRules } from "@server/shared/rules";
 import type { ThreadType } from "../lib/tcserver/types";
 import type { HeaderModel } from "../lib/threadHeaderModel";
@@ -20,6 +20,8 @@ import { ArchiveThreadDialog, ThreadResourcesDialog } from "./ThreadResourcesDia
 import { liveResources, loadThreadResources, startThreadResources, useThreadResources } from "../lib/threadResources";
 import { ThreadHostChip } from "./ThreadHostChip";
 import { IconButton } from "./TitleBar";
+import { setProjectMaster } from "../lib/tcserver/projects";
+import { useProjects } from "../lib/tcserver/workspaces";
 
 /**
  * The deck title bar's thread surface: temp-code's strip and heading
@@ -58,7 +60,7 @@ const TUNABLE: ReadonlySet<ThreadType> = new Set(["orchestration", "research"]);
 /** The Mac bridge's switch for a thread on another host (lib/macBridge.ts); absent for this Mac's own threads. */
 export type ChipBridge = { state: MacBridgeThreadState | null };
 
-export function chipMenuItems(chip: StripChip, bridge?: ChipBridge, resources = 0): ExplorerMenuItem[] {
+export function chipMenuItems(chip: StripChip, bridge?: ChipBridge, resources = 0, master = false): ExplorerMenuItem[] {
   const t = chip.thread;
   const items: ExplorerMenuItem[] = [{ kind: "item", id: "rename", label: "Rename" }];
   if (t.threadType && TUNABLE.has(t.threadType))
@@ -92,6 +94,8 @@ export function chipMenuItems(chip: StripChip, bridge?: ChipBridge, resources = 
   }
   // What the thread created (worktrees, simulators, dev instances), with Remove per row.
   items.push({ kind: "sep" }, { kind: "item", id: "resources", label: resources ? `Resources (${resources})…` : "Resources…" });
+  // The project's master thread (CLAUDE.md "Master threads"): one root per project, or none.
+  if (t.projectId && !t.parentId) items.push({ kind: "item", id: "master", label: master ? "Not the master" : "Make master thread" });
   items.push({ kind: "sep" }, { kind: "item", id: "archive", label: resources ? "Archive…" : "Archive" });
   items.push({ kind: "sep" }, { kind: "item", id: "delete", label: "Delete…", danger: true });
   return items;
@@ -142,6 +146,12 @@ export function ThreadHeader({
   const menuBridgeState = useThreadBridge(menu?.chip.id);
   const menuResources = useThreadResources(menu?.chip.id);
   const menuBridge: ChipBridge | undefined = menuEnv && bridgeableEnvironment(menuEnv) ? { state: menuBridgeState } : undefined;
+  const projects = useProjects();
+  const masterIds = useMemo(
+    () => new Set(projects.flatMap((p) => (p.masterThreadId ? [p.masterThreadId] : []))),
+    [projects],
+  );
+  const menuMaster = !!menu && masterIds.has(menu.chip.id);
 
   const onPick = (id: string) => {
     if (!menu) return;
@@ -152,6 +162,8 @@ export function ThreadHeader({
     // With resources on the ledger the archive asks whether they go too (ArchiveThreadDialog).
     else if (id === "archive") (liveResources(chip.id).length ? setArchiving(chip) : onArchive(chip.id));
     else if (id === "resources") setResourcesFor(chip);
+    else if (id === "master" && chip.thread.projectId)
+      void setProjectMaster(chip.thread.projectId, menuMaster ? null : chip.id).catch((err) => console.warn("[master]", err));
     else if (id === "delete") setDeleting(chip);
     else if (id === "mac-bridge-rules") setBridgeRules(chip);
     else if (id === "mac-bridge") {
@@ -190,6 +202,7 @@ export function ThreadHeader({
         onRename={commitRename}
         onContextMenu={onContextMenu}
         activeRef={activeRef}
+        masterIds={masterIds}
         stripRef={stripRef}
         archived={archived}
         onRestore={onRestore}
@@ -231,7 +244,7 @@ export function ThreadHeader({
         <ExplorerMenu
           x={menu.x}
           y={menu.y}
-          items={chipMenuItems(menu.chip, menuBridge, menuResources.length)}
+          items={chipMenuItems(menu.chip, menuBridge, menuResources.length, menuMaster)}
           ariaLabel="Thread actions"
           onPick={onPick}
           onClose={() => setMenu(null)}

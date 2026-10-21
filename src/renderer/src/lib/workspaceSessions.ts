@@ -39,6 +39,8 @@ export type ThreadRow = {
   planPath?: string | null;
   /** Subagents of this root, ranked: waiting, failed, working, done. */
   children?: ThreadRow[];
+  /** The project the root belongs to; the rail's "Make master thread" needs it. */
+  projectId?: string | null;
   /** Set on child rows; drives the row glyph. */
   agentType?: AgentType;
   provider?: string;
@@ -162,6 +164,7 @@ export function threadRow(
     treeFrozenActiveElapsed: meta.treeFrozenActiveElapsed,
     pinned: meta.pinned,
     planPath: meta.planPath,
+    projectId: meta.projectId ?? null,
     createdAt: meta.createdAt,
     environmentId: meta.environmentId,
     ...(meta.parentId

@@ -54,7 +54,7 @@ import type { SessionRegistry } from './sessions'
 import { macToolsHooks } from './macTools'
 import type { CrossHostAgents } from './crossHostAgents'
 import type { ProjectPlans } from './projectPlan'
-import { HOST_PARAM_DESCRIPTION, approvedDefault, approvedTable, policyRole, rulesFor, toolLine } from './orchestration'
+import { HOST_PARAM_DESCRIPTION, approvedDefault, approvedTable, isMasterSession, policyRole, rulesFor, toolLine } from './orchestration'
 import { CROSS_HOST_EVENTS_MAX, type ThreadEventsResult } from '@shared/contract-crosshost'
 
 /**
@@ -214,6 +214,8 @@ export interface StartThreadArgs {
   context1m?: boolean
   /** Start it on another host: `mac`, or an environment id (crossHostAgents.ts). */
   environmentId?: string
+  /** From a master: a sibling batch thread this one waits for (carried; the scheduler acts on it). */
+  after?: string
 }
 
 /** Create a thread and kick it off exactly as if the user had — same
@@ -316,6 +318,10 @@ export async function appStartThread(
     parentId: null,
     // The caller hears when a plan it started completes (planFlow.ts).
     startedBy: caller.id,
+    // A project's master starts its batch: the thread carries the master's
+    // id (supervision and settle reports, orchestration.ts) and the sibling
+    // it waits for.
+    ...(isMasterSession(callerNow, reg) ? { masterId: callerNow.id, ...(args.after ? { after: args.after } : {}) } : {}),
     ...(projectId ? {} : { cwd: caller.cwd })
   })
   await reg.send(thread.id, args.firstMessage, {
@@ -585,7 +591,11 @@ export function appToolsMcp(session: SessionMeta): McpSdkServerConfigWithInstanc
           firstMessage: z
             .string()
             .describe('The kickoff message — complete and self-contained; you write it'),
-          title: z.string().optional()
+          title: z.string().optional(),
+          after: z
+            .string()
+            .optional()
+            .describe("A master thread only: the id of a sibling batch thread this one waits for before it starts")
         },
         async (args) => {
           if (!registry) return text('app registry not ready')
