@@ -1,5 +1,5 @@
 {
-  "n": 265,
-  "notes": "Box threads: slash menu, smooth streaming, config sync, attachments, thread move, Mac bridge",
-  "ts": 1792549872233
+  "n": 266,
+  "notes": "ensureWorkspace only opens local workspaces for a window on this machine: on another host the folder is that host's and its catalog may still be loading, and a local workspace at the host's path claimed the folder for the Mac (the switcher then read This Mac over an empty sidebar and a switch to the box skipped its real workspace)",
+  "ts": 1792553088152
 }
