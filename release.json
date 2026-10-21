@@ -1,5 +1,5 @@
 {
-  "n": 269,
-  "notes": "Fix: the server refuses a workspace at a folder that is not on this host, so a Mac window can no longer claim the box's temp-code folder at launch",
-  "ts": 1792555731902
+  "n": 270,
+  "notes": "A host switch lands on the same project there (same GitHub repo, else the same folder name) before the remembered or oldest workspace: switching the window from temp-code on the Mac to the box landed on the box's oldest workspace, CosmicPrisons",
+  "ts": 1792556166856
 }
