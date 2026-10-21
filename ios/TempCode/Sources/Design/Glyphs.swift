@@ -88,7 +88,9 @@ extension AgentType {
 }
 
 /// A thread's type, tinted, in the glyph column. `weight` is the weight of
-/// the title beside it; `active` swaps in the fill (a 150 ms cross-fade).
+/// the title beside it; `active` swaps in the fill, and the caller changes
+/// it inside `withAnimation(Motion.crossFade)` for the 150 ms swap. (This
+/// file also builds into the Live Activity extension, which has no Motion.)
 struct TypeGlyph: View {
     let type: ThreadType?
     var weight: Font.Weight = .regular
@@ -102,7 +104,6 @@ struct TypeGlyph: View {
             .foregroundStyle(type.tint)
             .frame(width: width)
             .contentTransition(.symbolEffect(.replace))
-            .animation(Motion.crossFade, value: active)
             .accessibilityLabel(type.label)
     }
 }
