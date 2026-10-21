@@ -20,6 +20,7 @@ describe('METHOD_CAPABILITY', () => {
       [
         ...methods.filter((m) => m.startsWith('app.')),
         'stall.report',
+        'deploy.master',
         'dap.connect',
         'lsp.ensure',
         'lsp.status',

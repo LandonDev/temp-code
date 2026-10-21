@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import { Check, ChevronDown } from "./icons";
 import { Popover } from "./Popover";
+import { DeployDriftMark } from "./DeployDrift";
 import { degradedFor, useEnvironmentDegraded, useEnvironmentStatuses, useEnvironments, type EnvironmentStatus } from "../lib/connection";
 import { requestEnvironmentSwitch } from "../lib/environmentSwitch";
 import { MOD } from "../lib/platform";
@@ -84,6 +85,7 @@ export function EnvironmentSwitcher({ variant = "header" }: { variant?: "header"
                   <span aria-hidden className={`size-1.5 shrink-0 rounded-full ${s ? toneOf(s, row !== null) : "bg-content/25"}`} />
                   <span className="min-w-0 flex-1 truncate">{env.name}</span>
                   <span className="shrink-0 text-[11px] text-content/40">{s ? statusText(s, now) : ""}</span>
+                  <DeployDriftMark environmentId={env.id} />
                   {env.id === current.id ? (
                     <Check className="size-3.5 shrink-0" strokeWidth={2.25} />
                   ) : i < 9 ? (

@@ -127,6 +127,7 @@ export class Transport {
           contract: frame.contract,
           caps: frame.caps,
           ...(frame.key ? { key: frame.key } : {}),
+          ...(frame.build ? { build: frame.build } : {}),
         };
         this.state = "open";
         this.clearHelloTimer();

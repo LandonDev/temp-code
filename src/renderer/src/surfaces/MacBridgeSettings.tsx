@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { MacBridgeHostPolicy, MacBridgePolicy } from '@server/shared/contract-macbridge'
 import { errorText } from '../chrome/ConfirmDialog'
+import { DeployDriftMark } from '../chrome/DeployDrift'
 import { MacBridgeRunningList } from '../chrome/MacBridgeRunning'
 import { MacBridgeRememberedSection } from '../chrome/MacBridgeRemember'
 import { pickFolder } from '../lib/fs'
@@ -120,6 +121,7 @@ function HostRow({
             : 'Not connected right now.'
         }
       >
+        <DeployDriftMark environmentId={host.environmentId} />
         <Segmented
           label={`What ${host.name} may do on this Mac`}
           value={host.policy}

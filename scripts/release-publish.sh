@@ -72,7 +72,10 @@ bun run build
 rm -rf dist
 # electron-builder picks the certificate itself and rejects the full
 # "Developer ID Application: ..." string, so hand it just the name and team.
+# The commit this build came from rides in the bundled package.json
+# (tempcodeBuild.sha; src/main/buildInfo.ts reads it for the hello).
 bunx electron-builder --mac \
+  -c.extraMetadata.tempcodeBuild.sha="$(git rev-parse HEAD)" \
   -c.mac.identity="${IDENTITY#Developer ID Application: }" \
   --publish always
 

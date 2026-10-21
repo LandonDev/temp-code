@@ -16,7 +16,7 @@ async function fakeHost(environmentId: string) {
     tickets.push(ticket)
     sockets.add(ws)
     ws.on('close', () => sockets.delete(ws))
-    ws.send(JSON.stringify({ push: 'hello', environmentId, contract: 1, caps: ['admin'] }))
+    ws.send(JSON.stringify({ push: 'hello', environmentId, contract: 1, caps: ['admin'], build: { release: 270, version: '1.0.270', sha: 'f'.repeat(40), platform: 'linux' } }))
     ws.on('message', (data) => {
       const req = JSON.parse(String(data)) as { id: string; method: string; params?: unknown }
       if (req.method === 'fail') ws.send(JSON.stringify({ id: req.id, ok: false, error: 'nope' }))
@@ -84,7 +84,8 @@ describe('PeerLink', () => {
     await expect(link.request('fail')).rejects.toThrow('nope')
     hostA.push({ push: 'account', from: 'env_a', transfer: { service: 'codex' } })
     await vi.waitFor(() => expect(events.onPush).toHaveBeenCalledWith('env_a', expect.objectContaining({ push: 'account' })))
-    expect(link.state()).toEqual({ name: 'A', connected: true, lastSyncAt: null, error: null })
+    // The hello's build facts ride on the state (the deploy-drift mark reads them).
+    expect(link.state()).toEqual({ name: 'A', connected: true, lastSyncAt: null, error: null, build: { release: 270, version: '1.0.270', sha: 'f'.repeat(40), platform: 'linux' } })
     hostA.dropAll()
     await vi.waitFor(() => expect(events.onClose).toHaveBeenCalledWith('env_a'))
     expect(link.connected).toBe(false)

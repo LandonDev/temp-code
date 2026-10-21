@@ -156,6 +156,7 @@ export interface HostHello {
   name: string
   contract: number
   key?: { id: string; name: string; caps: Capability[] }
+  build?: import('@shared/deployDrift').BuildFacts
 }
 
 async function hostFetch(ctx: HostContext, url: string, init: RequestInit): Promise<Response> {

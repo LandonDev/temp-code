@@ -120,6 +120,8 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
   }),
   // Per-provider health: binary found on the login-shell PATH, version.
   z.object({ id: z.string(), method: z.literal('doctor.get') }),
+  // → MasterRelease | null: master's release.json as this host last read it (local; src/main/deployDrift.ts).
+  z.object({ id: z.string(), method: z.literal('deploy.master'), params: z.object({}).optional() }),
   // Update a provider's CLI in place; returns its fresh health row.
   z.object({
     id: z.string(),
@@ -903,6 +905,8 @@ export type ServerPush =
       contract: number
       caps: import('./capabilities').Capability[]
       key?: { id: string; name: string }
+      /** What the host runs (release number, version, commit, platform); the deploy-drift mark reads it. */
+      build?: import('./deployDrift').BuildFacts
     }
   | { push: 'workspaces'; workspaces: import('./domain').WorkspaceMeta[] }
   | { push: 'projects'; projects: import('./domain').ProjectMeta[] }
@@ -924,6 +928,8 @@ export type ServerPush =
   | { push: 'session-moved'; id: string; sessionIds: string[]; to: string }
   // Aliax accounts: the whole snapshot, whenever it is rebuilt.
   | { push: 'accounts'; snapshot: import('./accounts').AccountsSnapshot }
+  // Master's release number as this host last read it from GitHub (deployDrift.ts); local sockets only.
+  | { push: 'deploy-master'; master: import('./deployDrift').MasterRelease | null }
   // Account sync (thread V): an owner rotated a grant; only sockets that
   // pulled (another host's main process) get these, never a renderer.
   | { push: 'account'; from: string; transfer: import('aliax-core/sync').Transfer }

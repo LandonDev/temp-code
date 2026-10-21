@@ -1,4 +1,5 @@
 import type { Capability } from "@server/shared/capabilities";
+import type { BuildFacts } from "@server/shared/deployDrift";
 
 /**
  * The connection runtime's vocabulary (thread K1). An environment is one
@@ -41,6 +42,8 @@ export type Hello = {
   contract: number;
   caps: Capability[];
   key?: { id: string; name: string };
+  /** What the host runs (release number, version, commit, platform), for the deploy-drift mark. */
+  build?: BuildFacts;
 };
 
 /**

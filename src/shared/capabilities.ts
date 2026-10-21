@@ -294,6 +294,7 @@ export const METHOD_CAPABILITY: Record<ClientRequest['method'], MethodCapability
   'mac.jobClose': 'local',
   // Saved hosts and their keys never leave this machine (thread K1).
   'remote.environments.list': 'local',
+  'deploy.master': 'local',
   'remote.environments.add': 'local',
   'remote.environments.update': 'local',
   'remote.environments.remove': 'local',

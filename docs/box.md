@@ -1082,6 +1082,31 @@ ssh box 'box-update v1.0.N'   # replace N with a tag published on GitHub
 sudo /usr/local/sbin/box-update master
 ```
 
+### Knowing the box is behind: the deploy-drift mark
+
+Nothing deploys the box on its own, so the Mac app marks a host that has
+fallen behind master. Every host says what it runs in its hello frame and
+in `/api/hello` for a caller it knows (`build`: release.json `n`, the
+`1.0.N` version, the commit, the platform; `src/main/buildInfo.ts`). The
+box's commit is its checkout's `.git/HEAD` (box-update runs a detached
+clone); a published Mac build carries it in the bundled package.json as
+`tempcodeBuild.sha`, which release-publish.sh passes through
+electron-builder's extraMetadata. The Mac's main process reads
+`https://raw.githubusercontent.com/LandonDev/temp-code/master/release.json`
+every ten minutes and again when a window comes forward after fifteen idle
+minutes (`src/main/deployDrift.ts`, the updater's cadence; nothing faster,
+no git, and a failed fetch keeps the last number); the local socket gets
+the number with `deploy.master` and the `deploy-master` push, and the
+main process's peer links keep each host's `build` on their state. The
+renderer's `useDeployDrift(environmentId)` (`lib/deployDrift.ts`) yields
+`{ behind, deployedVersion, masterVersion }` and `chrome/DeployDrift.tsx`
+draws a muted tabular `+3` at the trailing edge of the host's row in the
+environment switcher and in Settings → Remote access, with the tooltip
+"3 releases behind master (runs v1.0.270, master is v1.0.273). Deploy
+with: ssh box 'box-update master'" (a Mac host says "Publish with: bun run
+release:publish"). Current, ahead, or unknown on either side draws nothing.
+A headless host never fetches master; the box's own `/ui` shows no mark.
+
 On a fresh box, stage 85 creates the build/data directories and service
 without needing an existing `current`. Run `box-update <ref>` to bootstrap:
 it builds and trials the ref, skips the pre-update snapshot only when there

@@ -25,6 +25,9 @@ import {
 } from '@shared/capabilities'
 import { loadEnvironmentId } from './remote/environment'
 import { handleRemote, type RemoteContext } from './remote/handlers'
+import { buildFacts } from '../buildInfo'
+import type { BuildFacts } from '@shared/deployDrift'
+import { MasterReleaseWatcher } from '../deployDrift'
 import { AccountSync, accountSyncHooks } from './remote/accountSync'
 import { Peers } from './remote/peers'
 import { HarnessSync, handleHarness } from './remote/harnessSync'
@@ -220,6 +223,10 @@ export interface RunningServer {
   accounts: AccountsService
   /** Account ownership and sync with the hosts this machine holds admin keys for (remote/accountSync.ts). */
   accountSync: AccountSync
+  /** What this host runs: the hello's `build` (buildInfo.ts). */
+  build: BuildFacts
+  /** Master's release number from GitHub (deployDrift.ts); `focus()` when a window comes forward. */
+  masterRelease: MasterReleaseWatcher
   close: () => Promise<void>
 }
 
@@ -257,6 +264,8 @@ export async function startServer(
     remotePort?: number
     /** The tempcode-asset:// handler, so `/asset/*` on the fixed port can mirror logos, media and agent pages. */
     assets?: (request: Request) => Promise<Response>
+    /** Read master's release.json from GitHub on the updater's cadence (deployDrift.ts): the Mac, never a headless host or a test. */
+    watchMaster?: boolean
   } = {}
 ): Promise<RunningServer> {
   bootMark('server-start')
@@ -271,6 +280,17 @@ export async function startServer(
   const reader = new EventReader(dbPath)
   const store = new Store(db, { reader })
   const environmentId = loadEnvironmentId(options.dataDir ?? dirname(dbPath))
+  // What this host runs, said in every hello; and master's number, so the
+  // renderer can mark a host that is behind (src/shared/deployDrift.ts).
+  const build = buildFacts(options.appPath)
+  const localSinks = new Set<(push: ServerPush) => void>()
+  const masterRelease = new MasterReleaseWatcher({
+    onChange: (master) => {
+      for (const sink of localSinks) sink({ push: 'deploy-master', master })
+    },
+    log: (line) => console.log(line)
+  })
+  if (options.watchMaster) masterRelease.start()
   const checkpoints = new CheckpointStore(join(options.dataDir ?? dirname(dbPath), 'checkpoints'))
   const registry = new SessionRegistry(store)
   // The file viewer's media host serves only files under these roots.
@@ -602,6 +622,7 @@ export async function startServer(
         store,
         environmentId,
         version: appVersion,
+        build,
         attach: (ws, principal) => attach(ws, principal),
         mcp: createMcpHandler({
           auth: remoteAuth,
@@ -665,6 +686,9 @@ export async function startServer(
     let unsubscribeAccounts: (() => void) | null = null
     // The Mac bridge's prompts go to this Mac's own sockets only, never a key's.
     const offMacBridge = principal.kind === 'local' ? macBridge.subscribe((push) => sendFrame(push)) : null
+    // Master's release number, when it changes: this host's own sockets only.
+    const localSink = principal.kind === 'local' ? (push: ServerPush): void => sendFrame(push) : null
+    if (localSink) localSinks.add(localSink)
     /** per-connection file watchers (fs.watch), keyed by projectId */
     const fsWatches = new Map<string, () => void>()
     // One line per connection the first time its unsent bytes pass the mark:
@@ -728,7 +752,8 @@ export async function startServer(
       environmentId,
       contract: CONTRACT_VERSION,
       caps: principalCaps(principal),
-      ...(principal.kind === 'remote' ? { key: { id: principal.keyId, name: principal.name } } : {})
+      ...(principal.kind === 'remote' ? { key: { id: principal.keyId, name: principal.name } } : {}),
+      build
     })
 
     ws.on('message', async (data) => {
@@ -779,6 +804,7 @@ export async function startServer(
           if (principal.kind !== 'remote') throw new Error(`forbidden: ${req.method} is for another host's main process`)
           return sendFrame({ id: req.id, ok: true, result: crossHostAgents.settled(req.params.from, req.params) })
         }
+        if (req.method === 'deploy.master') return sendFrame({ id: req.id, ok: true, result: masterRelease.current() })
         const macBridged = handleMacBridge(req, macBridge)
         if (macBridged.handled) return sendFrame({ id: req.id, ok: true, result: macBridged.result })
         const macTooled = await macTools.handle(req)
@@ -1613,6 +1639,7 @@ export async function startServer(
       offMoved()
       unsubscribeAccounts?.()
       offMacBridge?.()
+      if (localSink) localSinks.delete(localSink)
       peerCalls.drop(connection)
       for (const off of unsubs.values()) off()
       unsubs.clear()
@@ -1704,7 +1731,10 @@ export async function startServer(
     store,
     gateway,
     accounts: m3a.accounts,
+    build,
+    masterRelease,
     close: async () => {
+      masterRelease.stop()
       notifier.stop()
       activityFeed.stop()
       apns?.close()

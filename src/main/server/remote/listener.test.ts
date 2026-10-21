@@ -193,6 +193,10 @@ describe('public routes', () => {
     const known = await call('GET', '/api/hello', { headers: bearer(await adminKey()) })
     expect(typeof known.body.name).toBe('string')
     expect(known.body.version).toMatch(/^\d+\.\d+\.\d+/)
+    // What the host runs, for the deploy-drift mark (buildInfo.ts): the release number matches the version.
+    expect(known.body.build).toMatchObject({ release: expect.any(Number), version: known.body.version, platform: process.platform })
+    expect(`1.0.${known.body.build.release}`).toBe(known.body.version)
+    expect(hello.body.build).toBeUndefined()
   })
   it('unknown paths and /lsp/ are bare 404s; /mcp without a key is a bare 401', async () => {
     const mcp = await call('GET', '/mcp')

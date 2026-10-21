@@ -94,4 +94,6 @@ export interface PeerState {
   /** The last completed sync with that host, either way. */
   lastSyncAt: number | null
   error: string | null
+  /** What the host runs, from its last hello on the link; null before one. */
+  build?: import('./deployDrift').BuildFacts | null
 }

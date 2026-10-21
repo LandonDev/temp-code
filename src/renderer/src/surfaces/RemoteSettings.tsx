@@ -13,9 +13,10 @@ import type { AttachmentSettings } from "@server/shared/contract-attachments";
 import { forgetAttachmentSettings } from "../lib/attachmentUpload";
 import { DialogFooter, ErrorLine, errorText } from "../chrome/ConfirmDialog";
 import { Check, Copy } from "../chrome/icons";
+import { DeployDriftMark } from "../chrome/DeployDrift";
 import { Modal } from "../chrome/Modal";
 import { timeAgo } from "../lib/format";
-import { registry } from "../lib/connection";
+import { LOCAL_ENVIRONMENT_ID, registry } from "../lib/connection";
 import { Heading, INPUT_CLASS, Input, Row, SecondaryButton, Segmented, Toggle } from "./settingsBits";
 import { MatrixSpinner } from "./threads/bits";
 import { harnessLine } from "./harnessLine";
@@ -116,6 +117,7 @@ export function RemoteSettings() {
   return (
     <>
       <Row label="Environment" description="Clients check this id before trusting a route.">
+        <DeployDriftMark environmentId={LOCAL_ENVIRONMENT_ID} />
         <code className="text-[12px] text-content/70">{status.environmentId}</code>
         <CopyButton text={status.environmentId} label="Copy environment id" />
       </Row>

@@ -13,17 +13,44 @@ public struct HelloPush: Codable, Hashable, Sendable {
             self.name = name
         }
     }
+    public struct Build: Codable, Hashable, Sendable {
+        public let release: Int
+        public let version: String
+        public let sha: String?
+        public let platform: String
+
+        public init(release: Int, version: String, sha: String?, platform: String) {
+            self.release = release
+            self.version = version
+            self.sha = sha
+            self.platform = platform
+        }
+
+        private enum CodingKeys: String, CodingKey {
+            case release, version, sha, platform
+        }
+
+        public func encode(to encoder: any Encoder) throws {
+            var container = encoder.container(keyedBy: CodingKeys.self)
+            try container.encode(release, forKey: .release)
+            try container.encode(version, forKey: .version)
+            try container.encode(sha, forKey: .sha)
+            try container.encode(platform, forKey: .platform)
+        }
+    }
 
     public let environmentId: String
     public let contract: Int
     public let caps: [Capability]
     public let key: Key?
+    public let build: Build?
 
-    public init(environmentId: String, contract: Int, caps: [Capability], key: Key? = nil) {
+    public init(environmentId: String, contract: Int, caps: [Capability], key: Key? = nil, build: Build? = nil) {
         self.environmentId = environmentId
         self.contract = contract
         self.caps = caps
         self.key = key
+        self.build = build
     }
 }
 

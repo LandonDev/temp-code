@@ -130,9 +130,15 @@ app.whenReady().then(async () => {
   server = await startServer(join(app.getPath('userData'), 'temp-code.db'), {
     appPath: app.getAppPath(),
     claimShim: mayClaimShim({ isPackaged: app.isPackaged }),
-    assets: handleAssetRequest
+    assets: handleAssetRequest,
+    watchMaster: !headless
   })
-  if (!headless) registerUpdates()
+  if (!headless) {
+    registerUpdates()
+    // Master's release.json again when a window comes forward after fifteen idle minutes (deployDrift.ts).
+    const running = server
+    app.on('browser-window-focus', () => running.masterRelease.focus())
+  }
   registerAliaxPages(server)
   registerPty()
   const { store } = server

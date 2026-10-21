@@ -274,7 +274,21 @@ routed to (aliax-core's `forward`). Two listeners:
   tunnel maps `tempcode.landonhale.com` to its 7677. Deploy a ref with
   `ssh box 'box-update master'` (build → trial → snapshot → commit, with
   rollback on failure); stage 85 installs the launcher without restarting. Proof from the Mac is
-  `bun scripts/e2e-box-remote.ts`. Every "ask the login shell" call goes
+  `bun scripts/e2e-box-remote.ts`.
+- Deploy drift: every host's hello (and `/api/hello` for a known caller)
+  carries `build` (release.json `n`, `1.0.N`, the commit, the platform;
+  src/main/buildInfo.ts: the box's `.git/HEAD`, a published Mac build's
+  `tempcodeBuild.sha` from release-publish.sh's extraMetadata). The Mac's
+  main process reads master's release.json raw from GitHub every 10 minutes
+  and on window focus after 15 idle minutes (src/main/deployDrift.ts; a
+  failure keeps the last value; `deploy.master` RPC + `deploy-master` push,
+  local only; headless hosts never fetch). `useDeployDrift(environmentId)`
+  in the renderer's lib/deployDrift.ts gives `{behind, deployedVersion,
+  masterVersion}`; chrome/DeployDrift.tsx is the muted tabular `+N` on the
+  host's row in the environment switcher and Settings → Remote access,
+  tooltip naming both versions and the deploy (box) or publish (Mac)
+  command; nothing when current or unknown. docs/box.md "Knowing the box
+  is behind". Every "ask the login shell" call goes
   through src/main/server/loginShell.ts (`$SHELL`, else zsh on macOS, bash
   elsewhere): never hardcode /bin/zsh.
 - Harness config (skills under `~/.claude/skills`, `~/.codex/skills` and
