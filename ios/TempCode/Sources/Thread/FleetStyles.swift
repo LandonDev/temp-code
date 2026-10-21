@@ -119,7 +119,7 @@ struct AgentTypeMark: View {
 
     var body: some View {
         Image(systemName: type.symbol)
-            .font(.caption2.weight(.medium))
+            .font(.caption2)
             .accessibilityLabel(type.label)
     }
 }
@@ -151,7 +151,7 @@ struct AgentStatusMark: View {
                     .transition(.opacity)
             case .check:
                 Image(systemName: "checkmark")
-                    .font(.caption.weight(.semibold))
+                    .font(.caption.weight(.medium))
                     .foregroundStyle(Tint.success)
                     .transition(.opacity)
             }

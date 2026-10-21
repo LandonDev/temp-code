@@ -18,7 +18,7 @@ struct FleetView: View {
         let agents = Fleet.children(of: sessionId, in: client.sessions)
         let counts = Fleet.counts(agents.map(\.status))
         ScrollView {
-            LazyVStack(alignment: .leading, spacing: 0, pinnedViews: .sectionHeaders) {
+            LazyVStack(alignment: .leading, spacing: 0) {
                 FleetGoal(goal: goal, status: effectiveStatus(counts: counts), line: Fleet.orchestratorLine(status: session?.status, counts: counts))
                 if agents.isEmpty {
                     FleetEmpty(text: thread.isLoading ? "Loading the fleet…" : "No agents yet. The orchestrator's first spawn lands here.")

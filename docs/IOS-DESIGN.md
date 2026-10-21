@@ -183,9 +183,10 @@ Chat segment with the question card in view.
 Segments: **Fleet** (default once the first agent spawns) and **Log**.
 Fleet (`Thread/FleetView.swift`): the goal in `body` text, then one status
 line with its mark (the orchestrator's own state while it runs, waits or
-fails; else its fleet's: "3 subagents working", "1 subagent waiting on
-approval", "Done"), then the fleet in three groups under the design's
-section headers with a count: **Running**, **Waiting**, **Done** (failed
+fails; else what it waits on: "Waiting on its subagents", "A subagent
+needs you", "Done"; the headers carry the counts, the line never repeats
+them), then the fleet in three groups under the design's section headers
+with a count: **Running**, **Waiting**, **Done** (failed
 agents sit first in Done with their red mark). Empty groups are left out.
 Log is the orchestrator's own transcript.
 
@@ -210,8 +211,8 @@ row that changes group moves with the needs-you row motion.
 **Subagent list** (`Thread/SubagentListScreen.swift`,
 `SubagentListScreen(client:rootSessionId:)`): the desktop's right-side
 subagent panel as a screen, pushed from a thread's toolbar button. Title
-"Subagents" over "3 working · 1 waiting · 2 done", then the same grouped
-rows, live, nothing to pull. Fleets of twelve read as three short lists.
+"Subagents" over the thread's name, then the same grouped rows, live,
+nothing to pull. Fleets of twelve read as three short lists.
 
 **Agent detail** (`Thread/AgentDetailScreen.swift`), pushed from any
 row: the title over the role in the bar; an identity strip under it with

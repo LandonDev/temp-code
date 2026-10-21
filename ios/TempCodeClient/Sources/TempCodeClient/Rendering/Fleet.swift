@@ -114,7 +114,8 @@ public enum Fleet {
     // MARK: - the orchestrator
 
     /// The one line under the goal: what the orchestrator itself is up to,
-    /// else what its fleet is (the desktop's FleetPulseLine).
+    /// else what it waits on. The group headers carry the counts, so this
+    /// line never repeats them.
     public static func orchestratorLine(status: SessionStatus?, counts: Counts) -> String {
         switch status {
         case .running?, .starting?: return "Orchestrating"
@@ -124,9 +125,9 @@ public enum Fleet {
         case .watching?: return "Waiting on background work"
         default: break
         }
-        if counts.working > 0 { return "\(counts.working) subagent\(counts.working == 1 ? "" : "s") working" }
-        if counts.waiting > 0 { return "\(counts.waiting) subagent\(counts.waiting == 1 ? "" : "s") waiting on approval" }
-        if counts.failed > 0 { return "Done, \(counts.failed) failed" }
+        if counts.working > 0 { return "Waiting on its subagents" }
+        if counts.waiting > 0 { return counts.waiting == 1 ? "A subagent needs you" : "Subagents need you" }
+        if counts.failed > 0 { return counts.failed == 1 ? "Done, one agent failed" : "Done, \(counts.failed) agents failed" }
         return counts.done > 0 ? "Done" : ""
     }
 

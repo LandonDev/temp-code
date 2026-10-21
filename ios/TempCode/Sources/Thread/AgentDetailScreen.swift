@@ -85,7 +85,7 @@ private struct AgentIdentity: View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(alignment: .top, spacing: 12) {
                 AgentStatusMark(status: agent.status)
-                    .padding(.top, 2)
+                    .padding(.top, 1)
                 VStack(alignment: .leading, spacing: 3) {
                     HStack(alignment: .firstTextBaseline, spacing: 8) {
                         AgentMetaLine(agent: agent, branch: Fleet.branch(cwd: agent.cwd, parentCwd: parentCwd))
@@ -185,7 +185,6 @@ private struct AgentSendBar: View {
         .padding(.bottom, 8)
         .background(.bar)
         .animation(Motion.crossFade, value: failure)
-        .animation(Motion.crossFade, value: placeholder)
         .sensoryFeedback(.impact(weight: .light), trigger: sentCount)
     }
 
