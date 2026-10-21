@@ -1,4 +1,6 @@
 import { ChevronDown, GripVertical, X } from "../chrome/icons";
+import { MacBridgeThreadCards } from "../chrome/MacBridgeCards";
+import { useMacBridgeRequests } from "../lib/macBridge";
 import type { OpenFileFn } from "../lib/search";
 import { perfMark } from "../lib/perfMarks";
 import {
@@ -276,6 +278,8 @@ export const SessionPane = memo(function SessionPane({
   }, [composerFocused, focused, onFocus, session.id]);
   // The thread's host, when it is not reachable: rows stay, sending waits.
   const block = useEnvironmentBlock(session.environmentId);
+  // The Mac bridge's requests for this (box) thread, answered on this Mac (MacBridgeCards).
+  const macRequests = useMacBridgeRequests(session.environmentId, session.id);
   const composerOf = (opts?: ChatOpts) => (
     <>
       <AppshotFlyIn sessionId={session.id} active={focused && visible} />
@@ -328,8 +332,9 @@ export const SessionPane = memo(function SessionPane({
       paused={paused}
       goal={session.goal}
       topSlot={
-        opts?.topSlot || queueStrip || block.degraded ? (
+        opts?.topSlot || queueStrip || block.degraded || macRequests.length > 0 ? (
           <>
+            {macRequests.length > 0 ? <MacBridgeThreadCards environmentId={session.environmentId} sessionId={session.id} /> : null}
             {opts?.topSlot}
             {queueStrip}
             {block.degraded ? <ConnectionLine environmentId={session.environmentId} /> : null}

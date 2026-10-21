@@ -1,4 +1,5 @@
 import { nativeModelId } from "../models";
+import { bridgeNewThread } from "../macBridge";
 import type { Attachment, Block, RuntimeMode, Session } from "../session";
 import { policyForMode } from "./access";
 import { registry, type Link } from "../connection";
@@ -122,6 +123,8 @@ export async function ensureCreated(session: Session): Promise<SessionMeta> {
   });
   const meta: SessionMeta = { ...wire, environmentId: link.environmentId };
   sessionStore.adopt(meta);
+  // A thread made on another host gets this Mac's bridge when this Mac's policy for that host allows it (lib/macBridge.ts).
+  await bridgeNewThread(link.environmentId, session.id);
   if (session.modelSettings.ultrafast === "true") {
     await link.request("session.tune", { sessionId: session.id, ultrafast: true });
   } else if (session.modelSettings.fast === "true") {
@@ -417,6 +420,7 @@ export async function startThread(params: StartThreadParams, brief: string): Pro
   });
   const meta: SessionMeta = { ...wire, environmentId };
   sessionStore.adopt(meta);
+  await bridgeNewThread(environmentId, meta.id);
   await link.request("session.send", { sessionId: meta.id, text: brief });
   return meta;
 }

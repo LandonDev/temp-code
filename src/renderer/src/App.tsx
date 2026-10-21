@@ -12,6 +12,7 @@ import {
 } from "react";
 import { Sidebar } from "./chrome/Sidebar";
 import { HiddenApprovalToasts } from "./chrome/ApprovalToasts";
+import { MacBridgeToasts } from "./chrome/MacBridgeCards";
 import { WhatsNewDialog } from "./chrome/WhatsNewDialog";
 import { NewWorkspaceDialog } from "./chrome/ProjectDialogs";
 import { RemoteFolderDialog } from "./chrome/RemoteFolderDialog";
@@ -3868,6 +3869,7 @@ export default function App() {
         onFocusSession={onOpenApprovalSession}
         onApproval={onApproval}
       />
+      <MacBridgeToasts />
       <HtmlRenderOverlay />
       {whatsNew ? (
         <WhatsNewDialog
