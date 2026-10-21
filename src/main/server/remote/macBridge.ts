@@ -64,7 +64,10 @@ const REPLY_MARGIN_MS = 3_000
 export interface MacBridgeDeps {
   /** This Mac's own environment id: what it registers as on a host. */
   environmentId: string
-  store: { getSetting(key: string): string | null; setSetting(key: string, value: string | null): void }
+  store: {
+    getSetting(key: string): string | null
+    setSetting(key: string, value: string | null): void
+  }
   /** This Mac's own app-managed roots (index.ts managedRoots). */
   managedRoots: () => string[]
   /** The saved hosts (remote.environments), by id and name. */
@@ -89,24 +92,35 @@ export function validateSharedFolder(path: string, home: string = homedir()): st
   if (!isAbsolute(path)) throw new Error(`a shared folder must be an absolute path: ${path}`)
   const real = realSpelling(resolve(path))
   const realHome = realSpelling(home)
-  if (coversHome(real, realHome)) throw new Error(`refused: ${path} would share the whole home directory or disk`)
+  if (coversHome(real, realHome))
+    throw new Error(`refused: ${path} would share the whole home directory or disk`)
   if (!existsSync(real) || !statSync(real).isDirectory()) throw new Error(`not a folder: ${path}`)
   return real
 }
 
 /** The folder "allow this folder for this thread" admits for a path, or null where that would be home or wider. */
-export function rememberFolder(real: string, isDir: boolean, home: string = homedir()): string | null {
+export function rememberFolder(
+  real: string,
+  isDir: boolean,
+  home: string = homedir()
+): string | null {
   const folder = isDir ? real : dirname(real)
   return coversHome(folder, realSpelling(home)) ? null : folder
 }
 
-export type ReadVerdict = { allow: true; why: 'managed' | 'shared' | 'remembered' } | { allow: false }
+export type ReadVerdict =
+  { allow: true; why: 'managed' | 'shared' | 'remembered' } | { allow: false }
 
 /** Whether a read goes through without asking. */
-export function readVerdict(real: string, rules: { managed: readonly string[]; shared: readonly string[]; remembered: readonly string[] }): ReadVerdict {
-  if (rules.managed.length && insideRoots(real, rules.managed)) return { allow: true, why: 'managed' }
+export function readVerdict(
+  real: string,
+  rules: { managed: readonly string[]; shared: readonly string[]; remembered: readonly string[] }
+): ReadVerdict {
+  if (rules.managed.length && insideRoots(real, rules.managed))
+    return { allow: true, why: 'managed' }
   if (rules.shared.length && insideRoots(real, rules.shared)) return { allow: true, why: 'shared' }
-  if (rules.remembered.length && insideRoots(real, rules.remembered)) return { allow: true, why: 'remembered' }
+  if (rules.remembered.length && insideRoots(real, rules.remembered))
+    return { allow: true, why: 'remembered' }
   return { allow: false }
 }
 
@@ -164,7 +178,9 @@ export class MacBridge {
   // ── settings ───────────────────────────────────────────────────────
 
   policyOf(envId: string): MacBridgePolicy {
-    const parsed = MacBridgePolicySchema.safeParse(this.deps.store.getSetting(`${POLICY_PREFIX}${envId}`))
+    const parsed = MacBridgePolicySchema.safeParse(
+      this.deps.store.getSetting(`${POLICY_PREFIX}${envId}`)
+    )
     return parsed.success ? parsed.data : 'off'
   }
 
@@ -177,7 +193,9 @@ export class MacBridge {
 
   sharedOf(envId: string): string[] {
     try {
-      const list = JSON.parse(this.deps.store.getSetting(`${SHARED_PREFIX}${envId}`) ?? '[]') as unknown
+      const list = JSON.parse(
+        this.deps.store.getSetting(`${SHARED_PREFIX}${envId}`) ?? '[]'
+      ) as unknown
       return Array.isArray(list) ? list.filter((p): p is string => typeof p === 'string') : []
     } catch {
       return []
@@ -188,7 +206,10 @@ export class MacBridge {
   setShared(envId: string, folders: string[]): MacBridgeHostPolicy[] {
     this.knownHost(envId)
     const clean = [...new Set(folders.map((f) => validateSharedFolder(f, this.home)))]
-    this.deps.store.setSetting(`${SHARED_PREFIX}${envId}`, clean.length ? JSON.stringify(clean) : null)
+    this.deps.store.setSetting(
+      `${SHARED_PREFIX}${envId}`,
+      clean.length ? JSON.stringify(clean) : null
+    )
     this.log(`${this.nameOf(envId)} (${envId}): ${clean.length} shared folder(s)`)
     return this.hosts()
   }
@@ -208,7 +229,8 @@ export class MacBridge {
   }
 
   private knownHost(envId: string): void {
-    if (!this.deps.environments().some((e) => e.id === envId)) throw new Error(`unknown host: ${envId}`)
+    if (!this.deps.environments().some((e) => e.id === envId))
+      throw new Error(`unknown host: ${envId}`)
   }
 
   // ── the link ───────────────────────────────────────────────────────
@@ -222,7 +244,9 @@ export class MacBridge {
       this.registered.add(envId)
     } catch (err) {
       // An older host has no peer.register: no bridge there, nothing else changes.
-      this.log(`${this.nameOf(envId)}: not registered (${err instanceof Error ? err.message : String(err)})`)
+      this.log(
+        `${this.nameOf(envId)}: not registered (${err instanceof Error ? err.message : String(err)})`
+      )
     }
   }
 
@@ -235,7 +259,13 @@ export class MacBridge {
     if (push.push !== 'peer.call') return false
     const request = this.deps.link(envId)
     if (!request) return true
-    void servePeerCall(push, envId, (method, params, ctx) => this.handle(method, params, ctx), request, this.log)
+    void servePeerCall(
+      push,
+      envId,
+      (method, params, ctx) => this.handle(method, params, ctx),
+      request,
+      this.log
+    )
     return true
   }
 
@@ -251,7 +281,9 @@ export class MacBridge {
   }
 
   pending(): MacBridgeRequest[] {
-    return [...this.pendingById.values()].map((p) => p.request).sort((a, b) => a.createdAt - b.createdAt)
+    return [...this.pendingById.values()]
+      .map((p) => p.request)
+      .sort((a, b) => a.createdAt - b.createdAt)
   }
 
   decide(id: string, allow: boolean, remember = false): { ok: true } {
@@ -270,31 +302,45 @@ export class MacBridge {
   private ask(
     shape: Omit<MacBridgeRequest, 'id' | 'createdAt' | 'expiresAt' | 'status'>,
     until: number
-  ): { id: string; answer: Promise<{ allow: boolean; remember: boolean; outcome: MacBridgeOutcome }> } {
+  ): {
+    id: string
+    answer: Promise<{ allow: boolean; remember: boolean; outcome: MacBridgeOutcome }>
+  } {
     const id = `mb_${randomBytes(9).toString('base64url')}`
     const now = Date.now()
-    const request: MacBridgeRequest = { ...shape, id, createdAt: now, expiresAt: until, status: 'pending' }
-    const answer = new Promise<{ allow: boolean; remember: boolean; outcome: MacBridgeOutcome }>((resolve) => {
-      let settled = false
-      const timer = setTimeout(() => {
-        if (settled) return
-        settled = true
-        this.finish(id, 'expired')
-        resolve({ allow: false, remember: false, outcome: 'expired' })
-      }, Math.max(0, until - now))
-      timer.unref()
-      this.pendingById.set(id, {
-        request,
-        timer,
-        decide: (allow, remember) => {
-          if (settled) return
-          settled = true
-          clearTimeout(timer)
-          if (!allow) this.finish(id, 'denied')
-          resolve({ allow, remember, outcome: allow ? 'allowed' : 'denied' })
-        }
-      })
-    })
+    const request: MacBridgeRequest = {
+      ...shape,
+      id,
+      createdAt: now,
+      expiresAt: until,
+      status: 'pending'
+    }
+    const answer = new Promise<{ allow: boolean; remember: boolean; outcome: MacBridgeOutcome }>(
+      (resolve) => {
+        let settled = false
+        const timer = setTimeout(
+          () => {
+            if (settled) return
+            settled = true
+            this.finish(id, 'expired')
+            resolve({ allow: false, remember: false, outcome: 'expired' })
+          },
+          Math.max(0, until - now)
+        )
+        timer.unref()
+        this.pendingById.set(id, {
+          request,
+          timer,
+          decide: (allow, remember) => {
+            if (settled) return
+            settled = true
+            clearTimeout(timer)
+            if (!allow) this.finish(id, 'denied')
+            resolve({ allow, remember, outcome: allow ? 'allowed' : 'denied' })
+          }
+        })
+      }
+    )
     this.emit({ push: 'macBridge.request', request })
     return { id, answer }
   }
@@ -316,30 +362,48 @@ export class MacBridge {
 
   // ── a call from a box ──────────────────────────────────────────────
 
-  async handle(method: MacMethod, params: MacCallParams, ctx: { from: string; deadlineAt: number }): Promise<unknown> {
+  async handle(
+    method: MacMethod,
+    params: MacCallParams,
+    ctx: { from: string; deadlineAt: number }
+  ): Promise<unknown> {
     const env = this.deps.environments().find((e) => e.id === ctx.from)
     const thread = params?.thread
     if (!env) throw new Error('this Mac does not know that host')
     if (!thread || typeof thread.id !== 'string') throw new Error('the call names no thread')
     const policy = this.policyOf(env.id)
-    const line = (decision: string): void => this.log(`${env.name} (${env.id}) thread=${thread.id} ${method} → ${decision}`)
+    const line = (decision: string): void =>
+      this.log(`${env.name} (${env.id}) thread=${thread.id} ${method} → ${decision}`)
     if (policy === 'off') {
       line('refused (bridge off)')
-      throw new Error("the Mac bridge is off for this host: turn it on in the Mac's Settings → Remote access")
+      throw new Error(
+        "the Mac bridge is off for this host: turn it on in the Mac's Settings → Remote access"
+      )
     }
     if (method === 'mac.run') {
       if (policy !== 'read+run') {
         line('refused (policy read)')
-        throw new Error("this host may read on the Mac but not run commands (the Mac's Settings → Remote access)")
+        throw new Error(
+          "this host may read on the Mac but not run commands (the Mac's Settings → Remote access)"
+        )
       }
       return this.run(env, thread, params.args, ctx.deadlineAt, line)
     }
-    const schema = method === 'mac.readFile' ? MacReadFileArgsSchema : method === 'mac.listDir' ? MacListDirArgsSchema : MacFetchFileArgsSchema
+    const schema =
+      method === 'mac.readFile'
+        ? MacReadFileArgsSchema
+        : method === 'mac.listDir'
+          ? MacListDirArgsSchema
+          : MacFetchFileArgsSchema
     const args = schema.parse(params.args) as { path: string; maxBytes?: number }
     const real = macPath(args.path)
     const isDir = method === 'mac.listDir'
     const memory = this.memoryOf(env.id, thread.id)
-    const verdict = readVerdict(real, { managed: this.deps.managedRoots(), shared: this.sharedOf(env.id), remembered: [...memory.folders] })
+    const verdict = readVerdict(real, {
+      managed: this.deps.managedRoots(),
+      shared: this.sharedOf(env.id),
+      remembered: [...memory.folders]
+    })
     if (verdict.allow) line(`allowed (${verdict.why})`)
     else {
       const folder = rememberFolder(real, isDir, this.home)
@@ -359,7 +423,11 @@ export class MacBridge {
       const decision = await answer
       if (!decision.allow) {
         line(decision.outcome)
-        throw new Error(decision.outcome === 'expired' ? 'nobody at the Mac answered in time' : 'denied at the Mac')
+        throw new Error(
+          decision.outcome === 'expired'
+            ? 'nobody at the Mac answered in time'
+            : 'denied at the Mac'
+        )
       }
       if (decision.remember && folder) memory.folders.add(folder)
       line(`allowed (asked${decision.remember && folder ? ', folder remembered' : ''})`)
@@ -380,12 +448,16 @@ export class MacBridge {
     const args = MacRunArgsSchema.parse(raw)
     if (!args.argv === !args.command) throw new Error('mac.run takes argv or command, one of them')
     const cwd = args.cwd ? macPath(args.cwd) : realSpelling(this.home)
-    if (!existsSync(cwd) || !statSync(cwd).isDirectory()) throw new Error(`no such folder on the Mac: ${cwd}`)
+    if (!existsSync(cwd) || !statSync(cwd).isDirectory())
+      throw new Error(`no such folder on the Mac: ${cwd}`)
     const timeoutMs = args.timeoutMs ?? MAC_RUN_DEFAULT_TIMEOUT_MS
     const spec = { ...(args.argv ? { argv: args.argv } : { command: args.command }), cwd }
     const key = commandKey(spec)
     const memory = this.memoryOf(env.id, thread.id)
-    const askUntil = Math.min(Date.now() + MAC_APPROVAL_WAIT_MS, deadlineAt - timeoutMs - REPLY_MARGIN_MS)
+    const askUntil = Math.min(
+      Date.now() + MAC_APPROVAL_WAIT_MS,
+      deadlineAt - timeoutMs - REPLY_MARGIN_MS
+    )
     if (askUntil <= Date.now()) throw new Error('the call left no time to ask the Mac')
     // Every command shows on the Mac, remembered or not: a remembered one starts at once, as running.
     const { id, answer } = this.ask(
@@ -402,14 +474,20 @@ export class MacBridge {
       askUntil
     )
     const remembered = memory.commands.has(key)
-    const decision = remembered ? { allow: true, remember: false, outcome: 'allowed' as const } : await answer
+    const decision = remembered
+      ? { allow: true, remember: false, outcome: 'allowed' as const }
+      : await answer
     if (remembered) this.pendingById.get(id)?.decide(true, false)
     if (!decision.allow) {
       line(decision.outcome)
-      throw new Error(decision.outcome === 'expired' ? 'nobody at the Mac answered in time' : 'denied at the Mac')
+      throw new Error(
+        decision.outcome === 'expired' ? 'nobody at the Mac answered in time' : 'denied at the Mac'
+      )
     }
     if (decision.remember) memory.commands.add(key)
-    line(`allowed (${remembered ? 'remembered' : decision.remember ? 'asked, command remembered' : 'asked'}) argv0=${basename(args.argv?.[0] ?? args.command?.split(/\s/)[0] ?? '')}`)
+    line(
+      `allowed (${remembered ? 'remembered' : decision.remember ? 'asked, command remembered' : 'asked'}) argv0=${basename(args.argv?.[0] ?? args.command?.split(/\s/)[0] ?? '')}`
+    )
     const p = this.pendingById.get(id)
     const running: RunningCommand = (this.deps.run ?? runMacCommand)({
       ...spec,
@@ -423,7 +501,9 @@ export class MacBridge {
     }
     const result = await running.result
     this.finish(id, result.timedOut || result.signal ? 'stopped' : 'done')
-    line(`ran: exit ${result.exitCode ?? result.signal}${result.timedOut ? ', timed out' : ''}${result.truncated ? ', output capped' : ''}`)
+    line(
+      `ran: exit ${result.exitCode ?? result.signal}${result.timedOut ? ', timed out' : ''}${result.truncated ? ', output capped' : ''}`
+    )
     return result
   }
 
@@ -486,24 +566,42 @@ async function readMacFile(real: string, maxBytes: number): Promise<MacReadFileR
 async function fetchMacFile(real: string): Promise<MacFetchFileWire> {
   const st = await stat(real)
   if (!st.isFile()) throw new Error(`not a file: ${real}`)
-  if (st.size > MAC_FETCH_MAX_BYTES) throw new Error(`too large to fetch: ${st.size} bytes (the limit is ${MAC_FETCH_MAX_BYTES})`)
+  if (st.size > MAC_FETCH_MAX_BYTES)
+    throw new Error(`too large to fetch: ${st.size} bytes (the limit is ${MAC_FETCH_MAX_BYTES})`)
   const data = await readFile(real)
-  return { name: basename(real), size: data.length, mtime: Math.round(st.mtimeMs), dataBase64: data.toString('base64') }
+  return {
+    name: basename(real),
+    size: data.length,
+    mtime: Math.round(st.mtimeMs),
+    dataBase64: data.toString('base64')
+  }
 }
 
 /** The Mac's own renderer's macBridge.* methods (all local). */
-export function handleMacBridge(req: ClientRequest, bridge: MacBridge): { handled: true; result: unknown } | { handled: false } {
+export function handleMacBridge(
+  req: ClientRequest,
+  bridge: MacBridge
+): { handled: true; result: unknown } | { handled: false } {
   switch (req.method) {
     case 'macBridge.pending':
       return { handled: true, result: bridge.pending() }
     case 'macBridge.decide':
-      return { handled: true, result: bridge.decide(req.params.id, req.params.allow, req.params.remember ?? false) }
+      return {
+        handled: true,
+        result: bridge.decide(req.params.id, req.params.allow, req.params.remember ?? false)
+      }
     case 'macBridge.policy.get':
       return { handled: true, result: bridge.hosts() }
     case 'macBridge.policy.set':
-      return { handled: true, result: bridge.setPolicy(req.params.environmentId, req.params.policy) }
+      return {
+        handled: true,
+        result: bridge.setPolicy(req.params.environmentId, req.params.policy)
+      }
     case 'macBridge.shared.set':
-      return { handled: true, result: bridge.setShared(req.params.environmentId, req.params.folders) }
+      return {
+        handled: true,
+        result: bridge.setShared(req.params.environmentId, req.params.folders)
+      }
     default:
       return { handled: false }
   }

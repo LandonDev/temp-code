@@ -64,11 +64,16 @@ export class PeerCalls {
   ) {}
 
   /** peer.register: the latest socket under an environment id wins. */
-  register(socket: PeerSocket, params: { from: string; offers: string[] }): { environmentId: string } {
+  register(
+    socket: PeerSocket,
+    params: { from: string; offers: string[] }
+  ): { environmentId: string } {
     const prior = this.registered.get(params.from)
     this.registered.set(params.from, { socket, offers: new Set(params.offers), at: Date.now() })
     if (prior?.socket.connection !== socket.connection)
-      this.log(`${params.from} registered (offers ${params.offers.join(',') || 'none'}, key ${socket.keyId ?? 'local'})`)
+      this.log(
+        `${params.from} registered (offers ${params.offers.join(',') || 'none'}, key ${socket.keyId ?? 'local'})`
+      )
     return { environmentId: this.environmentId }
   }
 
@@ -91,7 +96,9 @@ export class PeerCalls {
   }
 
   registeredIds(offer?: string): string[] {
-    return [...this.registered.entries()].filter(([, r]) => !offer || r.offers.has(offer)).map(([id]) => id)
+    return [...this.registered.entries()]
+      .filter(([, r]) => !offer || r.offers.has(offer))
+      .map(([id]) => id)
   }
 
   pendingCount(): number {
@@ -99,14 +106,24 @@ export class PeerCalls {
   }
 
   /** Ask a registered peer; rejects with PeerOfflineError when none, or on the deadline. */
-  call<T = unknown>(envId: string, method: MacMethod, params: Extract<MacBridgePush, { push: 'peer.call' }>['params'], deadlineMs: number): Promise<T> {
+  call<T = unknown>(
+    envId: string,
+    method: MacMethod,
+    params: Extract<MacBridgePush, { push: 'peer.call' }>['params'],
+    deadlineMs: number
+  ): Promise<T> {
     const reg = this.registered.get(envId)
     if (!reg) return Promise.reject(new PeerOfflineError(envId))
     const callId = `c${randomBytes(9).toString('base64url')}`
     return new Promise<T>((resolve, reject) => {
       const timer = setTimeout(() => {
         const call = this.calls.get(callId)
-        if (call) this.settle(callId, call, new Error(`the Mac did not answer ${method} within ${Math.round(deadlineMs / 1000)} s`))
+        if (call)
+          this.settle(
+            callId,
+            call,
+            new Error(`the Mac did not answer ${method} within ${Math.round(deadlineMs / 1000)} s`)
+          )
       }, deadlineMs)
       timer.unref()
       this.calls.set(callId, {
@@ -149,7 +166,11 @@ export class PeerCalls {
   ): { ok: true } {
     const call = this.own(connection, params.callId)
     if (!params.ok) {
-      this.settle(params.callId, call, new Error(params.error || `${call.method} failed on the Mac`))
+      this.settle(
+        params.callId,
+        call,
+        new Error(params.error || `${call.method} failed on the Mac`)
+      )
       return { ok: true }
     }
     if (params.chunks === undefined) {
@@ -157,7 +178,11 @@ export class PeerCalls {
       return { ok: true }
     }
     const parts = call.chunks.slice(0, params.chunks)
-    if (parts.length !== params.chunks || parts.some((p) => p === undefined) || call.chunks.length > params.chunks) {
+    if (
+      parts.length !== params.chunks ||
+      parts.some((p) => p === undefined) ||
+      call.chunks.length > params.chunks
+    ) {
       this.settle(params.callId, call, new Error(`${call.method}: the reply arrived incomplete`))
       return { ok: true }
     }
@@ -182,7 +207,10 @@ export function handlePeerRequest(
   socket: PeerSocket & { remote: boolean },
   req:
     | { method: 'peer.register'; params: { from: string; offers: string[] } }
-    | { method: 'peer.reply'; params: { callId: string; ok: boolean; result?: unknown; error?: string; chunks?: number } }
+    | {
+        method: 'peer.reply'
+        params: { callId: string; ok: boolean; result?: unknown; error?: string; chunks?: number }
+      }
     | { method: 'peer.chunk'; params: { callId: string; index: number; data: string } }
 ): unknown {
   if (!socket.remote) throw new Error(`forbidden: ${req.method} is for another host's main process`)
@@ -198,7 +226,11 @@ export function handlePeerRequest(
 
 // ── the Mac side: answering a call over PeerLink.request ─────────────
 
-export type LinkRequest = (method: string, params?: unknown, opts?: { timeoutMs?: number }) => Promise<unknown>
+export type LinkRequest = (
+  method: string,
+  params?: unknown,
+  opts?: { timeoutMs?: number }
+) => Promise<unknown>
 
 /** Send one call's outcome; a result whose JSON passes PEER_CHUNK_CHARS goes as chunks first. */
 export async function replyOverLink(
@@ -218,12 +250,20 @@ export async function replyOverLink(
   }
   const chunks = Math.ceil(json.length / chunkChars)
   if (chunks > PEER_MAX_CHUNKS) {
-    await request('peer.reply', { callId, ok: false, error: `the answer is too large to send (${json.length} characters)` })
+    await request('peer.reply', {
+      callId,
+      ok: false,
+      error: `the answer is too large to send (${json.length} characters)`
+    })
     return
   }
   // One frame at a time, each acknowledged: the socket never holds more than one chunk.
   for (let i = 0; i < chunks; i++)
-    await request('peer.chunk', { callId, index: i, data: json.slice(i * chunkChars, (i + 1) * chunkChars) }, { timeoutMs: 120_000 })
+    await request(
+      'peer.chunk',
+      { callId, index: i, data: json.slice(i * chunkChars, (i + 1) * chunkChars) },
+      { timeoutMs: 120_000 }
+    )
   await request('peer.reply', { callId, ok: true, chunks })
 }
 
@@ -244,13 +284,18 @@ export async function servePeerCall(
   const deadlineAt = Date.now() + Math.max(0, push.deadlineMs)
   let outcome: { ok: true; result: unknown } | { ok: false; error: string }
   try {
-    outcome = { ok: true, result: await handler(push.method, push.params, { from, callId: push.callId, deadlineAt }) }
+    outcome = {
+      ok: true,
+      result: await handler(push.method, push.params, { from, callId: push.callId, deadlineAt })
+    }
   } catch (err) {
     outcome = { ok: false, error: err instanceof Error ? err.message : String(err) }
   }
   try {
     await replyOverLink(request, push.callId, outcome)
   } catch (err) {
-    log(`${push.method} reply to ${from} not taken: ${err instanceof Error ? err.message : String(err)}`)
+    log(
+      `${push.method} reply to ${from} not taken: ${err instanceof Error ? err.message : String(err)}`
+    )
   }
 }

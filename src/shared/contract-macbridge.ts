@@ -53,7 +53,7 @@ export const MAC_TOOL_PARAMS = {
   path: 'Absolute path on the Mac, e.g. /Users/name/Documents/report.pdf (no ~).',
   maxBytes: 'Read at most this many bytes (default 262144, at most 8388608).',
   argv: 'The command and its arguments, run as given with no shell parsing, e.g. ["xcrun", "simctl", "list"].',
-  command: 'A shell command line instead of argv, read by the Mac\'s login shell.',
+  command: "A shell command line instead of argv, read by the Mac's login shell.",
   cwd: 'Absolute working directory on the Mac (default: the home directory).',
   timeoutMs: 'Kill the command after this many milliseconds (default 120000, at most 1800000).'
 } as const
@@ -91,7 +91,10 @@ export interface MacCallThread {
 }
 
 /** `peer.call` params for a mac.* method: the args plus the calling thread. */
-export type MacCallParams = { thread: MacCallThread; args: MacReadFileArgs | MacListDirArgs | MacFetchFileArgs | MacRunArgs }
+export type MacCallParams = {
+  thread: MacCallThread
+  args: MacReadFileArgs | MacListDirArgs | MacFetchFileArgs | MacRunArgs
+}
 
 export interface MacReadFileResult {
   path: string
@@ -188,7 +191,13 @@ export interface MacBridgeThreadState {
 }
 
 export type MacBridgePush =
-  | { push: 'peer.call'; callId: string; method: MacMethod; params: MacCallParams; deadlineMs: number }
+  | {
+      push: 'peer.call'
+      callId: string
+      method: MacMethod
+      params: MacCallParams
+      deadlineMs: number
+    }
   | { push: 'macBridge.request'; request: MacBridgeRequest }
   | { push: 'macBridge.resolved'; id: string; outcome: MacBridgeOutcome }
 
@@ -217,7 +226,11 @@ export const MacBridgeRequestSchemas = [
     'peer.chunk',
     z.object({
       callId: z.string().min(1).max(100),
-      index: z.number().int().min(0).max(PEER_MAX_CHUNKS - 1),
+      index: z
+        .number()
+        .int()
+        .min(0)
+        .max(PEER_MAX_CHUNKS - 1),
       data: z.string().max(PEER_CHUNK_CHARS)
     })
   ),
@@ -230,16 +243,32 @@ export const MacBridgeRequestSchemas = [
   /** → MacBridgeThreadState. */
   request('macBridge.thread.get', z.object({ sessionId: z.string().min(1).max(200) })),
   /** → MacBridgeThreadState. null turns it off. */
-  request('macBridge.thread.set', z.object({ sessionId: z.string().min(1).max(200), macPeer: envId.nullable() })),
+  request(
+    'macBridge.thread.set',
+    z.object({ sessionId: z.string().min(1).max(200), macPeer: envId.nullable() })
+  ),
   // ── the Mac's own renderer (local) ───────────────────────────────────
   /** → MacBridgeRequest[]. */
   request('macBridge.pending', z.object({}).optional()),
   /** allow false on a running command stops it. remember: the folder (read) or the exact command (run), for this thread. */
-  request('macBridge.decide', z.object({ id: z.string().min(1).max(100), allow: z.boolean(), remember: z.boolean().optional() })),
+  request(
+    'macBridge.decide',
+    z.object({
+      id: z.string().min(1).max(100),
+      allow: z.boolean(),
+      remember: z.boolean().optional()
+    })
+  ),
   /** → MacBridgeHostPolicy[], one per saved host. */
   request('macBridge.policy.get', z.object({}).optional()),
   /** → MacBridgeHostPolicy[]. */
-  request('macBridge.policy.set', z.object({ environmentId: envId, policy: MacBridgePolicySchema })),
+  request(
+    'macBridge.policy.set',
+    z.object({ environmentId: envId, policy: MacBridgePolicySchema })
+  ),
   /** → MacBridgeHostPolicy[]. Absolute dirs; never '/', never the home directory. */
-  request('macBridge.shared.set', z.object({ environmentId: envId, folders: z.array(pathArg).max(64) }))
+  request(
+    'macBridge.shared.set',
+    z.object({ environmentId: envId, folders: z.array(pathArg).max(64) })
+  )
 ] as const

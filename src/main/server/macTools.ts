@@ -3,7 +3,12 @@ import { existsSync } from 'node:fs'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { basename, extname, join } from 'node:path'
 import { z } from 'zod'
-import { createSdkMcpServer, tool, type McpSdkServerConfigWithInstance, type Options } from '@anthropic-ai/claude-agent-sdk'
+import {
+  createSdkMcpServer,
+  tool,
+  type McpSdkServerConfigWithInstance,
+  type Options
+} from '@anthropic-ai/claude-agent-sdk'
 import type { ClientRequest } from '@shared/contract'
 import {
   MAC_APPROVAL_WAIT_MS,
@@ -66,7 +71,10 @@ export class MacThreadTokens {
 }
 
 export interface MacToolsDeps {
-  store: { getSetting(key: string): string | null; setSetting(key: string, value: string | null): void }
+  store: {
+    getSetting(key: string): string | null
+    setSetting(key: string, value: string | null): void
+  }
   sessions: { get(id: string): SessionMeta | null | undefined }
   landing: LandingLookup
   dataDir: string
@@ -81,7 +89,11 @@ type MacArgs = Record<string, unknown>
 
 /** A file name the landing dir will take: the base name, no separators or control characters. */
 export function landingName(name: string): string {
-  const clean = basename(name).replace(/[\u0000-\u001f/\\]/g, '_').replace(/^\.+/, '_').slice(0, 200)
+  // eslint-disable-next-line no-control-regex -- control characters are exactly what a file name must not carry
+  const clean = basename(name)
+    .replace(/[\u0000-\u001f/\\]/g, '_')
+    .replace(/^\.+/, '_')
+    .slice(0, 200)
   return clean || 'file'
 }
 
@@ -132,30 +144,53 @@ export class MacTools {
 
   /** What the codex bridge's environment carries for a thread: the token, only while the bridge is on. */
   bridgeEnv(sessionId: string): Record<string, string> {
-    return this.enabled(sessionId) ? { TEMP_CODE_MAC_TOKEN: this.deps.tokens.tokenFor(sessionId) } : {}
+    return this.enabled(sessionId)
+      ? { TEMP_CODE_MAC_TOKEN: this.deps.tokens.tokenFor(sessionId) }
+      : {}
   }
 
   /** One mac.* call from a thread: the token, the thread's switch, the Mac's link, then the Mac decides. */
-  async call(sessionId: string, token: unknown, method: MacMethod, args: MacArgs): Promise<unknown> {
-    if (!this.deps.tokens.check(sessionId, token)) throw new Error(`refused: ${method} needs this thread's own token`)
+  async call(
+    sessionId: string,
+    token: unknown,
+    method: MacMethod,
+    args: MacArgs
+  ): Promise<unknown> {
+    if (!this.deps.tokens.check(sessionId, token))
+      throw new Error(`refused: ${method} needs this thread's own token`)
     const session = this.deps.sessions.get(sessionId)
     if (!session) throw new Error(`unknown session: ${sessionId}`)
     const { macPeer } = this.macPeerOf(sessionId)
-    if (!macPeer) throw new Error('the Mac bridge is off for this thread (turn it on from the thread menu)')
-    if (!this.deps.calls.online(macPeer, MAC_BRIDGE_OFFER)) throw new Error(`Mac offline: ${macPeer} has no live link to this host`)
-    if (method === 'mac.run' && !args.argv === !args.command) throw new Error('mac.run takes argv or command, one of them')
-    const timeoutMs = method === 'mac.run' ? Math.min(Number(args.timeoutMs) || MAC_RUN_DEFAULT_TIMEOUT_MS, MAC_RUN_MAX_TIMEOUT_MS) : 0
+    if (!macPeer)
+      throw new Error('the Mac bridge is off for this thread (turn it on from the thread menu)')
+    if (!this.deps.calls.online(macPeer, MAC_BRIDGE_OFFER))
+      throw new Error(`Mac offline: ${macPeer} has no live link to this host`)
+    if (method === 'mac.run' && !args.argv === !args.command)
+      throw new Error('mac.run takes argv or command, one of them')
+    const timeoutMs =
+      method === 'mac.run'
+        ? Math.min(Number(args.timeoutMs) || MAC_RUN_DEFAULT_TIMEOUT_MS, MAC_RUN_MAX_TIMEOUT_MS)
+        : 0
     const deadlineMs = MAC_APPROVAL_WAIT_MS + timeoutMs + DEADLINE_SLACK_MS
-    const result = await this.deps.calls.call(macPeer, method, { thread: { id: session.id, title: session.title }, args }, deadlineMs)
+    const result = await this.deps.calls.call(
+      macPeer,
+      method,
+      { thread: { id: session.id, title: session.title }, args },
+      deadlineMs
+    )
     if (method !== 'mac.fetchFile') return result
     return this.land(session, result as MacFetchFileWire)
   }
 
   /** Write a fetched file into the thread's landing dir; a name already there gets a suffix. */
-  private async land(session: SessionMeta, wire: MacFetchFileWire): Promise<MacFetchFileResult & { mtime: number }> {
+  private async land(
+    session: SessionMeta,
+    wire: MacFetchFileWire
+  ): Promise<MacFetchFileResult & { mtime: number }> {
     if (!wire || typeof wire.dataBase64 !== 'string') throw new Error('the Mac sent no file')
     const data = Buffer.from(wire.dataBase64, 'base64')
-    if (data.length !== wire.size || data.length > MAC_FETCH_MAX_BYTES) throw new Error('the file arrived damaged')
+    if (data.length !== wire.size || data.length > MAC_FETCH_MAX_BYTES)
+      throw new Error('the file arrived damaged')
     const dir = macBridgeLandingDir(session, this.deps.landing, this.deps.dataDir)
     await mkdir(dir, { recursive: true })
     const name = landingName(wire.name)
@@ -168,7 +203,9 @@ export class MacTools {
   }
 
   /** The contract's mac.* and macBridge.thread.* methods on this host. */
-  async handle(req: ClientRequest): Promise<{ handled: true; result: unknown } | { handled: false }> {
+  async handle(
+    req: ClientRequest
+  ): Promise<{ handled: true; result: unknown } | { handled: false }> {
     switch (req.method) {
       case 'mac.readFile':
       case 'mac.listDir':
@@ -188,22 +225,34 @@ export class MacTools {
 }
 
 /** claude.ts reaches the live instance through here (index.ts sets it). */
-export const macToolsHooks: { current: MacTools | null; tokens: MacThreadTokens | null } = { current: null, tokens: null }
+export const macToolsHooks: { current: MacTools | null; tokens: MacThreadTokens | null } = {
+  current: null,
+  tokens: null
+}
 
-const text = (t: string): { content: [{ type: 'text'; text: string }] } => ({ content: [{ type: 'text', text: t }] })
+const text = (t: string): { content: [{ type: 'text'; text: string }] } => ({
+  content: [{ type: 'text', text: t }]
+})
 
 const callTool = (session: SessionMeta, method: MacMethod) => async (args: MacArgs) => {
   const tools = macToolsHooks.current
   const tokens = macToolsHooks.tokens
   if (!tools || !tokens) return { ...text('error: the Mac bridge is not ready'), isError: true }
   try {
-    return text(JSON.stringify(await tools.call(session.id, tokens.tokenFor(session.id), method, args)))
+    return text(
+      JSON.stringify(await tools.call(session.id, tokens.tokenFor(session.id), method, args))
+    )
   } catch (err) {
     return { ...text(`error: ${err instanceof Error ? err.message : String(err)}`), isError: true }
   }
 }
 
-export const MAC_TOOL_NAMES = ['mac_read_file', 'mac_list_dir', 'mac_fetch_file', 'mac_run'] as const
+export const MAC_TOOL_NAMES = [
+  'mac_read_file',
+  'mac_list_dir',
+  'mac_fetch_file',
+  'mac_run'
+] as const
 export const MAC_TOOLS = MAC_TOOL_NAMES.map((n) => `mcp__mac__${n}`)
 
 /** The Mac's four tools for one Claude thread (in-process; the token never leaves this process). */
@@ -213,9 +262,27 @@ export function macToolsMcp(session: SessionMeta): McpSdkServerConfigWithInstanc
     name: 'mac',
     version: '0.1.0',
     tools: [
-      tool('mac_read_file', MAC_TOOL_DESCRIPTIONS.mac_read_file, { path: z.string().describe(p.path), maxBytes: z.number().int().min(1).max(MAC_READ_MAX_BYTES).optional().describe(p.maxBytes) }, callTool(session, 'mac.readFile')),
-      tool('mac_list_dir', MAC_TOOL_DESCRIPTIONS.mac_list_dir, { path: z.string().describe(p.path) }, callTool(session, 'mac.listDir')),
-      tool('mac_fetch_file', MAC_TOOL_DESCRIPTIONS.mac_fetch_file, { path: z.string().describe(p.path) }, callTool(session, 'mac.fetchFile')),
+      tool(
+        'mac_read_file',
+        MAC_TOOL_DESCRIPTIONS.mac_read_file,
+        {
+          path: z.string().describe(p.path),
+          maxBytes: z.number().int().min(1).max(MAC_READ_MAX_BYTES).optional().describe(p.maxBytes)
+        },
+        callTool(session, 'mac.readFile')
+      ),
+      tool(
+        'mac_list_dir',
+        MAC_TOOL_DESCRIPTIONS.mac_list_dir,
+        { path: z.string().describe(p.path) },
+        callTool(session, 'mac.listDir')
+      ),
+      tool(
+        'mac_fetch_file',
+        MAC_TOOL_DESCRIPTIONS.mac_fetch_file,
+        { path: z.string().describe(p.path) },
+        callTool(session, 'mac.fetchFile')
+      ),
       tool(
         'mac_run',
         MAC_TOOL_DESCRIPTIONS.mac_run,
@@ -223,7 +290,13 @@ export function macToolsMcp(session: SessionMeta): McpSdkServerConfigWithInstanc
           argv: z.array(z.string()).min(1).optional().describe(p.argv),
           command: z.string().optional().describe(p.command),
           cwd: z.string().optional().describe(p.cwd),
-          timeoutMs: z.number().int().min(1_000).max(MAC_RUN_MAX_TIMEOUT_MS).optional().describe(p.timeoutMs)
+          timeoutMs: z
+            .number()
+            .int()
+            .min(1_000)
+            .max(MAC_RUN_MAX_TIMEOUT_MS)
+            .optional()
+            .describe(p.timeoutMs)
         },
         callTool(session, 'mac.run')
       )
@@ -252,7 +325,11 @@ export interface RebootRegistry {
  * way a permission change does (the next send resumes it), but never under a
  * running turn: a live thread is dropped when it settles.
  */
-export function rebootWhenSettled(registry: RebootRegistry, sessionId: string, live: (status: SessionMeta['status']) => boolean): void {
+export function rebootWhenSettled(
+  registry: RebootRegistry,
+  sessionId: string,
+  live: (status: SessionMeta['status']) => boolean
+): void {
   const drop = (): void => {
     const meta = registry.get(sessionId)
     if (meta) void registry.setPermission(sessionId, meta.permission)

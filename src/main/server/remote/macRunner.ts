@@ -28,7 +28,10 @@ export function scrubbedEnv(src: NodeJS.ProcessEnv = process.env): Record<string
 }
 
 /** The login shell's argv for a command: argv runs as given ("$@", no word splitting), a command string as the shell reads it. */
-export function shellArgv(spec: { argv?: string[]; command?: string }, shell: string = loginShell()): string[] {
+export function shellArgv(
+  spec: { argv?: string[]; command?: string },
+  shell: string = loginShell()
+): string[] {
   if (spec.argv?.length) return [shell, '-lc', 'exec "$@"', 'mac-bridge', ...spec.argv]
   if (spec.command) return [shell, '-lc', spec.command]
   throw new Error('mac.run needs argv or command')
@@ -54,7 +57,12 @@ export function runMacCommand(opts: {
   const [file, ...args] = shellArgv(opts, opts.shell)
   const startedAt = Date.now()
   const child = trackChild(
-    spawn(file, args, { cwd: opts.cwd, env: opts.env ?? scrubbedEnv(), detached: true, stdio: ['ignore', 'pipe', 'pipe'] })
+    spawn(file, args, {
+      cwd: opts.cwd,
+      env: opts.env ?? scrubbedEnv(),
+      detached: true,
+      stdio: ['ignore', 'pipe', 'pipe']
+    })
   )
   const out: Buffer[] = []
   const err: Buffer[] = []
