@@ -1,6 +1,7 @@
 #!/bin/sh
-# Publish the release at HEAD: build a signed + notarized arm64 zip and dmg,
-# push them to the public repo's GitHub releases, and tag the source
+# Publish the release at HEAD: build a signed + notarized arm64 zip and dmg
+# plus the box's temp-code-out-1.0.N.tar.gz (the same out/, no native
+# parts), push them to the public repo's GitHub releases, and tag the source
 # `v1.0.N`. The installed app (electron-updater, GitHub provider) offers it
 # on its next check: at launch, every 30 minutes, or when a window comes
 # forward after 15 idle minutes.
@@ -20,6 +21,12 @@
 set -e
 cd "$(dirname "$0")/.."
 export PATH="$HOME/.bun/bin:/opt/homebrew/bin:$PATH"
+
+# The dry run of the box packing step alone (tar + sha256 from the `out/`
+# already built, nothing signed or uploaded): --pack-only [dist-dir].
+if [ "${1:-}" = --pack-only ]; then
+  exec scripts/release-pack-out.sh --dist "${2:-dist}"
+fi
 
 REPO="LandonDev/temp-code"
 PROFILE="${APPLE_KEYCHAIN_PROFILE:-aliax}"
@@ -78,6 +85,10 @@ bunx electron-builder --mac \
   -c.extraMetadata.tempcodeBuild.sha="$(git rev-parse HEAD)" \
   -c.mac.identity="${IDENTITY#Developer ID Application: }" \
   --publish always
+# The same out/ for the box: temp-code-out-1.0.N.tar.gz and its sha256,
+# which box-update v1.0.N downloads instead of cloning and building
+# (scripts/release-pack-out.sh; docs/box.md "Updating").
+scripts/release-pack-out.sh --dist dist
 
 # Before anything reaches the feed: check the zip the way Squirrel's ShipIt
 # will. ShipIt copies the update out of the zip and validates the copy against
@@ -134,6 +145,8 @@ gh release upload "v$VERSION" --repo "$REPO" --clobber \
   "dist/TempCode-$VERSION-arm64.dmg" \
   "dist/TempCode-$VERSION-arm64.dmg.blockmap" \
   "dist/TempCode-arm64.dmg" \
+  "dist/temp-code-out-$VERSION.tar.gz" \
+  "dist/temp-code-out-$VERSION.tar.gz.sha256" \
   dist/latest-mac.yml
 
 # Title and notes from the commits since the last published release; the

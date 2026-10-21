@@ -149,7 +149,7 @@ if __name__ == '__main__':
         tools = agents / 'tools'
         tools.mkdir(parents=True)
         scripts = pathlib.Path(__file__).resolve().parent
-        for name in ('box-update.sh', 'import-history.sh', 'sqlite-snapshot.sh', 'restore-drill.sh', 'history-map.json'):
+        for name in ('box-update.sh', 'box-update-lib.sh', 'import-history.sh', 'sqlite-snapshot.sh', 'restore-drill.sh', 'history-map.json'):
             shutil.copy2(scripts / name, tools / name)
         build = agents / 'build'
         (build / 'src/main/server').mkdir(parents=True)
@@ -170,9 +170,13 @@ exec /usr/bin/node "$@"
             'git': '''#!/bin/bash
 set -eu
 if [[ $1 == clone ]]; then
-  dest=${@: -1}; mkdir -p "$dest/.git" "$dest/src/shared"
+  dest=${@: -1}; mkdir -p "$dest/.git" "$dest/src/shared" "$dest/out/main" "$dest/node_modules/electron/dist"
   echo '{"version":"1.0.999"}' > "$dest/package.json"
+  echo '{"n":999}' > "$dest/release.json"
   echo 'export const CONTRACT_VERSION = 1' > "$dest/src/shared/capabilities.ts"
+  # What the (mocked) build unit would leave: the entry bundle and Electron.
+  : > "$dest/out/main/boot.js"
+  printf '#!/bin/sh\n' > "$dest/node_modules/electron/dist/electron"; chmod +x "$dest/node_modules/electron/dist/electron"
 elif [[ $* == *fetch* ]]; then
   touch /srv/agents/update-held
   while [[ -f /srv/agents/pause-update ]]; do sleep .05; done

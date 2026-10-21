@@ -87,11 +87,16 @@ Two separate steps, on purpose.
    release-publish.sh, the same shape as Aliax's release): clean tree on
    master, signs with the Developer ID Application identity in the login
    Keychain, notarizes through the `aliax` notarytool Keychain profile,
-   uploads the arm64 zip + dmg + latest-mac.yml to the GitHub release
-   `v1.0.N`, writes the notes from the commits since the last `v1.0.*`
-   tag, verifies the feed, and pushes the `v1.0.N` tag. It refuses a
-   version the feed already serves. Apple silicon only; Intel is out of
-   scope for now.
+   uploads the arm64 zip + dmg + latest-mac.yml and the box's
+   `temp-code-out-1.0.N.tar.gz` + `.sha256` (scripts/release-pack-out.sh:
+   the same `out/`, package.json with `tempcodeBuild.sha`, release.json,
+   bun.lock, scripts/box, a build-manifest.json; `release-publish.sh
+   --pack-only [dir]` is the dry run, tar + sha and nothing else) to the
+   GitHub release `v1.0.N`, writes the notes from the commits since the
+   last `v1.0.*` tag, verifies the feed, and pushes the `v1.0.N` tag. It
+   refuses a version the feed already serves. Apple silicon only; Intel is
+   out of scope for now. The box's `box-update v1.0.N` lays that tarball
+   in instead of building (docs/box.md "Build once").
 
 3. **Both are buttons in the app too, still pressed by the user** (Settings →
    Remote access → Deploy and publish; src/main/server/hostJobs.ts,
@@ -310,9 +315,15 @@ routed to (aliax-core's `forward`). Two listeners:
   as `temp-code.service` (agents user, agents.slice, Xvfb, a private D-Bus),
   data in `/srv/agents/temp-code-data`, env in `/etc/temp-code.env`; the
   tunnel maps `tempcode.landonhale.com` to its 7677. Deploy a ref with
-  `ssh box 'box-update master'` (build → trial → snapshot → commit, with
-  rollback on failure); stage 85 installs the launcher without restarting. Proof from the Mac is
-  `bun scripts/e2e-box-remote.ts`.
+  `ssh box 'box-update master'` (clone + build → trial → snapshot → commit,
+  with rollback on failure) or `ssh box 'box-update v1.0.N'` (the release's
+  prebuilt `temp-code-out-1.0.N.tar.gz`, verified against its sha256, no
+  build); on both, node_modules are hardlinked from the current build when
+  bun.lock is unchanged and installed otherwise (`BOX_UPDATE_FRESH_MODULES=1`
+  forces the install); the build's `build-manifest.json` and the deploy log
+  say which path ran (scripts/box/box-update-lib.sh, docs/box.md "Build
+  once"); stage 85 installs the launcher and its library without
+  restarting. Proof from the Mac is `bun scripts/e2e-box-remote.ts`.
 - Deploy drift: every host's hello (and `/api/hello` for a known caller)
   carries `build` (release.json `n`, `1.0.N`, the commit, the platform;
   src/main/buildInfo.ts: the box's `.git/HEAD`, a published Mac build's

@@ -19,6 +19,7 @@
     "start": "electron-vite preview",
     "release": "bun scripts/release.ts",
     "release:publish": "./scripts/release-publish.sh",
+    "release:pack-out": "./scripts/release-pack-out.sh",
     "build:app": "electron-vite build && electron-builder --dir",
     "dev": "electron-vite dev",
     "dev:prod": "env -u ELECTRON_RUN_AS_NODE TEMP_CODE_USER_DATA=\"$HOME/Library/Application Support/temp-code\" TEMP_CODE_DEBUG_PORT=9220 electron-vite dev",

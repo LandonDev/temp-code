@@ -18,14 +18,21 @@ mkdir -p "$state"
 exec 8>/run/lock/temp-code-update.lock
 flock -n 8 || { echo 'ERROR: a box update or history import holds the maintenance lock; try again after it finishes' >&2; exit 1; }
 as_agents() { runuser -u agents -- env HOME="$home" PATH="$path" "$@"; }
+# The install half (asset fetch, lockfile rule, manifest) is box-update-lib.sh,
+# installed by stage 85 beside the probe; the copy beside this script serves a
+# rehearsal run from the repo. Its overrides pass through to the agents calls.
+lib=${BOX_UPDATE_LIB:-/usr/local/lib/temp-code/box-update-lib.sh}
+[[ -f $lib ]] || lib=$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/box-update-lib.sh
+[[ -f $lib ]] || { echo 'ERROR: box-update-lib.sh is missing; reapply stage 85' >&2; exit 1; }
+source "$lib"
+export BOX_UPDATE_ASSET_BASE BOX_UPDATE_FRESH_MODULES=${BOX_UPDATE_FRESH_MODULES:-0}
+lib_as_agents() { as_agents bash -c 'source "$0" && "$@"' "$lib" "$@"; }
 link_to() {
   rm -f "$builds/.$1.next"
   ln -s "$2" "$builds/.$1.next"
   mv -Tf "$builds/.$1.next" "$builds/$1"
 }
-expected() {
-  as_agents node -e 'const fs=require("fs"),p=process.argv[1]; const v=JSON.parse(fs.readFileSync(p+"/package.json")).version; const c=fs.readFileSync(p+"/src/shared/capabilities.ts","utf8").match(/export const CONTRACT_VERSION = (\d+)/); if(!c)throw Error("no contract version"); console.log(v+" "+c[1])' "$1"
-}
+expected() { lib_as_agents expected_of "$1"; }
 probe() {
   local build=$1 user_data=$2 port=$3 version contract
   read -r version contract < <(expected "$build")
@@ -104,33 +111,78 @@ else
 fi
 old_previous=
 if [[ -L $builds/previous ]]; then old_previous=$(readlink -f "$builds/previous"); fi
-# Keep all clone, package lifecycle, compilation and metadata reads unprivileged.
+# Keep all download, clone, package lifecycle, compilation and metadata reads unprivileged.
 candidate=$(mktemp -d "$builds/build-$(date -u +%Y%m%dT%H%M%S)-XXXXXX")
 chown agents:agents "$candidate"
 chmod 750 "$candidate"
-as_agents git clone --quiet --no-checkout "$repo" "$candidate"
-# A Mac may have green master commits not yet published to GitHub. A root-
-# supplied bundle transfers that exact ref without pushing a branch or keys.
-source=origin
-if [[ -n ${BOX_UPDATE_BUNDLE:-} ]]; then
-  [[ -f $BOX_UPDATE_BUNDLE && $(stat -c %U "$BOX_UPDATE_BUNDLE") == root ]] || { echo 'ERROR: source bundle must be root-owned' >&2; exit 1; }
-  source=$BOX_UPDATE_BUNDLE
+# A published v1.0.N carries the out/ the Mac built (temp-code-out-1.0.N.tar.gz,
+# scripts/release-pack-out.sh): lay that in, verified against its sha256, and
+# build nothing. A release from before that asset existed, and master, are
+# cloned and built from source as before.
+source_kind=source
+if [[ $ref =~ ^v1\.0\.[0-9]+$ ]]; then
+  version=${ref#v}
+  tarball=$(lib_as_agents fetch_asset "$version" "$candidate/.asset") && fetched=0 || fetched=$?
+  if ((fetched == 0)); then
+    source_kind=asset
+    sha=$(lib_as_agents unpack_asset "$tarball" "$candidate" "$version")
+    as_agents rm -rf -- "$candidate/.asset"
+    echo "SOURCE: release asset $(basename "$tarball") (sha256 verified) $sha"
+  elif ((fetched == 3)); then
+    echo "SOURCE: release $ref carries no temp-code-out asset; building from a clone"
+  else
+    echo "ERROR: could not fetch the release asset for $ref (exit $fetched)" >&2; exit 1
+  fi
 fi
-as_agents git -C "$candidate" fetch --quiet "$source" "$ref"
-sha=$(as_agents git -C "$candidate" rev-parse --verify 'FETCH_HEAD^{commit}')
-as_agents git -C "$candidate" -c advice.detachedHead=false checkout --quiet --detach "$sha"
+if [[ $source_kind == source ]]; then
+  as_agents git clone --quiet --no-checkout "$repo" "$candidate"
+  # A Mac may have green master commits not yet published to GitHub. A root-
+  # supplied bundle transfers that exact ref without pushing a branch or keys.
+  source=origin
+  if [[ -n ${BOX_UPDATE_BUNDLE:-} ]]; then
+    [[ -f $BOX_UPDATE_BUNDLE && $(stat -c %U "$BOX_UPDATE_BUNDLE") == root ]] || { echo 'ERROR: source bundle must be root-owned' >&2; exit 1; }
+    source=$BOX_UPDATE_BUNDLE
+  fi
+  as_agents git -C "$candidate" fetch --quiet "$source" "$ref"
+  sha=$(as_agents git -C "$candidate" rev-parse --verify 'FETCH_HEAD^{commit}')
+  as_agents git -C "$candidate" -c advice.detachedHead=false checkout --quiet --detach "$sha"
+  echo "SOURCE: clone of $ref at $sha"
+fi
 release="$builds/$sha-$(basename "$candidate" | cut -d- -f2-)"
 mv "$candidate" "$release"; candidate=$release
+# node_modules: the current build's tree, hardlinked, when bun.lock is the
+# same (the lockfile pins every package and Electron, and the native modules
+# were rebuilt against that Electron); a fresh install otherwise, or with
+# BOX_UPDATE_FRESH_MODULES=1.
+read -r modules reason < <(lib_as_agents modules_plan "$candidate" "$old")
+modules_from=
+if [[ $modules == reuse ]]; then
+  lib_as_agents link_modules "$old" "$candidate"
+  modules_from=$(basename "$old")
+  echo "MODULES: reused from $modules_from (bun.lock unchanged, ${reason:0:12})"
+else
+  echo "MODULES: installing ($reason)"
+fi
 # A failed build never touches current or the live unit.
-echo "BUILD: $ref $sha"
-systemd-run --quiet --wait --pipe --collect --unit="temp-code-build-$$" \
-  --property=User=agents --property=Group=agents --property=Slice=agents.slice \
-  --property="WorkingDirectory=$candidate" --setenv="HOME=$home" --setenv="PATH=$path" \
-  /bin/bash -c 'set -euo pipefail
-    bun install --frozen-lockfile
-    [[ -x node_modules/electron/dist/electron ]] || node node_modules/electron/install.js
-    node_modules/.bin/electron-builder install-app-deps
-    node_modules/.bin/electron-vite build'
+build=$(build_script "$source_kind" "$modules")
+if [[ -n $build ]]; then
+  echo "BUILD: $ref $sha ($source_kind, modules $modules)"
+  systemd-run --quiet --wait --pipe --collect --unit="temp-code-build-$$" \
+    --property=User=agents --property=Group=agents --property=Slice=agents.slice \
+    --property="WorkingDirectory=$candidate" --setenv="HOME=$home" --setenv="PATH=$path" \
+    /bin/bash -c "$build"
+else
+  echo "BUILD: skipped; $ref $sha is prebuilt and its modules are reused"
+fi
+[[ -f $candidate/out/main/boot.js && -x $candidate/node_modules/electron/dist/electron ]] ||
+  { echo 'ERROR: the candidate has no out/main/boot.js or no Electron binary' >&2; exit 1; }
+# The build's manifest: what it is and how it got here (the deploy-drift mark
+# and an operator read the release number and the path from it).
+read -r built_version built_contract < <(expected "$candidate")
+lib_as_agents write_manifest "$candidate" "version=$built_version" "contract=json:$built_contract" "sha=$sha" \
+  "deploy.ref=$ref" "deploy.source=$source_kind" "deploy.nodeModules=$([[ $modules == reuse ]] && echo reused || echo installed)" \
+  "deploy.modulesFrom=$modules_from" "deploy.lockfileSha256=$(lib_as_agents lockfile_digest "$candidate")" \
+  "deploy.at=$(date -u +%FT%TZ)"
 # Scratch HOME prevents a trial from seeing CLI accounts or the live shim.
 scratch=$(mktemp -d /srv/agents/.temp-code-trial-XXXXXX)
 chown agents:agents "$scratch"
