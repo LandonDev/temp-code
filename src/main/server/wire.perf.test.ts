@@ -277,7 +277,7 @@ describe('wire budgets (remote profile)', () => {
     expect(encodedBytes(frame)).toBeLessThanOrEqual(SHELL_PAGE_BYTES + 4 * KIB)
   })
 
-  it('a fleet burst of 100 ms leaves as one frame per kind, smaller than the singular frames', () => {
+  it('a fleet burst inside one window leaves as each lane’s leading push plus one frame per kind, smaller than the singular frames', () => {
     const pushes: ServerPush[] = []
     const working = registry.list({ archived: false }).filter((s) => s.parentId === ROOT && s.status !== 'done')
     for (const s of working) {
@@ -297,6 +297,7 @@ describe('wire budgets (remote profile)', () => {
     const c = new PushCoalescer((f) => out.push(f), 100)
     for (const p of pushes) c.push(p)
     c.flush()
+    c.dispose()
     const remoteBytes = out.reduce((n, p) => n + encodedBytes(p), 0)
     record({
       scenario: `fleet burst (${working.length} agents, 100 ms)`,
@@ -306,8 +307,11 @@ describe('wire budgets (remote profile)', () => {
       budget: null,
       rows: `${pushes.length} pushes → ${out.length} frames`
     })
-    expect(out.filter((f) => f.push === 'sessions')).toHaveLength(1)
-    expect(out.filter((f) => f.push === 'events')).toHaveLength(working.length)
+    // The first row and the first meta of a quiet period leave at once
+    // (the leading edge); the rest of the burst waits for its window and
+    // leaves as one meta frame and one events frame per agent.
+    expect(out.filter((f) => f.push === 'sessions')).toHaveLength(2)
+    expect(out.filter((f) => f.push === 'events')).toHaveLength(working.length + 1)
     expect(out.length).toBeLessThan(pushes.length / 3)
     expect(remoteBytes).toBeLessThan(localBytes)
   })
