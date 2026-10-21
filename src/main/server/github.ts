@@ -250,6 +250,9 @@ let ghBinaryPromise: Promise<string | null> | null = null
 
 export function resolveGhBinary(): Promise<string | null> {
   ghBinaryPromise ??= (async () => {
+    // A proof's stand-in for gh (scripts/ios-client-test-server.ts); never set in the app.
+    const override = process.env.TEMP_CODE_GH_BIN
+    if (override && (await isExecutable(override))) return override
     const existing = await resolveBinary('gh')
     if (existing) return existing
     for (const dir of (await ghSearchPath()).split(':')) {
