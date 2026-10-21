@@ -8,30 +8,37 @@ enum GitHost: String {
 }
 
 /// The desktop's host marks (hugeicons GithubIcon and GitlabIcon, stroked
-/// at 1.5 in a 24 pt box), drawn as paths so they scale with the row.
+/// at 1.5 in a 24 pt box), drawn as paths so they scale with the row. The
+/// stroke follows the text beside it: 1.5 beside regular, 2 beside semibold.
 struct HostMark: View {
     let host: GitHost
+    var weight: Font.Weight = .regular
+
+    private var lineWidth: CGFloat {
+        weight == .semibold || weight == .bold || weight == .heavy || weight == .black ? 2 : 1.5
+    }
 
     var body: some View {
         switch host {
         case .github:
-            StrokedPaths(paths: [
+            StrokedPaths(lineWidth: lineWidth, paths: [
                 "M10 20.5675C6.57143 21.7248 3.71429 20.5675 2 17",
                 "M10 22V18.7579C10 18.1596 10.1839 17.6396 10.4804 17.1699C10.6838 16.8476 10.5445 16.3904 10.1771 16.2894C7.13394 15.4528 5 14.1077 5 9.64606C5 8.48611 5.38005 7.39556 6.04811 6.4464C6.21437 6.21018 6.29749 6.09208 6.31748 5.9851C6.33746 5.87813 6.30272 5.73852 6.23322 5.45932C5.95038 4.32292 5.96871 3.11619 6.39322 2.02823C6.39322 2.02823 7.27042 1.74242 9.26698 2.98969C9.72282 3.27447 9.95075 3.41686 10.1515 3.44871C10.3522 3.48056 10.6206 3.41384 11.1573 3.28041C11.8913 3.09795 12.6476 3 13.5 3C14.3524 3 15.1087 3.09795 15.8427 3.28041C16.3794 3.41384 16.6478 3.48056 16.8485 3.44871C17.0493 3.41686 17.2772 3.27447 17.733 2.98969C19.7296 1.74242 20.6068 2.02823 20.6068 2.02823C21.0313 3.11619 21.0496 4.32292 20.7668 5.45932C20.6973 5.73852 20.6625 5.87813 20.6825 5.9851C20.7025 6.09207 20.7856 6.21019 20.9519 6.4464C21.6199 7.39556 22 8.48611 22 9.64606C22 14.1077 19.8661 15.4528 16.8229 16.2894C16.4555 16.3904 16.3162 16.8476 16.5196 17.1699C16.8161 17.6396 17 18.1596 17 18.7579V22"
             ])
         case .gitlab:
-            StrokedPaths(paths: [
+            StrokedPaths(lineWidth: lineWidth, paths: [
                 "M21.7976 13.0838C21.9702 13.7157 22.0566 14.0317 21.9594 14.3228C21.8621 14.6139 21.6031 14.815 21.0851 15.2172L13.2468 21.3025C12.6478 21.7675 12.3484 22 12 22C11.6516 22 11.3522 21.7675 10.7532 21.3025L2.91487 15.2172C2.39687 14.815 2.13787 14.6139 2.04065 14.3228C1.94343 14.0317 2.02976 13.7157 2.20243 13.0838L5.23081 2L8.08792 8.65441C8.34375 9.25025 8.47166 9.54818 8.72598 9.71557C8.98031 9.88296 9.30503 9.88296 9.95448 9.88296H14.0455C14.695 9.88296 15.0197 9.88296 15.274 9.71557C15.5283 9.54818 15.6563 9.25025 15.9121 8.65441L18.7692 2L21.7976 13.0838Z"
             ])
         case .bitbucket:
             Image(systemName: "bucket")
-                .font(.subheadline)
+                .font(.subheadline.weight(weight))
         }
     }
 }
 
 /// SVG path strings stroked in a 24-unit box, scaled to the frame.
 private nonisolated struct StrokedPaths: Shape {
+    let lineWidth: CGFloat
     let paths: [String]
 
     func path(in rect: CGRect) -> Path {
@@ -40,7 +47,7 @@ private nonisolated struct StrokedPaths: Shape {
         for d in paths {
             out.addPath(SVGPath.parse(d).applying(CGAffineTransform(scaleX: scale, y: scale)))
         }
-        return out.strokedPath(StrokeStyle(lineWidth: 1.5 * scale, lineCap: .round, lineJoin: .round))
+        return out.strokedPath(StrokeStyle(lineWidth: lineWidth * scale, lineCap: .round, lineJoin: .round))
     }
 }
 
