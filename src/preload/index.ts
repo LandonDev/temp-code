@@ -4,6 +4,7 @@ import { electronAPI } from '@electron-toolkit/preload'
 // logo path into a URL without a round trip.
 import { logoAssetUrl } from '../shared/assets'
 import { aliaxApi } from './aliax'
+import type { EditorChoice, EditorConfig, EditorId, EditorTarget } from '../shared/editor'
 
 type DialogKind = 'info' | 'warning' | 'error'
 
@@ -99,6 +100,14 @@ const api = {
   pickDirectory: (defaultPath?: string): Promise<string | null> =>
     ipcRenderer.invoke('pick-directory', defaultPath),
   revealInFinder: (path: string): Promise<void> => ipcRenderer.invoke('reveal-in-finder', path),
+  /** The user's editor (src/main/editorLaunch.ts): IDEA, VS Code or Xcode on this machine. */
+  editor: {
+    /** Null where no editor can run (a box with no display). */
+    config: (): Promise<EditorConfig | null> => ipcRenderer.invoke('editor-config'),
+    setChoice: (choice: EditorChoice): Promise<void> => ipcRenderer.invoke('editor-set', choice),
+    /** Resolves to the editor used; rejects when none is installed. */
+    open: (target: EditorTarget): Promise<{ editor: EditorId }> => ipcRenderer.invoke('editor-open', target)
+  },
   /** Real disk path of a dropped File (File.path is gone in Electron ≥32). */
   getPathForFile: (file: File): string => webUtils.getPathForFile(file),
 

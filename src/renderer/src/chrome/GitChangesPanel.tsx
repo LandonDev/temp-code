@@ -1,4 +1,6 @@
 import { registry } from "../lib/connection";
+import { useEditorConfig } from "../lib/editorConfig";
+import { editorLabelFor, openInEditor } from "../lib/openInEditor";
 import { environmentOfCwd } from "../lib/tcserver/projects";
 import { openUrl } from "../lib/native";
 import {
@@ -50,6 +52,7 @@ import { invalidateWatchedFiles } from "../lib/fileWatch";
 import { MOD } from "../lib/platform";
 import { refreshGitSnapshot, useGitIndex } from "../lib/gitIndexStore";
 import { useLockOverscroll } from "../hooks/useLockOverscroll";
+import type { OpenFileFn } from "../lib/search";
 
 let stagedOpen = true;
 let changesOpen = true;
@@ -60,7 +63,7 @@ type Props = {
   enabled: boolean;
   textHarness?: HarnessId;
   selectedPath?: string;
-  onOpenFile: (path: string) => void;
+  onOpenFile: OpenFileFn;
 };
 
 export function GitChangesPanel({
@@ -145,11 +148,14 @@ function ChangedFiles({
   files: GitChangedFile[];
   selected?: string;
   enabled: boolean;
-  onOpenFile: (path: string) => void;
+  onOpenFile: OpenFileFn;
   onMutated: (paths?: string[]) => void;
 }) {
   const environmentId = environmentOfCwd(cwd) ?? registry.primary().environmentId;
   const lockOverscroll = useLockOverscroll<HTMLDivElement>();
+  const editorConfig = useEditorConfig();
+  const openEditor = (file: GitChangedFile) =>
+    void openInEditor({ path: file.path, cwd }, onOpenFile);
   const menuButton = useRef<HTMLButtonElement>(null);
   const messageRef = useRef<HTMLTextAreaElement>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -508,7 +514,9 @@ function ChangedFiles({
                     active={selected === file.relative}
                     busy={busy === file.relative}
                     kind="staged"
+                    editorLabel={editorLabelFor(file.path, editorConfig)}
                     onOpenFile={onOpenFile}
+                    onOpenEditor={openEditor}
                     onAction={run}
                   />
                 ))}
@@ -536,7 +544,9 @@ function ChangedFiles({
                     active={selected === file.relative}
                     busy={busy === file.relative}
                     kind="unstaged"
+                    editorLabel={editorLabelFor(file.path, editorConfig)}
                     onOpenFile={onOpenFile}
+                    onOpenEditor={openEditor}
                     onAction={run}
                   />
                 ))}
@@ -821,14 +831,19 @@ function ChangeRow({
   active,
   busy,
   kind,
+  editorLabel,
   onOpenFile,
+  onOpenEditor,
   onAction,
 }: {
   file: GitChangedFile;
   active: boolean;
   busy: boolean;
   kind: "staged" | "unstaged";
-  onOpenFile: (path: string) => void;
+  /** "Open in <editor>" here, "Open on the Mac" for a thread on another host; null hides it. */
+  editorLabel: string | null;
+  onOpenFile: OpenFileFn;
+  onOpenEditor: (file: GitChangedFile) => void;
   onAction: (
     file: GitChangedFile,
     action: "stage" | "unstage" | "discard",
@@ -867,6 +882,11 @@ function ChangeRow({
             active ? "flex" : "hidden group-focus-within:flex group-hover:flex"
           }`}
         >
+          {editorLabel && canOpen ? (
+            <IconAction title={editorLabel} onClick={() => onOpenEditor(file)}>
+              <ExternalLink className="size-3.5" strokeWidth={1.75} />
+            </IconAction>
+          ) : null}
           {kind === "unstaged" ? (
             <IconAction
               title="Discard Changes"

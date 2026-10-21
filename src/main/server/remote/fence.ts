@@ -84,6 +84,7 @@ export const FENCED_PARAMS: { [M in ClientRequest['method']]?: Picker<M> } = {
   'fs.copyPath': (p) => [p.from, p.destParent],
   'fs.movePath': (p) => [p.from, p.destParent],
   'fs.statFiles': (p) => p.paths,
+  'fs.digest': (p) => p.paths,
   'fs.inspectPaths': (p) => p.paths,
   'fs.projectFiles': cwd,
   'git.branches': cwd,

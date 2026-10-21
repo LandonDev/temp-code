@@ -156,7 +156,7 @@ import {
 } from "./lib/checkpoint";
 import { notifyDirsChanged } from "./lib/fileTree";
 import { nudgeWatchedFiles } from "./lib/fileWatch";
-import type { OpenFileFn } from "./lib/search";
+import type { EditorNavigation, OpenFileFn, OpenFileOptions } from "./lib/search";
 import { editorForPath } from "./surfaces/monaco/route";
 import { flushAllEditors, flushEditor } from "./lib/editorFlush";
 import { loadAutoSave } from "./lib/settings";
@@ -1668,25 +1668,29 @@ export default function App() {
   );
 
   const onOpenDiff = useCallback(
-    (path?: string) => {
+    (path?: string, navigation?: EditorNavigation, options?: OpenFileOptions) => {
       void (async () => {
         const resolved = path
           ? ((await resolveOpenablePath(currentGitCwd(), path)) ?? path)
           : undefined;
         if (resolved) rememberOpenedFile(currentSidebarCwd(), resolved);
+        const extra = {
+          ...(options?.readOnly ? { readOnly: true as const } : {}),
+          ...(options?.note ? { note: options.note } : {}),
+        };
         setTabs((prev) =>
           prev.map((tab) => {
             if (tab.id !== workspaceTabsStore.getState().activeTabId) return tab;
             const opened = resolved
-              ? openEditorTab(
-                  tab,
-                  newFileTab(
+              ? openEditorTab(tab, {
+                  ...newFileTab(
                     resolved,
                     currentSidebarCwd(),
                     true,
                     editorForPath(resolved) === "monaco" ? "monaco" : undefined,
                   ),
-                )
+                  ...extra,
+                })
               : tab;
             if (currentDeckLayout()) return opened;
             return {
@@ -1696,6 +1700,7 @@ export default function App() {
             };
           }),
         );
+        if (resolved && navigation) editors.navigateTo({ path: resolved, ...navigation });
         if (currentDeckLayout()) shell.showSidebarTab("changes");
         setComposerFocused(false);
       })();
@@ -2592,12 +2597,16 @@ export default function App() {
         const tab = currentActiveTab();
         if (!tab) return;
         const editor = options?.editor ?? editorForPath(resolved);
-        const file = newFileTab(
-          resolved,
-          currentSidebarCwd(),
-          false,
-          editor === "monaco" ? "monaco" : undefined,
-        );
+        const file = {
+          ...newFileTab(
+            resolved,
+            currentSidebarCwd(),
+            false,
+            editor === "monaco" ? "monaco" : undefined,
+          ),
+          ...(options?.readOnly ? { readOnly: true as const } : {}),
+          ...(options?.note ? { note: options.note } : {}),
+        };
         setTabs((prev) =>
           prev.map((entry) =>
             entry.id === tab.id ? openEditorTab(entry, file) : entry,

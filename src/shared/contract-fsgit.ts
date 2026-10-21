@@ -111,6 +111,11 @@ export const FsGitRequestSchemas = [
   }),
   z.object({
     id: z.string(),
+    method: z.literal('fs.digest'),
+    params: z.object({ paths: z.array(z.string()).max(64) })
+  }),
+  z.object({
+    id: z.string(),
     method: z.literal('fs.inspectPaths'),
     params: z.object({ paths: z.array(z.string()) })
   }),
@@ -250,6 +255,12 @@ export interface FsFileMtime {
   mtimeMs: number | null
 }
 
+/** A file's content hash (sha256, hex); null when it is missing or not a file. */
+export interface FsFileDigest {
+  path: string
+  sha256: string | null
+}
+
 export type FsMediaKind = 'image' | 'video' | 'audio'
 
 /** fs.media: a file the viewer shows as media, served over tempcode-asset://file. */
@@ -278,6 +289,7 @@ export interface FsPathResultMap {
   'fs.movePath': string
   'fs.readPreview': string[]
   'fs.statFiles': FsFileMtime[]
+  'fs.digest': FsFileDigest[]
   'fs.inspectPaths': FsPathInfo[]
   'fs.readBase64': string
   'fs.readText': string

@@ -1,5 +1,6 @@
 import { takeReviewRequest } from "./reviewRequest";
 import type { ReleaseNotesTabSource } from "./releaseNotes";
+import type { EditorTarget } from "@shared/editor";
 import {
   applyTerminalMeta,
   defaultTerminalTitle,
@@ -45,6 +46,16 @@ export type FilePaneTab = {
   debug?: true;
   /** Foreground command when it isn't the shell. Live only — not persisted. */
   foreground?: string;
+  /** No edits: the file is shown as another host holds it (lib/openInEditor.ts). */
+  readOnly?: true;
+  /** The line above the file saying why it is shown here rather than in the editor. */
+  note?: FileNote;
+};
+
+/** What the preview's header says, with at most one action beside it. */
+export type FileNote = {
+  text: string;
+  action?: { label: string; editor: EditorTarget };
 };
 
 export type EditorPane = {
@@ -330,13 +341,23 @@ export function openEditorTab(
     (entry) => editorTabKey(entry) === key,
   );
   if (existingPane && existingFile) {
+    // A note travels onto the tab already open for the path; opening the
+    // same file plainly again clears it (the file is editable once more).
+    const { note: _note, readOnly: _readOnly, ...plain } = existingFile;
+    const shown: FilePaneTab = file.note
+      ? { ...plain, note: file.note, ...(file.readOnly ? { readOnly: true } : {}) }
+      : plain;
     return {
       ...tab,
       focusedId: existingPane.id,
       diffFocused: false,
       editorPanes: tab.editorPanes.map((pane) =>
         pane.id === existingPane.id
-          ? { ...pane, activeFileId: existingFile.id }
+          ? {
+              ...pane,
+              activeFileId: existingFile.id,
+              files: pane.files.map((entry) => (entry.id === existingFile.id ? shown : entry)),
+            }
           : pane,
       ),
     };

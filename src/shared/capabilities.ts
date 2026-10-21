@@ -71,6 +71,7 @@ export const METHOD_CAPABILITY: Record<ClientRequest['method'], MethodCapability
   'fs.readPreview': 'read',
   'fs.readText': 'read',
   'fs.statFiles': 'read',
+  'fs.digest': 'read',
   'git.branches': 'read',
   'git.diffIndex': 'read',
   'git.diffStats': 'read',

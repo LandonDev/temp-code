@@ -165,6 +165,7 @@ import { shortName } from "../lib/accountScope";
 import { ROUTED_PROVIDERS } from "@server/shared/accounts";
 import { workspaceOfSection } from "../lib/settings";
 import { Heading, Input, Row, Segmented, Select, SecondaryButton, Toggle } from "./settingsBits";
+import { EditorRow } from "./EditorRow";
 import { DANGER, GHOST, PRIMARY } from "../chrome/ConfirmDialog";
 import { AppshotsPage } from "./AppshotsSettings";
 import { MatrixSpinner } from "./threads/bits";
@@ -490,6 +491,7 @@ function GeneralPage({
           onChange={onClaudeHooks}
         />
       </Row>
+      <EditorRow />
 
       <PlanSettingsEditor />
 

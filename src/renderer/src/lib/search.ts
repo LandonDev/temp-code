@@ -1,3 +1,4 @@
+import type { FileNote } from "./layout";
 import { invokeOn } from "./native";
 
 export type ProjectSearchMatch = {
@@ -35,7 +36,12 @@ export type EditorNavigationTarget = EditorNavigation & {
   token: number;
 };
 
-export type OpenFileOptions = { editor?: "monaco" | "codemirror" };
+export type OpenFileOptions = {
+  editor?: "monaco" | "codemirror";
+  /** Show without edits, with a line above saying why (lib/openInEditor.ts). */
+  readOnly?: true;
+  note?: FileNote;
+};
 
 export type OpenFileFn = (
   path: string,

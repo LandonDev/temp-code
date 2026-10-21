@@ -99,6 +99,7 @@ import { SidebarUpdateFooter } from "./SidebarUpdate";
 import { SourceControl } from "./SourceControl";
 import { InboxView } from "../surfaces/InboxView";
 import { settingsChunk } from "../surfaces/chunks";
+import type { OpenFileFn } from "../lib/search";
 
 const MIN_WIDTH = 260;
 const MAX_WIDTH = 560;
@@ -130,7 +131,7 @@ type Props = {
   onSelectSession: (sessionId: string) => void;
   onRenameSession?: (sessionId: string, title: string) => void;
   onDeleteSession?: (sessionId: string, options?: { confirmed?: boolean }) => void;
-  onOpenFile: (path: string) => void;
+  onOpenFile: OpenFileFn;
   onOpenTerminal?: (cwd: string) => void;
   onFileMoved?: (from: string, to: string) => void;
   onFileDeleted?: (path: string) => void;

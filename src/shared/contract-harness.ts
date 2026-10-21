@@ -87,6 +87,10 @@ export interface HarnessSyncStatus {
   /** Files the sender left out (over the size budget, a symlink out of reach). */
   skipped: number
   environments: HarnessEnvironmentStatus[]
+  /** The map in force (the setting, else the shipped history-map.json), Mac
+   *  path → box path: the renderer pairs the same project across hosts with
+   *  it and opens a box file's Mac copy through it (lib/openInEditor.ts). */
+  pathMap: { roots: Record<string, string>; prefixes: Record<string, string> }
 }
 
 const request = <M extends string, P extends z.ZodType>(method: M, params: P) =>

@@ -526,6 +526,21 @@ routed to (aliax-core's `forward`). Two listeners:
   source keeps everything. The confirm says what travels
   (`session.move.preview`). Checkpoints stay on the source. docs/box.md
   "Moving a thread between hosts"; proof `bun run script:e2e-session-move`.
+- Opening a box file on the Mac: the diff panel's rows, a transcript path's
+  menu and the file tree's menu (`⌥⏎`) say "Open on the Mac" for a path on
+  another host and "Open in <editor>" locally. `src/main/editorLaunch.ts`
+  launches IDEA (`--line N path`), VS Code (`-g path:N`) or Xcode
+  (`xed -l N path`) per the `editor.command` setting (Settings → General →
+  Editor; Auto = first installed; Swift under `ios/` prefers Xcode when it
+  is chosen or IDEA is absent). A remote path is translated through the
+  harness sync's path map inverted (`src/shared/openOnMac.ts`, box
+  `/srv/agents/work/<X>` ↔ Mac `~/IdeaProjects/<X>`), both hosts hash the
+  file (`fs.digest`), and only an identical Mac copy opens in the editor;
+  otherwise the host's version opens in the app read-only with "Mac copy
+  differs: on branch X here" / "No Mac copy" and "Open the Mac copy anyway"
+  (lib/openInEditor.ts, surfaces/FileNoteBar.tsx). Web mode and a headless
+  host hide the items (`editor.config()` is null). docs/box.md "Opening a
+  box file on the Mac".
 - The Mac bridge: a box thread whose `macBridge.thread.<id>` setting names
   the Mac reads, lists and fetches Mac files and runs Mac commands
   (`mac_*` tools) over a reverse RPC on the Mac's peer link

@@ -19,6 +19,7 @@ export async function handleFsGit(req: ClientRequest): Promise<Handled> {
     case 'fs.movePath': return result(await fs.fsMovePath(req.params.from, req.params.destParent))
     case 'fs.readPreview': return result(await fs.fsReadPreview(req.params.path, req.params.maxLines, req.params.startLine))
     case 'fs.statFiles': return result(await fs.fsStatFiles(req.params.paths))
+    case 'fs.digest': return result(await fs.fsDigestFiles(req.params.paths))
     case 'fs.inspectPaths': return result(await fs.fsInspectPaths(req.params.paths))
     case 'fs.readBase64': return result(await fs.fsReadBase64(req.params.path))
     case 'fs.readText': return result(await fs.fsReadText(req.params.path))

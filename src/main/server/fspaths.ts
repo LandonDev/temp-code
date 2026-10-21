@@ -1,5 +1,6 @@
 import { execFileBudgeted as execFileP } from './spawnBudget'
 import { createReadStream, realpathSync } from 'node:fs'
+import { createHash } from 'node:crypto'
 import {
   access,
   chmod,
@@ -29,7 +30,7 @@ import {
   sep
 } from 'node:path'
 import { createInterface } from 'node:readline'
-import type { FsFileMtime, FsPathEntry, FsPathInfo, FsProjectFile } from '@shared/contract-fsgit'
+import type { FsFileDigest, FsFileMtime, FsPathEntry, FsPathInfo, FsProjectFile } from '@shared/contract-fsgit'
 
 
 const MAX_TEXT_FILE_BYTES = 8 * 1024 * 1024
@@ -489,6 +490,21 @@ export async function fsStatFiles(paths: string[]): Promise<FsFileMtime[]> {
         path,
         mtimeMs: metadata?.isFile() ? Math.trunc(metadata.mtimeMs) : null
       }
+    })
+  )
+}
+
+/** sha256 of each file's bytes; null for a path that is missing or not a file. */
+export async function fsDigestFiles(paths: string[]): Promise<FsFileDigest[]> {
+  if (paths.length > MAX_STAT_FILES) throw new Error('Too many paths')
+  return Promise.all(
+    paths.map(async (path) => {
+      const target = expandHome(path)
+      const metadata = await stat(target).catch(() => null)
+      if (!metadata?.isFile()) return { path, sha256: null }
+      const hash = createHash('sha256')
+      for await (const chunk of createReadStream(target)) hash.update(chunk as Buffer)
+      return { path, sha256: hash.digest('hex') }
     })
   )
 }

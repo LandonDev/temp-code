@@ -32,6 +32,8 @@ type Props = {
   onDirtyChange: (path: string, dirty: boolean) => void;
   onErrorCountChange?: (path: string, count: number) => void;
   onOpenFile?: OpenFileFn;
+  /** No edits: the file is shown as another host holds it. */
+  readOnly?: boolean;
 };
 
 /** Scroll and cursor state per path, restored across tab switches. */
@@ -43,7 +45,7 @@ const viewStates = new Map<string, monaco.editor.ICodeEditorViewState>();
  * bar and a status line while the language server indexes.
  */
 export default function MonacoPane(props: Props) {
-  const { path, cwd, active, showDiff = false, diffBase, navigation, onDirtyChange, onErrorCountChange, onOpenFile } = props;
+  const { path, cwd, active, showDiff = false, diffBase, navigation, onDirtyChange, onErrorCountChange, onOpenFile, readOnly = false } = props;
   const hostRef = useRef<HTMLDivElement>(null);
   const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
   const [phase, setPhase] = useState<"loading" | "ready" | "unreadable" | "error">("loading");
@@ -129,6 +131,7 @@ export default function MonacoPane(props: Props) {
       editor = monaco.editor.create(hostRef.current!, {
         ...EDITOR_OPTIONS,
         fontFamily: editorFontFamily(),
+        readOnly,
         model,
         glyphMargin: debuggable,
       });
@@ -225,7 +228,7 @@ export default function MonacoPane(props: Props) {
       setPhase("loading");
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- remount per path; the parent keys us
-  }, [path, cwd, showDiff]);
+  }, [path, cwd, showDiff, readOnly]);
 
   if (showDiff) return <DiffSurface path={path} cwd={cwd} base={diffBase} onDirtyChange={onDirtyChange} />;
 

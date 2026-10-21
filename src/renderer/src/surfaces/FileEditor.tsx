@@ -14,7 +14,7 @@ import {
   Prec,
   StateField,
   Transaction,
-  type EditorState,
+  EditorState,
   type Text,
 } from "@codemirror/state";
 import {
@@ -87,6 +87,8 @@ type Props = {
   onDirtyChange: (path: string, dirty: boolean) => void;
   onErrorCountChange?: (path: string, count: number) => void;
   onOpenFile?: (path: string) => void;
+  /** No edits: the file is shown as another host holds it. */
+  readOnly?: boolean;
 };
 
 type LoadState =
@@ -107,6 +109,7 @@ export function FileEditor({
   onDirtyChange,
   onErrorCountChange,
   onOpenFile,
+  readOnly = false,
 }: Props) {
   const [loadState, setLoadState] = useState<LoadState>({ status: "loading" });
   const [saveState, setSaveState] = useState<SaveState>({ status: "idle" });
@@ -385,9 +388,10 @@ export function FileEditor({
           source={
             <div className="flex h-full min-h-0 min-w-0 flex-col">
               <CodeMirrorEditor
-                key={`${path}:${reloadKey}`}
+                key={`${path}:${reloadKey}:${readOnly}`}
                 path={path}
                 value={loadState.content}
+                readOnly={readOnly}
                 showDiff={showDiff}
                 gitOriginal={gitOriginal}
                 active={active && mode === "source"}
@@ -403,9 +407,10 @@ export function FileEditor({
         />
       ) : (
         <CodeMirrorEditor
-          key={`${path}:${reloadKey}`}
+          key={`${path}:${reloadKey}:${readOnly}`}
           path={path}
           value={loadState.content}
+          readOnly={readOnly}
           showDiff={showDiff}
           gitOriginal={gitOriginal}
           active={active}
@@ -449,9 +454,11 @@ function CodeMirrorEditor({
   onSave,
   onStageGit,
   onDocChange,
+  readOnly = false,
 }: {
   path: string;
   value: string;
+  readOnly?: boolean;
   showDiff: boolean;
   gitOriginal: string | null;
   active: boolean;
@@ -638,6 +645,7 @@ function CodeMirrorEditor({
       parent: host,
       extensions: [
         minimalSetup,
+        readOnly ? [EditorState.readOnly.of(true), EditorView.editable.of(false)] : [],
         showDiff
           ? editorGit(
               onStageGit
@@ -734,7 +742,7 @@ function CodeMirrorEditor({
       setChunkNav(null);
       view.destroy();
     };
-  }, [lockOverscroll, path, showDiff, syncChunkNav]);
+  }, [lockOverscroll, path, readOnly, showDiff, syncChunkNav]);
 
   useEffect(() => {
     const view = viewRef.current;

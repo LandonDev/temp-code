@@ -287,6 +287,7 @@ export class HarnessSync {
     const records = this.records()
     return {
       enabled: this.enabled(),
+      pathMap: this.pathMap(),
       skipped: this.skipped,
       environments: this.deps.peers.all().map((link) => {
         const r = records[link.id]

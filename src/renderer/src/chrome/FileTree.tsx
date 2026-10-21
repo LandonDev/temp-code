@@ -1,4 +1,6 @@
 import { registry } from "../lib/connection";
+import { useEditorConfig } from "../lib/editorConfig";
+import { editorLabelFor, openInEditor } from "../lib/openInEditor";
 import { environmentOfCwd } from "../lib/tcserver/projects";
 import { applyBeforeMove, applyWillRename } from "../lib/editorRename";
 import { onFileEvent, watchCwd } from "../lib/projectWatch";
@@ -66,6 +68,7 @@ function warmFileSurfaces(): void {
   editorChunk.preload();
   mediaChunk.preload();
 }
+import type { OpenFileFn } from "../lib/search";
 
 const GIT_STATUS_COLOR: Record<string, string> = {
   modified: "text-warning",
@@ -76,7 +79,7 @@ const GIT_STATUS_COLOR: Record<string, string> = {
 
 type Props = {
   cwd: string;
-  onOpenFile: (path: string) => void;
+  onOpenFile: OpenFileFn;
   onOpenTerminal?: (cwd: string) => void;
   onFileMoved?: (from: string, to: string) => void;
   onFileDeleted?: (path: string) => void;
@@ -107,7 +110,7 @@ type TreeCtxValue = {
   gitStatuses?: GitStatusMap;
   onToggle: (path: string) => void;
   onSelect: (path: string) => void;
-  onOpenFile: (path: string) => void;
+  onOpenFile: OpenFileFn;
   onCreateCommit: (id: number, raw: string) => Promise<void>;
   onCreateCancel: (id: number) => void;
   onRenameCommit: (path: string, raw: string) => Promise<void>;
@@ -153,6 +156,7 @@ function explorerItems(
   target: MenuTarget,
   clip: Clip | null,
   canOpenTerminal: boolean,
+  editorLabel: string | null = null,
 ): ExplorerMenuItem[] {
   const pasteParent = target.isDir ? target.path : parentPath(target.path);
   const pasteBlocked =
@@ -210,6 +214,16 @@ function explorerItems(
       danger: true,
     },
     { kind: "sep" },
+    ...(editorLabel && !target.isDir
+      ? [
+          {
+            kind: "item" as const,
+            id: "open-editor",
+            label: editorLabel,
+            shortcut: "⌥⏎",
+          },
+        ]
+      : []),
     ...(canOpenTerminal
       ? [
           {
@@ -235,6 +249,7 @@ export function FileTree({
   onShowSourceControl,
 }: Props) {
   const environmentId = environmentOfCwd(cwd) ?? registry.primary().environmentId;
+  const editorConfig = useEditorConfig();
   const [expanded, setExpanded] = useState(() => loadExpanded(cwd));
   const [selectedPath, setSelectedPath] = useState(() => loadSelected(cwd));
   const [children, setChildren] = useState<FsEntry[] | null>(() =>
@@ -493,6 +508,9 @@ export function FileTree({
       case "reveal":
         await run(() => revealPath(target.path));
         return;
+      case "open-editor":
+        await run(() => openInEditor({ path: target.path, cwd }, onOpenFile));
+        return;
       case "open-terminal":
         onOpenTerminal?.(target.isDir ? target.path : parentPath(target.path));
         return;
@@ -561,6 +579,13 @@ export function FileTree({
     if (e.key === "Escape" && clip?.mode === "cut") {
       e.preventDefault();
       setClip(null);
+      return;
+    }
+    // ⌥⏎: the selected file into the editor (Open on the Mac for a thread
+    // on another host); nothing moves on screen, the editor comes forward.
+    if (e.altKey && !mod && !e.shiftKey && e.key === "Enter" && !isDir && !isRoot) {
+      e.preventDefault();
+      if (editorLabelFor(path, editorConfig)) void run(() => openInEditor({ path, cwd }, onOpenFile));
       return;
     }
     if (e.altKey || mod) return;
@@ -811,7 +836,12 @@ export function FileTree({
         <ExplorerMenu
           x={menu.x}
           y={menu.y}
-          items={explorerItems(menu.target, clip, !!onOpenTerminal)}
+          items={explorerItems(
+            menu.target,
+            clip,
+            !!onOpenTerminal,
+            editorLabelFor(menu.target.path, editorConfig),
+          )}
           onPick={(id) => {
             const target = menu.target;
             setMenu(null);

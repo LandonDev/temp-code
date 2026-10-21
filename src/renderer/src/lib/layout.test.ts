@@ -204,6 +204,20 @@ describe("closeLeaf", () => {
 });
 
 describe("openEditorTab", () => {
+  it("moves a note onto the tab already open for the path, and a plain open clears it", () => {
+    const file = newFileTab("/repo/App.tsx", "/repo");
+    const opened = openEditorTab(newTab("session-a"), file);
+    const note = { text: "Mac copy differs: on branch main here" };
+    const noted = openEditorTab(opened, { ...newFileTab("/repo/App.tsx", "/repo"), readOnly: true, note });
+    expect(noted.editorPanes).toHaveLength(1);
+    expect(noted.editorPanes[0].files).toHaveLength(1);
+    expect(noted.editorPanes[0].files[0]).toMatchObject({ id: file.id, readOnly: true, note });
+    const plain = openEditorTab(noted, newFileTab("/repo/App.tsx", "/repo"));
+    expect(plain.editorPanes[0].files[0].id).toBe(file.id);
+    expect(plain.editorPanes[0].files[0].note).toBeUndefined();
+    expect(plain.editorPanes[0].files[0].readOnly).toBeUndefined();
+  });
+
   it("does not open files into a terminal pane", () => {
     const terminal = openTerminalTab(
       newTab("session-a"),

@@ -9,6 +9,7 @@
  */
 
 import { isWebMode, webApi } from "./nativeWeb";
+import type { EditorChoice, EditorConfig, EditorId, EditorTarget } from "@shared/editor";
 
 export type UnlistenFn = () => void;
 export type NativeEvent<T> = { payload: T };
@@ -26,6 +27,7 @@ export type ServerCommand =
   | "copy_path"
   | "create_path"
   | "delete_path"
+  | "file_digest"
   | "file_media"
   | "git_branches"
   | "git_checkout"
@@ -238,6 +240,7 @@ const serverMethods: Record<PassthroughCommand, string> = {
   read_file_base64: "fs.readBase64",
   read_file_preview: "fs.readPreview",
   read_text_file: "fs.readText",
+  file_digest: "fs.digest",
   file_media: "fs.media",
   rename_path: "fs.renamePath",
   search_project: "search.project",
@@ -373,6 +376,20 @@ export async function invokeOn<T = unknown>(
   const impl = serverBacked[command];
   if (!impl) throw notPorted(command);
   return (await impl(environmentId, args)) as T;
+}
+
+/** The user's editor on this machine (null where none can run: web mode, a headless host). */
+export function editorConfig(): Promise<EditorConfig | null> {
+  return api().editor.config();
+}
+
+export function setEditorChoice(choice: EditorChoice): Promise<void> {
+  return api().editor.setChoice(choice);
+}
+
+/** Open a local file in the editor; rejects when no editor is installed. */
+export function openWithEditor(target: EditorTarget): Promise<{ editor: EditorId }> {
+  return api().editor.open(target);
 }
 
 /** The in-process server's port, straight from preload; never opens a socket. */

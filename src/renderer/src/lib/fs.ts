@@ -1,4 +1,4 @@
-import type { FsMedia, GitFileMedia } from "@server/shared/contract-fsgit";
+import type { FsFileDigest, FsMedia, GitFileMedia } from "@server/shared/contract-fsgit";
 import { invoke, invokeOn, open } from "./native";
 
 export type FsEntry = {
@@ -256,6 +256,11 @@ export function movePath(environmentId: string, from: string, destParent: string
 }
 
 /** Finder on this machine; a remote path has nothing to reveal here. */
+/** sha256 per path on one host; null for a path that is missing or not a file. */
+export function digestFiles(environmentId: string, paths: string[]): Promise<FsFileDigest[]> {
+  return invokeOn<FsFileDigest[]>(environmentId, "file_digest", { paths });
+}
+
 export function revealPath(path: string): Promise<void> {
   return invoke<void>("reveal_path", { path });
 }

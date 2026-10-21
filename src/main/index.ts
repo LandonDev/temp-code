@@ -10,6 +10,7 @@ import { configureAliax } from './aliax'
 import { loadEnvironmentId } from './server/remote/environment'
 import { aliaxCallCounts, registerAliaxPages } from './aliaxPages'
 import { registerAppshots } from './appshots'
+import { EditorLauncher, defaultEditorLaunchDeps, editorChoice, type EditorTarget } from './editorLaunch'
 import { electronApp, optimizer } from '@electron-toolkit/utils'
 import { startServer, type RunningServer } from './server'
 import { mayClaimShim, releaseGateway } from './server/gateway'
@@ -160,6 +161,23 @@ app.whenReady().then(async () => {
   })
   ipcMain.handle('reveal-in-finder', (_e, path: string) => {
     shell.showItemInFolder(path)
+  })
+  // The user's editor (editorLaunch.ts): only where a window can be, so a
+  // headless box answers null and the renderer hides the item.
+  const editorLauncher = headless ? null : new EditorLauncher(defaultEditorLaunchDeps(server.store))
+  ipcMain.handle('editor-config', () => editorLauncher?.config() ?? null)
+  ipcMain.handle('editor-set', (_e, choice: unknown) => {
+    editorLauncher?.setChoice(editorChoice(typeof choice === 'string' ? choice : null))
+    editorLauncher?.refresh()
+  })
+  ipcMain.handle('editor-open', (_e, target: EditorTarget) => {
+    if (!editorLauncher) throw new Error('No editor on this host')
+    if (typeof target?.path !== 'string' || !target.path) throw new Error('A path is needed')
+    return editorLauncher.open({
+      path: target.path,
+      line: typeof target.line === 'number' ? target.line : undefined,
+      column: typeof target.column === 'number' ? target.column : undefined
+    })
   })
 
   if (headless) {

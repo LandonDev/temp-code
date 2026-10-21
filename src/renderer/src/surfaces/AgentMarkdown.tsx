@@ -183,7 +183,7 @@ function MarkdownLink({
       {children}
     </a>
   );
-  return file ? <FileRefMenu target={file.path} cwd={cwd}>{anchor}</FileRefMenu> : anchor;
+  return file ? <FileRefMenu target={file.path} cwd={cwd} onOpenFile={onOpenFile}>{anchor}</FileRefMenu> : anchor;
 }
 
 type MarkdownCodeProps = ComponentProps<"code"> & { node?: unknown };
@@ -230,7 +230,7 @@ function MarkdownCode({
         {children}
       </code>
     );
-    return file ? <FileRefMenu target={file.path} cwd={cwd}>{code}</FileRefMenu> : code;
+    return file ? <FileRefMenu target={file.path} cwd={cwd} onOpenFile={onOpenFile}>{code}</FileRefMenu> : code;
   }
 
   const meta = codeMeta(node);

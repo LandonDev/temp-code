@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { GitChangesPanel } from "../chrome/GitChangesPanel";
 import type { HarnessId } from "../lib/session";
+import type { OpenFileFn } from "../lib/search";
 
 const MIN_WIDTH = 280;
 const DEFAULT_WIDTH = 300;
@@ -21,7 +22,7 @@ type Props = {
   selectedPath?: string;
   focused: boolean;
   onFocus: () => void;
-  onOpenFile: (path: string) => void;
+  onOpenFile: OpenFileFn;
 };
 
 export function DiffPane({

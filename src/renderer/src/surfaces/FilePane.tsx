@@ -11,6 +11,7 @@ import type { EditorNavigationTarget, OpenFileFn } from "../lib/search";
 import { editorPathsEqual } from "../lib/search";
 import { editorChunk, mediaChunk, releaseNotesChunk, terminalChunk } from "./chunks";
 import { SurfaceSkeleton } from "./SurfaceSkeleton";
+import { FileNoteBar } from "./FileNoteBar";
 import { MatrixSpinner } from "./threads/bits";
 
 // Monaco, shiki, and the LSP client live behind this boundary; the first
@@ -102,67 +103,76 @@ function FilePaneComponent({
                 onMetaChange={(patch) => onTerminalMetaChange?.(file.id, patch)}
               />
             ) : (
-              <MediaGate
-                path={file.path}
-                cwd={file.cwd}
-                active={focused && file.id === pane.activeFileId}
-                original={
-                  file.review
-                    ? (media) => (
-                        <MediaReview
+              <div className="flex h-full min-h-0 flex-col">
+                {file.note ? (
+                  <FileNoteBar note={file.note} readOnly={file.readOnly} />
+                ) : null}
+                <div className="relative min-h-0 flex-1">
+                  <MediaGate
+                    path={file.path}
+                    cwd={file.cwd}
+                    active={focused && file.id === pane.activeFileId}
+                    original={
+                      file.review
+                        ? (media) => (
+                            <MediaReview
+                              path={file.path}
+                              cwd={file.cwd}
+                              media={media}
+                              active={focused && file.id === pane.activeFileId}
+                              base={file.diffBase}
+                            />
+                          )
+                        : undefined
+                    }
+                  >
+                    {() =>
+                      file.editor === "monaco" ? (
+                        <Suspense fallback={<ChunkSpinner />}>
+                          <MonacoPane
+                            path={file.path}
+                            cwd={file.cwd}
+                            showDiff={!!file.review}
+                            diffBase={file.diffBase}
+                            active={focused && file.id === pane.activeFileId}
+                            navigation={
+                              editorNavigation &&
+                              editorPathsEqual(file.path, editorNavigation.path)
+                                ? editorNavigation
+                                : null
+                            }
+                            onDirtyChange={(_path, dirty) => onDirtyChange(file.id, dirty)}
+                            onErrorCountChange={(_path, count) =>
+                              onErrorCountChange(file.id, count)
+                            }
+                            onOpenFile={onOpenFile}
+                            readOnly={file.readOnly}
+                          />
+                        </Suspense>
+                      ) : (
+                        <FileEditor
                           path={file.path}
                           cwd={file.cwd}
-                          media={media}
+                          showDiff={!!file.review}
                           active={focused && file.id === pane.activeFileId}
-                          base={file.diffBase}
+                          navigation={
+                            editorNavigation &&
+                            editorPathsEqual(file.path, editorNavigation.path)
+                              ? editorNavigation
+                              : null
+                          }
+                          onDirtyChange={(_path, dirty) => onDirtyChange(file.id, dirty)}
+                          onErrorCountChange={(_path, count) =>
+                            onErrorCountChange(file.id, count)
+                          }
+                          onOpenFile={onOpenFile}
+                          readOnly={file.readOnly}
                         />
                       )
-                    : undefined
-                }
-              >
-                {() =>
-                  file.editor === "monaco" ? (
-                    <Suspense fallback={<ChunkSpinner />}>
-                      <MonacoPane
-                        path={file.path}
-                        cwd={file.cwd}
-                        showDiff={!!file.review}
-                        diffBase={file.diffBase}
-                        active={focused && file.id === pane.activeFileId}
-                        navigation={
-                          editorNavigation &&
-                          editorPathsEqual(file.path, editorNavigation.path)
-                            ? editorNavigation
-                            : null
-                        }
-                        onDirtyChange={(_path, dirty) => onDirtyChange(file.id, dirty)}
-                        onErrorCountChange={(_path, count) =>
-                          onErrorCountChange(file.id, count)
-                        }
-                        onOpenFile={onOpenFile}
-                      />
-                    </Suspense>
-                  ) : (
-                    <FileEditor
-                      path={file.path}
-                      cwd={file.cwd}
-                      showDiff={!!file.review}
-                      active={focused && file.id === pane.activeFileId}
-                      navigation={
-                        editorNavigation &&
-                        editorPathsEqual(file.path, editorNavigation.path)
-                          ? editorNavigation
-                          : null
-                      }
-                      onDirtyChange={(_path, dirty) => onDirtyChange(file.id, dirty)}
-                      onErrorCountChange={(_path, count) =>
-                        onErrorCountChange(file.id, count)
-                      }
-                      onOpenFile={onOpenFile}
-                    />
-                  )
-                }
-              </MediaGate>
+                    }
+                  </MediaGate>
+                </div>
+              </div>
             )}
           </div>
         ))}

@@ -1,12 +1,13 @@
 import type { HarnessId } from "../lib/session";
 import { GitChangesPanel } from "./GitChangesPanel";
+import type { OpenFileFn } from "../lib/search";
 
 type Props = {
   cwd: string;
   enabled: boolean;
   textHarness?: HarnessId;
   selectedPath?: string;
-  onOpenFile: (path: string) => void;
+  onOpenFile: OpenFileFn;
 };
 
 export function SourceControl({

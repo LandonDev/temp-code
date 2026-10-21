@@ -1748,6 +1748,65 @@ filters, the streaming runner, the merge, the de-dup rule, the pairing),
 src/renderer/src/surfaces/SearchView.dom.test.tsx (a row per kind with its
 host mark, the folded file, the footer, the keys).
 
+### Opening a box file on the Mac
+
+A box thread's diff, transcript and file tree name box paths
+(`/srv/agents/work/<X>/…`), which the Mac cannot open as they are. Read in
+the Mac app, the file worth opening is the Mac's own checkout, so opening it
+is a local action: the path is translated and the Mac's editor comes
+forward.
+
+- **Where.** The diff panel's rows (an icon beside stage/discard on hover),
+  the right-click menu on a path in the transcript, and the file tree's
+  context menu (files only; `⌥⏎` on the selected row does the same). The
+  item says **Open on the Mac** when the path's host is not this machine
+  and **Open in <editor>** (IntelliJ IDEA, VS Code or Xcode) when it is;
+  it is absent when no editor is installed here. No animation: the editor
+  takes focus, the app does not move.
+- **The editor.** Settings → General → Editor: Auto (the first of IDEA,
+  VS Code and Xcode installed), or one of them; the `editor.command`
+  setting in the settings table (src/main/editorLaunch.ts). The launcher
+  is asked of the login shell (`whence -p idea` / `type -P code`), else the
+  usual install paths. Argument shapes: `idea --line N [--column C] path`,
+  `code -g path:N[:C]`, `xed -l N path`. A Swift file under an `ios/`
+  folder goes to Xcode when Xcode is the chosen editor or IDEA is not
+  installed, whatever Auto would otherwise pick. A launch that fails (no
+  editor at all) opens the file in the app with the reason on the line
+  above it.
+- **The translation.** The harness sync's path map (`harness.status` →
+  `pathMap`; the `harness.sync.pathMap` setting, else the shipped
+  scripts/box/history-map.json) is Mac → box; `src/shared/openOnMac.ts`
+  inverts it, roots before prefixes, longest match first: box
+  `/srv/agents/work/<X>/…` ↔ Mac `~/IdeaProjects/<X>/…` (or wherever the
+  map says), `/srv/agents/home/…` ↔ `~/…`. A path no entry covers maps to
+  nothing.
+- **The decision** (`decideOpen`): both hosts hash the file (`fs.digest`,
+  a read-capability, fenced method: sha256 per path, null when missing).
+  Same bytes on the Mac → the editor opens the Mac copy at the same line.
+  Otherwise the box's version opens in the app's own editor, read-only,
+  with one line above it:
+  - *Mac copy differs: on branch X here* and **Open the Mac copy anyway**
+    when the Mac has the file with other content (X is the Mac checkout's
+    current branch, from `git.branches` on the mapped project root);
+  - *No Mac copy: on branch X here* and **Open the project anyway** when
+    the Mac has the project (the mapped cwd is a directory) but not the
+    file (the thread is on a branch the Mac has not checked out);
+  - *Not checked out on the Mac* or *Only on <host>* with no action when
+    the project is not here or nothing maps the path.
+  A file the box deleted but the Mac still has opens the Mac copy. The
+  note travels onto a tab already open for the path and a plain open
+  clears it.
+- **The reverse hides.** A Mac thread read from the box's `/ui` (web mode)
+  has no editor to hand a file to: `window.api.editor.config()` answers
+  null there and on a headless host, and every "Open in …" item and the
+  Settings row stay hidden. The in-app editor still shows the file as the
+  Mac holds it.
+- Tests: src/main/editorLaunch.test.ts (the argument shapes, the choice,
+  the launcher with a stubbed spawner), src/shared/openOnMac.test.ts (the
+  mapping, the decisions, the notes), src/renderer/src/lib/openInEditor.test.ts
+  (the label per host, the remote plan), FileNoteBar.dom.test.tsx and the
+  note case in layout.test.ts.
+
 ## Updating
 
 For a ref already on GitHub, press "Deploy master to the box" in the Mac

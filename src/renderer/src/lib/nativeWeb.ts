@@ -51,6 +51,11 @@ export const webApi: Api = {
   },
   pickDirectory: () => Promise.resolve(null),
   revealInFinder: () => done(),
+  editor: {
+    config: () => Promise.resolve(null),
+    setChoice: () => done(),
+    open: () => needsDesktop("Opening a file in an editor"),
+  },
   getPathForFile: () => {
     throw new Error(`Dropping files from disk ${DESKTOP_ONLY}`);
   },
