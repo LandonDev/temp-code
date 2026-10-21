@@ -31,6 +31,7 @@ import { configure } from 'aliax-core'
 import { startServer } from '../src/main/server/index'
 import { serveMedia } from '../src/main/server/media'
 import type { AgentEvent } from '../src/shared/events'
+import type { GithubInboxItem } from '../src/shared/contract-github'
 
 const root = mkdtempSync(join(tmpdir(), 'tc-ios-client-'))
 configure({
@@ -549,6 +550,198 @@ stub('setPinned', (sessionId, pinned) => {
   record('pin', sessionId, { pinned })
   realSetPinned(sessionId, pinned)
 })
+
+// ── a GitHub inbox for the simulator proof ──────────────────────────────
+// Two repositories' worth of pull requests and issues in every state the
+// row can show, stored the way a refresh stores them (`github.inbox` reads
+// SQLite only). The detail screen shells out to `gh`; TEMP_CODE_GH_BIN points
+// it at a script here that answers the four calls the detail makes from
+// fixtures, so the proof can screenshot a loaded pull request without a
+// token. The live tests never touch any of this.
+const inboxNow = Date.now()
+const agoIso = (minutes: number): string => new Date(inboxNow - minutes * 60_000).toISOString()
+const person = (login: string, id: number): { login: string; avatarUrl: string } => ({ login, avatarUrl: `https://avatars.githubusercontent.com/u/${id}?v=4` })
+const inboxItem = (
+  over: Partial<GithubInboxItem> & Pick<GithubInboxItem, 'kind' | 'repo' | 'number' | 'title' | 'updatedAt'>
+): GithubInboxItem => ({
+  url: `https://github.com/${over.repo}/${over.kind === 'pr' ? 'pull' : 'issues'}/${over.number}`,
+  state: 'open',
+  draft: false,
+  author: person('landon', 1),
+  assignees: [],
+  labels: [],
+  reviewDecision: '',
+  headRefName: '',
+  baseRefName: '',
+  checks: null,
+  reviewRequested: [],
+  ...over
+})
+export const INBOX_PR = 412
+server.store.putGithubInboxRepo({
+  repo: 'landon/temp-code',
+  fetchedAt: inboxNow,
+  error: null,
+  items: [
+    inboxItem({ kind: 'pr', repo: 'landon/temp-code', number: INBOX_PR, title: 'Inbox rows read like Mail: avatars, unread weight, state as color', updatedAt: agoIso(4), author: person('mira-ok', 583231), reviewDecision: 'REVIEW_REQUIRED', headRefName: 'ios/inbox', baseRefName: 'master', checks: 'SUCCESS', reviewRequested: ['landon'], labels: [{ name: 'ios', color: '1d76db' }] }),
+    inboxItem({ kind: 'pr', repo: 'landon/temp-code', number: 409, title: 'Gateway: refuse WebSocket upgrades on the per-thread https port', updatedAt: agoIso(38), author: person('tobias-r', 9919), reviewDecision: 'CHANGES_REQUESTED', headRefName: 'gateway-ws', baseRefName: 'master', checks: 'SUCCESS' }),
+    inboxItem({ kind: 'pr', repo: 'landon/temp-code', number: 405, title: 'Static tokens renew through the stored claude.ai session', updatedAt: agoIso(60 * 3), author: person('landon', 1), reviewDecision: 'APPROVED', headRefName: 'static-renew', baseRefName: 'master', checks: 'SUCCESS' }),
+    inboxItem({ kind: 'pr', repo: 'landon/temp-code', number: 401, title: 'Box: restic snapshots the database with VACUUM INTO', updatedAt: agoIso(60 * 7), author: person('mira-ok', 583231), headRefName: 'box-backup', baseRefName: 'master', checks: 'FAILURE' }),
+    inboxItem({ kind: 'pr', repo: 'landon/temp-code', number: 398, title: 'Draft: move the fold cache into the session store', updatedAt: agoIso(60 * 26), draft: true, author: person('anika', 7712), headRefName: 'fold-cache', baseRefName: 'master', checks: 'PENDING' }),
+    inboxItem({ kind: 'issue', repo: 'landon/temp-code', number: 396, title: 'Search results lose their quoted row after a reconnect', updatedAt: agoIso(60 * 30), author: person('tobias-r', 9919), labels: [{ name: 'bug', color: 'd73a4a' }] }),
+    inboxItem({ kind: 'pr', repo: 'landon/temp-code', number: 390, title: 'Thread header keeps its host after a relaunch', updatedAt: agoIso(60 * 52), state: 'merged', author: person('landon', 1), headRefName: 'host-chip', baseRefName: 'master', checks: 'SUCCESS' })
+  ]
+})
+server.store.putGithubInboxRepo({
+  repo: 'landon/cosmic-web',
+  fetchedAt: inboxNow,
+  error: null,
+  items: [
+    inboxItem({ kind: 'issue', repo: 'landon/cosmic-web', number: 88, title: 'Billing page: the invoice table overflows on a phone', updatedAt: agoIso(60 * 9), author: person('anika', 7712), labels: [{ name: 'design', color: 'c5def5' }] }),
+    inboxItem({ kind: 'pr', repo: 'landon/cosmic-web', number: 86, title: 'Stats: ClickHouse rollups for the raid timeline', updatedAt: agoIso(60 * 24 * 3), state: 'closed', author: person('tobias-r', 9919), headRefName: 'stats-rollups', baseRefName: 'main', checks: 'SUCCESS' })
+  ]
+})
+server.store.setSetting('github.inbox.viewer', 'landon')
+server.store.setSetting('github.inbox.fetchedAt', String(inboxNow))
+
+const ghDir = join(root, 'gh-fixtures')
+mkdirSync(ghDir, { recursive: true })
+const ghFixture = (name: string, value: unknown): void => writeFileSync(join(ghDir, name), typeof value === 'string' ? value : JSON.stringify(value))
+ghFixture('pr-details.json', {
+  body: [
+    'The inbox tab reads like Mail now: an avatar with a hairline outline, the title carries the weight while a row is unread, the repository and number sit dim under it, and the state is a word in the one color that means it.',
+    '',
+    '## What changed',
+    '',
+    '- `InboxView.swift`: the row, the seen store, swipe actions, pull to refresh',
+    '- `InboxItemView.swift`: the header, the conversation, the diff by file and hunk',
+    '',
+    'Closes #396.'
+  ].join('\n'),
+  author: { login: 'mira-ok' },
+  baseRefName: 'master',
+  headRefName: 'ios/inbox',
+  reviewDecision: 'REVIEW_REQUIRED'
+})
+ghFixture('issue-details.json', { body: 'After the socket drops and comes back, every search hit shows its thread title but the quoted row is gone until the search runs again.\n\nSteps: search, toggle airplane mode, toggle it back.', author: { login: 'tobias-r' } })
+ghFixture('pr-diff-meta.json', {
+  additions: 31,
+  deletions: 9,
+  files: [
+    { path: 'ios/TempCode/Sources/Shell/InboxView.swift', additions: 24, deletions: 6 },
+    { path: 'ios/TempCode/Sources/Shell/InboxItemView.swift', additions: 7, deletions: 3 }
+  ]
+})
+ghFixture(
+  'pr-diff.patch',
+  [
+    'diff --git a/ios/TempCode/Sources/Shell/InboxView.swift b/ios/TempCode/Sources/Shell/InboxView.swift',
+    'index 3f1c2aa..b8e0d41 100644',
+    '--- a/ios/TempCode/Sources/Shell/InboxView.swift',
+    '+++ b/ios/TempCode/Sources/Shell/InboxView.swift',
+    '@@ -118,12 +118,30 @@ struct InboxRow: View {',
+    '     let entry: InboxEntry',
+    '     let showHost: Bool',
+    '+    let unread: Bool',
+    ' ',
+    '     var body: some View {',
+    '         let item = entry.item',
+    '-        VStack(alignment: .leading, spacing: 3) {',
+    '-            HStack(spacing: 6) {',
+    '-                Image(systemName: item.kind.rawValue == "pr" ? "arrow.triangle.pull" : "circle.circle")',
+    '-                    .font(.caption2)',
+    '-                    .foregroundStyle(.tertiary)',
+    '+        HStack(alignment: .top, spacing: 12) {',
+    '+            Avatar(url: item.author?.avatarUrl, name: item.author?.login ?? "", size: 36)',
+    '+            VStack(alignment: .leading, spacing: 2) {',
+    '+                HStack(alignment: .firstTextBaseline, spacing: 8) {',
+    '+                    Text(item.title)',
+    '+                        .font(.subheadline.weight(unread ? .semibold : .regular))',
+    '+                        .lineLimit(2)',
+    '+                    Spacer(minLength: 0)',
+    '+                    Text(TimeFormat.ago(entry.updatedMs))',
+    '+                        .font(.caption)',
+    '+                        .monospacedDigit()',
+    '+                        .foregroundStyle(.tertiary)',
+    '+                }',
+    '+                InboxRowMeta(entry: entry, showHost: showHost)',
+    '             }',
+    '         }',
+    '-        .padding(.vertical, 8)',
+    '+        .padding(.vertical, 10)',
+    '         .accessibilityElement(children: .combine)',
+    '     }',
+    ' }',
+    'diff --git a/ios/TempCode/Sources/Shell/InboxItemView.swift b/ios/TempCode/Sources/Shell/InboxItemView.swift',
+    'index 91ab2e0..7c4d0f3 100644',
+    '--- a/ios/TempCode/Sources/Shell/InboxItemView.swift',
+    '+++ b/ios/TempCode/Sources/Shell/InboxItemView.swift',
+    '@@ -70,9 +70,13 @@ struct InboxItemView: View {',
+    '                 if let diff {',
+    '-                    ScrollView(.horizontal) {',
+    '-                        Text(diff.patch)',
+    '-                            .font(.caption.monospaced())',
+    '+                    ForEach(PatchFile.parse(diff), id: \\.path) { file in',
+    '+                        DiffFileView(file: file)',
+    '                     }',
+    '+                    if diff.truncated {',
+    '+                        Text("The patch is too large to show; the files are listed without it.")',
+    '+                            .font(.footnote)',
+    '+                            .foregroundStyle(.tertiary)',
+    '+                    }',
+    '                 }',
+    ''
+  ].join('\n')
+)
+const ghNode = (id: string, login: string, body: string, minutesAgo: number, extra: Record<string, unknown> = {}): Record<string, unknown> => ({ id, author: { login }, body, createdAt: agoIso(minutesAgo), url: `https://github.com/landon/temp-code/pull/${INBOX_PR}#issuecomment-${id}`, ...extra })
+ghFixture('pr-thread.json', {
+  data: {
+    repository: {
+      pullRequest: {
+        reviewDecision: 'REVIEW_REQUIRED',
+        baseRefName: 'master',
+        headRefName: 'ios/inbox',
+        comments: { totalCount: 2, nodes: [
+          ghNode('c1', 'landon', 'Looks right on the 15 Pro. Does the outline hold up on a white avatar in light mode?', 52, { isMinimized: false }),
+          ghNode('c2', 'mira-ok', 'Yes: black at 10 % over white reads as a hairline, and the dark mode one is white at 10 %. Screenshots in the description.', 31, { isMinimized: false })
+        ] },
+        reviews: { totalCount: 1, nodes: [
+          { id: 'r1', author: { login: 'tobias-r' }, body: 'One question on the seen store, otherwise good.', state: 'COMMENTED', submittedAt: agoIso(20), url: `https://github.com/landon/temp-code/pull/${INBOX_PR}#pullrequestreview-r1` }
+        ] },
+        reviewThreads: { totalCount: 1, nodes: [
+          { id: 't1', isResolved: false, path: 'ios/TempCode/Sources/Shell/InboxView.swift', comments: { totalCount: 2, nodes: [
+            { id: 'rc1', author: { login: 'tobias-r' }, body: 'Should the first snapshot seed everything as seen, as the desktop does?', createdAt: agoIso(20), url: '', path: 'ios/TempCode/Sources/Shell/InboxView.swift', line: 126, originalLine: 126 },
+            { id: 'rc2', author: { login: 'mira-ok' }, body: 'Everything older than a day. The last day stays unread so the first open shows what is new.', createdAt: agoIso(6), url: '', path: 'ios/TempCode/Sources/Shell/InboxView.swift', line: 126, originalLine: 126 }
+          ] } }
+        ] }
+      }
+    }
+  }
+})
+ghFixture('issue-thread.json', {
+  data: { repository: { issue: { comments: { totalCount: 1, nodes: [
+    { id: 'i1', author: { login: 'landon' }, body: 'Reproduced. The resume path replays the hits without their `row` field.', createdAt: agoIso(60 * 28), url: 'https://github.com/landon/temp-code/issues/396#issuecomment-i1', isMinimized: false }
+  ] } } } }
+})
+const ghScript = join(ghDir, 'gh')
+writeFileSync(
+  ghScript,
+  [
+    '#!/bin/sh',
+    `dir='${ghDir}'`,
+    'case "$1 $2" in',
+    '  "repo view") echo \'{"nameWithOwner":"landon/temp-code"}\' ;;',
+    '  "pr diff") cat "$dir/pr-diff.patch" ;;',
+    '  "pr view") case "$*" in *files*) cat "$dir/pr-diff-meta.json" ;; *) cat "$dir/pr-details.json" ;; esac ;;',
+    '  "issue view") cat "$dir/issue-details.json" ;;',
+    '  "api graphql") case "$*" in *pullRequest*) cat "$dir/pr-thread.json" ;; *) cat "$dir/issue-thread.json" ;; esac ;;',
+    '  *) echo "fixture gh: unknown call $*" >&2; exit 1 ;;',
+    'esac',
+    ''
+  ].join('\n'),
+  { mode: 0o755 }
+)
+process.env.TEMP_CODE_GH_BIN = ghScript
 
 // ── control ─────────────────────────────────────────────────────────────
 const readJson = (req: import('node:http').IncomingMessage): Promise<Record<string, unknown>> =>
