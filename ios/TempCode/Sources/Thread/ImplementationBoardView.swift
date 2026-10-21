@@ -52,7 +52,7 @@ struct ImplementationBoardView: View {
             .padding(.bottom, 16)
         }
         // The running task is the hero: when the harness moves on, the open row follows it.
-        .onChange(of: board.current.active) { choice = .auto }
+        .onChange(of: [board.currentRound, board.current.active ?? -1]) { choice = .auto }
     }
 
     /// The plan's heading when the thread was seeded from one, else the first request.
