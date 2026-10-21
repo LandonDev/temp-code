@@ -68,6 +68,11 @@ struct SourcesView: View {
         .fullScreenCover(isPresented: $readingReport) {
             ResearchReportScreen(sessionId: sessionId, document: document ?? "", board: board, running: running)
         }
+        .onAppear {
+            // The proof's launch hook: `report` opens the pin, `source` the first page.
+            if TestHooks.open == "report" { readingReport = true }
+            if TestHooks.open == "source", let first = board.uniqueSources.first, let url = URL(string: first.url) { page = WebPage(url: url) }
+        }
         .task(id: loading) {
             // A short rest after the page lands, so history paints in place and only live arrivals travel.
             guard !loading else {

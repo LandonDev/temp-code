@@ -13,7 +13,8 @@ enum TestHooks {
     /// `board`, `chat`, `plan`, `fleet`, `log` or `sources`.
     static let segment = env["TC_TEST_SEGMENT"].flatMap(Segment.init(rawValue:))
     /// `chip` opens the first tool chip with a held-back body, `diff` pushes
-    /// the first edit's diff, `agent` pushes the first subagent.
+    /// the first edit's diff, `agent` pushes the first subagent, `report`
+    /// opens the research report, `source` the first source's page.
     static let open = env["TC_TEST_OPEN"].flatMap { $0.isEmpty ? nil : $0 }
     /// Scrolls the whole transcript top and back while a display link
     /// records every frame; the report lands in Documents/scroll-report.json.
