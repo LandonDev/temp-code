@@ -1,5 +1,5 @@
 import { nanoid } from 'nanoid'
-import { mkdir, open, rm, stat, writeFile } from 'node:fs/promises'
+import { mkdir, open, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { join, resolve, sep } from 'node:path'
 import {
   clampHtmlRenderHeight,
@@ -91,6 +91,18 @@ let root: string | null = null
 export function setHtmlRenderRoot(dir: string): void {
   root = resolve(dir)
 }
+
+/** A stored page's HTML, or null when the thread has no such page. */
+export async function readPage(sessionId: string, pageId: string): Promise<string | null> {
+  if (!ID_PATTERN.test(sessionId) || !ID_PATTERN.test(pageId)) return null
+  try {
+    return await readFile(join(pagesDir(sessionId), `${pageId}.html`), 'utf8')
+  } catch {
+    return null
+  }
+}
+
+const ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/
 
 export function pagesDir(sessionId: string): string {
   if (!root) throw new Error('HTML render storage is not configured')

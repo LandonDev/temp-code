@@ -261,6 +261,7 @@ export const METHOD_CAPABILITY: Record<ClientRequest['method'], MethodCapability
   'remote.sessions.list': 'admin',
   'remote.sessions.revoke': 'admin',
   'remote.settings.set': 'admin',
+  'page.read': 'admin',
   'accounts.push': 'admin',
   'accounts.pull': 'admin',
   'accounts.confirm': 'admin',

@@ -151,9 +151,17 @@ export function clampHtmlRenderHeight(height: number): number {
   return Math.min(HTML_RENDER_MAX_HEIGHT, Math.max(HTML_RENDER_MIN_HEIGHT, Math.round(height)))
 }
 
-/** The stored page's URL under the app's asset protocol. */
-export function htmlRenderPageUrl(reference: Pick<HtmlRenderReference, 'sessionId' | 'pageId'>) {
-  return `${ASSET_SCHEME}://page/${reference.sessionId}/${reference.pageId}.html`
+/**
+ * The stored page's URL under the app's asset protocol. `host` is the
+ * environment the thread lives on: the handler reads a page of its own
+ * host from disk and fetches another host's over the peer link.
+ */
+export function htmlRenderPageUrl(
+  reference: Pick<HtmlRenderReference, 'sessionId' | 'pageId'>,
+  host?: string
+) {
+  const url = `${ASSET_SCHEME}://page/${reference.sessionId}/${reference.pageId}.html`
+  return host ? `${url}?host=${encodeURIComponent(host)}` : url
 }
 
 // ── theme ────────────────────────────────────────────────────────────

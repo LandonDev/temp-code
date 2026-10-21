@@ -23,8 +23,11 @@ import { openHtmlRenderOverlay } from "./HtmlRenderOverlay";
  */
 export const HtmlRenderRow = memo(function HtmlRenderRow({
   reference,
+  host,
 }: {
   reference: HtmlRenderReference;
+  /** The environment the thread lives on; its page is fetched from there. */
+  host?: string;
 }) {
   // The frame takes the page's measured height at its own width, read before
   // first paint so the reserved box is already the right size.
@@ -47,7 +50,7 @@ export const HtmlRenderRow = memo(function HtmlRenderRow({
   return (
     <div ref={boxRef} className="group/html-render relative my-1" style={{ height }}>
       <HtmlRenderDocument
-        src={assetHref(htmlRenderPageUrl(reference))}
+        src={assetHref(htmlRenderPageUrl(reference, host))}
         title={reference.title}
         className="block size-full"
         onContentHeight={setContentHeight}
@@ -55,7 +58,7 @@ export const HtmlRenderRow = memo(function HtmlRenderRow({
       <button
         type="button"
         aria-label="Open page"
-        onClick={() => openHtmlRenderOverlay(reference)}
+        onClick={() => openHtmlRenderOverlay(reference, host)}
         className="pressable absolute right-2 top-2 grid size-7 place-items-center rounded-md bg-background-base/80 text-content/70 opacity-0 transition-opacity hover:bg-content/10 hover:text-content focus-visible:opacity-100 group-hover/html-render:opacity-100"
       >
         <Maximize2 className="size-3.5" strokeWidth={1.75} />

@@ -16,6 +16,7 @@ import {
   publish,
   removePages,
   setHtmlPreviewer,
+  readPage,
   setHtmlRenderRoot
 } from './htmlRender'
 
@@ -143,6 +144,9 @@ describe('publish and removePages', () => {
     expect(reference.heights?.map(([w]) => w)).toEqual([320, 400, 480, 560, 640, 728, 800, 864])
     const file = join(root, 'sess-1', `${reference.pageId}.html`)
     expect(readFileSync(file, 'utf8')).toContain('<p>x</p>')
+    expect(await readPage('sess-1', reference.pageId)).toContain('<p>x</p>')
+    expect(await readPage('sess-1', 'absent')).toBeNull()
+    expect(await readPage('../escape', reference.pageId)).toBeNull()
 
     await removePages(['sess-1', '../escape'])
     expect(existsSync(join(root, 'sess-1'))).toBe(false)

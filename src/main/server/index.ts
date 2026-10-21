@@ -79,6 +79,7 @@ import { handleCheckpoint } from './checkpointRpc'
 import { Linear, handleLinear } from './linear'
 import { GithubInbox, handleGithubInbox } from './githubInbox'
 import { SessionRegistry } from './sessions'
+import { readPage } from './htmlRender'
 import { resolveAppBridgeLaunch, runDoctor, updateProvider } from './drivers/binaries'
 import { probeCatalogs } from './drivers/catalogProbe'
 import { codexTiersReady, probeCodexTiers, startCodexTiers } from './drivers/codexTiers'
@@ -250,6 +251,8 @@ export interface RunningServer {
   masterRelease: MasterReleaseWatcher
   /** What the desktop paints at boot before any socket is up (launchMirror.ts). */
   launchMirror: LaunchMirror
+  /** A stored agent page of a thread on `host`, over the peer link; null when the host has no such page. */
+  remotePage: (host: string, sessionId: string, pageId: string) => Promise<string | null>
   close: () => Promise<void>
 }
 
@@ -981,6 +984,10 @@ export async function startServer(
         if (principal.kind !== 'local') fenceRequest(req, managedRoots(), [ATTACH_DIR])
         // A pull marks the socket as another host's main process: it hears
         // every later rotation (never a renderer, which never pulls).
+        if (req.method === 'page.read') {
+          const html = await readPage(req.params.sessionId, req.params.pageId)
+          return sendFrame({ id: req.id, ok: true, result: { html } })
+        }
         if (req.method === 'accounts.pull') {
           const answer = await accountSync.handlePull(req.params.from, req.params)
           if (principal.kind === 'remote') unsubscribeAccounts ??= accountSync.subscribe(sendFrame)
@@ -2105,6 +2112,12 @@ export async function startServer(
     environmentId,
     accountSync,
     launchMirror,
+    remotePage: async (host, sessionId, pageId) => {
+      const link = peers.get(host)
+      if (!link) throw new Error('no link to that host')
+      const { html } = await link.request<{ html: string | null }>('page.read', { sessionId, pageId })
+      return html
+    },
     attach,
     remoteAuth,
     get remote() {

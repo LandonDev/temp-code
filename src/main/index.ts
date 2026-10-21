@@ -18,7 +18,7 @@ import type { LaunchMirrorSnapshot, MirrorWrite } from '@shared/launchMirror'
 import { preconnectAccount } from './server/preconnect'
 import { mayClaimShim, releaseGateway } from './server/gateway'
 import { killTrackedChildren } from './server/spawnBudget'
-import { handleAssetRequest, pagesRoot, registerAssetProtocol, registerSchemes } from './assets'
+import { handleAssetRequest, pagesRoot, registerAssetProtocol, registerSchemes, setRemotePages } from './assets'
 import { registerAppProtocol } from './appScheme'
 import { migrateLocalStorage } from './originMigration'
 import { isHeadless, noDisplay, publishLocalPort, quitsOnAllClosed, unpublishLocalPort } from './headless'
@@ -146,6 +146,7 @@ app.whenReady().then(async () => {
     const running = server
     app.on('browser-window-focus', () => running.masterRelease.focus())
   }
+  setRemotePages({ environmentId: server.environmentId, read: server.remotePage })
   registerAliaxPages(server)
   registerPty()
   const { store } = server

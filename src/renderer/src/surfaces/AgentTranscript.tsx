@@ -1469,7 +1469,12 @@ const TranscriptBlock = memo(function TranscriptBlock({
 
   const page = htmlRenderOf(block);
   if (page) {
-    return <HtmlRenderRow reference={page} />;
+    return (
+      <HtmlRenderRow
+        reference={page}
+        host={cwd ? hostOfCwd(cwd) : registry.primary().environmentId}
+      />
+    );
   }
 
   if (block.role === "tool") {

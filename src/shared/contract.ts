@@ -969,6 +969,16 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
       height: z.number().int().min(80).max(2000)
     })
   }),
+  // A stored agent page by id, for the desktop showing a thread of another
+  // host: the Mac's asset handler asks the thread's host over the peer link.
+  z.object({
+    id: z.string(),
+    method: z.literal('page.read'),
+    params: z.object({
+      sessionId: z.string().regex(/^[A-Za-z0-9_-]{1,64}$/),
+      pageId: z.string().regex(/^[A-Za-z0-9_-]{1,64}$/)
+    })
+  }),
   z.object({
     id: z.string(),
     method: z.literal('app.citeSource'),

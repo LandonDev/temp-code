@@ -165,6 +165,9 @@ describe('readHtmlRenderReference', () => {
 
   it('names the stored page and a download file', () => {
     expect(htmlRenderPageUrl(reference)).toBe('tempcode-asset://page/thread-abc/page123.html')
+    expect(htmlRenderPageUrl(reference, 'env_box')).toBe(
+      'tempcode-asset://page/thread-abc/page123.html?host=env_box'
+    )
     expect(htmlRenderFileName(' Q3: revenue / costs? ')).toBe('Q3 revenue costs.html')
     expect(htmlRenderFileName('')).toBe('Page.html')
   })

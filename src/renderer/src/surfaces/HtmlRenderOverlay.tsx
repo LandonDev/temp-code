@@ -18,7 +18,7 @@ const HtmlRenderDocument = htmlRenderChunk.surface("HtmlRenderDocument", <Surfac
  * (module store, backdrop, Escape through the command map, corner X).
  */
 
-let current: HtmlRenderReference | null = null;
+let current: { reference: HtmlRenderReference; host?: string } | null = null;
 const subs = new Set<() => void>();
 const emit = (): void => subs.forEach((f) => f());
 const subscribe = (f: () => void): (() => void) => {
@@ -26,8 +26,8 @@ const subscribe = (f: () => void): (() => void) => {
   return () => subs.delete(f);
 };
 
-export function openHtmlRenderOverlay(reference: HtmlRenderReference): void {
-  current = reference;
+export function openHtmlRenderOverlay(reference: HtmlRenderReference, host?: string): void {
+  current = { reference, host };
   emit();
 }
 
@@ -58,15 +58,15 @@ export function HtmlRenderOverlay() {
           onClick={closeHtmlRenderOverlay}
         >
           <motion.div
-            key={snap.pageId}
+            key={snap.reference.pageId}
             initial={reduce ? false : { opacity: 0, scale: 0.97 }}
             animate={{ opacity: 1, scale: 1, transition: SPRING_PANEL }}
             className="flex size-full max-w-6xl flex-col overflow-hidden rounded-xl border border-content/10 bg-background-base shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex h-10 shrink-0 items-center justify-between gap-3 border-b border-content/10 pl-4 pr-2">
-              <span className="truncate font-sans text-[13px] text-content" title={snap.title}>
-                {snap.title}
+              <span className="truncate font-sans text-[13px] text-content" title={snap.reference.title}>
+                {snap.reference.title}
               </span>
               <button
                 type="button"
@@ -78,8 +78,8 @@ export function HtmlRenderOverlay() {
               </button>
             </div>
             <HtmlRenderDocument
-              src={assetHref(htmlRenderPageUrl(snap))}
-              title={snap.title}
+              src={assetHref(htmlRenderPageUrl(snap.reference, snap.host))}
+              title={snap.reference.title}
               className="min-h-0 w-full flex-1"
             />
           </motion.div>

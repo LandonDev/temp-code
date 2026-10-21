@@ -1,5 +1,6 @@
 import { app, net, protocol } from 'electron'
-import { join, resolve, sep } from 'node:path'
+import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { dirname, join, resolve, sep } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { ASSET_SCHEME, HTML_RENDERS_DIR, logoAssetUrl } from '@shared/assets'
 import { APP_SCHEME } from './appScheme'
@@ -49,6 +50,46 @@ export function pagesRoot(): string {
   return resolve(join(app.getPath('userData'), HTML_RENDERS_DIR))
 }
 
+/**
+ * Pages of threads on other hosts (`?host=<environment id>` on a page URL):
+ * fetched once over the peer link and kept here, since a published page
+ * never changes. Set once the server is up; a URL naming this host reads
+ * from disk as before.
+ */
+export interface RemotePages {
+  environmentId: string
+  read: (host: string, sessionId: string, pageId: string) => Promise<string | null>
+}
+let remotePages: RemotePages | null = null
+export function setRemotePages(next: RemotePages | null): void {
+  remotePages = next
+}
+function remotePagesRoot(): string {
+  return resolve(join(app.getPath('userData'), `${HTML_RENDERS_DIR}-remote`))
+}
+
+/** A page of another host: its cached copy, else fetched and cached. */
+export async function serveRemotePage(host: string, url: URL): Promise<Response> {
+  const [sessionId, file] = url.pathname.replace(/^\/+/, '').split('/')
+  const pageId = file?.endsWith('.html') ? file.slice(0, -'.html'.length) : undefined
+  const cached = fenced(remotePagesRoot(), `${host}/${url.pathname}`)
+  if (!pageId || !cached || !remotePages) return new Response('not found', { status: 404 })
+  const html = { 'Content-Type': 'text/html; charset=utf-8' }
+  try {
+    return new Response(await readFile(cached, 'utf8'), { headers: html })
+  } catch {}
+  let page: string | null
+  try {
+    page = await remotePages.read(host, sessionId!, pageId)
+  } catch (err) {
+    return new Response(`The page is on another host that is not reachable right now (${err instanceof Error ? err.message : err})`, { status: 503 })
+  }
+  if (page === null) return new Response('not found', { status: 404 })
+  await mkdir(dirname(cached), { recursive: true })
+  await writeFile(cached, page)
+  return new Response(page, { headers: html })
+}
+
 /** A path under `root`, or null when the URL's path escapes it. */
 export function fenced(root: string, pathname: string): string | null {
   let relative: string
@@ -96,6 +137,9 @@ export async function handleAssetRequest(request: Request): Promise<Response> {
         ? new Response('not found', { status: 404 })
         : new Response(html, { headers: { 'Content-Type': 'text/html; charset=utf-8' } })
     }
+    // A thread of another host: its page lives there, not under this userData.
+    const host = url.searchParams.get('host')
+    if (host && remotePages && host !== remotePages.environmentId) return serveRemotePage(host, url)
   }
   const path = resolveAssetPath(request.url)
   if (!path) return new Response('not found', { status: 404 })
