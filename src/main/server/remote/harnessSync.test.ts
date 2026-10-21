@@ -188,7 +188,7 @@ describe('the manifest', () => {
 
 describe('mac → box', () => {
   const seed = (): void => {
-    put(mac, '.claude/settings.json', JSON.stringify({ statusLine: { command: `${mac}/.claude/statusline.sh` }, hooks: { Stop: [{ hooks: [{ type: 'command', command: 'osascript -e beep' }, { type: 'command', command: '/bin/sh -c true' }] }] } }))
+    put(mac, '.claude/settings.json', JSON.stringify({ statusLine: { command: `${mac}/.claude/statusline.sh` }, hooks: { Stop: [{ hooks: [{ type: 'command', command: 'tc-no-such-tool -e beep' }, { type: 'command', command: '/bin/sh -c true' }] }] } }))
     put(mac, '.claude/skills/deploy/SKILL.md', `Run ${mac}/IdeaProjects/shop/bin/deploy and ${mac}/Desktop/Websites/site/x, see /Users/landon/IdeaProjects/temp-code/CLAUDE.md`)
     put(mac, '.claude/skills/deploy/go.sh', `#!/bin/sh\ncd ${mac}/IdeaProjects/shop\n`, 0o755)
     put(mac, '.claude/skills/deploy/logo.png', Buffer.from([0x89, 0x50, 0x4e, 0x47, 0, 0xff, 0x2f, 0x55]))
@@ -233,7 +233,7 @@ describe('mac → box', () => {
     const cj = JSON.parse(read(box, '.claude.json'))
     expect(cj).toEqual({ oauthAccount: { emailAddress: 'box@x' }, machineID: 'box', enabledPlugins: { 'p@m': true }, mcpServers: { fs: { command: `${box}/bin/mcp-fs` } } })
     // the hook line names what cannot run here
-    expect(boxLog).toContain('settings.json landed; hook commands not on this host\'s PATH: osascript')
+    expect(boxLog).toContain('settings.json landed; hook commands not on this host\'s PATH: tc-no-such-tool')
     const status = sender.status()
     expect(status.environments[0]).toMatchObject({ id: 'env_box', connected: true, files: 11, error: null })
     expect(status.environments[0].syncedAt).toBeGreaterThan(0)
@@ -397,11 +397,11 @@ describe('hook executables', () => {
   it('lists the ones not found, absolute or on PATH; builtins and variables are not judged', () => {
     const settings = JSON.stringify({
       hooks: {
-        Stop: [{ hooks: [{ type: 'command', command: 'osascript -e x' }, { type: 'command', command: 'sh -c true' }, { type: 'command', command: 'echo hi' }] }],
+        Stop: [{ hooks: [{ type: 'command', command: 'tc-no-such-tool -e x' }, { type: 'command', command: 'sh -c true' }, { type: 'command', command: 'echo hi' }] }],
         PreToolUse: [{ matcher: 'Bash', hooks: [{ type: 'command', command: '/Applications/X.app/bin/x' }, { type: 'command', command: '$HOME/bin/y' }] }]
       }
     })
-    expect(missingHookExecutables(settings, { PATH: '/usr/bin:/bin', home: box }).sort()).toEqual(['/Applications/X.app/bin/x', 'osascript'])
+    expect(missingHookExecutables(settings, { PATH: '/usr/bin:/bin', home: box }).sort()).toEqual(['/Applications/X.app/bin/x', 'tc-no-such-tool'])
   })
 })
 

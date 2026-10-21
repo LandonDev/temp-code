@@ -21,7 +21,7 @@
  *  - nothing excluded lands: no credential, auth.json, settings.local.json,
  *    *.pem/*.key, no plugin directory cache, no .git, no .codex/skills/.system,
  *    and box's own files are as they were
- *  - box logged the hook executable it cannot find (osascript)
+ *  - box logged the hook executable it cannot find (tc-no-such-tool)
  *  - a deletion and an edit on mac reach box through the watch alone
  *  - a file edited on box is put back by Sync now; a file box made itself stays
  *  - mac's harness.status names box with the file count and no error
@@ -88,7 +88,7 @@ const special = join(root, 'box-special', 'proj')
 
 // ── the Mac's HOME ──────────────────────────────────────────────────────
 const M = mac.home
-put(M, '.claude/settings.json', JSON.stringify({ statusLine: { type: 'command', command: `${M}/.claude/statusline.sh` }, hooks: { Stop: [{ hooks: [{ type: 'command', command: 'osascript -e "beep"' }, { type: 'command', command: '/bin/sh -c true' }] }] } }, null, 2))
+put(M, '.claude/settings.json', JSON.stringify({ statusLine: { type: 'command', command: `${M}/.claude/statusline.sh` }, hooks: { Stop: [{ hooks: [{ type: 'command', command: 'tc-no-such-tool -e "beep"' }, { type: 'command', command: '/bin/sh -c true' }] }] } }, null, 2))
 put(M, '.claude/skills/deploy/SKILL.md', `---\nname: deploy\n---\nRun ${M}/IdeaProjects/shop/bin/deploy, then ${M}/Desktop/Websites/site/build.sh and ${M}/Special/proj/run.\n`)
 put(M, '.claude/skills/deploy/go.sh', `#!/bin/sh\ncd ${M}/IdeaProjects/shop && ./bin/deploy\n`, 0o755)
 put(M, '.claude/skills/deploy/logo.png', PNG)
@@ -276,7 +276,7 @@ try {
   check('the account buckets and .codex/skills/.system are box\'s own', read(B, '.claude/skills/synced/acct/SKILL.md') === 'the box account bucket' && read(B, '.codex/skills/.system/builtin/SKILL.md') === 'the box codex system skill')
 
   // ── 3. the hook line ─────────────────────────────────────────────────
-  check('box logged the hook executable it cannot find', logOf(box).includes("settings.json landed; hook commands not on this host's PATH: osascript"), logOf(box).split('\n').filter((l) => l.includes('settings.json landed')).join(' | '))
+  check('box logged the hook executable it cannot find', logOf(box).includes("settings.json landed; hook commands not on this host's PATH: tc-no-such-tool"), logOf(box).split('\n').filter((l) => l.includes('settings.json landed')).join(' | '))
 
   // ── 4. the watch: a deletion and an edit on mac reach box with no Sync now ──
   rmSync(join(M, '.claude/commands/gone.md'))
