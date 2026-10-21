@@ -13,13 +13,15 @@ import type { AttachmentSettings } from "@server/shared/contract-attachments";
 import { forgetAttachmentSettings } from "../lib/attachmentUpload";
 import { DialogFooter, ErrorLine, errorText } from "../chrome/ConfirmDialog";
 import { Check, Copy } from "../chrome/icons";
+import { DeployDriftMark } from "../chrome/DeployDrift";
 import { Modal } from "../chrome/Modal";
 import { timeAgo } from "../lib/format";
-import { registry } from "../lib/connection";
+import { LOCAL_ENVIRONMENT_ID, registry } from "../lib/connection";
 import { Heading, INPUT_CLASS, Input, Row, SecondaryButton, Segmented, Toggle } from "./settingsBits";
 import { MatrixSpinner } from "./threads/bits";
 import { harnessLine } from "./harnessLine";
 import { MacBridgeSettings } from "./MacBridgeSettings";
+import { DeploySettings } from "./DeploySettings";
 
 /**
  * Settings → Remote access (plan 5jtfkIC45Cbr): the environment id, the
@@ -116,6 +118,7 @@ export function RemoteSettings() {
   return (
     <>
       <Row label="Environment" description="Clients check this id before trusting a route.">
+        <DeployDriftMark environmentId={LOCAL_ENVIRONMENT_ID} />
         <code className="text-[12px] text-content/70">{status.environmentId}</code>
         <CopyButton text={status.environmentId} label="Copy environment id" />
       </Row>
@@ -190,7 +193,7 @@ export function RemoteSettings() {
           <Heading title="Harness config" />
           <Row
             label="Sync to hosts"
-            description="Skills, commands, agents, settings and plugins of Claude Code and Codex go from here to every host this machine holds an admin key for; this machine's copy wins."
+            description="Skills, commands, agents, hooks, settings and plugins of Claude Code and Codex go from here to every host this machine holds an admin key for; this machine's copy wins. A skill's per-platform binary stays: each host downloads its own."
           >
             <Toggle
               label="Sync harness config"
@@ -217,11 +220,13 @@ export function RemoteSettings() {
           </List>
           {harness.skipped > 0 ? (
             <p className="pb-2 text-[12px] text-content/40">
-              {harness.skipped} {harness.skipped === 1 ? "file stays" : "files stay"} on this machine (over 16 MB, or a symlink out of reach).
+              {harness.skipped} {harness.skipped === 1 ? "file stays" : "files stay"} on this machine (over 16 MB, a symlink out of reach, or a macOS binary).
             </p>
           ) : null}
         </>
       ) : null}
+
+      <DeploySettings />
 
       <MacBridgeSettings />
 

@@ -448,9 +448,11 @@ public struct GoalEvent: Codable, Hashable, Sendable {
 
 public struct AgentSpawnedEvent: Codable, Hashable, Sendable {
     public let childSessionId: String
+    public let environmentId: String?
 
-    public init(childSessionId: String) {
+    public init(childSessionId: String, environmentId: String? = nil) {
         self.childSessionId = childSessionId
+        self.environmentId = environmentId
     }
 }
 
@@ -478,6 +480,18 @@ public struct ErrorsClearedEvent: Codable, Hashable, Sendable {
     public init() {}
 }
 
+public struct NoticeEvent: Codable, Hashable, Sendable {
+    public let kind: String
+    public let message: String
+    public let account: String?
+
+    public init(kind: String, message: String, account: String? = nil) {
+        self.kind = kind
+        self.message = message
+        self.account = account
+    }
+}
+
 public enum AgentEvent: Codable, Hashable, Sendable {
     case userText(UserTextEvent)
     case assistantText(AssistantTextEvent)
@@ -503,6 +517,7 @@ public enum AgentEvent: Codable, Hashable, Sendable {
     case agentSpawned(AgentSpawnedEvent)
     case error(ErrorEvent)
     case errorsCleared(ErrorsClearedEvent)
+    case notice(NoticeEvent)
     /// A `type` this build does not know: the whole object, untouched.
     case unknown(JSONValue)
 
@@ -537,6 +552,7 @@ public enum AgentEvent: Codable, Hashable, Sendable {
         case "agent-spawned": self = .agentSpawned(try AgentSpawnedEvent(from: decoder))
         case "error": self = .error(try ErrorEvent(from: decoder))
         case "errors-cleared": self = .errorsCleared(try ErrorsClearedEvent(from: decoder))
+        case "notice": self = .notice(try NoticeEvent(from: decoder))
         default: self = .unknown(try JSONValue(from: decoder))
         }
     }
@@ -567,6 +583,7 @@ public enum AgentEvent: Codable, Hashable, Sendable {
         case .agentSpawned(let value): try Self.encode(tag: "agent-spawned", value, to: encoder)
         case .error(let value): try Self.encode(tag: "error", value, to: encoder)
         case .errorsCleared(let value): try Self.encode(tag: "errors-cleared", value, to: encoder)
+        case .notice(let value): try Self.encode(tag: "notice", value, to: encoder)
         case .unknown(let value): try value.encode(to: encoder)
         }
     }

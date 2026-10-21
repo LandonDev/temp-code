@@ -37,11 +37,13 @@ import {
   HARNESS_SET,
   buildManifest,
   decodeText,
+  isMachO,
   isSecretPath,
   missingHookExecutables,
   pruneEmptyDirs,
   ruleFor,
   ruleRoot,
+  setCounts,
   sha256,
   translatable,
   type HashCache,
@@ -78,7 +80,8 @@ import type { Peers } from './peers'
  *  - every relPath is checked on both ends: inside the set, not a secret,
  *    no `..`, not absolute, and its real parent inside the real rule root
  *    (no landing through a symlink that points out). A refusal is logged
- *    and the file never lands.
+ *    and the file never lands. A Mach-O file (isMachO) is left out of the
+ *    manifest and refused again on commit: a macOS binary runs nowhere else.
  */
 
 export const ENABLED_KEY = 'harness.sync.enabled'
@@ -127,6 +130,8 @@ interface Generation {
 
 interface EnvRecord {
   files: number | null
+  /** Files per set label in the last manifest the host committed. */
+  sets: Record<string, number> | null
   syncedAt: number | null
   lastAttemptAt: number | null
   error: string | null
@@ -273,7 +278,7 @@ export class HarnessSync {
 
   private record(id: string, patch: Partial<EnvRecord>): void {
     const all = this.records()
-    const blank: EnvRecord = { files: null, syncedAt: null, lastAttemptAt: null, error: null }
+    const blank: EnvRecord = { files: null, sets: null, syncedAt: null, lastAttemptAt: null, error: null }
     all[id] = Object.assign(blank, all[id], patch)
     this.deps.store.setSetting(STATUS_KEY, JSON.stringify(all))
   }
@@ -293,6 +298,7 @@ export class HarnessSync {
           connected: link.connected,
           running: this.syncing.has(link.id),
           files: r?.files ?? null,
+          sets: r?.sets ?? null,
           syncedAt: r?.syncedAt ?? null,
           lastAttemptAt: r?.lastAttemptAt ?? null,
           error: r?.error ?? null
@@ -419,7 +425,7 @@ export class HarnessSync {
       }
       const done = await link.request<HarnessCommitAnswer>('harness.commit', { generation }, { timeoutMs: MANIFEST_TIMEOUT_MS })
       this.lastDigest.set(environmentId, digest)
-      this.record(environmentId, { files: done.files, syncedAt: this.now(), error: null })
+      this.record(environmentId, { files: done.files, sets: setCounts(manifest.entries, this.rules), syncedAt: this.now(), error: null })
       if (done.written || done.deleted || done.claudeJson || answer.refused)
         this.log(`${link.env.name}: ${done.files} files, ${done.written} written, ${done.deleted} deleted${done.claudeJson ? ', ~/.claude.json keys merged' : ''}${answer.refused ? `, ${answer.refused} refused there` : ''} (${why})`)
     } catch (err) {
@@ -590,6 +596,10 @@ export class HarnessSync {
         const dest = this.destination(relPath)
         if ('refused' in dest) {
           this.log(`refused ${JSON.stringify(relPath)} from ${g.from}: ${dest.refused}`)
+          continue
+        }
+        if (isMachO(data)) {
+          this.log(`refused ${JSON.stringify(relPath)} from ${g.from}: a macOS binary`)
           continue
         }
         let out = data

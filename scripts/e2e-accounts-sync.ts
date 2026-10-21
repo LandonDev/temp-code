@@ -17,6 +17,11 @@
  *  - a takeover with the response dropped: B swallows its answer to A's
  *    confirm (TEMP_CODE_DROP_ANSWERS); B has stripped, A's copy stays
  *    provisional until the next sync settles it, and A owns the grant
+ *  - a removal follows the owner: A deletes an account it refreshes over
+ *    `accounts.delete`; A's snapshot drops it at once (no refresh, no sync
+ *    asked for), B's access-only copy goes on A's word, and a B thread whose
+ *    workspace was pinned to it loses the pin, gets one notice row and
+ *    routes automatically
  *  - a Codex handoff on the live lineage: the grant A's CLI is signed in
  *    with goes to B as an access copy only; once the CLI rotates, the stored
  *    grant is no longer the live one and is handed off
@@ -43,6 +48,8 @@ const PLANTED = 'planted@example.com'
 const PLANTED_ID = 'u-planted'
 const CODEX_NAME = 'codex@example.com'
 const CODEX_ID = 'acct-fake'
+const EXTRA = 'extra@example.com'
+const EXTRA_ID = 'u-extra'
 
 let failures = 0
 const check = (name: string, ok: boolean, detail = ''): boolean => {
@@ -70,11 +77,12 @@ for (const port of [A.debug, A.remote, B.debug, B.remote]) {
 
 // ── the fake provider: two grant lineages, a token endpoint that rotates (and can be slowed), a usage endpoint that knows the current tokens ──
 type Lineage = { access: string; refresh: string; n: number; prefix: string; account: { uuid: string; email: string } }
-const lineages: Record<'main' | 'planted', Lineage> = {
+const lineages: Record<'main' | 'planted' | 'extra', Lineage> = {
   main: { access: 'T1', refresh: 'R1', n: 1, prefix: '', account: { uuid: ACCOUNT_ID, email: ACCOUNT } },
-  planted: { access: 'PT1', refresh: 'PR1', n: 1, prefix: 'P', account: { uuid: PLANTED_ID, email: PLANTED } }
+  planted: { access: 'PT1', refresh: 'PR1', n: 1, prefix: 'P', account: { uuid: PLANTED_ID, email: PLANTED } },
+  extra: { access: 'XT1', refresh: 'XR1', n: 1, prefix: 'X', account: { uuid: EXTRA_ID, email: EXTRA } }
 }
-const fake = { minted: new Map<string, Lineage>([['T1', lineages.main], ['PT1', lineages.planted]]), dead: new Set<string>(), presented: [] as string[], slowMs: 0 }
+const fake = { minted: new Map<string, Lineage>([['T1', lineages.main], ['PT1', lineages.planted], ['XT1', lineages.extra]]), dead: new Set<string>(), presented: [] as string[], slowMs: 0 }
 const readBody = (req: IncomingMessage): Promise<string> =>
   new Promise((resolve) => {
     let text = ''
@@ -143,6 +151,14 @@ function seedVault(inst: Inst, profiles: Record<string, unknown>, secrets: Recor
   const key = deriveChromiumKey(password)
   for (const [file, blob] of Object.entries(secrets)) writeFileSync(join(dir, 'secrets', `${file}.bin`), chromiumEncrypt(key, blob))
 }
+/** Add a profile this host refreshes after boot: a row in profiles.json and its secret (the vault reads both from disk on every call). */
+function addProfile(inst: Inst, service: string, profile: Record<string, unknown>, file: string, blob: string): void {
+  const dir = vaultDir(inst)
+  const meta = JSON.parse(readFileSync(join(dir, 'profiles.json'), 'utf8')) as Record<string, Record<string, unknown>[]>
+  meta[service] = [...(meta[service] ?? []).filter((p) => p.name !== profile.name), profile]
+  writeFileSync(join(dir, 'profiles.json'), JSON.stringify(meta, null, 2))
+  writeSecret(inst, file, blob)
+}
 /** Overwrite one stored secret after boot (the vault reads from disk on every call). */
 function writeSecret(inst: Inst, file: string, blob: string): void {
   const dir = vaultDir(inst)
@@ -150,6 +166,7 @@ function writeSecret(inst: Inst, file: string, blob: string): void {
   writeFileSync(join(dir, 'secrets', `${file}.bin`), chromiumEncrypt(key, blob))
 }
 const secretFile = `claude-code__${encodeURIComponent(ACCOUNT)}`
+const extraFile = `claude-code__${encodeURIComponent(EXTRA)}`
 const codexFile = `codex__${encodeURIComponent(CODEX_NAME)}`
 function readBlob(inst: Inst, file: string): Record<string, any> | null {
   const dir = vaultDir(inst)
@@ -251,6 +268,7 @@ interface Snapshot {
 const snapshot = (cdp: Cdp): Promise<Snapshot> => rpc(cdp, 'accounts.list') as Promise<Snapshot>
 const profileIn = (s: Snapshot, name = ACCOUNT) => s.providers.claude.profiles.find((p) => p.name === name)
 const codexIn = (s: Snapshot) => s.providers.codex.profiles.find((p) => p.name === CODEX_NAME)
+const sessionOn = async (cdp: Cdp, id: string): Promise<{ id: string; account?: string | null } | undefined> => ((await rpc(cdp, 'session.list')) as { id: string; account?: string | null }[]).find((s) => s.id === id)
 async function connectWindow(inst: Inst, label: string): Promise<{ cdp: Cdp; env: string }> {
   const cdp = await attach(inst.debug, 120_000)
   await until(`${label} local socket`, 60_000, () => cdp.eval<boolean>(`!!window.__monocode?.registry?.primary()?.connected`))
@@ -343,6 +361,47 @@ try {
   await until('B is access-only', 10_000, async () => profileIn(await snapshot(b))?.owner === aEnv)
   check('B: keeps an access-only copy refreshed by A', readSecret(B)?.refreshToken === undefined && readSecret(B)?.accessToken === 'T3')
   check('fake: no refresh happened during the takeover', fake.presented.length === presentedBefore, JSON.stringify(fake.presented))
+
+  // ── 5b. a removal follows the owner: A deletes an account it refreshes; its snapshot drops it at once, B's copy goes on A's word, and a B thread pinned to it falls back to Auto with one row ──
+  addProfile(A, 'claude-code', { name: EXTRA, accountId: EXTRA_ID, email: EXTRA, color: '#8e5bdf', createdAt: now }, extraFile, claudeBlob('XT1', 'XR1', now + 3_600_000, { uuid: EXTRA_ID, email: EXTRA }))
+  await rpc(a, 'accounts.refresh', { provider: 'claude' })
+  await rpc(a, 'accounts.sync', { environmentId: bEnv })
+  await until('B receives the extra account as a copy', 30_000, async () => profileIn(await snapshot(b), EXTRA)?.owner === aEnv)
+  const scratch = join(B.data, 'scratch')
+  mkdirSync(scratch, { recursive: true })
+  const ws = (await rpc(b, 'workspace.create', { path: scratch })) as { id: string }
+  await rpc(b, 'workspace.setAccounts', { workspaceId: ws.id, pins: { claude: EXTRA } })
+  const thread = (await rpc(b, 'session.create', { cwd: scratch, workspaceId: ws.id, provider: 'claude', model: 'claude-haiku-5-5', title: 'pinned to the extra account' })) as { id: string }
+  await until('B: the thread shows the pinned account', 10_000, async () => (await sessionOn(b, thread.id))?.account === EXTRA)
+  const deleted = (await rpc(a, 'accounts.delete', { service: 'claude-code', name: EXTRA })) as { ok: boolean }
+  check('A: the delete answered ok', deleted.ok === true, JSON.stringify(deleted))
+  check('A: the snapshot no longer lists the account, with no refresh or sync asked for', profileIn(await snapshot(a), EXTRA) === undefined)
+  check('A: its stored secret is gone', readBlob(A, extraFile) === null)
+  check('A: said so', logHas(A, `claude-code ${EXTRA}: deleted here`))
+  await until("B drops its copy on A's word", 30_000, async () => profileIn(await snapshot(b), EXTRA) === undefined)
+  check('B: said why', logHas(B, `claude-code ${EXTRA}: removed on ${aEnv}, which refreshed it; deleted here`))
+  check('B: the stored copy is gone', readBlob(B, extraFile) === null)
+  check('B: the other accounts are untouched', profileIn(await snapshot(b)) !== undefined && profileIn(await snapshot(b), PLANTED) !== undefined)
+  await until('B: the workspace pin is cleared', 10_000, async () => {
+    const list = (await rpc(b, 'workspace.list')) as { id: string; accountPins?: { claude?: string } }[]
+    return list.find((w) => w.id === ws.id)?.accountPins?.claude === undefined
+  })
+  const rows = (await rpc(b, 'session.events', { sessionId: thread.id, afterSeq: 0 })) as { event: { type: string; kind?: string; account?: string; message?: string } }[]
+  const notices = rows.map((r) => r.event).filter((e) => e.type === 'notice')
+  check(
+    'B: one row in the thread says the account is gone and routing is automatic from here',
+    notices.length === 1 && notices[0].kind === 'account-gone' && notices[0].account === EXTRA && new RegExp(`^Account ${EXTRA} is gone from this host; routing automatically from here \\(`).test(notices[0].message ?? ''),
+    JSON.stringify(notices)
+  )
+  const moved = await sessionOn(b, thread.id)
+  check('B: the thread no longer names the gone account', moved !== undefined && moved.account !== EXTRA, JSON.stringify(moved?.account))
+  const pulled = (await rpc(a, 'accounts.pull', { from: bEnv })) as { listed?: { accountId: string }[]; tombstones?: { accountId: string; static: boolean }[] }
+  check(
+    'A: a pull answer lists the file without the account and carries its tombstone, for a host that was away',
+    pulled.listed !== undefined && !pulled.listed.some((l) => l.accountId === EXTRA_ID) && pulled.tombstones?.some((t) => t.accountId === EXTRA_ID && !t.static) === true,
+    JSON.stringify({ listed: pulled.listed?.map((l) => l.accountId), tombstones: pulled.tombstones })
+  )
+  await rpc(b, 'session.archive', { sessionId: thread.id, archived: true })
 
   // ── 6. a Codex handoff on the live lineage: the grant A's CLI is signed in with goes as an access copy only; once the CLI rotates, it is handed off ──
   await rpc(a, 'accounts.setHome', { provider: 'codex', environmentId: bEnv })

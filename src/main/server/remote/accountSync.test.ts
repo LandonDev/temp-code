@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { configure, vault } from 'aliax-core'
 import { accessExpiry, hasRefresh, refreshFingerprint, type ApplyOutcome, type Transfer } from 'aliax-core/sync'
 import type { ServerPush } from '@shared/contract'
-import { AccountSync, HOME_PREFIX, type ConfirmAnswer } from './accountSync'
+import { AccountSync, HOME_PREFIX, TOMBSTONES_KEY, TOMBSTONE_TTL_MS, type ConfirmAnswer, type PullAnswer } from './accountSync'
 
 // No Keychain in tests: the adapters' live reads say "not signed in".
 vi.mock('aliax-core/keychain', () => ({
@@ -540,5 +540,114 @@ describe('cliReadable', () => {
     expect(cliReadable('codex', owned)).toBe(owned)
     expect(cliReadable('claude-code', access)).toBe(access)
     expect(cliReadable('codex', 'not json')).toBe('not json')
+  })
+})
+
+describe('removals', () => {
+  /** A profile on file here: `owner` undefined is this host's own; `refresh` false is an access-only copy. */
+  const seed = (name: string, accountId: string, opts: { owner?: string; static?: boolean; refresh?: boolean } = {}): void => {
+    vault.upsertProfile('claude-code', { name, accountId, createdAt: 1, ...(opts.owner ? { owner: opts.owner } : {}), ...(opts.static ? { static: true } : {}) })
+    vault.saveSecret('claude-code', name, claudeBlob(Date.now() + 2 * HOUR, opts.refresh ? `R-${name}` : null), 'sync')
+  }
+  const names = (): string[] => vault.profiles('claude-code').map((p) => p.name).sort()
+  const listed = (...accountIds: string[]): PullAnswer['listed'] => accountIds.map((accountId) => ({ service: 'claude-code' as const, accountId, name: accountId, static: false, owner: 'env_mac' }))
+  const tomb = (accountId: string, isStatic = false, at = Date.now()) => ({ service: 'claude-code' as const, accountId, name: accountId, static: isStatic, at })
+
+  it("a pull answer lists the owner's file: an access-only copy it no longer lists is deleted and the snapshot rebuilt at once; what this host refreshes, a handoff in flight, a static token and the CLI's sign-in stay", async () => {
+    const mac = fakeLink('env_mac', 'Mac')
+    const refreshNow = vi.fn(async () => {})
+    const logs: string[] = []
+    const { sync } = host('env_box', [mac], { refreshNow, log: (l) => logs.push(l), liveAccountId: async () => 'u6' })
+    seed('copy', 'u1', { owner: 'env_mac' })
+    seed('kept', 'u2', { owner: 'env_mac' })
+    seed('mine', 'u3')
+    seed('prov', 'u4', { owner: 'env_mac', refresh: true })
+    seed('tok', 'u5', { static: true })
+    seed('live', 'u6', { owner: 'env_mac' })
+    mac.request.mockImplementation(async (method: string) => (method === 'accounts.pull' ? { transfers: [], listed: listed('u2'), tombstones: [] } : { ok: true }))
+    await sync.syncWith('env_mac')
+    expect(names()).toEqual(['kept', 'live', 'mine', 'prov', 'tok'])
+    expect(refreshNow).toHaveBeenCalledTimes(1)
+    expect(logs).toContain('claude-code copy: no longer on env_mac, which refreshed it; deleted here')
+    expect(logs).toContain("claude-code live: no longer on env_mac, which refreshed it; kept (the CLI's sign-in here)")
+    expect(logs).toContain('claude-code prov: no longer on env_mac, which refreshed it; kept (a handoff in flight)')
+    expect(logs.some((l) => l.startsWith('claude-code mine:') && l.includes('deleted'))).toBe(false)
+    expect(logs.some((l) => l.startsWith('claude-code tok:') && l.includes('deleted'))).toBe(false)
+    // A host too old to list anything prunes nothing.
+    mac.request.mockImplementation(async (method: string) => (method === 'accounts.pull' ? { transfers: [] } : { ok: true }))
+    await sync.syncWith('env_mac')
+    expect(names()).toEqual(['kept', 'live', 'mine', 'prov', 'tok'])
+    expect(refreshNow).toHaveBeenCalledTimes(1)
+  })
+
+  it('a tombstone is the one thing that removes a static token, and never what this host refreshes or its CLI holds; an expired one is ignored', async () => {
+    const mac = fakeLink('env_mac', 'Mac')
+    const refreshNow = vi.fn(async () => {})
+    const { sync } = host('env_box', [mac], { refreshNow, liveAccountId: async () => 'u6' })
+    seed('kept', 'u2', { owner: 'env_mac' })
+    seed('mine', 'u3')
+    seed('tok', 'u5', { static: true })
+    seed('live', 'u6', { owner: 'env_mac' })
+    seed('old', 'u7', { owner: 'env_mac' })
+    mac.request.mockImplementation(async (method: string) =>
+      method === 'accounts.pull'
+        ? { transfers: [], listed: listed('u2', 'u3', 'u5', 'u6', 'u7'), tombstones: [tomb('u5', true), tomb('u3'), tomb('u6'), tomb('u7', false, Date.now() - TOMBSTONE_TTL_MS - 1)] }
+        : { ok: true }
+    )
+    await sync.syncWith('env_mac')
+    expect(names()).toEqual(['kept', 'live', 'mine', 'old'])
+    expect(refreshNow).toHaveBeenCalledTimes(1)
+    // The same word as a push and as a call.
+    sync.onPeerPush('env_mac', { push: 'accounts-removed', from: 'env_mac', removed: [tomb('u2')] })
+    await new Promise((r) => setTimeout(r, 20))
+    expect(names()).toEqual(['live', 'mine', 'old'])
+    expect(await sync.handleRemoved('env_mac', { removed: [tomb('u7')] })).toEqual({ dropped: 1 })
+    expect(names()).toEqual(['live', 'mine'])
+    // A tombstone from a host that is not the copy's owner means nothing for it.
+    seed('other', 'u8', { owner: 'env_other' })
+    expect(await sync.handleRemoved('env_mac', { removed: [tomb('u8')] })).toEqual({ dropped: 0 })
+    expect(names()).toEqual(['live', 'mine', 'other'])
+  })
+
+  it('deleteProfile here drops the row, rebuilds the snapshot at once, tells every link and subscriber, and keeps a tombstone for what this host refreshed or held statically (not a copy) until the account is on file again', async () => {
+    const box = fakeLink('env_box', 'box')
+    const refreshNow = vi.fn(async () => {})
+    let clock = Date.now()
+    const { sync, store } = host('env_mac', [box], { refreshNow, now: () => clock })
+    const pushes: ServerPush[] = []
+    sync.subscribe((p) => pushes.push(p))
+    seed('mine', 'u1')
+    seed('tok', 'u5', { static: true })
+    seed('copy', 'u9', { owner: 'env_box' })
+    expect(await sync.deleteProfile('claude-code', 'nobody')).toEqual({ ok: false, error: 'no claude-code profile named nobody' })
+
+    const out = await sync.deleteProfile('claude-code', 'mine')
+    expect(out).toEqual({ ok: true, removal: { service: 'claude-code', accountId: 'u1', name: 'mine', static: false, at: clock } })
+    expect(names()).toEqual(['copy', 'tok'])
+    expect(refreshNow).toHaveBeenCalledTimes(1)
+    await new Promise((r) => setTimeout(r, 10))
+    expect(box.request).toHaveBeenCalledWith('accounts.removed', { from: 'env_mac', removed: [out.ok && out.removal] })
+    expect(pushes).toEqual([{ push: 'accounts-removed', from: 'env_mac', removed: [out.ok && out.removal] }])
+    expect(sync.tombstones()).toEqual([out.ok && out.removal])
+
+    await sync.deleteProfile('claude-code', 'copy')
+    await sync.deleteProfile('claude-code', 'tok')
+    expect(names()).toEqual([])
+    expect(sync.tombstones().map((t) => [t.accountId, t.static])).toEqual([['u1', false], ['u5', true]])
+    // The pull answer carries the file and the tombstones for the peer's prune.
+    const answer = await sync.handlePull('env_box', {})
+    expect(answer.listed).toEqual([])
+    expect(answer.tombstones?.map((t) => t.accountId)).toEqual(['u1', 'u5'])
+
+    // The account lands here again (the box pushes it back): its tombstone is void.
+    expect(await sync.handlePush('env_box', transfer('access', 'env_box', claudeBlob(clock + HOUR, null), { name: 'mine', accountId: 'u1' }))).toMatchObject({ ok: true, saved: true })
+    expect(sync.tombstones().map((t) => t.accountId)).toEqual(['u5'])
+    // Thirty days on, the rest is forgotten.
+    clock += TOMBSTONE_TTL_MS + 1
+    expect(sync.tombstones()).toEqual([])
+    expect((await sync.handlePull('env_box', {})).listed).toEqual([{ service: 'claude-code', accountId: 'u1', name: 'mine', static: false, owner: 'env_box' }])
+    // A broken row is ignored, not thrown on.
+    store.setSetting(TOMBSTONES_KEY, '{not json')
+    expect(sync.tombstones()).toEqual([])
   })
 })

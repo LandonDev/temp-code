@@ -63,6 +63,10 @@ export async function handleM3a(
       return done(ctx.accountSync.handleConfirm(req.params.from, req.params))
     case 'accounts.released':
       return done(ctx.accountSync.handleReleased(req.params.from, req.params))
+    case 'accounts.removed':
+      return done(await ctx.accountSync.handleRemoved(req.params.from, req.params))
+    case 'accounts.delete':
+      return done(await ctx.accountSync.deleteProfile(req.params.service, req.params.name))
     case 'accounts.sync':
       if (req.params?.environmentId) await ctx.accountSync.syncWith(req.params.environmentId)
       else await ctx.accountSync.syncAll()

@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { MacDecideRememberSchema, type MacRunRememberOffer } from './contract-macbridge-rules'
 import { MAC_RUN_BACKGROUND, type MacPeerMethod } from './contract-macjobs'
+import type { CrossHostCallParams } from './contract-crosshost'
 
 // The Mac bridge (docs/box.md "The Mac bridge: what a box thread may touch
 // on the Mac"). Threads run on the box; the user's files and macOS-only
@@ -291,7 +292,8 @@ export type MacBridgePush =
       push: 'peer.call'
       callId: string
       method: MacPeerMethod
-      params: MacCallParams
+      /** A mac.* call names its thread and args; a thread.* call (contract-crosshost.ts) its caller and args. */
+      params: MacCallParams | CrossHostCallParams
       deadlineMs: number
     }
   | { push: 'macBridge.request'; request: MacBridgeRequest }

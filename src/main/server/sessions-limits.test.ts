@@ -482,3 +482,56 @@ it('signInNeeded posts one row naming the account and drops the harness\'s own 4
   registry.signInNeeded(id, 'dead@x.com')
   expect(errors().slice(4)).toEqual(['Aliax account dead@x.com needs sign-in', 'Aliax account dead@x.com needs sign-in'])
 })
+
+it('an account that left this host clears the pin it was, says so once in the thread, and routes automatically from the next send; a vanished sticky account re-picks', async () => {
+  const snapshot: AccountsSnapshot = emptyAccounts()
+  const provider = snapshot.providers.claude
+  provider.owner = 'temp-code'
+  const fine = (name: string) => ({ profileName: name, windows: [{ label: '5h', usedPercent: 10, resetsAt: NOW + 60_000 }] })
+  provider.profiles = [{ name: 'ws@x.com', createdAt: 1, active: false }, { name: 'b@x.com', createdAt: 1, active: false }]
+  provider.reports = [fine('ws@x.com'), fine('b@x.com')]
+  registry.limits = {
+    routeFor: (meta, pin, opts) =>
+      chooseAccount({ pin: pin?.name ?? null, current: opts?.fresh ? null : (meta.account ?? null), stored: meta.account ?? null, model: meta.model ?? null, provider: meta.provider, snapshot, now: NOW }),
+    failover: async () => null
+  }
+  const ws = await registry.createWorkspace(root)
+  registry.setWorkspaceAccounts(ws.id, { claude: 'ws@x.com', codex: 'cx' })
+  const { id } = await running({ workspaceId: ws.id })
+  expect(routes.at(-1)).toEqual({ id, route: { account: 'ws@x.com', pin: true } })
+  const notices = () => store.eventsAfter(id, 0).map((r) => r.event).filter((e) => e.type === 'notice')
+
+  // The pinned account is deleted on this host: the snapshot no longer knows it.
+  provider.profiles = provider.profiles.filter((p) => p.name !== 'ws@x.com')
+  provider.reports = provider.reports.filter((r) => r.profileName !== 'ws@x.com')
+  registry.refreshAccounts()
+  // The workspace pin for claude is gone; the codex one stays.
+  expect(store.listWorkspaces().find((w) => w.id === ws.id)?.accountPins).toEqual({ codex: 'cx' })
+  expect(registry.get(id)?.account).toBe('b@x.com')
+  expect(notices()).toEqual([
+    { type: 'notice', kind: 'account-gone', account: 'ws@x.com', message: expect.stringMatching(/^Account ws@x\.com is gone from this host; routing automatically from here \(\d{1,2}:\d{2}/) }
+  ])
+  // Once: another pass adds no row.
+  registry.refreshAccounts()
+  expect(notices()).toHaveLength(1)
+  // The next send respawns under automatic routing (no pin in the URL).
+  const spawns = routes.length
+  await registry.send(id, 'again')
+  expect(routes).toHaveLength(spawns + 1)
+  expect(routes.at(-1)).toEqual({ id, route: { account: 'b@x.com', pin: false } })
+  emits.get(id)!({ type: 'status', status: 'idle' })
+
+  // Its sticky account goes the same way, with another account left: re-picked, and one row names b.
+  provider.profiles = [{ name: 'c@x.com', createdAt: 1, active: false }]
+  provider.reports = [fine('c@x.com')]
+  registry.refreshAccounts()
+  expect(registry.get(id)?.account).toBe('c@x.com')
+  expect(notices().map((e) => e.type === 'notice' && e.account)).toEqual(['ws@x.com', 'b@x.com'])
+  emits.get(id)!({ type: 'status', status: 'idle' })
+  // With nothing left to pick, the row shows no account (Auto) rather than the gone one.
+  provider.profiles = [{ name: 'd@x.com', createdAt: 1, active: false }]
+  provider.reports = [{ profileName: 'd@x.com', windows: [{ label: '5h', usedPercent: 100, resetsAt: NOW + 3_600_000 }] }]
+  registry.refreshAccounts()
+  expect(registry.get(id)?.account ?? null).toBeNull()
+  expect(notices()).toHaveLength(3)
+})

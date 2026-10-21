@@ -20,6 +20,7 @@ describe('METHOD_CAPABILITY', () => {
       [
         ...methods.filter((m) => m.startsWith('app.')),
         'stall.report',
+        'deploy.master',
         'dap.connect',
         'lsp.ensure',
         'lsp.status',
@@ -33,11 +34,17 @@ describe('METHOD_CAPABILITY', () => {
         // Where sign-ins are handed to, and a sync on demand, are this machine's to decide (thread V).
         'accounts.sync',
         'accounts.setHome',
+        'accounts.delete',
         // Only the desktop starts a thread's move between hosts (contract-session-move.ts).
         'session.move',
         // The Mac bridge: a box thread's own tools (token-gated), and the Mac's decisions and policy.
         ...methods.filter((m) => m.startsWith('mac.')),
-        ...methods.filter((m) => m.startsWith('macBridge.') && !m.startsWith('macBridge.thread.'))
+        ...methods.filter((m) => m.startsWith('macBridge.') && !m.startsWith('macBridge.thread.')),
+        // The Mac release signs and uploads from this machine (contract-host.ts).
+        'host.publishStatus',
+        'host.publish',
+        'host.publishStop',
+        'host.releaseCheckout.set'
       ].sort()
     )
   })
@@ -63,6 +70,7 @@ describe('METHOD_CAPABILITY', () => {
         'accounts.pull',
         'accounts.confirm',
         'accounts.released',
+        'accounts.removed',
         // The harness config crosses between hosts, and its status and settings are changed, only under an admin key.
         ...methods.filter((m) => m.startsWith('harness.')),
         // A host's per-file attachment limit.
@@ -70,8 +78,13 @@ describe('METHOD_CAPABILITY', () => {
         // A thread crosses between hosts only under an admin key; the desktop's session.move drives these.
         ...methods.filter((m) => m.startsWith('session.import.') || m.startsWith('session.export.')),
         'session.move.status',
-        // The reverse RPC a Mac's main process speaks on its link to this host.
-        ...methods.filter((m) => m.startsWith('peer.'))
+        // The reverse RPC a Mac's main process speaks on its link to this host, and its settle report (contract-crosshost.ts).
+        ...methods.filter((m) => m.startsWith('peer.')),
+        'crossHost.settled',
+        // A deploy of this host, and its log, are asked over its link under an admin key (contract-host.ts).
+        'host.deploy',
+        'host.deployStatus',
+        'host.log'
       ].sort()
     )
   })

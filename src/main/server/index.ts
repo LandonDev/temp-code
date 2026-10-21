@@ -25,14 +25,20 @@ import {
 } from '@shared/capabilities'
 import { loadEnvironmentId } from './remote/environment'
 import { handleRemote, type RemoteContext } from './remote/handlers'
+import { buildFacts } from '../buildInfo'
+import type { BuildFacts } from '@shared/deployDrift'
+import { MasterReleaseWatcher } from '../deployDrift'
 import { AccountSync, accountSyncHooks } from './remote/accountSync'
 import { Peers } from './remote/peers'
 import { HarnessSync, handleHarness } from './remote/harnessSync'
+import { DeployTrigger, Publisher, handleHost, type HostJobs } from './hostJobs'
 import { SessionMover, handleSessionMove } from './remote/sessionMover'
 import { claudeConfigDir, codexHomeDir } from './sessionMove'
 import { PeerCalls, handlePeerRequest } from './remote/peerCalls'
 import { handlePeerPull, macWriteStages } from './macWriteStage'
 import { MacBridge, handleMacBridge } from './remote/macBridge'
+import { CrossHostThreads, crossHostOffers } from './remote/crossHostThreads'
+import { CrossHostAgents } from './crossHostAgents'
 import { MacThreadTokens, MacTools, macToolsHooks, rebootWhenSettled } from './macTools'
 import { MacRunCalls, MacRunLive } from './macRunLive'
 import { macBridgeLandingRoot } from './macBridgeLanding'
@@ -92,6 +98,7 @@ import {
   orchSendToAgent,
   orchSpawnAgent,
   orchWaitForAgent,
+  setCrossHostAgents,
   setOrchestrationRegistry
 } from './orchestration'
 import {
@@ -101,6 +108,7 @@ import {
   appReadThread,
   appStartThread,
   setAppBridge,
+  setAppCrossHost,
   setAppToolsRegistry
 } from './apptools'
 import { DEFAULT_RULES } from '@shared/rules'
@@ -216,6 +224,10 @@ export interface RunningServer {
   accounts: AccountsService
   /** Account ownership and sync with the hosts this machine holds admin keys for (remote/accountSync.ts). */
   accountSync: AccountSync
+  /** What this host runs: the hello's `build` (buildInfo.ts). */
+  build: BuildFacts
+  /** Master's release number from GitHub (deployDrift.ts); `focus()` when a window comes forward. */
+  masterRelease: MasterReleaseWatcher
   close: () => Promise<void>
 }
 
@@ -253,6 +265,8 @@ export async function startServer(
     remotePort?: number
     /** The tempcode-asset:// handler, so `/asset/*` on the fixed port can mirror logos, media and agent pages. */
     assets?: (request: Request) => Promise<Response>
+    /** Read master's release.json from GitHub on the updater's cadence (deployDrift.ts): the Mac, never a headless host or a test. */
+    watchMaster?: boolean
   } = {}
 ): Promise<RunningServer> {
   bootMark('server-start')
@@ -267,6 +281,17 @@ export async function startServer(
   const reader = new EventReader(dbPath)
   const store = new Store(db, { reader })
   const environmentId = loadEnvironmentId(options.dataDir ?? dirname(dbPath))
+  // What this host runs, said in every hello; and master's number, so the
+  // renderer can mark a host that is behind (src/shared/deployDrift.ts).
+  const build = buildFacts(options.appPath)
+  const localSinks = new Set<(push: ServerPush) => void>()
+  const masterRelease = new MasterReleaseWatcher({
+    onChange: (master) => {
+      for (const sink of localSinks) sink({ push: 'deploy-master', master })
+    },
+    log: (line) => console.log(line)
+  })
+  if (options.watchMaster) masterRelease.start()
   const checkpoints = new CheckpointStore(join(options.dataDir ?? dirname(dbPath), 'checkpoints'))
   const registry = new SessionRegistry(store)
   // The file viewer's media host serves only files under these roots.
@@ -341,11 +366,12 @@ export async function startServer(
         accounts.nudge()
       },
       onPush: (from, push) => {
+        if (crossHostThreads.onPeerPush(from, push)) return
         if (!macBridge.onPeerPush(from, push)) accountSync.onPeerPush(from, push)
       }
     }
   )
-  const accountSync = new AccountSync({ environmentId, store, peers, nudge: () => accounts.nudge() })
+  const accountSync: AccountSync = new AccountSync({ environmentId, store, peers, nudge: () => accounts.nudge(), refreshNow: () => accounts.rebuildNow() })
   accountSyncHooks.current = accountSync
   // The user's Claude Code and Codex config, mirrored onto the same hosts
   // (remote/harnessSync.ts). A headless host (the box) receives and does not send.
@@ -358,6 +384,9 @@ export async function startServer(
     workRoot: () => workRoot(store).root
   })
   harnessSync.start()
+  // Deploy and publish from the app (hostJobs.ts): the box's trigger
+  // directory and the Mac's release scripts, each a log sockets may tail.
+  const hostJobs: HostJobs = { deploy: new DeployTrigger({ version: appVersion }), publish: new Publisher({ store }) }
   // Moving one thread between this host and a peer (remote/sessionMover.ts).
   const sessionMover = new SessionMover({
     host: {
@@ -386,7 +415,22 @@ export async function startServer(
     link: (id) => {
       const link = peers.get(id)
       return link?.connected ? (method, params, opts) => link.request(method, params, opts) : null
-    }
+    },
+    offers: crossHostOffers
+  })
+  // Threads another host starts here (the Mac side of docs/box.md "Starting a
+  // thread on the Mac from the box"): served over the same link as the bridge.
+  const crossHostThreads = new CrossHostThreads({
+    environmentId,
+    store,
+    registry,
+    environments: () => listEnvironments(store).map((e) => ({ id: e.id, name: e.name })),
+    link: (id) => {
+      const link = peers.get(id)
+      return link?.connected ? (method, params, opts) => link.request(method, params, opts) : null
+    },
+    pathMap: () => harnessSync.pathMap(),
+    workRoot: () => workRoot(store).root
   })
   const peerCalls = new PeerCalls(environmentId)
   // A running mac_run's output, live on its thread's tool row (macRunLive.ts).
@@ -406,6 +450,19 @@ export async function startServer(
   })
   macToolsHooks.current = macTools
   macToolsHooks.tokens = macTokens
+  // The box side: a thread here starting or spawning on a registered Mac,
+  // reached by the app tools (apptools.ts, orchestration.ts).
+  const crossHostAgents = new CrossHostAgents({
+    environmentId,
+    store,
+    sessions: registry,
+    calls: peerCalls,
+    macPeerOf: (id) => macTools.macPeerOf(id).macPeer,
+    hostName: (id) => listEnvironments(store).find((e) => e.id === id)?.name ?? null,
+    workRoot: () => workRoot(store).root
+  })
+  setCrossHostAgents(crossHostAgents)
+  setAppCrossHost(crossHostAgents)
   // A thread that ends here (archived, deleted, moved away) takes its interactive jobs on the Mac with it.
   registry.onRemoved((ids) => macTools.threadsEnded(ids))
   registry.onMeta((m) => {
@@ -569,6 +626,7 @@ export async function startServer(
         store,
         environmentId,
         version: appVersion,
+        build,
         attach: (ws, principal) => attach(ws, principal),
         mcp: createMcpHandler({
           auth: remoteAuth,
@@ -632,6 +690,11 @@ export async function startServer(
     let unsubscribeAccounts: (() => void) | null = null
     // The Mac bridge's prompts go to this Mac's own sockets only, never a key's.
     const offMacBridge = principal.kind === 'local' ? macBridge.subscribe((push) => sendFrame(push)) : null
+    // Master's release number, when it changes: this host's own sockets only.
+    const localSink = principal.kind === 'local' ? (push: ServerPush): void => sendFrame(push) : null
+    if (localSink) localSinks.add(localSink)
+    /** The host-log subscriptions this socket asked for (hostJobs.ts). */
+    const offHostLogs: (() => void)[] = []
     /** per-connection file watchers (fs.watch), keyed by projectId */
     const fsWatches = new Map<string, () => void>()
     // One line per connection the first time its unsent bytes pass the mark:
@@ -695,7 +758,8 @@ export async function startServer(
       environmentId,
       contract: CONTRACT_VERSION,
       caps: principalCaps(principal),
-      ...(principal.kind === 'remote' ? { key: { id: principal.keyId, name: principal.name } } : {})
+      ...(principal.kind === 'remote' ? { key: { id: principal.keyId, name: principal.name } } : {}),
+      build
     })
 
     ws.on('message', async (data) => {
@@ -741,6 +805,12 @@ export async function startServer(
         // A Mac pulling a staged mac.writeFile, only on the socket the call went out on (macWriteStage.ts).
         if (req.method === 'peer.pull')
           return sendFrame({ id: req.id, ok: true, result: handlePeerPull(macWriteStages, { connection, remote: principal.kind === 'remote' }, req.params) })
+        // A Mac reporting that a thread it runs for this host settled (remote/crossHostThreads.ts).
+        if (req.method === 'crossHost.settled') {
+          if (principal.kind !== 'remote') throw new Error(`forbidden: ${req.method} is for another host's main process`)
+          return sendFrame({ id: req.id, ok: true, result: crossHostAgents.settled(req.params.from, req.params) })
+        }
+        if (req.method === 'deploy.master') return sendFrame({ id: req.id, ok: true, result: masterRelease.current() })
         const macBridged = handleMacBridge(req, macBridge)
         if (macBridged.handled) return sendFrame({ id: req.id, ok: true, result: macBridged.result })
         const macTooled = await macTools.handle(req)
@@ -755,6 +825,8 @@ export async function startServer(
         }
         const harness = await handleHarness(req, harnessSync)
         if (harness.handled) return sendFrame({ id: req.id, ok: true, result: harness.result })
+        const host = await handleHost(req, hostJobs, { connection, send: sendFrame, onClose: (off) => offHostLogs.push(off) })
+        if (host.handled) return sendFrame({ id: req.id, ok: true, result: host.result })
         const upload = await handleAttachmentUploads(req, uploads, principal.kind === 'remote' ? `key:${principal.keyId}` : principal.kind)
         if (upload.handled) return sendFrame({ id: req.id, ok: true, result: upload.result })
         const moved = await handleSessionMove(req, sessionMover)
@@ -1453,7 +1525,7 @@ export async function startServer(
             sendFrame({
               id: req.id,
               ok: true,
-              result: appReadThread(registry, req.params.threadId)
+              result: await appReadThread(registry, req.params.threadId, caller)
             })
             break
           }
@@ -1510,7 +1582,7 @@ export async function startServer(
             sendFrame({
               id: req.id,
               ok: true,
-              result: orchCheckAgent(callerOf(registry, req.params.sessionId), req.params.agentId)
+              result: await orchCheckAgent(callerOf(registry, req.params.sessionId), req.params.agentId)
             })
             break
           case 'app.waitForAgent':
@@ -1541,7 +1613,7 @@ export async function startServer(
             sendFrame({
               id: req.id,
               ok: true,
-              result: orchListAgents(callerOf(registry, req.params.sessionId))
+              result: await orchListAgents(callerOf(registry, req.params.sessionId))
             })
             break
         }
@@ -1575,6 +1647,8 @@ export async function startServer(
       offMoved()
       unsubscribeAccounts?.()
       offMacBridge?.()
+      if (localSink) localSinks.delete(localSink)
+      for (const off of offHostLogs) off()
       peerCalls.drop(connection)
       for (const off of unsubs.values()) off()
       unsubs.clear()
@@ -1666,7 +1740,10 @@ export async function startServer(
     store,
     gateway,
     accounts: m3a.accounts,
+    build,
+    masterRelease,
     close: async () => {
+      masterRelease.stop()
       notifier.stop()
       activityFeed.stop()
       apns?.close()
@@ -1681,9 +1758,12 @@ export async function startServer(
       clearInterval(syncTimer)
       accountSync.close()
       harnessSync.close()
+      hostJobs.deploy.dispose()
+      hostJobs.publish.dispose()
       uploads.close()
       sessionMover.close()
       macBridge.close()
+      crossHostThreads.close()
       peerCalls.close()
       peers.close()
       m3a.accounts.stop()

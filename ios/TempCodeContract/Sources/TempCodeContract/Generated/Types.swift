@@ -1376,6 +1376,31 @@ public struct CreatedPairing: Codable, Hashable, Sendable {
 }
 
 public struct HelloResponse: Codable, Hashable, Sendable {
+    public struct Build: Codable, Hashable, Sendable {
+        public let release: Int
+        public let version: String
+        public let sha: String?
+        public let platform: String
+
+        public init(release: Int, version: String, sha: String?, platform: String) {
+            self.release = release
+            self.version = version
+            self.sha = sha
+            self.platform = platform
+        }
+
+        private enum CodingKeys: String, CodingKey {
+            case release, version, sha, platform
+        }
+
+        public func encode(to encoder: any Encoder) throws {
+            var container = encoder.container(keyedBy: CodingKeys.self)
+            try container.encode(release, forKey: .release)
+            try container.encode(version, forKey: .version)
+            try container.encode(sha, forKey: .sha)
+            try container.encode(platform, forKey: .platform)
+        }
+    }
     public struct Key: Codable, Hashable, Sendable {
         public let id: String
         public let name: String
@@ -1393,13 +1418,15 @@ public struct HelloResponse: Codable, Hashable, Sendable {
     public let environmentId: String
     public let name: String?
     public let version: String?
+    public let build: Build?
     public let contract: Int
     public let key: Key?
 
-    public init(environmentId: String, name: String? = nil, version: String? = nil, contract: Int, key: Key? = nil) {
+    public init(environmentId: String, name: String? = nil, version: String? = nil, build: Build? = nil, contract: Int, key: Key? = nil) {
         self.environmentId = environmentId
         self.name = name
         self.version = version
+        self.build = build
         self.contract = contract
         self.key = key
     }

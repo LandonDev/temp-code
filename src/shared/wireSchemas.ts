@@ -544,12 +544,21 @@ export const CreatedPairingSchema = z.object({
 
 // ── the HTTP side of pairing (remote/listener.ts) ───────────────────────
 
+/** What a host runs (src/shared/deployDrift.ts BuildFacts): release.json `n`, `1.0.N`, the commit, the platform. */
+export const BuildFactsSchema = z.object({
+  release: z.number().int(),
+  version: z.string(),
+  sha: z.string().nullable(),
+  platform: z.string()
+})
+
 /** `GET /api/hello`: public, with `key` when the bearer was accepted. */
 export const HelloResponseSchema = z.object({
   environmentId: z.string(),
-  /** The hostname and version come only with a credential the host accepted. */
+  /** The hostname, version and build come only with a credential the host accepted. */
   name: z.string().optional(),
   version: z.string().optional(),
+  build: BuildFactsSchema.optional(),
   contract: z.number().int(),
   key: z
     .object({
@@ -598,7 +607,8 @@ export const HelloPushSchema = push('hello', {
   environmentId: z.string(),
   contract: z.number().int(),
   caps: z.array(CapabilitySchema),
-  key: z.object({ id: z.string(), name: z.string() }).optional()
+  key: z.object({ id: z.string(), name: z.string() }).optional(),
+  build: BuildFactsSchema.optional()
 })
 export const WorkspacesPushSchema = push('workspaces', { workspaces: z.array(WorkspaceMetaSchema) })
 export const ProjectsPushSchema = push('projects', { projects: z.array(ProjectMetaSchema) })

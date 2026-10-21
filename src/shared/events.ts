@@ -312,7 +312,12 @@ export const AgentEventSchema = z.discriminatedUnion('type', [
   }),
 
   // Orchestration: this session spawned a child session.
-  z.object({ type: z.literal('agent-spawned'), childSessionId: z.string() }),
+  z.object({
+    type: z.literal('agent-spawned'),
+    childSessionId: z.string(),
+    /** Set when the child runs on another host (contract-crosshost.ts): its environment id. */
+    environmentId: z.string().optional()
+  }),
 
   // stopped: the turn ended because the user hit Stop — shown as a quiet
   // "Stopped" note, never as a failure, and it never arms recovery.
@@ -329,7 +334,18 @@ export const AgentEventSchema = z.discriminatedUnion('type', [
   // The user hit Continue after fixing what killed the turn (e.g. switched
   // accounts on a session limit): every error shown so far is settled —
   // the UI hides the chips and the harness picks the work back up.
-  z.object({ type: z.literal('errors-cleared') })
+  z.object({ type: z.literal('errors-cleared') }),
+
+  // A plain system row from the server, never a failure: nothing stops, no
+  // Continue. `kind` names what happened for a card that wants to say more
+  // (`account-gone`: the thread's pinned or sticky account left this host and
+  // the thread routes automatically from here; `account` names it).
+  z.object({
+    type: z.literal('notice'),
+    kind: z.string(),
+    message: z.string(),
+    account: z.string().optional()
+  })
 ])
 export type AgentEvent = z.infer<typeof AgentEventSchema>
 

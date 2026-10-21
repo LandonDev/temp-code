@@ -4,6 +4,7 @@ import type { PeerState } from '@shared/accounts'
 import { allows } from '@shared/capabilities'
 import type { ServerFrame, ServerPush } from '@shared/contract'
 import type { SavedEnvironment } from '@shared/contract-remote'
+import type { BuildFacts } from '@shared/deployDrift'
 import { ENVIRONMENTS_PREFIX, listEnvironments, mintTicket, type HostContext } from './environments'
 
 /**
@@ -52,6 +53,8 @@ export class PeerLink {
   connected = false
   lastError: string | null = null
   lastSyncAt: number | null = null
+  /** What the host said it runs in its last hello (release number, version, commit, platform). */
+  build: BuildFacts | null = null
 
   /** Of the key the link was made with (keyFingerprint); a new key means a new link. */
   readonly credential: string | null
@@ -117,6 +120,7 @@ export class PeerLink {
             }
             this.ws = ws
             this.connected = true
+            if (frame.build) this.build = frame.build
             resolve()
             return
           }
@@ -207,7 +211,7 @@ export class PeerLink {
   }
 
   state(): PeerState {
-    return { name: this.env.name, connected: this.connected, lastSyncAt: this.lastSyncAt, error: this.lastError }
+    return { name: this.env.name, connected: this.connected, lastSyncAt: this.lastSyncAt, error: this.lastError, build: this.build }
   }
 
   close(): void {

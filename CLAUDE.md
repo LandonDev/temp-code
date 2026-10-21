@@ -93,6 +93,23 @@ Two separate steps, on purpose.
    version the feed already serves. Apple silicon only; Intel is out of
    scope for now.
 
+3. **Both are buttons in the app too, still pressed by the user** (Settings →
+   Remote access → Deploy and publish; src/main/server/hostJobs.ts,
+   src/shared/contract-host.ts, src/renderer/src/surfaces/DeploySettings.tsx).
+   "Publish Mac release" on This Mac's row runs `bun scripts/release.ts
+   "<notes>"` then `bun run release:publish` through the login shell in the
+   checkout the `release.checkout` setting names (default
+   ~/IdeaProjects/temp-code, the field beside the button), the notes
+   prefilled from the commit subjects since the last `v1.0.*` tag; it refuses
+   a dirty tree, a branch other than master and a version the feed already
+   serves before starting, and the scripts' own refusals come through as the
+   log's last lines. The log streams into a card under the rows (last 40
+   lines, following, Stop kills the scripts' process group). `host.publish*`
+   is local-only: no key ever reaches it. "Deploy master to the box" on a
+   host's row is `host.deploy` (admin, over the box's link) and the root-owned
+   trigger of docs/box.md "Deploy from the app"; its confirm names the
+   versions ("v1.0.270 → v1.0.273, 3 releases").
+
 Never build into or swap /Applications/TempCode.app yourself: the installed
 app replaces itself from the feed, and only from the feed.
 
@@ -181,7 +198,28 @@ routed to (aliax-core's `forward`). Two listeners:
   the next sync settles anything a lost message left half done. A peer's
   pushes and pull answers land only on accounts already on file here
   (`applyTransfer(..., 'peer')`); a grant the local CLI is signed in with
-  (Claude's Keychain item, Codex's auth.json) is never handed off. Test
+  (Claude's Keychain item, Codex's auth.json) is never handed off. Removals
+  follow the owner (`AccountSync.deleteProfile`, behind the `accounts.delete`
+  RPC and the Accounts page's `aliax:profiles:delete`): the vault row goes,
+  the snapshot rebuilds at once (`AccountsService.rebuildNow`, no debounce),
+  and every peer hears, over the links as `accounts.removed` (admin) and to
+  sockets that pulled as an `accounts-removed` push; every pull answer also
+  carries the sender's whole file (`listed`) and its tombstones. The
+  tombstone rule: a host that deletes a profile it refreshes or a static
+  token keeps a tombstone (settings row `accounts.tombstones`, 30 days,
+  void once a profile of that account is saved there again); a peer deletes
+  an access-only copy whose owner is the sender when the sender's list no
+  longer has the account, and a static one-year token only when a tombstone
+  names it (absence from one host's list proves nothing for a token every
+  host holds); never deleted on a peer's word: a profile this host
+  refreshes, the one its CLI is signed in with, or a provisional copy (a
+  handoff in flight). Routing follows (`chooseAccount` reports `vanished`):
+  a thread whose pin or sticky account is no longer known routes
+  automatically from its next turn, the project's or workspace's pin for
+  that provider is cleared, and one `notice` row (`kind: 'account-gone'`,
+  a plain system row, no Continue) says "Account <name> is gone from this
+  host; routing automatically from here" with the time; the chip reads
+  Auto until the next pick lands. Test
   seams for isolated instances: `TEMP_CODE_ALIAX_DATA_DIR` (own vault,
   key-file mode), `TEMP_CODE_FAKE_PROVIDERS=<origin>` (every provider call
   goes there), `TEMP_CODE_GATEWAY_ROLE=owner` (refresh without the marker),
@@ -274,15 +312,36 @@ routed to (aliax-core's `forward`). Two listeners:
   tunnel maps `tempcode.landonhale.com` to its 7677. Deploy a ref with
   `ssh box 'box-update master'` (build → trial → snapshot → commit, with
   rollback on failure); stage 85 installs the launcher without restarting. Proof from the Mac is
-  `bun scripts/e2e-box-remote.ts`. Every "ask the login shell" call goes
+  `bun scripts/e2e-box-remote.ts`.
+- Deploy drift: every host's hello (and `/api/hello` for a known caller)
+  carries `build` (release.json `n`, `1.0.N`, the commit, the platform;
+  src/main/buildInfo.ts: the box's `.git/HEAD`, a published Mac build's
+  `tempcodeBuild.sha` from release-publish.sh's extraMetadata). The Mac's
+  main process reads master's release.json raw from GitHub every 10 minutes
+  and on window focus after 15 idle minutes (src/main/deployDrift.ts; a
+  failure keeps the last value; `deploy.master` RPC + `deploy-master` push,
+  local only; headless hosts never fetch). `useDeployDrift(environmentId)`
+  in the renderer's lib/deployDrift.ts gives `{behind, deployedVersion,
+  masterVersion}`; chrome/DeployDrift.tsx is the muted tabular `+N` on the
+  host's row in the environment switcher and Settings → Remote access,
+  tooltip naming both versions and the deploy (box) or publish (Mac)
+  command; nothing when current or unknown. docs/box.md "Knowing the box
+  is behind". Every "ask the login shell" call goes
   through src/main/server/loginShell.ts (`$SHELL`, else zsh on macOS, bash
   elsewhere): never hardcode /bin/zsh.
-- Harness config (skills, commands, agents, settings.json, plugins, Codex
-  config, two keys of ~/.claude.json) is mirrored Mac → box by the Mac's main
-  process over the peer link (`src/main/server/remote/harnessSync.ts`,
-  `harness.*` RPCs, admin; paths translated through `pathMap.ts`); the set,
-  the exclusions and the status line are in docs/box.md "Harness config:
-  synced from the Mac". Proof: `bun run script:e2e-harness-sync`.
+- Harness config (skills under `~/.claude/skills`, `~/.codex/skills` and
+  `~/.agents/skills`, commands, agents, `~/.claude/hooks`, settings.json,
+  plugins, Codex config and `~/.codex/hooks.json`, two keys of ~/.claude.json)
+  is mirrored Mac → box by the Mac's main process over the peer link
+  (`src/main/server/remote/harnessSync.ts`, `harness.*` RPCs, admin; paths
+  translated through `pathMap.ts`, so Codex's `[hooks.state."<home>/.codex/
+  hooks.json:…"]` trust rows name the box's copy). A skill dir that is a
+  symlink lands as a copied tree. A skill's per-platform binary cache
+  (`<skill>/scripts/bin/**`, Impeccable's) and any Mach-O file never cross:
+  the box downloads its own engine on first use. The set with its labels
+  (`HARNESS_SET` in `harnessSet.ts`), the exclusions and the status line
+  (each set with its file count) are in docs/box.md "Harness config: synced
+  from the Mac". Proof: `bun run script:e2e-harness-sync`.
 - Attachments on a remote thread: a file from another host (or a big paste)
   is uploaded to the thread's host before the turn names it
   (`attachment.begin/chunk/commit`, src/shared/contract-attachments.ts) into
@@ -320,6 +379,17 @@ routed to (aliax-core's `forward`). Two listeners:
   ones one line per host with Stop all. docs/box.md "The Mac
   bridge: what a box thread may touch on the Mac"; proof
   `bun run script:e2e-mac-bridge`.
+- Threads on the Mac from the box: `app_start_thread` and `spawn_agent`
+  take `environmentId` (`mac`, or a host id), and the thread runs on that
+  Mac as an ordinary This Mac thread; its id comes back as `<envId>:
+  <sessionId>` and every supervision tool routes by it (`src/main/server/
+  crossHostAgents.ts` on the box, `remote/crossHostThreads.ts` on the Mac,
+  `src/shared/contract-crosshost.ts`; the `threads` peer offer rides the
+  Mac bridge's `peer.call`, `thread.*` methods, `crossHost.settled` back).
+  Which Mac: the thread's `macBridge.thread` peer, else the only one
+  registered. A dropped link answers `linkDown` with the last state, never
+  a hang. docs/box.md "Starting a thread on the Mac from the box"; proof
+  `bun run script:e2e-cross-host-threads`.
 - Backups: restic to R2 bucket `tempcode-backups`, repo `box` from
   `box-backup.timer` (SQLite snapshotted with VACUUM INTO, never the live
   files) and repo `mac` from the launchd agent `dev.landon.tempcode.backup`

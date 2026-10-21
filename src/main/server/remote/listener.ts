@@ -7,6 +7,7 @@ import { ZodError } from 'zod'
 import { CONTRACT_VERSION, allows, type Principal } from '@shared/capabilities'
 import { NewClientSchema, NewPairingSchema, PairBodySchema } from '@shared/contract-remote'
 import type { Store } from '../db'
+import type { BuildFacts } from '@shared/deployDrift'
 import { COOKIE_NAME, RemoteAuth, RemoteAuthError, SESSION_TTL_MS, type Verified } from './auth'
 import { pairingOrigin, readRemoteSettings, writeRemoteSettings } from './handlers'
 
@@ -57,6 +58,8 @@ export interface RemoteListenerOptions {
   store: Store
   environmentId: string
   version: string
+  /** What this host runs (buildInfo.ts); answered with the version to a caller the host knows. */
+  build?: BuildFacts
   attach: (ws: WebSocket, principal: Principal) => void
   ui?: UiHandler
   /** The MCP endpoint (mcp.ts): answers `/mcp` for bot keys. */
@@ -210,11 +213,18 @@ export async function startRemoteListener(options: RemoteListenerOptions): Promi
         /* a bad credential still gets the public answer */
       }
       const p = verified?.principal
-      // The hostname and version are for a caller the host knows (R2 L2).
+      // The hostname, version and build are for a caller the host knows (R2 L2).
       return json(res, 200, {
         environmentId: options.environmentId,
         contract: CONTRACT_VERSION,
-        ...(p ? { name: hostname(), version: options.version, key: { id: p.keyId, name: p.name, caps: p.caps, audience: p.audience } } : {})
+        ...(p
+          ? {
+              name: hostname(),
+              version: options.version,
+              ...(options.build ? { build: options.build } : {}),
+              key: { id: p.keyId, name: p.name, caps: p.caps, audience: p.audience }
+            }
+          : {})
       })
     }
     if (path === '/api/pair' && method === 'POST') {

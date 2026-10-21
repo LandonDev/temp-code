@@ -468,13 +468,39 @@ temp-code `src/main/server/remote/{peers,accountSync}.ts`):
   its admin key (the Mac, to the box). A re-pair that kept the routes but
   changed the key rebuilds the Mac's link (remote/peers.ts), so sync comes
   back after a revoked key.
+- **Removals follow the owner.** Remove an account on the Mac's Accounts
+  page (or over `accounts.delete` on a host) and it is gone everywhere:
+  the vault row goes, the host's accounts snapshot rebuilds at once (the
+  gateway and the routing stop naming it before anything else runs; no
+  Refresh or Sync needed), and every peer hears, over the Mac's link as
+  `accounts.removed` and to the sockets that pulled from the host as an
+  `accounts-removed` push; every pull answer also carries the sender's
+  whole file and its tombstones, so a box that was away prunes on its next
+  sync (`accountSync.ts deleteProfile`, `prune`). The tombstone rule: a host
+  that deletes a profile it refreshes or a static one-year token keeps a
+  tombstone (settings row `accounts.tombstones`, 30 days, void once a
+  profile of that account is saved there again). A peer deletes an
+  access-only copy refreshed by the sender when the sender's list no longer
+  has the account (the owner's file is the whole truth about what it
+  refreshes), and a static token only when a tombstone names it (every
+  host holds its own copy, so absence from one list proves nothing). Never
+  deleted on a peer's word: a profile the host refreshes itself, the one
+  its CLI is signed in with (Claude's credentials, Codex's `auth.json`), or
+  a provisional copy from a handoff in flight; the log says what was kept
+  and why. A thread on the box whose pin or sticky account went: it routes
+  automatically from its next turn, the project's or workspace's pin for
+  that provider is cleared, and one plain row lands in the thread, "Account
+  <name> is gone from this host; routing automatically from here" with the
+  time (`chooseAccount` reports `vanished`, `sessions.ts accountGone`); the
+  account chip reads Auto until the next pick lands.
   The Mac's main process keeps one socket per admin host (backoff to 5 min)
   and syncs on connect, on every local vault write, and every 15 minutes;
   `accounts.sync` and the row's Retry do it now. The box's own vault is
   `/srv/agents/home/.config/aliax/` in key-file mode.
 
 Proof without a real account: `bun run script:e2e-accounts-sync` (two
-isolated instances, a fake provider, a handoff, a rotation, the owner down)
+isolated instances, a fake provider, a handoff, a rotation, a removal that
+reaches the other host and clears a thread's pin, the owner down)
 and `bun run script:e2e-static-tokens` (three accounts converted through
 their grants, one of them falling back to `user:inference`, the usage poll
 on both kinds of token, a renewal through the stored session against the
@@ -506,35 +532,65 @@ a GitHub remote. Agent commits carry no AI attribution trailers.
 
 ### Harness config: synced from the Mac
 
-The skills, slash commands, agents, settings and plugins the user set up for
-Claude Code and Codex live on the Mac, and the Mac's main process mirrors
-them onto the box over the same admin link the accounts use
+The skills, slash commands, agents, hooks, settings and plugins the user set
+up for Claude Code and Codex live on the Mac, and the Mac's main process
+mirrors them onto the box over the same admin link the accounts use
 (`src/main/server/remote/{harnessSet,harnessSync}.ts`). The Mac's copy wins;
 the box never sends back. Nothing to do on the box: a headless host only
 receives (`harness.sync.enabled` defaults to off there, on for a desktop).
+Installing a skill on the Mac (Impeccable's `npx` installer puts it under
+`~/.agents/skills/`, links or copies it into `~/.claude/skills/`, and writes
+Codex's `~/.codex/hooks.json`) is enough: the box has it within seconds.
 
-The set, relative to each HOME:
+The set, relative to each HOME, each rule with the label the status line
+uses (`HARNESS_SET` in `harnessSet.ts`):
 
-- `.claude/skills/**` except `.claude/skills/synced/**` (the CLI's own
-  account-synced bucket: each side keeps its own)
-- `.claude/commands/**`, `.claude/agents/**`, `.claude/settings.json`
-- `.claude/plugins/**` except `.claude/plugins/synced/**` and
+- Claude skills: `.claude/skills/**` except `.claude/skills/synced/**` (the
+  CLI's own account-synced bucket: each side keeps its own)
+- Claude commands `.claude/commands/**`, Claude agents `.claude/agents/**`,
+  Claude hooks `.claude/hooks/**` (the scripts settings.json's hook commands
+  point at, when they live there), Claude settings `.claude/settings.json`
+- Claude plugins: `.claude/plugins/**` except `.claude/plugins/synced/**` and
   `plugin-directory-cache*.json` (the CLI rebuilds it per host)
 - `enabledPlugins` and `mcpServers` of `~/.claude.json`, merged into the
   box's own file; every other key (`oauthAccount`, `projects`, …) stays as
   the box has it
-- `.codex/skills/**` except `.codex/skills/.system/**`, `.codex/prompts/**`,
-  `.codex/config.toml`
-- `.agents/skills/**`
+- Codex skills `.codex/skills/**` except `.codex/skills/.system/**`, Codex
+  prompts `.codex/prompts/**`, Codex config `.codex/config.toml`, Codex hooks
+  `.codex/hooks.json` (the user-level hooks; the trust rows config.toml keeps
+  for them, `[hooks.state."<home>/.codex/hooks.json:post_tool_use:0:0"]
+  trusted_hash = …`, name the box's copy after path translation, and the hash
+  is the hook's own, so a hooks.json that names `$HOME` lands byte for byte
+  and stays trusted)
+- Shared skills `.agents/skills/**`, read by Claude Code and Codex alike
+
+A project's own `.claude/skills/` lives in its repository and crosses with
+git, not with this sync.
 
 Never, whatever the rules say (checked when the manifest is built and again
 on landing, and in the tests): `.credentials.json`, `auth.json`,
 `settings.local.json`, `.claude.json` as a file, `*.pem`, `*.key`, `*.p8`,
 `*.p12`, `*.pfx`. Also left out: any `.git` dir (a marketplace clone lands as
-a plain tree), `.DS_Store`, and files over 16 MiB. A symlink on the Mac (a
-skill linked in from a checkout) is followed when its target is inside the
-Mac's HOME and outside `.ssh`, `.gnupg`, `.aws` and the like; the box gets
-the content.
+a plain tree), `.DS_Store`, files over 16 MiB, and any Mach-O file (thin,
+either byte order, or a universal binary, told from a Java class file by the
+arch count): a macOS executable runs nowhere else, so the Mac leaves it out
+of the manifest and counts it as skipped, and the box refuses one at commit
+should a manifest name it anyway. Under every skills root, a skill's
+per-platform binary cache `<skill>/scripts/bin/**` is not even walked: that
+is where Impeccable's launcher (`scripts/impeccable`) looks for
+`bin/<os>-<arch>/impeccable` beside itself before filling
+`~/.impeccable/bin/<version>/` (outside the set) from the release channel on
+first use. The launcher, `scripts/VERSION` (the engine version), SKILL.md,
+`command-metadata.json` and the skill's `agents/*.toml` cross; the box
+downloads its own Linux engine the first time a hook or a thread runs it.
+
+A symlink on the Mac is followed when its target is inside the Mac's HOME
+and outside `.ssh`, `.gnupg`, `.aws` and the like. A skill directory that is
+a link (into another skills root, a checkout, or a package cache under HOME
+such as `~/Library/Caches/…` or `~/.npm/_npx/…`) is walked as a directory:
+the box gets the target's files as a real directory under the same path,
+never the link. A link that points outside HOME (`/opt/homebrew/…`) is
+skipped and counted.
 
 When: on link-up, about two seconds after a change under the set (a watch on
 each rule root), and every 15 minutes. The Mac sends a manifest (path, size,
@@ -557,9 +613,13 @@ macOS-only tools just fail here; each landing of `settings.json` logs one
 `[harness-sync]` line naming the hook executables not on the box's PATH.
 
 Status: Settings → Remote access on the Mac has a Harness config section, one
-row per host: `Harness config: 143 files, synced 2m ago`, `never synced`, or
-the last error, with Sync now (`harness.status` and `harness.sync` on the
-Mac's own socket). On the box, the `[harness-sync]` lines in the service's
+row per host: `Harness config: 143 files (Claude skills 80, Claude commands
+4, Claude settings 1, Codex skills 12, Codex config 1, Codex hooks 1, Shared
+skills 44), synced 2m ago` (every set with files, in the set's order, from
+`sets` of `harness.status`), `never synced`, or the last error, with Sync now
+(`harness.status` and `harness.sync` on the Mac's own socket). Below the rows,
+how many files stay on the Mac (over 16 MiB, a symlink out of reach, or a
+macOS binary). On the box, the `[harness-sync]` lines in the service's
 journal say what landed. Proof:
 `bun run script:e2e-harness-sync` (two headless instances with their own
 HOMEs, paired over the fixed port; runs on the box under `xvfb-run`).
@@ -981,9 +1041,86 @@ Linux pin waits for a build that has not expired), and vibrancy. Known gap:
 the local socket is the implicit admin for any process on the box's loopback,
 as on a Mac; the box has only `prod` as another user.
 
+### Starting a thread on the Mac from the box
+
+iOS builds, the simulator, screenshots and every Mac app exist only on the
+Mac, and a box thread reaching them through `mac_run` loses the link, the
+tools and the simulator to every other thread doing the same. So a box
+thread can start a thread, or spawn a subagent, ON the Mac instead, and
+supervise it from the box: the work runs where the tools are, as an ordinary
+thread the Mac app shows under This Mac the moment it is created.
+
+The app tools. `app_start_thread` and `spawn_agent` take `environmentId`:
+`mac` for the thread's own Mac, or a host's environment id. Which Mac
+(`src/main/server/crossHostAgents.ts` `resolveHost`): the thread's Mac
+bridge peer when set (`macBridge.thread.<id>`, an ancestor's counts), else
+the only Mac registered with the offer, else a refusal naming
+`macBridge.thread.set`. Every id that comes back is `<environmentId>:
+<sessionId>` (`src/shared/contract-crosshost.ts` `encodeAgentId`), and
+`send_to_agent`, `check_agent`, `wait_for_agent`, `answer_agent`,
+`interrupt_agent`, `list_agents` and `app_read_thread` route by that id, so
+the model never learns which host it is talking to. The tool text tells the
+model when to use a Mac host: anything that needs Xcode, the simulator, a
+Mac app, or files that live on the Mac. The box thread's rules still gate a
+remote spawn (`resolveSpawnSpecs` in orchestration.ts: approved models,
+effort, the caps, with the agents on other hosts counted), and the thread on
+the Mac inherits the box thread's permission, so a full-access thread runs
+unattended there and `answer_agent` takes `allow` for its approvals.
+Codex reaches the same fields through `scripts/app-mcp-bridge.mjs`.
+
+Transport. The `threads` offer rides the Mac bridge's reverse RPC
+(`remote/peerCalls.ts`): the Mac's `peer.register` now carries
+`offers: ['mac-bridge', 'threads']`, and the box sends `peer.call` pushes
+naming `thread.start`, `thread.spawn`, `thread.send`, `thread.list`,
+`thread.events` (at most 500 rows, each text field cut to 4,000 characters),
+`thread.check`, `thread.wait`, `thread.interrupt` and `thread.answer`, with
+the box thread as `caller` (its id, title and permission). None of these is
+a contract request: they ride only inside `peer.call`, whose frames are
+admin, so a remote key never names them; the app tools stay local. One
+`thread.wait` is at most 60 s; the box loops windows until the thread settles
+or the tool's timeout passes, so a link that drops mid-wait is seen within a
+window and the call answers the last state the box saw with `linkDown: true`
+instead of hanging. The Mac reports a settle back as `crossHost.settled`
+(admin, a request on its own link), and the box wakes the thread that
+started it the way a local child's settle would, unless a wait already
+covers it.
+
+On the Mac (`src/main/server/remote/crossHostThreads.ts`). Only a saved host
+may call, and every later call must name a thread that host started here
+(`crossHost.owner.<sessionId>`), so a box never reaches a thread of the
+Mac's own or another host's. The box names where it works (its project cwd)
+and its work root; the Mac maps that onto its own checkout through the
+inverse of its path map (the one the harness sync and the history import
+share: `/srv/agents/work/temp-code` → `~/IdeaProjects/temp-code`) or, for a
+checkout the map does not name, `<box work root>/<name>` →
+`<Mac work root>/<name>`; when nothing is there the thread starts in the
+Mac's work root and the result carries `cwdNote`. A thread.start is a root
+thread with its type and title, under the Mac project at that cwd; a
+thread.spawn is a child whose `parentId` is the box thread, so the Mac's
+fleet view lists it under the box thread it shows over the link (the Mac
+holds no log for that parent: the spawn is recorded on the box, as
+`agent-spawned` with the Mac's environment id). A writing agent gets a
+worktree there as it would locally. Such a child is not archived with its
+parent (the parent is not on the Mac); archive it from the Mac when done.
+
+On the box (`src/main/server/crossHostAgents.ts`), what a thread started
+or spawned is kept in `crossHost.children.<sessionId>` with the last state
+seen, so `list_agents` still names it, marked `linkDown`, while the Mac is
+away. `TEMP_CODE_WORK_ROOT` sets an isolated instance's work root (the
+proof's two hosts). Proof: `bun run script:e2e-cross-host-threads`
+(scripts/e2e-cross-host-threads.ts): two headless instances paired over the
+fixed port under `xvfb-run`; a thread on the box starts a thread on the
+Mac, sends it a message, waits for it to settle, reads its rows, spawns an
+agent there and collects its report, lists both with host, then drops the
+link and gets `linkDown` and the refusal. No turn reaches a model there
+(TEMP_CODE_FAKE_PROVIDERS is a dead origin); the live pass is a box thread
+with the Mac app open.
+
 ## Updating
 
-For a ref already on GitHub, run from the Mac:
+For a ref already on GitHub, press "Deploy master to the box" in the Mac
+app's Settings → Remote access (below, "Deploy from the app"), or run from
+the Mac:
 
 ```sh
 ssh box 'box-update master'
@@ -992,6 +1129,31 @@ ssh box 'box-update v1.0.N'   # replace N with a tag published on GitHub
 # As landon on the host:
 sudo /usr/local/sbin/box-update master
 ```
+
+### Knowing the box is behind: the deploy-drift mark
+
+Nothing deploys the box on its own, so the Mac app marks a host that has
+fallen behind master. Every host says what it runs in its hello frame and
+in `/api/hello` for a caller it knows (`build`: release.json `n`, the
+`1.0.N` version, the commit, the platform; `src/main/buildInfo.ts`). The
+box's commit is its checkout's `.git/HEAD` (box-update runs a detached
+clone); a published Mac build carries it in the bundled package.json as
+`tempcodeBuild.sha`, which release-publish.sh passes through
+electron-builder's extraMetadata. The Mac's main process reads
+`https://raw.githubusercontent.com/LandonDev/temp-code/master/release.json`
+every ten minutes and again when a window comes forward after fifteen idle
+minutes (`src/main/deployDrift.ts`, the updater's cadence; nothing faster,
+no git, and a failed fetch keeps the last number); the local socket gets
+the number with `deploy.master` and the `deploy-master` push, and the
+main process's peer links keep each host's `build` on their state. The
+renderer's `useDeployDrift(environmentId)` (`lib/deployDrift.ts`) yields
+`{ behind, deployedVersion, masterVersion }` and `chrome/DeployDrift.tsx`
+draws a muted tabular `+3` at the trailing edge of the host's row in the
+environment switcher and in Settings → Remote access, with the tooltip
+"3 releases behind master (runs v1.0.270, master is v1.0.273). Deploy
+with: ssh box 'box-update master'" (a Mac host says "Publish with: bun run
+release:publish"). Current, ahead, or unknown on either side draws nothing.
+A headless host never fetches master; the box's own `/ui` shows no mark.
 
 On a fresh box, stage 85 creates the build/data directories and service
 without needing an existing `current`. Run `box-update <ref>` to bootstrap:
@@ -1059,6 +1221,59 @@ Install or refresh launcher files without deploying:
 scripts/box/apply.sh --from 75 --through 75
 scripts/box/apply.sh --from 85 --through 85
 ```
+
+### Deploy from the app
+
+"Deploy master to the box" in Settings → Remote access → Deploy and publish
+is the same `box-update master`, pressed in the app with the log streamed
+back. `box-update` must run as root and the host runs as agents, so the app
+never runs it: the root-owned trigger of stage 87
+(scripts/box/87-deploy-trigger.sh) does. One-time install, from the Mac
+checkout:
+
+```sh
+bash scripts/box/apply.sh --from 87 --through 87
+```
+
+What the stage puts in place, all idempotent:
+
+- `/etc/tmpfiles.d/temp-code-deploy.conf`: `/run/temp-code/deploy`, root:agents
+  1770 (tmpfs, recreated at boot). Sticky and group-writable: agents can drop
+  and withdraw its own `request` and read the root-owned `log`, `ref` and
+  `exit`, and nothing else of root's can go.
+- `temp-code-deploy.path`: `PathExists=/run/temp-code/deploy/request` starts
+  `temp-code-deploy.service`, a oneshot running
+  `/usr/local/lib/temp-code/deploy-runner` (scripts/box/deploy-runner.sh) as
+  root. The runner reads the one-line ref, takes `master` or a `v1.0.N` tag
+  only (anything else is refused into the log with exit 2, nothing runs),
+  removes `exit`, truncates `log`, writes `ref`, removes `request` (in that
+  order, so the directory never reads as finished or idle between a request
+  and its run), runs `box-update <ref>` with its output appended to `log`,
+  and writes `exit` last with the status. `systemctl status
+  temp-code-deploy.service` and the journal have the same output.
+
+The app's side (src/main/server/hostJobs.ts `DeployTrigger`,
+src/shared/contract-host.ts): `host.deploy {ref}` (admin, the Mac calls it
+over the box's link) validates the ref, refuses when the directory is not
+writable ("Deploy from the app is not installed on this host; run `bash
+scripts/box/apply.sh --from 87 --through 87` from the Mac checkout once") or
+a deploy is pending or running, and drops the request; `host.deployStatus`
+reads the phase from the files alone (`request` pending, `log` without `exit`
+running, `exit` done, nothing since boot idle), so it is right again after
+the host restarts into the new build mid-deploy; `host.log {job: 'deploy'}`
+answers the log so far and subscribes the socket to `host-log` pushes. A
+request nobody picks up within 15 s is withdrawn and reported as the trigger
+not running. The restart drops the Mac's link; the renderer asks for the log
+again on link-up and the card keeps tailing (`src/renderer/src/lib/hostJobs.ts`).
+The card says the box cannot be stopped mid-way (box-update rolls back on a
+failed trial) and ends with "Deployed v1.0.N, the service is back" or the
+failure's last lines. The confirm names the versions: what the box runs
+(its package.json) against origin/master's in the Mac's release checkout.
+Proof without root: `src/main/server/hostDeployRunner.test.ts` runs the
+runner against a scratch directory and a fake `box-update`
+(`TEMP_CODE_DEPLOY_DIR`, `TEMP_CODE_BOX_UPDATE`), and `hostJobs.test.ts`
+drives the app's side through the same files. The Mac's "Publish Mac
+release" button is the other half (CLAUDE.md "Releases").
 
 For green local master commits that are not on GitHub yet, transfer a bundle
 of that same repo instead of pushing from an implementation thread:

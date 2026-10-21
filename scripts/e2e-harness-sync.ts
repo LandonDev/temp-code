@@ -7,12 +7,15 @@
  * publishes its local socket in <userData>/server.json and this script
  * speaks to it as the implicit admin, the way scripts/box/tc-local.mjs does.
  *
- * "mac" is seeded with skills, commands, agents, settings.json (paths and a
- * macOS-only hook), plugins (records, an installed tree, a marketplace with
- * a .git dir, the directory cache), ~/.claude.json, Codex config, prompts
- * and skills (plus a .system one), .agents skills, and every kind of secret.
- * "box" has its own sign-in, local settings, account-synced skill bucket and
- * a skill of its own. Then:
+ * "mac" is seeded with skills, commands, agents, hooks (settings.json's
+ * paths and a macOS-only hook, a script under .claude/hooks, Codex's
+ * hooks.json with its trust row in config.toml), plugins (records, an
+ * installed tree, a marketplace with a .git dir, the directory cache),
+ * ~/.claude.json, Codex config, prompts and skills (plus a .system one),
+ * .agents skills (an Impeccable-shaped one: SKILL.md, the launcher, VERSION,
+ * a Mach-O under scripts/bin, linked into .claude/skills), a Mach-O outside
+ * any binary cache, and every kind of secret. "box" has its own sign-in,
+ * local settings, account-synced skill bucket and a skill of its own. Then:
  *  - mac turns sending on (headless defaults to receive-only), box issues an
  *    admin key, mac saves box as an environment: the link-up sync lands the
  *    set translated (mac's home → box's, IdeaProjects/X → the box's work
@@ -20,18 +23,22 @@
  *    byte, modes kept, the two ~/.claude.json keys merged into box's own
  *  - nothing excluded lands: no credential, auth.json, settings.local.json,
  *    *.pem/*.key, no plugin directory cache, no .git, no .codex/skills/.system,
- *    and box's own files are as they were
+ *    no Mach-O anywhere (the binary cache is not walked, one elsewhere is
+ *    skipped and counted), and box's own files are as they were
+ *  - the symlinked skill lands as a real dir on both roots; hooks.json lands
+ *    byte for byte and its [hooks.state] row names the box's copy
  *  - box logged the hook executable it cannot find (tc-no-such-tool)
  *  - a deletion and an edit on mac reach box through the watch alone
  *  - a file edited on box is put back by Sync now; a file box made itself stays
- *  - mac's harness.status names box with the file count and no error
+ *  - mac's harness.status names box with the file count, each set's count
+ *    and no error
  * Run: bun scripts/e2e-harness-sync.ts   (build first: electron-vite build)
  * Nothing here touches /Applications/TempCode.app, a real HOME, the real
  * Aliax vault, the gateway marker or the box's live temp-code.service.
  */
 import { spawn, type ChildProcess } from 'node:child_process'
 import { createHash, randomBytes } from 'node:crypto'
-import { appendFileSync, chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs'
+import { appendFileSync, chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
@@ -84,6 +91,10 @@ const has = (home: string, rel: string): boolean => existsSync(join(home, rel))
 const SECRET = `SECRET-${randomBytes(6).toString('hex')}`
 const PNG = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), randomBytes(3000)])
 const BIG = randomBytes(5 * 1024 * 1024 + 17)
+/** A Mach-O 64-bit little-endian header (what the Mac's arm64 binaries carry) and a body. */
+const MACHO = Buffer.concat([Buffer.from([0xcf, 0xfa, 0xed, 0xfe, 0x0c, 0, 0, 1]), randomBytes(4096)])
+const LAUNCHER = '#!/bin/sh\n# Impeccable-shaped launcher: the platform binary beside it, else the version cache.\ndir=$(dirname "$0")\nexec "$dir/bin/$(uname -s)-$(uname -m)/impeccable" "$@"\n'
+const HOOKS_JSON = JSON.stringify({ hooks: { PostToolUse: [{ matcher: 'Edit|Write|apply_patch', hooks: [{ type: 'command', command: '[ ! -f "$HOME/.agents/skills/impeccable/scripts/impeccable" ] || "$HOME/.agents/skills/impeccable/scripts/impeccable" hook', timeout: 5 }] }] } }, null, 2) + '\n'
 const special = join(root, 'box-special', 'proj')
 
 // ── the Mac's HOME ──────────────────────────────────────────────────────
@@ -111,12 +122,24 @@ put(M, '.claude/plugins/synced/acct.json', 'the Mac plugin bucket')
 put(M, '.claude/.credentials.json', JSON.stringify({ claudeAiOauth: { accessToken: SECRET } }))
 put(M, '.claude/settings.local.json', JSON.stringify({ env: { TOKEN: SECRET } }))
 put(M, '.claude.json', JSON.stringify({ oauthAccount: { emailAddress: 'mac@example.com', token: SECRET }, userID: SECRET, projects: { [M]: {} }, enabledPlugins: { 'tool@mkt': true }, mcpServers: { files: { command: `${M}/IdeaProjects/shop/mcp.sh`, args: [] } } }, null, 2))
-put(M, '.codex/config.toml', `model = "gpt-6.1-sol"\n\n[projects."${M}/IdeaProjects/shop"]\ntrust_level = "trusted"\n`)
+put(M, '.codex/config.toml', `model = "gpt-6.1-sol"\n\n[projects."${M}/IdeaProjects/shop"]\ntrust_level = "trusted"\n\n[hooks.state]\n\n[hooks.state."${M}/.codex/hooks.json:post_tool_use:0:0"]\ntrusted_hash = "sha256:84ec1c77bb34b81a"\n`)
+put(M, '.codex/hooks.json', HOOKS_JSON)
+put(M, '.claude/hooks/lint.sh', `#!/bin/sh\nexec ${M}/IdeaProjects/shop/bin/lint "$@"\n`, 0o755)
 put(M, '.codex/prompts/review.md', 'codex review prompt')
 put(M, '.codex/skills/mine/SKILL.md', 'codex skill')
 put(M, '.codex/skills/.system/builtin/SKILL.md', 'the Mac codex system skill')
 put(M, '.codex/auth.json', JSON.stringify({ tokens: { access_token: SECRET } }))
 put(M, '.agents/skills/shared/SKILL.md', 'agents skill')
+// an Impeccable-shaped skill: SKILL.md, the launcher, the engine version, the per-platform binary beside it; linked into .claude/skills
+put(M, '.agents/skills/impeccable/SKILL.md', '---\nname: impeccable\n---\nRun scripts/impeccable.\n')
+put(M, '.agents/skills/impeccable/scripts/impeccable', LAUNCHER, 0o755)
+put(M, '.agents/skills/impeccable/scripts/VERSION', '0.1.16\n')
+put(M, '.agents/skills/impeccable/scripts/command-metadata.json', '{"commands":["audit"]}')
+put(M, '.agents/skills/impeccable/agents/impeccable_documenter.toml', 'name = "documenter"\n')
+put(M, '.agents/skills/impeccable/scripts/bin/darwin-arm64/impeccable', MACHO, 0o755)
+symlinkSync(join('..', '..', '.agents', 'skills', 'impeccable'), join(M, '.claude/skills/impeccable'))
+// a Mach-O outside any binary cache: skipped on the Mac and counted
+put(M, '.codex/skills/mine/engine', MACHO, 0o755)
 
 // ── the box's HOME ──────────────────────────────────────────────────────
 const B = box.home
@@ -223,7 +246,7 @@ function walk(dir: string, base = dir): string[] {
 interface HarnessStatus {
   enabled: boolean
   skipped: number
-  environments: { id: string; name: string; connected: boolean; files: number | null; syncedAt: number | null; error: string | null }[]
+  environments: { id: string; name: string; connected: boolean; files: number | null; sets: Record<string, number> | null; syncedAt: number | null; error: string | null }[]
 }
 
 launch(mac)
@@ -265,6 +288,14 @@ try {
   check('installed_plugins.json points at the box\'s plugin cache', installed.plugins?.['tool@mkt']?.[0]?.installPath === `${B}/.claude/plugins/cache/mkt/tool/1.0.0`)
   check('commands, agents, the marketplace, Codex config/prompts/skills and .agents skills landed', ['.claude/commands/ship.md', '.claude/agents/reviewer.md', '.claude/plugins/known_marketplaces.json', '.claude/plugins/marketplaces/mkt/.claude-plugin/marketplace.json', '.codex/prompts/review.md', '.codex/skills/mine/SKILL.md', '.agents/skills/shared/SKILL.md'].every((r) => has(B, r)))
   check('config.toml trusts the project at its box path', (read(B, '.codex/config.toml') ?? '').includes(`[projects."${workFor('shop')}"]`), read(B, '.codex/config.toml') ?? '')
+  check('Codex hooks.json landed byte for byte ($HOME, not a Mac path)', read(B, '.codex/hooks.json') === HOOKS_JSON, JSON.stringify(read(B, '.codex/hooks.json')))
+  check('config.toml\'s [hooks.state] row names the box\'s hooks.json with the trusted hash kept', (read(B, '.codex/config.toml') ?? '').includes(`[hooks.state."${B}/.codex/hooks.json:post_tool_use:0:0"]\ntrusted_hash = "sha256:84ec1c77bb34b81a"`), read(B, '.codex/config.toml') ?? '')
+  check('a Claude hook script landed translated and executable', read(B, '.claude/hooks/lint.sh') === `#!/bin/sh\nexec ${workFor('shop')}/bin/lint "$@"\n` && (statSync(join(B, '.claude/hooks/lint.sh')).mode & 0o111) !== 0)
+  for (const r of ['.agents/skills/impeccable', '.claude/skills/impeccable']) {
+    const link = existsSync(join(B, r)) && lstatSync(join(B, r)).isSymbolicLink()
+    check(`${r}: the Impeccable-shaped skill landed as a real dir with SKILL.md, the launcher (executable), VERSION, metadata and agents`, !link && read(B, `${r}/SKILL.md`) === '---\nname: impeccable\n---\nRun scripts/impeccable.\n' && read(B, `${r}/scripts/impeccable`) === LAUNCHER && (statSync(join(B, `${r}/scripts/impeccable`)).mode & 0o111) !== 0 && read(B, `${r}/scripts/VERSION`) === '0.1.16\n' && has(B, `${r}/scripts/command-metadata.json`) && has(B, `${r}/agents/impeccable_documenter.toml`), walk(join(B, r)).join(','))
+    check(`${r}: the per-platform binary cache never crossed`, !has(B, `${r}/scripts/bin`))
+  }
   const cj = JSON.parse(read(B, '.claude.json') ?? '{}')
   check('~/.claude.json: enabledPlugins and mcpServers merged (translated), box\'s own keys kept, no other Mac key', JSON.stringify(cj) === JSON.stringify({ oauthAccount: { emailAddress: 'box@example.com' }, machineID: 'box-machine', enabledPlugins: { 'tool@mkt': true }, mcpServers: { files: { command: `${workFor('shop')}/mcp.sh`, args: [] } } }), JSON.stringify(cj))
 
@@ -273,6 +304,11 @@ try {
   check('no secret marker anywhere under box\'s HOME', !boxFiles.some((r) => readFileSync(join(B, r)).includes(SECRET)))
   check('no .pem/.key, auth.json; box\'s own credentials and local settings as they were', !has(B, '.claude/skills/deploy/server.pem') && !has(B, '.claude/skills/deploy/deploy.key') && !has(B, '.codex/auth.json') && read(B, '.claude/.credentials.json') === '{"box":"own sign-in"}' && read(B, '.claude/settings.local.json') === '{"box":"local"}')
   check('no plugin directory cache, no .git, no plugins/synced', !has(B, '.claude/plugins/plugin-directory-cache-v2.json') && !has(B, '.claude/plugins/marketplaces/mkt/.git') && !has(B, '.claude/plugins/synced'))
+  const machOs = boxFiles.filter((r) => {
+    const b = readFileSync(join(B, r))
+    return b.length >= 8 && b.readUInt32BE(0) === 0xcffaedfe
+  })
+  check('no Mach-O anywhere under box\'s HOME (the one outside a binary cache was skipped on the Mac)', machOs.length === 0 && !has(B, '.codex/skills/mine/engine') && has(B, '.codex/skills/mine/SKILL.md'), machOs.join(','))
   check('the account buckets and .codex/skills/.system are box\'s own', read(B, '.claude/skills/synced/acct/SKILL.md') === 'the box account bucket' && read(B, '.codex/skills/.system/builtin/SKILL.md') === 'the box codex system skill')
 
   // ── 3. the hook line ─────────────────────────────────────────────────
@@ -293,7 +329,10 @@ try {
   check('Sync now restored the Mac\'s copy over a box edit', read(B, '.claude/agents/reviewer.md') === 'review carefully')
   const env = after.environments[0]
   check('mac: harness.status names box with the count, a time and no error', env?.name === 'box' && env.connected && (env.files ?? 0) > 10 && env.error === null && (env.syncedAt ?? 0) > 0, JSON.stringify(after))
-  log(`status: box — ${env?.files} files, skipped on mac ${after.skipped}`)
+  const sets = env?.sets ?? {}
+  check('mac: harness.status carries each set\'s count (Codex hooks 1, Claude hooks 1, the shared and Claude skills, the sum is the file count)', sets['Codex hooks'] === 1 && sets['Claude hooks'] === 1 && (sets['Shared skills'] ?? 0) >= 6 && (sets['Claude skills'] ?? 0) >= 5 && sets['Codex skills'] === 1 && Object.values(sets).reduce((a, b) => a + b, 0) === env?.files, JSON.stringify(sets))
+  check('mac: the Mach-O outside a binary cache is the one skipped file (the 5 MiB plugin binary is under the budget)', after.skipped === 1, String(after.skipped))
+  log(`status: box — ${env?.files} files ${JSON.stringify(sets)}, skipped on mac ${after.skipped}`)
 } catch (err) {
   console.error('ERROR', err instanceof Error ? err.message : err)
   failures++

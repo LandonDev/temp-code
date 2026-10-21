@@ -12,22 +12,47 @@ import type { HarnessClaudeJson, HarnessEntry } from '@shared/contract-harness'
 
 export type SetRule =
   /** Every file under `root`, minus the `exclude` dirs (relative to root) and the files `skip` matches (relative to root). */
-  | { kind: 'tree'; root: string; exclude?: string[]; skip?: RegExp }
-  | { kind: 'file'; path: string }
+  | { kind: 'tree'; root: string; label: string; exclude?: string[]; skip?: RegExp }
+  | { kind: 'file'; path: string; label: string }
+
+/**
+ * A skill's per-platform binary cache: the launcher a skill ships
+ * (Impeccable's `scripts/impeccable`) looks for `scripts/bin/<os>-<arch>/`
+ * beside itself and otherwise fills `~/.impeccable/bin/<version>/` on first
+ * use, both outside what another platform can run. The launcher, its
+ * `VERSION` and SKILL.md cross; the receiver downloads its own binary.
+ */
+export const SKILL_BINARY_CACHE = /^[^/]+\/scripts\/bin\//
 
 export const HARNESS_SET: readonly SetRule[] = [
   // skills/synced is the CLI's own account-synced bucket: neither side touches it.
-  { kind: 'tree', root: '.claude/skills', exclude: ['synced'] },
-  { kind: 'tree', root: '.claude/commands' },
-  { kind: 'tree', root: '.claude/agents' },
-  { kind: 'file', path: '.claude/settings.json' },
+  { kind: 'tree', root: '.claude/skills', label: 'Claude skills', exclude: ['synced'], skip: SKILL_BINARY_CACHE },
+  { kind: 'tree', root: '.claude/commands', label: 'Claude commands' },
+  { kind: 'tree', root: '.claude/agents', label: 'Claude agents' },
+  // The scripts settings.json's hook commands point at, when they live in the conventional dir.
+  { kind: 'tree', root: '.claude/hooks', label: 'Claude hooks' },
+  { kind: 'file', path: '.claude/settings.json', label: 'Claude settings' },
   // The installed plugin trees and their records; the directory cache (2.7 MB, rebuilt by the CLI) stays per host.
-  { kind: 'tree', root: '.claude/plugins', exclude: ['synced'], skip: /^plugin-directory-cache[^/]*\.json$/ },
-  { kind: 'tree', root: '.codex/skills', exclude: ['.system'] },
-  { kind: 'tree', root: '.codex/prompts' },
-  { kind: 'file', path: '.codex/config.toml' },
-  { kind: 'tree', root: '.agents/skills' }
+  { kind: 'tree', root: '.claude/plugins', label: 'Claude plugins', exclude: ['synced'], skip: /^plugin-directory-cache[^/]*\.json$/ },
+  { kind: 'tree', root: '.codex/skills', label: 'Codex skills', exclude: ['.system'], skip: SKILL_BINARY_CACHE },
+  { kind: 'tree', root: '.codex/prompts', label: 'Codex prompts' },
+  { kind: 'file', path: '.codex/config.toml', label: 'Codex config' },
+  // Codex's user-level hooks; config.toml's [hooks.state."<home>/.codex/hooks.json:…"] trust rows translate with the home.
+  { kind: 'file', path: '.codex/hooks.json', label: 'Codex hooks' },
+  // Read by Claude Code and Codex alike.
+  { kind: 'tree', root: '.agents/skills', label: 'Shared skills', skip: SKILL_BINARY_CACHE }
 ]
+
+/** Files per set label, for the status line: every label of `rules`, zero when nothing is under it. */
+export function setCounts(entries: readonly { relPath: string }[], rules: readonly SetRule[] = HARNESS_SET): Record<string, number> {
+  const counts: Record<string, number> = {}
+  for (const rule of rules) counts[rule.label] = counts[rule.label] ?? 0
+  for (const entry of entries) {
+    const rule = ruleFor(entry.relPath, rules)
+    if (rule) counts[rule.label]++
+  }
+  return counts
+}
 
 /** The one file outside the set whose keys cross (HARNESS_CLAUDE_KEYS), merged into the receiver's own. */
 export const CLAUDE_JSON = '.claude.json'
@@ -99,19 +124,42 @@ export function decodeText(buf: Buffer): string | null {
 
 export const sha256 = (buf: Buffer | string): string => createHash('sha256').update(buf).digest('hex')
 
+/**
+ * A Mach-O file (thin, either byte order, or a universal binary): a macOS
+ * executable that no other host can run. Never sent, never landed, whatever
+ * the rules say. A universal header shares its magic with a Java class
+ * file; the arch count tells them apart (a class file has a version there).
+ */
+export function isMachO(buf: Buffer): boolean {
+  if (buf.length < 8) return false
+  const magic = buf.readUInt32BE(0)
+  if (magic === 0xfeedface || magic === 0xfeedfacf || magic === 0xcefaedfe || magic === 0xcffaedfe) return true
+  if (magic === 0xcafebabe || magic === 0xcafebabf) return buf.readUInt32BE(4) < 30
+  return false
+}
+
 // ── the sender: the manifest of what is on disk ──────────────────────────
 
 /** Under the sender's HOME, where a symlinked skill may point; anything else is out of reach. */
 const SENSITIVE_UNDER_HOME = ['.ssh', '.gnupg', '.aws', '.config/gh', '.docker', '.kube', 'Library/Keychains', '.aliax']
 
+export interface HashEntry {
+  size: number
+  mtimeMs: number
+  ino: number
+  sha: string
+  /** The bytes are a Mach-O file: remembered so the file is not read again. */
+  native?: boolean
+}
+
 export interface HashCache {
-  get(key: string): { size: number; mtimeMs: number; ino: number; sha: string } | undefined
-  set(key: string, value: { size: number; mtimeMs: number; ino: number; sha: string }): void
+  get(key: string): HashEntry | undefined
+  set(key: string, value: HashEntry): void
 }
 
 export interface Skipped {
   relPath: string
-  reason: 'too-large' | 'symlink-out-of-reach' | 'symlink-loop' | 'unreadable'
+  reason: 'too-large' | 'symlink-out-of-reach' | 'symlink-loop' | 'unreadable' | 'native-binary'
 }
 
 export interface Manifest {
@@ -155,22 +203,32 @@ export function buildManifest(home: string, opts: { rules?: readonly SetRule[]; 
       skipped.push({ relPath, reason: 'unreadable' })
       return
     }
-    const hit = opts.cache?.get(real)
-    let sha: string
-    if (hit && hit.size === st.size && hit.mtimeMs === st.mtimeMs && hit.ino === st.ino) sha = hit.sha
-    else {
+    let hit = opts.cache?.get(real)
+    if (!(hit && hit.size === st.size && hit.mtimeMs === st.mtimeMs && hit.ino === st.ino)) {
+      let data: Buffer
       try {
-        sha = sha256(readFileSync(abs))
+        data = readFileSync(abs)
       } catch {
         skipped.push({ relPath, reason: 'unreadable' })
         return
       }
-      opts.cache?.set(real, { size: st.size, mtimeMs: st.mtimeMs, ino: st.ino, sha })
+      hit = { size: st.size, mtimeMs: st.mtimeMs, ino: st.ino, sha: sha256(data), ...(isMachO(data) ? { native: true } : {}) }
+      opts.cache?.set(real, hit)
     }
+    if (hit.native) {
+      skipped.push({ relPath, reason: 'native-binary' })
+      return
+    }
+    const sha = hit.sha
     entries.push({ relPath, size: st.size, sha256: sha, mode: st.mode & 0o777, mtime: Math.floor(st.mtimeMs) })
   }
 
-  /** stat through a symlink when its target is reachable; null (and a skipped row) otherwise. */
+  /**
+   * stat through a symlink when its target is reachable; null (and a skipped
+   * row) otherwise. A skill dir that is a link (into another skills root, a
+   * checkout or a package cache under HOME) is walked as a dir: the receiver
+   * gets its files, never the link.
+   */
   const follow = (relPath: string, abs: string): Stats | null => {
     let lst: Stats
     try {

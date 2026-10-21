@@ -167,6 +167,7 @@ export const METHOD_CAPABILITY: Record<ClientRequest['method'], MethodCapability
   // Account sync between hosts (thread V): only an admin key moves a credential, local only decides where sign-ins go.
   'accounts.sync': 'local',
   'accounts.setHome': 'local',
+  'accounts.delete': 'local',
   'notes.upsert': 'operate',
   'notes.delete': 'operate',
   'projectLogo.save': 'operate',
@@ -232,6 +233,7 @@ export const METHOD_CAPABILITY: Record<ClientRequest['method'], MethodCapability
   'accounts.pull': 'admin',
   'accounts.confirm': 'admin',
   'accounts.released': 'admin',
+  'accounts.removed': 'admin',
   // Harness config sync (remote/harnessSync.ts): another host's main process mirrors its config here; the pane's status and Sync now.
   'harness.manifest': 'admin',
   'harness.file': 'admin',
@@ -269,6 +271,8 @@ export const METHOD_CAPABILITY: Record<ClientRequest['method'], MethodCapability
   'peer.chunk': 'admin',
   'peer.progress': 'admin',
   'peer.pull': 'admin',
+  // A Mac reporting that a thread it runs for this host settled (contract-crosshost.ts); rides its admin link.
+  'crossHost.settled': 'admin',
   'mac.readFile': 'local',
   'mac.listDir': 'local',
   'mac.fetchFile': 'local',
@@ -290,8 +294,19 @@ export const METHOD_CAPABILITY: Record<ClientRequest['method'], MethodCapability
   'mac.jobRead': 'local',
   'mac.jobSignal': 'local',
   'mac.jobClose': 'local',
+  // Deploy and publish from the app (contract-host.ts): a deploy of the box
+  // is asked over its link under an admin key; the Mac release signs and
+  // uploads from this machine and is this machine's renderer's alone.
+  'host.deployStatus': 'admin',
+  'host.deploy': 'admin',
+  'host.log': 'admin',
+  'host.publishStatus': 'local',
+  'host.publish': 'local',
+  'host.publishStop': 'local',
+  'host.releaseCheckout.set': 'local',
   // Saved hosts and their keys never leave this machine (thread K1).
   'remote.environments.list': 'local',
+  'deploy.master': 'local',
   'remote.environments.add': 'local',
   'remote.environments.update': 'local',
   'remote.environments.remove': 'local',

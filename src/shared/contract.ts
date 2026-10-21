@@ -9,8 +9,10 @@ import { HarnessRequestSchemas } from './contract-harness'
 import { AttachmentRequestSchemas } from './contract-attachments'
 import { SessionMoveRequestSchemas } from './contract-session-move'
 import { MacBridgeRequestSchemas } from './contract-macbridge'
+import { CrossHostRequestSchemas } from './contract-crosshost'
 import { MacBridgeRulesRequestSchemas } from './contract-macbridge-rules'
 import { MacJobRequestSchemas } from './contract-macjobs'
+import { HostRequestSchemas } from './contract-host'
 import { AGENT_TYPES } from './catalog'
 import { AttachmentSchema, PermissionPolicySchema } from './events'
 import { ProjectModeSchema, ThreadTypeSchema } from './domain'
@@ -91,7 +93,9 @@ const SpawnAgentSpecSchema = z.object({
   agentType: z.string().optional(),
   task: z.string().optional(),
   useWorktree: z.boolean().optional(),
-  context1m: z.boolean().optional()
+  context1m: z.boolean().optional(),
+  /** Run on another host: `mac`, or an environment id (contract-crosshost.ts). */
+  environmentId: z.string().optional()
 })
 
 export const ClientRequestSchema = z.discriminatedUnion('method', [
@@ -106,8 +110,10 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
   ...AttachmentRequestSchemas,
   ...SessionMoveRequestSchemas,
   ...MacBridgeRequestSchemas,
+  ...CrossHostRequestSchemas,
   ...MacBridgeRulesRequestSchemas,
   ...MacJobRequestSchemas,
+  ...HostRequestSchemas,
   // refresh: re-probe the installed CLIs of the probed providers first.
   z.object({
     id: z.string(),
@@ -116,6 +122,8 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
   }),
   // Per-provider health: binary found on the login-shell PATH, version.
   z.object({ id: z.string(), method: z.literal('doctor.get') }),
+  // → MasterRelease | null: master's release.json as this host last read it (local; src/main/deployDrift.ts).
+  z.object({ id: z.string(), method: z.literal('deploy.master'), params: z.object({}).optional() }),
   // Update a provider's CLI in place; returns its fresh health row.
   z.object({
     id: z.string(),
@@ -812,7 +820,9 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
       planPath: z.string().optional(),
       seedThreadIds: z.array(z.string()).optional(),
       firstMessage: z.string(),
-      title: z.string().optional()
+      title: z.string().optional(),
+      /** Start it on another host: `mac`, or an environment id (contract-crosshost.ts). */
+      environmentId: z.string().optional()
     })
   }),
   // Orchestration over WS — the codex bridge's spawn/supervise path. Same
@@ -856,7 +866,9 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
       sessionId: z.string(),
       agentId: z.string(),
       requestId: z.string(),
-      answers: z.array(z.array(z.string()))
+      answers: z.array(z.array(z.string())).optional(),
+      /** An approval on another host (a `<host>:<id>` agent): true allows, false denies. */
+      allow: z.boolean().optional()
     })
   }),
   z.object({
@@ -895,6 +907,8 @@ export type ServerPush =
       contract: number
       caps: import('./capabilities').Capability[]
       key?: { id: string; name: string }
+      /** What the host runs (release number, version, commit, platform); the deploy-drift mark reads it. */
+      build?: import('./deployDrift').BuildFacts
     }
   | { push: 'workspaces'; workspaces: import('./domain').WorkspaceMeta[] }
   | { push: 'projects'; projects: import('./domain').ProjectMeta[] }
@@ -916,12 +930,18 @@ export type ServerPush =
   | { push: 'session-moved'; id: string; sessionIds: string[]; to: string }
   // Aliax accounts: the whole snapshot, whenever it is rebuilt.
   | { push: 'accounts'; snapshot: import('./accounts').AccountsSnapshot }
+  // Master's release number as this host last read it from GitHub (deployDrift.ts); local sockets only.
+  | { push: 'deploy-master'; master: import('./deployDrift').MasterRelease | null }
   // Account sync (thread V): an owner rotated a grant; only sockets that
   // pulled (another host's main process) get these, never a renderer.
   | { push: 'account'; from: string; transfer: import('aliax-core/sync').Transfer }
+  // Account sync: a host deleted profiles; the same sockets as `account`.
+  | { push: 'accounts-removed'; from: string; removed: import('./accounts').AccountRemoval[] }
   // The Mac bridge (contract-macbridge.ts): `peer.call` to a registered Mac's
   // link only; `macBridge.*` to the Mac's own local sockets only.
   | import('./contract-macbridge').MacBridgePush
+  // Deploy and publish from the app (contract-host.ts): to the sockets that asked for the job's log.
+  | import('./contract-host').HostLogPush
   // Watcher spine (M11): project-relative path, debounced ~100 ms.
   | { push: 'file-event'; projectId: string; path: string; kind: 'changed' | 'created' | 'deleted' }
   // Build rail: run state plus any new log lines (batched ~50 ms). A new
