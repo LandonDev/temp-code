@@ -36,6 +36,14 @@ async function checkout(name: string, origin: string | null): Promise<string> {
   return dir
 }
 
+it('createWorkspace refuses a folder that is not on this host', async () => {
+  await expect(registry.createWorkspace(join(root, 'elsewhere'))).rejects.toThrow('no such folder on this host')
+  const file = join(root, 'a-file')
+  await writeFile(file, '')
+  await expect(registry.createWorkspace(file)).rejects.toThrow('no such folder on this host')
+  expect(registry.listWorkspaces()).toEqual([])
+})
+
 it('createWorkspace stores the GitHub slug of the origin, null for other hosts and plain folders', async () => {
   const gh = await checkout('gh', 'git@github.com:LandonDev/aliax.git')
   const gl = await checkout('gl', 'https://gitlab.com/o/n.git')

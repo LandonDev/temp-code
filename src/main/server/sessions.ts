@@ -1,6 +1,6 @@
 import { nanoid } from 'nanoid'
 import { sweepThreadAttachments } from './attachmentUploads'
-import { existsSync } from 'node:fs'
+import { existsSync, statSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { basename } from 'node:path'
 import { CreateSessionParams, type CreateSessionInput } from '@shared/contract'
@@ -897,6 +897,10 @@ export class SessionRegistry {
   async createWorkspace(path: string, name?: string): Promise<WorkspaceMeta> {
     const existing = this.store.listWorkspaces().find((w) => w.path === path)
     if (existing) return existing
+    // A workspace names a folder on this host. A client that has not yet
+    // heard which host owns a folder (another host's catalog still loading)
+    // falls back to this one; a folder that is not here is not ours.
+    if (!isDirectory(path)) throw new Error(`no such folder on this host: ${path}`)
     const git = await isGitRepo(path)
     const meta: WorkspaceMeta = {
       id: nanoid(12),
@@ -3236,5 +3240,13 @@ export class SessionRegistry {
     for (const id of [...this.pendingApprovals.keys()]) this.denyPendingApprovals(id)
     await Promise.allSettled([...this.handles.values()].map((h) => h.dispose()))
     this.handles.clear()
+  }
+}
+
+function isDirectory(path: string): boolean {
+  try {
+    return statSync(path).isDirectory()
+  } catch {
+    return false
   }
 }
