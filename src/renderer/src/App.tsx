@@ -19,6 +19,7 @@ import { NewWorkspaceDialog } from "./chrome/ProjectDialogs";
 import { RemoteFolderDialog } from "./chrome/RemoteFolderDialog";
 import { environment, environmentAt, environmentStore, stepEnvironment } from "./stores/environment";
 import { subscribeEnvironmentSwitch, workspaceToLandOn } from "./lib/environmentSwitch";
+import { markAllSeen } from "./lib/sessionSeen";
 import { ShellTitleBar, type HeaderEvents } from "./chrome/ShellTitleBar";
 import { MenuBar } from "./chrome/MenuBar";
 import { FilePicker } from "./chrome/FilePicker";
@@ -3453,6 +3454,7 @@ export default function App() {
         case "save_all": return go(a.onSaveAll);
         case "open_search": return go(a.onOpenSearch);
         case "open_inbox": return go(a.onOpenInbox);
+        case "mark_all_read": return go(() => markAllSeen(sessionStore.metas().map((m) => m.id)));
         case "open_notes": return go(a.onOpenNotes);
         case "open_settings": return go(() => a.openSettings());
         case "check_for_updates": return go(() => void updateStore.check(true));

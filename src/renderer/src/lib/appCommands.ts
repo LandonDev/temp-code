@@ -79,6 +79,7 @@ export const APP_COMMANDS = [
   "next_environment",
   "prev_environment",
   "activate_environment",
+  "mark_all_read",
 ] as const;
 
 export type AppCommandId = (typeof APP_COMMANDS)[number];

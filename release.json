@@ -1,5 +1,5 @@
 {
-  "n": 271,
-  "notes": "Harness sync drops settings.json env entries that point at the sender's loopback: the Mac's ANTHROPIC_BASE_URL names its Aliax shim on 8787, nothing listens there on the box, and Claude Code's settings env overrides the per-thread gateway URL the driver passes, so every box thread failed with ECONNREFUSED after the first sync landed",
-  "ts": 1792557760751
+  "n": 272,
+  "notes": "Mark All Threads as Read (View menu) and a boot prune that waits for every host's list: the seen map was pruned to the threads known at boot, which on a Mac whose history lives on the box was the two local ones, so every box thread lit up unread after the move",
+  "ts": 1792559706436
 }

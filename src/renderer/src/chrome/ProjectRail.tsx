@@ -73,7 +73,7 @@ import { useClock } from "../lib/turnClock";
 import type { CardThread } from "../lib/projectCardModel";
 import { useWorkspaceRailStatuses, type WorkspaceRailStatus } from "../hooks/useProjectSignals";
 import { threadsToMarkRead } from "../lib/markRead";
-import { markSessionsSeen } from "../lib/sessionSeen";
+import { markAllSeen, markSessionsSeen } from "../lib/sessionSeen";
 import { useSessionMetas } from "../lib/tcserver/store";
 import { useWorkspaceCatalog } from "../lib/tcserver/workspaces";
 import { HarnessIcon } from "./HarnessIcon";
@@ -249,10 +249,12 @@ export function ProjectRail({
   const railStatuses = useWorkspaceRailStatuses();
   const metas = useSessionMetas();
   const catalog = useWorkspaceCatalog();
-  // "Mark all read": every thread on one workspace, or on every host.
+  // "Mark all read": every thread on one workspace, or on every host (the
+  // latter raises the seen floor too, as the View menu's item does).
   const markRead = (path: string | null): void => {
     const { ids, at } = threadsToMarkRead(metas, catalog, path);
-    markSessionsSeen(ids, at);
+    if (path === null) markAllSeen(ids, at);
+    else markSessionsSeen(ids, at);
   };
 
   useEffect(() => {

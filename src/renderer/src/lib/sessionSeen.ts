@@ -94,9 +94,9 @@ export function markSessionSeen(id: string, at = Date.now()): void {
   for (const listener of listeners) listener();
 }
 
-/** Marks every id seen in one write: the rail's "Mark all read" and a
- *  workspace's. `at` should be at least the newest thread's updatedAt, since
- *  the server's clock stamps those and this machine's may lag it. */
+/** Marks every id seen in one write: a workspace's "Mark all read". `at`
+ *  should be at least the newest thread's updatedAt, since the server's
+ *  clock stamps those and this machine's may lag it. */
 export function markSessionsSeen(ids: Iterable<string>, at = Date.now()): void {
   const prev = loadLastSeen();
   let next: SeenMap | null = null;
@@ -108,6 +108,22 @@ export function markSessionsSeen(ids: Iterable<string>, at = Date.now()): void {
   cache = next;
   try {
     localStorage.setItem(KEY, JSON.stringify(next));
+  } catch {
+    // private mode / quota
+  }
+  for (const listener of listeners) listener();
+}
+
+/** Every known thread read as of `at`, and the floor raised to it so a
+ *  thread with no entry counts as seen too (the View menu, the rail). */
+export function markAllSeen(ids: Iterable<string>, at = Date.now()): void {
+  const next: SeenMap = { ...loadLastSeen() };
+  for (const id of ids) if (id) next[id] = Math.max(next[id] ?? 0, at);
+  cache = next;
+  floorCache = at;
+  try {
+    localStorage.setItem(KEY, JSON.stringify(next));
+    localStorage.setItem(FLOOR_KEY, String(at));
   } catch {
     // private mode / quota
   }

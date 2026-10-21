@@ -873,6 +873,21 @@ class SessionStore {
     return Promise.race([listed, new Promise<void>((r) => setTimeout(r, timeoutMs))]);
   }
 
+  /** The environments whose first `session.list` has landed, once every
+   *  attached link's first list has settled. */
+  async listedEnvironments(): Promise<Set<string>> {
+    await this.opened;
+    const done = new Set<string>();
+    await Promise.all(
+      Array.from(this.attached.entries()).map(([environmentId, entry]) =>
+        (entry.listed ?? Promise.resolve()).then(() => {
+          if (entry.listed) done.add(environmentId);
+        }),
+      ),
+    );
+    return done;
+  }
+
   /** Fetch the transcript once and subscribe to its live pushes. `why`
    *  names the caller for the burst report. */
   ensureLoaded(id: string, why = "unknown"): Promise<void> {
