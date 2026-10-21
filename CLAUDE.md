@@ -302,7 +302,10 @@ routed to (aliax-core's `forward`). Two listeners:
   `peer.chunk`). The Mac decides everything in `remote/macBridge.ts`: a
   per-host policy (off by default), shared folders, and a Mac-local prompt
   for any other path and every command (`macBridge.decide` is local-only).
-  Codex calls carry a per-thread token (`macTools.ts`). docs/box.md "The Mac
+  Codex calls carry a per-thread token (`macTools.ts`). A thread in full
+  access on its box (permission `auto`) is never prompted: the box sends its
+  permission with every call and the Mac treats every call the policy admits
+  as remembered. docs/box.md "The Mac
   bridge: what a box thread may touch on the Mac"; proof
   `bun run script:e2e-mac-bridge`.
 - Backups: restic to R2 bucket `tempcode-backups`, repo `box` from

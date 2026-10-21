@@ -774,9 +774,16 @@ On the Mac (`src/main/server/remote/macBridge.ts`, `macRunner.ts`):
   folders and remembered folders still go through first, as under `read`.
   Commands under `full` behave exactly as under `read+run`.
 - Every command asks, showing the exact argv (or command string) and cwd,
-  whatever the thread's permission mode on the box, `auto` included, with a
-  remember choice (below; the default is "this exact command"). A
+  with a remember choice (below; the default is "this exact command"). A
   remembered command still shows on the Mac, as running, with Stop.
+- A thread in full access on its box (permission `auto`) is never prompted:
+  the box sends the thread's permission with every call (`MacCallThread.
+  permission`) and the Mac decides as if every call the policy admits were
+  remembered: reads, listings, fetches, writes, commands and jobs alike, the
+  always-ask floor and the deny list included. A command still shows on the
+  Mac as running, with Stop. The per-box policy still rules: `off` refuses,
+  `read` refuses commands and writes. An older box sends no permission and
+  its threads ask as before.
 - Remember rules live in memory per (box, thread) and end with the app.
 - Remembered approvals (`src/main/server/remote/macBridgeRules.ts`,
   `src/shared/contract-macbridge-rules.ts`). A run card's select offers:

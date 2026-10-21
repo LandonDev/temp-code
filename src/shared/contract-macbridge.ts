@@ -152,6 +152,15 @@ export type MacMethod = (typeof MAC_METHODS)[number]
 export interface MacCallThread {
   id: string
   title: string
+  /** The thread's permission mode on its box (`safe` | `edits` | `auto`); absent from an older box. */
+  permission?: string
+}
+
+/** A thread in full access on its box (`auto`) is never prompted on the Mac: the
+ *  per-box policy still says what kind of call may happen, but every call it
+ *  admits goes through as if remembered (the card still shows a command running). */
+export function threadRunsUnattended(thread: Pick<MacCallThread, "permission">): boolean {
+  return thread.permission === "auto"
 }
 
 /** `peer.call` params for a mac.* method: the args plus the calling thread. */

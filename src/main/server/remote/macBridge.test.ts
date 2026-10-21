@@ -629,6 +629,40 @@ describe('MacBridge commands', () => {
     expect(b.lines.some((l) => l.includes('mac.run → allowed (remembered) argv0=echo'))).toBe(true)
   })
 
+  it('a full-access thread (permission auto) runs and reads without asking; the policy still rules', async () => {
+    const b = bridge()
+    b.mb.setPolicy('env_box', 'read+run')
+    const ctx = { from: 'env_box', deadlineAt: Date.now() + 15 * 60_000 }
+    const thread = { id: 's9', title: 'auto thread', permission: 'auto' }
+    const out = (await b.mb.handle(
+      'mac.run',
+      { thread, args: { argv: ['/bin/echo', 'unattended'], cwd: elsewhere } },
+      ctx
+    )) as MacRunResult
+    expect(out.stdout).toBe('unattended\n')
+    // The card still shows on the Mac: pending for a tick, then running, never waited on.
+    const shown = b.requests().filter((r) => r.kind === 'run')
+    expect(shown.map((r) => r.status)).toEqual(['pending', 'running'])
+    expect(b.lines.some((l) => l.includes('mac.run → allowed (full access)'))).toBe(true)
+    // A path outside every root: no prompt either.
+    await b.mb.handle('mac.listDir', { thread, args: { path: elsewhere } }, ctx)
+    expect(b.requests().filter((r) => r.kind === 'read')).toEqual([])
+    expect(b.lines.some((l) => l.includes('mac.listDir → allowed (full access)'))).toBe(true)
+    // An ordinary thread on the same host still asks.
+    const asked = b.call('mac.listDir', { path: elsewhere }, 's1')
+    const r = await b.nextRequest(b.requests().length - 1)
+    expect(r.kind).toBe('read')
+    b.mb.decide(r.id, false)
+    await expect(asked).rejects.toThrow('denied')
+    // The per-box policy outranks the thread: read refuses commands, off refuses everything.
+    b.mb.setPolicy('env_box', 'read')
+    await expect(
+      b.mb.handle('mac.run', { thread, args: { argv: ['/bin/echo'], cwd: elsewhere } }, ctx)
+    ).rejects.toThrow(/may read on the Mac but not run/)
+    b.mb.setPolicy('env_box', 'off')
+    await expect(b.mb.handle('mac.listDir', { thread, args: { path: elsewhere } }, ctx)).rejects.toThrow(/bridge is off/)
+  })
+
   it('a running command can be stopped from the Mac, which kills it', async () => {
     const b = bridge()
     b.mb.setPolicy('env_box', 'read+run')

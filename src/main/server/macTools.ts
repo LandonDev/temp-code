@@ -229,7 +229,7 @@ export class MacTools {
         this.deps.calls,
         this.deps.writeStages ?? macWriteStages,
         macPeer,
-        { id: session.id, title: session.title },
+        { id: session.id, title: session.title, permission: session.permission },
         args
       )
     const deadlineMs = MAC_APPROVAL_WAIT_MS + timeoutMs + DEADLINE_SLACK_MS
@@ -240,7 +240,7 @@ export class MacTools {
       result = await this.deps.calls.call(
         macPeer,
         method,
-        { thread: { id: session.id, title: session.title }, args },
+        { thread: { id: session.id, title: session.title, permission: session.permission }, args },
         deadlineMs,
         live ? { onProgress: live.progress } : {}
       )
@@ -334,7 +334,7 @@ export class MacTools {
     const result = await this.deps.calls.call(
       macPeer,
       method,
-      { thread: { id: session.id, title: session.title }, args },
+      { thread: { id: session.id, title: session.title, permission: session.permission }, args },
       deadlineMs
     )
     if (method === 'mac.jobStart') this.jobThreads.set(sessionId, macPeer)

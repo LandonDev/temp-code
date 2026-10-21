@@ -14,6 +14,7 @@ import {
   type MacWriteFileWire,
   type MacWriteMode
 } from '@shared/contract-macbridge'
+import { threadRunsUnattended, type MacCallThread } from '@shared/contract-macbridge'
 import { MAC_WRITE_PULL_MS, decodeBase64Strict } from '../macWriteStage'
 import { insideRoots, realSpelling } from './fence'
 import { isSecretPath } from './harnessSet'
@@ -237,7 +238,7 @@ async function bytesOf(wire: MacWriteFileWire, link: LinkRequest | null): Promis
 /** What MacBridge lends a write: its prompt, its log, the host's rules. */
 export interface MacWriteHost {
   env: { id: string; name: string }
-  thread: { id: string; title: string }
+  thread: MacCallThread
   /** The raw `macBridge.policy.<envId>` setting. */
   policy: string | null
   home: string
@@ -293,8 +294,10 @@ export async function serveMacWrite(
     shared: host.shared,
     remembered: [...host.remembered]
   })
-  let how: string = verdict.allow ? verdict.why : 'asked'
-  if (!verdict.allow) {
+  // Full access on the box: a write the policy admits lands without asking.
+  const unattended = threadRunsUnattended(host.thread)
+  let how: string = verdict.allow ? verdict.why : unattended ? 'full access' : 'asked'
+  if (!verdict.allow && !unattended) {
     const until = Math.min(
       Date.now() + MAC_APPROVAL_WAIT_MS,
       deadlineAt - MAC_WRITE_PULL_MS - REPLY_MARGIN_MS

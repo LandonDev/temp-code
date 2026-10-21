@@ -12,6 +12,7 @@ import {
   type MacBridgeRequest,
   type MacCallThread
 } from '@shared/contract-macbridge'
+import { threadRunsUnattended } from '@shared/contract-macbridge'
 import {
   MAC_JOB_IDLE_MS,
   MAC_JOB_MAX_PER_THREAD,
@@ -378,7 +379,8 @@ export class MacJobs {
     const spec = { ...(args.argv ? { argv: args.argv } : { command: args.command }), cwd }
     const key = JSON.stringify([args.argv ?? null, args.argv ? null : (args.command ?? null), cwd])
     const memory = this.remembered.get(this.threadKey(env.id, thread.id)) ?? new Set<string>()
-    const remembered = memory.has(key)
+    // Remembered, or the thread runs in full access on its box: no prompt, the card shows it running.
+    const remembered = memory.has(key) || threadRunsUnattended(thread)
     const until = Math.min(Date.now() + MAC_APPROVAL_WAIT_MS, deadlineAt - REPLY_MARGIN_MS)
     if (until <= Date.now()) throw new Error('the call left no time to ask the Mac')
     const { id: cardId, answer } = this.deps.ask(

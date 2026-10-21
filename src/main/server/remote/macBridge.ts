@@ -36,6 +36,7 @@ import { runMacCommand, type RunningCommand } from './macRunner'
 import { servePeerCall, type LinkRequest } from './peerCalls'
 import { serveMacWrite, writeFoldersOf } from './macBridgeWrite'
 import type { MacWriteFileResult } from '@shared/contract-macbridge'
+import { threadRunsUnattended, type MacCallThread } from '@shared/contract-macbridge'
 import { isMacJobPeerMethod, type MacPeerMethod } from '@shared/contract-macjobs'
 import { MacJobs, type JobSpawner } from './macJobs'
 
@@ -57,10 +58,14 @@ import { MacJobs, type JobSpawner } from './macJobs'
  *  - The decision comes before any read: a path outside what the policy
  *    admits asks (or, with the bridge off, is refused) whether or not it
  *    exists, so the box learns nothing of it until the person allows.
- *  - Every command asks, showing argv and cwd, whatever the thread's
- *    permission mode on the box, with a remember choice (exact, folder,
- *    program, thread; macBridgeRules.ts, which also holds the always-ask
- *    floor). It runs through the login shell (macRunner.ts).
+ *  - Every command asks, showing argv and cwd, with a remember choice (exact,
+ *    folder, program, thread; macBridgeRules.ts, which also holds the
+ *    always-ask floor). It runs through the login shell (macRunner.ts).
+ *  - A thread in full access on its box (permission `auto`, sent with every
+ *    call) is never prompted: whatever the policy admits for the host goes
+ *    through as if remembered, reads, writes, commands and jobs alike, and a
+ *    command still shows on the Mac as running, with Stop. The policy still
+ *    rules: off refuses, read refuses commands.
  *
  * The prompt is a `macBridge.request` push to this Mac's own local sockets
  * (its renderer), answered by `macBridge.decide`, which is local-only: no
@@ -448,6 +453,7 @@ export class MacBridge {
     if (!thread || typeof thread.id !== 'string') throw new Error('the call names no thread')
     if (method === 'mac.writeFile') return this.writeFile(env, thread, params.args, ctx.deadlineAt)
     const policy = this.policyOf(env.id)
+    const unattended = threadRunsUnattended(thread)
     const line = (decision: string): void =>
       this.log(`${env.name} (${env.id}) thread=${thread.id} ${method} → ${decision}`)
     if (policy === 'off') {
@@ -489,9 +495,9 @@ export class MacBridge {
       remembered: this.rules.readFolders(env.id, thread.id),
       full
     })
-    if (verdict.allow) {
-      if (verdict.why === 'remembered') this.rules.creditRead(env.id, thread.id, real)
-      line(`allowed (${verdict.why})`)
+    if (verdict.allow || unattended) {
+      if (verdict.allow && verdict.why === 'remembered') this.rules.creditRead(env.id, thread.id, real)
+      line(`allowed (${verdict.allow ? verdict.why : 'full access'})`)
     } else {
       // Under full only keys, credentials and the dirs above home ask: each
       // time, never remembered as a folder (that would admit the secret too).
@@ -530,7 +536,7 @@ export class MacBridge {
 
   private async run(
     env: { id: string; name: string },
-    thread: { id: string; title: string },
+    thread: MacCallThread,
     raw: unknown,
     deadlineAt: number,
     line: (decision: string) => void,
@@ -564,7 +570,9 @@ export class MacBridge {
       askUntil
     )
     const rule = this.rules.runAllowed(env.id, thread.id, spec)
-    const remembered = !!rule
+    // Full access on the box: decided at once, as a remembered command is.
+    const unattended = threadRunsUnattended(thread)
+    const remembered = !!rule || unattended
     const decision = remembered
       ? { allow: true, remember: false as MacDecideRemember, outcome: 'allowed' as const }
       : await answer
@@ -578,7 +586,7 @@ export class MacBridge {
     const kind = runRememberKind(decision.remember)
     const made = kind ? this.rules.addRun(ruleThread(env, thread), kind, spec) : null
     line(
-      `allowed (${rule ? `remembered${rule.kind === 'exact' ? '' : `: ${rule.kind}`}` : made ? `asked, ${made.kind === 'exact' ? 'command' : made.kind} remembered` : 'asked'}) argv0=${basename(args.argv?.[0] ?? args.command?.split(/\s/)[0] ?? '')}`
+      `allowed (${rule ? `remembered${rule.kind === 'exact' ? '' : `: ${rule.kind}`}` : unattended ? 'full access' : made ? `asked, ${made.kind === 'exact' ? 'command' : made.kind} remembered` : 'asked'}) argv0=${basename(args.argv?.[0] ?? args.command?.split(/\s/)[0] ?? '')}`
     )
     const p = this.pendingById.get(id)
     const running: RunningCommand = (this.deps.run ?? runMacCommand)({

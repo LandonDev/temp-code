@@ -310,6 +310,18 @@ describe('limits and timers', () => {
     await expect(p).rejects.toThrow(/denied/)
   })
 
+  it('a full-access thread starts a job with no prompt; the card shows it running', async () => {
+    const m = mac(() => new FakeProc())
+    const before = m.requests().length
+    const started = await m.mb.handle(
+      'mac.jobStart',
+      { thread: { id: 's7', title: 'auto', permission: 'auto' }, args: { argv: ['ssh', 'host'], cwd: root } } as never,
+      { from: 'env_box', deadlineAt: Date.now() + 15 * 60_000 }
+    )
+    expect(started).toBeTruthy()
+    expect(m.requests().slice(before).map((r) => r.status)).toEqual(['pending', 'running'])
+  })
+
   it('30 idle minutes with no call end the job; 30 more forget it; a read restarts the clock', async () => {
     vi.useFakeTimers()
     const procs: FakeProc[] = []

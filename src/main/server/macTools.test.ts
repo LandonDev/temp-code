@@ -195,7 +195,7 @@ describe('MacTools gate', () => {
       timeoutMs: 5_000
     })) as { params: unknown }
     expect(out.params).toEqual({
-      thread: { id: 'root', title: 'T root' },
+      thread: { id: 'root', title: 'T root', permission: 'safe' },
       args: { argv: ['ls'], timeoutMs: 5_000 }
     })
     const push = pushes[0] as Extract<MacBridgePush, { push: 'peer.call' }>
