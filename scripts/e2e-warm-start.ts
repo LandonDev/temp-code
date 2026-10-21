@@ -210,7 +210,7 @@ interface Sample {
 const adoptions = async (local: Local): Promise<number> =>
   (await local.request<{ driver: string; adopted: number }[]>('harness.warm')).find((s) => s.driver === 'claude')?.adopted ?? 0
 
-async function runThread(local: Local, inst: Inst, cwd: string, model: string, label: string): Promise<Sample> {
+async function runThread(local: Local, cwd: string, model: string, label: string): Promise<Sample> {
   // The pool's own count, not the log: the instance's stdout reaches its file
   // late. Read before create: the registry boots the harness at create and
   // send waits on that boot, so the timed interval still holds it (create,
@@ -240,7 +240,6 @@ async function runThread(local: Local, inst: Inst, cwd: string, model: string, l
   const adoptedAfter = await adoptions(local)
   const adopted = adoptedAfter > adoptedBefore
   if (process.env.TC_WARM_DEBUG) log(`adoptions before ${adoptedBefore}, after ${adoptedAfter}`)
-  void inst
   const sample = { thread: session.id, firstTokenMs: (firstToken ?? t0) - t0, doneMs: (done ?? t0) - t0, adopted }
   log(`${label}: first token ${sample.firstTokenMs} ms, done ${sample.doneMs} ms${adopted ? ' (adopted the warm process)' : ' (cold)'}`)
   return sample
@@ -267,7 +266,7 @@ try {
   const coldLocal = new Local()
   await coldLocal.open(cold)
   const coldSamples: Sample[] = []
-  for (let i = 0; i < THREADS; i++) coldSamples.push(await runThread(coldLocal, cold, scratch, 'claude-haiku-5-5', `cold ${i + 1}`))
+  for (let i = 0; i < THREADS; i++) coldSamples.push(await runThread(coldLocal, scratch, 'claude-haiku-5-5', `cold ${i + 1}`))
   const coldWarmStatus = await coldLocal.request<{ warm: unknown[] }[]>('harness.warm')
   check('warming off keeps no warm process', coldWarmStatus.every((s) => s.warm.length === 0))
   check('every cold thread booted cold', coldSamples.every((s) => !s.adopted))
@@ -288,14 +287,14 @@ try {
   instances.push(warm)
   const warmLocal = new Local()
   await warmLocal.open(warm)
-  const first = await runThread(warmLocal, warm, scratch, 'claude-haiku-5-5', 'warm run, thread 1 (cold by construction)')
+  const first = await runThread(warmLocal, scratch, 'claude-haiku-5-5', 'warm run, thread 1 (cold by construction)')
   check('the first thread of a warm run boots cold', !first.adopted)
   const warmSamples: Sample[] = []
   for (let i = 1; i < THREADS; i++) {
     await until('a warm process', 60_000, async () => (await warmLocal.request<{ warm: unknown[] }[]>('harness.warm')).some((s) => s.warm.length > 0))
     // Let the warm CLI finish attaching its MCP servers, as it would between two real thread starts.
     await sleep(Number(process.env.TC_WARM_SETTLE_MS ?? 4_000))
-    warmSamples.push(await runThread(warmLocal, warm, scratch, 'claude-haiku-5-5', `warm ${i}`))
+    warmSamples.push(await runThread(warmLocal, scratch, 'claude-haiku-5-5', `warm ${i}`))
   }
   check('every later thread adopted the warm process', warmSamples.every((s) => s.adopted), warmSamples.map((s) => (s.adopted ? 'adopted' : 'cold')).join(', '))
   const status = await warmLocal.request<{ driver: string; warm: unknown[]; adopted: number }[]>('harness.warm')
@@ -304,7 +303,7 @@ try {
   const sessions = await warmLocal.request<{ id: string }[]>('session.list')
   check('the warm process is in no session list', sessions.length === THREADS, `${sessions.length} sessions for ${THREADS} threads`)
   // A different shape (another model) boots cold and re-shapes the pool.
-  const other = await runThread(warmLocal, warm, scratch, 'claude-sonnet-5-5', 'another shape')
+  const other = await runThread(warmLocal, scratch, 'claude-sonnet-5-5', 'another shape')
   check('another model boots cold', !other.adopted)
   const retired = await warmLocal.request<{ warm: unknown[] }[]>('harness.warm', { retire: true })
   check('retire empties the pool', retired.every((s) => s.warm.length === 0))
@@ -325,7 +324,7 @@ try {
     instances.push(real)
     const realLocal = new Local()
     await realLocal.open(real)
-    const sample = await runThread(realLocal, real, REAL_CWD, 'claude-haiku-5-5', 'real haiku (cold)')
+    const sample = await runThread(realLocal, REAL_CWD, 'claude-haiku-5-5', 'real haiku (cold)')
     await realLocal.request('session.archive', { sessionId: sample.thread }).catch(() => undefined)
     realLocal.close()
     await stop(real)
