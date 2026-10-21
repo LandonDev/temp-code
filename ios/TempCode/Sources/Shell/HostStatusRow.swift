@@ -1,41 +1,65 @@
 import SwiftUI
 import TempCodeClient
 
-/// One row at the top of Home for a host that is not plainly connected: its
-/// name, what is happening, and the one action that helps (Retry, or Pair
-/// again when the key was refused). On the card, tinted like a needs-you
-/// row: warning while it retries, destructive when refused or offline.
-/// Never a blank screen.
+/// One notice at the top of Home for a host that is not plainly connected:
+/// its name, what is happening, and the one action that helps (Retry, or
+/// Pair again when the key was refused). A 12 pt field on the chrome step,
+/// with the capsule inside it; never a blank screen.
 struct HostStatusRow: View {
     let client: EnvironmentClient
     let pairAgain: () -> Void
+    @Environment(\.dynamicTypeSize) private var typeSize
 
     var body: some View {
         let status = client.status
+        Group {
+            if typeSize.isAccessibilitySize {
+                VStack(alignment: .leading, spacing: 10) {
+                    words(status)
+                    action(status)
+                }
+            } else {
+                HStack(alignment: .center, spacing: 12) {
+                    words(status)
+                    Spacer(minLength: 8)
+                    action(status)
+                }
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+        .background(Surface.chrome, in: RoundedRectangle(cornerRadius: Radius.field, style: .continuous))
+        .accessibilityElement(children: .contain)
+    }
+
+    private func words(_ status: EnvironmentStatus) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 10) {
             Circle()
                 .fill(status.transport == .reconnecting || status.transport == .connecting ? Tint.warning : Tint.destructive)
                 .frame(width: 7, height: 7)
                 .frame(width: 14)
-                .alignmentGuide(.firstTextBaseline) { $0[VerticalAlignment.center] + 3 }
-            VStack(alignment: .leading, spacing: 2) {
+                .alignmentGuide(.firstTextBaseline) { $0[VerticalAlignment.center] + 4 }
+            VStack(alignment: .leading, spacing: 1) {
                 Text(client.environment.name)
-                    .font(.subheadline.weight(.semibold))
+                    .font(.footnote.weight(.semibold))
                     .lineLimit(1)
                 StatusText(status: status)
                     .font(.footnote)
                     .foregroundStyle(.secondary)
-                    .lineLimit(2)
-            }
-            Spacer(minLength: 8)
-            if status.transport == .unauthorized {
-                PillButton("Pair again", action: pairAgain)
-            } else {
-                PillButton("Retry") { Task { await client.retry() } }
+                    .lineLimit(3)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
-        .padding(.vertical, 6)
-        .frame(minHeight: 44)
+    }
+
+    @ViewBuilder
+    private func action(_ status: EnvironmentStatus) -> some View {
+        if status.transport == .unauthorized {
+            PillButton("Pair again", action: pairAgain)
+        } else {
+            PillButton("Retry") { Task { await client.retry() } }
+        }
     }
 }
 
@@ -49,6 +73,7 @@ struct StatusText: View {
             TimelineView(.periodic(from: .now, by: 1)) { context in
                 Text(Self.text(for: status, now: context.date))
                     .monospacedDigit()
+                    .contentTransition(.numericText())
             }
         } else {
             Text(Self.text(for: status, now: .now))
