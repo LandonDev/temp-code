@@ -192,11 +192,52 @@ detail and tints its fleet row. Log is the orchestrator's own transcript.
 ### Research: the sources are the hero
 
 Segments: **Sources** and **Chat**; Chat default until research activity
-lands. Sources: the report pin on top (title, status, tap opens the report
-markdown), then one section per angle with its queries and the sources they
-surfaced streaming in beneath: favicon, title, domain dim, claim in one
-line. The chat docks as the second segment and the app switches to Sources
-when the report completes.
+lands. The chat docks as the second segment and the app switches to Sources
+when the report completes. Sources reads like Safari's reading list crossed
+with a research notebook (`Sources/Thread/SourcesView.swift`):
+
+- **The report pin** on top is the board's only raised surface: a 12 pt
+  continuous-corner card (light: white with two soft offset shadows, 1 pt at
+  6 % and 4 pt / 10 pt blur at 8 %; dark: `tertiarySystemBackground` with a
+  hairline), the `doc.text` glyph in cyan, the title at `subheadline`
+  semibold, a state line (green dot "Complete"; mini spinner "In progress"
+  while the thread runs, or "Complete · n angles still running"; a tertiary
+  dot when stopped early), and the frontmatter summary in two lines. Dot and
+  spinner cross-fade in 150 ms. Tap opens the report full screen.
+- **The coverage line** under it: "15 sources · 4 searches · 2 of 3 angles
+  done" in tabular digits, ticking with `numericText`; spawned angles count,
+  the root's own research does not.
+- **One section per angle** on the gray step: the child's title (else the
+  label it boarded under, "Direct research" for the root's own), and at the
+  trailing edge a mini spinner with Starting / Searching / Reading while it
+  runs, read off its newest boarded row, or its source count once settled.
+- **Query rows** carry the magnifier at the icon column; the sources it
+  surfaced follow as rows: the site's icon at 20 pt (scaled with the text)
+  in a continuous 5 pt corner with a 1 px outline at 10 % black (light) or
+  white (dark), a letter tile until it loads from one process-wide cache;
+  the title at `subheadline` in one line, the domain in `caption` tertiary,
+  the claim in one `footnote` line. Hairlines between sources are inset to
+  the text edge. Press scales the row 0.96.
+- **Tap** opens the page in an in-app Safari view (full screen, Done).
+  **Hold** shows a preview with the whole title, claim and address, and
+  Copy Link, Open in Safari, Share.
+- **Arrivals**: a source that lands after the board has painted enters with
+  200 ms ease-out, opacity and 8 pt of travel (opacity only under reduced
+  motion); the first page of history paints in place with no entrance.
+- **Empty**: the `binoculars` glyph with "Searching" and a spinner while the
+  thread runs, else "No sources yet".
+
+The report (`Sources/Thread/ResearchReportScreen.swift`) is set as a
+document at a 640 pt measure: the title at `title2` bold, the state and the
+number of sources it cites, the summary as the lede over a hairline, then
+the body at `body` with 3 pt of line spacing. Every `[n]` or `[n, m]` in the
+prose is a cyan semibold superscript that opens its source in the in-app
+Safari view; the numbers resolve to the report's own Sources / References
+list (`1. [Title](url)`, `[1] url — Title`, bare urls) and, without one, to
+the board's distinct urls in arrival order (`ReportCitations` in the client
+package). The list under the Sources heading renders as numbered
+reading-list rows instead of bullets when it matches one to one. The
+document keeps streaming while it is open; the cover is dismissed with Done.
 
 ## Visual system
 
