@@ -94,7 +94,7 @@ struct ComposerBar: View {
         .sensoryFeedback(.impact(weight: .light), trigger: sentCount)
         .task(id: client.operateBlock) { await settleBlock() }
         .task(id: focused) { if focused { await choice.load(client) } }
-        .task(id: session.map { "\($0.provider.rawValue)/\($0.model)/\($0.reasoning?.rawValue ?? "")" }) {
+        .task(id: session.map { "\($0.provider.rawValue)/\($0.model)/\($0.reasoning.rawValue)" }) {
             // The thread's own model lands (or changes under us): the chips follow it unless the person has a pick in hand.
             guard let session, !choice.picked else { return }
             choice.follow(session)
