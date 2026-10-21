@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { MacDecideRememberSchema, type MacRunRememberOffer } from './contract-macbridge-rules'
 
 // The Mac bridge (docs/box.md "The Mac bridge: what a box thread may touch
 // on the Mac"). Threads run on the box; the user's files and macOS-only
@@ -143,7 +144,8 @@ export interface MacRunResult {
 }
 
 /** One request waiting on the person at the Mac (or a command it allowed, still running). */
-export interface MacBridgeRequest {
+/** A run also carries what its card may remember beyond exact and thread (contract-macbridge-rules.ts). */
+export interface MacBridgeRequest extends MacRunRememberOffer {
   id: string
   /** The box's environment id and saved name. */
   environmentId: string
@@ -250,13 +252,13 @@ export const MacBridgeRequestSchemas = [
   // ── the Mac's own renderer (local) ───────────────────────────────────
   /** → MacBridgeRequest[]. */
   request('macBridge.pending', z.object({}).optional()),
-  /** allow false on a running command stops it. remember: the folder (read) or the exact command (run), for this thread. */
+  /** allow false on a running command stops it. remember: the folder (read; true or 'folder'), or for a run true ('exact') | 'exact' | 'folder' | 'program' | 'thread', for this thread. */
   request(
     'macBridge.decide',
     z.object({
       id: z.string().min(1).max(100),
       allow: z.boolean(),
-      remember: z.boolean().optional()
+      remember: MacDecideRememberSchema.optional()
     })
   ),
   /** → MacBridgeHostPolicy[], one per saved host. */

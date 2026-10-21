@@ -754,10 +754,42 @@ On the Mac (`src/main/server/remote/macBridge.ts`, `macRunner.ts`):
   "allow this folder for this thread" (not offered when the folder would be
   home or wider).
 - Every command asks, showing the exact argv (or command string) and cwd,
-  whatever the thread's permission mode on the box, `auto` included, with
-  "allow this exact command for this thread" (argv and cwd must match). A
+  whatever the thread's permission mode on the box, `auto` included, with a
+  remember choice (below; the default is "this exact command"). A
   remembered command still shows on the Mac, as running, with Stop.
 - Remember rules live in memory per (box, thread) and end with the app.
+- Remembered approvals (`src/main/server/remote/macBridgeRules.ts`,
+  `src/shared/contract-macbridge-rules.ts`). A run card's select offers:
+  **exact** (the same argv or command string in the same cwd; the
+  default), **folder** (any command whose cwd is, by real path, under the
+  card's cwd; not offered when the cwd is home or wider), **program** (any
+  command whose program is the same, in any cwd: `argv[0]`, or a simple
+  command string's first word after `VAR=value` assignments, path
+  stripped; not offered for a shell or a wrapper such as `sh`, `bash`,
+  `env`, `xargs`, `nohup`, `timeout`, and a command string with `;`, `&`,
+  `|`, `<`, `>`, `(`, a newline, `$(…)` or backticks never matches one),
+  **thread** (every command from the thread), or **ask every time**.
+  `macBridge.decide`'s `remember` takes `'exact' | 'folder' | 'program' |
+  'thread'`, or `true` as before (a read's folder, a run's exact command).
+  The narrowest matching rule is credited. The floor, whatever is
+  remembered: a command that names `sudo`, `su`, `doas`, `security`,
+  `osascript` or `launchctl` anywhere in its argv or text (so `sh -c "sudo
+  …"` and `env sudo …` count), `defaults write|delete|import|rename`, a
+  recursive `rm` of `/`, a top-level folder, `~`/`$HOME`/the home
+  directory (or `.`/`*` with home as cwd), or a credential path (`.ssh`,
+  `.gnupg`, `.aws`, `.aliax`, `Library/Keychains`, `.netrc`,
+  `.git-credentials`, `.docker/config.json`, `.kube/config`, `.config/gh`,
+  `.npmrc`, `.pypirc`, `.claude/.credentials.json`, `.codex/auth.json`,
+  `id_rsa`/`id_ecdsa`/`id_ed25519`) in its argv, text or cwd asks every
+  time; its card says why and offers nothing to remember, and no rule is
+  ever made from it. The lists are `ALWAYS_ASK` and `CREDENTIAL_PATHS` in
+  macBridgeRules.ts, the one place to change them. Nothing is persisted:
+  `macBridge.rules.list {sessionId?}` and `macBridge.rules.forget
+  {sessionId, ruleId?}` (local) back the thread menu's "Mac approvals…"
+  (each rule with Remove, and Forget all) and the list under Settings →
+  Remote access → Mac bridge. A thread's rules also go when its host pushes
+  `session-removed` or `session-moved` for it (the Mac cannot otherwise see a
+  box thread end), and all of them when the app quits.
 - A command runs through the Mac's login shell (`loginShell.ts`, `-lc`; argv
   as `exec "$@"`, never re-split), in its own process group, with no stdin, an
   environment cut down to `HOME`, `USER`, `LOGNAME`, `SHELL`, the locale,

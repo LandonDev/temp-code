@@ -14,6 +14,7 @@ import { ConfirmDialog } from "./ProjectDialogs";
 import { PanelRight } from "./icons";
 import { ThreadHeaderStrip, chipTitle, type ArchivedThread, type ChipThread, type StripChip } from "./ThreadHeaderStrip";
 import { TuneDialog } from "./ThreadTune";
+import { MacBridgeRulesDialog } from "./MacBridgeRemember";
 import { ThreadHostChip } from "./ThreadHostChip";
 import { IconButton } from "./TitleBar";
 
@@ -81,6 +82,7 @@ export function chipMenuItems(chip: StripChip, bridge?: ChipBridge): ExplorerMen
       { kind: "sep" },
       { kind: "item", id: "mac-bridge", label: `Mac bridge${offline}`, checked: on, disabled: !bridge.state || bridge.state.inherited },
     );
+    if (on) items.push({ kind: "item", id: "mac-bridge-rules", label: "Mac approvals…" });
   }
   items.push({ kind: "sep" }, { kind: "item", id: "archive", label: "Archive" });
   items.push({ kind: "sep" }, { kind: "item", id: "delete", label: "Delete…", danger: true });
@@ -116,6 +118,7 @@ export function ThreadHeader({
   const [tuning, setTuning] = useState<StripChip | null>(null);
   const tuningSession = tuning ? sessionStore.get(tuning.id) : undefined;
   const [deleting, setDeleting] = useState<StripChip | null>(null);
+  const [bridgeRules, setBridgeRules] = useState<StripChip | null>(null);
   const [pauseAll, setPauseAll] = useState<PauseAllState>("idle");
 
   const onContextMenu = useCallback((chip: StripChip, event: ReactMouseEvent<HTMLDivElement>) => {
@@ -135,6 +138,7 @@ export function ThreadHeader({
     else if (id === "tune") setTuning(chip);
     else if (id === "archive") onArchive(chip.id);
     else if (id === "delete") setDeleting(chip);
+    else if (id === "mac-bridge-rules") setBridgeRules(chip);
     else if (id === "mac-bridge") {
       const env = sessionStore.get(chip.id)?.environmentId;
       if (env) void setThreadBridge(env, chip.id, !menuBridgeState?.macPeer).catch((err) => console.warn("[mac-bridge]", err));
@@ -225,6 +229,9 @@ export function ThreadHeader({
             onSetRules(tuning.id, rules);
           }}
         />
+      ) : null}
+      {bridgeRules ? (
+        <MacBridgeRulesDialog sessionId={bridgeRules.id} title={chipTitle(bridgeRules)} onClose={() => setBridgeRules(null)} />
       ) : null}
       {deleting ? (
         <ConfirmDialog
