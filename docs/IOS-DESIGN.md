@@ -201,106 +201,77 @@ when the report completes.
 ## Visual system
 
 Everything maps to the desktop's `DESIGN.md`: quiet chrome, one gray step,
-hairlines, small dense type, color only for meaning.
+hairlines, small dense type, color only for meaning. The kit that carries it
+is `ios/TempCode/Sources/Design/`; every screen names its helpers and never
+a raw color, radius, font step, inset or duration. A sibling that needs a
+shared piece the kit lacks builds it in its own area on these names.
 
-| Token | Value | Use |
-| --- | --- | --- |
-| Background | `systemBackground` | content |
-| Chrome step | `secondarySystemBackground` | section headers, fields, the composer bar |
-| Raised | `tertiarySystemBackground` (dark) / white with shadow (light) | sheets and cards that float |
-| Hairline | `separator` at 1 px, inset to the text edge | rows, fields, chips |
-| Text | `label`, `secondaryLabel`, `tertiaryLabel` | three steps and no more |
-| Info | `systemBlue` | chat type, starting and watching dots |
-| Success | `systemGreen` | implementation type, `+n`, completed |
-| Warning | `systemOrange` | orchestration type, waiting, paused, needs-you tint at 8 % |
-| Destructive | `systemRed` | errors, `−m`, failed tools |
-| Violet | `systemPurple` | planning type |
-| Cyan | `systemCyan` | research type |
-| Radius | 8 pt chips and rows, 12 pt fields and cards, 16 pt sheets | outer = inner + padding, always |
-| Type | `subheadline` rows, `body` transcript, `footnote` meta, `caption2` timestamps; mono one step down | Dynamic Type honored up to accessibility sizes |
-| Numbers | `monospacedDigit()` on every elapsed, count and cost | nothing jitters as it ticks |
+| Token | Value | Use | Helper |
+| --- | --- | --- | --- |
+| Background | `systemBackground` | content | `Surface.background` |
+| Chrome step | `secondarySystemBackground` | section headers, fields, the composer bar | `Surface.chrome` |
+| Raised | `tertiarySystemBackground` (dark) / white with shadow (light) | sheets and cards that float | `Surface.raised`, `.raised(radius:)` |
+| Fill | `tertiarySystemFill` | what a chip or pill sits on | `Surface.fill` |
+| Hairline | `separator` at 1 px, inset to the text edge | rows, fields, chips | `Hairline(inset:)`, `.hairlineBorder(shape)`, `.separatorAtTextEdge()` |
+| Text | `label`, `secondaryLabel`, `tertiaryLabel` | three steps and no more | `.textStep(.title / .meta / .stamp, weight:)` |
+| Info | `systemBlue` | chat type, starting and watching dots | `Tint.info` |
+| Success | `systemGreen` | implementation type, `+n`, completed | `Tint.success` |
+| Warning | `systemOrange` | orchestration type, waiting, paused, needs-you tint at 8 % | `Tint.warning`, `Surface.needsYou` |
+| Destructive | `systemRed` | errors, `−m`, failed tools | `Tint.destructive` |
+| Violet | `systemPurple` | planning type | `Tint.violet` |
+| Cyan | `systemCyan` | research type | `Tint.cyan` |
+| Radius | 8 pt chips and rows, 12 pt fields and cards, 16 pt sheets | outer = inner + padding, always | `Radius.row / .field / .sheet`, `Radius.around(inner, padding:)`, `Radius.inside(outer, padding:)`, `.rowCorner / .fieldCorner / .sheetCorner` (continuous) |
+| Type | `subheadline` rows, `body` transcript, `footnote` meta, `caption2` timestamps; mono one step down | Dynamic Type honored up to accessibility sizes | `TextStep.title` (subheadline, label), `.meta` (footnote, secondary), `.stamp` (caption2, tertiary, tabular) |
+| Numbers | `monospacedDigit()` on every elapsed, count and cost | nothing jitters as it ticks | `.numeric(value)`, `CountText`, `ElapsedText`, `AgoText` |
+| Lengths | 16 pt text edge, 44 pt rows, 10 pt gaps, 14 pt mark, 20 pt glyph, 16 pt subagent indent | rows, headers and separators meet on the same edges | `Layout.textEdge / .rowHeight / .rowGap / .markWidth / .glyphWidth / .indent / .rowTextEdge / .rowInsets` |
 
 Thread type glyphs are the desktop's, in SF Symbols: chat `bubble.left`,
 planning `map`, implementation `checklist`, orchestration
 `arrow.triangle.branch`, research `binoculars`. Agent glyphs: orchestrator
 `person.2`, implementer `wrench`, reviewer `checklist`, explorer
-`magnifyingglass`. Icon stroke follows the text weight next to it; outline
-default, fill marks the active state.
+`magnifyingglass`. Icon stroke follows the text weight next to it (the
+symbol weight is the stroke: `TypeGlyph(type:weight:)`, `AgentGlyph(type:weight:)`,
+`MetaGlyph(_:weight:)`, `HostMark(host:weight:)` draws 1.5 beside regular and 2
+beside semibold); outline default, fill marks the active state
+(`TypeGlyph(active: true)` cross-fades to `ThreadType.filledSymbol`).
 
-No shadows except on floating layers. No glows. No badges with text; dots
-only, and only when they mean something. Nothing is shown twice.
+The row: `ThreadRow(row: ThreadRowModel)` is the one list row (44 pt,
+`StatusDot`, the glyph at the title's weight, the title semibold while
+unseen, `ThreadRowSecondLine` with the model and a `SwapText` detail,
+`ThreadRowTime` trailing); `.threadRowActions(client:meta:)` adds pin,
+archive and rename. Section chrome: `SectionHeader` is the band on the chrome
+step for long lists (Home, Search, the archive); `GroupHeader` sits above an
+inset card (`.groupCard()`) on screens that are a few short groups (Settings,
+sheets, a detail). Small actions: `PillButton(title, systemImage:, tint:)` in a
+row, `WideButton(title, prominent:)` at the foot of a sheet or card.
 
-### The kit: `ios/TempCode/Sources/Design/`
-
-Every screen builds from these names and never restates their values. A
-sibling that needs a shared piece the kit lacks adds it in its own area and
-says so here, so the next pass can move it in.
-
-| Name | File | What it is |
-| --- | --- | --- |
-| `Tint.*`, `Surface.*` | Tokens.swift | The colors above by meaning; `Surface.fill` is what a chip or pill sits on |
-| `Radius.row/field/sheet`, `Radius.around(inner, padding:)`, `Radius.inside(outer, padding:)` | Tokens.swift | The three radii and the concentric arithmetic: outer = inner + padding, always |
-| `RoundedRectangle.corner(r)`, `.rowCorner`, `.fieldCorner`, `.sheetCorner` | Tokens.swift | Continuous corners; `.clipShape(.rowCorner)`, `.background(_, in: .fieldCorner)` |
-| `TextStep.title/meta/stamp`, `.textStep(_, weight:)` | Tokens.swift | The three text steps and no more: `subheadline`/label, `footnote`/secondary, `caption2` tabular/tertiary |
-| `Layout.textEdge/rowHeight/rowGap/markWidth/glyphWidth/indent/rowTextEdge/rowInsets` | Tokens.swift | The lengths every list shares (16, 44, 10, 14, 20, 16, 54, the 16 pt insets) |
-| `Hairline(inset:)`, `.separatorAtTextEdge()`, `.hairlineBorder(shape)` | Tokens.swift | One-pixel rules: a rule inset to the text edge, a list separator that starts there, a ring just inside a shape |
-| `.groupCard()`, `.raised()` | Tokens.swift | Grouped-list chrome (chrome step, field corners, hairline ring) and the floating layer (raised step, ring, soft offset shadow in light only) |
-| `.buttonStyle(.pressable)`, `.pressableStatic` | Pressable.swift | The press on every row and button; static dims instead of scaling |
-| `PillButton(_:systemImage:tint:action:)` | Pressable.swift | A small action in a row: capsule on the fill step, or tinted with white text |
-| `StatusDot(status:running:)` | StatusDot.swift | The leading mark: dot, spinner or pause, 14 pt column, 150 ms cross-fade |
-| `TypeGlyph(type:weight:active:)`, `AgentGlyph(type:weight:active:)` | Glyphs.swift | The type and agent glyphs at the title's weight; `active` is the filled variant; the column scales with Dynamic Type |
-| `ThreadRow(row:)`, `ThreadRowModel`, `ThreadRowSecondLine`, `ThreadRowTime` | ThreadRow.swift | The one row shape; the second line and the trailing time stand alone for fleet and agent rows |
-| `.threadRowActions(client:meta:)` | ThreadRowActions.swift | Swipe to pin and archive, context menu with Rename |
-| `SectionHeader(_:branch:worktree:style:)` | SectionHeader.swift | `.band` on the chrome step for plain lists, `.grouped` for inset-grouped lists (no background, more room above than below) |
-| `HostMark(host:weight:)` | HostMark.swift | GitHub and GitLab marks, stroked 1.5 beside regular and 2 beside semibold |
-| `SwapText`, `CountText`, `ElapsedText(since:)`, `AgoText`, `.numeric(value)` | LiveText.swift | Text that changes in place with the doc's motion: the cross-fade with blur, rolling digits, a ticking span, an age |
-| `ModelName.short`, `TimeFormat.ago/duration/elapsed`, `Formatting.*` | ModelName.swift, TimeFormat.swift, Formatting.swift | The desktop's formats, one voice |
-
-Nesting rule in practice: pick the inner radius from the table and derive
-the outer with `Radius.around`. A card at `Radius.field` holds `Radius.row`
-chips with 4 pt between them; a card with 12 pt of padding around row chips
-is `Radius.around(Radius.row, padding: 12)`, never `Radius.field`.
+No shadows except on floating layers (`.raised()` adds one, in light mode
+only, with an offset). No glows. No badges with text; dots only, and only when
+they mean something. Nothing is shown twice.
 
 ## Motion
 
-Values are exact.
+Values are exact, and each row has a name in `Motion` (Design/Motion.swift)
+so a screen references the name, never the number.
 
-| Interaction | Motion |
-| --- | --- |
-| Press on any row or button | scale `0.96`, 160 ms, ease-out, from pointer-down; no hover states on touch |
-| Push and pop | the system navigation transition, untouched |
-| Sheets | the system sheet, 16 pt radius, detents medium and large |
-| Segment swipe | interactive, follows the finger, settles with the drawer curve `cubic-bezier(0.32, 0.72, 0, 1)` |
-| Row expand (todo trace, tool body) | spring `duration 0.35, bounce 0`; content fades in 150 ms after the height starts; collapse 200 ms ease-out |
-| Needs-you row appearing | 200 ms ease-out, opacity and 8 pt translateY; removal 150 ms opacity only |
-| Last-activity line changing | 150 ms cross-fade with 2 pt blur; the row never changes height |
-| Counts and elapsed | `contentTransition(.numericText())` |
-| Streaming text | none; append only |
-| Status dot to spinner | cross-fade 150 ms |
-| Jump-to-latest pill | 150 ms opacity and 8 pt translateY, both directions |
-| Reduced motion | cross-fades replace every translate and spring |
+| Interaction | Motion | Name |
+| --- | --- | --- |
+| Press on any row or button | scale `0.96`, 160 ms, ease-out, from pointer-down; no hover states on touch; reduced motion dims to 60 % instead | `.buttonStyle(.pressable)`; `.pressableStatic` dims without scaling where a scale would fight a swipe |
+| Push and pop | the system navigation transition, untouched | |
+| Sheets | the system sheet, 16 pt radius, detents medium and large | `Radius.sheet` |
+| Segment swipe | interactive, follows the finger, settles with the drawer curve `cubic-bezier(0.32, 0.72, 0, 1)` | `Motion.drawer` |
+| Row expand (todo trace, tool body) | spring `duration 0.35, bounce 0`; content fades in 150 ms after the height starts; collapse 200 ms ease-out | `Motion.expand`, `Motion.expandContent`, `Motion.collapse` |
+| Needs-you row appearing | 200 ms ease-out, opacity and 8 pt translateY; removal 150 ms opacity only | `.rowAppearTransition()` (`Motion.appear(reduced:)`, `Motion.rowAppear`, `Motion.rowLeave`, `Motion.travel`) |
+| Last-activity line changing | 150 ms cross-fade with 2 pt blur; the row never changes height | `SwapText`, `.swapTransition()` (`Motion.swap(reduced:)`, `Motion.crossFade`, `Motion.crossFadeBlur`) |
+| Counts and elapsed | `contentTransition(.numericText())` on 150 ms | `.numeric(value)` (`Motion.numeric`), `CountText`, `ElapsedText`, `AgoText` |
+| Streaming text | none; append only | |
+| Status dot to spinner | cross-fade 150 ms | `StatusDot` (`Motion.crossFade`) |
+| Jump-to-latest pill | 150 ms opacity and 8 pt translateY, both directions | `.jumpTransition()` (`Motion.jump(reduced:)`) |
+| Reduced motion | cross-fades replace every translate and spring | every `Motion.*(reduced:)` and the three transition modifiers read it themselves |
 
-Nothing animates on first paint from cache. Nothing animates on a keyboard
-action. Every animated change has a static cue as well.
-
-Every row of the table has a name in `Motion` (Design/Motion.swift), and
-screens reference the name, never the number:
-
-| Table row | Name |
-| --- | --- |
-| Press | `Motion.pressScale`, `Motion.press`; `Motion.pressDim` under reduced motion |
-| Segment swipe | `Motion.drawer` |
-| Row expand and collapse | `Motion.expand`, `Motion.expandContent`, `Motion.collapse` |
-| Needs-you row appearing | `Motion.rowAppear`, `Motion.rowLeave`, `Motion.travel`; the transition `Motion.appear(reduced:)` or `.rowAppearTransition()` |
-| Last-activity line changing | `Motion.crossFade`, `Motion.crossFadeBlur`; the transition `Motion.swap(reduced:)` or `.swapTransition()`; `SwapText` does the whole thing |
-| Counts and elapsed | `Motion.numeric`; `.numeric(value)`, `CountText`, `ElapsedText` |
-| Status dot to spinner | `Motion.crossFade`, inside `StatusDot` |
-| Jump-to-latest pill | `Motion.jump`; the transition `Motion.jump(reduced:)` or `.jumpTransition()` |
-| Nothing animates | `Motion.withoutAnimation { }` around the first paint from cache and every keyboard action |
-
-The transitions carry their own timings, so the animation that encloses a
-change cannot stretch them. The `.…Transition()` modifiers read reduced
-motion themselves; `Motion.*(reduced:)` is for a view that already has it.
+Nothing animates on first paint from cache (`Motion.withoutAnimation {}`
+around the paint). Nothing animates on a keyboard action. Every animated
+change has a static cue as well.
 
 ## Performance
 
