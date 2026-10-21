@@ -6,7 +6,8 @@ import {
   type Options,
   type PermissionMode,
   type SDKMessage,
-  type SDKUserMessage
+  type SDKUserMessage,
+  type SpawnedProcess
 } from '@anthropic-ai/claude-agent-sdk'
 import {
   closeSync,
@@ -42,6 +43,8 @@ import { withMacTools } from '../macTools'
 import { expandSlashRefs } from '../slash'
 import { resolveClaude } from './binaries'
 import { routedEndpointFor } from '../endpoint'
+import { gateway } from '../gateway'
+import { spawnOrAdoptClaude } from './claudeWarm'
 
 // Dev override: a small window (e.g. 45_000 → compaction arms at ~12k)
 // makes a real compaction reachable in one short thread for UI work.
@@ -1244,6 +1247,21 @@ export const claudeDriver: HarnessDriver = {
 
     // The Mac bridge's tools, when this thread (or its parent) may reach a Mac (macTools.ts).
     withMacTools(options, session)
+    // Every CLI spawn goes through the warm pool (claudeWarm.ts): a fresh
+    // thread whose traffic our own gateway routes (the owner's, or no shim)
+    // adopts the warm process of the SDK's exact spec when one waits, and
+    // its cold spawn is otherwise the shape to keep warm. A resumed thread
+    // (`--resume` in its argv) and a thread the shim routes elsewhere spawn
+    // cold and warm nothing.
+    const gw = gateway()
+    const own = gw?.url('claude')
+    const warmable = !session.nativeId && !!gw && !!endpoint && !!own && (gw.status().owner || endpoint.startsWith(own))
+    options.spawnClaudeCodeProcess = (spawnOpts) =>
+      spawnOrAdoptClaude(
+        { command: spawnOpts.command, args: spawnOpts.args, cwd: spawnOpts.cwd, env: spawnOpts.env },
+        (spawnOpts as { signal?: AbortSignal }).signal,
+        { thread: session.id, scope: ctx.route ? { thread: session.id, ...ctx.route } : null, warmable }
+      ).proc as unknown as SpawnedProcess
     const q = query({ prompt: input, options })
 
     // Overdue-result watchdog. The CLI has been seen going silent AFTER the

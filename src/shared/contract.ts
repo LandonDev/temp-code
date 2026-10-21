@@ -680,6 +680,14 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
     method: z.literal('session.interrupt'),
     params: z.object({ sessionId: z.string() })
   }),
+  // The composer of an idle thread gained focus: open the upstream socket its
+  // next turn will ride (one per account per minute). Answers whether it was
+  // asked (false: the thread is mid-turn and already holds one).
+  z.object({
+    id: z.string(),
+    method: z.literal('session.preconnect'),
+    params: z.object({ sessionId: z.string() })
+  }),
   z.object({
     id: z.string(),
     method: z.literal('session.pause'),

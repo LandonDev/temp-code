@@ -6,7 +6,7 @@ import { flushCompileCache, getCompileCacheDir } from 'node:module'
 import { bootMark } from './server/boot'
 import { noteInstallOnQuit, registerUpdates } from './update'
 import { applyHarness, bakedHarness } from './harness'
-import { configureAliax } from './aliax'
+import { configureAliax, upstream } from './aliax'
 import { loadEnvironmentId } from './server/remote/environment'
 import { aliaxCallCounts, registerAliaxPages } from './aliaxPages'
 import { registerAppshots } from './appshots'
@@ -15,6 +15,7 @@ import { electronApp, optimizer } from '@electron-toolkit/utils'
 import { startServer, type RunningServer } from './server'
 import { listEnvironments } from './server/remote/environments'
 import type { LaunchMirrorSnapshot, MirrorWrite } from '@shared/launchMirror'
+import { preconnectAccount } from './server/preconnect'
 import { mayClaimShim, releaseGateway } from './server/gateway'
 import { killTrackedChildren } from './server/spawnBudget'
 import { handleAssetRequest, pagesRoot, registerAssetProtocol, registerSchemes } from './assets'
@@ -136,7 +137,8 @@ app.whenReady().then(async () => {
     appPath: app.getAppPath(),
     claimShim: mayClaimShim({ isPackaged: app.isPackaged }),
     assets: handleAssetRequest,
-    watchMaster: !headless
+    watchMaster: !headless,
+    preconnect: (provider, account) => void preconnectAccount(provider, account, { upstream: upstream() })
   })
   if (!headless) {
     registerUpdates()

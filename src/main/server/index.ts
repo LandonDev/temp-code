@@ -11,6 +11,7 @@ import { AccountsService } from './accounts'
 import { isRoutedProvider, PROVIDER_OF, SERVICE_OF } from '@shared/accounts'
 import { startGateway, type Gateway } from './gateway'
 import { BootResumer } from './resumeAfterBoot'
+import { closeWarmPools } from './drivers/warm'
 import { observeHooks } from './gatewayObserve'
 import { HeadroomStore } from './headroom'
 import { WebSocketServer, type WebSocket } from 'ws'
@@ -290,6 +291,8 @@ export async function startServer(
     assets?: (request: Request) => Promise<Response>
     /** Read master's release.json from GitHub on the updater's cadence (deployDrift.ts): the Mac, never a headless host or a test. */
     watchMaster?: boolean
+    /** Open the upstream socket an account's next request will ride (preconnect.ts); the registry asks at turn start and composer focus. */
+    preconnect?: (provider: string, account: string | null) => void
   } = {}
 ): Promise<RunningServer> {
   bootMark('server-start')
@@ -404,6 +407,7 @@ export async function startServer(
     const profiles = accounts.snapshot().providers[provider]?.profiles ?? []
     return profiles.length === 0 ? null : profiles.some((p) => p.name === name)
   }
+  registry.preconnect = options.preconnect ?? null
   // The main process's own links to the hosts this machine shares accounts
   // with, and the sync over them (thread V). The core's vault hooks reach the
   // sync through accountSyncHooks (aliax.ts configured the core before this).
@@ -1616,6 +1620,9 @@ export async function startServer(
             })
             sendFrame({ id: req.id, ok: true, result: null })
             break
+          case 'session.preconnect':
+            sendFrame({ id: req.id, ok: true, result: registry.preconnectIdle(req.params.sessionId) })
+            break
           case 'session.interrupt':
             // Its Mac work first: the calls out on the Mac and its jobs end, what a pause held is refused.
             macTools.pause.stop(req.params.sessionId)
@@ -2136,6 +2143,7 @@ export async function startServer(
       if (headroomRows) clearTimeout(headroomRows)
       headroom.flush()
       await registry.disposeAll()
+      closeWarmPools()
       await closeAllWatchers()
       await closeAllLiveWatchers()
       stopAllLsp()

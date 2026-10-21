@@ -288,6 +288,11 @@ export async function queueSteer(sessionId: string, messageId: string): Promise<
 
 // ── batch recovery ───────────────────────────────────────────────────
 
+/** The composer of an idle thread gained focus: the host opens the socket its next turn will ride (one per account per minute). */
+export function preconnect(sessionId: string): Promise<boolean> {
+  return linkFor(sessionId).request<boolean>("session.preconnect", { sessionId });
+}
+
 export function resumeAllPaused(environmentId: string): Promise<SessionBatchResult> {
   return registry.linkOf(environmentId).request<SessionBatchResult>("session.resumeAllPaused");
 }

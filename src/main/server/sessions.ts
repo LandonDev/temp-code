@@ -493,6 +493,8 @@ export class SessionRegistry {
   accountKnown: ((provider: AccountProvider, name: string) => boolean | null) | null = null
   /** The gateway's last refusal per thread (a 401, a 429), read once by the failure classifier while fresh. */
   private refusals = new Map<string, GatewayRefusal & { ts: number }>()
+  /** Opens the upstream socket a thread's next request will ride (preconnect.ts). Set by the server; null does nothing. */
+  preconnect: ((provider: string, account: string | null) => void) | null = null
   /** Sessions whose turn a usage limit cut off, until they continue: the
    *  pending switch continues the root tree once the session settles. */
   private limited = new Map<string, { switching: Promise<Switched | null> }>()
@@ -1022,6 +1024,24 @@ export class SessionRegistry {
     const moved = after !== before
     if (moved) await this.dropHandle(sessionId)
     return { account: after, moved }
+  /**
+   * The account a thread's next request will spend from: the row's (the
+   * gateway keeps it current), else what the router would choose now for
+   * an unscoped start. Only Claude and Codex ride the gateway.
+   */
+  private preconnectFor(meta: SessionMeta): void {
+    if (!this.preconnect || (meta.provider !== 'claude' && meta.provider !== 'codex')) return
+    const account = meta.account ?? this.limits?.routeFor(meta, this.pinOf(meta)).current ?? null
+    this.preconnect(meta.provider, account)
+  }
+
+  /** The composer of an idle thread gained focus: a turn may follow. A live turn already holds its socket. */
+  preconnectIdle(sessionId: string): boolean {
+    const meta = this.store.getSession(sessionId)
+    if (!meta) throw new Error(`unknown session: ${sessionId}`)
+    if (meta.status === 'running' || meta.status === 'starting' || meta.status === 'waiting') return false
+    this.preconnectFor(meta)
+    return true
   }
 
   /** The gateway (or a text-path failover) moved a thread: its row follows. */
@@ -1933,6 +1953,9 @@ export class SessionRegistry {
     const status = this.store.getSession(sessionId)?.status
     if (status !== 'running' && status !== 'starting' && status !== 'waiting') {
       this.append(sessionId, { type: 'status', status: 'starting' })
+      // The socket the turn's first request will ride, opened while the
+      // harness boots or wakes; a steer into a live turn already has one.
+      this.preconnectFor(meta)
     }
     void this.armBaseline(sessionId)
     const retry: QueuedSendOpts = { ...opts, echoed: { first } }

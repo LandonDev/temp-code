@@ -185,6 +185,7 @@ export const METHOD_CAPABILITY: Record<ClientRequest['method'], MethodCapability
   'session.create': 'operate', // permission: 'auto' needs approve (requiredCapability)
   'session.send': 'operate',
   'session.interrupt': 'operate',
+  'session.preconnect': 'operate',
   'session.pause': 'operate',
   'session.resume': 'operate',
   'session.markStatus': 'local',

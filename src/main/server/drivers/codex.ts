@@ -7,6 +7,7 @@ import { limitField } from '../limitText'
 import type { Reasoning } from '@shared/catalog'
 import type { DriverCtx, DriverHandle, HarnessDriver } from './types'
 import { harnessEnv, resolveBinary } from './binaries'
+import { WarmPool, type WarmSpec } from './warm'
 import { expandSlashRefs } from '../slash'
 import { toolDisplay } from './display'
 import { bridgeMcpConfig } from '../apptools'
@@ -117,18 +118,21 @@ export class AppServerConn {
     { resolve: (v: unknown) => void; reject: (e: Error) => void }
   >()
 
+  private onNotify: (method: string, params: Record<string, unknown>) => void
+  private onRequest: (id: number | string, method: string, params: Record<string, unknown>) => void
+  private onExit: (code: number | null) => void
+
   constructor(
     binPath: string,
     env: NodeJS.ProcessEnv,
     cwd: string,
-    private onNotify: (method: string, params: Record<string, unknown>) => void,
-    private onRequest: (
-      id: number | string,
-      method: string,
-      params: Record<string, unknown>
-    ) => void,
+    onNotify: (method: string, params: Record<string, unknown>) => void,
+    onRequest: (id: number | string, method: string, params: Record<string, unknown>) => void,
     onExit: (code: number | null) => void
   ) {
+    this.onNotify = onNotify
+    this.onRequest = onRequest
+    this.onExit = onExit
     this.proc = spawn(binPath, ['app-server'], { cwd, env, stdio: ['pipe', 'pipe', 'pipe'] })
     // stderr is read even when nobody wants it: an unread pipe stalls a
     // chatty child, and its tail is the only account of a boot that died.
@@ -162,8 +166,24 @@ export class AppServerConn {
         this.onNotify(msg.method, msg.params ?? {})
       }
     })
-    this.proc.on('exit', (code) => this.settle(code, onExit))
-    this.proc.on('error', () => this.settle(-1, onExit))
+    this.proc.on('exit', (code) => this.settle(code))
+    this.proc.on('error', () => this.settle(-1))
+  }
+
+  /** A warm app-server (codexWarm) was spawned with placeholder handlers; the thread that adopts it attaches its own. */
+  attach(
+    onNotify: (method: string, params: Record<string, unknown>) => void,
+    onRequest: (id: number | string, method: string, params: Record<string, unknown>) => void,
+    onExit: (code: number | null) => void
+  ): void {
+    this.onNotify = onNotify
+    this.onRequest = onRequest
+    this.onExit = onExit
+  }
+
+  /** Whether the process is still up. */
+  get alive(): boolean {
+    return !this.settled
   }
 
   private settled = false
@@ -173,12 +193,12 @@ export class AppServerConn {
     return this.settled
   }
 
-  private settle(code: number | null, onExit: (code: number | null) => void): void {
+  private settle(code: number | null): void {
     if (this.settled) return
     this.settled = true
     for (const p of this.pending.values()) p.reject(new AppServerExit(code, this.stderrTail))
     this.pending.clear()
-    onExit(code)
+    this.onExit(code)
   }
 
   request(method: string, params?: unknown): Promise<unknown> {
@@ -201,6 +221,31 @@ export class AppServerConn {
     this.proc.kill()
   }
 }
+
+const CODEX_CLIENT_INFO = { name: 'temp-code', title: 'temp-code', version: '0.1.0' }
+
+/**
+ * The warm app-server (drivers/warm.ts): spawned and initialized before a
+ * thread needs it; everything per thread (cwd, model, the base URL that
+ * carries the account scope, the MCP bridge) arrives with `thread/start`,
+ * so any fresh thread of the same binary, env and cwd adopts it whole.
+ */
+export const codexWarm = new WarmPool<AppServerConn>({
+  driver: 'codex',
+  enabled: () => process.env.TEMP_CODE_WARM_HARNESS !== '0',
+  spawn: async (id, spec, onExit) => {
+    const conn = new AppServerConn(spec.command, spec.env, spec.cwd ?? process.cwd(), () => {}, () => {}, () => onExit())
+    try {
+      await conn.request('initialize', { clientInfo: CODEX_CLIENT_INFO })
+    } catch (e) {
+      conn.kill()
+      throw e
+    }
+    void id
+    return conn
+  },
+  kill: (conn) => conn.kill()
+})
 
 type Item = Record<string, unknown> & { type?: string; id?: string }
 
@@ -730,17 +775,30 @@ export const codexDriver: HarnessDriver = {
     // minutes, say) is booted again a couple of times; an exit after the
     // thread is up is a crash and is reported, never retried.
     let conn!: AppServerConn
+    const spec: WarmSpec = { command: binPath, args: ['app-server'], cwd: session.cwd, env: env as Record<string, string | undefined> }
     const boot = async (attempt: number): Promise<void> => {
       let booted = false
-      conn = new AppServerConn(binPath, env, session.cwd, onNotify, onRequest, (code) => {
+      const onExit = (code: number | null): void => {
         if (disposed || !booted) return
         emit({ type: 'error', message: `codex app-server exited unexpectedly (${code})` })
         setStatus('error')
-      })
+      }
+      // The warm app-server of this binary, env and cwd (codexWarm), already
+      // initialized, when one waits; else a cold spawn that becomes the
+      // shape to keep warm. A retry after a boot death always spawns cold.
+      const warm = attempt === 1 && process.env.TEMP_CODE_WARM_HARNESS !== '0' ? codexWarm.adopt(spec) : null
+      if (warm?.proc.alive) {
+        conn = warm.proc
+        conn.attach(onNotify, onRequest, onExit)
+        console.log(`[codex] ${session.id}: adopted the warm app-server ${warm.id}`)
+      } else {
+        if (warm) warm.proc.kill()
+        conn = new AppServerConn(binPath, env, session.cwd, onNotify, onRequest, onExit)
+      }
       try {
-        await conn.request('initialize', {
-          clientInfo: { name: 'temp-code', title: 'temp-code', version: '0.1.0' }
-        })
+        if (!warm?.proc.alive) {
+          await conn.request('initialize', { clientInfo: CODEX_CLIENT_INFO })
+        }
         // App tools (docs/PLAN-2.md M10): the stdio bridge forwards
         // app_list_threads / app_read_thread / app_start_thread back to the
         // app's WS server, so codex threads can operate the app like claude.

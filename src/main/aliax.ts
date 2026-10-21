@@ -1,10 +1,11 @@
-import { app, net } from 'electron'
+import { app, net, session } from 'electron'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { configure, isLive, readMarker, type Role } from 'aliax-core'
 import { notifyAccountsChanged } from './aliaxPages'
 import { recordAppEvent, recordUsage } from './aliax/stats/store'
 import { accountSyncHooks } from './server/remote/accountSync'
+import { Upstream } from './server/upstream'
 
 /** An isolated instance (TEMP_CODE_USER_DATA) may keep its own vault, so a test never reads the real one. */
 const ISOLATED_VAULT = process.env.TEMP_CODE_USER_DATA ? process.env.TEMP_CODE_ALIAX_DATA_DIR : undefined
@@ -37,6 +38,26 @@ const PROVIDER_ORIGIN = /^https:\/\/(api\.anthropic\.com|platform\.claude\.com|c
 export const providerUrl = (url: string): string => (FAKE_PROVIDERS ? url.replace(PROVIDER_ORIGIN, FAKE_PROVIDERS) : url)
 
 /**
+ * The connections every provider call rides (src/main/server/upstream.ts):
+ * api.anthropic.com on keep-alive pools per account, everything else on
+ * Chromium's stack through `net.fetch` (Cloudflare refuses Node's TLS on
+ * chatgpt.com) with Chromium's own pool and `ses.preconnect`. Made once,
+ * before aliax-core is configured, so the gateway's forward and the
+ * pre-connects share the sockets.
+ */
+let upstreamInstance: Upstream | null = null
+export function upstream(): Upstream {
+  if (!upstreamInstance) {
+    upstreamInstance = new Upstream({
+      chromiumFetch: (input, init) => net.fetch(input, init),
+      chromiumPreconnect: (origin) => session.defaultSession.preconnect({ url: origin, numSockets: 1 }),
+      rewrite: providerUrl
+    })
+  }
+  return upstreamInstance
+}
+
+/**
  * Point aliax-core at Aliax's data. On macOS secrets open with the same
  * Keychain item Electron's safeStorage made for Aliax, so the first read
  * prompts once for "aliax Safe Storage"; a denied prompt leaves the vault
@@ -48,7 +69,7 @@ export const providerUrl = (url: string): string => (FAKE_PROVIDERS ? url.replac
 export function configureAliax(environmentId?: string): void {
   configure({
     dataDir: ALIAX_DATA_DIR,
-    fetch: (input, init) => net.fetch(providerUrl(input), init),
+    fetch: (input, init) => upstream().fetch(input, init),
     secrets:
       process.platform === 'darwin' && !ISOLATED_VAULT
         ? { mode: 'chromiumKey', keychainItem: 'aliax Safe Storage' }

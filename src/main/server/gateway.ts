@@ -23,6 +23,7 @@ import {
 import { SERVICE_OF, type AccountProvider } from '@shared/accounts'
 import { setCodexCaCertificate } from './drivers/binaries'
 import { loadTls, trustHint, type TlsMaterial } from './tls'
+import { newTrace, upstreamTrace } from './upstream'
 
 /**
  * temp-code's own loopback gateway. Every Claude and Codex request from a
@@ -148,12 +149,44 @@ export class Gateway {
   private readonly scoped = new Map<string, { server: Server; port: number; scope: RouteScope }>()
   /** Threads whose scope's account is out, and the account they spend from instead. */
   private readonly substitutes = new Map<string, string>()
+  /** Warm Claude processes by id, and the thread scope each was adopted for (null until adopted). */
+  private readonly warm = new Map<string, RouteScope | null>()
 
   constructor(private readonly options: GatewayOptions) {}
 
   /** `http://127.0.0.1:<port>/claude` and friends, for children's base URLs. */
   url(service: 'claude' | 'codex'): string | null {
     return this.server ? `http://127.0.0.1:${this.port}/${service}` : null
+  }
+
+  /**
+   * The base URL of a warm Claude process (drivers/warm.ts): one spawned
+   * before any thread exists, so its scope cannot be in its environment.
+   * `/claude/~w=<id>/…` is rewritten per request into the scope the id was
+   * adopted for, and goes unscoped (the pinned account) until then. Only
+   * this process knows the id, so the URL is always this gateway's own,
+   * never the shim's.
+   */
+  warmClaudeUrl(id: string): string | null {
+    const base = this.url('claude')
+    if (!base) return null
+    this.warm.set(id, this.warm.get(id) ?? null)
+    return `${base}/~w=${encodeURIComponent(id)}`
+  }
+
+  /** The warm process `id` now belongs to the thread `scope` names: its requests spend from that account from here on. */
+  adoptWarm(id: string, scope: RouteScope | null): void {
+    this.warm.set(id, scope)
+  }
+
+  /** The warm process is gone (retired, dead, or its thread's child ended): nothing maps the id any more. */
+  releaseWarm(id: string): void {
+    this.warm.delete(id)
+  }
+
+  /** Warm ids and whether each is adopted, for status. */
+  warmIds(): { id: string; thread: string | null }[] {
+    return [...this.warm].map(([id, scope]) => ({ id, thread: scope?.thread ?? null }))
   }
 
   /** The CA a codex child must trust to reach a scoped port; null without TLS. */
@@ -300,14 +333,22 @@ export class Gateway {
 
   private async handle(req: IncomingMessage, res: ServerResponse, scope?: RouteScope): Promise<void> {
     if (scope) req.url = scopedCodexPath(req.url ?? '/', scope)
+    else req.url = rebindWarmPath(req.url ?? '/', (id) => this.warm.get(id))
     if (await handleControl(req, res, OWNER)) return
     const parsed = splitPath(req.url ?? '/')
     const serviceId = SERVICE_OF[parsed.service as AccountProvider] as ServiceId | undefined
-    const out =
+    // The upstream fetch fills the trace record in: whether the request rode
+    // a socket that had carried one before, and over which protocol.
+    const trace = newTrace()
+    const out = await upstreamTrace.run(trace, () =>
       parsed.scope && serviceId && this.options.hooks?.substitute
-        ? await this.forwardScoped(req, res, parsed.service, serviceId, parsed.scope)
-        : await this.forward(req, res)
-    if (TRACE) console.log(`[gateway] ${req.method} ${req.url} → ${out.status ?? 'no upstream'}`)
+        ? this.forwardScoped(req, res, parsed.service, serviceId, parsed.scope)
+        : this.forward(req, res)
+    )
+    if (TRACE) {
+      const reused = trace.reused === null ? 'n/a' : trace.queued ? 'true (queued)' : String(trace.reused)
+      console.log(`[gateway] ${req.method} ${req.url} → ${out.status ?? 'no upstream'} reused=${reused}${trace.protocol ? ` ${trace.protocol}` : ''}`)
+    }
     if (out.status !== null) this.routed[out.service] = (this.routed[out.service] ?? 0) + 1
   }
 
@@ -463,6 +504,24 @@ export function rescope(url: string, scope: RouteScope): string {
   if (!rest.startsWith('/~')) return url
   const end = rest.indexOf('/', 1)
   return `/${service}/${scopeSegment(scope)}${end === -1 ? '' : rest.slice(end)}`
+}
+
+/**
+ * A warm process's path, `/claude/~w=<id>/<rest>`, as core parses it: the
+ * adopted scope's segment in place of the warm one, or no segment at all
+ * (unscoped: the pinned account) while nothing has adopted the id or the id
+ * is unknown. Any other path is left alone.
+ */
+export function rebindWarmPath(url: string, scopeOf: (id: string) => RouteScope | null | undefined): string {
+  const slash = url.indexOf('/', 1)
+  const service = url.slice(1, slash === -1 ? undefined : slash)
+  const rest = slash === -1 ? '' : url.slice(slash)
+  if (!rest.startsWith('/~w=')) return url
+  const end = rest.indexOf('/', 1)
+  const id = decodeURIComponent(rest.slice(4, end === -1 ? undefined : end))
+  const tail = end === -1 ? '' : rest.slice(end)
+  const scope = scopeOf(id)
+  return scope ? `/${service}/${scopeSegment(scope)}${tail}` : `/${service}${tail}`
 }
 
 /**

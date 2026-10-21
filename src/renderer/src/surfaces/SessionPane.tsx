@@ -45,6 +45,7 @@ import { ThreadView, type ChatOpts } from "./threads/ThreadView";
 import { ChatColumn, type ChatSlots } from "./threads/chatSlots";
 import { WorkingStrip } from "./threads/WorkingStrip";
 import * as serverCommands from "../lib/tcserver/commands";
+import { askPreconnect, idleForPreconnect } from "../lib/preconnect";
 import { MOD } from "../lib/platform";
 import { acknowledgeQuoteRequest, ADD_TO_CHAT_EVENT, type AddToChatRequest, type QuoteRequest } from "../lib/quoteDraft";
 import { createNote, noteTitle } from "../lib/notes";
@@ -284,7 +285,11 @@ export const SessionPane = memo(function SessionPane({
   const focusPane = useCallback(() => {
     if (focused && composerFocused) return;
     onFocus(session.id);
-  }, [composerFocused, focused, onFocus, session.id]);
+    // An idle thread whose composer is focused may get a turn: the host
+    // opens its upstream socket now (held to one per account per minute
+    // there; here one ask per thread per half minute keeps the chatter down).
+    if (idleForPreconnect(session.status)) askPreconnect(session.id);
+  }, [composerFocused, focused, onFocus, session.id, session.status]);
   // The thread's host, when it is not reachable: rows stay, sending waits.
   const block = useEnvironmentBlock(session.environmentId);
   // The Mac bridge's requests for this (box) thread, answered on this Mac (MacBridgeCards).
