@@ -27,7 +27,8 @@ struct DiffScreen: View {
 
     private enum Phase: Equatable {
         case loading
-        case ready(DiffDocument)
+        /// `partial`: an edit's lines are gone from the host; the rest shows.
+        case ready(DiffDocument, partial: Bool)
         case empty
         case failed
     }
@@ -57,18 +58,21 @@ struct DiffScreen: View {
                 case .loading:
                     DiffShimmer(rows: estimatedRows, metrics: metrics)
                         .transition(.opacity)
-                case .ready(let document):
-                    DiffBody(document: document, metrics: metrics, current: $current)
-                        .transition(.opacity)
+                case .ready(let document, let partial):
+                    VStack(spacing: 0) {
+                        if partial {
+                            DiffNotice(text: "Part of this diff is gone from the host.", error: true) { reload() }
+                                .background(Surface.chrome)
+                        }
+                        DiffBody(document: document, metrics: metrics, current: $current)
+                    }
+                    .transition(.opacity)
                 case .empty:
                     DiffNotice(text: "This edit left no lines to show.", error: false)
                         .transition(.opacity)
                 case .failed:
-                    DiffNotice(text: "The diff is gone from the host.", error: true) {
-                        phase = .loading
-                        Task { await load() }
-                    }
-                    .transition(.opacity)
+                    DiffNotice(text: "The diff is gone from the host.", error: true) { reload() }
+                        .transition(.opacity)
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
@@ -134,12 +138,12 @@ struct DiffScreen: View {
         switch source {
         case .card(_, let card): (card.adds, card.dels)
         case .patch:
-            if case .ready(let document) = phase { (document.adds, document.dels) } else { (0, 0) }
+            if case .ready(let document, _) = phase { (document.adds, document.dels) } else { (0, 0) }
         }
     }
 
     private var hunkCount: Int {
-        if case .ready(let document) = phase { document.hunks.count } else { 0 }
+        if case .ready(let document, _) = phase { document.hunks.count } else { 0 }
     }
 
     /// Rows the diff will take, from the lines each edit carries or the
@@ -169,11 +173,16 @@ struct DiffScreen: View {
 
     // MARK: - loading
 
+    private func reload() {
+        phase = .loading
+        Task { await load() }
+    }
+
     private func load() async {
         switch source {
         case .patch(_, let patch):
             let document = DiffDocument.from(patch: patch)
-            settle(document.isEmpty ? .empty : .ready(document))
+            settle(document.isEmpty ? .empty : .ready(document, partial: false))
         case .card(let sessionId, let card):
             guard let client else { settle(.failed); return }
             var edits: [[ToolPreview.Line]] = []
@@ -191,9 +200,11 @@ struct DiffScreen: View {
                 } else {
                     lost = true
                 }
+                if Task.isCancelled { return }
             }
             let document = DiffDocument.from(edits: edits)
-            settle(document.isEmpty ? (lost ? .failed : .empty) : .ready(document))
+            if Task.isCancelled { return }
+            settle(document.isEmpty ? (lost ? .failed : .empty) : .ready(document, partial: lost))
         }
     }
 
@@ -303,7 +314,8 @@ private struct DiffBody: View {
                     ForEach(document.hunks) { hunk in
                         Section {
                             let overflow = reach(of: hunk, textWidth: textWidth)
-                            let offset = min(offsets[hunk.id] ?? 0, max(overflow, 0))
+                            let stored = offsets[hunk.id] ?? 0
+                            let offset = drag?.hunk == hunk.id ? stored : min(max(stored, 0), max(overflow, 0))
                             ForEach(hunk.lines) { line in
                                 DiffLineRow(line: line, metrics: metrics, numberWidth: numberWidth, textWidth: textWidth, offset: offset)
                                     .equatable()
@@ -322,7 +334,9 @@ private struct DiffBody: View {
                                 .id(DiffAnchor.hunk(hunk.id))
                         }
                     }
-                    Color.clear.frame(height: 24)
+                    // Room for the last header to reach the top when the
+                    // column is taller than the screen, so next hunk always lands.
+                    Color.clear.frame(height: footer(starts: starts, viewport: geometry.size.height))
                 }
             }
             .scrollBounceBehavior(.basedOnSize)
@@ -331,6 +345,13 @@ private struct DiffBody: View {
                 if index != current { current = index }
             }
         }
+    }
+
+    private func footer(starts: [CGFloat], viewport: CGFloat) -> CGFloat {
+        guard let last = document.hunks.last, let start = starts.last else { return 24 }
+        let lastHeight = metrics.headerHeight + CGFloat(last.lines.count) * metrics.rowHeight
+        guard start + lastHeight > viewport else { return 24 }
+        return max(24, viewport - lastHeight)
     }
 
     /// How far the hunk's widest line runs past the text column, with 12 pt

@@ -40,7 +40,8 @@ nonisolated struct DiffHunk: Hashable, Identifiable, Sendable {
     let lines: [DiffLine]
     let adds: Int
     let dels: Int
-    /// The longest line in characters, for the horizontal reach.
+    /// The longest line in mono columns (a non-ASCII scalar counts two), for
+    /// the horizontal reach.
     let widestChars: Int
 
     init(id: Int, file: String?, lines: [DiffLine]) {
@@ -49,7 +50,7 @@ nonisolated struct DiffHunk: Hashable, Identifiable, Sendable {
         self.lines = lines
         adds = lines.count { $0.kind == .add }
         dels = lines.count { $0.kind == .del }
-        widestChars = lines.map { $0.text.count }.max() ?? 0
+        widestChars = lines.map { line in line.text.unicodeScalars.reduce(0) { $0 + ($1.isASCII ? 1 : 2) } }.max() ?? 0
     }
 
     /// "12–40" on the new side when the hunk kept or added lines, else the
@@ -108,9 +109,14 @@ nonisolated struct DiffDocument: Hashable, Sendable {
     static func from(edits: [[ToolPreview.Line]]) -> DiffDocument {
         var hunks: [DiffHunk] = []
         var current: [DiffLine] = []
+        /// Deletions wait for the next numbered line: a replacement's deletes
+        /// belong with its adds, on whichever side of a boundary those fall.
+        var pendingDels: [DiffLine] = []
         var lastNew: Int?
         var id = 0
         func close() {
+            current += pendingDels
+            pendingDels = []
             if !current.isEmpty { hunks.append(DiffHunk(id: hunks.count, file: nil, lines: current)) }
             current = []
             lastNew = nil
@@ -118,12 +124,20 @@ nonisolated struct DiffDocument: Hashable, Sendable {
         for lines in edits {
             close()
             for line in lines {
-                let number = line.number.map { Int($0) }
+                let number = line.number.flatMap { Int(exactly: $0) }
                 switch line.kind {
                 case .del:
-                    current.append(DiffLine(id: id, kind: .del, oldNo: number, newNo: nil, text: tidy(line.text)))
+                    pendingDels.append(DiffLine(id: id, kind: .del, oldNo: number, newNo: nil, text: tidy(line.text)))
                 case .add, .context, .unknown:
-                    if let number, let last = lastNew, number != last + 1 { close() }
+                    if let number, let last = lastNew, number != last + 1 {
+                        let held = pendingDels
+                        pendingDels = []
+                        close()
+                        current = held
+                    } else {
+                        current += pendingDels
+                        pendingDels = []
+                    }
                     current.append(DiffLine(id: id, kind: line.kind == .add ? .add : .context, oldNo: nil, newNo: number, text: tidy(line.text)))
                     if let number { lastNew = number }
                 }
@@ -142,17 +156,55 @@ nonisolated struct DiffDocument: Hashable, Sendable {
         var file: String?
         var oldNo = 1
         var newNo = 1
+        /// Lines the `@@` header promised on each side; the hunk ends when
+        /// both are spent, so a `+++ ` or `--- ` line inside it is content.
+        var oldLeft = 0
+        var newLeft = 0
         var id = 0
-        var inHunk = false
+        var inHunk: Bool { oldLeft > 0 || newLeft > 0 }
         func close() {
             if !current.isEmpty { hunks.append(DiffHunk(id: hunks.count, file: file, lines: current)) }
             current = []
         }
+        /// "-12,7" → (12, 7); "-12" → (12, 1); the token ends at the space.
+        func range(_ text: Substring, after mark: Character) -> (start: Int, count: Int)? {
+            guard let at = text.firstIndex(of: mark) else { return nil }
+            let token = text[text.index(after: at)...].prefix { $0 != " " }
+            let parts = token.split(separator: ",", maxSplits: 1)
+            let start = parts.first.flatMap { Int($0) } ?? 1
+            let count = parts.count > 1 ? (Int(parts[1]) ?? 1) : 1
+            return (start, count)
+        }
         for raw in patch.split(separator: "\n", omittingEmptySubsequences: false) {
             let line = String(raw)
+            // A truncated patch may run out before the counts do: a new file
+            // or hunk header always ends the one before it.
+            if inHunk, line.hasPrefix("diff --git ") || line.hasPrefix("@@") {
+                oldLeft = 0
+                newLeft = 0
+            }
+            if inHunk {
+                if line.hasPrefix("\\") { continue }
+                if line.hasPrefix("+") {
+                    current.append(DiffLine(id: id, kind: .add, oldNo: nil, newNo: newNo, text: tidy(String(line.dropFirst()))))
+                    newNo += 1
+                    newLeft -= 1
+                } else if line.hasPrefix("-") {
+                    current.append(DiffLine(id: id, kind: .del, oldNo: oldNo, newNo: nil, text: tidy(String(line.dropFirst()))))
+                    oldNo += 1
+                    oldLeft -= 1
+                } else {
+                    current.append(DiffLine(id: id, kind: .context, oldNo: oldNo, newNo: newNo, text: tidy(String(line.dropFirst(line.hasPrefix(" ") ? 1 : 0)))))
+                    oldNo += 1
+                    newNo += 1
+                    oldLeft -= 1
+                    newLeft -= 1
+                }
+                id += 1
+                continue
+            }
             if line.hasPrefix("diff --git ") {
                 close()
-                inHunk = false
                 file = line.split(separator: " ").last.map { String($0.dropFirst($0.hasPrefix("b/") ? 2 : 0)) }
                 continue
             }
@@ -161,32 +213,17 @@ nonisolated struct DiffDocument: Hashable, Sendable {
                 if named != "/dev/null" { file = String(named.dropFirst(named.hasPrefix("b/") ? 2 : 0)) }
                 continue
             }
-            if line.hasPrefix("--- ") || line.hasPrefix("index ") || line.hasPrefix("\\") { continue }
             if line.hasPrefix("@@") {
                 close()
-                inHunk = true
                 let header = line.dropFirst(2)
-                if let minus = header.firstIndex(of: "-") {
-                    oldNo = Int(header[header.index(after: minus)...].prefix { $0.isNumber }) ?? 1
-                }
-                if let plus = header.firstIndex(of: "+") {
-                    newNo = Int(header[header.index(after: plus)...].prefix { $0.isNumber }) ?? 1
-                }
+                let old = range(header, after: "-") ?? (1, 1)
+                let new = range(header, after: "+") ?? (1, 1)
+                oldNo = old.start
+                newNo = new.start
+                oldLeft = old.count
+                newLeft = new.count
                 continue
             }
-            guard inHunk else { continue }
-            if line.hasPrefix("+") {
-                current.append(DiffLine(id: id, kind: .add, oldNo: nil, newNo: newNo, text: tidy(String(line.dropFirst()))))
-                newNo += 1
-            } else if line.hasPrefix("-") {
-                current.append(DiffLine(id: id, kind: .del, oldNo: oldNo, newNo: nil, text: tidy(String(line.dropFirst()))))
-                oldNo += 1
-            } else {
-                current.append(DiffLine(id: id, kind: .context, oldNo: oldNo, newNo: newNo, text: tidy(String(line.dropFirst(line.hasPrefix(" ") ? 1 : 0)))))
-                oldNo += 1
-                newNo += 1
-            }
-            id += 1
         }
         close()
         return DiffDocument(hunks: hunks)
