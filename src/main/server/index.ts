@@ -11,6 +11,7 @@ import { AccountsService } from './accounts'
 import { isRoutedProvider, PROVIDER_OF, SERVICE_OF } from '@shared/accounts'
 import { startGateway, type Gateway } from './gateway'
 import { observeHooks } from './gatewayObserve'
+import { HeadroomStore } from './headroom'
 import { WebSocketServer, type WebSocket } from 'ws'
 import { createServer } from 'node:http'
 import { visibleCatalog } from '@shared/catalog'
@@ -346,10 +347,23 @@ export async function startServer(
   setRunningCount(() => registry.runningCount())
   const stopStallMonitor = startStallMonitor()
   registry.checkpoints = checkpoints
+  // What every host's gateway has seen of each account's rate limits: the
+  // routing score reads it, the chip's bars show it, and a 429 re-picks at once.
+  const headroom = new HeadroomStore({
+    environmentId,
+    file: join(options.dataDir ?? dirname(dbPath), 'headroom.json'),
+    onThrottle: (service, account, event) => {
+      console.log(`[gateway] ${service}: ${account} answered ${event.status}; out of new picks until ${new Date(event.until).toISOString()}`)
+      accounts.nudge()
+      accountSync.pushHeadroomSoon()
+    },
+    log: (line) => console.log(`[headroom] ${line}`)
+  })
   const accounts = new AccountsService({
     load: (provider) => registry.liveLoad(provider),
     homes: () => accountSync.homes(),
-    peers: () => peers.states()
+    peers: () => peers.states(),
+    headroom: () => headroom
   })
   registry.limits = accounts
   // An account gone from the vault explains a thread's 401 outright; with
@@ -366,6 +380,7 @@ export async function startServer(
     {
       onOpen: (id) => {
         void accountSync.syncWith(id)
+        void accountSync.pushHeadroom(id)
         void harnessSync.syncWith(id, 'link-up')
         void memorySync.syncWith(id, 'link-up')
         void sessionMover.settleWith(id)
@@ -384,7 +399,7 @@ export async function startServer(
       }
     }
   )
-  const accountSync: AccountSync = new AccountSync({ environmentId, store, peers, nudge: () => accounts.nudge(), refreshNow: () => accounts.rebuildNow() })
+  const accountSync: AccountSync = new AccountSync({ environmentId, store, peers, nudge: () => accounts.nudge(), refreshNow: () => accounts.rebuildNow(), headroom })
   accountSyncHooks.current = accountSync
   // The user's Claude Code and Codex config, mirrored onto the same hosts
   // (remote/harnessSync.ts). A headless host (the box) receives and does not send.
@@ -532,7 +547,18 @@ export async function startServer(
     if (Object.values(snapshot.providers).some((p) => p.profiles.length > 0)) registry.refreshAccounts()
   })
   accounts.start()
-  const observed = observeHooks({ logDir: join(options.dataDir ?? dirname(dbPath), 'logs'), onObserved: () => accounts.nudge() })
+  const observed = observeHooks({ logDir: join(options.dataDir ?? dirname(dbPath), 'logs'), onObserved: () => accounts.nudge(), headroom })
+  // Every answer moves the headroom picture; the rows follow at most every
+  // 5 s (a pick reads the store live, so routing never waits for this).
+  let headroomRows: NodeJS.Timeout | null = null
+  const headroomChanged = (): void => {
+    if (headroomRows) return
+    headroomRows = setTimeout(() => {
+      headroomRows = null
+      accounts.nudge()
+    }, 5_000)
+    headroomRows.unref()
+  }
   const gateway = await startGateway({
     claimShim: options.claimShim ?? false,
     dataDir: options.dataDir ?? dirname(dbPath),
@@ -540,6 +566,7 @@ export async function startServer(
       ...observed,
       onResponse: (info) => {
         observed.onResponse?.(info)
+        if (info.account && isRoutedProvider(info.service)) headroomChanged()
         if (info.status < 400 && info.account && isRoutedProvider(info.service)) accounts.markAnswered(SERVICE_OF[info.service], info.account)
       },
       pickNext: (info) => {
@@ -1844,6 +1871,8 @@ export async function startServer(
       peerCalls.close()
       peers.close()
       m3a.accounts.stop()
+      if (headroomRows) clearTimeout(headroomRows)
+      headroom.flush()
       await registry.disposeAll()
       await closeAllWatchers()
       await closeAllLiveWatchers()

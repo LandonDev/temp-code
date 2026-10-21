@@ -4,6 +4,23 @@ export const AccountProviderSchema = z.enum(['claude', 'codex', 'cursor'])
 export const ServiceIdSchema = z.enum(['claude-code', 'codex', 'cursor'])
 
 /** aliax-core sync.ts Transfer, as it crosses the wire. */
+const LimitFieldSchema = z.object({ limit: z.number().optional(), remaining: z.number().optional(), resetsAt: z.number().optional() })
+/** One host's view of one account (main/server/headroom.ts HostObservation). */
+export const HostObservationSchema = z.object({
+  seenAt: z.number(),
+  requests: LimitFieldSchema.optional(),
+  tokens: LimitFieldSchema.optional(),
+  inputTokens: LimitFieldSchema.optional(),
+  outputTokens: LimitFieldSchema.optional(),
+  tier: z.string().optional(),
+  recent: z.array(z.number()),
+  throttles: z.array(z.object({ at: z.number(), status: z.number(), until: z.number(), model: z.string().nullable() }))
+})
+export const HeadroomSnapshotSchema = z.object({
+  version: z.literal(1),
+  hosts: z.record(z.string(), z.record(z.string(), HostObservationSchema))
+})
+
 export const AccountTransferSchema = z.object({
   service: ServiceIdSchema,
   mode: z.enum(['handoff', 'access']),
@@ -203,6 +220,14 @@ export const M3aRequestSchemas = [
     id: z.string(),
     method: z.literal('accounts.delete'),
     params: z.object({ service: ServiceIdSchema, name: z.string() })
+  }),
+  // A host's headroom picture (main/server/headroom.ts): per environment id,
+  // per `service:account`, what its gateway saw of the account's rate limits.
+  // Pushed every 30 s and on a 429; the answer carries the receiver's own.
+  z.object({
+    id: z.string(),
+    method: z.literal('accounts.headroom'),
+    params: z.object({ from: z.string(), snapshot: HeadroomSnapshotSchema.nullable() })
   }),
   z.object({ id: z.string(), method: z.literal('accounts.sync'), params: z.object({ environmentId: z.string().optional() }).optional() }),
   z.object({

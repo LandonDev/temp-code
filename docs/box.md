@@ -558,6 +558,48 @@ RPCs) run the same `gh`, so they need nothing more:
 `auth.state: "ok"`, and the inbox polls only the repos of workspaces that have
 a GitHub remote. Agent commits carry no AI attribution trailers.
 
+### Routing by headroom: both hosts pick from one picture
+
+A thread in auto mode spends from the account with the most headroom for
+its provider and model, not from the one it happened to land on first
+(`src/main/server/accountRouting.ts` `chooseAccount`, scored by
+`accountScore.ts`). The picture it scores from is the gateway's own
+(`src/main/server/headroom.ts`): every upstream answer the gateway forwards
+carries the provider's per-request limits (Anthropic's
+`anthropic-ratelimit-*` headers and unified status, OpenAI's `x-ratelimit-*`,
+`retry-after` on a 429), and the store keeps, per account and per host, the
+newest of each, the answers of the last minute, and every 429 or 529 with
+the moment it lifts. An account inside that cooldown is skipped until then.
+A pinned account is routed regardless.
+
+- **Weights.** 0.45 × the least room among the model's usage windows (5h,
+  Weekly, Fable's own cap), 0.30 × the tightest per-request limit left
+  (unknown counts as full: nothing says the account is busy), 0.15 × live
+  threads against the soft cap of 3, 0.10 × the cross-host answer rate
+  against 30 a minute, plus 0.15 for an Opus thread on an account whose
+  Fable window is spent. A thread stays on its account unless the best other
+  one leads by more than 0.10 plus 0.25 × cache warmth, where warmth is 1
+  right after the thread's last answer and 0 after the 5-minute prompt cache
+  TTL: a thread mid-conversation moves only for far more room, an idle one
+  moves for a little.
+- **Both hosts, one picture.** The box and the Mac each observe only their
+  own gateway. The link holder (the Mac's main process) pushes its own
+  entries to the box every 30 s and within a second of a 429
+  (`accounts.headroom`, admin on the remote wire), and the answer carries
+  the box's; each side merges the other's under its environment id and
+  never its copy of a third host's. A new throttle in a peer's push re-picks
+  the open threads here as if the local gateway had seen it.
+- **Where it shows.** The account chip's menu and the Claude panel in
+  Settings carry a short bar per account (what is left of the tightest
+  limit, "rate limited · 40s" inside a cooldown, "no answer yet" before any
+  answer) with the refill or pick-again moment and the rate on hover. The
+  rows follow the store at most every 5 s; picks read it live.
+- **Across a relaunch.** `<data>/headroom.json` (on the box
+  `/srv/agents/temp-code-data/headroom.json`) is written 5 s after a change
+  and on close, and read at boot; observations older than a day are
+  dropped.
+- Proof from either host: `bun run script:e2e-quota-routing`.
+
 ### Harness config: synced from the Mac
 
 The skills, slash commands, agents, hooks, settings and plugins the user set
@@ -788,29 +830,9 @@ the right of the thread header names the host it runs on (status dot), and
 its menu has **Move to box…** on a Mac thread or **Move to This Mac…** on a
 box thread. The item is disabled with its reason while the thread (or any
 subagent) is working, paused, waiting on an approval or has queued messages,
-while either link is down, or when the saved key is not admin. While a move
-runs the chip says `Moving to box…`; the result is a toast.
-
-**One project, both hosts.** A project checked out on the Mac and on the box
-is one row in the workspace rail, not one under each host: two workspaces are
-the same project when their paths correspond under the path map (the Mac's
-`~/IdeaProjects/<X>` or `~/Desktop/Websites/<X>` and the box's
-`/srv/agents/work/<X>`, plus the roots of `harness.sync.pathMap`, which the
-renderer reads from `harness.status`) or when they share a GitHub origin;
-two checkouts on one host never merge. The pairing is
-`src/renderer/src/lib/projectIdentity.ts` (pure, tested), the renderer's view
-of it `lib/projectMerge.ts`. Selecting the row lists both hosts' threads in
-one sidebar, pinned first then newest, hosts interleaved; the status chip,
-Mark all read, pin and the threads popover cover every checkout. A row from
-this machine carries nothing; a thread from another host carries one small
-host glyph beside its time, the host's name on hover, and only takes the
-connection tint (with the reason in the tooltip) when that host is offline
-or unauthorized, as does the row of a project whose host is in trouble. A
-new thread in a merged project starts on the host last used there (per
-project, in localStorage), else this machine; the composer's host button
-(`DraftHostPicker`, shown only for an unsent draft in such a project) picks
-another. A thread's host never changes afterwards except through the chip's
-move. View → **Group by Host** brings back one section per host.
+while either link is down, or when the saved key is not admin. Rows in the
+sidebar carry a small host badge once the window talks to two or more hosts.
+While a move runs the chip says `Moving to box…`; the result is a toast.
 
 Only the Mac starts a move, because only the Mac dials (the peer link of
 `remote/peers.ts`). `session.move {sessionId, to, from?}` is local-only on the

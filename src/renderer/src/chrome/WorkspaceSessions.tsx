@@ -1,5 +1,4 @@
-import { degradedFor, registry, useEnvironmentStatuses, useEnvironments } from "../lib/connection";
-import { statusText } from "../surfaces/EnvironmentsSettings";
+import { useEnvironments } from "../lib/connection";
 import {
   memo,
   useCallback,
@@ -17,7 +16,6 @@ import {
   ArchiveRestore,
   ChartBar,
   ChevronRight,
-  CloudServer,
   GitBranch,
   MoreHorizontal,
   Pause,
@@ -86,9 +84,6 @@ type Props = {
   accountsPage?: AliaxPageId | null;
   /** Null: the home, the chats outside every workspace. */
   workspaceId: string | null;
-  /** The same project's checkouts on other hosts, `workspaceId` first;
-   *  their threads interleave with its own. Defaults to the one. */
-  workspaceIds?: readonly string[] | null;
   selectedProjectId: string | null;
   activeSessionId?: string;
   onSelectProject: (projectId: string | null) => void;
@@ -323,37 +318,14 @@ function useRevealActive(activeSessionId: string | undefined) {
 /** The subagent fold in a root row's tail: how many, whether they show, the flip. */
 type Fold = { count: number; open: boolean; onToggle: () => void };
 
-/**
- * Which host a row's thread lives on, when that is not this machine and the
- * window talks to two or more: one small glyph beside the time, the host's
- * name on hover. No text, no colour; a host in trouble (offline,
- * unauthorized, stuck reconnecting) lends the mark the switcher's tint and
- * the tooltip says so. Rows from this machine carry nothing.
- */
-export function HostMark({ environmentId }: { environmentId?: string }) {
+/** Which host a row's thread lives on; shown only when the window talks to two or more. */
+function HostBadge({ environmentId }: { environmentId?: string }) {
   const environments = useEnvironments();
-  const statuses = useEnvironmentStatuses();
-  if (!environmentId || environments.length < 2 || environmentId === registry.primaryEnvironmentId) return null;
+  if (!environmentId || environments.length < 2) return null;
   const name = environments.find((e) => e.id === environmentId)?.name ?? environmentId;
-  const status = statuses.get(environmentId);
-  const degraded = status ? degradedFor(status, Number.POSITIVE_INFINITY) : null;
-  const tint = !degraded || !status
-    ? "text-content/35"
-    : status.transport === "unauthorized"
-      ? "text-danger"
-      : status.transport === "offline"
-        ? "text-content/25"
-        : "text-warning";
-  const title = degraded && status ? `${name}: ${statusText(status, Date.now())}` : `On ${name}`;
   return (
-    <span
-      data-host-mark={environmentId}
-      data-host-trouble={degraded ? degraded.kind : undefined}
-      title={title}
-      aria-label={title}
-      className={`grid shrink-0 place-items-center ${tint}`}
-    >
-      <CloudServer className="size-3" strokeWidth={1.75} />
+    <span data-host-badge={environmentId} title={`On ${name}`} className="max-w-16 shrink-0 truncate rounded bg-content/5 px-1 text-[10px] leading-4 text-content/45">
+      {name}
     </span>
   );
 }
@@ -447,6 +419,7 @@ const ChatRow = memo(function ChatRow({
       )}
       {!renaming ? (
         <>
+          <HostBadge environmentId={thread.environmentId} />
           <StatusDot status={thread.status} />
           {fold ? (
             <button
@@ -468,7 +441,6 @@ const ChatRow = memo(function ChatRow({
               {fold.count}
             </button>
           ) : null}
-          <HostMark environmentId={thread.environmentId} />
           <span className="shrink-0 text-[11px] tabular-nums text-content/40 group-hover/row:opacity-0">
             {trailing}
           </span>
@@ -1213,7 +1185,6 @@ const estimateItem = (item: SidebarItem): number => {
 
 export default function WorkspaceSessions({
   workspaceId,
-  workspaceIds,
   selectedProjectId,
   activeSessionId,
   onSelectProject,
@@ -1230,19 +1201,18 @@ export default function WorkspaceSessions({
   const lastSeen = useLastSeen();
   const seenFloor = useSeenFloor();
   const [cache] = useState(rowCache);
-  const scope = workspaceIds && workspaceIds.length > 1 ? workspaceIds : workspaceId;
   const groups = useMemo(
     () =>
       groupWorkspaceSessions(
         metas,
         projects,
         workspaces,
-        scope,
+        workspaceId,
         lastSeen,
         seenFloor,
         cache,
       ),
-    [cache, lastSeen, metas, projects, scope, seenFloor, workspaces],
+    [cache, lastSeen, metas, projects, seenFloor, workspaceId, workspaces],
   );
   const workspace: WorkspaceMeta | undefined = workspaces.find(
     (w) => w.id === workspaceId,

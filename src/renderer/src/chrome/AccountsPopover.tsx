@@ -1,6 +1,7 @@
 import type { RefObject } from "react";
 import type { PlanInfo, ProfileView, UsageReport, UsageWindow } from "aliax-core/shared/types";
 import { Check, Pin } from "./icons";
+import { HeadroomLine } from "./HeadroomLine";
 import { Popover } from "./Popover";
 import {
   cycleMs,
@@ -15,7 +16,7 @@ import {
   untilLabel,
 } from "../lib/accounts";
 import { sourceLine, type AccountScope } from "../lib/accountScope";
-import type { AccountProvider, ProviderAccounts } from "@server/shared/accounts";
+import type { AccountHeadroom, AccountProvider, ProviderAccounts } from "@server/shared/accounts";
 
 /** A usage column is 10rem plus a 1.5rem gutter; the name column takes 13rem. */
 const CELL_REM = 10;
@@ -83,6 +84,7 @@ export function AccountsPopover({
           key={profile.name}
           profile={profile}
           report={reportOf(accounts.reports, profile.name)}
+          headroom={accounts.headroom?.[profile.name]}
           checked={profile.name === checked}
           inherited={scope && profile.name === scope.inherited?.name ? scope.inherited.level : null}
           now={now}
@@ -99,6 +101,7 @@ export function AccountsPopover({
 function AccountRow({
   profile,
   report,
+  headroom,
   checked,
   inherited,
   now,
@@ -106,6 +109,8 @@ function AccountRow({
 }: {
   profile: ProfileView;
   report: UsageReport | undefined;
+  /** What the gateways have seen of the account's per-request limits; absent until the host keeps a picture. */
+  headroom: AccountHeadroom | undefined;
   /** The account the thread spends from (or the global pin without a thread). */
   checked: boolean;
   /** The project or workspace pin that applies to the thread. */
@@ -143,6 +148,7 @@ function AccountRow({
               {report.banked} banked reset{report.banked === 1 ? "" : "s"}
             </span>
           ) : null}
+          {headroom ? <HeadroomLine headroom={headroom} now={now} /> : null}
         </span>
       </span>
       <UsageBlock report={report} now={now} slots={slots} />

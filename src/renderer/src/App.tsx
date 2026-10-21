@@ -1,8 +1,6 @@
 import { registry } from "./lib/connection";
-import { newThreadWorkspacePath, noteThreadHost, pathsOf, projectClusters, sameProject } from "./lib/projectMerge";
-import { loadRailGroupByHost, saveRailGroupByHost, subscribeRailGroupByHost } from "./lib/settings";
 import { environmentOfCwd } from "./lib/tcserver/projects";
-import { invoke, listen, getCurrentWindow, isWebMode, message, setMenuChecked } from "./lib/native";
+import { invoke, listen, getCurrentWindow, isWebMode, message } from "./lib/native";
 import {
   useCallback,
   useEffect,
@@ -525,8 +523,7 @@ export default function App() {
         ...workspaceStore.getSnapshot(),
         projectId:
           projectId === undefined ? projectStore.getState().selectedProjectId : projectId,
-        // A project on several hosts starts its new thread on the host last used there.
-        workspacePath: newThreadWorkspacePath(projectStore.getState().projectCwd),
+        workspacePath: projectStore.getState().projectCwd,
       }),
     [],
   );
@@ -578,7 +575,6 @@ export default function App() {
     ) => {
       const ctx = sessionContext(opts.projectId);
       const session = seededSession(ctx, ctx.cwd, undefined, opts.threadType, opts.threadRules);
-      noteThreadHost(session);
       return opts.runtimeMode ? { ...session, runtimeMode: opts.runtimeMode } : session;
     },
     [seededSession, sessionContext],
@@ -712,13 +708,6 @@ export default function App() {
       return;
     }
     shell.showWhatsNew({ version: document.source.version });
-  }, []);
-
-  // The View menu's "Group by Host" check follows the setting (shared by every window).
-  useEffect(() => {
-    const sync = () => setMenuChecked("toggle_group_by_host", loadRailGroupByHost());
-    sync();
-    return subscribeRailGroupByHost(sync);
   }, []);
 
   const onNew = useCallback(() => {
@@ -2325,31 +2314,30 @@ export default function App() {
       const currentCwd =
         current?.cwd ??
         (activeWorkspace ? focusedFileTab(activeWorkspace)?.cwd : undefined);
-      if (currentCwd && sameProject(projectClusters(), currentCwd, normalized)) return;
+      if (currentCwd && sameProjectPath(currentCwd, normalized)) return;
 
       // The thread this workspace was last on comes back before any other
-      // open tab of it, and an open tab before a blank one. A project checked
-      // out on several hosts is one row: an open tab or a last thread on any
-      // of its checkouts counts, the clicked (lead) folder first.
-      const metas = sessionStore.metas();
-      const catalog = workspaceStore.getSnapshot();
-      const rebased = rebaseToWorkspace(sessionStore.getSnapshot(), catalog);
-      const checkouts = pathsOf(projectClusters(), normalized).map((path) => ({
-        path,
-        landing: resolveLanding({ workspacePath: path }, metas, catalog),
-      }));
-      for (const { path, landing } of checkouts) {
-        const match = workspaceTabTarget(workspaceTabsStore.getState(), rebased, path, landing);
-        if (!match) continue;
-        project.enterWorkspace(path);
+      // open tab of it, and an open tab before a blank one.
+      const landing = resolveLanding(
+        { workspacePath: normalized },
+        sessionStore.metas(),
+        workspaceStore.getSnapshot(),
+      );
+      const match = workspaceTabTarget(
+        workspaceTabsStore.getState(),
+        rebaseToWorkspace(sessionStore.getSnapshot(), workspaceStore.getSnapshot()),
+        normalized,
+        landing,
+      );
+      if (match) {
+        project.enterWorkspace(normalized);
         if (landing && leafIds(match.layout).includes(landing)) focusOpenSession(landing);
         else activateTab(match.id);
         return;
       }
-      for (const { path, landing } of checkouts) {
-        if (!landing) continue;
-        project.enterWorkspace(path);
-        void openLanding(landing, path);
+      if (landing) {
+        project.enterWorkspace(normalized);
+        void openLanding(landing, normalized);
         return;
       }
 
@@ -3477,7 +3465,6 @@ export default function App() {
         case "open_search": return go(a.onOpenSearch);
         case "open_inbox": return go(a.onOpenInbox);
         case "mark_all_read": return go(() => markAllSeen(sessionStore.metas().map((m) => m.id)));
-        case "toggle_group_by_host": return go(() => saveRailGroupByHost(!loadRailGroupByHost()));
         case "pause_all_threads": return go(() => void requestThreadBatch("pause", EVERYWHERE, () => selectionFor(EVERYWHERE)));
         case "resume_all_threads": return go(() => void requestThreadBatch("resume", EVERYWHERE, () => selectionFor(EVERYWHERE)));
         case "stop_all_threads": return go(() => void requestThreadBatch("stop", EVERYWHERE, () => selectionFor(EVERYWHERE)));

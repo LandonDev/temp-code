@@ -24,7 +24,6 @@ import {
   type SidebarTabId,
 } from "../lib/appearance";
 import { basename } from "../lib/fs";
-import { scopeTest } from "../lib/workspaceSessions";
 import { ConnectionIndicator } from "./ConnectionIndicator";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { EASE_OUT } from "../lib/ease";
@@ -87,7 +86,6 @@ import {
   useProjectCwds,
   useRailRecents,
   useSelectedWorkspaceId,
-  useSelectedWorkspaceIds,
 } from "../stores/project";
 import { shell, useShell, type AliaxPageId } from "../stores/shell";
 import { RailAction } from "./RailAction";
@@ -205,8 +203,6 @@ function SidebarComponent({
   const workspaceCwd = useProject((s) => s.projectCwd);
   /** Server workspace shown in the Sessions tab (null before the catalog loads). */
   const workspaceId = useSelectedWorkspaceId();
-  /** With the same project checked out on other hosts, their workspaces too. */
-  const workspaceIds = useSelectedWorkspaceIds();
   const { busy: busyProjectPaths, needsYou: needsYouProjectPaths } =
     useProjectSignals();
   const liveAgents = useLiveAgents();
@@ -287,21 +283,19 @@ function SidebarComponent({
   const seenFloor = useSeenFloor();
   const dormant = useMemo(() => {
     if (sessionsScope === undefined) return [];
-    const inScope = scopeTest(workspaceIds && workspaceIds.length > 1 ? workspaceIds : sessionsScope);
     const roots = metas.filter(
       (m) =>
         !m.parentId &&
         !m.archived &&
-        inScope(workspaceIdOf(m, catalogProjects, catalogWorkspaces)),
+        workspaceIdOf(m, catalogProjects, catalogWorkspaces) === sessionsScope,
     );
     return dormantThreads(roots, lastSeen, seenFloor, focusedTree(metas, activeSessionId));
-  }, [activeSessionId, catalogProjects, catalogWorkspaces, lastSeen, metas, seenFloor, sessionsScope, workspaceIds]);
+  }, [activeSessionId, catalogProjects, catalogWorkspaces, lastSeen, metas, seenFloor, sessionsScope]);
   const dormantGroups = useMemo(() => dormantByType(dormant), [dormant]);
   const workspaceSessions =
     sessionsScope !== undefined && onSelectProjectCard && onNewChat ? (
       <WorkspaceSessions
         workspaceId={sessionsScope}
-        workspaceIds={workspaceIds}
         selectedProjectId={selectedProjectId}
         activeSessionId={activeSessionId}
         onSelectProject={onSelectProjectCard}

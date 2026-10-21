@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { motion, useReducedMotion } from 'motion/react'
 import { toast } from 'sonner'
 import type { ServiceId, ServiceView, UsageReport } from 'aliax-core/shared/types'
-import { ACCOUNT_PROVIDERS, PROVIDER_OF, SERVICE_OF, type AccountProvider } from '@shared/accounts'
+import { ACCOUNT_PROVIDERS, PROVIDER_OF, SERVICE_OF, type AccountHeadroom, type AccountProvider } from '@shared/accounts'
 import { accountsStore, useAccounts } from '@renderer/stores/accounts'
 import { Loader } from '@aliax/components/motion/loader'
 import { Button } from '@aliax/components/ui/button'
@@ -23,6 +23,7 @@ import { StatsView } from '@aliax/views/stats'
 import './aliax.css'
 
 type Usage = Partial<Record<ServiceId, UsageReport[]>>
+type Headroom = Partial<Record<ServiceId, Record<string, AccountHeadroom>>>
 
 const NONE: ReadonlySet<ServiceId> = new Set()
 
@@ -47,6 +48,16 @@ function useAliax() {
     }
     return out
   }, [snapshot, masked])
+
+  // The gateways' rate-limit picture rides the same snapshot; a refresh never masks it.
+  const headroom = useMemo(() => {
+    const out: Headroom = {}
+    for (const p of ACCOUNT_PROVIDERS) {
+      const h = snapshot.providers[p].headroom
+      if (h) out[SERVICE_OF[p]] = h
+    }
+    return out
+  }, [snapshot])
 
   // Responses can land out of order; only the newest list is kept.
   const seq = useRef(0)
@@ -127,7 +138,7 @@ function useAliax() {
     if (!refreshing.current) void loadViews()
   }, [identity, loadViews])
 
-  return { views, usage, refresh, snapshot }
+  return { views, usage, headroom, refresh, snapshot }
 }
 
 function AliaxRoot({ page, children }: { page: 'accounts' | 'stats'; children: ReactNode }) {
@@ -163,7 +174,7 @@ function Loading() {
 }
 
 export function AccountsPage(): React.JSX.Element {
-  const { views, usage, refresh, snapshot } = useAliax()
+  const { views, usage, headroom, refresh, snapshot } = useAliax()
   const [busy, setBusy] = useState<string | null>(null)
   const [loginService, setLoginService] = useState<ServiceId | null>(null)
   // The hosts this machine shares accounts with: the snapshot's peers, named by the registry.
@@ -251,6 +262,7 @@ export function AccountsPage(): React.JSX.Element {
           <AccountsView
             views={views}
             usage={usage}
+            headroom={headroom}
             busy={busy}
             homes={snapshot.homes ?? {}}
             peers={peers}

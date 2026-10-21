@@ -24,6 +24,7 @@ import {
   SERVICE_OF,
   emptyAccounts,
   isRoutedProvider,
+  type AccountHeadroom,
   type AccountProvider,
   type AccountRoute,
   type AccountsSnapshot,
@@ -31,6 +32,7 @@ import {
   type ProviderAccounts, type MintProgress } from '@shared/accounts'
 import type { SessionMeta } from '@shared/events'
 import { chooseAccount, type ResolvedPin, type RouteOptions } from './accountRouting'
+import type { HeadroomStore } from './headroom'
 
 export interface AccountsDeps {
   listServices: () => Promise<ServiceView[]>
@@ -54,6 +56,8 @@ export interface AccountsDeps {
   homes: () => Partial<Record<AccountProvider, string>>
   /** The account-sync links to other hosts, by environment id. */
   peers: () => Record<string, PeerState>
+  /** What the gateways of every host have seen of each account's rate limits (headroom.ts); null routes the older way. */
+  headroom: () => Pick<HeadroomStore, 'summary'> | null
   dataDir: () => string
   pollMs: number
   now: () => number
@@ -131,6 +135,7 @@ const defaults = (): AccountsDeps => ({
   load: () => ({}),
   homes: () => ({}),
   peers: () => ({}),
+  headroom: () => null,
   dataDir,
   pollMs: 60_000,
   now: Date.now
@@ -260,15 +265,26 @@ export class AccountsService {
   routeFor(meta: SessionMeta, pin: ResolvedPin | null, opts?: RouteOptions): { route: AccountRoute | null; current: string | null } {
     return chooseAccount({
       pin: pin?.name ?? null,
-      current: opts?.fresh ? null : (meta.account ?? null),
+      current: meta.account ?? null,
       stored: meta.account ?? null,
+      fresh: opts?.fresh ?? false,
+      // The row's last change is the thread's last answer or status: the prompt-cache clock.
+      lastActiveAt: meta.updatedAt,
       model: meta.model ?? null,
       provider: meta.provider,
       snapshot: this.snap,
       load: isRoutedProvider(meta.provider) ? (opts?.load ?? this.deps.load(meta.provider)) : {},
       out: isRoutedProvider(meta.provider) ? this.outFor(meta.provider) : [],
+      headroom: isRoutedProvider(meta.provider) ? this.headroomFor(meta.provider) : undefined,
       now: this.deps.now()
     })
+  }
+
+  /** The gateway's picture of a provider's accounts for a pick, read live (the snapshot's copy is for the rows); undefined routes the older way (no store). */
+  private headroomFor(provider: AccountProvider): Record<string, AccountHeadroom> | undefined {
+    const store = this.deps.headroom()
+    if (!store) return undefined
+    return store.summary(SERVICE_OF[provider], this.snap.providers[provider].profiles.map((p) => p.name), this.deps.now())
   }
 
   /**
@@ -322,6 +338,7 @@ export class AccountsService {
       snapshot: this.snap,
       load: this.deps.load(provider),
       out: this.outFor(provider),
+      headroom: this.headroomFor(provider),
       now: this.deps.now()
     })
     return route && route.account !== account ? route.account : null
@@ -457,13 +474,15 @@ export class AccountsService {
           note = `usage unavailable (${(e as Error).message})`
         }
       }
+      const headroom = d.headroom()
       providers[p] = {
         pinned: d.pinned(id) ?? profiles.find((x) => x.active)?.name ?? null,
         profiles,
         reports,
         owner,
         note: note ?? view?.notice,
-        ...(p === 'claude' ? { mint: this.mint?.() ?? undefined } : {})
+        ...(p === 'claude' ? { mint: this.mint?.() ?? undefined } : {}),
+        ...(headroom && profiles.length ? { headroom: headroom.summary(id, profiles.map((x) => x.name), d.now()) } : {})
       }
     }
     return { updatedAt: Date.now(), providers, homes: d.homes(), peers: d.peers() }

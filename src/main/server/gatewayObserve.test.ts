@@ -138,3 +138,17 @@ describe('observeCodexSnapshot', () => {
     expect(onObserved).toHaveBeenCalledTimes(2)
   })
 })
+
+describe('observeHooks → headroom', () => {
+  it('every answer with an account reaches the headroom store with its service id; a 429 lands as a throttle', () => {
+    const { logDir } = setup()
+    const seen: string[] = []
+    const headroom = { observe: (i: { service: string; account: string; status: number }) => seen.push(`${i.service} ${i.account} ${i.status}`) }
+    const hooks = observeHooks({ logDir, headroom })
+    hooks.onResponse!({ service: 'claude', path: '/v1/messages', status: 200, headers: new Headers(), account: 'work', model: 'claude-opus-5-5' })
+    hooks.onResponse!({ service: 'codex', path: '/responses', status: 429, headers: new Headers({ 'retry-after': '5' }), body: '{}', account: 'cx', model: null })
+    hooks.onResponse!({ service: 'claude', path: '/v1/messages', status: 200, headers: new Headers(), account: null, model: null })
+    hooks.onResponse!({ service: 'other', path: '/x', status: 200, headers: new Headers(), account: 'x', model: null })
+    expect(seen).toEqual(['claude-code work 200', 'codex cx 429'])
+  })
+})

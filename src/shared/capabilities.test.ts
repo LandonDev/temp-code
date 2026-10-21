@@ -71,6 +71,8 @@ describe('METHOD_CAPABILITY', () => {
         'accounts.confirm',
         'accounts.released',
         'accounts.removed',
+        // A host's rate-limit picture crosses only between the hosts' main processes.
+        'accounts.headroom',
         // The harness config crosses between hosts, and its status and settings are changed, only under an admin key.
         ...methods.filter((m) => m.startsWith('harness.')),
         // The harnesses' memory crosses both ways, and its status and settings are changed, only under an admin key.

@@ -1,21 +1,26 @@
 import { appendFileSync, mkdirSync } from 'node:fs'
 import { join } from 'node:path'
-import { accounts, codexSnapshotToWindows, parseUnifiedHeaders, pinnedProfile, scopedCapOf, type ForwardHooks } from 'aliax-core'
+import { accounts, codexSnapshotToWindows, parseUnifiedHeaders, pinnedProfile, scopedCapOf, serviceIdOf, type ForwardHooks } from 'aliax-core'
+import type { HeadroomStore } from './headroom'
 
 /**
  * What the gateway learns from traffic it forwards: Claude's unified headers
  * move the answering account's 5h, Weekly and (for a model with a scoped
  * cap, the 7d_oi header) Fable windows on every answer, and every 429 goes
  * to a log (status, account, model, limit headers, body; never credentials)
- * so the failover classifier can be built from real refusals.
+ * so the failover classifier can be built from real refusals. Every answer
+ * with an account also goes to the headroom store (headroom.ts): the
+ * per-request limit headers, the request rate and any 429 or 529.
  */
 let observed: (() => void) | null = null
 
-export function observeHooks({ logDir, onObserved }: { logDir: string; onObserved?: () => void }): ForwardHooks {
+export function observeHooks({ logDir, onObserved, headroom }: { logDir: string; onObserved?: () => void; headroom?: Pick<HeadroomStore, 'observe'> }): ForwardHooks {
   observed = onObserved ?? null
   return {
     onResponse: ({ service, path, status, headers, body, account, model }) => {
       if (status === 429) logLimit(logDir, { service, path, status, headers, body, account, model })
+      const serviceId = serviceIdOf(service)
+      if (headroom && serviceId && account) headroom.observe({ service: serviceId, account, model, status, headers })
       if (service !== 'claude') return
       const limits = parseUnifiedHeaders(headers, scopedCapOf('claude-code', model))
       if (!limits || !account || limits.windows.length === 0) return

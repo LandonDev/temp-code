@@ -97,7 +97,7 @@ export const webApi: Api = {
     onPersistRequested: () => noop,
     persisted: noop,
   },
-  menu: { onCommand: () => noop, setChecked: noop },
+  menu: { onCommand: () => noop },
   dialog: {
     open: () => needsDesktop("The file picker"),
     ask: (text) => Promise.resolve(window.confirm(text)),

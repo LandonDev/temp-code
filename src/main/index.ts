@@ -21,7 +21,7 @@ import { isHeadless, noDisplay, publishLocalPort, unpublishLocalPort } from './h
 import { htmlPreviewer } from './htmlPreview'
 import { setHtmlPreviewer, setHtmlRenderRoot } from './server/htmlRender'
 import { killAllPtys, listPtys, ptyFlowCounters, registerPty } from './pty'
-import { clickMenuItem, registerMenu, setMenuChecked } from './menu'
+import { clickMenuItem, registerMenu } from './menu'
 import { queueNextPick, registerDialogs } from './dialogs'
 import {
   activateWindows,
@@ -188,9 +188,6 @@ function registerDebug(): void {
   ipcMain.handle('debug:menu-click', (e, id: string) =>
     clickMenuItem(String(id), BrowserWindow.fromWebContents(e.sender))
   )
-  ipcMain.on('menu:set-checked', (_e, id: unknown, value: unknown) => {
-    if (typeof id === 'string') setMenuChecked(id, value === true)
-  })
   ipcMain.handle('debug:dock-badge', () => (app.dock ? app.dock.getBadge() : null))
   ipcMain.handle('debug:window-title', (e) => BrowserWindow.fromWebContents(e.sender)?.getTitle())
   ipcMain.handle('debug:pty-flow', () => ptyFlowCounters())

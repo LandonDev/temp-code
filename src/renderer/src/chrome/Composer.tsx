@@ -59,7 +59,6 @@ import {
 import { subscribeAppshots } from '../lib/appshots'
 import { BranchPicker } from './BranchPicker'
 import { CwdPicker } from './CwdPicker'
-import { DraftHostPicker } from './DraftHostPicker'
 import { InboxMiniCard } from './InboxMiniCard'
 import { NoteMiniCard } from './NoteMiniCard'
 import { HandoffMiniCard } from './HandoffMiniCard'
@@ -864,7 +863,6 @@ export function Composer({
                 onClose={() => inputRef.current?.focus()}
               />
             )}
-            {sessionId && enabled ? <DraftHostPicker sessionId={sessionId} onPick={onCwdChange} /> : null}
             <BranchPicker
               cwd={cwd}
               branch={branch}

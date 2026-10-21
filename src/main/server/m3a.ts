@@ -67,6 +67,8 @@ export async function handleM3a(
       return done(await ctx.accountSync.handleRemoved(req.params.from, req.params))
     case 'accounts.delete':
       return done(await ctx.accountSync.deleteProfile(req.params.service, req.params.name))
+    case 'accounts.headroom':
+      return done(ctx.accountSync.handleHeadroom(req.params.from, req.params.snapshot))
     case 'accounts.sync':
       if (req.params?.environmentId) await ctx.accountSync.syncWith(req.params.environmentId)
       else await ctx.accountSync.syncAll()

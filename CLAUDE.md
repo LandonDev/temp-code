@@ -303,6 +303,32 @@ routed to (aliax-core's `forward`). Two listeners:
   instance's data, never the Keychain), `TEMP_CODE_STATIC_RENEW_FIRST_MS` /
   `_EVERY_MS` (the renewal cadence); proofs are `bun run script:e2e-accounts-sync`
   and `bun run script:e2e-static-tokens`.
+- Routing by headroom (src/main/server/{headroom,accountScore}.ts): the
+  gateway's response hook records, per account and per host, the
+  per-request limit headers every answer carries (Anthropic's
+  `anthropic-ratelimit-{requests,tokens,input-tokens,output-tokens}-*` and
+  unified status/claim, OpenAI's `x-ratelimit-*`), the answers of the last
+  minute (the rate) and every 429/529 with when it lifts (retry-after, else
+  the exhausted field's reset, else the unified reset, else 60 s; an
+  overloaded answer pauses 30 s), in memory with `<userData>/headroom.json`
+  written 5 s after a change and on close so a relaunch is not blind. For an
+  auto thread `chooseAccount` scores every known account with room that is
+  not out and not inside a cooldown: 0.45 × the least room among the model's
+  usage windows, 0.30 × the tightest per-request limit left (an account no
+  host has heard from counts as full), 0.15 × live threads against the soft
+  cap, 0.10 × the cross-host rate against 30/min, plus 0.15 for Opus on a
+  Fable-spent account; the best wins a first spawn, and a sticky thread moves
+  only when the best leads its own account by more than 0.10 plus 0.25 ×
+  cache warmth (1 right after its last answer, 0 after the 5-minute prompt
+  cache TTL; a `fresh` pick keeps only the cache term). A pinned account is
+  the route regardless. Picks read the store live; the rows' snapshot
+  (`headroom` per provider, the bars on the account chip's menu and the
+  Claude panel, reset on hover) follows at most every 5 s. Each host pushes
+  its own picture to its peers every 30 s and within a second of a 429
+  (`accounts.headroom`, admin; the answer carries the peer's), merged under
+  the sender's id, so the Mac and the box pick from one picture. Proof:
+  `bun run script:e2e-quota-routing` (an in-process server over a fake
+  Anthropic: one account throttled, ten turns spread over the other ten).
 
 ## Remote access: the fixed port behind the tunnel
 - A second listener (src/main/server/remote/listener.ts) binds

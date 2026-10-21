@@ -22,6 +22,7 @@ import {
 import { ACCOUNT_PROVIDERS, PROVIDER_OF, type AccountProvider, type AccountRemoval, type ListedAccount } from '@shared/accounts'
 import type { ServerPush } from '@shared/contract'
 import type { PeerLink, Peers } from './peers'
+import type { HeadroomSnapshot, HeadroomStore } from '../headroom'
 
 /**
  * Accounts shared between this host and the ones it holds admin keys for
@@ -77,6 +78,9 @@ const SERVICES: ServiceId[] = ['claude-code', 'codex', 'cursor']
 /** Settings row per provider: the environment new sign-ins are handed to. */
 export const HOME_PREFIX = 'accounts.home.'
 const PUSH_DEBOUNCE_MS = 1_000
+/** How often each host pushes its headroom picture to its peers; a 429 pushes at once (debounced). */
+export const HEADROOM_PUSH_MS = 30_000
+const HEADROOM_DEBOUNCE_MS = 1_000
 /** How long a grant handed out on a pull waits for the taker's confirm before this host keeps it. */
 export const RELEASE_TIMEOUT_MS = 30_000
 /** Settings row holding this host's tombstones (AccountRemoval[]). */
@@ -92,6 +96,10 @@ export interface AccountSyncDeps {
   nudge: () => void
   /** A profile is gone: rebuild the snapshot now, before anything else routes to it. Falls back to nudge. */
   refreshNow?: () => Promise<void> | void
+  /** The gateway's rate-limit picture (headroom.ts); shared with every peer so both hosts route from the same one. */
+  headroom?: Pick<HeadroomStore, 'own' | 'merge'>
+  /** Test seam: the headroom push cadence. */
+  headroomPushMs?: number
   log?: (line: string) => void
   now?: () => number
   /** Test seams for the live sign-in: who the CLI here is signed in as, when its credential lapses, and installing a blob as that sign-in. */
@@ -111,6 +119,10 @@ export interface PullAnswer {
 }
 
 export type DeleteAnswer = { ok: true; removal: AccountRemoval } | { ok: false; error: string }
+export interface HeadroomAnswer {
+  /** The answering host's own picture; null when it keeps none (an older host). */
+  snapshot: HeadroomSnapshot | null
+}
 
 export interface ConfirmParams {
   service: ServiceId
@@ -129,8 +141,15 @@ export class AccountSync {
   private readonly syncing = new Map<string, Promise<void>>()
   /** Grants handed out on a takeOver pull, by `service:accountId`, until the taker confirms or the timeout. */
   private readonly pending = new Map<string, PendingRelease>()
+  private headroomTimer: NodeJS.Timeout | null = null
+  private headroomSoon: NodeJS.Timeout | null = null
 
-  constructor(private readonly deps: AccountSyncDeps) {}
+  constructor(private readonly deps: AccountSyncDeps) {
+    if (deps.headroom) {
+      this.headroomTimer = setInterval(() => void this.pushHeadroom(), deps.headroomPushMs ?? HEADROOM_PUSH_MS)
+      this.headroomTimer.unref()
+    }
+  }
 
   private get me(): string {
     return this.deps.environmentId
@@ -199,6 +218,47 @@ export class AccountSync {
     }
     this.deps.nudge()
     return out
+  }
+
+  /**
+   * A peer's headroom picture (`accounts.headroom`): what its gateway saw of
+   * each account. Merged under its id; the answer carries ours, so one
+   * request a way keeps both hosts routing from the same picture. A new
+   * throttle in it re-picks here as if our own gateway had seen it.
+   */
+  handleHeadroom(from: string, snapshot: HeadroomSnapshot | null | undefined): HeadroomAnswer {
+    const store = this.deps.headroom
+    if (!store) return { snapshot: null }
+    if (store.merge(from, snapshot)) this.deps.nudge()
+    return { snapshot: store.own() }
+  }
+
+  /** A 429 landed here: every peer hears of it within a second. */
+  pushHeadroomSoon(): void {
+    if (!this.deps.headroom || this.headroomSoon) return
+    this.headroomSoon = setTimeout(() => {
+      this.headroomSoon = null
+      void this.pushHeadroom()
+    }, HEADROOM_DEBOUNCE_MS)
+    this.headroomSoon.unref()
+  }
+
+  /** Push this host's picture to every connected peer and take theirs from the answers. */
+  async pushHeadroom(environmentId?: string): Promise<void> {
+    const store = this.deps.headroom
+    if (!store) return
+    const links = environmentId ? [this.deps.peers.get(environmentId)] : this.deps.peers.all()
+    await Promise.all(
+      links.map(async (link) => {
+        if (!link?.connected) return
+        try {
+          const answer = await link.request<HeadroomAnswer>('accounts.headroom', { from: this.me, snapshot: store.own() })
+          if (store.merge(link.id, answer?.snapshot)) this.deps.nudge()
+        } catch (err) {
+          this.log(`${link.env.name}: headroom not shared (${(err as Error).message})`)
+        }
+      })
+    )
   }
 
   async handlePull(from: string, params: { service?: ServiceId; name?: string; takeOver?: boolean }): Promise<PullAnswer> {
@@ -772,6 +832,10 @@ export class AccountSync {
   close(): void {
     for (const t of this.timers.values()) clearTimeout(t)
     this.timers.clear()
+    if (this.headroomTimer) clearInterval(this.headroomTimer)
+    this.headroomTimer = null
+    if (this.headroomSoon) clearTimeout(this.headroomSoon)
+    this.headroomSoon = null
     for (const key of [...this.pending.keys()]) this.dropPending(key, 'closing')
   }
 }

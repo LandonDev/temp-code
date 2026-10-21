@@ -52,6 +52,28 @@ export interface ProviderAccounts {
   note?: string
   /** One-year token mints under way or waiting on the user (Claude only; main/aliax/staticTokens.ts). */
   mint?: MintProgress
+  /** Per account, what the gateways of every host have seen of its rate limits (main/server/headroom.ts). */
+  headroom?: Record<string, AccountHeadroom>
+}
+
+/**
+ * One account's observed headroom, merged across hosts: what the chip's bar
+ * and the routing score read. Nothing here is a usage window (those are the
+ * reports); it is the per-request limits the provider sends on every answer.
+ */
+export interface AccountHeadroom {
+  /** Share of the tightest per-request limit still left, 0..1; null before any answer was seen. */
+  room: number | null
+  /** When the tightest observed limit refills, if the provider said. */
+  resetsAt?: number
+  /** A 429 or an overloaded answer keeps the account out of new picks until then. */
+  throttledUntil?: number
+  /** Answers in the last minute, every host counted. */
+  ratePerMin: number
+  /** The provider's own status or tier words, when it sent them ("allowed_warning", a claim). */
+  tier?: string
+  /** The newest answer any host saw from the account. */
+  seenAt: number | null
 }
 
 /** One account's one-year token mint, as a row shows it. */

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { emptyAccounts, type AccountsSnapshot } from '@shared/accounts'
+import { emptyAccounts, type AccountHeadroom, type AccountsSnapshot } from '@shared/accounts'
 import { chooseAccount, resolvePin } from './accountRouting'
 
 const NOW = 1_800_000_000_000
@@ -177,5 +177,68 @@ describe('chooseAccount', () => {
     expect(chooseAccount({ ...input, pin: 'dead@x.com' })).toEqual({ route: { account: 'dead@x.com', pin: true }, current: 'b@x.com' })
     // Nothing else: the thread keeps what it had and the 401 surfaces.
     expect(chooseAccount({ ...input, current: 'dead@x.com', snapshot: snapshot({ 'dead@x.com': [fine('5h', 0)] }) })).toEqual({ route: { account: 'dead@x.com', pin: false }, current: 'dead@x.com' })
+  })
+})
+
+describe('chooseAccount, scored (the registry passes the gateway\'s headroom)', () => {
+  const base = { model: 'claude-fable-5-1', provider: 'claude' as const, now: NOW, pin: null }
+  const seen = (room: number | null, extra: Partial<AccountHeadroom> = {}): AccountHeadroom => ({ room, ratePerMin: 0, seenAt: NOW, ...extra })
+  const ten = () => {
+    const reports: Record<string, { label: string; usedPercent: number; resetsAt?: number }[]> = {}
+    for (let i = 0; i < 10; i++) reports[`acct${i}@x.com`] = [fine('5h', 10), fine('Weekly', 10, NOW + 9)]
+    return snapshot(reports)
+  }
+
+  it('a new thread lands on the account with the most headroom, not the sticky one of its siblings', () => {
+    const snap = ten()
+    const headroom = { 'acct0@x.com': seen(0.05, { ratePerMin: 20 }), 'acct1@x.com': seen(0.5), 'acct2@x.com': seen(null) }
+    expect(chooseAccount({ ...base, current: null, snapshot: snap, headroom, load: { 'acct0@x.com': 4 } }).current).toBe('acct2@x.com')
+    // The same picture with every other account loaded: the one with room still wins over the hammered one.
+    const load = Object.fromEntries(snap.providers.claude.profiles.map((p) => [p.name, p.name === 'acct0@x.com' ? 0 : 1]))
+    expect(chooseAccount({ ...base, current: null, snapshot: snap, headroom, load }).current).not.toBe('acct0@x.com')
+  })
+
+  it('an account inside a 429 cooldown is skipped until its reset, for a first spawn and for a sticky thread', () => {
+    const snap = snapshot({ 'a@x.com': [fine('5h', 5)], 'b@x.com': [fine('5h', 50)] })
+    const headroom = { 'a@x.com': seen(1, { throttledUntil: NOW + 30_000 }) }
+    expect(chooseAccount({ ...base, current: null, snapshot: snap, headroom }).current).toBe('b@x.com')
+    expect(chooseAccount({ ...base, current: 'a@x.com', snapshot: snap, headroom, lastActiveAt: NOW }).current).toBe('b@x.com')
+    // The cooldown lifted: the fuller account is a pick again.
+    expect(chooseAccount({ ...base, current: null, snapshot: snap, headroom, now: NOW + 30_001 }).current).toBe('a@x.com')
+    // Everything throttled: the thread keeps what it had, a first spawn gets nothing.
+    const all = { 'a@x.com': seen(0, { throttledUntil: NOW + 30_000 }), 'b@x.com': seen(0, { throttledUntil: NOW + 30_000 }) }
+    expect(chooseAccount({ ...base, current: 'a@x.com', snapshot: snap, headroom: all })).toEqual({ route: { account: 'a@x.com', pin: false }, current: 'a@x.com' })
+    expect(chooseAccount({ ...base, current: null, snapshot: snap, headroom: all })).toEqual({ route: null, current: null })
+  })
+
+  it('a pin is the route regardless; its expected account skips a throttled pin', () => {
+    const snap = snapshot({ 'a@x.com': [fine('5h', 5)], 'b@x.com': [fine('5h', 50)] })
+    const headroom = { 'a@x.com': seen(0, { throttledUntil: NOW + 30_000 }) }
+    expect(chooseAccount({ ...base, pin: 'a@x.com', current: null, snapshot: snap, headroom })).toEqual({ route: { account: 'a@x.com', pin: true }, current: 'b@x.com' })
+    expect(chooseAccount({ ...base, pin: 'a@x.com', current: null, snapshot: snap, headroom: {} })).toEqual({ route: { account: 'a@x.com', pin: true }, current: 'a@x.com' })
+    // Nothing usable at all: the pin it is.
+    const none = snapshot({ 'a@x.com': [full('5h')] })
+    expect(chooseAccount({ ...base, pin: 'a@x.com', current: null, snapshot: none, headroom })).toEqual({ route: { account: 'a@x.com', pin: true }, current: 'a@x.com' })
+  })
+
+  it('a sticky thread stays inside the tolerance and moves past it; a warm cache widens the tolerance', () => {
+    const snap = snapshot({ 'own@x.com': [fine('5h', 5)], 'other@x.com': [fine('5h', 5)] })
+    // The other account leads by 0.3 × 0.6 = 0.18: past the cold tolerance (0.10), inside a warm one (0.35).
+    const headroom = { 'own@x.com': seen(0.4), 'other@x.com': seen(1) }
+    expect(chooseAccount({ ...base, current: 'own@x.com', snapshot: snap, headroom, lastActiveAt: NOW - 3_600_000 }).current).toBe('other@x.com')
+    expect(chooseAccount({ ...base, current: 'own@x.com', snapshot: snap, headroom, lastActiveAt: NOW - 10_000 }).current).toBe('own@x.com')
+    // A small lead never moves a cold thread.
+    expect(chooseAccount({ ...base, current: 'own@x.com', snapshot: snap, headroom: { 'own@x.com': seen(0.8), 'other@x.com': seen(1) } }).current).toBe('own@x.com')
+    // A fresh pick with a cold cache takes the best outright; with a warm cache it still holds.
+    expect(chooseAccount({ ...base, current: 'own@x.com', snapshot: snap, headroom: { 'own@x.com': seen(0.9), 'other@x.com': seen(1) }, fresh: true }).current).toBe('other@x.com')
+    expect(chooseAccount({ ...base, current: 'own@x.com', snapshot: snap, headroom, fresh: true, lastActiveAt: NOW }).current).toBe('own@x.com')
+  })
+
+  it('an Opus thread still prefers a Fable-spent account, and a 401 account is never a pick', () => {
+    const snap = snapshot({ 'fresh@x.com': [fine('Weekly', 10, NOW + 1), fine('Fable', 0, NOW + 9)], 'spent@x.com': [fine('Weekly', 10, NOW + 9), full('Fable')] })
+    expect(chooseAccount({ ...base, model: 'claude-opus-5-5', current: null, snapshot: snap, headroom: {} }).current).toBe('spent@x.com')
+    expect(chooseAccount({ ...base, model: 'claude-opus-5-5', current: 'fresh@x.com', snapshot: snap, headroom: {} }).current).toBe('spent@x.com')
+    expect(chooseAccount({ ...base, model: 'claude-fable-5-1', current: null, snapshot: snap, headroom: {} }).current).toBe('fresh@x.com')
+    expect(chooseAccount({ ...base, current: null, snapshot: snap, headroom: {}, out: ['fresh@x.com'] }).current).toBeNull()
   })
 })

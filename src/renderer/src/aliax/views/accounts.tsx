@@ -13,7 +13,8 @@ import {
   RefreshCw,
   Trash2
 } from 'lucide-react'
-import { PROVIDER_OF, type AccountProvider, type MintProgress, type MintState, type PeerState } from '@shared/accounts'
+import { PROVIDER_OF, type AccountHeadroom, type AccountProvider, type MintProgress, type MintState, type PeerState } from '@shared/accounts'
+import { HeadroomLine } from '@renderer/chrome/HeadroomLine'
 import { motion, useReducedMotion } from 'motion/react'
 import type {
   PlanInfo,
@@ -570,6 +571,7 @@ function ProfileRow({
   serviceId,
   profile,
   report,
+  headroom,
   busy,
   index,
   now,
@@ -587,6 +589,8 @@ function ProfileRow({
   serviceId: ServiceId
   profile: ProfileView
   report?: UsageReport
+  /** What the gateways have seen of the account's per-request limits (the snapshot's `headroom`). */
+  headroom?: AccountHeadroom
   busy: boolean
   index: number
   now: number
@@ -702,6 +706,7 @@ function ProfileRow({
           report?.expired && <ExpiredLine onReauth={onReauth} />
         )}
         {!report?.expired && report?.rateLimit && <RateLimitLine rl={report.rateLimit} now={now} />}
+        {headroom && <HeadroomLine headroom={headroom} now={now} className="pt-0.5 text-muted-foreground" />}
       </div>
 
       <BankedResets count={report?.banked} />
@@ -724,6 +729,7 @@ function ProfileRow({
 function ServicePanel({
   service,
   usage,
+  headroom,
   busy,
   now,
   home,
@@ -744,6 +750,8 @@ function ServicePanel({
 }: {
   service: ServiceView
   usage?: UsageReport[]
+  /** Per account, the gateways' rate-limit picture (the snapshot's `headroom`). */
+  headroom?: Record<string, AccountHeadroom>
   busy: string | null
   now: number
   /** The environment new sign-ins of this service are handed to; undefined means this machine. */
@@ -847,6 +855,7 @@ function ServicePanel({
               owner={ownerFor(p)}
               mint={mint?.rows[p.name]}
               report={usage?.find((r) => r.profileName === p.name)}
+              headroom={headroom?.[p.name]}
               busy={busy === `use:${p.name}`}
               onUse={() => onUse(p.name)}
               onReauth={() => onReauth(p.name, p.email)}
@@ -893,6 +902,7 @@ export function SectionSkeleton() {
 export function AccountsView({
   views,
   usage,
+  headroom,
   busy,
   onCapture,
   onAdd,
@@ -912,6 +922,8 @@ export function AccountsView({
 }: {
   views: ServiceView[]
   usage: Partial<Record<ServiceId, UsageReport[]>>
+  /** Per service, per account, the gateways' rate-limit picture. */
+  headroom: Partial<Record<ServiceId, Record<string, AccountHeadroom>>>
   busy: string | null
   onCapture: (serviceId: ServiceId) => void
   onAdd: (serviceId: ServiceId) => void
@@ -942,6 +954,7 @@ export function AccountsView({
           key={s.id}
           service={s}
           usage={usage[s.id]}
+          headroom={headroom[s.id]}
           now={now}
           busy={
             busy === `capture:${s.id}`

@@ -1,5 +1,4 @@
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { loadRailGroupByHost, subscribeRailGroupByHost } from "../lib/settings";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ExplorerMenu, type ExplorerMenuItem } from "./ExplorerMenu";
 import { ALT, MOD, SHIFT } from "../lib/platform";
 import { toggleTranscriptZen } from "../lib/appearance";
@@ -168,7 +167,6 @@ export function MenuBar({
     ],
   );
 
-  const groupByHost = useSyncExternalStore(subscribeRailGroupByHost, loadRailGroupByHost, () => false);
   const getMenuItems = (key: MenuKey): ExplorerMenuItem[] => {
     switch (key) {
       case "file":
@@ -196,7 +194,6 @@ export function MenuBar({
           { kind: "item", id: "toggle_zen", label: "Toggle Zen Mode", shortcut: `${MOD}${ALT}Z` },
           { kind: "item", id: "open_inbox", label: "Inbox" },
           { kind: "item", id: "mark_all_read", label: "Mark All Threads as Read" },
-          { kind: "item", id: "toggle_group_by_host", label: "Group by Host", checked: groupByHost },
           ...(onOpenNotes
             ? [{ kind: "item" as const, id: "open_notes", label: "Notes" }]
             : []),

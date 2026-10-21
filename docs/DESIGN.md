@@ -114,15 +114,6 @@ Where each app surface gets its component when layouts are built:
 | Buttons with async state | BeUI StatefulButton (`components/motion`) |
 | Tabs, drawers, toasts | BeUI |
 
-## Workspaces across hosts
-
-The rail is one list of projects, whatever machine a checkout lives on: a
-project present on this Mac and on the box is one row with both hosts'
-threads under it, and a row's threads from another host carry one small host
-glyph beside the time, tertiary, named on hover, never a badge or a colour
-unless that host is offline. "Group by Host" in the View menu is the
-exception the user opts into, one section per machine.
-
 ## Restraint (what we do not do)
 
 No cards within cards. No glows. No decorative badges or chips. No repeating

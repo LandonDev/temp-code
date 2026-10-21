@@ -1,10 +1,7 @@
-import { degradedFor, registry, useEnvironments, useEnvironmentStatuses, type Environment, type EnvironmentStatus } from "../lib/connection";
+import { registry, useEnvironments, useEnvironmentStatuses } from "../lib/connection";
 import { environmentOfCwd } from "../lib/tcserver/projects";
-import { groupByEnvironment, mergeRailSections, soloRailItem, type RailItem } from "../lib/environmentGroups";
-import { useProjectClusters, useRailGroupByHost } from "../lib/projectMerge";
+import { groupByEnvironment } from "../lib/environmentGroups";
 import { EnvironmentSwitcher, toneOf } from "./EnvironmentSwitcher";
-import { ExplorerMenu } from "./ExplorerMenu";
-import { statusText } from "../surfaces/EnvironmentsSettings";
 import {
   Archive,
   Check,
@@ -74,7 +71,7 @@ import {
 import { formatLiveElapsed, type LiveAgent } from "../lib/liveAgents";
 import { useClock } from "../lib/turnClock";
 import type { CardThread } from "../lib/projectCardModel";
-import { mergeRailStatuses, useWorkspaceRailStatuses, type WorkspaceRailStatus } from "../hooks/useProjectSignals";
+import { useWorkspaceRailStatuses, type WorkspaceRailStatus } from "../hooks/useProjectSignals";
 import { threadsToMarkRead } from "../lib/markRead";
 import { markAllSeen, markSessionsSeen } from "../lib/sessionSeen";
 import { useSessionMetas } from "../lib/tcserver/store";
@@ -232,24 +229,14 @@ export function ProjectRail({
     () => projectRailSections(recents, null, railOrder, pinnedPaths),
     [pinnedPaths, railOrder, recents],
   );
-  // With another machine paired, a project checked out on both is one row
-  // with both hosts' threads (lib/projectMerge.ts); the View menu's "Group
-  // by host" splits the rows by machine instead, one section per host.
+  // With another machine paired, the workspace rows split by machine so a
+  // row always says where its threads run; one machine keeps one list.
   const environments = useEnvironments();
   const environmentStatuses = useEnvironmentStatuses();
-  const groupByHost = useRailGroupByHost();
-  const clusters = useProjectClusters();
   const groups = useMemo(
-    () => (environments.length > 1 && groupByHost ? groupByEnvironment(sections.projects, environments, environmentOfCwd) : null),
-    [environments, groupByHost, sections.projects, workspaces],
+    () => (environments.length > 1 ? groupByEnvironment(sections.projects, environments, environmentOfCwd) : null),
+    [environments, sections.projects, workspaces],
   );
-  const rows = useMemo(
-    () => mergeRailSections(sections, clusters, registry.primaryEnvironmentId, environmentOfCwd),
-    [clusters, sections, workspaces],
-  );
-  /** The rail row a workspace folder sits in (its own, or the merged project's). */
-  const rowOf = (path: string): RailItem | undefined =>
-    [...rows.pinned, ...rows.projects].find((row) => row.paths.some((p) => sameProjectPath(p, path)));
   const busy = useMemo(() => {
     const set = new Set<string>();
     for (const path of busyPaths ?? []) set.add(path);
@@ -266,7 +253,7 @@ export function ProjectRail({
   // "Mark all read": every thread on one workspace, or on every host (the
   // latter raises the seen floor too, as the View menu's item does).
   const markRead = (path: string | null): void => {
-    const { ids, at } = threadsToMarkRead(metas, catalog, path === null ? null : (rowOf(path)?.paths ?? path));
+    const { ids, at } = threadsToMarkRead(metas, catalog, path);
     if (path === null) markAllSeen(ids, at);
     else markSessionsSeen(ids, at);
   };
@@ -360,25 +347,25 @@ export function ProjectRail({
   };
 
   const onReorderPinned = (ids: string[]) => {
-    const subset = new Set(pinnedIds);
+    const subset = new Set(sections.pinned.map((item) => item.path));
     const next = reorderSubset(railOrder, ids, subset);
     setRailOrder(next);
     saveProjectRailOrder(next);
   };
 
   const onReorderProjects = (ids: string[]) => {
-    const subset = new Set(projectIds);
+    const subset = new Set(sections.projects.map((item) => item.path));
     const next = reorderSubset(railOrder, ids, subset);
     setRailOrder(next);
     saveProjectRailOrder(next);
   };
 
   const onTogglePin = (path: string) => {
-    // A merged project pins and unpins as one: every checkout's folder.
-    const paths = rowOf(path)?.paths ?? [path];
-    const isPinned = pinnedPaths.some((pinned) => paths.some((p) => sameProjectPath(pinned, p)));
+    const isPinned = pinnedPaths.some((pinned) =>
+      sameProjectPath(pinned, path),
+    );
     const next = isPinned
-      ? pinnedPaths.filter((pinned) => !paths.some((p) => sameProjectPath(pinned, p)))
+      ? pinnedPaths.filter((pinned) => !sameProjectPath(pinned, path))
       : [...pinnedPaths, path];
     setPinnedPaths(next);
     savePinnedProjects(next);
@@ -423,10 +410,8 @@ export function ProjectRail({
     setRemoving(null);
   };
 
-  // The draggable rows: merged projects move as one, by their lead folder.
-  const pinnedRows: RailItem[] = groups ? sections.pinned.map((item) => soloRailItem(item, environmentOfCwd(item.path))) : rows.pinned;
-  const pinnedIds = pinnedRows.map((item) => item.path);
-  const projectIds = groups ? sections.projects.map((item) => item.path) : rows.projects.map((item) => item.path);
+  const pinnedIds = sections.pinned.map((item) => item.path);
+  const projectIds = sections.projects.map((item) => item.path);
   const pinnedSortable = useSortable(pinnedIds, onReorderPinned, {
     axis: "y",
     onActivate: onSelectProject,
@@ -545,11 +530,10 @@ export function ProjectRail({
             }}
             className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-none pt-2 pb-2"
           >
-            {pinnedRows.length > 0 ? (
+            {sections.pinned.length > 0 ? (
               <ProjectSection
                 label="Pinned"
-                items={pinnedRows}
-                indexOf={(item) => pinnedIds.indexOf(item.path)}
+                items={sections.pinned}
                 cwd={cwd}
                 busy={busy}
                 needsYou={needsYou}
@@ -582,12 +566,10 @@ export function ProjectRail({
                       <span aria-hidden className={`size-1.5 shrink-0 rounded-full ${toneOf(status, status.transport !== "open")}`} />
                     ) : undefined
                   }
-                  items={group ? group.items.map((item) => soloRailItem(item, group.environment.id)) : rows.projects}
-                  indexOf={(item) => projectIds.indexOf(item.path)}
+                  items={group ? group.items : sections.projects}
+                  indexOf={(item) => sections.projects.indexOf(item)}
                   emptyLabel={group ? "No workspaces here yet" : "No workspaces yet"}
                   onAdd={() => onOpenProject(group?.environment.id)}
-                  addHosts={group || environments.length < 2 ? undefined : environments}
-                  onAddOn={onOpenProject}
                   cwd={cwd}
                   busy={busy}
                   needsYou={needsYou}
@@ -904,8 +886,6 @@ function ProjectSection({
   indexOf,
   emptyLabel,
   onAdd,
-  addHosts,
-  onAddOn,
   cwd,
   busy,
   needsYou,
@@ -928,14 +908,11 @@ function ProjectSection({
   label: string;
   /** A mark before the label: the environment's connection dot. */
   leading?: ReactNode;
-  items: RailItem[];
+  items: RecentProject[];
   /** The row's place in the sortable's whole list; defaults to its place in `items`. */
-  indexOf?: (item: RailItem) => number;
+  indexOf?: (item: RecentProject) => number;
   emptyLabel?: string;
   onAdd?: () => void;
-  /** Several hosts in one list: the add button asks which one first. */
-  addHosts?: Environment[];
-  onAddOn?: (environmentId: string) => void;
   cwd: string;
   busy: Set<string>;
   needsYou: Set<string>;
@@ -955,7 +932,6 @@ function ProjectSection({
   groupLogos: ReturnType<typeof useTabGroupLogos>;
   groupMascots: Record<string, string>;
 }) {
-  const [addMenu, setAddMenu] = useState<{ x: number; y: number } | null>(null);
   return (
     <div className="shrink-0">
       <div className="flex h-9 items-center gap-1 px-2 pr-1.5">
@@ -968,30 +944,11 @@ function ProjectSection({
             type="button"
             title="Add workspace"
             aria-label="Add workspace"
-            aria-haspopup={addHosts && addHosts.length > 1 ? "menu" : undefined}
-            onClick={(event) => {
-              if (addHosts && addHosts.length > 1 && onAddOn) {
-                const r = event.currentTarget.getBoundingClientRect();
-                setAddMenu({ x: r.left, y: r.bottom + 4 });
-              } else onAdd();
-            }}
+            onClick={onAdd}
             className="pressable grid size-6 shrink-0 place-items-center rounded-md text-content/50 hover:bg-content/10 hover:text-content"
           >
             <Plus className="size-3.5" strokeWidth={1.75} />
           </button>
-        ) : null}
-        {addMenu && addHosts && onAddOn ? (
-          <ExplorerMenu
-            x={addMenu.x}
-            y={addMenu.y}
-            ariaLabel="Add workspace on"
-            items={addHosts.map((env) => ({ kind: "item" as const, id: env.id, label: `Add on ${env.name}…` }))}
-            onPick={(id) => {
-              setAddMenu(null);
-              onAddOn(id);
-            }}
-            onClose={() => setAddMenu(null)}
-          />
         ) : null}
       </div>
       {items.length === 0 && emptyLabel ? (
@@ -1002,10 +959,10 @@ function ProjectSection({
           <ProjectCard
             key={item.path}
             item={item}
-            selected={!searchActive && item.paths.some((p) => sameProjectPath(p, cwd))}
-            busy={item.paths.some((p) => pathIn(p, busy))}
-            needsYou={item.paths.some((p) => pathIn(p, needsYou))}
-            railStatus={item.paths.length > 1 ? mergeRailStatuses(item.paths.map((p) => railStatuses.get(p))) : railStatuses.get(item.path)}
+            selected={!searchActive && sameProjectPath(item.path, cwd)}
+            busy={pathIn(item.path, busy)}
+            needsYou={pathIn(item.path, needsYou)}
+            railStatus={railStatuses.get(item.path)}
             activeSessionId={activeSessionId}
             onSelectAgent={onSelectAgent}
             pinned={pinned}
@@ -1142,7 +1099,7 @@ function ProjectCard({
   groupLogos,
   groupMascots,
 }: {
-  item: RailItem;
+  item: RecentProject;
   selected: boolean;
   busy: boolean;
   needsYou: boolean;
@@ -1163,11 +1120,7 @@ function ProjectCard({
   groupMascots: Record<string, string>;
 }) {
   const fallbackName = basename(item.path);
-  const allWorkspaces = useWorkspaces();
-  const workspaceId = workspaceByPath(allWorkspaces, item.path)?.id ?? null;
-  // Every checkout of a merged project, for the threads popover.
-  const workspaceIds = item.paths.map((p) => workspaceByPath(allWorkspaces, p)?.id).filter((id): id is string => !!id);
-  const hostTrouble = useHostTrouble(item.hosts);
+  const workspaceId = workspaceByPath(useWorkspaces(), item.path)?.id ?? null;
   const projectKey = workspaceId ?? projectName(item.path);
   const name = resolveTabGroupLabel(projectKey, groupLabels, fallbackName);
   const logoPath = resolveTabGroupLogo(projectKey, groupLogos);
@@ -1269,14 +1222,6 @@ function ProjectCard({
         ) : (
           <span className={nameClassName}>{name}</span>
         )}
-        {hostTrouble ? (
-          <span
-            aria-label={hostTrouble.title}
-            title={hostTrouble.title}
-            data-host-trouble={hostTrouble.environmentId}
-            className={`size-1.5 shrink-0 rounded-full ${hostTrouble.tone}`}
-          />
-        ) : null}
         {hasChanges ? (
           <span className="shrink-0">
             <ProjectDiffStat additions={additions} deletions={deletions} />
@@ -1332,7 +1277,6 @@ function ProjectCard({
       <WorkspaceThreadsPopover
         anchor={chipRef}
         workspaceId={workspaceId}
-        workspaceIds={workspaceIds}
         activeSessionId={activeSessionId}
         onDismiss={() => setThreadsOpen(false)}
         onSelectThread={(sessionId) => {
@@ -1343,27 +1287,6 @@ function ProjectCard({
     ) : null}
     </>
   );
-}
-
-/**
- * A row says nothing about its hosts until one of them is in trouble:
- * offline, unauthorized, or stuck reconnecting. Then the connection dot of
- * the switcher sits after the name, and the tooltip says which host and why.
- * One paired machine has no hosts to speak of.
- */
-function useHostTrouble(hosts: readonly string[]): { environmentId: string; tone: string; title: string } | null {
-  const environments = useEnvironments();
-  const statuses = useEnvironmentStatuses();
-  if (environments.length < 2) return null;
-  for (const id of hosts) {
-    const status: EnvironmentStatus | undefined = statuses.get(id);
-    if (!status) continue;
-    const degraded = degradedFor(status, Number.POSITIVE_INFINITY);
-    if (!degraded) continue;
-    const name = environments.find((e) => e.id === id)?.name ?? id;
-    return { environmentId: id, tone: toneOf(status, true), title: `${name}: ${statusText(status, Date.now())}` };
-  }
-  return null;
 }
 
 function pathIn(path: string, paths: Set<string>): boolean {

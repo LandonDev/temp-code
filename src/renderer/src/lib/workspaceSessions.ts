@@ -192,29 +192,18 @@ export function childRows(
 }
 
 const newestFirst = (a: ThreadRow, b: ThreadRow) => b.updatedAt - a.updatedAt;
-
-/** Whether a workspace id is in a list's scope: one id, the home (null), or several ids. */
-export function scopeTest(scope: string | null | readonly string[]): (workspaceId: string | null | undefined) => boolean {
-  if (typeof scope === "string") return (id) => id === scope;
-  if (scope === null) return (id) => id === null || id === undefined;
-  const set = new Set(scope);
-  return (id) => id != null && set.has(id);
-}
 const latestFirst = (a: ProjectGroup, b: ProjectGroup) => b.latest - a.latest;
 
 export function groupWorkspaceSessions(
   metas: readonly SessionMeta[],
   projects: readonly ProjectMeta[],
   workspaces: readonly WorkspaceMeta[],
-  scope: string | null | readonly string[],
+  workspaceId: string | null,
   lastSeen: Record<string, number>,
   floor = 0,
   cache?: RowCache,
 ): WorkspaceSessionGroups {
-  // One workspace, the home (null), or the same project's checkouts on
-  // several hosts: their projects and threads interleave as one list.
-  const inScope = scopeTest(scope);
-  const here = projects.filter((p) => inScope(p.workspaceId));
+  const here = projects.filter((p) => p.workspaceId === workspaceId);
   const ids = new Set(here.map((p) => p.id));
   const byProject = new Map<string, ThreadRow[]>();
   const archivedCount = new Map<string, number>();
@@ -224,7 +213,7 @@ export function groupWorkspaceSessions(
 
   for (const meta of metas) {
     if (meta.parentId) continue;
-    if (!inScope(workspaceIdOf(meta, projects, workspaces))) continue;
+    if (workspaceIdOf(meta, projects, workspaces) !== workspaceId) continue;
     const projectId =
       meta.projectId && ids.has(meta.projectId) ? meta.projectId : null;
     if (meta.archived) {

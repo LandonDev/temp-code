@@ -80,7 +80,6 @@ export const APP_COMMANDS = [
   "prev_environment",
   "activate_environment",
   "mark_all_read",
-  "toggle_group_by_host",
   "pause_all_threads",
   "resume_all_threads",
   "stop_all_threads",

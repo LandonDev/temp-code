@@ -236,6 +236,7 @@ export const METHOD_CAPABILITY: Record<ClientRequest['method'], MethodCapability
   'accounts.confirm': 'admin',
   'accounts.released': 'admin',
   'accounts.removed': 'admin',
+  'accounts.headroom': 'admin',
   // Harness config sync (remote/harnessSync.ts): another host's main process mirrors its config here; the pane's status and Sync now.
   'harness.manifest': 'admin',
   'harness.file': 'admin',
