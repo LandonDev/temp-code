@@ -474,7 +474,7 @@ public enum FailureKind: RawRepresentable, Codable, Hashable, Sendable {
     case harnessCrashed
     case unknown
     /// A value this build does not know; `rawValue` keeps it.
-    case unknown(String)
+    case unrecognized(String)
 
     public init(rawValue: String) {
         switch rawValue {
@@ -487,7 +487,7 @@ public enum FailureKind: RawRepresentable, Codable, Hashable, Sendable {
         case "network": self = .network
         case "harness_crashed": self = .harnessCrashed
         case "unknown": self = .unknown
-        default: self = .unknown(rawValue)
+        default: self = .unrecognized(rawValue)
         }
     }
 
@@ -502,7 +502,7 @@ public enum FailureKind: RawRepresentable, Codable, Hashable, Sendable {
         case .network: "network"
         case .harnessCrashed: "harness_crashed"
         case .unknown: "unknown"
-        case .unknown(let value): value
+        case .unrecognized(let value): value
         }
     }
 }

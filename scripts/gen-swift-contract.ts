@@ -539,24 +539,28 @@ function struct(
 
 function stringEnum(name: string, values: string[]): Lines {
   const cases = values.map((v) => ({ value: v, name: ident(camel(v)) }))
+  // A union whose own literal is "unknown" (FailureKind) keeps that case for
+  // the literal; the fallback for a value this build does not know is then
+  // `unrecognized(String)`, since Swift refuses two cases of one name.
+  const fallback = cases.some((c) => c.name === 'unknown') ? 'unrecognized' : 'unknown'
   return [
     `public enum ${name}: RawRepresentable, Codable, Hashable, Sendable {`,
     ...indent([
       ...cases.map((c) => `case ${c.name}`),
       '/// A value this build does not know; `rawValue` keeps it.',
-      'case unknown(String)',
+      `case ${fallback}(String)`,
       '',
       'public init(rawValue: String) {',
       '    switch rawValue {',
       ...cases.map((c) => `    case ${JSON.stringify(c.value)}: self = .${c.name}`),
-      '    default: self = .unknown(rawValue)',
+      `    default: self = .${fallback}(rawValue)`,
       '    }',
       '}',
       '',
       'public var rawValue: String {',
       '    switch self {',
       ...cases.map((c) => `    case .${c.name}: ${JSON.stringify(c.value)}`),
-      '    case .unknown(let value): value',
+      `    case .${fallback}(let value): value`,
       '    }',
       '}'
     ]),

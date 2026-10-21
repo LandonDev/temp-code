@@ -68,7 +68,9 @@ pinned to its TypeScript interface by a type-level check), run
   `ToolPreview.Line`).
 - A literal union is an enum backed by `String` with an `unknown(String)`
   case (`SessionStatus`, `Capability`, `ProviderId`, …). `rawValue` keeps
-  the unknown text, so the value re-encodes as received.
+  the unknown text, so the value re-encodes as received. When one of the
+  union's own literals is `unknown` (`FailureKind`), the fallback case is
+  `unrecognized(String)` instead, since Swift refuses two cases of one name.
 - A discriminated union is an enum with associated values and an
   `unknown(JSONValue)` case: `AgentEvent` on `type`, `ServerPush` on `push`.
   The payload types (`ToolResultEvent`, `EventsPush`, …) do not carry the
