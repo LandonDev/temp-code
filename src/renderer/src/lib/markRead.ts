@@ -26,3 +26,19 @@ export function threadsToMarkRead(
   }
   return { ids, at };
 }
+
+/** The same for every unarchived thread on one host. */
+export function threadsToMarkReadOnHost(
+  metas: readonly SessionMeta[],
+  environmentId: string,
+  now = Date.now(),
+): { ids: string[]; at: number } {
+  const ids: string[] = [];
+  let at = now;
+  for (const meta of metas) {
+    if (meta.archived || meta.environmentId !== environmentId) continue;
+    ids.push(meta.id);
+    if (meta.updatedAt > at) at = meta.updatedAt;
+  }
+  return { ids, at };
+}

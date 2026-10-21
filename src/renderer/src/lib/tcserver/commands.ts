@@ -318,6 +318,24 @@ export function pauseAllRunning(environmentId: string): Promise<SessionBatchResu
   return registry.linkOf(environmentId).request<SessionBatchResult>("session.pauseAllRunning");
 }
 
+export type SessionBatchAction = "pause" | "resume" | "stop" | "archive";
+
+/** One action over the given threads on one host, four at a time, each id
+ *  answered (lib/threadBatch.ts picks the ids). `cleanup` asks an archive
+ *  to release each thread's worktree and devices too. */
+export function sessionBatch(
+  environmentId: string,
+  action: SessionBatchAction,
+  ids: readonly string[],
+  options: { cleanup?: boolean } = {},
+): Promise<SessionBatchResult> {
+  return registry.linkOf(environmentId).request<SessionBatchResult>("session.batch", {
+    action,
+    ids: [...ids],
+    ...(options.cleanup ? { cleanup: true } : {}),
+  });
+}
+
 /** Context-window breakdown for one thread, as the harness reports it
  *  (claude's /context data); null while it streams or has no accounting. */
 export async function context(sessionId: string): Promise<unknown> {

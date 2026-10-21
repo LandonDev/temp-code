@@ -1021,6 +1021,49 @@ Linux pin waits for a build that has not expired), and vibrancy. Known gap:
 the local socket is the implicit admin for any process on the box's loopback,
 as on a Mac; the box has only `prod` as another user.
 
+### The fleet switches: Pause all, Resume all, Stop all, Archive done
+
+Fifteen threads need one click, not fifteen. Every scope has the same five
+rows, Mark all read first: a project's menu (the rail's row and the project
+header), a host's menu (the `…` on the host row in the rail when more than one
+host is paired, and the host's menu in Settings → Remote access), and the
+View menu for every host at once (Pause All Threads, Resume All Threads, Stop
+All Threads, Archive Finished Threads). No shortcuts: menu rows only. A row
+with nothing to act on is disabled, not hidden.
+
+What qualifies (`src/renderer/src/lib/threadBatch.ts`, roots only; a
+subagent follows its parent):
+
+| Row | Threads |
+| --- | --- |
+| Pause all | a turn in flight anywhere in the tree (running, starting, waiting on an approval), not paused |
+| Resume all | paused anywhere in the tree, or stopped by a restart once that status exists |
+| Stop all | the same running turns as Pause all; the turns end |
+| Archive done | idle or done for at least ten minutes, read, nothing to continue, nothing paused |
+
+Pause all, Stop all and Archive done confirm first, with the count read from
+the store while the dialog shows ("Pause 15 running threads on the box?",
+"Stop 1 running thread in temp-code?", "Archive 6 finished threads
+everywhere?"); OK closes at once. Archive done adds "and remove their 6
+worktrees and simulators" with a checkbox on by default when the host has a
+resources clean-up (`setResourceCleanup` in threadBatch.ts; none is wired
+until the thread-resources build lands, so the clause stays off). Resume all
+and Mark all read run at once.
+
+The run is one `session.batch {action, ids, cleanup?}` per host (operate;
+the hosts in parallel), which the registry answers through
+`src/main/server/sessionBatch.ts`: each id mapped to its root once, the
+existing per-session calls (`pauseRun`, `resumePausedRun`, `stopRun`,
+`setArchived`) at most four in flight, every id answered in `succeeded` or
+`failed` with its error; `cleanup` runs the registry's `resourceCleanup`
+after each archive when a host has one. The result is one toast bottom
+right, "Paused 14 · 1 failed: Search (harness not responding)", the failed
+thread's title a link that opens it; a clean result fades after eight
+seconds, one with a failure waits to be dismissed. Proof:
+`bun run script:e2e-thread-batch` (a headless isolated instance with fake
+providers: archive over five scratch threads, a subagent's id acting on its
+root, pause/stop/resume over idle threads, a read key refused).
+
 ### Starting a thread on the Mac from the box
 
 iOS builds, the simulator, screenshots and every Mac app exist only on the

@@ -38,6 +38,8 @@ export type TabGroupMenuExtraItem = {
   label: string;
   icon: IconComponent;
   danger?: boolean;
+  /** Shown dimmed and inert: the row has nothing to act on right now. */
+  disabled?: boolean;
   sepBefore?: boolean;
 };
 
@@ -76,6 +78,7 @@ type MenuItem = {
   label: string;
   shortcut?: string;
   danger?: boolean;
+  disabled?: boolean;
   icon: IconComponent;
 };
 
@@ -403,12 +406,16 @@ function MenuRow({
     <button
       type="button"
       role="menuitem"
+      disabled={item.disabled}
+      aria-disabled={item.disabled || undefined}
       onMouseDown={(e) => e.preventDefault()}
-      onClick={onPick}
+      onClick={item.disabled ? undefined : onPick}
       className={`flex h-8 w-full items-center gap-2.5 rounded-lg px-2 text-left text-[13px] leading-none ${
-        item.danger
-          ? "text-danger hover:bg-danger/15"
-          : "text-content hover:bg-content/5"
+        item.disabled
+          ? "cursor-default text-content/35"
+          : item.danger
+            ? "text-danger hover:bg-danger/15"
+            : "text-content hover:bg-content/5"
       }`}
     >
       <Icon className="size-3.5 shrink-0 text-content/50" strokeWidth={1.75} />

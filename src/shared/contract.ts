@@ -585,6 +585,19 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
   z.object({ id: z.string(), method: z.literal('session.continueAllErrors') }),
   z.object({ id: z.string(), method: z.literal('session.pauseAllRunning') }),
   z.object({ id: z.string(), method: z.literal('session.resumeAllPaused') }),
+  /** One action over many threads, four at a time, each id answered:
+   *  the rail's Pause all, Resume all, Stop all and Archive done. A
+   *  subagent's id acts on its root. `cleanup` (archive only) also
+   *  releases each thread's worktree and devices when the host can. */
+  z.object({
+    id: z.string(),
+    method: z.literal('session.batch'),
+    params: z.object({
+      action: z.enum(['pause', 'resume', 'stop', 'archive']),
+      ids: z.array(z.string()),
+      cleanup: z.boolean().optional()
+    })
+  }),
   z.object({
     id: z.string(),
     method: z.literal('session.subscribe'),

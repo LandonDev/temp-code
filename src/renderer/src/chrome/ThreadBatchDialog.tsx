@@ -1,0 +1,58 @@
+import { useState, type JSX } from "react";
+import { DialogFooter } from "./ConfirmDialog";
+import { Modal } from "./Modal";
+import { useSessionMetas } from "../lib/tcserver/store";
+import {
+  batchConfirm,
+  batchTargets,
+  cancelThreadBatch,
+  confirmThreadBatch,
+  resourcesHeldBy,
+  useBatchPending,
+  type BatchRequest,
+} from "../lib/threadBatch";
+import { useBatchSelection } from "../lib/threadBatchSelection";
+
+/**
+ * The confirm behind Pause all, Stop all and Archive done: "Pause 15
+ * running threads on the box?", the count read from the store as it
+ * shows. OK closes at once; the toast reports when the batch lands.
+ */
+export function ThreadBatchDialog(): JSX.Element | null {
+  const pending = useBatchPending();
+  if (!pending) return null;
+  return <Confirm key={`${pending.action}:${JSON.stringify(pending.scope)}`} request={pending} />;
+}
+
+function Confirm({ request }: { request: BatchRequest }): JSX.Element {
+  const sel = useBatchSelection(request.scope);
+  const metas = useSessionMetas();
+  const targets = batchTargets(request.action, metas, sel);
+  const ids = targets.map((t) => t.id);
+  const resources = request.action === "archiveDone" ? resourcesHeldBy(ids) : null;
+  const copy = batchConfirm(request.action, targets.length, request.scope, resources);
+  const [cleanup, setCleanup] = useState(true);
+  const confirm = () => {
+    void confirmThreadBatch(sel, copy.cleanup && cleanup ? { cleanup: true } : {});
+  };
+  return (
+    <Modal onClose={cancelThreadBatch} title={copy.title} size="sm">
+      <div className="flex flex-col gap-2 px-4 py-3" data-batch-confirm={request.action}>
+        <p className="text-[12px] leading-snug text-content/50">{copy.body}</p>
+        {copy.cleanup ? (
+          <label className="flex items-center gap-2 text-[12px] text-content/70">
+            <input type="checkbox" checked={cleanup} onChange={(e) => setCleanup(e.target.checked)} />
+            <span className="min-w-0 truncate">{copy.cleanup}</span>
+          </label>
+        ) : null}
+      </div>
+      <DialogFooter
+        onCancel={cancelThreadBatch}
+        onConfirm={confirm}
+        confirmLabel={copy.confirmLabel}
+        danger={copy.danger}
+        disabled={targets.length === 0}
+      />
+    </Modal>
+  );
+}

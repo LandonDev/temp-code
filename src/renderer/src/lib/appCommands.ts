@@ -80,6 +80,10 @@ export const APP_COMMANDS = [
   "prev_environment",
   "activate_environment",
   "mark_all_read",
+  "pause_all_threads",
+  "resume_all_threads",
+  "stop_all_threads",
+  "archive_done_threads",
 ] as const;
 
 export type AppCommandId = (typeof APP_COMMANDS)[number];
