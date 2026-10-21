@@ -75,6 +75,11 @@ function make(over: Partial<ConstructorParameters<typeof StaticTokens>[0]> = {})
     now: () => NOW,
     exchange: vi.fn(async () => minted()),
     mintFromRefresh: vi.fn(async () => ({ ok: false as const, reason: 'endpoint' as const, detail: 'offline' })),
+    // The CLI here is signed in with another account, still in date, unless a test says otherwise.
+    cliDetected: () => true,
+    liveAccountId: vi.fn(async (): Promise<string | null> => 'u-elsewhere'),
+    liveCredentialExpired: vi.fn(async () => false),
+    installLive: vi.fn(async (_name: string, _blob: string) => {}),
     ...over
   }
   return { tokens: new StaticTokens(deps), deps, windows }
@@ -283,5 +288,88 @@ describe('StaticTokens.convertAll and renewals', () => {
     expect(tokensOf('later').accessToken).toBe('OLD')
     expect(tokensOf('grant').refreshToken).toBe('R1')
     expect(deps.syncAll).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('StaticTokens and the live sign-in here', () => {
+  // What mintStaticFromRefresh leaves: the grant rotated server-side, the static token filed and the grant dropped.
+  const refreshMint = () =>
+    vi.fn(async (name: string) => {
+      vault.saveSecret('claude-code', name, staticBlob(NOW + YEAR_S * 1000))
+      vault.upsertProfile('claude-code', { ...vault.profiles('claude-code').find((p) => p.name === name)!, static: true })
+      return { ok: true as const, name, minted: { expiresAt: NOW + YEAR_S * 1000, scopes: ['user:profile', 'user:inference'], account: { uuid: 'u1', email: 'one@x.test' } } }
+    })
+
+  it('a refresh-grant conversion of the account the CLI is signed in with installs the new token as the live sign-in', async () => {
+    seed('one', grantBlob())
+    const installLive = vi.fn(async (_name: string, _blob: string) => {})
+    const { tokens, deps } = make({ mintFromRefresh: refreshMint(), liveAccountId: vi.fn(async () => 'u1'), installLive })
+    expect(await tokens.convert('one')).toMatchObject({ ok: true, name: 'one' })
+    expect(installLive).toHaveBeenCalledTimes(1)
+    const [name, blob] = installLive.mock.calls[0]!
+    expect(name).toBe('one')
+    expect(blob).toBe(vault.readSecret('claude-code', 'one'))
+    expect(isStaticBlob(blob)).toBe(true)
+    expect(deps.log).toHaveBeenCalledWith('one: installed as the live sign-in here')
+  })
+
+  it('a conversion of another account leaves the live sign-in alone; with nothing live at all it installs', async () => {
+    seed('one', grantBlob())
+    const other = make({ mintFromRefresh: refreshMint() })
+    expect((await other.tokens.convert('one')).ok).toBe(true)
+    expect(other.deps.installLive).not.toHaveBeenCalled()
+
+    seed('two', grantBlob('A2', 'R2'), { accountId: 'u2', email: 'two@x.test' })
+    const none = make({
+      liveAccountId: vi.fn(async () => null),
+      mintFromRefresh: vi.fn(async (name: string) => {
+        vault.saveSecret('claude-code', name, staticBlob(NOW + YEAR_S * 1000))
+        vault.upsertProfile('claude-code', { ...vault.profiles('claude-code').find((p) => p.name === name)!, static: true })
+        return { ok: true as const, name, minted: { expiresAt: NOW + YEAR_S * 1000, scopes: ['user:profile'], account: { uuid: 'u2', email: 'two@x.test' } } }
+      })
+    })
+    expect((await none.tokens.convert('two')).ok).toBe(true)
+    expect(none.deps.installLive).toHaveBeenCalledWith('two', vault.readSecret('claude-code', 'two'))
+  })
+
+  it('a failure to install is logged and the conversion still succeeds', async () => {
+    seed('one', grantBlob())
+    const { tokens, deps } = make({
+      mintFromRefresh: refreshMint(),
+      liveAccountId: vi.fn(async () => 'u1'),
+      installLive: vi.fn(async () => {
+        throw new Error('keychain locked')
+      })
+    })
+    expect(await tokens.convert('one')).toMatchObject({ ok: true, name: 'one' })
+    expect(deps.log).toHaveBeenCalledWith('one: could not install as the live sign-in here (keychain locked)')
+    expect(deps.syncAll).toHaveBeenCalledTimes(1)
+  })
+
+  it('repairLive installs the static token when the live sign-in has lapsed and its account holds one', async () => {
+    seed('one', staticBlob(NOW + 200 * DAY), { static: true })
+    seed('two', grantBlob('A2', 'R2'), { accountId: 'u2', email: 'two@x.test' })
+    const { tokens, deps } = make({ liveCredentialExpired: vi.fn(async () => true), liveAccountId: vi.fn(async () => 'u1') })
+    expect(await tokens.repairLive()).toBe(true)
+    expect(deps.installLive).toHaveBeenCalledWith('one', vault.readSecret('claude-code', 'one'))
+    expect(deps.log).toHaveBeenCalledWith('one: the live sign-in here had lapsed; installed its one-year token')
+  })
+
+  it('repairLive does nothing when the live account still holds a grant, when nothing lapsed, or when its static token lapsed too', async () => {
+    seed('two', grantBlob('A2', 'R2'), { accountId: 'u2', email: 'two@x.test' })
+    const grant = make({ liveCredentialExpired: vi.fn(async () => true), liveAccountId: vi.fn(async () => 'u2') })
+    expect(await grant.tokens.repairLive()).toBe(false)
+    expect(grant.deps.installLive).not.toHaveBeenCalled()
+
+    seed('one', staticBlob(NOW + 200 * DAY), { static: true })
+    const fresh = make({ liveCredentialExpired: vi.fn(async () => false), liveAccountId: vi.fn(async () => 'u1') })
+    expect(await fresh.tokens.repairLive()).toBe(false)
+    expect(fresh.deps.installLive).not.toHaveBeenCalled()
+    expect(fresh.deps.liveAccountId).not.toHaveBeenCalled()
+
+    seed('one', staticBlob(NOW - DAY), { static: true })
+    const dead = make({ liveCredentialExpired: vi.fn(async () => true), liveAccountId: vi.fn(async () => 'u1') })
+    expect(await dead.tokens.repairLive()).toBe(false)
+    expect(dead.deps.installLive).not.toHaveBeenCalled()
   })
 })

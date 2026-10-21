@@ -429,7 +429,12 @@ temp-code `src/main/server/remote/{peers,accountSync}.ts`):
   sign-in (`~/.claude/.credentials.json` for agents) when nothing is live
   there, and a renewed token of the account that is live replaces the older
   one (`accountSync.ts activateIfNothingLive`), so the box follows renewals
-  with no sign-in of its own. The Aliax app shows a static row's lapse and
+  with no sign-in of its own. The host that mints a token for the account
+  its own CLI is signed in with installs that token as its live sign-in at
+  once (the refresh route rotates the grant the CLI holds, and the CLI's
+  next refresh of the old one is refused), and a lapsed live sign-in whose
+  account holds a static token is repaired at boot and every six hours
+  (`staticTokens.ts repairLive`). The Aliax app shows a static row's lapse and
   never refreshes it; renewing is temp-code's.
 - **Codex is owned by the box.** Set "Refreshed by: box" on the Codex panel,
   then Add account: the fresh grant is handed to the box, becomes the box's

@@ -165,7 +165,12 @@ routed to (aliax-core's `forward`). Two listeners:
   tokens inside their last 30 days renew on their
   own through the stored claude.ai session (6 h cadence, row + footer say
   "Sign in to renew" when the session is gone); the box's live sign-in is
-  the first static token it got and follows that account's renewals. Sign
+  the first static token it got and follows that account's renewals; the
+  host that mints a token for the account its CLI is signed in with
+  installs that token as its live sign-in (the refresh route rotates the
+  grant the CLI holds), and a lapsed live sign-in whose account holds a
+  static token is repaired at boot and every six hours
+  (`StaticTokens.repairLive`). Sign
   in on the Mac; the box never does (docs/box.md "Accounts: sign in on the
   Mac once"). A handoff is
   two-phase under aliax-core's per-profile lock (`src/lock.ts`, shared with

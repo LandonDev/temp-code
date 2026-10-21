@@ -1,11 +1,13 @@
 import {
   accounts,
+  adapter,
   checkMinted,
   exchangeCodeForStatic,
   hasRefresh,
   INFERENCE_ONLY_SCOPES,
   mintStaticFromRefresh,
   ownsProfile,
+  pinProfile,
   saveStaticClaude,
   STATIC_SCOPES,
   staticRenewalDue,
@@ -44,6 +46,13 @@ import type { SessionMintInput, SessionMintResult } from './staticMint'
  * hours, each static token inside the window is minted again through its
  * stored session, once a day at most while that fails. The sync pushes a
  * new token to every other host as it does any static profile.
+ *
+ * The live sign-in follows: a token minted here for the account this host's
+ * CLI is signed in with (or with no CLI sign-in at all) is installed as the
+ * CLI's live login at once, because the refresh route rotates the grant and
+ * the CLI's copy of the old one is refused at its next refresh. A lapsed
+ * live sign-in whose account holds a static token is repaired the same way,
+ * at boot and every six hours (repairLive).
  */
 
 export interface StaticTokenDeps {
@@ -68,6 +77,17 @@ export interface StaticTokenDeps {
   renewEveryMs?: number
   /** A failed renewal is not tried again before this. */
   retryAfterMs?: number
+  /** The CLI on this host (aliax-core's claude adapter); seams so tests never touch the real sign-in. */
+  cliDetected?: () => boolean
+  liveAccountId?: () => Promise<string | null>
+  liveCredentialExpired?: () => Promise<boolean>
+  /** Make a blob the CLI's live sign-in here, restarting nothing (the empty target set). */
+  installLive?: (name: string, blob: string) => Promise<void>
+}
+
+const claudeCli = () => adapter('claude-code')
+const defaultInstallLive = async (name: string, blob: string): Promise<void> => {
+  await claudeCli().activate(blob, accounts.extra('claude-code', name), new Set())
 }
 
 export const RENEW_FIRST_DELAY_MS = 60_000
@@ -193,9 +213,64 @@ export class StaticTokens {
     await work
   }
 
+  /**
+   * The CLI's live sign-in here has lapsed and its account holds a one-year
+   * token: install that token (a refresh-route mint before this module did it
+   * left the CLI on a rotated, refused grant). A live account that still
+   * holds a grant, a static token that lapsed too, and a live sign-in still
+   * in date are left alone.
+   */
+  async repairLive(): Promise<boolean> {
+    if (!(this.deps.cliDetected ?? (() => claudeCli().detect()))()) return false
+    const expired = await (this.deps.liveCredentialExpired ?? (async () => (await claudeCli().liveCredentialExpired?.()) ?? false))().catch(() => false)
+    if (!expired) return false
+    const liveId = await (this.deps.liveAccountId ?? (() => claudeCli().liveAccountId()))().catch(() => null)
+    if (!liveId) return false
+    const profile = vault.profiles('claude-code').find((p) => p.accountId === liveId && p.static)
+    if (!profile) return false
+    const exp = this.expiryOf(profile.name)
+    if (exp !== undefined && exp <= this.now()) return false
+    const blob = this.blobOf(profile.name)
+    if (!blob) return false
+    try {
+      await (this.deps.installLive ?? defaultInstallLive)(profile.name, blob)
+      accounts.clearUsageCache('claude-code')
+      this.log(`${profile.name}: the live sign-in here had lapsed; installed its one-year token`)
+      this.deps.nudge()
+      return true
+    } catch (err) {
+      this.log(`${profile.name}: could not repair the lapsed live sign-in (${(err as Error).message})`)
+      return false
+    }
+  }
+
+  /** After a token is filed: the CLI here signed in with that account (or with nothing) gets it as its live login. Never fails the mint. */
+  private async installIfLive(name: string): Promise<void> {
+    try {
+      if (!(this.deps.cliDetected ?? (() => claudeCli().detect()))()) return
+      const profile = this.profileOf(name)
+      const blob = this.blobOf(name)
+      if (!profile || !blob) return
+      const liveId = await (this.deps.liveAccountId ?? (() => claudeCli().liveAccountId()))().catch(() => null)
+      if (liveId && liveId !== profile.accountId) return
+      await (this.deps.installLive ?? defaultInstallLive)(name, blob)
+      // Nothing was live: the proxy follows the new sign-in, as on a host that received the token (AccountSync.activateIfNothingLive).
+      if (!liveId) pinProfile('claude-code', name)
+      accounts.clearUsageCache('claude-code')
+      this.log(`${name}: installed as the live sign-in here`)
+    } catch (err) {
+      this.log(`${name}: could not install as the live sign-in here (${(err as Error).message})`)
+    }
+  }
+
+  /** Boot: the live sign-in repaired at once, renewals a minute later; then both every six hours. */
   start(): void {
-    const first = setTimeout(() => void this.renewDue().catch((err) => this.log(`renewal pass failed (${(err as Error).message})`)), this.deps.firstRenewDelayMs ?? RENEW_FIRST_DELAY_MS)
-    const every = setInterval(() => void this.renewDue().catch((err) => this.log(`renewal pass failed (${(err as Error).message})`)), this.deps.renewEveryMs ?? RENEW_EVERY_MS)
+    const repair = (): Promise<unknown> => this.repairLive().catch((err) => this.log(`live sign-in repair failed (${(err as Error).message})`))
+    const renew = (): Promise<unknown> => this.renewDue().catch((err) => this.log(`renewal pass failed (${(err as Error).message})`))
+    void repair()
+    const first = setTimeout(() => void renew(), this.deps.firstRenewDelayMs ?? RENEW_FIRST_DELAY_MS)
+    // One after the other, so a renewal of the live account installs after the repair, never under it.
+    const every = setInterval(() => void repair().then(renew), this.deps.renewEveryMs ?? RENEW_EVERY_MS)
     first.unref()
     every.unref()
     this.timers.push(first, every)
@@ -219,6 +294,7 @@ export class StaticTokens {
       this.lastAttempt.delete(name)
       this.set(name, null)
       this.log(`${name}: one-year token filed, lapses ${new Date(out.expiresAt).toISOString().slice(0, 10)}`)
+      await this.installIfLive(name)
       void this.deps.syncAll().catch((err) => this.log(`${name}: sync after the mint failed (${(err as Error).message})`))
     } else if (out.state === 'cancelled') {
       this.set(name, null)
