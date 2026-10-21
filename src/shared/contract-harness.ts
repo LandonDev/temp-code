@@ -2,7 +2,7 @@ import { z } from 'zod'
 
 // Harness config sync (docs/box.md "Harness config: synced from the Mac"):
 // the Mac's main process mirrors the user's Claude Code and Codex config
-// (skills, commands, agents, settings, plugins, two keys of ~/.claude.json)
+// (skills, commands, agents, hooks, settings, plugins, two keys of ~/.claude.json)
 // onto the hosts it holds admin keys for, over the peer link. `harness.
 // manifest`, `.file` and `.commit` are what one host's main process asks of
 // another; `harness.status`, `.sync` and `.settings.set` are the Settings →
@@ -75,6 +75,8 @@ export interface HarnessEnvironmentStatus {
   running: boolean
   /** Files in the last manifest the host committed, null before the first. */
   files: number | null
+  /** Those files per set label (harnessSet.ts), every label present; null before the first sync or from an older sender. */
+  sets: Record<string, number> | null
   syncedAt: number | null
   lastAttemptAt: number | null
   error: string | null

@@ -190,7 +190,7 @@ export function RemoteSettings() {
           <Heading title="Harness config" />
           <Row
             label="Sync to hosts"
-            description="Skills, commands, agents, settings and plugins of Claude Code and Codex go from here to every host this machine holds an admin key for; this machine's copy wins."
+            description="Skills, commands, agents, hooks, settings and plugins of Claude Code and Codex go from here to every host this machine holds an admin key for; this machine's copy wins. A skill's per-platform binary stays: each host downloads its own."
           >
             <Toggle
               label="Sync harness config"
@@ -217,7 +217,7 @@ export function RemoteSettings() {
           </List>
           {harness.skipped > 0 ? (
             <p className="pb-2 text-[12px] text-content/40">
-              {harness.skipped} {harness.skipped === 1 ? "file stays" : "files stay"} on this machine (over 16 MB, or a symlink out of reach).
+              {harness.skipped} {harness.skipped === 1 ? "file stays" : "files stay"} on this machine (over 16 MB, a symlink out of reach, or a macOS binary).
             </p>
           ) : null}
         </>

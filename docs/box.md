@@ -506,35 +506,65 @@ a GitHub remote. Agent commits carry no AI attribution trailers.
 
 ### Harness config: synced from the Mac
 
-The skills, slash commands, agents, settings and plugins the user set up for
-Claude Code and Codex live on the Mac, and the Mac's main process mirrors
-them onto the box over the same admin link the accounts use
+The skills, slash commands, agents, hooks, settings and plugins the user set
+up for Claude Code and Codex live on the Mac, and the Mac's main process
+mirrors them onto the box over the same admin link the accounts use
 (`src/main/server/remote/{harnessSet,harnessSync}.ts`). The Mac's copy wins;
 the box never sends back. Nothing to do on the box: a headless host only
 receives (`harness.sync.enabled` defaults to off there, on for a desktop).
+Installing a skill on the Mac (Impeccable's `npx` installer puts it under
+`~/.agents/skills/`, links or copies it into `~/.claude/skills/`, and writes
+Codex's `~/.codex/hooks.json`) is enough: the box has it within seconds.
 
-The set, relative to each HOME:
+The set, relative to each HOME, each rule with the label the status line
+uses (`HARNESS_SET` in `harnessSet.ts`):
 
-- `.claude/skills/**` except `.claude/skills/synced/**` (the CLI's own
-  account-synced bucket: each side keeps its own)
-- `.claude/commands/**`, `.claude/agents/**`, `.claude/settings.json`
-- `.claude/plugins/**` except `.claude/plugins/synced/**` and
+- Claude skills: `.claude/skills/**` except `.claude/skills/synced/**` (the
+  CLI's own account-synced bucket: each side keeps its own)
+- Claude commands `.claude/commands/**`, Claude agents `.claude/agents/**`,
+  Claude hooks `.claude/hooks/**` (the scripts settings.json's hook commands
+  point at, when they live there), Claude settings `.claude/settings.json`
+- Claude plugins: `.claude/plugins/**` except `.claude/plugins/synced/**` and
   `plugin-directory-cache*.json` (the CLI rebuilds it per host)
 - `enabledPlugins` and `mcpServers` of `~/.claude.json`, merged into the
   box's own file; every other key (`oauthAccount`, `projects`, …) stays as
   the box has it
-- `.codex/skills/**` except `.codex/skills/.system/**`, `.codex/prompts/**`,
-  `.codex/config.toml`
-- `.agents/skills/**`
+- Codex skills `.codex/skills/**` except `.codex/skills/.system/**`, Codex
+  prompts `.codex/prompts/**`, Codex config `.codex/config.toml`, Codex hooks
+  `.codex/hooks.json` (the user-level hooks; the trust rows config.toml keeps
+  for them, `[hooks.state."<home>/.codex/hooks.json:post_tool_use:0:0"]
+  trusted_hash = …`, name the box's copy after path translation, and the hash
+  is the hook's own, so a hooks.json that names `$HOME` lands byte for byte
+  and stays trusted)
+- Shared skills `.agents/skills/**`, read by Claude Code and Codex alike
+
+A project's own `.claude/skills/` lives in its repository and crosses with
+git, not with this sync.
 
 Never, whatever the rules say (checked when the manifest is built and again
 on landing, and in the tests): `.credentials.json`, `auth.json`,
 `settings.local.json`, `.claude.json` as a file, `*.pem`, `*.key`, `*.p8`,
 `*.p12`, `*.pfx`. Also left out: any `.git` dir (a marketplace clone lands as
-a plain tree), `.DS_Store`, and files over 16 MiB. A symlink on the Mac (a
-skill linked in from a checkout) is followed when its target is inside the
-Mac's HOME and outside `.ssh`, `.gnupg`, `.aws` and the like; the box gets
-the content.
+a plain tree), `.DS_Store`, files over 16 MiB, and any Mach-O file (thin,
+either byte order, or a universal binary, told from a Java class file by the
+arch count): a macOS executable runs nowhere else, so the Mac leaves it out
+of the manifest and counts it as skipped, and the box refuses one at commit
+should a manifest name it anyway. Under every skills root, a skill's
+per-platform binary cache `<skill>/scripts/bin/**` is not even walked: that
+is where Impeccable's launcher (`scripts/impeccable`) looks for
+`bin/<os>-<arch>/impeccable` beside itself before filling
+`~/.impeccable/bin/<version>/` (outside the set) from the release channel on
+first use. The launcher, `scripts/VERSION` (the engine version), SKILL.md,
+`command-metadata.json` and the skill's `agents/*.toml` cross; the box
+downloads its own Linux engine the first time a hook or a thread runs it.
+
+A symlink on the Mac is followed when its target is inside the Mac's HOME
+and outside `.ssh`, `.gnupg`, `.aws` and the like. A skill directory that is
+a link (into another skills root, a checkout, or a package cache under HOME
+such as `~/Library/Caches/…` or `~/.npm/_npx/…`) is walked as a directory:
+the box gets the target's files as a real directory under the same path,
+never the link. A link that points outside HOME (`/opt/homebrew/…`) is
+skipped and counted.
 
 When: on link-up, about two seconds after a change under the set (a watch on
 each rule root), and every 15 minutes. The Mac sends a manifest (path, size,
@@ -557,9 +587,13 @@ macOS-only tools just fail here; each landing of `settings.json` logs one
 `[harness-sync]` line naming the hook executables not on the box's PATH.
 
 Status: Settings → Remote access on the Mac has a Harness config section, one
-row per host: `Harness config: 143 files, synced 2m ago`, `never synced`, or
-the last error, with Sync now (`harness.status` and `harness.sync` on the
-Mac's own socket). On the box, the `[harness-sync]` lines in the service's
+row per host: `Harness config: 143 files (Claude skills 80, Claude commands
+4, Claude settings 1, Codex skills 12, Codex config 1, Codex hooks 1, Shared
+skills 44), synced 2m ago` (every set with files, in the set's order, from
+`sets` of `harness.status`), `never synced`, or the last error, with Sync now
+(`harness.status` and `harness.sync` on the Mac's own socket). Below the rows,
+how many files stay on the Mac (over 16 MiB, a symlink out of reach, or a
+macOS binary). On the box, the `[harness-sync]` lines in the service's
 journal say what landed. Proof:
 `bun run script:e2e-harness-sync` (two headless instances with their own
 HOMEs, paired over the fixed port; runs on the box under `xvfb-run`).

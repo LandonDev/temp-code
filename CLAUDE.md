@@ -277,12 +277,19 @@ routed to (aliax-core's `forward`). Two listeners:
   `bun scripts/e2e-box-remote.ts`. Every "ask the login shell" call goes
   through src/main/server/loginShell.ts (`$SHELL`, else zsh on macOS, bash
   elsewhere): never hardcode /bin/zsh.
-- Harness config (skills, commands, agents, settings.json, plugins, Codex
-  config, two keys of ~/.claude.json) is mirrored Mac → box by the Mac's main
-  process over the peer link (`src/main/server/remote/harnessSync.ts`,
-  `harness.*` RPCs, admin; paths translated through `pathMap.ts`); the set,
-  the exclusions and the status line are in docs/box.md "Harness config:
-  synced from the Mac". Proof: `bun run script:e2e-harness-sync`.
+- Harness config (skills under `~/.claude/skills`, `~/.codex/skills` and
+  `~/.agents/skills`, commands, agents, `~/.claude/hooks`, settings.json,
+  plugins, Codex config and `~/.codex/hooks.json`, two keys of ~/.claude.json)
+  is mirrored Mac → box by the Mac's main process over the peer link
+  (`src/main/server/remote/harnessSync.ts`, `harness.*` RPCs, admin; paths
+  translated through `pathMap.ts`, so Codex's `[hooks.state."<home>/.codex/
+  hooks.json:…"]` trust rows name the box's copy). A skill dir that is a
+  symlink lands as a copied tree. A skill's per-platform binary cache
+  (`<skill>/scripts/bin/**`, Impeccable's) and any Mach-O file never cross:
+  the box downloads its own engine on first use. The set with its labels
+  (`HARNESS_SET` in `harnessSet.ts`), the exclusions and the status line
+  (each set with its file count) are in docs/box.md "Harness config: synced
+  from the Mac". Proof: `bun run script:e2e-harness-sync`.
 - Attachments on a remote thread: a file from another host (or a big paste)
   is uploaded to the thread's host before the turn names it
   (`attachment.begin/chunk/commit`, src/shared/contract-attachments.ts) into
