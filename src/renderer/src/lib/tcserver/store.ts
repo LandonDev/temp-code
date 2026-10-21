@@ -171,6 +171,10 @@ type EventsResult = EventRow[] | EventsPage;
  *  calls, messages); the rest folds behind them. Rows, not turns: an agent
  *  thread packs tens of thousands of events into two turns. */
 const TAIL_ROWS = 300;
+/** Pages followed after a resume whose page says more rows come after it
+ *  (the remote pager caps a page). The server answers the second request
+ *  whole or as a fresh tail, so one is the norm; the bound is a guard. */
+const MORE_AFTER_PAGES = 8;
 /** Rows folded per slice while the head of a long log folds in the background. */
 const HEAD_CHUNK = 2000;
 /** Rows per `session.events` call while a long head loads: the server reads
@@ -1124,11 +1128,14 @@ class SessionStore {
     if (entry.held) return;
     this.noteLoad(why);
     // A first load paints the last turns first; the rest folds behind them.
-    const tailFirst = !entry.loaded && entry.lastSeq === 0 && !entry.head;
+    // The cursor decides, never the loaded flag: a pane restored from a
+    // saved layout is a loaded draft with no rows, and a resume from seq 0
+    // on a remote socket answers the OLDEST page, turn one still open.
+    const tailFirst = entry.lastSeq === 0 && !entry.head;
     entry.coldOpen = tailFirst;
     subs.add(id, this.handlersFor(entry));
     await Promise.all([
-      subs.resume(id, tailFirst ? { tail: TAIL_ROWS } : {}),
+      this.resumeThrough(entry, subs, tailFirst),
       // The queue lives in server memory: a restart empties it, so the
       // strip refills from the list rather than keeping stale rows.
       link
@@ -1139,6 +1146,19 @@ class SessionStore {
     // A local socket folds the whole head behind the tail; a remote one
     // pages it in on demand (loadOlder), oldest page last.
     if (entry.head && !entry.head.fetching && !entry.rows) void this.fetchHead(entry);
+  }
+
+  /** Resume, then follow a page that says rows come after it (the remote
+   *  pager caps a page): the next request carries the cursor the page left,
+   *  which the server answers whole or as a fresh tail (`reset`). Bounded,
+   *  so a page that never stops saying so cannot hold the load open. */
+  private async resumeThrough(entry: Entry, subs: Subscriptions, tailFirst: boolean): Promise<void> {
+    const id = entry.session.id;
+    let page = await subs.resume(id, tailFirst ? { tail: TAIL_ROWS } : {});
+    for (let n = 0; page.moreAfter && page.rows.length > 0 && n < MORE_AFTER_PAGES; n++) {
+      if (this.entries.get(id) !== entry) return;
+      page = await subs.resume(id);
+    }
   }
 
   /** Drop a transcript's fold so a fresh tail can take its place; the
@@ -1589,7 +1609,9 @@ class SessionStore {
     const subs = this.attached.get(to)?.subs;
     if (entry.loaded && subs) {
       subs.add(id, this.handlersFor(entry));
-      void subs.resume(id).catch(() => undefined);
+      const tailFirst = entry.lastSeq === 0 && !entry.head;
+      entry.coldOpen = tailFirst;
+      void this.resumeThrough(entry, subs, tailFirst).catch(() => undefined);
     }
   }
 

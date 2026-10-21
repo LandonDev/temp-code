@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { sessionStore, type Link } from "./store";
+import { newSession } from "../session";
 import type { EventRow, ServerPush, SessionMeta } from "./types";
 import type { EventsPage, OmittedBody, SessionPage } from "@server/shared/wire";
 
@@ -110,8 +111,12 @@ class RemoteLink implements Link {
         return Promise.resolve(page as T);
       }
       if (this.resume) return Promise.resolve(this.resume as T);
-      const rows = all.filter((r) => r.seq > afterSeq);
-      return Promise.resolve({ rows, moreBefore: false, moreAfter: false, reset: false } as T);
+      // A resume without a tail answers the oldest rows after the cursor,
+      // capped at a page, and says when more follow (the wire's pager caps
+      // the oldest page this way; from a cursor it answers whole or resets).
+      const range = all.filter((r) => r.seq > afterSeq);
+      const rows = range.slice(0, this.pageRows);
+      return Promise.resolve({ rows, moreBefore: false, moreAfter: rows.length < range.length, reset: false } as T);
     }
     if (method === "session.rowBody") {
       const { sessionId, seq } = params as { sessionId: string; seq: number };
@@ -277,6 +282,46 @@ describe("remote profile: history", () => {
     const texts = sessionStore.get("s1")!.blocks.map((b) => b.text);
     expect(texts).toEqual(["prompt 1", "answer 1", "prompt 2", "answer 2"]);
     expect(sessionStore.get("s1")!.blocks[0].id).toBe("u:41");
+    expect(sessionStore.hasOlderHistory("s1")).toBe(true);
+  });
+
+  it("a pane restored from the saved layout paints the tail once its host lists it, never the oldest page", async () => {
+    // The stub enters as a loaded draft with no rows (the setSessions shim),
+    // before the box has connected; its first list adopts it and resyncs.
+    link.environmentId = "box";
+    const stub = { ...newSession("box", "claude", "/repo"), id: "s1", title: "Master" };
+    sessionStore.mutate((prev) => [...prev, stub]);
+    link.pages = [[wireMeta({ id: "s1", title: "Master" })]];
+    link.events.set("s1", turns("s1"));
+    await boot(link);
+    const events = link.calls.filter((c) => c.method === "session.events");
+    expect(events).toHaveLength(1);
+    expect(events[0].params).toMatchObject({ sessionId: "s1", afterSeq: 0, tail: expect.any(Number) });
+    const session = sessionStore.get("s1")!;
+    expect(session.environmentId).toBe("box");
+    expect(session.blocks.map((b) => b.text)).toEqual(["prompt 5", "answer 5", "prompt 6", "answer 6"]);
+    expect(sessionStore.hasOlderHistory("s1")).toBe(true);
+    expect(await sessionStore.loadOlder("s1")).toBe(true);
+    expect(sessionStore.get("s1")!.blocks[0].text).toBe("prompt 3");
+  });
+
+  it("a resume page that says more rows follow is followed to the end, not left as the whole fold", async () => {
+    link.pages = [[wireMeta({ id: "s1" })]];
+    link.events.set("s1", turns("s1"));
+    await boot(link);
+    await sessionStore.ensureLoaded("s1");
+    expect(sessionStore.get("s1")?.blocks.at(-1)?.text).toBe("answer 6");
+    // Six more turns landed while the socket was down: the pager answers
+    // the gap four rows at a time, each page naming the cursor it left.
+    link.events.set("s1", turns("s1", 12));
+    const before = link.count("session.events");
+    await sessionStore.resync(link);
+    const pages = link.calls
+      .filter((c) => c.method === "session.events")
+      .slice(before)
+      .map((c) => c.params as { afterSeq: number; tail?: number });
+    expect(pages).toEqual([{ sessionId: "s1", afterSeq: 12 }, { sessionId: "s1", afterSeq: 16 }, { sessionId: "s1", afterSeq: 20 }]);
+    expect(sessionStore.get("s1")!.blocks.map((b) => b.text).slice(-2)).toEqual(["prompt 12", "answer 12"]);
     expect(sessionStore.hasOlderHistory("s1")).toBe(true);
   });
 });
