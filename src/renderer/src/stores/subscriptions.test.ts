@@ -7,6 +7,7 @@ import { listSessionsByProject, saveWorkspaceSnapshot } from "../lib/sessionStor
 import { loadSidebarLayout } from "../lib/appearance";
 import { loadNotesEnabled } from "../lib/settings";
 import { withDockOpen } from "../lib/projectTerminal";
+import { environment, environmentStore } from "./environment";
 import { focus, focusStore, initialFocusState } from "./focus";
 import { initialShellState, shell, shellStore } from "./shell";
 import { createWorkspace } from "../lib/tcserver/projects";
@@ -182,6 +183,7 @@ beforeEach(() => {
   terminalsStore.setState(initialTerminalsState(), true);
   focusStore.setState(initialFocusState(), true);
   shellStore.setState(initialShellState(), true);
+  environment.reset();
   setTabs([]);
   skipForgetSessionIds.clear();
   vi.clearAllMocks();
@@ -353,6 +355,21 @@ describe("installActiveSessionSync", () => {
     expect(markSessionSeen).toHaveBeenCalledWith("s-a", 7);
     expect(saveLastSession).toHaveBeenCalledWith({ projectId: "p1" }, "s-a");
     expect(migrateWorkspaces).toHaveBeenCalledTimes(1);
+    expect(createWorkspace).toHaveBeenCalledWith("local", "/repo");
+  });
+
+  it("never makes a local workspace for a window on another host", async () => {
+    vi.spyOn(workspaceStore, "getSnapshot").mockReturnValue(catalog());
+    environmentStore.setState({ currentId: "env_box" });
+    projectStore.setState({ projectCwd: "/srv/agents/work/repo" });
+    setTabs([tab("a")]);
+    sessionStore.mutate([session("s-a", { cwd: "/srv/agents/work/repo" })]);
+    teardown = installActiveSessionSync();
+    expect(createWorkspace).not.toHaveBeenCalled();
+    // Back on this machine, the window's own folder gets its workspace.
+    environmentStore.setState({ currentId: "local" });
+    projectStore.setState({ projectCwd: "/repo" });
+    await flush();
     expect(createWorkspace).toHaveBeenCalledWith("local", "/repo");
   });
 

@@ -36,6 +36,7 @@ import { createWorkspaceAutosave } from "../lib/workspaceAutosave";
 import { PARK_MS } from "../lib/warmTabs";
 import { migrateWorkspaces } from "../lib/workspaceMigration";
 import { collectWorkspaceSnapshot, workspaceSnapshotKey } from "../lib/workspaceSnapshot";
+import { environmentStore } from "./environment";
 import { focus } from "./focus";
 import { currentDockCwd, currentSidebarCwd, project, projectStore } from "./project";
 import { installStallRecorder } from "../lib/stallRecorder";
@@ -247,18 +248,23 @@ export function installActiveSessionSync(): Teardown {
 
   // First boot after the upgrade: remembered folders become workspaces.
   // Every launch: the current folder is one too (workspace.create is idempotent).
-  let workspacesKey: readonly [boolean, string, unknown] | undefined;
+  let workspacesKey: readonly [boolean, string, unknown, string] | undefined;
   const ensureWorkspace = () => {
     const catalog = workspaceStore.getSnapshot();
     const { projectCwd } = projectStore.getState();
-    const key = [catalog.loaded, projectCwd, catalog.workspaces] as const;
+    const local = registry.primary().environmentId;
+    const { currentId } = environmentStore.getState();
+    const key = [catalog.loaded, projectCwd, catalog.workspaces, currentId] as const;
     if (workspacesKey && key.every((part, i) => part === workspacesKey![i])) return;
     workspacesKey = key;
     if (!catalog.loaded) return;
     void migrateWorkspaces();
+    // Only a window on this machine opens local folders. On another host the
+    // folder is that host's (its catalog may still be loading), and a local
+    // workspace at its path would claim the folder for this Mac.
+    if (currentId !== local) return;
     if (looksLikeProject(projectCwd) && !workspaceByPath(catalog.workspaces, projectCwd)) {
-      // The window's folder is on this machine: a local workspace.
-      void createWorkspace(registry.primary().environmentId, projectCwd).catch(() => undefined);
+      void createWorkspace(local, projectCwd).catch(() => undefined);
     }
   };
 
