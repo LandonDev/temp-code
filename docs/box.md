@@ -559,6 +559,68 @@ journal say what landed. Proof:
 `bun run script:e2e-harness-sync` (two headless instances with their own
 HOMEs, paired over the fixed port; runs on the box under `xvfb-run`).
 
+### Attachments on a remote thread
+
+A file attached on the Mac (picked, dropped, pasted, an appshot) lives on
+the Mac's disk or only in the renderer's memory; a thread on the box cannot
+read either. Each composer attachment records the host its path is on
+(`environmentId`, `src/renderer/src/lib/session.ts`), and when that is not
+the thread's host, or the bytes are only in memory (a paste over the 20 MB
+inline size), Send uploads it to the thread's host first
+(`src/renderer/src/lib/attachmentUpload.ts`): `attachment.begin
+{sessionId,name,size,mime,sha256}` → `attachment.chunk {uploadId,index,
+dataBase64}` × n, 2 MiB raw each, strictly in order, each awaited before the
+next (the backpressure) → `attachment.commit {uploadId}`, which answers
+`{path,name,mime,kind,size}`; the turn carries that path. The bytes come from
+the kept Blob, or from the origin host in ranges (`attachment.digest`,
+`attachment.readRange`, read capability, path-fenced for a remote caller). A
+file already on the thread's host is still sent by path. Small pasted images
+keep riding `attachment.save` inline. While an upload runs the text and chips
+stay in the composer with a bar on each chip; a failure marks the chip and
+says why above the field (never a failed turn), and a retry does not send the
+files that already landed. Contract: `src/shared/contract-attachments.ts`
+(begin, chunk, commit, abort need operate; the phone's Swift contract has them).
+
+Where they land (`src/main/server/attachmentDir.ts`, `attachmentDir(session)`,
+which the Mac bridge's `mac.fetchFile` shares): `<project
+cwd>/.temp-code/attachments/<sessionId>/` (git-excluded with the rest of
+`.temp-code/`), else the workspace path's `.temp-code/attachments/<sessionId>/`,
+else `<userData>/attachments/<sessionId>/` (a draft the host has not seen yet,
+a floating chat; that root is in `managedRoots()`). The store
+(`attachmentUploads.ts`) writes a hidden `.upload-<id>.part` in that dir,
+appends and hashes each chunk, and on commit checks size and sha256 and
+renames it to the sanitized name (last path segment, letters, digits, `_ . -`,
+no leading dot, 120 chars; `name-1.ext` on a collision). An upload with no
+chunk for 10 minutes is dropped with its partial; an upload belongs to the key
+that began it.
+
+Limit: `attachment.maxBytes` in the host's settings table, default 200 MB per
+file, read with `attachment.settings` and set with `attachment.settings.set
+{maxBytes}` (admin; null for the default). The composer checks a file it will
+copy against the thread host's limit when it is attached and says so; begin
+refuses it too. Settings → Remote access edits this machine's limit; on the
+box: `tc-local attachment.settings.set '{"maxBytes":524288000}'`.
+
+Fence: for a remote caller, every `session.send` and `queue.add` attachment
+path (an appshot's `textPath` too; `kind: 'thread'` references are not files)
+must sit under the managed roots or `attachment.save`'s paste dir
+(`~/.temp-code/attachments`), so a Mac path sent to the box answers
+`forbidden: session.send is outside app-managed roots` at once.
+
+Retention: deleting a thread (or its project or workspace) removes its
+attachment directories. The hourly archive sweep removes the directory of a
+thread archived more than 30 days ago (its transcript then shows the file
+chips without thumbnails; unarchiving does not bring them back) and any
+directory under an attachments root that no thread owns once it is a day old.
+
+Proof: `bun run script:e2e-attachments` (two headless instances under
+`xvfb-run`: a 5 MiB file read off one in ranges crosses to the other's
+remote socket under an operate key and lands byte for byte, the fence passes
+the landed path and refuses a Mac path, an idle upload expires with
+`TEMP_CODE_ATTACHMENT_TTL_MS`, a delete sweeps the dir); unit tests in
+`attachmentUploads.test.ts`, `fence.test.ts` and
+`src/renderer/src/lib/attachmentUpload.test.ts`.
+
 Still darwin-only by design: appshots, the Aliax browser-cookie sign-ins,
 the IntelliJ engine's pinned artifact (`lsp.ts` has only `darwin-arm64`; the
 Linux pin waits for a build that has not expired), and vibrancy. Known gap:

@@ -278,6 +278,14 @@ routed to (aliax-core's `forward`). Two listeners:
   `harness.*` RPCs, admin; paths translated through `pathMap.ts`); the set,
   the exclusions and the status line are in docs/box.md "Harness config:
   synced from the Mac". Proof: `bun run script:e2e-harness-sync`.
+- Attachments on a remote thread: a file from another host (or a big paste)
+  is uploaded to the thread's host before the turn names it
+  (`attachment.begin/chunk/commit`, src/shared/contract-attachments.ts) into
+  `attachmentDir(session)` (src/main/server/attachmentDir.ts: project cwd's
+  `.temp-code/attachments/<sid>/`, else the workspace's, else
+  `<userData>/attachments/<sid>/`); the fence checks turn attachment paths.
+  docs/box.md "Attachments on a remote thread". Proof:
+  `bun run script:e2e-attachments`.
 - Backups: restic to R2 bucket `tempcode-backups`, repo `box` from
   `box-backup.timer` (SQLite snapshotted with VACUUM INTO, never the live
   files) and repo `mac` from the launchd agent `dev.landon.tempcode.backup`
