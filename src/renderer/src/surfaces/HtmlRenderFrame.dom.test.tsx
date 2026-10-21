@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, render } from "@testing-library/react";
+import { act, cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { HTML_RENDER_MAX_HEIGHT } from "@shared/htmlRender";
 import { SCHEME_CHANGE_EVENT } from "../lib/appearance";
@@ -23,6 +23,9 @@ const sizeChanged = (height: number) => ({
 });
 
 afterEach(() => {
+  // Without vitest globals the library never auto-unmounts, and React's
+  // scheduler then touches `window` after jsdom is torn down.
+  cleanup();
   document.documentElement.classList.remove("theme-light");
 });
 
