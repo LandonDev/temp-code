@@ -113,7 +113,8 @@ describe("the batch", () => {
       landed: ["a"],
       pending: [],
     });
-    expect(batchFromPush({ push: "batch", masterId: "m", steps }, "m")?.landed).toEqual([]);
+    expect(batchFromPush({ push: "batch", state: { masterId: "m", steps } }, "m")?.landed).toEqual([]);
+    expect(batchFromPush({ push: "batch", masterId: "m", steps }, "m")).toBeNull();
     expect(batchFromPush({ push: "batch", state: { masterId: "x", steps } }, "m")).toBeNull();
     expect(batchFromPush({ push: "session" }, "m")).toBeNull();
   });

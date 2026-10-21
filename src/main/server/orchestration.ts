@@ -25,6 +25,7 @@ import {
   fitReasoning,
   mergeThreadRules,
   modelApproved,
+  modelKey,
   policyRoleOf,
   type PolicyRole,
   ruleModel,
@@ -469,6 +470,14 @@ function resolveSpawnTarget(
       provider && exactIn.includes(provider) ? [provider, ...exactIn] : exactIn
     const ok = serving.find((p) => modelApproved(rules, p, rawModel, role))
     if (ok) return { provider: ok, model: rawModel }
+    // The same words app_start_thread uses (apptools.ts): a model kept for
+    // orchestrators is named as such, so a thread knows who may start it.
+    if (serving.some((p) => rules.models[modelKey(p, rawModel)]?.approved === 'orchestrators')) {
+      const who = role === 'thread' ? 'this thread (role: thread)' : 'this orchestrator'
+      return {
+        error: `refused: ${rawModel} is approved for orchestrators only, and ${who} may not start it. Pick an approved model, or ask the user to start an orchestration or master thread for the work. ${table()}`
+      }
+    }
     return {
       error: `refused: the user has not approved ${rawModel} for subagents — pick an approved model instead. ${table()}`
     }

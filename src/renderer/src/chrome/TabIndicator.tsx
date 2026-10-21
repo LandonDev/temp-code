@@ -106,8 +106,10 @@ export function TabIndicator({ thread }: { thread: TabThread }) {
       );
     }
     if (status === "queued") {
+      // The host's line says why: "Queued · 3rd in line" or "Queued · waiting for X".
+      const why = thread.activity?.startsWith("Queued") ? thread.activity : "Waiting for a slot on the host";
       return (
-        <span className="flex shrink-0 items-center gap-1 text-[11px] font-medium text-content/50" title="Waiting for a slot on the host">
+        <span className="flex shrink-0 items-center gap-1 text-[11px] font-medium text-content/50" title={why}>
           <span className="size-1.5 rounded-full bg-current opacity-60" />
           Queued
         </span>

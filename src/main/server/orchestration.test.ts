@@ -150,6 +150,16 @@ it('spawn_agent without context1m leaves a codex model unset', async () => {
   expect(created[0].context1m).toBeUndefined()
 })
 
+it('spawn_agent names an orchestrators-only model as app_start_thread does, and an off model as not approved', async () => {
+  const fable = await orchSpawnAgent(parent, { model: 'claude-fable-5-1', task: 'do the thing' })
+  expect(fable).toMatch(/^refused: claude-fable-5-1 is approved for orchestrators only, and this thread \(role: thread\) may not start it/)
+  expect(fable).toContain('Approved models:')
+  rules = { ...DEFAULT_RULES, models: { ...DEFAULT_RULES.models, 'claude:claude-opus-5-5': { approved: false } } }
+  const off = await orchSpawnAgent(parent, { model: 'claude-opus-5-5', task: 'do the thing' })
+  expect(off).toMatch(/^refused: the user has not approved claude-opus-5-5 for subagents/)
+  expect(created).toHaveLength(0)
+})
+
 it('spawn_agent refuses context1m on a codex model and creates nothing', async () => {
   const reply = await orchSpawnAgent(parent, {
     model: 'gpt-6-astra',

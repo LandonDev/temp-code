@@ -66,6 +66,7 @@
     "script:e2e-plan-auto-implement": "bun --preload scripts/lib/electron-stub.ts scripts/e2e-plan-auto-implement.ts",
     "script:e2e-queue": "bun --preload scripts/lib/electron-stub.ts scripts/e2e-queue.ts",
     "script:e2e-batch-gate": "bun --preload scripts/lib/electron-stub.ts scripts/e2e-batch-gate.ts",
+    "script:e2e-master-batch": "bun --preload scripts/lib/electron-stub.ts scripts/e2e-master-batch.ts",
     "script:e2e-thread-refs": "esbuild scripts/e2e-thread-refs.ts --bundle --platform=node --format=esm --packages=external --alias:@shared=./src/shared --outfile=scripts/.out/e2e-thread-refs.mjs && node scripts/.out/e2e-thread-refs.mjs",
     "script:e2e-research": "esbuild scripts/e2e-research.ts --bundle --platform=node --format=esm --packages=external --alias:@shared=./src/shared --alias:aliax-core=./node_modules/aliax-core/src --alias:electron=./scripts/electron-shim.mjs --outfile=scripts/.out/e2e-research.mjs && node scripts/.out/e2e-research.mjs",
     "script:e2e-remote-fence": "esbuild scripts/e2e-remote-fence.ts --bundle --platform=node --format=esm --packages=external --alias:@shared=./src/shared --alias:aliax-core=./node_modules/aliax-core/src --alias:electron=./scripts/electron-shim.mjs --outfile=scripts/.out/e2e-remote-fence.mjs && node scripts/.out/e2e-remote-fence.mjs",

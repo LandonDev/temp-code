@@ -144,13 +144,13 @@ export function useMasterChildren(masterId: string): SessionMeta[] {
 export const BATCH_POLL_MS = 5_000;
 
 /** The `batch` push (`{ push: 'batch', state }`, contract.ts; every step
- *  change on the master's host), read by shape so a host on an older build
- *  that sends nothing, or a different envelope, never breaks the view. */
+ *  change on the master's host), read by shape so a malformed frame never
+ *  breaks the view. */
 export function batchFromPush(push: unknown, masterId: string): BatchState | null {
   if (!push || typeof push !== "object") return null;
-  const rec = push as { push?: unknown; state?: unknown; batch?: unknown };
-  if (rec.push !== "batch") return null;
-  const batch = (rec.state ?? rec.batch ?? rec) as Partial<BatchState>;
+  const rec = push as { push?: unknown; state?: unknown };
+  if (rec.push !== "batch" || !rec.state || typeof rec.state !== "object") return null;
+  const batch = rec.state as Partial<BatchState>;
   if (batch.masterId !== masterId || !Array.isArray(batch.steps)) return null;
   return {
     masterId,
