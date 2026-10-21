@@ -222,11 +222,19 @@ test receiver), `apns-push-type: alert`, priority 10, an hour's expiration,
 `apns-collapse-id: <threadId>:<event>`, with the payload
 
 ```json
-{ "aps": { "alert": { "title": "…", "body": "…" }, "sound": "default", "thread-id": "<threadId>", "interruption-level": "time-sensitive" },
-  "tc": { "event": "needs_you", "hostId": "box", "environmentId": "env_…", "threadId": "…", "seq": 42, "ts": 1792386000000 } }
+{ "aps": { "alert": { "title": "<thread title>", "subtitle": "<project or workspace>", "body": "Needs approval: Bash — bun test" },
+           "sound": "default", "thread-id": "<threadId>", "summary-arg": "<project or workspace>",
+           "interruption-level": "time-sensitive", "relevance-score": 1, "category": "tc.approval" },
+  "tc": { "event": "needs_you", "kind": "approval", "requestId": "…", "hostId": "box", "environmentId": "env_…", "threadId": "…", "seq": 42, "ts": 1792386000000 } }
 ```
 
-`needs_you`, `failed` and `host_down` are time-sensitive, the rest active. A
+The notice's optional `subtitle`, `kind` (approval, question, plan,
+waiting, finished, failed, stuck) and `requestId` come from the host's
+notifier. Only `needs_you` is time-sensitive; `needs_you`, `failed` and
+`host_down` carry a sound; the relevance score is 1 for needs_you, 0.8 for
+failed and host_down, 0.6 stuck, 0.4 finished, 0.2 host_up; a thread notice
+carries the category `tc.approval` (kind approval: the phone's Approve and
+Deny) or `tc.thread`. A
 410, `BadDeviceToken`, `Unregistered` or `DeviceTokenNotForTopic` answer
 drops the subscription (the phone re-registers at its next open); a 5xx,
 timeout or network error is tried three times and then counted like a
@@ -236,12 +244,16 @@ Live Activities: a host stores the token a phone holds for a thread with
 `PUT /v1/hosts/:hostId/activities/:threadId/:deviceId` (`{ token, bundleId,
 environment }`) in the directory object (never KV) and posts the thread's
 state with `POST /v1/activity`: `{ hostId, threadId, event: "update" |
-"end", state: { phase, since, ts, seq? }, title?, threadType?, ts }`. Every
-device on the thread gets one `liveactivity` push to the topic
-`<bundleId>.push-type.liveactivity` with `aps.content-state` = `state`, a
-`dismissal-date` two minutes out on an `end`, and `apns-collapse-id` the
-thread id; an `end` then drops the thread's tokens, and a token Apple calls
-gone drops that device alone. Nothing per push touches KV.
+"end", state: { phase, since, ts, seq?, title?, task?, done?, total?,
+reason? }, title?, threadType?, priority?, ts }` (the state is the phone's
+ContentState: the desktop's running row, with the clock ticking on the
+device from `since`; `priority` 5 marks a coalesced task-line change, 10 is
+the default). Every device on the thread gets one `liveactivity` push to
+the topic `<bundleId>.push-type.liveactivity` with `aps.content-state` =
+`state`, a `dismissal-date` two minutes out on an `end`, and
+`apns-collapse-id` the thread id; an `end` then drops the thread's tokens,
+and a token Apple calls gone drops that device alone. Nothing per push
+touches KV.
 
 ## Host setup and thread E
 

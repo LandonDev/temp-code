@@ -1113,7 +1113,39 @@ routed to (aliax-core's `forward`). Two listeners:
   push token to the host, and the host's `ActivityFeed` pushes the strip's
   phase on every transition and ends it (the final state stays two minutes)
   when the thread goes idle, waiting or errored. Settings has one row:
-  the Notifications switch with its state beside it. Device build:
+  the Notifications switch with its state beside it. What the phone shows:
+  the Live Activity's content state is the desktop's running row
+  (`HubActivityState` in src/main/server/hub.ts: phase, since, ts, seq, title,
+  task, done, total, reason; `activityState` in remote/push.ts builds it from
+  the meta and the hub's `ActivityState` is the same shape) and the clock
+  ticks on the device from `since`. `ActivityFeed` pushes every change of
+  what the card shows at once (priority 10) and coalesces task-line-only
+  changes to one priority-5 push per 20 s per thread
+  (`ACTIVITY_COALESCE_MS`); a waiting end holds 2.5 s for the notifier's
+  needs-you line (`ActivityFeed.needsYou`, wired from `notifier.onNotice`).
+  The lock screen card (ios/TempCode/Activity/Shared/ThreadActivityViews.swift,
+  shared with the app's DEBUG gallery): tinted type glyph, title, live
+  timer, status mark and word, the task in one line, a tally bar with `3/7`;
+  the Dynamic Island: glyph compact leading, the tally or the clock compact
+  trailing, the status dot minimal, the card's rows expanded; every
+  presentation deep-links to the thread. Notifications: the notifier's
+  `Notice` carries `kind`, `subtitle` (the project's name, else the
+  workspace's) and an approval's `requestId`; bodies are one line ("Needs
+  approval: Bash — bun test", "Asked: …", "Plan ready to approve", "Done in
+  12m · 7 tasks", "Failed: <first line>", "Quiet for n min while working");
+  the alert (remote/apnsPayload.ts, identical in infra/hub/src/delivery.ts)
+  has the subtitle, `thread-id` and `summary-arg` per thread,
+  `relevance-score` (needs_you 1, failed 0.8, stuck 0.6, finished 0.4),
+  sound only for needs_you and failed, time-sensitive only for needs_you,
+  and `category` `tc.approval` (Approve, which asks for the unlock, and
+  Deny; `PushDelegate` decides through `session.approve` after bringing the
+  socket up, and a refusal answers one local notice saying why) or
+  `tc.thread`. In the foreground a notice for a thread whose Live Activity
+  is live shows in the list only, unless it needs you. DEBUG hooks for the
+  proof: `TC_TEST_ACTIVITY=<phase>[,notasks]` starts a host-shaped activity
+  with no host; `TC_TEST_ACTIVITY_GALLERY=1|<phase>` opens the gallery of
+  every state's card and island over the app (the simulator has no lock
+  screen or island a script can drive on a Mac without a device window). Device build:
   `bun run ios:device` (scripts/ios-device.sh) builds with the newest
   Xcode's toolchain through DEVELOPER_DIR, automatic signing and
   `-allowProvisioningUpdates` with the team id from `TEMP_CODE_APPLE_TEAM`

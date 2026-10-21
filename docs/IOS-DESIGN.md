@@ -1157,6 +1157,25 @@ keyboard action. Every animated change has a static cue as well.
 - **Measure.** Scroll a 2,000-row thread at 120 Hz with the Instruments
   animation hitch template; a hitch over 8 ms in the transcript is a bug.
 
+## Push, the Live Activity and the Dynamic Island
+
+The lock screen and the island show the desktop's running row, nothing
+else; the host sends what that row needs and the clock ticks on the device.
+
+| Surface | Shows |
+| --- | --- |
+| Content state | `phase`, `since`, `ts`, `seq`, `title`, `task` (the in-progress task, else the activity line), `done`/`total` when the thread has a list, `reason` (the needs-you line) while it waits. Pushed on every change of what the card shows; task-line-only changes coalesced to one push per 20 s |
+| Lock screen card | glyph tinted by type, title `subheadline` semibold, the timer `footnote` tertiary in tabular digits on the title's baseline; under it (indented to the title) the status mark (spinner, pause, or a 7 pt dot), the status word `footnote` medium colored only where it means something (Paused and Waiting warning, Done success, Failed destructive, Working secondary), the task or the reason in one line; a 3 pt tally capsule in the type's tint with `3/7` `caption2` when there is a list. The final state is frozen at its time and stays two minutes |
+| Island compact | leading the type glyph; trailing `3/7` when there is a list, else the timer, colored by the phase once the thread stops working |
+| Island minimal | the status dot: the type's tint while working, warning waiting, destructive failed, success done |
+| Island expanded | glyph, title, timer on the top row; the status line and the tally below; keyline in the type's tint; every region deep-links to the thread and the row |
+| Notification | title the thread's title, subtitle the project (else the workspace), body one line: "Needs approval: Bash — bun test", "Asked: which database?", "Plan ready to approve", "Done in 12m · 7 tasks", "Failed: <first line>", "Quiet for 12 min while working". Grouped per thread; relevance needs-you 1, failed 0.8, stuck 0.6, finished 0.4; sound only for needs-you and failed; time-sensitive only for needs-you; Approve and Deny on an approval (Approve asks for the unlock); a refusal answers one notice saying why. No emoji, no exclamation marks |
+| In the foreground | nothing for the thread on screen; a thread whose Live Activity is live gets the list only, unless it needs you |
+
+Motion: the task line and the status word cross-fade 150 ms, the tally
+rolls with `numericText`, the bar's width eases out 250 ms; nothing else
+moves. Flavour words stay inside the app's working strip.
+
 ## Threads from here
 
 | Thread | Scope | After |
@@ -1164,7 +1183,7 @@ keyboard action. Every animated change has a static cue as well.
 | L3 shell | tokens, type glyphs, Home with Needs you, Running, Workspaces, archived rows, host grouping and status row, Inbox, Search, Settings with Hosts; thread rows; read-only | now |
 | L4 thread screens | the header, segments, Chat transcript rules, Implementation board, Plan document, Fleet, Sources, diff screen; the cache paint, markdown cache and 120 Hz proof; read-only | now, in parallel with L3 |
 | L5 actions | composer and working strip, send and stop, approve and answer, start a build from a plan, new thread sheet, send-to-agent, swipe archive and pin, rename, pairing | L3 and L4 |
-| L6 push | APNs through the hub (the phone's token registered with every host, the host's `apns` subscription, the hub's token-auth delivery), Live Activity for a running thread (the strip on the lock screen and in the Dynamic Island, pushed by the host, ended when the thread settles), notification taps landing on the card, one Notifications row in Settings, the device build | landed 2026-10-20; the live pass needs the team id and the APNs key from the developer account |
+| L6 push | APNs through the hub (the phone's token registered with every host, the host's `apns` subscription, the hub's token-auth delivery), Live Activity for a running thread (the running row on the lock screen and in the Dynamic Island, pushed by the host, ended when the thread settles), notification taps landing on the card, Approve and Deny on an approval notice, one Notifications row in Settings, the device build | landed 2026-10-20; the row's content state, the island and the notification format on 2026-10-21; the live pass needs the team id and the APNs key from the developer account |
 
 L3 owns `ios/TempCode/Sources/Design/` and `Sources/Shell/`; L4 owns
 `Sources/Thread/` and the rendering models in `TempCodeClient`. L3 commits
