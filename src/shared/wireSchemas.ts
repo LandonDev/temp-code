@@ -654,6 +654,7 @@ export const QueuePushSchema = push('queue', {
   items: z.array(QueuedMessageSchema)
 })
 export const SessionRemovedPushSchema = push('session-removed', { sessionIds: z.array(z.string()) })
+export const SessionMovedPushSchema = push('session-moved', { id: z.string(), sessionIds: z.array(z.string()), to: z.string() })
 
 /** Every push a remote connection can receive; the singular `event`,
  *  `session`, `live-edit` and `build` frames stay local. */
@@ -666,7 +667,8 @@ export const RemotePushSchema = z.discriminatedUnion('push', [
   LiveEditsPushSchema,
   BuildsPushSchema,
   QueuePushSchema,
-  SessionRemovedPushSchema
+  SessionRemovedPushSchema,
+  SessionMovedPushSchema
 ])
 
 // ── the pins ────────────────────────────────────────────────────────────
@@ -735,5 +737,6 @@ export type WireSchemaPins = [
   Expect<Mirror<typeof LiveEditsPushSchema, PushOf<'live-edits'>>>,
   Expect<Mirror<typeof BuildsPushSchema, PushOf<'builds'>>>,
   Expect<Mirror<typeof QueuePushSchema, PushOf<'queue'>>>,
-  Expect<Mirror<typeof SessionRemovedPushSchema, PushOf<'session-removed'>>>
+  Expect<Mirror<typeof SessionRemovedPushSchema, PushOf<'session-removed'>>>,
+  Expect<Mirror<typeof SessionMovedPushSchema, PushOf<'session-moved'>>>
 ]

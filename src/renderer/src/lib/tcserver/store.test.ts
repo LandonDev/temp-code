@@ -323,6 +323,57 @@ describe("sessionStore", () => {
     expect(sessionStore.getSnapshot()).toEqual([]);
   });
 
+  it("a removal from one environment never drops the copy another environment holds", async () => {
+    const box = new FakeLink();
+    box.environmentId = "env_box";
+    link.metas = [wireMeta()];
+    sessionStore.attach(link);
+    await sessionStore.ready();
+    box.metas = [wireMeta({ title: "on the box" })];
+    sessionStore.attach(box);
+    await vi.waitFor(() => expect(sessionStore.environmentOf("s1")).toBe("env_box"));
+    link.push({ push: "session-removed", sessionIds: ["s1"] });
+    expect(sessionStore.metaOf("s1")?.title).toBe("on the box");
+    box.push({ push: "session-removed", sessionIds: ["s1"] });
+    expect(sessionStore.metaOf("s1")).toBeNull();
+  });
+
+  it("session-moved re-points an open thread to its new host and resumes it after its last seq", async () => {
+    const box = new FakeLink();
+    box.environmentId = "env_box";
+    link.metas = [wireMeta()];
+    link.events.set("s1", [row("s1", 1, { type: "user-text", text: "hi" }), row("s1", 2, { type: "assistant-text", text: "hello", delta: false })]);
+    sessionStore.attach(link);
+    sessionStore.attach(box);
+    await sessionStore.ready();
+    await sessionStore.ensureLoaded("s1");
+    sessionStore.mutate([sessionStore.get("s1")!]);
+    box.events.set("s1", [...link.events.get("s1")!, row("s1", 3, { type: "user-text", text: "on the box now" })]);
+    const heard: string[][] = [];
+    sessionStore.onSessionMoved((ids, from, to) => heard.push([...ids, from, to]));
+    link.push({ push: "session-moved", id: "s1", sessionIds: ["s1"], to: "env_box" });
+    link.push({ push: "session-removed", sessionIds: ["s1"] });
+    expect(heard).toEqual([["s1", "local", "env_box"]]);
+    expect(sessionStore.environmentOf("s1")).toBe("env_box");
+    expect(sessionStore.getSnapshot().map((x) => x.id)).toEqual(["s1"]);
+    await vi.waitFor(() => expect(sessionStore.get("s1")!.blocks).toHaveLength(3));
+    const resumed = box.calls.find((c) => c.method === "session.events")?.params as { afterSeq: number };
+    expect(resumed.afterSeq).toBe(2);
+    expect(box.method("session.subscribe")).toBe(1);
+    expect(link.calls.some((c) => c.method === "session.unsubscribe")).toBe(true);
+  });
+
+  it("a host's own id finds the environment that answers as it (the desktop's server is `local`)", async () => {
+    sessionStore.connect({
+      onLink: () => () => {},
+      statusOf: (id: string) => ({ lastHello: id === "local" ? { environmentId: "env_mac_real" } : null }),
+    });
+    sessionStore.attach(link);
+    expect(sessionStore.attachedEnvironmentFor("env_mac_real")).toBe("local");
+    expect(sessionStore.hostIdOf("local")).toBe("env_mac_real");
+    expect(sessionStore.attachedEnvironmentFor("env_other")).toBeUndefined();
+  });
+
   it("folds live edits per session and path, keeping the first start", () => {
     sessionStore.attach(link);
     const edit = (over: Record<string, unknown>) =>

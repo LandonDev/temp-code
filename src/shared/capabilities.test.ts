@@ -32,7 +32,9 @@ describe('METHOD_CAPABILITY', () => {
         ...methods.filter((m) => m.startsWith('remote.environments.')),
         // Where sign-ins are handed to, and a sync on demand, are this machine's to decide (thread V).
         'accounts.sync',
-        'accounts.setHome'
+        'accounts.setHome',
+        // Only the desktop starts a thread's move between hosts (contract-session-move.ts).
+        'session.move'
       ].sort()
     )
   })
@@ -60,7 +62,10 @@ describe('METHOD_CAPABILITY', () => {
         // The harness config crosses between hosts, and its status and settings are changed, only under an admin key.
         ...methods.filter((m) => m.startsWith('harness.')),
         // A host's per-file attachment limit.
-        'attachment.settings.set'
+        'attachment.settings.set',
+        // A thread crosses between hosts only under an admin key; the desktop's session.move drives these.
+        ...methods.filter((m) => m.startsWith('session.import.') || m.startsWith('session.export.')),
+        'session.move.status'
       ].sort()
     )
   })

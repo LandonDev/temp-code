@@ -95,6 +95,18 @@ public struct SessionRemovedPush: Codable, Hashable, Sendable {
     }
 }
 
+public struct SessionMovedPush: Codable, Hashable, Sendable {
+    public let id: String
+    public let sessionIds: [String]
+    public let to: String
+
+    public init(id: String, sessionIds: [String], to: String) {
+        self.id = id
+        self.sessionIds = sessionIds
+        self.to = to
+    }
+}
+
 public enum ServerPush: Codable, Hashable, Sendable {
     case hello(HelloPush)
     case workspaces(WorkspacesPush)
@@ -105,6 +117,7 @@ public enum ServerPush: Codable, Hashable, Sendable {
     case builds(BuildsPush)
     case queue(QueuePush)
     case sessionRemoved(SessionRemovedPush)
+    case sessionMoved(SessionMovedPush)
     /// A `push` this build does not know: the whole object, untouched.
     case unknown(JSONValue)
 
@@ -124,6 +137,7 @@ public enum ServerPush: Codable, Hashable, Sendable {
         case "builds": self = .builds(try BuildsPush(from: decoder))
         case "queue": self = .queue(try QueuePush(from: decoder))
         case "session-removed": self = .sessionRemoved(try SessionRemovedPush(from: decoder))
+        case "session-moved": self = .sessionMoved(try SessionMovedPush(from: decoder))
         default: self = .unknown(try JSONValue(from: decoder))
         }
     }
@@ -139,6 +153,7 @@ public enum ServerPush: Codable, Hashable, Sendable {
         case .builds(let value): try Self.encode(tag: "builds", value, to: encoder)
         case .queue(let value): try Self.encode(tag: "queue", value, to: encoder)
         case .sessionRemoved(let value): try Self.encode(tag: "session-removed", value, to: encoder)
+        case .sessionMoved(let value): try Self.encode(tag: "session-moved", value, to: encoder)
         case .unknown(let value): try value.encode(to: encoder)
         }
     }

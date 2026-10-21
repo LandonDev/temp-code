@@ -248,6 +248,18 @@ export const METHOD_CAPABILITY: Record<ClientRequest['method'], MethodCapability
   'attachment.readRange': 'read',
   'attachment.settings': 'read',
   'attachment.settings.set': 'admin',
+  // Moving a thread between hosts (contract-session-move.ts): the desktop starts it; peers answer as admin.
+  'session.move': 'local',
+  'session.import.begin': 'admin',
+  'session.import.part': 'admin',
+  'session.import.commit': 'admin',
+  'session.import.release': 'admin',
+  'session.import.abort': 'admin',
+  'session.export.begin': 'admin',
+  'session.export.part': 'admin',
+  'session.export.commit': 'admin',
+  'session.export.abort': 'admin',
+  'session.move.status': 'admin',
   // Saved hosts and their keys never leave this machine (thread K1).
   'remote.environments.list': 'local',
   'remote.environments.add': 'local',

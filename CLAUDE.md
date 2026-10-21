@@ -286,6 +286,15 @@ routed to (aliax-core's `forward`). Two listeners:
   `<userData>/attachments/<sid>/`); the fence checks turn attachment paths.
   docs/box.md "Attachments on a remote thread". Proof:
   `bun run script:e2e-attachments`.
+- One thread moves Mac ↔ box from the thread header's host chip: the Mac's
+  own `session.move` (local) pushes over `session.import.*` or pulls over
+  `session.export.*` (admin, on the peer link) in hash-chained parts; the
+  receiver lands it remapped and hidden, the source keeps a tombstone only
+  on the echoed digest, and a link-up settles a half-done move
+  (`src/main/server/{sessionMove,remote/sessionMover}.ts`,
+  `src/shared/contract-session-move.ts`). Checkpoints and uncommitted changes
+  stay on the source. docs/box.md "Moving a thread between hosts"; proof
+  `bun run script:e2e-session-move`.
 - Backups: restic to R2 bucket `tempcode-backups`, repo `box` from
   `box-backup.timer` (SQLite snapshotted with VACUUM INTO, never the live
   files) and repo `mac` from the launchd agent `dev.landon.tempcode.backup`

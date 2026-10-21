@@ -7,6 +7,7 @@ import { GithubRequestSchemas } from './contract-github'
 import { EnvironmentRequestSchemas, RemoteRequestSchemas } from './contract-remote'
 import { HarnessRequestSchemas } from './contract-harness'
 import { AttachmentRequestSchemas } from './contract-attachments'
+import { SessionMoveRequestSchemas } from './contract-session-move'
 import { AGENT_TYPES } from './catalog'
 import { AttachmentSchema, PermissionPolicySchema } from './events'
 import { ProjectModeSchema, ThreadTypeSchema } from './domain'
@@ -100,6 +101,7 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
   ...EnvironmentRequestSchemas,
   ...HarnessRequestSchemas,
   ...AttachmentRequestSchemas,
+  ...SessionMoveRequestSchemas,
   // refresh: re-probe the installed CLIs of the probed providers first.
   z.object({
     id: z.string(),
@@ -903,6 +905,9 @@ export type ServerPush =
   | { push: 'builds'; items: Omit<Extract<ServerPush, { push: 'build' }>, 'push'>[] }
   | { push: 'queue'; sessionId: string; items: QueuedMessage[] }
   | { push: 'session-removed'; sessionIds: string[] }
+  // A thread (`id`, with its subagents `sessionIds`) moved to environment `to`
+  // (contract-session-move.ts); sent ahead of the session-removed for it.
+  | { push: 'session-moved'; id: string; sessionIds: string[]; to: string }
   // Aliax accounts: the whole snapshot, whenever it is rebuilt.
   | { push: 'accounts'; snapshot: import('./accounts').AccountsSnapshot }
   // Account sync (thread V): an owner rotated a grant; only sockets that

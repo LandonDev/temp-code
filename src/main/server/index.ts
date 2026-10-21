@@ -1,4 +1,4 @@
-import { hostname } from 'node:os'
+import { homedir, hostname } from 'node:os'
 import { version as appVersion } from '../../../package.json'
 import { hubFromEnv, type HubClient } from './hub'
 import { existsSync, readFileSync } from 'node:fs'
@@ -28,6 +28,8 @@ import { handleRemote, type RemoteContext } from './remote/handlers'
 import { AccountSync, accountSyncHooks } from './remote/accountSync'
 import { Peers } from './remote/peers'
 import { HarnessSync, handleHarness } from './remote/harnessSync'
+import { SessionMover, handleSessionMove } from './remote/sessionMover'
+import { claudeConfigDir, codexHomeDir } from './sessionMove'
 import { isHeadless } from '../headless'
 import { RemoteAuth } from './remote/auth'
 import { startRemoteListener, type RemoteListener } from './remote/listener'
@@ -320,6 +322,7 @@ export async function startServer(
       onOpen: (id) => {
         void accountSync.syncWith(id)
         void harnessSync.syncWith(id, 'link-up')
+        void sessionMover.settleWith(id)
         accounts.nudge()
       },
       onClose: () => accounts.nudge(),
@@ -339,6 +342,24 @@ export async function startServer(
     workRoot: () => workRoot(store).root
   })
   harnessSync.start()
+  // Moving one thread between this host and a peer (remote/sessionMover.ts).
+  const sessionMover = new SessionMover({
+    host: {
+      db,
+      environmentId,
+      dataDir: options.dataDir ?? dirname(dbPath),
+      home: () => homedir(),
+      workRoot: () => workRoot(store).root,
+      pathMap: () => harnessSync.pathMap(),
+      claudeDir: claudeConfigDir,
+      codexDir: codexHomeDir,
+      forget: (ids) => store.forgetSessions(ids)
+    },
+    registry,
+    peers,
+    flush: () => store.flushEvents()
+  })
+  sessionMover.thawStale()
   peers.refresh()
   const syncTimer = setInterval(() => void accountSync.syncAll(), 15 * 60_000)
   syncTimer.unref()
@@ -614,6 +635,8 @@ export async function startServer(
       }
       emitPush({ push: 'session-removed', sessionIds })
     })
+    // Ahead of its session-removed: clients re-point the thread instead of closing it.
+    const offMoved = registry.onMoved((id, sessionIds, to) => emitPush({ push: 'session-moved', id, sessionIds, to }))
     sendFrame({
       push: 'hello',
       environmentId,
@@ -668,6 +691,8 @@ export async function startServer(
         if (harness.handled) return sendFrame({ id: req.id, ok: true, result: harness.result })
         const upload = await handleAttachmentUploads(req, uploads, principal.kind === 'remote' ? `key:${principal.keyId}` : principal.kind)
         if (upload.handled) return sendFrame({ id: req.id, ok: true, result: upload.result })
+        const moved = await handleSessionMove(req, sessionMover)
+        if (moved.handled) return sendFrame({ id: req.id, ok: true, result: moved.result })
         const extension = await handleM3a(req, m3a)
         if (extension.handled) { sendFrame({ id: req.id, ok: true, result: extension.result }); return }
         const fsGit = await handleFsGit(req)
@@ -1481,6 +1506,7 @@ export async function startServer(
       offBuild()
       offAccounts()
       offRemoved()
+      offMoved()
       unsubscribeAccounts?.()
       for (const off of unsubs.values()) off()
       unsubs.clear()
@@ -1588,6 +1614,7 @@ export async function startServer(
       accountSync.close()
       harnessSync.close()
       uploads.close()
+      sessionMover.close()
       peers.close()
       m3a.accounts.stop()
       await registry.disposeAll()

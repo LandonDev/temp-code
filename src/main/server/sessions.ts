@@ -134,6 +134,7 @@ function transcriptHandoff(rows: EventRow[]): string {
   return `<conversation-handoff>\nYou are taking over an ongoing conversation from another assistant. The transcript so far:\n\n${body}\n\nContinue seamlessly — do not re-introduce yourself or revisit settled questions.\n</conversation-handoff>`
 }
 type RemovedListener = (sessionIds: string[]) => void
+type MovedListener = (rootId: string, sessionIds: string[], to: string) => void
 type QueueListener = (sessionId: string, items: QueuedMessage[]) => void
 
 /** Options a queued message carries to its eventual send. */
@@ -358,6 +359,7 @@ export class SessionRegistry {
   /** Every persisted row of every session (the remote notifier). */
   private eventListeners = new Set<SessionListener>()
   private removedListeners = new Set<RemovedListener>()
+  private movedListeners = new Set<MovedListener>()
   /** Per-session message queue: composed mid-turn, drained on idle. */
   private queues = new Map<string, QueuedMessage[]>()
   private queueListeners = new Set<QueueListener>()
@@ -1385,6 +1387,7 @@ export class SessionRegistry {
   ): Promise<void> {
     let meta = this.store.getSession(sessionId)
     if (!meta) throw new Error(`unknown session: ${sessionId}`)
+    this.assertNotMoving(sessionId)
     // A paused tree accepts no harness input. User work stays ordered in the
     // same queue and releases only after the resumed turn settles.
     if (this.isTreePaused(sessionId)) {
@@ -2071,6 +2074,102 @@ export class SessionRegistry {
   /** Moves archived threads' rows to the cold file; set by the server. */
   coldMover: { kick(): void } | null = null
 
+  // ── moving a thread to another host (sessionMove.ts) ─────────────────
+
+  /** A thread frozen for a move takes no input: no send, no queue, no harness. */
+  private assertNotMoving(sessionId: string): void {
+    const to = this.store.movingTo(sessionId)
+    if (to) throw new Error('this thread is moving to another host; try again once it lands')
+  }
+
+  /** Why the subtree at rootId cannot move now, or null when it is at rest:
+   *  nothing live or paused, no approval or question waiting, nothing
+   *  queued, no report or pass pending, no harness starting. */
+  moveBlocker(rootId: string): string | null {
+    const tree = this.sessionTree(rootId)
+    if (tree.length === 0) return `unknown session: ${rootId}`
+    for (const s of tree) {
+      const who = s.id === rootId ? 'the thread' : `its subagent "${s.title}"`
+      if (LIVE_STATUSES.has(s.status) || this.starting.has(s.id)) return `${who} is working; stop it or wait for it to finish`
+      if (s.status === 'paused') return `${who} is paused; stop it first`
+      if (this.pendingApprovals.get(s.id)?.size) return `${who} is waiting on an approval`
+      if (this.queues.get(s.id)?.length) return `${who} has queued messages`
+      if (this.pendingReports.get(s.id)?.length || this.passActive.has(s.id) || this.passPending.has(s.id) || this.draining.has(s.id))
+        return `${who} is still settling its last turn`
+      if (this.store.movingTo(s.id)) return 'the thread is already moving'
+    }
+    return null
+  }
+
+  /** The subtree's ids, root first, as the registry sees them. */
+  treeIds(rootId: string): string[] {
+    return this.sessionTree(rootId).map((s) => s.id)
+  }
+
+  /** Check the subtree is at rest and freeze it toward `to` in the same tick,
+   *  then let go of its idle harnesses (a frozen thread spawns none). */
+  async freezeForMove(rootId: string, freeze: (ids: string[]) => void): Promise<string[]> {
+    const blocker = this.moveBlocker(rootId)
+    if (blocker) throw new Error(blocker)
+    const ids = this.treeIds(rootId)
+    freeze(ids)
+    for (const id of ids) await this.dropHandle(id)
+    return ids
+  }
+
+  /** The thread left for `to`: forget it here the way delete() does, and
+   *  tell clients where it went before they hear it was removed. */
+  async departed(rootId: string, ids: string[], to: string): Promise<void> {
+    for (const id of ids) {
+      await this.dropHandle(id)
+      this.queues.delete(id)
+      this.passPending.delete(id)
+      this.passActive.delete(id)
+      this.stopping.delete(id)
+      this.pendingReboot.delete(id)
+      this.pendingApprovals.delete(id)
+      this.lastActivity.delete(id)
+      this.activities.delete(id)
+      this.todoFolds.delete(id)
+      this.folds.delete(id)
+      this.foldDirty.delete(id)
+      this.pendingGoals.delete(id)
+      this.liveContexts.delete(id)
+    }
+    for (const l of this.movedListeners) l(rootId, ids, to)
+    for (const l of this.removedListeners) l(ids)
+    for (const id of ids) this.subscribers.delete(id)
+  }
+
+  /** A thread landed here from another host: load its folds and announce it. */
+  arrived(ids: string[]): void {
+    for (const id of ids) {
+      const fold = this.store.getFold(id)
+      if (fold) this.folds.set(id, fold)
+      else this.folds.delete(id)
+      this.todoFolds.delete(id)
+      const meta = this.store.getSession(id)
+      if (meta?.context) this.liveContexts.set(id, meta.context)
+    }
+    for (const id of ids) {
+      const meta = this.store.getSession(id)
+      if (meta) this.notifyMeta(meta)
+    }
+  }
+
+  /** A freeze lifted with the thread still here: clients see it as it was. */
+  thawed(ids: string[]): void {
+    for (const id of ids) {
+      const meta = this.store.getSession(id)
+      if (meta) this.notifyMeta(meta)
+    }
+  }
+
+  onMoved(listener: MovedListener): () => void {
+    this.movedListeners.add(listener)
+    return () => this.movedListeners.delete(listener)
+  }
+
   async delete(sessionId: string): Promise<void> {
     // Same Stop-first rule as archive: interrupt the whole subtree while
     // the rows still exist, so no harness keeps executing (or spawning)
@@ -2356,6 +2455,7 @@ export class SessionRegistry {
 
     const stored = this.store.getSession(sessionId)
     if (!stored) throw new Error(`unknown session: ${sessionId}`)
+    this.assertNotMoving(sessionId)
     // Every respawn (continue, account refresh, resume) reads the row, so a
     // row holding a display slug (`fable-5.1`) must be normalized here too,
     // not only at send time: the driver launches `--model` from this.
@@ -2819,6 +2919,7 @@ export class SessionRegistry {
   }
 
   queueAdd(sessionId: string, text: string, opts?: QueuedSendOpts, front = false): QueuedMessage {
+    this.assertNotMoving(sessionId)
     const item: QueuedMessage = { id: nanoid(10), text, ts: Date.now(), ...opts }
     const q = this.queues.get(sessionId) ?? []
     if (front) q.unshift(item)

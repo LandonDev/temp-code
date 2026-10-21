@@ -194,7 +194,14 @@ export function openDb(path: string): DatabaseSync {
     `ALTER TABLE sessions ADD COLUMN cold INTEGER NOT NULL DEFAULT 0`,
     `ALTER TABLE remote_keys ADD COLUMN webhook_url TEXT`,
     `ALTER TABLE remote_keys ADD COLUMN webhook_secret TEXT`,
-    `ALTER TABLE remote_keys ADD COLUMN events TEXT`
+    `ALTER TABLE remote_keys ADD COLUMN events TEXT`,
+    // Moving a thread between hosts (sessionMove.ts): frozen here while it
+    // crosses (moving_to), landed here provisionally (moving_from), or left
+    // as a tombstone after it moved (moved_to); move_id names the attempt.
+    `ALTER TABLE sessions ADD COLUMN moving_to TEXT`,
+    `ALTER TABLE sessions ADD COLUMN moving_from TEXT`,
+    `ALTER TABLE sessions ADD COLUMN moved_to TEXT`,
+    `ALTER TABLE sessions ADD COLUMN move_id TEXT`
   ]) {
     try {
       db.exec(stmt)
@@ -366,6 +373,10 @@ function toMeta(r: SessionRowRaw): SessionMeta {
     updatedAt: r.updated_at
   }
 }
+
+/** A row the app shows: not a tombstone of a thread that moved to another
+ *  host, nor a thread still landing here from one (sessionMove.ts). */
+export const VISIBLE = `moved_to IS NULL AND moving_from IS NULL`
 
 const SEARCH_CAP = 200
 /** A cached StatementSync keeps its last bound string alive until the
@@ -767,22 +778,43 @@ export class Store {
     return { hot: count('events'), cold: count('cold.events') }
   }
 
+  /** Rows of these sessions changed under the store (a move landed or left):
+   *  forget the seq counters and tier flags it cached, and reread the tier. */
+  forgetSessions(ids: readonly string[]): void {
+    this.flushEvents()
+    const tier = this.stmt(`SELECT cold FROM sessions WHERE id = ?`)
+    for (const id of ids) {
+      this.nextSeq.delete(id)
+      if (this.moving === id) this.moving = null
+      const r = tier.get(id) as { cold: number } | undefined
+      if (r?.cold) this.coldIds.add(id)
+      else this.coldIds.delete(id)
+    }
+    this.sessionsVersion += 1
+  }
+
+  /** The host a thread is crossing to while a move freezes it (sessionMove.ts), else null. */
+  movingTo(id: string): string | null {
+    const r = this.stmt(`SELECT moving_to FROM sessions WHERE id = ?`).get(id) as { moving_to: string | null } | undefined
+    return r?.moving_to ?? null
+  }
+
   getSession(id: string): SessionMeta | null {
-    const r = this.stmt(`SELECT * FROM sessions WHERE id = ?`).get(id) as
+    const r = this.stmt(`SELECT * FROM sessions WHERE id = ? AND ${VISIBLE}`).get(id) as
       SessionRowRaw | undefined
     return r ? toMeta(r) : null
   }
 
   childrenOf(parentId: string): SessionMeta[] {
     const rows = this
-      .stmt(`SELECT * FROM sessions WHERE parent_id = ? ORDER BY created_at DESC`)
+      .stmt(`SELECT * FROM sessions WHERE parent_id = ? AND ${VISIBLE} ORDER BY created_at DESC`)
       .all(parentId) as unknown as SessionRowRaw[]
     return rows.map(toMeta)
   }
 
   /** Every session, or only the archived / unarchived ones. */
   listSessions(opts: { archived?: boolean } = {}): SessionMeta[] {
-    const where = opts.archived === undefined ? '' : `WHERE archived = ${opts.archived ? 1 : 0}`
+    const where = `WHERE ${VISIBLE}` + (opts.archived === undefined ? '' : ` AND archived = ${opts.archived ? 1 : 0}`)
     const rows = this
       .stmt(`SELECT * FROM sessions ${where} ORDER BY created_at DESC`)
       .all() as unknown as SessionRowRaw[]
@@ -967,7 +999,7 @@ export class Store {
 
   sessionsOfProject(projectId: string): SessionMeta[] {
     const rows = this
-      .stmt(`SELECT * FROM sessions WHERE project_id = ?`)
+      .stmt(`SELECT * FROM sessions WHERE project_id = ? AND ${VISIBLE}`)
       .all(projectId) as unknown as SessionRowRaw[]
     return rows.map(toMeta)
   }
@@ -975,7 +1007,7 @@ export class Store {
   /** One-off chats hung directly off a workspace (no project). */
   sessionsOfWorkspace(workspaceId: string): SessionMeta[] {
     const rows = this
-      .stmt(`SELECT * FROM sessions WHERE workspace_id = ?`)
+      .stmt(`SELECT * FROM sessions WHERE workspace_id = ? AND ${VISIBLE}`)
       .all(workspaceId) as unknown as SessionRowRaw[]
     return rows.map(toMeta)
   }

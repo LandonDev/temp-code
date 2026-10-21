@@ -368,13 +368,17 @@ class SessionStore {
 
   /** The registry, for the freshness word: data is fresh once the first
    *  list on a replacement session has landed. */
-  private registryRef: { markFresh?(environmentId: string, fresh: boolean): void } | null = null;
+  private registryRef: {
+    markFresh?(environmentId: string, fresh: boolean): void;
+    statusOf?(environmentId: string): { lastHello: { environmentId: string } | null };
+  } | null = null;
 
   /** Follow the registry: every environment's link attaches as it is added
    *  and its data goes when the environment is removed. */
   connect(registry: {
     onLink(listener: (link: Link, event: "added" | "removed") => void): () => void;
     markFresh?(environmentId: string, fresh: boolean): void;
+    statusOf?(environmentId: string): { lastHello: { environmentId: string } | null };
   }): void {
     this.offRegistry?.();
     this.registryRef = registry;
@@ -441,6 +445,22 @@ class SessionStore {
     const entry = this.entries.get(sessionId);
     if (!entry) return undefined;
     return entry.meta?.environmentId ?? entry.session.environmentId;
+  }
+
+  /** The attached environment a host's own id names: `local` for this
+   *  machine's server (whose hello carries its real id), a saved host by its
+   *  id. Undefined when no attached environment is that host. */
+  attachedEnvironmentFor(hostId: string): string | undefined {
+    if (this.attached.has(hostId)) return hostId;
+    for (const id of this.attached.keys()) {
+      if (this.registryRef?.statusOf?.(id).lastHello?.environmentId === hostId) return id;
+    }
+    return undefined;
+  }
+
+  /** The host id an attached environment answers as (the inverse of attachedEnvironmentFor). */
+  hostIdOf(environmentId: string): string {
+    return this.registryRef?.statusOf?.(environmentId).lastHello?.environmentId ?? environmentId;
   }
 
   linkOfEnvironment(environmentId: string): Link | undefined {
@@ -1248,9 +1268,18 @@ class SessionStore {
         break;
       }
       case "session-removed":
-        for (const id of push.sessionIds) this.drop(id);
+        // A removal speaks for the environment that sent it: the copy another
+        // host holds under the same id (a thread that moved there) stays.
+        for (const id of push.sessionIds) {
+          const entry = this.entries.get(id);
+          if (entry && (entry.meta?.environmentId ?? entry.session.environmentId) !== environmentId) continue;
+          this.drop(id);
+        }
         this.bumpSoon();
         this.bumpMetaSoon();
+        break;
+      case "session-moved":
+        this.onMoved(push.sessionIds, environmentId, push.to);
         break;
       case "queue":
         this.setQueue(push.sessionId, push.items);
@@ -1309,6 +1338,9 @@ class SessionStore {
         meta,
       );
     } else {
+      // The same thread, now answered by another host (it moved there):
+      // follow it before the old host's removal arrives.
+      if (entry.meta.environmentId !== meta.environmentId) this.repoint(entry, entry.meta.environmentId, meta.environmentId);
       entry.session = applyMeta(entry.session, entry.meta, meta);
       // A settled session with no send in flight is not busy, whatever a
       // lost `running` push left behind.
@@ -1337,6 +1369,51 @@ class SessionStore {
     const meta = this.metaOf(id);
     if (!meta) return;
     for (const l of this.openListeners) l(meta);
+  }
+
+  /** Listeners for threads that moved to another host (open tabs follow them). */
+  private movedListeners = new Set<(sessionIds: string[], from: string, to: string) => void>();
+
+  onSessionMoved(listener: (sessionIds: string[], from: string, to: string) => void): () => void {
+    this.movedListeners.add(listener);
+    return () => {
+      this.movedListeners.delete(listener);
+    };
+  }
+
+  /** `session-moved` from `from`: the thread and its subagents now live on
+   *  host `hostId`. Entries keep their transcript and point at the new
+   *  environment; a loaded one resumes there from its last seq (a move keeps
+   *  every seq). A host this window does not attach leaves the entry for the
+   *  removal that follows. */
+  private onMoved(sessionIds: string[], from: string, hostId: string): void {
+    const to = this.attachedEnvironmentFor(hostId);
+    if (!to || to === from) return;
+    const moved: string[] = [];
+    for (const id of sessionIds) {
+      const entry = this.entries.get(id);
+      if (!entry || (entry.meta?.environmentId ?? entry.session.environmentId) !== from) continue;
+      this.repoint(entry, from, to);
+      moved.push(id);
+    }
+    if (moved.length === 0) return;
+    this.metasSnapshot = null;
+    this.bumpSoon();
+    this.bumpMetaSoon();
+    for (const l of this.movedListeners) l(moved, from, to);
+  }
+
+  private repoint(entry: Entry, from: string, to: string): void {
+    const id = entry.session.id;
+    this.attached.get(from)?.subs.remove(id);
+    if (entry.meta) entry.meta = { ...entry.meta, environmentId: to };
+    entry.session = { ...entry.session, environmentId: to };
+    this.metasSnapshot = null;
+    const subs = this.attached.get(to)?.subs;
+    if (entry.loaded && subs) {
+      subs.add(id, this.handlersFor(entry));
+      void subs.resume(id).catch(() => undefined);
+    }
   }
 
   private drop(id: string): void {

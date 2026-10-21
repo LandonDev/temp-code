@@ -40,6 +40,8 @@ export type ThreadRow = {
   provider?: string;
   model?: string;
   createdAt: number;
+  /** The host the thread lives on (the row's host badge, when the window has two or more). */
+  environmentId?: string;
 };
 
 export type ProjectGroup = {
@@ -155,6 +157,7 @@ export function threadRow(
     pinned: meta.pinned,
     planPath: meta.planPath,
     createdAt: meta.createdAt,
+    environmentId: meta.environmentId,
     ...(meta.parentId
       ? { agentType: meta.agentType, provider: meta.provider, model: meta.model }
       : {}),
