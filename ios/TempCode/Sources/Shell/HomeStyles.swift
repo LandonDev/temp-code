@@ -117,10 +117,14 @@ struct QuietNote: View {
                 .fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 0)
             if let action {
-                Button(action.title, action: action.run)
-                    .font(.footnote.weight(.medium))
-                    .buttonStyle(.pressable)
-                    .frame(minHeight: 44)
+                // The pressable style keeps the label's own color, so the action names its tint itself.
+                Button(action: action.run) {
+                    Text(action.title)
+                        .font(.footnote.weight(.medium))
+                        .foregroundStyle(.tint)
+                        .frame(minHeight: 44)
+                }
+                .buttonStyle(.pressable)
             }
         }
         .frame(minHeight: 44)
