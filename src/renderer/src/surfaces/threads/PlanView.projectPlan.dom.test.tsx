@@ -9,7 +9,8 @@ vi.mock("../../lib/projectPlan", () => ({
   useProjectPlan: () => ({ pinned: true, milestones: [{ index: 1, title: "A", done: false }] }),
   loadProjectPlan: vi.fn(),
 }));
-vi.mock("../../lib/tcserver/commands", () => ({ startThread: vi.fn(), readFile: async () => "" }));
+vi.mock("../../lib/tcserver/commands", () => ({ readFile: async () => "" }));
+vi.mock("../../lib/tcserver/plans", () => ({ implementPlan: vi.fn() }));
 vi.mock("../../chrome/ModelPicker", () => ({ ModelPicker: () => null }));
 vi.mock("../../chrome/ModelSettings", () => ({ ModelSettings: () => null }));
 vi.mock("../../chrome/AccessPicker", () => ({ AccessPicker: () => null }));
@@ -63,7 +64,7 @@ describe("PlanView for a project plan", () => {
     doc = PLAN;
     const view = render(<PlanView {...props(session({}))} />);
     expect(screen.getByText("Project plan")).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "Start" })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Start/ })).toBeNull();
     expect(document.querySelector("[data-milestones]")).toBeTruthy();
     // The milestone's own ### section folds into the list rather than printing.
     expect([...document.querySelectorAll("[data-md]")].map((e) => e.textContent).join("")).not.toContain("### [ ] 1. A");
@@ -85,7 +86,7 @@ describe("PlanView for a project plan", () => {
   it("an ordinary plan keeps its Start button", () => {
     doc = "# Plan\n\n## Tasks\n- [ ] a\n";
     render(<PlanView {...props(session({ threadType: "planning", planPath: "/repo/.temp-code/plan-x.md" }))} />);
-    expect(screen.getByRole("button", { name: "Start" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /^Start/ })).toBeTruthy();
     expect(document.querySelector("[data-project-plan-card]")).toBeNull();
   });
 });

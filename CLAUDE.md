@@ -933,11 +933,13 @@ renderer turns the Archive done checkbox on. Proof:
 - The `project-plan` thread type (docs/PROJECT-PLAN.md) writes
   `<cwd>/.temp-code/plans/project.md` with fixed sections (Goals, Current
   state, Milestones with scope/dependencies/done-when, Risks, Open
-  questions; parser in src/shared/projectPlan.ts), calls the `plan_complete`
-  app tool (claude toolset and the codex bridge → `app.planComplete`), which
-  writes `status: complete` into the file's frontmatter, and NEVER starts a
-  build on its own, whatever an auto-implement setting says
-  (`planMayAutoStart`). A complete plan ends with the options card: Plan
+  questions; parser in src/shared/projectPlan.ts), calls the same
+  `plan_complete` app tool as an ordinary plan (the section above): for a
+  project plan the tool writes `status: complete` into the file's
+  frontmatter (`ProjectPlans.complete`) instead of stamping `planCompletedAt`,
+  so the plan flow's settle rule (`isPlanSettle`, planning threads only)
+  never fires and a project plan NEVER starts a build on its own, whatever
+  `plans.autoImplement` says. A complete plan ends with the options card: Plan
   the next milestone (a planning thread linked to the first undone
   milestone, then the ordinary single Start), an orchestration thread for
   that milestone, Revise the plan (a new turn), Keep as the project's plan

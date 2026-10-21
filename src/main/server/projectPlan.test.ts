@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { SessionMeta } from '@shared/events'
 import { openDb, Store } from './db'
+import { isPlanSettle } from './planFlow'
 import { ProjectPlans, handleProjectPlan, inheritMilestoneLink, milestoneLinkOf } from './projectPlan'
 
 let root: string
@@ -218,5 +219,23 @@ describe('pin, ticks and milestone links', () => {
     expect(req('projectPlan.link', { sessionId: 'pp', projectId: 'p1', milestone: 2 })).toEqual({ handled: true, result: null })
     expect(req('projectPlan.linkOf', { sessionId: 'pp' })).toEqual({ handled: true, result: { projectId: 'p1', milestone: 2 } })
     expect(req('session.list', {})).toEqual({ handled: false })
+  })
+})
+
+describe('never auto-started', () => {
+  it("the plan flow's settle rule never fires for a project plan, complete or not, whatever the setting", () => {
+    const pp = session('pp', { threadType: 'project-plan', planPath: planPath(), planCompletedAt: Date.now() })
+    expect(isPlanSettle('running', 'idle', pp)).toBe(false)
+    expect(isPlanSettle('running', 'idle', { ...pp, planCompletedAt: null })).toBe(false)
+    const ordinary = session('pl', { threadType: 'planning', planPath: '/x/plan.md', planCompletedAt: Date.now() })
+    expect(isPlanSettle('running', 'idle', ordinary)).toBe(true)
+  })
+
+  it('plan_complete on a project plan stamps nothing the plan flow reads and starts no thread', () => {
+    writePlan()
+    const pp = session('pp', { threadType: 'project-plan', planPath: planPath() })
+    plans.complete('pp')
+    expect(pp.planCompletedAt ?? null).toBeNull()
+    expect([...sessions.values()].filter((s) => s.threadType === 'implementation')).toEqual([])
   })
 })

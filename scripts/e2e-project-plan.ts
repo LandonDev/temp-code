@@ -22,6 +22,7 @@ import { configure } from 'aliax-core'
 import { startServer } from '../src/main/server/index'
 import { appToolsMcp } from '../src/main/server/apptools'
 import { ProjectPlans } from '../src/main/server/projectPlan'
+import { DEFAULT_PLAN_SETTINGS } from '../src/shared/plans'
 import type { AgentEvent, EventRow } from '../src/shared/events'
 import {
   milestonePlanningBrief,
@@ -159,6 +160,10 @@ const state = plans.state(project.id)
 check('projectPlan.get names the thread and the file', state?.sessionId === pp.id && state.exists && state.complete && !state.pinned, JSON.stringify(state))
 
 // ── "Plan the next milestone" ────────────────────────────────────────
+// The project plan completed above with plans.autoImplement at its default
+// (on) and started nothing; from here the milestone plan would auto-start
+// its build (planFlow.ts), which this proof drives by hand instead.
+registry.setPlanSettings(project.id, { ...DEFAULT_PLAN_SETTINGS, autoImplement: false })
 const next = nextMilestone(doc)!
 const planning = await registry.create({
   provider: 'claude',

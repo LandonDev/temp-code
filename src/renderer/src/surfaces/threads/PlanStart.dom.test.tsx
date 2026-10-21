@@ -3,11 +3,11 @@ import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Session } from "../../lib/session";
 
-const startThread = vi.fn(async () => ({ id: "built" }));
-vi.mock("../../lib/tcserver/commands", () => ({
-  startThread: (...args: unknown[]) => startThread(...(args as [])),
-  readFile: async () => "",
+const implementPlan = vi.fn(async () => ({ id: "built" }));
+vi.mock("../../lib/tcserver/plans", () => ({
+  implementPlan: (...args: unknown[]) => implementPlan(...(args as [])),
 }));
+vi.mock("../../lib/tcserver/commands", () => ({ readFile: async () => "" }));
 // The build's knobs are their own components with their own tests; here
 // they only need to mount.
 vi.mock("../../chrome/ModelPicker", () => ({ ModelPicker: () => <span data-model-picker /> }));
@@ -46,12 +46,12 @@ const session = {
 
 afterEach(() => {
   cleanup();
-  startThread.mockClear();
+  implementPlan.mockClear();
 });
 
 async function open(): Promise<void> {
   render(<StartButton session={session} tasks={["a", "b"]} />);
-  fireEvent.click(screen.getByRole("button", { name: "Start" }));
+  fireEvent.click(screen.getByRole("button", { name: /^Start/ }));
   await act(async () => {});
 }
 
@@ -68,23 +68,22 @@ describe("the plan's Start", () => {
     await open();
     fireEvent.click(screen.getByText("Implement"));
     await act(async () => {});
-    expect(startThread).toHaveBeenCalledTimes(1);
-    const [params, brief] = startThread.mock.calls[0] as unknown as [Record<string, unknown>, string];
+    // One call into the server's own start (plan.implement): the plan
+    // thread's id, one build, never a count.
+    expect(implementPlan).toHaveBeenCalledTimes(1);
+    const [environmentId, planId, params] = implementPlan.mock.calls[0] as unknown as [string, string, Record<string, unknown>];
+    expect(environmentId).toBe("local");
+    expect(planId).toBe("plan-1");
     expect(params.threadType).toBe("implementation");
-    expect(params.planPath).toBe("/repo/.temp-code/plan-1.md");
-    expect(params.title).toBe("Ship the thing");
-    expect(params.title).not.toMatch(/\(\d\/\d\)/);
-    expect(brief).toBe('Implement the plan "Ship the thing".');
-    expect(brief).not.toMatch(/worker/i);
+    expect(params).not.toHaveProperty("workers");
   });
 
   it("Orchestrate starts exactly one orchestration thread", async () => {
     await open();
     fireEvent.click(screen.getByText("Orchestrate"));
     await act(async () => {});
-    expect(startThread).toHaveBeenCalledTimes(1);
-    const [params, brief] = startThread.mock.calls[0] as unknown as [Record<string, unknown>, string];
+    expect(implementPlan).toHaveBeenCalledTimes(1);
+    const [, , params] = implementPlan.mock.calls[0] as unknown as [string, string, Record<string, unknown>];
     expect(params.threadType).toBe("orchestration");
-    expect(brief).toMatch(/^Orchestrate implementation of the plan/);
   });
 });
