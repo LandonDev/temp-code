@@ -2,50 +2,47 @@ import SwiftUI
 import TempCodeClient
 import TempCodeContract
 
-/// The fleet as full-width rows under the goal line and the orchestrator's
-/// status. Tap a row for the agent's own transcript.
+/// The Orchestration thread's hero segment: the goal and what the
+/// orchestrator is up to, then its fleet in groups, Running then Waiting
+/// then Done (FleetStyles.swift). Tap a row for the agent's own detail.
 struct FleetView: View {
     let client: EnvironmentClient
     let sessionId: String
     let session: SessionMeta?
     let thread: ThreadState
+    /// DEBUG proof: `TC_TEST_OPEN=agents` pushes the subagent list,
+    /// `agent-detail` the first agent's detail, once the fleet is in.
+    @State private var launchPush: FleetLaunchPush?
 
     var body: some View {
         let agents = Fleet.children(of: sessionId, in: client.sessions)
         let counts = Fleet.counts(agents.map(\.status))
         ScrollView {
-            LazyVStack(alignment: .leading, spacing: 0) {
-                VStack(alignment: .leading, spacing: 6) {
-                    if let goal = goal {
-                        Text(goal)
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(3)
-                    }
-                    if !agents.isEmpty {
-                        Text(countsLine(counts))
-                            .font(.footnote)
-                            .foregroundStyle(.tertiary)
-                            .monospacedDigit()
-                            .contentTransition(.numericText())
-                    }
-                }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 12)
+            LazyVStack(alignment: .leading, spacing: 0, pinnedViews: .sectionHeaders) {
+                FleetGoal(goal: goal, status: effectiveStatus(counts: counts), line: Fleet.orchestratorLine(status: session?.status, counts: counts))
                 if agents.isEmpty {
-                    HStack {
-                        Spacer()
-                        Text("No agents yet")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                        Spacer()
-                    }
-                    .padding(.top, 40)
+                    FleetEmpty(text: thread.isLoading ? "Loading the fleet…" : "No agents yet. The orchestrator's first spawn lands here.")
                 } else {
-                    FleetRows(agents: agents, client: client)
+                    FleetSections(agents: agents, client: client, parentCwd: session?.cwd)
                 }
             }
-            .padding(.bottom, 16)
+            .padding(.bottom, 24)
+        }
+        .scrollBounceBehavior(.basedOnSize)
+        .fleetDestinations(client: client)
+        .navigationDestination(item: $launchPush) { push in
+            switch push {
+            case .list: SubagentListScreen(client: client, rootSessionId: sessionId)
+            case .detail(let id): AgentDetailScreen(client: client, agentId: id, parentCwd: session?.cwd)
+            }
+        }
+        .onChange(of: TestHooks.open == nil ? 0 : agents.count, initial: true) {
+            guard launchPush == nil, let open = TestHooks.open else { return }
+            if open == "agents" {
+                launchPush = .list
+            } else if open == "agent-detail", let first = agents.first {
+                launchPush = .detail(first.id)
+            }
         }
     }
 
@@ -59,140 +56,67 @@ struct FleetView: View {
         return first.isEmpty ? nil : first
     }
 
-    private func countsLine(_ counts: Fleet.Counts) -> String {
-        var parts: [String] = []
-        if counts.working > 0 { parts.append("\(counts.working) working") }
-        if counts.waiting > 0 { parts.append("\(counts.waiting) waiting") }
-        if counts.failed > 0 { parts.append("\(counts.failed) failed") }
-        if counts.done > 0 { parts.append("\(counts.done) done") }
-        return parts.joined(separator: " · ")
+    /// The mark beside the status line: the orchestrator's own state while
+    /// it has one, else its fleet's (working shows the spinner, waiting the
+    /// warning dot), as the desktop's pulse line does.
+    private func effectiveStatus(counts: Fleet.Counts) -> SessionStatus? {
+        guard let status = session?.status else { return nil }
+        if Fleet.isLive(status) || status == .waiting || status == .error || status == .paused { return status }
+        if counts.working > 0 { return .running }
+        if counts.waiting > 0 { return .waiting }
+        return status
     }
 }
 
-struct FleetRows: View {
-    let agents: [SessionMeta]
-    let client: EnvironmentClient
+enum FleetLaunchPush: Hashable, Identifiable {
+    case list
+    case detail(String)
 
-    var body: some View {
-        ForEach(agents, id: \.id) { agent in
-            FleetRow(agent: agent, client: client, fleetSize: agents.count)
-        }
-    }
+    var id: Self { self }
 }
 
-/// One subagent: status, role glyph, title, provider and model dim, the
-/// last tool line cross-fading in place, its stats, elapsed and cost.
-struct FleetRow: View {
-    let agent: SessionMeta
-    let client: EnvironmentClient
-    let fleetSize: Int
+/// The goal in body text over one status line with its mark; the status
+/// line swaps in place as the fleet changes.
+private struct FleetGoal: View {
+    let goal: String?
+    let status: SessionStatus?
+    let line: String
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        let child = client.threads[agent.id]
-        let items = child?.fold.items ?? []
-        let live = Fleet.isLive(agent.status)
-        let idle = !live && agent.status != .waiting && agent.status != .error && agent.status != .watching
-        let line = Fleet.line(status: agent.status, items: items, compacting: child?.fold.board.compacting ?? false)
-        let stats = Fleet.stats(items: items, tasks: agent.tasks, board: child?.fold.board, context: agent.context)
-        NavigationLink(value: ThreadScreenRoute(sessionId: agent.id)) {
-            HStack(alignment: .top, spacing: 10) {
-                StatusDot(status: agent.status, running: live)
-                    .padding(.top, 3)
-                AgentGlyph(type: agent.agentType)
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(agent.title.isEmpty ? "Subagent" : agent.title)
-                        .font(.subheadline.weight(idle ? .regular : .medium))
-                        .foregroundStyle(idle ? .secondary : .primary)
-                        .lineLimit(1)
-                    Text("\(agent.provider.rawValue) · \(ModelName.short(agent.model))" + (agent.reasoning.rawValue.isEmpty ? "" : " · \(agent.reasoning.rawValue)"))
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                    ZStack(alignment: .leading) {
-                        Text(line.text.isEmpty ? (live ? "starting up" : " ") : line.text)
-                            .font(.footnote)
-                            .foregroundStyle(tone(line.tone, empty: line.text.isEmpty))
-                            .lineLimit(1)
-                            .id(line.text)
-                            .transition(Motion.swap(reduced: reduceMotion))
-                    }
-                    .frame(height: 18, alignment: .leading)
-                    .animation(Motion.crossFade, value: line.text)
-                    if !stats.isEmpty {
-                        StatsLine(stats: stats)
-                    }
-                }
-                Spacer(minLength: 8)
-                VStack(alignment: .trailing, spacing: 3) {
-                    if live {
-                        TimelineView(.periodic(from: .now, by: 1)) { context in
-                            Text(TimeFormat.elapsed(since: agent.createdAt, now: context.date))
-                                .contentTransition(.numericText())
-                        }
-                    } else if agent.updatedAt - agent.createdAt > 2_000 {
-                        Text(TimeFormat.duration(ms: agent.updatedAt - agent.createdAt))
-                    }
-                    if let cost = child?.fold.board.cost {
-                        Text(cost, format: .currency(code: "USD").precision(.fractionLength(2)))
-                    }
-                }
-                .font(.caption2)
-                .monospacedDigit()
-                .foregroundStyle(.tertiary)
-                .padding(.top, 2)
+        VStack(alignment: .leading, spacing: 8) {
+            if let goal {
+                Text(goal)
+                    .font(.body)
+                    .lineLimit(3)
+                    .fixedSize(horizontal: false, vertical: true)
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 8)
-            .frame(minHeight: 44)
-            .background(agent.status == .waiting ? Surface.needsYou : .clear)
-            .contentShape(Rectangle())
+            if !line.isEmpty, let status {
+                HStack(spacing: 8) {
+                    AgentStatusMark(status: status)
+                    Text(line)
+                        .font(.footnote.weight(.medium))
+                        .foregroundStyle(tone)
+                        .monospacedDigit()
+                        .lineLimit(1)
+                        .id(line)
+                        .transition(Motion.swap(reduced: reduceMotion))
+                }
+                .animation(Motion.crossFade, value: line)
+                .accessibilityElement(children: .combine)
+            }
         }
-        .buttonStyle(.pressable)
-        .onAppear {
-            guard Fleet.loadsTranscript(status: agent.status, fleetSize: fleetSize) else { return }
-            Task { await client.openThread(agent.id) }
-        }
-        .onDisappear {
-            guard Fleet.loadsTranscript(status: agent.status, fleetSize: fleetSize) else { return }
-            client.closeThread(agent.id)
-        }
-        .accessibilityElement(children: .combine)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 16)
+        .padding(.top, 10)
+        .padding(.bottom, 14)
     }
 
-    private func tone(_ tone: Fleet.Tone, empty: Bool) -> Color {
-        if empty { return Color(.tertiaryLabel) }
-        switch tone {
-        case .warning: return Tint.warning
-        case .danger: return Tint.destructive
-        case .muted: return Color(.secondaryLabel)
+    private var tone: Color {
+        switch status {
+        case .waiting?: Tint.warning
+        case .error?: Tint.destructive
+        default: Color(.secondaryLabel)
         }
-    }
-}
-
-/// "+12 −3 · 3/7 tasks · 42%", quiet and tabular.
-private struct StatsLine: View {
-    let stats: Fleet.Stats
-
-    var body: some View {
-        HStack(spacing: 6) {
-            if stats.adds > 0 || stats.dels > 0 {
-                ChangeStat(adds: stats.adds, dels: stats.dels)
-                    .font(.caption2)
-            }
-            if stats.tasksTotal > 0 {
-                if stats.adds > 0 || stats.dels > 0 { Text("·") }
-                Text("\(stats.tasksDone)/\(stats.tasksTotal) tasks")
-            }
-            if let pct = stats.contextPercent {
-                if stats.tasksTotal > 0 || stats.adds > 0 || stats.dels > 0 { Text("·") }
-                Text("\(pct)%")
-                    .foregroundStyle(pct >= 85 ? Tint.warning : Color(.tertiaryLabel))
-            }
-        }
-        .font(.caption2)
-        .monospacedDigit()
-        .foregroundStyle(.tertiary)
-        .lineLimit(1)
     }
 }
