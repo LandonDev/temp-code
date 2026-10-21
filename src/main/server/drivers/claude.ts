@@ -37,6 +37,7 @@ import {
   rulesFor
 } from '../orchestration'
 import { APP_TOOLS, appToolsMcp } from '../apptools'
+import { withMacTools } from '../macTools'
 import { expandSlashRefs } from '../slash'
 import { resolveClaude } from './binaries'
 import { routedEndpointFor } from '../endpoint'
@@ -1237,6 +1238,8 @@ export const claudeDriver: HarnessDriver = {
             })
     }
 
+    // The Mac bridge's tools, when this thread (or its parent) may reach a Mac (macTools.ts).
+    withMacTools(options, session)
     const q = query({ prompt: input, options })
 
     // Overdue-result watchdog. The CLI has been seen going silent AFTER the
