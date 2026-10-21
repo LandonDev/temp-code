@@ -292,3 +292,29 @@ describe("hydrateWorkspaceSnapshot", () => {
     ).toBeUndefined();
   });
 });
+
+describe("the host of a saved pane", () => {
+  it("keeps the host a pane was on through a save and a reopen", () => {
+    const remote = chat("r1", "/srv/work");
+    remote.environmentId = "env_box";
+    const snapshot = collectWorkspaceSnapshot(
+      [{ ...newTab("r1"), id: "t1" }],
+      [remote, chat("s1", "/tmp/a")],
+      "t1",
+      "/tmp/a",
+    );
+    const parsed = parseWorkspaceSnapshot(JSON.parse(JSON.stringify(snapshot)));
+    const workspace = parsed && hydrateWorkspaceSnapshot(parsed, new Map());
+    const byId = new Map(workspace?.sessions.map((s) => [s.id, s]));
+    expect(byId.get("r1")?.environmentId).toBe("env_box");
+    expect(byId.get("s1")?.environmentId).toBe("local");
+  });
+
+  it("treats a stub saved before environments as this machine's", () => {
+    const snapshot = collectWorkspaceSnapshot([{ ...newTab("s1"), id: "t1" }], [chat("s1", "/tmp/a")], "t1", "/tmp/a");
+    const raw = JSON.parse(JSON.stringify(snapshot)) as { sessions: Record<string, unknown>[] };
+    delete raw.sessions[0]!.environmentId;
+    const parsed = parseWorkspaceSnapshot(raw);
+    expect(hydrateWorkspaceSnapshot(parsed!, new Map())?.sessions[0]?.environmentId).toBe("local");
+  });
+});

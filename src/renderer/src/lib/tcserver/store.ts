@@ -1328,9 +1328,12 @@ class SessionStore {
     if (!entry.meta) {
       // Draft adoption: the server echoes what the UI sent, so the local
       // view stays; only what the server adds comes across.
+      // A pane restored from a saved layout before its host listed it is
+      // a stub too: the host that answers for it is the one it lives on.
       entry.session = applyThreadMeta(
         {
           ...entry.session,
+          environmentId: meta.environmentId,
           busy: entry.session.busy || isOpenStatus(meta.status),
           ...(meta.nativeId ? { providerSessionId: meta.nativeId } : {}),
         },

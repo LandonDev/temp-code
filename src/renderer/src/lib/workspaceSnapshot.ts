@@ -268,6 +268,10 @@ function sanitizeStub(raw: unknown): WorkspaceSessionStub | null {
       : {};
   return {
     id: value.id,
+    // The host the pane was on; a layout saved before environments has none.
+    ...(typeof value.environmentId === "string" && value.environmentId
+      ? { environmentId: value.environmentId }
+      : {}),
     cwd:
       typeof value.cwd === "string" && value.cwd.trim() ? value.cwd.trim() : "~",
     harness,

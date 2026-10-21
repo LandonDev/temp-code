@@ -189,6 +189,23 @@ describe("sessionFromMeta / applyMeta", () => {
     sessionStore.adopt(meta({ id: draft.id, threadType: "planning", planPath: "/repo/.temp-code/plan-x.md" }));
     expect(sessionStore.get(draft.id)?.planPath).toBe("/repo/.temp-code/plan-x.md");
   });
+
+  it("a layout stub follows the host whose list adopts it", async () => {
+    sessionStore.attach(link);
+    await sessionStore.ready();
+    // A pane restored from the saved layout before the box listed it: the
+    // stub says local, the box answers for the thread.
+    const stub = { ...newSession("local", "claude", "/srv/work"), id: "m1" };
+    sessionStore.mutate([stub]);
+    expect(sessionStore.get("m1")?.environmentId).toBe("local");
+    const box = new FakeLink();
+    box.environmentId = "env_box";
+    box.metas = [wireMeta({ id: "m1", cwd: "/srv/work" })];
+    sessionStore.attach(box);
+    await vi.waitFor(() => expect(sessionStore.get("m1")?.environmentId).toBe("env_box"));
+    expect(sessionStore.environmentOf("m1")).toBe("env_box");
+    sessionStore.detach("env_box");
+  });
 });
 
 describe("sessionStore", () => {

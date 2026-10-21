@@ -94,6 +94,26 @@ export function markSessionSeen(id: string, at = Date.now()): void {
   for (const listener of listeners) listener();
 }
 
+/** Marks every id seen in one write: the rail's "Mark all read" and a
+ *  workspace's. `at` should be at least the newest thread's updatedAt, since
+ *  the server's clock stamps those and this machine's may lag it. */
+export function markSessionsSeen(ids: Iterable<string>, at = Date.now()): void {
+  const prev = loadLastSeen();
+  let next: SeenMap | null = null;
+  for (const id of ids) {
+    if (!id || (prev[id] ?? 0) >= at) continue;
+    (next ??= { ...prev })[id] = at;
+  }
+  if (!next) return;
+  cache = next;
+  try {
+    localStorage.setItem(KEY, JSON.stringify(next));
+  } catch {
+    // private mode / quota
+  }
+  for (const listener of listeners) listener();
+}
+
 /** Drops ids the server no longer knows. Once at boot, so the map stops
  *  growing with every deleted thread and each later write stays small. */
 export function pruneLastSeen(known: ReadonlySet<string>): void {

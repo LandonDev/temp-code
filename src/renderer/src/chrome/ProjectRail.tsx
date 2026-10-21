@@ -11,6 +11,7 @@ import {
   FolderOpen,
   ChartBar,
   Inbox,
+  ListChecks,
   MessageSquare,
   MoreHorizontal,
   Pause,
@@ -71,6 +72,10 @@ import { formatLiveElapsed, type LiveAgent } from "../lib/liveAgents";
 import { useClock } from "../lib/turnClock";
 import type { CardThread } from "../lib/projectCardModel";
 import { useWorkspaceRailStatuses, type WorkspaceRailStatus } from "../hooks/useProjectSignals";
+import { threadsToMarkRead } from "../lib/markRead";
+import { markSessionsSeen } from "../lib/sessionSeen";
+import { useSessionMetas } from "../lib/tcserver/store";
+import { useWorkspaceCatalog } from "../lib/tcserver/workspaces";
 import { HarnessIcon } from "./HarnessIcon";
 import { ProjectLogoIcon } from "./ProjectLogoIcon";
 import { WorkspaceThreadsPopover } from "./WorkspaceThreadsPopover";
@@ -107,6 +112,7 @@ function projectMenuExtraItems(
       ? { id: "unpin", label: "Unpin workspace", icon: PinOff }
       : { id: "pin", label: "Pin workspace", icon: Pin },
     { id: "reveal", label: REVEAL_LABEL, icon: FolderOpen },
+    { id: "read", label: "Mark all read", icon: ListChecks, sepBefore: true },
   ];
   if (canRemove) {
     items.push(
@@ -241,6 +247,13 @@ export function ProjectRail({
     return set;
   }, [needsYouPaths]);
   const railStatuses = useWorkspaceRailStatuses();
+  const metas = useSessionMetas();
+  const catalog = useWorkspaceCatalog();
+  // "Mark all read": every thread on one workspace, or on every host.
+  const markRead = (path: string | null): void => {
+    const { ids, at } = threadsToMarkRead(metas, catalog, path);
+    markSessionsSeen(ids, at);
+  };
 
   useEffect(() => {
     setRailOrder((prev) => {
@@ -360,6 +373,7 @@ export function ProjectRail({
     const { path, projectKey } = projectMenu;
     if (action === "pin" || action === "unpin") onTogglePin(path);
     else if (action === "reveal") void revealPath(path);
+    else if (action === "read") markRead(path);
     else if (action === "archive") {
       onRemoveProject?.(path, { purgeData: false });
     } else if (action === "delete") {
@@ -450,6 +464,12 @@ export function ProjectRail({
               active={inboxActive}
               dot={inboxUnseen}
               ariaLabel={inboxUnseen ? "Inbox, new items" : "Inbox"}
+            />
+            <RailAction
+              label="Mark all read"
+              icon={ListChecks}
+              onClick={() => markRead(null)}
+              ariaLabel="Mark all threads read"
             />
             {notesEnabled ? (
               <RailAction

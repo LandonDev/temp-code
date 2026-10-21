@@ -54,6 +54,22 @@ describe("sessionSeen", () => {
     expect(JSON.parse(data.get(KEY) ?? "{}")).toEqual({ s1: 100 });
   });
 
+  it("marks many sessions seen in one write and keeps newer stamps", async () => {
+    const data = mockLocalStorage();
+    const mod = await load();
+    mod.markSessionSeen("s1", 100);
+    const listener = vi.fn();
+    mod.subscribeLastSeen(listener);
+    mod.markSessionsSeen(["s1", "s2", "s3", ""], 80);
+    expect(mod.loadLastSeen()).toEqual({ s1: 100, s2: 80, s3: 80 });
+    expect(JSON.parse(data.get(KEY) ?? "{}")).toEqual({ s1: 100, s2: 80, s3: 80 });
+    expect(listener).toHaveBeenCalledTimes(1);
+    const before = mod.loadLastSeen();
+    mod.markSessionsSeen(["s1"], 50);
+    expect(mod.loadLastSeen()).toBe(before);
+    expect(listener).toHaveBeenCalledTimes(1);
+  });
+
   it("returns the same snapshot until a write and notifies subscribers", async () => {
     mockLocalStorage();
     const mod = await load();
