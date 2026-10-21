@@ -13,6 +13,9 @@ struct StatusDot: View {
     var running = false
     /// The stroke of the pause mark follows the title beside it.
     var weight: Font.Weight = .regular
+    /// The column and the dot grow with the title's Dynamic Type, like the glyph beside them.
+    @ScaledMetric(relativeTo: .subheadline) private var column = Layout.markWidth
+    @ScaledMetric(relativeTo: .subheadline) private var dot = Layout.dotSize
 
     var body: some View {
         ZStack {
@@ -24,7 +27,7 @@ struct StatusDot: View {
             case .dot(let color):
                 Circle()
                     .fill(color)
-                    .frame(width: 7, height: 7)
+                    .frame(width: dot, height: dot)
                     .transition(.opacity)
             case .paused:
                 Image(systemName: "pause.fill")
@@ -41,7 +44,7 @@ struct StatusDot: View {
                 EmptyView()
             }
         }
-        .frame(width: Layout.markWidth, height: Layout.markWidth)
+        .frame(width: column, height: column)
         .animation(Motion.crossFade, value: mark)
         .accessibilityHidden(mark == .none)
         .accessibilityLabel(accessibilityLabel)
