@@ -49,7 +49,8 @@ export function spawnClaude(spec: WarmSpec, signal: AbortSignal | undefined, lab
     })
   }
   proc.once('exit', (code, sig) => {
-    if (code === 0 || sig === 'SIGTERM' || signal?.aborted) return
+    // 143 is the CLI's own exit on SIGTERM (the pool's kill, a retire, the SDK's abort).
+    if (code === 0 || code === 143 || sig === 'SIGTERM' || signal?.aborted) return
     console.warn(`[claude] ${label}: CLI exited ${code ?? sig}${tail.length ? `: ${tail.slice(-5).join(' | ')}` : ''}`)
   })
   proc.on('error', () => {

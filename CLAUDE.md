@@ -416,6 +416,51 @@ routed to (aliax-core's `forward`). Two listeners:
   `bun run script:e2e-quota-routing` (an in-process server over a fake
   Anthropic: one account throttled, ten turns spread over the other ten).
 
+- Upstream connections (src/main/server/upstream.ts, the fetch aliax-core
+  is configured with; core itself needed no change): api.anthropic.com rides
+  undici pools, one per (origin, Authorization digest) so an account's turns
+  share sockets, HTTP/2 when the API negotiates it (it does), 32 sockets per
+  account, free sockets kept 90 s (the server's keep-alive hint lowers it),
+  idle pools closed after 3 min. chatgpt.com stays on Electron's `net.fetch`
+  (Cloudflare refuses Node's TLS there) with Chromium's own pool. Every
+  TEMP_CODE_GATEWAY_TRACE line ends `reused=true|false h2|http/1.1`
+  (`reused=n/a` on the Chromium path): undici publishes the request object
+  and the socket it went on, and `upstreamTrace` ties them to the gateway's
+  request. The fake provider (TEMP_CODE_FAKE_PROVIDERS) is pooled too, by
+  the original origin.
+- Pre-connect (src/main/server/preconnect.ts): when a turn starts on an
+  idle thread, and when the composer of an idle thread gains focus
+  (`session.preconnect`, operate; the renderer asks once per thread per
+  half minute), the socket the thread's account will ride is opened or its
+  free one refreshed with a `GET /` (404 in one round trip), never more than
+  once per account per minute (`Upstream.preconnect`). The codex origin gets
+  Chromium's `ses.preconnect` under the same throttle.
+- Warm harness (src/main/server/drivers/warm.ts; claudeWarm.ts and codexWarm
+  in codex.ts): one pre-spawned CLI per driver per host, spawned from the
+  exact spec (command, argv, cwd, env) of the last thread that started, no
+  session and no account. A new thread adopts it when the SDK computes the
+  same spec (model, cwd, tools, permission mode, settings and MCP server
+  names are all in the argv; a resumed thread never matches); the Agent SDK
+  sends the system prompt, hooks and in-process MCP servers at `initialize`
+  over stdin, so the adopted CLI is initialized as if just spawned
+  (`spawnClaudeCodeProcess`). Its base URL is the gateway's `~w=<id>` scope,
+  rewritten per request into the adopting thread's scope (`rebindWarmPath`,
+  unscoped until then); only a thread our own gateway routes (the owner's,
+  or no shim) adopts or warms. Codex: the warm `app-server` is spawned and
+  initialized, everything per thread arrives with `thread/start`, so it
+  saves process start and the handshake only (MCP servers attach at
+  thread/start). A replacement spawns 3 s after an adoption or a cold start
+  of another shape; 10 min without a thread start retires it; a warm process
+  is never a session (not listed, counted, capped or load-guarded).
+  `harness.warm` (admin) lists the pools and `{retire: true}` empties them;
+  `TEMP_CODE_WARM_HARNESS=0` turns warming off. Measured on the box
+  (`bun run script:e2e-warm-start`, chat threads, one turn each, two runs):
+  Send → first token 2.9 s and 2.1 s cold (medians of 4; 1.5–3.3 s) versus
+  0.30 s and 0.17 s adopted (medians of 3; 0.15–0.47 s) against the fake
+  provider; one real claude-haiku-5-5 thread, cold, 3.06 s over a
+  pre-connected HTTP/2 socket (every request after the first reused it).
+  docs/box.md "Warm start" has the table.
+
 ## Remote access: the fixed port behind the tunnel
 - A second listener (src/main/server/remote/listener.ts) binds
   `127.0.0.1:7677` by default; the Cloudflare tunnel on the box maps

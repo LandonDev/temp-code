@@ -11,7 +11,7 @@ import { AccountsService } from './accounts'
 import { isRoutedProvider, PROVIDER_OF, SERVICE_OF } from '@shared/accounts'
 import { startGateway, type Gateway } from './gateway'
 import { BootResumer } from './resumeAfterBoot'
-import { closeWarmPools } from './drivers/warm'
+import { closeWarmPools, retireWarmPools, warmStatuses } from './drivers/warm'
 import { observeHooks } from './gatewayObserve'
 import { HeadroomStore } from './headroom'
 import { WebSocketServer, type WebSocket } from 'ws'
@@ -1620,6 +1620,11 @@ export async function startServer(
             })
             sendFrame({ id: req.id, ok: true, result: null })
             break
+          case 'harness.warm': {
+            if (req.params?.retire) retireWarmPools()
+            sendFrame({ id: req.id, ok: true, result: warmStatuses() })
+            break
+          }
           case 'session.preconnect':
             sendFrame({ id: req.id, ok: true, result: registry.preconnectIdle(req.params.sessionId) })
             break

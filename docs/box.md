@@ -1879,6 +1879,65 @@ ssh box 'box-update v1.0.N'   # replace N with a tag published on GitHub
 sudo /usr/local/sbin/box-update master
 ```
 
+### Warm start: pooled upstream sockets, pre-connect, the warm harness process
+
+Three things cut the wait between Send and the first streamed token of a
+new thread (feature thread of 2026-10-21; CLAUDE.md "Provider traffic" has
+the rules, this is what runs on the box and what it measured).
+
+- **Pooled upstream sockets.** aliax-core forwards every request through the
+  fetch the host configures; ours (src/main/server/upstream.ts) keeps undici
+  pools per (origin, account digest) for api.anthropic.com, HTTP/2, 32
+  sockets per account, free sockets for 90 s, and reports per request
+  whether the socket had carried one before. `TEMP_CODE_GATEWAY_TRACE=1`
+  lines read `[gateway] POST /claude/~t=…/v1/messages → 200 reused=true h2`.
+  chatgpt.com stays on Electron's net.fetch (Chromium's pool), `reused=n/a`.
+- **Pre-connect.** A turn starting on an idle thread, or the composer of an
+  idle thread gaining focus, opens (or refreshes) that account's socket
+  with a `GET /`; one per account per minute, so a focus that flickers
+  costs nothing. `[gateway] preconnect claude <account>: opened|refreshed`
+  under the trace flag.
+- **The warm harness process.** One pre-spawned Claude CLI (and one codex
+  app-server where codex is installed) per host, started from the exact
+  argv/cwd/env of the last thread that started, with its MCP servers
+  attached and no session. The next thread of the same shape adopts it and
+  the SDK initializes it with that thread's prompt; its gateway URL is the
+  `~w=<id>` scope the gateway re-points at adoption. Three seconds after an
+  adoption (or a cold start of another shape) a replacement spawns; ten
+  minutes without a thread start retires it. It is never a session:
+  `session.list`, running counts, spawn caps and the Mac load guard never
+  see it. `tc-local harness.warm` shows the pools (`'{"retire":true}'`
+  empties them); `TEMP_CODE_WARM_HARNESS=0` in /etc/temp-code.env turns
+  warming off.
+
+Measured on the box (`bun run script:e2e-warm-start`: an isolated headless
+instance of the built tree, a fake Anthropic that streams one fixed answer,
+chat threads in a scratch checkout, one turn each, timed from
+`session.send` to the first `assistant-text` push; the agents user's
+user-level MCP servers attach in every CLI). Run 2 of 2026-10-21, with run
+1's medians beside it:
+
+| run | Send → first token | notes |
+| --- | --- | --- |
+| warming off, 4 threads | 3138, 2898, 2354, 2371 ms (median 2.9 s; run 1: 2.1 s) | every thread spawns its CLI |
+| warming on, thread 1 | 1755 ms | cold by construction: it becomes the shape |
+| warming on, threads 2–4 | 185, 299, 473 ms (median 0.30 s; run 1: 0.17 s) | each adopted a warm process about 4 s old |
+| another model after those | 2345 ms | another shape boots cold and re-shapes the pool |
+| real claude-haiku-5-5, one thread, cold | 3056 ms | /srv/agents/work/l5-phone-scratch; HTTP/2; the pre-connect at Send opened the socket and all three requests of the turn reused it (`reused=true 3`, `reused=false 1`) |
+
+The real warm figure is derived, since one real thread was the budget:
+cold minus the harness boot the fake run measured (2.9 s − 0.3 s) is about
+0.46 s. On the fake (HTTP/1.1) the CLI's startup `HEAD /api/hello` makes
+undici drop its socket, so each thread's first POST opened one; the real
+API is HTTP/2, where the HEAD rides the same session and nothing is dropped.
+A socket count at the fake includes Chromium's own connections (usage
+polls), so the gateway's `reused=` flags are the measure, not the count.
+
+Codex: the box has no codex binary, so its warm app-server is unit-tested
+only (a fake app-server answers initialize and thread/start). Adoption
+there saves process start and the initialize handshake; MCP servers attach
+at thread/start, after adoption.
+
 ### Knowing the box is behind: the deploy-drift mark
 
 Nothing deploys the box on its own, so the Mac app marks a host that has

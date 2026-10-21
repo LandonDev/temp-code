@@ -140,6 +140,9 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
   }),
   // Per-provider health: binary found on the login-shell PATH, version.
   z.object({ id: z.string(), method: z.literal('doctor.get') }),
+  // The warm harness processes (drivers/warm.ts): counts and ages, never a
+  // session. `retire` kills them; the next thread start warms again.
+  z.object({ id: z.string(), method: z.literal('harness.warm'), params: z.object({ retire: z.boolean().optional() }).optional() }),
   // → MasterRelease | null: master's release.json as this host last read it (local; src/main/deployDrift.ts).
   z.object({ id: z.string(), method: z.literal('deploy.master'), params: z.object({}).optional() }),
   // Update a provider's CLI in place; returns its fresh health row.

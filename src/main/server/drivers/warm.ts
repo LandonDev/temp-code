@@ -272,6 +272,11 @@ export class WarmPool<T> {
 /** Every pool's status, for the doctor and the Remote access pane. */
 export const warmStatuses = (): WarmStatus[] => [...pools].map((p) => p.status())
 
+/** Kill every warm process now; the next thread start warms again. */
+export function retireWarmPools(): void {
+  for (const p of pools) p.retire('retired on request:')
+}
+
 /** Server stop: kill every warm process. */
 export function closeWarmPools(): void {
   for (const p of [...pools]) p.close()
