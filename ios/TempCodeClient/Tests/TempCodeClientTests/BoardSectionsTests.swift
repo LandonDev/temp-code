@@ -26,9 +26,10 @@ import TempCodeContract
         let fold = ThreadFold.fold(rows([
             user("go", newPass: true),
             todoWrite("t1", [("a", "completed"), ("b", "completed")]),
-            answer("done"),
+            answer("done", msgId: "m1"),
+            .turnComplete(TurnCompleteEvent()),
             user("and one question", newPass: true),
-            answer("an answer")
+            answer("an answer", msgId: "m2")
         ]))
         let board = ImplementationBoard.build(fold, running: false)
         #expect(board.progress?.label == "2 of 2")
@@ -41,6 +42,7 @@ import TempCodeContract
         let fold = ThreadFold.fold(rows([
             user("go", newPass: true),
             todoWrite("t1", [("a", "completed")]),
+            .turnComplete(TurnCompleteEvent()),
             user("more", newPass: true),
             todoWrite("t2", [("b", "in_progress")])
         ]))
