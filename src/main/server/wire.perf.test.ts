@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { deflateRawSync } from 'node:zlib'
 import { openDb, Store } from './db'
 import { SessionRegistry } from './sessions'
@@ -9,6 +9,7 @@ import {
   BODY_OMIT_BYTES,
   HISTORY_PAGE_BYTES,
   KIB,
+  PUSH_COALESCE_MS,
   RESUME_BYTES,
   RESUME_ROWS,
   SHELL_PAGE_BYTES,
@@ -277,7 +278,7 @@ describe('wire budgets (remote profile)', () => {
     expect(encodedBytes(frame)).toBeLessThanOrEqual(SHELL_PAGE_BYTES + 4 * KIB)
   })
 
-  it('a fleet burst of 100 ms leaves as one frame per kind, smaller than the singular frames', () => {
+  it('a fleet burst inside one window leaves as each lane’s leading push plus one frame per kind, smaller than the singular frames', () => {
     const pushes: ServerPush[] = []
     const working = registry.list({ archived: false }).filter((s) => s.parentId === ROOT && s.status !== 'done')
     for (const s of working) {
@@ -297,6 +298,7 @@ describe('wire budgets (remote profile)', () => {
     const c = new PushCoalescer((f) => out.push(f), 100)
     for (const p of pushes) c.push(p)
     c.flush()
+    c.dispose()
     const remoteBytes = out.reduce((n, p) => n + encodedBytes(p), 0)
     record({
       scenario: `fleet burst (${working.length} agents, 100 ms)`,
@@ -306,10 +308,67 @@ describe('wire budgets (remote profile)', () => {
       budget: null,
       rows: `${pushes.length} pushes → ${out.length} frames`
     })
-    expect(out.filter((f) => f.push === 'sessions')).toHaveLength(1)
-    expect(out.filter((f) => f.push === 'events')).toHaveLength(working.length)
+    // The first row and the first meta of a quiet period leave at once
+    // (the leading edge); the rest of the burst waits for its window and
+    // leaves as one meta frame and one events frame per agent.
+    expect(out.filter((f) => f.push === 'sessions')).toHaveLength(2)
+    expect(out.filter((f) => f.push === 'events')).toHaveLength(working.length + 1)
     expect(out.length).toBeLessThan(pushes.length / 3)
     expect(remoteBytes).toBeLessThan(localBytes)
+  })
+
+  it('a codex patch streaming to 30 KiB leaves at most ten previews a second', () => {
+    // codex's patchUpdated is not throttled: a partial every 10 ms for a
+    // second, each the whole patch so far. Previews ride the 100 ms window
+    // and only the newest per call leaves, so the link carries ten
+    // snapshots, not a hundred.
+    vi.useFakeTimers()
+    try {
+      const patch = body(rng(42), 30 * KIB)
+      const pushes: ServerPush[] = []
+      for (let k = 1; k <= 100; k++) {
+        pushes.push({
+          push: 'event',
+          row: {
+            sessionId: BUSY,
+            seq: -1,
+            ts: k,
+            ephemeral: true,
+            event: {
+              type: 'tool-call',
+              callId: 'patch',
+              name: 'apply_patch',
+              input: { path: 'src/a.ts', diff: patch.slice(0, Math.round((patch.length * k) / 100)) },
+              partial: true
+            }
+          }
+        })
+      }
+      const out: ServerPush[] = []
+      const c = new PushCoalescer((f) => out.push(f))
+      for (const p of pushes) {
+        c.push(p)
+        vi.advanceTimersByTime(10)
+      }
+      vi.advanceTimersByTime(PUSH_COALESCE_MS)
+      c.dispose()
+      const localBytes = pushes.reduce((n, p) => n + encodedBytes(p), 0)
+      const remoteBytes = out.reduce((n, p) => n + encodedBytes(p), 0)
+      record({
+        scenario: 'codex patch to 30 KiB (1 s)',
+        local: localBytes,
+        remote: remoteBytes,
+        deflated: out.reduce((n, p) => n + deflated(p), 0),
+        budget: null,
+        rows: `${pushes.length} partials → ${out.length} frames`
+      })
+      expect(out.length).toBeLessThanOrEqual(1000 / PUSH_COALESCE_MS + 1)
+      expect(remoteBytes).toBeLessThan(localBytes / 8)
+      const last = out[out.length - 1] as Extract<ServerPush, { push: 'events' }>
+      expect((last.rows[0].event as { input: { diff: string } }).input.diff).toBe(patch)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('a tool output stream of big rows ships only summaries', () => {

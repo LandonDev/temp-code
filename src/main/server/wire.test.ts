@@ -11,7 +11,16 @@ import {
   sessionPage
 } from './wire'
 import { isOmittedBody } from '@shared/wire'
-import { BODY_OMIT_BYTES, HISTORY_PAGE_BYTES, RESUME_ROWS, TAIL_BYTES, TAIL_ROWS } from '@shared/wireBudgets'
+import {
+  BODY_OMIT_BYTES,
+  HISTORY_PAGE_BYTES,
+  PUSH_COALESCE_MS,
+  PUSH_EVENTS_COALESCE_MS,
+  RESUME_ROWS,
+  STREAMING_BODY_OMIT_BYTES,
+  TAIL_BYTES,
+  TAIL_ROWS
+} from '@shared/wireBudgets'
 import type { AgentEvent, EventRow, SessionMeta } from '@shared/events'
 import type { ServerPush } from '@shared/contract'
 
@@ -161,13 +170,54 @@ describe('projectRow', () => {
       push: 'live-edit',
       cwd: '/p',
       sessionIds: ['s'],
-      edit: { path: 'a.ts', kind: 'changed', adds: 3, dels: 1, diff: big(5000), bytes: 10, ts: 1 }
+      edit: { path: 'a.ts', kind: 'changed', adds: 3, dels: 1, diff: big(STREAMING_BODY_OMIT_BYTES), bytes: 10, ts: 1 }
     }
     const out = projectLiveEdit(push)
     expect(out.edit.diff).toBeNull()
     expect(out.edit.adds).toBe(3)
     const small = { ...push, edit: { ...push.edit, diff: 'tiny' } }
     expect(projectLiveEdit(small)).toBe(small)
+  })
+
+  it('keeps a live-edit diff past the body line but under the streaming line, so the card grows', () => {
+    const push: Extract<ServerPush, { push: 'live-edit' }> = {
+      push: 'live-edit',
+      cwd: '/p',
+      sessionIds: ['s'],
+      edit: { path: 'a.ts', kind: 'changed', adds: 3, dels: 1, diff: big(8 * BODY_OMIT_BYTES), bytes: 10, ts: 1 }
+    }
+    expect(projectLiveEdit(push)).toBe(push)
+  })
+
+  it('a partial tool call keeps its growing input up to the streaming line; the final call keeps the body line', () => {
+    const content = big(8 * BODY_OMIT_BYTES)
+    const partial = row(-1, { type: 'tool-call', callId: 'w', name: 'Write', input: { file_path: '/a.ts', content }, partial: true })
+    expect(projectRow(partial)).toBe(partial)
+    const final = row(2, { type: 'tool-call', callId: 'w', name: 'Write', input: { file_path: '/a.ts', content } })
+    expect(isOmittedBody((projectRow(final).event as { input: { content: unknown } }).input.content)).toBe(true)
+    const huge = row(-1, {
+      type: 'tool-call',
+      callId: 'w',
+      name: 'Write',
+      input: { file_path: '/a.ts', content: big(STREAMING_BODY_OMIT_BYTES) },
+      partial: true
+    })
+    const out = projectRow(huge).event as { input: { content: unknown }; preview?: { additions?: number } }
+    expect(isOmittedBody(out.input.content)).toBe(true)
+    expect(out.preview?.additions).toBe(2)
+  })
+
+  it('a partial edit keeps its preview diff lines up to the streaming line', () => {
+    const lines = Array.from({ length: 200 }, (_, i) => ({ kind: 'add' as const, text: `added line ${i} ${'y'.repeat(40)}` }))
+    const r = row(-1, {
+      type: 'tool-call',
+      callId: 'c',
+      name: 'Write',
+      input: { file_path: '/a.ts' },
+      partial: true,
+      preview: { kind: 'write', path: '/a.ts', additions: 200, deletions: 0, lines }
+    })
+    expect(projectRow(r)).toBe(r)
   })
 })
 
@@ -354,26 +404,105 @@ describe('PushCoalescer', () => {
     push: 'event',
     row: { sessionId, seq, ts: seq, event: { type: 'assistant-text', text: `t${seq}`, delta: true } }
   })
+  const partial = (callId: string, content: string, sessionId = 'a'): ServerPush => ({
+    push: 'event',
+    row: {
+      sessionId,
+      seq: -1,
+      ts: 1,
+      ephemeral: true,
+      event: { type: 'tool-call', callId, name: 'Write', input: { file_path: '/a.ts', content }, partial: true }
+    }
+  })
+  const kinds = (out: ServerPush[]): string[] => out.map((f) => f.push)
+  const seqs = (f: ServerPush): number[] => (f as Extract<ServerPush, { push: 'events' }>).rows.map((r) => r.seq)
+  const contents = (f: ServerPush): unknown[] =>
+    (f as Extract<ServerPush, { push: 'events' }>).rows.map((r) => (r.event as { input?: { content?: unknown } }).input?.content)
 
-  it('groups a burst into one frame per kind after the delay, in order', () => {
+  it('defaults to a 33 ms window for event rows and 100 ms for the rest', () => {
+    expect(PUSH_EVENTS_COALESCE_MS).toBe(33)
+    expect(PUSH_COALESCE_MS).toBe(100)
+  })
+
+  it('sends the first row of a quiet period at once, then batches per window', () => {
     const out: ServerPush[] = []
-    const c = new PushCoalescer((f) => out.push(f), 100)
+    const c = new PushCoalescer((f) => out.push(f))
     c.push(evt('a', 1))
-    c.push({ push: 'session', session: meta('a', { status: 'running' }) })
-    c.push(evt('b', 1))
+    expect(kinds(out)).toEqual(['events'])
+    expect(seqs(out[0])).toEqual([1])
     c.push(evt('a', 2))
-    c.push({ push: 'session', session: meta('a', { status: 'idle' }) })
-    expect(out).toEqual([])
-    vi.advanceTimersByTime(99)
-    expect(out).toEqual([])
+    c.push(evt('b', 1))
+    c.push(evt('a', 3))
+    expect(out).toHaveLength(1)
+    vi.advanceTimersByTime(PUSH_EVENTS_COALESCE_MS - 1)
+    expect(out).toHaveLength(1)
     vi.advanceTimersByTime(1)
-    expect(out.map((f) => f.push)).toEqual(['sessions', 'events', 'events'])
-    const sessions = out[0] as Extract<ServerPush, { push: 'sessions' }>
-    expect(sessions.sessions).toHaveLength(1)
-    expect(sessions.sessions[0].status).toBe('idle')
-    const a = out[1] as Extract<ServerPush, { push: 'events' }>
-    expect(a.sessionId).toBe('a')
-    expect(a.rows.map((r) => r.seq)).toEqual([1, 2])
+    expect(kinds(out)).toEqual(['events', 'events', 'events'])
+    expect((out[1] as Extract<ServerPush, { push: 'events' }>).sessionId).toBe('a')
+    expect(seqs(out[1])).toEqual([2, 3])
+    expect(seqs(out[2])).toEqual([1])
+  })
+
+  it('a steady stream leaves as one frame per window, never faster', () => {
+    const out: ServerPush[] = []
+    const c = new PushCoalescer((f) => out.push(f))
+    // a row every 5 ms for a second
+    for (let seq = 1; seq <= 200; seq++) {
+      c.push(evt('a', seq))
+      vi.advanceTimersByTime(5)
+    }
+    vi.advanceTimersByTime(PUSH_EVENTS_COALESCE_MS)
+    const frames = out.filter((f) => f.push === 'events')
+    expect(frames.flatMap(seqs)).toEqual(Array.from({ length: 200 }, (_, i) => i + 1))
+    // 1000 ms / 33 ms windows plus the leading frame
+    expect(frames.length).toBeLessThanOrEqual(Math.ceil(1000 / PUSH_EVENTS_COALESCE_MS) + 1)
+    expect(frames.length).toBeGreaterThanOrEqual(Math.floor(1000 / PUSH_EVENTS_COALESCE_MS))
+  })
+
+  it('a window that closes on nothing leaves the lane quiet: the next row goes at once', () => {
+    const out: ServerPush[] = []
+    const c = new PushCoalescer((f) => out.push(f))
+    c.push(evt('a', 1))
+    vi.advanceTimersByTime(PUSH_EVENTS_COALESCE_MS)
+    expect(out).toHaveLength(1)
+    c.push(evt('a', 2))
+    expect(out).toHaveLength(2)
+    expect(seqs(out[1])).toEqual([2])
+  })
+
+  it('metas keep their 100 ms window while rows leave every 33 ms', () => {
+    const out: ServerPush[] = []
+    const c = new PushCoalescer((f) => out.push(f))
+    c.push({ push: 'session', session: meta('a', { status: 'running' }) })
+    c.push(evt('a', 1))
+    expect(kinds(out)).toEqual(['sessions', 'events'])
+    c.push({ push: 'session', session: meta('a', { status: 'running', updatedAt: 2 }) })
+    c.push(evt('a', 2))
+    c.push({ push: 'session', session: meta('a', { status: 'running', updatedAt: 3 }) })
+    vi.advanceTimersByTime(PUSH_EVENTS_COALESCE_MS)
+    expect(kinds(out)).toEqual(['sessions', 'events', 'events'])
+    vi.advanceTimersByTime(PUSH_COALESCE_MS - PUSH_EVENTS_COALESCE_MS)
+    expect(kinds(out)).toEqual(['sessions', 'events', 'events', 'sessions'])
+    const last = out[3] as Extract<ServerPush, { push: 'sessions' }>
+    expect(last.sessions.map((s) => s.updatedAt)).toEqual([3])
+  })
+
+  it("a status row's waiting meta goes ahead of the row", () => {
+    const out: ServerPush[] = []
+    const c = new PushCoalescer((f) => out.push(f))
+    c.push(evt('a', 1))
+    c.push({ push: 'session', session: meta('b', { status: 'running' }) })
+    c.push({ push: 'session', session: meta('a', { status: 'idle' }) })
+    c.push({ push: 'session', session: meta('b', { status: 'running', updatedAt: 9 }) })
+    c.push({ push: 'event', row: { sessionId: 'a', seq: 2, ts: 2, event: { type: 'status', status: 'idle' } } })
+    vi.advanceTimersByTime(PUSH_EVENTS_COALESCE_MS)
+    // leading row, leading meta (b), then a's meta ahead of a's status row
+    expect(kinds(out)).toEqual(['events', 'sessions', 'sessions', 'events'])
+    expect((out[2] as Extract<ServerPush, { push: 'sessions' }>).sessions.map((s) => s.id)).toEqual(['a'])
+    expect(seqs(out[3])).toEqual([2])
+    vi.advanceTimersByTime(PUSH_COALESCE_MS)
+    // b's newer meta keeps its own window
+    expect((out[4] as Extract<ServerPush, { push: 'sessions' }>).sessions.map((s) => [s.id, s.updatedAt])).toEqual([['b', 9]])
   })
 
   it('projects bodies off the rows it carries', () => {
@@ -383,7 +512,6 @@ describe('PushCoalescer', () => {
       push: 'event',
       row: { sessionId: 'a', seq: 1, ts: 1, event: { type: 'tool-result', callId: 'c', output: big(5000), isError: false } }
     })
-    vi.advanceTimersByTime(100)
     const frame = out[0] as Extract<ServerPush, { push: 'events' }>
     expect(isOmittedBody((frame.rows[0].event as { output: unknown }).output)).toBe(true)
   })
@@ -392,10 +520,24 @@ describe('PushCoalescer', () => {
     const out: ServerPush[] = []
     const c = new PushCoalescer((f) => out.push(f), 100)
     c.push(evt('a', 1))
+    c.push(evt('a', 2))
+    c.push({ push: 'session', session: meta('a') })
+    c.push({ push: 'live-edit', cwd: '/p', sessionIds: ['a'], edit: { path: 'x', kind: 'changed', diff: null, ts: 1 } })
     c.push({ push: 'session-removed', sessionIds: ['a'] })
-    expect(out.map((f) => f.push)).toEqual(['events', 'session-removed'])
+    expect(kinds(out)).toEqual(['events', 'sessions', 'events', 'live-edits', 'session-removed'])
     vi.advanceTimersByTime(100)
-    expect(out).toHaveLength(2)
+    expect(out).toHaveLength(5)
+  })
+
+  it('a flush keeps the window open: a row right after it still waits', () => {
+    const out: ServerPush[] = []
+    const c = new PushCoalescer((f) => out.push(f))
+    c.push(evt('a', 1))
+    c.push({ push: 'queue', sessionId: 'a', items: [] })
+    c.push(evt('a', 2))
+    expect(kinds(out)).toEqual(['events', 'queue'])
+    vi.advanceTimersByTime(PUSH_EVENTS_COALESCE_MS)
+    expect(kinds(out)).toEqual(['events', 'queue', 'events'])
   })
 
   it('joins build lines of one run and keeps separate runs apart', () => {
@@ -403,14 +545,17 @@ describe('PushCoalescer', () => {
     const c = new PushCoalescer((f) => out.push(f), 100)
     const run = (id: string) => ({ id, projectId: 'p', target: 't', status: 'running' as const, startedAt: 1 }) as never
     c.push({ push: 'build', projectId: 'p', run: run('r1'), lines: ['a'] })
-    c.push({ push: 'build', projectId: 'p', run: run('r1'), lines: ['b', 'c'] })
-    c.push({ push: 'build', projectId: 'p', run: run('r2'), lines: ['d'] })
+    c.push({ push: 'build', projectId: 'p', run: run('r1'), lines: ['b'] })
+    c.push({ push: 'build', projectId: 'p', run: run('r1'), lines: ['c', 'd'] })
+    c.push({ push: 'build', projectId: 'p', run: run('r2'), lines: ['e'] })
     vi.advanceTimersByTime(100)
-    const frame = out[0] as Extract<ServerPush, { push: 'builds' }>
-    expect(frame.items.map((i) => i.lines)).toEqual([['a', 'b', 'c'], ['d']])
+    expect(out.map((f) => (f as Extract<ServerPush, { push: 'builds' }>).items.map((i) => i.lines))).toEqual([
+      [['a']],
+      [['b', 'c', 'd'], ['e']]
+    ])
   })
 
-  it('batches live edits in order', () => {
+  it('batches live edits in order on the 100 ms previews window, with no leading edge', () => {
     const out: ServerPush[] = []
     const c = new PushCoalescer((f) => out.push(f), 100)
     const edit = (path: string): ServerPush => ({
@@ -421,18 +566,106 @@ describe('PushCoalescer', () => {
     })
     c.push(edit('a'))
     c.push(edit('b'))
-    vi.advanceTimersByTime(100)
-    const frame = out[0] as Extract<ServerPush, { push: 'live-edits' }>
-    expect(frame.items.map((i) => i.edit.path)).toEqual(['a', 'b'])
+    c.push(edit('c'))
+    vi.advanceTimersByTime(99)
+    expect(out).toEqual([])
+    vi.advanceTimersByTime(1)
+    expect(out.map((f) => (f as Extract<ServerPush, { push: 'live-edits' }>).items.map((i) => i.edit.path))).toEqual([
+      ['a', 'b', 'c']
+    ])
+  })
+
+  it('a burst of 30 partials for one call within 100 ms leaves as one frame with the newest; text in the same window still leaves within 33 ms', () => {
+    const out: { at: number; frame: ServerPush }[] = []
+    const start = Date.now()
+    const c = new PushCoalescer((frame) => out.push({ at: Date.now() - start, frame }))
+    const sent = new Map<number, number>()
+    let seq = 0
+    for (let k = 0; k < 30; k++) {
+      c.push(partial('w', `line ${k} `.repeat(k + 1)))
+      // a text delta every 10 ms through the same window
+      if (k % 3 === 1) {
+        sent.set(++seq, Date.now() - start)
+        c.push(evt('a', seq))
+      }
+      vi.advanceTimersByTime(3)
+    }
+    expect(Date.now() - start).toBeLessThan(PUSH_COALESCE_MS)
+    vi.advanceTimersByTime(PUSH_COALESCE_MS)
+    const previews = out.filter(({ frame }) => frame.push === 'events' && seqs(frame).includes(-1))
+    expect(previews).toHaveLength(1)
+    expect(contents(previews[0].frame)).toEqual([`line 29 `.repeat(30)])
+    expect(previews[0].at).toBe(PUSH_COALESCE_MS)
+    // every text row left, in order, each within one events window of its push
+    const text = out.filter(({ frame }) => frame.push === 'events' && !seqs(frame).includes(-1))
+    expect(text.flatMap(({ frame }) => seqs(frame))).toEqual([...sent.keys()])
+    for (const { at, frame } of text)
+      for (const s of seqs(frame)) expect(at - sent.get(s)!).toBeLessThanOrEqual(PUSH_EVENTS_COALESCE_MS)
+    expect(text[0].at).toBe(sent.get(1))
+  })
+
+  it('keeps only the newest partial per tool call, apart from the text rows', () => {
+    const out: ServerPush[] = []
+    const c = new PushCoalescer((f) => out.push(f))
+    c.push(evt('a', 1))
+    c.push(partial('w', 'one'))
+    c.push(partial('x', 'other'))
+    c.push(evt('a', 2))
+    c.push(partial('w', 'one two'))
+    c.push(partial('w', 'one two three'))
+    c.push(partial('w', 'elsewhere', 'b'))
+    vi.advanceTimersByTime(PUSH_EVENTS_COALESCE_MS)
+    expect(out.map(seqs)).toEqual([[1], [2]])
+    vi.advanceTimersByTime(PUSH_COALESCE_MS - PUSH_EVENTS_COALESCE_MS)
+    expect(out.slice(2).map((f) => (f as Extract<ServerPush, { push: 'events' }>).sessionId)).toEqual(['a', 'b'])
+    expect(contents(out[2])).toEqual(['other', 'one two three'])
+    expect(contents(out[3])).toEqual(['elsewhere'])
+  })
+
+  it('a final tool call drops the partials of its call that still wait, so no stale preview lands after it', () => {
+    const out: ServerPush[] = []
+    const c = new PushCoalescer((f) => out.push(f))
+    c.push(evt('a', 1))
+    c.push(partial('w', 'one'))
+    c.push(partial('w', 'one two'))
+    c.push({
+      push: 'event',
+      row: { sessionId: 'a', seq: 2, ts: 2, event: { type: 'tool-call', callId: 'w', name: 'Write', input: { file_path: '/a.ts', content: 'one two three' } } }
+    })
+    vi.advanceTimersByTime(PUSH_COALESCE_MS)
+    expect(out.map(seqs)).toEqual([[1], [2]])
+    expect(contents(out[1])).toEqual(['one two three'])
+  })
+
+  it('a partial already sent is not touched; the next window starts fresh', () => {
+    const out: ServerPush[] = []
+    const c = new PushCoalescer((f) => out.push(f))
+    c.push(partial('w', 'one'))
+    c.push(partial('w', 'one two'))
+    vi.advanceTimersByTime(PUSH_COALESCE_MS)
+    c.push(partial('w', 'one two three'))
+    c.push(partial('w', 'one two three four'))
+    vi.advanceTimersByTime(PUSH_COALESCE_MS)
+    expect(out.map(contents)).toEqual([['one two'], ['one two three four']])
+  })
+
+  it('a growing partial input past the body line still rides whole', () => {
+    const out: ServerPush[] = []
+    const c = new PushCoalescer((f) => out.push(f))
+    const content = big(4 * BODY_OMIT_BYTES)
+    c.push(partial('w', content))
+    vi.advanceTimersByTime(PUSH_COALESCE_MS)
+    expect(contents(out[0])).toEqual([content])
   })
 
   it('dispose drops what waits and ignores what follows', () => {
     const out: ServerPush[] = []
     const c = new PushCoalescer((f) => out.push(f), 100)
     c.push(evt('a', 1))
-    c.dispose()
     c.push(evt('a', 2))
+    c.dispose()
+    c.push(evt('a', 3))
     vi.advanceTimersByTime(200)
-    expect(out).toEqual([])
+    expect(out.flatMap(seqs)).toEqual([1])
   })
 })

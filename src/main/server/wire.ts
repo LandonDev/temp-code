@@ -10,10 +10,12 @@ import {
   HISTORY_PAGE_BYTES,
   HISTORY_PAGE_ROWS,
   PUSH_COALESCE_MS,
+  PUSH_EVENTS_COALESCE_MS,
   RESUME_BYTES,
   RESUME_ROWS,
   SHELL_PAGE_BYTES,
   SHELL_PAGE_ROWS,
+  STREAMING_BODY_OMIT_BYTES,
   TAIL_BYTES,
   TAIL_ROWS
 } from '@shared/wireBudgets'
@@ -70,8 +72,8 @@ function omittedString(text: string): OmittedBody {
 }
 
 /** A string at or past the line: the length check first, since UTF-8 bytes never undercount code units. */
-function isLarge(text: string): boolean {
-  return text.length >= BODY_OMIT_BYTES && Buffer.byteLength(text) >= BODY_OMIT_BYTES
+function isLarge(text: string, limit = BODY_OMIT_BYTES): boolean {
+  return text.length >= limit && Buffer.byteLength(text) >= limit
 }
 
 const WALK_DEPTH = 8
@@ -79,13 +81,13 @@ const WALK_DEPTH = 8
 /** `value` with every large string replaced by its OmittedBody, the same
  *  object when nothing was large. Walks arrays and plain objects (a tool
  *  input is one, a normalized patch is an array of them). */
-function omitStrings(value: unknown, depth = 0): unknown {
-  if (typeof value === 'string') return isLarge(value) ? omittedString(value) : value
+function omitStrings(value: unknown, limit = BODY_OMIT_BYTES, depth = 0): unknown {
+  if (typeof value === 'string') return isLarge(value, limit) ? omittedString(value) : value
   if (depth >= WALK_DEPTH || typeof value !== 'object' || value === null) return value
   if (Array.isArray(value)) {
     let out: unknown[] | null = null
     for (let i = 0; i < value.length; i++) {
-      const next = omitStrings(value[i], depth + 1)
+      const next = omitStrings(value[i], limit, depth + 1)
       if (next !== value[i]) {
         out ??= value.slice()
         out[i] = next
@@ -96,7 +98,7 @@ function omitStrings(value: unknown, depth = 0): unknown {
   let out: Record<string, unknown> | null = null
   const record = value as Record<string, unknown>
   for (const key of Object.keys(record)) {
-    const next = omitStrings(record[key], depth + 1)
+    const next = omitStrings(record[key], limit, depth + 1)
     if (next !== record[key]) {
       out ??= { ...record }
       out[key] = next
@@ -105,11 +107,11 @@ function omitStrings(value: unknown, depth = 0): unknown {
   return out ?? value
 }
 
-function omitPreview(preview: ToolPreview): ToolPreview {
+function omitPreview(preview: ToolPreview, limit = BODY_OMIT_BYTES): ToolPreview {
   let out: ToolPreview | null = null
   if (preview.lines && preview.lines.length > 0) {
     const bytes = encodedBytes(preview.lines)
-    if (bytes >= BODY_OMIT_BYTES) {
+    if (bytes >= limit) {
       out = { ...preview }
       ;(out as { lines: unknown }).lines = {
         omitted: true,
@@ -119,7 +121,7 @@ function omitPreview(preview: ToolPreview): ToolPreview {
       } satisfies OmittedBody
     }
   }
-  if (preview.output && isLarge(preview.output)) {
+  if (preview.output && isLarge(preview.output, limit)) {
     out ??= { ...preview }
     ;(out as { output: unknown }).output = omittedString(preview.output)
   }
@@ -191,8 +193,11 @@ export function projectEvent(event: AgentEvent): AgentEvent {
       return { ...event, output: omittedString(event.output) as unknown as string }
     }
     case 'tool-call': {
-      const input = omitStrings(event.input)
-      const preview = event.preview ? omitPreview(event.preview) : editSummary(event.name, input)
+      // A partial is the card growing as the model writes: it keeps a far
+      // higher line so the card grows on remote too (STREAMING_BODY_OMIT_BYTES).
+      const limit = event.partial ? STREAMING_BODY_OMIT_BYTES : BODY_OMIT_BYTES
+      const input = omitStrings(event.input, limit)
+      const preview = event.preview ? omitPreview(event.preview, limit) : editSummary(event.name, input)
       if (input === event.input && preview === event.preview) return event
       return { ...event, input, ...(preview ? { preview } : {}) }
     }
@@ -213,11 +218,11 @@ export function projectRow(row: EventRow): EventRow {
 
 type LiveEdit = Extract<ServerPush, { push: 'live-edit' }>
 
-/** A live-edit push for a remote connection: a unified diff past the line
- *  degrades to `diff: null` (the shape a binary or burst edit already
+/** A live-edit push for a remote connection: a unified diff past the
+ *  streaming line (STREAMING_BODY_OMIT_BYTES) degrades to `diff: null` (the shape a binary or burst edit already
  *  takes), the counts and bytes stay. */
 export function projectLiveEdit(push: LiveEdit): LiveEdit {
-  if (!push.edit.diff || !isLarge(push.edit.diff)) return push
+  if (!push.edit.diff || !isLarge(push.edit.diff, STREAMING_BODY_OMIT_BYTES)) return push
   return { ...push, edit: { ...push.edit, diff: null } }
 }
 
@@ -360,22 +365,50 @@ export function sessionPage(
 
 type BuildPush = Extract<ServerPush, { push: 'build' }>
 
-/** Per remote connection: pushes wait PUSH_COALESCE_MS and go out as one
- *  frame per kind, events grouped by session and in order, the newest
- *  meta per session, live edits in order, build lines joined per run.
+/** The coalescer's lanes: stored transcript rows; metas and build lines;
+ *  and previews (partial tool calls and live edits), the growing
+ *  snapshots that each supersede the last. */
+type Lane = 'events' | 'rest' | 'previews'
+
+/** True for a partial tool call: a broadcast-only row (seq -1, never in
+ *  the log) carrying the whole input so far, which the next row of the
+ *  same call replaces in the fold. */
+function isPartialCall(row: EventRow): row is EventRow & { event: Extract<AgentEvent, { type: 'tool-call' }> } {
+  return row.event.type === 'tool-call' && row.event.partial === true
+}
+
+/** Per remote connection, three lanes:
+ *  - events: stored rows (text deltas, tool calls, results, status), a
+ *    PUSH_EVENTS_COALESCE_MS window with a leading edge: the first row of
+ *    a quiet lane goes out at once, the rest as one frame per session when
+ *    the window closes, and a window that closes on waiting rows opens the
+ *    next, so a stream leaves as one frame per window.
+ *  - rest: metas (the newest per session) and build lines (joined per
+ *    run), a PUSH_COALESCE_MS window with the same leading edge.
+ *  - previews: partial tool calls (the newest per call) and live edits,
+ *    a PUSH_COALESCE_MS window with no leading edge: the first preview
+ *    opens the window and everything in it leaves when it closes. Each
+ *    preview can carry up to STREAMING_BODY_OMIT_BYTES and is stale the
+ *    moment the next one lands, so they leave at most ten times a second
+ *    and never compete with the text for the link.
+ *  A later row of a call drops that call's waiting partial, whichever
+ *  lane it rides, so a stale preview never lands after the final call.
  *  Any other push flushes what waits first and goes out at once, so the
  *  order a client sees is the order the server produced. */
 export class PushCoalescer {
   private events = new Map<string, EventRow[]>()
+  /** `sessionId\0callId` → the newest waiting partial of that call */
+  private partials = new Map<string, EventRow>()
   private sessions = new Map<string, SessionMeta>()
   private liveEdits: Omit<LiveEdit, 'push'>[] = []
   private builds: Omit<BuildPush, 'push'>[] = []
-  private timer: ReturnType<typeof setTimeout> | null = null
+  private timers: Record<Lane, ReturnType<typeof setTimeout> | null> = { events: null, rest: null, previews: null }
   private disposed = false
 
   constructor(
     private readonly emit: (frame: ServerPush) => void,
-    private readonly delayMs = PUSH_COALESCE_MS
+    private readonly delayMs = PUSH_COALESCE_MS,
+    private readonly eventsDelayMs = PUSH_EVENTS_COALESCE_MS
   ) {}
 
   push(frame: ServerPush): void {
@@ -383,19 +416,27 @@ export class PushCoalescer {
     switch (frame.push) {
       case 'event': {
         const row = projectRow(frame.row)
+        if (row.event.type === 'tool-call') this.partials.delete(`${row.sessionId}\0${row.event.callId}`)
+        if (isPartialCall(row)) {
+          this.partials.set(`${row.sessionId}\0${row.event.callId}`, row)
+          this.arm('previews')
+          return
+        }
         const rows = this.events.get(row.sessionId)
         if (rows) rows.push(row)
         else this.events.set(row.sessionId, [row])
-        break
+        this.arm('events')
+        return
+      }
+      case 'live-edit': {
+        const { push: _push, ...rest } = projectLiveEdit(frame)
+        this.liveEdits.push(rest)
+        this.arm('previews')
+        return
       }
       case 'session':
         this.sessions.set(frame.session.id, frame.session)
         break
-      case 'live-edit': {
-        const { push: _push, ...rest } = projectLiveEdit(frame)
-        this.liveEdits.push(rest)
-        break
-      }
       case 'build': {
         const { push: _push, ...rest } = frame
         const prev = this.builds[this.builds.length - 1]
@@ -412,48 +453,133 @@ export class PushCoalescer {
         this.emit(frame)
         return
     }
-    this.timer ??= setTimeout(() => {
-      this.timer = null
-      this.flush()
-    }, this.delayMs)
+    this.arm('rest')
   }
 
-  /** Everything waiting goes out now, metas first (a status row's meta lands before the row). */
+  /** Everything waiting goes out now, metas first (a status row's meta
+   *  lands before the row). Open windows stay open: a push inside one
+   *  still waits for its end, so the frame rate holds. */
   flush(): void {
-    if (this.timer) {
-      clearTimeout(this.timer)
-      this.timer = null
-    }
-    if (this.sessions.size > 0) {
-      const sessions = [...this.sessions.values()]
-      this.sessions.clear()
-      this.emit({ push: 'sessions', sessions })
-    }
-    if (this.events.size > 0) {
-      const events = this.events
-      this.events = new Map()
-      for (const [sessionId, rows] of events) this.emit({ push: 'events', sessionId, rows })
-    }
-    if (this.liveEdits.length > 0) {
-      const items = this.liveEdits
-      this.liveEdits = []
-      this.emit({ push: 'live-edits', items })
-    }
-    if (this.builds.length > 0) {
-      const items = this.builds
-      this.builds = []
-      this.emit({ push: 'builds', items })
-    }
+    this.flushSessions()
+    this.flushEvents()
+    this.flushPartials()
+    this.flushLiveEdits()
+    this.flushBuilds()
   }
 
   /** The socket closed: nothing waiting can be sent. */
   dispose(): void {
     this.disposed = true
-    if (this.timer) clearTimeout(this.timer)
-    this.timer = null
+    for (const lane of ['events', 'rest', 'previews'] as const) {
+      const timer = this.timers[lane]
+      if (timer) clearTimeout(timer)
+      this.timers[lane] = null
+    }
     this.events.clear()
+    this.partials.clear()
     this.sessions.clear()
     this.liveEdits = []
     this.builds = []
+  }
+
+  /** Events and rest have a leading edge: a quiet lane sends now and opens
+   *  its window, a window that closes on waiting pushes sends them and
+   *  opens the next, one that closes on nothing leaves the lane quiet.
+   *  Previews only open the window and send when it closes. */
+  private arm(lane: Lane): void {
+    if (this.timers[lane]) return
+    if (lane !== 'previews') this.flushLane(lane)
+    this.openWindow(lane)
+  }
+
+  private openWindow(lane: Lane): void {
+    this.timers[lane] = setTimeout(
+      () => {
+        this.timers[lane] = null
+        if (this.disposed || !this.waiting(lane)) return
+        this.flushLane(lane)
+        if (lane !== 'previews') this.openWindow(lane)
+      },
+      lane === 'events' ? this.eventsDelayMs : this.delayMs
+    )
+  }
+
+  private waiting(lane: Lane): boolean {
+    switch (lane) {
+      case 'events':
+        return this.events.size > 0
+      case 'rest':
+        return this.sessions.size > 0 || this.builds.length > 0
+      case 'previews':
+        return this.partials.size > 0 || this.liveEdits.length > 0
+    }
+  }
+
+  private flushLane(lane: Lane): void {
+    switch (lane) {
+      case 'rest':
+        this.flushSessions()
+        this.flushBuilds()
+        return
+      case 'previews':
+        this.flushPartials()
+        this.flushLiveEdits()
+        return
+      case 'events': {
+        // Metas keep their own window; only a status row's waiting meta
+        // rides ahead of the rows, so the row never lands before its meta.
+        const ahead: SessionMeta[] = []
+        for (const [sessionId, rows] of this.events) {
+          const meta = this.sessions.get(sessionId)
+          if (meta && rows.some((r) => r.event.type === 'status')) {
+            this.sessions.delete(sessionId)
+            ahead.push(meta)
+          }
+        }
+        if (ahead.length > 0) this.emit({ push: 'sessions', sessions: ahead })
+        this.flushEvents()
+      }
+    }
+  }
+
+  private flushSessions(): void {
+    if (this.sessions.size === 0) return
+    const sessions = [...this.sessions.values()]
+    this.sessions.clear()
+    this.emit({ push: 'sessions', sessions })
+  }
+
+  private flushEvents(): void {
+    if (this.events.size === 0) return
+    const events = this.events
+    this.events = new Map()
+    for (const [sessionId, rows] of events) this.emit({ push: 'events', sessionId, rows })
+  }
+
+  /** The waiting partials as one events frame per session. */
+  private flushPartials(): void {
+    if (this.partials.size === 0) return
+    const bySession = new Map<string, EventRow[]>()
+    for (const row of this.partials.values()) {
+      const rows = bySession.get(row.sessionId)
+      if (rows) rows.push(row)
+      else bySession.set(row.sessionId, [row])
+    }
+    this.partials.clear()
+    for (const [sessionId, rows] of bySession) this.emit({ push: 'events', sessionId, rows })
+  }
+
+  private flushLiveEdits(): void {
+    if (this.liveEdits.length === 0) return
+    const items = this.liveEdits
+    this.liveEdits = []
+    this.emit({ push: 'live-edits', items })
+  }
+
+  private flushBuilds(): void {
+    if (this.builds.length === 0) return
+    const items = this.builds
+    this.builds = []
+    this.emit({ push: 'builds', items })
   }
 }

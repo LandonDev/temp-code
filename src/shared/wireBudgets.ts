@@ -25,6 +25,23 @@ export const MIB = 1024 * KIB
  *  bytes sit above the line, and they are the conversation. */
 export const BODY_OMIT_BYTES = 2 * KIB
 
+/** The line for bodies that are still being written: a partial tool call's
+ *  input (a Write's content, an Edit's new_string, a codex patch as it
+ *  grows) and a live-edit diff. At BODY_OMIT_BYTES a remote card stopped
+ *  growing at 2 KiB and then appeared whole when the final row landed; at
+ *  32 KiB it grows like a local one for all but the largest files. These
+ *  rows are broadcast-only and superseded: they ride the coalescer's
+ *  100 ms previews window (PUSH_COALESCE_MS, no leading edge) and only the
+ *  newest partial per call leaves, so a card at the line costs at most
+ *  about 320 KiB/s before deflate while it streams, codex's unthrottled
+ *  patch updates included (wire.perf.test.ts: a codex patch growing to
+ *  30 KiB in a second leaves as 10 frames, 170 KiB, 41 KiB deflated; on
+ *  the 33 ms events window it was 32 frames, 510 KiB, 124 KiB), and
+ *  nothing in the log or on a cold open.
+ *  The final tool call keeps BODY_OMIT_BYTES (it is stored and replayed;
+ *  `session.rowBody` fetches it whole). */
+export const STREAMING_BODY_OMIT_BYTES = 32 * KIB
+
 /** The first characters of an omitted body that ride along as its summary:
  *  a shell output's first line, the start of a file. One short line. */
 export const BODY_HEAD_CHARS = 160
@@ -62,11 +79,26 @@ export const HISTORY_PAGE_ROWS = 300
 export const SHELL_PAGE_BYTES = 256 * KIB
 export const SHELL_PAGE_ROWS = 300
 
-/** Pushes to a remote connection wait this long and go out as one frame
- *  per kind: a streaming turn emits dozens of rows a second, and a fleet
- *  of a hundred subagents hundreds of metas; at 100 ms the reader sees no
- *  lag and the link sees ten frames a second at most per kind. */
+/** Session metas and build lines to a remote connection go out at most
+ *  once per this window, one frame per kind: a fleet of a hundred
+ *  subagents pushes hundreds of metas a second, and at 100 ms the sidebar
+ *  sees no lag while the link sees ten frames a second at most. The first
+ *  push of a quiet period leaves at once (leading edge); what follows
+ *  within the window waits for its end (trailing edge).
+ *  Previews (partial tool calls, newest per call, and live edits) share
+ *  the length on a lane of their own with no leading edge: each can be
+ *  tens of KiB and is stale when the next lands, so the first only opens
+ *  the window and the newest leaves when it closes. */
 export const PUSH_COALESCE_MS = 100
+
+/** Event rows (the transcript) get their own, shorter window with the same
+ *  leading edge. At 100 ms a token stream left as ten bursts a second and
+ *  the first row of a quiet period waited the whole window; over a tunnel
+ *  with uneven delivery the reader saw 100 ms-sized jerks. 33 ms is one
+ *  paint at the renderer's reveal cadence (smoothText's PAINT_EVERY_MS),
+ *  so a stream arrives about as often as it can be shown, and the link
+ *  still sees thirty frames a second at most per session. */
+export const PUSH_EVENTS_COALESCE_MS = 33
 
 /** permessage-deflate on remote connections skips frames under this many
  *  bytes: the deflate header and a flush cost more than they save on a
