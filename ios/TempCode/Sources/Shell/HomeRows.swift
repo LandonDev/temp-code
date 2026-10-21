@@ -2,36 +2,74 @@ import Foundation
 import TempCodeClient
 import TempCodeContract
 
-/// Home as one flat list, built from every host's shell and the remembered
+/// Home as native sections, built from every host's shell and the remembered
 /// folds. Pure, so the view's body is one ForEach over stable ids.
+struct HomeSection: Identifiable {
+    enum Header: Hashable {
+        case none
+        /// "Needs you", "Running", "Chats".
+        case title(String)
+        /// With several hosts, the host's name and connection dot over its workspaces.
+        case host(EnvironmentClient)
+        /// A workspace: logo, name, repo; the fold, and the count while folded.
+        case workspace(EnvironmentClient, WorkspaceMeta, collapsed: Bool, threads: Int)
+
+        static func == (a: Header, b: Header) -> Bool { a.key == b.key }
+        func hash(into hasher: inout Hasher) { hasher.combine(key) }
+
+        private var key: String {
+            switch self {
+            case .none: "none"
+            case .title(let title): "title:\(title)"
+            case .host(let client): "host:\(client.environment.id)"
+            case .workspace(let client, let workspace, let collapsed, let threads): "workspace:\(client.environment.id):\(workspace.id):\(collapsed):\(threads)"
+            }
+        }
+    }
+
+    let id: String
+    var header: Header
+    var rows: [HomeRow]
+}
+
 enum HomeRow: Identifiable {
     case status(EnvironmentClient)
-    case title(String)
     case needsYou(EnvironmentClient, NeedsYouItem)
     case running(EnvironmentClient, SessionMeta)
-    case host(EnvironmentClient)
-    case workspace(EnvironmentClient, WorkspaceMeta, collapsed: Bool)
+    /// Nothing needs you and nothing runs: one calm line and the way to start a thread.
+    case calm(EnvironmentClient, WorkspaceMeta)
     case project(EnvironmentClient, ProjectGroup)
     case thread(EnvironmentClient, ThreadItem)
     case moreAgents(EnvironmentClient, root: SessionMeta, hidden: Int)
     case archivedThreads(EnvironmentClient, ProjectGroup)
     case archivedProjects(EnvironmentClient, WorkspaceMeta, count: Int)
+    /// An expanded workspace with no thread in it yet.
+    case emptyWorkspace(EnvironmentClient, WorkspaceMeta)
+    /// A host with no workspace and no chat: the fact and the place to fix it, or a spinner until it is listed.
     case nothing(EnvironmentClient)
 
     var id: String {
         switch self {
         case .status(let client): "status:\(client.environment.id)"
-        case .title(let title): "title:\(title)"
         case .needsYou(_, let item): "needs:\(item.id)"
         case .running(_, let meta): "running:\(meta.id)"
-        case .host(let client): "host:\(client.environment.id)"
-        case .workspace(let client, let workspace, _): "workspace:\(client.environment.id):\(workspace.id)"
+        case .calm(let client, _): "calm:\(client.environment.id)"
         case .project(let client, let group): "project:\(client.environment.id):\(group.id)"
         case .thread(_, let item): "thread:\(item.id)"
         case .moreAgents(_, let root, _): "more:\(root.id)"
         case .archivedThreads(let client, let group): "archived:\(client.environment.id):\(group.id)"
         case .archivedProjects(let client, let workspace, _): "archived-projects:\(client.environment.id):\(workspace.id)"
+        case .emptyWorkspace(let client, let workspace): "empty:\(client.environment.id):\(workspace.id)"
         case .nothing(let client): "nothing:\(client.environment.id)"
+        }
+    }
+
+    /// Rows that come and go because of an event (a host dropping, a thread
+    /// needing you) and so arrive with the needs-you motion.
+    var isEvent: Bool {
+        switch self {
+        case .status, .needsYou: true
+        default: false
         }
     }
 }
@@ -54,57 +92,63 @@ enum HomeRows {
         }
     }
 
-    static func build(clients: [EnvironmentClient], folded: Set<String>) -> [HomeRow] {
-        var rows: [HomeRow] = []
-        for client in clients where troubled(client.status) {
-            rows.append(.status(client))
-        }
+    static func build(clients: [EnvironmentClient], folded: Set<String>) -> [HomeSection] {
+        var sections: [HomeSection] = []
+        let status = clients.filter { troubled($0.status) }.map { HomeRow.status($0) }
+        if !status.isEmpty { sections.append(HomeSection(id: "status", header: .none, rows: status)) }
 
         let needs = clients
             .flatMap { client in HomeModel.needsYou(client.sessions).map { (client, $0) } }
             .sorted { ($0.1.since, $0.1.id) < ($1.1.since, $1.1.id) }
         if !needs.isEmpty {
-            rows.append(.title("Needs you"))
-            rows += needs.map { .needsYou($0.0, $0.1) }
+            sections.append(HomeSection(id: "needs", header: .title("Needs you"), rows: needs.map { .needsYou($0.0, $0.1) }))
         }
 
         let running = clients
             .flatMap { client in HomeModel.running(client.sessions).map { (client, $0) } }
             .sorted { ($0.1.updatedAt, $0.1.id) > ($1.1.updatedAt, $1.1.id) }
         if !running.isEmpty {
-            rows.append(.title("Running"))
-            rows += running.map { .running($0.0, $0.1) }
+            sections.append(HomeSection(id: "running", header: .title("Running"), rows: running.map { .running($0.0, $0.1) }))
+        }
+
+        // Quiet is a state too: say so once, with the one thing to do from here.
+        if needs.isEmpty, running.isEmpty, let calm = clients.first(where: { $0.hasShell && !$0.workspaces.isEmpty }), let workspace = calm.workspaces.first {
+            sections.append(HomeSection(id: "calm", header: .none, rows: [.calm(calm, workspace)]))
         }
 
         for client in clients {
-            if clients.count > 1 { rows.append(.host(client)) }
+            let host = client.environment.id
+            if clients.count > 1 { sections.append(HomeSection(id: "host:\(host)", header: .host(client), rows: [])) }
             let floor = Int(client.environment.addedAt)
             let loose = ThreadGroups.group(client.sessions, projects: client.projects, workspaces: client.workspaces, workspaceId: nil, seen: client.seen, floor: floor).chats
             if !loose.isEmpty {
-                rows.append(.title("Chats"))
-                rows += threadRows(client, loose)
+                sections.append(HomeSection(id: "chats:\(host)", header: .title("Chats"), rows: threadRows(client, loose)))
             }
             if client.workspaces.isEmpty, loose.isEmpty {
-                rows.append(.nothing(client))
+                sections.append(HomeSection(id: "nothing:\(host)", header: .none, rows: [.nothing(client)]))
                 continue
             }
             for workspace in client.workspaces {
                 let groups = ThreadGroups.group(client.sessions, projects: client.projects, workspaces: client.workspaces, workspaceId: workspace.id, seen: client.seen, floor: floor)
                 let collapsed = folded.contains(foldKey(client, workspace))
-                rows.append(.workspace(client, workspace, collapsed: collapsed))
-                if collapsed { continue }
-                rows += threadRows(client, groups.chats)
-                for group in groups.projects {
-                    rows.append(.project(client, group))
-                    rows += threadRows(client, group.threads)
-                    if group.archivedCount > 0 { rows.append(.archivedThreads(client, group)) }
+                let threads = groups.chats.count + groups.projects.reduce(0) { $0 + $1.threads.count }
+                var rows: [HomeRow] = []
+                if !collapsed {
+                    rows += threadRows(client, groups.chats)
+                    for group in groups.projects {
+                        rows.append(.project(client, group))
+                        rows += threadRows(client, group.threads)
+                        if group.archivedCount > 0 { rows.append(.archivedThreads(client, group)) }
+                    }
+                    if !groups.archived.isEmpty {
+                        rows.append(.archivedProjects(client, workspace, count: groups.archived.count))
+                    }
+                    if rows.isEmpty { rows.append(.emptyWorkspace(client, workspace)) }
                 }
-                if !groups.archived.isEmpty {
-                    rows.append(.archivedProjects(client, workspace, count: groups.archived.count))
-                }
+                sections.append(HomeSection(id: "workspace:\(host):\(workspace.id)", header: .workspace(client, workspace, collapsed: collapsed, threads: threads), rows: rows))
             }
         }
-        return rows
+        return sections
     }
 
     /// A root, then its subagents: every live or needs-you one, a few

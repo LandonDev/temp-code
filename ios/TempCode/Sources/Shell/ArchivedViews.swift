@@ -2,7 +2,7 @@ import SwiftUI
 import TempCodeClient
 import TempCodeContract
 
-/// A project's archived roots, newest first.
+/// A project's archived roots, newest first, on the same grouped card as Home.
 struct ArchivedThreadsView: View {
     let client: EnvironmentClient
     let projectId: String
@@ -12,19 +12,24 @@ struct ArchivedThreadsView: View {
         let project = client.projects.first { $0.id == projectId }
         let threads = ThreadGroups.archivedThreads(client.sessions, projectId: projectId)
         List {
-            if let project {
-                SectionHeader(project.name, branch: project.branch, worktree: project.mode == .worktree)
-                    .listRowInsets(EdgeInsets())
-                    .listRowSeparator(.hidden)
-            }
-            ForEach(threads, id: \.id) { meta in
-                ThreadButton(client: client, sessionId: meta.id, model: ThreadRowModel(session: meta), path: $path)
+            Section {
+                ForEach(threads, id: \.id) { meta in
+                    ThreadButton(client: client, sessionId: meta.id, model: ThreadRowModel(session: meta), path: $path)
+                }
+            } header: {
+                if let project {
+                    ArchivedHeader(name: project.name, branch: project.branch, worktree: project.mode == .worktree)
+                }
             }
         }
-        .listStyle(.plain)
+        .listStyle(.insetGrouped)
         .overlay {
             if threads.isEmpty {
-                ContentUnavailableView("Nothing archived", systemImage: "archivebox")
+                ContentUnavailableView {
+                    Label("Nothing archived", systemImage: "archivebox")
+                } description: {
+                    Text("Threads you archive in \(project?.name ?? "this project") end up here.")
+                }
             }
         }
         .navigationTitle("Archived")
@@ -42,29 +47,63 @@ struct ArchivedProjectsView: View {
         let groups = ThreadGroups.group(client.sessions, projects: client.projects, workspaces: client.workspaces, workspaceId: workspaceId, seen: client.seen, floor: Int(client.environment.addedAt)).archived
         List {
             ForEach(groups) { group in
-                SectionHeader(group.project.name, branch: group.project.branch, worktree: group.project.mode == .worktree)
-                    .listRowInsets(EdgeInsets())
-                    .listRowSeparator(.hidden)
-                ForEach(group.threads) { item in
-                    ThreadButton(client: client, sessionId: item.id, model: ThreadRowModel(session: item.meta, unseen: item.unseen), path: $path)
-                }
-                if group.archivedCount > 0 {
-                    Button { path.append(Route.archivedThreads(environmentId: client.environment.id, projectId: group.id)) } label: {
-                        DimRow(group.archivedCount == 1 ? "1 archived" : "\(group.archivedCount) archived")
+                Section {
+                    ForEach(group.threads) { item in
+                        ThreadButton(client: client, sessionId: item.id, model: ThreadRowModel(session: item.meta, unseen: item.unseen), path: $path)
                     }
-                    .buttonStyle(.pressable)
-                    .listRowInsets(rowInsets)
+                    if group.archivedCount > 0 {
+                        Button { path.append(Route.archivedThreads(environmentId: client.environment.id, projectId: group.id)) } label: {
+                            DimRow(group.archivedCount == 1 ? "1 archived" : "\(group.archivedCount) archived")
+                        }
+                        .buttonStyle(.pressable)
+                    }
+                } header: {
+                    ArchivedHeader(name: group.project.name, branch: group.project.branch, worktree: group.project.mode == .worktree)
                 }
             }
         }
-        .listStyle(.plain)
+        .listStyle(.insetGrouped)
         .overlay {
             if groups.isEmpty {
-                ContentUnavailableView("No archived projects", systemImage: "archivebox")
+                ContentUnavailableView {
+                    Label("No archived projects", systemImage: "archivebox")
+                } description: {
+                    Text("Projects you archive in this workspace end up here.")
+                }
             }
         }
         .navigationTitle("Archived projects")
         .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+/// A project's name as a grouped header: the worktree mark and the branch dim after it.
+private struct ArchivedHeader: View {
+    let name: String
+    let branch: String?
+    let worktree: Bool
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Text(name)
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+            if worktree {
+                Image(systemName: "arrow.triangle.branch")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.tertiary)
+                    .accessibilityLabel("Worktree")
+            }
+            if let branch {
+                Text(branch)
+                    .font(.footnote)
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(1)
+                    .layoutPriority(-1)
+            }
+        }
+        .textCase(nil)
     }
 }
 
@@ -81,7 +120,6 @@ struct ThreadButton: View {
             ThreadRow(row: model)
         }
         .buttonStyle(.pressable)
-        .listRowInsets(rowInsets)
         .modifier(RowActionsIfKnown(client: client, sessionId: sessionId))
     }
 }

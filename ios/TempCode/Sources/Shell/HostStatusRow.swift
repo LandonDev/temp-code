@@ -3,21 +3,24 @@ import TempCodeClient
 
 /// One row at the top of Home for a host that is not plainly connected: its
 /// name, what is happening, and the one action that helps (Retry, or Pair
-/// again when the key was refused). Never a blank screen.
+/// again when the key was refused). On the card, tinted like a needs-you
+/// row: warning while it retries, destructive when refused or offline.
+/// Never a blank screen.
 struct HostStatusRow: View {
     let client: EnvironmentClient
     let pairAgain: () -> Void
 
     var body: some View {
         let status = client.status
-        HStack(spacing: 10) {
+        HStack(alignment: .firstTextBaseline, spacing: 10) {
             Circle()
                 .fill(status.transport == .reconnecting || status.transport == .connecting ? Tint.warning : Tint.destructive)
                 .frame(width: 7, height: 7)
                 .frame(width: 14)
-            VStack(alignment: .leading, spacing: 1) {
+                .alignmentGuide(.firstTextBaseline) { $0[VerticalAlignment.center] + 3 }
+            VStack(alignment: .leading, spacing: 2) {
                 Text(client.environment.name)
-                    .font(.footnote.weight(.semibold))
+                    .font(.subheadline.weight(.semibold))
                     .lineLimit(1)
                 StatusText(status: status)
                     .font(.footnote)
@@ -31,7 +34,7 @@ struct HostStatusRow: View {
                 PillButton("Retry") { Task { await client.retry() } }
             }
         }
-        .padding(.vertical, 8)
+        .padding(.vertical, 6)
         .frame(minHeight: 44)
     }
 }
