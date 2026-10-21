@@ -214,6 +214,8 @@ private struct ReportBlock: View {
             guard !numbers.isEmpty else { continue }
             let start = styled.characters.index(styled.startIndex, offsetBy: plain.distance(from: plain.startIndex, to: match.range.lowerBound))
             let end = styled.characters.index(start, offsetBy: plain.distance(from: match.range.lowerBound, to: match.range.upperBound))
+            // `rows[0]` in inline code is an index, not a citation.
+            if styled[start..<end].runs.contains(where: { $0.inlinePresentationIntent?.contains(.code) == true }) { continue }
             var replacement = AttributedString("\u{2009}")
             for (offset, number) in numbers.enumerated() {
                 if offset > 0 { replacement.append(AttributedString(",")) }

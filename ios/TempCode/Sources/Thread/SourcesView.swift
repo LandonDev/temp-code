@@ -117,7 +117,7 @@ private struct ReportPin: View {
         Button(action: open) {
             HStack(alignment: .top, spacing: 12) {
                 Image(systemName: "doc.text")
-                    .font(.body.weight(.medium))
+                    .font(.body.weight(.semibold))
                     .foregroundStyle(Tint.cyan)
                     .frame(width: 22)
                     .padding(.top, 1)
@@ -313,7 +313,7 @@ private struct QueryRow: View {
     @ScaledMetric(relativeTo: .subheadline) private var icon: CGFloat = 20
 
     var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 10) {
+        HStack(spacing: 10) {
             Image(systemName: "magnifyingglass")
                 .font(.footnote)
                 .foregroundStyle(.tertiary)
@@ -351,7 +351,6 @@ private struct SourceRowView: View {
         } label: {
             HStack(alignment: .top, spacing: 10) {
                 SiteIcon(host: host)
-                    .padding(.top, 1)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(headline(host))
                         .font(.subheadline)
