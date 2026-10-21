@@ -559,6 +559,90 @@ journal say what landed. Proof:
 `bun run script:e2e-harness-sync` (two headless instances with their own
 HOMEs, paired over the fixed port; runs on the box under `xvfb-run`).
 
+### Moving a thread between hosts
+
+One thread (with its subagents) moves Mac ↔ box from the desktop: the chip at
+the right of the thread header names the host it runs on (status dot), and
+its menu has **Move to box…** on a Mac thread or **Move to This Mac…** on a
+box thread. The item is disabled with its reason while the thread (or any
+subagent) is working, paused, waiting on an approval or has queued messages,
+while either link is down, or when the saved key is not admin. Rows in the
+sidebar carry a small host badge once the window talks to two or more hosts.
+While a move runs the chip says `Moving to box…`; the result is a toast.
+
+Only the Mac starts a move, because only the Mac dials (the peer link of
+`remote/peers.ts`). `session.move {sessionId, to, from?}` is local-only on the
+Mac's own socket; it then speaks admin RPCs to the box
+(`src/shared/contract-session-move.ts`; `src/main/server/sessionMove.ts` is the
+data, `src/main/server/remote/sessionMover.ts` the protocol):
+
+- Mac → box, a push: the Mac freezes the subtree (`sessions.moving_to`: no
+  send, no queue, no harness), sends `session.import.begin` with the
+  manifest, every part with `session.import.part`, then
+  `session.import.commit {digest}`; the box echoes its own digest, the Mac
+  keeps a tombstone, then `session.import.release` makes the box's copy the
+  thread.
+- box → Mac, a pull: `session.export.begin` freezes it on the box and
+  answers the manifest; the Mac pulls every `session.export.part`, lands it,
+  and sends the digest to `session.export.commit`, on which the box keeps the
+  tombstone; the Mac then claims its landing.
+
+What crosses: the sessions rows of the root and every descendant by
+`parent_id`, their event rows from both tiers (they land hot; seqs are kept,
+so a client resumes with `afterSeq`), their `session_folds`, their agent pages
+(`<userData>/html-renders/<id>/`), and the harness transcript: Claude's
+`<CLAUDE_CONFIG_DIR or ~/.claude>/projects/<slug(cwd)>/<native id>.jsonl` and
+its `<native id>/` dir (they land under the slug of the remapped cwd), Codex's
+`<CODEX_HOME or ~/.codex>/sessions/**/rollout-*-<native id>.jsonl` (lands as
+is). A transcript the source cannot find lands as a thread with no native id:
+its next send replays the dialogue (`lostNativeHandoff`). Parts are event rows
+in seq ranges of at most 2 MiB of JSON (a single larger row travels alone) and
+files in 2 MiB chunks; every frame carries the running digest of the bundle
+(a hash chain over each part's bytes), so a corrupted part is refused on
+arrival and the commit compares one value.
+
+What does not cross: checkpoints (baselines of the source's tree; the toast
+says "Undo history stayed on This Mac"), and uncommitted changes in the
+working tree. The source lists `git status --porcelain` of the thread's cwd
+and the toast names what stayed; commit and push before moving to carry it.
+No patch is carried. Event payloads keep the paths they recorded, as in the
+history move.
+
+Landing: the receiver remaps the cwd and an absolute `plan_path` through
+pathMap.ts with its own `harness.sync.pathMap` (default
+`scripts/box/history-map.json`) in either direction, plus the sender's home
+and work root from the manifest (`~/IdeaProjects/<X>` and
+`~/Desktop/Websites/<X>` against the work root, home against home); the first
+candidate that exists wins. It resolves its own workspace at the remapped
+workspace path (else the deepest workspace holding the cwd) and the project
+whose cwd matches (else the thread lands loose in that workspace). It refuses,
+and the source thaws untouched, when no workspace holds the cwd ("add the
+workspace there first"), when the remapped cwd does not exist there, or when
+it already holds the thread live. The landing is written at once but hidden
+(`moving_from`); `session.list` and every lookup skip it until release.
+
+The source keeps a tombstone: its `sessions` rows with `moved_to = <host>` and
+`archived = 1`, hidden like a landing; its events, folds and pages go, its
+checkpoints stay. Clients of the source hear `session-moved {id, sessionIds,
+to}` and then `session-removed`; the desktop re-points an open tab to the new
+host and resubscribes there, and a removal from one host never drops the copy
+another host holds. A thread can move back and forth; a tombstone gives way
+to a later landing of the same id.
+
+Half-done moves settle on every link-up (the account handoff's shape): a
+landing whose source is still live is dropped, a landing whose source is a
+tombstone is claimed, and a freeze nobody finished lifts. A freeze never
+outlives the process that set it (it lifts at boot), and an export or a
+landing nobody touched for 10 minutes is let go.
+
+Proof: `bun run script:e2e-session-move` (two headless instances with their
+own HOMEs, Claude config dirs and Codex homes, paired over the fixed port; a
+seeded thread with a subagent in the cold file, a fold, a page and both
+transcripts moves Mac → box, back, and out again). Unit tests:
+`src/main/server/sessionMove.test.ts` (both directions on temp databases,
+remap, tombstones, refusals, a corrupted part, the settle rules) and the
+renderer's `lib/tcserver/store.test.ts` and `lib/threadMove.test.ts`.
+
 Still darwin-only by design: appshots, the Aliax browser-cookie sign-ins,
 the IntelliJ engine's pinned artifact (`lsp.ts` has only `darwin-arm64`; the
 Linux pin waits for a build that has not expired), and vibrancy. Known gap:
