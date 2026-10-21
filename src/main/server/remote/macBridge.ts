@@ -64,9 +64,13 @@ import { MacJobs, type JobSpawner } from './macJobs'
  *    always-ask floor). It runs through the login shell (macRunner.ts).
  *  - A thread in full access on its box (permission `auto`, sent with every
  *    call) is never prompted: whatever the policy admits for the host goes
- *    through as if remembered, reads, writes, commands and jobs alike, and a
- *    command still shows on the Mac as running, with Stop. The policy still
- *    rules: off refuses, read refuses commands.
+ *    through as if remembered, reads, writes, commands and jobs alike. The
+ *    policy still rules: off refuses, read refuses commands.
+ *  - A command admitted without a prompt (remembered, or such a thread) is
+ *    `quiet` unless the host's "Show running commands"
+ *    (`macBridge.showRunning.<envId>`, off by default under full, on
+ *    otherwise) is on: the request still exists, with Stop, but carries
+ *    `quiet: true` and the renderer draws no card for it (runPresentation).
  *
  * The prompt is a `macBridge.request` push to this Mac's own local sockets
  * (its renderer), answered by `macBridge.decide`, which is local-only: no
@@ -77,6 +81,8 @@ import { MacJobs, type JobSpawner } from './macJobs'
 
 export const POLICY_PREFIX = 'macBridge.policy.'
 export const SHARED_PREFIX = 'macBridge.shared.'
+/** 'on' | 'off', or unset for the policy's default (off under full, on otherwise). */
+export const SHOW_RUNNING_PREFIX = 'macBridge.showRunning.'
 /** A request asks no longer than the box will wait for it, less this margin for the reply to travel. */
 const REPLY_MARGIN_MS = 3_000
 
@@ -198,6 +204,36 @@ export function readVerdict(
   return { allow: false }
 }
 
+/**
+ * How a command (or job) reaches the Mac's screen. One that nothing admits
+ * prompts, and a prompt always shows. One a rule remembers, or one from a
+ * thread in full access on its box, starts at once; it shows as a running
+ * card only while the host's "Show running commands" is on, else it is
+ * quiet: in the pending list with Stop, no card. What is admitted never
+ * changes here: this is presentation only.
+ */
+export type RunPresentation =
+  | { prompt: true }
+  | { prompt: false; why: 'remembered' | 'full access'; quiet: boolean }
+
+export function runPresentation(opts: {
+  remembered: boolean
+  unattended: boolean
+  showRunning: boolean
+}): RunPresentation {
+  if (!opts.remembered && !opts.unattended) return { prompt: true }
+  return {
+    prompt: false,
+    why: opts.remembered ? 'remembered' : 'full access',
+    quiet: !opts.showRunning
+  }
+}
+
+/** The default of "Show running commands" for a policy: off under full, on otherwise. */
+export function showRunningDefault(policy: MacBridgePolicy): boolean {
+  return policy !== 'full'
+}
+
 /** The key "allow this exact command" remembers: argv or the command string, and the cwd. */
 export const commandKey = (spec: { argv?: string[]; command?: string; cwd: string }): string =>
   JSON.stringify([spec.argv ?? null, spec.command ?? null, spec.cwd])
@@ -296,12 +332,28 @@ export class MacBridge {
     return this.hosts()
   }
 
+  /** Whether a command admitted without a prompt shows as a running card: pinned, else the policy's default. */
+  showRunningOf(envId: string): boolean {
+    const raw = this.deps.store.getSetting(`${SHOW_RUNNING_PREFIX}${envId}`)
+    if (raw === 'on') return true
+    if (raw === 'off') return false
+    return showRunningDefault(this.policyOf(envId))
+  }
+
+  setShowRunning(envId: string, show: boolean): MacBridgeHostPolicy[] {
+    this.knownHost(envId)
+    this.deps.store.setSetting(`${SHOW_RUNNING_PREFIX}${envId}`, show ? 'on' : 'off')
+    this.log(`${this.nameOf(envId)} (${envId}): show running commands ${show ? 'on' : 'off'}`)
+    return this.hosts()
+  }
+
   hosts(): MacBridgeHostPolicy[] {
     return this.deps.environments().map((e) => ({
       environmentId: e.id,
       name: e.name,
       policy: this.policyOf(e.id),
       shared: this.sharedOf(e.id),
+      showRunning: this.showRunningOf(e.id),
       registered: this.registered.has(e.id)
     }))
   }
@@ -384,10 +436,15 @@ export class MacBridge {
     return { ok: true }
   }
 
-  /** Ask the person at the Mac; resolves false on a denial or when the wait runs out. */
+  /**
+   * Ask the person at the Mac; resolves false on a denial or when the wait
+   * runs out. A quiet request is one the caller decides at once and the
+   * renderer never draws (runPresentation); it is still listed, with Stop.
+   */
   private ask(
-    shape: Omit<MacBridgeRequest, 'id' | 'createdAt' | 'expiresAt' | 'status'>,
-    until: number
+    shape: Omit<MacBridgeRequest, 'id' | 'createdAt' | 'expiresAt' | 'status' | 'quiet'>,
+    until: number,
+    quiet = false
   ): {
     id: string
     answer: Promise<{ allow: boolean; remember: Remember; outcome: MacBridgeOutcome }>
@@ -399,7 +456,8 @@ export class MacBridge {
       id,
       createdAt: now,
       expiresAt: until,
-      status: 'pending'
+      status: 'pending',
+      ...(quiet ? { quiet: true } : {})
     }
     const answer = new Promise<{ allow: boolean; remember: Remember; outcome: MacBridgeOutcome }>(
       (resolve) => {
@@ -560,7 +618,16 @@ export class MacBridge {
       deadlineAt - timeoutMs - REPLY_MARGIN_MS
     )
     if (askUntil <= Date.now()) throw new Error('the call left no time to ask the Mac')
-    // Every command shows on the Mac, remembered or not: a remembered one starts at once, as running.
+    const rule = this.rules.runAllowed(env.id, thread.id, spec)
+    // Full access on the box: decided at once, as a remembered command is.
+    const unattended = threadRunsUnattended(thread)
+    const shown = runPresentation({
+      remembered: !!rule,
+      unattended,
+      showRunning: this.showRunningOf(env.id)
+    })
+    // Every command is listed on the Mac, remembered or not: a remembered one
+    // starts at once, as running, and is quiet (no card) unless the host shows them.
     const { id, answer } = this.ask(
       {
         environmentId: env.id,
@@ -573,12 +640,10 @@ export class MacBridge {
         timeoutMs,
         ...runOffer(spec, this.home)
       },
-      askUntil
+      askUntil,
+      !shown.prompt && shown.quiet
     )
-    const rule = this.rules.runAllowed(env.id, thread.id, spec)
-    // Full access on the box: decided at once, as a remembered command is.
-    const unattended = threadRunsUnattended(thread)
-    const remembered = !!rule || unattended
+    const remembered = !shown.prompt
     const decision = remembered
       ? { allow: true, remember: false as MacDecideRemember, outcome: 'allowed' as const }
       : await answer
@@ -592,7 +657,7 @@ export class MacBridge {
     const kind = runRememberKind(decision.remember)
     const made = kind ? this.rules.addRun(ruleThread(env, thread), kind, spec) : null
     line(
-      `allowed (${rule ? `remembered${rule.kind === 'exact' ? '' : `: ${rule.kind}`}` : unattended ? 'full access' : made ? `asked, ${made.kind === 'exact' ? 'command' : made.kind} remembered` : 'asked'}) argv0=${basename(args.argv?.[0] ?? args.command?.split(/\s/)[0] ?? '')}`
+      `allowed (${rule ? `remembered${rule.kind === 'exact' ? '' : `: ${rule.kind}`}` : unattended ? 'full access' : made ? `asked, ${made.kind === 'exact' ? 'command' : made.kind} remembered` : 'asked'}${!shown.prompt && shown.quiet ? ', quiet' : ''}) argv0=${basename(args.argv?.[0] ?? args.command?.split(/\s/)[0] ?? '')}`
     )
     const p = this.pendingById.get(id)
     const running: RunningCommand = (this.deps.run ?? runMacCommand)({
@@ -622,8 +687,13 @@ export class MacBridge {
   get jobs(): MacJobs {
     this.jobsInstance ??= new MacJobs({
       ask: (shape, until, remembered) => {
-        const asked = this.ask(shape, until)
-        // A remembered command still shows on the Mac: it starts at once, as running.
+        // A remembered job starts at once, as running; it is quiet (no card)
+        // unless the host shows running commands (runPresentation).
+        const asked = this.ask(
+          shape,
+          until,
+          remembered && !this.showRunningOf(shape.environmentId)
+        )
         if (remembered) this.pendingById.get(asked.id)?.decide(true, false)
         return asked
       },
@@ -765,6 +835,11 @@ export function handleMacBridge(
       return {
         handled: true,
         result: bridge.setShared(req.params.environmentId, req.params.folders)
+      }
+    case 'macBridge.showRunning.set':
+      return {
+        handled: true,
+        result: bridge.setShowRunning(req.params.environmentId, req.params.show)
       }
     case 'macBridge.rules.list':
       return { handled: true, result: bridge.rules.list(req.params?.sessionId) }

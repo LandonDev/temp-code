@@ -310,7 +310,14 @@ routed to (aliax-core's `forward`). Two listeners:
   Codex calls carry a per-thread token (`macTools.ts`). A thread in full
   access on its box (permission `auto`) is never prompted: the box sends its
   permission with every call and the Mac treats every call the policy admits
-  as remembered. docs/box.md "The Mac
+  as remembered. A command admitted without a prompt (remembered, or such a
+  thread) shows on the Mac as a running card only while the host's "Show
+  running commands" (`macBridge.showRunning.<envId>`, off by default under
+  `full`, on otherwise) is on; otherwise the request is `quiet`
+  (`runPresentation`): no card, listed with Stop under the host's row in
+  Settings → Remote access. The cards are capped (`queueOf` in the renderer's
+  lib/macBridge.ts): one waiting card per host with "and N more", the running
+  ones one line per host with Stop all. docs/box.md "The Mac
   bridge: what a box thread may touch on the Mac"; proof
   `bun run script:e2e-mac-bridge`.
 - Threads on the Mac from the box: `app_start_thread` and `spawn_agent`

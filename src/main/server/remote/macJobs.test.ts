@@ -594,3 +594,49 @@ describe('the codex bridge keeps the job tools equal', async () => {
     expect(seen).toEqual(['mac.jobWrite', 'mac.jobClose'])
   })
 })
+
+describe('a quiet job', () => {
+  it('a remembered job with "show running commands" off is quiet: listed as running, no card, Stop still ends it', async () => {
+    const m = mac(pipeSpawner)
+    m.mb.setShowRunning('env_box', false)
+    const first = await m.start({ argv: ['cat'], cwd: root }, 's1', true)
+    expect(m.requests()[0]).toMatchObject({ status: 'pending', interactive: true })
+    expect(m.requests()[0].quiet).toBeUndefined()
+    await m.call('mac.jobSignal', { jobId: first.jobId, signal: 'KILL' })
+    await readUntil(m.call, first.jobId, (r) => !r.running)
+    const before = m.requests().length
+    const second = await m.start({ argv: ['cat'], cwd: root })
+    const cards = m.requests().slice(before)
+    expect(cards.map((r) => [r.status, r.quiet])).toEqual([
+      ['pending', true],
+      ['running', true]
+    ])
+    expect(m.mb.pending().map((r) => [r.status, r.quiet])).toEqual([['running', true]])
+    expect(m.lines.some((l) => l.includes('allowed (remembered)'))).toBe(true)
+    m.mb.decide(cards[1].id, false)
+    const end = await readUntil(m.call, second.jobId, (r) => !r.running)
+    expect(end.last.running).toBe(false)
+    expect(m.mb.pending()).toEqual([])
+  })
+
+  it('a full-access thread\'s job is quiet under full access and shows when the host shows running commands', async () => {
+    const m = mac(pipeSpawner)
+    m.mb.setPolicy('env_box', 'full')
+    const ctx = { from: 'env_box', deadlineAt: Date.now() + 15 * 60_000 }
+    const thread = { id: 's9', title: 'auto', permission: 'auto' }
+    const a = (await m.mb.handle('mac.jobStart', { thread, args: { argv: ['cat'], cwd: root } } as never, ctx)) as MacJobStartResult
+    expect(m.requests().at(-1)).toMatchObject({ status: 'running', quiet: true })
+    m.mb.setShowRunning('env_box', true)
+    const b = (await m.mb.handle('mac.jobStart', { thread, args: { argv: ['cat'], cwd: root } } as never, ctx)) as MacJobStartResult
+    expect(m.requests().at(-1)).toMatchObject({ status: 'running' })
+    expect(m.requests().at(-1)?.quiet).toBeUndefined()
+    for (const jobId of [a.jobId, b.jobId]) {
+      await m.mb.handle('mac.jobSignal', { thread, args: { jobId, signal: 'KILL' } } as never, ctx)
+      await readUntil(
+        (method, args) => m.mb.handle(method as never, { thread, args } as never, ctx) as never,
+        jobId,
+        (r) => !r.running
+      )
+    }
+  })
+})

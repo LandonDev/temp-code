@@ -225,6 +225,8 @@ interface BridgeRequest {
   hostName: string
   threadTitle: string
   status: string
+  /** Admitted without a prompt while the host's "Show running commands" is off: no card on the Mac. */
+  quiet?: true
 }
 /** mac's own socket, as its renderer holds it: every macBridge.request push. */
 async function watchMac(): Promise<{
@@ -355,6 +357,7 @@ interface HostPolicy {
   name: string
   policy: string
   shared: string[]
+  showRunning: boolean
   registered: boolean
 }
 
@@ -616,14 +619,51 @@ try {
       JSON.stringify(again)
     )
     check(
-      'and still showed on the Mac, as running',
+      'and still showed on the Mac, as running (read+run shows running commands by default)',
       await until('the remembered run shows as running', 10_000, () =>
         watcher.seen.some(
           (r) =>
             r.status === 'running' &&
+            !r.quiet &&
             !!(r as { command?: string }).command?.startsWith('printf "second')
         )
       )
+    )
+    // "Show running commands" off: the next remembered command is quiet, listed with Stop, no card.
+    const quietHosts = await rpc<HostPolicy[]>(mac, 'macBridge.showRunning.set', {
+      environmentId: boxId,
+      show: false
+    })
+    check(
+      'macBridge.showRunning.set off is reported on the host row',
+      quietHosts.find((h) => h.environmentId === boxId)?.showRunning === false,
+      JSON.stringify(quietHosts)
+    )
+    const quietRun = rpc<{ stdout: string }>(box, 'mac.run', {
+      sessionId: sid,
+      token,
+      command: 'printf "quiet in %s" "$(basename "$PWD")"; sleep 2',
+      cwd: shared
+    })
+    const quietSeen = await watcher.next(
+      (r) => !!(r as { command?: string }).command?.startsWith('printf "quiet') && r.status === 'running'
+    )
+    check('a remembered command with showRunning off is quiet: no card', quietSeen.quiet === true, JSON.stringify(quietSeen))
+    const listed = await rpc<BridgeRequest[]>(mac, 'macBridge.pending')
+    check(
+      'and still listed with Stop for the Remote access pane',
+      listed.some((r) => r.id === quietSeen.id && r.status === 'running' && r.quiet === true),
+      JSON.stringify(listed.map((r) => [r.id, r.status, r.quiet]))
+    )
+    const quietOut = await quietRun
+    check('and it ran', quietOut.stdout === 'quiet in shared', JSON.stringify(quietOut))
+    const shownAgain = await rpc<HostPolicy[]>(mac, 'macBridge.showRunning.set', {
+      environmentId: boxId,
+      show: true
+    })
+    check(
+      'macBridge.showRunning.set on restores the cards',
+      shownAgain.find((h) => h.environmentId === boxId)?.showRunning === true
     )
     // Another folder asks.
     const elsewhere = errorOf(
@@ -661,7 +701,8 @@ try {
     check(
       "macBridge.rules.list names the thread's folder rule (and its earlier read folder)",
       folderRule?.folder === shared &&
-        folderRule.uses === 1 &&
+        folderRule.uses === 2 && // the remembered run and the quiet one
+        
         rules.some((r) => r.kind === 'read-folder' && r.folder === privateDir),
       JSON.stringify(rules)
     )

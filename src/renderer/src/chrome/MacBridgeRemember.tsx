@@ -9,6 +9,7 @@ import {
   type RunRememberChoice
 } from '../lib/macBridgeRules'
 import { errorText } from './ConfirmDialog'
+import { MacBridgeRunningList } from './MacBridgeRunning'
 import { Modal } from './Modal'
 
 /**
@@ -118,6 +119,7 @@ export function MacBridgeRulesDialog({
             'sudo, osascript, security, launchctl, defaults write, a wide rm -r and credential paths always ask.'}
         </p>
         <MacBridgeRuleList sessionId={sessionId} empty="Nothing remembered: every command asks." />
+        <MacBridgeRunningList sessionId={sessionId} />
       </div>
     </Modal>
   )
