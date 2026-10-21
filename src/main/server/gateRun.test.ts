@@ -1,6 +1,9 @@
+import { chmodSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { failedGateStep, gateLine, typecheckErrorCount } from '@shared/gate'
-import { gateCommand, parseGateStub, runGateStep, tailOf } from './gateRun'
+import { gateCommand, gateEnv, parseGateStub, runGateStep, tailOf } from './gateRun'
 
 describe('gateRun', () => {
   it('names each step\'s command', () => {
@@ -24,6 +27,21 @@ describe('gateRun', () => {
     const gate = await runGateStep({ cwd: '/nowhere', step: 'gate', branch: 'master', stub })
     expect(gate.ok).toBe(true)
     expect(gate.log.split('\n').at(-1)).toBe('✓ build 3s')
+  })
+
+  it("the child's env drops the hook's GIT_* and puts bun's directory ahead of a PATH without it", () => {
+    const home = mkdtempSync(join(tmpdir(), 'tc-gate-env-'))
+    const bin = join(home, '.bun', 'bin')
+    mkdirSync(bin, { recursive: true })
+    writeFileSync(join(bin, 'bun'), '#!/bin/sh\n')
+    chmodSync(join(bin, 'bun'), 0o755)
+    const env = gateEnv({ HOME: home, PATH: '/usr/bin', GIT_DIR: '/x/.git', GIT_INDEX_FILE: '/x/index', KEEP: '1' })
+    expect(env.PATH).toBe(`${bin}:/usr/bin`)
+    expect(env.GIT_DIR).toBeUndefined()
+    expect(env.GIT_INDEX_FILE).toBeUndefined()
+    expect(env.KEEP).toBe('1')
+    // Already on the PATH: left where it is.
+    expect(gateEnv({ HOME: home, PATH: `/usr/bin:${bin}` }).PATH).toBe(`/usr/bin:${bin}`)
   })
 
   it('a bad stub is ignored', () => {

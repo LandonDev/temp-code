@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { GATE_LOG_TAIL, type GateStep } from '@shared/gate'
 import { trackChild } from './spawnBudget'
 
@@ -63,6 +63,22 @@ export function bunBinary(env: NodeJS.ProcessEnv = process.env): string {
   return candidates.find((c): c is string => !!c && existsSync(c)) ?? 'bun'
 }
 
+/** The child's environment: the post-commit hook's GIT_* dropped (every
+ *  git call in a test would act as the hook's commit; release.ts says the
+ *  same), and bun's own directory ahead of PATH, since the steps gate.ts
+ *  and release.ts spawn say `bun` by name and the app's service on the box
+ *  has no bun on its PATH. */
+export function gateEnv(env: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
+  const out = Object.fromEntries(Object.entries(env).filter(([k]) => !k.startsWith('GIT_'))) as NodeJS.ProcessEnv
+  const bun = bunBinary(env)
+  if (bun.startsWith('/')) {
+    const dir = dirname(bun)
+    const path = (out.PATH ?? '').split(':').filter(Boolean)
+    if (!path.includes(dir)) out.PATH = [dir, ...path].join(':')
+  }
+  return out
+}
+
 export function gateCommand(opts: Pick<GateRunOptions, 'step' | 'since' | 'notes'>): string[] {
   switch (opts.step) {
     case 'typecheck':
@@ -104,11 +120,7 @@ export function runGateStep(opts: GateRunOptions): Promise<GateRunResult> {
   if (rules) return Promise.resolve(stubbed(rules, opts))
   return new Promise((resolve) => {
     const started = Date.now()
-    // The post-commit hook's GIT_* leak into the gate makes every git call
-    // in a test act as the hook's commit (release.ts says the same).
-    const env = Object.fromEntries(
-      Object.entries(opts.env ?? process.env).filter(([k]) => !k.startsWith('GIT_'))
-    ) as NodeJS.ProcessEnv
+    const env = gateEnv(opts.env ?? process.env)
     const lines: string[] = []
     let partial = ''
     const feed = (chunk: Buffer): void => {

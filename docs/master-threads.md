@@ -173,7 +173,11 @@ and no actions; a green run lands the same row, quiet. It sits beside the
 review's `ReviewNotice` row: the review decides whether the branch may
 merge, the gate whether the tree is green, and a head that passed review
 is not reviewed again when its gate held it. "Merge anyway" past a held
-review skips the gate: it is the person's call. The runner is gateRun.ts;
+review skips the gate: it is the person's call. The runner is gateRun.ts:
+it finds bun where the app does (`BUN_INSTALL`, `~/.bun`, Homebrew, else
+PATH), puts that directory ahead of the child's PATH because gate.ts and
+release.ts spawn `bun` by name and the box's service has no bun on its
+own PATH, and drops the post-commit hook's `GIT_*`.
 `TEMP_CODE_GATE_STUB=<json>` (rules `{ step, branch?, ok, log? }`) decides
 a step without spawning, for the proofs.
 
