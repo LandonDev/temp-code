@@ -95,4 +95,47 @@ import TempCodeContract
         #expect(!Fleet.loadsTranscript(status: .idle, fleetSize: big))
         #expect(!Fleet.loadsTranscript(status: .watching, fleetSize: big))
     }
+
+    @Test func `sections group running, waiting, then done, rank order inside each`() {
+        let agents = [
+            meta("done", status: .done, createdAt: 1),
+            meta("fail", status: .error, createdAt: 2),
+            meta("run2", status: .running, createdAt: 8),
+            meta("wait", status: .waiting, createdAt: 3),
+            meta("run1", status: .starting, createdAt: 4),
+            meta("watch", status: .watching, createdAt: 5),
+            meta("idle", status: .idle, createdAt: 6)
+        ]
+        let sections = Fleet.sections(agents)
+        #expect(sections.map(\.group) == [.running, .waiting, .done])
+        #expect(sections[0].agents.map(\.id) == ["run1", "run2", "watch"])
+        #expect(sections[1].agents.map(\.id) == ["wait"])
+        #expect(sections[2].agents.map(\.id) == ["fail", "done", "idle"])
+        #expect(Fleet.sections([]).isEmpty)
+        #expect(Fleet.sections([meta("a", status: .waiting)]).map(\.group) == [.waiting])
+        #expect(Fleet.group(.paused) == .done)
+        #expect(Fleet.group(nil) == .done)
+    }
+
+    @Test func `the orchestrator line follows its status, then its fleet`() {
+        #expect(Fleet.orchestratorLine(status: .running, counts: Fleet.Counts()) == "Orchestrating")
+        #expect(Fleet.orchestratorLine(status: .waiting, counts: Fleet.Counts(working: 2)) == "Waiting on you")
+        #expect(Fleet.orchestratorLine(status: .idle, counts: Fleet.Counts(working: 1)) == "1 subagent working")
+        #expect(Fleet.orchestratorLine(status: .idle, counts: Fleet.Counts(working: 3, waiting: 1)) == "3 subagents working")
+        #expect(Fleet.orchestratorLine(status: .done, counts: Fleet.Counts(waiting: 2)) == "2 subagents waiting on approval")
+        #expect(Fleet.orchestratorLine(status: .idle, counts: Fleet.Counts(failed: 1, done: 2)) == "Done, 1 failed")
+        #expect(Fleet.orchestratorLine(status: .idle, counts: Fleet.Counts(done: 2)) == "Done")
+        #expect(Fleet.orchestratorLine(status: .idle, counts: Fleet.Counts()) == "")
+        #expect(Fleet.orchestratorLine(status: .error, counts: Fleet.Counts()) == "Failed")
+    }
+
+    @Test func `branch names a worktree, elapsed reads the span`() {
+        #expect(Fleet.branch(cwd: "/repo/.claude/worktrees/ios-fleet", parentCwd: "/repo") == "ios-fleet")
+        #expect(Fleet.branch(cwd: "/repo", parentCwd: "/repo") == nil)
+        #expect(Fleet.branch(cwd: "", parentCwd: "/repo") == nil)
+        #expect(Fleet.branch(cwd: "/other", parentCwd: nil) == "other")
+        #expect(Fleet.elapsedMs(meta("a", status: .running, createdAt: 1_000), now: 4_500) == 3_500)
+        #expect(Fleet.elapsedMs(meta("a", status: .done, createdAt: 1_000, updatedAt: 9_000), now: 50_000) == 8_000)
+        #expect(Fleet.elapsedMs(meta("a", status: .done, createdAt: 1_000, updatedAt: 2_000), now: 50_000) == nil)
+    }
 }

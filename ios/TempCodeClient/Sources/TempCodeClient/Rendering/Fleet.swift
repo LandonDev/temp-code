@@ -66,6 +66,87 @@ public enum Fleet {
         return isLive(status) || status == .waiting || status == .error
     }
 
+    // MARK: - groups
+
+    /// How the phone's list groups a fleet: what runs, what needs the user,
+    /// what has settled (done, idle, paused and failed alike; a failed
+    /// agent keeps its red mark and its rank puts it first in the group).
+    public enum Group: Int, CaseIterable, Sendable, Hashable {
+        case running, waiting, done
+
+        public var title: String {
+            switch self {
+            case .running: "Running"
+            case .waiting: "Waiting"
+            case .done: "Done"
+            }
+        }
+    }
+
+    public static func group(_ status: SessionStatus?) -> Group {
+        if isLive(status) || status == .watching { return .running }
+        if status == .waiting { return .waiting }
+        return .done
+    }
+
+    public struct Section: Sendable, Hashable, Identifiable {
+        public let group: Group
+        public let agents: [SessionMeta]
+
+        public init(group: Group, agents: [SessionMeta]) {
+            self.group = group
+            self.agents = agents
+        }
+
+        public var id: Group { group }
+    }
+
+    /// The fleet in its three groups, in group order, empty groups left out;
+    /// inside a group the rank order holds (a failed agent before a settled one).
+    public static func sections(_ agents: [SessionMeta]) -> [Section] {
+        var byGroup: [Group: [SessionMeta]] = [:]
+        for agent in sort(agents) { byGroup[group(agent.status), default: []].append(agent) }
+        return Group.allCases.compactMap { group in
+            guard let list = byGroup[group], !list.isEmpty else { return nil }
+            return Section(group: group, agents: list)
+        }
+    }
+
+    // MARK: - the orchestrator
+
+    /// The one line under the goal: what the orchestrator itself is up to,
+    /// else what its fleet is (the desktop's FleetPulseLine).
+    public static func orchestratorLine(status: SessionStatus?, counts: Counts) -> String {
+        switch status {
+        case .running?, .starting?: return "Orchestrating"
+        case .waiting?: return "Waiting on you"
+        case .error?: return "Failed"
+        case .paused?: return "Paused"
+        case .watching?: return "Waiting on background work"
+        default: break
+        }
+        if counts.working > 0 { return "\(counts.working) subagent\(counts.working == 1 ? "" : "s") working" }
+        if counts.waiting > 0 { return "\(counts.waiting) subagent\(counts.waiting == 1 ? "" : "s") waiting on approval" }
+        if counts.failed > 0 { return "Done, \(counts.failed) failed" }
+        return counts.done > 0 ? "Done" : ""
+    }
+
+    /// The last path component of an agent's directory when it works
+    /// somewhere other than its parent (a worktree), else nil.
+    public static func branch(cwd: String, parentCwd: String?) -> String? {
+        let own = cwd.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !own.isEmpty, own != parentCwd else { return nil }
+        return own.split(separator: "/").last.map(String.init)
+    }
+
+    /// How long the agent has run: since its start while live, else its
+    /// whole span once settled; nil when that span is too short to mean anything.
+    public static func elapsedMs(_ agent: SessionMeta, now: Int) -> Int? {
+        if isLive(agent.status) { return max(0, now - agent.createdAt) }
+        let span = agent.updatedAt - agent.createdAt
+        return span > 2_000 ? span : nil
+    }
+
     // MARK: - transcript lines
 
     static func firstLine(_ text: String) -> String { Board.firstLine(text) }
