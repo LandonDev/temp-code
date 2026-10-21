@@ -385,7 +385,7 @@ private struct PatchFileView: View {
             Button(action: toggle) {
                 HStack(spacing: 8) {
                     Image(systemName: "chevron.right")
-                        .font(.caption.weight(.semibold))
+                        .font(.caption.weight(.medium))
                         .foregroundStyle(.tertiary)
                         .rotationEffect(.degrees(expanded ? 90 : 0))
                         .frame(width: 12)
@@ -405,7 +405,7 @@ private struct PatchFileView: View {
                     }
                 }
                 .padding(.horizontal, 12)
-                .frame(minHeight: 40)
+                .frame(minHeight: 44)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.pressable)
