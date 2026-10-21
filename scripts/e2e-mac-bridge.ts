@@ -21,6 +21,10 @@
  *    macBridge.decide, the output comes back; a wrong token is refused before
  *    the Mac hears of it; the codex stdio bridge lists the mac tools and reads
  *    a file through them
+ *  - mac.writeFile: a 3 MiB write into the shared folder lands with no prompt
+ *    (staged on box, pulled by mac with peer.pull); a write outside it
+ *    prompts on mac, is allowed through macBridge.decide and then lands; the
+ *    codex bridge lists mac_write_file
  *  - policy read refuses commands, off refuses everything; with the host
  *    removed on mac, box answers "Mac offline"
  * Run: bun scripts/e2e-mac-bridge.ts   (build first: electron-vite build)
@@ -203,7 +207,7 @@ const errorOf = async (p: Promise<unknown>): Promise<string> =>
 
 interface BridgeRequest {
   id: string
-  kind: 'read' | 'run'
+  kind: 'read' | 'run' | 'write'
   method: string
   path?: string
   folder?: string
@@ -581,6 +585,72 @@ try {
     codex.text.slice(0, 200)
   )
 
+  // ── 8b. mac.writeFile: in the shared folder no prompt, outside asks ────
+  const seenBeforeWrite = watcher.seen.length
+  const WRITE = randomBytes(3 * 1024 * 1024 + 7)
+  const written = await rpc<{ path: string; bytes: number; created: boolean }>(
+    box,
+    'mac.writeFile',
+    {
+      sessionId: sid,
+      token,
+      path: join(shared, 'from-box', 'out.bin'),
+      dataBase64: WRITE.toString('base64')
+    }
+  )
+  check(
+    'a 3 MiB mac.writeFile into the shared folder lands byte for byte with no prompt',
+    written.path === join(shared, 'from-box', 'out.bin') &&
+      written.bytes === WRITE.length &&
+      written.created &&
+      sha(readFileSync(join(shared, 'from-box', 'out.bin'))) === sha(WRITE) &&
+      watcher.seen.length === seenBeforeWrite,
+    JSON.stringify(written)
+  )
+  const clash = await errorOf(
+    rpc(box, 'mac.writeFile', {
+      sessionId: sid,
+      token,
+      path: join(shared, 'notes.md'),
+      dataBase64: Buffer.from('clobber').toString('base64')
+    })
+  )
+  check(
+    'mode create refuses an existing file and leaves it alone',
+    clash.includes('file exists') && readFileSync(join(shared, 'notes.md'), 'utf8') === NOTE,
+    clash
+  )
+  const outsideWrite = join(mac.home, 'Elsewhere', 'written.txt')
+  const pendingWrite = rpc<{ path: string; created: boolean }>(box, 'mac.writeFile', {
+    sessionId: sid,
+    token,
+    path: outsideWrite,
+    dataBase64: Buffer.from('written from the box\n').toString('base64')
+  })
+  const ask5 = await watcher.next((r) => r.kind === 'write')
+  check(
+    'a write outside the shared folder prompts on the Mac with its path and folder',
+    ask5.method === 'mac.writeFile' &&
+      ask5.path === outsideWrite &&
+      ask5.folder === join(mac.home, 'Elsewhere') &&
+      !existsSync(outsideWrite),
+    JSON.stringify(ask5)
+  )
+  await rpc(mac, 'macBridge.decide', { id: ask5.id, allow: true })
+  const landed = await pendingWrite
+  check(
+    'allowed through macBridge.decide: the write lands',
+    landed.path === outsideWrite &&
+      landed.created &&
+      readFileSync(outsideWrite, 'utf8') === 'written from the box\n',
+    JSON.stringify(landed)
+  )
+  check(
+    'codex bridge lists mac_write_file',
+    codex.tools.includes('mac_write_file'),
+    codex.tools.join(',')
+  )
+
   // ── 9. policy read, then off ─────────────────────────────────────────
   await rpc(mac, 'macBridge.policy.set', { environmentId: boxId, policy: 'read' })
   const readOnly = await errorOf(rpc(box, 'mac.run', { sessionId: sid, token, argv: ['true'] }))
@@ -597,6 +667,16 @@ try {
       macLog.includes('mac.run → denied') &&
       !macLog.includes(NOTE.trim()) &&
       !macLog.includes('private to the Mac')
+  )
+  check(
+    'mac logged one line per write (host, thread, path, bytes), never the contents',
+    macLog.includes(
+      `[mac-bridge] box (${boxId}) thread=${sid} mac.writeFile path=${join(shared, 'from-box', 'out.bin')} bytes=${WRITE.length} mode=create → written (shared)`
+    ) &&
+      macLog.includes(
+        `mac.writeFile path=${outsideWrite} bytes=21 mode=create → written (asked)`
+      ) &&
+      !macLog.includes('written from the box')
   )
 
   // ── 10. the link goes: Mac offline ───────────────────────────────────

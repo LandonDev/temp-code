@@ -32,6 +32,8 @@ import {
 import { insideRoots, realSpelling } from './fence'
 import { runMacCommand, type RunningCommand } from './macRunner'
 import { servePeerCall, type LinkRequest } from './peerCalls'
+import { serveMacWrite, writeFoldersOf } from './macBridgeWrite'
+import type { MacWriteFileResult } from '@shared/contract-macbridge'
 
 /**
  * The Mac side of the Mac bridge (docs/box.md "The Mac bridge: what a box
@@ -371,6 +373,7 @@ export class MacBridge {
     const thread = params?.thread
     if (!env) throw new Error('this Mac does not know that host')
     if (!thread || typeof thread.id !== 'string') throw new Error('the call names no thread')
+    if (method === 'mac.writeFile') return this.writeFile(env, thread, params.args, ctx.deadlineAt)
     const policy = this.policyOf(env.id)
     const line = (decision: string): void =>
       this.log(`${env.name} (${env.id}) thread=${thread.id} ${method} → ${decision}`)
@@ -514,6 +517,32 @@ export class MacBridge {
       this.finish(id, 'expired')
     }
     this.listeners.clear()
+  }
+
+  /** mac.writeFile (macBridgeWrite.ts): this bridge's prompt and log, the policy read raw (a level above read this build does not know writes). */
+  private writeFile(
+    env: { id: string; name: string },
+    thread: { id: string; title: string },
+    args: unknown,
+    deadlineAt: number
+  ): Promise<MacWriteFileResult> {
+    return serveMacWrite(
+      {
+        env,
+        thread,
+        policy: this.deps.store.getSetting(`${POLICY_PREFIX}${env.id}`),
+        home: this.home,
+        managed: this.deps.managedRoots(),
+        shared: this.sharedOf(env.id),
+        remembered: writeFoldersOf(this, env.id, thread.id),
+        ask: (shape, until) => this.ask(shape, until),
+        finish: (id, outcome) => this.finish(id, outcome),
+        link: this.deps.link(env.id),
+        log: this.log
+      },
+      args,
+      deadlineAt
+    )
   }
 }
 

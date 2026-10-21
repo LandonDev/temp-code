@@ -318,6 +318,6 @@ describe('the codex bridge keeps the Mac tools equal', async () => {
   })
   it('lists them only with a token', () => {
     expect(bridge.listedTools(undefined).some((t) => t.name.startsWith('mac_'))).toBe(false)
-    expect(bridge.listedTools('tok').filter((t) => t.name.startsWith('mac_')).length).toBe(4)
+    expect(bridge.listedTools('tok').filter((t) => t.name.startsWith('mac_')).length).toBe(Object.keys(MAC_TOOL_DESCRIPTIONS).length)
   })
 })

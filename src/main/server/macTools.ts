@@ -19,6 +19,8 @@ import {
   MAC_RUN_MAX_TIMEOUT_MS,
   MAC_TOOL_DESCRIPTIONS,
   MAC_TOOL_PARAMS,
+  MAC_WRITE_MAX_BASE64,
+  MacWriteModeSchema,
   type MacBridgeThreadState,
   type MacFetchFileResult,
   type MacFetchFileWire,
@@ -26,6 +28,7 @@ import {
 } from '@shared/contract-macbridge'
 import type { SessionMeta } from '@shared/events'
 import { macBridgeLandingDir, type LandingLookup } from './macBridgeLanding'
+import { callMacWrite, macWriteStages, type MacWriteStages } from './macWriteStage'
 import type { PeerCalls } from './remote/peerCalls'
 
 /**
@@ -83,6 +86,8 @@ export interface MacToolsDeps {
   /** The thread's tool set changed: its harness should come back with (or without) the mac tools. */
   reboot?: (sessionId: string) => void
   log?: (line: string) => void
+  /** Where a write too long for one frame waits for the Mac to pull it (default: the box's one set). */
+  writeStages?: MacWriteStages
 }
 
 type MacArgs = Record<string, unknown>
@@ -171,6 +176,14 @@ export class MacTools {
       method === 'mac.run'
         ? Math.min(Number(args.timeoutMs) || MAC_RUN_DEFAULT_TIMEOUT_MS, MAC_RUN_MAX_TIMEOUT_MS)
         : 0
+    if (method === 'mac.writeFile')
+      return callMacWrite(
+        this.deps.calls,
+        this.deps.writeStages ?? macWriteStages,
+        macPeer,
+        { id: session.id, title: session.title },
+        args
+      )
     const deadlineMs = MAC_APPROVAL_WAIT_MS + timeoutMs + DEADLINE_SLACK_MS
     const result = await this.deps.calls.call(
       macPeer,
@@ -210,7 +223,8 @@ export class MacTools {
       case 'mac.readFile':
       case 'mac.listDir':
       case 'mac.fetchFile':
-      case 'mac.run': {
+      case 'mac.run':
+      case 'mac.writeFile': {
         const { sessionId, token, ...args } = req.params
         return { handled: true, result: await this.call(sessionId, token, req.method, args) }
       }
@@ -251,7 +265,8 @@ export const MAC_TOOL_NAMES = [
   'mac_read_file',
   'mac_list_dir',
   'mac_fetch_file',
-  'mac_run'
+  'mac_run',
+  'mac_write_file'
 ] as const
 export const MAC_TOOLS = MAC_TOOL_NAMES.map((n) => `mcp__mac__${n}`)
 
@@ -299,6 +314,17 @@ export function macToolsMcp(session: SessionMeta): McpSdkServerConfigWithInstanc
             .describe(p.timeoutMs)
         },
         callTool(session, 'mac.run')
+      ),
+      tool(
+        'mac_write_file',
+        MAC_TOOL_DESCRIPTIONS.mac_write_file,
+        {
+          path: z.string().describe(p.path),
+          dataBase64: z.string().max(MAC_WRITE_MAX_BASE64).describe(p.dataBase64),
+          mode: MacWriteModeSchema.optional().describe(p.mode),
+          fileMode: z.number().int().min(0).max(0o777).optional().describe(p.fileMode)
+        },
+        callTool(session, 'mac.writeFile')
       )
     ]
   })

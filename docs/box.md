@@ -773,6 +773,31 @@ On the Mac (`src/main/server/remote/macBridge.ts`, `macRunner.ts`):
   for a command, the executable's name and its exit). Never a file's
   contents or a command's output.
 
+Writing a file on the Mac (`mac_write_file`, `mac.writeFile {path, dataBase64,
+mode?, fileMode?}`, the same token as the other `mac.*` methods; Mac side
+`src/main/server/remote/macBridgeWrite.ts`, box side `macWriteStage.ts`). Up
+to 8 MiB per write. Bytes whose base64 fits one `PEER_CHUNK_CHARS` frame ride
+inside the `peer.call`; a longer write is staged on the box and the Mac pulls
+it piece by piece with `peer.pull` (admin, answered only on the socket the
+call went out on) after it has allowed the write, so a denied write never
+crosses. A write is never prompt-free under `read`: every one asks, with no
+remember on the card. Under `read+run`, and any level above it (a policy
+string other than `off` and `read` counts as write-capable), a write inside
+the Mac's managed roots, a shared folder or a folder remembered for that
+thread lands at once; any other path asks with the same card and the same
+"allow this folder for this thread" (write folders are remembered apart from
+read folders). Anything under `~/Library`, any dotfile or dot-folder directly
+in home (`~/.zshrc`, `~/.ssh/…`) and a key or credential by name asks every
+time, whatever the policy, shared folders or memory, and is never remembered.
+The path is judged by its real spelling (a symlink out of the allowed set
+asks at its target) and the parent's real path is checked again just before
+the file lands. `mode` is `create` (the default: refuses an existing file),
+`overwrite` (temp file beside the target, then rename; the old mode is kept
+unless `fileMode` names one) or `append` (opened in place with `O_NOFOLLOW`);
+missing folders above the file are made only for create and overwrite, and
+the card says so. One `[mac-bridge]` line per write names the host, thread,
+path, bytes, mode and outcome, never the contents.
+
 Security model, in short: the box can ask, never decide. A compromised box can
 make the Mac show prompts and read what the Mac shared with it (or with its
 projects), nothing more; it can never run a command the person did not allow
