@@ -32,6 +32,7 @@ export const METHOD_CAPABILITY: Record<ClientRequest['method'], MethodCapability
   'app.answerAgent': 'local',
   'app.interruptAgent': 'local',
   'app.listAgents': 'local',
+  'app.updateNotes': 'local',
   'stall.report': 'local',
   'dap.connect': 'local',
   'lsp.ensure': 'local',
@@ -186,6 +187,8 @@ export const METHOD_CAPABILITY: Record<ClientRequest['method'], MethodCapability
   'session.resumeAllPaused': 'operate',
   'session.batch': 'operate',
   'session.rename': 'operate',
+  'session.notes.get': 'read',
+  'session.notes.set': 'operate',
   'session.setThreadRules': 'operate',
   'session.archive': 'operate',
   // Thread resources (contract-resources.ts): ids only, never a caller path; removal runs on the owning host.

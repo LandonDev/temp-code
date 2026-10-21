@@ -761,6 +761,25 @@ public struct SessionSearchHit: Codable, Hashable, Sendable {
             }
         }
     }
+    public enum Source: RawRepresentable, Codable, Hashable, Sendable {
+        case notes
+        /// A value this build does not know; `rawValue` keeps it.
+        case unknown(String)
+
+        public init(rawValue: String) {
+            switch rawValue {
+            case "notes": self = .notes
+            default: self = .unknown(rawValue)
+            }
+        }
+
+        public var rawValue: String {
+            switch self {
+            case .notes: "notes"
+            case .unknown(let value): value
+            }
+        }
+    }
 
     public let sessionId: String
     public let seq: Int
@@ -768,14 +787,16 @@ public struct SessionSearchHit: Codable, Hashable, Sendable {
     public let snippet: String
     public let ts: Int
     public let rank: Double?
+    public let source: Source?
 
-    public init(sessionId: String, seq: Int, role: Role, snippet: String, ts: Int, rank: Double? = nil) {
+    public init(sessionId: String, seq: Int, role: Role, snippet: String, ts: Int, rank: Double? = nil, source: Source? = nil) {
         self.sessionId = sessionId
         self.seq = seq
         self.role = role
         self.snippet = snippet
         self.ts = ts
         self.rank = rank
+        self.source = source
     }
 }
 

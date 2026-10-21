@@ -6,6 +6,7 @@ import {
   HTML_TOOL_PARAMS
 } from '@shared/htmlRender'
 import { CITE_TOOL_DESCRIPTION, CITE_TOOL_PARAMS } from '@shared/research'
+import { UPDATE_NOTES_DESCRIPTION, UPDATE_NOTES_PARAMS, UPDATE_NOTES_TOOL_NAME } from '@shared/notes'
 import { ThreadTypeSchema } from '@shared/domain'
 import { CITE_SHAPE, HTML_PREVIEW_SHAPE, HTML_RENDER_SHAPE } from './apptools'
 
@@ -40,6 +41,19 @@ describe('app-mcp-bridge cite_source and thread types', () => {
     const start = bridge.TOOLS.find((t) => t.name === 'app_start_thread')!
     const threadType = start.inputSchema.properties.threadType as { enum?: string[] }
     expect(threadType.enum).toEqual(ThreadTypeSchema.options)
+  })
+})
+
+describe('app-mcp-bridge update_notes', () => {
+  it('carries the shared description and parameter texts', () => {
+    const tool = bridge.TOOLS.find((t) => t.name === UPDATE_NOTES_TOOL_NAME)!
+    expect(tool.description).toBe(UPDATE_NOTES_DESCRIPTION)
+    const props = tool.inputSchema.properties as Record<string, { description?: string; enum?: string[] }>
+    expect(props.section.description).toBe(UPDATE_NOTES_PARAMS.section)
+    expect(props.mode.description).toBe(UPDATE_NOTES_PARAMS.mode)
+    expect(props.mode.enum).toEqual(['replace', 'append'])
+    expect(props.content.description).toBe(UPDATE_NOTES_PARAMS.content)
+    expect(tool.inputSchema.required).toEqual(['section', 'content'])
   })
 })
 

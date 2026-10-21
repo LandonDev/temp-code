@@ -1,4 +1,5 @@
 import { execFileBudgeted as execFileP } from './spawnBudget'
+import { NOTES_MECHANICS } from './notesPrompts'
 import { nanoid } from 'nanoid'
 import { anglePathFor, SHOWING_VISUALS } from './threads'
 import { mkdirSync } from 'node:fs'
@@ -1007,7 +1008,9 @@ A FOLLOW-UP message after the fleet settled is a new round of work, not a
 footnote: re-plan it deliberately. Reuse a settled agent via send_to_agent
 when its warm context genuinely helps (same files, same subsystem);
 otherwise spawn fresh agents scoped to the new request. Never leave
-follow-up work implicit or bolt it onto a finished agent's stale task.`.trim()
+follow-up work implicit or bolt it onto a finished agent's stale task.
+
+${NOTES_MECHANICS}`.trim()
 
 const DELEGATION_LINES: Record<OrchestrationRules['conduct']['delegation'], string> = {
   strict:

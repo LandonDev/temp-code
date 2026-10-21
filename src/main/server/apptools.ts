@@ -27,6 +27,15 @@ import {
   type HtmlRenderReference
 } from '@shared/htmlRender'
 import { CITE_CLAIM_MAX, CITE_TOOL_DESCRIPTION, CITE_TOOL_NAME, CITE_TOOL_PARAMS } from '@shared/research'
+import { NOTES_MAX_CHARS } from '@shared/contract'
+import {
+  canonicalSection,
+  NOTE_SECTIONS,
+  sectionBody,
+  UPDATE_NOTES_DESCRIPTION,
+  UPDATE_NOTES_PARAMS,
+  UPDATE_NOTES_TOOL_NAME
+} from '@shared/notes'
 import { preview as previewHtml, publish as publishHtml, type HtmlPreview } from './htmlRender'
 import { INLINE_DIGEST_MAX_CHARS, mirrorRelPath, threadDigest } from './mirror'
 import type { SessionRegistry } from './sessions'
@@ -293,6 +302,35 @@ export async function appStartThread(
   return { threadId: thread.id, title: created.title }
 }
 
+// ── thread notes (threadNotes.ts) ────────────────────────────────────
+
+export interface UpdateNotesArgs {
+  section: string
+  mode?: 'replace' | 'append'
+  content: string
+}
+
+/** One section replaced or appended in the caller's notes; the answer
+ *  names the file (the harness may read it directly) and the section's
+ *  size, never the whole text — the model wrote it. */
+export function appUpdateNotes(reg: SessionRegistry, caller: SessionMeta, args: UpdateNotesArgs): string {
+  const section = canonicalSection(args.section)
+  if (!section) return 'refused: section must name a heading.'
+  if (args.content.length > NOTES_MAX_CHARS) return `refused: content over ${NOTES_MAX_CHARS} characters — notes are a brief, not a transcript.`
+  const mode = args.mode ?? 'replace'
+  const doc = reg.notes.update(caller.id, { section, mode, content: args.content })
+  const body = sectionBody(doc.text, section)
+  const lines = body ? body.split('\n').filter((l) => l.trim()).length : 0
+  const known = (NOTE_SECTIONS as readonly string[]).includes(section) ? '' : ' (a heading of your own, kept after the fixed ones)'
+  return `notes updated: ${section} ${mode === 'append' ? 'appended' : 'replaced'}, now ${lines} line${lines === 1 ? '' : 's'}${known}.${doc.path ? ` File: ${doc.path}` : ''}`
+}
+
+export const UPDATE_NOTES_SHAPE = {
+  section: z.string().min(1).max(80).describe(UPDATE_NOTES_PARAMS.section),
+  mode: z.enum(['replace', 'append']).optional().describe(UPDATE_NOTES_PARAMS.mode),
+  content: z.string().max(NOTES_MAX_CHARS).describe(UPDATE_NOTES_PARAMS.content)
+}
+
 // ── agent HTML pages (ported from T3 Code) ───────────────────────────
 
 export interface HtmlPreviewArgs {
@@ -494,6 +532,9 @@ export function appToolsMcp(session: SessionMeta): McpSdkServerConfigWithInstanc
           )
         }
       ),
+      tool(UPDATE_NOTES_TOOL_NAME, UPDATE_NOTES_DESCRIPTION, UPDATE_NOTES_SHAPE, async (args) =>
+        text(registry ? appUpdateNotes(registry, session, args) : 'app registry not ready')
+      ),
       tool(HTML_PREVIEW_TOOL_NAME, HTML_PREVIEW_TOOL_DESCRIPTION, HTML_PREVIEW_SHAPE, (args) =>
         htmlPreviewTool(args)
       ),
@@ -508,6 +549,7 @@ export const APP_TOOLS = [
   'mcp__app__app_list_threads',
   'mcp__app__app_read_thread',
   'mcp__app__app_start_thread',
+  `mcp__app__${UPDATE_NOTES_TOOL_NAME}`,
   `mcp__app__${HTML_PREVIEW_TOOL_NAME}`,
   `mcp__app__${HTML_RENDER_TOOL_NAME}`,
   `mcp__app__${CITE_TOOL_NAME}`,

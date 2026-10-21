@@ -12,6 +12,7 @@ const ImplementationView = threadViewsChunk.surface("ImplementationView", skelet
 const OrchestrationView = threadViewsChunk.surface("OrchestrationView", skeleton);
 const PlanView = threadViewsChunk.surface("PlanView", skeleton);
 const ResearchView = threadViewsChunk.surface("ResearchView", skeleton);
+import { NotesPanel } from "./NotesPanel";
 
 export type { ChatOpts } from "./chatSlots";
 
@@ -26,10 +27,23 @@ export type ThreadViewProps = ChatSource & {
   onOpenSession?: (sessionId: string) => void;
 };
 
-/** The switch on a session's thread type; null and chat fall through to ChatView. */
+/** The switch on a session's thread type; null and chat fall through to
+ *  ChatView. Every root thread carries its notes panel at the right edge
+ *  (a subagent's notes read through its parent's digest instead). */
 export function ThreadView(props: ThreadViewProps) {
   const { session } = props;
-  switch (session.threadType) {
+  const view = typeView(props);
+  if (session.parentId) return view;
+  return (
+    <div className="relative flex min-h-0 min-w-0 flex-1">
+      {view}
+      <NotesPanel session={session} />
+    </div>
+  );
+}
+
+function typeView(props: ThreadViewProps) {
+  switch (props.session.threadType) {
     case "planning":
       return <PlanView {...props} />;
     case "implementation":

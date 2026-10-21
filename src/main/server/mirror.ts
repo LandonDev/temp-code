@@ -17,6 +17,7 @@ import { bootMark } from './boot'
 import { basename, join, relative, isAbsolute } from 'node:path'
 import type { EventRow, SessionMeta } from '@shared/events'
 import type { ProjectMeta } from '@shared/domain'
+import { demoteHeadings } from '@shared/notes'
 import { latestTurnRows, toolLinesOf, turnText } from './orchestration'
 import type { SessionRegistry } from './sessions'
 
@@ -144,7 +145,9 @@ export function filesTouched(rows: EventRow[], cwd: string): string[] {
 export function renderMirror(
   meta: SessionMeta,
   rows: EventRow[],
-  projectName?: string | null
+  projectName?: string | null,
+  /** The thread's working notes (threadNotes.ts), verbatim ahead of the dialogue. */
+  notes?: string | null
 ): string {
   const files = filesTouched(rows, meta.cwd)
   const front = [
@@ -166,7 +169,10 @@ export function renderMirror(
   const closing = turnText(latestTurnRows(rows)).trim()
   const outcome =
     closing.length > OUTCOME_MAX_CHARS ? `…${closing.slice(-OUTCOME_MAX_CHARS)}` : closing
-  const head = outcome ? `${front}\n\n## Outcome\n\n${outcome}` : front
+  // The notes come before the outcome: what the thread chose to keep is
+  // the first thing a successor reads, then what it last said.
+  const noted = notes?.trim() ? `${front}\n\n## Notes\n\n${demoteHeadings(notes)}` : front
+  const head = outcome ? `${noted}\n\n## Outcome\n\n${outcome}` : noted
   let body = renderDialogue(rows)
   if (body.length > MIRROR_MAX_CHARS) {
     body = `_[earlier turns trimmed]_\n\n…${body.slice(-MIRROR_MAX_CHARS)}`
@@ -284,6 +290,12 @@ function mirrorSessionNow(
   }
 }
 
+/** Test seam: drop every pending mirror write (a closed test database must not be touched by a late timer). */
+export function cancelMirrors(): void {
+  for (const t of timers.values()) clearTimeout(t)
+  timers.clear()
+}
+
 /** Debounced per session — an orchestrator burst writes once. */
 export function scheduleMirror(reg: SessionRegistry, sessionId: string): void {
   const prior = timers.get(sessionId)
@@ -366,7 +378,7 @@ export const INLINE_DIGEST_MAX_CHARS = 12_000
  *  header naming the source project (and plan file, via frontmatter). */
 export function threadDigest(reg: SessionRegistry, refMeta: SessionMeta): string {
   const projectName = refMeta.projectId ? (reg.getProject(refMeta.projectId)?.name ?? null) : null
-  return renderMirror(refMeta, reg.eventsAfter(refMeta.id, 0), projectName)
+  return renderMirror(refMeta, reg.eventsAfter(refMeta.id, 0), projectName, reg.notes.textFor(refMeta.id))
 }
 
 /** Write a fresh digest of a referenced thread into the CURRENT project's
@@ -395,8 +407,10 @@ function capDigest(digest: string, pointer: string): string {
   const budget = INLINE_DIGEST_MAX_CHARS - pointer.length
   if (digest.length <= budget) return `${digest}${pointer}`
   const frontEnd = digest.indexOf('\n---\n', 4) + 5 // close of the frontmatter
-  const outcome = digest.indexOf('\n## Outcome\n', frontEnd)
-  const dialogue = outcome > 0 ? digest.indexOf('\n## ', outcome + 4) : -1
+  // The head is everything before the first dialogue turn: frontmatter,
+  // the notes and the outcome (none of which is a turn heading).
+  const starts = [digest.indexOf('\n## User\n', frontEnd), digest.indexOf('\n## Assistant\n', frontEnd)].filter((i) => i > 0)
+  const dialogue = starts.length ? Math.min(...starts) : -1
   const head = digest.slice(0, dialogue > 0 ? dialogue : Math.max(frontEnd, 0)).trimEnd()
   const marker = '\n\n_[earlier turns trimmed]_\n\n…'
   const room = budget - head.length - marker.length - pointer.length

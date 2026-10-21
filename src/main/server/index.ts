@@ -115,6 +115,7 @@ import {
   appHtmlRender,
   appListThreads,
   appReadThread,
+  appUpdateNotes,
   appStartThread,
   setAppBridge,
   setAppCrossHost,
@@ -874,6 +875,8 @@ export async function startServer(
       countPush('meta')
       emitPush({ push: 'session', session })
     })
+    // A thread's notes changed: every client follows (the panel, the rows).
+    const offNotes = registry.notes.onChange((sessionId, doc) => emitPush({ push: 'notes', sessionId, doc }))
     const offCatalog = registry.onCatalog((kind) => emitPush(kind === 'workspaces'
       ? { push: 'workspaces', workspaces: registry.listWorkspaces() }
       : { push: 'projects', projects: registry.listProjects() }))
@@ -1589,6 +1592,22 @@ export async function startServer(
             await registry.setThreadRules(req.params.sessionId, req.params.threadRules)
             sendFrame({ id: req.id, ok: true, result: null })
             break
+          case 'session.notes.get': {
+            if (!registry.get(req.params.sessionId)) throw new Error(`unknown session: ${req.params.sessionId}`)
+            sendFrame({ id: req.id, ok: true, result: registry.notes.read(req.params.sessionId) })
+            break
+          }
+          case 'session.notes.set': {
+            if (!registry.get(req.params.sessionId)) throw new Error(`unknown session: ${req.params.sessionId}`)
+            sendFrame({ id: req.id, ok: true, result: registry.notes.write(req.params.sessionId, req.params.text) })
+            break
+          }
+          case 'app.updateNotes': {
+            const caller = registry.get(req.params.sessionId)
+            if (!caller) throw new Error(`unknown session: ${req.params.sessionId}`)
+            sendFrame({ id: req.id, ok: true, result: appUpdateNotes(registry, caller, req.params) })
+            break
+          }
           case 'session.archive':
             await registry.setArchived(req.params.sessionId, req.params.archived)
             // The thread's resources go after the archive lands; the rows and the
@@ -1842,6 +1861,7 @@ export async function startServer(
     ws.on('close', () => {
       coalescer?.dispose()
       offMeta()
+      offNotes()
       offCatalog()
       offQueue()
       offLive()

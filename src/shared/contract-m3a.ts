@@ -96,6 +96,8 @@ export interface SessionSearchHit {
   /** FTS5 bm25 of the row (negative, lower is a better match); absent for
    *  a row the scan found. */
   rank?: number
+  /** `notes`: the hit is in the thread's working notes (threadNotes.ts), not a transcript row; seq is 0. */
+  source?: 'notes'
 }
 export interface SessionSearchResult {
   hits: SessionSearchHit[]

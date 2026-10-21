@@ -92,6 +92,14 @@ export function openDb(path: string): DatabaseSync {
       error      TEXT,
       items      TEXT NOT NULL
     );
+    -- A thread's working notes (threadNotes.ts): the mirror of
+    -- attachmentDir(session)/notes.md for the renderer, search and
+    -- archived threads whose directory is gone.
+    CREATE TABLE IF NOT EXISTS session_notes (
+      session_id TEXT PRIMARY KEY,
+      text       TEXT NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
     CREATE TABLE IF NOT EXISTS session_folds (
       session_id    TEXT PRIMARY KEY,
       folded_seq    INTEGER NOT NULL,
@@ -735,6 +743,47 @@ export class Store {
     )
   }
 
+  // ── thread notes (threadNotes.ts): the mirror of notes.md ──────────
+
+  getSessionNotes(sessionId: string): { text: string; updatedAt: number } | null {
+    const row = this.stmt(`SELECT text, updated_at AS updatedAt FROM session_notes WHERE session_id = ?`).get(
+      sessionId
+    ) as unknown as { text: string; updatedAt: number } | undefined
+    return row ?? null
+  }
+
+  setSessionNotes(sessionId: string, text: string, updatedAt: number): void {
+    this.stmt(
+      `INSERT INTO session_notes (session_id, text, updated_at) VALUES (?, ?, ?)
+       ON CONFLICT(session_id) DO UPDATE SET text = excluded.text, updated_at = excluded.updated_at`
+    ).run(sessionId, text, updatedAt)
+  }
+
+  deleteSessionNotes(sessionId: string): void {
+    this.stmt(`DELETE FROM session_notes WHERE session_id = ?`).run(sessionId)
+  }
+
+  /** Notes whose text contains the needle (case-insensitive), newest first:
+   *  what session search folds in beside the transcript hits. */
+  searchNotes(options: { query: string; workspaceId?: string; limit?: number }): {
+    sessionId: string
+    updatedAt: number
+    snippet: string
+  }[] {
+    const needle = options.query.trim().toLowerCase()
+    if (!needle) return []
+    const limit = Math.min(options.limit ?? SEARCH_CAP, SEARCH_CAP)
+    const sql = `SELECT n.session_id AS sessionId, n.updated_at AS updatedAt,
+                        substr(n.text, max(1, instr(lower(n.text), ?) - 60), 180) AS snippet
+                 FROM session_notes n JOIN sessions s ON s.id = n.session_id
+                 WHERE instr(lower(n.text), ?) > 0
+                   ${options.workspaceId ? 'AND s.workspace_id = ?' : ''}
+                 ORDER BY n.updated_at DESC
+                 LIMIT ?`
+    const params = options.workspaceId ? [needle, needle, options.workspaceId, limit] : [needle, needle, limit]
+    return this.stmt(sql).all(...params) as unknown as { sessionId: string; updatedAt: number; snippet: string }[]
+  }
+
   /** Thread type changed mid-conversation; the next send re-instructs.
    *  Server-only state — never part of SessionMeta. */
   getRetyped(id: string): boolean {
@@ -765,10 +814,12 @@ export class Store {
     const delEvents = this.stmt(`DELETE FROM events WHERE session_id = ?`)
     const delCold = this.stmt(`DELETE FROM cold.events WHERE session_id = ?`)
     const delFold = this.stmt(`DELETE FROM session_folds WHERE session_id = ?`)
+    const delNotes = this.stmt(`DELETE FROM session_notes WHERE session_id = ?`)
     for (const sid of ids) {
       delEvents.run(sid)
       delCold.run(sid)
       delFold.run(sid)
+      delNotes.run(sid)
       del.run(sid)
       this.nextSeq.delete(sid)
       this.coldIds.delete(sid)
@@ -1263,7 +1314,18 @@ export class Store {
       }
     }
     rows ??= this.stmt(sql).all(...params) as unknown as Row[]
-    const hits: SessionSearchHit[] = rows.slice(0, limit).map((row) => ({
+    // The threads' working notes (threadNotes.ts) search beside the
+    // transcript rows: one hit per thread, newest first, ahead of the rows
+    // (what a thread chose to keep outranks what it said), under the same cap.
+    const notes: SessionSearchHit[] = this.searchNotes({ query: needle, workspaceId: options.workspaceId, limit }).map((n) => ({
+      sessionId: n.sessionId,
+      seq: 0,
+      role: 'assistant',
+      snippet: n.snippet.replace(/\s+/g, ' ').trim(),
+      ts: n.updatedAt,
+      source: 'notes'
+    }))
+    const fromRows: SessionSearchHit[] = rows.map((row) => ({
       sessionId: row.sessionId,
       seq: row.seq,
       role: row.type === 'user-text' ? 'user' : 'assistant',
@@ -1271,7 +1333,8 @@ export class Store {
       ts: row.ts,
       ...(row.rank ? { rank: row.rank } : {})
     }))
-    return { hits, truncated: rows.length > limit }
+    const all = [...notes, ...fromRows]
+    return { hits: all.slice(0, limit), truncated: all.length > limit }
   }
 
   hasUserText(sessionId: string): boolean {

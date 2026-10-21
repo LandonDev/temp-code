@@ -4,6 +4,8 @@ import type { HarnessId } from "../lib/session";
 import * as serverCommands from "../lib/tcserver/commands";
 import { sessionFromMeta, useSessionMetas } from "../lib/tcserver/store";
 import type { SessionMeta } from "../lib/tcserver/types";
+import { stateLine } from "@shared/notes";
+import { useThreadNotes } from "../lib/threadNotes";
 import { ChevronDown, CircleAlert, MessageSquare, Pause } from "./icons";
 import { ModelPicker } from "./ModelPicker";
 import { ModelSettings } from "./ModelSettings";
@@ -103,18 +105,13 @@ export function ThreadBanners({ projectId, activeSessionId, onOpen }: Props) {
 
   return (
     <section className="shrink-0" aria-label="Thread alerts" aria-live="polite">
-      {needsYou.length > 0 ? (
+      {needsYou.length === 1 ? (
+        <NeedsYouBanner thread={needsYou[0]} onOpen={onOpen} />
+      ) : needsYou.length > 1 ? (
         <Banner
           kind="needs-you"
-          text={
-            needsYou.length === 1
-              ? `${needsYou[0].title} needs you`
-              : `${needsYou.length} threads need you`
-          }
-          primary={{
-            label: needsYou.length === 1 ? "Open" : "Open first",
-            onClick: () => onOpen(needsYou[0].id),
-          }}
+          text={`${needsYou.length} threads need you`}
+          primary={{ label: "Open first", onClick: () => onOpen(needsYou[0].id) }}
         />
       ) : null}
       {recovery.length > 0 ? (
@@ -162,6 +159,21 @@ export function ThreadBanners({ projectId, activeSessionId, onOpen }: Props) {
 }
 
 type Action = { label: string; onClick: () => void };
+
+/** One thread waiting on the person: its title, and the first line of its
+ *  notes' State — what it was doing when it stopped to ask. */
+function NeedsYouBanner({ thread, onOpen }: { thread: SessionMeta; onOpen: (sessionId: string) => void }) {
+  const notes = useThreadNotes(thread.environmentId, thread.id);
+  const state = notes ? stateLine(notes.text) : null;
+  return (
+    <Banner
+      kind="needs-you"
+      text={`${thread.title} needs you`}
+      detail={state}
+      primary={{ label: "Open", onClick: () => onOpen(thread.id) }}
+    />
+  );
+}
 
 const DESTRUCTIVE_BUTTON = "border-danger/25 bg-danger/10 hover:bg-danger/20";
 
@@ -264,6 +276,7 @@ function ContinueAs({
 function Banner({
   kind,
   text,
+  detail,
   failed = 0,
   disabled = false,
   primary,
@@ -272,6 +285,8 @@ function Banner({
 }: {
   kind: Kind;
   text: string;
+  /** A dimmer second half of the line (the waiting thread's State). */
+  detail?: string | null;
   failed?: number;
   disabled?: boolean;
   primary: Action;
@@ -291,7 +306,8 @@ function Banner({
       className={`flex min-h-7 items-center gap-2 border-b px-3 py-1 text-xs ${tint}`}
     >
       <Icon className="size-3.5 shrink-0" strokeWidth={1.75} aria-hidden="true" />
-      <span className="min-w-0 truncate font-medium">{text}</span>
+      <span className="min-w-0 shrink-0 truncate font-medium">{text}</span>
+      {detail ? <span className="min-w-0 truncate text-current/70">· {detail}</span> : null}
       {failed > 0 ? <span className="shrink-0 text-current/70">· {failed} failed</span> : null}
       <span className="ml-auto flex shrink-0 items-center gap-1.5">
         {secondary ? (

@@ -673,15 +673,18 @@ function rowCopy(
     };
   }
   if (hit.kind === "message") {
+    const notes = hit.role === "notes";
     return {
-      icon: (
+      icon: notes ? (
+        <StickyNote className="size-3.5 text-content/50" strokeWidth={1.75} />
+      ) : (
         <MessageSquare
           className="size-3.5 text-content/50"
           strokeWidth={1.75}
         />
       ),
       title: <Highlight text={hit.preview || hit.title} query={query} />,
-      meta: hit.title,
+      meta: notes ? `Notes · ${hit.title}` : hit.title,
     };
   }
   if (hit.kind === "file") {

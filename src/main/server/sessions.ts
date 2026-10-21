@@ -1,5 +1,17 @@
 import { nanoid } from 'nanoid'
 import { sweepThreadAttachments } from './attachmentUploads'
+import { attachmentDir } from './attachmentDir'
+import { ThreadNotes } from './threadNotes'
+import {
+  isCommitCall,
+  isNotesCall,
+  notesAfterCompaction,
+  notesForPlanHandoff,
+  NOTES_REMINDER_COMMIT,
+  NOTES_REMINDER_CONTEXT,
+  NOTES_REMINDER_FRACTION,
+  NOTES_REMINDER_RESET_FRACTION
+} from './notesPrompts'
 import { existsSync, statSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { basename } from 'node:path'
@@ -485,7 +497,35 @@ export class SessionRegistry {
    *  every member of the tree settle so the tree continues once. */
   private limitContinues = new Map<string, { switched: Switched; timer: ReturnType<typeof setTimeout> }>()
 
+  /** Each thread's working notes (threadNotes.ts): notes.md beside its
+   *  attachments, mirrored in the store. The dir resolves through
+   *  attachmentDir once the server set its context; before that (unit
+   *  tests) the mirror alone holds them. */
+  readonly notes: ThreadNotes
+  /** Lines from the app to the harness outside any user message, waiting
+   *  for the next message when no turn was live to take them (whisper). */
+  private notices = new Map<string, string[]>()
+  /** Threads reminded to write notes in the current context window. */
+  private notesReminded = new Set<string>()
+  /** The running turn committed or merged / called update_notes. */
+  private turnCommitted = new Set<string>()
+  private turnNoted = new Set<string>()
+  /** A turn ended with a commit and no notes update: a reminder turn is owed. */
+  private notesDue = new Set<string>()
+  /** One reminder turn per user turn: a model that ignores it is not nagged. */
+  private notesReminderSent = new Set<string>()
+
   constructor(private store: Store) {
+    this.notes = new ThreadNotes(store, (sessionId) => {
+      try {
+        return attachmentDir(sessionId)
+      } catch {
+        return null
+      }
+    })
+    this.notes.onChange((sessionId, _doc, source) => {
+      if (source === 'tool') this.turnNoted.add(sessionId)
+    })
     for (const fold of store.listFolds()) this.folds.set(fold.sessionId, fold)
     for (const s of store.listSessions()) if (s.context) this.liveContexts.set(s.id, s.context)
   }
@@ -1631,6 +1671,7 @@ export class SessionRegistry {
     // The visible transcript carries only what the user typed; thread-type
     // preambles ride along on the first message, provider-agnostic.
     const first = opts?.echoed ? opts.echoed.first : !this.store.hasUserText(sessionId)
+    this.notesReminderSent.delete(sessionId)
     const attachments = opts?.attachments?.length ? opts.attachments : undefined
     // The project preamble (projectPreamble.ts) rides the FIRST message of
     // every thread started in a project, on every start path — all of them
@@ -1734,6 +1775,13 @@ export class SessionRegistry {
         !meta.parentId
       ) {
         parts.push(planSeed(meta.planPath))
+        // The planning thread's notes travel with its plan: the decisions
+        // and pointers it kept, ahead of any transcript digest.
+        const planner = this.store
+          .listSessions()
+          .find((s) => s.id !== meta.id && s.threadType === 'planning' && s.planPath === meta.planPath)
+        const planNotes = planner ? this.notes.textFor(planner.id) : null
+        if (planner && planNotes) parts.push(notesForPlanHandoff(planNotes, planner.title))
       }
       const preamble = parts.filter(Boolean).join('\n\n')
       if (preamble) {
@@ -1771,6 +1819,11 @@ export class SessionRegistry {
       out = `<new-pass>\nThis message begins a NEW pass. Your FIRST tool call — before any exploration, edit, or subagent — creates the fresh task list for THIS pass with whichever task tool this session has (one TaskCreate per task, or TodoWrite/update_plan), containing ONLY this pass's tasks. This holds for every pass no matter how small the request — the board renders nothing without it. Then work the list: one item in_progress at a time, completed the moment it's done.\n</new-pass>\n\n${out}`
     }
     if (handoff) out = `${handoff}\n\n${out}`
+    // Lines the app held for the harness (the notes block after a
+    // compaction, a reminder that found no live turn) ride ahead of this
+    // message, inside the same send.
+    const notices = this.takeNotices(sessionId)
+    if (notices) out = `${notices}\n\n${out}`
     // Thread references (M9): each referenced thread becomes a fresh local
     // digest file; the @thread:<id> token is rewritten to its path (every
     // harness follows @path). Projectless sessions get the digest inline.
@@ -2409,6 +2462,12 @@ export class SessionRegistry {
       this.foldDirty.delete(id)
       this.pendingGoals.delete(id)
       this.liveContexts.delete(id)
+      this.notices.delete(id)
+      this.notesReminded.delete(id)
+      this.turnCommitted.delete(id)
+      this.turnNoted.delete(id)
+      this.notesDue.delete(id)
+      this.notesReminderSent.delete(id)
       const meta = all.find((s) => s.id === id)
       if (meta) removeMirror(this, meta) // mirrors die with the thread
       if (meta) sweepThreadAttachments(meta) // and so do its uploaded attachments
@@ -2795,7 +2854,23 @@ export class SessionRegistry {
       this.store.setSessionContext(sessionId, context)
       const meta = this.store.getSession(sessionId)
       if (meta) this.notifyMeta(meta)
+      this.checkNotesReminder(sessionId, event.tokens, window)
       return
+    }
+    // The window was squeezed: the next thing this harness reads is the
+    // thread's own notes (threadNotes.ts), ahead of whatever comes next —
+    // into the live turn now, else ahead of the next message. The window
+    // is fresh again for the pre-compaction reminder.
+    if (event.type === 'compaction' && event.phase === 'done') {
+      this.notesReminded.delete(sessionId)
+      const text = this.notes.textFor(sessionId)
+      if (text) this.whisper(sessionId, notesAfterCompaction(text))
+    }
+    // What the running turn did, for the post-commit reminder: a shell
+    // call that commits or merges, and whether update_notes ran.
+    if (event.type === 'tool-call') {
+      if (isNotesCall(event.name)) this.turnNoted.add(sessionId)
+      else if (isCommitCall(event.name, event.input)) this.turnCommitted.add(sessionId)
     }
     // The thread already has its "needs sign-in" row: the harness's own
     // report of the same 401 adds nothing.
@@ -2911,6 +2986,15 @@ export class SessionRegistry {
           this.passPending.delete(sessionId)
           this.passActive.add(sessionId)
           void this.runTurnPass(sessionId, pass)
+        } else if (this.notesDue.delete(sessionId) && !this.notesReminderSent.has(sessionId)) {
+          // A commit without a notes update: the reminder is its own short
+          // turn when nothing else waits, else a line ahead of what does.
+          this.notesReminderSent.add(sessionId)
+          const busy = (this.queues.get(sessionId)?.length ?? 0) > 0 || (this.pendingReports.get(sessionId)?.length ?? 0) > 0
+          if (busy) {
+            this.holdNotice(sessionId, NOTES_REMINDER_COMMIT)
+            if (!this.drainReports(sessionId)) this.drainQueue(sessionId)
+          } else void this.runNotesReminder(sessionId)
         } else if (!this.drainReports(sessionId)) {
           this.drainQueue(sessionId)
         }
@@ -2980,6 +3064,15 @@ export class SessionRegistry {
       else if (event.status === 'running') this.limited.delete(sessionId)
     }
     // Shared context (M8): a finished turn refreshes the thread's mirror.
+    if (event.type === 'turn-complete') {
+      // A root thread that committed or merged this turn without touching
+      // its notes owes a reminder turn once it settles (idle below).
+      if (this.turnCommitted.has(sessionId) && !this.turnNoted.has(sessionId) && !persisted?.parentId) {
+        this.notesDue.add(sessionId)
+      }
+      this.turnCommitted.delete(sessionId)
+      this.turnNoted.delete(sessionId)
+    }
     if (event.type === 'turn-complete' && persisted?.status !== 'paused') {
       if (this.store.getSession(sessionId)?.projectId) scheduleMirror(this, sessionId)
       if (!this.erroredTurns.has(sessionId)) {
@@ -3162,6 +3255,69 @@ export class SessionRegistry {
   onRemoved(listener: RemovedListener): () => void {
     this.removedListeners.add(listener)
     return () => this.removedListeners.delete(listener)
+  }
+
+  // ── app lines to the harness (notes reminders, the post-compaction block) ──
+
+  /** A line from the app to the harness outside any user message: into
+   *  the live turn now when one runs (both drivers take mid-turn input),
+   *  else held ahead of the next message the harness gets. */
+  whisper(sessionId: string, text: string): void {
+    const status = this.store.getSession(sessionId)?.status
+    const handle = this.handles.get(sessionId)
+    if (handle && (status === 'running' || status === 'starting')) {
+      this.lastActivity.set(sessionId, Date.now())
+      handle.send(text).catch(() => this.holdNotice(sessionId, text))
+      return
+    }
+    this.holdNotice(sessionId, text)
+  }
+
+  private holdNotice(sessionId: string, text: string): void {
+    const list = this.notices.get(sessionId) ?? []
+    if (!list.includes(text)) list.push(text)
+    this.notices.set(sessionId, list)
+  }
+
+  /** The held lines, once; '' when none. */
+  private takeNotices(sessionId: string): string {
+    const list = this.notices.get(sessionId)
+    if (!list?.length) return ''
+    this.notices.delete(sessionId)
+    return list.join('\n\n')
+  }
+
+  /** Test seam: what waits for the next message. */
+  heldNotices(sessionId: string): string[] {
+    return [...(this.notices.get(sessionId) ?? [])]
+  }
+
+  /** The context meter moved: once per window, near the compaction point,
+   *  the thread is told to write its notes while the window still holds
+   *  what they should say. Below half the window counts as a fresh window. */
+  private checkNotesReminder(sessionId: string, tokens: number, window: number | null): void {
+    if (!window || window <= 0) return
+    if (tokens < window * NOTES_REMINDER_RESET_FRACTION) {
+      this.notesReminded.delete(sessionId)
+      return
+    }
+    if (tokens < window * NOTES_REMINDER_FRACTION || this.notesReminded.has(sessionId)) return
+    this.notesReminded.add(sessionId)
+    this.whisper(sessionId, NOTES_REMINDER_CONTEXT)
+  }
+
+  /** The reminder turn after a commit without a notes update: the app's
+   *  own short turn, marked on the transcript like a completed-turn pass. */
+  private async runNotesReminder(sessionId: string): Promise<void> {
+    if (this.isTreePaused(sessionId)) return
+    try {
+      const handle = await this.handleFor(sessionId)
+      this.append(sessionId, { type: 'turn-pass', actions: ['Notes'] })
+      this.lastActivity.set(sessionId, Date.now())
+      await handle.send(NOTES_REMINDER_COMMIT)
+    } catch {
+      if (!this.drainReports(sessionId)) this.drainQueue(sessionId)
+    }
   }
 
   // ── message queue (queueing + steering) ────────────────────────────
@@ -3348,8 +3504,9 @@ export class SessionRegistry {
           ? `\nThe task list shows only ${tally.done}/${tally.total} tasks completed — this pass only tidies what exists. End by saying plainly that the work is UNFINISHED and what remains, so the user can resume it.`
           : ''
       void this.armBaseline(sessionId)
+      const notices = this.takeNotices(sessionId)
       await handle.send(
-        `<turn-pass>\nThe turn settled. The completed-turn setting now asks you to:\n${steps.map((s, i) => `${i + 1}. ${s}`).join('\n')}\nThese are the project's own completion settings — they OVERRIDE any branch, worktree, PR, or completion convention a skill or other instruction gave earlier in this thread. If the turn changed nothing to verify, build, or commit, say so in one short line and stop. Never start new feature work in this pass.${unfinished}\n</turn-pass>`
+        `${notices ? `${notices}\n\n` : ''}<turn-pass>\nThe turn settled. The completed-turn setting now asks you to:\n${steps.map((s, i) => `${i + 1}. ${s}`).join('\n')}\nThese are the project's own completion settings — they OVERRIDE any branch, worktree, PR, or completion convention a skill or other instruction gave earlier in this thread. If the turn changed nothing to verify, build, or commit, say so in one short line and stop. Never start new feature work in this pass.${unfinished}\n</turn-pass>`
       )
     } catch {
       // Harness refused (gone, mid-restart) — settle back to normal flow.

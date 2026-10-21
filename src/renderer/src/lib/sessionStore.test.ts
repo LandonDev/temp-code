@@ -35,8 +35,11 @@ class FakeLink implements Link {
   events = new Map<string, EventRow[]>();
   /** Resolves before a head (beforeSeq) fetch answers, when set. */
   holdHead: Promise<void> | null = null;
+  /** What the host's own search answers (session.search). */
+  searchHits: unknown[] = [];
   request<T>(method: string, params?: unknown): Promise<T> {
     if (method === "session.list") return Promise.resolve(this.metas as T);
+    if (method === "session.search") return Promise.resolve({ hits: this.searchHits, truncated: false } as T);
     if (method === "session.events") {
       const { sessionId, afterSeq = 0, beforeSeq, tail } = params as {
         sessionId: string; afterSeq?: number; beforeSeq?: number; tail?: number;
@@ -103,6 +106,26 @@ describe("searchSessions", () => {
     expect(hits[1].preview).toContain("refactor the login");
     expect((await searchSessions({ query: "other" })).hits).toEqual([]);
     expect((await searchSessions({ query: "other", includeArchived: true })).hits).toHaveLength(1);
+  });
+
+  it("a hit in a thread's notes keeps its own row, even for a loaded transcript", async () => {
+    link.metas = [wireMeta({ id: "a", title: "Gateway work" }), wireMeta({ id: "b", title: "Other" })];
+    link.events.set("a", [{ sessionId: "a", seq: 1, ts: 1, event: { type: "user-text", text: "fix the gateway port" } }]);
+    link.searchHits = [
+      { sessionId: "a", seq: 0, role: "assistant", snippet: "## Pointers - gateway.ts", ts: 5, source: "notes" },
+      { sessionId: "a", seq: 1, role: "user", snippet: "fix the gateway port", ts: 1 },
+      { sessionId: "b", seq: 3, role: "assistant", snippet: "gateway elsewhere", ts: 2 },
+    ];
+    sessionStore.attach(link);
+    await getSession("a");
+    const { hits } = await searchSessions({ query: "gateway" });
+    expect(hits.map((h) => `${h.sessionId}:${h.kind}:${h.role ?? "-"}:${h.seq ?? "-"}`)).toEqual([
+      "a:conversation:-:-",
+      "a:message:user:1",
+      "a:message:notes:0",
+      "b:message:assistant:3",
+    ]);
+    expect(hits[2].preview).toBe("## Pointers - gateway.ts");
   });
 });
 

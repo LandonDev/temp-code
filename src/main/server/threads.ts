@@ -1,4 +1,5 @@
 import { readdirSync, readFileSync } from 'node:fs'
+import { NOTES_MECHANICS } from './notesPrompts'
 import { join } from 'node:path'
 import type { SessionMeta } from '@shared/events'
 import type { ProjectMeta } from '@shared/domain'
@@ -92,12 +93,16 @@ function appToolsNote(session: SessionMeta): string {
   if (!available) {
     return `You run inside the temp-code app, but its app tools (listing/reading/starting threads) do not reach this harness — for a handoff to another thread, ask the user to start it.`
   }
+  // claude's system prompt already carries the notes mechanics
+  // (orchestration.ts, so a compaction never drops them); every other
+  // harness learns them here, in its first message.
+  const notes = session.provider === 'claude' ? '' : `\n${NOTES_MECHANICS}`
   const planning =
     session.threadType === 'planning'
       ? ' plan_complete marks this thread\'s plan as finished (planning threads only).'
       : ''
   return `You run inside the temp-code app and can operate it: app_list_threads lists this project's threads (allProjects: true for every project), app_read_thread returns a readable digest of any thread, and app_start_thread creates a new thread and sends its first message (threadType, provider/model/reasoning, optional planPath and seedThreadIds — this thread's id is ${session.id}).${planning} Start a thread ONLY when the user asked for it or agreed to the handoff; every new thread appears in the UI immediately. A planning thread you start reports back to you here when its plan is complete (and whether a build started), the way a subagent's settle does.
-${SHOWING_VISUALS}`
+${SHOWING_VISUALS}${notes}`
 }
 
 /** T3 Code's "Showing visuals" instruction: when a page says more than prose. */

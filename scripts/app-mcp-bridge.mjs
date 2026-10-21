@@ -353,6 +353,30 @@ export const TOOLS = [
   },
   // ── agent HTML pages ───────────────────────────────────────────────
   {
+    // A copy of src/shared/notes.ts's UPDATE_NOTES_DESCRIPTION and
+    // UPDATE_NOTES_PARAMS; app-bridge.test.ts keeps them equal.
+    name: 'update_notes',
+    description:
+      "Update this thread's working notes: the one document that survives a context compaction and seeds any successor thread. Replace or append ONE section (Goal, Decisions, State, Pointers, Open questions); the app writes notes.md beside the thread's attachments and shows it live in the Notes panel. Keep State current (what is done, in flight, blocked) and Pointers concrete (files, commands, ids). Update after every decision, before context runs low, and after a commit or merge.",
+    inputSchema: {
+      type: 'object',
+      properties: {
+        section: {
+          type: 'string',
+          description:
+            'Which heading: Goal | Decisions | State | Pointers | Open questions (a new heading is allowed, after the fixed ones).'
+        },
+        mode: {
+          type: 'string',
+          enum: ['replace', 'append'],
+          description: 'replace (default) swaps the section body; append adds a paragraph under it.'
+        },
+        content: { type: 'string', description: 'Markdown for the section: short lines, concrete names, no transcript.' }
+      },
+      required: ['section', 'content']
+    }
+  },
+  {
     name: 'html_preview',
     description: HTML_PREVIEW_TOOL_DESCRIPTION,
     inputSchema: {
@@ -593,7 +617,8 @@ const METHOD_FOR = {
   list_agents: 'app.listAgents',
   html_preview: 'app.htmlPreview',
   html_render: 'app.htmlRender',
-  cite_source: 'app.citeSource'
+  cite_source: 'app.citeSource',
+  update_notes: 'app.updateNotes'
 }
 
 /** The MCP content parts a tool result turns into (the preview's PNG rides as an image). */

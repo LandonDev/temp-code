@@ -367,7 +367,8 @@ export const SessionSearchHitSchema = z.object({
   role: z.enum(['user', 'assistant']),
   snippet: z.string(),
   ts: z.number().int(),
-  rank: z.number().optional()
+  rank: z.number().optional(),
+  source: z.enum(['notes']).optional()
 })
 export const SessionSearchResultSchema = z.object({
   hits: z.array(SessionSearchHitSchema),

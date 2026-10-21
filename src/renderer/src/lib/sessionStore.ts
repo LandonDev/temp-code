@@ -102,6 +102,8 @@ type ServerSearchHit = {
   role: "user" | "assistant";
   snippet: string;
   ts: number;
+  /** The hit is in the thread's working notes, not a transcript row. */
+  source?: "notes";
 };
 
 /** Titles always; message bodies from the loaded transcripts, then the
@@ -162,29 +164,35 @@ export async function searchSessions(options: {
   const byId = new Map(metas.map((meta) => [meta.id, meta]));
   // Every host searches its own rows; the hits merge by session id below.
   const remotes = await Promise.all(
-    sessionStore.environmentIds().map((environmentId) =>
-      invokeOn<{ hits: ServerSearchHit[]; truncated: boolean }>(environmentId, "search_sessions", {
-        query: options.query.trim(),
-        limit: SEARCH_LIMIT,
-        archived: !!options.includeArchived,
-      }).catch(() => ({ hits: [] as ServerSearchHit[], truncated: false })),
-    ),
+    sessionStore.environmentIds().map((environmentId) => {
+      const link = sessionStore.linkOfEnvironment(environmentId);
+      if (!link) return { hits: [] as ServerSearchHit[], truncated: false };
+      return link
+        .request<{ hits: ServerSearchHit[]; truncated: boolean }>("session.search", {
+          query: options.query.trim(),
+          limit: SEARCH_LIMIT,
+          archived: !!options.includeArchived,
+        })
+        .then((r) => r ?? { hits: [] as ServerSearchHit[], truncated: false })
+        .catch(() => ({ hits: [] as ServerSearchHit[], truncated: false }));
+    }),
   );
   const remote = { hits: remotes.flatMap((r) => r.hits), truncated: remotes.some((r) => r.truncated) };
   for (const row of remote.hits) {
     const meta = byId.get(row.sessionId);
     if (!meta) continue;
     // A loaded transcript was searched block by block above; its rows add
-    // nothing (a stream's final row would only repeat its block).
-    if (sessionStore.get(meta.id)?.blocks.length) continue;
-    const key = `${meta.id}:${row.seq}`;
+    // nothing (a stream's final row would only repeat its block). Its notes
+    // live outside the transcript, so those hits stay.
+    if (row.source !== "notes" && sessionStore.get(meta.id)?.blocks.length) continue;
+    const key = row.source === "notes" ? `${meta.id}:notes` : `${meta.id}:${row.seq}`;
     if (seen.has(key)) continue;
     seen.add(key);
     hits.push({
       kind: "message",
       ...baseOf(meta),
       seq: row.seq,
-      role: row.role,
+      role: row.source === "notes" ? "notes" : row.role,
       preview: row.snippet,
     });
     if (hits.length >= SEARCH_LIMIT) return { hits, truncated: true };

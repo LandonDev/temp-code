@@ -823,6 +823,67 @@ the landed path and refuses a Mac path, an idle upload expires with
 `TEMP_CODE_ATTACHMENT_TTL_MS`, a delete sweeps the dir); unit tests in
 `attachmentUploads.test.ts`, `fence.test.ts` and
 `src/renderer/src/lib/attachmentUpload.test.ts`.
+### Working notes: what a thread keeps for its next window
+
+Every root thread keeps one markdown file, `notes.md`, beside its
+attachments (`attachmentDir(session)/notes.md`, so the harness can read and
+write it with its own tools; `src/main/server/threadNotes.ts`, the text
+rules in `src/shared/notes.ts`), mirrored in the `session_notes` table for
+the renderer, search and archived threads whose directory is gone. Five
+fixed headings — Goal, Decisions, State (done, in flight, blocked; its
+first line is the one-line status), Pointers (files, commands, ids), Open
+questions. The file keeps every heading; a prompt or a digest embeds only
+the filled ones.
+
+The harness writes it with the `update_notes` app tool (claude in-process,
+codex through the bridge as `app.updateNotes`): one section per call,
+`replace` or `append`, and the tool reads the file first so a person's edit
+since the last call survives. The mechanics (`NOTES_MECHANICS`,
+`src/main/server/notesPrompts.ts`) ride every claude system prompt, so a
+compaction never drops them, and the first-message preamble of every other
+harness.
+
+The app reminds the thread at the two moments that matter. When the
+context meter passes 0.7 of the window, a `<notes-reminder
+reason="context">` is whispered into the live turn (both drivers take
+mid-turn input), once per window, armed again below 0.5 or at a
+compaction. When a root thread's turn committed or merged (`git commit`,
+`git merge`, `gh pr merge`, `git push`) without an `update_notes` call, the
+app sends a `<notes-reminder reason="commit">` as its own short turn after
+the settle, marked on the transcript like a completed-turn pass ("Notes");
+with a queued message waiting it rides ahead of that message instead, and a
+reminder is never repeated before the next user message. A whisper that
+finds no live turn is held and goes ahead of the next message the harness
+gets (a user message or a turn pass).
+
+After a compaction (the `compaction` event's `done` phase) the thread's
+notes go to the harness as a `<thread-notes>` block, so the window that
+only has the summary starts from what the thread chose to keep. Successors
+start the same way: a thread digest (`renderMirror`, hence
+`app_read_thread`, `seedThreadIds` and `@thread:` references) carries
+`## Notes` between the frontmatter and `## Outcome`, kept whole when the
+digest is trimmed, and a build thread's first message carries its planning
+thread's notes (`<planning-notes>`) beside the plan seed.
+
+On the wire: `session.notes.get` (read) answers `{text, updatedAt, path}`,
+`session.notes.set` (operate) is the person's whole-text edit, and the
+`notes` push goes to every client of the thread's host (the phone's
+decoder folds it into its unknown case; the Swift subset is untouched).
+`session.search` folds notes hits in ahead of the transcript rows (`source:
+'notes'`, seq 0, one per thread). In the desktop renderer
+`lib/threadNotes.ts` keeps the copy current on the push and feeds the Notes
+drawer at every root thread's right edge (`surfaces/threads/NotesPanel.tsx`:
+rendered markdown, an edit mode that saves on a debounce and on Done and
+offers the thread's version when it wrote meanwhile, "Copy as brief" for a
+successor's first message), the needs-you banner's State line, and the
+notes icon on a search hit.
+
+Proof: `threadNotes.test.ts` (sections, the file and mirror round trip),
+`sessions-notes.test.ts` (both reminders, the whisper, the compaction
+block, the digests, the plan hand-off), `session-search.test.ts`,
+`app-bridge.test.ts`, and the renderer's `threadNotes.test.ts`,
+`NotesPanel.dom.test.tsx` and `ThreadBanners.dom.test.tsx`.
+
 ### Moving a thread between hosts
 
 One thread (with its subagents) moves Mac ↔ box from the desktop: the chip at

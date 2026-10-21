@@ -106,6 +106,9 @@ const SpawnAgentSpecSchema = z.object({
   preamble: z.boolean().optional()
 })
 
+/** Cap on a thread's notes text: a brief, never a transcript. */
+export const NOTES_MAX_CHARS = 64_000
+
 export const ClientRequestSchema = z.discriminatedUnion('method', [
   ...M3aRequestSchemas,
   ...FsGitRequestSchemas,
@@ -673,6 +676,31 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
     method: z.literal('session.setThreadRules'),
     params: z.object({ sessionId: z.string(), threadRules: ThreadRulesSchema.nullable() })
   }),
+  // A thread's working notes (src/main/server/threadNotes.ts): the file
+  // beside its attachments, mirrored in the database. `get` answers a
+  // ThreadNotesDoc; `set` is the person's whole-text edit from the panel.
+  z.object({
+    id: z.string(),
+    method: z.literal('session.notes.get'),
+    params: z.object({ sessionId: z.string() })
+  }),
+  z.object({
+    id: z.string(),
+    method: z.literal('session.notes.set'),
+    params: z.object({ sessionId: z.string(), text: z.string().max(NOTES_MAX_CHARS) })
+  }),
+  // The codex bridge's update_notes (scripts/app-mcp-bridge.mjs): one
+  // section replaced or appended, same as the claude tool.
+  z.object({
+    id: z.string(),
+    method: z.literal('app.updateNotes'),
+    params: z.object({
+      sessionId: z.string(),
+      section: z.string().min(1).max(80),
+      mode: z.enum(['replace', 'append']).optional(),
+      content: z.string().max(NOTES_MAX_CHARS)
+    })
+  }),
   z.object({
     id: z.string(),
     method: z.literal('session.archive'),
@@ -967,6 +995,15 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
 ])
 export type ClientRequest = z.infer<typeof ClientRequestSchema>
 
+/** A thread's notes as `session.notes.get` answers and the `notes` push carries. */
+export interface ThreadNotesDoc {
+  text: string
+  /** When the text last changed; null when the thread has no notes yet. */
+  updatedAt: number | null
+  /** The notes.md on the thread's host, or null when it has no directory yet. */
+  path: string | null
+}
+
 export type ServerResponse =
   { id: string; ok: true; result: unknown } | { id: string; ok: false; error: string }
 
@@ -1007,6 +1044,10 @@ export type ServerPush =
   | { push: 'live-edits'; items: Omit<Extract<ServerPush, { push: 'live-edit' }>, 'push'>[] }
   | { push: 'builds'; items: Omit<Extract<ServerPush, { push: 'build' }>, 'push'>[] }
   | { push: 'queue'; sessionId: string; items: QueuedMessage[] }
+  // A thread's notes changed (the harness's update_notes, the person's
+  // edit, or the file edited behind the mirror). Every client gets it;
+  // the phone's decoder folds it into its unknown case.
+  | { push: 'notes'; sessionId: string; doc: ThreadNotesDoc }
   | { push: 'session-removed'; sessionIds: string[] }
   // A thread (`id`, with its subagents `sessionIds`) moved to environment `to`
   // (contract-session-move.ts); sent ahead of the session-removed for it.

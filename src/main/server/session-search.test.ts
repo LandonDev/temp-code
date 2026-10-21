@@ -92,3 +92,21 @@ it('caps results and reports truncation', async () => {
   expect(capped.truncated).toBe(true)
   expect((await store.searchEvents({ query: 'needle' })).truncated).toBe(false)
 })
+
+it("a thread's notes search beside its rows, ahead of them, scoped like them", async () => {
+  store.insertSession(meta('a', 'w1'))
+  store.insertSession(meta('b', 'w2'))
+  store.appendEvent('a', { type: 'assistant-text', text: 'the gateway port is 8787', delta: false })
+  store.setSessionNotes('a', '## Pointers\n\n- gateway.ts listens on the loopback port\n', 5)
+  store.setSessionNotes('b', '## State\n\n- gateway refactor half done\n', 9)
+  const all = await store.searchEvents({ query: 'gateway' })
+  expect(all.hits.map((h) => `${h.sessionId}:${h.seq}:${h.source ?? h.role}`)).toEqual(['b:0:notes', 'a:0:notes', 'a:1:assistant'])
+  expect(all.hits[1].snippet).toBe('## Pointers - gateway.ts listens on the loopback port')
+  expect(all.hits[0].ts).toBe(9)
+  const scoped = await store.searchEvents({ query: 'gateway', workspaceId: 'w2' })
+  expect(scoped.hits.map((h) => h.sessionId)).toEqual(['b'])
+  // Deleting the thread drops its notes row with it.
+  store.deleteSessionTree('b')
+  expect((await store.searchEvents({ query: 'gateway' })).hits.map((h) => h.sessionId)).toEqual(['a', 'a'])
+  expect(store.getSessionNotes('b')).toBeNull()
+})

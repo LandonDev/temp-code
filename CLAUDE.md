@@ -635,6 +635,48 @@ routed to (aliax-core's `forward`). Two listeners:
   0.5 s / 5 s to 2-72 ms / 3-338 ms; the backfill took 15 s. Measure on a
   copy with `bun run script:measure-turn-index <copy>`; proof
   `bun run script:e2e-cross-host-search`. docs/box.md "Search across hosts".
+## Thread notes: the document that survives a compaction
+- Every root thread keeps `notes.md` at `attachmentDir(session)/notes.md`
+  (the project's `.temp-code/attachments/<sid>/`, so the harness can read
+  and write it with its own tools), mirrored in the `session_notes` table
+  for the renderer, search and archived threads (src/main/server/
+  threadNotes.ts; the text rules in src/shared/notes.ts). Five fixed
+  headings: Goal, Decisions, State, Pointers, Open questions; the file
+  keeps every heading, prompts and digests embed only the filled ones.
+- The harness writes it with the `update_notes` app tool (apptools.ts;
+  the codex bridge forwards it as `app.updateNotes`): one section per
+  call, `replace` or `append`; the tool reads the file first, so a
+  person's edit since the last call is never overwritten. Mechanics text
+  (`NOTES_MECHANICS`, src/main/server/notesPrompts.ts) rides every claude
+  system prompt through `orchestratorMechanics` and, for other harnesses,
+  the first-message preamble's app-tools note.
+- The app reminds the thread twice: a `<notes-reminder reason="context">`
+  whispered into the live turn once per window when the context meter
+  passes 0.7 of the window (reset below 0.5, or at a compaction), and a
+  `<notes-reminder reason="commit">` as the app's own short turn (a
+  `turn-pass` marker reading "Notes") when a root thread's turn committed
+  or merged (`isCommitCall`) without an `update_notes` call; with a queued
+  message the reminder rides ahead of it instead. `SessionRegistry.whisper`
+  sends into a running turn or holds the line ahead of the next message.
+- After a compaction (`compaction` phase `done`) the thread's notes go to
+  the harness as a `<thread-notes>` block, into the live turn or ahead of
+  the next message. Successors: a thread digest (`renderMirror`, so
+  `app_read_thread`, `seedThreadIds` and `@thread:` references) carries
+  `## Notes` verbatim between the frontmatter and `## Outcome`, and a build
+  thread's first message carries its planning thread's notes
+  (`<planning-notes>`) beside the plan seed.
+- Wire: `session.notes.get` (read), `session.notes.set` (operate, the
+  person's whole-text edit), the `notes` push to every client (not in the
+  phone's subset; its decoder folds it into `unknown`). `session.search`
+  folds notes hits in ahead of the rows (`source: 'notes'`, seq 0).
+  Renderer: `lib/threadNotes.ts` (the store on the push) feeds the Notes
+  drawer at every root thread's right edge (surfaces/threads/NotesPanel.tsx:
+  live markdown, edit with a debounced save, "Copy as brief" via
+  `notesAsBrief`), the needs-you banner's State line, and the search icon.
+- Proof: threadNotes.test.ts, sessions-notes.test.ts (reminders, whisper,
+  compaction block, digests, plan hand-off), session-search.test.ts,
+  app-bridge.test.ts, the renderer's threadNotes.test.ts,
+  NotesPanel.dom.test.tsx and ThreadBanners.dom.test.tsx.
 
 ## The iOS contract package is generated
 - `ios/TempCodeContract` holds the Swift `Codable` types of the remote wire,
