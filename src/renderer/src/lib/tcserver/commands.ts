@@ -298,6 +298,14 @@ export function continueAllErrors(environmentId: string): Promise<SessionBatchRe
 
 /** Retry one errored thread's last turn, optionally on another model or
  *  effort (every restarted thread in its tree switches first). */
+/** The failure card's Route automatically: the thread re-picks its account
+ *  fresh and respawns there on the next send. `moved` says it landed somewhere new. */
+export async function rerouteSession(sessionId: string): Promise<{ account: string | null; moved: boolean }> {
+  const link = linkFor(sessionId);
+  if (sessionStore.isDraft(sessionId)) return { account: null, moved: false };
+  return link.request("session.reroute", { sessionId });
+}
+
 export async function continueSession(
   sessionId: string,
   run: QueueRunSettings = {},

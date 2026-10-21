@@ -14,6 +14,7 @@ import { observeHooks } from './gatewayObserve'
 import { WebSocketServer, type WebSocket } from 'ws'
 import { createServer } from 'node:http'
 import { visibleCatalog } from '@shared/catalog'
+import { refusalCodeOf } from './failureKind'
 import { ClientRequestSchema, type ServerFrame, type ServerPush } from '@shared/contract'
 import {
   CONTRACT_VERSION,
@@ -351,6 +352,12 @@ export async function startServer(
     peers: () => peers.states()
   })
   registry.limits = accounts
+  // An account gone from the vault explains a thread's 401 outright; with
+  // no snapshot yet the host cannot say either way.
+  registry.accountKnown = (provider, name) => {
+    const profiles = accounts.snapshot().providers[provider]?.profiles ?? []
+    return profiles.length === 0 ? null : profiles.some((p) => p.name === name)
+  }
   // The main process's own links to the hosts this machine shares accounts
   // with, and the sync over them (thread V). The core's vault hooks reach the
   // sync through accountSyncHooks (aliax.ts configured the core before this).
@@ -535,13 +542,17 @@ export async function startServer(
         observed.onResponse?.(info)
         if (info.status < 400 && info.account && isRoutedProvider(info.service)) accounts.markAnswered(SERVICE_OF[info.service], info.account)
       },
-      pickNext: (info) => accounts.pickNext(info),
+      pickNext: (info) => {
+        if (info.thread) registry.noteRefusal(info.thread, { status: 429, code: null, account: info.account })
+        return accounts.pickNext(info)
+      },
       // A dead sign-in answers 401 for good and core only fails over on 429:
       // the account leaves routing until it answers again, the request
       // replays under the best account with room, and with none left the
       // thread gets one row naming the account instead of codex's wording.
       substitute: (info) => accounts.substitute(info.serviceId, info.account, info.model),
       onUnauthorized: (info) => {
+        registry.noteRefusal(info.thread, { status: 401, code: refusalCodeOf(info.body), account: info.account })
         if (accounts.markOut(info.serviceId, info.account)) console.log(`[gateway] ${info.service}: ${info.account} answered 401; out of routing until it answers again`)
         const next = accounts.substitute(info.serviceId, info.account, info.model)
         // The thread's own account, when it is the dead one: a substitute
@@ -1476,6 +1487,9 @@ export async function startServer(
           case 'session.restart':
             await registry.restart(req.params.sessionId)
             sendFrame({ id: req.id, ok: true, result: null })
+            break
+          case 'session.reroute':
+            sendFrame({ id: req.id, ok: true, result: await registry.reroute(req.params.sessionId) })
             break
           case 'session.continue': {
             const { sessionId, provider, model, reasoning } = req.params

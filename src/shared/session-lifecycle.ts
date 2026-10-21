@@ -1,4 +1,4 @@
-import type { AgentEvent, SessionMeta } from './events'
+import type { AgentEvent, Failure, SessionMeta } from './events'
 
 /** Events after an error that prove the conversation moved on. Status and
  * accounting rows do not settle the error because providers can emit them
@@ -17,6 +17,25 @@ export function foldContinuableError(current: boolean, event: AgentEvent): boole
     case 'tool-call':
     case 'tool-result':
       return false
+    default:
+      return current
+  }
+}
+
+/** The trailing failure's verdict, kept while the error it came with still
+ *  shows: a classified error replaces it, and whatever settles the error
+ *  (Continue, the next turn) clears it. A stop or a wind-down note leaves it. */
+export function foldFailure(current: Failure | null, event: AgentEvent): Failure | null {
+  switch (event.type) {
+    case 'error':
+      if (event.stopped || event.message.startsWith('turn ended:')) return current
+      return event.failure ?? null
+    case 'errors-cleared':
+    case 'user-text':
+    case 'assistant-text':
+    case 'tool-call':
+    case 'tool-result':
+      return null
     default:
       return current
   }

@@ -232,6 +232,32 @@ public enum LimitWindow: Codable, Hashable, Sendable {
     }
 }
 
+public struct Failure: Codable, Hashable, Sendable {
+    public let kind: FailureKind
+    public let account: String?
+    public let summary: String
+    public let cause: String
+
+    public init(kind: FailureKind, account: String?, summary: String, cause: String) {
+        self.kind = kind
+        self.account = account
+        self.summary = summary
+        self.cause = cause
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case kind, account, summary, cause
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(kind, forKey: .kind)
+        try container.encode(account, forKey: .account)
+        try container.encode(summary, forKey: .summary)
+        try container.encode(cause, forKey: .cause)
+    }
+}
+
 public struct EventRow: Codable, Hashable, Sendable {
     public let sessionId: String
     public let seq: Int
@@ -360,6 +386,7 @@ public struct SessionMeta: Codable, Hashable, Sendable {
     public let goal: Goal?
     public let context: Context?
     public let canContinue: Bool?
+    public let failure: Failure?
     public let treeCanContinue: Bool?
     public let treeHasLiveWork: Bool?
     public let treeHasPaused: Bool?
@@ -368,7 +395,7 @@ public struct SessionMeta: Codable, Hashable, Sendable {
     public let createdAt: Int
     public let updatedAt: Int
 
-    public init(id: String, parentId: String?, projectId: String?, workspaceId: String?, threadType: ThreadType?, planPath: String?, provider: ProviderId, model: String, reasoning: Reasoning, agentType: AgentType, title: String, cwd: String, status: SessionStatus, pinned: Bool, archived: Bool, permission: PermissionPolicy, fast: Bool, ultrafast: Bool, context1m: Bool, busySince: Int?, pausedAt: Int?, frozenActiveElapsed: Int?, nativeId: String?, account: String? = nil, activity: String? = nil, activityKind: ActivityKind? = nil, tasks: Tasks? = nil, goal: Goal? = nil, context: Context? = nil, canContinue: Bool? = nil, treeCanContinue: Bool? = nil, treeHasLiveWork: Bool? = nil, treeHasPaused: Bool? = nil, treeFrozenActiveElapsed: Int? = nil, threadRules: JSONValue? = nil, createdAt: Int, updatedAt: Int) {
+    public init(id: String, parentId: String?, projectId: String?, workspaceId: String?, threadType: ThreadType?, planPath: String?, provider: ProviderId, model: String, reasoning: Reasoning, agentType: AgentType, title: String, cwd: String, status: SessionStatus, pinned: Bool, archived: Bool, permission: PermissionPolicy, fast: Bool, ultrafast: Bool, context1m: Bool, busySince: Int?, pausedAt: Int?, frozenActiveElapsed: Int?, nativeId: String?, account: String? = nil, activity: String? = nil, activityKind: ActivityKind? = nil, tasks: Tasks? = nil, goal: Goal? = nil, context: Context? = nil, canContinue: Bool? = nil, failure: Failure? = nil, treeCanContinue: Bool? = nil, treeHasLiveWork: Bool? = nil, treeHasPaused: Bool? = nil, treeFrozenActiveElapsed: Int? = nil, threadRules: JSONValue? = nil, createdAt: Int, updatedAt: Int) {
         self.id = id
         self.parentId = parentId
         self.projectId = projectId
@@ -399,6 +426,7 @@ public struct SessionMeta: Codable, Hashable, Sendable {
         self.goal = goal
         self.context = context
         self.canContinue = canContinue
+        self.failure = failure
         self.treeCanContinue = treeCanContinue
         self.treeHasLiveWork = treeHasLiveWork
         self.treeHasPaused = treeHasPaused
@@ -409,7 +437,7 @@ public struct SessionMeta: Codable, Hashable, Sendable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, parentId, projectId, workspaceId, threadType, planPath, provider, model, reasoning, agentType, title, cwd, status, pinned, archived, permission, fast, ultrafast, context1m, busySince, pausedAt, frozenActiveElapsed, nativeId, account, activity, activityKind, tasks, goal, context, canContinue, treeCanContinue, treeHasLiveWork, treeHasPaused, treeFrozenActiveElapsed, threadRules, createdAt, updatedAt
+        case id, parentId, projectId, workspaceId, threadType, planPath, provider, model, reasoning, agentType, title, cwd, status, pinned, archived, permission, fast, ultrafast, context1m, busySince, pausedAt, frozenActiveElapsed, nativeId, account, activity, activityKind, tasks, goal, context, canContinue, failure, treeCanContinue, treeHasLiveWork, treeHasPaused, treeFrozenActiveElapsed, threadRules, createdAt, updatedAt
     }
 
     public func encode(to encoder: any Encoder) throws {
@@ -444,6 +472,7 @@ public struct SessionMeta: Codable, Hashable, Sendable {
         try container.encodeIfPresent(goal, forKey: .goal)
         try container.encodeIfPresent(context, forKey: .context)
         try container.encodeIfPresent(canContinue, forKey: .canContinue)
+        try container.encodeIfPresent(failure, forKey: .failure)
         try container.encodeIfPresent(treeCanContinue, forKey: .treeCanContinue)
         try container.encodeIfPresent(treeHasLiveWork, forKey: .treeHasLiveWork)
         try container.encodeIfPresent(treeHasPaused, forKey: .treeHasPaused)

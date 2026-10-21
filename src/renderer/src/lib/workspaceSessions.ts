@@ -18,6 +18,8 @@ export type ThreadRow = {
   paused: boolean;
   running: boolean;
   failed: boolean;
+  /** failed: the host's one-line verdict, when it has one. */
+  failure?: string | null;
   needsYou: boolean;
   busySince: number | null;
   /** What the project card needs to read the root's tree (see projectCardModel). */
@@ -142,6 +144,7 @@ export function threadRow(
     running,
     paused: meta.status === "paused",
     failed: meta.status === "error",
+    failure: meta.failure?.summary ?? null,
     needsYou: meta.status === "waiting",
     unread: settled && !running && meta.updatedAt > (lastSeen[meta.id] ?? floor),
     busySince: meta.busySince ?? null,

@@ -291,6 +291,7 @@ export function applyThreadMeta(
   if (changed("pausedAt")) set({ pausedAt: meta.pausedAt });
   if (changed("frozenActiveElapsed")) set({ frozenActiveElapsed: meta.frozenActiveElapsed });
   if (changed("treeCanContinue")) set({ treeCanContinue: meta.treeCanContinue });
+  if (!prev || (prev.failure?.summary ?? null) !== (meta.failure?.summary ?? null)) set({ failure: meta.failure ?? null });
   if (changed("treeHasLiveWork")) set({ treeHasLiveWork: meta.treeHasLiveWork });
   if (changed("treeHasPaused")) set({ treeHasPaused: meta.treeHasPaused });
   if (changed("treeFrozenActiveElapsed")) set({ treeFrozenActiveElapsed: meta.treeFrozenActiveElapsed });

@@ -55,6 +55,7 @@ import {
 } from './domain'
 import {
   AgentEventSchema,
+  FailureSchema,
   AttachmentSchema,
   PermissionPolicySchema,
   SessionStatusSchema,
@@ -283,6 +284,7 @@ export const SessionMetaSchema = z.object({
     .nullable()
     .optional(),
   canContinue: z.boolean().optional(),
+  failure: FailureSchema.nullable().optional(),
   treeCanContinue: z.boolean().optional(),
   treeHasLiveWork: z.boolean().optional(),
   treeHasPaused: z.boolean().optional(),

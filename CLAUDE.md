@@ -194,7 +194,17 @@ routed to (aliax-core's `forward`). Two listeners:
 - A dev instance is not the marker owner, so core does not refresh codex
   tokens there: an account whose stored token lapsed answers 401
   ("token_expired") until the owner uses it. Pin test threads to an account
-  the installed app uses, or expect that failure.
+  the installed app uses, or expect that failure (its card reads
+  `token_expired`).
+- Every error row carries the host's verdict (`failure` on the event and the
+  session row: `failureKind.ts`, stamped in `Sessions.append` from the
+  harness's words, the gateway's last refusal for the thread and the
+  routing). The transcript's FailureCard prints its two lines and at most
+  three actions that fit the kind, Retry last; the tab edge and the
+  workspace popover print the summary instead of "Failed". docs/box.md
+  "A failed turn says what happened". Nothing in a renderer parses an error
+  string; add a kind to `FailureKindSchema`, a rule to `failureKindOf`, its
+  actions to `failureActions`, and run `bun run gen:swift`.
 - Accounts across hosts (thread V): every profile in Aliax's `profiles.json`
   has an owner environment (absent = this machine) and only the owner ever
   presents a refresh token; other hosts hold access-only copies kept fresh

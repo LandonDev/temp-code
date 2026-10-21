@@ -97,4 +97,12 @@ describe('TabIndicator plan ready vs watching', () => {
     expect(text({ type: 'planning', status: 'waiting', planReady: true }).out).toBe('Needs you')
     expect(text({ type: 'planning', status: 'error', planReady: true }).out).toBe('Failed')
   })
+
+  it("a failed tab prints the host's one-line verdict in place of the word", () => {
+    const summary = 'Anthropic session for me@example.com expired and could not be refreshed'
+    expect(text({ status: 'error', failure: summary }).out).toBe(summary)
+    expect(text({ status: 'error', failure: null }).out).toBe('Failed')
+    // The verdict belongs to the failed state alone.
+    expect(text({ status: 'waiting', failure: summary }).out).toBe('Needs you')
+  })
 })

@@ -21,7 +21,9 @@ type Section = { key: string; label: string; threads: ThreadRow[] };
 /** `LiveLines` only prints running/paused/unread — a waiting or failed
  *  thread is a count there, not a row. This popover's whole point is to
  *  show which thread is blocked, so it gets its own two rows, same visual
- *  language as `StatusDot`'s waiting (pulsing amber) and failed (red). */
+ *  language as `StatusDot`'s waiting (pulsing amber) and failed (red). A
+ *  failed row prints the host's one-line verdict under the title when it
+ *  has one, so the card says what happened, not just that it did. */
 function BlockedLine({
   thread: t,
   kind,
@@ -42,6 +44,11 @@ function BlockedLine({
         <span className="min-w-0 flex-1 truncate text-content">{t.title || "Untitled"}</span>
         <span className="shrink-0 font-medium">{kind === "waiting" ? "Needs you" : "Failed"}</span>
       </div>
+      {kind === "failed" && t.failure ? (
+        <div className="min-w-0 truncate pl-3 text-[11px] leading-4 text-content/60" title={t.failure}>
+          {t.failure}
+        </div>
+      ) : null}
       {tasks ? <TaskLine tasks={tasks} /> : null}
     </RowShell>
   );

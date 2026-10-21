@@ -116,6 +116,44 @@ describe("WorkspaceThreadsList", () => {
     expect(probe.container.textContent).toContain("Fix the bug");
   });
 
+  it("a failed thread's row prints the host's verdict under its title", () => {
+    const failure = {
+      kind: "account_unknown" as const,
+      account: "work@example.com",
+      summary: "Account work@example.com is no longer on file",
+      cause: "The account was removed or cancelled.",
+    };
+    const groups: WorkspaceSessionGroups = {
+      projects: [
+        {
+          project: project("p1", { name: "Alpha" }),
+          threads: [
+            threadRow(meta("t1", { title: "Ship it", status: "error", failure }), {}),
+            threadRow(meta("t2", { title: "Older one", status: "error" }), {}),
+          ],
+          latest: 100,
+          archivedCount: 0,
+        },
+      ],
+      archived: [],
+      chats: [],
+    };
+    const probe = mountProbe(
+      <WorkspaceThreadsList
+        groups={groups}
+        activeSessionId={null}
+        lastSeen={{}}
+        seenFloor={0}
+        onSelectThread={() => {}}
+      />,
+    );
+    const text = probe.container.textContent ?? "";
+    expect(text).toContain("Ship it");
+    expect(text).toContain("Account work@example.com is no longer on file");
+    // A row written before the verdict existed keeps the bare word.
+    expect(text.match(/Failed/g)).toHaveLength(2);
+  });
+
   it("renders a loose chat under Chats, not a project label", () => {
     const groups: WorkspaceSessionGroups = {
       projects: [],

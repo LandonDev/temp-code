@@ -468,11 +468,13 @@ public struct ErrorEvent: Codable, Hashable, Sendable {
     public let message: String
     public let stopped: Bool?
     public let limit: Limit?
+    public let failure: Failure?
 
-    public init(message: String, stopped: Bool? = nil, limit: Limit? = nil) {
+    public init(message: String, stopped: Bool? = nil, limit: Limit? = nil, failure: Failure? = nil) {
         self.message = message
         self.stopped = stopped
         self.limit = limit
+        self.failure = failure
     }
 }
 

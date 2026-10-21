@@ -6,11 +6,13 @@ import { basename } from 'node:path'
 import { CreateSessionParams, type CreateSessionInput } from '@shared/contract'
 import type { SessionBatchResult } from '@shared/contract'
 import { runSessionBatch, type SessionBatchAction } from './sessionBatch'
-import { CATALOG, resolveModel, type ProviderId } from '@shared/catalog'
-import type { AgentEvent, Attachment, EventRow, SessionMeta, SessionStatus } from '@shared/events'
+import { CATALOG, resolveModel, visibleModels, type ProviderId } from '@shared/catalog'
+import type { AgentEvent, Attachment, EventRow, Failure, SessionMeta, SessionStatus } from '@shared/events'
+import { classifyFailure, type GatewayRefusal } from './failureKind'
 import {
   LIVE_STATUSES,
   foldContinuableError,
+  foldFailure,
   foldGoal,
   indexByParent,
   summarizeRootTree,
@@ -25,6 +27,8 @@ import { FOLD_VERSION, type FoldRow } from './db'
 
 /** How a harness words a 401 the gateway could not route around (codex: "workspace routing discovery unauthorized (401)"). */
 const UNAUTHORIZED_WORDING = /unauthorized|\(401\)/i
+/** How long a gateway refusal explains the error row that follows it. */
+const REFUSAL_FRESH_MS = 2 * 60_000
 
 /** How long a delta-only stream may run before its fold watermark lands. */
 const FOLD_LAND_MS = 2_000
@@ -450,6 +454,10 @@ export class SessionRegistry {
    *  names a usage limit. Set by the server; null sends unscoped and leaves
    *  such errors to the Continue button. */
   limits: AccountRouter | null = null
+  /** Whether an account is on file for a provider; null when the host cannot say (no snapshot yet). Set by the server. */
+  accountKnown: ((provider: AccountProvider, name: string) => boolean | null) | null = null
+  /** The gateway's last refusal per thread (a 401, a 429), read once by the failure classifier while fresh. */
+  private refusals = new Map<string, GatewayRefusal & { ts: number }>()
   /** Sessions whose turn a usage limit cut off, until they continue: the
    *  pending switch continues the root tree once the session settles. */
   private limited = new Map<string, { switching: Promise<Switched | null> }>()
@@ -724,6 +732,62 @@ export class SessionRegistry {
     const workspaceId = project?.workspaceId ?? meta.workspaceId
     const workspace = workspaceId ? (this.store.listWorkspaces().find((w) => w.id === workspaceId) ?? null) : null
     return resolvePin(meta, project, workspace)
+  }
+
+  /** The gateway refused a thread's request upstream: kept for the next
+   *  error row's classification (a 401 token_expired on a non-owner
+   *  instance, a 429), while it is fresh. */
+  noteRefusal(sessionId: string, refusal: GatewayRefusal): void {
+    this.refusals.set(sessionId, { ...refusal, ts: Date.now() })
+  }
+
+  private takeRefusal(sessionId: string): GatewayRefusal | null {
+    const r = this.refusals.get(sessionId)
+    if (!r) return null
+    this.refusals.delete(sessionId)
+    if (Date.now() - r.ts > REFUSAL_FRESH_MS) return null
+    const { ts: _ts, ...refusal } = r
+    return refusal
+  }
+
+  /** The host's verdict on an error row: the harness's words, the gateway's
+   *  last refusal and the routing (is the account still on file, does the
+   *  catalog offer the model), stamped once so every surface reads it. */
+  private classify(sessionId: string, event: Extract<AgentEvent, { type: 'error' }>): Failure {
+    const meta = this.store.getSession(sessionId)
+    const provider = meta?.provider ?? 'claude'
+    const account = meta?.account ?? null
+    const model = meta?.model ?? null
+    const listed = model ? CATALOG[provider]?.models.some((m) => m.id === model) : false
+    return classifyFailure({
+      message: event.message,
+      provider,
+      model,
+      account,
+      accountKnown: account && isRoutedProvider(provider) ? (this.accountKnown?.(provider, account) ?? null) : null,
+      limit: event.limit ?? null,
+      // A row the catalog lists but hides here (minCodexVersion) is unavailable; a model it never listed is not ours to judge.
+      modelVisible: !listed || visibleModels(provider).some((m) => m.id === model),
+      gateway: this.takeRefusal(sessionId)
+    })
+  }
+
+  /** The failure card's "Route automatically": forget the thread's sticky
+   *  account and the sign-in row's filter, take the best account for its
+   *  model now (a dead one is out of routing), and if that is somewhere
+   *  new drop the harness so the next send respawns there. Answers where
+   *  the thread landed and whether it moved. */
+  async reroute(sessionId: string): Promise<{ account: string | null; moved: boolean }> {
+    const meta = this.store.getSession(sessionId)
+    if (!meta) throw new Error(`unknown session ${sessionId}`)
+    if (LIVE_STATUSES.has(meta.status) || this.starting.has(sessionId)) throw new Error('the thread is still working')
+    const before = meta.account ?? null
+    this.signIns.delete(sessionId)
+    this.expectAccount(sessionId, { fresh: true })
+    const after = this.store.getSession(sessionId)?.account ?? null
+    const moved = after !== before
+    if (moved) await this.dropHandle(sessionId)
+    return { account: after, moved }
   }
 
   /** The gateway (or a text-path failover) moved a thread: its row follows. */
@@ -2636,6 +2700,11 @@ export class SessionRegistry {
     if (event.type === 'error' && this.stopping.has(sessionId)) {
       event = { ...event, stopped: true }
     }
+    // A failure (never a stop or a wind-down note) carries the host's
+    // verdict from here on; a driver that already classified keeps its own.
+    if (event.type === 'error' && !event.stopped && !event.failure && !event.message.startsWith('turn ended:')) {
+      event = { ...event, failure: this.classify(sessionId, event) }
+    }
     if (event.type === 'status') {
       this.stopping.delete(sessionId)
       // A tune saved mid-turn waits here: the turn has settled, so the
@@ -2663,6 +2732,8 @@ export class SessionRegistry {
       before?.current !== after?.current
     const afterRecovery = foldContinuableError(prev.canContinue, event)
     const recoveryMoved = prev.canContinue !== afterRecovery
+    const afterFailure = foldFailure(prev.failure ?? null, event)
+    const failureMoved = (prev.failure ?? null) !== afterFailure
     // A goal event pushes meta so the prompt-bar indicator flips without
     // a status change.
     const goalMoved = event.type === 'goal'
@@ -2672,12 +2743,13 @@ export class SessionRegistry {
       foldVersion: FOLD_VERSION,
       tasks: after,
       goal: foldGoal(prev.goal, event, row.ts),
-      canContinue: afterRecovery
+      canContinue: afterRecovery,
+      failure: afterFailure
     }
     // A streamed delta changes no fold output, only the watermark: it
     // waits for the next non-delta event (a tool call, a status) or the
     // timer, so a token stream costs no fold writes.
-    if (tasksMoved || goalMoved || recoveryMoved || !isDelta(event)) this.putFold(next)
+    if (tasksMoved || goalMoved || recoveryMoved || failureMoved || !isDelta(event)) this.putFold(next)
     else this.deferFold(next)
     // A finished first turn upgrades the sliced-first-message title to a
     // generated one (fire-and-forget; the slice stays if the call fails).
@@ -2704,7 +2776,7 @@ export class SessionRegistry {
     ) {
       this.watching.delete(sessionId)
     }
-    if ((actMoved || tasksMoved || goalMoved || recoveryMoved || watchMoved) && event.type !== 'status') {
+    if ((actMoved || tasksMoved || goalMoved || recoveryMoved || failureMoved || watchMoved) && event.type !== 'status') {
       const meta = this.store.getSession(sessionId)
       if (meta) this.notifyMeta(meta)
     }
@@ -3283,6 +3355,7 @@ export class SessionRegistry {
       goal: this.goalOf(session.id),
       context: this.liveContexts.get(session.id) ?? null,
       canContinue: this.canContinueError(session),
+      failure: this.folds.get(session.id)?.failure ?? null,
       treeCanContinue: tree.canContinueError,
       treeHasLiveWork: tree.hasLiveWork,
       treeHasPaused: tree.hasPaused,

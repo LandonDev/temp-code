@@ -46,6 +46,7 @@ const fold = (sessionId: string, patch: Partial<FoldRow> = {}): FoldRow => ({
   tasks: { done: 1, total: 4, current: 'Running tests' },
   goal: { condition: 'green', iterations: 2, setAt: 10 },
   canContinue: true,
+  failure: null,
   ...patch
 })
 
@@ -53,10 +54,13 @@ describe('session_folds', () => {
   it('round-trips a full row and a "no tasks, no goal" row', () => {
     store.putFold(fold('a'))
     store.putFold(fold('b', { tasks: null, goal: null, canContinue: false }))
+    const failure = { kind: 'oauth_expired' as const, account: 'me@example.com', summary: 'Anthropic session for me@example.com expired and could not be refreshed', cause: 'The stored sign-in lapsed.' }
+    store.putFold(fold('c', { failure }))
+    expect(store.getFold('c')).toEqual(fold('c', { failure }))
     expect(store.getFold('a')).toEqual(fold('a'))
     expect(store.getFold('b')).toEqual(fold('b', { tasks: null, goal: null, canContinue: false }))
     expect(store.getFold('missing')).toBeNull()
-    expect(store.listFolds().map((f) => f.sessionId).sort()).toEqual(['a', 'b'])
+    expect(store.listFolds().map((f) => f.sessionId).sort()).toEqual(['a', 'b', 'c'])
   })
 
   it('putFold upserts in place', () => {

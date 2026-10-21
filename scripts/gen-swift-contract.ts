@@ -44,6 +44,8 @@ import {
 } from '../src/shared/contract-attachments'
 import {
   AttachmentSchema,
+  FailureKindSchema,
+  FailureSchema,
   LimitWindowSchema,
   PermissionPolicySchema,
   SessionStatusSchema
@@ -107,6 +109,8 @@ export const SUBSET: SubsetEntry[] = [
   type('ToolPreview', W.WireToolPreviewSchema),
   type('LimitModel', (LimitWindowSchema as z.ZodUnion<[z.ZodType, z.ZodType]>).options[1]),
   type('LimitWindow', LimitWindowSchema),
+  type('FailureKind', FailureKindSchema),
+  type('Failure', FailureSchema),
   union('AgentEvent', W.WireAgentEventSchema, 'type', 'Event'),
   type('EventRow', W.EventRowSchema),
   type('EventsPage', W.EventsPageSchema),

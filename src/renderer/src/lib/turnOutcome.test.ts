@@ -26,7 +26,7 @@ describe("isErrorBlock", () => {
 describe("errorRowOf", () => {
   it("renders a stop as Stopped without Continue", () => {
     const s = session([err(1, "Stopped", true)]);
-    expect(errorRowOf(s, s.blocks[0])).toEqual({ stopped: true, message: "Stopped", showContinue: false });
+    expect(errorRowOf(s, s.blocks[0])).toEqual({ stopped: true, message: "Stopped", showContinue: false, failure: null });
   });
 
   it("reads the thread flag for the trailing error when the row is unstamped", () => {
@@ -38,7 +38,7 @@ describe("errorRowOf", () => {
   it("offers Continue on the last error only, when the tree can continue", () => {
     const s = session([err(1), err(2)]);
     expect(errorRowOf(s, s.blocks[0]).showContinue).toBe(false);
-    expect(errorRowOf(s, s.blocks[1])).toEqual({ stopped: false, message: "boom", showContinue: true });
+    expect(errorRowOf(s, s.blocks[1])).toEqual({ stopped: false, message: "boom", showContinue: true, failure: null });
   });
 
   it("holds Continue back while paused or when the server says no", () => {

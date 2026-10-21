@@ -811,7 +811,7 @@ function WorkItems({ blocks, cwd, stopped, onNeedsUser, onOpenFile }: WorkHandle
             <span className="shrink-0 text-xs font-medium text-warning">needs you</span>
           </button>
         ) : isError(b) ? (
-          <ErrorChip key={b.id} text={b.text} stopped={stopped && b === lastError} />
+          <ErrorChip key={b.id} text={b.failure?.summary ?? b.text} stopped={stopped && b === lastError} />
         ) : b.tool?.preview ? (
           <motion.div
             key={b.id}

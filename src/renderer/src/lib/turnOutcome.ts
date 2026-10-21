@@ -1,3 +1,4 @@
+import type { Failure } from "@server/shared/events";
 import type { Block, Session } from "./session";
 
 /**
@@ -13,6 +14,8 @@ export type ErrorRow = {
   stopped: boolean;
   message: string;
   showContinue: boolean;
+  /** The host's verdict, when the row carries one: the card prints its lines and actions. */
+  failure: Failure | null;
 };
 
 /** `treeCanContinue` is the server's tree-wide verdict (M4); `stopped` on the row is stamped by the fold. */
@@ -45,7 +48,7 @@ export function canContinueFrom(session: OutcomeSession, block: Block): boolean 
 
 export function errorRowOf(session: OutcomeSession, block: Block): ErrorRow {
   if (isStoppedRow(session, block)) {
-    return { stopped: true, message: block.text, showContinue: false };
+    return { stopped: true, message: block.text, showContinue: false, failure: null };
   }
-  return { stopped: false, message: block.text, showContinue: canContinueFrom(session, block) };
+  return { stopped: false, message: block.text, showContinue: canContinueFrom(session, block), failure: block.failure ?? null };
 }

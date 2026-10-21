@@ -93,6 +93,8 @@ export interface ScopedRequest {
   own: string
   /** The request body's `model`, when it had one. */
   model: string | null
+  /** On a 401: the upstream body's first bytes, for its error code (never logged, never stored). */
+  body?: string
 }
 
 /**
@@ -336,7 +338,7 @@ export class Gateway {
     const url = req.url ?? '/'
     const body = ['GET', 'HEAD'].includes(req.method ?? 'GET') ? undefined : await readBody(req)
     const model = modelOf(body)
-    const info = (account: string): ScopedRequest => ({ service, serviceId, thread: scope.thread, account, own: scope.account, model })
+    const info = (account: string, body?: string): ScopedRequest => ({ service, serviceId, thread: scope.thread, account, own: scope.account, model, ...(body !== undefined ? { body } : {}) })
     let substitute = hooks.substitute!(info(routeOf(scope.thread) ?? scope.account))
     for (let attempt = 0; ; attempt++) {
       const effective: RouteScope = substitute ? { thread: scope.thread, account: substitute, pin: true } : scope
@@ -348,7 +350,7 @@ export class Gateway {
       })
       if (held.status === 401 && hooks.onUnauthorized) {
         // Every 401 marks its account; only the first replays.
-        const next = hooks.onUnauthorized(info(answered ?? effective.account))
+        const next = hooks.onUnauthorized(info(answered ?? effective.account, held.heldText()))
         if (attempt === 0 && next && next !== effective.account) {
           substitute = next
           continue
@@ -374,7 +376,7 @@ export class Gateway {
  * is kept whole (it is small) until the caller decides, anything else goes
  * straight through. Mirrors the surface forward and `fail` use.
  */
-class HeldResponse {
+export class HeldResponse {
   status: number | null = null
   private held: { headers: Record<string, string>; chunks: Buffer[] } | null = null
   private through = false
@@ -416,6 +418,12 @@ class HeldResponse {
     }
     this.res.end(data)
     return this
+  }
+
+  /** The held 401 body so far, capped, for its error code. */
+  heldText(): string | undefined {
+    if (!this.held) return undefined
+    return Buffer.concat(this.held.chunks).subarray(0, 4096).toString('utf8')
   }
 
   /** Send what was held, if anything was. */

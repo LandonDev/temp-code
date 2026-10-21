@@ -10,6 +10,7 @@ import {
 } from "./models";
 import type { ThreadRules } from "@server/shared/rules";
 import type { AgentType, SessionStatus, ThreadType } from "./tcserver/types";
+import type { Failure } from "@server/shared/events";
 import type { ThreadState } from "./tcserver/todos";
 
 export type HarnessId =
@@ -167,6 +168,8 @@ export type Block = {
   };
   /** The model stopped to ask; answered through the question card. */
   question?: QuestionMeta;
+  /** An error row: the host's verdict on the failure (failureKind.ts), when it had one. */
+  failure?: Failure;
   /** Optimistic user turn the server has not echoed yet. */
   pending?: boolean;
   /** When this window sent it (ms): the bubble plays its entrance from
@@ -300,6 +303,8 @@ export type Session = {
   busySince?: number | null;
   pausedAt?: number | null;
   frozenActiveElapsed?: number | null;
+  /** The trailing failure's verdict, folded by the server while its error row shows. */
+  failure?: Failure | null;
   /** Tree-wide flags the server folds over this thread and its children. */
   treeCanContinue?: boolean;
   treeHasLiveWork?: boolean;

@@ -535,3 +535,65 @@ it('an account that left this host clears the pin it was, says so once in the th
   expect(registry.get(id)?.account ?? null).toBeNull()
   expect(notices()).toHaveLength(3)
 })
+
+it('an error row carries the host verdict with the routed account, folded onto the meta until the thread moves on', async () => {
+  registry.limits = limits(null)
+  const { id, emit } = await running()
+  expect(registry.get(id)?.account).toBe('a@x.com')
+  emit({ type: 'error', message: 'Failed to authenticate: OAuth session expired and could not be refreshed' })
+  emit({ type: 'status', status: 'error' })
+  const row = registry.lastEvents(id, 2)[0]
+  expect(row.event).toMatchObject({
+    type: 'error',
+    failure: { kind: 'oauth_expired', account: 'a@x.com', summary: 'Anthropic session for a@x.com expired and could not be refreshed' }
+  })
+  expect(registry.get(id)?.failure).toMatchObject({ kind: 'oauth_expired', account: 'a@x.com' })
+  expect(store.getFold(id)?.failure?.kind).toBe('oauth_expired')
+  // Continue settles the error row; the fold lets the verdict go with it.
+  emit({ type: 'errors-cleared' })
+  expect(registry.get(id)?.failure).toBeNull()
+  expect(store.getFold(id)?.failure).toBeNull()
+})
+
+it("a stop and a wind-down note are never classified; the gateway's refusal and the vault explain the rest", async () => {
+  registry.limits = limits(null)
+  const { id, emit } = await running()
+  emit({ type: 'error', message: 'turn ended: max_turns' })
+  expect(registry.lastEvents(id, 1)[0].event).not.toHaveProperty('failure')
+  emit({ type: 'error', message: 'turn ended: interrupted', stopped: true })
+  expect(registry.lastEvents(id, 1)[0].event).not.toHaveProperty('failure')
+  expect(registry.get(id)?.failure).toBeNull()
+  // A 401 token_expired the gateway held back for this thread names the kind.
+  registry.noteRefusal(id, { status: 401, code: 'token_expired', account: 'a@x.com' })
+  emit({ type: 'error', message: 'API Error: 401 {"type":"error","error":{"type":"authentication_error","message":"x"}}' })
+  expect(registry.get(id)?.failure?.kind).toBe('token_expired')
+  // The refusal is spent: the same words alone read as a lapsed sign-in.
+  emit({ type: 'error', message: 'API Error: 401 {"type":"error","error":{"type":"authentication_error","message":"x"}}' })
+  expect(registry.get(id)?.failure?.kind).toBe('oauth_expired')
+  // An account gone from the vault explains its 401 outright.
+  registry.accountKnown = () => false
+  emit({ type: 'error', message: 'Aliax account a@x.com needs sign-in' })
+  expect(registry.get(id)?.failure).toMatchObject({ kind: 'account_unknown', summary: 'Account a@x.com is no longer on file' })
+})
+
+it('reroute forgets the sticky account, takes the fresh pick and respawns there on the next send', async () => {
+  const fake = limits(null)
+  // The best account for the model: a@x.com at the spawn, b@x.com once a@x.com is out of routing.
+  let best = 'a@x.com'
+  fake.routeFor = (meta, pin, opts) => {
+    const pick = opts?.fresh ? best : (meta.account ?? best)
+    return { route: { account: pin?.name ?? pick, pin: pin !== null }, current: pick }
+  }
+  registry.limits = fake
+  const { id, emit } = await running()
+  emit({ type: 'error', message: 'Failed to authenticate: OAuth session expired and could not be refreshed' })
+  emit({ type: 'status', status: 'error' })
+  expect(registry.get(id)?.account).toBe('a@x.com')
+  best = 'b@x.com'
+  await expect(registry.reroute(id)).resolves.toEqual({ account: 'b@x.com', moved: true })
+  expect(registry.get(id)?.account).toBe('b@x.com')
+  // Nowhere new to go answers moved: false and keeps the harness.
+  await expect(registry.reroute(id)).resolves.toEqual({ account: 'b@x.com', moved: false })
+  await registry.send(id, 'again')
+  expect(routes.at(-1)).toEqual({ id, route: { account: 'b@x.com', pin: false } })
+})

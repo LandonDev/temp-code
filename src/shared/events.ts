@@ -96,6 +96,44 @@ export const LimitWindowSchema = z.union([
 ])
 export type LimitWindow = z.infer<typeof LimitWindowSchema>
 
+/**
+ * Why a turn failed, classified by the host (src/main/server/failureKind.ts)
+ * from the harness's words, the gateway's refusal and the thread's routing,
+ * so every surface (the transcript card, the rail row, the phone) reads one
+ * verdict instead of parsing an error string.
+ */
+export const FailureKindSchema = z.enum([
+  /** the account's OAuth session lapsed and its refresh was refused: sign in again */
+  'oauth_expired',
+  /** the thread's account is no longer on file (removed, cancelled) */
+  'account_unknown',
+  /** the gateway's 401 token_expired on an instance that is not the account's owner */
+  'token_expired',
+  /** a usage window is spent (5h, weekly, a per-model cap, a per-minute limiter) */
+  'rate_limited',
+  /** credits or billing: the plan has nothing left to spend */
+  'quota',
+  /** the model is hidden here (catalog, minCodexVersion) or the provider refused it */
+  'model_unavailable',
+  /** the provider could not be reached */
+  'network',
+  /** the harness process died or its stream ended mid-turn */
+  'harness_crashed',
+  'unknown'
+])
+export type FailureKind = z.infer<typeof FailureKindSchema>
+
+export const FailureSchema = z.object({
+  kind: FailureKindSchema,
+  /** The Aliax account the turn was routed to, when known. */
+  account: z.string().nullable(),
+  /** One line: what happened, in plain words, naming the account. */
+  summary: z.string(),
+  /** One line: the likely cause. */
+  cause: z.string()
+})
+export type Failure = z.infer<typeof FailureSchema>
+
 export const AgentEventSchema = z.discriminatedUnion('type', [
   // A message the user (or the orchestrator, for subagents) sent in.
   z.object({
@@ -328,7 +366,9 @@ export const AgentEventSchema = z.discriminatedUnion('type', [
     type: z.literal('error'),
     message: z.string(),
     stopped: z.boolean().optional(),
-    limit: z.object({ window: LimitWindowSchema }).optional()
+    limit: z.object({ window: LimitWindowSchema }).optional(),
+    /** The host's verdict on a failure (never on a stop or a wind-down note). */
+    failure: FailureSchema.optional()
   }),
 
   // The user hit Continue after fixing what killed the turn (e.g. switched
@@ -422,6 +462,9 @@ export interface SessionMeta {
   /** Stored-log fold: the latest failed turn has not been cleared or
    *  superseded by later conversation work. */
   canContinue?: boolean
+  /** Stored-log fold: the trailing failure's verdict while it still shows
+   *  (the rail row and the inbox print its summary); null once cleared. */
+  failure?: Failure | null
   /** Root-tree summaries. These count one visible root even when several
    *  descendants need recovery or carry live/paused work. */
   treeCanContinue?: boolean

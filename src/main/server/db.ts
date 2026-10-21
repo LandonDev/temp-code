@@ -10,7 +10,7 @@ import { mkdirSync } from 'node:fs'
 import { timed } from './stalls'
 import type { EventReader } from './dbWorkers'
 import { dirname } from 'node:path'
-import type { AgentEvent, EventRow, SessionMeta, SessionStatus } from '@shared/events'
+import type { AgentEvent, EventRow, Failure, SessionMeta, SessionStatus } from '@shared/events'
 import type { ProjectMeta, WorkspaceMeta } from '@shared/domain'
 import type { GithubInboxRepo } from '@shared/contract-github'
 import { ACCOUNT_PROVIDERS, type AccountPins } from '@shared/accounts'
@@ -201,7 +201,9 @@ export function openDb(path: string): DatabaseSync {
     `ALTER TABLE sessions ADD COLUMN moving_to TEXT`,
     `ALTER TABLE sessions ADD COLUMN moving_from TEXT`,
     `ALTER TABLE sessions ADD COLUMN moved_to TEXT`,
-    `ALTER TABLE sessions ADD COLUMN move_id TEXT`
+    `ALTER TABLE sessions ADD COLUMN move_id TEXT`,
+    // The trailing failure's verdict (failureKind.ts), folded beside can_continue.
+    `ALTER TABLE session_folds ADD COLUMN failure TEXT`
   ]) {
     try {
       db.exec(stmt)
@@ -249,7 +251,7 @@ function repairModelIds(db: DatabaseSync): void {
  * every session_folds row falls behind at once and the boot sweep
  * recomputes them. A persisted fold is otherwise sticky.
  */
-export const FOLD_VERSION = 1
+export const FOLD_VERSION = 2
 
 /** The derived outputs of a session's log — what the sidebar shows — so
  *  list() never reads events. `foldedSeq` is the highest event folded in;
@@ -262,6 +264,8 @@ export interface FoldRow {
   tasks: { done: number; total: number; current: string | null } | null
   goal: NonNullable<SessionMeta['goal']> | null
   canContinue: boolean
+  /** The trailing failure's verdict while its error still shows (foldFailure). */
+  failure: Failure | null
 }
 
 interface FoldRowRaw {
@@ -273,6 +277,7 @@ interface FoldRowRaw {
   tasks_current: string | null
   goal: string | null
   can_continue: number
+  failure: string | null
 }
 
 function toFold(r: FoldRowRaw): FoldRow {
@@ -285,7 +290,8 @@ function toFold(r: FoldRowRaw): FoldRow {
         ? null
         : { done: r.tasks_done, total: r.tasks_total, current: r.tasks_current },
     goal: r.goal ? (JSON.parse(r.goal) as FoldRow['goal']) : null,
-    canContinue: !!r.can_continue
+    canContinue: !!r.can_continue,
+    failure: r.failure ? (JSON.parse(r.failure) as Failure) : null
   }
 }
 
@@ -1296,13 +1302,13 @@ export class Store {
     this
       .stmt(
         `INSERT INTO session_folds
-           (session_id, folded_seq, fold_version, tasks_done, tasks_total, tasks_current, goal, can_continue)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+           (session_id, folded_seq, fold_version, tasks_done, tasks_total, tasks_current, goal, can_continue, failure)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(session_id) DO UPDATE SET
            folded_seq = excluded.folded_seq, fold_version = excluded.fold_version,
            tasks_done = excluded.tasks_done, tasks_total = excluded.tasks_total,
            tasks_current = excluded.tasks_current, goal = excluded.goal,
-           can_continue = excluded.can_continue`
+           can_continue = excluded.can_continue, failure = excluded.failure`
       )
       .run(
         fold.sessionId,
@@ -1312,7 +1318,8 @@ export class Store {
         fold.tasks?.total ?? null,
         fold.tasks?.current ?? null,
         fold.goal ? JSON.stringify(fold.goal) : null,
-        fold.canContinue ? 1 : 0
+        fold.canContinue ? 1 : 0,
+        fold.failure ? JSON.stringify(fold.failure) : null
       )
   }
 

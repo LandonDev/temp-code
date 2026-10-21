@@ -456,3 +456,47 @@ public enum GithubInboxReviewDecision: RawRepresentable, Codable, Hashable, Send
         }
     }
 }
+
+public enum FailureKind: RawRepresentable, Codable, Hashable, Sendable {
+    case oauthExpired
+    case accountUnknown
+    case tokenExpired
+    case rateLimited
+    case quota
+    case modelUnavailable
+    case network
+    case harnessCrashed
+    case unknown
+    /// A value this build does not know; `rawValue` keeps it.
+    case unknown(String)
+
+    public init(rawValue: String) {
+        switch rawValue {
+        case "oauth_expired": self = .oauthExpired
+        case "account_unknown": self = .accountUnknown
+        case "token_expired": self = .tokenExpired
+        case "rate_limited": self = .rateLimited
+        case "quota": self = .quota
+        case "model_unavailable": self = .modelUnavailable
+        case "network": self = .network
+        case "harness_crashed": self = .harnessCrashed
+        case "unknown": self = .unknown
+        default: self = .unknown(rawValue)
+        }
+    }
+
+    public var rawValue: String {
+        switch self {
+        case .oauthExpired: "oauth_expired"
+        case .accountUnknown: "account_unknown"
+        case .tokenExpired: "token_expired"
+        case .rateLimited: "rate_limited"
+        case .quota: "quota"
+        case .modelUnavailable: "model_unavailable"
+        case .network: "network"
+        case .harnessCrashed: "harness_crashed"
+        case .unknown: "unknown"
+        case .unknown(let value): value
+        }
+    }
+}

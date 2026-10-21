@@ -19,11 +19,14 @@ export type TabThread = {
   planReady?: boolean;
   /** paused active time, excluding the paused span */
   frozenElapsed?: number | null;
+  /** failed: the host's one-line verdict, when it has one */
+  failure?: string | null;
 };
 
 /**
  * Tab-edge status, one glance apart: working → matrix spinner + elapsed +
- * the activity verb; needs you → amber, in words; failed → red; plan
+ * the activity verb; needs you → amber, in words; failed → red, the host's
+ * one-line verdict when it has one (else the word); plan
  * written, no build started → violet "Plan ready" (even while the thread
  * still watches background work); watching → dimmed; finished while you
  * were elsewhere → blue dot. An implementation thread's tally sits at
@@ -85,7 +88,14 @@ export function TabIndicator({ thread }: { thread: TabThread }) {
       );
     }
     if (status === "error") {
-      return <span className="shrink-0 text-[11px] font-medium text-danger">Failed</span>;
+      return (
+        <span
+          className="max-w-48 shrink-0 truncate text-[11px] font-medium text-danger"
+          title={thread.failure ?? undefined}
+        >
+          {thread.failure || "Failed"}
+        </span>
+      );
     }
     // A written plan outranks a background wait: the plan is what the tab
     // is for, and the wait (a Monitor, a cron) still shows on hover.

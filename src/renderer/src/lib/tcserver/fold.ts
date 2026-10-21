@@ -562,7 +562,13 @@ export function foldEvent(
     case "error":
       blocks = [
         ...stopStreamingBlocks(blocks, row.ts),
-        { id: `err:${row.seq}`, role: "system", text: e.message, ...(e.stopped ? { stopped: true } : {}) },
+        {
+          id: `err:${row.seq}`,
+          role: "system",
+          text: e.message,
+          ...(e.stopped ? { stopped: true } : {}),
+          ...(e.failure ? { failure: e.failure } : {}),
+        },
       ];
       if (e.stopped) {
         blocks = settleOpenTools(blocks);

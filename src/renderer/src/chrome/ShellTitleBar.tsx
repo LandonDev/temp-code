@@ -339,6 +339,7 @@ function tabThreadOf(session: Session | undefined, planReady: Record<string, boo
     tasks: session.tasks ? { done: session.tasks.done, total: session.tasks.total } : null,
     planReady: !!planReady[session.id],
     frozenElapsed: session.frozenActiveElapsed ?? null,
+    failure: session.failure?.summary ?? null,
   };
 }
 
@@ -353,7 +354,8 @@ function sameTabThread(a: TabThread | undefined, b: TabThread | undefined): bool
     (a.tasks?.done ?? -1) === (b.tasks?.done ?? -1) &&
     (a.tasks?.total ?? -1) === (b.tasks?.total ?? -1) &&
     a.planReady === b.planReady &&
-    a.frozenElapsed === b.frozenElapsed
+    a.frozenElapsed === b.frozenElapsed &&
+    (a.failure ?? null) === (b.failure ?? null)
   );
 }
 

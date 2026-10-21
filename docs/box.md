@@ -493,6 +493,34 @@ temp-code `src/main/server/remote/{peers,accountSync}.ts`):
   <name> is gone from this host; routing automatically from here" with the
   time (`chooseAccount` reports `vanished`, `sessions.ts accountGone`); the
   account chip reads Auto until the next pick lands.
+- **A failed turn says what happened, in words, with the account.** The host
+  classifies every error row before it is stored (`src/main/server/failureKind.ts`,
+  stamped in `Sessions.append`): the harness's words, the gateway's last
+  refusal for the thread (`noteRefusal`: a 401 with the upstream body's code
+  from `onUnauthorized`, a 429 from `pickNext`, fresh for two minutes) and
+  the routing (`accountKnown`: is the thread's account still in the vault;
+  `visibleModels`: does the catalog offer its model here) fold into one
+  `failure` on the event: a kind (`oauth_expired`, `account_unknown`,
+  `token_expired`, `rate_limited`, `quota`, `model_unavailable`, `network`,
+  `harness_crashed`, `unknown`), the account the turn was routed to, one
+  line naming what happened ("Anthropic session for landon@… expired and
+  could not be refreshed", "Account work@… is no longer on file") and one
+  with the likely cause. A stop and a "turn ended:" wind-down note are never
+  classified. The verdict is folded onto the session row (`session_folds.failure`,
+  `SessionMeta.failure`, cleared by whatever settles the error) so the tab
+  edge and the workspace popover's failed row print the summary instead of
+  "Failed", and the phone contract carries it (`Failure` in the generated
+  Swift). The transcript's failure card (`src/renderer/src/surfaces/FailureCard.tsx`,
+  the action set in `lib/failureActions.ts`) offers at most three actions
+  that fit the kind, Retry always last: Route automatically (`session.reroute`,
+  capability operate: the thread re-picks its account fresh, a dead one being
+  out of routing, respawns there and continues), Pick another account (the
+  composer's account list), Sign in (on the Mac, the Aliax sign-in with the
+  address pre-filled; a box thread says "Sign in on the Mac, the box never
+  signs in" and gets Route automatically instead), Pick another model (a
+  hidden or refused model opens the composer's picker) and Retry
+  (`session.continue`). A row written before the verdict existed keeps the
+  bare red Failed line with the harness's words.
   The Mac's main process keeps one socket per admin host (backoff to 5 min)
   and syncs on connect, on every local vault write, and every 15 minutes;
   `accounts.sync` and the row's Retry do it now. The box's own vault is

@@ -3,13 +3,16 @@ import { continueSession } from "../lib/tcserver/commands";
 import type { ErrorRow } from "../lib/turnOutcome";
 import { AlertCircle, StopCircle } from "../chrome/icons";
 import { CHIP } from "./chip";
+import { FailureCard } from "./FailureCard";
 
 /**
  * The row a turn ends on when it did not finish: a quiet gray Stopped for
- * the user's own Stop, red Failed with the harness's words for anything
- * else. Continue shows on one Failed row only, when the server says the
- * tree can pick the work back up; it reads "Continuing…" until the thread
- * turns busy and the fold clears the row.
+ * the user's own Stop; the failure card (FailureCard.tsx) when the host
+ * classified the error, naming what happened and the account with the
+ * actions that fit; and red Failed with the harness's words for a row
+ * written before the verdict existed. Continue shows on that last one
+ * only, when the server says the tree can pick the work back up; it reads
+ * "Continuing…" until the thread turns busy and the fold clears the row.
  */
 export function ErrorChip({
   sessionId,
@@ -24,6 +27,10 @@ export function ErrorChip({
   useEffect(() => {
     if (busy) setContinuing(false);
   }, [busy]);
+
+  if (!row.stopped && row.failure) {
+    return <FailureCard sessionId={sessionId} failure={row.failure} busy={busy} />;
+  }
 
   if (row.stopped) {
     return (

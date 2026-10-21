@@ -188,6 +188,7 @@ export const METHOD_CAPABILITY: Record<ClientRequest['method'], MethodCapability
   'session.delete': 'operate',
   'session.restart': 'operate',
   'session.continue': 'operate',
+  'session.reroute': 'operate',
   'session.answer': 'operate',
   'session.tune': 'operate',
   'session.retype': 'operate',

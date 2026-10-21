@@ -48,6 +48,7 @@ import { useLockOverscroll } from "../hooks/useLockOverscroll";
 import { HarnessIcon } from "./HarnessIcon";
 import { Popover } from "./Popover";
 import { MOD } from "../lib/platform";
+import { OPEN_MODEL_PICKER } from "../lib/modelPickerSignal";
 
 type Props = {
   harness: HarnessId;
@@ -139,6 +140,14 @@ export function ModelPicker({
   const openPicker = () => {
     setOpen(true);
   };
+
+  // The failure card's "Pick another model" opens the active composer's picker.
+  useEffect(() => {
+    if (!hotkeys) return;
+    const onRequest = () => openPicker();
+    window.addEventListener(OPEN_MODEL_PICKER, onRequest);
+    return () => window.removeEventListener(OPEN_MODEL_PICKER, onRequest);
+  }, [hotkeys]);
 
   const togglePicker = () => {
     if (openRef.current) dismiss(true);

@@ -1,5 +1,5 @@
-import type { EventRow, SessionMeta } from '@shared/events'
-import { foldContinuableError, foldGoal, type GoalState } from '@shared/session-lifecycle'
+import type { EventRow, Failure, SessionMeta } from '@shared/events'
+import { foldContinuableError, foldFailure, foldGoal, type GoalState } from '@shared/session-lifecycle'
 import { FOLD_VERSION, type FoldRow, type Store } from './db'
 import { foldTodo, newTodoFold, tallyOf, type TodoFold } from './todos'
 
@@ -12,18 +12,20 @@ export interface FoldState {
   todo: TodoFold
   goal: GoalState
   canContinue: boolean
+  failure: Failure | null
   /** highest seq folded in */
   seq: number
 }
 
 export function newFoldState(): FoldState {
-  return { todo: newTodoFold(), goal: null, canContinue: false, seq: 0 }
+  return { todo: newTodoFold(), goal: null, canContinue: false, failure: null, seq: 0 }
 }
 
 export function foldEvent(state: FoldState, row: EventRow): void {
   foldTodo(state.todo, row.event, row.ts)
   state.goal = foldGoal(state.goal, row.event, row.ts)
   state.canContinue = foldContinuableError(state.canContinue, row.event)
+  state.failure = foldFailure(state.failure, row.event)
   state.seq = row.seq
 }
 
@@ -34,7 +36,8 @@ export function toFoldRow(sessionId: string, state: FoldState): FoldRow {
     foldVersion: FOLD_VERSION,
     tasks: tallyOf(state.todo),
     goal: state.goal,
-    canContinue: state.canContinue
+    canContinue: state.canContinue,
+    failure: state.failure
   }
 }
 

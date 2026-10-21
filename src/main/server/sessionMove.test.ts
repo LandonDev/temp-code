@@ -167,7 +167,7 @@ function seedMac(opts: { transcript?: boolean; cwd?: string } = {}): void {
   for (const e of [{ type: 'user-text', text: 'sub task' }, { type: 'assistant-text', text: 'done', delta: false }] as AgentEvent[]) mac.store.appendEvent(CHILD, e)
   mac.store.flushEvents()
   mac.store.moveToCold(CHILD) // the child's log sits in the cold file
-  mac.store.putFold({ sessionId: ROOT, foldedSeq: 53, foldVersion: 1, tasks: { done: 1, total: 3, current: 'ship' }, goal: null, canContinue: false })
+  mac.store.putFold({ sessionId: ROOT, foldedSeq: 53, foldVersion: 1, tasks: { done: 1, total: 3, current: 'ship' }, goal: null, canContinue: false, failure: null })
   put(join(mac.data, 'html-renders', ROOT, 'page-1.html'), '<h1>report</h1>')
   if (opts.transcript !== false) {
     const dir = join(mac.home, '.claude', 'projects', claudeSlug(macProject()))

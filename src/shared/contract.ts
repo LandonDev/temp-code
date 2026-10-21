@@ -639,6 +639,14 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
     method: z.literal('session.restart'),
     params: z.object({ sessionId: z.string() })
   }),
+  // The failure card's "Route automatically": re-pick the thread's account
+  // fresh (a dead one is out of routing) and respawn there on the next send.
+  // Answers { account, moved }.
+  z.object({
+    id: z.string(),
+    method: z.literal('session.reroute'),
+    params: z.object({ sessionId: z.string() })
+  }),
   z.object({
     id: z.string(),
     method: z.literal('session.continue'),
