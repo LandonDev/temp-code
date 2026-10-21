@@ -158,6 +158,16 @@ struct AddEnvironmentSheet: View {
                 name = replacing.name
                 origin = replacing.origin.absoluteString
             }
+            #if DEBUG
+            // The proof's refused pairing: the test server's origin with a code it never made.
+            if TestHooks.sheet == "pair-error",
+               let real = ProcessInfo.processInfo.environment["TC_TEST_PAIR_LINK"],
+               let parsed = PairingLink(real) {
+                link = "\(parsed.origin.absoluteString)/pair#AAAAA-BBBBB"
+                submit()
+                return
+            }
+            #endif
             // The first field takes the keyboard once the sheet has settled.
             try? await Task.sleep(for: .milliseconds(350))
             if focus == nil { focus = method == .link ? .link : .origin }

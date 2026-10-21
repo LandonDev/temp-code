@@ -67,7 +67,7 @@ struct HostsView: View {
         }
         .onAppear {
             #if DEBUG
-            if TestHooks.sheet == "pair" { adding = true }
+            if TestHooks.sheet == "pair" || TestHooks.sheet == "pair-error" { adding = true }
             if TestHooks.open == "host", let first = clients.first {
                 openedByHook = HostDetailRoute(environmentId: first.environment.id)
             }
