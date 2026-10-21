@@ -128,7 +128,6 @@ struct AddEnvironmentSheet: View {
                 ToolbarItem(placement: .confirmationAction) {
                     ZStack {
                         Button(replacing == nil ? "Add" : "Pair") { submit() }
-                            .fontWeight(.semibold)
                             .disabled(!canAdd || busy)
                             .opacity(busy ? 0 : 1)
                             .accessibilityIdentifier("pair-submit")

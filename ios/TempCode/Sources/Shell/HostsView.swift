@@ -97,7 +97,7 @@ struct HostRow: View {
                     .lineLimit(1)
                 Text(second(status))
                     .font(.footnote)
-                    .foregroundStyle(wrong(status) ? AnyShapeStyle(Tint.destructive) : AnyShapeStyle(.secondary))
+                    .foregroundStyle(wrong(status) ? AnyShapeStyle(Tint.destructive) : AnyShapeStyle(HierarchicalShapeStyle.secondary))
                     .lineLimit(1)
                     .id(second(status))
                     .transition(Motion.swap(reduced: reduceMotion))
@@ -191,10 +191,10 @@ struct HostDetailView: View {
                     HStack(spacing: 12) {
                         VStack(alignment: .leading, spacing: 2) {
                             Text(capability.title)
-                                .foregroundStyle(allowed ? .primary : .secondary)
+                                .foregroundStyle(allowed ? Color.primary : Color.secondary)
                             Text(capability.detail)
                                 .font(.footnote)
-                                .foregroundStyle(allowed ? AnyShapeStyle(.secondary) : AnyShapeStyle(.tertiary))
+                                .foregroundStyle(allowed ? AnyShapeStyle(HierarchicalShapeStyle.secondary) : AnyShapeStyle(HierarchicalShapeStyle.tertiary))
                         }
                         Spacer(minLength: 12)
                         Image(systemName: "checkmark")
