@@ -407,6 +407,19 @@ export const TOOLS = [
     }
   },
   {
+    // A copy of src/shared/gate.ts's BATCH_GATE_TOOL_DESCRIPTION and BATCH_GATE_PARAMS; app-bridge.test.ts keeps them equal.
+    name: 'batch_gate',
+    description:
+      "Run the batch's gate once on the merged tree, then tag the release. Only the project's master thread may call it, after its children have landed through merge_branch (a child still unlanded is left out and the land step says so). The gate is `bun run gate --tier commit` on the project checkout at the project branch's head, in the host's gate queue, so it never runs beside a child's typecheck or another batch's gate; with a green gate the release train (`bun scripts/release.ts`) commits the version bump and tags release-N. Answers \"passed in 4m 12s · release-N tagged\", or \"FAILED at <step>\" with the log tail: fix on a child branch, land it, call again.",
+    inputSchema: {
+      type: 'object',
+      properties: {
+        notes: { type: 'string', description: "The release's one-line notes. Defaults to this thread's title followed by the landed children's commit subjects." },
+        release: { type: 'boolean', description: 'Tag the release after a green gate. Default true; false runs the gate alone.' }
+      }
+    }
+  },
+  {
     name: 'report_findings',
     description:
       'Report the findings of a merge review as a typed list, once, when the review is done: every defect with its file, 1-indexed line, one-sentence summary, the concrete failure scenario and a verdict (CONFIRMED when you verified it against the code, PLAUSIBLE when you could not). An empty list means the change is sound. Only this call counts; prose in your reply is not read. Available only to the reviewer thread of a merge review.',
@@ -667,7 +680,8 @@ const METHOD_FOR = {
   cite_source: 'app.citeSource',
   update_notes: 'app.updateNotes',
   merge_branch: 'app.mergeBranch',
-  report_findings: 'app.reportFindings'
+  report_findings: 'app.reportFindings',
+  batch_gate: 'app.batchGate'
 }
 
 /** The MCP content parts a tool result turns into (the preview's PNG rides as an image). */

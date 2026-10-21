@@ -79,6 +79,7 @@ import { sessionStore, useSessionMeta } from "../lib/tcserver/store";
 import { ErrorChip } from "./ErrorChip";
 import { CompactionCard } from "./CompactionCard";
 import { AgentSpawnRow, PlanHandoffRow } from "./AgentSpawnRow";
+import { GateCard } from "./GateCard";
 import { ReviewCard } from "./ReviewCard";
 import { CommandChip, ConnectorMark, ConnectorSummary, ReconnectChip, SubagentMark, SubagentSteps, reauthOf } from "./ToolChips";
 import { commandParts, isAgentCall, mcpServerOf, useKnownCommands, type CommandPart } from "./toolMarks";
@@ -1527,6 +1528,7 @@ const TranscriptBlock = memo(function TranscriptBlock({
     if (block.agent) return <AgentSpawnRow block={block} />;
     if (block.planHandoff) return <PlanHandoffRow block={block} />;
     if (block.review) return <ReviewCard block={block} cwd={cwd} onOpenFile={onOpenFile} />;
+    if (block.gate) return <GateCard block={block} />;
     if (isErrorBlock(block)) return <ErrorRowView block={block} />;
     const actions = passActionsOf(block);
     if (actions) return <PassRow actions={actions} />;

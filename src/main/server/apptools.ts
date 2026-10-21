@@ -47,6 +47,8 @@ import {
   REVIEW_FINDINGS_MAX,
   REVIEW_FINDING_PARAMS
 } from '@shared/review'
+import { BATCH_GATE_PARAMS, BATCH_GATE_TOOL_DESCRIPTION, BATCH_GATE_TOOL_NAME } from '@shared/gate'
+import { batches } from './batch'
 import { mergeReviews } from './mergeReview'
 import { preview as previewHtml, publish as publishHtml, type HtmlPreview } from './htmlRender'
 import { INLINE_DIGEST_MAX_CHARS, mirrorRelPath, threadDigest } from './mirror'
@@ -475,6 +477,16 @@ export const MERGE_BRANCH_SHAPE = {
   push: z.boolean().optional().describe(MERGE_BRANCH_PARAMS.push)
 }
 
+export const BATCH_GATE_SHAPE = {
+  notes: z.string().optional().describe(BATCH_GATE_PARAMS.notes),
+  release: z.boolean().optional().describe(BATCH_GATE_PARAMS.release)
+}
+
+/** The project's master thread (projects.master_thread_id), which alone gets batch_gate. */
+export function isMaster(reg: Pick<SessionRegistry, 'getProject'> | null, session: SessionMeta): boolean {
+  return !!session.projectId && reg?.getProject(session.projectId)?.masterThreadId === session.id
+}
+
 export const REPORT_FINDINGS_SHAPE = {
   findings: z
     .array(
@@ -619,6 +631,17 @@ export function appToolsMcp(session: SessionMeta): McpSdkServerConfigWithInstanc
         const live = registry?.get(session.id) ?? session
         return text(reviews ? await reviews.mergeBranch(live, args) : 'refused: merge reviews are not available here')
       }),
+      // batch_gate only on the project's master thread (batch.ts): the
+      // gate once on the merged tree, then the release.
+      ...(isMaster(registry, session)
+        ? [
+            tool(BATCH_GATE_TOOL_NAME, BATCH_GATE_TOOL_DESCRIPTION, BATCH_GATE_SHAPE, async (args) => {
+              const b = batches()
+              const live = registry?.get(session.id) ?? session
+              return text(b ? await b.gate(live, args) : 'refused: batches are not available here')
+            })
+          ]
+        : []),
       // report_findings only for the reviewer thread of a run: the handle
       // boots after the run is registered, so the check at boot is current.
       ...(mergeReviews()?.isReviewer(session.id)
@@ -649,5 +672,6 @@ export const APP_TOOLS = [
   `mcp__app__${CITE_TOOL_NAME}`,
   `mcp__app__${PLAN_COMPLETE_TOOL_NAME}`,
   `mcp__app__${MERGE_BRANCH_TOOL_NAME}`,
-  `mcp__app__${REPORT_FINDINGS_TOOL_NAME}`
+  `mcp__app__${REPORT_FINDINGS_TOOL_NAME}`,
+  `mcp__app__${BATCH_GATE_TOOL_NAME}`
 ]

@@ -598,6 +598,9 @@ export function foldEvent(
             }
           }
         }
+      } else if (e.kind === "gate" && e.gate) {
+        // A gate run's row: its own card, never folded into the status line.
+        blocks = [...sealLastStream(blocks), { id: `notice:${row.seq}`, role: "system", text: e.message, gate: e.gate }];
       } else {
         blocks = appendStatusBlock(blocks, e.message, `notice:${row.seq}`);
       }

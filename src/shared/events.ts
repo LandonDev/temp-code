@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { GateNoticeSchema } from './gate'
 import { ReviewNoticeSchema } from './review'
 import type { AgentType, ProviderId, Reasoning } from './catalog'
 import type { ThreadType } from './domain'
@@ -418,7 +419,9 @@ export const AgentEventSchema = z.discriminatedUnion('type', [
     message: z.string(),
     account: z.string().optional(),
     /** kind `review`: a merge review's outcome, for the card (shared/review.ts) */
-    review: ReviewNoticeSchema.optional()
+    review: ReviewNoticeSchema.optional(),
+    /** kind `gate`: a gate run before a merge or at a batch's end (shared/gate.ts) */
+    gate: GateNoticeSchema.optional()
   })
 ])
 export type AgentEvent = z.infer<typeof AgentEventSchema>

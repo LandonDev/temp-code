@@ -590,6 +590,12 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
     method: z.literal('app.reportFindings'),
     params: ReportFindingsSchema.extend({ sessionId: z.string() })
   }),
+  // The codex bridge's batch_gate (batch.ts): the master's gate once, then the release.
+  z.object({
+    id: z.string(),
+    method: z.literal('app.batchGate'),
+    params: z.object({ sessionId: z.string(), notes: z.string().optional(), release: z.boolean().optional() })
+  }),
   // Appshots (M10): global capture settings, one settings-table row.
   z.object({
     id: z.string(),
@@ -1163,6 +1169,9 @@ export type ServerPush =
   // edit, or the file edited behind the mirror). Every client gets it;
   // the phone's decoder folds it into its unknown case.
   | { push: 'notes'; sessionId: string; doc: ThreadNotesDoc }
+  // A master's batch changed a step (batch.ts: a child landed, the gate or
+  // the release moved). Every client gets it; not in the phone's subset.
+  | { push: 'batch'; state: import('./contract-batch').BatchState }
   | { push: 'session-removed'; sessionIds: string[] }
   // A thread (`id`, with its subagents `sessionIds`) moved to environment `to`
   // (contract-session-move.ts); sent ahead of the session-removed for it.

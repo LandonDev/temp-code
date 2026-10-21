@@ -76,11 +76,23 @@ export function decidePreamble(input: DecideInput): PreambleStamp | null {
   )
 }
 
-/** The house rules every temp-code brief opened with before this existed,
- *  minus the worktree name. Seeded once as the temp-code workspace's
- *  default, so every project under it (and any added later) carries them. */
-export const HOUSE_PREAMBLE = `- Work in your own git worktree: \`git worktree add .claude/worktrees/{{worktree}} -b {{worktree}} master\`, symlink the main checkout's node_modules into it, bun is at /srv/agents/home/.bun/bin. Run vitest with NODE_ENV=test; gateway.test.ts fails on Linux and is not yours. \`bun run typecheck\`, the tests and \`bun run build\` must be green before you merge.
+/** The house rules as first seeded: every thread ran typecheck, the tests
+ *  and the build itself, twice with the rebase. Kept so the migration below
+ *  recognises a saved default nobody edited. */
+export const HOUSE_PREAMBLE_V1 = `- Work in your own git worktree: \`git worktree add .claude/worktrees/{{worktree}} -b {{worktree}} master\`, symlink the main checkout's node_modules into it, bun is at /srv/agents/home/.bun/bin. Run vitest with NODE_ENV=test; gateway.test.ts fails on Linux and is not yours. \`bun run typecheck\`, the tests and \`bun run build\` must be green before you merge.
 - When green: \`git fetch origin\`, rebase onto origin/master (many sibling threads merge in parallel; resolve conflicts, re-run the gate), fast-forward master, push origin master. Commit messages are plain prose, no AI attribution trailers.
+- Never touch /Applications/TempCode.app, never run box-update or the Mac release, never edit the user's Mac checkout, never send into the user's threads.
+- Update docs and CLAUDE.md so they say what is now true. Every new behaviour gets a unit test.
+- For every renderer change: invoke /impeccable (run its context script once, read craft-floor before editing; Operate surface, precision and restraint), /emil-design-eng and /better-ui, and follow them. docs/DESIGN.md wins conflicts.`
+
+/** The house rules every temp-code brief opens with, minus the worktree
+ *  name. Seeded once as the temp-code workspace's default, so every project
+ *  under it (and any added later) carries them. The gate line is the batch
+ *  flow's (CLAUDE.md "Master threads"): a thread runs typecheck and its own
+ *  tests, merge_branch gates the branch on the host's queue, the batch's
+ *  gate runs once on the merged tree. */
+export const HOUSE_PREAMBLE = `- Work in your own git worktree: \`git worktree add .claude/worktrees/{{worktree}} -b {{worktree}} master\`, symlink the main checkout's node_modules into it, bun is at /srv/agents/home/.bun/bin. Run vitest with NODE_ENV=test; gateway.test.ts fails on Linux and is not yours. Run typecheck and the tests you wrote or touched; do not run the full test suite or the build. Land with the merge_branch tool: it typechecks your branch in a queue, holds the merge on a failure, and the batch's gate runs once on the merged tree.
+- When green: \`git fetch origin\`, rebase onto origin/master (many sibling threads merge in parallel; resolve conflicts), then call merge_branch: it fast-forwards master and pushes. Commit messages are plain prose, no AI attribution trailers.
 - Never touch /Applications/TempCode.app, never run box-update or the Mac release, never edit the user's Mac checkout, never send into the user's threads.
 - Update docs and CLAUDE.md so they say what is now true. Every new behaviour gets a unit test.
 - For every renderer change: invoke /impeccable (run its context script once, read craft-floor before editing; Operate surface, precision and restraint), /emil-design-eng and /better-ui, and follow them. docs/DESIGN.md wins conflicts.`
@@ -104,4 +116,24 @@ export function seedHousePreamble(
   }
   store.setSetting(SEED_KEY, String(Date.now()))
   return seeded
+}
+
+const MIGRATE_KEY = 'preamble-migrated:batch-gate'
+
+/** Rewrites a saved workspace default that still reads as the first house
+ *  rules (HOUSE_PREAMBLE_V1, gate and build in every thread) to the batch
+ *  flow's text. Runs once per database (the marker); an edited default is
+ *  the person's and stays as written. */
+export function migrateHousePreamble(
+  store: Pick<Store, 'getSetting' | 'setSetting' | 'listWorkspaces' | 'setWorkspacePreamble'>
+): string[] {
+  if (store.getSetting(MIGRATE_KEY) !== null) return []
+  const migrated: string[] = []
+  for (const w of store.listWorkspaces()) {
+    if (normalizePreamble(w.preamble) !== normalizePreamble(HOUSE_PREAMBLE_V1)) continue
+    store.setWorkspacePreamble(w.id, HOUSE_PREAMBLE, w.preambleEnabled ?? true)
+    migrated.push(w.id)
+  }
+  store.setSetting(MIGRATE_KEY, String(Date.now()))
+  return migrated
 }

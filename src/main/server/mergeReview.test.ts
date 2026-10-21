@@ -2,8 +2,21 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AgentEvent, EventRow, SessionMeta } from '@shared/events'
 import { DEFAULT_REVIEW_SETTINGS, type ReviewSettings } from '@shared/review'
 import { MergeRefusal, type MergeBundle } from './mergeBranch'
-import { MergeReviews, type MergeReviewDeps } from './mergeReview'
+import { GateQueue } from './gateQueue'
+import type { GateRunOptions, GateRunResult } from './gateRun'
+import { MergeReviews, subjectsOf, type Landed, type MergeReviewDeps } from './mergeReview'
 import { settleSuppressed } from './orchestration'
+
+/** A gate runner that passes every step and records what it was asked. */
+function fakeGate(outcome: (o: GateRunOptions) => Partial<GateRunResult> = () => ({})) {
+  const runs: GateRunOptions[] = []
+  const runGate = async (o: GateRunOptions): Promise<GateRunResult> => {
+    runs.push(o)
+    return { ok: true, log: `stub ${o.step}`, ms: 1200, exitCode: 0, ...outcome(o) }
+  }
+  return { runs, runGate }
+}
+const green = fakeGate().runGate
 
 /**
  * A registry of plain maps: sessions, event logs, subscribers. Creating a
@@ -110,8 +123,11 @@ function fakeRegistry() {
     append,
     setReview: (r: ReviewSettings | null) => (review = r),
     rows: (id: string) => events.get(id) ?? [],
-    notices: (id: string) =>
-      (events.get(id) ?? []).map((r) => r.event).filter((e) => e.type === 'notice') as Extract<AgentEvent, { type: 'notice' }>[],
+    /** the thread's notice rows of one kind (the review rows by default; every merge also lands a gate row) */
+    notices: (id: string, kind: string | null = 'review') =>
+      (events.get(id) ?? [])
+        .map((r) => r.event)
+        .filter((e) => e.type === 'notice' && (kind === null || e.kind === kind)) as Extract<AgentEvent, { type: 'notice' }>[],
     reviewer: () => [...sessions.values()].find((s) => s.agentType === 'reviewer') ?? null
   }
 }
@@ -170,7 +186,7 @@ afterEach(() => {
 describe('merge_branch without a review', () => {
   it('merges at once when the setting is off and leaves one plain row', async () => {
     const { git, calls } = fakeGit()
-    const reviews = new MergeReviews({ registry: reg.registry, store: reg.store, git })
+    const reviews = new MergeReviews({ registry: reg.registry, store: reg.store, runGate: green, git })
     const impl = reg.add({ cwd: '/wt' })
     const text = await reviews.mergeBranch(impl, {})
     expect(calls).toEqual(['merge feature->master@/repo push'])
@@ -184,19 +200,19 @@ describe('merge_branch without a review', () => {
     const { git } = fakeGit({
       branchOf: async () => null
     })
-    const reviews = new MergeReviews({ registry: reg.registry, store: reg.store, git })
+    const reviews = new MergeReviews({ registry: reg.registry, store: reg.store, runGate: green, git })
     const impl = reg.add({ cwd: '/wt' })
     expect(await reviews.mergeBranch(impl, {})).toMatch(/^refused: .*not on a branch/)
 
     const empty = fakeGit({ buildMergeBundle: async () => ({ ...fakeGit().bundle, empty: true }) })
-    expect(await new MergeReviews({ registry: reg.registry, store: reg.store, git: empty.git }).mergeBranch(impl, {})).toMatch(/^nothing to merge/)
+    expect(await new MergeReviews({ registry: reg.registry, store: reg.store, runGate: green, git: empty.git }).mergeBranch(impl, {})).toMatch(/^nothing to merge/)
 
     const noFf = fakeGit({
       fastForwardMerge: async () => {
         throw new MergeRefusal('git merge --ff-only feature failed: not a fast-forward. Rebase feature onto master and merge again.')
       }
     })
-    expect(await new MergeReviews({ registry: reg.registry, store: reg.store, git: noFf.git }).mergeBranch(impl, {})).toMatch(/^refused: git merge --ff-only/)
+    expect(await new MergeReviews({ registry: reg.registry, store: reg.store, runGate: green, git: noFf.git }).mergeBranch(impl, {})).toMatch(/^refused: git merge --ff-only/)
   })
 })
 
@@ -204,7 +220,7 @@ describe('merge_branch under review', () => {
   it('sends the reviewer the diff against the merge-base, the commits, the files and the brief', async () => {
     reg.setReview(ON)
     const { git, bundle } = fakeGit()
-    const reviews = new MergeReviews({ registry: reg.registry, store: reg.store, git })
+    const reviews = new MergeReviews({ registry: reg.registry, store: reg.store, runGate: green, git })
     const impl = reg.add({ cwd: '/wt' })
     reg.append(impl.id, { type: 'user-text', text: 'Build the thing.\n\nWith care.' })
     const pending = reviews.mergeBranch(impl, {})
@@ -230,10 +246,10 @@ describe('merge_branch under review', () => {
   it('a thread in the project checkout names its branch; the reviewer runs in that branch\'s worktree', async () => {
     reg.setReview(ON)
     const { git } = fakeGit()
-    const reviews = new MergeReviews({ registry: reg.registry, store: reg.store, git })
+    const reviews = new MergeReviews({ registry: reg.registry, store: reg.store, runGate: green, git })
     const impl = reg.add({ cwd: '/repo' })
     const onTarget = fakeGit({ buildMergeBundle: async () => ({ ...fakeGit().bundle, branch: 'master', empty: true }) })
-    expect(await new MergeReviews({ registry: reg.registry, store: reg.store, git: onTarget.git }).mergeBranch(impl, {})).toMatch(
+    expect(await new MergeReviews({ registry: reg.registry, store: reg.store, runGate: green, git: onTarget.git }).mergeBranch(impl, {})).toMatch(
       /^nothing to do: master has nothing unpushed\. If your work is on another branch/
     )
     const pending = reviews.mergeBranch(impl, { branch: 'feature' })
@@ -248,7 +264,7 @@ describe('merge_branch under review', () => {
   it("a reviewer's settle never wakes the implementation thread, during the run or after it", async () => {
     reg.setReview(ON)
     const { git } = fakeGit()
-    const reviews = new MergeReviews({ registry: reg.registry, store: reg.store, git })
+    const reviews = new MergeReviews({ registry: reg.registry, store: reg.store, runGate: green, git })
     const impl = reg.add({ cwd: '/wt' })
     expect(settleSuppressed(impl)).toBe(false)
     const pending = reviews.mergeBranch(impl, {})
@@ -267,7 +283,7 @@ describe('merge_branch under review', () => {
   it('no blocking findings: merges and leaves "Reviewed by …: no blocking findings (2 minor)"', async () => {
     reg.setReview(ON)
     const { git, calls } = fakeGit()
-    const reviews = new MergeReviews({ registry: reg.registry, store: reg.store, git })
+    const reviews = new MergeReviews({ registry: reg.registry, store: reg.store, runGate: green, git })
     const impl = reg.add({ cwd: '/wt' })
     const pending = reviews.mergeBranch(impl, {})
     await tick()
@@ -288,7 +304,7 @@ describe('merge_branch under review', () => {
   it('blocking findings: holds the merge, lands the card, tells the model to address them', async () => {
     reg.setReview(ON)
     const { git, calls } = fakeGit()
-    const reviews = new MergeReviews({ registry: reg.registry, store: reg.store, git })
+    const reviews = new MergeReviews({ registry: reg.registry, store: reg.store, runGate: green, git })
     const impl = reg.add({ cwd: '/wt' })
     const pending = reviews.mergeBranch(impl, {})
     await tick()
@@ -310,7 +326,7 @@ describe('merge_branch under review', () => {
   it('"any finding" blocks on a plausible one too', async () => {
     reg.setReview({ ...ON, blockOn: 'any' })
     const { git, calls } = fakeGit()
-    const reviews = new MergeReviews({ registry: reg.registry, store: reg.store, git })
+    const reviews = new MergeReviews({ registry: reg.registry, store: reg.store, runGate: green, git })
     const impl = reg.add({ cwd: '/wt' })
     const pending = reviews.mergeBranch(impl, {})
     await tick()
@@ -322,7 +338,7 @@ describe('merge_branch under review', () => {
   it('Merge anyway: merges past a held review, rows it, and survives a restart', async () => {
     reg.setReview(ON)
     const { git, calls } = fakeGit()
-    const reviews = new MergeReviews({ registry: reg.registry, store: reg.store, git })
+    const reviews = new MergeReviews({ registry: reg.registry, store: reg.store, runGate: green, git })
     const impl = reg.add({ cwd: '/wt' })
     const pending = reviews.mergeBranch(impl, {})
     await tick()
@@ -330,7 +346,7 @@ describe('merge_branch under review', () => {
     await pending
     const runId = reg.notices(impl.id)[0].review!.runId
     // A new instance over the same store: the held run is still there.
-    const after = new MergeReviews({ registry: reg.registry, store: reg.store, git })
+    const after = new MergeReviews({ registry: reg.registry, store: reg.store, runGate: green, git })
     const result = await after.override(impl.id, runId)
     expect(result).toEqual({ sha: 'head0000000', merged: true, pushed: true })
     expect(calls).toEqual(['merge feature->master@/repo push'])
@@ -351,7 +367,7 @@ describe('merge_branch under review', () => {
         return { sha: 'head0000000', merged: true, pushed: push }
       }
     })
-    const reviews = new MergeReviews({ registry: reg.registry, store: reg.store, git })
+    const reviews = new MergeReviews({ registry: reg.registry, store: reg.store, runGate: green, git })
     const impl = reg.add({ cwd: '/wt' })
     const pending = reviews.mergeBranch(impl, {})
     await tick()
@@ -369,7 +385,7 @@ describe('merge_branch under review', () => {
     vi.useFakeTimers()
     reg.setReview({ ...ON, maxMinutes: 2 })
     const { git, calls } = fakeGit()
-    const reviews = new MergeReviews({ registry: reg.registry, store: reg.store, git })
+    const reviews = new MergeReviews({ registry: reg.registry, store: reg.store, runGate: green, git })
     const impl = reg.add({ cwd: '/wt' })
     const pending = reviews.mergeBranch(impl, {})
     await vi.advanceTimersByTimeAsync(10)
@@ -387,7 +403,7 @@ describe('merge_branch under review', () => {
   it('a reviewer that ends without reporting counts as a failed review: merged, said so', async () => {
     reg.setReview(ON)
     const { git, calls } = fakeGit()
-    const reviews = new MergeReviews({ registry: reg.registry, store: reg.store, git })
+    const reviews = new MergeReviews({ registry: reg.registry, store: reg.store, runGate: green, git })
     const impl = reg.add({ cwd: '/wt' })
     const pending = reviews.mergeBranch(impl, {})
     await tick()
@@ -399,7 +415,7 @@ describe('merge_branch under review', () => {
   })
 
   it('report_findings outside a review, or with a bad shape, is refused', async () => {
-    const reviews = new MergeReviews({ registry: reg.registry, store: reg.store, git: fakeGit().git })
+    const reviews = new MergeReviews({ registry: reg.registry, store: reg.store, runGate: green, git: fakeGit().git })
     const impl = reg.add({})
     expect(reviews.reportFindings(impl, { findings: [] })).toMatch(/not the reviewer/)
     reg.setReview(ON)
@@ -409,5 +425,126 @@ describe('merge_branch under review', () => {
     expect(reviews.reportFindings(reviewer, { findings: [{ summary: 'no file' }] })).toMatch(/^refused: findings\.0\.file/)
     reviews.reportFindings(reviewer, { findings: [] })
     await pending
+  })
+})
+
+describe('the gate before the merge', () => {
+  it('a batch child runs typecheck alone in its worktree, on the queue, and lands a green gate row', async () => {
+    const { git, calls } = fakeGit()
+    const { runs, runGate } = fakeGate()
+    const landed: Landed[] = []
+    const reviews = new MergeReviews({ registry: reg.registry, store: reg.store, git, runGate, queue: new GateQueue(), onLanded: (l) => landed.push(l) })
+    const child = reg.add({ cwd: '/wt', masterId: 'master1' })
+    const text = await reviews.mergeBranch(child, {})
+    expect(runs).toEqual([{ cwd: '/wt', step: 'typecheck', branch: 'feature', since: undefined }])
+    expect(calls).toEqual(['merge feature->master@/repo push'])
+    expect(text).toContain('Merged feature into master')
+    expect(text).toContain('Typecheck passed on feature in 1s')
+    const gates = reg.notices(child.id, 'gate')
+    expect(gates.map((n) => [n.gate?.step, n.gate?.ok, n.message])).toEqual([['typecheck', true, 'Typecheck passed on feature']])
+    expect(landed).toEqual([{ session: child, branch: 'feature', target: 'master', sha: 'head0000000', subjects: ['feature: do the thing'] }])
+  })
+
+  it('a red typecheck holds the merge: HELD text with the tail, a failed gate row, nothing merged', async () => {
+    const { git, calls } = fakeGit()
+    const log = 'src/a.ts(3,1): error TS2322: wrong\nsrc/b.ts(9,2): error TS2345: also wrong\nFound 2 errors in 2 files.'
+    const { runGate } = fakeGate((o) => (o.step === 'typecheck' ? { ok: false, log, exitCode: 1 } : {}))
+    const landed: Landed[] = []
+    const reviews = new MergeReviews({ registry: reg.registry, store: reg.store, git, runGate, onLanded: (l) => landed.push(l) })
+    const child = reg.add({ cwd: '/wt', masterId: 'master1' })
+    const text = await reviews.mergeBranch(child, {})
+    expect(text).toMatch(/^HELD: typecheck failed on feature · 2 errors/)
+    expect(text).toContain('error TS2345')
+    expect(text).toContain('call merge_branch again')
+    expect(calls).toEqual([])
+    expect(landed).toEqual([])
+    const [row] = reg.notices(child.id, 'gate')
+    expect(reg.notices(child.id, null)).toHaveLength(1)
+    expect(row.message).toBe('Typecheck failed on feature · 2 errors')
+    expect(row.gate).toMatchObject({ step: 'typecheck', branch: 'feature', ok: false, log })
+    expect(reg.notices(child.id)).toEqual([])
+  })
+
+  it('a thread outside any batch runs the commit tier since the merge-base, serialized like the rest', async () => {
+    const { git, calls } = fakeGit()
+    const { runs, runGate } = fakeGate()
+    const reviews = new MergeReviews({ registry: reg.registry, store: reg.store, git, runGate })
+    const impl = reg.add({ cwd: '/wt' })
+    const text = await reviews.mergeBranch(impl, {})
+    expect(runs).toEqual([{ cwd: '/wt', step: 'gate', branch: 'feature', since: 'base0000000' }])
+    expect(calls).toHaveLength(1)
+    expect(text).toContain('Gate passed on feature')
+    const red = fakeGate(() => ({ ok: false, log: '✓ typecheck 2s passed\n✗ vitest 40s failed: 1 test', exitCode: 1 }))
+    const held = await new MergeReviews({ registry: reg.registry, store: reg.store, git, runGate: red.runGate }).mergeBranch(impl, {})
+    expect(held).toMatch(/^HELD: gate failed on feature · at vitest/)
+  })
+
+  it('two threads gate one at a time through the shared queue, and the waiter hears it', async () => {
+    const { git } = fakeGit()
+    let release!: () => void
+    const gateDone = new Promise<void>((r) => (release = r))
+    const order: string[] = []
+    const runGate = async (o: GateRunOptions): Promise<GateRunResult> => {
+      order.push(`start ${o.branch}`)
+      if (o.branch === 'feature') await gateDone
+      order.push(`end ${o.branch}`)
+      return { ok: true, log: '', ms: 5, exitCode: 0 }
+    }
+    const queue = new GateQueue()
+    const reviews = new MergeReviews({ registry: reg.registry, store: reg.store, git, runGate, queue })
+    const a = reg.add({ cwd: '/wt', masterId: 'm' })
+    const other = fakeGit({ branchOf: async () => 'second', buildMergeBundle: async () => ({ ...fakeGit().bundle, branch: 'second' }) })
+    const reviews2 = new MergeReviews({ registry: reg.registry, store: reg.store, git: other.git, runGate, queue })
+    const b = reg.add({ cwd: '/wt2', masterId: 'm' })
+    const pa = reviews.mergeBranch(a, {})
+    await tick()
+    const pb = reviews2.mergeBranch(b, {})
+    await tick()
+    expect(order).toEqual(['start feature'])
+    release()
+    await pa
+    const tb = await pb
+    expect(order).toEqual(['start feature', 'end feature', 'start second', 'end second'])
+    expect(tb).toMatch(/in the gate queue behind 1/)
+  })
+
+  it('a passed review whose gate failed is not reviewed again on the next call', async () => {
+    const { git } = fakeGit()
+    const red = fakeGate(() => ({ ok: false, log: 'Found 1 error.', exitCode: 1 }))
+    reg.setReview(ON)
+    const reviews = new MergeReviews({ registry: reg.registry, store: reg.store, git, runGate: red.runGate })
+    const impl = reg.add({ cwd: '/wt' })
+    const p = reviews.mergeBranch(impl, {})
+    await tick()
+    reviews.reportFindings(reg.reviewer()!, { findings: [] })
+    expect(await p).toMatch(/^HELD: gate failed/)
+    const reviewers = [...reg.sessions.values()].filter((s) => s.agentType === 'reviewer').length
+    const greenReviews = new MergeReviews({ registry: reg.registry, store: reg.store, git, runGate: green })
+    const text = await greenReviews.mergeBranch(impl, {})
+    expect(text).toContain('Reviewed by Haiku 5.5: no blocking findings')
+    expect(reg.notices(impl.id).at(-1)?.review).toMatchObject({ outcome: 'pass', merged: true, reason: 'already reviewed' })
+    expect([...reg.sessions.values()].filter((s) => s.agentType === 'reviewer').length).toBe(reviewers)
+  })
+
+  it('Merge anyway past a held review skips the gate but still tells the batch', async () => {
+    const { git, calls } = fakeGit()
+    const red = fakeGate(() => ({ ok: false, log: 'Found 1 error.', exitCode: 1 }))
+    const landed: Landed[] = []
+    reg.setReview(ON)
+    const reviews = new MergeReviews({ registry: reg.registry, store: reg.store, git, runGate: red.runGate, onLanded: (l) => landed.push(l) })
+    const child = reg.add({ cwd: '/wt', masterId: 'm' })
+    const p = reviews.mergeBranch(child, {})
+    await tick()
+    reviews.reportFindings(reg.reviewer()!, { findings: [finding()] })
+    expect(await p).toMatch(/^HELD: Reviewed by/)
+    const runId = reg.notices(child.id).at(-1)!.review!.runId
+    await reviews.override(child.id, runId)
+    expect(calls).toEqual(['merge feature->master@/repo push'])
+    expect(red.runs).toEqual([])
+    expect(landed.map((l) => l.branch)).toEqual(['feature'])
+  })
+
+  it('subjectsOf reads the bundle log', () => {
+    expect(subjectsOf('abc1234 first\nbody line\n\ndef5678 second\n')).toEqual(['first', 'second'])
   })
 })

@@ -9,6 +9,8 @@ import type { DriverCtx } from './drivers/types'
 import type { AgentEvent, PreambleStamp } from '@shared/events'
 import {
   HOUSE_PREAMBLE,
+  HOUSE_PREAMBLE_V1,
+  migrateHousePreamble,
   PREAMBLE_HEADING,
   TASK_HEADING,
   composePreambled,
@@ -146,6 +148,42 @@ describe('seedHousePreamble', () => {
     store.setWorkspacePreamble('tc', null, true)
     expect(seedHousePreamble(store)).toEqual([])
     expect(store.listWorkspaces().find((w) => w.id === 'tc')?.preamble).toBeNull()
+    db.close()
+  })
+})
+
+describe('the house rules', () => {
+  it('tell a thread to run its own tests and land through merge_branch, never the full gate', () => {
+    expect(HOUSE_PREAMBLE).toContain('Run typecheck and the tests you wrote or touched; do not run the full test suite or the build.')
+    expect(HOUSE_PREAMBLE).toContain('Land with the merge_branch tool: it typechecks your branch in a queue, holds the merge on a failure, and the batch\'s gate runs once on the merged tree.')
+    expect(HOUSE_PREAMBLE).toContain('resolve conflicts), then call merge_branch')
+    expect(HOUSE_PREAMBLE).not.toContain('re-run the gate')
+    expect(HOUSE_PREAMBLE).not.toContain('must be green before you merge')
+    expect(HOUSE_PREAMBLE_V1).toContain('must be green before you merge')
+  })
+})
+
+describe('migrateHousePreamble', () => {
+  it('rewrites a saved default still equal to the old text, once; an edited one stays', () => {
+    const db = openDb(':memory:')
+    const store = new Store(db)
+    store.insertWorkspace(ws('tc', '/srv/agents/work/temp-code/'))
+    store.insertWorkspace(ws('off', '/srv/agents/work/temp-code-2'))
+    store.insertWorkspace(ws('own', '/Users/x/temp-code'))
+    store.insertWorkspace(ws('none', '/srv/agents/work/other'))
+    store.setWorkspacePreamble('tc', HOUSE_PREAMBLE_V1, true)
+    store.setWorkspacePreamble('off', `${HOUSE_PREAMBLE_V1}\n`, false)
+    store.setWorkspacePreamble('own', `${HOUSE_PREAMBLE_V1}\n- And my own rule.`, true)
+    expect(migrateHousePreamble(store).sort()).toEqual(['off', 'tc'])
+    const byId = Object.fromEntries(store.listWorkspaces().map((w) => [w.id, [w.preamble, w.preambleEnabled]]))
+    expect(byId.tc).toEqual([HOUSE_PREAMBLE, true])
+    expect(byId.off).toEqual([HOUSE_PREAMBLE, false])
+    expect(byId.own).toEqual([`${HOUSE_PREAMBLE_V1}\n- And my own rule.`, true])
+    expect(byId.none).toEqual([null, true])
+    // The marker: a default put back to the old text later is the person's choice.
+    store.setWorkspacePreamble('tc', HOUSE_PREAMBLE_V1, true)
+    expect(migrateHousePreamble(store)).toEqual([])
+    expect(store.listWorkspaces().find((w) => w.id === 'tc')?.preamble).toBe(HOUSE_PREAMBLE_V1)
     db.close()
   })
 })

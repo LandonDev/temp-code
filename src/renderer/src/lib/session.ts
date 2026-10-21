@@ -1,3 +1,4 @@
+import type { GateNotice } from "@server/shared/gate";
 import type { ReviewNotice } from "@server/shared/review";
 import type { ContextUsage } from "./contextUsage";
 import type { HandoffComposerCard } from "./handoff";
@@ -166,6 +167,8 @@ export type Block = {
   /** A merge-review row (shared/review.ts): the outcome card. `resolved`
    *  once a later row merged past this hold. */
   review?: ReviewNotice & { resolved?: boolean };
+  /** A gate row (shared/gate.ts): a typecheck or gate run before a merge, the batch's gate or release. */
+  gate?: GateNotice;
   approval?: {
     requestId: string | number;
     decided?: "allow" | "deny";

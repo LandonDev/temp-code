@@ -2,6 +2,7 @@ import { nanoid } from 'nanoid'
 import { existsSync, readFileSync } from 'node:fs'
 import { modelInfo, resolveModel } from '@shared/catalog'
 import type { SessionMeta } from '@shared/events'
+import { GATE_TEXT_TAIL, gateLine, logTail, type GateNotice, type GateStep } from '@shared/gate'
 import {
   MERGE_BRANCH_TOOL_NAME,
   REPORT_FINDINGS_TOOL_NAME,
@@ -23,6 +24,8 @@ import {
   type MergeBundle,
   type MergeResult
 } from './mergeBranch'
+import { gateQueue, type GateQueue, type GateWait } from './gateQueue'
+import { runGateStep } from './gateRun'
 import { suppressSettleReports, waitForSettled } from './orchestration'
 import type { SessionRegistry } from './sessions'
 
@@ -46,6 +49,14 @@ import type { SessionRegistry } from './sessions'
  * thread's subagent list and archives with it; it reports once through
  * `report_findings`. The run's state is persisted (`review:run:<id>`) so
  * "Merge anyway" on the card works after a restart.
+ *
+ * The gate out of the children (shared/gate.ts): after the review and
+ * before the fast-forward, the branch is gated on the host's one queue
+ * (gateQueue.ts). A batch child (a session with `masterId`) runs typecheck
+ * alone in its worktree, so a break is named to its thread and the batch's
+ * end runs the whole commit tier once; a thread outside any batch runs the
+ * commit tier itself, as its preamble used to tell it to, serialized the
+ * same way. A red run holds the merge and lands a `gate` row.
  */
 
 export interface MergeReviewGit {
@@ -71,6 +82,21 @@ export interface MergeReviewDeps {
   now?: () => number
   /** a stub brief for the proof (TEMP_CODE_REVIEW_STUB_FILE): the reviewer reports this file's findings */
   stubFile?: string | null
+  /** the gate step runner (gateRun.ts) and the host's queue; tests pass their own */
+  runGate?: typeof runGateStep
+  queue?: GateQueue
+  /** a merge landed: the batch records it (batch.ts) */
+  onLanded?: (landed: Landed) => void
+}
+
+/** What a landed merge tells the batch. */
+export interface Landed {
+  session: SessionMeta
+  branch: string
+  target: string
+  sha: string
+  /** the branch's commit subjects, oldest first */
+  subjects: string[]
 }
 
 export type RunState = 'reviewing' | 'held' | 'passed' | 'done'
@@ -94,6 +120,18 @@ export interface ReviewRun {
   state: RunState
   blocking: ReviewFinding[]
   minor: ReviewFinding[]
+  /** the merge-base the gate's `--since` names; absent on rows from before the gate */
+  base?: string
+  /** the branch's commit subjects, for the batch's release notes */
+  subjects?: string[]
+}
+
+/** The subjects of a bundle's `%h %s%n%b` log. */
+export function subjectsOf(commits: string): string[] {
+  return commits
+    .split('\n')
+    .map((l) => /^[0-9a-f]{6,40} (.+)$/.exec(l)?.[1]?.trim() ?? '')
+    .filter(Boolean)
 }
 
 const RUN_PREFIX = 'review:run:'
@@ -139,9 +177,14 @@ export class MergeReviews {
    *  after its run is forgotten. */
   private readonly reviewerIds = new Set<string>()
 
+  private readonly runGate: typeof runGateStep
+  private readonly queue: GateQueue
+
   constructor(private readonly deps: MergeReviewDeps) {
     this.git = { ...defaultGit, ...(deps.git ?? {}) }
     this.now = deps.now ?? Date.now
+    this.runGate = deps.runGate ?? runGateStep
+    this.queue = deps.queue ?? gateQueue()
     this.restore()
     suppressSettleReports((child) => this.reviewerIds.has(child.id) || this.isReviewTitle(child))
   }
@@ -268,7 +311,9 @@ export class MergeReviews {
         startedAt: this.now(),
         state: 'done',
         blocking: [],
-        minor: []
+        minor: [],
+        base: bundle.base,
+        subjects: subjectsOf(bundle.commits)
       }, 'skipped')
     }
     // A head this thread already got through review merges without a second one.
@@ -301,7 +346,9 @@ export class MergeReviews {
       startedAt: this.now(),
       state: 'reviewing',
       blocking: [],
-      minor: []
+      minor: [],
+      base: bundle.base,
+      subjects: subjectsOf(bundle.commits)
     }
     // The reviewer reads the change where it is checked out: the thread's
     // own directory when that is the branch, else the worktree that has it,
@@ -446,6 +493,7 @@ ${bundle.diff}
     run.state = 'done'
     this.forget(run)
     this.row(sessionId, run, 'merged-anyway', true, result.pushed)
+    this.deps.onLanded?.({ session, branch: run.branch, target: run.target, sha: result.sha, subjects: run.subjects ?? [] })
     return result
   }
 
@@ -457,6 +505,12 @@ ${bundle.diff}
     outcome: ReviewNotice['outcome'],
     reason?: string
   ): Promise<string> {
+    const gate = await this.gate(session, run)
+    if (!gate.ok) {
+      // The review stands (a passed head stays passed); the gate did not.
+      if (run.state === 'done') this.forget(run)
+      return gate.text
+    }
     let result: MergeResult
     try {
       result = await this.git.fastForwardMerge(run.cwd, run.branch, run.target, run.push)
@@ -469,8 +523,52 @@ ${bundle.diff}
     }
     this.forget(run)
     const notice = this.row(session.id, run, outcome, result.merged || run.branch === run.target, result.pushed, reason)
+    this.deps.onLanded?.({ session, branch: run.branch, target: run.target, sha: result.sha, subjects: run.subjects ?? [] })
     const minor = run.minor.length ? this.findingsText('Minor findings (not blocking)', run.minor) : ''
-    return `${reviewLine(notice, label(run.provider, run.model))}. ${run.target} is at ${result.sha.slice(0, 10)}${result.pushed ? ', pushed to origin' : ''}.${minor}`
+    return `${reviewLine(notice, label(run.provider, run.model))}. ${run.target} is at ${result.sha.slice(0, 10)}${result.pushed ? ', pushed to origin' : ''}. ${gate.text}${minor}`
+  }
+
+  // ── the gate ─────────────────────────────────────────────────────────
+
+  /** The step a caller gets: typecheck alone for a batch child, the commit tier otherwise. */
+  static stepFor(session: Pick<SessionMeta, 'masterId'>): GateStep {
+    return session.masterId ? 'typecheck' : 'gate'
+  }
+
+  /** Where the branch is checked out: the thread's directory when that is
+   *  the branch, else its worktree; the project checkout when the branch IS
+   *  the target. Null when nowhere: the gate needs a tree to run on. */
+  private async gateCwd(session: SessionMeta, run: ReviewRun): Promise<string | null> {
+    if (run.branch === run.target) return run.cwd
+    if ((await this.git.branchOf(session.cwd)) === run.branch) return session.cwd
+    return this.git.worktreeOf(run.cwd, run.branch)
+  }
+
+  /** Runs the branch's gate step on the queue, lands its row, and answers
+   *  the text the tool adds (green) or returns whole (HELD). */
+  private async gate(session: SessionMeta, run: ReviewRun): Promise<{ ok: boolean; text: string }> {
+    const step = MergeReviews.stepFor(session)
+    const cwd = await this.gateCwd(session, run)
+    if (!cwd) {
+      return { ok: false, text: `refused: ${run.branch} is not checked out in any worktree of ${run.cwd}; the ${step === 'typecheck' ? 'typecheck' : 'gate'} needs its tree. Check it out (git worktree add) and call ${MERGE_BRANCH_TOOL_NAME} again.` }
+    }
+    const started = this.now()
+    let wait: GateWait | null = null
+    const result = await this.queue.run(
+      `${step} ${run.branch}`,
+      () => this.runGate({ cwd, step, branch: run.branch, since: step === 'gate' ? run.base : undefined }),
+      (w) => (wait = w)
+    )
+    const waited = wait ? ` after ${fmtMs(this.now() - started - result.ms)} in the gate queue behind ${(wait as GateWait).ahead.length}` : ''
+    const notice: GateNotice = { step, branch: run.branch, ok: result.ok, log: result.log, at: this.now() }
+    this.deps.registry.append(session.id, { type: 'notice', kind: 'gate', message: gateLine(notice), gate: notice })
+    const line = gateLine(notice)
+    if (result.ok) return { ok: true, text: `${line} in ${fmtMs(result.ms)}${waited}.` }
+    const tail = logTail(result.log, GATE_TEXT_TAIL)
+    return {
+      ok: false,
+      text: `HELD: ${line.toLowerCase()} in ${fmtMs(result.ms)}${waited}; the merge did not run.\n\n${tail}\n\nFix it on ${run.branch}, commit, and call ${MERGE_BRANCH_TOOL_NAME} again.`
+    }
   }
 
   private heldText(run: ReviewRun): string {
@@ -511,6 +609,11 @@ ${bundle.diff}
     })
     return notice
   }
+}
+
+function fmtMs(ms: number): string {
+  const s = Math.max(0, Math.round(ms / 1000))
+  return s >= 60 ? `${Math.floor(s / 60)}m ${String(s % 60).padStart(2, '0')}s` : `${s}s`
 }
 
 /** Set by server/index.ts at boot; the app tools and the WS methods read it. */

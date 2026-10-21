@@ -682,17 +682,60 @@ public struct NoticeEvent: Codable, Hashable, Sendable {
             self.minutes = minutes
         }
     }
+    public struct Gate: Codable, Hashable, Sendable {
+        public enum Step: RawRepresentable, Codable, Hashable, Sendable {
+            case typecheck
+            case gate
+            case release
+            /// A value this build does not know; `rawValue` keeps it.
+            case unknown(String)
+
+            public init(rawValue: String) {
+                switch rawValue {
+                case "typecheck": self = .typecheck
+                case "gate": self = .gate
+                case "release": self = .release
+                default: self = .unknown(rawValue)
+                }
+            }
+
+            public var rawValue: String {
+                switch self {
+                case .typecheck: "typecheck"
+                case .gate: "gate"
+                case .release: "release"
+                case .unknown(let value): value
+                }
+            }
+        }
+
+        public let step: Step
+        public let branch: String
+        public let ok: Bool
+        public let log: String
+        public let at: Int
+
+        public init(step: Step, branch: String, ok: Bool, log: String, at: Int) {
+            self.step = step
+            self.branch = branch
+            self.ok = ok
+            self.log = log
+            self.at = at
+        }
+    }
 
     public let kind: String
     public let message: String
     public let account: String?
     public let review: Review?
+    public let gate: Gate?
 
-    public init(kind: String, message: String, account: String? = nil, review: Review? = nil) {
+    public init(kind: String, message: String, account: String? = nil, review: Review? = nil, gate: Gate? = nil) {
         self.kind = kind
         self.message = message
         self.account = account
         self.review = review
+        self.gate = gate
     }
 }
 

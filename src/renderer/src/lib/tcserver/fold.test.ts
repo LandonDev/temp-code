@@ -792,6 +792,16 @@ describe("merge review rows", () => {
     ]);
   });
 
+  it("a gate notice is its own system row carrying the run for the card", () => {
+    const gate = { step: "typecheck" as const, branch: "feature", ok: false, log: "Found 2 errors.", at: 5 };
+    const state = foldAll(rows([{ type: "notice", kind: "gate", message: "Typecheck failed on feature · 2 errors", gate } as AgentEvent]), CWD);
+    const last = state.blocks[state.blocks.length - 1];
+    expect(last.role).toBe("system");
+    expect(last.text).toBe("Typecheck failed on feature · 2 errors");
+    expect(last.gate).toEqual(gate);
+    expect(last.review).toBeUndefined();
+  });
+
   it("a plain notice stays a plain system row", () => {
     const state = foldAll(rows([{ type: "notice", kind: "account-gone", message: "account left" } as AgentEvent]), CWD);
     const last = state.blocks[state.blocks.length - 1];

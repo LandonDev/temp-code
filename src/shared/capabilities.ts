@@ -35,6 +35,7 @@ export const METHOD_CAPABILITY: Record<ClientRequest['method'], MethodCapability
   'app.updateNotes': 'local',
   'app.mergeBranch': 'local',
   'app.reportFindings': 'local',
+  'app.batchGate': 'local',
   'stall.report': 'local',
   'dap.connect': 'local',
   'lsp.ensure': 'local',

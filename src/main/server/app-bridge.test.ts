@@ -8,7 +8,8 @@ import {
 import { CITE_TOOL_DESCRIPTION, CITE_TOOL_PARAMS } from '@shared/research'
 import { UPDATE_NOTES_DESCRIPTION, UPDATE_NOTES_PARAMS, UPDATE_NOTES_TOOL_NAME } from '@shared/notes'
 import { ThreadTypeSchema } from '@shared/domain'
-import { CITE_SHAPE, HTML_PREVIEW_SHAPE, HTML_RENDER_SHAPE, MERGE_BRANCH_SHAPE, REPORT_FINDINGS_SHAPE } from './apptools'
+import { BATCH_GATE_PARAMS, BATCH_GATE_TOOL_DESCRIPTION, BATCH_GATE_TOOL_NAME } from '@shared/gate'
+import { BATCH_GATE_SHAPE, CITE_SHAPE, HTML_PREVIEW_SHAPE, HTML_RENDER_SHAPE, MERGE_BRANCH_SHAPE, REPORT_FINDINGS_SHAPE } from './apptools'
 import {
   MERGE_BRANCH_PARAMS,
   MERGE_BRANCH_TOOL_DESCRIPTION,
@@ -130,6 +131,17 @@ describe('app-mcp-bridge merge_branch and report_findings', () => {
     expect(items.required).toEqual(['file', 'summary', 'failure_scenario'])
     for (const [name, schema] of Object.entries(items.properties)) {
       expect(schema.description).toBe(REVIEW_FINDING_PARAMS[name as keyof typeof REVIEW_FINDING_PARAMS])
+    }
+  })
+})
+
+describe('app-mcp-bridge batch_gate', () => {
+  it("the bridge's batch_gate matches the shared description and params, and maps to app.batchGate", () => {
+    const t = bridge.TOOLS.find((x) => x.name === BATCH_GATE_TOOL_NAME)!
+    expect(t.description).toBe(BATCH_GATE_TOOL_DESCRIPTION)
+    expect(Object.keys(t.inputSchema.properties)).toEqual(Object.keys(BATCH_GATE_SHAPE))
+    for (const [name, schema] of Object.entries(t.inputSchema.properties)) {
+      expect(schema.description).toBe(BATCH_GATE_PARAMS[name as keyof typeof BATCH_GATE_PARAMS])
     }
   })
 })

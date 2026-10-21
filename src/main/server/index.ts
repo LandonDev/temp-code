@@ -69,7 +69,7 @@ import { createUiHandler } from './remote/ui'
 import { pairingOrigin, readRemoteSettings } from './remote/handlers'
 import type { SessionMeta } from '@shared/events'
 import { openDb, Store } from './db'
-import { seedHousePreamble } from './projectPreamble'
+import { migrateHousePreamble, seedHousePreamble } from './projectPreamble'
 import { EventReader, startCheckpointWorker } from './dbWorkers'
 import { handleFsGit } from './fsgit'
 import { workRoot } from './workRoot'
@@ -128,7 +128,7 @@ import {
   setProjectPlans
 } from './apptools'
 import { ProjectPlans, handleProjectPlan } from './projectPlan'
-import { handleBatch } from './batch'
+import { Batches, handleBatch, setBatches } from './batch'
 import { DEFAULT_RULES } from '@shared/rules'
 import { DEFAULT_THREAD_DEFAULTS } from '@shared/defaults'
 import { DEFAULT_PLAN_SETTINGS } from '@shared/plans'
@@ -326,6 +326,7 @@ export async function startServer(
   const registry = new SessionRegistry(store)
   // The temp-code workspace's default preamble, seeded once (projectPreamble.ts).
   seedHousePreamble(store)
+  migrateHousePreamble(store)
   // The project plan's pin, ticks and milestone links (projectPlan.ts).
   const projectPlans = new ProjectPlans(store, {
     getProject: (id) => registry.getProject(id),
@@ -615,8 +616,12 @@ export async function startServer(
   })
   setCrossHostAgents(crossHostAgents)
   setAppCrossHost(crossHostAgents)
-  // Review before merge (mergeReview.ts): merge_branch's engine, one per host.
-  setMergeReviews(new MergeReviews({ registry, store }))
+  // A master's batch (batch.ts): the steps its children never run; merge_branch
+  // tells it what landed. Review before merge (mergeReview.ts): merge_branch's
+  // engine, one per host, the gate out of the children inside it.
+  const batchRuns = new Batches({ registry, store })
+  setBatches(batchRuns)
+  setMergeReviews(new MergeReviews({ registry, store, onLanded: (l) => batchRuns.landed(l) }))
   // A thread that ends here (archived, deleted, moved away) takes its interactive jobs on the Mac with it.
   registry.onRemoved((ids) => macTools.threadsEnded(ids))
   registry.onMeta((m) => {
@@ -924,6 +929,8 @@ export async function startServer(
     })
     // A thread's notes changed: every client follows (the panel, the rows).
     const offNotes = registry.notes.onChange((sessionId, doc) => emitPush({ push: 'notes', sessionId, doc }))
+    // A master's batch moved a step: the board follows without polling.
+    const offBatch = batchRuns.onChange((state) => emitPush({ push: 'batch', state }))
     const offCatalog = registry.onCatalog((kind) => emitPush(kind === 'workspaces'
       ? { push: 'workspaces', workspaces: registry.listWorkspaces() }
       : { push: 'projects', projects: registry.listProjects() }))
@@ -1011,7 +1018,7 @@ export async function startServer(
         if (req.method === 'deploy.master') return sendFrame({ id: req.id, ok: true, result: masterRelease.current() })
         const planned = handleProjectPlan(req, projectPlans)
         if (planned.handled) return sendFrame({ id: req.id, ok: true, result: planned.result })
-        const batched = handleBatch(req, registry)
+        const batched = handleBatch(req, batchRuns, registry)
         if (batched.handled) return sendFrame({ id: req.id, ok: true, result: batched.result })
         const macBridged = handleMacBridge(req, macBridge)
         if (macBridged.handled) return sendFrame({ id: req.id, ok: true, result: macBridged.result })
@@ -2002,6 +2009,11 @@ export async function startServer(
             })
             break
           }
+          case 'app.batchGate': {
+            const { sessionId, ...args } = req.params
+            sendFrame({ id: req.id, ok: true, result: await batchRuns.gate(callerOf(registry, sessionId), args) })
+            break
+          }
           case 'review.override': {
             const reviews = mergeReviews()
             if (!reviews) throw new Error('merge reviews are not available here')
@@ -2032,6 +2044,7 @@ export async function startServer(
       offBootResume()
       offMeta()
       offNotes()
+      offBatch()
       offCatalog()
       offQueue()
       offLive()

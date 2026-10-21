@@ -78,6 +78,35 @@ errored. Their settle never wakes the implementation thread
 through the tool, and a haiku implementer that received the automatic
 subagent report refused to act on it.
 
+## The gate before the fast-forward
+
+After the review (or at once when the set is off) and before the merge,
+`merge_branch` gates the branch on the host's one gate queue
+(`src/main/server/gateQueue.ts`: FIFO, one run at a time, a waiter hears its
+position and the tool's answer says how long it waited). Which step depends
+on who calls (`src/shared/gate.ts`):
+
+| Caller | Step | Where |
+| --- | --- | --- |
+| a batch child (a session with `masterId`) | `bun run typecheck` | the branch's worktree |
+| a thread outside any batch | `bun scripts/gate.ts --tier commit --since <merge-base>` | the branch's worktree |
+
+A batch child runs typecheck alone so a break is named to its thread; the
+batch's own gate runs the whole commit tier once on the merged tree
+(`batch_gate`, CLAUDE.md "Master threads"). A thread outside a batch keeps
+the commit tier it used to run itself, now serialized with every other gate
+on the host. A branch checked out nowhere is refused: the gate needs its tree.
+
+Every run lands as a `notice` row of kind `gate` (`GateNotice`: step,
+branch, ok, the last 40 lines, when) drawn by `GateCard.tsx`: "Typecheck
+failed · feature · 2 errors" with the tail folded, no actions; a green run is
+the quiet line "Typecheck passed · feature". A red run answers the tool
+`HELD: typecheck failed on feature · 2 errors`, the last 20 lines and "call
+merge_branch again"; the review's verdict stands (a passed head is not
+reviewed twice). Merge anyway past a held review skips the gate: it is the
+person's call. `TEMP_CODE_GATE_STUB=<json>` (rules `{ step, branch?, ok,
+log? }`) decides a step without spawning anything, for the proofs.
+
 ## Proof
 
 `bun run script:e2e-merge-review` (build first): a headless instance with its
@@ -91,6 +120,11 @@ new commit with no findings (merged and pushed, the pass line), the bridge's
 tool list, and the archive. Unit tests: `src/shared/review.test.ts`,
 `src/main/server/mergeBranch.test.ts` (a real scratch repo),
 `src/main/server/mergeReview.test.ts` (fake registry and git: the bundle
-sent, the three outcomes, the override, the timeout, the settle suppression),
+sent, the three outcomes, the override, the timeout, the settle suppression,
+the gate held and green, the commit tier outside a batch, the shared queue),
+`src/main/server/gateQueue.test.ts`, `gateRun.test.ts`, `batch.test.ts`
+(the three steps, persistence, batch_gate's refusals and answers), the
+renderer's `GateCard.dom.test.tsx`; `bun run script:e2e-batch-gate` is the
+in-process proof of the batch flow,
 `src/main/server/threads-review.test.ts` (the preamble under the setting),
 `src/renderer/src/lib/tcserver/fold.test.ts` and `lib/reviewScope.test.ts`.

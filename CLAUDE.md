@@ -867,6 +867,12 @@ routed to (aliax-core's `forward`). Two listeners:
   errored. Proof: `bun run script:e2e-merge-review` (headless instance, a
   scratch repo with a bare origin, two real haiku threads, the stub file
   for one blocking finding then none; build first).
+  The gate before the fast-forward (typecheck alone for a batch child, the
+  commit tier for a thread outside a batch, both on the host's `GateQueue`)
+  is "Master threads" below: the review decides whether the branch may
+  merge, the gate whether the tree is green, and a head that passed review
+  is not reviewed again when its gate held it.
+
 ## The desktop transcript: a viewport window, markdown in a worker
 - `src/renderer/src/surfaces/AgentTranscript.tsx` mounts only the rows that
   meet the viewport plus a screen of overscan each way. The thread is a flat
@@ -1175,13 +1181,50 @@ renderer turns the Archive done checkbox on. Proof:
   threadBatch.ts). Proof: `bun run script:e2e-queue` (six haiku threads,
   cap 2, never more than two live; not in the gate); unit tests
   scheduler.test.ts.
-- Still to come in wave 1: the gate out
-  of the children (merge_branch runs typecheck alone for a batch child, the
-  batch's end runs the commit tier once on the merged tree) with the steps
-  of `batch.get` filled in; the MasterView board (children by Needs you /
-  Running / Queued / Done, the batch steps under the list, the add sheet);
-  then the proof script, the docs and the phone's fold. Nothing in wave 0
-  sets `queued`, `masterId` or the pin.
+- The gate out of the children (wave 1, src/main/server/{gateQueue,
+  gateRun,batch}.ts, src/shared/gate.ts): one `GateQueue` per host runs
+  every gate step in turn, FIFO, a waiter told its position. `merge_branch`
+  gates the branch after the optional review and before the fast-forward: a
+  session with `masterId` runs `bun run typecheck` alone in the branch's
+  worktree, so a break is named to its thread; a session outside any batch
+  runs `bun scripts/gate.ts --tier commit --since <merge-base>` there, the
+  commit tier its preamble used to make it run itself, serialized the same
+  way. A red run answers "HELD: typecheck failed on <branch> · 3 errors",
+  the last 20 lines, "call merge_branch again", and lands a `notice` row of
+  kind `gate` (`GateNotice { step: typecheck | gate | release, branch, ok,
+  log, at }`, the Swift contract regenerated) that the transcript draws as
+  surfaces/GateCard.tsx: "Typecheck failed · feature · 2 errors" with the
+  tail folded, no actions; a green run lands the same row, quiet, and the
+  merge proceeds (Merge anyway past a held review skips the gate: it is the
+  person's call). `Batches` keeps the three steps per master in the settings
+  row `batch:<masterId>` (a restart keeps them; `pending` is read from the
+  sessions table): `land` runs from the first child merge ("3 of 7 landed",
+  done when every unarchived child has landed, or at `batch_gate` with "4 of
+  7 landed · 3 left out"); `gate` is the master's `batch_gate` app tool (the
+  master only, by the project's pin at harness boot; codex over the bridge
+  as `app.batchGate`, refused off the master): `bun scripts/gate.ts --tier
+  commit` on the project checkout at the project branch's head, on the same
+  queue, its `✓ step 12s` lines streamed into the step's `detail`, answering
+  "passed in 4m 12s · release-N tagged" or "FAILED at vitest" with the tail;
+  `release` follows a green gate with `bun scripts/release.ts "<master
+  title; landed subjects>"` ("release-N tagged"; `release: false` leaves it).
+  A red gate or a landing after it reopens the gate; a landing after a
+  release starts a new cycle. `batch.get` answers the live state and every
+  step change is the `batch` push (every client; not in the phone's subset).
+  Seam: `TEMP_CODE_GATE_STUB=<json>` (rules `{ step, branch?, ok, log? }`)
+  decides a step without spawning; proof `bun run script:e2e-batch-gate`
+  (in-process: a scratch repo with a bare origin, a pinned master, two haiku
+  children, one typecheck stubbed red then green, then batch_gate).
+  The house preamble (`HOUSE_PREAMBLE`) now tells a thread to run typecheck
+  and the tests it wrote or touched, never the full suite or the build, and
+  to land with merge_branch; a saved workspace default still equal to the old
+  text is rewritten once (`migrateHousePreamble`, marker
+  `preamble-migrated:batch-gate`), an edited one is left alone. The
+  post-commit hook's train is unchanged.
+- Still to come in wave 1: the MasterView board (children by Needs you /
+  Running / Queued / Done, the batch steps under the list from `batch.get`
+  and the `batch` push, the add sheet); then the proof script, the docs and
+  the phone's fold.
 
 ## The prod worktree is retired
 ~/IdeaProjects/temp-code-prod was the old local updater's build checkout.
