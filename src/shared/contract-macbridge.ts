@@ -41,24 +41,56 @@ export const MAC_APPROVAL_WAIT_MS = 10 * 60_000
  */
 export const MAC_TOOL_DESCRIPTIONS = {
   mac_read_file:
-    "Read a file on the user's Mac (this thread runs on a remote host; the Mac is where the user and their files are). Paths are absolute Mac paths. Folders the user shared with this host read at once; any other path waits for the user to allow it on the Mac, and may be denied.",
+    "Read a file on the user's Mac (this thread runs on a remote host; the Mac is where the user and their files are). Paths are absolute Mac paths, or start with ~ for the Mac's home. Folders the user shared with this host read at once (with full access, any path but keys and credentials); any other path waits for the user to allow it on the Mac, and may be denied.",
   mac_list_dir:
-    "List a folder on the user's Mac: name, kind, size and modification time of each entry. Paths are absolute Mac paths. Folders the user shared read at once; others wait for the user's approval on the Mac.",
+    "List a folder on the user's Mac: name, kind, size and modification time of each entry. Paths are absolute Mac paths, or start with ~ for the Mac's home. Folders the user shared read at once (with full access, any path but keys and credentials); others wait for the user's approval on the Mac.",
   mac_fetch_file:
     "Copy a file from the user's Mac onto this host and get back the local path it landed at (inside this thread's .temp-code/attachments folder). Use it for files you need to work on here (up to 64 MiB). The same approval rules as mac_read_file.",
   mac_run:
     "Run a command on the user's Mac (for macOS-only tools: xcodebuild, osascript, open, security, …). Every command waits for the user to allow it on the Mac, showing them exactly the argv and cwd, and may be denied. Runs through the Mac's login shell with no stdin; output is capped at 1 MB. Prefer argv; use command only when you need shell syntax (pipes, globs)."
 } as const
 export const MAC_TOOL_PARAMS = {
-  path: 'Absolute path on the Mac, e.g. /Users/name/Documents/report.pdf (no ~).',
+  path: "Absolute path on the Mac, or ~/… for the Mac's home, e.g. ~/Documents/report.pdf.",
   maxBytes: 'Read at most this many bytes (default 262144, at most 8388608).',
   argv: 'The command and its arguments, run as given with no shell parsing, e.g. ["xcrun", "simctl", "list"].',
   command: "A shell command line instead of argv, read by the Mac's login shell.",
-  cwd: 'Absolute working directory on the Mac (default: the home directory).',
+  cwd: "Absolute working directory on the Mac, or ~/… (default: the Mac's home directory).",
   timeoutMs: 'Kill the command after this many milliseconds (default 120000, at most 1800000).'
 } as const
 
-export const MacBridgePolicySchema = z.enum(['off', 'read', 'read+run'])
+/** A Mac's home as `peer.register` carries it: absolute, one line. */
+export const MacHomeSchema = z
+  .string()
+  .min(2)
+  .max(1024)
+  // eslint-disable-next-line no-control-regex -- the home lands in tool text: no control characters
+  .regex(/^\/[^\u0000-\u001f\u007f]*$/)
+
+/**
+ * The four tools' descriptions for one thread: the shared text plus, when
+ * the box has heard the Mac's home in `peer.register`, a sentence naming it,
+ * so a thread never guesses the Mac's user name. scripts/app-mcp-bridge.mjs
+ * keeps a copy (macTools.test.ts holds them equal, with and without a home).
+ */
+export function macToolDescriptions(
+  home?: string | null
+): Record<keyof typeof MAC_TOOL_DESCRIPTIONS, string> {
+  const note = home ? ` The Mac's home is ${home} (~ means it: ~/Desktop is ${home}/Desktop).` : ''
+  return {
+    mac_read_file: MAC_TOOL_DESCRIPTIONS.mac_read_file + note,
+    mac_list_dir: MAC_TOOL_DESCRIPTIONS.mac_list_dir + note,
+    mac_fetch_file: MAC_TOOL_DESCRIPTIONS.mac_fetch_file + note,
+    mac_run: MAC_TOOL_DESCRIPTIONS.mac_run + note
+  }
+}
+
+/**
+ * Per host: off | read (managed roots, shared folders, else ask) | read+run
+ * (and commands, every one asked) | full (reads anywhere on the Mac without
+ * asking except keys and credentials, macBridge.ts macDenied; commands as
+ * read+run).
+ */
+export const MacBridgePolicySchema = z.enum(['off', 'read', 'read+run', 'full'])
 export type MacBridgePolicy = z.infer<typeof MacBridgePolicySchema>
 
 const pathArg = z.string().min(1).max(4096)
@@ -210,7 +242,15 @@ const envId = z.string().min(1).max(200)
 export const MacBridgeRequestSchemas = [
   // ── the Mac's main process → the box, over the peer link (admin) ──────
   /** → { environmentId } of the box. */
-  request('peer.register', z.object({ from: envId, offers: z.array(z.string().max(64)).max(16) })),
+  request(
+    'peer.register',
+    z.object({
+      from: envId,
+      offers: z.array(z.string().max(64)).max(16),
+      /** The Mac's home directory, for the box threads' tool text (absent from an older Mac). */
+      home: MacHomeSchema.optional()
+    })
+  ),
   request(
     'peer.reply',
     z.object({

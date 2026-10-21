@@ -2,7 +2,7 @@ import { randomBytes } from 'node:crypto'
 import { existsSync, statSync } from 'node:fs'
 import { lstat, open, readdir, readFile, stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
-import { basename, dirname, isAbsolute, resolve, sep } from 'node:path'
+import { basename, dirname, isAbsolute, join, resolve, sep } from 'node:path'
 import type { ClientRequest, ServerPush } from '@shared/contract'
 import {
   MAC_APPROVAL_WAIT_MS,
@@ -30,6 +30,7 @@ import {
   type MacRunResult
 } from '@shared/contract-macbridge'
 import { insideRoots, realSpelling } from './fence'
+import { isSecretPath } from './harnessSet'
 import { runMacCommand, type RunningCommand } from './macRunner'
 import { servePeerCall, type LinkRequest } from './peerCalls'
 
@@ -40,11 +41,17 @@ import { servePeerCall, type LinkRequest } from './peerCalls'
  * and the Mac decides everything:
  *
  *  - Per box, a policy (`macBridge.policy.<envId>`): off (the default) |
- *    read | read+run, and shared folders (`macBridge.shared.<envId>`):
+ *    read | read+run | full, and shared folders (`macBridge.shared.<envId>`):
  *    absolute dirs, never '/', never the home directory or one above it.
  *  - Reads and listings inside this Mac's app-managed roots or a shared
  *    folder go through without a prompt; any other path asks the person at
  *    the Mac, once per request, with "allow this folder for this thread".
+ *    Under full, every other path goes through as well, except the keys and
+ *    credentials macDenied names and the directories above home (`/`,
+ *    `/Users`), which still ask every time.
+ *  - The decision comes before any read: a path outside what the policy
+ *    admits asks (or, with the bridge off, is refused) whether or not it
+ *    exists, so the box learns nothing of it until the person allows.
  *  - Every command asks, showing argv and cwd, whatever the thread's
  *    permission mode on the box, with "allow this exact command for this
  *    thread". It runs through the login shell (macRunner.ts).
@@ -108,19 +115,70 @@ export function rememberFolder(
   return coversHome(folder, realSpelling(home)) ? null : folder
 }
 
-export type ReadVerdict =
-  { allow: true; why: 'managed' | 'shared' | 'remembered' } | { allow: false }
+/**
+ * Keys and credentials full access never reads without asking, relative to
+ * home: whole folders, then single files. Besides these, any file the harness
+ * sync's secret rule names (harnessSet.ts isSecretPath: *.pem, *.key,
+ * auth.json, .credentials.json, …) asks wherever it lives.
+ */
+export const FULL_DENY_DIRS = [
+  '.ssh',
+  '.gnupg',
+  '.aws',
+  '.config/gh',
+  '.aliax',
+  'Library/Keychains',
+  'Library/Application Support/TempCode',
+  'Library/Application Support/temp-code'
+] as const
+export const FULL_DENY_FILES = ['.claude/.credentials.json', '.codex/auth.json'] as const
 
-/** Whether a read goes through without asking. */
+/** Strict containment on a segment boundary, case-folded (macOS volumes are case-insensitive by default). */
+function underFolded(path: string, root: string): boolean {
+  const p = path.toLowerCase()
+  const r = root.toLowerCase().replace(/\/+$/, '')
+  return p === r || p.startsWith(r + sep)
+}
+
+/**
+ * Whether full access must still ask for a real path: a deny-list folder or
+ * file under home (by its literal and its real spelling, so a symlinked
+ * ~/.aliax is caught at its target too), a secret by name anywhere, or a
+ * directory above home ('/', '/Users'), which would show every account's
+ * folder. Home itself does not ask.
+ */
+export function macDenied(real: string, home: string): boolean {
+  const homes = [...new Set([home, realSpelling(home)])]
+  for (const h of homes) {
+    if (real !== h && coversHome(real, h)) return true
+    for (const rel of [...FULL_DENY_DIRS, ...FULL_DENY_FILES]) {
+      const literal = join(h, rel)
+      if (underFolded(real, literal) || underFolded(real, realSpelling(literal))) return true
+    }
+  }
+  const base = basename(real)
+  return isSecretPath(base) || isSecretPath(base.toLowerCase())
+}
+
+export type ReadVerdict =
+  { allow: true; why: 'managed' | 'shared' | 'remembered' | 'full' } | { allow: false }
+
+/** Whether a read goes through without asking. `full` is the home whose keys still ask, when the policy is full. */
 export function readVerdict(
   real: string,
-  rules: { managed: readonly string[]; shared: readonly string[]; remembered: readonly string[] }
+  rules: {
+    managed: readonly string[]
+    shared: readonly string[]
+    remembered: readonly string[]
+    full?: { home: string } | null
+  }
 ): ReadVerdict {
   if (rules.managed.length && insideRoots(real, rules.managed))
     return { allow: true, why: 'managed' }
   if (rules.shared.length && insideRoots(real, rules.shared)) return { allow: true, why: 'shared' }
   if (rules.remembered.length && insideRoots(real, rules.remembered))
     return { allow: true, why: 'remembered' }
+  if (rules.full && !macDenied(real, rules.full.home)) return { allow: true, why: 'full' }
   return { allow: false }
 }
 
@@ -128,10 +186,17 @@ export function readVerdict(
 export const commandKey = (spec: { argv?: string[]; command?: string; cwd: string }): string =>
   JSON.stringify([spec.argv ?? null, spec.command ?? null, spec.cwd])
 
-/** A box path for this Mac: absolute, no `~` (the box's home is not this one). */
-export function macPath(path: string): string {
-  if (!isAbsolute(path)) throw new Error(`paths on the Mac must be absolute: ${path}`)
-  return realSpelling(resolve(path))
+/**
+ * A box path for this Mac, by its real spelling: absolute, or `~` / `~/…`
+ * for this Mac's home (the thread's tool text names it). `~user` and
+ * relative paths are refused. Resolving the spelling reads no file and its
+ * result never reaches the box before the policy has decided.
+ */
+export function macPath(path: string, home: string = homedir()): string {
+  const expanded = path === '~' ? home : path.startsWith('~/') ? join(home, path.slice(2)) : path
+  if (!isAbsolute(expanded))
+    throw new Error(`paths on the Mac must be absolute or start with ~/: ${path}`)
+  return realSpelling(resolve(expanded))
 }
 
 /** utf8 when the bytes are text (a cut multi-byte tail is trimmed), else null. */
@@ -240,7 +305,11 @@ export class MacBridge {
     const request = this.deps.link(envId)
     if (!request) return
     try {
-      await request('peer.register', { from: this.deps.environmentId, offers: [MAC_BRIDGE_OFFER] })
+      await request('peer.register', {
+        from: this.deps.environmentId,
+        offers: [MAC_BRIDGE_OFFER],
+        home: this.home
+      })
       this.registered.add(envId)
     } catch (err) {
       // An older host has no peer.register: no bridge there, nothing else changes.
@@ -381,7 +450,7 @@ export class MacBridge {
       )
     }
     if (method === 'mac.run') {
-      if (policy !== 'read+run') {
+      if (policy !== 'read+run' && policy !== 'full') {
         line('refused (policy read)')
         throw new Error(
           "this host may read on the Mac but not run commands (the Mac's Settings → Remote access)"
@@ -396,17 +465,23 @@ export class MacBridge {
           ? MacListDirArgsSchema
           : MacFetchFileArgsSchema
     const args = schema.parse(params.args) as { path: string; maxBytes?: number }
-    const real = macPath(args.path)
+    // Decide first, touch the file after: a path the policy does not admit
+    // asks (or was refused above) whether or not it exists.
+    const real = macPath(args.path, this.home)
     const isDir = method === 'mac.listDir'
     const memory = this.memoryOf(env.id, thread.id)
+    const full = policy === 'full' ? { home: this.home } : null
     const verdict = readVerdict(real, {
       managed: this.deps.managedRoots(),
       shared: this.sharedOf(env.id),
-      remembered: [...memory.folders]
+      remembered: [...memory.folders],
+      full
     })
     if (verdict.allow) line(`allowed (${verdict.why})`)
     else {
-      const folder = rememberFolder(real, isDir, this.home)
+      // Under full only keys, credentials and the dirs above home ask: each
+      // time, never remembered as a folder (that would admit the secret too).
+      const folder = full ? null : rememberFolder(real, isDir, this.home)
       const { id, answer } = this.ask(
         {
           environmentId: env.id,
@@ -447,7 +522,7 @@ export class MacBridge {
   ): Promise<MacRunResult> {
     const args = MacRunArgsSchema.parse(raw)
     if (!args.argv === !args.command) throw new Error('mac.run takes argv or command, one of them')
-    const cwd = args.cwd ? macPath(args.cwd) : realSpelling(this.home)
+    const cwd = args.cwd ? macPath(args.cwd, this.home) : realSpelling(this.home)
     if (!existsSync(cwd) || !statSync(cwd).isDirectory())
       throw new Error(`no such folder on the Mac: ${cwd}`)
     const timeoutMs = args.timeoutMs ?? MAC_RUN_DEFAULT_TIMEOUT_MS

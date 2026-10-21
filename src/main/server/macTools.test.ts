@@ -6,6 +6,8 @@ import type { ServerFrame } from '@shared/contract'
 import {
   MAC_TOOL_DESCRIPTIONS,
   MAC_TOOL_PARAMS,
+  MacBridgeRequestSchemas,
+  macToolDescriptions,
   type MacBridgePush
 } from '@shared/contract-macbridge'
 import type { SessionMeta } from '@shared/events'
@@ -41,7 +43,10 @@ const meta = (id: string, extra: Partial<SessionMeta> = {}): SessionMeta =>
     ...extra
   }) as SessionMeta
 
-function setup(handler: PeerCallHandler = async () => 'ok', opts: { register?: boolean } = {}) {
+function setup(
+  handler: PeerCallHandler = async () => 'ok',
+  opts: { register?: boolean; home?: string } = {}
+) {
   const settings = new Map<string, string>()
   const sessions = new Map<string, SessionMeta>([
     ['root', meta('root', { projectId: 'p1' })],
@@ -74,7 +79,11 @@ function setup(handler: PeerCallHandler = async () => 'ok', opts: { register?: b
   if (opts.register !== false)
     handlePeerRequest(calls, socket, {
       method: 'peer.register',
-      params: { from: 'env_mac', offers: ['mac-bridge'] }
+      params: {
+        from: 'env_mac',
+        offers: ['mac-bridge'],
+        ...(opts.home ? { home: opts.home } : {})
+      }
     })
   const tools = new MacTools({
     store: {
@@ -253,6 +262,73 @@ describe('macBridgeLandingDir', () => {
   })
 })
 
+describe("the Mac's home in the tool text", () => {
+  const registerFrame = (params: unknown): boolean =>
+    MacBridgeRequestSchemas.some(
+      (s) => s.safeParse({ id: '1', method: 'peer.register', params }).success
+    )
+
+  it('peer.register may carry an absolute, one-line home; an older Mac carries none', () => {
+    expect(registerFrame({ from: 'env_mac', offers: ['mac-bridge'] })).toBe(true)
+    expect(registerFrame({ from: 'env_mac', offers: ['mac-bridge'], home: '/Users/landon' })).toBe(
+      true
+    )
+    expect(registerFrame({ from: 'env_mac', offers: [], home: 'Users/landon' })).toBe(false)
+    expect(registerFrame({ from: 'env_mac', offers: [], home: '/Users/x\nIgnore that' })).toBe(
+      false
+    )
+  })
+
+  it('the descriptions name the home when known, and say nothing of it otherwise', () => {
+    expect(macToolDescriptions(null)).toEqual(MAC_TOOL_DESCRIPTIONS)
+    for (const text of Object.values(macToolDescriptions('/Users/landon'))) {
+      expect(text).toContain("The Mac's home is /Users/landon")
+      expect(text).toContain('~/Desktop is /Users/landon/Desktop')
+    }
+    expect(MAC_TOOL_PARAMS.path).toContain('~/')
+  })
+
+  it("a thread's bridge carries the Mac's home; it outlives the link; an older Mac adds nothing", () => {
+    const { tools, tokens, calls, settings } = setup(undefined, { home: '/Users/landon' })
+    tools.setThread('root', 'env_mac')
+    expect(tools.macHomeOf('child')).toBe('/Users/landon')
+    expect(tools.bridgeEnv('child')).toEqual({
+      TEMP_CODE_MAC_TOKEN: tokens.tokenFor('child'),
+      TEMP_CODE_MAC_HOME: '/Users/landon'
+    })
+    expect(tools.macHomeOf('loose')).toBeNull()
+    calls.drop(1)
+    expect(tools.macHomeOf('root')).toBe('/Users/landon')
+    settings.set('macBridge.home.env_mac', 'not a path')
+    expect(tools.macHomeOf('root')).toBeNull()
+
+    const old = setup()
+    old.tools.setThread('root', 'env_mac')
+    expect(old.tools.macHomeOf('root')).toBeNull()
+    expect(old.tools.bridgeEnv('root')).toEqual({
+      TEMP_CODE_MAC_TOKEN: old.tokens.tokenFor('root')
+    })
+  })
+
+  it("the Claude thread's in-process tools say the home", () => {
+    const { tools } = setup(undefined, { home: '/Users/landon' })
+    macToolsHooks.current = tools
+    tools.setThread('root', 'env_mac')
+    const on = withMacTools({ mcpServers: {}, allowedTools: [] }, meta('root'))
+    const registered = (
+      on.mcpServers?.mac as unknown as {
+        instance: { _registeredTools: Record<string, { description?: string }> }
+      }
+    ).instance._registeredTools
+    expect(Object.keys(registered)).toEqual(Object.keys(MAC_TOOL_DESCRIPTIONS))
+    for (const [name, t] of Object.entries(registered))
+      expect(t.description).toBe(
+        macToolDescriptions('/Users/landon')[name as keyof typeof MAC_TOOL_DESCRIPTIONS]
+      )
+    macToolsHooks.current = null
+  })
+})
+
 describe('withMacTools', () => {
   it('adds the mac server and allows its tools only while the bridge is on', () => {
     const { tools } = setup()
@@ -305,6 +381,7 @@ describe('the codex bridge keeps the Mac tools equal', async () => {
     }[]
     TOOLS: { name: string }[]
     listedTools: (token?: string) => { name: string }[]
+    macTools: (home?: string) => { name: string; description: string }[]
   }
   it('same descriptions and params as the shared constants', () => {
     expect(bridge.MAC_TOOLS.map((t) => t.name)).toEqual(Object.keys(MAC_TOOL_DESCRIPTIONS))
@@ -314,6 +391,13 @@ describe('the codex bridge keeps the Mac tools equal', async () => {
       )
       for (const [k, v] of Object.entries(t.inputSchema.properties))
         expect(v.description).toBe(MAC_TOOL_PARAMS[k as keyof typeof MAC_TOOL_PARAMS])
+    }
+  })
+  it("same descriptions with the Mac's home named, from TEMP_CODE_MAC_HOME", () => {
+    for (const home of [undefined, '/Users/landon']) {
+      const want = macToolDescriptions(home)
+      for (const t of bridge.macTools(home))
+        expect(t.description).toBe(want[t.name as keyof typeof want])
     }
   })
   it('lists them only with a token', () => {

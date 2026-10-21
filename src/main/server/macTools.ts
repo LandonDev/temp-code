@@ -17,8 +17,9 @@ import {
   MAC_READ_MAX_BYTES,
   MAC_RUN_DEFAULT_TIMEOUT_MS,
   MAC_RUN_MAX_TIMEOUT_MS,
-  MAC_TOOL_DESCRIPTIONS,
   MAC_TOOL_PARAMS,
+  MacHomeSchema,
+  macToolDescriptions,
   type MacBridgeThreadState,
   type MacFetchFileResult,
   type MacFetchFileWire,
@@ -43,6 +44,8 @@ import type { PeerCalls } from './remote/peerCalls'
  */
 
 export const MAC_THREAD_PREFIX = 'macBridge.thread.'
+/** The home each Mac last named in peer.register, kept so a thread started while it is offline still knows it. */
+export const MAC_HOME_PREFIX = 'macBridge.home.'
 /** The reply's travel time on top of what the Mac may spend. */
 const DEADLINE_SLACK_MS = 30_000
 
@@ -142,11 +145,32 @@ export class MacTools {
     return this.threadState(sessionId)
   }
 
-  /** What the codex bridge's environment carries for a thread: the token, only while the bridge is on. */
+  /**
+   * The home directory of the Mac a thread reaches: what it named in its
+   * live peer.register, else what it named last time (kept in settings), else
+   * null (an older Mac, or one never seen).
+   */
+  macHomeOf(sessionId: string): string | null {
+    const { macPeer } = this.macPeerOf(sessionId)
+    if (!macPeer) return null
+    const key = `${MAC_HOME_PREFIX}${macPeer}`
+    const live = this.deps.calls.homeOf(macPeer)
+    if (live) {
+      if (this.deps.store.getSetting(key) !== live) this.deps.store.setSetting(key, live)
+      return live
+    }
+    const kept = MacHomeSchema.safeParse(this.deps.store.getSetting(key))
+    return kept.success ? kept.data : null
+  }
+
+  /** What the codex bridge's environment carries for a thread: the token (and the Mac's home), only while the bridge is on. */
   bridgeEnv(sessionId: string): Record<string, string> {
-    return this.enabled(sessionId)
-      ? { TEMP_CODE_MAC_TOKEN: this.deps.tokens.tokenFor(sessionId) }
-      : {}
+    if (!this.enabled(sessionId)) return {}
+    const home = this.macHomeOf(sessionId)
+    return {
+      TEMP_CODE_MAC_TOKEN: this.deps.tokens.tokenFor(sessionId),
+      ...(home ? { TEMP_CODE_MAC_HOME: home } : {})
+    }
   }
 
   /** One mac.* call from a thread: the token, the thread's switch, the Mac's link, then the Mac decides. */
@@ -256,15 +280,19 @@ export const MAC_TOOL_NAMES = [
 export const MAC_TOOLS = MAC_TOOL_NAMES.map((n) => `mcp__mac__${n}`)
 
 /** The Mac's four tools for one Claude thread (in-process; the token never leaves this process). */
-export function macToolsMcp(session: SessionMeta): McpSdkServerConfigWithInstance {
+export function macToolsMcp(
+  session: SessionMeta,
+  home: string | null = macToolsHooks.current?.macHomeOf(session.id) ?? null
+): McpSdkServerConfigWithInstance {
   const p = MAC_TOOL_PARAMS
+  const d = macToolDescriptions(home)
   return createSdkMcpServer({
     name: 'mac',
     version: '0.1.0',
     tools: [
       tool(
         'mac_read_file',
-        MAC_TOOL_DESCRIPTIONS.mac_read_file,
+        d.mac_read_file,
         {
           path: z.string().describe(p.path),
           maxBytes: z.number().int().min(1).max(MAC_READ_MAX_BYTES).optional().describe(p.maxBytes)
@@ -273,19 +301,19 @@ export function macToolsMcp(session: SessionMeta): McpSdkServerConfigWithInstanc
       ),
       tool(
         'mac_list_dir',
-        MAC_TOOL_DESCRIPTIONS.mac_list_dir,
+        d.mac_list_dir,
         { path: z.string().describe(p.path) },
         callTool(session, 'mac.listDir')
       ),
       tool(
         'mac_fetch_file',
-        MAC_TOOL_DESCRIPTIONS.mac_fetch_file,
+        d.mac_fetch_file,
         { path: z.string().describe(p.path) },
         callTool(session, 'mac.fetchFile')
       ),
       tool(
         'mac_run',
-        MAC_TOOL_DESCRIPTIONS.mac_run,
+        d.mac_run,
         {
           argv: z.array(z.string()).min(1).optional().describe(p.argv),
           command: z.string().optional().describe(p.command),

@@ -743,16 +743,36 @@ the fence's managed roots), never overwriting: a second copy gets ` (1)`.
 On the Mac (`src/main/server/remote/macBridge.ts`, `macRunner.ts`):
 
 - Per box, in the Mac's settings: `macBridge.policy.<envId>` is `off` (the
-  default), `read` or `read+run`; `macBridge.shared.<envId>` lists shared
+  default), `read`, `read+run` or `full` (Settings: Off, Read, Read and run,
+  Full access); `macBridge.shared.<envId>` lists shared
   folders: absolute, real paths, never `/`, the home directory or a directory
   above it. Settings → Remote access → Mac bridge edits both.
 - Reads, listings and fetches inside the Mac's own managed roots (its
   projects, workspaces and work root) or a shared folder go through without a
   prompt. A path is judged by its real spelling: a symlink out of a shared
-  folder asks. Paths must be absolute (no `~`: the box's home is not the
-  Mac's). Any other path asks the person at the Mac, every time, with
-  "allow this folder for this thread" (not offered when the folder would be
-  home or wider).
+  folder asks. Paths are absolute, or `~` / `~/…` for the Mac's home (`~user`
+  and relative paths are refused). The Mac names its home in `peer.register`
+  (`home`, optional; an older Mac sends none), the box keeps the last one in
+  `macBridge.home.<envId>`, and the thread's tool descriptions say "The Mac's
+  home is /Users/…" (Claude in-process; Codex through `TEMP_CODE_MAC_HOME`),
+  so a thread never guesses the user name. Any other path asks the person at
+  the Mac, every time, with "allow this folder for this thread" (not offered
+  when the folder would be home or wider).
+- The policy decides before any file is touched: a path outside what it
+  admits asks (or, with the bridge off, is refused) whether or not it exists,
+  so a missing file answers ENOENT only after the person allowed the read.
+- `full` reads, lists and fetches anywhere (home, other absolute paths)
+  without asking, except a deny list that asks every time and is never
+  remembered as a folder (`macDenied` in macBridge.ts): `~/.ssh`, `~/.gnupg`,
+  `~/.aws`, `~/.config/gh`, `~/.aliax`, `~/Library/Keychains`,
+  `~/Library/Application Support/TempCode` and `temp-code`,
+  `~/.claude/.credentials.json`, `~/.codex/auth.json`, any file the harness
+  sync's secret rule names (`harnessSet.ts` `isSecretPath`: `*.pem`, `*.key`,
+  `auth.json`, …) wherever it is, and the directories above home (`/`,
+  `/Users`, which would list every account). Matching is by real path
+  (a symlink into `~/.ssh` asks) and case-folded. Managed roots, shared
+  folders and remembered folders still go through first, as under `read`.
+  Commands under `full` behave exactly as under `read+run`.
 - Every command asks, showing the exact argv (or command string) and cwd,
   whatever the thread's permission mode on the box, `auto` included, with
   "allow this exact command for this thread" (argv and cwd must match). A

@@ -14,16 +14,23 @@ import { Heading, Input, Row, SecondaryButton, Segmented } from './settingsBits'
 /**
  * Settings → Remote access → Mac bridge (docs/box.md "The Mac bridge"): per
  * saved host, what its threads may do on this Mac (off | read | read and
- * run) and which folders they read without asking. Everything else, and
- * every command, is asked on this Mac. Desktop only: the browser bundle has
+ * run | full access) and which folders they read without asking. Everything
+ * else (under full access: keys, credentials and the folders above home),
+ * and every command, is asked on this Mac. Desktop only: the browser bundle has
  * no Mac to share.
  */
 
 const POLICIES: { value: MacBridgePolicy; label: string }[] = [
   { value: 'off', label: 'Off' },
   { value: 'read', label: 'Read' },
-  { value: 'read+run', label: 'Read and run' }
+  { value: 'read+run', label: 'Read and run' },
+  { value: 'full', label: 'Full access' }
 ]
+
+/** The line under a host's policy, for the levels that need one. */
+const POLICY_NOTES: Partial<Record<MacBridgePolicy, string>> = {
+  full: 'Any file on this Mac except keys and credentials; commands still ask.'
+}
 
 export function MacBridgeSettings() {
   const hosts = useMacBridgeHosts()
@@ -112,12 +119,17 @@ function HostRow({
           onChange={(policy) => void run(() => setMacBridgePolicy(host.environmentId, policy))}
         />
       </Row>
+      {POLICY_NOTES[host.policy] ? (
+        <p className="pb-2 pl-1 text-[12px] text-content/50">{POLICY_NOTES[host.policy]}</p>
+      ) : null}
       {host.policy !== 'off' ? (
         <div className="flex flex-col gap-1.5 pl-1">
           <div className="text-[12px] text-content/60">Shared folders (read without asking)</div>
           {host.shared.length === 0 ? (
             <div className="text-[12px] text-content/40">
-              {"None: every read outside this Mac's projects asks."}
+              {host.policy === 'full'
+                ? 'None: full access reads everywhere except keys and credentials.'
+                : "None: every read outside this Mac's projects asks."}
             </div>
           ) : null}
           {host.shared.map((folder) => (

@@ -12,9 +12,13 @@ import type {
   MacFetchFileWire
 } from '@shared/contract-macbridge'
 import {
+  FULL_DENY_DIRS,
+  FULL_DENY_FILES,
   MacBridge,
   asText,
   commandKey,
+  macDenied,
+  macPath,
   readVerdict,
   rememberFolder,
   validateSharedFolder
@@ -41,6 +45,20 @@ beforeAll(() => {
   writeFileSync(join(managed, 'README.md'), 'managed')
   writeFileSync(join(shared, 'bin.dat'), Buffer.from([0, 1, 2, 255]))
   symlinkSync(join(elsewhere, 'secret.txt'), join(shared, 'link-out'))
+  // The keys and credentials full access still asks for, each with a file inside.
+  for (const d of FULL_DENY_DIRS) {
+    mkdirSync(join(home, d), { recursive: true })
+    writeFileSync(join(home, d, 'inside'), 'key material')
+  }
+  for (const f of FULL_DENY_FILES) {
+    mkdirSync(join(home, f, '..'), { recursive: true })
+    writeFileSync(join(home, f), '{"token":"x"}')
+  }
+  writeFileSync(join(elsewhere, 'server.pem'), 'pem')
+  writeFileSync(join(elsewhere, 'settings.local.json'), '{}')
+  // Symlinks into deny-list folders, from a readable place.
+  symlinkSync(join(home, '.ssh', 'inside'), join(elsewhere, 'looks-harmless'))
+  symlinkSync(join(home, '.aws'), join(elsewhere, 'cloud'))
 })
 afterAll(() => rmSync(root, { recursive: true, force: true }))
 
@@ -87,6 +105,54 @@ describe('readVerdict', () => {
     expect(readVerdict(join(elsewhere, 'secret.txt'), rules)).toEqual({ allow: false })
     expect(readVerdict(join(shared, 'link-out'), rules)).toEqual({ allow: false })
     expect(readVerdict(home, rules)).toEqual({ allow: false })
+  })
+})
+
+describe('macPath', () => {
+  it("~ and ~/… are the Mac's home; relative and ~user are refused", () => {
+    expect(macPath('~', home)).toBe(home)
+    expect(macPath('~/Documents/shared', home)).toBe(shared)
+    expect(macPath(join(shared, '..', 'shared'), home)).toBe(shared)
+    expect(() => macPath('Documents', home)).toThrow(/absolute or start with ~\//)
+    expect(() => macPath('~other/x', home)).toThrow(/absolute or start with ~\//)
+  })
+  it('a path that does not exist keeps its spelling: nothing about it is read', () => {
+    expect(macPath(join(root, 'Users', 'someone-else', 'Desktop'), home)).toBe(
+      join(root, 'Users', 'someone-else', 'Desktop')
+    )
+  })
+})
+
+describe('macDenied (full access)', () => {
+  it('every deny-list folder, file and anything below them, by literal path', () => {
+    for (const d of FULL_DENY_DIRS) {
+      expect(macDenied(join(home, d), home)).toBe(true)
+      expect(macDenied(join(home, d, 'inside'), home)).toBe(true)
+    }
+    for (const f of FULL_DENY_FILES) expect(macDenied(join(home, f), home)).toBe(true)
+  })
+  it('case-folded, since a Mac volume is case-insensitive', () => {
+    expect(macDenied(join(home, '.SSH', 'id_ed25519'), home)).toBe(true)
+    expect(macDenied(join(home, 'Library', 'keychains'), home)).toBe(true)
+  })
+  it("the harness sync's secret names, anywhere", () => {
+    expect(macDenied(join(elsewhere, 'server.pem'), home)).toBe(true)
+    expect(macDenied('/etc/ssl/private/site.KEY', home)).toBe(true)
+    expect(macDenied(join(elsewhere, 'settings.local.json'), home)).toBe(true)
+    expect(macDenied(join(managed, 'auth.json'), home)).toBe(true)
+  })
+  it('the folders above home, but not home itself', () => {
+    expect(macDenied('/', home)).toBe(true)
+    expect(macDenied(join(root, 'Users'), home)).toBe(true)
+    expect(macDenied(home, home)).toBe(false)
+  })
+  it('everything else is readable: home, its folders, other absolute paths', () => {
+    expect(macDenied(join(home, 'top.txt'), home)).toBe(false)
+    expect(macDenied(join(elsewhere, 'secret.txt'), home)).toBe(false)
+    expect(macDenied(join(home, '.config', 'other'), home)).toBe(false)
+    expect(macDenied(join(home, '.sshd-notes'), home)).toBe(false)
+    expect(macDenied('/etc/hosts', home)).toBe(false)
+    expect(macDenied(join(root, 'Users', 'someone-else'), home)).toBe(false)
   })
 })
 
@@ -220,11 +286,92 @@ describe('MacBridge policy', () => {
     expect(b.lines.filter((l) => l.includes('allowed (shared)')).length).toBe(5)
   })
 
-  it("read: relative and ~ paths are refused (the box's home is not this one)", async () => {
+  it("read: ~ is the Mac's home; relative and ~user paths are refused", async () => {
     const b = bridge()
     b.mb.setPolicy('env_box', 'read')
-    await expect(b.call('mac.readFile', { path: '~/x' })).rejects.toThrow(/absolute/)
+    b.mb.setShared('env_box', [shared])
+    expect(
+      (await b.call<MacReadFileResult>('mac.readFile', { path: '~/Documents/shared/notes.md' }))
+        .content
+    ).toBe('shared notes')
     await expect(b.call('mac.readFile', { path: 'x' })).rejects.toThrow(/absolute/)
+    await expect(b.call('mac.readFile', { path: '~root/x' })).rejects.toThrow(/absolute/)
+    expect(b.requests()).toEqual([])
+  })
+
+  it("peer.register names this Mac's home for the box threads' tool text", async () => {
+    const sent: { method: string; params: unknown }[] = []
+    const mb = new MacBridge({
+      environmentId: 'env_mac',
+      store: { getSetting: () => null, setSetting: () => {} },
+      managedRoots: () => [],
+      environments: () => [{ id: 'env_box', name: 'box' }],
+      link: () => async (method: string, params: unknown) => {
+        sent.push({ method, params })
+        return { environmentId: 'env_box' }
+      },
+      home,
+      log: () => {}
+    })
+    await mb.linkUp('env_box')
+    expect(sent).toEqual([
+      { method: 'peer.register', params: { from: 'env_mac', offers: ['mac-bridge'], home } }
+    ])
+  })
+
+  it('a path that does not exist is decided before anything is read: off refuses, read asks, a denial never says ENOENT', async () => {
+    const ghost = join(root, 'Users', 'someone-else', 'Desktop')
+    const b = bridge()
+    await expect(b.call('mac.listDir', { path: ghost })).rejects.toThrow(/off for this host/)
+    b.mb.setPolicy('env_box', 'read')
+    for (const method of ['mac.listDir', 'mac.readFile', 'mac.fetchFile'] as const) {
+      const beforeR = b.requests().length
+      const denied = b.call(method, { path: ghost })
+      const r = await b.nextRequest(beforeR)
+      expect(r).toMatchObject({ kind: 'read', method, path: ghost, status: 'pending' })
+      b.mb.decide(r.id, false)
+      const err = await denied.catch((e: Error) => e)
+      expect(String(err)).toMatch(/denied at the Mac/)
+      expect(String(err)).not.toMatch(/ENOENT|no such file/)
+    }
+    // Only once the person allows does the Mac look, and only then can the answer be ENOENT.
+    const beforeR = b.requests().length
+    const allowed = b.call('mac.listDir', { path: ghost })
+    const r = await b.nextRequest(beforeR)
+    b.mb.decide(r.id, true)
+    await expect(allowed).rejects.toThrow(/ENOENT/)
+    // read+run: the same.
+    b.mb.setPolicy('env_box', 'read+run')
+    const beforeR2 = b.requests().length
+    const again = b.call('mac.listDir', { path: ghost }, 's2')
+    const r2 = await b.nextRequest(beforeR2)
+    expect(r2.path).toBe(ghost)
+    b.mb.decide(r2.id, false)
+    await expect(again).rejects.toThrow('denied at the Mac')
+  })
+
+  it('read and read+run: a folder above home (/Users) asks and is never offered as a remembered folder', async () => {
+    for (const policy of ['read', 'read+run'] as const) {
+      const b = bridge()
+      b.mb.setPolicy('env_box', policy)
+      b.mb.setShared('env_box', [shared])
+      const listing = b.call<MacListDirResult>('mac.listDir', { path: join(root, 'Users') })
+      const r = await b.nextRequest()
+      expect(r).toMatchObject({ kind: 'read', path: join(root, 'Users') })
+      expect(r.folder).toBeUndefined()
+      b.mb.decide(r.id, true, true)
+      expect((await listing).entries.map((e) => e.name)).toEqual(['me'])
+      // Not remembered: the next listing asks again.
+      const again = b.call('mac.listDir', { path: join(root, 'Users') })
+      const r2 = await b.nextRequest(1)
+      b.mb.decide(r2.id, false)
+      await expect(again).rejects.toThrow('denied')
+      // And a read outside the shared folder still asks, as before.
+      const outside = b.call('mac.readFile', { path: join(elsewhere, 'secret.txt') })
+      const r3 = await b.nextRequest(2)
+      b.mb.decide(r3.id, false)
+      await expect(outside).rejects.toThrow('denied')
+    }
   })
 
   it('read outside: asks; a denial is an error; allow + remember admits the folder for that thread only', async () => {
@@ -300,6 +447,133 @@ describe('MacBridge policy', () => {
       /nobody at the Mac answered/
     )
     expect(b.pushes.at(-1)).toMatchObject({ push: 'macBridge.resolved', outcome: 'expired' })
+  })
+})
+
+describe('MacBridge full access', () => {
+  it('reads, lists and fetches outside every shared folder without asking, ~ included', async () => {
+    const b = bridge({ managed: [] })
+    b.mb.setPolicy('env_box', 'full')
+    expect(b.mb.policyOf('env_box')).toBe('full')
+    expect(
+      (await b.call<MacReadFileResult>('mac.readFile', { path: join(elsewhere, 'secret.txt') }))
+        .content
+    ).toBe('private')
+    expect(
+      (await b.call<MacReadFileResult>('mac.readFile', { path: join(home, 'top.txt') })).content
+    ).toBe('at home')
+    expect(
+      (await b.call<MacReadFileResult>('mac.readFile', { path: '~/Private/sub/deep.txt' })).content
+    ).toBe('deep')
+    const listing = await b.call<MacListDirResult>('mac.listDir', { path: home })
+    expect(listing.entries.map((e) => e.name)).toContain('Private')
+    const fetched = await b.call<MacFetchFileWire>('mac.fetchFile', {
+      path: join(elsewhere, 'sub', 'deep.txt')
+    })
+    expect(Buffer.from(fetched.dataBase64, 'base64').toString()).toBe('deep')
+    // A symlink out of a shared folder into a readable place reads too.
+    expect(
+      (await b.call<MacReadFileResult>('mac.readFile', { path: join(shared, 'link-out') })).content
+    ).toBe('private')
+    expect(b.requests()).toEqual([])
+    expect(b.lines.filter((l) => l.includes('allowed (full)')).length).toBe(6)
+  })
+
+  it('a path that does not exist answers ENOENT at once: full access already admits it', async () => {
+    const b = bridge({ managed: [] })
+    b.mb.setPolicy('env_box', 'full')
+    await expect(b.call('mac.listDir', { path: join(home, 'Nope') })).rejects.toThrow(/ENOENT/)
+    expect(b.requests()).toEqual([])
+  })
+
+  it('every deny-list path still asks, each time, with no folder to remember', async () => {
+    const b = bridge({ managed: [] })
+    b.mb.setPolicy('env_box', 'full')
+    const paths = [
+      ...FULL_DENY_DIRS.map((d) => join(home, d, 'inside')),
+      ...FULL_DENY_FILES.map((f) => join(home, f)),
+      join(elsewhere, 'server.pem'),
+      join(elsewhere, 'settings.local.json')
+    ]
+    for (const path of paths) {
+      const beforeR = b.requests().length
+      const asked = b.call('mac.readFile', { path })
+      const r = await b.nextRequest(beforeR)
+      expect(r).toMatchObject({ kind: 'read', path })
+      expect(r.folder).toBeUndefined()
+      b.mb.decide(r.id, false)
+      await expect(asked).rejects.toThrow('denied at the Mac')
+    }
+    // Listing a deny-list folder asks too.
+    const beforeRL = b.requests().length
+    const listing = b.call('mac.listDir', { path: join(home, '.ssh') })
+    const rl = await b.nextRequest(beforeRL)
+    b.mb.decide(rl.id, false)
+    await expect(listing).rejects.toThrow('denied')
+    // Allowed once with remember: read once, and the next read asks again.
+    const beforeR1 = b.requests().length
+    const once = b.call<MacReadFileResult>('mac.readFile', { path: join(home, '.ssh', 'inside') })
+    const r1 = await b.nextRequest(beforeR1)
+    b.mb.decide(r1.id, true, true)
+    expect((await once).content).toBe('key material')
+    const beforeR2 = b.requests().length
+    const twice = b.call('mac.readFile', { path: join(home, '.ssh', 'inside') })
+    const r2 = await b.nextRequest(beforeR2)
+    b.mb.decide(r2.id, false)
+    await expect(twice).rejects.toThrow('denied')
+    expect(b.lines.every((l) => !l.includes('key material'))).toBe(true)
+  })
+
+  it('a symlink into a deny-list folder asks, by where it points', async () => {
+    const b = bridge({ managed: [] })
+    b.mb.setPolicy('env_box', 'full')
+    const viaFile = b.call('mac.readFile', { path: join(elsewhere, 'looks-harmless') })
+    const r1 = await b.nextRequest()
+    expect(r1.path).toBe(join(home, '.ssh', 'inside'))
+    b.mb.decide(r1.id, false)
+    await expect(viaFile).rejects.toThrow('denied')
+    const viaDir = b.call('mac.readFile', { path: join(elsewhere, 'cloud', 'inside') })
+    const r2 = await b.nextRequest(1)
+    expect(r2.path).toBe(join(home, '.aws', 'inside'))
+    b.mb.decide(r2.id, false)
+    await expect(viaDir).rejects.toThrow('denied')
+  })
+
+  it('a folder above home (/Users, /) asks; home itself does not', async () => {
+    const b = bridge({ managed: [] })
+    b.mb.setPolicy('env_box', 'full')
+    const users = b.call('mac.listDir', { path: join(root, 'Users') })
+    const r1 = await b.nextRequest()
+    expect(r1).toMatchObject({ kind: 'read', path: join(root, 'Users') })
+    expect(r1.folder).toBeUndefined()
+    b.mb.decide(r1.id, false)
+    await expect(users).rejects.toThrow('denied')
+    const disk = b.call('mac.listDir', { path: '/' })
+    const r2 = await b.nextRequest(1)
+    expect(r2.path).toBe('/')
+    b.mb.decide(r2.id, false)
+    await expect(disk).rejects.toThrow('denied')
+    await b.call<MacListDirResult>('mac.listDir', { path: '~' })
+    expect(b.requests().length).toBe(2)
+  })
+
+  it('commands still ask every time, with the same exact-command remember as read+run', async () => {
+    const b = bridge()
+    b.mb.setPolicy('env_box', 'full')
+    const first = b.call<MacRunResult>('mac.run', { argv: ['/bin/echo', 'full'], cwd: '~' })
+    const r1 = await b.nextRequest()
+    expect(r1).toMatchObject({ kind: 'run', argv: ['/bin/echo', 'full'], cwd: home })
+    b.mb.decide(r1.id, true, true)
+    expect((await first).stdout).toBe('full\n')
+    const second = await b.call<MacRunResult>('mac.run', { argv: ['/bin/echo', 'full'], cwd: home })
+    expect(second.stdout).toBe('full\n')
+    expect(b.requests().at(-1)?.status).toBe('running')
+    const other = b.call('mac.run', { argv: ['/bin/echo', 'other'], cwd: home })
+    const r3 = await b.nextRequest(b.requests().length - 1)
+    expect(r3).toMatchObject({ kind: 'run', argv: ['/bin/echo', 'other'], status: 'pending' })
+    b.mb.decide(r3.id, false)
+    await expect(other).rejects.toThrow('denied')
+    expect(b.lines.some((l) => l.includes('mac.run → allowed (remembered) argv0=echo'))).toBe(true)
   })
 })
 

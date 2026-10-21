@@ -12,7 +12,7 @@ import {
  * main process holds a socket open to the box's /ws (remote/peers.ts); the
  * box cannot dial the Mac, so the box asks over that same socket:
  *
- *   Mac → box  peer.register { from, offers }        the socket becomes the Mac's
+ *   Mac → box  peer.register { from, offers, home? } the socket becomes the Mac's
  *   box → Mac  { push: 'peer.call', callId, method, params, deadlineMs }
  *   Mac → box  peer.chunk { callId, index, data }    × n, when the reply is long
  *   Mac → box  peer.reply { callId, ok, result | error, chunks? }
@@ -34,6 +34,8 @@ export interface PeerSocket {
 interface Registration {
   socket: PeerSocket
   offers: Set<string>
+  /** The Mac's home directory, as it said in peer.register (an older Mac says nothing). */
+  home?: string
   at: number
 }
 
@@ -66,10 +68,15 @@ export class PeerCalls {
   /** peer.register: the latest socket under an environment id wins. */
   register(
     socket: PeerSocket,
-    params: { from: string; offers: string[] }
+    params: { from: string; offers: string[]; home?: string }
   ): { environmentId: string } {
     const prior = this.registered.get(params.from)
-    this.registered.set(params.from, { socket, offers: new Set(params.offers), at: Date.now() })
+    this.registered.set(params.from, {
+      socket,
+      offers: new Set(params.offers),
+      ...(params.home ? { home: params.home } : {}),
+      at: Date.now()
+    })
     if (prior?.socket.connection !== socket.connection)
       this.log(
         `${params.from} registered (offers ${params.offers.join(',') || 'none'}, key ${socket.keyId ?? 'local'})`
@@ -93,6 +100,11 @@ export class PeerCalls {
   online(envId: string, offer?: string): boolean {
     const reg = this.registered.get(envId)
     return !!reg && (!offer || reg.offers.has(offer))
+  }
+
+  /** The home directory a registered peer named, while it is registered. */
+  homeOf(envId: string): string | null {
+    return this.registered.get(envId)?.home ?? null
   }
 
   registeredIds(offer?: string): string[] {
@@ -206,7 +218,7 @@ export function handlePeerRequest(
   calls: PeerCalls,
   socket: PeerSocket & { remote: boolean },
   req:
-    | { method: 'peer.register'; params: { from: string; offers: string[] } }
+    | { method: 'peer.register'; params: { from: string; offers: string[]; home?: string } }
     | {
         method: 'peer.reply'
         params: { callId: string; ok: boolean; result?: unknown; error?: string; chunks?: number }
