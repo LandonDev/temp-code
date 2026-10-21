@@ -32,12 +32,16 @@ describe('METHOD_CAPABILITY', () => {
         ...methods.filter((m) => m.startsWith('remote.environments.')),
         // Where sign-ins are handed to, and a sync on demand, are this machine's to decide (thread V).
         'accounts.sync',
-        'accounts.setHome'
+        'accounts.setHome',
+        // The Mac bridge: a box thread's own tools (token-gated), and the Mac's decisions and policy.
+        ...methods.filter((m) => m.startsWith('mac.')),
+        ...methods.filter((m) => m.startsWith('macBridge.') && !m.startsWith('macBridge.thread.'))
       ].sort()
     )
   })
   it('approve covers exactly the prompt-skipping methods', () => {
-    expect(withCap('approve')).toEqual(['session.approve', 'session.permission'])
+    // macBridge.thread.set lets a box thread call the Mac without a box prompt (the Mac still asks for itself).
+    expect(withCap('approve')).toEqual(['macBridge.thread.set', 'session.approve', 'session.permission'])
   })
   it('admin covers settings writes and remote management', () => {
     expect(withCap('admin')).toEqual(
@@ -58,7 +62,9 @@ describe('METHOD_CAPABILITY', () => {
         'accounts.confirm',
         'accounts.released',
         // The harness config crosses between hosts, and its status and settings are changed, only under an admin key.
-        ...methods.filter((m) => m.startsWith('harness.'))
+        ...methods.filter((m) => m.startsWith('harness.')),
+        // The reverse RPC a Mac's main process speaks on its link to this host.
+        ...methods.filter((m) => m.startsWith('peer.'))
       ].sort()
     )
   })
@@ -91,5 +97,13 @@ describe('allows', () => {
   it('normalizeCaps adds read, drops junk and sorts', () => {
     expect(normalizeCaps(['operate', 'bogus', 'operate'])).toEqual(['operate', 'read'])
     expect(normalizeCaps([])).toEqual(['read'])
+  })
+})
+
+describe('the Mac bridge (contract-macbridge.ts)', () => {
+  it('no key can ever decide or set the Mac\'s policy, and a thread\'s tools stay on the loopback', () => {
+    for (const m of ['macBridge.decide', 'macBridge.pending', 'macBridge.policy.get', 'macBridge.policy.set', 'macBridge.shared.set', 'mac.readFile', 'mac.listDir', 'mac.fetchFile', 'mac.run'] as const)
+      expect(METHOD_CAPABILITY[m]).toBe('local')
+    expect(METHOD_CAPABILITY['macBridge.thread.get']).toBe('read')
   })
 })
