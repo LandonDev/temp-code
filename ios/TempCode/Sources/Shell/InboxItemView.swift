@@ -461,7 +461,7 @@ private struct PatchLineRow: View {
                 .padding(.horizontal, 12)
                 .padding(.vertical, 4)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color(.quaternarySystemFill))
+                .background(Rectangle().fill(Color(.quaternarySystemFill)))
         } else {
             HStack(spacing: 0) {
                 Text(line.number.map { String($0) } ?? "")
@@ -479,7 +479,8 @@ private struct PatchLineRow: View {
             .padding(.vertical, 1)
             .padding(.trailing, 8)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(background)
+            // An explicit rectangle: a plain style here takes a rounded container shape on iOS 26 and the rows scallop.
+            .background(Rectangle().fill(background))
         }
     }
 
