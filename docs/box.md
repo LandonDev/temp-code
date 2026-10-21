@@ -318,7 +318,7 @@ gets it on its own.
 
 | Piece | Where |
 | --- | --- |
-| Builds | `/srv/agents/temp-code-builds/<sha>-<UTC time>-<suffix>`, owned by agents, detached at the deployed commit |
+| Builds | `/srv/agents/temp-code-builds/<sha>-<UTC time>-<suffix>`, owned by agents: for a `v1.0.N` the release's prebuilt `out/` laid out from `temp-code-out-1.0.N.tar.gz`, for master a clone detached at the commit and built there; each with a `build-manifest.json` ("Updating" → "Build once") |
 | Active and rollback links | `/srv/agents/temp-code-builds/current` and `previous`; their parent directory is root-owned |
 | Original v235 checkout | `/srv/agents/temp-code`, retained while a release link points at it |
 | Data (database, environment.json, tls, server.json) | `/srv/agents/temp-code-data`, mode 700 |
@@ -1159,6 +1159,78 @@ link and gets `linkDown` and the refusal. No turn reaches a model there
 (TEMP_CODE_FAKE_PROVIDERS is a dead origin); the live pass is a box thread
 with the Mac app open.
 
+### Devices on the Mac
+
+"What is crippling my machine" used to take a terminal. Settings → Remote
+access on the Mac now has, under the Mac bridge's host rows, a block
+"Devices on this Mac": one summary line ("3 simulators, 1 booted · iPhone 17
+Pro Max paired · load 44.9 / 16 cores") and a compact table of every
+simulator and every iPhone or iPad Xcode knows: device and runtime, a state
+dot (green booted, muted shutdown, amber while changing) with the booted
+ones' CPU share, the thread that holds the device, and on hover the
+actions. In the box's /ui web mode (and on the phone, which reads the same
+methods) the block is "Devices on <Mac>" for every Mac linked to the box,
+served through the Mac's own main process.
+
+What it reads, on the Mac and only on demand (`src/main/server/devices/`):
+
+- `xcrun simctl list -j devices` (every runtime flattened, devices whose
+  runtime is gone left out), `xcrun devicectl list devices --json-output`
+  (iPhones and iPads: connected when a tunnel is up, paired when known but
+  away, unavailable otherwise; Apple TVs and watches are not listed), one
+  `ps -axo pid,pcpu,command` for the booted simulators' CPU (the %CPU of
+  every process under `…/Devices/<UDID>/`, summed), `os.loadavg()` with the
+  core count, and the Xcode in use: `DEVELOPER_DIR` when set, else the
+  newest `/Applications/Xcode*.app` as `sort -V | tail -1` orders them
+  (exactly what scripts/ios-device.sh picks; `Xcode-beta.app` sorts after
+  `Xcode-26.app`), else what `xcode-select` names. Every xcrun call runs
+  with `DEVELOPER_DIR` pinned to that Xcode, so a Mac whose `xcode-select`
+  points at the Command Line Tools still answers. A pass younger than 5 s
+  answers the next asker as is; overlapping askers share one pass; a tool
+  that fails is one line under the table, the rest of the report stands.
+  The parsers are pinned by fixtures captured on the user's Mac
+  (`devices/fixtures/README.md`).
+- The holder: the `thread_resources` ledger, by UDID, live rows of kind
+  `simulator` whose `environment_id` is the Mac. The Mac joins its own
+  ledger; a box joins its own ledger for that Mac when it forwards the
+  report, so a box thread's simulator names the box thread (title and
+  status when the host runs the thread, else the row's label). A database
+  without the table, or a device no thread recorded, shows "—". The holder
+  is a link to the thread.
+
+The contract (`src/shared/contract-hostdevices.ts`, all capability read
+unless said): `host.devices.hosts` lists the Macs a viewer may watch (this
+Mac; on another host, the peers registered with the `devices` offer);
+`host.devices` answers a report; `host.devices.watch` opens a viewer on the
+socket and a `host.devices` push lands every 30 s until
+`host.devices.unwatch` or the socket closes; `host.simulator.shutdown`,
+`host.simulator.delete` and `host.device.openXcode` (operate) act. Nothing
+runs with no viewer: the renderer watches only while the block is on
+screen (`lib/hostDevices.ts`, two rows of one Mac share a viewer), the hub
+(`HostDevicesHub`) keeps one 30 s timer per Mac while any socket watches
+it, and a box's timer polls the Mac with a `host.devices` peer.call, so the
+Mac gathers only when a box viewer is open too. The peer calls ride the Mac
+bridge's reverse RPC under the `devices` offer the Mac adds to
+`peer.register`; the Mac serves them against its own gatherer, performing
+the actions itself, only for a host it knows.
+
+The actions: Shutdown on a booted simulator; Delete behind a confirm that
+names the holder ("Held by iOS: Home, running. Delete anyway?", or what is
+removed when nobody holds it); on an iPhone only Open in Xcode, which
+brings Xcode forward and clicks Window → Devices and Simulators through
+System Events (without the accessibility permission Xcode comes up and the
+person presses ⇧⌘2). From the box's web UI the same confirm shows and the
+call goes to the Mac over the link. The table never animates beyond the
+hover actions' opacity.
+
+Tests: `devices/parse.test.ts` (the fixtures), `devices/hostDevices.test.ts`
+(the gatherer, the holder join, the viewer timer that starts with the first
+watcher and stops with the last, the peer serving), `devices/ledger.test.ts`,
+`contract-hostdevices.test.ts` (the confirm text and the summary line),
+`surfaces/MacDevices.dom.test.tsx` (the table, the empty state "No
+simulators", the confirm) and `lib/hostDevices.dom.test.tsx` (watch on
+mount, unwatch on unmount).
+
 ## Updating
 
 For a ref already on GitHub, press "Deploy master to the box" in the Mac
@@ -1179,9 +1251,11 @@ Nothing deploys the box on its own, so the Mac app marks a host that has
 fallen behind master. Every host says what it runs in its hello frame and
 in `/api/hello` for a caller it knows (`build`: release.json `n`, the
 `1.0.N` version, the commit, the platform; `src/main/buildInfo.ts`). The
-box's commit is its checkout's `.git/HEAD` (box-update runs a detached
-clone); a published Mac build carries it in the bundled package.json as
-`tempcodeBuild.sha`, which release-publish.sh passes through
+box's commit is its checkout's `.git/HEAD` when box-update built master
+from a detached clone, and `tempcodeBuild.sha` in the build's package.json
+when it laid out a release asset (scripts/release-pack-out.sh writes it,
+there is no `.git`); a published Mac build carries the same key in the
+bundled package.json, which release-publish.sh passes through
 electron-builder's extraMetadata. The Mac's main process reads
 `https://raw.githubusercontent.com/LandonDev/temp-code/master/release.json`
 every ten minutes and again when a window comes forward after fifteen idle
@@ -1214,10 +1288,13 @@ a maintenance-lock message if the other holds it. Both acquire
 restart, health checks and any rollback. A daily backup can run during the
 build/trial, but cannot race the switch or restart.
 
-`box-update` clones the GitHub repo into a fresh build directory and fetches
-that ref. As agents, it runs `bun install --frozen-lockfile`, installs
-Electron's binary, rebuilds native dependencies, then runs `electron-vite
-build`. It starts a headless trial with a private HOME, userData, TMPDIR,
+`box-update` lays the ref into a fresh build directory as agents: for a
+`v1.0.N` tag it downloads the release's `temp-code-out-1.0.N.tar.gz` and
+builds nothing, for master it clones the GitHub repo, fetches that ref and
+runs `electron-vite build`; node_modules come from the current build when
+bun.lock is unchanged, else from `bun install --frozen-lockfile` with
+Electron's binary installed and the native modules rebuilt ("Build once"
+below has the rules and the timings). It starts a headless trial with a private HOME, userData, TMPDIR,
 Xvfb and free loopback `TEMP_CODE_REMOTE_PORT`. The trial cannot claim the
 live Aliax shim. The check requires `/healthz`, an HTTP hello with the built
 version and contract, a matching local WebSocket hello, `tc-local session.list`,
@@ -1317,6 +1394,101 @@ runner against a scratch directory and a fake `box-update`
 (`TEMP_CODE_DEPLOY_DIR`, `TEMP_CODE_BOX_UPDATE`), and `hostJobs.test.ts`
 drives the app's side through the same files. The Mac's "Publish Mac
 release" button is the other half (CLAUDE.md "Releases").
+
+### Build once: the release asset and the lockfile rule
+
+The Mac's `bun run release:publish` already builds the tree it ships, and
+`out/` (main, preload, renderer, boot.js) is platform-independent
+JavaScript: nothing in it is decided at build time by the platform (the
+Mac-only pieces, the native menu, the Appshots helper under
+`resources/native`, the updater, are behind `process.platform` and
+`existsSync` checks at runtime, and the helper is not in the tarball, so
+Appshots disables itself on the box as it does in a dev tree). Only
+node_modules has native parts. So the box no longer builds a published
+release; it lays in what the Mac built, and installs node_modules only
+when they changed.
+
+**The asset.** After the Mac build, release-publish.sh runs
+`scripts/release-pack-out.sh`, which packs `out/`, package.json with the
+commit under `tempcodeBuild.sha`, release.json, bun.lock, `scripts/box`
+(the runner, `tc-local`, the probe, the history map), the history importer,
+docs/box.md and a `build-manifest.json` (version, release number, commit,
+contract version, bun.lock's sha256, when and on what it was built) into
+`temp-code-out-1.0.N.tar.gz`, writes a sha256sum line beside it and
+uploads both as assets of the GitHub release `v1.0.N`. The dry run is
+`scripts/release-publish.sh --pack-only [dist-dir]` (or `bun run
+release:pack-out`): tar and sha from the `out/` already built, no Keychain,
+nothing uploaded.
+
+**What box-update does with it** (scripts/box/box-update.sh, the install
+half in scripts/box/box-update-lib.sh, installed by stage 85 at
+`/usr/local/lib/temp-code/box-update-lib.sh`; reapply stage 85 once to get
+both):
+
+- `box-update v1.0.N` fetches the `.sha256` first; a 404 means the release
+  predates the asset and the launcher clones and builds from source as
+  before (`SOURCE: release v1.0.N carries no temp-code-out asset`). Else it
+  downloads the tarball, checks it with `sha256sum -c`, extracts it into the
+  candidate and checks what the box runs: the three bundles, package.json's
+  version equal to N and its `tempcodeBuild.sha` equal to the manifest's,
+  a contract version in the manifest. The probe reads version and contract
+  from the manifest, so the candidate needs no `src/`.
+- `box-update master` clones and runs `electron-vite build` as before.
+- node_modules, on both paths: when the candidate's bun.lock is
+  byte-identical to the current build's and that build has an Electron
+  binary, the current tree is hardlinked into the candidate (`cp -al`, 0.7 s
+  for the 76,000 files; nothing writes into node_modules at runtime, and
+  pruning the old build only drops its links). Otherwise
+  `bun install --frozen-lockfile`, Electron's binary and
+  `electron-builder install-app-deps` run in the build unit as today. The
+  install keeps devDependencies: Electron itself and electron-builder are
+  devDependencies, so a `--production` install would remove the runtime.
+- The build's `build-manifest.json` gets a `deploy` block: `ref`, `source`
+  (`asset` or `source`), `nodeModules` (`reused` or `installed`),
+  `modulesFrom` (the build the tree came from), `lockfileSha256`, `at`; plus
+  `version`, `contract`, `sha` and `release` (the drift mark reads the
+  commit from package.json and the release number from the bundle, so the
+  manifest is for an operator and the deploy log). The log says which path
+  ran: `SOURCE: release asset … (sha256 verified)` or `SOURCE: clone of
+  master at …`, `MODULES: reused from <build> (bun.lock unchanged, …)` or
+  `MODULES: installing (<reason>)`, `BUILD: skipped; … is prebuilt and its
+  modules are reused` or `BUILD: <ref> <sha> (<source>, modules <plan>)`.
+- Trial, snapshot, commit, rollback and retention are unchanged.
+
+**Expected deploy time** (measured on the box on 2026-10-21 with the 1.0.273
+tree; the trial's health check, the snapshot and the restart are the same
+on every path and add about a minute):
+
+| Path | Lay out | node_modules | Build | Before the trial |
+| --- | --- | --- | --- | --- |
+| `v1.0.N`, bun.lock unchanged | download the 10 MB tarball, extract in 0.6 s | hardlinked, 1–5 s | none | under 30 s |
+| `v1.0.N`, bun.lock changed | same | `bun install`, Electron, native rebuild: 1–3 min | none | 1–3 min |
+| `master`, bun.lock unchanged | clone, ~20 s | hardlinked, 1–5 s | `electron-vite build`, ~3 min | 3–4 min |
+| `master` with a changed bun.lock, or a release without the asset | clone | install, 1–3 min | build | 4–8 min (the whole deploy before this) |
+
+The scratch proof (`scripts/box/prove-build-once.sh <tarball>`, as agents,
+nothing root or live: the lib's steps into a build under /tmp with the live
+current build's node_modules hardlinked, then a headless start with a
+private HOME, userData, TMPDIR and port, `/healthz`, the hello and
+box-probe.mjs) went from the tarball to an answering app in 10 s. The Mac
+side's `--pack-only` packs the built tree in 2.5 s.
+
+**What still forces work:** a changed bun.lock (any dependency or Electron
+bump) installs node_modules once, on the first deploy after it;
+`BOX_UPDATE_FRESH_MODULES=1 box-update <ref>` forces that install (for a
+tree you distrust, or a package.json `postinstall` change with no lockfile
+change, which the rule does not see); `master` always runs
+`electron-vite build` on the box, since only a published release has a
+tarball; a release from before the asset existed builds from source; a
+current build with no Electron binary (an interrupted install) is never
+copied. `BOX_UPDATE_ASSET_BASE=<url>` points the fetch at another feed
+(the proof's local server). Proofs: `python3 scripts/box/test-build-once.py`
+(no root: the pack step on a fake tree, the fetch over a local server with a
+present, absent, corrupt and unreachable asset, the unpack checks, the
+lockfile rule, the hardlinked copy, the build steps per path, the manifest
+merge and the probe's read), and the root rehearsal
+`scripts/box/test-history-maintenance.py` still drives the launcher end to
+end with a mocked build.
 
 For green local master commits that are not on GitHub yet, transfer a bundle
 of that same repo instead of pushing from an implementation thread:

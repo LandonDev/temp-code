@@ -57,6 +57,7 @@ fi
 install -d -m 755 /usr/local/lib/temp-code
 put /usr/local/sbin/box-update 755 < "$BOX_DIR/box-update.sh"
 put /usr/local/sbin/box-sqlite-snapshot 750 < "$BOX_DIR/sqlite-snapshot.sh"
+put /usr/local/lib/temp-code/box-update-lib.sh 644 < "$BOX_DIR/box-update-lib.sh"
 put /usr/local/lib/temp-code/box-probe.mjs 644 < "$BOX_DIR/box-probe.mjs"
 put /usr/local/lib/temp-code/tc-local.mjs 644 < "$BOX_DIR/tc-local.mjs"
 put /usr/local/lib/temp-code/run 755 <<'EOF'

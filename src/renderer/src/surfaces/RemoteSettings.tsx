@@ -45,7 +45,7 @@ const kindText = (key: RemoteKey): string =>
 
 const rpc = <T,>(method: string, params: unknown = {}): Promise<T> => registry.primary().request<T>(method, params);
 
-export function RemoteSettings() {
+export function RemoteSettings({ onOpenSession }: { onOpenSession?: (sessionId: string) => void } = {}) {
   const [status, setStatus] = useState<RemoteStatus | null>(null);
   const [keys, setKeys] = useState<RemoteKey[]>([]);
   const [pairings, setPairings] = useState<RemotePairing[]>([]);
@@ -228,7 +228,7 @@ export function RemoteSettings() {
 
       <DeploySettings />
 
-      <MacBridgeSettings />
+      <MacBridgeSettings onOpenSession={onOpenSession} />
 
       <Heading title="Browser sessions" />
       <List empty="No browser is signed in.">

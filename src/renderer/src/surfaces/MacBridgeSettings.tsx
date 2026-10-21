@@ -4,6 +4,7 @@ import { errorText } from '../chrome/ConfirmDialog'
 import { DeployDriftMark } from '../chrome/DeployDrift'
 import { MacBridgeRunningList } from '../chrome/MacBridgeRunning'
 import { MacBridgeRememberedSection } from '../chrome/MacBridgeRemember'
+import { MacDevicesSection } from './MacDevices'
 import { pickFolder } from '../lib/fs'
 import {
   refreshMacBridgeHosts,
@@ -24,8 +25,10 @@ import { Heading, Input, Row, SecondaryButton, Segmented, Toggle } from './setti
  * "Show running commands" says whether a command admitted without a prompt
  * (remembered, or from a thread in full access on its box) shows as a card:
  * off by default under full access, on otherwise. Off, the only trace is the
- * running list here, with Stop per command. Desktop only: the browser bundle
- * has no Mac to share.
+ * running list here, with Stop per command. Under the host rows, the devices
+ * a Mac is running (MacDevices.tsx): this Mac's on the desktop; in web mode,
+ * where the browser bundle has no Mac to share and the bridge rows stay away,
+ * the Macs linked to the host.
  */
 
 const POLICIES: { value: MacBridgePolicy; label: string }[] = [
@@ -40,7 +43,7 @@ const POLICY_NOTES: Partial<Record<MacBridgePolicy, string>> = {
   full: 'Any file on this Mac except keys and credentials; a command asks unless remembered or from a thread in full access.'
 }
 
-export function MacBridgeSettings() {
+export function MacBridgeSettings({ onOpenSession }: { onOpenSession?: (sessionId: string) => void } = {}) {
   const hosts = useMacBridgeHosts()
   const [loaded, setLoaded] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -68,7 +71,8 @@ export function MacBridgeSettings() {
     }
   }
 
-  if (isWebMode() || !loaded) return null
+  if (isWebMode()) return <MacDevicesSection onOpenSession={onOpenSession} />
+  if (!loaded) return null
   return (
     <>
       <Heading title="Mac bridge" />
@@ -85,6 +89,7 @@ export function MacBridgeSettings() {
       ) : (
         hosts.map((host) => <HostRow key={host.environmentId} host={host} run={run} />)
       )}
+      <MacDevicesSection onOpenSession={onOpenSession} />
       <MacBridgeRememberedSection />
     </>
   )

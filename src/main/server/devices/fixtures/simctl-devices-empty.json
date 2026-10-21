@@ -1,0 +1,13 @@
+{
+  "devices" : {
+    "com.apple.CoreSimulator.SimRuntime.iOS-27-0" : [
+
+    ],
+    "com.apple.CoreSimulator.SimRuntime.tvOS-26-2" : [
+
+    ],
+    "com.apple.CoreSimulator.SimRuntime.iOS-26-2" : [
+
+    ]
+  }
+}
