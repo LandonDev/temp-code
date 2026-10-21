@@ -373,6 +373,28 @@ export const TOOLS = [
   }
 ]
 
+// Interactive jobs (mac_run background: true): copies of src/shared/contract-macjobs.ts's
+// MAC_JOB_TOOL_DESCRIPTIONS and MAC_JOB_TOOL_PARAMS; macJobs.test.ts keeps them equal.
+const MAC_JOB_TOOL_DESCRIPTIONS = {
+  mac_job_write:
+    "Write to the stdin of a job started with mac_run background: true (answer a prompt, feed input). Add a newline to send a line. close: true closes its stdin after the write (in a terminal that is end-of-file, ^D). No new approval: the user allowed the job when it started.",
+  mac_job_read:
+    'Read the output of a job started with mac_run background: true: what it wrote past afterOffset (pass the last nextOffset), at most the newest 1 MiB, plus whether it is still running and its exit code once done. waitMs waits for new output or the exit. A job with no read or write for 30 minutes is killed.',
+  mac_job_signal:
+    'Send a signal to a job started with mac_run background: true: INT (like Ctrl-C), TERM, or KILL. It goes to the whole process group.'
+}
+const MAC_JOB_TOOL_PARAMS = {
+  background:
+    'Start it as an interactive job instead: it runs in a terminal on the Mac with stdin open, and this answers {jobId} at once. Then use mac_job_read, mac_job_write and mac_job_signal. The user still approves it first. At most 4 jobs per thread; a job ends with the thread or after 30 idle minutes.',
+  jobId: 'The jobId mac_run background: true answered.',
+  text: 'Text to write to the job\'s stdin, as UTF-8 (include "\\n" to end a line).',
+  dataBase64: 'Raw bytes to write instead of text, base64.',
+  close: "Close the job's stdin after this write.",
+  afterOffset: "Read output past this byte offset: the last read's nextOffset (default 0).",
+  waitMs: 'Wait up to this many milliseconds for new output or the exit (default 0, at most 30000).',
+  signal: 'INT, TERM or KILL.'
+}
+
 // ── the Mac bridge (only when TEMP_CODE_MAC_TOKEN is set) ────────────
 // Copies of src/shared/contract-macbridge.ts's MAC_TOOL_DESCRIPTIONS,
 // macToolDescriptions and MAC_TOOL_PARAMS; macTools.test.ts keeps them equal.
@@ -427,6 +449,7 @@ export function macTools(home = MAC_HOME) {
       inputSchema: {
         type: 'object',
         properties: {
+          background: { type: 'boolean', description: MAC_JOB_TOOL_PARAMS.background },
           argv: { type: 'array', items: { type: 'string' }, minItems: 1, description: MAC_TOOL_PARAMS.argv },
           command: { type: 'string', description: MAC_TOOL_PARAMS.command },
           cwd: { type: 'string', description: MAC_TOOL_PARAMS.cwd },
@@ -460,9 +483,79 @@ const MAC_METHOD_FOR = {
   mac_write_file: 'mac.writeFile'
 }
 
-/** The tools this thread lists: the Mac's four only while its bridge is on. */
+const macJobId = { type: 'string', description: MAC_JOB_TOOL_PARAMS.jobId }
+export const MAC_JOB_TOOLS = [
+  {
+    name: 'mac_job_write',
+    description: MAC_JOB_TOOL_DESCRIPTIONS.mac_job_write,
+    inputSchema: {
+      type: 'object',
+      properties: {
+        jobId: macJobId,
+        text: { type: 'string', description: MAC_JOB_TOOL_PARAMS.text },
+        dataBase64: { type: 'string', description: MAC_JOB_TOOL_PARAMS.dataBase64 },
+        close: { type: 'boolean', description: MAC_JOB_TOOL_PARAMS.close }
+      },
+      required: ['jobId']
+    }
+  },
+  {
+    name: 'mac_job_read',
+    description: MAC_JOB_TOOL_DESCRIPTIONS.mac_job_read,
+    inputSchema: {
+      type: 'object',
+      properties: {
+        jobId: macJobId,
+        afterOffset: { type: 'integer', minimum: 0, description: MAC_JOB_TOOL_PARAMS.afterOffset },
+        waitMs: { type: 'integer', minimum: 0, maximum: 30000, description: MAC_JOB_TOOL_PARAMS.waitMs }
+      },
+      required: ['jobId']
+    }
+  },
+  {
+    name: 'mac_job_signal',
+    description: MAC_JOB_TOOL_DESCRIPTIONS.mac_job_signal,
+    inputSchema: {
+      type: 'object',
+      properties: {
+        jobId: macJobId,
+        signal: { type: 'string', enum: ['TERM', 'KILL', 'INT'], description: MAC_JOB_TOOL_PARAMS.signal }
+      },
+      required: ['jobId', 'signal']
+    }
+  }
+]
+
+/** One mac_job_* call as the box's mac.job* methods (macTools.ts runJobTool does the same for Claude). */
+export async function runJobTool(name, args, call) {
+  const jobId = args?.jobId
+  if (name === 'mac_job_write') {
+    const hasText = typeof args?.text === 'string'
+    const hasData = typeof args?.dataBase64 === 'string'
+    if (hasText && hasData) throw new Error('mac_job_write takes text or dataBase64, not both')
+    if (!hasText && !hasData && args?.close !== true) throw new Error('mac_job_write needs text, dataBase64 or close: true')
+    const out = { jobId }
+    if (hasText || hasData) {
+      const dataBase64 = hasText ? Buffer.from(args.text, 'utf8').toString('base64') : args.dataBase64
+      Object.assign(out, await call('mac.jobWrite', { jobId, dataBase64 }))
+    }
+    if (args?.close === true) Object.assign(out, await call('mac.jobClose', { jobId }))
+    return out
+  }
+  if (name === 'mac_job_read') {
+    return call('mac.jobRead', {
+      jobId,
+      ...(args?.afterOffset !== undefined ? { afterOffset: args.afterOffset } : {}),
+      ...(args?.waitMs !== undefined ? { waitMs: args.waitMs } : {})
+    })
+  }
+  if (name === 'mac_job_signal') return call('mac.jobSignal', { jobId, signal: args?.signal })
+  throw new Error(`unknown tool: ${name}`)
+}
+
+/** The tools this thread lists: the Mac's only while its bridge is on. */
 export function listedTools(macToken = MAC_TOKEN) {
-  return macToken ? [...TOOLS, ...MAC_TOOLS] : TOOLS
+  return macToken ? [...TOOLS, ...MAC_TOOLS, ...MAC_JOB_TOOLS] : TOOLS
 }
 
 const METHOD_FOR = {
@@ -497,6 +590,13 @@ async function callTool(name, args) {
   if (name === 'update_plan') return [{ type: 'text', text: 'task list updated' }]
   // The Mac decides how long a call may wait (its approval, the command's
   // timeout); the server holds the deadline, so no client timeout here.
+  if (MAC_JOB_TOOLS.some((t) => t.name === name)) {
+    if (!MAC_TOKEN) throw new Error('the Mac bridge is off for this thread')
+    const result = await runJobTool(name, args, (method, params) =>
+      appRequest(method, { ...params, token: MAC_TOKEN }, 0)
+    )
+    return toolContent(name, result)
+  }
   if (MAC_METHOD_FOR[name]) {
     if (!MAC_TOKEN) throw new Error('the Mac bridge is off for this thread')
     return toolContent(name, await appRequest(MAC_METHOD_FOR[name], { ...(args ?? {}), token: MAC_TOKEN }, 0))

@@ -25,7 +25,6 @@ import {
   type MacDirEntry,
   type MacFetchFileWire,
   type MacListDirResult,
-  type MacMethod,
   type MacReadFileResult,
   type MacRunResult
 } from '@shared/contract-macbridge'
@@ -37,6 +36,8 @@ import { runMacCommand, type RunningCommand } from './macRunner'
 import { servePeerCall, type LinkRequest } from './peerCalls'
 import { serveMacWrite, writeFoldersOf } from './macBridgeWrite'
 import type { MacWriteFileResult } from '@shared/contract-macbridge'
+import { isMacJobPeerMethod, type MacPeerMethod } from '@shared/contract-macjobs'
+import { MacJobs, type JobSpawner } from './macJobs'
 
 /**
  * The Mac side of the Mac bridge (docs/box.md "The Mac bridge: what a box
@@ -90,6 +91,8 @@ export interface MacBridgeDeps {
   shell?: string
   run?: typeof runMacCommand
   log?: (line: string) => void
+  /** Interactive jobs' process (macJobs.ts): node-pty by default. */
+  jobSpawner?: JobSpawner
 }
 
 // ── the policy, pure ─────────────────────────────────────────────────
@@ -257,6 +260,7 @@ export class MacBridge {
   setPolicy(envId: string, policy: MacBridgePolicy): MacBridgeHostPolicy[] {
     this.knownHost(envId)
     this.deps.store.setSetting(`${POLICY_PREFIX}${envId}`, policy === 'off' ? null : policy)
+    if (policy === 'off' || policy === 'read') this.jobsInstance?.endHost(envId)
     this.log(`${this.nameOf(envId)} (${envId}): policy ${policy}`)
     return this.hosts()
   }
@@ -430,7 +434,7 @@ export class MacBridge {
   // ── a call from a box ──────────────────────────────────────────────
 
   async handle(
-    method: MacMethod,
+    method: MacPeerMethod,
     params: MacCallParams,
     ctx: {
       from: string
@@ -452,6 +456,12 @@ export class MacBridge {
         "the Mac bridge is off for this host: turn it on in the Mac's Settings → Remote access"
       )
     }
+    if (isMacJobPeerMethod(method))
+      return this.jobs.handle(env, thread, method, params.args, {
+        policy,
+        deadlineAt: ctx.deadlineAt,
+        line
+      })
     if (method === 'mac.run') {
       if (policy !== 'read+run' && policy !== 'full') {
         line('refused (policy read)')
@@ -591,7 +601,36 @@ export class MacBridge {
     return result
   }
 
+  // ── interactive jobs (macJobs.ts) ────────────────────────────────────
+
+  private jobsInstance: MacJobs | null = null
+  /** mac.run background: true and the calls on its job; the card is mac.run's, marked interactive. */
+  get jobs(): MacJobs {
+    this.jobsInstance ??= new MacJobs({
+      ask: (shape, until, remembered) => {
+        const asked = this.ask(shape, until)
+        // A remembered command still shows on the Mac: it starts at once, as running.
+        if (remembered) this.pendingById.get(asked.id)?.decide(true, false)
+        return asked
+      },
+      running: (id, stop) => {
+        const p = this.pendingById.get(id)
+        if (!p) return
+        p.stop = stop
+        p.request = { ...p.request, status: 'running' }
+        this.emit({ push: 'macBridge.request', request: p.request })
+      },
+      finish: (id, outcome) => this.finish(id, outcome),
+      home: this.home,
+      ...(this.deps.shell ? { shell: this.deps.shell } : {}),
+      ...(this.deps.jobSpawner ? { spawner: this.deps.jobSpawner } : {}),
+      log: this.log
+    })
+    return this.jobsInstance
+  }
+
   close(): void {
+    this.jobsInstance?.closeAll()
     for (const [id, p] of this.pendingById) {
       p.stop?.()
       p.decide(false, false)

@@ -284,6 +284,11 @@ export const METHOD_CAPABILITY: Record<ClientRequest['method'], MethodCapability
   // The Mac's remembered approvals (contract-macbridge-rules.ts): only its own renderer.
   'macBridge.rules.list': 'local',
   'macBridge.rules.forget': 'local',
+  // Interactive jobs on the Mac (contract-macjobs.ts): a box thread's own, like mac.run.
+  'mac.jobWrite': 'local',
+  'mac.jobRead': 'local',
+  'mac.jobSignal': 'local',
+  'mac.jobClose': 'local',
   // Saved hosts and their keys never leave this machine (thread K1).
   'remote.environments.list': 'local',
   'remote.environments.add': 'local',
