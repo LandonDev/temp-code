@@ -1,7 +1,8 @@
 #!/bin/bash
 # The auto-release worker: while commits keep landing, keep trying. A
-# dirty tree, a red typecheck or a red test just means no release this round — the
-# next green commit retries. Never touches the installed app.
+# dirty tree or a red gate (scripts/gate.ts, whose per-step times land in
+# this log) just means no release this round — the next green commit
+# retries. Never touches the installed app.
 ROOT="$1"
 cd "$ROOT" || exit 1
 # node must be found, else bunx vitest runs under Bun and node:sqlite is missing.

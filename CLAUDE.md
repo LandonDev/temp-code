@@ -66,18 +66,48 @@ so the two apps can take turns on it. Unread marks and layout live in
 localStorage, which differs by origin, so they do not carry across.
 
 ## Releases: the local train tags, `release:publish` ships
-Two separate steps, on purpose.
+Two separate steps, on purpose, over one gate.
+
+- **The gate is `bun run gate`** (scripts/gate.ts): one `STEPS` array, each
+  step tagged `commit` or `publish`, and one `TIER_PATHS` map in the same
+  file. `--tier commit|publish|all` picks the tier; `--since <ref>` adds
+  the tiers that the paths changed since `<ref>` pull in; `--full` forces
+  everything; `--only a,b` / `--skip a,b` / `--verbose` for a hand run.
+  - `commit`: typecheck, vitest, the electron-vite build and, after it in
+    the same lane, the bundle-size check (scripts/check-bundle-size.ts).
+    `publish`: e2e-remote-fence, hub:test, ios:test, ios:test:client. A
+    proof that boots an instance belongs in `publish`.
+  - Steps in one lane run in array order, one at a time; lanes run at
+    once (typecheck, vitest and build + bundle-size together), with a combined status
+    line on a terminal and `✓ step 12s` lines plus a per-step time table
+    in a log. The first failure stops the rest; the failed step's log
+    tail is printed and every step's full output is in
+    `<git-dir>/temp-code-gate/logs/<step>.log`, the times in
+    `last-run.json` beside it. docs/release-gate.md has the measured
+    times on the Mac and the box.
+  - Caches: vitest keeps node_modules/.vite/vitest and SwiftPM each
+    package's `.build`; the gate never cleans either. typecheck is skipped
+    when no .ts/.tsx/.json (or generated Swift) file changed since the
+    last green run, by a hash of that set stored in
+    `<git-dir>/temp-code-gate/typecheck`; `--full` runs it anyway.
+  - The path map: a commit touching `ios/**`, scripts/gen-swift-contract.ts,
+    src/shared/wireSchemas.ts, `src/shared/contract*.ts`,
+    `src/main/server/remote/**`, `infra/hub/**`, the fence proof or the iOS
+    runners pulls the `publish` tier into the hook as well, so a contract
+    change still cannot land stale Swift.
 
 1. **Every green commit tags locally.** A post-commit hook on master
    (.githooks/, wired via core.hooksPath) runs `bun scripts/release.ts`
-   after every commit: it gates on a clean tree + typecheck + tests +
-   build, bumps release.json to N and package.json to `1.0.N`, commits
-   both, and tags `release-N`, using your commit subject as the release
-   notes. That is bookkeeping: no user sees it.
+   after every commit: it gates on a clean tree + `gate --tier commit
+   --since release-N` (the commits since the last release decide whether
+   the `publish` tier joins), bumps release.json to N and package.json to
+   `1.0.N`, commits both, and tags `release-N`, using your commit subject
+   as the release notes. That is bookkeeping: no user sees it.
    - If the hook skipped (tree was dirty at commit time, or the gate was
      red), the next green commit releases everything since; you can also
-     run `bun scripts/release.ts "notes"` yourself.
-   - Worker log: /tmp/temp-code-auto-release.log.
+     run `bun scripts/release.ts "notes"` yourself (`--full` to run the
+     typecheck the hash would skip).
+   - Worker log: /tmp/temp-code-auto-release.log, with the per-step times.
    - Never commit with a broken typecheck "to fix later" — that blocks the
      train.
    - Commit messages carry no `Co-Authored-By` or other AI attribution
@@ -85,7 +115,8 @@ Two separate steps, on purpose.
      `.claude/settings.json` turns the trailer off; do not add one by hand.
 2. **`bun run release:publish` publishes HEAD's 1.0.N** (scripts/
    release-publish.sh, the same shape as Aliax's release): clean tree on
-   master, signs with the Developer ID Application identity in the login
+   master, runs `gate --tier publish` (`GATE_SKIP=1` only to retry a failed
+   upload), signs with the Developer ID Application identity in the login
    Keychain, notarizes through the `aliax` notarytool Keychain profile,
    uploads the arm64 zip + dmg + latest-mac.yml and the box's
    `temp-code-out-1.0.N.tar.gz` + `.sha256` (scripts/release-pack-out.sh:

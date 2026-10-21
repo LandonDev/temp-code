@@ -1,13 +1,16 @@
 /**
- * Cut a local release: `bun scripts/release.ts "one-line notes"`.
+ * Cut a local release: `bun scripts/release.ts "one-line notes" [--full]`.
  *
- * Gates on a clean tree, typecheck (with the Swift contract check), vitest,
- * the hub and iOS package tests, and a real build, then bumps
- * release.json to N and package.json to 1.0.N, commits both, and tags
- * `release-N`. That is the whole of the local train: nothing here reaches
- * users. The installed app updates from GitHub releases only, which
- * `bun run release:publish` (scripts/release-publish.sh) cuts from a tagged
- * commit — never install or swap /Applications/TempCode.app from here.
+ * Gates on a clean tree and the gate's `commit` tier (scripts/gate.ts:
+ * typecheck, vitest and a real build, run at once), plus the `publish` tier
+ * when a commit since the last release touched a path it guards (ios/**,
+ * the Swift contract generator, wireSchemas.ts, the remote server, the hub:
+ * TIER_PATHS in gate.ts). Then bumps release.json to N and package.json to
+ * 1.0.N, commits both, and tags `release-N`. That is the whole of the local
+ * train: nothing here reaches users. The installed app updates from GitHub
+ * releases only, which `bun run release:publish` (scripts/release-publish.sh)
+ * cuts from a tagged commit after the `publish` tier — never install or swap
+ * /Applications/TempCode.app from here.
  */
 import { execFileSync } from 'node:child_process'
 import { readFileSync, writeFileSync } from 'node:fs'
@@ -22,9 +25,11 @@ const env = Object.fromEntries(
 const run = (cmd: string, args: string[]): string =>
   execFileSync(cmd, args, { encoding: 'utf8', stdio: ['inherit', 'pipe', 'inherit'], env })
 
-const notes = process.argv[2]?.trim()
+const args = process.argv.slice(2)
+const full = args.includes('--full')
+const notes = args.find((a) => !a.startsWith('--'))?.trim()
 if (!notes) {
-  console.error('usage: bun scripts/release.ts "one-line release notes"')
+  console.error('usage: bun scripts/release.ts "one-line release notes" [--full]')
   process.exit(1)
 }
 
@@ -36,29 +41,24 @@ if (dirty.length > 0) {
   process.exit(1)
 }
 
-console.log('› typecheck')
-run('bun', ['run', 'typecheck'])
-console.log('› vitest')
-run('bunx', ['vitest', 'run'])
-// The remote fence, pairing, webhook and hello rules against a real server (R2).
-console.log('› e2e-remote-fence')
-run('bun', ['run', 'script:e2e-remote-fence'])
-console.log('› hub')
-run('bun', ['run', 'hub:test'])
-// The iOS contract package: 12 s cold, 2 s warm on this Mac (scripts/ios-test.sh).
-console.log('› ios')
-run('bun', ['run', 'ios:test'])
-console.log('› ios:test:client')
-run('bun', ['run', 'ios:test:client'])
-console.log('› build')
-run('bunx', ['electron-vite', 'build'])
-// The renderer's index chunk against its budget (scripts/check-bundle-size.ts):
-// a static import that pulls a lazy surface back into the first paint fails here.
-console.log('› check:bundle')
-run('bun', ['scripts/check-bundle-size.ts'])
+// The gate (scripts/gate.ts): the commit tier always, the publish tier when
+// the commits since the last release (tag release-N, else the parent) touch
+// what it guards. The gate prints its own per-step times.
+const last = JSON.parse(readFileSync('release.json', 'utf8')) as { n: number }
+const since = (() => {
+  try {
+    run('git', ['rev-parse', '-q', '--verify', `release-${last.n}^{commit}`])
+    return `release-${last.n}`
+  } catch {
+    return 'HEAD~1'
+  }
+})()
+execFileSync('bun', ['scripts/gate.ts', '--tier', 'commit', '--since', since, ...(full ? ['--full'] : [])], {
+  stdio: 'inherit',
+  env
+})
 
-const rel = JSON.parse(readFileSync('release.json', 'utf8')) as { n: number }
-const n = rel.n + 1
+const n = last.n + 1
 writeFileSync('release.json', JSON.stringify({ n, notes, ts: Date.now() }, null, 2) + '\n')
 // package.json carries the same number as a semver electron-updater can
 // order: 1.0.N. The regex edit keeps the file's formatting byte for byte.

@@ -19,6 +19,7 @@
     "ios:test:client": "bun scripts/ios-client-test.ts",
     "ios:device": "./scripts/ios-device.sh",
     "start": "electron-vite preview",
+    "gate": "bun scripts/gate.ts",
     "release": "bun scripts/release.ts",
     "release:publish": "./scripts/release-publish.sh",
     "release:pack-out": "./scripts/release-pack-out.sh",

@@ -69,6 +69,12 @@ if gh release view "v$VERSION" --repo "$REPO" >/dev/null 2>&1; then
 fi
 echo "publishing $VERSION signed as $IDENTITY (team $TEAM)"
 
+# The publish tier of the gate (scripts/gate.ts): the remote fence proof, the
+# hub tests and the iOS packages. The commit tier already ran in the train;
+# this is what it leaves to publish, so it runs here before anything is
+# signed or pushed. GATE_SKIP=1 skips it for a re-run of a failed upload.
+[ -n "$GATE_SKIP" ] || bun run gate --tier publish
+
 # Push the source first: GitHub creates the v1.0.N tag at master's remote tip
 # the moment the release leaves draft, so master must already be there or the
 # tag lands on the previous commit and the final tag push is rejected.
