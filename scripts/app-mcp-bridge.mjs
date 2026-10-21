@@ -384,7 +384,9 @@ const MAC_TOOL_DESCRIPTIONS = {
   mac_fetch_file:
     "Copy a file from the user's Mac onto this host and get back the local path it landed at (inside this thread's .temp-code/attachments folder). Use it for files you need to work on here (up to 64 MiB). The same approval rules as mac_read_file.",
   mac_run:
-    "Run a command on the user's Mac (for macOS-only tools: xcodebuild, osascript, open, security, …). Every command waits for the user to allow it on the Mac, showing them exactly the argv and cwd, and may be denied. Runs through the Mac's login shell with no stdin; the output streams into this call's row while it runs and comes back whole up to 4 MiB (past that, the first 1 MiB and the last 3 MiB). Prefer argv; use command only when you need shell syntax (pipes, globs)."
+    "Run a command on the user's Mac (for macOS-only tools: xcodebuild, osascript, open, security, …). Every command waits for the user to allow it on the Mac, showing them exactly the argv and cwd, and may be denied. Runs through the Mac's login shell with no stdin; the output streams into this call's row while it runs and comes back whole up to 4 MiB (past that, the first 1 MiB and the last 3 MiB). Prefer argv; use command only when you need shell syntax (pipes, globs).",
+  mac_write_file:
+    "Write a file on the user's Mac (up to 8 MiB). Give the contents as text (a UTF-8 string, for source, config and other text files) or as dataBase64 (any bytes), exactly one of them. Paths are absolute Mac paths. mode create (the default) refuses a file that exists, overwrite replaces it atomically, append adds to its end. Folders the user shared with this host take writes at once when the user allows commands too; any other path, anything under ~/Library and the dotfiles in the Mac's home wait for the user to allow it on the Mac, and may be denied."
 }
 const MAC_TOOL_PARAMS = {
   path: "Absolute path on the Mac, or ~/… for the Mac's home, e.g. ~/Documents/report.pdf.",
@@ -392,7 +394,11 @@ const MAC_TOOL_PARAMS = {
   argv: 'The command and its arguments, run as given with no shell parsing, e.g. ["xcrun", "simctl", "list"].',
   command: "A shell command line instead of argv, read by the Mac's login shell.",
   cwd: "Absolute working directory on the Mac, or ~/… (default: the Mac's home directory).",
-  timeoutMs: 'Kill the command after this many milliseconds (default 120000, at most 1800000).'
+  timeoutMs: 'Kill the command after this many milliseconds (default 120000, at most 1800000).',
+  dataBase64: "The file's bytes, base64-encoded (at most 8 MiB decoded). Give this or text, not both.",
+  text: "The file's contents as a UTF-8 string (at most 8 MiB once encoded). Give this or dataBase64, not both.",
+  mode: 'create (default: fails if the file exists), overwrite, or append.',
+  fileMode: 'Unix permission bits as a decimal number, e.g. 420 for 0644 (default: 0644 for a new file, unchanged for an existing one).'
 }
 /** The descriptions for one thread: the Mac's home named when the box knows it (TEMP_CODE_MAC_HOME). */
 export function macToolDescriptions(home) {
@@ -427,6 +433,21 @@ export function macTools(home = MAC_HOME) {
           timeoutMs: { type: 'integer', minimum: 1000, maximum: 1800000, description: MAC_TOOL_PARAMS.timeoutMs }
         }
       }
+    },
+    {
+      name: 'mac_write_file',
+      description: d.mac_write_file,
+      inputSchema: {
+        type: 'object',
+        properties: {
+          path: macPath,
+          dataBase64: { type: 'string', description: MAC_TOOL_PARAMS.dataBase64 },
+          text: { type: 'string', description: MAC_TOOL_PARAMS.text },
+          mode: { type: 'string', enum: ['create', 'overwrite', 'append'], description: MAC_TOOL_PARAMS.mode },
+          fileMode: { type: 'integer', minimum: 0, maximum: 511, description: MAC_TOOL_PARAMS.fileMode }
+        },
+        required: ['path']
+      }
     }
   ]
 }
@@ -435,7 +456,8 @@ const MAC_METHOD_FOR = {
   mac_read_file: 'mac.readFile',
   mac_list_dir: 'mac.listDir',
   mac_fetch_file: 'mac.fetchFile',
-  mac_run: 'mac.run'
+  mac_run: 'mac.run',
+  mac_write_file: 'mac.writeFile'
 }
 
 /** The tools this thread lists: the Mac's four only while its bridge is on. */

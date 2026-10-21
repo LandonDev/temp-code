@@ -31,6 +31,7 @@ import { HarnessSync, handleHarness } from './remote/harnessSync'
 import { SessionMover, handleSessionMove } from './remote/sessionMover'
 import { claudeConfigDir, codexHomeDir } from './sessionMove'
 import { PeerCalls, handlePeerRequest } from './remote/peerCalls'
+import { handlePeerPull, macWriteStages } from './macWriteStage'
 import { MacBridge, handleMacBridge } from './remote/macBridge'
 import { MacThreadTokens, MacTools, macToolsHooks, rebootWhenSettled } from './macTools'
 import { MacRunCalls, MacRunLive } from './macRunLive'
@@ -732,6 +733,9 @@ export async function startServer(
           const peerSocket = { connection, keyId: principal.kind === 'remote' ? principal.keyId : null, remote: principal.kind === 'remote', send: sendFrame }
           return sendFrame({ id: req.id, ok: true, result: handlePeerRequest(peerCalls, peerSocket, req) })
         }
+        // A Mac pulling a staged mac.writeFile, only on the socket the call went out on (macWriteStage.ts).
+        if (req.method === 'peer.pull')
+          return sendFrame({ id: req.id, ok: true, result: handlePeerPull(macWriteStages, { connection, remote: principal.kind === 'remote' }, req.params) })
         const macBridged = handleMacBridge(req, macBridge)
         if (macBridged.handled) return sendFrame({ id: req.id, ok: true, result: macBridged.result })
         const macTooled = await macTools.handle(req)

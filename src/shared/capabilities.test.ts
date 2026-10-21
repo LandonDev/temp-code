@@ -109,7 +109,7 @@ describe('allows', () => {
 
 describe('the Mac bridge (contract-macbridge.ts)', () => {
   it('no key can ever decide or set the Mac\'s policy, and a thread\'s tools stay on the loopback', () => {
-    for (const m of ['macBridge.decide', 'macBridge.pending', 'macBridge.policy.get', 'macBridge.policy.set', 'macBridge.shared.set', 'mac.readFile', 'mac.listDir', 'mac.fetchFile', 'mac.run'] as const)
+    for (const m of ['macBridge.decide', 'macBridge.pending', 'macBridge.policy.get', 'macBridge.policy.set', 'macBridge.shared.set', 'mac.readFile', 'mac.listDir', 'mac.fetchFile', 'mac.run', 'mac.writeFile'] as const)
       expect(METHOD_CAPABILITY[m]).toBe('local')
     expect(METHOD_CAPABILITY['macBridge.thread.get']).toBe('read')
   })

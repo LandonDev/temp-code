@@ -20,6 +20,9 @@ import {
   MAC_TOOL_PARAMS,
   MacHomeSchema,
   macToolDescriptions,
+  MAC_WRITE_MAX_BASE64,
+  MAC_WRITE_MAX_BYTES,
+  MacWriteModeSchema,
   type MacBridgeThreadState,
   type MacFetchFileResult,
   type MacFetchFileWire,
@@ -29,6 +32,7 @@ import {
 import type { SessionMeta } from '@shared/events'
 import { macBridgeLandingDir, type LandingLookup } from './macBridgeLanding'
 import type { MacRunLive } from './macRunLive'
+import { callMacWrite, macWriteStages, type MacWriteStages } from './macWriteStage'
 import type { PeerCalls } from './remote/peerCalls'
 
 /**
@@ -90,6 +94,8 @@ export interface MacToolsDeps {
   /** A running mac.run's output, live on the thread's tool row (macRunLive.ts). */
   live?: MacRunLive
   log?: (line: string) => void
+  /** Where a write too long for one frame waits for the Mac to pull it (default: the box's one set). */
+  writeStages?: MacWriteStages
 }
 
 type MacArgs = Record<string, unknown>
@@ -207,6 +213,14 @@ export class MacTools {
       method === 'mac.run'
         ? Math.min(Number(args.timeoutMs) || MAC_RUN_DEFAULT_TIMEOUT_MS, MAC_RUN_MAX_TIMEOUT_MS)
         : 0
+    if (method === 'mac.writeFile')
+      return callMacWrite(
+        this.deps.calls,
+        this.deps.writeStages ?? macWriteStages,
+        macPeer,
+        { id: session.id, title: session.title },
+        args
+      )
     const deadlineMs = MAC_APPROVAL_WAIT_MS + timeoutMs + DEADLINE_SLACK_MS
     const live =
       method === 'mac.run' ? this.deps.live?.open(session.id, args as MacRunArgs, rowId) : undefined
@@ -254,7 +268,8 @@ export class MacTools {
       case 'mac.readFile':
       case 'mac.listDir':
       case 'mac.fetchFile':
-      case 'mac.run': {
+      case 'mac.run':
+      case 'mac.writeFile': {
         const { sessionId, token, ...args } = req.params
         return { handled: true, result: await this.call(sessionId, token, req.method, args) }
       }
@@ -307,7 +322,8 @@ export const MAC_TOOL_NAMES = [
   'mac_read_file',
   'mac_list_dir',
   'mac_fetch_file',
-  'mac_run'
+  'mac_run',
+  'mac_write_file'
 ] as const
 export const MAC_TOOLS = MAC_TOOL_NAMES.map((n) => `mcp__mac__${n}`)
 
@@ -359,6 +375,18 @@ export function macToolsMcp(
             .describe(p.timeoutMs)
         },
         callTool(session, 'mac.run')
+      ),
+      tool(
+        'mac_write_file',
+        d.mac_write_file,
+        {
+          path: z.string().describe(p.path),
+          dataBase64: z.string().max(MAC_WRITE_MAX_BASE64).optional().describe(p.dataBase64),
+          text: z.string().max(MAC_WRITE_MAX_BYTES).optional().describe(p.text),
+          mode: MacWriteModeSchema.optional().describe(p.mode),
+          fileMode: z.number().int().min(0).max(0o777).optional().describe(p.fileMode)
+        },
+        callTool(session, 'mac.writeFile')
       )
     ]
   })

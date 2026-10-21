@@ -29,7 +29,8 @@ const METHOD_TEXT: Record<MacBridgeRequest['method'], string> = {
   'mac.readFile': 'read',
   'mac.listDir': 'list',
   'mac.fetchFile': 'copy to the host',
-  'mac.run': 'run'
+  'mac.run': 'run',
+  'mac.writeFile': 'write a file'
 }
 
 function MacBridgeCard({
@@ -88,6 +89,12 @@ function MacBridgeCard({
         <div className="text-[11px] text-content/50">
           in <span className="font-mono">{request.cwd}</span>
           {request.timeoutMs ? ` · stops after ${Math.round(request.timeoutMs / 1000)} s` : ''}
+        </div>
+      ) : null}
+      {request.kind === 'write' ? (
+        <div className="text-[11px] text-content/50">
+          {request.writeMode ?? 'create'} · {(request.bytes ?? 0).toLocaleString()} bytes
+          {request.createsFolders ? ' · creates the missing folders' : ''}
         </div>
       ) : null}
       {running ? (

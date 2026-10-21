@@ -64,7 +64,9 @@ export const MAC_TOOL_DESCRIPTIONS = {
   mac_fetch_file:
     "Copy a file from the user's Mac onto this host and get back the local path it landed at (inside this thread's .temp-code/attachments folder). Use it for files you need to work on here (up to 64 MiB). The same approval rules as mac_read_file.",
   mac_run:
-    "Run a command on the user's Mac (for macOS-only tools: xcodebuild, osascript, open, security, …). Every command waits for the user to allow it on the Mac, showing them exactly the argv and cwd, and may be denied. Runs through the Mac's login shell with no stdin; the output streams into this call's row while it runs and comes back whole up to 4 MiB (past that, the first 1 MiB and the last 3 MiB). Prefer argv; use command only when you need shell syntax (pipes, globs)."
+    "Run a command on the user's Mac (for macOS-only tools: xcodebuild, osascript, open, security, …). Every command waits for the user to allow it on the Mac, showing them exactly the argv and cwd, and may be denied. Runs through the Mac's login shell with no stdin; the output streams into this call's row while it runs and comes back whole up to 4 MiB (past that, the first 1 MiB and the last 3 MiB). Prefer argv; use command only when you need shell syntax (pipes, globs).",
+  mac_write_file:
+    "Write a file on the user's Mac (up to 8 MiB). Give the contents as text (a UTF-8 string, for source, config and other text files) or as dataBase64 (any bytes), exactly one of them. Paths are absolute Mac paths. mode create (the default) refuses a file that exists, overwrite replaces it atomically, append adds to its end. Folders the user shared with this host take writes at once when the user allows commands too; any other path, anything under ~/Library and the dotfiles in the Mac's home wait for the user to allow it on the Mac, and may be denied."
 } as const
 export const MAC_TOOL_PARAMS = {
   path: "Absolute path on the Mac, or ~/… for the Mac's home, e.g. ~/Documents/report.pdf.",
@@ -72,7 +74,12 @@ export const MAC_TOOL_PARAMS = {
   argv: 'The command and its arguments, run as given with no shell parsing, e.g. ["xcrun", "simctl", "list"].',
   command: "A shell command line instead of argv, read by the Mac's login shell.",
   cwd: "Absolute working directory on the Mac, or ~/… (default: the Mac's home directory).",
-  timeoutMs: 'Kill the command after this many milliseconds (default 120000, at most 1800000).'
+  timeoutMs: 'Kill the command after this many milliseconds (default 120000, at most 1800000).',
+  dataBase64: "The file's bytes, base64-encoded (at most 8 MiB decoded). Give this or text, not both.",
+  text: "The file's contents as a UTF-8 string (at most 8 MiB once encoded). Give this or dataBase64, not both.",
+  mode: 'create (default: fails if the file exists), overwrite, or append.',
+  fileMode:
+    'Unix permission bits as a decimal number, e.g. 420 for 0644 (default: 0644 for a new file, unchanged for an existing one).'
 } as const
 
 /** A Mac's home as `peer.register` carries it: absolute, one line. */
@@ -97,7 +104,8 @@ export function macToolDescriptions(
     mac_read_file: MAC_TOOL_DESCRIPTIONS.mac_read_file + note,
     mac_list_dir: MAC_TOOL_DESCRIPTIONS.mac_list_dir + note,
     mac_fetch_file: MAC_TOOL_DESCRIPTIONS.mac_fetch_file + note,
-    mac_run: MAC_TOOL_DESCRIPTIONS.mac_run + note
+    mac_run: MAC_TOOL_DESCRIPTIONS.mac_run + note,
+    mac_write_file: MAC_TOOL_DESCRIPTIONS.mac_write_file + note
   }
 }
 
@@ -130,7 +138,13 @@ export type MacListDirArgs = z.infer<typeof MacListDirArgsSchema>
 export type MacFetchFileArgs = z.infer<typeof MacFetchFileArgsSchema>
 export type MacRunArgs = z.infer<typeof MacRunArgsSchema>
 
-export const MAC_METHODS = ['mac.readFile', 'mac.listDir', 'mac.fetchFile', 'mac.run'] as const
+export const MAC_METHODS = [
+  'mac.readFile',
+  'mac.listDir',
+  'mac.fetchFile',
+  'mac.run',
+  'mac.writeFile'
+] as const
 export type MacMethod = (typeof MAC_METHODS)[number]
 
 /** The thread a box names in a `peer.call`; the Mac shows it on the card and keys its remember rules by it. */
@@ -142,7 +156,7 @@ export interface MacCallThread {
 /** `peer.call` params for a mac.* method: the args plus the calling thread. */
 export type MacCallParams = {
   thread: MacCallThread
-  args: MacReadFileArgs | MacListDirArgs | MacFetchFileArgs | MacRunArgs
+  args: MacReadFileArgs | MacListDirArgs | MacFetchFileArgs | MacRunArgs | MacWriteFileWire
 }
 
 export interface MacReadFileResult {
@@ -202,7 +216,7 @@ export interface MacBridgeRequest extends MacRunRememberOffer {
   hostName: string
   sessionId: string
   threadTitle: string
-  kind: 'read' | 'run'
+  kind: 'read' | 'run' | 'write'
   method: MacMethod
   /** read: the real path asked for. */
   path?: string
@@ -212,6 +226,10 @@ export interface MacBridgeRequest extends MacRunRememberOffer {
   command?: string
   cwd?: string
   timeoutMs?: number
+  /** write: the bytes it would write, how, and whether it makes the missing folders above the file. */
+  bytes?: number
+  writeMode?: MacWriteMode
+  createsFolders?: boolean
   createdAt: number
   expiresAt: number
   status: 'pending' | 'running'
@@ -252,6 +270,60 @@ export type MacBridgePush =
     }
   | { push: 'macBridge.request'; request: MacBridgeRequest }
   | { push: 'macBridge.resolved'; id: string; outcome: MacBridgeOutcome }
+
+// ── mac.writeFile (remote/macBridgeWrite.ts on the Mac, macWriteStage.ts on the box) ──
+
+export const MAC_WRITE_MAX_BYTES = 8 * 1024 * 1024
+/** base64 characters of MAC_WRITE_MAX_BYTES. */
+export const MAC_WRITE_MAX_BASE64 = Math.ceil(MAC_WRITE_MAX_BYTES / 3) * 4
+export const MacWriteModeSchema = z.enum(['create', 'overwrite', 'append'])
+export type MacWriteMode = z.infer<typeof MacWriteModeSchema>
+const fileModeArg = z.number().int().min(0).max(0o777)
+/** What a thread names, before the one-of check (zod 4 refuses to extend a refined object). */
+const MacWriteFileArgsBase = z.object({
+  path: pathArg,
+  dataBase64: z.string().max(MAC_WRITE_MAX_BASE64).optional(),
+  /** UTF-8 text instead of base64; the box encodes it before staging, so the Mac sees bytes either way. */
+  text: z.string().max(MAC_WRITE_MAX_BYTES).optional(),
+  mode: MacWriteModeSchema.optional(),
+  fileMode: fileModeArg.optional()
+})
+/** Exactly one of dataBase64 and text. */
+const oneContent = <T extends z.ZodType<{ dataBase64?: string; text?: string }>>(schema: T): T =>
+  schema.refine((a) => (a.dataBase64 === undefined) !== (a.text === undefined), {
+    message: 'mac.writeFile takes dataBase64 or text, exactly one of them'
+  }) as T
+/** What a thread names. */
+export const MacWriteFileArgsSchema = oneContent(MacWriteFileArgsBase)
+export type MacWriteFileArgs = z.infer<typeof MacWriteFileArgsSchema>
+/**
+ * What the box sends the Mac in the `peer.call`: the bytes inline when their
+ * base64 fits one PEER_CHUNK_CHARS frame, else staged on the box, and the Mac
+ * pulls them with `peer.pull` once it has allowed the write.
+ */
+export const MacWriteFileWireSchema = z.object({
+  path: pathArg,
+  mode: MacWriteModeSchema,
+  fileMode: fileModeArg.optional(),
+  size: z.number().int().min(0).max(MAC_WRITE_MAX_BYTES),
+  sha256: z.string().regex(/^[0-9a-f]{64}$/),
+  dataBase64: z.string().max(PEER_CHUNK_CHARS).optional(),
+  staged: z
+    .object({
+      id: z.string().min(1).max(100),
+      chunks: z.number().int().min(1).max(PEER_MAX_CHUNKS)
+    })
+    .optional()
+})
+export type MacWriteFileWire = z.infer<typeof MacWriteFileWireSchema>
+export interface MacWriteFileResult {
+  /** The real path written on the Mac. */
+  path: string
+  bytes: number
+  mode: MacWriteMode
+  /** The file did not exist before. */
+  created: boolean
+}
 
 const request = <M extends string, P extends z.ZodType>(method: M, params: P) =>
   z.object({ id: z.string(), method: z.literal(method), params })
@@ -307,11 +379,24 @@ export const MacBridgeRequestSchemas = [
       skipped: z.number().int().min(0).optional()
     })
   ),
+  /** → { data }: one piece of a staged mac.writeFile, asked for by the Mac the call went to. */
+  request(
+    'peer.pull',
+    z.object({
+      stageId: z.string().min(1).max(100),
+      index: z
+        .number()
+        .int()
+        .min(0)
+        .max(PEER_MAX_CHUNKS - 1)
+    })
+  ),
   // ── a box thread's tools (local; the token is the thread's own) ──────
   request('mac.readFile', MacReadFileArgsSchema.extend(threadAuth)),
   request('mac.listDir', MacListDirArgsSchema.extend(threadAuth)),
   request('mac.fetchFile', MacFetchFileArgsSchema.extend(threadAuth)),
   request('mac.run', MacRunArgsSchema.extend(threadAuth).extend(macRunCallRef)),
+  request('mac.writeFile', oneContent(MacWriteFileArgsBase.extend(threadAuth))),
   // ── a box thread's switch ────────────────────────────────────────────
   /** → MacBridgeThreadState. */
   request('macBridge.thread.get', z.object({ sessionId: z.string().min(1).max(200) })),

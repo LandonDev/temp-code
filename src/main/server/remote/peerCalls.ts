@@ -235,6 +235,11 @@ export class PeerCalls {
     for (const [callId, call] of this.calls) this.settle(callId, call, new Error('server closing'))
     this.registered.clear()
   }
+
+  /** The connection a peer registered on, for a stage only that socket may pull (macWriteStage.ts). */
+  connectionOf(envId: string): number | null {
+    return this.registered.get(envId)?.socket.connection ?? null
+  }
 }
 
 /** The peer.* requests on the box. Remote principals only: the box's own loopback never registers as a Mac. */
