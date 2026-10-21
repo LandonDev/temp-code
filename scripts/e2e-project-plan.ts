@@ -15,6 +15,7 @@
  * Nothing here touches /Applications/TempCode.app or the box's live service.
  */
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { randomBytes } from 'node:crypto'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { configure } from 'aliax-core'
@@ -32,12 +33,18 @@ import {
 
 const MODEL = process.env.TC_E2E_MODEL ?? 'claude-haiku-5-5'
 const root = mkdtempSync(join(tmpdir(), 'tc-pp-'))
-// A throwaway vault: no accounts, so the gateway passes the CLI's own
-// login through to the provider, and never the user's live shim.
+// A throwaway vault with no accounts, present on disk: with no vault at
+// all the accounts snapshot lists the CLI's live sign-in as a profile the
+// gateway cannot forward through, and the second thread would route to it;
+// an empty vault routes nothing, and every thread passes the CLI's own
+// login through to the provider — never the user's live shim.
+mkdirSync(join(root, 'aliax', 'secrets'), { recursive: true, mode: 0o700 })
+writeFileSync(join(root, 'aliax', 'vault.key'), `${randomBytes(32).toString('hex')}\n`, { mode: 0o600 })
+writeFileSync(join(root, 'aliax', 'profiles.json'), '{}\n')
 configure({
   dataDir: join(root, 'aliax'),
   fetch: (url, init) => fetch(url, init),
-  secrets: { mode: 'chromiumKey', keychainItem: 'Test Safe Storage' },
+  secrets: { mode: 'fileKey', path: join(root, 'aliax', 'vault.key') },
   appName: 'temp-code-e2e'
 })
 const server = await startServer(join(root, 'app.db'), { claimShim: false })
@@ -190,6 +197,7 @@ const build = await registry.create({
   planPath: planning.planPath ?? undefined
 })
 check('the build inherits the milestone link from its plan', JSON.stringify(plans.linkOf(build.id)) === JSON.stringify({ projectId: project.id, milestone: next.index }))
+await new Promise((r) => setTimeout(r, 500))
 check('the milestone plan is archived once its build starts', registry.get(planning.id)?.archived === true)
 check('landing the build ticks the milestone', JSON.stringify(plans.landed(project.id)) === JSON.stringify([next.index]))
 const ticked = parseProjectPlan(readFileSync(planPath, 'utf8'))
