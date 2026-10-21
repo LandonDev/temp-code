@@ -12,7 +12,7 @@ file. A sibling change that needs a new check (the bundle-size check after
 | tier | steps | runs |
 | --- | --- | --- |
 | `commit` | typecheck, vitest, build, bundle-size | in the post-commit hook, on every commit on master |
-| `publish` | e2e-remote-fence, hub, ios, ios-client | before signing in `release:publish`; and in the hook when a commit touches a guarded path |
+| `publish` | e2e-remote-fence, hub, ios, ios-client | before signing in `release:publish`; and in the hook when a commit touches a guarded path. hub, ios and ios-client are `mac: true`: a host off macOS (the box's merge gate) skips them with a note, since `release:publish` runs them on the Mac before anything ships |
 
 Guarded paths (`TIER_PATHS`): `ios/**`, `scripts/gen-swift-contract.ts`,
 `src/shared/wireSchemas.ts`, `src/shared/contract*.ts`,

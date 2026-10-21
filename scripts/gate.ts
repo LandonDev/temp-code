@@ -45,6 +45,10 @@ export interface Step {
   why: string
   /** True for the one step the tree hash may skip (see typecheckHash). */
   hashSkip?: boolean
+  /** Runs only on macOS (Xcode's Swift, the simulator, the hub's installed
+   *  tree): skipped elsewhere with a note, since release:publish runs the
+   *  publish tier on the Mac before anything ships. */
+  mac?: boolean
 }
 
 /**
@@ -102,7 +106,8 @@ export const STEPS: Step[] = [
     cmd: 'bun',
     args: ['run', 'hub:test'],
     lane: 'hub',
-    why: 'the Cloudflare hub worker tests (infra/hub)'
+    why: 'the Cloudflare hub worker tests (infra/hub)',
+    mac: true
   },
   {
     name: 'ios',
@@ -110,7 +115,8 @@ export const STEPS: Step[] = [
     cmd: 'bun',
     args: ['run', 'ios:test'],
     lane: 'swift',
-    why: 'the iOS contract package (swift build + test)'
+    why: 'the iOS contract package (swift build + test)',
+    mac: true
   },
   {
     name: 'ios-client',
@@ -118,9 +124,18 @@ export const STEPS: Step[] = [
     cmd: 'bun',
     args: ['run', 'ios:test:client'],
     lane: 'swift',
-    why: 'the iOS client package against a live test server (boots an instance)'
+    why: 'the iOS client package against a live test server (boots an instance)',
+    mac: true
   }
 ]
+
+/** The steps a host off macOS skips, with the note the report carries. */
+export function macOnlySkips(steps: readonly Step[], platform: NodeJS.Platform = process.platform): Map<string, string> {
+  const out = new Map<string, string>()
+  if (platform === 'darwin') return out
+  for (const s of steps) if (s.mac) out.set(s.name, 'needs the Mac; release:publish runs it there')
+  return out
+}
 
 /**
  * Which paths pull a tier into a commit's gate. A commit that touches one of
@@ -510,7 +525,7 @@ export async function gate(opts: GateOptions): Promise<Report> {
   }
   const steps = selectSteps({ tiers, only: opts.only, skip: opts.skip })
   const dir = gateDir(opts.repo)
-  const skipped = new Map<string, string>()
+  const skipped = macOnlySkips(steps)
   let hash: string | undefined
   const hashStep = steps.find((s) => s.hashSkip)
   if (hashStep) {

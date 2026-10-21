@@ -17,7 +17,8 @@ import {
   storeHash,
   tiersForPaths,
   typecheckHash,
-  type Step
+  type Step,
+  macOnlySkips
 } from './gate'
 
 describe('the step list', () => {
@@ -60,6 +61,15 @@ describe('the step list', () => {
     expect(parseArgs(['--tier=publish']).tiers).toEqual(new Set(['publish']))
     expect(() => parseArgs(['--tier', 'weekly'])).toThrow(/--tier must be/)
     expect(() => parseArgs(['--bogus'])).toThrow(/unknown argument/)
+  })
+})
+
+describe('the Mac-only steps', () => {
+  it('skips hub, ios and ios-client off macOS with a note, and nothing on it', () => {
+    expect([...macOnlySkips(STEPS, 'linux').keys()]).toEqual(['hub', 'ios', 'ios-client'])
+    expect(macOnlySkips(STEPS, 'linux').get('ios')).toBe('needs the Mac; release:publish runs it there')
+    expect(macOnlySkips(STEPS, 'darwin').size).toBe(0)
+    expect(STEPS.filter((s) => s.mac).every((s) => s.tier === 'publish')).toBe(true)
   })
 })
 
