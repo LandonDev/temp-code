@@ -11,7 +11,8 @@ import { listCommands } from './commands'
  * The transcript keeps the /name the user typed (sessions.ts logs first).
  */
 
-const TOKEN = /(?<=^|\s)\/([\w-]+)(?=$|\s)/g
+// `name` or `ns:name` (claude's account-synced `anthropic-skills:<name>`).
+const TOKEN = /(?<=^|\s)\/([\w-]+(?::[\w-]+)?)(?=$|\s)/g
 
 export async function expandSlashRefs(
   provider: ProviderId,

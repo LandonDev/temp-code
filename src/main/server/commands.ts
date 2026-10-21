@@ -10,9 +10,20 @@ import type { SlashCommand } from '@shared/domain'
  * project-level sources both count; project wins on a name collision.
  *
  *   claude: ~/.claude/skills/<name>/SKILL.md + <cwd>/.claude/skills,
+ *           ~/.claude/skills/synced/<bucket>/<name>/SKILL.md (account-synced
+ *           skills, named `anthropic-skills:<name>` as the CLI names them),
  *           ~/.claude/commands/*.md + <cwd>/.claude/commands
- *   codex:  ~/.codex/skills/<name>/SKILL.md, ~/.codex/prompts/*.md
+ *   codex:  ~/.codex/skills/<name>/SKILL.md + ~/.codex/skills/.system/<name>,
+ *           ~/.codex/prompts/*.md
  *   cursor: ~/.cursor/commands/*.md + <cwd>/.cursor/commands
+ *
+ * Every layout has a fixed depth; nothing here recurses. Dot-entries
+ * (`.system` aside, read on purpose) are bookkeeping: `.bucket-…`,
+ * `.last-complete-round`, `.trash`, `.codex-system-skills.marker`.
+ *
+ * Claude plugins (~/.claude/plugins) are not read: there is no
+ * installed-plugins layout to key off on either host, only the CLI's
+ * directory cache and an empty synced bucket.
  */
 
 export type { SlashCommand }
@@ -32,20 +43,97 @@ function describe(md: string): string {
   )
 }
 
-async function skillsIn(dir: string, scope: SlashCommand['scope']): Promise<SlashCommand[]> {
+/** `name:` from YAML frontmatter, unquoted. */
+function frontmatterName(md: string): string | undefined {
+  const fm = md.match(/^---\n([\s\S]*?)\n---/)
+  const name = fm?.[1].match(/^name:\s*(.+)$/m)?.[1]
+  return name ? name.replace(/^["']|["']$/g, '').trim() || undefined : undefined
+}
+
+/** The prefix Claude Code gives account-synced skills; the bare name is
+ *  not always accepted (the CLI drops it when it cannot rule out a
+ *  collision), the prefixed one always is. */
+export const SYNCED_SKILL_PREFIX = 'anthropic-skills:'
+
+type SkillLayout = {
+  /** Claude: also read `<dir>/synced/<bucket>/<name>/SKILL.md`. */
+  synced?: boolean
+  /** Codex: also read `<dir>/.system/<name>/SKILL.md`. */
+  system?: boolean
+}
+
+async function subdirs(dir: string): Promise<string[]> {
   const entries = await readdir(dir, { withFileTypes: true }).catch(() => [])
+  // Skill dirs are often symlinks (e.g. ~/.codex/skills → ~/.agents) —
+  // don't gate on dirent type beyond "not a plain file"; the read decides.
+  return entries.filter((e) => !e.isFile() && !e.name.startsWith('.')).map((e) => e.name)
+}
+
+async function flatSkillsIn(dir: string, scope: SlashCommand['scope']): Promise<SlashCommand[]> {
   const out: SlashCommand[] = []
-  for (const e of entries) {
-    // Skill dirs are often symlinks (e.g. ~/.codex/skills → ~/.agents) —
-    // don't gate on dirent type, just try the read.
-    if (e.isFile()) continue
-    const path = join(dir, e.name, 'SKILL.md')
+  for (const name of await subdirs(dir)) {
+    const path = join(dir, name, 'SKILL.md')
     const md = await readFile(path, 'utf8').catch(() => null)
-    if (md !== null) {
-      out.push({ name: e.name, description: describe(md), source: 'skill', scope, path })
+    if (md !== null) out.push({ name, description: describe(md), source: 'skill', scope, path })
+  }
+  return out
+}
+
+type ManifestSkill = { skillId?: unknown; name?: unknown; description?: unknown }
+
+/** A synced bucket's manifest.json, keyed by skillId and by name. */
+async function bucketManifest(bucket: string): Promise<Map<string, ManifestSkill>> {
+  const byKey = new Map<string, ManifestSkill>()
+  const raw = await readFile(join(bucket, 'manifest.json'), 'utf8').catch(() => null)
+  if (!raw) return byKey
+  try {
+    const parsed = JSON.parse(raw) as { skills?: unknown }
+    if (!Array.isArray(parsed.skills)) return byKey
+    for (const s of parsed.skills as ManifestSkill[]) {
+      if (!s || typeof s !== 'object') continue
+      if (typeof s.skillId === 'string') byKey.set(s.skillId, s)
+      if (typeof s.name === 'string' && !byKey.has(s.name)) byKey.set(s.name, s)
+    }
+  } catch {
+    // A torn manifest falls back to each SKILL.md's frontmatter.
+  }
+  return byKey
+}
+
+/** `<dir>/<bucket>/<name>/SKILL.md`: exactly two levels, never deeper. */
+async function syncedSkillsIn(dir: string, scope: SlashCommand['scope']): Promise<SlashCommand[]> {
+  const out: SlashCommand[] = []
+  for (const bucketName of await subdirs(dir)) {
+    const bucket = join(dir, bucketName)
+    const manifest = await bucketManifest(bucket)
+    for (const entry of await subdirs(bucket)) {
+      const path = join(bucket, entry, 'SKILL.md')
+      const md = await readFile(path, 'utf8').catch(() => null)
+      if (md === null) continue
+      const meta = manifest.get(entry)
+      const name =
+        (typeof meta?.name === 'string' && meta.name.trim()) || frontmatterName(md) || entry
+      const description =
+        (typeof meta?.description === 'string' && meta.description.trim()) || describe(md)
+      out.push({ name: `${SYNCED_SKILL_PREFIX}${name}`, description, source: 'skill', scope, path })
     }
   }
   return out
+}
+
+async function skillsIn(
+  dir: string,
+  scope: SlashCommand['scope'],
+  layout: SkillLayout = {}
+): Promise<SlashCommand[]> {
+  const groups = await Promise.all([
+    flatSkillsIn(dir, scope),
+    layout.synced ? syncedSkillsIn(join(dir, 'synced'), scope) : [],
+    layout.system ? flatSkillsIn(join(dir, '.system'), scope) : []
+  ])
+  // The plain directory comes first, so a user's own skill shadows a
+  // system skill of the same name (first one wins in listCommands).
+  return groups.flat()
 }
 
 async function mdFilesIn(
@@ -118,7 +206,7 @@ export async function listCommands(provider: ProviderId, cwd: string): Promise<S
   const groups = await Promise.all(
     provider === 'claude'
       ? [
-          skillsIn(join(home, '.claude', 'skills'), 'user'),
+          skillsIn(join(home, '.claude', 'skills'), 'user', { synced: true }),
           skillsIn(join(cwd, '.claude', 'skills'), 'project'),
           mdFilesIn(join(home, '.claude', 'commands'), 'command', 'user'),
           mdFilesIn(join(cwd, '.claude', 'commands'), 'command', 'project'),
@@ -126,7 +214,7 @@ export async function listCommands(provider: ProviderId, cwd: string): Promise<S
         ]
       : provider === 'codex'
         ? [
-            skillsIn(join(home, '.codex', 'skills'), 'user'),
+            skillsIn(join(home, '.codex', 'skills'), 'user', { system: true }),
             mdFilesIn(join(home, '.codex', 'prompts'), 'prompt', 'user'),
             codexAddons()
           ]

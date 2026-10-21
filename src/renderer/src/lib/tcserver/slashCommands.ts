@@ -93,7 +93,15 @@ class SlashCommandStore {
     const request = link
       .request<SlashCommand[]>("commands.list", { provider: provider as ProviderId, cwd })
       .then((commands) => (Array.isArray(commands) ? commands : EMPTY))
-      .catch(() => EMPTY)
+      .catch((error: unknown) => {
+        // Still an empty menu, but a refusal (e.g. the path fence) must be
+        // tellable apart from a host that simply has no commands.
+        console.debug(
+          `[slash] commands.list failed for ${provider} on ${environmentId}:`,
+          error instanceof Error ? error.message : error,
+        );
+        return EMPTY;
+      })
       .then((commands) => {
         const next = new Map(this.state);
         next.set(key, { at: Date.now(), commands });
