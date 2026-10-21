@@ -530,9 +530,10 @@ export async function startServer(
         recordBackpressure(connection, ws.bufferedAmount)
       }
     }
-    // A remote connection's pushes wait in the coalescer and leave as one
-    // frame per kind with large bodies off; a local connection's go out one
-    // by one, as before.
+    // A remote connection's pushes go through the coalescer: the first of a
+    // quiet period at once, the rest as one frame per kind per window (33 ms
+    // for event rows, 100 ms for the rest), large bodies off; a local
+    // connection's go out one by one, as before.
     const coalescer = profile === 'remote' ? new PushCoalescer(sendFrame) : null
     const emitPush = (frame: ServerPush): void => {
       if (coalescer) coalescer.push(frame)
