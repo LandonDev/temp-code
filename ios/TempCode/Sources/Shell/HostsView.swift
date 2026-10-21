@@ -149,10 +149,18 @@ struct HostDetailView: View {
                 Color.clear.onAppear { dismiss() }
             }
         }
-        // On the outermost view, not inside the conditional: a title set on a
-        // branch of the pushed root did not reach the bar.
         .navigationTitle(client?.environment.name ?? "")
         .navigationBarTitleDisplayMode(.inline)
+        // The bar showed no title for this screen when it was pushed through
+        // `navigationDestination(item:)`; the principal slot carries it on either path.
+        .toolbar {
+            ToolbarItem(placement: .principal) {
+                Text(client?.environment.name ?? "")
+                    .font(.headline)
+                    .lineLimit(1)
+                    .accessibilityAddTraits(.isHeader)
+            }
+        }
     }
 
     @ViewBuilder
