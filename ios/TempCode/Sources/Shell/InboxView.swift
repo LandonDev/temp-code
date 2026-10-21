@@ -193,36 +193,7 @@ struct InboxRow: View {
                     .monospacedDigit()
                     .foregroundStyle(.tertiary)
                 }
-                HStack(spacing: 5) {
-                    Image(systemName: item.kind.rawValue == "pr" ? "arrow.triangle.pull" : "circle.circle")
-                        .font(.caption)
-                        .foregroundStyle(.tertiary)
-                        .accessibilityLabel(item.kind.rawValue == "pr" ? "Pull request" : "Issue")
-                    if let author = item.author?.login, !author.isEmpty {
-                        Text(author)
-                            .foregroundStyle(unread ? .secondary : .tertiary)
-                            .fixedSize()
-                        dot
-                    }
-                    Text("\(Self.repoName(item.repo)) #\(item.number)")
-                        .foregroundStyle(.tertiary)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                    if let status {
-                        dot
-                        Text(status.text)
-                            .foregroundStyle(status.tint ?? Color(.tertiaryLabel))
-                            .fixedSize()
-                            .layoutPriority(1)
-                    }
-                    if showHost {
-                        dot
-                        Text(entry.hostName)
-                            .foregroundStyle(.tertiary)
-                            .lineLimit(1)
-                    }
-                }
-                .font(.footnote)
+                InboxRowMeta(entry: entry, unread: unread, status: status, showHost: showHost)
             }
         }
         .padding(.vertical, 10)
@@ -231,14 +202,78 @@ struct InboxRow: View {
         .accessibilityLabel(unread ? "\(item.title), new" : item.title)
     }
 
+    /// The name after the owner: one owner is the common case, and the phone has no room for it.
+    static func repoName(_ repo: String) -> String {
+        repo.split(separator: "/").last.map(String.init) ?? repo
+    }
+}
+
+/// The dim line under the title: the kind glyph, the author, the repository
+/// and number, the status word in its color, the host. One line that
+/// truncates the repository first; at accessibility sizes two lines, so the
+/// status never pushes the row past the screen.
+private struct InboxRowMeta: View {
+    let entry: InboxEntry
+    let unread: Bool
+    let status: InboxStatus?
+    let showHost: Bool
+    @Environment(\.dynamicTypeSize) private var typeSize
+
+    var body: some View {
+        Group {
+            if typeSize.isAccessibilitySize, status != nil || showHost {
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 5) { who }
+                    HStack(spacing: 5) { what }
+                }
+            } else {
+                HStack(spacing: 5) {
+                    who
+                    if status != nil || showHost { dot }
+                    what
+                }
+            }
+        }
+        .font(.footnote)
+    }
+
+    @ViewBuilder private var who: some View {
+        let item = entry.item
+        Image(systemName: item.kind.rawValue == "pr" ? "arrow.triangle.pull" : "circle.circle")
+            .font(.caption)
+            .foregroundStyle(.tertiary)
+            .accessibilityLabel(item.kind.rawValue == "pr" ? "Pull request" : "Issue")
+        if let author = item.author?.login, !author.isEmpty {
+            Text(author)
+                .foregroundStyle(unread ? .secondary : .tertiary)
+                .lineLimit(1)
+                .layoutPriority(1)
+            dot
+        }
+        Text("\(InboxRow.repoName(item.repo)) #\(item.number)")
+            .foregroundStyle(.tertiary)
+            .lineLimit(1)
+            .truncationMode(.middle)
+    }
+
+    @ViewBuilder private var what: some View {
+        if let status {
+            Text(status.text)
+                .foregroundStyle(status.tint ?? Color(.tertiaryLabel))
+                .lineLimit(1)
+                .layoutPriority(1)
+        }
+        if showHost {
+            if status != nil { dot }
+            Text(entry.hostName)
+                .foregroundStyle(.tertiary)
+                .lineLimit(1)
+        }
+    }
+
     private var dot: some View {
         Text("·")
             .foregroundStyle(.tertiary)
             .accessibilityHidden(true)
-    }
-
-    /// The name after the owner: one owner is the common case, and the phone has no room for it.
-    static func repoName(_ repo: String) -> String {
-        repo.split(separator: "/").last.map(String.init) ?? repo
     }
 }
