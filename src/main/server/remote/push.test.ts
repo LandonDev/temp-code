@@ -206,6 +206,8 @@ describe('ActivityFeed', () => {
     expect(pushes()[2].state).not.toHaveProperty('reason')
     feed.stop()
   })
+})
+
 describe('a host with its own APNs sender', () => {
   /** A sender that records every request and answers what the test set. */
   function fakeApns(answer: (token: string) => { ok: true } | { ok: false; error: string; gone: boolean } = () => ({ ok: true })) {
