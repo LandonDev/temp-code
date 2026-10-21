@@ -3,6 +3,22 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { bootResumeLine, dismissBootResume, noteBootResume, resetBootResume, useBootResumeNotice } from './bootResume'
 import { renderHook } from '@testing-library/react'
 
+// Node 26 defines a localStorage global of its own (undefined without
+// --localstorage-file) that vitest's jsdom environment leaves in place, so
+// the test brings its own, the way tabGroups.cache.test.ts does.
+const data = new Map<string, string>()
+Object.defineProperty(globalThis, 'localStorage', {
+  configurable: true,
+  value: {
+    getItem: (k: string) => data.get(k) ?? null,
+    setItem: (k: string, v: string) => void data.set(k, String(v)),
+    removeItem: (k: string) => void data.delete(k),
+    clear: () => data.clear(),
+    key: (i: number) => [...data.keys()][i] ?? null,
+    get length() { return data.size },
+  },
+})
+
 describe('boot-resume notice', () => {
   beforeEach(() => {
     resetBootResume()
