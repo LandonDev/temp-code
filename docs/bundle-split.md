@@ -125,7 +125,28 @@ report is recorded below when it has run.
 
 ### Mac launch-timing report
 
-Pending: see the commit that adds it.
+Run 2026-10-21 from a scratch clone under /Users/landon/IdeaProjects/tc-perf
+at master f8deb17 (the split plus the morning's sibling merges; the index
+chunk there is 4,861,232 bytes, `index-MTCtBREj.js`), packed as 1.0.273 with
+Chromium's startup trace, four launches. `index` is the main process's
+compile of out/main/index.js, `tc:ready` the UI on screen, both ms after
+the process spawn; `consumed` is the index chunk's V8 code cache read on
+launches 3 and 4 (none on 1, produced on 2).
+
+| launch | index | ready-to-show | tc:ready | bundle compile | consumed | Code Cache |
+| --- | --- | --- | --- | --- | --- | --- |
+| 1 | 235 | 790 | 993 | 0.0 (streamed) | – | 2 KB |
+| 2 | 163 | 585 | 790 | 0.0 (streamed) | – (produced) | 2,784 KB |
+| 3 | 198 | 579 | 781 | 3.1 | 1,618,872, rejected false | 2,784 KB |
+| 4 | 237 | 630 | 821 | 3.2 | 1,618,872, rejected false | 2,784 KB |
+
+Every launch booted to `tc:ready`, quit cleanly and logged no console
+error; the proof's one red check that run was the main process's `index`
+mark on launch 4 (237 ms against 235 on launch 1), a coin flip in Node's
+compile cache that the renderer split does not touch. The earlier proof of
+the code caches (plan kzTjVxj7h35M) consumed a cache of the whole 8 MB
+bundle; it now covers the 4.9 MB index chunk, with each lazy chunk cached
+on its own the first time it loads.
 
 ## Adding a surface
 
