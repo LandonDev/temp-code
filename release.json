@@ -1,5 +1,5 @@
 {
-  "n": 272,
-  "notes": "Mark All Threads as Read (View menu) and a boot prune that waits for every host's list: the seen map was pruned to the threads known at boot, which on a Mac whose history lives on the box was the two local ones, so every box thread lit up unread after the move",
-  "ts": 1792559706436
+  "n": 273,
+  "notes": "Restored panes keep their host (the host chip no longer says This Mac for a box thread after a relaunch), Mark all read in the rail, every workspace's menu and the View menu, a boot prune that waits for every host's list, and a full-access thread is never prompted on the Mac",
+  "ts": 1792564707046
 }
