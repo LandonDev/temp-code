@@ -1,5 +1,5 @@
 {
-  "n": 264,
-  "notes": "The proof's foreground delivery step skips on a simulator that has not allowed notifications (simctl push refuses an unauthorized app and nothing scripts the Allow tap); TC_PROOF_PUSH=1 insists.",
-  "ts": 1792537506081
+  "n": 265,
+  "notes": "Box threads: slash menu, smooth streaming, config sync, attachments, thread move, Mac bridge",
+  "ts": 1792549872233
 }
