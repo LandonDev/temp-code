@@ -36,8 +36,9 @@ const LIVE = new Set<string>(["starting", "running", "waiting"]);
 
 export const isQueued = (t: SessionMeta): boolean => t.status === "queued";
 
-/** A thread with a turn in flight somewhere in its tree, not paused. */
-function hasRunningTurn(t: SessionMeta): boolean {
+/** A thread with a turn in flight somewhere in its tree, not paused. The
+ *  master board's rows and its Pause all read the same rule. */
+export function hasRunningTurn(t: SessionMeta): boolean {
   if (t.status === "paused") return false;
   return LIVE.has(t.status) || !!t.treeHasLiveWork;
 }

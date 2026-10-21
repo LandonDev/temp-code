@@ -1,14 +1,163 @@
+import { useMemo, useState } from "react";
+import { ConfirmDialog } from "../../chrome/ConfirmDialog";
+import { ChevronRight, Plus } from "../../chrome/icons";
+import { useEnvironments } from "../../lib/connection/status";
+import * as commands from "../../lib/tcserver/commands";
+import type { SessionMeta } from "../../lib/tcserver/types";
+import { hasRunningTurn } from "../../lib/threadBatch";
+import { useMetaById } from "../../lib/threads/agents";
+import { PaneHeader } from "./bits";
 import { chatOf } from "./chatSlots";
+import { AddThreadDialog } from "./master/AddThreadDialog";
+import { BatchFoot } from "./master/BatchFoot";
+import { MasterRow } from "./master/MasterRow";
+import { queuedHint, useMasterModel } from "./master/useMasterModel";
+import { SplitShell } from "./SplitShell";
 import type { ThreadViewProps } from "./ThreadView";
 
 /**
- * The project's master thread (CLAUDE.md "Master threads"): the thread that
- * starts, watches and steers a batch of root threads. Wave 0 paints the chat
- * alone, the way an orchestration thread does before its first agent.
- * wave 1 ("The MasterView"): the board on the left (children grouped Needs
- * you / Running / Queued / Done, the batch's three steps under the list),
- * the chat on the right, on the SplitShell recipe (docs/LAYOUT.md "Master").
+ * The project's master thread (CLAUDE.md "Master threads", docs/LAYOUT.md
+ * "Master"): the batch board on the left, the master's own chat on the
+ * right on the SplitShell recipe, the chat folding to the edge tab as
+ * elsewhere. Until the master has a first child the chat is the whole
+ * view, the way an orchestration thread opens.
  */
+
+const QUIET_BUTTON =
+  "pressable h-6 rounded-md px-2 text-xs text-content/50 hover:bg-content/5 hover:text-content disabled:cursor-default disabled:opacity-40 disabled:hover:bg-transparent";
+const BORDERED_BUTTON =
+  "pressable inline-flex h-6 items-center gap-1 rounded-md border border-content/10 px-2 text-xs text-content hover:bg-content/5";
+
+/** The children Pause all would reach: a running turn anywhere in their
+ *  tree, by the fleet switches' rule (lib/threadBatch.ts). */
+export function pausable(children: readonly SessionMeta[]): SessionMeta[] {
+  return children.filter(hasRunningTurn);
+}
+
 export function MasterView(props: ThreadViewProps) {
-  return <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">{chatOf(props)}</div>;
+  const { session } = props;
+  const meta = useMetaById(session.id);
+  const model = useMasterModel(session);
+  const { children, groups, sentence, batch, landed, openId, setOpenId, now } = model;
+  const environments = useEnvironments();
+  const hostNames = useMemo(() => new Map(environments.map((e) => [e.id, e.name])), [environments]);
+  const [chatOpen, setChatOpen] = useState(true);
+  const [adding, setAdding] = useState(false);
+  const [pausing, setPausing] = useState(false);
+  const hasBoard = children.length > 0;
+  const toPause = pausable(children);
+
+  if (!hasBoard) {
+    return <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">{chatOf(props)}</div>;
+  }
+
+  const pauseAll = async () => {
+    const byHost = new Map<string, string[]>();
+    for (const c of toPause) (byHost.get(c.environmentId) ?? byHost.set(c.environmentId, []).get(c.environmentId)!).push(c.id);
+    await Promise.allSettled([...byHost].map(([env, ids]) => commands.sessionBatch(env, "pause", ids)));
+  };
+
+  const title = meta?.title || session.title || "Master";
+  const board = (
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+      <div className="flex h-10 shrink-0 items-center gap-2.5 border-b border-content/10 px-3.5 whitespace-nowrap">
+        {/* The name holds its ground; the sentence gives way first. */}
+        <span className="max-w-[60%] shrink-0 truncate text-[13px] font-medium text-content">{title}</span>
+        {sentence ? <span className="min-w-0 truncate text-xs tabular-nums text-content/50">{sentence}</span> : null}
+        <span className="flex-1" />
+        <button type="button" onClick={() => setPausing(true)} disabled={toPause.length === 0} className={QUIET_BUTTON}>
+          Pause all
+        </button>
+        <button type="button" onClick={() => setAdding(true)} className={BORDERED_BUTTON}>
+          <Plus className="size-3" strokeWidth={2} />
+          Thread
+        </button>
+      </div>
+      <div className="min-h-0 flex-1 overflow-y-auto px-2.5 pt-1 pb-3">
+        {groups.map((group) => {
+          const hint = group.id === "queued" ? queuedHint(group.rows) : null;
+          return (
+            <section key={group.id} aria-label={group.label} data-group={group.id}>
+              <h3 className="flex items-baseline gap-2 px-1.5 pt-3.5 pb-1 text-xs font-normal text-content/40">
+                {group.label}
+                <span className="tabular-nums text-content/30">{group.rows.length}</span>
+                {hint ? <span className="text-content/30">· {hint}</span> : null}
+              </h3>
+              <div className="flex flex-col gap-0.5">
+                {group.rows.map((child) => (
+                  <MasterRow
+                    key={child.id}
+                    child={child}
+                    masterCwd={session.cwd}
+                    now={now}
+                    fleetSize={children.length}
+                    landed={landed.has(child.id)}
+                    hostName={
+                      child.environmentId !== session.environmentId
+                        ? (hostNames.get(child.environmentId) ?? child.environmentId)
+                        : null
+                    }
+                    open={openId === child.id}
+                    onToggle={() => setOpenId(openId === child.id ? null : child.id)}
+                    onOpenSession={props.onOpenSession}
+                  />
+                ))}
+              </div>
+            </section>
+          );
+        })}
+      </div>
+      <BatchFoot batch={batch} />
+    </div>
+  );
+
+  const chat = (
+    <>
+      <PaneHeader label="Conversation">
+        <button
+          type="button"
+          onClick={() => setChatOpen(false)}
+          title="Hide conversation"
+          aria-label="Hide conversation"
+          className="pressable grid size-6 place-items-center rounded-md text-content/50 hover:bg-content/5 hover:text-content"
+        >
+          <ChevronRight className="size-3.5" strokeWidth={1.75} />
+        </button>
+      </PaneHeader>
+      {chatOf(props)}
+    </>
+  );
+
+  return (
+    <div className="relative flex min-h-0 min-w-0 flex-1">
+      <SplitShell
+        board={board}
+        chat={chat}
+        hasBoard
+        collapsed={!chatOpen}
+        onOpenChat={() => setChatOpen(true)}
+        status={meta?.status ?? session.status}
+        edgeTitle="Show conversation"
+      />
+      {adding && meta ? (
+        <AddThreadDialog
+          master={meta}
+          siblings={children}
+          onClose={() => setAdding(false)}
+        />
+      ) : null}
+      {pausing ? (
+        <ConfirmDialog
+          title={`Pause ${toPause.length} running thread${toPause.length === 1 ? "" : "s"}?`}
+          body="Each thread's turn is held where it is; Resume on a row brings it back."
+          confirmLabel="Pause all"
+          onCancel={() => setPausing(false)}
+          onConfirm={async () => {
+            await pauseAll();
+            setPausing(false);
+          }}
+        />
+      ) : null}
+    </div>
+  );
 }

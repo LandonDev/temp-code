@@ -460,6 +460,12 @@ export type StartThreadParams = {
   goal?: string;
   title?: string;
   threadRules?: CreateSessionInput["threadRules"];
+  /** Master threads (CLAUDE.md "Master threads"): the master this root thread joins. */
+  masterId?: string;
+  /** Master threads: the sibling to wait for before booting. */
+  after?: string;
+  /** Queue behind the host's cap and `after` instead of booting at once (scheduler.ts). */
+  queue?: boolean;
 };
 
 /** Create a whole thread server-side and send its kickoff brief. The

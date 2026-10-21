@@ -177,22 +177,93 @@ implicit "setup" row).
 - Orchestrator's own narration is a quiet feed below the board, styled like
   the implementation activity feed.
 
-### Master — the project's batch (wave 0: the route only)
+### Master — the project's batch
 
 A thread pinned as its project's master (`ProjectMeta.masterThreadId`) routes
-to `MasterView` instead of its type's view; today it paints the chat alone,
-the way an orchestration thread does before its first agent. The pin is a
-context-menu item on the root thread (rail row and tab: "Make master thread",
-"Not the master" on the master); the master's tab carries one muted "Master"
-after its title, same size, dimmer, and no row in the rail is marked. Wave 1 draws the
-board on the left (children grouped Needs you / Running / Queued / Done, the
-batch's three steps under the list) and the chat on the right, the SplitShell
-recipe (CLAUDE.md "Master threads"). A queued child (over the host's
-running cap, or waiting for an `after` sibling) is a still gray dot in the
-rail whose activity line reads "Queued · 3rd in line" or "Queued · waiting
-for <sibling>"; its working strip shows the same line with one quiet "Start
-now" (session.start) on the right, where a paused thread's Continue sits.
+to `MasterView` whatever its type (CLAUDE.md "Master threads"). The board |
+sash | chat recipe (SplitShell): the batch on the left, the master's own chat
+on the right, folding to the edge tab. Until the first child the chat is the
+whole view.
 
+```
+┌ iOS batch 2   4 running · 1 needs you · 3 queued   Pause all  [+ Thread] ┐
+│ Needs you 1                                                              │
+│  ●  Live Activity strip   impl · Mac        Fable 5.1 · high · 1M   41m  │
+│     has a question — Ad Hoc or Debug?                 (hover: ✉ ⏸ ■ ✕)  │
+│     +418 −61 · 5/8 tasks · live-activity                                 │
+│ Running 4                                                                │
+│  ▦  Home: Needs you…      impl · Mac        Fable 5.1 · high · 1M  1h12m │
+│     Running ios:test:client                                              │
+│     +1,204 −88 · 7/9 tasks · ◔ 62% · home                                │
+│     ├ last four lines of the feed            (click: unfolds in place)   │
+│     └ [ Message this thread…            ⌘↩ open ]                        │
+│ Queued 3 · starts as a slot frees                                        │
+│  ◌  Inbox: swipe actions  impl · Mac        Fable 5.1 · high · 1M        │
+│     Queued · waiting for Home                                            │
+│ Done 2                                                                   │
+│  ✓  Design foundations    impl · Mac        Fable 5.1 · high · 1M  2h04m │
+│     +612 −40 · foundations · landed 12:08                                │
+├ When the batch lands                                   2 of 10 merged ───┤
+│  ✓ Merge queue  ios/foundations, ios/contract-notice                     │
+│  ▦ Gate once    typecheck · vitest · build · ios                         │
+│  ◌ Release      v1.0.276 · deploy box                                    │
+└──────────────────────────────────────────────────────────────────────────┘
+```
+
+- **Title bar**: the batch name (the master's title, it holds its ground;
+  the sentence gives way first), one muted tabular sentence of the non-zero
+  counts, a quiet Pause all (the fleet switches' running-turn rule, confirmed
+  with the live count), and + Thread. No chips, no badges.
+- **Sections** in this order, each a muted 12px label with its count:
+  Needs you (waiting, error), Running (starting, running, watching, paused),
+  Queued (the label carries "starts as a slot frees" when a row waits on the
+  host's cap rather than a sibling), Done (idle, stopped). An empty section is
+  not drawn. Rows oldest first within a section; nothing animates a reorder.
+- **A row** is the fleet row's look from `fleet/rowBits.tsx` (StatusGlyph,
+  AgentStatsLine, ModelLine, shared with AgentRow): glyph (matrix spinner,
+  amber or red dot, a still dashed ring while queued, a pause mark, a check),
+  13px medium title, then two muted words — the type (impl, plan,
+  orchestration, research, project plan) and "· <host>" only when the child
+  runs on another host. The 12px what line is the row's `activity` while
+  queued or working (the scheduler's "Queued · waiting for Home", the last
+  tool line), the question or failure in amber or red while it needs you,
+  nothing once done. The 11px stats line: +adds −dels, tasks n/m, ctx ring,
+  the branch (the worktree's folder when the cwd is not the master's) and
+  "landed 12:08" once `batch.get` lists the child as landed; what exists,
+  clipped never wrapped. Right: model · effort · 1M, elapsed. Done and queued
+  rows are dimmed.
+- **Hover** trades the right column for the action cluster (1.5px strokes,
+  tooltips): Message, Pause or Resume, Stop, Remove; a queued row offers
+  Start now (`session.start`, past the cap and `after`) and "Remove from
+  queue" (the fleet switches' Stop on a queued root, which archives it).
+  Remove archives through `archiveThread()` with the resources offer
+  (ArchiveThreadDialog).
+- **Click** unfolds the row in place (a `grid-template-rows` 0fr → 1fr CSS
+  transition, 200ms ease-out, interruptible; never a modal): its last four
+  feed lines (tool · detail, its own words, errors) and a one-line "Message
+  this thread…" field that sends into the child (`steer` while live, `send`
+  otherwise). ⌘↩ on the row or in the field opens the child as a tab.
+- **The foot** stays put under the scrolling list: "When the batch lands"
+  with "n of m merged" at the right, then Merge queue / Gate once / Release
+  from `batch.get` (check, matrix spinner, dashed ring, red dot; the detail
+  after each label, truncated). Read on mount, polled every 5 s while the
+  pane shows, and taken from the `batch` push when one arrives.
+- **+ Thread** opens the add sheet (Modal, `master/AddThreadDialog.tsx`):
+  "Add a thread to <batch>", Type (segmented), Model (the app's picker),
+  Effort (segmented from the model's ladder cut to the policy), Context (200k
+  / 1M, Claude only), Host (segmented over the registry's hosts, this one
+  first; another host offers its paired copy of the project and is disabled
+  without one), After (the batch's other children, "Start when a slot frees"
+  default), Brief. Footer: "Starts with the project rules · no gate, the
+  batch runs it once", Cancel, Add. Add is `session.create` with `masterId`
+  and `after` plus the brief as the first message; the row arrives from the
+  push.
+- Everywhere else a child is an ordinary thread: an ordinary rail row, an
+  ordinary tab. No chrome outside the view. A queued child is a still gray
+  dot in the rail whose activity line reads "Queued · 3rd in line" or
+  "Queued · waiting for <sibling>"; its own working strip shows the same
+  line with one quiet "Start now" (`session.start`), where a paused thread's
+  Continue sits; the board's queued row offers the same Start now on hover.
 ## ADE ambitions (later — but the frame reserves room now)
 
 Terminals, file browsing, and a real editor come later; the shell must not

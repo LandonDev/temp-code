@@ -10,7 +10,7 @@ import * as commands from "../../../lib/tcserver/commands";
 import { asHarness } from "../../../lib/tcserver/store";
 import { AgentTranscript } from "../../AgentTranscript";
 import { StatusDot } from "../bits";
-import { AgentStatsLine } from "./AgentRow";
+import { AgentStatsLine } from "./rowBits";
 import { useContextReading } from "./contextCache";
 import { fleetStats } from "./useFleetModel";
 

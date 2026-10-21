@@ -1127,7 +1127,7 @@ renderer turns the Archive done checkbox on. Proof:
   (`BatchStep` land | gate | release, `BatchState`, `batch.get` and
   `batch.children`, read), answered by src/main/server/batch.ts. The
   master's view is `MasterView` (surfaces/threads, routed when the session is
-  its project's master; the chat alone for now).
+  its project's master).
 - The master role (wave 1): the pin is "Make master thread" / "Not the
   master" on a root thread's context menu (the rail row and the tab;
   `setProjectMaster` in lib/tcserver/projects.ts) and the master's tab reads
@@ -1221,10 +1221,27 @@ renderer turns the Archive done checkbox on. Proof:
   text is rewritten once (`migrateHousePreamble`, marker
   `preamble-migrated:batch-gate`), an edited one is left alone. The
   post-commit hook's train is unchanged.
-- Still to come in wave 1: the MasterView board (children by Needs you /
-  Running / Queued / Done, the batch steps under the list from `batch.get`
-  and the `batch` push, the add sheet); then the proof script, the docs and
-  the phone's fold.
+- The view (docs/LAYOUT.md "Master"): the board left of the master's chat on
+  SplitShell, the chat alone until the first child. `master/useMasterModel.ts`
+  holds the rules (children by `masterId` from the session store; sections
+  Needs you / Running / Queued / Done by status, an empty one not drawn; the
+  title bar's counts sentence; `useBatchState`: `batch.get` on mount, every
+  5 s while the pane shows as a floor, and the `batch` push (`{ push, state }`) through
+  `batchFromPush`). `master/MasterRow.tsx` is one child on the pieces
+  AgentRow and it share in `fleet/rowBits.tsx` (StatusGlyph, AgentStatsLine
+  with a `tail`, ModelLine): type and host words after the title, the
+  `activity` as the what line, the branch off the worktree folder, "landed
+  HH:MM" once the batch lists the child, hover actions (Message, Pause or
+  Resume, Stop, Remove; a queued row has Start now (`startNow`) and "Remove
+  from queue", the fleet switches' Stop on a queued root), the in-place
+  unfold with the last four feed lines and a message field, ⌘↩ opens the
+  tab. `master/BatchFoot.tsx` is the three steps; `master/AddThreadDialog.tsx`
+  the add sheet (`startThread` with `masterId` and `after`; another host
+  offers the paired copy of the project through lib/projectPairs.ts).
+  `lib/threadBatch.ts` exports `hasRunningTurn` so the rows and Pause all
+  use the fleet switches' rule. Tests: useMasterModel.test.ts,
+  MasterView.dom.test.tsx.
+- Still to come: the proof script, the docs and the phone's fold.
 
 ## The prod worktree is retired
 ~/IdeaProjects/temp-code-prod was the old local updater's build checkout.
