@@ -6,7 +6,8 @@ import { resolveModel } from "../models";
 import { Subscriptions, asPage, type Link } from "../connection";
 import { modeForPolicy } from "./access";
 import { applyRowBody, emptyFold, foldEvent, foldOptimisticUser, type FoldState } from "./fold";
-import type { EventsPage, SessionPage } from "@server/shared/wire";
+import type { EventsPage, SessionChanges, SessionPage } from "@server/shared/wire";
+import type { MirrorCursor, MirrorHost } from "@server/shared/launchMirror";
 import { HISTORY_PAGE_ROWS } from "@server/shared/wireBudgets";
 import type { ContextUsage } from "../contextUsage";
 import { emptyThread } from "./todos";
@@ -185,6 +186,10 @@ const BURST_LIMIT = 20;
 
 const OPEN_STATUSES = new Set(["starting", "running", "waiting"]);
 const READY_TIMEOUT_MS = 10_000;
+/** How long the boot prune waits for a host's list before taking what the
+ *  launch mirror had for it (CLAUDE.md "Launch: the rail paints from the
+ *  launch mirror"). */
+export const BOOT_SETTLE_MS = 2_000;
 
 export function isOpenStatus(status: SessionMeta["status"]): boolean {
   return OPEN_STATUSES.has(status);
@@ -368,6 +373,18 @@ class SessionStore {
   private attached = new Map<string, Attached>();
   private offRegistry: (() => void) | null = null;
   private listed: Promise<void> | null = null;
+  /** Which environment `listed` belongs to: the primary's list wins. */
+  private listedBy: string | null = null;
+  /** Environments whose first list on the current socket has landed. */
+  private listedDone = new Set<string>();
+  /** Environments hydrated from the launch mirror this boot, and the ids
+   *  still unconfirmed by the host (a resync confirms or drops them). */
+  private mirrored = new Map<string, Set<string>>();
+  /** Where each host's list stands (`session.changes` head), the cursor the
+   *  launch mirror saves and the next resync resumes from. */
+  private cursors = new Map<string, MirrorCursor>();
+  /** Woken whenever a host settles (its list lands, or the mirror paints it). */
+  private settleWaiters = new Set<() => void>();
   private opened: Promise<void> = Promise.resolve();
   private markOpen: () => void = () => {};
 
@@ -376,6 +393,7 @@ class SessionStore {
   private registryRef: {
     markFresh?(environmentId: string, fresh: boolean): void;
     statusOf?(environmentId: string): { lastHello: { environmentId: string } | null };
+    primaryEnvironmentId?: string;
   } | null = null;
 
   /** Follow the registry: every environment's link attaches as it is added
@@ -384,6 +402,7 @@ class SessionStore {
     onLink(listener: (link: Link, event: "added" | "removed") => void): () => void;
     markFresh?(environmentId: string, fresh: boolean): void;
     statusOf?(environmentId: string): { lastHello: { environmentId: string } | null };
+    primaryEnvironmentId?: string;
   }): void {
     this.offRegistry?.();
     this.registryRef = registry;
@@ -411,9 +430,16 @@ class SessionStore {
         .catch(() => undefined)
         .then(() => {
           this.readyDone = true;
+          this.listedDone.add(link.environmentId);
+          this.noteSettled();
         });
-      // Boot waits on the first environment's first list only.
-      if (!this.listed) this.listed = entry.listed;
+      // Boot waits on the primary environment's first list (this machine's
+      // server); a mirrored remote host registered ahead of it never stands in.
+      const primary = this.registryRef?.primaryEnvironmentId;
+      if (!this.listed || (link.environmentId === primary && this.listedBy !== primary)) {
+        this.listed = entry.listed;
+        this.listedBy = link.environmentId;
+      }
       this.markOpen();
     };
     entry.detach = [link.onPush((push) => this.onPush(push, link.environmentId)), link.onOpen(list)];
@@ -428,6 +454,9 @@ class SessionStore {
     for (const off of entry.detach) off();
     entry.subs.dispose();
     this.attached.delete(environmentId);
+    this.listedDone.delete(environmentId);
+    this.mirrored.delete(environmentId);
+    this.cursors.delete(environmentId);
     for (const [id, e] of [...this.entries]) {
       if (e.meta ? e.meta.environmentId === environmentId : e.session.environmentId === environmentId) this.drop(id);
     }
@@ -501,6 +530,11 @@ class SessionStore {
     this.queues.clear();
     this.liveEdits.clear();
     this.listed = null;
+    this.listedBy = null;
+    this.listedDone.clear();
+    this.mirrored.clear();
+    this.cursors.clear();
+    this.settleWaiters.clear();
     this.readyDone = false;
     this.archivedScopes.clear();
     this.archivedLoads.clear();
@@ -733,12 +767,138 @@ class SessionStore {
     );
   }
 
+  // ── the launch mirror ──────────────────────────────────────────────
+
+  /**
+   * Paint from the launch mirror before any socket is up: every host's
+   * summaries land as metas (stamped with the host they came from) and its
+   * cursor is where the resync resumes. A mirrored row is unconfirmed until
+   * the host lists: `resync` updates it in place, or drops it quietly when
+   * the host no longer has it. Synchronous, so the first render has the rows.
+   */
+  hydrate(hosts: readonly MirrorHost[]): void {
+    let any = false;
+    for (const host of hosts) {
+      const ids = new Set<string>();
+      for (const summary of host.sessions) {
+        if (typeof summary.id !== "string" || this.entries.has(summary.id)) continue;
+        const meta = { ...(summary as unknown as SessionMeta), environmentId: host.environmentId };
+        this.mergeMeta(meta);
+        ids.add(meta.id);
+        any = true;
+      }
+      this.mirrored.set(host.environmentId, ids);
+      if (host.cursor) this.cursors.set(host.environmentId, host.cursor);
+    }
+    this.noteSettled();
+    if (!any) return;
+    this.bump();
+    this.bumpMeta();
+  }
+
+  private noteSettled(): void {
+    const waiters = [...this.settleWaiters];
+    this.settleWaiters.clear();
+    for (const wake of waiters) wake();
+  }
+
+  /** The attached environments neither listed on this socket nor painted from the mirror. */
+  private unsettled(): string[] {
+    return [...this.attached.keys()].filter((id) => !this.mirrored.has(id) && !this.listedDone.has(id));
+  }
+
+  /** The host's list cursor: what the launch mirror saves. Null until the
+   *  host has answered `session.changes` once this boot or the mirror had one. */
+  cursorOf(environmentId: string): MirrorCursor | null {
+    return this.cursors.get(environmentId) ?? null;
+  }
+
+  /** The environment painted from the mirror this boot and not yet confirmed by its host. */
+  isMirrored(environmentId: string): boolean {
+    return this.mirrored.has(environmentId);
+  }
+
+  /** The environments whose list has landed on the current socket; the
+   *  launch mirror writes only these (a mirrored host would be rewritten from itself). */
+  listedEnvironmentIds(): string[] {
+    return [...this.listedDone];
+  }
+
+  /**
+   * The environments the rail can paint: each attached host once it has
+   * listed, at once for one the mirror had rows for, else at the deadline.
+   * The boot prune reads the known set from this, so a host away at boot
+   * never holds it; the mirror says what threads that host had. A host
+   * whose link opens inside the deadline counts once its list lands.
+   */
+  async settledEnvironments(timeoutMs = BOOT_SETTLE_MS): Promise<Set<string>> {
+    let timedOut = false;
+    const deadline = new Promise<void>((r) =>
+      setTimeout(() => {
+        timedOut = true;
+        r();
+      }, timeoutMs),
+    );
+    await Promise.race([this.opened, deadline]);
+    while (!timedOut && this.unsettled().length > 0) {
+      await Promise.race([new Promise<void>((r) => this.settleWaiters.add(r)), deadline]);
+    }
+    return new Set<string>([...this.mirrored.keys(), ...this.listedDone]);
+  }
+
+  /** Resolves once every attached environment has rows on screen: its
+   *  list landed, or the mirror painted it. The launch-timing mark. */
+  async whenPainted(): Promise<void> {
+    await this.opened;
+    while (this.unsettled().length > 0) {
+      await new Promise<void>((r) => this.settleWaiters.add(r));
+    }
+  }
+
+  /**
+   * Resume one host's list from its cursor: `session.changes` answers the
+   * metas that changed and the ids that left since, and the whole list is
+   * never fetched. False when the host says `reset` (another run of its
+   * server, a cursor older than its log keeps), refuses the method (an
+   * older build) or has no cursor here: the caller lists whole. Either way
+   * the head that came back is the new cursor.
+   */
+  private async resumeList(link: Link): Promise<boolean> {
+    const environmentId = link.environmentId;
+    const cursor = this.cursors.get(environmentId);
+    let changes: SessionChanges | null;
+    try {
+      changes = await link.request<SessionChanges>("session.changes", {
+        afterSeq: cursor?.seq ?? 0,
+        ...(cursor ? { generation: cursor.generation } : {}),
+      });
+    } catch {
+      changes = null;
+    }
+    if (!changes) return false;
+    this.cursors.set(environmentId, { seq: changes.seq, generation: changes.generation });
+    if (changes.reset || !cursor) return false;
+    for (const wire of changes.sessions) this.mergeMeta({ ...wire, environmentId });
+    for (const id of changes.removed) {
+      const entry = this.entries.get(id);
+      if (entry?.meta && entry.meta.environmentId === environmentId) this.drop(id);
+    }
+    this.mirrored.delete(environmentId);
+    this.bumpMeta();
+    return true;
+  }
+
   /** `session.list` on one environment (plus the archived scopes already
    *  loaded there), then replay any gap for the sessions whose panes are
-   *  mounted. Runs once per replacement session of that environment. */
+   *  mounted. Runs once per replacement session of that environment. A
+   *  host with a cursor here resumes from it instead (`resumeList`). */
   async resync(link: Link): Promise<void> {
     const environmentId = link.environmentId;
     if (!this.attached.has(environmentId)) return;
+    if (await this.resumeList(link)) {
+      await this.replayMounted(environmentId);
+      return;
+    }
     const lists = await Promise.all([
       this.fetchList(link, undefined),
       ...[...this.archivedScopes]
@@ -756,7 +916,13 @@ class SessionStore {
       // An archived meta that came by push stays until its scope is listed.
       if (!seen.has(id) && !(entry.meta.archived && !this.archivedScopeLoaded(entry.meta))) this.drop(id);
     }
+    this.mirrored.delete(environmentId);
     this.bumpMeta();
+    await this.replayMounted(environmentId);
+  }
+
+  /** After a list or a resume: the transcripts on screen replay their gap. */
+  private async replayMounted(environmentId: string): Promise<void> {
     // Only the transcripts on screen replay their gap; a loaded one whose
     // tab is no longer mounted is dropped and fetched again if it comes
     // back. A reconnect once replayed every transcript ever opened — 2,560
@@ -876,21 +1042,6 @@ class SessionStore {
   ready(timeoutMs = READY_TIMEOUT_MS): Promise<void> {
     const listed = this.opened.then(() => this.listed ?? Promise.resolve());
     return Promise.race([listed, new Promise<void>((r) => setTimeout(r, timeoutMs))]);
-  }
-
-  /** The environments whose first `session.list` has landed, once every
-   *  attached link's first list has settled. */
-  async listedEnvironments(): Promise<Set<string>> {
-    await this.opened;
-    const done = new Set<string>();
-    await Promise.all(
-      Array.from(this.attached.entries()).map(([environmentId, entry]) =>
-        (entry.listed ?? Promise.resolve()).then(() => {
-          if (entry.listed) done.add(environmentId);
-        }),
-      ),
-    );
-    return done;
   }
 
   /** Fetch the transcript once and subscribe to its live pushes. `why`

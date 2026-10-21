@@ -13,12 +13,14 @@ import { registerAppshots } from './appshots'
 import { EditorLauncher, defaultEditorLaunchDeps, editorChoice, type EditorTarget } from './editorLaunch'
 import { electronApp, optimizer } from '@electron-toolkit/utils'
 import { startServer, type RunningServer } from './server'
+import { listEnvironments } from './server/remote/environments'
+import type { LaunchMirrorSnapshot, MirrorWrite } from '@shared/launchMirror'
 import { mayClaimShim, releaseGateway } from './server/gateway'
 import { killTrackedChildren } from './server/spawnBudget'
 import { handleAssetRequest, pagesRoot, registerAssetProtocol, registerSchemes } from './assets'
 import { registerAppProtocol } from './appScheme'
 import { migrateLocalStorage } from './originMigration'
-import { isHeadless, noDisplay, publishLocalPort, unpublishLocalPort } from './headless'
+import { isHeadless, noDisplay, publishLocalPort, quitsOnAllClosed, unpublishLocalPort } from './headless'
 import { htmlPreviewer } from './htmlPreview'
 import { setHtmlPreviewer, setHtmlRenderRoot } from './server/htmlRender'
 import { killAllPtys, listPtys, ptyFlowCounters, registerPty } from './pty'
@@ -73,6 +75,8 @@ if (process.env.TEMP_CODE_DEBUG_PORT) {
 // Chromium's headless Ozone backend stands in for one so the hidden
 // preview window can still paint.
 const headless = isHeadless()
+/** Set once openSavedWindows has run: before that, a hidden helper's going is not a quit. */
+let userWindowsOpened = false
 if (headless) {
   app.disableHardwareAcceleration()
   if (noDisplay()) app.commandLine.appendSwitch('ozone-platform', 'headless')
@@ -152,6 +156,25 @@ app.whenReady().then(async () => {
   if (!app.isPackaged) registerDebug()
   if (process.platform === 'darwin' && !headless) registerAppshots(server, createWindow)
   ipcMain.handle('server-port', () => server?.port ?? null)
+  // The launch mirror (src/main/server/launchMirror.ts): the renderer paints
+  // the rail from it before any socket is up, so the read is synchronous.
+  ipcMain.on('launch-mirror:read', (e) => {
+    const environments = listEnvironments(store).map((row) => ({
+      id: row.id,
+      name: row.name,
+      routes: row.routes.map((r) => ({ url: r.url, kind: r.kind })),
+      ...(row.keyId !== undefined ? { keyId: row.keyId } : {})
+    }))
+    const hosts = server!.launchMirror.read(['local', ...environments.map((row) => row.id)])
+    e.returnValue = { environments, hosts } satisfies LaunchMirrorSnapshot
+  })
+  ipcMain.on('launch-mirror:write', (_e, write: MirrorWrite) => {
+    try {
+      server!.launchMirror.write(write)
+    } catch (err) {
+      console.error('[launch-mirror] write failed', err)
+    }
+  })
   ipcMain.handle('pick-directory', async (_e, defaultPath?: string) => {
     const res = await dialog.showOpenDialog({
       properties: ['openDirectory', 'createDirectory'],
@@ -193,6 +216,7 @@ app.whenReady().then(async () => {
       userData: app.getPath('userData')
     })
     openSavedWindows()
+    userWindowsOpened = true
   }
   setTimeout(() => flushCompileCache(), FLUSH_AFTER_MS).unref()
 
@@ -231,7 +255,7 @@ function registerDebug(): void {
 // ones it ever opens are html preview's hidden ones, and their going is
 // not a quit.
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin' && !headless) {
+  if (quitsOnAllClosed({ headless, userWindowsOpened })) {
     app.quit()
   }
 })

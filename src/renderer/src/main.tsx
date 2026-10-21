@@ -6,6 +6,7 @@ import App from "./App";
 import { initAppearance, syncWindowGlass } from "./lib/appearance";
 import { initSounds } from "./lib/sounds";
 import { initServerLink } from "./lib/tcserver/link";
+import { hydrateFromLaunchMirror, installLaunchMirror } from "./lib/tcserver/launchMirror";
 import { registry } from "./lib/connection";
 import { sessionStore } from "./lib/tcserver/store";
 import { workspaceStore } from "./lib/tcserver/workspaces";
@@ -35,7 +36,12 @@ inboxStore.connect(registry);
 rulesStore.connect(registry);
 slashCommandStore.connect(registry);
 accountsStore.connect(registry);
+// Before environment zero and before the first render: every host's rows as
+// the launch mirror last saw them, so the rail is whole on its first frame
+// and a host that answers late (or not at all) still has its section.
+hydrateFromLaunchMirror();
 initServerLink();
+installLaunchMirror();
 updateStore.start();
 initAppshots();
 
@@ -49,6 +55,11 @@ function dismissBootSplash() {
     document.documentElement.classList.add("ready");
     // Launch-timing probe (scripts/e2e-launch-timing.ts): the UI is on screen.
     performance.mark("tc:ready");
+    // The rail's first full paint (scripts/e2e-launch-mirror.ts): every
+    // host's rows are on screen, listed or painted from the launch mirror.
+    void sessionStore.whenPainted().then(() => {
+      requestAnimationFrame(() => requestAnimationFrame(() => performance.mark("tc:rail-complete")));
+    });
     syncWindowGlass();
     splash.classList.add("boot-splash-out");
     window.setTimeout(() => splash.remove(), 180);

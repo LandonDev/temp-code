@@ -25,6 +25,20 @@ export function noDisplay(
   return platform === 'linux' && !env.DISPLAY && !env.WAYLAND_DISPLAY
 }
 
+/**
+ * Whether the last window closing ends the app: never on macOS (the dock
+ * keeps it), never headless (the only windows are html preview's hidden
+ * ones), and never before the first user window has opened: the origin
+ * migration's hidden helper (originMigration.ts) closes before
+ * openSavedWindows runs, and on Linux that once quit the app at boot.
+ */
+export function quitsOnAllClosed(
+  opts: { headless: boolean; userWindowsOpened: boolean },
+  platform: NodeJS.Platform = process.platform
+): boolean {
+  return platform !== 'darwin' && !opts.headless && opts.userWindowsOpened
+}
+
 export const LOCAL_PORT_FILE = 'server.json'
 
 /**

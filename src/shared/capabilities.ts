@@ -114,6 +114,7 @@ export const METHOD_CAPABILITY: Record<ClientRequest['method'], MethodCapability
   'search.project': 'read',
   'session.search': 'read',
   'session.list': 'read',
+  'session.changes': 'read',
   'session.events': 'read',
   'session.rowBody': 'read',
   'session.subscribe': 'read',

@@ -47,6 +47,15 @@ export interface EventsPage {
   reset: boolean
 }
 
+/** `session.changes`: what the list did since the client's cursor
+ *  (src/main/server/listChanges.ts). `reset` means the host cannot say
+ *  (another run of the server, or a cursor older than the log keeps) and
+ *  the client lists whole; the head's `seq` and `generation` are the
+ *  cursor to save either way. */
+export type SessionChanges =
+  | { reset: true; seq: number; generation: string }
+  | { reset: false; seq: number; generation: string; sessions: SessionMeta[]; removed: string[] }
+
 /** `session.list` on a remote connection: one page of metas, working
  *  threads first. `cursor` continues the walk; null on the last page. */
 export interface SessionPage {

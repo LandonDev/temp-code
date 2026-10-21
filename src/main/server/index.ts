@@ -184,6 +184,9 @@ import {
 } from './build'
 import { closeAllLiveWatchers, onLiveEdit } from './livediff'
 import { eventsPage, profileFor, PushCoalescer, remoteDeflateOptions, sessionPage } from './wire'
+import { ListChangeLog } from './listChanges'
+import { LaunchMirror } from './launchMirror'
+import { peerDelay, peerDelayMs } from './peerDelay'
 import type { WireProfile } from '@shared/wire'
 
 /** The session an app.* call claims to be from — must actually exist. */
@@ -244,10 +247,14 @@ export interface RunningServer {
   build: BuildFacts
   /** Master's release number from GitHub (deployDrift.ts); `focus()` when a window comes forward. */
   masterRelease: MasterReleaseWatcher
+  /** What the desktop paints at boot before any socket is up (launchMirror.ts). */
+  launchMirror: LaunchMirror
   close: () => Promise<void>
 }
 
 let firstListMarked = false
+/** Read once: a slow remote peer for the launch-mirror proof (peerDelay.ts). */
+const PEER_DELAY_MS = peerDelayMs()
 /** WS requests slower than this land in the boot log. */
 const SLOW_REQUEST_MS = 500
 
@@ -319,6 +326,11 @@ export async function startServer(
     getSession: (id) => registry.get(id)
   })
   setProjectPlans(projectPlans)
+  const launchMirror = new LaunchMirror(db)
+  // The list change log a client's launch mirror resumes from (`session.changes`).
+  const listChanges = new ListChangeLog()
+  registry.onMeta((m) => listChanges.changed(m.id))
+  registry.onRemoved((ids) => listChanges.removed(ids))
   // The file viewer's media host serves only files under these roots.
   setMediaRoots(() => [
     ...registry.listProjects().map((p) => p.cwd),
@@ -949,6 +961,8 @@ export async function startServer(
       }
       const req = parsed.data
       if (dropAnswer(req.method)) dropped.add(req.id)
+      // TEMP_CODE_PEER_DELAY_MS (peerDelay.ts): a proof's slow box.
+      if (PEER_DELAY_MS > 0) await peerDelay(principal.kind, PEER_DELAY_MS)
       if (principal.kind !== 'local') {
         const need = requiredCapability(req)
         if (need === 'local') return sendFrame({ id: req.id, ok: false, error: `forbidden: ${req.method} is local-only` })
@@ -1556,6 +1570,26 @@ export async function startServer(
             if (ws.readyState === ws.OPEN) ws.send(frame)
             break
           }
+          case 'session.changes': {
+            const changes = listChanges.since(req.params.afterSeq, req.params.generation)
+            if (changes.reset) {
+              sendFrame({ id: req.id, ok: true, result: { reset: true, seq: changes.seq, generation: changes.generation } })
+              break
+            }
+            const sessions: SessionMeta[] = []
+            const removed = [...changes.removed]
+            for (const id of changes.changed) {
+              const meta = registry.get(id)
+              if (meta) sessions.push(meta)
+              else removed.push(id)
+            }
+            sendFrame({
+              id: req.id,
+              ok: true,
+              result: { reset: false, seq: changes.seq, generation: changes.generation, sessions, removed }
+            })
+            break
+          }
           case 'session.events':
             sendFrame({
               id: req.id,
@@ -2058,6 +2092,7 @@ export async function startServer(
     port,
     environmentId,
     accountSync,
+    launchMirror,
     attach,
     remoteAuth,
     get remote() {

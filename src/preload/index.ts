@@ -3,6 +3,7 @@ import { electronAPI } from '@electron-toolkit/preload'
 // Mirrors the main-process asset URL builder so the renderer can turn a
 // logo path into a URL without a round trip.
 import { logoAssetUrl } from '../shared/assets'
+import type { LaunchMirrorSnapshot, MirrorWrite } from '../shared/launchMirror'
 import { aliaxApi } from './aliax'
 import type { EditorChoice, EditorConfig, EditorId, EditorTarget } from '../shared/editor'
 
@@ -71,6 +72,14 @@ interface AppshotPermissions {
 
 const api = {
   getServerPort: (): Promise<number | null> => ipcRenderer.invoke('server-port'),
+  /** The launch mirror (src/shared/launchMirror.ts): what every host last
+   *  showed, read synchronously so the rail paints before any socket is up;
+   *  writes are fire-and-forget, coalesced by the renderer. */
+  launchMirror: {
+    read: (): LaunchMirrorSnapshot | null =>
+      (ipcRenderer.sendSync('launch-mirror:read') as LaunchMirrorSnapshot | null) ?? null,
+    write: (write: MirrorWrite): void => ipcRenderer.send('launch-mirror:write', write)
+  },
   appshots: {
     /** Mounts the capture listener and flushes any queued captures. */
     onCapture: (cb: (a: AppshotAttachment) => void): (() => void) => {

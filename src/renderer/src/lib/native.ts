@@ -10,6 +10,7 @@
 
 import { isWebMode, webApi } from "./nativeWeb";
 import type { EditorChoice, EditorConfig, EditorId, EditorTarget } from "@shared/editor";
+import type { LaunchMirrorSnapshot, MirrorWrite } from "@server/shared/launchMirror";
 
 export type UnlistenFn = () => void;
 export type NativeEvent<T> = { payload: T };
@@ -397,6 +398,17 @@ export async function getServerPort(): Promise<number> {
   const port = await api().getServerPort();
   if (port == null) throw new Error("server port unavailable");
   return port;
+}
+
+/** The launch mirror at boot (src/shared/launchMirror.ts), synchronously;
+ *  null at /ui, where there is no main process to paint from. */
+export function readLaunchMirror(): LaunchMirrorSnapshot | null {
+  return api().launchMirror.read();
+}
+
+/** One coalesced launch-mirror write; fire and forget. */
+export function writeLaunchMirror(write: MirrorWrite): void {
+  api().launchMirror.write(write);
 }
 
 // ── Events ─────────────────────────────────────────────────────────────────

@@ -454,16 +454,17 @@ describe("installActiveSessionSync", () => {
 });
 
 describe("installBootTasks", () => {
-  it("prunes the seen map to the threads every host lists, and not while a host has not listed or the list is empty", async () => {
-    const listed = vi.spyOn(sessionStore, "listedEnvironments").mockResolvedValue(new Set(["local"]));
+  it("prunes the seen map to the threads every settled host has (listed, or mirrored), and not while a host has neither or the list is empty", async () => {
+    const listed = vi.spyOn(sessionStore, "settledEnvironments").mockResolvedValue(new Set(["local"]));
     const environments = vi.spyOn(registry, "environments").mockReturnValue([{ id: "local" }, { id: "env_box" }] as never);
     sessionStore.adopt(meta({ id: "s-a" }));
     sessionStore.adopt(meta({ id: "s-b", environmentId: "env_box" }));
     teardown = installBootTasks();
     await flush();
-    // the box has not listed yet: its threads are not known, so nothing is pruned
+    // the box has neither listed nor a mirror: its threads are not known, so nothing is pruned
     expect(pruneLastSeen).not.toHaveBeenCalled();
     teardown();
+    // the box is settled (its list landed, or the mirror painted it): every host's ids are known
     listed.mockResolvedValue(new Set(["local", "env_box"]));
     teardown = installBootTasks();
     await flush();

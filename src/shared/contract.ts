@@ -624,6 +624,15 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
       })
       .optional()
   }),
+  // What the session list did since `afterSeq` of `generation` (the
+  // server's listChanges.ts): the metas that changed and the ids that
+  // left, or `reset` when the log cannot say, and the client lists whole.
+  // `afterSeq: 0` with no generation asks for the head alone.
+  z.object({
+    id: z.string(),
+    method: z.literal('session.changes'),
+    params: z.object({ afterSeq: z.number().int().nonnegative(), generation: z.string().optional() })
+  }),
   // One renderer-measured stall line for <userData>/logs/stalls.log.
   z.object({ id: z.string(), method: z.literal('stall.report'), params: z.object({ line: z.string() }) }),
   z.object({

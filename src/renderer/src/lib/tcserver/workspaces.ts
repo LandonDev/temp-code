@@ -218,6 +218,20 @@ class WorkspaceStore {
     return id ? this.state.workspaces.find((w) => w.id === id) : undefined;
   }
 
+  /** Paint one host's lists from the launch mirror before its socket is up;
+   *  the first `refresh` replaces them. A host the mirror had nothing for
+   *  leaves the catalog as it was (so `loaded` stays honest). */
+  hydrate(hosts: readonly { environmentId: string; workspaces: unknown[]; projects: unknown[] }[]): void {
+    for (const host of hosts) {
+      if (host.workspaces.length === 0 && host.projects.length === 0) continue;
+      this.merge(
+        host.environmentId,
+        (host.workspaces as WireWorkspaceMeta[]).map((w) => ({ ...w, environmentId: host.environmentId })),
+        (host.projects as WireProjectMeta[]).map((p) => ({ ...p, environmentId: host.environmentId })),
+      );
+    }
+  }
+
   /** Re-read one environment's lists, then every scope's thread defaults there. */
   async refresh(link: Link): Promise<void> {
     const environmentId = link.environmentId;

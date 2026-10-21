@@ -38,6 +38,8 @@ let version: Promise<string> | null = null;
 
 export const webApi: Api = {
   getServerPort: () => Promise.resolve(null),
+  // The page at /ui has one host and no main process: nothing to paint from before its socket.
+  launchMirror: { read: () => null, write: noop },
   appshots: {
     onCapture: () => noop,
     onError: () => noop,

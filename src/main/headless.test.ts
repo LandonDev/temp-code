@@ -2,7 +2,7 @@ import { mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { LOCAL_PORT_FILE, isHeadless, noDisplay, publishLocalPort, unpublishLocalPort } from './headless'
+import { LOCAL_PORT_FILE, isHeadless, noDisplay, publishLocalPort, quitsOnAllClosed, unpublishLocalPort } from './headless'
 
 describe('isHeadless', () => {
   it('follows TEMP_CODE_HEADLESS on every platform', () => {
@@ -34,5 +34,16 @@ describe('publishLocalPort', () => {
     unpublishLocalPort(dir)
     expect(() => statSync(path)).toThrow()
     unpublishLocalPort(dir)
+  })
+})
+
+describe('quitsOnAllClosed', () => {
+  it('never quits on macOS or headless, and not before the first user window opened', () => {
+    expect(quitsOnAllClosed({ headless: false, userWindowsOpened: true }, 'darwin')).toBe(false)
+    expect(quitsOnAllClosed({ headless: true, userWindowsOpened: true }, 'linux')).toBe(false)
+    // The origin migration's hidden helper closes before openSavedWindows runs.
+    expect(quitsOnAllClosed({ headless: false, userWindowsOpened: false }, 'linux')).toBe(false)
+    expect(quitsOnAllClosed({ headless: false, userWindowsOpened: true }, 'linux')).toBe(true)
+    expect(quitsOnAllClosed({ headless: false, userWindowsOpened: true }, 'win32')).toBe(true)
   })
 })

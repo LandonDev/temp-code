@@ -1836,6 +1836,34 @@ forward.
   mapping, the decisions, the notes), src/renderer/src/lib/openInEditor.test.ts
   (the label per host, the remote plan), FileNoteBar.dom.test.tsx and the
   note case in layout.test.ts.
+## The launch mirror against a slow box
+
+The desktop paints every host's rows from its launch mirror before any
+socket is up (CLAUDE.md "Launch: the rail paints from the launch mirror"),
+so a box that is asleep, far away or slow to answer no longer leaves its
+section of the rail blank. To play that case on purpose, run a host with
+`TEMP_CODE_PEER_DELAY_MS=<ms>` (src/main/server/peerDelay.ts): every
+request a remote principal makes there waits that long before it is
+handled; the host's own local socket never waits. Isolated instances only.
+
+`bun run script:e2e-launch-mirror` (scripts/e2e-launch-mirror.ts) is the
+proof and the measurement: a headless box with a 3 s peer delay and 12
+threads, a windowed desktop under xvfb driven over CDP, three cold starts
+(pair; the saved host with the mirror emptied; the mirror in place after the
+box renamed, archived, deleted and added a thread while the desktop was
+down). It reads `tc:ready` and `tc:rail-complete` off the window's
+performance marks; the second fires once every host's rows are on screen.
+
+| cold start, 3 s peer delay, 12 threads on the box | tc:ready → rail complete |
+| --- | --- |
+| before: host saved, no mirror (two delayed round trips) | 6,026 ms |
+| after: launch mirror | 11 ms |
+
+Measured 2026-10-21 on the box (xvfb, software rendering). The reconcile
+after the second start resumed from the saved cursor over
+`session.changes`: the renamed row read its new title in place, the deleted
+one left, the archived one archived, the new one appeared, and the mirror
+was rewritten with the new cursor.
 
 ## Updating
 

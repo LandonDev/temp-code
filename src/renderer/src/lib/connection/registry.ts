@@ -5,6 +5,8 @@ import type { Transport } from "./transport";
 import { IDLE_STATUS, type Environment, type EnvironmentStatus, type Route } from "./types";
 
 export const LOCAL_ENVIRONMENT_ID = "local";
+/** How long a key route waits for the primary link before its ticket mint fails as before. */
+export const PRIMARY_WAIT_MS = 10_000;
 export const WEB_ENVIRONMENT_ID = "web";
 
 export type LinkEvent = "added" | "removed";
@@ -252,11 +254,33 @@ export class ConnectionRegistry {
     return first ? this.profileFor(environment, first) : "remote";
   }
 
+  /** The primary link, once it is open (bounded): a saved host registered
+   *  from the launch mirror ahead of this machine's server waits for the
+   *  ticket mint instead of failing its first attempt into a backoff. */
+  private async primaryOpen(timeoutMs = PRIMARY_WAIT_MS): Promise<EnvLink> {
+    const link = this.primary();
+    if (link.connected) return link;
+    await new Promise<void>((resolve) => {
+      let timer: ReturnType<typeof setTimeout> | null = null;
+      const off = link.onOpen(() => {
+        off();
+        if (timer) clearTimeout(timer);
+        resolve();
+      });
+      timer = setTimeout(() => {
+        off();
+        resolve();
+      }, timeoutMs);
+    });
+    return link;
+  }
+
   private async resolveUrl(environment: Environment, route: Route): Promise<string> {
     if (this.options.resolveUrl) return this.options.resolveUrl(environment, route);
     if (route.credential === "key") {
       if (!environment.credentialRef) throw new Error(`unauthorized: ${environment.name} has no saved key`);
-      const minted = await this.primary().request<{ ticket: string }>("remote.environments.ticket", {
+      const primary = await this.primaryOpen();
+      const minted = await primary.request<{ ticket: string }>("remote.environments.ticket", {
         id: environment.credentialRef,
         url: route.url,
       });

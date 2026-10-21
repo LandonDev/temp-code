@@ -464,13 +464,14 @@ export function installBootTasks(): Teardown {
   let live = true;
   syncDockBadge();
   // The seen map only ever grew: ids of deleted threads stayed in every
-  // write. The known set is every host's list together, so the prune waits
-  // until each saved environment has listed; with one still out (a host
-  // down, or its link not up yet) it prunes nothing, because its threads
-  // would all read unread the moment the host came back.
-  void sessionStore.listedEnvironments().then((listed) => {
+  // write. The known set is every host's list together with what the launch
+  // mirror had for a host that has not answered; the prune waits BOOT_SETTLE_MS
+  // for the lists, never on a host that is away. A saved host with neither
+  // (no mirror yet, no list) holds the prune, because its threads would all
+  // read unread the moment the host came back.
+  void sessionStore.settledEnvironments().then((settled) => {
     if (!live) return;
-    if (!registry.environments().every((env) => listed.has(env.id))) return;
+    if (!registry.environments().every((env) => settled.has(env.id))) return;
     const known = sessionStore.metas();
     if (known.length > 0) pruneLastSeen(new Set(known.map((meta) => meta.id)));
   });
