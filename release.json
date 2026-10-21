@@ -1,5 +1,5 @@
 {
-  "n": 267,
-  "notes": "Fix: a window on the box no longer creates a local workspace at the box's path, which hid the box's threads behind This Mac after the history move",
-  "ts": 1792553151254
+  "n": 268,
+  "notes": "HtmlRenderFrame.dom.test unmounts after each test: without vitest globals the library never auto-cleans, and React's scheduler then threw 'window is not defined' after jsdom teardown, failing the release gate on alternate runs",
+  "ts": 1792555728665
 }
