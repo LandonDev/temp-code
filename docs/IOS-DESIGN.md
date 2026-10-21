@@ -935,9 +935,30 @@ keyboard action. Every animated change has a static cue as well.
   cost cap; thumbnails are decoded at display size.
 - **Nothing on the main actor waits on the network.** Every RPC is an async
   call off a detached task; the UI reads the observable models only.
-- **Background.** The socket closes after the 10 s grace and the app paints
-  from cache on return while the probe runs; a probe within 1.5 s changes
-  nothing on screen.
+- **Background.** Leaving: the socket closes after a 10 s grace (iOS usually
+  freezes the process first, so the grace rarely runs). Coming back: the
+  screen the person left is still there, exactly as they left it, scrolled
+  to the same row, painted from what the app already held. Within the
+  grace the live socket is probed and kept; past it the stale socket is
+  replaced at once, never probed for five seconds. On the new session the
+  thread on screen catches up first (`afterSeq` from its cursor), the other
+  open threads next, while the shell lists alongside; every catch-up lands
+  as a diff with no reload, no empty flash and no duplicate rows. A change
+  that lands where nobody is looking (another thread, Home while a thread is
+  up, the shell while the app re-lists) is published with animations off,
+  so nothing that was already true moves; rows that arrived while away get
+  the enter motion only on the list the person is looking at. A list that
+  comes back as it was is not republished. The status line (`StatusLine`)
+  is one line of footnote text over the content, never in it: it exists
+  only after the transport has been away 1.5 s, fades in and out over
+  150 ms, and is gone the frame the socket opens; the background's own
+  `suspended` state never shows. Elapsed timers run from the host's
+  `busySince`, so they are right on the first frame back and after a kill.
+  The tab, each tab's stack and the thread's segment survive a cold launch
+  (`NavigationMemory`; the clients exist before the first frame, so the
+  restored thread paints from the cache at once). Once every host has
+  caught up, the Live Activities and the badge (Home's Needs you count) are
+  brought in line with what the app shows.
 - **Measure.** Scroll a 2,000-row thread at 120 Hz with the Instruments
   animation hitch template; a hitch over 8 ms in the transcript is a bug.
 

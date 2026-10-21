@@ -43,7 +43,7 @@ struct StatusLine: View {
                     .padding(.horizontal, 16)
                     .padding(.vertical, 6)
                     .frame(maxWidth: .infinity)
-                    .background(Color(.secondarySystemBackground))
+                    .background(Surface.chrome)
                     .transition(.opacity)
                     .accessibilityIdentifier("status-line")
                 }

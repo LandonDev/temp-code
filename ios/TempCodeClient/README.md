@@ -70,7 +70,7 @@ phone:
 | State | Meaning | Leaves it |
 |---|---|---|
 | `connecting` | no session yet since start or retry | hello → `open`; failure → retry timer (stays `connecting`) |
-| `open` | a session is up | loss → `reconnecting`; unauthorized close → `unauthorized`; background grace → `suspended` |
+| `open` | a session is up | loss → `reconnecting`; unauthorized close → `unauthorized`; background grace → `suspended`; foreground after sleeping through the grace → closed and replaced at once (`reconnecting`, no delay) |
 | `reconnecting` | a session was lost; `nextRetryAt` says when | timer → attempt; `retry()`/foreground/online → attempt now |
 | `offline` | the OS says no network, or the socket **halted** (`halt`: identity changed, contract mismatch) | online → probe/attempt; `retry()` lifts a halt |
 | `unauthorized` | the key was refused (ticket 401/403, close 4401/4403/4001) | only `retry()` |
@@ -82,7 +82,11 @@ after a session has stayed up 30 s; a rate-limited mint waits at least its
 over the live session with a 5 s limit; a good probe marks `fresh`, a failed
 one closes the session and reconnects at once. Background: `setForeground(false)`
 starts a 10 s grace, then closes the socket and waits; coming forward before
-the grace ends only probes. A hello whose `environmentId` is not the paired
+the grace ends only probes. iOS freezes the process seconds after it leaves
+the screen, so the grace timer usually never runs: coming forward with the
+socket still held and more than the grace elapsed on the clock means the
+socket is stale, and it is replaced at once rather than probed for five
+seconds (`ManualClock.skip(ms:)` plays the frozen process in tests). A hello whose `environmentId` is not the paired
 one, or whose `contract` is not `contractVersion`, halts with a `HaltReason`
 the status line can explain ("update the app" vs "update the host").
 
@@ -122,9 +126,15 @@ commit: no dependency to resolve, nothing to fetch.
 app sees it: `status`, `workspaces`, `projects`, `sessions` (newest first),
 `threads[id]` (`ThreadState`: rows oldest first and unique by seq,
 `moreBefore`, `isLoading`, `isLoadingOlder`, `isLive`, `goneReason`).
-`start()` paints from the cache, then connects; on each new session it lists
-the shell in one round trip (workspaces, projects, the first `session.list`
-page, then the cursor), resumes the open threads and marks `fresh`. Pushes:
+`start()` paints from the cache, then connects; on each new session the open
+threads resume first (`visibleThread`, the one on screen, at the head of the
+first batch) while the shell lists alongside in one round trip (workspaces,
+projects, the first `session.list` page, then the cursor), and `fresh` is
+marked once both are done. `visibleThread` and `listVisible` say what the
+person is looking at; a change anywhere else is published through `quietly`
+(the app sets a transaction with animations off), and a list that comes back
+as it was is not republished at all, so a catch-up moves nothing that was
+already true. `isLoading` is true only while nothing has painted. Pushes:
 `events` append to an open thread (ephemeral rows stay out of the cache),
 `sessions` merge newest-first, `session-removed` drops the thread,
 `projects`/`workspaces` replace. `openThread` paints the cached tail at once
