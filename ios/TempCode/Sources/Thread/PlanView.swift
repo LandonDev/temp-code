@@ -26,11 +26,10 @@ struct PlanPage: View {
 
     @State private var position = ScrollPosition(idType: Int.self)
     @State private var restored = false
-    @State private var width: CGFloat = 0
 
     var body: some View {
         let pages = PlanPages.shared
-        let document = text.map { pages.document(key, text: $0) }
+        let document = text.flatMap { pages.document(key, text: $0) }
         let empty = text?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true
         ScrollView {
             Group {
@@ -42,7 +41,7 @@ struct PlanPage: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .accessibilityAddTraits(.updatesFrequently)
                 } else if let document {
-                    PlanDocumentView(document: document, width: width)
+                    PlanDocumentView(document: document)
                 } else if let text {
                     // A long plan on its first paint: plain text at the same
                     // size until the parse lands, so only the styling changes.
@@ -61,9 +60,6 @@ struct PlanPage: View {
             .transaction { $0.animation = nil }
         }
         .scrollPosition($position, anchor: .top)
-        .onGeometryChange(for: CGFloat.self) { proxy in
-            min(proxy.size.width, PlanType.measure + 2 * PlanType.inset) - 2 * PlanType.inset
-        } action: { width = $0 }
         .onChange(of: text, initial: true) { _, now in
             if cache, let now { pages.remember(key, text: now) }
         }
@@ -86,12 +82,11 @@ struct PlanPage: View {
 /// never moves the ones before it.
 private struct PlanDocumentView: View {
     let document: PlanDocument
-    let width: CGFloat
 
     var body: some View {
         LazyVStack(alignment: .leading, spacing: PlanType.gap) {
             ForEach(Array(document.blocks.enumerated()), id: \.offset) { index, block in
-                PlanBlockView(block: block, first: index == 0, width: width)
+                PlanBlockView(block: block, first: index == 0)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .id(index)
             }
@@ -103,7 +98,6 @@ private struct PlanDocumentView: View {
 private struct PlanBlockView: View {
     let block: PlanBlock
     let first: Bool
-    let width: CGFloat
 
     var body: some View {
         switch block {
@@ -138,7 +132,7 @@ private struct PlanBlockView: View {
             Hairline()
                 .padding(.vertical, PlanType.ruleInset)
         case .table(let table):
-            PlanTableView(table: table, minWidth: width)
+            PlanTableView(table: table)
         }
     }
 }
@@ -188,34 +182,30 @@ private struct PlanListView: View {
     }
 }
 
-/// A pipe table one step down from body, scrolling sideways when wider
-/// than the page: the header semibold over a hairline, a hairline between
-/// rows, no vertical rules, the first column on the text edge.
+/// A pipe table one step down from body, as wide as its content and
+/// scrolling sideways past the page: the header semibold over a hairline,
+/// a dimmer hairline between rows, no vertical rules, the first column on
+/// the text edge. Each cell draws the rule under itself, so the rules run
+/// exactly the table's width.
 private struct PlanTableView: View {
     let table: PlanTable
-    let minWidth: CGFloat
 
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             Grid(alignment: .leading, horizontalSpacing: 0, verticalSpacing: 0) {
                 GridRow {
                     ForEach(Array(table.header.enumerated()), id: \.offset) { column, cell in
-                        PlanCell(text: cell, alignment: table.alignments[column], header: true, first: column == 0)
+                        PlanCell(text: cell, alignment: table.alignments[column], header: true, first: column == 0, rule: 1)
                     }
                 }
-                Hairline()
                 ForEach(Array(table.rows.enumerated()), id: \.offset) { row, cells in
                     GridRow {
                         ForEach(Array(cells.enumerated()), id: \.offset) { column, cell in
-                            PlanCell(text: cell, alignment: table.alignments[column], header: false, first: column == 0)
+                            PlanCell(text: cell, alignment: table.alignments[column], header: false, first: column == 0, rule: row < table.rows.count - 1 ? 0.6 : 0)
                         }
-                    }
-                    if row < table.rows.count - 1 {
-                        Hairline().opacity(0.6)
                     }
                 }
             }
-            .frame(minWidth: minWidth, alignment: .leading)
         }
         .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
         .padding(.vertical, 2)
@@ -227,18 +217,30 @@ private struct PlanCell: View {
     let alignment: PlanTable.Alignment
     let header: Bool
     let first: Bool
+    /// The opacity of the hairline under this cell; 0 for none.
+    let rule: Double
+
+    /// A cell wider than a short phrase wraps at this width; a horizontal
+    /// scroll view proposes no width, so a short cell takes its own.
+    static let wrapWidth: CGFloat = 280
 
     var body: some View {
+        let horizontal: HorizontalAlignment = alignment == .center ? .center : alignment == .trailing ? .trailing : .leading
+        let long = text.characters.count > 40
         Text(text.inlineStyled())
             .font(header ? PlanType.table.weight(.semibold) : PlanType.table)
             .monospacedDigit()
             .multilineTextAlignment(alignment == .center ? .center : alignment == .trailing ? .trailing : .leading)
-            .fixedSize(horizontal: false, vertical: true)
-            .frame(maxWidth: 280, alignment: alignment == .center ? .center : alignment == .trailing ? .trailing : .leading)
+            .fixedSize(horizontal: !long, vertical: true)
+            .frame(width: long ? Self.wrapWidth : nil, alignment: Alignment(horizontal: horizontal, vertical: .center))
             .padding(.vertical, 8)
             .padding(.leading, first ? 0 : 16)
             .padding(.trailing, 16)
-            .gridColumnAlignment(alignment == .center ? .center : alignment == .trailing ? .trailing : .leading)
+            .frame(maxHeight: .infinity, alignment: .top)
+            .overlay(alignment: .bottom) {
+                if rule > 0 { Hairline().opacity(rule) }
+            }
+            .gridColumnAlignment(horizontal)
     }
 }
 
@@ -268,6 +270,8 @@ final class PlanPages {
     @ObservationIgnored private var ready: [String: PlanDocument] = [:]
     @ObservationIgnored private var inflight: [String: Int] = [:]
     @ObservationIgnored private let directory: URL
+    /// One serial queue, so consecutive polls land on disk in order.
+    @ObservationIgnored private let disk = DispatchQueue(label: "dev.landon.tempcode.plan-cache", qos: .utility)
 
     init(directory: URL? = nil) {
         self.directory = directory ?? FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0].appending(path: "plans", directoryHint: .isDirectory)
@@ -290,7 +294,7 @@ final class PlanPages {
         read.insert(key)
         let file = url(key)
         let directory = directory
-        Task.detached(priority: .utility) {
+        disk.async {
             try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
             try? text.write(to: file, atomically: true, encoding: .utf8)
         }

@@ -162,12 +162,13 @@ private struct PlanDocumentParser {
             if let item = Self.listItem(line) {
                 flushParagraph()
                 flushQuote()
-                list.add(indent: item.indent, ordered: item.ordered, text: item.text)
+                list.add(indent: item.indent, ordered: item.ordered, start: item.number, text: item.text)
                 i += 1
                 continue
             }
-            if !list.isEmpty, line.first?.isWhitespace == true {
-                // An indented line under a list item continues that item.
+            if !list.isEmpty {
+                // A line under a list item with no blank between continues it,
+                // indented or not.
                 list.continueLast(trimmed)
                 i += 1
                 continue
@@ -224,13 +225,17 @@ private struct PlanDocumentParser {
 
         var isEmpty: Bool { raws.isEmpty }
 
-        mutating func add(indent: Int, ordered: Bool, text: String) {
+        /// `start` is the number the source wrote: it is honoured for the
+        /// first ordered item at a depth (so a list a blank line split
+        /// continues its count) and ignored after it (so `1.` repeated
+        /// still counts up).
+        mutating func add(indent: Int, ordered: Bool, start: Int?, text: String) {
             while let last = stack.last, last > indent { stack.removeLast() }
             if stack.isEmpty || stack[stack.count - 1] < indent { stack.append(indent) }
             let depth = stack.count - 1
             if counters.count > depth + 1 { counters.removeSubrange((depth + 1)...) }
             while counters.count <= depth { counters.append(0) }
-            counters[depth] = ordered ? counters[depth] + 1 : 0
+            counters[depth] = ordered ? (counters[depth] == 0 ? max(start ?? 1, 1) : counters[depth] + 1) : 0
             let (checked, body) = Self.checklist(text)
             raws.append(Raw(text: body, checked: checked, depth: depth, ordered: ordered, number: ordered ? counters[depth] : nil))
         }
@@ -255,8 +260,8 @@ private struct PlanDocumentParser {
     }
 
     /// A list item: its indent in columns (a tab is four), whether it is
-    /// ordered, and the text after the marker.
-    private static func listItem(_ line: String) -> (indent: Int, ordered: Bool, text: String)? {
+    /// ordered (and the number written), and the text after the marker.
+    private static func listItem(_ line: String) -> (indent: Int, ordered: Bool, number: Int?, text: String)? {
         var indent = 0
         var rest = Substring(line)
         while let first = rest.first, first == " " || first == "\t" {
@@ -265,13 +270,13 @@ private struct PlanDocumentParser {
         }
         guard indent < 16 else { return nil }
         if let first = rest.first, "-*+".contains(first), rest.dropFirst().first == " " {
-            return (indent, false, String(rest.dropFirst(2)))
+            return (indent, false, nil, String(rest.dropFirst(2)))
         }
         let digits = rest.prefix { $0.isNumber }
         guard !digits.isEmpty, digits.count <= 3 else { return nil }
         let afterDigits = rest.dropFirst(digits.count)
         guard let mark = afterDigits.first, mark == "." || mark == ")", afterDigits.dropFirst().first == " " else { return nil }
-        return (indent, true, String(afterDigits.dropFirst(2)))
+        return (indent, true, Int(digits), String(afterDigits.dropFirst(2)))
     }
 
     // MARK: - lines
@@ -301,8 +306,12 @@ private struct PlanDocumentParser {
         }
         guard level > 0, rest.first == " " || rest.first == "\t" else { return nil }
         var text = rest.trimmingCharacters(in: .whitespaces)
-        while text.hasSuffix("#") { text.removeLast() }
-        text = text.trimmingCharacters(in: .whitespaces)
+        // A closing run of hashes after a space is decoration; "C#" keeps its hash.
+        let closing = text.reversed().prefix { $0 == "#" }.count
+        if closing > 0, closing < text.count, text[text.index(text.endIndex, offsetBy: -closing - 1)] == " " {
+            text.removeLast(closing)
+            text = text.trimmingCharacters(in: .whitespaces)
+        }
         return text.isEmpty ? nil : (level, text)
     }
 
@@ -324,6 +333,8 @@ private struct PlanDocumentParser {
         var escaped = false
         for character in text {
             if escaped {
+                // Only a pipe is unescaped here; other escapes are inline markdown's.
+                if character != "|" { current.append("\\") }
                 current.append(character)
                 escaped = false
             } else if character == "\\" {

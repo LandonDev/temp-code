@@ -78,6 +78,18 @@ private func plain(_ text: AttributedString) -> String { String(text.characters)
         ])
     }
 
+    @Test func `a loose ordered list keeps its count, a C# heading its hash, an unindented line its item`() {
+        let document = PlanDocument.parse("1. one\n\n2. two\nstill two\n\n## Port to C# ##\n")
+        guard document.blocks.count == 3, case .list(let first) = document.blocks[0], case .list(let second) = document.blocks[1], case .heading(_, let heading) = document.blocks[2] else {
+            Issue.record("expected two lists and a heading, got \(document.blocks)")
+            return
+        }
+        #expect(first.map(\.number) == [1])
+        #expect(second.map(\.number) == [2])
+        #expect(second.map { plain($0.text) } == ["two still two"])
+        #expect(plain(heading) == "Port to C#")
+    }
+
     @Test func `a pipe table becomes rows padded to the header with alignments`() {
         let document = PlanDocument.parse("""
         Before:
