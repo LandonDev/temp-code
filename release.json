@@ -1,5 +1,5 @@
 {
-  "n": 273,
-  "notes": "Restored panes keep their host (the host chip no longer says This Mac for a box thread after a relaunch), Mark all read in the rail, every workspace's menu and the View menu, a boot prune that waits for every host's list, and a full-access thread is never prompted on the Mac",
-  "ts": 1792564707046
+  "n": 274,
+  "notes": "Cross-host workflow: Mac threads from the box, a quiet Mac bridge with a load guard, one project row for both hosts, thread resources with clean-up, account removals that propagate, deploy drift, two-way memory sync, branch travel, threads that survive a restart, pause that reaches the Mac, deploy and publish from the app, skills parity, failure cards, open on the Mac, the device row and fleet switches. Speed: a windowed transcript, a split bundle, the launch mirror, warm connections, build once deploy twice and a tiered gate. Workflow: project preambles, optional review before merge, quota-aware routing, thread notes, cross-host search, plans that start their own build, and Plan for Project",
+  "ts": 1792610923027
 }
