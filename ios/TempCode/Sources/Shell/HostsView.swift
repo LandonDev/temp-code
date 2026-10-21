@@ -140,12 +140,19 @@ struct HostDetailView: View {
     @State private var name = ""
 
     var body: some View {
-        if let client = model.registry.client(environmentId) {
-            detail(client)
-        } else {
-            // Forgotten while on screen: the list behind is already without it.
-            Color.clear.onAppear { dismiss() }
+        let client = model.registry.client(environmentId)
+        Group {
+            if let client {
+                detail(client)
+            } else {
+                // Forgotten while on screen: the list behind is already without it.
+                Color.clear.onAppear { dismiss() }
+            }
         }
+        // On the outermost view, not inside the conditional: a title set on a
+        // branch of the pushed root did not reach the bar.
+        .navigationTitle(client?.environment.name ?? "")
+        .navigationBarTitleDisplayMode(.inline)
     }
 
     @ViewBuilder
@@ -246,8 +253,6 @@ struct HostDetailView: View {
             }
         }
         .listStyle(.insetGrouped)
-        .navigationTitle(environment.name)
-        .navigationBarTitleDisplayMode(.inline)
         .scrollDismissesKeyboard(.interactively)
         .sheet(item: $pairingAgain) { AddEnvironmentSheet(replacing: $0) }
         .forgetHostDialog(host: $forgetting) { id in
