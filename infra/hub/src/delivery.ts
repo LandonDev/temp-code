@@ -10,16 +10,33 @@ export const directory = (env: Env) => env.DIRECTORY.get(env.DIRECTORY.idFromNam
 const ALERT_TTL_S = 3600
 /** An ended activity stays on the lock screen this long: the final state, briefly. */
 export const ACTIVITY_DISMISS_S = 120
-const URGENT = new Set<Notice['event']>(['needs_you', 'failed', 'host_down'])
+/** The category the phone registers Approve and Deny under; every other thread notice carries the Open one. */
+export const APPROVAL_CATEGORY = 'tc.approval'
+export const THREAD_CATEGORY = 'tc.thread'
+const SOUNDED = new Set<Notice['event']>(['needs_you', 'failed', 'host_down'])
+const RELEVANCE: Record<Notice['event'], number> = { needs_you: 1, failed: 0.8, host_down: 0.8, stuck: 0.6, finished: 0.4, host_up: 0.2 }
 
-/** The alert a phone shows: title and body as the host sent them, the thread and row to land on under `tc`. */
+/**
+ * The alert a phone shows, the same shape temp-code's remote/apnsPayload.ts
+ * builds: the thread's title, the project or workspace as the subtitle, the
+ * body as the host wrote it, the thread and row to land on under `tc`. Only
+ * a thread that needs the person interrupts; a failure sounds too; a finish
+ * or a stall lands quietly. Notices group per thread, ranked by relevance.
+ */
 export function notificationPayload(notice: Notice): unknown {
   return {
     aps: {
-      alert: { title: notice.title, body: notice.body },
-      sound: 'default',
+      alert: {
+        title: notice.title,
+        ...(notice.subtitle ? { subtitle: notice.subtitle } : {}),
+        body: notice.body
+      },
+      ...(SOUNDED.has(notice.event) ? { sound: 'default' } : {}),
       'thread-id': notice.threadId ?? notice.hostId,
-      'interruption-level': URGENT.has(notice.event) ? 'time-sensitive' : 'active'
+      'summary-arg': notice.subtitle ?? notice.title,
+      'interruption-level': notice.event === 'needs_you' ? 'time-sensitive' : 'active',
+      'relevance-score': RELEVANCE[notice.event],
+      ...(notice.threadId === undefined ? {} : { category: notice.kind === 'approval' ? APPROVAL_CATEGORY : THREAD_CATEGORY })
     },
     tc: {
       event: notice.event,
@@ -27,6 +44,8 @@ export function notificationPayload(notice: Notice): unknown {
       ...(notice.environmentId === undefined ? {} : { environmentId: notice.environmentId }),
       ...(notice.threadId === undefined ? {} : { threadId: notice.threadId }),
       ...(notice.seq === undefined ? {} : { seq: notice.seq }),
+      ...(notice.kind === undefined ? {} : { kind: notice.kind }),
+      ...(notice.requestId === undefined ? {} : { requestId: notice.requestId }),
       ts: notice.ts
     }
   }
@@ -144,7 +163,8 @@ export async function fanOutActivity(env: Env, update: ActivityUpdate): Promise<
         payload,
         // A stale update is worth nothing; an end should still land when the phone comes back.
         expiration: Math.floor(update.ts / 1000) + (update.event === 'end' ? ALERT_TTL_S : 60),
-        collapseId: update.threadId
+        collapseId: update.threadId,
+        ...(update.priority === undefined ? {} : { priority: update.priority })
       })
       if (result.ok) return true
       if (result.gone) await directory(env).deleteActivity(update.hostId, update.threadId, device.deviceId)

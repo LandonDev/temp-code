@@ -2238,17 +2238,33 @@ export async function startServer(
   const notifier = new Notifier({
     registry,
     stuckMinutes: () => readRemoteSettings(store).stuckMinutes,
-    origin: () => pairingOrigin(readRemoteSettings(store), remote?.port ?? 0)
+    origin: () => pairingOrigin(readRemoteSettings(store), remote?.port ?? 0),
+    // The notification's subtitle: the project's name, else the workspace's.
+    place: (meta) =>
+      (meta.projectId ? registry.getProject(meta.projectId)?.name : null) ??
+      (meta.workspaceId ? registry.listWorkspaces().find((w) => w.id === meta.workspaceId)?.name : null) ??
+      null
   })
   if (hub) {
-    notifier.onNotice((n) => void hub.notify({ event: n.event, threadId: n.threadId, title: n.title, body: n.body, url: n.url, ts: n.ts, seq: n.seq }))
+    notifier.onNotice(
+      (n) =>
+        void hub.notify({ event: n.event, threadId: n.threadId, title: n.title, subtitle: n.subtitle, body: n.body, url: n.url, ts: n.ts, seq: n.seq, kind: n.kind, requestId: n.requestId })
+    )
   }
   // A host with the key posts every notice to its phones itself.
-  if (apns) notifier.onNotice((n) => pushRegistry.deliver({ event: n.event, threadId: n.threadId, seq: n.seq, title: n.title, body: n.body, ts: n.ts }).then(() => undefined))
-  // Threads with a Live Activity on a phone: status transitions go out as
-  // liveactivity pushes; registrations the hub never took are offered again.
+  if (apns)
+    notifier.onNotice((n) =>
+      pushRegistry.deliver({ event: n.event, threadId: n.threadId, seq: n.seq, title: n.title, subtitle: n.subtitle, body: n.body, kind: n.kind, requestId: n.requestId, ts: n.ts }).then(() => undefined)
+    )
+  // Threads with a Live Activity on a phone: every change of what the card
+  // shows goes out as a liveactivity push (coalesced for the task line), and
+  // a needs-you notice gives the waiting state its reason; registrations the
+  // hub never took are offered again.
   const activityFeed = new ActivityFeed({ registry, push: pushRegistry, hub: () => hub, local: () => apns !== null })
   activityFeed.start()
+  notifier.onNotice((n) => {
+    if (n.event === 'needs_you') activityFeed.needsYou(n.threadId, n.body)
+  })
   void pushRegistry.resync()
   notifier.onNotice((n) => {
     const targets = remoteAuth.webhookTargets(n.event)

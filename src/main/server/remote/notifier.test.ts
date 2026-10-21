@@ -136,12 +136,14 @@ describe('needs_you', () => {
     expect(notices).toEqual([
       {
         event: 'needs_you',
+        kind: 'approval',
         threadId: 't1',
         title: 'Ship it',
-        body: 'Permission: Bash — git push --force',
+        body: 'Needs approval: Bash — git push --force',
         url: 'https://tc.example/ui#thread=t1',
         ts: Date.now(),
-        seq: 2
+        seq: 2,
+        requestId: 'a1'
       }
     ])
     reg.push('t1', { activity: 'thinking' })
@@ -156,7 +158,7 @@ describe('needs_you', () => {
     reg.status('t1', 'idle')
     settle()
     expect(seen()).toEqual(['needs_you:t1', 'finished:t1'])
-    expect(notices[1].body).toBe('Finished its turn')
+    expect(notices[1].body).toBe('Done in 6s')
     reg.status('t1', 'idle')
     reg.push('t1', { tasks: { done: 1, total: 1 } })
     settle()
@@ -190,9 +192,9 @@ describe('needs_you', () => {
     reg.status('fast', 'idle')
     settle()
     expect(notices.map((n) => [n.event, n.threadId, n.body])).toEqual([
-      ['needs_you', 'q', 'Question: Tabs or spaces?'],
-      ['needs_you', 'p', 'Plan ready for approval'],
-      ['finished', 'fast', 'Finished its turn']
+      ['needs_you', 'q', 'Asked: Tabs or spaces?'],
+      ['needs_you', 'p', 'Plan ready to approve'],
+      ['finished', 'fast', 'Done in 2s']
     ])
   })
   it('reports a subagent prompt on its root, naming the subagent', () => {
@@ -208,7 +210,7 @@ describe('needs_you', () => {
     reg.status('kid', 'waiting')
     settle()
     expect(notices.map((n) => [n.event, n.threadId, n.title, n.body])).toEqual([
-      ['needs_you', 'root', 'Fleet', 'Permission (subagent review-auth): Bash — rm -rf dist']
+      ['needs_you', 'root', 'Fleet', 'Needs approval (subagent review-auth): Bash — rm -rf dist']
     ])
     reg.row('kid', { type: 'approval-resolved', requestId: 'k1', allow: false })
     reg.status('kid', 'running')
@@ -226,7 +228,7 @@ describe('failed', () => {
     reg.status('e', 'error')
     settle()
     expect(notices.map((n) => [n.event, n.threadId, n.body])).toEqual([
-      ['failed', 'e', 'harness died: exit 1']
+      ['failed', 'e', 'Failed: harness died: exit 1']
     ])
     reg.status('e', 'error')
     reg.push('e', { canContinue: true })
@@ -237,7 +239,7 @@ describe('failed', () => {
     expect(notices.map((n) => [n.event, n.threadId, n.body])).toContainEqual([
       'failed',
       's',
-      'Aliax account work needs sign-in'
+      'Failed: Aliax account work needs sign-in'
     ])
     reg.status('s', 'error')
     settle()
@@ -262,7 +264,7 @@ describe('stuck', () => {
     expect(notices).toEqual([])
     minutes(1.5)
     expect(notices.map((n) => [n.event, n.threadId, n.body])).toEqual([
-      ['stuck', 'w', 'No activity for 10 min while working']
+      ['stuck', 'w', 'Quiet for 10 min while working']
     ])
     minutes(10)
     expect(seen()).toEqual(['stuck:w'])
@@ -289,7 +291,7 @@ describe('stuck', () => {
     notifier.reportStall('idle')
     settle()
     expect(notices.map((n) => [n.event, n.threadId, n.body])).toEqual([
-      ['stuck', 'r', 'A stall was reported while it was working']
+      ['stuck', 'r', 'Stalled while working']
     ])
     minutes(9.9)
     reg.row('c', { type: 'tool-call', callId: 'k', name: 'Read', input: {} })

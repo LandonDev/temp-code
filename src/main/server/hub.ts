@@ -9,7 +9,14 @@ export interface HubEvent {
   ts?: number
   /** The row a phone lands on when the notification is tapped (thread L6). */
   seq?: number
+  /** The project or workspace the thread is in: the notification's subtitle. */
+  subtitle?: string
+  /** What the notice is about, for the phone's category and actions. */
+  kind?: HubNoticeKind
+  /** The approval a phone's Approve or Deny decides (kind `approval`). */
+  requestId?: string
 }
+export type HubNoticeKind = 'approval' | 'question' | 'plan' | 'waiting' | 'finished' | 'failed' | 'stuck'
 /** A phone's APNs registration, forwarded as the hub's `apns` subscription for this host. */
 export interface HubDevice {
   /** The key id on this host: one subscription per key, replaced on a rotated token. */
@@ -19,12 +26,27 @@ export interface HubDevice {
   environment: 'sandbox' | 'production'
   events: HubEventKind[]
 }
-/** The Live Activity's `content-state`; keys match the phone's ContentState. */
+/**
+ * The Live Activity's `content-state`; keys match the phone's ContentState
+ * (ios/TempCode/Activity/Shared/ThreadActivity.swift). The clock runs on
+ * the device from `since`; everything else is what the desktop's running
+ * row shows: the title, the task in progress, the tally, and why the
+ * thread waits.
+ */
 export interface HubActivityState {
   phase: 'working' | 'paused' | 'waiting' | 'finished' | 'failed'
   since: number
   ts: number
   seq?: number
+  /** The thread's title at this state, so a rename shows without a restart. */
+  title?: string
+  /** The in-progress task of the thread's list, else what it is doing right now. */
+  task?: string
+  /** The list's tally, when the thread has one. */
+  done?: number
+  total?: number
+  /** Why the thread waits: the needs-you line. */
+  reason?: string
 }
 export type HubAck = { ok: true } | { ok: false; error: string }
 export interface HubOptions {
@@ -48,7 +70,7 @@ export interface HubClient {
   setActivity(activity: { deviceId: string; threadId: string; token: string; bundleId: string; environment: 'sandbox' | 'production' }): Promise<HubAck>
   removeActivity(deviceId: string, threadId: string): Promise<HubAck>
   /** `POST /v1/activity`: one state for every device watching the thread; `end` drops them on the hub. */
-  pushActivity(activity: { threadId: string; event: 'update' | 'end'; state: HubActivityState; title?: string; threadType?: string }): Promise<HubResult | null>
+  pushActivity(activity: { threadId: string; event: 'update' | 'end'; state: HubActivityState; title?: string; threadType?: string; priority?: 5 | 10 }): Promise<HubResult | null>
   stop(): void
 }
 interface Dependencies {
@@ -217,7 +239,10 @@ export function startHub(options: HubOptions, dependencies: Dependencies = {}): 
           environmentId: options.environmentId,
           ...(event.threadId === undefined ? {} : { threadId: event.threadId }),
           ...(event.url === undefined ? {} : { url: event.url }),
-          ...(event.seq === undefined ? {} : { seq: event.seq })
+          ...(event.seq === undefined ? {} : { seq: event.seq }),
+          ...(event.subtitle === undefined ? {} : { subtitle: event.subtitle }),
+          ...(event.kind === undefined ? {} : { kind: event.kind }),
+          ...(event.requestId === undefined ? {} : { requestId: event.requestId })
         },
         'notify',
         25_000
@@ -257,7 +282,8 @@ export function startHub(options: HubOptions, dependencies: Dependencies = {}): 
           state: activity.state,
           ts: Date.now(),
           ...(activity.title === undefined ? {} : { title: activity.title }),
-          ...(activity.threadType === undefined ? {} : { threadType: activity.threadType })
+          ...(activity.threadType === undefined ? {} : { threadType: activity.threadType }),
+          ...(activity.priority === undefined ? {} : { priority: activity.priority })
         },
         'activity',
         15_000

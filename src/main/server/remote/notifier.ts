@@ -21,16 +21,23 @@ import { toolFace } from './facade'
  */
 
 export type NoticeEvent = 'needs_you' | 'finished' | 'failed' | 'stuck'
+/** What a notice is about: the phone's category (Approve and Deny on an approval) and the body's shape. */
+export type NoticeKind = 'approval' | 'question' | 'plan' | 'waiting' | 'finished' | 'failed' | 'stuck'
 
 export interface Notice {
   event: NoticeEvent
+  kind: NoticeKind
   threadId: string
   title: string
+  /** The project or workspace the thread is in, when known. */
+  subtitle?: string
   body: string
   url?: string
   ts: number
   /** The root's row to land on: the prompt, the error, else the last row seen. */
   seq: number
+  /** The approval a phone may decide from the notification (kind `approval`). */
+  requestId?: string
 }
 
 export type NoticeSink = (notice: Notice) => void | Promise<void>
@@ -51,6 +58,8 @@ export interface NotifierOptions {
   stuckMinutes: () => number
   /** The public origin for links; null leaves `url` out. */
   origin?: () => string | null
+  /** The project's or workspace's name for a thread: the notification's subtitle. */
+  place?: (meta: SessionMeta) => string | null
   now?: () => number
   /** Signals inside this window settle into one decision. */
   debounceMs?: number
@@ -85,6 +94,8 @@ interface ThreadState {
   lastError: { message: string; stopped: boolean; seq: number } | null
   lastRowAt: number
   lastRowSeq: number
+  /** When the current stretch of work began, for "Done in 12m". */
+  startedAt: number | null
   stuckSent: boolean
   timer: ReturnType<typeof setTimeout> | null
   /** A stall report asked for an immediate stuck check. */
@@ -92,8 +103,19 @@ interface ThreadState {
 }
 
 const oneLine = (text: string): string => text.replace(/\s+/g, ' ').trim()
+const firstLine = (text: string): string => oneLine(text.split(/\r?\n/).find((l) => l.trim()) ?? '')
 const cut = (text: string, max: number): string =>
   text.length <= max ? text : `${text.slice(0, max - 1)}…`
+
+/** "45s", "12m", "1h 05m": the desktop's duration at the coarseness a notification wants. */
+export function briefDuration(ms: number): string {
+  const s = Math.max(0, Math.round(ms / 1000))
+  if (s < 60) return `${s}s`
+  const m = Math.floor(s / 60)
+  if (m < 60) return `${m}m`
+  const h = Math.floor(m / 60)
+  return `${h}h ${String(m % 60).padStart(2, '0')}m`
+}
 
 export class Notifier {
   private readonly threads = new Map<string, ThreadState>()
@@ -160,6 +182,7 @@ export class Notifier {
         lastError: null,
         lastRowAt: this.options.registry.lastActivityAt(id) || this.now(),
         lastRowSeq: 0,
+        startedAt: WORKING.has(status) ? (this.options.registry.get(id)?.busySince ?? null) : null,
         stuckSent: false,
         timer: null,
         stalled: false
@@ -191,6 +214,8 @@ export class Notifier {
       state.lastRowAt = this.now()
       state.stuckSent = false
       state.pending = null
+      // busySince survives steers and prompts; without it a resume keeps its start, a fresh run starts now.
+      state.startedAt = meta.busySince ?? (was === 'waiting' || was === 'paused' ? state.startedAt : null) ?? this.now()
     }
     if (meta.status !== 'waiting' && !WORKING.has(meta.status)) state.pending = null
     this.arm(meta.id)
@@ -265,7 +290,7 @@ export class Notifier {
   private decide(
     id: string,
     state: ThreadState
-  ): { event: NoticeEvent; key: string; body: string; seq: number } | null {
+  ): { event: NoticeEvent; kind: NoticeKind; key: string; body: string; seq: number; requestId?: string } | null {
     const meta = this.options.registry.get(id)
     if (!meta || meta.archived) return null
     state.status = meta.status
@@ -283,32 +308,43 @@ export class Notifier {
       if (!p)
         return {
           event: 'needs_you',
+          kind: 'waiting',
           key: `waiting:${state.lastRowSeq}`,
           body: `Waiting for you${who}`,
           seq: state.lastRowSeq
         }
       const body =
         p.kind === 'plan'
-          ? `Plan ready for approval${who}`
+          ? `Plan ready to approve${who}`
           : p.kind === 'question'
-            ? `Question${who}: ${p.face}`
-            : `Permission${who}: ${p.face}`
-      return { event: 'needs_you', key: `prompt:${p.requestId}`, body: cut(body, BODY_CHARS), seq: p.seq }
+            ? `Asked${who}: ${p.face}`
+            : `Needs approval${who}: ${p.face}`
+      return {
+        event: 'needs_you',
+        kind: p.kind === 'permission' ? 'approval' : p.kind,
+        key: `prompt:${p.requestId}`,
+        body: cut(body, BODY_CHARS),
+        seq: p.seq,
+        ...(p.kind === 'permission' ? { requestId: p.requestId } : {})
+      }
     }
     if (meta.status === 'error') {
       const e = state.lastError
+      const line = e && !e.stopped ? firstLine(e.message) : ''
       return {
         event: 'failed',
+        kind: 'failed',
         key: `error:${e?.seq ?? state.lastRowSeq}`,
-        body: cut(e && !e.stopped ? oneLine(e.message) : 'The turn failed', BODY_CHARS),
+        body: cut(line ? `Failed: ${line}` : 'Failed', BODY_CHARS),
         seq: e?.seq ?? state.lastRowSeq
       }
     }
     if (signIn && WORKING.has(meta.status)) {
       return {
         event: 'failed',
+        kind: 'failed',
         key: `error:${signIn.seq}`,
-        body: cut(oneLine(signIn.message), BODY_CHARS),
+        body: cut(`Failed: ${firstLine(signIn.message)}`, BODY_CHARS),
         seq: signIn.seq
       }
     }
@@ -316,8 +352,9 @@ export class Notifier {
       if (state.stalled)
         return {
           event: 'stuck',
+          kind: 'stuck',
           key: `stuck:${state.lastRowSeq}`,
-          body: 'A stall was reported while it was working',
+          body: 'Stalled while working',
           seq: state.lastRowSeq
         }
       return null
@@ -331,11 +368,21 @@ export class Notifier {
       if (meta.threadType === 'planning' && meta.planCompletedAt) {
         const build = meta.implementationId ? this.options.registry.get(meta.implementationId) : null
         const body = build && !build.archived ? `Plan complete — implementation started: ${cut(build.title, 80)}` : 'Plan complete — waiting for you to start the build'
-        return { event: 'finished', key: `plan:${meta.planCompletedAt}:${build?.id ?? ''}`, body, seq: state.lastRowSeq }
+        return { event: 'finished', kind: 'plan', key: `plan:${meta.planCompletedAt}:${build?.id ?? ''}`, body, seq: state.lastRowSeq }
       }
-      return { event: 'finished', key: `finished:${state.lastRowSeq}`, body: 'Finished its turn', seq: state.lastRowSeq }
+      return { event: 'finished', kind: 'finished', key: `finished:${state.lastRowSeq}`, body: this.finishedBody(meta, state), seq: state.lastRowSeq }
     }
     return null
+  }
+
+  /** "Done in 12m · 7 tasks": the stretch's length, and the list's tally when the thread has one. */
+  private finishedBody(meta: SessionMeta, state: ThreadState): string {
+    const parts: string[] = []
+    const ms = state.startedAt === null ? 0 : this.now() - state.startedAt
+    parts.push(ms >= 1000 ? `Done in ${briefDuration(ms)}` : 'Done')
+    const tasks = meta.tasks
+    if (tasks && tasks.total > 0) parts.push(tasks.done === tasks.total ? `${tasks.total} ${tasks.total === 1 ? 'task' : 'tasks'}` : `${tasks.done}/${tasks.total} tasks`)
+    return parts.join(' · ')
   }
 
   private flush(id: string): void {
@@ -346,7 +393,7 @@ export class Notifier {
     if (state.sent && state.sent.event === decision.event && state.sent.key === decision.key) return
     if (decision.event === 'stuck') state.stuckSent = true
     state.sent = { event: decision.event, key: decision.key }
-    this.emit(id, decision.event, decision.body, decision.seq)
+    this.emit(id, decision.event, decision.kind, decision.body, decision.seq, decision.requestId)
   }
 
   /** Working threads silent past the limit (and nothing told us since) get one `stuck`. */
@@ -365,24 +412,29 @@ export class Notifier {
       this.emit(
         id,
         'stuck',
-        `No activity for ${Math.round((now - state.lastRowAt) / 60_000)} min while working`,
+        'stuck',
+        `Quiet for ${Math.round((now - state.lastRowAt) / 60_000)} min while working`,
         state.lastRowSeq
       )
     }
   }
 
-  private emit(id: string, event: NoticeEvent, body: string, seq: number): void {
+  private emit(id: string, event: NoticeEvent, kind: NoticeKind, body: string, seq: number, requestId?: string): void {
     const meta = this.options.registry.get(id)
     if (!meta) return
     const origin = this.options.origin?.() ?? null
+    const place = this.options.place?.(meta) ?? null
     const notice: Notice = {
       event,
+      kind,
       threadId: id,
-      title: cut(meta.title, 120),
+      title: cut(oneLine(meta.title) || 'Untitled', 120),
+      ...(place ? { subtitle: cut(oneLine(place), 80) } : {}),
       body,
       ...(origin ? { url: `${origin}/ui#thread=${id}` } : {}),
       ts: this.now(),
-      seq
+      seq,
+      ...(requestId === undefined ? {} : { requestId })
     }
     this.log(`${event} ${id} "${notice.title}": ${body}`)
     for (const sink of this.sinks) {

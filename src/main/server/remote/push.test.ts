@@ -1,5 +1,6 @@
 import { DatabaseSync } from 'node:sqlite'
 import { describe, expect, it } from 'vitest'
+import type { HubActivityState } from '../hub'
 import type { SessionMeta } from '@shared/events'
 import type { HubAck } from '../hub'
 import { ActivityFeed, activityPhase, PushRegistry, type PushHub } from './push'
@@ -142,33 +143,69 @@ describe('ActivityFeed', () => {
     expect(activityPhase('idle')).toBe('finished')
     expect(activityPhase('running', true)).toBe('finished')
   })
-  it('pushes one update per transition for threads with an activity, ends on a settled phase and drops the rows', async () => {
+  it('pushes one update per change of what the card shows, ends on a settled phase with the notifier\'s reason, and drops the rows', async () => {
     const listeners = new Set<(m: SessionMeta) => void>()
     const { hub, calls } = fakeHub()
     const push = new PushRegistry(db(), { hub: () => hub, log: () => {} })
     await push.setActivity('k1', { sessionId: 't1', token: TOKEN, bundleId: 'b', environment: 'sandbox' })
-    const feed = new ActivityFeed({ registry: { onMeta: (l) => (listeners.add(l), () => listeners.delete(l)) }, push, hub: () => hub, now: () => 2000, log: () => {} })
+    let latest: SessionMeta | null = null
+    const feed = new ActivityFeed({ registry: { onMeta: (l) => (listeners.add(l), () => listeners.delete(l)), get: () => latest }, push, hub: () => hub, now: () => 2000, reasonWaitMs: 5, log: () => {} })
     feed.start()
-    const emit = (m: SessionMeta) => listeners.forEach((l) => l(m))
+    const emit = (m: SessionMeta) => listeners.forEach((l) => l((latest = m)))
     emit(meta({}))
     emit(meta({ updatedAt: 950 }))
     emit(meta({ id: 't2', status: 'running' }))
-    emit(meta({ status: 'paused' }))
-    emit(meta({ status: 'waiting' }))
+    emit(meta({ tasks: { done: 1, total: 3, current: 'Write the endpoint' }, activity: 'Editing a.ts' }))
+    emit(meta({ status: 'paused', tasks: { done: 1, total: 3, current: 'Write the endpoint' } }))
+    emit(meta({ status: 'waiting', tasks: { done: 1, total: 3, current: 'Write the endpoint' } }))
+    feed.needsYou('t1', 'Needs approval: Bash — bun test')
+    await new Promise((r) => setTimeout(r, 20))
     emit(meta({ status: 'running' }))
     await new Promise((r) => setTimeout(r, 20))
-    const pushes = calls.filter((c) => c.method === 'pushActivity').map((c) => c.args as { event: string; state: { phase: string; since: number; ts: number }; title: string; threadType?: string })
-    expect(pushes.map((p) => [p.event, p.state.phase])).toEqual([
-      ['update', 'working'],
-      ['update', 'paused'],
-      ['end', 'waiting']
+    const pushes = calls.filter((c) => c.method === 'pushActivity').map((c) => c.args as { event: string; state: HubActivityState; title: string; threadType?: string; priority?: number })
+    expect(pushes.map((p) => [p.event, p.state.phase, p.priority])).toEqual([
+      ['update', 'working', 10],
+      ['update', 'working', 10],
+      ['update', 'paused', 10],
+      ['end', 'waiting', 10]
     ])
-    expect(pushes[0]).toMatchObject({ threadId: 't1', title: 'Ship it', threadType: 'implementation', state: { since: 500, ts: 2000 } })
+    expect(pushes[0]).toMatchObject({ threadId: 't1', title: 'Ship it', threadType: 'implementation', state: { since: 500, ts: 2000, title: 'Ship it' } })
+    expect(pushes[0].state).not.toHaveProperty('task')
+    expect(pushes[1].state).toMatchObject({ task: 'Write the endpoint', done: 1, total: 3 })
+    expect(pushes[3].state).toMatchObject({ phase: 'waiting', reason: 'Needs approval: Bash — bun test', done: 1, total: 3 })
     expect(push.hasActivities('t1')).toBe(false)
     feed.stop()
   })
-})
-
+  it('coalesces task-line changes to one push per window at priority 5, the latest line winning, and waits briefly for a reason before an end', async () => {
+    const listeners = new Set<(m: SessionMeta) => void>()
+    const { hub, calls } = fakeHub()
+    const push = new PushRegistry(db(), { hub: () => hub, log: () => {} })
+    await push.setActivity('k1', { sessionId: 't1', token: TOKEN, bundleId: 'b', environment: 'sandbox' })
+    let now = 2000
+    let latest: SessionMeta | null = null
+    const feed = new ActivityFeed({ registry: { onMeta: (l) => (listeners.add(l), () => listeners.delete(l)), get: () => latest }, push, hub: () => hub, now: () => now, coalesceMs: 30, reasonWaitMs: 15, log: () => {} })
+    feed.start()
+    const emit = (m: SessionMeta) => listeners.forEach((l) => l((latest = m)))
+    emit(meta({ activity: 'Reading a.ts' }))
+    now = 2005
+    emit(meta({ activity: 'Reading b.ts' }))
+    now = 2010
+    emit(meta({ activity: 'Editing c.ts' }))
+    await new Promise((r) => setTimeout(r, 5))
+    const pushes = () => calls.filter((c) => c.method === 'pushActivity').map((c) => c.args as { event: string; state: HubActivityState; priority?: number })
+    expect(pushes().map((p) => [p.state.task, p.priority])).toEqual([['Reading a.ts', 10]])
+    now = 2040
+    await new Promise((r) => setTimeout(r, 40))
+    expect(pushes().map((p) => [p.state.task, p.priority])).toEqual([['Reading a.ts', 10], ['Editing c.ts', 5]])
+    // A waiting end with no reason yet goes out after the wait, without one.
+    emit(meta({ status: 'waiting' }))
+    await new Promise((r) => setTimeout(r, 5))
+    expect(pushes()).toHaveLength(2)
+    await new Promise((r) => setTimeout(r, 25))
+    expect(pushes()[2]).toMatchObject({ event: 'end', state: { phase: 'waiting' } })
+    expect(pushes()[2].state).not.toHaveProperty('reason')
+    feed.stop()
+  })
 describe('a host with its own APNs sender', () => {
   /** A sender that records every request and answers what the test set. */
   function fakeApns(answer: (token: string) => { ok: true } | { ok: false; error: string; gone: boolean } = () => ({ ok: true })) {
@@ -188,7 +225,7 @@ describe('a host with its own APNs sender', () => {
     expect(sent).toHaveLength(1)
     expect(sent[0]).toMatchObject({ token: TOKEN.toLowerCase(), topic: 'dev.landon.tempcode.ios', pushType: 'alert', environment: 'sandbox', collapseId: 't1:needs_you' })
     expect(sent[0].payload).toEqual({
-      aps: { alert: { title: 'Ship it', body: 'Permission: Bash' }, sound: 'default', 'thread-id': 't1', 'interruption-level': 'time-sensitive' },
+      aps: { alert: { title: 'Ship it', body: 'Permission: Bash' }, sound: 'default', 'thread-id': 't1', 'summary-arg': 'Ship it', 'interruption-level': 'time-sensitive', 'relevance-score': 1, category: 'tc.thread' },
       tc: { event: 'needs_you', hostId: 'box', environmentId: 'env_box', threadId: 't1', seq: 21, ts: 5000 }
     })
     expect(await push.deliver({ event: 'finished', threadId: 't1', seq: 30, title: 'Ship it', body: 'Finished its turn', ts: 6000 })).toEqual({ delivered: 1, failed: 0 })

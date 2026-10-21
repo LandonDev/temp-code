@@ -1,5 +1,5 @@
 import { guardTarget } from './target'
-import { activityPhases, events, pushEnvironments, type ActivityUpdate, type ApnsDevice, type Heartbeat, type Notice } from './types'
+import { activityPhases, events, pushEnvironments, type ActivityUpdate, type ApnsDevice, type Heartbeat, type Notice, noticeKinds, type NoticeKind } from './types'
 export class Invalid extends Error {}
 export function object(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value))
@@ -89,8 +89,19 @@ export function notice(value: unknown): Notice {
     ...(v.environmentId === undefined ? {} : { environmentId: str(v.environmentId, 'environmentId') }),
     ...(v.threadId === undefined ? {} : { threadId: str(v.threadId, 'threadId') }),
     ...(v.seq === undefined ? {} : { seq: seq(v.seq) }),
-    ...(v.url === undefined ? {} : { url: url(v.url) })
+    ...(v.url === undefined ? {} : { url: url(v.url) }),
+    ...(v.subtitle === undefined ? {} : { subtitle: str(v.subtitle, 'subtitle', 200) }),
+    ...(v.kind === undefined ? {} : { kind: noticeKind(v.kind) }),
+    ...(v.requestId === undefined ? {} : { requestId: str(v.requestId, 'requestId', 200) })
   }
+}
+function noticeKind(value: unknown): NoticeKind {
+  if (!noticeKinds.includes(value as never)) throw new Invalid('Invalid kind')
+  return value as NoticeKind
+}
+function count(value: unknown, name: string): number {
+  if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 0) throw new Invalid(`Invalid ${name}`)
+  return value
 }
 /** An APNs device token: hex, 32 bytes today; the bundle id names the topic. */
 export function device(value: unknown, deviceId: string): ApnsDevice {
@@ -116,13 +127,22 @@ export function activity(value: unknown): ActivityUpdate {
       phase: state.phase as ActivityUpdate['state']['phase'],
       since: timestamp(state.since),
       ts: timestamp(state.ts),
-      ...(state.seq === undefined ? {} : { seq: seq(state.seq) })
+      ...(state.seq === undefined ? {} : { seq: seq(state.seq) }),
+      ...(state.title === undefined ? {} : { title: str(state.title, 'title', 200) }),
+      ...(state.task === undefined ? {} : { task: str(state.task, 'task', 200) }),
+      ...(state.done === undefined ? {} : { done: count(state.done, 'done') }),
+      ...(state.total === undefined ? {} : { total: count(state.total, 'total') }),
+      ...(state.reason === undefined ? {} : { reason: str(state.reason, 'reason', 200) })
     },
     ts: timestamp(v.ts),
     ...(v.environmentId === undefined ? {} : { environmentId: str(v.environmentId, 'environmentId') }),
     ...(v.title === undefined ? {} : { title: str(v.title, 'title') }),
-    ...(v.threadType === undefined ? {} : { threadType: str(v.threadType, 'threadType', 40) })
+    ...(v.threadType === undefined ? {} : { threadType: str(v.threadType, 'threadType', 40) }),
+    ...(v.priority === undefined ? {} : { priority: v.priority === 5 ? 5 : v.priority === 10 ? 10 : invalidPriority() })
   }
+}
+function invalidPriority(): never {
+  throw new Invalid('Invalid priority')
 }
 export async function readJson(request: Request): Promise<unknown> {
   // Bound streamed bodies too; Content-Length alone is not trustworthy.
