@@ -267,6 +267,7 @@ export const METHOD_CAPABILITY: Record<ClientRequest['method'], MethodCapability
   'peer.register': 'admin',
   'peer.reply': 'admin',
   'peer.chunk': 'admin',
+  'peer.progress': 'admin',
   'mac.readFile': 'local',
   'mac.listDir': 'local',
   'mac.fetchFile': 'local',

@@ -29,10 +29,26 @@ export const MAC_FETCH_MAX_BYTES = 64 * 1024 * 1024
 export const MAC_LIST_MAX_ENTRIES = 2_000
 export const MAC_RUN_DEFAULT_TIMEOUT_MS = 120_000
 export const MAC_RUN_MAX_TIMEOUT_MS = 30 * 60_000
-/** stdout and stderr together; past it the process group is killed and the result says truncated. */
-export const MAC_RUN_OUTPUT_CAP = 1_000_000
+/** stdout and stderr together; past it the middle is dropped (MAC_RUN_HEAD_BYTES first, MAC_RUN_TAIL_BYTES last) and the result says truncated. */
+export const MAC_RUN_OUTPUT_CAP = 4 * 1024 * 1024
 /** How long a request waits on the person at the Mac before it counts as denied. */
 export const MAC_APPROVAL_WAIT_MS = 10 * 60_000
+
+// ── mac_run streaming (remote/peerStreams.ts, macRunLive.ts) ──────────
+/** Past MAC_RUN_OUTPUT_CAP, the first this many bytes of output are kept… */
+export const MAC_RUN_HEAD_BYTES = 1024 * 1024
+/** …and the last this many; a marker line says how many bytes went between. */
+export const MAC_RUN_TAIL_BYTES = MAC_RUN_OUTPUT_CAP - MAC_RUN_HEAD_BYTES
+/** A running command's output leaves the Mac as `peer.progress` frames, at most one per this many ms… */
+export const MAC_RUN_PROGRESS_MS = 100
+/** …of at most this many bytes of whole lines (a backlog past it keeps its newest lines and counts the rest as skipped). */
+export const MAC_RUN_PROGRESS_FRAME_BYTES = 64 * 1024
+/** Characters a `peer.progress` chunk may carry (the frame's bytes, decoded, with room to spare). */
+export const PEER_PROGRESS_MAX_CHARS = 2 * MAC_RUN_PROGRESS_FRAME_BYTES
+/** On the box, the thread's mac_run row is redrawn with the output so far at most this often… */
+export const MAC_RUN_LIVE_MS = 250
+/** …showing its last this many bytes (under STREAMING_BODY_OMIT_BYTES, so a remote card grows too). */
+export const MAC_RUN_LIVE_TAIL_BYTES = 24 * 1024
 
 /**
  * The four tools' descriptions and params, shared by the Claude tools
@@ -47,7 +63,7 @@ export const MAC_TOOL_DESCRIPTIONS = {
   mac_fetch_file:
     "Copy a file from the user's Mac onto this host and get back the local path it landed at (inside this thread's .temp-code/attachments folder). Use it for files you need to work on here (up to 64 MiB). The same approval rules as mac_read_file.",
   mac_run:
-    "Run a command on the user's Mac (for macOS-only tools: xcodebuild, osascript, open, security, …). Every command waits for the user to allow it on the Mac, showing them exactly the argv and cwd, and may be denied. Runs through the Mac's login shell with no stdin; output is capped at 1 MB. Prefer argv; use command only when you need shell syntax (pipes, globs)."
+    "Run a command on the user's Mac (for macOS-only tools: xcodebuild, osascript, open, security, …). Every command waits for the user to allow it on the Mac, showing them exactly the argv and cwd, and may be denied. Runs through the Mac's login shell with no stdin; the output streams into this call's row while it runs and comes back whole up to 4 MiB (past that, the first 1 MiB and the last 3 MiB). Prefer argv; use command only when you need shell syntax (pipes, globs)."
 } as const
 export const MAC_TOOL_PARAMS = {
   path: 'Absolute path on the Mac, e.g. /Users/name/Documents/report.pdf (no ~).',
@@ -136,10 +152,12 @@ export interface MacRunResult {
   signal: string | null
   stdout: string
   stderr: string
-  /** Output passed MAC_RUN_OUTPUT_CAP and the process group was killed. */
+  /** Output passed MAC_RUN_OUTPUT_CAP: the middle was dropped (droppedBytes) and a marker line stands in for it. */
   truncated: boolean
   timedOut: boolean
   durationMs: number
+  /** Bytes of output dropped from the middle, when truncated. */
+  droppedBytes?: number
 }
 
 /** One request waiting on the person at the Mac (or a command it allowed, still running). */
@@ -206,6 +224,8 @@ const request = <M extends string, P extends z.ZodType>(method: M, params: P) =>
 
 const threadAuth = { sessionId: z.string().min(1).max(200), token: z.string().min(1).max(200) }
 const envId = z.string().min(1).max(200)
+/** mac.run only: the thread's tool-call row the live output belongs to, when the caller knows it. */
+const macRunCallRef = { callId: z.string().min(1).max(200).optional() }
 
 export const MacBridgeRequestSchemas = [
   // ── the Mac's main process → the box, over the peer link (admin) ──────
@@ -234,11 +254,22 @@ export const MacBridgeRequestSchemas = [
       data: z.string().max(PEER_CHUNK_CHARS)
     })
   ),
+  /** A running call's output so far, in order by seq (mac.run); the box takes it only from the call's socket. */
+  request(
+    'peer.progress',
+    z.object({
+      callId: z.string().min(1).max(100),
+      seq: z.number().int().min(0),
+      chunk: z.string().max(PEER_PROGRESS_MAX_CHARS),
+      /** Bytes of output the Mac left out of the live view before this chunk (the full output still comes in the reply). */
+      skipped: z.number().int().min(0).optional()
+    })
+  ),
   // ── a box thread's tools (local; the token is the thread's own) ──────
   request('mac.readFile', MacReadFileArgsSchema.extend(threadAuth)),
   request('mac.listDir', MacListDirArgsSchema.extend(threadAuth)),
   request('mac.fetchFile', MacFetchFileArgsSchema.extend(threadAuth)),
-  request('mac.run', MacRunArgsSchema.extend(threadAuth)),
+  request('mac.run', MacRunArgsSchema.extend(threadAuth).extend(macRunCallRef)),
   // ── a box thread's switch ────────────────────────────────────────────
   /** → MacBridgeThreadState. */
   request('macBridge.thread.get', z.object({ sessionId: z.string().min(1).max(200) })),

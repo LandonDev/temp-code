@@ -365,7 +365,11 @@ export class MacBridge {
   async handle(
     method: MacMethod,
     params: MacCallParams,
-    ctx: { from: string; deadlineAt: number }
+    ctx: {
+      from: string
+      deadlineAt: number
+      progress?: (chunk: string, skipped?: number) => void
+    }
   ): Promise<unknown> {
     const env = this.deps.environments().find((e) => e.id === ctx.from)
     const thread = params?.thread
@@ -387,7 +391,7 @@ export class MacBridge {
           "this host may read on the Mac but not run commands (the Mac's Settings → Remote access)"
         )
       }
-      return this.run(env, thread, params.args, ctx.deadlineAt, line)
+      return this.run(env, thread, params.args, ctx.deadlineAt, line, ctx.progress)
     }
     const schema =
       method === 'mac.readFile'
@@ -443,7 +447,8 @@ export class MacBridge {
     thread: { id: string; title: string },
     raw: unknown,
     deadlineAt: number,
-    line: (decision: string) => void
+    line: (decision: string) => void,
+    progress?: (chunk: string, skipped?: number) => void
   ): Promise<MacRunResult> {
     const args = MacRunArgsSchema.parse(raw)
     if (!args.argv === !args.command) throw new Error('mac.run takes argv or command, one of them')
@@ -492,7 +497,9 @@ export class MacBridge {
     const running: RunningCommand = (this.deps.run ?? runMacCommand)({
       ...spec,
       timeoutMs: Math.max(1_000, Math.min(timeoutMs, deadlineAt - Date.now() - REPLY_MARGIN_MS)),
-      ...(this.deps.shell ? { shell: this.deps.shell } : {})
+      ...(this.deps.shell ? { shell: this.deps.shell } : {}),
+      // The output streams to the box while it runs (peer.progress); the reply still carries it whole.
+      ...(progress ? { onOutput: progress } : {})
     })
     if (p) {
       p.stop = running.stop

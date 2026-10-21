@@ -762,8 +762,9 @@ On the Mac (`src/main/server/remote/macBridge.ts`, `macRunner.ts`):
   as `exec "$@"`, never re-split), in its own process group, with no stdin, an
   environment cut down to `HOME`, `USER`, `LOGNAME`, `SHELL`, the locale,
   `TMPDIR`, `TZ` and a base `PATH` the login shell extends, and a timeout
-  (default 2 minutes, at most 30). Past the timeout, past 1 MB of output, or
-  on Stop, the whole group gets SIGTERM, then SIGKILL after 2 s.
+  (default 2 minutes, at most 30). Past the timeout or on Stop, the whole
+  group gets SIGTERM, then SIGKILL after 2 s. Output is not a reason to
+  kill: past 4 MiB the middle is dropped (see "mac_run streams" below).
 - The prompt is a `macBridge.request` push to the Mac's own local sockets
   only, shown as a card above the thread's composer (or a toast when the
   thread is off screen), and answered by `macBridge.decide`, which is
@@ -773,6 +774,41 @@ On the Mac (`src/main/server/remote/macBridge.ts`, `macRunner.ts`):
   for a command, the executable's name and its exit). Never a file's
   contents or a command's output.
 
+mac_run streams (`src/main/server/remote/peerStreams.ts`,
+`src/main/server/macRunLive.ts`). A command's output reaches the thread while
+it runs, not only when it ends:
+
+- On the Mac, the runner hands stdout and stderr to a pacer that is
+  line-buffered per stream (the two never mix inside a line) and sends at
+  most one frame per 100 ms, 64 KiB per frame, as `peer.progress {callId,
+  seq, chunk, skipped?}` on the same link, before the reply. A backlog over a
+  frame keeps its newest lines and counts the rest as `skipped`; a line with
+  no newline (a prompt) goes after 1 s. The box takes a frame only from the
+  socket its call went out on (any other socket is refused, `admin`), hands
+  frames on in `seq` order, and drops quietly a frame for a call that has
+  already settled.
+- The reply still carries the whole output, up to 4 MiB
+  (`MAC_RUN_OUTPUT_CAP`) of stdout and stderr together. Past it the result
+  keeps the first 1 MiB and the last 3 MiB in arrival order, with one marker
+  line per stream saying how many bytes were dropped there, and says
+  `truncated` with `droppedBytes`. The command is not killed for talking.
+- On the box, the frames become the same broadcast-only partial tool-call
+  row other streaming tools use (`sessions.append` with `partial: true`,
+  seq -1, never in the log): the thread's own mac_run row, redrawn at most
+  every 250 ms with `preview: {kind: 'shell', output}`, the last 24 KiB of
+  the output so far (under the 32 KiB streaming body line, so a remote card
+  grows too). The final tool result supersedes it; the wire coalescer drops
+  a waiting preview when the result row passes. The row is the harness's:
+  Claude names it (the CLI's `_meta["claudecode/toolUseId"]` on the MCP
+  call), Codex does not (its call comes through `app-mcp-bridge.mjs`, which
+  cannot stream into a tool result), so the box watches the log for open
+  mac_run calls and an unnamed run claims the open one with the same argv,
+  command and cwd, else the oldest unclaimed. The loopback `mac.run` also
+  takes an optional `callId`. The desktop shows the output in the row's
+  open pane while it runs (the one exception to "output once settled");
+  the phone folds the same rows but its chip still shows output only once
+  the result lands.
+
 Security model, in short: the box can ask, never decide. A compromised box can
 make the Mac show prompts and read what the Mac shared with it (or with its
 projects), nothing more; it can never run a command the person did not allow
@@ -781,7 +817,9 @@ can do on the box. On the box, the bridge is only as strong as the box's
 loopback (any local process can already speak as the implicit admin there);
 the per-thread token keeps one thread's tools from calling as another.
 Proof: `bun run script:e2e-mac-bridge` (two headless instances, one playing
-the Mac; runs on the box under `xvfb-run`).
+the Mac; runs on the box under `xvfb-run`); its streaming step runs a command
+printing 20 lines over 2 s and needs at least 3 live rows on the thread before
+the result, and the result whole.
 
 Still darwin-only by design: appshots, the Aliax browser-cookie sign-ins,
 the IntelliJ engine's pinned artifact (`lsp.ts` has only `darwin-arm64`; the
