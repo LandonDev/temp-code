@@ -36,6 +36,17 @@ import {
   UPDATE_NOTES_PARAMS,
   UPDATE_NOTES_TOOL_NAME
 } from '@shared/notes'
+import {
+  MERGE_BRANCH_PARAMS,
+  MERGE_BRANCH_TOOL_DESCRIPTION,
+  MERGE_BRANCH_TOOL_NAME,
+  REPORT_FINDINGS_PARAMS,
+  REPORT_FINDINGS_TOOL_DESCRIPTION,
+  REPORT_FINDINGS_TOOL_NAME,
+  REVIEW_FINDINGS_MAX,
+  REVIEW_FINDING_PARAMS
+} from '@shared/review'
+import { mergeReviews } from './mergeReview'
 import { preview as previewHtml, publish as publishHtml, type HtmlPreview } from './htmlRender'
 import { INLINE_DIGEST_MAX_CHARS, mirrorRelPath, threadDigest } from './mirror'
 import type { SessionRegistry } from './sessions'
@@ -429,6 +440,29 @@ export const PLAN_COMPLETE_SHAPE = {
   summary: z.string().optional().describe('One line on what the plan covers (optional)')
 }
 
+export const MERGE_BRANCH_SHAPE = {
+  branch: z.string().optional().describe(MERGE_BRANCH_PARAMS.branch),
+  push: z.boolean().optional().describe(MERGE_BRANCH_PARAMS.push)
+}
+
+export const REPORT_FINDINGS_SHAPE = {
+  findings: z
+    .array(
+      z.object({
+        file: z.string().describe(REVIEW_FINDING_PARAMS.file),
+        line: z.number().int().optional().describe(REVIEW_FINDING_PARAMS.line),
+        summary: z.string().describe(REVIEW_FINDING_PARAMS.summary),
+        failure_scenario: z.string().describe(REVIEW_FINDING_PARAMS.failure_scenario),
+        verdict: z.enum(['CONFIRMED', 'PLAUSIBLE']).optional().describe(REVIEW_FINDING_PARAMS.verdict),
+        category: z.string().max(40).optional().describe(REVIEW_FINDING_PARAMS.category),
+        short_summary: z.string().max(60).optional().describe(REVIEW_FINDING_PARAMS.short_summary)
+      })
+    )
+    .max(REVIEW_FINDINGS_MAX)
+    .describe(REPORT_FINDINGS_PARAMS.findings),
+  level: z.enum(['low', 'medium', 'high', 'xhigh', 'max']).optional().describe(REPORT_FINDINGS_PARAMS.level)
+}
+
 export function appToolsMcp(session: SessionMeta): McpSdkServerConfigWithInstance {
   // cite_source exists only inside a research tree (the handle reboots on
   // a retype, so the check at boot is current); elsewhere it would only refuse.
@@ -535,6 +569,22 @@ export function appToolsMcp(session: SessionMeta): McpSdkServerConfigWithInstanc
       tool(UPDATE_NOTES_TOOL_NAME, UPDATE_NOTES_DESCRIPTION, UPDATE_NOTES_SHAPE, async (args) =>
         text(registry ? appUpdateNotes(registry, session, args) : 'app registry not ready')
       ),
+      // merge_branch on every thread: the merge itself, with the project's
+      // review in front of it when that is on (mergeReview.ts).
+      tool(MERGE_BRANCH_TOOL_NAME, MERGE_BRANCH_TOOL_DESCRIPTION, MERGE_BRANCH_SHAPE, async (args) => {
+        const reviews = mergeReviews()
+        const live = registry?.get(session.id) ?? session
+        return text(reviews ? await reviews.mergeBranch(live, args) : 'refused: merge reviews are not available here')
+      }),
+      // report_findings only for the reviewer thread of a run: the handle
+      // boots after the run is registered, so the check at boot is current.
+      ...(mergeReviews()?.isReviewer(session.id)
+        ? [
+            tool(REPORT_FINDINGS_TOOL_NAME, REPORT_FINDINGS_TOOL_DESCRIPTION, REPORT_FINDINGS_SHAPE, async (args) =>
+              text(mergeReviews()?.reportFindings(session, args) ?? 'refused: merge reviews are not available here')
+            )
+          ]
+        : []),
       tool(HTML_PREVIEW_TOOL_NAME, HTML_PREVIEW_TOOL_DESCRIPTION, HTML_PREVIEW_SHAPE, (args) =>
         htmlPreviewTool(args)
       ),
@@ -553,5 +603,7 @@ export const APP_TOOLS = [
   `mcp__app__${HTML_PREVIEW_TOOL_NAME}`,
   `mcp__app__${HTML_RENDER_TOOL_NAME}`,
   `mcp__app__${CITE_TOOL_NAME}`,
-  `mcp__app__${PLAN_COMPLETE_TOOL_NAME}`
+  `mcp__app__${PLAN_COMPLETE_TOOL_NAME}`,
+  `mcp__app__${MERGE_BRANCH_TOOL_NAME}`,
+  `mcp__app__${REPORT_FINDINGS_TOOL_NAME}`
 ]

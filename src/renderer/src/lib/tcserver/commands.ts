@@ -306,6 +306,12 @@ export async function rerouteSession(sessionId: string): Promise<{ account: stri
   return link.request("session.reroute", { sessionId });
 }
 
+/** Merge past a held merge review ("Merge anyway" on the review card). */
+export async function mergeAnyway(sessionId: string, runId: string): Promise<void> {
+  const link = linkFor(sessionId);
+  await link.request("review.override", { sessionId, runId });
+}
+
 export async function continueSession(
   sessionId: string,
   run: QueueRunSettings = {},

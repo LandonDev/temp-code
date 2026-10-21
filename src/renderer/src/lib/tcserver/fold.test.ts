@@ -750,3 +750,52 @@ describe("plan-handoff", () => {
     expect(s.blocks[1].planHandoff).toEqual({ id: "b2", title: "By hand", how: "manual" });
   });
 });
+
+describe("merge review rows", () => {
+  const finding = { file: "src/a.ts", line: 3, summary: "off by one", failure_scenario: "n=0", verdict: "CONFIRMED" as const };
+  const notice = (outcome: "pass" | "held" | "merged-anyway", runId = "r1") =>
+    ({
+      type: "notice",
+      kind: "review",
+      message: `review ${outcome}`,
+      review: {
+        runId,
+        reviewerId: "rev1",
+        provider: "codex",
+        model: "gpt-6.1-sol",
+        outcome,
+        branch: "feature",
+        target: "master",
+        blocking: outcome === "pass" ? [] : [finding],
+        minor: [],
+        merged: outcome !== "held",
+        pushed: false,
+      },
+    }) as AgentEvent;
+
+  it("a review notice is a system row carrying the outcome for the card", () => {
+    const state = foldAll(rows([notice("pass")]), CWD);
+    const last = state.blocks[state.blocks.length - 1];
+    expect(last.role).toBe("system");
+    expect(last.text).toBe("review pass");
+    expect(last.review).toMatchObject({ outcome: "pass", reviewerId: "rev1", runId: "r1" });
+    expect(last.review?.resolved).toBeUndefined();
+  });
+
+  it("a merged-anyway row settles the hold it names and no other", () => {
+    const state = foldAll(rows([notice("held", "r1"), notice("held", "r2"), notice("merged-anyway", "r1")]), CWD);
+    const reviews = state.blocks.filter((b) => b.review).map((b) => b.review!);
+    expect(reviews.map((r) => [r.runId, r.outcome, r.resolved ?? false])).toEqual([
+      ["r1", "held", true],
+      ["r2", "held", false],
+      ["r1", "merged-anyway", false],
+    ]);
+  });
+
+  it("a plain notice stays a plain system row", () => {
+    const state = foldAll(rows([{ type: "notice", kind: "account-gone", message: "account left" } as AgentEvent]), CWD);
+    const last = state.blocks[state.blocks.length - 1];
+    expect(last.text).toBe("account left");
+    expect(last.review).toBeUndefined();
+  });
+});

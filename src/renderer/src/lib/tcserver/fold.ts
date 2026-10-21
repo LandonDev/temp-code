@@ -583,7 +583,24 @@ export function foldEvent(
       break;
     case "notice":
       // A plain system row (the account left this host, …): no failure, no stop.
-      blocks = appendStatusBlock(blocks, e.message, `notice:${row.seq}`);
+      if (e.kind === "review" && e.review) {
+        // The outcome card, its own row even when the text repeats (two
+        // holds in a row read the same); a merged-anyway row settles the
+        // hold it names.
+        const review = e.review;
+        blocks = [...sealLastStream(blocks), { id: `notice:${row.seq}`, role: "system", text: e.message, review }];
+        if (review.outcome === "merged-anyway") {
+          for (let i = blocks.length - 2; i >= 0; i--) {
+            const r = blocks[i].review;
+            if (r && r.runId === review.runId && r.outcome === "held" && !r.resolved) {
+              blocks[i] = { ...blocks[i], review: { ...r, resolved: true } };
+              break;
+            }
+          }
+        }
+      } else {
+        blocks = appendStatusBlock(blocks, e.message, `notice:${row.seq}`);
+      }
       break;
     case "errors-cleared": {
       // Continue settled every error shown so far; the system rows that

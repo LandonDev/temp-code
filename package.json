@@ -47,6 +47,7 @@
     "script:e2e-static-tokens": "bun scripts/e2e-static-tokens.ts",
     "script:e2e-harness-sync": "bun scripts/e2e-harness-sync.ts",
     "script:e2e-attachments": "bun scripts/e2e-attachments.ts",
+    "script:e2e-merge-review": "bun scripts/e2e-merge-review.ts",
     "script:e2e-session-move": "bun scripts/e2e-session-move.ts",
     "script:e2e-mac-bridge": "bun scripts/e2e-mac-bridge.ts",
     "script:e2e-cross-host-threads": "bun scripts/e2e-cross-host-threads.ts",

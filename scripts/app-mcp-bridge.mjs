@@ -389,6 +389,49 @@ export const TOOLS = [
       required: ['html']
     }
   },
+  // ── merge before review (src/shared/review.ts; app-bridge.test.ts keeps these equal) ──
+  {
+    name: 'merge_branch',
+    description:
+      "Land this thread's branch on the project branch: a fast-forward merge in the project checkout, then a push when the repo has an origin. When the project reviews before merge, a second model reviews the branch's diff first and this call answers with the verdict: merged, or HELD with the findings to address before calling again (a head that already passed is not reviewed twice). Call it when your gate is green instead of running git merge or git push yourself; a refusal names what to fix (not a fast-forward: rebase onto the target and call again).",
+    inputSchema: {
+      type: 'object',
+      properties: {
+        branch: { type: 'string', description: "The branch to merge. Defaults to the branch this thread's directory is on." },
+        push: { type: 'boolean', description: 'Push the project branch to origin after the merge. Defaults to true when the repo has an origin.' }
+      }
+    }
+  },
+  {
+    name: 'report_findings',
+    description:
+      'Report the findings of a merge review as a typed list, once, when the review is done: every defect with its file, 1-indexed line, one-sentence summary, the concrete failure scenario and a verdict (CONFIRMED when you verified it against the code, PLAUSIBLE when you could not). An empty list means the change is sound. Only this call counts; prose in your reply is not read. Available only to the reviewer thread of a merge review.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        findings: {
+          type: 'array',
+          maxItems: 32,
+          description: 'Verified findings, most severe first; empty if none survived',
+          items: {
+            type: 'object',
+            properties: {
+              file: { type: 'string', description: 'Repo-relative path of the file the finding is in' },
+              line: { type: 'integer', description: '1-indexed line the finding anchors to' },
+              summary: { type: 'string', description: 'One-sentence statement of the defect' },
+              failure_scenario: { type: 'string', description: 'Concrete inputs/state → wrong output/crash' },
+              verdict: { type: 'string', enum: ['CONFIRMED', 'PLAUSIBLE'], description: 'CONFIRMED when verified against the code, PLAUSIBLE when not' },
+              category: { type: 'string', maxLength: 40, description: 'Short kebab-case slug of the finding type, e.g. "correctness"' },
+              short_summary: { type: 'string', maxLength: 60, description: 'Compressed label (≤60 chars): the claim alone' }
+            },
+            required: ['file', 'summary', 'failure_scenario']
+          }
+        },
+        level: { type: 'string', enum: ['low', 'medium', 'high', 'xhigh', 'max'], description: 'Effort level the review ran at' }
+      },
+      required: ['findings']
+    }
+  },
   // ── citations (research threads) ───────────────────────────────────
   {
     name: 'cite_source',
@@ -618,7 +661,9 @@ const METHOD_FOR = {
   html_preview: 'app.htmlPreview',
   html_render: 'app.htmlRender',
   cite_source: 'app.citeSource',
-  update_notes: 'app.updateNotes'
+  update_notes: 'app.updateNotes',
+  merge_branch: 'app.mergeBranch',
+  report_findings: 'app.reportFindings'
 }
 
 /** The MCP content parts a tool result turns into (the preview's PNG rides as an image). */

@@ -25,6 +25,7 @@ import { PlanSettingsSchema } from './plans'
 import { AppshotSettingsSchema } from './appshots'
 import { AccountPinsSchema } from './contract-m3a'
 import { TurnPassSchema } from './turnpass'
+import { ReportFindingsSchema, ReviewSettingsSchema } from './review'
 import { BuildConfigSchema } from './build'
 import type { BuildRun } from './build'
 import type { EventRow, SessionMeta } from './events'
@@ -528,6 +529,43 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
       projectId: z.string().optional(),
       pass: TurnPassSchema.nullable()
     })
+  }),
+  // Review before merge (shared/review.ts): global set, whole-object
+  // per-project override; get answers the override, the global set and
+  // the effective one so a dialog shows what a project inherits.
+  z.object({
+    id: z.string(),
+    method: z.literal('review.get'),
+    params: z.object({ projectId: z.string().nullable().default(null) })
+  }),
+  z.object({
+    id: z.string(),
+    method: z.literal('review.set'),
+    params: z.object({
+      projectId: z.string().nullable().default(null),
+      settings: ReviewSettingsSchema.nullable()
+    })
+  }),
+  // The person merges past a held review ("Merge anyway" on the card).
+  z.object({
+    id: z.string(),
+    method: z.literal('review.override'),
+    params: z.object({ sessionId: z.string(), runId: z.string() })
+  }),
+  // The codex bridge's merge_branch and report_findings (apptools.ts).
+  z.object({
+    id: z.string(),
+    method: z.literal('app.mergeBranch'),
+    params: z.object({
+      sessionId: z.string(),
+      branch: z.string().optional(),
+      push: z.boolean().optional()
+    })
+  }),
+  z.object({
+    id: z.string(),
+    method: z.literal('app.reportFindings'),
+    params: ReportFindingsSchema.extend({ sessionId: z.string() })
   }),
   // Appshots (M10): global capture settings, one settings-table row.
   z.object({

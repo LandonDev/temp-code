@@ -52,7 +52,7 @@ describe('METHOD_CAPABILITY', () => {
   })
   it('approve covers exactly the prompt-skipping methods', () => {
     // macBridge.thread.set lets a box thread call the Mac without a box prompt (the Mac still asks for itself).
-    expect(withCap('approve')).toEqual(['macBridge.thread.set', 'session.approve', 'session.permission'])
+    expect(withCap('approve')).toEqual(['macBridge.thread.set', 'review.override', 'session.approve', 'session.permission'])
   })
   it('admin covers settings writes and remote management', () => {
     expect(withCap('admin')).toEqual(
@@ -62,6 +62,7 @@ describe('METHOD_CAPABILITY', () => {
         // What happens when a plan completes (plans.ts): a settings write.
         'plans.set',
         'turnpass.set',
+        'review.set',
         'build.set',
         'appshots.set',
         'project.setAccounts',

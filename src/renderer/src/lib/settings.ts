@@ -12,6 +12,7 @@ export type StaticSettingsSectionId =
   | "providers"
   | "orchestration"
   | "build"
+  | "reviews"
   | "appshots"
   | "remote"
   | "environments"
@@ -69,6 +70,12 @@ export const SETTINGS_SECTIONS: {
     label: "Build",
     description:
       "The command the Build rail tab runs for a workspace, and the files it produces. Projects can override it in their settings.",
+  },
+  {
+    id: "reviews",
+    label: "Reviews",
+    description:
+      "A second model reads an implementation thread's branch before it lands on the project branch. Projects can override this from their settings.",
   },
   {
     id: "appshots",

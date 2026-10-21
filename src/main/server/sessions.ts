@@ -89,6 +89,7 @@ import {
   type PlanFlowRegistry
 } from './planFlow'
 import { parseTurnPass, passActions, passEnabled, type TurnPass } from '@shared/turnpass'
+import { effectiveReviewSettings, parseReviewSettings, type ReviewSettings } from '@shared/review'
 import { parseBuildConfig, type BuildConfig, type EffectiveBuild } from '@shared/build'
 import { detectBuild } from './build'
 import {
@@ -1530,6 +1531,23 @@ export class SessionRegistry {
       hostName: () => this.hostName(),
       log: (line) => console.log(line)
     }
+  }
+
+  /** Review before merge (shared/review.ts): the global set, or one
+   *  project's whole-object override; null = not set there. */
+  getReviewSettings(projectId: string | null): ReviewSettings | null {
+    const key = projectId ? `review:project:${projectId}` : 'review'
+    return parseReviewSettings(this.store.getSetting(key))
+  }
+
+  setReviewSettings(projectId: string | null, settings: ReviewSettings | null): void {
+    const key = projectId ? `review:project:${projectId}` : 'review'
+    this.store.setSetting(key, settings ? JSON.stringify(settings) : null)
+  }
+
+  /** The set a project's threads run under: its override → global → defaults. */
+  effectiveReview(projectId: string | null): ReturnType<typeof effectiveReviewSettings> {
+    return effectiveReviewSettings(projectId ? this.getReviewSettings(projectId) : null, this.getReviewSettings(null))
   }
 
   /** Completed-turn pass for a workspace; null = not configured. */
@@ -3695,8 +3713,17 @@ export class SessionRegistry {
         const where = project?.branch
           ? ` in ${project.cwd} to the project branch ${project.branch}`
           : ' to the current branch'
+        // A reviewed project lands through merge_branch (mergeReview.ts):
+        // the push is the tool's, after the review.
+        const reviewed = this.effectiveReview(meta?.projectId ?? null).settings.beforeMerge
         steps.push(
-          `Commit every change from this work${where} with a clear message${pass.commit === 'push' ? ', then push that branch to origin' : ''}.`
+          `Commit every change from this work${where} with a clear message${
+            pass.commit === 'push'
+              ? reviewed
+                ? ', then land it with the merge_branch app tool (this project reviews before merge; never git push or fast-forward the project branch yourself)'
+                : ', then push that branch to origin'
+              : ''
+          }.`
         )
       }
       // A settle with an unfinished list is housekeeping, not a finish

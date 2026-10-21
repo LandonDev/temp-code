@@ -14,6 +14,8 @@ import { TurnPassFields, loadTurnPass, saveTurnPass } from "./TurnPassFields";
 import { PlanSettingsFields, planSettingsSummary } from "./PlanSettingsFields";
 import { savePlanSettings, samePlanSettings, usePlanSettings } from "../lib/tcserver/plans";
 import type { PlanSettings } from "@server/shared/plans";
+import { ReviewFields, loadReviewScope, reviewSummary, saveReviewSettings, type ReviewScope } from "./ReviewFields";
+import { DEFAULT_REVIEW_SETTINGS, type ReviewSettings } from "@server/shared/review";
 import { registry } from "../lib/connection";
 import { useAccounts } from "../stores/accounts";
 import { shortName } from "../lib/accountScope";
@@ -160,6 +162,24 @@ function Disclosure({
     </div>
   );
 }
+
+/** One project's review override, plus the global set it would follow. */
+function useReviewScope(environmentId: string, projectId: string) {
+  const [scope, setScope] = useState<ReviewScope | null>(null);
+  useEffect(() => {
+    let live = true;
+    loadReviewScope(environmentId, projectId)
+      .then((s) => live && setScope(s))
+      .catch(() => live && setScope(null));
+    return () => {
+      live = false;
+    };
+  }, [environmentId, projectId]);
+  return scope;
+}
+
+const sameReview = (a: ReviewSettings | null, b: ReviewSettings | null) =>
+  a === b || (!!a && !!b && JSON.stringify(a) === JSON.stringify(b));
 
 /** One project's pass override, plus the workspace pass it would inherit. */
 function useTurnPass(workspaceId: string, projectId?: string) {
@@ -551,6 +571,14 @@ export function ProjectSettingsDialog({
   const [pins, setPins] = useState<AccountPins>(project.accountPins ?? {});
   const { snapshot } = useAccounts(project.environmentId);
   const { pass, setPass, inherited } = useTurnPass(workspace.id, project.id);
+  const reviewScope = useReviewScope(project.environmentId, project.id);
+  // undefined until the scope loads; null = follows the global set.
+  const [review, setReview] = useState<ReviewSettings | null | undefined>(undefined);
+  useEffect(() => {
+    if (reviewScope && review === undefined) setReview(reviewScope.override);
+  }, [reviewScope, review]);
+  const shownReview = review ?? reviewScope?.global ?? DEFAULT_REVIEW_SETTINGS;
+  const reviewDirty = !!reviewScope && review !== undefined && !sameReview(review, reviewScope.override);
   const [savedPass, setSavedPass] = useState<TurnPass | null | undefined>(undefined);
   useEffect(() => {
     if (pass !== undefined && savedPass === undefined) setSavedPass(pass);
@@ -579,7 +607,7 @@ export function ProjectSettingsDialog({
       (nextBuild?.outputs ?? "") !== (savedBuild?.outputs ?? ""));
   const passDirty = savedPass !== undefined && !samePass(pass ?? null, savedPass);
   const pinsDirty = !samePins(pins, project.accountPins ?? {});
-  const dirty = nameDirty || branchDirty || buildDirty || passDirty || pinsDirty || plansDirty;
+  const dirty = nameDirty || branchDirty || buildDirty || passDirty || pinsDirty || plansDirty || reviewDirty;
   const pinsSummary =
     ROUTED_PROVIDERS.map((p) => {
       const name = pins[p];
@@ -612,6 +640,7 @@ export function ProjectSettingsDialog({
       }
       if (nameDirty) await renameProject(project.id, name.trim());
       if (passDirty) await saveTurnPass(workspace.id, pass ?? null, project.id);
+      if (reviewDirty) await saveReviewSettings(project.environmentId, project.id, review ?? null);
       if (pinsDirty) await setProjectAccounts(project.id, pins);
       if (plansDirty) await savePlanSettings(project.environmentId, project.id, plans ?? null);
       if (buildDirty) {
@@ -674,6 +703,17 @@ export function ProjectSettingsDialog({
             {pass ? (
               <button type="button" onClick={() => setPass(null)} className={`${GHOST} self-start`}>
                 Use workspace setting
+              </button>
+            ) : null}
+          </Disclosure>
+          <Disclosure
+            label="Reviews"
+            summary={`${reviewSummary(shownReview, project.environmentId)}${review ? "" : " · global"}`}
+          >
+            <ReviewFields value={shownReview} onChange={setReview} environmentId={project.environmentId} compact />
+            {review ? (
+              <button type="button" onClick={() => setReview(null)} className={`${GHOST} self-start`}>
+                Use global setting
               </button>
             ) : null}
           </Disclosure>

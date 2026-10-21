@@ -168,6 +168,7 @@ import { Heading, Input, Row, Segmented, Select, SecondaryButton, Toggle } from 
 import { EditorRow } from "./EditorRow";
 import { DANGER, GHOST, PRIMARY } from "../chrome/ConfirmDialog";
 import { AppshotsPage } from "./AppshotsSettings";
+import { ReviewsPage } from "./ReviewSettings";
 import { MatrixSpinner } from "./threads/bits";
 import { RemoteSettings } from "./RemoteSettings";
 import { EnvironmentsSettings } from "./EnvironmentsSettings";
@@ -278,6 +279,7 @@ export function SettingsView({
           {section === "providers" ? <ProvidersPage /> : null}
           {section === "orchestration" ? <OrchestrationPage /> : null}
           {section === "build" ? <BuildPage /> : null}
+          {section === "reviews" ? <ReviewsPage /> : null}
           {section === "appshots" ? <AppshotsPage /> : null}
           {section === "remote" ? <RemoteSettings onOpenSession={onOpenSession} /> : null}
           {section === "environments" ? <EnvironmentsSettings /> : null}

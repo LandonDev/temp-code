@@ -1,3 +1,4 @@
+import type { ReviewNotice } from "@server/shared/review";
 import type { ContextUsage } from "./contextUsage";
 import type { HandoffComposerCard } from "./handoff";
 import type { InboxComposerCard } from "./githubTasks";
@@ -162,6 +163,9 @@ export type Block = {
   agent?: { id: string; title?: string; status?: string };
   /** A plan-handoff system row: the build thread started from this plan. */
   planHandoff?: { id: string; title: string; how: "auto" | "manual" };
+  /** A merge-review row (shared/review.ts): the outcome card. `resolved`
+   *  once a later row merged past this hold. */
+  review?: ReviewNotice & { resolved?: boolean };
   approval?: {
     requestId: string | number;
     decided?: "allow" | "deny";

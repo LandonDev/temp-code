@@ -45,6 +45,7 @@ import { CrossHostThreads, crossHostOffers } from './remote/crossHostThreads'
 import { CrossHostAgents } from './crossHostAgents'
 import { HostDevicesHub, MacDevices, handleHostDevices, hostDevicesOffers, isMacHost } from './devices/hostDevices'
 import { readSimulatorHolders } from './devices/ledger'
+import { MergeReviews, mergeReviews, setMergeReviews } from './mergeReview'
 import { MacThreadTokens, MacTools, macToolsHooks, rebootWhenSettled } from './macTools'
 import { OfflineError, ThreadResources } from './threadResources'
 import { runMacCommand } from './remote/macRunner'
@@ -585,6 +586,8 @@ export async function startServer(
   })
   setCrossHostAgents(crossHostAgents)
   setAppCrossHost(crossHostAgents)
+  // Review before merge (mergeReview.ts): merge_branch's engine, one per host.
+  setMergeReviews(new MergeReviews({ registry, store }))
   // A thread that ends here (archived, deleted, moved away) takes its interactive jobs on the Mac with it.
   registry.onRemoved((ids) => macTools.threadsEnded(ids))
   registry.onMeta((m) => {
@@ -1472,6 +1475,23 @@ export async function startServer(
           case 'build.status':
             sendFrame({ id: req.id, ok: true, result: builder.status(req.params.projectId) })
             break
+          case 'review.get': {
+            const projectId = req.params.projectId
+            sendFrame({
+              id: req.id,
+              ok: true,
+              result: {
+                override: projectId ? registry.getReviewSettings(projectId) : null,
+                global: registry.getReviewSettings(null),
+                ...registry.effectiveReview(projectId)
+              }
+            })
+            break
+          }
+          case 'review.set':
+            registry.setReviewSettings(req.params.projectId, req.params.settings)
+            sendFrame({ id: req.id, ok: true, result: null })
+            break
           case 'appshots.get':
             sendFrame({ id: req.id, ok: true, result: registry.getAppshotSettings() })
             break
@@ -1873,6 +1893,32 @@ export async function startServer(
               result: await orchListAgents(callerOf(registry, req.params.sessionId))
             })
             break
+          case 'app.mergeBranch': {
+            const reviews = mergeReviews()
+            const { sessionId, ...args } = req.params
+            sendFrame({
+              id: req.id,
+              ok: true,
+              result: reviews ? await reviews.mergeBranch(callerOf(registry, sessionId), args) : 'refused: merge reviews are not available here'
+            })
+            break
+          }
+          case 'app.reportFindings': {
+            const reviews = mergeReviews()
+            const { sessionId, ...report } = req.params
+            sendFrame({
+              id: req.id,
+              ok: true,
+              result: reviews ? reviews.reportFindings(callerOf(registry, sessionId), report) : 'refused: merge reviews are not available here'
+            })
+            break
+          }
+          case 'review.override': {
+            const reviews = mergeReviews()
+            if (!reviews) throw new Error('merge reviews are not available here')
+            sendFrame({ id: req.id, ok: true, result: await reviews.override(req.params.sessionId, req.params.runId) })
+            break
+          }
         }
       } catch (err) {
         sendFrame({

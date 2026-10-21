@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { ReviewNoticeSchema } from './review'
 import type { AgentType, ProviderId, Reasoning } from './catalog'
 import type { ThreadType } from './domain'
 
@@ -410,7 +411,9 @@ export const AgentEventSchema = z.discriminatedUnion('type', [
     type: z.literal('notice'),
     kind: z.string(),
     message: z.string(),
-    account: z.string().optional()
+    account: z.string().optional(),
+    /** kind `review`: a merge review's outcome, for the card (shared/review.ts) */
+    review: ReviewNoticeSchema.optional()
   })
 ])
 export type AgentEvent = z.infer<typeof AgentEventSchema>

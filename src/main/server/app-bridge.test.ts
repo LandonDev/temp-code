@@ -8,7 +8,14 @@ import {
 import { CITE_TOOL_DESCRIPTION, CITE_TOOL_PARAMS } from '@shared/research'
 import { UPDATE_NOTES_DESCRIPTION, UPDATE_NOTES_PARAMS, UPDATE_NOTES_TOOL_NAME } from '@shared/notes'
 import { ThreadTypeSchema } from '@shared/domain'
-import { CITE_SHAPE, HTML_PREVIEW_SHAPE, HTML_RENDER_SHAPE } from './apptools'
+import { CITE_SHAPE, HTML_PREVIEW_SHAPE, HTML_RENDER_SHAPE, MERGE_BRANCH_SHAPE, REPORT_FINDINGS_SHAPE } from './apptools'
+import {
+  MERGE_BRANCH_PARAMS,
+  MERGE_BRANCH_TOOL_DESCRIPTION,
+  REPORT_FINDINGS_PARAMS,
+  REPORT_FINDINGS_TOOL_DESCRIPTION,
+  REVIEW_FINDING_PARAMS
+} from '@shared/review'
 
 const bridgePath = join(import.meta.dirname, '..', '..', '..', 'scripts', 'app-mcp-bridge.mjs')
 
@@ -90,5 +97,32 @@ describe('app-mcp-bridge html tools', () => {
       { type: 'text', text: '{"htmlRender":{"pageId":"p"},"message":"m"}' }
     ])
     expect(bridge.toolContent('app_read_thread', 'digest')).toEqual([{ type: 'text', text: 'digest' }])
+  })
+})
+
+describe('app-mcp-bridge merge_branch and report_findings', () => {
+  it("the bridge's merge_branch matches the shared description and params", () => {
+    const t = bridge.TOOLS.find((x) => x.name === 'merge_branch')!
+    expect(t.description).toBe(MERGE_BRANCH_TOOL_DESCRIPTION)
+    expect(Object.keys(t.inputSchema.properties)).toEqual(Object.keys(MERGE_BRANCH_SHAPE))
+    for (const [name, schema] of Object.entries(t.inputSchema.properties)) {
+      expect(schema.description).toBe(MERGE_BRANCH_PARAMS[name as keyof typeof MERGE_BRANCH_PARAMS])
+    }
+  })
+
+  it("the bridge's report_findings matches the shared description, params and finding fields", () => {
+    const t = bridge.TOOLS.find((x) => x.name === 'report_findings')!
+    expect(t.description).toBe(REPORT_FINDINGS_TOOL_DESCRIPTION)
+    expect(Object.keys(t.inputSchema.properties)).toEqual(Object.keys(REPORT_FINDINGS_SHAPE))
+    expect(t.inputSchema.required).toEqual(['findings'])
+    for (const [name, schema] of Object.entries(t.inputSchema.properties)) {
+      expect(schema.description).toBe(REPORT_FINDINGS_PARAMS[name as keyof typeof REPORT_FINDINGS_PARAMS])
+    }
+    const items = (t.inputSchema.properties.findings as { items: BridgeTool['inputSchema'] }).items
+    expect(Object.keys(items.properties)).toEqual(Object.keys(REVIEW_FINDING_PARAMS))
+    expect(items.required).toEqual(['file', 'summary', 'failure_scenario'])
+    for (const [name, schema] of Object.entries(items.properties)) {
+      expect(schema.description).toBe(REVIEW_FINDING_PARAMS[name as keyof typeof REVIEW_FINDING_PARAMS])
+    }
   })
 })

@@ -259,10 +259,18 @@ const holdAwaited = (ids: string[]): (() => void) => {
   }
 }
 
+/** Children whose settle is reported some other way (a merge review's
+ *  reviewer answers through merge_branch, mergeReview.ts): no wake report. */
+const settleSuppressors: ((child: SessionMeta) => boolean)[] = []
+export function suppressSettleReports(fn: (child: SessionMeta) => boolean): void {
+  settleSuppressors.push(fn)
+}
+export const settleSuppressed = (child: SessionMeta): boolean => settleSuppressors.some((f) => f(child))
+
 /** Called by the registry when a child transitions out of running. Queues
  *  an automatic report to the parent unless a wait already covers it. */
 export function notifyParentOfSettle(reg: SessionRegistry, child: SessionMeta): void {
-  if (!child.parentId || awaited.has(child.id)) return
+  if (!child.parentId || awaited.has(child.id) || settleSuppressed(child)) return
   const parent = reg.get(child.parentId)
   if (!parent || parent.archived) return
   const turn = latestTurnRows(reg.eventsAfter(child.id, 0))
@@ -1143,6 +1151,12 @@ export function researchWriteRoots(session: SessionMeta): string[] {
 
 /** The rules governing a session: workspace override → global → defaults,
  *  with the thread's own per-run conduct tune laid on top. */
+/** Whether the project this thread works in reviews before merge
+ *  (shared/review.ts); the implementation preamble and the turn pass read it. */
+export function reviewsBeforeMerge(session: SessionMeta): boolean {
+  return registry?.effectiveReview(session.projectId).settings.beforeMerge ?? false
+}
+
 export function rulesFor(session: SessionMeta): OrchestrationRules {
   const workspaceId = session.projectId
     ? (registry?.getProject(session.projectId)?.workspaceId ?? null)
