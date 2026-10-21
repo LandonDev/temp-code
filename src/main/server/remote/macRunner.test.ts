@@ -1,10 +1,11 @@
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync, realpathSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, describe, expect, it } from 'vitest'
 import { runMacCommand, scrubbedEnv, shellArgv } from './macRunner'
 
-const dir = mkdtempSync(join(tmpdir(), 'tc-macrun-'))
+// Real path: macOS's /tmp is a symlink to /private/tmp and the shell reports the resolved cwd.
+const dir = realpathSync(mkdtempSync(join(tmpdir(), 'tc-macrun-')))
 afterAll(() => rmSync(dir, { recursive: true, force: true }))
 const SH = '/bin/sh'
 const alive = (pid: number): boolean => {
