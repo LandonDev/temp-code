@@ -261,6 +261,7 @@ export class AccountsService {
     return chooseAccount({
       pin: pin?.name ?? null,
       current: opts?.fresh ? null : (meta.account ?? null),
+      stored: meta.account ?? null,
       model: meta.model ?? null,
       provider: meta.provider,
       snapshot: this.snap,
@@ -397,6 +398,13 @@ export class AccountsService {
   async list(): Promise<AccountsSnapshot> {
     if (!this.built) await this.rebuild(false)
     return this.snap
+  }
+
+  /** A profile was deleted: rebuild now, no debounce, so nothing routes to it meanwhile. */
+  rebuildNow(): Promise<void> {
+    if (this.debounce) clearTimeout(this.debounce)
+    this.debounce = null
+    return this.rebuild(false)
   }
 
   /** The user's Refresh: force a poll (forwarded to the owner when standby). */

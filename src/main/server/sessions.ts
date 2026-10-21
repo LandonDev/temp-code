@@ -285,7 +285,7 @@ export interface AccountRouter {
   /** The account a thread's child should spend from at spawn, and the account its row should show.
    *  `fresh` ignores the thread's sticky account: the best pick for its model, as after a model change.
    *  `load` is the live load when the caller already has it (a whole-list refresh reads it once). */
-  routeFor(meta: SessionMeta, pin: ResolvedPin | null, opts?: RouteOptions): { route: AccountRoute | null; current: string | null }
+  routeFor(meta: SessionMeta, pin: ResolvedPin | null, opts?: RouteOptions): { route: AccountRoute | null; current: string | null; vanished?: { pin?: string; sticky?: string } }
   /** A thread's error named a usage limit: move that thread to another account with room, or null. */
   failover(
     sessionId: string,
@@ -454,6 +454,8 @@ export class SessionRegistry {
   private limited = new Map<string, { switching: Promise<Switched | null> }>()
   /** The pin each live handle was spawned under, so a pin change respawns on the next send. */
   private spawnedPin = new Map<string, string | null>()
+  /** Threads told their account left this host, and which: one notice row per account per thread. */
+  private accountsGone = new Map<string, string>()
   /** Per root: the switch to continue on, and the short timer that lets
    *  every member of the tree settle so the tree continues once. */
   private limitContinues = new Map<string, { switched: Switched; timer: ReturnType<typeof setTimeout> }>()
@@ -758,8 +760,47 @@ export class SessionRegistry {
   expectAccount(sessionId: string, opts?: RouteOptions): void {
     const meta = this.store.getSession(sessionId)
     if (!meta || !this.limits || !isRoutedProvider(meta.provider)) return
-    const { current } = this.limits.routeFor(meta, this.pinOf(meta), opts)
-    if (current) this.setAccount(sessionId, current)
+    const pin = this.pinOf(meta)
+    const { current, vanished } = this.limits.routeFor(meta, pin, opts)
+    if (vanished) this.accountGone(meta, pin, vanished)
+    // A vanished sticky account with nothing picked yet clears the row: the chip says Auto.
+    if (current || vanished) this.setAccount(sessionId, current)
+  }
+
+  /**
+   * The thread's pinned or sticky account is no longer on this host (deleted
+   * here, or dropped on its owner's word, remote/accountSync.ts): the pin at
+   * its level loses that provider, so every thread under it routes
+   * automatically from now on, and the thread gets one plain row saying so,
+   * once per account. The next send respawns under the new route (the pin
+   * the harness was spawned with no longer applies).
+   */
+  private accountGone(meta: SessionMeta, pin: ResolvedPin | null, vanished: { pin?: string; sticky?: string }): void {
+    if (vanished.pin && pin && pin.name === vanished.pin && isRoutedProvider(meta.provider)) {
+      const provider = meta.provider
+      if (pin.level === 'project' && meta.projectId) {
+        const project = this.store.getProject(meta.projectId)
+        if (project?.accountPins?.[provider] === pin.name) {
+          const { [provider]: _gone, ...rest } = project.accountPins
+          this.store.setProjectAccounts(meta.projectId, rest)
+          this.notifyCatalog('projects')
+        }
+      } else if (pin.level === 'workspace') {
+        const workspaceId = (meta.projectId ? this.store.getProject(meta.projectId)?.workspaceId : null) ?? meta.workspaceId
+        const workspace = workspaceId ? this.store.listWorkspaces().find((w) => w.id === workspaceId) : null
+        if (workspace?.accountPins?.[provider] === pin.name) {
+          const { [provider]: _gone, ...rest } = workspace.accountPins
+          this.store.setWorkspaceAccounts(workspace.id, rest)
+          this.notifyCatalog('workspaces')
+        }
+      }
+    }
+    const name = vanished.pin ?? vanished.sticky
+    if (!name || this.accountsGone.get(meta.id) === name) return
+    this.accountsGone.set(meta.id, name)
+    const time = new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+    this.append(meta.id, { type: 'notice', kind: 'account-gone', account: name, message: `Account ${name} is gone from this host; routing automatically from here (${time})` })
+    console.log(`[accounts] ${meta.id}: account ${name} is gone from this host${vanished.pin ? ' (pin cleared)' : ''}; routing automatically`)
   }
 
   /** Threads with a live status right now (the stall log's `running=`). */
@@ -2474,8 +2515,9 @@ export class SessionRegistry {
     // on the last snapshot's favourite. The row shows the pick at once; the
     // gateway corrects it.
     const pin = this.pinOf(meta)
-    const { route, current } = this.limits?.routeFor(meta, pin, { fresh: true }) ?? { route: null, current: null }
-    this.spawnedPin.set(sessionId, pin?.name ?? null)
+    const { route, current, vanished } = this.limits?.routeFor(meta, pin, { fresh: true }) ?? { route: null, current: null }
+    if (vanished) this.accountGone(meta, pin, vanished)
+    this.spawnedPin.set(sessionId, vanished?.pin ? null : (pin?.name ?? null))
     this.setAccount(sessionId, current)
 
     const startP = this.ensureCwd(meta)

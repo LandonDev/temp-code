@@ -60,7 +60,7 @@ export function AccountControl({
         }`}
       >
         <Icon className="size-3.5 shrink-0" strokeWidth={1.75} />
-        <span className={`min-w-0 truncate text-[11px] ${label ? "" : "text-content/50"}`}>{label ?? "Account"}</span>
+        <span className={`min-w-0 truncate text-[11px] ${label ? "" : "text-content/50"}`}>{label ?? "Auto"}</span>
         <ChevronDown
           className={`size-3 shrink-0 text-content/50 ${open ? "rotate-180" : ""}`}
           strokeWidth={1.75}

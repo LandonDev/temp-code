@@ -370,7 +370,7 @@ export async function startServer(
       }
     }
   )
-  const accountSync = new AccountSync({ environmentId, store, peers, nudge: () => accounts.nudge() })
+  const accountSync: AccountSync = new AccountSync({ environmentId, store, peers, nudge: () => accounts.nudge(), refreshNow: () => accounts.rebuildNow() })
   accountSyncHooks.current = accountSync
   // The user's Claude Code and Codex config, mirrored onto the same hosts
   // (remote/harnessSync.ts). A headless host (the box) receives and does not send.

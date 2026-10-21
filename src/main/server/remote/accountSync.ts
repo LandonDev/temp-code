@@ -4,6 +4,7 @@ import { liveKeychain } from 'aliax-core/adapters/claude'
 import {
   accessExpiry,
   applyTransfer,
+  isProvisional,
   beginHandoff,
   claimHandoff,
   clearReleased,
@@ -18,7 +19,7 @@ import {
   type Transfer,
   type TransferProfile
 } from 'aliax-core/sync'
-import { ACCOUNT_PROVIDERS, PROVIDER_OF, type AccountProvider } from '@shared/accounts'
+import { ACCOUNT_PROVIDERS, PROVIDER_OF, type AccountProvider, type AccountRemoval, type ListedAccount } from '@shared/accounts'
 import type { ServerPush } from '@shared/contract'
 import type { PeerLink, Peers } from './peers'
 
@@ -52,6 +53,24 @@ import type { PeerLink, Peers } from './peers'
  *  - a consumer copy near its end asks its owner (aliax-core's askOwner)
  *    over the owner's link; an owner out of reach means the copy runs out
  *    and the Accounts page says so.
+ *  - removals follow the owner (deleteProfile, prune). Every pull answer
+ *    carries the sender's whole file (`listed`) and its tombstones, and a
+ *    deletion is also pushed at once (`accounts.removed` over the links,
+ *    the `accounts-removed` push to sockets that pulled). The tombstone
+ *    rule: a host that deletes a profile it refreshes or a static token
+ *    keeps a tombstone (service, account id, when) in its settings for
+ *    TOMBSTONE_TTL_MS, dropped the moment a profile of that account is
+ *    saved here again. A peer deletes an access-only copy whose owner is
+ *    the sender when the sender's list no longer has the account: the
+ *    owner's file is the whole truth about what it refreshes. A static
+ *    one-year token (no owner, every host holds one) is deleted only when
+ *    a tombstone names it: absence from one host's list proves nothing,
+ *    since that host may simply not have received it yet. Never deleted on
+ *    a peer's word: a profile this host refreshes, the one its CLI is
+ *    signed in with (Claude's Keychain item or credentials file, Codex's
+ *    auth.json), or a provisional copy (a handoff in flight). Each deletion
+ *    rebuilds the accounts snapshot at once (`refreshNow`), so the gateway
+ *    and the routing stop naming the account before the next turn.
  */
 
 const SERVICES: ServiceId[] = ['claude-code', 'codex', 'cursor']
@@ -60,6 +79,10 @@ export const HOME_PREFIX = 'accounts.home.'
 const PUSH_DEBOUNCE_MS = 1_000
 /** How long a grant handed out on a pull waits for the taker's confirm before this host keeps it. */
 export const RELEASE_TIMEOUT_MS = 30_000
+/** Settings row holding this host's tombstones (AccountRemoval[]). */
+export const TOMBSTONES_KEY = 'accounts.tombstones'
+/** How long a tombstone is kept and sent. */
+export const TOMBSTONE_TTL_MS = 30 * 86_400_000
 
 export interface AccountSyncDeps {
   environmentId: string
@@ -67,6 +90,8 @@ export interface AccountSyncDeps {
   peers: Pick<Peers, 'get' | 'all'>
   /** The accounts snapshot changed under us: rebuild and push it. */
   nudge: () => void
+  /** A profile is gone: rebuild the snapshot now, before anything else routes to it. Falls back to nudge. */
+  refreshNow?: () => Promise<void> | void
   log?: (line: string) => void
   now?: () => number
   /** Test seams for the live sign-in: who the CLI here is signed in as, when its credential lapses, and installing a blob as that sign-in. */
@@ -79,7 +104,13 @@ export interface AccountSyncDeps {
 
 export interface PullAnswer {
   transfers: Transfer[]
+  /** The sender's whole file for the services asked (absent from a host too old to send it). */
+  listed?: ListedAccount[]
+  /** The sender's tombstones (absent from a host too old to send them). */
+  tombstones?: AccountRemoval[]
 }
+
+export type DeleteAnswer = { ok: true; removal: AccountRemoval } | { ok: false; error: string }
 
 export interface ConfirmParams {
   service: ServiceId
@@ -161,6 +192,7 @@ export class AccountSync {
       return out
     }
     if (out.saved) {
+      this.forgetTombstone(t.service, t.profile.accountId)
       this.log(`${t.service} ${out.name}: ${t.profile.static ? 'static token' : t.mode} from ${from} landed${t.mode === 'handoff' ? ', waiting for its word' : ''}`)
       // A grant handed over becomes the live sign-in once the sender has stripped its copy (handleReleased).
       if (t.mode !== 'handoff') void this.activateIfNothingLive(t.service, out.name, t.profile.static)
@@ -187,7 +219,140 @@ export class AccountSync {
         }
       }
     }
-    return { transfers }
+    return { transfers, listed: this.listed(params.service ? [params.service] : SERVICES), tombstones: this.tombstones() }
+  }
+
+  /** Every profile on file here for the services, with its owner: what a peer prunes against. */
+  listed(services: ServiceId[] = SERVICES): ListedAccount[] {
+    const out: ListedAccount[] = []
+    for (const service of services) {
+      for (const p of vault.profiles(service)) out.push({ service, accountId: p.accountId, name: p.name, static: p.static === true, owner: p.static ? null : (p.owner ?? this.me) })
+    }
+    return out
+  }
+
+  // ── removals ───────────────────────────────────────────────────────────
+
+  /** This host's tombstones, the expired ones dropped. */
+  tombstones(): AccountRemoval[] {
+    const raw = this.deps.store.getSetting(TOMBSTONES_KEY)
+    if (!raw) return []
+    let rows: AccountRemoval[]
+    try {
+      rows = JSON.parse(raw) as AccountRemoval[]
+    } catch {
+      return []
+    }
+    const cutoff = this.now() - TOMBSTONE_TTL_MS
+    return rows.filter((t) => t && typeof t.at === 'number' && t.at > cutoff)
+  }
+
+  private saveTombstones(rows: AccountRemoval[]): void {
+    this.deps.store.setSetting(TOMBSTONES_KEY, rows.length ? JSON.stringify(rows) : null)
+  }
+
+  private recordTombstone(t: AccountRemoval): void {
+    this.saveTombstones([...this.tombstones().filter((x) => !(x.service === t.service && x.accountId === t.accountId)), t])
+  }
+
+  /** A profile of the account is on file here again: its tombstone is void. */
+  private forgetTombstone(service: ServiceId, accountId: string): void {
+    const rows = this.tombstones()
+    const kept = rows.filter((x) => !(x.service === service && x.accountId === accountId))
+    if (kept.length !== rows.length) this.saveTombstones(kept)
+  }
+
+  /**
+   * Delete a saved profile here (the Accounts page's Remove, `accounts.delete`).
+   * The vault row goes, the snapshot rebuilds at once, and every peer hears:
+   * over the links as `accounts.removed`, to the sockets that pulled as an
+   * `accounts-removed` push. A profile this host refreshed, or a static
+   * token, leaves a tombstone for the hosts that are not connected now.
+   */
+  async deleteProfile(service: ServiceId, name: string): Promise<DeleteAnswer> {
+    const p = vault.profiles(service).find((x) => x.name === name)
+    if (!p) return { ok: false, error: `no ${service} profile named ${name}` }
+    const removal: AccountRemoval = { service, accountId: p.accountId, name, static: p.static === true, at: this.now() }
+    vault.deleteProfile(service, name)
+    coreAccounts.clearUsageCache(service)
+    if (p.static || ownsProfile(p)) this.recordTombstone(removal)
+    this.log(`${service} ${name}: deleted here${p.static ? ' (static token)' : ownsProfile(p) ? '' : ` (a copy refreshed by ${p.owner})`}`)
+    await this.refreshNow()
+    void this.broadcastRemoved([removal])
+    return { ok: true, removal }
+  }
+
+  private async refreshNow(): Promise<void> {
+    try {
+      if (this.deps.refreshNow) await this.deps.refreshNow()
+      else this.deps.nudge()
+    } catch (err) {
+      this.log(`snapshot did not rebuild (${(err as Error).message})`)
+      this.deps.nudge()
+    }
+  }
+
+  private async broadcastRemoved(removed: AccountRemoval[]): Promise<void> {
+    for (const send of this.subscribers) {
+      try {
+        send({ push: 'accounts-removed', from: this.me, removed })
+      } catch {
+        // a socket on its way out
+      }
+    }
+    for (const link of this.deps.peers.all()) {
+      if (!link.connected) continue
+      await link.request('accounts.removed', { from: this.me, removed }).catch((err) => this.log(`${link.env.name}: did not hear the removal (${(err as Error).message}); its next sync prunes`))
+    }
+  }
+
+  /** A peer deleted profiles: prune what its word covers. */
+  async handleRemoved(from: string, params: { removed: AccountRemoval[] }): Promise<{ dropped: number }> {
+    const dropped = await this.prune(from, undefined, params.removed)
+    this.deps.nudge()
+    return { dropped }
+  }
+
+  /**
+   * Drop what `from`'s word no longer supports (the tombstone rule in the
+   * module comment): an access-only copy refreshed by `from` that its list
+   * omits or a tombstone names, and a static token a tombstone names. Never
+   * a profile this host refreshes, its CLI's sign-in, or a provisional copy.
+   * Returns how many went; the snapshot rebuilds at once when any did.
+   */
+  async prune(from: string, listed: ListedAccount[] | undefined, tombstones: AccountRemoval[] | undefined): Promise<number> {
+    if (!listed && !tombstones) return 0
+    // A peer's tombstone is read on the same clock as this host's own.
+    const cutoff = this.now() - TOMBSTONE_TTL_MS
+    tombstones = tombstones?.filter((t) => typeof t.at === 'number' && t.at > cutoff)
+    let dropped = 0
+    for (const service of SERVICES) {
+      const profiles = vault.profiles(service)
+      if (profiles.length === 0) continue
+      const live = await (this.deps.liveAccountId ?? ((s: ServiceId) => adapter(s).liveAccountId()))(service).catch(() => null)
+      for (const p of profiles) {
+        const tomb = tombstones?.find((t) => t.service === service && t.accountId === p.accountId)
+        let why: string | null = null
+        if (p.static) {
+          if (tomb) why = `its token was removed on ${from}`
+        } else if (p.owner === from && !ownsProfile(p)) {
+          if (tomb) why = `removed on ${from}, which refreshed it`
+          else if (listed && !listed.some((l) => l.service === service && l.accountId === p.accountId)) why = `no longer on ${from}, which refreshed it`
+        }
+        if (!why) continue
+        const keep = ownsProfile(p) ? 'refreshed here' : live !== null && live === p.accountId ? "the CLI's sign-in here" : isProvisional(service, p) ? 'a handoff in flight' : null
+        if (keep) {
+          this.log(`${service} ${p.name}: ${why}; kept (${keep})`)
+          continue
+        }
+        vault.deleteProfile(service, p.name)
+        coreAccounts.clearUsageCache(service)
+        dropped++
+        this.log(`${service} ${p.name}: ${why}; deleted here`)
+      }
+    }
+    if (dropped) await this.refreshNow()
+    return dropped
   }
 
   /** Export the full grant for `to` under the profile's lock and keep it pending until `to` confirms or the timeout. */
@@ -291,13 +456,15 @@ export class AccountSync {
     if (!link?.connected) return
     try {
       // What the host owns or holds statically, for us: only accounts already on file here.
-      const { transfers } = await link.request<PullAnswer>('accounts.pull', { from: this.me })
+      const { transfers, listed, tombstones } = await link.request<PullAnswer>('accounts.pull', { from: this.me })
       let landed = 0
       for (const t of transfers) {
         const out = applyTransfer(t, link.id, 'peer')
         if (out.ok && out.saved) landed++
         else if (!out.ok) this.log(`${t.service} ${t.profile.name} from ${link.env.name}: refused (${out.reason})`)
       }
+      // What the host no longer has, this host drops (the tombstone rule).
+      const dropped = await this.prune(link.id, listed, tombstones)
       await this.settle(link)
       // What we own or hold statically, for the host.
       let sent = 0
@@ -306,7 +473,7 @@ export class AccountSync {
       }
       link.lastSyncAt = this.now()
       link.lastError = null
-      if (landed || sent) this.log(`${link.env.name}: ${landed} landed, ${sent} sent`)
+      if (landed || sent || dropped) this.log(`${link.env.name}: ${landed} landed, ${sent} sent, ${dropped} dropped`)
     } catch (err) {
       link.lastError = (err as Error).message
       this.log(`${link.env.name}: sync failed (${link.lastError})`)
@@ -454,6 +621,7 @@ export class AccountSync {
 
   private async broadcast(service: ServiceId, name: string): Promise<void> {
     const p = vault.profiles(service).find((x) => x.name === name)
+    if (p) this.forgetTombstone(service, p.accountId)
     if (!p || (!p.static && !ownsProfile(p))) return
     if (this.subscribers.size > 0) {
       try {
@@ -471,6 +639,10 @@ export class AccountSync {
 
   /** An `account` push from a peer: its owner rotated. Only an account already on file here, and only from its owner. */
   onPeerPush = (from: string, push: ServerPush): void => {
+    if (push.push === 'accounts-removed') {
+      void this.handleRemoved(from, { removed: push.removed })
+      return
+    }
     if (push.push !== 'account') return
     const out = applyTransfer(push.transfer, from, 'peer')
     if (out.ok && out.saved) {

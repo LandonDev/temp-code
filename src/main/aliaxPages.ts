@@ -243,8 +243,15 @@ export function registerAliaxPages(server: { accounts: AliaxPagesHost; accountSy
       return result
     })
   )
+  // Through the sync when it runs (every peer hears, the snapshot rebuilds
+  // at once); the bare vault delete only for a page served before the server.
   handle('aliax:profiles:delete', (_e, serviceId: ServiceId, name: string) =>
     asResult(async () => {
+      if (sync) {
+        const out = await sync.deleteProfile(serviceId, name)
+        notifyAccountsChanged()
+        return out.ok ? { ok: true } : { ok: false, error: out.error }
+      }
       vault.deleteProfile(serviceId, name)
       notifyAccountsChanged()
       return { ok: true }

@@ -48,9 +48,40 @@ describe('chooseAccount', () => {
     const none = snapshot({ 'a@x.com': [full('Weekly')], 'b@x.com': [full('5h')] })
     expect(chooseAccount({ ...base, pin: 'a@x.com', current: null, snapshot: none })).toEqual({ route: { account: 'a@x.com', pin: true }, current: 'a@x.com' })
   })
-  it('a pin the vault no longer holds is ignored', () => {
+  it('a pin the vault no longer holds falls back to automatic routing and is reported as vanished', () => {
     const snap = snapshot({ 'b@x.com': [fine('5h')] })
-    expect(chooseAccount({ ...base, pin: 'gone@x.com', current: null, snapshot: snap })).toEqual({ route: { account: 'b@x.com', pin: false }, current: 'b@x.com' })
+    expect(chooseAccount({ ...base, pin: 'gone@x.com', current: null, snapshot: snap })).toEqual({
+      route: { account: 'b@x.com', pin: false },
+      current: 'b@x.com',
+      vanished: { pin: 'gone@x.com' }
+    })
+    // The thread was spending from the pin too: both are named once each.
+    expect(chooseAccount({ ...base, pin: 'gone@x.com', current: 'gone@x.com', snapshot: snap })).toEqual({
+      route: { account: 'b@x.com', pin: false },
+      current: 'b@x.com',
+      vanished: { pin: 'gone@x.com', sticky: 'gone@x.com' }
+    })
+  })
+  it('a sticky account the vault no longer holds re-picks fresh and is reported as vanished; an empty snapshot reports nothing', () => {
+    const snap = snapshot({ 'b@x.com': [fine('5h')] })
+    expect(chooseAccount({ ...base, pin: null, current: 'gone@x.com', snapshot: snap })).toEqual({
+      route: { account: 'b@x.com', pin: false },
+      current: 'b@x.com',
+      vanished: { sticky: 'gone@x.com' }
+    })
+    // Nothing else has room: no route, no expected account, and the row still says the account is gone.
+    const full5h = snapshot({ 'b@x.com': [full('5h')] })
+    expect(chooseAccount({ ...base, pin: null, current: 'gone@x.com', snapshot: full5h })).toEqual({ route: null, current: null, vanished: { sticky: 'gone@x.com' } })
+    // A fresh pick ignores the sticky account, but the row it shows is still reported gone.
+    expect(chooseAccount({ ...base, pin: null, current: null, stored: 'gone@x.com', snapshot: snap })).toEqual({
+      route: { account: 'b@x.com', pin: false },
+      current: 'b@x.com',
+      vanished: { sticky: 'gone@x.com' }
+    })
+    // Nothing known yet is not the same as gone: the sticky account is kept as the route.
+    const empty = snapshot({})
+    expect(chooseAccount({ ...base, pin: null, current: 'gone@x.com', snapshot: empty })).toEqual({ route: null, current: null })
+    expect(chooseAccount({ ...base, pin: 'gone@x.com', current: null, snapshot: empty })).toEqual({ route: null, current: null })
   })
   it('without a pin the current account is sticky while it has room for the model', () => {
     const snap = snapshot({ 'a@x.com': [fine('Weekly', 10, NOW + 1)], 'b@x.com': [fine('Weekly', 90, NOW + 9)] })

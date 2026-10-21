@@ -20,6 +20,14 @@ export const AccountTransferSchema = z.object({
   blob: z.string(),
   expiresAt: z.number().nullable()
 })
+/** A profile deleted on a host (shared/accounts.ts AccountRemoval). */
+export const AccountRemovalSchema = z.object({
+  service: ServiceIdSchema,
+  accountId: z.string(),
+  name: z.string(),
+  static: z.boolean(),
+  at: z.number()
+})
 /** One explicit account per gateway provider; a missing key inherits. */
 export const AccountPinsSchema = z.object({ claude: z.string().min(1).optional(), codex: z.string().min(1).optional() })
 
@@ -179,6 +187,22 @@ export const M3aRequestSchemas = [
     id: z.string(),
     method: z.literal('accounts.released'),
     params: z.object({ from: z.string(), service: ServiceIdSchema, accountId: z.string() })
+  }),
+  // A host deleted profiles (remote/accountSync.ts): the peer drops its
+  // access-only copies of what the sender refreshed, and a static token only
+  // when a removal names it; never what it owns, its CLI's sign-in, or a
+  // provisional copy. `from` is the sender's environment id.
+  z.object({
+    id: z.string(),
+    method: z.literal('accounts.removed'),
+    params: z.object({ from: z.string(), removed: z.array(AccountRemovalSchema) })
+  }),
+  // Delete a saved profile on this host (the Accounts page's Remove, a proof):
+  // the vault row goes, the snapshot rebuilds at once, and every peer hears.
+  z.object({
+    id: z.string(),
+    method: z.literal('accounts.delete'),
+    params: z.object({ service: ServiceIdSchema, name: z.string() })
   }),
   z.object({ id: z.string(), method: z.literal('accounts.sync'), params: z.object({ environmentId: z.string().optional() }).optional() }),
   z.object({

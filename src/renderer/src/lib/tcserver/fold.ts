@@ -570,6 +570,10 @@ export function foldEvent(
         th().stopped = true;
       }
       break;
+    case "notice":
+      // A plain system row (the account left this host, …): no failure, no stop.
+      blocks = appendStatusBlock(blocks, e.message, `notice:${row.seq}`);
+      break;
     case "errors-cleared": {
       // Continue settled every error shown so far; the system rows that
       // followed the last one (status detail, stopped note) go with it.

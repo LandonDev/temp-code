@@ -181,7 +181,28 @@ routed to (aliax-core's `forward`). Two listeners:
   the next sync settles anything a lost message left half done. A peer's
   pushes and pull answers land only on accounts already on file here
   (`applyTransfer(..., 'peer')`); a grant the local CLI is signed in with
-  (Claude's Keychain item, Codex's auth.json) is never handed off. Test
+  (Claude's Keychain item, Codex's auth.json) is never handed off. Removals
+  follow the owner (`AccountSync.deleteProfile`, behind the `accounts.delete`
+  RPC and the Accounts page's `aliax:profiles:delete`): the vault row goes,
+  the snapshot rebuilds at once (`AccountsService.rebuildNow`, no debounce),
+  and every peer hears, over the links as `accounts.removed` (admin) and to
+  sockets that pulled as an `accounts-removed` push; every pull answer also
+  carries the sender's whole file (`listed`) and its tombstones. The
+  tombstone rule: a host that deletes a profile it refreshes or a static
+  token keeps a tombstone (settings row `accounts.tombstones`, 30 days,
+  void once a profile of that account is saved there again); a peer deletes
+  an access-only copy whose owner is the sender when the sender's list no
+  longer has the account, and a static one-year token only when a tombstone
+  names it (absence from one host's list proves nothing for a token every
+  host holds); never deleted on a peer's word: a profile this host
+  refreshes, the one its CLI is signed in with, or a provisional copy (a
+  handoff in flight). Routing follows (`chooseAccount` reports `vanished`):
+  a thread whose pin or sticky account is no longer known routes
+  automatically from its next turn, the project's or workspace's pin for
+  that provider is cleared, and one `notice` row (`kind: 'account-gone'`,
+  a plain system row, no Continue) says "Account <name> is gone from this
+  host; routing automatically from here" with the time; the chip reads
+  Auto until the next pick lands. Test
   seams for isolated instances: `TEMP_CODE_ALIAX_DATA_DIR` (own vault,
   key-file mode), `TEMP_CODE_FAKE_PROVIDERS=<origin>` (every provider call
   goes there), `TEMP_CODE_GATEWAY_ROLE=owner` (refresh without the marker),

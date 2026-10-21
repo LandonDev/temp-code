@@ -57,7 +57,7 @@ describe('FENCED_PARAMS', () => {
   /** Fenced elsewhere, or a key that only looks like a path (`from` is a host id on accounts.*, peer.register, session.move (local-only) and harness.manifest, whose relPaths are checked against the sync set in harnessSet.ts). */
   // The mac.* paths name files on the Mac, not here: they are local-only on this host, and the
   // Mac enforces its own policy (managed roots, shared folders, per-request approval) in macBridge.ts.
-  const OWN_FENCE = new Set(['fs.media', 'file.read', 'attachment.read', 'accounts.push', 'accounts.pull', 'harness.manifest', 'session.move', 'peer.register', 'mac.readFile', 'mac.listDir', 'mac.fetchFile', 'mac.run', 'mac.writeFile'])
+  const OWN_FENCE = new Set(['fs.media', 'file.read', 'attachment.read', 'accounts.push', 'accounts.pull', 'accounts.removed', 'harness.manifest', 'session.move', 'peer.register', 'mac.readFile', 'mac.listDir', 'mac.fetchFile', 'mac.run', 'mac.writeFile'])
   const paramsOf = (option: z.ZodTypeAny): z.ZodObject<z.ZodRawShape> | null => {
     let schema = (option as z.ZodObject<{ params: z.ZodTypeAny }>).shape.params
     while (schema instanceof z.ZodOptional || schema instanceof z.ZodDefault)

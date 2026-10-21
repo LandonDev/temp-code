@@ -167,6 +167,7 @@ export const METHOD_CAPABILITY: Record<ClientRequest['method'], MethodCapability
   // Account sync between hosts (thread V): only an admin key moves a credential, local only decides where sign-ins go.
   'accounts.sync': 'local',
   'accounts.setHome': 'local',
+  'accounts.delete': 'local',
   'notes.upsert': 'operate',
   'notes.delete': 'operate',
   'projectLogo.save': 'operate',
@@ -232,6 +233,7 @@ export const METHOD_CAPABILITY: Record<ClientRequest['method'], MethodCapability
   'accounts.pull': 'admin',
   'accounts.confirm': 'admin',
   'accounts.released': 'admin',
+  'accounts.removed': 'admin',
   // Harness config sync (remote/harnessSync.ts): another host's main process mirrors its config here; the pane's status and Sync now.
   'harness.manifest': 'admin',
   'harness.file': 'admin',

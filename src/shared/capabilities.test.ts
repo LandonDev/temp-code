@@ -34,6 +34,7 @@ describe('METHOD_CAPABILITY', () => {
         // Where sign-ins are handed to, and a sync on demand, are this machine's to decide (thread V).
         'accounts.sync',
         'accounts.setHome',
+        'accounts.delete',
         // Only the desktop starts a thread's move between hosts (contract-session-move.ts).
         'session.move',
         // The Mac bridge: a box thread's own tools (token-gated), and the Mac's decisions and policy.
@@ -64,6 +65,7 @@ describe('METHOD_CAPABILITY', () => {
         'accounts.pull',
         'accounts.confirm',
         'accounts.released',
+        'accounts.removed',
         // The harness config crosses between hosts, and its status and settings are changed, only under an admin key.
         ...methods.filter((m) => m.startsWith('harness.')),
         // A host's per-file attachment limit.

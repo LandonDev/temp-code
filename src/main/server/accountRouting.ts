@@ -46,6 +46,9 @@ export interface ChooseInput {
   pin: string | null
   /** The account the thread spent from last (sticky). */
   current: string | null
+  /** The account the thread's row shows when `current` was dropped as fresh (a re-pick ignores it, but the
+   *  row must still learn that it is gone): reported as vanished when the snapshot no longer knows it. */
+  stored?: string | null
   model: string | null
   provider: SessionMeta['provider']
   snapshot: AccountsSnapshot
@@ -61,6 +64,10 @@ export interface Choice {
   route: AccountRoute | null
   /** The account the thread is expected to spend from, for its row. */
   current: string | null
+  /** A pin or sticky account the snapshot no longer knows (deleted here, or dropped on its owner's word): the
+   *  choice fell back to automatic routing, and the registry clears the pin and says so in the thread. Never
+   *  set from an empty snapshot (nothing known yet is not the same as gone). */
+  vanished?: { pin?: string; sticky?: string }
 }
 
 /**
@@ -92,12 +99,16 @@ export interface Choice {
  * win every pick. It has no room here, so a pinned thread expects the
  * fallback, a sticky thread leaves it, and a first spawn never lands on it.
  */
-export function chooseAccount({ pin, current, model, provider, snapshot, load = {}, out = [], now = Date.now() }: ChooseInput): Choice {
+export function chooseAccount({ pin, current, stored = null, model, provider, snapshot, load = {}, out = [], now = Date.now() }: ChooseInput): Choice {
   if (!isRoutedProvider(provider)) return { route: null, current: null }
   const snap = snapshot.providers[provider]
   const serviceId = SERVICE_OF[provider]
   const tiers = tiersFor(serviceId, model)
   const known = (name: string | null): name is string => name !== null && snap.profiles.some((p) => p.name === name)
+  const gone = (name: string | null): name is string => name !== null && snap.profiles.length > 0 && !known(name)
+  const sticky = gone(current) ? current : gone(stored) ? stored : null
+  const vanished = gone(pin) || sticky ? { ...(gone(pin) ? { pin } : {}), ...(sticky ? { sticky } : {}) } : undefined
+  const withVanished = (choice: Choice): Choice => (vanished ? { ...choice, vanished } : choice)
   const room = (name: string): boolean => !out.includes(name) && hasRoom(snap.reports.find((r) => r.profileName === name), tiers, now)
   const effectiveLoad = snap.pinned ? { ...load, [snap.pinned]: (load[snap.pinned] ?? 0) + 1 } : load
   const pick = (tried: string[]): string | null =>
@@ -116,8 +127,8 @@ export function chooseAccount({ pin, current, model, provider, snapshot, load = 
       scopedSpent(serviceId, model, report(current), now) === false &&
       scopedSpent(serviceId, model, report(best), now) === true
     const kept = outclassed ? best : current
-    return { route: { account: kept, pin: false }, current: kept }
+    return withVanished({ route: { account: kept, pin: false }, current: kept })
   }
   const picked = pick([]) ?? (known(current) ? current : null)
-  return { route: picked ? { account: picked, pin: false } : null, current: picked }
+  return withVanished({ route: picked ? { account: picked, pin: false } : null, current: picked })
 }

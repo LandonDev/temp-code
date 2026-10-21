@@ -468,13 +468,39 @@ temp-code `src/main/server/remote/{peers,accountSync}.ts`):
   its admin key (the Mac, to the box). A re-pair that kept the routes but
   changed the key rebuilds the Mac's link (remote/peers.ts), so sync comes
   back after a revoked key.
+- **Removals follow the owner.** Remove an account on the Mac's Accounts
+  page (or over `accounts.delete` on a host) and it is gone everywhere:
+  the vault row goes, the host's accounts snapshot rebuilds at once (the
+  gateway and the routing stop naming it before anything else runs; no
+  Refresh or Sync needed), and every peer hears, over the Mac's link as
+  `accounts.removed` and to the sockets that pulled from the host as an
+  `accounts-removed` push; every pull answer also carries the sender's
+  whole file and its tombstones, so a box that was away prunes on its next
+  sync (`accountSync.ts deleteProfile`, `prune`). The tombstone rule: a host
+  that deletes a profile it refreshes or a static one-year token keeps a
+  tombstone (settings row `accounts.tombstones`, 30 days, void once a
+  profile of that account is saved there again). A peer deletes an
+  access-only copy refreshed by the sender when the sender's list no longer
+  has the account (the owner's file is the whole truth about what it
+  refreshes), and a static token only when a tombstone names it (every
+  host holds its own copy, so absence from one list proves nothing). Never
+  deleted on a peer's word: a profile the host refreshes itself, the one
+  its CLI is signed in with (Claude's credentials, Codex's `auth.json`), or
+  a provisional copy from a handoff in flight; the log says what was kept
+  and why. A thread on the box whose pin or sticky account went: it routes
+  automatically from its next turn, the project's or workspace's pin for
+  that provider is cleared, and one plain row lands in the thread, "Account
+  <name> is gone from this host; routing automatically from here" with the
+  time (`chooseAccount` reports `vanished`, `sessions.ts accountGone`); the
+  account chip reads Auto until the next pick lands.
   The Mac's main process keeps one socket per admin host (backoff to 5 min)
   and syncs on connect, on every local vault write, and every 15 minutes;
   `accounts.sync` and the row's Retry do it now. The box's own vault is
   `/srv/agents/home/.config/aliax/` in key-file mode.
 
 Proof without a real account: `bun run script:e2e-accounts-sync` (two
-isolated instances, a fake provider, a handoff, a rotation, the owner down)
+isolated instances, a fake provider, a handoff, a rotation, a removal that
+reaches the other host and clears a thread's pin, the owner down)
 and `bun run script:e2e-static-tokens` (three accounts converted through
 their grants, one of them falling back to `user:inference`, the usage poll
 on both kinds of token, a renewal through the stored session against the

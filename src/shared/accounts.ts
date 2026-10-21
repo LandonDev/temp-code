@@ -86,6 +86,32 @@ export const emptyAccounts = (): AccountsSnapshot => ({
   }
 })
 
+/**
+ * One profile as it is listed to another host on a pull (remote/accountSync.ts):
+ * the owner's whole file, so a peer can drop the copies the owner no longer has.
+ */
+export interface ListedAccount {
+  service: ServiceId
+  accountId: string
+  name: string
+  static: boolean
+  /** The environment that refreshes it; null for a static token. */
+  owner: string | null
+}
+
+/**
+ * A profile deleted on a host, kept 30 days (TOMBSTONE_TTL_MS) in that host's
+ * settings and sent with every pull answer and as an `accounts-removed` push.
+ * The one thing that removes a static one-year token elsewhere.
+ */
+export interface AccountRemoval {
+  service: ServiceId
+  accountId: string
+  name: string
+  static: boolean
+  at: number
+}
+
 /** The main process's own link to a host that shares accounts (server/remote/peers.ts). */
 export interface PeerState {
   /** The host's name as saved here, so a row can name it without the renderer's registry. */

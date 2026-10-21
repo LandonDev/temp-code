@@ -933,6 +933,8 @@ export type ServerPush =
   // Account sync (thread V): an owner rotated a grant; only sockets that
   // pulled (another host's main process) get these, never a renderer.
   | { push: 'account'; from: string; transfer: import('aliax-core/sync').Transfer }
+  // Account sync: a host deleted profiles; the same sockets as `account`.
+  | { push: 'accounts-removed'; from: string; removed: import('./accounts').AccountRemoval[] }
   // The Mac bridge (contract-macbridge.ts): `peer.call` to a registered Mac's
   // link only; `macBridge.*` to the Mac's own local sockets only.
   | import('./contract-macbridge').MacBridgePush
