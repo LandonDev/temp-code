@@ -75,9 +75,7 @@ func textRow(_ sessionId: String, seq: Int, text: String? = nil, ephemeral: Bool
 
     @Test func `a running thread's host clock survives the cache for the elapsed timer`() async throws {
         let cache = try SessionCache.inMemory()
-        var running = sampleSession("s1", updatedAt: 1_700_000_000_000)
-        running.status = .running
-        running.busySince = 1_699_999_990_000
+        let running = SessionMeta(id: "s1", parentId: nil, projectId: "p1", workspaceId: nil, threadType: .chat, planPath: nil, provider: .claude, model: "claude-sonnet-5-5", reasoning: .low, agentType: .implementer, title: "Running", cwd: "/tmp/repo", status: .running, pinned: false, archived: false, permission: .edits, fast: false, ultrafast: false, context1m: false, busySince: 1_699_999_990_000, pausedAt: nil, frozenActiveElapsed: nil, nativeId: nil, account: nil, activity: nil, activityKind: nil, tasks: nil, goal: nil, context: nil, canContinue: nil, treeCanContinue: nil, treeHasLiveWork: nil, treeHasPaused: nil, treeFrozenActiveElapsed: nil, threadRules: nil, createdAt: 1, updatedAt: 1_700_000_000_000)
         try await cache.upsertSessions("env_test", [running])
         let shell = try await cache.shell("env_test")
         #expect(shell.sessions.first?.busySince == 1_699_999_990_000)

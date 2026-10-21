@@ -423,12 +423,14 @@ public final class EnvironmentClient {
         async let workspacesList = try? socket.request(Methods.WorkspaceList.self, NoParams())
         async let projectsList = try? socket.request(Methods.ProjectList.self, NoParams())
         async let firstPage = try? socket.request(Methods.SessionList.self, .init(archived: nil, projectId: nil, cursor: nil))
+        // A list that comes back as it was is not republished: a catch-up
+        // that confirms what the cache painted moves nothing on screen.
         if let list = await workspacesList {
-            publishList { workspaces = list }
+            if list != workspaces { publishList { workspaces = list } }
             try? await cache.replaceWorkspaces(environment.id, list)
         }
         if let list = await projectsList {
-            publishList { projects = list }
+            if list != projects { publishList { projects = list } }
             try? await cache.replaceProjects(environment.id, list)
         }
         let (listed, complete) = await walk(pages: await firstPage, archived: false)
@@ -472,10 +474,10 @@ public final class EnvironmentClient {
         case .hello:
             break
         case .workspaces(let value):
-            publishList { workspaces = value.workspaces }
+            if value.workspaces != workspaces { publishList { workspaces = value.workspaces } }
             try? await cache.replaceWorkspaces(environment.id, value.workspaces)
         case .projects(let value):
-            publishList { projects = value.projects }
+            if value.projects != projects { publishList { projects = value.projects } }
             try? await cache.replaceProjects(environment.id, value.projects)
         case .sessions(let value):
             merge(value.sessions)
