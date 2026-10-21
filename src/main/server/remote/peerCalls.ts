@@ -59,6 +59,7 @@ export class PeerOfflineError extends Error {
 export class PeerCalls {
   private readonly registered = new Map<string, Registration>()
   private readonly calls = new Map<string, PendingCall>()
+  private readonly registerListeners = new Set<(envId: string, offers: ReadonlySet<string>) => void>()
 
   constructor(
     readonly environmentId: string,
@@ -77,11 +78,20 @@ export class PeerCalls {
       ...(params.home ? { home: params.home } : {}),
       at: Date.now()
     })
-    if (prior?.socket.connection !== socket.connection)
+    if (prior?.socket.connection !== socket.connection) {
       this.log(
         `${params.from} registered (offers ${params.offers.join(',') || 'none'}, key ${socket.keyId ?? 'local'})`
       )
+      const offers = new Set(params.offers)
+      for (const l of this.registerListeners) l(params.from, offers)
+    }
     return { environmentId: this.environmentId }
+  }
+
+  /** A peer (re)registered on a new socket: what was waiting on it may go now. */
+  onRegister(listener: (envId: string, offers: ReadonlySet<string>) => void): () => void {
+    this.registerListeners.add(listener)
+    return () => this.registerListeners.delete(listener)
   }
 
   /** The socket closed: its registrations go, and every call still out on it fails now. */

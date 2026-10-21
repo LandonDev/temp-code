@@ -27,7 +27,8 @@ import {
   type MacFetchFileResult,
   type MacFetchFileWire,
   type MacMethod,
-  type MacRunArgs
+  type MacRunArgs,
+  type MacRunResult
 } from '@shared/contract-macbridge'
 import type { SessionMeta } from '@shared/events'
 import {
@@ -35,7 +36,8 @@ import {
   MAC_JOB_SIGNALS,
   MAC_JOB_TOOL_DESCRIPTIONS,
   MAC_JOB_TOOL_PARAMS,
-  type MacJobPeerMethod
+  type MacJobPeerMethod,
+  type MacJobReadResult
 } from '@shared/contract-macjobs'
 import { macBridgeLandingDir, type LandingLookup } from './macBridgeLanding'
 import type { MacRunLive } from './macRunLive'
@@ -103,6 +105,12 @@ export interface MacToolsDeps {
   log?: (line: string) => void
   /** Where a write too long for one frame waits for the Mac to pull it (default: the box's one set). */
   writeStages?: MacWriteStages
+  /** The ledger of what a thread created on the Mac (threadResources.ts): told of every mac.run result and job read. */
+  resources?: {
+    observeMacRun(sessionId: string, macPeer: string, args: { argv?: string[]; command?: string; cwd?: string }, result: MacRunResult, macHome: string): void
+    observeJobStart(sessionId: string, macPeer: string, jobId: string, args: { argv?: string[]; command?: string; cwd?: string }, macHome: string): void
+    observeJobRead(jobId: string, result: Pick<MacJobReadResult, 'output' | 'running' | 'exitCode'>): void
+  }
 }
 
 type MacArgs = Record<string, unknown>
@@ -247,6 +255,14 @@ export class MacTools {
     } finally {
       live?.close()
     }
+    if (method === 'mac.run' && this.deps.resources && result && typeof result === 'object')
+      this.deps.resources.observeMacRun(
+        session.id,
+        macPeer,
+        args as { argv?: string[]; command?: string; cwd?: string },
+        result as MacRunResult,
+        this.macHomeOf(session.id) ?? this.deps.calls.homeOf(macPeer) ?? '/'
+      )
     if (method !== 'mac.fetchFile') return result
     return this.land(session, result as MacFetchFileWire)
   }
@@ -338,6 +354,12 @@ export class MacTools {
       deadlineMs
     )
     if (method === 'mac.jobStart') this.jobThreads.set(sessionId, macPeer)
+    if (this.deps.resources && result && typeof result === 'object') {
+      const home = this.macHomeOf(session.id) ?? this.deps.calls.homeOf(macPeer) ?? '/'
+      if (method === 'mac.jobStart')
+        this.deps.resources.observeJobStart(session.id, macPeer, String((result as { jobId: string }).jobId), args as { argv?: string[]; command?: string; cwd?: string }, home)
+      else if (method === 'mac.jobRead') this.deps.resources.observeJobRead(String((result as { jobId: string }).jobId), result as MacJobReadResult)
+    }
     return result
   }
 

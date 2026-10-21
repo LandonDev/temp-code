@@ -192,6 +192,20 @@ describe('PeerCalls', () => {
     expect(c2.online('env_mac')).toBe(false)
   })
 
+  it('onRegister hears a peer arriving or returning on a new socket, with its offers, not a re-register on the same one', () => {
+    const calls = new PeerCalls('env_box', () => {})
+    const heard: string[] = []
+    const off = calls.onRegister((id, offers) => heard.push(`${id}:${[...offers].join(',')}`))
+    const s1 = { connection: 1, keyId: 'k1', remote: true, send: () => {} }
+    handlePeerRequest(calls, s1, { method: 'peer.register', params: { from: 'env_mac', offers: ['mac-bridge'] } })
+    handlePeerRequest(calls, s1, { method: 'peer.register', params: { from: 'env_mac', offers: ['mac-bridge'] } })
+    calls.drop(1)
+    handlePeerRequest(calls, { ...s1, connection: 2 }, { method: 'peer.register', params: { from: 'env_mac', offers: ['mac-bridge', 'x'] } })
+    off()
+    handlePeerRequest(calls, { ...s1, connection: 3 }, { method: 'peer.register', params: { from: 'env_mac', offers: [] } })
+    expect(heard).toEqual(['env_mac:mac-bridge', 'env_mac:mac-bridge,x'])
+  })
+
   it('a newer registration takes the id over; the old socket closing leaves it registered', () => {
     const { calls } = link(async () => null, { connection: 1 })
     const newer = { connection: 2, keyId: 'k1', remote: true, send: () => {} }

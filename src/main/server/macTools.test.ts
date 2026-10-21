@@ -20,7 +20,7 @@ import {
   macToolsHooks,
   MAC_TOOLS
 } from './macTools'
-import { MAC_JOB_TOOLS } from './macTools'
+import { MAC_JOB_TOOLS, type MacToolsDeps } from './macTools'
 import { MAC_JOB_TOOL_PARAMS } from '@shared/contract-macjobs'
 import { macBridgeLandingDir } from './macBridgeLanding'
 import {
@@ -47,7 +47,7 @@ const meta = (id: string, extra: Partial<SessionMeta> = {}): SessionMeta =>
 
 function setup(
   handler: PeerCallHandler = async () => 'ok',
-  opts: { register?: boolean; home?: string } = {}
+  opts: { register?: boolean; home?: string; resources?: MacToolsDeps['resources'] } = {}
 ) {
   const settings = new Map<string, string>()
   const sessions = new Map<string, SessionMeta>([
@@ -101,7 +101,8 @@ function setup(
     calls,
     tokens,
     reboot: (id) => reboots.push(id),
-    log: () => {}
+    log: () => {},
+    ...(opts.resources ? { resources: opts.resources } : {})
   })
   return { tools, tokens, settings, reboots, pushes, calls }
 }
@@ -185,6 +186,34 @@ describe('MacTools gate', () => {
     await expect(
       tools.call('root', tokens.tokenFor('root'), 'mac.readFile', { path: '/x' })
     ).rejects.toThrow(/Mac offline/)
+  })
+
+  it('tells the resources ledger of every mac.run result, job start and job read, with the Mac home', async () => {
+    const seen: string[] = []
+    const resources: NonNullable<MacToolsDeps['resources']> = {
+      observeMacRun: (sid, mac, args, result, home) => seen.push(`run ${sid} ${mac} ${JSON.stringify(args)} ${result.exitCode} ${home}`),
+      observeJobStart: (sid, mac, jobId, args, home) => seen.push(`start ${sid} ${mac} ${jobId} ${JSON.stringify(args)} ${home}`),
+      observeJobRead: (jobId, r) => seen.push(`read ${jobId} ${r.output} ${r.running}`)
+    }
+    const { tools, tokens } = setup(
+      async (method, params) => {
+        const args = (params as { args: Record<string, unknown> }).args
+        if (method === 'mac.run') return { exitCode: 0, signal: null, stdout: 'ok', stderr: '', truncated: false, timedOut: false, durationMs: 1 }
+        if (method === 'mac.jobStart') return { jobId: 'j1', pty: false }
+        if (method === 'mac.jobRead') return { jobId: args.jobId, offset: 0, nextOffset: 2, output: 'hi', skipped: 0, running: true, stdinOpen: true, exitCode: null, signal: null }
+        return null
+      },
+      { home: '/Users/mac', resources }
+    )
+    tools.setThread('root', 'env_mac')
+    await tools.call('child', tokens.tokenFor('child'), 'mac.run', { argv: ['git', 'worktree', 'add', 'x'], cwd: '~/r' })
+    await tools.call('child', tokens.tokenFor('child'), 'mac.run', { command: 'xcrun simctl create a b', background: true })
+    await tools.callJob('child', tokens.tokenFor('child'), 'mac.jobRead', { jobId: 'j1', afterOffset: 0 })
+    expect(seen).toEqual([
+      'run child env_mac {"argv":["git","worktree","add","x"],"cwd":"~/r"} 0 /Users/mac',
+      'start child env_mac j1 {"command":"xcrun simctl create a b"} /Users/mac',
+      'read j1 hi true'
+    ])
   })
 
   it('forwards the thread, the args and a deadline that covers the approval and the timeout', async () => {

@@ -45,6 +45,9 @@ import { CrossHostAgents } from './crossHostAgents'
 import { HostDevicesHub, MacDevices, handleHostDevices, hostDevicesOffers, isMacHost } from './devices/hostDevices'
 import { readSimulatorHolders } from './devices/ledger'
 import { MacThreadTokens, MacTools, macToolsHooks, rebootWhenSettled } from './macTools'
+import { OfflineError, ThreadResources } from './threadResources'
+import { runMacCommand } from './remote/macRunner'
+import { MAC_APPROVAL_WAIT_MS, MAC_BRIDGE_OFFER, type MacRunResult } from '@shared/contract-macbridge'
 import { MacRunCalls, MacRunLive } from './macRunLive'
 import { macBridgeLandingRoot } from './macBridgeLanding'
 import { listEnvironments } from './remote/environments'
@@ -510,12 +513,39 @@ export async function startServer(
   registry.onEvent((row) => macRunCalls.observe(row))
   const macRunLive = new MacRunLive({ emit: (id, event) => registry.append(id, event), calls: macRunCalls })
   const macTokens = MacThreadTokens.fromEnv()
+  // The ledger of what a thread created, here or on the Mac (threadResources.ts):
+  // fed by the event stream and by every mac.run; removal runs on the owning host.
+  const resources = new ThreadResources({
+    db,
+    environmentId,
+    sessions: { get: (id) => registry.get(id) },
+    homeOf: (id) => (id === environmentId ? homedir() : peerCalls.homeOf(id)),
+    runOn: async (hostId, thread, argv, cwd) => {
+      if (hostId === environmentId) {
+        const r = await runMacCommand({ argv, cwd, timeoutMs: 120_000 }).result
+        return { exitCode: r.exitCode, stdout: r.stdout, stderr: r.stderr }
+      }
+      if (!peerCalls.online(hostId, MAC_BRIDGE_OFFER)) throw new OfflineError(hostId)
+      const r = await peerCalls.call<MacRunResult>(
+        hostId,
+        'mac.run',
+        { thread: { id: thread.id, title: thread.title, permission: thread.permission }, args: { argv, cwd, timeoutMs: 120_000 } },
+        MAC_APPROVAL_WAIT_MS + 120_000 + 5_000
+      )
+      return { exitCode: r.exitCode, stdout: r.stdout, stderr: r.stderr }
+    }
+  })
+  registry.onEvent((row) => resources.observeEvent(row))
+  peerCalls.onRegister((id, offers) => {
+    if (offers.has(MAC_BRIDGE_OFFER)) void resources.linkUp(id)
+  })
   const macTools = new MacTools({
     store,
     sessions: registry,
     landing: { getProject: (id) => registry.getProject(id), getWorkspace: (id) => registry.listWorkspaces().find((w) => w.id === id) },
     dataDir: options.dataDir ?? dirname(dbPath),
     calls: peerCalls,
+    resources,
     tokens: macTokens,
     reboot: (id) => rebootWhenSettled(registry, id, (status) => LIVE_STATUSES.has(status)),
     live: macRunLive
@@ -793,6 +823,7 @@ export async function startServer(
     if (localSink) localSinks.add(localSink)
     /** The host-log subscriptions this socket asked for (hostJobs.ts). */
     const offHostLogs: (() => void)[] = []
+    const offResources = resources.onChange((sessionId, list) => emitPush({ push: 'resources', sessionId, resources: list }))
     /** per-connection file watchers (fs.watch), keyed by projectId */
     const fsWatches = new Map<string, () => void>()
     // One line per connection the first time its unsent bytes pass the mark:
@@ -1550,7 +1581,19 @@ export async function startServer(
             break
           case 'session.archive':
             await registry.setArchived(req.params.sessionId, req.params.archived)
+            // The thread's resources go after the archive lands; the rows and the
+            // `resources` push carry each outcome (a Mac prompt may take a while).
+            if (req.params.archived && req.params.removeResources) void resources.remove(req.params.sessionId)
             sendFrame({ id: req.id, ok: true, result: null })
+            break
+          case 'resources.list':
+            sendFrame({ id: req.id, ok: true, result: { resources: resources.list(resources.ownerOf(req.params.sessionId), req.params.includeRemoved ?? false) } })
+            break
+          case 'resources.listAll':
+            sendFrame({ id: req.id, ok: true, result: { resources: resources.listAll(req.params ?? {}) } })
+            break
+          case 'resources.remove':
+            sendFrame({ id: req.id, ok: true, result: { results: await resources.remove(req.params.sessionId, req.params.ids) } })
             break
           case 'session.delete':
             await registry.delete(req.params.sessionId)
@@ -1800,6 +1843,7 @@ export async function startServer(
       offMacBridge?.()
       if (localSink) localSinks.delete(localSink)
       for (const off of offHostLogs) off()
+      offResources()
       peerCalls.drop(connection)
       hostDevices.dropConnection(connection)
       for (const off of unsubs.values()) off()
