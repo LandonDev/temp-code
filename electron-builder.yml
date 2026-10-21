@@ -17,6 +17,8 @@ files:
   - '!scripts/.out/**'
   - '!resources/native/*.swift'
   - '!**/*.map'
+  # The renderer's chunk map (electron.vite.config.ts bundleMap) is a build report, not app code.
+  - '!out/bundle-map.json'
 # The app spawns real child processes out of node_modules (claude cli.js,
 # vtsls); asar would hide them behind a virtual path. Size over surprises.
 asar: false

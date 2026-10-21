@@ -99,6 +99,7 @@ import { ProjectMascot } from "./ProjectMascot";
 import { SidebarUpdateFooter } from "./SidebarUpdate";
 import { SourceControl } from "./SourceControl";
 import { InboxView } from "../surfaces/InboxView";
+import { settingsChunk } from "../surfaces/chunks";
 
 const MIN_WIDTH = 260;
 const MAX_WIDTH = 560;
@@ -627,6 +628,7 @@ function SidebarComponent({
                   label="Settings"
                   icon={Settings}
                   onClick={() => shell.openSettings()}
+                  intent={settingsChunk.intent}
                   shortcut={`${MOD},`}
                   ariaLabel={`Settings (${MOD},)`}
                 />

@@ -91,3 +91,69 @@ export const MergeView = class {
     disposable.destroy()
   }
 }
+
+/**
+ * Everything else the editor chunk (surfaces/chunks.ts editorChunk) touches
+ * while its modules evaluate: `anything()` is a callable whose every property
+ * is another `anything()`, so `bracketMatching()`, `Annotation.define()`,
+ * `Transaction.userEvent.of(...)`, `class X extends WidgetType` and
+ * `new SearchQuery({...})` all evaluate to harmless objects. A test that
+ * needs one of these to behave must replace it.
+ */
+function anything(): never {
+  const target = function stub(): object {
+    return {}
+  }
+  return new Proxy(target, {
+    get: (t, key) => (key in t ? (t as unknown as Record<PropertyKey, unknown>)[key] : key === Symbol.toPrimitive ? undefined : anything()),
+    construct: () => ({}),
+    apply: () => ({})
+  }) as never
+}
+export const Annotation = anything()
+export const Chunk = anything()
+export const EditorSelection = anything()
+export const GutterMarker = anything()
+export const LanguageSupport = anything()
+export const SearchQuery = anything()
+export const Text = anything()
+export const Transaction = anything()
+export const WidgetType = anything()
+export const acceptCompletion = anything()
+export const bracketMatching = anything()
+export const closeBrackets = anything()
+export const closeBracketsKeymap = anything()
+export const closeSearchPanel = anything()
+export const completionStatus = anything()
+export const countColumn = anything()
+export const css = anything()
+export const diagnosticCount = anything()
+export const diff = anything()
+export const ensureSyntaxTree = anything()
+export const findNext = anything()
+export const findPrevious = anything()
+export const foldGutter = anything()
+export const foldKeymap = anything()
+export const getIndentUnit = anything()
+export const getSearchQuery = anything()
+export const gutter = anything()
+export const highlightActiveLine = anything()
+export const highlightActiveLineGutter = anything()
+export const highlightSelectionMatches = anything()
+export const indentLess = anything()
+export const indentMore = anything()
+export const indentOnInput = anything()
+export const indentUnit = anything()
+export const javascript = anything()
+export const json = anything()
+export const lineNumbers = anything()
+export const minimalSetup = anything()
+export const openSearchPanel = anything()
+export const python = anything()
+export const replaceAll = anything()
+export const replaceNext = anything()
+export const runScopeHandlers = anything()
+export const search = anything()
+export const searchPanelOpen = anything()
+export const setSearchQuery = anything()
+export const syntaxTree = anything()

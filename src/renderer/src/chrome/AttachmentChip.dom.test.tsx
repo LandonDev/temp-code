@@ -3,8 +3,8 @@ import { act, render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const imageDataFor = vi.fn((_environmentId: string, _path: string) => Promise.resolve("data:image/png;base64,AA=="));
-vi.mock("./Lightbox", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("./Lightbox")>()),
+vi.mock("./lightboxStore", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./lightboxStore")>()),
   imageDataFor: (environmentId: string, path: string) => imageDataFor(environmentId, path),
 }));
 

@@ -59,6 +59,13 @@ import type { GitStatusMap } from "../hooks/useGitFileStatuses";
 import { useProjectDiffStats } from "../hooks/useProjectDiffStats";
 import { ExplorerMenu, type ExplorerMenuItem } from "./ExplorerMenu";
 import { FileTypeIcon } from "./FileTypeIcon";
+import { diffChunk, editorChunk, mediaChunk } from "../surfaces/chunks";
+
+/** A pointer over the tree is about to open a file: warm the editor and media chunks. */
+function warmFileSurfaces(): void {
+  editorChunk.preload();
+  mediaChunk.preload();
+}
 
 const GIT_STATUS_COLOR: Record<string, string> = {
   modified: "text-warning",
@@ -703,6 +710,7 @@ export function FileTree({
         className="flex h-full min-h-0 flex-col outline-none"
         onKeyDown={onKeyDown}
         onContextMenu={onBackgroundMenu}
+        onPointerEnter={warmFileSurfaces}
       >
         <div
           className="flex h-9 shrink-0 items-center gap-px overflow-visible border-b border-content/10 px-2"
@@ -882,6 +890,7 @@ function FileTreeDiffButton({
       aria-pressed={active}
       onMouseDown={(event) => event.preventDefault()}
       onClick={onClick}
+      {...diffChunk.intent}
       className={`relative flex h-6 min-w-0 flex-1 items-center justify-center self-center rounded-md ${
         active
           ? "bg-content/10 text-content"

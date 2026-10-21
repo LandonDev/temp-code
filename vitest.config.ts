@@ -38,6 +38,7 @@ export default defineConfig({
         extends: true,
         resolve: {
           alias: [
+            { find: '@xterm/xterm/css/xterm.css', replacement: stub('empty.css') },
             { find: '@xterm/xterm', replacement: stub('xterm.ts') },
             { find: /^@codemirror\/.*/, replacement: stub('codemirror.ts') },
             { find: /^streamdown(\/.*)?$/, replacement: stub('streamdown.tsx') },

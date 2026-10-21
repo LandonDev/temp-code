@@ -1,6 +1,7 @@
-import { createHighlighter, type Highlighter } from "shiki";
+import { bundledLanguages, createHighlighter, type Highlighter } from "shiki";
 import { createJavaScriptRegexEngine } from "shiki/engine/javascript";
 import { darcula, intellijLight } from "./intellijTheme";
+import { createLanguageLoader } from "./highlightLanguages";
 
 /**
  * Shiki off the main thread (ported from temp-code): the renderer posts
@@ -9,57 +10,35 @@ import { darcula, intellijLight } from "./intellijTheme";
  * `--shiki-light` variables in under `html.theme-light`.
  */
 
-const LANGS = [
-  "typescript",
-  "tsx",
-  "javascript",
-  "jsx",
-  "json",
-  "bash",
-  "python",
-  "java",
-  "go",
-  "rust",
-  "html",
-  "css",
-  "sql",
-  "yaml",
-  "markdown",
-  "diff",
-];
-
-const ALIASES: Record<string, string> = {
-  ts: "typescript",
-  js: "javascript",
-  sh: "bash",
-  shell: "bash",
-  zsh: "bash",
-  py: "python",
-  rs: "rust",
-  yml: "yaml",
-  md: "markdown",
-  golang: "go",
-  jsonc: "json",
-};
-
 let highlighterP: Promise<Highlighter> | null = null;
 function getHighlighter(): Promise<Highlighter> {
   // JS regex engine: workers inherit the document CSP, which has no
   // wasm-unsafe-eval, so oniguruma's WASM never instantiates here.
+  // No grammar up front: each language's chunk (shiki ships one per
+  // grammar) loads the first time a block asks for it (loadLanguage).
   highlighterP ??= createHighlighter({
     themes: [intellijLight, darcula],
-    langs: LANGS,
+    langs: [],
     engine: createJavaScriptRegexEngine({ forgiving: true }),
-  });
+  }).then((h) => (highlighter = h));
   return highlighterP;
 }
+let highlighter: Highlighter | null = null;
+
+/** Each grammar's chunk loads the first time a block asks for it (highlightLanguages.ts). */
+const languageFor = createLanguageLoader(
+  {
+    getLoadedLanguages: () => highlighter?.getLoadedLanguages() ?? [],
+    loadLanguage: (grammar) => highlighter!.loadLanguage(grammar as never),
+  },
+  bundledLanguages,
+);
 
 self.onmessage = async (e: MessageEvent<{ id: number; code: string; lang: string }>) => {
   const { id, code, lang } = e.data;
   try {
     const h = await getHighlighter();
-    const wanted = ALIASES[lang.toLowerCase()] ?? lang.toLowerCase();
-    const language = h.getLoadedLanguages().includes(wanted) ? wanted : "text";
+    const language = await languageFor(lang);
     const html = h.codeToHtml(code, {
       lang: language,
       themes: { light: "intellij-light", dark: "darcula" },

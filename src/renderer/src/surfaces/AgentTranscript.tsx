@@ -48,7 +48,8 @@ import { TWEEN_FALLBACK_MS, TweenHeight } from "../motion/TweenHeight";
 import { usePersistedOpen } from "./editOpenState";
 import { TranscriptMinimap } from "./TranscriptMinimap";
 import { TodoListBlock } from "./TodoListBlock";
-import { HtmlRenderRow } from "./HtmlRenderFrame";
+import { htmlRenderChunk } from "./chunks";
+import { SurfaceSkeleton } from "./SurfaceSkeleton";
 import { htmlRenderOf } from "./htmlRenderBlock";
 import { useReducedMotion } from "motion/react";
 import {
@@ -129,6 +130,9 @@ import {
   type ActivityPhaseKind,
   type ToolCallState,
 } from "./transcriptActivity";
+
+// An agent's HTML page renders from the html-render chunk (surfaces/chunks.ts).
+const HtmlRenderRow = htmlRenderChunk.surface("HtmlRenderRow", <SurfaceSkeleton kind="frame" label="Loading page" />);
 
 /** The window is budgeted in rows (blocks), never turns: an agent thread
  *  packs tens of thousands of rows into two turns. The first turn shown

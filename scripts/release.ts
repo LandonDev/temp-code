@@ -52,6 +52,10 @@ console.log('› ios:test:client')
 run('bun', ['run', 'ios:test:client'])
 console.log('› build')
 run('bunx', ['electron-vite', 'build'])
+// The renderer's index chunk against its budget (scripts/check-bundle-size.ts):
+// a static import that pulls a lazy surface back into the first paint fails here.
+console.log('› check:bundle')
+run('bun', ['scripts/check-bundle-size.ts'])
 
 const rel = JSON.parse(readFileSync('release.json', 'utf8')) as { n: number }
 const n = rel.n + 1

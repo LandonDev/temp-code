@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { degradedText, registry, useEnvironmentDegraded, useEnvironments, type Degraded } from "../lib/connection";
 import { shell } from "../stores/shell";
+import { settingsChunk } from "../surfaces/chunks";
 
 /**
  * One thin line above a thread's composer while the thread's host is not
@@ -42,7 +43,7 @@ export function ConnectionLine({ environmentId }: { environmentId: string }) {
       />
       <span className="min-w-0 flex-1 truncate">{text}</span>
       {unauthorized ? (
-        <button type="button" onClick={() => shell.openSettings("environments")} className="pressable shrink-0 rounded px-1.5 py-0.5 hover:bg-content/10 hover:text-content">
+        <button type="button" {...settingsChunk.intent} onClick={() => shell.openSettings("environments")} className="pressable shrink-0 rounded px-1.5 py-0.5 hover:bg-content/10 hover:text-content">
           Pair again
         </button>
       ) : degraded.kind !== "connecting" ? (

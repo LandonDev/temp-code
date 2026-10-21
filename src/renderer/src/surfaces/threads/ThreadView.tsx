@@ -2,10 +2,16 @@ import type { OpenFileFn } from "../../lib/search";
 import type { Session } from "../../lib/session";
 import type { ChatSource } from "./chatSlots";
 import { ChatView } from "./ChatView";
-import { ImplementationView } from "./ImplementationView";
-import { OrchestrationView } from "./OrchestrationView";
-import { PlanView } from "./PlanView";
-import { ResearchView } from "./ResearchView";
+import { threadViewsChunk } from "../chunks";
+import { SurfaceSkeleton } from "../SurfaceSkeleton";
+
+// Every view but the chat rides the thread-views chunk (surfaces/chunks.ts),
+// preloaded in the idle slot after the first thread opens (SessionPane).
+const skeleton = <SurfaceSkeleton kind="pane" label="Loading thread" />;
+const ImplementationView = threadViewsChunk.surface("ImplementationView", skeleton);
+const OrchestrationView = threadViewsChunk.surface("OrchestrationView", skeleton);
+const PlanView = threadViewsChunk.surface("PlanView", skeleton);
+const ResearchView = threadViewsChunk.surface("ResearchView", skeleton);
 
 export type { ChatOpts } from "./chatSlots";
 

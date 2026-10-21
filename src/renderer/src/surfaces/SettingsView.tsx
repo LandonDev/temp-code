@@ -174,6 +174,7 @@ import { updateStore, useUpdateSnapshot } from "../lib/updateStore";
 import { MANUAL_DOWNLOAD_URL, canRetry } from "../lib/updater";
 import { openUrl } from "../lib/native";
 import { shell, useShell } from "../stores/shell";
+import { releaseNotesChunk } from "./chunks";
 
 type Props = {
   cwd: string;
@@ -715,7 +716,9 @@ function UpdateRow({
             Download the installer
           </SecondaryButton>
         ) : (
-          <SecondaryButton onClick={onWhatsNew}>What's new</SecondaryButton>
+          <span className="contents" {...releaseNotesChunk.intent}>
+            <SecondaryButton onClick={onWhatsNew}>What's new</SecondaryButton>
+          </span>
         )}
         <SecondaryButton
           onClick={() =>

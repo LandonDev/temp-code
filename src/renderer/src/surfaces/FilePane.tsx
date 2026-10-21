@@ -9,15 +9,19 @@ import {
 import type { TerminalMetaPatch } from "../lib/terminalTab";
 import type { EditorNavigationTarget, OpenFileFn } from "../lib/search";
 import { editorPathsEqual } from "../lib/search";
-import { FileEditor } from "./FileEditor";
-import { MediaGate, MediaReview } from "./MediaViewer";
-import { ReleaseNotesSurface } from "./ReleaseNotesSurface";
-import { TerminalView } from "./TerminalView";
+import { editorChunk, mediaChunk, releaseNotesChunk, terminalChunk } from "./chunks";
+import { SurfaceSkeleton } from "./SurfaceSkeleton";
 import { MatrixSpinner } from "./threads/bits";
 
 // Monaco, shiki, and the LSP client live behind this boundary; the first
 // Monaco tab pulls the chunk in, never app start.
 const MonacoPane = lazy(() => import("./monaco/MonacoPane"));
+// The rest of the tab surfaces (surfaces/chunks.ts): each lands with its first tab.
+const FileEditor = editorChunk.surface("FileEditor", <SurfaceSkeleton kind="pane" label="Loading editor" />);
+const MediaGate = mediaChunk.surface("MediaGate", <SurfaceSkeleton kind="frame" label="Loading file" />);
+const MediaReview = mediaChunk.surface("MediaReview", <SurfaceSkeleton kind="frame" label="Loading file" />);
+const ReleaseNotesSurface = releaseNotesChunk.surface("ReleaseNotesSurface", <SurfaceSkeleton kind="pane" label="Loading release notes" />);
+const TerminalView = terminalChunk.surface("TerminalView", <SurfaceSkeleton kind="terminal" label="Loading terminal" />);
 
 function ChunkSpinner() {
   return (

@@ -13,6 +13,12 @@ describe('resolveAppPath', () => {
       `${ROOT}/assets/index-abc.js`
     )
   })
+  it('serves the lazy chunks under assets/ as module scripts (the code cache keys on this origin)', () => {
+    const chunk = `${APP_SCHEME}://renderer/assets/SettingsView-CPYL80is.js`
+    expect(resolveAppPath(chunk, ROOT)).toBe(`${ROOT}/assets/SettingsView-CPYL80is.js`)
+    expect(mimeFor(resolveAppPath(chunk, ROOT)!)).toBe('text/javascript; charset=utf-8')
+    expect(mimeFor('/srv/out/renderer/assets/highlight.worker-abc.js')).toBe('text/javascript; charset=utf-8')
+  })
   it('decodes the path and drops the query', () => {
     expect(resolveAppPath('tempcode-app://renderer/a%20b.css?v=1#x', ROOT)).toBe(`${ROOT}/a b.css`)
   })

@@ -4,7 +4,8 @@ import { attachmentPreviewSrc } from '../lib/attachments'
 import type { Attachment } from '../lib/session'
 import { FileTypeIcon } from './FileTypeIcon'
 import { useNearViewport } from '../hooks/useNearViewport'
-import { imageDataFor, openLightbox, type LightboxItem } from './Lightbox'
+import { imageDataFor, openLightbox, type LightboxItem } from './lightboxStore'
+import { lightboxChunk } from '../surfaces/chunks'
 
 /** A history image carries only its path; the server hands back its bytes
  *  once, asked for when the chip is about to be seen. */
@@ -89,6 +90,7 @@ export function AttachmentChip({ environmentId, attachment, onRemove, onOpen, pr
         onOpen ? (
           <button
             type="button"
+            {...lightboxChunk.intent}
             onClick={onOpen}
             aria-label={`Preview ${attachment.name}`}
             className={`block size-9 shrink-0 cursor-zoom-in overflow-hidden rounded-lg ${attachment.textPath ? 'w-14' : ''}`}

@@ -33,7 +33,7 @@ import { ShellTitleBar, type HeaderEvents } from "./chrome/ShellTitleBar";
 import { MenuBar } from "./chrome/MenuBar";
 import { FilePicker } from "./chrome/FilePicker";
 import { SymbolPicker } from "./chrome/SymbolPicker";
-import { closeLightbox, isLightboxOpen, stepLightbox } from "./chrome/Lightbox";
+import { closeLightbox, isLightboxOpen, stepLightbox } from "./chrome/lightboxStore";
 import {
   closeHtmlRenderOverlay,
   HtmlRenderOverlay,
@@ -310,12 +310,15 @@ import {
 } from "./lib/secondOpinion";
 import { PaneTree } from "./surfaces/PaneTree";
 import { ProjectTerminalDock } from "./surfaces/ProjectTerminalDock";
-import { DiffPane } from "./surfaces/DiffPane";
+import { aliaxChunk, diffChunk, settingsChunk } from "./surfaces/chunks";
+import { SurfaceSkeleton } from "./surfaces/SurfaceSkeleton";
 import { SearchView } from "./surfaces/SearchView";
-import { SettingsView } from "./surfaces/SettingsView";
 import { InboxView, InboxDetailPane } from "./surfaces/InboxView";
 import { NotesView } from "./surfaces/NotesView";
-import { AliaxPagesView } from "./surfaces/AliaxPagesView";
+// Lazy surfaces (surfaces/chunks.ts): none of these is on the first-paint path.
+const DiffPane = diffChunk.surface("DiffPane", <SurfaceSkeleton kind="diff" label="Loading changes" />);
+const SettingsView = settingsChunk.surface("SettingsView", <SurfaceSkeleton kind="page" label="Loading settings" />);
+const AliaxPagesView = aliaxChunk.surface("AliaxPagesView", <SurfaceSkeleton kind="page" label="Loading accounts" />);
 import { inboxComposerCard, type InboxItem } from "./lib/githubTasks";
 import {
   linearIssueDetails,
@@ -329,7 +332,7 @@ import {
 import {
   handleEditorFindKey,
   openFindInActiveEditor,
-} from "./surfaces/editorSearch";
+} from "./surfaces/editorFind";
 
 import {
   mergeHistorySummary,

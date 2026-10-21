@@ -1,6 +1,6 @@
 import { resolve } from 'path'
 import { execFileSync } from 'child_process'
-import { statSync } from 'fs'
+import { mkdirSync, statSync, writeFileSync } from 'fs'
 import { defineConfig, externalizeDepsPlugin } from 'electron-vite'
 import type { Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
@@ -48,6 +48,39 @@ function appshotHelper(): Plugin {
   }
 }
 
+/** Writes out/bundle-map.json after the renderer build: every chunk with its
+ *  size, what it imports statically and dynamically, and the rendered size of
+ *  every module in it. scripts/bundle-map.ts reads it (the report), and
+ *  scripts/check-bundle-size.ts gates on it. Not under out/renderer, so the
+ *  packaged app never ships it. */
+function bundleMap(): Plugin {
+  return {
+    name: 'temp-code-bundle-map',
+    apply: 'build',
+    generateBundle(_options, bundle) {
+      const chunks: Record<string, unknown> = {}
+      for (const [file, out] of Object.entries(bundle)) {
+        if (out.type !== 'chunk') {
+          chunks[file] = { type: 'asset', bytes: Buffer.byteLength(out.source as string | Uint8Array) }
+          continue
+        }
+        const modules: Record<string, number> = {}
+        for (const [id, m] of Object.entries(out.modules)) modules[id.replace(resolve('.') + '/', '')] = m.renderedLength
+        chunks[file] = {
+          type: 'chunk',
+          entry: out.isEntry,
+          bytes: Buffer.byteLength(out.code),
+          imports: out.imports,
+          dynamicImports: out.dynamicImports,
+          modules
+        }
+      }
+      mkdirSync(resolve('out'), { recursive: true })
+      writeFileSync(resolve('out/bundle-map.json'), JSON.stringify({ chunks }, null, 1))
+    }
+  }
+}
+
 export default defineConfig({
   main: {
     plugins: [externalizeDepsPlugin({ exclude: ['aliax-core'] }), appshotHelper()],
@@ -87,7 +120,8 @@ export default defineConfig({
     worker: { format: 'es' },
     plugins: [
       react({ babel: { plugins: [reactCompiler] } }),
-      tailwindcss()
+      tailwindcss(),
+      bundleMap()
     ]
   }
 })

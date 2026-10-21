@@ -99,6 +99,7 @@ import { SettingsNav } from "./SettingsRail";
 import { Shimmer } from "../surfaces/Shimmer";
 import { TabGroupMenu, type TabGroupMenuExtraItem } from "./TabGroupMenu";
 import { TerminalSpinner } from "./TerminalSpinner";
+import { aliaxChunk, settingsChunk } from "../surfaces/chunks";
 
 const REVEAL_LABEL = IS_MAC
   ? "Reveal in Finder"
@@ -521,6 +522,7 @@ export function ProjectRail({
                   label="Accounts"
                   icon={Users}
                   onClick={() => onOpenAccountsPage("accounts")}
+                  intent={aliaxChunk.intent}
                   active={accountsPage === "accounts"}
                   ariaLabel="Accounts"
                 />
@@ -528,6 +530,7 @@ export function ProjectRail({
                   label="Stats"
                   icon={ChartBar}
                   onClick={() => onOpenAccountsPage("stats")}
+                  intent={aliaxChunk.intent}
                   active={accountsPage === "stats"}
                   ariaLabel="Stats"
                 />
@@ -626,6 +629,7 @@ export function ProjectRail({
               label="Settings"
               icon={Settings}
               onClick={() => shell.openSettings()}
+              intent={settingsChunk.intent}
               shortcut={`${MOD},`}
               ariaLabel={`Settings (${MOD},)`}
             />

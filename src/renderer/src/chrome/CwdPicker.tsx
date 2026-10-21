@@ -18,6 +18,7 @@ import { LAYER } from "../lib/layers";
 import { Popover } from "./Popover";
 import { ProjectLogoIcon } from "./ProjectLogoIcon";
 import { MOD } from "../lib/platform";
+import { terminalChunk } from "../surfaces/chunks";
 
 type Props = {
   cwd: string;
@@ -332,6 +333,7 @@ export function CwdPicker({
               <button
                 type="button"
                 role="menuitem"
+                {...terminalChunk.intent}
                 onMouseDown={(e) => e.stopPropagation()}
                 onMouseEnter={() => {
                   setMoreOpen(false);

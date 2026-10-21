@@ -6,6 +6,7 @@ const readTextFile = vi.fn((_environmentId: string, _path: string) => Promise.re
 vi.mock('../lib/fs', () => ({ readTextFile: (environmentId: string, path: string) => readTextFile(environmentId, path) }))
 
 import { EditRow } from './EditRow'
+import { diffChunk } from './chunks'
 import type { Block } from '../lib/session'
 
 const edit: Block = {
@@ -35,6 +36,10 @@ describe('EditRow', () => {
       fireEvent.click(getByLabelText('Show diff'))
     })
     expect(readTextFile).toHaveBeenCalledTimes(1)
+    // The diff body rides the diff chunk (surfaces/chunks.ts): the rows land once it has.
+    await act(async () => {
+      await diffChunk.load()
+    })
     expect(container.textContent).toContain('B')
     expect(readTextFile).toHaveBeenCalledWith('local', '/repo/a.ts')
     await act(async () => {

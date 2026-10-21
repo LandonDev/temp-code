@@ -6,7 +6,11 @@ import { htmlRenderPageUrl, type HtmlRenderReference } from "@shared/htmlRender"
 import { X } from "../chrome/icons";
 import { EASE_OUT, SPRING_PANEL } from "../lib/ease";
 import { LAYER } from "../lib/layers";
-import { HtmlRenderDocument } from "./HtmlRenderFrame";
+import { htmlRenderChunk } from "./chunks";
+import { SurfaceSkeleton } from "./SurfaceSkeleton";
+
+// The document rides the html-render chunk (surfaces/chunks.ts), warm by the time a row is clicked.
+const HtmlRenderDocument = htmlRenderChunk.surface("HtmlRenderDocument", <SurfaceSkeleton kind="frame" label="Loading page" />);
 
 /**
  * An agent's HTML page filling the window: the same sandboxed document with

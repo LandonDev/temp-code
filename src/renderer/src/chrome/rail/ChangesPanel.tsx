@@ -1,7 +1,5 @@
 import { registry } from "../../lib/connection";
 import { environmentOfCwd } from "../../lib/tcserver/projects";
-import { Chunk } from "@codemirror/merge";
-import { Text } from "@codemirror/state";
 import { useEffect, useState, type ReactNode } from "react";
 import { motion, useReducedMotion } from "motion/react";
 import { ENTER, SPRING_LAYOUT } from "../../lib/ease";
@@ -11,7 +9,6 @@ import { cn } from "../../motion/cn";
 import { StatefulButton, type ButtonState } from "../../motion/StatefulButton";
 import { Spinner } from "../../surfaces/threads/bits";
 import { ConfirmDialog } from "../ConfirmDialog";
-import { diffLineStats, stageChunkText } from "../../surfaces/editorGit";
 import { invalidateWatchedFiles } from "../../lib/fileWatch";
 import { timeAgo } from "../../lib/format";
 import {
@@ -66,6 +63,14 @@ interface HunkSet {
 async function loadHunks(environmentId: string, cwd: string, relative: string): Promise<HunkSet> {
   const diff = await gitFileDiff(environmentId, cwd, relative);
   if (diff.binary || diff.tooLarge) return { original: "", current: "", hunks: [] };
+  // CodeMirror's diff and the editor's git helpers stay out of the index
+  // bundle (the editor chunk, surfaces/chunks.ts): the rail only needs them
+  // once a file is expanded.
+  const [{ Chunk }, { Text }, { diffLineStats }] = await Promise.all([
+    import("@codemirror/merge"),
+    import("@codemirror/state"),
+    import("../../surfaces/editorGit"),
+  ]);
   const orig = Text.of(diff.original.split("\n"));
   const cur = Text.of(diff.current.split("\n"));
   const hunks = Chunk.build(orig, cur, DIFF_CONFIG).map((c): Hunk => {
@@ -177,8 +182,14 @@ export function ChangesPanel({
   };
 
   const stageHunk = (file: GitChangedFile, set: HunkSet, hunk: Hunk) => {
-    const contents = stageChunkText(set.original, set.current, hunk.pos);
-    if (contents == null) return;
+    void import("../../surfaces/editorGit").then(({ stageChunkText }) => {
+      const contents = stageChunkText(set.original, set.current, hunk.pos);
+      if (contents == null) return;
+      stageHunkContents(file, hunk, contents);
+    });
+  };
+
+  const stageHunkContents = (file: GitChangedFile, hunk: Hunk, contents: string) => {
     void mutate(`${file.relative}#${hunk.from}`, () => gitStageContents(environmentId, cwd, file.relative, contents));
   };
 

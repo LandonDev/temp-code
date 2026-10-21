@@ -8,6 +8,7 @@ import { MOD } from "../lib/platform";
 import { shell } from "../stores/shell";
 import { useCurrentEnvironmentId } from "../stores/environment";
 import { statusText } from "../surfaces/EnvironmentsSettings";
+import { settingsChunk } from "../surfaces/chunks";
 
 /**
  * Which machine the window is on, and a menu to move to another: the
@@ -101,6 +102,7 @@ export function EnvironmentSwitcher({ variant = "header" }: { variant?: "header"
             <button
               type="button"
               role="menuitem"
+              {...settingsChunk.intent}
               onClick={() => {
                 setOpen(false);
                 shell.openSettings("environments");

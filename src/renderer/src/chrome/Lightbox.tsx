@@ -4,65 +4,15 @@ import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { ChevronLeft, ChevronRight, X } from './icons'
 import { EASE_OUT, SPRING_PANEL } from '../lib/ease'
 import { LAYER } from '../lib/layers'
-import { readAttachment } from '../lib/tcserver/commands'
 import { Spinner } from '../surfaces/threads/bits'
-
-/** An image the lightbox can show: either an in-memory URL (composer
- *  previews) or an attachment path fetched on demand (transcript thumbs). */
-export type LightboxItem = { environmentId: string; name: string; src?: string; path?: string }
-
-/** Image bytes fetched once per attachment path for the app's lifetime,
- *  shared with the transcript thumbs so the lightbox opens from cache. */
-const imageCache = new Map<string, Promise<string | null>>()
-export function imageDataFor(environmentId: string, path: string): Promise<string | null> {
-  const key = JSON.stringify([environmentId, path])
-  let pending = imageCache.get(key)
-  if (!pending) {
-    pending = readAttachment(environmentId, path).catch(() => null)
-    imageCache.set(key, pending)
-  }
-  return pending
-}
-
-let state: { items: LightboxItem[]; index: number } | null = null
-const subs = new Set<() => void>()
-const emit = (): void => subs.forEach((f) => f())
-const subscribe = (f: () => void): (() => void) => {
-  subs.add(f)
-  return () => subs.delete(f)
-}
-
-/** Open the viewer on a group of images; arrows/keys move within the group. */
-export function openLightbox(items: LightboxItem[], index = 0): void {
-  if (items.length === 0) return
-  state = { items, index: Math.max(0, Math.min(index, items.length - 1)) }
-  emit()
-}
-
-/** The command map (lib/appCommands.ts) drives Escape / ← / → through these. */
-export function isLightboxOpen(): boolean {
-  return state !== null
-}
-
-export function stepLightbox(delta: number): void {
-  step(delta)
-}
-
-export function closeLightbox(): void {
-  close()
-}
-
-function step(delta: number): void {
-  if (!state || state.items.length < 2) return
-  const n = state.items.length
-  state = { ...state, index: (state.index + delta + n) % n }
-  emit()
-}
-
-function close(): void {
-  state = null
-  emit()
-}
+import {
+  closeLightbox,
+  imageDataFor,
+  lightboxSnapshot,
+  stepLightbox,
+  subscribeLightbox,
+  type LightboxItem,
+} from './lightboxStore'
 
 // Every composer mounts a Lightbox; only the first one alive renders it,
 // so split panes never stack two overlays.
@@ -122,7 +72,7 @@ const ARROW =
  * chevrons and arrow keys move within the group.
  */
 export function Lightbox() {
-  const snap = useSyncExternalStore(subscribe, () => state)
+  const snap = useSyncExternalStore(subscribeLightbox, lightboxSnapshot)
   const reduce = useReducedMotion()
   const primary = useIsPrimaryHost()
 
@@ -140,7 +90,7 @@ export function Lightbox() {
           exit={reduce ? undefined : { opacity: 0, transition: { duration: 0.1, ease: EASE_OUT } }}
           className="fixed inset-0 flex items-center justify-center bg-black/40"
           style={{ zIndex: LAYER.dialog + 5 }}
-          onClick={close}
+          onClick={closeLightbox}
         >
           <motion.div
             key={snap.index}
@@ -154,7 +104,7 @@ export function Lightbox() {
 
           <button
             type="button"
-            onClick={close}
+            onClick={closeLightbox}
             aria-label="Close preview"
             className="pressable absolute right-4 top-4 grid size-7 place-items-center rounded-md text-content/70 hover:bg-content/10 hover:text-content"
           >
@@ -167,7 +117,7 @@ export function Lightbox() {
                 type="button"
                 onClick={(e) => {
                   e.stopPropagation()
-                  step(-1)
+                  stepLightbox(-1)
                 }}
                 aria-label="Previous image"
                 className={`${ARROW} left-4`}
@@ -178,7 +128,7 @@ export function Lightbox() {
                 type="button"
                 onClick={(e) => {
                   e.stopPropagation()
-                  step(1)
+                  stepLightbox(1)
                 }}
                 aria-label="Next image"
                 className={`${ARROW} right-4`}

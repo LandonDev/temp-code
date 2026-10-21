@@ -80,6 +80,8 @@ import { IS_MAC, MOD } from "../lib/platform";
 import type { RecentProject } from "../lib/recents";
 import { useShell } from "../stores/shell";
 import { sessionPrefetch, tabSessionIds } from "../lib/sessionPrefetch";
+import type { IntentProps } from "../lib/lazyChunk";
+import { diffChunk, settingsChunk, terminalChunk } from "../surfaces/chunks";
 
 export type Tab = {
   id: string;
@@ -770,6 +772,7 @@ export function IconButton({
   accent,
   disabled,
   onClick,
+  intent,
   children,
 }: {
   label: string;
@@ -777,11 +780,14 @@ export function IconButton({
   accent?: boolean;
   disabled?: boolean;
   onClick?: () => void;
+  /** Hover or focus warms the chunk the click opens (lib/lazyChunk.tsx). */
+  intent?: IntentProps;
   children: ReactNode;
 }) {
   return (
     <button
       type="button"
+      {...intent}
       title={label}
       aria-label={label}
       aria-pressed={active || accent}
@@ -1300,6 +1306,7 @@ function TitleBarComponent({
               projectTerminalActive ? "Terminal" : `New Terminal (${MOD}\`)`
             }
             accent={projectTerminalActive}
+            intent={terminalChunk.intent}
             onClick={
               projectTerminalActive
                 ? (onShowTerminal ?? onNewTerminal)
@@ -1313,7 +1320,7 @@ function TitleBarComponent({
         !projectRailOpen &&
         !showCurrentProject &&
         onOpenSettings ? (
-          <IconButton label={`Settings (${MOD},)`} onClick={onOpenSettings}>
+          <IconButton label={`Settings (${MOD},)`} onClick={onOpenSettings} intent={settingsChunk.intent}>
             <Settings className="size-3.5" strokeWidth={1.75} />
           </IconButton>
         ) : null}
@@ -1690,6 +1697,7 @@ function ProjectDiffStats({
       aria-pressed={active}
       data-tauri-drag-region="false"
       onClick={onClick}
+      {...diffChunk.intent}
       className={`pressable flex h-6 items-center gap-1 rounded-md ${
         hasStats
           ? "px-1.5 font-mono text-[11px] font-semibold tabular-nums"

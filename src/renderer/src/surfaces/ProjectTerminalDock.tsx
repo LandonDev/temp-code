@@ -27,7 +27,11 @@ import {
 } from "../lib/projectTerminal";
 import { MOD } from "../lib/platform";
 import type { TerminalMetaPatch } from "../lib/terminalTab";
-import { TerminalView } from "./TerminalView";
+import { terminalChunk } from "./chunks";
+import { SurfaceSkeleton } from "./SurfaceSkeleton";
+
+// xterm lives in the terminal chunk (surfaces/chunks.ts); the first dock tab pulls it in.
+const TerminalView = terminalChunk.surface("TerminalView", <SurfaceSkeleton kind="terminal" label="Loading terminal" />);
 
 type Props = {
   dock: ProjectTerminalDock;

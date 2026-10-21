@@ -1,6 +1,9 @@
 import type { IconComponent } from "./icons";
+import type { IntentProps } from "../lib/lazyChunk";
 
 type Props = {
+  /** Hover or focus warms the chunk the click opens (lib/lazyChunk.tsx). */
+  intent?: IntentProps;
   label: string;
   icon: IconComponent;
   onClick?: () => void;
@@ -18,10 +21,11 @@ const TONE = {
 };
 
 /** A left-rail row: an icon, a 12px label and an optional dot or shortcut. */
-export function RailAction({ label, icon: Icon, onClick, active = false, dot = false, shortcut, ariaLabel }: Props) {
+export function RailAction({ label, icon: Icon, onClick, active = false, dot = false, shortcut, ariaLabel, intent }: Props) {
   return (
     <button
       type="button"
+      {...intent}
       onClick={onClick}
       disabled={!onClick}
       aria-label={ariaLabel ?? label}

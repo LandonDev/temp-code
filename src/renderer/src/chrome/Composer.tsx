@@ -86,7 +86,10 @@ import {
   type ComposerToken
 } from './ComposerInput'
 import { saveComposerDraft, takeComposerDraft } from '../lib/composerDrafts'
-import { Lightbox } from './Lightbox'
+import { lightboxChunk } from '../surfaces/chunks'
+
+// The image viewer rides its own chunk (surfaces/chunks.ts); a thumbnail's hover warms it.
+const Lightbox = lightboxChunk.surface('Lightbox')
 import {
   loadNotes,
   peekNotes,

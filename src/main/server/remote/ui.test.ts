@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { assetRequestFor, fencedUnder, mimeFor, pairPageHtml, rewriteCsp } from './ui'
+import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { Writable } from 'node:stream'
+import { assetRequestFor, createUiHandler, fencedUnder, mimeFor, pairPageHtml, rewriteCsp } from './ui'
 
 const INDEX = `<!doctype html><html><head><meta charset="UTF-8" />
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; connect-src 'self' ws://127.0.0.1:* ws://localhost:*; media-src 'self' tempcode-asset:; frame-src tempcode-asset:" />
@@ -71,5 +75,69 @@ describe('assetRequestFor', () => {
     expect(assetRequestFor('/asset/', { headers: {} })).toBeNull()
     expect(assetRequestFor('/asset/Logo/x', { headers: {} })).toBeNull()
     expect(assetRequestFor('/assets/index.js', { headers: {} })).toBeNull()
+  })
+})
+
+/** A response that collects what the handler wrote (the file is piped in). */
+class FakeRes extends Writable {
+  status = 0
+  headers: Record<string, string | number> = {}
+  body = ''
+  writeHead(status: number, headers: Record<string, string | number>): this {
+    this.status = status
+    this.headers = headers
+    return this
+  }
+  _write(chunk: Buffer, _enc: string, cb: () => void): void {
+    this.body += chunk.toString()
+    cb()
+  }
+}
+
+async function serve(path: string, rendererDir: string, signedIn = true): Promise<FakeRes> {
+  const handler = createUiHandler({ rendererDir })
+  const res = new FakeRes()
+  const done = new Promise<void>((resolve) => res.on('finish', resolve))
+  const answered = await handler({
+    req: { method: 'GET', headers: {}, url: path } as never,
+    res: res as never,
+    path,
+    query: new URLSearchParams(),
+    ip: '127.0.0.1',
+    proto: 'https',
+    host: 'tempcode.example',
+    origin: 'https://tempcode.example',
+    principal: async () => (signedIn ? ({ session: { id: 's' }, principal: { audience: 'client' } } as never) : null),
+    setCookie: () => {}
+  })
+  expect(answered).toBe(true)
+  await done
+  return res
+}
+
+describe('createUiHandler: the lazy chunks over /ui', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'tc-ui-'))
+  mkdirSync(join(dir, 'assets'))
+  writeFileSync(join(dir, 'index.html'), '<!doctype html><script type="module" src="./assets/index-abc.js"></script>')
+  writeFileSync(join(dir, 'assets', 'index-abc.js'), 'import("./SettingsView-def.js")')
+  writeFileSync(join(dir, 'assets', 'SettingsView-def.js'), 'export const SettingsView = 1')
+
+  it('serves a hashed chunk as an immutable module script behind the cookie', async () => {
+    const res = await serve('/ui/assets/SettingsView-def.js', dir)
+    expect(res.status).toBe(200)
+    expect(res.headers['Content-Type']).toBe('text/javascript; charset=utf-8')
+    expect(res.headers['Cache-Control']).toBe('public, max-age=31536000, immutable')
+    expect(res.body).toBe('export const SettingsView = 1')
+  })
+
+  it('a chunk without a session is a plain 401, never a redirect', async () => {
+    const res = await serve('/ui/assets/SettingsView-def.js', dir, false)
+    expect(res.status).toBe(401)
+    expect(res.headers['Cache-Control']).toBe('no-store')
+  })
+
+  it('a chunk that is not on disk is 404', async () => {
+    const res = await serve('/ui/assets/Nope-000.js', dir)
+    expect(res.status).toBe(404)
   })
 })

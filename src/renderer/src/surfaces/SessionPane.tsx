@@ -38,6 +38,8 @@ import {
 import type { ThreadType } from "../lib/tcserver/types";
 import { AgentTranscript } from "./AgentTranscript";
 import { DeferredMount } from "./DeferredMount";
+import { diffChunk, threadViewsChunk } from "./chunks";
+import { preloadWhenIdle } from "../lib/lazyChunk";
 import { EmptySession } from "./EmptySession";
 import { ThreadView, type ChatOpts } from "./threads/ThreadView";
 import { ChatColumn, type ChatSlots } from "./threads/chatSlots";
@@ -181,6 +183,13 @@ export const SessionPane = memo(function SessionPane({
   useLayoutEffect(() => {
     perfMark("pane-commit", session.id);
   }, [session.id]);
+
+  // The first thread on screen warms, once the open has settled, the chunks
+  // its chrome opens next: the changes pane and the other thread views.
+  useEffect(() => {
+    preloadWhenIdle(diffChunk);
+    preloadWhenIdle(threadViewsChunk);
+  }, []);
 
   useEffect(() => {
     if (!focused) return;

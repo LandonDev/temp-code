@@ -129,15 +129,43 @@ app replaces itself from the feed, and only from the feed.
   `index <ms> start=<epoch> compile-cache=on|off`; dev runs say `off`.
 - The packaged renderer loads from `tempcode-app://renderer/index.html`
   (src/main/appScheme.ts), a privileged scheme with `codeCache: true`, so
-  Chromium keeps a V8 code cache for the 8 MB index bundle; `file://` never
-  gets one. Both schemes register in one `registerSchemes()` call
-  (assets.ts). First boot on the new origin copies the `file://`
-  localStorage over once (src/main/originMigration.ts, marker
+  Chromium keeps a V8 code cache for the index chunk and every lazy chunk
+  under `assets/`; `file://` never gets one. Both schemes register in one
+  `registerSchemes()` call (assets.ts). First boot on the new origin copies
+  the `file://` localStorage over once (src/main/originMigration.ts, marker
   `<userData>/localstorage-migrated`).
+- The renderer is split (docs/bundle-split.md): the index chunk carries
+  only the first paint (rail, transcript, composer, thread header; 4.56 MiB,
+  down from 8.07 MiB) and every other surface is a lazy chunk behind
+  `defineChunk` (src/renderer/src/lib/lazyChunk.tsx), listed in
+  `src/renderer/src/surfaces/chunks.ts`: Settings, the Aliax pages
+  (recharts), the diff pane and the edit card's diff body, the CodeMirror
+  editor with its find keys and git helpers, the terminal (xterm), the
+  non-chat thread views (board, plan, research, fleet), the HTML render
+  frame, the media viewer, the lightbox and the release notes. A mount
+  point calls `chunk.surface(name, <SurfaceSkeleton kind=… />)`; a trigger
+  spreads `chunk.intent` (hover or focus warms the chunk, so a click on a
+  warm machine never shows the skeleton); the first thread on screen warms
+  the diff and thread-view chunks in an idle slot (`preloadWhenIdle`).
+  A module in a lazy chunk must never be imported statically from the main
+  chunk (the rail's ChangesPanel and App.tsx's editor find keys reach the
+  editor chunk through `import()` and `surfaces/editorFind.ts`); the
+  transcript's highlighter loads each grammar's chunk on first use
+  (lib/highlightLanguages.ts). `electron-vite build` writes the chunk map to
+  `out/bundle-map.json` (`bun run bundle:map` prints it) and
+  `scripts/check-bundle-size.ts` (`bun run check:bundle`, in `bun run
+  build` and the release gate) fails when the index chunk's static closure
+  passes 5 MiB or holds one of the lazy modules. `/ui` serves the chunks
+  as immutable module scripts behind the cookie (remote/ui.ts).
 - Proof: `bun run script:e2e-launch-timing` (scripts/e2e-launch-timing.ts)
   packs an isolated copy under /private/tmp/tc-launch-timing and launches it
   four times with Chromium's startup trace on; the report shows the `index`
-  mark, `tc:ready`, and the index bundle's `consumedCacheSize`.
+  mark, `tc:ready`, and the index bundle's `consumedCacheSize`. On the box,
+  `bun scripts/launch-timing-linux.ts --tree <checkout>` runs a built tree
+  under xvfb-run with a window and reads `tc:ready` over CDP (it pre-sets
+  the migration marker: on Linux with a display the migration's hidden
+  window closing is window-all-closed, and the app quits before the first
+  real window opens).
 
 ## Provider traffic: the gateway, and Codex needs 0.162.1+
 Every Claude and Codex child sends its API traffic to a loopback gateway

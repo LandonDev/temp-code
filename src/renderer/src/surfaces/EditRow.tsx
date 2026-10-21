@@ -10,7 +10,11 @@ import type { OpenFileFn } from '../lib/search'
 import type { Block } from '../lib/session'
 import { sessionStore, useLiveEdits } from '../lib/tcserver/store'
 import { TweenHeight, useCountUp } from '../motion'
-import { DiffBody } from './DiffBody'
+import { diffChunk } from './chunks'
+import { SurfaceSkeleton } from './SurfaceSkeleton'
+
+// The diff body rides the diff chunk (surfaces/chunks.ts); the first opened edit card pulls it in.
+const DiffBody = diffChunk.surface('DiffBody', <SurfaceSkeleton kind="diff" label="Loading diff" />)
 import {
   addRanges,
   editDiff,
