@@ -1291,10 +1291,10 @@ Pause all, Stop all and Archive done confirm first, with the count read from
 the store while the dialog shows ("Pause 15 running threads on the box?",
 "Stop 1 running thread in temp-code?", "Archive 6 finished threads
 everywhere?"); OK closes at once. Archive done adds "and remove their 6
-worktrees and simulators" with a checkbox on by default when the host has a
-resources clean-up (`setResourceCleanup` in threadBatch.ts; none is wired
-until the thread-resources build lands, so the clause stays off). Resume all
-and Mark all read run at once.
+worktrees and simulators" with a checkbox on by default when the threads hold
+anything on the ledger (`setResourceCleanup` in threadBatch.ts, wired by
+lib/threadResources.ts to the count of their live rows; see "Thread
+resources" below). Resume all and Mark all read run at once.
 
 The run is one `session.batch {action, ids, cleanup?}` per host (operate;
 the hosts in parallel), which the registry answers through
@@ -1360,9 +1360,12 @@ after a removal is a new row.
   panel (chrome/ThreadResourcesDialog.tsx): host · kind · label per row,
   Remove, "Waiting" while the host is offline, the last outcome under the
   row, Remove all. Archive on a thread with rows asks first: "and remove 2
-  resources on the Mac" with the box on by default. Every archive flow calls
+  resources on the Mac" with the box on by default. A single archive calls
   `archiveThread(sessionId, { removeResources })` (lib/threadResources.ts);
-  the fleet's Archive done uses the same function.
+  the fleet's Archive done sends `session.batch { cleanup: true }`, and the
+  host's `registry.resourceCleanup` (index.ts) is `resources.remove` for each
+  archived thread. The renderer reads every host's `resources.listAll` once
+  per link-up, so the fleet's count is right before any menu opened.
 - Proof: `bun run script:e2e-mac-bridge` makes a worktree on the Mac through
   the bridge, finds it on the box's ledger with the Mac's id, removes it, and
   checks the branch with an unpushed commit stayed with its note.

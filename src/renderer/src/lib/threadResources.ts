@@ -5,6 +5,7 @@ import { registry } from './connection/registry'
 import type { EnvLink } from './connection/link'
 import { macBridgeStore } from './macBridge'
 import { sessionStore } from './tcserver/store'
+import { setResourceCleanup } from './threadBatch'
 
 /**
  * Thread resources in the renderer (docs/box.md "Thread resources"): the
@@ -61,16 +62,43 @@ export async function archiveThread(sessionId: string, opts: { removeResources?:
   await link.request('session.archive', { sessionId, archived: true, ...(opts.removeResources ? { removeResources: true } : {}) })
 }
 
+/** Every live row a host holds, by thread, so counts are right before any menu opened. */
+async function loadAll(link: EnvLink): Promise<void> {
+  try {
+    const { resources } = await link.request<{ resources: ThreadResource[] }>('resources.listAll', {})
+    const byThread: Record<string, ThreadResource[]> = {}
+    for (const r of resources) (byThread[r.sessionId] ??= []).push(r)
+    store.setState((s) => {
+      const next = { ...s.bySession }
+      // This host's threads start over from its answer; removed rows stay for the panel.
+      for (const sid of Object.keys(next)) if (sessionStore.linkFor(sid) === link) next[sid] = next[sid].filter((r) => r.removedAt)
+      for (const [sid, rows] of Object.entries(byThread)) next[sid] = [...rows, ...(next[sid] ?? []).filter((r) => r.removedAt)]
+      return { bySession: next }
+    })
+  } catch {
+    /* an older host without the method */
+  }
+}
+
+/** How many live resources the given threads hold: the fleet's "and remove their N worktrees and simulators". */
+export function countHeldBy(sessionIds: readonly string[]): number {
+  const all = store.getState().bySession
+  return sessionIds.reduce((n, id) => n + (all[id] ?? EMPTY).filter((r) => !r.removedAt).length, 0)
+}
+
 let started = false
-/** Hear every host's `resources` push; idempotent. */
+/** Hear every host's `resources` push and read its ledger once per link-up; idempotent. */
 export function startThreadResources(): void {
   if (started) return
   started = true
+  setResourceCleanup({ count: countHeldBy })
   const attach = (link: EnvLink): void => {
     link.onPush((push) => {
       if (push.push !== 'resources') return
       store.setState((s) => ({ bySession: { ...s.bySession, [push.sessionId]: push.resources } }))
     })
+    link.onOpen(() => void loadAll(link))
+    if (link.connected) void loadAll(link)
   }
   for (const link of registry.links()) attach(link)
   registry.onLink((link, event) => {

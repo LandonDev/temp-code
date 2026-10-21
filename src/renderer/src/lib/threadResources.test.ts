@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { ThreadResource } from '@server/shared/contract-resources'
-import { KIND_LABEL, removalClause, rowState } from './threadResources'
+import { KIND_LABEL, countHeldBy, removalClause, rowState, threadResourcesStore } from './threadResources'
 
 const row = (over: Partial<ThreadResource>): ThreadResource => ({
   id: 'r1',
@@ -41,5 +41,20 @@ describe('rowState', () => {
   })
   it('names every kind in plain words', () => {
     expect(KIND_LABEL).toEqual({ worktree: 'worktree', simulator: 'simulator', devInstance: 'dev instance' })
+  })
+})
+
+describe('countHeldBy', () => {
+  it('sums the live rows of the given threads, for the fleet\'s Archive done clause', () => {
+    threadResourcesStore.setState({
+      bySession: {
+        s1: [row({}), row({ id: 'r2', kind: 'simulator' }), row({ id: 'r3', removedAt: 9 })],
+        s2: [row({ id: 'r4', sessionId: 's2' })],
+        s3: []
+      }
+    })
+    expect(countHeldBy(['s1'])).toBe(2)
+    expect(countHeldBy(['s1', 's2', 's3', 'unknown'])).toBe(3)
+    expect(countHeldBy([])).toBe(0)
   })
 })

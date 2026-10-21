@@ -568,8 +568,10 @@ routed to (aliax-core's `forward`). Two listeners:
   `TEMP_CODE_USER_DATA`), filed under the top-level thread with the id of the
   host the resource lives on. The thread menu's "Resources…" panel removes
   one at a time; archiving a thread with rows asks "and remove N resources on
-  the Mac" (on by default; `session.archive { removeResources }`, the
-  renderer's one `archiveThread()` in lib/threadResources.ts). Removal runs on
+  the Mac" (on by default; `session.archive { removeResources }` through
+  the renderer's `archiveThread()` in lib/threadResources.ts; the fleet's
+  Archive done goes through `session.batch { cleanup }` and the registry's
+  `resourceCleanup`, which is `resources.remove`). Removal runs on
   the owning host through the bridge's runner as the thread
   (threadResourcesRemove.ts: `git worktree remove --force`, `git branch -D`
   only with nothing ahead of the upstream, else the branch stays and the row

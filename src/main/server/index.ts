@@ -536,6 +536,10 @@ export async function startServer(
     }
   })
   registry.onEvent((row) => resources.observeEvent(row))
+  // The fleet's Archive done (session.batch with cleanup, sessionBatch.ts) removes each archived thread's resources.
+  registry.resourceCleanup = async (sessionId) => {
+    await resources.remove(sessionId)
+  }
   peerCalls.onRegister((id, offers) => {
     if (offers.has(MAC_BRIDGE_OFFER)) void resources.linkUp(id)
   })
