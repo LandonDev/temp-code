@@ -773,10 +773,12 @@ On the Mac (`src/main/server/remote/macBridge.ts`, `macRunner.ts`):
   for a command, the executable's name and its exit). Never a file's
   contents or a command's output.
 
-Writing a file on the Mac (`mac_write_file`, `mac.writeFile {path, dataBase64,
-mode?, fileMode?}`, the same token as the other `mac.*` methods; Mac side
-`src/main/server/remote/macBridgeWrite.ts`, box side `macWriteStage.ts`). Up
-to 8 MiB per write. Bytes whose base64 fits one `PEER_CHUNK_CHARS` frame ride
+Writing a file on the Mac (`mac_write_file`, `mac.writeFile {path, dataBase64
+| text, mode?, fileMode?}`, the same token as the other `mac.*` methods; Mac
+side `src/main/server/remote/macBridgeWrite.ts`, box side `macWriteStage.ts`).
+Up to 8 MiB per write. The contents are `dataBase64` (any bytes) or `text` (a
+UTF-8 string), exactly one of them, which the schema enforces; the box encodes
+`text` to bytes before staging, so the Mac only ever sees base64. Bytes whose base64 fits one `PEER_CHUNK_CHARS` frame ride
 inside the `peer.call`; a longer write is staged on the box and the Mac pulls
 it piece by piece with `peer.pull` (admin, answered only on the socket the
 call went out on) after it has allowed the write, so a denied write never

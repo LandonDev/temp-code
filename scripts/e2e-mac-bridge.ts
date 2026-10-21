@@ -24,7 +24,7 @@
  *  - mac.writeFile: a 3 MiB write into the shared folder lands with no prompt
  *    (staged on box, pulled by mac with peer.pull); a write outside it
  *    prompts on mac, is allowed through macBridge.decide and then lands; the
- *    codex bridge lists mac_write_file
+ *    codex bridge lists mac_write_file; a write given as text lands as UTF-8
  *  - policy read refuses commands, off refuses everything; with the host
  *    removed on mac, box answers "Mac offline"
  * Run: bun scripts/e2e-mac-bridge.ts   (build first: electron-vite build)
@@ -619,6 +619,34 @@ try {
     'mode create refuses an existing file and leaves it alone',
     clash.includes('file exists') && readFileSync(join(shared, 'notes.md'), 'utf8') === NOTE,
     clash
+  )
+  const TEXT = '# from the box ✓\nplain UTF-8, no base64\n'
+  const textWritten = await rpc<{ path: string; bytes: number }>(box, 'mac.writeFile', {
+    sessionId: sid,
+    token,
+    path: join(shared, 'from-box', 'note.md'),
+    text: TEXT
+  })
+  check(
+    'a mac.writeFile with text lands as its UTF-8 bytes, no prompt',
+    textWritten.bytes === Buffer.byteLength(TEXT) &&
+      readFileSync(join(shared, 'from-box', 'note.md'), 'utf8') === TEXT &&
+      watcher.seen.length === seenBeforeWrite,
+    JSON.stringify(textWritten)
+  )
+  const bothGiven = await errorOf(
+    rpc(box, 'mac.writeFile', {
+      sessionId: sid,
+      token,
+      path: join(shared, 'from-box', 'both.txt'),
+      text: 'a',
+      dataBase64: 'YQ=='
+    })
+  )
+  check(
+    'text and dataBase64 together are refused on box',
+    bothGiven.includes('exactly one') && !existsSync(join(shared, 'from-box', 'both.txt')),
+    bothGiven
   )
   const outsideWrite = join(mac.home, 'Elsewhere', 'written.txt')
   const pendingWrite = rpc<{ path: string; created: boolean }>(box, 'mac.writeFile', {

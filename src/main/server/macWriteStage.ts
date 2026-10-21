@@ -93,7 +93,12 @@ export function prepareMacWrite(
   chunkChars: number = PEER_CHUNK_CHARS
 ): { wire: MacWriteFileWire; release: () => void } {
   const args = MacWriteFileArgsSchema.parse(raw)
-  const data = decodeBase64Strict(args.dataBase64)
+  // text is encoded here, before staging: the Mac only ever sees base64 of the bytes.
+  const data =
+    args.text !== undefined
+      ? Buffer.from(args.text, 'utf8')
+      : decodeBase64Strict(args.dataBase64 ?? '')
+  const b64 = args.text !== undefined ? data.toString('base64') : (args.dataBase64 ?? '')
   if (data.length > MAC_WRITE_MAX_BYTES)
     throw new Error(
       `too large to write: ${data.length} bytes (the limit is ${MAC_WRITE_MAX_BYTES})`
@@ -105,10 +110,9 @@ export function prepareMacWrite(
     size: data.length,
     sha256: createHash('sha256').update(data).digest('hex')
   } as const
-  if (args.dataBase64.length <= chunkChars)
-    return { wire: { ...base, dataBase64: args.dataBase64 }, release: () => {} }
+  if (b64.length <= chunkChars) return { wire: { ...base, dataBase64: b64 }, release: () => {} }
   if (connection === null) throw new Error('Mac offline: no live link to stage the write on')
-  const staged = stages.stage(connection, args.dataBase64, chunkChars)
+  const staged = stages.stage(connection, b64, chunkChars)
   return { wire: { ...base, staged }, release: () => stages.drop(staged.id) }
 }
 

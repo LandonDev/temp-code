@@ -3,7 +3,12 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, describe, expect, it } from 'vitest'
 import type { ServerFrame } from '@shared/contract'
-import { PEER_CHUNK_CHARS, type MacBridgePush } from '@shared/contract-macbridge'
+import { ClientRequestSchema } from '@shared/contract'
+import {
+  MacWriteFileArgsSchema,
+  PEER_CHUNK_CHARS,
+  type MacBridgePush
+} from '@shared/contract-macbridge'
 import type { SessionMeta } from '@shared/events'
 import { MacThreadTokens, MacTools } from './macTools'
 import {
@@ -25,6 +30,49 @@ describe('decodeBase64Strict', () => {
     expect(() => decodeBase64Strict('aGk')).toThrow(/not valid base64/)
     expect(() => decodeBase64Strict('a-k=')).toThrow(/not valid base64/)
     expect(() => decodeBase64Strict('aG k=')).toThrow(/not valid base64/)
+  })
+})
+
+describe('mac.writeFile: text or dataBase64, exactly one', () => {
+  it('the zod schema takes either and refuses both or neither, for the tool args and the request', () => {
+    expect(MacWriteFileArgsSchema.safeParse({ path: '/x', text: 'héllo' }).success).toBe(true)
+    expect(MacWriteFileArgsSchema.safeParse({ path: '/x', text: '' }).success).toBe(true)
+    expect(MacWriteFileArgsSchema.safeParse({ path: '/x', dataBase64: 'aGk=' }).success).toBe(true)
+    const both = MacWriteFileArgsSchema.safeParse({ path: '/x', text: 'a', dataBase64: 'aGk=' })
+    expect(both.success).toBe(false)
+    expect(both.error?.issues[0]?.message).toMatch(/exactly one/)
+    expect(MacWriteFileArgsSchema.safeParse({ path: '/x' }).success).toBe(false)
+    const req = (params: Record<string, unknown>): boolean =>
+      ClientRequestSchema.safeParse({
+        id: '1',
+        method: 'mac.writeFile',
+        params: { sessionId: 's', token: 't', path: '/x', ...params }
+      }).success
+    expect(req({ text: 'a' })).toBe(true)
+    expect(req({ dataBase64: 'aGk=' })).toBe(true)
+    expect(req({ text: 'a', dataBase64: 'aGk=' })).toBe(false)
+    expect(req({})).toBe(false)
+  })
+
+  it('text is encoded as UTF-8 on the box: the wire carries base64 of its bytes, inline or staged', () => {
+    const stages = new MacWriteStages()
+    const small = prepareMacWrite({ path: '/x', text: 'héllo ✓\n' }, 1, stages)
+    expect(small.wire.dataBase64).toBe(Buffer.from('héllo ✓\n', 'utf8').toString('base64'))
+    expect(small.wire.size).toBe(Buffer.byteLength('héllo ✓\n', 'utf8'))
+    expect(small.wire).not.toHaveProperty('text')
+    const long = 'é'.repeat(200)
+    const big = prepareMacWrite({ path: '/x', text: long }, 1, stages, 100)
+    expect(big.wire.size).toBe(400)
+    expect(big.wire.staged?.chunks).toBe(
+      Math.ceil(Buffer.from(long).toString('base64').length / 100)
+    )
+    big.release()
+    expect(() =>
+      prepareMacWrite({ path: '/x', text: 'é'.repeat(4 * 1024 * 1024 + 1) }, 1, stages)
+    ).toThrow(/too large/)
+    expect(() => prepareMacWrite({ path: '/x', text: 'a', dataBase64: 'aGk=' }, 1, stages)).toThrow(
+      /exactly one/
+    )
   })
 })
 
@@ -189,6 +237,23 @@ describe('mac.writeFile from a box thread', () => {
     const push = pushes[0] as Extract<MacBridgePush, { push: 'peer.call' }>
     expect(push.method).toBe('mac.writeFile')
     expect(push.deadlineMs).toBe(10 * 60_000 + 120_000 + 30_000)
+  })
+
+  it('a text write lands as its UTF-8 bytes, small or staged', async () => {
+    const { tools, tokens, stages, shared } = linked()
+    const out = await tools.call('root', tokens.tokenFor('root'), 'mac.writeFile', {
+      path: join(shared, 'note.md'),
+      text: '# Héllo\n✓ from the box\n'
+    })
+    expect(out).toMatchObject({ bytes: Buffer.byteLength('# Héllo\n✓ from the box\n') })
+    expect(readFileSync(join(shared, 'note.md'), 'utf8')).toBe('# Héllo\n✓ from the box\n')
+    const long = 'line ✓\n'.repeat(400_000)
+    await tools.call('root', tokens.tokenFor('root'), 'mac.writeFile', {
+      path: join(shared, 'long.txt'),
+      text: long
+    })
+    expect(readFileSync(join(shared, 'long.txt'), 'utf8')).toBe(long)
+    expect(stages.size()).toBe(0)
   })
 
   it('a write past the frame size is staged, pulled by the Mac, and the stage is gone after', async () => {

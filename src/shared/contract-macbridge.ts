@@ -49,7 +49,7 @@ export const MAC_TOOL_DESCRIPTIONS = {
   mac_run:
     "Run a command on the user's Mac (for macOS-only tools: xcodebuild, osascript, open, security, …). Every command waits for the user to allow it on the Mac, showing them exactly the argv and cwd, and may be denied. Runs through the Mac's login shell with no stdin; output is capped at 1 MB. Prefer argv; use command only when you need shell syntax (pipes, globs).",
   mac_write_file:
-    "Write a file on the user's Mac (up to 8 MiB, sent as base64). Paths are absolute Mac paths. mode create (the default) refuses a file that exists, overwrite replaces it atomically, append adds to its end. Folders the user shared with this host take writes at once when the user allows commands too; any other path, anything under ~/Library and the dotfiles in the Mac's home wait for the user to allow it on the Mac, and may be denied."
+    "Write a file on the user's Mac (up to 8 MiB). Give the contents as text (a UTF-8 string, for source, config and other text files) or as dataBase64 (any bytes), exactly one of them. Paths are absolute Mac paths. mode create (the default) refuses a file that exists, overwrite replaces it atomically, append adds to its end. Folders the user shared with this host take writes at once when the user allows commands too; any other path, anything under ~/Library and the dotfiles in the Mac's home wait for the user to allow it on the Mac, and may be denied."
 } as const
 export const MAC_TOOL_PARAMS = {
   path: 'Absolute path on the Mac, e.g. /Users/name/Documents/report.pdf (no ~).',
@@ -58,7 +58,8 @@ export const MAC_TOOL_PARAMS = {
   command: "A shell command line instead of argv, read by the Mac's login shell.",
   cwd: 'Absolute working directory on the Mac (default: the home directory).',
   timeoutMs: 'Kill the command after this many milliseconds (default 120000, at most 1800000).',
-  dataBase64: "The file's bytes, base64-encoded (at most 8 MiB decoded).",
+  dataBase64: "The file's bytes, base64-encoded (at most 8 MiB decoded). Give this or text, not both.",
+  text: "The file's contents as a UTF-8 string (at most 8 MiB once encoded). Give this or dataBase64, not both.",
   mode: 'create (default: fails if the file exists), overwrite, or append.',
   fileMode:
     'Unix permission bits as a decimal number, e.g. 420 for 0644 (default: 0644 for a new file, unchanged for an existing one).'
@@ -225,13 +226,22 @@ export const MAC_WRITE_MAX_BASE64 = Math.ceil(MAC_WRITE_MAX_BYTES / 3) * 4
 export const MacWriteModeSchema = z.enum(['create', 'overwrite', 'append'])
 export type MacWriteMode = z.infer<typeof MacWriteModeSchema>
 const fileModeArg = z.number().int().min(0).max(0o777)
-/** What a thread names. */
-export const MacWriteFileArgsSchema = z.object({
+/** What a thread names, before the one-of check (zod 4 refuses to extend a refined object). */
+const MacWriteFileArgsBase = z.object({
   path: pathArg,
-  dataBase64: z.string().max(MAC_WRITE_MAX_BASE64),
+  dataBase64: z.string().max(MAC_WRITE_MAX_BASE64).optional(),
+  /** UTF-8 text instead of base64; the box encodes it before staging, so the Mac sees bytes either way. */
+  text: z.string().max(MAC_WRITE_MAX_BYTES).optional(),
   mode: MacWriteModeSchema.optional(),
   fileMode: fileModeArg.optional()
 })
+/** Exactly one of dataBase64 and text. */
+const oneContent = <T extends z.ZodType<{ dataBase64?: string; text?: string }>>(schema: T): T =>
+  schema.refine((a) => (a.dataBase64 === undefined) !== (a.text === undefined), {
+    message: 'mac.writeFile takes dataBase64 or text, exactly one of them'
+  }) as T
+/** What a thread names. */
+export const MacWriteFileArgsSchema = oneContent(MacWriteFileArgsBase)
 export type MacWriteFileArgs = z.infer<typeof MacWriteFileArgsSchema>
 /**
  * What the box sends the Mac in the `peer.call`: the bytes inline when their
@@ -312,7 +322,7 @@ export const MacBridgeRequestSchemas = [
   request('mac.listDir', MacListDirArgsSchema.extend(threadAuth)),
   request('mac.fetchFile', MacFetchFileArgsSchema.extend(threadAuth)),
   request('mac.run', MacRunArgsSchema.extend(threadAuth)),
-  request('mac.writeFile', MacWriteFileArgsSchema.extend(threadAuth)),
+  request('mac.writeFile', oneContent(MacWriteFileArgsBase.extend(threadAuth))),
   // ── a box thread's switch ────────────────────────────────────────────
   /** → MacBridgeThreadState. */
   request('macBridge.thread.get', z.object({ sessionId: z.string().min(1).max(200) })),

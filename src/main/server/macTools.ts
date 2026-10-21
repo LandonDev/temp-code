@@ -20,6 +20,7 @@ import {
   MAC_TOOL_DESCRIPTIONS,
   MAC_TOOL_PARAMS,
   MAC_WRITE_MAX_BASE64,
+  MAC_WRITE_MAX_BYTES,
   MacWriteModeSchema,
   type MacBridgeThreadState,
   type MacFetchFileResult,
@@ -320,7 +321,8 @@ export function macToolsMcp(session: SessionMeta): McpSdkServerConfigWithInstanc
         MAC_TOOL_DESCRIPTIONS.mac_write_file,
         {
           path: z.string().describe(p.path),
-          dataBase64: z.string().max(MAC_WRITE_MAX_BASE64).describe(p.dataBase64),
+          dataBase64: z.string().max(MAC_WRITE_MAX_BASE64).optional().describe(p.dataBase64),
+          text: z.string().max(MAC_WRITE_MAX_BYTES).optional().describe(p.text),
           mode: MacWriteModeSchema.optional().describe(p.mode),
           fileMode: z.number().int().min(0).max(0o777).optional().describe(p.fileMode)
         },
