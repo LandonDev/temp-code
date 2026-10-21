@@ -1,5 +1,5 @@
 {
-  "n": 275,
-  "notes": "Everything in v274 (the cross-host workflow, the speed work and the plan flow), plus the Swift contract and the phone client compiling again: FailureKind keeps its own unknown literal with unrecognized(String) as the fallback case, and the fold shows a notice event as a status row",
-  "ts": 1792611190904
+  "n": 276,
+  "notes": "A mock page of a box thread opens on the Mac: the page URL names the thread's host and the desktop fetches another host's page once over the admin peer link (page.read), so an html_render of a box thread no longer answers not found. Also a restored box thread paints its tail, not its first 300 rows, and docs/box.md on the integrations and API keys placed by hand on the box",
+  "ts": 1792616124831
 }
