@@ -81,6 +81,14 @@ describe("batchTargets", () => {
   it("archive done takes idle, read threads older than ten minutes with nothing pending", () => {
     expect(ids(batchTargets("archiveDone", metas, all))).toEqual(["idle", "done"]);
   });
+  it("leaves a queued thread to every action: not live, not paused, not finished", () => {
+    const queued = meta({ id: "queued", status: "queued" });
+    const list = [...metas, queued];
+    expect(ids(batchTargets("pause", list, all))).not.toContain("queued");
+    expect(ids(batchTargets("stop", list, all))).not.toContain("queued");
+    expect(ids(batchTargets("resume", list, all))).not.toContain("queued");
+    expect(ids(batchTargets("archiveDone", list, all))).not.toContain("queued");
+  });
   it("archive done leaves an unread thread, a recent one, a failed one and a waiting one", () => {
     const unread = meta({ id: "unread", updatedAt: NOW - ARCHIVE_DONE_AGE_MS - 5 });
     const recent = meta({ id: "recent", updatedAt: NOW - ARCHIVE_DONE_AGE_MS + 1 });

@@ -59,6 +59,8 @@ struct StatusDot: View {
         case .error: return .dot(Tint.destructive)
         case .paused: return .paused
         case .stopped: return .stopped
+        // Created, not booted (the host's `queued`): the starting dot, still.
+        case .queued: return .dot(Color.secondary)
         case .idle, .done, .unknown: return .none
         }
     }
@@ -73,6 +75,7 @@ struct StatusDot: View {
             switch status {
             case .waiting: "Needs you"
             case .error: "Failed"
+            case .queued: "Queued"
             default: "Starting"
             }
         }

@@ -9,6 +9,7 @@ import { Heading, Input, Row, Segmented, SecondaryButton, Select, Toggle } from 
 import {
   approvedLadder,
   modelApproved,
+  modelKey,
   moveRoutingRuleUp,
   newRuleId,
   patchModelPolicy,
@@ -316,6 +317,12 @@ function EffortSelect({
   );
 }
 
+const APPROVAL_OPTIONS = [
+  { value: "everyone", label: "Everyone" },
+  { value: "orchestrators", label: "Orchestrators only" },
+  { value: "off", label: "Off" },
+];
+
 function ModelRow({
   provider,
   model,
@@ -327,7 +334,10 @@ function ModelRow({
   rules: OrchestrationRules;
   onChange: (patch: Partial<ModelPolicy>) => void;
 }) {
-  const approved = modelApproved(rules, provider, model.id);
+  // Everyone / Orchestrators only / Off (CLAUDE.md "Master threads"): an
+  // orchestrators-only model keeps its effort bounds, it is approved for someone.
+  const policy = rules.models[modelKey(provider, model.id)]?.approved ?? true;
+  const approved = policy !== false;
   const range = approvedLadder(rules, provider, model.id);
   const ladder = model.reasoning;
   const min = range[0];
@@ -356,7 +366,13 @@ function ModelRow({
           />
         </span>
       ) : null}
-      <Toggle label={`Approve ${model.label}`} on={approved} onChange={(approved) => onChange({ approved })} />
+      <Select
+        label={`Approve ${model.label}`}
+        value={policy === true ? "everyone" : policy === false ? "off" : "orchestrators"}
+        onChange={(v) => onChange({ approved: v === "everyone" ? true : v === "off" ? false : "orchestrators" })}
+        options={APPROVAL_OPTIONS}
+        className="w-36"
+      />
     </div>
   );
 }
@@ -382,6 +398,7 @@ function RuleRow({
   const modelId = rule.model || provider?.defaultModel || "";
   const model = provider?.models.find((m) => m.id === modelId);
   const approved = modelApproved(rules, rule.provider, modelId);
+  const orchestratorsOnly = !approved && modelApproved(rules, rule.provider, modelId, "orchestrator");
   return (
     <div
       className={`group/rule flex items-center gap-4 border-b border-content/5 py-3 last:border-b-0 ${
@@ -399,7 +416,7 @@ function RuleRow({
           <HarnessIcon harness={rule.provider as HarnessId} className="size-3.5 shrink-0" />
           {model?.label ?? modelId}
           {model?.reasoning.length ? <span>· {EFFORT_LABELS[rule.reasoning]}</span> : null}
-          {!approved ? <span className="text-danger">· not approved</span> : null}
+          {orchestratorsOnly ? <span>· orchestrators only</span> : !approved ? <span className="text-danger">· not approved</span> : null}
         </span>
       </button>
       <button

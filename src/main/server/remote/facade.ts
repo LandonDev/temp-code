@@ -28,6 +28,8 @@ export function collapseStatus(status: SessionMeta['status']): FacadeStatus {
     case 'starting':
     case 'running':
     case 'watching':
+    // queued: created, not yet booted (CLAUDE.md "Master threads"); it reads as starting.
+    case 'queued':
       return 'working'
     case 'waiting':
     case 'paused':

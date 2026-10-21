@@ -297,6 +297,8 @@ export const SessionMetaSchema = z.object({
   implementationId: z.string().nullable().optional(),
   planThreadId: z.string().nullable().optional(),
   startedBy: z.string().nullable().optional(),
+  masterId: z.string().nullable().optional(),
+  after: z.string().nullable().optional(),
   createdAt: z.number().int(),
   updatedAt: z.number().int()
 })
@@ -339,6 +341,7 @@ export const ProjectMetaSchema = z.object({
   accountPins: AccountPinsSchema.optional(),
   preamble: z.string().nullable().optional(),
   preambleEnabled: z.boolean().optional(),
+  masterThreadId: z.string().nullable().optional(),
   createdAt: z.number().int()
 })
 

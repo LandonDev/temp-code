@@ -28,6 +28,9 @@ export type BatchScope =
 /** Idle for at least this long before Archive done takes a thread. */
 export const ARCHIVE_DONE_AGE_MS = 10 * 60_000;
 
+// A queued thread (created, not booted; CLAUDE.md "Master threads") is not
+// live: Pause and Stop leave it, Archive done leaves it too (it is not
+// finished), and the thread menu's own Archive takes it like any row.
 const LIVE = new Set<string>(["starting", "running", "waiting"]);
 
 /** A thread with a turn in flight somewhere in its tree, not paused. */

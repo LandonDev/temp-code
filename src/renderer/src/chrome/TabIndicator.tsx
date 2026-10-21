@@ -105,6 +105,14 @@ export function TabIndicator({ thread }: { thread: TabThread }) {
         </span>
       );
     }
+    if (status === "queued") {
+      return (
+        <span className="flex shrink-0 items-center gap-1 text-[11px] font-medium text-content/50" title="Waiting for a slot on the host">
+          <span className="size-1.5 rounded-full bg-current opacity-60" />
+          Queued
+        </span>
+      );
+    }
     // A written plan outranks a background wait: the plan is what the tab
     // is for, and the wait (a Monitor, a cron) still shows on hover.
     if (thread.planReady) {

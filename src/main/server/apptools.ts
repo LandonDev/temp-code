@@ -226,6 +226,7 @@ export async function appStartThread(
   // A model id names its harness: a gpt model requested under provider
   // "claude" routes to codex. Only a model NO provider serves is refused.
   const requested = args.model || CATALOG[args.provider].defaultModel
+  // wave 1: policy check ("Model policy by role"): modelApproved(rulesFor(caller), …, policyRoleOf(caller)) is not consulted here yet.
   const { provider, model } = resolveModel(args.provider, requested)
   if (!modelInfo(provider, model)) {
     const visible = visibleCatalog()

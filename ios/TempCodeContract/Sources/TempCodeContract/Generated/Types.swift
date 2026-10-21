@@ -396,10 +396,12 @@ public struct SessionMeta: Codable, Hashable, Sendable {
     public let implementationId: String?
     public let planThreadId: String?
     public let startedBy: String?
+    public let masterId: String?
+    public let after: String?
     public let createdAt: Int
     public let updatedAt: Int
 
-    public init(id: String, parentId: String?, projectId: String?, workspaceId: String?, threadType: ThreadType?, planPath: String?, provider: ProviderId, model: String, reasoning: Reasoning, agentType: AgentType, title: String, cwd: String, status: SessionStatus, pinned: Bool, archived: Bool, permission: PermissionPolicy, fast: Bool, ultrafast: Bool, context1m: Bool, busySince: Int?, pausedAt: Int?, frozenActiveElapsed: Int?, nativeId: String?, account: String? = nil, activity: String? = nil, activityKind: ActivityKind? = nil, tasks: Tasks? = nil, goal: Goal? = nil, context: Context? = nil, canContinue: Bool? = nil, failure: Failure? = nil, treeCanContinue: Bool? = nil, treeHasLiveWork: Bool? = nil, treeHasPaused: Bool? = nil, treeFrozenActiveElapsed: Int? = nil, threadRules: JSONValue? = nil, planCompletedAt: Int? = nil, implementationId: String? = nil, planThreadId: String? = nil, startedBy: String? = nil, createdAt: Int, updatedAt: Int) {
+    public init(id: String, parentId: String?, projectId: String?, workspaceId: String?, threadType: ThreadType?, planPath: String?, provider: ProviderId, model: String, reasoning: Reasoning, agentType: AgentType, title: String, cwd: String, status: SessionStatus, pinned: Bool, archived: Bool, permission: PermissionPolicy, fast: Bool, ultrafast: Bool, context1m: Bool, busySince: Int?, pausedAt: Int?, frozenActiveElapsed: Int?, nativeId: String?, account: String? = nil, activity: String? = nil, activityKind: ActivityKind? = nil, tasks: Tasks? = nil, goal: Goal? = nil, context: Context? = nil, canContinue: Bool? = nil, failure: Failure? = nil, treeCanContinue: Bool? = nil, treeHasLiveWork: Bool? = nil, treeHasPaused: Bool? = nil, treeFrozenActiveElapsed: Int? = nil, threadRules: JSONValue? = nil, planCompletedAt: Int? = nil, implementationId: String? = nil, planThreadId: String? = nil, startedBy: String? = nil, masterId: String? = nil, after: String? = nil, createdAt: Int, updatedAt: Int) {
         self.id = id
         self.parentId = parentId
         self.projectId = projectId
@@ -440,12 +442,14 @@ public struct SessionMeta: Codable, Hashable, Sendable {
         self.implementationId = implementationId
         self.planThreadId = planThreadId
         self.startedBy = startedBy
+        self.masterId = masterId
+        self.after = after
         self.createdAt = createdAt
         self.updatedAt = updatedAt
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, parentId, projectId, workspaceId, threadType, planPath, provider, model, reasoning, agentType, title, cwd, status, pinned, archived, permission, fast, ultrafast, context1m, busySince, pausedAt, frozenActiveElapsed, nativeId, account, activity, activityKind, tasks, goal, context, canContinue, failure, treeCanContinue, treeHasLiveWork, treeHasPaused, treeFrozenActiveElapsed, threadRules, planCompletedAt, implementationId, planThreadId, startedBy, createdAt, updatedAt
+        case id, parentId, projectId, workspaceId, threadType, planPath, provider, model, reasoning, agentType, title, cwd, status, pinned, archived, permission, fast, ultrafast, context1m, busySince, pausedAt, frozenActiveElapsed, nativeId, account, activity, activityKind, tasks, goal, context, canContinue, failure, treeCanContinue, treeHasLiveWork, treeHasPaused, treeFrozenActiveElapsed, threadRules, planCompletedAt, implementationId, planThreadId, startedBy, masterId, after, createdAt, updatedAt
     }
 
     public func encode(to encoder: any Encoder) throws {
@@ -490,6 +494,8 @@ public struct SessionMeta: Codable, Hashable, Sendable {
         try container.encodeIfPresent(implementationId, forKey: .implementationId)
         try container.encodeIfPresent(planThreadId, forKey: .planThreadId)
         try container.encodeIfPresent(startedBy, forKey: .startedBy)
+        try container.encodeIfPresent(masterId, forKey: .masterId)
+        try container.encodeIfPresent(after, forKey: .after)
         try container.encode(createdAt, forKey: .createdAt)
         try container.encode(updatedAt, forKey: .updatedAt)
     }
@@ -598,9 +604,10 @@ public struct ProjectMeta: Codable, Hashable, Sendable {
     public let accountPins: AccountPins?
     public let preamble: String?
     public let preambleEnabled: Bool?
+    public let masterThreadId: String?
     public let createdAt: Int
 
-    public init(id: String, workspaceId: String, name: String, mode: ProjectMode, branch: String?, cwd: String, archived: Bool, accountPins: AccountPins? = nil, preamble: String? = nil, preambleEnabled: Bool? = nil, createdAt: Int) {
+    public init(id: String, workspaceId: String, name: String, mode: ProjectMode, branch: String?, cwd: String, archived: Bool, accountPins: AccountPins? = nil, preamble: String? = nil, preambleEnabled: Bool? = nil, masterThreadId: String? = nil, createdAt: Int) {
         self.id = id
         self.workspaceId = workspaceId
         self.name = name
@@ -611,11 +618,12 @@ public struct ProjectMeta: Codable, Hashable, Sendable {
         self.accountPins = accountPins
         self.preamble = preamble
         self.preambleEnabled = preambleEnabled
+        self.masterThreadId = masterThreadId
         self.createdAt = createdAt
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, workspaceId, name, mode, branch, cwd, archived, accountPins, preamble, preambleEnabled, createdAt
+        case id, workspaceId, name, mode, branch, cwd, archived, accountPins, preamble, preambleEnabled, masterThreadId, createdAt
     }
 
     public func encode(to encoder: any Encoder) throws {
@@ -630,6 +638,7 @@ public struct ProjectMeta: Codable, Hashable, Sendable {
         try container.encodeIfPresent(accountPins, forKey: .accountPins)
         try container.encodeIfPresent(preamble, forKey: .preamble)
         try container.encodeIfPresent(preambleEnabled, forKey: .preambleEnabled)
+        try container.encodeIfPresent(masterThreadId, forKey: .masterThreadId)
         try container.encode(createdAt, forKey: .createdAt)
     }
 }

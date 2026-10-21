@@ -327,6 +327,8 @@ export function activityPhase(status: SessionMeta['status'], archived = false): 
     case 'starting':
     case 'running':
     case 'watching':
+    // queued: created, not yet booted; the strip reads it as starting.
+    case 'queued':
       return 'working'
     case 'paused':
       return 'paused'

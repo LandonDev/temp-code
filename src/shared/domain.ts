@@ -58,6 +58,8 @@ export interface ProjectMeta {
   preamble?: string | null
   /** Whether a preamble applies to this project's threads (the text is kept while off). */
   preambleEnabled?: boolean
+  /** The project's master thread (CLAUDE.md "Master threads"); null or absent = none. */
+  masterThreadId?: string | null
   createdAt: number
 }
 

@@ -23,6 +23,11 @@ export const SessionStatusSchema = z.enum([
   // resuming it, the process died quietly) and nothing is coming: the
   // thread waits for Resume, which boots a fresh harness on the transcript.
   'stopped',
+  // Created but not booted: the host's running cap is reached or the sibling
+  // in `after` has not landed; the scheduler starts it when a slot frees.
+  // Not live, never counted against a cap, never resumed by the boot resumer
+  // or the liveness sweep (CLAUDE.md "Master threads").
+  'queued',
   'error',
   'done'
 ])
@@ -512,6 +517,11 @@ export interface SessionMeta {
   /** The thread that started this one through app_start_thread (not a parent:
    *  the thread is a root of its own); it is told when a plan here completes. */
   startedBy?: string | null
+  /** The master thread this root thread belongs to (CLAUDE.md "Master threads");
+   *  not a parent: the thread stays a root of its own in the rail. */
+  masterId?: string | null
+  /** A queued thread's sibling: the session it waits for before it boots. */
+  after?: string | null
   createdAt: number
   updatedAt: number
 }

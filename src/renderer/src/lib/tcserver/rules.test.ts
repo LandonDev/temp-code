@@ -47,6 +47,10 @@ describe("pure helpers", () => {
     expect(bounded.models["claude:claude-opus-5"]).toEqual({ approved: true, maxReasoning: "high" });
     const back = patchModelPolicy(bounded, "claude", "claude-opus-5", { maxReasoning: undefined });
     expect(back.models).toEqual({});
+    // Orchestrators only is not the default: the record stays.
+    const orchestrators = patchModelPolicy(DEFAULT_RULES, "claude", "claude-opus-5", { approved: "orchestrators" });
+    expect(orchestrators.models["claude:claude-opus-5"]).toEqual({ approved: "orchestrators" });
+    expect(patchModelPolicy(orchestrators, "claude", "claude-opus-5", { approved: true }).models).toEqual({});
     expect(DEFAULT_RULES.models).toEqual({});
   });
 

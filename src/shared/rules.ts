@@ -13,9 +13,12 @@ import { CATALOG, modelInfo, type ProviderId, type Reasoning } from './catalog'
 const ReasoningEnum = z.enum(['low', 'medium', 'high', 'xhigh', 'max', 'ultra'])
 
 /** Per-model spawn policy, keyed `provider:modelId` in rules.models.
- *  A missing entry means approved with the model's full effort ladder. */
+ *  A missing entry means approved with the model's full effort ladder.
+ *  `approved`: `true` for every thread, `'orchestrators'` only when an
+ *  orchestration thread or an orchestrator agent (a master, from wave 1)
+ *  spawns, `false` for none (CLAUDE.md "Master threads"). */
 export const ModelPolicySchema = z.object({
-  approved: z.boolean().default(true),
+  approved: z.union([z.boolean(), z.literal('orchestrators')]).default(true),
   /** effort bounds, clamped to the model's ladder; absent = ladder end */
   minReasoning: ReasoningEnum.optional(),
   maxReasoning: ReasoningEnum.optional()
@@ -197,12 +200,28 @@ export function ruleModel(r: RoutingRule): string {
 export const modelKey = (provider: ProviderId, modelId: string): string =>
   `${provider}:${modelId}`
 
+/** Who asks for the model: an orchestrator (an orchestration thread, an
+ *  orchestrator agent, a master) or any other thread. */
+export type PolicyRole = 'orchestrator' | 'thread'
+
+/** The role a session spawns under. */
+export function policyRoleOf(
+  session: { agentType?: string | null; threadType?: string | null }
+): PolicyRole {
+  return session.agentType === 'orchestrator' || session.threadType === 'orchestration'
+    ? 'orchestrator'
+    : 'thread'
+}
+
 export function modelApproved(
   rules: OrchestrationRules,
   provider: ProviderId,
-  modelId: string
+  modelId: string,
+  role: PolicyRole = 'thread'
 ): boolean {
-  return rules.models[modelKey(provider, modelId)]?.approved ?? true
+  const approved = rules.models[modelKey(provider, modelId)]?.approved ?? true
+  if (approved === 'orchestrators') return role === 'orchestrator'
+  return approved
 }
 
 /** The effort ladder the policy leaves open for a model — its catalog

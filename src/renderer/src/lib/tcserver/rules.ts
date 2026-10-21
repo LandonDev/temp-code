@@ -76,7 +76,7 @@ export function patchModelPolicy(
   const prev: ModelPolicy = rules.models[key] ?? { approved: true };
   const next: ModelPolicy = { ...prev, ...patch };
   const models = { ...rules.models };
-  if (next.approved && !next.minReasoning && !next.maxReasoning) delete models[key];
+  if (next.approved === true && !next.minReasoning && !next.maxReasoning) delete models[key];
   else models[key] = next;
   return { ...rules, models };
 }

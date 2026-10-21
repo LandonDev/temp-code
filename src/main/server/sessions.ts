@@ -1385,6 +1385,19 @@ export class SessionRegistry {
     this.notifyCatalog('projects')
   }
 
+  /** The project's master thread (CLAUDE.md "Master threads"): a thread of
+   *  the project, or null to unpin. Clients hear it as a `projects` push. */
+  setProjectMaster(projectId: string, threadId: string | null): void {
+    if (!this.store.getProject(projectId)) throw new Error(`unknown project: ${projectId}`)
+    if (threadId !== null) {
+      const thread = this.store.getSession(threadId)
+      if (!thread) throw new Error(`unknown session: ${threadId}`)
+      if (thread.projectId !== projectId) throw new Error(`session ${threadId} is not in project ${projectId}`)
+    }
+    this.store.setProjectMaster(projectId, threadId)
+    this.notifyCatalog('projects')
+  }
+
   setWorkspacePreamble(workspaceId: string, preamble: string | null, enabled: boolean): void {
     if (!this.store.listWorkspaces().some((w) => w.id === workspaceId)) throw new Error(`unknown workspace: ${workspaceId}`)
     this.store.setWorkspacePreamble(workspaceId, normalizePreamble(preamble), enabled)
@@ -1737,6 +1750,8 @@ export class SessionRegistry {
       implementationId: null,
       planThreadId: null,
       startedBy: params.startedBy ?? null,
+      masterId: params.masterId ?? null,
+      after: params.after ?? null,
       createdAt: now,
       updatedAt: now
     }

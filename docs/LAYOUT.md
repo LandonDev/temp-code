@@ -177,6 +177,15 @@ implicit "setup" row).
 - Orchestrator's own narration is a quiet feed below the board, styled like
   the implementation activity feed.
 
+### Master — the project's batch (wave 0: the route only)
+
+A thread pinned as its project's master (`ProjectMeta.masterThreadId`) routes
+to `MasterView` instead of its type's view; today it paints the chat alone,
+the way an orchestration thread does before its first agent. Wave 1 draws the
+board on the left (children grouped Needs you / Running / Queued / Done, the
+batch's three steps under the list) and the chat on the right, the SplitShell
+recipe (CLAUDE.md "Master threads").
+
 ## ADE ambitions (later — but the frame reserves room now)
 
 Terminals, file browsing, and a real editor come later; the shell must not

@@ -106,3 +106,16 @@ describe('TabIndicator plan ready vs watching', () => {
     expect(text({ status: 'waiting', failure: summary }).out).toBe('Needs you')
   })
 })
+
+describe('TabIndicator: a queued thread', () => {
+  it('reads Queued, still, and never subscribes to the second hand', () => {
+    const probe = mountProbe(
+      <Probe id="queued">
+        <TabIndicator thread={thread({ status: 'queued' })} />
+      </Probe>,
+    )
+    expect(probe.container.textContent).toContain('Queued')
+    expect(clockForTest.listeners()).toBe(0)
+    probe.unmount()
+  })
+})

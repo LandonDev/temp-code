@@ -71,8 +71,10 @@ export const WorkingStrip = memo(function WorkingStrip({
   const starting = status === "starting";
   const paused = status === "paused";
   const stopped = status === "stopped";
+  // Created, not booted (CLAUDE.md "Master threads"): one quiet word, no clock.
+  const queued = status === "queued";
   const active = running || starting;
-  const visible = active || paused || stopped;
+  const visible = active || paused || stopped || queued;
   const turnStart = turnStartOf(session);
 
   const shown = usePaneVisible();
@@ -151,6 +153,8 @@ export const WorkingStrip = memo(function WorkingStrip({
           </>
         ) : starting ? (
           <span>Sending…</span>
+        ) : queued ? (
+          <span>Queued</span>
         ) : (
           <>
             <MatrixSpinner tint={session.activityKind} />

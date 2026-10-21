@@ -14,6 +14,7 @@ public enum Fleet {
         }
     }
 
+    /// A queued thread (created, not booted) is not live, whatever its rank.
     public static func isLive(_ status: SessionStatus?) -> Bool {
         status == .running || status == .starting
     }

@@ -245,6 +245,10 @@ export const METHOD_CAPABILITY: Record<ClientRequest['method'], MethodCapability
   'workspace.setAccounts': 'admin',
   'project.setPreamble': 'admin',
   'workspace.setPreamble': 'admin',
+  'project.setMaster': 'admin',
+  // A master thread's batch (contract-batch.ts): read only.
+  'batch.get': 'read',
+  'batch.children': 'read',
   'linear.setToken': 'admin',
   // A paired phone registers its own push token (thread L6): the key's own row, read suffices.
   'remote.push.register': 'read',

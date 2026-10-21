@@ -304,6 +304,10 @@ export type Session = {
   implementationId?: string | null;
   /** Build threads: the planning thread the plan came from. */
   planThreadId?: string | null;
+  /** The master thread this root thread belongs to (not a parent). */
+  masterId?: string | null;
+  /** A queued thread's sibling: the session it waits for before it boots. */
+  after?: string | null;
   /** Parent session for subagent children. */
   parentId?: string | null;
   agentType?: AgentType;

@@ -128,6 +128,8 @@ describe("tabThreadActions", () => {
     expect(tabThreadActions("paused")).toEqual(["resume", "stop"]);
     expect(tabThreadActions("waiting")).toEqual(["stop"]);
     expect(tabThreadActions("idle")).toEqual([]);
+    // Created, not booted: nothing to pause or stop yet.
+    expect(tabThreadActions("queued")).toEqual([]);
     expect(tabThreadActions(undefined)).toEqual([]);
   });
 });

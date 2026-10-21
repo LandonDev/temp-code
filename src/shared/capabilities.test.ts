@@ -66,6 +66,7 @@ describe('METHOD_CAPABILITY', () => {
         'build.set',
         'appshots.set',
         'project.setAccounts',
+        'project.setMaster',
         'workspace.setAccounts',
         'project.setPreamble',
         'workspace.setPreamble',

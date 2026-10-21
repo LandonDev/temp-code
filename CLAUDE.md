@@ -1081,6 +1081,42 @@ renderer turns the Archive done checkbox on. Proof:
   `bun run script:e2e-project-plan` (a real haiku project plan, then a haiku
   milestone plan).
 
+## Master threads: the shapes (wave 0)
+- A project can pin one thread as its master (`projects.master_thread_id`,
+  `ProjectMeta.masterThreadId`, RPC `project.setMaster { projectId,
+  threadId | null }`, admin, answered to clients as the `projects` push).
+  The master starts, watches and steers a batch of ROOT threads, not
+  subagents: each child is a thread of any type, model, effort, context
+  window and host that carries the master's id (`sessions.master_id`,
+  `SessionMeta.masterId`, `session.create { masterId }`) and, when it must
+  wait for a sibling, that sibling's id (`after_id`, `after`). A thread the
+  host cannot run yet sits in the `queued` status (SessionStatusSchema): not
+  live, never counted against a cap, never resumed by the boot resumer or the
+  liveness sweep; drawn as a still gray dot in the rail, "Queued" on the tab
+  edge and the working strip, Pause and Stop leave it (threadBatch.ts). The
+  model policy's `approved` is `true` | `'orchestrators'` | `false`
+  (shared/rules.ts; `modelApproved(rules, provider, model, role)` with
+  `policyRoleOf(session)`: an orchestration thread or an orchestrator agent
+  is `'orchestrator'`), so a model such as Fable can be approved for
+  orchestrators and masters only; spawn_agent's table and refusal respect it,
+  Settings → Orchestration's model row is Everyone / Orchestrators only /
+  Off. The batch over the wire is src/shared/contract-batch.ts
+  (`BatchStep` land | gate | release, `BatchState`, `batch.get` and
+  `batch.children`, read), answered by src/main/server/batch.ts. The
+  master's view is `MasterView` (surfaces/threads, routed when the session is
+  its project's master; the chat alone for now).
+- Waves 1 and 2 fill the shapes: the pin and the supervision tools widened
+  to the master's children with settle reports to the master; the scheduler
+  that queues over a host cap or an unmet `after` and starts a queued thread
+  when a slot frees; app_start_thread checking the policy by role (the
+  `// wave 1: policy check` comment at its resolveModel call); the gate out
+  of the children (merge_branch runs typecheck alone for a batch child, the
+  batch's end runs the commit tier once on the merged tree) with the steps
+  of `batch.get` filled in; the MasterView board (children by Needs you /
+  Running / Queued / Done, the batch steps under the list, the add sheet);
+  then the proof script, the docs and the phone's fold. Nothing in wave 0
+  sets `queued`, `masterId` or the pin.
+
 ## The prod worktree is retired
 ~/IdeaProjects/temp-code-prod was the old local updater's build checkout.
 The updater no longer reads it or the source repo at all; it can stay

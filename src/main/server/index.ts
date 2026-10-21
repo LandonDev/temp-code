@@ -128,6 +128,7 @@ import {
   setProjectPlans
 } from './apptools'
 import { ProjectPlans, handleProjectPlan } from './projectPlan'
+import { handleBatch } from './batch'
 import { DEFAULT_RULES } from '@shared/rules'
 import { DEFAULT_THREAD_DEFAULTS } from '@shared/defaults'
 import { DEFAULT_PLAN_SETTINGS } from '@shared/plans'
@@ -1010,6 +1011,8 @@ export async function startServer(
         if (req.method === 'deploy.master') return sendFrame({ id: req.id, ok: true, result: masterRelease.current() })
         const planned = handleProjectPlan(req, projectPlans)
         if (planned.handled) return sendFrame({ id: req.id, ok: true, result: planned.result })
+        const batched = handleBatch(req, registry)
+        if (batched.handled) return sendFrame({ id: req.id, ok: true, result: batched.result })
         const macBridged = handleMacBridge(req, macBridge)
         if (macBridged.handled) return sendFrame({ id: req.id, ok: true, result: macBridged.result })
         const devices = await handleHostDevices(req, hostDevices, { connection, send: sendFrame })
@@ -1126,6 +1129,10 @@ export async function startServer(
             break
           case 'workspace.setPreamble':
             registry.setWorkspacePreamble(req.params.workspaceId, req.params.preamble, req.params.enabled)
+            sendFrame({ id: req.id, ok: true, result: null })
+            break
+          case 'project.setMaster':
+            registry.setProjectMaster(req.params.projectId, req.params.threadId)
             sendFrame({ id: req.id, ok: true, result: null })
             break
           case 'project.setBranch':

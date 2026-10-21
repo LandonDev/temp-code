@@ -13,6 +13,7 @@ import { MacBridgeRequestSchemas } from './contract-macbridge'
 import { CrossHostRequestSchemas } from './contract-crosshost'
 import { MacBridgeRulesRequestSchemas } from './contract-macbridge-rules'
 import { ProjectPlanRequestSchemas } from './contract-projectplan'
+import { BatchRequestSchemas } from './contract-batch'
 import { MacJobRequestSchemas } from './contract-macjobs'
 import { HostRequestSchemas } from './contract-host'
 import { HostDevicesRequestSchemas } from './contract-hostdevices'
@@ -78,7 +79,11 @@ export const CreateSessionParams = z.object({
   /** set this goal on the harness before the kickoff message (plan Start) */
   goal: z.string().optional(),
   /** the thread that starts this one through app_start_thread (told when a plan here completes) */
-  startedBy: z.string().optional()
+  startedBy: z.string().optional(),
+  /** master threads: the master this root thread belongs to */
+  masterId: z.string().optional(),
+  /** master threads: the sibling a queued thread waits for before it boots */
+  after: z.string().optional()
 })
 export type CreateSessionParams = z.infer<typeof CreateSessionParams>
 /** Pre-parse shape (defaults still optional) — what callers construct. */
@@ -128,6 +133,8 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
   ...MacBridgeRulesRequestSchemas,
   // The project plan (contract-projectplan.ts): pin, ticks, milestone links.
   ...ProjectPlanRequestSchemas,
+  // A master thread's batch (contract-batch.ts): its steps and its children.
+  ...BatchRequestSchemas,
   ...MacJobRequestSchemas,
   ...HostRequestSchemas,
   ...HostDevicesRequestSchemas,
@@ -211,6 +218,12 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
     id: z.string(),
     method: z.literal('workspace.setPreamble'),
     params: z.object({ workspaceId: z.string(), preamble: z.string().nullable(), enabled: z.boolean() })
+  }),
+  // The project's master thread (CLAUDE.md "Master threads"): pin one, or null to unpin.
+  z.object({
+    id: z.string(),
+    method: z.literal('project.setMaster'),
+    params: z.object({ projectId: z.string(), threadId: z.string().nullable() })
   }),
   z.object({
     id: z.string(),

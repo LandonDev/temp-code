@@ -50,3 +50,17 @@ describe('WorkingStrip: a stopped run', () => {
     probe.unmount()
   })
 })
+
+describe('WorkingStrip: a queued thread', () => {
+  it('says Queued with no clock and no buttons', () => {
+    const probe = mountProbe(
+      <Probe id="strip">
+        <WorkingStrip session={session({ status: 'queued' })} onStop={() => {}} onResume={() => {}} />
+      </Probe>,
+    )
+    expect(probe.container.textContent).toBe('Queued')
+    expect(probe.container.querySelector('.opacity-100')).not.toBeNull()
+    expect(probe.container.querySelectorAll('button')).toHaveLength(0)
+    probe.unmount()
+  })
+})

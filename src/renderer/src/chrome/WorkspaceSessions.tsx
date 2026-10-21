@@ -207,7 +207,10 @@ function StatusDot({ status }: { status: ThreadRow["status"] }) {
         ? "bg-danger"
         : status === "starting" || status === "watching"
           ? "bg-content/40 motion-safe:animate-pulse"
-          : null;
+          : status === "queued"
+            ? // Created, not booted: the starting dot, still, since nothing moves yet.
+              "bg-content/40"
+            : null;
   return cls ? (
     <span className={`size-1.5 shrink-0 rounded-full ${cls}`} />
   ) : null;
