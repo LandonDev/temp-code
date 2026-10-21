@@ -73,6 +73,8 @@ public actor TempCodeSocket {
     private var halted = false
     /// The next `lost` is the background grace closing the socket, not a failure.
     private var suspending = false
+    /// Clock ms when the app left the foreground; the return compares it with the grace.
+    private var backgroundedAt: Double?
     /// Bumps on stop/retry so a walk still in flight drops its result.
     private var generation = 0
 
@@ -166,13 +168,25 @@ public actor TempCodeSocket {
 
     /// The app came forward (probe, or reconnect at once) or went to the
     /// background (close after the grace and wait).
+    ///
+    /// Coming forward with a session still held: within the grace the session
+    /// is probed with one cheap read and kept when it answers. Past the grace
+    /// the process slept before the grace timer could run (iOS freezes the
+    /// app seconds after it leaves the screen), so the socket under it is
+    /// stale: it is replaced at once rather than probed for five seconds.
     public func setForeground(_ foreground: Bool) {
         self.foreground = foreground
         guard !stopped else { return }
         if foreground {
             clearGrace()
-            if session != nil {
-                probe(.foreground)
+            let away = backgroundedAt.map { clock.now - $0 } ?? 0
+            backgroundedAt = nil
+            if let session {
+                if away >= config.backgroundGraceMs {
+                    replaceStale(session, away: away)
+                } else {
+                    probe(.foreground)
+                }
             } else if status.transport == .suspended || status.transport == .reconnecting || status.transport == .connecting {
                 clearRetry()
                 attempt()
@@ -180,6 +194,7 @@ public actor TempCodeSocket {
             return
         }
         clearGrace()
+        backgroundedAt = clock.now
         if session == nil {
             clearRetry()
             attempting?.cancel()
@@ -490,6 +505,19 @@ public actor TempCodeSocket {
     }
 
     // MARK: - background
+
+    /// The app slept through the grace with the socket still held: close it
+    /// and reconnect now. The `local` close reconnects with no delay.
+    private func replaceStale(_ stale: Transport, away: Double) {
+        suspending = false
+        probing?.cancel()
+        probing = nil
+        Task { [weak self] in
+            let reason = CloseReason(kind: .local, message: "stale after \(Int(away / 1000)) s in the background")
+            await stale.close(reason)
+            await self?.lost(stale, reason)
+        }
+    }
 
     private func suspend() async {
         graceTimer = nil

@@ -30,6 +30,16 @@ final class AppModel: PushHandler {
         let store = EnvironmentStore(directory: EnvironmentStore.defaultDirectory(), keys: KeychainKeyStore())
         let cache = (try? SessionCache(path: SessionCache.defaultPath())) ?? (try! SessionCache.inMemory())
         registry = ClientRegistry(store: store, cache: cache)
+        // A change nobody is looking at lands with animations off: rows that
+        // arrived while the person was elsewhere are simply there on return.
+        registry.setQuietly { body in
+            var transaction = Transaction(animation: nil)
+            transaction.disablesAnimations = true
+            withTransaction(transaction) { body() }
+        }
+        // The clients exist before the first frame: a restored thread route
+        // resolves at once and paints its thread from the cache.
+        registry.prepare()
         #if DEBUG
         launchRoute = ProcessInfo.processInfo.environment["TC_TEST_ROUTE"]
         launchThread = ProcessInfo.processInfo.environment["TC_TEST_THREAD"].flatMap { $0.isEmpty ? nil : $0 }
@@ -48,6 +58,7 @@ final class AppModel: PushHandler {
         registry.setSessionObserver { [weak self] client, metas in
             guard let self else { return }
             activities.apply(client, metas, registry: registry)
+            refreshBadge()
         }
         await applyLaunchPairing()
         await registry.sync()
@@ -67,11 +78,50 @@ final class AppModel: PushHandler {
         switch phase {
         case .active:
             await registry.setForeground(true)
+            settleAfterReturn()
             await refreshPushPermission()
-        case .background: await registry.setForeground(false)
+        case .background:
+            settling?.cancel()
+            await registry.setForeground(false)
         default: break
         }
     }
+
+    /// What is on screen, from the root view: the thread (if any) and whether
+    /// Home's lists are. The clients publish everything else quietly.
+    func setVisible(thread: ThreadKey?, listVisible: Bool) {
+        registry.setVisible(environmentId: thread?.environmentId, sessionId: thread?.sessionId, listVisible: listVisible)
+    }
+
+    private var settling: Task<Void, Never>?
+
+    /// Once every host has caught up on its live session (or has none to
+    /// catch up on), the lock screen and the badge are brought in line with
+    /// what the app now shows: an activity whose thread finished while the
+    /// phone was away ends, the badge counts what needs the person.
+    private func settleAfterReturn() {
+        settling?.cancel()
+        settling = Task { [weak self] in
+            guard let self else { return }
+            for _ in 0..<400 {
+                if Task.isCancelled { return }
+                if registry.allFresh { break }
+                try? await Task.sleep(for: .milliseconds(50))
+            }
+            guard !Task.isCancelled else { return }
+            activities.reconcile(registry)
+            refreshBadge()
+        }
+    }
+
+    /// The badge is Home's Needs you count across every host, never a push's own number.
+    func refreshBadge() {
+        let count = registry.ordered.reduce(0) { $0 + HomeModel.needsYou($1.sessions).count }
+        guard count != badge else { return }
+        badge = count
+        Task { try? await UNUserNotificationCenter.current().setBadgeCount(count) }
+    }
+    private var badge = -1
 
     // MARK: - push
 

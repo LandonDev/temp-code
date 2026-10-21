@@ -183,6 +183,92 @@ struct LiveServerTests {
         await client.stop()
     }
 
+    // MARK: - leaving and coming back
+
+    @Test func `the background closes the socket after the grace and coming back lands the rows appended while away, once`() async throws {
+        var configuration = SocketConfiguration()
+        configuration.backgroundGraceMs = 300
+        let client = EnvironmentClient(environment: LiveServer.environment(), keys: try LiveServer.keys(), cache: try SessionCache.inMemory(), configuration: configuration)
+        let quiet = Mutex(0)
+        client.quietly = { body in
+            quiet.withLock { $0 += 1 }
+            body()
+        }
+        await client.start()
+        #expect(await LiveServer.until { client.status.fresh })
+        await client.openThread(LiveServer.threadB)
+        client.visibleThread = LiveServer.threadB
+        #expect(await LiveServer.until { client.threads[LiveServer.threadB]?.isLive == true && (client.threads[LiveServer.threadB]?.rows.count ?? 0) >= 3 })
+        let before = client.threads[LiveServer.threadB]!.rows
+        let quietBefore = quiet.withLock { $0 }
+
+        await client.setForeground(false)
+        #expect(await LiveServer.until { client.status.transport == .suspended })
+        #expect(client.threads[LiveServer.threadB]?.isLive == false)
+        #expect(client.threads[LiveServer.threadB]?.rows.count == before.count, "the screen keeps what it had")
+        _ = try await LiveServer.control("/append", ["sessionId": LiveServer.threadB, "count": 5])
+
+        await client.setForeground(true)
+        #expect(await LiveServer.until(15) { client.status.transport == .open && client.threads[LiveServer.threadB]?.isLive == true })
+        #expect(await LiveServer.until { (client.threads[LiveServer.threadB]?.rows.count ?? 0) == before.count + 5 })
+        #expect(await LiveServer.until { client.status.fresh })
+        let rows = client.threads[LiveServer.threadB]!.rows
+        let seqs = rows.map(\.seq)
+        #expect(seqs == seqs.sorted())
+        #expect(Set(seqs).count == seqs.count)
+        #expect(seqs.last! - seqs.first! + 1 == seqs.count, "no gap in \(seqs)")
+        #expect(Array(rows.prefix(before.count)) == before, "the rows that were there are the same rows")
+        #expect(quiet.withLock { $0 } == quietBefore, "the thread on screen caught up with its own motion, nothing else republished")
+        await client.stop()
+    }
+
+    @Test func `a cold launch paints the thread you left from the cache and the catch-up applies as a diff`() async throws {
+        let cache = try SessionCache.inMemory()
+        let first = EnvironmentClient(environment: LiveServer.environment(), keys: try LiveServer.keys(), cache: cache)
+        await first.start()
+        #expect(await LiveServer.until { first.status.fresh })
+        await first.openThread(LiveServer.threadB)
+        #expect(await LiveServer.until { first.threads[LiveServer.threadB]?.isLive == true })
+        let left = first.threads[LiveServer.threadB]!.rows
+        let listed = first.sessions
+        await first.stop()
+        _ = try await LiveServer.control("/append", ["sessionId": LiveServer.threadB, "count": 3])
+
+        // The next launch: the screen is painted from the cache before anything connects.
+        let next = EnvironmentClient(environment: LiveServer.environment(), keys: try LiveServer.keys(), cache: cache)
+        await next.openThread(LiveServer.threadB)
+        #expect(next.threads[LiveServer.threadB]?.rows == left)
+        #expect(next.threads[LiveServer.threadB]?.isLoading == false)
+        #expect(next.threads[LiveServer.threadB]?.isLive == false)
+        await next.start()
+        #expect(next.sessions == listed, "the shell is the one the last run saw")
+        #expect(await LiveServer.until(15) { next.threads[LiveServer.threadB]?.isLive == true && (next.threads[LiveServer.threadB]?.rows.count ?? 0) == left.count + 3 })
+        let rows = next.threads[LiveServer.threadB]!.rows
+        #expect(Array(rows.prefix(left.count)) == left)
+        #expect(Set(rows.map(\.seq)).count == rows.count)
+        await next.stop()
+    }
+
+    @Test func `a host that is down leaves the other host's client untouched`() async throws {
+        let live = EnvironmentClient(environment: LiveServer.environment(), keys: try LiveServer.keys(), cache: try SessionCache.inMemory())
+        let keys = InMemoryKeyStore()
+        try keys.set("tc_dead.secret", for: "env_dead")
+        let dead = EnvironmentClient(environment: PairedEnvironment(id: "env_dead", name: "dead host", origin: URL(string: "http://127.0.0.1:9")!, caps: [.read], keyId: "dead", keyName: "ios-test", addedAt: 0), keys: keys, cache: try SessionCache.inMemory())
+        await live.start()
+        await dead.start()
+        #expect(await LiveServer.until { live.status.fresh })
+        #expect(await LiveServer.until(15) { dead.status.attempts >= 1 && dead.status.nextRetryAt != nil })
+        #expect(dead.status.transport == .connecting)
+        await live.openThread(LiveServer.threadB)
+        #expect(await LiveServer.until { live.threads[LiveServer.threadB]?.isLive == true })
+        let before = live.threads[LiveServer.threadB]?.rows.count ?? 0
+        _ = try await LiveServer.control("/append", ["sessionId": LiveServer.threadB, "count": 2])
+        #expect(await LiveServer.until { (live.threads[LiveServer.threadB]?.rows.count ?? 0) == before + 2 })
+        #expect(live.status.fresh)
+        await dead.stop()
+        await live.stop()
+    }
+
     @Test func `revoking the key closes the socket as unauthorized and nothing retries`() async throws {
         // A second key so the suite's own key survives.
         let api = RemoteAPI()

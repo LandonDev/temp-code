@@ -161,9 +161,14 @@ public final class Subscriptions {
     }
 
     /// After a replacement session: every member subscribes and resumes
-    /// again, a few at a time.
-    public func resumeAll(tail: Int) async {
-        let ids = self.ids
+    /// again, a few at a time. `first` goes in the first batch, ahead of the
+    /// rest: the thread on screen is the one the person is waiting on.
+    public func resumeAll(tail: Int, first: String? = nil) async {
+        var ids = self.ids
+        if let first, let at = ids.firstIndex(of: first) {
+            ids.remove(at: at)
+            ids.insert(first, at: 0)
+        }
         var start = 0
         while start < ids.count {
             let end = min(start + resumeConcurrency, ids.count)

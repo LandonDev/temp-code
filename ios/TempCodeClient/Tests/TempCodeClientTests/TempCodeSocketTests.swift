@@ -292,6 +292,33 @@ func eventually(_ condition: @Sendable () -> Bool) async -> Bool {
         #expect(await rig.status().transport == .open)
     }
 
+    @Test func `coming forward after sleeping through the grace replaces the socket at once instead of probing`() async throws {
+        let rig = Rig()
+        await rig.socket.start()
+        let fake = await rig.open(0)
+        #expect(await rig.wait(for: .open))
+        await rig.socket.setForeground(false)
+        // iOS froze the process: five minutes pass with the grace timer never run.
+        rig.clock.skip(ms: 300_000)
+        await rig.socket.setForeground(true)
+        let next = await rig.sockets.socket(1)
+        #expect(fake.cancelledWith?.reason == "local")
+        #expect(fake.sentRequests.isEmpty, "no probe on a socket that slept through the grace")
+        #expect(await rig.status().transport == .reconnecting)
+        #expect(await rig.status().nextRetryAt == nil)
+        next.hello()
+        #expect(await rig.wait(for: .open))
+        // Before the grace it is still a probe, and a quick answer keeps the socket.
+        await rig.socket.setForeground(false)
+        rig.clock.skip(ms: 2_000)
+        await rig.socket.setForeground(true)
+        await next.waitForSent(1)
+        #expect(next.sentRequests[0].method == "workspace.list")
+        next.answer(id: next.sentRequests[0].id, result: "[]")
+        #expect(await rig.wait { $0.fresh })
+        #expect(rig.sockets.sockets.count == 2)
+    }
+
     @Test func `offline waits and online probes`() async throws {
         let rig = Rig()
         await rig.socket.start()

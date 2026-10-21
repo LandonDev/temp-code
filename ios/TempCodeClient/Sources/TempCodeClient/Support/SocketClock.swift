@@ -118,6 +118,13 @@ public final class ManualClock: SocketClock {
         }
     }
 
+    /// Moves time forward without waking anyone: the process was frozen and
+    /// its timers never ran, as iOS does to an app in the background. The
+    /// sleepers fire on the next `advance`.
+    public func skip(ms: Double) {
+        state.withLock { $0.now += ms }
+    }
+
     /// Lets every task that is ready run, without moving time.
     public func settle() async {
         for _ in 0..<16 { await Task.yield() }

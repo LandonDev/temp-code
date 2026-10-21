@@ -2,15 +2,26 @@ import SwiftUI
 import TempCodeClient
 
 /// Three tabs: Home, Inbox, Search. Settings is a button in the Home bar.
+/// The tab and the three stacks come back from `NavigationMemory` before the
+/// first frame, so a cold launch opens on the screen the app was killed on.
 struct RootView: View {
     @Environment(AppModel.self) private var model
     @Environment(NavigationRouter.self) private var router
+    @Environment(\.scenePhase) private var scenePhase
     @AppStorage("appearance") private var appearance = Appearance.system
-    @State private var tab = AppTab.home
-    @State private var homePath = NavigationPath()
-    @State private var inboxPath = NavigationPath()
-    @State private var searchPath = NavigationPath()
+    @State private var tab: AppTab
+    @State private var homePath: NavigationPath
+    @State private var inboxPath: NavigationPath
+    @State private var searchPath: NavigationPath
     @State private var routed = false
+
+    init() {
+        let memory = NavigationMemory.restore()
+        _tab = State(initialValue: memory?.tab ?? .home)
+        _homePath = State(initialValue: NavigationMemory.path(memory?.home))
+        _inboxPath = State(initialValue: NavigationMemory.path(memory?.inbox))
+        _searchPath = State(initialValue: NavigationMemory.path(memory?.search))
+    }
 
     var body: some View {
         TabView(selection: $tab) {
@@ -35,6 +46,12 @@ struct RootView: View {
         }
         .preferredColorScheme(appearance.scheme)
         .task(id: model.ready) { await followLaunchRoute() }
+        .onChange(of: tab) { remember() }
+        .onChange(of: homePath) { remember() }
+        .onChange(of: inboxPath) { remember() }
+        .onChange(of: searchPath) { remember() }
+        .onChange(of: router.visible) { reportVisibility() }
+        .onChange(of: scenePhase) { reportVisibility() }
         // A notification or Live Activity tap: the Home stack becomes the thread, on its card.
         .onChange(of: router.pending) { _, route in
             guard let route else { return }
@@ -46,6 +63,20 @@ struct RootView: View {
         .onOpenURL { url in
             if let target = PushTarget(url: url) { router.open(target) }
         }
+    }
+
+    /// Every change of where the person is, written at once: the write is one
+    /// small defaults key, and the background has no reliable last moment.
+    private func remember() {
+        NavigationMemory.save(.init(tab: tab, home: homePath.codable, inbox: inboxPath.codable, search: searchPath.codable))
+        reportVisibility()
+    }
+
+    /// What is on screen, for the clients: Home's lists when the Home tab shows
+    /// its root; the thread the thread screen reported. Off screen, nothing.
+    private func reportVisibility() {
+        let active = scenePhase == .active
+        model.setVisible(thread: active ? router.visible : nil, listVisible: active && tab == .home && homePath.isEmpty)
     }
 
     @ViewBuilder
