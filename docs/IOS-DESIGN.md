@@ -101,6 +101,63 @@ the bottom, compact, growing on focus, with the desktop's reserved 28 pt
 working strip above it: spinner, flavour word, elapsed; paused shows the
 warning row with Stop and Continue. The strip never changes height.
 
+### The composer, the strip, the cards' actions, the sheets
+
+The composer is Messages' at its best (`Thread/Composer.swift`,
+`Thread/ComposerStyles.swift`): one 12 pt continuous field on the chrome
+step with a 1 px hairline, 36 pt for one line of `body`, growing with the
+text to five lines and scrolling past that. The send button sits inside the
+field at the trailing edge, a 28 pt circle 4 pt from the field's edge, on
+the last line while the text grows. It fills in the accent only once there
+is text (the fill and glyph color cross-fade in 150 ms; empty it is the
+tertiary fill with the arrow in the tertiary label) and becomes Stop,
+filled in the label color, while a turn runs and the box is empty: the
+glyph swap is the 150 ms cross-fade with 2 pt of blur and the circle never
+moves. The desktop's composer has no confirm on Stop, so neither does the
+phone. On focus a chip row appears above the field (200 ms ease-out, 4 pt
+of travel): the model and, for a model with levels, the reasoning, each a
+26 pt chip at the row radius on the tertiary fill opening a menu over the
+host's catalog (`catalog.get`, the same list the desktop's picker shows,
+one section per provider with a check on the current model). A pick rides
+on the next send as `session.send`'s `provider`, `model` and `reasoning`
+(`TurnModel.override` sends nothing when the chips match the thread) and
+the chips follow the thread's model again once it lands. A read key, a
+halted host or a dropped link (after the desktop's 1.5 s grace) puts the
+reason in the field in place of the placeholder; the field is off and the
+button sits empty. A light impact on send and on a decision, never on
+typing. The list behind it dismisses the keyboard interactively.
+
+The working strip (`Thread/WorkingStrip.swift`) keeps its 28 pt whatever
+it shows and sits on the composer's text edge (24 pt from the screen edge):
+Sending… between a send and the turn's start; the mini spinner, the flavour
+word (turning every seven seconds in the 150 ms cross-fade) and the elapsed
+in tabular digits; the paused row in the warning tint at 10 % with the
+pause glyph, Paused, the frozen elapsed, then Stop (a quiet capsule on the
+tertiary fill) and Continue (a warning capsule with a white label). Only
+opacity animates, in 120 ms.
+
+The live cards' actions (`Thread/CardActions.swift`; the cards' rendering
+stays in `Thread/TranscriptRows.swift`) are full-width 40 pt buttons at the
+card's bottom, at the row radius (the card's 12 less its 12 of padding):
+Allow prominent in the accent with a white semibold label, Deny quiet on
+the tertiary fill; Answer prominent, at half opacity until every question
+has a choice. A decision shows the moment it is tapped (the client records
+it before the wire), the buttons fade as the card settles in 200 ms
+ease-out, and a refusal rolls the decision back with one quiet secondary
+line ("Not allowed: …") that the next decision clears. A key that cannot
+approve sees the reason in the buttons' place; a link down for a moment
+sees them at half opacity with the reason under them.
+
+The sheets (`Shell/ThreadSheets.swift`) are the system sheet at medium and
+large, 16 pt corners, the drag indicator shown, Cancel on the left and the
+one confirming verb (Start, Create, Save) semibold on the right, off until
+the form is valid. The type is a grouped inline list: the type's glyph
+tinted at the label's weight, the label, the desktop's one-line hint, the
+system check on the chosen one. The model and reasoning rows read as menu
+pickers (value in secondary, the up-down chevron in tertiary) and open the
+same catalog menus as the composer's chips. Rename is one field with the
+title, Save off until it reads differently.
+
 Where the desktop splits board and chat side by side, the phone uses a
 segmented control under the header with two segments and a swipe between
 them. The segment chosen is remembered per thread. A dot on the inactive
@@ -243,6 +300,10 @@ Values are exact.
 | Row expand (todo trace, tool body) | spring `duration 0.35, bounce 0`; content fades in 150 ms after the height starts; collapse 200 ms ease-out |
 | Needs-you row appearing | 200 ms ease-out, opacity and 8 pt translateY; removal 150 ms opacity only |
 | Last-activity line changing | 150 ms cross-fade with 2 pt blur; the row never changes height |
+| Send button filling | fill and glyph color 150 ms ease-out when text arrives or leaves; Send ↔ Stop glyph 150 ms cross-fade with 2 pt blur, the circle never moves |
+| Composer chip row | appears on focus: 200 ms ease-out, opacity and 4 pt translateY; leaves the same way |
+| Card decided | buttons fade, card settles 200 ms ease-out; a refusal's quiet line cross-fades in 150 ms |
+| Haptics | light impact on send and on a decision; nothing on keyboard input |
 | Counts and elapsed | `contentTransition(.numericText())` |
 | Streaming text | none; append only |
 | Status dot to spinner | cross-fade 150 ms |

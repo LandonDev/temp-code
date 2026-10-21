@@ -111,6 +111,43 @@ public struct PendingTurn: Sendable, Hashable, Identifiable {
 /// The catalog a host serves: providers with the models the installed CLIs can run.
 public typealias Catalog = [String: ProviderInfo]
 
+/// What the composer's chips ask of the next turn: the desktop's
+/// `RunSettings`, where an absent field keeps the thread's own. Built with
+/// `override(for:provider:model:reasoning:)`, which sends nothing when the
+/// choice is the thread's current model, so a turn that changed nothing
+/// carries no settings at all.
+public struct TurnModel: Sendable, Hashable {
+    public var provider: ProviderId?
+    public var model: String?
+    public var reasoning: Reasoning?
+
+    public init(provider: ProviderId? = nil, model: String? = nil, reasoning: Reasoning? = nil) {
+        self.provider = provider
+        self.model = model
+        self.reasoning = reasoning
+    }
+
+    /// Nothing differs from the thread: the send carries no settings.
+    public var isEmpty: Bool { provider == nil && model == nil && reasoning == nil }
+
+    /// The settings for a turn on `session` with the chips at `provider`,
+    /// `model` and `reasoning`: nil when every chip matches the thread. A
+    /// model change always names its provider (the host switches harness by
+    /// the provider a model came with); a reasoning change alone names only
+    /// the level, and a reasoning the model does not offer is left to the
+    /// host's default.
+    public static func override(for session: SessionMeta, provider: ProviderId, model: String, reasoning: Reasoning?) -> TurnModel? {
+        let modelChanged = provider != session.provider || model != session.model
+        let reasoningChanged = reasoning != nil && reasoning != session.reasoning
+        guard modelChanged || reasoningChanged else { return nil }
+        return TurnModel(
+            provider: modelChanged ? provider : nil,
+            model: modelChanged ? model : nil,
+            reasoning: reasoningChanged || modelChanged ? reasoning : nil
+        )
+    }
+}
+
 /// Everything a `session.create` takes from the phone, with the desktop's
 /// two recipes: a build seeded from a plan (PlanView's Start) and a fresh
 /// thread from the chooser. Pure, so the payloads are tested without a host.
@@ -241,13 +278,13 @@ extension EnvironmentClient {
     /// the strip says Sending… until the host echoes it or starts the turn;
     /// a refusal (not connected, a read-only key, the host saying no) drops
     /// the pending turn and throws the reason.
-    public func send(_ sessionId: String, text: String, newPass: Bool? = nil) async throws {
+    public func send(_ sessionId: String, text: String, model: TurnModel? = nil, newPass: Bool? = nil) async throws {
         if let block = operateBlock { throw ActionError.blocked(block) }
         let turn = PendingTurn(text: text, sentAt: Int(Date().timeIntervalSince1970 * 1000))
         threads[sessionId]?.pending.append(turn)
         threads[sessionId]?.sending = true
         do {
-            try await request(Methods.SessionSend.self, .init(sessionId: sessionId, text: text, newPass: newPass))
+            try await request(Methods.SessionSend.self, .init(sessionId: sessionId, text: text, provider: model?.provider, model: model?.model, reasoning: model?.reasoning, newPass: newPass))
         } catch {
             threads[sessionId]?.pending.removeAll { $0.id == turn.id }
             if threads[sessionId]?.pending.isEmpty == true { threads[sessionId]?.sending = false }

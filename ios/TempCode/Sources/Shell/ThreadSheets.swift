@@ -2,124 +2,68 @@ import SwiftUI
 import TempCodeClient
 import TempCodeContract
 
-/// A provider and model as one choice in the catalog picker.
-struct ModelKey: Hashable {
-    var provider: ProviderId
-    var model: String
-}
+// The sheets that make or name a thread: Start a build from a plan, New
+// thread from a workspace or a project, Rename. Each is the system sheet
+// at medium and large, 16 pt corners, Cancel on the left and the one
+// confirming verb on the right, off until the form is valid. The type is a
+// grouped list with the type's glyph and the desktop's one-line hint; the
+// model and reasoning rows open the host's catalog (ComposerStyles.swift).
 
-/// The host's catalog as the sheets pick from it: providers in the
-/// desktop's order with the models the host can run (the host already
-/// hides what the installed CLI cannot), and the reasoning levels of the
-/// chosen model. Loads once per client and keeps the choice valid.
-@Observable
-final class CatalogChoice {
-    var key: ModelKey
-    var reasoning: Reasoning?
-    private(set) var catalog: Catalog?
-    private(set) var loading = false
-
-    init(provider: ProviderId, model: String, reasoning: Reasoning?) {
-        key = ModelKey(provider: provider, model: model)
-        self.reasoning = reasoning
-    }
-
-    static let providerOrder: [ProviderId] = [.claude, .codex, .cursor, .grok, .opencode, .pi, .omp, .fx]
-
-    /// Providers that have models, in the desktop's order.
-    var providers: [ProviderInfo] {
-        guard let catalog else { return [] }
-        return Self.providerOrder.compactMap { catalog[$0.rawValue] }.filter { !$0.models.isEmpty }
-            + catalog.values.filter { !Self.providerOrder.contains($0.id) && !$0.models.isEmpty }.sorted { $0.label < $1.label }
-    }
-
-    var model: ModelInfo? {
-        catalog?[key.provider.rawValue]?.models.first { $0.id == key.model }
-    }
-
-    var levels: [Reasoning] { model?.reasoning ?? [] }
-
-    func load(_ client: EnvironmentClient) async {
-        guard catalog == nil, !loading else { return }
-        loading = true
-        catalog = await client.loadCatalog()
-        loading = false
-        settle()
-    }
-
-    /// The choice stays on a model the host has; the reasoning on a level the model offers.
-    func settle() {
-        guard let catalog else { return }
-        if model == nil, let first = providers.first {
-            key = ModelKey(provider: first.id, model: first.defaultModel.isEmpty ? first.models[0].id : first.defaultModel)
-        }
-        _ = catalog
-        if let reasoning, !levels.contains(reasoning) { self.reasoning = nil }
-        if reasoning == nil { reasoning = model?.defaultReasoning ?? levels.first }
-    }
-
-    func choose(_ key: ModelKey) {
-        self.key = key
-        reasoning = nil
-        settle()
-    }
-}
-
-/// The model row and the reasoning row of a sheet, over the catalog.
+/// The model row and the reasoning row of a sheet, over the catalog: each
+/// a native-looking value row whose menu is the same one the composer's
+/// chips open. The reasoning row shows only for a model with levels.
 struct ModelReasoningRows: View {
     let client: EnvironmentClient
     @Bindable var choice: CatalogChoice
 
     var body: some View {
         Group {
-        if choice.catalog == nil {
-            HStack {
-                Text("Model")
-                Spacer()
-                if choice.loading {
-                    ProgressView()
-                        .controlSize(.small)
-                } else {
-                    Text("Unavailable")
-                        .foregroundStyle(.secondary)
+            if choice.catalog == nil {
+                LabeledContent("Model") {
+                    if choice.loading {
+                        ProgressView()
+                            .controlSize(.small)
+                    } else {
+                        Text("Unavailable")
+                            .foregroundStyle(.secondary)
+                    }
                 }
-            }
-        } else {
-            Picker("Model", selection: Binding(get: { choice.key }, set: { choice.choose($0) })) {
-                ForEach(choice.providers, id: \.id) { provider in
-                    Section(provider.label) {
-                        ForEach(provider.models, id: \.id) { model in
-                            Text(model.label).tag(ModelKey(provider: provider.id, model: model.id))
+            } else {
+                LabeledContent("Model") {
+                    ModelMenu(choice: choice) {
+                        ValueChevron(text: choice.modelLabel)
+                    }
+                }
+                .accessibilityElement(children: .combine)
+                if choice.levels.count > 1, let level = choice.reasoning {
+                    LabeledContent("Reasoning") {
+                        ReasoningMenu(choice: choice) {
+                            ValueChevron(text: level.label)
                         }
                     }
+                    .accessibilityElement(children: .combine)
                 }
             }
-            .pickerStyle(.navigationLink)
-            if choice.levels.count > 1 {
-                Picker("Reasoning", selection: Binding(get: { choice.reasoning ?? choice.levels[0] }, set: { choice.reasoning = $0 })) {
-                    ForEach(choice.levels, id: \.rawValue) { level in
-                        Text(level.label).tag(level)
-                    }
-                }
-                .pickerStyle(.menu)
-            }
-        }
         }
         .task { await choice.load(client) }
     }
 }
 
-extension Reasoning {
-    nonisolated var label: String {
-        switch self {
-        case .low: "Low"
-        case .medium: "Medium"
-        case .high: "High"
-        case .xhigh: "Extra high"
-        case .max: "Max"
-        case .ultra: "Ultra"
-        case .unknown(let value): value
+/// A row's value as the system draws a menu picker's: the value in
+/// secondary, the up-down chevron in the tertiary step beside it.
+private struct ValueChevron: View {
+    let text: String
+
+    var body: some View {
+        HStack(spacing: 5) {
+            Text(text)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+            Image(systemName: "chevron.up.chevron.down")
+                .font(.caption2.weight(.medium))
+                .foregroundStyle(.tertiary)
         }
+        .contentShape(Rectangle())
     }
 }
 
@@ -136,35 +80,66 @@ extension PermissionPolicy {
     static let choices: [PermissionPolicy] = [.safe, .edits, .auto]
 }
 
-/// One thread type to choose: the glyph tinted, the label, the desktop's hint.
+/// One thread type as a row of the grouped list: the glyph tinted and
+/// stroked to the label's weight, the label, the desktop's hint. The list
+/// draws the check.
 struct ThreadTypeRow: View {
     let type: ThreadType
-    let selected: Bool
 
     var body: some View {
         HStack(spacing: 12) {
             Image(systemName: type.symbol)
-                .font(.subheadline)
+                .font(.body.weight(.regular))
                 .foregroundStyle(type.tint)
-                .frame(width: 20)
+                .frame(width: 24)
             VStack(alignment: .leading, spacing: 2) {
                 Text(type.label)
                     .font(.body)
+                    .foregroundStyle(.primary)
                 Text(type.hint)
                     .font(.footnote)
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
             }
-            Spacer(minLength: 8)
-            if selected {
-                Image(systemName: "checkmark")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(Color.accentColor)
-            }
+            Spacer(minLength: 0)
         }
-        .contentShape(Rectangle())
+        .padding(.vertical, 2)
         .accessibilityElement(children: .combine)
-        .accessibilityAddTraits(selected ? .isSelected : [])
+    }
+}
+
+/// The type list: a grouped section of ThreadTypeRows with the system's
+/// check on the chosen one (an inline picker, so the rows highlight and
+/// read as a list and not as buttons).
+private struct ThreadTypeList: View {
+    let types: [ThreadType]
+    @Binding var type: ThreadType
+
+    var body: some View {
+        Section {
+            Picker("Type", selection: $type) {
+                ForEach(types, id: \.rawValue) { candidate in
+                    ThreadTypeRow(type: candidate).tag(candidate)
+                }
+            }
+            .pickerStyle(.inline)
+            .labelsHidden()
+        }
+    }
+}
+
+/// The footer under a sheet's form: the host's refusal, else a hint.
+private struct SheetFooter: View {
+    let error: String?
+    let hint: String?
+
+    var body: some View {
+        if let error {
+            Text(error)
+                .foregroundStyle(Tint.destructive)
+        } else if let hint {
+            Text(hint)
+        }
     }
 }
 
@@ -195,21 +170,11 @@ struct StartBuildSheet: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section {
-                    ForEach([ThreadType.implementation, .orchestration], id: \.rawValue) { candidate in
-                        Button { type = candidate } label: {
-                            ThreadTypeRow(type: candidate, selected: candidate == type)
-                        }
-                        .buttonStyle(.pressable)
-                    }
-                }
+                ThreadTypeList(types: [.implementation, .orchestration], type: $type)
                 Section {
                     ModelReasoningRows(client: client, choice: choice)
                 } footer: {
-                    if let error {
-                        Text(error)
-                            .foregroundStyle(Tint.destructive)
-                    }
+                    SheetFooter(error: error, hint: "Seeded from the plan, in \(URL(fileURLWithPath: plan.cwd).lastPathComponent).")
                 }
             }
             .navigationTitle("Start building")
@@ -223,7 +188,8 @@ struct StartBuildSheet: View {
                         ProgressView()
                     } else {
                         Button("Start") { Task { await start() } }
-                            .disabled(choice.catalog == nil && choice.loading)
+                            .font(.body.weight(.semibold))
+                            .disabled(choice.model == nil)
                     }
                 }
             }
@@ -231,6 +197,7 @@ struct StartBuildSheet: View {
         }
         .presentationDetents([.medium, .large])
         .presentationCornerRadius(Radius.sheet)
+        .presentationDragIndicator(.visible)
     }
 
     private func start() async {
@@ -285,14 +252,7 @@ struct NewThreadSheet: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section {
-                    ForEach(Self.types, id: \.rawValue) { candidate in
-                        Button { type = candidate } label: {
-                            ThreadTypeRow(type: candidate, selected: candidate == type)
-                        }
-                        .buttonStyle(.pressable)
-                    }
-                }
+                ThreadTypeList(types: Self.types, type: $type)
                 Section {
                     Picker("Project", selection: $projectId) {
                         Text("None").tag(String?.none)
@@ -311,12 +271,7 @@ struct NewThreadSheet: View {
                         .pickerStyle(.menu)
                     }
                 } footer: {
-                    if let error {
-                        Text(error)
-                            .foregroundStyle(Tint.destructive)
-                    } else if projectId == nil {
-                        Text("With no project the thread lives in \(workspace.name).")
-                    }
+                    SheetFooter(error: error, hint: projectId == nil ? "With no project the thread lives in \(workspace.name)." : nil)
                 }
             }
             .navigationTitle("New thread")
@@ -330,14 +285,16 @@ struct NewThreadSheet: View {
                         ProgressView()
                     } else {
                         Button("Create") { Task { await create() } }
+                            .font(.body.weight(.semibold))
                             .disabled(choice.model == nil)
                     }
                 }
             }
             .interactiveDismissDisabled(busy)
         }
-        .presentationDetents([.large])
+        .presentationDetents([.medium, .large])
         .presentationCornerRadius(Radius.sheet)
+        .presentationDragIndicator(.visible)
     }
 
     private func create() async {
@@ -351,6 +308,80 @@ struct NewThreadSheet: View {
             let created = try await client.createThread(draft)
             dismiss()
             onCreated(created)
+        } catch {
+            self.error = (error as? ActionError)?.message ?? String(describing: error)
+        }
+    }
+}
+
+// MARK: - Rename
+
+/// A thread's title: one field with the current title selected, Save off
+/// until it reads differently and is not blank. The row's new title arrives
+/// with the `sessions` push; a refusal stays in the footer.
+struct RenameSheet: View {
+    let client: EnvironmentClient
+    let session: SessionMeta
+    @Environment(\.dismiss) private var dismiss
+    @State private var title: String
+    @State private var busy = false
+    @State private var error: String?
+    @FocusState private var focused: Bool
+
+    init(client: EnvironmentClient, session: SessionMeta) {
+        self.client = client
+        self.session = session
+        _title = State(initialValue: session.title)
+    }
+
+    private var trimmed: String { title.trimmingCharacters(in: .whitespacesAndNewlines) }
+    private var valid: Bool { !trimmed.isEmpty && trimmed != session.title && client.operateBlock == nil }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    TextField("Title", text: $title)
+                        .focused($focused)
+                        .submitLabel(.done)
+                        .onSubmit { if valid { Task { await save() } } }
+                        .onChange(of: title) { error = nil }
+                } footer: {
+                    SheetFooter(error: error, hint: client.operateBlock.map { $0.text(now: Date().timeIntervalSince1970 * 1000) })
+                }
+            }
+            .navigationTitle("Rename")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    if busy {
+                        ProgressView()
+                    } else {
+                        Button("Save") { Task { await save() } }
+                            .font(.body.weight(.semibold))
+                            .disabled(!valid)
+                    }
+                }
+            }
+            .interactiveDismissDisabled(busy)
+            .onAppear { focused = true }
+        }
+        .presentationDetents([.medium])
+        .presentationCornerRadius(Radius.sheet)
+        .presentationDragIndicator(.visible)
+    }
+
+    private func save() async {
+        guard !busy, valid else { return }
+        busy = true
+        error = nil
+        defer { busy = false }
+        do {
+            try await client.rename(session.id, title: trimmed)
+            dismiss()
         } catch {
             self.error = (error as? ActionError)?.message ?? String(describing: error)
         }

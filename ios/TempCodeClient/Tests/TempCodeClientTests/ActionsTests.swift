@@ -199,6 +199,31 @@ private final class ActingRig {
 }
 
 @MainActor
+@Suite struct TurnModelTests {
+    @Test func `chips on the thread's own model send no settings`() {
+        let plan = planSession()
+        #expect(TurnModel.override(for: plan, provider: .claude, model: "claude-opus-5-5", reasoning: .high) == nil)
+        #expect(TurnModel.override(for: plan, provider: .claude, model: "claude-opus-5-5", reasoning: nil) == nil, "no level chosen keeps the thread's")
+    }
+
+    @Test func `a model change names its provider and carries the level chosen with it`() {
+        let plan = planSession()
+        let codex = TurnModel.override(for: plan, provider: .codex, model: "gpt-6.1-sol", reasoning: .xhigh)
+        #expect(codex == TurnModel(provider: .codex, model: "gpt-6.1-sol", reasoning: .xhigh))
+        let same = TurnModel.override(for: plan, provider: .claude, model: "claude-sonnet-5-5", reasoning: .high)
+        #expect(same == TurnModel(provider: .claude, model: "claude-sonnet-5-5", reasoning: .high), "the same level is sent with a new model, so the host does not fall back to its default")
+        let bare = TurnModel.override(for: plan, provider: .codex, model: "gpt-6-astra", reasoning: nil)
+        #expect(bare == TurnModel(provider: .codex, model: "gpt-6-astra", reasoning: nil))
+    }
+
+    @Test func `a level change alone names only the level`() {
+        let plan = planSession()
+        #expect(TurnModel.override(for: plan, provider: .claude, model: "claude-opus-5-5", reasoning: .medium) == TurnModel(reasoning: .medium))
+        #expect(TurnModel(reasoning: .medium).isEmpty == false)
+        #expect(TurnModel().isEmpty)
+    }
+}
+
 @Suite struct ClientActionTests {
     @Test func `a send shows at once as a pending turn and the host's echo retires it`() async throws {
         let rig = try ActingRig()
@@ -216,6 +241,22 @@ private final class ActingRig {
         #expect(await rig.wait { rig.client.threads["s1"]?.pending.isEmpty == true })
         #expect(rig.client.threads["s1"]?.sending == false)
         #expect(rig.client.threads["s1"]?.entries.count == 2, "the echo row stands in for the pending turn")
+        await rig.client.stop()
+    }
+
+    @Test func `a send with the chips changed carries the settings; one on the thread's model carries none`() async throws {
+        let rig = try ActingRig()
+        let fake = try await rig.open()
+        let sending = Task { try await rig.client.send("s1", text: "faster", model: TurnModel(provider: .codex, model: "gpt-6-astra", reasoning: .low)) }
+        let request = try #require(await rig.request(fake, "session.send"))
+        #expect(request.params == .object(["sessionId": .string("s1"), "text": .string("faster"), "provider": .string("codex"), "model": .string("gpt-6-astra"), "reasoning": .string("low")]))
+        fake.answer(id: request.id, result: "null")
+        try await sending.value
+        let plain = Task { try await rig.client.send("s1", text: "same", model: nil) }
+        let second = try #require(await rig.request(fake, "session.send"))
+        #expect(second.params == .object(["sessionId": .string("s1"), "text": .string("same")]))
+        fake.answer(id: second.id, result: "null")
+        try await plain.value
         await rig.client.stop()
     }
 

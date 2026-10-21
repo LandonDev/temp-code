@@ -6,8 +6,8 @@ import TempCodeContract
 /// Sending… bridges a send to the turn's start; then the spinner, a flavour
 /// word that turns every seven seconds, and the elapsed time in tabular
 /// digits. A paused run fills the row with one warning-tinted line: the
-/// glyph, Paused, the frozen elapsed, and Stop and Continue. Only opacity
-/// animates, in 120 ms; the row never changes height.
+/// glyph, Paused, the frozen elapsed, and Stop (quiet) and Continue (in the
+/// warning). Only opacity animates, in 120 ms; the row never changes height.
 struct WorkingStripView: View {
     let client: EnvironmentClient
     let sessionId: String
@@ -76,10 +76,11 @@ struct WorkingStripView: View {
         .accessibilityElement(children: .contain)
     }
 
+    /// The line sits on the composer's text edge (12 of bar, 12 of field).
     private func line<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
         HStack(spacing: 8, content: content)
             .font(.footnote)
-            .padding(.horizontal, 4)
+            .padding(.horizontal, 12)
             .frame(maxWidth: .infinity, alignment: .leading)
             .transition(.opacity)
     }
@@ -97,18 +98,25 @@ struct WorkingStripView: View {
                 .monospacedDigit()
                 .foregroundStyle(.secondary)
             Spacer(minLength: 0)
-            Button("Stop") { run { try await client.stop(sessionId) } }
-                .font(.caption.weight(.medium))
-                .foregroundStyle(.secondary)
-                .buttonStyle(.pressable)
-                .frame(minWidth: 44, minHeight: Self.height)
-                .contentShape(Rectangle())
+            Button {
+                run { try await client.stop(sessionId) }
+            } label: {
+                Text("Stop")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 10)
+                    .frame(height: 22)
+                    .background(Color(.tertiarySystemFill), in: Capsule())
+            }
+            .buttonStyle(.pressable)
+            .frame(minHeight: Self.height)
+            .contentShape(Rectangle())
             Button {
                 run { try await client.resume(sessionId) }
             } label: {
                 Text(busy ? "Continuing…" : "Continue")
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(Color(.systemBackground))
+                    .foregroundStyle(.white)
                     .padding(.horizontal, 10)
                     .frame(height: 22)
                     .background(Tint.warning, in: Capsule())
@@ -117,7 +125,8 @@ struct WorkingStripView: View {
             .frame(minHeight: Self.height)
             .contentShape(Rectangle())
         }
-        .padding(.horizontal, 10)
+        .padding(.leading, 12)
+        .padding(.trailing, 3)
         .frame(height: Self.height)
         .background(Tint.warning.opacity(0.1), in: RoundedRectangle(cornerRadius: Radius.row, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: Radius.row, style: .continuous).strokeBorder(Tint.warning.opacity(0.2), lineWidth: 1 / scale))

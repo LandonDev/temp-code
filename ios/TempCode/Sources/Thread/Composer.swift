@@ -4,8 +4,8 @@ import TempCodeContract
 
 /// The bottom of every thread screen: the 28 pt working strip over the
 /// composer bar, on the bar material. The strip never changes height and
-/// the bar grows only while the user types, so nothing above shifts when
-/// work starts or stops.
+/// the bar grows only while the person types (the chip row on focus, the
+/// field with the text), so nothing above shifts when work starts or stops.
 struct BottomDock: View {
     let client: EnvironmentClient
     let sessionId: String
@@ -21,12 +21,16 @@ struct BottomDock: View {
     }
 }
 
-/// The composer: one line idle, growing with the text to six lines on
-/// focus; one button that swaps Send ↔ Stop the way the desktop's Action
-/// Swap does (150 ms cross-fade with 2 pt of blur, the button never moves).
-/// While the host is degraded or the key cannot act, the field carries the
-/// reason in place of its placeholder and nothing sends. Implementation and
-/// orchestration threads idle smaller: steering, not chatting.
+/// The composer, the way Messages does it: one 12 pt field with a hairline,
+/// the send button inside it at the trailing edge, filling in the accent
+/// only once there is text. The field grows with the text to five lines
+/// and scrolls past that. On focus a chip row appears above it naming the
+/// model and reasoning the next turn runs with; each chip opens the host's
+/// catalog, the same one the desktop's picker shows. One button swaps
+/// Send ↔ Stop the way the desktop's Action Swap does (150 ms cross-fade
+/// with 2 pt of blur, the button never moves). While the host is degraded
+/// or the key cannot act, the field carries the reason in place of its
+/// placeholder and nothing sends. A light tap on send, never on typing.
 struct ComposerBar: View {
     let client: EnvironmentClient
     let sessionId: String
@@ -40,64 +44,110 @@ struct ComposerBar: View {
     /// The block after its grace: a short drop never flashes the field.
     @State private var block: ActionBlock?
     @State private var sentCount = 0
+    /// The chips: the thread's model until the person picks another; the
+    /// pick rides on the next send and the chips follow the thread again.
+    @State private var choice = CatalogChoice(provider: .claude, model: "", reasoning: nil)
     @Environment(AppModel.self) private var app
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.displayScale) private var scale
 
     /// A drop that comes back inside this never shows (the desktop's grace).
     static let blockGraceMs = 1_500
-
-    private var compact: Bool {
-        session?.parentId == nil && (session?.threadType == .implementation || session?.threadType == .orchestration)
-    }
+    /// The field: one line of body text with 8 pt above and below.
+    static let fieldMinHeight: CGFloat = 36
+    static let buttonSize: CGFloat = 28
 
     private var running: Bool {
         session?.status == .running || session?.status == .starting || thread.sending
     }
 
     private var trimmed: String { text.trimmingCharacters(in: .whitespacesAndNewlines) }
-
-    /// A steering thread's bar sits lower until the user types; the font never changes.
-    private var idlesSmall: Bool { compact && !focused && text.isEmpty }
+    private var hasText: Bool { !trimmed.isEmpty }
 
     /// What the button does: Stop while a turn runs and the box is empty, Send otherwise.
-    private var stops: Bool { running && trimmed.isEmpty }
+    private var stops: Bool { running && !hasText }
+
+    /// The chip row shows while the person composes, never over a block.
+    private var chipsShown: Bool { block == nil && session != nil && (focused || hasText) }
+
+    private var fieldShape: RoundedRectangle { RoundedRectangle(cornerRadius: Radius.field, style: .continuous) }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack(alignment: .bottom, spacing: 8) {
-                TextField(placeholder, text: $text, axis: .vertical)
-                    .font(.body)
-                    .lineLimit(1...6)
-                    .focused($focused)
-                    .disabled(block != nil)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, idlesSmall ? 6 : 9)
-                    .frame(minHeight: idlesSmall ? 34 : 40)
-                    .background(Surface.chrome, in: RoundedRectangle(cornerRadius: Radius.field, style: .continuous))
-                    .overlay(RoundedRectangle(cornerRadius: Radius.field, style: .continuous).strokeBorder(Surface.hairline, lineWidth: 1 / scale))
-                    .onChange(of: text) { failure = nil }
-                    .accessibilityLabel(block == nil ? "Message" : block!.text(now: Date().timeIntervalSince1970 * 1000))
-                ActionSwap(stops: stops, enabled: block == nil && !busy && (stops || !trimmed.isEmpty), reduced: reduceMotion) {
-                    if stops { stop() } else { send() }
-                }
-                .padding(.bottom, idlesSmall ? 3 : 6)
+        VStack(alignment: .leading, spacing: 8) {
+            if chipsShown {
+                chips
+                    .transition(reduceMotion ? .opacity : .opacity.combined(with: .offset(y: 4)))
             }
+            field
             if let failure {
-                Text(failure)
-                    .font(.footnote)
-                    .foregroundStyle(Tint.destructive)
-                    .padding(.horizontal, 12)
+                QuietLine(symbol: "arrow.uturn.backward", text: failure)
+                    .padding(.horizontal, 4)
                     .transition(.opacity)
             }
         }
         .padding(.horizontal, 12)
         .padding(.top, 2)
         .padding(.bottom, 8)
-        .animation(reduceMotion ? nil : Motion.collapse, value: focused)
+        .animation(reduceMotion ? nil : Motion.collapse, value: chipsShown)
         .animation(Motion.crossFade, value: failure)
         .sensoryFeedback(.impact(weight: .light), trigger: sentCount)
         .task(id: client.operateBlock) { await settleBlock() }
+        .task(id: focused) { if focused { await choice.load(client) } }
+        .task(id: session.map { "\($0.provider.rawValue)/\($0.model)/\($0.reasoning?.rawValue ?? "")" }) {
+            // The thread's own model lands (or changes under us): the chips follow it unless the person has a pick in hand.
+            guard let session, !choice.picked else { return }
+            choice.follow(session)
+        }
+    }
+
+    /// Model and reasoning, each a chip opening its menu; a catalog still
+    /// loading or missing leaves the model chip naming the thread's model
+    /// with no menu behind it.
+    private var chips: some View {
+        HStack(spacing: 6) {
+            if choice.catalog == nil {
+                MenuChip(text: choice.modelLabel, symbol: "cpu", enabled: false)
+                    .accessibilityLabel("Model \(choice.modelLabel)")
+            } else {
+                ModelMenu(choice: choice) {
+                    MenuChip(text: choice.modelLabel, symbol: "cpu")
+                }
+                .accessibilityLabel("Model \(choice.modelLabel)")
+                if choice.levels.count > 1, let level = choice.reasoning {
+                    ReasoningMenu(choice: choice) {
+                        MenuChip(text: level.label, symbol: "dial.medium")
+                    }
+                    .accessibilityLabel("Reasoning \(level.label)")
+                    .transition(.opacity)
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .animation(Motion.crossFade, value: choice.levels.count > 1)
+    }
+
+    /// The field with the button inside at the trailing edge; the button
+    /// stays on the last line while the text grows.
+    private var field: some View {
+        HStack(alignment: .bottom, spacing: 6) {
+            TextField(placeholder, text: $text, axis: .vertical)
+                .font(.body)
+                .lineLimit(1...5)
+                .focused($focused)
+                .disabled(block != nil)
+                .padding(.leading, 12)
+                .padding(.vertical, 7)
+                .frame(minHeight: Self.fieldMinHeight)
+                .onChange(of: text) { failure = nil }
+                .accessibilityLabel(block == nil ? "Message" : block!.text(now: Date().timeIntervalSince1970 * 1000))
+            ActionSwap(stops: stops, hasText: hasText, enabled: block == nil && !busy && (stops || hasText), reduced: reduceMotion) {
+                if stops { stop() } else { send() }
+            }
+            .padding(.trailing, 4)
+            .padding(.bottom, (Self.fieldMinHeight - Self.buttonSize) / 2)
+        }
+        .background(Surface.chrome, in: fieldShape)
+        .overlay(fieldShape.strokeBorder(Surface.hairline, lineWidth: 1 / scale))
     }
 
     private var placeholder: String {
@@ -105,7 +155,8 @@ struct ComposerBar: View {
             return block.text(now: Date().timeIntervalSince1970 * 1000)
         }
         if session?.parentId != nil { return "Message the agent" }
-        return compact ? "Steer" : "Message"
+        if let session, session.threadType == .implementation || session.threadType == .orchestration { return "Steer" }
+        return "Message"
     }
 
     /// The block as the field shows it: a read-only key or a halt at once,
@@ -131,10 +182,13 @@ struct ComposerBar: View {
         busy = true
         text = ""
         sentCount += 1
+        let settings = session.flatMap { TurnModel.override(for: $0, provider: choice.key.provider, model: choice.key.model, reasoning: choice.reasoning) }
         Task {
             defer { busy = false }
             do {
-                try await client.send(sessionId, text: body)
+                try await client.send(sessionId, text: body, model: settings)
+                // The pick went with the turn; the chips follow the thread's model from here.
+                if let session { choice.follow(session) }
                 // The person started this turn: it goes on the lock screen.
                 if let session, session.parentId == nil { app.activities.sent(client, session, registry: app.registry) }
             } catch {
@@ -159,34 +213,46 @@ struct ComposerBar: View {
     }
 }
 
-/// The composer's one button: a filled circle whose glyph cross-fades
-/// between the arrow and the stop square. Both glyphs sit in the same
-/// frame, so the swap moves nothing around it.
+/// The composer's one button: a circle whose fill turns to the accent the
+/// moment there is text (150 ms on color alone), and whose glyph
+/// cross-fades between the arrow and the stop square. Both glyphs sit in
+/// the same frame, so the swap moves nothing around it. Stop fills in the
+/// label color, the way the desktop's does.
 private struct ActionSwap: View {
     let stops: Bool
+    let hasText: Bool
     let enabled: Bool
     let reduced: Bool
     let action: () -> Void
+
+    private var fill: Color {
+        if stops { return Color.primary }
+        return hasText && enabled ? Color.accentColor : Color(.tertiarySystemFill)
+    }
+
+    private var glyph: Color {
+        if stops { return Color(.systemBackground) }
+        return hasText && enabled ? Color.white : Color(.tertiaryLabel)
+    }
 
     var body: some View {
         Button(action: action) {
             ZStack {
                 Circle()
-                    .fill(Color.primary)
-                    .opacity(enabled ? 1 : 0.3)
+                    .fill(fill)
                 Image(systemName: stops ? "stop.fill" : "arrow.up")
-                    .font(.system(size: stops ? 11 : 14, weight: .bold))
-                    .foregroundStyle(Color(.systemBackground))
+                    .font(.system(size: stops ? 11 : 15, weight: .semibold))
+                    .foregroundStyle(glyph)
                     .id(stops)
                     .transition(Motion.swap(reduced: reduced))
             }
-            .frame(width: 28, height: 28)
+            .frame(width: ComposerBar.buttonSize, height: ComposerBar.buttonSize)
             .animation(Motion.crossFade, value: stops)
+            .animation(Motion.crossFade, value: hasText && enabled)
             .contentShape(Circle())
         }
         .buttonStyle(.pressable)
         .disabled(!enabled)
         .accessibilityLabel(stops ? "Stop" : "Send")
-        .animation(Motion.crossFade, value: enabled)
     }
 }
