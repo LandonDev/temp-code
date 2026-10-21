@@ -114,7 +114,7 @@ struct SettingsView: View {
     }
 
     private func pushWord(_ push: PushRegistrar) -> String {
-        if let pending = pushPending { return pending ? "Turning On…" : "Turning Off…" }
+        if let pending = pushPending { return pending ? "Turning on…" : "Turning off…" }
         return push.summary
     }
 
