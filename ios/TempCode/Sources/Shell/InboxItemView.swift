@@ -116,7 +116,8 @@ struct InboxItemView: View {
             HStack(spacing: 6) {
                 Text(status?.text ?? (item.state.rawValue == "open" ? "Open" : item.state.rawValue.capitalized))
                     .foregroundStyle(status?.tint ?? (item.state.rawValue == "open" ? Tint.success : Color(.tertiaryLabel)))
-                    .fixedSize()
+                    .lineLimit(1)
+                    .layoutPriority(1)
                 if isPullRequest, !head.isEmpty, !base.isEmpty {
                     Text("·").foregroundStyle(.tertiary)
                     Text("\(head) → \(base)")
@@ -264,13 +265,15 @@ private struct InboxCommentView: View {
                         Text(review.text)
                             .font(.footnote)
                             .foregroundStyle(review.tint ?? Color(.tertiaryLabel))
-                            .fixedSize()
+                            .lineLimit(1)
+                            .layoutPriority(1)
                     }
                     if comment.resolved {
                         Text("Resolved")
                             .font(.footnote)
                             .foregroundStyle(.tertiary)
-                            .fixedSize()
+                            .lineLimit(1)
+                            .layoutPriority(1)
                     }
                     Spacer(minLength: 8)
                     Text(TimeFormat.ago(InboxStore.ms(comment.createdAt)))
