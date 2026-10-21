@@ -5,6 +5,7 @@ import { CheckpointRequestSchemas } from './contract-checkpoint'
 import { LinearRequestSchemas } from './contract-linear'
 import { GithubRequestSchemas } from './contract-github'
 import { EnvironmentRequestSchemas, RemoteRequestSchemas } from './contract-remote'
+import { HarnessRequestSchemas } from './contract-harness'
 import { AGENT_TYPES } from './catalog'
 import { AttachmentSchema, PermissionPolicySchema } from './events'
 import { ProjectModeSchema, ThreadTypeSchema } from './domain'
@@ -96,6 +97,7 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
   ...GithubRequestSchemas,
   ...RemoteRequestSchemas,
   ...EnvironmentRequestSchemas,
+  ...HarnessRequestSchemas,
   // refresh: re-probe the installed CLIs of the probed providers first.
   z.object({
     id: z.string(),

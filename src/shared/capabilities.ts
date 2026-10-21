@@ -232,6 +232,13 @@ export const METHOD_CAPABILITY: Record<ClientRequest['method'], MethodCapability
   'accounts.pull': 'admin',
   'accounts.confirm': 'admin',
   'accounts.released': 'admin',
+  // Harness config sync (remote/harnessSync.ts): another host's main process mirrors its config here; the pane's status and Sync now.
+  'harness.manifest': 'admin',
+  'harness.file': 'admin',
+  'harness.commit': 'admin',
+  'harness.status': 'admin',
+  'harness.sync': 'admin',
+  'harness.settings.set': 'admin',
   // Saved hosts and their keys never leave this machine (thread K1).
   'remote.environments.list': 'local',
   'remote.environments.add': 'local',

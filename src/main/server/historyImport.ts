@@ -1,14 +1,18 @@
 import { cpSync, existsSync, mkdirSync, readFileSync, readlinkSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { hostname } from 'node:os'
-import { isAbsolute, join, normalize } from 'node:path'
+import { isAbsolute, join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
+// The extension stays: the box runs this file with node, which resolves nothing on its own.
+import { parseMapping, remapper, stripSlash, type HistoryMapping, type Remapper } from './pathMap.ts'
+
+export { parseMapping, remapper, type HistoryMapping, type Remapper }
 
 /**
  * Moves one host's thread history into another host's database
  * (docs/history-move.md). Node builtins only, and no repo imports, so the
  * box runs it straight from a checkout with `node src/main/server/
  * historyImport.ts` (node 22 strips the types); the test suite exercises
- * the same functions.
+ * the same functions. Its one repo import, pathMap.ts, follows the same rule.
  *
  * History is workspaces, projects, sessions, events (hot and cold), folds,
  * notes, the settings rows about threads, and the per-session dirs
@@ -19,13 +23,6 @@ import { DatabaseSync } from 'node:sqlite'
  * Every insert is OR IGNORE by primary key, so a rerun adds nothing, and
  * `dryRun` reports what a run would add without touching anything.
  */
-
-export interface HistoryMapping {
-  /** Workspace roots that exist (or will) on the destination: source path → destination path. */
-  roots: Record<string, string>
-  /** Fallbacks for paths outside a mapped root (app worktrees, the home dir), longest match wins. */
-  prefixes: Record<string, string>
-}
 
 export interface ImportOptions {
   /** Dir holding `temp-code.db`, `temp-code-cold.db`, `checkpoints/`, `html-renders/` of the source. */
@@ -69,53 +66,6 @@ type Row = Record<string, string | number | null>
 
 /** `temp-code.db` → `temp-code-cold.db`, the same rule as db.ts. */
 export const coldPathFor = (path: string): string => path.replace(/\.db$/, '') + '-cold.db'
-
-const stripSlash = (path: string): string => normalize(path).replace(/\/+$/, '') || '/'
-
-export function parseMapping(raw: string): HistoryMapping {
-  const parsed = JSON.parse(raw) as Partial<HistoryMapping>
-  const clean = (table: unknown): Record<string, string> => {
-    const out: Record<string, string> = {}
-    if (table && typeof table === 'object') {
-      for (const [from, to] of Object.entries(table as Record<string, unknown>)) {
-        if (typeof to !== 'string' || !isAbsolute(from) || !isAbsolute(to)) throw new Error(`mapping: ${from} → ${String(to)} must be two absolute paths`)
-        out[stripSlash(from)] = stripSlash(to)
-      }
-    }
-    return out
-  }
-  return { roots: clean(parsed.roots), prefixes: clean(parsed.prefixes) }
-}
-
-export interface Remapper {
-  /** True when the path is a mapped workspace root. */
-  isRoot(path: string): boolean
-  /** The path on the destination: by root, else by the longest prefix, else unchanged. */
-  path(path: string): string
-}
-
-export function remapper(mapping: HistoryMapping): Remapper {
-  const byLength = (table: Record<string, string>): [string, string][] =>
-    Object.entries(table)
-      .map(([from, to]): [string, string] => [stripSlash(from), stripSlash(to)])
-      .sort((a, b) => b[0].length - a[0].length)
-  const roots = byLength(mapping.roots)
-  const prefixes = byLength(mapping.prefixes)
-  const under = (path: string, from: string): boolean =>
-    path === from || path.startsWith(from === '/' ? '/' : from + '/')
-  const apply = (path: string, table: [string, string][]): string | null => {
-    for (const [from, to] of table) if (under(path, from)) return join(to, path.slice(from.length))
-    return null
-  }
-  return {
-    isRoot: (path) => roots.some(([from]) => from === stripSlash(path)),
-    path: (path) => {
-      if (!isAbsolute(path)) return path
-      const clean = stripSlash(path)
-      return apply(clean, roots) ?? apply(clean, prefixes) ?? path
-    }
-  }
-}
 
 /** A description of the process still writing this data dir, or null when none is. */
 export function writerAlive(userData: string): string | null {

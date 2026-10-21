@@ -56,7 +56,9 @@ describe('METHOD_CAPABILITY', () => {
         'accounts.push',
         'accounts.pull',
         'accounts.confirm',
-        'accounts.released'
+        'accounts.released',
+        // The harness config crosses between hosts, and its status and settings are changed, only under an admin key.
+        ...methods.filter((m) => m.startsWith('harness.'))
       ].sort()
     )
   })

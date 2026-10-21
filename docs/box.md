@@ -499,6 +499,66 @@ RPCs) run the same `gh`, so they need nothing more:
 `auth.state: "ok"`, and the inbox polls only the repos of workspaces that have
 a GitHub remote. Agent commits carry no AI attribution trailers.
 
+### Harness config: synced from the Mac
+
+The skills, slash commands, agents, settings and plugins the user set up for
+Claude Code and Codex live on the Mac, and the Mac's main process mirrors
+them onto the box over the same admin link the accounts use
+(`src/main/server/remote/{harnessSet,harnessSync}.ts`). The Mac's copy wins;
+the box never sends back. Nothing to do on the box: a headless host only
+receives (`harness.sync.enabled` defaults to off there, on for a desktop).
+
+The set, relative to each HOME:
+
+- `.claude/skills/**` except `.claude/skills/synced/**` (the CLI's own
+  account-synced bucket: each side keeps its own)
+- `.claude/commands/**`, `.claude/agents/**`, `.claude/settings.json`
+- `.claude/plugins/**` except `.claude/plugins/synced/**` and
+  `plugin-directory-cache*.json` (the CLI rebuilds it per host)
+- `enabledPlugins` and `mcpServers` of `~/.claude.json`, merged into the
+  box's own file; every other key (`oauthAccount`, `projects`, …) stays as
+  the box has it
+- `.codex/skills/**` except `.codex/skills/.system/**`, `.codex/prompts/**`,
+  `.codex/config.toml`
+- `.agents/skills/**`
+
+Never, whatever the rules say (checked when the manifest is built and again
+on landing, and in the tests): `.credentials.json`, `auth.json`,
+`settings.local.json`, `.claude.json` as a file, `*.pem`, `*.key`, `*.p8`,
+`*.p12`, `*.pfx`. Also left out: any `.git` dir (a marketplace clone lands as
+a plain tree), `.DS_Store`, and files over 16 MiB. A symlink on the Mac (a
+skill linked in from a checkout) is followed when its target is inside the
+Mac's HOME and outside `.ssh`, `.gnupg`, `.aws` and the like; the box gets
+the content.
+
+When: on link-up, about two seconds after a change under the set (a watch on
+each rule root), and every 15 minutes. The Mac sends a manifest (path, size,
+sha256, mode, mtime); the box answers what it needs (new, changed on the Mac,
+edited on the box since it landed, or landed under an older path map) and what
+it will delete (only files an earlier sync landed: a file made on the box
+stays); the files come over as 2 MiB chunks staged under
+`<userData>/harness-sync`, and the commit checks every hash, then renames each
+file into place. `<userData>/harness-sync/ledger.json` records what landed.
+
+Path translation, for `.md`, `.json`, `.toml`, `.sh` and `.mjs` files under
+1 MB (anything else is copied byte for byte): the Mac's
+`~/IdeaProjects/<X>` and `~/Desktop/Websites/<X>` become
+`/srv/agents/work/<X>` (the box's work root), the Mac's home becomes
+`/srv/agents/home`, and the box's `harness.sync.pathMap` setting (default:
+`scripts/box/history-map.json`, set with `tc-local harness.settings.set
+'{"pathMap":{…}}'`, `null` for the default) adds its roots and prefixes. The
+Mac's home comes from its manifest. Hooks in `settings.json` that call
+macOS-only tools just fail here; each landing of `settings.json` logs one
+`[harness-sync]` line naming the hook executables not on the box's PATH.
+
+Status: Settings → Remote access on the Mac has a Harness config section, one
+row per host: `Harness config: 143 files, synced 2m ago`, `never synced`, or
+the last error, with Sync now (`harness.status` and `harness.sync` on the
+Mac's own socket). On the box, the `[harness-sync]` lines in the service's
+journal say what landed. Proof:
+`bun run script:e2e-harness-sync` (two headless instances with their own
+HOMEs, paired over the fixed port; runs on the box under `xvfb-run`).
+
 Still darwin-only by design: appshots, the Aliax browser-cookie sign-ins,
 the IntelliJ engine's pinned artifact (`lsp.ts` has only `darwin-arm64`; the
 Linux pin waits for a build that has not expired), and vibrancy. Known gap:

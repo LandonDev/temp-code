@@ -272,6 +272,12 @@ routed to (aliax-core's `forward`). Two listeners:
   `bun scripts/e2e-box-remote.ts`. Every "ask the login shell" call goes
   through src/main/server/loginShell.ts (`$SHELL`, else zsh on macOS, bash
   elsewhere): never hardcode /bin/zsh.
+- Harness config (skills, commands, agents, settings.json, plugins, Codex
+  config, two keys of ~/.claude.json) is mirrored Mac → box by the Mac's main
+  process over the peer link (`src/main/server/remote/harnessSync.ts`,
+  `harness.*` RPCs, admin; paths translated through `pathMap.ts`); the set,
+  the exclusions and the status line are in docs/box.md "Harness config:
+  synced from the Mac". Proof: `bun run script:e2e-harness-sync`.
 - Backups: restic to R2 bucket `tempcode-backups`, repo `box` from
   `box-backup.timer` (SQLite snapshotted with VACUUM INTO, never the live
   files) and repo `mac` from the launchd agent `dev.landon.tempcode.backup`
