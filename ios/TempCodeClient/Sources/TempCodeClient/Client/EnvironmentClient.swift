@@ -463,6 +463,11 @@ public final class EnvironmentClient {
             merge(value.sessions)
         case .sessionRemoved(let value):
             removeSessions(value.sessionIds)
+        case .sessionMoved(let value):
+            // The thread now runs on another host (docs/box.md "Moving a thread
+            // between hosts"); this host keeps a hidden tombstone and sends a
+            // session-removed next, so the phone drops its copy here.
+            removeSessions(value.sessionIds)
         case .events(let value):
             guard threads[value.sessionId] != nil else { return }
             if subscriptions.hold(value.sessionId, rows: value.rows) { return }
