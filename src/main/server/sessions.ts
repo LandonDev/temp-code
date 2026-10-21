@@ -1024,6 +1024,8 @@ export class SessionRegistry {
     const moved = after !== before
     if (moved) await this.dropHandle(sessionId)
     return { account: after, moved }
+  }
+
   /**
    * The account a thread's next request will spend from: the row's (the
    * gateway keeps it current), else what the router would choose now for
