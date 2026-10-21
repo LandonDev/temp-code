@@ -417,6 +417,8 @@ export class PushCoalescer {
       case 'event': {
         const row = projectRow(frame.row)
         if (row.event.type === 'tool-call') this.partials.delete(`${row.sessionId}\0${row.event.callId}`)
+        // A result settles the call: a live preview still waiting (a mac_run's output) must not land after it.
+        if (row.event.type === 'tool-result') this.partials.delete(`${row.sessionId}\0${row.event.callId}`)
         if (isPartialCall(row)) {
           this.partials.set(`${row.sessionId}\0${row.event.callId}`, row)
           this.arm('previews')

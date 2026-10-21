@@ -18,6 +18,7 @@ import {
   setRawView,
   todoItems,
   toolOutput,
+  liveToolOutput,
   rec,
 } from "../lib/toolDetails";
 
@@ -56,7 +57,7 @@ export const ToolDetails = memo(function ToolDetails({
     );
   }
 
-  const out = toolOutput(block);
+  const out = toolOutput(block) ?? liveToolOutput(block);
   const parsedOut = !raw && out && !out.error ? parseJson(out.text) : undefined;
   const input = block.tool?.input;
 

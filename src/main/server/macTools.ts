@@ -23,10 +23,12 @@ import {
   type MacBridgeThreadState,
   type MacFetchFileResult,
   type MacFetchFileWire,
-  type MacMethod
+  type MacMethod,
+  type MacRunArgs
 } from '@shared/contract-macbridge'
 import type { SessionMeta } from '@shared/events'
 import { macBridgeLandingDir, type LandingLookup } from './macBridgeLanding'
+import type { MacRunLive } from './macRunLive'
 import type { PeerCalls } from './remote/peerCalls'
 
 /**
@@ -85,6 +87,8 @@ export interface MacToolsDeps {
   tokens: MacThreadTokens
   /** The thread's tool set changed: its harness should come back with (or without) the mac tools. */
   reboot?: (sessionId: string) => void
+  /** A running mac.run's output, live on the thread's tool row (macRunLive.ts). */
+  live?: MacRunLive
   log?: (line: string) => void
 }
 
@@ -178,8 +182,16 @@ export class MacTools {
     sessionId: string,
     token: unknown,
     method: MacMethod,
-    args: MacArgs
+    args: MacArgs,
+    opts: { callId?: string } = {}
   ): Promise<unknown> {
+    // mac.run may name its tool row (the loopback's callId param); it never travels to the Mac.
+    let rowId = opts.callId
+    if (method === 'mac.run' && 'callId' in args) {
+      const { callId, ...rest } = args
+      if (typeof callId === 'string') rowId ??= callId
+      args = rest
+    }
     if (!this.deps.tokens.check(sessionId, token))
       throw new Error(`refused: ${method} needs this thread's own token`)
     const session = this.deps.sessions.get(sessionId)
@@ -196,12 +208,20 @@ export class MacTools {
         ? Math.min(Number(args.timeoutMs) || MAC_RUN_DEFAULT_TIMEOUT_MS, MAC_RUN_MAX_TIMEOUT_MS)
         : 0
     const deadlineMs = MAC_APPROVAL_WAIT_MS + timeoutMs + DEADLINE_SLACK_MS
-    const result = await this.deps.calls.call(
-      macPeer,
-      method,
-      { thread: { id: session.id, title: session.title }, args },
-      deadlineMs
-    )
+    const live =
+      method === 'mac.run' ? this.deps.live?.open(session.id, args as MacRunArgs, rowId) : undefined
+    let result: unknown
+    try {
+      result = await this.deps.calls.call(
+        macPeer,
+        method,
+        { thread: { id: session.id, title: session.title }, args },
+        deadlineMs,
+        live ? { onProgress: live.progress } : {}
+      )
+    } finally {
+      live?.close()
+    }
     if (method !== 'mac.fetchFile') return result
     return this.land(session, result as MacFetchFileWire)
   }
@@ -258,17 +278,29 @@ const text = (t: string): { content: [{ type: 'text'; text: string }] } => ({
   content: [{ type: 'text', text: t }]
 })
 
-const callTool = (session: SessionMeta, method: MacMethod) => async (args: MacArgs) => {
+// `x` is the MCP call's extra: its _meta names the CLI's tool_use id (toolUseIdOf).
+const callTool = (session: SessionMeta, method: MacMethod) => async (args: MacArgs, x: unknown) => {
   const tools = macToolsHooks.current
   const tokens = macToolsHooks.tokens
   if (!tools || !tokens) return { ...text('error: the Mac bridge is not ready'), isError: true }
   try {
     return text(
-      JSON.stringify(await tools.call(session.id, tokens.tokenFor(session.id), method, args))
+      JSON.stringify(
+        await tools.call(session.id, tokens.tokenFor(session.id), method, args, {
+          callId: toolUseIdOf(x)
+        })
+      )
     )
   } catch (err) {
     return { ...text(`error: ${err instanceof Error ? err.message : String(err)}`), isError: true }
   }
+}
+
+/** The tool_use id the Claude CLI puts on an MCP call (`_meta["claudecode/toolUseId"]`): the row a mac_run streams into. */
+export function toolUseIdOf(extra: unknown): string | undefined {
+  const meta = (extra as { _meta?: Record<string, unknown> } | undefined)?._meta
+  const id = meta?.['claudecode/toolUseId']
+  return typeof id === 'string' && id ? id : undefined
 }
 
 export const MAC_TOOL_NAMES = [

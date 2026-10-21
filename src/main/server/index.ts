@@ -33,6 +33,7 @@ import { claudeConfigDir, codexHomeDir } from './sessionMove'
 import { PeerCalls, handlePeerRequest } from './remote/peerCalls'
 import { MacBridge, handleMacBridge } from './remote/macBridge'
 import { MacThreadTokens, MacTools, macToolsHooks, rebootWhenSettled } from './macTools'
+import { MacRunCalls, MacRunLive } from './macRunLive'
 import { macBridgeLandingRoot } from './macBridgeLanding'
 import { listEnvironments } from './remote/environments'
 import { LIVE_STATUSES } from '@shared/session-lifecycle'
@@ -387,6 +388,10 @@ export async function startServer(
     }
   })
   const peerCalls = new PeerCalls(environmentId)
+  // A running mac_run's output, live on its thread's tool row (macRunLive.ts).
+  const macRunCalls = new MacRunCalls()
+  registry.onEvent((row) => macRunCalls.observe(row))
+  const macRunLive = new MacRunLive({ emit: (id, event) => registry.append(id, event), calls: macRunCalls })
   const macTokens = MacThreadTokens.fromEnv()
   const macTools = new MacTools({
     store,
@@ -395,7 +400,8 @@ export async function startServer(
     dataDir: options.dataDir ?? dirname(dbPath),
     calls: peerCalls,
     tokens: macTokens,
-    reboot: (id) => rebootWhenSettled(registry, id, (status) => LIVE_STATUSES.has(status))
+    reboot: (id) => rebootWhenSettled(registry, id, (status) => LIVE_STATUSES.has(status)),
+    live: macRunLive
   })
   macToolsHooks.current = macTools
   macToolsHooks.tokens = macTokens
@@ -722,7 +728,7 @@ export async function startServer(
         }
         // The reverse RPC (remote/peerCalls.ts): a Mac's main process registers
         // this socket and answers calls on it; then the bridge's own methods.
-        if (req.method === 'peer.register' || req.method === 'peer.reply' || req.method === 'peer.chunk') {
+        if (req.method === 'peer.register' || req.method === 'peer.reply' || req.method === 'peer.chunk' || req.method === 'peer.progress') {
           const peerSocket = { connection, keyId: principal.kind === 'remote' ? principal.keyId : null, remote: principal.kind === 'remote', send: sendFrame }
           return sendFrame({ id: req.id, ok: true, result: handlePeerRequest(peerCalls, peerSocket, req) })
         }

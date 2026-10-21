@@ -209,3 +209,106 @@ describe('PeerCalls', () => {
     expect(lines[0]).toMatch(/not taken: unknown or expired/)
   })
 })
+
+describe('peer.progress (mac_run streaming)', () => {
+  it('frames reach onProgress in seq order, all before the reply settles the call', async () => {
+    const got: string[] = []
+    const { calls } = link(async (_m, _p, ctx) => {
+      for (const line of ['a\n', 'b\n', 'c\n']) ctx.progress?.(line)
+      return { done: true }
+    })
+    const result = await calls.call('env_mac', 'mac.run', params, 5_000, {
+      onProgress: (f) => got.push(`${f.seq}:${f.chunk}`)
+    })
+    expect(result).toEqual({ done: true })
+    expect(got).toEqual(['0:a\n', '1:b\n', '2:c\n'])
+  })
+
+  it('out-of-order frames wait for the gap; a repeat or an older seq is dropped', async () => {
+    const { calls, frames } = link(async () => null, { serve: false })
+    const got: number[] = []
+    const pending = calls.call('env_mac', 'mac.run', params, 5_000, {
+      onProgress: (f) => got.push(f.seq)
+    })
+    const callId = (frames[0] as Call).callId
+    for (const seq of [1, 2, 0, 1, 3]) calls.progress(1, { callId, seq, chunk: `${seq}` })
+    expect(got).toEqual([0, 1, 2, 3])
+    calls.reply(1, { callId, ok: true, result: 'r' })
+    await pending
+  })
+
+  it('a frame for an unknown or settled call is ignored, never an error', async () => {
+    const { calls, frames, socket } = link(async () => null, { serve: false })
+    const got: string[] = []
+    expect(
+      handlePeerRequest(calls, socket, {
+        method: 'peer.progress',
+        params: { callId: 'c-nope', seq: 0, chunk: 'x' }
+      })
+    ).toEqual({ ok: true })
+    const pending = calls.call('env_mac', 'mac.run', params, 5_000, {
+      onProgress: (f) => got.push(f.chunk)
+    })
+    const callId = (frames[0] as Call).callId
+    calls.reply(1, { callId, ok: true, result: 'r' })
+    await pending
+    expect(calls.progress(1, { callId, seq: 0, chunk: 'late' })).toEqual({ ok: true })
+    expect(got).toEqual([])
+  })
+
+  it('only the socket the call went out on may send its progress; the box loopback never', async () => {
+    const { calls, frames } = link(async () => null, { serve: false })
+    const got: string[] = []
+    const pending = calls.call('env_mac', 'mac.run', params, 5_000, {
+      onProgress: (f) => got.push(f.chunk)
+    })
+    const callId = (frames[0] as Call).callId
+    const other = { connection: 99, keyId: 'k2', remote: true, send: () => {} }
+    expect(() =>
+      handlePeerRequest(calls, other, {
+        method: 'peer.progress',
+        params: { callId, seq: 0, chunk: 'spoof' }
+      })
+    ).toThrow(/forbidden/)
+    const loopback = { connection: 1, keyId: null, remote: false, send: () => {} }
+    expect(() =>
+      handlePeerRequest(calls, loopback, {
+        method: 'peer.progress',
+        params: { callId, seq: 0, chunk: 'spoof' }
+      })
+    ).toThrow(/forbidden/)
+    calls.progress(1, { callId, seq: 0, chunk: 'real', skipped: 7 })
+    expect(got).toEqual(['real'])
+    calls.reply(1, { callId, ok: true, result: 'r' })
+    await pending
+  })
+
+  it('a call that asked for no progress drops its frames quietly', async () => {
+    const { calls } = link(async (_m, _p, ctx) => {
+      ctx.progress?.('ignored\n')
+      return 'r'
+    })
+    await expect(calls.call('env_mac', 'mac.readFile', params, 5_000)).resolves.toBe('r')
+  })
+
+  it('servePeerCall numbers the frames and sends skipped only when there is some', async () => {
+    const requests: { method: string; params: unknown }[] = []
+    const request = async (method: string, p?: unknown): Promise<unknown> => {
+      requests.push({ method, params: p })
+      return { ok: true }
+    }
+    await servePeerCall(
+      { push: 'peer.call', callId: 'c1', method: 'mac.run', params, deadlineMs: 5_000 },
+      'env_mac',
+      async (_m, _p, ctx) => {
+        ctx.progress?.('one\n')
+        ctx.progress?.('two\n', 512)
+        return 'r'
+      },
+      request
+    )
+    expect(requests.map((r) => r.method)).toEqual(['peer.progress', 'peer.progress', 'peer.reply'])
+    expect(requests[0].params).toEqual({ callId: 'c1', seq: 0, chunk: 'one\n' })
+    expect(requests[1].params).toEqual({ callId: 'c1', seq: 1, chunk: 'two\n', skipped: 512 })
+  })
+})

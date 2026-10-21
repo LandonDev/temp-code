@@ -149,6 +149,20 @@ export function toolOutput(block: Block): ToolOutput | undefined {
   return { text, error };
 }
 
+/**
+ * The one exception to "output only once settled": a Mac command (mac_run,
+ * docs/box.md "The Mac bridge") streams its output into its row while it
+ * runs, a build log that is the point of watching, so the open pane shows
+ * it growing; the settled result replaces it.
+ */
+export function liveToolOutput(block: Block): ToolOutput | undefined {
+  if (isSettled(block)) return undefined;
+  const name = block.tool?.name ?? "";
+  if (!/(^|[._])mac_run$/.test(name)) return undefined;
+  const text = block.tool?.preview?.output;
+  return text ? { text, error: false } : undefined;
+}
+
 /** ANSI colour and cursor sequences, gone. */
 export function stripAnsi(text: string): string {
   // eslint-disable-next-line no-control-regex

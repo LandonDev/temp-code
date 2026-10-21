@@ -6,6 +6,7 @@ import {
   type MacBridgePush,
   type MacMethod
 } from '@shared/contract-macbridge'
+import { ProgressOrder, progressSender, type ProgressFrame } from './peerStreams'
 
 /**
  * Reverse RPC over the peer link (docs/box.md "The Mac bridge"). The Mac's
@@ -14,6 +15,7 @@ import {
  *
  *   Mac → box  peer.register { from, offers, home? } the socket becomes the Mac's
  *   box → Mac  { push: 'peer.call', callId, method, params, deadlineMs }
+ *   Mac → box  peer.progress { callId, seq, chunk }  × n, while it runs (mac.run; peerStreams.ts)
  *   Mac → box  peer.chunk { callId, index, data }    × n, when the reply is long
  *   Mac → box  peer.reply { callId, ok, result | error, chunks? }
  *
@@ -44,6 +46,8 @@ interface PendingCall {
   method: string
   connection: number
   chunks: (string | undefined)[]
+  /** peer.progress frames, handed on in seq order (absent: the caller did not ask for them). */
+  progress?: ProgressOrder
   resolve: (value: unknown) => void
   reject: (err: Error) => void
   timer: NodeJS.Timeout
@@ -122,7 +126,8 @@ export class PeerCalls {
     envId: string,
     method: MacMethod,
     params: Extract<MacBridgePush, { push: 'peer.call' }>['params'],
-    deadlineMs: number
+    deadlineMs: number,
+    opts: { onProgress?: (frame: ProgressFrame) => void } = {}
   ): Promise<T> {
     const reg = this.registered.get(envId)
     if (!reg) return Promise.reject(new PeerOfflineError(envId))
@@ -143,6 +148,7 @@ export class PeerCalls {
         method,
         connection: reg.socket.connection,
         chunks: [],
+        ...(opts.onProgress ? { progress: new ProgressOrder(opts.onProgress) } : {}),
         resolve: resolve as (value: unknown) => void,
         reject,
         timer
@@ -206,6 +212,24 @@ export class PeerCalls {
     return { ok: true }
   }
 
+  /**
+   * peer.progress: a running call's output so far. A frame for a call that
+   * already settled (or never was) is dropped quietly, since the reply can
+   * overtake nothing but a late frame can follow it; a frame for a live call
+   * from any socket but the one the call went out on is refused.
+   */
+  progress(
+    connection: number,
+    params: { callId: string; seq: number; chunk: string; skipped?: number }
+  ): { ok: true } {
+    const call = this.calls.get(params.callId)
+    if (!call) return { ok: true }
+    if (call.connection !== connection)
+      throw new Error('forbidden: progress for a call this socket does not carry')
+    call.progress?.take({ seq: params.seq, chunk: params.chunk, skipped: params.skipped ?? 0 })
+    return { ok: true }
+  }
+
   /** Every pending call fails; registrations go. */
   close(): void {
     for (const [callId, call] of this.calls) this.settle(callId, call, new Error('server closing'))
@@ -224,6 +248,10 @@ export function handlePeerRequest(
         params: { callId: string; ok: boolean; result?: unknown; error?: string; chunks?: number }
       }
     | { method: 'peer.chunk'; params: { callId: string; index: number; data: string } }
+    | {
+        method: 'peer.progress'
+        params: { callId: string; seq: number; chunk: string; skipped?: number }
+      }
 ): unknown {
   if (!socket.remote) throw new Error(`forbidden: ${req.method} is for another host's main process`)
   switch (req.method) {
@@ -233,6 +261,8 @@ export function handlePeerRequest(
       return calls.reply(socket.connection, req.params)
     case 'peer.chunk':
       return calls.chunk(socket.connection, req.params)
+    case 'peer.progress':
+      return calls.progress(socket.connection, req.params)
   }
 }
 
@@ -282,7 +312,13 @@ export async function replyOverLink(
 export type PeerCallHandler = (
   method: MacMethod,
   params: Extract<MacBridgePush, { push: 'peer.call' }>['params'],
-  ctx: { from: string; callId: string; deadlineAt: number }
+  ctx: {
+    from: string
+    callId: string
+    deadlineAt: number
+    /** Send output so far as a peer.progress frame (peerStreams.ts progressSender). */
+    progress?: (chunk: string, skipped?: number) => void
+  }
 ) => Promise<unknown>
 
 /** Run one peer.call push through `handler` and reply; a reply the box refuses (expired) is logged and dropped. */
@@ -298,7 +334,12 @@ export async function servePeerCall(
   try {
     outcome = {
       ok: true,
-      result: await handler(push.method, push.params, { from, callId: push.callId, deadlineAt })
+      result: await handler(push.method, push.params, {
+        from,
+        callId: push.callId,
+        deadlineAt,
+        progress: progressSender(request, push.callId, log)
+      })
     }
   } catch (err) {
     outcome = { ok: false, error: err instanceof Error ? err.message : String(err) }

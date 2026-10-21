@@ -18,7 +18,9 @@
  *    gets "denied at the Mac"; allowed once with remember, the folder then
  *    reads with no prompt for that thread
  *  - mac.run raises a request showing argv and cwd; allowed through
- *    macBridge.decide, the output comes back; a wrong token is refused before
+ *    macBridge.decide, the output comes back; a command printing 20 lines
+ *    over 2 s streams them (peer.progress) into its row on box as live
+ *    partial tool-call rows before the result, which is complete; a wrong token is refused before
  *    the Mac hears of it; the codex stdio bridge lists the mac tools and reads
  *    a file through them
  *  - remember kinds: a command allowed with remember 'folder' lets a different
@@ -247,6 +249,31 @@ async function watchMac(): Promise<{
     throw new Error('no macBridge.request reached the Mac')
   }
   return { next, seen, close: () => ws.close() }
+}
+
+/** box's own socket subscribed to a thread, as a renderer holds it: every live row (event and events pushes). */
+async function watchThread(
+  sessionId: string
+): Promise<{ rows: { seq: number; event: Record<string, unknown> }[]; close: () => void }> {
+  const ws = new WebSocket(`ws://127.0.0.1:${portOf(box)}/`)
+  const rows: { seq: number; event: Record<string, unknown> }[] = []
+  await new Promise<void>((ok, fail) => {
+    ws.addEventListener('open', () => ok())
+    ws.addEventListener('error', () => fail(new Error('box socket error')))
+  })
+  ws.addEventListener('message', (ev) => {
+    const frame = JSON.parse(String(ev.data)) as {
+      push?: string
+      row?: { sessionId: string; seq: number; event: Record<string, unknown> }
+      sessionId?: string
+      rows?: { sessionId: string; seq: number; event: Record<string, unknown> }[]
+    }
+    if (frame.push === 'event' && frame.row?.sessionId === sessionId) rows.push(frame.row)
+    if (frame.push === 'events' && frame.sessionId === sessionId) rows.push(...(frame.rows ?? []))
+  })
+  ws.send(JSON.stringify({ id: 'sub', method: 'session.subscribe', params: { sessionId } }))
+  await sleep(200)
+  return { rows, close: () => ws.close() }
 }
 
 /** The codex stdio bridge for the thread, as codex would spawn it: initialize, tools/list, one tools/call. */
@@ -648,6 +675,64 @@ try {
       (await rpc<unknown[]>(mac, 'macBridge.rules.list', { sessionId: sid })).length === 0
     )
   }
+  // ── 6c. mac_run streams: the output grows in the thread's row while it runs ──
+  const live = await watchThread(sid)
+  const STEPS = Array.from({ length: 20 }, (_, i) => `build step ${i + 1}`)
+  const streamArgv = [
+    '/bin/sh',
+    '-c',
+    'for i in $(seq 1 20); do echo "build step $i"; sleep 0.1; done'
+  ]
+  let partialsBeforeResult = -1
+  const streamed = rpc<{ exitCode: number; stdout: string; truncated: boolean }>(box, 'mac.run', {
+    sessionId: sid,
+    token,
+    argv: streamArgv,
+    cwd: shared,
+    callId: 'e2e-stream-run'
+  }).then((r) => {
+    partialsBeforeResult = live.rows.filter(
+      (r) => r.event.partial === true && r.event.callId === 'e2e-stream-run'
+    ).length
+    return r
+  })
+  const ask5 = await watcher.next((r) => r.kind === 'run' && r.status === 'pending')
+  await rpc(mac, 'macBridge.decide', { id: ask5.id, allow: true })
+  const streamOut = await streamed
+  const partials = live.rows.filter(
+    (r) => r.event.partial === true && r.event.callId === 'e2e-stream-run'
+  )
+  const outputs = partials.map(
+    (r) => ((r.event.preview as { output?: string } | undefined)?.output ?? '') as string
+  )
+  live.close()
+  log(
+    `${partials.length} live row(s) for the streamed run, ${partialsBeforeResult} before its result`
+  )
+  check(
+    'mac.run streams: at least 3 live progress rows reached the thread before the result',
+    partialsBeforeResult >= 3,
+    `${partialsBeforeResult} before the result`
+  )
+  check(
+    'each live row is a broadcast-only partial tool-call with a shell preview, growing by whole lines',
+    partials.every(
+      (r) =>
+        r.seq === -1 &&
+        r.event.type === 'tool-call' &&
+        (r.event.preview as { kind?: string } | undefined)?.kind === 'shell'
+    ) &&
+      outputs.every((o, i) => o.endsWith('\n') && (i === 0 || o.startsWith(outputs[i - 1]))) &&
+      outputs.every((o) => streamOut.stdout.startsWith(o)),
+    JSON.stringify(outputs.slice(0, 3))
+  )
+  check(
+    'and the final result carries the whole output',
+    streamOut.exitCode === 0 &&
+      !streamOut.truncated &&
+      streamOut.stdout === STEPS.map((l) => `${l}\n`).join(''),
+    JSON.stringify(streamOut).slice(0, 300)
+  )
 
   // ── 7. the token ─────────────────────────────────────────────────────
   const seenBeforeToken = watcher.seen.length

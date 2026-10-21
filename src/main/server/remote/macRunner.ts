@@ -2,6 +2,7 @@ import { spawn } from 'node:child_process'
 import { MAC_RUN_OUTPUT_CAP, type MacRunResult } from '@shared/contract-macbridge'
 import { loginShell } from '../loginShell'
 import { trackChild } from '../spawnBudget'
+import { HeadTailOutput, ProgressPacer } from './peerStreams'
 
 /**
  * The Mac bridge's command runner (docs/box.md "The Mac bridge"). Only ever
@@ -9,9 +10,11 @@ import { trackChild } from '../spawnBudget'
  * command runs through the login shell (loginShell.ts) so the Mac's PATH
  * (Homebrew, …) is there, with no stdin, in a process group of its own, and
  * an environment scrubbed down to who and where: nothing of the app's own
- * (no TEMP_CODE_*, no provider keys, no ELECTRON_*). Past the timeout, past
- * MAC_RUN_OUTPUT_CAP of output, or on stop() the whole group goes: SIGTERM,
- * then SIGKILL after a grace.
+ * (no TEMP_CODE_*, no provider keys, no ELECTRON_*). Past the timeout or on
+ * stop() the whole group goes: SIGTERM, then SIGKILL after a grace. Output
+ * past MAC_RUN_OUTPUT_CAP keeps its head and tail (peerStreams.ts
+ * HeadTailOutput), and `onOutput` hears it line by line while it runs
+ * (ProgressPacer: one frame per 100 ms at most, 64 KiB each).
  */
 
 const KEEP_ENV = ['HOME', 'USER', 'LOGNAME', 'SHELL', 'LANG', 'LC_ALL', 'LC_CTYPE', 'TMPDIR', 'TZ']
@@ -52,6 +55,9 @@ export function runMacCommand(opts: {
   outputCap?: number
   shell?: string
   env?: Record<string, string>
+  /** The output so far, as progress frames (peerStreams.ts ProgressPacer); the last one comes before the result. */
+  onOutput?: (chunk: string, skipped: number) => void
+  progressMs?: number
 }): RunningCommand {
   const cap = opts.outputCap ?? MAC_RUN_OUTPUT_CAP
   const [file, ...args] = shellArgv(opts, opts.shell)
@@ -64,10 +70,14 @@ export function runMacCommand(opts: {
       stdio: ['ignore', 'pipe', 'pipe']
     })
   )
-  const out: Buffer[] = []
-  const err: Buffer[] = []
-  let used = 0
-  let truncated = false
+  // The first quarter of the cap is the head, the rest the tail (1 MiB + 3 MiB at 4 MiB).
+  const output = new HeadTailOutput(Math.floor(cap / 4), cap - Math.floor(cap / 4))
+  const pacer = opts.onOutput
+    ? new ProgressPacer({
+        send: opts.onOutput,
+        ...(opts.progressMs !== undefined ? { intervalMs: opts.progressMs } : {})
+      })
+    : null
   let timedOut = false
   let killTimer: NodeJS.Timeout | null = null
   const killGroup = (): void => {
@@ -87,21 +97,12 @@ export function runMacCommand(opts: {
     killTimer = setTimeout(() => signal('SIGKILL'), KILL_GRACE_MS)
     killTimer.unref()
   }
-  const take = (into: Buffer[]) => (chunk: Buffer) => {
-    if (truncated) return
-    const room = cap - used
-    if (chunk.length > room) {
-      into.push(chunk.subarray(0, room))
-      used = cap
-      truncated = true
-      killGroup()
-      return
-    }
-    into.push(chunk)
-    used += chunk.length
+  const take = (stream: 'stdout' | 'stderr') => (chunk: Buffer) => {
+    output.push(stream, chunk)
+    pacer?.push(stream, chunk)
   }
-  child.stdout?.on('data', take(out))
-  child.stderr?.on('data', take(err))
+  child.stdout?.on('data', take('stdout'))
+  child.stderr?.on('data', take('stderr'))
   const timer = setTimeout(() => {
     timedOut = true
     killGroup()
@@ -120,14 +121,16 @@ export function runMacCommand(opts: {
         /* the group is empty */
       }
       if (killTimer) clearTimeout(killTimer)
+      pacer?.end()
       resolve({
         exitCode,
         signal,
-        stdout: Buffer.concat(out).toString('utf8'),
-        stderr: Buffer.concat(err).toString('utf8') + extra,
-        truncated,
+        stdout: output.text('stdout'),
+        stderr: output.text('stderr') + extra,
+        truncated: output.truncated,
         timedOut,
-        durationMs: Date.now() - startedAt
+        durationMs: Date.now() - startedAt,
+        ...(output.truncated ? { droppedBytes: output.dropped } : {})
       })
     }
     // A background child of the command holding the pipes open would keep
