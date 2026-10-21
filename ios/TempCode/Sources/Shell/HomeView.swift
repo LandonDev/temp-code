@@ -55,8 +55,8 @@ struct HomeView: View {
                     .task(id: needsKey(sections)) { await loadLines(sections) }
                     .task(id: clients.first?.hasShell) { await performLaunch(clients, sections: sections, proxy: proxy) }
                     .task {
-                        // One turn of the run loop after the cached paint: the diff that follows is an event.
-                        await Task.yield()
+                        // The cached paint lands in the first frames; whatever lands after this is an event.
+                        try? await Task.sleep(for: .milliseconds(300))
                         painted = true
                     }
                 }
@@ -435,7 +435,7 @@ private struct NoHostsView: View {
 
     var body: some View {
         ContentUnavailableView {
-            Label("Pair a host", systemImage: "desktopcomputer")
+            Label("Nothing paired yet", systemImage: "desktopcomputer")
         } description: {
             Text("Pair your Mac or the agent host to see its threads here.")
         } actions: {
