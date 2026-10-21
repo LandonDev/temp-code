@@ -773,6 +773,32 @@ On the Mac (`src/main/server/remote/macBridge.ts`, `macRunner.ts`):
   for a command, the executable's name and its exit). Never a file's
   contents or a command's output.
 
+Interactive jobs (`src/main/server/remote/macJobs.ts`, contract
+`src/shared/contract-macjobs.ts`). `mac_run` with `background: true` starts the
+command as a job and answers `{jobId}` at once; the box forwards it to the Mac
+as `mac.jobStart`. The approval is the same card (argv and cwd), saying
+"interactively", with its own per-thread "allow this exact command"; once
+allowed the job runs through the login shell with the scrubbed environment in
+its own process group, but in a terminal (node-pty, so `ssh`, `sudo -S` and
+other prompts that read the tty work; it echoes input and merges stderr into
+stdout; piped stdio when node-pty cannot load), and stays on the card as
+running, with Stop. Then `mac.jobWrite {jobId, dataBase64}`, `mac.jobRead
+{jobId, afterOffset, waitMs?}` (the newest 1 MiB past the offset of a 4 MiB
+rolling buffer, `nextOffset`, and the exit once done; `waitMs` up to 30 s waits
+for output), `mac.jobSignal {jobId, TERM|KILL|INT}` (the whole group) and
+`mac.jobClose` (stdin; in a terminal that is ^D) ask nothing more: the job was
+allowed. All four are local, carry the thread's token, and the Mac answers
+only for the (host, thread) that started the job. Tools: `mac_run`'s
+`background`, `mac_job_write` (text or base64, `close`), `mac_job_read`,
+`mac_job_signal`, for Claude and Codex alike. At most 4 run per thread; a job
+ends when its thread is archived, deleted or moved off the box (the box sends
+`mac.jobsEnd`), when the host's policy drops to read or off, when the Mac's app
+quits, and after 30 minutes with no call on it (SIGTERM, SIGKILL 2 s later;
+the idle clock is also what ends a job whose box went away); an
+ended job's output stays readable for another 30 idle minutes (the newest 4
+per thread). The log names the job, its argv0, writes by size, signals and the
+exit; never its input or output.
+
 Security model, in short: the box can ask, never decide. A compromised box can
 make the Mac show prompts and read what the Mac shared with it (or with its
 projects), nothing more; it can never run a command the person did not allow

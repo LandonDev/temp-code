@@ -278,6 +278,11 @@ export const METHOD_CAPABILITY: Record<ClientRequest['method'], MethodCapability
   'macBridge.policy.get': 'local',
   'macBridge.policy.set': 'local',
   'macBridge.shared.set': 'local',
+  // Interactive jobs on the Mac (contract-macjobs.ts): a box thread's own, like mac.run.
+  'mac.jobWrite': 'local',
+  'mac.jobRead': 'local',
+  'mac.jobSignal': 'local',
+  'mac.jobClose': 'local',
   // Saved hosts and their keys never leave this machine (thread K1).
   'remote.environments.list': 'local',
   'remote.environments.add': 'local',

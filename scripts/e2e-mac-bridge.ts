@@ -21,6 +21,9 @@
  *    macBridge.decide, the output comes back; a wrong token is refused before
  *    the Mac hears of it; the codex stdio bridge lists the mac tools and reads
  *    a file through them
+ *  - an interactive job: mac.run background: true starts `cat` after the
+ *    same card (marked interactive), two lines written with mac.jobWrite read
+ *    back through mac.jobRead, mac.jobClose ends its stdin and it exits 0
  *  - policy read refuses commands, off refuses everything; with the host
  *    removed on mac, box answers "Mac offline"
  * Run: bun scripts/e2e-mac-bridge.ts   (build first: electron-vite build)
@@ -579,6 +582,68 @@ try {
     'and reads a Mac file through mac_read_file',
     codex.text.includes(JSON.stringify(NOTE).slice(1, -1)),
     codex.text.slice(0, 200)
+  )
+
+  // ── 8b. an interactive job: cat, two lines in, read back, stdin closed, exit 0 ──
+  const jobStart = rpc<{ jobId: string; pty: boolean }>(box, 'mac.run', {
+    sessionId: sid,
+    token,
+    argv: ['cat'],
+    cwd: shared,
+    background: true
+  })
+  const askJob = await watcher.next((r) => r.kind === 'run' && r.status === 'pending')
+  check(
+    'mac.run background: true prompts with the argv and cwd, marked interactive',
+    JSON.stringify(askJob.argv) === '["cat"]' &&
+      askJob.cwd === shared &&
+      (askJob as { interactive?: boolean }).interactive === true,
+    JSON.stringify(askJob)
+  )
+  await rpc(mac, 'macBridge.decide', { id: askJob.id, allow: true })
+  const job = await jobStart
+  check('the job started and answered its id at once', /^job_/.test(job.jobId), JSON.stringify(job))
+  log(`job ${job.jobId}: ${job.pty ? 'in a terminal (node-pty)' : 'on pipes'}`)
+  const b64 = (t: string): string => Buffer.from(t).toString('base64')
+  await rpc(box, 'mac.jobWrite', { sessionId: sid, token, jobId: job.jobId, dataBase64: b64('first line\n') })
+  await rpc(box, 'mac.jobWrite', { sessionId: sid, token, jobId: job.jobId, dataBase64: b64('second line\n') })
+  type JobRead = { output: string; nextOffset: number; running: boolean; exitCode: number | null }
+  let jobText = ''
+  let jobOffset = 0
+  let jobLast: JobRead | null = null
+  const readJob = async (done: () => boolean): Promise<boolean> => {
+    for (let i = 0; i < 40; i++) {
+      jobLast = await rpc<JobRead>(box, 'mac.jobRead', {
+        sessionId: sid,
+        token,
+        jobId: job.jobId,
+        afterOffset: jobOffset,
+        waitMs: 500
+      })
+      jobText += jobLast.output
+      jobOffset = jobLast.nextOffset
+      if (done()) return true
+    }
+    return false
+  }
+  check(
+    'mac.jobRead reads both lines back',
+    await readJob(() => jobText.includes('first line') && jobText.includes('second line')),
+    JSON.stringify(jobText)
+  )
+  const otherRead = await errorOf(
+    rpc(box, 'mac.jobRead', { sessionId: other.id, token: 'x', jobId: job.jobId })
+  )
+  check("another thread cannot read this thread's job", otherRead.includes('own token'), otherRead)
+  await rpc(box, 'mac.jobClose', { sessionId: sid, token, jobId: job.jobId })
+  check(
+    'mac.jobClose ends its stdin and cat exits 0',
+    (await readJob(() => jobLast?.running === false)) && jobLast?.exitCode === 0,
+    JSON.stringify(jobLast)
+  )
+  check(
+    'mac logged the job, never what it wrote',
+    logOf(mac).includes(`job ${job.jobId} ran: exit 0`) && !logOf(mac).includes('first line')
   )
 
   // ── 9. policy read, then off ─────────────────────────────────────────

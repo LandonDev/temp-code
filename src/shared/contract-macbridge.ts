@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { MAC_RUN_BACKGROUND, type MacPeerMethod } from './contract-macjobs'
 
 // The Mac bridge (docs/box.md "The Mac bridge: what a box thread may touch
 // on the Mac"). Threads run on the box; the user's files and macOS-only
@@ -163,6 +164,8 @@ export interface MacBridgeRequest {
   createdAt: number
   expiresAt: number
   status: 'pending' | 'running'
+  /** run: an interactive job (mac.run background: true; remote/macJobs.ts): stdin open, no timeout but the idle one. */
+  interactive?: true
 }
 
 export type MacBridgeOutcome = 'allowed' | 'denied' | 'expired' | 'stopped' | 'done'
@@ -194,7 +197,7 @@ export type MacBridgePush =
   | {
       push: 'peer.call'
       callId: string
-      method: MacMethod
+      method: MacPeerMethod
       params: MacCallParams
       deadlineMs: number
     }
@@ -238,7 +241,7 @@ export const MacBridgeRequestSchemas = [
   request('mac.readFile', MacReadFileArgsSchema.extend(threadAuth)),
   request('mac.listDir', MacListDirArgsSchema.extend(threadAuth)),
   request('mac.fetchFile', MacFetchFileArgsSchema.extend(threadAuth)),
-  request('mac.run', MacRunArgsSchema.extend(threadAuth)),
+  request('mac.run', MacRunArgsSchema.extend(threadAuth).extend(MAC_RUN_BACKGROUND)),
   // ── a box thread's switch ────────────────────────────────────────────
   /** → MacBridgeThreadState. */
   request('macBridge.thread.get', z.object({ sessionId: z.string().min(1).max(200) })),

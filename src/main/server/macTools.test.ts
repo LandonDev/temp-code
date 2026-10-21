@@ -18,6 +18,8 @@ import {
   macToolsHooks,
   MAC_TOOLS
 } from './macTools'
+import { MAC_JOB_TOOLS } from './macTools'
+import { MAC_JOB_TOOL_PARAMS } from '@shared/contract-macjobs'
 import { macBridgeLandingDir } from './macBridgeLanding'
 import {
   PeerCalls,
@@ -262,7 +264,7 @@ describe('withMacTools', () => {
     tools.setThread('root', 'env_mac')
     const on = withMacTools(opts(), meta('root'))
     expect(Object.keys(on.mcpServers ?? {})).toEqual(['app', 'mac'])
-    expect(on.allowedTools).toEqual(['mcp__app__x', ...MAC_TOOLS])
+    expect(on.allowedTools).toEqual(['mcp__app__x', ...MAC_TOOLS, ...MAC_JOB_TOOLS])
     macToolsHooks.current = null
   })
 })
@@ -313,11 +315,16 @@ describe('the codex bridge keeps the Mac tools equal', async () => {
         MAC_TOOL_DESCRIPTIONS[t.name as keyof typeof MAC_TOOL_DESCRIPTIONS]
       )
       for (const [k, v] of Object.entries(t.inputSchema.properties))
-        expect(v.description).toBe(MAC_TOOL_PARAMS[k as keyof typeof MAC_TOOL_PARAMS])
+        expect(v.description).toBe(
+          MAC_TOOL_PARAMS[k as keyof typeof MAC_TOOL_PARAMS] ??
+            MAC_JOB_TOOL_PARAMS[k as keyof typeof MAC_JOB_TOOL_PARAMS]
+        )
     }
   })
   it('lists them only with a token', () => {
     expect(bridge.listedTools(undefined).some((t) => t.name.startsWith('mac_'))).toBe(false)
-    expect(bridge.listedTools('tok').filter((t) => t.name.startsWith('mac_')).length).toBe(4)
+    expect(bridge.listedTools('tok').filter((t) => t.name.startsWith('mac_')).length).toBe(
+      bridge.MAC_TOOLS.length + 3
+    )
   })
 })

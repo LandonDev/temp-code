@@ -9,6 +9,7 @@ import { HarnessRequestSchemas } from './contract-harness'
 import { AttachmentRequestSchemas } from './contract-attachments'
 import { SessionMoveRequestSchemas } from './contract-session-move'
 import { MacBridgeRequestSchemas } from './contract-macbridge'
+import { MacJobRequestSchemas } from './contract-macjobs'
 import { AGENT_TYPES } from './catalog'
 import { AttachmentSchema, PermissionPolicySchema } from './events'
 import { ProjectModeSchema, ThreadTypeSchema } from './domain'
@@ -104,6 +105,7 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
   ...AttachmentRequestSchemas,
   ...SessionMoveRequestSchemas,
   ...MacBridgeRequestSchemas,
+  ...MacJobRequestSchemas,
   // refresh: re-probe the installed CLIs of the probed providers first.
   z.object({
     id: z.string(),

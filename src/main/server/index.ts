@@ -399,6 +399,11 @@ export async function startServer(
   })
   macToolsHooks.current = macTools
   macToolsHooks.tokens = macTokens
+  // A thread that ends here (archived, deleted, moved away) takes its interactive jobs on the Mac with it.
+  registry.onRemoved((ids) => macTools.threadsEnded(ids))
+  registry.onMeta((m) => {
+    if (m.archived) macTools.threadsEnded([m.id])
+  })
   peers.refresh()
   const syncTimer = setInterval(() => void accountSync.syncAll(), 15 * 60_000)
   syncTimer.unref()

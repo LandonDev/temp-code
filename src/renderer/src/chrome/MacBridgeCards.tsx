@@ -70,7 +70,8 @@ function MacBridgeCard({
         <CircleAlert className="size-3.5 shrink-0 text-warning" strokeWidth={1.75} />
         <span className="min-w-0 flex-1 truncate text-content">
           <span className="font-semibold">{request.hostName}</span> wants to{' '}
-          {METHOD_TEXT[request.method]} on this Mac
+          {METHOD_TEXT[request.method]}
+          {request.interactive ? ' interactively' : ''} on this Mac
           {showThread && request.threadTitle ? (
             <span className="text-content/50"> · {request.threadTitle}</span>
           ) : null}
@@ -83,6 +84,9 @@ function MacBridgeCard({
         <div className="text-[11px] text-content/50">
           in <span className="font-mono">{request.cwd}</span>
           {request.timeoutMs ? ` · stops after ${Math.round(request.timeoutMs / 1000)} s` : ''}
+          {request.interactive
+            ? ' · interactive: stdin stays open, ends after 30 idle minutes'
+            : ''}
         </div>
       ) : null}
       {running ? (

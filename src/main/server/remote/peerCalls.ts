@@ -1,11 +1,7 @@
 import { randomBytes } from 'node:crypto'
 import type { ServerFrame } from '@shared/contract'
-import {
-  PEER_CHUNK_CHARS,
-  PEER_MAX_CHUNKS,
-  type MacBridgePush,
-  type MacMethod
-} from '@shared/contract-macbridge'
+import { PEER_CHUNK_CHARS, PEER_MAX_CHUNKS, type MacBridgePush } from '@shared/contract-macbridge'
+import type { MacPeerMethod } from '@shared/contract-macjobs'
 
 /**
  * Reverse RPC over the peer link (docs/box.md "The Mac bridge"). The Mac's
@@ -108,7 +104,7 @@ export class PeerCalls {
   /** Ask a registered peer; rejects with PeerOfflineError when none, or on the deadline. */
   call<T = unknown>(
     envId: string,
-    method: MacMethod,
+    method: MacPeerMethod,
     params: Extract<MacBridgePush, { push: 'peer.call' }>['params'],
     deadlineMs: number
   ): Promise<T> {
@@ -268,7 +264,7 @@ export async function replyOverLink(
 }
 
 export type PeerCallHandler = (
-  method: MacMethod,
+  method: MacPeerMethod,
   params: Extract<MacBridgePush, { push: 'peer.call' }>['params'],
   ctx: { from: string; callId: string; deadlineAt: number }
 ) => Promise<unknown>
