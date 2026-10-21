@@ -1,4 +1,5 @@
 import { existsSync, statSync } from 'node:fs'
+import { LIVE_STATUSES } from '@shared/session-lifecycle'
 import { isAbsolute, join } from 'node:path'
 import type { ServerPush } from '@shared/contract'
 import {
@@ -90,6 +91,7 @@ export interface CrossHostThreadsDeps {
     | 'subscribe'
     | 'onMeta'
     | 'listProjects'
+    | 'list'
   >
   /** The saved hosts (remote.environments), by id and name. */
   environments: () => { id: string; name: string }[]
@@ -102,6 +104,12 @@ export interface CrossHostThreadsDeps {
   exists?: (path: string) => boolean
   worktree?: typeof worktreeFor
   log?: (line: string) => void
+  /**
+   * The Mac bridge's thread cap (macBridge.ts admitThread, `macBridge.maxThreads.<envId>`):
+   * asked before every start and spawn with the host's id; a refusal is the
+   * tool's error, nothing is queued.
+   */
+  admit?: (envId: string) => { ok: boolean; reason?: string }
 }
 
 const isDir = (path: string): boolean => {
@@ -188,6 +196,20 @@ export class CrossHostThreads {
   /** The host that started a thread here, while it exists. */
   ownerOf(sessionId: string): string | null {
     return this.deps.store.getSetting(`${OWNER_PREFIX}${sessionId}`)
+  }
+
+  /** Threads a host started here that are live now: what the Mac bridge's thread cap counts. */
+  liveThreadsOf(envId: string): number {
+    return this.deps.registry
+      .list()
+      .filter((m) => LIVE_STATUSES.has(m.status) && this.ownerOf(m.id) === envId).length
+  }
+
+  /** The thread cap, before a start or spawn. */
+  private admitted(caller: CrossHostCaller): void {
+    const verdict = this.deps.admit?.(caller.environmentId)
+    if (verdict && !verdict.ok)
+      throw new Error(verdict.reason ?? 'the Mac takes no more threads from this host right now')
   }
 
   private startedKey(caller: CrossHostCaller): string {
@@ -344,6 +366,7 @@ export class CrossHostThreads {
       args.planPath && (args.threadType === 'implementation' || args.threadType === 'orchestration')
         ? (macPathFor(args.planPath, this.deps.pathMap(), stripSlash(this.deps.workRoot()), args.workRoot) ?? undefined)
         : undefined
+    this.admitted(caller)
     const thread = await this.deps.registry.create({
       provider: args.provider,
       model: args.model,
@@ -367,6 +390,7 @@ export class CrossHostThreads {
   private async spawn(caller: CrossHostCaller, args: ThreadSpawnArgs): Promise<ThreadStartResult> {
     const placed = this.place(args.cwd, args.workRoot)
     const writer = args.agentType === 'implementer'
+    this.admitted(caller)
     const cwd =
       (writer && args.useWorktree
         ? await (this.deps.worktree ?? worktreeFor)(placed.cwd, `${caller.sessionId}-${Date.now() % 100000}`)

@@ -223,7 +223,9 @@ function bridge(link: ((method: string, params?: unknown) => Promise<unknown>) |
     link: () => link,
     home,
     shell: '/bin/sh',
-    log: (l) => lines.push(l)
+    log: (l) => lines.push(l),
+    // A calm Mac: the load guard never holds these (the box running the suite may be busy).
+    load: { sample: () => ({ load: 0, cores: 8 }), intervalMs: 0 }
   })
   mb.subscribe((p) => pushes.push(p))
   const requests = (): MacBridgeRequest[] =>

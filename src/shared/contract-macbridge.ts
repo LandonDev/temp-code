@@ -38,6 +38,20 @@ export const MAC_RUN_OUTPUT_CAP = 4 * 1024 * 1024
 /** How long a request waits on the person at the Mac before it counts as denied. */
 export const MAC_APPROVAL_WAIT_MS = 10 * 60_000
 
+// ── the load guard (remote/macLoadGuard.ts) ───────────────────────────
+/** Concurrent commands and jobs one host may run on the Mac, unless `macBridge.maxRunning.<envId>` says otherwise. */
+export const MAC_BRIDGE_DEFAULT_MAX_RUNNING = 4
+/** Concurrent Mac-local threads one host may have started here, unless `macBridge.maxThreads.<envId>` says otherwise. */
+export const MAC_BRIDGE_DEFAULT_MAX_THREADS = 2
+/** The one-minute load above which new commands and jobs are held: this many times the cores, unless `macBridge.loadLimit` is set. */
+export const MAC_LOAD_LIMIT_PER_CORE = 2
+/** Held calls resume once the load is under this fraction of the limit (1.5 × cores by default). */
+export const MAC_LOAD_RESUME_FRACTION = 0.75
+/** How often the Mac samples os.loadavg()[0]. */
+export const MAC_LOAD_SAMPLE_MS = 15_000
+export const MAC_BRIDGE_MAX_RUNNING_CAP = 64
+export const MAC_BRIDGE_MAX_THREADS_CAP = 32
+
 // ── mac_run streaming (remote/peerStreams.ts, macRunLive.ts) ──────────
 /** Past MAC_RUN_OUTPUT_CAP, the first this many bytes of output are kept… */
 export const MAC_RUN_HEAD_BYTES = 1024 * 1024
@@ -245,7 +259,10 @@ export interface MacBridgeRequest extends MacRunRememberOffer {
   createsFolders?: boolean
   createdAt: number
   expiresAt: number
-  status: 'pending' | 'running'
+  /** pending: waits on the person. held: allowed, waiting its turn on the load guard (`held` says why). running: started. */
+  status: 'pending' | 'held' | 'running'
+  /** While status is held: its place and the figure that holds it (remote/macLoadGuard.ts). */
+  held?: MacBridgeHeld
   /** run: an interactive job (mac.run background: true; remote/macJobs.ts): stdin open, no timeout but the idle one. */
   interactive?: true
   /**
@@ -258,6 +275,70 @@ export interface MacBridgeRequest extends MacRunRememberOffer {
 }
 
 export type MacBridgeOutcome = 'allowed' | 'denied' | 'expired' | 'stopped' | 'done'
+
+/**
+ * Why an allowed command or job waits on the Mac before it starts (the load
+ * guard, remote/macLoadGuard.ts): the host is at its cap of concurrent
+ * commands and jobs, or the Mac's one-minute load is over the limit. The
+ * renderer draws it as "Waiting for the Mac · load 12.3 of 8 · 3rd in line".
+ */
+export interface MacBridgeHeld {
+  reason: 'cap' | 'load'
+  /** 1-based place in the host's queue; held calls start in order. */
+  position: number
+  /** The Mac's one-minute load average at the last sample, its limit and its cores. */
+  load: number
+  limit: number
+  cores: number
+  /** The host's cap on concurrent commands and jobs, and how many run now. */
+  maxRunning: number
+  running: number
+}
+
+/** 1 → 1st, 2 → 2nd, 3 → 3rd, 11 → 11th, 22 → 22nd. */
+export function ordinal(n: number): string {
+  const tens = n % 100
+  if (tens >= 11 && tens <= 13) return `${n}th`
+  const one = n % 10
+  return `${n}${one === 1 ? 'st' : one === 2 ? 'nd' : one === 3 ? 'rd' : 'th'}`
+}
+
+/** What a held row says, on the Mac and in the log: "Waiting for the Mac · load 12.3 of 8 · 3rd in line". */
+export function heldLine(held: MacBridgeHeld): string {
+  const why =
+    held.reason === 'load'
+      ? `load ${held.load.toFixed(1)} of ${trimNumber(held.limit)}`
+      : `${held.running} of ${held.maxRunning} running`
+  return `Waiting for the Mac · ${why} · ${ordinal(held.position)} in line`
+}
+
+/** 16 → "16", 4.5 → "4.5". */
+export const trimNumber = (n: number): string => (Number.isInteger(n) ? String(n) : n.toFixed(1))
+
+/** The Mac's load as the guard last sampled it (`macBridge.load.get`). */
+export interface MacBridgeLoad {
+  load: number
+  cores: number
+  /** `macBridge.loadLimit`, else MAC_LOAD_LIMIT_PER_CORE × cores. */
+  limit: number
+  /** The limit was set by hand (else it follows the cores). */
+  pinned: boolean
+  /** Held calls resume once the load is under this. */
+  resumeBelow: number
+  /** New commands and jobs are being held for load right now. */
+  busy: boolean
+  sampledAt: number
+}
+
+/** Whether another Mac-local thread from a host may start here now (`macBridge.admitThread`, crossHostThreads.ts asks before every start). */
+export interface MacBridgeThreadAdmission {
+  ok: boolean
+  /** Threads that host started here and that are live now. */
+  live: number
+  max: number
+  /** When not ok: the sentence the box thread's tool result carries. */
+  reason?: string
+}
 
 /** One saved host, as Settings → Remote access shows its bridge row. */
 export interface MacBridgeHostPolicy {
@@ -273,6 +354,13 @@ export interface MacBridgeHostPolicy {
   showRunning: boolean
   /** Whether that host has this Mac registered right now (the link is up and it took the offer). */
   registered: boolean
+  /** The load guard's caps for this host (`macBridge.maxRunning.<envId>`, `macBridge.maxThreads.<envId>`, else the defaults)… */
+  maxRunning: number
+  maxThreads: number
+  /** …and what it runs now: commands and jobs running, commands and jobs held, Mac-local threads live. */
+  running: number
+  held: number
+  threads: number
 }
 
 /** A box thread's bridge state, as its header shows it. */
@@ -459,5 +547,21 @@ export const MacBridgeRequestSchemas = [
     z.object({ environmentId: envId, folders: z.array(pathArg).max(64) })
   ),
   /** → MacBridgeHostPolicy[]. Whether commands admitted without a prompt show as running cards on this Mac. */
-  request('macBridge.showRunning.set', z.object({ environmentId: envId, show: z.boolean() }))
+  request('macBridge.showRunning.set', z.object({ environmentId: envId, show: z.boolean() })),
+  // ── the load guard (remote/macLoadGuard.ts) ──────────────────────────
+  /** → MacBridgeHostPolicy[]. A host's caps; null puts one back to its default. */
+  request(
+    'macBridge.limits.set',
+    z.object({
+      environmentId: envId,
+      maxRunning: z.number().int().min(1).max(MAC_BRIDGE_MAX_RUNNING_CAP).nullable().optional(),
+      maxThreads: z.number().int().min(0).max(MAC_BRIDGE_MAX_THREADS_CAP).nullable().optional()
+    })
+  ),
+  /** → MacBridgeLoad. The one-minute load over which new commands and jobs are held; null follows the cores again. */
+  request('macBridge.loadLimit.set', z.object({ limit: z.number().positive().max(10_000).nullable() })),
+  /** → MacBridgeLoad, as last sampled. */
+  request('macBridge.load.get', z.object({}).optional()),
+  /** → MacBridgeThreadAdmission: whether a host may start another Mac-local thread here now. */
+  request('macBridge.admitThread', z.object({ environmentId: envId }))
 ] as const

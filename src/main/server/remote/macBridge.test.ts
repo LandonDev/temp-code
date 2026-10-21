@@ -167,10 +167,12 @@ describe('asText', () => {
   })
 })
 
-function bridge(opts: { managed?: string[] } = {}) {
+function bridge(opts: { managed?: string[]; load?: { load: number; cores: number } } = {}) {
   const settings = new Map<string, string>()
   const pushes: MacBridgePush[] = []
   const lines: string[] = []
+  // The load watch never ticks on its own here; `sample` is what the guard reads when a test calls mb.guard.sample().
+  const sample = opts.load ?? { load: 0, cores: 8 }
   const mb = new MacBridge({
     environmentId: 'env_mac',
     store: {
@@ -182,7 +184,8 @@ function bridge(opts: { managed?: string[] } = {}) {
     link: () => null,
     home,
     shell: '/bin/sh',
-    log: (l) => lines.push(l)
+    log: (l) => lines.push(l),
+    load: { sample: () => ({ ...sample }), intervalMs: 0 }
   })
   mb.subscribe((p) => pushes.push(p))
   const requests = (): MacBridgeRequest[] =>
@@ -211,7 +214,7 @@ function bridge(opts: { managed?: string[] } = {}) {
       { thread: { id: thread, title: `thread ${thread}` }, args },
       { from: 'env_box', deadlineAt: Date.now() + deadlineMs }
     ) as Promise<T>
-  return { mb, settings, pushes, lines, requests, nextRequest, call }
+  return { mb, settings, pushes, lines, requests, nextRequest, call, sample }
 }
 
 describe('MacBridge policy', () => {
@@ -245,7 +248,7 @@ describe('MacBridge policy', () => {
     expect(b.mb.sharedOf('env_box')).toEqual([shared])
     expect(b.mb.hosts()).toEqual([
       { environmentId: 'env_box', name: 'box', policy: 'off', shared: [shared], showRunning: true,
-        registered: false }
+        registered: false, maxRunning: 4, maxThreads: 2, running: 0, held: 0, threads: 0 }
     ])
   })
 
@@ -838,5 +841,156 @@ describe('MacBridge quiet commands', () => {
     await b.mb.handle('mac.listDir', { thread, args: { path: join(home, '.ssh') } }, ctx)
     expect(b.requests()).toEqual([])
     expect(b.mb.pending()).toEqual([])
+  })
+})
+
+describe('MacBridge load guard', () => {
+  const ctx = () => ({ from: 'env_box', deadlineAt: Date.now() + 15 * 60_000 })
+  const auto = (id: string) => ({ id, title: `auto ${id}`, permission: 'auto' })
+
+  it('the host row carries the caps and the counts; limits.set pins and clears them, refusing nonsense', () => {
+    const b = bridge()
+    expect(b.mb.hosts()[0]).toMatchObject({ maxRunning: 4, maxThreads: 2, running: 0, held: 0, threads: 0 })
+    expect(b.mb.setLimits('env_box', { maxRunning: 1, maxThreads: 0 })[0]).toMatchObject({ maxRunning: 1, maxThreads: 0 })
+    expect(b.settings.get('macBridge.maxRunning.env_box')).toBe('1')
+    expect(b.mb.setLimits('env_box', { maxRunning: null })[0]).toMatchObject({ maxRunning: 4, maxThreads: 0 })
+    expect(() => b.mb.setLimits('env_box', { maxRunning: 0 })).toThrow(/running: a whole number/)
+    expect(() => b.mb.setLimits('env_box', { maxThreads: 1.5 })).toThrow(/threads: a whole number/)
+    expect(() => b.mb.setLimits('env_other', { maxRunning: 2 })).toThrow(/unknown host/)
+    // A garbage setting falls back to the default.
+    b.settings.set('macBridge.maxRunning.env_box', 'many')
+    expect(b.mb.maxRunningOf('env_box')).toBe(4)
+    // The load limit follows the cores until pinned.
+    expect(b.mb.loadStatus()).toMatchObject({ load: 0, cores: 8, limit: 16, pinned: false, resumeBelow: 12, busy: false })
+    expect(b.mb.setLoadLimit(6)).toMatchObject({ limit: 6, pinned: true, resumeBelow: 4.5 })
+    expect(() => b.mb.setLoadLimit(0)).toThrow(/above 0/)
+    expect(b.mb.setLoadLimit(null)).toMatchObject({ limit: 16, pinned: false })
+  })
+
+  it('cap 1: the second command is held, in line, and runs once the first ends; the box only sees a later answer', async () => {
+    const b = bridge()
+    b.mb.setPolicy('env_box', 'full')
+    b.mb.setLimits('env_box', { maxRunning: 1 })
+    const first = b.mb.handle('mac.run', { thread: auto('s1'), args: { command: 'sleep 0.6; echo first', cwd: shared } }, ctx()) as Promise<MacRunResult>
+    await b.nextRequest(1) // first: running
+    const second = b.mb.handle('mac.run', { thread: auto('s2'), args: { command: 'echo second', cwd: shared } }, ctx()) as Promise<MacRunResult>
+    const held = await b.nextRequest(3)
+    expect(held).toMatchObject({
+      sessionId: 's2',
+      status: 'held',
+      quiet: true,
+      held: { reason: 'cap', position: 1, maxRunning: 1, running: 1, cores: 8, limit: 16, load: 0 }
+    })
+    expect(b.mb.hosts()[0]).toMatchObject({ running: 1, held: 1 })
+    expect(b.mb.pending().map((r) => [r.sessionId, r.status])).toEqual([['s1', 'running'], ['s2', 'held']])
+    expect(() => b.mb.decide(held.id, true)).toThrow(/already allowed and waiting/)
+    expect((await first).stdout).toBe('first\n')
+    expect((await second).stdout).toBe('second\n')
+    const s2 = b.requests().filter((r) => r.sessionId === 's2').map((r) => r.status)
+    expect(s2).toEqual(['pending', 'held', 'running'])
+    expect(b.requests().filter((r) => r.sessionId === 's2').at(-1)?.held).toBeUndefined()
+    expect(b.lines.some((l) => l.includes('thread=s2 mac.run → held (1 of 1 running, 1st in line)'))).toBe(true)
+    expect(b.lines.some((l) => l.includes('thread=s2 mac.run → released'))).toBe(true)
+    expect(b.mb.hosts()[0]).toMatchObject({ running: 0, held: 0 })
+  })
+
+  it('held calls go in order; Stop on a held one fails its call as stopped and moves the rest up', async () => {
+    const b = bridge()
+    b.mb.setPolicy('env_box', 'full')
+    b.mb.setLimits('env_box', { maxRunning: 1 })
+    const first = b.mb.handle('mac.run', { thread: auto('s1'), args: { command: 'sleep 0.5; echo one', cwd: shared } }, ctx()) as Promise<MacRunResult>
+    await b.nextRequest(1)
+    const second = b.mb.handle('mac.run', { thread: auto('s2'), args: { command: 'echo two', cwd: shared } }, ctx()) as Promise<MacRunResult>
+    const h2 = await b.nextRequest(3)
+    const third = b.mb.handle('mac.run', { thread: auto('s3'), args: { command: 'echo three', cwd: shared } }, ctx()) as Promise<MacRunResult>
+    const h3 = await b.nextRequest(5)
+    expect([h2.held?.position, h3.held?.position]).toEqual([1, 2])
+    b.mb.decide(h2.id, false)
+    await expect(second).rejects.toThrow(/stopped at the Mac while waiting/)
+    expect(b.pushes.some((p) => p.push === 'macBridge.resolved' && p.id === h2.id && p.outcome === 'stopped')).toBe(true)
+    const moved = b.requests().filter((r) => r.id === h3.id).at(-1)
+    expect(moved?.held?.position).toBe(1)
+    expect((await first).stdout).toBe('one\n')
+    expect((await third).stdout).toBe('three\n')
+  })
+
+  it('over the load limit every new command is held for load and goes once the load is back under 1.5 × cores; reads are never held', async () => {
+    const b = bridge({ load: { load: 20, cores: 8 } })
+    b.mb.setPolicy('env_box', 'full')
+    expect(b.mb.guard.sample().busy).toBe(true)
+    const run = b.mb.handle('mac.run', { thread: auto('s1'), args: { command: 'echo calm', cwd: shared } }, ctx()) as Promise<MacRunResult>
+    const held = await b.nextRequest(1)
+    expect(held).toMatchObject({ status: 'held', held: { reason: 'load', position: 1, load: 20, limit: 16, cores: 8 } })
+    expect(b.lines.some((l) => l.includes('mac.run → held (load 20.0 of 16, 1st in line)'))).toBe(true)
+    // A read goes through at once, load or not.
+    const listed = (await b.mb.handle('mac.listDir', { thread: auto('s1'), args: { path: shared } }, ctx())) as MacListDirResult
+    expect(listed.entries.length).toBeGreaterThan(0)
+    // Down to 13: under the limit, over the resume line: still held, the figure updated.
+    b.sample.load = 13
+    expect(b.mb.guard.sample().busy).toBe(true)
+    expect(b.requests().at(-1)).toMatchObject({ id: held.id, status: 'held', held: { load: 13 } })
+    b.sample.load = 11
+    expect(b.mb.guard.sample().busy).toBe(false)
+    expect((await run).stdout).toBe('calm\n')
+  })
+
+  it('a held command whose call leaves no time waits no longer than that, and the box hears why', async () => {
+    const b = bridge()
+    b.mb.setPolicy('env_box', 'full')
+    b.mb.setLimits('env_box', { maxRunning: 1 })
+    const first = b.mb.handle('mac.run', { thread: auto('s1'), args: { command: 'sleep 1.5', cwd: shared } }, ctx()) as Promise<MacRunResult>
+    await b.nextRequest(1)
+    // deadline = now + 1 s timeout + 3 s margin + 300 ms: the hold has 300 ms.
+    const tight = b.mb.handle(
+      'mac.run',
+      { thread: auto('s2'), args: { command: 'echo late', cwd: shared, timeoutMs: 1_000 } },
+      { from: 'env_box', deadlineAt: Date.now() + 1_000 + 3_000 + 300 }
+    )
+    await expect(tight).rejects.toThrow(/stayed too busy/)
+    expect(b.pushes.some((p) => p.push === 'macBridge.resolved' && p.outcome === 'expired')).toBe(true)
+    await first
+  })
+
+  it('a job waits its turn behind a command too, and frees the slot when it ends', async () => {
+    const b = bridge()
+    b.mb.setPolicy('env_box', 'full')
+    b.mb.setLimits('env_box', { maxRunning: 1 })
+    const first = b.mb.handle('mac.run', { thread: auto('s1'), args: { command: 'sleep 0.5', cwd: shared } }, ctx()) as Promise<MacRunResult>
+    await b.nextRequest(1)
+    const job = b.mb.handle('mac.jobStart', { thread: auto('s1'), args: { argv: ['cat'], cwd: shared } as never }, ctx()) as Promise<{ jobId: string }>
+    const held = await b.nextRequest(3)
+    expect(held).toMatchObject({ status: 'held', interactive: true, held: { reason: 'cap', position: 1 } })
+    await first
+    const started = await job
+    expect(started.jobId).toMatch(/^job_/)
+    expect(b.mb.hosts()[0]).toMatchObject({ running: 1, held: 0 })
+    await b.mb.handle('mac.jobSignal', { thread: auto('s1'), args: { jobId: started.jobId, signal: 'KILL' } as never }, ctx())
+    for (let i = 0; i < 100 && b.mb.hosts()[0].running > 0; i++) await new Promise((ok) => setTimeout(ok, 10))
+    expect(b.mb.hosts()[0]).toMatchObject({ running: 0, held: 0 })
+  })
+
+  it('admitThread counts the live threads a host started here against macBridge.maxThreads', () => {
+    let live = 0
+    const settings = new Map<string, string>()
+    const mb = new MacBridge({
+      environmentId: 'env_mac',
+      store: { getSetting: (k) => settings.get(k) ?? null, setSetting: (k, v) => (v === null ? settings.delete(k) : settings.set(k, v)) },
+      managedRoots: () => [],
+      environments: () => [{ id: 'env_box', name: 'box' }],
+      link: () => null,
+      home,
+      log: () => {},
+      load: { sample: () => ({ load: 0, cores: 8 }), intervalMs: 0 },
+      liveThreads: () => live
+    })
+    expect(mb.admitThread('env_box')).toEqual({ ok: true, live: 0, max: 2 })
+    live = 2
+    expect(mb.admitThread('env_box')).toMatchObject({ ok: false, live: 2, max: 2, reason: expect.stringContaining('already runs 2 threads from this host, its cap of 2') })
+    expect(mb.hosts()[0].threads).toBe(2)
+    mb.setLimits('env_box', { maxThreads: 3 })
+    expect(mb.admitThread('env_box').ok).toBe(true)
+    mb.setLimits('env_box', { maxThreads: 0 })
+    expect(mb.admitThread('env_box')).toMatchObject({ ok: false, reason: expect.stringContaining('takes no threads') })
+    mb.close()
   })
 })

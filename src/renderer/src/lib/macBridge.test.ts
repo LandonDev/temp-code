@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { MacBridgeRequest } from "@server/shared/contract-macbridge";
-import { bridgeableEnvironment, queueOf, quoteArgv, shownRequests } from "./macBridge";
+import { bridgeableEnvironment, heldLine, inFlightRequests, queueOf, quoteArgv, shownRequests } from "./macBridge";
 
 describe("quoteArgv", () => {
   it("shows argv exactly as a shell would need it typed", () => {
@@ -95,5 +95,52 @@ describe("queueOf", () => {
     expect(queue.more).toEqual({ env_box: 19 });
     expect(queue.running).toHaveLength(1);
     expect(queue.running[0].requests).toHaveLength(20);
+  });
+});
+
+const held = (position: number, reason: "cap" | "load" = "cap") => ({
+  reason,
+  position,
+  load: reason === "load" ? 12.3 : 1.2,
+  limit: 8,
+  cores: 4,
+  maxRunning: 4,
+  running: 4,
+});
+
+describe("held requests (the load guard)", () => {
+  it("heldLine says why and where: the load figure, or the host's running count, and the place in line", () => {
+    expect(heldLine(held(3, "load"))).toBe("Waiting for the Mac · load 12.3 of 8 · 3rd in line");
+    expect(heldLine(held(1))).toBe("Waiting for the Mac · 4 of 4 running · 1st in line");
+    expect(heldLine(held(2))).toBe("Waiting for the Mac · 4 of 4 running · 2nd in line");
+    expect(heldLine(held(11))).toBe("Waiting for the Mac · 4 of 4 running · 11th in line");
+    expect(heldLine(held(22))).toBe("Waiting for the Mac · 4 of 4 running · 22nd in line");
+    expect(heldLine({ ...held(1, "load"), limit: 4.5 })).toBe("Waiting for the Mac · load 12.3 of 4.5 · 1st in line");
+  });
+
+  it("a held request is never a card: shownRequests and queueOf leave it out", () => {
+    const all = [
+      req("r", { createdAt: 1, status: "running" }),
+      req("h", { createdAt: 2, status: "held", held: held(1) }),
+      req("p", { createdAt: 3 }),
+    ];
+    expect(shownRequests(all).map((r) => r.id)).toEqual(["r", "p"]);
+    const queue = queueOf(all);
+    expect(queue.pending.map((r) => r.id)).toEqual(["p"]);
+    expect(queue.running[0].requests.map((r) => r.id)).toEqual(["r"]);
+  });
+
+  it("inFlightRequests lists the running ones first, then the held ones in line order, quiet included, for a host or a thread", () => {
+    const all = [
+      req("h2", { createdAt: 1, status: "held", held: held(2), quiet: true }),
+      req("r2", { createdAt: 5, status: "running", sessionId: "s2" }),
+      req("h1", { createdAt: 4, status: "held", held: held(1) }),
+      req("r1", { createdAt: 2, status: "running", quiet: true }),
+      req("p", { createdAt: 0 }),
+      req("o", { createdAt: 3, status: "running", sessionId: "s3", environmentId: "env_other", hostName: "other" }),
+    ];
+    expect(inFlightRequests(all).map((r) => r.id)).toEqual(["r1", "o", "r2", "h1", "h2"]);
+    expect(inFlightRequests(all, { environmentId: "env_box" }).map((r) => r.id)).toEqual(["r1", "r2", "h1", "h2"]);
+    expect(inFlightRequests(all, { sessionId: "s1" }).map((r) => r.id)).toEqual(["r1", "h1", "h2"]);
   });
 });

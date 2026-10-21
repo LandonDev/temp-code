@@ -954,6 +954,46 @@ On the Mac (`src/main/server/remote/macBridge.ts`, `macRunner.ts`):
   "and N more"; the next shows once it is decided. The running commands of
   a host fold into one line (the command when it is one, "n commands
   running from <host>" past that) with one Stop all.
+- The load guard (`src/main/server/remote/macLoadGuard.ts`). Fifteen box
+  threads once drove the Mac to a load average of 810 and nothing stopped
+  them. Now, between the decision and the spawn of every command and job
+  (never a read, listing, fetch or write):
+  - Per host, `macBridge.maxRunning.<envId>` (default 4) caps the commands
+    plus jobs running on the Mac at once. At the cap the next one waits its
+    turn, in order.
+  - The load watch samples `os.loadavg()[0]` and the core count every 15 s.
+    Over `macBridge.loadLimit` (one setting for the Mac; default 2 × cores)
+    every new command and job is held, whatever its host, until the load is
+    back under three quarters of the limit (1.5 × cores by default): the
+    hysteresis keeps a load bouncing around the limit from flapping the
+    queue. A lower limit typed under the current load holds at once; a
+    raised cap or limit releases at once.
+  - A held call is not refused. Its request turns `status: 'held'` with a
+    `held` block (reason `cap` | `load`, 1-based `position`, the load, the
+    limit, the cores, the host's cap and running count), re-pushed on every
+    change of standing, and the box thread's tool result is simply later.
+    On the Mac it is a row after the running ones in the host's running
+    list (Settings → Remote access → Mac bridge) and in the thread's "Mac
+    approvals…" dialog, never a card: "Waiting for the Mac · load 12.3 of
+    8 · 3rd in line" (or "4 of 4 running"), with Stop, which takes it out of
+    the line and fails the call as stopped. The count line says "n commands
+    running on this Mac from <host> · m waiting". It waits only as long as
+    the call's own deadline allows: a command until its approval window
+    would eat into its timeout (so a command that starts still gets its
+    whole `timeoutMs`), a job until the call's deadline; past that the call
+    fails "the Mac stayed too busy" and the box thread may try again.
+  - `macBridge.maxThreads.<envId>` (default 2) caps the Mac-local threads a
+    host starts here ("Starting a thread on the Mac from the box" below).
+  - The pane shows it all on the host's row: "n running · m waiting · k
+    threads" with the two caps as small fields (At once: running, threads),
+    and once for the Mac, "Load 3.2 · 8 cores" with the limit field (empty
+    follows the cores; "holding new commands until under 12" while it
+    holds). `macBridge.limits.set {environmentId, maxRunning?, maxThreads?}`
+    (null restores a default), `macBridge.loadLimit.set {limit | null}`,
+    `macBridge.load.get` and `macBridge.admitThread {environmentId}` are
+    local, like the rest of the pane's methods. One `[mac-bridge] load
+    guard:` log line when the watch turns busy or calm, and one per call
+    held, released, stopped or expired.
 - Remember rules live in memory per (box, thread) and end with the app.
 - Remembered approvals (`src/main/server/remote/macBridgeRules.ts`,
   `src/shared/contract-macbridge-rules.ts`). A run card's select offers:
@@ -1213,6 +1253,14 @@ holds no log for that parent: the spawn is recorded on the box, as
 `agent-spawned` with the Mac's environment id). A writing agent gets a
 worktree there as it would locally. Such a child is not archived with its
 parent (the parent is not on the Mac); archive it from the Mac when done.
+Before either, the Mac bridge's thread cap is asked (`MacBridge.admitThread`,
+`macBridge.maxThreads.<envId>`, default 2, the "threads" field on the host's
+row in Settings → Remote access): it counts the threads that host started
+here that are live now (`CrossHostThreads.liveThreadsOf`), and at the cap
+the start fails with "the Mac already runs 2 threads from this host, its cap
+of 2: wait for one to finish, or raise …"; nothing is queued, the box thread
+tries again later. `macBridge.admitThread {environmentId}` (local) answers
+the same verdict for the pane.
 
 On the box (`src/main/server/crossHostAgents.ts`), what a thread started
 or spawned is kept in `crossHost.children.<sessionId>` with the last state

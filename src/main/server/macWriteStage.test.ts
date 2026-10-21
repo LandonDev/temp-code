@@ -161,7 +161,8 @@ function linked() {
     environments: () => [{ id: 'env_box', name: 'box' }],
     link: () => macRequest,
     home,
-    log: () => {}
+    log: () => {},
+    load: { sample: () => ({ load: 0, cores: 8 }), intervalMs: 0 }
   })
   const socket = {
     connection: 1,

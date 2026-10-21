@@ -235,7 +235,9 @@ describe('the bridge with remember kinds', () => {
       link: () => null,
       home,
       shell: '/bin/sh',
-      log: (l) => lines.push(l)
+      log: (l) => lines.push(l),
+      // A calm Mac: the load guard never holds these (the box running the suite may be busy).
+      load: { sample: () => ({ load: 0, cores: 8 }), intervalMs: 0 }
     })
     mb.subscribe((p) => pushes.push(p))
     mb.setPolicy('env_box', 'read+run')

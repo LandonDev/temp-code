@@ -402,9 +402,23 @@ routed to (aliax-core's `forward`). Two listeners:
   (`runPresentation`): no card, listed with Stop under the host's row in
   Settings → Remote access. The cards are capped (`queueOf` in the renderer's
   lib/macBridge.ts): one waiting card per host with "and N more", the running
-  ones one line per host with Stop all. docs/box.md "The Mac
-  bridge: what a box thread may touch on the Mac"; proof
-  `bun run script:e2e-mac-bridge`.
+  ones one line per host with Stop all. The load guard
+  (`remote/macLoadGuard.ts`) sits between the decision and the spawn of
+  every command and job, never a read: `macBridge.maxRunning.<envId>`
+  (default 4) caps a host's concurrent commands plus jobs, and the load watch
+  (os.loadavg every 15 s) holds every new one while the one-minute load is
+  over `macBridge.loadLimit` (default 2 × cores) until it is back under
+  0.75 × the limit. A held call is `status: 'held'` with its `held` standing
+  (reason, position, load, limit), a row with Stop in the host's running
+  list and the thread's Mac approvals dialog ("Waiting for the Mac · load
+  12.3 of 8 · 3rd in line"), never a card, and waits only within the call's
+  own deadline. `macBridge.maxThreads.<envId>` (default 2) caps the
+  Mac-local threads a host starts here: `MacBridge.admitThread(envId)`
+  (also `macBridge.admitThread`, local) is asked by crossHostThreads.ts
+  before every `thread.start` and `thread.spawn`. The caps, the live counts
+  and the load with its limit are on the host row in Settings → Remote
+  access. docs/box.md "The Mac bridge: what a box thread may touch on the
+  Mac"; proof `bun run script:e2e-mac-bridge`.
 - Threads on the Mac from the box: `app_start_thread` and `spawn_agent`
   take `environmentId` (`mac`, or a host id), and the thread runs on that
   Mac as an ordinary This Mac thread; its id comes back as `<envId>:

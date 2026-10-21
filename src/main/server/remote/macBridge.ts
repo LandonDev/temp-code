@@ -5,7 +5,12 @@ import { homedir } from 'node:os'
 import { basename, dirname, isAbsolute, join, resolve, sep } from 'node:path'
 import type { ClientRequest, ServerPush } from '@shared/contract'
 import {
+  heldLine,
   MAC_APPROVAL_WAIT_MS,
+  MAC_BRIDGE_DEFAULT_MAX_RUNNING,
+  MAC_BRIDGE_DEFAULT_MAX_THREADS,
+  MAC_BRIDGE_MAX_RUNNING_CAP,
+  MAC_BRIDGE_MAX_THREADS_CAP,
   MAC_BRIDGE_OFFER,
   MAC_FETCH_MAX_BYTES,
   MAC_LIST_MAX_ENTRIES,
@@ -16,8 +21,11 @@ import {
   MacListDirArgsSchema,
   MacReadFileArgsSchema,
   MacRunArgsSchema,
+  type MacBridgeHeld,
   type MacBridgeHostPolicy,
+  type MacBridgeLoad,
   type MacBridgeOutcome,
+  type MacBridgeThreadAdmission,
   type MacBridgePolicy,
   type MacBridgePush,
   type MacBridgeRequest,
@@ -41,6 +49,7 @@ import { isMacJobPeerMethod, type MacPeerMethod } from '@shared/contract-macjobs
 import { isCrossHostPeerMethod, type CrossHostCallParams } from '@shared/contract-crosshost'
 import { isHostDevicesPeerMethod, type HostDevicesCallParams } from '@shared/contract-hostdevices'
 import { MacJobs, type JobSpawner } from './macJobs'
+import { MacLoadGuard, type HoldEnd, type LoadSample } from './macLoadGuard'
 
 /**
  * The Mac side of the Mac bridge (docs/box.md "The Mac bridge: what a box
@@ -72,6 +81,16 @@ import { MacJobs, type JobSpawner } from './macJobs'
  *    (`macBridge.showRunning.<envId>`, off by default under full, on
  *    otherwise) is on: the request still exists, with Stop, but carries
  *    `quiet: true` and the renderer draws no card for it (runPresentation).
+ *  - The load guard (macLoadGuard.ts) sits between the decision and the
+ *    spawn of every command and job: at most `macBridge.maxRunning.<envId>`
+ *    (default 4) of a host's run at once, and while the Mac's one-minute
+ *    load is over `macBridge.loadLimit` (default 2 × cores, back under at
+ *    1.5 ×) none starts. A call it holds is `held`, not refused: it waits
+ *    its turn in order within the call's own deadline, shows its place on
+ *    the Mac ("Waiting for the Mac · load 12.3 of 8 · 3rd in line") and can
+ *    be stopped there. Reads, listings, fetches and writes are never held.
+ *    `macBridge.maxThreads.<envId>` (default 2) caps the Mac-local threads
+ *    a host starts here; crossHostThreads.ts asks `admitThread` first.
  *
  * The prompt is a `macBridge.request` push to this Mac's own local sockets
  * (its renderer), answered by `macBridge.decide`, which is local-only: no
@@ -84,6 +103,10 @@ export const POLICY_PREFIX = 'macBridge.policy.'
 export const SHARED_PREFIX = 'macBridge.shared.'
 /** 'on' | 'off', or unset for the policy's default (off under full, on otherwise). */
 export const SHOW_RUNNING_PREFIX = 'macBridge.showRunning.'
+/** The load guard's caps per host (an integer, else the defaults) and the Mac-wide load limit (a number, else 2 × cores). */
+export const MAX_RUNNING_PREFIX = 'macBridge.maxRunning.'
+export const MAX_THREADS_PREFIX = 'macBridge.maxThreads.'
+export const LOAD_LIMIT_KEY = 'macBridge.loadLimit'
 /** A request asks no longer than the box will wait for it, less this margin for the reply to travel. */
 const REPLY_MARGIN_MS = 3_000
 
@@ -108,6 +131,10 @@ export interface MacBridgeDeps {
   jobSpawner?: JobSpawner
   /** Offers besides the bridge's that ride the same peer.register (the threads offer, remote/crossHostThreads.ts). */
   offers?: () => string[]
+  /** The load watch's sampler and cadence (macLoadGuard.ts): os.loadavg every 15 s by default; intervalMs 0 never ticks (tests). */
+  load?: { sample?: () => LoadSample; intervalMs?: number }
+  /** Mac-local threads a host started here that are live now (crossHostThreads.ts); counts toward `macBridge.maxThreads.<envId>`. */
+  liveThreads?: (envId: string) => number
 }
 
 // ── the policy, pure ─────────────────────────────────────────────────
@@ -286,11 +313,21 @@ export class MacBridge {
   private readonly registered = new Set<string>()
   private readonly home: string
   private readonly log: (line: string) => void
+  /** The caps and the load watch (macLoadGuard.ts); every held call's standing lands on its request. */
+  readonly guard: MacLoadGuard
 
   constructor(private readonly deps: MacBridgeDeps) {
     this.home = deps.home ?? homedir()
     this.rules = new MacBridgeRuleBook(this.home)
     this.log = deps.log ?? ((line) => console.log(`[mac-bridge] ${line}`))
+    this.guard = new MacLoadGuard({
+      maxRunning: (envId) => this.maxRunningOf(envId),
+      loadLimit: () => this.loadLimitPinned(),
+      ...(deps.load?.sample ? { sample: deps.load.sample } : {}),
+      ...(deps.load?.intervalMs !== undefined ? { intervalMs: deps.load.intervalMs } : {}),
+      onChange: (id, held) => this.standingChanged(id, held),
+      log: (line) => this.log(`load guard: ${line}`)
+    })
   }
 
   // ── settings ───────────────────────────────────────────────────────
@@ -348,6 +385,100 @@ export class MacBridge {
     return this.hosts()
   }
 
+  // ── the load guard's settings ───────────────────────────────────────
+
+  private intSetting(key: string, fallback: number, min: number, max: number): number {
+    const raw = this.deps.store.getSetting(key)
+    const n = raw === null ? NaN : Number(raw)
+    return Number.isInteger(n) && n >= min && n <= max ? n : fallback
+  }
+
+  /** Concurrent commands and jobs this host may run on the Mac. */
+  maxRunningOf(envId: string): number {
+    return this.intSetting(
+      `${MAX_RUNNING_PREFIX}${envId}`,
+      MAC_BRIDGE_DEFAULT_MAX_RUNNING,
+      1,
+      MAC_BRIDGE_MAX_RUNNING_CAP
+    )
+  }
+
+  /** Concurrent Mac-local threads this host may have started here. */
+  maxThreadsOf(envId: string): number {
+    return this.intSetting(
+      `${MAX_THREADS_PREFIX}${envId}`,
+      MAC_BRIDGE_DEFAULT_MAX_THREADS,
+      0,
+      MAC_BRIDGE_MAX_THREADS_CAP
+    )
+  }
+
+  /** A host's caps; null puts one back to its default. A raised cap releases held calls at once. */
+  setLimits(
+    envId: string,
+    limits: { maxRunning?: number | null; maxThreads?: number | null }
+  ): MacBridgeHostPolicy[] {
+    this.knownHost(envId)
+    if (limits.maxRunning !== undefined) {
+      const n = limits.maxRunning
+      if (n !== null && (!Number.isInteger(n) || n < 1 || n > MAC_BRIDGE_MAX_RUNNING_CAP))
+        throw new Error(`running: a whole number from 1 to ${MAC_BRIDGE_MAX_RUNNING_CAP}`)
+      this.deps.store.setSetting(`${MAX_RUNNING_PREFIX}${envId}`, n === null ? null : String(n))
+    }
+    if (limits.maxThreads !== undefined) {
+      const n = limits.maxThreads
+      if (n !== null && (!Number.isInteger(n) || n < 0 || n > MAC_BRIDGE_MAX_THREADS_CAP))
+        throw new Error(`threads: a whole number from 0 to ${MAC_BRIDGE_MAX_THREADS_CAP}`)
+      this.deps.store.setSetting(`${MAX_THREADS_PREFIX}${envId}`, n === null ? null : String(n))
+    }
+    this.log(
+      `${this.nameOf(envId)} (${envId}): caps running ${this.maxRunningOf(envId)}, threads ${this.maxThreadsOf(envId)}`
+    )
+    this.guard.reconsider()
+    return this.hosts()
+  }
+
+  /** `macBridge.loadLimit` when set by hand, else null (the guard uses 2 × cores). */
+  loadLimitPinned(): number | null {
+    const raw = this.deps.store.getSetting(LOAD_LIMIT_KEY)
+    const n = raw === null ? NaN : Number(raw)
+    return Number.isFinite(n) && n > 0 ? n : null
+  }
+
+  setLoadLimit(limit: number | null): MacBridgeLoad {
+    if (limit !== null && (!Number.isFinite(limit) || limit <= 0))
+      throw new Error('the load limit is a number above 0')
+    this.deps.store.setSetting(LOAD_LIMIT_KEY, limit === null ? null : String(limit))
+    this.log(`load limit ${limit === null ? 'follows the cores' : limit}`)
+    this.guard.reconsider()
+    return this.guard.status()
+  }
+
+  loadStatus(): MacBridgeLoad {
+    return this.guard.status()
+  }
+
+  /**
+   * Whether a host may start another Mac-local thread here now (docs/box.md
+   * "Starting a thread on the Mac from the box"): crossHostThreads.ts asks
+   * before every `thread.start` and `thread.spawn`. A refusal names the cap
+   * and where to raise it; nothing is queued, the box thread tries again.
+   */
+  admitThread(envId: string): MacBridgeThreadAdmission {
+    const live = this.deps.liveThreads?.(envId) ?? 0
+    const max = this.maxThreadsOf(envId)
+    if (live < max) return { ok: true, live, max }
+    return {
+      ok: false,
+      live,
+      max,
+      reason:
+        max === 0
+          ? `the Mac takes no threads from this host (threads 0 in the Mac's Settings → Remote access → Mac bridge)`
+          : `the Mac already runs ${live} ${live === 1 ? 'thread' : 'threads'} from this host, its cap of ${max}: wait for one to finish, or raise "threads" in the Mac's Settings → Remote access → Mac bridge`
+    }
+  }
+
   hosts(): MacBridgeHostPolicy[] {
     return this.deps.environments().map((e) => ({
       environmentId: e.id,
@@ -355,7 +486,12 @@ export class MacBridge {
       policy: this.policyOf(e.id),
       shared: this.sharedOf(e.id),
       showRunning: this.showRunningOf(e.id),
-      registered: this.registered.has(e.id)
+      registered: this.registered.has(e.id),
+      maxRunning: this.maxRunningOf(e.id),
+      maxThreads: this.maxThreadsOf(e.id),
+      running: this.guard.runningCount(e.id),
+      held: this.guard.heldCount(e.id),
+      threads: this.deps.liveThreads?.(e.id) ?? 0
     }))
   }
 
@@ -433,8 +569,56 @@ export class MacBridge {
       p.stop?.()
       return { ok: true }
     }
+    if (p.request.status === 'held') {
+      // Allowed already, waiting on the load guard: Stop takes it out of the line.
+      if (allow) throw new Error('that command is already allowed and waiting its turn')
+      this.guard.cancel(id)
+      return { ok: true }
+    }
     p.decide(allow, remember)
     return { ok: true }
+  }
+
+  /**
+   * Hold an allowed command or job on the load guard until its turn (or the
+   * call's deadline, `until`): the request turns `held` with its standing
+   * for the renderer, and comes back as `admitted`, else the request is
+   * finished and the reason thrown for the box thread's tool result.
+   */
+  private async hold(
+    envId: string,
+    id: string,
+    until: number,
+    line: (decision: string) => void
+  ): Promise<void> {
+    const gate = this.guard.acquire(envId, id, until)
+    if (gate.admitted) return
+    const p = this.pendingById.get(id)
+    if (p) {
+      p.request = { ...p.request, status: 'held', held: gate.held }
+      this.emit({ push: 'macBridge.request', request: p.request })
+    }
+    line(`held (${heldLine(gate.held).slice('Waiting for the Mac · '.length).replace(' · ', ', ')})`)
+    const end: HoldEnd = await gate.done
+    if (end === 'admitted') {
+      line('released')
+      return
+    }
+    this.finish(id, end === 'expired' ? 'expired' : 'stopped')
+    line(end === 'expired' ? 'held until the call ran out of time' : 'stopped while waiting')
+    throw new Error(
+      end === 'expired'
+        ? 'the Mac stayed too busy: the call ran out of time while waiting its turn'
+        : 'stopped at the Mac while waiting its turn'
+    )
+  }
+
+  /** The guard moved a held call (its place, its reason, the load) or let it go: the row follows. */
+  private standingChanged(id: string, held: MacBridgeHeld | null): void {
+    const p = this.pendingById.get(id)
+    if (!p || p.request.status !== 'held' || !held) return
+    p.request = { ...p.request, held }
+    this.emit({ push: 'macBridge.request', request: p.request })
   }
 
   /**
@@ -491,6 +675,7 @@ export class MacBridge {
   }
 
   private finish(id: string, outcome: MacBridgeOutcome): void {
+    this.guard.release(id)
     const p = this.pendingById.get(id)
     if (!p) return
     clearTimeout(p.timer)
@@ -660,17 +845,28 @@ export class MacBridge {
     line(
       `allowed (${rule ? `remembered${rule.kind === 'exact' ? '' : `: ${rule.kind}`}` : unattended ? 'full access' : made ? `asked, ${made.kind === 'exact' ? 'command' : made.kind} remembered` : 'asked'}${!shown.prompt && shown.quiet ? ', quiet' : ''}) argv0=${basename(args.argv?.[0] ?? args.command?.split(/\s/)[0] ?? '')}`
     )
+    // The load guard: at the host's cap, or with the Mac over its load limit,
+    // the command waits its turn here, within the time the call left for the
+    // command to still get its whole timeout.
+    await this.hold(env.id, id, deadlineAt - timeoutMs - REPLY_MARGIN_MS, line)
     const p = this.pendingById.get(id)
-    const running: RunningCommand = (this.deps.run ?? runMacCommand)({
-      ...spec,
-      timeoutMs: Math.max(1_000, Math.min(timeoutMs, deadlineAt - Date.now() - REPLY_MARGIN_MS)),
-      ...(this.deps.shell ? { shell: this.deps.shell } : {}),
-      // The output streams to the box while it runs (peer.progress); the reply still carries it whole.
-      ...(progress ? { onOutput: progress } : {})
-    })
+    let running: RunningCommand
+    try {
+      running = (this.deps.run ?? runMacCommand)({
+        ...spec,
+        timeoutMs: Math.max(1_000, Math.min(timeoutMs, deadlineAt - Date.now() - REPLY_MARGIN_MS)),
+        ...(this.deps.shell ? { shell: this.deps.shell } : {}),
+        // The output streams to the box while it runs (peer.progress); the reply still carries it whole.
+        ...(progress ? { onOutput: progress } : {})
+      })
+    } catch (err) {
+      this.finish(id, 'stopped')
+      throw err
+    }
     if (p) {
       p.stop = running.stop
-      p.request = { ...p.request, status: 'running' }
+      p.request = { ...p.request, status: 'running', held: undefined }
+      delete p.request.held
       this.emit({ push: 'macBridge.request', request: p.request })
     }
     const result = await running.result
@@ -698,11 +894,13 @@ export class MacBridge {
         if (remembered) this.pendingById.get(asked.id)?.decide(true, false)
         return asked
       },
+      hold: (envId, id, until, line) => this.hold(envId, id, until, line),
       running: (id, stop) => {
         const p = this.pendingById.get(id)
         if (!p) return
         p.stop = stop
         p.request = { ...p.request, status: 'running' }
+        delete p.request.held
         this.emit({ push: 'macBridge.request', request: p.request })
       },
       finish: (id, outcome) => this.finish(id, outcome),
@@ -716,6 +914,7 @@ export class MacBridge {
 
   close(): void {
     this.jobsInstance?.closeAll()
+    this.guard.close()
     for (const [id, p] of this.pendingById) {
       p.stop?.()
       p.decide(false, false)
@@ -842,6 +1041,20 @@ export function handleMacBridge(
         handled: true,
         result: bridge.setShowRunning(req.params.environmentId, req.params.show)
       }
+    case 'macBridge.limits.set':
+      return {
+        handled: true,
+        result: bridge.setLimits(req.params.environmentId, {
+          ...(req.params.maxRunning !== undefined ? { maxRunning: req.params.maxRunning } : {}),
+          ...(req.params.maxThreads !== undefined ? { maxThreads: req.params.maxThreads } : {})
+        })
+      }
+    case 'macBridge.loadLimit.set':
+      return { handled: true, result: bridge.setLoadLimit(req.params.limit) }
+    case 'macBridge.load.get':
+      return { handled: true, result: bridge.loadStatus() }
+    case 'macBridge.admitThread':
+      return { handled: true, result: bridge.admitThread(req.params.environmentId) }
     case 'macBridge.rules.list':
       return { handled: true, result: bridge.rules.list(req.params?.sessionId) }
     case 'macBridge.rules.forget':

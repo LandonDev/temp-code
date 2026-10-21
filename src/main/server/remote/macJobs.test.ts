@@ -127,9 +127,12 @@ function mac(spawner?: JobSpawner, opts: { policy?: 'read' | 'read+run' } = {}) 
     home: root,
     shell: '/bin/sh',
     log: (l) => lines.push(l),
+    // A calm Mac with a wide host cap: the per-thread job limit is what these tests watch.
+    load: { sample: () => ({ load: 0, cores: 8 }), intervalMs: 0 },
     ...(spawner ? { jobSpawner: spawner } : {})
   })
   mb.setPolicy('env_box', opts.policy ?? 'read+run')
+  mb.setLimits('env_box', { maxRunning: 16 })
   mb.subscribe((p) => pushes.push(p))
   const requests = (): MacBridgeRequest[] =>
     pushes

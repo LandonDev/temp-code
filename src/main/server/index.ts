@@ -435,7 +435,9 @@ export async function startServer(
       const link = peers.get(id)
       return link?.connected ? (method, params, opts) => link.request(method, params, opts) : null
     },
-    offers: () => [...crossHostOffers(), ...hostDevicesOffers()]
+    offers: () => [...crossHostOffers(), ...hostDevicesOffers()],
+    // The thread cap counts the threads a host started here that are live (crossHostThreads below).
+    liveThreads: (envId) => crossHostThreads.liveThreadsOf(envId)
   })
   // Threads another host starts here (the Mac side of docs/box.md "Starting a
   // thread on the Mac from the box"): served over the same link as the bridge.
@@ -449,7 +451,8 @@ export async function startServer(
       return link?.connected ? (method, params, opts) => link.request(method, params, opts) : null
     },
     pathMap: () => harnessSync.pathMap(),
-    workRoot: () => workRoot(store).root
+    workRoot: () => workRoot(store).root,
+    admit: (envId) => macBridge.admitThread(envId)
   })
   const peerCalls = new PeerCalls(environmentId)
   // Devices on a Mac (devices/hostDevices.ts, docs/box.md "Devices on the Mac"):

@@ -25,7 +25,10 @@
  *    a file through them
  *  - remember kinds: a command allowed with remember 'folder' lets a different
  *    command in that folder run with no prompt; one in another folder and a
- *    sudo one in the folder still prompt; macBridge.rules.list/forget
+ *    sudo one in the folder still prompt; the load guard with the cap at 1
+ *    holds a second remembered command (status held, first in line) until the
+ *    first ends, the host row counts it, macBridge.load.get answers the load;
+ *    macBridge.rules.list/forget
  *  - mac.writeFile: a 3 MiB write into the shared folder lands with no prompt
  *    (staged on box, pulled by mac with peer.pull); a write outside it
  *    prompts on mac, is allowed through macBridge.decide and then lands; the
@@ -227,6 +230,8 @@ interface BridgeRequest {
   status: string
   /** Admitted without a prompt while the host's "Show running commands" is off: no card on the Mac. */
   quiet?: true
+  /** Allowed and waiting its turn on the load guard (status held). */
+  held?: { reason: 'cap' | 'load'; position: number; load: number; limit: number; cores: number; maxRunning: number; running: number }
 }
 /** mac's own socket, as its renderer holds it: every macBridge.request push. */
 async function watchMac(): Promise<{
@@ -359,6 +364,11 @@ interface HostPolicy {
   shared: string[]
   showRunning: boolean
   registered: boolean
+  maxRunning: number
+  maxThreads: number
+  running: number
+  held: number
+  threads: number
 }
 
 launch(mac)
@@ -665,6 +675,66 @@ try {
       'macBridge.showRunning.set on restores the cards',
       shownAgain.find((h) => h.environmentId === boxId)?.showRunning === true
     )
+    // ── the load guard: with the cap at 1, a second remembered command waits for the first ──
+    const calm = await rpc<{ limit: number; pinned: boolean }>(mac, 'macBridge.loadLimit.set', { limit: 10_000 })
+    check('macBridge.loadLimit.set pins the load limit (high, so only the cap holds here)', calm.pinned && calm.limit === 10_000, JSON.stringify(calm))
+    const capped = await rpc<HostPolicy[]>(mac, 'macBridge.limits.set', { environmentId: boxId, maxRunning: 1 })
+    const cappedRow = capped.find((h) => h.environmentId === boxId)
+    check(
+      'macBridge.limits.set maxRunning 1 is reported on the host row, threads still at its default of 2',
+      cappedRow?.maxRunning === 1 && cappedRow.maxThreads === 2,
+      JSON.stringify(cappedRow)
+    )
+    const slow = rpc<{ stdout: string }>(box, 'mac.run', {
+      sessionId: sid,
+      token,
+      command: 'sleep 2; printf "slow"',
+      cwd: shared
+    })
+    await watcher.next(
+      (r) => !!(r as { command?: string }).command?.startsWith('sleep 2; printf "slow"') && r.status === 'running'
+    )
+    const quick = rpc<{ stdout: string }>(box, 'mac.run', {
+      sessionId: sid,
+      token,
+      command: 'printf "quick"',
+      cwd: shared
+    })
+    const heldSeen = await watcher.next(
+      (r) => (r as { command?: string }).command === 'printf "quick"' && r.status === 'held'
+    )
+    check(
+      'at the cap the second command is held: first in line, for the cap, 1 of 1 running',
+      heldSeen.held?.reason === 'cap' &&
+        heldSeen.held.position === 1 &&
+        heldSeen.held.maxRunning === 1 &&
+        heldSeen.held.running === 1,
+      JSON.stringify(heldSeen)
+    )
+    const rowsNow = await rpc<HostPolicy[]>(mac, 'macBridge.policy.get')
+    const rowNow = rowsNow.find((h) => h.environmentId === boxId)
+    check('the host row counts 1 running and 1 waiting', rowNow?.running === 1 && rowNow.held === 1, JSON.stringify(rowNow))
+    const listedHeld = await rpc<BridgeRequest[]>(mac, 'macBridge.pending')
+    check(
+      'the held command is listed for the Remote access pane, as held',
+      listedHeld.some((r) => r.id === heldSeen.id && r.status === 'held' && r.held?.position === 1),
+      JSON.stringify(listedHeld.map((r) => [r.id, r.status]))
+    )
+    const slowOut = await slow
+    const quickOut = await quick
+    check('both ran, the held one once the first ended', slowOut.stdout === 'slow' && quickOut.stdout === 'quick', JSON.stringify([slowOut, quickOut]))
+    const heldPath = watcher.seen.filter((r) => r.id === heldSeen.id).map((r) => r.status)
+    check('the held request went pending → held → running', JSON.stringify(heldPath) === '["pending","held","running"]', JSON.stringify(heldPath))
+    const loadNow = await rpc<{ load: number; cores: number; limit: number; busy: boolean; pinned: boolean }>(mac, 'macBridge.load.get')
+    check(
+      "macBridge.load.get answers the Mac's one-minute load, its cores and the pinned limit",
+      typeof loadNow.load === 'number' && loadNow.cores >= 1 && loadNow.limit === 10_000 && loadNow.pinned,
+      JSON.stringify(loadNow)
+    )
+    const unpinned = await rpc<{ limit: number; cores: number; pinned: boolean }>(mac, 'macBridge.loadLimit.set', { limit: null })
+    check('loadLimit null follows the cores again: 2 × cores', !unpinned.pinned && unpinned.limit === 2 * unpinned.cores, JSON.stringify(unpinned))
+    const restored = await rpc<HostPolicy[]>(mac, 'macBridge.limits.set', { environmentId: boxId, maxRunning: null })
+    check('maxRunning null restores the default of 4', restored.find((h) => h.environmentId === boxId)?.maxRunning === 4)
     // Another folder asks.
     const elsewhere = errorOf(
       rpc(box, 'mac.run', { sessionId: sid, token, argv: ['/bin/echo', 'x'], cwd: privateDir })
@@ -701,7 +771,7 @@ try {
     check(
       "macBridge.rules.list names the thread's folder rule (and its earlier read folder)",
       folderRule?.folder === shared &&
-        folderRule.uses === 2 && // the remembered run and the quiet one
+        folderRule.uses === 4 && // the remembered run, the quiet one, and the two the load guard ordered
         
         rules.some((r) => r.kind === 'read-folder' && r.folder === privateDir),
       JSON.stringify(rules)

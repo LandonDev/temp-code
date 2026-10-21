@@ -2,9 +2,11 @@ import { useStore } from 'zustand'
 import { createStore } from 'zustand/vanilla'
 import type {
   MacBridgeHostPolicy,
+  MacBridgeLoad,
   MacBridgeRequest,
   MacBridgeThreadState
 } from '@server/shared/contract-macbridge'
+export { heldLine } from '@server/shared/contract-macbridge'
 import type { MacDecideRemember } from '@server/shared/contract-macbridge-rules'
 import { LOCAL_ENVIRONMENT_ID, WEB_ENVIRONMENT_ID, registry } from './connection/registry'
 import { isWebMode } from './nativeWeb'
@@ -22,6 +24,10 @@ import { isWebMode } from './nativeWeb'
  *  - The cards never fill the screen: `queueOf` keeps one waiting card per
  *    host (the oldest, decided first) with a count of the rest, and folds
  *    the running ones into one line per host with Stop all.
+ *  - A held request (allowed, waiting its turn on the load guard; docs/box.md
+ *    "The load guard") is never a card either: it is a row in the same lists
+ *    as the running ones, with its place ("Waiting for the Mac · load 12.3 of
+ *    8 · 3rd in line") and Stop, which takes it out of the line.
  *  - A box thread's switch (`macBridge.thread.get/set`) lives on the box and
  *    is reached over the thread's own link; "on" names this Mac's real
  *    environment id.
@@ -36,9 +42,17 @@ type State = {
   hosts: MacBridgeHostPolicy[]
   /** This Mac's real environment id (the local link answers "local" by alias). */
   localId: string | null
+  /** The Mac's load as the guard last sampled it (macBridge.load.get), once read. */
+  load: MacBridgeLoad | null
 }
 
-const store = createStore<State>(() => ({ requests: {}, threads: {}, hosts: [], localId: null }))
+const store = createStore<State>(() => ({
+  requests: {},
+  threads: {},
+  hosts: [],
+  localId: null,
+  load: null
+}))
 export const macBridgeStore = store
 
 const local = () => registry.link(LOCAL_ENVIRONMENT_ID)
@@ -47,15 +61,17 @@ async function loadLocal(): Promise<void> {
   const link = local()
   if (!link?.connected) return
   try {
-    const [pending, hosts, status] = await Promise.all([
+    const [pending, hosts, status, load] = await Promise.all([
       link.request<MacBridgeRequest[]>('macBridge.pending', {}),
       link.request<MacBridgeHostPolicy[]>('macBridge.policy.get', {}),
-      link.request<{ environmentId: string }>('remote.status', {})
+      link.request<{ environmentId: string }>('remote.status', {}),
+      link.request<MacBridgeLoad>('macBridge.load.get', {}).catch(() => null)
     ])
     store.setState({
       requests: Object.fromEntries(pending.map((r) => [r.id, r])),
       hosts,
-      localId: status.environmentId
+      localId: status.environmentId,
+      load
     })
   } catch {
     // An older server without the bridge: nothing to show.
@@ -102,10 +118,10 @@ export function decideMacBridge(
   return link.request('macBridge.decide', { id, allow, remember })
 }
 
-/** Stop every running command in a list (a running request's decide false is Stop); one failure does not stop the rest. */
+/** Stop every running and held command in a list (decide false is Stop, or leaves the line); one failure does not stop the rest. */
 export async function stopMacBridgeAll(requests: MacBridgeRequest[]): Promise<void> {
   const results = await Promise.allSettled(
-    requests.filter((r) => r.status === 'running').map((r) => decideMacBridge(r.id, false))
+    requests.filter((r) => r.status !== 'pending').map((r) => decideMacBridge(r.id, false))
   )
   const failed = results.find((r): r is PromiseRejectedResult => r.status === 'rejected')
   if (failed) throw failed.reason
@@ -113,9 +129,32 @@ export async function stopMacBridgeAll(requests: MacBridgeRequest[]): Promise<vo
 
 const byAge = (a: MacBridgeRequest, b: MacBridgeRequest): number => a.createdAt - b.createdAt
 
-/** Requests that get a card: never a quiet one. */
+/** Requests that get a card: never a quiet one, never one waiting its turn on the load guard. */
 export const shownRequests = (requests: Iterable<MacBridgeRequest>): MacBridgeRequest[] =>
-  [...requests].filter((r) => !r.quiet).sort(byAge)
+  [...requests].filter((r) => !r.quiet && r.status !== 'held').sort(byAge)
+
+/**
+ * Every command running on this Mac, or allowed and waiting its turn, for a
+ * host or a thread, quiet ones included: the running ones first, oldest
+ * first, then the held ones in line order (the Remote access pane, the
+ * thread's Mac approvals dialog).
+ */
+export function inFlightRequests(
+  requests: Iterable<MacBridgeRequest>,
+  match: { environmentId?: string; sessionId?: string } = {}
+): MacBridgeRequest[] {
+  const mine = [...requests].filter(
+    (r) =>
+      (r.status === 'running' || r.status === 'held') &&
+      (match.environmentId === undefined || r.environmentId === match.environmentId) &&
+      (match.sessionId === undefined || r.sessionId === match.sessionId)
+  )
+  const running = mine.filter((r) => r.status === 'running').sort(byAge)
+  const held = mine
+    .filter((r) => r.status === 'held')
+    .sort((a, b) => (a.held?.position ?? 0) - (b.held?.position ?? 0) || byAge(a, b))
+  return [...running, ...held]
+}
 
 /** Requests of one box thread that get a card, oldest first. */
 export function useMacBridgeRequests(environmentId: string, sessionId: string): MacBridgeRequest[] {
@@ -131,20 +170,13 @@ export function useAllMacBridgeRequests(): MacBridgeRequest[] {
   return shownRequests(Object.values(requests))
 }
 
-/** Every command running on this Mac for a host or a thread, quiet ones included, oldest first (the Remote access pane, the thread's Mac approvals dialog). */
+/** Every command running on this Mac, or held for its turn, for a host or a thread, quiet ones included (inFlightRequests). */
 export function useMacBridgeRunning(match: {
   environmentId?: string
   sessionId?: string
 }): MacBridgeRequest[] {
   const requests = useStore(store, (s) => s.requests)
-  return Object.values(requests)
-    .filter(
-      (r) =>
-        r.status === 'running' &&
-        (match.environmentId === undefined || r.environmentId === match.environmentId) &&
-        (match.sessionId === undefined || r.sessionId === match.sessionId)
-    )
-    .sort(byAge)
+  return inFlightRequests(Object.values(requests), match)
 }
 
 /** One host's running commands, folded into a line. */
@@ -233,6 +265,38 @@ export async function setMacBridgeShared(environmentId: string, folders: string[
 
 export function useMacBridgeHosts(): MacBridgeHostPolicy[] {
   return useStore(store, (s) => s.hosts)
+}
+
+// ── the load guard (docs/box.md "The load guard") ──────────────────────
+
+/** A host's caps on concurrent commands and jobs, and on Mac-local threads; null puts one back to its default. */
+export async function setMacBridgeLimits(
+  environmentId: string,
+  limits: { maxRunning?: number | null; maxThreads?: number | null }
+): Promise<void> {
+  const hosts = await local()!.request<MacBridgeHostPolicy[]>('macBridge.limits.set', {
+    environmentId,
+    ...limits
+  })
+  store.setState({ hosts })
+}
+
+export async function refreshMacBridgeLoad(): Promise<MacBridgeLoad | null> {
+  const link = local()
+  if (!link) return null
+  const load = await link.request<MacBridgeLoad>('macBridge.load.get', {})
+  store.setState({ load })
+  return load
+}
+
+/** The one-minute load over which new commands and jobs wait; null follows the cores again (2 × cores). */
+export async function setMacBridgeLoadLimit(limit: number | null): Promise<void> {
+  const load = await local()!.request<MacBridgeLoad>('macBridge.loadLimit.set', { limit })
+  store.setState({ load })
+}
+
+export function useMacBridgeLoad(): MacBridgeLoad | null {
+  return useStore(store, (s) => s.load)
 }
 
 // ── a box thread's switch ─────────────────────────────────────────────

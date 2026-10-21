@@ -95,6 +95,7 @@ function fakeRegistry() {
       registry.setStatus(id, 'running')
     },
     get: (id: string) => sessions.get(id) ?? null,
+    list: () => [...sessions.values()].filter((m) => !m.archived),
     eventsAfter: (id: string, after: number) => (events.get(id) ?? []).filter((r) => r.seq > after),
     async interrupt(): Promise<void> {},
     async answer(id: string, requestId: string, a: string[][] | null): Promise<void> {
@@ -136,11 +137,12 @@ function fakeRegistry() {
   return registry
 }
 
-function service(opts: { exists?: (p: string) => boolean; link?: (m: string, p: unknown) => Promise<unknown> } = {}) {
+function service(opts: { exists?: (p: string) => boolean; link?: (m: string, p: unknown) => Promise<unknown>; admit?: (envId: string) => { ok: boolean; reason?: string } } = {}) {
   const settings = new Map<string, string>()
   const registry = fakeRegistry()
   const requests: { method: string; params: unknown }[] = []
   const svc = new CrossHostThreads({
+    ...(opts.admit ? { admit: opts.admit } : {}),
     environmentId: MAC,
     store: { getSetting: (k) => settings.get(k) ?? null, setSetting: (k, v) => (v === null ? settings.delete(k) : settings.set(k, v)) },
     registry: registry as never,
@@ -196,6 +198,24 @@ describe('CrossHostThreads', () => {
     expect(meta.agentType).toBe('implementer')
     expect(r.cwd).toBe('/Users/landon/IdeaProjects/temp-code/.wt')
     expect(registry.sent[0].text).toBe('build it')
+  })
+  it("the Mac bridge's thread cap is asked before a start or a spawn, with the host's id; a refusal is the tool's error", async () => {
+    const asked: string[] = []
+    let verdict: { ok: boolean; reason?: string } = { ok: true }
+    const { svc, registry } = service({ admit: (envId) => (asked.push(envId), verdict) })
+    const r = (await svc.handle('thread.start', { caller, args: startArgs }, ctx)) as { sessionId: string }
+    expect(asked).toEqual([BOX])
+    // What the cap counts: the threads this host started here that are live now.
+    expect(svc.liveThreadsOf(BOX)).toBe(1)
+    expect(svc.liveThreadsOf('env_other')).toBe(0)
+    registry.setStatus(r.sessionId, 'idle')
+    expect(svc.liveThreadsOf(BOX)).toBe(0)
+    verdict = { ok: false, reason: 'the Mac already runs 2 threads from this host, its cap of 2' }
+    await expect(svc.handle('thread.start', { caller, args: startArgs }, ctx)).rejects.toThrow(/already runs 2 threads/)
+    await expect(
+      svc.handle('thread.spawn', { caller, args: { provider: 'claude' as const, model: 'claude-sonnet-5-5', reasoning: 'medium' as const, context1m: false, agentType: 'explorer' as const, task: 'look', title: 'look', useWorktree: false, cwd: '/srv/agents/work/temp-code' } }, ctx)
+    ).rejects.toThrow(/already runs 2 threads/)
+    expect(registry.sent.length).toBe(1)
   })
   it('refuses a caller from another host, and a thread this host did not start', async () => {
     const { svc, registry } = service()

@@ -293,6 +293,10 @@ export const METHOD_CAPABILITY: Record<ClientRequest['method'], MethodCapability
   'macBridge.policy.set': 'local',
   'macBridge.shared.set': 'local',
   'macBridge.showRunning.set': 'local',
+  'macBridge.limits.set': 'local',
+  'macBridge.loadLimit.set': 'local',
+  'macBridge.load.get': 'local',
+  'macBridge.admitThread': 'local',
   // The Mac's remembered approvals (contract-macbridge-rules.ts): only its own renderer.
   'macBridge.rules.list': 'local',
   'macBridge.rules.forget': 'local',

@@ -255,6 +255,8 @@ export interface MacJobsDeps {
     id: string
     answer: Promise<{ allow: boolean; remember: MacDecideRemember; outcome: MacBridgeOutcome }>
   }
+  /** The load guard (macLoadGuard.ts): resolves once the job may start, throws (the card finished) when its wait ended first. */
+  hold?: (envId: string, cardId: string, until: number, line: (decision: string) => void) => Promise<void>
   /** The card now shows the job running, with Stop. */
   running: (cardId: string, stop: () => void) => void
   finish: (cardId: string, outcome: MacBridgeOutcome) => void
@@ -413,6 +415,12 @@ export class MacJobs {
     if (readRemembers(decision.remember)) {
       memory.add(key)
       this.remembered.set(this.threadKey(env.id, thread.id), memory)
+    }
+    // The load guard: at the host's cap, or with the Mac over its load limit, the job waits its turn.
+    await this.deps.hold?.(env.id, cardId, deadlineAt - REPLY_MARGIN_MS, line)
+    if (this.runningCount(env.id, thread.id) >= MAC_JOB_MAX_PER_THREAD) {
+      this.deps.finish(cardId, 'stopped')
+      throw new Error(`this thread already has ${MAC_JOB_MAX_PER_THREAD} jobs running on the Mac`)
     }
     const argv0 = basename(args.argv?.[0] ?? args.command?.split(/\s/)[0] ?? '')
     const [file, ...rest] = shellArgv(spec, this.deps.shell)
